@@ -12,14 +12,17 @@ hardware-management and product logic.
 
 - Outputs and display configuration (via DRM/KMS/GBM on real hardware)
 - Input handling (libinput, xkbcommon)
-- Surface and window management: focus, move, resize, maximize, fullscreen,
-  transient dialogs, popups
+- Surface and window management: focus, move, resize, zoom, fullscreen,
+  transient dialogs, popups (see [Window model](#window-model))
 - Workspace model (see [03-workspaces.md](03-workspaces.md))
 - Per-Space wallpaper rendering, part of the workspace scene so a Space's
   background slides with it during switches (see
   [03-workspaces.md](03-workspaces.md))
 - Effects and animation policy (blur, shadows, scale/clip transforms)
 - Security boundaries (seat/session, lock screen integration)
+- Screen magnification (accessibility zoom) with follow-focus and
+  follow-caret modes — compositor-owned because it transforms the whole
+  scene, not one window
 - Private shell protocols (see below)
 - Xwayland compatibility
 
@@ -37,6 +40,25 @@ The compositor is built with multiple backends from day one:
 Compositor frameworks are designed around reusable backends; we never require
 every run to take ownership of the physical display.
 
+## Input
+
+- libinput delivers pointer, keyboard, touch, and tablet events. Touch and
+  tablet are first-class at the input layer from the start, not a later port.
+- Gesture recognition (swipe, pinch) lives in the compositor and feeds the
+  **same** progress pipelines as keyboard and hot-corner triggers — there is
+  no gesture-only code path (see [03-workspaces.md](03-workspaces.md)).
+- Keymaps are xkbcommon with the Cmd/Super and Option/Alt mapping fixed once
+  (see [Keymap conventions](#keymap-conventions)); keyboard repeat,
+  per-device pointer acceleration, and scroll configuration are compositor
+  settings surfaced through the Settings input panes (see
+  [08-settings.md](08-settings.md)).
+- The global shortcut engine owns system shortcuts (workspace switching,
+  Mission Control, app switcher, screenshots). Application accelerators are
+  admitted only through the menu-broker while the owning window is focused
+  (see [06-global-menu.md](06-global-menu.md)), and sandboxed applications
+  register shortcuts through the portal's GlobalShortcuts interface — no
+  client grabs keys directly.
+
 ## Renderer and effects
 
 - Rendering goes through Smithay's GBM/EGL renderer stack on the DRM backend.
@@ -48,6 +70,17 @@ every run to take ownership of the physical display.
   [14-risks.md](14-risks.md)).
 - Damage tracking keeps the idle path cheap: no damage, no render, no client
   wakeups. Animations drive damage every frame while running.
+- Hardware cursor planes are used where the hardware offers them; software
+  cursors are the fallback, and cursor motion never waits on effects or
+  damage.
+- VRR/adaptive-sync is enabled per output where connector and mode support
+  it, and is a Displays-pane toggle (see [08-settings.md](08-settings.md)).
+- Night light (per-output gamma ramps) is compositor-owned, like everything
+  else about outputs (see [08-settings.md](08-settings.md)).
+- Multi-GPU: render on the primary node, import GBM buffers across devices,
+  and fall back automatically when a GPU disappears — device *loss* is part
+  of the hotplug story, not just display hotplug (see
+  [14-risks.md](14-risks.md)).
 - Performance budgets are targets, not hopes — see
   [13-roadmap.md](13-roadmap.md).
 
@@ -58,6 +91,27 @@ driven per-output on vblank. Scene updates and GPU work are single-threaded
 per output until profiling proves otherwise; correctness beats parallelism in
 a display server.
 
+## Window model
+
+- **States.** A window is floating, minimized, zoomed, or fullscreen, with
+  its restore geometry remembered across each transition. **Zoom and
+  fullscreen are distinct states**, macOS-style: Zoom grows the window to
+  fill the Space minus the menu bar and Dock; fullscreen creates its own
+  Space (see [03-workspaces.md](03-workspaces.md)). There is no separate
+  "maximize" state.
+- **Focus.** Click-to-focus only; focus never follows pointer motion alone.
+  Focus changes are broadcast over the private protocol so the shell, Dock,
+  and menu-broker track the active application without polling (see
+  [04-shell.md](04-shell.md), [06-global-menu.md](06-global-menu.md)).
+- **Placement.** New windows open near the center of the active Space with a
+  per-output cascade offset; transient dialogs center on their parent, stay
+  above it, and minimize with it.
+- **Regions.** Client-provided opaque, translucent, and input regions are
+  honored: input outside the input region falls through, and translucent
+  regions participate in the blur pass rather than fighting it.
+- Windows survive shell restarts untouched — workspace assignment,
+  stacking, and focus are compositor state the shell never co-owns.
+
 ## Protocol surface
 
 Standard protocols the compositor implements or consumes:
@@ -67,6 +121,8 @@ Standard protocols the compositor implements or consumes:
 - `xdg-decoration` for SSD negotiation (see
   [05-window-decorations.md](05-window-decorations.md))
 - Pointer constraints, relative pointer, `cursor-shape`, `idle-inhibit`
+- `wp-content-type-manager-v1` content-type hints, so fullscreen video and
+  conferencing clients can take efficient/scanout paths
 - `wlr-data-control`, so the shell's clipboard manager sees text, images, and
   files (see [13-roadmap.md](13-roadmap.md))
 - `security-context`, so sandboxed (Flatpak) clients identify themselves
@@ -76,9 +132,12 @@ Standard protocols the compositor implements or consumes:
 - `xdg-activation` (launch feedback / Dock bounce)
 - `ext-session-lock-v1` for fail-secure locking; `ext-idle-notify` for idle
 - `text-input` / input-method protocols for input methods
-- Capture paths for screenshots and screen sharing are exposed through our
-  portal backend as PipeWire streams (see
-  [07-system-integration.md](07-system-integration.md))
+- **Capture is portal-only.** Screenshots and screen sharing are exposed
+  exclusively through our portal backend as PipeWire streams, per-window or
+  per-monitor, each with explicit user consent (see
+  [07-system-integration.md](07-system-integration.md)). We deliberately do
+  **not** implement `wlr-screencopy`-style grab access for arbitrary clients:
+  if a capture is not a portal request, the answer is no.
 
 ### Private shell protocols
 
