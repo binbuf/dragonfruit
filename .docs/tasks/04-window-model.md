@@ -5,7 +5,7 @@
 | **Phase** | 1 · Foundation |
 | **Area** | `compositor/` (window management) |
 | **Depends on** | [T-02](02-compositor-core.md) · [T-03](03-input-keymaps-shortcuts.md) |
-| **Blocks** | [T-05](05-spaces-model.md) · [T-10](10-dock.md) · [T-11](11-mission-control-workspace-ux.md) · [T-12](12-app-switcher.md) · [T-13](13-window-decorations-ssd.md) |
+| **Blocks** | [T-05](05-spaces-model.md) · [T-06](06-xwayland.md) · [T-07](07-private-shell-protocols.md) · [T-13](13-window-decorations-ssd.md) |
 | **Estimate** | L |
 | **Design docs** | [02-compositor.md](../design/02-compositor.md) · [03-workspaces.md](../design/03-workspaces.md) |
 
@@ -13,8 +13,9 @@
 
 The compositor's window state machine: floating/minimized/zoomed/fullscreen
 with remembered restore geometry, macOS-style distinct Zoom vs Fullscreen,
-click-to-focus, centered cascade placement, transient dialogs, and honored
-client regions. Windows survive shell restarts untouched.
+click-to-focus, centered cascade placement, interactive move/resize,
+transient dialogs, popups, and honored client regions. Windows survive
+shell restarts untouched.
 
 ## Background
 
@@ -54,6 +55,17 @@ Mission Control be mere observers.
      it) leaves windows untouched.
 6. **Window menu primitives** (consumed via private protocol and the SSD
    titlebar right-click in T-13): Move to Space, Minimize, Zoom, Close.
+7. **Interactive move and resize**: pointer-driven move and edge-resize for
+   floating windows, serving both SSD titlebar/edge input (T-13) and CSD
+   clients' `xdg_toplevel` move/resize requests — the machinery behind the
+   "focus / move / resize" rung of the vertical slice
+   ([13-roadmap.md](../design/13-roadmap.md)).
+8. **Popups** (`xdg_popup`): positioner-constraint placement, popup input
+   grabs, dismissal (click-away, Escape, parent unfocus), and stacking
+   above their toplevel — the substrate for app menus, context menus, and
+   the window menu alike
+   ([02-compositor.md](../design/02-compositor.md) lists popups with
+   transient dialogs).
 
 ### Out of scope
 
@@ -82,7 +94,13 @@ Mission Control be mere observers.
 - FR-8: Translucency: translucent regions composite with the blur pass, no
   artifacts (visual test with a blur+translucent test client).
 - FR-9: Kill -9 the shell process; windows keep position, stacking, focus
-  (scripted restart test).
+   (scripted restart test).
+- FR-10: Pointer move and edge-resize work for floating windows from both
+  SSD input and CSD client requests; client min/max-size and aspect hints
+  clamp resizes; a dragged window never leaves its output.
+- FR-11: Popups stay within their output (positioner flip/slide/resize
+  constraints), dismiss on click-away/Escape/parent unfocus, and never
+  desync from or stack below their parent.
 
 ## Acceptance criteria
 
@@ -92,10 +110,14 @@ Mission Control be mere observers.
       minimize-with/close-with).
 - [ ] Shell-restart test passes (FR-9) — this is also a Phase-1 exit
       contributor.
+- [ ] Move/resize and popup conformance suites pass (headless, driving
+      `xdg_toplevel` move/resize and `xdg_popup` requests, malformed
+      positioners included).
 
 ## Test plan
 
-- Headless protocol tests driving `xdg_toplevel` state requests.
+- Headless protocol tests driving `xdg_toplevel` state, move, and resize
+  requests plus `xdg_popup` placement matrices.
 - Malformed-client suite: clients sending contradictory state requests never
   crash the compositor (protocol-robustness rule from
   [14-risks.md](../design/14-risks.md)).

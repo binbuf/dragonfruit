@@ -80,6 +80,13 @@ loop are decided once, here, so later tickets never re-litigate them
 7. **Crash/teardown hygiene**: a dev helper that verifies clean session
    teardown (no leaked VT master, no orphaned clients) — this becomes the
    Foundation phase-exit test.
+8. **IPC versioning policy** (from
+   [01-architecture.md](../design/01-architecture.md)): written into the
+   repo before the first protocol lands — private Wayland protocols are
+   versioned and **additive-only** within a stable release; compositor,
+   shell, and protocol XMLs ship as a lockstep set with cross-version
+   mixing detected at handshake; D-Bus interfaces use `org.dragonfruit.*`
+   names with a per-major-version suffix (e.g. `org.dragonfruit.Settings1`).
 
 ### Out of scope
 
@@ -93,7 +100,8 @@ loop are decided once, here, so later tickets never re-litigate them
   with documented toolchain versions; Qt 6 and Smithay versions are pinned.
 - FR-2: One command builds the full desktop; one command runs all tests.
 - FR-3: CI runs on every PR: fmt/clippy (Rust), QML lint, unit tests,
-  headless compositor smoke test.
+  headless compositor smoke test, and a grep gate that fails on hardcoded
+  desktop names (only `dragonfruit` is legal).
 - FR-4: LICENSE files exist in every crate/package directory; a doc records
   what may link what, and the protocol XML license is MIT.
 - FR-5: `dragonfruit dev --nested` starts the compositor in a window, prints
@@ -101,6 +109,9 @@ loop are decided once, here, so later tickets never re-litigate them
 - FR-6: The repo documents the second-VT workflow with a **dedicated
   development user** to avoid user-session service collisions
   ([11-session-and-dev-workflow.md](../design/11-session-and-dev-workflow.md)).
+- FR-7: The IPC versioning policy (scope item 8) is documented in-repo and
+  enforced from the first commit: protocol XMLs carry versions, and the
+  lockstep handshake rejects cross-version mixing.
 
 ## Technical notes
 

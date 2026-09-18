@@ -4,7 +4,7 @@
 |---|---|
 | **Phase** | 3 · Flagship apps |
 | **Area** | `apps/settings/` |
-| **Depends on** | [T-08](08-design-system.md) · [T-15](15-settingsd-settings-model.md) · [T-20](20-system-service-adapters.md) · [T-07](07-private-shell-protocols.md) (Displays/output API) |
+| **Depends on** | [T-08](08-design-system.md) · [T-15](15-settingsd-settings-model.md) · [T-20](20-system-service-adapters.md) · [T-07](07-private-shell-protocols.md) (Displays/output API) · [T-03](03-input-keymaps-shortcuts.md) (input panes) |
 | **Blocks** | Phase-3 exit (Settings fully configures every pane it ships) |
 | **Estimate** | XL |
 | **Design docs** | [08-settings.md](../design/08-settings.md) · [10-design-system.md](../design/10-design-system.md) · [13-roadmap.md](../design/13-roadmap.md) |

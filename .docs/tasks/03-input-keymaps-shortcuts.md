@@ -5,7 +5,7 @@
 | **Phase** | 1 · Foundation |
 | **Area** | `compositor/` (input) |
 | **Depends on** | [T-02](02-compositor-core.md) |
-| **Blocks** | [T-11](11-mission-control-workspace-ux.md) · [T-12](12-app-switcher.md) · [T-16](16-settings-app.md) (input panes) |
+| **Blocks** | [T-11](11-mission-control-workspace-ux.md) · [T-12](12-app-switcher.md) · [T-14](14-hot-corners-desktop-background.md) (hot-corner dispatch) · [T-16](16-settings-app.md) (input panes) · [T-28](28-screenshot-recording-ui.md) (keybind) |
 | **Estimate** | L |
 | **Design docs** | [02-compositor.md](../design/02-compositor.md) · [03-workspaces.md](../design/03-workspaces.md) · [04-shell.md](../design/04-shell.md) |
 
@@ -63,8 +63,8 @@ behavior is identical regardless of trigger
 - Gesture-driven *animations* themselves (T-11) — this ticket delivers the
   progress events they consume.
 - Accessibility magnification (compositor screen zoom) — related but
-  separable; tracked with T-26/T-31 accessibility work per
-  [02-compositor.md](../design/02-compositor.md).
+  separable; scheduled with [T-31](31-polish-hardening.md) accessibility
+  work per [02-compositor.md](../design/02-compositor.md).
 
 ## Requirements
 

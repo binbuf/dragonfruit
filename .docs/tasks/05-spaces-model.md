@@ -5,7 +5,7 @@
 | **Phase** | 1 · Foundation |
 | **Area** | `compositor/` (workspaces) |
 | **Depends on** | [T-04](04-window-model.md) · [T-02](02-compositor-core.md) |
-| **Blocks** | [T-07](07-private-shell-protocols.md) (workspace interface) · [T-11](11-mission-control-workspace-ux.md) · [T-16](16-settings-app.md) (wallpaper pane) |
+| **Blocks** | [T-07](07-private-shell-protocols.md) (workspace interface) · [T-11](11-mission-control-workspace-ux.md) · [T-14](14-hot-corners-desktop-background.md) (per-Space wallpaper) |
 | **Estimate** | L |
 | **Design docs** | [03-workspaces.md](../design/03-workspaces.md) · [13-roadmap.md](../design/13-roadmap.md) |
 
@@ -59,8 +59,10 @@ ships **three workspaces** ([13-roadmap.md](../design/13-roadmap.md)).
    rendering into the workspace scene (fills, scales, colors), later
    configurable per Space via Settings/Wallpaper pane (T-16).
 5. **App Space memory**: per-application assignment that survives window
-   close/reopen within a session (state keyed via app identity from
-   [T-23](23-app-index.md)).
+   close/reopen within a session — keyed in Phase 1 by raw `app_id`
+   (Wayland) or `WM_CLASS` (Xwayland, with T-06); refined to app-index
+   identity when [T-23](23-app-index.md) lands, so this ticket has **no
+   forward dependency on Phase 4**.
 
 ### Out of scope
 

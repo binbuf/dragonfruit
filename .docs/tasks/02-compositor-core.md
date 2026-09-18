@@ -5,7 +5,7 @@
 | **Phase** | 1 · Foundation |
 | **Area** | `compositor/` |
 | **Depends on** | [T-01](01-repo-scaffolding-ci-licensing.md) |
-| **Blocks** | [T-03](03-input-keymaps-shortcuts.md) · [T-04](04-window-model.md) · [T-05](05-spaces-model.md) · [T-06](06-xwayland.md) · [T-07](07-private-shell-protocols.md) · [T-11](11-mission-control-workspace-ux.md) · [T-13](13-window-decorations-ssd.md) |
+| **Blocks** | [T-03](03-input-keymaps-shortcuts.md) · [T-04](04-window-model.md) · [T-05](05-spaces-model.md) · [T-06](06-xwayland.md) · [T-07](07-private-shell-protocols.md) · [T-13](13-window-decorations-ssd.md) · [T-20](20-system-service-adapters.md) · [T-24](24-session-lifecycle.md) · [T-26](26-lock-screen-idle.md) · [T-27](27-portal-backend.md) · [T-29](29-clipboard-auth-agent.md) |
 | **Estimate** | XL |
 | **Design docs** | [02-compositor.md](../design/02-compositor.md) · [01-architecture.md](../design/01-architecture.md) · [13-roadmap.md](../design/13-roadmap.md) |
 
@@ -78,8 +78,8 @@ Dock coherence) works because the compositor owns the scene graph
      `wlr-screencopy`-style grabs: "if a capture is not a portal request,
      the answer is no."
 5. **Output management**: enumeration, modes, scale, rotation, hotplug
-   events (theDisplays backend of T-16; per-display Spaces interplay in
-   T-05).
+   events (the backend of the Settings Displays pane, T-16; per-display
+   Spaces interplay in T-05).
 
 ### Out of scope
 
@@ -90,6 +90,11 @@ Dock coherence) works because the compositor owns the scene graph
 - Wi-Fi/Bluetooth/audio/power logic, file-manager behavior, menu models —
   explicitly never in the compositor
   ([02-compositor.md](../design/02-compositor.md) "Out of scope").
+- Accessibility magnification (compositor screen zoom) — compositor-owned
+  per
+  ([02-compositor.md](../design/02-compositor.md)), but scheduled with
+  [T-31](31-polish-hardening.md) accessibility work; the render pipeline
+  here must not preclude a whole-scene transform.
 
 ## Requirements
 
@@ -107,7 +112,8 @@ Dock coherence) works because the compositor owns the scene graph
   outputs re-init on the remaining node or session exits cleanly; never a
   hang.
 - FR-7: All listed standard protocols advertise and pass their upstream test
-  suites where they exist (e.g. weston-surface-runner style smoke tests).
+  suites where they exist (e.g. weston's smoke-test clients); protocols
+  without an upstream suite get our own headless conformance test.
 - FR-8: No `wlr-screencopy` and equivalent arbitrary-grab protocols are
   advertised, ever (grep-gate in CI).
 
