@@ -4,10 +4,10 @@
 |---|---|
 | **Phase** | 2 · Experience |
 | **Area** | `shell/dock/` |
-| **Depends on** | [T-07](07-private-shell-protocols.md) · [T-08](08-design-system.md) · [T-09](09-menu-bar.md) · [T-23](23-app-index.md) (identity; stub until it lands) |
+| **Depends on** | [T-07](07-private-shell-protocols.md) · [T-08](08-design-system.md) · [T-09](09-menu-bar.md) · [T-15](15-settingsd-settings-model.md) (pinned-set keys; interim persistence below) · [T-23](23-app-index.md) (identity; stub until it lands) |
 | **Blocks** | Phase-2 exit (core interaction loop) |
 | **Estimate** | L |
-| **Design docs** | [04-shell.md](../design/04-shell.md) · [13-roadmap.md](../design/13-roadmap.md) |
+| **Design docs** | [04-shell.md](../design/04-shell.md) · [08-settings.md](../design/08-settings.md) · [09-files.md](../design/09-files.md) · [13-roadmap.md](../design/13-roadmap.md) |
 
 ## Summary
 
@@ -55,8 +55,10 @@ in the design doc.
    - **Running indicators**, per-app not per-window.
    - **Drag rearrangement** of pinned entries.
    - **Contextual menus** (Quit, Keep in Dock, Show All Windows, Options).
-4. **Window chooser** (multi-window click target): thumbnails of the app's
-   windows across workspaces, select → activate (compositor request).
+4. **Window chooser** (multi-window click target): the app's windows
+   across workspaces, select → activate (compositor request). Window
+   imagery depends on the T-07 open question (trusted-shell thumbnail
+   path vs title-list fallback); ship the title list first.
 5. **Trash** on the Dock's right end:
    - A Files-backed location whose **badge watches the same GVfs
      `trash://` mount Files does** — one source of truth that also catches
@@ -67,6 +69,10 @@ in the design doc.
    - Zero direct coupling between the shell and Files — both watch GVfs.
 6. **Pinned-app persistence**: default set + user ordering stored under
    desktop settings via `settingsd` (T-15 keys), not a Dock-private file.
+   T-15 lands in Phase 3; until then persist under
+   `$XDG_CONFIG_HOME/dragonfruit/` in the eventual settingsd key shape
+   ([08-settings.md](../design/08-settings.md)) so T-15 adopts it
+   without migration.
 
 ### Out of scope
 

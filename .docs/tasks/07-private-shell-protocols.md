@@ -5,9 +5,9 @@
 | **Phase** | 1 · Foundation |
 | **Area** | `protocols/` + `compositor/` + shell bindings |
 | **Depends on** | [T-02](02-compositor-core.md) · [T-04](04-window-model.md) · [T-05](05-spaces-model.md) |
-| **Blocks** | [T-09](09-menu-bar.md) · [T-10](10-dock.md) · [T-11](11-mission-control-workspace-ux.md) · [T-12](12-app-switcher.md) · [T-22](22-global-menu-broker.md) · [T-28](28-screenshot-recording-ui.md) · [T-19](19-desktop-icons.md) |
+| **Blocks** | [T-09](09-menu-bar.md) · [T-10](10-dock.md) · [T-11](11-mission-control-workspace-ux.md) · [T-12](12-app-switcher.md) · [T-14](14-hot-corners-desktop-background.md) (hot-corner dispatch) · [T-19](19-desktop-icons.md) · [T-22](22-global-menu-broker.md) · [T-25](25-notifications-and-osd.md) · [T-26](26-lock-screen-idle.md) · [T-28](28-screenshot-recording-ui.md) · [T-29](29-clipboard-auth-agent.md) |
 | **Estimate** | L |
-| **Design docs** | [02-compositor.md](../design/02-compositor.md) · [01-architecture.md](../design/01-architecture.md) |
+| **Design docs** | [01-architecture.md](../design/01-architecture.md) · [02-compositor.md](../design/02-compositor.md) · [03-workspaces.md](../design/03-workspaces.md) · [04-shell.md](../design/04-shell.md) |
 
 ## Summary
 
@@ -38,17 +38,25 @@ extension surface ([02-compositor.md](../design/02-compositor.md)).
      fullscreen), workspace assignment, activate/minimize/zoom/fullscreen
      requests, "Move to Space", window menu emission.
    - **Workspace extensions**: workspace enumeration, create/remove/
-     reorder, activation, and the workspace event stream
-     (created/removed/reordered/activated/window-assigned) from T-05.
+     reorder, activation, the workspace event stream
+     (created/removed/reordered/activated/window-assigned) from T-05,
+     and per-Space wallpaper assignment (wallpaper is Space state —
+     [03-workspaces.md](../design/03-workspaces.md); feeds T-14/T-16).
    - **Mission Control control**: enter/exit overview, overview selection
      events, workspace strip data (feeds T-11).
    - **App-switcher state**: recency-ordered app list, per-app window
      lists, selection requests (feeds T-12).
    - **Focus broadcasts** so shell, Dock, and menu-broker track the active
      application without polling.
+   - **Launch-attention broadcasts**: `xdg-activation` requests and
+     demands-attention forwarded to the shell (Dock bounce — T-10 FR-4;
+     [02-compositor.md](../design/02-compositor.md)).
+   - **Hot-corner trigger events** dispatched to the shell (T-14) — the
+     same events whether triggered by pointer, gesture, or keyboard
+     ([04-shell.md](../design/04-shell.md)).
 3. **Output-management protocol** (wlr-output-management precedents,
    extended with our needs): mode, scale, rotation, VRR, night light,
-   color controls, wallpaper per Space, output hotplug events (feeds
+   color controls, output hotplug events (feeds
    Settings Displays pane, T-16).
 4. **Trust model**:
    - Access restricted to a fixed set of trusted session processes, each
@@ -115,3 +123,8 @@ extension surface ([02-compositor.md](../design/02-compositor.md)).
 - Keep an eye on upstream `ext-` protocol efforts (e.g. ext-workspace);
   where a staging standard lands, prefer consuming it and shrink ours —
   but only within a major-version boundary.
+- The Dock window chooser (T-10) wants window imagery, but capture is
+  portal-only for clients ([02-compositor.md](../design/02-compositor.md)).
+  Decide early: a trusted-shell-only toplevel-thumbnail event in this
+  protocol, or a title-list fallback in T-10. If added, it must be
+  token-gated like every other private interface.

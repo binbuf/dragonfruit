@@ -5,7 +5,7 @@
 | **Phase** | 2 · Experience |
 | **Area** | `shell/menubar/` (and shell process bootstrap) |
 | **Depends on** | [T-07](07-private-shell-protocols.md) · [T-08](08-design-system.md) · [T-20](20-system-service-adapters.md) (status items) · [T-22](22-global-menu-broker.md) (app menu, may stub initially) |
-| **Blocks** | [T-10](10-dock.md) · [T-21](21-control-center.md) · [T-25](25-notifications-and-osd.md) |
+| **Blocks** | [T-10](10-dock.md) · [T-11](11-mission-control-workspace-ux.md) (Mission Control entry point) · [T-14](14-hot-corners-desktop-background.md) · [T-21](21-control-center.md) · [T-25](25-notifications-and-osd.md) · [T-30](30-compatibility-bridges.md) (tray bridge) |
 | **Estimate** | L |
 | **Design docs** | [04-shell.md](../design/04-shell.md) · [06-global-menu.md](../design/06-global-menu.md) |
 
@@ -75,8 +75,8 @@ restartable without taking down the compositor.
 - FR-1: Menu bar anchors on every output, reserves its zone, and follows
   output hotplug (appears on new outputs).
 - FR-2: App menu shows: broker-resolved menu when available; application
-  name only when the app doesn't export one (Tier 3)
-  ([06-global-menu.md](../design/06-global-menu.md)).
+  name only when the app doesn't export one (broker priority 3 —
+  [06-global-menu.md](../design/06-global-menu.md)).
 - FR-3: Menu interaction: click-to-open, drag-through submenus with delayed
   hover, Escape and focus-loss dismissal, live switch when focus changes
   under an open menu.
@@ -111,3 +111,7 @@ restartable without taking down the compositor.
   rule now, implement later.
 - Menu drag-through timing constants live in design-system motion tokens;
   tune there, not here.
+- The vertical slice demos Wi-Fi, volume, and battery menus before the
+  Phase-4 adapters (T-20) land; plan placeholder-first (see acceptance
+  criteria) and pull the first three adapters forward if the demo needs
+  live items.

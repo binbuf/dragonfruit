@@ -5,7 +5,7 @@
 | **Phase** | 2 · Experience |
 | **Area** | `design-system/` |
 | **Depends on** | [T-01](01-repo-scaffolding-ci-licensing.md) |
-| **Blocks** | [T-09](09-menu-bar.md) · [T-10](10-dock.md) · [T-13](13-window-decorations-ssd.md) · [T-16](16-settings-app.md) · [T-18](18-files-app.md) · [T-21](21-control-center.md) |
+| **Blocks** | [T-09](09-menu-bar.md) · [T-10](10-dock.md) · [T-11](11-mission-control-workspace-ux.md) · [T-12](12-app-switcher.md) · [T-13](13-window-decorations-ssd.md) · [T-16](16-settings-app.md) · [T-18](18-files-app.md) · [T-21](21-control-center.md) · [T-22](22-global-menu-broker.md) (`MenuBarMenu`) · [T-25](25-notifications-and-osd.md) · [T-26](26-lock-screen-idle.md) · [T-28](28-screenshot-recording-ui.md) · [T-29](29-clipboard-auth-agent.md) |
 | **Estimate** | XL |
 | **Design docs** | [10-design-system.md](../design/10-design-system.md) · [05-window-decorations.md](../design/05-window-decorations.md) |
 

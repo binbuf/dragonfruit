@@ -4,10 +4,10 @@
 |---|---|
 | **Phase** | 1 · Foundation |
 | **Area** | `compositor/` (Xwayland) |
-| **Depends on** | [T-02](02-compositor-core.md) · [T-04](04-window-model.md) |
+| **Depends on** | [T-02](02-compositor-core.md) · [T-04](04-window-model.md) · [T-05](05-spaces-model.md) (workspace assignment) |
 | **Blocks** | [T-30](30-compatibility-bridges.md) (X11 app zoo) |
 | **Estimate** | M |
-| **Design docs** | [02-compositor.md](../design/02-compositor.md) · [13-roadmap.md](../design/13-roadmap.md) · [05-window-decorations.md](../design/05-window-decorations.md) |
+| **Design docs** | [02-compositor.md](../design/02-compositor.md) · [05-window-decorations.md](../design/05-window-decorations.md) · [09-files.md](../design/09-files.md) · [13-roadmap.md](../design/13-roadmap.md) |
 
 ## Summary
 
@@ -33,15 +33,19 @@ delivers the working integration.
    transient hints, icons, workspace assignment (all via T-04/T-05
    machinery).
 3. **Application identity fallback**: Xwayland `WM_CLASS` resolves to
-   `.desktop` applications via `app-index` (T-23) — alongside
-   `xdg_toplevel` `app_id` for Wayland clients.
+   `.desktop` applications — alongside `xdg_toplevel` `app_id` for
+   Wayland clients. Resolution is owned by `app-index` (T-23, Phase 4);
+   until it lands, an interim direct GIO `AppInfo` lookup covers the
+   common set, and every miss feeds the T-23 heuristics.
 4. **Decorations**: the X server is an ordinary `xdg-shell` client that does
    not draw Wayland CSD, so **X11 applications reliably land in Tier 2**
    (compositor-drawn SSD) without per-app cooperation
    ([05-window-decorations.md](../design/05-window-decorations.md)).
-5. Input: keyboard mapping across the X/Wayland boundary, clipboard
-   bridging (text/images), DnD bridging (via wlr-data-control-era
-   standard paths).
+5. Input: keyboard mapping across the X/Wayland boundary, selection
+   bridging (text/images/files — surfaced to the shell's clipboard
+   manager via `wlr-data-control`), and DnD bridging via the standard
+   data-device ⇄ XDnD translation
+   ([02-compositor.md](../design/02-compositor.md)).
 6. Basic robustness: window manager protocol quirks (ICCCM/EWMH) tolerated;
    no crash on malformed X messages.
 
@@ -59,7 +63,9 @@ delivers the working integration.
   lights (with T-13) — the default and only tier for X11.
 - FR-3: `WM_CLASS` → application identity works for the common set
   (Firefox X11, Steam, an SDL game, a Java app) for Dock/switcher grouping.
-- FR-4: Clipboard text and images cross the boundary in both directions.
+- FR-4: Clipboard text, images, and file lists cross the boundary in both
+  directions (daily-driver clipboard bar,
+  [13-roadmap.md](../design/13-roadmap.md)).
 - FR-5: Basic DnD (file drag from an X11 app into Files and vice versa)
   works through the same operations engine path
   ([09-files.md](../design/09-files.md)).
@@ -71,7 +77,9 @@ delivers the working integration.
 - [ ] Phase-1 exit contribution: "Xwayland windows map."
 - [ ] Reference app matrix (Firefox, Steam, one SDL game, xterm) passes a
       scripted interact-and-close run.
-- [ ] Identity resolution rate measured; misses logged into the T-30 zoo.
+- [ ] Identity resolution rate measured with the interim resolver;
+      misses feed the app-index heuristics (T-23), behavioral oddities
+      the T-30 zoo.
 
 ## Test plan
 
