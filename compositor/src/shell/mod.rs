@@ -255,6 +255,20 @@ fn edge_wire(edge: Edge) -> df_output::Edge {
     }
 }
 
+/// Sanitize a client-controlled string before it is serialized into a
+/// private-protocol event. The generated server bindings build a `CString`
+/// and `unwrap` it, so an interior NUL panics the compositor; X11
+/// `WM_NAME`/`WM_CLASS` are conventionally NUL-terminated and a client can
+/// embed one. The window model may still hold the raw bytes (identity,
+/// logging); only the wire encoding is sanitized.
+fn protocol_string(value: &str) -> String {
+    value.replace('\0', "")
+}
+
+fn protocol_string_opt(value: Option<String>) -> Option<String> {
+    value.map(|value| protocol_string(&value))
+}
+
 // --- DfState integration ---------------------------------------------------
 
 impl DfState {
@@ -500,7 +514,7 @@ impl DfState {
             resource.activated(active as u32);
             resource.fullscreen(fullscreen as u32);
             resource.wallpaper(
-                wallpaper.source.clone(),
+                protocol_string_opt(wallpaper.source.clone()),
                 wallpaper_fit_wire(wallpaper.fit),
                 rgba_to_argb(wallpaper.color),
             );
@@ -548,8 +562,8 @@ impl DfState {
                 continue;
             };
             manager.toplevel(&resource);
-            resource.title(title.clone());
-            resource.app_id(app_id.clone());
+            resource.title(protocol_string_opt(title.clone()));
+            resource.app_id(protocol_string_opt(app_id.clone()));
             resource.state(self.window_state_flags(id, state));
             if let Some(space) = self.workspaces.window_space(id) {
                 if let Some(workspace) = self.workspace_resource(client.id(), space) {
@@ -842,7 +856,7 @@ impl DfState {
                 resource.activated(*active as u32);
                 resource.fullscreen(*fullscreen as u32);
                 resource.wallpaper(
-                    wallpaper.source.clone(),
+                    protocol_string_opt(wallpaper.source.clone()),
                     wallpaper_fit_wire(wallpaper.fit),
                     rgba_to_argb(wallpaper.color),
                 );
@@ -895,7 +909,7 @@ impl DfState {
                 WindowEventKind::TitleChanged => {
                     for session in self.shell.sessions.values() {
                         if let Some(resource) = session.toplevels.get(&event.id) {
-                            resource.title(event.title.clone());
+                            resource.title(protocol_string_opt(event.title.clone()));
                             resource.done();
                         }
                     }
@@ -903,7 +917,7 @@ impl DfState {
                 WindowEventKind::AppIdChanged => {
                     for session in self.shell.sessions.values() {
                         if let Some(resource) = session.toplevels.get(&event.id) {
-                            resource.app_id(event.app_id.clone());
+                            resource.app_id(protocol_string_opt(event.app_id.clone()));
                             resource.done();
                         }
                     }
@@ -974,8 +988,8 @@ impl DfState {
                 )
             })
             .unwrap_or((None, None, None));
-        resource.title(title.clone());
-        resource.app_id(app_id.clone());
+        resource.title(protocol_string_opt(title.clone()));
+        resource.app_id(protocol_string_opt(app_id.clone()));
         if let Some(state) = state {
             resource.state(self.window_state_flags(id, state));
         }
@@ -1032,7 +1046,7 @@ impl DfState {
                 ShellInputEvent::AppAccelerator(accelerator) => {
                     for (_, manager) in &sessions {
                         manager.app_accelerator(
-                            accelerator.app_id.clone(),
+                            protocol_string(&accelerator.app_id),
                             accelerator.accelerator_id.clone(),
                             accelerator.source.name().to_string(),
                             accelerator.serial,
@@ -1090,7 +1104,11 @@ impl DfState {
         let sessions = self.manager_sessions();
         let state = self.shell.app_switcher.clone();
         for (_, manager) in &sessions {
-            manager.app_switcher(state.active as u32, state.app_id.clone(), state.direction);
+            manager.app_switcher(
+                state.active as u32,
+                protocol_string_opt(state.app_id.clone()),
+                state.direction,
+            );
             manager.done();
         }
     }
@@ -1786,4 +1804,22 @@ fn write_private(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
         .mode(0o600)
         .open(path)?;
     file.write_all(bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{protocol_string, protocol_string_opt};
+
+    #[test]
+    fn protocol_strings_never_contain_nul() {
+        // X11 `WM_NAME`/`WM_CLASS` are conventionally NUL-terminated;
+        // the generated server bindings panic on an interior NUL.
+        assert_eq!(protocol_string("E2E X11\0"), "E2E X11");
+        assert_eq!(protocol_string("a\0b\0"), "ab");
+        assert_eq!(
+            protocol_string_opt(Some("t\0".to_string())),
+            Some("t".to_string())
+        );
+        assert_eq!(protocol_string_opt(None), None);
+    }
 }
