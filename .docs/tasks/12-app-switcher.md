@@ -4,10 +4,10 @@
 |---|---|
 | **Phase** | 2 · Experience |
 | **Area** | `compositor/` (keybind + state) + `shell/` (overlay) |
-| **Depends on** | [T-03](03-input-keymaps-shortcuts.md) · [T-07](07-private-shell-protocols.md) · [T-08](08-design-system.md) · [T-23](23-app-index.md) |
+| **Depends on** | [T-03](03-input-keymaps-shortcuts.md) · [T-05](05-spaces-model.md) (Space activation, minimized restore) · [T-07](07-private-shell-protocols.md) · [T-08](08-design-system.md) · [T-11](11-mission-control-workspace-ux.md) (Space-switch progress pipeline) · [T-23](23-app-index.md) (identity; stub until it lands) |
 | **Blocks** | Phase-2 exit (core loop) |
 | **Estimate** | M |
-| **Design docs** | [04-shell.md](../design/04-shell.md) |
+| **Design docs** | [02-compositor.md](../design/02-compositor.md) · [04-shell.md](../design/04-shell.md) |
 
 ## Summary
 
@@ -28,9 +28,12 @@ macOS mental model ([04-shell.md](../design/04-shell.md)).
 
 1. **Compositor side**: global keybind (Super/Mod4+Tab per the Cmd=Super
    mapping in [02-compositor.md](../design/02-compositor.md)); recency
-   tracking; app-level grouping (via app identity from T-23);
-   app-switcher state exposure over the private protocol (T-07 already
-   provisions this interface); activation requests on release.
+   tracking; app-level grouping via app identity — keyed by raw
+   `app_id` (Wayland) / `WM_CLASS` (Xwayland) until [T-23](23-app-index.md)
+   lands, so this ticket has **no forward dependency on Phase 4** (same
+   rule as T-05); app-switcher state exposure over the private protocol
+   (T-07 already provisions this interface); activation requests on
+   release.
 2. **Shell side**: the overlay — running apps by recency with icons,
    selection highlight, animated entry/exit per design-system motion
    tokens, reduced-motion variant.

@@ -5,7 +5,7 @@
 | **Phase** | 1 · Foundation |
 | **Area** | `compositor/` (Xwayland) |
 | **Depends on** | [T-02](02-compositor-core.md) · [T-04](04-window-model.md) · [T-05](05-spaces-model.md) (workspace assignment) |
-| **Blocks** | [T-30](30-compatibility-bridges.md) (X11 app zoo) |
+| **Blocks** | [T-13](13-window-decorations-ssd.md) (Xwayland Tier-2 decoration) · [T-30](30-compatibility-bridges.md) (X11 app zoo) |
 | **Estimate** | M |
 | **Design docs** | [02-compositor.md](../design/02-compositor.md) · [05-window-decorations.md](../design/05-window-decorations.md) · [09-files.md](../design/09-files.md) · [13-roadmap.md](../design/13-roadmap.md) |
 

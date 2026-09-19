@@ -5,7 +5,7 @@
 | **Phase** | 1 · Foundation |
 | **Area** | `compositor/` (workspaces) |
 | **Depends on** | [T-04](04-window-model.md) · [T-02](02-compositor-core.md) |
-| **Blocks** | [T-06](06-xwayland.md) (workspace assignment) · [T-07](07-private-shell-protocols.md) (workspace interface) · [T-11](11-mission-control-workspace-ux.md) · [T-14](14-hot-corners-desktop-background.md) (per-Space wallpaper) |
+| **Blocks** | [T-06](06-xwayland.md) (workspace assignment) · [T-07](07-private-shell-protocols.md) (workspace interface) · [T-11](11-mission-control-workspace-ux.md) · [T-12](12-app-switcher.md) (Space activation on switch) · [T-13](13-window-decorations-ssd.md) (Move-to-Space menu) · [T-14](14-hot-corners-desktop-background.md) (per-Space wallpaper) |
 | **Estimate** | L |
 | **Design docs** | [03-workspaces.md](../design/03-workspaces.md) · [13-roadmap.md](../design/13-roadmap.md) |
 

@@ -4,7 +4,7 @@
 |---|---|
 | **Phase** | 2 · Experience |
 | **Area** | `compositor/` (wallpaper, reveal transition) + `shell/` (corner config UX) |
-| **Depends on** | [T-03](03-input-keymaps-shortcuts.md) (hot-corner dispatch) · [T-05](05-spaces-model.md) (per-Space wallpaper) · [T-07](07-private-shell-protocols.md) · [T-09](09-menu-bar.md) |
+| **Depends on** | [T-03](03-input-keymaps-shortcuts.md) (hot-corner dispatch) · [T-05](05-spaces-model.md) (per-Space wallpaper) · [T-07](07-private-shell-protocols.md) · [T-09](09-menu-bar.md) · [T-11](11-mission-control-workspace-ux.md) (reveal shares the overview pipeline) · [T-15](15-settingsd-settings-model.md) (persistence keys; interim persistence below) |
 | **Blocks** | [T-16](16-settings-app.md) (Desktop & Dock / wallpaper panes) · [T-19](19-desktop-icons.md) (reveal must expose icons later) |
 | **Estimate** | M |
 | **Design docs** | [04-shell.md](../design/04-shell.md) · [03-workspaces.md](../design/03-workspaces.md) · [08-settings.md](../design/08-settings.md) |
@@ -31,8 +31,12 @@ only. Desktop Reveal "moves windows aside to expose the background."
 
 1. **Hot-corner configuration**:
    - Assignment of the four corners (each: none / Mission Control /
-     notification center / desktop reveal / lock screen) persisted via
-     `settingsd` (T-15) and applied live in the compositor.
+      notification center / desktop reveal / lock screen) persisted via
+      `settingsd` (T-15) and applied live in the compositor. T-15 lands
+      in Phase 3; until then persist under
+      `$XDG_CONFIG_HOME/dragonfruit/` in the eventual settingsd key shape
+      (the T-10 interim-persistence pattern) so T-15 adopts it without
+      migration.
    - Configuration UX (menu-bar/Settings surface, with the Desktop & Dock
      pane in T-16 as the final home).
 2. **Desktop Reveal transition**:
@@ -51,6 +55,9 @@ only. Desktop Reveal "moves windows aside to expose the background."
      ([14-risks.md](../design/14-risks.md) — never Apple's).
 4. **Notification-center corner behavior** wiring (opens T-25's center) and
    **lock-screen trigger** wiring (asks compositor to lock via T-26).
+   Both arrive in Phase 5; until then these actions are routable against
+   stub handlers — absence is a normal state, not an error
+   ([07-system-integration.md](../design/07-system-integration.md)).
 
 ### Out of scope
 
@@ -62,7 +69,9 @@ only. Desktop Reveal "moves windows aside to expose the background."
 ## Requirements
 
 - FR-1: Corner assignments persist and apply live (no restart) to the
-  compositor's hot-corner detection (T-03 path).
+  compositor's hot-corner detection (T-03 path); triggers behave
+  identically for pointer, gesture, and keyboard
+  ([04-shell.md](../design/04-shell.md)).
 - FR-2: All four named actions are routable; unknown/unassigned corners do
   nothing (no accidental triggers).
 - FR-3: Desktop Reveal is progress-based, interruptible, reversible;

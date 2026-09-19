@@ -4,10 +4,10 @@
 |---|---|
 | **Phase** | 2 · Experience |
 | **Area** | `compositor/` (SSD renderer) + `design-system/` (visual spec) |
-| **Depends on** | [T-02](02-compositor-core.md) · [T-04](04-window-model.md) · [T-08](08-design-system.md) |
+| **Depends on** | [T-02](02-compositor-core.md) · [T-04](04-window-model.md) · [T-05](05-spaces-model.md) (Spaces list for the window menu) · [T-06](06-xwayland.md) (Xwayland Tier-2 path) · [T-08](08-design-system.md) |
 | **Blocks** | [T-30](30-compatibility-bridges.md) (decoration themes) · Phase-2 exit (traffic lights in loop) |
 | **Estimate** | L |
-| **Design docs** | [05-window-decorations.md](../design/05-window-decorations.md) · [10-design-system.md](../design/10-design-system.md) |
+| **Design docs** | [03-workspaces.md](../design/03-workspaces.md) · [05-window-decorations.md](../design/05-window-decorations.md) · [10-design-system.md](../design/10-design-system.md) |
 
 ## Summary
 

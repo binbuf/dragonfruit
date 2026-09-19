@@ -5,9 +5,9 @@
 | **Phase** | 2 · Experience |
 | **Area** | `compositor/` (overview state machine) + `shell/` (strip/chrome) |
 | **Depends on** | [T-03](03-input-keymaps-shortcuts.md) · [T-05](05-spaces-model.md) · [T-07](07-private-shell-protocols.md) · [T-08](08-design-system.md) · [T-09](09-menu-bar.md) |
-| **Blocks** | Phase-2 exit (zero-dropped-frame loop) · [T-31](31-polish-hardening.md) |
+| **Blocks** | Phase-2 exit (zero-dropped-frame loop) · [T-12](12-app-switcher.md) (cross-Space activation) · [T-14](14-hot-corners-desktop-background.md) (Desktop Reveal shares the pipeline) · [T-31](31-polish-hardening.md) |
 | **Estimate** | XL |
-| **Design docs** | [03-workspaces.md](../design/03-workspaces.md) · [13-roadmap.md](../design/13-roadmap.md) |
+| **Design docs** | [03-workspaces.md](../design/03-workspaces.md) · [10-design-system.md](../design/10-design-system.md) · [13-roadmap.md](../design/13-roadmap.md) |
 
 ## Summary
 
@@ -57,8 +57,9 @@ the 30-second interaction loop
    pipeline: live surfaces + per-Space wallpaper repositioned with
    scale/translation/blur (T-05 scene mechanics), reversible at any progress.
 5. **Overview chrome** (shell, via private protocol):
-   - Workspace strip (renders Spaces; never keeps a second copy of
-     workspace state).
+   - Workspace strip (renders Spaces — including the dedicated Spaces of
+     fullscreen windows while they exist, [T-05](05-spaces-model.md) FR-3;
+     never keeps a second copy of workspace state).
    - Minimized-windows bottom strip, restorable by click.
    - Window selection → activate; window dragging between Spaces in the
      overview ("windows move between Spaces by dragging in the overview").
@@ -97,6 +98,8 @@ the 30-second interaction loop
 - FR-8: 60 Hz with zero dropped frames for the full gesture on baseline
   hardware (measured, in the dev loop, not the polish phase).
 - FR-9: Reduced-motion variant passes (Phase-2 exit criterion).
+- FR-10: Fullscreen windows appear as their own Space in the workspace
+  strip while fullscreen and leave it on unfullscreen (T-05 FR-3).
 
 ## Acceptance criteria
 
