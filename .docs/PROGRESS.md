@@ -709,6 +709,84 @@ Notes for subsequent tasks:
   output name/scale, workspace name/wallpaper/activated, manager
   output/workspace/toplevel/done, focus/state, overview, and per-window
   requests. `attention`, `hot_corner`, `input_action`, `progress`,
-  `app_accelerator`, `app_switcher`, output geometry/mode/transform, and
+  `  app_accelerator`, `app_switcher`, output geometry/mode/transform, and
   workspace `removed`/`fullscreen` are emitted but not yet asserted; extend
   the client as those consumers land (T-10/T-11/T-12/T-14/T-22).
+
+## Foundation milestone E2E (T-01…T-07) — integration pass
+
+**State: the headless vertical slice is now covered end to end.** Added
+`compositor/tests/milestone_e2e.rs` and `make e2e`. Unlike the per-ticket
+conformance suites, this runs one live headless session with three clients
+attached at once — a shell (authenticated, menu-bar chrome, manager), a
+Wayland app, and an X11 app through Xwayland — and asserts the pieces
+interoperate:
+
+- `df_core` handshake and a menu-bar `df_layer_surface` with an exclusive
+  zone that shows up as an output `reserved_zone` (T-07 FR-1/FR-4),
+- manager scene replay (1 output, 3 Spaces) then *live* `df_toplevel`
+  announcements for both the Wayland and the X11 window, with title/app_id
+  identity (T-04/T-06/T-07 FR-2),
+- Space activation and move-to-Space through the shell handles (T-05),
+- zoom/unzoom/minimize/unminimize state broadcasts through the shell (T-04),
+- clean teardown: exit 0, no surviving Wayland socket, launch-token file,
+  `DISPLAY` file, or orphaned Xwayland process (T-01/T-06/T-07).
+
+The X11 half is skipped (with a note) when `Xwayland` is absent, so the test
+is CI-safe; a unit test (`protocol_strings_never_contain_nul`) keeps the
+NUL-sanitization regression covered regardless.
+
+### Bug found and fixed: NUL in an X11 title panicked the compositor
+
+The E2E test aborted the compositor the moment an X11 window mapped:
+
+```text
+thread 'main' panicked at compositor/src/shell_protocol/mod.rs:48:
+called `Result::unwrap()` on an `Err` value: NulError(7, [69, 50, 69, 32, 88, 49, 49, 0])
+```
+
+`[69, 50, 69, 32, 88, 49, 49, 0]` is `"E2E X11\0"`. Root cause: X11
+`WM_NAME`/`WM_CLASS`/`_NET_WM_NAME` are conventionally NUL-terminated and
+Smithay 0.7's `read_window_property_string` does **not** trim the trailing
+NUL. The compositor stored that string in `WindowModel` and broadcast it
+through a private-protocol event; `wayland-scanner`'s generated server code
+builds a `CString` from the `String` and `unwrap()`s, so any interior NUL
+aborts the process. A client-controlled string must never be able to kill
+the compositor.
+
+Fix, two layers:
+
+- **Protocol boundary (the safety guarantee):** `shell::protocol_string` /
+  `protocol_string_opt` strip NULs before any client-controlled string is
+  serialized (`df_toplevel.title`/`app_id`, `df_toplevel_manager`
+  `app_switcher`/`app_accelerator`, `df_workspace.wallpaper` source).
+- **Source (keeps the model clean):** `xwayland::x11_string` strips NULs
+  from X11 `title`/`instance`/`class` before they enter `WindowModel`
+  (title on map and on `property_notify`; `resolve_x11_identity` for
+  `WM_CLASS`).
+
+Regression tests: the E2E test (Xwayland path) and the
+`protocol_strings_never_contain_nul` unit test (always). Wayland client
+strings cannot carry NUL (the wire parser truncates), so this was
+X11-specific, but the boundary fix is defense-in-depth for any future
+client-controlled string.
+
+### Notes for subsequent tasks
+
+- **`make e2e` is the fast milestone gate; `make test` includes it.** It is
+  headless and needs no display, so it belongs in CI. A live nested run of
+  the same slice (`dragonfruit dev --nested` + a shell/app) and a DRM run
+  are still the human steps for the phase exit; the automated test cannot
+  cover them because the harness has no seat.
+- **Watch every generated-event `String`.** Any new private-protocol event
+  that carries a client-supplied string must go through
+  `protocol_string*` (or strip NULs at the source). The generated bindings
+  panic rather than error, so this is a crash class, not a cosmetic bug.
+- **`WindowModel` still stores the raw (possibly NUL-bearing) X11 title**
+  only if a future path bypasses `x11_string`; the protocol layer is the
+  backstop. If a consumer starts comparing titles (e.g. a Dock tooltip),
+  prefer the sanitized value.
+- **The E2E harness captures compositor stderr to a temp file and prints
+  it on panic** (`std::thread::panicking()` in `Drop`), which is how the
+  panic above was diagnosed after the first run. Reuse that pattern in new
+  process-spawning conformance tests.

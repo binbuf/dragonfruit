@@ -37,6 +37,13 @@ Extras:
 - `dragonfruit dev --nested --launch CMD` — run programs against the
   nested session (they get `WAYLAND_DISPLAY` and
   `XDG_CURRENT_DESKTOP=dragonfruit` injected).
+- `make e2e` — the Foundation milestone harness: one headless session
+  with a shell client, a Wayland app, and an X11 app attached at once
+  (`.docs/tasks/00-index.md` phase 1). It asserts the private-protocol
+  handshake, chrome reserved zones, window/workspace enumeration and
+  control, and a clean teardown. It needs no display, so it is the
+  scripted form of the "does the whole vertical slice work together"
+  check; `compositor/tests/milestone_e2e.rs` is the source.
 - `make soak` — the teardown hygiene gate: 100 consecutive clean
   nested exits, zero strays (the Foundation phase exit criterion,
   scripted).

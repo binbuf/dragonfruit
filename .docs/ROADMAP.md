@@ -233,6 +233,20 @@ until T-08; VRR/night-light output requests are acked but not plumbed
 policy-enforced by the lockstep handshake but not yet exercised because no
 interface has a `since="2"` member. Details: [PROGRESS.md](PROGRESS.md).
 
+**Foundation milestone E2E (T-01…T-07).** The whole vertical slice now has a
+headless end-to-end test, `compositor/tests/milestone_e2e.rs` (`make e2e`):
+one live session with a shell client, a Wayland app, and an X11 app attached
+at once. It drives the `df_core` handshake, menu-bar chrome with a reserved
+zone, scene replay, live window announcements with identity, Space
+activation and move-to-Space, the window state machine through the shell,
+and a clean teardown (no surviving socket/token/`DISPLAY` file/orphaned
+Xwayland). The test caught and drove the fix for a real compositor panic:
+an X11 `WM_NAME`/`WM_CLASS` carrying its conventional trailing NUL reached
+the private protocol's generated `CString` serializer and aborted the
+process (see PROGRESS.md). Remaining for the phase exit: a live nested and
+a DRM run of the same slice (the E2E is headless, so it is CI-able), and
+the shell's own chrome rendering (T-09/T-10).
+
 1. **Foundation**
    - [x] Smithay compositor (event loop, protocol surface, render stack — T-02)
    - [x] Nested backend (live-verified on the dev host)

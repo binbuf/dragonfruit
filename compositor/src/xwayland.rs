@@ -111,6 +111,14 @@ pub fn cleanup_x11_files(display_number: u32) {
     let _ = std::fs::remove_file(format!("/tmp/.X11-unix/X{display_number}"));
 }
 
+/// Strip NULs from an X11 property string. `WM_NAME`/`WM_CLASS` are
+/// conventionally NUL-terminated and Smithay does not trim them; an
+/// interior NUL would otherwise reach the private protocol's `CString`
+/// serialization (and panic it).
+fn x11_string(value: &str) -> String {
+    value.replace('\0', "")
+}
+
 /// Spawn Xwayland and register its event source. Idempotent; returns
 /// `Ok(())` even when the binary is missing (Wayland-only sessions are
 /// still valid).
@@ -242,11 +250,13 @@ impl DfState {
     /// class so Dock/switcher grouping works even without a desktop entry;
     /// every miss is recorded for the T-23 heuristics.
     fn resolve_x11_identity(&mut self, instance: &str, class: &str) -> Option<String> {
-        if let Some(identity) = self.app_resolver.resolve_wm_class(instance, class) {
+        let instance = x11_string(instance);
+        let class = x11_string(class);
+        if let Some(identity) = self.app_resolver.resolve_wm_class(&instance, &class) {
             return Some(identity.desktop_id);
         }
         let fallback = if !class.is_empty() { class } else { instance };
-        (!fallback.is_empty()).then(|| fallback.to_string())
+        (!fallback.is_empty()).then_some(fallback)
     }
 
     /// Tier-2 (SSD) unless the client explicitly asks to be undecorated.
@@ -305,7 +315,8 @@ impl DfState {
                 let id = self.windows.insert(window.clone(), geometry);
                 let app_id = self.resolve_x11_identity(&surface.instance(), &surface.class());
                 self.windows.set_app_id(&window, app_id);
-                self.windows.set_title(&window, Some(surface.title()));
+                self.windows
+                    .set_title(&window, Some(x11_string(&surface.title())));
                 self.windows
                     .set_decorations(&window, Self::x11_decoration_tier(surface));
                 if let Some(parent) = parent {
@@ -508,7 +519,10 @@ impl XwmHandler for DfState {
         };
         match property {
             WmWindowProperty::Title => {
-                if self.windows.set_title(&window, Some(surface.title())) {
+                if self
+                    .windows
+                    .set_title(&window, Some(x11_string(&surface.title())))
+                {
                     self.broadcast_window(&window, WindowEventKind::TitleChanged);
                 }
             }

@@ -32,13 +32,14 @@ endif
 
 .DEFAULT_GOAL := help
 .PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test \
-        lint fmt fmt-check clippy check dev soak check-desktop-names \
+        lint fmt fmt-check clippy check dev soak e2e check-desktop-names \
         check-no-capture-grab clean
 
 help:
 	@echo "Dragonfruit build targets:"
 	@echo "  make build    — build everything (Rust workspace + Qt/CMake)"
 	@echo "  make test     — run all tests (cargo + ctest)"
+	@echo "  make e2e      — T-01…T-07 Foundation vertical-slice + conformance suites"
 	@echo "  make lint     — fmt --check, clippy, qmllint, desktop-name gate"
 	@echo "  make check    — lint + test + teardown soak gate"
 	@echo "  make dev      — dragonfruit dev --nested (daily workflow)"
@@ -64,6 +65,18 @@ test: cargo-test qml-test
 
 cargo-test:
 	$(CARGO) test --workspace
+
+# T-01…T-07 milestone: the Foundation vertical slice (shell + Wayland app +
+# X11 app in one live headless session) plus every per-ticket conformance
+# suite. This is the fast, CI-able "does the whole thing work together"
+# check; `make test` runs it too, this just makes the milestone explicit.
+e2e: cargo-build
+	$(CARGO) test -p dragonfruit-compositor \
+	    --test milestone_e2e \
+	    --test window_conformance \
+	    --test xwayland_conformance \
+	    --test shell_protocol_conformance \
+	    --test protocol_surface
 
 qml-test:
 	@[ -f $(BUILD_DIR)/build.ninja ] || $(CMAKE) -S . -B $(BUILD_DIR) -G Ninja
