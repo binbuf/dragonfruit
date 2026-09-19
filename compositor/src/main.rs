@@ -17,6 +17,8 @@ mod identity;
 mod input;
 mod render;
 mod session;
+mod shell;
+mod shell_protocol;
 mod state;
 mod window;
 mod workspace;

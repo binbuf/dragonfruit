@@ -16,6 +16,14 @@ calloop.workspace = true
 libc.workspace = true
 df-ipc.workspace = true
 smithay-drm-extras.workspace = true
+# Private shell protocols (T-07): the XMLs are compiled into server
+# bindings by wayland-scanner; wayland-server/wayland-backend are the
+# runtime they are generated against.
+wayland-server.workspace = true
+wayland-scanner = "0.31"
+wayland-backend = "0.3"
+# bitflags is referenced by wayland-scanner's generated bitfield enums.
+bitflags = "2"
 
 [dev-dependencies]
 # Server-side test client: the protocol-surface smoke test connects to the

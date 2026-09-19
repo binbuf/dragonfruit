@@ -91,6 +91,7 @@ use crate::input::hot_corners::HotCornerDetector;
 use crate::input::settings::InputSettings;
 use crate::input::shortcuts::{GrabArbiter, ShortcutEngine};
 use crate::input::{InputAction, TriggerKind};
+use crate::shell::ShellProtocolState;
 use crate::window::grab::{MoveGrab, ResizeGrab};
 use crate::window::popup::constrained_popup_geometry;
 use crate::window::resize::SizeConstraints;
@@ -253,6 +254,11 @@ pub struct DfState {
     /// Pending hot-corner dwell timer, if armed.
     pub hot_corner_timer: Option<RegistrationToken>,
 
+    // --- private shell protocols (T-07) -------------------------------------
+    /// Handshake/trust, chrome surfaces, and the window/workspace/output
+    /// manager. The shell is a pure consumer of the event streams above.
+    pub shell: ShellProtocolState,
+
     pub stats: RenderStats,
 }
 
@@ -305,6 +311,7 @@ impl DfState {
         let gestures = GestureRecognizer::new(input_settings.gestures);
         let progress = ProgressPipeline::new(input_settings.progress);
         let hot_corners = HotCornerDetector::new(input_settings.hot_corners);
+        let shell = ShellProtocolState::new(display_handle);
 
         DfState {
             running: true,
@@ -362,6 +369,7 @@ impl DfState {
             input_dispatch: InputDispatch::new(),
             grab_arbiter: GrabArbiter::new(),
             hot_corner_timer: None,
+            shell,
             stats: RenderStats::default(),
         }
     }
@@ -630,6 +638,7 @@ impl DfState {
     /// Hotplug attach: a fresh Space list for the new output (FR-7).
     pub fn on_output_added(&mut self, output: &Output) {
         self.workspaces.add_output(&output.name());
+        self.reconfigure_layers();
     }
 
     /// Hotplug detach: migrate the output's windows to the remaining primary
@@ -643,6 +652,7 @@ impl DfState {
             .find(|name| *name != removed);
         self.workspaces.remove_output(&removed, primary.as_deref());
         self.after_workspace_change();
+        self.reconfigure_layers();
     }
 
     /// The window whose toplevel (or popup root) is `surface`.
@@ -1551,6 +1561,8 @@ impl SeatHandler for DfState {
                 // (T-22 feeds the registrations; the app id scopes them).
                 self.shortcuts
                     .set_focused_app(self.windows.app_id(new).map(str::to_string));
+                // Recency order for the app switcher (T-12).
+                self.windows.touch_recency(new);
             } else {
                 self.shortcuts.set_focused_app(None);
             }
@@ -1649,7 +1661,7 @@ impl XdgActivationHandler for DfState {
             }
             root
         };
-        if let Some(window) = self
+        let window = self
             .space
             .elements()
             .find(|w| {
@@ -1658,10 +1670,13 @@ impl XdgActivationHandler for DfState {
                     .map(|s| *s == root)
                     .unwrap_or(false)
             })
-            .cloned()
-        {
+            .cloned();
+        if let Some(window) = window {
             window.set_activated(true);
             self.needs_redraw = true;
+            // Launch feedback / Dock bounce: the shell learns about the
+            // activation request over the private protocol (T-07/T-10).
+            self.notify_attention(&window);
         }
     }
 }
