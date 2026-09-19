@@ -17,6 +17,7 @@ mod input;
 mod render;
 mod session;
 mod state;
+mod window;
 
 pub use df_ipc::LOCKSTEP_VERSION;
 

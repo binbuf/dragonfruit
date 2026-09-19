@@ -25,14 +25,17 @@
 //! the machinery: a Smithay [`Space`] of [`Window`]s and the seat.
 
 use smithay::backend::allocator::dmabuf::Dmabuf;
-use smithay::desktop::{PopupKind, PopupManager, Space, Window};
+use smithay::desktop::{
+    find_popup_root_surface, PopupKeyboardGrab, PopupKind, PopupManager,
+    PopupPointerGrab, Space, Window,
+};
 use smithay::reexports::calloop::{LoopHandle, LoopSignal, RegistrationToken};
 use smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode as DecorationMode;
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::reexports::wayland_server::backend::{ClientData, ClientId, DisconnectReason};
 use smithay::reexports::wayland_server::protocol::{wl_buffer, wl_seat, wl_surface::WlSurface};
 use smithay::reexports::wayland_server::{Client, DisplayHandle, Resource as _};
-use smithay::utils::{Clock, Logical, Monotonic, Point, Serial};
+use smithay::utils::{Clock, IsAlive, Logical, Monotonic, Point, Rectangle, Serial, Size};
 use smithay::wayland::buffer::BufferHandler;
 use smithay::wayland::compositor::{
     get_parent, with_states, CompositorClientState, CompositorHandler, CompositorState,
@@ -42,6 +45,7 @@ use smithay::wayland::content_type::ContentTypeState;
 use smithay::wayland::cursor_shape::CursorShapeManagerState;
 use smithay::wayland::dmabuf::{DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier};
 use smithay::input::SeatHandler;
+use smithay::input::Seat;
 use smithay::wayland::fractional_scale::{FractionalScaleHandler, FractionalScaleManagerState};
 use smithay::wayland::idle_inhibit::{IdleInhibitHandler, IdleInhibitManagerState};
 use smithay::wayland::idle_notify::{IdleNotifierHandler, IdleNotifierState};
@@ -62,7 +66,8 @@ use smithay::wayland::selection::wlr_data_control::{DataControlHandler, DataCont
 use smithay::wayland::selection::SelectionHandler;
 use smithay::wayland::session_lock::{SessionLockHandler, SessionLockManagerState, SessionLocker};
 use smithay::wayland::shell::xdg::{
-    decoration::{XdgDecorationHandler, XdgDecorationState}, PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
+    decoration::{XdgDecorationHandler, XdgDecorationState}, PopupSurface, PositionerState,
+    SurfaceCachedState, ToplevelSurface, XdgShellHandler, XdgShellState, XdgToplevelSurfaceData,
 };
 use smithay::wayland::seat::WaylandFocus as _;
 use smithay::wayland::shm::{ShmHandler, ShmState};
@@ -80,6 +85,15 @@ use crate::input::hot_corners::HotCornerDetector;
 use crate::input::settings::InputSettings;
 use crate::input::shortcuts::{GrabArbiter, ShortcutEngine};
 use crate::input::{InputAction, TriggerKind};
+use crate::window::grab::{MoveGrab, ResizeGrab};
+use crate::window::popup::constrained_popup_geometry;
+use crate::window::resize::SizeConstraints;
+use crate::window::{
+    cascaded_geometry, centered_on, ReservedZones, ShellWindowEvent, WindowDispatch, WindowEvent,
+    WindowEventKind, WindowMenuCommand, WindowModel, CASCADE_STEP,
+};
+
+use smithay::input::pointer::Focus as PointerFocus;
 
 use smithay::{
     delegate_compositor, delegate_content_type, delegate_cursor_shape, delegate_data_control,
@@ -179,8 +193,18 @@ pub struct DfState {
     /// Surfaces currently inhibiting idle.
     pub idle_inhibitors: Vec<WlSurface>,
     pub cursor_image: smithay::input::pointer::CursorImageStatus,
-    /// Cascading offset counter for the temporary T-02 placement policy.
-    cascade: i32,
+
+    // --- window model (T-04) ------------------------------------------------
+    /// Compositor-owned window metadata: states, restore geometry,
+    /// transient relationships, and the per-output cascade.
+    pub windows: WindowModel,
+    /// Window lifecycle/focus broadcasts for the shell (T-07 seam).
+    pub window_dispatch: WindowDispatch,
+    /// Reserved zones (menu bar, Dock) that Zoom fills around; supplied by
+    /// the shell over the private protocol in T-07.
+    pub reserved_zones: ReservedZones,
+    /// The window that currently owns keyboard focus, if any.
+    pub active_window: Option<Window>,
 
     // --- input engine (T-03) ------------------------------------------------
     /// Global shortcut engine: the sole arbiter of key bindings.
@@ -292,7 +316,10 @@ impl DfState {
             pending_windows: Vec::new(),
             idle_inhibitors: Vec::new(),
             cursor_image: smithay::input::pointer::CursorImageStatus::default_named(),
-            cascade: 0,
+            windows: WindowModel::new(),
+            window_dispatch: WindowDispatch::new(),
+            reserved_zones: ReservedZones::default(),
+            active_window: None,
             shortcuts,
             gestures,
             progress,
@@ -328,8 +355,12 @@ impl DfState {
         self.dmabuf_state = Some((dmabuf_state, global));
     }
 
-    /// Map pending windows into the scene once they have a buffer
-    /// (temporary T-02 placement: center + cascade; T-04 owns the policy).
+    /// Map pending toplevels into the scene once they have a buffer.
+    ///
+    /// Placement policy (T-04 FR-5/FR-6): transient dialogs center on
+    /// their parent; ordinary windows open centered on the active output
+    /// with a wrapping per-output cascade. Stacking and focus remain
+    /// compositor state.
     pub fn map_pending_windows(&mut self) {
         let mut to_map = Vec::new();
         self.pending_windows.retain(|window| {
@@ -352,31 +383,370 @@ impl DfState {
             }
         });
 
-        let output_geo = self
-            .space
-            .outputs()
-            .next()
-            .and_then(|o| self.space.output_geometry(o));
-        let cascade = self.cascade;
         let mut mapped = 0;
-        for (i, window) in to_map.into_iter().enumerate() {
+        for window in to_map {
             let size = window.bbox().size;
-            let step = 24 * ((cascade + i as i32) % 8);
-            let loc = output_geo
-                .map(|geo| {
-                    Point::<i32, Logical>::from((
-                        (geo.size.w - size.w) / 2 + step,
-                        (geo.size.h - size.h) / 2 + step,
-                    ))
-                })
-                .unwrap_or_default();
-            mapped = i as i32 + 1;
-            self.space.map_element(window, loc, true);
+            let parent = window
+                .toplevel()
+                .and_then(|toplevel| toplevel.parent())
+                .and_then(|parent| self.window_for_surface(&parent));
+
+            let geometry = if let Some(parent) = &parent {
+                let parent_geometry = self
+                    .windows
+                    .geometry(parent)
+                    .or_else(|| self.space.element_geometry(parent))
+                    .unwrap_or_default();
+                centered_on(parent_geometry, size)
+            } else {
+                let (output_name, output_geometry) = self.primary_output();
+                let index = output_name
+                    .map(|name| self.windows.cascade_index(&name))
+                    .unwrap_or(0);
+                output_geometry
+                    .map(|output| cascaded_geometry(output, size, index, CASCADE_STEP))
+                    .unwrap_or_else(|| Rectangle::new(Point::from((0, 0)), size))
+            };
+
+            self.windows.insert(window.clone(), geometry);
+            // Capture metadata set before the first buffer commit.
+            if let Some(toplevel) = window.toplevel() {
+                self.windows.set_app_id(&window, toplevel_app_id(toplevel));
+                self.windows.set_title(&window, toplevel_title(toplevel));
+            }
+            if let Some(parent) = parent {
+                self.windows.set_parent(&window, &parent);
+            }
+            self.space.map_element(window.clone(), geometry.loc, true);
+            self.broadcast_window(&window, WindowEventKind::Mapped);
+            mapped += 1;
         }
-        self.cascade = cascade + mapped;
         if mapped > 0 {
             self.needs_redraw = true;
         }
+    }
+
+    /// The output new windows are placed on until Spaces (T-05) select one.
+    pub fn primary_output(&self) -> (Option<String>, Option<Rectangle<i32, Logical>>) {
+        match self.space.outputs().next() {
+            Some(output) => (Some(output.name()), self.space.output_geometry(output)),
+            None => (None, None),
+        }
+    }
+
+    /// The window whose toplevel (or popup root) is `surface`.
+    pub fn window_for_surface(&self, surface: &WlSurface) -> Option<Window> {
+        self.space
+            .elements()
+            .find(|window| window.wl_surface().as_deref() == Some(surface))
+            .cloned()
+            .or_else(|| {
+                self.pending_windows
+                    .iter()
+                    .find(|window| window.wl_surface().as_deref() == Some(surface))
+                    .cloned()
+            })
+            .or_else(|| {
+                // Popup surfaces resolve to their root toplevel.
+                let popup = self.popups.find_popup(surface)?;
+                let root = find_popup_root_surface(&popup).ok()?;
+                self.space
+                    .elements()
+                    .find(|window| window.wl_surface().as_deref() == Some(&root))
+                    .cloned()
+            })
+    }
+
+    /// The output geometry that currently contains `window`, or the first
+    /// output as a fallback.
+    pub fn output_bounds_for(&self, window: &Window) -> Option<Rectangle<i32, Logical>> {
+        for output in self.space.outputs_for_element(window) {
+            if let Some(geometry) = self.space.output_geometry(&output) {
+                return Some(geometry);
+            }
+        }
+        self.space
+            .outputs()
+            .next()
+            .and_then(|output| self.space.output_geometry(output))
+    }
+
+    /// The usable geometry (output minus reserved zones) of the output
+    /// `window` occupies — the Zoom target (FR-1).
+    pub fn usable_geometry_for(&self, window: &Window) -> Option<Rectangle<i32, Logical>> {
+        let output = self.output_bounds_for(window)?;
+        Some(self.reserved_zones.usable(output))
+    }
+
+    /// Move a floating window to `location` (the caller clamps to output).
+    pub fn move_window(&mut self, window: &Window, location: Point<i32, Logical>) {
+        let Some(size) = self.windows.floating_geometry(window).map(|geo| geo.size) else {
+            return;
+        };
+        self.windows
+            .set_floating_geometry(window, Rectangle::new(location, size));
+        self.space.map_element(window.clone(), location, false);
+        self.needs_redraw = true;
+    }
+
+    /// Resize a floating window and push the new size to the client.
+    pub fn resize_window(&mut self, window: &Window, geometry: Rectangle<i32, Logical>) {
+        if !self.windows.contains(window) {
+            return;
+        }
+        self.windows.set_floating_geometry(window, geometry);
+        self.space.map_element(window.clone(), geometry.loc, false);
+        self.configure_window_size(window, geometry.size);
+        self.needs_redraw = true;
+    }
+
+    /// Client min/max-size hints for a toplevel.
+    pub fn window_size_constraints(&self, window: &Window) -> SizeConstraints {
+        let Some(surface) = window.wl_surface() else {
+            return SizeConstraints::default();
+        };
+        with_states(&surface, |states| {
+            let mut cached = states.cached_state.get::<SurfaceCachedState>();
+            let current = cached.current();
+            SizeConstraints {
+                min: current.min_size,
+                max: current.max_size,
+            }
+        })
+    }
+
+    /// Zoom a window to fill the usable area (FR-1/FR-2).
+    pub fn zoom_window(&mut self, window: &Window) {
+        let Some(target) = self.usable_geometry_for(window) else {
+            return;
+        };
+        if let Some(toplevel) = window.toplevel() {
+            toplevel.with_pending_state(|state| {
+                state.states.set(xdg_toplevel::State::Maximized);
+            });
+        }
+        let Some(transition) = self.windows.apply(window, WindowEvent::Zoom, target) else {
+            return;
+        };
+        self.apply_window_transition(window, transition);
+    }
+
+    /// Return a zoomed window to its floating geometry.
+    pub fn unzoom_window(&mut self, window: &Window) {
+        if let Some(toplevel) = window.toplevel() {
+            toplevel.with_pending_state(|state| {
+                state.states.unset(xdg_toplevel::State::Maximized);
+            });
+        }
+        let Some(transition) =
+            self.windows
+                .apply(window, WindowEvent::Unzoom, Rectangle::default())
+        else {
+            return;
+        };
+        self.apply_window_transition(window, transition);
+    }
+
+    /// Enter fullscreen (a dedicated Space in T-05).
+    pub fn fullscreen_window(&mut self, window: &Window) {
+        let Some(target) = self.output_bounds_for(window) else {
+            return;
+        };
+        if let Some(toplevel) = window.toplevel() {
+            toplevel.with_pending_state(|state| {
+                state.states.set(xdg_toplevel::State::Fullscreen);
+            });
+        }
+        let Some(transition) = self
+            .windows
+            .apply(window, WindowEvent::EnterFullscreen, target)
+        else {
+            return;
+        };
+        self.apply_window_transition(window, transition);
+    }
+
+    /// Leave fullscreen for the state it was entered from.
+    pub fn unfullscreen_window(&mut self, window: &Window) {
+        if let Some(toplevel) = window.toplevel() {
+            toplevel.with_pending_state(|state| {
+                state.states.unset(xdg_toplevel::State::Fullscreen);
+            });
+        }
+        let Some(transition) =
+            self.windows
+                .apply(window, WindowEvent::ExitFullscreen, Rectangle::default())
+        else {
+            return;
+        };
+        self.apply_window_transition(window, transition);
+    }
+
+    /// Minimize a window and its transients (FR-6).
+    pub fn minimize_window(&mut self, window: &Window) {
+        for target in self.windows.transient_tree(window) {
+            let Some(transition) =
+                self.windows
+                    .apply(&target, WindowEvent::Minimize, Rectangle::default())
+            else {
+                continue;
+            };
+            if transition.changed {
+                self.space.unmap_elem(&target);
+                self.broadcast_state(&target);
+            }
+        }
+        self.needs_redraw = true;
+    }
+
+    /// Restore a minimized window and its transients (FR-6).
+    #[allow(dead_code)] // Shell/Dock restore lands with T-07/T-10.
+    pub fn restore_window(&mut self, window: &Window) {
+        for target in self.windows.transient_tree(window) {
+            let Some(transition) =
+                self.windows
+                    .apply(&target, WindowEvent::Restore, Rectangle::default())
+            else {
+                continue;
+            };
+            if transition.changed {
+                let geometry = self.windows.geometry(&target).unwrap_or_default();
+                // Only the requested window takes activation; transients
+                // are raised with it without stealing focus from it.
+                let activate = &target == window;
+                self.space
+                    .map_element(target.clone(), geometry.loc, activate);
+                self.broadcast_state(&target);
+            }
+        }
+        self.needs_redraw = true;
+    }
+
+    /// Apply a window-menu primitive (SSD titlebar menu T-13, protocol T-07).
+    #[allow(dead_code)] // Consumed by the T-13 titlebar menu and T-07.
+    pub fn window_menu_command(&mut self, window: &Window, command: WindowMenuCommand) {
+        match command {
+            WindowMenuCommand::MoveToSpace(_) => {
+                // T-05 owns Spaces; the command is accepted now so the
+                // titlebar menu can be complete before Spaces land.
+            }
+            WindowMenuCommand::Minimize => self.minimize_window(window),
+            WindowMenuCommand::Zoom => {
+                if self.windows.state(window) == Some(crate::window::WindowState::Zoomed) {
+                    self.unzoom_window(window);
+                } else {
+                    self.zoom_window(window);
+                }
+            }
+            WindowMenuCommand::Close => {
+                if let Some(toplevel) = window.toplevel() {
+                    toplevel.send_close();
+                }
+            }
+        }
+    }
+
+    /// Apply a state transition to the scene: map/unmap, reconfigure, and
+    /// broadcast.
+    fn apply_window_transition(
+        &mut self,
+        window: &Window,
+        transition: crate::window::WindowTransition,
+    ) {
+        if !transition.changed {
+            return;
+        }
+        let geometry = self.windows.geometry(window).unwrap_or_default();
+        if transition.to.is_visible() {
+            self.space.map_element(window.clone(), geometry.loc, true);
+            self.configure_window_size(window, geometry.size);
+        } else {
+            self.space.unmap_elem(window);
+        }
+        self.broadcast_state(window);
+        self.needs_redraw = true;
+    }
+
+    /// Send a configure with `size` to a toplevel if it changed.
+    fn configure_window_size(&mut self, window: &Window, size: Size<i32, Logical>) {
+        let Some(toplevel) = window.toplevel() else {
+            return;
+        };
+        if !toplevel.is_initial_configure_sent() {
+            return;
+        }
+        let changed = toplevel.with_pending_state(|state| {
+            if state.size == Some(size) {
+                false
+            } else {
+                state.size = Some(size);
+                true
+            }
+        });
+        if changed {
+            toplevel.send_pending_configure();
+        }
+    }
+
+    /// Broadcast a window event, tagging it with identity.
+    fn broadcast_window(&mut self, window: &Window, kind: WindowEventKind) {
+        let Some(id) = self.windows.id(window) else {
+            return;
+        };
+        self.window_dispatch.push(ShellWindowEvent {
+            kind,
+            id,
+            app_id: self.windows.app_id(window).map(str::to_string),
+            title: self.windows.title(window).map(str::to_string),
+        });
+    }
+
+    /// Broadcast a state change.
+    fn broadcast_state(&mut self, window: &Window) {
+        let (Some(id), Some(state)) = (self.windows.id(window), self.windows.state(window)) else {
+            return;
+        };
+        self.window_dispatch.state_changed(
+            id,
+            state,
+            self.windows.app_id(window).map(str::to_string),
+            self.windows.title(window).map(str::to_string),
+        );
+    }
+
+    /// Dismiss every popup rooted at `window`'s toplevel surface (FR-11).
+    fn dismiss_popups_for(&mut self, window: &Window) {
+        if !window.alive() {
+            return;
+        }
+        let Some(surface) = window.wl_surface().map(|surface| surface.into_owned()) else {
+            return;
+        };
+        let popups: Vec<PopupKind> = PopupManager::popups_for_surface(&surface)
+            .map(|(popup, _)| popup)
+            .collect();
+        for popup in popups {
+            let _ = PopupManager::dismiss_popup(&surface, &popup);
+        }
+    }
+
+    /// Compute and store a popup's constrained geometry (FR-11).
+    fn set_popup_geometry(&mut self, surface: &PopupSurface, positioner: PositionerState) {
+        let parent_geometry = surface
+            .get_parent_surface()
+            .and_then(|parent| self.window_for_surface(&parent))
+            .and_then(|window| self.windows.geometry(&window))
+            .unwrap_or_default();
+        let output_geometry = self
+            .space
+            .outputs()
+            .next()
+            .and_then(|output| self.space.output_geometry(output))
+            .unwrap_or(parent_geometry);
+        let geometry = constrained_popup_geometry(positioner, parent_geometry, output_geometry);
+        surface.with_pending_state(|state| {
+            state.geometry = geometry;
+        });
     }
 
     /// Update idle notification activity state after seat/input activity.
@@ -438,6 +808,28 @@ impl DfState {
 
 // --- Wayland dispatch -------------------------------------------------------
 
+/// The `app_id` a toplevel currently advertises, if any.
+fn toplevel_app_id(surface: &ToplevelSurface) -> Option<String> {
+    with_states(surface.wl_surface(), |states| {
+        states
+            .data_map
+            .get::<XdgToplevelSurfaceData>()
+            .and_then(|data| data.lock().ok())
+            .and_then(|attributes| attributes.app_id.clone())
+    })
+}
+
+/// The title a toplevel currently advertises, if any.
+fn toplevel_title(surface: &ToplevelSurface) -> Option<String> {
+    with_states(surface.wl_surface(), |states| {
+        states
+            .data_map
+            .get::<XdgToplevelSurfaceData>()
+            .and_then(|data| data.lock().ok())
+            .and_then(|attributes| attributes.title.clone())
+    })
+}
+
 impl BufferHandler for DfState {
     fn buffer_destroyed(&mut self, _buffer: &wl_buffer::WlBuffer) {}
 }
@@ -455,6 +847,10 @@ impl CompositorHandler for DfState {
         // Import wl_shm buffers (glow/EGL backends); headless has no
         // renderer and simply ignores buffers.
         smithay::backend::renderer::utils::on_commit_buffer_handler::<DfState>(surface);
+
+        // Keep popup trees in sync (moves unmapped popups into their
+        // parent's tree so they stack above the toplevel — FR-11).
+        self.popups.commit(surface);
 
         // Map the toplevel once its root tree has a buffer; T-04 owns
         // placement policy.
@@ -538,19 +934,41 @@ impl XdgShellHandler for DfState {
         self.needs_redraw = true;
     }
 
-    fn new_popup(&mut self, surface: PopupSurface, _positioner: PositionerState) {
-        if let Err(err) = self.popups.track_popup(PopupKind::from(surface)) {
+    fn new_popup(&mut self, surface: PopupSurface, positioner: PositionerState) {
+        if let Err(err) = self.popups.track_popup(PopupKind::from(surface.clone())) {
             eprintln!("dragonfruit-compositor: failed to track popup: {err}");
         }
+        // Position against the parent and constrain to the output (FR-11).
+        self.set_popup_geometry(&surface, positioner);
+        let _ = surface.send_configure();
     }
 
-    fn grab(&mut self, _surface: PopupSurface, _seat: wl_seat::WlSeat, _serial: Serial) {
-        // Popup keyboard grabs are a privilege of sanctioned session
-        // clients. No grab is installed until a trusted client (shell /
-        // menu popups) is provisioned with a launch token in T-07; the
-        // `GrabArbiter` is the gate every grab request must pass (T-03
-        // FR-5). Clients cannot install a raw key grab at all — the
-        // shortcut engine intercepts every binding first.
+    fn grab(&mut self, surface: PopupSurface, seat: wl_seat::WlSeat, serial: Serial) {
+        // Popups are sanctioned xdg-shell grabs: install the standard
+        // keyboard/pointer grab so click-away and Escape dismiss them
+        // (FR-11). Raw client key grabs remain impossible — the shortcut
+        // engine and `GrabArbiter` intercept those (T-03 FR-5).
+        let Some(seat) = Seat::from_resource(&seat) else {
+            return;
+        };
+        let popup = PopupKind::from(surface);
+        let Ok(root) = find_popup_root_surface(&popup) else {
+            return;
+        };
+        let Ok(grab) = self.popups.grab_popup(root, popup, &seat, serial) else {
+            return;
+        };
+        if let Some(keyboard) = seat.get_keyboard() {
+            keyboard.set_grab(self, PopupKeyboardGrab::new(&grab), serial);
+        }
+        if let Some(pointer) = seat.get_pointer() {
+            pointer.set_grab(
+                self,
+                PopupPointerGrab::new(&grab),
+                serial,
+                PointerFocus::Keep,
+            );
+        }
     }
 
     fn reposition_request(
@@ -559,37 +977,75 @@ impl XdgShellHandler for DfState {
         positioner: PositionerState,
         token: u32,
     ) {
-        surface.with_pending_state(|state| {
-            state.positioner = positioner;
-        });
+        self.set_popup_geometry(&surface, positioner);
         surface.send_repositioned(token);
         let _ = surface.send_configure();
     }
 
-    fn maximize_request(&mut self, surface: ToplevelSurface) {
-        // Zoom is a distinct window state (macOS-style) — policy lands in
-        // T-04; acknowledge with a full-output configure for now.
-        let Some(geometry) = self
-            .space
-            .outputs()
-            .next()
-            .and_then(|o| self.space.output_geometry(o))
-        else {
+    fn move_request(&mut self, surface: ToplevelSurface, _seat: wl_seat::WlSeat, serial: Serial) {
+        let Some(window) = self.window_for_surface(surface.wl_surface()) else {
             return;
         };
-        surface.with_pending_state(|state| {
-            state.states.set(xdg_toplevel::State::Maximized);
-            state.size = Some(geometry.size);
-        });
-        surface.send_configure();
+        let Some(pointer) = self.seat.get_pointer() else {
+            return;
+        };
+        let Some(start_data) = pointer.grab_start_data() else {
+            return;
+        };
+        let Some(initial_location) = self.space.element_location(&window) else {
+            return;
+        };
+        pointer.set_grab(
+            self,
+            MoveGrab::new(start_data, window, initial_location),
+            serial,
+            PointerFocus::Clear,
+        );
+    }
+
+    fn resize_request(
+        &mut self,
+        surface: ToplevelSurface,
+        _seat: wl_seat::WlSeat,
+        serial: Serial,
+        edges: xdg_toplevel::ResizeEdge,
+    ) {
+        let Some(edge) = crate::window::ResizeEdge::from_xdg(edges) else {
+            return;
+        };
+        let Some(window) = self.window_for_surface(surface.wl_surface()) else {
+            return;
+        };
+        let Some(pointer) = self.seat.get_pointer() else {
+            return;
+        };
+        let Some(start_data) = pointer.grab_start_data() else {
+            return;
+        };
+        let Some(initial_geometry) = self.space.element_geometry(&window) else {
+            return;
+        };
+        pointer.set_grab(
+            self,
+            ResizeGrab::new(start_data, window, edge, initial_geometry),
+            serial,
+            PointerFocus::Clear,
+        );
+    }
+
+    fn maximize_request(&mut self, surface: ToplevelSurface) {
+        // Maximize maps to Zoom; there is no distinct maximize state (FR-2).
+        let Some(window) = self.window_for_surface(surface.wl_surface()) else {
+            return;
+        };
+        self.zoom_window(&window);
     }
 
     fn unmaximize_request(&mut self, surface: ToplevelSurface) {
-        surface.with_pending_state(|state| {
-            state.states.unset(xdg_toplevel::State::Maximized);
-            state.size = None;
-        });
-        surface.send_configure();
+        let Some(window) = self.window_for_surface(surface.wl_surface()) else {
+            return;
+        };
+        self.unzoom_window(&window);
     }
 
     fn fullscreen_request(
@@ -597,31 +1053,77 @@ impl XdgShellHandler for DfState {
         surface: ToplevelSurface,
         _output: Option<smithay::reexports::wayland_server::protocol::wl_output::WlOutput>,
     ) {
-        let Some(geometry) = self
-            .space
-            .outputs()
-            .next()
-            .and_then(|o| self.space.output_geometry(o))
-        else {
+        let Some(window) = self.window_for_surface(surface.wl_surface()) else {
             return;
         };
-        surface.with_pending_state(|state| {
-            state.states.set(xdg_toplevel::State::Fullscreen);
-            state.size = Some(geometry.size);
-        });
-        surface.send_configure();
+        self.fullscreen_window(&window);
     }
 
     fn unfullscreen_request(&mut self, surface: ToplevelSurface) {
-        surface.with_pending_state(|state| {
-            state.states.unset(xdg_toplevel::State::Fullscreen);
-            state.size = None;
-        });
-        surface.send_configure();
+        let Some(window) = self.window_for_surface(surface.wl_surface()) else {
+            return;
+        };
+        self.unfullscreen_window(&window);
     }
 
-    fn minimize_request(&mut self, _surface: ToplevelSurface) {
-        // Minimize/restore is shell policy (T-04/T-10); ignore for now.
+    fn minimize_request(&mut self, surface: ToplevelSurface) {
+        let Some(window) = self.window_for_surface(surface.wl_surface()) else {
+            return;
+        };
+        self.minimize_window(&window);
+    }
+
+    fn app_id_changed(&mut self, surface: ToplevelSurface) {
+        let Some(window) = self.window_for_surface(surface.wl_surface()) else {
+            return;
+        };
+        let app_id = toplevel_app_id(&surface);
+        if self.windows.set_app_id(&window, app_id) {
+            self.broadcast_window(&window, WindowEventKind::AppIdChanged);
+        }
+    }
+
+    fn title_changed(&mut self, surface: ToplevelSurface) {
+        let Some(window) = self.window_for_surface(surface.wl_surface()) else {
+            return;
+        };
+        let title = toplevel_title(&surface);
+        if self.windows.set_title(&window, title) {
+            self.broadcast_window(&window, WindowEventKind::TitleChanged);
+        }
+    }
+
+    fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
+        // Drop an unmapped toplevel straight out of the pending list.
+        self.pending_windows.retain(|window| {
+            window
+                .toplevel()
+                .is_some_and(|t| t.wl_surface() != surface.wl_surface())
+        });
+
+        let Some(window) = self.window_for_surface(surface.wl_surface()) else {
+            return;
+        };
+        // Transient dialogs close with their parent (FR-6).
+        for child in self.windows.children(&window) {
+            if let Some(toplevel) = child.toplevel() {
+                toplevel.send_close();
+            }
+        }
+        let id = self.windows.remove(&window);
+        if self.active_window.as_ref() == Some(&window) {
+            self.active_window = None;
+        }
+        if let Some(id) = id {
+            self.window_dispatch.push(ShellWindowEvent {
+                kind: WindowEventKind::Unmapped,
+                id,
+                app_id: None,
+                title: None,
+            });
+        }
+        self.space.unmap_elem(&window);
+        self.needs_redraw = true;
     }
 }
 
@@ -692,6 +1194,28 @@ impl SeatHandler for DfState {
     fn focus_changed(&mut self, seat: &smithay::input::Seat<DfState>, focused: Option<&WlSurface>) {
         let focus = focused.and_then(|surface| self.display_handle.get_client(surface.id()).ok());
         set_data_device_focus(&self.display_handle, seat, focus);
+
+        // Map the focused surface back to its window (popups resolve to
+        // their root toplevel) and broadcast focus transitions (FR-4).
+        let new_active = focused.and_then(|surface| self.window_for_surface(surface));
+        if new_active != self.active_window {
+            if let Some(old) = self.active_window.clone() {
+                // The old window lost focus: dismiss its popups (FR-11)
+                // and tell the shell.
+                self.dismiss_popups_for(&old);
+                self.broadcast_window(&old, WindowEventKind::Unfocused);
+            }
+            if let Some(new) = &new_active {
+                self.broadcast_window(new, WindowEventKind::Focused);
+                // Admit this app's accelerators for the focused window
+                // (T-22 feeds the registrations; the app id scopes them).
+                self.shortcuts
+                    .set_focused_app(self.windows.app_id(new).map(str::to_string));
+            } else {
+                self.shortcuts.set_focused_app(None);
+            }
+            self.active_window = new_active;
+        }
     }
 
     fn cursor_image(
