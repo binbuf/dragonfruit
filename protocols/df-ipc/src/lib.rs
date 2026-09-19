@@ -31,6 +31,113 @@ pub const LOCKSTEP_VERSION: u32 = 1;
 /// file to [`LOCKSTEP_VERSION`].
 pub const LOCKSTEP_MARKER: &str = "dragonfruit lockstep-version:";
 
+/// The fixed keymap conventions (T-03).
+///
+/// The macOS-Cmd role maps to **Super/Mod4** and Option maps to **Alt**.
+/// This mapping is chosen once, here, and consumed by the compositor's
+/// shortcut engine, its xkb keymap, the menu-broker, and every first-party
+/// accelerator — so applications cannot drift from the shell
+/// ([02-compositor.md](../../.docs/design/02-compositor.md#keymap-conventions)).
+///
+/// `xkb_mod_name` values match xkbcommon's `MOD_NAME_*` constants exactly;
+/// `physical_name` is the user-facing key name used in menus and docs.
+pub mod keymap {
+    /// A logical modifier role, named the way users think about it.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub enum ModifierRole {
+        /// macOS "Command" → Super/Mod4.
+        Command,
+        /// macOS "Option" → Alt.
+        Option,
+        /// Control.
+        Control,
+        /// Shift.
+        Shift,
+    }
+
+    impl ModifierRole {
+        /// All roles, for exhaustive iteration in tests and UI.
+        pub const ALL: [ModifierRole; 4] = [
+            ModifierRole::Command,
+            ModifierRole::Option,
+            ModifierRole::Control,
+            ModifierRole::Shift,
+        ];
+
+        /// The xkbcommon modifier name this role resolves to
+        /// (`xkbcommon::xkb::MOD_NAME_*`).
+        pub const fn xkb_mod_name(self) -> &'static str {
+            match self {
+                ModifierRole::Command => "Mod4",
+                ModifierRole::Option => "Mod1",
+                ModifierRole::Control => "Control",
+                ModifierRole::Shift => "Shift",
+            }
+        }
+
+        /// The physical key name shown to users (macOS-style on the left,
+        /// PC-style in parentheses where it differs).
+        pub const fn physical_name(self) -> &'static str {
+            match self {
+                ModifierRole::Command => "Super",
+                ModifierRole::Option => "Alt",
+                ModifierRole::Control => "Control",
+                ModifierRole::Shift => "Shift",
+            }
+        }
+
+        /// The label used in menus and tooltips, macOS-style.
+        pub const fn label(self) -> &'static str {
+            match self {
+                ModifierRole::Command => "Cmd",
+                ModifierRole::Option => "Option",
+                ModifierRole::Control => "Ctrl",
+                ModifierRole::Shift => "Shift",
+            }
+        }
+    }
+
+    /// The Cmd role's physical xkb modifier name (`Mod4`).
+    pub const COMMAND: &str = ModifierRole::Command.xkb_mod_name();
+    /// The Option role's physical xkb modifier name (`Mod1`).
+    pub const OPTION: &str = ModifierRole::Option.xkb_mod_name();
+
+    /// Fixed xkb rules/model/layout/variant. Empty strings mean "respect
+    /// the `XKB_DEFAULT_*` environment" (smithay's `XkbConfig` contract),
+    /// so the keymap decision is about *roles*, not about forcing a
+    /// layout on the user.
+    pub const RULES: &str = "";
+    pub const MODEL: &str = "";
+    pub const LAYOUT: &str = "";
+    pub const VARIANT: &str = "";
+    /// Extra xkb options that are part of the fixed Dragonfruit keymap.
+    pub const OPTIONS: &str = "";
+}
+
+#[cfg(test)]
+mod keymap_tests {
+    use super::keymap::{ModifierRole, COMMAND, OPTION};
+
+    #[test]
+    fn cmd_maps_to_super_and_option_to_alt() {
+        assert_eq!(COMMAND, "Mod4");
+        assert_eq!(OPTION, "Mod1");
+        assert_eq!(ModifierRole::Command.physical_name(), "Super");
+        assert_eq!(ModifierRole::Option.physical_name(), "Alt");
+    }
+
+    #[test]
+    fn every_role_has_a_distinct_xkb_modifier() {
+        let mut names: Vec<&str> = ModifierRole::ALL
+            .iter()
+            .map(|role| role.xkb_mod_name())
+            .collect();
+        names.sort_unstable();
+        names.dedup();
+        assert_eq!(names.len(), ModifierRole::ALL.len());
+    }
+}
+
 /// Build a well-known D-Bus name: `org.dragonfruit.<Iface><Major>`.
 ///
 /// Example: `dbus_name("Settings", 1)` is `org.dragonfruit.Settings1`.

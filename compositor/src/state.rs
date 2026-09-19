@@ -26,7 +26,7 @@
 
 use smithay::backend::allocator::dmabuf::Dmabuf;
 use smithay::desktop::{PopupKind, PopupManager, Space, Window};
-use smithay::reexports::calloop::{LoopHandle, LoopSignal};
+use smithay::reexports::calloop::{LoopHandle, LoopSignal, RegistrationToken};
 use smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode as DecorationMode;
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::reexports::wayland_server::backend::{ClientData, ClientId, DisconnectReason};
@@ -72,14 +72,23 @@ use smithay::wayland::viewporter::ViewporterState;
 use smithay::wayland::xdg_activation::{
     XdgActivationToken, XdgActivationTokenData, XdgActivationHandler, XdgActivationState,
 };
+use std::time::Duration;
+
+use crate::input::dispatch::InputDispatch;
+use crate::input::gestures::{GestureRecognizer, ProgressPipeline};
+use crate::input::hot_corners::HotCornerDetector;
+use crate::input::settings::InputSettings;
+use crate::input::shortcuts::{GrabArbiter, ShortcutEngine};
+use crate::input::{InputAction, TriggerKind};
+
 use smithay::{
-    delegate_compositor, delegate_content_type, delegate_cursor_shape, delegate_data_control, delegate_dmabuf,
-    delegate_data_device, delegate_fractional_scale, delegate_idle_inhibit, delegate_idle_notify,
-    delegate_input_method_manager, delegate_output, delegate_pointer_constraints,
-    delegate_pointer_gestures, delegate_presentation, delegate_relative_pointer,
-    delegate_security_context, delegate_seat, delegate_session_lock, delegate_shm, delegate_tablet_manager,
-    delegate_text_input_manager, delegate_viewporter, delegate_xdg_activation,
-    delegate_xdg_decoration, delegate_xdg_shell,
+    delegate_compositor, delegate_content_type, delegate_cursor_shape, delegate_data_control,
+    delegate_data_device, delegate_dmabuf, delegate_fractional_scale, delegate_idle_inhibit,
+    delegate_idle_notify, delegate_input_method_manager, delegate_output,
+    delegate_pointer_constraints, delegate_pointer_gestures, delegate_presentation,
+    delegate_relative_pointer, delegate_seat, delegate_security_context, delegate_session_lock,
+    delegate_shm, delegate_tablet_manager, delegate_text_input_manager, delegate_viewporter,
+    delegate_xdg_activation, delegate_xdg_decoration, delegate_xdg_shell,
 };
 
 /// Per-client bookkeeping.
@@ -173,6 +182,25 @@ pub struct DfState {
     /// Cascading offset counter for the temporary T-02 placement policy.
     cascade: i32,
 
+    // --- input engine (T-03) ------------------------------------------------
+    /// Global shortcut engine: the sole arbiter of key bindings.
+    pub shortcuts: ShortcutEngine,
+    /// Gesture recognizer feeding [`Self::progress`].
+    pub gestures: GestureRecognizer,
+    /// The single progress pipeline shared by gestures, keyboard, and hot
+    /// corners.
+    pub progress: ProgressPipeline,
+    /// Hot-corner dwell detection.
+    pub hot_corners: HotCornerDetector,
+    /// The live input settings model (FR-7).
+    pub input_settings: InputSettings,
+    /// The outbox/audit log every trigger writes to (shell protocol T-07).
+    pub input_dispatch: InputDispatch,
+    /// Gate for every client grab request (FR-5).
+    pub grab_arbiter: GrabArbiter,
+    /// Pending hot-corner dwell timer, if armed.
+    pub hot_corner_timer: Option<RegistrationToken>,
+
     pub stats: RenderStats,
 }
 
@@ -219,6 +247,12 @@ impl DfState {
         let mut seat_state = smithay::input::SeatState::new();
         let seat = seat_state.new_wl_seat(display_handle, "dragonfruit");
 
+        let input_settings = InputSettings::default();
+        let shortcuts = ShortcutEngine::with_bindings(input_settings.system_bindings.clone());
+        let gestures = GestureRecognizer::new(input_settings.gestures);
+        let progress = ProgressPipeline::new(input_settings.progress);
+        let hot_corners = HotCornerDetector::new(input_settings.hot_corners);
+
         DfState {
             running: true,
             needs_redraw: true,
@@ -259,6 +293,14 @@ impl DfState {
             idle_inhibitors: Vec::new(),
             cursor_image: smithay::input::pointer::CursorImageStatus::default_named(),
             cascade: 0,
+            shortcuts,
+            gestures,
+            progress,
+            hot_corners,
+            input_settings,
+            input_dispatch: InputDispatch::new(),
+            grab_arbiter: GrabArbiter::new(),
+            hot_corner_timer: None,
             stats: RenderStats::default(),
         }
     }
@@ -340,6 +382,57 @@ impl DfState {
     /// Update idle notification activity state after seat/input activity.
     pub fn notify_activity(&mut self) {
         self.idle_notifier_state.notify_activity(&self.seat);
+    }
+
+    /// A monotonic timestamp in milliseconds for the input pipelines.
+    pub fn now_msec(&self) -> u64 {
+        Duration::from(self.clock.now()).as_millis() as u64
+    }
+
+    /// Dispatch one compositor action from any trigger.
+    ///
+    /// Every trigger records the same [`InputAction`] here; progress-driven
+    /// actions additionally drive the shared [`ProgressPipeline`]. Gesture
+    /// sources have already driven the pipeline (so the gesture remains
+    /// continuous), hence they only record the committed action.
+    pub fn dispatch_input_action(&mut self, action: InputAction, source: TriggerKind, serial: u32) {
+        self.input_dispatch.action(action, source, serial);
+        if action.is_progress_driven() && !matches!(source, TriggerKind::Gesture(_)) {
+            let now = self.now_msec();
+            for event in self.progress.drive_discrete(action, source, now) {
+                self.input_dispatch.progress(event);
+            }
+        }
+        self.needs_redraw = true;
+    }
+
+    /// Replace the input settings and apply them live (FR-7).
+    #[allow(dead_code)] // Settings app (T-16) is the writer.
+    pub fn set_input_settings(&mut self, settings: InputSettings) {
+        self.input_settings = settings;
+        self.apply_input_settings();
+    }
+
+    /// Apply the current input settings to the live seat and detectors.
+    ///
+    /// Keyboard repeat and the gesture/hot-corner/commit tunables take
+    /// effect immediately. Per-device pointer acceleration is stored for
+    /// the backend to apply when it configures libinput devices (T-16
+    /// wires the Settings pane; the DRM backend owns device handles).
+    #[allow(dead_code)] // Called via set_input_settings (T-16).
+    pub fn apply_input_settings(&mut self) {
+        if let Some(keyboard) = self.seat.get_keyboard() {
+            keyboard.change_repeat_info(
+                self.input_settings.keyboard.repeat_rate_hz,
+                self.input_settings.keyboard.repeat_delay_ms,
+            );
+        }
+        self.shortcuts
+            .set_system_bindings(self.input_settings.system_bindings.clone());
+        self.gestures.set_config(self.input_settings.gestures);
+        self.progress.set_config(self.input_settings.progress);
+        self.hot_corners.set_config(self.input_settings.hot_corners);
+        self.needs_redraw = true;
     }
 }
 
@@ -452,7 +545,12 @@ impl XdgShellHandler for DfState {
     }
 
     fn grab(&mut self, _surface: PopupSurface, _seat: wl_seat::WlSeat, _serial: Serial) {
-        // Popup grabs feed the menu system in later tickets (T-09+).
+        // Popup keyboard grabs are a privilege of sanctioned session
+        // clients. No grab is installed until a trusted client (shell /
+        // menu popups) is provisioned with a launch token in T-07; the
+        // `GrabArbiter` is the gate every grab request must pass (T-03
+        // FR-5). Clients cannot install a raw key grab at all — the
+        // shortcut engine intercepts every binding first.
     }
 
     fn reposition_request(
@@ -623,8 +721,8 @@ impl PointerConstraintsHandler for DfState {
         _surface: &WlSurface,
         _pointer: &smithay::input::pointer::PointerHandle<DfState>,
     ) {
-        // Constraints activate on the next pointer motion; honored by the
-        // pointer routing in T-03 (pointer-constraint grabs).
+        // TODO(T-04/T-05): confine/lock must be enforced with a pointer
+        // grab; T-03 scoped out pointer-constraint grabs. See PROGRESS.md.
     }
 
     fn cursor_position_hint(

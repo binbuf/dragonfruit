@@ -88,7 +88,7 @@ Updated when a task is partially or completely finished; see
 
 | Phase | Tickets |
 |---|---|
-| 1 · Foundation | T-01 ✅ done · T-02 🔄 partial (compositor core) · T-03 … T-07 pending |
+| 1 · Foundation | T-01 ✅ done · T-02 🔄 partial (compositor core) · T-03 🔄 partial (input engine) · T-04 … T-07 pending |
 | 2 · Experience | T-08 … T-14 pending |
 | 3 · Flagship apps | T-15 … T-19 pending |
 | 4 · System integration | T-20 … T-23 pending |
@@ -108,11 +108,28 @@ VRR/night light plumbing, multi-GPU runtime validation, direct-scanout
 counter verification on real hardware. Details and hand-off notes:
 [PROGRESS.md](PROGRESS.md).
 
+T-03 is partial: the Cmd→Super / Option→Alt mapping is fixed once in
+`df-ipc` and consumed by the xkb keymap and shortcut engine; the global
+shortcut engine (system bindings, focused-app accelerator admission,
+conflict resolution, no client grabs + refused-grab audit), gesture
+recognition feeding one shared progress pipeline (clamp/rubber-band/
+velocity), dwell-based hot corners, the unified input dispatch outbox,
+the live input settings model (keyboard repeat + gesture/hot-corner
+config), and the tablet/touch forwarding pipeline are done and covered
+by 23 unit tests including a trigger-type matrix. Open: DRM/hardware
+validation of multitouch + pen pressure; wiring the outbox to the shell
+over the private protocol (T-07); menu-broker/portal accelerator
+registration (T-22/T-27); per-device libinput acceleration/scroll live
+application (needs backend device handles, T-16); on-device gesture
+tuning; unclaimed-gesture pass-through policy. See
+[keymap.md](../docs/keymap.md) for the in-repo keymap decision. Details:
+[PROGRESS.md](PROGRESS.md).
+
 1. **Foundation**
    - [x] Smithay compositor (event loop, protocol surface, render stack — T-02)
    - [x] Nested backend (live-verified on the dev host)
    - [ ] Native DRM backend (implemented; runtime-untested — needs a real seat)
-   - [ ] Input (event routing done in T-02; keymaps/shortcuts are T-03)
+   - [ ] Input (T-03 engine done: keymaps, shortcuts, gestures, hot corners; hardware validation + shell/portal wiring open)
    - [x] Outputs (wl_output + xdg_output globals, modes/scale/transform, hotplug)
    - [ ] Windows (scene machinery in T-02; window model is T-04)
    - [ ] Workspace model

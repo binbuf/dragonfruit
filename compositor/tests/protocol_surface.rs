@@ -71,6 +71,11 @@ const FORBIDDEN_GLOBALS: &[&str] = &[
     "zwlr_layer_shell_v1", // private shell protocols in T-07
     "zwlr_foreign_toplevel_manager_v1", // ditto
     "ext_foreign_toplevel_list_v1", // ditto
+    // T-03 FR-5: no client may install a raw key grab. The compositor is
+    // the sole arbiter of shortcuts, so the shortcut-inhibit protocol is
+    // deliberately never advertised (the GrabArbiter logs/refuses any
+    // would-be request).
+    "zwp_keyboard_shortcuts_inhibit_manager_v1",
 ];
 
 #[derive(Default)]

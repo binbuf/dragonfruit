@@ -181,6 +181,84 @@ Decisions and gotchas (relevant to T-03+):
   window is also our main FPS/timing testbed — keep an eye on the
   budget work before trusting it for FR-2/3/4 numbers.
 
+## T-03 — input stack: keymaps, shortcuts, gestures, hot corners
+
+**State: partial.** Done and verified: the Cmd→Super / Option→Alt
+mapping fixed once in `df_ipc::keymap` and consumed by both the xkb
+keymap (`compositor/src/input/keymap.rs`) and the shortcut engine;
+the global shortcut engine with system bindings, focused-app
+accelerator admission, conflict resolution, active-key release
+swallowing, and the `GrabArbiter` (logs + refuses unsanctioned grabs);
+gesture recognition feeding one shared `ProgressPipeline`
+(clamp/rubber-band/velocity) for swipes and pinches; dwell-based hot
+corners with a single calloop timer; the unified `InputDispatch`
+outbox/audit log; the live `InputSettings` model (keyboard repeat +
+gesture/hot-corner/commit tunables apply live); tablet
+proximity/axis/pressure/tip/button forwarding; touch unchanged.
+23 unit tests pass, including a trigger-type matrix asserting keyboard,
+gesture, and hot corner produce the same `InputAction` and the same
+progress curve; `cargo clippy --workspace --all-targets -D warnings`
+and `cargo fmt --check` pass. In-repo keymap record:
+`docs/keymap.md`.
+
+Notes for subsequent tasks:
+
+- **Keymap is plain-data.** Shortcut bindings store raw `u32` keysyms
+  (`input::keymap::KeysymValue`), not the `xkeysym::Keysym` newtype;
+  `Keysym::raw()` bridges to smithay's `KeysymHandle`. Use
+  `keysym.raw_latin_sym_or_raw_current_sym()` (not `modified_sym`) for
+  layout-agnostic bindings, so `Cmd+Shift+3` matches the `3` binding
+  rather than `#`.
+- **App accelerators are focus-scoped but unfed.** `ShortcutEngine`
+  has `register_app_accelerator` / `register_portal_shortcut` and
+  matches only `focused_app`, but nothing calls `set_focused_app` yet:
+  T-22 (menu-broker) owns populating it from xdg `app_id`/WM_CLASS
+  (T-23 identity), T-27 owns the portal path. `AppAcceleratorEvent`
+  already lands in the outbox.
+- **The outbox is the T-07 seam.** Every trigger writes to
+  `DfState::input_dispatch` (`ShellInputEvent::{Action, Progress,
+  AppAccelerator}`); `drain()` returns the events. T-07 should drain
+  it into the private shell protocol rather than re-deriving events.
+- **Hot-corner timers:** `DfState::hot_corner_timer` holds one pending
+  `RegistrationToken`; `input::schedule_hot_corner_timer` /
+  `poll_hot_corner` keep it armed. Drop/clear it before the session
+  teardown leak check (same rule as T-02's LoopHandle lesson). Each
+  output has its own corners — `output_bounds_at` uses the output
+  under the pointer (T-14 documents multi-monitor assignment).
+- **Gestures are compositor-claimed, not forwarded.** Swipe/pinch
+  libinput gestures are consumed by the recognizer and are *not* sent
+  to clients. Decide the unclaimed-gesture pass-through policy in
+  T-05/T-11 (e.g. three-finger vertical currently unclaimed); the
+  `zwp_pointer_gestures_v1` global is still advertised.
+- **Tablet pipeline is code-complete but hardware-untested.** It
+  registers devices/tools and forwards axes (incl. pressure) and
+  tip/button. The tool only gets `proximity_in` when the tool is over a
+  mapped surface; a real DRM session with a pen is the first
+  validation (FR-1). `touch_location` maps tablet/touch `Raw`
+  coordinates onto the first output — revisit with per-device mapping
+  in T-16.
+- **Progress numbers need on-device tuning.** `GestureConfig` defaults
+  (300 px swipe, 0.6 pinch, 10 px deadzone) and `ProgressConfig`
+  commit thresholds (0.4 progress / 0.8 velocity) are starting points;
+  keep them in `InputSettings`, never hardcode (T-03 risk note).
+- **Per-device pointer acceleration/scroll is stored, not applied.**
+  `PointerSettings` is read/write in the model, but live libinput
+  application needs the backend's device handles; leave a hook when
+  the DRM backend learns its devices (T-16 input panes).
+- **Screenshot / notification-center / lock / app-switcher actions
+  are recorded and progress-emitted but have no consumers yet** —
+  T-11/T-12/T-25/T-26/T-28 attach behavior to the same
+  `InputAction`s.
+- **Pointer-constraint grabs are still unimplemented** (state.rs
+  handler comment promised T-03). Left as a follow-up: confine/lock
+  needs a `PointerGrab` implementation; not on T-03's acceptance path.
+  Note here so T-04/T-05 do not assume it works.
+- **Test-plan gap:** the ticket's "integration (headless): synthetic
+  libinput events drive shortcuts" is covered at unit level (engine +
+  pipeline matrix), not by synthesizing libinput into the headless
+  backend. The headless backend has no seat devices, so a synthetic
+  input harness would be needed; consider it with T-31 hardening.
+
 ## Devroot: user-space native-dep sysroot (learned during T-02)
 
 The DRM backend needs libdrm/gbm/libinput/libseat/libudev *headers and
