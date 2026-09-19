@@ -27,6 +27,7 @@ pub mod hot_corners;
 pub mod keymap;
 pub mod settings;
 pub mod shortcuts;
+pub mod synthetic;
 
 // The input vocabulary is re-exported for the rest of the crate and the
 // tests; not every name is used by the binary itself.

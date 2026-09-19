@@ -18,10 +18,15 @@ pub fn run(socket_name: &str) -> Result<(), String> {
         "dragonfruit-compositor: starting (backend=headless, lockstep-ipc=v{})",
         crate::LOCKSTEP_VERSION
     );
-    run_session(
+    // T-03 synthetic-input harness: opt-in, headless-only test plumbing.
+    // The socket path is a full path so tests control naming/cleanup.
+    let synthetic_path = std::env::var_os(crate::input::synthetic::ENV_SYNTHETIC_INPUT)
+        .map(std::path::PathBuf::from);
+    let install_path = synthetic_path.clone();
+    let result = run_session(
         socket_name,
         BackendHooks {
-            init: Box::new(|state| {
+            init: Box::new(move |state| {
                 add_output(
                     state,
                     "HEADLESS-1",
@@ -34,6 +39,9 @@ pub fn run(socket_name: &str) -> Result<(), String> {
                     1.0,
                 );
                 add_seat_capabilities(state);
+                if let Some(path) = &install_path {
+                    crate::input::synthetic::install(state, path)?;
+                }
                 Ok(())
             }),
             render: Box::new(|state| {
@@ -51,5 +59,11 @@ pub fn run(socket_name: &str) -> Result<(), String> {
                 Ok(())
             }),
         },
-    )
+    );
+    // The socket node is session state, not a leak; remove it even when
+    // `run_session` returns an error.
+    if let Some(path) = &synthetic_path {
+        let _ = std::fs::remove_file(path);
+    }
+    result
 }

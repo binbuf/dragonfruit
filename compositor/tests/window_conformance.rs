@@ -21,7 +21,7 @@ use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
 use wayland_client::protocol::{
-    wl_buffer, wl_compositor, wl_registry, wl_shm, wl_shm_pool, wl_surface,
+    wl_buffer, wl_compositor, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface,
 };
 use wayland_client::{Connection, Dispatch, EventQueue, QueueHandle};
 use wayland_protocols::xdg::shell::client::{
@@ -63,6 +63,10 @@ struct TestClient {
     compositor: Option<wl_compositor::WlCompositor>,
     shm: Option<wl_shm::WlShm>,
     xdg_wm_base: Option<xdg_wm_base::XdgWmBase>,
+    seat: Option<wl_seat::WlSeat>,
+    pointer: Option<wl_pointer::WlPointer>,
+    /// Serial of each pointer button press delivered to the client.
+    pointer_button_serials: Vec<u32>,
     toplevel_configures: Vec<ToplevelConfigure>,
     popup_configures: Vec<PopupConfigure>,
 }
@@ -91,6 +95,9 @@ impl Dispatch<wl_registry::WlRegistry, ()> for TestClient {
                 }
                 "xdg_wm_base" => {
                     state.xdg_wm_base = Some(registry.bind(name, version.min(6), qh, ()));
+                }
+                "wl_seat" => {
+                    state.seat = Some(registry.bind(name, version.min(9), qh, ()));
                 }
                 _ => {}
             }
@@ -155,6 +162,42 @@ impl Dispatch<wl_buffer::WlBuffer, ()> for TestClient {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
+    }
+}
+
+impl Dispatch<wl_seat::WlSeat, ()> for TestClient {
+    fn event(
+        state: &mut Self,
+        seat: &wl_seat::WlSeat,
+        event: wl_seat::Event,
+        _: &(),
+        _: &Connection,
+        qh: &QueueHandle<Self>,
+    ) {
+        if let wl_seat::Event::Capabilities { capabilities } = event {
+            let has_pointer = capabilities
+                .into_result()
+                .map(|caps| caps.contains(wl_seat::Capability::Pointer))
+                .unwrap_or(false);
+            if has_pointer && state.pointer.is_none() {
+                state.pointer = Some(seat.get_pointer(qh, ()));
+            }
+        }
+    }
+}
+
+impl Dispatch<wl_pointer::WlPointer, ()> for TestClient {
+    fn event(
+        state: &mut Self,
+        _: &wl_pointer::WlPointer,
+        event: wl_pointer::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let wl_pointer::Event::Button { serial, .. } = event {
+            state.pointer_button_serials.push(serial);
+        }
     }
 }
 
@@ -261,6 +304,7 @@ fn parse_states(bytes: &[u8]) -> Vec<u32> {
 struct CompositorProcess {
     child: Child,
     socket_path: PathBuf,
+    synthetic_path: Option<PathBuf>,
 }
 
 impl Drop for CompositorProcess {
@@ -277,21 +321,33 @@ impl Drop for CompositorProcess {
         // compositor's own socket removal).
         let _ = std::fs::remove_file(&self.socket_path);
         let _ = std::fs::remove_file(self.socket_path.with_extension("lock"));
+        if let Some(path) = &self.synthetic_path {
+            let _ = std::fs::remove_file(path);
+        }
     }
 }
 
 impl CompositorProcess {
     fn start(socket_name: &str) -> Self {
+        Self::start_with_synthetic(socket_name, None)
+    }
+
+    /// Start with the T-03 synthetic-input harness bound at
+    /// `synthetic_path` (`DRAGONFRUIT_SYNTHETIC_INPUT`).
+    fn start_with_synthetic(socket_name: &str, synthetic_path: Option<&Path>) -> Self {
         let socket_name = format!("{socket_name}-{}", std::process::id());
-        let mut child = Command::new(env!("CARGO_BIN_EXE_dragonfruit-compositor"))
+        let mut command = Command::new(env!("CARGO_BIN_EXE_dragonfruit-compositor"));
+        command
             .arg("--backend")
             .arg("headless")
             .arg("--socket-name")
             .arg(&socket_name)
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .expect("failed to start compositor");
+            .stderr(Stdio::null());
+        if let Some(path) = synthetic_path {
+            command.env("DRAGONFRUIT_SYNTHETIC_INPUT", path);
+        }
+        let mut child = command.spawn().expect("failed to start compositor");
 
         let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
         let socket_path = PathBuf::from(runtime_dir).join(&socket_name);
@@ -307,8 +363,21 @@ impl CompositorProcess {
             );
             std::thread::sleep(Duration::from_millis(10));
         }
+        if let Some(path) = synthetic_path {
+            while !path.exists() {
+                assert!(
+                    Instant::now() < deadline,
+                    "synthetic-input socket never appeared"
+                );
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        }
 
-        Self { child, socket_path }
+        Self {
+            child,
+            socket_path,
+            synthetic_path: synthetic_path.map(Path::to_path_buf),
+        }
     }
 
     /// SIGTERM the compositor and assert it tears down cleanly (no stray
@@ -346,6 +415,68 @@ const SIGTERM: i32 = 15;
 
 unsafe extern "C" {
     fn kill(pid: i32, sig: i32) -> i32;
+}
+
+/// Sends synthetic-input commands to the T-03 harness socket.
+struct SyntheticInput {
+    socket: std::os::unix::net::UnixDatagram,
+    path: PathBuf,
+}
+
+impl SyntheticInput {
+    fn connect(path: &Path) -> Self {
+        let socket = std::os::unix::net::UnixDatagram::unbound().expect("unbound datagram");
+        Self {
+            socket,
+            path: path.to_path_buf(),
+        }
+    }
+
+    #[track_caller]
+    fn send(&self, command: &str) {
+        self.socket
+            .send_to(command.as_bytes(), &self.path)
+            .unwrap_or_else(|err| panic!("failed to send synthetic {command:?}: {err}"));
+    }
+}
+
+/// Dispatch until `pred` is true or the timeout expires (bounded with
+/// `poll`, so a missing event fails rather than hangs). `#[track_caller]`
+/// points a timeout panic at the waiting call site.
+#[track_caller]
+fn wait_for(
+    conn: &Connection,
+    queue: &mut EventQueue<TestClient>,
+    state: &mut TestClient,
+    timeout: Duration,
+    mut pred: impl FnMut(&TestClient) -> bool,
+) {
+    use std::os::fd::AsRawFd;
+    let deadline = Instant::now() + timeout;
+    loop {
+        conn.flush().expect("flush while waiting");
+        queue.dispatch_pending(state).expect("dispatch pending");
+        if pred(state) {
+            return;
+        }
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        assert!(!remaining.is_zero(), "timed out waiting for condition");
+        let mut pollfd = libc::pollfd {
+            fd: conn.as_fd().as_raw_fd(),
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        let millis = remaining.as_millis().min(i32::MAX as u128) as i32;
+        let ready = unsafe { libc::poll(&mut pollfd, 1, millis) };
+        assert!(ready >= 0, "poll failed");
+        if ready > 0 {
+            queue
+                .blocking_dispatch(state)
+                .expect("dispatch while waiting");
+        } else {
+            panic!("timed out waiting for condition");
+        }
+    }
 }
 
 fn connect(socket_path: &Path) -> (Connection, EventQueue<TestClient>, TestClient) {
@@ -606,4 +737,102 @@ fn malformed_client_requests_never_crash() {
     surface2.destroy();
     xdg_surface2.destroy();
     proc.shutdown();
+}
+
+/// T-04 test-plan requirement: interactive move/resize over the protocol.
+/// The synthetic-input harness (T-03) supplies the seat button that starts
+/// the pointer grab, so this exercises `xdg_toplevel.move`/`resize` end to
+/// end instead of only the pure grab math.
+///
+/// Resize is asserted through the client's `xdg_toplevel.configure` (the
+/// new size). Move has no client-visible geometry event in xdg-shell, so
+/// the assertion is that the grab runs, the window survives, and the
+/// session still serves a subsequent resize.
+#[test]
+fn move_and_resize_requests_are_served_over_protocol() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir)
+        .join(format!("dragonfruit-window-synth-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-move-resize",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (surface, _xdg_surface, toplevel, _file) = map_toplevel(&mut state, &mut queue);
+
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.pointer.is_some(),
+    );
+    let seat = state.seat.clone().expect("wl_seat bound");
+    let _pointer = state.pointer.clone().expect("wl_pointer bound");
+
+    // Click the centered window: sets pointer focus and arms grab data.
+    // BTN_LEFT == 0x110 == 272.
+    input.send("motion-abs 0.5 0.5");
+    input.send("button 272 down");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.pointer_button_serials.is_empty(),
+    );
+    let serial = *state.pointer_button_serials.last().unwrap();
+
+    // --- interactive move -------------------------------------------------
+    toplevel._move(&seat, serial);
+    // Order the request before the synthetic motion on the same loop.
+    queue.roundtrip(&mut state).expect("move request");
+    input.send("motion 40 30");
+    queue.roundtrip(&mut state).expect("move motion");
+    input.send("button 272 up");
+    queue.roundtrip(&mut state).expect("move release");
+    assert!(
+        !state.toplevel_configures.is_empty(),
+        "the window must survive an interactive move"
+    );
+
+    // --- interactive resize from the bottom-right -------------------------
+    state.pointer_button_serials.clear();
+    state.toplevel_configures.clear();
+    input.send("button 272 down");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.pointer_button_serials.is_empty(),
+    );
+    let serial = *state.pointer_button_serials.last().unwrap();
+    toplevel.resize(&seat, serial, xdg_toplevel::ResizeEdge::BottomRight);
+    queue.roundtrip(&mut state).expect("resize request");
+    input.send("motion 60 40");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .toplevel_configures
+                .iter()
+                .any(|c| c.width >= WINDOW_W + 50 && c.height >= WINDOW_H + 30)
+        },
+    );
+    input.send("button 272 up");
+    let _ = queue.roundtrip(&mut state);
+
+    surface.destroy();
+    toplevel.destroy();
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
 }
