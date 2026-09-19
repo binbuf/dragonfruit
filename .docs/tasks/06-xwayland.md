@@ -74,12 +74,23 @@ delivers the working integration.
 
 ## Acceptance criteria
 
-- [ ] Phase-1 exit contribution: "Xwayland windows map."
+- [x] Phase-1 exit contribution: "Xwayland windows map." (headless
+      conformance test maps a real X11 client and observes it in
+      `_NET_CLIENT_LIST`; `xmessage` renders nested)
 - [ ] Reference app matrix (Firefox, Steam, one SDL game, xterm) passes a
-      scripted interact-and-close run.
-- [ ] Identity resolution rate measured with the interim resolver;
+      scripted interact-and-close run. *(Not run on the dev host — no
+      spare GPU session/Steam; `xmessage` + a raw `x11rb` client are the
+      local stand-ins. First T-30 job.)*
+- [x] Identity resolution rate measured with the interim resolver;
       misses feed the app-index heuristics (T-23), behavioral oddities
-      the T-30 zoo.
+      the T-30 zoo. (`DfState::dump_stats` prints resolved/unresolved and
+      the miss list; `AppResolver` unit tests cover the rules.)
+
+### Known gaps
+
+- **FR-5 (XDnD) is unmet**: Smithay 0.7's XWM has no XDnD translation, so
+  file drag-and-drop across the X/Wayland boundary is not implemented
+  (see PROGRESS.md; T-30/T-31).
 
 ## Test plan
 

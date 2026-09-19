@@ -497,3 +497,115 @@ Notes for T-05+:
   does the flip/slide/resize work, our `window::popup` only floors the
   size at 1×1.
 
+## T-06 — Xwayland integration
+
+**State: partial.** Done and verified: Xwayland is spawned eagerly on
+every backend (nested/DRM/headless) with graceful degradation when the
+binary is missing; `DISPLAY` is exported to the process environment and
+written to `$XDG_RUNTIME_DIR/<socket>.x11-display` for the dev tool;
+Xwayland crash/disconnect respawns the server without disturbing the
+session (FR-6); X11 windows are mapped through the exact same
+`WindowModel`/`Space`/`WorkspaceModel` machinery as `xdg_toplevel`s
+(cascade/transient placement, workspace assignment, focus, minimize/
+restore, zoom, fullscreen, close, stacking); `WM_CLASS` resolves to a
+`.desktop` application via an interim pure-std resolver with misses
+recorded; X11 windows are marked Tier-2 SSD unless `_MOTIF_WM_HINTS` opts
+out; `WM_NORMAL_HINTS` min/max **and aspect** now feed
+`DfState::window_size_constraints` (the T-04 follow-up); clipboard
+selection is bridged both directions through the data-device selection.
+`make`-equivalent gates pass (workspace tests incl. 5 new resolver tests,
+2 new conformance tests, clippy `-D warnings`, fmt, desktop-name and
+no-capture gates, 10-cycle soak). Live-verified: `xmessage` under
+`dragonfruit dev --nested --launch` gets `DISPLAY` and renders; a raw
+`x11rb` client maps/unmaps through `_NET_CLIENT_LIST`; SIGKILLing
+Xwayland respawns it (`start #2`) and the session exits clean.
+
+Decisions made (beyond the design docs):
+
+- **Eager start, not lazy.** True lazy start needs the launcher to know
+  an app's toolkit before it runs (T-23's job). Eager makes FR-1 true for
+  every launch path today and is the standard session model (Xwayland is
+  up before the first X11 client). Documented in `xwayland.rs`.
+- **Interim identity resolver is pure std, not GIO `AppInfo`.** The
+  compositor is a thin policy layer and must not link the desktop stack
+  (df-ipc is std-only by policy; the same spirit applies here). It scans
+  the XDG `applications` dirs, matches `StartupWMClass` then the desktop
+  id/stem, and records misses. T-23 replaces it with an `app-index` query.
+  `DfState::dump_stats` prints the resolution rate + miss list (acceptance
+  criterion).
+- **Clipboard only.** Primary selection is not advertised (it is not in
+  the pinned T-02 protocol surface), so `send_selection`/`new_selection`
+  handle `SelectionTarget::Clipboard` and drop `Primary`. `wlr-data-control`
+  sees the data-device selection the shell's clipboard manager consumes.
+- **XDnD is a known gap.** Smithay 0.7's XWM has no XDnD translation at
+  all (grep confirms). FR-5 (file drag X11↔Wayland) is therefore unmet;
+  it needs a custom bridge (T-30 strange-app zoo or T-31 hardening).
+- **SSD marking lives in the window model.** Added
+  `window::DecorationTier` and `WindowModel::set_decorations`; T-13 reads
+  it to draw the titlebar. X11 default is `ServerSide` (Tier 2); motif
+  hints that request no decorations become `ClientSide`.
+- **`DISPLAY` hand-off contract:** the compositor writes
+  `$XDG_RUNTIME_DIR/<wayland-socket-name>.x11-display` when Xwayland is
+  ready and removes it on teardown; the dev tool waits for it (≤5 s) and
+  exports `DISPLAY` to `--launch`ed children. T-24's session manager
+  should consume the same file.
+
+Gotchas hit the hard way (important for T-07/T-13/T-23/T-24):
+
+- **`client_compositor_state` must special-case the Xwayland client.**
+  The Xwayland connection carries `XWaylandClientData`, not
+  `DfClientState`; the old `unwrap()` panicked the moment Xwayland
+  committed a surface. It now returns the Xwayland client's own
+  `CompositorClientState` first.
+- **Smithay 0.7's `X11Wm` leaks the calloop loop.** `X11Wm::start_wm`
+  inserts an internal channel source whose closure captures a strong
+  `LoopHandle`; calloop's `LoopInner` is an `Rc`, so that is a reference
+  cycle. The `ListeningSocketSource` RAII unlink therefore never runs once
+  Xwayland has started, and neither does `XWayland`'s own `X11Lock` drop,
+  so `/tmp/.X<n>-lock` + `/tmp/.X11-unix/X<n>` would accumulate across
+  sessions. `run_session` now explicitly unlinks the Wayland socket + lock
+  on teardown and `xwayland::cleanup_x11_files(display_number)` unlinks the
+  X11 socket/lock (and `maybe_restart` does the same before respawning).
+  Our own `XWayland` source closure avoids the same trap by using
+  `state.loop_handle` instead of capturing a handle. Upstream/T-31
+  follow-up: patch or upstream a `WeakLoopHandle` in the X11Wm source.
+- **Restart needs the flag cleared before `start`.** `start()` guards on
+  `pending_restart`; `maybe_restart` must set it false before calling
+  `start` or the respawn is a silent no-op (found by the restart test).
+- **`std::env::set_var("DISPLAY", …)` is edition-2021-safe but is
+  technically unsound with other threads running** (Rust 2024 makes it
+  `unsafe`). The compositor has X11/Xwayland worker threads. It is low
+  risk (they never read `DISPLAY`) and the file hand-off is the real
+  contract; revisit if the workspace moves to edition 2024.
+- **`WindowModel` now carries a decoration tier and X11 size hints.**
+  T-13 should read `WindowModel::decorations`; `SizeConstraints` gained an
+  `aspect` field and `clamp` applies it (then re-clamps to max).
+
+Notes for subsequent tasks:
+
+- **T-07** should drain `WindowDispatch` for X11 windows too; the X11
+  path already broadcasts `Mapped`/`Unmapped`/`Focused`/`TitleChanged`/
+  `AppIdChanged`/`StateChanged` through the same outbox. The private
+  protocol's window list must include X11 windows (they are ordinary
+  `WindowId`s).
+- **T-13** draws SSD; use `window::DecorationTier` (X11 defaults to
+  `ServerSide`). X11 `configure` currently gets the bare client geometry;
+  once decorations have insets, `DfState::configure_window_size` is the
+  single place that pushes geometry to the X server.
+- **T-23** owns the real resolver. Replace `DfState::app_resolver`
+  (`identity::AppResolver`) with an app-index query; the miss set
+  (`AppResolver::misses`) is exactly the heuristic input, and
+  `IdentitySource` records which rule matched.
+- **T-24** session manager: consume
+  `$XDG_RUNTIME_DIR/<socket>.x11-display` (same contract as the dev tool)
+  and export `DISPLAY` to launched apps. The compositor also sets its own
+  `DISPLAY`, so apps it spawns inherit it directly.
+- **T-30** app matrix: run Firefox (X11), Steam, an SDL game, and xterm;
+  the conformance harness (`xwayland_conformance.rs`, `x11rb` dev-dep)
+  and `xmessage` are the cheap local stand-ins used here.
+- **T-31** hardening: the calloop cycle above, plus a synthetic-input
+  harness would let the `move_request`/`resize_request` X11 paths be
+  covered over the protocol (currently unit-level like the Wayland
+  move/resize path).
+
+

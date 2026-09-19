@@ -41,6 +41,9 @@ smithay = { version = "=0.7.0", default-features = false, features = [
     "renderer_glow",
     "renderer_multi",
     "wayland_frontend",
+    # Xwayland integration (T-06): X11 clients are managed through Smithay's
+    # X11Wm and the xwayland_shell protocol.
+    "xwayland",
 ] }
 calloop = { version = "=0.14.4", features = ["signals"] }
 libc = "0.2"

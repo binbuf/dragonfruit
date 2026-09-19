@@ -40,6 +40,21 @@ impl ResizeEdge {
         }
     }
 
+    /// Map an X11 `_NET_WM_MOVERESIZE` edge (T-06).
+    pub const fn from_x11(edge: smithay::xwayland::xwm::ResizeEdge) -> Option<Self> {
+        use smithay::xwayland::xwm::ResizeEdge as E;
+        match edge {
+            E::Top => Some(ResizeEdge::Top),
+            E::Bottom => Some(ResizeEdge::Bottom),
+            E::Left => Some(ResizeEdge::Left),
+            E::Right => Some(ResizeEdge::Right),
+            E::TopLeft => Some(ResizeEdge::TopLeft),
+            E::TopRight => Some(ResizeEdge::TopRight),
+            E::BottomLeft => Some(ResizeEdge::BottomLeft),
+            E::BottomRight => Some(ResizeEdge::BottomRight),
+        }
+    }
+
     /// Whether dragging this edge moves the left side.
     pub const fn moves_left(self) -> bool {
         matches!(
@@ -74,19 +89,28 @@ impl ResizeEdge {
 }
 
 /// Client size hints. A zero component on an axis means "unconstrained",
-/// matching `xdg_surface.set_min_size`/`set_max_size`.
+/// matching `xdg_surface.set_min_size`/`set_max_size`. `aspect` carries the
+/// X11 `WM_NORMAL_HINTS` aspect ratio (T-06).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct SizeConstraints {
     pub min: Size<i32, Logical>,
     pub max: Size<i32, Logical>,
+    pub aspect: Option<(u32, u32)>,
 }
 
 impl SizeConstraints {
     /// Clamp `size` to the hints, never producing a zero/negative size.
     pub fn clamp(&self, size: Size<i32, Logical>) -> Size<i32, Logical> {
-        Size::from((
+        let clamped = Size::from((
             clamp_axis(size.w, self.min.w, self.max.w),
             clamp_axis(size.h, self.min.h, self.max.h),
+        ));
+        let with_aspect = apply_aspect(clamped, self.aspect);
+        // Aspect adjustment can exceed the max hint; re-clamp so the
+        // contract "never larger than max" still holds.
+        Size::from((
+            clamp_axis(with_aspect.w, self.min.w, self.max.w),
+            clamp_axis(with_aspect.h, self.min.h, self.max.h),
         ))
     }
 }
@@ -262,6 +286,7 @@ mod tests {
         let constraints = SizeConstraints {
             min: Size::from((200, 150)),
             max: Size::from((0, 0)),
+            aspect: None,
         };
         let resized = resize_geometry(
             start,
@@ -279,6 +304,7 @@ mod tests {
         let constraints = SizeConstraints {
             min: Size::from((0, 0)),
             max: Size::from((500, 400)),
+            aspect: None,
         };
         let resized = resize_geometry(
             start,
@@ -364,6 +390,7 @@ mod tests {
             let constraints = SizeConstraints {
                 min: Size::from((rng().rem_euclid(200), rng().rem_euclid(200))),
                 max: Size::from((rng().rem_euclid(900) + 200, rng().rem_euclid(700) + 200)),
+                aspect: None,
             };
             let edge = edges[(rng().unsigned_abs() as usize) % edges.len()];
             let resized = resize_geometry(start, edge, delta, constraints, output());

@@ -88,7 +88,7 @@ Updated when a task is partially or completely finished; see
 
 | Phase | Tickets |
 |---|---|
-| 1 · Foundation | T-01 ✅ done · T-02 🔄 partial (compositor core) · T-03 🔄 partial (input engine) · T-04 🔄 partial (window model) · T-05 🔄 partial (Spaces model) · T-06 … T-07 pending |
+| 1 · Foundation | T-01 ✅ done · T-02 🔄 partial (compositor core) · T-03 🔄 partial (input engine) · T-04 🔄 partial (window model) · T-05 🔄 partial (Spaces model) · T-06 🔄 partial (Xwayland) · T-07 pending |
 | 2 · Experience | T-08 … T-14 pending |
 | 3 · Flagship apps | T-15 … T-19 pending |
 | 4 · System integration | T-20 … T-23 pending |
@@ -179,6 +179,34 @@ primary output until multi-monitor placement lands (T-11/T-16); app
 memory is session-scope only (settingsd persistence deferred). Details:
 [PROGRESS.md](PROGRESS.md).
 
+T-06 is partial: Xwayland is spawned eagerly at session start on every
+backend (a missing binary degrades to a Wayland-only session), `DISPLAY`
+is exported to the session environment and handed to the dev tool through
+a per-socket runtime file, and an Xwayland crash respawns the server
+without disturbing the session (FR-6). X11 windows are mapped through the
+same `WindowModel`/`Space`/workspace machinery as `xdg_toplevel`s —
+cascade and transient placement, focus, minimize/restore, zoom,
+fullscreen, close, and stacking — with `WM_CLASS` resolved to a
+`.desktop` application by an interim pure-std resolver (`StartupWMClass`,
+then desktop id/stem; misses recorded for T-23) and marked Tier-2 SSD
+unless `_MOTIF_WM_HINTS` opts out. Clipboard selection is bridged both
+directions through the data-device selection the shell's
+`wlr-data-control` manager observes. A headless conformance suite
+(`compositor/tests/xwayland_conformance.rs`) drives a real X11 client over
+the X protocol: it creates and maps a window, asserts it appears in
+`_NET_CLIENT_LIST`, destroys it, and kills the Xwayland process to prove a
+clean respawn; `xmessage` was also launched through
+`dragonfruit dev --nested --launch` with `DISPLAY` exported and rendered
+nested. Open: **XDnD drag-and-drop is not implemented** (Smithay 0.7's XWM
+has no XDnD bridge), so FR-5 is unmet until a bridge lands (T-30/T-31);
+the scripted Firefox/Steam/SDL/xterm matrix was not run on this host (no
+spare GPU session or Steam) and is the first T-30 job; the resolver is
+deliberately not GIO `AppInfo` (the compositor must not link the desktop
+stack) and is replaced by `app-index` in T-23; Smithay 0.7's `X11Wm`
+source closure forms a calloop `Rc` cycle, so the compositor explicitly
+unlinks its socket on teardown (T-31/upstream follow-up). Details:
+[PROGRESS.md](PROGRESS.md).
+
 1. **Foundation**
    - [x] Smithay compositor (event loop, protocol surface, render stack — T-02)
    - [x] Nested backend (live-verified on the dev host)
@@ -187,7 +215,7 @@ memory is session-scope only (settingsd persistence deferred). Details:
    - [x] Outputs (wl_output + xdg_output globals, modes/scale/transform, hotplug)
    - [x] Windows (T-04 model: states, focus, placement, regions, move/resize, popups; headless toplevel-state + popup conformance covered, move/resize still unit-level)
    - [x] Workspace model (T-05: per-output lockstep Spaces, fullscreen Spaces, wallpaper color, app memory, hotplug migration; image wallpaper + switch animation + protocol wiring open)
-   - [ ] Xwayland
+   - [x] Xwayland (T-06: eager start + `DISPLAY` export + crash respawn, X11 window model integration, WM_CLASS identity, Tier-2 SSD marking, clipboard bridge; XDnD + app-matrix + GIO identity open)
 2. **Experience**
    - [ ] Design system
    - [ ] Top bar
