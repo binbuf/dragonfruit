@@ -695,3 +695,20 @@ Notes for subsequent tasks:
   plumbing (T-16), toplevel thumbnails for the Dock (T-10, token-gated if
   added). The conformance suite is headless; a live shell restart/re-anchor
   integration test lands with T-08.
+- **FR-7 (additive-only proof) is policy-enforced, not yet exercised.** The
+  lockstep handshake refuses cross-version mixing and
+  `protocol_xmls_match_lockstep_version` binds every XML to
+  `LOCKSTEP_VERSION`, but no interface has a `since="2"` member yet, so there
+  is nothing for an older client to tolerate. When the first v2 event/request
+  is added, add a conformance case that binds version 1 and asserts the v2
+  member is neither sent nor required — and remember Wayland's rule: a
+  `since="N"` event must only be sent to resources bound with `version >= N`
+  (the compositor's `send_*` calls must gate on `resource.version()`).
+- **The compliance client does not yet assert every event pair.** It covers
+  the handshake/refusals, chrome configure + reserved zones,
+  output name/scale, workspace name/wallpaper/activated, manager
+  output/workspace/toplevel/done, focus/state, overview, and per-window
+  requests. `attention`, `hot_corner`, `input_action`, `progress`,
+  `app_accelerator`, `app_switcher`, output geometry/mode/transform, and
+  workspace `removed`/`fullscreen` are emitted but not yet asserted; extend
+  the client as those consumers land (T-10/T-11/T-12/T-14/T-22).
