@@ -85,15 +85,21 @@ pub fn run_session(socket_name: &str, hooks: BackendHooks) -> Result<(), String>
         .map_err(|e| format!("failed to register display source: {e}"))?;
 
     // Quit on SIGINT/SIGTERM — clean teardown is a phase exit criterion.
+    // SIGUSR1 dumps the render-path counters without interrupting the
+    // session (FR-2/FR-5 observability).
     let signals = calloop::signals::Signals::new(&[
         calloop::signals::Signal::SIGTERM,
         calloop::signals::Signal::SIGINT,
+        calloop::signals::Signal::SIGUSR1,
     ])
     .map_err(|e| format!("failed to register signal handlers: {e}"))?;
     loop_handle
-        .insert_source(signals, |_, _, state| {
-            println!("dragonfruit-compositor: shutting down (signal)");
-            state.running = false;
+        .insert_source(signals, |event, _, state| match event.signal() {
+            calloop::signals::Signal::SIGUSR1 => state.dump_stats("SIGUSR1"),
+            _ => {
+                println!("dragonfruit-compositor: shutting down (signal)");
+                state.running = false;
+            }
         })
         .map_err(|e| format!("failed to register signal source: {e}"))?;
 
@@ -127,6 +133,7 @@ pub fn run_session(socket_name: &str, hooks: BackendHooks) -> Result<(), String>
     // Note: `loop_handle` is the last surviving calloop handle and keeps
     // the registered sources (and with them the socket) alive, so it must
     // be dropped before the leak check.
+    state.dump_stats("exit");
     drop(event_loop);
     drop(state);
     drop(loop_handle);

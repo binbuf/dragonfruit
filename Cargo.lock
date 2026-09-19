@@ -369,6 +369,7 @@ dependencies = [
  "smithay",
  "smithay-drm-extras",
  "wayland-client",
+ "wayland-protocols",
 ]
 
 [[package]]

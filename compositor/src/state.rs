@@ -39,7 +39,6 @@ use smithay::utils::{Clock, IsAlive, Logical, Monotonic, Point, Rectangle, Seria
 use smithay::wayland::buffer::BufferHandler;
 use smithay::wayland::compositor::{
     get_parent, with_states, CompositorClientState, CompositorHandler, CompositorState,
-    SurfaceAttributes,
 };
 use smithay::wayland::content_type::ContentTypeState;
 use smithay::wayland::cursor_shape::CursorShapeManagerState;
@@ -366,14 +365,13 @@ impl DfState {
         self.pending_windows.retain(|window| {
             let has_buffer = window.toplevel().is_some_and(|toplevel| {
                 let surface = toplevel.wl_surface();
-                with_states(surface, |states| {
-                    states
-                        .cached_state
-                        .get::<SurfaceAttributes>()
-                        .current()
-                        .buffer
-                        .is_some()
+                // The buffer is consumed out of `SurfaceAttributes` by
+                // `on_commit_buffer_handler` (called first in `commit`), so
+                // the attached buffer must be read from the renderer state.
+                smithay::backend::renderer::utils::with_renderer_surface_state(surface, |state| {
+                    state.buffer().is_some()
                 })
+                .unwrap_or(false)
             });
             if has_buffer {
                 to_map.push(window.clone());
@@ -520,30 +518,38 @@ impl DfState {
         let Some(target) = self.usable_geometry_for(window) else {
             return;
         };
-        if let Some(toplevel) = window.toplevel() {
-            toplevel.with_pending_state(|state| {
-                state.states.set(xdg_toplevel::State::Maximized);
-            });
-        }
         let Some(transition) = self.windows.apply(window, WindowEvent::Zoom, target) else {
             return;
         };
+        // Only touch the client's pending state when the compositor state
+        // actually changed: setting Maximized on a window the state machine
+        // refused (e.g. minimized) would desync the next configure from the
+        // compositor's real state.
+        if transition.changed {
+            if let Some(toplevel) = window.toplevel() {
+                toplevel.with_pending_state(|state| {
+                    state.states.set(xdg_toplevel::State::Maximized);
+                });
+            }
+        }
         self.apply_window_transition(window, transition);
     }
 
     /// Return a zoomed window to its floating geometry.
     pub fn unzoom_window(&mut self, window: &Window) {
-        if let Some(toplevel) = window.toplevel() {
-            toplevel.with_pending_state(|state| {
-                state.states.unset(xdg_toplevel::State::Maximized);
-            });
-        }
         let Some(transition) =
             self.windows
                 .apply(window, WindowEvent::Unzoom, Rectangle::default())
         else {
             return;
         };
+        if transition.changed {
+            if let Some(toplevel) = window.toplevel() {
+                toplevel.with_pending_state(|state| {
+                    state.states.unset(xdg_toplevel::State::Maximized);
+                });
+            }
+        }
         self.apply_window_transition(window, transition);
     }
 
@@ -552,33 +558,37 @@ impl DfState {
         let Some(target) = self.output_bounds_for(window) else {
             return;
         };
-        if let Some(toplevel) = window.toplevel() {
-            toplevel.with_pending_state(|state| {
-                state.states.set(xdg_toplevel::State::Fullscreen);
-            });
-        }
         let Some(transition) = self
             .windows
             .apply(window, WindowEvent::EnterFullscreen, target)
         else {
             return;
         };
+        if transition.changed {
+            if let Some(toplevel) = window.toplevel() {
+                toplevel.with_pending_state(|state| {
+                    state.states.set(xdg_toplevel::State::Fullscreen);
+                });
+            }
+        }
         self.apply_window_transition(window, transition);
     }
 
     /// Leave fullscreen for the state it was entered from.
     pub fn unfullscreen_window(&mut self, window: &Window) {
-        if let Some(toplevel) = window.toplevel() {
-            toplevel.with_pending_state(|state| {
-                state.states.unset(xdg_toplevel::State::Fullscreen);
-            });
-        }
         let Some(transition) =
             self.windows
                 .apply(window, WindowEvent::ExitFullscreen, Rectangle::default())
         else {
             return;
         };
+        if transition.changed {
+            if let Some(toplevel) = window.toplevel() {
+                toplevel.with_pending_state(|state| {
+                    state.states.unset(xdg_toplevel::State::Fullscreen);
+                });
+            }
+        }
         self.apply_window_transition(window, transition);
     }
 
@@ -759,6 +769,20 @@ impl DfState {
         Duration::from(self.clock.now()).as_millis() as u64
     }
 
+    /// Print the render-path counters (FR-2/FR-5 observability).
+    ///
+    /// Emitted on SIGUSR1 and on clean exit so the idle-trace (FR-2) and
+    /// direct-scanout (FR-5) budgets can be measured without a debugger.
+    pub fn dump_stats(&self, label: &str) {
+        println!(
+            "dragonfruit-compositor: render stats ({label}): \
+             frames_rendered={} frames_skipped_no_damage={} direct_scanouts={}",
+            self.stats.frames_rendered,
+            self.stats.frames_skipped_no_damage,
+            self.stats.direct_scanouts
+        );
+    }
+
     /// Dispatch one compositor action from any trigger.
     ///
     /// Every trigger records the same [`InputAction`] here; progress-driven
@@ -851,6 +875,20 @@ impl CompositorHandler for DfState {
         // Keep popup trees in sync (moves unmapped popups into their
         // parent's tree so they stack above the toplevel — FR-11).
         self.popups.commit(surface);
+
+        // Refresh the window's cached bounding box before placement reads
+        // it. `Window::on_commit` recomputes it from the renderer surface
+        // state; without this the bbox stays 0×0 and every window would be
+        // placed at zero size (and restore geometry would be lost).
+        let window = self
+            .pending_windows
+            .iter()
+            .chain(self.space.elements())
+            .find(|window| window.wl_surface().as_deref() == Some(surface))
+            .cloned();
+        if let Some(window) = window {
+            window.on_commit();
+        }
 
         // Map the toplevel once its root tree has a buffer; T-04 owns
         // placement policy.

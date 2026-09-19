@@ -181,6 +181,43 @@ fn socket_path(runtime_dir: &Path, socket_name: &str) -> PathBuf {
     runtime_dir.join(socket_name)
 }
 
+/// Owns the session's child processes so a panic or an early return can
+/// never leak them into the host session (T-01 FR-5: quitting must leave
+/// the host completely undisturbed). Normal teardown disarms the guard
+/// after the graceful shutdown; `Drop` is the last-resort SIGKILL.
+struct ChildGuard {
+    compositor: Option<std::process::Child>,
+    launched: Vec<(String, std::process::Child)>,
+}
+
+impl ChildGuard {
+    fn new(compositor: std::process::Child) -> Self {
+        ChildGuard {
+            compositor: Some(compositor),
+            launched: Vec::new(),
+        }
+    }
+
+    fn compositor(&mut self) -> &mut std::process::Child {
+        self.compositor
+            .as_mut()
+            .expect("compositor child is present until teardown")
+    }
+}
+
+impl Drop for ChildGuard {
+    fn drop(&mut self) {
+        if let Some(mut child) = self.compositor.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        for (_, mut child) in self.launched.drain(..) {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
 /// Run one development session: compositor + optional launched programs,
 /// all against a private socket, all torn down on exit.
 fn run_dev_session(args: &DevArgs) -> ExitCode {
@@ -196,7 +233,7 @@ fn run_dev_session(args: &DevArgs) -> ExitCode {
         "dragonfruit dev: backend={} lockstep-ipc=v{LOCKSTEP_VERSION}",
         args.backend
     );
-    let mut child = match Command::new(&compositor)
+    let child = match Command::new(&compositor)
         .arg("--backend")
         .arg(args.backend)
         .arg("--socket-name")
@@ -214,6 +251,9 @@ fn run_dev_session(args: &DevArgs) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    // From here on the guard owns every child, so even a panic cannot leak
+    // a compositor or a launched app into the host session.
+    let mut guard = ChildGuard::new(child);
 
     // Wait for the private socket, then surface the path (FR-5).
     let started = Instant::now();
@@ -229,7 +269,11 @@ fn run_dev_session(args: &DevArgs) -> ExitCode {
             );
             break;
         }
-        if child.try_wait().map_or(true, |status| status.is_some()) {
+        if guard
+            .compositor()
+            .try_wait()
+            .map_or(true, |status| status.is_some())
+        {
             eprintln!("dragonfruit dev: compositor exited before the socket appeared");
             return ExitCode::FAILURE;
         }
@@ -238,17 +282,16 @@ fn run_dev_session(args: &DevArgs) -> ExitCode {
                 "dragonfruit dev: timed out waiting for {}",
                 socket.display()
             );
-            let _ = shutdown_child(&mut child);
+            let _ = shutdown_child(guard.compositor());
             return ExitCode::FAILURE;
         }
         if signalled() {
-            let _ = shutdown_child(&mut child);
+            let _ = shutdown_child(guard.compositor());
             return ExitCode::from(130);
         }
         std::thread::sleep(Duration::from_millis(25));
     }
 
-    let mut launched: Vec<(String, std::process::Child)> = Vec::new();
     for cmd in &args.launch {
         let Some(program) = cmd.first() else { continue };
         let mut command = Command::new(program);
@@ -258,7 +301,7 @@ fn run_dev_session(args: &DevArgs) -> ExitCode {
         match command.spawn() {
             Ok(child) => {
                 println!("dragonfruit dev: launched {cmd:?}");
-                launched.push((cmd.join(" "), child));
+                guard.launched.push((cmd.join(" "), child));
             }
             Err(e) => eprintln!("dragonfruit dev: failed to launch {cmd:?}: {e}"),
         }
@@ -266,7 +309,11 @@ fn run_dev_session(args: &DevArgs) -> ExitCode {
 
     // Block until the compositor exits or SIGINT/SIGTERM arrives.
     loop {
-        if child.try_wait().is_ok_and(|status| status.is_some()) {
+        if guard
+            .compositor()
+            .try_wait()
+            .is_ok_and(|status| status.is_some())
+        {
             break;
         }
         if signalled() {
@@ -283,17 +330,22 @@ fn run_dev_session(args: &DevArgs) -> ExitCode {
     SIGNALLED.store(false, Ordering::SeqCst);
 
     let mut dirty = false;
-    for (name, mut child) in launched.drain(..) {
+    for (name, mut child) in std::mem::take(&mut guard.launched) {
         if shutdown_child(&mut child).is_err() {
             eprintln!("dragonfruit dev: {name:?} refused to die");
             dirty = true;
         }
     }
 
-    if child.try_wait().map_or(true, |s| s.is_none()) && shutdown_child(&mut child).is_err() {
-        eprintln!("dragonfruit dev: compositor refused to shut down cleanly");
-        dirty = true;
+    {
+        let child = guard.compositor();
+        if child.try_wait().map_or(true, |s| s.is_none()) && shutdown_child(child).is_err() {
+            eprintln!("dragonfruit dev: compositor refused to shut down cleanly");
+            dirty = true;
+        }
     }
+    // Disarm the guard: teardown is complete, nothing left to kill.
+    guard.compositor = None;
 
     // Teardown verification: no stray socket may survive (FR-5).
     if socket.exists() {
