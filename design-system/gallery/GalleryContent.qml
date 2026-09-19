@@ -279,19 +279,26 @@ Item {
     component MenuPage: Page {
         Section {
             heading: qsTr("MenuBarMenu (open)")
-            MenuBarMenu {
-                title: qsTr("File")
-                open: true
-                model: [
-                    { label: qsTr("New Window"), shortcut: "⌘N" },
-                    { label: qsTr("New Folder"), shortcut: "⇧⌘N" },
-                    { type: "separator" },
-                    { label: qsTr("Open…"), shortcut: "⌘O" },
-                    { label: qsTr("Close Window"), shortcut: "⌘W" },
-                    { type: "separator" },
-                    { label: qsTr("Show in Sidebar"), checked: true, checkable: true },
-                    { label: qsTr("Unavailable"), enabled: false }
-                ]
+            // Reserve room for the dropdown, which overflows the bar item.
+            Item {
+                width: parent.width
+                height: 300
+                MenuBarMenu {
+                    anchors.left: parent.left
+                    anchors.top: parent.top
+                    title: qsTr("File")
+                    open: true
+                    model: [
+                        { label: qsTr("New Window"), shortcut: "⌘N" },
+                        { label: qsTr("New Folder"), shortcut: "⇧⌘N" },
+                        { type: "separator" },
+                        { label: qsTr("Open…"), shortcut: "⌘O" },
+                        { label: qsTr("Close Window"), shortcut: "⌘W" },
+                        { type: "separator" },
+                        { label: qsTr("Show in Sidebar"), checked: true, checkable: true },
+                        { label: qsTr("Unavailable"), enabled: false }
+                    ]
+                }
             }
         }
         Section {
