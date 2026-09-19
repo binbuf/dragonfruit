@@ -259,6 +259,78 @@ Notes for subsequent tasks:
   backend. The headless backend has no seat devices, so a synthetic
   input harness would be needed; consider it with T-31 hardening.
 
+## T-04 — window model: states, focus, placement, regions
+
+**State: partial.** Done and verified: the pure window state machine
+(`compositor/src/window/state.rs`) with floating/minimized/zoomed/fullscreen,
+exact restore geometry after every round-trip, and maximize→Zoom (FR-1/2);
+click-to-focus with lifecycle/focus broadcasts — mapped, unmapped, focused,
+unfocused, title/app_id changes, state changes — written to a bounded
+`WindowDispatch` outbox (FR-4); per-output centered cascade that wraps
+instead of leaving the output, and transient dialogs centered on the parent
+(FR-5/6); reserved-zone-aware Zoom geometry; interactive move/resize pointer
+grabs with client min/max-size clamping and output clamping (FR-10); popup
+positioner constraint handling (flip/slide/resize) plus popup
+keyboard/pointer grabs and parent-unfocus dismissal (FR-11); window-menu
+primitives (Move to Space, Minimize, Zoom, Close). 35 unit/property tests
+pass; `make check` (clippy -D warnings, fmt, qmllint, gates, 100-cycle soak)
+is green.
+
+Open items:
+
+- **Shell-restart test (FR-9) has no subject yet.** All window state lives
+  in `DfState.windows` / `Space` / `Seat`, so the compositor already
+  survives a shell restart by construction, but the shell process does not
+  exist until T-08. Re-run the scripted test when the shell lands.
+- **Headless conformance suites are unit-level, not protocol-level.** The
+  ticket asks for a headless client driving `xdg_toplevel` move/resize and
+  `xdg_popup` requests (malformed positioners included). `window::resize`
+  and `window::popup` property/edge tests cover the math and malformed
+  inputs; a `wayland-client`-driven suite against the headless backend is
+  still needed (same harness gap T-03 noted for synthetic libinput).
+- **Aspect hints are not wired.** `window::resize::apply_aspect` exists and
+  is tested, but xdg-shell has no aspect hint and X11 `WM_NORMAL_HINTS`
+  arrive with T-06; call it from `DfState::window_size_constraints` then.
+- **Reserved zones are still zero.** `DfState.reserved_zones` is the hook;
+  T-07's private protocol fills it from the shell's menu-bar/Dock anchor
+  zones. Zoom currently equals the full output.
+- **Fullscreen does not create a Space yet.** The state machine and geometry
+  are correct, but the dedicated fullscreen Space is T-05. Until then a
+  fullscreen window simply fills the output and stays in the normal stack.
+- **Move-to-Space is accepted but inert** (`WindowMenuCommand::MoveToSpace`)
+  until T-05 owns Spaces.
+- **`window_dispatch` is not drained.** It is the T-07 seam exactly like
+  `InputDispatch`; the private protocol should drain both rather than
+  re-deriving events.
+- **Popup grab arbitration.** Popup grabs are installed unconditionally
+  because they are standard xdg-shell behavior; if T-07 wants to restrict
+  them to sanctioned clients it should consult `GrabArbiter` in the `grab`
+  handler.
+
+Notes for subsequent tasks:
+
+- **`WindowModel` is keyed by Smithay `Window`** (hash by identity) and
+  hands out a compositor-stable `WindowId(u64)`; use that id in the private
+  protocol so the shell never invents its own. `WindowId` ordering is
+  registration order, not stacking.
+- **Geometry lives in the state machine, not `Space`.** Use
+  `DfState.windows.geometry(&window)` for the authoritative restore
+  geometry and `space.element_location` for the live position. Interactive
+  move/resize keeps them in sync via `move_window`/`resize_window`.
+- **Transient relationships are in `WindowModel`** (`set_parent`, `parent`,
+  `children`, `transient_tree`); `toplevel_destroyed` already closes
+  children and `minimize_window`/`restore_window` walk the tree. T-05 should
+  move the whole tree between Spaces together.
+- **Focus is single-source.** `DfState.active_window` tracks the focused
+  window; `focus_changed` also sets `ShortcutEngine::set_focused_app` from
+  the window's `app_id` (the T-03 follow-up), so app accelerators now scope
+  to the focused window. T-22 should populate the registrations.
+- **`popups.commit(surface)` must stay in `CompositorHandler::commit`** or
+  unmapped popups never join their parent's tree and stacking breaks.
+- **`toplevel_app_id`/`toplevel_title` read `XdgToplevelSurfaceData`**;
+  `new_toplevel` sends the initial configure with `bounds` only, and
+  `map_pending_windows` captures the metadata at first commit.
+
 ## Devroot: user-space native-dep sysroot (learned during T-02)
 
 The DRM backend needs libdrm/gbm/libinput/libseat/libudev *headers and

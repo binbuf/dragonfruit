@@ -88,7 +88,7 @@ Updated when a task is partially or completely finished; see
 
 | Phase | Tickets |
 |---|---|
-| 1 · Foundation | T-01 ✅ done · T-02 🔄 partial (compositor core) · T-03 🔄 partial (input engine) · T-04 … T-07 pending |
+| 1 · Foundation | T-01 ✅ done · T-02 🔄 partial (compositor core) · T-03 🔄 partial (input engine) · T-04 🔄 partial (window model) · T-05 … T-07 pending |
 | 2 · Experience | T-08 … T-14 pending |
 | 3 · Flagship apps | T-15 … T-19 pending |
 | 4 · System integration | T-20 … T-23 pending |
@@ -125,13 +125,30 @@ tuning; unclaimed-gesture pass-through policy. See
 [keymap.md](../docs/keymap.md) for the in-repo keymap decision. Details:
 [PROGRESS.md](PROGRESS.md).
 
+T-04 is partial: the four-state window machine (floating/minimized/zoomed/
+fullscreen with exact restore geometry, maximize→Zoom, no maximize state),
+click-to-focus with lifecycle/focus broadcasts for the shell (window
+mapped/unmapped, focused/unfocused, title/app_id changes, state changes),
+per-output centered cascade with wrapping, transient centering and
+minimize/restore/close-with-parent, reserved-zone-aware Zoom, interactive
+move/resize grabs with client min/max-size clamping and output clamping,
+popup positioner constraint handling (flip/slide/resize) with popup
+keyboard/pointer grabs and parent-unfocus dismissal, and window-menu
+primitives are done and covered by 30+ unit/property tests. Open: the
+scripted shell-restart test (FR-9) — the state is compositor-owned so the
+architecture supports it, but there is no shell process to restart until
+T-08; the headless `xdg_toplevel` move/resize and `xdg_popup` conformance
+suites (currently unit-level); aspect hints (X11) and the private-protocol
+wiring of the broadcast outbox (T-07). Details:
+[PROGRESS.md](PROGRESS.md).
+
 1. **Foundation**
    - [x] Smithay compositor (event loop, protocol surface, render stack — T-02)
    - [x] Nested backend (live-verified on the dev host)
    - [ ] Native DRM backend (implemented; runtime-untested — needs a real seat)
    - [ ] Input (T-03 engine done: keymaps, shortcuts, gestures, hot corners; hardware validation + shell/portal wiring open)
    - [x] Outputs (wl_output + xdg_output globals, modes/scale/transform, hotplug)
-   - [ ] Windows (scene machinery in T-02; window model is T-04)
+   - [x] Windows (T-04 model: states, focus, placement, regions, move/resize, popups; headless conformance suites open)
    - [ ] Workspace model
    - [ ] Xwayland
 2. **Experience**
