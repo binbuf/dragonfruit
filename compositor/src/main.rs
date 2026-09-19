@@ -18,6 +18,7 @@ mod render;
 mod session;
 mod state;
 mod window;
+mod workspace;
 
 pub use df_ipc::LOCKSTEP_VERSION;
 

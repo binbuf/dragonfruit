@@ -509,6 +509,10 @@ fn end_gesture(state: &mut DfState, cancelled: bool) {
             state
                 .input_dispatch
                 .action(action, trigger, SERIAL_COUNTER.next_serial().into());
+            // Gestures commit here rather than through
+            // `dispatch_input_action`, so apply the workspace switch too
+            // (T-05). The progress events above remain the T-11 seam.
+            state.handle_workspace_action(action);
         }
     }
 }

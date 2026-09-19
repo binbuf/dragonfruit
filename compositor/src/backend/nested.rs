@@ -15,7 +15,7 @@ use std::time::Duration;
 use smithay::backend::egl::EGLDevice;
 use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::glow::GlowRenderer;
-use smithay::backend::renderer::{Color32F, ImportDma, ImportMemWl};
+use smithay::backend::renderer::{ImportDma, ImportMemWl};
 use smithay::backend::winit::{self, WinitEvent, WinitGraphicsBackend};
 use smithay::desktop::space::render_output;
 use smithay::output::{Mode, PhysicalProperties, Subpixel};
@@ -25,10 +25,6 @@ use smithay::wayland::presentation::Refresh;
 use crate::backend::{add_output, add_seat_capabilities};
 use crate::session::{run_session, BackendHooks};
 use crate::{render, LOCKSTEP_VERSION};
-
-/// Clear color: a flat dragonfruit tint; wallpaper rendering (per-Space)
-/// arrives with the workspace model in T-05.
-const CLEAR_COLOR: Color32F = Color32F::new(0.13, 0.05, 0.16, 1.0);
 
 pub fn run(socket_name: &str) -> Result<(), String> {
     println!("dragonfruit-compositor: starting (backend=nested, lockstep-ipc=v{LOCKSTEP_VERSION})");
@@ -157,7 +153,7 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
             [&state.space],
             &custom_elements,
             &mut data.damage_tracker,
-            CLEAR_COLOR,
+            state.wallpaper_color_for(&output),
         ),
         Err(err) => return Err(format!("nested bind failed: {err}")),
     };

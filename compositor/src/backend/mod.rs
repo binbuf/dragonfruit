@@ -32,6 +32,8 @@ pub fn add_output(
     );
     let _global = output.create_global::<DfState>(&state.display_handle);
     state.space.map_output(&output, position);
+    // A fresh output gets a fresh Space list (T-05 FR-7).
+    state.on_output_added(&output);
     output
 }
 
