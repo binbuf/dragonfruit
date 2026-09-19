@@ -17,9 +17,13 @@ use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
 use wayland_client::protocol::{
-    wl_buffer, wl_compositor, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface,
+    wl_buffer, wl_compositor, wl_pointer, wl_region, wl_registry, wl_seat, wl_shm, wl_shm_pool,
+    wl_surface,
 };
 use wayland_client::{delegate_noop, Connection, Dispatch, EventQueue, QueueHandle};
+use wayland_protocols::wp::pointer_constraints::zv1::client::{
+    zwp_confined_pointer_v1, zwp_locked_pointer_v1, zwp_pointer_constraints_v1,
+};
 use wayland_protocols::xdg::activation::v1::client::{xdg_activation_token_v1, xdg_activation_v1};
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel as xdg_tl, xdg_wm_base};
 
@@ -76,6 +80,12 @@ struct TestClient {
     shm: Option<wl_shm::WlShm>,
     xdg_wm_base: Option<xdg_wm_base::XdgWmBase>,
     seat: Option<wl_seat::WlSeat>,
+    pointer: Option<wl_pointer::WlPointer>,
+    constraints: Option<zwp_pointer_constraints_v1::ZwpPointerConstraintsV1>,
+    /// Pointer motion delivered to this client, as surface-local coords.
+    pointer_motions: Vec<(f64, f64)>,
+    locked: usize,
+    confined: usize,
     activation: Option<xdg_activation_v1::XdgActivationV1>,
     activation_token: Option<String>,
     // Private global names from the registry.
@@ -153,6 +163,9 @@ impl Dispatch<wl_registry::WlRegistry, ()> for TestClient {
                 }
                 "xdg_activation_v1" => {
                     state.activation = Some(registry.bind(name, version.min(1), _qh, ()));
+                }
+                "zwp_pointer_constraints_v1" => {
+                    state.constraints = Some(registry.bind(name, version.min(1), _qh, ()));
                 }
                 "df_core" => state.core_global = Some((name, version)),
                 "df_shell" => state.shell_global = Some((name, version)),
@@ -365,16 +378,77 @@ delegate_noop!(TestClient: ignore wl_shm::WlShm);
 delegate_noop!(TestClient: ignore wl_shm_pool::WlShmPool);
 delegate_noop!(TestClient: ignore wl_buffer::WlBuffer);
 delegate_noop!(TestClient: ignore wl_surface::WlSurface);
+delegate_noop!(TestClient: ignore wl_region::WlRegion);
+delegate_noop!(TestClient: ignore zwp_pointer_constraints_v1::ZwpPointerConstraintsV1);
 
 impl Dispatch<wl_seat::WlSeat, ()> for TestClient {
     fn event(
-        _: &mut Self,
-        _: &wl_seat::WlSeat,
-        _: wl_seat::Event,
+        state: &mut Self,
+        seat: &wl_seat::WlSeat,
+        event: wl_seat::Event,
+        _: &(),
+        _: &Connection,
+        qh: &QueueHandle<Self>,
+    ) {
+        if let wl_seat::Event::Capabilities { capabilities } = event {
+            let has_pointer = capabilities
+                .into_result()
+                .map(|caps| caps.contains(wl_seat::Capability::Pointer))
+                .unwrap_or(false);
+            if has_pointer && state.pointer.is_none() {
+                state.pointer = Some(seat.get_pointer(qh, ()));
+            }
+        }
+    }
+}
+
+impl Dispatch<wl_pointer::WlPointer, ()> for TestClient {
+    fn event(
+        state: &mut Self,
+        _: &wl_pointer::WlPointer,
+        event: wl_pointer::Event,
         _: &(),
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
+        if let wl_pointer::Event::Motion {
+            surface_x,
+            surface_y,
+            ..
+        } = event
+        {
+            state.pointer_motions.push((surface_x, surface_y));
+        }
+    }
+}
+
+impl Dispatch<zwp_locked_pointer_v1::ZwpLockedPointerV1, ()> for TestClient {
+    fn event(
+        state: &mut Self,
+        _: &zwp_locked_pointer_v1::ZwpLockedPointerV1,
+        event: zwp_locked_pointer_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let zwp_locked_pointer_v1::Event::Locked = event {
+            state.locked += 1;
+        }
+    }
+}
+
+impl Dispatch<zwp_confined_pointer_v1::ZwpConfinedPointerV1, ()> for TestClient {
+    fn event(
+        state: &mut Self,
+        _: &zwp_confined_pointer_v1::ZwpConfinedPointerV1,
+        event: zwp_confined_pointer_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let zwp_confined_pointer_v1::Event::Confined = event {
+            state.confined += 1;
+        }
     }
 }
 
@@ -971,8 +1045,13 @@ fn shm_buffer(
     let shm = state.shm.clone().expect("wl_shm bound");
     let stride = width * 4;
     let size = (stride * height) as usize;
+    // A unique name per buffer: a test may map several windows and the
+    // backing file is created with `create_new`.
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static SHM_SEQ: AtomicU64 = AtomicU64::new(0);
+    let seq = SHM_SEQ.fetch_add(1, Ordering::Relaxed);
     let path = std::env::temp_dir().join(format!(
-        "dragonfruit-shell-conformance-{}-{:p}.shm",
+        "dragonfruit-shell-conformance-{}-{seq}-{:p}.shm",
         std::process::id(),
         &shm
     ));
@@ -1685,6 +1764,309 @@ fn synthetic_input_drives_shortcuts_hot_corners_and_gestures() {
         &mut state,
         Duration::from_secs(5),
         |state| state.focused.iter().any(|focused| focused.is_some()),
+    );
+
+    manager.destroy();
+    let _ = conn.flush();
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}
+
+/// T-03 FR-5 (sanctioned half): the shell authenticates with a launch token
+/// and is then allowed to install a pointer grab. Its locked pointer stays
+/// frozen even as synthetic motion arrives.
+#[test]
+fn sanctioned_client_can_lock_the_pointer() {
+    let token = "99".repeat(32);
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path =
+        PathBuf::from(&runtime_dir).join(format!("dragonfruit-constraint-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-constraint",
+        std::slice::from_ref(&token),
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (name, version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, name, version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+
+    let (surface, _xdg_surface, _toplevel, _file) = map_toplevel(
+        &mut state,
+        &mut queue,
+        "Constraint",
+        "org.dragonfruit.Constraint",
+    );
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.pointer.is_some(),
+    );
+    // Make sure the compositor has processed `wl_seat.get_pointer` before
+    // synthetic motion is aimed at the window.
+    let _ = queue.roundtrip(&mut state);
+
+    // Click to focus, then lock the pointer.
+    input.send("motion-abs 0.5 0.5");
+    input.send("button 272 down\nbutton 272 up");
+    // The first motion only sends `wl_pointer.enter`; a follow-up relative
+    // motion produces the baseline `wl_pointer.motion` we compare against.
+    input.send("motion 1 1");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.pointer_motions.is_empty(),
+    );
+
+    let constraints = state
+        .constraints
+        .clone()
+        .expect("zwp_pointer_constraints_v1 advertised");
+    let pointer = state.pointer.clone().expect("wl_pointer bound");
+    let _locked = constraints.lock_pointer(
+        &surface,
+        &pointer,
+        None,
+        zwp_pointer_constraints_v1::Lifetime::Persistent,
+        &queue.handle(),
+        (),
+    );
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.locked >= 1,
+    );
+
+    // The pointer must freeze: motion keeps arriving but stays put.
+    let before = state.pointer_motions.last().copied();
+    let before_len = state.pointer_motions.len();
+    input.send("motion 80 60");
+    input.send("motion 80 60");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.pointer_motions.len() > before_len,
+    );
+    assert_eq!(
+        before,
+        state.pointer_motions.last().copied(),
+        "a locked pointer must not move"
+    );
+
+    let _ = conn.flush();
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}
+
+/// T-03 FR-5 (malicious half): an ordinary, unsanctioned client requests the
+/// same pointer lock and is refused. It receives no `locked` event and the
+/// pointer keeps moving.
+#[test]
+fn unsanctioned_pointer_constraint_is_refused() {
+    let token = "aa".repeat(32);
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir).join(format!(
+        "dragonfruit-constraint-refused-{}",
+        std::process::id()
+    ));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-constraint-refused",
+        std::slice::from_ref(&token),
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    // No authentication: this is an ordinary application client.
+    let (surface, _xdg_surface, _toplevel, _file) =
+        map_toplevel(&mut state, &mut queue, "Refused", "org.dragonfruit.Refused");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.pointer.is_some(),
+    );
+    // Make sure the compositor has processed `wl_seat.get_pointer` before
+    // synthetic motion is aimed at the window.
+    let _ = queue.roundtrip(&mut state);
+
+    input.send("motion-abs 0.5 0.5");
+    input.send("button 272 down\nbutton 272 up");
+    // The first motion only sends `wl_pointer.enter`; a follow-up relative
+    // motion produces the baseline `wl_pointer.motion` we compare against.
+    input.send("motion 1 1");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.pointer_motions.is_empty(),
+    );
+
+    let constraints = state
+        .constraints
+        .clone()
+        .expect("zwp_pointer_constraints_v1 advertised");
+    let pointer = state.pointer.clone().expect("wl_pointer bound");
+    let _locked = constraints.lock_pointer(
+        &surface,
+        &pointer,
+        None,
+        zwp_pointer_constraints_v1::Lifetime::Persistent,
+        &queue.handle(),
+        (),
+    );
+    // Order the request before the synthetic motion on the same loop.
+    let _ = queue.roundtrip(&mut state);
+
+    let before = state.pointer_motions.last().copied();
+    let before_len = state.pointer_motions.len();
+    input.send("motion 80 60");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.pointer_motions.len() > before_len,
+    );
+    assert_ne!(
+        before,
+        state.pointer_motions.last().copied(),
+        "an unsanctioned lock must not freeze the pointer"
+    );
+    assert_eq!(
+        state.locked, 0,
+        "no locked event for an unsanctioned client"
+    );
+
+    let _ = conn.flush();
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}
+
+/// T-04 FR-7: a window with an empty input region passes clicks through to
+/// the window beneath it. The synthetic pointer aims at the overlap point;
+/// with a normal region the top window focuses, and after clearing its
+/// input region the click reaches the window underneath.
+#[test]
+fn empty_input_region_passes_clicks_through() {
+    let token = "bb".repeat(32);
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir)
+        .join(format!("dragonfruit-input-region-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-input-region",
+        std::slice::from_ref(&token),
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (name, version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, name, version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+    let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
+    let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.pointer.is_some() && !state.outputs.is_empty(),
+    );
+    let _ = queue.roundtrip(&mut state);
+
+    // Window A: the fallback target. Click it so focus starts somewhere.
+    let (_surface_a, _xdg_a, _toplevel_a, _file_a) =
+        map_toplevel(&mut state, &mut queue, "A", "org.dragonfruit.A");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.toplevels.is_empty(),
+    );
+    let handle_a = state.toplevels[0].clone();
+    input.send("motion-abs 0.5 0.5");
+    input.send("button 272 down\nbutton 272 up");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.focused.last().cloned().flatten() == Some(handle_a.clone()),
+    );
+
+    // Window B: cascaded +24px, so (0.519, 0.533) is inside both windows.
+    let (surface_b, _xdg_b, _toplevel_b, _file_b) =
+        map_toplevel(&mut state, &mut queue, "B", "org.dragonfruit.B");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.toplevels.len() >= 2,
+    );
+    let handle_b = state.toplevels[1].clone();
+    input.send("motion-abs 0.519 0.533");
+    input.send("button 272 down\nbutton 272 up");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.focused.last().cloned().flatten() == Some(handle_b.clone()),
+    );
+
+    // Clear B's input region: the same click must now reach A.
+    let compositor = state.compositor.clone().expect("wl_compositor bound");
+    let region = compositor.create_region(&queue.handle(), ());
+    surface_b.set_input_region(Some(&region));
+    surface_b.commit();
+    let _ = queue.roundtrip(&mut state);
+
+    input.send("motion-abs 0.519 0.533");
+    input.send("button 272 down\nbutton 272 up");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.focused.last().cloned().flatten() == Some(handle_a.clone()),
     );
 
     manager.destroy();

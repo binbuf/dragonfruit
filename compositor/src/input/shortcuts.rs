@@ -68,9 +68,9 @@ pub enum ShortcutOutcome {
 
 /// A refused grab attempt, kept for the audit log (FR-5).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GrabRefusal {
+pub struct GrabRefusal<K = u32> {
     /// The client that tried to grab.
-    pub client: u32,
+    pub client: K,
     pub kind: GrabKind,
     /// Why it was refused.
     pub reason: &'static str,
@@ -93,30 +93,43 @@ pub enum GrabKind {
 /// shell and the Files desktop surface) with one-time launch tokens
 /// ([02-compositor.md](../../.docs/design/02-compositor.md)); everyone else
 /// is logged and refused.
-#[derive(Debug, Default)]
-pub struct GrabArbiter {
-    sanctioned: HashSet<u32>,
-    refusals: Vec<GrabRefusal>,
+///
+/// The client key is generic so the live compositor can key on Smithay's
+/// `ClientId` (which cannot be constructed in a unit test) while the model
+/// tests use plain integers.
+#[derive(Debug)]
+pub struct GrabArbiter<K = u32> {
+    sanctioned: HashSet<K>,
+    refusals: Vec<GrabRefusal<K>>,
 }
 
-impl GrabArbiter {
+impl<K> Default for GrabArbiter<K> {
+    fn default() -> Self {
+        GrabArbiter {
+            sanctioned: HashSet::new(),
+            refusals: Vec::new(),
+        }
+    }
+}
+
+impl<K: Eq + std::hash::Hash + Clone + std::fmt::Debug> GrabArbiter<K> {
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Mark a client id as a sanctioned session client (shell token, T-07).
-    pub fn sanction(&mut self, client: u32) {
+    /// Mark a client as a sanctioned session client (shell token, T-07).
+    pub fn sanction(&mut self, client: K) {
         self.sanctioned.insert(client);
     }
 
-    pub fn is_sanctioned(&self, client: u32) -> bool {
-        self.sanctioned.contains(&client)
+    pub fn is_sanctioned(&self, client: &K) -> bool {
+        self.sanctioned.contains(client)
     }
 
     /// Request a grab. Sanctioned clients are admitted; everyone else is
     /// refused and the refusal recorded. Never panics, never forwards.
-    pub fn request(&mut self, client: u32, kind: GrabKind) -> Result<(), GrabRefusal> {
-        if self.is_sanctioned(client) {
+    pub fn request(&mut self, client: K, kind: GrabKind) -> Result<(), GrabRefusal<K>> {
+        if self.sanctioned.contains(&client) {
             return Ok(());
         }
         let refusal = GrabRefusal {
@@ -125,14 +138,15 @@ impl GrabArbiter {
             reason: "client is not a sanctioned session client",
         };
         eprintln!(
-            "dragonfruit-compositor: refused {kind:?} grab from client {client} (not sanctioned)"
+            "dragonfruit-compositor: refused {kind:?} grab from client {:?} (not sanctioned)",
+            refusal.client
         );
         self.refusals.push(refusal.clone());
         Err(refusal)
     }
 
     /// All refusals so far, oldest first.
-    pub fn refusals(&self) -> &[GrabRefusal] {
+    pub fn refusals(&self) -> &[GrabRefusal<K>] {
         &self.refusals
     }
 }
