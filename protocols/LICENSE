@@ -1,0 +1,8 @@
+SPDX-License-Identifier: MIT
+
+Copyright (c) 2026 Dragonfruit contributors
+
+Every protocol XML in this directory is MIT-licensed so that any third
+party — including other compositors, toolkits, and client libraries —
+may implement these protocols freely. Full text: LICENSES/MIT.txt at the
+repository root. See docs/licensing.md for the licensing policy.

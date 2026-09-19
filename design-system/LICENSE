@@ -1,0 +1,8 @@
+SPDX-License-Identifier: LGPL-3.0-or-later
+
+The Dragonfruit design system — the QML module `Dragonfruit` (tokens and
+components) — is licensed under the GNU Lesser General Public License
+3.0-or-later so that first-party apps (GPL) and the shell can both link
+it, while remaining friendly to third-party reuse. Full text:
+LICENSES/LGPL-3.0.txt at the repository root. See docs/licensing.md for
+what may link what.

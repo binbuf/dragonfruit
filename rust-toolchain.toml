@@ -1,0 +1,6 @@
+[toolchain]
+# Pinned dev/CI toolchain (see README). The MSRV is declared in Cargo.toml
+# (`rust-version`); upgrades of this pin are deliberate, mechanical events.
+channel = "1.98.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+# Rust / Cargo
+/target
+**/*.rs.bk
+
+# CMake / Qt
+/build
+CMakeUserPresets.json
+
+# IDE / tooling
+.idea/
+.vscode/
+*.swp
+*~
+
+# Dev-session artifacts
+screenshot.png
+*.log

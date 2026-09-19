@@ -1,0 +1,88 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+#
+# Dragonfruit top-level task runner (T-01, FR-2): one command builds the
+# full desktop, one command runs all tests. Drives the Cargo workspace
+# (compositor, services, tools) and the CMake/Qt build (design system,
+# shell, apps) as one lockstep set.
+
+CARGO ?= cargo
+CMAKE ?= cmake
+CTEST ?= ctest
+BUILD_DIR ?= build
+SOAK_CYCLES ?= 100
+DF_TOOLCHAIN ?= $(HOME)/.local/df-toolchain/usr
+
+# Discover cmake/ninja from the local Qt toolchain prefix when they are
+# not on PATH (see README "Toolchains").
+ifeq ($(shell command -v $(CMAKE) >/dev/null 2>&1 || command -v $(CTEST) >/dev/null 2>&1 || echo missing),missing)
+ifneq ($(wildcard $(DF_TOOLCHAIN)/bin/cmake),)
+export PATH := $(DF_TOOLCHAIN)/bin:$(PATH)
+export LD_LIBRARY_PATH := $(DF_TOOLCHAIN)/lib64$(if $(LD_LIBRARY_PATH),:$(LD_LIBRARY_PATH))
+endif
+endif
+
+.DEFAULT_GOAL := help
+.PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test \
+        lint fmt fmt-check clippy check dev soak check-desktop-names clean
+
+help:
+	@echo "Dragonfruit build targets:"
+	@echo "  make build    — build everything (Rust workspace + Qt/CMake)"
+	@echo "  make test     — run all tests (cargo + ctest)"
+	@echo "  make lint     — fmt --check, clippy, qmllint, desktop-name gate"
+	@echo "  make check    — lint + test + teardown soak gate"
+	@echo "  make dev      — dragonfruit dev --nested (daily workflow)"
+	@echo "  make soak     — teardown hygiene: N clean cycles (default 100)"
+	@echo "  make clean    — remove build artifacts (keeps cargo cache)"
+
+all: build
+
+build: cargo-build cmake-build
+
+cargo-build:
+	$(CARGO) build --workspace
+
+# Configure once, then build; `make configure` forces reconfiguration.
+cmake-build:
+	@[ -f $(BUILD_DIR)/build.ninja ] || $(CMAKE) -S . -B $(BUILD_DIR) -G Ninja
+	$(CMAKE) --build $(BUILD_DIR)
+
+configure:
+	$(CMAKE) -S . -B $(BUILD_DIR) -G Ninja
+
+test: cargo-test qml-test
+
+cargo-test:
+	$(CARGO) test --workspace
+
+qml-test:
+	@[ -f $(BUILD_DIR)/build.ninja ] || $(CMAKE) -S . -B $(BUILD_DIR) -G Ninja
+	$(CMAKE) --build $(BUILD_DIR) >/dev/null
+	$(CTEST) --test-dir $(BUILD_DIR) --output-on-failure
+
+lint: fmt-check clippy qml-test check-desktop-names
+
+fmt:
+	$(CARGO) fmt --all
+
+fmt-check:
+	$(CARGO) fmt --all -- --check
+
+clippy:
+	$(CARGO) clippy --workspace --all-targets -- -D warnings
+
+check-desktop-names:
+	./scripts/check-desktop-names.sh
+
+# The full gate: everything CI runs, locally in one command.
+check: lint test soak
+
+dev: cargo-build
+	$(CARGO) run -p dragonfruit-dev --bin dragonfruit -- dev --nested
+
+soak: cargo-build
+	$(CARGO) run -p dragonfruit-dev --bin dragonfruit -- dev --soak $(SOAK_CYCLES)
+
+clean:
+	rm -rf $(BUILD_DIR)
+	$(CARGO) clean
