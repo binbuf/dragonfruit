@@ -13,4 +13,11 @@ rust-version.workspace = true
 [dependencies]
 smithay.workspace = true
 calloop.workspace = true
+libc.workspace = true
 df-ipc.workspace = true
+smithay-drm-extras.workspace = true
+
+[dev-dependencies]
+# Server-side test client: the protocol-surface smoke test connects to the
+# headless compositor and asserts the exact advertised global set.
+wayland-client = "0.31"

@@ -24,15 +24,29 @@ rust-version = "1.80.1"
 # mechanical events, never pulled in transitively (see .docs/design/14-risks.md
 # and docs/ipc-versioning.md for the lockstep rules that apply to the rest of
 # the dependency set).
+#
+# Feature set (T-02): all three backends ship in one binary, so the DRM/GBM/
+# libinput/udev/libseat backend stack is always compiled in; backend selection
+# happens at runtime with `--backend`. `desktop` provides the window/scene
+# primitives, `renderer_multi` the multi-GPU path.
 [workspace.dependencies]
 smithay = { version = "=0.7.0", default-features = false, features = [
     "backend_winit",
-    "wayland_frontend",
+    "backend_drm",
+    "backend_gbm",
+    "backend_libinput",
+    "backend_udev",
+    "backend_session_libseat",
+    "desktop",
     "renderer_glow",
+    "renderer_multi",
+    "wayland_frontend",
 ] }
 calloop = { version = "=0.14.4", features = ["signals"] }
 libc = "0.2"
 wayland-server = "=0.31.10"
+# DRM connector scanning helpers (kept in lockstep with the smithay pin).
+smithay-drm-extras = { version = "0.1.0", default-features = false }
 
 df-ipc = { path = "protocols/df-ipc", version = "0.1.0" }
 

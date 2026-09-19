@@ -39,11 +39,16 @@ Fedora 44 native packages:
 
 ```bash
 sudo dnf install rustc cargo qt6-qtdeclarative-devel cmake ninja-build \
-                 libxkbcommon-devel wayland-devel
+                 libxkbcommon-devel wayland-devel \
+                 libdrm-devel mesa-libgbm-devel libinput-devel \
+                 libseat-devel systemd-devel
 ```
 
 (If `cmake`/`ninja` live in a local Qt toolchain prefix, the Makefile
-finds them at `$DF_TOOLCHAIN` or `~/.local/df-toolchain/usr`.)
+finds them at `$DF_TOOLCHAIN` or `~/.local/df-toolchain/usr`. On machines
+without the DRM `-devel` packages, a user-space sysroot at
+`~/.local/df-devroot/lib64` is picked up automatically — see
+`PROGRESS.md`, T-02.)
 
 ## Build
 

@@ -11,6 +11,7 @@ CTEST ?= ctest
 BUILD_DIR ?= build
 SOAK_CYCLES ?= 100
 DF_TOOLCHAIN ?= $(HOME)/.local/df-toolchain/usr
+DF_DEVROOT ?= $(HOME)/.local/df-devroot/lib64
 
 # Discover cmake/ninja from the local Qt toolchain prefix when they are
 # not on PATH (see README "Toolchains").
@@ -21,9 +22,18 @@ export LD_LIBRARY_PATH := $(DF_TOOLCHAIN)/lib64$(if $(LD_LIBRARY_PATH),:$(LD_LIB
 endif
 endif
 
+# User-space sysroot for the DRM native stack (libgbm/libseat/libinput/
+# libudev headers + linker names) on machines without the -devel
+# packages (see PROGRESS.md, T-02). Absent on normal systems.
+ifneq ($(wildcard $(DF_DEVROOT)),)
+export PKG_CONFIG_PATH := $(DF_DEVROOT)/pkgconfig$(if $(PKG_CONFIG_PATH),:$(PKG_CONFIG_PATH))
+export RUSTFLAGS := $(RUSTFLAGS) -L $(DF_DEVROOT)
+endif
+
 .DEFAULT_GOAL := help
 .PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test \
-        lint fmt fmt-check clippy check dev soak check-desktop-names clean
+        lint fmt fmt-check clippy check dev soak check-desktop-names \
+        check-no-capture-grab clean
 
 help:
 	@echo "Dragonfruit build targets:"
@@ -60,7 +70,7 @@ qml-test:
 	$(CMAKE) --build $(BUILD_DIR) >/dev/null
 	$(CTEST) --test-dir $(BUILD_DIR) --output-on-failure
 
-lint: fmt-check clippy qml-test check-desktop-names
+lint: fmt-check clippy qml-test check-desktop-names check-no-capture-grab
 
 fmt:
 	$(CARGO) fmt --all
@@ -73,6 +83,10 @@ clippy:
 
 check-desktop-names:
 	./scripts/check-desktop-names.sh
+
+# T-02 FR-8: capture is portal-only — no screencopy-style grabs, ever.
+check-no-capture-grab:
+	./scripts/check-no-capture-grab.sh
 
 # The full gate: everything CI runs, locally in one command.
 check: lint test soak
