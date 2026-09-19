@@ -17,9 +17,10 @@ use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
 use wayland_client::protocol::{
-    wl_buffer, wl_compositor, wl_registry, wl_shm, wl_shm_pool, wl_surface,
+    wl_buffer, wl_compositor, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface,
 };
 use wayland_client::{delegate_noop, Connection, Dispatch, EventQueue, QueueHandle};
+use wayland_protocols::xdg::activation::v1::client::{xdg_activation_token_v1, xdg_activation_v1};
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel as xdg_tl, xdg_wm_base};
 
 /// Generated client bindings for the private protocols.
@@ -74,6 +75,9 @@ struct TestClient {
     compositor: Option<wl_compositor::WlCompositor>,
     shm: Option<wl_shm::WlShm>,
     xdg_wm_base: Option<xdg_wm_base::XdgWmBase>,
+    seat: Option<wl_seat::WlSeat>,
+    activation: Option<xdg_activation_v1::XdgActivationV1>,
+    activation_token: Option<String>,
     // Private global names from the registry.
     core_global: Option<(u32, u32)>,
     shell_global: Option<(u32, u32)>,
@@ -87,18 +91,35 @@ struct TestClient {
     output_names: Vec<String>,
     output_scales: Vec<f64>,
     output_reserved: Vec<(u32, u32)>,
+    output_geometries: Vec<(i32, i32, i32, i32)>,
+    output_modes: Vec<(u32, u32, u32)>,
+    output_transforms: Vec<u32>,
     workspace_names: Vec<String>,
+    workspace_indexes: Vec<u32>,
+    workspace_activated_flags: Vec<u32>,
+    workspace_fullscreen: Vec<u32>,
+    workspace_removed: usize,
     workspace_wallpapers: Vec<(Option<String>, u32)>,
     workspace_activated: Vec<u32>,
     toplevel_titles: Vec<Option<String>>,
     toplevel_app_ids: Vec<Option<String>>,
     toplevel_states: Vec<u32>,
+    toplevel_workspace_entered: usize,
+    toplevel_workspace_left: usize,
+    toplevel_output_entered: usize,
+    toplevel_output_left: usize,
+    toplevel_closed: usize,
     layer_configures: Vec<(u32, i32, i32)>,
     layer_closed: usize,
     done_count: usize,
+    focused: Vec<Option<df_toplevel::DfToplevel>>,
+    attentions: Vec<df_toplevel::DfToplevel>,
     hot_corners: Vec<(u32, String)>,
     overviews: Vec<(u32, bool)>,
     app_switchers: Vec<(u32, Option<String>, i32)>,
+    input_actions: Vec<(String, String, u32)>,
+    progress_events: usize,
+    app_accelerators: Vec<(String, String, String, u32)>,
 }
 
 impl Dispatch<wl_registry::WlRegistry, ()> for TestClient {
@@ -126,6 +147,12 @@ impl Dispatch<wl_registry::WlRegistry, ()> for TestClient {
                 }
                 "xdg_wm_base" => {
                     state.xdg_wm_base = Some(registry.bind(name, version.min(6), _qh, ()));
+                }
+                "wl_seat" => {
+                    state.seat = Some(registry.bind(name, version.min(9), _qh, ()));
+                }
+                "xdg_activation_v1" => {
+                    state.activation = Some(registry.bind(name, version.min(1), _qh, ()));
                 }
                 "df_core" => state.core_global = Some((name, version)),
                 "df_shell" => state.shell_global = Some((name, version)),
@@ -202,6 +229,22 @@ impl Dispatch<df_toplevel_manager::DfToplevelManager, ()> for TestClient {
             df_toplevel_manager::Event::WorkspaceActivated { index, .. } => {
                 state.workspace_activated.push(index)
             }
+            df_toplevel_manager::Event::Focused { toplevel } => state.focused.push(toplevel),
+            df_toplevel_manager::Event::Attention { toplevel } => state.attentions.push(toplevel),
+            df_toplevel_manager::Event::InputAction {
+                action,
+                source,
+                serial,
+            } => state.input_actions.push((action, source, serial)),
+            df_toplevel_manager::Event::Progress { .. } => state.progress_events += 1,
+            df_toplevel_manager::Event::AppAccelerator {
+                app_id,
+                accelerator_id,
+                source,
+                serial,
+            } => state
+                .app_accelerators
+                .push((app_id, accelerator_id, source, serial)),
             df_toplevel_manager::Event::HotCorner { corner, output } => state
                 .hot_corners
                 .push((corner.into_result().map(|c| c as u32).unwrap_or(0), output)),
@@ -214,7 +257,6 @@ impl Dispatch<df_toplevel_manager::DfToplevelManager, ()> for TestClient {
                 direction,
             } => state.app_switchers.push((active, app_id, direction)),
             df_toplevel_manager::Event::Done => state.done_count += 1,
-            _ => {}
         }
     }
 
@@ -237,6 +279,24 @@ impl Dispatch<df_output::DfOutput, ()> for TestClient {
         match event {
             df_output::Event::Name { name } => state.output_names.push(name),
             df_output::Event::Scale { scale } => state.output_scales.push(scale),
+            df_output::Event::Geometry {
+                x,
+                y,
+                width,
+                height,
+            } => state.output_geometries.push((x, y, width, height)),
+            df_output::Event::Mode {
+                width,
+                height,
+                refresh,
+                ..
+            } => state.output_modes.push((width, height, refresh)),
+            df_output::Event::Transform { transform } => state.output_transforms.push(
+                transform
+                    .into_result()
+                    .map(|t| t as u32)
+                    .unwrap_or(u32::MAX),
+            ),
             df_output::Event::ReservedZone { edge, thickness } => state
                 .output_reserved
                 .push((edge.into_result().map(|e| e as u32).unwrap_or(0), thickness)),
@@ -256,6 +316,14 @@ impl Dispatch<df_workspace::DfWorkspace, ()> for TestClient {
     ) {
         match event {
             df_workspace::Event::Name { name } => state.workspace_names.push(name),
+            df_workspace::Event::Index { index } => state.workspace_indexes.push(index),
+            df_workspace::Event::Activated { active } => {
+                state.workspace_activated_flags.push(active)
+            }
+            df_workspace::Event::Fullscreen { fullscreen } => {
+                state.workspace_fullscreen.push(fullscreen)
+            }
+            df_workspace::Event::Removed => state.workspace_removed += 1,
             df_workspace::Event::Wallpaper { source, fit, color } => {
                 state.workspace_wallpapers.push((
                     source,
@@ -282,6 +350,11 @@ impl Dispatch<df_toplevel::DfToplevel, ()> for TestClient {
             df_toplevel::Event::State { state: flags } => state
                 .toplevel_states
                 .push(flags.into_result().map(|f| f.bits()).unwrap_or(0)),
+            df_toplevel::Event::WorkspaceEntered { .. } => state.toplevel_workspace_entered += 1,
+            df_toplevel::Event::WorkspaceLeft { .. } => state.toplevel_workspace_left += 1,
+            df_toplevel::Event::OutputEntered { .. } => state.toplevel_output_entered += 1,
+            df_toplevel::Event::OutputLeft { .. } => state.toplevel_output_left += 1,
+            df_toplevel::Event::Closed => state.toplevel_closed += 1,
             _ => {}
         }
     }
@@ -292,6 +365,46 @@ delegate_noop!(TestClient: ignore wl_shm::WlShm);
 delegate_noop!(TestClient: ignore wl_shm_pool::WlShmPool);
 delegate_noop!(TestClient: ignore wl_buffer::WlBuffer);
 delegate_noop!(TestClient: ignore wl_surface::WlSurface);
+
+impl Dispatch<wl_seat::WlSeat, ()> for TestClient {
+    fn event(
+        _: &mut Self,
+        _: &wl_seat::WlSeat,
+        _: wl_seat::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<xdg_activation_v1::XdgActivationV1, ()> for TestClient {
+    fn event(
+        _: &mut Self,
+        _: &xdg_activation_v1::XdgActivationV1,
+        event: xdg_activation_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        let _ = event;
+    }
+}
+
+impl Dispatch<xdg_activation_token_v1::XdgActivationTokenV1, ()> for TestClient {
+    fn event(
+        state: &mut Self,
+        _: &xdg_activation_token_v1::XdgActivationTokenV1,
+        event: xdg_activation_token_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let xdg_activation_token_v1::Event::Done { token } = event {
+            state.activation_token = Some(token);
+        }
+    }
+}
 
 impl Dispatch<xdg_wm_base::XdgWmBase, ()> for TestClient {
     fn event(
@@ -341,6 +454,7 @@ struct CompositorProcess {
     child: Child,
     socket_path: PathBuf,
     token_path: PathBuf,
+    stderr_path: PathBuf,
 }
 
 impl Drop for CompositorProcess {
@@ -353,9 +467,18 @@ impl Drop for CompositorProcess {
             let _ = self.child.kill();
         }
         let _ = self.child.wait();
+        // The compositor log is the only clue when it panics mid-test;
+        // surface it on failure (the T-07 malformed-traffic suite found a
+        // real mode-size panic this way).
+        if std::thread::panicking() {
+            if let Ok(log) = std::fs::read_to_string(&self.stderr_path) {
+                eprintln!("--- compositor stderr ---\n{log}--- end ---");
+            }
+        }
         let _ = std::fs::remove_file(&self.socket_path);
         let _ = std::fs::remove_file(self.socket_path.with_extension("lock"));
         let _ = std::fs::remove_file(&self.token_path);
+        let _ = std::fs::remove_file(&self.stderr_path);
     }
 }
 
@@ -365,6 +488,8 @@ impl CompositorProcess {
         let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
         let socket_path = PathBuf::from(&runtime_dir).join(&socket_name);
         let token_path = PathBuf::from(&runtime_dir).join(format!("{socket_name}.launch-token"));
+        let stderr_path = std::env::temp_dir().join(format!("{socket_name}.stderr"));
+        let stderr_file = std::fs::File::create(&stderr_path).expect("create stderr log");
 
         let mut child = Command::new(env!("CARGO_BIN_EXE_dragonfruit-compositor"))
             .arg("--backend")
@@ -373,7 +498,7 @@ impl CompositorProcess {
             .arg(&socket_name)
             .env("DRAGONFRUIT_LAUNCH_TOKENS", tokens.join(","))
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stderr(Stdio::from(stderr_file))
             .spawn()
             .expect("failed to start compositor");
 
@@ -390,6 +515,7 @@ impl CompositorProcess {
             child,
             socket_path,
             token_path,
+            stderr_path,
         }
     }
 
@@ -452,7 +578,9 @@ fn random_hex() -> String {
 
 /// Dispatch until `pred` is true or the timeout expires. Unlike a bare
 /// `blocking_dispatch`, this bounds the wait with `poll` so a missing event
-/// fails the test instead of hanging it.
+/// fails the test instead of hanging it. `#[track_caller]` makes the
+/// timeout panic point at the waiting call site.
+#[track_caller]
 fn wait_for(
     conn: &Connection,
     queue: &mut EventQueue<TestClient>,
@@ -999,6 +1127,369 @@ fn toplevel_handle_requests_round_trip() {
     let _ = queue.roundtrip(&mut state);
     surface.destroy();
     xdg_surface.destroy();
+    manager.destroy();
+    let _ = conn.flush();
+    proc.shutdown();
+}
+
+/// Map a toplevel and return its proxies plus the backing file (which must
+/// outlive the first flush).
+#[allow(clippy::type_complexity)]
+fn map_toplevel(
+    state: &mut TestClient,
+    queue: &mut EventQueue<TestClient>,
+    title: &str,
+    app_id: &str,
+) -> (
+    wl_surface::WlSurface,
+    xdg_surface::XdgSurface,
+    xdg_tl::XdgToplevel,
+    std::fs::File,
+) {
+    let qh = queue.handle();
+    let compositor = state.compositor.clone().unwrap();
+    let wm_base = state.xdg_wm_base.clone().unwrap();
+    let surface = compositor.create_surface(&qh, ());
+    let xdg_surface = wm_base.get_xdg_surface(&surface, &qh, ());
+    let toplevel = xdg_surface.get_toplevel(&qh, ());
+    toplevel.set_title(title.to_string());
+    toplevel.set_app_id(app_id.to_string());
+    surface.commit();
+    let _ = queue.roundtrip(state);
+    let (buffer, file) = shm_buffer(state, &qh, 200, 150);
+    surface.attach(Some(&buffer), 0, 0);
+    surface.commit();
+    let _ = queue.roundtrip(state);
+    (surface, xdg_surface, toplevel, file)
+}
+
+/// T-07 compliance: assert every event pair the client can trigger without
+/// a seat — output geometry/mode/transform, workspace index/activated/
+/// fullscreen/removed, focus, attention (`xdg-activation`), app-switcher
+/// state, and toplevel output/workspace/closed transitions.
+///
+/// The `input_action`/`progress`/`hot_corner`/`app_accelerator` events are
+/// emitted from the T-03 input outbox, which needs injected input (the
+/// synthetic-seat harness is still open); they are exercised by the T-03
+/// unit matrix instead.
+#[test]
+fn event_coverage_conformance() {
+    let token = "66".repeat(32);
+    let proc = CompositorProcess::start("dragonfruit-conformance-events", &[token]);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (name, version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, name, version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+
+    let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
+    let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.outputs.is_empty() && state.workspaces.len() >= 3 && state.done_count > 0,
+    );
+
+    // --- output properties (FR-2) ----------------------------------------
+    assert!(
+        !state.output_geometries.is_empty(),
+        "the output must report its geometry"
+    );
+    assert!(
+        !state.output_modes.is_empty(),
+        "the output must report its mode"
+    );
+    assert!(
+        !state.output_transforms.is_empty(),
+        "the output must report its transform"
+    );
+    assert!(
+        state.output_transforms.iter().all(|t| *t != u32::MAX),
+        "the transform enum must decode: {:?}",
+        state.output_transforms
+    );
+
+    // --- workspace index/activated (FR-2) --------------------------------
+    assert!(
+        state.workspace_indexes.contains(&0),
+        "the first Space must report index 0: {:?}",
+        state.workspace_indexes
+    );
+    assert!(
+        state.workspace_activated_flags.contains(&1),
+        "exactly one Space per output must be active: {:?}",
+        state.workspace_activated_flags
+    );
+
+    // --- map a window ----------------------------------------------------
+    let (surface, xdg_surface, toplevel, _file) = map_toplevel(
+        &mut state,
+        &mut queue,
+        "Coverage",
+        "org.dragonfruit.Coverage",
+    );
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.toplevels.is_empty(),
+    );
+    assert!(
+        state.toplevel_output_entered >= 1,
+        "a mapped window must report its output"
+    );
+    assert!(
+        state.toplevel_workspace_entered >= 1,
+        "a mapped window must report its Space"
+    );
+
+    let handle = state.toplevels[0].clone();
+
+    // --- focus (FR-4) ----------------------------------------------------
+    state.focused.clear();
+    handle.activate();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.focused.iter().any(|focused| focused.is_some()),
+    );
+
+    // --- attention via xdg-activation (FR-2) -----------------------------
+    state.attentions.clear();
+    let activation = state
+        .activation
+        .clone()
+        .expect("xdg_activation_v1 advertised");
+    let activation_token = activation.get_activation_token(&queue.handle(), ());
+    activation_token.set_app_id("org.dragonfruit.Coverage".to_string());
+    activation_token.commit();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.activation_token.is_some(),
+    );
+    let token_string = state
+        .activation_token
+        .clone()
+        .expect("activation token generated");
+    activation.activate(token_string, &surface);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .attentions
+                .iter()
+                .any(|handle| handle == &state.toplevels[0])
+        },
+    );
+
+    // --- fullscreen creates a dedicated Space; unfullscreen removes it ---
+    state.workspace_fullscreen.clear();
+    state.workspace_removed = 0;
+    handle.fullscreen();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.workspace_fullscreen.contains(&1),
+    );
+    handle.unfullscreen();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.workspace_removed >= 1,
+    );
+
+    // --- create + remove a Space -----------------------------------------
+    let removed_before = state.workspace_removed;
+    let before = state.workspaces.len();
+    manager.create_workspace();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.workspaces.len() > before,
+    );
+    let extra = state.workspaces[before].clone();
+    manager.remove_workspace(&extra);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.workspace_removed > removed_before,
+    );
+
+    // --- app switcher (FR-2) ---------------------------------------------
+    state.app_switchers.clear();
+    manager.cycle_app_switcher(1);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.app_switchers.iter().any(|(active, ..)| *active == 1),
+    );
+
+    // --- close/unmap -----------------------------------------------------
+    state.toplevel_closed = 0;
+    toplevel.destroy();
+    surface.destroy();
+    xdg_surface.destroy();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.toplevel_closed >= 1,
+    );
+
+    manager.destroy();
+    let _ = conn.flush();
+    proc.shutdown();
+}
+
+/// T-07 test-plan requirement: bad private-protocol traffic must never
+/// crash the compositor. Send already-authenticated handshakes, extreme
+/// output values, out-of-range reorders, requests against stale workspace
+/// and toplevel handles, then prove the session is still alive with a
+/// fresh round-trip.
+#[test]
+fn malformed_private_traffic_never_crashes() {
+    let token = "77".repeat(32);
+    let proc = CompositorProcess::start(
+        "dragonfruit-conformance-malformed",
+        std::slice::from_ref(&token),
+    );
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (name, version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, name, version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+
+    // Re-authenticate: refusal code 4 (already-authenticated), no disconnect.
+    state.refused.clear();
+    core.authenticate(1, token);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.refused.iter().any(|(code, _)| *code == 4),
+    );
+    assert!(
+        state.authenticated.is_some(),
+        "an already-authenticated refusal must not disconnect the trusted client"
+    );
+
+    let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
+    let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.outputs.is_empty() && state.workspaces.len() >= 3 && state.done_count > 0,
+    );
+
+    // --- extreme output values -------------------------------------------
+    let output = state.outputs[0].clone();
+    output.set_scale(f64::NAN);
+    output.set_scale(0.0);
+    output.set_scale(-4.0);
+    output.set_mode(0, 0, 0);
+    output.set_mode(u32::MAX, u32::MAX, u32::MAX);
+    output.set_transform(df_output::Transform::_270);
+    output.set_vrr(1);
+    output.set_night_light(1, 100);
+    let _ = queue.roundtrip(&mut state);
+
+    // --- out-of-range reorder, then requests against a stale workspace ----
+    let first = state.workspaces[0].clone();
+    manager.reorder_workspace(&first, u32::MAX);
+    let third = state.workspaces[2].clone();
+    manager.remove_workspace(&third);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.workspace_removed >= 1,
+    );
+    third.activate();
+    third.set_wallpaper(None, df_workspace::WallpaperFit::Fill, 0);
+    let _ = queue.roundtrip(&mut state);
+
+    // --- requests against a stale toplevel handle ------------------------
+    let (surface, xdg_surface, toplevel, _file) = map_toplevel(
+        &mut state,
+        &mut queue,
+        "Malformed",
+        "org.dragonfruit.Malformed",
+    );
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.toplevels.is_empty(),
+    );
+    let handle = state.toplevels[0].clone();
+    toplevel.destroy();
+    surface.destroy();
+    xdg_surface.destroy();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.toplevel_closed >= 1,
+    );
+    handle.zoom();
+    handle.activate();
+    handle.minimize();
+    handle.move_to_workspace(&first);
+    let _ = queue.roundtrip(&mut state);
+
+    // --- still alive: a fresh request round-trips ------------------------
+    state.done_count = 0;
+    manager.create_workspace();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.done_count > 0,
+    );
+
     manager.destroy();
     let _ = conn.flush();
     proc.shutdown();

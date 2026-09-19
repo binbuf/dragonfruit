@@ -37,8 +37,16 @@ pub fn run(socket_name: &str) -> Result<(), String> {
                 Ok(())
             }),
             render: Box::new(|state| {
-                // No render target: mark the redraw request as served so
-                // damage accounting stays honest in tests.
+                // No render target, but count the redraw request honestly:
+                // `frames_rendered` only advances when something actually
+                // asked for a frame, so the FR-2 idle trace (steady state
+                // with no clients must produce zero damage) can be asserted
+                // on this backend without a display.
+                if state.needs_redraw {
+                    state.stats.frames_rendered += 1;
+                } else {
+                    state.stats.frames_skipped_no_damage += 1;
+                }
                 state.needs_redraw = false;
                 Ok(())
             }),

@@ -1695,14 +1695,36 @@ impl Dispatch<df_output::DfOutput, OutputUserData> for DfState {
                 height,
                 refresh,
             } => {
-                let mode = Mode {
-                    size: (width as i32, height as i32).into(),
-                    refresh: refresh as i32,
-                };
-                output.change_current_state(Some(mode), None, None, None);
+                // Client-controlled mode values must never construct an
+                // invalid `Size` (a negative dimension panics inside
+                // Smithay). Reject nonsensical modes instead of aborting
+                // the session; the ack below still reports the live mode.
+                if width > 0 && height > 0 && width <= i32::MAX as u32 && height <= i32::MAX as u32
+                {
+                    let mode = Mode {
+                        size: (width as i32, height as i32).into(),
+                        refresh: refresh as i32,
+                    };
+                    output.change_current_state(Some(mode), None, None, None);
+                } else {
+                    eprintln!(
+                        "dragonfruit-compositor: ignoring invalid mode request {width}x{height}"
+                    );
+                }
             }
             df_output::Request::SetScale { scale } => {
-                output.change_current_state(None, None, Some(OutputScale::Fractional(scale)), None);
+                // A non-finite or non-positive scale would poison every
+                // later geometry conversion; keep the current scale.
+                if scale.is_finite() && scale > 0.0 {
+                    output.change_current_state(
+                        None,
+                        None,
+                        Some(OutputScale::Fractional(scale)),
+                        None,
+                    );
+                } else {
+                    eprintln!("dragonfruit-compositor: ignoring invalid scale request {scale}");
+                }
             }
             df_output::Request::SetTransform { transform } => {
                 let transform = transform_from_wire(
