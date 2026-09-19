@@ -256,10 +256,13 @@ Notes for subsequent tasks:
   needs a `PointerGrab` implementation; not on T-03's acceptance path.
   Note here so T-04/T-05 do not assume it works.
 - **Test-plan gap:** the ticket's "integration (headless): synthetic
-  libinput events drive shortcuts" is covered at unit level (engine +
+  libinput events drive shortcuts" was covered at unit level (engine +
   pipeline matrix), not by synthesizing libinput into the headless
-  backend. The headless backend has no seat devices, so a synthetic
-  input harness would be needed; consider it with T-31 hardening.
+  backend. *Resolved:* the headless backend now has a real synthetic
+  `InputBackend` + injection socket; see the "T-03 synthetic-input
+  harness" section at the end of this file. `shell_protocol_conformance::
+  synthetic_input_drives_shortcuts_hot_corners_and_gestures` drives
+  keyboard, hot-corner, gesture, and pointer events end to end.
 
 ## T-04 — window model: states, focus, placement, regions
 
@@ -290,9 +293,11 @@ Open items:
   T-01…T-04 review:* `compositor/tests/window_conformance.rs` now drives
   a real `wayland-client` on the headless backend through mapping,
   maximize/unmaximize, fullscreen/unfullscreen, and a constrained popup.
-  Move/resize is still unit-level: starting a pointer grab needs a seat
-  button press, which the headless backend has no device to produce (see
-  the T-03 synthetic-input harness gap).
+  *Updated again (T-03 harness):* the same suite now drives interactive
+  `xdg_toplevel.move`/`resize` over the protocol with a synthetic seat
+  button, asserting the resize configure (`move_and_resize_requests_are_
+  served_over_protocol`). Move has no client-visible geometry event, so it
+  is asserted as "grab ran, window survived".
 - **Aspect hints are not wired.** `window::resize::apply_aspect` exists and
   is tested, but xdg-shell has no aspect hint and X11 `WM_NORMAL_HINTS`
   arrive with T-06; call it from `DfState::window_size_constraints` then.
@@ -838,11 +843,14 @@ later ticket lands · **[upstream]** depends on Smithay/upstream.
 
 ### T-03 — input stack
 
-- [ ] **[host]** Build the synthetic-input harness for the headless backend
+- [x] **[host]** Build the synthetic-input harness for the headless backend
       (seat device + injected libinput-equivalent events). Unblocks the
       ticket's own integration test ("synthetic libinput drives shortcuts")
       and **T-04's protocol-level move/resize** conformance. Highest-value
-      host-closable item.
+      host-closable item. *Done:* `compositor/src/input/synthetic.rs` +
+      `DRAGONFRUIT_SYNTHETIC_INPUT`; the T-03 integration test and the T-04
+      move/resize conformance both use it (see the section at the end of
+      this file). Next T-03 host item: pointer-constraint grabs.
 - [ ] **[host]** Implement pointer-constraint grabs (confine/lock).
       `PointerConstraintsHandler::new_constraint` is a no-op TODO; the
       protocol is advertised in the T-02 surface, so a client that locks the
@@ -862,8 +870,12 @@ later ticket lands · **[upstream]** depends on Smithay/upstream.
 
 ### T-04 — window model
 
-- [ ] **[host]** Protocol-level move/resize conformance (needs T-03's
-      synthetic seat button). Currently unit-level only.
+- [x] **[host]** Protocol-level move/resize conformance (needs T-03's
+      synthetic seat button). *Done:* `window_conformance.rs`
+      `move_and_resize_requests_are_served_over_protocol` drives
+      `xdg_toplevel.move`/`resize` with an injected button press and
+      asserts the resize configure. Move has no xdg-shell geometry event,
+      so it is a grab-ran/survived assertion (see the harness notes).
 - [x] **[host]** Malformed-client suite: `window_conformance.rs`
       `malformed_client_requests_never_crash` drives no-op transitions on a
       floating window, contradictory min>max size hints, re-entrant
@@ -927,9 +939,11 @@ later ticket lands · **[upstream]** depends on Smithay/upstream.
       output geometry/mode/transform, workspace index/activated/fullscreen/
       removed, focus, attention (`xdg-activation`), app-switcher state, and
       toplevel output/workspace/closed transitions are now asserted by
-      `event_coverage_conformance`. Still missing (need injected input, T-03
-      synthetic seat): `input_action`, `progress`, `hot_corner`,
-      `app_accelerator`.
+      `event_coverage_conformance`. *Updated with the T-03 harness:*
+      `input_action`, `progress`, and `hot_corner` are now asserted by
+      `synthetic_input_drives_shortcuts_hot_corners_and_gestures`. Only
+      `app_accelerator` remains — it needs a focused app with a registered
+      accelerator (T-22 owns registration).
 - [ ] **[host]** FR-7 additive-only proof test. Introduce the first
       `since="2"` member (or a test-only interface), bind version 1, and
       assert the v2 member is neither sent nor required; gate every
@@ -955,15 +969,18 @@ later ticket lands · **[upstream]** depends on Smithay/upstream.
 
 ### The E2E return point and suggested order
 
-1. T-03 synthetic-input harness → T-04 move/resize conformance. **Still the
-   top host-closable item**; it also unblocks the four remaining T-07
-   input events and the input-region click-through test.
-2. T-03 pointer constraints + malicious-grab test.
+1. ~~T-03 synthetic-input harness → T-04 move/resize conformance.~~ **Done**
+   (see the section at the end of this file); it also closed three of the
+   four T-07 input-driven events. The input-region click-through test can
+   now be written on top of it.
+2. T-03 pointer constraints + malicious-grab test. **Next host-closable
+   item.**
 3. ~~T-04 input-region + malformed-client suite.~~ **Done** (input-region
    confirmed; malformed-client suite added).
 4. ~~T-07 compliance-client completeness + additive-only proof + malformed
-   suite.~~ **Mostly done**: event coverage + malformed suite landed; the
-   additive-only proof and the four input-driven events remain.
+   suite.~~ **Mostly done**: event coverage + malformed suite + the three
+   input-driven events landed; the additive-only proof and
+   `app_accelerator` (needs T-22) remain.
 5. T-06 clipboard image/file test + ~~fractional-scale decision~~ (done) +
    malformed X.
 6. ~~T-02 idle-trace assertion (nested/headless).~~ **Headless done**; the
@@ -1037,10 +1054,11 @@ malformed private-protocol message can no longer abort the session.
   negative dimensions; `set_mode`, `set_scale`, and future output/geometry
   requests need the same guard. This is the same crash class as the X11
   NUL-title panic (client data must never abort the compositor).
-- **The four remaining T-07 compliance events (`input_action`, `progress`,
+- **The T-07 input compliance events (`input_action`, `progress`,
   `hot_corner`, `app_accelerator`) are emitted from the T-03 outbox and
-  need injected input.** The T-03 synthetic-seat harness is the unblocker;
-  until then they are covered by the T-03 unit matrix.
+  need injected input.** *Updated:* the T-03 synthetic-seat harness now
+  exists and asserts the first three; only `app_accelerator` remains
+  (needs a focused app with a registered accelerator, T-22).
 - **The FR-7 additive-only proof still needs a real `since="2"` member.**
   Do not add a fake one to production; add the conformance case in the
   same change that introduces the first v2 member, and gate every
@@ -1048,3 +1066,62 @@ malformed private-protocol message can no longer abort the session.
 - **`docs/xwayland-scaling.md` records the chosen policy but not the
   plumbing.** The viewport downscale and the multi-monitor "largest scale"
   decision are T-13/T-31 work.
+
+## T-03 — synthetic-input harness (headless seat) + T-04 move/resize
+
+**State: complete.** The headless backend now has a real
+`InputBackend` (`compositor/src/input/synthetic.rs`) whose events are
+parsed from a line protocol delivered over a `UnixDatagram` socket. It is
+opt-in and headless-only: the socket is bound only when
+`DRAGONFRUIT_SYNTHETIC_INPUT` names a path, and it is removed at teardown.
+Events are libinput-equivalent — evdev keycodes get the xkb +8,
+absolute coordinates are device-normalized `0..=1`, relative motion is
+logical pixels — and flow through the one `process_input_event` router,
+so a synthetic shortcut/gesture/hot corner exercises the same code path
+as a real device. A datagram may batch newline-separated commands; a
+malformed line is logged and skipped, never fatal.
+
+New integration coverage (both in `make e2e`):
+
+- `shell_protocol_conformance::synthetic_input_drives_shortcuts_hot_corners_and_gestures`
+  drives Ctrl+Right (`workspace-next`), a top-left hot-corner dwell
+  (`mission-control`), and a four-finger vertical swipe
+  (`mission-control` + progress events), asserting the private-protocol
+  `input_action`/`hot_corner`/`progress` events and the real Space switch;
+  it also proves a synthetic pointer click focuses a mapped window.
+- `window_conformance::move_and_resize_requests_are_served_over_protocol`
+  uses the harness for the seat button that starts the pointer grab and
+  asserts an interactive `xdg_toplevel.resize` produces a configure with
+  the dragged size.
+
+Notes for subsequent tasks:
+
+- **Wire format is documented in the module header.** Verbs: `key`,
+  `motion`, `motion-abs`, `button`, `axis`, `swipe-*`, `pinch-*`,
+  `touch-*`. `motion-abs` and touch coordinates are normalized like
+  libinput, not logical pixels. Send a command per datagram, or batch
+  lines.
+- **The harness is the headless seat now.** Use it for any protocol test
+  that needs a key/button/gesture. `motion-abs 0.5 0.5` hits the center
+  of the first output; the first mapped window is centered there too.
+- **Only `app_accelerator` remains uncovered.** It needs a focused app
+  with a registered accelerator (T-22 owns registration): when T-22 lands,
+  register an accelerator for a mapped window's `app_id`, focus it, inject
+  the chord, and assert the event.
+- **Move has no client-visible geometry event** in xdg-shell, so the T-04
+  move half only asserts the grab ran and the window survived (resize is
+  the strong assertion). Tighten it if a future ticket adds a geometry
+  query.
+- **Pointer-constraint grabs are the next T-03 host item.**
+  `PointerConstraintsHandler::new_constraint` is still a no-op and the
+  protocol is advertised; the synthetic harness can now drive a
+  lock/confine client. The malicious-grab test (real client + audit log)
+  is the other.
+- **`DRAGONFRUIT_SYNTHETIC_INPUT` must never be set in a real session.**
+  Only the headless backend reads it; nested/DRM ignore it. It is a local
+  test channel, not an input API.
+- **Host env for direct cargo test:** `PKG_CONFIG_PATH=~/.local/df-devroot/
+  lib64/pkgconfig` and `RUSTFLAGS="-L ~/.local/df-devroot/lib64
+  -L ~/.local/lib"`; the Makefile sets both. `make check`-equivalent
+  (fmt, clippy, qmllint, desktop-name/no-capture gates, `cargo test`,
+  `make e2e`, 100-cycle soak) is green.

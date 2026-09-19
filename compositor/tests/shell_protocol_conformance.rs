@@ -455,6 +455,7 @@ struct CompositorProcess {
     socket_path: PathBuf,
     token_path: PathBuf,
     stderr_path: PathBuf,
+    synthetic_path: Option<PathBuf>,
 }
 
 impl Drop for CompositorProcess {
@@ -479,11 +480,24 @@ impl Drop for CompositorProcess {
         let _ = std::fs::remove_file(self.socket_path.with_extension("lock"));
         let _ = std::fs::remove_file(&self.token_path);
         let _ = std::fs::remove_file(&self.stderr_path);
+        if let Some(path) = &self.synthetic_path {
+            let _ = std::fs::remove_file(path);
+        }
     }
 }
 
 impl CompositorProcess {
     fn start(socket_name: &str, tokens: &[String]) -> Self {
+        Self::start_with_synthetic(socket_name, tokens, None)
+    }
+
+    /// Start with the T-03 synthetic-input harness bound at
+    /// `synthetic_path` (`DRAGONFRUIT_SYNTHETIC_INPUT`).
+    fn start_with_synthetic(
+        socket_name: &str,
+        tokens: &[String],
+        synthetic_path: Option<&Path>,
+    ) -> Self {
         let socket_name = format!("{socket_name}-{}", std::process::id());
         let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
         let socket_path = PathBuf::from(&runtime_dir).join(&socket_name);
@@ -491,16 +505,19 @@ impl CompositorProcess {
         let stderr_path = std::env::temp_dir().join(format!("{socket_name}.stderr"));
         let stderr_file = std::fs::File::create(&stderr_path).expect("create stderr log");
 
-        let mut child = Command::new(env!("CARGO_BIN_EXE_dragonfruit-compositor"))
+        let mut command = Command::new(env!("CARGO_BIN_EXE_dragonfruit-compositor"));
+        command
             .arg("--backend")
             .arg("headless")
             .arg("--socket-name")
             .arg(&socket_name)
             .env("DRAGONFRUIT_LAUNCH_TOKENS", tokens.join(","))
             .stdout(Stdio::null())
-            .stderr(Stdio::from(stderr_file))
-            .spawn()
-            .expect("failed to start compositor");
+            .stderr(Stdio::from(stderr_file));
+        if let Some(path) = synthetic_path {
+            command.env("DRAGONFRUIT_SYNTHETIC_INPUT", path);
+        }
+        let mut child = command.spawn().expect("failed to start compositor");
 
         let deadline = Instant::now() + Duration::from_secs(10);
         while !socket_path.exists() || !token_path.exists() {
@@ -510,12 +527,22 @@ impl CompositorProcess {
             assert!(Instant::now() < deadline, "compositor never became ready");
             std::thread::sleep(Duration::from_millis(10));
         }
+        if let Some(path) = synthetic_path {
+            while !path.exists() {
+                assert!(
+                    Instant::now() < deadline,
+                    "synthetic-input socket never appeared"
+                );
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        }
 
         Self {
             child,
             socket_path,
             token_path,
             stderr_path,
+            synthetic_path: synthetic_path.map(Path::to_path_buf),
         }
     }
 
@@ -1493,4 +1520,178 @@ fn malformed_private_traffic_never_crashes() {
     manager.destroy();
     let _ = conn.flush();
     proc.shutdown();
+}
+
+/// Sends synthetic-input commands to the compositor's T-03 harness socket
+/// (see `compositor/src/input/synthetic.rs` for the wire format).
+struct SyntheticInput {
+    socket: std::os::unix::net::UnixDatagram,
+    path: PathBuf,
+}
+
+impl SyntheticInput {
+    fn connect(path: &Path) -> Self {
+        let socket = std::os::unix::net::UnixDatagram::unbound().expect("unbound datagram");
+        Self {
+            socket,
+            path: path.to_path_buf(),
+        }
+    }
+
+    #[track_caller]
+    fn send(&self, command: &str) {
+        self.socket
+            .send_to(command.as_bytes(), &self.path)
+            .unwrap_or_else(|err| panic!("failed to send synthetic {command:?}: {err}"));
+    }
+}
+
+/// T-03 acceptance (integration, headless): synthetic libinput-equivalent
+/// events drive the seat through the exact same router as a real device.
+/// A keyboard shortcut, a hot-corner dwell, and a four-finger gesture each
+/// reach the private shell protocol as the same compositor action, and a
+/// synthetic pointer click focuses a real mapped window. This also closes
+/// the `input_action`/`hot_corner`/`progress` events the T-07 compliance
+/// client could not previously trigger.
+#[test]
+fn synthetic_input_drives_shortcuts_hot_corners_and_gestures() {
+    let token = "88".repeat(32);
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path =
+        PathBuf::from(&runtime_dir).join(format!("dragonfruit-synth-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-synthetic",
+        std::slice::from_ref(&token),
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (name, version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, name, version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+
+    let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
+    let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.outputs.is_empty() && state.workspaces.len() >= 3 && state.done_count > 0,
+    );
+
+    // --- keyboard: Ctrl+Right is the system WorkspaceNext shortcut -------
+    state.input_actions.clear();
+    state.workspace_activated.clear();
+    // evdev codes: KEY_LEFTCTRL=29, KEY_RIGHT=106.
+    input.send("key 29 down\nkey 106 down\nkey 106 up\nkey 29 up");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .input_actions
+                .iter()
+                .any(|(action, source, _)| action == "workspace-next" && source == "keyboard")
+        },
+    );
+    // The shortcut really switched the Space, not just logged an action.
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.workspace_activated.contains(&1),
+    );
+
+    // --- hot corner: dwell in the top-left fires Mission Control ---------
+    state.hot_corners.clear();
+    state.input_actions.clear();
+    input.send("motion-abs 0.001 0.001");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.hot_corners.is_empty(),
+    );
+    // TopLeft == 0 in the `df_toplevel_manager.hot_corner` enum.
+    assert_eq!(state.hot_corners[0].0, 0, "top-left corner fired");
+    assert!(
+        state
+            .input_actions
+            .iter()
+            .any(|(action, source, _)| action == "mission-control" && source == "hot-corner"),
+        "the hot corner must dispatch through the same outbox: {:?}",
+        state.input_actions
+    );
+
+    // --- gesture: four-finger vertical swipe drives shared progress ------
+    state.input_actions.clear();
+    state.progress_events = 0;
+    input.send("swipe-begin 4");
+    input.send("swipe-update 0 -100");
+    input.send("swipe-update 0 -100");
+    input.send("swipe-end");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .input_actions
+                .iter()
+                .any(|(action, source, _)| action == "mission-control" && source == "gesture")
+        },
+    );
+    assert!(
+        state.progress_events > 0,
+        "a gesture must emit shared progress events"
+    );
+
+    // --- pointer: a synthetic click focuses a real mapped window ---------
+    let (_surface, _xdg_surface, _toplevel, _file) = map_toplevel(
+        &mut state,
+        &mut queue,
+        "Synthetic",
+        "org.dragonfruit.Synthetic",
+    );
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.toplevels.is_empty(),
+    );
+    state.focused.clear();
+    // The first window is centered on the 1280x720 output; (0.5, 0.5) is
+    // its middle. BTN_LEFT == 0x110 == 272.
+    input.send("motion-abs 0.5 0.5");
+    input.send("button 272 down\nbutton 272 up");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.focused.iter().any(|focused| focused.is_some()),
+    );
+
+    manager.destroy();
+    let _ = conn.flush();
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
 }
