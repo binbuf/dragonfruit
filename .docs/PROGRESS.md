@@ -336,6 +336,76 @@ Notes for subsequent tasks:
   `new_toplevel` sends the initial configure with `bounds` only, and
   `map_pending_windows` captures the metadata at first commit.
 
+## T-05 — Spaces: the compositor workspace model
+
+**State: partial.** Done and verified: the per-output ordered Space model
+(`compositor/src/workspace/`) with three Spaces per display, lockstep
+switching, dedicated fullscreen Spaces with an exact origin round-trip,
+window→Space assignment, app Space memory, minimized-window exclusion,
+display-hotplug attach/detach migration, per-Space wallpaper data, and a
+bounded workspace event outbox; keyboard/gesture triggers switch Spaces
+through the existing T-03 paths; the active Space's wallpaper color drives
+the nested and DRM clear passes (the shell never draws the background).
+16 new unit tests cover the model (two-output lockstep, fullscreen
+round-trip, hotplug matrix with zero window loss, create/remove/reorder,
+app memory). `cargo clippy --workspace --all-targets -D warnings`,
+`cargo fmt --check`, and the desktop-name / no-capture gates are green.
+
+Notes for subsequent tasks:
+
+- **Workspace truth is `DfState.workspaces`.** The model is pure — keyed
+  by [`WindowId`]/[`SpaceId`] and free of Smithay types — so it is
+  unit-tested without a live compositor. The shell must never keep a
+  second copy: T-07 should drain `WorkspaceModel::dispatch()` (a bounded
+  outbox exactly like `WindowDispatch`) into the private protocol rather
+  than re-deriving events. Nothing drains it yet, so it is bounded by
+  capacity (1024).
+- **Space ids are per-output instances; lockstep is by index.** Each
+  output owns its own `Space` objects with distinct ids. Cross-output code
+  must compare *indices or names* (`space_names`), never ids. A fullscreen
+  window is assigned to the owning output's Space, but every output gets an
+  empty fullscreen Space at the same index so the lists stay aligned and a
+  lockstep switch still works. `enter_fullscreen`/`exit_fullscreen` return
+  the owner's ids.
+- **Scene mapping is centralized in `DfState::apply_workspace_layout`.**
+  Only visible windows whose assigned Space is active on their output are
+  mapped. Any new code that maps/unmaps windows must respect
+  `window_on_active_space` or a window will leak onto the wrong Space.
+  `apply_window_transition`, `restore_window`, and `map_pending_windows`
+  already consult it; `minimize_window` still unmaps directly (always
+  correct).
+- **Trigger routing.** `dispatch_input_action` applies workspace actions
+  immediately after recording/progress; gesture commits bypass it and call
+  `handle_workspace_action` from `input.rs::end_gesture`. A new trigger
+  path (shell, portal) must go through one of those two, not call
+  `WorkspaceModel` directly.
+- **Fullscreen lifecycle now owns a Space.** `fullscreen_window` creates
+  it (guarding against a repeated request), `unfullscreen_window` destroys
+  it, and `toplevel_destroyed` destroys it when a fullscreen window dies.
+  The `window_conformance` fullscreen round-trip still passes over the
+  protocol.
+- **Hotplug ordering.** `backend::add_output` calls `on_output_added`
+  (fresh Space list). DRM `connector_disconnected`/`device_removed` call
+  `on_output_removed` *before* `space.unmap_output`, so the remaining
+  primary can be computed from `space.outputs()` (first output whose name
+  differs). Migration re-homes the removed output's windows to that
+  output's current Space; if it was the last output, assignments are kept
+  so a re-attach can re-home them.
+- **Wallpaper is color-only today.** `Wallpaper { color, source, fit }` is
+  stored per Space and the active color is rendered via
+  `wallpaper_color_for` (nested/DRM clear pass). Image sampling and the
+  slide/scale during a switch need a scene-element refactor: `render_output`
+  takes a single `Space<E>` type, so a real per-Space background element
+  means a `SceneElement` enum wrapping `Window` + wallpaper. Consider that
+  with T-11 rather than bolting on a second typed Space.
+- **App memory is keyed by index, not `SpaceId`**, so it survives lockstep
+  changes and fullscreen insertions. It is updated on new-window
+  assignment and on "Move to Space"; persistence across compositor
+  restarts is still deferred (settingsd, T-16).
+- **Window placement still keys off the primary output.** New windows are
+  placed on the first output and assigned there; multi-monitor placement
+  (which output a window opens on) is T-11/T-16.
+
 ## Devroot: user-space native-dep sysroot (learned during T-02)
 
 The DRM backend needs libdrm/gbm/libinput/libseat/libudev *headers and

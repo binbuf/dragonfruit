@@ -88,7 +88,7 @@ Updated when a task is partially or completely finished; see
 
 | Phase | Tickets |
 |---|---|
-| 1 · Foundation | T-01 ✅ done · T-02 🔄 partial (compositor core) · T-03 🔄 partial (input engine) · T-04 🔄 partial (window model) · T-05 … T-07 pending |
+| 1 · Foundation | T-01 ✅ done · T-02 🔄 partial (compositor core) · T-03 🔄 partial (input engine) · T-04 🔄 partial (window model) · T-05 🔄 partial (Spaces model) · T-06 … T-07 pending |
 | 2 · Experience | T-08 … T-14 pending |
 | 3 · Flagship apps | T-15 … T-19 pending |
 | 4 · System integration | T-20 … T-23 pending |
@@ -159,6 +159,26 @@ grab to start the pointer grab); aspect hints (X11) and the
 private-protocol wiring of the broadcast outbox (T-07). Details:
 [PROGRESS.md](PROGRESS.md).
 
+T-05 is partial: the per-output ordered Space model (three Spaces per
+display) with lockstep switching, dedicated fullscreen Spaces with an
+exact origin round-trip, window→Space assignment, app Space memory keyed
+by `app_id`/`WM_CLASS`, minimized-window exclusion, display-hotplug
+attach/detach migration, per-Space wallpaper data, and a bounded
+workspace event outbox are done and covered by 16 unit tests — including
+the two-output lockstep switch, the fullscreen round-trip, and the
+attach/detach matrix with zero window loss. Keyboard and gesture triggers
+now switch Spaces through the existing T-03 dispatch paths, and the
+active Space's wallpaper color is compositor-rendered (the shell never
+draws the desktop background) in the nested and DRM clear passes. Open:
+image wallpaper rendering (`source`/`fit` are stored but not sampled) and
+the sliding/scale scene mechanics during a switch (T-11 owns the
+animation polish); protocol-level verification of lockstep and the
+fullscreen Space lifecycle waits on the private protocol (T-07), so the
+current tests are model-level; window placement still keys off the
+primary output until multi-monitor placement lands (T-11/T-16); app
+memory is session-scope only (settingsd persistence deferred). Details:
+[PROGRESS.md](PROGRESS.md).
+
 1. **Foundation**
    - [x] Smithay compositor (event loop, protocol surface, render stack — T-02)
    - [x] Nested backend (live-verified on the dev host)
@@ -166,7 +186,7 @@ private-protocol wiring of the broadcast outbox (T-07). Details:
    - [ ] Input (T-03 engine done: keymaps, shortcuts, gestures, hot corners; hardware validation + shell/portal wiring open)
    - [x] Outputs (wl_output + xdg_output globals, modes/scale/transform, hotplug)
    - [x] Windows (T-04 model: states, focus, placement, regions, move/resize, popups; headless toplevel-state + popup conformance covered, move/resize still unit-level)
-   - [ ] Workspace model
+   - [x] Workspace model (T-05: per-output lockstep Spaces, fullscreen Spaces, wallpaper color, app memory, hotplug migration; image wallpaper + switch animation + protocol wiring open)
    - [ ] Xwayland
 2. **Experience**
    - [ ] Design system

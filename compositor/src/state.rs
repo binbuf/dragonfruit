@@ -25,6 +25,7 @@
 //! the machinery: a Smithay [`Space`] of [`Window`]s and the seat.
 
 use smithay::backend::allocator::dmabuf::Dmabuf;
+use smithay::backend::renderer::Color32F;
 use smithay::desktop::{
     find_popup_root_surface, PopupKeyboardGrab, PopupKind, PopupManager,
     PopupPointerGrab, Space, Window,
@@ -35,7 +36,9 @@ use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::reexports::wayland_server::backend::{ClientData, ClientId, DisconnectReason};
 use smithay::reexports::wayland_server::protocol::{wl_buffer, wl_seat, wl_surface::WlSurface};
 use smithay::reexports::wayland_server::{Client, DisplayHandle, Resource as _};
-use smithay::utils::{Clock, IsAlive, Logical, Monotonic, Point, Rectangle, Serial, Size};
+use smithay::utils::{
+    Clock, IsAlive, Logical, Monotonic, Point, Rectangle, Serial, Size, SERIAL_COUNTER,
+};
 use smithay::wayland::buffer::BufferHandler;
 use smithay::wayland::compositor::{
     get_parent, with_states, CompositorClientState, CompositorHandler, CompositorState,
@@ -45,6 +48,7 @@ use smithay::wayland::cursor_shape::CursorShapeManagerState;
 use smithay::wayland::dmabuf::{DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier};
 use smithay::input::SeatHandler;
 use smithay::input::Seat;
+use smithay::output::Output;
 use smithay::wayland::fractional_scale::{FractionalScaleHandler, FractionalScaleManagerState};
 use smithay::wayland::idle_inhibit::{IdleInhibitHandler, IdleInhibitManagerState};
 use smithay::wayland::idle_notify::{IdleNotifierHandler, IdleNotifierState};
@@ -89,8 +93,9 @@ use crate::window::popup::constrained_popup_geometry;
 use crate::window::resize::SizeConstraints;
 use crate::window::{
     cascaded_geometry, centered_on, ReservedZones, ShellWindowEvent, WindowDispatch, WindowEvent,
-    WindowEventKind, WindowMenuCommand, WindowModel, CASCADE_STEP,
+    WindowEventKind, WindowId, WindowMenuCommand, WindowModel, CASCADE_STEP,
 };
+use crate::workspace::WorkspaceModel;
 
 use smithay::input::pointer::Focus as PointerFocus;
 
@@ -204,6 +209,12 @@ pub struct DfState {
     pub reserved_zones: ReservedZones,
     /// The window that currently owns keyboard focus, if any.
     pub active_window: Option<Window>,
+
+    // --- workspace model (T-05) --------------------------------------------
+    /// Per-output ordered Space lists, fullscreen Spaces, wallpaper, window
+    /// assignment, and app Space memory. The compositor is the sole owner;
+    /// the shell consumes events and keeps no copy.
+    pub workspaces: WorkspaceModel,
 
     // --- input engine (T-03) ------------------------------------------------
     /// Global shortcut engine: the sole arbiter of key bindings.
@@ -319,6 +330,7 @@ impl DfState {
             window_dispatch: WindowDispatch::new(),
             reserved_zones: ReservedZones::default(),
             active_window: None,
+            workspaces: WorkspaceModel::new(),
             shortcuts,
             gestures,
             progress,
@@ -382,6 +394,7 @@ impl DfState {
         });
 
         let mut mapped = 0;
+        let mut switched = false;
         for window in to_map {
             let size = window.bbox().size;
             let parent = window
@@ -406,7 +419,7 @@ impl DfState {
                     .unwrap_or_else(|| Rectangle::new(Point::from((0, 0)), size))
             };
 
-            self.windows.insert(window.clone(), geometry);
+            let id = self.windows.insert(window.clone(), geometry);
             // Capture metadata set before the first buffer commit.
             if let Some(toplevel) = window.toplevel() {
                 self.windows.set_app_id(&window, toplevel_app_id(toplevel));
@@ -415,9 +428,20 @@ impl DfState {
             if let Some(parent) = parent {
                 self.windows.set_parent(&window, &parent);
             }
-            self.space.map_element(window.clone(), geometry.loc, true);
+            // Workspace assignment: a new window opens on the Space its app
+            // remembers (activating it in lockstep), otherwise on the active
+            // Space of the output it is placed on (FR-5).
+            if self.assign_new_window_space(&window, id) {
+                switched = true;
+            }
+            if self.window_on_active_space(&window) {
+                self.space.map_element(window.clone(), geometry.loc, true);
+            }
             self.broadcast_window(&window, WindowEventKind::Mapped);
             mapped += 1;
+        }
+        if switched {
+            self.apply_workspace_layout();
         }
         if mapped > 0 {
             self.needs_redraw = true;
@@ -430,6 +454,172 @@ impl DfState {
             Some(output) => (Some(output.name()), self.space.output_geometry(output)),
             None => (None, None),
         }
+    }
+
+    // --- workspaces (T-05) --------------------------------------------------
+
+    /// The output `window` currently occupies, or the primary output.
+    pub fn output_name_for(&self, window: &Window) -> Option<String> {
+        if let Some(output) = self.space.outputs_for_element(window).into_iter().next() {
+            return Some(output.name());
+        }
+        self.primary_output().0
+    }
+
+    /// Assign a newly mapped window to a Space. It goes to the Space its app
+    /// remembers (activating that Space in lockstep, FR-5) or the active
+    /// Space of the primary output otherwise. Returns true if the active
+    /// Space changed.
+    fn assign_new_window_space(&mut self, window: &Window, id: WindowId) -> bool {
+        let (Some(output_name), _) = self.primary_output() else {
+            return false;
+        };
+        let remembered = self
+            .windows
+            .app_id(window)
+            .and_then(|app| self.workspaces.app_space_index(app));
+        let (index, switched) = match remembered {
+            Some(index) => (index, self.workspaces.activate_all(index)),
+            None => (
+                self.workspaces.active_index(&output_name).unwrap_or(0),
+                false,
+            ),
+        };
+        if let Some(space) = self.workspaces.space_at(&output_name, index) {
+            self.workspaces.assign_window(id, space);
+        }
+        if let Some(app) = self.windows.app_id(window).map(str::to_string) {
+            self.workspaces.remember_app(&app, index);
+        }
+        switched
+    }
+
+    /// Whether `window`'s assigned Space is currently active on its output.
+    /// Unassigned windows are treated as active (pre-T-05 behavior).
+    pub fn window_on_active_space(&self, window: &Window) -> bool {
+        self.windows
+            .id(window)
+            .map(|id| self.window_on_active_space_id(id))
+            .unwrap_or(true)
+    }
+
+    fn window_on_active_space_id(&self, id: WindowId) -> bool {
+        let Some(space) = self.workspaces.window_space(id) else {
+            return true;
+        };
+        let Some(output) = self.workspaces.space_output(space) else {
+            return true;
+        };
+        self.workspaces.active_space(output) == Some(space)
+    }
+
+    /// Map only the visible windows of each output's active Space and unmap
+    /// the rest. Minimized windows stay unmapped regardless (FR-6).
+    pub fn apply_workspace_layout(&mut self) {
+        let entries: Vec<(Window, WindowId)> = self
+            .windows
+            .windows()
+            .filter_map(|window| self.windows.id(window).map(|id| (window.clone(), id)))
+            .collect();
+        let mut changed = false;
+        for (window, id) in entries {
+            let visible = self
+                .windows
+                .state(&window)
+                .is_some_and(|state| state.is_visible());
+            if visible && self.window_on_active_space_id(id) {
+                let geometry = self.windows.geometry(&window).unwrap_or_default();
+                self.space.map_element(window.clone(), geometry.loc, false);
+                changed = true;
+            } else if self.space.element_location(&window).is_some() {
+                self.space.unmap_elem(&window);
+                changed = true;
+            }
+        }
+        if changed {
+            self.needs_redraw = true;
+        }
+    }
+
+    /// React to a workspace change: drop focus from a now-hidden window and
+    /// re-apply the scene layout (FR-8: state and scene change together).
+    pub fn after_workspace_change(&mut self) {
+        if let Some(active) = self.active_window.clone() {
+            if !self.window_on_active_space(&active) {
+                if let Some(keyboard) = self.seat.get_keyboard() {
+                    keyboard.set_focus(self, None, SERIAL_COUNTER.next_serial());
+                }
+            }
+        }
+        self.apply_workspace_layout();
+    }
+
+    /// Dispatch a workspace action from any trigger (keyboard, gesture, hot
+    /// corner, shell). Returns true if the active Space changed.
+    pub fn handle_workspace_action(&mut self, action: InputAction) -> bool {
+        let changed = match action {
+            InputAction::WorkspaceNext => self.workspaces.switch_all(1),
+            InputAction::WorkspacePrev => self.workspaces.switch_all(-1),
+            InputAction::WorkspaceActivate(index) => self.workspaces.activate_all(index),
+            _ => false,
+        };
+        if changed {
+            self.after_workspace_change();
+        }
+        changed
+    }
+
+    /// Move a window to the Space at `index` on its output (FR-5) and update
+    /// the app's Space memory.
+    pub fn move_window_to_space(&mut self, window: &Window, index: usize) {
+        let Some(id) = self.windows.id(window) else {
+            return;
+        };
+        let output = self
+            .workspaces
+            .window_space(id)
+            .and_then(|space| self.workspaces.space_output(space).map(str::to_string))
+            .or_else(|| self.output_name_for(window));
+        let Some(output) = output else {
+            return;
+        };
+        if self.workspaces.move_window(id, &output, index).is_none() {
+            return;
+        }
+        if let Some(app) = self.windows.app_id(window).map(str::to_string) {
+            self.workspaces.remember_app(&app, index);
+        }
+        self.after_workspace_change();
+    }
+
+    /// The wallpaper color of `output`'s active Space, for the backend's
+    /// clear pass. The compositor renders the desktop background; the shell
+    /// never does ([03-workspaces.md]).
+    pub fn wallpaper_color_for(&self, output: &Output) -> Color32F {
+        let color = self
+            .workspaces
+            .active_wallpaper(&output.name())
+            .map(|wallpaper| wallpaper.color)
+            .unwrap_or([0.0, 0.0, 0.0, 1.0]);
+        Color32F::new(color[0], color[1], color[2], color[3])
+    }
+
+    /// Hotplug attach: a fresh Space list for the new output (FR-7).
+    pub fn on_output_added(&mut self, output: &Output) {
+        self.workspaces.add_output(&output.name());
+    }
+
+    /// Hotplug detach: migrate the output's windows to the remaining primary
+    /// output's current Space before its Spaces are destroyed (FR-7).
+    pub fn on_output_removed(&mut self, output: &Output) {
+        let removed = output.name();
+        let primary = self
+            .space
+            .outputs()
+            .map(|candidate| candidate.name())
+            .find(|name| *name != removed);
+        self.workspaces.remove_output(&removed, primary.as_deref());
+        self.after_workspace_change();
     }
 
     /// The window whose toplevel (or popup root) is `surface`.
@@ -553,11 +743,24 @@ impl DfState {
         self.apply_window_transition(window, transition);
     }
 
-    /// Enter fullscreen (a dedicated Space in T-05).
+    /// Enter fullscreen: the window moves to a dedicated Space created for
+    /// it (FR-3), which appears in the strip right after the origin Space.
     pub fn fullscreen_window(&mut self, window: &Window) {
         let Some(target) = self.output_bounds_for(window) else {
             return;
         };
+        // Create the fullscreen Space before applying the state so the
+        // transition maps the window into an active Space. A repeated
+        // fullscreen request must not create a second dedicated Space.
+        let already_fullscreen =
+            self.windows.state(window) == Some(crate::window::WindowState::Fullscreen);
+        if !already_fullscreen {
+            if let Some(id) = self.windows.id(window) {
+                if let Some(origin) = self.workspaces.window_space(id) {
+                    self.workspaces.enter_fullscreen(id, origin);
+                }
+            }
+        }
         let Some(transition) = self
             .windows
             .apply(window, WindowEvent::EnterFullscreen, target)
@@ -572,9 +775,15 @@ impl DfState {
             }
         }
         self.apply_window_transition(window, transition);
+        if !already_fullscreen {
+            // The active Space changed on every output, so hide the origin
+            // Space's windows on the owner output too.
+            self.apply_workspace_layout();
+        }
     }
 
-    /// Leave fullscreen for the state it was entered from.
+    /// Leave fullscreen for the state it was entered from, destroying the
+    /// dedicated Space and returning to the origin Space (FR-3).
     pub fn unfullscreen_window(&mut self, window: &Window) {
         let Some(transition) =
             self.windows
@@ -588,8 +797,12 @@ impl DfState {
                     state.states.unset(xdg_toplevel::State::Fullscreen);
                 });
             }
+            if let Some(id) = self.windows.id(window) {
+                self.workspaces.exit_fullscreen(id);
+            }
         }
         self.apply_window_transition(window, transition);
+        self.apply_workspace_layout();
     }
 
     /// Minimize a window and its transients (FR-6).
@@ -622,10 +835,14 @@ impl DfState {
             if transition.changed {
                 let geometry = self.windows.geometry(&target).unwrap_or_default();
                 // Only the requested window takes activation; transients
-                // are raised with it without stealing focus from it.
+                // are raised with it without stealing focus from it. A
+                // window whose Space is not active stays unmapped until its
+                // Space is shown again (FR-6).
                 let activate = &target == window;
-                self.space
-                    .map_element(target.clone(), geometry.loc, activate);
+                if self.window_on_active_space(&target) {
+                    self.space
+                        .map_element(target.clone(), geometry.loc, activate);
+                }
                 self.broadcast_state(&target);
             }
         }
@@ -636,9 +853,8 @@ impl DfState {
     #[allow(dead_code)] // Consumed by the T-13 titlebar menu and T-07.
     pub fn window_menu_command(&mut self, window: &Window, command: WindowMenuCommand) {
         match command {
-            WindowMenuCommand::MoveToSpace(_) => {
-                // T-05 owns Spaces; the command is accepted now so the
-                // titlebar menu can be complete before Spaces land.
+            WindowMenuCommand::MoveToSpace(index) => {
+                self.move_window_to_space(window, index);
             }
             WindowMenuCommand::Minimize => self.minimize_window(window),
             WindowMenuCommand::Zoom => {
@@ -668,8 +884,12 @@ impl DfState {
         }
         let geometry = self.windows.geometry(window).unwrap_or_default();
         if transition.to.is_visible() {
-            self.space.map_element(window.clone(), geometry.loc, true);
-            self.configure_window_size(window, geometry.size);
+            // A window whose Space is not the active one stays out of the
+            // scene until that Space is shown (T-05).
+            if self.window_on_active_space(window) {
+                self.space.map_element(window.clone(), geometry.loc, true);
+                self.configure_window_size(window, geometry.size);
+            }
         } else {
             self.space.unmap_elem(window);
         }
@@ -797,6 +1017,9 @@ impl DfState {
                 self.input_dispatch.progress(event);
             }
         }
+        // Workspace switches take effect immediately; the progress events
+        // above are the T-11 animation seam, not a second state machine.
+        self.handle_workspace_action(action);
         self.needs_redraw = true;
     }
 
@@ -1148,11 +1371,19 @@ impl XdgShellHandler for DfState {
                 toplevel.send_close();
             }
         }
+        // A destroyed fullscreen window takes its dedicated Space with it
+        // (T-05 FR-3), so the strip does not keep a phantom Space.
+        let was_fullscreen =
+            self.windows.state(&window) == Some(crate::window::WindowState::Fullscreen);
         let id = self.windows.remove(&window);
         if self.active_window.as_ref() == Some(&window) {
             self.active_window = None;
         }
         if let Some(id) = id {
+            if was_fullscreen {
+                self.workspaces.exit_fullscreen(id);
+            }
+            self.workspaces.forget_window(id);
             self.window_dispatch.push(ShellWindowEvent {
                 kind: WindowEventKind::Unmapped,
                 id,

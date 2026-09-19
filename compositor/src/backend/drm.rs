@@ -37,9 +37,7 @@ use smithay::backend::renderer::element::{AsRenderElements, Kind};
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::renderer::multigpu::gbm::GbmGlesBackend;
 use smithay::backend::renderer::multigpu::{GpuManager, MultiRenderer};
-use smithay::backend::renderer::{
-    Color32F, ImportAll, ImportDma, ImportDmaWl, ImportMem, ImportMemWl,
-};
+use smithay::backend::renderer::{ImportAll, ImportDma, ImportDmaWl, ImportMem, ImportMemWl};
 use smithay::backend::session::libseat::LibSeatSession;
 use smithay::backend::session::{Event as SessionEvent, Session};
 use smithay::backend::udev::{all_gpus, primary_gpu, UdevBackend, UdevEvent};
@@ -81,8 +79,6 @@ type GbmExporterDrm = GbmFramebufferExporter<DrmDeviceFd>;
 // 8-bit formats until color management (xx-color-management) lands with
 // the Displays pane work (T-16).
 const SUPPORTED_FORMATS: &[Fourcc] = &[Fourcc::Abgr8888, Fourcc::Argb8888];
-
-const CLEAR_COLOR: Color32F = Color32F::new(0.13, 0.05, 0.16, 1.0);
 
 render_elements! {
     pub DrmOutputElements<R, E> where R: ImportAll + ImportMem + ImportMemWl + ImportDmaWl + ImportDma;
@@ -734,6 +730,9 @@ fn connector_disconnected(
         return;
     };
     if let Some(surface) = device.surfaces.remove(&crtc) {
+        // Migrate this output's windows to the remaining primary output's
+        // current Space before its Spaces are destroyed (T-05 FR-7).
+        state.on_output_removed(&surface.output);
         state.space.unmap_output(&surface.output);
     }
 }
@@ -743,6 +742,7 @@ fn device_removed(state: &mut crate::state::DfState, data: &mut DrmData, node: D
     // the remaining GPUs keep running; never a hang.
     if let Some(mut device) = data.devices.remove(&node) {
         for surface in device.surfaces.values() {
+            state.on_output_removed(&surface.output);
             state.space.unmap_output(&surface.output);
         }
         device.surfaces.clear();
@@ -989,10 +989,11 @@ fn render_surface(
     }
 
     let frame_mode = FrameFlags::DEFAULT; // direct scanout where possible
+    let wallpaper = state.wallpaper_color_for(&surface.output);
     let result =
         surface
             .drm_output
-            .render_frame(&mut renderer, &custom_elements, CLEAR_COLOR, frame_mode);
+            .render_frame(&mut renderer, &custom_elements, wallpaper, frame_mode);
 
     match result {
         Ok(render_frame_result) => {
