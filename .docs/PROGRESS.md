@@ -1286,3 +1286,75 @@ T-18/T-21/T-22/T-25/T-26/T-28/T-29.
 - **App-level "no hand-rolled chrome" lint** is T-16/T-18; the
   design-system-side literal gate (`check-design-tokens.sh`) is the part
   that exists now.
+
+## Session & host-DE expectations (hand-off for T-09/T-24/T-32)
+
+Recorded after an end-to-end gallery review on a KDE Plasma host. These are
+the behaviors the desktop must have when the shell (T-09/T-10) and session
+(T-24)/packaging (T-32) land, so we do not accidentally build a
+"take over the running DE" mechanism that Wayland cannot support.
+
+### Theme is ours; only the scheme may come from the host
+
+- The accent/highlight pink is **our token** (`Theme.color.accent` =
+  `primitive.color.magenta600`/`magenta400`), not the KDE/Fedora accent
+  color. No host accent is read anywhere.
+- The only host-derived appearance value is the light/dark scheme:
+  `Theme.dark` defaults to `Application.styleHints.colorScheme === Qt.Dark`.
+  On Plasma that follows the Plasma color scheme. The gallery/tests
+  override it.
+- **Do not add host-accent adoption silently.** If we ever want it, make it
+  an explicit settingsd option (T-15/T-16), because the visual identity is
+  deliberately ours (`.docs/design/14-risks.md`).
+
+### There is no live compositor handoff — never attempt one
+
+Wayland clients are bound to one compositor; there is no standardized way
+to migrate live windows. `.docs/design/14-risks.md` ("No live compositor
+handoff") and `.docs/design/11-session-and-dev-workflow.md` are the
+authority. The two supported paths, and the expected behavior of each:
+
+1. **Nested on the existing desktop (daily dev, e.g. KDE Plasma).**
+   `make dev` / `dragonfruit dev --nested` opens Dragonfruit as a normal
+   window *inside* Plasma on its own private Wayland socket. Plasma is
+   never disturbed. On exit the dev tool's `ChildGuard` tears down the
+   compositor and every `--launch`ed client and fails loudly on a stray
+   process/socket (`make soak` is the 100-cycle scripted form).
+   - Expected UX: the host DE stays up the whole time; there is nothing to
+     "restore".
+2. **Separate login session alongside the host DE (real DRM/hardware).**
+   Register Dragonfruit as a session with the display manager (SDDM/GDM)
+   *in addition to* Plasma. The user picks it at the greeter or switches
+   VTs. If the compositor exits or crashes, the session ends and the
+   display manager returns; the user picks Plasma again. That is the
+   desired display-server failure behavior — do not paper over it.
+   - **Do not uninstall or disable the host DE during development.**
+   - Two graphical sessions for the same Unix user collide through shared
+     user-session services (portals, `XDG_RUNTIME_DIR`, DBus), so the
+     second-VT rung uses a dedicated development user
+     (`docs/testing-ladder.md` rung 2).
+
+### Dev-tool current state and the shell TODO
+
+- `dragonfruit dev --nested` today launches **only the compositor**; the
+  shell is a placeholder until T-09/T-10, so `make dev` shows the
+  compositor window + wallpaper + any `--launch`ed apps, not a menu bar or
+  Dock yet.
+- When the shell binary exists, `make dev` (and a `dragonfruit dev
+  --nested --shell` flag) should launch it against the nested socket and
+  include it in `ChildGuard` teardown. Keep the "host session
+  undisturbed" guarantee: `make soak` must still pass.
+- Session packaging (T-24/T-32) is what makes the desktop selectable in
+  SDDM; there is no code path that shuts down or replaces the running
+  Plasma session.
+
+### Acceptance checks for the above (when implemented)
+
+- `make dev` on a Plasma Wayland host: a Dragonfruit window opens inside
+  Plasma; quitting returns to Plasma with no stray Dragonfruit processes,
+  sockets, or exported `WAYLAND_DISPLAY`/`DISPLAY` left in the host env.
+- A session entry appears in the display manager next to Plasma; selecting
+  it starts the compositor; killing the compositor returns to the greeter;
+  Plasma is still selectable and unaffected.
+- No code anywhere kills, suspends, or "replaces" the host compositor, and
+  no attempt is made to migrate live windows between compositors.
