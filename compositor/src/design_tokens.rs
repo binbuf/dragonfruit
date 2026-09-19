@@ -209,6 +209,14 @@ pub mod component {
         pub const INSET: f32 = 3.0_f32;
         pub const LABEL_GAP: f32 = 8.0_f32;
     }
+    pub mod button {
+        pub const HEIGHT: f32 = 28.0_f32;
+        pub const PADDING_H: f32 = 12.0_f32;
+        pub const RADIUS: f32 = 10.0_f32;
+        pub const FONT_SIZE: f32 = 13.0_f32;
+        pub const FONT_WEIGHT: f32 = 500.0_f32;
+        pub const ICON_SIZE: f32 = 16.0_f32;
+    }
     pub mod popup {
         pub const RADIUS: f32 = 14.0_f32;
         pub const PADDING: f32 = 8.0_f32;

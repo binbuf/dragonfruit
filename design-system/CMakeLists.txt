@@ -27,6 +27,20 @@ qt_add_qml_module(dragonfruit-design-system
         components/Icon.qml
         components/FocusRing.qml
         components/Shadow.qml
+        components/Button.qml
+        components/Sidebar.qml
+        components/Toolbar.qml
+        components/SplitView.qml
+        components/SettingsRow.qml
+        components/SettingsGroup.qml
+        components/SegmentedControl.qml
+        components/ContextMenu.qml
+        components/SearchField.qml
+        components/SourceList.qml
+        components/Dialog.qml
+        components/Sheet.qml
+        components/Popover.qml
+        components/ScrollView.qml
 )
 target_link_libraries(dragonfruit-design-system PUBLIC Qt6::Core Qt6::Gui Qt6::Quick)
 
@@ -41,6 +55,20 @@ df_qml_lint(design-system
     components/Icon.qml
     components/FocusRing.qml
     components/Shadow.qml
+    components/Button.qml
+    components/Sidebar.qml
+    components/Toolbar.qml
+    components/SplitView.qml
+    components/SettingsRow.qml
+    components/SettingsGroup.qml
+    components/SegmentedControl.qml
+    components/ContextMenu.qml
+    components/SearchField.qml
+    components/SourceList.qml
+    components/Dialog.qml
+    components/Sheet.qml
+    components/Popover.qml
+    components/ScrollView.qml
 )
 
 add_subdirectory(gallery)
