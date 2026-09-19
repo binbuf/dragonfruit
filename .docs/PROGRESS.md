@@ -41,11 +41,17 @@ Follow-ups for later tasks:
   cleanup instead of relying on the drop chain at the end of
   `compositor_loop` (compositor/src/main.rs), (2) reproduce under the
   real T-02 event loop, (3) consider a `Drop` guard in the dev tool too
-  for the `--launch`ed children.
+  for the `--launch`ed children. — *Resolved in T-02: the socket is now
+  owned by smithay's `ListeningSocketSource` (RAII) inside the calloop
+  loop and the leak check is a tripwire; 100-cycle soak passes on the
+  new loop. The dev-tool `Drop` guard for `--launch`ed children is
+  still open (low priority).*
 - **The skeleton compositor pump loop polls at 50 ms** — fine for T-01,
   but T-02 replaces it with an fd-driven calloop loop; don't build on
   `compositor_loop`'s structure, build on its contracts (socket print
-  format, teardown verification, lockstep assert).
+  format, teardown verification, lockstep assert). — *Resolved in T-02:
+  the pump loop is gone; the contracts (print format, teardown
+  verification, lockstep assert) are preserved in `session.rs`.*
 - **`cargo run` swallows signal-context detail**: when the process group
   gets SIGTERM (e.g. `timeout` or Ctrl-C under `make`), the dev tool's
   stale `SIGNALLED` flag used to make `shutdown_child` SIGKILL a
@@ -73,6 +79,130 @@ Follow-ups for later tasks:
   services + tools, MIT for protocol XMLs (enforced by the df-ipc test),
   LGPL-3.0-or-later for design-system, GPL-3.0-or-later for shell/apps.
   Full texts in LICENSES/; pointer LICENSE in every package dir.
+
+## T-02 — compositor core: event loop, backends, renderer, effects
+
+**State: partial.** Done and verified: fd-driven calloop session loop;
+all three backends selected by `--backend nested|drm|headless` in one
+binary (FR-1); the full standard protocol surface with an in-tree
+integration test that asserts the exact advertise list (FR-7) and a CI
+grep gate for capture-grab protocols (FR-8); wl_output/xdg_output
+outputs with modes/scale/transform and hotplug; input routing
+(pointer/keyboard/touch/gestures, click-to-focus); damage-driven
+nested rendering with presentation-time feedback; teardown hardening.
+`make check` passes (tests, clippy, fmt, qmllint, gates, 100-cycle
+soak). Nested live-verified on the dev host's KDE session: window
+opens, `wayland-info` shows the full surface, `eglgears_wayland` runs
+against it, SIGTERM exits clean.
+
+Open items (in ticket order):
+
+- **FR-2/3/4 performance budgets unmeasured.** The damage-driven path
+  exists (commit → `needs_redraw` → one render pass), and render-path
+  counters (`DfState.stats`: frames_rendered / frames_skipped_no_damage /
+  direct_scanouts) are in place, but nothing prints or asserts them yet.
+  Next: log stats on exit (SIGUSR1 dump?), then an idle-trace test over
+  60 s and latency measurement on real hardware (T-02 test plan).
+- **DRM backend compiles but has never run** — the dev host has no
+  logind seat free for a compositor. It is a condensed port of anvil's
+  udev backend (smithay 0.7): LibSeatSession, udev hotplug, per-crtc
+  DrmOutput on GbmGlesBackend, vblank frame scheduling with the
+  throttle guard, direct scanout via FrameFlags::DEFAULT, procedural
+  arrow cursor (Kind::Cursor → hardware cursor plane), multi-GPU via
+  GpuManager. First real-session bring-up should happen in a VM with a
+  spare GPU or via VT switch (FR-6 hotplug/GPU-loss tests as well).
+- **`IdleInhibitHandler::uninhibit` / inhibitors list** keeps raw
+  `WlSurface`s; aliveness-filtered on read. Fine until T-26 owns idle.
+- **Session-lock filter is `|_| true`** (TODO T-26); input-method
+  manager filter ditto (T-07 shell tokens).
+- **VRR / night light**: not plumbed (T-16 displays pane drives them).
+- **Per-surface dmabuf feedback tranches** (scanout preference) not
+  built; only the global default feedback. Needed for zero-copy
+  capture paths in T-27/T-28.
+
+Decisions and gotchas (relevant to T-03+):
+
+- **Smithay 0.7's winit backend implements `calloop::EventSource`**
+  (it wraps the winit EventLoop in `Generic<_, Interest::READ>` and
+  sets `ControlFlow::Poll`). We insert it as a source, so the nested
+  loop is fully fd-driven — no anvil-style 1 ms polling, no client
+  starvation while pumping winit. Client dispatch uses
+  `Generic::new(display, Interest::READ, Mode::Level)` with an unsafe
+  `get_mut()` (anvil's pattern); the display lives inside the source.
+- **Teardown gotcha found the hard way**: a surviving `LoopHandle`
+  clone keeps calloop's sources (and the listening socket) alive even
+  after the `EventLoop` is dropped. `run_session` therefore drops
+  `event_loop`, `state`, **and `loop_handle`** before the socket-leak
+  check. Any future code holding a handle (timers, channels) must be
+  dropped before that check too.
+- **Socket lifecycle is fully RAII now** via smithay's
+  `ListeningSocketSource` (bind → drop removes socket + lock). The
+  T-01 "silent death, socket survived" race cannot recur through this
+  path; the leak check remains as the tripwire.
+- **The protocol advertise list is pinned by a test**
+  (`compositor/tests/protocol_surface.rs`): exact global set from the
+  ticket, plus a forbidden list (screencopy, layer-shell,
+  foreign-toplevel, dmabuf-on-headless). Any protocol change must
+  update that test — it *is* the CI check for the acceptance criterion.
+  Note the real interface name is `ext_idle_notifier_v1` (not
+  `..._notify_v1`).
+- **`render_elements!` where-clauses apply to the impls, not the enum
+  definition.** An enum variant whose type has trait bounds (e.g.
+  `SpaceRenderElements<R, WaylandSurfaceRenderElement<R>>`) fails
+  well-formedness at the enum's own definition. Keep the element enum
+  generic over `E` (anvil's `OutputRenderElements<R, E>` pattern) and
+  instantiate per-backend.
+- **Rust method resolution needs the trait *imported*, not just named
+  in a where clause** (`use smithay::backend::input::Device as _`).
+  Hit with `device.has_capability`, `event.time_msec`, `Window::
+  wl_surface` (via `WaylandFocus`), `WlSurface::id/is_alive` (via
+  `Resource`).
+- **Serials**: use `smithay::utils::SERIAL_COUNTER.next_serial()` for
+  all synthetic input events. T-03 should adopt the same counter for
+  shortcut-driven events so seat-serial pairing stays coherent.
+- **SSD default**: `XdgDecorationHandler` negotiates ServerSide by
+  default (T-13 ships SSD). Nothing draws decorations yet — T-13 owns
+  the frame rendering; clients already honor the mode.
+- **Window mapping** (pre-T-04): xdg toplevels configure with output
+  bounds at creation, map into the `Space` on first buffer commit,
+  placed center + 24 px cascade (`DfState::map_pending_windows`).
+  T-04 replaces placement/stacking policy wholesale; the machinery
+  (`pending_windows`, `Space<Window>`, popups) stays.
+- **Dmabuf imports are lazy**: the protocol layer accepts buffers whose
+  format was advertised and defers GPU import to render time (checked
+  against the format list in `DmabufHandler::dmabuf_imported`); a bad
+  buffer fails the render pass, not the compositor. anvil imports
+  eagerly on the primary GPU — revisit if clients need early failure.
+- **`ImportEgl`/`bind_wl_display` is feature-gated on `use_system_lib`**
+  in smithay 0.7 — we build the rs backend, so EGL wl_drm acceleration
+  is unavailable; linux-dmabuf v4 covers hardware clients.
+- **Nested mode has no vblank**; rendering is demand-driven and
+  presentation feedback uses `Refresh::fixed(60 Hz)`. The nested
+  window is also our main FPS/timing testbed — keep an eye on the
+  budget work before trusting it for FR-2/3/4 numbers.
+
+## Devroot: user-space native-dep sysroot (learned during T-02)
+
+The DRM backend needs libdrm/gbm/libinput/libseat/libudev *headers and
+linker names*, which this host lacks (no sudo). Recipe that works:
+
+```bash
+dnf download --destdir /tmp/rpms libdrm-devel mesa-libgbm-devel \
+    libinput-devel libseat-devel systemd-devel libseat
+mkdir -p ~/.local/df-devroot/lib64 ~/.local/df-devroot/lib64/pkgconfig \
+         ~/.local/df-devroot/include
+for r in /tmp/rpms/*x86_64.rpm; do rpm2cpio "$r" | cpio -idm -D ~/.local/df-devroot; done
+# -devel RPMs ship dangling .so symlinks; point them at the host's
+# runtime libs (lld refuses dangling linker-name symlinks):
+cd ~/.local/df-devroot/lib64
+ln -sf /usr/lib64/libgbm.so.1 libgbm.so   # ... and friends
+```
+
+The Makefile auto-exports `PKG_CONFIG_PATH`/`RUSTFLAGS` when
+`~/.local/df-devroot/lib64` exists, and the compositor's `build.rs`
+adds the search path + rpath (runtime libs live in the devroot).
+Normal systems with the -devel packages installed are unaffected; CI
+installs the apt `-dev` packages.
 
 ## Conventions established in T-01 (follow in all later tasks)
 

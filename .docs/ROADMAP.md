@@ -88,7 +88,7 @@ Updated when a task is partially or completely finished; see
 
 | Phase | Tickets |
 |---|---|
-| 1 · Foundation | T-01 ✅ done · T-02 … T-07 pending |
+| 1 · Foundation | T-01 ✅ done · T-02 🔄 partial (compositor core) · T-03 … T-07 pending |
 | 2 · Experience | T-08 … T-14 pending |
 | 3 · Flagship apps | T-15 … T-19 pending |
 | 4 · System integration | T-20 … T-23 pending |
@@ -99,15 +99,22 @@ Updated when a task is partially or completely finished; see
 
 T-01 is complete except one open item: the CI workflow is written and
 all gates pass locally, but the first green run on a PR is still
-pending. Details and hand-off notes: [PROGRESS.md](PROGRESS.md).
+pending. T-02 is partial: the calloop event loop, all three backends
+(nested verified live on the dev host; DRM compiles, runtime-untested;
+headless used by CI), the full standard protocol surface (CI-checked
+advertise list), outputs, input routing, damage-driven rendering, and
+teardown hardening are done. Open: performance budgets FR-2/3/4,
+VRR/night light plumbing, multi-GPU runtime validation, direct-scanout
+counter verification on real hardware. Details and hand-off notes:
+[PROGRESS.md](PROGRESS.md).
 
 1. **Foundation**
-   - [ ] Smithay compositor
-   - [ ] Nested backend
-   - [ ] Native DRM backend
-   - [ ] Input
-   - [ ] Outputs
-   - [ ] Windows
+   - [x] Smithay compositor (event loop, protocol surface, render stack — T-02)
+   - [x] Nested backend (live-verified on the dev host)
+   - [ ] Native DRM backend (implemented; runtime-untested — needs a real seat)
+   - [ ] Input (event routing done in T-02; keymaps/shortcuts are T-03)
+   - [x] Outputs (wl_output + xdg_output globals, modes/scale/transform, hotplug)
+   - [ ] Windows (scene machinery in T-02; window model is T-04)
    - [ ] Workspace model
    - [ ] Xwayland
 2. **Experience**
