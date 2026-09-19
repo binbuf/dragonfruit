@@ -1186,6 +1186,10 @@ impl Dispatch<df_core::DfCore, CoreUserData> for DfState {
                                 ..ClientSession::default()
                             },
                         );
+                        // A trusted session client is sanctioned to install
+                        // grabs (T-03 FR-5): the shell is the compositor's
+                        // own session UI, not an arbitrary client.
+                        state.grab_arbiter.sanction(client.id());
                         resource.authenticated(lockstep_version);
                         println!(
                             "dragonfruit-compositor: shell protocol: client authenticated as {}",

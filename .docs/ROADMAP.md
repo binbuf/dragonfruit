@@ -135,15 +135,17 @@ now gives the headless backend a real seat: a line protocol over a
 `UnixDatagram` feeds libinput-equivalent events through the same router,
 and the headless integration test drives a keyboard shortcut, a hot-corner
 dwell, a four-finger gesture, and a pointer click end to end (asserting the
-private-protocol `input_action`/`hot_corner`/`progress` events). Open:
-DRM/hardware validation of multitouch + pen pressure; wiring the outbox
-to the shell over the private protocol (T-07); menu-broker/portal
-accelerator registration (T-22/T-27); per-device libinput
-acceleration/scroll live application (needs backend device handles,
-T-16); on-device gesture tuning; unclaimed-gesture pass-through policy;
-pointer-constraint grabs (confine/lock) are still a no-op. See
-[keymap.md](../docs/keymap.md) for the in-repo keymap decision.
-Details: [PROGRESS.md](PROGRESS.md).
+private-protocol `input_action`/`hot_corner`/`progress` events). Pointer
+constraints (confine/lock) are now enforced by a real grab and gated by the
+`GrabArbiter` — only a launch-token-sanctioned session client may install
+one, and the headless suite proves both the sanctioned lock and the
+refusal of an unsanctioned one. Open: DRM/hardware validation of
+multitouch + pen pressure; wiring the outbox to the shell over the private
+protocol (T-07); menu-broker/portal accelerator registration (T-22/T-27);
+per-device libinput acceleration/scroll live application (needs backend
+device handles, T-16); on-device gesture tuning; unclaimed-gesture
+pass-through policy. See [keymap.md](../docs/keymap.md) for the in-repo
+keymap decision. Details: [PROGRESS.md](PROGRESS.md).
 
 T-04 is partial: the four-state window machine (floating/minimized/zoomed/
 fullscreen with exact restore geometry, maximize→Zoom, no maximize state),
@@ -285,7 +287,7 @@ the shell's own chrome rendering (T-09/T-10).
    - [x] Smithay compositor (event loop, protocol surface, render stack — T-02)
    - [x] Nested backend (live-verified on the dev host)
    - [ ] Native DRM backend (implemented; runtime-untested — needs a real seat)
-   - [ ] Input (T-03 engine done: keymaps, shortcuts, gestures, hot corners; headless synthetic-input integration done; hardware validation + shell/portal wiring + pointer constraints open)
+   - [ ] Input (T-03 engine done: keymaps, shortcuts, gestures, hot corners, pointer constraints; headless synthetic-input + grab-refusal integration done; hardware validation + shell/portal wiring open)
    - [x] Outputs (wl_output + xdg_output globals, modes/scale/transform, hotplug)
    - [x] Windows (T-04 model: states, focus, placement, regions, move/resize, popups; headless toplevel-state + popup + protocol-level move/resize conformance covered)
    - [x] Workspace model (T-05: per-output lockstep Spaces, fullscreen Spaces, wallpaper color, app memory, hotplug migration; image wallpaper + switch animation + protocol wiring open)

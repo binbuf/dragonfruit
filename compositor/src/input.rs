@@ -21,6 +21,7 @@
 //! and T-11.
 
 pub mod action;
+pub mod constraint;
 pub mod dispatch;
 pub mod gestures;
 pub mod hot_corners;

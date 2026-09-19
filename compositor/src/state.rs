@@ -54,7 +54,9 @@ use smithay::wayland::idle_inhibit::{IdleInhibitHandler, IdleInhibitManagerState
 use smithay::wayland::idle_notify::{IdleNotifierHandler, IdleNotifierState};
 use smithay::wayland::input_method::{InputMethodHandler, InputMethodManagerState};
 use smithay::wayland::output::{OutputHandler, OutputManagerState};
-use smithay::wayland::pointer_constraints::{PointerConstraintsHandler, PointerConstraintsState};
+use smithay::wayland::pointer_constraints::{
+    with_pointer_constraint, PointerConstraintsHandler, PointerConstraintsState,
+};
 use smithay::wayland::pointer_gestures::PointerGesturesState;
 use smithay::wayland::presentation::PresentationState;
 use smithay::wayland::relative_pointer::RelativePointerManagerState;
@@ -85,11 +87,12 @@ use smithay::xwayland::XWaylandClientData;
 use std::time::Duration;
 
 use crate::identity::AppResolver;
+use crate::input::constraint::{constraint_geometry, PointerConstraintGrab};
 use crate::input::dispatch::InputDispatch;
 use crate::input::gestures::{GestureRecognizer, ProgressPipeline};
 use crate::input::hot_corners::HotCornerDetector;
 use crate::input::settings::InputSettings;
-use crate::input::shortcuts::{GrabArbiter, ShortcutEngine};
+use crate::input::shortcuts::{GrabArbiter, GrabKind, ShortcutEngine};
 use crate::input::{InputAction, TriggerKind};
 use crate::shell::ShellProtocolState;
 use crate::window::grab::{MoveGrab, ResizeGrab};
@@ -103,6 +106,7 @@ use crate::workspace::WorkspaceModel;
 use crate::xwayland::XwaylandState;
 
 use smithay::input::pointer::Focus as PointerFocus;
+use smithay::input::pointer::GrabStartData;
 
 use smithay::{
     delegate_compositor, delegate_content_type, delegate_cursor_shape, delegate_data_control,
@@ -250,7 +254,7 @@ pub struct DfState {
     /// The outbox/audit log every trigger writes to (shell protocol T-07).
     pub input_dispatch: InputDispatch,
     /// Gate for every client grab request (FR-5).
-    pub grab_arbiter: GrabArbiter,
+    pub grab_arbiter: GrabArbiter<ClientId>,
     /// Pending hot-corner dwell timer, if armed.
     pub hot_corner_timer: Option<RegistrationToken>,
 
@@ -1594,11 +1598,54 @@ impl FractionalScaleHandler for DfState {}
 impl PointerConstraintsHandler for DfState {
     fn new_constraint(
         &mut self,
-        _surface: &WlSurface,
-        _pointer: &smithay::input::pointer::PointerHandle<DfState>,
+        surface: &WlSurface,
+        pointer: &smithay::input::pointer::PointerHandle<DfState>,
     ) {
-        // TODO(T-04/T-05): confine/lock must be enforced with a pointer
-        // grab; T-03 scoped out pointer-constraint grabs. See PROGRESS.md.
+        // Every grab goes through the arbiter (FR-5): only a sanctioned
+        // session client may confine or lock the pointer. An unsanctioned
+        // request is logged and refused, leaving normal pointer motion.
+        let Some(client) = self.display_handle.get_client(surface.id()).ok() else {
+            return;
+        };
+        if self
+            .grab_arbiter
+            .request(client.id(), GrabKind::Pointer)
+            .is_err()
+        {
+            return;
+        }
+        // Activate only while the pointer is over this surface. A
+        // constraint created while unfocused stays registered; activation
+        // on a future pointer-enter is a follow-up (see PROGRESS.md).
+        if pointer.current_focus().as_ref() != Some(surface) {
+            return;
+        }
+        let location = pointer.current_location();
+        let origin = self
+            .window_for_surface(surface)
+            .and_then(|window| self.space.element_location(&window))
+            .unwrap_or_else(|| Point::from((0, 0)));
+        let Some(geometry) = constraint_geometry(surface, pointer, location, origin) else {
+            return;
+        };
+        with_pointer_constraint(surface, pointer, |constraint| {
+            if let Some(constraint) = constraint {
+                constraint.activate();
+            }
+        });
+        let start_data = GrabStartData {
+            focus: pointer
+                .current_focus()
+                .map(|focus| (focus, origin.to_f64())),
+            button: 0,
+            location,
+        };
+        pointer.set_grab(
+            self,
+            PointerConstraintGrab::new(start_data, surface.clone(), pointer.clone(), geometry),
+            SERIAL_COUNTER.next_serial(),
+            PointerFocus::Keep,
+        );
     }
 
     fn cursor_position_hint(
@@ -1607,6 +1654,9 @@ impl PointerConstraintsHandler for DfState {
         _pointer: &smithay::input::pointer::PointerHandle<DfState>,
         _location: Point<f64, smithay::utils::Logical>,
     ) {
+        // Headless has no cursor to place; the lock location itself is the
+        // constraint anchor. A cursor-rendering compositor would move the
+        // lock point here.
     }
 }
 

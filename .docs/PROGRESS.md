@@ -851,13 +851,17 @@ later ticket lands · **[upstream]** depends on Smithay/upstream.
       `DRAGONFRUIT_SYNTHETIC_INPUT`; the T-03 integration test and the T-04
       move/resize conformance both use it (see the section at the end of
       this file). Next T-03 host item: pointer-constraint grabs.
-- [ ] **[host]** Implement pointer-constraint grabs (confine/lock).
-      `PointerConstraintsHandler::new_constraint` is a no-op TODO; the
-      protocol is advertised in the T-02 surface, so a client that locks the
-      pointer currently gets no enforcement.
-- [ ] **[host]** Malicious-client integration test for FR-5: `GrabArbiter`
-      refusal is unit-tested only; drive a real client that requests a grab
-      and assert refusal + audit log.
+- [x] **[host]** Implement pointer-constraint grabs (confine/lock).
+      *Done:* `compositor/src/input/constraint.rs` supplies a
+      `PointerConstraintGrab` that freezes a locked pointer and clamps a
+      confined one; `DfState::new_constraint` activates it. Constraints are
+      gated by `GrabArbiter` (only a launch-token-sanctioned session client
+      may install one), so an unsanctioned request is logged + refused.
+- [x] **[host]** Malicious-client integration test for FR-5: *Done:* the
+      shell authenticates and locks the pointer (frozen), while an
+      unauthenticated client's lock is refused and the pointer keeps moving
+      (`shell_protocol_conformance::{sanctioned_client_can_lock_the_pointer,
+      unsanctioned_pointer_constraint_is_refused}`).
 - [ ] **[host]** Decide and document the unclaimed-gesture pass-through
       policy (three-finger vertical is currently swallowed).
 - [ ] **[hw]** FR-1 multitouch + pen pressure on DRM; one non-US layout.
@@ -887,8 +891,11 @@ later ticket lands · **[upstream]** depends on Smithay/upstream.
       `is_in_input_region`, and `Window::is_in_input_region` delegates to
       `Window::surface_under` (input regions honored). The compositor's
       click-to-focus and `surface_under` both go through that path, so an
-      empty input region passes the click through. A click-through *test*
-      still needs injected input (T-03 synthetic seat).
+      empty input region passes the click through. *Test added:* with the
+      synthetic seat, `shell_protocol_conformance::
+      empty_input_region_passes_clicks_through` maps two overlapping
+      windows and proves the click reaches the one underneath once the top
+      window's input region is cleared.
 - [ ] **[blocked: T-08]** FR-9 shell-restart scripted test (no shell process
       yet; state is compositor-owned by construction).
 - [ ] **[blocked: T-08/T-13]** FR-8 translucent-region blur pass; nested UI
@@ -973,8 +980,10 @@ later ticket lands · **[upstream]** depends on Smithay/upstream.
    (see the section at the end of this file); it also closed three of the
    four T-07 input-driven events. The input-region click-through test can
    now be written on top of it.
-2. T-03 pointer constraints + malicious-grab test. **Next host-closable
-   item.**
+2. ~~T-03 pointer constraints + malicious-grab test.~~ **Done** (see the
+   pointer-constraint section at the end of this file); the T-04
+   input-region click-through test landed with it. Next host-closable item:
+   T-06 clipboard image/file round-trip + malformed X.
 3. ~~T-04 input-region + malformed-client suite.~~ **Done** (input-region
    confirmed; malformed-client suite added).
 4. ~~T-07 compliance-client completeness + additive-only proof + malformed
@@ -1125,3 +1134,56 @@ Notes for subsequent tasks:
   -L ~/.local/lib"`; the Makefile sets both. `make check`-equivalent
   (fmt, clippy, qmllint, desktop-name/no-capture gates, `cargo test`,
   `make e2e`, 100-cycle soak) is green.
+
+## T-03 — pointer-constraint grabs + FR-5 malicious-grab test
+
+**State: complete.** `zwp_pointer_constraints_v1` was advertised but
+unenforced. `compositor/src/input/constraint.rs` now supplies a
+`PointerConstraintGrab`: a locked pointer is frozen at its lock location,
+a confined one is clamped to the region's global bounding box, and the
+grab self-heals (if the client destroys the constraint, the next event
+unsets the grab instead of leaving the pointer stuck). `DfState::
+new_constraint` activates the constraint and installs the grab when the
+pointer is over the constrained surface.
+
+Grabs are gated by `GrabArbiter` (now generic over the client key so the
+live compositor can key on Smithay's `ClientId`): the compositor is the
+sole arbiter, and only a session client that authenticated with a launch
+token (`shell_protocol_conformance` shell) is sanctioned. `df_core`
+authentication success now calls `grab_arbiter.sanction(client.id())`.
+
+Tests (all in `make e2e`):
+
+- `shell_protocol_conformance::sanctioned_client_can_lock_the_pointer` —
+  the shell locks the pointer; injected motion leaves the client's
+  `wl_pointer.motion` at the lock point.
+- `shell_protocol_conformance::unsanctioned_pointer_constraint_is_refused`
+  — an unauthenticated client requests the same lock; no `locked` event
+  arrives and the pointer keeps moving (the refusal is logged).
+- `shell_protocol_conformance::empty_input_region_passes_clicks_through`
+  — two cascaded windows; after the top window's input region is cleared,
+  the click focuses the window underneath (T-04 FR-7).
+
+Notes for subsequent tasks:
+
+- **Pointer constraints are sanctioned-only by design.** Third-party
+  pointer lock would need a sanctioned mechanism (e.g. the portal, T-27)
+  before it can be granted; the arbiter is the single gate. Do not bypass
+  it in `new_constraint`.
+- **Activation is focus-time only.** A constraint created while the
+  pointer is not over its surface stays registered but inactive; we do not
+  yet activate on a later pointer-enter. Hook the pointer focus path if a
+  client needs lock-before-enter.
+- **`cursor_position_hint` is ignored** (headless has no cursor to place).
+  A cursor-rendering compositor should move the lock point there.
+- **First `wl_pointer.motion` after an enter is not sent** (smithay sends
+  `enter` only on focus change); tests that need a motion baseline must
+  inject a follow-up relative motion. This bit the first version of the
+  constraint tests.
+- **`shell_protocol_conformance::shm_buffer` now uses an atomic sequence
+  suffix** (a test maps two windows; `create_new` collided on the second).
+  Same fix as `window_conformance`.
+- **Remaining host-closable items:** T-06 clipboard image/`text-uri-list`
+  round-trip and malformed X-message robustness; T-03 unclaimed-gesture
+  pass-through policy; extend `milestone_e2e.rs` with the new input/move
+  coverage.
