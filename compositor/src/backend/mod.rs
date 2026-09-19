@@ -41,9 +41,14 @@ pub fn add_output(
 pub fn add_seat_capabilities(state: &mut DfState) {
     let _pointer = state.seat.add_pointer();
     let _touch = state.seat.add_touch();
-    // Keymap conventions (Cmd→Super, Option→Alt) are pinned in T-03; the
-    // default US layout is the T-02 placeholder.
-    match state.seat.add_keyboard(Default::default(), 200, 25) {
+    // Keymap conventions (Cmd→Super, Option→Alt) are fixed in df-ipc and
+    // consumed by the shortcut engine and this keymap (T-03 FR-2).
+    let keyboard = state.input_settings.keyboard;
+    match state.seat.add_keyboard(
+        crate::input::keymap::xkb_config(),
+        keyboard.repeat_delay_ms,
+        keyboard.repeat_rate_hz,
+    ) {
         Ok(_keyboard) => {}
         Err(err) => eprintln!("dragonfruit-compositor: failed to add keyboard: {err}"),
     }
