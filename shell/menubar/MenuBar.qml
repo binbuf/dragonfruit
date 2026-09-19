@@ -6,6 +6,6 @@ import Dragonfruit
 Rectangle {
     id: menuBar
     height: 24
-    color: Theme.surface
-    radius: Theme.radius
+    color: Theme.color.surface
+    radius: Theme.controls.window.radius
 }

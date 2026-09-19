@@ -6,6 +6,6 @@ import Dragonfruit
 Rectangle {
     id: dock
     height: 64
-    color: Theme.surface
-    radius: Theme.radius
+    color: Theme.color.surface
+    radius: Theme.controls.window.radius
 }

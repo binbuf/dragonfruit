@@ -17,6 +17,33 @@ component library, the motion language, the component gallery with visual
 regression tests, and per-component accessibility guarantees. One source of
 visual truth for the entire desktop.
 
+## Status — taste-slice gate (T-08 execution)
+
+Per the Phase-2 plan, T-08 is gated on a **human art-direction checkpoint**
+rather than completed end-to-end. The thin taste slice is built and
+machine-verified; the remaining components wait on sign-off so the visual
+direction is not replicated into thirteen downstream tickets by accident.
+
+- **Done:** token architecture (`design-system/tokens/tokens.json`) with a
+  generator that emits `design-system/Theme.qml` (QML singleton) and
+  `compositor/src/design_tokens.rs` (Rust), plus `make check-tokens` in CI;
+  the taste-slice components (`AppWindow`, `TitleBar`, `TrafficLights`,
+  `MenuBarMenu`, `Toggle`, `Popup`, plus `Icon`/`FocusRing`/`Shadow`) with
+  dark/light, reduced-motion, keyboard operation and AT-SPI role mapping; the
+  component gallery (`design-system/gallery/`) with a headless snapshot
+  driver; FR-3 screenshot diff between the app `TitleBar` and an independent
+  compositor SSD reference; FR-6 visual regression (`tst_design_system` +
+  `scripts/check-gallery-snapshots.py`); and the design-token literal gate
+  (`scripts/check-design-tokens.sh`).
+- **Gated on art direction:** the remaining 13 components (`Sidebar`,
+  `Toolbar`, `SplitView`, `SettingsRow`, `SettingsGroup`, `SegmentedControl`,
+  `ContextMenu`, `SearchField`, `SourceList`, `Dialog`, `Sheet`, `Popover`,
+  `ScrollView`). Their component tokens are already defined.
+- **Deferred:** live AT-SPI role dump (needs a session bus; the component
+  `Accessible` roles are asserted in `tst_design_system`), joint
+  blur/translucency tuning with T-02/T-13, and the app-level
+  "no hand-rolled titlebar/menu/settings row" lint (T-16/T-18).
+
 ## Background
 
 The design system is the single place where the desktop's visual identity
@@ -92,12 +119,16 @@ titlebars and first-party `TitleBar`s unable to drift apart.
 ## Acceptance criteria
 
 - [ ] Gallery app demonstrates every component × state × scheme × motion
-      variant.
+      variant. *(taste slice complete; remaining 13 components gated on the
+      art-direction checkpoint)*
 - [ ] Zero hand-rolled titlebars/menus/settings rows in first-party apps
-      (lint rule in each app's CI).
-- [ ] Token generation pipeline: edit once, regenerate QML + Rust.
+      (lint rule in each app's CI). *(design-system literal gate landed;
+      app-level gate is T-16/T-18)*
+- [x] Token generation pipeline: edit once, regenerate QML + Rust.
 - [ ] AT-SPI audit of the gallery passes (keyboard-only walkthrough +
-      `atspi` role dump per component).
+      `atspi` role dump per component). *(keyboard walkthrough and per-type
+      `Accessible` roles asserted in `tst_design_system`; live `atspi` dump
+      needs a session bus)*
 
 ## Test plan
 

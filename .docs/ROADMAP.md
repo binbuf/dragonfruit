@@ -89,7 +89,7 @@ Updated when a task is partially or completely finished; see
 | Phase | Tickets |
 |---|---|
 | 1 · Foundation | T-01 ✅ done · T-02 🔄 partial (compositor core) · T-03 🔄 partial (input engine) · T-04 🔄 partial (window model) · T-05 🔄 partial (Spaces model) · T-06 🔄 partial (Xwayland) · T-07 🔄 partial (private shell protocols) |
-| 2 · Experience | T-08 … T-14 pending |
+| 2 · Experience | T-08 🔄 partial (design system, taste slice gated on art direction) · T-09 … T-14 pending |
 | 3 · Flagship apps | T-15 … T-19 pending |
 | 4 · System integration | T-20 … T-23 pending |
 | 5 · Desktop infrastructure | T-24 … T-29 pending |
@@ -264,6 +264,31 @@ registered accelerator, T-22); the additive-only proof test (FR-7) is
 policy-enforced by the lockstep handshake but not yet exercised because no
 interface has a `since="2"` member. Details: [PROGRESS.md](PROGRESS.md).
 
+T-08 is partial by design: the design system's **taste slice is built and
+machine-verified, but the ticket is gated on a human art-direction
+checkpoint** before the remaining components are replicated into thirteen
+downstream tickets. The token architecture is the single source of visual
+truth: `design-system/tokens/tokens.json` is generated into the QML
+`Theme` singleton and `compositor/src/design_tokens.rs`, and
+`make check-tokens` (CI) fails if either is stale. The taste-slice
+components — `AppWindow`, `TitleBar`, `TrafficLights`, `MenuBarMenu`,
+`Toggle`, `Popup` (plus `Icon`/`FocusRing`/`Shadow`) — ship with
+dark/light, reduced-motion, keyboard operation, AT-SPI roles, and gallery
+coverage. FR-3 is a screenshot diff between the app `TitleBar` and an
+independent compositor SSD reference rendered from the same tokens; FR-6 is
+a headless visual-regression suite (`tst_design_system` pixel/role/keyboard
+assertions plus `scripts/check-gallery-snapshots.py` over the gallery), and
+`scripts/check-design-tokens.sh` forbids literal colors/durations/radii in
+components. Committed gallery goldens under
+`design-system/gallery/snapshots/` are the artifacts for art-direction
+review. Open: art-direction sign-off, then the remaining 13 components
+(`Sidebar`, `Toolbar`, `SplitView`, `SettingsRow`, `SettingsGroup`,
+`SegmentedControl`, `ContextMenu`, `SearchField`, `SourceList`, `Dialog`,
+`Sheet`, `Popover`, `ScrollView`); the live AT-SPI role dump (needs a
+session bus); joint blur/translucency tuning with T-02/T-13; the app-level
+"no hand-rolled chrome" lint (T-16/T-18). Details:
+[PROGRESS.md](PROGRESS.md).
+
 **Foundation milestone E2E (T-01…T-07).** The whole vertical slice now has a
 headless end-to-end test, `compositor/tests/milestone_e2e.rs` (`make e2e`):
 one live session with a shell client, a Wayland app, and an X11 app attached
@@ -294,7 +319,7 @@ the shell's own chrome rendering (T-09/T-10).
    - [x] Xwayland (T-06: eager start + `DISPLAY` export + crash respawn, X11 window model integration, WM_CLASS identity, Tier-2 SSD marking, clipboard bridge; XDnD + app-matrix + GIO identity open)
    - [x] Private shell protocols (T-07: `df_core` handshake/trust, chrome surfaces + reserved zones, window/workspace/output control, compliance client; chrome rendering + Qt bindings + per-output zones open)
 2. **Experience**
-   - [ ] Design system
+   - [ ] Design system (T-08 taste slice built; remaining components gated on art-direction sign-off)
    - [ ] Top bar
    - [ ] Dock
    - [ ] Window switching

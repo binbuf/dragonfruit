@@ -5,6 +5,6 @@ import Dragonfruit
 // Control Center placeholder — T-21 builds the real panel.
 Rectangle {
     id: controlCenter
-    color: Theme.surface
-    radius: Theme.radius
+    color: Theme.color.surface
+    radius: Theme.controls.window.radius
 }

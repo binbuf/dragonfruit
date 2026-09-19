@@ -66,6 +66,12 @@ jobs:
       - name: Capture-grab protocol grep gate (FR-8)
         run: ./scripts/check-no-capture-grab.sh 2>&1 | tee logs/capture-gate.log
 
+      - name: Token freshness (T-08 FR-2)
+        run: ./scripts/gen-tokens.py --check 2>&1 | tee logs/token-freshness.log
+
+      - name: Design-token literal gate (T-08 FR-1)
+        run: ./scripts/check-design-tokens.sh 2>&1 | tee logs/token-literal-gate.log
+
       - name: Build Rust workspace
         run: cargo build --workspace 2>&1 | tee logs/rust-build.log
 
@@ -89,6 +95,9 @@ jobs:
 
       - name: QML lint (ctest)
         run: ctest --test-dir build --output-on-failure 2>&1 | tee logs/ctest.log
+
+      - name: Gallery visual regression (T-08 FR-6)
+        run: ./scripts/check-gallery-snapshots.py 2>&1 | tee logs/gallery-visual.log
 
       - name: Upload build logs
         if: always()

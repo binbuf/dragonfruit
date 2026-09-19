@@ -1187,3 +1187,102 @@ Notes for subsequent tasks:
   round-trip and malformed X-message robustness; T-03 unclaimed-gesture
   pass-through policy; extend `milestone_e2e.rs` with the new input/move
   coverage.
+
+## T-08 — design system taste slice + art-direction gate
+
+**State: partial by design.** The Phase-2 plan gates T-08 on a human
+art-direction checkpoint rather than completing all 20 components at once.
+The thin taste slice (token architecture + `AppWindow`/`TitleBar`/
+`TrafficLights`/`MenuBarMenu`/`Toggle`/`Popup` + gallery + FR-3/FR-6) is
+built and machine-verified; the remaining 13 components wait on sign-off so
+a wrong visual direction is not copied into T-09/T-10/T-11/T-12/T-13/T-16/
+T-18/T-21/T-22/T-25/T-26/T-28/T-29.
+
+### What exists now
+
+- `design-system/tokens/tokens.json` is the single source of visual truth
+  (primitive -> semantic -> component + motion + material), with component
+  token groups defined for **all 20** design-doc components even though only
+  the taste slice is built.
+- `scripts/gen-tokens.py` generates `design-system/Theme.qml` (QML
+  singleton) and `compositor/src/design_tokens.rs` (Rust). `make
+  check-tokens` / CI fails if either is stale. The generator output is
+  rustfmt-stable on purpose (`cargo fmt --check` stays green).
+- Components under `design-system/components/`: `AppWindow`, `TitleBar`,
+  `TrafficLights`, `MenuBarMenu`, `Toggle`, `Popup`, `Icon`, `FocusRing`,
+  `Shadow`. Each has dark/light via `Theme.color`, reduced-motion via
+  `Theme.motion.*.duration` (collapses to 0), keyboard operation, and
+  `Accessible` roles.
+- `design-system/gallery/` (`Dragonfruit.Gallery` module) renders every
+  gated component x state x scheme x motion and has a headless snapshot
+  driver (`DRAGONFRUIT_GALLERY_SNAPSHOT`).
+- `design-system/tests/tst_design_system.qml` (Qt Quick Test) covers tokens,
+  reduced motion, keyboard activation, AT-SPI roles, and pixel sampling;
+  `test_fr3_titlebar_matches_ssd_reference` diffs the app `TitleBar` against
+  an independent SSD renderer (`SsdTitlebarReference.qml`) with
+  `QImage.equals` and proves both are non-blank.
+- `scripts/check-gallery-snapshots.py` runs the gallery offscreen and checks
+  deterministic token/pixel invariants; `--update` writes the art-direction
+  goldens to `design-system/gallery/snapshots/`, `--strict` diffs them.
+- `scripts/check-design-tokens.sh` forbids literal colors, durations, and
+  radii in component QML (the generated `Theme.qml` is exempt).
+
+### Gotchas learned (important for the next session and for T-09+)
+
+- **QML property names may not match `on[A-Z].*`.** They are parsed as
+  signal handlers. The semantic "on" colors were renamed: `onSurface` ->
+  `textPrimary`, `onSurfaceSecondary` -> `textSecondary`,
+  `onSurfaceTertiary` -> `textTertiary`, `onAccent` -> `accentContent`.
+  Keep this in mind when adding token roles.
+- **`pragma Singleton` is not auto-detected by this Qt build system.**
+  `qt_add_qml_module` only marks a QML file as a singleton if
+  `set_source_files_properties(<file> PROPERTIES QT_QML_SINGLETON_TYPE
+  TRUE)` is set before the call. Without it the qmldir lists `Theme` as a
+  normal type and every `Theme.*` access is `undefined` at runtime.
+- **Runtime-compiled QML needs a filesystem import root.** Static modules
+  are registered as resources, which a plain `TestCase` loaded from disk
+  cannot import. The top-level CMake sets
+  `QT_QML_OUTPUT_DIRECTORY=${CMAKE_BINARY_DIR}/qml`; ctest sets
+  `QML2_IMPORT_PATH` to it and the gallery app calls `engine.addImportPath`
+  with a compile definition. `df_qml_lint` also passes `-I build/qml`.
+- **Qt shader effects no-op on the software scene graph.** `MultiEffect`
+  and `RectangularShadow` silently render nothing with
+  `QT_QUICK_BACKEND=software` (the CI/headless path). `Shadow.qml` is a
+  layered rounded-rectangle approximation instead. T-13 owns real blurred
+  shadows in the compositor.
+- **`grabImage` needs a real window.** The QML test root must be a visual
+  `Item` (the QuickTest window content) that *contains* the `TestCase`;
+  with `TestCase` as the root and `Item` children, `grabImage` returns blank
+  pixels and image-equality tests pass vacuously. `stage` is the root.
+- **`Accessible` has no `enabled` property.** Disabled state comes from
+  `Item.enabled`; setting `Accessible.enabled` is a compile error.
+- **Traffic-light glyphs are drawn geometry, not assets.** `Icon.qml` builds
+  the X / minus / plus / check / chevron marks from rotated rectangles, so
+  there are no bitmap assets to license (14-risks.md).
+- **The AppWindow titlebar is top-rounded only** via two rectangles
+  composited inside one `Item` whose `opacity` applies to the group (avoids
+  stacked translucency).
+
+### Hand-off / open items
+
+- **Art direction is the gate.** Review
+  `design-system/gallery/snapshots/` (or run `make gallery-snapshot` /
+  `dragonfruit-gallery-app`). Once signed off, build the remaining 13
+  components from the existing token groups and extend the gallery pages +
+  the visual regression. No new component should introduce a literal value:
+  `make check-design-tokens` enforces it.
+- **Live AT-SPI dump is deferred** (needs a session bus). The component
+  `Accessible.role`/`name`/`checked`/`checkable` values are asserted in
+  `tst_design_system`; a real `atspi` walkthrough belongs with the a11y
+  polish (T-31) or as a follow-up here.
+- **Blur/translucency joint tuning** with T-02/T-13 is still open: the
+  `material.*` tokens (opacity/blur) are defined and consumed by the QML
+  chrome, but the compositor blur pass that must match them is T-13.
+- **`Theme.dark`/`Theme.reducedMotion` are writable** and currently default
+  to `Application.styleHints.colorScheme` / `false`. The shell should bind
+  `reducedMotion` to settingsd (T-15/T-16) and may bind `dark` to the host
+  appearance. Assigning them (as the gallery/tests do) breaks the binding by
+  design.
+- **App-level "no hand-rolled chrome" lint** is T-16/T-18; the
+  design-system-side literal gate (`check-design-tokens.sh`) is the part
+  that exists now.

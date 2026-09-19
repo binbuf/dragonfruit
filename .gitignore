@@ -13,7 +13,12 @@ CMakeUserPresets.json
 .vscode/
 *.swp
 *~
+__pycache__/
 
 # Dev-session artifacts
 screenshot.png
 *.log
+
+# Local art-direction reference screenshots (not original project assets;
+# must never ship — see .docs/design/14-risks.md).
+/.docs/reference/macos/

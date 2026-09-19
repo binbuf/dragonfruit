@@ -32,15 +32,15 @@ endif
 
 .DEFAULT_GOAL := help
 .PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test \
-        lint fmt fmt-check clippy check dev soak e2e check-desktop-names \
-        check-no-capture-grab clean
+        visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev soak e2e \
+        check-desktop-names check-no-capture-grab check-design-tokens clean
 
 help:
 	@echo "Dragonfruit build targets:"
 	@echo "  make build    — build everything (Rust workspace + Qt/CMake)"
-	@echo "  make test     — run all tests (cargo + ctest)"
+	@echo "  make test     — run all tests (cargo + ctest + gallery visual regression)"
 	@echo "  make e2e      — T-01…T-07 Foundation vertical-slice + conformance suites"
-	@echo "  make lint     — fmt --check, clippy, qmllint, desktop-name gate"
+	@echo "  make lint     — fmt --check, clippy, qmllint, token freshness, desktop-name gate"
 	@echo "  make check    — lint + test + teardown soak gate"
 	@echo "  make dev      — dragonfruit dev --nested (daily workflow)"
 	@echo "  make soak     — teardown hygiene: N clean cycles (default 100)"
@@ -61,7 +61,7 @@ cmake-build:
 configure:
 	$(CMAKE) -S . -B $(BUILD_DIR) -G Ninja
 
-test: cargo-test qml-test
+test: cargo-test qml-test visual-test
 
 cargo-test:
 	$(CARGO) test --workspace
@@ -84,7 +84,20 @@ qml-test:
 	$(CMAKE) --build $(BUILD_DIR) >/dev/null
 	$(CTEST) --test-dir $(BUILD_DIR) --output-on-failure
 
-lint: fmt-check clippy qml-test check-desktop-names check-no-capture-grab
+# T-08 FR-6: headless gallery visual regression. Deterministic token/pixel
+# invariants; `make gallery-snapshot` regenerates the art-direction goldens.
+visual-test: cmake-build
+	./scripts/check-gallery-snapshots.py
+
+gallery-snapshot: cmake-build
+	./scripts/check-gallery-snapshots.py --update
+
+# T-08 FR-2: Theme.qml and design_tokens.rs must be generated from the one
+# source. Fails if either is stale.
+check-tokens:
+	./scripts/gen-tokens.py --check
+
+lint: fmt-check clippy qml-test check-tokens check-design-tokens check-desktop-names check-no-capture-grab
 
 fmt:
 	$(CARGO) fmt --all
@@ -101,6 +114,10 @@ check-desktop-names:
 # T-02 FR-8: capture is portal-only — no screencopy-style grabs, ever.
 check-no-capture-grab:
 	./scripts/check-no-capture-grab.sh
+
+# T-08 FR-1/FR-2: design-system components consume tokens, never literals.
+check-design-tokens:
+	./scripts/check-design-tokens.sh
 
 # The full gate: everything CI runs, locally in one command.
 check: lint test soak
