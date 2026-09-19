@@ -13,12 +13,14 @@
 use std::process::ExitCode;
 
 mod backend;
+mod identity;
 mod input;
 mod render;
 mod session;
 mod state;
 mod window;
 mod workspace;
+mod xwayland;
 
 pub use df_ipc::LOCKSTEP_VERSION;
 

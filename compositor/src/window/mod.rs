@@ -70,6 +70,22 @@ impl ReservedZones {
     }
 }
 
+/// Which side draws a window's decorations (T-06/T-13).
+///
+/// X11 windows have no Wayland CSD and land in Tier 2 (compositor-drawn
+/// SSD) unless their `_MOTIF_WM_HINTS` explicitly ask to be undecorated.
+/// Wayland clients follow `xdg-decoration`, whose compositor default is
+/// also SSD. T-13 owns actually rendering the titlebar; this is the
+/// per-window tier the renderer consults.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DecorationTier {
+    /// The compositor draws the titlebar (Tier 2).
+    #[default]
+    ServerSide,
+    /// The client draws its own decorations (Tier 3).
+    ClientSide,
+}
+
 /// A window-menu command (SSD titlebar right-click in T-13, private
 /// protocol in T-07).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -92,6 +108,7 @@ struct WindowEntry {
     children: Vec<Window>,
     app_id: Option<String>,
     title: Option<String>,
+    decorations: DecorationTier,
 }
 
 /// Compositor-owned window metadata, keyed by Smithay [`Window`].
@@ -120,6 +137,7 @@ impl WindowModel {
                 children: Vec::new(),
                 app_id: None,
                 title: None,
+                decorations: DecorationTier::default(),
             },
         );
         id
@@ -230,6 +248,26 @@ impl WindowModel {
             return false;
         }
         entry.title = title;
+        true
+    }
+
+    /// The decoration tier for `window` (T-13 renders ServerSide).
+    pub fn decorations(&self, window: &Window) -> DecorationTier {
+        self.entries
+            .get(window)
+            .map(|entry| entry.decorations)
+            .unwrap_or_default()
+    }
+
+    /// Set the decoration tier; returns true if it changed.
+    pub fn set_decorations(&mut self, window: &Window, tier: DecorationTier) -> bool {
+        let Some(entry) = self.entries.get_mut(window) else {
+            return false;
+        };
+        if entry.decorations == tier {
+            return false;
+        }
+        entry.decorations = tier;
         true
     }
 

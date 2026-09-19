@@ -77,11 +77,14 @@ use smithay::wayland::shm::{ShmHandler, ShmState};
 use smithay::wayland::tablet_manager::{TabletManagerState, TabletSeatHandler};
 use smithay::wayland::text_input::TextInputManagerState;
 use smithay::wayland::viewporter::ViewporterState;
+use smithay::wayland::xwayland_shell::XWaylandShellState;
 use smithay::wayland::xdg_activation::{
     XdgActivationToken, XdgActivationTokenData, XdgActivationHandler, XdgActivationState,
 };
+use smithay::xwayland::XWaylandClientData;
 use std::time::Duration;
 
+use crate::identity::AppResolver;
 use crate::input::dispatch::InputDispatch;
 use crate::input::gestures::{GestureRecognizer, ProgressPipeline};
 use crate::input::hot_corners::HotCornerDetector;
@@ -96,6 +99,7 @@ use crate::window::{
     WindowEventKind, WindowId, WindowMenuCommand, WindowModel, CASCADE_STEP,
 };
 use crate::workspace::WorkspaceModel;
+use crate::xwayland::XwaylandState;
 
 use smithay::input::pointer::Focus as PointerFocus;
 
@@ -106,7 +110,7 @@ use smithay::{
     delegate_pointer_constraints, delegate_pointer_gestures, delegate_presentation,
     delegate_relative_pointer, delegate_seat, delegate_security_context, delegate_session_lock,
     delegate_shm, delegate_tablet_manager, delegate_text_input_manager, delegate_viewporter,
-    delegate_xdg_activation, delegate_xdg_decoration, delegate_xdg_shell,
+    delegate_xdg_activation, delegate_xdg_decoration, delegate_xdg_shell, delegate_xwayland_shell,
 };
 
 /// Per-client bookkeeping.
@@ -150,6 +154,9 @@ pub struct DfState {
     pub loop_handle: LoopHandle<'static, DfState>,
     pub loop_signal: LoopSignal,
     pub clock: Clock<Monotonic>,
+    /// The Wayland socket name; used to name the per-session Xwayland
+    /// `DISPLAY` hand-off file (T-06).
+    pub socket_name: String,
 
     // --- protocol states ---------------------------------------------------
     pub compositor_state: CompositorState,
@@ -182,6 +189,9 @@ pub struct DfState {
     pub text_input_state: TextInputManagerState,
     pub input_method_state: InputMethodManagerState,
     pub tablet_manager_state: TabletManagerState,
+    /// `xwayland_shell` — the role protocol Xwayland binds before it can
+    /// create a `wl_surface` for an X11 window (T-06).
+    pub xwayland_shell_state: XWaylandShellState,
 
     // --- seat ---------------------------------------------------------------
     pub seat_state: smithay::input::SeatState<DfState>,
@@ -215,6 +225,14 @@ pub struct DfState {
     /// assignment, and app Space memory. The compositor is the sole owner;
     /// the shell consumes events and keeps no copy.
     pub workspaces: WorkspaceModel,
+
+    // --- application identity (T-06 interim; T-23 owns app-index) -----------
+    /// WM_CLASS -> `.desktop` resolver for X11 (and the seam T-23 replaces).
+    pub app_resolver: AppResolver,
+
+    // --- Xwayland (T-06) ----------------------------------------------------
+    /// The Xwayland server, X11 window manager, and `DISPLAY` state.
+    pub xwayland: XwaylandState,
 
     // --- input engine (T-03) ------------------------------------------------
     /// Global shortcut engine: the sole arbiter of key bindings.
@@ -277,6 +295,7 @@ impl DfState {
         let input_method_state =
             InputMethodManagerState::new::<DfState, _>(display_handle, |_| true);
         let tablet_manager_state = TabletManagerState::new::<DfState>(display_handle);
+        let xwayland_shell_state = XWaylandShellState::new::<DfState>(display_handle);
 
         let mut seat_state = smithay::input::SeatState::new();
         let seat = seat_state.new_wl_seat(display_handle, "dragonfruit");
@@ -294,6 +313,7 @@ impl DfState {
             loop_handle,
             loop_signal,
             clock: Clock::new(),
+            socket_name: String::new(),
             compositor_state,
             shm_state,
             dmabuf_state: None,
@@ -319,6 +339,7 @@ impl DfState {
             text_input_state,
             input_method_state,
             tablet_manager_state,
+            xwayland_shell_state,
             seat_state,
             seat,
             space: Space::default(),
@@ -331,6 +352,8 @@ impl DfState {
             reserved_zones: ReservedZones::default(),
             active_window: None,
             workspaces: WorkspaceModel::new(),
+            app_resolver: AppResolver::load(),
+            xwayland: XwaylandState::default(),
             shortcuts,
             gestures,
             progress,
@@ -470,7 +493,7 @@ impl DfState {
     /// remembers (activating that Space in lockstep, FR-5) or the active
     /// Space of the primary output otherwise. Returns true if the active
     /// Space changed.
-    fn assign_new_window_space(&mut self, window: &Window, id: WindowId) -> bool {
+    pub(crate) fn assign_new_window_space(&mut self, window: &Window, id: WindowId) -> bool {
         let (Some(output_name), _) = self.primary_output() else {
             return false;
         };
@@ -688,8 +711,22 @@ impl DfState {
         self.needs_redraw = true;
     }
 
-    /// Client min/max-size hints for a toplevel.
+    /// Client min/max-size and aspect hints for a window.
+    ///
+    /// Wayland toplevels use `xdg_surface` cached state; X11 windows use
+    /// `WM_NORMAL_HINTS` (T-06), including the aspect ratio.
     pub fn window_size_constraints(&self, window: &Window) -> SizeConstraints {
+        if let Some(x11) = window.x11_surface() {
+            let aspect = x11
+                .size_hints()
+                .and_then(|hints| hints.aspect)
+                .map(|(min, _)| (min.numerator.max(0) as u32, min.denominator.max(0) as u32));
+            return SizeConstraints {
+                min: x11.min_size().unwrap_or_default(),
+                max: x11.max_size().unwrap_or_default(),
+                aspect,
+            };
+        }
         let Some(surface) = window.wl_surface() else {
             return SizeConstraints::default();
         };
@@ -699,6 +736,7 @@ impl DfState {
             SizeConstraints {
                 min: current.min_size,
                 max: current.max_size,
+                aspect: None,
             }
         })
     }
@@ -898,7 +936,18 @@ impl DfState {
     }
 
     /// Send a configure with `size` to a toplevel if it changed.
-    fn configure_window_size(&mut self, window: &Window, size: Size<i32, Logical>) {
+    pub(crate) fn configure_window_size(&mut self, window: &Window, size: Size<i32, Logical>) {
+        // X11 has no xdg configure: push the full compositor-owned geometry
+        // to the X server (T-06 FR-1). The X client reflects it via
+        // ConfigureNotify.
+        if let Some(x11) = window.x11_surface() {
+            let geometry = self
+                .windows
+                .geometry(window)
+                .unwrap_or_else(|| Rectangle::new(Point::from((0, 0)), size));
+            let _ = x11.configure(Some(geometry));
+            return;
+        }
         let Some(toplevel) = window.toplevel() else {
             return;
         };
@@ -919,7 +968,7 @@ impl DfState {
     }
 
     /// Broadcast a window event, tagging it with identity.
-    fn broadcast_window(&mut self, window: &Window, kind: WindowEventKind) {
+    pub(crate) fn broadcast_window(&mut self, window: &Window, kind: WindowEventKind) {
         let Some(id) = self.windows.id(window) else {
             return;
         };
@@ -932,7 +981,7 @@ impl DfState {
     }
 
     /// Broadcast a state change.
-    fn broadcast_state(&mut self, window: &Window) {
+    pub(crate) fn broadcast_state(&mut self, window: &Window) {
         let (Some(id), Some(state)) = (self.windows.id(window), self.windows.state(window)) else {
             return;
         };
@@ -945,7 +994,7 @@ impl DfState {
     }
 
     /// Dismiss every popup rooted at `window`'s toplevel surface (FR-11).
-    fn dismiss_popups_for(&mut self, window: &Window) {
+    pub(crate) fn dismiss_popups_for(&mut self, window: &Window) {
         if !window.alive() {
             return;
         }
@@ -1001,6 +1050,23 @@ impl DfState {
             self.stats.frames_skipped_no_damage,
             self.stats.direct_scanouts
         );
+        // Identity resolution rate (T-06 acceptance): the misses are the
+        // input T-23's app-index heuristics consume.
+        let misses: Vec<&str> = self.app_resolver.misses().collect();
+        println!(
+            "dragonfruit-compositor: identity stats ({label}): apps={} resolved={} \
+             unresolved={} misses={misses:?}",
+            self.app_resolver.len(),
+            self.app_resolver.resolved_count(),
+            self.app_resolver.unresolved_count(),
+        );
+        if let Some(display) = &self.xwayland.display {
+            println!(
+                "dragonfruit-compositor: xwayland stats ({label}): display={display} \
+                 starts={} running={}",
+                self.xwayland.start_count, self.xwayland.running
+            );
+        }
     }
 
     /// Dispatch one compositor action from any trigger.
@@ -1087,6 +1153,11 @@ impl CompositorHandler for DfState {
     }
 
     fn client_compositor_state<'a>(&self, client: &'a Client) -> &'a CompositorClientState {
+        // The Xwayland connection carries its own client data type; every
+        // other client uses ours. Both expose a `CompositorClientState`.
+        if let Some(state) = client.get_data::<XWaylandClientData>() {
+            return &state.compositor_state;
+        }
         &client.get_data::<DfClientState>().unwrap().compositor_state
     }
 
@@ -1690,3 +1761,4 @@ delegate_session_lock!(DfState);
 delegate_tablet_manager!(DfState);
 delegate_text_input_manager!(DfState);
 delegate_input_method_manager!(DfState);
+delegate_xwayland_shell!(DfState);

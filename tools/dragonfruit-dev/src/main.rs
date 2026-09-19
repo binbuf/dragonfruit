@@ -181,6 +181,22 @@ fn socket_path(runtime_dir: &Path, socket_name: &str) -> PathBuf {
     runtime_dir.join(socket_name)
 }
 
+/// Wait up to `timeout` for the compositor's Xwayland `DISPLAY` hand-off
+/// file and return its trimmed contents (T-06).
+fn wait_for_x11_display(path: &Path, timeout: Duration) -> Option<String> {
+    let deadline = Instant::now() + timeout;
+    while Instant::now() < deadline {
+        if let Ok(contents) = std::fs::read_to_string(path) {
+            let display = contents.trim().to_string();
+            if !display.is_empty() {
+                return Some(display);
+            }
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    None
+}
+
 /// Owns the session's child processes so a panic or an early return can
 /// never leak them into the host session (T-01 FR-5: quitting must leave
 /// the host completely undisturbed). Normal teardown disarms the guard
@@ -292,12 +308,24 @@ fn run_dev_session(args: &DevArgs) -> ExitCode {
         std::thread::sleep(Duration::from_millis(25));
     }
 
+    // Xwayland may still be starting when the Wayland socket appears; wait
+    // briefly for its DISPLAY hand-off so X11 `--launch`ed apps get it
+    // (T-06). Absent means Xwayland is unavailable (Wayland-only session).
+    let display_path = runtime_dir.join(format!("{}.x11-display", args.socket_name));
+    let display = wait_for_x11_display(&display_path, Duration::from_secs(5));
+    if let Some(display) = &display {
+        println!("dragonfruit dev: DISPLAY={display}");
+    }
+
     for cmd in &args.launch {
         let Some(program) = cmd.first() else { continue };
         let mut command = Command::new(program);
         command.args(&cmd[1..]);
         command.env("WAYLAND_DISPLAY", &args.socket_name);
         command.env("XDG_CURRENT_DESKTOP", DESKTOP_NAME);
+        if let Some(display) = &display {
+            command.env("DISPLAY", display);
+        }
         match command.spawn() {
             Ok(child) => {
                 println!("dragonfruit dev: launched {cmd:?}");
@@ -357,6 +385,9 @@ fn run_dev_session(args: &DevArgs) -> ExitCode {
         );
         dirty = true;
     }
+    // The Xwayland DISPLAY hand-off file is session state; the compositor
+    // removes it, but clean it up here too if a hard kill left it behind.
+    let _ = std::fs::remove_file(&display_path);
     let strays = soak::dragonfruit_processes();
     if !strays.is_empty() {
         eprintln!("dragonfruit dev: DIRTY TEARDOWN — stray processes: {strays:?}");

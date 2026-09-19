@@ -45,6 +45,7 @@ pub fn run_session(socket_name: &str, hooks: BackendHooks) -> Result<(), String>
     let loop_signal = event_loop.get_signal();
 
     let mut state = DfState::new(&dh, loop_handle.clone(), loop_signal);
+    state.socket_name = socket_name.to_string();
 
     // Wayland socket: fd-driven accept + guaranteed removal on drop (RAII,
     // per the T-01 teardown lesson — no reliance on a drop chain at the
@@ -106,6 +107,12 @@ pub fn run_session(socket_name: &str, hooks: BackendHooks) -> Result<(), String>
     // Backend-specific setup (outputs, renderer, input devices).
     (hooks.init)(&mut state)?;
 
+    // Xwayland (T-06): spawned eagerly now that an output and seat exist.
+    // A missing binary is non-fatal (Wayland-only session).
+    if let Err(err) = crate::xwayland::start(&mut state) {
+        eprintln!("dragonfruit-compositor: Xwayland setup failed: {err}");
+    }
+
     // Main loop: fully event-driven; backends drive their own frame
     // scheduling (timers/vblank for DRM, redraw flag for nested).
     let mut render = hooks.render;
@@ -115,6 +122,10 @@ pub fn run_session(socket_name: &str, hooks: BackendHooks) -> Result<(), String>
         event_loop
             .dispatch(None, &mut state)
             .map_err(|e| format!("event loop error: {e}"))?;
+
+        // A dead Xwayland is respawned outside its own event-source borrow
+        // (FR-6: an Xwayland crash never destabilizes the session).
+        crate::xwayland::maybe_restart(&mut state);
 
         state.space.refresh();
         state.popups.cleanup();
@@ -134,12 +145,27 @@ pub fn run_session(socket_name: &str, hooks: BackendHooks) -> Result<(), String>
     // the registered sources (and with them the socket) alive, so it must
     // be dropped before the leak check.
     state.dump_stats("exit");
+    // The Xwayland DISPLAY hand-off file and the X11 socket/lock are session
+    // state, not leaks, but they must not survive the session (T-06).
+    crate::xwayland::remove_display_file(&state.socket_name);
+    if let Some(number) = state.xwayland.display_number {
+        crate::xwayland::cleanup_x11_files(number);
+    }
     drop(event_loop);
     drop(state);
     drop(loop_handle);
 
+    // Smithay 0.7's `X11Wm` event source captures a strong `LoopHandle` in
+    // its callback, which forms an `Rc` cycle with calloop's `LoopInner`.
+    // The cycle keeps the `ListeningSocketSource` alive past teardown, so
+    // its RAII unlink cannot run once Xwayland has been started. Unlink
+    // explicitly; the check below still verifies the unlink worked (a
+    // permission or unexpected-file failure still fails the session). This
+    // is a T-31 hardening/upstream follow-up (see PROGRESS.md).
+    let _ = std::fs::remove_file(&socket_path);
+    let _ = std::fs::remove_file(socket_path.with_extension("lock"));
+
     if socket_path.exists() {
-        let _ = std::fs::remove_file(&socket_path);
         return Err(format!(
             "teardown leak: socket {} survived exit",
             socket_path.display()

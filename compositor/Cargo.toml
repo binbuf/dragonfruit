@@ -24,3 +24,6 @@ smithay-drm-extras.workspace = true
 # the same headless backend (T-04).
 wayland-client = "0.31"
 wayland-protocols = { version = "0.32", features = ["client"] }
+# X11 client for the Xwayland conformance test (T-06): creates a window over
+# the X protocol and asserts it appears in the WM's `_NET_CLIENT_LIST`.
+x11rb = "0.13"
