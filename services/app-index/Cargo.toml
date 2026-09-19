@@ -1,0 +1,15 @@
+[package]
+name = "dragonfruit-app-index"
+description = "Dragonfruit application index (stub; real service is T-23)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "dragonfruit-app-index"
+path = "src/main.rs"
+
+[dependencies]
+df-ipc.workspace = true

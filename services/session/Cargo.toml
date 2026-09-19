@@ -1,0 +1,15 @@
+[package]
+name = "dragonfruit-session"
+description = "Dragonfruit session service (stub; real service is T-24)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "dragonfruit-session"
+path = "src/main.rs"
+
+[dependencies]
+df-ipc.workspace = true

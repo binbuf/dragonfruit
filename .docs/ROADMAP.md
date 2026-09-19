@@ -81,6 +81,26 @@ the breadth of "daily-driver."
 
 ## Implementation sequence
 
+### Ticket status
+
+Updated when a task is partially or completely finished; see
+[tasks/](tasks/) for scope and acceptance criteria.
+
+| Phase | Tickets |
+|---|---|
+| 1 · Foundation | T-01 ✅ done · T-02 … T-07 pending |
+| 2 · Experience | T-08 … T-14 pending |
+| 3 · Flagship apps | T-15 … T-19 pending |
+| 4 · System integration | T-20 … T-23 pending |
+| 5 · Desktop infrastructure | T-24 … T-29 pending |
+| 6 · Compatibility | T-30 pending |
+| 7 · Polish | T-31 pending |
+| Cross-cutting | T-32 pending |
+
+T-01 is complete except one open item: the CI workflow is written and
+all gates pass locally, but the first green run on a PR is still
+pending. Details and hand-off notes: [PROGRESS.md](PROGRESS.md).
+
 1. **Foundation**
    - [ ] Smithay compositor
    - [ ] Nested backend

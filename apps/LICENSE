@@ -1,0 +1,6 @@
+SPDX-License-Identifier: GPL-3.0-or-later
+
+Dragonfruit first-party applications are licensed under the GNU General
+Public License 3.0-or-later and are built exclusively on the Dragonfruit
+design system (LGPL-3.0-or-later). Full text: LICENSES/GPL-3.0.txt at the
+repository root. See docs/licensing.md for the licensing policy.

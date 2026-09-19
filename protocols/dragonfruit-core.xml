@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SPDX-License-Identifier: MIT
+
+  Dragonfruit private protocol — core handshake (placeholder for T-07).
+
+  dragonfruit lockstep-version: 1
+
+  This file ships with the compositor and shell as a lockstep set
+  (docs/ipc-versioning.md). Within a stable release the protocol is
+  additive-only: new events and requests may be added; existing ones
+  never change meaning or disappear.
+-->
+<protocol name="dragonfruit_core">
+
+  <!--
+    Placeholder global proving the versioning convention. T-07 replaces
+    the contents with the real shell protocol (workspace enumeration,
+    window state, Mission Control control, output configuration) while
+    keeping the lockstep marker above.
+  -->
+  <interface name="dragonfruit_core" version="1">
+  </interface>
+
+</protocol>

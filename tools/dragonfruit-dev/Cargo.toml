@@ -1,0 +1,17 @@
+[package]
+name = "dragonfruit-dev"
+description = "dragonfruit dev --nested: the daily development command (T-01)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "dragonfruit"
+path = "src/main.rs"
+
+[dependencies]
+calloop.workspace = true
+df-ipc.workspace = true
+libc.workspace = true

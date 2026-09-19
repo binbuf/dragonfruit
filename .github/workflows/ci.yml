@@ -1,0 +1,94 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+#
+# CI (T-01, FR-3): fmt/clippy, unit tests, QML lint, headless compositor
+# smoke + teardown soak, and the desktop-name grep gate — on every PR and
+# push to main. Build logs are always uploaded as an artifact.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-and-test:
+    name: Build, lint, test (headless)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install native deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-dev libwayland-dev ninja-build
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.98.1"
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install Qt 6.11
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.11.*"
+          cache: true
+
+      - name: Prepare log directory
+        run: mkdir -p logs
+
+      - name: Format check
+        run: cargo fmt --all -- --check 2>&1 | tee logs/rust-fmt.log
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tee logs/rust-clippy.log
+
+      - name: Rust unit tests
+        run: cargo test --workspace 2>&1 | tee logs/rust-test.log
+
+      - name: Desktop-name grep gate
+        run: ./scripts/check-desktop-names.sh 2>&1 | tee logs/grep-gate.log
+
+      - name: Build Rust workspace
+        run: cargo build --workspace 2>&1 | tee logs/rust-build.log
+
+      # The compositor's test suite runs on the headless backend in CI —
+      # no display required. The soak cycles the compositor and verifies
+      # teardown: no stray processes, no stray sockets.
+      - name: Headless compositor smoke + teardown soak
+        run: |
+          set -e
+          XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          sudo mkdir -p "$XDG_RUNTIME_DIR"
+          sudo chown "$(id -u)" "$XDG_RUNTIME_DIR"
+          export XDG_RUNTIME_DIR
+          cargo run -p dragonfruit-dev --bin dragonfruit -- dev --soak 10 2>&1 | tee logs/soak.log
+
+      - name: Configure Qt/CMake build
+        run: cmake -S . -B build -G Ninja 2>&1 | tee logs/cmake-configure.log
+
+      - name: Build Qt/CMake side
+        run: cmake --build build 2>&1 | tee logs/cmake-build.log
+
+      - name: QML lint (ctest)
+        run: ctest --test-dir build --output-on-failure 2>&1 | tee logs/ctest.log
+
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: logs/
+          if-no-files-found: ignore

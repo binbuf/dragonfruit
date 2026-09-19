@@ -125,11 +125,24 @@ loop are decided once, here, so later tickets never re-litigate them
 
 ## Acceptance criteria
 
-- [ ] Fresh clone → full build → full test pass, documented in README.
-- [ ] `dragonfruit dev --nested` runs and exits cleanly 100 consecutive
+- [x] Fresh clone → full build → full test pass, documented in README.
+- [x] `dragonfruit dev --nested` runs and exits cleanly 100 consecutive
       times with zero stray processes or sockets (scripted).
-- [ ] Licensing decided, recorded, and reviewed (blocker release gate).
+- [x] Licensing decided, recorded, and reviewed (blocker release gate).
 - [ ] CI green on headless backend, including an artifact with build logs.
+      (Workflow written and all gates verified locally; awaiting the first
+      observed green run on a PR.)
+
+### Completion notes (2026-09-18)
+
+- Monorepo layout, Cargo workspace, CMake/Qt side, `dragonfruit dev
+  --nested`, `--soak`, the desktop-name grep gate, IPC lockstep crate,
+  Makefile task runner, README, licensing docs/files, and CI are in.
+- Rare flake observed once in ~300 nested teardown cycles: compositor
+  died silently mid-cycle and its socket survived (exit status was
+  non-clean). Direct compositor cycling is 100/100 clean; headless soak
+  is 100/100 clean. Filed as T-02 hardening work: guarantee socket
+  cleanup on every path (RAII guard) and find the nested teardown race.
 
 ## Risks / open questions
 

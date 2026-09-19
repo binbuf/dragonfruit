@@ -1,0 +1,15 @@
+[package]
+name = "xdg-desktop-portal-dragonfruit"
+description = "Dragonfruit xdg-desktop-portal backend (stub; real backend is T-27)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "xdg-desktop-portal-dragonfruit"
+path = "src/main.rs"
+
+[dependencies]
+df-ipc.workspace = true

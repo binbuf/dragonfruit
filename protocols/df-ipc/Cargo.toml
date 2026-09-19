@@ -1,0 +1,13 @@
+[package]
+name = "df-ipc"
+description = "Shared IPC contracts for the Dragonfruit lockstep set"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+# One crate, no dependencies: every process in the desktop embeds these
+# constants, which is what makes cross-version mixing detectable at
+# handshake (docs/ipc-versioning.md).
+[dependencies]

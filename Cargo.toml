@@ -1,0 +1,40 @@
+[workspace]
+resolver = "2"
+members = [
+    "compositor",
+    "portal",
+    "protocols/df-ipc",
+    "services/menu-broker",
+    "services/settingsd",
+    "services/app-index",
+    "services/session",
+    "tools/dragonfruit-dev",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/dragonfruit-desktop/dragonfruit"
+rust-version = "1.80.1"
+
+# Pinned dependency set.
+#
+# Smithay is pinned to an exact version on purpose: upgrades are deliberate,
+# mechanical events, never pulled in transitively (see .docs/design/14-risks.md
+# and docs/ipc-versioning.md for the lockstep rules that apply to the rest of
+# the dependency set).
+[workspace.dependencies]
+smithay = { version = "=0.7.0", default-features = false, features = [
+    "backend_winit",
+    "wayland_frontend",
+    "renderer_glow",
+] }
+calloop = { version = "=0.14.4", features = ["signals"] }
+libc = "0.2"
+wayland-server = "=0.31.10"
+
+df-ipc = { path = "protocols/df-ipc", version = "0.1.0" }
+
+[profile.release]
+lto = "thin"
