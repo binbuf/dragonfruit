@@ -9,5 +9,5 @@ Window {
     height: 600
     visible: true
     title: qsTr("Dragonfruit Files")
-    color: Theme.surface
+    color: Theme.color.surface
 }
