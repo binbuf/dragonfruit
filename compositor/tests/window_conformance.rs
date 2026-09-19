@@ -377,8 +377,13 @@ fn shm_buffer(
     let stride = width * 4;
     let size = (stride * height) as usize;
 
+    // A unique name per buffer: a test may map several windows, and the
+    // backing file is created with `create_new`.
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static SHM_SEQ: AtomicU64 = AtomicU64::new(0);
+    let seq = SHM_SEQ.fetch_add(1, Ordering::Relaxed);
     let path = std::env::temp_dir().join(format!(
-        "dragonfruit-conformance-{}-{:p}.shm",
+        "dragonfruit-conformance-{}-{seq}-{:p}.shm",
         std::process::id(),
         &shm
     ));
@@ -535,5 +540,70 @@ fn popup_configure_is_constrained_to_the_output() {
 
     surface.destroy();
     xdg_surface.destroy();
+    proc.shutdown();
+}
+
+/// T-04 test-plan requirement: a client sending contradictory or
+/// nonsensical state requests must never crash the compositor. Exercise
+/// no-op transitions on a floating window, contradictory size hints,
+/// re-entrant fullscreen/maximize, and destroying a fullscreen toplevel,
+/// then prove the session is still alive by mapping a fresh window.
+#[test]
+fn malformed_client_requests_never_crash() {
+    let proc = CompositorProcess::start("dragonfruit-conformance-malformed-window");
+    let (_conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (surface, xdg_surface, toplevel, _file) = map_toplevel(&mut state, &mut queue);
+
+    // No-op transitions from the floating state.
+    toplevel.unset_maximized();
+    toplevel.unset_fullscreen();
+    queue.roundtrip(&mut state).expect("no-op transitions");
+
+    // Contradictory size hints (min > max), then a maximize.
+    toplevel.set_min_size(500, 500);
+    toplevel.set_max_size(100, 100);
+    toplevel.set_maximized();
+    queue
+        .roundtrip(&mut state)
+        .expect("contradictory size hints");
+    assert!(
+        !state.toplevel_configures.is_empty(),
+        "a maximize after contradictory hints must still configure"
+    );
+
+    // Re-entrant / interleaved state requests.
+    toplevel.set_fullscreen(None);
+    toplevel.set_maximized();
+    toplevel.unset_fullscreen();
+    toplevel.unset_maximized();
+    queue
+        .roundtrip(&mut state)
+        .expect("interleaved state requests");
+
+    // Destroy a toplevel while it is fullscreen: the compositor owns the
+    // dedicated Space and must clean it up without panicking.
+    toplevel.set_fullscreen(None);
+    queue
+        .roundtrip(&mut state)
+        .expect("fullscreen before destroy");
+    toplevel.destroy();
+    surface.destroy();
+    xdg_surface.destroy();
+    queue
+        .roundtrip(&mut state)
+        .expect("destroy fullscreen toplevel");
+
+    // Still alive: a fresh window maps and configures.
+    state.toplevel_configures.clear();
+    let (surface2, xdg_surface2, toplevel2, _file2) = map_toplevel(&mut state, &mut queue);
+    assert!(
+        !state.toplevel_configures.is_empty(),
+        "the compositor must still configure a fresh window"
+    );
+
+    toplevel2.destroy();
+    surface2.destroy();
+    xdg_surface2.destroy();
     proc.shutdown();
 }

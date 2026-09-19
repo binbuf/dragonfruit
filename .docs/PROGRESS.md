@@ -812,12 +812,16 @@ later ticket lands · **[upstream]** depends on Smithay/upstream.
       "nested and DRM both run the vertical slice" exit. Verify LibSeat,
       udev hotplug, per-crtc outputs, vblank scheduling, direct scanout,
       hardware cursor plane. First stop: VM with a spare GPU or VT switch.
-- [ ] **[hw]** FR-2 idle trace (60 s, zero damage/client wakeups), FR-3
-      input-to-photon latency (nested + DRM), FR-4 one-frame-per-animation.
-      `DfState::dump_stats` already prints `frames_rendered` /
-      `frames_skipped_no_damage` / `direct_scanouts` on SIGUSR1 and clean
-      exit — turn that into a scripted assertion. The idle trace can run
-      nested/headless here; latency needs hardware.
+- [x] **[host]** FR-2 idle trace: `compositor/tests/idle_trace.rs` (in
+      `make e2e`) asserts `frames_rendered` stays flat across a second of
+      inactivity on the headless backend. The headless render hook now
+      counts redraw requests (`frames_rendered` / `frames_skipped_no_damage`)
+      instead of silently clearing `needs_redraw`.
+- [ ] **[hw]** FR-2 nested idle trace (60 s, zero damage/client wakeups) and
+      FR-3 input-to-photon latency (nested + DRM), FR-4
+      one-frame-per-animation. `DfState::dump_stats` already prints the
+      counters on SIGUSR1 and clean exit; the headless idle assertion is the
+      scripted template. Latency needs hardware.
 - [ ] **[hw]** FR-5 direct-scanout counter verification on real hardware.
 - [ ] **[hw]** FR-6 GPU removal / forced driver loss degrades gracefully
       (VM virtio-GPU).
@@ -860,11 +864,19 @@ later ticket lands · **[upstream]** depends on Smithay/upstream.
 
 - [ ] **[host]** Protocol-level move/resize conformance (needs T-03's
       synthetic seat button). Currently unit-level only.
-- [ ] **[host]** FR-7 input-region passthrough: no explicit handling found.
-      Confirm Smithay's hit-test honors client input regions; if not,
-      implement, and add the click-through test.
-- [ ] **[host]** Malformed-client suite: contradictory state requests never
-      crash the compositor.
+- [x] **[host]** Malformed-client suite: `window_conformance.rs`
+      `malformed_client_requests_never_crash` drives no-op transitions on a
+      floating window, contradictory min>max size hints, re-entrant
+      fullscreen/maximize, and a fullscreen-toplevel destroy, then proves a
+      fresh window still configures.
+- [x] **[host]** FR-7 input-region passthrough: confirmed, no compositor
+      change needed. Smithay's `Space::element_under`
+      (`desktop/space/mod.rs:194`) filters top-to-bottom by
+      `is_in_input_region`, and `Window::is_in_input_region` delegates to
+      `Window::surface_under` (input regions honored). The compositor's
+      click-to-focus and `surface_under` both go through that path, so an
+      empty input region passes the click through. A click-through *test*
+      still needs injected input (T-03 synthetic seat).
 - [ ] **[blocked: T-08]** FR-9 shell-restart scripted test (no shell process
       yet; state is compositor-owned by construction).
 - [ ] **[blocked: T-08/T-13]** FR-8 translucent-region blur pass; nested UI
@@ -891,8 +903,12 @@ later ticket lands · **[upstream]** depends on Smithay/upstream.
 - [ ] **[host]** FR-4 clipboard image + file-list round-trip test. The
       selection bridge is mime-agnostic; add a conformance case that offers
       `image/png` and `text/uri-list` and reads them back both directions.
-- [ ] **[host]** Decide and document the Xwayland fractional-scaling policy
-      (scale-viewport vs integer scale) — the ticket's open question.
+- [x] **[host]** Decide and document the Xwayland fractional-scaling policy:
+      **integer-scaled Xwayland + per-surface viewport downscale**, written
+      up in [docs/xwayland-scaling.md](../docs/xwayland-scaling.md). Xwayland
+      runs at `ceil(output_scale)`; the compositor downscales each X11
+      toplevel with `wp_viewport` to the fractional logical size. Plumbing
+      is deferred to T-13/T-31; X11 currently renders at 1x.
 - [ ] **[host]** Malformed X-message robustness test (never crash).
 - [ ] **[hw]** Reference app matrix (Firefox X11, Steam, one SDL game,
       xterm) under nested/DRM. First T-30 job; partially runnable nested if
@@ -907,17 +923,25 @@ later ticket lands · **[upstream]** depends on Smithay/upstream.
 
 ### T-07 — private shell protocols
 
-- [ ] **[host]** Extend the compliance client to assert **every** emitted
-      event pair. Missing: `attention`, `hot_corner`, `input_action`,
-      `progress`, `app_accelerator`, `app_switcher`, output
-      geometry/mode/transform, workspace `removed`/`fullscreen`, focus,
-      title/app_id/state, `closed`.
+- [x] **[host]** Extend the compliance client to assert emitted event pairs:
+      output geometry/mode/transform, workspace index/activated/fullscreen/
+      removed, focus, attention (`xdg-activation`), app-switcher state, and
+      toplevel output/workspace/closed transitions are now asserted by
+      `event_coverage_conformance`. Still missing (need injected input, T-03
+      synthetic seat): `input_action`, `progress`, `hot_corner`,
+      `app_accelerator`.
 - [ ] **[host]** FR-7 additive-only proof test. Introduce the first
       `since="2"` member (or a test-only interface), bind version 1, and
       assert the v2 member is neither sent nor required; gate every
       `send_*` on `resource.version()`.
-- [ ] **[host]** Fuzzed/malformed sequence suite: never crash on bad
-      private-protocol traffic (test-plan requirement).
+- [x] **[host]** Fuzzed/malformed sequence suite: `shell_protocol_conformance.rs`
+      `malformed_private_traffic_never_crashes` re-authenticates (refusal
+      code 4), sends extreme output values and out-of-range reorders,
+      drives stale workspace/toplevel handles, then proves a fresh request
+      round-trips. It caught and fixed a real compositor panic: a
+      client-supplied `set_mode` size built a negative Smithay `Size`; the
+      output dispatch now rejects non-positive/overflowing modes and
+      non-finite/non-positive scales.
 - [ ] **[blocked: T-09/T-10]** FR-1 keyboard-interaction seat grabs and
       chrome rendering/layer stacking (T-07 owns placement/configure only).
 - [ ] **[blocked: T-08]** consume the generated Qt/C++ bindings and add the
@@ -931,16 +955,96 @@ later ticket lands · **[upstream]** depends on Smithay/upstream.
 
 ### The E2E return point and suggested order
 
-1. T-03 synthetic-input harness → T-04 move/resize conformance.
+1. T-03 synthetic-input harness → T-04 move/resize conformance. **Still the
+   top host-closable item**; it also unblocks the four remaining T-07
+   input events and the input-region click-through test.
 2. T-03 pointer constraints + malicious-grab test.
-3. T-04 input-region + malformed-client suite.
-4. T-07 compliance-client completeness + additive-only proof + malformed
-   suite.
-5. T-06 clipboard image/file test + fractional-scale decision + malformed X.
-6. T-02 idle-trace assertion (nested/headless).
+3. ~~T-04 input-region + malformed-client suite.~~ **Done** (input-region
+   confirmed; malformed-client suite added).
+4. ~~T-07 compliance-client completeness + additive-only proof + malformed
+   suite.~~ **Mostly done**: event coverage + malformed suite landed; the
+   additive-only proof and the four input-driven events remain.
+5. T-06 clipboard image/file test + ~~fractional-scale decision~~ (done) +
+   malformed X.
+6. ~~T-02 idle-trace assertion (nested/headless).~~ **Headless done**; the
+   nested trace still needs a display.
 7. **Re-run and extend `make e2e`.** New coverage that belongs in
    `milestone_e2e.rs` once the above lands: move/resize through the shell,
    per-output zones, a v1/v2 additive handshake, an image/file clipboard
    round-trip. Keep it the integration gate before T-08.
 8. Then the **[hw]** items (DRM bring-up, budgets, hotplug, GPU loss) when a
    seat is available, and the **[blocked]** items as their tickets land.
+
+## Foundation hardening pass (T-02…T-07) — host-closable test batch
+
+**State: landed.** A batch of the host-closable items from the index above,
+all green under `make e2e` / `make test` / `make lint`:
+
+- **T-02 FR-2 idle trace.** `compositor/src/backend/headless.rs` now counts
+  redraw requests (`frames_rendered` when `needs_redraw`, else
+  `frames_skipped_no_damage`) instead of clearing the flag silently, and
+  `compositor/tests/idle_trace.rs` samples the counters via SIGUSR1 twice
+  around a one-second idle window and asserts `frames_rendered` is flat.
+  Added to `make e2e`.
+- **T-07 compliance-client completeness.** `event_coverage_conformance`
+  asserts output geometry/mode/transform, workspace
+  index/activated/fullscreen/removed, focus, attention (via
+  `xdg-activation`), app-switcher state, and toplevel
+  output/workspace/closed transitions.
+- **T-07 malformed-traffic suite.** `malformed_private_traffic_never_crashes`
+  re-authenticates, sends extreme output values and out-of-range reorders,
+  drives stale workspace/toplevel handles, and proves a fresh request
+  round-trips.
+- **T-04 malformed-client suite.**
+  `malformed_client_requests_never_crash` drives contradictory state
+  requests, contradictory min>max size hints, re-entrant
+  fullscreen/maximize, and a fullscreen-toplevel destroy.
+- **T-06 fractional-scaling policy** documented in
+  [docs/xwayland-scaling.md](../docs/xwayland-scaling.md).
+- **T-04 input-region passthrough** confirmed against Smithay (no code
+  change).
+
+### Bug found and fixed: a client-supplied mode size panicked the compositor
+
+The malformed-traffic suite killed the compositor with:
+
+```text
+thread 'main' panicked at smithay-0.7.0/src/utils/geometry.rs:714:9:
+Attempting to create a `Size` of negative size: (-1, -1)
+```
+
+Root cause: `df_output.set_mode(width, height, refresh)` is
+client-controlled `u32`; the handler did `(width as i32, height as i32)`,
+so `u32::MAX` became `-1` and `Size::from((-1, -1))` panics inside
+Smithay. Fix (`compositor/src/shell/mod.rs`, `SetMode`/`SetScale`): reject
+modes with zero/overflowing dimensions and scales that are non-finite or
+non-positive, log the refusal, and still ack with the live properties. A
+malformed private-protocol message can no longer abort the session.
+
+### Notes for subsequent tasks
+
+- **`wait_for` in `shell_protocol_conformance.rs` is `#[track_caller]`**, so
+  a timeout panic points at the waiting call site rather than the helper.
+  Keep that when adding waits.
+- **`CompositorProcess` in `shell_protocol_conformance.rs` captures
+  stderr to a temp file and prints it on panic** (the milestone pattern);
+  that is how the mode-size panic above was diagnosed. Reuse it.
+- **`window_conformance.rs::shm_buffer` uses an atomic sequence suffix.**
+  A test may map several windows; the backing file is `create_new`, so a
+  name keyed only on the `wl_shm` pointer collided on the second map.
+- **Any client-controlled size/value that reaches a Smithay constructor
+  must be validated at the protocol boundary.** `Size::new` panics on
+  negative dimensions; `set_mode`, `set_scale`, and future output/geometry
+  requests need the same guard. This is the same crash class as the X11
+  NUL-title panic (client data must never abort the compositor).
+- **The four remaining T-07 compliance events (`input_action`, `progress`,
+  `hot_corner`, `app_accelerator`) are emitted from the T-03 outbox and
+  need injected input.** The T-03 synthetic-seat harness is the unblocker;
+  until then they are covered by the T-03 unit matrix.
+- **The FR-7 additive-only proof still needs a real `since="2"` member.**
+  Do not add a fake one to production; add the conformance case in the
+  same change that introduces the first v2 member, and gate every
+  `send_*` on `resource.version()`.
+- **`docs/xwayland-scaling.md` records the chosen policy but not the
+  plumbing.** The viewport downscale and the multi-monitor "largest scale"
+  decision are T-13/T-31 work.
