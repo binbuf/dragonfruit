@@ -83,48 +83,55 @@ Window {
         anchors.fill: parent
         anchors.margins: Theme.primitive.spacing.md
 
-        Row {
+        Column {
             id: header
             anchors.top: parent.top
             anchors.left: parent.left
             anchors.right: parent.right
             spacing: Theme.primitive.spacing.sm
 
-            Repeater {
-                model: gallery.pages
-                delegate: Rectangle {
-                    required property int index
-                    required property string modelData
-                    width: pageLabel.implicitWidth + Theme.primitive.spacing.lg
-                    height: Theme.controls.titlebar.height
-                    radius: Theme.primitive.radius.sm
-                    color: index === gallery.pageIndex ? Theme.color.accent
-                                                       : Theme.color.controlFill
-                    Text {
-                        id: pageLabel
-                        anchors.centerIn: parent
-                        text: parent.modelData
-                        color: index === gallery.pageIndex ? Theme.color.accentContent
-                                                           : Theme.color.textPrimary
-                        font.pixelSize: Theme.primitive.font.sizeSm
-                    }
-                    TapHandler {
-                        onTapped: gallery.pageIndex = index
+            Flow {
+                width: parent.width
+                spacing: Theme.primitive.spacing.sm
+
+                Repeater {
+                    model: gallery.pages
+                    delegate: Rectangle {
+                        required property int index
+                        required property string modelData
+                        width: pageLabel.implicitWidth + Theme.primitive.spacing.lg
+                        height: Theme.controls.titlebar.height
+                        radius: Theme.primitive.radius.sm
+                        color: index === gallery.pageIndex ? Theme.color.accent
+                                                           : Theme.color.controlFill
+                        Text {
+                            id: pageLabel
+                            anchors.centerIn: parent
+                            text: parent.modelData
+                            color: index === gallery.pageIndex ? Theme.color.accentContent
+                                                               : Theme.color.textPrimary
+                            font.pixelSize: Theme.primitive.font.sizeSm
+                        }
+                        TapHandler {
+                            onTapped: gallery.pageIndex = index
+                        }
                     }
                 }
             }
 
-            Item { width: Theme.primitive.spacing.xl; height: 1 }
+            Row {
+                spacing: Theme.primitive.spacing.sm
 
-            Toggle {
-                text: qsTr("Dark")
-                checked: gallery.scheme === "dark"
-                onToggled: (checked) => gallery.scheme = checked ? "dark" : "light"
-            }
-            Toggle {
-                text: qsTr("Reduced motion")
-                checked: gallery.reducedMotion
-                onToggled: (checked) => gallery.reducedMotion = checked
+                Toggle {
+                    text: qsTr("Dark")
+                    checked: gallery.scheme === "dark"
+                    onToggled: (checked) => gallery.scheme = checked ? "dark" : "light"
+                }
+                Toggle {
+                    text: qsTr("Reduced motion")
+                    checked: gallery.reducedMotion
+                    onToggled: (checked) => gallery.reducedMotion = checked
+                }
             }
         }
 

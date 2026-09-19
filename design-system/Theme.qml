@@ -217,6 +217,14 @@ QtObject {
             readonly property int inset: 3
             readonly property int labelGap: 8
         }
+        readonly property var button: QtObject {
+            readonly property int height: 28
+            readonly property int paddingH: 12
+            readonly property int radius: 10
+            readonly property int fontSize: 13
+            readonly property int fontWeight: 500
+            readonly property int iconSize: 16
+        }
         readonly property var popup: QtObject {
             readonly property int radius: 14
             readonly property int padding: 8

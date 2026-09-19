@@ -28,7 +28,11 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 GOLDEN_DIR = REPO / "design-system" / "gallery" / "snapshots"
-PAGES = ["tokens", "window", "titlebar", "trafficlights", "toggle", "popup", "menu", "ssd"]
+PAGES = [
+    "tokens", "window", "titlebar", "trafficlights", "toggle", "popup", "menu", "ssd",
+    "buttons", "sidebar", "toolbar", "splitview", "settings", "segmented", "contextmenu",
+    "searchfield", "sourcelist", "dialog", "sheet", "popover", "scrollview", "icons",
+]
 SCHEMES = [("light", False), ("dark", False), ("dark", True)]
 
 
@@ -150,6 +154,16 @@ def invariant_checks(output: Path, tokens: dict, resolve) -> list[str]:
           "light window: surface color not found")
     check(contains_color(output / "window_dark.png", hex_rgb(resolve(dark["surface"], tokens))),
           "dark window: surface color not found")
+    check(contains_color(output / "buttons_light.png", hex_rgb(resolve(light["accent"], tokens))),
+          "light buttons: accent color not found")
+    check(contains_color(output / "sidebar_dark.png", hex_rgb(resolve(dark["accent"], tokens))),
+          "dark sidebar: selected accent color not found")
+    check(contains_color(output / "dialog_dark.png", hex_rgb(resolve(dark["surfaceElevated"], tokens))),
+          "dark dialog: elevated surface color not found")
+    check(contains_color(output / "settings_light.png", hex_rgb(resolve(light["surfaceElevated"], tokens))),
+          "light settings: elevated surface color not found")
+    check(contains_color(output / "searchfield_light.png", hex_rgb(resolve(light["controlFill"], tokens))),
+          "light search field: control fill color not found")
 
     # Light and dark renders must actually differ.
     light_bytes = (output / "window_light.png").read_bytes()

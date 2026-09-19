@@ -11,7 +11,11 @@ Item {
 
     property int pageIndex: 0
     readonly property var pages: ["Tokens", "Window", "TitleBar", "TrafficLights",
-                                  "Toggle", "Popup", "Menu", "SSD"]
+                                  "Toggle", "Popup", "Menu", "SSD", "Buttons",
+                                  "Sidebar", "Toolbar", "SplitView", "Settings",
+                                  "Segmented", "ContextMenu", "SearchField",
+                                  "SourceList", "Dialog", "Sheet", "Popover",
+                                  "ScrollView", "Icons"]
     property string scheme: "dark"
     property bool reducedMotion: false
 
@@ -42,7 +46,21 @@ Item {
             case 4: return togglePageComponent;
             case 5: return popupPageComponent;
             case 6: return menuPageComponent;
-            default: return ssdPageComponent;
+            case 7: return ssdPageComponent;
+            case 8: return buttonsPageComponent;
+            case 9: return sidebarPageComponent;
+            case 10: return toolbarPageComponent;
+            case 11: return splitViewPageComponent;
+            case 12: return settingsPageComponent;
+            case 13: return segmentedPageComponent;
+            case 14: return contextMenuPageComponent;
+            case 15: return searchFieldPageComponent;
+            case 16: return sourceListPageComponent;
+            case 17: return dialogPageComponent;
+            case 18: return sheetPageComponent;
+            case 19: return popoverPageComponent;
+            case 20: return scrollViewPageComponent;
+            default: return iconsPageComponent;
             }
         }
     }
@@ -55,6 +73,20 @@ Item {
     Component { id: popupPageComponent; PopupPage { } }
     Component { id: menuPageComponent; MenuPage { } }
     Component { id: ssdPageComponent; SsdPage { } }
+    Component { id: buttonsPageComponent; ButtonsPage { } }
+    Component { id: sidebarPageComponent; SidebarPage { } }
+    Component { id: toolbarPageComponent; ToolbarPage { } }
+    Component { id: splitViewPageComponent; SplitViewPage { } }
+    Component { id: settingsPageComponent; SettingsPage { } }
+    Component { id: segmentedPageComponent; SegmentedPage { } }
+    Component { id: contextMenuPageComponent; ContextMenuPage { } }
+    Component { id: searchFieldPageComponent; SearchFieldPage { } }
+    Component { id: sourceListPageComponent; SourceListPage { } }
+    Component { id: dialogPageComponent; DialogPage { } }
+    Component { id: sheetPageComponent; SheetPage { } }
+    Component { id: popoverPageComponent; PopoverPage { } }
+    Component { id: scrollViewPageComponent; ScrollViewPage { } }
+    Component { id: iconsPageComponent; IconsPage { } }
 
     component Page: Column {
         spacing: Theme.primitive.spacing.lg
@@ -325,6 +357,372 @@ Item {
                 spacing: Theme.primitive.spacing.sm
                 TitleBar { width: 520; title: qsTr("Dragonfruit") }
                 SsdTitlebarReference { width: 520; title: qsTr("Dragonfruit") }
+            }
+        }
+    }
+
+    component ButtonsPage: Page {
+        Section {
+            heading: qsTr("Variants")
+            Row {
+                spacing: Theme.primitive.spacing.md
+                Button { text: qsTr("Save"); variant: "primary" }
+                Button { text: qsTr("Cancel") }
+                Button { text: qsTr("Delete"); variant: "danger" }
+                Button { text: qsTr("More"); variant: "ghost" }
+                Button { text: qsTr("Disabled"); enabled: false }
+            }
+        }
+        Section {
+            heading: qsTr("With glyph")
+            Row {
+                spacing: Theme.primitive.spacing.md
+                Button { text: qsTr("New Folder"); icon: "zoom"; variant: "primary" }
+                Button { text: qsTr("Search"); icon: "search" }
+            }
+        }
+    }
+
+    component SidebarPage: Page {
+        Section {
+            heading: qsTr("Favorites + Locations (one selected)")
+            Sidebar {
+                width: 240
+                height: 380
+                currentIndex: 1
+                sections: [
+                    { title: qsTr("Favorites"), items: [
+                        { label: qsTr("Recents"), icon: "search" },
+                        { label: qsTr("Documents"), icon: "check" },
+                        { label: qsTr("Downloads"), badge: "3" }
+                    ] },
+                    { title: qsTr("Locations"), items: [
+                        { label: qsTr("Home") },
+                        { label: qsTr("Computer") },
+                        { label: qsTr("Network") }
+                    ] }
+                ]
+            }
+        }
+    }
+
+    component ToolbarPage: Page {
+        Section {
+            heading: qsTr("Navigation + search + actions")
+            Toolbar {
+                width: 620
+                Button { text: qsTr("Back") }
+                Button { text: qsTr("Forward"); enabled: false }
+                SearchField { width: 200; placeholderText: qsTr("Search") }
+                trailingData: Row {
+                    spacing: Theme.controls.toolbar.spacing
+                    Button { text: qsTr("Share") }
+                    Button { text: qsTr("New"); variant: "primary" }
+                }
+            }
+        }
+        Section {
+            heading: qsTr("Title-only")
+            Toolbar {
+                width: 620
+                title: qsTr("Documents")
+            }
+        }
+    }
+
+    component SplitViewPage: Page {
+        Section {
+            heading: qsTr("Horizontal")
+            SplitView {
+                width: 520
+                height: 220
+                firstData: Rectangle {
+                    anchors.fill: parent
+                    color: Theme.color.surfaceElevated
+                    Text {
+                        anchors.centerIn: parent
+                        text: qsTr("Sidebar pane")
+                        color: Theme.color.textSecondary
+                        font.pixelSize: Theme.primitive.font.sizeSm
+                    }
+                }
+                secondData: Rectangle {
+                    anchors.fill: parent
+                    color: Theme.color.surface
+                    Text {
+                        anchors.centerIn: parent
+                        text: qsTr("Content pane")
+                        color: Theme.color.textSecondary
+                        font.pixelSize: Theme.primitive.font.sizeSm
+                    }
+                }
+            }
+        }
+        Section {
+            heading: qsTr("Vertical")
+            SplitView {
+                width: 520
+                height: 200
+                vertical: true
+                splitPosition: 0.5
+                firstData: Rectangle { anchors.fill: parent; color: Theme.color.surfaceElevated }
+                secondData: Rectangle { anchors.fill: parent; color: Theme.color.surface }
+            }
+        }
+    }
+
+    component SettingsPage: Page {
+        Section {
+            heading: qsTr("SettingsGroup + SettingsRow")
+            SettingsGroup {
+                width: 520
+                title: qsTr("General")
+                SettingsRow {
+                    width: parent.width
+                    label: qsTr("Appearance")
+                    controlData: SegmentedControl {
+                        model: [qsTr("Light"), qsTr("Dark"), qsTr("Auto")]
+                        currentIndex: 1
+                    }
+                }
+                SettingsRow {
+                    width: parent.width
+                    label: qsTr("Wi-Fi")
+                    description: qsTr("Connect to available networks")
+                    controlData: Toggle { checked: true }
+                }
+                SettingsRow {
+                    width: parent.width
+                    label: qsTr("Play sound effects")
+                    showSeparator: false
+                    controlData: Toggle { checked: false }
+                }
+            }
+        }
+    }
+
+    component SegmentedPage: Page {
+        Section {
+            heading: qsTr("Selection + disabled segment")
+            SegmentedControl {
+                model: [qsTr("Day"), qsTr("Week"), qsTr("Month")]
+                currentIndex: 1
+            }
+        }
+        Section {
+            heading: qsTr("Two states")
+            SegmentedControl {
+                model: [{ label: qsTr("On"), enabled: true },
+                        { label: qsTr("Off"), enabled: true },
+                        { label: qsTr("Auto"), enabled: false }]
+                currentIndex: 0
+            }
+        }
+    }
+
+    component ContextMenuPage: Page {
+        Section {
+            heading: qsTr("Pointer-anchored menu")
+            Item {
+                width: 520
+                height: 300
+                ContextMenu {
+                    x: 40
+                    y: 20
+                    open: true
+                    accessibleName: qsTr("Item actions")
+                    model: [
+                        { label: qsTr("Open"), shortcut: "⌘O" },
+                        { label: qsTr("Open With"), type: "submenu" },
+                        { type: "separator" },
+                        { label: qsTr("Get Info"), shortcut: "⌘I" },
+                        { label: qsTr("Rename"), shortcut: "↵" },
+                        { label: qsTr("Show in Sidebar"), checked: true, checkable: true },
+                        { type: "separator" },
+                        { label: qsTr("Move to Trash"), enabled: false }
+                    ]
+                }
+            }
+        }
+    }
+
+    component SearchFieldPage: Page {
+        Section {
+            heading: qsTr("Empty + filled")
+            Column {
+                spacing: Theme.primitive.spacing.md
+                SearchField { width: 260; placeholderText: qsTr("Search files") }
+                SearchField { width: 260; text: qsTr("dragonfruit") }
+            }
+        }
+    }
+
+    component SourceListPage: Page {
+        Section {
+            heading: qsTr("Tree with a collapsed branch")
+            SourceList {
+                width: 280
+                height: 300
+                currentIndex: 1
+                model: [
+                    { label: qsTr("Home"), depth: 0, hasChildren: true, expanded: true },
+                    { label: qsTr("Documents"), depth: 1, hasChildren: true, expanded: false },
+                    { label: qsTr("Work"), depth: 2 },
+                    { label: qsTr("Personal"), depth: 2 },
+                    { label: qsTr("Downloads"), depth: 1, badge: "3" },
+                    { label: qsTr("Trash"), depth: 0 }
+                ]
+            }
+        }
+    }
+
+    component DialogPage: Page {
+        Section {
+            heading: qsTr("Modal dialog (open)")
+            Item {
+                width: 520
+                height: 340
+                Dialog {
+                    open: true
+                    title: qsTr("Replace existing file?")
+                    message: qsTr("A file named “report.pdf” already exists in this folder.")
+                    contentData: Text {
+                        text: qsTr("Keep Both creates a numbered copy.")
+                        color: Theme.color.textTertiary
+                        font.pixelSize: Theme.primitive.font.sizeSm
+                    }
+                    buttonsData: Row {
+                        spacing: Theme.controls.dialog.buttonGap
+                        Button { text: qsTr("Cancel") }
+                        Button { text: qsTr("Replace"); variant: "primary" }
+                    }
+                }
+            }
+        }
+    }
+
+    component SheetPage: Page {
+        Section {
+            heading: qsTr("Window-attached sheet (open)")
+            Item {
+                width: 520
+                height: 340
+                Sheet {
+                    open: true
+                    title: qsTr("Go to Folder")
+                    contentData: SearchField { width: parent.width; placeholderText: qsTr("/home/user") }
+                    buttonsData: Row {
+                        spacing: Theme.controls.dialog.buttonGap
+                        Button { text: qsTr("Cancel") }
+                        Button { text: qsTr("Go"); variant: "primary" }
+                    }
+                }
+            }
+        }
+    }
+
+    component PopoverPage: Page {
+        Section {
+            heading: qsTr("Anchored popover")
+            Item {
+                width: 520
+                height: 280
+                Rectangle {
+                    id: popoverAnchor
+                    x: 160
+                    y: 0
+                    width: 140
+                    height: 28
+                    radius: Theme.controls.toggle.height / 2
+                    color: Theme.color.controlFill
+                    Text {
+                        anchors.centerIn: parent
+                        text: qsTr("Anchor")
+                        color: Theme.color.textPrimary
+                        font.pixelSize: Theme.primitive.font.sizeSm
+                    }
+                }
+                Popover {
+                    anchorItem: popoverAnchor
+                    open: true
+                    preferredWidth: 260
+                    accessibleName: qsTr("Inspector")
+                    Column {
+                        spacing: Theme.primitive.spacing.xs
+                        Text {
+                            text: qsTr("Document inspector")
+                            color: Theme.color.textPrimary
+                            font.pixelSize: Theme.primitive.font.sizeMd
+                            font.weight: Theme.primitive.font.weightSemibold
+                        }
+                        Text {
+                            text: qsTr("128 KB · PDF document")
+                            color: Theme.color.textTertiary
+                            font.pixelSize: Theme.primitive.font.sizeSm
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    component ScrollViewPage: Page {
+        Section {
+            heading: qsTr("Scrollable list")
+            ScrollView {
+                width: 420
+                height: 260
+                Column {
+                    width: parent.width
+                    Repeater {
+                        model: 24
+                        delegate: Item {
+                            required property int index
+                            width: parent.width
+                            height: Theme.controls.sidebar.rowHeight
+                            Rectangle {
+                                anchors.fill: parent
+                                color: index % 2 === 0 ? Theme.color.surface : Theme.color.surfaceMuted
+                            }
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                x: Theme.primitive.spacing.md
+                                text: qsTr("Row %1").arg(index + 1)
+                                color: Theme.color.textSecondary
+                                font.pixelSize: Theme.controls.button.fontSize
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    component IconsPage: Page {
+        Section {
+            heading: qsTr("Glyphs")
+            Row {
+                spacing: Theme.primitive.spacing.xl
+                Repeater {
+                    model: ["close", "minimize", "zoom", "check", "chevron-down",
+                            "chevron-right", "search"]
+                    delegate: Column {
+                        required property string modelData
+                        spacing: Theme.primitive.spacing.xs
+                        Icon {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            name: modelData
+                            size: Theme.primitive.spacing.xl
+                            color: Theme.color.textPrimary
+                        }
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: modelData
+                            color: Theme.color.textTertiary
+                            font.pixelSize: Theme.primitive.font.sizeXs
+                        }
+                    }
+                }
             }
         }
     }

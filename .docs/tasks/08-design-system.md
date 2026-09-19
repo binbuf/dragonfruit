@@ -17,32 +17,38 @@ component library, the motion language, the component gallery with visual
 regression tests, and per-component accessibility guarantees. One source of
 visual truth for the entire desktop.
 
-## Status — taste-slice gate (T-08 execution)
+## Status
 
-Per the Phase-2 plan, T-08 is gated on a **human art-direction checkpoint**
-rather than completed end-to-end. The thin taste slice is built and
-machine-verified; the remaining components wait on sign-off so the visual
-direction is not replicated into thirteen downstream tickets by accident.
+All twenty design-system components are built and machine-verified. The token
+architecture remains the single source of visual truth:
+`design-system/tokens/tokens.json` is generated into the QML `Theme` singleton
+and `compositor/src/design_tokens.rs`, and `make check-tokens` (CI) fails if
+either is stale.
 
-- **Done:** token architecture (`design-system/tokens/tokens.json`) with a
-  generator that emits `design-system/Theme.qml` (QML singleton) and
-  `compositor/src/design_tokens.rs` (Rust), plus `make check-tokens` in CI;
-  the taste-slice components (`AppWindow`, `TitleBar`, `TrafficLights`,
-  `MenuBarMenu`, `Toggle`, `Popup`, plus `Icon`/`FocusRing`/`Shadow`) with
-  dark/light, reduced-motion, keyboard operation and AT-SPI role mapping; the
-  component gallery (`design-system/gallery/`) with a headless snapshot
-  driver; FR-3 screenshot diff between the app `TitleBar` and an independent
-  compositor SSD reference; FR-6 visual regression (`tst_design_system` +
-  `scripts/check-gallery-snapshots.py`); and the design-token literal gate
-  (`scripts/check-design-tokens.sh`).
-- **Gated on art direction:** the remaining 13 components (`Sidebar`,
-  `Toolbar`, `SplitView`, `SettingsRow`, `SettingsGroup`, `SegmentedControl`,
-  `ContextMenu`, `SearchField`, `SourceList`, `Dialog`, `Sheet`, `Popover`,
-  `ScrollView`). Their component tokens are already defined.
-- **Deferred:** live AT-SPI role dump (needs a session bus; the component
-  `Accessible` roles are asserted in `tst_design_system`), joint
-  blur/translucency tuning with T-02/T-13, and the app-level
-  "no hand-rolled titlebar/menu/settings row" lint (T-16/T-18).
+- **Components:** `AppWindow`, `TitleBar`, `TrafficLights`, `Sidebar`,
+  `Toolbar`, `SplitView`, `SettingsRow`, `SettingsGroup`, `Toggle`,
+  `SegmentedControl`, `Popup`, `ContextMenu`, `MenuBarMenu`, `SearchField`,
+  `SourceList`, `Icon`, `Dialog`, `Sheet`, `Popover`, `ScrollView`, plus the
+  supporting `Button`, `FocusRing`, and `Shadow`. Each ships dark/light,
+  reduced-motion, keyboard operation, AT-SPI role mapping, and gallery
+  coverage.
+- **Gallery / visual regression:** `design-system/gallery/` renders every
+  component × state × scheme × motion variant; the headless snapshot driver
+  (`scripts/check-gallery-snapshots.py`) checks token/pixel invariants and
+  `--strict` diffs the 66 committed goldens under
+  `design-system/gallery/snapshots/`.
+- **Tests:** `tst_design_system` covers tokens, reduced motion, keyboard
+  activation, AT-SPI roles, pixel sampling, and the FR-3 app-`TitleBar`
+  vs compositor-SSD screenshot diff.
+- **Gates:** `scripts/check-design-tokens.sh` forbids literal
+  colors/durations/radii in component QML; `scripts/gen-tokens.py --check`
+  proves the QML and Rust token sets come from one source.
+
+**Deferred (not blocking):** the live `atspi` role dump (needs a session bus;
+the keyboard walkthrough and per-type `Accessible` roles are asserted in
+`tst_design_system`, and the live dump belongs with the T-31 accessibility
+polish), joint blur/translucency tuning with T-02/T-13, and the app-level
+"no hand-rolled titlebar/menu/settings row" lint (T-16/T-18).
 
 ## Background
 
@@ -118,17 +124,16 @@ titlebars and first-party `TitleBar`s unable to drift apart.
 
 ## Acceptance criteria
 
-- [ ] Gallery app demonstrates every component × state × scheme × motion
-      variant. *(taste slice complete; remaining 13 components gated on the
-      art-direction checkpoint)*
+- [x] Gallery app demonstrates every component × state × scheme × motion
+      variant.
 - [ ] Zero hand-rolled titlebars/menus/settings rows in first-party apps
-      (lint rule in each app's CI). *(design-system literal gate landed;
-      app-level gate is T-16/T-18)*
+      (lint rule in each app's CI). *(design-system literal gate landed; the
+      app-level gate lands with the real apps in T-16/T-18)*
 - [x] Token generation pipeline: edit once, regenerate QML + Rust.
 - [ ] AT-SPI audit of the gallery passes (keyboard-only walkthrough +
       `atspi` role dump per component). *(keyboard walkthrough and per-type
       `Accessible` roles asserted in `tst_design_system`; live `atspi` dump
-      needs a session bus)*
+      needs a session bus, deferred to the T-31 accessibility polish)*
 
 ## Test plan
 
