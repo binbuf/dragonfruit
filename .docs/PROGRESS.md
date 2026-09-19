@@ -100,9 +100,11 @@ Open items (in ticket order):
 - **FR-2/3/4 performance budgets unmeasured.** The damage-driven path
   exists (commit → `needs_redraw` → one render pass), and render-path
   counters (`DfState.stats`: frames_rendered / frames_skipped_no_damage /
-  direct_scanouts) are in place, but nothing prints or asserts them yet.
-  Next: log stats on exit (SIGUSR1 dump?), then an idle-trace test over
-  60 s and latency measurement on real hardware (T-02 test plan).
+  direct_scanouts) are in place. *Updated in the T-01…T-04 review:*
+  `DfState::dump_stats` now prints them on SIGUSR1 and on clean exit
+  (`session.rs`), so the idle trace and direct-scanout numbers can be
+  read off a running nested/DRM session. Still open: the 60 s idle-trace
+  assertion and on-hardware latency measurement (T-02 test plan).
 - **DRM backend compiles but has never run** — the dev host has no
   logind seat free for a compositor. It is a condensed port of anvil's
   udev backend (smithay 0.7): LibSeatSession, udev hotplug, per-crtc
@@ -284,10 +286,13 @@ Open items:
   exist until T-08. Re-run the scripted test when the shell lands.
 - **Headless conformance suites are unit-level, not protocol-level.** The
   ticket asks for a headless client driving `xdg_toplevel` move/resize and
-  `xdg_popup` requests (malformed positioners included). `window::resize`
-  and `window::popup` property/edge tests cover the math and malformed
-  inputs; a `wayland-client`-driven suite against the headless backend is
-  still needed (same harness gap T-03 noted for synthetic libinput).
+  `xdg_popup` requests (malformed positioners included). *Updated in the
+  T-01…T-04 review:* `compositor/tests/window_conformance.rs` now drives
+  a real `wayland-client` on the headless backend through mapping,
+  maximize/unmaximize, fullscreen/unfullscreen, and a constrained popup.
+  Move/resize is still unit-level: starting a pointer grab needs a seat
+  button press, which the headless backend has no device to produce (see
+  the T-03 synthetic-input harness gap).
 - **Aspect hints are not wired.** `window::resize::apply_aspect` exists and
   is tested, but xdg-shell has no aspect hint and X11 `WM_NORMAL_HINTS`
   arrive with T-06; call it from `DfState::window_size_constraints` then.
@@ -364,3 +369,61 @@ installs the apt `-dev` packages.
   new QML module registers its files there.
 - `make check` is the local CI-equivalent gate; run it before every
   commit.
+
+## T-01…T-04 review — bugs found and fixed
+
+A conformance pass over T-01…T-04 found two real compositor bugs that the
+existing unit tests could not see, plus several smaller gaps. All fixes
+are covered by tests; `make check`-equivalent is green.
+
+- **Pending windows never mapped (T-02/T-04).** `DfState::map_pending_windows`
+  tested `SurfaceAttributes.current().buffer`, but
+  `on_commit_buffer_handler` (called first in `commit`) *consumes* that
+  buffer into the renderer surface state, so the check was always false.
+  Fix: `smithay::backend::renderer::utils::with_renderer_surface_state(
+  surface, |s| s.buffer().is_some())`. This means the earlier T-02
+  "nested live-verified with a client" note did not actually hold on the
+  committed code; the new `window_conformance` test is the guard.
+- **Missing `Window::on_commit` (T-04).** Nothing refreshed the window's
+  cached bounding box, so `Window::bbox()/geometry()` were `0×0`: every
+  window was placed with zero size and restore geometry was lost. Fix:
+  call `window.on_commit()` in `CompositorHandler::commit` for the
+  pending/mapped window whose surface committed. Keep this in `commit`;
+  placement reads `bbox()` right after.
+- **`xdg_toplevel` pending-state desync (T-04).** `zoom_window` /
+  `fullscreen_window` set the client's `Maximized`/`Fullscreen` pending
+  state *before* the state machine accepted the transition, so a request
+  from a minimized window left a stale state that the next configure
+  would deliver. Fix: apply the transition first and only touch the
+  pending state when `transition.changed`.
+- **Gesture recognizer leaked state (T-03).** `GestureRecognizer::end` /
+  `cancel` were never called; an unclaimed gesture (e.g. three-finger
+  vertical) stayed active and could be evaluated against the next
+  gesture. Fix: `input::end_gesture` resets the recognizer on every end.
+- **Input outbox grew without bound (T-03).** `InputDispatch.outbox` was
+  never drained until T-07; a long session with no shell attached would
+  grow it forever. Fix: bounded `VecDeque` (keeps the newest tail).
+- **Render-path counters were unobservable (T-02 FR-2/FR-5).**
+  `DfState::dump_stats` prints `frames_rendered` /
+  `frames_skipped_no_damage` / `direct_scanouts` on SIGUSR1 and on clean
+  exit.
+- **Dev-tool child teardown (T-01).** A `ChildGuard` now owns the
+  compositor and every `--launch`ed child, so a panic or early return
+  cannot leak them into the host session; normal teardown disarms it.
+
+Notes for T-05+:
+
+- `compositor/tests/window_conformance.rs` is the headless protocol
+  harness (spawns the compositor, drives `xdg_toplevel`/`xdg_popup` with
+  `wayland-client` + `wayland-protocols`; the latter is a dev-dependency).
+  Move/resize is still unit-only — a pointer grab needs a seat button,
+  which headless cannot produce. Reuse this harness for T-05 Space and
+  T-07 protocol conformance.
+- Window placement/restore geometry depends on `Window::on_commit()` being
+  called on every toplevel commit; if T-05/T-07 change the commit path,
+  keep that call.
+- The popup configure constraint test anchors at the parent and asserts
+  the configure fits the output; smithay's `PositionerState::get_unconstrained_geometry`
+  does the flip/slide/resize work, our `window::popup` only floors the
+  size at 1×1.
+

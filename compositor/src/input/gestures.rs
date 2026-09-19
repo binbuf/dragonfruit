@@ -548,6 +548,24 @@ mod tests {
     }
 
     #[test]
+    fn end_and_cancel_clear_the_recognizer() {
+        let mut recognizer = GestureRecognizer::default();
+        recognizer.begin_swipe(4, 0);
+        assert!(recognizer.is_active());
+        assert_eq!(recognizer.kind(), Some(GestureKind::Swipe { fingers: 4 }));
+        assert!(recognizer.end().is_some());
+        assert!(!recognizer.is_active(), "end must clear the recognizer");
+
+        // An unclaimed gesture has no progress pipeline to end, but the
+        // recognizer must still not leak into the next gesture.
+        recognizer.begin_swipe(3, 0);
+        assert!(recognizer.update_swipe((2.0, -60.0).into(), 10).is_none());
+        recognizer.cancel();
+        assert!(!recognizer.is_active(), "cancel must clear the recognizer");
+        assert!(recognizer.update_swipe((2.0, -60.0).into(), 20).is_none());
+    }
+
+    #[test]
     fn commit_rules_match_progress_or_velocity() {
         let mut pipeline = ProgressPipeline::new(cfg());
         pipeline.begin(InputAction::WorkspaceNext, TriggerKind::Keyboard, 0);

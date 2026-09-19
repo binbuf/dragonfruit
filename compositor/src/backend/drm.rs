@@ -845,10 +845,10 @@ fn frame_finish(
         let Some(device) = data.devices.get(&dev_id) else {
             return;
         };
-        device
-            .surfaces
-            .get(&crtc)
-            .unwrap()
+        let Some(surface) = device.surfaces.get(&crtc) else {
+            return;
+        };
+        surface
             .drm_output
             .frame_submitted()
             .map_err(Into::<SwapBuffersError>::into)

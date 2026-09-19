@@ -99,14 +99,20 @@ Updated when a task is partially or completely finished; see
 
 T-01 is complete except one open item: the CI workflow is written and
 all gates pass locally, but the first green run on a PR is still
-pending. T-02 is partial: the calloop event loop, all three backends
-(nested verified live on the dev host; DRM compiles, runtime-untested;
-headless used by CI), the full standard protocol surface (CI-checked
-advertise list), outputs, input routing, damage-driven rendering, and
-teardown hardening are done. Open: performance budgets FR-2/3/4,
-VRR/night light plumbing, multi-GPU runtime validation, direct-scanout
-counter verification on real hardware. Details and hand-off notes:
-[PROGRESS.md](PROGRESS.md).
+pending. The dev tool also now owns every child in a `ChildGuard`, so a
+panic or early return can never leak a compositor or launched app into
+the host session (FR-5 hardening). T-02 is partial: the calloop event
+loop, all three backends (nested verified live on the dev host; DRM
+compiles, runtime-untested; headless used by CI), the full standard
+protocol surface (CI-checked advertise list), outputs, input routing,
+damage-driven rendering, and teardown hardening are done. Render-path
+counters (FR-2/FR-5) are now dumped on SIGUSR1 and on clean exit so the
+budgets can be measured without a debugger. A headless protocol
+conformance suite now maps a real client window end-to-end and drives
+the xdg state machine (see T-04). Open: performance budgets FR-2/3/4
+still need on-hardware measurement, VRR/night-light plumbing, multi-GPU
+runtime validation, direct-scanout counter verification on real
+hardware. Details and hand-off notes: [PROGRESS.md](PROGRESS.md).
 
 T-03 is partial: the Cmd→Super / Option→Alt mapping is fixed once in
 `df-ipc` and consumed by the xkb keymap and shortcut engine; the global
@@ -116,14 +122,17 @@ recognition feeding one shared progress pipeline (clamp/rubber-band/
 velocity), dwell-based hot corners, the unified input dispatch outbox,
 the live input settings model (keyboard repeat + gesture/hot-corner
 config), and the tablet/touch forwarding pipeline are done and covered
-by 23 unit tests including a trigger-type matrix. Open: DRM/hardware
-validation of multitouch + pen pressure; wiring the outbox to the shell
-over the private protocol (T-07); menu-broker/portal accelerator
-registration (T-22/T-27); per-device libinput acceleration/scroll live
-application (needs backend device handles, T-16); on-device gesture
-tuning; unclaimed-gesture pass-through policy. See
-[keymap.md](../docs/keymap.md) for the in-repo keymap decision. Details:
-[PROGRESS.md](PROGRESS.md).
+by 25 unit tests including a trigger-type matrix. The gesture recognizer
+is now reset on every gesture end (an unclaimed gesture used to leak its
+recognizer state into the next one) and the shell outbox is bounded so a
+session with no shell attached cannot grow without limit. Open:
+DRM/hardware validation of multitouch + pen pressure; wiring the outbox
+to the shell over the private protocol (T-07); menu-broker/portal
+accelerator registration (T-22/T-27); per-device libinput
+acceleration/scroll live application (needs backend device handles,
+T-16); on-device gesture tuning; unclaimed-gesture pass-through policy.
+See [keymap.md](../docs/keymap.md) for the in-repo keymap decision.
+Details: [PROGRESS.md](PROGRESS.md).
 
 T-04 is partial: the four-state window machine (floating/minimized/zoomed/
 fullscreen with exact restore geometry, maximize→Zoom, no maximize state),
@@ -134,12 +143,20 @@ minimize/restore/close-with-parent, reserved-zone-aware Zoom, interactive
 move/resize grabs with client min/max-size clamping and output clamping,
 popup positioner constraint handling (flip/slide/resize) with popup
 keyboard/pointer grabs and parent-unfocus dismissal, and window-menu
-primitives are done and covered by 30+ unit/property tests. Open: the
-scripted shell-restart test (FR-9) — the state is compositor-owned so the
-architecture supports it, but there is no shell process to restart until
-T-08; the headless `xdg_toplevel` move/resize and `xdg_popup` conformance
-suites (currently unit-level); aspect hints (X11) and the private-protocol
-wiring of the broadcast outbox (T-07). Details:
+primitives are done and covered by 30+ unit/property tests. A new
+headless conformance suite (`compositor/tests/window_conformance.rs`)
+now drives a real Wayland client through mapping, maximize/unmaximize,
+and fullscreen/unfullscreen over the protocol, and asserts popup
+configures stay inside the output — it caught and drove the fix for two
+real bugs (pending windows never mapped because the buffer check read a
+field `on_commit_buffer_handler` had already consumed; and missing
+`Window::on_commit` left every window's bbox/restore geometry at 0×0).
+Open: the scripted shell-restart test (FR-9) — the state is
+compositor-owned so the architecture supports it, but there is no shell
+process to restart until T-08; the protocol-level `xdg_toplevel`
+move/resize conformance suite (still unit-level; needs a seat button
+grab to start the pointer grab); aspect hints (X11) and the
+private-protocol wiring of the broadcast outbox (T-07). Details:
 [PROGRESS.md](PROGRESS.md).
 
 1. **Foundation**
@@ -148,7 +165,7 @@ wiring of the broadcast outbox (T-07). Details:
    - [ ] Native DRM backend (implemented; runtime-untested — needs a real seat)
    - [ ] Input (T-03 engine done: keymaps, shortcuts, gestures, hot corners; hardware validation + shell/portal wiring open)
    - [x] Outputs (wl_output + xdg_output globals, modes/scale/transform, hotplug)
-   - [x] Windows (T-04 model: states, focus, placement, regions, move/resize, popups; headless conformance suites open)
+   - [x] Windows (T-04 model: states, focus, placement, regions, move/resize, popups; headless toplevel-state + popup conformance covered, move/resize still unit-level)
    - [ ] Workspace model
    - [ ] Xwayland
 2. **Experience**

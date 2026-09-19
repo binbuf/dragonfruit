@@ -488,8 +488,18 @@ fn drive_gesture(state: &mut DfState, update: GestureUpdate) {
 }
 
 /// Finish a gesture; on commit, record the action exactly once.
+///
+/// The recognizer is reset here unconditionally: a gesture that never
+/// claimed a system action (an unclaimed finger/axis combination) has no
+/// active progress pipeline, so it must still clear its recognizer state
+/// or the next gesture would be evaluated against a stale one.
 fn end_gesture(state: &mut DfState, cancelled: bool) {
     let time = state.now_msec();
+    if cancelled {
+        state.gestures.cancel();
+    } else {
+        let _ = state.gestures.end();
+    }
     if let Some(event) = state.progress.end(time, cancelled) {
         let action = event.action;
         let trigger = event.trigger;

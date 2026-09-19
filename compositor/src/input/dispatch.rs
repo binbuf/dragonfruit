@@ -9,6 +9,8 @@
 //! protocol (T-07) drains this outbox; until it lands, the audit log is
 //! what the acceptance matrix asserts against.
 
+use std::collections::VecDeque;
+
 use super::action::{InputAction, TriggerKind};
 use super::gestures::ProgressEvent;
 
@@ -41,19 +43,27 @@ pub enum ShellInputEvent {
 }
 
 /// The audit log / outbox.
+///
+/// The action log and the shell outbox are both bounded: until the private
+/// protocol (T-07) drains the outbox every loop iteration, a long-running
+/// session with no shell attached must not grow without limit. The outbox
+/// keeps the most recent events, which is the useful tail for a shell that
+/// attaches late.
 #[derive(Debug)]
 pub struct InputDispatch {
     log: Vec<DispatchedAction>,
-    outbox: Vec<ShellInputEvent>,
+    outbox: VecDeque<ShellInputEvent>,
     max_log: usize,
+    max_outbox: usize,
 }
 
 impl Default for InputDispatch {
     fn default() -> Self {
         InputDispatch {
             log: Vec::new(),
-            outbox: Vec::new(),
+            outbox: VecDeque::new(),
             max_log: 256,
+            max_outbox: 256,
         }
     }
 }
@@ -75,12 +85,12 @@ impl InputDispatch {
             let excess = self.log.len() - self.max_log;
             self.log.drain(0..excess);
         }
-        self.outbox.push(ShellInputEvent::Action(dispatched));
+        self.push_outbox(ShellInputEvent::Action(dispatched));
     }
 
     /// Queue a progress event for the shell.
     pub fn progress(&mut self, event: ProgressEvent) {
-        self.outbox.push(ShellInputEvent::Progress(event));
+        self.push_outbox(ShellInputEvent::Progress(event));
     }
 
     /// Queue an application-accelerator delivery for the shell/menu-broker.
@@ -91,18 +101,25 @@ impl InputDispatch {
         source: TriggerKind,
         serial: u32,
     ) {
-        self.outbox
-            .push(ShellInputEvent::AppAccelerator(AppAcceleratorEvent {
-                app_id: app_id.to_string(),
-                accelerator_id: accelerator_id.to_string(),
-                source,
-                serial,
-            }));
+        self.push_outbox(ShellInputEvent::AppAccelerator(AppAcceleratorEvent {
+            app_id: app_id.to_string(),
+            accelerator_id: accelerator_id.to_string(),
+            source,
+            serial,
+        }));
+    }
+
+    /// Append to the bounded outbox, evicting the oldest event if full.
+    fn push_outbox(&mut self, event: ShellInputEvent) {
+        if self.outbox.len() >= self.max_outbox {
+            self.outbox.pop_front();
+        }
+        self.outbox.push_back(event);
     }
 
     /// Remove and return everything queued for the shell.
     pub fn drain(&mut self) -> Vec<ShellInputEvent> {
-        std::mem::take(&mut self.outbox)
+        self.outbox.drain(..).collect()
     }
 
     /// The action audit log, oldest first.
@@ -131,7 +148,24 @@ mod tests {
             dispatch.last_action().unwrap().action,
             InputAction::Screenshot
         );
-        assert_eq!(dispatch.drain().len(), 300);
+        // Both the log and the outbox are bounded; the outbox keeps the
+        // newest tail for a shell that attaches late.
+        assert_eq!(dispatch.drain().len(), 256);
         assert!(dispatch.drain().is_empty());
+    }
+
+    #[test]
+    fn outbox_never_grows_without_bound() {
+        let mut dispatch = InputDispatch::new();
+        for i in 0..10_000u32 {
+            dispatch.action(InputAction::MissionControl, TriggerKind::Keyboard, i);
+        }
+        let drained = dispatch.drain();
+        assert_eq!(drained.len(), 256);
+        // The most recent action survives; the oldest were evicted.
+        match drained.last().unwrap() {
+            ShellInputEvent::Action(action) => assert_eq!(action.serial, 9_999),
+            other => panic!("unexpected event {other:?}"),
+        }
     }
 }

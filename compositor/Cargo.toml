@@ -19,5 +19,8 @@ smithay-drm-extras.workspace = true
 
 [dev-dependencies]
 # Server-side test client: the protocol-surface smoke test connects to the
-# headless compositor and asserts the exact advertised global set.
+# headless compositor and asserts the exact advertised global set; the
+# window-conformance suite drives xdg_toplevel/xdg_popup requests against
+# the same headless backend (T-04).
 wayland-client = "0.31"
+wayland-protocols = { version = "0.32", features = ["client"] }
