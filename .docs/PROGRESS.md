@@ -790,3 +790,157 @@ client-controlled string.
   it on panic** (`std::thread::panicking()` in `Drop`), which is how the
   panic above was diagnosed after the first run. Reuse that pattern in new
   process-spawning conformance tests.
+
+## Remaining work: T-02…T-07 (consolidated, next sessions)
+
+The per-ticket notes above are the detailed record; this is the actionable
+index of what is still open between T-02 and T-07. It is ordered so the
+headless-closable work happens first, then the hardware work, then the items
+blocked on later tickets. **After closing a batch, re-run `make e2e`
+(`compositor/tests/milestone_e2e.rs`) and extend it where the new work adds
+integration coverage — that harness is the return point before starting
+T-08.**
+
+Tags: **[host]** closable on this headless/nested dev host · **[hw]** needs
+a DRM seat, VM, or real hardware · **[blocked: T-xx]** cannot close until a
+later ticket lands · **[upstream]** depends on Smithay/upstream.
+
+### T-02 — compositor core
+
+- [ ] **[hw]** First DRM bring-up (never run on this host). Closes "all
+      three backends run a windowed client end-to-end" and the Phase-1
+      "nested and DRM both run the vertical slice" exit. Verify LibSeat,
+      udev hotplug, per-crtc outputs, vblank scheduling, direct scanout,
+      hardware cursor plane. First stop: VM with a spare GPU or VT switch.
+- [ ] **[hw]** FR-2 idle trace (60 s, zero damage/client wakeups), FR-3
+      input-to-photon latency (nested + DRM), FR-4 one-frame-per-animation.
+      `DfState::dump_stats` already prints `frames_rendered` /
+      `frames_skipped_no_damage` / `direct_scanouts` on SIGUSR1 and clean
+      exit — turn that into a scripted assertion. The idle trace can run
+      nested/headless here; latency needs hardware.
+- [ ] **[hw]** FR-5 direct-scanout counter verification on real hardware.
+- [ ] **[hw]** FR-6 GPU removal / forced driver loss degrades gracefully
+      (VM virtio-GPU).
+- [ ] **[host]** FR-7 upstream smoke clients (`weston-simple-shm`,
+      `eglgears_wayland`, etc.) against nested/headless where installed;
+      extend the headless conformance for protocols with no upstream suite.
+- [ ] **[blocked: T-16]** VRR / night-light plumbing (compositor-owned; the
+      Displays pane is the consumer).
+- [ ] **[blocked: T-26]** session-lock filter is still `|_| true`;
+      idle-inhibit inhibitors keep raw `WlSurface`s.
+- [ ] **[blocked: T-27/T-28]** per-surface dmabuf feedback tranches for
+      zero-copy capture.
+- [ ] **[hw]** multi-GPU import/fallback validation.
+
+### T-03 — input stack
+
+- [ ] **[host]** Build the synthetic-input harness for the headless backend
+      (seat device + injected libinput-equivalent events). Unblocks the
+      ticket's own integration test ("synthetic libinput drives shortcuts")
+      and **T-04's protocol-level move/resize** conformance. Highest-value
+      host-closable item.
+- [ ] **[host]** Implement pointer-constraint grabs (confine/lock).
+      `PointerConstraintsHandler::new_constraint` is a no-op TODO; the
+      protocol is advertised in the T-02 surface, so a client that locks the
+      pointer currently gets no enforcement.
+- [ ] **[host]** Malicious-client integration test for FR-5: `GrabArbiter`
+      refusal is unit-tested only; drive a real client that requests a grab
+      and assert refusal + audit log.
+- [ ] **[host]** Decide and document the unclaimed-gesture pass-through
+      policy (three-finger vertical is currently swallowed).
+- [ ] **[hw]** FR-1 multitouch + pen pressure on DRM; one non-US layout.
+- [ ] **[hw]** On-device gesture-threshold tuning; device quirk table.
+- [ ] **[blocked: T-11/T-12/T-28]** attach behavior to the Mission
+      Control / app-switcher / screenshot `InputAction`s (the events are
+      already emitted).
+- [ ] **[blocked: T-16]** live per-device pointer acceleration/scroll
+      application (stored, not applied; needs backend device handles).
+
+### T-04 — window model
+
+- [ ] **[host]** Protocol-level move/resize conformance (needs T-03's
+      synthetic seat button). Currently unit-level only.
+- [ ] **[host]** FR-7 input-region passthrough: no explicit handling found.
+      Confirm Smithay's hit-test honors client input regions; if not,
+      implement, and add the click-through test.
+- [ ] **[host]** Malformed-client suite: contradictory state requests never
+      crash the compositor.
+- [ ] **[blocked: T-08]** FR-9 shell-restart scripted test (no shell process
+      yet; state is compositor-owned by construction).
+- [ ] **[blocked: T-08/T-13]** FR-8 translucent-region blur pass; nested UI
+      test with the design-system gallery.
+- [ ] **[blocked: T-13]** decoration insets through
+      `DfState::configure_window_size` (X11 aspect hints already wired).
+
+### T-05 — Spaces
+
+- [ ] **[hw]** Two-output lockstep switch and full hotplug matrix at
+      runtime on DRM (model is unit-tested; protocol/DRM path is not).
+- [ ] **[host]** FR-4 image wallpaper rendering (`source`/`fit` are stored
+      but never sampled) and the slide/scale scene mechanics. Needs the
+      `SceneElement` enum refactor noted above; the *polish* is T-11.
+- [ ] **[blocked: T-08]** integration assertion that the shell holds no
+      shadow workspace state (single owner of truth).
+- [ ] **[blocked: T-11/T-16]** multi-monitor window placement (still keys
+      off the primary output).
+- [ ] **[blocked: T-16]** persist app Space memory (session-scope only
+      today).
+
+### T-06 — Xwayland
+
+- [ ] **[host]** FR-4 clipboard image + file-list round-trip test. The
+      selection bridge is mime-agnostic; add a conformance case that offers
+      `image/png` and `text/uri-list` and reads them back both directions.
+- [ ] **[host]** Decide and document the Xwayland fractional-scaling policy
+      (scale-viewport vs integer scale) — the ticket's open question.
+- [ ] **[host]** Malformed X-message robustness test (never crash).
+- [ ] **[hw]** Reference app matrix (Firefox X11, Steam, one SDL game,
+      xterm) under nested/DRM. First T-30 job; partially runnable nested if
+      the apps are installed.
+- [ ] **[upstream]** FR-5 XDnD: Smithay 0.7's XWM has no XDnD translation,
+      so file drag across the boundary is unmet. Needs a bridge
+      (T-30/T-31).
+- [ ] **[upstream]** X11Wm calloop `Rc` cycle: we unlink sockets/locks
+      manually; upstream a `WeakLoopHandle` fix.
+- [ ] **[blocked: T-13]** X11 Tier-2 SSD titlebar rendering (tier marking
+      done).
+
+### T-07 — private shell protocols
+
+- [ ] **[host]** Extend the compliance client to assert **every** emitted
+      event pair. Missing: `attention`, `hot_corner`, `input_action`,
+      `progress`, `app_accelerator`, `app_switcher`, output
+      geometry/mode/transform, workspace `removed`/`fullscreen`, focus,
+      title/app_id/state, `closed`.
+- [ ] **[host]** FR-7 additive-only proof test. Introduce the first
+      `since="2"` member (or a test-only interface), bind version 1, and
+      assert the v2 member is neither sent nor required; gate every
+      `send_*` on `resource.version()`.
+- [ ] **[host]** Fuzzed/malformed sequence suite: never crash on bad
+      private-protocol traffic (test-plan requirement).
+- [ ] **[blocked: T-09/T-10]** FR-1 keyboard-interaction seat grabs and
+      chrome rendering/layer stacking (T-07 owns placement/configure only).
+- [ ] **[blocked: T-08]** consume the generated Qt/C++ bindings and add the
+      live shell restart/re-anchor integration test.
+- [ ] **[blocked: T-11/T-16]** per-output reserved zones (single global
+      union today).
+- [ ] **[blocked: T-16]** plumb VRR/night-light output requests (accepted
+      and acked but inert).
+- [ ] **[blocked: T-10]** toplevel-thumbnail decision (token-gated if
+      added).
+
+### The E2E return point and suggested order
+
+1. T-03 synthetic-input harness → T-04 move/resize conformance.
+2. T-03 pointer constraints + malicious-grab test.
+3. T-04 input-region + malformed-client suite.
+4. T-07 compliance-client completeness + additive-only proof + malformed
+   suite.
+5. T-06 clipboard image/file test + fractional-scale decision + malformed X.
+6. T-02 idle-trace assertion (nested/headless).
+7. **Re-run and extend `make e2e`.** New coverage that belongs in
+   `milestone_e2e.rs` once the above lands: move/resize through the shell,
+   per-output zones, a v1/v2 additive handshake, an image/file clipboard
+   round-trip. Keep it the integration gate before T-08.
+8. Then the **[hw]** items (DRM bring-up, budgets, hotplug, GPU loss) when a
+   seat is available, and the **[blocked]** items as their tickets land.
