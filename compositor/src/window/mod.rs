@@ -116,6 +116,10 @@ struct WindowEntry {
 pub struct WindowModel {
     entries: HashMap<Window, WindowEntry>,
     cascades: HashMap<String, Cascade>,
+    /// Most-recently-focused window ids, newest first. Drives the app
+    /// switcher's recency order (T-12); the compositor owns it because only
+    /// the compositor sees every focus transition (T-07).
+    recency: Vec<WindowId>,
     next_id: u64,
 }
 
@@ -140,12 +144,15 @@ impl WindowModel {
                 decorations: DecorationTier::default(),
             },
         );
+        // A new window is the least-recently-used until it is focused.
+        self.recency.push(id);
         id
     }
 
     /// Forget a window. Children are detached rather than left dangling.
     pub fn remove(&mut self, window: &Window) -> Option<WindowId> {
         let entry = self.entries.remove(window)?;
+        self.recency.retain(|id| *id != entry.id);
         if let Some(parent) = &entry.parent {
             if let Some(parent_entry) = self.entries.get_mut(parent) {
                 parent_entry.children.retain(|child| child != window);
@@ -157,6 +164,20 @@ impl WindowModel {
             }
         }
         Some(entry.id)
+    }
+
+    /// Mark `window` as the most recently used window.
+    pub fn touch_recency(&mut self, window: &Window) {
+        let Some(id) = self.id(window) else {
+            return;
+        };
+        self.recency.retain(|existing| *existing != id);
+        self.recency.insert(0, id);
+    }
+
+    /// Window ids, most recently used first (the app switcher's order).
+    pub fn recency(&self) -> &[WindowId] {
+        &self.recency
     }
 
     /// Whether `window` is registered.

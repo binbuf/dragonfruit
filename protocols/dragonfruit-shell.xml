@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SPDX-License-Identifier: MIT
+
+  Dragonfruit private protocol — chrome surfaces (T-07).
+
+  dragonfruit lockstep-version: 1
+
+  This file ships with the compositor and shell as a lockstep set
+  (docs/ipc-versioning.md). Additive-only within a stable release.
+
+  Layer-shell-style chrome surfaces: anchored, layered, reserved-zone
+  surfaces for the menu bar, Dock, Control Center, notification banners,
+  OSD, overview strip, and screenshot UI. The design follows
+  wlr-layer-shell-unstable-v1 (see docs/private-protocols.md for the
+  documented deviations) but is a Dragonfruit-owned, versioned interface:
+  it is a privilege of trusted session processes, not a public extension
+  surface (02-compositor.md).
+-->
+<protocol name="dragonfruit_shell">
+
+  <interface name="df_shell" version="1">
+    <description summary="chrome-surface factory for trusted session clients">
+      Creates `df_layer_surface`s. Binding this global requires a successful
+      `df_core.authenticate` (T-07 trust model).
+    </description>
+
+    <request name="get_layer_surface">
+      <description summary="create a chrome surface on a layer">
+        Turn an existing `wl_surface` into a chrome surface. The compositor
+        assigns it a reserved zone (when `exclusive_zone` is set) and places
+        it on the requested layer. `output` NULL means the compositor picks
+        the output the surface should anchor to (the primary output).
+      </description>
+      <arg name="id" type="new_id" interface="df_layer_surface"/>
+      <arg name="surface" type="object" interface="wl_surface"/>
+      <arg name="output" type="object" interface="wl_output" allow-null="true"/>
+      <arg name="layer" type="uint" enum="layer"/>
+      <arg name="namespace" type="string" summary="e.g. &quot;menubar&quot;, &quot;dock&quot;, &quot;osd&quot;"/>
+    </request>
+
+    <request name="destroy" type="destructor">
+      <description summary="destroy the factory object"/>
+    </request>
+
+    <enum name="layer">
+      <description summary="stacking layers, bottom to top">
+        Matches wlr-layer-shell's ordering so the mental model carries over:
+        the wallpaper/desktop reveal sits on `background`, normal chrome on
+        `top`, transient chrome (menus, OSD) on `overlay`.
+      </description>
+      <entry name="background" value="0"/>
+      <entry name="bottom" value="1"/>
+      <entry name="top" value="2"/>
+      <entry name="overlay" value="3"/>
+    </enum>
+  </interface>
+
+  <interface name="df_layer_surface" version="1">
+    <description summary="an anchored, layered chrome surface">
+      Requests may be sent before the first commit; the compositor sends a
+      `configure` with the resolved size and serial, which the client must
+      ack. When the output is resized the compositor reconfigures.
+    </description>
+
+    <request name="set_layer">
+      <arg name="layer" type="uint" enum="df_shell.layer"/>
+    </request>
+
+    <request name="set_anchor">
+      <description summary="anchor edges; 0 means centred on the output">
+        Bitfield: top=1, bottom=2, left=4, right=8.
+      </description>
+      <arg name="anchor" type="uint"/>
+    </request>
+
+    <request name="set_size">
+      <description summary="requested size; 0 means &quot;derive from anchors&quot;">
+        A non-zero width/height is a request, not a guarantee: the
+        compositor may clamp it to the output and reports the final size in
+        `configure`.
+      </description>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
+    </request>
+
+    <request name="set_margin">
+      <arg name="top" type="int"/>
+      <arg name="right" type="int"/>
+      <arg name="bottom" type="int"/>
+      <arg name="left" type="int"/>
+    </request>
+
+    <request name="set_exclusive_zone">
+      <description summary="reserve this many pixels on the anchored edge">
+        The reserved zone is subtracted from the usable area (Zoom target)
+        and reported to the shell as an output property. Negative values
+        keep the surface out of the reserved-zone accounting (an overlay).
+      </description>
+      <arg name="zone" type="int"/>
+    </request>
+
+    <request name="set_keyboard_interaction">
+      <description summary="keyboard focus policy for this surface">
+        `none` never takes keyboard focus; `on_demand` takes it when
+        clicked; `exclusive` takes it for as long as it is mapped (like a
+        modal OSD).
+      </description>
+      <arg name="mode" type="uint" enum="keyboard_interaction"/>
+    </request>
+
+    <request name="ack_configure">
+      <arg name="serial" type="uint"/>
+    </request>
+
+    <request name="destroy" type="destructor"/>
+
+    <event name="configure">
+      <arg name="serial" type="uint"/>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
+    </event>
+
+    <event name="closed">
+      <description summary="the compositor will not use this surface any more"/>
+    </event>
+
+    <enum name="keyboard_interaction">
+      <entry name="none" value="0"/>
+      <entry name="exclusive" value="1"/>
+      <entry name="on_demand" value="2"/>
+    </enum>
+  </interface>
+
+</protocol>

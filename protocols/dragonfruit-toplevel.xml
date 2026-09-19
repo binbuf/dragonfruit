@@ -1,0 +1,374 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SPDX-License-Identifier: MIT
+
+  Dragonfruit private protocol — windows, workspaces, outputs (T-07).
+
+  dragonfruit lockstep-version: 1
+
+  This file ships with the compositor and shell as a lockstep set
+  (docs/ipc-versioning.md). Additive-only within a stable release.
+
+  Follows the precedents of wlr-foreign-toplevel-management (per-window
+  handles, title/app_id/state/done) and wlr-output-management (per-output
+  handles with mode/scale/transform), extended with workspace enumeration
+  and lifecycle, Mission Control control, app-switcher state, focus and
+  launch-attention broadcasts, and hot-corner trigger events. Deviations
+  from the wlr precedents are documented in docs/private-protocols.md.
+
+  Event ordering is scene-consistent (FR-2): a `toplevel`/`workspace`/
+  `output` announcement is followed by that object's initial properties and
+  a `done` on the manager; the manager never emits an event that describes
+  a state the compositor scene has not reached. Every state-changing
+  request is acked with a `done` after the scene applies it (FR-3).
+-->
+<protocol name="dragonfruit_toplevel">
+
+  <interface name="df_toplevel_manager" version="1">
+    <description summary="window/workspace/output control for trusted clients">
+      The manager is per-client. On bind the compositor replays the current
+      scene: it announces every output, workspace, and toplevel, then emits
+      `done`. Binding requires a successful `df_core.authenticate`.
+    </description>
+
+    <request name="create_workspace">
+      <description summary="create an empty Space at the end of every output">
+        The new Space is announced with a `workspace` event and `done`.
+      </description>
+    </request>
+
+    <request name="remove_workspace">
+      <arg name="workspace" type="object" interface="df_workspace"/>
+    </request>
+
+    <request name="reorder_workspace">
+      <arg name="workspace" type="object" interface="df_workspace"/>
+      <arg name="index" type="uint"/>
+    </request>
+
+    <request name="activate_workspace">
+      <arg name="workspace" type="object" interface="df_workspace"/>
+    </request>
+
+    <request name="enter_mission_control"/>
+    <request name="exit_mission_control"/>
+
+    <request name="select_overview_toplevel">
+      <description summary="Mission Control selection: focus this window's Space and raise it"/>
+      <arg name="toplevel" type="object" interface="df_toplevel"/>
+    </request>
+
+    <request name="activate_app">
+      <description summary="app switcher: activate the most recent window of an app"/>
+      <arg name="app_id" type="string"/>
+    </request>
+
+    <request name="cycle_app_switcher">
+      <description summary="app switcher: move the selection by one app"/>
+      <arg name="direction" type="int" summary="+1 forward, -1 backward"/>
+    </request>
+
+    <request name="destroy" type="destructor"/>
+
+    <event name="output">
+      <description summary="an output is now known to the client"/>
+      <arg name="id" type="new_id" interface="df_output"/>
+    </event>
+
+    <event name="workspace">
+      <description summary="a workspace is now known to the client"/>
+      <arg name="id" type="new_id" interface="df_workspace"/>
+    </event>
+
+    <event name="toplevel">
+      <description summary="a window is now known to the client"/>
+      <arg name="id" type="new_id" interface="df_toplevel"/>
+    </event>
+
+    <event name="workspace_activated">
+      <arg name="workspace" type="object" interface="df_workspace"/>
+      <arg name="index" type="uint"/>
+    </event>
+
+    <event name="focused">
+      <description summary="the active window changed; NULL means none"/>
+      <arg name="toplevel" type="object" interface="df_toplevel" allow-null="true"/>
+    </event>
+
+    <event name="attention">
+      <description summary="a window requested activation or demands attention (Dock bounce)"/>
+      <arg name="toplevel" type="object" interface="df_toplevel"/>
+    </event>
+
+    <event name="hot_corner">
+      <description summary="a hot-corner trigger fired; same event for pointer/gesture/keyboard"/>
+      <arg name="corner" type="uint" enum="hot_corner"/>
+      <arg name="output" type="string"/>
+    </event>
+
+    <event name="overview_changed">
+      <description summary="Mission Control entered/left; selection is NULL when none"/>
+      <arg name="active" type="uint"/>
+      <arg name="selected" type="object" interface="df_toplevel" allow-null="true"/>
+    </event>
+
+    <event name="app_switcher">
+      <description summary="app-switcher overlay state; selection is NULL when closed"/>
+      <arg name="active" type="uint"/>
+      <arg name="app_id" type="string" allow-null="true"/>
+      <arg name="direction" type="int"/>
+    </event>
+
+    <event name="input_action">
+      <description summary="a trigger resolved to a compositor action (T-03 outbox)"/>
+      <arg name="action" type="string"/>
+      <arg name="source" type="string"/>
+      <arg name="serial" type="uint"/>
+    </event>
+
+    <event name="progress">
+      <description summary="one progress-pipeline sample for an interruptible transition"/>
+      <arg name="action" type="string"/>
+      <arg name="progress" type="fixed"/>
+      <arg name="raw_progress" type="fixed"/>
+      <arg name="velocity" type="fixed"/>
+      <arg name="phase" type="uint"/>
+      <arg name="committed" type="uint"/>
+      <arg name="cancelled" type="uint"/>
+    </event>
+
+    <event name="app_accelerator">
+      <description summary="a matched application accelerator for the focused app"/>
+      <arg name="app_id" type="string"/>
+      <arg name="accelerator_id" type="string"/>
+      <arg name="source" type="string"/>
+      <arg name="serial" type="uint"/>
+    </event>
+
+    <event name="done">
+      <description summary="the preceding batch of events is complete"/>
+    </event>
+
+    <enum name="hot_corner">
+      <entry name="top_left" value="0"/>
+      <entry name="top_right" value="1"/>
+      <entry name="bottom_left" value="2"/>
+      <entry name="bottom_right" value="3"/>
+    </enum>
+  </interface>
+
+  <interface name="df_toplevel" version="1">
+    <description summary="one managed window">
+      A server-created handle. The client never invents ids; it addresses
+      windows by the compositor-stable id embedded in this object. The
+      compositor emits initial properties followed by `done` right after the
+      `toplevel` announcement.
+    </description>
+
+    <request name="activate"/>
+    <request name="close"/>
+    <request name="minimize"/>
+    <request name="unminimize"/>
+    <request name="zoom"/>
+    <request name="unzoom"/>
+    <request name="fullscreen"/>
+    <request name="unfullscreen"/>
+
+    <request name="move_to_workspace">
+      <arg name="workspace" type="object" interface="df_workspace"/>
+    </request>
+
+    <request name="destroy" type="destructor"/>
+
+    <event name="title">
+      <arg name="title" type="string" allow-null="true"/>
+    </event>
+
+    <event name="app_id">
+      <arg name="app_id" type="string" allow-null="true"/>
+    </event>
+
+    <event name="state">
+      <arg name="state" type="uint" enum="state"/>
+    </event>
+
+    <event name="workspace_entered">
+      <arg name="workspace" type="object" interface="df_workspace"/>
+    </event>
+
+    <event name="workspace_left">
+      <arg name="workspace" type="object" interface="df_workspace"/>
+    </event>
+
+    <event name="output_entered">
+      <arg name="output" type="object" interface="df_output"/>
+    </event>
+
+    <event name="output_left">
+      <arg name="output" type="object" interface="df_output"/>
+    </event>
+
+    <event name="closed">
+      <description summary="the window is gone; the handle is inert"/>
+    </event>
+
+    <event name="done"/>
+
+    <enum name="state" bitfield="true">
+      <entry name="minimized" value="1"/>
+      <entry name="zoomed" value="2"/>
+      <entry name="fullscreen" value="4"/>
+      <entry name="focused" value="8"/>
+    </enum>
+  </interface>
+
+  <interface name="df_workspace" version="1">
+    <description summary="one Space on one output">
+      Spaces are per-output and ordered; activation is lockstep across all
+      outputs (03-workspaces.md). A fullscreen window owns a dedicated,
+      transient Space; it reports `fullscreen` true.
+    </description>
+
+    <request name="activate"/>
+
+    <request name="set_wallpaper">
+      <description summary="assign a wallpaper; NULL source keeps the solid color"/>
+      <arg name="source" type="string" allow-null="true"/>
+      <arg name="fit" type="uint" enum="wallpaper_fit"/>
+      <arg name="color" type="uint" summary="ARGB solid fallback"/>
+    </request>
+
+    <request name="destroy" type="destructor"/>
+
+    <event name="name">
+      <arg name="name" type="string"/>
+    </event>
+
+    <event name="index">
+      <arg name="index" type="uint"/>
+    </event>
+
+    <event name="activated">
+      <arg name="active" type="uint"/>
+    </event>
+
+    <event name="fullscreen">
+      <arg name="fullscreen" type="uint"/>
+    </event>
+
+    <event name="wallpaper">
+      <arg name="source" type="string" allow-null="true"/>
+      <arg name="fit" type="uint" enum="wallpaper_fit"/>
+      <arg name="color" type="uint"/>
+    </event>
+
+    <event name="removed"/>
+
+    <event name="done"/>
+
+    <enum name="wallpaper_fit">
+      <entry name="fill" value="0"/>
+      <entry name="fit" value="1"/>
+      <entry name="stretch" value="2"/>
+      <entry name="center" value="3"/>
+    </enum>
+  </interface>
+
+  <interface name="df_output" version="1">
+    <description summary="one display">
+      Follows wlr-output-management: modes, scale, transform, plus VRR and
+      night-light/color controls and reserved zones. `set_*` requests are
+      acknowledged with `done` after the backend applies them (or the
+      compositor's best-effort equivalent).
+    </description>
+
+    <request name="set_mode">
+      <arg name="width" type="uint"/>
+      <arg name="height" type="uint"/>
+      <arg name="refresh" type="uint" summary="mHz"/>
+    </request>
+
+    <request name="set_scale">
+      <arg name="scale" type="fixed"/>
+    </request>
+
+    <request name="set_transform">
+      <arg name="transform" type="uint" enum="transform"/>
+    </request>
+
+    <request name="set_vrr">
+      <arg name="enabled" type="uint"/>
+    </request>
+
+    <request name="set_night_light">
+      <arg name="enabled" type="uint"/>
+      <arg name="temperature" type="uint" summary="Kelvin, 1000..10000"/>
+    </request>
+
+    <request name="destroy" type="destructor"/>
+
+    <event name="name">
+      <arg name="name" type="string"/>
+    </event>
+
+    <event name="geometry">
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
+    </event>
+
+    <event name="mode">
+      <arg name="flags" type="uint"/>
+      <arg name="width" type="uint"/>
+      <arg name="height" type="uint"/>
+      <arg name="refresh" type="uint"/>
+    </event>
+
+    <event name="scale">
+      <arg name="scale" type="fixed"/>
+    </event>
+
+    <event name="transform">
+      <arg name="transform" type="uint" enum="transform"/>
+    </event>
+
+    <event name="vrr">
+      <arg name="enabled" type="uint"/>
+    </event>
+
+    <event name="night_light">
+      <arg name="enabled" type="uint"/>
+      <arg name="temperature" type="uint"/>
+    </event>
+
+    <event name="reserved_zone">
+      <description summary="a shell surface reserved pixels on an edge; edge 0=top,1=bottom,2=left,3=right"/>
+      <arg name="edge" type="uint" enum="edge"/>
+      <arg name="thickness" type="uint"/>
+    </event>
+
+    <event name="done"/>
+
+    <event name="removed"/>
+
+    <enum name="transform">
+      <entry name="normal" value="0"/>
+      <entry name="90" value="1"/>
+      <entry name="180" value="2"/>
+      <entry name="270" value="3"/>
+      <entry name="flipped" value="4"/>
+      <entry name="flipped_90" value="5"/>
+      <entry name="flipped_180" value="6"/>
+      <entry name="flipped_270" value="7"/>
+    </enum>
+
+    <enum name="edge">
+      <entry name="top" value="0"/>
+      <entry name="bottom" value="1"/>
+      <entry name="left" value="2"/>
+      <entry name="right" value="3"/>
+    </enum>
+  </interface>
+
+</protocol>

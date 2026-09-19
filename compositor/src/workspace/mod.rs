@@ -295,6 +295,14 @@ impl WorkspaceModel {
             .map(|space| space.id)
     }
 
+    /// Whether the Space at `index` on `output` is a dedicated fullscreen
+    /// Space (T-07 reports this to the shell strip).
+    pub fn is_fullscreen_at(&self, output: &str, index: usize) -> bool {
+        self.output(output)
+            .and_then(|o| o.space_at(index))
+            .is_some_and(Space::is_fullscreen)
+    }
+
     /// The output that owns `space`.
     pub fn space_output(&self, space: SpaceId) -> Option<&str> {
         self.outputs

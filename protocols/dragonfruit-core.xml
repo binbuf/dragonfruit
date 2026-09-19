@@ -2,7 +2,7 @@
 <!--
   SPDX-License-Identifier: MIT
 
-  Dragonfruit private protocol — core handshake (placeholder for T-07).
+  Dragonfruit private protocol — core handshake and trust model (T-07).
 
   dragonfruit lockstep-version: 1
 
@@ -10,16 +10,62 @@
   (docs/ipc-versioning.md). Within a stable release the protocol is
   additive-only: new events and requests may be added; existing ones
   never change meaning or disappear.
+
+  The `df_core` global is the single, always-advertised entry point of the
+  private surface. A client presents the one-time launch token it was
+  provisioned with out-of-band at startup (session environment) and the
+  lockstep version it speaks; the compositor either marks the client
+  trusted — after which the chrome/window/workspace/output globals become
+  bindable — or refuses it. Every other private interface is gated on this
+  handshake (FR-4/FR-5/FR-6).
 -->
 <protocol name="dragonfruit_core">
 
-  <!--
-    Placeholder global proving the versioning convention. T-07 replaces
-    the contents with the real shell protocol (workspace enumeration,
-    window state, Mission Control control, output configuration) while
-    keeping the lockstep marker above.
-  -->
-  <interface name="dragonfruit_core" version="1">
+  <interface name="df_core" version="1">
+    <description summary="private-protocol handshake and trust model">
+      The one private global every session client may bind. It carries no
+      state of its own beyond the handshake result. Binding it does not
+      grant access; only a successful authenticate does.
+
+      On success the compositor emits `authenticated` and the private
+      chrome/window/workspace/output globals become bindable. On failure it
+      emits `refused` and disconnects the client; the attempt is logged.
+    </description>
+
+    <request name="authenticate">
+      <description summary="present a one-time launch token and lockstep version">
+        Present the launch token provisioned to this process out-of-band at
+        startup, plus the lockstep version this build speaks. Tokens are
+        one-time: a token that was already consumed, or that was minted by a
+        previous boot, is refused. The token must never be sent on a shared
+        or replayable channel.
+      </description>
+      <arg name="lockstep_version" type="uint" summary="the private-protocol set version this client speaks"/>
+      <arg name="token" type="string" summary="the one-time launch token"/>
+    </request>
+
+    <request name="destroy" type="destructor">
+      <description summary="destroy the handshake object"/>
+    </request>
+
+    <event name="authenticated">
+      <description summary="the client is trusted for this session"/>
+      <arg name="lockstep_version" type="uint" summary="the agreed lockstep version"/>
+    </event>
+
+    <event name="refused">
+      <description summary="the handshake failed; the client will be disconnected">
+        The refusal codes are stable and additive-only:
+
+          0 invalid-token      — no such token, or a token from another boot
+          1 token-consumed     — the one-time token was already redeemed
+          2 version-mismatch   — lockstep sets disagree
+          3 not-provisioned    — no launch token was ever minted for this role
+          4 already-authenticated — this client already authenticated
+      </description>
+      <arg name="code" type="uint" summary="a stable refusal code"/>
+      <arg name="message" type="string" summary="human-readable detail for logs"/>
+    </event>
   </interface>
 
 </protocol>

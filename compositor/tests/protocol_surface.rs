@@ -58,6 +58,11 @@ const EXPECTED_GLOBALS: &[&str] = &[
     "zwp_input_method_manager_v2",
     // tablets (input layer: first-class from the start)
     "zwp_tablet_manager_v2",
+    // private shell protocols (T-07): the handshake/trust entry point and
+    // the chrome/window/workspace/output globals it gates.
+    "df_core",
+    "df_shell",
+    "df_toplevel_manager",
 ];
 
 /// Protocols that must never be advertised — "if a capture is not a

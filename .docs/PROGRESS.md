@@ -609,3 +609,89 @@ Notes for subsequent tasks:
   move/resize path).
 
 
+
+## T-07 — private shell protocols: trust, chrome, window/workspace/output control
+
+**State: partial.** Done and verified: three MIT protocol XMLs
+(`dragonfruit-core.xml`, `dragonfruit-shell.xml`,
+`dragonfruit-toplevel.xml`) compiled into Rust server bindings with
+`wayland-scanner`; the `df_core` lockstep handshake and launch-token trust
+model (one-time, per-boot, role-scoped; `refused` + disconnect, logged);
+`df_shell`/`df_layer_surface` chrome surfaces with anchor/margin/size/
+exclusive-zone/keyboard-mode requests, `configure`/`ack_configure`, and
+reserved zones folded into the Zoom area and broadcast as `df_output`
+`reserved_zone` events; `df_toplevel_manager`/`df_toplevel`/`df_workspace`/
+`df_output` with scene replay on bind, request round-trips acked with
+`done`, and focus/attention/hot-corner/overview/app-switcher/input
+broadcasts; the T-03/T-04/T-05 outboxes are drained into the protocol each
+loop iteration. `cargo test -p dragonfruit-compositor` (102 unit + 4
+conformance + protocol-surface + window/xwayland suites) is green,
+`cargo clippy --workspace --all-targets -D warnings` and `cargo fmt --check`
+pass, and the desktop-name/no-capture gates pass. The compliance client
+passes the refusal matrix, chrome configure/reserved zones, and
+output/workspace/toplevel request round-trips. Reference:
+`docs/private-protocols.md`.
+
+Notes for subsequent tasks:
+
+- **The trust seam is `DfState.shell` (`ShellProtocolState`).** It owns the
+  `TrustModel`, the per-client sessions, the chrome `layers`, the aggregated
+  `reserved` zones, and the Mission Control/app-switcher state. The T-03
+  `input_dispatch`, T-04 `window_dispatch`, and T-05
+  `workspaces.dispatch()` outboxes are drained by
+  `DfState::broadcast_shell_events()` in `session.rs` (one call per loop
+  iteration, before `flush_clients`). New state-changing code must keep
+  writing those outboxes (they are the seam), not call the protocol directly.
+- **Tokens are provisioned in `shell::provision` at session start.**
+  `DRAGONFRUIT_LAUNCH_TOKENS` (comma-separated hex) provisions multiple
+  tokens; `DRAGONFRUIT_LAUNCH_TOKEN` is the single-token hand-off; otherwise
+  one random shell token is minted. The shell's token is written 0600 to
+  `$XDG_RUNTIME_DIR/<socket>.launch-token` and removed at teardown. **T-24
+  must export `DRAGONFRUIT_LAUNCH_TOKEN` to the shell process and mint a
+  fresh token per shell start** (a restarted shell needs a new one-time
+  token). Never log a token; `LaunchToken: Debug` redacts it.
+- **Wire token encoding is lowercase hex.** `df_core.authenticate` carries
+  the hex string; the compositor decodes with
+  `LaunchToken::parse_hex` before `TrustModel::authenticate`. Version is
+  checked before the token, so a wrong-version retry does not burn it.
+- **Chrome surfaces are placed, not rendered.** T-07 sends `configure` and
+  computes reserved zones; T-09/T-10 own rendering, layer stacking, and the
+  keyboard-mode seat grab. The `wl_surface` is stored in
+  `LayerEntry.surface` for that work. `LayerSurfaceState::geometry` (pure,
+  in `shell/layer.rs`) is the single placement function.
+- **Reserved zones are a single global union** (`DfState.reserved_zones`),
+  not per-output; `send_output_properties` reports the union to every
+  output. Per-output zones are T-11/T-16.
+- **The manager re-syncs from the model, not from event ids.** T-05's
+  structural workspace events carry the first output's `SpaceId` for
+  `Created`/`Reordered`, which is ambiguous across outputs, so
+  `sync_workspaces`/`sync_outputs` reconcile the `df_workspace`/`df_output`
+  object list against `WorkspaceModel`/`Space` whenever a structural event
+  arrives. `WindowAssigned`/`Activated` are handled directly.
+- **`WindowId`/`SpaceId` are the protocol ids.** `df_toplevel` user data is
+  `ToplevelUserData { id: WindowId }`, `df_workspace` is
+  `WorkspaceUserData { id: SpaceId }`, `df_output` is
+  `OutputUserData { name }`. The shell never invents ids. `WindowModel`
+  now tracks recency (`touch_recency`/`recency`) for the app switcher.
+- **Scene-consistent ordering** comes from draining the outboxes in order
+  and from the T-05 rule that workspace events are pushed in the same call
+  that mutates the model. If a new broadcast is added, push it to the
+  relevant outbox before the scene change, then drain in
+  `broadcast_shell_events`.
+- **Output requests are best-effort.** `set_mode`/`set_scale`/`set_transform`
+  go through `Output::change_current_state`; `set_vrr`/`set_night_light` are
+  accepted and acked but not plumbed (T-16). Every `set_*` re-sends the full
+  output properties and `done`.
+- **`wayland-scanner` generated server events take owned `String`s** (and
+  the generated enums, not wire ints); client events take `WEnum<..>`.
+  `df_toplevel_manager`'s new_id events require the client-side
+  `event_created_child!` specialization (see the conformance test).
+- **Qt/C++ bindings** for the shell are generated by
+  `scripts/gen-shell-protocol-bindings.sh` (uses `qtwaylandscanner` when
+  present, else `wayland-scanner`). T-08 consumes them; the shell must
+  authenticate with its token before binding any private global.
+- **Known gaps:** chrome rendering/keyboard grabs (T-09/T-10), Qt bindings
+  consumption (T-08), per-output reserved zones (T-11/T-16), VRR/night light
+  plumbing (T-16), toplevel thumbnails for the Dock (T-10, token-gated if
+  added). The conformance suite is headless; a live shell restart/re-anchor
+  integration test lands with T-08.

@@ -47,6 +47,11 @@ pub fn run_session(socket_name: &str, hooks: BackendHooks) -> Result<(), String>
     let mut state = DfState::new(&dh, loop_handle.clone(), loop_signal);
     state.socket_name = socket_name.to_string();
 
+    // Provision the private-protocol launch token (T-07 trust model). The
+    // session manager (T-24) hands it to the shell out-of-band; the dev
+    // tool and the conformance tests read the 0600 hand-off file.
+    crate::shell::provision(&mut state);
+
     // Wayland socket: fd-driven accept + guaranteed removal on drop (RAII,
     // per the T-01 teardown lesson — no reliance on a drop chain at the
     // end of a fallible function).
@@ -132,6 +137,11 @@ pub fn run_session(socket_name: &str, hooks: BackendHooks) -> Result<(), String>
 
         (render)(&mut state)?;
 
+        // Drain the T-03/T-04/T-05 outboxes into the private shell protocol
+        // (T-07): window/workspace/focus/attention and input events are
+        // delivered in scene-consistent order before the flush below.
+        state.broadcast_shell_events();
+
         if let Err(err) = state.display_handle.flush_clients() {
             eprintln!("dragonfruit-compositor: flush failed: {err}");
         }
@@ -151,6 +161,7 @@ pub fn run_session(socket_name: &str, hooks: BackendHooks) -> Result<(), String>
     if let Some(number) = state.xwayland.display_number {
         crate::xwayland::cleanup_x11_files(number);
     }
+    crate::shell::remove_token_file(&state.socket_name);
     drop(event_loop);
     drop(state);
     drop(loop_handle);
