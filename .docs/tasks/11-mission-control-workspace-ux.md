@@ -7,7 +7,7 @@
 | **Depends on** | [T-03](03-input-keymaps-shortcuts.md) · [T-05](05-spaces-model.md) · [T-07](07-private-shell-protocols.md) · [T-08](08-design-system.md) · [T-09](09-menu-bar.md) |
 | **Blocks** | Phase-2 exit (zero-dropped-frame loop) · [T-12](12-app-switcher.md) (cross-Space activation) · [T-14](14-hot-corners-desktop-background.md) (Desktop Reveal shares the pipeline) · [T-31](31-polish-hardening.md) |
 | **Estimate** | XL |
-| **Design docs** | [03-workspaces.md](../design/03-workspaces.md) · [10-design-system.md](../design/10-design-system.md) · [13-roadmap.md](../design/13-roadmap.md) |
+| **Design docs** | [03-workspaces.md](../design/03-workspaces.md) · [10-design-system.md](../design/10-design-system.md) · [ROADMAP.md](../ROADMAP.md) |
 
 ## Summary
 
@@ -24,7 +24,7 @@ real surfaces while applying scale, translation, clipping, blur/shadow, and
 workspace transformations ([03-workspaces.md](../design/03-workspaces.md)).
 This is the flagship "because we own the compositor" feature and the core of
 the 30-second interaction loop
-([13-roadmap.md](../design/13-roadmap.md)).
+([ROADMAP.md](../ROADMAP.md)).
 
 ## Scope
 

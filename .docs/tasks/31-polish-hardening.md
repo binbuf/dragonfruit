@@ -7,7 +7,7 @@
 | **Depends on** | All prior phases; feeds from every ticket's risk list |
 | **Blocks** | Daily-driver bar (final) · "confidently given to arbitrary users" |
 | **Estimate** | XL (continuous) |
-| **Design docs** | [13-roadmap.md](../design/13-roadmap.md) · [14-risks.md](../design/14-risks.md) · [02-compositor.md](../design/02-compositor.md) |
+| **Design docs** | [ROADMAP.md](../ROADMAP.md) · [14-risks.md](../design/14-risks.md) · [02-compositor.md](../design/02-compositor.md) |
 
 ## Summary
 
@@ -20,7 +20,7 @@ tests in a VM matrix as the exit gate.
 ## Background
 
 The daily-driver bar
-([13-roadmap.md](../design/13-roadmap.md)) spans displays, windowing,
+([ROADMAP.md](../ROADMAP.md)) spans displays, windowing,
 input, session, security, power, desktop services, portals, networking,
 Bluetooth, audio, storage, clipboard, accessibility, applications, and
 hardware (Intel/AMD baseline, then NVIDIA). Phase-7 exit: "multi-monitor
@@ -64,7 +64,7 @@ reliable** ([14-risks.md](../design/14-risks.md)).
 
 ### 4. Performance
 
-- Enforce the budgets from [13-roadmap.md](../design/13-roadmap.md) in
+- Enforce the budgets from [ROADMAP.md](../ROADMAP.md) in
   the dev loop: 60 Hz workspace/Mission Control; input-to-photon < 1
   frame; idle zero-damage/zero-wakeup; one frame of work per animation
   frame; Files budgets (T-17/T-18).

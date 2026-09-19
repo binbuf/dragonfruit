@@ -59,7 +59,7 @@ Mission Control be mere observers.
    floating windows, serving both SSD titlebar/edge input (T-13) and CSD
    clients' `xdg_toplevel` move/resize requests — the machinery behind the
    "focus / move / resize" rung of the vertical slice
-   ([13-roadmap.md](../design/13-roadmap.md)).
+   ([ROADMAP.md](../ROADMAP.md)).
 8. **Popups** (`xdg_popup`): positioner-constraint placement, popup input
    grabs, dismissal (click-away, Escape, parent unfocus), and stacking
    above their toplevel — the substrate for app menus, context menus, and

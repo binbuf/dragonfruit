@@ -7,7 +7,7 @@
 | **Depends on** | [T-08](08-design-system.md) · [T-15](15-settingsd-settings-model.md) · [T-20](20-system-service-adapters.md) · [T-07](07-private-shell-protocols.md) (Displays/output API) · [T-03](03-input-keymaps-shortcuts.md) (input panes) |
 | **Blocks** | Phase-3 exit (Settings fully configures every pane it ships) |
 | **Estimate** | XL |
-| **Design docs** | [08-settings.md](../design/08-settings.md) · [10-design-system.md](../design/10-design-system.md) · [13-roadmap.md](../design/13-roadmap.md) |
+| **Design docs** | [08-settings.md](../design/08-settings.md) · [10-design-system.md](../design/10-design-system.md) · [ROADMAP.md](../ROADMAP.md) |
 
 ## Summary
 
@@ -24,7 +24,7 @@ IA (see `../reference/System_Preferences.md`), each pane's routing made
 explicit — no pane is "a wrapper around a GNOME dialog"
 ([08-settings.md](../design/08-settings.md)). The roadmap's guardrail: we
 deliberately do **not** spend months cloning every page before the desktop
-feels good ([13-roadmap.md](../design/13-roadmap.md)).
+feels good ([ROADMAP.md](../ROADMAP.md)).
 
 ## Scope
 

@@ -7,7 +7,7 @@
 | **Depends on** | [T-22](22-global-menu-broker.md) · [T-09](09-menu-bar.md) · [T-13](13-window-decorations-ssd.md) · [T-06](06-xwayland.md) |
 | **Blocks** | Phase-6 exit |
 | **Estimate** | L |
-| **Design docs** | [13-roadmap.md](../design/13-roadmap.md) · [06-global-menu.md](../design/06-global-menu.md) · [04-shell.md](../design/04-shell.md) · [05-window-decorations.md](../design/05-window-decorations.md) · [14-risks.md](../design/14-risks.md) |
+| **Design docs** | [ROADMAP.md](../ROADMAP.md) · [06-global-menu.md](../design/06-global-menu.md) · [04-shell.md](../design/04-shell.md) · [05-window-decorations.md](../design/05-window-decorations.md) · [14-risks.md](../design/14-risks.md) |
 
 ## Summary
 
@@ -20,7 +20,7 @@ decoration themes, GTK left-side-button steering, and the tracked
 
 The roadmap's compatibility phase: "third-party decoration themes,
 DBusMenu global-menu bridge, StatusNotifier/AppIndicator support, strange
-Xwayland applications" ([13-roadmap.md](../design/13-roadmap.md)). Phase-6
+Xwayland applications" ([ROADMAP.md](../ROADMAP.md)). Phase-6
 exit: "a DBusMenu-exporting Qt app shows a global menu; a StatusNotifier
 tray item renders in the menu bar."
 

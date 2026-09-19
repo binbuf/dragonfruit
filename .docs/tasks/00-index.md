@@ -7,7 +7,7 @@ design doc that governs them; when ticket and design doc disagree, the design
 doc wins and the ticket gets fixed.
 
 Estimates assume **one strong full-time Linux/Wayland engineer** (see
-[../design/13-roadmap.md](../design/13-roadmap.md)): convincing prototype
+[../ROADMAP.md](../ROADMAP.md)): convincing prototype
 1–3 months, daily-drivable 6–12 months, arbitrary users beyond a year.
 
 - **S** < 1 week · **M** 1–2 weeks · **L** 2–6 weeks · **XL** > 6 weeks
@@ -15,7 +15,7 @@ Estimates assume **one strong full-time Linux/Wayland engineer** (see
 ## Phase map
 
 The phases follow the implementation sequence in
-[../design/13-roadmap.md](../design/13-roadmap.md). Phases do not fade into
+[../ROADMAP.md](../ROADMAP.md). Phases do not fade into
 each other; each has hard exit criteria.
 
 | Phase | Theme | Tickets |
@@ -31,7 +31,7 @@ each other; each has hard exit criteria.
 
 ## The first vertical slice (Phase 1–2 target)
 
-The demo MVP — from [../design/13-roadmap.md](../design/13-roadmap.md):
+The demo MVP — from [../ROADMAP.md](../ROADMAP.md):
 
 ```text
 Compositor: single-monitor output · mouse+keyboard · floating windows ·
@@ -79,7 +79,7 @@ T-27 portal ─┬─ T-28 capture UI
 
 ## Phase exit criteria
 
-From [../design/13-roadmap.md](../design/13-roadmap.md); tickets within a phase
+From [../ROADMAP.md](../ROADMAP.md); tickets within a phase
 are not "done" until the phase criterion passes:
 
 1. **Foundation:** nested and DRM sessions both run the vertical slice;

@@ -41,7 +41,7 @@ ours runs as root, and we never roll our own privilege escalation
    keyboard-navigable; AT-SPI roles.
 3. Formats: text (incl. UTF-8 oddities), images (common formats), and
    **files** (URI lists) — the daily-driver clipboard bar
-   ([13-roadmap.md](../design/13-roadmap.md)) lists "text, images, files."
+   ([ROADMAP.md](../ROADMAP.md)) lists "text, images, files."
 4. Size/privacy policy: cap history size and entry size; clear on
    lock/unlock (configurable); no cloud anything.
 

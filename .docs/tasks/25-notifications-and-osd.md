@@ -21,7 +21,7 @@ warnings.
 
 A contemporary desktop ships independent idle, OSD, notifications,
 screenshot, portal, and settings-daemon components
-([13-roadmap.md](../design/13-roadmap.md)). Focus/DND lives with the
+([ROADMAP.md](../ROADMAP.md)). Focus/DND lives with the
 notification service so Control Center and the menu bar share one source
 of truth ([04-shell.md](../design/04-shell.md)). Both are restartable;
 transient state may be lost ([01-architecture.md](../design/01-architecture.md)).

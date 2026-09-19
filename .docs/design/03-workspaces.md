@@ -18,7 +18,7 @@ Workspace organization is an **internal compositor primitive**:
   interaction.
 
 The first vertical slice ships three workspaces (see
-[13-roadmap.md](13-roadmap.md)).
+[ROADMAP.md](../ROADMAP.md)).
 
 ### Model decisions
 

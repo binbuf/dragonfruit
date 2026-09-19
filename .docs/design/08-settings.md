@@ -113,4 +113,4 @@ Control Center.
 
 Sequencing note from the roadmap: we deliberately do **not** spend months
 cloning every System Settings page before the desktop itself feels good (see
-[13-roadmap.md](13-roadmap.md)).
+[ROADMAP.md](../ROADMAP.md)).

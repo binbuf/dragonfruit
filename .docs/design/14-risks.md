@@ -8,7 +8,7 @@ environment boringly reliable:
 | Risk | Mitigation | Where tested |
 |---|---|---|
 | GPU hotplug, driver failures | Smithay backend handling; hotplug re-init; fail-safe output config | VM + real hardware matrix |
-| Suspend/resume | logind `PrepareForSleep` hooks; render quiesce; resume re-init | Soak tests (see [13-roadmap.md](13-roadmap.md)) |
+| Suspend/resume | logind `PrepareForSleep` hooks; render quiesce; resume re-init | Soak tests (see [ROADMAP.md](../ROADMAP.md)) |
 | Multiple displays, unusual DPI | Fractional scaling via `viewporter`/`fractional-scale`; per-display Spaces | Multi-monitor test machines |
 | Xwayland applications | Explicit compatibility phase; tracked app zoo | Compatibility phase |
 | Input methods | `text-input` / input-method protocols from the start | Early integration tests |
@@ -32,7 +32,7 @@ actually perceive as *our* desktop.
 - **Qt licensing.** Qt 6 open source is GPL/LGPL. If closed components or
   official support ever matter, commercial Qt licensing is a business
   decision to make **early**, before first-party app code sprawls.
-- **Bus factor.** The estimates in [13-roadmap.md](13-roadmap.md) assume one
+- **Bus factor.** The estimates in [ROADMAP.md](../ROADMAP.md) assume one
   strong engineer. This docs-first, protocol-versioned design is the
   mitigation: decisions live here, not in one head.
 - **Scope creep.** The demo-MVP/daily-driver split is the guardrail. A

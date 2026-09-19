@@ -135,7 +135,7 @@ consistent, design-system prompt rather than a toolkit default (see
 
 The menu bar's system area additionally hosts StatusNotifierItem / AppIndicator
 exports — the de-facto Linux tray standard — through a bridge, shipped in the
-compatibility phase (see [13-roadmap.md](13-roadmap.md)). Third-party items
+compatibility phase (see [ROADMAP.md](../ROADMAP.md)). Third-party items
 get the same sizing, hover, and dark/light treatment as first-party items.
 
 ## Control Center

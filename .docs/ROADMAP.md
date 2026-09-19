@@ -81,23 +81,55 @@ the breadth of "daily-driver."
 
 ## Implementation sequence
 
-1. **Foundation** — Smithay compositor, nested backend, native DRM backend,
-   input, outputs, windows, workspace model, Xwayland.
-2. **Experience** — design system, top bar, Dock, window switching, Mission
-   Control, workspace gestures, animations.
-3. **Flagship apps** — Settings and Files, built entirely in our design
-   system.
-4. **System integration** — NetworkManager, BlueZ, PipeWire/WirePlumber,
-   UPower, UDisks (all expose the APIs needed for custom frontends; see
-   [07-system-integration.md](07-system-integration.md)).
-5. **Desktop infrastructure** — notifications, idle/lock, portal backend,
-   screenshot/screencast, polkit/auth UI integration, clipboard, session
-   lifecycle.
-6. **Compatibility** — third-party decoration themes, DBusMenu global-menu
-   bridge, StatusNotifier/AppIndicator support, strange Xwayland applications.
-7. **Polish** — multi-monitor transitions, fractional-scale edge cases,
-   suspend/resume, graphics-driver testing, accessibility, localization,
-   performance, crash recovery.
+1. **Foundation**
+   - [ ] Smithay compositor
+   - [ ] Nested backend
+   - [ ] Native DRM backend
+   - [ ] Input
+   - [ ] Outputs
+   - [ ] Windows
+   - [ ] Workspace model
+   - [ ] Xwayland
+2. **Experience**
+   - [ ] Design system
+   - [ ] Top bar
+   - [ ] Dock
+   - [ ] Window switching
+   - [ ] Mission Control
+   - [ ] Workspace gestures
+   - [ ] Animations
+3. **Flagship apps**
+   - [ ] Settings, built entirely in our design system
+   - [ ] Files, built entirely in our design system
+4. **System integration** — all expose the APIs needed for custom frontends
+   (see [design/07-system-integration.md](design/07-system-integration.md))
+   - [ ] NetworkManager
+   - [ ] BlueZ
+   - [ ] PipeWire/WirePlumber
+   - [ ] UPower
+   - [ ] UDisks
+5. **Desktop infrastructure**
+   - [ ] Notifications
+   - [ ] Idle/lock
+   - [ ] Portal backend
+   - [ ] Screenshot/screencast
+   - [ ] Polkit/auth UI integration
+   - [ ] Clipboard
+   - [ ] Session lifecycle
+6. **Compatibility**
+   - [ ] Third-party decoration themes
+   - [ ] DBusMenu global-menu bridge
+   - [ ] StatusNotifier/AppIndicator support
+   - [ ] Strange Xwayland applications
+7. **Polish**
+   - [ ] Multi-monitor transitions
+   - [ ] Fractional-scale edge cases
+   - [ ] Suspend/resume
+   - [ ] Graphics-driver testing
+   - [ ] Accessibility
+   - [ ] Localization
+   - [ ] Performance
+   - [ ] Crash recovery
 
 ### Phase exit criteria
 

@@ -53,7 +53,7 @@ rendered by our shell. Absence of a daemon is a normal state, not an error
 
 Once the desktop is a real Wayland session, `xdg-desktop-portal` support
 arrives **surprisingly early** in the sequence (see
-[13-roadmap.md](13-roadmap.md)). The portal project is specifically designed
+[ROADMAP.md](../ROADMAP.md)). The portal project is specifically designed
 around a common frontend working with desktop-environment-specific backends.
 
 We ship:

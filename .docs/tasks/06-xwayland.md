@@ -7,7 +7,7 @@
 | **Depends on** | [T-02](02-compositor-core.md) · [T-04](04-window-model.md) · [T-05](05-spaces-model.md) (workspace assignment) |
 | **Blocks** | [T-13](13-window-decorations-ssd.md) (Xwayland Tier-2 decoration) · [T-30](30-compatibility-bridges.md) (X11 app zoo) |
 | **Estimate** | M |
-| **Design docs** | [02-compositor.md](../design/02-compositor.md) · [05-window-decorations.md](../design/05-window-decorations.md) · [09-files.md](../design/09-files.md) · [13-roadmap.md](../design/13-roadmap.md) |
+| **Design docs** | [02-compositor.md](../design/02-compositor.md) · [05-window-decorations.md](../design/05-window-decorations.md) · [09-files.md](../design/09-files.md) · [ROADMAP.md](../ROADMAP.md) |
 
 ## Summary
 
@@ -20,7 +20,7 @@ reliable Tier-2 (compositor-drawn SSD) decoration for X11 windows.
 X11 apps rate "good," not perfect ([00-overview.md](../design/00-overview.md)).
 Xwayland is the compatibility path; "strange Xwayland applications" are an
 explicit compatibility-phase work item
-([13-roadmap.md](../design/13-roadmap.md)) — that zoo is T-30. This ticket
+([ROADMAP.md](../ROADMAP.md)) — that zoo is T-30. This ticket
 delivers the working integration.
 
 ## Scope
@@ -65,7 +65,7 @@ delivers the working integration.
   (Firefox X11, Steam, an SDL game, a Java app) for Dock/switcher grouping.
 - FR-4: Clipboard text, images, and file lists cross the boundary in both
   directions (daily-driver clipboard bar,
-  [13-roadmap.md](../design/13-roadmap.md)).
+  [ROADMAP.md](../ROADMAP.md)).
 - FR-5: Basic DnD (file drag from an X11 app into Files and vice versa)
   works through the same operations engine path
   ([09-files.md](../design/09-files.md)).

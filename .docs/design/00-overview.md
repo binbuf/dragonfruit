@@ -27,7 +27,7 @@ organized by topic:
 | [10-design-system.md](10-design-system.md) | The Qt Quick design system and first-party component library |
 | [11-session-and-dev-workflow.md](11-session-and-dev-workflow.md) | Session model, nested development, and the testing ladder |
 | [12-packaging.md](12-packaging.md) | Fedora packaging, COPR, Spins, and portability |
-| [13-roadmap.md](13-roadmap.md) | MVP definition, implementation sequence, and timeline |
+| [ROADMAP.md](../ROADMAP.md) | MVP definition, implementation sequence, and timeline |
 | [14-risks.md](14-risks.md) | Technical risks, hard limits, and IP constraints |
 
 ## Product thesis

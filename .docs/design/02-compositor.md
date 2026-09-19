@@ -82,7 +82,7 @@ every run to take ownership of the physical display.
   of the hotplug story, not just display hotplug (see
   [14-risks.md](14-risks.md)).
 - Performance budgets are targets, not hopes — see
-  [13-roadmap.md](13-roadmap.md).
+  [ROADMAP.md](../ROADMAP.md).
 
 ## Event loop
 
@@ -124,7 +124,7 @@ Standard protocols the compositor implements or consumes:
 - `wp-content-type-manager-v1` content-type hints, so fullscreen video and
   conferencing clients can take efficient/scanout paths
 - `wlr-data-control`, so the shell's clipboard manager sees text, images, and
-  files (see [13-roadmap.md](13-roadmap.md))
+  files (see [ROADMAP.md](../ROADMAP.md))
 - `security-context`, so sandboxed (Flatpak) clients identify themselves
 - The Wayland color-management protocol (`xx-color-management-v1` while
   staging) for per-output color and HDR — the basis of the Displays pane's
@@ -198,7 +198,7 @@ application accelerators alike (see [06-global-menu.md](06-global-menu.md),
 
 X11 applications are supported through Xwayland. This is "good," not perfect:
 strange Xwayland applications are an explicit compatibility work item in the
-roadmap (see [13-roadmap.md](13-roadmap.md)).
+roadmap (see [ROADMAP.md](../ROADMAP.md)).
 
 ## Out of scope
 

@@ -427,7 +427,7 @@ Help    Dragonfruit Files Help
 ## Performance budgets
 
 Targets, enforced in the dev loop rather than discovered in the polish phase
-(see [13-roadmap.md](13-roadmap.md)):
+(see [ROADMAP.md](../ROADMAP.md)):
 
 | Path | Budget |
 |---|---|

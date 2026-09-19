@@ -7,7 +7,7 @@
 | **Depends on** | [T-07](07-private-shell-protocols.md) · [T-08](08-design-system.md) · [T-09](09-menu-bar.md) · [T-15](15-settingsd-settings-model.md) (pinned-set keys; interim persistence below) · [T-23](23-app-index.md) (identity; stub until it lands) |
 | **Blocks** | Phase-2 exit (core interaction loop) |
 | **Estimate** | L |
-| **Design docs** | [04-shell.md](../design/04-shell.md) · [08-settings.md](../design/08-settings.md) · [09-files.md](../design/09-files.md) · [13-roadmap.md](../design/13-roadmap.md) |
+| **Design docs** | [04-shell.md](../design/04-shell.md) · [08-settings.md](../design/08-settings.md) · [09-files.md](../design/09-files.md) · [ROADMAP.md](../ROADMAP.md) |
 
 ## Summary
 

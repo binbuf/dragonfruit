@@ -7,7 +7,7 @@
 | **Depends on** | [T-01](01-repo-scaffolding-ci-licensing.md) |
 | **Blocks** | [T-03](03-input-keymaps-shortcuts.md) · [T-04](04-window-model.md) · [T-05](05-spaces-model.md) · [T-06](06-xwayland.md) · [T-07](07-private-shell-protocols.md) · [T-13](13-window-decorations-ssd.md) · [T-20](20-system-service-adapters.md) · [T-24](24-session-lifecycle.md) · [T-26](26-lock-screen-idle.md) · [T-27](27-portal-backend.md) · [T-29](29-clipboard-auth-agent.md) |
 | **Estimate** | XL |
-| **Design docs** | [02-compositor.md](../design/02-compositor.md) · [01-architecture.md](../design/01-architecture.md) · [13-roadmap.md](../design/13-roadmap.md) |
+| **Design docs** | [02-compositor.md](../design/02-compositor.md) · [01-architecture.md](../design/01-architecture.md) · [ROADMAP.md](../ROADMAP.md) |
 
 ## Summary
 

@@ -69,4 +69,4 @@ accepted compromises (see [00-overview.md](00-overview.md)).
   translucency) is owned by the design system so compositor-drawn titlebars
   and first-party app titlebars look identical.
 - Third-party decoration themes ship later, as a compatibility work item in
-  the roadmap (see [13-roadmap.md](13-roadmap.md)).
+  the roadmap (see [ROADMAP.md](../ROADMAP.md)).
