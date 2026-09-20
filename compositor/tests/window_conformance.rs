@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! T-04 acceptance: headless protocol conformance for the window model.
 //!
 //! Spawns the compositor on the headless backend and drives a real

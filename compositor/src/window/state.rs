@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! The window state machine (T-04).
 //!
 //! A window is **floating, minimized, zoomed, or fullscreen**, and every

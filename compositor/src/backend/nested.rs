@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! Wayland nested backend (T-02): runs as a window on an existing
 //! Wayland session — the daily development workflow.
 //!
@@ -44,7 +44,8 @@ pub fn run(socket_name: &str) -> Result<(), String> {
         socket_name,
         BackendHooks {
             init: Box::new(move |state| {
-                let output = add_output(
+                let window_size = backend.window_size();
+                add_output(
                     state,
                     "NESTED-1",
                     PhysicalProperties {
@@ -54,7 +55,7 @@ pub fn run(socket_name: &str) -> Result<(), String> {
                         model: "Winit".into(),
                     },
                     Mode {
-                        size: backend.window_size(),
+                        size: window_size,
                         refresh: 60_000,
                     },
                     (0, 0),
@@ -79,6 +80,7 @@ pub fn run(socket_name: &str) -> Result<(), String> {
                 }
 
                 // Input, resize, redraw: fd-driven through calloop.
+                let shared_events = shared_init.clone();
                 state
                     .loop_handle
                     .insert_source(winit_loop, move |event, _, state| match event {
@@ -95,6 +97,19 @@ pub fn run(socket_name: &str) -> Result<(), String> {
                                 output.change_current_state(Some(mode), None, None, None);
                                 output.set_preferred(mode);
                             }
+                            // The winit/EGL back buffer is bottom-up, so the
+                            // damage tracker must render with Flipped180
+                            // (smithay's `minimal.rs` winit example does the
+                            // same). The output itself stays Normal so clients
+                            // and input mapping are unaffected. The tracker's
+                            // mode is static, so recreate it on resize.
+                            if let Some(data) = shared_events.borrow_mut().as_mut() {
+                                data.damage_tracker = OutputDamageTracker::new(
+                                    size,
+                                    smithay::utils::Scale::from(1.0),
+                                    smithay::utils::Transform::Flipped180,
+                                );
+                            }
                             state.needs_redraw = true;
                         }
                         WinitEvent::Redraw | WinitEvent::Focus(_) => {
@@ -106,7 +121,11 @@ pub fn run(socket_name: &str) -> Result<(), String> {
 
                 *shared_init.borrow_mut() = Some(NestedData {
                     backend,
-                    damage_tracker: OutputDamageTracker::from_output(&output),
+                    damage_tracker: OutputDamageTracker::new(
+                        window_size,
+                        smithay::utils::Scale::from(1.0),
+                        smithay::utils::Transform::Flipped180,
+                    ),
                 });
                 Ok(())
             }),
@@ -140,21 +159,28 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
     };
 
     let age = data.backend.buffer_age().unwrap_or(0);
-    let custom_elements: Vec<
-        smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement<GlowRenderer>,
-    > = Vec::new();
     let render_result = match data.backend.bind() {
-        Ok((renderer, mut framebuffer)) => render_output(
-            &output,
-            renderer,
-            &mut framebuffer,
-            1.0,
-            age,
-            [&state.space],
-            &custom_elements,
-            &mut data.damage_tracker,
-            state.wallpaper_color_for(&output),
-        ),
+        Ok((renderer, mut framebuffer)) => {
+            let scale = smithay::utils::Scale::from(output.current_scale().fractional_scale());
+            // Chrome surfaces (menu bar, overlays) composite above the
+            // window space (T-09).
+            let custom_elements: Vec<
+                smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement<
+                    GlowRenderer,
+                >,
+            > = crate::render::chrome_render_elements(renderer, state, &output, scale);
+            render_output(
+                &output,
+                renderer,
+                &mut framebuffer,
+                1.0,
+                age,
+                [&state.space],
+                &custom_elements,
+                &mut data.damage_tracker,
+                state.wallpaper_color_for(&output),
+            )
+        }
         Err(err) => return Err(format!("nested bind failed: {err}")),
     };
 

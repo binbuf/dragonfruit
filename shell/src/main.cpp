@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 // Dragonfruit shell process entry point (T-09).
 //
 // The shell is a Wayland client of our compositor through the private

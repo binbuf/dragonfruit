@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! Shared IPC contracts for the Dragonfruit lockstep set.
 //!
 //! Every process in the desktop — compositor, shell, services, apps —

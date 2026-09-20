@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 qt_add_executable(dragonfruit-settings
     main.cpp
 )

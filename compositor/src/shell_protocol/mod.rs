@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! Private shell protocols (T-07): generated server bindings.
 //!
 //! The XMLs live in `protocols/` and ship as a lockstep set with the

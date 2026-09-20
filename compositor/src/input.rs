@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! Input routing (T-02) and the compositor input engine (T-03).
 //!
 //! Both the nested (winit) and DRM (libinput) backends feed their events

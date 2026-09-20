@@ -1,6 +1,6 @@
-SPDX-License-Identifier: GPL-3.0-or-later
+SPDX-License-Identifier: MIT
 
-The Dragonfruit shell chrome (menu bar, Dock, Control Center,
-notifications, screenshot UI) is licensed under the GNU General Public
-License 3.0-or-later. Full text: LICENSES/GPL-3.0.txt at the repository
-root. See docs/licensing.md for the licensing policy.
+Copyright (c) 2026 Dragonfruit contributors
+
+Licensed under the MIT License. Full text: LICENSES/MIT.txt at the
+repository root. See docs/licensing.md for the licensing policy.

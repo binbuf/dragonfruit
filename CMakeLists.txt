@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 # Dragonfruit Qt/CMake side: design system, shell components, apps.
 #
 # The Rust side (Cargo workspace) and this build ship as one lockstep set;

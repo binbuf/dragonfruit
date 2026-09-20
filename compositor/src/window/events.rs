@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! Window lifecycle and focus broadcasts (T-04 FR-4).
 //!
 //! The compositor is the sole owner of window state; the shell, Dock, app

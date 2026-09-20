@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! Interim application-identity resolver (T-06 FR-3).
 //!
 //! X11 clients identify themselves with `WM_CLASS` (an instance and a

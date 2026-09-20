@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-License-Identifier: MIT
 #
 # T-02 FR-8: no `wlr-screencopy`-style arbitrary-grab capture protocols
 # are implemented or advertised, ever. Capture is portal-only

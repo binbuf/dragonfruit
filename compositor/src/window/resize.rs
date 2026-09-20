@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! Interactive resize math: edge handling, client constraints, and output
 //! clamping (T-04 FR-10).
 //!

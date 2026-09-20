@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! Workspace event broadcasts (T-05 FR-8).
 //!
 //! The compositor is the sole owner of workspace state; the shell, Dock,

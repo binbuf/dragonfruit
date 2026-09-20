@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! Synthetic input harness for the headless backend (T-03).
 //!
 //! The headless backend has no seat devices, so protocol-level tests that

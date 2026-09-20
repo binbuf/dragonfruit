@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! Compositor state and the standard Wayland protocol surface (T-02).
 //!
 //! One [`DfState`] serves every backend (nested, DRM, headless); backends

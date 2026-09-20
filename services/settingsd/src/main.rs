@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! `dragonfruit-settingsd` — scaffold stub. The real settings daemon lands
 //! in T-15; this binary exists so the workspace, CI, packaging, and
 //! licensing are wired from the first commit.

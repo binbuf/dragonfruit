@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-License-Identifier: MIT
 """Headless visual regression for the component gallery (T-08, FR-6).
 
 Runs the gallery app in snapshot mode on the offscreen platform + software

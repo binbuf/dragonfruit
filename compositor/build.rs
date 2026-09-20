@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! Link helper for developer environments where the native DRM stack
 //! (libgbm, libseat, libinput, libudev, libxkbcommon) only provides
 //! runtime libraries (.so.<n>) without linker-name symlinks — e.g. a

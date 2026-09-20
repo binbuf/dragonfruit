@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! `dragonfruit-session` — scaffold stub. The real session lifecycle
 //! service lands in T-24; this binary exists so the workspace, CI,
 //! packaging, and licensing are wired from the first commit.

@@ -110,10 +110,9 @@ artifact on every run. The compositor's test suite runs on the
 
 ## Licensing
 
-MIT OR Apache-2.0 for the compositor and services, **MIT for the
-private protocol XMLs**, LGPL-3.0-or-later for the design system,
-GPL-3.0-or-later for the shell and apps. See
-[LICENSE.md](LICENSE.md) and [docs/licensing.md](docs/licensing.md).
+MIT, repo-wide — compositor, services, protocols, design system, shell,
+and apps. See [LICENSE.md](LICENSE.md), [NOTICE](NOTICE) for third-party
+attribution, and [docs/licensing.md](docs/licensing.md) for the policy.
 
 ## More docs
 

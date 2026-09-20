@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 # The shell process (T-09): a Wayland client of the compositor over the
 # private protocol, rendering the menu bar into a chrome surface.
 #

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-License-Identifier: MIT
 #
 # T-08 FR-1/FR-2 gate: design-system QML components must express color,
 # spacing, and animation values through tokens, never as literals. The

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! `xdg-desktop-portal-dragonfruit` — scaffold stub. The real portal
 //! backend lands in T-27; this binary exists so the workspace, CI,
 //! packaging, and licensing are wired from the first commit.

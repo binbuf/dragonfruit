@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! DRM/KMS backend (T-02): native sessions, owning the physical display
 //! through a logind/libseat session.
 //!
@@ -84,6 +84,7 @@ render_elements! {
     pub DrmOutputElements<R, E> where R: ImportAll + ImportMem + ImportMemWl + ImportDmaWl + ImportDma;
     Pointer=PointerRenderElement<R>,
     Space=SpaceRenderElements<R, E>,
+    Chrome=WaylandSurfaceRenderElement<R>,
 }
 
 render_elements! {
@@ -987,6 +988,13 @@ fn render_surface(
         .unwrap_or_default();
         custom_elements.extend(space_elements.into_iter().map(DrmOutputElements::from));
     }
+
+    // Chrome surfaces (menu bar, overlays) composite above the window space
+    // (T-09).
+    custom_elements.extend(crate::render::chrome_render_elements::<
+        _,
+        DrmOutputElements<UdevRenderer<'_>, WaylandSurfaceRenderElement<UdevRenderer<'_>>>,
+    >(&mut renderer, state, &surface.output, scale));
 
     let frame_mode = FrameFlags::DEFAULT; // direct scanout where possible
     let wallpaper = state.wallpaper_color_for(&surface.output);

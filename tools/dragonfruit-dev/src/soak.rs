@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! Teardown soak test: run the compositor N times and verify that every
 //! cycle leaves nothing behind — no stray processes, no stray sockets.
 //!

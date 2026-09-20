@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! T-07 acceptance: private shell protocol conformance and refusal matrix.
 //!
 //! Spawns the compositor on the headless backend, provisions launch tokens

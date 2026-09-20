@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: LGPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 // Dragonfruit component gallery entry point (T-08).
 //
 // Normal run: an interactive review app. Headless snapshot run: set

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-License-Identifier: MIT
 #
 # Generate Qt/C++ bindings for the private shell protocols (T-07) from the
 # same XMLs the Rust compositor and conformance client use. The shell (T-08)

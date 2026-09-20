@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 # Menu-bar tests (T-09): layout zones, adapter degradation, app-menu
 # interaction (open/close, escape, click-away, drag-through, focus-switch
 # tracking), clock formatting, and a pixel check that status glyphs render.

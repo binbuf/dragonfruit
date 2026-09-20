@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-License-Identifier: MIT
 #
 # Desktop-name gate (T-01, FR-3): fails when any source or build file
 # hardcodes a desktop name. `dragonfruit` is the only legal name

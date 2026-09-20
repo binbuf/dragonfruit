@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! Xwayland integration (T-06): lifecycle, X11 window management, identity,
 //! clipboard bridging, and Tier-2 decoration marking.
 //!

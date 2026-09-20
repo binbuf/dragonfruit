@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-License-Identifier: MIT
 """Generate the QML token singleton and the Rust token module from one source.
 
 FR-2: tokens are defined once in ``design-system/tokens/tokens.json`` and
@@ -127,7 +127,7 @@ def emit_qml_group(name: str, node: dict, root: dict, indent: int, kind: str) ->
 def gen_qml(data: dict) -> str:
     root = data
     lines = [
-        "// SPDX-License-Identifier: LGPL-3.0-or-later",
+        "// SPDX-License-Identifier: MIT",
         f"// {HEADER}",
         "pragma Singleton",
         "import QtQuick",
@@ -221,7 +221,7 @@ def rust_type_literal(value, kind: str) -> tuple[str, str]:
 def gen_rust(data: dict) -> str:
     root = data
     lines = [
-        "// SPDX-License-Identifier: MIT OR Apache-2.0",
+        "// SPDX-License-Identifier: MIT",
         f"//! {HEADER}",
         "//!",
         "//! Consumed by the compositor's server-side decoration renderer (T-13);",
