@@ -1857,3 +1857,32 @@ Notes:
   exists on the headless backend, and the winit event type is private to
   Smithay. A host-side pointer move is the only current way to exercise it;
   keep the `position_transformed` rule when adding backends.
+
+### T-09 FR-3 interaction polish (second HITL pass)
+
+The nested dropdown worked but felt laggy/janky. Root cause: the shell
+snapshots the QML scene into a shm buffer **on demand**, so QML visual changes
+that the shell did not know about (hover highlights, the popup's 160 ms
+fade/scale-in) were never committed. Fixes in `ShellController`:
+
+- `scheduleRender()` (coalesced `singleShot(0)`) is called after every
+  synthesized pointer/key event, so hover/title/row highlights reach the
+  compositor.
+- `startAnimationRenders(ms)` renders every ~16 ms for the popup open
+  (220 ms) and close (160 ms) animations.
+- `setMenuBarSize` no longer commits the old buffer; `updateSurfaceHeight`
+  sets the size and renders in one step, so the compositor never shows the
+  28 px buffer stretched/blank at the new height.
+- The close shrink is delayed by the close animation, and `MenuBar.closeMenus`
+  only emits `appMenuClosed` when a menu was actually open (a menu item's own
+  handler plus the bar click-away used to emit twice).
+- The launch `FocusRing` fix is now `m_item->forceActiveFocus()` on the bar
+  root (clearing `activeFocusItem()` was not reliable; the window reassigned
+  focus to the first `activeFocusOnTab` title).
+- `appMenuTriggered` is wired to a log slot so placeholder item clicks have
+  feedback; T-22 replaces it with the resolved action.
+
+Remaining known limitation: animations are still sampled by a timer, not the
+scene graph, so motion is choppy at 60 Hz budget. The durable fix is to commit
+from `QQuickWindow::afterRendering` (or a render-control path) while the scene
+is dirty — flagged for T-10 (Dock animations need the same).

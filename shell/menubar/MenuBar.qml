@@ -80,12 +80,15 @@ Rectangle {
         openMenuIndex = -1;
         hoverMenuIndex = -1;
         switchTimer.stop();
+        // Only announce a close when a menu was actually open. A menu item's
+        // own handler may already have closed it, and the bar's click-away
+        // handler runs afterwards; emitting twice made the dismissal janky.
         if (index >= 0) {
             var item = appMenuRepeater.itemAt(index);
             if (item)
                 item.closeMenu();
+            appMenuClosed();
         }
-        appMenuClosed();
     }
 
     function toggleMenu(index) {

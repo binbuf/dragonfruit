@@ -13,6 +13,7 @@ class QQmlEngine;
 class QQuickWindow;
 class QQuickItem;
 class QSocketNotifier;
+class QTimer;
 
 class ShellController : public QObject
 {
@@ -39,6 +40,7 @@ private slots:
     void onClockTick();
     void onAppMenuOpened(int index);
     void onAppMenuClosed();
+    void onAppMenuTriggered(int menuIndex, int itemIndex, const QVariant &item);
     void onPointerMoved(qreal x, qreal y);
     void onPointerButton(qreal x, qreal y, quint32 button, bool pressed);
     void onPointerLeft();
@@ -49,6 +51,11 @@ private:
     void applyStatusItems();
     void applyFocusedApp();
     void render();
+    // Coalesce a render onto the next event-loop turn (QML visual state has
+    // changed but the compositor has not been told yet).
+    void scheduleRender();
+    // Render every ~16 ms for `ms`, to capture a popup open/close animation.
+    void startAnimationRenders(int ms);
     // Resize the chrome surface to the bar height plus the open dropdown.
     void updateSurfaceHeight();
 
@@ -57,6 +64,7 @@ private:
     QQuickWindow *m_window = nullptr;
     QQuickItem *m_item = nullptr;
     QSocketNotifier *m_notifier = nullptr;
+    QTimer *m_animationTimer = nullptr;
 
     int m_width = 0;
     int m_height = 0;
@@ -66,6 +74,8 @@ private:
     // True while a dropdown is open (the surface may then be taller than the
     // bar; the compositor's pre-layout full-output configure is still ignored).
     bool m_menuOpen = false;
+    bool m_renderPending = false;
+    int m_animationTicks = 0;
     Qt::MouseButtons m_buttons = Qt::NoButton;
     QString m_appId;
     QString m_appTitle;

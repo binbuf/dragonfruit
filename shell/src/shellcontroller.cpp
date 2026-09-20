@@ -166,6 +166,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onStatusItemActivated(QString)));
     connect(m_item, SIGNAL(appMenuOpened(int)), this, SLOT(onAppMenuOpened(int)));
     connect(m_item, SIGNAL(appMenuClosed()), this, SLOT(onAppMenuClosed()));
+    connect(m_item, SIGNAL(appMenuTriggered(int,int,QVariant)), this,
+            SLOT(onAppMenuTriggered(int,int,QVariant)));
     if (QObject *clock = m_item->findChild<QObject *>(QStringLiteral("clock")))
         connect(clock, SIGNAL(nowChanged()), this, SLOT(onClockTick()));
 
@@ -186,19 +188,27 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     if (!m_protocol->createMenuBarSurface(barHeight, barHeight))
         return false;
 
+    // The shell snapshots the QML scene into a shm buffer on demand; a popup
+    // open/close animation needs a short burst of frames to be legible.
+    m_animationTimer = new QTimer(this);
+    m_animationTimer->setInterval(16);
+    connect(m_animationTimer, &QTimer::timeout, this, [this]() {
+        render();
+        if (--m_animationTicks <= 0)
+            m_animationTimer->stop();
+    });
+
     const int fd = m_protocol->displayFd();
     m_notifier = new QSocketNotifier(fd, QSocketNotifier::Read, this);
     connect(m_notifier, &QSocketNotifier::activated, this, [this]() { m_protocol->dispatch(); });
 
     // The offscreen window hands active focus to the first focusable menu
     // title when it is shown, which draws that title's FocusRing as if the
-    // bar were keyboard-focused. Clear it so the launch state is neutral; a
-    // menu popup takes focus itself when it opens.
+    // bar were keyboard-focused. Put focus on the bar root instead so the
+    // launch state is neutral; a popup takes focus itself when it opens.
     QTimer::singleShot(0, this, [this]() {
-        if (m_window) {
-            if (QQuickItem *focused = m_window->activeFocusItem())
-                focused->setFocus(false);
-        }
+        if (m_item)
+            m_item->forceActiveFocus();
     });
     return true;
 }
@@ -308,12 +318,48 @@ void ShellController::onAppMenuOpened(int)
 {
     m_menuOpen = true;
     updateSurfaceHeight();
+    // Capture the popup fade/scale-in (popupOpen = 160 ms).
+    startAnimationRenders(220);
 }
 
 void ShellController::onAppMenuClosed()
 {
     m_menuOpen = false;
-    updateSurfaceHeight();
+    // Let the close animation (popupClose = 100 ms) play before shrinking the
+    // surface back to the bar.
+    startAnimationRenders(160);
+    QTimer::singleShot(140, this, [this]() {
+        if (!m_menuOpen)
+            updateSurfaceHeight();
+    });
+}
+
+void ShellController::onAppMenuTriggered(int menuIndex, int itemIndex, const QVariant &item)
+{
+    // T-22 dispatches the resolved action; the placeholder logs so the demo
+    // has feedback and the bar repaints after the popup closes.
+    qInfo() << "shell: app menu item activated:" << menuIndex << itemIndex << item;
+    scheduleRender();
+}
+
+void ShellController::scheduleRender()
+{
+    if (m_renderPending)
+        return;
+    m_renderPending = true;
+    QTimer::singleShot(0, this, [this]() {
+        m_renderPending = false;
+        render();
+    });
+}
+
+void ShellController::startAnimationRenders(int ms)
+{
+    if (!m_animationTimer)
+        return;
+    m_animationTicks = qMax(1, ms / m_animationTimer->interval());
+    if (!m_animationTimer->isActive())
+        m_animationTimer->start();
 }
 
 void ShellController::updateSurfaceHeight()
@@ -331,6 +377,7 @@ void ShellController::updateSurfaceHeight()
         m_surfaceHeight = needed;
         m_protocol->setMenuBarSize(0, needed);
     }
+    render();
 }
 
 void ShellController::onPointerMoved(qreal x, qreal y)
@@ -340,6 +387,8 @@ void ShellController::onPointerMoved(qreal x, qreal y)
     QMouseEvent event(QEvent::MouseMove, QPointF(x, y), QPointF(x, y), Qt::NoButton, m_buttons,
                       Qt::NoModifier);
     QCoreApplication::sendEvent(m_window, &event);
+    // Hover/title/row highlights changed in QML; push the new frame.
+    scheduleRender();
 }
 
 void ShellController::onPointerButton(qreal x, qreal y, quint32 button, bool pressed)
@@ -354,6 +403,7 @@ void ShellController::onPointerButton(qreal x, qreal y, quint32 button, bool pre
     QMouseEvent event(pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease, QPointF(x, y),
                       QPointF(x, y), qtButton, m_buttons, Qt::NoModifier);
     QCoreApplication::sendEvent(m_window, &event);
+    scheduleRender();
 }
 
 void ShellController::onPointerLeft()
@@ -365,6 +415,7 @@ void ShellController::onPointerLeft()
     QMouseEvent event(QEvent::MouseMove, QPointF(-1, -1), QPointF(-1, -1), Qt::NoButton, m_buttons,
                       Qt::NoModifier);
     QCoreApplication::sendEvent(m_window, &event);
+    scheduleRender();
 }
 
 void ShellController::onKeyboardFocused(bool focused)
@@ -382,6 +433,7 @@ void ShellController::onKeyEvent(quint32 key, bool pressed)
         return;
     QKeyEvent event(pressed ? QEvent::KeyPress : QEvent::KeyRelease, qtKey, Qt::NoModifier);
     QCoreApplication::sendEvent(m_window, &event);
+    scheduleRender();
 }
 
 void ShellController::render()
