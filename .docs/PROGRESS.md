@@ -1413,10 +1413,11 @@ authority. The two supported paths, and the expected behavior of each:
 
 ## T-09 — menu bar + shell process bootstrap
 
-**State: partial.** The menu bar render/interaction core and the shell process
-bootstrap are landed and verified; the menu dropdown overlay, the scripted
-restart/hotplug/idle tests, T-20 status adapters, and T-22 app menu remain
-(see the task file's hand-off list).
+**State: partial.** The menu bar render/interaction core, the shell process
+bootstrap, the scripted shell-restart test, and the scripted idle trace are
+landed and verified; the menu dropdown overlay (plus live input routing to
+chrome surfaces), the output-hotplug script, T-20 status adapters, and the
+T-22 app menu remain (see the task file's hand-off list).
 
 What exists:
 
@@ -1631,3 +1632,88 @@ Notes for subsequent tasks:
 - **Date format is the host locale's** (`Qt.locale().dateFormat`); this host
   renders ISO (`2026-09-19`). If a locale like `Fri Sep 19` is wanted, that is
   a settingsd/locale concern (T-15), not the shell.
+
+### T-09 continuation — scripted shell restart + idle trace
+
+This session closed the two remaining T-09 acceptance criteria with headless
+integration tests; the task is still partial because the overlay dropdown,
+the hotplug script, and the T-20/T-22 content remain.
+
+**Scripted shell restart (FR-5/FR-9).**
+`shell_restart_reanchors_chrome_and_preserves_windows` in
+`compositor/tests/shell_protocol_conformance.rs`. The shape:
+
+1. Start the compositor with **three** tokens via
+   `DRAGONFRUIT_LAUNCH_TOKENS` (comma-separated). This is the test-only
+   stand-in for T-24's per-start mint: the store is provisioned up front and
+   each shell start redeems a different one-time token.
+2. An *observer* trusted client stays connected for the whole test and binds
+   `df_toplevel_manager`, so it can watch the reserved zone and the window
+   list across both shell lifetimes.
+3. An ordinary application client maps an `xdg_toplevel` ("Restart
+   Survivor") and stays alive. **It must be a separate connection from the
+   shell** — if the shell owned the `wl_surface`, dropping the shell would
+   destroy the window and the test would prove nothing.
+4. Shell #1 authenticates with token 0, creates the top `df_layer_surface`
+   (anchor top|left|right, size 0×28, exclusive 28), and the observer sees
+   `reserved_zone(edge=0, 28)`.
+5. The shell connection is dropped without a clean `destroy` (a crash). The
+   observer sees `reserved_zone(edge=0, 0)` and the toplevel is still
+   announced, never `closed`.
+6. Shell #2 authenticates with token 1 on a fresh connection, recreates the
+   bar, and the observer sees the zone return; the last configure is
+   1280×28 (the pre-layout full-output configure is still sent first — see
+   the earlier gotcha).
+
+Gotchas confirmed while writing it:
+
+- **Clear the observer's event vector *before* triggering the transition.**
+  `wait_for` dispatches the observer queue; an event that arrived while the
+  queue was not being dispatched sits in the socket, not in the `Vec`, so
+  clearing before the trigger is race-free. Clearing after the transition
+  can miss an already-dispatched event and time out.
+- **A chrome surface's reserved zone clears on client disconnect** because
+  `df_layer_surface::destroyed` removes the layer and calls
+  `refresh_reserved_zones`, which broadcasts the zeroed zones. This is what
+  the test asserts; no explicit "shell died" notification exists or is
+  needed (the manager is a pure consumer, FR-9).
+- The compositor sends `reserved_zone` for **all four edges** on every
+  change (including zeros), which is what makes the clear observable.
+- `map_toplevel`/`shm_buffer` already existed in the conformance harness;
+  reuse them rather than re-deriving the xdg state machine.
+
+**Scripted idle trace (FR-6).** `compositor/tests/shell_idle_trace.rs` (added
+to `make e2e`). It starts a headless compositor with piped stdout, attaches a
+raw `wayland-client` stand-in for the shell (authenticate → create the menu
+bar → commit one `wl_shm` frame), then samples the SIGUSR1 render counters a
+second apart and asserts `frames_rendered` is flat and `direct_scanouts` never
+advances. The stand-in is deliberate: `cargo test` runs before the Qt build in
+CI, so the real `dragonfruit-shell` binary is not available there. The
+shell-side half of the budget is the one-shot minute-aligned
+`MenuBarClock` timer (no polling loop).
+
+Notes for subsequent tasks:
+
+- **The overlay dropdown is blocked on input routing, not just a surface.**
+  The compositor's `input::surface_under` hit-tests only `state.space`
+  windows; chrome `df_layer_surface`s are never candidates, and the shell
+  (offscreen Qt + its own libwayland connection) has no path to inject
+  `wl_pointer`/`wl_keyboard` events into the QML scene. Implementing the
+  overlay therefore means (a) hit-testing chrome surfaces by layer
+  (`overlay` > `top` > window space), (b) setting pointer/keyboard focus to
+  the chrome `wl_surface` honoring `df_layer_surface.set_keyboard_interaction`,
+  and (c) a shell-side event bridge (synthesize Qt events, or call the
+  `MenuBar` functions directly from `ShellProtocol` pointer/keyboard
+  handlers). Consider splitting that into its own sub-task.
+- **Hotplug scripting needs a runtime output hook.** `on_output_added`
+  already calls `reconfigure_layers`, so the compositor behavior is in
+  place; the headless backend just has no way to add a second output after
+  startup. A `SIGUSR2`-driven or env-driven test output (like the
+  `DRAGONFRUIT_SYNTHETIC_INPUT` opt-in) would make the hotplug case
+  scriptable without touching the production path.
+- **Keep the restart test's "independent app connection" invariant.** Any
+  future restart/reconnect test must map the window from a client that
+  outlives the shell, or the window is destroyed by the disconnect and the
+  test silently stops testing FR-9.
+- `make e2e` now includes `shell_idle_trace`; `cargo test --workspace` picks
+  up both new tests automatically (integration test files are auto-discovered).

@@ -89,7 +89,7 @@ Updated when a task is partially or completely finished; see
 | Phase | Tickets |
 |---|---|
 | 1 · Foundation | T-01 ✅ done · T-02 🔄 partial (compositor core) · T-03 🔄 partial (input engine) · T-04 🔄 partial (window model) · T-05 🔄 partial (Spaces model) · T-06 🔄 partial (Xwayland) · T-07 🔄 partial (private shell protocols) |
-| 2 · Experience | T-08 ✅ done (design system; app-level chrome lint + live AT-SPI dump deferred) · T-09 🔄 partial (menu bar render/interaction + shell bootstrap) · T-10 … T-14 pending |
+| 2 · Experience | T-08 ✅ done (design system; app-level chrome lint + live AT-SPI dump deferred) · T-09 🔄 partial (menu bar render/interaction + shell bootstrap + restart/idle scripts) · T-10 … T-14 pending |
 | 3 · Flagship apps | T-15 … T-19 pending |
 | 4 · System integration | T-20 … T-23 pending |
 | 5 · Desktop infrastructure | T-24 … T-29 pending |
@@ -312,13 +312,21 @@ and DRM backends), and the nested backend's pre-existing vertical-flip bug
 (the winit/EGL back buffer needs `Transform::Flipped180`) is fixed. A live
 nested capture confirms the menu bar renders at the top, correctly oriented,
 with `eglgears` upright. `dragonfruit dev --shell` (and `make dev`) launches
-it with the token the compositor provisioned. Open: the open-menu dropdown is
-currently clipped to the bar surface (it needs a separate overlay
-`df_layer_surface`, T-09 follow-up), background/bottom layer stacking is
-T-10/T-11, the scripted shell-restart test needs a fresh per-start token
-(T-24), output-hotplug re-anchoring and the idle trace are not yet scripted,
-status items are placeholders until T-20, and the app menu is name-only until
-T-22. Details and hand-off: [PROGRESS.md](PROGRESS.md).
+it with the token the compositor provisioned. The restart and idle
+acceptance criteria are now scripted: `shell_restart_reanchors_chrome_and_
+preserves_windows` (in `shell_protocol_conformance.rs`) maps a window from an
+independent client, crashes the shell connection, asserts the reserved zone
+clears and the window survives, then reconnects a second shell with a fresh
+up-front token and asserts the bar returns at 1280×28; and
+`compositor/tests/shell_idle_trace.rs` (in `make e2e`) attaches a mapped menu
+bar, lets it idle, and asserts `frames_rendered` stays flat. Open: the
+open-menu dropdown is currently clipped to the bar surface (it needs a
+separate overlay `df_layer_surface`, plus live input routing to chrome
+surfaces — the compositor hit-tests only `space` windows today), output
+hotplug re-anchoring needs a runtime add-output hook on the headless backend
+to script, background/bottom layer stacking is T-10/T-11, status items are
+placeholders until T-20, and the app menu is name-only until T-22. Details
+and hand-off: [PROGRESS.md](PROGRESS.md).
 
 **Foundation milestone E2E (T-01…T-07).** The whole vertical slice now has a
 headless end-to-end test, `compositor/tests/milestone_e2e.rs` (`make e2e`):
@@ -351,7 +359,7 @@ the shell's own chrome rendering (T-09/T-10).
    - [x] Private shell protocols (T-07: `df_core` handshake/trust, chrome surfaces + reserved zones, window/workspace/output control, compliance client; chrome rendering + Qt bindings + per-output zones open)
 2. **Experience**
    - [x] Design system (T-08: token architecture + all 20 components + gallery/visual regression; app-level chrome lint + live AT-SPI dump deferred)
-   - [ ] Top bar (T-09 partial: menu-bar render/interaction + shell bootstrap live; menu overlay surface, restart/hotplug/idle scripts, T-20 status adapters, T-22 app menu open)
+   - [ ] Top bar (T-09 partial: menu-bar render/interaction + shell bootstrap live, restart/idle scripts passing; menu overlay surface, hotplug script, T-20 status adapters, T-22 app menu open)
    - [ ] Dock
    - [ ] Window switching
    - [ ] Mission Control

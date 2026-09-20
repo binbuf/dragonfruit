@@ -95,13 +95,16 @@ restartable without taking down the compositor.
       the bar renders at the top, correctly oriented, with the app-name
       fallback and locale clock. Status items are placeholders until
       T-20.)*
-- [ ] Kill-and-restart of the shell process: menu bar returns, windows
-      untouched (Phase-1 exit test reused). *(Needs a fresh one-time token
-      per shell start, T-24; compositor-owned window state is untouched by
-      construction.)*
-- [ ] Idle trace: zero polling from the menu bar. *(No polling exists — the
-      clock is a single minute-aligned one-shot timer — but the scripted
-      trace is not written yet.)*
+- [x] Kill-and-restart of the shell process: menu bar returns, windows
+      untouched (Phase-1 exit test reused). *(`shell_restart_reanchors_chrome_
+      and_preserves_windows` in `compositor/tests/shell_protocol_conformance.rs`:
+      an independent client's window survives a shell crash; the reserved zone
+      clears and returns when a second shell authenticates with a fresh token
+      from the up-front `DRAGONFRUIT_LAUNCH_TOKENS` set.)*
+- [x] Idle trace: zero polling from the menu bar. *(`shell_idle_trace.rs`
+      attaches a mapped menu-bar chrome surface, lets it go idle, and asserts
+      `frames_rendered` stays flat across a second. The shell-side half is that
+      the clock is a single minute-aligned one-shot timer.)*
 - [x] Menu interaction walkthrough passes (drag-through, dismiss, focus
       switch) on keyboard and pointer. *(`shell/tests/tst_menubar.qml`.)*
 
@@ -138,6 +141,21 @@ Implemented and verified in this session:
 - **Dev workflow**: `dragonfruit dev --nested --shell` (and `make dev`)
   launches the shell with the provisioned token and owns it in `ChildGuard`.
 
+Second session (T-09 continuation):
+
+- **Scripted shell restart** (`shell_restart_reanchors_chrome_and_preserves_
+  windows` in `compositor/tests/shell_protocol_conformance.rs`): a window
+  mapped by an independent client is announced to an observer manager; shell
+  #1 reserves the menu-bar zone; dropping the shell connection clears the
+  reserved zone while the window survives (never closed, same title); shell #2
+  authenticates with a *second* up-front token and the bar returns at
+  1280×28. `DRAGONFRUIT_LAUNCH_TOKENS` provisions both tokens, standing in
+  for T-24's per-start mint.
+- **Scripted idle trace** (`compositor/tests/shell_idle_trace.rs`, in
+  `make e2e`): a mapped menu-bar chrome surface commits one frame, then
+  idles; `frames_rendered` is flat across a second and `direct_scanouts` never
+  advances. This is the compositor-side half of the FR-6 budget.
+
 Hand-off (T-09 continuation):
 
 1. **Menu dropdown overlay surface.** The open menu is currently clipped to
@@ -145,14 +163,15 @@ Hand-off (T-09 continuation):
    `overlay` layer sized to the open dropdown (with its own input region and
    keyboard mode), and move `MenuBar`'s popups onto it. Until then the
    QML interaction is correct but only the bar is visible in a live session.
-2. **Scripted shell restart (FR-5/FR-9).** The compositor must mint a fresh
-   token per shell start (T-24 owns the session manager; for the test, add a
-   token re-mint request or a test-only token env), then kill and relaunch
-   the shell and assert the bar returns with windows untouched.
-3. **Output hotplug re-anchoring + idle trace.** The shell re-renders on
-   every `configure`; script the hotplug case and a SIGUSR1-based idle trace
-   asserting no client wakeups from the bar.
-4. **T-20 status adapters and T-22 menu-broker** replace the placeholders and
+   *Note: this also needs live input routing to chrome surfaces — the
+   compositor currently hit-tests only `space` windows, and the shell has no
+   path to feed Wayland pointer/key events into the offscreen QML scene.*
+2. **Output hotplug re-anchoring.** The compositor already reconfigures every
+   chrome surface in `on_output_added`/`on_output_removed`, and the shell
+   re-renders on every `configure`; the remaining work is a scripted hotplug
+   case. That needs a runtime "add an output" hook on the headless backend
+   (there is only one static output today).
+3. **T-20 status adapters and T-22 menu-broker** replace the placeholders and
    the name-only app menu.
 
 ## Test plan

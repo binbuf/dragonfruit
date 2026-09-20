@@ -2077,3 +2077,217 @@ fn empty_input_region_passes_clicks_through() {
         "teardown leak: synthetic-input socket survived"
     );
 }
+
+/// Authenticate a trusted shell client and create its menu-bar chrome
+/// surface, returning every proxy the caller must keep alive for the
+/// surface to stay mapped.
+#[allow(clippy::type_complexity)]
+fn open_trusted_bar(
+    conn: &Connection,
+    queue: &mut EventQueue<TestClient>,
+    state: &mut TestClient,
+    token: &str,
+    height: i32,
+    exclusive_zone: i32,
+) -> (
+    df_core::DfCore,
+    df_shell::DfShell,
+    wl_surface::WlSurface,
+    df_layer_surface::DfLayerSurface,
+) {
+    let (name, version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(state, queue, name, version);
+    core.authenticate(1, token.to_string());
+    wait_for(conn, queue, state, Duration::from_secs(5), |state| {
+        state.authenticated.is_some()
+    });
+    let (shell_name, shell_version) = state.shell_global.expect("df_shell advertised");
+    let shell = bind_shell(state, queue, shell_name, shell_version);
+    let qh = queue.handle();
+    let surface = state.compositor.clone().unwrap().create_surface(&qh, ());
+    let layer = shell.get_layer_surface(
+        &surface,
+        None,
+        df_shell::Layer::Top,
+        "menubar".to_string(),
+        &qh,
+        (),
+    );
+    layer.set_anchor(1 | 4 | 8); // top | left | right
+    layer.set_size(0, height);
+    layer.set_exclusive_zone(exclusive_zone);
+    layer.set_keyboard_interaction(df_layer_surface::KeyboardInteraction::OnDemand);
+    surface.commit();
+    wait_for(conn, queue, state, Duration::from_secs(5), |state| {
+        !state.layer_configures.is_empty()
+    });
+    (core, shell, surface, layer)
+}
+
+/// T-09 FR-5/FR-9 (the Phase-1 exit test reused): the shell is crashable and
+/// restartable without disturbing the compositor's window state. A window is
+/// mapped by an independent client; a first trusted shell reserves the
+/// menu-bar zone; the shell connection is dropped (a crash) and the zone
+/// clears while the window is untouched; a second shell with a *fresh*
+/// one-time token reconnects and the bar returns at the right size.
+/// `DRAGONFRUIT_LAUNCH_TOKENS` provisions both tokens up front, standing in
+/// for the session manager's per-start mint (T-24).
+#[test]
+fn shell_restart_reanchors_chrome_and_preserves_windows() {
+    let tokens = ["aa".repeat(32), "bb".repeat(32), "cc".repeat(32)];
+    let proc = CompositorProcess::start("dragonfruit-conformance-restart", &tokens);
+
+    // An observer stays connected across both shell lifetimes and watches the
+    // chrome reserved zone and the window list through the private manager.
+    let (obs_conn, mut obs_queue, mut obs) = connect(&proc.socket_path);
+    let (name, version) = obs.core_global.expect("df_core advertised");
+    let obs_core = bind_core(&mut obs, &obs_queue, name, version);
+    obs_core.authenticate(1, tokens[2].clone());
+    wait_for(
+        &obs_conn,
+        &mut obs_queue,
+        &mut obs,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+    let (manager_name, manager_version) = obs.manager_global.expect("manager advertised");
+    let obs_manager = bind_manager(&mut obs, &obs_queue, manager_name, manager_version);
+    wait_for(
+        &obs_conn,
+        &mut obs_queue,
+        &mut obs,
+        Duration::from_secs(5),
+        |state| !state.outputs.is_empty() && state.workspaces.len() >= 3 && state.done_count > 0,
+    );
+
+    // An ordinary application maps a window and stays alive across the
+    // restart; the window state is compositor-owned.
+    let (app_conn, mut app_queue, mut app) = connect(&proc.socket_path);
+    let (_app_surface, _app_xdg, _app_toplevel, _app_file) = map_toplevel(
+        &mut app,
+        &mut app_queue,
+        "Restart Survivor",
+        "org.dragonfruit.Restart",
+    );
+    wait_for(
+        &obs_conn,
+        &mut obs_queue,
+        &mut obs,
+        Duration::from_secs(5),
+        |state| state.toplevels.len() == 1,
+    );
+    assert!(
+        obs.toplevel_titles
+            .iter()
+            .any(|title| title.as_deref() == Some("Restart Survivor")),
+        "the mapped window must be announced: {:?}",
+        obs.toplevel_titles
+    );
+
+    // --- shell #1: authenticate and reserve the menu-bar zone -------------
+    let (s1_conn, mut s1_queue, mut s1) = connect(&proc.socket_path);
+    obs.output_reserved.clear();
+    let (s1_core, s1_shell, s1_surface, s1_layer) =
+        open_trusted_bar(&s1_conn, &mut s1_queue, &mut s1, &tokens[0], 28, 28);
+    wait_for(
+        &obs_conn,
+        &mut obs_queue,
+        &mut obs,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .output_reserved
+                .iter()
+                .any(|(edge, thickness)| *edge == 0 && *thickness == 28)
+        },
+    );
+    assert_eq!(obs.toplevels.len(), 1, "the window must be announced");
+    assert_eq!(obs.toplevel_closed, 0, "the window must not be closed");
+
+    // --- crash the shell: drop the connection without a clean destroy -----
+    obs.output_reserved.clear();
+    drop(s1_layer);
+    drop(s1_surface);
+    drop(s1_shell);
+    drop(s1_core);
+    drop(s1_conn);
+    drop(s1_queue);
+    drop(s1);
+
+    // The chrome zone clears and the window is untouched.
+    wait_for(
+        &obs_conn,
+        &mut obs_queue,
+        &mut obs,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .output_reserved
+                .iter()
+                .any(|(edge, thickness)| *edge == 0 && *thickness == 0)
+        },
+    );
+    assert_eq!(
+        obs.toplevels.len(),
+        1,
+        "the window survives the shell crash"
+    );
+    assert_eq!(obs.toplevel_closed, 0, "the window must not be closed");
+
+    // --- shell #2: a fresh token reconnects; the bar returns --------------
+    let (s2_conn, mut s2_queue, mut s2) = connect(&proc.socket_path);
+    obs.output_reserved.clear();
+    let (s2_core, s2_shell, s2_surface, s2_layer) =
+        open_trusted_bar(&s2_conn, &mut s2_queue, &mut s2, &tokens[1], 28, 28);
+    wait_for(
+        &s2_conn,
+        &mut s2_queue,
+        &mut s2,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .layer_configures
+                .iter()
+                .any(|(_, width, height)| *width == OUTPUT_W && *height == 28)
+        },
+    );
+    wait_for(
+        &obs_conn,
+        &mut obs_queue,
+        &mut obs,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .output_reserved
+                .iter()
+                .any(|(edge, thickness)| *edge == 0 && *thickness == 28)
+        },
+    );
+    assert_eq!(
+        obs.toplevels.len(),
+        1,
+        "the window is still there after the restart"
+    );
+    assert_eq!(obs.toplevel_closed, 0, "the window must never be closed");
+    assert!(
+        obs.toplevel_titles
+            .iter()
+            .any(|title| title.as_deref() == Some("Restart Survivor")),
+        "the restarted shell must see the same window: {:?}",
+        obs.toplevel_titles
+    );
+
+    // The restarted shell got the real bar size, not the pre-layout output.
+    let (_, width, height) = *s2.layer_configures.last().unwrap();
+    assert_eq!((width, height), (OUTPUT_W, 28));
+
+    drop(s2_layer);
+    drop(s2_surface);
+    drop(s2_shell);
+    drop(s2_core);
+    drop(obs_manager);
+    drop(obs_core);
+    let _ = app_conn.flush();
+    let _ = obs_conn.flush();
+    proc.shutdown();
+}
