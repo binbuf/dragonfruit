@@ -1185,6 +1185,148 @@ Item {
             compare(dock.hideOffset, 0);
         }
 
+        // -- Keyboard navigation (T-10 section 20) --------------------------
+
+        function test_keyboard_begin_focuses_first_app() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("files", "Files", true), app("term", "Terminal", true) ]
+            });
+            dock.forceActiveFocus();
+            dock.beginKeyboardNavigation();
+            waitForRendering(stage);
+            compare(dock.keyboardFocused, true);
+            compare(dock.focusedItemId, "files");
+            compare(dock.itemAt(0).keyboardFocused, true);
+        }
+
+        function test_keyboard_arrows_move_focus_and_skip_divider() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("files", "Files", true), temporary("term", "Terminal"),
+                           minimized("win1", "Document") ]
+            });
+            dock.forceActiveFocus();
+            dock.beginKeyboardNavigation();
+            compare(dock.focusedItemId, "files");
+            dock.moveKeyboardFocus(1);
+            compare(dock.focusedItemId, "term");
+            dock.moveKeyboardFocus(1); // the divider is skipped
+            compare(dock.focusedItemId, "win1");
+            dock.moveKeyboardFocus(1);
+            compare(dock.focusedItemId, "__trash__");
+            dock.moveKeyboardFocus(1); // wraps forward
+            compare(dock.focusedItemId, "files");
+            dock.moveKeyboardFocus(-1); // wraps backward
+            compare(dock.focusedItemId, "__trash__");
+        }
+
+        function test_keyboard_arrow_key_moves_via_keys_handler() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("files", "Files", true), app("term", "Terminal", true) ]
+            });
+            dock.forceActiveFocus();
+            dock.beginKeyboardNavigation();
+            waitForRendering(stage);
+            keyClick(Qt.Key_Right);
+            waitForRendering(stage);
+            compare(dock.focusedItemId, "term");
+            keyClick(Qt.Key_Left);
+            waitForRendering(stage);
+            compare(dock.focusedItemId, "files");
+        }
+
+        function test_keyboard_return_activates_the_focused_entry() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("files", "Files", true), app("term", "Terminal", true) ]
+            });
+            activatedSpy.target = dock;
+            activatedSpy.clear();
+            dock.forceActiveFocus();
+            dock.beginKeyboardNavigation();
+            dock.moveKeyboardFocus(1);
+            keyClick(Qt.Key_Return);
+            waitForRendering(stage);
+            compare(activatedSpy.count, 1);
+            compare(activatedSpy.signalArguments[0][0].id, "term");
+        }
+
+        function test_keyboard_up_opens_the_context_menu() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("files", "Files", true) ]
+            });
+            dock.forceActiveFocus();
+            dock.beginKeyboardNavigation();
+            waitForRendering(stage);
+            keyClick(Qt.Key_Up);
+            waitForRendering(stage);
+            compare(dock.menuOpen, true);
+            verify(dock.menuEntry !== null);
+            compare(dock.menuEntry.id, "files");
+        }
+
+        function test_keyboard_typing_jumps_to_an_app_name() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("files", "Files", true), app("term", "Terminal", true),
+                           app("browser", "Browser", true) ]
+            });
+            dock.forceActiveFocus();
+            dock.beginKeyboardNavigation();
+            waitForRendering(stage);
+            keyClick(Qt.Key_T);
+            waitForRendering(stage);
+            compare(dock.focusedItemId, "term");
+        }
+
+        function test_keyboard_focus_draws_the_ring_only_on_the_focused_entry() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("files", "Files", true), app("term", "Terminal", true) ]
+            });
+            dock.forceActiveFocus();
+            dock.beginKeyboardNavigation();
+            waitForRendering(stage);
+            var first = findChild(dock.itemAt(0), "keyboardFocusRing");
+            var second = findChild(dock.itemAt(1), "keyboardFocusRing");
+            verify(first !== null && second !== null);
+            compare(first.shown, true);
+            compare(second.shown, false);
+        }
+
+        function test_end_keyboard_navigation_clears_the_ring() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("files", "Files", true) ]
+            });
+            dock.forceActiveFocus();
+            dock.beginKeyboardNavigation();
+            compare(dock.focusedItemId, "files");
+            dock.endKeyboardNavigation();
+            waitForRendering(stage);
+            compare(dock.keyboardFocused, false);
+            compare(dock.focusedItemId, "");
+        }
+
+        function test_vertical_dock_uses_up_down_keys() {
+            var dock = make(dockComponent, {
+                width: 160, height: 720, position: "left",
+                entries: [ app("files", "Files", true), app("term", "Terminal", true) ]
+            });
+            dock.forceActiveFocus();
+            dock.beginKeyboardNavigation();
+            waitForRendering(stage);
+            keyClick(Qt.Key_Down);
+            waitForRendering(stage);
+            compare(dock.focusedItemId, "term");
+            keyClick(Qt.Key_Up);
+            waitForRendering(stage);
+            compare(dock.focusedItemId, "files");
+        }
+
         // -- Artwork --------------------------------------------------------
 
         function test_magnify_band_is_transparent() {

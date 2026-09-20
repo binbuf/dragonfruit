@@ -65,6 +65,8 @@ private slots:
     void onDockPinnedOrderChanged(const QVariant &desktopIds);
     void onDockPopoverChanged();
     void onDockRevealStateChanged();
+    void onDockKeyboardFocused(bool focused);
+    void onInputAction(const QString &action, const QString &source);
     void onDockPointerMoved(qreal x, qreal y);
     void onDockPointerButton(qreal x, qreal y, quint32 button, bool pressed);
     void onDockPointerLeft();
@@ -188,6 +190,9 @@ private:
     int m_dockPopoverHeight = 0;
     bool m_dockPopoverMapped = false;
     int m_dockPopupTicks = 0;
+    // True while the Dock chrome surface holds the keyboard (T-10 section
+    // 20), so key events are routed to the Dock scene for navigation.
+    bool m_dockKeyboardFocused = false;
     // The open dropdown's window-space rectangle (valid while a menu is open).
     int m_popupX = 0;
     int m_popupY = 0;

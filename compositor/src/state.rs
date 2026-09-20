@@ -1100,6 +1100,12 @@ impl DfState {
         // Workspace switches take effect immediately; the progress events
         // above are the T-11 animation seam, not a second state machine.
         self.handle_workspace_action(action);
+        // T-10 section 20: the Dock-focus shortcut hands the keyboard to the
+        // Dock chrome surface. ToggleDock is shell-owned (the auto-hide
+        // setting); the action event above is the whole compositor side.
+        if matches!(action, InputAction::FocusDock) {
+            self.focus_dock();
+        }
         self.needs_redraw = true;
     }
 

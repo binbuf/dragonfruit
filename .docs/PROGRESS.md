@@ -3338,3 +3338,126 @@ Acceptance criteria still unchecked in `tasks/10-dock.md`: the Files-side
 Trash integration test (needs T-18), external-drag walkthroughs, the
 scene-graph FR-14 render path, keyboard/AT-SPI, multi-output hotplug
 per-output popovers, plus the core-loop and 60 Hz measurements.
+
+## T-10 continuation — keyboard navigation + focus-dock/toggle-dock shortcuts (tenth slice)
+
+**State: partial.** The Dock is now keyboard-navigable (T-10 section 20, the
+keyboard half of FR-11): a global shortcut hands the Dock the keyboard, the
+shell routes keys to the Dock scene, and the Dock moves a FocusRing between
+entries with Return/menu/type-to-jump. The remaining slices (external drops,
+GVfs Trash completion, Options/Position submenus, per-output sizing,
+scene-graph render path, live AT-SPI dump) are unchanged and listed at the
+end.
+
+### What landed
+
+- **Compositor actions** (`input/action.rs`, `input/shortcuts.rs`).
+  `InputAction::FocusDock` ("focus-dock") and `InputAction::ToggleDock`
+  ("toggle-dock") join the vocabulary; the system table binds **Control-F3**
+  to FocusDock (the design's "Fn-Control-F3" resolves to Control-F3 on Linux,
+  where Fn is a hardware key) and **Super+Option+D** to ToggleDock. They flow
+  through the existing `df_toplevel_manager.input_action` broadcast, so no
+  protocol XML changed.
+- **Compositor focus** (`shell/mod.rs`, `state.rs`).
+  `DfState::chrome_surface_by_namespace("dock")` + `focus_dock()`, called from
+  `dispatch_input_action` for FocusDock. The Dock is `OnDemand` keyboard, so
+  it accepts the focus (the menu bar keeps its own). ToggleDock is
+  shell-owned: the compositor only emits the action.
+- **Shell routing** (`shellprotocol.{h,cpp}`, `shellcontroller.{h,cpp}`).
+  `onKeyboardEnter`/`onKeyboardLeave` now compare the entered surface to
+  `m_dockSurface` and emit `dockKeyboardFocused(bool)`. `ShellController`
+  tracks `m_dockKeyboardFocused`, sets the Dock QML `keyboardFocused`, reveals
+  a hidden Dock, calls `beginKeyboardNavigation`, and routes synthesized key
+  events to the Dock scene while it holds focus (previously only while a
+  popover was open). `onManagerInputAction` now emits `inputAction(action,
+  source)`; the controller applies `toggle-dock` to `dock.autohide` and
+  reveals on `focus-dock`.
+- **Dock QML** (`Dock.qml`, `DockEntry.qml`). `keyboardFocused` +
+  `focusedItemId` state, a `Keys.onPressed` handler (Left/Right on a bottom
+  Dock, Up/Down on a vertical one, skipping the divider; Return/Space runs the
+  shared click tree; Up/Menu opens the context menu; printable keys jump by
+  app name with an 800 ms buffer). `DockEntry` draws the design-system
+  `FocusRing` around the artwork when focused. The click tree is now factored
+  into `activateEntry(entry)` so pointer and keyboard share it.
+- **Tests.** `compositor/tests/shell_protocol_conformance.rs` gains
+  `focus_dock_shortcut_hands_the_keyboard_to_the_dock` (a `dock` chrome
+  surface takes `wl_keyboard.enter` on Ctrl+F3; Super+Option+D emits
+  `toggle-dock`). `tst_dock.qml` gains 9 cases (first-entry focus, arrow
+  movement + divider skip + wrap, the Keys handler, Return activation, Up
+  opens the menu, type-to-jump, the ring only on the focused entry, end clears
+  it, and Up/Down on a vertical Dock). 84/84 pass.
+
+### Gotcha found and fixed: letter shortcuts silently missed live
+
+The new Super+Option+D binding did not fire even though the unit test called
+`resolve(..., KEY_D)` and passed. Root cause (pre-existing T-03 bug): the live
+input filter
+(`compositor/src/input.rs`) resolves a key's **level-0** symbol via
+`keysym.raw_latin_sym_or_raw_current_sym()`, which xkb reports **lowercase**
+for letter keys (`d`, `q`, `n`), while the system binding table uses the
+`KEY_D`/`KEY_Q`/`KEY_N` uppercase constants. So `Cmd+Q` (lock screen),
+`Cmd+Shift+N` (notification center) and the new `Cmd+Option+D` never matched
+in a session; only digit/non-letter chords did, because level 0 for `3` is
+`3`. Fix: `ShortcutEngine::resolve` folds ASCII lowercase letters to uppercase
+(`fold_ascii_letter`) before comparing, so the binding table convention is
+honored and app accelerators get the same treatment. New unit test
+`letter_bindings_match_the_base_lowercase_symbol`.
+
+### Notes for subsequent tasks
+
+- **Keyboard focus ownership is compositor-driven.** The shell cannot move
+  seat focus itself; a new "focus this chrome surface" shortcut must be a
+  compositor `InputAction` (the `focus_dock` pattern) plus a shell-side route.
+- **A letter binding must use the uppercase `keysyms::KEY_*` constant** now
+  that `resolve` folds case. Do not "fix" a binding by lowercasing it.
+- **Escape cannot release compositor keyboard focus.** There is no
+  `df_toplevel_manager` request to hand focus back to the active window
+  (only a click elsewhere does). The Dock clears its ring; a real "leave"
+  needs an additive protocol request in a future session. Do not fake it from
+  the shell.
+- **`focus: keyboardFocused` + `forceActiveFocus()` is the QML key-routing
+  contract.** The shell synthesizes Qt key events into the Dock window, so the
+  Dock root must hold active focus for its `Keys` handler to fire. Tests use
+  `dock.forceActiveFocus()`.
+- **The Keys handler defers to an open popover** (`if (popoverOpen) return`),
+  so `ContextMenu`/`DockWindowChooser` keep Escape/arrows while open.
+- The `tst_dock.qml` runtime disk cache still applies (`QML_DISABLE_DISK_CACHE=1`
+  or `rm -rf ~/.cache/tst_dock` when iterating), same as the earlier slice.
+
+### Hand-off / open items (remaining T-10 slices)
+
+1. **External drops and spring-loading** (section 12): app/file drops on an
+   icon, Trash, or the Downloads stack. Needs the drag source plus
+   `app-index`/GIO launch with a file argument (T-17/T-18).
+2. **Trash completion** (section 16): GVfs `trash://` `GFileMonitor` +
+   `g_file_trash()` when the GIO dev headers are available;
+   `org.dragonfruit.Files1` activation once T-18 exists.
+3. **Options submenu + "Position on Screen"** (section 13): the app Options ▸
+   submenu and the divider position entry. Needs the design-system submenu
+   open logic and, for Assign To/Open at Login/Show in Files, compositor
+   app/space requests and T-18.
+4. **Per-output sizing** (section 18): chrome surfaces still size from the
+   first output; `matches_output` is the filter hook.
+5. **Scene-graph render path** (FR-14): the Dock still commits on demand via
+   `grabWindow`; the durable `QQuickWindow::afterRendering`/render-control
+   fix is shared with the T-09 deferred-polish backlog.
+6. **Live AT-SPI dump** (section 20): the QML roles exist and the keyboard
+   seat path now exists; a session-bus `atspi` walkthrough is T-31.
+7. **Escape → release Dock keyboard focus**: an additive protocol request
+   (or reuse a future chrome-focus release) is needed; see the note above.
+
+### Gate status
+
+`make lint` green (`cargo fmt --check`, `clippy -D warnings`, ctest 13/13
+incl. `tst_dock` 84 cases and `qmllint_shell-dock`, `gen-tokens --check`, the
+design-token/desktop-name/no-capture gates); `make e2e` green (19/19
+`shell_protocol_conformance` incl. the new focus-dock test, plus the
+window/Xwayland/idle suites); live headless smoke
+(`dragonfruit dev --headless --shell`) reports `Dock configured 1280x124` /
+`edge=1 thickness=60` and a clean teardown.
+
+Acceptance criteria still unchecked in `tasks/10-dock.md`: the Files-side
+Trash integration test (needs T-18), external-drag walkthroughs, the
+scene-graph FR-14 render path, the live AT-SPI walkthrough (keyboard is now
+landed), multi-output hotplug per-output popovers, plus the core-loop and
+60 Hz measurements.

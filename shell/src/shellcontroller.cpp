@@ -296,6 +296,10 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             &ShellController::onDockPopupPointerLeft);
     connect(m_protocol, &ShellProtocol::attentionRequested, this,
             &ShellController::onDockAttention);
+    connect(m_protocol, &ShellProtocol::dockKeyboardFocused, this,
+            &ShellController::onDockKeyboardFocused);
+    connect(m_protocol, &ShellProtocol::inputAction, this,
+            &ShellController::onInputAction);
 
     applyStatusItems();
     // The system menu (dragonfruit mark) is fixed for the session; the Log Out
@@ -725,15 +729,52 @@ void ShellController::onKeyEvent(quint32 key, bool pressed)
     if (qtKey == Qt::Key_unknown)
         return;
     QKeyEvent event(pressed ? QEvent::KeyPress : QEvent::KeyRelease, qtKey, Qt::NoModifier);
-    // An open Dock popover owns the keyboard (Escape/arrows); otherwise the
-    // menu bar does (T-10 sections 13/20).
+    // An open Dock popover or Dock keyboard focus owns the keys (navigation,
+    // Escape; T-10 sections 13/20); otherwise the menu bar does.
     if (m_dockWindow && m_dockItem
-            && m_dockItem->property("popoverOpen").toBool()) {
+            && (m_dockKeyboardFocused
+                || m_dockItem->property("popoverOpen").toBool())) {
         QCoreApplication::sendEvent(m_dockWindow, &event);
         scheduleDockRender();
     } else {
         QCoreApplication::sendEvent(m_window, &event);
         scheduleRender();
+    }
+}
+
+void ShellController::onDockKeyboardFocused(bool focused)
+{
+    m_dockKeyboardFocused = focused;
+    if (!m_dockItem)
+        return;
+    m_dockItem->setProperty("keyboardFocused", focused);
+    if (focused) {
+        // The Dock is the keyboard target: reveal it if auto-hidden, move
+        // active focus into the scene so QML Keys handlers fire, and start
+        // keyboard navigation on the first entry (T-10 section 20).
+        QMetaObject::invokeMethod(m_dockItem, "reveal");
+        QMetaObject::invokeMethod(m_dockItem, "beginKeyboardNavigation");
+        if (m_dockWindow)
+            m_dockItem->forceActiveFocus();
+    } else {
+        QMetaObject::invokeMethod(m_dockItem, "endKeyboardNavigation");
+    }
+    scheduleDockRender();
+}
+
+void ShellController::onInputAction(const QString &action, const QString &)
+{
+    if (action == QLatin1String("toggle-dock")) {
+        // Super+Option+D toggles `dock.autohide` (T-10 sections 15/20). The
+        // auto-hide change flips the reserved zone, so reconfigure.
+        m_settings.setAutohide(!m_settings.autohide());
+        saveDockSettings();
+        applyDockSettings(true);
+    } else if (action == QLatin1String("focus-dock")) {
+        // The compositor has already focused the Dock surface; reveal it if
+        // hidden so the focus ring is visible.
+        if (m_dockItem)
+            QMetaObject::invokeMethod(m_dockItem, "reveal");
     }
 }
 

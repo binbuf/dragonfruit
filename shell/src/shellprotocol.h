@@ -173,7 +173,14 @@ signals:
     void dockPopupPointerButton(qreal x, qreal y, uint32_t button, bool pressed);
     void dockPopupPointerLeft();
     void keyboardFocused(bool focused);
+    // The Dock surface specifically gained/lost the keyboard (T-10 section
+    // 20). Distinct from `keyboardFocused` so the shell can route keys to the
+    // Dock while the bar still tracks its own focus.
+    void dockKeyboardFocused(bool focused);
     void keyEvent(uint32_t key, bool pressed);
+    // A compositor input action broadcast (`df_toplevel_manager.input_action`,
+    // T-07). The Dock uses `focus-dock` and `toggle-dock` (T-10 section 20).
+    void inputAction(const QString &action, const QString &source);
 
 private:
     struct ToplevelInfo {
@@ -330,6 +337,9 @@ private:
     // True while the pointer is over the Dock popover; its coordinates are
     // popover-local and translated by the shell controller.
     bool m_pointerOnDockPopup = false;
+    // True while the Dock surface holds the keyboard (T-10 section 20), so
+    // key events are routed to the Dock scene.
+    bool m_keyboardOnDock = false;
     wl_seat *m_seat = nullptr;
     wl_pointer *m_pointer = nullptr;
     wl_keyboard *m_keyboard = nullptr;
