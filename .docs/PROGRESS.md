@@ -2328,3 +2328,106 @@ window/Xwayland/idle suites); live headless smoke
 `output reserved zone edge=1 thickness=60`, and seeds
 `~/.config/dragonfruit/settings.json` with the resolved defaults.
 
+## T-10 continuation — launch/attention bounce + magnified-band input region (third slice)
+
+**State: partial.** The Dock now animates its launch/attention bounce and
+publishes a real input region; the remaining slices (context menus/chooser,
+drag, Trash, live settings, per-output surfaces, scene-graph render path, a11y)
+are unchanged and listed at the end.
+
+### What landed
+
+- **Attention is routed to the Dock** (FR-4). `ShellProtocol::onManagerAttention`
+  resolves the toplevel's `app_id` and emits `attentionRequested(appId)`; an
+  id whose `app_id` has not arrived yet is ignored, never a crash.
+  `ShellController` starts a 2 s attention bounce for the app, stops it on
+  entry click or on `focusedAppChanged` (the window gaining focus), and
+  expires it on the animation tick.
+- **Bounce clocks are pure and unit-tested** (`dockmodel.{h,cpp}`):
+  `dockLaunchBouncePhase(elapsed)` is three hops over `kLaunchBounceMs` (600 ms)
+  and returns `-1` once finished; `dockAttentionBouncePhase(elapsed)` repeats
+  one hop every `kAttentionBounceHopMs` (400 ms). The shell maps the hop phase
+  to `sin(pi * phase)`, so each hop leaves the bar and returns. `tst_dockcore`
+  covers both clocks (start/boundary/peak/done).
+- **The shell drives a 16 ms Dock animation clock** (`m_dockAnimTimer`) while a
+  launch or attention bounce is in flight and stops it when both are done, so
+  the idle Dock still contributes zero wakeups (FR-8). `withBounce()` injects a
+  per-entry `bounce` phase and `attention` flag after the pure entry merge; the
+  launch bounce keeps settling after the first window resolves because
+  `m_launchStart` is separate from the transient `launch` state, so the entry
+  never snaps mid-flight.
+- **Launch and attention bounce are distinguishable**: amplitude `B/4` vs
+  `B/2`, single 0.6 s vs repeating 2 s (FR-4).
+- **Magnified-band input region is real** (FR-13). `Dock.qml` publishes
+  `inputRects`: the visible bar plus every entry whose icon is magnified beyond
+  baseline or is currently bouncing; an auto-hidden Dock publishes `[]`.
+  `ShellProtocol::setDockInputRegion` now takes a `QList<QRect>` and adds every
+  rectangle to one `wl_region`; `renderDock` converts `inputRects` each frame.
+  This closes the old bar-only limitation where the upper half of a magnified
+  icon passed clicks through.
+- **Reduced motion** (FR-11): the translation is removed (`entryBounce` returns
+  0) and the state stays legible as a subtle scale pulse on the artwork;
+  `tst_dock` resets `Theme.reducedMotion` in `init()` so a mid-test failure
+  cannot leak the global into the next case.
+- **Accessibility**: an attending entry's name gains ", needs attention".
+
+### Gotchas learned (important for the next slice)
+
+- **`Theme.reducedMotion` is a process-wide singleton.** A QML test that sets
+  it must restore it even on failure; `TestCase.init()` is the reliable hook
+  (`tst_dock.qml` now resets it before every test). The shell does not yet bind
+  it to a settings key — that is T-15/T-16.
+- **The bounce translation belongs in the Dock's `layout`, not the entry.** The
+  shell's input region is derived from `layout`, so applying the bounce inside
+  `DockEntry` would desync the hit area from the artwork. `DockEntry` only owns
+  the reduced-motion pulse.
+- **`inputRects` must be computed after `barRect`.** QML `readonly property`
+  binding order does not matter, but the rects are unioned with `barRect`, so
+  keep the two properties adjacent for clarity.
+- **The 16 ms clock still uses `grabWindow()`** (software render of the whole
+  Dock scene per frame). It is fine for a bounded 0.6–2 s bounce, but the
+  durable `QQuickWindow::afterRendering` path (FR-14) is still required before
+  magnification at 60 Hz can be claimed; do not measure FR-2 against this clock.
+- **Attention needs `app_id` to have arrived.** The manager announces the
+  toplevel and its `app_id` before an `xdg-activation` in practice; if a future
+  client activates before announcing, the bounce is dropped. A pending-attention
+  map keyed by `df_toplevel*` would close that, if it ever matters.
+- **A multi-rect `wl_region` is standard Wayland**, so no compositor change was
+  needed; `empty_input_region_passes_clicks_through` already proves the
+  compositor honors input regions on chrome.
+
+### Hand-off / open items (remaining T-10 slices)
+
+1. **Context menus and the window chooser** (sections 13/9). The Dock emits
+   `entryContextMenuRequested`/`dividerContextMenuRequested`; build the
+   design-system `ContextMenu` on the existing `overlay` popup pattern. The
+   chooser needs a per-app window list (the projection has counts, not titles)
+   and `df_toplevel.activate`/`unminimize`.
+2. **Drag rearrangement and external drops** (section 12): reorder pinned
+   (`DockPins::move` already exists), promote-to-pinned, remove-from-Dock,
+   file/app drops.
+3. **Trash** (section 16): GVfs `trash://` `GFileMonitor`, click-to-Files,
+   drop-to-trash via GIO, Empty Trash with confirmation.
+4. **Live `dock.*` settings** (section 19): observe settingsd keys (T-15), live
+   re-layout, position/auto-hide surface changes, T-16 pane hooks, and bind
+   `Theme.reducedMotion` to the accessibility setting.
+5. **Per-output / per-position surfaces**: left/right reserved zones need the
+   compositor `LayerSurfaceState::reserved()` extension; per-output sizing is
+   the known T-09/T-11/T-16 limitation.
+6. **Scene-graph render path** (FR-14): still commits on demand via
+   `grabWindow`; the durable `QQuickWindow::afterRendering` fix is shared with
+   the T-09 deferred-polish backlog. This is the prerequisite for the FR-2
+   60 Hz magnification budget and should replace the 16 ms bounce clock too.
+7. **Keyboard + AT-SPI walkthrough** (section 20): Fn-Control-F3 focus, arrow
+   navigation, Super+Option+D; the live AT-SPI dump is unbuilt.
+
+### Gate status
+
+`make lint` green (`cargo fmt --check`, `clippy -D warnings`, ctest 13/13 incl.
+`tst_dockcore`/`tst_dock`/`qmllint_shell-dock`, `gen-tokens --check`, the
+design-token/desktop-name/no-capture gates, the 66-snapshot gallery
+regression); `make e2e` green (15/15 `shell_protocol_conformance` plus the
+window/Xwayland/idle suites); live headless smoke
+(`dragonfruit dev --headless --shell`) reports `Dock configured 1280x95` and
+`output reserved zone edge=1 thickness=60`.
+

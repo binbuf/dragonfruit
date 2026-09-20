@@ -9,7 +9,9 @@
 
 #include <QHash>
 #include <QImage>
+#include <QList>
 #include <QObject>
+#include <QRect>
 #include <QSet>
 #include <QString>
 #include <QVariantList>
@@ -71,10 +73,12 @@ public:
     // ARGB32(_Premultiplied).
     bool commitDockImage(const QImage &image);
 
-    // Set the Dock surface's input region to `(x, y, width, height)` in
-    // surface-local coordinates. An empty rectangle makes the whole surface
-    // pass input through (the hidden Dock, the transparent magnified band).
-    bool setDockInputRegion(int x, int y, int width, int height);
+    // Set the Dock surface's input region to the union of `rects` in
+    // surface-local coordinates. An empty list makes the whole surface pass
+    // input through (the hidden Dock, the transparent magnified band). Each
+    // frame the shell sends the visible bar plus the currently magnified or
+    // bouncing icon rectangles (T-10 FR-13).
+    bool setDockInputRegion(const QList<QRect> &rects);
 
     // Attach `image` to the menu-bar surface and commit. The image must be
     // ARGB32(_Premultiplied).
@@ -105,6 +109,9 @@ signals:
     void dockConfigured(int width, int height, uint32_t serial);
     void surfaceClosed();
     void focusedAppChanged(const QString &appId, const QString &title);
+    // xdg-activation attention for an app's toplevel (T-10 FR-4): the Dock
+    // bounces the owning entry and stops on click or focus.
+    void attentionRequested(const QString &appId);
     // The running-app projection the Dock renders (T-10): one entry per app
     // with at least one window, plus per-window minimized entries.
     void dockStateChanged(const QVariantList &entries);

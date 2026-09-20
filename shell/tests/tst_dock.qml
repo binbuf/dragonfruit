@@ -25,6 +25,12 @@ Item {
         SignalSpy { id: menuSpy; signalName: "entryContextMenuRequested" }
         SignalSpy { id: dividerMenuSpy; signalName: "dividerContextMenuRequested" }
 
+        // Reduced motion is a global singleton; reset it before every test so
+        // a failure mid-test cannot leak into the next one.
+        function init() {
+            Theme.reducedMotion = false;
+        }
+
         function make(component, props) {
             var obj = createTemporaryObject(component, stage, props || {});
             waitForRendering(stage);
@@ -319,6 +325,100 @@ Item {
             compare(entry.missing, true);
             verify(entry.Accessible.name.indexOf("not found") >= 0);
             compare(findChild(entry, "statusBadge").visible, true);
+        }
+
+        // -- Bounce and input region (T-10 section 8.1, FR-13) --------------
+
+        function test_launch_bounce_lifts_the_entry() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ { id: "a", appId: "a", name: "A", kind: "pinned",
+                             pinned: true, running: true, launch: "launching",
+                             bounce: 0.5 } ]
+            });
+            var bouncedY = dock.layout[0].y;
+            // Same entry without a bounce for the baseline position.
+            dock.entries = [ { id: "a", appId: "a", name: "A", kind: "pinned",
+                               pinned: true, running: true } ];
+            waitForRendering(stage);
+            var baseY = dock.layout[0].y;
+            verify(bouncedY < baseY);
+            verify(Math.abs((baseY - bouncedY) - dock.barThickness / 4) < 0.5);
+        }
+
+        function test_attention_bounce_is_taller_than_launch() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ { id: "a", appId: "a", name: "A", kind: "pinned",
+                             pinned: true, running: true, attention: true,
+                             bounce: 0.5 } ]
+            });
+            var attention = dock.entryBounce(dock.items[0]);
+            var launch = dock.entryBounce({ bounce: 0.5 });
+            verify(attention > launch);
+            verify(Math.abs(attention - dock.barThickness / 2) < 0.5);
+        }
+
+        function test_reduced_motion_removes_bounce_translation() {
+            Theme.reducedMotion = true;
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ { id: "a", appId: "a", name: "A", kind: "pinned",
+                             pinned: true, running: true, attention: true,
+                             bounce: 0.5 } ]
+            });
+            compare(dock.entryBounce(dock.items[0]), 0);
+            // The state stays legible as a subtle scale pulse instead.
+            verify(dock.itemAt(0).pulseScale > 1.0);
+        }
+
+        function test_attention_is_in_the_accessible_name() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ { id: "a", appId: "a", name: "A", kind: "pinned",
+                             pinned: true, running: true, attention: true,
+                             bounce: 0.5 } ]
+            });
+            verify(dock.itemAt(0).Accessible.name.indexOf("attention") >= 0);
+        }
+
+        function test_idle_input_region_is_bar_only() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "A", true), app("b", "B", false) ]
+            });
+            compare(dock.inputRects.length, 1);
+        }
+
+        function test_bouncing_entry_adds_an_input_rect() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ { id: "a", appId: "a", name: "A", kind: "pinned",
+                             pinned: true, running: true, attention: true,
+                             bounce: 0.5 } ]
+            });
+            compare(dock.inputRects.length, 2);
+        }
+
+        function test_magnified_icon_adds_an_input_rect() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, magnification: 1.0,
+                entries: [ app("a", "A", true), app("b", "B", true) ]
+            });
+            dock.pointerAlong = dock._baseline.centers[0];
+            waitForRendering(stage);
+            verify(dock.inputRects.length > 1);
+        }
+
+        function test_hidden_autohide_input_region_is_empty() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, autoHide: true, revealed: true,
+                entries: [ app("a", "A", true) ]
+            });
+            compare(dock.inputRects.length, 1);
+            dock.hide();
+            waitForRendering(stage);
+            compare(dock.inputRects.length, 0);
         }
 
         // -- Artwork --------------------------------------------------------

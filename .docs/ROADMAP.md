@@ -89,7 +89,7 @@ Updated when a task is partially or completely finished; see
 | Phase | Tickets |
 |---|---|
 | 1 · Foundation | T-01 ✅ done · T-02 🔄 partial (compositor core) · T-03 🔄 partial (input engine) · T-04 🔄 partial (window model) · T-05 🔄 partial (Spaces model) · T-06 🔄 partial (Xwayland) · T-07 🔄 partial (private shell protocols) |
-| 2 · Experience | T-08 ✅ done (design system; app-level chrome lint + live AT-SPI dump deferred) · T-09 🔄 partial (menu bar + shell bootstrap + overlay-layer dropdown + scripted output hotplug; T-20/T-22 content open) · T-10 🔄 partial (Dock presentation core + shell surface + running entries/activation + launch/pinned persistence; menus/chooser, drag, Trash, live settings, bounce open) · T-11 … T-14 pending |
+| 2 · Experience | T-08 ✅ done (design system; app-level chrome lint + live AT-SPI dump deferred) · T-09 🔄 partial (menu bar + shell bootstrap + overlay-layer dropdown + scripted output hotplug; T-20/T-22 content open) · T-10 🔄 partial (Dock presentation core + shell surface + running entries/activation + launch/pinned persistence + launch/attention bounce + magnified-band input region; menus/chooser, drag, Trash, live settings, scene-graph render path open) · T-11 … T-14 pending |
 | 3 · Flagship apps | T-15 … T-19 pending |
 | 4 · System integration | T-20 … T-23 pending |
 | 5 · Desktop infrastructure | T-24 … T-29 pending |
@@ -399,6 +399,26 @@ magnified-band input region, per-output/per-position surfaces, and the
 scene-graph-driven render path. Details and hand-off:
 [PROGRESS.md](PROGRESS.md).
 
+T-10 continuation (animation + input slice): the Dock now bounces. The
+compositor's `attention` event (`xdg-activation`) is routed through
+`ShellProtocol` to the owning app's entry, and a 16 ms shell animation clock
+drives a launch bounce (three hops over 0.6 s, amplitude `B/4`) and a taller,
+repeating attention bounce (amplitude `B/2`, bounded to 2 s, stopped on click
+or focus — FR-4). The launch bounce keeps settling after the first window
+resolves, so the entry never snaps mid-flight. Reduced motion removes the
+translation and keeps the state legible as a subtle scale pulse. The
+magnified-band input region is now real (FR-13): the Dock publishes the union
+of the visible bar and the currently magnified/bouncing icon rectangles, the
+shell commits them as a multi-rectangle `wl_region` every frame, and the
+hidden auto-hide Dock publishes an empty region. The pure bounce clocks
+(`dockLaunchBouncePhase`/`dockAttentionBouncePhase`) are unit-tested in
+`tst_dockcore`, and `tst_dock` covers the launch/attention offset, reduced
+motion, accessibility state, and the input-region membership. Open for the
+remaining slices: context menus and the window chooser, drag rearrangement
+and external drops, the GVfs-backed Trash state, live `dock.*` settings, and
+the scene-graph-driven render path (the 16 ms clock still samples with
+`grabWindow`). Details and hand-off: [PROGRESS.md](PROGRESS.md).
+
 **Foundation milestone E2E (T-01…T-07).** The whole vertical slice now has a
 headless end-to-end test, `compositor/tests/milestone_e2e.rs` (`make e2e`):
 one live session with a shell client, a Wayland app, and an X11 app attached
@@ -431,7 +451,7 @@ the shell's own chrome rendering (T-09/T-10).
 2. **Experience**
    - [x] Design system (T-08: token architecture + all 20 components + gallery/visual regression; app-level chrome lint + live AT-SPI dump deferred)
    - [ ] Top bar (T-09 partial: menu-bar render/interaction + shell bootstrap live, restart/idle scripts passing, chrome input routing + overlay-layer dropdown landed and scripted, output hotplug scripted; T-20 status adapters, T-22 app menu open)
-   - [ ] Dock (T-10 partial: presentation/interaction core + shell `top` surface with bottom reserved zone + launch/pinned persistence landed and scripted; context menus, window chooser, drag rearrangement, Trash state, live settings, bounce open)
+   - [ ] Dock (T-10 partial: presentation/interaction core + shell `top` surface with bottom reserved zone + launch/pinned persistence + launch/attention bounce + magnified-band input region landed and scripted; context menus, window chooser, drag rearrangement, Trash state, live settings, scene-graph render path open)
    - [ ] Window switching
    - [ ] Mission Control
    - [ ] Workspace gestures
