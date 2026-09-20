@@ -184,6 +184,13 @@ Third session (T-09 continuation — interactive chrome):
   on the same tap). Verified live nested: the File menu renders below the bar
   with its rows and shortcut labels, and the shell logs the 1280×28 →
   1280×124 → 1280×28 configure round-trip.
+- **HITL fixes (first human nested session).** Nested pointer input was dead:
+  `PointerMotionAbsolute` treated winit's window-pixel `CursorMoved` as
+  device-normalized, so every location was off-output and the shell never got
+  pointer events; it now uses `event.position_transformed(size)`. The first
+  menu title also drew its `FocusRing` on launch (the offscreen window
+  auto-focused the first `activeFocusOnTab` item); the shell clears the
+  active focus on the first event-loop turn.
 
 Hand-off (T-09 continuation):
 

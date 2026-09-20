@@ -1824,3 +1824,36 @@ Notes for subsequent tasks:
   window would be a good addition (the synthetic harness can place one).
 - **`chrome_surfaces` still returns the single global `reserved` union**;
   per-output zones remain T-11/T-16.
+
+### T-09 HITL follow-up — nested pointer coordinates + launch focus ring
+
+The first human-in-the-loop nested session surfaced two issues that no
+headless test could see:
+
+- **Nested pointer input was completely dead.** `InputEvent::
+  PointerMotionAbsolute` treated `event.position()` as device-normalized
+  (`0..=1`) and multiplied by the output size. That is correct for
+  libinput/synthetic, but winit's `CursorMoved` (via
+  `WinitMouseMovedEvent::x()`) is **window pixels**, so every nested motion
+  computed a location millions of pixels off-output, `surface_under` returned
+  `None`, and the shell never got pointer enter/motion/button. Fix: use
+  `event.position_transformed(geometry.size)`, the backend-agnostic
+  conversion (winit divides by the window size then scales; libinput scales
+  the normalized value). The synthetic-input and window conformance suites
+  still pass because their `x_transformed` is the same as before.
+- **The first menu title drew its `FocusRing` on launch.** The offscreen
+  `QQuickWindow` hands active focus to the first `activeFocusOnTab` item
+  (`MenuBarMenu`) when shown, so "File" looked pre-selected. The shell now
+  clears `activeFocusItem()` on the first event-loop turn; the popup takes
+  focus itself when it opens.
+
+Notes:
+
+- **Touch/tablet absolute handling still uses `event.position()`** in
+  `touch_location` (normalized). Winit does not emit touch, so the nested bug
+  did not affect it, but if a backend ever reports pixel-space touch the same
+  `position_transformed` treatment is needed.
+- **Nested input has no automated coverage.** The synthetic harness only
+  exists on the headless backend, and the winit event type is private to
+  Smithay. A host-side pointer move is the only current way to exercise it;
+  keep the `position_transformed` rule when adding backends.

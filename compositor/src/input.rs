@@ -254,14 +254,17 @@ where
             let Some(geometry) = state.space.output_geometry(&output) else {
                 return;
             };
-            // winit reports window coordinates (the output starts at
-            // (0,0) in nested mode); libinput reports device-normalized
-            // coordinates, mapped onto the output here.
+            // `position_transformed` is backend-agnostic: winit's
+            // `CursorMoved` is window pixels, libinput reports
+            // device-normalized coordinates, and each backend converts to
+            // output pixels here. (Treating `position()` as normalized broke
+            // nested pointer input: winit hands back pixels, so every motion
+            // landed far outside the output and hit nothing.)
             let location = if geometry.size.w > 0 && geometry.size.h > 0 {
-                let position = event.position();
+                let position = event.position_transformed(geometry.size);
                 Point::from((
-                    geometry.loc.x as f64 + position.x * geometry.size.w as f64,
-                    geometry.loc.y as f64 + position.y * geometry.size.h as f64,
+                    geometry.loc.x as f64 + position.x,
+                    geometry.loc.y as f64 + position.y,
                 ))
             } else {
                 return;
