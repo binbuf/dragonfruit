@@ -13,6 +13,9 @@ Item {
     property alias popup: popup
     property alias open: popup.open
     property int highlightedIndex: -1
+    // Whether the bar title shows the keyboard FocusRing. The shell turns it
+    // off until it implements Tab navigation across the bar (T-09 polish).
+    property bool showFocusRing: true
 
     signal triggered(int index, var item)
     signal opened()
@@ -116,7 +119,7 @@ Item {
 
     FocusRing {
         target: root
-        shown: root.activeFocus && !root.open
+        shown: root.showFocusRing && root.activeFocus && !root.open
     }
 
     Keys.onReturnPressed: (event) => {
