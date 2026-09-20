@@ -89,7 +89,7 @@ Updated when a task is partially or completely finished; see
 | Phase | Tickets |
 |---|---|
 | 1 · Foundation | T-01 ✅ done · T-02 🔄 partial (compositor core) · T-03 🔄 partial (input engine) · T-04 🔄 partial (window model) · T-05 🔄 partial (Spaces model) · T-06 🔄 partial (Xwayland) · T-07 🔄 partial (private shell protocols) |
-| 2 · Experience | T-08 ✅ done (design system; app-level chrome lint + live AT-SPI dump deferred) · T-09 🔄 partial (menu bar + shell bootstrap + overlay-layer dropdown + scripted output hotplug; T-20/T-22 content open) · T-10 🔄 partial (Dock presentation core + shell surface + running entries/activation + launch/pinned persistence + launch/attention bounce + magnified-band input region + app context menus/window chooser + drag rearrangement (reorder/promote/remove) + live `dock.*` settings/divider menu/reduced motion + left/right reserved-zone foundation + per-position (left/right) surfaces, vertical layout, beside-the-bar popovers, corrected auto-hide translation and edge-band reveal/re-hide state machine; Trash, external drops, scene-graph render path open) · T-11 … T-14 pending |
+| 2 · Experience | T-08 ✅ done (design system; app-level chrome lint + live AT-SPI dump deferred) · T-09 🔄 partial (menu bar + shell bootstrap + overlay-layer dropdown + scripted output hotplug; T-20/T-22 content open) · T-10 🔄 partial (Dock presentation core + shell surface + running entries/activation + launch/pinned persistence + launch/attention bounce + magnified-band input region + app context menus/window chooser + drag rearrangement (reorder/promote/remove) + live `dock.*` settings/divider menu/reduced motion + left/right reserved-zone foundation + per-position (left/right) surfaces, vertical layout, beside-the-bar popovers, corrected auto-hide translation and edge-band reveal/re-hide state machine + Trash state/count via a home-trash watcher, click-to-Files at `trash://`, and the Open/Empty Trash menu with an Empty Trash confirmation; external drops, Options submenu, per-output sizing, scene-graph render path open) · T-11 … T-14 pending |
 | 3 · Flagship apps | T-15 … T-19 pending |
 | 4 · System integration | T-20 … T-23 pending |
 | 5 · Desktop infrastructure | T-24 … T-29 pending |
@@ -544,6 +544,31 @@ a white strip above the Dock bar in a live session. The root is now
 opaque backdrop and asserts the band shows through it. Details:
 [PROGRESS.md](PROGRESS.md).
 
+T-10 continuation (Trash slice): the Dock's Trash entry is backed by real
+state (section 16). A new pure `TrashMonitor` (in the Wayland-free dockcore
+library) watches `$XDG_DATA_HOME/Trash/{info,files}` and reports a full flag
+and item count; any filesystem event, including a deletion by a third-party
+application, updates the entry within one event (FR-6), and idle contributes
+zero polling (FR-8). GIO dev headers are absent on this host, so this is the
+sanctioned filesystem fallback over the home trash (it never follows symlinks
+and never leaves the root); the class is marked to be replaced by the GVfs
+`GFileMonitor` / `g_file_trash()` backend when the headers are available.
+Clicking Trash launches/activates Files at `trash://` through the interim
+resolver (`org.dragonfruit.Files.desktop`; T-18 owns the app and the
+`org.dragonfruit.Files1` activation target). The Trash context menu (Open,
+Empty Trash) now exists; Empty Trash is disabled when the Trash is empty and
+swaps the menu to a confirmation step before emitting the destructive
+`empty_trash` action, which the shell performs on the home trash. The
+design-system `ContextMenu` gained a `keepOpen` item flag (with design-system
+tests) so a menu step can swap models without dismissing. New `tst_dockcore`
+cases cover empty/full/count, the third-party watcher, the empty operation
+(files, directories, paired removal), and unsafe-root refusal; five `tst_dock`
+cases cover the Trash menu, disabled Empty Trash, confirmation, cancel, and
+Open. Still open: drop-to-trash and drop-on-icon external drops (T-17/T-18),
+Empty Trash progress for large trash, and the remaining slices (external
+drops, Options submenu, per-output sizing, scene-graph render path, a11y).
+Details and hand-off: [PROGRESS.md](PROGRESS.md).
+
 **Foundation milestone E2E (T-01…T-07).** The whole vertical slice now has a
 headless end-to-end test, `compositor/tests/milestone_e2e.rs` (`make e2e`):
 one live session with a shell client, a Wayland app, and an X11 app attached
@@ -576,7 +601,7 @@ the shell's own chrome rendering (T-09/T-10).
 2. **Experience**
    - [x] Design system (T-08: token architecture + all 20 components + gallery/visual regression; app-level chrome lint + live AT-SPI dump deferred)
    - [ ] Top bar (T-09 partial: menu-bar render/interaction + shell bootstrap live, restart/idle scripts passing, chrome input routing + overlay-layer dropdown landed and scripted, output hotplug scripted, always-present system menu (dragonfruit mark) + application menu (Files on the desktop) landed; T-20 status adapters, T-22 app-exported menus, and the fixed-menu action wiring (T-16/T-24/T-26) open)
-    - [ ] Dock (T-10 partial: presentation/interaction core + shell `top` surface with bottom reserved zone + launch/pinned persistence + launch/attention bounce + magnified-band input region + app context menus and window chooser + drag rearrangement (reorder/promote/remove) + live `dock.*` settings + per-position (left/right) surfaces and vertical layout + edge-band auto-hide reveal/re-hide landed and scripted; external drops, Trash state, scene-graph render path open)
+    - [ ] Dock (T-10 partial: presentation/interaction core + shell `top` surface with bottom reserved zone + launch/pinned persistence + launch/attention bounce + magnified-band input region + app context menus and window chooser + drag rearrangement (reorder/promote/remove) + live `dock.*` settings + per-position (left/right) surfaces and vertical layout + edge-band auto-hide reveal/re-hide + Trash state/count via a home-trash watcher with click-to-Files and the Open/Empty Trash menu with confirmation landed and scripted; external drops, Options submenu, per-output sizing, scene-graph render path open)
    - [ ] Window switching
    - [ ] Mission Control
    - [ ] Workspace gestures

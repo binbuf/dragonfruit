@@ -3220,3 +3220,121 @@ shell-owned menus ahead of the app's exported model.
   runtime. If the art is revised, re-extract the path (the fruit is the second
   `<path>`).
 
+## T-10 continuation — Trash state + menu (ninth slice)
+
+**State: partial.** The Dock's Trash entry is now backed by real state and a
+Trash context menu (T-10 section 16, FR-6): the icon reflects empty/non-empty,
+a deletion by any application updates it, clicking opens Files at `trash://`,
+and Empty Trash is a two-step confirmation. External drops onto Trash (and
+icons) remain open — they are the T-17/T-18 drop-source slice.
+
+### What landed
+
+- **`TrashMonitor`** (`shell/src/trashmonitor.{h,cpp}`, in the Wayland-free
+  `dragonfruit-shell-dockcore` static lib). A `QFileSystemWatcher` over
+  `$XDG_DATA_HOME/Trash/{info,files}` (default `~/.local/share/Trash`) that
+  reports `isFull()`/`itemCount()`. The count is the union of
+  `info/<name>.trashinfo` and `files/<name>` base names, so a partially
+  written pair still reads as non-empty. Any directory event re-scans and
+  emits `changed()`; idle contributes zero polling (FR-8). `empty()` removes
+  the info records then the payloads, never follows symlinks, never leaves the
+  root, and refuses an unsafe root (`/`). `refresh()` is callable directly for
+  tests. The class is explicitly marked for deletion when the GIO dev headers
+  land: the design wants GVfs `trash://` through a `GFileMonitor` and
+  `g_file_trash()`; this host has only the libgio runtime (`pkg-config
+  gio-2.0` is absent), which is exactly the fallback the ticket named.
+- **Shell wiring** (`ShellController`). Owns a `TrashMonitor`, starts it at
+  boot, seeds `trashFull`/`trashCount` on the Dock QML, and re-pushes them +
+  renders on `changed()`. A Trash click calls `openTrashInFiles()`, which
+  resolves `org.dragonfruit.Files.desktop` through the interim index and
+  `QProcess::startDetached`s it with the `trash://` argument (T-18 owns the
+  real Files app / `org.dragonfruit.Files1` activation). Menu actions
+  `open_trash` and `empty_trash` are handled; `empty_trash` performs the home
+  trash operation after the QML confirmation.
+- **Trash menu** (`Dock.qml`). `menuModel` now dispatches `trash` entries to
+  `trashMenuModel()`: **Open**, separator, **Empty Trash** (disabled when the
+  trash is empty). Selecting Empty Trash sets `trashConfirming`, swapping the
+  same popover to the confirmation step (**Empty the Trash?**, **Empty
+  Trash**, **Cancel**) without dismissing; confirming emits `empty_trash` to
+  the shell. `trashConfirming` resets in `openEntryMenu`/`closePopovers`.
+- **Design-system `ContextMenu`** gained `keepOpen` on a model item: `activate()`
+  triggers the item but leaves the menu open, so a step can swap the model in
+  place. Disabled items (`enabled: false`) were already honored by `activate()`
+  and are now covered by a test. `test_context_menu_keep_open_item_does_not_dismiss`
+  and `test_context_menu_disabled_item_is_not_activated` added.
+- **Tests.** `tst_dockcore` +4: empty→full→count round trip, a third-party
+  deletion seen through the watcher (QSignalSpy), `empty()` removing info +
+  files + directories, and unsafe-root refusal. `tst_dock` +5: the Trash menu
+  contents, Empty Trash disabled when empty, the confirmation swap (no emit
+  until confirm), Cancel returning to the menu, and Open emitting `open_trash`.
+
+### Gotchas learned (important for the next slice)
+
+- **`ContextMenu.activate()` triggers, then hides.** The confirmation step
+  originally tried to re-open the menu inside `onTriggered`, but `hide()` runs
+  after `triggered()`, so the re-open was immediately closed. The clean fix is
+  the `keepOpen` item flag; `Qt.callLater` would also work but is racier.
+- **The Trash count is a union, not the info count.** Counting only
+  `.trashinfo` misses a payload written just before its info record; counting
+  only `files/` misses the metadata-only tail of an empty. The union is the
+  honest "is there anything here" signal. A real `GFileMonitor` would report
+  the same state via GVfs.
+- **`empty()` emits `changed()` through `refresh()`.** The shell's
+  `onTrashChanged()` therefore runs inside the menu-action handler; that is
+  fine (it only updates properties and schedules a render) but do not do heavy
+  work there.
+- **No Files app exists yet.** `openTrashInFiles()` warns and no-ops when the
+  `.desktop` is missing. The integration test with Files (acceptance
+  criterion) cannot be scripted until T-18 ships; the third-party-deletion
+  half is covered by the watcher test.
+- **QFileSystemWatcher cannot watch a missing directory.** `syncWatches()`
+  re-adds `info`/`files`/root whenever they exist, and the root watch
+  re-syncs when they are created. If the whole trash tree is absent, the entry
+  simply stays empty; no error is surfaced (correct — the design says an
+  unavailable mount renders dimmed, which is a GIO-mount concern, not a
+  missing-directory one).
+
+### Hand-off / open items (remaining T-10 slices)
+
+1. **External drops and spring-loading** (section 12): app/file drops on an
+   icon, Trash, or the Downloads stack. Needs the drag source plus
+   `app-index`/GIO launch with a file argument (T-17/T-18). This is now the
+   natural next slice: the Trash monitor and the `trash://` launch path are in
+   place, so drop-to-trash only needs the drag payload + `TrashMonitor`/
+   `g_file_trash()` call. External-drag reveal (drop onto a hidden Dock) is
+   part of it.
+2. **Trash completion** (section 16): switch `TrashMonitor` to the GVfs
+   `GFileMonitor` + GIO empty when the headers are available; mount-unavailable
+   dimming; Empty Trash progress for large trash; the `org.dragonfruit.Files1`
+   activation target once T-18 exists.
+3. **Options submenu + Show in Files + divider completeness** (section 13):
+   the app Options ▸ submenu (Assign To, Open at Login, Show in Files) and
+   "Position on Screen". Needs the design-system submenu, T-18 Files, and
+   compositor app/space requests.
+4. **Per-output sizing** (section 18): chrome surfaces still size from the
+   first output; `matches_output` is the filter hook.
+5. **Scene-graph render path** (FR-14): the Dock still commits on demand via
+   `grabWindow`; the durable `QQuickWindow::afterRendering` fix is shared with
+   the T-09 deferred-polish backlog and should replace the bounce, popover,
+   and reveal/hide timers.
+6. **Keyboard + AT-SPI walkthrough** (section 20): Fn-Control-F3 focus, arrow
+   navigation, Super+Option+D; keyboard-focus suppression of re-hide. The QML
+   roles exist; the seat path and live AT-SPI dump are not built.
+
+### Gate status
+
+`make lint` green (`cargo fmt --check`, `clippy -D warnings`, ctest 13/13
+incl. `tst_dock` 75 cases, `tst_dockcore` 25 cases, `tst_design_system`,
+`gen-tokens --check`, the design-token/desktop-name/no-capture gates);
+`make visual-test` green (66-snapshot gallery regression); `make e2e` green
+(18/18 `shell_protocol_conformance` plus the window/Xwayland/idle suites).
+
+Note: one `make lint` run failed `tst_menubar`'s
+`test_status_glyphs_render_pixels` ("glyph wifi should render visible
+pixels"), which passed in isolation and on the immediate `make lint` rerun —
+a pre-existing flaky software-rendering pixel check, not this slice.
+
+Acceptance criteria still unchecked in `tasks/10-dock.md`: the Files-side
+Trash integration test (needs T-18), external-drag walkthroughs, the
+scene-graph FR-14 render path, keyboard/AT-SPI, multi-output hotplug
+per-output popovers, plus the core-loop and 60 Hz measurements.

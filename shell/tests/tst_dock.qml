@@ -718,6 +718,93 @@ Item {
             compare(menuActionSpy.signalArguments[0][1].windowId, "1");
         }
 
+        function menuLabels(menu) {
+            var labels = [];
+            for (var i = 0; i < menu.entries.length; ++i)
+                labels.push(menu.entries[i].label);
+            return labels;
+        }
+
+        function test_trash_menu_offers_open_and_empty_trash() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, entries: [], trashFull: true
+            });
+            dock.openEntryMenu(dock.trashEntry);
+            var menu = findChild(dock, "entryMenu");
+            var labels = menuLabels(menu);
+            verify(labels.indexOf("Open") >= 0);
+            var emptyIndex = labels.indexOf("Empty Trash");
+            verify(emptyIndex >= 0);
+            compare(menu.entries[emptyIndex].enabled, true);
+        }
+
+        function test_empty_trash_is_disabled_when_trash_is_empty() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, entries: [], trashFull: false
+            });
+            dock.openEntryMenu(dock.trashEntry);
+            var menu = findChild(dock, "entryMenu");
+            var labels = menuLabels(menu);
+            var emptyIndex = labels.indexOf("Empty Trash");
+            verify(emptyIndex >= 0);
+            compare(menu.entries[emptyIndex].enabled, false);
+        }
+
+        function test_empty_trash_confirms_before_emptying() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, entries: [], trashFull: true
+            });
+            menuActionSpy.target = dock;
+            menuActionSpy.clear();
+            dock.openEntryMenu(dock.trashEntry);
+            var menu = findChild(dock, "entryMenu");
+            var labels = menuLabels(menu);
+            // Selecting Empty Trash swaps in the confirmation and does not
+            // yet emit the destructive action.
+            menu.activate(labels.indexOf("Empty Trash"));
+            waitForRendering(stage);
+            compare(menuActionSpy.count, 0);
+            compare(dock.trashConfirming, true);
+            compare(menu.open, true);
+            labels = menuLabels(menu);
+            verify(labels.indexOf("Cancel") >= 0);
+            verify(labels.indexOf("Open") < 0);
+            // Confirming emits the destructive action exactly once.
+            menu.activate(labels.indexOf("Empty Trash"));
+            compare(menuActionSpy.count, 1);
+            compare(menuActionSpy.signalArguments[0][0], "empty_trash");
+            compare(dock.trashConfirming, false);
+        }
+
+        function test_trash_cancel_returns_to_the_menu() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, entries: [], trashFull: true
+            });
+            menuActionSpy.target = dock;
+            menuActionSpy.clear();
+            dock.openEntryMenu(dock.trashEntry);
+            var menu = findChild(dock, "entryMenu");
+            var labels = menuLabels(menu);
+            menu.activate(labels.indexOf("Empty Trash"));
+            labels = menuLabels(menu);
+            menu.activate(labels.indexOf("Cancel"));
+            compare(dock.trashConfirming, false);
+            compare(menuActionSpy.count, 0);
+        }
+
+        function test_trash_open_emits_open_trash() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, entries: [], trashFull: true
+            });
+            menuActionSpy.target = dock;
+            menuActionSpy.clear();
+            dock.openEntryMenu(dock.trashEntry);
+            var menu = findChild(dock, "entryMenu");
+            menu.activate(menuLabels(menu).indexOf("Open"));
+            compare(menuActionSpy.count, 1);
+            compare(menuActionSpy.signalArguments[0][0], "open_trash");
+        }
+
         function test_multi_window_click_opens_chooser() {
             var dock = make(dockComponent, {
                 width: 1280, height: 160,

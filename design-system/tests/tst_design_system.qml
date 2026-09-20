@@ -320,6 +320,31 @@ TestCase {
         compare(triggeredSpy.signalArguments[0][0], 1);
     }
 
+    function test_context_menu_keep_open_item_does_not_dismiss() {
+        var cm = make(contextMenuComponent, {
+            model: [{ label: "More", keepOpen: true }, { label: "Done" }]
+        });
+        triggeredSpy.target = cm;
+        triggeredSpy.clear();
+        cm.showAt(10, 10);
+        waitForRendering(stage);
+        cm.activate(0);
+        compare(triggeredSpy.count, 1);
+        compare(cm.open, true);
+        cm.activate(1);
+        compare(cm.open, false);
+    }
+
+    function test_context_menu_disabled_item_is_not_activated() {
+        var cm = make(contextMenuComponent, {
+            model: [{ label: "Empty Trash", enabled: false }]
+        });
+        triggeredSpy.target = cm;
+        triggeredSpy.clear();
+        cm.activate(0);
+        compare(triggeredSpy.count, 0);
+    }
+
     // -- SearchField (FR-1) -------------------------------------------------
 
     function test_search_field_escape_clears() {

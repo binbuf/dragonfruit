@@ -15,7 +15,8 @@ import Dragonfruit
 //   * the auto-hide translation.
 //
 // Context menus, the window chooser, drag rearrangement, launch, and the
-// GVfs-backed Trash state are follow-ups (see PROGRESS.md).
+// Trash state/menu are landed (see PROGRESS.md); external drops and the
+// scene-graph render path are follow-ups.
 Rectangle {
     id: dock
 
@@ -42,6 +43,11 @@ Rectangle {
     property bool showRecentApps: false
     property bool revealed: true
     property bool trashFull: false
+    property int trashCount: 0
+    // The Trash menu's Empty Trash confirmation step (section 13): selecting
+    // Empty Trash replaces the menu model with the confirm/cancel choice
+    // before the shell performs the destructive operation.
+    property bool trashConfirming: false
 
     // --- Interaction state ----------------------------------------------
     // Pointer position along the dock axis in local coordinates, -1 when the
@@ -209,7 +215,7 @@ Rectangle {
     // The Trash is permanent and always the last right-region item.
     readonly property var trashEntry: ({
         id: "__trash__", appId: "", name: qsTr("Trash"), kind: "trash",
-        running: false, trashFull: dock.trashFull
+        running: false, trashFull: dock.trashFull, trashCount: dock.trashCount
     })
     readonly property var dividerEntry: ({ id: "__divider__", kind: "divider" })
 
@@ -334,6 +340,7 @@ Rectangle {
     function closePopovers() {
         entryMenu.hide();
         windowChooser.hide();
+        trashConfirming = false;
     }
 
     function openEntryMenu(entry) {
@@ -532,8 +539,9 @@ Rectangle {
 
     // The app-entry menu (T-10 section 13): the live window list, Show All
     // Windows, Keep/Remove from Dock, and Quit/Open. The divider menu holds
-    // the Dock options. Options ▸, Show in Files, and the Trash menu are
-    // later slices.
+    // the Dock options; the Trash menu holds Open and Empty Trash. Options ▸
+    // (Assign To, Open at Login, Show in Files) and "Show in Files" are later
+    // slices (they need the design-system submenu and T-18 Files).
     readonly property var menuModel: {
         var e = menuEntry;
         if (!e)
@@ -541,6 +549,8 @@ Rectangle {
         var out = [];
         if (e.kind === "divider")
             return dividerMenuModel();
+        if (e.kind === "trash")
+            return trashMenuModel();
         var running = e.running === true;
         var list = e.windowList !== undefined ? e.windowList : [];
         if (running && list.length > 0) {
@@ -617,6 +627,38 @@ Rectangle {
         out.push({
             type: "item", label: qsTr("Dock Settings…"),
             action: "open_dock_settings"
+        });
+        return out;
+    }
+
+    // The Trash menu (T-10 sections 13/16): Open always; Empty Trash only
+    // when non-empty. Selecting Empty Trash swaps in the confirmation step so
+    // the destructive operation is never one click away.
+    function trashMenuModel() {
+        var out = [];
+        if (trashConfirming) {
+            out.push({
+                type: "item", label: qsTr("Empty the Trash?"), enabled: false
+            });
+            out.push({
+                type: "item", label: qsTr("Empty Trash"),
+                action: "empty_trash"
+            });
+            out.push({
+                type: "item", label: qsTr("Cancel"),
+                action: "cancel_empty_trash"
+            });
+            return out;
+        }
+        out.push({
+            type: "item", label: qsTr("Open"),
+            action: "open_trash"
+        });
+        out.push({ type: "separator" });
+        out.push({
+            type: "item", label: qsTr("Empty Trash"),
+            action: "empty_trash_confirmation", enabled: trashFull,
+            keepOpen: true
         });
         return out;
     }
@@ -923,6 +965,18 @@ Rectangle {
             dock.scheduleHide();
         }
         onTriggered: (index, item) => {
+            if (item.action === "empty_trash_confirmation") {
+                // Swap in the confirmation step; `keepOpen` on the menu item
+                // keeps the menu up while the model changes.
+                dock.trashConfirming = true;
+                return;
+            }
+            if (item.action === "cancel_empty_trash") {
+                dock.trashConfirming = false;
+                return;
+            }
+            if (item.action === "empty_trash")
+                dock.trashConfirming = false;
             dock.menuActionRequested(item.action, item.payload);
         }
     }

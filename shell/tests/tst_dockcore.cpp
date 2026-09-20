@@ -6,9 +6,11 @@
 #include "dockmodel.h"
 #include "dockpins.h"
 #include "docksettings.h"
+#include "trashmonitor.h"
 
 #include <QDir>
 #include <QFile>
+#include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -467,6 +469,96 @@ private slots:
         // The drag "Keep in Dock" promotion needs the resolved desktop id.
         QCOMPARE(entry.value(QStringLiteral("desktopId")).toString(),
                  QStringLiteral("org.example.Terminal.desktop"));
+    }
+
+    // -- trash monitor ---------------------------------------------------
+
+    void trashMonitorReadsEmptyAndFull()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString root = dir.path() + QStringLiteral("/Trash");
+        QVERIFY(QDir().mkpath(root + QStringLiteral("/info")));
+        QVERIFY(QDir().mkpath(root + QStringLiteral("/files")));
+
+        TrashMonitor monitor(root);
+        monitor.start();
+        QVERIFY(!monitor.isFull());
+        QCOMPARE(monitor.itemCount(), 0);
+
+        writeFile(root + QStringLiteral("/info/foo.txt.trashinfo"),
+                  QStringLiteral("[Trash Info]\nPath=/home/x/foo.txt\n"));
+        writeFile(root + QStringLiteral("/files/foo.txt"), QStringLiteral("hello"));
+        monitor.refresh();
+        QVERIFY(monitor.isFull());
+        QCOMPARE(monitor.itemCount(), 1);
+
+        // A payload with no info record still counts (partial state).
+        writeFile(root + QStringLiteral("/files/bar.txt"), QStringLiteral("bar"));
+        monitor.refresh();
+        QCOMPARE(monitor.itemCount(), 2);
+
+        // Removing the info record and payload drops the count back.
+        QVERIFY(QFile::remove(root + QStringLiteral("/info/foo.txt.trashinfo")));
+        QVERIFY(QFile::remove(root + QStringLiteral("/files/foo.txt")));
+        monitor.refresh();
+        QCOMPARE(monitor.itemCount(), 1);
+    }
+
+    void trashMonitorWatchesForThirdPartyChanges()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString root = dir.path() + QStringLiteral("/Trash");
+        QVERIFY(QDir().mkpath(root + QStringLiteral("/info")));
+        QVERIFY(QDir().mkpath(root + QStringLiteral("/files")));
+
+        TrashMonitor monitor(root);
+        QSignalSpy spy(&monitor, &TrashMonitor::changed);
+        QVERIFY(spy.isValid());
+        monitor.start();
+
+        // A deletion by another application appears as a new info record.
+        writeFile(root + QStringLiteral("/info/third.trashinfo"),
+                  QStringLiteral("[Trash Info]\nPath=/home/x/third\n"));
+        QTRY_COMPARE(monitor.itemCount(), 1);
+        QVERIFY(spy.count() >= 1);
+    }
+
+    void trashMonitorEmptyRemovesItems()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString root = dir.path() + QStringLiteral("/Trash");
+        QVERIFY(QDir().mkpath(root + QStringLiteral("/info")));
+        QVERIFY(QDir().mkpath(root + QStringLiteral("/files")));
+        writeFile(root + QStringLiteral("/info/a.trashinfo"),
+                  QStringLiteral("[Trash Info]\nPath=/home/x/a\n"));
+        writeFile(root + QStringLiteral("/files/a"), QStringLiteral("a"));
+        writeFile(root + QStringLiteral("/info/b.trashinfo"),
+                  QStringLiteral("[Trash Info]\nPath=/home/x/b\n"));
+        QVERIFY(QDir().mkpath(root + QStringLiteral("/files/b")));
+        writeFile(root + QStringLiteral("/files/b/nested"), QStringLiteral("n"));
+
+        TrashMonitor monitor(root);
+        monitor.start();
+        QCOMPARE(monitor.itemCount(), 2);
+
+        const int removed = monitor.empty();
+        QCOMPARE(removed, 4); // 2 info records + a + the b tree
+        QVERIFY(!monitor.isFull());
+        QCOMPARE(monitor.itemCount(), 0);
+        QVERIFY(QDir(root + QStringLiteral("/files")).entryList(
+                    QDir::AllEntries | QDir::NoDotAndDotDot).isEmpty());
+        QVERIFY(QDir(root + QStringLiteral("/info")).entryList(
+                    QDir::AllEntries | QDir::NoDotAndDotDot).isEmpty());
+    }
+
+    void trashMonitorRefusesUnsafeRoot()
+    {
+        TrashMonitor monitor(QStringLiteral("/"));
+        QCOMPARE(monitor.empty(), -1);
+        QVERIFY(!monitor.lastError().isEmpty());
     }
 
     // -- bounce clocks ---------------------------------------------------
