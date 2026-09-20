@@ -199,6 +199,11 @@ Rectangle {
                 required property var modelData
                 required property int index
 
+                // The shell does not implement Tab navigation across the bar
+                // yet; keep the offscreen window from auto-focusing the first
+                // title (and drawing its FocusRing) when it is shown.
+                activeFocusOnTab: false
+
                 title: modelData.title !== undefined ? modelData.title : ""
                 model: modelData.items !== undefined ? modelData.items : []
 

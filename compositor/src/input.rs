@@ -307,6 +307,14 @@ where
                     if let Some(keyboard) = state.seat.get_keyboard() {
                         keyboard.set_focus(state, Some(surface), serial);
                     }
+                } else if state.chrome_has_keyboard_focus() {
+                    // A click on empty desktop space (no window under it)
+                    // dismisses an open chrome menu: dropping the chrome's
+                    // keyboard focus makes the shell see `shellFocused=false`
+                    // and close the menu (FR-3 click-away).
+                    if let Some(keyboard) = state.seat.get_keyboard() {
+                        keyboard.set_focus(state, None, serial);
+                    }
                 }
             }
 

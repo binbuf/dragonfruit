@@ -2431,6 +2431,18 @@ fn chrome_surface_receives_pointer_and_keyboard() {
         |state| state.keys.contains(&1),
     );
 
+    // Clicking empty desktop space drops the chrome's keyboard focus so the
+    // shell sees `shellFocused=false` and closes an open menu (FR-3).
+    state.keyboard_leaves = 0;
+    input.send("motion-abs 0.5 0.9\nbutton 272 down\nbutton 272 up");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.keyboard_leaves > 0,
+    );
+
     // A second chrome surface with a non-zero origin (bottom-right panel)
     // must be hit-tested in output coordinates, not surface-local ones: the
     // hit-test origin regression used to shift the region by its origin.
