@@ -115,6 +115,17 @@ impl LayerSurfaceState {
         self.anchor & edge != 0
     }
 
+    /// Whether this surface is placed on the output named `output_name`.
+    ///
+    /// `None` targets **every** output, matching `wlr-layer-shell`: the menu
+    /// bar and Dock are created without an explicit output, so they anchor on
+    /// each display — including one attached by hotplug (FR-1).
+    pub fn matches_output(&self, output_name: &str) -> bool {
+        self.output
+            .as_deref()
+            .map_or(true, |name| name == output_name)
+    }
+
     /// Resolve the surface rectangle for `output` geometry.
     ///
     /// * A zero size on an axis stretches between both anchors (or the whole
@@ -349,5 +360,21 @@ mod tests {
         assert_eq!(Edge::Bottom.wire(), 1);
         assert_eq!(Edge::Left.wire(), 2);
         assert_eq!(Edge::Right.wire(), 3);
+    }
+
+    #[test]
+    fn a_surface_without_an_output_targets_every_output() {
+        // The menu bar is created with no output, so it must anchor on the
+        // primary and on any output attached later (FR-1 hotplug).
+        let bar = LayerSurfaceState::default();
+        assert!(bar.matches_output("HEADLESS-1"));
+        assert!(bar.matches_output("HDMI-A-1"));
+
+        let pinned = LayerSurfaceState {
+            output: Some("HDMI-A-1".into()),
+            ..Default::default()
+        };
+        assert!(pinned.matches_output("HDMI-A-1"));
+        assert!(!pinned.matches_output("HEADLESS-1"));
     }
 }

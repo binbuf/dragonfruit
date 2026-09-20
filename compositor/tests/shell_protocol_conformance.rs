@@ -566,6 +566,7 @@ struct CompositorProcess {
     token_path: PathBuf,
     stderr_path: PathBuf,
     synthetic_path: Option<PathBuf>,
+    synthetic_output_path: Option<PathBuf>,
 }
 
 impl Drop for CompositorProcess {
@@ -593,12 +594,15 @@ impl Drop for CompositorProcess {
         if let Some(path) = &self.synthetic_path {
             let _ = std::fs::remove_file(path);
         }
+        if let Some(path) = &self.synthetic_output_path {
+            let _ = std::fs::remove_file(path);
+        }
     }
 }
 
 impl CompositorProcess {
     fn start(socket_name: &str, tokens: &[String]) -> Self {
-        Self::start_with_synthetic(socket_name, tokens, None)
+        Self::start_with_harnesses(socket_name, tokens, None, None)
     }
 
     /// Start with the T-03 synthetic-input harness bound at
@@ -607,6 +611,18 @@ impl CompositorProcess {
         socket_name: &str,
         tokens: &[String],
         synthetic_path: Option<&Path>,
+    ) -> Self {
+        Self::start_with_harnesses(socket_name, tokens, synthetic_path, None)
+    }
+
+    /// Start with the opt-in headless test harnesses bound: synthetic input
+    /// (`DRAGONFRUIT_SYNTHETIC_INPUT`) and synthetic output hotplug
+    /// (`DRAGONFRUIT_SYNTHETIC_OUTPUT`).
+    fn start_with_harnesses(
+        socket_name: &str,
+        tokens: &[String],
+        synthetic_path: Option<&Path>,
+        synthetic_output_path: Option<&Path>,
     ) -> Self {
         let socket_name = format!("{socket_name}-{}", std::process::id());
         let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
@@ -627,6 +643,9 @@ impl CompositorProcess {
         if let Some(path) = synthetic_path {
             command.env("DRAGONFRUIT_SYNTHETIC_INPUT", path);
         }
+        if let Some(path) = synthetic_output_path {
+            command.env("DRAGONFRUIT_SYNTHETIC_OUTPUT", path);
+        }
         let mut child = command.spawn().expect("failed to start compositor");
 
         let deadline = Instant::now() + Duration::from_secs(10);
@@ -637,13 +656,15 @@ impl CompositorProcess {
             assert!(Instant::now() < deadline, "compositor never became ready");
             std::thread::sleep(Duration::from_millis(10));
         }
-        if let Some(path) = synthetic_path {
-            while !path.exists() {
-                assert!(
-                    Instant::now() < deadline,
-                    "synthetic-input socket never appeared"
-                );
-                std::thread::sleep(Duration::from_millis(10));
+        for (path, label) in [
+            (synthetic_path, "synthetic-input"),
+            (synthetic_output_path, "synthetic-output"),
+        ] {
+            if let Some(path) = path {
+                while !path.exists() {
+                    assert!(Instant::now() < deadline, "{label} socket never appeared");
+                    std::thread::sleep(Duration::from_millis(10));
+                }
             }
         }
 
@@ -653,6 +674,7 @@ impl CompositorProcess {
             token_path,
             stderr_path,
             synthetic_path: synthetic_path.map(Path::to_path_buf),
+            synthetic_output_path: synthetic_output_path.map(Path::to_path_buf),
         }
     }
 
@@ -1661,6 +1683,30 @@ impl SyntheticInput {
     }
 }
 
+/// Client end of the T-09 synthetic-output harness
+/// (`DRAGONFRUIT_SYNTHETIC_OUTPUT`): drives headless output hotplug.
+struct SyntheticOutput {
+    socket: std::os::unix::net::UnixDatagram,
+    path: PathBuf,
+}
+
+impl SyntheticOutput {
+    fn connect(path: &Path) -> Self {
+        let socket = std::os::unix::net::UnixDatagram::unbound().expect("unbound datagram");
+        Self {
+            socket,
+            path: path.to_path_buf(),
+        }
+    }
+
+    #[track_caller]
+    fn send(&self, command: &str) {
+        self.socket
+            .send_to(command.as_bytes(), &self.path)
+            .unwrap_or_else(|err| panic!("failed to send synthetic output {command:?}: {err}"));
+    }
+}
+
 /// T-03 acceptance (integration, headless): synthetic libinput-equivalent
 /// events drive the seat through the exact same router as a real device.
 /// A keyboard shortcut, a hot-corner dwell, and a four-finger gesture each
@@ -2326,6 +2372,117 @@ fn shell_restart_reanchors_chrome_and_preserves_windows() {
     let _ = app_conn.flush();
     let _ = obs_conn.flush();
     proc.shutdown();
+}
+
+/// T-09 FR-1: the menu bar follows output hotplug. The shell creates its
+/// chrome surface without an explicit output (matching `wlr-layer-shell`,
+/// `None` targets every display), so attaching an output must announce it
+/// through the manager, give it its own three Spaces, re-send the bar's
+/// reserved zone to the new output, and reconfigure the chrome; detaching
+/// must remove its Spaces and migrate its windows. The headless backend's
+/// synthetic-output harness makes the hotplug scriptable.
+#[test]
+fn shell_output_hotplug_reanchors_chrome() {
+    let token = "dd".repeat(32);
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let output_path =
+        PathBuf::from(&runtime_dir).join(format!("dragonfruit-hotplug-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_harnesses(
+        "dragonfruit-conformance-hotplug",
+        std::slice::from_ref(&token),
+        None,
+        Some(&output_path),
+    );
+    let outputs = SyntheticOutput::connect(&output_path);
+
+    // One trusted client is both the shell (creates the bar) and the
+    // observer (binds the manager to watch outputs/workspaces).
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+    let (core, _shell, _surface, _layer) =
+        open_trusted_bar(&conn, &mut queue, &mut state, &token, 28, 28);
+    let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
+    let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.workspaces.len() >= 3 && state.done_count > 0,
+    );
+    assert_eq!(
+        state.workspaces.len(),
+        3,
+        "the one static headless output starts with three Spaces"
+    );
+    assert!(
+        state.output_names.iter().any(|name| name == "HEADLESS-1"),
+        "the static output is announced: {:?}",
+        state.output_names
+    );
+
+    // --- attach a second output -------------------------------------------
+    let configures_before = state.layer_configures.len();
+    state.output_names.clear();
+    state.workspace_removed = 0;
+    outputs.send("add HDMI-A-1 1920 1080 1280 0");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.output_names.iter().any(|name| name == "HDMI-A-1"),
+    );
+    // The new output gets its own three Spaces and its geometry.
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.workspaces.len() >= 6,
+    );
+    assert!(
+        state.output_geometries.contains(&(1280, 0, 1920, 1080)),
+        "the hotplugged output's geometry is announced: {:?}",
+        state.output_geometries
+    );
+    // The bar's exclusive zone is reported to the new output, which is how a
+    // chrome surface that targets every output surfaces its reserve.
+    assert!(
+        state
+            .output_reserved
+            .iter()
+            .any(|(edge, thickness)| *edge == 0 && *thickness == 28),
+        "the menu bar reserves its zone on the hotplugged output: {:?}",
+        state.output_reserved
+    );
+    // Re-anchoring reconfigures the chrome surface for the new scene.
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.layer_configures.len() > configures_before,
+    );
+
+    // --- detach it again ---------------------------------------------------
+    state.workspace_removed = 0;
+    outputs.send("remove HDMI-A-1");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.workspace_removed >= 3,
+    );
+
+    drop(manager);
+    drop(core);
+    let _ = conn.flush();
+    proc.shutdown();
+    assert!(
+        !output_path.exists(),
+        "teardown leak: synthetic-output socket survived"
+    );
 }
 
 /// T-09 input routing (compositor half): a mapped chrome surface is hit-tested

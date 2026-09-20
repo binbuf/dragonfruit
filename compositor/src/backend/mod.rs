@@ -4,6 +4,7 @@
 pub mod drm;
 pub mod headless;
 pub mod nested;
+pub mod synthetic_output;
 
 use smithay::output::{Mode, Output, PhysicalProperties, Subpixel};
 use smithay::utils::Transform;
