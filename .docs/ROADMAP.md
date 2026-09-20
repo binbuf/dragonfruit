@@ -527,6 +527,16 @@ remaining slices (external drops, Trash, Options submenu, per-output
 sizing, scene-graph render path, a11y). Details and hand-off:
 [PROGRESS.md](PROGRESS.md).
 
+T-10 follow-up (popover dismissal): the Dock surface is now `OnDemand`
+keyboard (section 20), and the compositor focuses a chrome surface on any
+button press, not just left. Together with `onKeyboardFocused(false)` closing
+the Dock popovers and `onKeyEvent` routing Escape to the Dock while a popover
+is open, an open context menu/chooser now dismisses on Escape, a click on an
+app, the desktop, or the menu bar, and on focus loss (section 13) — previously
+only choosing a menu item closed it. New
+`chrome_surface_takes_keyboard_focus_on_right_click` conformance test and a
+`tst_dock` Escape case. Details: [PROGRESS.md](PROGRESS.md).
+
 **Foundation milestone E2E (T-01…T-07).** The whole vertical slice now has a
 headless end-to-end test, `compositor/tests/milestone_e2e.rs` (`make e2e`):
 one live session with a shell client, a Wayland app, and an X11 app attached

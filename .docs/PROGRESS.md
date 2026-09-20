@@ -3079,3 +3079,65 @@ Note: one `make e2e` run failed `untrusted_client_cannot_bind_private_globals`
 with `connect failed: Connection refused` and passed on the immediate rerun
 and in isolation — a pre-existing startup race in the conformance harness,
 not this slice. Worth a follow-up if it recurs.
+
+## T-10 follow-up — Dock popover click-away/focus-loss dismissal
+
+**State: fixed.** A live report: a Dock icon's right-click context menu opened
+but could not be dismissed by clicking an app, the desktop, or the menu bar —
+only by choosing a menu item. This was a real gap, not intended: section 13
+requires Escape, click-away, and focus loss to dismiss Dock popovers. The
+menu bar had this via keyboard focus; the Dock could not, because its surface
+was created with `keyboard_interaction = none`, so it never took keyboard
+focus and never lost it.
+
+### The fix
+
+- **Dock surface is `OnDemand`** (`ShellProtocol::createDockSurface`), not
+  `None`. Section 20 already specifies this while focus is inside the Dock;
+  the idle Dock still never holds focus because `OnDemand` only takes it on a
+  click.
+- **Chrome takes keyboard focus on any button press** (`compositor/src/input.rs`).
+  The click-to-focus block previously ran only for `BTN_LEFT`, so a right-click
+  (which opens the context menu) never focused the Dock. Chrome surfaces now
+  focus on any press; windows still focus on left-click only. The off-chrome
+  branch also drops a focused chrome surface on any button (a right-click on a
+  window or the desktop now dismisses an open popover, not just a left-click).
+- **Focus loss closes Dock popovers** (`ShellController::onKeyboardFocused`).
+  When the shell's keyboard leaves, `closePopovers()` runs. Because the Dock
+  surface is mapped and holds focus while a popover is open, the compositor's
+  existing click-away path (focus a window, drop focus on empty desktop, focus
+  the menu bar) all now reach the Dock.
+- **Escape is routed to the Dock** (`ShellController::onKeyEvent`). While
+  `popoverOpen` is true the synthesized key goes to the Dock's offscreen
+  window (whose `ContextMenu`/`DockWindowChooser` already have
+  `Keys.onEscapePressed` and `focus: open`), otherwise to the menu bar.
+
+### Tests
+
+- `compositor/tests/shell_protocol_conformance.rs`: new
+  `chrome_surface_takes_keyboard_focus_on_right_click` proves an `OnDemand`
+  chrome surface takes keyboard focus on `BTN_RIGHT` and drops it on a
+  left-click off the chrome. `chrome_surface_receives_pointer_and_keyboard`
+  still passes.
+- `shell/tests/tst_dock.qml`: new `test_escape_dismisses_the_context_menu`
+  (QML Escape closes the menu and clears `popoverOpen`).
+
+### Notes / decisions
+
+- **The focus-steal trade-off is accepted.** With the Dock surface `OnDemand`,
+  a left-click on a Dock entry briefly focuses the Dock. `activate_app` /
+  `select_overview_toplevel` then focus the target window, so running-app
+  clicks end with the window focused. A dismissed window chooser leaves the
+  Dock focused until the next click — the same model the menu bar already
+  uses. The alternative (an `Exclusive` popup surface that grabs focus on open
+  and releases it on close) needs a "release focus" path the protocol does not
+  have; `OnDemand` on the always-mapped Dock surface avoids stranding focus on
+  an unmapped overlay.
+- **`onKeyboardFocused` still sets the menu bar's `shellFocused`.** When the
+  Dock holds focus the bar is marked focused; `MenuBar` only acts on the false
+  transition (close menus), so this is harmless. A surface-aware keyboard
+  signal would be cleaner if more chrome surfaces appear.
+- This closes the section 13 "dismissible by Escape, click-away, focus loss"
+  behavior for Dock app menus and the window chooser. The underlying
+  app-state change dismissal (e.g. the app exits) still comes from the
+  projection rebuild.

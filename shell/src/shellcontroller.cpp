@@ -602,6 +602,11 @@ void ShellController::onKeyboardFocused(bool focused)
 {
     if (m_item)
         m_item->setProperty("shellFocused", focused);
+    // The Dock surface holds keyboard focus while a context menu or window
+    // chooser is open (OnDemand); a click-away or focus loss dismisses the
+    // popover (T-10 section 13).
+    if (!focused && m_dockItem)
+        QMetaObject::invokeMethod(m_dockItem, "closePopovers");
 }
 
 void ShellController::onKeyEvent(quint32 key, bool pressed)
@@ -612,8 +617,16 @@ void ShellController::onKeyEvent(quint32 key, bool pressed)
     if (qtKey == Qt::Key_unknown)
         return;
     QKeyEvent event(pressed ? QEvent::KeyPress : QEvent::KeyRelease, qtKey, Qt::NoModifier);
-    QCoreApplication::sendEvent(m_window, &event);
-    scheduleRender();
+    // An open Dock popover owns the keyboard (Escape/arrows); otherwise the
+    // menu bar does (T-10 sections 13/20).
+    if (m_dockWindow && m_dockItem
+            && m_dockItem->property("popoverOpen").toBool()) {
+        QCoreApplication::sendEvent(m_dockWindow, &event);
+        scheduleDockRender();
+    } else {
+        QCoreApplication::sendEvent(m_window, &event);
+        scheduleRender();
+    }
 }
 
 // --- Dock (T-10) ------------------------------------------------------------

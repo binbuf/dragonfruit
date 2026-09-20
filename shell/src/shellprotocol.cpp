@@ -316,11 +316,13 @@ bool ShellProtocol::createDockSurface(DockPosition position, int thickness, int 
     df_layer_surface_add_listener(m_dockLayer, &dockListener, this);
 
     // A bottom Dock stretches the full output width; a vertical Dock the full
-    // height. Either way it reserves the baseline bar thickness on its edge
-    // and never takes keyboard focus while idle (T-10 section 2).
+    // height. Either way it reserves the baseline bar thickness on its edge.
+    // It takes keyboard focus only on a click (OnDemand), which lets an open
+    // context menu/chooser be dismissed by click-away/focus loss and receive
+    // Escape (T-10 sections 13/20); the idle Dock never holds focus.
     df_layer_surface_set_anchor(m_dockLayer, dockSurfaceAnchor(position));
     df_layer_surface_set_keyboard_interaction(
-        m_dockLayer, DF_LAYER_SURFACE_KEYBOARD_INTERACTION_NONE);
+        m_dockLayer, DF_LAYER_SURFACE_KEYBOARD_INTERACTION_ON_DEMAND);
     if (!configureDockSurface(position, thickness, exclusiveZone))
         return false;
     // Start unmapped; the first render commits a buffer.
