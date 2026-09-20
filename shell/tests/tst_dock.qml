@@ -20,6 +20,7 @@ Item {
         Component { id: dockComponent; Dock { } }
         Component { id: entryComponent; DockEntry { } }
         Component { id: glyphComponent; DockGlyph { } }
+        Component { id: backdropComponent; Rectangle { } }
 
         SignalSpy { id: activatedSpy; signalName: "entryActivated" }
         SignalSpy { id: menuSpy; signalName: "entryContextMenuRequested" }
@@ -1098,6 +1099,29 @@ Item {
         }
 
         // -- Artwork --------------------------------------------------------
+
+        function test_magnify_band_is_transparent() {
+            // The Dock surface spans the baseline bar plus the transparent
+            // magnified band above it; only the bar and the entries may paint,
+            // or the band shows as an opaque strip (T-10 section 2). Paint the
+            // backing rectangle and prove the band lets it show through.
+            var backdrop = createTemporaryObject(backdropComponent, stage, {
+                x: 0, y: 0, width: 400, height: 240, color: "#00ff00"
+            });
+            var dock = make(dockComponent, {
+                width: 400, height: 240,
+                entries: [ app("a", "A", true) ]
+            });
+            waitForRendering(stage);
+            compare(dock.color.a, 0);
+            var img = grabImage(stage);
+            var bandX = Math.floor(dock.width / 2);
+            var bandY = Math.max(0, Math.floor(dock.barRect.y) - 4);
+            compare(img.red(bandX, bandY), 0);
+            compare(img.green(bandX, bandY), 255);
+            compare(img.blue(bandX, bandY), 0);
+            backdrop.destroy();
+        }
 
         function test_glyph_renders_pixels() {
             var appGlyph = make(glyphComponent, {

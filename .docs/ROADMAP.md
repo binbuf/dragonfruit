@@ -537,6 +537,13 @@ only choosing a menu item closed it. New
 `chrome_surface_takes_keyboard_focus_on_right_click` conformance test and a
 `tst_dock` Escape case. Details: [PROGRESS.md](PROGRESS.md).
 
+T-10 follow-up (opaque magnify band): `Dock.qml`'s root `Rectangle` was left
+with Qt's default white color, so the transparent magnified band rendered as
+a white strip above the Dock bar in a live session. The root is now
+`color: "transparent"` and `tst_dock` gained a pixel check that paints an
+opaque backdrop and asserts the band shows through it. Details:
+[PROGRESS.md](PROGRESS.md).
+
 **Foundation milestone E2E (T-01…T-07).** The whole vertical slice now has a
 headless end-to-end test, `compositor/tests/milestone_e2e.rs` (`make e2e`):
 one live session with a shell client, a Wayland app, and an X11 app attached

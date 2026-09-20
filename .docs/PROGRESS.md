@@ -3141,3 +3141,27 @@ focus and never lost it.
   behavior for Dock app menus and the window chooser. The underlying
   app-state change dismissal (e.g. the app exits) still comes from the
   projection rebuild.
+
+## T-10 follow-up — the opaque white magnify band
+
+**State: fixed.** A live report: a white strip sat between the purple desktop
+and the Dock bar, roughly the height of the transparent magnified band. The
+`Dock.qml` root is a `Rectangle` and had no `color`, so it painted Qt's
+default white across the whole chrome surface (bar + magnify band). Only the
+`dockBar` child and the entries are supposed to paint; the band must stay
+transparent so the desktop shows through (section 2). Fix: the root is now
+`color: "transparent"`. This had been latent since the first Dock slice and
+was invisible to the headless tests and the on-demand render counters; it
+only showed up in a live nested session.
+
+`tst_dock` gains `test_magnify_band_is_transparent`: it paints an opaque green
+backdrop behind the Dock, grabs the scene, and asserts the pixel in the band
+above `barRect` is the backdrop green (it fails with the default root color
+and passes with the transparent root). The band's height is `magnifyBand`
+(64 px at the default `dock.size`), so the strip was large enough to be
+obvious.
+
+Lesson: a chrome QML root that only partially paints must be explicitly
+transparent. `MenuBar.qml` sets `color: Theme.color.chrome` because the bar is
+opaque across its whole surface; `Dock.qml` and `DockWindowChooser.qml` do
+not.
