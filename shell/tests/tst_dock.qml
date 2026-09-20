@@ -205,10 +205,14 @@ Item {
             });
             compare(dock.axisIsX, false);
             compare(dock.indicatorEdge, "left");
-            // Items stack on the y axis and keep the bar on the left edge.
+            // Items stack on the y axis and the bar hugs the left edge.
             var layout = dock.layout;
             verify(layout[1].y > layout[0].y);
-            verify(dock.barRect.x < layout[0].x);
+            compare(dock.barRect.x, 0);
+            compare(dock.barRect.w, dock.barThickness);
+            // An entry starts at the bar padding on the anchored edge side.
+            fuzzyCompare(layout[0].x, dock.padding, 0.001);
+            verify(dock.barRect.x + dock.barThickness > layout[0].x);
         }
 
         function test_right_dock_indicator_edge() {
@@ -217,6 +221,65 @@ Item {
                 entries: [ app("a", "A", true) ]
             });
             compare(dock.indicatorEdge, "right");
+            // The bar hugs the right edge and entries pack from the right so
+            // the running indicator is against the screen edge.
+            compare(dock.barRect.x, 160 - dock.barThickness);
+            var layout = dock.layout;
+            fuzzyCompare(layout[0].x + layout[0].w, 160 - dock.padding, 0.001);
+        }
+
+        function test_vertical_entries_stay_inside_the_surface() {
+            // A vertical Dock's magnified artwork grows into the transparent
+            // band on the interior side; it must never be clipped by the
+            // (thickness + band)-wide surface.
+            var left = make(dockComponent, {
+                width: 124, height: 720, position: "left", magnification: 1.0,
+                entries: [ app("a", "A", true), app("b", "B", true), app("c", "C", true) ]
+            });
+            left.pointerAlong = left._baseline.centers[0];
+            waitForRendering(stage);
+            verify(left.barRect.x >= 0);
+            verify(left.barRect.x + left.barRect.w <= left.width);
+            for (var i = 0; i < left.layout.length; ++i) {
+                verify(left.layout[i].x >= 0);
+                verify(left.layout[i].x + left.layout[i].w <= left.width + 0.001);
+            }
+
+            var right = make(dockComponent, {
+                width: 124, height: 720, position: "right", magnification: 1.0,
+                entries: [ app("a", "A", true), app("b", "B", true), app("c", "C", true) ]
+            });
+            right.pointerAlong = right._baseline.centers[0];
+            waitForRendering(stage);
+            verify(right.barRect.x >= 0);
+            verify(right.barRect.x + right.barRect.w <= right.width);
+            for (var j = 0; j < right.layout.length; ++j) {
+                verify(right.layout[j].x >= -0.001);
+                verify(right.layout[j].x + right.layout[j].w <= right.width);
+            }
+        }
+
+        function test_vertical_hide_translates_off_the_side_edge() {
+            var left = make(dockComponent, {
+                width: 160, height: 800, position: "left",
+                autoHide: true, revealed: true,
+                entries: [ app("a", "A", true) ]
+            });
+            compare(left.hideX, 0);
+            left.hide();
+            waitForRendering(stage);
+            verify(left.hideX < 0);
+            verify(left.barRect.x < 0);
+
+            var right = make(dockComponent, {
+                width: 160, height: 800, position: "right",
+                autoHide: true, revealed: true,
+                entries: [ app("a", "A", true) ]
+            });
+            right.hide();
+            waitForRendering(stage);
+            verify(right.hideX > 0);
+            verify(right.barRect.x > 160 - right.barThickness);
         }
 
         // -- Auto-hide ------------------------------------------------------
@@ -230,6 +293,9 @@ Item {
             dock.hide();
             waitForRendering(stage);
             verify(dock.hideOffset >= dock.barThickness);
+            // A bottom bar hides downward, off the bottom edge.
+            verify(dock.hideY > 0);
+            verify(dock.barRect.y > dock.magnifyBand);
             dock.reveal();
             waitForRendering(stage);
             compare(dock.hideOffset, 0);
@@ -471,6 +537,29 @@ Item {
             compare(dock.magnifying, false);
             verify(dock.popoverRect.w > 0);
             verify(dock.popoverRect.h > 0);
+        }
+
+        function test_vertical_menu_opens_beside_the_bar() {
+            // A left Dock's popover opens to the interior (right of the bar);
+            // a right Dock's to its left. The shell grows the offscreen scene
+            // horizontally so neither is clipped (T-10 section 5).
+            var left = make(dockComponent, {
+                width: 124, height: 720, position: "left",
+                entries: [ app("files", "Files", true) ]
+            });
+            left.openEntryMenu(left.items[0]);
+            waitForRendering(stage);
+            verify(left.popoverRect.w > 0);
+            verify(left.popoverRect.x >= left.barRect.x + left.barRect.w);
+
+            var right = make(dockComponent, {
+                width: 124, height: 720, position: "right",
+                entries: [ app("files", "Files", true) ]
+            });
+            right.openEntryMenu(right.items[0]);
+            waitForRendering(stage);
+            verify(right.popoverRect.w > 0);
+            verify(right.popoverRect.x + right.popoverRect.w <= right.barRect.x);
         }
 
         function test_menu_model_lists_windows_and_actions() {

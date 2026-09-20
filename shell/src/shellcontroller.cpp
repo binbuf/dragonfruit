@@ -277,7 +277,14 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // baseline bar thickness and magnified band reflect the saved size.
     applyDockSettings(false);
     m_dockBarThickness = qRound(m_dockItem->property("barThickness").toReal());
-    m_dockHeight = m_dockBarThickness + qCeil(m_dockItem->property("magnifyBand").toReal());
+    m_dockThickness = m_dockBarThickness + qCeil(m_dockItem->property("magnifyBand").toReal());
+    m_dockPosition = dockPosition();
+    // For a bottom Dock the surface height is known up front; a vertical
+    // Dock's height comes from the first configure (the output height).
+    if (m_dockPosition == ShellProtocol::DockPosition::Bottom)
+        m_dockHeight = m_dockThickness;
+    else
+        m_dockWidth = m_dockThickness;
     // The running projection may have arrived before the Dock scene existed.
     rebuildDockEntries();
 
@@ -291,11 +298,11 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // The Dock reserves its baseline bar thickness; with auto-hide on it
     // reserves nothing (section 2).
     const int dockExclusive = m_dockItem->property("autoHide").toBool() ? 0 : m_dockBarThickness;
-    if (!m_protocol->createDockSurface(m_dockHeight, dockExclusive))
+    if (!m_protocol->createDockSurface(m_dockPosition, m_dockThickness, dockExclusive))
         return false;
     // Dock context menus and the window chooser ride a second `overlay`
-    // surface anchored to the bottom edge (T-10 sections 9/13).
-    if (!m_protocol->createDockPopupSurface())
+    // surface anchored to the Dock's edge (T-10 sections 9/13).
+    if (!m_protocol->createDockPopupSurface(m_dockPosition))
         return false;
 
     // The shell snapshots the QML scene into a shm buffer on demand; a popup
@@ -612,15 +619,31 @@ void ShellController::onKeyEvent(quint32 key, bool pressed)
 void ShellController::onDockConfigured(int width, int height, quint32)
 {
     // The compositor sends a pre-layout configure at the full output size
-    // before applying the Dock's anchor/size; skip it.
-    if (height != m_dockHeight) {
+    // before applying the Dock's anchor/size; skip it. The Dock's extent
+    // perpendicular to its edge is `m_dockThickness`: the height for a bottom
+    // Dock, the width for a vertical one (T-10 section 5).
+    const bool extentMatches = m_dockPosition == ShellProtocol::DockPosition::Bottom
+            ? height == m_dockThickness
+            : width == m_dockThickness;
+    if (!extentMatches) {
         fprintf(stderr, "dragonfruit-shell: ignoring pre-layout Dock configure %dx%d\n", width,
                 height);
         return;
     }
     m_dockWidth = width;
+    m_dockHeight = height;
     fprintf(stderr, "dragonfruit-shell: Dock configured %dx%d\n", width, height);
     renderDock();
+}
+
+ShellProtocol::DockPosition ShellController::dockPosition() const
+{
+    const QString position = m_settings.position();
+    if (position == QLatin1String("left"))
+        return ShellProtocol::DockPosition::Left;
+    if (position == QLatin1String("right"))
+        return ShellProtocol::DockPosition::Right;
+    return ShellProtocol::DockPosition::Bottom;
 }
 
 int ShellController::iconSizeForSize(double size) const
@@ -646,11 +669,14 @@ void ShellController::applyDockSettings(bool reconfigure)
     m_dockItem->setProperty("minimizeIntoTileIcon", m_settings.minimizeIntoTileIcon());
     m_dockItem->setProperty("animateOpening", m_settings.animateOpening());
     m_dockItem->setProperty("showRecentApps", m_settings.showRecentApps());
-    // The position key is persisted but only the bottom anchor is supported
-    // until the vertical-surface slice lands (T-10 section 5).
-    if (m_settings.position() != QLatin1String("bottom"))
-        qWarning() << "shell: dock.position" << m_settings.position()
-                   << "is not supported yet; keeping the bottom Dock";
+    // The position is applied to the surface anchor (T-10 section 5); the
+    // QML layout mirrors for a vertical Dock.
+    const ShellProtocol::DockPosition position = dockPosition();
+    m_dockItem->setProperty("position",
+                            position == ShellProtocol::DockPosition::Left ? QStringLiteral("left")
+                            : position == ShellProtocol::DockPosition::Right
+                                    ? QStringLiteral("right")
+                                    : QStringLiteral("bottom"));
     // Reduced motion is a global animation policy: bind it onto the
     // design-system singleton so the whole shell reacts (T-10 section 20).
     if (m_engine) {
@@ -661,12 +687,30 @@ void ShellController::applyDockSettings(bool reconfigure)
     }
     if (!reconfigure || !m_protocol)
         return;
+    // A live geometry change moves the bar, so any open popover is dismissed
+    // rather than left floating detached (T-10 section 22).
+    QMetaObject::invokeMethod(m_dockItem, "closePopovers");
     // The icon size changed the baseline bar and the magnified band; re-apply
-    // the surface extent and reserved zone (auto-hide reserves nothing).
+    // the surface extent, anchor, and reserved zone (auto-hide reserves
+    // nothing).
     m_dockBarThickness = qRound(m_dockItem->property("barThickness").toReal());
-    m_dockHeight = m_dockBarThickness + qCeil(m_dockItem->property("magnifyBand").toReal());
+    m_dockThickness = m_dockBarThickness + qCeil(m_dockItem->property("magnifyBand").toReal());
+    const bool positionChanged = position != m_dockPosition;
+    m_dockPosition = position;
+    if (positionChanged) {
+        // The stretch dimension changes with the edge and is only known from
+        // the next configure; pause rendering until it arrives so a stale
+        // frame is never committed at the wrong aspect.
+        if (position == ShellProtocol::DockPosition::Bottom) {
+            m_dockHeight = m_dockThickness;
+            m_dockWidth = 0;
+        } else {
+            m_dockWidth = m_dockThickness;
+            m_dockHeight = 0;
+        }
+    }
     const int exclusive = m_settings.autohide() ? 0 : m_dockBarThickness;
-    if (!m_protocol->configureDockSurface(m_dockHeight, exclusive))
+    if (!m_protocol->configureDockSurface(position, m_dockThickness, exclusive))
         qWarning() << "shell: cannot reconfigure the Dock surface:"
                    << m_protocol->lastError();
     renderDock();
@@ -938,9 +982,10 @@ void ShellController::onDockPointerMoved(qreal x, qreal y)
     if (!m_dockWindow)
         return;
     // The compositor delivers Dock-surface coordinates in scene space; the
-    // scene is pushed down by `m_dockItemOffsetY` inside the offscreen window
-    // when a popover has headroom.
-    const QPointF p(x, y + m_dockItemOffsetY);
+    // scene is offset inside the offscreen window when a popover needs
+    // headroom (above a bottom Dock) or a side gutter (beside a vertical
+    // Dock).
+    const QPointF p(x + m_dockItemOffsetX, y + m_dockItemOffsetY);
     QMouseEvent event(QEvent::MouseMove, p, p, Qt::NoButton, m_dockButtons, Qt::NoModifier);
     QCoreApplication::sendEvent(m_dockWindow, &event);
     scheduleDockRender();
@@ -959,7 +1004,7 @@ void ShellController::onDockPointerButton(qreal x, qreal y, quint32 button, bool
         m_dockButtons |= qtButton;
     else
         m_dockButtons &= ~qtButton;
-    const QPointF p(x, y + m_dockItemOffsetY);
+    const QPointF p(x + m_dockItemOffsetX, y + m_dockItemOffsetY);
     QMouseEvent event(pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease, p, p,
                       qtButton, m_dockButtons, Qt::NoModifier);
     QCoreApplication::sendEvent(m_dockWindow, &event);
@@ -1099,14 +1144,21 @@ void ShellController::renderDock()
     const int ph = qCeil(popover.value(QStringLiteral("h")).toReal());
     const bool hasPopover = pw > 0 && ph > 0;
 
-    // A popover above the bar needs headroom: grow the offscreen scene
-    // upward and push the Dock item down so scene y=0 stays the surface top.
+    // A popover above a bottom bar needs headroom; beside a vertical bar it
+    // needs a left or right gutter. Grow the offscreen window and offset the
+    // Dock item so scene (0,0) stays the surface top-left and the whole
+    // popover is inside the buffer.
     const int headroom = hasPopover ? qMax(0, -py) : 0;
+    const int leftGutter = hasPopover ? qMax(0, -px) : 0;
+    const int rightGutter = hasPopover ? qMax(0, (px + pw) - m_dockWidth) : 0;
+    m_dockItemOffsetX = leftGutter;
     m_dockItemOffsetY = headroom;
+    m_dockItem->setX(leftGutter);
     m_dockItem->setY(headroom);
+    const int windowWidth = m_dockWidth + leftGutter + rightGutter;
     const int windowHeight = m_dockHeight + headroom;
-    if (m_dockWindow->width() != m_dockWidth || m_dockWindow->height() != windowHeight)
-        m_dockWindow->resize(m_dockWidth, windowHeight);
+    if (m_dockWindow->width() != windowWidth || m_dockWindow->height() != windowHeight)
+        m_dockWindow->resize(windowWidth, windowHeight);
     if (!m_dockWindow->isVisible())
         m_dockWindow->show();
     const QImage image = m_dockWindow->grabWindow();
@@ -1124,21 +1176,42 @@ void ShellController::renderDock()
                                 qCeil(rect.value(QStringLiteral("h")).toReal())));
     }
     m_protocol->setDockInputRegion(inputRects);
-    if (!m_protocol->commitDockImage(image.copy(0, headroom, m_dockWidth, m_dockHeight)))
+    if (!m_protocol->commitDockImage(
+                image.copy(leftGutter, headroom, m_dockWidth, m_dockHeight)))
         qWarning() << "shell: failed to commit the Dock:" << m_protocol->lastError();
 
-    // Place and commit the popover on the Dock's overlay surface. It is
-    // anchored bottom|left, so the bottom margin is measured from the output
-    // bottom: scene y=0 is the Dock surface top, `m_dockHeight` from the
-    // bottom.
+    // Place and commit the popover on the Dock's overlay surface. The
+    // popover is anchored to the Dock's edge, so the margins are measured
+    // from that edge: scene y=0 is the Dock surface top and scene x=0 its
+    // left. A bottom popover sits above the bar (bottom margin); a vertical
+    // Dock's popover sits beside the bar (left/right margin) at the entry's
+    // scene y (T-10 section 5).
     m_dockPopoverX = px;
     m_dockPopoverY = py;
     m_dockPopoverWidth = pw;
     m_dockPopoverHeight = ph;
     if (hasPopover) {
-        const int bottomMargin = m_dockHeight - (py + ph);
-        m_protocol->setDockPopupGeometry(px, bottomMargin, pw, ph);
-        const QRect popupRect(px, headroom + py, pw, ph);
+        int top = 0;
+        int right = 0;
+        int bottom = 0;
+        int left = 0;
+        switch (m_dockPosition) {
+        case ShellProtocol::DockPosition::Left:
+            top = py;
+            left = px;
+            break;
+        case ShellProtocol::DockPosition::Right:
+            top = py;
+            right = m_dockWidth - (px + pw);
+            break;
+        case ShellProtocol::DockPosition::Bottom:
+        default:
+            bottom = m_dockHeight - (py + ph);
+            left = px;
+            break;
+        }
+        m_protocol->setDockPopupGeometry(top, right, bottom, left, pw, ph);
+        const QRect popupRect(leftGutter + px, headroom + py, pw, ph);
         if (!m_protocol->commitDockPopupImage(image.copy(popupRect)))
             qWarning() << "shell: failed to commit the Dock popover:"
                        << m_protocol->lastError();

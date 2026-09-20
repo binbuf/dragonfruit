@@ -14,8 +14,8 @@
 #include "desktopentry.h"
 #include "dockpins.h"
 #include "docksettings.h"
+#include "shellprotocol.h"
 
-class ShellProtocol;
 class QQmlEngine;
 class QQuickWindow;
 class QQuickItem;
@@ -104,6 +104,8 @@ private:
     void saveDockSettings();
     // Map `dock.size` (0..1) onto the icon-size token range.
     int iconSizeForSize(double size) const;
+    // Map the `dock.position` string onto the protocol edge enum.
+    ShellProtocol::DockPosition dockPosition() const;
     // Render the Dock every ~16 ms for `ms`, to capture a popover open/close
     // animation.
     void startDockAnimationRenders(int ms);
@@ -153,16 +155,23 @@ private:
     int m_width = 0;
     int m_height = 0;
     int m_barHeight = 28;
-    // Dock surface geometry (T-10): full output width, `m_dockHeight` tall
-    // so magnified artwork can rise above the baseline bar.
+    // Dock surface geometry (T-10): the surface extent perpendicular to its
+    // edge (`m_dockThickness`, the baseline bar plus the magnify band) and
+    // the configured surface size. For a bottom Dock the width comes from the
+    // configure and the height is `m_dockThickness`; a vertical Dock is the
+    // mirror image.
     int m_dockWidth = 0;
     int m_dockHeight = 0;
+    int m_dockThickness = 0;
     int m_dockBarThickness = 0;
+    ShellProtocol::DockPosition m_dockPosition = ShellProtocol::DockPosition::Bottom;
     bool m_dockRenderPending = false;
     Qt::MouseButtons m_dockButtons = Qt::NoButton;
     // The Dock popover (context menu / window chooser) in Dock-scene
-    // coordinates, plus the vertical offset the scene is placed at inside the
-    // offscreen window so a popover can render above the bar.
+    // coordinates, plus the offset the scene is placed at inside the offscreen
+    // window so a popover can render above (bottom Dock) or beside (vertical
+    // Dock) the bar without leaving the buffer.
+    int m_dockItemOffsetX = 0;
     int m_dockItemOffsetY = 0;
     int m_dockPopoverX = 0;
     int m_dockPopoverY = 0;
