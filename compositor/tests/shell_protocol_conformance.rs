@@ -3282,3 +3282,126 @@ fn dock_popup_is_bottom_anchored_and_reserves_nothing() {
         "teardown leak: synthetic-input socket survived"
     );
 }
+
+/// T-10 section 20 (compositor half): the `focus-dock` system shortcut hands
+/// the keyboard to the `dock` chrome surface, and `toggle-dock` reaches the
+/// shell as an input action. The Dock is `OnDemand`, so it accepts focus
+/// when the shortcut targets it (unlike a `None` surface).
+#[test]
+fn focus_dock_shortcut_hands_the_keyboard_to_the_dock() {
+    let token = "dc".repeat(32);
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path =
+        PathBuf::from(&runtime_dir).join(format!("dragonfruit-dock-focus-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-dock-focus",
+        std::slice::from_ref(&token),
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (name, version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, name, version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+    let (shell_name, shell_version) = state.shell_global.expect("df_shell advertised");
+    let shell = bind_shell(&mut state, &queue, shell_name, shell_version);
+    let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
+    let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
+    let qh = queue.handle();
+
+    // A Dock surface that can take keyboard focus on demand.
+    let dock_surface = state.compositor.clone().unwrap().create_surface(&qh, ());
+    let dock = shell.get_layer_surface(
+        &dock_surface,
+        None,
+        df_shell::Layer::Top,
+        "dock".to_string(),
+        &qh,
+        (),
+    );
+    dock.set_anchor(2 | 4 | 8); // bottom | left | right
+    dock.set_size(0, 95);
+    dock.set_exclusive_zone(60);
+    dock.set_keyboard_interaction(df_layer_surface::KeyboardInteraction::OnDemand);
+    dock_surface.commit();
+
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.pointer.is_some() && state.keyboard.is_some(),
+    );
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .layer_configures
+                .iter()
+                .any(|(_, width, height)| *width == OUTPUT_W && *height == 95)
+        },
+    );
+
+    // --- FocusDock: Ctrl+F3 (evdev KEY_LEFTCTRL=29, KEY_F3=61) ----------
+    state.keyboard_enters = 0;
+    state.keyboard_leaves = 0;
+    input.send("key 29 down\nkey 61 down\nkey 61 up\nkey 29 up");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .input_actions
+                .iter()
+                .any(|(action, source, _)| action == "focus-dock" && source == "keyboard")
+        },
+    );
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.keyboard_enters > 0,
+    );
+
+    // --- ToggleDock: Super+Option+D (evdev LEFTMETA=125, LEFTALT=56, D=32)
+    state.input_actions.clear();
+    input.send("key 125 down\nkey 56 down\nkey 32 down\nkey 32 up\nkey 56 up\nkey 125 up");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .input_actions
+                .iter()
+                .any(|(action, source, _)| action == "toggle-dock" && source == "keyboard")
+        },
+    );
+
+    drop(dock);
+    drop(dock_surface);
+    drop(manager);
+    drop(shell);
+    drop(core);
+    let _ = conn.flush();
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}

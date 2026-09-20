@@ -36,6 +36,13 @@ pub enum InputAction {
     DesktopReveal,
     /// Lock the session.
     LockScreen,
+    /// Move keyboard focus into the Dock (T-10 section 20). The compositor
+    /// focuses the `dock` chrome surface; the shell then owns in-Dock
+    /// navigation.
+    FocusDock,
+    /// Toggle the Dock's auto-hide (T-10 section 15). The shell owns the
+    /// setting; the compositor only routes the action.
+    ToggleDock,
 }
 
 impl InputAction {
@@ -63,6 +70,8 @@ impl InputAction {
             InputAction::NotificationCenter => "notification-center",
             InputAction::DesktopReveal => "desktop-reveal",
             InputAction::LockScreen => "lock-screen",
+            InputAction::FocusDock => "focus-dock",
+            InputAction::ToggleDock => "toggle-dock",
         }
     }
 }

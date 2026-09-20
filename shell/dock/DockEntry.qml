@@ -24,6 +24,9 @@ Item {
     property bool dragging: false
     // A lifted (dragged) entry scales up and casts a shadow (T-10 section 12).
     property bool lifted: false
+    // Keyboard navigation focus (T-10 section 20): draws the design-system
+    // FocusRing around the artwork.
+    property bool keyboardFocused: false
 
     readonly property string kind: entry.kind !== undefined ? entry.kind : "app"
     readonly property bool isDivider: kind === "divider"
@@ -128,6 +131,15 @@ Item {
         radius: Theme.controls.dock.radius
         blur: Theme.controls.popover.shadowBlur
         z: -1
+    }
+
+    // Keyboard navigation focus ring (T-10 section 20), drawn around the
+    // artwork only (the running indicator is not part of the target).
+    FocusRing {
+        objectName: "keyboardFocusRing"
+        target: glyph
+        cornerRadius: Theme.controls.dock.radius
+        shown: root.keyboardFocused && !root.isDivider
     }
 
     DockGlyph {

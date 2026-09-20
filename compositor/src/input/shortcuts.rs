@@ -227,6 +227,7 @@ impl ShortcutEngine {
     /// focused application's accelerators.
     pub fn resolve(&self, mods: &ModifiersState, key: KeysymValue) -> Option<ShortcutOutcome> {
         let state = RoleMods::from_state(mods);
+        let key = fold_ascii_letter(key);
 
         for shortcut in &self.system {
             if shortcut.mods == state && shortcut.key == key {
@@ -267,6 +268,20 @@ impl ShortcutEngine {
     }
 }
 
+/// Fold an ASCII lowercase letter keysym to uppercase.
+///
+/// The input filter resolves a key's base (level-0) symbol, which xkb reports
+/// lowercase for letter keys, while the binding table uses the `KEY_A`-style
+/// uppercase constants. Shortcuts never distinguish case (Shift is a modifier
+/// role), so fold the queried key. Non-letters are unchanged.
+fn fold_ascii_letter(key: KeysymValue) -> KeysymValue {
+    if (0x61..=0x7a).contains(&key) {
+        key - 0x20
+    } else {
+        key
+    }
+}
+
 /// The default system shortcut table.
 ///
 /// The exact chords are defaults; the Settings Keyboard pane (T-16)
@@ -299,6 +314,16 @@ pub fn default_system_bindings() -> Vec<Shortcut> {
             control.union(shift),
             keysyms::KEY_N,
             InputAction::NotificationCenter,
+        ),
+        // T-10 section 20: move keyboard focus into the Dock and toggle its
+        // auto-hide. The design's "Fn-Control-F3" resolves to Control-F3 on
+        // Linux (the Fn layer is a hardware key); Super+Option+D matches the
+        // macOS auto-hide toggle.
+        Shortcut::new(control, keysyms::KEY_F3, InputAction::FocusDock),
+        Shortcut::new(
+            command.union(RoleMods::OPTION),
+            keysyms::KEY_D,
+            InputAction::ToggleDock,
         ),
     ];
     for (i, key) in [
@@ -371,6 +396,26 @@ mod tests {
         assert_eq!(
             engine.resolve(&m, keysyms::KEY_Right),
             Some(ShortcutOutcome::System(InputAction::WorkspaceNext))
+        );
+    }
+
+    #[test]
+    fn letter_bindings_match_the_base_lowercase_symbol() {
+        // The input filter resolves a key's base (level-0) symbol, which is
+        // lowercase for letter keys; the binding table uses `KEY_Q`-style
+        // uppercase constants. Letter chords must still resolve.
+        let engine = ShortcutEngine::default();
+        assert_eq!(
+            engine.resolve(&mods(true, false, true, false), keysyms::KEY_q),
+            Some(ShortcutOutcome::System(InputAction::LockScreen))
+        );
+        assert_eq!(
+            engine.resolve(&mods(true, true, false, false), keysyms::KEY_d),
+            Some(ShortcutOutcome::System(InputAction::ToggleDock))
+        );
+        assert_eq!(
+            engine.resolve(&mods(false, false, true, false), keysyms::KEY_F3),
+            Some(ShortcutOutcome::System(InputAction::FocusDock))
         );
     }
 

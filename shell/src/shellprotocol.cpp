@@ -856,16 +856,25 @@ void ShellProtocol::onKeyboardKeymap(void *, wl_keyboard *, uint32_t, int32_t fd
         ::close(fd);
 }
 
-void ShellProtocol::onKeyboardEnter(void *data, wl_keyboard *, uint32_t, wl_surface *, wl_array *)
+void ShellProtocol::onKeyboardEnter(void *data, wl_keyboard *, uint32_t, wl_surface *surface,
+                                    wl_array *)
 {
     auto *self = static_cast<ShellProtocol *>(data);
+    self->m_keyboardOnDock = self->m_dockSurface && surface == self->m_dockSurface;
     emit self->keyboardFocused(true);
+    if (self->m_keyboardOnDock)
+        emit self->dockKeyboardFocused(true);
 }
 
-void ShellProtocol::onKeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surface *)
+void ShellProtocol::onKeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surface *surface)
 {
     auto *self = static_cast<ShellProtocol *>(data);
+    const bool wasDock = self->m_keyboardOnDock
+            || (self->m_dockSurface && surface == self->m_dockSurface);
+    self->m_keyboardOnDock = false;
     emit self->keyboardFocused(false);
+    if (wasDock)
+        emit self->dockKeyboardFocused(false);
 }
 
 void ShellProtocol::onKeyboardKey(void *data, wl_keyboard *, uint32_t, uint32_t, uint32_t key,
@@ -958,9 +967,14 @@ void ShellProtocol::onManagerAppSwitcher(void *, df_toplevel_manager *, uint32_t
 {
 }
 
-void ShellProtocol::onManagerInputAction(void *, df_toplevel_manager *, const char *, const char *,
-                                         uint32_t)
+void ShellProtocol::onManagerInputAction(void *data, df_toplevel_manager *, const char *action,
+                                         const char *source, uint32_t)
 {
+    auto *self = static_cast<ShellProtocol *>(data);
+    // The Dock consumes `focus-dock` / `toggle-dock` (T-10 section 20); every
+    // trigger (shortcut, gesture, hot corner) arrives here.
+    emit self->inputAction(QString::fromUtf8(action ? action : ""),
+                           QString::fromUtf8(source ? source : ""));
 }
 
 void ShellProtocol::onManagerProgress(void *, df_toplevel_manager *, const char *, int32_t, int32_t,

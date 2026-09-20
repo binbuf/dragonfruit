@@ -457,6 +457,26 @@ impl DfState {
             .map(|entry| entry.state.keyboard)
     }
 
+    /// The first chrome surface in the `namespace` group (T-10: the Dock is
+    /// the only `"dock"` surface). Used to hand the Dock keyboard focus from
+    /// the FocusDock shortcut or the compositor's own input routing.
+    pub fn chrome_surface_by_namespace(&self, namespace: &str) -> Option<WlSurface> {
+        self.shell
+            .layers
+            .iter()
+            .find(|entry| entry.state.namespace == namespace)
+            .map(|entry| entry.surface.clone())
+    }
+
+    /// Move keyboard focus into the Dock (T-10 section 20). Returns whether a
+    /// Dock surface was found and accepted focus.
+    pub fn focus_dock(&mut self) -> bool {
+        let Some(surface) = self.chrome_surface_by_namespace("dock") else {
+            return false;
+        };
+        self.focus_chrome_surface(&surface)
+    }
+
     /// Whether a chrome surface currently holds the keyboard.
     pub fn chrome_has_keyboard_focus(&self) -> bool {
         self.seat

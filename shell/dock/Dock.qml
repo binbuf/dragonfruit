@@ -25,6 +25,9 @@ Rectangle {
     // draw. A default-color Rectangle here would render the band as an opaque
     // white strip.
     color: "transparent"
+    // The Dock takes active focus only for keyboard navigation so the QML
+    // `Keys` handler (section 20) receives key events.
+    focus: keyboardFocused
 
     // --- Injected data --------------------------------------------------
     // [{ id, appId, name, kind, running, minimized, launch, attention,
@@ -48,6 +51,13 @@ Rectangle {
     // Empty Trash replaces the menu model with the confirm/cancel choice
     // before the shell performs the destructive operation.
     property bool trashConfirming: false
+
+    // Keyboard navigation (T-10 section 20). The shell sets
+    // `keyboardFocused` when the compositor hands the Dock the keyboard
+    // (FocusDock / click); the Dock then owns entry-to-entry navigation.
+    property bool keyboardFocused: false
+    // The id (`items[i].id`) of the entry carrying the focus ring; "" = none.
+    property string focusedItemId: ""
 
     // --- Interaction state ----------------------------------------------
     // Pointer position along the dock axis in local coordinates, -1 when the
@@ -327,6 +337,119 @@ Rectangle {
     // Magnification is suppressed while a context menu or chooser is open
     // (T-10 section 14).
     readonly property bool popoverOpen: menuOpen || chooserOpen
+
+    // --- Keyboard navigation (T-10 section 20) ---------------------------
+    // The entries the arrow keys traverse: every entry except the divider.
+    readonly property var navigableItems: {
+        var out = [];
+        for (var i = 0; i < items.length; ++i) {
+            if (items[i].kind !== "divider")
+                out.push(items[i]);
+        }
+        return out;
+    }
+
+    function beginKeyboardNavigation() {
+        keyboardFocused = true;
+        // A pointer-opened popover owns the arrow keys; do not put a focus
+        // ring behind it.
+        if (popoverOpen)
+            return;
+        if (focusedItemId !== "" && indexOfItemId(focusedItemId) >= 0)
+            return;
+        var list = navigableItems;
+        focusedItemId = list.length > 0 ? list[0].id : "";
+    }
+
+    function endKeyboardNavigation() {
+        keyboardFocused = false;
+        focusedItemId = "";
+    }
+
+    function moveKeyboardFocus(delta) {
+        var list = navigableItems;
+        if (list.length === 0) {
+            focusedItemId = "";
+            return;
+        }
+        var pos = -1;
+        for (var i = 0; i < list.length; ++i) {
+            if (list[i].id === focusedItemId) {
+                pos = i;
+                break;
+            }
+        }
+        pos = (pos < 0 ? 0 : pos + delta + list.length) % list.length;
+        focusedItemId = list[pos].id;
+    }
+
+    function focusedEntry() {
+        var idx = indexOfItemId(focusedItemId);
+        return idx >= 0 ? items[idx] : null;
+    }
+
+    // The click tree (section 8) shared by pointer activation and Return.
+    function activateEntry(entry) {
+        if (!entry)
+            return;
+        if (entry.running === true && entry.kind !== "minimized"
+                && entry.windowList !== undefined && entry.windowList.length > 1) {
+            openChooser(entry);
+            return;
+        }
+        entryActivated(entry);
+    }
+
+    // Typing jumps to the first entry whose name starts with the buffer
+    // (T-10 section 20). The buffer clears shortly after the last keystroke.
+    function jumpToName(text) {
+        if (text === "")
+            return;
+        var lower = text.toLowerCase();
+        var list = navigableItems;
+        for (var i = 0; i < list.length; ++i) {
+            var name = list[i].name !== undefined ? String(list[i].name) : "";
+            if (name.toLowerCase().indexOf(lower) === 0) {
+                focusedItemId = list[i].id;
+                return;
+            }
+        }
+    }
+
+    Timer {
+        id: typeBufferTimer
+        interval: 800
+        onTriggered: dock.typeBuffer = ""
+    }
+    property string typeBuffer: ""
+
+    Keys.onPressed: (event) => {
+        if (!keyboardFocused || popoverOpen)
+            return;
+        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                || event.key === Qt.Key_Space) {
+            activateEntry(focusedEntry());
+            event.accepted = true;
+        } else if ((axisIsX && event.key === Qt.Key_Left)
+                   || (!axisIsX && event.key === Qt.Key_Up)) {
+            moveKeyboardFocus(-1);
+            event.accepted = true;
+        } else if ((axisIsX && event.key === Qt.Key_Right)
+                   || (!axisIsX && event.key === Qt.Key_Down)) {
+            moveKeyboardFocus(1);
+            event.accepted = true;
+        } else if ((axisIsX && event.key === Qt.Key_Up) || event.key === Qt.Key_Menu) {
+            var entry = focusedEntry();
+            if (entry)
+                openEntryMenu(entry);
+            event.accepted = true;
+        } else if (event.text.length === 1 && event.text >= " ") {
+            typeBuffer += event.text;
+            typeBufferTimer.restart();
+            jumpToName(typeBuffer);
+            event.accepted = true;
+        }
+    }
 
     // --- Context menu ----------------------------------------------------
     function indexOfItemId(id) {
@@ -868,6 +991,7 @@ Rectangle {
             iconSize: dock.layout.length > index ? dock.layout[index].iconSize : dock.iconSize
             indicatorEdge: dock.indicatorEdge
             showIndicator: dock.showIndicators
+            keyboardFocused: dock.keyboardFocused && modelData.id === dock.focusedItemId
             dragging: dock.dragging
             lifted: isDragged
             z: isDragged ? 10 : 0
@@ -907,13 +1031,7 @@ Rectangle {
                 // The click tree (T-10 section 8): a running app with more
                 // than one window opens the chooser; everything else is a
                 // shell activation (single window, minimized restore, launch).
-                if (entry.running === true && entry.kind !== "minimized"
-                        && entry.windowList !== undefined
-                        && entry.windowList.length > 1) {
-                    dock.openChooser(entry);
-                    return;
-                }
-                dock.entryActivated(entry);
+                dock.activateEntry(entry);
             }
             onContextMenuRequested: (entry, gx, gy) => {
                 if (entry.kind === "divider") {
