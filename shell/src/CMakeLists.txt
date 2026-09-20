@@ -44,6 +44,7 @@ endif()
 add_library(dragonfruit-shell-dockcore STATIC
     desktopentry.cpp
     dockpins.cpp
+    docksettings.cpp
     dockmodel.cpp
 )
 target_link_libraries(dragonfruit-shell-dockcore PUBLIC Qt6::Core)

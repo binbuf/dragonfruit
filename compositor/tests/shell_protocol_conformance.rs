@@ -1090,6 +1090,95 @@ fn dock_surface_reserves_the_bottom_zone_and_coexists_with_the_bar() {
 }
 
 #[test]
+fn vertical_dock_reserves_the_left_and_right_zones() {
+    let token = "1b".repeat(32);
+    let proc = CompositorProcess::start("dragonfruit-conformance-dock-vertical", &[token]);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (name, version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, name, version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+    let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
+    let _manager = bind_manager(&mut state, &queue, manager_name, manager_version);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.outputs.is_empty() && state.done_count > 0,
+    );
+
+    let (shell_name, shell_version) = state.shell_global.expect("df_shell advertised");
+    let shell = bind_shell(&mut state, &queue, shell_name, shell_version);
+    let qh = queue.handle();
+
+    // A vertical Dock anchored left|top|bottom must reserve its left edge
+    // (edge 2), the right Dock its right edge (edge 3) — T-10 section 2.
+    let left_surface = state.compositor.clone().unwrap().create_surface(&qh, ());
+    let left = shell.get_layer_surface(
+        &left_surface,
+        None,
+        df_shell::Layer::Top,
+        "dock".to_string(),
+        &qh,
+        (),
+    );
+    left.set_anchor(4 | 1 | 2); // left | top | bottom
+    left.set_size(80, 0);
+    left.set_exclusive_zone(60);
+    left.set_keyboard_interaction(df_layer_surface::KeyboardInteraction::None);
+    left_surface.commit();
+
+    let right_surface = state.compositor.clone().unwrap().create_surface(&qh, ());
+    let right = shell.get_layer_surface(
+        &right_surface,
+        None,
+        df_shell::Layer::Top,
+        "dock".to_string(),
+        &qh,
+        (),
+    );
+    right.set_anchor(8 | 1 | 2); // right | top | bottom
+    right.set_size(80, 0);
+    right.set_exclusive_zone(60);
+    right.set_keyboard_interaction(df_layer_surface::KeyboardInteraction::None);
+    right_surface.commit();
+
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .output_reserved
+                .iter()
+                .any(|(edge, thickness)| *edge == 2 && *thickness == 60)
+                && state
+                    .output_reserved
+                    .iter()
+                    .any(|(edge, thickness)| *edge == 3 && *thickness == 60)
+        },
+    );
+
+    drop(right);
+    drop(right_surface);
+    drop(left);
+    drop(left_surface);
+    drop(shell);
+    drop(core);
+    let _ = conn.flush();
+    proc.shutdown();
+}
+
+#[test]
 fn untrusted_client_cannot_bind_private_globals() {
     let token = "22".repeat(32);
     let proc = CompositorProcess::start("dragonfruit-conformance-refuse-bind", &[token]);

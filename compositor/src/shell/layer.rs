@@ -173,18 +173,24 @@ impl LayerSurfaceState {
 
     /// The reserved zone this surface contributes, if any.
     ///
-    /// A positive exclusive zone on a single vertical edge reserves that
-    /// edge. Ambiguous anchors (both top and bottom, or no vertical anchor)
-    /// contribute nothing; a negative zone explicitly opts out.
+    /// A positive exclusive zone on a single edge reserves that edge. The
+    /// vertical edges (top/bottom) are considered first, then the horizontal
+    /// edges (left/right) so a vertical Dock anchored `left|top|bottom`
+    /// reserves its left edge (T-10 section 2). Ambiguous anchors (both edges
+    /// on the same axis, or no anchor) contribute nothing; a negative zone
+    /// explicitly opts out.
     pub fn reserved(&self) -> Option<(Edge, i32)> {
         if self.exclusive_zone <= 0 {
             return None;
         }
-        let top = self.anchored(ANCHOR_TOP);
-        let bottom = self.anchored(ANCHOR_BOTTOM);
-        match (top, bottom) {
-            (true, false) => Some((Edge::Top, self.exclusive_zone)),
-            (false, true) => Some((Edge::Bottom, self.exclusive_zone)),
+        match (self.anchored(ANCHOR_TOP), self.anchored(ANCHOR_BOTTOM)) {
+            (true, false) => return Some((Edge::Top, self.exclusive_zone)),
+            (false, true) => return Some((Edge::Bottom, self.exclusive_zone)),
+            _ => {}
+        }
+        match (self.anchored(ANCHOR_LEFT), self.anchored(ANCHOR_RIGHT)) {
+            (true, false) => Some((Edge::Left, self.exclusive_zone)),
+            (false, true) => Some((Edge::Right, self.exclusive_zone)),
             _ => None,
         }
     }
@@ -315,6 +321,47 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(panel.reserved(), None);
+    }
+
+    #[test]
+    fn vertical_dock_reserves_left_or_right() {
+        // A left Dock spans the output height (top|bottom) and reserves its
+        // left edge; the right Dock mirrors it (T-10 section 2).
+        let left = LayerSurfaceState {
+            anchor: ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_BOTTOM,
+            width: 80,
+            exclusive_zone: 80,
+            ..Default::default()
+        };
+        assert_eq!(left.reserved(), Some((Edge::Left, 80)));
+        assert_eq!(
+            left.geometry(output()),
+            Rectangle::new(Point::from((0, 0)), (80, 1080).into())
+        );
+
+        let right = LayerSurfaceState {
+            anchor: ANCHOR_RIGHT | ANCHOR_TOP | ANCHOR_BOTTOM,
+            width: 80,
+            exclusive_zone: 80,
+            ..Default::default()
+        };
+        assert_eq!(right.reserved(), Some((Edge::Right, 80)));
+        assert_eq!(
+            right.geometry(output()),
+            Rectangle::new(Point::from((1840, 0)), (80, 1080).into())
+        );
+    }
+
+    #[test]
+    fn bottom_dock_does_not_leak_into_a_horizontal_reserve() {
+        // A bottom Dock also anchors left|right; the vertical edge must win
+        // so it never reserves both a bottom and a side strip.
+        let dock = LayerSurfaceState {
+            anchor: ANCHOR_BOTTOM | ANCHOR_LEFT | ANCHOR_RIGHT,
+            exclusive_zone: 60,
+            ..Default::default()
+        };
+        assert_eq!(dock.reserved(), Some((Edge::Bottom, 60)));
     }
 
     #[test]

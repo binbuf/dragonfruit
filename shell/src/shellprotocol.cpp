@@ -287,16 +287,27 @@ bool ShellProtocol::createDockSurface(int height, int exclusiveZone)
     // baseline bar thickness on the bottom edge, and never take keyboard
     // focus while idle (T-10 section 2).
     df_layer_surface_set_anchor(m_dockLayer, kAnchorBottom | kAnchorLeft | kAnchorRight);
-    df_layer_surface_set_size(m_dockLayer, 0, height);
-    df_layer_surface_set_exclusive_zone(m_dockLayer, exclusiveZone);
     df_layer_surface_set_keyboard_interaction(
         m_dockLayer, DF_LAYER_SURFACE_KEYBOARD_INTERACTION_NONE);
+    if (!configureDockSurface(height, exclusiveZone))
+        return false;
     // Start unmapped; the first render commits a buffer.
     wl_surface_attach(m_dockSurface, nullptr, 0, 0);
     wl_surface_commit(m_dockSurface);
 
     if (wl_display_roundtrip(m_display) < 0)
         return fail(QStringLiteral("Dock configure roundtrip failed"));
+    return true;
+}
+
+bool ShellProtocol::configureDockSurface(int height, int exclusiveZone)
+{
+    if (!m_dockLayer)
+        return false;
+    df_layer_surface_set_size(m_dockLayer, 0, height);
+    df_layer_surface_set_exclusive_zone(m_dockLayer, exclusiveZone);
+    if (m_display)
+        wl_display_flush(m_display);
     return true;
 }
 

@@ -257,12 +257,15 @@ QtObject {
         }
         readonly property var dock: QtObject {
             readonly property int iconSize: 48
+            readonly property int iconSizeMin: 32
+            readonly property int iconSizeMax: 64
             readonly property int padding: 6
             readonly property int gap: 6
             readonly property int radius: 14
             readonly property int indicatorSize: 4
             readonly property int indicatorGap: 3
             readonly property real magnifyPeak: 1.6
+            readonly property real magnifyPeakMax: 2.2
             readonly property real magnifyFalloff: 3.0
             readonly property int labelSize: 12
             readonly property int trashSize: 44

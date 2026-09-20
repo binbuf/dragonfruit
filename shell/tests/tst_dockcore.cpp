@@ -5,6 +5,7 @@
 #include "desktopentry.h"
 #include "dockmodel.h"
 #include "dockpins.h"
+#include "docksettings.h"
 
 #include <QDir>
 #include <QFile>
@@ -242,6 +243,113 @@ private slots:
                               QStringLiteral("org.dragonfruit.Settings.desktop"),
                               QStringLiteral("term.desktop"),
                               QStringLiteral("browse.desktop")}));
+    }
+
+    // -- dock.* settings (T-10 section 19) -------------------------------
+
+    void settingsDefaultsWhenFileMissing()
+    {
+        DockSettings settings(QStringLiteral("/nonexistent/settings.json"));
+        QVERIFY(settings.load());
+        QCOMPARE(settings.size(), 0.5);
+        QCOMPARE(settings.magnification(), 0.5);
+        QCOMPARE(settings.position(), QStringLiteral("bottom"));
+        QCOMPARE(settings.autohide(), false);
+        QCOMPARE(settings.animateOpening(), true);
+        QCOMPARE(settings.showIndicators(), true);
+        QCOMPARE(settings.minimizeIntoTileIcon(), false);
+        QCOMPARE(settings.minimizedAnimation(), QStringLiteral("scale"));
+        QCOMPARE(settings.titlebarDoubleClick(), QStringLiteral("zoom"));
+        QCOMPARE(settings.showRecentApps(), false);
+        QCOMPARE(settings.reduceMotion(), false);
+    }
+
+    void settingsRoundTripAndValidate()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString path = dir.path() + QStringLiteral("/dragonfruit/settings.json");
+
+        DockSettings settings(path);
+        settings.setSize(2.0);          // clamps to 1.0
+        settings.setMagnification(-1.0); // clamps to 0.0
+        settings.setPosition(QStringLiteral("sideways")); // -> bottom
+        settings.setAutohide(true);
+        settings.setAnimateOpening(false);
+        settings.setShowIndicators(false);
+        settings.setMinimizeIntoTileIcon(true);
+        settings.setMinimizedAnimation(QStringLiteral("warp")); // -> scale
+        settings.setTitlebarDoubleClick(QStringLiteral("fill")); // -> zoom
+        settings.setShowRecentApps(true);
+        settings.setReduceMotion(true);
+        QVERIFY(settings.save());
+
+        DockSettings reloaded(path);
+        QVERIFY(reloaded.load());
+        QCOMPARE(reloaded.size(), 1.0);
+        QCOMPARE(reloaded.magnification(), 0.0);
+        QCOMPARE(reloaded.position(), QStringLiteral("bottom"));
+        QCOMPARE(reloaded.autohide(), true);
+        QCOMPARE(reloaded.animateOpening(), false);
+        QCOMPARE(reloaded.showIndicators(), false);
+        QCOMPARE(reloaded.minimizeIntoTileIcon(), true);
+        QCOMPARE(reloaded.minimizedAnimation(), QStringLiteral("scale"));
+        QCOMPARE(reloaded.titlebarDoubleClick(), QStringLiteral("zoom"));
+        QCOMPARE(reloaded.showRecentApps(), true);
+        QCOMPARE(reloaded.reduceMotion(), true);
+
+        // A malformed file keeps the defaults and reports why.
+        writeFile(path, QStringLiteral("{ not json"));
+        DockSettings broken(path);
+        QVERIFY(!broken.load());
+        QVERIFY(!broken.lastError().isEmpty());
+        QCOMPARE(broken.size(), 0.5);
+    }
+
+    void settingsAndPinsShareTheFileWithoutClobbering()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString path = dir.path() + QStringLiteral("/dragonfruit/settings.json");
+
+        // The settings write lands first, then a pin write; both survive.
+        DockSettings settings(path);
+        settings.setMagnification(0.8);
+        QVERIFY(settings.save());
+        DockPins pins(path);
+        QVERIFY(pins.load());
+        QVERIFY(pins.add(QStringLiteral("a.desktop")));
+        QVERIFY(pins.save());
+
+        DockSettings reloadedSettings(path);
+        QVERIFY(reloadedSettings.load());
+        QCOMPARE(reloadedSettings.magnification(), 0.8);
+        DockPins reloadedPins(path);
+        QVERIFY(reloadedPins.load());
+        QCOMPARE(reloadedPins.ids(), QStringList{QStringLiteral("a.desktop")});
+
+        // And the reverse order.
+        DockSettings second(path);
+        QVERIFY(second.load());
+        second.setAutohide(true);
+        QVERIFY(second.save());
+        DockPins third(path);
+        QVERIFY(third.load());
+        QVERIFY(third.add(QStringLiteral("b.desktop")));
+        QVERIFY(third.save());
+        DockSettings finalSettings(path);
+        QVERIFY(finalSettings.load());
+        QCOMPARE(finalSettings.autohide(), true);
+        QCOMPARE(finalSettings.magnification(), 0.8);
+    }
+
+    void settingsEqualsDetectsAChange()
+    {
+        DockSettings a(QStringLiteral("/nonexistent/settings.json"));
+        DockSettings b(QStringLiteral("/nonexistent/settings.json"));
+        QVERIFY(a.equals(b));
+        b.setAutohide(true);
+        QVERIFY(!a.equals(b));
     }
 
     // -- entry merge -----------------------------------------------------

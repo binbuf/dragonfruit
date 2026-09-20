@@ -36,7 +36,6 @@ QString DockPins::defaultFilePath()
 bool DockPins::load()
 {
     m_ids.clear();
-    m_root = QJsonObject();
     m_error.clear();
 
     QFile file(m_filePath);
@@ -53,8 +52,8 @@ bool DockPins::load()
                       .arg(m_filePath, parseError.errorString());
         return false;
     }
-    m_root = document.object();
-    const QJsonObject keys = m_root.value(QLatin1String(kKeysField)).toObject();
+    const QJsonObject keys =
+        document.object().value(QLatin1String(kKeysField)).toObject();
     const QJsonArray pinned = keys.value(QLatin1String(kPinnedKey)).toArray();
     for (const QJsonValue &value : pinned) {
         const QString id = value.toString();
@@ -73,7 +72,15 @@ bool DockPins::save()
 {
     QDir().mkpath(QFileInfo(m_filePath).absolutePath());
 
-    QJsonObject root = m_root;
+    // Re-read the file so keys written by another owner (DockSettings, a
+    // future settingsd, or an unknown key) survive this write.
+    QJsonObject root;
+    QFile existing(m_filePath);
+    if (existing.exists() && existing.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        const QJsonDocument document = QJsonDocument::fromJson(existing.readAll());
+        if (document.isObject())
+            root = document.object();
+    }
     root.insert(QLatin1String(kSchemaField), kSchema);
     QJsonObject keys = root.value(QLatin1String(kKeysField)).toObject();
     QJsonArray pinned;

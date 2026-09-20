@@ -13,12 +13,14 @@
 
 #include "desktopentry.h"
 #include "dockpins.h"
+#include "docksettings.h"
 
 class ShellProtocol;
 class QQmlEngine;
 class QQuickWindow;
 class QQuickItem;
 class QSocketNotifier;
+class QFileSystemWatcher;
 class QTimer;
 
 class ShellController : public QObject
@@ -70,6 +72,7 @@ private slots:
     void onDockLaunchTick();
     void onDockAttention(const QString &appId);
     void onDockAnimationTick();
+    void onSettingsFileChanged();
 
 private:
     void applyStatusItems();
@@ -94,6 +97,13 @@ private:
     void scheduleLaunchStateClear(const QString &desktopId);
     // Coalesce a Dock render onto the next event-loop turn.
     void scheduleDockRender();
+    // Push the `dock.*` settings onto the Dock QML and, when the geometry
+    // changed, reconfigure the chrome surface (T-10 section 19).
+    void applyDockSettings(bool reconfigure);
+    // Persist `dock.*` (interim; settingsd owns this at T-15).
+    void saveDockSettings();
+    // Map `dock.size` (0..1) onto the icon-size token range.
+    int iconSizeForSize(double size) const;
     // Render the Dock every ~16 ms for `ms`, to capture a popover open/close
     // animation.
     void startDockAnimationRenders(int ms);
@@ -120,10 +130,12 @@ private:
     QTimer *m_launchTimer = nullptr;
     QTimer *m_dockAnimTimer = nullptr;
     QTimer *m_dockPopupTimer = nullptr;
+    QFileSystemWatcher *m_settingsWatcher = nullptr;
 
     // Interim app-index stand-in (T-23) and Dock pin persistence (T-15).
     DesktopEntryIndex m_index;
     DockPins m_pins;
+    DockSettings m_settings;
     // The shell's running-window projection, kept so the pinned set can be
     // merged on every change.
     QVariantList m_runningEntries;

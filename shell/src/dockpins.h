@@ -54,6 +54,5 @@ public:
 private:
     QString m_filePath;
     QStringList m_ids;
-    QJsonObject m_root;
     QString m_error;
 };
