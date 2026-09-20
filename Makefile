@@ -76,6 +76,7 @@ e2e: cargo-build
 	    --test window_conformance \
 	    --test xwayland_conformance \
 	    --test shell_protocol_conformance \
+	    --test shell_idle_trace \
 	    --test idle_trace \
 	    --test protocol_surface
 
