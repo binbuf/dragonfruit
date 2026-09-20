@@ -185,8 +185,10 @@ bool ShellProtocol::setMenuBarSize(int width, int height)
 {
     if (!m_layer || !m_surface)
         return false;
+    // Only change the requested size here; the caller attaches the matching
+    // buffer and commits in one step, so the compositor never sees the old
+    // buffer at the new size.
     df_layer_surface_set_size(m_layer, width, height);
-    wl_surface_commit(m_surface);
     if (m_display)
         wl_display_flush(m_display);
     return true;
