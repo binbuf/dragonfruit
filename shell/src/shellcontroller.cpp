@@ -340,6 +340,13 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     connect(m_dockItem, SIGNAL(popoverChanged()), this, SLOT(onDockPopoverChanged()));
     connect(m_dockItem, SIGNAL(revealStateChanged()), this,
             SLOT(onDockRevealStateChanged()));
+    // The Trash entry's state comes from the home-trash watch (section 16);
+    // deletions by any application update the full/count state.
+    m_trash = new TrashMonitor(TrashMonitor::defaultRoot(), this);
+    connect(m_trash, &TrashMonitor::changed, this, &ShellController::onTrashChanged);
+    m_trash->start();
+    m_dockItem->setProperty("trashFull", m_trash->isFull());
+    m_dockItem->setProperty("trashCount", m_trash->itemCount());
     // Apply `dock.*` before the surfaces exist (no reconfigure yet) so the
     // baseline bar thickness and magnified band reflect the saved size.
     applyDockSettings(false);
@@ -980,8 +987,7 @@ void ShellController::onDockEntryActivated(const QVariant &entry)
     // FR-4: clicking the entry stops its attention bounce.
     clearAttention(map.value(QStringLiteral("appId")).toString());
     if (kind == QLatin1String("trash")) {
-        // Opening Trash in Files is T-18; the entry point is wired.
-        qInfo() << "shell: Dock Trash activated (T-18 opens Trash)";
+        openTrashInFiles();
         return;
     }
     if (kind == QLatin1String("divider"))
@@ -1015,6 +1021,31 @@ void ShellController::onDockEntryActivated(const QVariant &entry)
     if (m_launchStates.value(desktopId) == QLatin1String("launching"))
         return;
     launchDockApp(desktopId);
+}
+
+void ShellController::openTrashInFiles()
+{
+    // Files is T-18; resolve it through the interim index and launch/activate
+    // it at the `trash://` URI. The design's `org.dragonfruit.Files1` service
+    // name is the activation target once T-18 lands.
+    DesktopEntry files = m_index.byId(QStringLiteral("org.dragonfruit.Files.desktop"));
+    if (!files.valid)
+        files = m_index.resolve(QStringLiteral("org.dragonfruit.Files"));
+    if (!DesktopEntryIndex::isLaunchable(files)) {
+        qWarning() << "shell: Dock Trash requested but Files is not installed (T-18)";
+        return;
+    }
+    const QStringList argv =
+        DesktopEntryIndex::buildLaunchCommand(files, {QStringLiteral("trash://")});
+    if (argv.isEmpty()) {
+        qWarning() << "shell: Files .desktop has no usable Exec for trash://";
+        return;
+    }
+    qint64 pid = 0;
+    if (!QProcess::startDetached(argv.first(), argv.mid(1), QDir::homePath(), &pid))
+        qWarning() << "shell: cannot open Trash in Files:" << argv.first();
+    else
+        qInfo() << "shell: Dock opened Trash in Files (pid" << pid << ")";
 }
 
 void ShellController::launchDockApp(const QString &desktopId)
@@ -1198,6 +1229,17 @@ void ShellController::onDockEntryMenuAction(const QString &action, const QVarian
     } else if (action == QLatin1String("open_dock_settings")) {
         // T-16 owns the Desktop & Dock pane; the entry point is wired.
         qInfo() << "shell: Dock Settings requested (T-16)";
+    } else if (action == QLatin1String("open_trash")) {
+        openTrashInFiles();
+    } else if (action == QLatin1String("empty_trash")) {
+        // The QML confirmation already ran; perform the destructive operation
+        // (T-10 section 13/16).
+        const int removed = m_trash ? m_trash->empty() : -1;
+        if (removed < 0)
+            qWarning() << "shell: cannot empty the Trash:"
+                       << (m_trash ? m_trash->lastError() : QStringLiteral("no monitor"));
+        else
+            qInfo() << "shell: emptied" << removed << "Trash entries";
     }
     scheduleDockRender();
 }
@@ -1235,6 +1277,15 @@ void ShellController::onDockRevealStateChanged()
 {
     // The reveal/hide translation changed the committed image and the input
     // region (the hidden Dock keeps only its edge band; T-10 section 15).
+    scheduleDockRender();
+}
+
+void ShellController::onTrashChanged()
+{
+    if (!m_dockItem)
+        return;
+    m_dockItem->setProperty("trashFull", m_trash->isFull());
+    m_dockItem->setProperty("trashCount", m_trash->itemCount());
     scheduleDockRender();
 }
 

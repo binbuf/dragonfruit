@@ -31,7 +31,8 @@ Item {
                 shortcut: m.shortcut || "",
                 enabled: m.enabled !== false,
                 checked: m.checked === true,
-                checkable: m.checkable === true || m.checked === true
+                checkable: m.checkable === true || m.checked === true,
+                keepOpen: m.keepOpen === true
             });
         }
         return out;
@@ -47,7 +48,8 @@ Item {
                 shortcut: e.shortcut,
                 enabled: e.enabled,
                 checked: e.checked,
-                checkable: e.checkable
+                checkable: e.checkable,
+                keepOpen: e.keepOpen
             });
         }
         return out;
@@ -69,7 +71,10 @@ Item {
         if (!e || e.type === "separator" || !e.enabled)
             return;
         root.triggered(e.index, root.model[e.index]);
-        root.hide();
+        // `keepOpen` lets a step (e.g. a confirmation) swap the model without
+        // dismissing the menu.
+        if (!e.keepOpen)
+            root.hide();
     }
     function moveHighlight(delta) {
         var count = root.entries.length;

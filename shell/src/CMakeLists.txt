@@ -46,6 +46,7 @@ add_library(dragonfruit-shell-dockcore STATIC
     dockpins.cpp
     docksettings.cpp
     dockmodel.cpp
+    trashmonitor.cpp
 )
 target_link_libraries(dragonfruit-shell-dockcore PUBLIC Qt6::Core)
 target_include_directories(dragonfruit-shell-dockcore PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")

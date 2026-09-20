@@ -15,6 +15,7 @@
 #include "dockpins.h"
 #include "docksettings.h"
 #include "shellprotocol.h"
+#include "trashmonitor.h"
 
 class QQmlEngine;
 class QQuickWindow;
@@ -74,6 +75,7 @@ private slots:
     void onDockAttention(const QString &appId);
     void onDockAnimationTick();
     void onSettingsFileChanged();
+    void onTrashChanged();
 
 private:
     void applyStatusItems();
@@ -98,6 +100,9 @@ private:
     void scheduleLaunchStateClear(const QString &desktopId);
     // Coalesce a Dock render onto the next event-loop turn.
     void scheduleDockRender();
+    // Open the Trash in Files (`org.dragonfruit.Files1` / the Files .desktop;
+    // T-18 owns the app). The entry point is wired now.
+    void openTrashInFiles();
     // Push the `dock.*` settings onto the Dock QML and, when the geometry
     // changed, reconfigure the chrome surface (T-10 section 19).
     void applyDockSettings(bool reconfigure);
@@ -134,6 +139,9 @@ private:
     QTimer *m_dockAnimTimer = nullptr;
     QTimer *m_dockPopupTimer = nullptr;
     QFileSystemWatcher *m_settingsWatcher = nullptr;
+    // Interim home-trash state for the Dock's Trash entry (section 16). The
+    // GIO/GVfs backend replaces it when the dev headers are available.
+    TrashMonitor *m_trash = nullptr;
 
     // Interim app-index stand-in (T-23) and Dock pin persistence (T-15).
     DesktopEntryIndex m_index;
