@@ -19,6 +19,12 @@ import Dragonfruit
 Rectangle {
     id: dock
 
+    // The surface includes the transparent magnified-band above/beside the bar
+    // (section 2), so the root must not paint; only `dockBar` and the entries
+    // draw. A default-color Rectangle here would render the band as an opaque
+    // white strip.
+    color: "transparent"
+
     // --- Injected data --------------------------------------------------
     // [{ id, appId, name, kind, running, minimized, launch, attention,
     //    badge, pinned, trashFull }]
