@@ -168,6 +168,25 @@ Item {
             compare(dock.barRect.h, dock.barThickness);
         }
 
+        function test_entries_snap_to_layout_after_configure() {
+            // The shell creates the Dock at width 0, sets `entries`, then the
+            // surface configure sets the width. The delegates must snap to the
+            // centered layout; an always-on position Behavior would freeze
+            // them mid-animation because the idle shell does not re-render.
+            var dock = make(dockComponent, {
+                width: 0, height: 124, magnification: 0.5
+            });
+            dock.entries = [ app("a", "A", true), app("b", "B", true) ];
+            waitForRendering(stage);
+            dock.width = 1280;
+            waitForRendering(stage);
+            for (var i = 0; i < dock.layout.length; ++i) {
+                var item = dock.itemAt(i);
+                compare(item.x, dock.layout[i].x);
+                compare(item.width, dock.layout[i].w);
+            }
+        }
+
         // -- Placement ------------------------------------------------------
 
         function test_bottom_dock_axis_is_horizontal() {
