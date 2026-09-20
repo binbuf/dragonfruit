@@ -206,11 +206,28 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // title when it is shown, which draws that title's FocusRing as if the
     // bar were keyboard-focused. Put focus on the bar root instead so the
     // launch state is neutral; a popup takes focus itself when it opens.
-    QTimer::singleShot(0, this, [this]() {
-        if (m_item)
-            m_item->forceActiveFocus();
-    });
+    // The offscreen window can report a default cursor/focus at (0,0) when it
+    // is shown, which highlights the first title (hover or focus ring) in the
+    // first committed frame. Settle it once the event loop is running and
+    // again after the first delayed re-render, then commit the neutral frame.
+    QTimer::singleShot(0, this, &ShellController::settleInitialState);
+    QTimer::singleShot(400, this, &ShellController::settleInitialState);
     return true;
+}
+
+void ShellController::settleInitialState()
+{
+    if (m_menuOpen || !m_item || !m_window)
+        return;
+    // Keep active focus on the bar root, not the first menu title.
+    m_item->forceActiveFocus();
+    // Clear any hover the window inherited from its default cursor position:
+    // move the synthesized pointer off the bar. Real motion re-establishes
+    // hover as soon as the user interacts.
+    QMouseEvent move(QEvent::MouseMove, QPointF(-1, -1), QPointF(-1, -1), Qt::NoButton,
+                     Qt::NoButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(m_window, &move);
+    render();
 }
 
 void ShellController::applyStatusItems()

@@ -1915,11 +1915,17 @@ T-09 is closed for development purposes; these are the remaining rough edges,
 all in the shell's snapshot renderer / interaction feel rather than the
 compositor or protocol:
 
-1. **Launch highlight on the first title.** Not reproduced headlessly (no
-   pointer event, focus on the bar root), so the leading theory is host-cursor
-   hover at startup. `activeFocusOnTab: false` (da9bcb7) rules out the focus
-   ring; if a fill still appears with the pointer off the bar, capture the
-   shell's committed frame and log `MenuBar.openMenuIndex`/hover state.
+1. **Launch highlight on the first title.** Reproduced by the user with the
+   host cursor *outside* the window, so it is not host-cursor hover. The
+   shell receives no pointer event at startup, so the only remaining source
+   is the offscreen window's initial focus/hover state at (0,0), committed in
+   the first frame and not refreshed until interaction. Fixed two ways:
+   `MenuBarMenu.showFocusRing` (new, default true) is set false by the shell
+   delegate so a title can never draw a FocusRing; and
+   `ShellController::settleInitialState` forces focus to the bar root, clears
+   hover with an off-bar synthetic move, and re-commits at 0 ms and 400 ms.
+   If a fill still appears, the next step is a diagnostic that dumps
+   `openMenuIndex`/hover/activeFocus and saves the committed frame.
 2. **Choppy popup open/close.** The shell samples QML with a 16 ms timer, so
    motion is not frame-accurate. The durable fix — commit from
    `QQuickWindow::afterRendering` while the scene is dirty — is shared with

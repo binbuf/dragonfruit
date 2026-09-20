@@ -56,6 +56,9 @@ private:
     void scheduleRender();
     // Render every ~16 ms for `ms`, to capture a popup open/close animation.
     void startAnimationRenders(int ms);
+    // Force the launch state to neutral (no focus ring, no hover) and commit
+    // it, so the first visible frame is not a transient highlight.
+    void settleInitialState();
     // Resize the chrome surface to the bar height plus the open dropdown.
     void updateSurfaceHeight();
 
