@@ -89,7 +89,7 @@ Updated when a task is partially or completely finished; see
 | Phase | Tickets |
 |---|---|
 | 1 · Foundation | T-01 ✅ done · T-02 🔄 partial (compositor core) · T-03 🔄 partial (input engine) · T-04 🔄 partial (window model) · T-05 🔄 partial (Spaces model) · T-06 🔄 partial (Xwayland) · T-07 🔄 partial (private shell protocols) |
-| 2 · Experience | T-08 ✅ done (design system; app-level chrome lint + live AT-SPI dump deferred) · T-09 🔄 partial (menu bar + shell bootstrap + overlay-layer dropdown + scripted output hotplug; T-20/T-22 content open) · T-10 🔄 partial (Dock presentation core + shell surface + running entries/activation + launch/pinned persistence + launch/attention bounce + magnified-band input region + app context menus/window chooser + drag rearrangement (reorder/promote/remove) + live `dock.*` settings/divider menu/reduced motion + left/right reserved-zone foundation + per-position (left/right) surfaces, vertical layout, beside-the-bar popovers and corrected auto-hide translation; Trash, external drops, auto-hide reveal, scene-graph render path open) · T-11 … T-14 pending |
+| 2 · Experience | T-08 ✅ done (design system; app-level chrome lint + live AT-SPI dump deferred) · T-09 🔄 partial (menu bar + shell bootstrap + overlay-layer dropdown + scripted output hotplug; T-20/T-22 content open) · T-10 🔄 partial (Dock presentation core + shell surface + running entries/activation + launch/pinned persistence + launch/attention bounce + magnified-band input region + app context menus/window chooser + drag rearrangement (reorder/promote/remove) + live `dock.*` settings/divider menu/reduced motion + left/right reserved-zone foundation + per-position (left/right) surfaces, vertical layout, beside-the-bar popovers, corrected auto-hide translation and edge-band reveal/re-hide state machine; Trash, external drops, scene-graph render path open) · T-11 … T-14 pending |
 | 3 · Flagship apps | T-15 … T-19 pending |
 | 4 · System integration | T-20 … T-23 pending |
 | 5 · Desktop infrastructure | T-24 … T-29 pending |
@@ -505,6 +505,28 @@ is still open (the hidden translation is correct but nothing yet summons the
 Dock from the edge); Trash, external drops, and the scene-graph render path
 are unchanged. Details and hand-off: [PROGRESS.md](PROGRESS.md).
 
+T-10 continuation (auto-hide reveal slice): the Dock's auto-hide state
+machine is landed (section 15, FR-3). A hidden Dock keeps only a thin
+`edgeTrigger` band of its surface in the input region, so the transparent
+body still passes clicks through (FR-13) while a pointer at the output edge
+can summon the Dock. The QML owns the reveal/re-hide clocks: a pointer
+dwelling in the edge band for `dock.revealDelay` (120 ms) reveals it,
+leaving the bar for `dock.hideDelay` (350 ms) hides it, and the hide is
+suppressed while a context menu, window chooser, or drag is active. Enabling
+`dock.autohide` starts hidden and disabling it always reveals; an
+`attention` request reveals immediately. The translation snaps rather than
+animates until the scene-graph render path (FR-14) can commit every frame
+(the earlier lesson that an on-demand renderer must not freeze a half-played
+animation). The divider menu's "Turn Hiding On/Off" toggle is wired now that
+reveal works. `tst_dock` gains 8 cases (edge-band input region for all three
+edges, hidden-Dock magnification suppression, dwell reveal, leave/re-hide,
+leave-before-delay cancel, popover-suppressed re-hide, the hiding toggle,
+and autohide-off no-op). Open: external-drag reveal, the global shortcut,
+keyboard-focus suppression of re-hide, the animated translation, and the
+remaining slices (external drops, Trash, Options submenu, per-output
+sizing, scene-graph render path, a11y). Details and hand-off:
+[PROGRESS.md](PROGRESS.md).
+
 **Foundation milestone E2E (T-01…T-07).** The whole vertical slice now has a
 headless end-to-end test, `compositor/tests/milestone_e2e.rs` (`make e2e`):
 one live session with a shell client, a Wayland app, and an X11 app attached
@@ -537,7 +559,7 @@ the shell's own chrome rendering (T-09/T-10).
 2. **Experience**
    - [x] Design system (T-08: token architecture + all 20 components + gallery/visual regression; app-level chrome lint + live AT-SPI dump deferred)
    - [ ] Top bar (T-09 partial: menu-bar render/interaction + shell bootstrap live, restart/idle scripts passing, chrome input routing + overlay-layer dropdown landed and scripted, output hotplug scripted; T-20 status adapters, T-22 app menu open)
-    - [ ] Dock (T-10 partial: presentation/interaction core + shell `top` surface with bottom reserved zone + launch/pinned persistence + launch/attention bounce + magnified-band input region + app context menus and window chooser + drag rearrangement (reorder/promote/remove) + live `dock.*` settings + per-position (left/right) surfaces and vertical layout landed and scripted; external drops, Trash state, auto-hide reveal, scene-graph render path open)
+    - [ ] Dock (T-10 partial: presentation/interaction core + shell `top` surface with bottom reserved zone + launch/pinned persistence + launch/attention bounce + magnified-band input region + app context menus and window chooser + drag rearrangement (reorder/promote/remove) + live `dock.*` settings + per-position (left/right) surfaces and vertical layout + edge-band auto-hide reveal/re-hide landed and scripted; external drops, Trash state, scene-graph render path open)
    - [ ] Window switching
    - [ ] Mission Control
    - [ ] Workspace gestures

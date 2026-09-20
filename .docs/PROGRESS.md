@@ -2966,3 +2966,116 @@ regression); `make e2e` green (17/17 `shell_protocol_conformance` incl.
 window/Xwayland/idle suites); live headless smoke reports `Dock configured
 124x720` / `edge=2 thickness=60` for `dock.position=left`, `edge=3` for
 `right`, and a live bottom→left edit reconfigured the surface in place.
+
+## T-10 continuation — auto-hide edge-band reveal/re-hide (eighth slice)
+
+**State: partial.** The Dock's auto-hide state machine is landed (section 15,
+FR-3): a hidden Dock can be summoned from the output edge and re-hides when
+the pointer leaves. The remaining slices (external drops, Trash, Options
+submenu/Show in Files, per-output sizing, scene-graph render path, a11y) are
+unchanged and listed at the end.
+
+### What landed
+
+- **Edge-band input region** (`shell/dock/Dock.qml`). The hidden Dock no
+  longer publishes an empty input region; it publishes a thin `edgeTrigger`
+  band (new `component.dock.edgeTrigger` token, 4 px) hugging the anchored
+  edge (`edgeRect`, all three positions). This is the mechanism the design
+  offers as the alternative to a compositor proximity event (section 15):
+  the shell commits the multi-rect `wl_region` every frame, so only the
+  sliver at the output edge stays interactive while the bar body (translated
+  off-screen) passes clicks through (FR-13).
+- **Reveal/re-hide clocks** (`Dock.qml`). The QML owns the state machine now
+  that the pointer can reach it: `revealTimer` (`dock.revealDelay`, 120 ms)
+  is (re)started while hidden and the pointer is inside `edgeRect`; it calls
+  `reveal()`. `hideTimer` (`dock.hideDelay`, 350 ms) is started on hover-leave
+  and calls `hideIfIdle()`, which refuses to hide while a context menu,
+  window chooser, or drag is active. A pointer that leaves before the reveal
+  delay cancels the reveal (`revealTimer.stop()`). `revealStateChanged()` is
+  emitted on every `revealed` change so the shell re-commits the image and
+  input region (`ShellController::onDockRevealStateChanged`).
+- **Settings and attention triggers** (`ShellController::applyDockSettings`,
+  `onDockAttention`). Enabling `dock.autohide` starts hidden and disabling it
+  always reveals; an `attention` request reveals immediately. The divider
+  menu's "Turn Hiding On/Off" toggle (wired to the existing `toggle_autohide`
+  action) is now exposed, since reveal works.
+- **Suppression and lifecycle.** `openEntryMenu`/`openChooser` stop the hide
+  timer; both popovers' `onClosed` call `scheduleHide()`; `beginDrag` stops
+  both timers. `magnifying` now also requires `revealed`, so a hidden Dock
+  cannot magnify off-screen.
+- **Tests.** `tst_dock` gains 8 cases: the hidden input region is the edge
+  band and returns to the bar on reveal; the vertical edge band hugs the
+  screen edge; a hidden Dock does not magnify; a dwell at the edge reveals
+  after the delay (and not before); leaving the bar re-hides after the hide
+  delay; leaving before the reveal delay cancels; re-hide is suppressed while
+  a popover is open; the divider menu shows "Turn Hiding On/Off"; and
+  `autoHide:false` never hides. `test_hidden_autohide_input_region_is_empty`
+  was replaced by the edge-band assertion.
+
+### Gotchas learned (important for the next slice)
+
+- **The thin edge strip intentionally captures clicks.** FR-13 says the
+  hidden bar passes clicks through, but there is no compositor pointer-proximity
+  event, so the sanctioned alternative is a thin edge input strip (section
+  15). A 4 px band at the very edge no longer reaches the window underneath.
+  Do not "fix" this by emptying the hidden region or the Dock can never be
+  summoned; a compositor proximity broadcast would remove the trade-off.
+- **`tst_dock.qml` is QML-disk-cached under `~/.cache/tst_dock/`.** Editing
+  the test file and re-running the binary can silently execute the cached
+  compiled copy (the failure line number did not move after an edit). Set
+  `QML_DISABLE_DISK_CACHE=1` or `rm -rf ~/.cache/tst_dock` when iterating on
+  the QML tests. `make qml-test` was not affected because ctest rebuilds.
+- **QtTest's mouse cursor persists across test functions.** A test that
+  assumes the pointer starts off the Dock can fail because a previous test
+  left the cursor on the edge band, and `waitForRendering` (software
+  rendering, first frame) can take longer than the 120 ms reveal delay, so a
+  spurious reveal fires. Auto-hide tests normalize the pointer
+  (`mouseMove(stage, …)` off the Dock) before asserting a hidden state.
+- **The reveal/hide translation snaps.** The on-demand `grabWindow` renderer
+  would freeze a half-played slide (the "icons froze in the left corner"
+  lesson from the seventh slice), so the translation is instant until the
+  scene-graph render path (FR-14) can commit every frame. Reduced motion has
+  nothing to change yet; the animated form is a FR-14 follow-up.
+- **Re-hide is not suppressed by keyboard focus** (the design lists it)
+  because keyboard navigation into the Dock is not built (section 20). The
+  hook is the existing `shellFocused` state when that slice lands.
+
+### Hand-off / open items (remaining T-10 slices)
+
+1. **External drops and spring-loading** (section 12): app/file drops on an
+   icon, Trash, or the Downloads stack. Needs the drag source plus
+   `app-index`/GIO launch with a file argument (T-17/T-18). External-drag
+   reveal (drop onto a hidden Dock) is part of this.
+2. **Trash** (section 16): GVfs `trash://` monitor, click-to-Files
+   (`org.dragonfruit.Files1`), drop-to-trash via GIO, Empty Trash with
+   confirmation, and the Trash context menu. This host has only the libgio
+   runtime (no GIO dev headers/pc), so the backend needs either the headers
+   or a filesystem-watcher fallback over `$XDG_DATA_HOME/Trash/{files,info}`.
+3. **Options submenu + Show in Files + Trash/divider completeness** (section
+   13): the app Options ▸ submenu (Assign To, Open at Login, Show in Files)
+   and a "Position on Screen" entry. Needs the design-system submenu, T-18
+   Files, and compositor app/space requests.
+4. **Per-output / per-output sizing** (section 18): chrome surfaces still
+   size from the first output; `matches_output` is the filter hook.
+5. **Scene-graph render path** (FR-14): the Dock still commits on demand via
+   `grabWindow`; the durable `QQuickWindow::afterRendering` fix is shared
+   with the T-09 deferred-polish backlog and should replace the bounce,
+   popover, and (future) reveal/hide timers.
+6. **Keyboard + AT-SPI walkthrough** (section 20): Fn-Control-F3 focus, arrow
+   navigation, Super+Option+D; keyboard-focus suppression of re-hide. The
+   QML roles exist; the seat path and live AT-SPI dump are not built.
+
+### Gate status
+
+`make lint` green (`cargo fmt --check`, `clippy -D warnings`, ctest 13/13
+incl. `tst_dock` 68 cases, `gen-tokens --check`, the design-token/
+desktop-name/no-capture gates, the 66-snapshot gallery regression); `make
+e2e` green (17/17 `shell_protocol_conformance` plus the window/Xwayland/idle
+suites); live headless smoke with `dock.autohide=true` reports the bottom
+reserved zone `edge=1 thickness=0` (the menu bar keeps `edge=0 thickness=28`)
+and `Dock configured 1280x124`.
+
+Note: one `make e2e` run failed `untrusted_client_cannot_bind_private_globals`
+with `connect failed: Connection refused` and passed on the immediate rerun
+and in isolation — a pre-existing startup race in the conformance harness,
+not this slice. Worth a follow-up if it recurs.

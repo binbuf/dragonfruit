@@ -273,6 +273,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     connect(m_dockItem, SIGNAL(pinnedOrderChanged(QVariant)), this,
             SLOT(onDockPinnedOrderChanged(QVariant)));
     connect(m_dockItem, SIGNAL(popoverChanged()), this, SLOT(onDockPopoverChanged()));
+    connect(m_dockItem, SIGNAL(revealStateChanged()), this,
+            SLOT(onDockRevealStateChanged()));
     // Apply `dock.*` before the surfaces exist (no reconfigure yet) so the
     // baseline bar thickness and magnified band reflect the saved size.
     applyDockSettings(false);
@@ -665,6 +667,10 @@ void ShellController::applyDockSettings(bool reconfigure)
     m_dockItem->setProperty("iconSize", iconSizeForSize(m_settings.size()));
     m_dockItem->setProperty("magnification", m_settings.magnification());
     m_dockItem->setProperty("autoHide", m_settings.autohide());
+    // Enabling auto-hide starts hidden; disabling it always reveals. The
+    // QML owns the reveal/hide state machine (T-10 section 15).
+    QMetaObject::invokeMethod(m_dockItem,
+                              m_settings.autohide() ? "hide" : "reveal");
     m_dockItem->setProperty("showIndicators", m_settings.showIndicators());
     m_dockItem->setProperty("minimizeIntoTileIcon", m_settings.minimizeIntoTileIcon());
     m_dockItem->setProperty("animateOpening", m_settings.animateOpening());
@@ -820,6 +826,10 @@ void ShellController::onDockAttention(const QString &appId)
 {
     if (appId.isEmpty())
         return;
+    // An attention request reveals a hidden auto-hide Dock immediately
+    // (T-10 section 15).
+    if (m_dockItem)
+        QMetaObject::invokeMethod(m_dockItem, "reveal");
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
     m_attentionStart.insert(appId, now);
     m_attentionUntil.insert(appId, now + kAttentionBounceMs);
@@ -1105,6 +1115,13 @@ void ShellController::onDockPopoverChanged()
 {
     scheduleDockRender();
     startDockAnimationRenders(220);
+}
+
+void ShellController::onDockRevealStateChanged()
+{
+    // The reveal/hide translation changed the committed image and the input
+    // region (the hidden Dock keeps only its edge band; T-10 section 15).
+    scheduleDockRender();
 }
 
 void ShellController::startDockAnimationRenders(int ms)

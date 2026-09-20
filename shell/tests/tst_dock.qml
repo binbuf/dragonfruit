@@ -500,7 +500,7 @@ Item {
             verify(dock.inputRects.length > 1);
         }
 
-        function test_hidden_autohide_input_region_is_empty() {
+        function test_hidden_autohide_input_region_is_the_edge_band() {
             var dock = make(dockComponent, {
                 width: 1280, height: 160, autoHide: true, revealed: true,
                 entries: [ app("a", "A", true) ]
@@ -508,7 +508,108 @@ Item {
             compare(dock.inputRects.length, 1);
             dock.hide();
             waitForRendering(stage);
-            compare(dock.inputRects.length, 0);
+            // The hidden Dock keeps only its edge band interactive so the
+            // pointer can summon it back (T-10 section 15).
+            compare(dock.inputRects.length, 1);
+            fuzzyCompare(dock.inputRects[0].y, dock.height - dock.edgeTrigger, 0.001);
+            fuzzyCompare(dock.inputRects[0].h, dock.edgeTrigger, 0.001);
+            dock.reveal();
+            waitForRendering(stage);
+            fuzzyCompare(dock.inputRects[0].y, dock.barRect.y, 0.001);
+        }
+
+        function test_vertical_edge_band_hugs_the_screen_edge() {
+            var left = make(dockComponent, {
+                width: 160, height: 800, position: "left",
+                autoHide: true, revealed: false,
+                entries: [ app("a", "A", true) ]
+            });
+            compare(left.inputRects.length, 1);
+            fuzzyCompare(left.inputRects[0].x, 0, 0.001);
+            fuzzyCompare(left.inputRects[0].w, left.edgeTrigger, 0.001);
+
+            var right = make(dockComponent, {
+                width: 160, height: 800, position: "right",
+                autoHide: true, revealed: false,
+                entries: [ app("a", "A", true) ]
+            });
+            compare(right.inputRects.length, 1);
+            fuzzyCompare(right.inputRects[0].x, right.width - right.edgeTrigger, 0.001);
+        }
+
+        function test_hidden_dock_does_not_magnify() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, autoHide: true, revealed: false,
+                magnification: 1.0, entries: [ app("a", "A", true) ]
+            });
+            // Normalize the pointer off the Dock, then force the hidden state.
+            mouseMove(stage, 640, dock.height + 40);
+            dock.hide();
+            dock.pointerAlong = dock._baseline.centers[0];
+            waitForRendering(stage);
+            compare(dock.revealed, false);
+            compare(dock.magnifying, false);
+        }
+
+        function test_dwelling_at_the_edge_reveals_the_dock() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, autoHide: true, revealed: false,
+                entries: [ app("a", "A", true) ]
+            });
+            mouseMove(stage, 640, dock.height + 40);
+            dock.hide();
+            waitForRendering(stage);
+            compare(dock.revealed, false);
+            // Enter the bottom edge band; the reveal is delayed, not instant.
+            mouseMove(dock, 640, dock.height - 1);
+            compare(dock.revealed, false);
+            wait(Theme.controls.dock.revealDelay + 80);
+            compare(dock.revealed, true);
+        }
+
+        function test_leaving_the_dock_rehides_after_delay() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, autoHide: true, revealed: true,
+                entries: [ app("a", "A", true) ]
+            });
+            mouseMove(dock, 640, dock.height - 20);
+            waitForRendering(stage);
+            compare(dock.revealed, true);
+            // Off the Dock surface: the pointer left, so the hide delay runs.
+            mouseMove(stage, 640, dock.height + 40);
+            wait(Theme.controls.dock.hideDelay + 80);
+            compare(dock.revealed, false);
+        }
+
+        function test_leaving_before_the_reveal_delay_cancels_the_reveal() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, autoHide: true, revealed: false,
+                entries: [ app("a", "A", true) ]
+            });
+            mouseMove(stage, 640, dock.height + 40);
+            dock.hide();
+            mouseMove(dock, 640, dock.height - 1);
+            wait(Theme.controls.dock.revealDelay / 2);
+            mouseMove(stage, 640, dock.height + 40);
+            wait(Theme.controls.dock.revealDelay + 80);
+            compare(dock.revealed, false);
+        }
+
+        function test_rehide_is_suppressed_while_a_popover_is_open() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, autoHide: true, revealed: true,
+                entries: [ app("files", "Files", true) ]
+            });
+            dock.openEntryMenu(dock.items[0]);
+            waitForRendering(stage);
+            compare(dock.popoverOpen, true);
+            // The pointer is over the popover surface, not the Dock; the hide
+            // timer must not hide the Dock while a popover is open.
+            mouseMove(stage, 640, dock.height + 40);
+            wait(Theme.controls.dock.hideDelay + 80);
+            compare(dock.revealed, true);
+            dock.closePopovers();
+            waitForRendering(stage);
         }
 
         // -- Context menu and window chooser (T-10 sections 9/13) ----------
@@ -941,6 +1042,45 @@ Item {
             menu.activate(labels.indexOf("Turn Magnification On"));
             compare(menuActionSpy.count, 1);
             compare(menuActionSpy.signalArguments[0][0], "toggle_magnification");
+        }
+
+        function test_divider_menu_has_hiding_toggle() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, autoHide: false,
+                entries: [ app("a", "A", true) ]
+            });
+            menuActionSpy.target = dock;
+            menuActionSpy.clear();
+            dock.openEntryMenu(dock.items[1]); // the divider
+            var menu = findChild(dock, "entryMenu");
+            var labels = [];
+            for (var i = 0; i < menu.entries.length; ++i)
+                labels.push(menu.entries[i].label);
+            verify(labels.indexOf("Turn Hiding On") >= 0);
+            menu.activate(labels.indexOf("Turn Hiding On"));
+            compare(menuActionSpy.count, 1);
+            compare(menuActionSpy.signalArguments[0][0], "toggle_autohide");
+
+            // With auto-hide on the item flips to the "off" label.
+            dock.autoHide = true;
+            waitForRendering(stage);
+            dock.openEntryMenu(dock.items[1]);
+            var labelsOn = [];
+            var menuOn = findChild(dock, "entryMenu");
+            for (var j = 0; j < menuOn.entries.length; ++j)
+                labelsOn.push(menuOn.entries[j].label);
+            verify(labelsOn.indexOf("Turn Hiding Off") >= 0);
+        }
+
+        function test_autohide_off_never_hides() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, autoHide: false, revealed: true,
+                entries: [ app("a", "A", true) ]
+            });
+            dock.hide();
+            waitForRendering(stage);
+            compare(dock.revealed, true);
+            compare(dock.hideOffset, 0);
         }
 
         // -- Artwork --------------------------------------------------------
