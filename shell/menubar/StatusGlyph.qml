@@ -31,8 +31,8 @@ Item {
     // The first request may fire before the item is in an exposed window and
     // be dropped; re-request when the item joins a window and becomes
     // visible, so the shell's one-shot `grabWindow` always sees the glyph.
-    onWindowChanged: if (window) canvas.requestPaint()
-    onVisibleChanged: if (visible) canvas.requestPaint()
+    onWindowChanged: if (root.window) canvas.requestPaint()
+    onVisibleChanged: if (root.visible) canvas.requestPaint()
     Component.onCompleted: canvas.requestPaint()
 
     Canvas {
