@@ -21,6 +21,7 @@ qt_add_qml_module(dragonfruit-design-system
         components/AppWindow.qml
         components/TitleBar.qml
         components/TrafficLights.qml
+        components/DragonfruitLogo.qml
         components/MenuBarMenu.qml
         components/Toggle.qml
         components/Popup.qml
@@ -49,6 +50,7 @@ df_qml_lint(design-system
     components/AppWindow.qml
     components/TitleBar.qml
     components/TrafficLights.qml
+    components/DragonfruitLogo.qml
     components/MenuBarMenu.qml
     components/Toggle.qml
     components/Popup.qml

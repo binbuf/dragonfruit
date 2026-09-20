@@ -2,9 +2,11 @@
 import QtQuick
 import Dragonfruit
 
-// The top menu bar (T-09): anchored chrome surface with reserved zones,
-// hosting from left to right the active application's menu (menu-broker,
-// T-22; the app name until it lands), system status items (Wi-Fi,
+// The top menu bar (T-09): anchored chrome surface with reserved zones. From
+// left to right it hosts the always-present system menu (the dragonfruit mark,
+// T-09), the always-present application menu (the focused app's name and its
+// About/Settings/Hide/Quit items; Files on the empty desktop), the focused
+// application's own menus (menu-broker, T-22), system status items (Wi-Fi,
 // Bluetooth, volume, battery, clock, Focus/DND, accessibility), the Control
 // Center entry point, and a Mission Control button/gesture target.
 //
@@ -18,7 +20,14 @@ Rectangle {
     // --- Data (injected by the shell controller) --------------------------
     property string appName: ""
     property string appId: ""
-    // [{ title: "File", items: [ {label, shortcut, type, enabled, ...} ] }]
+    // The fixed system menu (brand mark): About/Settings/App Store/Sleep/…
+    // [{ label, shortcut, type, enabled, action }]
+    property var systemMenuItems: []
+    // The fixed application menu: About <App>/Settings/Hide/Quit, synthesized
+    // from the focused app (or Files on the desktop) until T-22 owns it.
+    property var applicationMenuItems: []
+    // The focused application's exported top-level menus.
+    // [{ title: "File", items: [ {label, shortcut, type, enabled, action} ] }]
     property var appMenuModel: []
     // [{ id, icon, label, accessibleName, available, enabled, selected, tint }]
     property var statusItems: []
@@ -27,6 +36,21 @@ Rectangle {
     // The compositor reports when the shell/menu surface holds focus; when
     // it is lost the open menu dismisses (FR-3).
     property bool shellFocused: true
+
+    // The bar's top-level menus, left to right: the fixed system menu, the
+    // fixed application menu, then whatever the focused app exported. Keeping
+    // them in one model is what lets drag-through and the open-menu-tracks-
+    // focus rules span all three groups. `kind` selects the rendering
+    // treatment ("system" -> brand mark, "app" -> bold title).
+    readonly property var topLevelMenus: {
+        var out = [{ kind: "system", title: qsTr("System"), items: systemMenuItems },
+                   { kind: "app", title: appName, items: applicationMenuItems }];
+        for (var i = 0; i < appMenuModel.length; ++i) {
+            var m = appMenuModel[i] || {};
+            out.push({ kind: "menu", title: m.title || "", items: m.items || [] });
+        }
+        return out;
+    }
 
     // --- Interaction state ------------------------------------------------
     property int openMenuIndex: -1
@@ -39,7 +63,7 @@ Rectangle {
     readonly property var _dropdownRect: {
         if (openMenuIndex < 0)
             return { x: 0, y: 0, w: 0, h: 0 };
-        var item = appMenuRepeater.itemAt(openMenuIndex);
+        var item = menuRepeater.itemAt(openMenuIndex);
         if (!item || !item.popup)
             return { x: 0, y: 0, w: 0, h: 0 };
         var popup = item.popup;
@@ -66,16 +90,16 @@ Rectangle {
     color: Theme.color.chrome
 
     function openMenu(index) {
-        if (index < 0 || index >= appMenuRepeater.count || index === openMenuIndex)
+        if (index < 0 || index >= menuRepeater.count || index === openMenuIndex)
             return;
         var previous = openMenuIndex;
         openMenuIndex = index;
         if (previous >= 0) {
-            var previousItem = appMenuRepeater.itemAt(previous);
+            var previousItem = menuRepeater.itemAt(previous);
             if (previousItem)
                 previousItem.closeMenu();
         }
-        var item = appMenuRepeater.itemAt(index);
+        var item = menuRepeater.itemAt(index);
         if (item)
             item.openMenu();
     }
@@ -89,7 +113,7 @@ Rectangle {
         // own handler may already have closed it, and the bar's click-away
         // handler runs afterwards; emitting twice made the dismissal janky.
         if (index >= 0) {
-            var item = appMenuRepeater.itemAt(index);
+            var item = menuRepeater.itemAt(index);
             if (item)
                 item.closeMenu();
             appMenuClosed();
@@ -106,7 +130,7 @@ Rectangle {
     // Test/introspection hooks: the shell controller uses these to drive
     // the bar; the QML tests use them to assert without poking at the scene.
     function appMenuAt(index) {
-        return appMenuRepeater.itemAt(index);
+        return menuRepeater.itemAt(index);
     }
 
     function statusItemAt(index) {
@@ -133,7 +157,7 @@ Rectangle {
         appMenuModel = menuModel || [];
         if (wasOpen >= 0) {
             openMenuIndex = -1;
-            if (wasOpen < appMenuModel.length)
+            if (wasOpen < topLevelMenus.length)
                 openMenu(wasOpen);
             else
                 closeMenus();
@@ -182,23 +206,10 @@ Rectangle {
         anchors.verticalCenter: parent.verticalCenter
         height: Theme.controls.menuBarMenu.barHeight
 
-        Text {
-            id: appNameText
-            objectName: "appName"
-            visible: menuBar.appMenuModel.length === 0
-            text: menuBar.appName
-            color: Theme.color.textPrimary
-            font.pixelSize: Theme.controls.menuBar.fontSize
-            font.weight: Theme.primitive.font.weightMedium
-            anchors.verticalCenter: parent.verticalCenter
-            leftPadding: Theme.controls.menuBarMenu.barPaddingH
-            rightPadding: Theme.controls.menuBarMenu.barPaddingH
-        }
-
         Repeater {
-            id: appMenuRepeater
-            objectName: "appMenuRepeater"
-            model: menuBar.appMenuModel
+            id: menuRepeater
+            objectName: "menuRepeater"
+            model: menuBar.topLevelMenus
 
             delegate: MenuBarMenu {
                 required property var modelData
@@ -210,6 +221,8 @@ Rectangle {
                 activeFocusOnTab: false
                 showFocusRing: false
 
+                showLogo: modelData.kind === "system"
+                emphasized: modelData.kind === "app"
                 title: modelData.title !== undefined ? modelData.title : ""
                 model: modelData.items !== undefined ? modelData.items : []
 

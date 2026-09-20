@@ -3165,3 +3165,58 @@ Lesson: a chrome QML root that only partially paints must be explicitly
 transparent. `MenuBar.qml` sets `color: Theme.color.chrome` because the bar is
 opaque across its whole surface; `Dock.qml` and `DockWindowChooser.qml` do
 not.
+
+## T-09 continuation — system menu + application menu (sixth session)
+
+**State: landed, headless-verified; system-menu actions are stubs.**
+
+A design review found two macOS menu-bar features the docs had never specced:
+the system menu (the Apple-logo equivalent) and the always-present application
+menu. The old bar rendered the focused app's exported menus, or the app name
+alone when it exported none — so once T-22's broker landed, the app name would
+have *disappeared* on a successful export. Both are now implemented as fixed,
+shell-owned menus ahead of the app's exported model.
+
+### What changed
+
+- **`design-system/components/DragonfruitLogo.qml`** (new): the brand mark
+  from the imported `dragonfruit.svg`, reduced to its fruit line-art path and
+  rendered as a `Shape` + `PathSvg` with `fillColor` bound to a property. The
+  original SVG was a white square with black line-art; the component keeps only
+  the line-art and tints it, so it works in both light and dark chrome (a
+  literal white logo would vanish on the light `Theme.color.chrome`). The
+  geometry renderer is pinned because the headless tests run the software
+  scene-graph backend.
+- **`MenuBarMenu`**: added `showLogo` (brand mark instead of a text title) and
+  `emphasized` (bold title for the application menu). `implicitWidth` follows
+  whichever is shown.
+- **`MenuBar.qml`**: one combined `topLevelMenus` model — `[system, app,
+  ...appMenuModel]` — feeding the single top-level `Repeater`, so drag-through
+  and open-menu-tracks-focus span all three groups with consistent indices.
+  Index 0 is the system menu, index 1 the application menu, index 2+ the app's
+  exported menus. The old `appName` fallback `Text` is removed.
+- **`ShellController`**: `systemMenu()` builds the fixed system menu once
+  (`$USER` for Log Out); `applicationMenu()` synthesizes the fixed application
+  menu for the focused app, defaulting to **Files** when nothing is focused
+  (the Finder-owns-the-desktop model). Items carry an `action`;
+  `onAppMenuTriggered` dispatches it (`quit` works; the rest log).
+- **`tst_menubar.qml`**: indices updated for the two fixed menus and new cases
+  added for always-present system/app menus, the logo pixel/tint contract, and
+  action routing. 21/21 pass headless.
+
+### Deferred / decisions (also in T-09 hand-off)
+
+- **Application-menu ownership moves to T-22.** The shell synthesizes it today;
+  the broker should own per-app About/Settings/Hide state. The system menu
+  stays session-owned.
+- **System-menu actions are stubs:** Settings/About → T-16, power/Log Out →
+  T-24, Lock Screen → T-26, Hide/Hide Others/Show All → T-04/T-24 compositor
+  window state.
+- **App Store ships disabled.** There is no app-store equivalent; the item
+  exists to match the macOS concept. Decide later to repurpose (distro/package
+  UI) or drop.
+- **The root `dragonfruit.svg` stays as the source art.** The component embeds
+  the extracted path so it can be tinted; the original is not loaded at
+  runtime. If the art is revised, re-extract the path (the fruit is the second
+  `<path>`).
+

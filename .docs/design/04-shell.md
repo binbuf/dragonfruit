@@ -32,12 +32,26 @@ transitions read as one system.
 
 The top menu bar hosts, from left to right:
 
-- The active application's menu (via the menu-broker — see
-  [06-global-menu.md](06-global-menu.md))
+- The **system menu** — the dragonfruit mark, always present. Its items are
+  session/system operations: About This System, System Settings, App Store
+  (no equivalent yet), Sleep, Restart, Shut Down, Lock Screen, and Log Out.
+- The **application menu** — the focused application's name, always present
+  and bold, carrying the standard About / Settings / Hide / Hide Others /
+  Show All / Quit items. On the empty desktop this is **Files** (the Finder
+  model: the file manager owns the desktop — see [09-files.md](09-files.md)).
+- The active application's own menus (File, Edit, View, …) via the
+  menu-broker (see [06-global-menu.md](06-global-menu.md)).
 - System status items: Wi-Fi, Bluetooth, volume, battery, clock, Focus/DND,
   accessibility
 - The Control Center entry point
 - A Mission Control button/gesture target
+
+The system menu and application menu are **shell-owned chrome**, not part of
+the application's exported model: an app that exports nothing still gets a
+complete menu bar, and an app that exports menus gets them *after* the fixed
+two. The menu-broker is expected to take over synthesizing the application
+menu from app metadata (T-22) so the items can reflect per-app state, while
+the system menu stays with the session.
 
 Status items consume the system-service adapters described in
 [07-system-integration.md](07-system-integration.md).

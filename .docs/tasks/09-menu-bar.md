@@ -12,12 +12,14 @@
 ## Summary
 
 The shell process foundation and the top menu bar: anchored chrome surface
-with reserved zones, hosting from left to right the active application's
-menu (menu-broker), system status items (Wi-Fi, Bluetooth, volume, battery,
-clock, Focus/DND, accessibility), the Control Center entry point, and a
-Mission Control button/gesture target. This ticket also bootstraps the
-shell process itself (Wayland client of our compositor, systemd-restartable,
-independent animation curves).
+with reserved zones, hosting from left to right the always-present system menu
+(the dragonfruit mark), the always-present application menu (the focused app's
+name and its About/Settings/Hide/Quit items; Files on the desktop), the active
+application's exported menus (menu-broker), system status items (Wi-Fi,
+Bluetooth, volume, battery, clock, Focus/DND, accessibility), the Control
+Center entry point, and a Mission Control button/gesture target. This ticket
+also bootstraps the shell process itself (Wayland client of our compositor,
+systemd-restartable, independent animation curves).
 
 ## Background
 
@@ -43,8 +45,14 @@ restartable without taking down the compositor.
      (`dragonfruit dev --nested`).
 2. **Menu bar layout** (left → right, per
    [04-shell.md](../design/04-shell.md)):
-   - Active application's menu via **menu-broker** (T-22; until it lands,
-     render the app name from focus broadcasts).
+   - **System menu** (dragonfruit mark, always present): About This System,
+     System Settings, App Store, Sleep, Restart, Shut Down, Lock Screen,
+     Log Out <user>.
+   - **Application menu** (always present, bold app name; Files on the empty
+     desktop): About <App>, Settings, Hide <App>, Hide Others, Show All,
+     Quit <App>.
+   - The active application's exported menus via **menu-broker** (T-22;
+     until it lands, only the fixed system + application menus render).
    - System status items: **Wi-Fi, Bluetooth, volume, battery, clock,
      Focus/DND, accessibility** — consuming the system-service adapters
      (T-20). Each degrades to hidden/disabled when its daemon is absent
@@ -74,12 +82,15 @@ restartable without taking down the compositor.
 
 - FR-1: Menu bar anchors on every output, reserves its zone, and follows
   output hotplug (appears on new outputs).
-- FR-2: App menu shows: broker-resolved menu when available; application
-  name only when the app doesn't export one (broker priority 3 —
+- FR-2: Menu bar always shows the **system menu** (dragonfruit mark) and the
+  **application menu** (focused app's name, or Files on the empty desktop),
+  then the broker-resolved menu when available. An app that exports nothing
+  still gets both fixed menus (broker priority 3 —
   [06-global-menu.md](../design/06-global-menu.md)).
 - FR-3: Menu interaction: click-to-open, drag-through submenus with delayed
   hover, Escape and focus-loss dismissal, live switch when focus changes
-  under an open menu.
+  under an open menu. Drag-through spans the fixed menus and the app's
+  exported menus as one row.
 - FR-4: Status items reflect adapter state within one adapter event; absent
   daemon → item hidden or "unavailable," never an error, never blocks
   session start.
@@ -87,6 +98,9 @@ restartable without taking down the compositor.
 - FR-6: Idle menu bar contributes **zero wakeups** to the idle-desktop
   budget (Phase perf budget — no polling; everything is event-driven).
 - FR-7: Reduced-motion variant for menu open/close per design-system rules.
+- FR-8: Fixed-menu items carry an `action` that the shell dispatches (Quit
+  works today; Settings/About/Sleep/Restart/Shut Down/Log Out/Lock Screen/
+  App Store are logged stubs until their owning tickets land — see hand-off).
 
 ## Acceptance criteria
 
@@ -107,6 +121,13 @@ restartable without taking down the compositor.
       the clock is a single minute-aligned one-shot timer.)*
 - [x] Menu interaction walkthrough passes (drag-through, dismiss, focus
       switch) on keyboard and pointer. *(`shell/tests/tst_menubar.qml`.)*
+- [x] Always-present system menu (dragonfruit mark) and application menu
+      (focused app, Files on the desktop) render before the app's exported
+      menus; fixed-menu items dispatch their `action`.
+      *(`shell/tests/tst_menubar.qml`:
+      `test_system_and_application_menu_always_present`,
+      `test_app_menu_renders_after_fixed_menus`,
+      `test_system_menu_item_carries_action`, `test_logo_renders_pixels_and_tints`.)*
 
 ## Session status (T-09 split)
 
@@ -232,6 +253,33 @@ Fifth session (T-09 continuation — true overlay dropdown):
   in the sandbox); the compositor half and the QML geometry contract are
   scripted.
 
+Sixth session (T-09 continuation — system + application menus):
+
+- **Always-present system menu.** `MenuBarMenu` gained `showLogo` and renders
+  the new `DragonfruitLogo` (the brand mark from `dragonfruit.svg`, reduced to
+  a tintable `Shape`/`PathSvg` path — no bitmap, no baked-in fill, so it reads
+  in light and dark chrome). `ShellController::systemMenu` builds the fixed
+  items (About This System, System Settings, App Store [disabled], Sleep,
+  Restart, Shut Down, Lock Screen, Log Out <user>) once per session; the user
+  name comes from `$USER`.
+- **Always-present application menu.** `MenuBar.qml` now renders one combined
+  top-level row: system menu (index 0), application menu (index 1), then the
+  app's exported menus. The application menu is the focused app's name (bold),
+  or **Files** on the empty desktop (the Finder-owns-the-desktop model,
+  `design/09-files.md`), with the standard About / Settings / Hide / Hide
+  Others / Show All / Quit items. The old "app name only" fallback text is
+  gone: the name is now the application menu itself, so a real broker menu no
+  longer makes it disappear.
+- **Action dispatch.** Fixed-menu items carry an `action`; `MenuBar` passes it
+  through `appMenuTriggered` and `ShellController::onAppMenuTriggered`
+  dispatches it. `quit` closes the focused app; the rest are logged stubs
+  until T-16/T-24/T-26/T-04 land (see hand-off 5).
+- **Tests.** `tst_menubar` updated for the two fixed menus (indices shift by
+  two) and extended with always-present/logo/action-routing cases; all 21 pass
+  headless. `make lint`-equivalent gates (`qmllint`, design-token,
+  token-freshness, desktop-name, capture-grab) and the gallery visual
+  regression pass.
+
 Hand-off (T-09 continuation):
 
 1. ~~**True overlay layer for the dropdown (optional polish).**~~ **Done
@@ -260,9 +308,26 @@ Hand-off (T-09 continuation):
    geometry, the bar's reserved zone on it, and the chrome reconfigure (see
    PROGRESS.md).
 3. **T-20 status adapters and T-22 menu-broker** replace the placeholders and
-   the name-only app menu. The shell's `--placeholders` demo app menu
+   the app-exported menus. The shell's `--placeholders` demo app menu
    (`ShellController::demoAppMenu`) is a T-22 stand-in so the dropdown is
    exercisable now; T-22 should delete it.
+4. **T-22 owns the application menu.** Today the shell synthesizes the fixed
+   application menu (About/Settings/Hide/Hide Others/Show All/Quit) from the
+   app name in `ShellController::applicationMenu`. T-22 should move that
+   synthesis into the broker so per-app enable/disable and state are live, and
+   so the Hide/Show All items can map onto compositor window state. The
+   system menu stays shell/session-owned.
+5. **System-menu action wiring.** `ShellController::onAppMenuTriggered`
+   dispatches by `action`; only `quit` is functional. The rest are logged
+   stubs to be wired by their owners:
+   - `settings` / `about` / `about-system` → T-16 (Settings app; About panel).
+   - `sleep` / `restart` / `shut-down` / `log-out` → T-24 (logind adapter A11).
+   - `lock-screen` → T-26.
+   - `hide` / `hide-others` / `show-all` → T-04/T-24 compositor window state.
+6. **App Store item is disabled.** There is no app-store equivalent in the
+   project; the item ships disabled so the system menu matches the macOS
+   concept without implying a store. Decide later whether to repurpose it as a
+   distro/package UI entry or drop it (see [04-shell.md](../design/04-shell.md)).
 
 ### Deferred polish (not blocking T-10+)
 

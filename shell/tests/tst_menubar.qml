@@ -21,13 +21,14 @@ Item {
         Component { id: statusItemComponent; StatusItem { } }
         Component { id: clockComponent; MenuBarClock { } }
         Component { id: glyphComponent; StatusGlyph { } }
+        Component { id: logoComponent; DragonfruitLogo { } }
 
         SignalSpy { id: statusSpy; signalName: "statusItemActivated" }
         SignalSpy { id: ccSpy; signalName: "controlCenterRequested" }
         SignalSpy { id: mcSpy; signalName: "missionControlRequested" }
         SignalSpy { id: openedSpy; signalName: "appMenuOpened" }
         SignalSpy { id: closedSpy; signalName: "appMenuClosed" }
-        SignalSpy { id: itemActivatedSpy; signalName: "activated" }
+        SignalSpy { id: triggeredSpy; signalName: "appMenuTriggered" }
 
         function make(component, props) {
             var obj = createTemporaryObject(component, stage, props || {});
@@ -60,6 +61,23 @@ Item {
             ];
         }
 
+        // The bar always renders the system menu (index 0) and the application
+        // menu (index 1) before any exported app menus, so an app's File menu
+        // starts at index 2.
+        function fixedMenus() {
+            return {
+                systemMenuItems: [
+                    { label: "About This System", action: "about-system" },
+                    { type: "separator" },
+                    { label: "Sleep", action: "sleep" }
+                ],
+                applicationMenuItems: [
+                    { label: "About Test", action: "about" },
+                    { label: "Quit Test", action: "quit" }
+                ]
+            };
+        }
+
         function defaultStatus() {
             return [
                 { id: "wifi", icon: "wifi", accessibleName: "Wi-Fi", available: true },
@@ -71,21 +89,41 @@ Item {
 
         // -- Layout / data injection (FR-1, FR-2) ---------------------------
 
-        function test_app_name_fallback_when_no_menu() {
-            var bar = make(menuBarComponent, { appName: "Safari", appMenuModel: [] });
-            var nameText = findChild(bar, "appName");
-            verify(nameText !== null);
-            compare(nameText.visible, true);
-            compare(nameText.text, "Safari");
-            compare(bar.appMenuAt(0), null);
+        function test_system_and_application_menu_always_present() {
+            var fixed = fixedMenus();
+            var bar = make(menuBarComponent, {
+                appName: "Safari",
+                appMenuModel: [],
+                systemMenuItems: fixed.systemMenuItems,
+                applicationMenuItems: fixed.applicationMenuItems
+            });
+            // System menu is leftmost and renders the brand mark.
+            compare(bar.appMenuAt(0).showLogo, true);
+            compare(bar.appMenuAt(0).title, "System");
+            // The application menu always follows it, bold, titled with the app.
+            compare(bar.appMenuAt(1).showLogo, false);
+            compare(bar.appMenuAt(1).emphasized, true);
+            compare(bar.appMenuAt(1).title, "Safari");
+            // No exported app menus yet, so nothing after the fixed two.
+            compare(bar.appMenuAt(2), null);
         }
 
-        function test_app_menu_renders_from_model() {
-            var bar = make(menuBarComponent, { appName: "Safari", appMenuModel: sampleModel() });
-            compare(findChild(bar, "appName").visible, false);
-            compare(bar.appMenuAt(0).title, "File");
-            compare(bar.appMenuAt(1).title, "Edit");
-            compare(bar.appMenuAt(2), null);
+        function test_app_menu_renders_after_fixed_menus() {
+            var fixed = fixedMenus();
+            var bar = make(menuBarComponent, {
+                appName: "Safari",
+                appMenuModel: sampleModel(),
+                systemMenuItems: fixed.systemMenuItems,
+                applicationMenuItems: fixed.applicationMenuItems
+            });
+            // Fixed system + app menus occupy 0 and 1.
+            compare(bar.appMenuAt(0).showLogo, true);
+            compare(bar.appMenuAt(1).title, "Safari");
+            // The app's exported menus follow.
+            compare(bar.appMenuAt(2).title, "File");
+            compare(bar.appMenuAt(2).emphasized, false);
+            compare(bar.appMenuAt(3).title, "Edit");
+            compare(bar.appMenuAt(4), null);
         }
 
         function test_menus_and_status_are_on_opposite_sides() {
@@ -164,7 +202,13 @@ Item {
         // -- App-menu interaction (FR-3) -----------------------------------
 
         function test_open_and_close_menu() {
-            var bar = make(menuBarComponent, { appMenuModel: sampleModel() });
+            var fixed = fixedMenus();
+            var bar = make(menuBarComponent, {
+                appName: "Safari",
+                appMenuModel: sampleModel(),
+                systemMenuItems: fixed.systemMenuItems,
+                applicationMenuItems: fixed.applicationMenuItems
+            });
             openedSpy.target = bar;
             openedSpy.clear();
             closedSpy.target = bar;
@@ -190,15 +234,22 @@ Item {
         }
 
         function test_dropdown_geometry_tracks_open_menu() {
-            var bar = make(menuBarComponent, { width: 600, appMenuModel: sampleModel() });
+            var fixed = fixedMenus();
+            var bar = make(menuBarComponent, {
+                width: 600,
+                appName: "Safari",
+                appMenuModel: sampleModel(),
+                systemMenuItems: fixed.systemMenuItems,
+                applicationMenuItems: fixed.applicationMenuItems
+            });
             // Closed: the overlay popup has no rectangle.
             compare(bar.dropdownWidth, 0);
             compare(bar.dropdownHeight, 0);
 
-            bar.openMenu(0);
+            bar.openMenu(1);
             waitForRendering(stage);
-            var file = bar.appMenuAt(0);
-            var popup = file.popup;
+            var appMenu = bar.appMenuAt(1);
+            var popup = appMenu.popup;
             var topLeft = popup.mapToItem(bar, 0, 0);
             verify(bar.dropdownWidth > 0);
             verify(bar.dropdownHeight > 0);
@@ -214,7 +265,12 @@ Item {
         }
 
         function test_escape_dismisses_open_menu() {
-            var bar = make(menuBarComponent, { appMenuModel: sampleModel() });
+            var fixed = fixedMenus();
+            var bar = make(menuBarComponent, {
+                appMenuModel: sampleModel(),
+                systemMenuItems: fixed.systemMenuItems,
+                applicationMenuItems: fixed.applicationMenuItems
+            });
             bar.openMenu(0);
             waitForRendering(stage);
             compare(bar.openMenuIndex, 0);
@@ -226,7 +282,13 @@ Item {
         }
 
         function test_click_away_dismisses_open_menu() {
-            var bar = make(menuBarComponent, { width: 600, appMenuModel: sampleModel() });
+            var fixed = fixedMenus();
+            var bar = make(menuBarComponent, {
+                width: 600,
+                appMenuModel: sampleModel(),
+                systemMenuItems: fixed.systemMenuItems,
+                applicationMenuItems: fixed.applicationMenuItems
+            });
             bar.openMenu(0);
             waitForRendering(stage);
             compare(bar.openMenuIndex, 0);
@@ -238,7 +300,14 @@ Item {
         }
 
         function test_click_menu_title_opens_and_stays_open() {
-            var bar = make(menuBarComponent, { width: 600, appMenuModel: sampleModel() });
+            var fixed = fixedMenus();
+            var bar = make(menuBarComponent, {
+                width: 600,
+                appName: "Safari",
+                appMenuModel: sampleModel(),
+                systemMenuItems: fixed.systemMenuItems,
+                applicationMenuItems: fixed.applicationMenuItems
+            });
             openedSpy.target = bar;
             openedSpy.clear();
             closedSpy.target = bar;
@@ -246,62 +315,108 @@ Item {
 
             // Clicking the title toggles it open; the bar's click-away handler
             // must not immediately close it.
-            var file = bar.appMenuAt(0);
-            mouseClick(file, file.width / 2, file.height / 2);
+            var appMenu = bar.appMenuAt(1);
+            mouseClick(appMenu, appMenu.width / 2, appMenu.height / 2);
             waitForRendering(stage);
-            compare(bar.openMenuIndex, 0);
-            compare(file.open, true);
+            compare(bar.openMenuIndex, 1);
+            compare(appMenu.open, true);
             compare(openedSpy.count, 1);
             compare(closedSpy.count, 0);
 
             // A second click on the title toggles it closed.
-            mouseClick(file, file.width / 2, file.height / 2);
+            mouseClick(appMenu, appMenu.width / 2, appMenu.height / 2);
             waitForRendering(stage);
             compare(bar.openMenuIndex, -1);
-            compare(file.open, false);
+            compare(appMenu.open, false);
         }
 
         function test_drag_through_switches_menu_on_hover() {
-            var bar = make(menuBarComponent, { appMenuModel: sampleModel() });
+            var fixed = fixedMenus();
+            var bar = make(menuBarComponent, {
+                appName: "Safari",
+                appMenuModel: sampleModel(),
+                systemMenuItems: fixed.systemMenuItems,
+                applicationMenuItems: fixed.applicationMenuItems
+            });
             bar.openMenu(0);
             waitForRendering(stage);
             compare(bar.openMenuIndex, 0);
 
-            var edit = bar.appMenuAt(1);
-            mouseMove(edit, edit.width / 2, edit.height / 2);
+            var appMenu = bar.appMenuAt(1);
+            mouseMove(appMenu, appMenu.width / 2, appMenu.height / 2);
             tryCompare(bar, "openMenuIndex", 1);
             compare(bar.appMenuAt(0).open, false);
             compare(bar.appMenuAt(1).open, true);
         }
 
         function test_open_menu_tracks_focus_switch() {
-            var bar = make(menuBarComponent, { appMenuModel: sampleModel() });
-            bar.openMenu(1);
+            var fixed = fixedMenus();
+            var bar = make(menuBarComponent, {
+                appName: "Safari",
+                appMenuModel: sampleModel(),
+                systemMenuItems: fixed.systemMenuItems,
+                applicationMenuItems: fixed.applicationMenuItems
+            });
+            // Edit is the second exported menu, at index 3.
+            bar.openMenu(3);
             waitForRendering(stage);
-            compare(bar.openMenuIndex, 1);
+            compare(bar.openMenuIndex, 3);
 
             bar.setFocusedApp("Terminal", "terminal", [
                 { title: "Shell", items: [{ label: "New" }] },
                 { title: "View", items: [{ label: "Clear" }] }
             ]);
             waitForRendering(stage);
-            compare(bar.openMenuIndex, 1);
-            compare(bar.appMenuAt(1).title, "View");
-            compare(bar.appMenuAt(1).open, true);
+            // The open menu follows the same position in the new app's menus.
+            compare(bar.openMenuIndex, 3);
+            compare(bar.appMenuAt(3).title, "View");
+            compare(bar.appMenuAt(3).open, true);
+            // The application menu title followed the focus change too.
+            compare(bar.appMenuAt(1).title, "Terminal");
 
-            bar.setFocusedApp("Desktop", "", []);
+            // Back to the desktop: the fixed app menu stays (Files), and the
+            // open exported menu (now gone) dismisses.
+            bar.setFocusedApp("Files", "", []);
             waitForRendering(stage);
             compare(bar.openMenuIndex, -1);
+            compare(bar.appMenuAt(1).title, "Files");
         }
 
         function test_focus_loss_dismisses_open_menu() {
-            var bar = make(menuBarComponent, { appMenuModel: sampleModel() });
+            var fixed = fixedMenus();
+            var bar = make(menuBarComponent, {
+                appMenuModel: sampleModel(),
+                systemMenuItems: fixed.systemMenuItems,
+                applicationMenuItems: fixed.applicationMenuItems
+            });
             bar.openMenu(0);
             waitForRendering(stage);
             compare(bar.openMenuIndex, 0);
             bar.shellFocused = false;
             waitForRendering(stage);
             compare(bar.openMenuIndex, -1);
+        }
+
+        // -- Fixed menu action dispatch (FR-2) ------------------------------
+
+        function test_system_menu_item_carries_action() {
+            var fixed = fixedMenus();
+            var bar = make(menuBarComponent, {
+                appName: "Safari",
+                systemMenuItems: fixed.systemMenuItems,
+                applicationMenuItems: fixed.applicationMenuItems
+            });
+            triggeredSpy.target = bar;
+            triggeredSpy.clear();
+
+            var system = bar.appMenuAt(0);
+            var sleepRow = system.model[2];
+            compare(sleepRow.action, "sleep");
+            system.activate(2);
+            waitForRendering(stage);
+            compare(triggeredSpy.count, 1);
+            compare(triggeredSpy.signalArguments[0][0], 0);
+            compare(triggeredSpy.signalArguments[0][2].action, "sleep");
         }
 
         // -- Clock (FR-5) ---------------------------------------------------
@@ -330,6 +445,28 @@ Item {
                        "glyph " + names[i] + " should render visible pixels");
                 glyph.destroy();
             }
+        }
+
+        // -- System menu brand mark (T-09) ----------------------------------
+
+        function test_logo_renders_pixels_and_tints() {
+            // Drawn large enough that the thin line-art has solid interior
+            // pixels to sample (at menu-bar size it is entirely antialiased).
+            var logo = make(logoComponent, { size: 120, color: Theme.color.textPrimary });
+            // The art is taller than wide (270 x 322); the aspect is preserved.
+            verify(logo.implicitHeight > logo.implicitWidth);
+            var img = grabImage(logo);
+            verify(imageContainsColor(img, Theme.color.textPrimary),
+                   "the dragonfruit mark should render visible pixels");
+
+            // The mark is tintable, not a baked-in bitmap: switching the color
+            // changes the painted pixels.
+            logo.color = Theme.color.accent;
+            waitForRendering(stage);
+            img = grabImage(logo);
+            verify(imageContainsColor(img, Theme.color.accent),
+                   "the dragonfruit mark should follow the design-system color");
+            logo.destroy();
         }
     }
 }

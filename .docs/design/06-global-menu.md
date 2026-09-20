@@ -7,6 +7,27 @@ capability — an application has to export a meaningful menu model somehow. We
 build a `menu-broker` service with a strict priority order and a hard
 never-break-apps rule.
 
+## System menu and application menu
+
+Two menus are always present, before any application-exported model:
+
+- The **system menu** (the dragonfruit mark, far left) is shell/session-owned.
+  It carries session operations: About This System, System Settings, App
+  Store, Sleep, Restart, Shut Down, Lock Screen, Log Out. These are not an
+  application's menu and never move.
+- The **application menu** (the focused app's name, bold) carries the standard
+  About / Settings / Hide / Hide Others / Show All / Quit items. On macOS the
+  application itself owns these; here the shell synthesizes them from app
+  metadata, and **the menu-broker takes this over in T-22** so enable/disable
+  and per-app state are live. On the empty desktop the application menu is
+  **Files**.
+
+An application's exported menus (File, Edit, View, …) render *after* these
+two. This is what makes an app that exports nothing still feel macOS-like: it
+keeps the application menu and its name, rather than collapsing to a bare
+name. The Tier-3 "no exporter" case therefore means "fixed system + application
+menus, no app-exported menus."
+
 ## Menu broker priority
 
 ```text
@@ -20,7 +41,7 @@ never-break-apps rule.
 our native API      DBusMenu         no exporter
    │                 │                 │
    ▼                 ▼                 ▼
-perfect menu      compatible menu    app name only
+perfect menu      compatible menu    fixed menus only
 ```
 
 1. **Our native API.** Settings and Files publish a menu model directly,
@@ -29,7 +50,8 @@ perfect menu      compatible menu    app name only
    AppMenu-style menus get a compatible global menu. Linux has an existing
    ecosystem here (Vala Panel AppMenu, Ayatana indicators descend from the
    Ubuntu Unity era).
-3. **No exporter.** The menu bar shows just the application name.
+3. **No exporter.** The fixed system and application menus (including the
+   application's name) render; no app-exported menus appear.
 
 ## Known limitation
 
@@ -70,10 +92,10 @@ Global application menu
 [ On ]
 
 Compatible apps:
-    File  Edit  View  Window  Help
+    [mark]  Application Name   File  Edit  View  Window  Help
 
 Non-compatible apps:
-    Application Name
+    [mark]  Application Name
 ```
 
 This is far more robust than forcing Unity-era injection modules into every

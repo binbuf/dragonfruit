@@ -575,7 +575,7 @@ the shell's own chrome rendering (T-09/T-10).
    - [x] Private shell protocols (T-07: `df_core` handshake/trust, chrome surfaces + reserved zones, window/workspace/output control, compliance client; chrome rendering + Qt bindings + per-output zones open)
 2. **Experience**
    - [x] Design system (T-08: token architecture + all 20 components + gallery/visual regression; app-level chrome lint + live AT-SPI dump deferred)
-   - [ ] Top bar (T-09 partial: menu-bar render/interaction + shell bootstrap live, restart/idle scripts passing, chrome input routing + overlay-layer dropdown landed and scripted, output hotplug scripted; T-20 status adapters, T-22 app menu open)
+   - [ ] Top bar (T-09 partial: menu-bar render/interaction + shell bootstrap live, restart/idle scripts passing, chrome input routing + overlay-layer dropdown landed and scripted, output hotplug scripted, always-present system menu (dragonfruit mark) + application menu (Files on the desktop) landed; T-20 status adapters, T-22 app-exported menus, and the fixed-menu action wiring (T-16/T-24/T-26) open)
     - [ ] Dock (T-10 partial: presentation/interaction core + shell `top` surface with bottom reserved zone + launch/pinned persistence + launch/attention bounce + magnified-band input region + app context menus and window chooser + drag rearrangement (reorder/promote/remove) + live `dock.*` settings + per-position (left/right) surfaces and vertical layout + edge-band auto-hide reveal/re-hide landed and scripted; external drops, Trash state, scene-graph render path open)
    - [ ] Window switching
    - [ ] Mission Control
