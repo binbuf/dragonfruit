@@ -2839,3 +2839,130 @@ shows the icons centered (`560..659`) inside the centered bar (`562..718`).
 Lesson for the scene-graph render path (FR-14): any QML animation on Dock
 geometry is invisible unless the shell keeps committing frames, so prefer
 snap-to-target outside explicitly animated interactions.
+
+## T-10 continuation — per-position (vertical) surfaces (seventh slice)
+
+**State: partial.** `dock.position` (`bottom` | `left` | `right`) now actually
+moves the Dock: the shell anchors and sizes the `dock` layer surface (and its
+`dock-popup` overlay) to the configured edge, and the QML layout mirrors for a
+vertical Dock. Live position changes work without a surface recreate, and the
+auto-hide translation now goes off the correct edge. The auto-hide
+reveal/hide state machine is still open (nothing summons the hidden Dock from
+the edge). All other remaining slices (external drops, Trash, Options submenu,
+per-output sizing, scene-graph render path, a11y) are unchanged and listed at
+the end.
+
+### What landed
+
+- **`ShellProtocol` edge-aware Dock surfaces** (`shellprotocol.{h,cpp}`). New
+  `DockPosition { Bottom, Left, Right }`; `createDockSurface(position,
+  thickness, exclusiveZone)` and `configureDockSurface(...)` anchor
+  `bottom|left|right` (size `0 x thickness`) for a bottom Dock and
+  `left|top|bottom` / `right|top|bottom` (size `thickness x 0`) for a vertical
+  one; `configureDockSurface` re-applies the anchor so a live position change
+  moves the surface. `createDockPopupSurface(position)` anchors the overlay to
+  the Dock's edge (`bottom|left`, `left|top`, or `right|top`), and
+  `setDockPopupGeometry(top, right, bottom, left, w, h)` now takes full
+  margins instead of a bottom margin, so a vertical popover can hug the side.
+  `configureDockSurface` also re-anchors an existing popover overlay.
+- **Shell per-edge geometry** (`ShellController`). `m_dockThickness` (bar +
+  magnify band) and `m_dockPosition` are tracked; `onDockConfigured` validates
+  the extent on the correct axis (height for bottom, width for vertical) and
+  ignores the compositor's pre-layout full-output configure. A position change
+  zeroes the unknown stretch dimension and pauses `renderDock` until the new
+  configure arrives, so no stale-aspect frame is committed. `dockPosition()`
+  maps the settings string to the enum. `renderDock` grows the offscreen scene
+  by a left/right gutter (in addition to the bottom `headroom`) and computes
+  the popover overlay margins from the Dock's edge; pointer input is offset by
+  both `m_dockItemOffsetX` and `m_dockItemOffsetY`. A live geometry change
+  dismisses any open popover (`closePopovers`) so it never floats detached.
+- **QML vertical layout** (`shell/dock/Dock.qml`). The bar hugs the anchored
+  edge (left `x=0`, right `x=width-barThickness`, both perpendicular offsets
+  included); entries pack from that edge with the running indicator against
+  the screen edge (`x=padding` for left, right-aligned for right); bounce
+  moves into the magnify band. `hideX`/`hideY` split the auto-hide translation
+  per axis (bottom hides down, a vertical Dock hides off its side edge);
+  `draggedX` right-aligns a lifted right-Dock entry.
+- **Tests.** `tst_dock` gained vertical bar/entry containment under full
+  magnification (no clipping), the side-edge hide direction, and the
+  beside-the-bar popover (left menu to the right of the bar, right menu to its
+  left); the left/right placement assertions were tightened. Live headless:
+  `dock.position=left` → `Dock configured 124x720`, reserved `edge=2
+  thickness=60`; `right` → `edge=3 thickness=60`; and a live bottom→left edit
+  reloaded, ignored the pre-layout `1280x124`, then reconfigured to `124x720`
+  with the left reserve.
+
+### Gotchas learned (important for the next slice)
+
+- **The compositor re-anchors live.** `df_layer_surface.set_anchor`/`set_size`
+  are honored after creation; `configureDockSurface` sends them on every
+  change and the compositor answers with a fresh configure. The first
+  configure after re-anchoring is the old geometry (`1280x124` when moving
+  bottom→left); the axis check in `onDockConfigured` correctly ignores it.
+- **Popover placement needs the Dock's *edge*, not output coordinates.** The
+  popover rect lives in Dock-scene coordinates (scene x=0 = surface left). For
+  a right Dock the popover can have a negative scene `x`; the shell grows a
+  left gutter and translates the scene inside the offscreen window, but the
+  overlay margins are computed from the un-offset scene rect. For a right
+  Dock the right margin is `m_dockWidth - (px + pw)`; a left-anchored overlay
+  would wrongly place it off the output's left edge.
+- **Anchor the popover `top|left`/`top|right`, not bottom.** A vertical Dock
+  spans the full output height, so a top margin (`py`) places the popover
+  without needing the output height; the bottom-anchored bottom-Dock popover
+  uses `m_dockHeight - (py + ph)` from the surface bottom (= output bottom).
+- **A vertical Dock's surface is only `thickness + magnifyBand` wide.** A
+  context menu is wider than that, so the offscreen scene must grow
+  horizontally; without the gutter `grabWindow().copy()` returns a partially
+  empty buffer and the menu is clipped.
+- **The QML vertical layout was written but mirrored wrong for `left`.** It
+  placed the bar at `x=magnifyBand` for both left and right (band on the
+  screen-edge side), so a left Dock's icons grew *into* the edge. The fix is
+  to hug the anchored edge and grow inward; the `magnifyBand` is now only a
+  sizing input for the surface, not a positional offset.
+- **Auto-hide still has no reveal/hide state machine.** The translation
+  direction is now correct, but `revealed` defaults true and nothing calls
+  `Dock.hide()`/`reveal()` from pointer dwell; the hidden input region is
+  empty so the edge band cannot be re-entered either. The divider hiding
+  toggle stays omitted until that lands.
+
+### Hand-off / open items (remaining T-10 slices)
+
+1. **Auto-hide edge-band reveal/re-hide state machine** (section 15) plus
+   re-adding the divider hiding toggle. The hidden Dock's input region is
+   empty, so the compositor needs to report pointer proximity to the edge band
+   (or the shell keeps a thin edge input strip) before the Dock can be summoned
+   back. `dock.autohide` already flips the reserved zone to 0 and the
+   translation is correct.
+2. **External drops and spring-loading** (section 12): app/file drops on an
+   icon, Trash, or the Downloads stack. Needs the drag source plus
+   `app-index`/GIO launch with a file argument (T-17/T-18).
+3. **Trash** (section 16): GVfs `trash://` monitor, click-to-Files
+   (`org.dragonfruit.Files1`), drop-to-trash via GIO, Empty Trash with
+   confirmation, and the Trash context menu. This host has only the libgio
+   runtime (no GIO dev headers/pc), so the backend needs either the headers or
+   a filesystem-watcher fallback over `$XDG_DATA_HOME/Trash/{files,info}`.
+4. **Options submenu + Show in Files + Trash/divider completeness** (section
+   13): the app Options ▸ submenu (Assign To, Open at Login, Show in Files)
+   and a "Position on Screen" menu entry now that position switching works.
+   Needs the design-system submenu, T-18 Files, and compositor app/space
+   requests.
+5. **Per-output / per-output sizing** (section 18): chrome surfaces still
+   size from the first output; `matches_output` is the filter hook. A vertical
+   Dock compounds this (the stretch dimension is the output height).
+6. **Scene-graph render path** (FR-14): the Dock still commits on demand via
+   `grabWindow`; the durable `QQuickWindow::afterRendering` fix is shared with
+   the T-09 deferred-polish backlog.
+7. **Keyboard + AT-SPI walkthrough** (section 20): Fn-Control-F3 focus, arrow
+   navigation, Super+Option+D; the QML roles exist, the seat path and live
+   AT-SPI dump are not built.
+
+### Gate status
+
+`make lint` green (`cargo fmt --check`, `clippy -D warnings`, ctest 13/13 incl.
+`tst_dockcore`/`tst_dock`/`qmllint_shell-dock`, `gen-tokens --check`, the
+design-token/desktop-name/no-capture gates, the 66-snapshot gallery
+regression); `make e2e` green (17/17 `shell_protocol_conformance` incl.
+`vertical_dock_reserves_the_left_and_right_zones`, plus the
+window/Xwayland/idle suites); live headless smoke reports `Dock configured
+124x720` / `edge=2 thickness=60` for `dock.position=left`, `edge=3` for
+`right`, and a live bottom→left edit reconfigured the surface in place.

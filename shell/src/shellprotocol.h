@@ -64,26 +64,33 @@ public:
     // Unmap the popup surface (attach a null buffer).
     bool hidePopup();
 
-    // Create the Dock layer surface (T-10): `top` layer, anchored to the
-    // configured edge, namespace "dock". It reserves `exclusiveZone` pixels
-    // on its edge and never takes keyboard focus.
-    bool createDockSurface(int height, int exclusiveZone);
+    // The screen edge the Dock anchors to (T-10 section 5). The surface's
+    // `thickness` is its extent perpendicular to the edge (the baseline bar
+    // plus the magnify band); it stretches along the edge.
+    enum class DockPosition { Bottom, Left, Right };
 
-    // Re-apply the Dock surface's extent and reserved zone after a live
-    // `dock.size` / `dock.autohide` change (T-10 section 19). The anchor is
-    // unchanged (bottom); the compositor answers with a fresh configure.
-    bool configureDockSurface(int height, int exclusiveZone);
+    // Create the Dock layer surface (T-10): `top` layer, anchored to
+    // `position`, namespace "dock". It reserves `exclusiveZone` pixels on its
+    // edge and never takes keyboard focus.
+    bool createDockSurface(DockPosition position, int thickness, int exclusiveZone);
+
+    // Re-apply the Dock surface's position, extent, and reserved zone after a
+    // live `dock.position` / `dock.size` / `dock.autohide` change (T-10
+    // section 19). The compositor answers with a fresh configure.
+    bool configureDockSurface(DockPosition position, int thickness, int exclusiveZone);
 
     // Create the Dock's transient `overlay` layer surface (T-10 context menus
-    // and the window chooser). Anchored to the Dock's edge (bottom|left for a
-    // bottom Dock) so it can be placed with a bottom margin, reserves nothing
+    // and the window chooser). Anchored to the Dock's edge (`bottom|left` for
+    // a bottom Dock) so it can be placed with margins, reserves nothing
     // (`exclusive_zone = -1`), and starts unmapped.
-    bool createDockPopupSurface();
+    bool createDockPopupSurface(DockPosition position);
 
-    // Place the Dock popup at `(x, bottomMargin)` in output coordinates: `x`
-    // is the left edge, `bottomMargin` the distance from the output's bottom
-    // edge. The compositor answers with a fresh `dockPopupConfigured`.
-    bool setDockPopupGeometry(int x, int bottomMargin, int width, int height);
+    // Place the Dock popup with margins (top, right, bottom, left) inset from
+    // the popup's anchored edges and size `(width, height)`. The shell
+    // computes the margins from the popover's Dock-scene rectangle and the
+    // Dock's position (T-10 section 5). The compositor answers with a fresh
+    // `dockPopupConfigured`.
+    bool setDockPopupGeometry(int top, int right, int bottom, int left, int width, int height);
 
     // Attach `image` to the Dock popup surface and commit.
     bool commitDockPopupImage(const QImage &image);

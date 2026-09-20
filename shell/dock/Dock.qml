@@ -106,8 +106,14 @@ Rectangle {
     readonly property real axisLength: axisIsX ? width : height
 
     // --- Auto-hide translation ------------------------------------------
+    // The bar is translated off its anchored edge by its own thickness plus
+    // the edge margin. `hideOffset` is the magnitude; `hideX`/`hideY` are the
+    // per-axis translation for the configured position (T-10 sections 5/15).
     readonly property real hideOffset:
         autoHide && !revealed ? barThickness + Theme.controls.dock.edgeMargin : 0
+    readonly property real hideX:
+        position === "left" ? -hideOffset : position === "right" ? hideOffset : 0
+    readonly property real hideY: position === "bottom" ? hideOffset : 0
 
     function reveal() { revealed = true; }
     function hide() { if (autoHide) revealed = false; }
@@ -442,6 +448,8 @@ Rectangle {
     function draggedX(itemWidth) {
         if (axisIsX)
             return dragPointerAlong - itemWidth / 2;
+        if (position === "right")
+            return barRect.x + barThickness - padding - itemWidth;
         return barRect.x + padding;
     }
     function draggedY(itemHeight) {
@@ -640,18 +648,22 @@ Rectangle {
                 var h = sizes[j] + extra;
                 out.push({
                     x: positions[j],
-                    y: band + barThickness - padding - h - hideOffset - bounce,
+                    y: band + barThickness - padding - h - bounce + hideY,
                     w: isDivider ? dividerWidth : sizes[j],
                     h: isDivider ? barThickness - 2 * padding : h,
                     iconSize: sizes[j]
                 });
             } else {
                 var w = sizes[j] + extra;
-                var vx = position === "right" ? band + padding - bounce
-                                              : band + padding + bounce;
+                // A vertical bar sits on the anchored edge: a left Dock packs
+                // entries from the left, a right Dock from the right so the
+                // running indicator hugs the screen edge. Bounce moves away
+                // from the edge, into the magnify band (T-10 section 14).
+                var vx = position === "right" ? width - padding - w - bounce
+                                              : padding + bounce;
                 out.push({
-                    x: vx,
-                    y: positions[j] - hideOffset,
+                    x: vx + hideX,
+                    y: positions[j],
                     w: isDivider ? dividerWidth : w,
                     h: isDivider ? barThickness - 2 * padding : sizes[j],
                     iconSize: sizes[j]
@@ -668,12 +680,14 @@ Rectangle {
         if (axisIsX)
             return {
                 x: base.positions[0] - padding,
-                y: magnifyBand - hideOffset,
+                y: magnifyBand + hideY,
                 w: base.total + 2 * padding,
                 h: barThickness
             };
+        // A vertical Dock's bar hugs its anchored edge, with the transparent
+        // magnify band on the interior side (T-10 section 2).
         return {
-            x: magnifyBand - hideOffset,
+            x: (position === "right" ? width - barThickness : 0) + hideX,
             y: base.positions[0] - padding,
             w: barThickness,
             h: base.total + 2 * padding

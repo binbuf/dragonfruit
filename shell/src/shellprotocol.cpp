@@ -43,6 +43,38 @@ constexpr uint32_t kAnchorBottom = 2;
 constexpr uint32_t kAnchorLeft = 4;
 constexpr uint32_t kAnchorRight = 8;
 
+// The Dock's surface anchor for a position (T-10 section 5). A bottom Dock
+// stretches the full width; a vertical Dock stretches the full height and
+// sits on the left or right edge.
+uint32_t dockSurfaceAnchor(ShellProtocol::DockPosition position)
+{
+    switch (position) {
+    case ShellProtocol::DockPosition::Left:
+        return kAnchorLeft | kAnchorTop | kAnchorBottom;
+    case ShellProtocol::DockPosition::Right:
+        return kAnchorRight | kAnchorTop | kAnchorBottom;
+    case ShellProtocol::DockPosition::Bottom:
+    default:
+        return kAnchorBottom | kAnchorLeft | kAnchorRight;
+    }
+}
+
+// The Dock popover's overlay anchor. It is placed with margins from the
+// edges the popover hugs: the Dock's edge plus the top of the output for a
+// vertical Dock (T-10 section 5).
+uint32_t dockPopupAnchor(ShellProtocol::DockPosition position)
+{
+    switch (position) {
+    case ShellProtocol::DockPosition::Left:
+        return kAnchorLeft | kAnchorTop;
+    case ShellProtocol::DockPosition::Right:
+        return kAnchorRight | kAnchorTop;
+    case ShellProtocol::DockPosition::Bottom:
+    default:
+        return kAnchorBottom | kAnchorLeft;
+    }
+}
+
 int createShmFile(size_t size)
 {
     int fd = -1;
@@ -270,7 +302,7 @@ bool ShellProtocol::commitImage(const QImage &image)
     return commitTo(m_surface, image);
 }
 
-bool ShellProtocol::createDockSurface(int height, int exclusiveZone)
+bool ShellProtocol::createDockSurface(DockPosition position, int thickness, int exclusiveZone)
 {
     if (!m_shell || !m_compositor)
         return fail(QStringLiteral("df_shell is not available"));
@@ -283,13 +315,13 @@ bool ShellProtocol::createDockSurface(int height, int exclusiveZone)
     static const df_layer_surface_listener dockListener = { onDockConfigure, onLayerClosed };
     df_layer_surface_add_listener(m_dockLayer, &dockListener, this);
 
-    // Bottom Dock: stretch the full output width, fixed height, reserve the
-    // baseline bar thickness on the bottom edge, and never take keyboard
-    // focus while idle (T-10 section 2).
-    df_layer_surface_set_anchor(m_dockLayer, kAnchorBottom | kAnchorLeft | kAnchorRight);
+    // A bottom Dock stretches the full output width; a vertical Dock the full
+    // height. Either way it reserves the baseline bar thickness on its edge
+    // and never takes keyboard focus while idle (T-10 section 2).
+    df_layer_surface_set_anchor(m_dockLayer, dockSurfaceAnchor(position));
     df_layer_surface_set_keyboard_interaction(
         m_dockLayer, DF_LAYER_SURFACE_KEYBOARD_INTERACTION_NONE);
-    if (!configureDockSurface(height, exclusiveZone))
+    if (!configureDockSurface(position, thickness, exclusiveZone))
         return false;
     // Start unmapped; the first render commits a buffer.
     wl_surface_attach(m_dockSurface, nullptr, 0, 0);
@@ -300,12 +332,22 @@ bool ShellProtocol::createDockSurface(int height, int exclusiveZone)
     return true;
 }
 
-bool ShellProtocol::configureDockSurface(int height, int exclusiveZone)
+bool ShellProtocol::configureDockSurface(DockPosition position, int thickness, int exclusiveZone)
 {
     if (!m_dockLayer)
         return false;
-    df_layer_surface_set_size(m_dockLayer, 0, height);
+    // Re-apply the anchor so a live `dock.position` change moves the surface
+    // without a recreate; the compositor honors anchor changes after creation.
+    df_layer_surface_set_anchor(m_dockLayer, dockSurfaceAnchor(position));
+    if (position == DockPosition::Bottom)
+        df_layer_surface_set_size(m_dockLayer, 0, thickness);
+    else
+        df_layer_surface_set_size(m_dockLayer, thickness, 0);
     df_layer_surface_set_exclusive_zone(m_dockLayer, exclusiveZone);
+    // Keep the popover overlay anchored to the same edge if it already exists,
+    // so a live `dock.position` change does not leave it hugging the old edge.
+    if (m_dockPopupLayer)
+        df_layer_surface_set_anchor(m_dockPopupLayer, dockPopupAnchor(position));
     if (m_display)
         wl_display_flush(m_display);
     return true;
@@ -339,7 +381,7 @@ bool ShellProtocol::setDockInputRegion(const QList<QRect> &rects)
     return true;
 }
 
-bool ShellProtocol::createDockPopupSurface()
+bool ShellProtocol::createDockPopupSurface(DockPosition position)
 {
     if (m_dockPopupSurface || m_dockPopupLayer)
         return true;
@@ -354,11 +396,10 @@ bool ShellProtocol::createDockPopupSurface()
     static const df_layer_surface_listener listener = { onDockPopupConfigure, onLayerClosed };
     df_layer_surface_add_listener(m_dockPopupLayer, &listener, this);
 
-    // Anchored bottom|left so the popover can be placed with a bottom margin
-    // above the Dock; no reserved zone and no keyboard (the Dock surface owns
-    // pointer input).
-    static const uint32_t kAnchorBottomLeft = kAnchorBottom | kAnchorLeft;
-    df_layer_surface_set_anchor(m_dockPopupLayer, kAnchorBottomLeft);
+    // Anchored to the Dock's edge so the popover can be placed with margins
+    // measured from that edge; no reserved zone and no keyboard (the Dock
+    // surface owns pointer input).
+    df_layer_surface_set_anchor(m_dockPopupLayer, dockPopupAnchor(position));
     df_layer_surface_set_exclusive_zone(m_dockPopupLayer, -1);
     df_layer_surface_set_keyboard_interaction(m_dockPopupLayer,
                                               DF_LAYER_SURFACE_KEYBOARD_INTERACTION_NONE);
@@ -369,12 +410,13 @@ bool ShellProtocol::createDockPopupSurface()
     return true;
 }
 
-bool ShellProtocol::setDockPopupGeometry(int x, int bottomMargin, int width, int height)
+bool ShellProtocol::setDockPopupGeometry(int top, int right, int bottom, int left, int width,
+                                         int height)
 {
     if (!m_dockPopupLayer || !m_dockPopupSurface)
         return false;
     // set_margin(top, right, bottom, left)
-    df_layer_surface_set_margin(m_dockPopupLayer, 0, 0, bottomMargin, x);
+    df_layer_surface_set_margin(m_dockPopupLayer, top, right, bottom, left);
     df_layer_surface_set_size(m_dockPopupLayer, width, height);
     if (m_display)
         wl_display_flush(m_display);
