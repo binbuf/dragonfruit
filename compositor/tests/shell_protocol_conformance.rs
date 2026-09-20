@@ -988,6 +988,108 @@ fn handshake_chrome_and_control_conformance() {
 }
 
 #[test]
+fn dock_surface_reserves_the_bottom_zone_and_coexists_with_the_bar() {
+    let token = "1a".repeat(32);
+    let proc = CompositorProcess::start("dragonfruit-conformance-dock", &[token]);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    // Authenticate and bind the manager first so we observe reserved zones.
+    let (name, version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, name, version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+    let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
+    let _manager = bind_manager(&mut state, &queue, manager_name, manager_version);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.outputs.is_empty() && state.done_count > 0,
+    );
+
+    let (shell_name, shell_version) = state.shell_global.expect("df_shell advertised");
+    let shell = bind_shell(&mut state, &queue, shell_name, shell_version);
+    let qh = queue.handle();
+
+    // A menu bar reserves the top edge; a Dock reserves the bottom edge. Both
+    // must reach the output independently (T-10 FR-3 reserved zones).
+    let bar_surface = state.compositor.clone().unwrap().create_surface(&qh, ());
+    let bar = shell.get_layer_surface(
+        &bar_surface,
+        None,
+        df_shell::Layer::Top,
+        "menubar".to_string(),
+        &qh,
+        (),
+    );
+    bar.set_anchor(1 | 4 | 8); // top | left | right
+    bar.set_size(0, 28);
+    bar.set_exclusive_zone(28);
+    bar.set_keyboard_interaction(df_layer_surface::KeyboardInteraction::OnDemand);
+    bar_surface.commit();
+
+    let dock_surface = state.compositor.clone().unwrap().create_surface(&qh, ());
+    let dock = shell.get_layer_surface(
+        &dock_surface,
+        None,
+        df_shell::Layer::Top,
+        "dock".to_string(),
+        &qh,
+        (),
+    );
+    dock.set_anchor(2 | 4 | 8); // bottom | left | right
+    dock.set_size(0, 95);
+    dock.set_exclusive_zone(60);
+    dock.set_keyboard_interaction(df_layer_surface::KeyboardInteraction::None);
+    dock_surface.commit();
+
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .output_reserved
+                .iter()
+                .any(|(edge, thickness)| *edge == 0 && *thickness == 28)
+                && state
+                    .output_reserved
+                    .iter()
+                    .any(|(edge, thickness)| *edge == 1 && *thickness == 60)
+        },
+    );
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .layer_configures
+                .iter()
+                .any(|(_, width, height)| *width == OUTPUT_W && *height == 95)
+        },
+    );
+
+    drop(dock);
+    drop(dock_surface);
+    drop(bar);
+    drop(bar_surface);
+    drop(shell);
+    drop(core);
+    let _ = conn.flush();
+    proc.shutdown();
+}
+
+#[test]
 fn untrusted_client_cannot_bind_private_globals() {
     let token = "22".repeat(32);
     let proc = CompositorProcess::start("dragonfruit-conformance-refuse-bind", &[token]);

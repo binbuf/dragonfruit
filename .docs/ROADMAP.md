@@ -89,7 +89,7 @@ Updated when a task is partially or completely finished; see
 | Phase | Tickets |
 |---|---|
 | 1 · Foundation | T-01 ✅ done · T-02 🔄 partial (compositor core) · T-03 🔄 partial (input engine) · T-04 🔄 partial (window model) · T-05 🔄 partial (Spaces model) · T-06 🔄 partial (Xwayland) · T-07 🔄 partial (private shell protocols) |
-| 2 · Experience | T-08 ✅ done (design system; app-level chrome lint + live AT-SPI dump deferred) · T-09 🔄 partial (menu bar + shell bootstrap + overlay-layer dropdown + scripted output hotplug; T-20/T-22 content open) · T-10 … T-14 pending |
+| 2 · Experience | T-08 ✅ done (design system; app-level chrome lint + live AT-SPI dump deferred) · T-09 🔄 partial (menu bar + shell bootstrap + overlay-layer dropdown + scripted output hotplug; T-20/T-22 content open) · T-10 🔄 partial (Dock presentation core + shell surface + running entries/activation; launch/menus/drag/Trash/settings open) · T-11 … T-14 pending |
 | 3 · Flagship apps | T-15 … T-19 pending |
 | 4 · System integration | T-20 … T-23 pending |
 | 5 · Desktop infrastructure | T-24 … T-29 pending |
@@ -348,6 +348,37 @@ first title — the durable fix (commit from `QQuickWindow::afterRendering`
 while the scene is dirty) is shared with T-10's Dock animation. Details and
 hand-off: [PROGRESS.md](PROGRESS.md).
 
+T-10 is partial (first slice): the Dock presentation and interaction core is
+landed. `shell/dock/` now holds the real component built from the design
+system — `Dock.qml`, `DockEntry.qml`, and `DockGlyph.qml` — with the entry
+regions (apps | divider | minimized windows | Trash), one running indicator
+per app entry, progress-based pointer-anchored cosine magnification, and
+bottom/left/right placement plus the auto-hide translation. A new
+`component.dock` token group (icon size/padding/gap, indicator, magnify
+peak/falloff, Trash size, edge margin, reveal/hide delays) drives it; the
+original app-tile/Trash artwork is our own geometry (14-risks.md). The shell
+process creates a second offscreen QML scene and a `top`-layer `dock` chrome
+surface (namespace `dock`, anchored bottom, reserved zone = the baseline bar
+thickness, keyboard `none`), feeds it the running-app projection drained from
+`df_toplevel_manager`/`df_toplevel` (grouped per app, minimized windows
+excluded when `minimizeIntoTileIcon` is on), routes pointer input to it, sets
+its input region to the visible bar slab only (the transparent magnified band
+passes clicks through), and calls `df_toplevel_manager.activate_app` on a
+click. `tst_dock.qml` (ctest `tst_dock`) covers the regions, indicators,
+magnification anchor/peak, placement, auto-hide, activation, accessibility,
+and artwork; a new headless conformance test
+(`dock_surface_reserves_the_bottom_zone_and_coexists_with_the_bar`) asserts
+the Dock and menu-bar reserved zones coexist and the Dock configures to its
+requested size. Open for the remaining slices: launch (an interim `.desktop`
+resolver/launcher until T-23's app-index), context menus and the window
+chooser, drag rearrangement and external drops, the GVfs-backed Trash state
+and drop-to-trash, live settings persistence (`dock.*` keys, T-15) and the
+Settings pane hooks (T-16), attention/launch bounce, the magnified-band input
+region, per-output/per-position surfaces (left/right reserved zones are not
+yet compositor-supported), and the scene-graph-driven render path shared with
+the T-09 snapshot-renderer backlog. Details and hand-off:
+[PROGRESS.md](PROGRESS.md).
+
 **Foundation milestone E2E (T-01…T-07).** The whole vertical slice now has a
 headless end-to-end test, `compositor/tests/milestone_e2e.rs` (`make e2e`):
 one live session with a shell client, a Wayland app, and an X11 app attached
@@ -380,7 +411,7 @@ the shell's own chrome rendering (T-09/T-10).
 2. **Experience**
    - [x] Design system (T-08: token architecture + all 20 components + gallery/visual regression; app-level chrome lint + live AT-SPI dump deferred)
    - [ ] Top bar (T-09 partial: menu-bar render/interaction + shell bootstrap live, restart/idle scripts passing, chrome input routing + overlay-layer dropdown landed and scripted, output hotplug scripted; T-20 status adapters, T-22 app menu open)
-   - [ ] Dock
+   - [ ] Dock (T-10 partial: presentation/interaction core + shell `top` surface with bottom reserved zone landed and scripted; launch, context menus, window chooser, drag rearrangement, Trash state, settings persistence open)
    - [ ] Window switching
    - [ ] Mission Control
    - [ ] Workspace gestures

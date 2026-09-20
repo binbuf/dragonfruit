@@ -7,6 +7,8 @@
 
 #include <QObject>
 #include <QString>
+#include <QVariant>
+#include <QVariantList>
 
 class ShellProtocol;
 class QQmlEngine;
@@ -46,11 +48,22 @@ private slots:
     void onPointerLeft();
     void onKeyboardFocused(bool focused);
     void onKeyEvent(quint32 key, bool pressed);
+    void onDockConfigured(int width, int height, quint32 serial);
+    void onDockStateChanged(const QVariantList &entries);
+    void onDockEntryActivated(const QVariant &entry);
+    void onDockEntryContextMenu(const QVariant &entry, qreal x, qreal y);
+    void onDockDividerContextMenu(qreal x, qreal y);
+    void onDockPointerMoved(qreal x, qreal y);
+    void onDockPointerButton(qreal x, qreal y, quint32 button, bool pressed);
+    void onDockPointerLeft();
 
 private:
     void applyStatusItems();
     void applyFocusedApp();
     void render();
+    void renderDock();
+    // Coalesce a Dock render onto the next event-loop turn.
+    void scheduleDockRender();
     // Coalesce a render onto the next event-loop turn (QML visual state has
     // changed but the compositor has not been told yet).
     void scheduleRender();
@@ -67,12 +80,21 @@ private:
     QQmlEngine *m_engine = nullptr;
     QQuickWindow *m_window = nullptr;
     QQuickItem *m_item = nullptr;
+    QQuickWindow *m_dockWindow = nullptr;
+    QQuickItem *m_dockItem = nullptr;
     QSocketNotifier *m_notifier = nullptr;
     QTimer *m_animationTimer = nullptr;
 
     int m_width = 0;
     int m_height = 0;
     int m_barHeight = 28;
+    // Dock surface geometry (T-10): full output width, `m_dockHeight` tall
+    // so magnified artwork can rise above the baseline bar.
+    int m_dockWidth = 0;
+    int m_dockHeight = 0;
+    int m_dockBarThickness = 0;
+    bool m_dockRenderPending = false;
+    Qt::MouseButtons m_dockButtons = Qt::NoButton;
     // The open dropdown's window-space rectangle (valid while a menu is open).
     int m_popupX = 0;
     int m_popupY = 0;

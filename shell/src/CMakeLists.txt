@@ -77,6 +77,7 @@ target_link_libraries(dragonfruit-shell PRIVATE
     Qt6::Core Qt6::Gui Qt6::Quick
     dragonfruit-design-systemplugin
     dragonfruit-shell-menubarplugin
+    dragonfruit-shell-dockplugin
 )
 if(TARGET PkgConfig::WAYLAND_CLIENT)
     target_link_libraries(dragonfruit-shell PRIVATE PkgConfig::WAYLAND_CLIENT)

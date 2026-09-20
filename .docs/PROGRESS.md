@@ -2072,3 +2072,131 @@ Notes for subsequent tasks:
 - Gate green: `make lint` (qmllint + ctest incl. `tst_menubar`), `make e2e`
   (incl. the new conformance test), `cargo clippy --workspace --all-targets`,
   and a clean `dragonfruit dev --headless --shell` startup.
+
+## T-10 — Dock (first slice: presentation core + shell surface)
+
+**State: partial.** The Dock's presentation and interaction core, its chrome
+surface, and the running-app projection are landed and verified; the ticket
+splits into further slices (launch, menus, drag, Trash state, settings,
+bounce, a11y). See the hand-off list at the end of this section.
+
+### What exists
+
+- `shell/dock/Dock.qml`, `DockEntry.qml`, `DockGlyph.qml`: the real Dock built
+  from the design system. Entry regions (apps | divider | minimized | Trash,
+  Trash always last), one running indicator per app entry (hidden when
+  `showIndicators` is off), progress-based pointer-anchored cosine
+  magnification with scaled gaps and a baseline-sized bar slab, bottom/left/
+  right placement, the auto-hide translation, hover/press states, left-click
+  activation and right-click menu signals, and `Accessible` listitem roles
+  with state-bearing names. App artwork is an original deterministically
+  coloured tile with the app initial; the Trash is original geometry with an
+  empty/full state (no Apple assets — 14-risks.md).
+- A new `component.dock` token group (iconSize, padding, gap, radius,
+  indicatorSize/Gap, magnifyPeak, magnifyFalloff, labelSize, trashSize,
+  edgeMargin, revealDelay, hideDelay). `Theme.controls.dock.*` and the Rust
+  `design_tokens::dock` module are generated.
+- `shell/src/shellprotocol.{h,cpp}`: `createDockSurface` (a `top` layer
+  `df_layer_surface`, namespace `"dock"`, anchored bottom|left|right,
+  `exclusive_zone` = baseline bar thickness, keyboard `none`),
+  `commitDockImage`, `setDockInputRegion`, `activateApp`, dock pointer
+  routing (`dockPointerMoved/Button/Left`), and `dockStateChanged` — the
+  running-app projection built from `m_toplevels` (one entry per non-empty
+  `app_id`, plus a per-window `minimized` entry; `displayNameForAppId` falls
+  back to the last reverse-DNS segment until T-23).
+- `shell/src/shellcontroller.{h,cpp}`: a second offscreen `QQuickWindow` for
+  the Dock, loaded from `Dragonfruit.Dock`; reads `barThickness`/`magnifyBand`
+  from QML to size the surface (`1280x95` on the headless output); feeds
+  `entries` from `dockStateChanged`; renders on state/pointer changes; sets
+  the input region to the visible bar slab (`barRect`) each frame; routes a
+  left click to `activate_app`, logs Trash/menu clicks.
+- Tests: `shell/tests/tst_dock.qml` + `tst_dock.cpp` (ctest `tst_dock`, 20
+  cases) and
+  `dock_surface_reserves_the_bottom_zone_and_coexists_with_the_bar`
+  (`shell_protocol_conformance.rs`). Live headless verified:
+  `dragonfruit dev --headless --shell` reports `Dock configured 1280x95` and
+  `output reserved zone edge=1 thickness=60`.
+
+### Gotchas learned (important for the next slice)
+
+- **A QML module with no backing C++ target produces a `MODULE_LIBRARY`
+  plugin that cannot be linked into an executable.** `qt_add_qml_module`
+  alone made `dragonfruit-shell-dockplugin` un-linkable (`target_link_libraries`
+  error). Fix: declare `qt_add_library(dragonfruit-shell-dock STATIC)` first,
+  exactly like the menubar module, then `qt_add_qml_module` on it.
+- **The shell must link every QML plugin it loads.** The shell only linked the
+  menubar plugin, so `loadFromModule("Dragonfruit.Dock", ...)` fell through to
+  the filesystem import root (`build/qml`) and loaded a stale
+  `libdragonfruit-shell-dockplugin.so` from an earlier build — the placeholder
+  `Dock` with no signals/properties (`barThickness` read as 0, and
+  `QObject::connect: No such signal ...`). Link
+  `dragonfruit-shell-dockplugin` in `shell/src/CMakeLists.txt` and delete any
+  stale `.so` under `build/qml/`. A clean build is unaffected.
+- **QML `var` signal parameters are exposed to C++ as `QVariant` and `real` as
+  `double`.** Old-style `SIGNAL(entryActivated(QVariant))` /
+  `SIGNAL(...(QVariant,qreal,qreal))` connects work (`qreal` normalizes to
+  `double`). The connect must be after the QML object is created and the
+  plugin linked.
+- **`QQuickTest` `-input <dir>` runs *every* `tst_*.qml` in the directory.** A
+  new test file was picked up by the old binary too, which does not link the
+  new plugin. Point each ctest at its own file: `-input .../tst_dock.qml`.
+- **The Dock surface height includes the magnified band, but the reserved
+  zone is only the baseline bar.** `barThickness` = `iconSize + 2*padding`
+  (60), `magnifyBand` = `ceil((peak-1)*iconSize) + padding` (35), so the
+  surface is 95 px but reserves 60. The controller sets the input region to
+  `barRect` so the transparent band passes clicks through (FR-13).
+- **The compositor's `LayerSurfaceState::reserved()` only understands
+  top/bottom anchors.** A left/right Dock (anchored top|bottom|left) would
+  report no reserved zone because both vertical anchors are set. The QML
+  supports all three positions, but the shell only creates a bottom surface
+  today; left/right need the compositor's reserved-zone math extended.
+- **The compositor's `chrome_render_elements` filters `layer >= 2`.** The Dock
+  is a `top` surface, so it composites above the window space with no render
+  change. A `bottom`-layer Dock/wallpaper still needs the render list split
+  (T-11).
+
+### Hand-off / open items (next T-10 sessions)
+
+1. **Launch.** Pinned apps cannot be launched yet (there is no resolver or
+   launcher). Add the interim `.desktop` resolver/launcher (pure Qt: scan the
+   XDG `applications` dirs, parse `Name`/`Icon`/`Exec`/`StartupWMClass`, launch
+   with `QProcess::startDetached` stripping field codes), explicitly marked
+   for deletion when T-23's app-index lands. The pinned set is `dock.pinned`
+   (section 19); until settingsd lands, persist under
+   `$XDG_CONFIG_HOME/dragonfruit/` in the eventual key shape.
+2. **Context menus and the window chooser** (section 13/9). The Dock already
+   emits `entryContextMenuRequested`/`dividerContextMenuRequested`; build the
+   design-system `ContextMenu` on the existing `overlay` popup surface pattern.
+   The chooser needs a per-app window list from the shell (the projection
+   already has the windows) and `df_toplevel.activate` / `unminimize`.
+3. **Drag rearrangement and external drops** (section 12): reorder pinned,
+   promote-to-pinned, remove-from-Dock, file/app drops.
+4. **Trash** (section 16): GVfs `trash://` `GFileMonitor` for the icon/badge
+   state (currently a `trashFull` property), click-to-Files (`org.dragonfruit.Files1`),
+   drop-to-trash via GIO, Empty Trash with confirmation.
+5. **Settings** (section 19): observe `dock.*` keys, live re-layout, the
+   `dock.position`/`autoHide` surface changes (exclusive zone 0 when
+   auto-hiding), and the T-16 pane hooks.
+6. **Attention/launch bounce** (section 8.1) from the `attention` event
+   (currently ignored by the shell) and the `launching` entry state.
+7. **Magnified-band input region**: set the region to the bar plus the
+   currently magnified icon rectangles each frame (currently bar-only, so the
+   upper half of a magnified icon passes clicks through).
+8. **Per-output / per-position surfaces**: the Dock is created with
+   `output = None` (every output) like the bar, sized to the first output
+   (the known T-09/T-11/T-16 limitation); left/right reserved zones need the
+   compositor change above.
+9. **Scene-graph render path** (FR-14): the Dock still commits on demand via
+   `grabWindow`; the durable `QQuickWindow::afterRendering` fix is shared with
+   the T-09 deferred-polish backlog and is required for smooth magnification.
+10. **Keyboard + AT-SPI walkthrough** (section 20): Fn-Control-F3 focus,
+    arrow navigation, Super+Option+D; the QML roles exist, the seat path and
+    the live AT-SPI dump are not built.
+
+### Gate status
+
+`make lint`-equivalent green: `cargo fmt --check`, `cargo clippy --workspace
+--all-targets -D warnings`, `ctest` 12/12 (incl. `tst_dock` and
+`qmllint_shell-dock`), `gen-tokens --check`, the design-token/desktop-name/
+no-capture gates, and the 66-snapshot gallery regression. The full
+`shell_protocol_conformance` suite is 15/15.

@@ -15,9 +15,30 @@ qt_import_qml_plugins(tst_menubar)
 
 add_test(
     NAME tst_menubar
-    COMMAND tst_menubar -input ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMAND tst_menubar -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_menubar.qml
 )
 set_tests_properties(tst_menubar PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+# Dock tests (T-10): entry regions, running indicators, magnification,
+# placement, auto-hide, activation, and accessibility.
+qt_add_executable(tst_dock
+    tst_dock.cpp
+)
+target_link_libraries(tst_dock PRIVATE
+    Qt6::QuickTest
+    dragonfruit-design-systemplugin
+    dragonfruit-shell-dockplugin
+)
+qt_import_qml_plugins(tst_dock)
+
+add_test(
+    NAME tst_dock
+    COMMAND tst_dock -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_dock.qml
+)
+set_tests_properties(tst_dock PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
