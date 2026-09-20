@@ -181,6 +181,17 @@ bool ShellProtocol::createMenuBarSurface(int height, int exclusiveZone)
     return true;
 }
 
+bool ShellProtocol::setMenuBarSize(int width, int height)
+{
+    if (!m_layer || !m_surface)
+        return false;
+    df_layer_surface_set_size(m_layer, width, height);
+    wl_surface_commit(m_surface);
+    if (m_display)
+        wl_display_flush(m_display);
+    return true;
+}
+
 bool ShellProtocol::commitImage(const QImage &image)
 {
     if (!m_surface || !m_shm)
@@ -264,6 +275,12 @@ void ShellProtocol::teardown()
         df_layer_surface_destroy(m_layer);
     if (m_surface)
         wl_surface_destroy(m_surface);
+    if (m_pointer)
+        wl_pointer_destroy(m_pointer);
+    if (m_keyboard)
+        wl_keyboard_destroy(m_keyboard);
+    if (m_seat)
+        wl_seat_destroy(m_seat);
     if (m_manager)
         df_toplevel_manager_destroy(m_manager);
     if (m_shell)
@@ -286,6 +303,9 @@ void ShellProtocol::teardown()
     m_manager = nullptr;
     m_shell = nullptr;
     m_core = nullptr;
+    m_pointer = nullptr;
+    m_keyboard = nullptr;
+    m_seat = nullptr;
 }
 
 // --- registry ---------------------------------------------------------------
@@ -303,6 +323,13 @@ void ShellProtocol::onRegistryGlobal(void *data, wl_registry *registry, uint32_t
         self->m_shmVersion = version;
         self->m_shm = static_cast<wl_shm *>(
             wl_registry_bind(registry, name, &wl_shm_interface, std::min(version, 1u)));
+    } else if (iface == QLatin1String("wl_seat")) {
+        self->m_seatName = name;
+        self->m_seatVersion = version;
+        self->m_seat = static_cast<wl_seat *>(
+            wl_registry_bind(registry, name, &wl_seat_interface, std::min(version, 1u)));
+        static const wl_seat_listener seatListener = { onSeatCapabilities, onSeatName };
+        wl_seat_add_listener(self->m_seat, &seatListener, self);
     } else if (iface == QLatin1String("df_core")) {
         self->m_coreName = name;
         self->m_coreVersion = version;
@@ -352,6 +379,98 @@ void ShellProtocol::onLayerClosed(void *data, df_layer_surface *)
 {
     auto *self = static_cast<ShellProtocol *>(data);
     emit self->surfaceClosed();
+}
+
+// --- wl_seat / wl_pointer / wl_keyboard (input bridge) ----------------------
+
+void ShellProtocol::onSeatCapabilities(void *data, wl_seat *seat, uint32_t capabilities)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    if ((capabilities & WL_SEAT_CAPABILITY_POINTER) && !self->m_pointer) {
+        self->m_pointer = wl_seat_get_pointer(seat);
+        static const wl_pointer_listener pointerListener = {
+            onPointerEnter, onPointerLeave, onPointerMotion, onPointerButton, onPointerAxis,
+        };
+        wl_pointer_add_listener(self->m_pointer, &pointerListener, self);
+    }
+    if ((capabilities & WL_SEAT_CAPABILITY_KEYBOARD) && !self->m_keyboard) {
+        self->m_keyboard = wl_seat_get_keyboard(seat);
+        static const wl_keyboard_listener keyboardListener = {
+            onKeyboardKeymap, onKeyboardEnter, onKeyboardLeave, onKeyboardKey,
+            onKeyboardModifiers,
+        };
+        wl_keyboard_add_listener(self->m_keyboard, &keyboardListener, self);
+    }
+}
+
+void ShellProtocol::onSeatName(void *, wl_seat *, const char *)
+{
+}
+
+void ShellProtocol::onPointerEnter(void *data, wl_pointer *, uint32_t, wl_surface *,
+                                   wl_fixed_t x, wl_fixed_t y)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    self->m_pointerX = wl_fixed_to_double(x);
+    self->m_pointerY = wl_fixed_to_double(y);
+    emit self->pointerMoved(self->m_pointerX, self->m_pointerY);
+}
+
+void ShellProtocol::onPointerLeave(void *data, wl_pointer *, uint32_t, wl_surface *)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    emit self->pointerLeft();
+}
+
+void ShellProtocol::onPointerMotion(void *data, wl_pointer *, uint32_t, wl_fixed_t x,
+                                    wl_fixed_t y)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    self->m_pointerX = wl_fixed_to_double(x);
+    self->m_pointerY = wl_fixed_to_double(y);
+    emit self->pointerMoved(self->m_pointerX, self->m_pointerY);
+}
+
+void ShellProtocol::onPointerButton(void *data, wl_pointer *, uint32_t, uint32_t, uint32_t button,
+                                    uint32_t state)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    emit self->pointerButton(self->m_pointerX, self->m_pointerY, button,
+                             state == WL_POINTER_BUTTON_STATE_PRESSED);
+}
+
+void ShellProtocol::onPointerAxis(void *, wl_pointer *, uint32_t, uint32_t, wl_fixed_t)
+{
+}
+
+void ShellProtocol::onKeyboardKeymap(void *, wl_keyboard *, uint32_t, int32_t fd, uint32_t)
+{
+    if (fd >= 0)
+        ::close(fd);
+}
+
+void ShellProtocol::onKeyboardEnter(void *data, wl_keyboard *, uint32_t, wl_surface *, wl_array *)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    emit self->keyboardFocused(true);
+}
+
+void ShellProtocol::onKeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surface *)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    emit self->keyboardFocused(false);
+}
+
+void ShellProtocol::onKeyboardKey(void *data, wl_keyboard *, uint32_t, uint32_t, uint32_t key,
+                                  uint32_t state)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    emit self->keyEvent(key, state == WL_KEYBOARD_KEY_STATE_PRESSED);
+}
+
+void ShellProtocol::onKeyboardModifiers(void *, wl_keyboard *, uint32_t, uint32_t, uint32_t,
+                                        uint32_t, uint32_t)
+{
 }
 
 // --- df_toplevel_manager ----------------------------------------------------

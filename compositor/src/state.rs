@@ -1551,8 +1551,13 @@ impl SeatHandler for DfState {
 
         // Map the focused surface back to its window (popups resolve to
         // their root toplevel) and broadcast focus transitions (FR-4).
+        //
+        // Chrome (shell layer) surfaces take keyboard focus for menus/OSDs;
+        // they are not windows, so the active window is preserved across a
+        // chrome focus so it can be restored when the chrome closes (T-09).
+        let chrome_focus = focused.is_some_and(|surface| self.is_chrome_surface(surface));
         let new_active = focused.and_then(|surface| self.window_for_surface(surface));
-        if new_active != self.active_window {
+        if !chrome_focus && new_active != self.active_window {
             if let Some(old) = self.active_window.clone() {
                 // The old window lost focus: dismiss its popups (FR-11)
                 // and tell the shell.

@@ -213,6 +213,30 @@ Item {
             compare(bar.openMenuIndex, -1);
         }
 
+        function test_click_menu_title_opens_and_stays_open() {
+            var bar = make(menuBarComponent, { width: 600, appMenuModel: sampleModel() });
+            openedSpy.target = bar;
+            openedSpy.clear();
+            closedSpy.target = bar;
+            closedSpy.clear();
+
+            // Clicking the title toggles it open; the bar's click-away handler
+            // must not immediately close it.
+            var file = bar.appMenuAt(0);
+            mouseClick(file, file.width / 2, file.height / 2);
+            waitForRendering(stage);
+            compare(bar.openMenuIndex, 0);
+            compare(file.open, true);
+            compare(openedSpy.count, 1);
+            compare(closedSpy.count, 0);
+
+            // A second click on the title toggles it closed.
+            mouseClick(file, file.width / 2, file.height / 2);
+            waitForRendering(stage);
+            compare(bar.openMenuIndex, -1);
+            compare(file.open, false);
+        }
+
         function test_drag_through_switches_menu_on_hover() {
             var bar = make(menuBarComponent, { appMenuModel: sampleModel() });
             bar.openMenu(0);

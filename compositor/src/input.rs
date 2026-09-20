@@ -62,6 +62,8 @@ use smithay::backend::input::{
     TabletToolDescriptor, TabletToolEvent as _, TabletToolProximityEvent as _,
     TabletToolTipEvent as _, TouchEvent as _,
 };
+use smithay::desktop::utils::under_from_surface_tree;
+use smithay::desktop::WindowSurfaceType;
 use smithay::input::keyboard::FilterResult;
 use smithay::input::pointer::{AxisFrame, ButtonEvent, MotionEvent};
 use smithay::input::touch::{DownEvent, MotionEvent as TouchMotionEvent, UpEvent};
@@ -72,20 +74,59 @@ use smithay::wayland::tablet_manager::{
     TabletDescriptor, TabletHandle, TabletSeatTrait, TabletToolHandle,
 };
 
+use crate::shell::layer::KeyboardInteraction;
 use crate::state::DfState;
+
+/// The chrome (shell layer) surface under a global-space point, with the
+/// surface origin and its keyboard-interaction policy.
+///
+/// Chrome composites above the window space, so it is hit-tested before
+/// windows, topmost layer first (`overlay` > `top` > ...). Returns `None`
+/// when the point is over no mapped chrome surface.
+pub fn chrome_under(
+    state: &DfState,
+    point: Point<f64, Logical>,
+) -> Option<(WlSurface, Point<i32, Logical>, KeyboardInteraction)> {
+    let output = state.space.outputs().find(|output| {
+        state
+            .space
+            .output_geometry(output)
+            .is_some_and(|geometry| geometry.to_f64().contains(point))
+    })?;
+    let geometry = state.space.output_geometry(output)?;
+    // `chrome_surfaces` is ordered bottom-to-top; iterate it in reverse so
+    // the topmost layer wins the hit test.
+    for chrome in state.chrome_surfaces(&output.name(), geometry).iter().rev() {
+        let origin = chrome.location + geometry.loc;
+        // `under_from_surface_tree` takes the point relative to the surface
+        // origin and returns the origin relative to `location`; pass (0,0)
+        // and add `origin` back, exactly like `Window::surface_under`.
+        let local = point - origin.to_f64();
+        if let Some((surface, location)) =
+            under_from_surface_tree(&chrome.surface, local, (0, 0), WindowSurfaceType::ALL)
+        {
+            return Some((surface, location + origin, chrome.keyboard));
+        }
+    }
+    None
+}
 
 /// The surface under a global-space point, with the surface origin.
 ///
-/// Popups are hit first, then windows (the space keeps stacking order).
+/// Chrome is hit first, then popups, then windows (the space keeps stacking
+/// order). The returned origin is in global space so it can be handed to
+/// Smithay's pointer/touch focus directly.
 pub fn surface_under(
     state: &DfState,
     point: Point<f64, Logical>,
 ) -> Option<(WlSurface, Point<i32, Logical>)> {
+    if let Some((surface, location, _)) = chrome_under(state, point) {
+        return Some((surface, location));
+    }
     let (window, window_loc) = state.space.element_under(point)?;
-    window.surface_under(
-        point - window_loc.to_f64(),
-        smithay::desktop::WindowSurfaceType::ALL,
-    )
+    let (surface, location) =
+        window.surface_under(point - window_loc.to_f64(), WindowSurfaceType::ALL)?;
+    Some((surface, window_loc + location))
 }
 
 /// Route one input event from any backend.
@@ -254,7 +295,12 @@ where
             /* BTN_LEFT */
             {
                 let location = pointer.current_location();
-                if let Some((surface, _)) = surface_under(state, location) {
+                if let Some((surface, _, _)) = chrome_under(state, location) {
+                    // Chrome surfaces take keyboard focus only when their
+                    // policy allows it (OnDemand/Exclusive); `None` ignores
+                    // the click (T-07 FR-1).
+                    state.focus_chrome_surface(&surface);
+                } else if let Some((surface, _)) = surface_under(state, location) {
                     if let Some(keyboard) = state.seat.get_keyboard() {
                         keyboard.set_focus(state, Some(surface), serial);
                     }

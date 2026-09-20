@@ -17,8 +17,8 @@ use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
 use wayland_client::protocol::{
-    wl_buffer, wl_compositor, wl_pointer, wl_region, wl_registry, wl_seat, wl_shm, wl_shm_pool,
-    wl_surface,
+    wl_buffer, wl_compositor, wl_keyboard, wl_pointer, wl_region, wl_registry, wl_seat, wl_shm,
+    wl_shm_pool, wl_surface,
 };
 use wayland_client::{delegate_noop, Connection, Dispatch, EventQueue, QueueHandle};
 use wayland_protocols::wp::pointer_constraints::zv1::client::{
@@ -81,9 +81,16 @@ struct TestClient {
     xdg_wm_base: Option<xdg_wm_base::XdgWmBase>,
     seat: Option<wl_seat::WlSeat>,
     pointer: Option<wl_pointer::WlPointer>,
+    keyboard: Option<wl_keyboard::WlKeyboard>,
     constraints: Option<zwp_pointer_constraints_v1::ZwpPointerConstraintsV1>,
     /// Pointer motion delivered to this client, as surface-local coords.
     pointer_motions: Vec<(f64, f64)>,
+    /// Pointer enters delivered to this client.
+    pointer_enters: usize,
+    /// Keyboard focus enters/leaves and keycodes delivered to this client.
+    keyboard_enters: usize,
+    keyboard_leaves: usize,
+    keys: Vec<u32>,
     locked: usize,
     confined: usize,
     activation: Option<xdg_activation_v1::XdgActivationV1>,
@@ -391,12 +398,20 @@ impl Dispatch<wl_seat::WlSeat, ()> for TestClient {
         qh: &QueueHandle<Self>,
     ) {
         if let wl_seat::Event::Capabilities { capabilities } = event {
-            let has_pointer = capabilities
-                .into_result()
+            let caps = capabilities.into_result();
+            let has_pointer = caps
+                .as_ref()
                 .map(|caps| caps.contains(wl_seat::Capability::Pointer))
+                .unwrap_or(false);
+            let has_keyboard = caps
+                .as_ref()
+                .map(|caps| caps.contains(wl_seat::Capability::Keyboard))
                 .unwrap_or(false);
             if has_pointer && state.pointer.is_none() {
                 state.pointer = Some(seat.get_pointer(qh, ()));
+            }
+            if has_keyboard && state.keyboard.is_none() {
+                state.keyboard = Some(seat.get_keyboard(qh, ()));
             }
         }
     }
@@ -411,6 +426,9 @@ impl Dispatch<wl_pointer::WlPointer, ()> for TestClient {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
+        if let wl_pointer::Event::Enter { .. } = event {
+            state.pointer_enters += 1;
+        }
         if let wl_pointer::Event::Motion {
             surface_x,
             surface_y,
@@ -418,6 +436,24 @@ impl Dispatch<wl_pointer::WlPointer, ()> for TestClient {
         } = event
         {
             state.pointer_motions.push((surface_x, surface_y));
+        }
+    }
+}
+
+impl Dispatch<wl_keyboard::WlKeyboard, ()> for TestClient {
+    fn event(
+        state: &mut Self,
+        _: &wl_keyboard::WlKeyboard,
+        event: wl_keyboard::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        match event {
+            wl_keyboard::Event::Enter { .. } => state.keyboard_enters += 1,
+            wl_keyboard::Event::Leave { .. } => state.keyboard_leaves += 1,
+            wl_keyboard::Event::Key { key, .. } => state.keys.push(key),
+            _ => {}
         }
     }
 }
@@ -2290,4 +2326,165 @@ fn shell_restart_reanchors_chrome_and_preserves_windows() {
     let _ = app_conn.flush();
     let _ = obs_conn.flush();
     proc.shutdown();
+}
+
+/// T-09 input routing (compositor half): a mapped chrome surface is hit-tested
+/// above the window space, receives pointer enter/motion/button, and an
+/// `OnDemand` surface takes keyboard focus on click so key events reach it.
+/// This is what makes the menu bar (and, with T-09b, the dropdown) interactive.
+#[test]
+fn chrome_surface_receives_pointer_and_keyboard() {
+    let token = "dd".repeat(32);
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir)
+        .join(format!("dragonfruit-chrome-input-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-chrome-input",
+        std::slice::from_ref(&token),
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    // Authenticate and map a real menu-bar chrome surface.
+    let (name, version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, name, version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+    let (shell_name, shell_version) = state.shell_global.expect("df_shell advertised");
+    let shell = bind_shell(&mut state, &queue, shell_name, shell_version);
+    let qh = queue.handle();
+    let surface = state.compositor.clone().unwrap().create_surface(&qh, ());
+    let layer = shell.get_layer_surface(
+        &surface,
+        None,
+        df_shell::Layer::Top,
+        "menubar".to_string(),
+        &qh,
+        (),
+    );
+    layer.set_anchor(1 | 4 | 8); // top | left | right
+    layer.set_size(0, 28);
+    layer.set_exclusive_zone(28);
+    layer.set_keyboard_interaction(df_layer_surface::KeyboardInteraction::OnDemand);
+    surface.commit();
+    let (buffer, _file) = shm_buffer(&state, &qh, OUTPUT_W, 28);
+    surface.attach(Some(&buffer), 0, 0);
+    surface.commit();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .layer_configures
+                .iter()
+                .any(|(_, width, height)| *width == OUTPUT_W && *height == 28)
+        },
+    );
+
+    // The seat must have delivered its capabilities before synthetic input.
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.pointer.is_some() && state.keyboard.is_some(),
+    );
+    let _ = queue.roundtrip(&mut state);
+
+    // Move over the bar (the top 28 px of the 1280x720 output).
+    input.send("motion-abs 0.5 0.01");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.pointer_enters > 0,
+    );
+
+    // Click the bar: an OnDemand chrome surface takes keyboard focus.
+    input.send("button 272 down\nbutton 272 up");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.keyboard_enters > 0,
+    );
+
+    // A key reaches the focused chrome surface (KEY_ESC == 1).
+    state.keys.clear();
+    input.send("key 1 down\nkey 1 up");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.keys.contains(&1),
+    );
+
+    // A second chrome surface with a non-zero origin (bottom-right panel)
+    // must be hit-tested in output coordinates, not surface-local ones: the
+    // hit-test origin regression used to shift the region by its origin.
+    let panel_surface = state.compositor.clone().unwrap().create_surface(&qh, ());
+    let panel = shell.get_layer_surface(
+        &panel_surface,
+        None,
+        df_shell::Layer::Top,
+        "panel".to_string(),
+        &qh,
+        (),
+    );
+    panel.set_anchor(2 | 8); // bottom | right
+    panel.set_size(120, 40);
+    panel.set_margin(0, 10, 10, 0); // right 10, bottom 10
+    panel.set_keyboard_interaction(df_layer_surface::KeyboardInteraction::None);
+    panel_surface.commit();
+    let (panel_buffer, _panel_file) = shm_buffer(&state, &qh, 120, 40);
+    panel_surface.attach(Some(&panel_buffer), 0, 0);
+    panel_surface.commit();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .layer_configures
+                .iter()
+                .any(|(_, width, height)| *width == 120 && *height == 40)
+        },
+    );
+
+    state.pointer_enters = 0;
+    // Panel centre: (1280 - 120 - 10 + 60, 720 - 40 - 10 + 20) = (1210, 690).
+    input.send("motion-abs 0.9453125 0.9583333");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.pointer_enters > 0,
+    );
+
+    drop(panel);
+    drop(panel_surface);
+    drop(layer);
+    drop(surface);
+    drop(shell);
+    drop(core);
+    let _ = conn.flush();
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
 }
