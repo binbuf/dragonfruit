@@ -9,6 +9,7 @@
 #include <QSocketNotifier>
 #include <QVariantList>
 #include <QVariantMap>
+#include <QTimer>
 
 #include <cstdio>
 
@@ -84,6 +85,7 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         return false;
     }
     m_item->setParentItem(m_window->contentItem());
+    m_item->setProperty("showDate", true);
 
     connect(m_item, SIGNAL(controlCenterRequested()), this, SLOT(onControlCenterRequested()));
     connect(m_item, SIGNAL(missionControlRequested()), this, SLOT(onMissionControlRequested()));
@@ -170,6 +172,9 @@ void ShellController::onConfigured(int width, int height, quint32)
     m_height = height;
     fprintf(stderr, "dragonfruit-shell: menu bar configured %dx%d\n", width, height);
     render();
+    // Canvas items paint on the scene graph after the first grab; re-render
+    // once the event loop has run so the committed frame includes them.
+    QTimer::singleShot(200, this, &ShellController::render);
 }
 
 void ShellController::onFocusedAppChanged(const QString &appId, const QString &title)

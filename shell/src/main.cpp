@@ -19,6 +19,11 @@
 
 int main(int argc, char *argv[])
 {
+    // Keep runtime QML warnings (e.g. Canvas paint errors) visible on stderr.
+    qInstallMessageHandler([](QtMsgType, const QMessageLogContext &, const QString &message) {
+        fprintf(stderr, "dragonfruit-shell: %s\n", message.toLocal8Bit().constData());
+    });
+
     // Force the offscreen QPA: the private protocol connection is ours, and
     // the Qt Wayland platform plugin would create an unrelated toplevel.
     if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM"))
