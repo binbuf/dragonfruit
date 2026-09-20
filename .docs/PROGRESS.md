@@ -2814,3 +2814,28 @@ headless smoke (`dragonfruit dev --headless --shell`) reports
 `Dock configured 1280x124` and `output reserved zone edge=1 thickness=60`,
 and a live `dock.size` 0.5→1.0 edit reconfigured the Dock to `1280x159` with
 `edge=1 thickness=76`.
+
+### Follow-up fix — Dock icons froze in the left corner
+
+The drag slice (fifth) added an always-on `Behavior on x`/`y` to the Dock
+entry delegates so the reorder gap springs open. The shell creates the Dock
+offscreen scene at width 0, sets `entries`, and only then receives the
+surface configure that sets the real width. The delegates therefore animated
+from the width-0 positions toward the centered layout — but the idle shell
+commits on demand and stops rendering after the startup burst, so the
+committed frame froze the icons mid-flight near the left edge (the bar, whose
+position is not animated, stayed centered, which made it look like the icons
+had detached).
+
+Fix: the position `Behavior` is now enabled **only while `dock.dragging` and
+not the dragged delegate** (`Dock.qml`). Every other layout change — initial
+configure, live resize/magnification, popover — snaps, so the on-demand
+renderer can never freeze a half-played animation. A new
+`test_entries_snap_to_layout_after_configure` in `tst_dock` reproduces the
+shell's width-0 → entries → configure order and asserts every delegate's
+`x`/`width` equals `layout[i]`. Verified live: the committed Dock image now
+shows the icons centered (`560..659`) inside the centered bar (`562..718`).
+
+Lesson for the scene-graph render path (FR-14): any QML animation on Dock
+geometry is invisible unless the shell keeps committing frames, so prefer
+snap-to-target outside explicitly animated interactions.

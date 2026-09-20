@@ -730,25 +730,27 @@ Rectangle {
 
             readonly property bool isDragged:
                 dock.dragging && modelData.id === dock.dragEntryId
-            readonly property var slot:
-                dock.layout.length > index ? dock.layout[index] : null
 
             entry: modelData
-            iconSize: slot ? slot.iconSize : dock.iconSize
+            iconSize: dock.layout.length > index ? dock.layout[index].iconSize : dock.iconSize
             indicatorEdge: dock.indicatorEdge
             showIndicator: dock.showIndicators
             dragging: dock.dragging
             lifted: isDragged
             z: isDragged ? 10 : 0
-            width: slot ? slot.w : dock.iconSize
-            height: slot ? slot.h : dock.iconSize
-            x: isDragged ? dock.draggedX(width) : (slot ? slot.x : 0)
-            y: isDragged ? dock.draggedY(height) : (slot ? slot.y : 0)
+            width: dock.layout.length > index ? dock.layout[index].w : dock.iconSize
+            height: dock.layout.length > index ? dock.layout[index].h : dock.iconSize
+            x: isDragged ? dock.draggedX(width)
+               : (dock.layout.length > index ? dock.layout[index].x : 0)
+            y: isDragged ? dock.draggedY(height)
+               : (dock.layout.length > index ? dock.layout[index].y : 0)
 
-            // The gap left by a reorder springs open; reduced motion (duration
-            // 0) snaps. The lifted entry tracks the pointer without lag.
+            // The gap left by a reorder springs open only while dragging;
+            // every other layout change (initial configure, magnification,
+            // resize) snaps so the on-demand renderer never freezes the Dock
+            // mid-animation. Reduced motion (duration 0) snaps.
             Behavior on x {
-                enabled: !isDragged
+                enabled: dock.dragging && !isDragged
                 NumberAnimation {
                     duration: Theme.motion.dockMagnify.duration
                     easing.type: Easing.Bezier
@@ -756,7 +758,7 @@ Rectangle {
                 }
             }
             Behavior on y {
-                enabled: !isDragged
+                enabled: dock.dragging && !isDragged
                 NumberAnimation {
                     duration: Theme.motion.dockMagnify.duration
                     easing.type: Easing.Bezier
