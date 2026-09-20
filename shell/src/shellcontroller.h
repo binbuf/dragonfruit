@@ -57,9 +57,15 @@ private slots:
     void onDockEntryActivated(const QVariant &entry);
     void onDockEntryContextMenu(const QVariant &entry, qreal x, qreal y);
     void onDockDividerContextMenu(qreal x, qreal y);
+    void onDockEntryMenuAction(const QString &action, const QVariant &payload);
+    void onDockWindowActivated(const QString &windowId);
+    void onDockPopoverChanged();
     void onDockPointerMoved(qreal x, qreal y);
     void onDockPointerButton(qreal x, qreal y, quint32 button, bool pressed);
     void onDockPointerLeft();
+    void onDockPopupPointerMoved(qreal x, qreal y);
+    void onDockPopupPointerButton(qreal x, qreal y, quint32 button, bool pressed);
+    void onDockPopupPointerLeft();
     void onDockLaunchTick();
     void onDockAttention(const QString &appId);
     void onDockAnimationTick();
@@ -87,6 +93,9 @@ private:
     void scheduleLaunchStateClear(const QString &desktopId);
     // Coalesce a Dock render onto the next event-loop turn.
     void scheduleDockRender();
+    // Render the Dock every ~16 ms for `ms`, to capture a popover open/close
+    // animation.
+    void startDockAnimationRenders(int ms);
     // Coalesce a render onto the next event-loop turn (QML visual state has
     // changed but the compositor has not been told yet).
     void scheduleRender();
@@ -109,6 +118,7 @@ private:
     QTimer *m_animationTimer = nullptr;
     QTimer *m_launchTimer = nullptr;
     QTimer *m_dockAnimTimer = nullptr;
+    QTimer *m_dockPopupTimer = nullptr;
 
     // Interim app-index stand-in (T-23) and Dock pin persistence (T-15).
     DesktopEntryIndex m_index;
@@ -137,6 +147,16 @@ private:
     int m_dockBarThickness = 0;
     bool m_dockRenderPending = false;
     Qt::MouseButtons m_dockButtons = Qt::NoButton;
+    // The Dock popover (context menu / window chooser) in Dock-scene
+    // coordinates, plus the vertical offset the scene is placed at inside the
+    // offscreen window so a popover can render above the bar.
+    int m_dockItemOffsetY = 0;
+    int m_dockPopoverX = 0;
+    int m_dockPopoverY = 0;
+    int m_dockPopoverWidth = 0;
+    int m_dockPopoverHeight = 0;
+    bool m_dockPopoverMapped = false;
+    int m_dockPopupTicks = 0;
     // The open dropdown's window-space rectangle (valid while a menu is open).
     int m_popupX = 0;
     int m_popupY = 0;

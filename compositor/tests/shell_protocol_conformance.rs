@@ -2925,3 +2925,158 @@ fn overlay_popup_sits_above_the_bar_and_reserves_nothing() {
         "teardown leak: synthetic-input socket survived"
     );
 }
+
+/// T-10 Dock popover (compositor half): the Dock's context-menu/window-chooser
+/// surface is an `overlay` anchored bottom|left and placed with a bottom
+/// margin, so it sits above the Dock. It reserves nothing (the Dock keeps its
+/// bottom reserve) and receives pointer input in popover-local coordinates.
+#[test]
+fn dock_popup_is_bottom_anchored_and_reserves_nothing() {
+    let token = "dd".repeat(32);
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path =
+        PathBuf::from(&runtime_dir).join(format!("dragonfruit-dock-popup-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-dock-popup",
+        std::slice::from_ref(&token),
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (name, version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, name, version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+    let (shell_name, shell_version) = state.shell_global.expect("df_shell advertised");
+    let shell = bind_shell(&mut state, &queue, shell_name, shell_version);
+    let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
+    let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
+    let qh = queue.handle();
+
+    // The Dock: bottom | left | right, 95 px tall, reserves 60 px.
+    let dock_surface = state.compositor.clone().unwrap().create_surface(&qh, ());
+    let dock = shell.get_layer_surface(
+        &dock_surface,
+        None,
+        df_shell::Layer::Top,
+        "dock".to_string(),
+        &qh,
+        (),
+    );
+    dock.set_anchor(2 | 4 | 8);
+    dock.set_size(0, 95);
+    dock.set_exclusive_zone(60);
+    dock.set_keyboard_interaction(df_layer_surface::KeyboardInteraction::None);
+    dock_surface.commit();
+    let (dock_buffer, _dock_file) = shm_buffer(&state, &qh, OUTPUT_W, 95);
+    dock_surface.attach(Some(&dock_buffer), 0, 0);
+    dock_surface.commit();
+
+    // The popup: bottom | left, 220x160, 40 px above the bottom edge and 300
+    // from the left, overlay layer, no reserve, no keyboard.
+    let popup_surface = state.compositor.clone().unwrap().create_surface(&qh, ());
+    let popup = shell.get_layer_surface(
+        &popup_surface,
+        None,
+        df_shell::Layer::Overlay,
+        "dock-popup".to_string(),
+        &qh,
+        (),
+    );
+    popup.set_anchor(2 | 4); // bottom | left
+    popup.set_size(220, 160);
+    popup.set_margin(0, 0, 40, 300); // bottom 40, left 300
+    popup.set_exclusive_zone(-1);
+    popup.set_keyboard_interaction(df_layer_surface::KeyboardInteraction::None);
+    popup_surface.commit();
+    let (popup_buffer, _popup_file) = shm_buffer(&state, &qh, 220, 160);
+    popup_surface.attach(Some(&popup_buffer), 0, 0);
+    popup_surface.commit();
+
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .layer_configures
+                .iter()
+                .any(|(_, width, height)| *width == 220 && *height == 160)
+        },
+    );
+
+    // The popup opts out of reserved zones; the only bottom reserve is the
+    // Dock's 60 px.
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .output_reserved
+                .iter()
+                .any(|(edge, thickness)| *edge == 1 && *thickness == 60)
+        },
+    );
+    assert!(
+        state
+            .output_reserved
+            .iter()
+            .all(|(edge, thickness)| *edge != 1 || *thickness <= 60),
+        "the Dock popup must not enlarge the reserved zone: {:?}",
+        state.output_reserved
+    );
+
+    // Pointer over the popup: global (400, 600) is popup-local (100, 80)
+    // (the popup spans x 300..520, y 520..680 on the 1280x720 output).
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.pointer.is_some() && state.keyboard.is_some(),
+    );
+    let _ = queue.roundtrip(&mut state);
+    state.pointer_enters = 0;
+    state.pointer_motions.clear();
+    state.pointer_enter_positions.clear();
+    input.send("motion-abs 0.3125 0.8333333");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.pointer_enters > 0,
+    );
+    let (mx, my) = *state
+        .pointer_enter_positions
+        .last()
+        .expect("Dock popup enter position");
+    assert!(
+        (mx - 100.0).abs() < 1.0 && (my - 80.0).abs() < 1.0,
+        "pointer must enter the Dock popup in popup-local coordinates: got ({mx}, {my})"
+    );
+
+    drop(popup);
+    drop(popup_surface);
+    drop(dock);
+    drop(dock_surface);
+    drop(manager);
+    drop(shell);
+    drop(core);
+    let _ = conn.flush();
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}

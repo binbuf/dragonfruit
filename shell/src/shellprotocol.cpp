@@ -328,6 +328,72 @@ bool ShellProtocol::setDockInputRegion(const QList<QRect> &rects)
     return true;
 }
 
+bool ShellProtocol::createDockPopupSurface()
+{
+    if (m_dockPopupSurface || m_dockPopupLayer)
+        return true;
+    if (!m_shell || !m_compositor)
+        return fail(QStringLiteral("df_shell is not available"));
+
+    m_dockPopupSurface = wl_compositor_create_surface(m_compositor);
+    m_dockPopupLayer = df_shell_get_layer_surface(m_shell, m_dockPopupSurface, nullptr,
+                                                  DF_SHELL_LAYER_OVERLAY, "dock-popup");
+    if (!m_dockPopupLayer)
+        return fail(QStringLiteral("compositor refused the Dock popup layer surface"));
+    static const df_layer_surface_listener listener = { onDockPopupConfigure, onLayerClosed };
+    df_layer_surface_add_listener(m_dockPopupLayer, &listener, this);
+
+    // Anchored bottom|left so the popover can be placed with a bottom margin
+    // above the Dock; no reserved zone and no keyboard (the Dock surface owns
+    // pointer input).
+    static const uint32_t kAnchorBottomLeft = kAnchorBottom | kAnchorLeft;
+    df_layer_surface_set_anchor(m_dockPopupLayer, kAnchorBottomLeft);
+    df_layer_surface_set_exclusive_zone(m_dockPopupLayer, -1);
+    df_layer_surface_set_keyboard_interaction(m_dockPopupLayer,
+                                              DF_LAYER_SURFACE_KEYBOARD_INTERACTION_NONE);
+    wl_surface_attach(m_dockPopupSurface, nullptr, 0, 0);
+    wl_surface_commit(m_dockPopupSurface);
+    if (wl_display_flush(m_display) < 0)
+        return fail(QStringLiteral("failed to flush the Dock popup surface creation"));
+    return true;
+}
+
+bool ShellProtocol::setDockPopupGeometry(int x, int bottomMargin, int width, int height)
+{
+    if (!m_dockPopupLayer || !m_dockPopupSurface)
+        return false;
+    // set_margin(top, right, bottom, left)
+    df_layer_surface_set_margin(m_dockPopupLayer, 0, 0, bottomMargin, x);
+    df_layer_surface_set_size(m_dockPopupLayer, width, height);
+    if (m_display)
+        wl_display_flush(m_display);
+    return true;
+}
+
+bool ShellProtocol::commitDockPopupImage(const QImage &image)
+{
+    if (!m_dockPopupSurface)
+        return false;
+    if (!commitTo(m_dockPopupSurface, image))
+        return false;
+    m_dockPopupMapped = true;
+    return true;
+}
+
+bool ShellProtocol::hideDockPopup()
+{
+    if (!m_dockPopupSurface || !m_dockPopupLayer)
+        return false;
+    if (!m_dockPopupMapped)
+        return true;
+    wl_surface_attach(m_dockPopupSurface, nullptr, 0, 0);
+    wl_surface_commit(m_dockPopupSurface);
+    m_dockPopupMapped = false;
+    if (m_display)
+        wl_display_flush(m_display);
+    return true;
+}
+
 void ShellProtocol::activateApp(const QString &appId)
 {
     if (!m_manager)
@@ -335,6 +401,50 @@ void ShellProtocol::activateApp(const QString &appId)
     const QByteArray id = appId.toUtf8();
     df_toplevel_manager_activate_app(m_manager, id.constData());
     if (m_display)
+        wl_display_flush(m_display);
+}
+
+void ShellProtocol::selectToplevel(const QString &windowId)
+{
+    bool ok = false;
+    const quintptr id = windowId.toULongLong(&ok);
+    df_toplevel *toplevel = ok ? toplevelForId(id) : nullptr;
+    if (!toplevel || !m_manager)
+        return;
+    // `select_overview_toplevel` restores a minimized window, activates its
+    // Space, and focuses it — exactly the chooser's selection semantics
+    // (T-10 FR-5).
+    df_toplevel_manager_select_overview_toplevel(m_manager, toplevel);
+    if (m_display)
+        wl_display_flush(m_display);
+}
+
+void ShellProtocol::closeToplevel(const QString &windowId)
+{
+    bool ok = false;
+    const quintptr id = windowId.toULongLong(&ok);
+    df_toplevel *toplevel = ok ? toplevelForId(id) : nullptr;
+    if (!toplevel)
+        return;
+    df_toplevel_close(toplevel);
+    if (m_display)
+        wl_display_flush(m_display);
+}
+
+void ShellProtocol::closeApp(const QString &appId)
+{
+    if (appId.isEmpty())
+        return;
+    // The private protocol has no app-level quit; closing every window of the
+    // app is the closest supported action (T-10 section 13, interim).
+    QList<df_toplevel *> targets;
+    for (auto it = m_toplevels.constBegin(); it != m_toplevels.constEnd(); ++it) {
+        if (it.value().appId == appId)
+            targets.append(it.key());
+    }
+    for (df_toplevel *toplevel : std::as_const(targets))
+        df_toplevel_close(toplevel);
+    if (!targets.isEmpty() && m_display)
         wl_display_flush(m_display);
 }
 
@@ -417,6 +527,10 @@ void ShellProtocol::teardown()
     for (wl_buffer *buffer : std::as_const(m_buffers))
         wl_buffer_destroy(buffer);
     m_buffers.clear();
+    if (m_dockPopupLayer)
+        df_layer_surface_destroy(m_dockPopupLayer);
+    if (m_dockPopupSurface)
+        wl_surface_destroy(m_dockPopupSurface);
     if (m_dockLayer)
         df_layer_surface_destroy(m_dockLayer);
     if (m_dockSurface)
@@ -460,6 +574,9 @@ void ShellProtocol::teardown()
     m_dockLayer = nullptr;
     m_dockSurface = nullptr;
     m_dockMapped = false;
+    m_dockPopupLayer = nullptr;
+    m_dockPopupSurface = nullptr;
+    m_dockPopupMapped = false;
     m_manager = nullptr;
     m_shell = nullptr;
     m_core = nullptr;
@@ -553,6 +670,15 @@ void ShellProtocol::onDockConfigure(void *data, df_layer_surface *, uint32_t ser
     emit self->dockConfigured(width, height, serial);
 }
 
+void ShellProtocol::onDockPopupConfigure(void *data, df_layer_surface *, uint32_t serial,
+                                         int32_t width, int32_t height)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    if (self->m_dockPopupLayer)
+        df_layer_surface_ack_configure(self->m_dockPopupLayer, serial);
+    emit self->dockPopupConfigured(width, height, serial);
+}
+
 void ShellProtocol::onLayerClosed(void *data, df_layer_surface *)
 {
     auto *self = static_cast<ShellProtocol *>(data);
@@ -590,9 +716,17 @@ void ShellProtocol::onPointerEnter(void *data, wl_pointer *, uint32_t, wl_surfac
 {
     auto *self = static_cast<ShellProtocol *>(data);
     self->m_pointerOnPopup = self->m_popupSurface && surface == self->m_popupSurface;
+    self->m_pointerOnDockPopup =
+        self->m_dockPopupSurface && surface == self->m_dockPopupSurface;
     self->m_pointerOnDock = self->m_dockSurface && surface == self->m_dockSurface;
     self->m_pointerX = wl_fixed_to_double(x) + (self->m_pointerOnPopup ? self->m_popupX : 0);
     self->m_pointerY = wl_fixed_to_double(y) + (self->m_pointerOnPopup ? self->m_popupY : 0);
+    if (self->m_pointerOnDockPopup) {
+        self->m_pointerX = wl_fixed_to_double(x);
+        self->m_pointerY = wl_fixed_to_double(y);
+        emit self->dockPopupPointerMoved(self->m_pointerX, self->m_pointerY);
+        return;
+    }
     if (self->m_pointerOnDock) {
         self->m_pointerX = wl_fixed_to_double(x);
         self->m_pointerY = wl_fixed_to_double(y);
@@ -605,10 +739,14 @@ void ShellProtocol::onPointerEnter(void *data, wl_pointer *, uint32_t, wl_surfac
 void ShellProtocol::onPointerLeave(void *data, wl_pointer *, uint32_t, wl_surface *)
 {
     auto *self = static_cast<ShellProtocol *>(data);
+    const bool wasDockPopup = self->m_pointerOnDockPopup;
     const bool wasDock = self->m_pointerOnDock;
     self->m_pointerOnPopup = false;
+    self->m_pointerOnDockPopup = false;
     self->m_pointerOnDock = false;
-    if (wasDock)
+    if (wasDockPopup)
+        emit self->dockPopupPointerLeft();
+    else if (wasDock)
         emit self->dockPointerLeft();
     else
         emit self->pointerLeft();
@@ -620,6 +758,12 @@ void ShellProtocol::onPointerMotion(void *data, wl_pointer *, uint32_t, wl_fixed
     auto *self = static_cast<ShellProtocol *>(data);
     self->m_pointerX = wl_fixed_to_double(x) + (self->m_pointerOnPopup ? self->m_popupX : 0);
     self->m_pointerY = wl_fixed_to_double(y) + (self->m_pointerOnPopup ? self->m_popupY : 0);
+    if (self->m_pointerOnDockPopup) {
+        self->m_pointerX = wl_fixed_to_double(x);
+        self->m_pointerY = wl_fixed_to_double(y);
+        emit self->dockPopupPointerMoved(self->m_pointerX, self->m_pointerY);
+        return;
+    }
     if (self->m_pointerOnDock) {
         self->m_pointerX = wl_fixed_to_double(x);
         self->m_pointerY = wl_fixed_to_double(y);
@@ -633,6 +777,11 @@ void ShellProtocol::onPointerButton(void *data, wl_pointer *, uint32_t, uint32_t
                                     uint32_t state)
 {
     auto *self = static_cast<ShellProtocol *>(data);
+    if (self->m_pointerOnDockPopup) {
+        emit self->dockPopupPointerButton(self->m_pointerX, self->m_pointerY, button,
+                                          state == WL_POINTER_BUTTON_STATE_PRESSED);
+        return;
+    }
     if (self->m_pointerOnDock) {
         emit self->dockPointerButton(self->m_pointerX, self->m_pointerY, button,
                                      state == WL_POINTER_BUTTON_STATE_PRESSED);
@@ -692,6 +841,7 @@ void ShellProtocol::onManagerOutput(void *data, df_toplevel_manager *, df_output
 void ShellProtocol::onManagerWorkspace(void *data, df_toplevel_manager *, df_workspace *id)
 {
     auto *self = static_cast<ShellProtocol *>(data);
+    self->m_workspaces.insert(id, WorkspaceInfo{});
     static const df_workspace_listener listener = {
         onWorkspaceName,     onWorkspaceIndex,  onWorkspaceActivated,
         onWorkspaceFullscreen, onWorkspaceWallpaper, onWorkspaceRemoved,
@@ -703,7 +853,11 @@ void ShellProtocol::onManagerWorkspace(void *data, df_toplevel_manager *, df_wor
 void ShellProtocol::onManagerToplevel(void *data, df_toplevel_manager *, df_toplevel *id)
 {
     auto *self = static_cast<ShellProtocol *>(data);
-    self->m_toplevels.insert(id, ToplevelInfo{});
+    ToplevelInfo info;
+    info.windowId = reinterpret_cast<quintptr>(id);
+    self->m_toplevels.insert(id, info);
+    self->m_toplevelOrder.append(id);
+    self->m_toplevelById.insert(info.windowId, id);
     static const df_toplevel_listener listener = {
         onToplevelTitle,   onToplevelAppId,         onToplevelState,
         onToplevelWorkspaceEntered, onToplevelWorkspaceLeft, onToplevelOutputEntered,
@@ -719,6 +873,8 @@ void ShellProtocol::onManagerFocused(void *data, df_toplevel_manager *, df_tople
     self->m_focused = id;
     const ToplevelInfo info = id ? self->m_toplevels.value(id) : ToplevelInfo{};
     emit self->focusedAppChanged(info.appId, info.title);
+    // The window chooser marks the frontmost window; a focus change updates it.
+    self->emitDockState();
 }
 
 void ShellProtocol::onManagerAttention(void *data, df_toplevel_manager *, df_toplevel *id)
@@ -797,12 +953,19 @@ void ShellProtocol::onToplevelState(void *data, df_toplevel *toplevel, uint32_t 
     self->emitDockState();
 }
 
-void ShellProtocol::onToplevelWorkspaceEntered(void *, df_toplevel *, df_workspace *)
+void ShellProtocol::onToplevelWorkspaceEntered(void *data, df_toplevel *toplevel,
+                                               df_workspace *workspace)
 {
+    auto *self = static_cast<ShellProtocol *>(data);
+    self->m_toplevels[toplevel].workspace = workspace;
+    self->emitDockState();
 }
 
-void ShellProtocol::onToplevelWorkspaceLeft(void *, df_toplevel *, df_workspace *)
+void ShellProtocol::onToplevelWorkspaceLeft(void *data, df_toplevel *toplevel, df_workspace *)
 {
+    auto *self = static_cast<ShellProtocol *>(data);
+    self->m_toplevels[toplevel].workspace = nullptr;
+    self->emitDockState();
 }
 
 void ShellProtocol::onToplevelOutputEntered(void *, df_toplevel *, df_output *)
@@ -816,7 +979,11 @@ void ShellProtocol::onToplevelOutputLeft(void *, df_toplevel *, df_output *)
 void ShellProtocol::onToplevelClosed(void *data, df_toplevel *toplevel)
 {
     auto *self = static_cast<ShellProtocol *>(data);
+    const auto info = self->m_toplevels.constFind(toplevel);
+    if (info != self->m_toplevels.constEnd() && info->windowId)
+        self->m_toplevelById.remove(info->windowId);
     self->m_toplevels.remove(toplevel);
+    self->m_toplevelOrder.removeAll(toplevel);
     if (self->m_focused == toplevel) {
         self->m_focused = nullptr;
         emit self->focusedAppChanged(QString(), QString());
@@ -832,34 +999,56 @@ void ShellProtocol::emitDockState()
 {
     struct AppGroup {
         QString name;
-        int windows = 0;
+        QVariantList windows;
         int minimized = 0;
     };
     QHash<QString, AppGroup> groups;
+    QList<df_toplevel *> minimizedToplevels;
     QVariantList minimizedEntries;
 
-    for (auto it = m_toplevels.constBegin(); it != m_toplevels.constEnd(); ++it) {
-        const ToplevelInfo &info = it.value();
-        const QString appId = info.appId;
-        const QString key = appId.isEmpty() ? QStringLiteral("__unknown__") : appId;
+    // Most-recent-first: the focused window leads, then reverse announcement
+    // order. The compositor does not expose its recency list to the shell.
+    const auto rowFor = [this](df_toplevel *toplevel) {
+        const ToplevelInfo &info = m_toplevels.value(toplevel);
+        QVariantMap row;
+        // A decimal string: a 64-bit pointer does not survive a QML `number`.
+        row.insert(QStringLiteral("windowId"), QString::number(info.windowId));
+        row.insert(QStringLiteral("title"),
+                   info.title.isEmpty() ? displayNameForAppId(info.appId) : info.title);
+        row.insert(QStringLiteral("minimized"), (info.state & 0x1u) != 0);
+        row.insert(QStringLiteral("focused"), toplevel == m_focused);
+        const WorkspaceInfo ws = m_workspaces.value(info.workspace);
+        if (ws.index >= 0) {
+            row.insert(QStringLiteral("workspaceIndex"), ws.index);
+            row.insert(QStringLiteral("workspaceName"),
+                       ws.name.isEmpty() ? QStringLiteral("Space %1").arg(ws.index + 1)
+                                         : ws.name);
+        }
+        return row;
+    };
+
+    for (df_toplevel *toplevel : std::as_const(m_toplevelOrder)) {
+        const ToplevelInfo &info = m_toplevels.value(toplevel);
+        const QString key = info.appId.isEmpty() ? QStringLiteral("__unknown__") : info.appId;
         AppGroup &group = groups[key];
         if (group.name.isEmpty())
-            group.name = displayNameForAppId(appId);
-        group.windows += 1;
-        const bool minimized = (info.state & 0x1u) != 0;
-        if (minimized) {
+            group.name = displayNameForAppId(info.appId);
+        const QVariantMap row = rowFor(toplevel);
+        group.windows.prepend(row);
+        if (row.value(QStringLiteral("minimized")).toBool()) {
             group.minimized += 1;
-            QVariantMap entry;
-            entry.insert(QStringLiteral("id"),
-                         QStringLiteral("win:%1")
-                             .arg(reinterpret_cast<quintptr>(it.key())));
-            entry.insert(QStringLiteral("appId"), appId);
-            entry.insert(QStringLiteral("name"),
-                         info.title.isEmpty() ? group.name : info.title);
-            entry.insert(QStringLiteral("kind"), QStringLiteral("minimized"));
-            entry.insert(QStringLiteral("running"), false);
-            entry.insert(QStringLiteral("minimized"), true);
-            minimizedEntries.append(entry);
+            minimizedToplevels.append(toplevel);
+        }
+    }
+
+    // The focused window leads its app's list (the chooser's checkmark).
+    for (auto it = groups.begin(); it != groups.end(); ++it) {
+        QVariantList &windows = it.value().windows;
+        for (int i = 1; i < windows.size(); ++i) {
+            if (windows.at(i).toMap().value(QStringLiteral("focused")).toBool()) {
+                windows.move(i, 0);
+                break;
+            }
         }
     }
 
@@ -872,17 +1061,44 @@ void ShellProtocol::emitDockState()
         entry.insert(QStringLiteral("name"), it.value().name);
         entry.insert(QStringLiteral("kind"), QStringLiteral("temporary"));
         entry.insert(QStringLiteral("running"), true);
-        entry.insert(QStringLiteral("windows"), it.value().windows);
+        entry.insert(QStringLiteral("windows"), it.value().windows.size());
+        entry.insert(QStringLiteral("windowList"), it.value().windows);
         entry.insert(QStringLiteral("minimized"),
-                     it.value().minimized == it.value().windows);
+                     it.value().minimized == it.value().windows.size());
         entries.append(entry);
     }
     std::sort(entries.begin(), entries.end(), [](const QVariant &a, const QVariant &b) {
         return a.toMap().value(QStringLiteral("name")).toString()
                 < b.toMap().value(QStringLiteral("name")).toString();
     });
+
+    // Per-window minimized entries carry their app's full window list so the
+    // owning app's menu/chooser works from the minimized entry too (T-10
+    // section 13).
+    for (df_toplevel *toplevel : std::as_const(minimizedToplevels)) {
+        const ToplevelInfo &info = m_toplevels.value(toplevel);
+        const QString key = info.appId.isEmpty() ? QStringLiteral("__unknown__") : info.appId;
+        const AppGroup group = groups.value(key);
+        QVariantMap entry;
+        entry.insert(QStringLiteral("id"),
+                     QStringLiteral("win:%1").arg(static_cast<qulonglong>(info.windowId)));
+        entry.insert(QStringLiteral("windowId"), QString::number(info.windowId));
+        entry.insert(QStringLiteral("appId"), info.appId);
+        entry.insert(QStringLiteral("name"),
+                     info.title.isEmpty() ? group.name : info.title);
+        entry.insert(QStringLiteral("kind"), QStringLiteral("minimized"));
+        entry.insert(QStringLiteral("running"), false);
+        entry.insert(QStringLiteral("minimized"), true);
+        entry.insert(QStringLiteral("windowList"), group.windows);
+        minimizedEntries.append(entry);
+    }
     entries += minimizedEntries;
     emit dockStateChanged(entries);
+}
+
+df_toplevel *ShellProtocol::toplevelForId(quintptr windowId) const
+{
+    return m_toplevelById.value(windowId, nullptr);
 }
 
 // --- wl_buffer --------------------------------------------------------------
@@ -910,10 +1126,24 @@ void ShellProtocol::onOutputReservedZone(void *, df_output *, uint32_t edge, uin
 }
 void ShellProtocol::onOutputDone(void *, df_output *) {}
 void ShellProtocol::onOutputRemoved(void *, df_output *) {}
-void ShellProtocol::onWorkspaceName(void *, df_workspace *, const char *) {}
-void ShellProtocol::onWorkspaceIndex(void *, df_workspace *, uint32_t) {}
+void ShellProtocol::onWorkspaceName(void *data, df_workspace *workspace, const char *name)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    self->m_workspaces[workspace].name = QString::fromUtf8(name ? name : "");
+    self->emitDockState();
+}
+void ShellProtocol::onWorkspaceIndex(void *data, df_workspace *workspace, uint32_t index)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    self->m_workspaces[workspace].index = static_cast<int>(index);
+    self->emitDockState();
+}
 void ShellProtocol::onWorkspaceActivated(void *, df_workspace *, uint32_t) {}
 void ShellProtocol::onWorkspaceFullscreen(void *, df_workspace *, uint32_t) {}
 void ShellProtocol::onWorkspaceWallpaper(void *, df_workspace *, const char *, uint32_t, uint32_t) {}
-void ShellProtocol::onWorkspaceRemoved(void *, df_workspace *) {}
+void ShellProtocol::onWorkspaceRemoved(void *data, df_workspace *workspace)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    self->m_workspaces.remove(workspace);
+}
 void ShellProtocol::onWorkspaceDone(void *, df_workspace *) {}

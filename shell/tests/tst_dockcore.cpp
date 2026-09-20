@@ -267,7 +267,12 @@ private slots:
                         {QStringLiteral("name"), QStringLiteral("Files")},
                         {QStringLiteral("kind"), QStringLiteral("temporary")},
                         {QStringLiteral("running"), true},
-                        {QStringLiteral("windows"), 2}},
+                        {QStringLiteral("windows"), 2},
+                        {QStringLiteral("windowList"),
+                         QVariantList{QVariantMap{{QStringLiteral("windowId"), QStringLiteral("1")},
+                                                  {QStringLiteral("title"), QStringLiteral("A")}},
+                                      QVariantMap{{QStringLiteral("windowId"), QStringLiteral("2")},
+                                                  {QStringLiteral("title"), QStringLiteral("B")}}}}},
             QVariantMap{{QStringLiteral("id"), QStringLiteral("win:1")},
                         {QStringLiteral("appId"), QStringLiteral("org.dragonfruit.Files")},
                         {QStringLiteral("name"), QStringLiteral("Doc")},
@@ -290,6 +295,11 @@ private slots:
         QCOMPARE(files.value(QStringLiteral("name")).toString(), QStringLiteral("Files"));
         QCOMPARE(files.value(QStringLiteral("running")).toBool(), true);
         QCOMPARE(files.value(QStringLiteral("windows")).toInt(), 2);
+        // The per-window list survives the pin merge for the chooser.
+        const QVariantList filesWindows = files.value(QStringLiteral("windowList")).toList();
+        QCOMPARE(filesWindows.size(), 2);
+        QCOMPARE(filesWindows.at(0).toMap().value(QStringLiteral("windowId")).toString(),
+                 QStringLiteral("1"));
         QCOMPARE(files.value(QStringLiteral("appId")).toString(),
                  QStringLiteral("org.dragonfruit.Files"));
 

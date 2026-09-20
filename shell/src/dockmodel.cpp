@@ -68,6 +68,7 @@ QVariantList buildDockEntries(const QStringList &pinnedIds, const DesktopEntryIn
         bool anyMinimized = false;
         QString matchAppId;
         bool matched = false;
+        QVariantList windowList;
         for (int i = 0; i < runningApps.size(); ++i) {
             if (usedRunning.contains(i))
                 continue;
@@ -85,6 +86,7 @@ QVariantList buildDockEntries(const QStringList &pinnedIds, const DesktopEntryIn
             if (matchAppId.isEmpty())
                 matchAppId = appId;
             windows += candidate.value(QStringLiteral("windows")).toInt();
+            windowList += candidate.value(QStringLiteral("windowList")).toList();
             if (candidate.value(QStringLiteral("minimized")).toBool())
                 anyMinimized = true;
         }
@@ -100,6 +102,7 @@ QVariantList buildDockEntries(const QStringList &pinnedIds, const DesktopEntryIn
         merged.insert(QStringLiteral("missing"), !entry.valid);
         merged.insert(QStringLiteral("running"), matched);
         merged.insert(QStringLiteral("windows"), windows);
+        merged.insert(QStringLiteral("windowList"), windowList);
         merged.insert(QStringLiteral("minimized"), matched && anyMinimized);
         const QString launch = launchStates.value(pinId);
         if (!launch.isEmpty())

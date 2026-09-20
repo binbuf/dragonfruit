@@ -24,6 +24,9 @@ Item {
         SignalSpy { id: activatedSpy; signalName: "entryActivated" }
         SignalSpy { id: menuSpy; signalName: "entryContextMenuRequested" }
         SignalSpy { id: dividerMenuSpy; signalName: "dividerContextMenuRequested" }
+        SignalSpy { id: menuActionSpy; signalName: "menuActionRequested" }
+        SignalSpy { id: windowSpy; signalName: "windowActivated" }
+        SignalSpy { id: popoverSpy; signalName: "popoverChanged" }
 
         // Reduced motion is a global singleton; reset it before every test so
         // a failure mid-test cannot leak into the next one.
@@ -419,6 +422,174 @@ Item {
             dock.hide();
             waitForRendering(stage);
             compare(dock.inputRects.length, 0);
+        }
+
+        // -- Context menu and window chooser (T-10 sections 9/13) ----------
+
+        function multiWindow(id, name, windowList) {
+            return { id: id, appId: id, name: name, kind: "pinned",
+                     pinned: true, running: true, desktopId: id + ".desktop",
+                     windows: windowList.length, windowList: windowList };
+        }
+
+        function test_right_click_opens_context_menu_and_suppresses_magnification() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, magnification: 1.0,
+                entries: [ app("files", "Files", true) ]
+            });
+            dock.pointerAlong = dock._baseline.centers[0];
+            waitForRendering(stage);
+            compare(dock.magnifying, true);
+            dock.openEntryMenu(dock.items[0]);
+            waitForRendering(stage);
+            var menu = findChild(dock, "entryMenu");
+            verify(menu !== null);
+            compare(menu.open, true);
+            compare(dock.menuOpen, true);
+            compare(dock.popoverOpen, true);
+            compare(dock.magnifying, false);
+            verify(dock.popoverRect.w > 0);
+            verify(dock.popoverRect.h > 0);
+        }
+
+        function test_menu_model_lists_windows_and_actions() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ multiWindow("files", "Files", [
+                    { windowId: "1", title: "A", focused: true },
+                    { windowId: "2", title: "B", minimized: true,
+                      workspaceName: "Space 2" }
+                ]) ]
+            });
+            dock.openEntryMenu(dock.items[0]);
+            var menu = findChild(dock, "entryMenu");
+            // 2 windows, separator, Show All Windows, separator, Remove, separator, Quit
+            compare(menu.entries.length, 8);
+            compare(menu.entries[0].label, "A");
+            compare(menu.entries[0].checked, true);
+            compare(menu.entries[1].label, "B (minimized)");
+            compare(menu.entries[1].shortcut, "Space 2");
+            compare(menu.entries[3].label, "Show All Windows");
+            compare(menu.entries[5].label, "Remove from Dock");
+            compare(menu.entries[7].label, "Quit");
+        }
+
+        function test_menu_keep_in_dock_for_temporary_app() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ temporary("term", "Terminal") ]
+            });
+            dock.openEntryMenu(dock.items[0]);
+            var menu = findChild(dock, "entryMenu");
+            var labels = [];
+            for (var i = 0; i < menu.entries.length; ++i)
+                labels.push(menu.entries[i].label);
+            verify(labels.indexOf("Keep in Dock") >= 0);
+            verify(labels.indexOf("Remove from Dock") < 0);
+        }
+
+        function test_menu_action_emits_window_activation() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ multiWindow("files", "Files", [
+                    { windowId: "1", title: "A", focused: true },
+                    { windowId: "2", title: "B" }
+                ]) ]
+            });
+            menuActionSpy.target = dock;
+            menuActionSpy.clear();
+            dock.openEntryMenu(dock.items[0]);
+            var menu = findChild(dock, "entryMenu");
+            menu.activate(0);
+            compare(menuActionSpy.count, 1);
+            compare(menuActionSpy.signalArguments[0][0], "activate_window");
+            compare(menuActionSpy.signalArguments[0][1].windowId, "1");
+        }
+
+        function test_multi_window_click_opens_chooser() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ multiWindow("files", "Files", [
+                    { windowId: "1", title: "A", focused: true, workspaceName: "Space 1" },
+                    { windowId: "2", title: "B", minimized: true, workspaceName: "Space 2" }
+                ]) ]
+            });
+            windowSpy.target = dock;
+            windowSpy.clear();
+            mouseClick(dock.itemAt(0), dock.itemAt(0).width / 2,
+                       dock.itemAt(0).height / 2);
+            waitForRendering(stage);
+            compare(dock.chooserOpen, true);
+            var chooser = findChild(dock, "windowChooser");
+            verify(chooser !== null);
+            compare(chooser.windows.length, 2);
+            chooser.activateWindow(1);
+            compare(windowSpy.count, 1);
+            compare(windowSpy.signalArguments[0][0], "2");
+            compare(dock.chooserOpen, false);
+        }
+
+        function test_single_window_click_does_not_open_chooser() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ multiWindow("files", "Files", [
+                    { windowId: "1", title: "A", focused: true }
+                ]) ]
+            });
+            activatedSpy.target = dock;
+            activatedSpy.clear();
+            mouseClick(dock.itemAt(0), dock.itemAt(0).width / 2,
+                       dock.itemAt(0).height / 2);
+            waitForRendering(stage);
+            compare(dock.chooserOpen, false);
+            compare(activatedSpy.count, 1);
+        }
+
+        function test_chooser_accessible_names_carry_window_titles() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ multiWindow("files", "Files", [
+                    { windowId: "1", title: "Document", focused: true },
+                    { windowId: "2", title: "Spreadsheet" }
+                ]) ]
+            });
+            dock.openChooser(dock.items[0]);
+            var chooser = findChild(dock, "windowChooser");
+            verify(chooser.Accessible.name.indexOf("Files") >= 0);
+            var row = findChild(chooser, "chooserRows");
+            verify(row !== null);
+        }
+
+        function test_empty_dock_click_dismisses_popover() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("files", "Files", true) ]
+            });
+            dock.openEntryMenu(dock.items[0]);
+            waitForRendering(stage);
+            compare(dock.menuOpen, true);
+            // Click far from every entry.
+            mouseClick(dock, 20, 20);
+            waitForRendering(stage);
+            compare(dock.menuOpen, false);
+            compare(dock.popoverOpen, false);
+        }
+
+        function test_tall_menu_opens_above_with_headroom() {
+            var list = [];
+            for (var i = 0; i < 12; ++i)
+                list.push({ windowId: String(i + 1), title: "Window " + (i + 1) });
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ multiWindow("files", "Files", list) ]
+            });
+            dock.openEntryMenu(dock.items[0]);
+            waitForRendering(stage);
+            var rect = dock.popoverRect;
+            // A tall menu extends above the Dock scene; the shell's headroom
+            // makes room for it.
+            verify(rect.y < 0);
+            verify(rect.h > dock.magnifyBand);
         }
 
         // -- Artwork --------------------------------------------------------
