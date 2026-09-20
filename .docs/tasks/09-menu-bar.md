@@ -211,6 +211,16 @@ Hand-off (T-09 continuation):
    (`ShellController::demoAppMenu`) is a T-22 stand-in so the dropdown is
    exercisable now; T-22 should delete it.
 
+### Deferred polish (not blocking T-10+)
+
+The interaction works end to end, but the shell's on-demand snapshot renderer
+leaves rough edges: a launch highlight on the first title (leading theory:
+host-cursor hover; the focus-ring cause is ruled out), choppy popup
+open/close, and hover/drag-through timing. The durable fix — commit from
+`QQuickWindow::afterRendering` while the scene is dirty — is shared with
+T-10's Dock animation and should land there. Details and diagnostics:
+[PROGRESS.md](../PROGRESS.md), "T-09 deferred polish backlog".
+
 ## Test plan
 
 - Nested-session UI tests for layout, hotplug, restart.

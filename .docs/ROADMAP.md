@@ -335,7 +335,11 @@ dropdown rides the `top` bar surface rather than a separate `overlay`
 child of the bar item); output hotplug re-anchoring still needs a runtime
 add-output hook on the headless backend to script; background/bottom layer
 stacking is T-10/T-11; status items are placeholders until T-20 and the app
-menu is a stand-in until T-22. Details and hand-off: [PROGRESS.md](PROGRESS.md).
+menu is a stand-in until T-22. Deferred interaction polish (shell snapshot
+renderer): choppy popup open/close, hover/drag-through timing, and a launch
+highlight on the first title — the durable fix (commit from
+`QQuickWindow::afterRendering` while the scene is dirty) is shared with T-10's
+Dock animation. Details and hand-off: [PROGRESS.md](PROGRESS.md).
 
 **Foundation milestone E2E (T-01…T-07).** The whole vertical slice now has a
 headless end-to-end test, `compositor/tests/milestone_e2e.rs` (`make e2e`):

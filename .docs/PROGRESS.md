@@ -1908,3 +1908,27 @@ title at all (the `forceActiveFocus` on the bar root remains). The remaining
 shell receives no pointer event at startup, so a highlight can only come from
 the host cursor already being over the title (winit's first `CursorMoved`).
 It clears as soon as the pointer leaves the bar.
+
+### T-09 deferred polish backlog (known, not blocking T-10+)
+
+T-09 is closed for development purposes; these are the remaining rough edges,
+all in the shell's snapshot renderer / interaction feel rather than the
+compositor or protocol:
+
+1. **Launch highlight on the first title.** Not reproduced headlessly (no
+   pointer event, focus on the bar root), so the leading theory is host-cursor
+   hover at startup. `activeFocusOnTab: false` (da9bcb7) rules out the focus
+   ring; if a fill still appears with the pointer off the bar, capture the
+   shell's committed frame and log `MenuBar.openMenuIndex`/hover state.
+2. **Choppy popup open/close.** The shell samples QML with a 16 ms timer, so
+   motion is not frame-accurate. The durable fix — commit from
+   `QQuickWindow::afterRendering` while the scene is dirty — is shared with
+   T-10 (Dock magnification) and should be done there, not bolted on here.
+3. **Hover/drag-through timing.** Mechanism is per-spec (140 ms
+   `motion.menuOpen`), but the feel is untuned; the constant lives in the
+   design-system tokens, so tune it in T-10/T-31 with the real Dock.
+4. **Hover highlights on the bar** may lag a frame behind the pointer for the
+   same snapshot reason as (2).
+
+None of these affect the compositor contracts T-10/T-11/T-20/T-22 build on
+(chrome input routing, keyboard focus, reserved zones, dropdown geometry).
