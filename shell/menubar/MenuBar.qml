@@ -223,6 +223,7 @@ Rectangle {
                 available: modelData.available !== false
                 enabled: modelData.enabled !== false
                 selected: modelData.selected === true
+                level: modelData.level !== undefined ? modelData.level : 0.8
                 tint: modelData.tint !== undefined ? modelData.tint : Theme.color.textPrimary
                 backgroundColor: menuBar.color
 
@@ -234,6 +235,7 @@ Rectangle {
         }
 
         MenuBarClock {
+            objectName: "clock"
             showDate: menuBar.showDate
             showSeconds: menuBar.showSeconds
             onActivated: menuBar.clockActivated()

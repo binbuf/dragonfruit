@@ -122,8 +122,8 @@ check-design-tokens:
 # The full gate: everything CI runs, locally in one command.
 check: lint test soak
 
-dev: cargo-build
-	$(CARGO) run -p dragonfruit-dev --bin dragonfruit -- dev --nested
+dev: build
+	$(CARGO) run -p dragonfruit-dev --bin dragonfruit -- dev --nested --shell
 
 soak: cargo-build
 	$(CARGO) run -p dragonfruit-dev --bin dragonfruit -- dev --soak $(SOAK_CYCLES)

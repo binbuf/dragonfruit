@@ -89,7 +89,7 @@ Updated when a task is partially or completely finished; see
 | Phase | Tickets |
 |---|---|
 | 1 · Foundation | T-01 ✅ done · T-02 🔄 partial (compositor core) · T-03 🔄 partial (input engine) · T-04 🔄 partial (window model) · T-05 🔄 partial (Spaces model) · T-06 🔄 partial (Xwayland) · T-07 🔄 partial (private shell protocols) |
-| 2 · Experience | T-08 ✅ done (design system; app-level chrome lint + live AT-SPI dump deferred) · T-09 … T-14 pending |
+| 2 · Experience | T-08 ✅ done (design system; app-level chrome lint + live AT-SPI dump deferred) · T-09 🔄 partial (menu bar render/interaction + shell bootstrap) · T-10 … T-14 pending |
 | 3 · Flagship apps | T-15 … T-19 pending |
 | 4 · System integration | T-20 … T-23 pending |
 | 5 · Desktop infrastructure | T-24 … T-29 pending |
@@ -289,6 +289,33 @@ live dump belongs with T-31), joint blur/translucency tuning with T-02/T-13,
 and the app-level "no hand-rolled chrome" lint (T-16/T-18). Details:
 [PROGRESS.md](PROGRESS.md).
 
+T-09 is partial: the menu bar render/interaction core and the shell process
+bootstrap are landed. `shell/menubar/` now holds the real bar built from the
+design system: the active application's menu (`MenuBarMenu` per top-level
+menu, with the application name as the FR-2 priority-3 fallback until T-22's
+menu-broker lands), unified status-item slots (Wi-Fi, Bluetooth, volume,
+battery, Focus/DND, accessibility) that hide when their backing daemon is
+absent and dim when disabled, a locale-formatted clock with a single
+minute-aligned timer (no polling), the Control Center entry point, and the
+Mission Control button. The FR-3 interaction rules — click-to-open,
+delayed-hover drag-through, Escape/click-away/focus-loss dismissal, and live
+focus-switch tracking — are implemented and scripted by the new
+`shell/tests/tst_menubar.qml` (ctest). The shell process
+(`shell/src/dragonfruit-shell`) is a real private-protocol client: it
+connects with libwayland-client, authenticates with the one-time launch token,
+creates the `df_layer_surface` menu bar anchored top/left/right with an
+exclusive zone, renders the QML offscreen into a `wl_shm` buffer, and tracks
+`df_toplevel_manager` focus broadcasts for the app name. `dragonfruit dev
+--shell` (and `make dev`) launches it with the token the compositor
+provisioned. Verified live headless: authentication, a 1280×28 configure, the
+output `reserved_zone` edge=0 thickness=28, and clean teardown. Open: the
+open-menu dropdown is currently clipped to the bar surface (it needs a
+separate overlay `df_layer_surface`, T-09 follow-up), the scripted
+shell-restart test needs a fresh per-start token (T-24), output-hotplug
+re-anchoring and the idle trace are not yet scripted, status items are
+placeholders until T-20, and the app menu is name-only until T-22. Details and
+hand-off: [PROGRESS.md](PROGRESS.md).
+
 **Foundation milestone E2E (T-01…T-07).** The whole vertical slice now has a
 headless end-to-end test, `compositor/tests/milestone_e2e.rs` (`make e2e`):
 one live session with a shell client, a Wayland app, and an X11 app attached
@@ -320,7 +347,7 @@ the shell's own chrome rendering (T-09/T-10).
    - [x] Private shell protocols (T-07: `df_core` handshake/trust, chrome surfaces + reserved zones, window/workspace/output control, compliance client; chrome rendering + Qt bindings + per-output zones open)
 2. **Experience**
    - [x] Design system (T-08: token architecture + all 20 components + gallery/visual regression; app-level chrome lint + live AT-SPI dump deferred)
-   - [ ] Top bar
+   - [ ] Top bar (T-09 partial: menu-bar render/interaction + shell bootstrap live; menu overlay surface, restart/hotplug/idle scripts, T-20 status adapters, T-22 app menu open)
    - [ ] Dock
    - [ ] Window switching
    - [ ] Mission Control

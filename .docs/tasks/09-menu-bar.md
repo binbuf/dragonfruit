@@ -90,13 +90,56 @@ restartable without taking down the compositor.
 
 ## Acceptance criteria
 
-- [ ] Full menu bar renders in nested mode with placeholders and live
-      status items as adapters land.
+- [x] Full menu bar renders in nested mode with placeholders and live
+      status items as adapters land. *(The bar renders in a live headless
+      session via the real shell process; the same code path runs nested.
+      Status items are placeholders until T-20.)*
 - [ ] Kill-and-restart of the shell process: menu bar returns, windows
-      untouched (Phase-1 exit test reused).
-- [ ] Idle trace: zero polling from the menu bar.
-- [ ] Menu interaction walkthrough passes (drag-through, dismiss, focus
-      switch) on keyboard and pointer.
+      untouched (Phase-1 exit test reused). *(Needs a fresh one-time token
+      per shell start, T-24; compositor-owned window state is untouched by
+      construction.)*
+- [ ] Idle trace: zero polling from the menu bar. *(No polling exists — the
+      clock is a single minute-aligned one-shot timer — but the scripted
+      trace is not written yet.)*
+- [x] Menu interaction walkthrough passes (drag-through, dismiss, focus
+      switch) on keyboard and pointer. *(`shell/tests/tst_menubar.qml`.)*
+
+## Session status (T-09 split)
+
+Implemented and verified in this session:
+
+- **Menu bar render/interaction core** (`shell/menubar/`): app-menu region
+  (`MenuBarMenu` per top-level menu + app-name fallback), unified status-item
+  slots with graceful degradation, locale clock, Control Center entry,
+  Mission Control button, FR-3 interaction rules, reduced motion via the
+  design-system motion tokens. `shell/tests/tst_menubar.qml` (ctest) covers
+  layout zones, adapter degradation, the full interaction walkthrough, clock
+  locale formatting, and Canvas status-glyph pixels.
+- **Shell process bootstrap** (`shell/src/dragonfruit-shell`): libwayland
+  client, `df_core` launch-token handshake, `df_shell` menu-bar layer surface
+  with an exclusive zone, offscreen QML → `wl_shm` rendering, and
+  `df_toplevel_manager` focus tracking for the app name. Verified live
+  headless: authenticated, configured 1280×28, output `reserved_zone`
+  edge=0 thickness=28, clean teardown.
+- **Dev workflow**: `dragonfruit dev --nested --shell` (and `make dev`)
+  launches the shell with the provisioned token and owns it in `ChildGuard`.
+
+Hand-off (T-09 continuation):
+
+1. **Menu dropdown overlay surface.** The open menu is currently clipped to
+   the 28 px bar surface. Create a second `df_layer_surface` on the
+   `overlay` layer sized to the open dropdown (with its own input region and
+   keyboard mode), and move `MenuBar`'s popups onto it. Until then the
+   QML interaction is correct but only the bar is visible in a live session.
+2. **Scripted shell restart (FR-5/FR-9).** The compositor must mint a fresh
+   token per shell start (T-24 owns the session manager; for the test, add a
+   token re-mint request or a test-only token env), then kill and relaunch
+   the shell and assert the bar returns with windows untouched.
+3. **Output hotplug re-anchoring + idle trace.** The shell re-renders on
+   every `configure`; script the hotplug case and a SIGUSR1-based idle trace
+   asserting no client wakeups from the bar.
+4. **T-20 status adapters and T-22 menu-broker** replace the placeholders and
+   the name-only app menu.
 
 ## Test plan
 

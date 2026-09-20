@@ -1410,3 +1410,110 @@ authority. The two supported paths, and the expected behavior of each:
   Plasma is still selectable and unaffected.
 - No code anywhere kills, suspends, or "replaces" the host compositor, and
   no attempt is made to migrate live windows between compositors.
+
+## T-09 — menu bar + shell process bootstrap
+
+**State: partial.** The menu bar render/interaction core and the shell process
+bootstrap are landed and verified; the menu dropdown overlay, the scripted
+restart/hotplug/idle tests, T-20 status adapters, and T-22 app menu remain
+(see the task file's hand-off list).
+
+What exists:
+
+- `shell/menubar/MenuBar.qml` (plus `StatusItem`, `StatusGlyph`,
+  `MenuBarClock`): the real bar built from the design system. App-menu region
+  (`MenuBarMenu` per top-level menu, application name as the FR-2
+  priority-3 fallback), status-item slots (Wi-Fi/Bluetooth/volume/battery/
+  Focus-DND/accessibility) that hide when absent and dim when disabled, a
+  locale-formatted clock, Control Center entry, Mission Control button. FR-3
+  interaction: click-to-open, 140 ms delayed-hover drag-through,
+  Escape/click-away/focus-loss dismissal, and `setFocusedApp()` live
+  focus-switch tracking (reopens the same index on the new model, closes when
+  the new app exports none). Reduced motion is inherited from the design
+  system's `Popup` motion tokens.
+- A new `component.menuBar` token group (height, status-item padding/gap,
+  icon/font size, clock gap, radii); `make check-tokens` and the gallery
+  goldens stay green.
+- `shell/tests/tst_menubar.qml` (ctest `tst_menubar`, offscreen + software):
+  layout zones, fallback name vs menu model, adapter degradation, status
+  activation, Control Center/Mission Control signals, open/close, Escape,
+  click-away, drag-through, focus-switch tracking, focus-loss dismissal,
+  clock locale formatting, and a pixel check that every status glyph paints.
+- `shell/src/dragonfruit-shell`: the shell process. Connects with
+  libwayland-client, `df_core` launch-token handshake, creates the
+  `df_layer_surface` menu bar (anchor top|left|right, `set_size(0,28)`,
+  exclusive zone 28, `on_demand` keyboard), renders the QML offscreen into a
+  `wl_shm` ARGB8888 buffer per configure, and tracks `df_toplevel_manager`
+  `focused`/`app_id`/`title` to set the app name. Mission Control button
+  calls `df_toplevel_manager.enter_mission_control`.
+- `dragonfruit dev --nested --shell` (and `make dev`) reads
+  `$XDG_RUNTIME_DIR/<socket>.launch-token`, exports
+  `DRAGONFRUIT_LAUNCH_TOKEN`, launches the shell, and owns it in
+  `ChildGuard`.
+
+Verified live headless (`dragonfruit dev --headless --shell`): the shell
+authenticates as `shell`, gets a 1280×28 configure, the compositor reports
+`reserved_zone edge=0 thickness=28`, and the dev tool exits with a clean
+teardown.
+
+### Gotchas learned (important for T-10+ and the T-09 continuation)
+
+- **A plain Qt executable does not auto-register static QML modules.**
+  `qt_import_qml_plugins(dragonfruit-shell)` links the plugin init objects,
+  but `QQmlComponent::loadFromModule("Dragonfruit.MenuBar", "MenuBar")` still
+  failed with "contains no type named MenuBar". Fix: add the build QML import
+  root at runtime (`engine.addImportPath("${CMAKE_BINARY_DIR}/qml")`), exactly
+  like `dragonfruit-gallery-app` does. The same will be needed by any other
+  non-QML-module executable that loads shell/app QML.
+- **wayland-scanner emits `namespace` as a C argument name** for
+  `df_shell.get_layer_surface`; it is a C++ keyword. The shell wraps that one
+  generated include with `#define namespace df_layer_namespace` /
+  `#undef`. (Renaming the XML arg is the cleaner long-term fix if we ever
+  want the C header to be C++-clean; the wire ABI is unaffected by arg names.)
+- **The root project must enable the C language** for wayland-scanner's
+  generated `*-protocol.c` to compile. `project(... LANGUAGES C CXX)`.
+- **The Qt toolchain's `libwayland-client.so` is a broken symlink** (no
+  `.so.0` in the toolchain lib64), and `wayland-client.pc` needs a missing
+  `libffi.pc`. The shell's CMake finds `libwayland-client.so.0` in the system
+  lib dirs as a fallback; CI's `libwayland-dev` uses the normal pkg-config
+  path.
+- **Launch tokens are 32 bytes = 64 hex chars** (`TOKEN_BYTES`), not 16. A
+  short token makes `LaunchToken::parse_hex` return `None`, the compositor
+  silently mints a random one, and the handshake fails as `invalid-token`.
+- **The token is one-time.** The dev tool passes the provisioned token to the
+  shell; a shell *restart* needs a fresh token, which is T-24's job. The
+  scripted restart test is blocked on that.
+- **The shell forces `QT_QPA_PLATFORM=offscreen`** and speaks Wayland itself.
+  This is deliberate: the Qt Wayland platform plugin would create an unrelated
+  xdg toplevel instead of our `df_layer_surface`. Any future shell component
+  (Dock, Control Center, OSD) should follow the same "offscreen Qt + own
+  libwayland connection" pattern.
+- **The compositor sends an initial configure at the full output size**
+  before applying the layer surface's size/anchor requests, then the real
+  1280×28 configure. The shell renders on every configure; harmless, but a
+  future optimization is to skip the pre-layout configure (or gate rendering
+  on the final size).
+- **The open menu is clipped to the bar surface.** `MenuBarMenu`'s popup
+  overflows the 28 px `wl_surface`, so a live dropdown needs a second
+  `df_layer_surface` on the `overlay` layer. The QML interaction is already
+  correct and tested; only the live overlay surface is missing (T-09
+  continuation item 1).
+
+### Notes for subsequent tasks
+
+- **T-10 (Dock)** should reuse `shell/src/shellprotocol.{h,cpp}` (it already
+  binds `df_shell`/`df_toplevel_manager` and tracks toplevels) and
+  `ShellController`'s offscreen-render pattern; the layer-surface helper is
+  currently hard-coded to the menu bar and should be generalized to a
+  `createLayerSurface(namespace, anchor, size, exclusiveZone)` call.
+- **T-11/T-12** can drive Mission Control/app-switcher through the same
+  `df_toplevel_manager` requests; `ShellProtocol::enterMissionControl()` is
+  the template.
+- **T-20** replaces `ShellController::applyStatusItems()`'s placeholders with
+  adapter state; the `StatusItem` slot already renders `available`/`enabled`/
+  `level`/`label`/`tint`.
+- **T-22** replaces `ShellController::applyFocusedApp()`'s name-only fallback
+  with a broker-resolved `appMenuModel`; `MenuBar.setFocusedApp()` already
+  keeps an open menu tracking focus.
+- **T-24** must export a fresh `DRAGONFRUIT_LAUNCH_TOKEN` per shell start and
+  own the shell in the session; the dev tool's hand-off is the reference.
