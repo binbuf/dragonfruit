@@ -2857,6 +2857,119 @@ fn chrome_surface_receives_pointer_and_keyboard() {
     );
 }
 
+/// A right-click on a chrome surface takes keyboard focus too, so a Dock
+/// context menu can be dismissed by click-away/focus loss (T-10 section 13).
+#[test]
+fn chrome_surface_takes_keyboard_focus_on_right_click() {
+    let token = "de".repeat(32);
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir).join(format!(
+        "dragonfruit-chrome-right-click-{}",
+        std::process::id()
+    ));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-chrome-right-click",
+        std::slice::from_ref(&token),
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (name, version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, name, version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+    let (shell_name, shell_version) = state.shell_global.expect("df_shell advertised");
+    let shell = bind_shell(&mut state, &queue, shell_name, shell_version);
+    let qh = queue.handle();
+    let surface = state.compositor.clone().unwrap().create_surface(&qh, ());
+    let layer = shell.get_layer_surface(
+        &surface,
+        None,
+        df_shell::Layer::Top,
+        "menubar".to_string(),
+        &qh,
+        (),
+    );
+    layer.set_anchor(1 | 4 | 8); // top | left | right
+    layer.set_size(0, 28);
+    layer.set_exclusive_zone(28);
+    layer.set_keyboard_interaction(df_layer_surface::KeyboardInteraction::OnDemand);
+    surface.commit();
+    let (buffer, _file) = shm_buffer(&state, &qh, OUTPUT_W, 28);
+    surface.attach(Some(&buffer), 0, 0);
+    surface.commit();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .layer_configures
+                .iter()
+                .any(|(_, width, height)| *width == OUTPUT_W && *height == 28)
+        },
+    );
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.pointer.is_some() && state.keyboard.is_some(),
+    );
+    let _ = queue.roundtrip(&mut state);
+
+    // Move over the bar and right-click (BTN_RIGHT == 273). A right-click on
+    // chrome must take keyboard focus, unlike the window path which is
+    // left-click only.
+    input.send("motion-abs 0.5 0.01");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.pointer_enters > 0,
+    );
+    state.keyboard_enters = 0;
+    input.send("button 273 down\nbutton 273 up");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.keyboard_enters > 0,
+    );
+
+    // A left-click off the chrome (empty desktop) drops the focus.
+    state.keyboard_leaves = 0;
+    input.send("motion-abs 0.5 0.9\nbutton 272 down\nbutton 272 up");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.keyboard_leaves > 0,
+    );
+
+    drop(layer);
+    drop(surface);
+    drop(shell);
+    drop(core);
+    let _ = conn.flush();
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}
+
 /// T-09 overlay dropdown (compositor half): the menu bar's transient dropdown
 /// is a separate `overlay` chrome surface placed by top/left margins. It must
 /// reserve no zone (the bar still owns the 28 px reserve), size to its

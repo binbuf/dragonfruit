@@ -786,6 +786,20 @@ Item {
             compare(dock.popoverOpen, false);
         }
 
+        function test_escape_dismisses_the_context_menu() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("files", "Files", true) ]
+            });
+            dock.openEntryMenu(dock.items[0]);
+            waitForRendering(stage);
+            compare(dock.menuOpen, true);
+            keyClick(Qt.Key_Escape);
+            waitForRendering(stage);
+            compare(dock.menuOpen, false);
+            compare(dock.popoverOpen, false);
+        }
+
         function test_tall_menu_opens_above_with_headroom() {
             var list = [];
             for (var i = 0; i < 12; ++i)

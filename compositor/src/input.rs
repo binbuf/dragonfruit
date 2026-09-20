@@ -293,27 +293,36 @@ where
                 state: event.state(),
             };
 
-            // Click-to-focus: focus never follows motion alone.
-            if button_event.state == ButtonState::Pressed && button_event.button == 0x110
-            /* BTN_LEFT */
-            {
+            // Click-to-focus: focus never follows motion alone. A chrome
+            // surface takes focus on any button press (a right-click context
+            // menu, e.g. the Dock's, must be able to take keyboard focus so a
+            // later click-away/focus loss can dismiss it); windows still focus
+            // on left-click only (T-10 section 13).
+            if button_event.state == ButtonState::Pressed {
                 let location = pointer.current_location();
                 if let Some((surface, _, _)) = chrome_under(state, location) {
                     // Chrome surfaces take keyboard focus only when their
                     // policy allows it (OnDemand/Exclusive); `None` ignores
                     // the click (T-07 FR-1).
                     state.focus_chrome_surface(&surface);
-                } else if let Some((surface, _)) = surface_under(state, location) {
-                    if let Some(keyboard) = state.seat.get_keyboard() {
-                        keyboard.set_focus(state, Some(surface), serial);
+                } else {
+                    if button_event.button == 0x110
+                    /* BTN_LEFT */
+                    {
+                        if let Some((surface, _)) = surface_under(state, location) {
+                            if let Some(keyboard) = state.seat.get_keyboard() {
+                                keyboard.set_focus(state, Some(surface), serial);
+                            }
+                        }
                     }
-                } else if state.chrome_has_keyboard_focus() {
-                    // A click on empty desktop space (no window under it)
-                    // dismisses an open chrome menu: dropping the chrome's
-                    // keyboard focus makes the shell see `shellFocused=false`
-                    // and close the menu (FR-3 click-away).
-                    if let Some(keyboard) = state.seat.get_keyboard() {
-                        keyboard.set_focus(state, None, serial);
+                    // A click anywhere off the chrome (a window or empty
+                    // desktop space, any button) dismisses an open chrome
+                    // popup by dropping its keyboard focus, which the shell
+                    // sees as `shellFocused=false` (FR-3 click-away).
+                    if state.chrome_has_keyboard_focus() {
+                        if let Some(keyboard) = state.seat.get_keyboard() {
+                            keyboard.set_focus(state, None, serial);
+                        }
                     }
                 }
             }
