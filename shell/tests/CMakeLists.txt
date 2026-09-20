@@ -42,3 +42,23 @@ set_tests_properties(tst_dock PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+# Dock core unit tests (T-10): interim `.desktop` resolver/launcher,
+# `dock.pinned` persistence, and the pinned+running entry merge. No QML,
+# Wayland, or compositor required.
+qt_add_executable(tst_dockcore
+    tst_dockcore.cpp
+)
+target_link_libraries(tst_dockcore PRIVATE
+    Qt6::Core Qt6::Test
+    dragonfruit-shell-dockcore
+)
+
+add_test(
+    NAME tst_dockcore
+    COMMAND tst_dockcore
+)
+set_tests_properties(tst_dockcore PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)

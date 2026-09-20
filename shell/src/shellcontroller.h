@@ -6,9 +6,13 @@
 #pragma once
 
 #include <QObject>
+#include <QHash>
 #include <QString>
 #include <QVariant>
 #include <QVariantList>
+
+#include "desktopentry.h"
+#include "dockpins.h"
 
 class ShellProtocol;
 class QQmlEngine;
@@ -56,12 +60,22 @@ private slots:
     void onDockPointerMoved(qreal x, qreal y);
     void onDockPointerButton(qreal x, qreal y, quint32 button, bool pressed);
     void onDockPointerLeft();
+    void onDockLaunchTick();
 
 private:
     void applyStatusItems();
     void applyFocusedApp();
     void render();
     void renderDock();
+    // Rebuild the Dock's ordered entries (pinned + running) and hand them to
+    // the QML scene.
+    void rebuildDockEntries();
+    // Launch a pinned app through the interim `.desktop` resolver (T-23
+    // replaces this). Bounded by a launch timeout; failure raises a notice.
+    void launchDockApp(const QString &desktopId);
+    void failDockLaunch(const QString &desktopId, const QString &reason);
+    // Clear a transient "failed" launch state after the notice has shown.
+    void scheduleLaunchStateClear(const QString &desktopId);
     // Coalesce a Dock render onto the next event-loop turn.
     void scheduleDockRender();
     // Coalesce a render onto the next event-loop turn (QML visual state has
@@ -84,6 +98,18 @@ private:
     QQuickItem *m_dockItem = nullptr;
     QSocketNotifier *m_notifier = nullptr;
     QTimer *m_animationTimer = nullptr;
+    QTimer *m_launchTimer = nullptr;
+
+    // Interim app-index stand-in (T-23) and Dock pin persistence (T-15).
+    DesktopEntryIndex m_index;
+    DockPins m_pins;
+    // The shell's running-window projection, kept so the pinned set can be
+    // merged on every change.
+    QVariantList m_runningEntries;
+    // Pinned desktop id -> "launching" | "failed" (transient).
+    QHash<QString, QString> m_launchStates;
+    // Pinned desktop id -> deadline (ms since epoch) for the launch timeout.
+    QHash<QString, qint64> m_launchDeadlines;
 
     int m_width = 0;
     int m_height = 0;

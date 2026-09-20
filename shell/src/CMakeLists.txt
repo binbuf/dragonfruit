@@ -37,6 +37,18 @@ if(NOT WAYLAND_CLIENT_FOUND OR NOT WAYLAND_SCANNER)
     return()
 endif()
 
+# Pure, Wayland-free Dock core (T-10): the interim `.desktop` resolver and
+# launcher, `dock.pinned` persistence, and the entry merge model. Kept in a
+# small static library so `tst_dockcore` can unit-test it without the
+# compositor or the Wayland stack. The resolver is deleted when T-23 lands.
+add_library(dragonfruit-shell-dockcore STATIC
+    desktopentry.cpp
+    dockpins.cpp
+    dockmodel.cpp
+)
+target_link_libraries(dragonfruit-shell-dockcore PUBLIC Qt6::Core)
+target_include_directories(dragonfruit-shell-dockcore PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+
 # The lockstep version is a single contract; read it from df-ipc rather than
 # duplicating it in C++.
 file(READ "${CMAKE_SOURCE_DIR}/protocols/df-ipc/src/lib.rs" DF_IPC_LIB)
@@ -75,6 +87,7 @@ target_compile_definitions(dragonfruit-shell PRIVATE
     DF_QML_IMPORT_DIR="${CMAKE_BINARY_DIR}/qml")
 target_link_libraries(dragonfruit-shell PRIVATE
     Qt6::Core Qt6::Gui Qt6::Quick
+    dragonfruit-shell-dockcore
     dragonfruit-design-systemplugin
     dragonfruit-shell-menubarplugin
     dragonfruit-shell-dockplugin
