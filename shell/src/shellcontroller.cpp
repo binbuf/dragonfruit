@@ -77,13 +77,72 @@ Qt::Key qtKeyFromEvdev(quint32 key)
     }
 }
 
-QVariantMap menuEntry(const QString &label, const QString &shortcut = QString())
+QVariantMap menuEntry(const QString &label, const QString &shortcut = QString(),
+                      const QString &action = QString(), bool enabled = true)
 {
     QVariantMap entry;
     entry.insert(QStringLiteral("label"), label);
     if (!shortcut.isEmpty())
         entry.insert(QStringLiteral("shortcut"), shortcut);
+    if (!action.isEmpty())
+        entry.insert(QStringLiteral("action"), action);
+    if (!enabled)
+        entry.insert(QStringLiteral("enabled"), false);
     return entry;
+}
+
+QVariantMap menuSeparator()
+{
+    QVariantMap entry;
+    entry.insert(QStringLiteral("type"), QStringLiteral("separator"));
+    return entry;
+}
+
+// The fixed system menu (the dragonfruit mark), always leftmost. The actions
+// are session/system operations: Settings (T-16), App Store (no equivalent
+// yet), Sleep/Restart/Shut Down/Log Out (logind, T-24), Lock Screen (T-26).
+// Until those land they are dispatched as logged stubs (see T-09 hand-off).
+QVariantList systemMenu(const QString &userName)
+{
+    QVariantList menu;
+    menu << menuEntry(QStringLiteral("About This System"), QString(), QStringLiteral("about-system"));
+    menu << menuSeparator();
+    menu << menuEntry(QStringLiteral("System Settings\u2026"), QString(), QStringLiteral("settings"));
+    menu << menuEntry(QStringLiteral("App Store"), QString(), QStringLiteral("app-store"), false);
+    menu << menuSeparator();
+    menu << menuEntry(QStringLiteral("Sleep"), QString(), QStringLiteral("sleep"));
+    menu << menuEntry(QStringLiteral("Restart\u2026"), QString(), QStringLiteral("restart"));
+    menu << menuEntry(QStringLiteral("Shut Down\u2026"), QString(), QStringLiteral("shut-down"));
+    menu << menuSeparator();
+    menu << menuEntry(QStringLiteral("Lock Screen"), QStringLiteral("Super+Ctrl+Q"),
+                      QStringLiteral("lock-screen"));
+    menu << menuEntry(QStringLiteral("Log Out %1\u2026").arg(userName),
+                      QStringLiteral("Super+Shift+Q"), QStringLiteral("log-out"));
+    return menu;
+}
+
+// The fixed application menu, always right of the system menu and always
+// present (the focused app's name, or Files on the empty desktop). On macOS
+// the application itself owns these items; here the shell synthesizes the
+// standard set until the menu-broker (T-22) resolves them per app. The app's
+// exported top-level menus (File/Edit/View/…) follow this menu.
+QVariantList applicationMenu(const QString &appName)
+{
+    QVariantList menu;
+    menu << menuEntry(QStringLiteral("About %1").arg(appName), QString(),
+                      QStringLiteral("about"));
+    menu << menuEntry(QStringLiteral("Settings\u2026"), QStringLiteral("Super+,"),
+                      QStringLiteral("settings"));
+    menu << menuSeparator();
+    menu << menuEntry(QStringLiteral("Hide %1").arg(appName), QStringLiteral("Super+H"),
+                      QStringLiteral("hide"));
+    menu << menuEntry(QStringLiteral("Hide Others"), QStringLiteral("Super+Alt+H"),
+                      QStringLiteral("hide-others"));
+    menu << menuEntry(QStringLiteral("Show All"), QString(), QStringLiteral("show-all"));
+    menu << menuSeparator();
+    menu << menuEntry(QStringLiteral("Quit %1").arg(appName), QStringLiteral("Super+Q"),
+                      QStringLiteral("quit"));
+    return menu;
 }
 
 // T-22 stand-in: a small app menu so the dropdown can be exercised before the
@@ -239,6 +298,12 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             &ShellController::onDockAttention);
 
     applyStatusItems();
+    // The system menu (dragonfruit mark) is fixed for the session; the Log Out
+    // item is personalized with the account name.
+    QString userName = qEnvironmentVariable("USER");
+    if (userName.isEmpty())
+        userName = QStringLiteral("user");
+    m_item->setProperty("systemMenuItems", systemMenu(userName));
     applyFocusedApp();
 
     // The Dock is a second offscreen QML scene and its own `top` chrome
@@ -412,16 +477,20 @@ void ShellController::applyStatusItems()
 
 void ShellController::applyFocusedApp()
 {
+    // The application menu is always present. With no focused window the
+    // desktop is Files (the macOS "Finder owns the desktop" model, see
+    // design/09-files.md), so the default application menu is Files.
     QString name = m_appId;
     if (name.isEmpty())
         name = m_appTitle;
     if (name.isEmpty())
-        name = tr("Desktop");
+        name = QStringLiteral("Files");
     m_item->setProperty("appName", name);
-    // The menu-broker (T-22) will resolve a real menu model here; until it
-    // lands the bar renders the application name only (FR-2 priority 3). In
+    m_item->setProperty("applicationMenuItems", applicationMenu(name));
+    // The menu-broker (T-22) resolves a real menu model here; until it lands
+    // the bar renders the fixed application menu only (FR-2 priority 3). In
     // placeholder mode a small demo menu stands in so the dropdown (input
-    // routing + grown bar surface) is exercisable in a live session.
+    // routing + overlay surface) is exercisable in a live session.
     m_item->setProperty("appMenuModel", m_placeholders ? demoAppMenu() : QVariantList());
 }
 
@@ -500,9 +569,41 @@ void ShellController::onAppMenuClosed()
 
 void ShellController::onAppMenuTriggered(int menuIndex, int itemIndex, const QVariant &item)
 {
-    // T-22 dispatches the resolved action; the placeholder logs so the demo
-    // has feedback and the bar repaints after the popup closes.
-    qInfo() << "shell: app menu item activated:" << menuIndex << itemIndex << item;
+    const QVariantMap map = item.toMap();
+    const QString action = map.value(QStringLiteral("action")).toString();
+
+    if (action == QLatin1String("quit")) {
+        // The application menu's Quit closes the focused app; on the desktop
+        // (Files menu) there is no app to close yet.
+        if (!m_appId.isEmpty())
+            m_protocol->closeApp(m_appId);
+    } else if (action == QLatin1String("settings")) {
+        // T-16 owns the Settings app; the entry point is wired.
+        qInfo() << "shell: Settings requested (T-16)";
+    } else if (action == QLatin1String("about") || action == QLatin1String("about-system")) {
+        // The About panel is a shell dialog; T-16 owns General > About data.
+        qInfo() << "shell: About requested (T-16)";
+    } else if (action == QLatin1String("hide") || action == QLatin1String("hide-others")
+               || action == QLatin1String("show-all")) {
+        // App visibility is a compositor window-state operation (T-04); the
+        // macOS Hide/Hide Others/Show All semantics are T-24 work.
+        qInfo() << "shell: app visibility action (T-04/T-24):" << action;
+    } else if (action == QLatin1String("sleep") || action == QLatin1String("restart")
+               || action == QLatin1String("shut-down") || action == QLatin1String("log-out")) {
+        // logind power/session actions land with T-24.
+        qInfo() << "shell: session action requested (T-24):" << action;
+    } else if (action == QLatin1String("lock-screen")) {
+        // The lock screen is T-26.
+        qInfo() << "shell: lock screen requested (T-26)";
+    } else if (action == QLatin1String("app-store")) {
+        // No app-store equivalent exists yet; the item is disabled (T-09
+        // open question in design/04-shell.md).
+        qInfo() << "shell: App Store requested (no equivalent yet)";
+    } else {
+        // T-22 dispatches the resolved action; the placeholder logs so the
+        // demo has feedback and the bar repaints after the popup closes.
+        qInfo() << "shell: app menu item activated:" << menuIndex << itemIndex << map;
+    }
     scheduleRender();
 }
 

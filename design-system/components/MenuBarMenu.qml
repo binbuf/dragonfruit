@@ -10,6 +10,12 @@ Item {
 
     property string title: ""
     property var model: []
+    // The system menu is the brand mark rather than a text title (T-09);
+    // `title` is still used for accessibility.
+    property bool showLogo: false
+    // The application menu's title is bold, the app's own top-level menus are
+    // not (the macOS convention).
+    property bool emphasized: false
     property alias popup: popup
     property alias open: popup.open
     property int highlightedIndex: -1
@@ -21,7 +27,8 @@ Item {
     signal opened()
     signal closed()
 
-    implicitWidth: barLabel.implicitWidth + 2 * Theme.controls.menuBarMenu.barPaddingH
+    implicitWidth: (showLogo ? logo.implicitWidth : barLabel.implicitWidth)
+                   + 2 * Theme.controls.menuBarMenu.barPaddingH
     implicitHeight: Theme.controls.menuBarMenu.barHeight
     activeFocusOnTab: true
 
@@ -102,13 +109,23 @@ Item {
         antialiasing: true
     }
 
+    DragonfruitLogo {
+        id: logo
+        visible: root.showLogo
+        anchors.centerIn: parent
+        size: Theme.controls.menuBar.iconSize
+        color: root.open ? Theme.color.accentContent : Theme.color.textPrimary
+    }
+
     Text {
         id: barLabel
+        visible: !root.showLogo
         anchors.centerIn: parent
         text: root.title
         color: root.open ? Theme.color.accentContent : Theme.color.textPrimary
         font.pixelSize: Theme.controls.titlebar.fontSize
-        font.weight: Theme.primitive.font.weightMedium
+        font.weight: root.emphasized ? Theme.primitive.font.weightBold
+                                     : Theme.primitive.font.weightMedium
     }
 
     HoverHandler { id: barHover }
