@@ -156,23 +156,53 @@ Second session (T-09 continuation):
   idles; `frames_rendered` is flat across a second and `direct_scanouts` never
   advances. This is the compositor-side half of the FR-6 budget.
 
+Third session (T-09 continuation — interactive chrome):
+
+- **Compositor input routing to chrome surfaces.** `input::chrome_under`
+  hit-tests `df_layer_surface`s above the window space, topmost layer first,
+  using `under_from_surface_tree`; `input::surface_under` now checks chrome
+  before windows and returns the surface origin in **global** space (it
+  previously returned it window-relative, which mis-placed pointer/touch
+  coordinates for any window not at the output origin). Click-to-focus routes
+  to a chrome surface only when its `KeyboardInteraction` is `OnDemand` or
+  `Exclusive`; `Exclusive` takes focus on `set_keyboard_interaction`; focus
+  returns to the active window when the chrome surface closes or the shell
+  crashes. `focus_changed` preserves `active_window` while chrome holds the
+  keyboard so the window can be re-focused. New headless conformance test
+  `chrome_surface_receives_pointer_and_keyboard` proves pointer enter/motion/
+  button and keyboard focus/key delivery to a mapped bar.
+- **Shell input bridge + dropdown.** `ShellProtocol` binds `wl_seat` and
+  owns a `wl_pointer`/`wl_keyboard`, emitting `pointerMoved`/`pointerButton`/
+  `keyEvent`/`keyboardFocused`; `ShellController` synthesizes Qt mouse/key
+  events into the offscreen `QQuickWindow` so the existing QML
+  hover/tap/key handlers drive the bar unchanged. When a menu opens,
+  `MenuBar.dropdownBottom` reports the popup's extent and the shell grows the
+  chrome surface (`df_layer_surface.set_size`, exclusive zone unchanged) so
+  the compositor reveals the dropdown below the 28 px bar; Escape/click-away/
+  activation shrink it back. A new `tst_menubar` case clicks a menu title and
+  asserts it opens and stays open (the bar's click-away handler used to fire
+  on the same tap). Verified live nested: the File menu renders below the bar
+  with its rows and shortcut labels, and the shell logs the 1280×28 →
+  1280×124 → 1280×28 configure round-trip.
+
 Hand-off (T-09 continuation):
 
-1. **Menu dropdown overlay surface.** The open menu is currently clipped to
-   the 28 px bar surface. Create a second `df_layer_surface` on the
-   `overlay` layer sized to the open dropdown (with its own input region and
-   keyboard mode), and move `MenuBar`'s popups onto it. Until then the
-   QML interaction is correct but only the bar is visible in a live session.
-   *Note: this also needs live input routing to chrome surfaces — the
-   compositor currently hit-tests only `space` windows, and the shell has no
-   path to feed Wayland pointer/key events into the offscreen QML scene.*
+1. **True overlay layer for the dropdown (optional polish).** The dropdown
+   currently rides the `top` menu-bar surface, grown while a menu is open
+   (see PROGRESS.md for the rationale and trade-offs). The design doc places
+   menus on the `overlay` layer; a separate `df_layer_surface` sized to the
+   popup would need a second `QQuickWindow`/item for the dropdown content
+   (the design-system `Popup` is a child of the bar item). Not required for
+   correctness today because the bar is the only `top` surface.
 2. **Output hotplug re-anchoring.** The compositor already reconfigures every
    chrome surface in `on_output_added`/`on_output_removed`, and the shell
    re-renders on every `configure`; the remaining work is a scripted hotplug
    case. That needs a runtime "add an output" hook on the headless backend
    (there is only one static output today).
 3. **T-20 status adapters and T-22 menu-broker** replace the placeholders and
-   the name-only app menu.
+   the name-only app menu. The shell's `--placeholders` demo app menu
+   (`ShellController::demoAppMenu`) is a T-22 stand-in so the dropdown is
+   exercisable now; T-22 should delete it.
 
 ## Test plan
 

@@ -32,6 +32,20 @@ Rectangle {
     property int openMenuIndex: -1
     property int hoverMenuIndex: -1
 
+    // The bottom edge of the open dropdown in window coordinates (0 when no
+    // menu is open). The shell process grows its chrome surface to this
+    // height so the compositor reveals the popup below the 28 px bar.
+    readonly property real dropdownBottom: {
+        if (openMenuIndex < 0)
+            return 0;
+        var item = appMenuRepeater.itemAt(openMenuIndex);
+        if (!item || !item.popup)
+            return 0;
+        var popup = item.popup;
+        var topLeft = popup.mapToItem(menuBar, 0, 0);
+        return topLeft.y + popup.height;
+    }
+
     signal appMenuTriggered(int menuIndex, int itemIndex, var item)
     signal appMenuOpened(int menuIndex)
     signal appMenuClosed()
@@ -134,9 +148,17 @@ Rectangle {
         }
     }
 
-    // Tapping empty bar space dismisses an open menu.
+    // Tapping empty bar space dismisses an open menu. Taps that land on an
+    // app-menu title are ignored here: that title's own handler toggles the
+    // menu, and without this guard the click-away would close it immediately.
     TapHandler {
-        onTapped: menuBar.closeMenus()
+        onTapped: (eventPoint) => {
+            const p = eventPoint.position;
+            if (p.x >= appMenuRow.x && p.x <= appMenuRow.x + appMenuRow.width
+                    && p.y >= appMenuRow.y && p.y <= appMenuRow.y + appMenuRow.height)
+                return;
+            menuBar.closeMenus();
+        }
     }
 
     Keys.onEscapePressed: (event) => {
@@ -183,8 +205,10 @@ Rectangle {
                     menuBar.appMenuOpened(index);
                 }
                 onClosed: {
-                    if (menuBar.openMenuIndex === index)
+                    if (menuBar.openMenuIndex === index) {
                         menuBar.openMenuIndex = -1;
+                        menuBar.appMenuClosed();
+                    }
                 }
 
                 HoverHandler {

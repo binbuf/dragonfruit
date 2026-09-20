@@ -74,6 +74,8 @@ pub struct ChromeSurface {
     pub location: Point<i32, Logical>,
     /// The layer the surface requested (`df_shell.layer`).
     pub layer: u32,
+    /// Keyboard-interaction policy (`df_layer_surface.set_keyboard_interaction`).
+    pub keyboard: KeyboardInteraction,
 }
 
 /// App-switcher overlay state (T-12 consumes; T-07 owns the state machine).
@@ -401,6 +403,7 @@ impl DfState {
                     surface: entry.surface.clone(),
                     location: geometry.loc - output_geometry.loc,
                     layer: entry.state.layer,
+                    keyboard: entry.state.keyboard,
                 }
             })
             .collect();
@@ -441,6 +444,53 @@ impl DfState {
             self.configure_layer(&resource);
         }
         self.refresh_reserved_zones();
+    }
+
+    /// Whether `surface` belongs to a chrome (`df_layer_surface`) surface.
+    pub fn is_chrome_surface(&self, surface: &WlSurface) -> bool {
+        self.shell
+            .layers
+            .iter()
+            .any(|entry| entry.surface == *surface)
+    }
+
+    /// The keyboard policy of a chrome surface, if it is one.
+    pub fn chrome_keyboard_interaction(&self, surface: &WlSurface) -> Option<KeyboardInteraction> {
+        self.shell
+            .layers
+            .iter()
+            .find(|entry| entry.surface == *surface)
+            .map(|entry| entry.state.keyboard)
+    }
+
+    /// Give keyboard focus to a chrome surface, if its policy allows it.
+    ///
+    /// Returns true when focus was moved. `KeyboardInteraction::None` never
+    /// takes focus; `OnDemand` and `Exclusive` do (T-07 FR-1).
+    pub fn focus_chrome_surface(&mut self, surface: &WlSurface) -> bool {
+        if self.chrome_keyboard_interaction(surface) == Some(KeyboardInteraction::None)
+            || !self.is_chrome_surface(surface)
+        {
+            return false;
+        }
+        let Some(keyboard) = self.seat.get_keyboard() else {
+            return false;
+        };
+        keyboard.set_focus(self, Some(surface.clone()), SERIAL_COUNTER.next_serial());
+        true
+    }
+
+    /// Return keyboard focus to the active window after chrome closes or
+    /// releases focus. Uses the window focus preserved while chrome held the
+    /// keyboard (see `focus_changed`).
+    pub fn restore_window_keyboard_focus(&mut self) {
+        let target = self
+            .active_window
+            .as_ref()
+            .and_then(|window| window.wl_surface().map(|surface| surface.into_owned()));
+        if let Some(keyboard) = self.seat.get_keyboard() {
+            keyboard.set_focus(self, target, SERIAL_COUNTER.next_serial());
+        }
     }
 
     // --- scene replay ------------------------------------------------------
@@ -1369,6 +1419,7 @@ impl Dispatch<df_layer_surface::DfLayerSurface, LayerUserData> for DfState {
     ) {
         let mut reconfigure = false;
         let mut reserve_changed = false;
+        let mut focus_chrome: Option<WlSurface> = None;
         if let Some(entry) = state.layer_entry_mut(resource) {
             match request {
                 df_layer_surface::Request::SetLayer { layer } => {
@@ -1406,10 +1457,16 @@ impl Dispatch<df_layer_surface::DfLayerSurface, LayerUserData> for DfState {
                     entry.state.keyboard = KeyboardInteraction::from_wire(
                         mode.into_result().map(|value| value as u32).unwrap_or(0),
                     );
+                    if entry.state.keyboard == KeyboardInteraction::Exclusive {
+                        focus_chrome = Some(entry.surface.clone());
+                    }
                 }
                 df_layer_surface::Request::AckConfigure { .. } => {}
                 df_layer_surface::Request::Destroy => {}
             }
+        }
+        if let Some(surface) = focus_chrome {
+            state.focus_chrome_surface(&surface);
         }
         if reserve_changed {
             state.refresh_reserved_zones();
@@ -1426,10 +1483,26 @@ impl Dispatch<df_layer_surface::DfLayerSurface, LayerUserData> for DfState {
         resource: &df_layer_surface::DfLayerSurface,
         _data: &LayerUserData,
     ) {
+        // If the closing chrome surface held the keyboard, hand focus back to
+        // the active window (a shell crash must not strand focus on a dead
+        // surface). Compare before the entry is removed.
+        let focused = state
+            .seat
+            .get_keyboard()
+            .and_then(|keyboard| keyboard.current_focus());
+        let destroyed_focused = state
+            .shell
+            .layers
+            .iter()
+            .find(|entry| entry.resource == *resource)
+            .is_some_and(|entry| focused.as_ref() == Some(&entry.surface));
         state
             .shell
             .layers
             .retain(|entry| entry.resource != *resource);
+        if destroyed_focused {
+            state.restore_window_keyboard_focus();
+        }
         state.refresh_reserved_zones();
         state.needs_redraw = true;
     }

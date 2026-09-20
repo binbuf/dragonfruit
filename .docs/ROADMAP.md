@@ -89,7 +89,7 @@ Updated when a task is partially or completely finished; see
 | Phase | Tickets |
 |---|---|
 | 1 · Foundation | T-01 ✅ done · T-02 🔄 partial (compositor core) · T-03 🔄 partial (input engine) · T-04 🔄 partial (window model) · T-05 🔄 partial (Spaces model) · T-06 🔄 partial (Xwayland) · T-07 🔄 partial (private shell protocols) |
-| 2 · Experience | T-08 ✅ done (design system; app-level chrome lint + live AT-SPI dump deferred) · T-09 🔄 partial (menu bar render/interaction + shell bootstrap + restart/idle scripts) · T-10 … T-14 pending |
+| 2 · Experience | T-08 ✅ done (design system; app-level chrome lint + live AT-SPI dump deferred) · T-09 🔄 partial (menu bar + shell bootstrap + interactive dropdown: input routing, seat bridge, live dropdown) · T-10 … T-14 pending |
 | 3 · Flagship apps | T-15 … T-19 pending |
 | 4 · System integration | T-20 … T-23 pending |
 | 5 · Desktop infrastructure | T-24 … T-29 pending |
@@ -319,14 +319,23 @@ independent client, crashes the shell connection, asserts the reserved zone
 clears and the window survives, then reconnects a second shell with a fresh
 up-front token and asserts the bar returns at 1280×28; and
 `compositor/tests/shell_idle_trace.rs` (in `make e2e`) attaches a mapped menu
-bar, lets it idle, and asserts `frames_rendered` stays flat. Open: the
-open-menu dropdown is currently clipped to the bar surface (it needs a
-separate overlay `df_layer_surface`, plus live input routing to chrome
-surfaces — the compositor hit-tests only `space` windows today), output
-hotplug re-anchoring needs a runtime add-output hook on the headless backend
-to script, background/bottom layer stacking is T-10/T-11, status items are
-placeholders until T-20, and the app menu is name-only until T-22. Details
-and hand-off: [PROGRESS.md](PROGRESS.md).
+bar, lets it idle, and asserts `frames_rendered` stays flat. The bar is now
+**interactive in a live session**: the compositor hit-tests chrome surfaces
+above the window space (`input::chrome_under`), routes pointer/keyboard to
+them honoring `df_layer_surface.set_keyboard_interaction`, and the shell binds
+`wl_seat`, synthesizes Qt input into its offscreen scene, and grows the
+menu-bar surface to reveal the open dropdown (verified live nested: the File
+menu renders below the bar; live headless: a synthetic click expands the
+surface 1280×28 → 1280×124 and Escape shrinks it back). A `--placeholders`
+demo app menu stands in for T-22. The same work fixed a latent input bug:
+`surface_under` returned a window-relative surface origin, so pointer/touch
+coordinates were offset for any window not at the output origin. Open: the
+dropdown rides the `top` bar surface rather than a separate `overlay`
+`df_layer_surface` (documented deviation — the design-system `Popup` is a
+child of the bar item); output hotplug re-anchoring still needs a runtime
+add-output hook on the headless backend to script; background/bottom layer
+stacking is T-10/T-11; status items are placeholders until T-20 and the app
+menu is a stand-in until T-22. Details and hand-off: [PROGRESS.md](PROGRESS.md).
 
 **Foundation milestone E2E (T-01…T-07).** The whole vertical slice now has a
 headless end-to-end test, `compositor/tests/milestone_e2e.rs` (`make e2e`):
@@ -359,7 +368,7 @@ the shell's own chrome rendering (T-09/T-10).
    - [x] Private shell protocols (T-07: `df_core` handshake/trust, chrome surfaces + reserved zones, window/workspace/output control, compliance client; chrome rendering + Qt bindings + per-output zones open)
 2. **Experience**
    - [x] Design system (T-08: token architecture + all 20 components + gallery/visual regression; app-level chrome lint + live AT-SPI dump deferred)
-   - [ ] Top bar (T-09 partial: menu-bar render/interaction + shell bootstrap live, restart/idle scripts passing; menu overlay surface, hotplug script, T-20 status adapters, T-22 app menu open)
+   - [ ] Top bar (T-09 partial: menu-bar render/interaction + shell bootstrap live, restart/idle scripts passing, chrome input routing + interactive dropdown landed; true overlay layer, hotplug script, T-20 status adapters, T-22 app menu open)
    - [ ] Dock
    - [ ] Window switching
    - [ ] Mission Control

@@ -15,12 +15,10 @@
 
 #include <cstdint>
 
-struct wl_display;
-struct wl_registry;
-struct wl_compositor;
-struct wl_shm;
-struct wl_surface;
-struct wl_buffer;
+// The listener signatures mirror the libwayland C API exactly (wl_fixed_t,
+// wl_array), so pull in the client header rather than re-declaring them.
+#include <wayland-client.h>
+
 struct df_core;
 struct df_shell;
 struct df_layer_surface;
@@ -47,6 +45,11 @@ public:
     // height and exclusive zone. The compositor answers with `configure`.
     bool createMenuBarSurface(int height, int exclusiveZone);
 
+    // Resize the menu-bar layer surface (the open dropdown expands it below
+    // the bar; the exclusive zone is unchanged). The compositor answers with
+    // a fresh `configure`.
+    bool setMenuBarSize(int width, int height);
+
     // Attach `image` to the chrome surface and commit. The image must be
     // ARGB32(_Premultiplied).
     bool commitImage(const QImage &image);
@@ -71,6 +74,12 @@ signals:
     void surfaceClosed();
     void focusedAppChanged(const QString &appId, const QString &title);
     void fatal(const QString &message);
+    // Input bridge: pointer/keyboard events delivered to the chrome surface.
+    void pointerMoved(qreal x, qreal y);
+    void pointerButton(qreal x, qreal y, uint32_t button, bool pressed);
+    void pointerLeft();
+    void keyboardFocused(bool focused);
+    void keyEvent(uint32_t key, bool pressed);
 
 private:
     struct ToplevelInfo {
@@ -91,6 +100,29 @@ private:
     static void onLayerConfigure(void *data, df_layer_surface *layer, uint32_t serial,
                                  int32_t width, int32_t height);
     static void onLayerClosed(void *data, df_layer_surface *layer);
+    static void onSeatCapabilities(void *data, wl_seat *seat, uint32_t capabilities);
+    static void onSeatName(void *data, wl_seat *seat, const char *name);
+    static void onPointerEnter(void *data, wl_pointer *pointer, uint32_t serial,
+                               wl_surface *surface, wl_fixed_t x, wl_fixed_t y);
+    static void onPointerLeave(void *data, wl_pointer *pointer, uint32_t serial,
+                               wl_surface *surface);
+    static void onPointerMotion(void *data, wl_pointer *pointer, uint32_t time, wl_fixed_t x,
+                                wl_fixed_t y);
+    static void onPointerButton(void *data, wl_pointer *pointer, uint32_t serial, uint32_t time,
+                                uint32_t button, uint32_t state);
+    static void onPointerAxis(void *data, wl_pointer *pointer, uint32_t time, uint32_t axis,
+                              wl_fixed_t value);
+    static void onKeyboardKeymap(void *data, wl_keyboard *keyboard, uint32_t format, int32_t fd,
+                                 uint32_t size);
+    static void onKeyboardEnter(void *data, wl_keyboard *keyboard, uint32_t serial,
+                                wl_surface *surface, wl_array *keys);
+    static void onKeyboardLeave(void *data, wl_keyboard *keyboard, uint32_t serial,
+                                wl_surface *surface);
+    static void onKeyboardKey(void *data, wl_keyboard *keyboard, uint32_t serial, uint32_t time,
+                              uint32_t key, uint32_t state);
+    static void onKeyboardModifiers(void *data, wl_keyboard *keyboard, uint32_t serial,
+                                    uint32_t modsDepressed, uint32_t modsLatched,
+                                    uint32_t modsLocked, uint32_t group);
     static void onManagerToplevel(void *data, df_toplevel_manager *manager, df_toplevel *id);
     static void onManagerFocused(void *data, df_toplevel_manager *manager, df_toplevel *id);
     static void onManagerOutput(void *data, df_toplevel_manager *manager, df_output *id);
@@ -155,6 +187,11 @@ private:
     df_toplevel_manager *m_manager = nullptr;
     wl_surface *m_surface = nullptr;
     df_layer_surface *m_layer = nullptr;
+    wl_seat *m_seat = nullptr;
+    wl_pointer *m_pointer = nullptr;
+    wl_keyboard *m_keyboard = nullptr;
+    qreal m_pointerX = 0;
+    qreal m_pointerY = 0;
 
     uint32_t m_coreName = 0;
     uint32_t m_coreVersion = 0;
@@ -164,6 +201,8 @@ private:
     uint32_t m_managerVersion = 0;
     uint32_t m_compositorVersion = 0;
     uint32_t m_shmVersion = 0;
+    uint32_t m_seatName = 0;
+    uint32_t m_seatVersion = 0;
 
     bool m_authenticated = false;
     bool m_trustedGlobalsBound = false;

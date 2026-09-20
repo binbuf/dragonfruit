@@ -37,11 +37,20 @@ private slots:
     void onMissionControlRequested();
     void onStatusItemActivated(const QString &itemId);
     void onClockTick();
+    void onAppMenuOpened(int index);
+    void onAppMenuClosed();
+    void onPointerMoved(qreal x, qreal y);
+    void onPointerButton(qreal x, qreal y, quint32 button, bool pressed);
+    void onPointerLeft();
+    void onKeyboardFocused(bool focused);
+    void onKeyEvent(quint32 key, bool pressed);
 
 private:
     void applyStatusItems();
     void applyFocusedApp();
     void render();
+    // Resize the chrome surface to the bar height plus the open dropdown.
+    void updateSurfaceHeight();
 
     ShellProtocol *m_protocol = nullptr;
     QQmlEngine *m_engine = nullptr;
@@ -52,6 +61,12 @@ private:
     int m_width = 0;
     int m_height = 0;
     int m_barHeight = 28;
+    // The current chrome-surface height (bar, or bar + open dropdown).
+    int m_surfaceHeight = 28;
+    // True while a dropdown is open (the surface may then be taller than the
+    // bar; the compositor's pre-layout full-output configure is still ignored).
+    bool m_menuOpen = false;
+    Qt::MouseButtons m_buttons = Qt::NoButton;
     QString m_appId;
     QString m_appTitle;
     bool m_placeholders = false;

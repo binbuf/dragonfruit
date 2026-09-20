@@ -1717,3 +1717,110 @@ Notes for subsequent tasks:
   test silently stops testing FR-9.
 - `make e2e` now includes `shell_idle_trace`; `cargo test --workspace` picks
   up both new tests automatically (integration test files are auto-discovered).
+
+## T-09 continuation — interactive chrome (input routing + dropdown)
+
+**State: the menu bar is now interactive in a live session.** The compositor
+routes pointer/keyboard input to chrome surfaces; the shell binds the seat,
+synthesizes Qt input into its offscreen scene, and grows the menu-bar surface
+to reveal the open dropdown. Verified live nested (File menu renders below the
+bar with rows + shortcut labels) and live headless (configure round-trip
+1280×28 → 1280×124 → 1280×28 driven by synthetic pointer + Escape).
+
+What landed:
+
+- **Compositor (`compositor/src/input.rs`).**
+  - `chrome_under(state, point)` hit-tests chrome surfaces above the window
+    space, topmost layer first, via `smithay::desktop::utils::
+    under_from_surface_tree`. It needs the output under the point and
+    `DfState::chrome_surfaces(output, geometry)` (which now carries the
+    surface's `KeyboardInteraction`).
+  - `surface_under` checks chrome first, then windows, and returns the
+    surface origin **in global space**.
+  - Click-to-focus: a chrome hit calls `DfState::focus_chrome_surface`,
+    which refuses `KeyboardInteraction::None` and otherwise sets keyboard
+    focus; a window hit focuses the window as before.
+- **Compositor (`compositor/src/shell/mod.rs`).**
+  - `DfState::is_chrome_surface`, `chrome_keyboard_interaction`,
+    `focus_chrome_surface`, `restore_window_keyboard_focus`.
+  - `Exclusive` chrome takes focus on `set_keyboard_interaction`; a destroyed
+    chrome surface that held focus restores the active window (shell crash
+    safe).
+  - `focus_changed` (`state.rs`) preserves `active_window` while a chrome
+    surface holds the keyboard, so focus can be handed back.
+- **Shell (`shell/src/shellprotocol.{h,cpp}`).** Binds `wl_seat` and owns a
+  `wl_pointer`/`wl_keyboard`; emits `pointerMoved`, `pointerButton`,
+  `pointerLeft`, `keyboardFocused`, `keyEvent`, plus
+  `setMenuBarSize(width,height)` (a `df_layer_surface.set_size` + commit).
+- **Shell (`shell/src/shellcontroller.{h,cpp}`).** Synthesizes `QMouseEvent`/
+  `QKeyEvent` into the offscreen `QQuickWindow` (`QCoreApplication::sendEvent`)
+  so the QML `HoverHandler`/`TapHandler`/`Keys` logic is reused unchanged;
+  maps evdev → Qt keys for Escape/arrows/Home/End/Return/Space; tracks
+  `shellFocused`; on `appMenuOpened`/`appMenuClosed` reads
+  `MenuBar.dropdownBottom` and resizes the surface; a `--placeholders` demo
+  app menu (`demoAppMenu`) stands in for T-22 so the dropdown is usable.
+- **QML (`shell/menubar/MenuBar.qml`).** `readonly property real
+  dropdownBottom`; the bar's click-away `TapHandler` now ignores taps inside
+  the app-menu row (the title's own handler toggles; without the guard the
+  click-away closed the menu on the same tap — caught by the new
+  `tst_menubar` case).
+
+Bugs found and fixed along the way:
+
+- **`surface_under` returned a window-relative surface origin.** Smithay's
+  `Window::surface_under` returns a location relative to the window;
+  `input::surface_under` passed it straight to `PointerHandle::motion`, which
+  subtracts it from the global pointer position. Every window not at the
+  output origin therefore received pointer/touch coordinates offset by its
+  position. Fix: add `window_loc` to the inner location (anvil's pattern).
+  This affects *all* pointer input to windows, not just chrome. The chrome
+  hit test has the same trap (`under_from_surface_tree` takes the point
+  relative to the surface and offsets the returned origin): it passes the
+  surface-local point with location `(0,0)` and adds the global origin back.
+  `chrome_surface_receives_pointer_and_keyboard` includes a bottom-right
+  panel with a non-zero origin as the regression guard (it fails on the
+  window-relative variant).
+- **QML functions are not invokable as `openMenu(int)`.** `QMetaObject::
+  invokeMethod(item, "openMenu", Q_ARG(int, 0))` fails with "No such method";
+  QML-declared functions take `QVariant` parameters. Prefer exposing a QML
+  `readonly property` (as `dropdownBottom` does) over `invokeMethod`.
+- **The bar's click-away `TapHandler` fired on the same tap as a menu
+  title's `TapHandler`**, opening and immediately closing the menu. The
+  click-away now ignores the app-menu row's bounds. This was invisible to the
+  existing tests because they call `bar.openMenu(0)` directly; the new
+  `test_click_menu_title_opens_and_stays_open` uses a real `mouseClick`.
+
+Design decision (recorded for T-10/T-21):
+
+- **The dropdown rides the `top` menu-bar surface, grown while open**, rather
+  than a second `overlay` `df_layer_surface`. The design doc puts menus on
+  `overlay`; the reason for the deviation is that the design-system `Popup`
+  is a child item of the bar's `MenuBarMenu`, so a separate surface would
+  need a second `QQuickWindow`/content item (a real refactor). Growing the
+  bar surface keeps one surface, one render path, and one input region, and
+  the exclusive zone stays 28 so Zoom is unaffected. The trade-off: while a
+  menu is open the whole expanded rectangle captures clicks (this *is* the
+  click-away behaviour). Move to a true overlay surface when a second `top`
+  surface or an OSD-above-menu stacking need appears (T-10/T-21/T-25).
+
+Notes for subsequent tasks:
+
+- **Input routing to chrome is in `input::chrome_under` /
+  `surface_under`.** Any new chrome surface is automatically hit-tested; set
+  `df_layer_surface.set_keyboard_interaction` correctly (`None` for
+  non-interactive chrome). The compositor will not focus a `None` surface.
+- **The shell is a normal seat client now.** It binds `wl_seat` at registry
+  time (before authentication is fine) and gets pointer/keyboard only when a
+  chrome surface has focus. `ShellProtocol::m_pointerX/Y` cache the last
+  position so `button` events (which carry no coords) can be placed.
+- **Qt event synthesis works offscreen** (`QCoreApplication::sendEvent` to the
+  `QQuickWindow`). The Dock (T-10), Control Center (T-21), and OSD (T-25)
+  should follow the same pattern rather than calling QML functions directly.
+- **`MenuBar.dropdownBottom` is the geometry contract** between QML and the
+  shell's surface sizing; update it if the popup is ever reparented.
+- **The `surface_under` global-origin fix changes behavior for every window
+  hit-test.** The existing `window_conformance` / `shell_protocol_conformance`
+  suites still pass, but a pointer-position assertion for an off-origin
+  window would be a good addition (the synthetic harness can place one).
+- **`chrome_surfaces` still returns the single global `reserved` union**;
+  per-output zones remain T-11/T-16.
