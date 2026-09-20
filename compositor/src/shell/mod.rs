@@ -390,13 +390,7 @@ impl DfState {
             .shell
             .layers
             .iter()
-            .filter(|entry| {
-                entry
-                    .state
-                    .output
-                    .as_deref()
-                    .map_or(true, |name| name == output_name)
-            })
+            .filter(|entry| entry.state.matches_output(output_name))
             .map(|entry| {
                 let geometry = entry.state.geometry(output_geometry);
                 ChromeSurface {
@@ -1380,8 +1374,7 @@ impl Dispatch<df_shell::DfShell, ()> for DfState {
                 let output_name = output
                     .as_ref()
                     .and_then(Output::from_resource)
-                    .map(|output| output.name())
-                    .or_else(|| state.primary_output().0);
+                    .map(|output| output.name());
                 let resource = data_init.init(id, LayerUserData);
                 let layer_value = layer.into_result().map(|value| value as u32).unwrap_or(2);
                 let entry = LayerEntry {

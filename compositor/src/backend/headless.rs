@@ -23,6 +23,12 @@ pub fn run(socket_name: &str) -> Result<(), String> {
     let synthetic_path = std::env::var_os(crate::input::synthetic::ENV_SYNTHETIC_INPUT)
         .map(std::path::PathBuf::from);
     let install_path = synthetic_path.clone();
+    // T-09 synthetic-output harness: the headless backend has one static
+    // output, so hotplug (FR-1) needs the same opt-in test channel.
+    let synthetic_output_path =
+        std::env::var_os(crate::backend::synthetic_output::ENV_SYNTHETIC_OUTPUT)
+            .map(std::path::PathBuf::from);
+    let install_output_path = synthetic_output_path.clone();
     let result = run_session(
         socket_name,
         BackendHooks {
@@ -41,6 +47,9 @@ pub fn run(socket_name: &str) -> Result<(), String> {
                 add_seat_capabilities(state);
                 if let Some(path) = &install_path {
                     crate::input::synthetic::install(state, path)?;
+                }
+                if let Some(path) = &install_output_path {
+                    crate::backend::synthetic_output::install(state, path)?;
                 }
                 Ok(())
             }),
@@ -63,6 +72,9 @@ pub fn run(socket_name: &str) -> Result<(), String> {
     // The socket node is session state, not a leak; remove it even when
     // `run_session` returns an error.
     if let Some(path) = &synthetic_path {
+        let _ = std::fs::remove_file(path);
+    }
+    if let Some(path) = &synthetic_output_path {
         let _ = std::fs::remove_file(path);
     }
     result

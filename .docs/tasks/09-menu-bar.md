@@ -192,6 +192,24 @@ Third session (T-09 continuation — interactive chrome):
   auto-focused the first `activeFocusOnTab` item); the shell clears the
   active focus on the first event-loop turn.
 
+Fourth session (T-09 continuation — output hotplug, FR-1):
+
+- **Chrome surfaces target every output by default.** `df_shell.get_layer_surface`
+  no longer resolves a `None` output to the primary; `None` now means *all*
+  outputs (matching `wlr-layer-shell`), so the bar anchors on any display
+  attached after the shell starts. `LayerSurfaceState::matches_output` is the
+  single predicate `chrome_surfaces` filters on, and a unit test pins it.
+- **Headless synthetic-output harness** (`compositor/src/backend/
+  synthetic_output.rs`, `DRAGONFRUIT_SYNTHETIC_OUTPUT`): a `UnixDatagram` line
+  protocol (`add <name> <w> <h> <x> <y> [scale]`, `remove <name>`) drives the
+  same `on_output_added`/`on_output_removed` path as DRM hotplug. Opt-in,
+  headless-only test plumbing, socket removed at teardown.
+- **Scripted hotplug test** `shell_output_hotplug_reanchors_chrome` (in
+  `shell_protocol_conformance.rs`): a shell creates the bar on all outputs; a
+  second output is attached; the manager announces it with its geometry, three
+  fresh Spaces, the bar's reserved zone, and a chrome reconfigure; detaching
+  removes the Spaces. Closes the last host-closable T-09 FR-1 item.
+
 Hand-off (T-09 continuation):
 
 1. **True overlay layer for the dropdown (optional polish).** The dropdown
@@ -201,11 +219,15 @@ Hand-off (T-09 continuation):
    popup would need a second `QQuickWindow`/item for the dropdown content
    (the design-system `Popup` is a child of the bar item). Not required for
    correctness today because the bar is the only `top` surface.
-2. **Output hotplug re-anchoring.** The compositor already reconfigures every
-   chrome surface in `on_output_added`/`on_output_removed`, and the shell
-   re-renders on every `configure`; the remaining work is a scripted hotplug
-   case. That needs a runtime "add an output" hook on the headless backend
-   (there is only one static output today).
+2. ~~**Output hotplug re-anchoring.**~~ **Done (fourth session).** A chrome
+   surface created without an explicit output now targets *every* output
+   (`wlr-layer-shell` semantics), so the bar anchors on a display attached
+   after the shell started. The headless backend gained an opt-in synthetic
+   output harness (`DRAGONFRUIT_SYNTHETIC_OUTPUT`) to script the hotplug;
+   `shell_output_hotplug_reanchors_chrome` attaches and detaches a second
+   output through it and asserts the new `df_output`, its three Spaces, its
+   geometry, the bar's reserved zone on it, and the chrome reconfigure (see
+   PROGRESS.md).
 3. **T-20 status adapters and T-22 menu-broker** replace the placeholders and
    the name-only app menu. The shell's `--placeholders` demo app menu
    (`ShellController::demoAppMenu`) is a T-22 stand-in so the dropdown is

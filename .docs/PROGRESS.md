@@ -1938,3 +1938,67 @@ compositor or protocol:
 
 None of these affect the compositor contracts T-10/T-11/T-20/T-22 build on
 (chrome input routing, keyboard focus, reserved zones, dropdown geometry).
+
+## T-09 continuation — output hotplug (FR-1) + the synthetic-output harness
+
+**State: the last host-closable T-09 FR-1 item is done.** The menu bar now
+anchors on outputs attached after the shell starts, and the hotplug path is
+scripted end to end on the headless backend. T-09 stays partial only for the
+overlay-dropdown polish and the T-20/T-22 content (the T-20/T-22 blockers are
+external tickets).
+
+What landed:
+
+- **`None` output now means *all* outputs.** `df_shell.get_layer_surface`
+  used to resolve an unspecified output to the primary; that made a
+  single-surface bar unable to appear on a hotplugged display. The handler
+  now stores `output: None`, and `LayerSurfaceState::matches_output` is the
+  one predicate `chrome_surfaces` filters on (`map_or(true, ...)`). This is
+  the `wlr-layer-shell` contract and is documented on the method. A
+  `LayerSurfaceState::configure` still uses the *first* output's geometry for
+  sizing, so on mixed-resolution multi-monitor the bar buffer is sized to the
+  first output and stretched on the others — acceptable until T-11/T-16 own
+  per-output chrome and per-output reserved zones.
+- **Synthetic-output harness** (`compositor/src/backend/synthetic_output.rs`,
+  `DRAGONFRUIT_SYNTHETIC_OUTPUT`). Opt-in, headless-only, mirrors the T-03
+  synthetic-input pattern: a `UnixDatagram` line protocol
+  (`add <name> <width> <height> <x> <y> [scale]`, `remove <name>`),
+  `parse_command` unit-tested, malformed lines logged and skipped. The
+  callback owns a `HashMap<String, Output>` of the outputs it created
+  (`Output` needs a live instance to unmap); `remove` runs the same ordering
+  as the DRM hotplug path — `on_output_removed` (which migrates windows to
+  the remaining primary) then `space.unmap_output`. Socket removed at
+  teardown by `headless.rs`.
+- **Scripted test** `shell_output_hotplug_reanchors_chrome`
+  (`compositor/tests/shell_protocol_conformance.rs`). One trusted client is
+  both shell and observer; `open_trusted_bar` creates the bar with
+  `output = None`; the harness attaches `HDMI-A-1`; the test asserts the new
+  `df_output` name, its geometry `(1280, 0, 1920, 1080)`, its three fresh
+  Spaces (3 → 6), the bar's `reserved_zone(top, 28)` on the new output, and a
+  new `df_layer_surface` configure; detaching asserts the Spaces are removed.
+  `CompositorProcess::start_with_harnesses` now takes both harness paths
+  (`start`/`start_with_synthetic` are thin wrappers).
+
+Notes for subsequent tasks:
+
+- **`DRAGONFRUIT_SYNTHETIC_OUTPUT` is test-only.** Only the headless backend
+  reads it; nested/DRM ignore it. Never set it in a real session.
+- **The `wl_output` global is not removed on synthetic detach** (the DRM path
+  has the same gap — `add_output` discards the `GlobalId`). The shell-visible
+  removal (`df_output.removed`, Spaces, migration) is correct because the
+  manager reconciles against `space.outputs()`. If a future ticket needs the
+  `wl_output` global to actually disappear, thread the `GlobalId` out of
+  `backend::add_output` and remove it on the detach path.
+- **Per-output reserved zones remain a single global union** and per-output
+  chrome sizing is first-output-only; both are T-11/T-16. `matches_output`
+  makes adding per-output *placement* a filter change, not a redesign.
+- **T-10 should reuse `matches_output`** for the Dock (also created without
+  an output) so it appears on every display and on hotplug the same way.
+- **`start_with_harnesses` is the compositor-test entry point** for any new
+  synthetic channel; keep new opt-in hooks headless-only with a
+  teardown removal in `headless.rs` (the socket is session state, not a
+  leak — the phase-exit leak check only covers the Wayland socket).
+- **The full gate is green** (`make lint`, `make cargo-test`, `make e2e`,
+  `make soak` 100 cycles). `shell_output_hotplug_reanchors_chrome` is
+  auto-discovered by `cargo test --workspace` and included in `make e2e`
+  through the `shell_protocol_conformance` binary.
