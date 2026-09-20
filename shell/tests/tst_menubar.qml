@@ -189,6 +189,30 @@ Item {
             compare(closedSpy.count, 1);
         }
 
+        function test_dropdown_geometry_tracks_open_menu() {
+            var bar = make(menuBarComponent, { width: 600, appMenuModel: sampleModel() });
+            // Closed: the overlay popup has no rectangle.
+            compare(bar.dropdownWidth, 0);
+            compare(bar.dropdownHeight, 0);
+
+            bar.openMenu(0);
+            waitForRendering(stage);
+            var file = bar.appMenuAt(0);
+            var popup = file.popup;
+            var topLeft = popup.mapToItem(bar, 0, 0);
+            verify(bar.dropdownWidth > 0);
+            verify(bar.dropdownHeight > 0);
+            compare(bar.dropdownX, topLeft.x);
+            compare(bar.dropdownY, topLeft.y);
+            // The dropdown hangs below the bar, which is what the shell uses
+            // to place the separate overlay surface.
+            verify(bar.dropdownY >= bar.height);
+
+            bar.closeMenus();
+            waitForRendering(stage);
+            compare(bar.dropdownWidth, 0);
+        }
+
         function test_escape_dismisses_open_menu() {
             var bar = make(menuBarComponent, { appMenuModel: sampleModel() });
             bar.openMenu(0);

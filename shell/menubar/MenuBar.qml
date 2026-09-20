@@ -32,19 +32,24 @@ Rectangle {
     property int openMenuIndex: -1
     property int hoverMenuIndex: -1
 
-    // The bottom edge of the open dropdown in window coordinates (0 when no
-    // menu is open). The shell process grows its chrome surface to this
-    // height so the compositor reveals the popup below the 28 px bar.
-    readonly property real dropdownBottom: {
+    // Geometry of the open dropdown in window coordinates. The shell process
+    // renders the popup into a separate `overlay` chrome surface placed at
+    // this rectangle, so the transient menu composites above fullscreen
+    // windows while the bar keeps its own `top` surface and reserved zone.
+    readonly property var _dropdownRect: {
         if (openMenuIndex < 0)
-            return 0;
+            return { x: 0, y: 0, w: 0, h: 0 };
         var item = appMenuRepeater.itemAt(openMenuIndex);
         if (!item || !item.popup)
-            return 0;
+            return { x: 0, y: 0, w: 0, h: 0 };
         var popup = item.popup;
         var topLeft = popup.mapToItem(menuBar, 0, 0);
-        return topLeft.y + popup.height;
+        return { x: topLeft.x, y: topLeft.y, w: popup.width, h: popup.height };
     }
+    readonly property real dropdownX: _dropdownRect.x
+    readonly property real dropdownY: _dropdownRect.y
+    readonly property real dropdownWidth: _dropdownRect.w
+    readonly property real dropdownHeight: _dropdownRect.h
 
     signal appMenuTriggered(int menuIndex, int itemIndex, var item)
     signal appMenuOpened(int menuIndex)

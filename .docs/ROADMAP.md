@@ -89,7 +89,7 @@ Updated when a task is partially or completely finished; see
 | Phase | Tickets |
 |---|---|
 | 1 · Foundation | T-01 ✅ done · T-02 🔄 partial (compositor core) · T-03 🔄 partial (input engine) · T-04 🔄 partial (window model) · T-05 🔄 partial (Spaces model) · T-06 🔄 partial (Xwayland) · T-07 🔄 partial (private shell protocols) |
-| 2 · Experience | T-08 ✅ done (design system; app-level chrome lint + live AT-SPI dump deferred) · T-09 🔄 partial (menu bar + shell bootstrap + interactive dropdown + scripted output hotplug; T-20/T-22 content open) · T-10 … T-14 pending |
+| 2 · Experience | T-08 ✅ done (design system; app-level chrome lint + live AT-SPI dump deferred) · T-09 🔄 partial (menu bar + shell bootstrap + overlay-layer dropdown + scripted output hotplug; T-20/T-22 content open) · T-10 … T-14 pending |
 | 3 · Flagship apps | T-15 … T-19 pending |
 | 4 · System integration | T-20 … T-23 pending |
 | 5 · Desktop infrastructure | T-24 … T-29 pending |
@@ -323,28 +323,30 @@ bar, lets it idle, and asserts `frames_rendered` stays flat. The bar is now
 **interactive in a live session**: the compositor hit-tests chrome surfaces
 above the window space (`input::chrome_under`), routes pointer/keyboard to
 them honoring `df_layer_surface.set_keyboard_interaction`, and the shell binds
-`wl_seat`, synthesizes Qt input into its offscreen scene, and grows the
-menu-bar surface to reveal the open dropdown (verified live nested: the File
-menu renders below the bar; live headless: a synthetic click expands the
-surface 1280×28 → 1280×124 and Escape shrinks it back). A `--placeholders`
-demo app menu stands in for T-22. The same work fixed a latent input bug:
-`surface_under` returned a window-relative surface origin, so pointer/touch
-coordinates were offset for any window not at the output origin. Open: the
-dropdown rides the `top` bar surface rather than a separate `overlay`
-`df_layer_surface` (documented deviation — the design-system `Popup` is a
-child of the bar item); background/bottom layer stacking is T-10/T-11; status
-items are placeholders until T-20 and the app menu is a stand-in until T-22.
-The last host-closable FR-1 item — output hotplug re-anchoring — is now
-scripted: a chrome surface created without an explicit output targets every
-output (wlr-layer-shell semantics), and the headless backend's new opt-in
-synthetic-output harness (`DRAGONFRUIT_SYNTHETIC_OUTPUT`) lets
+`wl_seat`, synthesizes Qt input into its offscreen scene, and opens the
+dropdown on a separate `overlay` `df_layer_surface` (the bar stays a constant
+28 px `top` surface; `ShellController` splits one offscreen render into the
+bar strip and the popup rectangle and places the overlay by top/left margins,
+`exclusive_zone = -1`, `keyboard = none`). A `--placeholders` demo app menu
+stands in for T-22. The same work fixed a latent input bug: `surface_under`
+returned a window-relative surface origin, so pointer/touch coordinates were
+offset for any window not at the output origin. Open: background/bottom layer
+stacking is T-10/T-11; status items are placeholders until T-20 and the app
+menu is a stand-in until T-22. The last host-closable FR-1 item — output
+hotplug re-anchoring — is now scripted: a chrome surface created without an
+explicit output targets every output (wlr-layer-shell semantics), and the
+headless backend's new opt-in synthetic-output harness
+(`DRAGONFRUIT_SYNTHETIC_OUTPUT`) lets
 `shell_output_hotplug_reanchors_chrome` attach/detach a second output and
 assert the new `df_output`, its three Spaces, the bar's reserved zone, and
-the chrome reconfigure. Deferred interaction polish (shell snapshot renderer):
-choppy popup open/close, hover/drag-through timing, and a launch highlight on
-the first title — the durable fix (commit from
-`QQuickWindow::afterRendering` while the scene is dirty) is shared with T-10's
-Dock animation. Details and hand-off: [PROGRESS.md](PROGRESS.md).
+the chrome reconfigure. The overlay dropdown is scripted by
+`overlay_popup_sits_above_the_bar_and_reserves_nothing` (popup configures to
+its rectangle, reserves nothing, and is hit-tested in popup-local
+coordinates). Deferred interaction polish (shell snapshot renderer): choppy
+popup open/close, hover/drag-through timing, and a launch highlight on the
+first title — the durable fix (commit from `QQuickWindow::afterRendering`
+while the scene is dirty) is shared with T-10's Dock animation. Details and
+hand-off: [PROGRESS.md](PROGRESS.md).
 
 **Foundation milestone E2E (T-01…T-07).** The whole vertical slice now has a
 headless end-to-end test, `compositor/tests/milestone_e2e.rs` (`make e2e`):
@@ -377,7 +379,7 @@ the shell's own chrome rendering (T-09/T-10).
    - [x] Private shell protocols (T-07: `df_core` handshake/trust, chrome surfaces + reserved zones, window/workspace/output control, compliance client; chrome rendering + Qt bindings + per-output zones open)
 2. **Experience**
    - [x] Design system (T-08: token architecture + all 20 components + gallery/visual regression; app-level chrome lint + live AT-SPI dump deferred)
-   - [ ] Top bar (T-09 partial: menu-bar render/interaction + shell bootstrap live, restart/idle scripts passing, chrome input routing + interactive dropdown landed, output hotplug scripted; true overlay layer, T-20 status adapters, T-22 app menu open)
+   - [ ] Top bar (T-09 partial: menu-bar render/interaction + shell bootstrap live, restart/idle scripts passing, chrome input routing + overlay-layer dropdown landed and scripted, output hotplug scripted; T-20 status adapters, T-22 app menu open)
    - [ ] Dock
    - [ ] Window switching
    - [ ] Mission Control

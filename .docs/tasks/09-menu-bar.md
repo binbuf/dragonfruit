@@ -210,15 +210,46 @@ Fourth session (T-09 continuation — output hotplug, FR-1):
   fresh Spaces, the bar's reserved zone, and a chrome reconfigure; detaching
   removes the Spaces. Closes the last host-closable T-09 FR-1 item.
 
+Fifth session (T-09 continuation — true overlay dropdown):
+
+- **The dropdown is a real `overlay` chrome surface** (`menubar-popup`),
+  placed by top/left margins at the open menu's rectangle, `exclusive_zone
+  = -1`, `keyboard = none`. The bar stays a constant 28 px `top` surface
+  (it no longer grows); `ShellController` splits one offscreen render into
+  the bar strip and the popup rectangle and commits them to their two
+  surfaces, unmapping the overlay after the close animation. Pointer
+  coordinates from the popup surface are translated into window coordinates
+  so the existing QML interaction logic is unchanged. `MenuBar` exposes
+  `dropdownX/Y/Width/Height`; `tst_menubar` pins them.
+- **Scripted compositor test**
+  `overlay_popup_sits_above_the_bar_and_reserves_nothing`: a top bar and an
+  overlay popup are mapped on the same output; the popup configures to its
+  requested rectangle, contributes no reserved zone, and a synthetic pointer
+  over it (below the bar) is hit-tested in popup-local coordinates.
+- Verified: `make lint`, `make e2e` (incl. the new test), and a clean
+  headless `dragonfruit dev --headless --shell` startup. The live nested
+  open/close walkthrough was **not** re-run this session (no input automation
+  in the sandbox); the compositor half and the QML geometry contract are
+  scripted.
+
 Hand-off (T-09 continuation):
 
-1. **True overlay layer for the dropdown (optional polish).** The dropdown
-   currently rides the `top` menu-bar surface, grown while a menu is open
-   (see PROGRESS.md for the rationale and trade-offs). The design doc places
-   menus on the `overlay` layer; a separate `df_layer_surface` sized to the
-   popup would need a second `QQuickWindow`/item for the dropdown content
-   (the design-system `Popup` is a child of the bar item). Not required for
-   correctness today because the bar is the only `top` surface.
+1. ~~**True overlay layer for the dropdown (optional polish).**~~ **Done
+   (fifth session).** The dropdown is now a separate `df_layer_surface` on the
+   `overlay` layer (`namespace "menubar-popup"`), placed at the open menu's
+   window-space rectangle via top/left margins, with `exclusive_zone = -1`
+   (it never enlarges the reserved zone) and `keyboard = none` (the bar
+   surface keeps Escape/menu navigation). The bar surface is a constant 28 px
+   again — it no longer grows. `ShellController` renders the one offscreen
+   QML window, commits the bar strip to the `top` surface and the dropdown
+   rectangle to the `overlay` surface, and unmaps the overlay on close after
+   the animation. Pointer coordinates delivered relative to the popup are
+   translated back into window coordinates. `MenuBar` exposes the dropdown
+   rectangle (`dropdownX/Y/Width/Height`); `tst_menubar` pins it.
+   `overlay_popup_sits_above_the_bar_and_reserves_nothing`
+   (`shell_protocol_conformance.rs`) proves the compositor places the overlay
+   popup, that it reserves nothing, and that a pointer over it is hit-tested
+   in popup-local coordinates.
 2. ~~**Output hotplug re-anchoring.**~~ **Done (fourth session).** A chrome
    surface created without an explicit output now targets *every* output
    (`wlr-layer-shell` semantics), so the bar anchors on a display attached

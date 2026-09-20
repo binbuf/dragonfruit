@@ -1496,9 +1496,9 @@ teardown.
   on the final size).
 - **The open menu is clipped to the bar surface.** `MenuBarMenu`'s popup
   overflows the 28 px `wl_surface`, so a live dropdown needs a second
-  `df_layer_surface` on the `overlay` layer. The QML interaction is already
-  correct and tested; only the live overlay surface is missing (T-09
-  continuation item 1).
+  `df_layer_surface` on the `overlay` layer. *(Resolved in the fifth session:
+  the popup is now its own `overlay` surface — see "T-09 continuation — true
+  overlay dropdown" below.)*
 
 ### Notes for subsequent tasks
 
@@ -2002,3 +2002,73 @@ Notes for subsequent tasks:
   `make soak` 100 cycles). `shell_output_hotplug_reanchors_chrome` is
   auto-discovered by `cargo test --workspace` and included in `make e2e`
   through the `shell_protocol_conformance` binary.
+
+## T-09 continuation — true overlay dropdown (fifth session)
+
+**State: the dropdown is now a real `overlay`-layer chrome surface.** T-09's
+last in-scope host-closable deviation from the design is closed; the ticket
+stays partial only for the T-20 status adapters and the T-22 menu-broker
+(external tickets). The bar is again a constant 28 px `top` surface and no
+longer grows while a menu is open.
+
+What landed:
+
+- **Two chrome surfaces, one offscreen window.** `createPopupSurface()` in
+  `ShellProtocol` creates a second `wl_surface` + `df_layer_surface` on
+  `DF_SHELL_LAYER_OVERLAY` with namespace `menubar-popup`, anchored
+  `top|left`, `set_exclusive_zone(-1)` (it never enlarges the reserved
+  zone) and `keyboard = none` (the bar surface keeps focus for Escape and
+  menu navigation). It is created unmapped (null-buffer commit) and mapped on
+  the first menu open. The popup's position is the open menu's rectangle:
+  `setPopupGeometry(x, y, w, h)` sends `set_margin(top=y, left=x)` +
+  `set_size(w, h)`.
+- **`ShellController` splits one render.** The QML window still renders
+  bar+popup in one scene (so all interaction logic and the QML test suite are
+  unchanged), but the committed frame is split: the top `m_barHeight` strip
+  goes to the `top` bar surface and the dropdown rectangle goes to the
+  `overlay` surface. `render()` sizes the window to
+  `max(barHeight, popupY + popupHeight)`. `MenuBar` exposes
+  `dropdownX/Y/Width/Height` (computed from the open `MenuBarMenu.popup`'s
+  `mapToItem`); `tst_menubar`'s `test_dropdown_geometry_tracks_open_menu`
+  pins the contract. On close the overlay stays mapped for the ~140 ms close
+  animation, then `updatePopupGeometry()` unmaps it.
+- **Pointer translation.** `wl_pointer` coordinates arriving over the popup
+  surface are surface-local; `ShellProtocol` records the popup origin
+  (`m_popupX/Y` from `setPopupGeometry`, `onPointerEnter` compares the
+  entered `wl_surface` to `m_popupSurface`) and emits window coordinates, so
+  `ShellController`'s existing Qt synthesis is untouched.
+- **Scripted compositor test**
+  `overlay_popup_sits_above_the_bar_and_reserves_nothing`
+  (`shell_protocol_conformance.rs`): maps a top bar and an overlay popup on
+  the headless output, asserts the popup configures to 200×300, that the
+  reserved zone stays 28, and that a synthetic pointer at global (140,100)
+  enters the popup at popup-local (100,72) — i.e. the overlay is hit-tested
+  with its own origin below the bar. The test binds `df_toplevel_manager` to
+  observe `output_reserved`, and the test client now records
+  `pointer_enter_positions` (the `wl_pointer.enter` position).
+
+Notes for subsequent tasks:
+
+- **A focus change emits `wl_pointer.enter` but not always a `motion`.** The
+  first motion onto a new surface sets focus and carries the position in the
+  enter event; the compositor does not also send a `motion` for that
+  transition. Tests must assert the enter position, not wait for a motion —
+  that was the trap in the new test.
+- **`overlay` popups target every output too** (they are created with
+  `output = None`, like the bar). On a multi-monitor host the dropdown would
+  currently appear at the same output-local rectangle on each monitor. This
+  is the same per-output-chrome limitation the bar has and stays with
+  T-11/T-16.
+- **The shell popup is not gated on its configure.** `setPopupGeometry`
+  flushes and the buffer is committed immediately; Smithay ignores
+  `ack_configure` for this interface, so the buffer-size/configure ordering
+  is not enforced. The compositor places the surface from the requested
+  geometry, so this is fine — but if a future protocol revision enforces
+  acks, the shell should wait for `popupConfigured` before the first commit.
+- **Live nested verification was not re-run this session** (the sandbox has
+  no pointer automation). Verify by hand: `make dev`, click a `--placeholders`
+  app-menu title; the dropdown should render below the bar with the correct
+  width and dismiss on Escape/click-away as before.
+- Gate green: `make lint` (qmllint + ctest incl. `tst_menubar`), `make e2e`
+  (incl. the new conformance test), `cargo clippy --workspace --all-targets`,
+  and a clean `dragonfruit dev --headless --shell` startup.

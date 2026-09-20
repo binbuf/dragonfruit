@@ -181,14 +181,69 @@ bool ShellProtocol::createMenuBarSurface(int height, int exclusiveZone)
     return true;
 }
 
-bool ShellProtocol::setMenuBarSize(int width, int height)
+bool ShellProtocol::createPopupSurface()
 {
-    if (!m_layer || !m_surface)
+    if (m_popupSurface || m_popupLayer)
+        return true;
+    if (!m_shell || !m_compositor)
+        return fail(QStringLiteral("df_shell is not available"));
+
+    m_popupSurface = wl_compositor_create_surface(m_compositor);
+    m_popupLayer = df_shell_get_layer_surface(m_shell, m_popupSurface, nullptr,
+                                              DF_SHELL_LAYER_OVERLAY, "menubar-popup");
+    if (!m_popupLayer)
+        return fail(QStringLiteral("compositor refused the menu-popup layer surface"));
+    static const df_layer_surface_listener popupListener = { onPopupConfigure, onLayerClosed };
+    df_layer_surface_add_listener(m_popupLayer, &popupListener, this);
+
+    // Anchor top|left, positioned by margins; no reserved zone (the design
+    // lays transient menus out of the reserved-zone accounting) and no
+    // keyboard (the bar surface keeps focus for Escape/menu navigation).
+    static const uint32_t kAnchorTopLeft = kAnchorTop | kAnchorLeft;
+    df_layer_surface_set_anchor(m_popupLayer, kAnchorTopLeft);
+    df_layer_surface_set_exclusive_zone(m_popupLayer, -1);
+    df_layer_surface_set_keyboard_interaction(m_popupLayer,
+                                              DF_LAYER_SURFACE_KEYBOARD_INTERACTION_NONE);
+    // Unmapped until the first menu opens.
+    wl_surface_attach(m_popupSurface, nullptr, 0, 0);
+    wl_surface_commit(m_popupSurface);
+    if (wl_display_flush(m_display) < 0)
+        return fail(QStringLiteral("failed to flush the popup surface creation"));
+    return true;
+}
+
+bool ShellProtocol::setPopupGeometry(int x, int y, int width, int height)
+{
+    if (!m_popupLayer || !m_popupSurface)
         return false;
-    // Only change the requested size here; the caller attaches the matching
-    // buffer and commits in one step, so the compositor never sees the old
-    // buffer at the new size.
-    df_layer_surface_set_size(m_layer, width, height);
+    m_popupX = x;
+    m_popupY = y;
+    df_layer_surface_set_margin(m_popupLayer, y, 0, 0, x);
+    df_layer_surface_set_size(m_popupLayer, width, height);
+    if (m_display)
+        wl_display_flush(m_display);
+    return true;
+}
+
+bool ShellProtocol::commitPopupImage(const QImage &image)
+{
+    if (!m_popupSurface)
+        return false;
+    if (!commitTo(m_popupSurface, image))
+        return false;
+    m_popupMapped = true;
+    return true;
+}
+
+bool ShellProtocol::hidePopup()
+{
+    if (!m_popupSurface || !m_popupLayer)
+        return false;
+    if (!m_popupMapped)
+        return true;
+    wl_surface_attach(m_popupSurface, nullptr, 0, 0);
+    wl_surface_commit(m_popupSurface);
+    m_popupMapped = false;
     if (m_display)
         wl_display_flush(m_display);
     return true;
@@ -196,7 +251,14 @@ bool ShellProtocol::setMenuBarSize(int width, int height)
 
 bool ShellProtocol::commitImage(const QImage &image)
 {
-    if (!m_surface || !m_shm)
+    if (!m_surface)
+        return false;
+    return commitTo(m_surface, image);
+}
+
+bool ShellProtocol::commitTo(wl_surface *surface, const QImage &image)
+{
+    if (!surface || !m_shm)
         return false;
 
     QImage frame = image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
@@ -230,9 +292,9 @@ bool ShellProtocol::commitImage(const QImage &image)
     wl_buffer_add_listener(buffer, &bufferListener, this);
     m_buffers.insert(buffer);
 
-    wl_surface_attach(m_surface, buffer, 0, 0);
-    wl_surface_damage_buffer(m_surface, 0, 0, width, height);
-    wl_surface_commit(m_surface);
+    wl_surface_attach(surface, buffer, 0, 0);
+    wl_surface_damage_buffer(surface, 0, 0, width, height);
+    wl_surface_commit(surface);
     wl_display_flush(m_display);
     return true;
 }
@@ -273,6 +335,10 @@ void ShellProtocol::teardown()
     for (wl_buffer *buffer : std::as_const(m_buffers))
         wl_buffer_destroy(buffer);
     m_buffers.clear();
+    if (m_popupLayer)
+        df_layer_surface_destroy(m_popupLayer);
+    if (m_popupSurface)
+        wl_surface_destroy(m_popupSurface);
     if (m_layer)
         df_layer_surface_destroy(m_layer);
     if (m_surface)
@@ -302,6 +368,9 @@ void ShellProtocol::teardown()
     m_display = nullptr;
     m_layer = nullptr;
     m_surface = nullptr;
+    m_popupLayer = nullptr;
+    m_popupSurface = nullptr;
+    m_popupMapped = false;
     m_manager = nullptr;
     m_shell = nullptr;
     m_core = nullptr;
@@ -377,6 +446,15 @@ void ShellProtocol::onLayerConfigure(void *data, df_layer_surface *, uint32_t se
     emit self->configured(width, height, serial);
 }
 
+void ShellProtocol::onPopupConfigure(void *data, df_layer_surface *, uint32_t serial,
+                                     int32_t width, int32_t height)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    if (self->m_popupLayer)
+        df_layer_surface_ack_configure(self->m_popupLayer, serial);
+    emit self->popupConfigured(width, height, serial);
+}
+
 void ShellProtocol::onLayerClosed(void *data, df_layer_surface *)
 {
     auto *self = static_cast<ShellProtocol *>(data);
@@ -409,18 +487,20 @@ void ShellProtocol::onSeatName(void *, wl_seat *, const char *)
 {
 }
 
-void ShellProtocol::onPointerEnter(void *data, wl_pointer *, uint32_t, wl_surface *,
+void ShellProtocol::onPointerEnter(void *data, wl_pointer *, uint32_t, wl_surface *surface,
                                    wl_fixed_t x, wl_fixed_t y)
 {
     auto *self = static_cast<ShellProtocol *>(data);
-    self->m_pointerX = wl_fixed_to_double(x);
-    self->m_pointerY = wl_fixed_to_double(y);
+    self->m_pointerOnPopup = self->m_popupSurface && surface == self->m_popupSurface;
+    self->m_pointerX = wl_fixed_to_double(x) + (self->m_pointerOnPopup ? self->m_popupX : 0);
+    self->m_pointerY = wl_fixed_to_double(y) + (self->m_pointerOnPopup ? self->m_popupY : 0);
     emit self->pointerMoved(self->m_pointerX, self->m_pointerY);
 }
 
 void ShellProtocol::onPointerLeave(void *data, wl_pointer *, uint32_t, wl_surface *)
 {
     auto *self = static_cast<ShellProtocol *>(data);
+    self->m_pointerOnPopup = false;
     emit self->pointerLeft();
 }
 
@@ -428,8 +508,8 @@ void ShellProtocol::onPointerMotion(void *data, wl_pointer *, uint32_t, wl_fixed
                                     wl_fixed_t y)
 {
     auto *self = static_cast<ShellProtocol *>(data);
-    self->m_pointerX = wl_fixed_to_double(x);
-    self->m_pointerY = wl_fixed_to_double(y);
+    self->m_pointerX = wl_fixed_to_double(x) + (self->m_pointerOnPopup ? self->m_popupX : 0);
+    self->m_pointerY = wl_fixed_to_double(y) + (self->m_pointerOnPopup ? self->m_popupY : 0);
     emit self->pointerMoved(self->m_pointerX, self->m_pointerY);
 }
 

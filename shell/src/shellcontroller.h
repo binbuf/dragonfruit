@@ -59,8 +59,9 @@ private:
     // Force the launch state to neutral (no focus ring, no hover) and commit
     // it, so the first visible frame is not a transient highlight.
     void settleInitialState();
-    // Resize the chrome surface to the bar height plus the open dropdown.
-    void updateSurfaceHeight();
+    // Read the open dropdown's rectangle from the bar and place (or hide) the
+    // overlay popup surface accordingly.
+    void updatePopupGeometry();
 
     ShellProtocol *m_protocol = nullptr;
     QQmlEngine *m_engine = nullptr;
@@ -72,10 +73,12 @@ private:
     int m_width = 0;
     int m_height = 0;
     int m_barHeight = 28;
-    // The current chrome-surface height (bar, or bar + open dropdown).
-    int m_surfaceHeight = 28;
-    // True while a dropdown is open (the surface may then be taller than the
-    // bar; the compositor's pre-layout full-output configure is still ignored).
+    // The open dropdown's window-space rectangle (valid while a menu is open).
+    int m_popupX = 0;
+    int m_popupY = 0;
+    int m_popupWidth = 0;
+    int m_popupHeight = 0;
+    // True while a dropdown is open; the overlay popup surface is mapped then.
     bool m_menuOpen = false;
     bool m_renderPending = false;
     int m_animationTicks = 0;

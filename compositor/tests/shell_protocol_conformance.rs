@@ -87,6 +87,8 @@ struct TestClient {
     pointer_motions: Vec<(f64, f64)>,
     /// Pointer enters delivered to this client.
     pointer_enters: usize,
+    /// Surface-local coordinates of each pointer enter.
+    pointer_enter_positions: Vec<(f64, f64)>,
     /// Keyboard focus enters/leaves and keycodes delivered to this client.
     keyboard_enters: usize,
     keyboard_leaves: usize,
@@ -426,8 +428,14 @@ impl Dispatch<wl_pointer::WlPointer, ()> for TestClient {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        if let wl_pointer::Event::Enter { .. } = event {
+        if let wl_pointer::Event::Enter {
+            surface_x,
+            surface_y,
+            ..
+        } = event
+        {
             state.pointer_enters += 1;
+            state.pointer_enter_positions.push((surface_x, surface_y));
         }
         if let wl_pointer::Event::Motion {
             surface_x,
@@ -2648,6 +2656,164 @@ fn chrome_surface_receives_pointer_and_keyboard() {
     drop(panel_surface);
     drop(layer);
     drop(surface);
+    drop(shell);
+    drop(core);
+    let _ = conn.flush();
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}
+
+/// T-09 overlay dropdown (compositor half): the menu bar's transient dropdown
+/// is a separate `overlay` chrome surface placed by top/left margins. It must
+/// reserve no zone (the bar still owns the 28 px reserve), size to its
+/// requested rectangle, and — being a layer above `top` and below the bar's
+/// input strip — receive pointer input over the area it covers.
+#[test]
+fn overlay_popup_sits_above_the_bar_and_reserves_nothing() {
+    let token = "ee".repeat(32);
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir)
+        .join(format!("dragonfruit-overlay-popup-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-overlay-popup",
+        std::slice::from_ref(&token),
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (name, version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, name, version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+    let (shell_name, shell_version) = state.shell_global.expect("df_shell advertised");
+    let shell = bind_shell(&mut state, &queue, shell_name, shell_version);
+    // The observer side of the same client: bind the manager so the output's
+    // reserved zone is announced.
+    let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
+    let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
+    let qh = queue.handle();
+
+    // The bar: top | left | right, 28 px, reserved.
+    let bar_surface = state.compositor.clone().unwrap().create_surface(&qh, ());
+    let bar = shell.get_layer_surface(
+        &bar_surface,
+        None,
+        df_shell::Layer::Top,
+        "menubar".to_string(),
+        &qh,
+        (),
+    );
+    bar.set_anchor(1 | 4 | 8);
+    bar.set_size(0, 28);
+    bar.set_exclusive_zone(28);
+    bar.set_keyboard_interaction(df_layer_surface::KeyboardInteraction::OnDemand);
+    bar_surface.commit();
+    let (bar_buffer, _bar_file) = shm_buffer(&state, &qh, OUTPUT_W, 28);
+    bar_surface.attach(Some(&bar_buffer), 0, 0);
+    bar_surface.commit();
+
+    // The popup: top | left, offset 40/28, an explicit rectangle, no reserve,
+    // and no keyboard (the bar keeps Escape/menu navigation).
+    let popup_surface = state.compositor.clone().unwrap().create_surface(&qh, ());
+    let popup = shell.get_layer_surface(
+        &popup_surface,
+        None,
+        df_shell::Layer::Overlay,
+        "menubar-popup".to_string(),
+        &qh,
+        (),
+    );
+    popup.set_anchor(1 | 4);
+    popup.set_size(200, 300);
+    popup.set_margin(28, 0, 0, 40); // top 28, left 40
+    popup.set_exclusive_zone(-1);
+    popup.set_keyboard_interaction(df_layer_surface::KeyboardInteraction::None);
+    popup_surface.commit();
+    let (popup_buffer, _popup_file) = shm_buffer(&state, &qh, 200, 300);
+    popup_surface.attach(Some(&popup_buffer), 0, 0);
+    popup_surface.commit();
+
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .layer_configures
+                .iter()
+                .any(|(_, width, height)| *width == 200 && *height == 300)
+        },
+    );
+
+    // The popup's negative exclusive zone opts out; the only top reserve is
+    // the bar's 28 px.
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .output_reserved
+                .iter()
+                .any(|(edge, thickness)| *edge == 0 && *thickness == 28)
+        },
+    );
+    assert!(
+        state
+            .output_reserved
+            .iter()
+            .all(|(edge, thickness)| *edge != 0 || *thickness <= 28),
+        "the overlay popup must not enlarge the reserved zone: {:?}",
+        state.output_reserved
+    );
+
+    // Pointer over the popup (global 140,100 → popup-local 100,72) must land
+    // on the overlay surface, below the 28 px bar.
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.pointer.is_some() && state.keyboard.is_some(),
+    );
+    let _ = queue.roundtrip(&mut state);
+    state.pointer_enters = 0;
+    state.pointer_motions.clear();
+    state.pointer_enter_positions.clear();
+    input.send("motion-abs 0.109375 0.1388889");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.pointer_enters > 0,
+    );
+    let (mx, my) = *state
+        .pointer_enter_positions
+        .last()
+        .expect("popup enter position");
+    assert!(
+        (mx - 100.0).abs() < 1.0 && (my - 72.0).abs() < 1.0,
+        "pointer must enter the overlay popup in popup-local coordinates: got ({mx}, {my})"
+    );
+
+    drop(popup);
+    drop(popup_surface);
+    drop(bar);
+    drop(bar_surface);
+    drop(manager);
     drop(shell);
     drop(core);
     let _ = conn.flush();
