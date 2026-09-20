@@ -91,9 +91,10 @@ restartable without taking down the compositor.
 ## Acceptance criteria
 
 - [x] Full menu bar renders in nested mode with placeholders and live
-      status items as adapters land. *(The bar renders in a live headless
-      session via the real shell process; the same code path runs nested.
-      Status items are placeholders until T-20.)*
+      status items as adapters land. *(Verified by a live nested capture:
+      the bar renders at the top, correctly oriented, with the app-name
+      fallback and locale clock. Status items are placeholders until
+      T-20.)*
 - [ ] Kill-and-restart of the shell process: menu bar returns, windows
       untouched (Phase-1 exit test reused). *(Needs a fresh one-time token
       per shell start, T-24; compositor-owned window state is untouched by
@@ -121,6 +122,13 @@ Implemented and verified in this session:
   `df_toplevel_manager` focus tracking for the app name. Verified live
   headless: authenticated, configured 1280×28, output `reserved_zone`
   edge=0 thickness=28, clean teardown.
+- **Compositor chrome rendering**: `DfState::chrome_surfaces` +
+  `render::chrome_render_elements` composite the shell's layer surfaces
+  above the window space in the nested and DRM backends (previously they
+  were placed but never drawn, so the bar was invisible). The nested
+  backend's pre-existing vertical-flip bug (winit/EGL needs
+  `Transform::Flipped180`) is fixed. A live nested capture confirms the bar
+  renders at the top, correctly oriented.
 - **Dev workflow**: `dragonfruit dev --nested --shell` (and `make dev`)
   launches the shell with the provisioned token and owns it in `ChildGuard`.
 

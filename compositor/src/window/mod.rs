@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 #![allow(dead_code)] // Forward-looking window API consumed by T-05/T-07/T-10/T-13.
 
 //! Window model: states, focus, placement, and regions (T-04).

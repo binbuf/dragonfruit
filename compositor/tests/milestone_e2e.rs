@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! Foundation milestone end-to-end test (T-01…T-07).
 //!
 //! The per-ticket conformance suites each exercise one subsystem in

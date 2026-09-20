@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! Launch-token trust model for the private shell protocols (T-07).
 //!
 //! Chrome surfaces, window/workspace control, and output management are a

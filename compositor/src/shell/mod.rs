@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 #![allow(dead_code)] // Forward-looking protocol API consumed by T-09..T-29.
 
 //! Private shell protocol handling (T-07).
@@ -20,7 +20,7 @@ pub mod trust;
 use std::collections::HashMap;
 
 use smithay::output::{Mode, Output, Scale as OutputScale};
-use smithay::utils::{Logical, Rectangle, Transform, SERIAL_COUNTER};
+use smithay::utils::{Logical, Point, Rectangle, Transform, SERIAL_COUNTER};
 use smithay::wayland::seat::WaylandFocus as _;
 use wayland_server::backend::{ClientId, GlobalId};
 use wayland_server::protocol::wl_surface::WlSurface;
@@ -64,6 +64,16 @@ struct LayerEntry {
     resource: df_layer_surface::DfLayerSurface,
     surface: WlSurface,
     state: LayerSurfaceState,
+}
+
+/// A chrome surface ready to composite on one output (T-09).
+#[derive(Debug, Clone)]
+pub struct ChromeSurface {
+    pub surface: WlSurface,
+    /// Output-local logical position.
+    pub location: Point<i32, Logical>,
+    /// The layer the surface requested (`df_shell.layer`).
+    pub layer: u32,
 }
 
 /// App-switcher overlay state (T-12 consumes; T-07 owns the state machine).
@@ -363,6 +373,39 @@ impl DfState {
             }
         }
         None
+    }
+
+    /// Chrome surfaces mapped to `output`, ordered bottom-to-top by layer.
+    ///
+    /// T-09 composites these above the window space. Background/bottom layer
+    /// stacking (wallpaper/desktop reveal) is a T-10/T-11 concern.
+    pub fn chrome_surfaces(
+        &self,
+        output_name: &str,
+        output_geometry: Rectangle<i32, Logical>,
+    ) -> Vec<ChromeSurface> {
+        let mut surfaces: Vec<ChromeSurface> = self
+            .shell
+            .layers
+            .iter()
+            .filter(|entry| {
+                entry
+                    .state
+                    .output
+                    .as_deref()
+                    .map_or(true, |name| name == output_name)
+            })
+            .map(|entry| {
+                let geometry = entry.state.geometry(output_geometry);
+                ChromeSurface {
+                    surface: entry.surface.clone(),
+                    location: geometry.loc - output_geometry.loc,
+                    layer: entry.state.layer,
+                }
+            })
+            .collect();
+        surfaces.sort_by_key(|chrome| chrome.layer);
+        surfaces
     }
 
     /// Recompute and send `configure` for a chrome surface.

@@ -1,18 +1,15 @@
 # Dragonfruit Licensing
 
-Dragonfruit uses different licenses per component class, by design
-(the full policy, including what may link what and the Qt commercial
-trigger, is in [docs/licensing.md](docs/licensing.md)):
+Dragonfruit is licensed under the **MIT License**. The license applies to
+every component in this repository — the compositor, portal, services,
+tools, protocols, design system, shell, and first-party apps, along with
+the scripts and build files.
 
-| Component | License |
-|---|---|
-| `compositor/`, `portal/`, `services/`, `tools/`, `protocols/df-ipc/` | MIT OR Apache-2.0 |
-| `protocols/*.xml` (private Wayland protocols) | MIT |
-| `design-system/` (QML module `Dragonfruit`) | LGPL-3.0-or-later |
-| `shell/`, `apps/` | GPL-3.0-or-later |
+Full text: [LICENSES/MIT.txt](LICENSES/MIT.txt).
 
-Full license texts live in [LICENSES/](LICENSES/). Every source file
-carries an `SPDX-License-Identifier` header; every crate/package
-directory carries a `LICENSE` file.
+Every source file carries an `SPDX-License-Identifier: MIT` header, and
+every crate/package directory carries a `LICENSE` file. Third-party
+dependencies keep their own licenses — see [NOTICE](NOTICE) and
+[docs/licensing.md](docs/licensing.md).
 
 Copyright (c) 2026 Dragonfruit contributors.

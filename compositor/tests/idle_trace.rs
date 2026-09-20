@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! T-02 acceptance: the FR-2 idle trace.
 //!
 //! The idle budget is "zero damage, zero client wakeups from our shell".

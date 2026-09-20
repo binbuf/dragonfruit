@@ -59,12 +59,12 @@ loop are decided once, here, so later tickets never re-litigate them
    Qt 6 / Qt Quick components; a top-level task runner that builds the
    lockstep set (compositor + shell + protocol XMLs together).
 3. **Licensing decision** — final call is a **blocker for the first public
-   release** ([14-risks.md](../design/14-risks.md)): intended direction is
-   MIT/Apache-2.0 for compositor and services, **MIT for private protocol
-   XMLs** (so any third party may implement them freely), Qt-compatible
-   GPL/LGPL for design system and apps. Record LICENSE files, SPDX headers,
-   and a contribution/licensing policy (including the Qt commercial decision
-   trigger from [14-risks.md](../design/14-risks.md)).
+   release** ([14-risks.md](../design/14-risks.md)): **MIT repo-wide**,
+   including the private protocol XMLs (so any third party may implement
+   them freely). Record LICENSE files, SPDX headers, a NOTICE for
+   third-party attribution, and a contribution/licensing policy (including
+   the Qt commercial decision trigger from
+   [14-risks.md](../design/14-risks.md)).
 4. **CI pipeline**: build + unit tests for every crate and QML module; the
    compositor runs its test suite on the **headless backend** in CI
    (no display required).
@@ -103,7 +103,7 @@ loop are decided once, here, so later tickets never re-litigate them
   headless compositor smoke test, and a grep gate that fails on hardcoded
   desktop names (only `dragonfruit` is legal).
 - FR-4: LICENSE files exist in every crate/package directory; a doc records
-  what may link what, and the protocol XML license is MIT.
+  the licensing policy, and the protocol XML license is MIT.
 - FR-5: `dragonfruit dev --nested` starts the compositor in a window, prints
   the private socket path, and tears everything down on exit.
 - FR-6: The repo documents the second-VT workflow with a **dedicated

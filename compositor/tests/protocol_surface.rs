@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! T-02 acceptance: the protocol advertise list matches the ticket
 //! exactly — no missing, no extras — and no capture protocol is ever
 //! advertised (FR-7/FR-8).

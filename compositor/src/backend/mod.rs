@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! Backend plumbing shared by all three backends (T-02).
 
 pub mod drm;

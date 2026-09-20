@@ -151,11 +151,10 @@ recurring fight against another desktop's design language.
 ### Licensing
 
 Smithay's MIT license keeps our options open, and we reciprocate: the
-intended direction is MIT/Apache-2.0 for the compositor and services, MIT for
-the private protocol XMLs (so any third party may implement them freely), and
-Qt-compatible GPL/LGPL terms for the design system and applications. The
-final call is a blocker for the first public release (see
-[14-risks.md](14-risks.md)).
+whole project — compositor, services, private protocol XMLs, design
+system, shell, and apps — is MIT, so any third party may implement or
+reuse it freely. The final call is a blocker for the first public
+release (see [14-risks.md](14-risks.md)).
 
 ## Repository layout
 

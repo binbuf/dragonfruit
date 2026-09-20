@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: LGPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 # The component gallery (T-08). GalleryContent is a reusable QML module so the
 # visual-regression test and the human review app render the exact same
 # surfaces; GalleryWindow is the review app with a headless snapshot driver.

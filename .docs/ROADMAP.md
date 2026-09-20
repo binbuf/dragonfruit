@@ -305,16 +305,20 @@ focus-switch tracking — are implemented and scripted by the new
 connects with libwayland-client, authenticates with the one-time launch token,
 creates the `df_layer_surface` menu bar anchored top/left/right with an
 exclusive zone, renders the QML offscreen into a `wl_shm` buffer, and tracks
-`df_toplevel_manager` focus broadcasts for the app name. `dragonfruit dev
---shell` (and `make dev`) launches it with the token the compositor
-provisioned. Verified live headless: authentication, a 1280×28 configure, the
-output `reserved_zone` edge=0 thickness=28, and clean teardown. Open: the
-open-menu dropdown is currently clipped to the bar surface (it needs a
-separate overlay `df_layer_surface`, T-09 follow-up), the scripted
-shell-restart test needs a fresh per-start token (T-24), output-hotplug
-re-anchoring and the idle trace are not yet scripted, status items are
-placeholders until T-20, and the app menu is name-only until T-22. Details and
-hand-off: [PROGRESS.md](PROGRESS.md).
+`df_toplevel_manager` focus broadcasts for the app name. The compositor now
+**composites** chrome surfaces above the window space
+(`DfState::chrome_surfaces` + `render::chrome_render_elements` in the nested
+and DRM backends), and the nested backend's pre-existing vertical-flip bug
+(the winit/EGL back buffer needs `Transform::Flipped180`) is fixed. A live
+nested capture confirms the menu bar renders at the top, correctly oriented,
+with `eglgears` upright. `dragonfruit dev --shell` (and `make dev`) launches
+it with the token the compositor provisioned. Open: the open-menu dropdown is
+currently clipped to the bar surface (it needs a separate overlay
+`df_layer_surface`, T-09 follow-up), background/bottom layer stacking is
+T-10/T-11, the scripted shell-restart test needs a fresh per-start token
+(T-24), output-hotplug re-anchoring and the idle trace are not yet scripted,
+status items are placeholders until T-20, and the app menu is name-only until
+T-22. Details and hand-off: [PROGRESS.md](PROGRESS.md).
 
 **Foundation milestone E2E (T-01…T-07).** The whole vertical slice now has a
 headless end-to-end test, `compositor/tests/milestone_e2e.rs` (`make e2e`):

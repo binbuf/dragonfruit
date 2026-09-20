@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! `dragonfruit-menu-broker` — scaffold stub. The real global-menu broker
 //! lands in T-22; this binary exists so the workspace, CI, packaging, and
 //! licensing are wired from the first commit.

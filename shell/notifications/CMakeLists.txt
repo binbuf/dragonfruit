@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 qt_add_qml_module(dragonfruit-shell-notifications
     URI Dragonfruit.Notifications
     VERSION 1.0

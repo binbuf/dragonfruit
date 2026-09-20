@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! Chrome-surface geometry: anchors, margins, and reserved zones (T-07 FR-1).
 //!
 //! A `df_layer_surface` is placed by anchor edges on its output, exactly

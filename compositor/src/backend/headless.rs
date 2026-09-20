@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! Headless backend (T-02): no display, no renderer, no input devices.
 //!
 //! Used by CI and automated tests. Runs the exact same session code and

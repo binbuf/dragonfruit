@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! `dragonfruit-app-index` — scaffold stub. The real application index
 //! lands in T-23; this binary exists so the workspace, CI, packaging, and
 //! licensing are wired from the first commit.

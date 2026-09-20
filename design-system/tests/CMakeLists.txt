@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: LGPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 # Design-system tests (T-08): token pipeline, per-component keyboard/AT-SPI
 # coverage, reduced-motion variants, and the FR-3 screenshot diff between the
 # app TitleBar and the compositor SSD reference.

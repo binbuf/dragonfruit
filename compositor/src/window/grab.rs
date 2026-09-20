@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! Pointer grabs for interactive move and resize (T-04 FR-10).
 //!
 //! These grabs serve both SSD titlebar/edge input (T-13) and CSD clients'

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: MIT
 //! Window placement: centered cascade and transient dialogs (T-04).
 //!
 //! New windows open near the center of the active Space with a per-output

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 // Dragonfruit Settings — entry point stub (T-16 builds the real app).
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>

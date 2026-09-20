@@ -75,10 +75,10 @@ Follow-ups for later tasks:
   (14-risks.md). df-ipc is std-only by policy (docs/licensing.md) —
   keep it that way.
 - **Licensing is recorded but not human-reviewed** — the release-blocker
-  signoff in 14-risks.md is still open. MIT/Apache for compositor +
-  services + tools, MIT for protocol XMLs (enforced by the df-ipc test),
-  LGPL-3.0-or-later for design-system, GPL-3.0-or-later for shell/apps.
-  Full texts in LICENSES/; pointer LICENSE in every package dir.
+  signoff in 14-risks.md is still open. MIT repo-wide, including the
+  protocol XMLs (enforced by the df-ipc test). Full text in LICENSES/;
+  pointer LICENSE in every package dir; third-party attribution in
+  NOTICE.
 
 ## T-02 — compositor core: event loop, backends, renderer, effects
 
@@ -1517,3 +1517,64 @@ teardown.
   keeps an open menu tracking focus.
 - **T-24** must export a fresh `DRAGONFRUIT_LAUNCH_TOKEN` per shell start and
   own the shell in the session; the dev tool's hand-off is the reference.
+
+### T-09 follow-up — compositor chrome rendering + the nested Y-flip
+
+The first visual check of the nested session (a full-screen capture via
+`spectacle` while `dragonfruit dev --nested --shell` ran) exposed two gaps
+that no headless test could see:
+
+1. **Chrome surfaces were placed but never composited.** T-07 stored the
+   `wl_surface` in `LayerEntry` and computed reserved zones, but no backend
+   ever rendered it, so the menu bar was invisible. Fix:
+   - `DfState::chrome_surfaces(output_name, geometry)` (`shell/mod.rs`)
+     returns the mapped chrome surfaces as `ChromeSurface { surface,
+     location, layer }`, output-local and sorted by layer.
+   - `render::chrome_render_elements::<R, E>(renderer, state, output,
+     scale)` builds `WaylandSurfaceRenderElement`s for the `top`/`overlay`
+     layers. Both `nested.rs` and `drm.rs` pass them as the renderer's
+     custom-element list, so chrome composites **above** the window space
+     (Smithay's damage tracker renders the list in reverse, so the custom
+     elements end up on top). `DrmOutputElements` gained a `Chrome` variant.
+   - `CompositorHandler::commit` already set `needs_redraw` for every
+     commit, so a chrome commit schedules a frame with no extra wiring.
+   - Background/bottom layer stacking (wallpaper, desktop reveal) is still
+     T-10/T-11; only `top`/`overlay` are composited for now.
+
+2. **The whole nested output rendered vertically flipped** (windows and
+   chrome). This was a **pre-existing T-02 bug** — `eglgears_wayland`
+   inside the nested session was upside down, confirmed by stashing the
+   T-09 changes and reproducing at HEAD, and by comparing against
+   `eglgears` on the host (correct). Root cause: the winit/EGL back buffer
+   is bottom-up, and Smithay's `minimal.rs` winit example renders with
+   `Transform::Flipped180`; our nested backend used
+   `OutputDamageTracker::from_output(&output)` (output transform
+   `Normal`), so `render_output` passed `Normal` to the renderer. Fix:
+   build the nested damage tracker with
+   `OutputDamageTracker::new(size, Scale::from(1.0), Transform::Flipped180)`
+   and recreate it on `WinitEvent::Resized` (its mode is static). The
+   output's own transform stays `Normal`, so client-visible output
+   properties and input mapping are unaffected. The DRM backend uses
+   `DrmCompositor::render_frame`, which handles DRM framebuffer
+   orientation itself, so it was not affected.
+
+After the fix, a nested capture shows the menu bar at the top ("Desktop" +
+locale clock, correctly oriented) and `eglgears` upright. This is the
+first live-nested evidence for T-09 FR-1/FR-2.
+
+Notes for subsequent tasks:
+
+- **Visual checks catch render-path bugs that headless tests cannot.** The
+  headless backend has no renderer, and `milestone_e2e`/`idle_trace` only
+  count frames. A nested (or DRM) screenshot is required to validate
+  compositing and orientation. `spectacle -b -n -a -o out.png` works on
+  this KDE host; the shell can save its own grabbed frame for comparison
+  (temporarily) to isolate shell-vs-compositor issues.
+- **Any new backend that renders into a bottom-up GL surface must use
+  `Transform::Flipped180`** in its damage tracker (or render with it
+  directly, as `minimal.rs` does). The nested backend is the only such
+  case today.
+- **`chrome_render_elements` filters to `layer >= 2`.** When T-10 adds a
+  Dock on `bottom` or a wallpaper on `background`, the render list must be
+  split so those layers composite *below* the window space instead of
+  being skipped or drawn on top.

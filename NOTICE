@@ -1,0 +1,40 @@
+# Third-Party Notices
+
+Dragonfruit itself is licensed under the MIT License (see
+[LICENSE.md](LICENSE.md)). It builds on third-party software whose
+licenses are reproduced or referenced below. Nothing in the MIT license
+for Dragonfruit alters the terms of these components.
+
+## Direct build dependencies
+
+| Component | License |
+|---|---|
+| [Smithay](https://github.com/Smithay/smithay) 0.7.0 | MIT |
+| [calloop](https://github.com/Smithay/calloop) 0.14.4 | MIT |
+| [wayland-rs](https://github.com/Smithay/wayland-rs) (`wayland-server`, `wayland-client`, …) | MIT |
+| [smithay-drm-extras](https://github.com/Smithay/smithay-drm-extras) | MIT |
+| `libc` | MIT OR Apache-2.0 |
+| [Qt](https://www.qt.io/) 6.11 (`Core`, `Gui`, `Quick`, `QuickTest`) | LGPL-3.0-or-later (used under the open-source terms) |
+
+## System libraries (used via the Linux stack)
+
+| Component | License |
+|---|---|
+| libxkbcommon, libdrm, Mesa/libgbm, libinput, libseat, wayland | MIT |
+| systemd / libudev | LGPL-2.1-or-later |
+| NetworkManager | LGPL-2.1-or-later |
+| PipeWire | MIT |
+
+## Rust crates
+
+All crates in the Cargo dependency graph are permissively licensed
+(MIT, Apache-2.0, BSD-2-Clause/BSD-3-Clause, ISC, Zlib, or Unlicense).
+The exact set and versions are pinned in [Cargo.lock](Cargo.lock); the
+authoritative license for each crate ships in its own package metadata.
+
+## Qt notice
+
+Qt 6 is used under the open-source LGPL-3.0-or-later license; Dragonfruit
+links Qt dynamically from the system/distro packages and does not
+obligate a Qt commercial license. See
+[docs/licensing.md](docs/licensing.md) for the policy.
