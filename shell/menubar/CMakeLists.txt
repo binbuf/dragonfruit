@@ -1,9 +1,22 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+qt_add_library(dragonfruit-shell-menubar STATIC)
 qt_add_qml_module(dragonfruit-shell-menubar
     URI Dragonfruit.MenuBar
     VERSION 1.0
     QML_FILES
         MenuBar.qml
+        StatusItem.qml
+        StatusGlyph.qml
+        MenuBarClock.qml
+)
+target_link_libraries(dragonfruit-shell-menubar PUBLIC
+    Qt6::Core Qt6::Gui Qt6::Quick
+    dragonfruit-design-systemplugin
 )
 
-df_qml_lint(shell-menubar MenuBar.qml)
+df_qml_lint(shell-menubar
+    MenuBar.qml
+    StatusItem.qml
+    StatusGlyph.qml
+    MenuBarClock.qml
+)

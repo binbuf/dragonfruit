@@ -243,6 +243,18 @@ QtObject {
             readonly property int shortcutGap: 24
             readonly property int radius: 14
         }
+        readonly property var menuBar: QtObject {
+            readonly property int height: 28
+            readonly property int paddingH: 8
+            readonly property int statusItemPaddingH: 6
+            readonly property int statusItemGap: 2
+            readonly property int iconSize: 15
+            readonly property int fontSize: 13
+            readonly property int labelGap: 5
+            readonly property int clockGap: 8
+            readonly property int radius: 10
+            readonly property int hoverRadius: 6
+        }
         readonly property var contextMenu: QtObject {
             readonly property int radius: 14
             readonly property int padding: 6

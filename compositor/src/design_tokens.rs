@@ -235,6 +235,18 @@ pub mod component {
         pub const SHORTCUT_GAP: f32 = 24.0_f32;
         pub const RADIUS: f32 = 14.0_f32;
     }
+    pub mod menu_bar {
+        pub const HEIGHT: f32 = 28.0_f32;
+        pub const PADDING_H: f32 = 8.0_f32;
+        pub const STATUS_ITEM_PADDING_H: f32 = 6.0_f32;
+        pub const STATUS_ITEM_GAP: f32 = 2.0_f32;
+        pub const ICON_SIZE: f32 = 15.0_f32;
+        pub const FONT_SIZE: f32 = 13.0_f32;
+        pub const LABEL_GAP: f32 = 5.0_f32;
+        pub const CLOCK_GAP: f32 = 8.0_f32;
+        pub const RADIUS: f32 = 10.0_f32;
+        pub const HOVER_RADIUS: f32 = 6.0_f32;
+    }
     pub mod context_menu {
         pub const RADIUS: f32 = 14.0_f32;
         pub const PADDING: f32 = 6.0_f32;
