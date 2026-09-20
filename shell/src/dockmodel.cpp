@@ -117,6 +117,18 @@ QVariantList buildDockEntries(const QStringList &pinnedIds, const DesktopEntryIn
         entry.insert(QStringLiteral("kind"), QStringLiteral("temporary"));
         entry.insert(QStringLiteral("pinned"), false);
         entry.insert(QStringLiteral("missing"), false);
+        // A temporary running app that resolves to an installed `.desktop`
+        // entry can be promoted ("Keep in Dock") by dragging it into the
+        // pinned region (T-10 section 12); carry the desktop id so the Dock
+        // can build the new pin order.
+        const DesktopEntry resolved =
+            index.resolve(entry.value(QStringLiteral("appId")).toString());
+        if (resolved.valid) {
+            entry.insert(QStringLiteral("desktopId"), resolved.id);
+            entry.insert(QStringLiteral("icon"), resolved.icon);
+            if (entry.value(QStringLiteral("name")).toString().isEmpty())
+                entry.insert(QStringLiteral("name"), resolved.name);
+        }
         entries.append(entry);
     }
 

@@ -37,6 +37,19 @@ Rectangle {
     // pointer is not over the Dock.
     property real pointerAlong: -1
     property bool dragging: false
+    // The dragged app entry and its tentative reorder state (T-10 section
+    // 12). `dragTargetIndex` is an insertion index in the app region;
+    // `dragBaseCenters` are the pre-drag pinned slot centers (excluding the
+    // dragged entry) so the target does not feed back into the live layout.
+    property string dragEntryId: ""
+    property int dragFromAppIndex: -1
+    property int dragTargetIndex: -1
+    property real dragPointerAlong: -1
+    property bool dragOutside: false
+    property bool dragOutOfDock: false
+    property bool dragPromote: false
+    property var dragBaseCenters: []
+    property var dragOriginalPinnedIds: []
 
     // The app entry whose context menu / window chooser is open, plus the
     // entry item each is anchored to. Only one popover is open at a time.
@@ -58,6 +71,10 @@ Rectangle {
     // The popover opened, closed, or resized; the shell re-renders the
     // overlay surface.
     signal popoverChanged()
+    // A drag finished with a new pinned set (reorder, promote, or remove);
+    // the shell writes it to `dock.pinned`. The list is the complete ordered
+    // set of pinned desktop ids (T-10 section 12, FR-9).
+    signal pinnedOrderChanged(var desktopIds)
 
     // --- Geometry constants ---------------------------------------------
     readonly property real padding: Theme.controls.dock.padding
@@ -66,6 +83,8 @@ Rectangle {
     readonly property real barThickness: iconSize + 2 * padding
     readonly property real magnifyPeak: Theme.controls.dock.magnifyPeak
     readonly property real magnifyFalloff: Theme.controls.dock.magnifyFalloff
+    // How far a lifted (dragged) entry rises above the bar.
+    readonly property real dragLift: 8
     // Transparent room above/beside the bar that magnified artwork grows
     // into. The reserved zone is `barThickness` only (section 2).
     readonly property real magnifyBand:
@@ -109,7 +128,34 @@ Rectangle {
     })
     readonly property var dividerEntry: ({ id: "__divider__", kind: "divider" })
 
-    // Ordered items: apps, divider, minimized windows, Trash.
+    // Pinned entries are the prefix of the app region (the shell emits pinned
+    // first, then temporary running apps); only this prefix is user-orderable.
+    readonly property int pinnedCount: {
+        var count = 0;
+        for (var i = 0; i < appEntries.length; ++i) {
+            if (appEntries[i].kind === "pinned")
+                count++;
+        }
+        return count;
+    }
+
+    // During a drag the app region is shown with the dragged entry moved to
+    // its tentative slot, so the neighbours animate into the opened gap.
+    readonly property var visualAppEntries: {
+        if (!dragging || dragEntryId === "" || dragFromAppIndex < 0)
+            return appEntries;
+        var list = appEntries.slice();
+        if (dragFromAppIndex >= list.length)
+            return list;
+        var moved = list.splice(dragFromAppIndex, 1)[0];
+        var to = Math.max(0, Math.min(list.length, dragTargetIndex));
+        list.splice(to, 0, moved);
+        return list;
+    }
+
+    // Ordered items: apps, divider, minimized windows, Trash. The order is
+    // stable during a drag (the Repeater must not be reset while a DragHandler
+    // holds the pointer); the drag gap is applied in `layout` instead.
     readonly property var items: {
         var out = appEntries.slice();
         out.push(dividerEntry);
@@ -117,6 +163,26 @@ Rectangle {
             out.push(minimizedEntries[i]);
         out.push(trashEntry);
         return out;
+    }
+
+    // The slot an app entry occupies while dragging: the app region permuted
+    // by the tentative move, without touching the Repeater model.
+    function appSlot(appIndex) {
+        if (!dragging || dragFromAppIndex < 0)
+            return appIndex;
+        var order = [];
+        for (var i = 0; i < appEntries.length; ++i)
+            order.push(i);
+        if (dragFromAppIndex >= order.length)
+            return appIndex;
+        var moved = order.splice(dragFromAppIndex, 1)[0];
+        var to = Math.max(0, Math.min(order.length, dragTargetIndex));
+        order.splice(to, 0, moved);
+        for (var s = 0; s < order.length; ++s) {
+            if (order[s] === appIndex)
+                return s;
+        }
+        return appIndex;
     }
 
     // --- Baseline layout (no magnification) -----------------------------
@@ -165,7 +231,7 @@ Rectangle {
 
     readonly property bool magnifying:
         magnification > 0 && pointerAlong >= 0 && anchorIndex >= 0
-        && !popoverOpen
+        && !popoverOpen && !dragging
 
     // Magnification is suppressed while a context menu or chooser is open
     // (T-10 section 14).
@@ -199,6 +265,178 @@ Rectangle {
         chooserAnchor = idx >= 0 ? entryRepeater.itemAt(idx) : null;
         chooserEntry = entry;
         windowChooser.open = true;
+    }
+
+    // --- Drag rearrangement (T-10 section 12) ----------------------------
+    function appIndexOfId(id) {
+        for (var i = 0; i < appEntries.length; ++i) {
+            if (appEntries[i].id === id)
+                return i;
+        }
+        return -1;
+    }
+
+    function isDraggable(entry) {
+        return entry && entry.kind !== "divider" && entry.kind !== "trash"
+                && entry.kind !== "minimized";
+    }
+
+    function currentPinnedIds() {
+        var out = [];
+        for (var i = 0; i < appEntries.length; ++i) {
+            if (appEntries[i].kind === "pinned")
+                out.push(appEntries[i].desktopId);
+        }
+        return out;
+    }
+
+    function resetDrag() {
+        dragging = false;
+        dragEntryId = "";
+        dragFromAppIndex = -1;
+        dragTargetIndex = -1;
+        dragPointerAlong = -1;
+        dragOutside = false;
+        dragOutOfDock = false;
+        dragPromote = false;
+        dragBaseCenters = [];
+        dragOriginalPinnedIds = [];
+    }
+
+    // Press-and-hold then move beyond the threshold lifts the entry (the
+    // DockEntry DragHandler calls this).
+    function beginDrag(entry) {
+        if (!isDraggable(entry))
+            return;
+        closePopovers();
+        dragging = true;
+        dragEntryId = entry.id;
+        dragFromAppIndex = appIndexOfId(entry.id);
+        dragOriginalPinnedIds = currentPinnedIds();
+        dragTargetIndex = entry.kind === "pinned" ? dragFromAppIndex : pinnedCount;
+        dragPointerAlong = -1;
+        dragOutside = false;
+        dragOutOfDock = false;
+        dragPromote = false;
+        // Pre-drag pinned slot centers, excluding the dragged entry, so the
+        // insertion index is stable while the live layout permutes the slots.
+        dragBaseCenters = [];
+        for (var i = 0; i < pinnedCount; ++i) {
+            if (appEntries[i].id === entry.id)
+                continue;
+            dragBaseCenters.push(_baseline.centers[i]);
+        }
+    }
+
+    // Insertion index (0..pinnedCount) for the pointer position, computed
+    // against the fixed pre-drag pinned centers.
+    function computeDropIndex(along) {
+        var idx = 0;
+        for (var i = 0; i < dragBaseCenters.length; ++i) {
+            if (along > dragBaseCenters[i])
+                idx = i + 1;
+        }
+        return idx;
+    }
+
+    function updateDrag(entry, sceneX, sceneY) {
+        if (!dragging || entry.id !== dragEntryId)
+            return;
+        var local = dock.mapFromItem(null, sceneX, sceneY);
+        dragTo(entry, axisIsX ? local.x : local.y);
+    }
+
+    // Update the tentative target from an already-local axis position; split
+    // out from the scene mapping so tests can drive the model directly.
+    function dragTo(entry, along) {
+        if (!dragging || entry.id !== dragEntryId)
+            return;
+        dragPointerAlong = along;
+        var start = axisIsX ? barRect.x : barRect.y;
+        var end = axisIsX ? barRect.x + barRect.w : barRect.y + barRect.h;
+        var margin = iconSize;
+        dragOutside = along < start - margin || along > end + margin;
+        dragOutOfDock = dragOutside && entry.kind === "pinned";
+        dragTargetIndex = computeDropIndex(along);
+        dragPromote = !dragOutside && entry.kind !== "pinned"
+                      && dragTargetIndex <= pinnedCount
+                      && entry.desktopId !== undefined
+                      && entry.desktopId !== "";
+    }
+
+    function pinnedIdsAfterDrag() {
+        var out = [];
+        if (dragOutOfDock) {
+            // Remove: every pinned entry except the dragged one, in order.
+            for (var i = 0; i < appEntries.length; ++i) {
+                var pe = appEntries[i];
+                if (pe.kind === "pinned" && pe.id !== dragEntryId)
+                    out.push(pe.desktopId);
+            }
+            return out;
+        }
+        var vis = visualAppEntries;
+        for (var j = 0; j < vis.length; ++j) {
+            var e = vis[j];
+            if (e.kind === "pinned")
+                out.push(e.desktopId);
+            else if (e.id === dragEntryId && dragPromote && e.desktopId !== undefined)
+                out.push(e.desktopId);
+        }
+        return out;
+    }
+
+    function finalizeDrag() {
+        var next = pinnedIdsAfterDrag();
+        var changed = next.join("\n") !== dragOriginalPinnedIds.join("\n");
+        resetDrag();
+        if (changed)
+            pinnedOrderChanged(next);
+    }
+
+    // Drop at an already-local axis position (test/introspection hook).
+    function dropAt(entry, along) {
+        if (!dragging || entry.id !== dragEntryId) {
+            resetDrag();
+            return;
+        }
+        dragTo(entry, along);
+        finalizeDrag();
+    }
+
+    function endDrag(entry, sceneX, sceneY) {
+        if (!dragging || entry.id !== dragEntryId) {
+            resetDrag();
+            return;
+        }
+        updateDrag(entry, sceneX, sceneY);
+        finalizeDrag();
+    }
+
+    // The pointer left the Dock surface mid-drag: a pinned entry is removed
+    // (dragged out), anything else snaps back. Cross-output drag is not
+    // supported (section 12).
+    function dragPointerLeft() {
+        if (!dragging)
+            return;
+        var entry = appEntries[appIndexOfId(dragEntryId)];
+        dragOutside = true;
+        dragOutOfDock = entry !== undefined && entry.kind === "pinned";
+        dragPromote = false;
+        finalizeDrag();
+    }
+
+    // The lifted entry follows the pointer on the dock axis and stays on the
+    // bar perpendicular to it.
+    function draggedX(itemWidth) {
+        if (axisIsX)
+            return dragPointerAlong - itemWidth / 2;
+        return barRect.x + padding;
+    }
+    function draggedY(itemHeight) {
+        if (axisIsX)
+            return barRect.y + barThickness - padding - itemHeight - dragLift;
+        return dragPointerAlong - itemHeight / 2;
     }
 
     // The app-entry menu (T-10 section 13): the live window list, Show All
@@ -313,6 +551,19 @@ Rectangle {
         var positions = base.positions.slice();
         var magnified = magnifying;
 
+        // A drag permutes the app slots (the gap) without reordering the
+        // model, so the active DragHandler's delegate survives.
+        if (dragging) {
+            for (var a = 0; a < n; ++a) {
+                var k = list[a].kind;
+                if (k === "divider" || k === "trash" || k === "minimized")
+                    continue;
+                var slot = appSlot(a);
+                positions[a] = base.positions[slot];
+                sizes[a] = base.sizes[slot];
+            }
+        }
+
         if (magnified) {
             var peak = iconSize * magnifyPeak;
             var falloff = magnifyFalloff * iconSize;
@@ -397,6 +648,10 @@ Rectangle {
     readonly property var inputRects: {
         if (autoHide && !revealed)
             return [];
+        // While dragging, the whole surface keeps pointer input so the drag
+        // can move through the magnified band without leaking to a window.
+        if (dragging)
+            return [{ x: 0, y: 0, w: width, h: height }];
         var out = [barRect];
         var l = layout;
         for (var i = 0; i < l.length; ++i) {
@@ -434,15 +689,45 @@ Rectangle {
             required property var modelData
             required property int index
 
+            readonly property bool isDragged:
+                dock.dragging && modelData.id === dock.dragEntryId
+            readonly property var slot:
+                dock.layout.length > index ? dock.layout[index] : null
+
             entry: modelData
-            iconSize: dock.layout.length > index ? dock.layout[index].iconSize : dock.iconSize
+            iconSize: slot ? slot.iconSize : dock.iconSize
             indicatorEdge: dock.indicatorEdge
             showIndicator: dock.showIndicators
             dragging: dock.dragging
-            width: dock.layout.length > index ? dock.layout[index].w : dock.iconSize
-            height: dock.layout.length > index ? dock.layout[index].h : dock.iconSize
-            x: dock.layout.length > index ? dock.layout[index].x : 0
-            y: dock.layout.length > index ? dock.layout[index].y : 0
+            lifted: isDragged
+            z: isDragged ? 10 : 0
+            width: slot ? slot.w : dock.iconSize
+            height: slot ? slot.h : dock.iconSize
+            x: isDragged ? dock.draggedX(width) : (slot ? slot.x : 0)
+            y: isDragged ? dock.draggedY(height) : (slot ? slot.y : 0)
+
+            // The gap left by a reorder springs open; reduced motion (duration
+            // 0) snaps. The lifted entry tracks the pointer without lag.
+            Behavior on x {
+                enabled: !isDragged
+                NumberAnimation {
+                    duration: Theme.motion.dockMagnify.duration
+                    easing.type: Easing.Bezier
+                    easing.bezierCurve: Theme.motion.dockMagnify.curve
+                }
+            }
+            Behavior on y {
+                enabled: !isDragged
+                NumberAnimation {
+                    duration: Theme.motion.dockMagnify.duration
+                    easing.type: Easing.Bezier
+                    easing.bezierCurve: Theme.motion.dockMagnify.curve
+                }
+            }
+
+            onDragBegan: (entry, sx, sy) => dock.beginDrag(entry)
+            onDragMoved: (entry, sx, sy) => dock.updateDrag(entry, sx, sy)
+            onDragEnded: (entry, sx, sy) => dock.endDrag(entry, sx, sy)
 
             onActivated: (entry) => {
                 // The click tree (T-10 section 8): a running app with more
@@ -561,6 +846,24 @@ Rectangle {
         }
     }
 
+    // A pinned entry dragged off the Dock shows a "Remove" affordance; there
+    // is no poof animation (T-10 section 12).
+    Text {
+        objectName: "dragRemoveLabel"
+        visible: dock.dragging && dock.dragOutOfDock
+        text: qsTr("Remove")
+        color: Theme.color.textPrimary
+        font.pixelSize: Theme.controls.button.fontSize
+        z: 3000
+        x: dock.axisIsX
+           ? Math.max(0, Math.min(dock.width - width, dock.dragPointerAlong - width / 2))
+           : (dock.position === "right" ? dock.barRect.x - width - 8
+                                        : dock.barRect.x + dock.barThickness + 8)
+        y: dock.axisIsX
+           ? Math.max(0, dock.barRect.y - height - 4)
+           : Math.max(0, Math.min(dock.height - height, dock.dragPointerAlong - height / 2))
+    }
+
     // Pointer tracking for magnification. HoverHandlers do not consume
     // events, so the per-entry handlers still work.
     HoverHandler {
@@ -568,8 +871,13 @@ Rectangle {
         onPointChanged: dock.pointerAlong =
             dock.axisIsX ? point.position.x : point.position.y
         onHoveredChanged: {
-            if (!hovered)
+            if (!hovered) {
                 dock.pointerAlong = -1;
+                // A drag that leaves the surface is a remove (pinned) or a
+                // snap-back (T-10 section 12).
+                if (dock.dragging)
+                    dock.dragPointerLeft();
+            }
         }
     }
 

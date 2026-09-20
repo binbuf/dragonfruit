@@ -89,7 +89,7 @@ Updated when a task is partially or completely finished; see
 | Phase | Tickets |
 |---|---|
 | 1 · Foundation | T-01 ✅ done · T-02 🔄 partial (compositor core) · T-03 🔄 partial (input engine) · T-04 🔄 partial (window model) · T-05 🔄 partial (Spaces model) · T-06 🔄 partial (Xwayland) · T-07 🔄 partial (private shell protocols) |
-| 2 · Experience | T-08 ✅ done (design system; app-level chrome lint + live AT-SPI dump deferred) · T-09 🔄 partial (menu bar + shell bootstrap + overlay-layer dropdown + scripted output hotplug; T-20/T-22 content open) · T-10 🔄 partial (Dock presentation core + shell surface + running entries/activation + launch/pinned persistence + launch/attention bounce + magnified-band input region + app context menus/window chooser; drag, Trash, live settings, scene-graph render path open) · T-11 … T-14 pending |
+| 2 · Experience | T-08 ✅ done (design system; app-level chrome lint + live AT-SPI dump deferred) · T-09 🔄 partial (menu bar + shell bootstrap + overlay-layer dropdown + scripted output hotplug; T-20/T-22 content open) · T-10 🔄 partial (Dock presentation core + shell surface + running entries/activation + launch/pinned persistence + launch/attention bounce + magnified-band input region + app context menus/window chooser + drag rearrangement (reorder/promote/remove); Trash, live settings, external drops, scene-graph render path open) · T-11 … T-14 pending |
 | 3 · Flagship apps | T-15 … T-19 pending |
 | 4 · System integration | T-20 … T-23 pending |
 | 5 · Desktop infrastructure | T-24 … T-29 pending |
@@ -440,6 +440,21 @@ drag rearrangement and external drops, the GVfs-backed Trash state, live
 `dock.*` settings (the divider toggles), and the scene-graph-driven render
 path. Details and hand-off: [PROGRESS.md](PROGRESS.md).
 
+T-10 continuation (drag rearrangement slice): pinned entries can now be
+reordered, promoted, and removed by dragging (FR-9, section 12). A
+`DragHandler` on each app entry lifts it (scale + shadow, magnification
+suppressed, the whole surface keeps pointer input); the Dock computes a stable
+insertion index from the pre-drag pinned slot centers and shifts the app
+slots in `layout` without reordering the Repeater model — so the delegate that
+holds the pointer survives. Dropping a temporary running app in the pinned
+region promotes it ("Keep in Dock"); dragging a pinned entry off the Dock (or
+off the surface) shows a "Remove" label and removes it. On drop the Dock emits
+the complete ordered pinned set (`pinnedOrderChanged`), which the shell writes
+to `dock.pinned` and rebuilds from. Reduced motion removes the gap spring.
+External file/app drops and spring-loading remain deferred (they need the
+Files/launcher drag sources, T-17/T-18). Details and hand-off:
+[PROGRESS.md](PROGRESS.md).
+
 **Foundation milestone E2E (T-01…T-07).** The whole vertical slice now has a
 headless end-to-end test, `compositor/tests/milestone_e2e.rs` (`make e2e`):
 one live session with a shell client, a Wayland app, and an X11 app attached
@@ -472,7 +487,7 @@ the shell's own chrome rendering (T-09/T-10).
 2. **Experience**
    - [x] Design system (T-08: token architecture + all 20 components + gallery/visual regression; app-level chrome lint + live AT-SPI dump deferred)
    - [ ] Top bar (T-09 partial: menu-bar render/interaction + shell bootstrap live, restart/idle scripts passing, chrome input routing + overlay-layer dropdown landed and scripted, output hotplug scripted; T-20 status adapters, T-22 app menu open)
-    - [ ] Dock (T-10 partial: presentation/interaction core + shell `top` surface with bottom reserved zone + launch/pinned persistence + launch/attention bounce + magnified-band input region + app context menus and window chooser landed and scripted; drag rearrangement, Trash state, live settings, scene-graph render path open)
+    - [ ] Dock (T-10 partial: presentation/interaction core + shell `top` surface with bottom reserved zone + launch/pinned persistence + launch/attention bounce + magnified-band input region + app context menus and window chooser + drag rearrangement (reorder/promote/remove) landed and scripted; external drops, Trash state, live settings, scene-graph render path open)
    - [ ] Window switching
    - [ ] Mission Control
    - [ ] Workspace gestures

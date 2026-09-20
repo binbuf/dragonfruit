@@ -27,6 +27,7 @@ Item {
         SignalSpy { id: menuActionSpy; signalName: "menuActionRequested" }
         SignalSpy { id: windowSpy; signalName: "windowActivated" }
         SignalSpy { id: popoverSpy; signalName: "popoverChanged" }
+        SignalSpy { id: pinnedOrderSpy; signalName: "pinnedOrderChanged" }
 
         // Reduced motion is a global singleton; reset it before every test so
         // a failure mid-test cannot leak into the next one.
@@ -42,12 +43,13 @@ Item {
 
         function app(id, name, running) {
             return { id: id, appId: id, name: name, kind: "pinned",
-                     running: running === true, pinned: true };
+                     running: running === true, pinned: true,
+                     desktopId: id + ".desktop" };
         }
 
         function temporary(id, name) {
             return { id: id, appId: id, name: name, kind: "temporary",
-                     running: true };
+                     running: true, desktopId: id + ".desktop" };
         }
 
         function minimized(id, name) {
@@ -590,6 +592,193 @@ Item {
             // makes room for it.
             verify(rect.y < 0);
             verify(rect.h > dock.magnifyBand);
+        }
+
+        // -- Drag rearrangement (T-10 section 12) ---------------------------
+
+        function test_drag_reorders_pinned() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "A", true), app("b", "B", true),
+                           app("c", "C", true) ]
+            });
+            pinnedOrderSpy.target = dock;
+            pinnedOrderSpy.clear();
+            var a = dock.appEntries[0];
+            dock.beginDrag(a);
+            compare(dock.dragging, true);
+            // Insert after B, before C: dragBaseCenters is [centerB, centerC].
+            var betweenBC = (dock.dragBaseCenters[0] + dock.dragBaseCenters[1]) / 2;
+            dock.dropAt(a, betweenBC);
+            compare(pinnedOrderSpy.count, 1);
+            compare(pinnedOrderSpy.signalArguments[0][0].join(","),
+                    "b.desktop,a.desktop,c.desktop");
+            compare(dock.dragging, false);
+        }
+
+        function test_drag_first_to_end() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "A", true), app("b", "B", true),
+                           app("c", "C", true) ]
+            });
+            pinnedOrderSpy.target = dock;
+            pinnedOrderSpy.clear();
+            var a = dock.appEntries[0];
+            dock.beginDrag(a);
+            dock.dropAt(a, dock.dragBaseCenters[dock.dragBaseCenters.length - 1] + 100);
+            compare(pinnedOrderSpy.signalArguments[0][0].join(","),
+                    "b.desktop,c.desktop,a.desktop");
+        }
+
+        function test_drag_no_change_emits_nothing() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "A", true), app("b", "B", true) ]
+            });
+            pinnedOrderSpy.target = dock;
+            pinnedOrderSpy.clear();
+            var a = dock.appEntries[0];
+            dock.beginDrag(a);
+            dock.dropAt(a, dock._baseline.centers[0]);
+            compare(pinnedOrderSpy.count, 0);
+        }
+
+        function test_drag_live_gap_reorders_visual_order() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "A", true), app("b", "B", true),
+                           app("c", "C", true) ]
+            });
+            var a = dock.appEntries[0];
+            dock.beginDrag(a);
+            dock.dragTo(a, (dock.dragBaseCenters[0] + dock.dragBaseCenters[1]) / 2);
+            compare(dock.visualAppEntries[0].id, "b");
+            compare(dock.visualAppEntries[1].id, "a");
+            compare(dock.visualAppEntries[2].id, "c");
+            dock.dropAt(a, (dock.dragBaseCenters[0] + dock.dragBaseCenters[1]) / 2);
+        }
+
+        function test_drag_promotes_temporary_to_pinned() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "A", true), temporary("t", "T") ]
+            });
+            pinnedOrderSpy.target = dock;
+            pinnedOrderSpy.clear();
+            var t = dock.appEntries[1];
+            compare(dock.pinnedCount, 1);
+            dock.beginDrag(t);
+            // Drop after A: the temporary is promoted at the end.
+            dock.dropAt(t, dock.dragBaseCenters[0] + 100);
+            compare(pinnedOrderSpy.count, 1);
+            compare(pinnedOrderSpy.signalArguments[0][0].join(","),
+                    "a.desktop,t.desktop");
+        }
+
+        function test_drag_promote_before_first() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "A", true), temporary("t", "T") ]
+            });
+            pinnedOrderSpy.target = dock;
+            pinnedOrderSpy.clear();
+            var t = dock.appEntries[1];
+            dock.beginDrag(t);
+            dock.dropAt(t, dock.dragBaseCenters[0] - 1);
+            compare(pinnedOrderSpy.signalArguments[0][0].join(","),
+                    "t.desktop,a.desktop");
+        }
+
+        function test_drag_out_of_dock_removes_pinned() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "A", true), app("b", "B", true) ]
+            });
+            pinnedOrderSpy.target = dock;
+            pinnedOrderSpy.clear();
+            var a = dock.appEntries[0];
+            var far = dock.barRect.x - dock.iconSize - 50;
+            dock.beginDrag(a);
+            dock.dragTo(a, far);
+            compare(dock.dragOutOfDock, true);
+            dock.dropAt(a, far);
+            compare(pinnedOrderSpy.count, 1);
+            compare(pinnedOrderSpy.signalArguments[0][0].join(","), "b.desktop");
+        }
+
+        function test_drag_out_of_dock_keeps_temporary() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "A", true), temporary("t", "T") ]
+            });
+            pinnedOrderSpy.target = dock;
+            pinnedOrderSpy.clear();
+            var t = dock.appEntries[1];
+            dock.beginDrag(t);
+            dock.dropAt(t, dock.barRect.x - dock.iconSize - 50);
+            compare(pinnedOrderSpy.count, 0);
+        }
+
+        function test_drag_pointer_left_removes_pinned() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "A", true), app("b", "B", true) ]
+            });
+            pinnedOrderSpy.target = dock;
+            pinnedOrderSpy.clear();
+            dock.beginDrag(dock.appEntries[0]);
+            dock.dragPointerLeft();
+            compare(dock.dragging, false);
+            compare(pinnedOrderSpy.signalArguments[0][0].join(","), "b.desktop");
+        }
+
+        function test_drag_suppresses_magnification() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, magnification: 1.0,
+                entries: [ app("a", "A", true), app("b", "B", true) ]
+            });
+            dock.pointerAlong = dock._baseline.centers[0];
+            waitForRendering(stage);
+            compare(dock.magnifying, true);
+            dock.beginDrag(dock.appEntries[0]);
+            compare(dock.magnifying, false);
+        }
+
+        function test_dragged_entry_is_lifted() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "A", true), app("b", "B", true) ]
+            });
+            dock.beginDrag(dock.appEntries[0]);
+            waitForRendering(stage);
+            compare(dock.itemAt(0).lifted, true);
+            verify(findChild(dock.itemAt(0), "liftShadow").visible);
+            dock.dropAt(dock.appEntries[0], dock._baseline.centers[0]);
+        }
+
+        function test_mouse_drag_reorders_pinned() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "A", true), app("b", "B", true),
+                           app("c", "C", true) ]
+            });
+            pinnedOrderSpy.target = dock;
+            pinnedOrderSpy.clear();
+            var a = dock.itemAt(0);
+            var x = a.x + a.width / 2;
+            var y = a.y + a.height / 2;
+            mousePress(dock, x, y);
+            // Move past the drag threshold and one slot to the right.
+            mouseMove(dock, x + 12, y, 40, Qt.LeftButton);
+            mouseMove(dock, x + dock.iconSize + dock.gap + 2, y, 40, Qt.LeftButton);
+            compare(dock.dragging, true);
+            compare(dock.dragTargetIndex, 1);
+            mouseRelease(dock, x + dock.iconSize + dock.gap + 2, y, Qt.LeftButton);
+            compare(dock.dragPointerAlong, -1);
+            compare(pinnedOrderSpy.count, 1);
+            compare(pinnedOrderSpy.signalArguments[0][0].join(","),
+                    "b.desktop,a.desktop,c.desktop");
         }
 
         // -- Artwork --------------------------------------------------------

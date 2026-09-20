@@ -2565,3 +2565,109 @@ window/Xwayland/idle suites); live headless smoke
 `output reserved zone edge=1 thickness=60` with the `dock-popup` overlay
 surface created cleanly.
 
+## T-10 continuation — drag rearrangement (fifth slice)
+
+**State: partial.** Pinned entries can be reordered, promoted, and removed by
+dragging (FR-9, section 12). The remaining slices (external drops, GVfs Trash,
+live settings, divider/Trash/Options menus, per-output surfaces, scene-graph
+render path, a11y) are unchanged and listed at the end.
+
+### What landed
+
+- **Drag model** (`shell/dock/Dock.qml`). `beginDrag`/`dragTo`/`dropAt`/
+  `endDrag`/`dragPointerLeft` own the tentative reorder. The target insertion
+  index is computed against `dragBaseCenters` (the pre-drag pinned slot
+  centers, excluding the dragged entry), so the live layout cannot feed back
+  into the target. The app slots are permuted in `layout` via `appSlot()`
+  rather than reordering the Repeater model, so the delegate holding the
+  pointer survives; neighbours animate into the gap with
+  `Theme.motion.dockMagnify` (reduced motion → 0).
+- **Promote / remove** (section 12). A temporary running app dropped in the
+  pinned region is promoted; a pinned entry dragged outside the bar (or off
+  the surface) shows a "Remove" label and is removed. On drop the Dock emits
+  `pinnedOrderChanged(desktopIds)` with the complete ordered pinned set; the
+  shell (`ShellController::onDockPinnedOrderChanged`) writes it to
+  `dock.pinned` and rebuilds. Cross-output drag is not supported (leaving the
+  surface finalizes the drag).
+- **Entry gesture** (`shell/dock/DockEntry.qml`). A `DragHandler` (threshold
+  8) reports scene coordinates via `dragBegan`/`dragMoved`/`dragEnded`; the
+  entry scales up (`liftScale`) and casts a `Shadow` while lifted. The divider,
+  minimized windows, and Trash are not draggable.
+- **Promotion needs a resolved desktop id.** `buildDockEntries` now resolves a
+  temporary running app's `appId` through the interim index and carries
+  `desktopId`/`icon`/`name` so the Dock can build the new pin order.
+- **Tests.** `tst_dock` gains 12 cases (reorder, first-to-end, no-op,
+  live-gap visual order, promote at end/before first, out-of-dock remove,
+  out-of-dock keeps a temporary, pointer-leave remove, magnification
+  suppression, lifted entry + shadow, and a real `mousePress`/`mouseMove`/
+  `mouseRelease` drag through the `DragHandler`). `tst_dockcore` asserts the
+  temporary entry carries `desktopId`.
+
+### Gotchas learned (important for the next slice)
+
+- **Do not reorder the Repeater model during an active drag.** A `Repeater`
+  over a JS array resets its delegates on any change, destroying the
+  `DragHandler` that holds the pointer; the drag then ends silently. The fix
+  is to keep the model stable and permute the layout slots instead
+  (`appSlot()`), leaving the gap to the `Behavior on x/y`.
+- **QtTest drag simulation needs the button argument.** `mouseMove(item, x, y,
+  delay, Qt.LeftButton)` (and the release) is required for the handler to stay
+  active; without it the `DragHandler` never deactivates and `dragEnded` never
+  fires. A press/move/move/release sequence with a move past the threshold is
+  the reliable shape.
+- **The pointer-leave path finalizes a drag.** When the pointer leaves the
+  Dock surface the shell sends a synthetic move to `(-1,-1)`; the Dock's
+  `HoverHandler.onHoveredChanged` then calls `dragPointerLeft()`, which removes
+  a pinned entry (drag-out) or snaps a temporary back. The eventual
+  `mouseRelease` finds `dragging` already false and is ignored.
+- **`dragOutside` and `dragOutOfDock` are distinct.** `dragOutside` (pointer
+  past the bar bounds) applies to any entry; `dragOutOfDock` (removal intent)
+  only to pinned. Conflating them promoted a temporary dragged far to the left.
+- **The full pinned set is the wire format.** Rather than separate
+  reorder/promote/remove signals, the Dock emits the complete ordered pinned
+  id list and the shell sets it; a no-op drag emits nothing because the list is
+  compared before signalling.
+- **External drops are not implemented.** A file/app dropped from Files or a
+  launcher, and spring-loading, need the drag sources (T-17/T-18) and the
+  compositor XDnD/file-drop plumbing; the Dock currently owns only its own
+  internal drag.
+
+### Hand-off / open items (remaining T-10 slices)
+
+1. **External drops and spring-loading** (section 12): an app dropped from
+   Files/a launcher pins it; a file/folder dropped on an app icon opens it with
+   that app; a file dropped on Trash trashes it; a file dropped on the
+   Downloads stack moves it. Needs the drag source plus `app-index`/GIO launch
+   with a file argument.
+2. **Trash** (section 16): GVfs `trash://` `GFileMonitor`, click-to-Files
+   (`org.dragonfruit.Files1`), drop-to-trash via GIO, Empty Trash with
+   confirmation, and the Trash context menu.
+3. **Live `dock.*` settings** (section 19): observe settingsd keys (T-15),
+   live re-layout, the divider menu toggles (magnification, hiding, position),
+   position/auto-hide surface changes, T-16 pane hooks, and binding
+   `Theme.reducedMotion` to the accessibility setting.
+4. **Divider and Trash context menus + Options submenu** (section 13): the
+   divider menu (Turn Magnification/Hiding On/Off, Position, Dock Settings…)
+   and the app Options submenu (Assign To, Open at Login, Show in Files).
+5. **Per-output / per-position surfaces**: left/right reserved zones need the
+   compositor `LayerSurfaceState::reserved()` extension; per-output sizing is
+   the known T-09/T-11/T-16 limitation. The Dock popup surface would need its
+   own anchor for a left/right Dock.
+6. **Scene-graph render path** (FR-14): the Dock still commits on demand via
+   `grabWindow`; the durable `QQuickWindow::afterRendering` fix is shared with
+   the T-09 deferred-polish backlog and should replace the bounce and popover
+   timers.
+7. **Keyboard + AT-SPI walkthrough** (section 20): Fn-Control-F3 focus, arrow
+   navigation, Super+Option+D; keyboard reordering is an explicit later
+   accessibility enhancement. The QML roles exist; the seat path and the live
+   AT-SPI dump are not built.
+
+### Gate status
+
+`make lint` green (`cargo fmt --check`, `clippy -D warnings`, ctest 13/13 incl.
+`tst_dockcore`/`tst_dock`/`qmllint_shell-dock`, `gen-tokens --check`, the
+design-token/desktop-name/no-capture gates, the 66-snapshot gallery
+regression); `make e2e` green (16/16 `shell_protocol_conformance` plus the
+window/Xwayland/idle suites); live headless smoke
+(`dragonfruit dev --headless --shell`) reports `Dock configured 1280x95` and
+`output reserved zone edge=1 thickness=60`.

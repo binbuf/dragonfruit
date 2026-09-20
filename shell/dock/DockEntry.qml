@@ -22,6 +22,8 @@ Item {
     readonly property bool hovered: hoverHandler.hovered
     property bool pressed: false
     property bool dragging: false
+    // A lifted (dragged) entry scales up and casts a shadow (T-10 section 12).
+    property bool lifted: false
 
     readonly property string kind: entry.kind !== undefined ? entry.kind : "app"
     readonly property bool isDivider: kind === "divider"
@@ -47,6 +49,11 @@ Item {
 
     signal activated(var entry)
     signal contextMenuRequested(var entry, real globalX, real globalY)
+    // Drag rearrangement (T-10 section 12): scene coordinates so the Dock can
+    // map them into its own axis space.
+    signal dragBegan(var entry, real sceneX, real sceneY)
+    signal dragMoved(var entry, real sceneX, real sceneY)
+    signal dragEnded(var entry, real sceneX, real sceneY)
 
     implicitWidth: verticalIndicator ? iconSize + indicatorSpace : iconSize
     implicitHeight: verticalIndicator ? iconSize : iconSize + indicatorSpace
@@ -58,6 +65,7 @@ Item {
     // Scale only the artwork on press so the indicator stays put; the
     // design-system pressed state (motion.hover).
     readonly property real pressedScale: pressed && !dragging ? 0.9 : 1.0
+    readonly property real liftScale: lifted ? 1.12 : 1.0
     // Under reduced motion the bounce translation is removed and the state
     // change stays legible as a subtle scale pulse (T-10 section 20).
     readonly property real pulseScale:
@@ -109,6 +117,19 @@ Item {
         opacity: 0.6
     }
 
+    // A lifted entry casts a shadow to read as picked up.
+    Shadow {
+        objectName: "liftShadow"
+        visible: root.lifted
+        x: root.artworkX
+        y: root.artworkY
+        width: root.iconSize
+        height: root.iconSize
+        radius: Theme.controls.dock.radius
+        blur: Theme.controls.popover.shadowBlur
+        z: -1
+    }
+
     DockGlyph {
         id: glyph
         objectName: "glyph"
@@ -120,7 +141,7 @@ Item {
         size: root.iconSize
         x: root.artworkX
         y: root.artworkY
-        scale: root.pressedScale * root.pulseScale
+        scale: root.pressedScale * root.pulseScale * root.liftScale
         transformOrigin: Item.Center
         opacity: root.launching ? 0.6 : root.missing ? 0.45 : 1.0
 
@@ -188,6 +209,35 @@ Item {
             var global = root.mapToItem(null, eventPoint.position.x,
                                         eventPoint.position.y);
             root.contextMenuRequested(root.entry, global.x, global.y);
+        }
+    }
+
+    // Press-and-hold then move lifts the entry into a rearrangement (T-10
+    // section 12). The Dock owns the reorder model; this only reports the
+    // gesture and the pointer's scene position.
+    property point dragScenePos: Qt.point(0, 0)
+
+    DragHandler {
+        id: dragHandler
+        objectName: "dragHandler"
+        acceptedButtons: Qt.LeftButton
+        enabled: !root.isDivider && !root.isTrash && root.kind !== "minimized"
+        dragThreshold: 8
+
+        onActiveChanged: {
+            var p = centroid.scenePosition;
+            if (active) {
+                root.dragScenePos = p;
+                root.dragBegan(root.entry, p.x, p.y);
+            } else {
+                root.dragEnded(root.entry, root.dragScenePos.x, root.dragScenePos.y);
+            }
+        }
+        onCentroidChanged: {
+            var p = centroid.scenePosition;
+            root.dragScenePos = p;
+            if (active)
+                root.dragMoved(root.entry, p.x, p.y);
         }
     }
 }
