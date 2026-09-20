@@ -270,6 +270,7 @@ QtObject {
             readonly property int labelSize: 12
             readonly property int trashSize: 44
             readonly property int edgeMargin: 4
+            readonly property int edgeTrigger: 4
             readonly property int revealDelay: 120
             readonly property int hideDelay: 350
         }

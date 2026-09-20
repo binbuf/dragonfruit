@@ -104,6 +104,10 @@ Rectangle {
     readonly property string indicatorEdge:
         position === "bottom" ? "bottom" : (position === "left" ? "left" : "right")
     readonly property real axisLength: axisIsX ? width : height
+    // The thin sliver of the surface that stays interactive while the Dock is
+    // hidden, so a pointer reaching the output edge can summon it back
+    // (T-10 section 15).
+    readonly property real edgeTrigger: Theme.controls.dock.edgeTrigger
 
     // --- Auto-hide translation ------------------------------------------
     // The bar is translated off its anchored edge by its own thickness plus
@@ -115,8 +119,66 @@ Rectangle {
         position === "left" ? -hideOffset : position === "right" ? hideOffset : 0
     readonly property real hideY: position === "bottom" ? hideOffset : 0
 
-    function reveal() { revealed = true; }
-    function hide() { if (autoHide) revealed = false; }
+    // The sliver of the surface at the anchored edge that remains part of the
+    // input region while hidden (T-10 section 15). It is the only hit area
+    // that can reveal the Dock, so it must never move with `hideOffset`.
+    readonly property var edgeRect: {
+        if (position === "bottom")
+            return { x: 0, y: height - edgeTrigger, w: width, h: edgeTrigger };
+        if (position === "left")
+            return { x: 0, y: 0, w: edgeTrigger, h: height };
+        return { x: width - edgeTrigger, y: 0, w: edgeTrigger, h: height };
+    }
+
+    function pointInEdgeBand(px, py) {
+        var r = edgeRect;
+        return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
+    }
+
+    // `revealStateChanged` lets the shell re-commit the Dock and its input
+    // region when the reveal/hide transition changes the translation. The
+    // transition snaps rather than animating until the scene-graph render
+    // path (FR-14) can commit every frame.
+    signal revealStateChanged()
+    onRevealedChanged: revealStateChanged()
+
+    function reveal() {
+        revealTimer.stop();
+        if (!revealed)
+            revealed = true;
+    }
+    function hide() {
+        hideTimer.stop();
+        if (autoHide && revealed)
+            revealed = false;
+    }
+
+    // Re-hide only when nothing holds the Dock open: no popover, no drag, and
+    // the pointer has left the surface (T-10 section 15).
+    function hideIfIdle() {
+        if (autoHide && !popoverOpen && !dragging && !dockHover.hovered)
+            hide();
+    }
+
+    // Schedule a re-hide when a popover closes and the pointer is elsewhere.
+    function scheduleHide() {
+        if (autoHide && revealed && !dockHover.hovered)
+            hideTimer.restart();
+    }
+
+    // The reveal delay lets a pointer passing over the edge continue without
+    // summoning the Dock; a pointer that dwells reveals it (section 15).
+    Timer {
+        id: revealTimer
+        interval: Theme.controls.dock.revealDelay
+        onTriggered: dock.reveal()
+    }
+
+    Timer {
+        id: hideTimer
+        interval: Theme.controls.dock.hideDelay
+        onTriggered: dock.hideIfIdle()
+    }
 
     // --- Entry regions ---------------------------------------------------
     readonly property var appEntries: {
@@ -248,7 +310,7 @@ Rectangle {
 
     readonly property bool magnifying:
         magnification > 0 && pointerAlong >= 0 && anchorIndex >= 0
-        && !popoverOpen && !dragging
+        && !popoverOpen && !dragging && revealed
 
     // Magnification is suppressed while a context menu or chooser is open
     // (T-10 section 14).
@@ -270,6 +332,7 @@ Rectangle {
 
     function openEntryMenu(entry) {
         closePopovers();
+        hideTimer.stop();
         var idx = indexOfItemId(entry.id);
         menuAnchor = idx >= 0 ? entryRepeater.itemAt(idx) : null;
         menuEntry = entry;
@@ -278,6 +341,7 @@ Rectangle {
 
     function openChooser(entry) {
         closePopovers();
+        hideTimer.stop();
         var idx = indexOfItemId(entry.id);
         chooserAnchor = idx >= 0 ? entryRepeater.itemAt(idx) : null;
         chooserEntry = entry;
@@ -326,6 +390,8 @@ Rectangle {
         if (!isDraggable(entry))
             return;
         closePopovers();
+        hideTimer.stop();
+        revealTimer.stop();
         dragging = true;
         dragEntryId = entry.id;
         dragFromAppIndex = appIndexOfId(entry.id);
@@ -524,10 +590,9 @@ Rectangle {
         return out;
     }
 
-    // The divider menu (T-10 section 13): the magnification toggle and the
-    // Settings entry point. The hiding toggle (needs the auto-hide reveal
-    // state machine) and Position-on-screen (needs the vertical-surface
-    // slice, T-10 section 5) are not wired yet; Dock Settings is T-16.
+    // The divider menu (T-10 section 13): the magnification and hiding
+    // toggles and the Settings entry point. Position-on-screen (T-10 section
+    // 5) is not wired into this menu yet; Dock Settings is T-16.
     function dividerMenuModel() {
         var out = [];
         out.push({
@@ -536,6 +601,11 @@ Rectangle {
                                      : qsTr("Turn Magnification On"),
             action: "toggle_magnification", checkable: true,
             checked: magnification > 0
+        });
+        out.push({
+            type: "item",
+            label: autoHide ? qsTr("Turn Hiding Off") : qsTr("Turn Hiding On"),
+            action: "toggle_autohide", checkable: true, checked: autoHide
         });
         out.push({ type: "separator" });
         out.push({
@@ -696,11 +766,12 @@ Rectangle {
 
     // The surface input region: the visible bar plus the currently magnified
     // or bouncing icon rectangles. The transparent magnified band passes
-    // clicks through to the windows beneath, and the hidden Dock is fully
-    // transparent to input (T-10 FR-13). The shell commits this every frame.
+    // clicks through to the windows beneath. A hidden auto-hide Dock keeps
+    // only the thin edge band so the pointer can summon it back (T-10 FR-13,
+    // section 15). The shell commits this every frame.
     readonly property var inputRects: {
         if (autoHide && !revealed)
-            return [];
+            return [edgeRect];
         // While dragging, the whole surface keeps pointer input so the drag
         // can move through the magnified band without leaking to a window.
         if (dragging)
@@ -843,6 +914,7 @@ Rectangle {
         onClosed: {
             dock.menuOpen = false;
             dock.popoverChanged();
+            dock.scheduleHide();
         }
         onTriggered: (index, item) => {
             dock.menuActionRequested(item.action, item.payload);
@@ -881,6 +953,7 @@ Rectangle {
         onClosed: {
             dock.chooserOpen = false;
             dock.popoverChanged();
+            dock.scheduleHide();
         }
         onWindowActivated: (windowId) => dock.windowActivated(windowId)
         onShowAllWindows: () => dock.menuActionRequested(
@@ -923,15 +996,34 @@ Rectangle {
     // events, so the per-entry handlers still work.
     HoverHandler {
         id: dockHover
-        onPointChanged: dock.pointerAlong =
-            dock.axisIsX ? point.position.x : point.position.y
+        onPointChanged: {
+            var p = point.position;
+            dock.pointerAlong = dock.axisIsX ? p.x : p.y;
+            // While hidden the only hit area is the edge band, so a dwell
+            // there reveals the Dock after the reveal delay (section 15).
+            if (dock.autoHide && !dock.revealed) {
+                if (dock.pointInEdgeBand(p.x, p.y))
+                    revealTimer.restart();
+                else
+                    revealTimer.stop();
+            } else {
+                revealTimer.stop();
+            }
+            if (dock.autoHide && dock.revealed)
+                hideTimer.stop();
+        }
         onHoveredChanged: {
-            if (!hovered) {
+            if (hovered) {
+                hideTimer.stop();
+            } else {
                 dock.pointerAlong = -1;
+                revealTimer.stop();
                 // A drag that leaves the surface is a remove (pinned) or a
                 // snap-back (T-10 section 12).
                 if (dock.dragging)
                     dock.dragPointerLeft();
+                if (dock.autoHide && dock.revealed)
+                    hideTimer.restart();
             }
         }
     }
