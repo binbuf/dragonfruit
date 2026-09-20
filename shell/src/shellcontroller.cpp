@@ -184,8 +184,12 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     applyStatusItems();
     applyFocusedApp();
 
-    m_surfaceHeight = barHeight;
     if (!m_protocol->createMenuBarSurface(barHeight, barHeight))
+        return false;
+    // The dropdown rides a separate `overlay` chrome surface so transient
+    // menus composite above fullscreen windows while the bar keeps its own
+    // `top` surface and reserved zone (T-09).
+    if (!m_protocol->createPopupSurface())
         return false;
 
     // The shell snapshots the QML scene into a shm buffer on demand; a popup
@@ -283,16 +287,16 @@ void ShellController::applyFocusedApp()
 void ShellController::onConfigured(int width, int height, quint32)
 {
     // The compositor sends a pre-layout configure at the full output size
-    // before applying the layer surface's anchor/size; skip it. A real
-    // configure is the bar height, or a taller one while a dropdown is open.
-    if (height < m_barHeight || (!m_menuOpen && height != m_barHeight)) {
+    // before applying the layer surface's anchor/size; skip it. The bar
+    // surface is always exactly one bar tall (the dropdown is a separate
+    // `overlay` surface).
+    if (height != m_barHeight) {
         fprintf(stderr, "dragonfruit-shell: ignoring pre-layout configure %dx%d\n", width,
                 height);
         return;
     }
     m_width = width;
     m_height = height;
-    m_surfaceHeight = height;
     fprintf(stderr, "dragonfruit-shell: menu bar configured %dx%d\n", width, height);
     render();
     // Canvas items paint on the scene graph after the first grab; re-render
@@ -334,7 +338,7 @@ void ShellController::onClockTick()
 void ShellController::onAppMenuOpened(int)
 {
     m_menuOpen = true;
-    updateSurfaceHeight();
+    updatePopupGeometry();
     // Capture the popup fade/scale-in (popupOpen = 160 ms).
     startAnimationRenders(220);
 }
@@ -342,12 +346,12 @@ void ShellController::onAppMenuOpened(int)
 void ShellController::onAppMenuClosed()
 {
     m_menuOpen = false;
-    // Let the close animation (popupClose = 100 ms) play before shrinking the
-    // surface back to the bar.
+    // Let the close animation (popupClose = 100 ms) play before unmapping the
+    // overlay surface.
     startAnimationRenders(160);
     QTimer::singleShot(140, this, [this]() {
         if (!m_menuOpen)
-            updateSurfaceHeight();
+            updatePopupGeometry();
     });
 }
 
@@ -379,21 +383,37 @@ void ShellController::startAnimationRenders(int ms)
         m_animationTimer->start();
 }
 
-void ShellController::updateSurfaceHeight()
+void ShellController::updatePopupGeometry()
 {
-    // The dropdown is a child of the bar item that overflows the 28 px bar;
-    // grow the chrome surface (and window) so the compositor reveals it. The
-    // reserved zone is unchanged (the bar still reserves 28 px).
-    int needed = m_barHeight;
-    if (m_item) {
-        const qreal bottom = m_item->property("dropdownBottom").toReal();
-        if (bottom > 0)
-            needed = qMax(needed, qCeil(bottom) + 2);
+    if (!m_item) {
+        return;
     }
-    if (needed != m_surfaceHeight) {
-        m_surfaceHeight = needed;
-        m_protocol->setMenuBarSize(0, needed);
+    if (!m_menuOpen) {
+        m_popupWidth = 0;
+        m_popupHeight = 0;
+        m_protocol->hidePopup();
+        render();
+        return;
     }
+    // The open dropdown's rectangle in window coordinates. The popup QML
+    // overflows the bar item; the shell reveals it through the overlay
+    // surface placed at exactly this rectangle.
+    const int x = qMax(0, qFloor(m_item->property("dropdownX").toReal()));
+    const int y = qMax(0, qFloor(m_item->property("dropdownY").toReal()));
+    const int width = qCeil(m_item->property("dropdownWidth").toReal());
+    const int height = qCeil(m_item->property("dropdownHeight").toReal());
+    if (width <= 0 || height <= 0) {
+        m_popupWidth = 0;
+        m_popupHeight = 0;
+        m_protocol->hidePopup();
+        render();
+        return;
+    }
+    m_popupX = x;
+    m_popupY = y;
+    m_popupWidth = width;
+    m_popupHeight = height;
+    m_protocol->setPopupGeometry(x, y, width, height);
     render();
 }
 
@@ -455,17 +475,25 @@ void ShellController::onKeyEvent(quint32 key, bool pressed)
 
 void ShellController::render()
 {
-    if (!m_item || m_width <= 0 || m_surfaceHeight <= 0)
+    if (!m_item || m_width <= 0 || m_barHeight <= 0)
         return;
     // The bar item itself stays bar-height; an open dropdown overflows it and
-    // is revealed by the taller window/surface.
+    // is committed to the separate overlay surface.
     m_item->setWidth(m_width);
     m_item->setHeight(m_barHeight);
-    if (m_window->width() != m_width || m_window->height() != m_surfaceHeight)
-        m_window->resize(m_width, m_surfaceHeight);
+    const bool popupShown = m_popupWidth > 0 && m_popupHeight > 0;
+    const int windowHeight =
+        popupShown ? qMax(m_barHeight, m_popupY + m_popupHeight) : m_barHeight;
+    if (m_window->width() != m_width || m_window->height() != windowHeight)
+        m_window->resize(m_width, windowHeight);
     if (!m_window->isVisible())
         m_window->show();
     const QImage image = m_window->grabWindow();
-    if (!m_protocol->commitImage(image))
+    if (!m_protocol->commitImage(image.copy(0, 0, m_width, m_barHeight)))
         qWarning() << "shell: failed to commit the menu bar:" << m_protocol->lastError();
+    if (popupShown) {
+        const QRect popupRect(m_popupX, m_popupY, m_popupWidth, m_popupHeight);
+        if (!m_protocol->commitPopupImage(image.copy(popupRect)))
+            qWarning() << "shell: failed to commit the menu popup:" << m_protocol->lastError();
+    }
 }

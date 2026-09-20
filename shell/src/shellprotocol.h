@@ -45,12 +45,23 @@ public:
     // height and exclusive zone. The compositor answers with `configure`.
     bool createMenuBarSurface(int height, int exclusiveZone);
 
-    // Resize the menu-bar layer surface (the open dropdown expands it below
-    // the bar; the exclusive zone is unchanged). The compositor answers with
-    // a fresh `configure`.
-    bool setMenuBarSize(int width, int height);
+    // Create the dropdown `overlay` layer surface (T-09). It starts unmapped;
+    // `setPopupGeometry` + `commitPopupImage` place and reveal it, `hidePopup`
+    // unmaps it. Unlike the bar it reserves no zone and never takes keyboard.
+    bool createPopupSurface();
 
-    // Attach `image` to the chrome surface and commit. The image must be
+    // Place the popup layer surface at window coordinates `(x, y)` sized
+    // `(width, height)`. The compositor answers with a fresh `configure`.
+    bool setPopupGeometry(int x, int y, int width, int height);
+
+    // Attach `image` to the popup surface and commit. The image must be
+    // ARGB32(_Premultiplied).
+    bool commitPopupImage(const QImage &image);
+
+    // Unmap the popup surface (attach a null buffer).
+    bool hidePopup();
+
+    // Attach `image` to the menu-bar surface and commit. The image must be
     // ARGB32(_Premultiplied).
     bool commitImage(const QImage &image);
 
@@ -71,6 +82,7 @@ signals:
     void authenticated(uint32_t lockstepVersion);
     void refused(uint32_t code, const QString &message);
     void configured(int width, int height, uint32_t serial);
+    void popupConfigured(int width, int height, uint32_t serial);
     void surfaceClosed();
     void focusedAppChanged(const QString &appId, const QString &title);
     void fatal(const QString &message);
@@ -90,6 +102,8 @@ private:
     void bindTrustedGlobals();
     void teardown();
     bool fail(const QString &message);
+    // Attach `image` to `surface` as a fresh shm buffer and commit it.
+    bool commitTo(wl_surface *surface, const QImage &image);
 
     // Wayland listener trampolines.
     static void onRegistryGlobal(void *data, wl_registry *registry, uint32_t name,
@@ -98,6 +112,8 @@ private:
     static void onCoreAuthenticated(void *data, df_core *core, uint32_t version);
     static void onCoreRefused(void *data, df_core *core, uint32_t code, const char *message);
     static void onLayerConfigure(void *data, df_layer_surface *layer, uint32_t serial,
+                                 int32_t width, int32_t height);
+    static void onPopupConfigure(void *data, df_layer_surface *layer, uint32_t serial,
                                  int32_t width, int32_t height);
     static void onLayerClosed(void *data, df_layer_surface *layer);
     static void onSeatCapabilities(void *data, wl_seat *seat, uint32_t capabilities);
@@ -187,6 +203,16 @@ private:
     df_toplevel_manager *m_manager = nullptr;
     wl_surface *m_surface = nullptr;
     df_layer_surface *m_layer = nullptr;
+    wl_surface *m_popupSurface = nullptr;
+    df_layer_surface *m_popupLayer = nullptr;
+    // Window-space origin of the popup surface, used to translate pointer
+    // coordinates delivered relative to the popup into window coordinates.
+    int m_popupX = 0;
+    int m_popupY = 0;
+    bool m_popupMapped = false;
+    // True while the pointer is over the popup surface, so its surface-local
+    // coordinates are translated into window coordinates.
+    bool m_pointerOnPopup = false;
     wl_seat *m_seat = nullptr;
     wl_pointer *m_pointer = nullptr;
     wl_keyboard *m_keyboard = nullptr;
