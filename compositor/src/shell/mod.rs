@@ -463,6 +463,14 @@ impl DfState {
             .map(|entry| entry.state.keyboard)
     }
 
+    /// Whether a chrome surface currently holds the keyboard.
+    pub fn chrome_has_keyboard_focus(&self) -> bool {
+        self.seat
+            .get_keyboard()
+            .and_then(|keyboard| keyboard.current_focus())
+            .is_some_and(|surface| self.is_chrome_surface(&surface))
+    }
+
     /// Give keyboard focus to a chrome surface, if its policy allows it.
     ///
     /// Returns true when focus was moved. `KeyboardInteraction::None` never

@@ -1886,3 +1886,25 @@ Remaining known limitation: animations are still sampled by a timer, not the
 scene graph, so motion is choppy at 60 Hz budget. The durable fix is to commit
 from `QQuickWindow::afterRendering` (or a render-control path) while the scene
 is dirty — flagged for T-10 (Dock animations need the same).
+
+### T-09 FR-3 polish follow-up — desktop click-away
+
+Clicking empty desktop space did not dismiss an open menu: the shell only
+sees clicks that land on its chrome surface, and the compositor's
+click-to-focus did nothing when no window was under the pointer, so the chrome
+kept keyboard focus and the menu stayed open. `process_input_event`
+(`compositor/src/input.rs`) now drops chrome keyboard focus on a left click
+over empty space (`DfState::chrome_has_keyboard_focus` +
+`keyboard.set_focus(None)`), which delivers `wl_keyboard.leave` to the shell;
+`MenuBar.onShellFocusedChanged` then closes the menu. Clicking a window
+already worked because focus moves to the window. Covered by
+`chrome_surface_receives_pointer_and_keyboard` (a click at an empty
+desktop point asserts `wl_keyboard.leave`).
+
+Also hardened the launch focus: the `MenuBar` delegate sets
+`activeFocusOnTab: false` so the offscreen window cannot auto-focus the first
+title at all (the `forceActiveFocus` on the bar root remains). The remaining
+"File looks highlighted at launch" report was reproduced as *hover*: the
+shell receives no pointer event at startup, so a highlight can only come from
+the host cursor already being over the title (winit's first `CursorMoved`).
+It clears as soon as the pointer leaves the bar.
