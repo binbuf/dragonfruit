@@ -89,7 +89,7 @@ Updated when a task is partially or completely finished; see
 | Phase | Tickets |
 |---|---|
 | 1 · Foundation | T-01 ✅ done · T-02 🔄 partial (compositor core) · T-03 🔄 partial (input engine) · T-04 🔄 partial (window model) · T-05 🔄 partial (Spaces model) · T-06 🔄 partial (Xwayland) · T-07 🔄 partial (private shell protocols) |
-| 2 · Experience | T-08 ✅ done (design system; app-level chrome lint + live AT-SPI dump deferred) · T-09 🔄 partial (menu bar + shell bootstrap + overlay-layer dropdown + scripted output hotplug; T-20/T-22 content open) · T-10 🔄 partial (Dock presentation core + shell surface + running entries/activation + launch/pinned persistence + launch/attention bounce + magnified-band input region + app context menus/window chooser + drag rearrangement (reorder/promote/remove); Trash, live settings, external drops, scene-graph render path open) · T-11 … T-14 pending |
+| 2 · Experience | T-08 ✅ done (design system; app-level chrome lint + live AT-SPI dump deferred) · T-09 🔄 partial (menu bar + shell bootstrap + overlay-layer dropdown + scripted output hotplug; T-20/T-22 content open) · T-10 🔄 partial (Dock presentation core + shell surface + running entries/activation + launch/pinned persistence + launch/attention bounce + magnified-band input region + app context menus/window chooser + drag rearrangement (reorder/promote/remove) + live `dock.*` settings/divider menu/reduced motion + left/right reserved-zone foundation; Trash, external drops, per-position surfaces, scene-graph render path open) · T-11 … T-14 pending |
 | 3 · Flagship apps | T-15 … T-19 pending |
 | 4 · System integration | T-20 … T-23 pending |
 | 5 · Desktop infrastructure | T-24 … T-29 pending |
@@ -454,6 +454,31 @@ to `dock.pinned` and rebuilds from. Reduced motion removes the gap spring.
 External file/app drops and spring-loading remain deferred (they need the
 Files/launcher drag sources, T-17/T-18). Details and hand-off:
 [PROGRESS.md](PROGRESS.md).
+
+T-10 continuation (live-settings slice): the Dock's `dock.*` keys are now a
+live model, not just `dock.pinned`. A new pure `DockSettings` core
+(`shell/src/docksettings.*`, unit-tested by `tst_dockcore`) reads and writes
+every non-pinned key in the eventual `org.dragonfruit.Settings1` shape,
+clamping and validating each value and re-reading on save so it and
+`DockPins` never clobber each other's keys. The shell applies the model at
+startup and watches the settings file (the interim stand-in for settingsd's
+change signals, T-15) to re-layout live without a restart: `dock.size` maps
+onto the new `iconSizeMin`/`iconSizeMax` token range, `dock.magnification`
+now scales the peak (0.5 lands on the `magnifyPeak` token), and
+`dock.animateOpening` gates the launch hop while attention still bounces.
+Changing the size or auto-hide reconfigures the chrome surface in place
+(`df_layer_surface.set_size`/`set_exclusive_zone`), so the reserved zone and
+Zoom target follow live. The divider Control-click now opens a design-system
+`ContextMenu` with the Turn Magnification On/Off toggle and Dock Settings…,
+and `accessibility.reduceMotion` is bound onto the design-system
+`Theme.reducedMotion` singleton. On the compositor side,
+`LayerSurfaceState::reserved()` now understands left/right edges (a vertical
+Dock reserves its side), covered by a new unit test and the
+`vertical_dock_reserves_the_left_and_right_zones` conformance test. Position
+switching (left/right), the vertical surface/popover geometry, and the
+auto-hide reveal/hide state machine remain deferred to the per-position
+surface slice; Trash, external drops, and the scene-graph render path are
+unchanged. Details and hand-off: [PROGRESS.md](PROGRESS.md).
 
 **Foundation milestone E2E (T-01…T-07).** The whole vertical slice now has a
 headless end-to-end test, `compositor/tests/milestone_e2e.rs` (`make e2e`):

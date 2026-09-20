@@ -2671,3 +2671,146 @@ regression); `make e2e` green (16/16 `shell_protocol_conformance` plus the
 window/Xwayland/idle suites); live headless smoke
 (`dragonfruit dev --headless --shell`) reports `Dock configured 1280x95` and
 `output reserved zone edge=1 thickness=60`.
+
+## T-10 continuation — live settings, divider menu, reduced motion (sixth slice)
+
+**State: partial.** The Dock's `dock.*` keys are now a live settings model
+with a divider options menu and a global reduced-motion binding (FR-12,
+section 19); the compositor's reserved-zone resolver now understands
+left/right edges (the foundation for a vertical Dock). The remaining slices
+(external drops, Trash, per-position surfaces/auto-hide reveal, Options
+submenu, scene-graph render path, a11y) are unchanged and listed at the end.
+
+### What landed
+
+- **`DockSettings`** (`shell/src/docksettings.{h,cpp}`, in the Wayland-free
+  `dragonfruit-shell-dockcore` static lib). Owns every non-pinned `dock.*`
+  key plus `accessibility.reduceMotion`; reads/writes the same
+  `$XDG_CONFIG_HOME/dragonfruit/settings.json` in the eventual
+  `org.dragonfruit.Settings1` named-key shape. Values are clamped
+  (`dock.size`/`dock.magnification` to 0..1) and validated (`position`,
+  `minimizedAnimation`, `titlebarDoubleClick` fall back to their defaults on
+  an unknown string). `save()` re-reads the file and merges, so it and
+  `DockPins` cannot clobber each other's keys; `equals()` lets the shell
+  ignore the file-watch notification for its own write. `tst_dockcore` gains
+  4 cases (defaults, round-trip/clamping/validation, shared-file interleave
+  both orders, equals).
+- **`DockPins::save()` re-reads** the file before writing (previously it
+  wrote its stale in-memory root, which would have dropped a `dock.size`
+  written after startup). The existing `pinsRoundTripAndPreserveUnknownKeys`
+  still passes; `settingsAndPinsShareTheFileWithoutClobbering` covers the new
+  guarantee.
+- **Live apply** (`ShellController::applyDockSettings`). At startup the
+  saved settings are applied *before* the chrome surface exists (no
+  reconfigure), so `m_dockBarThickness`/`m_dockHeight` reflect `dock.size`.
+  A `QFileSystemWatcher` on the settings file is the interim stand-in for
+  settingsd's change signals (T-15); on a change the shell reloads, applies,
+  and (for `dock.size`/`dock.autohide`) reconfigures the surface in place via
+  the new `ShellProtocol::configureDockSurface` (send `set_size` +
+  `set_exclusive_zone`, which the compositor already honors live). Verified
+  in a live headless session: `dock.size` 0.5→1.0 reconfigured the Dock to
+  `1280x159` and the bottom reserved zone to 76 (was `1280x124`/60).
+- **Magnification value.** `dock.magnification` (0..1) now maps onto the peak
+  icon factor: `1 + magnification * (magnifyPeakMax - 1)`, so the default 0.5
+  lands on the existing `magnifyPeak` token (1.6) and 1.0 on the new
+  `magnifyPeakMax` (2.2). `magnifyBand` is sized for `magnifyPeakMax` so a
+  live change never needs to grow the scene. New tokens
+  `component.dock.iconSizeMin` (32)/`iconSizeMax` (64)/`magnifyPeakMax`
+  (2.2); `dock.size` maps across the icon range (default 0.5 → 48).
+- **Divider menu** (`Dock.qml`). Control-clicking the divider now opens the
+  design-system `ContextMenu` (it previously only emitted a signal) with the
+  live "Turn Magnification On/Off" toggle and "Dock Settings…". The shell
+  writes `dock.magnification` (0.5 when re-enabling) and saves.
+- **Reduced motion.** `accessibility.reduceMotion` is set on the
+  design-system `Theme.reducedMotion` singleton through
+  `QQmlEngine::singletonInstance("Dragonfruit", "Theme")`, so every shell
+  surface reacts, not just the Dock. `dock.animateOpening=false` suppresses
+  the launch hop while an attention bounce still plays.
+- **Compositor left/right reserved zones.** `LayerSurfaceState::reserved()`
+  now returns `Edge::Left`/`Edge::Right` for a single horizontal anchor
+  (checking top/bottom first, so a bottom Dock's `bottom|left|right` anchor
+  never leaks into a side reserve). New unit test plus
+  `vertical_dock_reserves_the_left_and_right_zones` in
+  `shell_protocol_conformance` (edge 2/edge 3 reported for left/right
+  docks). `aggregate_reserved` and `ReservedZones::usable` already handled
+  left/right.
+
+### Gotchas learned (important for the next slice)
+
+- **The chrome protocol already supports live reconfigure.** `set_anchor`,
+  `set_size`, `set_margin`, and `set_exclusive_zone` are honored after
+  creation and trigger a fresh configure (`compositor/src/shell/mod.rs`), so
+  live settings need no surface recreation — just `configureDockSurface`.
+- **`QSaveFile` breaks a `QFileSystemWatcher` watch.** It writes a temp file
+  and renames over the target, so the watched path is removed on the first
+  write. `onSettingsFileChanged` re-adds the path on the next event-loop
+  turn (and the file may briefly not exist).
+- **Guard the watcher against the shell's own write.** The shell updates
+  `m_settings` before saving, so reloading into a fresh `DockSettings` and
+  comparing with `equals()` makes the self-notification a no-op. This
+  disappears when settingsd (T-15) becomes the single writer.
+- **`reserved()` must prefer the vertical edge.** A bottom Dock anchors
+  `bottom|left|right`; checking top/bottom first is what stops it reserving a
+  side strip as well. A left/right Dock anchors `left|top|bottom`
+  (or `right|…`) and falls through to the horizontal match.
+- **The vertical layout is not visually complete.** The QML `barRect` for a
+  vertical Dock is placed at `x = magnifyBand` with the transparent band to
+  the left, and `hideOffset` is *subtracted*, which moves a bottom Dock up
+  rather than down off the edge. Position switching is therefore deliberately
+  not wired (the setting is persisted and warned about, not applied); the
+  vertical geometry and auto-hide translation belong to the per-position
+  slice.
+- **Auto-hide has no reveal/hide state machine.** `dock.autohide` flips the
+  reserved zone to 0 correctly, but nothing calls `Dock.hide()`/`reveal()`
+  from pointer dwell, and the hidden input region is empty so the edge band
+  cannot be re-entered. The divider menu deliberately omits the hiding
+  toggle until the edge-band reveal lands.
+- **The divider menu is flat.** The design-system `ContextMenu` renders a
+  `submenu` row (chevron) but has no submenu open logic, so "Position on
+  Screen ▸" and the app "Options ▸" submenu are still deferred; when they
+  land they should use the T-09 drag-through rule.
+
+### Hand-off / open items (remaining T-10 slices)
+
+1. **External drops and spring-loading** (section 12): an app dropped from
+   Files/a launcher pins it; a file/folder dropped on an app icon opens it
+   with that app; a file dropped on Trash trashes it; a file dropped on the
+   Downloads stack moves it. Needs the drag source plus `app-index`/GIO
+   launch with a file argument (T-17/T-18).
+2. **Trash** (section 16): GVfs `trash://` monitor, click-to-Files
+   (`org.dragonfruit.Files1`), drop-to-trash via GIO, Empty Trash with
+   confirmation, and the Trash context menu. Note: this build host has only
+   the libgio runtime (no GIO dev headers/pc), so the backend needs either
+   the headers or a filesystem-watcher fallback over
+   `$XDG_DATA_HOME/Trash/{files,info}`.
+3. **Per-position surfaces** (section 5): apply `dock.position` (left/right)
+   with vertical surface geometry, horizontal popover gutters/anchor, and the
+   corrected auto-hide translation direction; then add the auto-hide
+   edge-band reveal/re-hide state machine and re-add the divider hiding
+   toggle. The compositor `reserved()` left/right support is already in.
+4. **Options submenu + Show in Files + Trash/divider completeness** (section
+   13): the app Options ▸ submenu (Assign To, Open at Login, Show in Files)
+   and the Trash menu. Needs the design-system submenu, T-18 Files, and
+   compositor app/space requests.
+5. **Per-output / per-output sizing** (section 18): chrome surfaces still
+   size from the first output; `matches_output` is the filter hook.
+6. **Scene-graph render path** (FR-14): the Dock still commits on demand via
+   `grabWindow`; the durable `QQuickWindow::afterRendering` fix is shared with
+   the T-09 deferred-polish backlog and should replace the bounce and popover
+   timers.
+7. **Keyboard + AT-SPI walkthrough** (section 20): Fn-Control-F3 focus, arrow
+   navigation, Super+Option+D; keyboard reordering is an explicit later
+   accessibility enhancement. The QML roles exist; the seat path and the live
+   AT-SPI dump are not built.
+
+### Gate status
+
+`make lint` green (`cargo fmt --check`, `clippy -D warnings`, ctest 13/13 incl.
+`tst_dockcore`/`tst_dock`/`qmllint_shell-dock`, `gen-tokens --check`, the
+design-token/desktop-name/no-capture gates, the 66-snapshot gallery
+regression); `make e2e` green (17/17 `shell_protocol_conformance` incl. the
+new vertical-dock reserve test, plus the window/Xwayland/idle suites); live
+headless smoke (`dragonfruit dev --headless --shell`) reports
+`Dock configured 1280x124` and `output reserved zone edge=1 thickness=60`,
+and a live `dock.size` 0.5→1.0 edit reconfigured the Dock to `1280x159` with
+`edge=1 thickness=76`.

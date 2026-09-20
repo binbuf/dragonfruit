@@ -25,10 +25,15 @@ Rectangle {
     property var entries: []
     property string position: "bottom"          // bottom | left | right
     property real iconSize: Theme.controls.dock.iconSize
+    // The `dock.size` mapping range, read by the shell (section 19).
+    readonly property real iconSizeMin: Theme.controls.dock.iconSizeMin
+    readonly property real iconSizeMax: Theme.controls.dock.iconSizeMax
     property real magnification: 0.0            // 0..1, 0 = off
     property bool showIndicators: true
     property bool minimizeIntoTileIcon: false
     property bool autoHide: false
+    property bool animateOpening: true
+    property bool showRecentApps: false
     property bool revealed: true
     property bool trashFull: false
 
@@ -81,14 +86,20 @@ Rectangle {
     readonly property real gap: Theme.controls.dock.gap
     readonly property real dividerWidth: 1
     readonly property real barThickness: iconSize + 2 * padding
-    readonly property real magnifyPeak: Theme.controls.dock.magnifyPeak
+    // `dock.magnification` (0..1, 0 = off) maps onto the peak icon factor;
+    // 0.5 (the default) lands on the `magnifyPeak` token (T-10 section 19).
+    readonly property real magnifyPeakFactor:
+        magnification <= 0 ? 1.0
+        : 1 + magnification * (Theme.controls.dock.magnifyPeakMax - 1)
     readonly property real magnifyFalloff: Theme.controls.dock.magnifyFalloff
     // How far a lifted (dragged) entry rises above the bar.
     readonly property real dragLift: 8
     // Transparent room above/beside the bar that magnified artwork grows
-    // into. The reserved zone is `barThickness` only (section 2).
+    // into. It is sized for the maximum magnification so a live
+    // `dock.magnification` change never needs to grow the scene. The
+    // reserved zone is `barThickness` only (section 2).
     readonly property real magnifyBand:
-        Math.ceil((magnifyPeak - 1) * iconSize) + padding
+        Math.ceil((Theme.controls.dock.magnifyPeakMax - 1) * iconSize) + padding
     readonly property bool axisIsX: position === "bottom"
     readonly property string indicatorEdge:
         position === "bottom" ? "bottom" : (position === "left" ? "left" : "right")
@@ -440,13 +451,16 @@ Rectangle {
     }
 
     // The app-entry menu (T-10 section 13): the live window list, Show All
-    // Windows, Keep/Remove from Dock, and Quit/Open. Options ▸, Show in
-    // Files, and the Trash/divider menus are later slices.
+    // Windows, Keep/Remove from Dock, and Quit/Open. The divider menu holds
+    // the Dock options. Options ▸, Show in Files, and the Trash menu are
+    // later slices.
     readonly property var menuModel: {
         var e = menuEntry;
         if (!e)
             return [];
         var out = [];
+        if (e.kind === "divider")
+            return dividerMenuModel();
         var running = e.running === true;
         var list = e.windowList !== undefined ? e.windowList : [];
         if (running && list.length > 0) {
@@ -502,6 +516,27 @@ Rectangle {
         return out;
     }
 
+    // The divider menu (T-10 section 13): the magnification toggle and the
+    // Settings entry point. The hiding toggle (needs the auto-hide reveal
+    // state machine) and Position-on-screen (needs the vertical-surface
+    // slice, T-10 section 5) are not wired yet; Dock Settings is T-16.
+    function dividerMenuModel() {
+        var out = [];
+        out.push({
+            type: "item",
+            label: magnification > 0 ? qsTr("Turn Magnification Off")
+                                     : qsTr("Turn Magnification On"),
+            action: "toggle_magnification", checkable: true,
+            checked: magnification > 0
+        });
+        out.push({ type: "separator" });
+        out.push({
+            type: "item", label: qsTr("Dock Settings…"),
+            action: "open_dock_settings"
+        });
+        return out;
+    }
+
     // The open popover's rectangle in Dock-scene coordinates, or an empty
     // rect. The shell renders it into the Dock's `overlay` surface.
     readonly property var popoverRect: {
@@ -537,6 +572,10 @@ Rectangle {
         var phase = entry.bounce;
         if (phase === undefined || phase < 0)
             return 0;
+        // `dock.animateOpening` off suppresses the launch hop; an attention
+        // bounce is a notification and still plays (T-10 sections 8.1/19).
+        if (!animateOpening && entry.attention !== true)
+            return 0;
         var amplitude = entry.attention === true ? barThickness / 2
                                                  : barThickness / 4;
         return amplitude * Math.sin(Math.PI * phase);
@@ -565,7 +604,7 @@ Rectangle {
         }
 
         if (magnified) {
-            var peak = iconSize * magnifyPeak;
+            var peak = iconSize * magnifyPeakFactor;
             var falloff = magnifyFalloff * iconSize;
             for (var i = 0; i < n; ++i) {
                 if (list[i].kind === "divider")
@@ -746,8 +785,8 @@ Rectangle {
                     dock.dividerContextMenuRequested(gx, gy);
                 } else {
                     dock.entryContextMenuRequested(entry, gx, gy);
-                    dock.openEntryMenu(entry);
                 }
+                dock.openEntryMenu(entry);
             }
         }
     }
@@ -758,7 +797,7 @@ Rectangle {
         objectName: "entryMenu"
         model: dock.menuModel
         accessibleName: dock.menuEntry && dock.menuEntry.name !== undefined
-                        ? dock.menuEntry.name : ""
+                        ? dock.menuEntry.name : qsTr("Dock options")
         // Above the entry on a bottom Dock, beside it on a vertical Dock,
         // clamped to the surface.
         x: {

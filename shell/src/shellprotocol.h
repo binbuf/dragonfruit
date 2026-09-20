@@ -69,6 +69,11 @@ public:
     // on its edge and never takes keyboard focus.
     bool createDockSurface(int height, int exclusiveZone);
 
+    // Re-apply the Dock surface's extent and reserved zone after a live
+    // `dock.size` / `dock.autohide` change (T-10 section 19). The anchor is
+    // unchanged (bottom); the compositor answers with a fresh configure.
+    bool configureDockSurface(int height, int exclusiveZone);
+
     // Create the Dock's transient `overlay` layer surface (T-10 context menus
     // and the window chooser). Anchored to the Dock's edge (bottom|left for a
     // bottom Dock) so it can be placed with a bottom margin, reserves nothing

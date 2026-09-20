@@ -781,6 +781,60 @@ Item {
                     "b.desktop,a.desktop,c.desktop");
         }
 
+        // -- Live settings and the divider menu (T-10 section 19) ----------
+
+        function test_magnification_value_scales_the_peak() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 200, magnification: 0.5,
+                entries: [ app("a", "A", true), app("b", "B", true),
+                           app("c", "C", true) ]
+            });
+            var base = dock._baseline.centers[1];
+            dock.pointerAlong = base;
+            waitForRendering(stage);
+            var halfPeak = dock.layout[1].iconSize;
+            verify(halfPeak > dock.iconSize);
+            dock.magnification = 1.0;
+            waitForRendering(stage);
+            verify(dock.layout[1].iconSize > halfPeak);
+        }
+
+        function test_animate_opening_off_suppresses_launch_bounce() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, animateOpening: false,
+                entries: [ { id: "a", appId: "a", name: "A", kind: "pinned",
+                             pinned: true, running: true, bounce: 0.5 } ]
+            });
+            compare(dock.entryBounce(dock.items[0]), 0);
+            // An attention bounce is a notification and still plays.
+            verify(dock.entryBounce({ attention: true, bounce: 0.5 }) > 0);
+        }
+
+        function test_divider_right_click_opens_options_menu() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, magnification: 0,
+                entries: [ app("a", "A", true) ]
+            });
+            menuActionSpy.target = dock;
+            menuActionSpy.clear();
+            var divider = dock.itemAt(1);
+            compare(divider.isDivider, true);
+            mouseClick(divider, divider.width / 2, divider.height / 2,
+                       Qt.RightButton);
+            waitForRendering(stage);
+            compare(dock.menuOpen, true);
+            var menu = findChild(dock, "entryMenu");
+            verify(menu !== null);
+            var labels = [];
+            for (var i = 0; i < menu.entries.length; ++i)
+                labels.push(menu.entries[i].label);
+            verify(labels.indexOf("Turn Magnification On") >= 0);
+            verify(labels.indexOf("Dock Settings…") >= 0);
+            menu.activate(labels.indexOf("Turn Magnification On"));
+            compare(menuActionSpy.count, 1);
+            compare(menuActionSpy.signalArguments[0][0], "toggle_magnification");
+        }
+
         // -- Artwork --------------------------------------------------------
 
         function test_glyph_renders_pixels() {

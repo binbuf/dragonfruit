@@ -15,7 +15,9 @@
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
+#include <QFileSystemWatcher>
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QProcess>
@@ -155,6 +157,17 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         if (!m_pins.save())
             qWarning() << "shell: cannot seed Dock pins:" << m_pins.lastError();
     }
+    // Interim `dock.*` settings model (T-10 section 19). The file watch is
+    // the stand-in for settingsd's change signals (T-15); when T-15 lands it
+    // replaces `onSettingsFileChanged` with a D-Bus subscription.
+    if (!m_settings.load())
+        qWarning() << "shell: Dock settings:" << m_settings.lastError();
+    m_settingsWatcher = new QFileSystemWatcher(this);
+    const QString settingsPath = DockSettings::defaultFilePath();
+    if (QFile::exists(settingsPath))
+        m_settingsWatcher->addPath(settingsPath);
+    connect(m_settingsWatcher, &QFileSystemWatcher::fileChanged, this,
+            &ShellController::onSettingsFileChanged);
 
     if (!m_protocol->connectToCompositor(socketName))
         return false;
@@ -247,8 +260,6 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         return false;
     }
     m_dockItem->setParentItem(m_dockWindow->contentItem());
-    m_dockBarThickness = qRound(m_dockItem->property("barThickness").toReal());
-    m_dockHeight = m_dockBarThickness + qCeil(m_dockItem->property("magnifyBand").toReal());
     connect(m_dockItem, SIGNAL(entryActivated(QVariant)), this,
             SLOT(onDockEntryActivated(QVariant)));
     connect(m_dockItem, SIGNAL(entryContextMenuRequested(QVariant,qreal,qreal)), this,
@@ -262,6 +273,11 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     connect(m_dockItem, SIGNAL(pinnedOrderChanged(QVariant)), this,
             SLOT(onDockPinnedOrderChanged(QVariant)));
     connect(m_dockItem, SIGNAL(popoverChanged()), this, SLOT(onDockPopoverChanged()));
+    // Apply `dock.*` before the surfaces exist (no reconfigure yet) so the
+    // baseline bar thickness and magnified band reflect the saved size.
+    applyDockSettings(false);
+    m_dockBarThickness = qRound(m_dockItem->property("barThickness").toReal());
+    m_dockHeight = m_dockBarThickness + qCeil(m_dockItem->property("magnifyBand").toReal());
     // The running projection may have arrived before the Dock scene existed.
     rebuildDockEntries();
 
@@ -607,6 +623,86 @@ void ShellController::onDockConfigured(int width, int height, quint32)
     renderDock();
 }
 
+int ShellController::iconSizeForSize(double size) const
+{
+    if (!m_dockItem)
+        return 48;
+    const double low = m_dockItem->property("iconSizeMin").toReal();
+    const double high = m_dockItem->property("iconSizeMax").toReal();
+    return qRound(low + qBound(0.0, size, 1.0) * (high - low));
+}
+
+// Push the `dock.*` settings onto the Dock QML. `reconfigure` is false at
+// startup (the chrome surface does not exist yet) and true for a live change
+// that alters the surface extent or reserved zone.
+void ShellController::applyDockSettings(bool reconfigure)
+{
+    if (!m_dockItem)
+        return;
+    m_dockItem->setProperty("iconSize", iconSizeForSize(m_settings.size()));
+    m_dockItem->setProperty("magnification", m_settings.magnification());
+    m_dockItem->setProperty("autoHide", m_settings.autohide());
+    m_dockItem->setProperty("showIndicators", m_settings.showIndicators());
+    m_dockItem->setProperty("minimizeIntoTileIcon", m_settings.minimizeIntoTileIcon());
+    m_dockItem->setProperty("animateOpening", m_settings.animateOpening());
+    m_dockItem->setProperty("showRecentApps", m_settings.showRecentApps());
+    // The position key is persisted but only the bottom anchor is supported
+    // until the vertical-surface slice lands (T-10 section 5).
+    if (m_settings.position() != QLatin1String("bottom"))
+        qWarning() << "shell: dock.position" << m_settings.position()
+                   << "is not supported yet; keeping the bottom Dock";
+    // Reduced motion is a global animation policy: bind it onto the
+    // design-system singleton so the whole shell reacts (T-10 section 20).
+    if (m_engine) {
+        if (QObject *theme = m_engine->singletonInstance<QObject *>(
+                QStringLiteral("Dragonfruit"), QStringLiteral("Theme"))) {
+            theme->setProperty("reducedMotion", m_settings.reduceMotion());
+        }
+    }
+    if (!reconfigure || !m_protocol)
+        return;
+    // The icon size changed the baseline bar and the magnified band; re-apply
+    // the surface extent and reserved zone (auto-hide reserves nothing).
+    m_dockBarThickness = qRound(m_dockItem->property("barThickness").toReal());
+    m_dockHeight = m_dockBarThickness + qCeil(m_dockItem->property("magnifyBand").toReal());
+    const int exclusive = m_settings.autohide() ? 0 : m_dockBarThickness;
+    if (!m_protocol->configureDockSurface(m_dockHeight, exclusive))
+        qWarning() << "shell: cannot reconfigure the Dock surface:"
+                   << m_protocol->lastError();
+    renderDock();
+}
+
+void ShellController::saveDockSettings()
+{
+    if (!m_settings.save())
+        qWarning() << "shell: cannot save Dock settings:" << m_settings.lastError();
+}
+
+void ShellController::onSettingsFileChanged()
+{
+    // QSaveFile replaces the file, which drops the watch; re-add it. The
+    // file may briefly not exist, so retry on the next event-loop turn.
+    const QString path = DockSettings::defaultFilePath();
+    QTimer::singleShot(0, this, [this, path]() {
+        if (m_settingsWatcher && QFile::exists(path)
+                && !m_settingsWatcher->files().contains(path))
+            m_settingsWatcher->addPath(path);
+    });
+
+    DockSettings fresh;
+    if (!fresh.load()) {
+        qWarning() << "shell: Dock settings:" << fresh.lastError();
+        return;
+    }
+    // Ignore the notification for our own write (settingsd will be the
+    // single writer at T-15, so this guard disappears then).
+    if (fresh.equals(m_settings))
+        return;
+    m_settings = fresh;
+    applyDockSettings(true);
+    fprintf(stderr, "dragonfruit-shell: Dock settings reloaded (live)\n");
+}
+
 void ShellController::onDockStateChanged(const QVariantList &entries)
 {
     m_runningEntries = entries;
@@ -920,6 +1016,19 @@ void ShellController::onDockEntryMenuAction(const QString &action, const QVarian
         const QString id = map.value(QStringLiteral("desktopId")).toString();
         if (!id.isEmpty())
             launchDockApp(id);
+    } else if (action == QLatin1String("toggle_magnification")) {
+        // The divider menu toggle (T-10 section 13/19); no surface change.
+        m_settings.setMagnification(m_settings.magnification() > 0 ? 0.0 : 0.5);
+        saveDockSettings();
+        applyDockSettings(false);
+    } else if (action == QLatin1String("toggle_autohide")) {
+        // Auto-hide flips the reserved zone, so the surface must reconfigure.
+        m_settings.setAutohide(!m_settings.autohide());
+        saveDockSettings();
+        applyDockSettings(true);
+    } else if (action == QLatin1String("open_dock_settings")) {
+        // T-16 owns the Desktop & Dock pane; the entry point is wired.
+        qInfo() << "shell: Dock Settings requested (T-16)";
     }
     scheduleDockRender();
 }
