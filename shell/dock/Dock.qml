@@ -38,10 +38,26 @@ Rectangle {
     property real pointerAlong: -1
     property bool dragging: false
 
+    // The app entry whose context menu / window chooser is open, plus the
+    // entry item each is anchored to. Only one popover is open at a time.
+    property var menuEntry: null
+    property bool menuOpen: false
+    property Item menuAnchor: null
+    property var chooserEntry: null
+    property bool chooserOpen: false
+    property Item chooserAnchor: null
+
     signal entryActivated(var entry)
     signal entryContextMenuRequested(var entry, real globalX, real globalY)
     signal dividerContextMenuRequested(real globalX, real globalY)
     signal settingsRequested()
+    // A context-menu/chooser action resolved to a shell operation.
+    signal menuActionRequested(string action, var payload)
+    // A specific window chosen from the window chooser (T-10 FR-5).
+    signal windowActivated(string windowId)
+    // The popover opened, closed, or resized; the shell re-renders the
+    // overlay surface.
+    signal popoverChanged()
 
     // --- Geometry constants ---------------------------------------------
     readonly property real padding: Theme.controls.dock.padding
@@ -149,6 +165,117 @@ Rectangle {
 
     readonly property bool magnifying:
         magnification > 0 && pointerAlong >= 0 && anchorIndex >= 0
+        && !popoverOpen
+
+    // Magnification is suppressed while a context menu or chooser is open
+    // (T-10 section 14).
+    readonly property bool popoverOpen: menuOpen || chooserOpen
+
+    // --- Context menu ----------------------------------------------------
+    function indexOfItemId(id) {
+        for (var i = 0; i < items.length; ++i) {
+            if (items[i].id === id)
+                return i;
+        }
+        return -1;
+    }
+
+    function closePopovers() {
+        entryMenu.hide();
+        windowChooser.hide();
+    }
+
+    function openEntryMenu(entry) {
+        closePopovers();
+        var idx = indexOfItemId(entry.id);
+        menuAnchor = idx >= 0 ? entryRepeater.itemAt(idx) : null;
+        menuEntry = entry;
+        entryMenu.open = true;
+    }
+
+    function openChooser(entry) {
+        closePopovers();
+        var idx = indexOfItemId(entry.id);
+        chooserAnchor = idx >= 0 ? entryRepeater.itemAt(idx) : null;
+        chooserEntry = entry;
+        windowChooser.open = true;
+    }
+
+    // The app-entry menu (T-10 section 13): the live window list, Show All
+    // Windows, Keep/Remove from Dock, and Quit/Open. Options ▸, Show in
+    // Files, and the Trash/divider menus are later slices.
+    readonly property var menuModel: {
+        var e = menuEntry;
+        if (!e)
+            return [];
+        var out = [];
+        var running = e.running === true;
+        var list = e.windowList !== undefined ? e.windowList : [];
+        if (running && list.length > 0) {
+            for (var i = 0; i < list.length; ++i) {
+                var w = list[i];
+                var label = w.title !== undefined ? w.title : qsTr("Window");
+                if (w.minimized === true)
+                    label += qsTr(" (minimized)");
+                out.push({
+                    type: "item", label: label, checked: w.focused === true,
+                    shortcut: w.workspaceName !== undefined ? w.workspaceName : "",
+                    action: "activate_window",
+                    payload: { windowId: w.windowId }
+                });
+            }
+            out.push({ type: "separator" });
+            out.push({
+                type: "item", label: qsTr("Show All Windows"),
+                action: "show_all_windows", payload: { appId: e.appId }
+            });
+            out.push({ type: "separator" });
+        }
+        if (running) {
+            if (e.pinned === true) {
+                out.push({
+                    type: "item", label: qsTr("Remove from Dock"),
+                    action: "remove_from_dock", payload: { desktopId: e.desktopId }
+                });
+            } else {
+                out.push({
+                    type: "item", label: qsTr("Keep in Dock"),
+                    action: "keep_in_dock", payload: { desktopId: e.desktopId }
+                });
+            }
+            out.push({ type: "separator" });
+            out.push({
+                type: "item", label: qsTr("Quit"),
+                action: "quit", payload: { appId: e.appId }
+            });
+        } else if (e.missing !== true) {
+            out.push({
+                type: "item", label: qsTr("Open"),
+                action: "open", payload: { desktopId: e.desktopId }
+            });
+            if (e.pinned === true) {
+                out.push({ type: "separator" });
+                out.push({
+                    type: "item", label: qsTr("Remove from Dock"),
+                    action: "remove_from_dock", payload: { desktopId: e.desktopId }
+                });
+            }
+        }
+        return out;
+    }
+
+    // The open popover's rectangle in Dock-scene coordinates, or an empty
+    // rect. The shell renders it into the Dock's `overlay` surface.
+    readonly property var popoverRect: {
+        // `open` keeps the rect valid while the popover fades in/out (the
+        // shell captures the animation); `visible` covers the close tail.
+        var popup = (entryMenu.open || entryMenu.visible) ? entryMenu
+                 : ((windowChooser.open || windowChooser.visible) ? windowChooser : null);
+        if (!popup || popup.width <= 0 || popup.height <= 0)
+            return { x: 0, y: 0, w: 0, h: 0 };
+        var topLeft = popup.mapToItem(dock, 0, 0);
+        return { x: topLeft.x, y: topLeft.y, w: popup.width, h: popup.height };
+    }
 
     function indicatorSpace(entry) {
         return showIndicators && entry.running
@@ -317,13 +444,120 @@ Rectangle {
             x: dock.layout.length > index ? dock.layout[index].x : 0
             y: dock.layout.length > index ? dock.layout[index].y : 0
 
-            onActivated: (entry) => dock.entryActivated(entry)
-            onContextMenuRequested: (entry, gx, gy) => {
-                if (entry.kind === "divider")
-                    dock.dividerContextMenuRequested(gx, gy);
-                else
-                    dock.entryContextMenuRequested(entry, gx, gy);
+            onActivated: (entry) => {
+                // The click tree (T-10 section 8): a running app with more
+                // than one window opens the chooser; everything else is a
+                // shell activation (single window, minimized restore, launch).
+                if (entry.running === true && entry.kind !== "minimized"
+                        && entry.windowList !== undefined
+                        && entry.windowList.length > 1) {
+                    dock.openChooser(entry);
+                    return;
+                }
+                dock.entryActivated(entry);
             }
+            onContextMenuRequested: (entry, gx, gy) => {
+                if (entry.kind === "divider") {
+                    dock.dividerContextMenuRequested(gx, gy);
+                } else {
+                    dock.entryContextMenuRequested(entry, gx, gy);
+                    dock.openEntryMenu(entry);
+                }
+            }
+        }
+    }
+
+    // --- Context menu and window chooser (T-10 sections 9/13) -------------
+    ContextMenu {
+        id: entryMenu
+        objectName: "entryMenu"
+        model: dock.menuModel
+        accessibleName: dock.menuEntry && dock.menuEntry.name !== undefined
+                        ? dock.menuEntry.name : ""
+        // Above the entry on a bottom Dock, beside it on a vertical Dock,
+        // clamped to the surface.
+        x: {
+            if (!dock.menuAnchor)
+                return 0;
+            if (dock.axisIsX)
+                return Math.max(0, Math.min(dock.width - width,
+                    dock.menuAnchor.x + (dock.menuAnchor.width - width) / 2));
+            return dock.position === "left"
+                    ? dock.menuAnchor.x + dock.menuAnchor.width + 4
+                    : dock.menuAnchor.x - width - 4;
+        }
+        y: {
+            if (!dock.menuAnchor)
+                return 0;
+            // A bottom Dock's menu opens upward; negative y is covered by the
+            // offscreen scene's headroom (the shell grows the window).
+            if (dock.axisIsX)
+                return dock.menuAnchor.y - height - 4;
+            return Math.max(0, Math.min(dock.height - height,
+                dock.menuAnchor.y + (dock.menuAnchor.height - height) / 2));
+        }
+        onOpened: {
+            dock.menuOpen = true;
+            dock.popoverChanged();
+        }
+        onClosed: {
+            dock.menuOpen = false;
+            dock.popoverChanged();
+        }
+        onTriggered: (index, item) => {
+            dock.menuActionRequested(item.action, item.payload);
+        }
+    }
+
+    DockWindowChooser {
+        id: windowChooser
+        objectName: "windowChooser"
+        entry: dock.chooserEntry
+        anchorItem: dock.chooserAnchor
+        x: {
+            if (!dock.chooserAnchor)
+                return 0;
+            if (dock.axisIsX)
+                return Math.max(0, Math.min(dock.width - width,
+                    dock.chooserAnchor.x + (dock.chooserAnchor.width - width) / 2));
+            return dock.position === "left"
+                    ? dock.chooserAnchor.x + dock.chooserAnchor.width + 4
+                    : dock.chooserAnchor.x - width - 4;
+        }
+        y: {
+            if (!dock.chooserAnchor)
+                return 0;
+            // A bottom Dock's chooser opens upward; negative y is covered by
+            // the offscreen scene's headroom.
+            if (dock.axisIsX)
+                return dock.chooserAnchor.y - height - 4;
+            return Math.max(0, Math.min(dock.height - height,
+                dock.chooserAnchor.y + (dock.chooserAnchor.height - height) / 2));
+        }
+        onOpened: {
+            dock.chooserOpen = true;
+            dock.popoverChanged();
+        }
+        onClosed: {
+            dock.chooserOpen = false;
+            dock.popoverChanged();
+        }
+        onWindowActivated: (windowId) => dock.windowActivated(windowId)
+        onShowAllWindows: () => dock.menuActionRequested(
+            "show_all_windows", { appId: dock.chooserEntry ? dock.chooserEntry.appId : "" })
+    }
+
+    // Clicking empty Dock space dismisses an open popover (T-10 section 13).
+    TapHandler {
+        onTapped: (eventPoint) => {
+            var p = eventPoint.position;
+            for (var i = 0; i < dock.layout.length; ++i) {
+                var r = dock.layout[i];
+                if (p.x >= r.x && p.x <= r.x + r.w
+                        && p.y >= r.y && p.y <= r.y + r.h)
+                    return;
+            }
+            dock.closePopovers();
         }
     }
 

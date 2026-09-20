@@ -216,6 +216,12 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             &ShellController::onDockPointerButton);
     connect(m_protocol, &ShellProtocol::dockPointerLeft, this,
             &ShellController::onDockPointerLeft);
+    connect(m_protocol, &ShellProtocol::dockPopupPointerMoved, this,
+            &ShellController::onDockPopupPointerMoved);
+    connect(m_protocol, &ShellProtocol::dockPopupPointerButton, this,
+            &ShellController::onDockPopupPointerButton);
+    connect(m_protocol, &ShellProtocol::dockPopupPointerLeft, this,
+            &ShellController::onDockPopupPointerLeft);
     connect(m_protocol, &ShellProtocol::attentionRequested, this,
             &ShellController::onDockAttention);
 
@@ -249,6 +255,11 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onDockEntryContextMenu(QVariant,qreal,qreal)));
     connect(m_dockItem, SIGNAL(dividerContextMenuRequested(qreal,qreal)), this,
             SLOT(onDockDividerContextMenu(qreal,qreal)));
+    connect(m_dockItem, SIGNAL(menuActionRequested(QString,QVariant)), this,
+            SLOT(onDockEntryMenuAction(QString,QVariant)));
+    connect(m_dockItem, SIGNAL(windowActivated(QString)), this,
+            SLOT(onDockWindowActivated(QString)));
+    connect(m_dockItem, SIGNAL(popoverChanged()), this, SLOT(onDockPopoverChanged()));
     // The running projection may have arrived before the Dock scene existed.
     rebuildDockEntries();
 
@@ -263,6 +274,10 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // reserves nothing (section 2).
     const int dockExclusive = m_dockItem->property("autoHide").toBool() ? 0 : m_dockBarThickness;
     if (!m_protocol->createDockSurface(m_dockHeight, dockExclusive))
+        return false;
+    // Dock context menus and the window chooser ride a second `overlay`
+    // surface anchored to the bottom edge (T-10 sections 9/13).
+    if (!m_protocol->createDockPopupSurface())
         return false;
 
     // The shell snapshots the QML scene into a shm buffer on demand; a popup
@@ -290,6 +305,16 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     m_dockAnimTimer = new QTimer(this);
     m_dockAnimTimer->setInterval(16);
     connect(m_dockAnimTimer, &QTimer::timeout, this, &ShellController::onDockAnimationTick);
+
+    // Dock popover open/close animation burst (the durable scene-graph render
+    // path is still deferred; FR-14).
+    m_dockPopupTimer = new QTimer(this);
+    m_dockPopupTimer->setInterval(16);
+    connect(m_dockPopupTimer, &QTimer::timeout, this, [this]() {
+        renderDock();
+        if (--m_dockPopupTicks <= 0)
+            m_dockPopupTimer->stop();
+    });
 
     const int fd = m_protocol->displayFd();
     m_notifier = new QSocketNotifier(fd, QSocketNotifier::Read, this);
@@ -814,8 +839,11 @@ void ShellController::onDockPointerMoved(qreal x, qreal y)
 {
     if (!m_dockWindow)
         return;
-    QMouseEvent event(QEvent::MouseMove, QPointF(x, y), QPointF(x, y), Qt::NoButton, m_dockButtons,
-                      Qt::NoModifier);
+    // The compositor delivers Dock-surface coordinates in scene space; the
+    // scene is pushed down by `m_dockItemOffsetY` inside the offscreen window
+    // when a popover has headroom.
+    const QPointF p(x, y + m_dockItemOffsetY);
+    QMouseEvent event(QEvent::MouseMove, p, p, Qt::NoButton, m_dockButtons, Qt::NoModifier);
     QCoreApplication::sendEvent(m_dockWindow, &event);
     scheduleDockRender();
 }
@@ -833,8 +861,9 @@ void ShellController::onDockPointerButton(qreal x, qreal y, quint32 button, bool
         m_dockButtons |= qtButton;
     else
         m_dockButtons &= ~qtButton;
-    QMouseEvent event(pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease, QPointF(x, y),
-                      QPointF(x, y), qtButton, m_dockButtons, Qt::NoModifier);
+    const QPointF p(x, y + m_dockItemOffsetY);
+    QMouseEvent event(pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease, p, p,
+                      qtButton, m_dockButtons, Qt::NoModifier);
     QCoreApplication::sendEvent(m_dockWindow, &event);
     scheduleDockRender();
 }
@@ -847,6 +876,71 @@ void ShellController::onDockPointerLeft()
                       m_dockButtons, Qt::NoModifier);
     QCoreApplication::sendEvent(m_dockWindow, &event);
     scheduleDockRender();
+}
+
+void ShellController::onDockPopupPointerMoved(qreal x, qreal y)
+{
+    // Popover-local -> Dock-scene-local; `onDockPointerMoved` adds the scene
+    // offset for the offscreen window.
+    onDockPointerMoved(x + m_dockPopoverX, y + m_dockPopoverY);
+}
+
+void ShellController::onDockPopupPointerButton(qreal x, qreal y, quint32 button, bool pressed)
+{
+    onDockPointerButton(x + m_dockPopoverX, y + m_dockPopoverY, button, pressed);
+}
+
+void ShellController::onDockPopupPointerLeft()
+{
+    onDockPointerLeft();
+}
+
+void ShellController::onDockEntryMenuAction(const QString &action, const QVariant &payload)
+{
+    const QVariantMap map = payload.toMap();
+    if (action == QLatin1String("activate_window")) {
+        m_protocol->selectToplevel(map.value(QStringLiteral("windowId")).toString());
+    } else if (action == QLatin1String("show_all_windows")) {
+        // T-11 owns a filtered Mission Control; until it lands this enters the
+        // unfiltered overview (T-10 section 9).
+        m_protocol->enterMissionControl();
+    } else if (action == QLatin1String("keep_in_dock")) {
+        const QString id = map.value(QStringLiteral("desktopId")).toString();
+        if (!id.isEmpty() && m_pins.add(id) && m_pins.save())
+            rebuildDockEntries();
+    } else if (action == QLatin1String("remove_from_dock")) {
+        const QString id = map.value(QStringLiteral("desktopId")).toString();
+        if (!id.isEmpty() && m_pins.remove(id) && m_pins.save())
+            rebuildDockEntries();
+    } else if (action == QLatin1String("quit")) {
+        m_protocol->closeApp(map.value(QStringLiteral("appId")).toString());
+    } else if (action == QLatin1String("open")) {
+        const QString id = map.value(QStringLiteral("desktopId")).toString();
+        if (!id.isEmpty())
+            launchDockApp(id);
+    }
+    scheduleDockRender();
+}
+
+void ShellController::onDockWindowActivated(const QString &windowId)
+{
+    m_protocol->selectToplevel(windowId);
+    scheduleDockRender();
+}
+
+void ShellController::onDockPopoverChanged()
+{
+    scheduleDockRender();
+    startDockAnimationRenders(220);
+}
+
+void ShellController::startDockAnimationRenders(int ms)
+{
+    if (!m_dockPopupTimer)
+        return;
+    m_dockPopupTicks = qMax(1, ms / m_dockPopupTimer->interval());
+    if (!m_dockPopupTimer->isActive())
+        m_dockPopupTimer->start();
 }
 
 void ShellController::scheduleDockRender()
@@ -866,11 +960,29 @@ void ShellController::renderDock()
         return;
     m_dockItem->setWidth(m_dockWidth);
     m_dockItem->setHeight(m_dockHeight);
-    if (m_dockWindow->width() != m_dockWidth || m_dockWindow->height() != m_dockHeight)
-        m_dockWindow->resize(m_dockWidth, m_dockHeight);
+
+    // The Dock popover (context menu / window chooser) in Dock-scene
+    // coordinates; empty when nothing is open. `popoverRect` keys on the
+    // popover's `open || visible` so the open/close fade is still captured.
+    const QVariantMap popover = m_dockItem->property("popoverRect").toMap();
+    const int px = qFloor(popover.value(QStringLiteral("x")).toReal());
+    const int py = qFloor(popover.value(QStringLiteral("y")).toReal());
+    const int pw = qCeil(popover.value(QStringLiteral("w")).toReal());
+    const int ph = qCeil(popover.value(QStringLiteral("h")).toReal());
+    const bool hasPopover = pw > 0 && ph > 0;
+
+    // A popover above the bar needs headroom: grow the offscreen scene
+    // upward and push the Dock item down so scene y=0 stays the surface top.
+    const int headroom = hasPopover ? qMax(0, -py) : 0;
+    m_dockItemOffsetY = headroom;
+    m_dockItem->setY(headroom);
+    const int windowHeight = m_dockHeight + headroom;
+    if (m_dockWindow->width() != m_dockWidth || m_dockWindow->height() != windowHeight)
+        m_dockWindow->resize(m_dockWidth, windowHeight);
     if (!m_dockWindow->isVisible())
         m_dockWindow->show();
     const QImage image = m_dockWindow->grabWindow();
+
     // The input region is the visible bar plus the currently magnified or
     // bouncing icon rectangles; the transparent magnified band and the hidden
     // Dock pass clicks through (FR-13).
@@ -884,8 +996,29 @@ void ShellController::renderDock()
                                 qCeil(rect.value(QStringLiteral("h")).toReal())));
     }
     m_protocol->setDockInputRegion(inputRects);
-    if (!m_protocol->commitDockImage(image.copy(0, 0, m_dockWidth, m_dockHeight)))
+    if (!m_protocol->commitDockImage(image.copy(0, headroom, m_dockWidth, m_dockHeight)))
         qWarning() << "shell: failed to commit the Dock:" << m_protocol->lastError();
+
+    // Place and commit the popover on the Dock's overlay surface. It is
+    // anchored bottom|left, so the bottom margin is measured from the output
+    // bottom: scene y=0 is the Dock surface top, `m_dockHeight` from the
+    // bottom.
+    m_dockPopoverX = px;
+    m_dockPopoverY = py;
+    m_dockPopoverWidth = pw;
+    m_dockPopoverHeight = ph;
+    if (hasPopover) {
+        const int bottomMargin = m_dockHeight - (py + ph);
+        m_protocol->setDockPopupGeometry(px, bottomMargin, pw, ph);
+        const QRect popupRect(px, headroom + py, pw, ph);
+        if (!m_protocol->commitDockPopupImage(image.copy(popupRect)))
+            qWarning() << "shell: failed to commit the Dock popover:"
+                       << m_protocol->lastError();
+        m_dockPopoverMapped = true;
+    } else if (m_dockPopoverMapped) {
+        m_protocol->hideDockPopup();
+        m_dockPopoverMapped = false;
+    }
 }
 
 void ShellController::render()

@@ -2431,3 +2431,137 @@ window/Xwayland/idle suites); live headless smoke
 (`dragonfruit dev --headless --shell`) reports `Dock configured 1280x95` and
 `output reserved zone edge=1 thickness=60`.
 
+## T-10 continuation — app context menus + window chooser (fourth slice)
+
+**State: partial.** The Dock's app-entry context menus and window chooser are
+landed (FR-5, FR-10 app menus). The remaining slices (divider/Trash menus and
+Options, drag rearrangement, Trash state, live settings, per-output surfaces,
+scene-graph render path, a11y) are unchanged and listed at the end.
+
+### What landed
+
+- **Per-window projection** (`shellprotocol.{h,cpp}`). Each running app entry
+  now carries a `windowList` (`windowId`, `title`, `minimized`, `focused`,
+  `workspaceIndex`/`workspaceName`) across all Spaces, ordered most-recent-
+  first (focused first, then reverse announcement order). The window handle is
+  the `df_toplevel` pointer serialized as a **decimal string** (a 64-bit
+  pointer does not survive a QML `number`). Minimized-window entries carry
+  their app's full `windowList` so the owning app's menu/chooser works from
+  the minimized entry too. Workspace index/name are tracked from the
+  `df_workspace` `index`/`name` events; `onManagerFocused` re-emits the
+  projection so the chooser's checkmark tracks focus.
+- **Window actions** (`ShellProtocol`). `selectToplevel(windowId)` calls
+  `df_toplevel_manager.select_overview_toplevel` — the compositor restores a
+  minimized window, activates its Space, and focuses it in one round-trip
+  (FR-5). `closeToplevel` closes one window; `closeApp(appId)` closes every
+  window of an app (the interim `Quit`, since the private protocol has no
+  app-level quit).
+- **Dock popover overlay surface** (`ShellProtocol::createDockPopupSurface`).
+  A second `overlay` layer surface, namespace `dock-popup`, anchored
+  `bottom|left`, `exclusive_zone = -1`, keyboard `none`, placed with a bottom
+  margin via `setDockPopupGeometry(x, bottomMargin, w, h)`. Pointer events on
+  it are routed through new `dockPopupPointer*` signals.
+- **Popover rendering** (`ShellController::renderDock`). The shell reads the
+  Dock scene's `popoverRect`, grows the offscreen window upward by the
+  popover's headroom, pushes the Dock item down by that offset so scene y=0
+  stays the surface top, commits the bar from `(0, headroom, w, m_dockHeight)`
+  and the popover from `(px, headroom+py, pw, ph)`. Popover-local pointer
+  coordinates are translated back into scene coordinates (plus the headroom)
+  before they reach the offscreen window. A 16 ms `m_dockPopupTimer` burst
+  captures the open/close fade (the durable FR-14 path is still deferred).
+- **Dock presentation** (`shell/dock/Dock.qml`, new `DockWindowChooser.qml`).
+  A right-click opens a design-system `ContextMenu` above the entry (beside it
+  on a vertical Dock), with the live window list (checkmark on frontmost,
+  "(minimized)" and the Space name), Show All Windows, Keep/Remove from Dock,
+  Quit, and Open. A plain click on a running app with more than one window
+  opens the window chooser (a custom popover with a downward arrow) instead of
+  activating; one window activates directly. Both popovers suppress
+  magnification (section 14), dismiss on Escape / empty-Dock click, and expose
+  the popover rectangle the shell renders. `menuActionRequested(action,
+  payload)` and `windowActivated(windowId)` drive the shell.
+- **Build/tests.** `tst_dock` gains 8 cases (menu open + magnification
+  suppression, menu model content, Keep vs Remove, window-activation action,
+  multi-window click opens the chooser, single-window click does not, chooser
+  accessible names, click-away dismiss). `tst_dockcore` asserts the pin merge
+  preserves `windowList`. `shell_protocol_conformance` gains
+  `dock_popup_is_bottom_anchored_and_reserves_nothing` (bottom|left anchor,
+  bottom margin, no reserved-zone growth, popover-local pointer coordinates on
+  the 1280x720 headless output).
+
+### Gotchas learned (important for the next slice)
+
+- **A 64-bit window handle cannot round-trip through QML as a number.** JS
+  numbers are doubles, so pointer values above 2^53 lose precision. The
+  projection carries `windowId` as a decimal string and the shell parses it
+  back with `toULongLong`.
+- **A bottom-anchored popover is placed with a bottom margin, not a top one.**
+  The Dock popup surface anchors `bottom|left` and the shell computes
+  `bottomMargin = m_dockHeight - (sceneY + height)`, so it never needs the
+  output height. The existing menu-bar popup anchors `top|left` and uses the
+  top margin.
+- **Growing the offscreen Dock scene upward needs an item offset.** The window
+  is `m_dockHeight + headroom` tall and the Dock item is placed at
+  `y = headroom`; the Dock surface commit takes the bottom `m_dockHeight`
+  rows. Every pointer event delivered on the Dock surface must add `headroom`
+  to reach window coordinates, or hover/hit-testing is off by the popover
+  height whenever a popover is open.
+- **`popoverRect` must key on `open || visible`, not `visible` alone.** The
+  `ContextMenu`/chooser fade in from opacity 0 (`visible: opacity > 0`), so a
+  `visible`-only rect is empty on the first frame and the shell would never
+  map the overlay surface; `open` keeps the rect valid while the fade plays
+  and `visible` covers the close tail.
+- **`df_toplevel_manager.select_overview_toplevel` already does the whole
+  selection.** `activate_window_id` restores a minimized window, activates its
+  Space, and sets keyboard focus, so the chooser needs no separate
+  `unminimize`/`activate_workspace` calls.
+- **`onManagerFocused` now calls `emitDockState()`.** Previously it only
+  emitted `focusedAppChanged`; the chooser's frontmost checkmark needs the
+  focus change in the projection.
+- **The divider menu and the Trash menu are not implemented.** The divider
+  Control-click still logs; its toggles write settings, so they belong with
+  the live-settings slice. `Options ▸`, Show in Files, Empty Trash, and the
+  Downloads stack remain deferred.
+- **`Quit` closes every window of the app.** There is no app-level quit in the
+  private protocol; a process that outlives its last window would survive
+  (the same window-vs-process caveat as section 4.1).
+
+### Hand-off / open items (remaining T-10 slices)
+
+1. **Drag rearrangement and external drops** (section 12): reorder pinned
+   (`DockPins::move` already exists), promote-to-pinned, remove-from-Dock,
+   file/app drops, live gap animation. `windowList`/`desktopId` are on every
+   entry now.
+2. **Trash** (section 16): GVfs `trash://` `GFileMonitor`, click-to-Files
+   (`org.dragonfruit.Files1`), drop-to-trash via GIO, Empty Trash with
+   confirmation, and the Trash context menu (the Dock popup surface now
+   exists).
+3. **Live `dock.*` settings** (section 19): observe settingsd keys (T-15),
+   live re-layout, the divider menu toggles (magnification, hiding, position),
+   position/auto-hide surface changes, T-16 pane hooks, and binding
+   `Theme.reducedMotion` to the accessibility setting.
+4. **Divider and Trash context menus + Options submenu** (section 13): the
+   divider menu (Turn Magnification/Hiding On/Off, Position, Dock Settings…)
+   and the app Options submenu (Assign To, Open at Login, Show in Files).
+5. **Per-output / per-position surfaces**: left/right reserved zones need the
+   compositor `LayerSurfaceState::reserved()` extension; per-output sizing is
+   the known T-09/T-11/T-16 limitation. The Dock popup surface would need its
+   own anchor for a left/right Dock.
+6. **Scene-graph render path** (FR-14): the Dock still commits on demand via
+   `grabWindow`; the durable `QQuickWindow::afterRendering` fix is shared with
+   the T-09 deferred-polish backlog and should replace the bounce and popover
+   timers.
+7. **Keyboard + AT-SPI walkthrough** (section 20): Fn-Control-F3 focus, arrow
+   navigation, Super+Option+D; the QML roles exist, the seat path and the live
+   AT-SPI dump are not built.
+
+### Gate status
+
+`make lint` green (`cargo fmt --check`, `clippy -D warnings`, ctest 13/13 incl.
+`tst_dockcore`/`tst_dock`/`qmllint_shell-dock`, `gen-tokens --check`, the
+design-token/desktop-name/no-capture gates, the 66-snapshot gallery
+regression); `make e2e` green (16/16 `shell_protocol_conformance` plus the
+window/Xwayland/idle suites); live headless smoke
+(`dragonfruit dev --headless --shell`) reports `Dock configured 1280x95` and
+`output reserved zone edge=1 thickness=60` with the `dock-popup` overlay
+surface created cleanly.
+

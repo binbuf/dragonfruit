@@ -69,6 +69,23 @@ public:
     // on its edge and never takes keyboard focus.
     bool createDockSurface(int height, int exclusiveZone);
 
+    // Create the Dock's transient `overlay` layer surface (T-10 context menus
+    // and the window chooser). Anchored to the Dock's edge (bottom|left for a
+    // bottom Dock) so it can be placed with a bottom margin, reserves nothing
+    // (`exclusive_zone = -1`), and starts unmapped.
+    bool createDockPopupSurface();
+
+    // Place the Dock popup at `(x, bottomMargin)` in output coordinates: `x`
+    // is the left edge, `bottomMargin` the distance from the output's bottom
+    // edge. The compositor answers with a fresh `dockPopupConfigured`.
+    bool setDockPopupGeometry(int x, int bottomMargin, int width, int height);
+
+    // Attach `image` to the Dock popup surface and commit.
+    bool commitDockPopupImage(const QImage &image);
+
+    // Unmap the Dock popup surface (attach a null buffer).
+    bool hideDockPopup();
+
     // Attach `image` to the Dock surface and commit. The image must be
     // ARGB32(_Premultiplied).
     bool commitDockImage(const QImage &image);
@@ -91,6 +108,20 @@ public:
     // app's most recent window, switches to its Space, and restores it.
     void activateApp(const QString &appId);
 
+    // Window-level activation for the Dock window chooser (T-10 FR-5): the
+    // compositor restores the window if minimized, switches to its Space, and
+    // focuses it (`select_overview_toplevel` semantics). `windowId` is the
+    // opaque handle string the Dock projection carries.
+    void selectToplevel(const QString &windowId);
+
+    // Close one window (the chooser/menu `Quit` closes every window of an
+    // app; `df_toplevel.close` is per-window).
+    void closeToplevel(const QString &windowId);
+
+    // Close every window of `appId` (the interim `Quit` action, T-10 section
+    // 13). The compositor does not expose an app-level quit.
+    void closeApp(const QString &appId);
+
     // The compositor connection fd, for the Qt event-loop notifier.
     int displayFd() const;
 
@@ -107,6 +138,7 @@ signals:
     void configured(int width, int height, uint32_t serial);
     void popupConfigured(int width, int height, uint32_t serial);
     void dockConfigured(int width, int height, uint32_t serial);
+    void dockPopupConfigured(int width, int height, uint32_t serial);
     void surfaceClosed();
     void focusedAppChanged(const QString &appId, const QString &title);
     // xdg-activation attention for an app's toplevel (T-10 FR-4): the Dock
@@ -123,6 +155,11 @@ signals:
     void dockPointerMoved(qreal x, qreal y);
     void dockPointerButton(qreal x, qreal y, uint32_t button, bool pressed);
     void dockPointerLeft();
+    // Dock popover input, in popover-local coordinates; the shell controller
+    // translates it into the Dock scene before forwarding.
+    void dockPopupPointerMoved(qreal x, qreal y);
+    void dockPopupPointerButton(qreal x, qreal y, uint32_t button, bool pressed);
+    void dockPopupPointerLeft();
     void keyboardFocused(bool focused);
     void keyEvent(uint32_t key, bool pressed);
 
@@ -133,6 +170,17 @@ private:
         // df_toplevel.state bitfield (minimized=1, zoomed=2, fullscreen=4,
         // focused=8); the Dock uses minimized.
         uint32_t state = 0;
+        // Stable handle the shell uses to address this window in the Dock's
+        // window chooser/menus (the `df_toplevel` pointer as an integer).
+        quintptr windowId = 0;
+        // The Space the window currently lives on, resolved to an index/name
+        // for the chooser's row label.
+        df_workspace *workspace = nullptr;
+    };
+
+    struct WorkspaceInfo {
+        int index = -1;
+        QString name;
     };
 
     void bindTrustedGlobals();
@@ -140,6 +188,8 @@ private:
     bool fail(const QString &message);
     // Rebuild the Dock's running-app projection and emit `dockStateChanged`.
     void emitDockState();
+    // Resolve a window handle back to its `df_toplevel` (null when gone).
+    df_toplevel *toplevelForId(quintptr windowId) const;
     // Attach `image` to `surface` as a fresh shm buffer and commit it.
     bool commitTo(wl_surface *surface, const QImage &image);
 
@@ -155,6 +205,8 @@ private:
                                  int32_t width, int32_t height);
     static void onDockConfigure(void *data, df_layer_surface *layer, uint32_t serial,
                                 int32_t width, int32_t height);
+    static void onDockPopupConfigure(void *data, df_layer_surface *layer, uint32_t serial,
+                                     int32_t width, int32_t height);
     static void onLayerClosed(void *data, df_layer_surface *layer);
     static void onSeatCapabilities(void *data, wl_seat *seat, uint32_t capabilities);
     static void onSeatName(void *data, wl_seat *seat, const char *name);
@@ -248,6 +300,10 @@ private:
     wl_surface *m_dockSurface = nullptr;
     df_layer_surface *m_dockLayer = nullptr;
     bool m_dockMapped = false;
+    // The Dock's transient popover surface (context menus, window chooser).
+    wl_surface *m_dockPopupSurface = nullptr;
+    df_layer_surface *m_dockPopupLayer = nullptr;
+    bool m_dockPopupMapped = false;
     // Window-space origin of the popup surface, used to translate pointer
     // coordinates delivered relative to the popup into window coordinates.
     int m_popupX = 0;
@@ -259,6 +315,9 @@ private:
     // True while the pointer is over the Dock surface; its coordinates are
     // already Dock-window-local.
     bool m_pointerOnDock = false;
+    // True while the pointer is over the Dock popover; its coordinates are
+    // popover-local and translated by the shell controller.
+    bool m_pointerOnDockPopup = false;
     wl_seat *m_seat = nullptr;
     wl_pointer *m_pointer = nullptr;
     wl_keyboard *m_keyboard = nullptr;
@@ -281,6 +340,13 @@ private:
     QString m_error;
 
     QHash<df_toplevel *, ToplevelInfo> m_toplevels;
+    // Announcement order (oldest first) so the Dock can present windows
+    // most-recent-first; the compositor does not expose its recency to us.
+    QList<df_toplevel *> m_toplevelOrder;
+    // Stable window handle -> toplevel, for the Dock window chooser.
+    QHash<quintptr, df_toplevel *> m_toplevelById;
+    // Announced Spaces, resolved to an index/name for chooser row labels.
+    QHash<df_workspace *, WorkspaceInfo> m_workspaces;
     df_toplevel *m_focused = nullptr;
     QSet<wl_buffer *> m_buffers;
 };
