@@ -189,6 +189,17 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     const int fd = m_protocol->displayFd();
     m_notifier = new QSocketNotifier(fd, QSocketNotifier::Read, this);
     connect(m_notifier, &QSocketNotifier::activated, this, [this]() { m_protocol->dispatch(); });
+
+    // The offscreen window hands active focus to the first focusable menu
+    // title when it is shown, which draws that title's FocusRing as if the
+    // bar were keyboard-focused. Clear it so the launch state is neutral; a
+    // menu popup takes focus itself when it opens.
+    QTimer::singleShot(0, this, [this]() {
+        if (m_window) {
+            if (QQuickItem *focused = m_window->activeFocusItem())
+                focused->setFocus(false);
+        }
+    });
     return true;
 }
 
