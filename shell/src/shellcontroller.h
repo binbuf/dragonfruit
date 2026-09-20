@@ -59,6 +59,7 @@ private slots:
     void onDockDividerContextMenu(qreal x, qreal y);
     void onDockEntryMenuAction(const QString &action, const QVariant &payload);
     void onDockWindowActivated(const QString &windowId);
+    void onDockPinnedOrderChanged(const QVariant &desktopIds);
     void onDockPopoverChanged();
     void onDockPointerMoved(qreal x, qreal y);
     void onDockPointerButton(qreal x, qreal y, quint32 button, bool pressed);

@@ -334,6 +334,33 @@ private slots:
                  QStringLiteral("temporary"));
     }
 
+    void mergeTemporaryCarriesDesktopIdForPromotion()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString apps = makeAppDir(dir);
+        writeFile(apps + QStringLiteral("/org.example.Terminal.desktop"),
+                  QStringLiteral("[Desktop Entry]\nName=Terminal\nExec=term\n"));
+
+        DesktopEntryIndex index;
+        index.scan({apps});
+        const QVariantList running{
+            QVariantMap{{QStringLiteral("id"), QStringLiteral("term")},
+                        {QStringLiteral("appId"), QStringLiteral("org.example.Terminal")},
+                        {QStringLiteral("name"), QStringLiteral("Terminal")},
+                        {QStringLiteral("kind"), QStringLiteral("temporary")},
+                        {QStringLiteral("running"), true},
+                        {QStringLiteral("windows"), 1}},
+        };
+        const QVariantList entries =
+            buildDockEntries({}, index, running, QHash<QString, QString>());
+        QCOMPARE(entries.size(), 1);
+        const QVariantMap entry = entries.at(0).toMap();
+        // The drag "Keep in Dock" promotion needs the resolved desktop id.
+        QCOMPARE(entry.value(QStringLiteral("desktopId")).toString(),
+                 QStringLiteral("org.example.Terminal.desktop"));
+    }
+
     // -- bounce clocks ---------------------------------------------------
 
     void launchBounceIsThreeHopsThenDone()

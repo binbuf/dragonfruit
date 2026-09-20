@@ -259,6 +259,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onDockEntryMenuAction(QString,QVariant)));
     connect(m_dockItem, SIGNAL(windowActivated(QString)), this,
             SLOT(onDockWindowActivated(QString)));
+    connect(m_dockItem, SIGNAL(pinnedOrderChanged(QVariant)), this,
+            SLOT(onDockPinnedOrderChanged(QVariant)));
     connect(m_dockItem, SIGNAL(popoverChanged()), this, SLOT(onDockPopoverChanged()));
     // The running projection may have arrived before the Dock scene existed.
     rebuildDockEntries();
@@ -926,6 +928,23 @@ void ShellController::onDockWindowActivated(const QString &windowId)
 {
     m_protocol->selectToplevel(windowId);
     scheduleDockRender();
+}
+
+void ShellController::onDockPinnedOrderChanged(const QVariant &desktopIds)
+{
+    // A drag finished: reorder, promote ("Keep in Dock"), or remove. The Dock
+    // sends the complete ordered pinned set (T-10 section 12, FR-9).
+    QStringList ids;
+    const QVariantList list = desktopIds.toList();
+    for (const QVariant &value : list) {
+        const QString id = value.toString();
+        if (!id.isEmpty() && !ids.contains(id))
+            ids.append(id);
+    }
+    m_pins.setIds(ids);
+    if (!m_pins.save())
+        qWarning() << "shell: cannot save Dock pins:" << m_pins.lastError();
+    rebuildDockEntries();
 }
 
 void ShellController::onDockPopoverChanged()
