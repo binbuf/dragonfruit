@@ -39,18 +39,17 @@ Item {
             ];
         case "chevron-down":
             return [
-                { x: s * 0.36, y: s * 0.46, w: s * 0.34, h: t, a: 45 },
-                { x: s * 0.64, y: s * 0.46, w: s * 0.34, h: t, a: -45 }
+                { x: s * 0.40, y: s * 0.52, w: s * 0.40, h: t, a: 45 },
+                { x: s * 0.60, y: s * 0.52, w: s * 0.40, h: t, a: -45 }
             ];
         case "chevron-right":
             return [
-                { x: s * 0.44, y: s * 0.34, w: s * 0.34, h: t, a: 45 },
-                { x: s * 0.44, y: s * 0.66, w: s * 0.34, h: t, a: -45 }
+                { x: s * 0.52, y: s * 0.40, w: s * 0.40, h: t, a: 45 },
+                { x: s * 0.52, y: s * 0.60, w: s * 0.40, h: t, a: -45 }
             ];
         case "search":
             return [
-                { x: s * 0.44, y: s * 0.44, w: s * 0.46, h: t, a: 45 },
-                { x: s * 0.44, y: s * 0.44, w: t, h: s * 0.46, a: 0 }
+                { x: s * 0.67, y: s * 0.67, w: s * 0.32, h: t, a: 45 }
             ];
         default:
             return [];
@@ -76,7 +75,7 @@ Item {
     // A ring for the search glyph; kept separate so the bars stay simple.
     Rectangle {
         visible: root.name === "search"
-        width: root.size * 0.52
+        width: root.size * 0.44
         height: width
         radius: width / 2
         x: root.size * 0.20
