@@ -323,6 +323,34 @@ private slots:
         QCOMPARE(entries.at(0).toMap().value(QStringLiteral("kind")).toString(),
                  QStringLiteral("temporary"));
     }
+
+    // -- bounce clocks ---------------------------------------------------
+
+    void launchBounceIsThreeHopsThenDone()
+    {
+        // Hop phase 0 at the start and at each hop boundary, peak mid-hop.
+        QCOMPARE(dockLaunchBouncePhase(0), 0.0);
+        QVERIFY(qAbs(dockLaunchBouncePhase(100) - 0.5) < 1e-9);
+        QCOMPARE(dockLaunchBouncePhase(200), 0.0);
+        QVERIFY(dockLaunchBouncePhase(300) > 0.4);
+        // The third hop ends exactly at the total duration.
+        QCOMPARE(dockLaunchBouncePhase(kLaunchBounceMs), -1.0);
+        QCOMPARE(dockLaunchBouncePhase(kLaunchBounceMs + 100), -1.0);
+        // A negative clock is never a valid bounce.
+        QCOMPARE(dockLaunchBouncePhase(-1), -1.0);
+    }
+
+    void attentionBounceRepeats()
+    {
+        QCOMPARE(dockAttentionBouncePhase(0), 0.0);
+        // The hop phase peaks at the half-period; the caller's sin(pi*phase)
+        // turns that into the full attention amplitude.
+        QVERIFY(qAbs(dockAttentionBouncePhase(kAttentionBounceHopMs / 2) - 0.5) < 1e-9);
+        // One full period wraps back to the start of the next hop.
+        QCOMPARE(dockAttentionBouncePhase(kAttentionBounceHopMs), 0.0);
+        QVERIFY(qAbs(dockAttentionBouncePhase(kAttentionBounceHopMs + kAttentionBounceHopMs / 2)
+                     - 0.5) < 1e-9);
+    }
 };
 
 QTEST_GUILESS_MAIN(TestDockCore)

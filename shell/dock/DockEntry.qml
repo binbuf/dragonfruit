@@ -34,6 +34,10 @@ Item {
     readonly property bool launching: entry.launch === "launching"
     readonly property bool failed: entry.launch === "failed"
     readonly property bool missing: entry.missing === true
+    // The shell-driven hop phase (0..1), -1 when the entry is not bouncing
+    // (T-10 section 8.1). The Dock owns the translation; this is only for
+    // the reduced-motion pulse.
+    readonly property real bounce: entry.bounce !== undefined ? entry.bounce : -1
 
     readonly property bool verticalIndicator:
         indicatorEdge === "left" || indicatorEdge === "right"
@@ -54,15 +58,25 @@ Item {
     // Scale only the artwork on press so the indicator stays put; the
     // design-system pressed state (motion.hover).
     readonly property real pressedScale: pressed && !dragging ? 0.9 : 1.0
+    // Under reduced motion the bounce translation is removed and the state
+    // change stays legible as a subtle scale pulse (T-10 section 20).
+    readonly property real pulseScale:
+        Theme.reducedMotion && bounce >= 0
+            ? 1 + 0.05 * Math.sin(Math.PI * bounce) : 1.0
 
     // The accessibility state, carrying launch and identity failures (T-10
     // section 20).
-    readonly property string stateLabel:
-        isTrash ? ""
-        : missing ? qsTr(", not found")
-        : launching ? qsTr(", launching")
-        : failed ? qsTr(", failed to launch")
-        : running ? qsTr(", running") : qsTr(", not running")
+    readonly property string stateLabel: {
+        if (isTrash)
+            return "";
+        var label = missing ? qsTr(", not found")
+                  : launching ? qsTr(", launching")
+                  : failed ? qsTr(", failed to launch")
+                  : running ? qsTr(", running") : qsTr(", not running");
+        if (attention && !missing && !launching)
+            label += qsTr(", needs attention");
+        return label;
+    }
 
     Accessible.role: isDivider ? Accessible.Separator : Accessible.ListItem
     Accessible.name: isDivider ? qsTr("Dock separator")
@@ -106,7 +120,7 @@ Item {
         size: root.iconSize
         x: root.artworkX
         y: root.artworkY
-        scale: root.pressedScale
+        scale: root.pressedScale * root.pulseScale
         transformOrigin: Item.Center
         opacity: root.launching ? 0.6 : root.missing ? 0.45 : 1.0
 

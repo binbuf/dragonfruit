@@ -26,6 +26,22 @@ QString displayNameForIdentity(const QString &identity)
     return dot >= 0 ? id.mid(dot + 1) : id;
 }
 
+double dockLaunchBouncePhase(qint64 elapsedMs)
+{
+    if (elapsedMs < 0 || elapsedMs >= kLaunchBounceMs)
+        return -1.0;
+    const qint64 hop = kLaunchBounceMs / 3;
+    return static_cast<double>(elapsedMs % hop) / static_cast<double>(hop);
+}
+
+double dockAttentionBouncePhase(qint64 elapsedMs)
+{
+    if (elapsedMs < 0)
+        return 0.0;
+    return static_cast<double>(elapsedMs % kAttentionBounceHopMs)
+           / static_cast<double>(kAttentionBounceHopMs);
+}
+
 QVariantList buildDockEntries(const QStringList &pinnedIds, const DesktopEntryIndex &index,
                               const QVariantList &running,
                               const QHash<QString, QString> &launchStates)

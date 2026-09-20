@@ -310,15 +310,17 @@ bool ShellProtocol::commitDockImage(const QImage &image)
     return true;
 }
 
-bool ShellProtocol::setDockInputRegion(int x, int y, int width, int height)
+bool ShellProtocol::setDockInputRegion(const QList<QRect> &rects)
 {
     if (!m_dockSurface || !m_compositor)
         return false;
     wl_region *region = wl_compositor_create_region(m_compositor);
     if (!region)
         return false;
-    if (width > 0 && height > 0)
-        wl_region_add(region, x, y, width, height);
+    for (const QRect &rect : rects) {
+        if (rect.width() > 0 && rect.height() > 0)
+            wl_region_add(region, rect.x(), rect.y(), rect.width(), rect.height());
+    }
     // An empty region passes every click through (the hidden Dock and the
     // transparent magnified band; T-10 FR-13).
     wl_surface_set_input_region(m_dockSurface, region);
@@ -719,8 +721,17 @@ void ShellProtocol::onManagerFocused(void *data, df_toplevel_manager *, df_tople
     emit self->focusedAppChanged(info.appId, info.title);
 }
 
-void ShellProtocol::onManagerAttention(void *, df_toplevel_manager *, df_toplevel *)
+void ShellProtocol::onManagerAttention(void *data, df_toplevel_manager *, df_toplevel *id)
 {
+    auto *self = static_cast<ShellProtocol *>(data);
+    if (!id)
+        return;
+    // The attention event carries the toplevel; the Dock keys on the app
+    // identity (T-10 section 8.1). An id whose app_id has not arrived yet is
+    // ignored rather than crashing.
+    const ToplevelInfo info = self->m_toplevels.value(id);
+    if (!info.appId.isEmpty())
+        emit self->attentionRequested(info.appId);
 }
 
 void ShellProtocol::onManagerHotCorner(void *, df_toplevel_manager *, uint32_t, const char *)

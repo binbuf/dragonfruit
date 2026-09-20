@@ -216,6 +216,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             &ShellController::onDockPointerButton);
     connect(m_protocol, &ShellProtocol::dockPointerLeft, this,
             &ShellController::onDockPointerLeft);
+    connect(m_protocol, &ShellProtocol::attentionRequested, this,
+            &ShellController::onDockAttention);
 
     applyStatusItems();
     applyFocusedApp();
@@ -280,6 +282,14 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     m_launchTimer = new QTimer(this);
     m_launchTimer->setInterval(500);
     connect(m_launchTimer, &QTimer::timeout, this, &ShellController::onDockLaunchTick);
+
+    // Dock animation clock (T-10 section 8.1): 16 ms while a launch or
+    // attention bounce is in flight, stopped otherwise so the idle Dock
+    // contributes zero wakeups (FR-8). The durable scene-graph render path
+    // (FR-14) replaces the on-demand grab later.
+    m_dockAnimTimer = new QTimer(this);
+    m_dockAnimTimer->setInterval(16);
+    connect(m_dockAnimTimer, &QTimer::timeout, this, &ShellController::onDockAnimationTick);
 
     const int fd = m_protocol->displayFd();
     m_notifier = new QSocketNotifier(fd, QSocketNotifier::Read, this);
@@ -387,6 +397,8 @@ void ShellController::onFocusedAppChanged(const QString &appId, const QString &t
 {
     m_appId = appId;
     m_appTitle = title;
+    // FR-4: attention stops when the app's window gains focus.
+    clearAttention(appId);
     applyFocusedApp();
     render();
 }
@@ -594,15 +606,88 @@ void ShellController::rebuildDockEntries()
     if (!m_dockItem)
         return;
     m_dockItem->setProperty("entries",
-                            buildDockEntries(m_pins.ids(), m_index, m_runningEntries,
-                                             m_launchStates));
+                            withBounce(buildDockEntries(m_pins.ids(), m_index, m_runningEntries,
+                                                        m_launchStates)));
     scheduleDockRender();
+}
+
+QVariantList ShellController::withBounce(QVariantList entries) const
+{
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    for (QVariant &value : entries) {
+        QVariantMap map = value.toMap();
+        double phase = -1.0;
+        const QString appId = map.value(QStringLiteral("appId")).toString();
+        const QString desktopId = map.value(QStringLiteral("desktopId")).toString();
+        if (!appId.isEmpty() && now < m_attentionUntil.value(appId)) {
+            // Attention bounce wins over a launch bounce for the same entry
+            // and is taller/repeating (FR-4).
+            map.insert(QStringLiteral("attention"), true);
+            phase = dockAttentionBouncePhase(now - m_attentionStart.value(appId));
+        } else if (!desktopId.isEmpty() && m_launchStart.contains(desktopId)) {
+            phase = dockLaunchBouncePhase(now - m_launchStart.value(desktopId));
+        }
+        if (phase >= 0.0)
+            map.insert(QStringLiteral("bounce"), phase);
+        value = map;
+    }
+    return entries;
+}
+
+void ShellController::ensureDockAnimation()
+{
+    if (m_dockAnimTimer && !m_dockAnimTimer->isActive())
+        m_dockAnimTimer->start();
+}
+
+void ShellController::clearAttention(const QString &appId)
+{
+    if (appId.isEmpty() || !m_attentionUntil.contains(appId))
+        return;
+    m_attentionUntil.remove(appId);
+    m_attentionStart.remove(appId);
+    rebuildDockEntries();
+}
+
+void ShellController::onDockAttention(const QString &appId)
+{
+    if (appId.isEmpty())
+        return;
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    m_attentionStart.insert(appId, now);
+    m_attentionUntil.insert(appId, now + kAttentionBounceMs);
+    ensureDockAnimation();
+    rebuildDockEntries();
+}
+
+void ShellController::onDockAnimationTick()
+{
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    for (auto it = m_attentionUntil.begin(); it != m_attentionUntil.end();) {
+        if (it.value() <= now) {
+            m_attentionStart.remove(it.key());
+            it = m_attentionUntil.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    for (auto it = m_launchStart.begin(); it != m_launchStart.end();) {
+        if (now - it.value() >= kLaunchBounceMs)
+            it = m_launchStart.erase(it);
+        else
+            ++it;
+    }
+    rebuildDockEntries();
+    if (m_attentionUntil.isEmpty() && m_launchStart.isEmpty() && m_dockAnimTimer)
+        m_dockAnimTimer->stop();
 }
 
 void ShellController::onDockEntryActivated(const QVariant &entry)
 {
     const QVariantMap map = entry.toMap();
     const QString kind = map.value(QStringLiteral("kind")).toString();
+    // FR-4: clicking the entry stops its attention bounce.
+    clearAttention(map.value(QStringLiteral("appId")).toString());
     if (kind == QLatin1String("trash")) {
         // Opening Trash in Files is T-18; the entry point is wired.
         qInfo() << "shell: Dock Trash activated (T-18 opens Trash)";
@@ -660,9 +745,11 @@ void ShellController::launchDockApp(const QString &desktopId)
     }
     qInfo() << "shell: Dock launched" << entry.name << "pid" << pid;
     m_launchStates.insert(desktopId, QStringLiteral("launching"));
+    m_launchStart.insert(desktopId, QDateTime::currentMSecsSinceEpoch());
     m_launchDeadlines.insert(desktopId, QDateTime::currentMSecsSinceEpoch() + kLaunchTimeoutMs);
     if (m_launchTimer && !m_launchTimer->isActive())
         m_launchTimer->start();
+    ensureDockAnimation();
     rebuildDockEntries();
 }
 
@@ -784,13 +871,19 @@ void ShellController::renderDock()
     if (!m_dockWindow->isVisible())
         m_dockWindow->show();
     const QImage image = m_dockWindow->grabWindow();
-    // The input region is the visible bar slab only; the transparent
-    // magnified band and the hidden Dock pass clicks through (FR-13).
-    const QVariantMap bar = m_dockItem->property("barRect").toMap();
-    m_protocol->setDockInputRegion(bar.value(QStringLiteral("x")).toInt(),
-                                   bar.value(QStringLiteral("y")).toInt(),
-                                   bar.value(QStringLiteral("w")).toInt(),
-                                   bar.value(QStringLiteral("h")).toInt());
+    // The input region is the visible bar plus the currently magnified or
+    // bouncing icon rectangles; the transparent magnified band and the hidden
+    // Dock pass clicks through (FR-13).
+    QList<QRect> inputRects;
+    const QVariantList rawRects = m_dockItem->property("inputRects").toList();
+    for (const QVariant &value : rawRects) {
+        const QVariantMap rect = value.toMap();
+        inputRects.append(QRect(qFloor(rect.value(QStringLiteral("x")).toReal()),
+                                qFloor(rect.value(QStringLiteral("y")).toReal()),
+                                qCeil(rect.value(QStringLiteral("w")).toReal()),
+                                qCeil(rect.value(QStringLiteral("h")).toReal())));
+    }
+    m_protocol->setDockInputRegion(inputRects);
     if (!m_protocol->commitDockImage(image.copy(0, 0, m_dockWidth, m_dockHeight)))
         qWarning() << "shell: failed to commit the Dock:" << m_protocol->lastError();
 }

@@ -161,6 +161,22 @@ Rectangle {
         return gap * (a + b) / (2 * iconSize);
     }
 
+    // The launch/attention bounce translation for an entry (T-10 section
+    // 8.1): a sinusoidal hop whose phase the shell drives from the
+    // compositor-clock launch/attention clocks. Attention is taller than a
+    // launch; reduced motion removes the translation and leaves the state
+    // legible through the entry's own indicator/label.
+    function entryBounce(entry) {
+        if (Theme.reducedMotion)
+            return 0;
+        var phase = entry.bounce;
+        if (phase === undefined || phase < 0)
+            return 0;
+        var amplitude = entry.attention === true ? barThickness / 2
+                                                 : barThickness / 4;
+        return amplitude * Math.sin(Math.PI * phase);
+    }
+
     // --- Per-frame layout ------------------------------------------------
     readonly property var layout: {
         var list = items;
@@ -202,19 +218,22 @@ Rectangle {
         for (var j = 0; j < n; ++j) {
             var isDivider = list[j].kind === "divider";
             var extra = isDivider ? 0 : indicatorSpace(list[j]);
+            var bounce = isDivider ? 0 : entryBounce(list[j]);
             if (axisIsX) {
                 var h = sizes[j] + extra;
                 out.push({
                     x: positions[j],
-                    y: band + barThickness - padding - h - hideOffset,
+                    y: band + barThickness - padding - h - hideOffset - bounce,
                     w: isDivider ? dividerWidth : sizes[j],
                     h: isDivider ? barThickness - 2 * padding : h,
                     iconSize: sizes[j]
                 });
             } else {
                 var w = sizes[j] + extra;
+                var vx = position === "right" ? band + padding - bounce
+                                              : band + padding + bounce;
                 out.push({
-                    x: band + padding,
+                    x: vx,
                     y: positions[j] - hideOffset,
                     w: isDivider ? dividerWidth : w,
                     h: isDivider ? barThickness - 2 * padding : sizes[j],
@@ -242,6 +261,26 @@ Rectangle {
             w: barThickness,
             h: base.total + 2 * padding
         };
+    }
+
+    // The surface input region: the visible bar plus the currently magnified
+    // or bouncing icon rectangles. The transparent magnified band passes
+    // clicks through to the windows beneath, and the hidden Dock is fully
+    // transparent to input (T-10 FR-13). The shell commits this every frame.
+    readonly property var inputRects: {
+        if (autoHide && !revealed)
+            return [];
+        var out = [barRect];
+        var l = layout;
+        for (var i = 0; i < l.length; ++i) {
+            if (items[i].kind === "divider")
+                continue;
+            var magnified = l[i].iconSize > iconSize + 0.5;
+            var bouncing = entryBounce(items[i]) > 0.5;
+            if (magnified || bouncing)
+                out.push({ x: l[i].x, y: l[i].y, w: l[i].w, h: l[i].h });
+        }
+        return out;
     }
 
     // --- Background ------------------------------------------------------

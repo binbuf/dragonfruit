@@ -61,6 +61,8 @@ private slots:
     void onDockPointerButton(qreal x, qreal y, quint32 button, bool pressed);
     void onDockPointerLeft();
     void onDockLaunchTick();
+    void onDockAttention(const QString &appId);
+    void onDockAnimationTick();
 
 private:
     void applyStatusItems();
@@ -70,6 +72,13 @@ private:
     // Rebuild the Dock's ordered entries (pinned + running) and hand them to
     // the QML scene.
     void rebuildDockEntries();
+    // Add the per-entry `bounce` phase (0..1) from the launch/attention
+    // clocks (T-10 section 8.1).
+    QVariantList withBounce(QVariantList entries) const;
+    // Start the 16 ms Dock animation clock if it is not already running.
+    void ensureDockAnimation();
+    // Clear any attention bounce for `appId` (FR-4: stops on click or focus).
+    void clearAttention(const QString &appId);
     // Launch a pinned app through the interim `.desktop` resolver (T-23
     // replaces this). Bounded by a launch timeout; failure raises a notice.
     void launchDockApp(const QString &desktopId);
@@ -99,6 +108,7 @@ private:
     QSocketNotifier *m_notifier = nullptr;
     QTimer *m_animationTimer = nullptr;
     QTimer *m_launchTimer = nullptr;
+    QTimer *m_dockAnimTimer = nullptr;
 
     // Interim app-index stand-in (T-23) and Dock pin persistence (T-15).
     DesktopEntryIndex m_index;
@@ -110,6 +120,12 @@ private:
     QHash<QString, QString> m_launchStates;
     // Pinned desktop id -> deadline (ms since epoch) for the launch timeout.
     QHash<QString, qint64> m_launchDeadlines;
+    // Pinned desktop id -> launch-bounce start (ms since epoch); the bounce
+    // finishes on its own even after the first window resolves the launch.
+    QHash<QString, qint64> m_launchStart;
+    // Compositor app id -> attention-bounce start and deadline (T-10 FR-4).
+    QHash<QString, qint64> m_attentionStart;
+    QHash<QString, qint64> m_attentionUntil;
 
     int m_width = 0;
     int m_height = 0;
