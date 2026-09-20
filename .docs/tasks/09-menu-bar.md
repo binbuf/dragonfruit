@@ -129,6 +129,12 @@ Implemented and verified in this session:
   backend's pre-existing vertical-flip bug (winit/EGL needs
   `Transform::Flipped180`) is fixed. A live nested capture confirms the bar
   renders at the top, correctly oriented.
+- **Status-icon style pass**: original geometry polished to read as a
+  macOS-style family (uniform thin optical stroke, Wi-Fi arcs + dot,
+  Bluetooth rune, outline/fill/nub battery, toggle-pill Control Center),
+  plus the locale short date in the clock. The real macOS screenshots in
+  `.docs/reference/macos/` are a **style reference only** — per
+  [14-risks.md](../design/14-risks.md) we do not copy Apple's SF Symbols.
 - **Dev workflow**: `dragonfruit dev --nested --shell` (and `make dev`)
   launches the shell with the provisioned token and owns it in `ChildGuard`.
 

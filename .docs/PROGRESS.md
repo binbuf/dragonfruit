@@ -1578,3 +1578,56 @@ Notes for subsequent tasks:
   Dock on `bottom` or a wallpaper on `background`, the render list must be
   split so those layers composite *below* the window space instead of
   being skipped or drawn on top.
+
+### T-09 — menu-bar icon style pass + the Canvas grab timing fix
+
+After the first nested capture, the status glyphs were given a visual style
+pass. Decision (maintainer): **original geometry only, polished to read as a
+macOS-style family** — not replicas of Apple's SF Symbols. `.docs/reference/
+macos/` holds real macOS screenshots (the menu-bar status icons are AirDrop,
+Bluetooth, Wi-Fi, battery, Spotlight, date, Control Center). Per
+[14-risks.md](../.docs/design/14-risks.md) ("reproduce the interaction
+quality and mental model, not Apple's bitmap output"; do not ship "Apple
+icons" / "pixel-copied proprietary artwork"), the glyphs stay our own
+geometry. The reference is a style guide only.
+
+What changed in `shell/menubar/StatusGlyph.qml`:
+
+- One uniform optical stroke (`max(1.3, size * 0.10)`), rounded caps/joins.
+- Wi-Fi: three thin arcs + a small filled origin dot.
+- Bluetooth: the rune (spine + two-triangle bowtie) with corrected
+  proportions.
+- Volume: filled speaker cone + thin waves (`volume-muted` adds the X).
+- Battery: **outline cell + nub + rounded level fill** (was a solid block),
+  via a small `roundedRect` path helper.
+- Control Center: two toggle pills with knobs (was two sliders), matching
+  the macOS Control Center silhouette.
+- Mission Control keeps our own window-grid mark (not a macOS menu-bar item).
+- The clock now shows the locale short **date** as well as the time
+  (`ShellController` sets `showDate`).
+
+### Gotcha: `Canvas` items were blank in the shell's one-shot grab
+
+The status glyphs rendered in `tst_menubar` (via `grabImage`) but were blank
+in the shell. Root cause: the shell renders once on `configure`, and
+`QQuickWindow::grabWindow()` at that moment runs before the `Canvas` items
+have painted; because the shell never rendered again, the compositor kept the
+blank frame. (`tst_menubar` does not hit this because `grabImage` triggers a
+fresh scene-graph render.) Fix: `ShellController::onConfigured` schedules a
+one-shot re-render 200 ms after the first (`QTimer::singleShot`), once the
+event loop has let the Canvases paint. Also added `onWindowChanged`/
+`onVisibleChanged` `requestPaint()` to `StatusGlyph` as a belt-and-braces.
+
+Notes for subsequent tasks:
+
+- **Any shell chrome built with `Canvas` + a one-shot `grabWindow` must
+  re-render after the scene graph has painted.** The Dock (T-10) and OSD
+  (T-25) will hit this if they use `Canvas`. A cleaner long-term fix is to
+  drive the commit from `QQuickWindow::afterRendering` (or a render-control
+  path) instead of a timer; revisit with T-10.
+- **`.docs/reference/macos/` is a style reference, not an asset source.** See
+  the IP rule in 14-risks.md before drawing anything that looks like an Apple
+  icon. The status glyphs are original geometry in `StatusGlyph.qml`.
+- **Date format is the host locale's** (`Qt.locale().dateFormat`); this host
+  renders ISO (`2026-09-19`). If a locale like `Fri Sep 19` is wanted, that is
+  a settingsd/locale concern (T-15), not the shell.
