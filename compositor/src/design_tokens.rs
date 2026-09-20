@@ -247,6 +247,21 @@ pub mod component {
         pub const RADIUS: f32 = 10.0_f32;
         pub const HOVER_RADIUS: f32 = 6.0_f32;
     }
+    pub mod dock {
+        pub const ICON_SIZE: f32 = 48.0_f32;
+        pub const PADDING: f32 = 6.0_f32;
+        pub const GAP: f32 = 6.0_f32;
+        pub const RADIUS: f32 = 14.0_f32;
+        pub const INDICATOR_SIZE: f32 = 4.0_f32;
+        pub const INDICATOR_GAP: f32 = 3.0_f32;
+        pub const MAGNIFY_PEAK: f32 = 1.6_f32;
+        pub const MAGNIFY_FALLOFF: f32 = 3.0_f32;
+        pub const LABEL_SIZE: f32 = 12.0_f32;
+        pub const TRASH_SIZE: f32 = 44.0_f32;
+        pub const EDGE_MARGIN: f32 = 4.0_f32;
+        pub const REVEAL_DELAY: f32 = 120.0_f32;
+        pub const HIDE_DELAY: f32 = 350.0_f32;
+    }
     pub mod context_menu {
         pub const RADIUS: f32 = 14.0_f32;
         pub const PADDING: f32 = 6.0_f32;

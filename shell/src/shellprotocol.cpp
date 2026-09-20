@@ -11,6 +11,8 @@
 #include <cstring>
 #include <utility>
 
+#include <QVariantMap>
+
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <unistd.h>
@@ -37,6 +39,7 @@
 namespace {
 
 constexpr uint32_t kAnchorTop = 1;
+constexpr uint32_t kAnchorBottom = 2;
 constexpr uint32_t kAnchorLeft = 4;
 constexpr uint32_t kAnchorRight = 8;
 
@@ -55,6 +58,17 @@ int createShmFile(size_t size)
         return -1;
     }
     return fd;
+}
+
+// Human-readable fallback name for an unresolved app id. The real name and
+// icon come from app-index (T-23); until then the last reverse-DNS segment
+// is a better Dock label than the raw id.
+QString displayNameForAppId(const QString &appId)
+{
+    if (appId.isEmpty())
+        return QStringLiteral("Unknown");
+    const qsizetype dot = appId.lastIndexOf(QLatin1Char('.'));
+    return dot >= 0 ? appId.mid(dot + 1) : appId;
 }
 
 } // namespace
@@ -256,6 +270,72 @@ bool ShellProtocol::commitImage(const QImage &image)
     return commitTo(m_surface, image);
 }
 
+bool ShellProtocol::createDockSurface(int height, int exclusiveZone)
+{
+    if (!m_shell || !m_compositor)
+        return fail(QStringLiteral("df_shell is not available"));
+
+    m_dockSurface = wl_compositor_create_surface(m_compositor);
+    m_dockLayer = df_shell_get_layer_surface(m_shell, m_dockSurface, nullptr, DF_SHELL_LAYER_TOP,
+                                             "dock");
+    if (!m_dockLayer)
+        return fail(QStringLiteral("compositor refused the Dock layer surface"));
+    static const df_layer_surface_listener dockListener = { onDockConfigure, onLayerClosed };
+    df_layer_surface_add_listener(m_dockLayer, &dockListener, this);
+
+    // Bottom Dock: stretch the full output width, fixed height, reserve the
+    // baseline bar thickness on the bottom edge, and never take keyboard
+    // focus while idle (T-10 section 2).
+    df_layer_surface_set_anchor(m_dockLayer, kAnchorBottom | kAnchorLeft | kAnchorRight);
+    df_layer_surface_set_size(m_dockLayer, 0, height);
+    df_layer_surface_set_exclusive_zone(m_dockLayer, exclusiveZone);
+    df_layer_surface_set_keyboard_interaction(
+        m_dockLayer, DF_LAYER_SURFACE_KEYBOARD_INTERACTION_NONE);
+    // Start unmapped; the first render commits a buffer.
+    wl_surface_attach(m_dockSurface, nullptr, 0, 0);
+    wl_surface_commit(m_dockSurface);
+
+    if (wl_display_roundtrip(m_display) < 0)
+        return fail(QStringLiteral("Dock configure roundtrip failed"));
+    return true;
+}
+
+bool ShellProtocol::commitDockImage(const QImage &image)
+{
+    if (!m_dockSurface)
+        return false;
+    if (!commitTo(m_dockSurface, image))
+        return false;
+    m_dockMapped = true;
+    return true;
+}
+
+bool ShellProtocol::setDockInputRegion(int x, int y, int width, int height)
+{
+    if (!m_dockSurface || !m_compositor)
+        return false;
+    wl_region *region = wl_compositor_create_region(m_compositor);
+    if (!region)
+        return false;
+    if (width > 0 && height > 0)
+        wl_region_add(region, x, y, width, height);
+    // An empty region passes every click through (the hidden Dock and the
+    // transparent magnified band; T-10 FR-13).
+    wl_surface_set_input_region(m_dockSurface, region);
+    wl_region_destroy(region);
+    return true;
+}
+
+void ShellProtocol::activateApp(const QString &appId)
+{
+    if (!m_manager)
+        return;
+    const QByteArray id = appId.toUtf8();
+    df_toplevel_manager_activate_app(m_manager, id.constData());
+    if (m_display)
+        wl_display_flush(m_display);
+}
+
 bool ShellProtocol::commitTo(wl_surface *surface, const QImage &image)
 {
     if (!surface || !m_shm)
@@ -335,6 +415,10 @@ void ShellProtocol::teardown()
     for (wl_buffer *buffer : std::as_const(m_buffers))
         wl_buffer_destroy(buffer);
     m_buffers.clear();
+    if (m_dockLayer)
+        df_layer_surface_destroy(m_dockLayer);
+    if (m_dockSurface)
+        wl_surface_destroy(m_dockSurface);
     if (m_popupLayer)
         df_layer_surface_destroy(m_popupLayer);
     if (m_popupSurface)
@@ -371,6 +455,9 @@ void ShellProtocol::teardown()
     m_popupLayer = nullptr;
     m_popupSurface = nullptr;
     m_popupMapped = false;
+    m_dockLayer = nullptr;
+    m_dockSurface = nullptr;
+    m_dockMapped = false;
     m_manager = nullptr;
     m_shell = nullptr;
     m_core = nullptr;
@@ -455,6 +542,15 @@ void ShellProtocol::onPopupConfigure(void *data, df_layer_surface *, uint32_t se
     emit self->popupConfigured(width, height, serial);
 }
 
+void ShellProtocol::onDockConfigure(void *data, df_layer_surface *, uint32_t serial,
+                                    int32_t width, int32_t height)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    if (self->m_dockLayer)
+        df_layer_surface_ack_configure(self->m_dockLayer, serial);
+    emit self->dockConfigured(width, height, serial);
+}
+
 void ShellProtocol::onLayerClosed(void *data, df_layer_surface *)
 {
     auto *self = static_cast<ShellProtocol *>(data);
@@ -492,16 +588,28 @@ void ShellProtocol::onPointerEnter(void *data, wl_pointer *, uint32_t, wl_surfac
 {
     auto *self = static_cast<ShellProtocol *>(data);
     self->m_pointerOnPopup = self->m_popupSurface && surface == self->m_popupSurface;
+    self->m_pointerOnDock = self->m_dockSurface && surface == self->m_dockSurface;
     self->m_pointerX = wl_fixed_to_double(x) + (self->m_pointerOnPopup ? self->m_popupX : 0);
     self->m_pointerY = wl_fixed_to_double(y) + (self->m_pointerOnPopup ? self->m_popupY : 0);
+    if (self->m_pointerOnDock) {
+        self->m_pointerX = wl_fixed_to_double(x);
+        self->m_pointerY = wl_fixed_to_double(y);
+        emit self->dockPointerMoved(self->m_pointerX, self->m_pointerY);
+        return;
+    }
     emit self->pointerMoved(self->m_pointerX, self->m_pointerY);
 }
 
 void ShellProtocol::onPointerLeave(void *data, wl_pointer *, uint32_t, wl_surface *)
 {
     auto *self = static_cast<ShellProtocol *>(data);
+    const bool wasDock = self->m_pointerOnDock;
     self->m_pointerOnPopup = false;
-    emit self->pointerLeft();
+    self->m_pointerOnDock = false;
+    if (wasDock)
+        emit self->dockPointerLeft();
+    else
+        emit self->pointerLeft();
 }
 
 void ShellProtocol::onPointerMotion(void *data, wl_pointer *, uint32_t, wl_fixed_t x,
@@ -510,6 +618,12 @@ void ShellProtocol::onPointerMotion(void *data, wl_pointer *, uint32_t, wl_fixed
     auto *self = static_cast<ShellProtocol *>(data);
     self->m_pointerX = wl_fixed_to_double(x) + (self->m_pointerOnPopup ? self->m_popupX : 0);
     self->m_pointerY = wl_fixed_to_double(y) + (self->m_pointerOnPopup ? self->m_popupY : 0);
+    if (self->m_pointerOnDock) {
+        self->m_pointerX = wl_fixed_to_double(x);
+        self->m_pointerY = wl_fixed_to_double(y);
+        emit self->dockPointerMoved(self->m_pointerX, self->m_pointerY);
+        return;
+    }
     emit self->pointerMoved(self->m_pointerX, self->m_pointerY);
 }
 
@@ -517,6 +631,11 @@ void ShellProtocol::onPointerButton(void *data, wl_pointer *, uint32_t, uint32_t
                                     uint32_t state)
 {
     auto *self = static_cast<ShellProtocol *>(data);
+    if (self->m_pointerOnDock) {
+        emit self->dockPointerButton(self->m_pointerX, self->m_pointerY, button,
+                                     state == WL_POINTER_BUTTON_STATE_PRESSED);
+        return;
+    }
     emit self->pointerButton(self->m_pointerX, self->m_pointerY, button,
                              state == WL_POINTER_BUTTON_STATE_PRESSED);
 }
@@ -589,6 +708,7 @@ void ShellProtocol::onManagerToplevel(void *data, df_toplevel_manager *, df_topl
         onToplevelOutputLeft, onToplevelClosed,     onToplevelDone,
     };
     df_toplevel_add_listener(id, &listener, self);
+    self->emitDockState();
 }
 
 void ShellProtocol::onManagerFocused(void *data, df_toplevel_manager *, df_toplevel *id)
@@ -645,6 +765,7 @@ void ShellProtocol::onToplevelTitle(void *data, df_toplevel *toplevel, const cha
         const ToplevelInfo info = self->m_toplevels.value(toplevel);
         emit self->focusedAppChanged(info.appId, info.title);
     }
+    self->emitDockState();
 }
 
 void ShellProtocol::onToplevelAppId(void *data, df_toplevel *toplevel, const char *appId)
@@ -655,10 +776,14 @@ void ShellProtocol::onToplevelAppId(void *data, df_toplevel *toplevel, const cha
         const ToplevelInfo info = self->m_toplevels.value(toplevel);
         emit self->focusedAppChanged(info.appId, info.title);
     }
+    self->emitDockState();
 }
 
-void ShellProtocol::onToplevelState(void *, df_toplevel *, uint32_t)
+void ShellProtocol::onToplevelState(void *data, df_toplevel *toplevel, uint32_t state)
 {
+    auto *self = static_cast<ShellProtocol *>(data);
+    self->m_toplevels[toplevel].state = state;
+    self->emitDockState();
 }
 
 void ShellProtocol::onToplevelWorkspaceEntered(void *, df_toplevel *, df_workspace *)
@@ -685,10 +810,68 @@ void ShellProtocol::onToplevelClosed(void *data, df_toplevel *toplevel)
         self->m_focused = nullptr;
         emit self->focusedAppChanged(QString(), QString());
     }
+    self->emitDockState();
 }
 
 void ShellProtocol::onToplevelDone(void *, df_toplevel *)
 {
+}
+
+void ShellProtocol::emitDockState()
+{
+    struct AppGroup {
+        QString name;
+        int windows = 0;
+        int minimized = 0;
+    };
+    QHash<QString, AppGroup> groups;
+    QVariantList minimizedEntries;
+
+    for (auto it = m_toplevels.constBegin(); it != m_toplevels.constEnd(); ++it) {
+        const ToplevelInfo &info = it.value();
+        const QString appId = info.appId;
+        const QString key = appId.isEmpty() ? QStringLiteral("__unknown__") : appId;
+        AppGroup &group = groups[key];
+        if (group.name.isEmpty())
+            group.name = displayNameForAppId(appId);
+        group.windows += 1;
+        const bool minimized = (info.state & 0x1u) != 0;
+        if (minimized) {
+            group.minimized += 1;
+            QVariantMap entry;
+            entry.insert(QStringLiteral("id"),
+                         QStringLiteral("win:%1")
+                             .arg(reinterpret_cast<quintptr>(it.key())));
+            entry.insert(QStringLiteral("appId"), appId);
+            entry.insert(QStringLiteral("name"),
+                         info.title.isEmpty() ? group.name : info.title);
+            entry.insert(QStringLiteral("kind"), QStringLiteral("minimized"));
+            entry.insert(QStringLiteral("running"), false);
+            entry.insert(QStringLiteral("minimized"), true);
+            minimizedEntries.append(entry);
+        }
+    }
+
+    QVariantList entries;
+    for (auto it = groups.constBegin(); it != groups.constEnd(); ++it) {
+        QVariantMap entry;
+        entry.insert(QStringLiteral("id"), it.key());
+        entry.insert(QStringLiteral("appId"),
+                     it.key() == QLatin1String("__unknown__") ? QString() : it.key());
+        entry.insert(QStringLiteral("name"), it.value().name);
+        entry.insert(QStringLiteral("kind"), QStringLiteral("temporary"));
+        entry.insert(QStringLiteral("running"), true);
+        entry.insert(QStringLiteral("windows"), it.value().windows);
+        entry.insert(QStringLiteral("minimized"),
+                     it.value().minimized == it.value().windows);
+        entries.append(entry);
+    }
+    std::sort(entries.begin(), entries.end(), [](const QVariant &a, const QVariant &b) {
+        return a.toMap().value(QStringLiteral("name")).toString()
+                < b.toMap().value(QStringLiteral("name")).toString();
+    });
+    entries += minimizedEntries;
+    emit dockStateChanged(entries);
 }
 
 // --- wl_buffer --------------------------------------------------------------

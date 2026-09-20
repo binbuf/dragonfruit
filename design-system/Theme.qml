@@ -255,6 +255,21 @@ QtObject {
             readonly property int radius: 10
             readonly property int hoverRadius: 6
         }
+        readonly property var dock: QtObject {
+            readonly property int iconSize: 48
+            readonly property int padding: 6
+            readonly property int gap: 6
+            readonly property int radius: 14
+            readonly property int indicatorSize: 4
+            readonly property int indicatorGap: 3
+            readonly property real magnifyPeak: 1.6
+            readonly property real magnifyFalloff: 3.0
+            readonly property int labelSize: 12
+            readonly property int trashSize: 44
+            readonly property int edgeMargin: 4
+            readonly property int revealDelay: 120
+            readonly property int hideDelay: 350
+        }
         readonly property var contextMenu: QtObject {
             readonly property int radius: 14
             readonly property int padding: 6

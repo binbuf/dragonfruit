@@ -12,6 +12,7 @@
 #include <QObject>
 #include <QSet>
 #include <QString>
+#include <QVariantList>
 
 #include <cstdint>
 
@@ -61,12 +62,30 @@ public:
     // Unmap the popup surface (attach a null buffer).
     bool hidePopup();
 
+    // Create the Dock layer surface (T-10): `top` layer, anchored to the
+    // configured edge, namespace "dock". It reserves `exclusiveZone` pixels
+    // on its edge and never takes keyboard focus.
+    bool createDockSurface(int height, int exclusiveZone);
+
+    // Attach `image` to the Dock surface and commit. The image must be
+    // ARGB32(_Premultiplied).
+    bool commitDockImage(const QImage &image);
+
+    // Set the Dock surface's input region to `(x, y, width, height)` in
+    // surface-local coordinates. An empty rectangle makes the whole surface
+    // pass input through (the hidden Dock, the transparent magnified band).
+    bool setDockInputRegion(int x, int y, int width, int height);
+
     // Attach `image` to the menu-bar surface and commit. The image must be
     // ARGB32(_Premultiplied).
     bool commitImage(const QImage &image);
 
     // Drive the compositor's Mission Control overview (T-11 entry point).
     void enterMissionControl();
+
+    // App-level activation for a Dock click (T-10): the compositor picks the
+    // app's most recent window, switches to its Space, and restores it.
+    void activateApp(const QString &appId);
 
     // The compositor connection fd, for the Qt event-loop notifier.
     int displayFd() const;
@@ -83,13 +102,20 @@ signals:
     void refused(uint32_t code, const QString &message);
     void configured(int width, int height, uint32_t serial);
     void popupConfigured(int width, int height, uint32_t serial);
+    void dockConfigured(int width, int height, uint32_t serial);
     void surfaceClosed();
     void focusedAppChanged(const QString &appId, const QString &title);
+    // The running-app projection the Dock renders (T-10): one entry per app
+    // with at least one window, plus per-window minimized entries.
+    void dockStateChanged(const QVariantList &entries);
     void fatal(const QString &message);
     // Input bridge: pointer/keyboard events delivered to the chrome surface.
     void pointerMoved(qreal x, qreal y);
     void pointerButton(qreal x, qreal y, uint32_t button, bool pressed);
     void pointerLeft();
+    void dockPointerMoved(qreal x, qreal y);
+    void dockPointerButton(qreal x, qreal y, uint32_t button, bool pressed);
+    void dockPointerLeft();
     void keyboardFocused(bool focused);
     void keyEvent(uint32_t key, bool pressed);
 
@@ -97,11 +123,16 @@ private:
     struct ToplevelInfo {
         QString appId;
         QString title;
+        // df_toplevel.state bitfield (minimized=1, zoomed=2, fullscreen=4,
+        // focused=8); the Dock uses minimized.
+        uint32_t state = 0;
     };
 
     void bindTrustedGlobals();
     void teardown();
     bool fail(const QString &message);
+    // Rebuild the Dock's running-app projection and emit `dockStateChanged`.
+    void emitDockState();
     // Attach `image` to `surface` as a fresh shm buffer and commit it.
     bool commitTo(wl_surface *surface, const QImage &image);
 
@@ -115,6 +146,8 @@ private:
                                  int32_t width, int32_t height);
     static void onPopupConfigure(void *data, df_layer_surface *layer, uint32_t serial,
                                  int32_t width, int32_t height);
+    static void onDockConfigure(void *data, df_layer_surface *layer, uint32_t serial,
+                                int32_t width, int32_t height);
     static void onLayerClosed(void *data, df_layer_surface *layer);
     static void onSeatCapabilities(void *data, wl_seat *seat, uint32_t capabilities);
     static void onSeatName(void *data, wl_seat *seat, const char *name);
@@ -205,6 +238,9 @@ private:
     df_layer_surface *m_layer = nullptr;
     wl_surface *m_popupSurface = nullptr;
     df_layer_surface *m_popupLayer = nullptr;
+    wl_surface *m_dockSurface = nullptr;
+    df_layer_surface *m_dockLayer = nullptr;
+    bool m_dockMapped = false;
     // Window-space origin of the popup surface, used to translate pointer
     // coordinates delivered relative to the popup into window coordinates.
     int m_popupX = 0;
@@ -213,6 +249,9 @@ private:
     // True while the pointer is over the popup surface, so its surface-local
     // coordinates are translated into window coordinates.
     bool m_pointerOnPopup = false;
+    // True while the pointer is over the Dock surface; its coordinates are
+    // already Dock-window-local.
+    bool m_pointerOnDock = false;
     wl_seat *m_seat = nullptr;
     wl_pointer *m_pointer = nullptr;
     wl_keyboard *m_keyboard = nullptr;

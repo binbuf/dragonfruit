@@ -112,6 +112,7 @@ ShellController::ShellController(QObject *parent)
 
 ShellController::~ShellController()
 {
+    delete m_dockWindow;
     delete m_window;
 }
 
@@ -180,9 +181,47 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     connect(m_protocol, &ShellProtocol::keyboardFocused, this,
             &ShellController::onKeyboardFocused);
     connect(m_protocol, &ShellProtocol::keyEvent, this, &ShellController::onKeyEvent);
+    connect(m_protocol, &ShellProtocol::dockConfigured, this,
+            &ShellController::onDockConfigured);
+    connect(m_protocol, &ShellProtocol::dockStateChanged, this,
+            &ShellController::onDockStateChanged);
+    connect(m_protocol, &ShellProtocol::dockPointerMoved, this,
+            &ShellController::onDockPointerMoved);
+    connect(m_protocol, &ShellProtocol::dockPointerButton, this,
+            &ShellController::onDockPointerButton);
+    connect(m_protocol, &ShellProtocol::dockPointerLeft, this,
+            &ShellController::onDockPointerLeft);
 
     applyStatusItems();
     applyFocusedApp();
+
+    // The Dock is a second offscreen QML scene and its own `top` chrome
+    // surface (T-10). It is created before the surfaces so the shell can read
+    // the bar thickness and magnified band out of the QML tokens.
+    m_dockWindow = new QQuickWindow;
+    m_dockWindow->setColor(Qt::transparent);
+    QQmlComponent dockComponent(m_engine);
+    dockComponent.loadFromModule(QStringLiteral("Dragonfruit.Dock"), QStringLiteral("Dock"));
+    if (dockComponent.isError()) {
+        fprintf(stderr, "dragonfruit-shell: Dock QML error: %s\n",
+                qPrintable(dockComponent.errorString()));
+        return false;
+    }
+    QObject *dockObject = dockComponent.create();
+    m_dockItem = qobject_cast<QQuickItem *>(dockObject);
+    if (!m_dockItem) {
+        fprintf(stderr, "dragonfruit-shell: Dock QML did not produce an item\n");
+        return false;
+    }
+    m_dockItem->setParentItem(m_dockWindow->contentItem());
+    m_dockBarThickness = qRound(m_dockItem->property("barThickness").toReal());
+    m_dockHeight = m_dockBarThickness + qCeil(m_dockItem->property("magnifyBand").toReal());
+    connect(m_dockItem, SIGNAL(entryActivated(QVariant)), this,
+            SLOT(onDockEntryActivated(QVariant)));
+    connect(m_dockItem, SIGNAL(entryContextMenuRequested(QVariant,qreal,qreal)), this,
+            SLOT(onDockEntryContextMenu(QVariant,qreal,qreal)));
+    connect(m_dockItem, SIGNAL(dividerContextMenuRequested(qreal,qreal)), this,
+            SLOT(onDockDividerContextMenu(qreal,qreal)));
 
     if (!m_protocol->createMenuBarSurface(barHeight, barHeight))
         return false;
@@ -190,6 +229,11 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // menus composite above fullscreen windows while the bar keeps its own
     // `top` surface and reserved zone (T-09).
     if (!m_protocol->createPopupSurface())
+        return false;
+    // The Dock reserves its baseline bar thickness; with auto-hide on it
+    // reserves nothing (section 2).
+    const int dockExclusive = m_dockItem->property("autoHide").toBool() ? 0 : m_dockBarThickness;
+    if (!m_protocol->createDockSurface(m_dockHeight, dockExclusive))
         return false;
 
     // The shell snapshots the QML scene into a shm buffer on demand; a popup
@@ -471,6 +515,130 @@ void ShellController::onKeyEvent(quint32 key, bool pressed)
     QKeyEvent event(pressed ? QEvent::KeyPress : QEvent::KeyRelease, qtKey, Qt::NoModifier);
     QCoreApplication::sendEvent(m_window, &event);
     scheduleRender();
+}
+
+// --- Dock (T-10) ------------------------------------------------------------
+
+void ShellController::onDockConfigured(int width, int height, quint32)
+{
+    // The compositor sends a pre-layout configure at the full output size
+    // before applying the Dock's anchor/size; skip it.
+    if (height != m_dockHeight) {
+        fprintf(stderr, "dragonfruit-shell: ignoring pre-layout Dock configure %dx%d\n", width,
+                height);
+        return;
+    }
+    m_dockWidth = width;
+    fprintf(stderr, "dragonfruit-shell: Dock configured %dx%d\n", width, height);
+    renderDock();
+}
+
+void ShellController::onDockStateChanged(const QVariantList &entries)
+{
+    if (!m_dockItem)
+        return;
+    m_dockItem->setProperty("entries", entries);
+    scheduleDockRender();
+}
+
+void ShellController::onDockEntryActivated(const QVariant &entry)
+{
+    const QVariantMap map = entry.toMap();
+    const QString kind = map.value(QStringLiteral("kind")).toString();
+    if (kind == QLatin1String("trash")) {
+        // Opening Trash in Files is T-18; the entry point is wired.
+        qInfo() << "shell: Dock Trash activated (T-18 opens Trash)";
+        return;
+    }
+    const QString appId = map.value(QStringLiteral("appId")).toString();
+    if (!appId.isEmpty())
+        m_protocol->activateApp(appId);
+    else
+        qInfo() << "shell: Dock entry has no resolved app id (T-23)";
+}
+
+void ShellController::onDockEntryContextMenu(const QVariant &entry, qreal, qreal)
+{
+    // Context menus are the next T-10 slice; log so the interaction is visible.
+    qInfo() << "shell: Dock context menu requested (T-10 menus pending):"
+            << entry.toMap().value(QStringLiteral("name")).toString();
+}
+
+void ShellController::onDockDividerContextMenu(qreal, qreal)
+{
+    qInfo() << "shell: Dock divider menu requested (T-10 menus pending)";
+}
+
+void ShellController::onDockPointerMoved(qreal x, qreal y)
+{
+    if (!m_dockWindow)
+        return;
+    QMouseEvent event(QEvent::MouseMove, QPointF(x, y), QPointF(x, y), Qt::NoButton, m_dockButtons,
+                      Qt::NoModifier);
+    QCoreApplication::sendEvent(m_dockWindow, &event);
+    scheduleDockRender();
+}
+
+void ShellController::onDockPointerButton(qreal x, qreal y, quint32 button, bool pressed)
+{
+    if (!m_dockWindow)
+        return;
+    Qt::MouseButton qtButton = Qt::NoButton;
+    if (button == 0x110)
+        qtButton = Qt::LeftButton;
+    else if (button == 0x111)
+        qtButton = Qt::RightButton;
+    if (pressed)
+        m_dockButtons |= qtButton;
+    else
+        m_dockButtons &= ~qtButton;
+    QMouseEvent event(pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease, QPointF(x, y),
+                      QPointF(x, y), qtButton, m_dockButtons, Qt::NoModifier);
+    QCoreApplication::sendEvent(m_dockWindow, &event);
+    scheduleDockRender();
+}
+
+void ShellController::onDockPointerLeft()
+{
+    if (!m_dockWindow)
+        return;
+    QMouseEvent event(QEvent::MouseMove, QPointF(-1, -1), QPointF(-1, -1), Qt::NoButton,
+                      m_dockButtons, Qt::NoModifier);
+    QCoreApplication::sendEvent(m_dockWindow, &event);
+    scheduleDockRender();
+}
+
+void ShellController::scheduleDockRender()
+{
+    if (m_dockRenderPending)
+        return;
+    m_dockRenderPending = true;
+    QTimer::singleShot(0, this, [this]() {
+        m_dockRenderPending = false;
+        renderDock();
+    });
+}
+
+void ShellController::renderDock()
+{
+    if (!m_dockItem || !m_dockWindow || m_dockWidth <= 0 || m_dockHeight <= 0)
+        return;
+    m_dockItem->setWidth(m_dockWidth);
+    m_dockItem->setHeight(m_dockHeight);
+    if (m_dockWindow->width() != m_dockWidth || m_dockWindow->height() != m_dockHeight)
+        m_dockWindow->resize(m_dockWidth, m_dockHeight);
+    if (!m_dockWindow->isVisible())
+        m_dockWindow->show();
+    const QImage image = m_dockWindow->grabWindow();
+    // The input region is the visible bar slab only; the transparent
+    // magnified band and the hidden Dock pass clicks through (FR-13).
+    const QVariantMap bar = m_dockItem->property("barRect").toMap();
+    m_protocol->setDockInputRegion(bar.value(QStringLiteral("x")).toInt(),
+                                   bar.value(QStringLiteral("y")).toInt(),
+                                   bar.value(QStringLiteral("w")).toInt(),
+                                   bar.value(QStringLiteral("h")).toInt());
+    if (!m_protocol->commitDockImage(image.copy(0, 0, m_dockWidth, m_dockHeight)))
+        qWarning() << "shell: failed to commit the Dock:" << m_protocol->lastError();
 }
 
 void ShellController::render()
