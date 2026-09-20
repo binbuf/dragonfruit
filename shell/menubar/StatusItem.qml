@@ -18,6 +18,7 @@ Item {
     property string accessibleName: ""
     property bool available: true
     property bool selected: false
+    property real level: 0.8
     property color tint: Theme.color.textPrimary
     property color backgroundColor: Theme.color.chrome
 
@@ -52,6 +53,7 @@ Item {
             color: root.selected ? Theme.color.accent : root.tint
             backgroundColor: root.backgroundColor
             size: Theme.controls.menuBar.iconSize
+            level: root.level
             anchors.verticalCenter: parent.verticalCenter
         }
 

@@ -54,6 +54,7 @@ struct DevArgs {
     socket_name: String,
     launch: Vec<Vec<String>>,
     soak_cycles: Option<usize>,
+    shell: bool,
 }
 
 fn usage() -> String {
@@ -61,10 +62,13 @@ fn usage() -> String {
         "dragonfruit dev tool (lockstep-ipc=v{LOCKSTEP_VERSION}, desktop={DESKTOP_NAME})
 
 USAGE:
-    dragonfruit dev --nested [--socket-name NAME] [--launch CMD...]
-    dragonfruit dev --headless [--socket-name NAME] [--launch CMD...]
+    dragonfruit dev --nested [--socket-name NAME] [--shell] [--launch CMD...]
+    dragonfruit dev --headless [--socket-name NAME] [--shell] [--launch CMD...]
     dragonfruit dev --soak [N]        # teardown soak test (default 100 cycles)
-    dragonfruit version"
+    dragonfruit version
+
+--shell launches the built shell process (build/shell/src/dragonfruit-shell,
+or DF_SHELL_BIN) against the private socket."
     )
 }
 
@@ -74,12 +78,14 @@ fn parse_dev_args(mut it: impl Iterator<Item = String>) -> Result<DevArgs, Strin
         socket_name: format!("dragonfruit-dev-{}", std::process::id()),
         launch: Vec::new(),
         soak_cycles: None,
+        shell: false,
     };
     let mut launch: Option<Vec<String>> = None;
     while let Some(arg) = it.next() {
         match arg.as_str() {
             "--nested" => args.backend = "nested",
             "--headless" => args.backend = "headless",
+            "--shell" => args.shell = true,
             "--soak" => {
                 args.soak_cycles = Some(it.next().and_then(|v| v.parse().ok()).unwrap_or(100));
             }
@@ -166,6 +172,31 @@ fn compositor_path() -> Result<PathBuf, String> {
     }
 }
 
+/// Path to the shell binary: `DF_SHELL_BIN` if set, otherwise the CMake
+/// build tree relative to the repository root (`make build`).
+fn shell_path() -> Result<PathBuf, String> {
+    if let Some(path) = std::env::var_os("DF_SHELL_BIN") {
+        let path = PathBuf::from(path);
+        if path.is_file() {
+            return Ok(path);
+        }
+        return Err(format!(
+            "DF_SHELL_BIN={} does not point to a file",
+            path.display()
+        ));
+    }
+    let path = PathBuf::from("build/shell/src/dragonfruit-shell");
+    if path.is_file() {
+        Ok(path)
+    } else {
+        Err(format!(
+            "shell not found at {} — build the Qt side (`make build`) \
+             or set DF_SHELL_BIN",
+            path.display()
+        ))
+    }
+}
+
 fn runtime_dir() -> Result<PathBuf, String> {
     let dir = std::env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
@@ -179,6 +210,22 @@ fn runtime_dir() -> Result<PathBuf, String> {
 
 fn socket_path(runtime_dir: &Path, socket_name: &str) -> PathBuf {
     runtime_dir.join(socket_name)
+}
+
+/// Wait up to `timeout` for the compositor's one-time launch-token hand-off
+/// file (T-07) and return its trimmed contents.
+fn wait_for_token(path: &Path, timeout: Duration) -> Option<String> {
+    let deadline = Instant::now() + timeout;
+    while Instant::now() < deadline {
+        if let Ok(contents) = std::fs::read_to_string(path) {
+            let token = contents.trim().to_string();
+            if !token.is_empty() {
+                return Some(token);
+            }
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    None
 }
 
 /// Wait up to `timeout` for the compositor's Xwayland `DISPLAY` hand-off
@@ -315,6 +362,45 @@ fn run_dev_session(args: &DevArgs) -> ExitCode {
     let display = wait_for_x11_display(&display_path, Duration::from_secs(5));
     if let Some(display) = &display {
         println!("dragonfruit dev: DISPLAY={display}");
+    }
+
+    // The shell is a private-protocol client of the compositor; launch it
+    // with the one-time token the compositor provisioned at startup (T-09).
+    if args.shell {
+        match shell_path() {
+            Ok(shell) => {
+                let token_path = runtime_dir.join(format!("{}.launch-token", args.socket_name));
+                match wait_for_token(&token_path, Duration::from_secs(5)) {
+                    Some(token) => {
+                        let mut command = Command::new(&shell);
+                        command.arg("--socket-name").arg(&args.socket_name);
+                        command.arg("--menubar-height").arg("28");
+                        command.arg("--placeholders");
+                        command.env("WAYLAND_DISPLAY", &args.socket_name);
+                        command.env("XDG_CURRENT_DESKTOP", DESKTOP_NAME);
+                        command.env("DRAGONFRUIT_LAUNCH_TOKEN", &token);
+                        // The shell manages its own Wayland connection and
+                        // renders QML offscreen into the chrome surface.
+                        command.env("QT_QPA_PLATFORM", "offscreen");
+                        match command.spawn() {
+                            Ok(child) => {
+                                println!("dragonfruit dev: launched shell");
+                                guard.launched.push(("shell".to_string(), child));
+                            }
+                            Err(e) => eprintln!(
+                                "dragonfruit dev: failed to launch shell {}: {e}",
+                                shell.display()
+                            ),
+                        }
+                    }
+                    None => eprintln!(
+                        "dragonfruit dev: no launch token at {} — shell not started",
+                        token_path.display()
+                    ),
+                }
+            }
+            Err(e) => eprintln!("dragonfruit dev: {e}"),
+        }
     }
 
     for cmd in &args.launch {
