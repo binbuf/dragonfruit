@@ -32,6 +32,8 @@ Item {
     readonly property string appId: entry.appId !== undefined ? entry.appId : ""
     readonly property bool trashFull: entry.trashFull === true
     readonly property bool launching: entry.launch === "launching"
+    readonly property bool failed: entry.launch === "failed"
+    readonly property bool missing: entry.missing === true
 
     readonly property bool verticalIndicator:
         indicatorEdge === "left" || indicatorEdge === "right"
@@ -53,10 +55,19 @@ Item {
     // design-system pressed state (motion.hover).
     readonly property real pressedScale: pressed && !dragging ? 0.9 : 1.0
 
+    // The accessibility state, carrying launch and identity failures (T-10
+    // section 20).
+    readonly property string stateLabel:
+        isTrash ? ""
+        : missing ? qsTr(", not found")
+        : launching ? qsTr(", launching")
+        : failed ? qsTr(", failed to launch")
+        : running ? qsTr(", running") : qsTr(", not running")
+
     Accessible.role: isDivider ? Accessible.Separator : Accessible.ListItem
     Accessible.name: isDivider ? qsTr("Dock separator")
                      : isTrash ? qsTr("Trash")
-                     : name + (running ? qsTr(", running") : qsTr(", not running"))
+                     : name + stateLabel
     Accessible.focusable: !isDivider
 
     // Divider between the app and minimized/Trash regions. It is the drag
@@ -97,7 +108,7 @@ Item {
         y: root.artworkY
         scale: root.pressedScale
         transformOrigin: Item.Center
-        opacity: root.launching ? 0.6 : 1.0
+        opacity: root.launching ? 0.6 : root.missing ? 0.45 : 1.0
 
         Behavior on scale {
             NumberAnimation {
@@ -108,6 +119,22 @@ Item {
         Behavior on opacity {
             NumberAnimation { duration: Theme.motion.focus.duration }
         }
+    }
+
+    // A launch failure or an unresolved pinned identity is a state, not a
+    // crash (T-10 sections 8.5, 4.2): a small badge marks it and the
+    // accessible name says why.
+    Rectangle {
+        objectName: "statusBadge"
+        visible: !root.isDivider && (root.failed || root.missing)
+        width: root.indicatorSize
+        height: root.indicatorSize
+        radius: root.indicatorSize / 2
+        color: root.failed ? Theme.color.danger : Theme.color.warning
+        border.width: 1
+        border.color: Theme.color.chrome
+        x: root.artworkX + root.iconSize - width
+        y: root.artworkY
     }
 
     // Running indicator on the dock-edge side (one per app entry, never per

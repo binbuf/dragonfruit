@@ -2200,3 +2200,131 @@ bounce, a11y). See the hand-off list at the end of this section.
 `qmllint_shell-dock`), `gen-tokens --check`, the design-token/desktop-name/
 no-capture gates, and the 66-snapshot gallery regression. The full
 `shell_protocol_conformance` suite is 15/15.
+
+## T-10 continuation — launch + pinned apps (second slice)
+
+**State: partial.** Pinned apps now launch, the pinned set persists, and the
+running projection merges with the pinned set. The remaining slices (context
+menus/chooser, drag, Trash, live settings, bounce, input region, per-output
+surfaces, scene-graph render path, a11y) are unchanged and listed at the end.
+
+### What landed
+
+- **Interim `.desktop` resolver/launcher** (`shell/src/desktopentry.{h,cpp}`).
+  `DesktopEntryIndex::scan()` reads the XDG application dirs (user first, then
+  `$XDG_DATA_DIRS`, then Flatpak exports) and parses `[Desktop Entry]` fields
+  (`Name`, `Icon`, `Exec`, `StartupWMClass`, `Categories`, `Terminal`,
+  `NoDisplay`/`Hidden`; localized keys ignored). `resolve()` matches desktop
+  id (with/without `.desktop`), `StartupWMClass` (case-insensitive), then the
+  reverse-DNS basename stem. `buildLaunchCommand()` tokenizes the Exec line
+  (quotes/escapes) and expands field codes (`%f/%F/%u/%U`, `%i`, `%c`, `%k`,
+  `%%`; deprecated codes dropped), wrapping `Terminal=true` apps in
+  `$TERMINAL`/`x-terminal-emulator`. **Delete this file when T-23's
+  app-index lands** — the Dock switches to `org.dragonfruit.AppIndex1` and
+  behavior is unchanged.
+- **Interim `dock.pinned` persistence** (`shell/src/dockpins.{h,cpp}`). Writes
+  `$XDG_CONFIG_HOME/dragonfruit/settings.json` as
+  `{"schema":1,"keys":{"dock.pinned":[...]}}`, preserving unknown keys and
+  future top-level fields. Defaults are seeded **only when the file is
+  absent**, so an intentionally emptied pin set survives. Default set:
+  `org.dragonfruit.Files`/`Settings` by id, then the first non-`NoDisplay`
+  entry with the freedesktop `TerminalEmulator` / `WebBrowser` category.
+- **Pure entry merge** (`shell/src/dockmodel.{h,cpp}`). `buildDockEntries()`
+  takes the pinned ids, the index, the shell's running projection, and the
+  transient launch states, and returns the ordered entry list (pinned in order,
+  then unmatched temporary running apps, then minimized windows). A running
+  app that resolves to a pinned id collapses into the pinned entry; the pinned
+  entry carries the compositor `appId` for activation. A pinned id that does
+  not resolve becomes a `missing:true` generic entry.
+- **Shell wiring** (`shell/src/shellcontroller.{h,cpp}`). The controller scans
+  the index and loads/seeds pins at startup, stores the running projection,
+  and rebuilds the merged entries on every change. The click tree:
+  running → `activateApp(appId)`; minimized → `activateApp(appId)` (restores
+  via the compositor); not running + launchable → `QProcess::startDetached`;
+  missing → logged, no launch. A launch sets a `launching` state, coalesces a
+  second click, resolves to running on the first window, and a bounded 8 s
+  timer turns a windowless launch into a transient `failed` badge (cleared
+  after 4 s). The real notification surface is T-25.
+- **Dock presentation** (`shell/dock/DockEntry.qml`). New `launching` (dim),
+  `failed`/`missing` (a `statusBadge` dot in `danger`/`warning`), and
+  state-bearing accessible names ("launching", "failed to launch",
+  "not found").
+- **Build/tests.** The pure core is a static library
+  `dragonfruit-shell-dockcore` (no Wayland) linked by the shell and by the new
+  `tst_dockcore` (QtTest, 12 cases: parsing, resolution/precedence, Exec
+  expansion, pins round-trip/unknown-key preservation/defaults, entry merge).
+  `tst_dock` gained launching/failed/missing cases. `find_package(Qt6 ... Test)`
+  was added for `Qt6::Test`.
+
+### Gotchas learned (important for the next slice)
+
+- **The desktop-name gate forbids distro names in code.** `check-desktop-names.sh`
+  rejects whole-word `gnome|kde|plasma|xfce|...` anywhere in `.cpp/.h/.qml`.
+  Do **not** hardcode candidate `.desktop` ids like `org.kde.konsole.desktop`
+  or executables like `gnome-terminal`; pick defaults by the freedesktop
+  `Categories` (`TerminalEmulator`, `WebBrowser`) and skip `NoDisplay`. Test
+  fixtures must use neutral ids (`org.example.*`).
+- **The settings file shape is invented here.** T-15 must either adopt
+  `{"schema":1,"keys":{"<dotted key>":...}}` or add a migration; the Dock
+  preserves unknown keys so a second writer is safe. The file is
+  `settings.json` (not per-topic), so T-15 owns the same file the Dock seeds.
+- **The index is scanned once at startup.** Install/uninstall is not observed
+  (T-23 pushes `installed`/`uninstalled` events). A pinned app installed after
+  the shell starts stays `missing` until restart.
+- **Default browser is the first `WebBrowser` entry, not the `mimeapps.list`
+  default.** `extlinks.desktop` (anaconda's `NoDisplay=true` helper) was the
+  first hit before the `NoDisplay` filter. A future improvement is to read the
+  `x-scheme-handler/http` default; not needed for the vertical slice.
+- **`QProcess::startDetached` cannot see an app that starts and exits.** Only
+  "start failed" is immediate; "started but produced no window" is caught by
+  the 8 s timeout. When T-23's activation/`attention` event lands, that
+  becomes the authoritative signal (FR-4) and the self-timer should go.
+- **Activation needs the compositor `appId`, not the desktop id.** A running
+  pinned entry stores `appId` = the compositor identity (e.g.
+  `org.dragonfruit.Files`); the launch path uses `desktopId`. Keep the two
+  distinct when extending the click tree.
+- **`find_package(Qt6 ... Test)` is now required** at the root for the new
+  QtTest target; QuickTest alone did not expose `Qt6::Test` as a link target.
+
+### Hand-off / open items (remaining T-10 slices)
+
+1. **Context menus and the window chooser** (sections 13/9). The Dock emits
+   `entryContextMenuRequested`/`dividerContextMenuRequested`; build the
+   design-system `ContextMenu` on the existing `overlay` popup pattern. The
+   chooser needs a per-app window list (the projection has it) and
+   `df_toplevel.activate`/`unminimize`. The new merge keeps `windows` count
+   and `appId` per entry, so the chooser can reuse them.
+2. **Drag rearrangement and external drops** (section 12): reorder pinned
+   (`DockPins::move` already exists), promote-to-pinned, remove-from-Dock,
+   file/app drops.
+3. **Trash** (section 16): GVfs `trash://` `GFileMonitor`, click-to-Files,
+   drop-to-trash via GIO, Empty Trash with confirmation.
+4. **Live `dock.*` settings** (section 19): observe settingsd keys (T-15),
+   live re-layout, position/auto-hide surface changes, T-16 pane hooks. The
+   Dock currently reads defaults from QML tokens and the seeded pins only.
+5. **Attention/launch bounce** (section 8.1): `onManagerAttention` is still a
+   no-op in `shellprotocol.cpp`; wire it to an `attention` entry state and a
+   compositor-clock bounce. Replace the 8 s self-timer with the attention
+   signal (FR-4).
+6. **Magnified-band input region**: set the region to the bar plus the
+   currently magnified icon rectangles each frame (currently bar-only).
+7. **Per-output / per-position surfaces**: left/right reserved zones need the
+   compositor `LayerSurfaceState::reserved()` extension; per-output sizing is
+   the known T-09/T-11/T-16 limitation.
+8. **Scene-graph render path** (FR-14): still commits on demand via
+   `grabWindow`; the durable `QQuickWindow::afterRendering` fix is shared with
+   the T-09 deferred-polish backlog.
+9. **Keyboard + AT-SPI walkthrough** (section 20): Fn-Control-F3 focus, arrow
+   navigation, Super+Option+D; the live AT-SPI dump is unbuilt.
+
+### Gate status
+
+`make lint` green (`cargo fmt --check`, `clippy -D warnings`, ctest 13/13 incl.
+`tst_dockcore`/`tst_dock`/`qmllint_shell-dock`, `gen-tokens --check`, the
+design-token/desktop-name/no-capture gates, the 66-snapshot gallery
+regression); `make e2e` green (15/15 `shell_protocol_conformance` plus the
+window/Xwayland/idle suites); live headless smoke
+(`dragonfruit dev --headless --shell`) reports `Dock configured 1280x95` and
+`output reserved zone edge=1 thickness=60`, and seeds
+`~/.config/dragonfruit/settings.json` with the resolved defaults.
+

@@ -13,14 +13,26 @@
 #include <QtMath>
 
 #include <QCoreApplication>
+#include <QDateTime>
+#include <QDir>
+#include <QFileInfo>
 #include <QKeyEvent>
 #include <QMouseEvent>
+#include <QProcess>
+#include <QStandardPaths>
 
 #include <cstdio>
 
+#include "desktopentry.h"
+#include "dockmodel.h"
+#include "dockpins.h"
 #include "shellprotocol.h"
 
 namespace {
+
+// How long a launch may take to map its first window before the Dock treats
+// it as failed (T-10 section 8.5). Interim until app-index owns activation.
+constexpr qint64 kLaunchTimeoutMs = 8000;
 
 QVariantMap statusItem(const QString &id, const QString &icon, const QString &label,
                        const QString &accessibleName, bool available, qreal level = 0.8)
@@ -131,6 +143,19 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         qWarning() << "shell:" << message;
     });
 
+    // Interim app-index (T-23) and pinned-set persistence (T-15). The index
+    // is scanned once at startup; a real app-index will push install/uninstall
+    // events instead. Defaults are seeded only when no settings file exists,
+    // so an intentionally emptied pin set is respected.
+    m_index.scan();
+    if (!m_pins.load())
+        qWarning() << "shell: Dock pins:" << m_pins.lastError();
+    if (!m_pins.fileExists()) {
+        m_pins.setIds(DockPins::resolveDefaultPins(m_index));
+        if (!m_pins.save())
+            qWarning() << "shell: cannot seed Dock pins:" << m_pins.lastError();
+    }
+
     if (!m_protocol->connectToCompositor(socketName))
         return false;
     if (!m_protocol->authenticate(tokenHex))
@@ -222,6 +247,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onDockEntryContextMenu(QVariant,qreal,qreal)));
     connect(m_dockItem, SIGNAL(dividerContextMenuRequested(qreal,qreal)), this,
             SLOT(onDockDividerContextMenu(qreal,qreal)));
+    // The running projection may have arrived before the Dock scene existed.
+    rebuildDockEntries();
 
     if (!m_protocol->createMenuBarSurface(barHeight, barHeight))
         return false;
@@ -245,6 +272,14 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         if (--m_animationTicks <= 0)
             m_animationTimer->stop();
     });
+
+    // Launch timeout: a launch that produces no window within the bounded
+    // window returns to not-running and raises a one-shot notice (T-10
+    // section 8.5). This is the interim stand-in for the app-index
+    // activation/attention signal (FR-4).
+    m_launchTimer = new QTimer(this);
+    m_launchTimer->setInterval(500);
+    connect(m_launchTimer, &QTimer::timeout, this, &ShellController::onDockLaunchTick);
 
     const int fd = m_protocol->displayFd();
     m_notifier = new QSocketNotifier(fd, QSocketNotifier::Read, this);
@@ -535,9 +570,32 @@ void ShellController::onDockConfigured(int width, int height, quint32)
 
 void ShellController::onDockStateChanged(const QVariantList &entries)
 {
+    m_runningEntries = entries;
+    // A window appeared: a pending launch for that app has succeeded, so its
+    // transient launching/failed state clears (T-10 section 8.4).
+    for (const QVariant &value : entries) {
+        const QVariantMap map = value.toMap();
+        if (map.value(QStringLiteral("kind")).toString() != QLatin1String("temporary"))
+            continue;
+        const DesktopEntry resolved =
+            m_index.resolve(map.value(QStringLiteral("appId")).toString());
+        if (resolved.valid) {
+            m_launchStates.remove(resolved.id);
+            m_launchDeadlines.remove(resolved.id);
+        }
+    }
+    if (m_launchDeadlines.isEmpty() && m_launchTimer && m_launchTimer->isActive())
+        m_launchTimer->stop();
+    rebuildDockEntries();
+}
+
+void ShellController::rebuildDockEntries()
+{
     if (!m_dockItem)
         return;
-    m_dockItem->setProperty("entries", entries);
+    m_dockItem->setProperty("entries",
+                            buildDockEntries(m_pins.ids(), m_index, m_runningEntries,
+                                             m_launchStates));
     scheduleDockRender();
 }
 
@@ -550,11 +608,107 @@ void ShellController::onDockEntryActivated(const QVariant &entry)
         qInfo() << "shell: Dock Trash activated (T-18 opens Trash)";
         return;
     }
-    const QString appId = map.value(QStringLiteral("appId")).toString();
-    if (!appId.isEmpty())
-        m_protocol->activateApp(appId);
-    else
-        qInfo() << "shell: Dock entry has no resolved app id (T-23)";
+    if (kind == QLatin1String("divider"))
+        return;
+
+    // Minimized-window entries restore their owning app's most recent window.
+    if (kind == QLatin1String("minimized")) {
+        const QString appId = map.value(QStringLiteral("appId")).toString();
+        if (!appId.isEmpty())
+            m_protocol->activateApp(appId);
+        return;
+    }
+
+    if (map.value(QStringLiteral("running")).toBool()) {
+        const QString appId = map.value(QStringLiteral("appId")).toString();
+        if (!appId.isEmpty())
+            m_protocol->activateApp(appId);
+        return;
+    }
+
+    if (map.value(QStringLiteral("missing")).toBool()) {
+        qWarning() << "shell: Dock entry is not installed (T-23 app-index):"
+                   << map.value(QStringLiteral("desktopId")).toString();
+        return;
+    }
+
+    const QString desktopId = map.value(QStringLiteral("desktopId")).toString();
+    if (desktopId.isEmpty())
+        return;
+    // Coalesce a second click while a launch is already in flight.
+    if (m_launchStates.value(desktopId) == QLatin1String("launching"))
+        return;
+    launchDockApp(desktopId);
+}
+
+void ShellController::launchDockApp(const QString &desktopId)
+{
+    const DesktopEntry entry = m_index.byId(desktopId);
+    if (!DesktopEntryIndex::isLaunchable(entry)) {
+        failDockLaunch(desktopId, QStringLiteral("no usable .desktop entry"));
+        return;
+    }
+    const QStringList argv = DesktopEntryIndex::buildLaunchCommand(entry);
+    if (argv.isEmpty()) {
+        failDockLaunch(desktopId, QStringLiteral("empty launch command"));
+        return;
+    }
+    qint64 pid = 0;
+    if (!QProcess::startDetached(argv.first(), argv.mid(1), QDir::homePath(), &pid)) {
+        failDockLaunch(desktopId, QStringLiteral("QProcess::startDetached failed"));
+        return;
+    }
+    qInfo() << "shell: Dock launched" << entry.name << "pid" << pid;
+    m_launchStates.insert(desktopId, QStringLiteral("launching"));
+    m_launchDeadlines.insert(desktopId, QDateTime::currentMSecsSinceEpoch() + kLaunchTimeoutMs);
+    if (m_launchTimer && !m_launchTimer->isActive())
+        m_launchTimer->start();
+    rebuildDockEntries();
+}
+
+void ShellController::failDockLaunch(const QString &desktopId, const QString &reason)
+{
+    qWarning() << "shell: Dock launch failed for" << desktopId << ":" << reason;
+    m_launchStates.insert(desktopId, QStringLiteral("failed"));
+    m_launchDeadlines.remove(desktopId);
+    rebuildDockEntries();
+    scheduleLaunchStateClear(desktopId);
+}
+
+void ShellController::scheduleLaunchStateClear(const QString &desktopId)
+{
+    // A one-shot notice: the failed mark is transient (T-25 owns the real
+    // notification surface).
+    QTimer::singleShot(4000, this, [this, desktopId]() {
+        if (m_launchStates.value(desktopId) == QLatin1String("failed")) {
+            m_launchStates.remove(desktopId);
+            rebuildDockEntries();
+        }
+    });
+}
+
+void ShellController::onDockLaunchTick()
+{
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    bool any = false;
+    for (auto it = m_launchDeadlines.begin(); it != m_launchDeadlines.end();) {
+        if (it.value() <= now) {
+            const QString desktopId = it.key();
+            it = m_launchDeadlines.erase(it);
+            if (m_launchStates.value(desktopId) == QLatin1String("launching")) {
+                m_launchStates.insert(desktopId, QStringLiteral("failed"));
+                qWarning() << "shell: Dock launch timed out for" << desktopId
+                           << "(no window mapped)";
+                scheduleLaunchStateClear(desktopId);
+            }
+        } else {
+            any = true;
+            ++it;
+        }
+    }
+    if (!any && m_launchTimer)
+        m_launchTimer->stop();
+    rebuildDockEntries();
 }
 
 void ShellController::onDockEntryContextMenu(const QVariant &entry, qreal, qreal)

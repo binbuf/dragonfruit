@@ -89,7 +89,7 @@ Updated when a task is partially or completely finished; see
 | Phase | Tickets |
 |---|---|
 | 1 · Foundation | T-01 ✅ done · T-02 🔄 partial (compositor core) · T-03 🔄 partial (input engine) · T-04 🔄 partial (window model) · T-05 🔄 partial (Spaces model) · T-06 🔄 partial (Xwayland) · T-07 🔄 partial (private shell protocols) |
-| 2 · Experience | T-08 ✅ done (design system; app-level chrome lint + live AT-SPI dump deferred) · T-09 🔄 partial (menu bar + shell bootstrap + overlay-layer dropdown + scripted output hotplug; T-20/T-22 content open) · T-10 🔄 partial (Dock presentation core + shell surface + running entries/activation; launch/menus/drag/Trash/settings open) · T-11 … T-14 pending |
+| 2 · Experience | T-08 ✅ done (design system; app-level chrome lint + live AT-SPI dump deferred) · T-09 🔄 partial (menu bar + shell bootstrap + overlay-layer dropdown + scripted output hotplug; T-20/T-22 content open) · T-10 🔄 partial (Dock presentation core + shell surface + running entries/activation + launch/pinned persistence; menus/chooser, drag, Trash, live settings, bounce open) · T-11 … T-14 pending |
 | 3 · Flagship apps | T-15 … T-19 pending |
 | 4 · System integration | T-20 … T-23 pending |
 | 5 · Desktop infrastructure | T-24 … T-29 pending |
@@ -369,14 +369,34 @@ magnification anchor/peak, placement, auto-hide, activation, accessibility,
 and artwork; a new headless conformance test
 (`dock_surface_reserves_the_bottom_zone_and_coexists_with_the_bar`) asserts
 the Dock and menu-bar reserved zones coexist and the Dock configures to its
-requested size. Open for the remaining slices: launch (an interim `.desktop`
-resolver/launcher until T-23's app-index), context menus and the window
+requested size. Open for the remaining slices: context menus and the window
 chooser, drag rearrangement and external drops, the GVfs-backed Trash state
 and drop-to-trash, live settings persistence (`dock.*` keys, T-15) and the
 Settings pane hooks (T-16), attention/launch bounce, the magnified-band input
 region, per-output/per-position surfaces (left/right reserved zones are not
 yet compositor-supported), and the scene-graph-driven render path shared with
 the T-09 snapshot-renderer backlog. Details and hand-off:
+[PROGRESS.md](PROGRESS.md).
+
+T-10 continuation (launch slice): pinned apps can now be launched. The shell
+holds an interim, deletable `.desktop` resolver/launcher (T-23 replaces it),
+seeds and persists `dock.pinned` under
+`$XDG_CONFIG_HOME/dragonfruit/settings.json` in the eventual
+`org.dragonfruit.Settings1` key shape (T-15 adopts it without migration), and
+merges the pinned set with the running-window projection into one ordered
+entry list. Clicking a pinned or temporary entry activates a running app
+(`df_toplevel_manager.activate_app`) or launches a not-running one through
+`QProcess::startDetached`; the entry shows a launching state, resolves to
+running on its first window, and degrades to a transient failure badge after a
+bounded timeout. Unresolvable pinned identities render as a generic "not
+found" entry with a disabled launch (never a crash). The new pure core
+(`desktopentry`, `dockpins`, `dockmodel`) is unit-tested headless by
+`tst_dockcore`; `tst_dock` covers the launching/failed/missing presentation.
+Open for the remaining slices: context menus and the window chooser, drag
+rearrangement and external drops, the GVfs-backed Trash state, live `dock.*`
+settings and the Settings pane hooks, attention/launch bounce, the
+magnified-band input region, per-output/per-position surfaces, and the
+scene-graph-driven render path. Details and hand-off:
 [PROGRESS.md](PROGRESS.md).
 
 **Foundation milestone E2E (T-01…T-07).** The whole vertical slice now has a
@@ -411,7 +431,7 @@ the shell's own chrome rendering (T-09/T-10).
 2. **Experience**
    - [x] Design system (T-08: token architecture + all 20 components + gallery/visual regression; app-level chrome lint + live AT-SPI dump deferred)
    - [ ] Top bar (T-09 partial: menu-bar render/interaction + shell bootstrap live, restart/idle scripts passing, chrome input routing + overlay-layer dropdown landed and scripted, output hotplug scripted; T-20 status adapters, T-22 app menu open)
-   - [ ] Dock (T-10 partial: presentation/interaction core + shell `top` surface with bottom reserved zone landed and scripted; launch, context menus, window chooser, drag rearrangement, Trash state, settings persistence open)
+   - [ ] Dock (T-10 partial: presentation/interaction core + shell `top` surface with bottom reserved zone + launch/pinned persistence landed and scripted; context menus, window chooser, drag rearrangement, Trash state, live settings, bounce open)
    - [ ] Window switching
    - [ ] Mission Control
    - [ ] Workspace gestures

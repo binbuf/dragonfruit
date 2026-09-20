@@ -269,6 +269,58 @@ Item {
             verify(idleEntry.Accessible.name.indexOf("not running") >= 0);
         }
 
+        // -- Launch lifecycle states ----------------------------------------
+
+        function test_pinned_not_running_has_no_indicator() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ { id: "files", appId: "org.dragonfruit.Files", name: "Files",
+                             kind: "pinned", pinned: true, running: false } ]
+            });
+            var entry = dock.itemAt(0);
+            compare(entry.running, false);
+            compare(findChild(entry, "indicator").visible, false);
+        }
+
+        function test_launching_entry_dims_and_is_accessible() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ { id: "settings", appId: "org.dragonfruit.Settings",
+                             name: "Settings", kind: "pinned", pinned: true,
+                             running: false, launch: "launching" } ]
+            });
+            var entry = dock.itemAt(0);
+            compare(entry.launching, true);
+            verify(entry.Accessible.name.indexOf("launching") >= 0);
+            verify(findChild(entry, "glyph").opacity < 1.0);
+        }
+
+        function test_failed_launch_shows_badge() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ { id: "settings", appId: "org.dragonfruit.Settings",
+                             name: "Settings", kind: "pinned", pinned: true,
+                             running: false, launch: "failed" } ]
+            });
+            var entry = dock.itemAt(0);
+            compare(entry.failed, true);
+            verify(entry.Accessible.name.indexOf("failed") >= 0);
+            compare(findChild(entry, "statusBadge").visible, true);
+        }
+
+        function test_missing_pinned_app_is_marked_not_found() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ { id: "ghost", appId: "org.example.Ghost", name: "Ghost",
+                             kind: "pinned", pinned: true, running: false,
+                             missing: true } ]
+            });
+            var entry = dock.itemAt(0);
+            compare(entry.missing, true);
+            verify(entry.Accessible.name.indexOf("not found") >= 0);
+            compare(findChild(entry, "statusBadge").visible, true);
+        }
+
         // -- Artwork --------------------------------------------------------
 
         function test_glyph_renders_pixels() {
