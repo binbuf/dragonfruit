@@ -104,6 +104,11 @@ pub struct ShellProtocolState {
     pub overview_active: bool,
     pub overview_selected: Option<WindowId>,
     pub app_switcher: AppSwitcherState,
+    /// The output a chrome surface last took keyboard focus on. Transient
+    /// `overlay` chrome with no explicit output (popovers, menus, OSD) is
+    /// shown only on this output, so it never floats across displays (T-10
+    /// section 18). `None` before any chrome focus.
+    pub chrome_focus_output: Option<String>,
     /// Windows that asked for activation and have not been seen yet.
     attention: Vec<WindowId>,
 }
@@ -132,6 +137,7 @@ impl ShellProtocolState {
             overview_active: false,
             overview_selected: None,
             app_switcher: AppSwitcherState::default(),
+            chrome_focus_output: None,
             attention: Vec::new(),
         }
     }
@@ -384,7 +390,9 @@ impl DfState {
     /// Chrome surfaces mapped to `output`, ordered bottom-to-top by layer.
     ///
     /// T-09 composites these above the window space. Background/bottom layer
-    /// stacking (wallpaper/desktop reveal) is a T-10/T-11 concern.
+    /// stacking (wallpaper/desktop reveal) is a T-10/T-11 concern. Transient
+    /// `overlay` surfaces with no explicit output are per-output: they appear
+    /// only on the output chrome was last focused on (T-10 section 18).
     pub fn chrome_surfaces(
         &self,
         output_name: &str,
@@ -394,7 +402,11 @@ impl DfState {
             .shell
             .layers
             .iter()
-            .filter(|entry| entry.state.matches_output(output_name))
+            .filter(|entry| {
+                entry
+                    .state
+                    .visible_on_output(output_name, self.shell.chrome_focus_output.as_deref())
+            })
             .map(|entry| {
                 let geometry = entry.state.geometry(output_geometry);
                 ChromeSurface {

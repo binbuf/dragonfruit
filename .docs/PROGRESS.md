@@ -4406,3 +4406,125 @@ no overflow warning). Acceptance criteria still unchecked in
 external-drag walkthrough (drag source, T-17/T-18), the live AT-SPI
 walkthrough, multi-output per-output popovers, plus the core-loop and 60 Hz
 measurements.
+
+## T-10 continuation — per-output popovers (twentieth slice)
+
+**State: partial.** An `overlay` chrome surface created without an explicit
+output (a menu bar dropdown, the Dock context-menu/window-chooser popover, a
+future OSD) is now **per-output**: it renders and hit-tests only on the output
+a chrome surface was last focused on, so a popover opened on one display no
+longer floats across every display (T-10 section 18, "per-output popovers do
+not float across outputs"). The next unblocked T-10 items are the drag
+*source* (T-17/T-18), GVfs Trash completion (GIO dev headers absent),
+per-output *sizing* (T-11/T-16), and the live AT-SPI dump.
+
+### What landed
+
+- **Pure geometry core** (`compositor/src/shell/layer.rs`). New
+  `LAYER_OVERLAY: u32 = 3` and
+  `LayerSurfaceState::visible_on_output(output_name, chrome_focus_output)`.
+  An explicit `output` always wins. Otherwise an `overlay` surface with no
+  explicit output is per-output: it matches only `chrome_focus_output` when
+  that capture exists, and falls back to every output when it is `None`.
+  Persistent `top`/`background`/`bottom` chrome is unaffected.
+- **Compositor shell state** (`compositor/src/shell/mod.rs`). New
+  `ShellProtocolState::chrome_focus_output: Option<String>` (initialized
+  `None`). `DfState::chrome_surfaces` now filters with `visible_on_output`
+  instead of `matches_output`, so **both** the render path
+  (`render::chrome_render_elements`) and the input path (`input::chrome_under`)
+  see the same per-output set.
+- **Focus capture** (`compositor/src/state.rs`). New
+  `DfState::output_name_under_pointer()` resolves the output containing
+  `seat.get_pointer().current_location()`. `focus_changed` sets
+  `shell.chrome_focus_output` to that output when a chrome surface takes
+  keyboard focus, and clears it when focus leaves chrome. This is the single
+  chokepoint for every focus path (click, `focus_chrome_surface`,
+  `release_keyboard_focus`), so no caller has to remember to capture.
+- **Tests.** Two `layer.rs` unit tests
+  (`overlay_popovers_are_per_output_when_chrome_is_focused`,
+  `persistent_chrome_still_spans_every_output`), and one
+  `shell_protocol_conformance` integration test
+  (`overlay_popover_is_per_output`) that hotplugs `HDMI-A-1` at x=1280,
+  clicks the bar on `HEADLESS-1` to capture it, then asserts the popover is
+  hit at popover-local (100, 72) on the focused output, is **not** hit at the
+  same rectangle on the second output, and is hit again on return.
+
+### Gotchas learned (important for the next slice)
+
+- **Capture in `focus_changed`, not at each call site.** The chrome surfaces
+  that open popovers are `OnDemand`; `focus_changed` is invoked synchronously
+  by `keyboard.set_focus` inside `focus_chrome_surface`, so the capture is
+  already in place before the shell's button event is even delivered. Putting
+  the capture anywhere else would miss the `focus_dock` shortcut path.
+- **`None` must fall back to every output.** The T-09 overlay test
+  (`overlay_popup_sits_above_the_bar_and_reserves_nothing`) maps a popup and
+  moves the pointer over it **without any click**, so there is no chrome focus
+  to capture. Treating `None` as "match no output" would break that test and
+  any directly-mapped transient surface; `None` → match all keeps the old
+  behavior until the first real interaction.
+- **Clearing on click-away does not flash.** `focus_changed` does not set
+  `needs_redraw`, so dropping focus to `None` does not by itself repaint the
+  popup onto every output; the shell hides the popup on the same input event
+  and its null-buffer commit triggers the next (empty) frame.
+- **An output that detaches while focused disappears the popover for free.**
+  The stale `chrome_focus_output` name matches no remaining output, so
+  `visible_on_output` returns false everywhere. No explicit dismissal is
+  needed in `on_output_removed` (section 18's "output detaching dismisses the
+  popover").
+- **Rendering and input share one filter.** Because `chrome_under` calls
+  `chrome_surfaces` with the point's output, filtering there keeps the drawn
+  and interactive surfaces consistent. Do not add a separate render-only
+  filter or a popover could be visible but unclickable (or vice versa).
+- **Per-output *sizing* is still open.** The surface buffer is still
+  configured from the first output (`configure_layer` → `layer_output_geometry`),
+  so on mixed-resolution displays a popover (or the Dock itself) on another
+  output is placed with first-output dimensions. That is T-11/T-16; this slice
+  only fixes the "floats across all outputs" half of the criterion.
+- **Synthetic absolute motion targets the first output.**
+  `InputEvent::PointerMotionAbsolute` transforms against
+  `state.space.outputs().next()`, so the new test moves to the hotplugged
+  output with a relative `motion 1280 0` from a known point. Use relative
+  motion for any future cross-output input test.
+
+### Hand-off / open items (remaining T-10 slices)
+
+1. **The drag source** (Files/launcher, T-17/T-18): export `text/uri-list`
+   and `application/x-dragonfruit-app` from a `wl_data_source`, start the drag
+   on an implicit pointer grab, and add the scripted end-to-end walkthrough
+   (source client + shell target). The shell target side is complete.
+   Smithay's `update_focus` only sends a data offer to a **different** client,
+   so the test needs a second source client.
+2. **GVfs Trash completion** (section 16) — GIO dev headers are absent on this
+   host, so `TrashMonitor`/`DownloadsMonitor` stay on the sanctioned
+   filesystem fallback; switch them to `GFileMonitor`/GIO when the headers
+   exist. Mount-unavailable dimming, Empty Trash progress, and
+   `org.dragonfruit.Files1` activation (T-18) remain.
+3. **Per-output sizing** (section 18): chrome surfaces still size from the
+   first output; `configure_layer`/`layer_output_geometry` are the hooks, and
+   `visible_on_output` is the placement filter. The Dock/menu bar/popovers need
+   one buffer per output (or a per-output size) before mixed-resolution
+   multi-monitor is correct. T-11/T-16 own the reserved-zone side.
+4. **Live AT-SPI dump** (section 20): the QML roles and the keyboard seat path
+   exist; a session-bus `atspi` walkthrough is T-31.
+5. **Assign To follow-ups** (T-04/T-05): sticky "All Desktops" and "None"
+   need compositor state; until then the two menu rows log pending.
+
+### Gate status
+
+`make lint` green (`cargo fmt --check`, `clippy -D warnings`, ctest 13/13 incl.
+`tst_dock` 103 and `tst_dockcore` 43, `gen-tokens --check`, the design-token/
+desktop-name/no-capture gates); `make e2e` green (20/20
+`shell_protocol_conformance` incl. the new `overlay_popover_is_per_output`,
+plus the window/Xwayland/idle suites); live headless smoke
+(`dragonfruit dev --headless --shell`) reports `menu bar configured 1280x28`,
+`Dock configured 1280x124`, `output reserved zone edge=1 thickness=60`, both
+`scene-graph commit path active` lines, and a clean teardown. Acceptance
+criteria still unchecked in `tasks/10-dock.md`: the Files-side Trash
+integration test (T-18), the external-drag walkthrough (drag source,
+T-17/T-18), the live AT-SPI walkthrough, plus the core-loop and 60 Hz
+measurements. The multi-output criterion ("Dock appears on hotplug and
+per-output popovers do not float across outputs") now has its popover half
+covered by `overlay_popover_is_per_output`; the Dock-on-hotplug half rides the
+same `chrome_surfaces` mechanism tested by
+`shell_output_hotplug_reanchors_chrome`, but per-output *sizing* (T-11/T-16)
+is still open, so the box is left unchecked.
