@@ -19,6 +19,9 @@ __pycache__/
 screenshot.png
 *.log
 
+# Temporary opencode task-10 harness (local only)
+/harness/
+
 # Local art-direction reference screenshots (not original project assets;
 # must never ship — see .docs/design/14-risks.md).
 /.docs/reference/macos/
