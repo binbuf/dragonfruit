@@ -894,10 +894,9 @@ Rectangle {
     }
 
     // The app-entry menu (T-10 section 13): the live window list, Show All
-    // Windows, Keep/Remove from Dock, and Quit/Open. The divider menu holds
-    // the Dock options; the Trash menu holds Open and Empty Trash. Options ▸
-    // (Assign To, Open at Login, Show in Files) and "Show in Files" are later
-    // slices (they need the design-system submenu and T-18 Files).
+    // Windows, Keep/Remove from Dock, Options ▸, Show in Files, and
+    // Quit/Open. The divider menu holds the Dock options; the Trash menu
+    // holds Open and Empty Trash.
     readonly property var menuModel: {
         var e = menuEntry;
         if (!e)
@@ -910,8 +909,13 @@ Rectangle {
         if (e.kind === "stack")
             return stackMenuModel();
         var running = e.running === true;
+        var minimized = e.kind === "minimized";
         var list = e.windowList !== undefined ? e.windowList : [];
-        if (running && list.length > 0) {
+        // The window list (T-10 sections 9/13): shown for any entry that
+        // carries an app's windows, including a minimized-window entry (its
+        // owning app's full list). The frontmost window is checked and each
+        // minimized row is marked.
+        if (list.length > 0) {
             for (var i = 0; i < list.length; ++i) {
                 var w = list[i];
                 var label = w.title !== undefined ? w.title : qsTr("Window");
@@ -931,6 +935,16 @@ Rectangle {
             });
             out.push({ type: "separator" });
         }
+        if (minimized) {
+            // A minimized-window entry (section 13) is the owning app's
+            // window list plus Quit; it is not an app entry, so there is no
+            // Keep/Remove or Options.
+            out.push({
+                type: "item", label: qsTr("Quit"),
+                action: "quit", payload: { appId: e.appId }
+            });
+            return out;
+        }
         if (running) {
             if (e.pinned === true) {
                 out.push({
@@ -943,6 +957,9 @@ Rectangle {
                     action: "keep_in_dock", payload: { desktopId: e.desktopId }
                 });
             }
+            out.push({
+                type: "submenu", label: qsTr("Options"), submenu: optionsMenuModel(e)
+            });
             out.push({ type: "separator" });
             out.push({
                 type: "item", label: qsTr("Quit"),
@@ -953,6 +970,14 @@ Rectangle {
                 type: "item", label: qsTr("Open"),
                 action: "open", payload: { desktopId: e.desktopId }
             });
+            out.push({
+                type: "submenu", label: qsTr("Options"), submenu: optionsMenuModel(e)
+            });
+            out.push({
+                type: "item", label: qsTr("Show in Files"),
+                action: "show_in_files",
+                payload: { desktopId: e.desktopId, appId: e.appId }
+            });
             if (e.pinned === true) {
                 out.push({ type: "separator" });
                 out.push({
@@ -961,6 +986,42 @@ Rectangle {
                 });
             }
         }
+        return out;
+    }
+
+    // The app "Options" submenu (T-10 section 13): Assign To, Open at Login
+    // (T-24), and Show in Files (T-18). The design-system submenu is one
+    // level, so the three Assign To choices are direct rows; the nested
+    // macOS `Assign To ▸` form is deferred with nested submenus in the design
+    // system. The shell resolves each action against the live app state.
+    function optionsMenuModel(e) {
+        var id = e.desktopId !== undefined ? e.desktopId : "";
+        var appId = e.appId !== undefined ? e.appId : "";
+        var out = [];
+        out.push({
+            type: "item", label: qsTr("Assign to This Desktop"),
+            action: "assign_to",
+            payload: { desktopId: id, appId: appId, target: "this" }
+        });
+        out.push({
+            type: "item", label: qsTr("Assign to All Desktops"),
+            action: "assign_to",
+            payload: { desktopId: id, appId: appId, target: "all" }
+        });
+        out.push({
+            type: "item", label: qsTr("Assign to None"),
+            action: "assign_to",
+            payload: { desktopId: id, appId: appId, target: "none" }
+        });
+        out.push({ type: "separator" });
+        out.push({
+            type: "item", label: qsTr("Open at Login"),
+            action: "open_at_login", payload: { desktopId: id }
+        });
+        out.push({
+            type: "item", label: qsTr("Show in Files"),
+            action: "show_in_files", payload: { desktopId: id, appId: appId }
+        });
         return out;
     }
 

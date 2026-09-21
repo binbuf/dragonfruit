@@ -1257,6 +1257,44 @@ void ShellController::openTrashInFiles()
         qInfo() << "shell: Dock opened Trash in Files (pid" << pid << ")";
 }
 
+void ShellController::showDockAppInFiles(const QString &desktopId, const QString &appId)
+{
+    // Resolve the app to reveal. A pinned entry carries the desktop id; a
+    // running temporary entry may only carry the compositor app id.
+    DesktopEntry app = m_index.byId(desktopId);
+    if (!app.valid)
+        app = m_index.resolve(appId);
+    if (!DesktopEntryIndex::isLaunchable(app)) {
+        qWarning() << "shell: Show in Files: cannot resolve app" << desktopId << appId;
+        return;
+    }
+    const QStringList appArgv = DesktopEntryIndex::buildLaunchCommand(app);
+    if (appArgv.isEmpty())
+        return;
+    const QString target = appArgv.first();
+    // Files is T-18; the design's `org.dragonfruit.Files1` service name is the
+    // activation target once it lands. Until then launch the Files .desktop
+    // with the executable path, the same interim pattern as the Trash.
+    DesktopEntry files = m_index.byId(QStringLiteral("org.dragonfruit.Files.desktop"));
+    if (!files.valid)
+        files = m_index.resolve(QStringLiteral("org.dragonfruit.Files"));
+    if (!DesktopEntryIndex::isLaunchable(files)) {
+        qWarning() << "shell: Show in Files requested but Files is not installed (T-18):"
+                   << target;
+        return;
+    }
+    const QStringList argv = DesktopEntryIndex::buildLaunchCommand(files, {target});
+    if (argv.isEmpty()) {
+        qWarning() << "shell: Files .desktop has no usable Exec for" << target;
+        return;
+    }
+    qint64 pid = 0;
+    if (!QProcess::startDetached(argv.first(), argv.mid(1), QDir::homePath(), &pid))
+        qWarning() << "shell: cannot show" << target << "in Files:" << argv.first();
+    else
+        qInfo() << "shell: Dock revealed" << app.name << "in Files (pid" << pid << ")";
+}
+
 void ShellController::launchDockApp(const QString &desktopId)
 {
     launchDockAppWithFiles(desktopId, QStringList());
@@ -1431,6 +1469,28 @@ void ShellController::onDockEntryMenuAction(const QString &action, const QVarian
         const QString id = map.value(QStringLiteral("desktopId")).toString();
         if (!id.isEmpty())
             launchDockApp(id);
+    } else if (action == QLatin1String("assign_to")) {
+        // The app Options submenu (T-10 section 13). "This Desktop" moves the
+        // app's live windows to the active Space; "All Desktops" and "None"
+        // have no compositor assignment model yet (T-04/T-05).
+        const QString target = map.value(QStringLiteral("target")).toString();
+        const QString appId = map.value(QStringLiteral("appId")).toString();
+        if (target == QLatin1String("this")) {
+            m_protocol->assignAppToActiveWorkspace(appId);
+        } else if (target == QLatin1String("all")) {
+            qInfo() << "shell: Dock Assign to All Desktops is pending"
+                       "(no sticky-window model, T-04/T-05):" << appId;
+        } else if (target == QLatin1String("none")) {
+            qInfo() << "shell: Dock Assign to None is pending"
+                       "(no app-assignment model, T-04/T-05):" << appId;
+        }
+    } else if (action == QLatin1String("open_at_login")) {
+        // T-24 owns login items; the entry point is wired.
+        qInfo() << "shell: Dock Open at Login is pending (T-24)"
+                << map.value(QStringLiteral("desktopId")).toString();
+    } else if (action == QLatin1String("show_in_files")) {
+        showDockAppInFiles(map.value(QStringLiteral("desktopId")).toString(),
+                           map.value(QStringLiteral("appId")).toString());
     } else if (action == QLatin1String("toggle_magnification")) {
         // The divider menu toggle (T-10 section 13/19); no surface change.
         m_settings.setMagnification(m_settings.magnification() > 0 ? 0.0 : 0.5);

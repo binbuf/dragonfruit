@@ -461,6 +461,25 @@ void ShellProtocol::activateApp(const QString &appId)
         wl_display_flush(m_display);
 }
 
+void ShellProtocol::assignAppToActiveWorkspace(const QString &appId)
+{
+    if (appId.isEmpty() || !m_activeWorkspace)
+        return;
+    // Move every window of the app to the Space the compositor last activated
+    // (T-10 section 13, "Assign to This Desktop"). The compositor has no
+    // sticky/all-Spaces or "no assignment" state, so those two options are
+    // controller-level pending actions.
+    QList<df_toplevel *> targets;
+    for (auto it = m_toplevels.constBegin(); it != m_toplevels.constEnd(); ++it) {
+        if (it.value().appId == appId)
+            targets.append(it.key());
+    }
+    for (df_toplevel *toplevel : std::as_const(targets))
+        df_toplevel_move_to_workspace(toplevel, m_activeWorkspace);
+    if (!targets.isEmpty() && m_display)
+        wl_display_flush(m_display);
+}
+
 void ShellProtocol::releaseKeyboardFocus()
 {
     if (!m_manager)
@@ -1437,12 +1456,21 @@ void ShellProtocol::onWorkspaceIndex(void *data, df_workspace *workspace, uint32
     self->m_workspaces[workspace].index = static_cast<int>(index);
     self->emitDockState();
 }
-void ShellProtocol::onWorkspaceActivated(void *, df_workspace *, uint32_t) {}
+void ShellProtocol::onWorkspaceActivated(void *data, df_workspace *workspace, uint32_t)
+{
+    // The event names the Space that just became active (T-10 section 13);
+    // remember it so "Assign to This Desktop" can target it.
+    auto *self = static_cast<ShellProtocol *>(data);
+    self->m_activeWorkspace = workspace;
+}
 void ShellProtocol::onWorkspaceFullscreen(void *, df_workspace *, uint32_t) {}
 void ShellProtocol::onWorkspaceWallpaper(void *, df_workspace *, const char *, uint32_t, uint32_t) {}
 void ShellProtocol::onWorkspaceRemoved(void *data, df_workspace *workspace)
 {
     auto *self = static_cast<ShellProtocol *>(data);
     self->m_workspaces.remove(workspace);
+    // Never keep a dangling active-Space pointer for "Assign to This Desktop".
+    if (self->m_activeWorkspace == workspace)
+        self->m_activeWorkspace = nullptr;
 }
 void ShellProtocol::onWorkspaceDone(void *, df_workspace *) {}
