@@ -3762,3 +3762,125 @@ Files-side Trash integration test (needs T-18), the external-drag walkthrough
 (needs a drag source, T-17/T-18), the scene-graph FR-14 render path, the live
 AT-SPI walkthrough, multi-output hotplug per-output popovers, plus the
 core-loop and 60 Hz measurements.
+
+## T-10 continuation — Downloads stack + recents (fourteenth slice)
+
+**State: partial.** The Downloads stack and the recent/suggested-app entries
+now exist (section 17), and the stack is the first **consumer of
+`springLoadRequested`**: a drag dwelling over the stack opens its popover so
+the drop can target it. This closes the "Downloads-stack/recents consumer of
+springLoadRequested" hand-off item. The **drag source** (Files/launcher,
+T-17/T-18) and its end-to-end walkthrough, the GVfs Trash completion, the app
+Options submenu, per-output sizing, the scene-graph render path, and the live
+AT-SPI dump are unchanged.
+
+### What landed
+
+- **Pure `DownloadsMonitor`** (`shell/src/downloadsmonitor.{h,cpp}`, in the
+  Wayland-free `dragonfruit-shell-dockcore` static lib). A zero-polling
+  `QFileSystemWatcher` on `$XDG_DOWNLOAD_DIR` (default `~/Downloads`) exposes
+  a newest-first listing (`{ name, path, isDir }`, `QDir::Time | DirsLast`),
+  an item count, and a "new items" badge. The first scan only establishes the
+  baseline, so a pre-existing folder is not a badge on login; every later
+  addition increments it. `markSeen()` clears it. `moveIn()` performs the
+  drop action (rename, copy+remove fallback, unique `name.N`, refuses the
+  folder itself and `/`). Unit-tested in `tst_dockcore` (list + badge +
+  markSeen, move-in, unsafe root).
+- **Pure `buildRecentEntries`** (`dockmodel.{h,cpp}`): up to `limit` (3)
+  suggested entries for a recency-ordered id list, skipping anything already
+  pinned or running (resolved through the interim index) and anything that no
+  longer resolves. `buildDockEntries` grew a fifth optional `recentIds`
+  parameter and appends the recents to the **app region**, before the divider
+  and minimized entries, so the layout slot is the app region. Unit-tested.
+- **Dock QML**. A `stackEntry` (`id: "__downloads__"`, `kind: "stack"`) sits
+  in the right region immediately before the Trash and is present even when
+  the folder is empty (a stable drop target). `DockStackPopover.qml` lists the
+  folder (header opens the folder, a row opens the file, an "Empty" row when
+  empty, an "N more…" row past `maxItems`). Clicking the stack opens the
+  popover (`activateEntry` branch) and emits `downloadsViewed`; the badge is
+  drawn on the entry (`DockEntry.stackBadge`) and the accessible name carries
+  "N items, M new". A `stackMenuModel()` offers "Open Downloads Folder". The
+  stack is excluded from drag rearrangement (`isDraggable`) and terminates the
+  app-region insertion scan. `DockGlyph` gained a folder `"stack"` shape.
+- **Spring-load consumer**. `springLoadTimer` already started for a `"stack"`
+  target; on fire it now also calls `openStack()`, so a drag dwelling over the
+  stack opens the folder listing. The existing external-drop resolution
+  (`dockDropActionFor("stack", Files) == MoveToDownloads`) is unchanged, so a
+  drop still moves files in via the shell.
+- **Shell wiring** (`ShellController`). Creates the monitor, pushes
+  `downloadsItems`/`downloadsCount`/`downloadsBadge` onto the Dock on
+  `changed()`, clears the badge on `downloadsViewed`, opens files/folders with
+  `QDesktopServices::openUrl` (the interim until T-18 Files owns "open"), and
+  handles the `open_downloads_folder` menu action. Recency is tracked from
+  `onFocusedAppChanged` into `m_recentAppIds` (capped at 12, kept even when
+  `dock.showRecentApps` is off) and passed to `buildDockEntries` only when the
+  setting is on.
+- **Tests.** `tst_dockcore` +5 (downloads list/badge, move-in, unsafe root,
+  recents filtering/limit, recents-before-minimized). `tst_dock` +6 (stack
+  click opens the popover + viewed signal, badge/accessible state, stack drop
+  reports `"stack"`, spring-load opens the stack, recents render in the app
+  region) and 3 existing order/keyboard cases updated for the new stack item.
+
+### Gotchas learned (important for the drag-source and Files slices)
+
+- **The badge is shell-side and event-driven.** `markSeen()` is a no-op when
+  the count is already zero (it does not emit), so opening the stack never
+  causes a spurious render. A third-party addition is picked up by the
+  `QFileSystemWatcher` and increments the badge on the next scan.
+- **`DownloadsMonitor` is the interim Files-core stand-in.** Delete it and
+  point the stack at T-17's folder monitor when Files lands; the public
+  behavior (listing, count, badge, move-in) is the contract. `dockdrops.cpp`
+  already owns `downloadsDirectory()`; the monitor reuses it.
+- **Stack popovers are placed/rendered like the chooser.** `popoverRect`
+  includes `stackPopover`, so the shell's existing gutter/headroom and
+  overlay-surface machinery just works. `openStack()` calls `closePopovers()`
+  first, so only one popover is ever open.
+- **Recents are gated, not removed.** The controller keeps `m_recentAppIds`
+  regardless of `dock.showRecentApps` so toggling it on is immediate; only the
+  `buildDockEntries` call consults the setting. A recents entry is a normal
+  `entryActivated` -> `launchDockApp(desktopId)` path (not running), so it
+  needs no new click handling.
+- **`buildDockEntries`' new parameter is defaulted**, so existing callers and
+  tests compile unchanged; a new caller that wants recents must pass the
+  recency list explicitly.
+- **Opening files uses `QDesktopServices`.** This needs `Qt6::Gui` (already
+  linked) and is the standard xdg-open path; T-18 Files should replace it with
+  the app's own "open file" / `org.dragonfruit.Files1` activation.
+
+### Hand-off / open items (remaining T-10 slices)
+
+1. **The drag source** (Files/launcher, T-17/T-18): export `text/uri-list`
+   (files) and `application/x-dragonfruit-app` (an app alias) from a
+   `wl_data_source`, start the drag on an implicit pointer grab, and add the
+   scripted end-to-end walkthrough (source client + shell target) to
+   `shell_protocol_conformance` or a new suite. The shell side is complete.
+2. **GVfs Trash completion** (section 16): switch `TrashMonitor` to the GVfs
+   `GFileMonitor` + GIO empty/trash when the GIO dev headers are available;
+   mount-unavailable dimming; Empty Trash progress; `org.dragonfruit.Files1`
+   activation once T-18 exists. `DownloadsMonitor` gets the same treatment.
+3. **App Options submenu** (section 13): Assign To (needs an active-Space
+   request/app-level assignment), Open at Login (T-24), Show in Files (T-18).
+   The design-system submenu it needs has landed.
+4. **Per-output sizing** (section 18): chrome surfaces still size from the
+   first output; `matches_output` is the filter hook.
+5. **Scene-graph render path** (FR-14): the Dock still commits on demand via
+   `grabWindow`; the durable `QQuickWindow::afterRendering`/render-control fix
+   is shared with the T-09 deferred-polish backlog.
+6. **Live AT-SPI dump** (section 20): the QML roles exist and the keyboard
+   seat path exists; a session-bus `atspi` walkthrough is T-31.
+7. **`MenuBarMenu` submenus** (T-09/T-22): port the new submenu panel.
+8. **Downloads badge polish**: the badge currently counts every addition since
+   the last view; a future slice may want per-item "unread" or a notification
+   feed (T-25) instead of a raw count.
+
+### Gate status
+
+`make lint` green (`cargo fmt --check`, `clippy -D warnings`, ctest 13/13 incl.
+`tst_dock` 96 and `tst_dockcore` 35, `gen-tokens --check`, the design-token/
+desktop-name/no-capture gates); `make e2e` green; gallery visual regression
+66/66; live headless smoke reports `Dock configured 1280x124` /
+`edge=1 thickness=60` with a clean teardown. Acceptance criteria still
+unchecked in `tasks/10-dock.md`: the Files-side Trash integration test (needs
+T-18), the external-drag walkthrough (needs a drag source, T-17/T-18), the
+scene-graph FR-14 render path, the live AT-SPI walkthrough, multi-output
+hotplug per-output popovers, plus the core-loop and 60 Hz measurements.

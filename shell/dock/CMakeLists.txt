@@ -7,6 +7,7 @@ qt_add_qml_module(dragonfruit-shell-dock
         Dock.qml
         DockEntry.qml
         DockGlyph.qml
+        DockStackPopover.qml
         DockWindowChooser.qml
 )
 target_link_libraries(dragonfruit-shell-dock PUBLIC
@@ -14,4 +15,4 @@ target_link_libraries(dragonfruit-shell-dock PUBLIC
     dragonfruit-design-systemplugin
 )
 
-df_qml_lint(shell-dock Dock.qml DockEntry.qml DockGlyph.qml DockWindowChooser.qml)
+df_qml_lint(shell-dock Dock.qml DockEntry.qml DockGlyph.qml DockStackPopover.qml DockWindowChooser.qml)

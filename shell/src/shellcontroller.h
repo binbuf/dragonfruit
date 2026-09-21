@@ -15,6 +15,7 @@
 #include "desktopentry.h"
 #include "dockpins.h"
 #include "docksettings.h"
+#include "downloadsmonitor.h"
 #include "shellprotocol.h"
 #include "trashmonitor.h"
 
@@ -76,6 +77,11 @@ private slots:
                                const QStringList &paths, qreal x, qreal y);
     void onDockExternalDropRequested(const QString &targetId, const QString &targetKind,
                                      const QString &desktopId, bool payloadIsApp);
+    // The Downloads stack (T-10 section 17).
+    void onDockDownloadActivated(const QString &path);
+    void onDockDownloadsFolderRequested();
+    void onDockDownloadsViewed();
+    void onDownloadsChanged();
     void onInputAction(const QString &action, const QString &source);
     void onDockPointerMoved(qreal x, qreal y);
     void onDockPointerButton(qreal x, qreal y, quint32 button, bool pressed);
@@ -157,6 +163,12 @@ private:
     // Interim home-trash state for the Dock's Trash entry (section 16). The
     // GIO/GVfs backend replaces it when the dev headers are available.
     TrashMonitor *m_trash = nullptr;
+    // Downloads-stack state for the Dock (section 17). Files-core (T-17)
+    // replaces this watch with its folder monitor.
+    DownloadsMonitor *m_downloads = nullptr;
+    // Recency-ordered app ids for the suggested entries (`dock.showRecentApps`,
+    // T-10 section 17); fed by focus changes, capped and de-duplicated.
+    QStringList m_recentAppIds;
 
     // Interim app-index stand-in (T-23) and Dock pin persistence (T-15).
     DesktopEntryIndex m_index;

@@ -89,7 +89,7 @@ Updated when a task is partially or completely finished; see
 | Phase | Tickets |
 |---|---|
 | 1 · Foundation | T-01 ✅ done · T-02 🔄 partial (compositor core) · T-03 🔄 partial (input engine) · T-04 🔄 partial (window model) · T-05 🔄 partial (Spaces model) · T-06 🔄 partial (Xwayland) · T-07 🔄 partial (private shell protocols) |
-| 2 · Experience | T-08 ✅ done (design system; app-level chrome lint + live AT-SPI dump deferred) · T-09 🔄 partial (menu bar + shell bootstrap + overlay-layer dropdown + scripted output hotplug; T-20/T-22 content open) · T-10 🔄 partial (Dock presentation core + shell surface + running entries/activation + launch/pinned persistence + launch/attention bounce + magnified-band input region + app context menus/window chooser + drag rearrangement (reorder/promote/remove) + live `dock.*` settings/divider menu/reduced motion + left/right reserved-zone foundation + per-position (left/right) surfaces, vertical layout, beside-the-bar popovers, corrected auto-hide translation and edge-band reveal/re-hide state machine + Trash state/count via a home-trash watcher, click-to-Files at `trash://`, and the Open/Empty Trash menu with an Empty Trash confirmation + Control-F3/Super+Option+D `focus-dock`/`toggle-dock` shortcuts and in-Dock keyboard navigation (arrows/Return/menu/type-jump, FocusRing, Escape `release_keyboard_focus` + design-system nested submenus and the divider Position on Screen submenu + external drops (a Wayland data-device drag destination, drop-to-pin / open-with-files / trash / Downloads, live insertion gap and drop highlight, spring-loading hook)); drag *source* (T-17/T-18), app Options submenu, per-output sizing, scene-graph render path, live AT-SPI dump open) · T-11 … T-14 pending |
+| 2 · Experience | T-08 ✅ done (design system; app-level chrome lint + live AT-SPI dump deferred) · T-09 🔄 partial (menu bar + shell bootstrap + overlay-layer dropdown + scripted output hotplug; T-20/T-22 content open) · T-10 🔄 partial (Dock presentation core + shell surface + running entries/activation + launch/pinned persistence + launch/attention bounce + magnified-band input region + app context menus/window chooser + drag rearrangement (reorder/promote/remove) + live `dock.*` settings/divider menu/reduced motion + left/right reserved-zone foundation + per-position (left/right) surfaces, vertical layout, beside-the-bar popovers, corrected auto-hide translation and edge-band reveal/re-hide state machine + Trash state/count via a home-trash watcher, click-to-Files at `trash://`, and the Open/Empty Trash menu with an Empty Trash confirmation + Control-F3/Super+Option+D `focus-dock`/`toggle-dock` shortcuts and in-Dock keyboard navigation (arrows/Return/menu/type-jump, FocusRing, Escape `release_keyboard_focus` + design-system nested submenus and the divider Position on Screen submenu + external drops (a Wayland data-device drag destination, drop-to-pin / open-with-files / trash / Downloads, live insertion gap and drop highlight, spring-loading hook) + the Downloads stack (folder watch, listing popover, new-items badge, drop-to-move, the spring-load consumer) and recent/suggested apps); drag *source* (T-17/T-18), app Options submenu, per-output sizing, scene-graph render path, live AT-SPI dump open) · T-11 … T-14 pending |
 | 3 · Flagship apps | T-15 … T-19 pending |
 | 4 · System integration | T-20 … T-23 pending |
 | 5 · Desktop infrastructure | T-24 … T-29 pending |
@@ -655,6 +655,30 @@ launcher, T-17/T-18) and its end-to-end walkthrough; the app Options submenu,
 per-output sizing, the scene-graph render path, and the live AT-SPI dump are
 unchanged. Details and hand-off: [PROGRESS.md](PROGRESS.md).
 
+T-10 continuation (Downloads stack + recents slice): the Downloads stack and
+the recent/suggested-app entries are landed (section 17), and the stack is the
+first **consumer of `springLoadRequested`**. A new pure `DownloadsMonitor`
+(in the Wayland-free dockcore lib) is a zero-polling `QFileSystemWatcher` on
+`$XDG_DOWNLOAD_DIR` that exposes a newest-first listing, an item count, and a
+new-items badge (baseline on first scan, cleared when the stack is opened),
+and performs the drop move-in with a unique-name/copy fallback. The Dock's
+right region now has a stack entry immediately before the Trash, present even
+when the folder is empty; `DockStackPopover.qml` lists the folder (header
+opens the folder, a row opens the file, an "Empty" row, an "N more…" row), the
+entry carries the badge and an "N items, M new" accessible name, and the stack
+is excluded from drag rearrangement. `springLoadTimer` now opens the stack
+popover when a drag dwells over it, so the drop can target it. A pure
+`buildRecentEntries` appends up to three recently-focused apps (skipping
+pinned/running/unresolvable identities) to the app region; the shell tracks
+recency from focus changes and only passes it to `buildDockEntries` when
+`dock.showRecentApps` is on. The shell opens files/folders through
+`QDesktopServices` until T-18 Files owns "open", and handles the stack's
+"Open Downloads Folder" menu action. Open: the **drag source** (Files/launcher,
+T-17/T-18) and its end-to-end walkthrough, the GVfs Trash/downloads backends
+when the GIO headers exist, the app Options submenu, per-output sizing, the
+scene-graph render path, the live AT-SPI dump, and `MenuBarMenu` submenus.
+Details and hand-off: [PROGRESS.md](PROGRESS.md).
+
 **Foundation milestone E2E (T-01…T-07).** The whole vertical slice now has a
 headless end-to-end test, `compositor/tests/milestone_e2e.rs` (`make e2e`):
 one live session with a shell client, a Wayland app, and an X11 app attached
@@ -687,7 +711,7 @@ the shell's own chrome rendering (T-09/T-10).
 2. **Experience**
    - [x] Design system (T-08: token architecture + all 20 components + gallery/visual regression; app-level chrome lint + live AT-SPI dump deferred)
    - [ ] Top bar (T-09 partial: menu-bar render/interaction + shell bootstrap live, restart/idle scripts passing, chrome input routing + overlay-layer dropdown landed and scripted, output hotplug scripted, always-present system menu (dragonfruit mark) + application menu (Files on the desktop) landed; T-20 status adapters, T-22 app-exported menus, and the fixed-menu action wiring (T-16/T-24/T-26) open)
-     - [ ] Dock (T-10 partial: presentation/interaction core + shell `top` surface with bottom reserved zone + launch/pinned persistence + launch/attention bounce + magnified-band input region + app context menus and window chooser + drag rearrangement (reorder/promote/remove) + live `dock.*` settings + per-position (left/right) surfaces and vertical layout + edge-band auto-hide reveal/re-hide + Trash state/count via a home-trash watcher with click-to-Files and the Open/Empty Trash menu with confirmation + Control-F3/Super+Option+D `focus-dock`/`toggle-dock` shortcuts with in-Dock keyboard navigation and an Escape `release_keyboard_focus` path and design-system nested submenus with the divider Position on Screen submenu + external drops (Wayland data-device drag destination, drop-to-pin/open-with-files/trash/Downloads, live insertion gap and drop highlight, spring-loading hook) landed and scripted; drag *source* (T-17/T-18), app Options submenu, per-output sizing, scene-graph render path, live AT-SPI dump open)
+     - [ ] Dock (T-10 partial: presentation/interaction core + shell `top` surface with bottom reserved zone + launch/pinned persistence + launch/attention bounce + magnified-band input region + app context menus and window chooser + drag rearrangement (reorder/promote/remove) + live `dock.*` settings + per-position (left/right) surfaces and vertical layout + edge-band auto-hide reveal/re-hide + Trash state/count via a home-trash watcher with click-to-Files and the Open/Empty Trash menu with confirmation + Control-F3/Super+Option+D `focus-dock`/`toggle-dock` shortcuts with in-Dock keyboard navigation and an Escape `release_keyboard_focus` path and design-system nested submenus with the divider Position on Screen submenu + external drops (Wayland data-device drag destination, drop-to-pin/open-with-files/trash/Downloads, live insertion gap and drop highlight, spring-loading hook) + the Downloads stack (folder watch, listing popover, new-items badge, drop-to-move, the spring-load consumer) and recent/suggested apps landed and scripted; drag *source* (T-17/T-18), app Options submenu, per-output sizing, scene-graph render path, live AT-SPI dump open)
    - [ ] Window switching
    - [ ] Mission Control
    - [ ] Workspace gestures

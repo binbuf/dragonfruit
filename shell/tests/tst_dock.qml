@@ -32,6 +32,10 @@ Item {
         SignalSpy { id: releaseFocusSpy; signalName: "keyboardFocusReleaseRequested" }
         SignalSpy { id: externalDropSpy; signalName: "externalDropRequested" }
         SignalSpy { id: externalDragSpy; signalName: "externalDragChanged" }
+        SignalSpy { id: springLoadSpy; signalName: "springLoadRequested" }
+        SignalSpy { id: downloadSpy; signalName: "downloadActivated" }
+        SignalSpy { id: downloadsFolderSpy; signalName: "downloadsFolderRequested" }
+        SignalSpy { id: downloadsViewedSpy; signalName: "downloadsViewed" }
 
         // Reduced motion is a global singleton; reset it before every test so
         // a failure mid-test cannot leak into the next one.
@@ -69,13 +73,14 @@ Item {
                            minimized("win1", "Document") ]
             });
             var items = dock.items;
-            compare(items.length, 5); // apps, divider, minimized, trash
+            compare(items.length, 6); // apps, divider, minimized, stack, trash
             compare(items[0].kind, "pinned");
             compare(items[1].kind, "temporary");
             compare(items[2].kind, "divider");
             compare(items[3].kind, "minimized");
-            compare(items[4].kind, "trash");
-            compare(dock.itemCount(), 5);
+            compare(items[4].kind, "stack");
+            compare(items[5].kind, "trash");
+            compare(dock.itemCount(), 6);
         }
 
         function test_minimized_hidden_when_minimize_into_tile_icon() {
@@ -85,8 +90,8 @@ Item {
                 entries: [ app("files", "Files", true), minimized("win1", "Document") ]
             });
             compare(dock.minimizedEntries.length, 0);
-            // apps, divider, trash
-            compare(dock.items.length, 3);
+            // apps, divider, stack, trash
+            compare(dock.items.length, 4);
         }
 
         function test_running_indicator_only_for_running_apps() {
@@ -1243,6 +1248,8 @@ Item {
             dock.moveKeyboardFocus(1); // the divider is skipped
             compare(dock.focusedItemId, "win1");
             dock.moveKeyboardFocus(1);
+            compare(dock.focusedItemId, "__downloads__");
+            dock.moveKeyboardFocus(1);
             compare(dock.focusedItemId, "__trash__");
             dock.moveKeyboardFocus(1); // wraps forward
             compare(dock.focusedItemId, "files");
@@ -1474,6 +1481,119 @@ Item {
             compare(dock.externalGap, false);
             compare(dock.externalPayloadCount, 0);
             compare(dock.externalInsertIndex, -1);
+        }
+
+        // -- Downloads stack + recents (T-10 section 17) --------------------
+
+        function stackItems() {
+            return [ { name: "a.txt", path: "/tmp/a.txt", isDir: false },
+                     { name: "folder", path: "/tmp/folder", isDir: true } ];
+        }
+
+        function test_stack_entry_present_and_click_opens_popover() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                downloadsItems: stackItems(), downloadsCount: 2, downloadsBadge: 1,
+                entries: [ app("a", "A", true) ]
+            });
+            var idx = dock.indexOfItemId("__downloads__");
+            verify(idx >= 0);
+            compare(dock.items[idx].kind, "stack");
+            compare(dock.items[idx + 1].kind, "trash");
+
+            downloadsViewedSpy.target = dock;
+            downloadsViewedSpy.clear();
+            dock.activateEntry(dock.items[idx]);
+            compare(dock.stackOpen, true);
+            compare(downloadsViewedSpy.count, 1);
+            // The popover rect is non-empty so the shell renders the overlay.
+            verify(dock.popoverRect.w > 0);
+
+            dock.closePopovers();
+            compare(dock.stackOpen, false);
+        }
+
+        function test_stack_badge_shows_the_new_count() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                downloadsItems: stackItems(), downloadsCount: 2, downloadsBadge: 3,
+                entries: [ app("a", "A", true) ]
+            });
+            var idx = dock.indexOfItemId("__downloads__");
+            var entry = dock.itemAt(idx);
+            var badge = findChild(entry, "stackBadge");
+            verify(badge !== null);
+            compare(badge.visible, true);
+            verify(entry.stateLabel.indexOf("2 items") >= 0);
+            verify(entry.stateLabel.indexOf("3 new") >= 0);
+
+            var empty = make(dockComponent, {
+                width: 1280, height: 160,
+                downloadsItems: [], downloadsCount: 0, downloadsBadge: 0,
+                entries: [ app("a", "A", true) ]
+            });
+            var emptyEntry = empty.itemAt(empty.indexOfItemId("__downloads__"));
+            compare(findChild(emptyEntry, "stackBadge").visible, false);
+        }
+
+        function test_stack_drop_reports_downloads() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                downloadsItems: stackItems(),
+                entries: [ app("a", "A", true) ]
+            });
+            externalDropSpy.target = dock;
+            externalDropSpy.clear();
+            dock.beginExternalDrag(false, 1);
+            var idx = dock.indexOfItemId("__downloads__");
+            var slot = dock.layout[idx];
+            var local = dock.mapToItem(null, slot.x + slot.w / 2, slot.y + slot.h / 2);
+            dock.externalDrop(local.x, local.y);
+            compare(externalDropSpy.count, 1);
+            compare(externalDropSpy.signalArguments[0][1], "stack");
+            compare(externalDropSpy.signalArguments[0][3], false);
+        }
+
+        function test_spring_load_opens_the_stack() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                downloadsItems: stackItems(),
+                entries: [ app("a", "A", true) ]
+            });
+            springLoadSpy.target = dock;
+            springLoadSpy.clear();
+            downloadsViewedSpy.target = dock;
+            downloadsViewedSpy.clear();
+            dock.beginExternalDrag(false, 1);
+            var idx = dock.indexOfItemId("__downloads__");
+            var slot = dock.layout[idx];
+            var local = dock.mapToItem(null, slot.x + slot.w / 2, slot.y + slot.h / 2);
+            dock.externalDragTo(local.x, local.y);
+            compare(dock.externalTargetId, "__downloads__");
+            tryVerify(function() { return dock.stackOpen; }, dock.springLoadDelay + 1000);
+            compare(springLoadSpy.count, 1);
+            compare(springLoadSpy.signalArguments[0][0], "__downloads__");
+            compare(downloadsViewedSpy.count, 1);
+        }
+
+        function test_recent_entries_render_in_the_app_region() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("files", "Files", true),
+                           { id: "recent:term.desktop", appId: "term.desktop",
+                             desktopId: "term.desktop", name: "Terminal",
+                             kind: "recent", running: false, pinned: false } ]
+            });
+            compare(dock.appEntries.length, 2);
+            compare(dock.appEntries[1].kind, "recent");
+            var idx = dock.indexOfItemId("recent:term.desktop");
+            var divider = dock.indexOfItemId("__divider__");
+            verify(idx >= 0 && idx < divider);
+            activatedSpy.target = dock;
+            activatedSpy.clear();
+            dock.activateEntry(dock.appEntries[1]);
+            compare(activatedSpy.count, 1);
+            compare(activatedSpy.signalArguments[0][0].kind, "recent");
         }
 
         // -- Artwork --------------------------------------------------------

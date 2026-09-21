@@ -7,6 +7,7 @@
 #include "dockmodel.h"
 #include "dockpins.h"
 #include "docksettings.h"
+#include "downloadsmonitor.h"
 #include "trashmonitor.h"
 
 #include <QDir>
@@ -662,6 +663,148 @@ private slots:
                  Action::MoveToDownloads);
         QCOMPARE(dockDropActionFor(QStringLiteral("divider"), Payload::Files), Action::None);
         QCOMPARE(dockDropActionFor(QStringLiteral("minimized"), Payload::Files), Action::None);
+    }
+
+    // -- downloads monitor (T-10 section 17) -----------------------------
+
+    void downloadsMonitorListsAndBadgesNewItems()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString downloads = dir.path() + QStringLiteral("/Downloads");
+        QVERIFY(QDir().mkpath(downloads));
+        writeFile(downloads + QStringLiteral("/existing.txt"), QStringLiteral("x"));
+
+        DownloadsMonitor monitor(downloads);
+        monitor.start();
+        QCOMPARE(monitor.itemCount(), 1);
+        // A pre-existing item is not a badge on login.
+        QCOMPARE(monitor.newCount(), 0);
+
+        writeFile(downloads + QStringLiteral("/fresh.txt"), QStringLiteral("y"));
+        QTRY_COMPARE(monitor.itemCount(), 2);
+        QTRY_COMPARE(monitor.newCount(), 1);
+
+        const QVariantList items = monitor.items();
+        QCOMPARE(items.size(), 2);
+        bool foundFresh = false;
+        for (const QVariant &value : items) {
+            const QVariantMap item = value.toMap();
+            QVERIFY(item.value(QStringLiteral("path")).toString().startsWith(downloads));
+            if (item.value(QStringLiteral("name")).toString() == QStringLiteral("fresh.txt"))
+                foundFresh = true;
+        }
+        QVERIFY(foundFresh);
+
+        monitor.markSeen();
+        QCOMPARE(monitor.newCount(), 0);
+    }
+
+    void downloadsMonitorMoveInMovesFiles()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString downloads = dir.path() + QStringLiteral("/Downloads");
+        const QString source = dir.path() + QStringLiteral("/note.txt");
+        writeFile(source, QStringLiteral("hello"));
+
+        DownloadsMonitor monitor(downloads);
+        monitor.start();
+        QCOMPARE(monitor.itemCount(), 0);
+
+        QCOMPARE(monitor.moveIn(QStringList{source}), 1);
+        QVERIFY(!QFileInfo::exists(source));
+        QVERIFY(QFileInfo::exists(downloads + QStringLiteral("/note.txt")));
+        QCOMPARE(monitor.itemCount(), 1);
+
+        // Moving a file already in the folder is refused, never recursive.
+        QCOMPARE(monitor.moveIn(QStringList{downloads + QStringLiteral("/note.txt")}), 0);
+        QVERIFY(!monitor.lastError().isEmpty());
+    }
+
+    void downloadsMonitorRefusesUnsafeRoot()
+    {
+        DownloadsMonitor monitor(QStringLiteral("/"));
+        QCOMPARE(monitor.moveIn(QStringList{QStringLiteral("/tmp/whatever")}), 0);
+        QVERIFY(!monitor.lastError().isEmpty());
+    }
+
+    // -- recent/suggested apps (T-10 section 17) -------------------------
+
+    void recentEntriesSkipPinnedRunningAndMisses()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString apps = makeAppDir(dir);
+        writeFile(apps + QStringLiteral("/a.desktop"),
+                  QStringLiteral("[Desktop Entry]\nName=Alpha\nExec=a\n"));
+        writeFile(apps + QStringLiteral("/b.desktop"),
+                  QStringLiteral("[Desktop Entry]\nName=Beta\nExec=b\n"));
+        writeFile(apps + QStringLiteral("/c.desktop"),
+                  QStringLiteral("[Desktop Entry]\nName=Gamma\nExec=c\n"));
+        writeFile(apps + QStringLiteral("/d.desktop"),
+                  QStringLiteral("[Desktop Entry]\nName=Delta\nExec=d\n"));
+
+        DesktopEntryIndex index;
+        index.scan({apps});
+
+        const QVariantList running{
+            QVariantMap{{QStringLiteral("id"), QStringLiteral("b")},
+                        {QStringLiteral("appId"), QStringLiteral("b")},
+                        {QStringLiteral("kind"), QStringLiteral("temporary")},
+                        {QStringLiteral("running"), true}},
+        };
+        // Recency order: running B, pinned A, C, D, then an unresolved miss.
+        const QVariantList recents = buildRecentEntries(
+            {QStringLiteral("b"), QStringLiteral("a"), QStringLiteral("c"),
+             QStringLiteral("d"), QStringLiteral("gone")},
+            {QStringLiteral("a.desktop")}, running, index);
+        QCOMPARE(recents.size(), 2);
+        QCOMPARE(recents.at(0).toMap().value(QStringLiteral("kind")).toString(),
+                 QStringLiteral("recent"));
+        QCOMPARE(recents.at(0).toMap().value(QStringLiteral("desktopId")).toString(),
+                 QStringLiteral("c.desktop"));
+        QCOMPARE(recents.at(0).toMap().value(QStringLiteral("running")).toBool(), false);
+        QCOMPARE(recents.at(1).toMap().value(QStringLiteral("desktopId")).toString(),
+                 QStringLiteral("d.desktop"));
+
+        // The limit is honored.
+        const QVariantList limited = buildRecentEntries(
+            {QStringLiteral("c"), QStringLiteral("d")}, {}, {}, index, 1);
+        QCOMPARE(limited.size(), 1);
+        QCOMPARE(limited.at(0).toMap().value(QStringLiteral("desktopId")).toString(),
+                 QStringLiteral("c.desktop"));
+    }
+
+    void mergeAppendsRecentsBeforeMinimized()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString apps = makeAppDir(dir);
+        writeFile(apps + QStringLiteral("/pin.desktop"),
+                  QStringLiteral("[Desktop Entry]\nName=Pin\nExec=pin\n"));
+        writeFile(apps + QStringLiteral("/recent.desktop"),
+                  QStringLiteral("[Desktop Entry]\nName=Recent\nExec=recent\n"));
+
+        DesktopEntryIndex index;
+        index.scan({apps});
+        const QVariantList running{
+            QVariantMap{{QStringLiteral("id"), QStringLiteral("win:1")},
+                        {QStringLiteral("appId"), QStringLiteral("pin")},
+                        {QStringLiteral("name"), QStringLiteral("Doc")},
+                        {QStringLiteral("kind"), QStringLiteral("minimized")}},
+        };
+        const QVariantList entries = buildDockEntries(
+            {QStringLiteral("pin.desktop")}, index, running, {}, {QStringLiteral("recent")});
+        QCOMPARE(entries.size(), 3);
+        QCOMPARE(entries.at(0).toMap().value(QStringLiteral("kind")).toString(),
+                 QStringLiteral("pinned"));
+        QCOMPARE(entries.at(1).toMap().value(QStringLiteral("kind")).toString(),
+                 QStringLiteral("recent"));
+        QCOMPARE(entries.at(1).toMap().value(QStringLiteral("desktopId")).toString(),
+                 QStringLiteral("recent.desktop"));
+        QCOMPARE(entries.at(2).toMap().value(QStringLiteral("kind")).toString(),
+                 QStringLiteral("minimized"));
     }
 
     // -- bounce clocks ---------------------------------------------------
