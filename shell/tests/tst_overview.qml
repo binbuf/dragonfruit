@@ -22,6 +22,7 @@ Item {
 
         SignalSpy { id: workspaceSpy; signalName: "workspaceActivated" }
         SignalSpy { id: windowSpy; signalName: "windowActivated" }
+        SignalSpy { id: moveSpy; signalName: "windowMovedToWorkspace" }
         SignalSpy { id: dismissSpy; signalName: "dismissRequested" }
 
         function make(props) {
@@ -48,6 +49,15 @@ Item {
             ];
         }
 
+        function windows() {
+            return [
+                { windowId: "123", title: "Document", appId: "org.example.Editor",
+                  workspaceIndex: 0, workspaceName: "Desktop 1", focused: true },
+                { windowId: "456", title: "Mail", appId: "org.example.Mail",
+                  workspaceIndex: 1, workspaceName: "Desktop 2", focused: false }
+            ];
+        }
+
         function cards(overview) {
             var strip = findChild(overview, "workspaceStrip");
             var out = [];
@@ -64,6 +74,16 @@ Item {
             for (var i = 0; i < strip.children.length; ++i) {
                 if (strip.children[i].objectName === "windowChip")
                     out.push(strip.children[i]);
+            }
+            return out;
+        }
+
+        function windowCards(overview) {
+            var grid = findChild(overview, "windowGrid");
+            var out = [];
+            for (var i = 0; i < grid.children.length; ++i) {
+                if (grid.children[i].objectName === "windowCard")
+                    out.push(grid.children[i]);
             }
             return out;
         }
@@ -123,6 +143,59 @@ Item {
             overview.progress = 1;
             waitForRendering(stage);
             compare(strip.opacity, 1);
+        }
+
+        function test_window_grid_renders_one_card_per_visible_window() {
+            var overview = make({ windows: windows(), progress: 1, active: true });
+            var list = windowCards(overview);
+            compare(list.length, 2);
+            compare(findChild(list[0], "windowTitle").text, "Document");
+            compare(findChild(list[1], "windowTitle").text, "Mail");
+            compare(findChild(list[1], "windowSpace").text, "Desktop 2");
+        }
+
+        function test_clicking_a_window_selects_it() {
+            var overview = make({ windows: windows(), progress: 1, active: true });
+            var list = windowCards(overview);
+            windowSpy.target = overview;
+            windowSpy.clear();
+            mouseClick(list[0], list[0].width / 2, list[0].height / 2);
+            compare(windowSpy.count, 1);
+            compare(windowSpy.signalArguments[0][0], "123");
+        }
+
+        function test_dragging_a_window_onto_a_space_moves_it() {
+            var overview = make({ workspaces: spaces(), windows: windows(),
+                                  progress: 1, active: true });
+            var spaceCards = cards(overview);
+            moveSpy.target = overview;
+            moveSpy.clear();
+            overview.beginWindowDrag("123");
+            compare(overview.draggingWindowId, "123");
+            var target = spaceCards[1];
+            var center = target.mapToItem(null, target.width / 2, target.height / 2);
+            overview.updateWindowDrag("123", center.x, center.y);
+            compare(overview.dragWorkspaceIndex, 1,
+                    "the Space card under the pointer is the drop target");
+            verify(target.dropTarget, "the target card is highlighted");
+            overview.dropWindow("123");
+            compare(overview.draggingWindowId, "");
+            compare(moveSpy.count, 1);
+            compare(moveSpy.signalArguments[0][0], "123");
+            compare(moveSpy.signalArguments[0][1], 1);
+        }
+
+        function test_dropping_a_window_outside_any_space_does_not_move_it() {
+            var overview = make({ workspaces: spaces(), windows: windows(),
+                                  progress: 1, active: true });
+            moveSpy.target = overview;
+            moveSpy.clear();
+            overview.beginWindowDrag("123");
+            overview.updateWindowDrag("123", 5, 700);
+            compare(overview.dragWorkspaceIndex, -1);
+            overview.dropWindow("123");
+            compare(moveSpy.count, 0, "no Space under the pointer means no move");
+            compare(overview.draggingWindowId, "");
         }
     }
 }
