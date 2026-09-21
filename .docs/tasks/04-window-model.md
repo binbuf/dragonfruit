@@ -5,7 +5,7 @@
 | **Phase** | 1 · Foundation |
 | **Area** | `compositor/` (window management) |
 | **Depends on** | [T-02](02-compositor-core.md) · [T-03](03-input-keymaps-shortcuts.md) |
-| **Blocks** | [T-05](05-spaces-model.md) · [T-06](06-xwayland.md) · [T-07](07-private-shell-protocols.md) · [T-13](13-window-decorations-ssd.md) |
+| **Blocks** | [T-05](05-spaces-model.md) · [T-06](06-xwayland.md) · [T-07](07-private-shell-protocols.md) · [T-13](13-window-decorations-ssd.md) · [T-35](35-window-lifecycle-animations.md) |
 | **Estimate** | L |
 | **Design docs** | [02-compositor.md](../design/02-compositor.md) · [03-workspaces.md](../design/03-workspaces.md) |
 

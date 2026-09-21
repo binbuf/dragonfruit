@@ -4,8 +4,8 @@
 |---|---|
 | **Phase** | 2 · Experience |
 | **Area** | `compositor/` (overview state machine) + `shell/` (strip/chrome) |
-| **Depends on** | [T-03](03-input-keymaps-shortcuts.md) · [T-05](05-spaces-model.md) · [T-07](07-private-shell-protocols.md) · [T-08](08-design-system.md) · [T-09](09-menu-bar.md) |
-| **Blocks** | Phase-2 exit (zero-dropped-frame loop) · [T-12](12-app-switcher.md) (cross-Space activation) · [T-14](14-hot-corners-desktop-background.md) (Desktop Reveal shares the pipeline) · [T-31](31-polish-hardening.md) |
+| **Depends on** | [T-03](03-input-keymaps-shortcuts.md) · [T-05](05-spaces-model.md) · [T-07](07-private-shell-protocols.md) · [T-08](08-design-system.md) · [T-09](09-menu-bar.md) · [T-33](33-compositor-effects-materials.md) (scale/clip/blur transforms) |
+| **Blocks** | Phase-2 exit (zero-dropped-frame loop) · [T-12](12-app-switcher.md) (cross-Space activation) · [T-14](14-hot-corners-desktop-background.md) (Desktop Reveal shares the pipeline) · [T-34](34-mvp-vertical-slice-gate.md) · [T-31](31-polish-hardening.md) |
 | **Estimate** | XL |
 | **Design docs** | [03-workspaces.md](../design/03-workspaces.md) · [10-design-system.md](../design/10-design-system.md) · [ROADMAP.md](../ROADMAP.md) |
 
@@ -25,6 +25,24 @@ workspace transformations ([03-workspaces.md](../design/03-workspaces.md)).
 This is the flagship "because we own the compositor" feature and the core of
 the 30-second interaction loop
 ([ROADMAP.md](../ROADMAP.md)).
+
+## Delivery slices (MVP order)
+
+The loop needs **workspace switching** before it needs the Mission Control
+overview. Both are the same state machine (the one-machine rule below), so
+they are delivered as slices of one ticket, not split into a second pipeline:
+
+- **Slice A — workspace-switch pipeline (front-load for the loop).** Adjacent
+  Space switching as a progress pipeline: live surfaces + per-Space wallpaper
+  repositioned with scale/translation/clip/blur (T-05 scene mechanics),
+  gesture/keyboard triggers, clamp/rubber-band/velocity commit, reversible at
+  any progress, reduced-motion variant. Satisfies the "workspace switching"
+  step of the 30-second loop on its own.
+- **Slice B — Mission Control overview.** Shrink the visible Space, reveal
+  neighbors, workspace strip, minimized-window bottom strip, hit-test
+  transfer, selection round-trip, and dragging windows between Spaces.
+- **Slice C — overview performance/edges.** FR-8 frame-time measurement,
+  multi-monitor lockstep, gate-level polish — landed here or with T-34.
 
 ## Scope
 

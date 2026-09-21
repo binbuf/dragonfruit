@@ -4,7 +4,7 @@
 |---|---|
 | **Phase** | 3 · Flagship apps |
 | **Area** | `services/settingsd/` |
-| **Depends on** | [T-01](01-repo-scaffolding-ci-licensing.md) · [T-20](20-system-service-adapters.md) (host-services providers) |
+| **Depends on** | [T-01](01-repo-scaffolding-ci-licensing.md) · [T-20](20-system-service-adapters.md) (**host-services providers only**; see MVP slice) |
 | **Blocks** | [T-16](16-settings-app.md) · [T-14](14-hot-corners-desktop-background.md) (persistence) · [T-10](10-dock.md) (dock pinning keys) |
 | **Estimate** | L |
 | **Design docs** | [08-settings.md](../design/08-settings.md) · [07-system-integration.md](../design/07-system-integration.md) · [01-architecture.md](../design/01-architecture.md) |
@@ -26,6 +26,16 @@ their persistence belong to `settingsd`. It is independently restartable;
 clients re-read cached state on reappearance. Settings should say "check
 for updates," not "execute a `dnf5` command" — the distro adapter is
 isolated behind a trait ([08-settings.md](../design/08-settings.md)).
+
+## MVP slice (for T-34)
+
+The MVP needs only the **desktop-settings provider** (our own keys: Dock,
+appearance, animation policy, Spaces/gesture policy) plus the D-Bus
+`org.dragonfruit.Settings1` get/set/signal surface and atomic persistence.
+This half has **no T-20 dependency** and can land immediately for T-16
+Wave 1. The host-services provider proxying and the distro `FedoraProvider`
+ship post-gate with T-20/T-32. Do not let host-provider work block the
+settings model the shell and compositor consume.
 
 ## Scope
 

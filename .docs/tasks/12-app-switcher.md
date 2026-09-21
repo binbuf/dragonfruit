@@ -4,8 +4,8 @@
 |---|---|
 | **Phase** | 2 · Experience |
 | **Area** | `compositor/` (keybind + state) + `shell/` (overlay) |
-| **Depends on** | [T-03](03-input-keymaps-shortcuts.md) · [T-05](05-spaces-model.md) (Space activation, minimized restore) · [T-07](07-private-shell-protocols.md) · [T-08](08-design-system.md) · [T-11](11-mission-control-workspace-ux.md) (Space-switch progress pipeline) · [T-23](23-app-index.md) (identity; stub until it lands) |
-| **Blocks** | Phase-2 exit (core loop) |
+| **Depends on** | [T-03](03-input-keymaps-shortcuts.md) · [T-05](05-spaces-model.md) (Space activation, minimized restore) · [T-07](07-private-shell-protocols.md) · [T-08](08-design-system.md) · [T-11](11-mission-control-workspace-ux.md) (Space-switch progress pipeline) · [T-33](33-compositor-effects-materials.md) (overlay materials) · [T-23](23-app-index.md) (identity; stub until it lands) |
+| **Blocks** | [T-34](34-mvp-vertical-slice-gate.md) · Phase-2 exit (core loop) |
 | **Estimate** | M |
 | **Design docs** | [02-compositor.md](../design/02-compositor.md) · [04-shell.md](../design/04-shell.md) |
 

@@ -23,6 +23,15 @@ Files is an **ordinary application** — no daemon supports it, the session
 runs fine without it ([09-files.md](../design/09-files.md)). Everything
 users perceive as "how Finder works" is ours; the backend is GVfs/UDisks.
 
+## MVP slice (for T-34)
+
+The T-34 MVP gate depends only on **FR-1** (the MVP scope above plus icon and
+list views, navigation, and the single ops engine for
+open/rename/new-folder/trash). The richer Finder behaviors in the scope list
+— tab drag-out, proxy-icon and path-bar drag, Info inspector depth, aliases,
+advanced progress UI — are post-gate. Files still launches, renders Tier-1
+traffic lights, and publishes its menu model at the gate.
+
 ## Scope
 
 ### In scope

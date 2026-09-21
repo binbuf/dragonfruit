@@ -5,7 +5,7 @@
 | **Phase** | 2 · Experience |
 | **Area** | `shell/menubar/` (and shell process bootstrap) |
 | **Depends on** | [T-07](07-private-shell-protocols.md) · [T-08](08-design-system.md) · [T-20](20-system-service-adapters.md) (status items) · [T-22](22-global-menu-broker.md) (app menu, may stub initially) |
-| **Blocks** | [T-10](10-dock.md) · [T-11](11-mission-control-workspace-ux.md) (Mission Control entry point) · [T-14](14-hot-corners-desktop-background.md) · [T-21](21-control-center.md) · [T-25](25-notifications-and-osd.md) · [T-30](30-compatibility-bridges.md) (tray bridge) |
+| **Blocks** | [T-10](10-dock.md) · [T-11](11-mission-control-workspace-ux.md) (Mission Control entry point) · [T-14](14-hot-corners-desktop-background.md) · [T-21](21-control-center.md) · [T-25](25-notifications-and-osd.md) · [T-30](30-compatibility-bridges.md) (tray bridge) · [T-34](34-mvp-vertical-slice-gate.md) |
 | **Estimate** | L |
 | **Design docs** | [04-shell.md](../design/04-shell.md) · [06-global-menu.md](../design/06-global-menu.md) |
 
@@ -29,6 +29,15 @@ independently of client content — during a workspace switch, client
 surfaces shrink or slide while the chrome follows its own animation curves
 ([04-shell.md](../design/04-shell.md)). The shell is crashable and
 restartable without taking down the compositor.
+
+## MVP slice (for T-34)
+
+The gate needs the live status items from the **T-20 MVP slice** (Wi-Fi,
+volume, battery; clock already done) and the fixed system + application
+menus. The focused-app exported menu (T-22) may remain a stub until after the
+gate — the app name fallback already exists. The Control Center entry point
+may open a stub panel (T-21 is post-gate). Nothing else in this ticket may
+block T-34.
 
 ## Scope
 

@@ -5,7 +5,7 @@
 | **Phase** | 1 · Foundation |
 | **Area** | `compositor/` |
 | **Depends on** | [T-01](01-repo-scaffolding-ci-licensing.md) |
-| **Blocks** | [T-03](03-input-keymaps-shortcuts.md) · [T-04](04-window-model.md) · [T-05](05-spaces-model.md) · [T-06](06-xwayland.md) · [T-07](07-private-shell-protocols.md) · [T-13](13-window-decorations-ssd.md) · [T-20](20-system-service-adapters.md) · [T-24](24-session-lifecycle.md) · [T-26](26-lock-screen-idle.md) · [T-27](27-portal-backend.md) · [T-29](29-clipboard-auth-agent.md) |
+| **Blocks** | [T-03](03-input-keymaps-shortcuts.md) · [T-04](04-window-model.md) · [T-05](05-spaces-model.md) · [T-06](06-xwayland.md) · [T-07](07-private-shell-protocols.md) · [T-13](13-window-decorations-ssd.md) · [T-33](33-compositor-effects-materials.md) · [T-35](35-window-lifecycle-animations.md) · [T-20](20-system-service-adapters.md) · [T-24](24-session-lifecycle.md) · [T-26](26-lock-screen-idle.md) · [T-27](27-portal-backend.md) · [T-29](29-clipboard-auth-agent.md) |
 | **Estimate** | XL |
 | **Design docs** | [02-compositor.md](../design/02-compositor.md) · [01-architecture.md](../design/01-architecture.md) · [ROADMAP.md](../ROADMAP.md) |
 
@@ -42,6 +42,10 @@ Dock coherence) works because the compositor owns the scene graph
    - **Headless** — CI and automated testing.
 3. **Renderer and effects**:
    - Smithay GBM/EGL renderer stack on DRM.
+   - **Effects/materials are split to
+     [T-33](33-compositor-effects-materials.md)** (backdrop blur, real
+     shadows, rounded-corner clipping, reusable scene transforms). This
+     ticket owns the renderer, damage, and scanout machinery they run on.
    - Effects (blur, shadows, workspace scale/clip transforms) are
      compositor render passes over **live surface buffers** — never client
      re-renders, never screenshots, never third-party recompositing.

@@ -5,7 +5,7 @@
 | **Phase** | 3 · Flagship apps |
 | **Area** | `apps/files/` (Rust core + cxx-qt bridge) |
 | **Depends on** | [T-01](01-repo-scaffolding-ci-licensing.md) |
-| **Blocks** | [T-18](18-files-app.md) · [T-19](19-desktop-icons.md) · [T-27](27-portal-backend.md) (FileChooser) |
+| **Blocks** | [T-18](18-files-app.md) · [T-19](19-desktop-icons.md) · [T-27](27-portal-backend.md) (FileChooser) · [T-34](34-mvp-vertical-slice-gate.md) (MVP slice) |
 | **Estimate** | XL |
 | **Design docs** | [09-files.md](../design/09-files.md) |
 
@@ -25,6 +25,17 @@ view semantics, selection, drag-and-drop, operation semantics — while GVfs
 provides `trash://`, `recent://`, `network://`, `admin://`, and the UDisks2
 volume monitor ([09-files.md](../design/09-files.md)). **Backend reused;
 behavior ours.**
+
+## MVP slice (for T-34)
+
+The MVP gate needs the browsing half only: `Location`/`Node`, async streaming
+listings, the one change monitor, collation, and the operations engine for
+**open/rename/new-folder/trash/restore** (with optimistic UI and the
+journal). It does **not** need compress/extract, aliases, `mimeapps.list`
+defaults, `recent://` grouping, search, or the cxx-qt bridge's later
+features — those ship post-gate. Keep the FRS-1 budgets (warm 1k folder
+< 50 ms, windowed 100k list) as the MVP performance bar; everything else can
+follow.
 
 ## Scope
 

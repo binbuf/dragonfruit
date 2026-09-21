@@ -4,8 +4,8 @@
 |---|---|
 | **Phase** | 5 · Desktop infrastructure |
 | **Area** | `services/session/` + `packaging/` unit files |
-| **Depends on** | [T-02](02-compositor-core.md) · [T-01](01-repo-scaffolding-ci-licensing.md) · [T-20](20-system-service-adapters.md) (logind adapter A11) |
-| **Blocks** | Daily-driver bar (clean startup/shutdown/crash behavior) · real-hardware testing of everything |
+| **Depends on** | [T-02](02-compositor-core.md) · [T-01](01-repo-scaffolding-ci-licensing.md) · [T-20](20-system-service-adapters.md) (logind adapter A11 — implemented **as part of this ticket**, not gated on the full adapter roster) |
+| **Blocks** | [T-34](34-mvp-vertical-slice-gate.md) (real-session run) · Daily-driver bar (clean startup/shutdown/crash behavior) · real-hardware testing of everything |
 | **Estimate** | L |
 | **Design docs** | [11-session-and-dev-workflow.md](../design/11-session-and-dev-workflow.md) · [01-architecture.md](../design/01-architecture.md) · [12-packaging.md](../design/12-packaging.md) |
 
@@ -23,6 +23,18 @@ Sessions start and end as a unit; **no live compositor handoff**
 policies, and the environment contract are specified once here
 ([01-architecture.md](../design/01-architecture.md),
 [11-session-and-dev-workflow.md](../design/11-session-and-dev-workflow.md)).
+
+## Dependency and safety notes
+
+- **Do not gate T-24 on the full T-20 roster.** The session needs only the
+  logind adapter (A11: session lifetime/VT/`LockSession`/sleep hooks). The
+  MVP critical path runs `session → shell/services → portal`; bring A11 in
+  with this ticket and let the remaining adapters follow.
+- **Security gate (pre-handoff).** A real DRM session without lock
+  enforcement ([T-26](26-lock-screen-idle.md)) must not be handed to anyone
+  outside the project. For T-34 the DRM run is a controlled, attended test;
+  a general session requires T-26 first. Record this explicitly rather than
+  treating an unlocked session as acceptable.
 
 ## Scope
 

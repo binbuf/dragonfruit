@@ -5,7 +5,7 @@
 | **Phase** | 4 · System integration |
 | **Area** | `services/` / `shell/` shared adapter modules (Rust) |
 | **Depends on** | [T-01](01-repo-scaffolding-ci-licensing.md) · [T-02](02-compositor-core.md) (D-Bus in compositor loop is separate; these are session-bus clients) |
-| **Blocks** | [T-09](09-menu-bar.md) (status items) · [T-16](16-settings-app.md) (panes) · [T-21](21-control-center.md) · Phase-4 exit |
+| **Blocks** | [T-09](09-menu-bar.md) (status items) · [T-16](16-settings-app.md) (panes) · [T-21](21-control-center.md) · [T-34](34-mvp-vertical-slice-gate.md) (MVP slice A1/A3/A4) · Phase-4 exit |
 | **Estimate** | L (per-adapter S) |
 | **Design docs** | [07-system-integration.md](../design/07-system-integration.md) · [08-settings.md](../design/08-settings.md) |
 
@@ -25,6 +25,17 @@ for custom desktop frontends
 are small modules exposing a stable internal API; **nothing above the
 adapter knows which daemon implements it**. Absence of a daemon is a normal
 state, not an error.
+
+## MVP slice (for T-34)
+
+The 30-second-loop MVP needs live **menu-bar status items** before Control
+Center or Settings breadth: a read-only-plus-basic-toggle subset of
+**A1 networking** (current Wi-Fi state + join), **A3 audio** (volume/mute),
+and **A4 power** (battery level/charging). These three adapters ship on the
+MVP critical path (feeding [T-09](09-menu-bar.md)); the remaining nine, the
+Control Center tiles (T-21), and the full Settings panes stay post-gate.
+Because the vertical slice lists Wi-Fi/volume/battery explicitly, these are
+**not** optional for T-34.
 
 ## Scope — the adapter roster
 

@@ -26,6 +26,14 @@ explicit — no pane is "a wrapper around a GNOME dialog"
 deliberately do **not** spend months cloning every page before the desktop
 feels good ([ROADMAP.md](../ROADMAP.md)).
 
+## MVP slice (for T-34)
+
+The T-34 MVP gate depends only on **Wave 1**: the app shell
+(sidebar/search/traffic lights/menu model) plus Appearance, Wallpaper,
+Desktop & Dock (auto-hide/magnification), and Displays-basic. Waves 2 and 3
+are post-gate and must not delay the loop. A pane ships only when complete
+(the no-half-panes rule); the MVP just ships fewer panes.
+
 ## Scope
 
 ### In scope

@@ -98,6 +98,9 @@ only. Desktop Reveal "moves windows aside to expose the background."
 
 ## Risks / open questions
 
+- **MVP scope:** the T-34 gate ships the compositor-rendered solid-color
+  per-Space wallpaper (T-05) only; image wallpaper sampling, the picker, and
+  Desktop Reveal are post-gate. Do not let this ticket delay the loop.
 - Reveal vs. Mission Control input contention if both trigger near-
   simultaneously — the single overview-state-machine rule (T-11) should
   govern; make reveal a state in the same machine and document.
