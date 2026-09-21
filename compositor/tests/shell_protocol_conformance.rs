@@ -3128,6 +3128,209 @@ fn overlay_popup_sits_above_the_bar_and_reserves_nothing() {
     );
 }
 
+/// T-10 section 18 (compositor half): an overlay popover created without an
+/// explicit output is **per-output**. It renders and hit-tests only on the
+/// output chrome was last focused on, so a menu/Dock popover opened on one
+/// display does not float across every display. Chrome focus captures the
+/// interaction output from the pointer (a click on a chrome surface); the
+/// popover is then compared on the focused output against a second,
+/// hotplugged output.
+#[test]
+fn overlay_popover_is_per_output() {
+    let token = "f0".repeat(32);
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let input_path = PathBuf::from(&runtime_dir).join(format!(
+        "dragonfruit-per-output-input-{}",
+        std::process::id()
+    ));
+    let output_path = PathBuf::from(&runtime_dir).join(format!(
+        "dragonfruit-per-output-output-{}",
+        std::process::id()
+    ));
+    let proc = CompositorProcess::start_with_harnesses(
+        "dragonfruit-conformance-per-output",
+        std::slice::from_ref(&token),
+        Some(&input_path),
+        Some(&output_path),
+    );
+    let input = SyntheticInput::connect(&input_path);
+    let outputs = SyntheticOutput::connect(&output_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (name, version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, name, version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+    let (shell_name, shell_version) = state.shell_global.expect("df_shell advertised");
+    let shell = bind_shell(&mut state, &queue, shell_name, shell_version);
+    let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
+    let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
+    let qh = queue.handle();
+
+    // A second output to the right of the 1280x720 headless output.
+    outputs.send("add HDMI-A-1 1920 1080 1280 0");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.output_names.iter().any(|name| name == "HDMI-A-1"),
+    );
+
+    // The bar: top | left | right, 28 px, reserved, OnDemand (a click focuses).
+    let bar_surface = state.compositor.clone().unwrap().create_surface(&qh, ());
+    let bar = shell.get_layer_surface(
+        &bar_surface,
+        None,
+        df_shell::Layer::Top,
+        "menubar".to_string(),
+        &qh,
+        (),
+    );
+    bar.set_anchor(1 | 4 | 8);
+    bar.set_size(0, 28);
+    bar.set_exclusive_zone(28);
+    bar.set_keyboard_interaction(df_layer_surface::KeyboardInteraction::OnDemand);
+    bar_surface.commit();
+    let (bar_buffer, _bar_file) = shm_buffer(&state, &qh, OUTPUT_W, 28);
+    bar_surface.attach(Some(&bar_buffer), 0, 0);
+    bar_surface.commit();
+
+    // The popover: overlay top | left, offset 40/28, no reserve, no keyboard.
+    let popup_surface = state.compositor.clone().unwrap().create_surface(&qh, ());
+    let popup = shell.get_layer_surface(
+        &popup_surface,
+        None,
+        df_shell::Layer::Overlay,
+        "menubar-popup".to_string(),
+        &qh,
+        (),
+    );
+    popup.set_anchor(1 | 4);
+    popup.set_size(200, 300);
+    popup.set_margin(28, 0, 0, 40); // top 28, left 40
+    popup.set_exclusive_zone(-1);
+    popup.set_keyboard_interaction(df_layer_surface::KeyboardInteraction::None);
+    popup_surface.commit();
+    let (popup_buffer, _popup_file) = shm_buffer(&state, &qh, 200, 300);
+    popup_surface.attach(Some(&popup_buffer), 0, 0);
+    popup_surface.commit();
+
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .layer_configures
+                .iter()
+                .any(|(_, width, height)| *width == 200 && *height == 300)
+        },
+    );
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.pointer.is_some() && state.keyboard.is_some(),
+    );
+
+    // Click the bar on the first output so chrome focus captures HEADLESS-1.
+    input.send("motion-abs 0.109375 0.0138889"); // (140, 10) on HEADLESS-1
+    input.send("button 272 down");
+    input.send("button 272 up");
+    let _ = queue.roundtrip(&mut state);
+
+    // On the focused output the popover is hit at popup-local (100, 72).
+    state.pointer_enters = 0;
+    state.pointer_enter_positions.clear();
+    input.send("motion 0 90"); // (140, 100) on HEADLESS-1
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.pointer_enters > 0,
+    );
+    let (mx, my) = *state
+        .pointer_enter_positions
+        .last()
+        .expect("popover enter position");
+    assert!(
+        (mx - 100.0).abs() < 1.0 && (my - 72.0).abs() < 1.0,
+        "the popover must be hit on the focused output: got ({mx}, {my})"
+    );
+
+    // Move into the same popup rectangle on the second output. The popover
+    // must not be there: a follow-up move onto HDMI-A-1's bar is the
+    // observable "processed" signal, and the popover must not have received
+    // an enter at (1420, 100) first.
+    state.pointer_enters = 0;
+    state.pointer_enter_positions.clear();
+    input.send("motion 1280 0"); // (1420, 100) on HDMI-A-1, inside the popup rect
+    input.send("motion 0 -90"); // (1420, 10) onto HDMI-A-1's bar
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.pointer_enters > 0,
+    );
+    assert!(
+        state
+            .pointer_enter_positions
+            .iter()
+            .all(|(x, y)| (x - 100.0).abs() >= 1.0 || (y - 72.0).abs() >= 1.0),
+        "the popover must not float onto the second output: {:?}",
+        state.pointer_enter_positions
+    );
+
+    // Returning to the focused output hits the popover again.
+    state.pointer_enters = 0;
+    state.pointer_enter_positions.clear();
+    input.send("motion -1280 90"); // (140, 100) on HEADLESS-1
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.pointer_enters > 0,
+    );
+    let (mx, my) = *state
+        .pointer_enter_positions
+        .last()
+        .expect("popover re-enter position");
+    assert!(
+        (mx - 100.0).abs() < 1.0 && (my - 72.0).abs() < 1.0,
+        "the popover must stay on the focused output: got ({mx}, {my})"
+    );
+
+    drop(popup);
+    drop(popup_surface);
+    drop(bar);
+    drop(bar_surface);
+    drop(manager);
+    drop(shell);
+    drop(core);
+    let _ = conn.flush();
+    proc.shutdown();
+    assert!(
+        !input_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+    assert!(
+        !output_path.exists(),
+        "teardown leak: synthetic-output socket survived"
+    );
+}
+
 /// T-10 Dock popover (compositor half): the Dock's context-menu/window-chooser
 /// surface is an `overlay` anchored bottom|left and placed with a bottom
 /// margin, so it sits above the Dock. It reserves nothing (the Dock keeps its

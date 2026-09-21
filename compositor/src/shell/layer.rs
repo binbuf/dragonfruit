@@ -22,6 +22,10 @@ pub const ANCHOR_LEFT: u32 = 4;
 /// Anchor bit for the right edge.
 pub const ANCHOR_RIGHT: u32 = 8;
 
+/// The `overlay` layer (`df_shell.layer` value 3): transient chrome such as
+/// menus, popovers, and the OSD.
+pub const LAYER_OVERLAY: u32 = 3;
+
 /// Which edge a reserved zone belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Edge {
@@ -124,6 +128,26 @@ impl LayerSurfaceState {
         self.output
             .as_deref()
             .map_or(true, |name| name == output_name)
+    }
+
+    /// Whether this surface is visible on `output_name`, given the output the
+    /// last chrome interaction happened on (`chrome_focus_output`).
+    ///
+    /// An explicit `output` always wins. Otherwise, an `overlay` surface with
+    /// no explicit output — a popover, menu, or OSD — is **per-output**: it is
+    /// shown only on the output the interaction happened on, so a Dock or menu
+    /// popover opened on one display never floats across all of them (T-10
+    /// section 18). Before any chrome surface has taken focus there is no
+    /// capture, and overlays fall back to every output (their pre-T-10
+    /// behavior, which keeps a directly-mapped popup testable).
+    pub fn visible_on_output(&self, output_name: &str, chrome_focus_output: Option<&str>) -> bool {
+        if !self.matches_output(output_name) {
+            return false;
+        }
+        if self.layer != LAYER_OVERLAY || self.output.is_some() {
+            return true;
+        }
+        chrome_focus_output.map_or(true, |name| name == output_name)
     }
 
     /// Resolve the surface rectangle for `output` geometry.
@@ -423,5 +447,43 @@ mod tests {
         };
         assert!(pinned.matches_output("HDMI-A-1"));
         assert!(!pinned.matches_output("HEADLESS-1"));
+    }
+
+    #[test]
+    fn overlay_popovers_are_per_output_when_chrome_is_focused() {
+        // A popover is an `overlay` surface created without an explicit
+        // output. Once a chrome surface has taken focus on one display it
+        // must render only there, not on every output (T-10 section 18).
+        let popup = LayerSurfaceState {
+            layer: LAYER_OVERLAY,
+            ..Default::default()
+        };
+        assert!(popup.visible_on_output("HEADLESS-1", Some("HEADLESS-1")));
+        assert!(!popup.visible_on_output("HDMI-A-1", Some("HEADLESS-1")));
+        // No capture yet: fall back to every output (pre-T-10 behavior).
+        assert!(popup.visible_on_output("HEADLESS-1", None));
+        assert!(popup.visible_on_output("HDMI-A-1", None));
+        // An output that detached while focused matches no remaining output,
+        // so the popover disappears instead of moving to another display.
+        assert!(!popup.visible_on_output("HEADLESS-1", Some("HDMI-A-1")));
+    }
+
+    #[test]
+    fn persistent_chrome_still_spans_every_output() {
+        // The menu bar and Dock are `top` chrome with no output: they must
+        // stay on every display regardless of where chrome focus is.
+        let bar = anchored_top_bar();
+        assert!(bar.visible_on_output("HEADLESS-1", Some("HDMI-A-1")));
+        assert!(bar.visible_on_output("HDMI-A-1", Some("HDMI-A-1")));
+
+        // An explicit-output overlay ignores the focus capture and obeys its
+        // own output.
+        let pinned_popup = LayerSurfaceState {
+            layer: LAYER_OVERLAY,
+            output: Some("HDMI-A-1".into()),
+            ..Default::default()
+        };
+        assert!(!pinned_popup.visible_on_output("HEADLESS-1", Some("HDMI-A-1")));
+        assert!(pinned_popup.visible_on_output("HDMI-A-1", Some("HEADLESS-1")));
     }
 }

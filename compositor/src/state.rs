@@ -491,6 +491,22 @@ impl DfState {
         }
     }
 
+    /// The output whose geometry contains the pointer, if any.
+    ///
+    /// This is the "active" output for per-output chrome: a popover opened on
+    /// one display is shown only there (T-10 section 18).
+    pub fn output_name_under_pointer(&self) -> Option<String> {
+        let location = self.seat.get_pointer()?.current_location();
+        self.space
+            .outputs()
+            .find(|output| {
+                self.space
+                    .output_geometry(output)
+                    .is_some_and(|geometry| geometry.to_f64().contains(location))
+            })
+            .map(|output| output.name())
+    }
+
     // --- workspaces (T-05) --------------------------------------------------
 
     /// The output `window` currently occupies, or the primary output.
@@ -1562,6 +1578,14 @@ impl SeatHandler for DfState {
         // they are not windows, so the active window is preserved across a
         // chrome focus so it can be restored when the chrome closes (T-09).
         let chrome_focus = focused.is_some_and(|surface| self.is_chrome_surface(surface));
+        // Capture (or clear) the per-output popover target: an overlay popover
+        // follows the output the interaction happened on, not the pointer
+        // (T-10 section 18).
+        self.shell.chrome_focus_output = if chrome_focus {
+            self.output_name_under_pointer()
+        } else {
+            None
+        };
         let new_active = focused.and_then(|surface| self.window_for_surface(surface));
         if !chrome_focus && new_active != self.active_window {
             if let Some(old) = self.active_window.clone() {
