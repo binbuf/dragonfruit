@@ -681,6 +681,17 @@ impl DfState {
             .elements()
             .find(|window| window.wl_surface().as_deref() == Some(surface))
             .cloned()
+            // Windows on an inactive Space are not in `space`, but the model
+            // still owns them: a cross-Space title/app-id change, state
+            // request, or destroy must resolve. Without this a window closed
+            // on another Space never emits `Closed`, stranding a stale Dock
+            // chooser row / running indicator (T-10 FR-5).
+            .or_else(|| {
+                self.windows
+                    .windows()
+                    .find(|window| window.wl_surface().as_deref() == Some(surface))
+                    .cloned()
+            })
             .or_else(|| {
                 self.pending_windows
                     .iter()
