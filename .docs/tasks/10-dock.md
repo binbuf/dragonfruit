@@ -836,13 +836,31 @@ key shape**, so T-15 adopts the file without a migration (T-15 FR-1).
       the manager announces `Closed` — for both the active-Space window and a
       window on another Space (the latter drove a `window_for_surface`
       fix).)*
-- [ ] Lifecycle edge-case suite (launch failure, exit mid-animation,
+- [x] Lifecycle edge-case suite (launch failure, exit mid-animation,
       cross-workspace windows, inconsistent identifiers, identity change)
-      scripted and passing.
+      scripted and passing. *(Launch failure: `test_failed_launch_shows_badge`
+      asserts the badge/notice, `running == false`, no running indicator, and
+      `entryBounce == 0`; exit mid-animation:
+      `test_removing_a_bouncing_entry_resolves_the_animation`; cross-workspace:
+      `projectionCarriesTheWorkspaceForCrossSpaceWindows` plus the cross-Space
+      close in `dock_click_tree_activation_conformance`; inconsistent
+      identifiers: `projectionUnknownAppIdUsesOneGenericGroup` and
+      `test_missing_pinned_app_is_marked_not_found`; identity change:
+      `projectionIdentityChangeRehomesAndMerges`. `tst_dockcore`/`tst_dock`.)*
 - [ ] Magnification at 60 Hz on baseline hardware, with the pointer-anchored
       entry staying under the pointer.
 - [ ] Trash state integration test with Files and a third-party deletion.
-- [ ] Drag rearrangement and context-menu walkthroughs scripted.
+- [x] Drag rearrangement and context-menu walkthroughs scripted. *(Drag
+      rearrangement: the `tst_dock` real-mouse cases
+      `test_mouse_drag_reorders_pinned`, `test_drag_reorders_pinned`,
+      `test_drag_first_to_end`, `test_drag_live_gap_reorders_visual_order`,
+      `test_drag_promotes_temporary_to_pinned`,
+      `test_drag_promote_before_first`, `test_drag_out_of_dock_removes_pinned`,
+      `test_drag_pointer_left_removes_pinned`, `test_mouse_drag_on_divider_resizes_the_dock`
+      (plus the external-drop walkthrough in
+      `client_drag_and_drop_reaches_a_chrome_surface`). Context menus: the
+      entry/divider/Trash/Options menus, submenus, live window lists, and
+      confirmation steps in `tst_dock`.)*
 - [ ] Keyboard + AT-SPI walkthrough and reduced-motion pass.
 - [x] Multi-output: Dock appears on hotplug and per-output popovers do not
       float across outputs. *(Scripted: `overlay_popover_is_per_output` covers

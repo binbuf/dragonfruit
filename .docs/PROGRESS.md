@@ -5097,3 +5097,77 @@ green; `cargo clippy --workspace --all-targets -D warnings` and
 interaction loop steps pass: launch → Dock animation → … → minimize →
 restore from Dock → close (Phase-2 exit)"** acceptance checkbox; the other
 unchecked boxes are unchanged.
+
+## T-10 continuation — acceptance audit, two boxes closed (twenty-seventh slice)
+
+**State: partial, but two more acceptance boxes are now closed by
+verification rather than new machinery.** The section 22 lifecycle edge-case
+suite and the drag-rearrangement/context-menu walkthroughs were already
+scripted by earlier slices; they had simply never been ticked (the hand-off
+lists they were "blocked", which was too pessimistic). This slice audited
+them, strengthened the one weak spot, and checked the boxes. The remaining
+unchecked boxes are genuinely blocked: Trash-with-Files (T-18), 60 Hz
+magnification (baseline hardware), and keyboard + live AT-SPI (T-31). The
+deferred xdg-activation focus defect is T-04/T-12 scope (see below).
+
+### What landed
+
+- **`test_failed_launch_shows_badge` strengthened** (`shell/tests/tst_dock.qml`).
+  FR-1's launch-failure row asks for "bounce stops, notice, no stuck running
+  indicator"; the test asserted only the badge/accessible name. It now also
+  asserts `entry.running == false`, `indicator.visible == false`, and
+  `dock.entryBounce(entry) == 0`.
+- **Acceptance boxes checked** (`tasks/10-dock.md`):
+  - *Lifecycle edge-case suite* — launch failure (above), exit mid-animation
+    (`test_removing_a_bouncing_entry_resolves_the_animation`), cross-workspace
+    windows (`projectionCarriesTheWorkspaceForCrossSpaceWindows` + the
+    cross-Space close in `dock_click_tree_activation_conformance`), inconsistent
+    identifiers (`projectionUnknownAppIdUsesOneGenericGroup`,
+    `test_missing_pinned_app_is_marked_not_found`), identity change
+    (`projectionIdentityChangeRehomesAndMerges`).
+  - *Drag rearrangement and context-menu walkthroughs* — the real-mouse
+    `tst_dock` drag cases (reorder/first-to-end/live-gap/promote/remove/divider
+    resize), the external-drop compositor walkthrough, and the entry/divider/
+    Trash/Options menus with live window lists and confirmation steps.
+
+### Gotchas learned (important for the next slice)
+
+- **"Blocked on another ticket" needs an audit before it is believed.** The
+  lifecycle and walkthrough boxes had all their required tests for several
+  slices; a box being unchecked is not evidence that work remains. Re-read the
+  acceptance wording against the actual test names before accepting a
+  hand-off list.
+- **The lifecycle suite is split across two languages.**
+  `tst_dockcore` (QtTest C++) owns the pure running-app projection matrix;
+  `tst_dock` (QML) owns the presentation/launch-failure/exit-mid-animation
+  cases. A future lifecycle addition must decide which side it belongs on:
+  projection/merge logic → `tst_dockcore`, QML state → `tst_dock`.
+- **`dock.entryBounce(entry)` is the single source of truth for "is this entry
+  bouncing".** It returns 0 under reduced motion, when `dock.animateOpening`
+  is off (unless `attention`), and when `entry.bounce` is unset/negative. A
+  failed launch has no `bounce` phase, so asserting `entryBounce == 0` is the
+  right way to prove "the bounce stopped" without racing the animation clock.
+
+### Hand-off / open items (remaining T-10 slices)
+
+1. **Trash-state integration test with Files** (T-18): needs
+   `org.dragonfruit.Files1` activation or a Files stub; the third-party
+   deletion half is already covered by `trashMonitorWatchesForThirdPartyChanges`.
+2. **60 Hz magnification measurement** (acceptance): needs a nested session on
+   baseline hardware (also the Phase-2 "zero dropped frames" exit criterion).
+3. **Keyboard + AT-SPI walkthrough**: the keyboard half is scripted
+   (`tst_dock` navigation + `focus_dock_shortcut_hands_the_keyboard_to_the_dock`);
+   the live `atspi` role dump needs a session bus and is T-31.
+4. **xdg-activation focus** (T-04/T-12): `DfState::request_activation` sets
+   `window.set_activated(true)` and calls `notify_attention` but never focuses
+   the window, so a launched app's first window is not keyboard-focused until
+   clicked. Reconcile with the attention-bounce "stops on focus" rule before
+   changing.
+
+### Gate status
+
+`make qml-test` green (13/13; `tst_dock` and `tst_dockcore` incl. the
+strengthened failure case). This slice closes the tasks/10-dock.md
+**"Lifecycle edge-case suite"** and **"Drag rearrangement and context-menu
+walkthroughs scripted"** acceptance checkboxes; the other unchecked boxes are
+unchanged and genuinely blocked.

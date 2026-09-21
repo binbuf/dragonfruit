@@ -915,6 +915,22 @@ pending/popup surfaces). The other unchecked boxes (60 Hz magnification on
 hardware, Trash-with-Files, drag rearrangement walkthroughs, keyboard/AT-SPI)
 are unchanged. Details and hand-off: [PROGRESS.md](PROGRESS.md).
 
+T-10 continuation (acceptance-audit slice): two more acceptance boxes are
+closed by audit rather than new machinery. The section 22 lifecycle edge-case
+suite and the drag-rearrangement/context-menu walkthroughs had already been
+scripted across `tst_dockcore` (pure running-app projection: identity
+re-homing/merge, cross-Space window lists, rapid open/close, unknown app id)
+and `tst_dock` (launch-failure badge, exit-mid-bounce animation resolution,
+the real-mouse reorder/promote/remove/divider-resize drags, and the
+entry/divider/Trash/Options menus with live window lists and confirmation
+steps); they were simply never ticked. The one weak spot — FR-1's "bounce
+stops, notice, no stuck running indicator" on launch failure — was
+strengthened in `test_failed_launch_shows_badge` (asserts `running == false`,
+no indicator, and `entryBounce == 0`). Still open and genuinely blocked:
+Trash-with-Files integration (T-18), 60 Hz magnification on baseline hardware,
+and the live keyboard + AT-SPI walkthrough (T-31; the keyboard half is
+scripted). Details and hand-off: [PROGRESS.md](PROGRESS.md).
+
 **Foundation milestone E2E (T-01…T-07).** The whole vertical slice now has a
 headless end-to-end test, `compositor/tests/milestone_e2e.rs` (`make e2e`):
 one live session with a shell client, a Wayland app, and an X11 app attached
