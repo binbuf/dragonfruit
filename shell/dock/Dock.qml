@@ -14,9 +14,9 @@ import Dragonfruit
 //   * bottom/left/right placement,
 //   * the auto-hide translation.
 //
-// Context menus, the window chooser, drag rearrangement, launch, and the
-// Trash state/menu are landed (see PROGRESS.md); external drops and the
-// scene-graph render path are follow-ups.
+// Context menus, the window chooser, drag rearrangement, launch, the Trash
+// state/menu, external drops, and the Downloads stack/recents are landed (see
+// PROGRESS.md); the scene-graph render path is a follow-up.
 Rectangle {
     id: dock
 
@@ -47,6 +47,12 @@ Rectangle {
     property bool revealed: true
     property bool trashFull: false
     property int trashCount: 0
+    // The Downloads stack (T-10 section 17): the folder listing (newest
+    // first, `{ name, path, isDir }`), its item count, and the new-items
+    // badge cleared when the stack is opened.
+    property var downloadsItems: []
+    property int downloadsCount: 0
+    property int downloadsBadge: 0
     // The Trash menu's Empty Trash confirmation step (section 13): selecting
     // Empty Trash replaces the menu model with the confirm/cancel choice
     // before the shell performs the destructive operation.
@@ -92,7 +98,7 @@ Rectangle {
     // live gap reflows the layout around a placeholder entry.
     property int externalInsertIndex: -1
     // A stack entry the pointer has dwelled over long enough to spring-load
-    // (out of the first vertical slice; the hook exists, section 17).
+    // (T-10 section 17); the Downloads stack popover opens when it fires.
     property string springLoadTargetId: ""
     // Spring-loading hover delay (ms), shared with Files (T-18). Mirrors
     // `kSpringLoadMs` in the shell's pure drop core.
@@ -106,6 +112,9 @@ Rectangle {
     property var chooserEntry: null
     property bool chooserOpen: false
     property Item chooserAnchor: null
+    // The Downloads stack popover (T-10 section 17).
+    property bool stackOpen: false
+    property Item stackAnchor: null
 
     signal entryActivated(var entry)
     signal entryContextMenuRequested(var entry, real globalX, real globalY)
@@ -128,8 +137,13 @@ Rectangle {
     signal externalDropRequested(string targetId, string targetKind, string desktopId, bool payloadIsApp)
     signal externalDragChanged()
     // A stack entry has been hovered long enough to spring-load (T-10
-    // section 12); stacks are out of the first vertical slice.
+    // section 12); the Dock opens the Downloads stack popover on the fire.
     signal springLoadRequested(string targetId)
+    // The Downloads stack popover (T-10 section 17): a file row was chosen,
+    // the folder itself was opened, or the stack was viewed (clear the badge).
+    signal downloadActivated(string path)
+    signal downloadsFolderRequested()
+    signal downloadsViewed()
     // Escape asked to leave Dock keyboard navigation; the shell releases the
     // compositor keyboard focus back to the active window (T-10 section 20).
     signal keyboardFocusReleaseRequested()
@@ -258,6 +272,13 @@ Rectangle {
         id: "__trash__", appId: "", name: qsTr("Trash"), kind: "trash",
         running: false, trashFull: dock.trashFull, trashCount: dock.trashCount
     })
+    // The Downloads stack sits in the right region before the Trash (T-10
+    // section 17). It is present even when the folder is empty so it is a
+    // stable drop target.
+    readonly property var stackEntry: ({
+        id: "__downloads__", appId: "", name: qsTr("Downloads"), kind: "stack",
+        running: false, stackCount: dock.downloadsCount, badge: dock.downloadsBadge
+    })
     readonly property var dividerEntry: ({ id: "__divider__", kind: "divider" })
 
     // Pinned entries are the prefix of the app region (the shell emits pinned
@@ -307,6 +328,7 @@ Rectangle {
         out.push(dividerEntry);
         for (var i = 0; i < minimizedEntries.length; ++i)
             out.push(minimizedEntries[i]);
+        out.push(stackEntry);
         out.push(trashEntry);
         return out;
     }
@@ -379,9 +401,9 @@ Rectangle {
         magnification > 0 && pointerAlong >= 0 && anchorIndex >= 0
         && !popoverOpen && !dragging && revealed
 
-    // Magnification is suppressed while a context menu or chooser is open
-    // (T-10 section 14).
-    readonly property bool popoverOpen: menuOpen || chooserOpen
+    // Magnification is suppressed while a context menu, chooser, or stack
+    // popover is open (T-10 section 14).
+    readonly property bool popoverOpen: menuOpen || chooserOpen || stackOpen
 
     // --- Keyboard navigation (T-10 section 20) ---------------------------
     // The entries the arrow keys traverse: every entry except the divider.
@@ -437,6 +459,12 @@ Rectangle {
     function activateEntry(entry) {
         if (!entry)
             return;
+        // The Downloads stack opens its folder popover, never a launch
+        // (T-10 section 17).
+        if (entry.kind === "stack") {
+            openStack();
+            return;
+        }
         if (entry.running === true && entry.kind !== "minimized"
                 && entry.windowList !== undefined && entry.windowList.length > 1) {
             openChooser(entry);
@@ -514,6 +542,7 @@ Rectangle {
     function closePopovers() {
         entryMenu.hide();
         windowChooser.hide();
+        stackPopover.hide();
         trashConfirming = false;
     }
 
@@ -535,6 +564,18 @@ Rectangle {
         windowChooser.open = true;
     }
 
+    // Open the Downloads stack popover and clear the new-items badge (T-10
+    // section 17). The shell owns the badge state; `downloadsViewed` asks it
+    // to mark the folder seen.
+    function openStack() {
+        closePopovers();
+        hideTimer.stop();
+        var idx = indexOfItemId(stackEntry.id);
+        stackAnchor = idx >= 0 ? entryRepeater.itemAt(idx) : null;
+        stackPopover.open = true;
+        downloadsViewed();
+    }
+
     // --- Drag rearrangement (T-10 section 12) ----------------------------
     function appIndexOfId(id) {
         for (var i = 0; i < appEntries.length; ++i) {
@@ -546,7 +587,8 @@ Rectangle {
 
     function isDraggable(entry) {
         return entry && entry.kind !== "divider" && entry.kind !== "trash"
-                && entry.kind !== "minimized" && entry.kind !== "external";
+                && entry.kind !== "minimized" && entry.kind !== "external"
+                && entry.kind !== "stack";
     }
 
     function currentPinnedIds() {
@@ -735,7 +777,7 @@ Rectangle {
             var k = items[i].kind;
             if (k === "external")
                 continue;
-            if (k === "divider" || k === "trash" || k === "minimized")
+            if (k === "divider" || k === "trash" || k === "minimized" || k === "stack")
                 break;
             var center = axisIsX ? (l[i].x + l[i].w / 2) : (l[i].y + l[i].h / 2);
             if (localAlong < center)
@@ -827,6 +869,12 @@ Rectangle {
         onTriggered: {
             dock.springLoadTargetId = dock.externalTargetId;
             dock.springLoadRequested(dock.externalTargetId);
+            // The Downloads stack is the first spring-load consumer (T-10
+            // section 17): dwelling over it during a drag opens its popover so
+            // the drop can target a row.
+            var idx = dock.indexOfItemId(dock.externalTargetId);
+            if (idx >= 0 && dock.items[idx].kind === "stack")
+                dock.openStack();
         }
     }
 
@@ -859,6 +907,8 @@ Rectangle {
             return dividerMenuModel();
         if (e.kind === "trash")
             return trashMenuModel();
+        if (e.kind === "stack")
+            return stackMenuModel();
         var running = e.running === true;
         var list = e.windowList !== undefined ? e.windowList : [];
         if (running && list.length > 0) {
@@ -996,6 +1046,17 @@ Rectangle {
         return out;
     }
 
+    // The Downloads stack menu (T-10 section 17): open the folder; the
+    // folder listing itself is the click popover.
+    function stackMenuModel() {
+        var out = [];
+        out.push({
+            type: "item", label: qsTr("Open Downloads Folder"),
+            action: "open_downloads_folder"
+        });
+        return out;
+    }
+
     // The open popover's rectangle in Dock-scene coordinates, or an empty
     // rect. The shell renders it into the Dock's `overlay` surface. A menu
     // with an open submenu reports the union of both panels so the nested
@@ -1004,7 +1065,8 @@ Rectangle {
         // `open` keeps the rect valid while the popover fades in/out (the
         // shell captures the animation); `visible` covers the close tail.
         var popup = (entryMenu.open || entryMenu.visible) ? entryMenu
-                 : ((windowChooser.open || windowChooser.visible) ? windowChooser : null);
+                 : ((windowChooser.open || windowChooser.visible) ? windowChooser
+                 : ((stackPopover.open || stackPopover.visible) ? stackPopover : null));
         if (!popup || popup.width <= 0 || popup.height <= 0)
             return { x: 0, y: 0, w: 0, h: 0 };
         if (popup.contentRect !== undefined) {
@@ -1355,6 +1417,45 @@ Rectangle {
         onWindowActivated: (windowId) => dock.windowActivated(windowId)
         onShowAllWindows: () => dock.menuActionRequested(
             "show_all_windows", { appId: dock.chooserEntry ? dock.chooserEntry.appId : "" })
+    }
+
+    // The Downloads stack popover (T-10 section 17). It is anchored and placed
+    // exactly like the window chooser; the shell renders it into the Dock's
+    // overlay surface and performs the resolved open action.
+    DockStackPopover {
+        id: stackPopover
+        objectName: "stackPopover"
+        items: dock.downloadsItems
+        anchorItem: dock.stackAnchor
+        x: {
+            if (!dock.stackAnchor)
+                return 0;
+            if (dock.axisIsX)
+                return Math.max(0, Math.min(dock.width - width,
+                    dock.stackAnchor.x + (dock.stackAnchor.width - width) / 2));
+            return dock.position === "left"
+                    ? dock.stackAnchor.x + dock.stackAnchor.width + 4
+                    : dock.stackAnchor.x - width - 4;
+        }
+        y: {
+            if (!dock.stackAnchor)
+                return 0;
+            if (dock.axisIsX)
+                return dock.stackAnchor.y - height - 4;
+            return Math.max(0, Math.min(dock.height - height,
+                dock.stackAnchor.y + (dock.stackAnchor.height - height) / 2));
+        }
+        onOpened: {
+            dock.stackOpen = true;
+            dock.popoverChanged();
+        }
+        onClosed: {
+            dock.stackOpen = false;
+            dock.popoverChanged();
+            dock.scheduleHide();
+        }
+        onItemActivated: (path) => dock.downloadActivated(path)
+        onOpenFolder: () => dock.downloadsFolderRequested()
     }
 
     // Clicking empty Dock space dismisses an open popover (T-10 section 13).

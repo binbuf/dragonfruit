@@ -34,6 +34,11 @@ Item {
     readonly property string kind: entry.kind !== undefined ? entry.kind : "app"
     readonly property bool isDivider: kind === "divider"
     readonly property bool isTrash: kind === "trash"
+    // The Downloads stack (T-10 section 17): a folder entry with a count and a
+    // new-items badge; clicking opens its popover rather than launching.
+    readonly property bool isStack: kind === "stack"
+    readonly property int stackCount: entry.stackCount !== undefined ? entry.stackCount : 0
+    readonly property int badge: entry.badge !== undefined ? entry.badge : 0
     // A placeholder gap opened by an application-alias external drop; it is
     // layout only and never interactive.
     readonly property bool isExternal: kind === "external"
@@ -86,6 +91,12 @@ Item {
     readonly property string stateLabel: {
         if (isTrash)
             return "";
+        if (isStack) {
+            var items = stackCount === 1 ? qsTr(", 1 item") : qsTr(", %1 items").arg(stackCount);
+            if (badge > 0)
+                items += qsTr(", %1 new").arg(badge);
+            return items;
+        }
         var label = missing ? qsTr(", not found")
                   : launching ? qsTr(", launching")
                   : failed ? qsTr(", failed to launch")
@@ -99,6 +110,7 @@ Item {
     Accessible.name: isDivider ? qsTr("Dock separator")
                      : isExternal ? qsTr("Drop here")
                      : isTrash ? qsTr("Trash")
+                     : isStack ? qsTr("Downloads") + stateLabel
                      : name + stateLabel
     Accessible.focusable: !isDivider && !isExternal
 
@@ -183,7 +195,7 @@ Item {
         id: glyph
         objectName: "glyph"
         visible: !root.isDivider && !root.isExternal
-        kind: root.isTrash ? "trash" : "app"
+        kind: root.isTrash ? "trash" : root.isStack ? "stack" : "app"
         name: root.name
         appId: root.appId
         trashFull: root.trashFull
@@ -219,6 +231,29 @@ Item {
         border.color: Theme.color.chrome
         x: root.artworkX + root.iconSize - width
         y: root.artworkY
+    }
+
+    // The Downloads stack's new-items badge (T-10 section 17). It shows the
+    // number added since the stack was last opened; the accessible name also
+    // carries the count and the new count.
+    Rectangle {
+        objectName: "stackBadge"
+        visible: root.isStack && root.badge > 0
+        width: Math.max(root.indicatorSize, badgeText.implicitWidth + 6)
+        height: root.indicatorSize
+        radius: height / 2
+        color: Theme.color.accent
+        border.width: 1
+        border.color: Theme.color.chrome
+        x: root.artworkX + root.iconSize - width
+        y: root.artworkY
+        Text {
+            id: badgeText
+            anchors.centerIn: parent
+            text: root.badge > 9 ? qsTr("9+") : String(root.badge)
+            color: Theme.color.accentContent
+            font.pixelSize: Math.max(9, Math.round(root.indicatorSize * 0.7))
+        }
     }
 
     // Running indicator on the dock-edge side (one per app entry, never per
@@ -272,7 +307,7 @@ Item {
         id: dragHandler
         objectName: "dragHandler"
         acceptedButtons: Qt.LeftButton
-        enabled: !root.isDivider && !root.isTrash && !root.isExternal
+        enabled: !root.isDivider && !root.isTrash && !root.isStack && !root.isExternal
                  && root.kind !== "minimized"
         dragThreshold: 8
 

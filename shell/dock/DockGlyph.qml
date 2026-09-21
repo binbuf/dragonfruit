@@ -58,12 +58,51 @@ Item {
         }
     }
 
+    // -- Downloads stack -------------------------------------------------
+    // A folder glyph for the Downloads stack (T-10 section 17): a tab plus a
+    // body, drawn from our own geometry.
+    Item {
+        id: stack
+        visible: root.kind === "stack"
+        anchors.fill: parent
+
+        readonly property real s: root.size
+
+        Rectangle {
+            width: stack.s * 0.42
+            height: stack.s * 0.16
+            radius: stack.s * 0.04
+            color: Theme.primitive.color.sky500
+            x: stack.s * 0.14
+            y: stack.s * 0.22
+        }
+        Rectangle {
+            width: stack.s * 0.72
+            height: stack.s * 0.46
+            radius: stack.s * 0.09
+            color: Theme.primitive.color.sky500
+            border.width: 1
+            border.color: Qt.rgba(0, 0, 0, 0.18)
+            x: stack.s * 0.14
+            y: stack.s * 0.32
+        }
+        Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            y: stack.s * 0.66
+            text: root.name.length > 0 ? root.name : qsTr("Downloads")
+            color: Theme.color.textSecondary
+            font.pixelSize: Math.round(stack.s * 0.16)
+            elide: Text.ElideRight
+            width: stack.s * 0.8
+            horizontalAlignment: Text.AlignHCenter
+        }
+    }
+
     // -- Trash -----------------------------------------------------------
     Item {
         id: trash
         visible: root.kind === "trash"
         anchors.fill: parent
-
         readonly property real s: root.size
 
         // Handle.

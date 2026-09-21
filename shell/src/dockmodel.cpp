@@ -42,9 +42,68 @@ double dockAttentionBouncePhase(qint64 elapsedMs)
            / static_cast<double>(kAttentionBounceHopMs);
 }
 
+QVariantList buildRecentEntries(const QStringList &recentIds, const QStringList &pinnedIds,
+                                const QVariantList &running, const DesktopEntryIndex &index,
+                                int limit)
+{
+    // Identities already represented on the Dock: pinned pins (resolved and
+    // raw) and the running projection (resolved and raw app id).
+    QSet<QString> represented;
+    for (const QString &pinId : pinnedIds) {
+        represented.insert(pinId);
+        const DesktopEntry resolved = index.resolve(pinId);
+        if (resolved.valid)
+            represented.insert(resolved.id);
+    }
+    for (const QVariant &value : running) {
+        const QVariantMap map = value.toMap();
+        if (map.value(QStringLiteral("kind")).toString() == QLatin1String("minimized"))
+            continue;
+        const QString appId = map.value(QStringLiteral("appId")).toString();
+        if (appId.isEmpty())
+            continue;
+        represented.insert(appId);
+        const DesktopEntry resolved = index.resolve(appId);
+        if (resolved.valid)
+            represented.insert(resolved.id);
+    }
+
+    QVariantList out;
+    QSet<QString> used;
+    for (const QString &recentId : recentIds) {
+        if (out.size() >= limit)
+            break;
+        if (recentId.isEmpty() || represented.contains(recentId))
+            continue;
+        const DesktopEntry entry = index.resolve(recentId);
+        // A recent that no longer resolves is not suggested; it is not a
+        // pinned identity, so it must never render as "not found".
+        if (!entry.valid)
+            continue;
+        if (represented.contains(entry.id) || used.contains(entry.id))
+            continue;
+        used.insert(entry.id);
+
+        QVariantMap merged;
+        merged.insert(QStringLiteral("id"), QStringLiteral("recent:") + entry.id);
+        merged.insert(QStringLiteral("appId"), entry.id);
+        merged.insert(QStringLiteral("desktopId"), entry.id);
+        merged.insert(QStringLiteral("name"), entry.name);
+        merged.insert(QStringLiteral("icon"), entry.icon);
+        merged.insert(QStringLiteral("kind"), QStringLiteral("recent"));
+        merged.insert(QStringLiteral("pinned"), false);
+        merged.insert(QStringLiteral("missing"), false);
+        merged.insert(QStringLiteral("running"), false);
+        merged.insert(QStringLiteral("windows"), 0);
+        out.append(merged);
+    }
+    return out;
+}
+
 QVariantList buildDockEntries(const QStringList &pinnedIds, const DesktopEntryIndex &index,
                               const QVariantList &running,
-                              const QHash<QString, QString> &launchStates)
+                              const QHash<QString, QString> &launchStates,
+                              const QStringList &recentIds)
 {
     QList<QVariantMap> minimizedEntries;
     QList<QVariantMap> runningApps;
@@ -131,6 +190,11 @@ QVariantList buildDockEntries(const QStringList &pinnedIds, const DesktopEntryIn
         }
         entries.append(entry);
     }
+
+    const QVariantList recents =
+        buildRecentEntries(recentIds, pinnedIds, running, index);
+    for (const QVariant &recent : recents)
+        entries.append(recent);
 
     for (const QVariantMap &minimized : minimizedEntries)
         entries.append(minimized);

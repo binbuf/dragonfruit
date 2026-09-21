@@ -47,6 +47,7 @@ add_library(dragonfruit-shell-dockcore STATIC
     dockpins.cpp
     docksettings.cpp
     dockmodel.cpp
+    downloadsmonitor.cpp
     trashmonitor.cpp
 )
 target_link_libraries(dragonfruit-shell-dockcore PUBLIC Qt6::Core)

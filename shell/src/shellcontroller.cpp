@@ -14,6 +14,7 @@
 
 #include <QCoreApplication>
 #include <QDateTime>
+#include <QDesktopServices>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -22,6 +23,7 @@
 #include <QMouseEvent>
 #include <QProcess>
 #include <QStandardPaths>
+#include <QUrl>
 
 #include <cstdio>
 
@@ -29,6 +31,7 @@
 #include "dockdrops.h"
 #include "dockmodel.h"
 #include "dockpins.h"
+#include "downloadsmonitor.h"
 #include "shellprotocol.h"
 
 namespace {
@@ -357,6 +360,12 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onDockKeyboardFocusReleaseRequested()));
     connect(m_dockItem, SIGNAL(externalDropRequested(QString,QString,QString,bool)), this,
             SLOT(onDockExternalDropRequested(QString,QString,QString,bool)));
+    connect(m_dockItem, SIGNAL(downloadActivated(QString)), this,
+            SLOT(onDockDownloadActivated(QString)));
+    connect(m_dockItem, SIGNAL(downloadsFolderRequested()), this,
+            SLOT(onDockDownloadsFolderRequested()));
+    connect(m_dockItem, SIGNAL(downloadsViewed()), this,
+            SLOT(onDockDownloadsViewed()));
     // The Trash entry's state comes from the home-trash watch (section 16);
     // deletions by any application update the full/count state.
     m_trash = new TrashMonitor(TrashMonitor::defaultRoot(), this);
@@ -364,6 +373,12 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     m_trash->start();
     m_dockItem->setProperty("trashFull", m_trash->isFull());
     m_dockItem->setProperty("trashCount", m_trash->itemCount());
+    // The Downloads stack (section 17): a zero-polling watch of the folder
+    // that feeds the stack popover and its new-items badge.
+    m_downloads = new DownloadsMonitor(DownloadsMonitor::defaultDirectory(), this);
+    connect(m_downloads, &DownloadsMonitor::changed, this, &ShellController::onDownloadsChanged);
+    m_downloads->start();
+    onDownloadsChanged();
     // Apply `dock.*` before the surfaces exist (no reconfigure yet) so the
     // baseline bar thickness and magnified band reflect the saved size.
     applyDockSettings(false);
@@ -544,6 +559,17 @@ void ShellController::onFocusedAppChanged(const QString &appId, const QString &t
     m_appTitle = title;
     // FR-4: attention stops when the app's window gains focus.
     clearAttention(appId);
+    // Track recency for the suggested entries (`dock.showRecentApps`, T-10
+    // section 17). The list is kept even when the setting is off so toggling
+    // it on is immediate; a rebuild only happens when it is visible.
+    if (!appId.isEmpty()) {
+        m_recentAppIds.removeAll(appId);
+        m_recentAppIds.prepend(appId);
+        while (m_recentAppIds.size() > 12)
+            m_recentAppIds.removeLast();
+        if (m_settings.showRecentApps())
+            rebuildDockEntries();
+    }
     applyFocusedApp();
     render();
 }
@@ -989,6 +1015,8 @@ void ShellController::applyDockSettings(bool reconfigure)
     }
     if (!reconfigure || !m_protocol)
         return;
+    // `dock.showRecentApps` changes the app region, so rebuild the entries.
+    rebuildDockEntries();
     // A live geometry change moves the bar, so any open popover is dismissed
     // rather than left floating detached (T-10 section 22).
     QMetaObject::invokeMethod(m_dockItem, "closePopovers");
@@ -1075,8 +1103,9 @@ void ShellController::rebuildDockEntries()
     if (!m_dockItem)
         return;
     m_dockItem->setProperty("entries",
-                            withBounce(buildDockEntries(m_pins.ids(), m_index, m_runningEntries,
-                                                        m_launchStates)));
+                            withBounce(buildDockEntries(
+                                m_pins.ids(), m_index, m_runningEntries, m_launchStates,
+                                m_settings.showRecentApps() ? m_recentAppIds : QStringList())));
     scheduleDockRender();
 }
 
@@ -1419,6 +1448,8 @@ void ShellController::onDockEntryMenuAction(const QString &action, const QVarian
     } else if (action == QLatin1String("open_dock_settings")) {
         // T-16 owns the Desktop & Dock pane; the entry point is wired.
         qInfo() << "shell: Dock Settings requested (T-16)";
+    } else if (action == QLatin1String("open_downloads_folder")) {
+        onDockDownloadsFolderRequested();
     } else if (action == QLatin1String("open_trash")) {
         openTrashInFiles();
     } else if (action == QLatin1String("empty_trash")) {
@@ -1477,6 +1508,46 @@ void ShellController::onTrashChanged()
     m_dockItem->setProperty("trashFull", m_trash->isFull());
     m_dockItem->setProperty("trashCount", m_trash->itemCount());
     scheduleDockRender();
+}
+
+void ShellController::onDownloadsChanged()
+{
+    if (!m_dockItem || !m_downloads)
+        return;
+    m_dockItem->setProperty("downloadsItems", m_downloads->items());
+    m_dockItem->setProperty("downloadsCount", m_downloads->itemCount());
+    m_dockItem->setProperty("downloadsBadge", m_downloads->newCount());
+    scheduleDockRender();
+}
+
+void ShellController::onDockDownloadsViewed()
+{
+    if (m_downloads)
+        m_downloads->markSeen();
+}
+
+void ShellController::onDockDownloadActivated(const QString &path)
+{
+    if (path.isEmpty())
+        return;
+    // Files is T-18; until it owns "open file", defer to the desktop's
+    // registered handler through the standard xdg-open path.
+    if (!QDesktopServices::openUrl(QUrl::fromLocalFile(path)))
+        qWarning() << "shell: no handler for" << path;
+    else
+        qInfo() << "shell: Dock opened download" << path;
+}
+
+void ShellController::onDockDownloadsFolderRequested()
+{
+    if (!m_downloads)
+        return;
+    const QString folder = m_downloads->directory();
+    QDir().mkpath(folder);
+    if (!QDesktopServices::openUrl(QUrl::fromLocalFile(folder)))
+        qWarning() << "shell: cannot open the Downloads folder:" << folder;
+    else
+        qInfo() << "shell: Dock opened the Downloads folder";
 }
 
 void ShellController::startDockAnimationRenders(int ms)
