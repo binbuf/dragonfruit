@@ -16,9 +16,11 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
+use wayland_client::protocol::wl_data_device_manager::DndAction;
 use wayland_client::protocol::{
-    wl_buffer, wl_compositor, wl_keyboard, wl_pointer, wl_region, wl_registry, wl_seat, wl_shm,
-    wl_shm_pool, wl_surface,
+    wl_buffer, wl_compositor, wl_data_device, wl_data_device_manager, wl_data_offer,
+    wl_data_source, wl_keyboard, wl_pointer, wl_region, wl_registry, wl_seat, wl_shm, wl_shm_pool,
+    wl_surface,
 };
 use wayland_client::{delegate_noop, Connection, Dispatch, EventQueue, QueueHandle};
 use wayland_protocols::wp::pointer_constraints::zv1::client::{
@@ -87,6 +89,8 @@ struct TestClient {
     pointer_motions: Vec<(f64, f64)>,
     /// Pointer enters delivered to this client.
     pointer_enters: usize,
+    /// Pointer leaves delivered to this client.
+    pointer_leaves: usize,
     /// Surface-local coordinates of each pointer enter.
     pointer_enter_positions: Vec<(f64, f64)>,
     /// Keyboard focus enters/leaves and keycodes delivered to this client.
@@ -139,6 +143,32 @@ struct TestClient {
     input_actions: Vec<(String, String, u32)>,
     progress_events: usize,
     app_accelerators: Vec<(String, String, String, u32)>,
+    // Drag-and-drop (T-10 external drops). The same harness acts as the
+    // drag source (offers a payload) and as the target (a trusted chrome
+    // surface that receives the offer).
+    data_device_manager: Option<wl_data_device_manager::WlDataDeviceManager>,
+    data_device: Option<wl_data_device::WlDataDevice>,
+    data_source: Option<wl_data_source::WlDataSource>,
+    /// The bytes the source writes when the target requests `text/uri-list`.
+    source_payload: Option<String>,
+    data_source_sent: usize,
+    data_source_cancelled: usize,
+    data_source_drop_performed: usize,
+    data_source_finished: usize,
+    /// Target-side offer state.
+    dnd_offer: Option<wl_data_offer::WlDataOffer>,
+    dnd_mimes: Vec<String>,
+    dnd_enters: usize,
+    dnd_motions: usize,
+    dnd_leaves: usize,
+    dnd_drops: usize,
+    /// `wl_data_offer.action` events (proves the compositor processed
+    /// `set_actions` before the drop).
+    dnd_action_events: usize,
+    /// Read end of the pipe the target asked the source to fill.
+    dnd_read_fd: Option<std::os::fd::RawFd>,
+    /// The serial of the most recent pointer button press (the drag needs it).
+    pointer_button_serial: Option<u32>,
 }
 
 impl Dispatch<wl_registry::WlRegistry, ()> for TestClient {
@@ -169,6 +199,9 @@ impl Dispatch<wl_registry::WlRegistry, ()> for TestClient {
                 }
                 "wl_seat" => {
                     state.seat = Some(registry.bind(name, version.min(9), _qh, ()));
+                }
+                "wl_data_device_manager" => {
+                    state.data_device_manager = Some(registry.bind(name, version.min(3), _qh, ()));
                 }
                 "xdg_activation_v1" => {
                     state.activation = Some(registry.bind(name, version.min(1), _qh, ()));
@@ -389,6 +422,103 @@ delegate_noop!(TestClient: ignore wl_buffer::WlBuffer);
 delegate_noop!(TestClient: ignore wl_surface::WlSurface);
 delegate_noop!(TestClient: ignore wl_region::WlRegion);
 delegate_noop!(TestClient: ignore zwp_pointer_constraints_v1::ZwpPointerConstraintsV1);
+delegate_noop!(TestClient: ignore wl_data_device_manager::WlDataDeviceManager);
+
+impl Dispatch<wl_data_device::WlDataDevice, ()> for TestClient {
+    fn event(
+        state: &mut Self,
+        _: &wl_data_device::WlDataDevice,
+        event: wl_data_device::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        match event {
+            wl_data_device::Event::DataOffer { id } => state.dnd_offer = Some(id),
+            wl_data_device::Event::Enter { serial, id, .. } => {
+                state.dnd_enters += 1;
+                if let Some(offer) = id {
+                    // Accept a mime type and pick an action: the compositor
+                    // only validates (and delivers) a drop once both are set.
+                    offer.accept(serial, Some("text/uri-list".to_string()));
+                    offer.set_actions(DndAction::Copy | DndAction::Move, DndAction::Copy);
+                    state.dnd_offer = Some(offer);
+                }
+            }
+            wl_data_device::Event::Leave => state.dnd_leaves += 1,
+            wl_data_device::Event::Motion { .. } => state.dnd_motions += 1,
+            wl_data_device::Event::Drop => {
+                state.dnd_drops += 1;
+                if let Some(offer) = state.dnd_offer.clone() {
+                    let mut fds = [0i32; 2];
+                    let rc = unsafe { libc::pipe(fds.as_mut_ptr()) };
+                    assert_eq!(rc, 0, "pipe() failed");
+                    {
+                        use std::os::fd::FromRawFd;
+                        // `receive` borrows the write end; dropping it after
+                        // the call closes our copy, leaving the source as the
+                        // only writer so the read side sees EOF.
+                        let write = unsafe { std::os::fd::OwnedFd::from_raw_fd(fds[1]) };
+                        offer.receive("text/uri-list".to_string(), write.as_fd());
+                    }
+                    state.dnd_read_fd = Some(fds[0]);
+                }
+            }
+            wl_data_device::Event::Selection { .. } => {}
+            _ => {}
+        }
+    }
+
+    wayland_client::event_created_child!(TestClient, wl_data_device::WlDataDevice, [
+        wl_data_device::EVT_DATA_OFFER_OPCODE => (wl_data_offer::WlDataOffer, ()),
+    ]);
+}
+
+impl Dispatch<wl_data_offer::WlDataOffer, ()> for TestClient {
+    fn event(
+        state: &mut Self,
+        _: &wl_data_offer::WlDataOffer,
+        event: wl_data_offer::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        match event {
+            wl_data_offer::Event::Offer { mime_type } => state.dnd_mimes.push(mime_type),
+            wl_data_offer::Event::Action { .. } => state.dnd_action_events += 1,
+            _ => {}
+        }
+    }
+}
+
+impl Dispatch<wl_data_source::WlDataSource, ()> for TestClient {
+    fn event(
+        state: &mut Self,
+        _: &wl_data_source::WlDataSource,
+        event: wl_data_source::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        match event {
+            wl_data_source::Event::Send { mime_type, fd } => {
+                if let Some(payload) = state.source_payload.clone() {
+                    if mime_type == "text/uri-list" {
+                        use std::io::Write;
+                        let mut file = std::fs::File::from(fd);
+                        file.write_all(payload.as_bytes())
+                            .expect("write drag payload");
+                        state.data_source_sent += 1;
+                    }
+                }
+            }
+            wl_data_source::Event::Cancelled => state.data_source_cancelled += 1,
+            wl_data_source::Event::DndDropPerformed => state.data_source_drop_performed += 1,
+            wl_data_source::Event::DndFinished => state.data_source_finished += 1,
+            _ => {}
+        }
+    }
+}
 
 impl Dispatch<wl_seat::WlSeat, ()> for TestClient {
     fn event(
@@ -437,6 +567,9 @@ impl Dispatch<wl_pointer::WlPointer, ()> for TestClient {
             state.pointer_enters += 1;
             state.pointer_enter_positions.push((surface_x, surface_y));
         }
+        if let wl_pointer::Event::Leave { .. } = event {
+            state.pointer_leaves += 1;
+        }
         if let wl_pointer::Event::Motion {
             surface_x,
             surface_y,
@@ -444,6 +577,19 @@ impl Dispatch<wl_pointer::WlPointer, ()> for TestClient {
         } = event
         {
             state.pointer_motions.push((surface_x, surface_y));
+        }
+        if let wl_pointer::Event::Button {
+            serial,
+            state: button_state,
+            ..
+        } = event
+        {
+            if matches!(
+                button_state.into_result(),
+                Ok(wl_pointer::ButtonState::Pressed)
+            ) {
+                state.pointer_button_serial = Some(serial);
+            }
         }
     }
 }
@@ -2352,6 +2498,276 @@ fn empty_input_region_passes_clicks_through() {
 
     manager.destroy();
     let _ = conn.flush();
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}
+
+/// Read a pipe until EOF (or a timeout) and return it as a string. Used to
+/// drain the drag payload the target requested from the source.
+fn read_pipe_to_string(fd: std::os::fd::RawFd, timeout: Duration) -> String {
+    use std::io::Read;
+    use std::os::fd::FromRawFd;
+    let mut file = unsafe { std::fs::File::from_raw_fd(fd) };
+    let deadline = Instant::now() + timeout;
+    let mut out = Vec::new();
+    let mut buf = [0u8; 4096];
+    loop {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            break;
+        }
+        let mut pollfd = libc::pollfd {
+            fd,
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        let millis = remaining.as_millis().min(i32::MAX as u128) as i32;
+        let ready = unsafe { libc::poll(&mut pollfd, 1, millis) };
+        assert!(ready >= 0, "poll failed");
+        if ready == 0 {
+            break;
+        }
+        let n = file.read(&mut buf).expect("read drag payload");
+        if n == 0 {
+            break;
+        }
+        out.extend_from_slice(&buf[..n]);
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// T-10 FR-9 (external drops) — the end-to-end drag walkthrough the hand-off
+/// asked for. A *separate* client starts a Wayland drag carrying a
+/// `text/uri-list`; the compositor routes the drag to a trusted chrome
+/// surface under the pointer (the Dock's target contract); the target
+/// accepts and receives the payload; the source sees the drop.
+///
+/// The shell's own data-device plumbing is Qt code and cannot run in a
+/// cargo test, so the target here is a raw shell stand-in that binds
+/// `wl_data_device` exactly as the shell does (`tst_dock` covers the QML
+/// drop logic). What this test guards is the compositor side the shell
+/// relies on: the chrome-surface hit-test during a drag, the
+/// offer/enter/motion/drop sequence, and the payload pipe. It needs two
+/// distinct clients — smithay only sends a data offer when the drag source
+/// and the target are different connections.
+#[test]
+fn client_drag_and_drop_reaches_a_chrome_surface() {
+    let token = "ce".repeat(32);
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path =
+        PathBuf::from(&runtime_dir).join(format!("dragonfruit-dnd-synth-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-dnd",
+        std::slice::from_ref(&token),
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+
+    // --- target: a trusted chrome surface + its own data device ----------
+    let (tgt_conn, mut tgt_queue, mut tgt) = connect(&proc.socket_path);
+    let (name, version) = tgt.core_global.expect("df_core advertised");
+    let tgt_core = bind_core(&mut tgt, &tgt_queue, name, version);
+    tgt_core.authenticate(1, proc.read_token());
+    wait_for(
+        &tgt_conn,
+        &mut tgt_queue,
+        &mut tgt,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+    let (shell_name, shell_version) = tgt.shell_global.expect("df_shell advertised");
+    let tgt_shell = bind_shell(&mut tgt, &tgt_queue, shell_name, shell_version);
+    let tgt_qh = tgt_queue.handle();
+    let tgt_surface = tgt.compositor.clone().unwrap().create_surface(&tgt_qh, ());
+    let tgt_layer = tgt_shell.get_layer_surface(
+        &tgt_surface,
+        None,
+        df_shell::Layer::Top,
+        "dock".to_string(),
+        &tgt_qh,
+        (),
+    );
+    tgt_layer.set_anchor(1 | 4 | 8); // top | left | right
+    tgt_layer.set_size(0, 28);
+    tgt_layer.set_exclusive_zone(28);
+    tgt_layer.set_keyboard_interaction(df_layer_surface::KeyboardInteraction::OnDemand);
+    tgt_surface.commit();
+    let (tgt_buffer, _tgt_file) = shm_buffer(&tgt, &tgt_qh, OUTPUT_W, 28);
+    tgt_surface.attach(Some(&tgt_buffer), 0, 0);
+    tgt_surface.commit();
+    wait_for(
+        &tgt_conn,
+        &mut tgt_queue,
+        &mut tgt,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .layer_configures
+                .iter()
+                .any(|(_, width, height)| *width == OUTPUT_W && *height == 28)
+        },
+    );
+    wait_for(
+        &tgt_conn,
+        &mut tgt_queue,
+        &mut tgt,
+        Duration::from_secs(5),
+        |state| state.data_device_manager.is_some() && state.seat.is_some(),
+    );
+    let tgt_dd = tgt.data_device_manager.clone().unwrap().get_data_device(
+        &tgt.seat.clone().unwrap(),
+        &tgt_qh,
+        (),
+    );
+    tgt.data_device = Some(tgt_dd.clone());
+    // Force the compositor to register the target's data device before the
+    // drag begins; `update_focus` only offers to devices it already knows,
+    // and the synthetic input and the Wayland request are different channels.
+    tgt_queue
+        .roundtrip(&mut tgt)
+        .expect("target data device roundtrip");
+
+    // --- source: map a window and arm a text/uri-list drag source --------
+    let (src_conn, mut src_queue, mut src) = connect(&proc.socket_path);
+    wait_for(
+        &src_conn,
+        &mut src_queue,
+        &mut src,
+        Duration::from_secs(5),
+        |state| state.pointer.is_some() && state.data_device_manager.is_some(),
+    );
+    let (src_surface, _src_xdg, _src_toplevel, _src_file) = map_toplevel(
+        &mut src,
+        &mut src_queue,
+        "Drag Source",
+        "org.dragonfruit.DragSource",
+    );
+    let payload = "file:///tmp/dragonfruit-drag-source.txt\r\n".to_string();
+    src.source_payload = Some(payload.clone());
+    let src_qh = src_queue.handle();
+    let src_source = src
+        .data_device_manager
+        .clone()
+        .unwrap()
+        .create_data_source(&src_qh, ());
+    src_source.offer("text/uri-list".to_string());
+    src_source.offer("application/x-dragonfruit-app".to_string());
+    src_source.set_actions(DndAction::Copy | DndAction::Move);
+    src.data_source = Some(src_source.clone());
+    let src_dd = src.data_device_manager.clone().unwrap().get_data_device(
+        &src.seat.clone().unwrap(),
+        &src_qh,
+        (),
+    );
+    src.data_device = Some(src_dd.clone());
+
+    // Pointer over the source window; the button press is the implicit grab
+    // `start_drag` validates against.
+    input.send("motion-abs 0.5 0.5");
+    wait_for(
+        &src_conn,
+        &mut src_queue,
+        &mut src,
+        Duration::from_secs(5),
+        |state| state.pointer_enters > 0,
+    );
+    input.send("button 272 down"); // BTN_LEFT
+    wait_for(
+        &src_conn,
+        &mut src_queue,
+        &mut src,
+        Duration::from_secs(5),
+        |state| state.pointer_button_serial.is_some(),
+    );
+    let serial = src.pointer_button_serial.unwrap();
+    src_dd.start_drag(Some(&src_source), &src_surface, None, serial);
+    src_conn.flush().expect("flush start_drag");
+    // `start_drag` installs the DnD grab with `Focus::Clear`, which sends a
+    // pointer leave to the source window. Wait for it before moving: the
+    // grab only re-evaluates focus on a subsequent motion, and the synthetic
+    // input and the Wayland request travel different channels, so moving
+    // first could race the grab into place and the drag would never enter
+    // the target.
+    wait_for(
+        &src_conn,
+        &mut src_queue,
+        &mut src,
+        Duration::from_secs(5),
+        |state| state.pointer_leaves > 0,
+    );
+
+    // --- drag onto the chrome bar and drop -------------------------------
+    input.send("motion-abs 0.5 0.01");
+    wait_for(
+        &tgt_conn,
+        &mut tgt_queue,
+        &mut tgt,
+        Duration::from_secs(5),
+        |state| state.dnd_enters > 0,
+    );
+    assert!(
+        tgt.dnd_mimes.iter().any(|m| m == "text/uri-list"),
+        "the offer must advertise text/uri-list: {:?}",
+        tgt.dnd_mimes
+    );
+    assert!(
+        tgt.dnd_mimes
+            .iter()
+            .any(|m| m == "application/x-dragonfruit-app"),
+        "the offer must advertise the app-alias mime the shell accepts: {:?}",
+        tgt.dnd_mimes
+    );
+    // Wait until the compositor has processed `accept`/`set_actions` (proven
+    // by the offer's `action` event) before the drop, or the drop is denied
+    // as unvalidated.
+    tgt_conn.flush().expect("flush accept/set_actions");
+    wait_for(
+        &tgt_conn,
+        &mut tgt_queue,
+        &mut tgt,
+        Duration::from_secs(5),
+        |state| state.dnd_action_events > 0,
+    );
+    input.send("button 272 up");
+    wait_for(
+        &tgt_conn,
+        &mut tgt_queue,
+        &mut tgt,
+        Duration::from_secs(5),
+        |state| state.dnd_drops > 0,
+    );
+    // Flush the target's `receive` so the compositor asks the source for the
+    // bytes, then let the source service it.
+    tgt_conn.flush().expect("flush receive");
+    wait_for(
+        &src_conn,
+        &mut src_queue,
+        &mut src,
+        Duration::from_secs(5),
+        |state| state.data_source_sent > 0,
+    );
+    let received = read_pipe_to_string(
+        tgt.dnd_read_fd.expect("target read end"),
+        Duration::from_secs(5),
+    );
+    assert_eq!(
+        received, payload,
+        "the drag payload must reach the chrome target intact"
+    );
+    assert_eq!(tgt.dnd_drops, 1, "exactly one drop must be delivered");
+
+    drop(tgt_dd);
+    drop(src_dd);
+    drop(src_source);
+    drop(tgt_layer);
+    drop(tgt_surface);
+    drop(tgt_shell);
+    drop(tgt_core);
+    let _ = tgt_conn.flush();
+    let _ = src_conn.flush();
     proc.shutdown();
     assert!(
         !synthetic_path.exists(),

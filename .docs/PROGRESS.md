@@ -4709,3 +4709,102 @@ covered (launch failure was already scripted; exit mid-animation, identity
 change, cross-Space windows, inconsistent identifiers, and rapid open/close
 are now scripted); the box is left unchecked only because the ticket also
 names the app-index/settingsd restart rows, which wait on T-23/T-15.
+
+## T-10 continuation — external drag walkthrough (twenty-third slice)
+
+**State: partial.** The compositor's client-initiated drag-and-drop path now
+has a scripted end-to-end conformance test, closing the "add the scripted
+end-to-end walkthrough (source client + shell target)" half of the external
+drops hand-off (T-10 section 12, FR-9). The production drag *source* is still
+T-17/T-18 (Files/launcher); what landed here is the walkthrough the shell's
+completed DnD target relies on. The remaining slices (per-output sizing,
+GVfs Trash/downloads backends, live AT-SPI dump, core-loop/60 Hz measurements,
+the Trash-with-Files integration) are unchanged.
+
+### What landed
+
+- **`client_drag_and_drop_reaches_a_chrome_surface`**
+  (`compositor/tests/shell_protocol_conformance.rs`). Two distinct clients
+  run against the headless compositor with the T-03 synthetic-input harness:
+  a **source** that maps a window, creates a `wl_data_source` offering
+  `text/uri-list` + `application/x-dragonfruit-app`, sets `Copy|Move`, and
+  calls `wl_data_device.start_drag` with the serial of a synthetic
+  `BTN_LEFT` press; and a **target** that is a raw shell stand-in — a trusted
+  `df_core` handshake, a top `df_layer_surface` with a committed `wl_shm`
+  buffer, and its own `wl_data_device`. A synthetic `motion-abs` moves the
+  drag onto the bar, the target accepts the offer, the button release
+  delivers `wl_data_device.drop`, the target `receive`s `text/uri-list` into
+  a pipe, the source's `wl_data_source.send` handler writes the payload, and
+  the test asserts the bytes arrived intact (plus the mimes, one drop, and
+  the offer `action` negotiation).
+- **Harness additions.** `TestClient` gained the data-device/source/offer
+  dispatch impls (with the `event_created_child!` specialization for
+  `wl_data_device.data_offer`), a pointer-button-serial capture, and a
+  pointer-leave counter. The `wl_data_device_manager` global is now bound in
+  the registry handler.
+
+### Gotchas learned (important for the drag-source and Files slices)
+
+- **The synthetic-input path and the Wayland socket path must differ.** The
+  test's first draft named the synthetic datagram the same as the
+  compositor's socket (`dragonfruit-conformance-dnd-<pid>`), so the datagram
+  `bind` replaced the Wayland listener and every `connect` failed with
+  `EPROTOTYPE` ("Protocol wrong type for socket"). Use a distinct synthetic
+  path (the existing tests do, e.g. `dragonfruit-synth-<pid>`).
+- **A drag starts on a different channel than the pointer motion.** The
+  source's `start_drag` travels the Wayland socket; the synthetic motion
+  travels the datagram socket. Sending the motion immediately after
+  `start_drag` can move the pointer before the grab is installed, and the
+  DnD grab only re-evaluates focus on a *later* motion, so the drag never
+  enters the target. `start_drag` installs the grab with `Focus::Clear`,
+  which sends a `wl_pointer.leave` to the source window; wait for that leave
+  before moving. (Under parallel `cargo test` load this race failed ~every
+  time.)
+- **The target's data device must be registered before the drag.**
+  `DnDGrab::update_focus` only offers to `seat_data.known_data_devices()`;
+  a `get_data_device` request that is still unflushed is not known yet. Do a
+  `roundtrip` after creating it (the source is safe because `start_drag`
+  follows `get_data_device` in the same request stream).
+- **A drop is only delivered if the target both accepts a mime type and
+  chooses an action.** Smithay computes `validated = accepted &&
+  !chosen_action.is_empty()`; call `wl_data_offer.accept(serial, mime)` and
+  `wl_data_offer.set_actions(...)`. Wait for the offer's `action` event
+  before releasing the button, or the compositor may process the drop before
+  `set_actions` and cancel the drag. `action_choice` defaults to the
+  preferred action when the source offers it (`Copy|Move` here).
+- **`wl_data_offer.receive` takes a `BorrowedFd`, not `&OwnedFd`.** Pass
+  `owned.as_fd()` and drop the owned write end after the call so the source
+  is the only writer and the read side sees EOF.
+- **The shell's own data-device plumbing cannot run in a cargo test** (it is
+  Qt code in `shell/src/shellprotocol.cpp`). This test guards the
+  compositor side the shell depends on: chrome-surface hit-testing during a
+  drag, the offer/enter/motion/drop sequence, and the payload pipe.
+  `tst_dock` covers the QML drop logic; the `ShellProtocol` DnD target
+  remains covered only by the live headless smoke.
+
+### Hand-off / open items (remaining T-10 slices)
+
+1. **The drag *source*** (Files/launcher, T-17/T-18): a real `wl_data_source`
+   in the app plus an end-to-end walkthrough that drops onto the running
+   shell (not a raw stand-in). The compositor contract and the shell target
+   are both now scripted/complete.
+2. **Trash-state integration test with Files** (T-18): needs
+   `org.dragonfruit.Files1` activation; the third-party deletion half is
+   covered by `trashMonitorWatchesForThirdPartyChanges`.
+3. **GVfs Trash/downloads backends** when the GIO dev headers exist; the
+   sanctioned filesystem fallbacks are in place.
+4. **Per-output sizing** (T-11/T-16): chrome still sizes its buffer from the
+   first output; `visible_on_output` is the placement half already done.
+5. **Live AT-SPI dump** (T-31).
+6. **Core-loop + 60 Hz measurements** (acceptance): need a nested session on
+   baseline hardware; the headless harness has no seat.
+
+### Gate status
+
+`make e2e` green (21/21 `shell_protocol_conformance` incl. the new walkthrough,
+plus the window/Xwayland/idle suites); `cargo test --workspace` green;
+`cargo clippy --workspace --all-targets -D warnings` and `cargo fmt --check`
+green. The new test was run five consecutive times (and once under
+`make e2e`'s parallel binaries) with no flake after the synchronisation fixes
+above. No tasks/10-dock.md acceptance checkbox is closed by this slice; the
+remaining unchecked boxes are unchanged from the twenty-second slice.
