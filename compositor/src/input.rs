@@ -74,6 +74,7 @@ use smithay::wayland::tablet_manager::{
     TabletDescriptor, TabletHandle, TabletSeatTrait, TabletToolHandle,
 };
 
+use crate::overview::{InputOwner, OverviewKind};
 use crate::shell::layer::KeyboardInteraction;
 use crate::state::DfState;
 
@@ -122,6 +123,11 @@ pub fn surface_under(
 ) -> Option<(WlSurface, Point<i32, Logical>)> {
     if let Some((surface, location, _)) = chrome_under(state, point) {
         return Some((surface, location));
+    }
+    // Hit-testing transfers explicitly while the overview owns input: the
+    // window space is not hit-tested until ownership returns (T-11 FR-6).
+    if state.overview_input_owner() == InputOwner::Overview {
+        return None;
     }
     let (window, window_loc) = state.space.element_under(point)?;
     let (surface, location) =
@@ -541,26 +547,32 @@ fn ensure_tool(state: &mut DfState, tool: &TabletToolDescriptor) -> TabletToolHa
     tablet_seat.add_tool::<DfState>(state, &dh, tool)
 }
 
-/// Feed a recognized gesture step into the shared progress pipeline.
+/// Feed a recognized gesture step into the single overview state machine.
 fn drive_gesture(state: &mut DfState, update: GestureUpdate) {
+    let Some(kind) = OverviewKind::from_action(update.action) else {
+        return;
+    };
     let trigger = TriggerKind::Gesture(update.kind);
     let time = state.now_msec();
-    if !state.progress.is_active() {
-        let event = state.progress.begin(update.action, trigger, time);
+    if !state.overview.is_active() {
+        for event in state.overview.begin_gesture(kind, trigger, time) {
+            state.input_dispatch.progress(event);
+        }
+    }
+    if let Some(event) = state.overview.update_gesture(update.progress_delta, time) {
         state.input_dispatch.progress(event);
     }
-    if let Some(event) = state.progress.update(update.progress_delta, time) {
-        state.input_dispatch.progress(event);
-    }
+    // Translate the live surfaces with the gesture (T-11 Slice A).
+    state.apply_overview_scene();
     state.needs_redraw = true;
 }
 
-/// Finish a gesture; on commit, record the action exactly once.
+/// Finish a gesture; on commit, apply the transition exactly once.
 ///
 /// The recognizer is reset here unconditionally: a gesture that never
 /// claimed a system action (an unclaimed finger/axis combination) has no
-/// active progress pipeline, so it must still clear its recognizer state
-/// or the next gesture would be evaluated against a stale one.
+/// active transition, so it must still clear its recognizer state or the
+/// next gesture would be evaluated against a stale one.
 fn end_gesture(state: &mut DfState, cancelled: bool) {
     let time = state.now_msec();
     if cancelled {
@@ -568,21 +580,29 @@ fn end_gesture(state: &mut DfState, cancelled: bool) {
     } else {
         let _ = state.gestures.end();
     }
-    if let Some(event) = state.progress.end(time, cancelled) {
-        let action = event.action;
-        let trigger = event.trigger;
-        let committed = event.committed;
-        state.input_dispatch.progress(event);
-        if committed {
-            state
-                .input_dispatch
-                .action(action, trigger, SERIAL_COUNTER.next_serial().into());
-            // Gestures commit here rather than through
-            // `dispatch_input_action`, so apply the workspace switch too
-            // (T-05). The progress events above remain the T-11 seam.
-            state.handle_workspace_action(action);
+    let outcome = state.overview.end_gesture(time, cancelled);
+    let mut ended: Option<ProgressEvent> = None;
+    for event in outcome.events {
+        if event.phase == ProgressPhase::End {
+            ended = Some(event);
         }
+        state.input_dispatch.progress(event);
     }
+    if let Some(commit) = outcome.commit {
+        if let Some(event) = ended {
+            state.input_dispatch.action(
+                event.action,
+                event.trigger,
+                SERIAL_COUNTER.next_serial().into(),
+            );
+        }
+        state.apply_overview_commit(commit);
+    } else {
+        // Not committed (or cancelled): the transition animates back, so the
+        // scene returns to the settled active-Space layout.
+        state.apply_workspace_layout();
+    }
+    state.needs_redraw = true;
 }
 
 /// The output geometry containing `location`, if any.

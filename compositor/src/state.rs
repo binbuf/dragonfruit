@@ -89,11 +89,12 @@ use std::time::Duration;
 use crate::identity::AppResolver;
 use crate::input::constraint::{constraint_geometry, PointerConstraintGrab};
 use crate::input::dispatch::InputDispatch;
-use crate::input::gestures::{GestureRecognizer, ProgressPipeline};
+use crate::input::gestures::GestureRecognizer;
 use crate::input::hot_corners::HotCornerDetector;
 use crate::input::settings::InputSettings;
 use crate::input::shortcuts::{GrabArbiter, GrabKind, ShortcutEngine};
 use crate::input::{InputAction, TriggerKind};
+use crate::overview::{InputOwner, OverviewKind, OverviewMachine, TransitionCommit};
 use crate::shell::ShellProtocolState;
 use crate::window::grab::{MoveGrab, ResizeGrab};
 use crate::window::popup::constrained_popup_geometry;
@@ -242,11 +243,12 @@ pub struct DfState {
     // --- input engine (T-03) ------------------------------------------------
     /// Global shortcut engine: the sole arbiter of key bindings.
     pub shortcuts: ShortcutEngine,
-    /// Gesture recognizer feeding [`Self::progress`].
+    /// Gesture recognizer feeding [`Self::overview`].
     pub gestures: GestureRecognizer,
     /// The single progress pipeline shared by gestures, keyboard, and hot
-    /// corners.
-    pub progress: ProgressPipeline,
+    /// corners, wrapped in the one overview/workspace-transition state
+    /// machine (T-11).
+    pub overview: OverviewMachine,
     /// Hot-corner dwell detection.
     pub hot_corners: HotCornerDetector,
     /// The live input settings model (FR-7).
@@ -313,7 +315,7 @@ impl DfState {
         let input_settings = InputSettings::default();
         let shortcuts = ShortcutEngine::with_bindings(input_settings.system_bindings.clone());
         let gestures = GestureRecognizer::new(input_settings.gestures);
-        let progress = ProgressPipeline::new(input_settings.progress);
+        let overview = OverviewMachine::new(input_settings.progress);
         let hot_corners = HotCornerDetector::new(input_settings.hot_corners);
         let shell = ShellProtocolState::new(display_handle);
 
@@ -367,7 +369,7 @@ impl DfState {
             xwayland: XwaylandState::default(),
             shortcuts,
             gestures,
-            progress,
+            overview,
             hot_corners,
             input_settings,
             input_dispatch: InputDispatch::new(),
@@ -1113,20 +1115,26 @@ impl DfState {
     /// Dispatch one compositor action from any trigger.
     ///
     /// Every trigger records the same [`InputAction`] here; progress-driven
-    /// actions additionally drive the shared [`ProgressPipeline`]. Gesture
-    /// sources have already driven the pipeline (so the gesture remains
+    /// actions additionally drive the single [`OverviewMachine`]. Gesture
+    /// sources have already driven the machine (so the gesture remains
     /// continuous), hence they only record the committed action.
     pub fn dispatch_input_action(&mut self, action: InputAction, source: TriggerKind, serial: u32) {
         self.input_dispatch.action(action, source, serial);
-        if action.is_progress_driven() && !matches!(source, TriggerKind::Gesture(_)) {
-            let now = self.now_msec();
-            for event in self.progress.drive_discrete(action, source, now) {
-                self.input_dispatch.progress(event);
+        if let Some(kind) = OverviewKind::from_action(action) {
+            if !matches!(source, TriggerKind::Gesture(_)) {
+                let now = self.now_msec();
+                let outcome = self.overview.drive(kind, source, now);
+                for event in outcome.events {
+                    self.input_dispatch.progress(event);
+                }
+                if let Some(commit) = outcome.commit {
+                    self.apply_overview_commit(commit);
+                }
             }
+        } else {
+            // Non-progress actions (workspace activate, app switcher, ...).
+            self.handle_workspace_action(action);
         }
-        // Workspace switches take effect immediately; the progress events
-        // above are the T-11 animation seam, not a second state machine.
-        self.handle_workspace_action(action);
         // T-10 section 20: the Dock-focus shortcut hands the keyboard to the
         // Dock chrome surface. ToggleDock is shell-owned (the auto-hide
         // setting); the action event above is the whole compositor side.
@@ -1134,6 +1142,129 @@ impl DfState {
             self.focus_dock();
         }
         self.needs_redraw = true;
+    }
+
+    /// Apply a committed overview transition to the compositor.
+    ///
+    /// This is the *only* place an overview transition changes the scene, so
+    /// every trigger (gesture, keyboard, hot corner, shell request) ends up
+    /// in the same code path — the one-machine rule.
+    pub fn apply_overview_commit(&mut self, commit: TransitionCommit) {
+        self.overview.apply_commit(commit);
+        match commit {
+            TransitionCommit::SwitchWorkspace(delta) => {
+                self.workspaces.switch_all(delta);
+                self.after_workspace_change();
+            }
+            TransitionCommit::SetOverview(_) | TransitionCommit::SetDesktopReveal(_) => {
+                self.broadcast_overview();
+            }
+        }
+        self.needs_redraw = true;
+    }
+
+    /// Enter or leave the Mission Control overview directly (private
+    /// protocol enter/exit, selection round-trip). Keeps the machine the
+    /// single source of truth and broadcasts the change.
+    pub fn set_overview(&mut self, active: bool) {
+        self.overview.set_overview(active);
+        self.broadcast_overview();
+        self.needs_redraw = true;
+    }
+
+    /// Whether the overview controller currently owns pointer hit-testing.
+    pub fn overview_input_owner(&self) -> InputOwner {
+        self.overview.input_owner()
+    }
+
+    /// Offset the live window surfaces for an in-flight overview/workspace
+    /// transition.
+    ///
+    /// Workspace switching is a progress pipeline: the active Space slides
+    /// out while the adjacent Space slides in, both as *live* surfaces (never
+    /// thumbnails). This first slice translates only — per-surface scale and
+    /// blur are T-33's material passes — so it is deliberately limited to
+    /// horizontal slides and to the outputs that have a neighbor in the
+    /// switch direction. Returns whether anything moved.
+    pub fn apply_overview_scene(&mut self) -> bool {
+        if !self.overview.is_active() {
+            return false;
+        }
+        let Some(kind) = self.overview.kind() else {
+            return false;
+        };
+        if !kind.is_workspace_switch() {
+            return false;
+        }
+        let direction = kind.direction();
+        let progress = self.overview.progress();
+        if progress <= 0.0 {
+            return false;
+        }
+
+        // Output widths, so the slide distance is the full output width.
+        let widths: std::collections::HashMap<String, i32> = self
+            .space
+            .outputs()
+            .filter_map(|output| {
+                self.space
+                    .output_geometry(output)
+                    .map(|geometry| (output.name(), geometry.size.w))
+            })
+            .collect();
+
+        let entries: Vec<(Window, WindowId)> = self
+            .windows
+            .windows()
+            .filter_map(|window| self.windows.id(window).map(|id| (window.clone(), id)))
+            .collect();
+
+        let mut moved = false;
+        for (window, id) in entries {
+            // Minimized windows are excluded from the layout (FR-6); they
+            // must never be pulled into the slide.
+            if !self
+                .windows
+                .state(&window)
+                .is_some_and(|state| state.is_visible())
+            {
+                continue;
+            }
+            let Some(space) = self.workspaces.window_space(id) else {
+                continue;
+            };
+            let Some(output) = self.workspaces.space_output(space).map(str::to_string) else {
+                continue;
+            };
+            let Some(active) = self.workspaces.active_index(&output) else {
+                continue;
+            };
+            let spaces = self.workspaces.space_ids(&output);
+            let Some(index) = spaces.iter().position(|candidate| *candidate == space) else {
+                continue;
+            };
+            let target = active as i32 + direction;
+            let offset = if index == active {
+                -direction as f64 * progress
+            } else if target >= 0 && target < spaces.len() as i32 && index as i32 == target {
+                -direction as f64 * progress + direction as f64
+            } else {
+                continue;
+            };
+            let Some(width) = widths.get(&output).copied() else {
+                continue;
+            };
+            let Some(geometry) = self.windows.geometry(&window) else {
+                continue;
+            };
+            let x = geometry.loc.x + (offset * f64::from(width)).round() as i32;
+            self.space.map_element(window, (x, geometry.loc.y), false);
+            moved = true;
+        }
+        if moved {
+            self.needs_redraw = true;
+        }
+        moved
     }
 
     /// Replace the input settings and apply them live (FR-7).
@@ -1160,7 +1291,7 @@ impl DfState {
         self.shortcuts
             .set_system_bindings(self.input_settings.system_bindings.clone());
         self.gestures.set_config(self.input_settings.gestures);
-        self.progress.set_config(self.input_settings.progress);
+        self.overview.set_config(self.input_settings.progress);
         self.hot_corners.set_config(self.input_settings.hot_corners);
         self.needs_redraw = true;
     }
