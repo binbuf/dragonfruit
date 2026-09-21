@@ -201,3 +201,98 @@ QVariantList buildDockEntries(const QStringList &pinnedIds, const DesktopEntryIn
 
     return entries;
 }
+
+DockOverflowResult applyDockOverflow(const QVariantList &entries, int availableLength,
+                                     int requestedIconSize, int iconMin, int iconMax,
+                                     int gap, int dividerWidth, int fixedCount,
+                                     bool minimizedVisible)
+{
+    DockOverflowResult result;
+    result.entries = entries;
+    result.iconSize = qBound(iconMin, requestedIconSize, iconMax);
+
+    int pinned = 0;
+    int temporary = 0;
+    int recent = 0;
+    int minimized = 0;
+    int other = 0;
+    for (const QVariant &value : entries) {
+        const QString kind = value.toMap().value(QStringLiteral("kind")).toString();
+        if (kind == QLatin1String("pinned"))
+            ++pinned;
+        else if (kind == QLatin1String("temporary"))
+            ++temporary;
+        else if (kind == QLatin1String("recent"))
+            ++recent;
+        else if (kind == QLatin1String("minimized"))
+            ++minimized;
+        else
+            ++other;
+    }
+    if (!minimizedVisible)
+        minimized = 0;
+
+    // The divider is always present; `fixedCount` is stack + trash.
+    const int nonDroppable = pinned + fixedCount + 1 + minimized + other;
+    const int droppable = temporary + recent;
+    const int count = nonDroppable + droppable;
+    if (availableLength <= 0 || count <= 1 || result.iconSize <= 0)
+        return result;
+
+    const auto totalFor = [&](int icon, int n) -> qint64 {
+        if (n <= 1)
+            return dividerWidth;
+        return qint64(n - 1) * (icon + gap) + dividerWidth;
+    };
+
+    int icon = result.iconSize;
+    int hidden = 0;
+    if (totalFor(icon, count) > availableLength) {
+        // The largest icon in the token range whose whole content fits.
+        const int fit = int((availableLength - dividerWidth) / (count - 1)) - gap;
+        icon = qBound(iconMin, fit, result.iconSize);
+        if (totalFor(icon, count) > availableLength) {
+            // Even at the minimum the full set overflows: drop temporary/
+            // recent entries until it fits, never pinned/minimized/fixed.
+            icon = iconMin;
+            int n = count;
+            while (n > nonDroppable && totalFor(iconMin, n) > availableLength) {
+                --n;
+                ++hidden;
+            }
+        }
+    }
+
+    result.iconSize = icon;
+    result.overflowed = totalFor(icon, count - hidden) > availableLength;
+    result.clamped = icon < qBound(iconMin, requestedIconSize, iconMax) || hidden > 0;
+    if (hidden <= 0)
+        return result;
+
+    // Recents are the least important: hide them from the end first, then the
+    // temporary running apps, so the pinned prefix is untouched.
+    result.hiddenRecent = qMin(hidden, recent);
+    result.hiddenTemporary = hidden - result.hiddenRecent;
+    QList<int> recentIndexes;
+    QList<int> temporaryIndexes;
+    for (int i = 0; i < entries.size(); ++i) {
+        const QString kind = entries.at(i).toMap().value(QStringLiteral("kind")).toString();
+        if (kind == QLatin1String("recent"))
+            recentIndexes.append(i);
+        else if (kind == QLatin1String("temporary"))
+            temporaryIndexes.append(i);
+    }
+    QSet<int> drop;
+    for (int i = 0; i < result.hiddenRecent; ++i)
+        drop.insert(recentIndexes.at(recentIndexes.size() - 1 - i));
+    for (int i = 0; i < result.hiddenTemporary; ++i)
+        drop.insert(temporaryIndexes.at(temporaryIndexes.size() - 1 - i));
+    QVariantList filtered;
+    filtered.reserve(entries.size() - hidden);
+    for (int i = 0; i < entries.size(); ++i) {
+        if (!drop.contains(i))
+            filtered.append(entries.at(i));
+    }
+    result.entries = filtered;
+    return result;
+}

@@ -966,6 +966,10 @@ void ShellController::onDockConfigured(int width, int height, quint32)
     m_dockWidth = width;
     m_dockHeight = height;
     fprintf(stderr, "dragonfruit-shell: Dock configured %dx%d\n", width, height);
+    // The output length along the Dock axis is only known now, so re-run the
+    // section 5.1 overflow clamp. This never resets the Repeater model unless
+    // the hidden set changed (a divider resize reconfigures the surface).
+    applyDockOverflowResult(computeDockOverflow(), true);
     renderDock();
 }
 
@@ -1024,22 +1028,13 @@ void ShellController::applyDockSettings(bool reconfigure)
     }
     if (!reconfigure || !m_protocol)
         return;
-    // `dock.showRecentApps` changes the app region, so rebuild the entries.
-    rebuildDockEntries();
-    // A live geometry change moves the bar, so any open popover is dismissed
-    // rather than left floating detached (T-10 section 22).
-    QMetaObject::invokeMethod(m_dockItem, "closePopovers");
-    // The icon size changed the baseline bar and the magnified band; re-apply
-    // the surface extent, anchor, and reserved zone (auto-hide reserves
-    // nothing).
-    m_dockBarThickness = qRound(m_dockItem->property("barThickness").toReal());
-    m_dockThickness = m_dockBarThickness + qCeil(m_dockItem->property("magnifyBand").toReal());
+    // Adopt the new edge before the layout clamp so `computeDockOverflow`
+    // reads the right axis; a changed stretch dimension is only known from the
+    // next configure, so pause rendering until it arrives (no stale frame at
+    // the wrong aspect).
     const bool positionChanged = position != m_dockPosition;
     m_dockPosition = position;
     if (positionChanged) {
-        // The stretch dimension changes with the edge and is only known from
-        // the next configure; pause rendering until it arrives so a stale
-        // frame is never committed at the wrong aspect.
         if (position == ShellProtocol::DockPosition::Bottom) {
             m_dockHeight = m_dockThickness;
             m_dockWidth = 0;
@@ -1048,6 +1043,17 @@ void ShellController::applyDockSettings(bool reconfigure)
             m_dockHeight = 0;
         }
     }
+    // `dock.showRecentApps` changes the app region, so rebuild the entries;
+    // the rebuild also applies the section 5.1 overflow clamp.
+    rebuildDockEntries();
+    // A live geometry change moves the bar, so any open popover is dismissed
+    // rather than left floating detached (T-10 section 22).
+    QMetaObject::invokeMethod(m_dockItem, "closePopovers");
+    // The (possibly clamped) icon size set the baseline bar and the magnified
+    // band; re-apply the surface extent, anchor, and reserved zone (auto-hide
+    // reserves nothing).
+    m_dockBarThickness = qRound(m_dockItem->property("barThickness").toReal());
+    m_dockThickness = m_dockBarThickness + qCeil(m_dockItem->property("magnifyBand").toReal());
     const int exclusive = m_settings.autohide() ? 0 : m_dockBarThickness;
     if (!m_protocol->configureDockSurface(position, m_dockThickness, exclusive))
         qWarning() << "shell: cannot reconfigure the Dock surface:"
@@ -1082,9 +1088,10 @@ void ShellController::applyDockSizeOnly()
 {
     if (!m_dockItem || !m_protocol)
         return;
-    m_dockItem->setProperty("iconSize", iconSizeForSize(m_settings.size()));
-    m_dockBarThickness = qRound(m_dockItem->property("barThickness").toReal());
-    m_dockThickness = m_dockBarThickness + qCeil(m_dockItem->property("magnifyBand").toReal());
+    // The divider drag is the natural place to bound `dock.size`: the clamp
+    // keeps the effective icon size at what fits the output, without touching
+    // the entries (the QML delegate holds the pointer; section 5.1).
+    applyDockOverflowResult(computeDockOverflow(), false);
     const int exclusive = m_settings.autohide() ? 0 : m_dockBarThickness;
     if (!m_protocol->configureDockSurface(m_dockPosition, m_dockThickness, exclusive))
         qWarning() << "shell: cannot resize the Dock surface:" << m_protocol->lastError();
@@ -1141,11 +1148,70 @@ void ShellController::rebuildDockEntries()
 {
     if (!m_dockItem)
         return;
-    m_dockItem->setProperty("entries",
-                            withBounce(buildDockEntries(
-                                m_pins.ids(), m_index, m_runningEntries, m_launchStates,
-                                m_settings.showRecentApps() ? m_recentAppIds : QStringList())));
+    m_dockAllEntries = withBounce(buildDockEntries(
+        m_pins.ids(), m_index, m_runningEntries, m_launchStates,
+        m_settings.showRecentApps() ? m_recentAppIds : QStringList()));
+    // A full rebuild always re-publishes the entries (bounce phases changed);
+    // the clamp only decides which ones survive and at what icon size.
+    applyDockOverflowResult(computeDockOverflow(), true, true);
     scheduleDockRender();
+}
+
+// The T-10 section 5.1 overflow clamp: given the full entry list and the
+// output length along the Dock axis, bound the icon size to what fits and hide
+// overflow temporary/recent entries (recents first, then temporaries; pinned
+// are never dropped). The divider is always present and the stack/Trash are
+// the two fixed entries.
+DockOverflowResult ShellController::computeDockOverflow() const
+{
+    if (!m_dockItem)
+        return {};
+    const int gap = qRound(m_dockItem->property("gap").toReal());
+    const int dividerWidth = qRound(m_dockItem->property("dividerWidth").toReal());
+    const int iconMin = qRound(m_dockItem->property("iconSizeMin").toReal());
+    const int iconMax = qRound(m_dockItem->property("iconSizeMax").toReal());
+    const int available = m_dockPosition == ShellProtocol::DockPosition::Bottom
+            ? m_dockWidth
+            : m_dockHeight;
+    return applyDockOverflow(m_dockAllEntries, available, iconSizeForSize(m_settings.size()),
+                             iconMin, iconMax, gap, dividerWidth, 2,
+                             !m_settings.minimizeIntoTileIcon());
+}
+
+void ShellController::applyDockOverflowResult(const DockOverflowResult &overflow,
+                                              bool allowEntries, bool forceEntries)
+{
+    if (!m_dockItem)
+        return;
+    m_dockItem->setProperty("iconSize", overflow.iconSize);
+    m_dockBarThickness = qRound(m_dockItem->property("barThickness").toReal());
+    m_dockThickness = m_dockBarThickness + qCeil(m_dockItem->property("magnifyBand").toReal());
+    warnDockOverflow(overflow);
+    if (!allowEntries)
+        return;
+    const bool hiddenChanged = overflow.hiddenTemporary != m_dockHiddenTemporary
+            || overflow.hiddenRecent != m_dockHiddenRecent;
+    // A geometry change during a divider resize must not destroy the delegate
+    // that holds the pointer, so only reset the Repeater model when the hidden
+    // set actually changed (the internal-reorder lesson); a full rebuild
+    // forces the fresh entries through.
+    if (!hiddenChanged && !forceEntries)
+        return;
+    m_dockHiddenTemporary = overflow.hiddenTemporary;
+    m_dockHiddenRecent = overflow.hiddenRecent;
+    m_dockItem->setProperty("entries", overflow.entries);
+}
+
+void ShellController::warnDockOverflow(const DockOverflowResult &overflow)
+{
+    if (!overflow.clamped || m_dockOverflowWarned)
+        return;
+    m_dockOverflowWarned = true;
+    qWarning() << "shell: Dock content exceeds the output; clamped the icon size to"
+               << overflow.iconSize << "px and hid"
+               << (overflow.hiddenTemporary + overflow.hiddenRecent)
+               << "temporary/recent entries"
+               << (overflow.overflowed ? "(pinned content still overflows)" : "");
 }
 
 QVariantList ShellController::withBounce(QVariantList entries) const
