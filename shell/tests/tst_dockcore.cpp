@@ -768,8 +768,43 @@ private slots:
     void trashMonitorRefusesUnsafeRoot()
     {
         TrashMonitor monitor(QStringLiteral("/"));
+        monitor.start();
         QCOMPARE(monitor.empty(), -1);
         QVERIFY(!monitor.lastError().isEmpty());
+        QVERIFY(!monitor.isAvailable());
+    }
+
+    void trashMonitorIsAvailableForAMissingRoot()
+    {
+        // A missing root is a healthy empty trash (created on demand).
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString root = dir.path() + QStringLiteral("/Trash");
+        TrashMonitor monitor(root);
+        monitor.start();
+        QVERIFY(!QFileInfo::exists(root));
+        QVERIFY(monitor.isAvailable());
+        QVERIFY(!monitor.isFull());
+    }
+
+    void trashMonitorReportsAnUnreadableRootAsUnavailable()
+    {
+        // A root that exists but cannot be read is a mount/permission failure
+        // (T-10 section 16 lifecycle: "Trash mount unavailable").
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString root = dir.path() + QStringLiteral("/Trash");
+        QVERIFY(QDir().mkpath(root));
+        QVERIFY(QFile::setPermissions(root, QFile::Permissions()));
+        {
+            TrashMonitor monitor(root);
+            monitor.start();
+            QVERIFY(!monitor.isAvailable());
+        }
+        // Restore permissions so the temporary directory can be cleaned up.
+        QVERIFY(QFile::setPermissions(root,
+                                      QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                                          | QFileDevice::ExeOwner));
     }
 
     void trashMonitorTrashMovesFilesAndWritesInfo()

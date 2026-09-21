@@ -47,6 +47,10 @@ Rectangle {
     property bool revealed: true
     property bool trashFull: false
     property int trashCount: 0
+    // Whether the trash backend is reachable (T-10 section 16 lifecycle:
+    // "Trash mount unavailable"). When false the entry is dimmed and its menu
+    // is disabled; the session is otherwise unaffected.
+    property bool trashAvailable: true
     // The Downloads stack (T-10 section 17): the folder listing (newest
     // first, `{ name, path, isDir }`), its item count, and the new-items
     // badge cleared when the stack is opened.
@@ -301,7 +305,8 @@ Rectangle {
     // The Trash is permanent and always the last right-region item.
     readonly property var trashEntry: ({
         id: "__trash__", appId: "", name: qsTr("Trash"), kind: "trash",
-        running: false, trashFull: dock.trashFull, trashCount: dock.trashCount
+        running: false, trashFull: dock.trashFull, trashCount: dock.trashCount,
+        available: dock.trashAvailable
     })
     // The Downloads stack sits in the right region before the Trash (T-10
     // section 17). It is present even when the folder is empty so it is a
@@ -492,6 +497,10 @@ Rectangle {
     // The click tree (section 8) shared by pointer activation and Return.
     function activateEntry(entry) {
         if (!entry)
+            return;
+        // An unavailable Trash is inert: the entry is dimmed and its menu is
+        // disabled (T-10 section 16 lifecycle).
+        if (entry.kind === "trash" && entry.available === false)
             return;
         // The Downloads stack opens its folder popover, never a launch
         // (T-10 section 17).
@@ -1183,6 +1192,15 @@ Rectangle {
             out.push({
                 type: "item", label: qsTr("Cancel"),
                 action: "cancel_empty_trash"
+            });
+            return out;
+        }
+        // An unreachable trash backend degrades to a single disabled row so
+        // the menu never offers an operation that cannot succeed (T-10
+        // section 16 lifecycle).
+        if (!trashAvailable) {
+            out.push({
+                type: "item", label: qsTr("Trash unavailable"), enabled: false
             });
             return out;
         }

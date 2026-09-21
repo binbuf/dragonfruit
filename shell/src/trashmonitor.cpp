@@ -153,11 +153,36 @@ void TrashMonitor::rescan(bool emitSignal)
         names.insert(entry.fileName());
 
     const int count = names.size();
-    if (count == m_count)
+    const bool available = computeAvailable();
+    if (count == m_count && available == m_available)
         return;
     m_count = count;
+    m_available = available;
     if (emitSignal)
         emit changed();
+}
+
+bool TrashMonitor::computeAvailable() const
+{
+    if (m_root.isEmpty() || m_root == QLatin1String("/"))
+        return false;
+    const QFileInfo rootInfo(m_root);
+    if (rootInfo.exists())
+        return rootInfo.isReadable();
+    // A missing trash root is normal (an empty trash is created on demand), so
+    // walk up to the nearest existing ancestor: if that is writable we could
+    // create the trash; a read-only or unmounted ancestor means unavailable.
+    QString path = rootInfo.absolutePath();
+    while (!path.isEmpty()) {
+        const QFileInfo info(path);
+        if (info.exists())
+            return info.isWritable();
+        const QString parent = info.absolutePath();
+        if (parent == path)
+            break;
+        path = parent;
+    }
+    return false;
 }
 
 int TrashMonitor::empty()

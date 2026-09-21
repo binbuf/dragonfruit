@@ -22,7 +22,7 @@ use wayland_client::protocol::{
     wl_data_source, wl_keyboard, wl_pointer, wl_region, wl_registry, wl_seat, wl_shm, wl_shm_pool,
     wl_surface,
 };
-use wayland_client::{delegate_noop, Connection, Dispatch, EventQueue, QueueHandle};
+use wayland_client::{delegate_noop, Connection, Dispatch, EventQueue, Proxy, QueueHandle};
 use wayland_protocols::wp::pointer_constraints::zv1::client::{
     zwp_confined_pointer_v1, zwp_locked_pointer_v1, zwp_pointer_constraints_v1,
 };
@@ -169,6 +169,15 @@ struct TestClient {
     dnd_read_fd: Option<std::os::fd::RawFd>,
     /// The serial of the most recent pointer button press (the drag needs it).
     pointer_button_serial: Option<u32>,
+    /// Per-output reserved zones, keyed by the `df_output` protocol id, so a
+    /// hotplug test can prove the *new* output received a chrome reserve (not
+    /// merely that some output did).
+    output_reserved_by_id: Vec<(u32, u32, u32)>,
+    /// `df_output` name keyed by protocol id (paired with the above).
+    output_name_by_id: Vec<(u32, String)>,
+    /// `df_layer_surface` configures keyed by protocol id, so a test can prove
+    /// a specific chrome surface was reconfigured on output hotplug.
+    layer_configures_by_id: Vec<(u32, i32, i32)>,
 }
 
 impl Dispatch<wl_registry::WlRegistry, ()> for TestClient {
@@ -251,7 +260,7 @@ impl Dispatch<df_shell::DfShell, ()> for TestClient {
 impl Dispatch<df_layer_surface::DfLayerSurface, ()> for TestClient {
     fn event(
         state: &mut Self,
-        _: &df_layer_surface::DfLayerSurface,
+        resource: &df_layer_surface::DfLayerSurface,
         event: df_layer_surface::Event,
         _: &(),
         _: &Connection,
@@ -262,7 +271,12 @@ impl Dispatch<df_layer_surface::DfLayerSurface, ()> for TestClient {
                 serial,
                 width,
                 height,
-            } => state.layer_configures.push((serial, width, height)),
+            } => {
+                state.layer_configures.push((serial, width, height));
+                state
+                    .layer_configures_by_id
+                    .push((resource.id().protocol_id(), width, height));
+            }
             df_layer_surface::Event::Closed => state.layer_closed += 1,
         }
     }
@@ -325,14 +339,19 @@ impl Dispatch<df_toplevel_manager::DfToplevelManager, ()> for TestClient {
 impl Dispatch<df_output::DfOutput, ()> for TestClient {
     fn event(
         state: &mut Self,
-        _: &df_output::DfOutput,
+        resource: &df_output::DfOutput,
         event: df_output::Event,
         _: &(),
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
         match event {
-            df_output::Event::Name { name } => state.output_names.push(name),
+            df_output::Event::Name { name } => {
+                state.output_names.push(name.clone());
+                state
+                    .output_name_by_id
+                    .push((resource.id().protocol_id(), name));
+            }
             df_output::Event::Scale { scale } => state.output_scales.push(scale),
             df_output::Event::Geometry {
                 x,
@@ -352,9 +371,13 @@ impl Dispatch<df_output::DfOutput, ()> for TestClient {
                     .map(|t| t as u32)
                     .unwrap_or(u32::MAX),
             ),
-            df_output::Event::ReservedZone { edge, thickness } => state
-                .output_reserved
-                .push((edge.into_result().map(|e| e as u32).unwrap_or(0), thickness)),
+            df_output::Event::ReservedZone { edge, thickness } => {
+                let edge = edge.into_result().map(|e| e as u32).unwrap_or(0);
+                state.output_reserved.push((edge, thickness));
+                state
+                    .output_reserved_by_id
+                    .push((resource.id().protocol_id(), edge, thickness));
+            }
             _ => {}
         }
     }
@@ -3090,6 +3113,174 @@ fn shell_output_hotplug_reanchors_chrome() {
         |state| state.workspace_removed >= 3,
     );
 
+    drop(manager);
+    drop(core);
+    let _ = conn.flush();
+    proc.shutdown();
+    assert!(
+        !output_path.exists(),
+        "teardown leak: synthetic-output socket survived"
+    );
+}
+
+/// T-10 section 18 / acceptance ("Multi-output: Dock appears on hotplug"): the
+/// Dock is a `top` chrome surface that targets every output, exactly like the
+/// menu bar. Attaching a second display must announce it, report the Dock's
+/// baseline reserved zone **on that display** (not merely somewhere), and
+/// reconfigure the Dock surface; detaching must remove the display and its
+/// Spaces without disturbing the Dock. The synthetic-output harness makes the
+/// hotplug scriptable headlessly.
+#[test]
+fn dock_follows_output_hotplug() {
+    let token = "de".repeat(32);
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let output_path = PathBuf::from(&runtime_dir)
+        .join(format!("dragonfruit-dock-hotplug-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_harnesses(
+        "dragonfruit-conformance-dock-hotplug",
+        std::slice::from_ref(&token),
+        None,
+        Some(&output_path),
+    );
+    let outputs = SyntheticOutput::connect(&output_path);
+
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+    let (core, shell, bar_surface, bar) =
+        open_trusted_bar(&conn, &mut queue, &mut state, &token, 28, 28);
+    // The reserved zones arrive as `df_output` events, so the manager must be
+    // bound to observe them (the same client can be shell and observer).
+    let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
+    let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.outputs.is_empty() && state.done_count > 0,
+    );
+
+    // The Dock: bottom | left | right, 95 px tall, reserving the 60 px
+    // baseline bar (the shell's own shape, T-10 section 2).
+    let dock_surface = state
+        .compositor
+        .clone()
+        .unwrap()
+        .create_surface(&queue.handle(), ());
+    let dock = shell.get_layer_surface(
+        &dock_surface,
+        None,
+        df_shell::Layer::Top,
+        "dock".to_string(),
+        &queue.handle(),
+        (),
+    );
+    dock.set_anchor(2 | 4 | 8); // bottom | left | right
+    dock.set_size(0, 95);
+    dock.set_exclusive_zone(60);
+    dock.set_keyboard_interaction(df_layer_surface::KeyboardInteraction::None);
+    dock_surface.commit();
+
+    // The static headless output gets both reserves (top bar + bottom Dock).
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .output_reserved
+                .iter()
+                .any(|(edge, thickness)| *edge == 0 && *thickness == 28)
+                && state
+                    .output_reserved
+                    .iter()
+                    .any(|(edge, thickness)| *edge == 1 && *thickness == 60)
+        },
+    );
+
+    let dock_id = dock.id().protocol_id();
+    let dock_configures_before = state
+        .layer_configures_by_id
+        .iter()
+        .filter(|(id, _, _)| *id == dock_id)
+        .count();
+    assert!(
+        dock_configures_before >= 1,
+        "the Dock configures at creation"
+    );
+
+    // --- attach a second output -------------------------------------------
+    outputs.send("add HDMI-A-1 1920 1080 1280 0");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .output_name_by_id
+                .iter()
+                .any(|(_, name)| name == "HDMI-A-1")
+        },
+    );
+    let hdmi_id = state
+        .output_name_by_id
+        .iter()
+        .find(|(_, name)| name == "HDMI-A-1")
+        .map(|(id, _)| *id)
+        .expect("the hotplugged output has a name");
+
+    // The new output specifically carries the Dock's baseline reserve (and the
+    // menu bar's top reserve), which is what "the Dock appears on hotplug"
+    // means at the protocol layer.
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .output_reserved_by_id
+                .iter()
+                .any(|(id, edge, thickness)| *id == hdmi_id && *edge == 0 && *thickness == 28)
+                && state
+                    .output_reserved_by_id
+                    .iter()
+                    .any(|(id, edge, thickness)| *id == hdmi_id && *edge == 1 && *thickness == 60)
+        },
+    );
+    // And the Dock surface is reconfigured for the new scene.
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .layer_configures_by_id
+                .iter()
+                .filter(|(id, _, _)| *id == dock_id)
+                .count()
+                > dock_configures_before
+        },
+    );
+
+    // --- detach it again ---------------------------------------------------
+    state.workspace_removed = 0;
+    outputs.send("remove HDMI-A-1");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.workspace_removed >= 3,
+    );
+
+    drop(dock);
+    drop(dock_surface);
+    drop(bar);
+    drop(bar_surface);
+    drop(shell);
     drop(manager);
     drop(core);
     let _ = conn.flush();

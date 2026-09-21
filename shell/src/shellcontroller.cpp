@@ -400,6 +400,7 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     m_trash->start();
     m_dockItem->setProperty("trashFull", m_trash->isFull());
     m_dockItem->setProperty("trashCount", m_trash->itemCount());
+    m_dockItem->setProperty("trashAvailable", m_trash->isAvailable());
     // The Downloads stack (section 17): a zero-polling watch of the folder
     // that feeds the stack popover and its new-items badge.
     m_downloads = new DownloadsMonitor(DownloadsMonitor::defaultDirectory(), this);
@@ -1673,6 +1674,7 @@ void ShellController::onTrashChanged()
         return;
     m_dockItem->setProperty("trashFull", m_trash->isFull());
     m_dockItem->setProperty("trashCount", m_trash->itemCount());
+    m_dockItem->setProperty("trashAvailable", m_trash->isAvailable());
     scheduleDockRender();
 }
 
