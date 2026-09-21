@@ -1747,9 +1747,11 @@ impl XdgActivationHandler for DfState {
         _token_data: XdgActivationTokenData,
         surface: WlSurface,
     ) {
-        // Launch feedback / Dock bounce (T-12): activation requests focus
-        // the surface for now; the shell-facing signaling lands with the
-        // private protocols in T-07.
+        // `xdg-activation` carries the launcher's (or an app's) request to
+        // raise a window: it is both the launch signal the Dock bounces on
+        // and the standard way a newly launched app claims keyboard focus.
+        // Resolve the window through the model (it may be on another Space);
+        // the old active-Space-only lookup silently dropped the request.
         let root = {
             let mut root = surface.clone();
             while let Some(parent) = get_parent(&root) {
@@ -1757,23 +1759,27 @@ impl XdgActivationHandler for DfState {
             }
             root
         };
-        let window = self
-            .space
-            .elements()
-            .find(|w| {
-                w.wl_surface()
-                    .as_deref()
-                    .map(|s| *s == root)
-                    .unwrap_or(false)
-            })
-            .cloned();
-        if let Some(window) = window {
-            window.set_activated(true);
-            self.needs_redraw = true;
-            // Launch feedback / Dock bounce: the shell learns about the
-            // activation request over the private protocol (T-07/T-10).
-            self.notify_attention(&window);
+        let Some(window) = self.window_for_surface(&root) else {
+            return;
+        };
+        window.set_activated(true);
+        self.needs_redraw = true;
+        // xdg-activation is the Dock's launch/attention signal (FR-4): always
+        // surface it. The shell stops the bounce on focus, so focusing an
+        // active-Space window below simply supersedes it.
+        self.notify_attention(&window);
+        let Some(id) = self.windows.id(&window) else {
+            // Still pending (not mapped into the model): nothing to focus
+            // yet; the mapping path owns the rest.
+            return;
+        };
+        if self.window_on_active_space_id(id) {
+            // Honor the activation: restore if minimized, raise, and set
+            // keyboard focus so a launched app is usable without a click.
+            self.activate_window_id(id);
         }
+        // A window on a background Space keeps the attention bounce only: do
+        // not yank the user away from their current Space.
     }
 }
 

@@ -1940,6 +1940,158 @@ fn map_toplevel(
     (surface, xdg_surface, toplevel, file)
 }
 
+/// Request a fresh `xdg-activation` token and activate `surface` with it.
+/// The token round-trip is required by the protocol; the compositor under
+/// test does not validate token data yet.
+fn xdg_activate(
+    conn: &Connection,
+    queue: &mut EventQueue<TestClient>,
+    state: &mut TestClient,
+    surface: &wl_surface::WlSurface,
+) {
+    state.activation_token = None;
+    let activation = state
+        .activation
+        .clone()
+        .expect("xdg_activation_v1 advertised");
+    let token = activation.get_activation_token(&queue.handle(), ());
+    token.set_app_id("org.dragonfruit.Conformance".to_string());
+    token.commit();
+    wait_for(conn, queue, state, Duration::from_secs(5), |state| {
+        state.activation_token.is_some()
+    });
+    let token_string = state
+        .activation_token
+        .clone()
+        .expect("activation token generated");
+    activation.activate(token_string, surface);
+}
+
+/// T-10 FR-4 / `xdg-activation`: a valid activation for a window on the
+/// active Space grants keyboard focus — the launch-focus path, so a launched
+/// app's first window is usable without a click — while an activation for a
+/// window on a background Space must not yank the user there and instead
+/// surfaces the Dock attention bounce.
+#[test]
+fn xdg_activation_focuses_the_active_space_window() {
+    const APP: &str = "org.dragonfruit.ActivationApp";
+    let token = "99".repeat(32);
+    let proc = CompositorProcess::start("dragonfruit-conformance-activation", &[token]);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (name, version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, name, version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+
+    let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
+    let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.workspaces.len() >= 3 && state.done_count > 0,
+    );
+
+    let (surface_a, xdg_a, toplevel_a, _file_a) =
+        map_toplevel(&mut state, &mut queue, "Active", APP);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.toplevels.is_empty(),
+    );
+    let handle_a = state.toplevels[0].clone();
+
+    let (surface_b, xdg_b, toplevel_b, _file_b) =
+        map_toplevel(&mut state, &mut queue, "Focused", APP);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.toplevels.len() >= 2,
+    );
+    let handle_b = state.toplevels[1].clone();
+
+    let focused_is = |state: &TestClient, expected: &df_toplevel::DfToplevel| {
+        state
+            .focused
+            .iter()
+            .flatten()
+            .any(|handle| handle == expected)
+    };
+
+    // A shell click focuses A; the activation must move focus to B.
+    handle_a.activate();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| focused_is(state, &handle_a),
+    );
+    state.focused.clear();
+    state.attentions.clear();
+    xdg_activate(&conn, &mut queue, &mut state, &surface_b);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| focused_is(state, &handle_b),
+    );
+    assert!(
+        state.attentions.iter().any(|handle| handle == &handle_b),
+        "an active-Space activation must also emit the Dock attention signal: {:?}",
+        state.attentions
+    );
+
+    // Background-Space activation: bounce, no focus theft, no Space switch.
+    let background = state.workspaces[1].clone();
+    handle_b.move_to_workspace(&background);
+    let _ = queue.roundtrip(&mut state);
+    state.focused.clear();
+    state.attentions.clear();
+    state.workspace_activated.clear();
+    xdg_activate(&conn, &mut queue, &mut state, &surface_b);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.attentions.iter().any(|handle| handle == &handle_b),
+    );
+    let _ = queue.roundtrip(&mut state);
+    assert!(
+        !focused_is(&state, &handle_b),
+        "a background-Space activation must not steal focus"
+    );
+    assert!(
+        !state.workspace_activated.contains(&1),
+        "a background-Space activation must not switch Space: {:?}",
+        state.workspace_activated
+    );
+
+    toplevel_a.destroy();
+    surface_a.destroy();
+    xdg_a.destroy();
+    toplevel_b.destroy();
+    surface_b.destroy();
+    xdg_b.destroy();
+    manager.destroy();
+    let _ = conn.flush();
+    proc.shutdown();
+}
+
 /// T-07 compliance: assert every event pair the client can trigger without
 /// a seat — output geometry/mode/transform, workspace index/activated/
 /// fullscreen/removed, focus, attention (`xdg-activation`), app-switcher
@@ -2044,26 +2196,11 @@ fn event_coverage_conformance() {
     );
 
     // --- attention via xdg-activation (FR-2) -----------------------------
+    // Activation always emits the Dock attention signal; it additionally
+    // grants focus to an active-Space window (asserted by
+    // `xdg_activation_focuses_the_active_space_window`).
     state.attentions.clear();
-    let activation = state
-        .activation
-        .clone()
-        .expect("xdg_activation_v1 advertised");
-    let activation_token = activation.get_activation_token(&queue.handle(), ());
-    activation_token.set_app_id("org.dragonfruit.Coverage".to_string());
-    activation_token.commit();
-    wait_for(
-        &conn,
-        &mut queue,
-        &mut state,
-        Duration::from_secs(5),
-        |state| state.activation_token.is_some(),
-    );
-    let token_string = state
-        .activation_token
-        .clone()
-        .expect("activation token generated");
-    activation.activate(token_string, &surface);
+    xdg_activate(&conn, &mut queue, &mut state, &surface);
     wait_for(
         &conn,
         &mut queue,

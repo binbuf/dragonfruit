@@ -5171,3 +5171,83 @@ strengthened failure case). This slice closes the tasks/10-dock.md
 **"Lifecycle edge-case suite"** and **"Drag rearrangement and context-menu
 walkthroughs scripted"** acceptance checkboxes; the other unchecked boxes are
 unchanged and genuinely blocked.
+
+## T-10 continuation — xdg-activation grants focus (twenty-eighth slice)
+
+**State: the deferred xdg-activation focus gap is fixed.** A launched app's
+first window is now keyboard-focused without a click. This is the last
+non-blocked item the previous hand-offs listed; the remaining T-10 work is
+blocked on T-18 (Trash-with-Files), baseline hardware (60 Hz), or T-31 (live
+AT-SPI).
+
+### What landed
+
+- **`DfState::request_activation` honors activation**
+  (`compositor/src/state.rs`). It now:
+  1. resolves the window with `window_for_surface` (the earlier
+     active-Space-only lookup silently dropped a request for a window on
+     another Space — the same class of bug the core-loop close slice fixed
+     for destroy);
+  2. sets the activated visual flag and always calls `notify_attention`, so
+     the Dock's launch/attention signal is emitted exactly as the design
+     requires (section 8 step 3, FR-4);
+  3. when the window is on the **active Space**, calls `activate_window_id`
+     (restore if minimized, raise, set the seat keyboard focus) so the app is
+     usable immediately.
+  A window on a **background Space** keeps the attention bounce only — the
+  activation does not switch Spaces (no focus theft; matches the
+  click-to-focus policy in `design/02-compositor.md`).
+- **Shell ignores attention for the focused app**
+  (`shell/src/shellcontroller.cpp`, `onDockAttention`). FR-4 says attention
+  stops on focus; the compositor broadcasts the focus change before the
+  attention event, so without a guard an activated app would re-start a 2 s
+  bounce after it was already focused. The guard makes the rule hold
+  regardless of broadcast order.
+- **New conformance test `xdg_activation_focuses_the_active_space_window`**
+  (`compositor/tests/shell_protocol_conformance.rs`). Maps two windows,
+  focuses one with a normal click, then `xdg_activate`s the other: asserts it
+  gains focus and the attention signal is emitted. It then moves that window
+  to a background Space and activates again: asserts attention is emitted but
+  focus does not move and no Space switch happens. A new `xdg_activate`
+  helper factors the token round-trip (and is used by
+  `event_coverage_conformance`, which keeps its attention-event coverage).
+
+### Gotchas learned (important for the next slice)
+
+- **`xdg-activation` is two things at once here**: the Dock's launch/attention
+  signal (design section 8 step 3 / FR-4) *and* the standard way an app asks
+  for focus. Emitting attention is not optional when granting focus — keep
+  `notify_attention` even in the focus branch, and let the shell drop the
+  bounce on focus.
+- **Focus is granted only for the active Space.** The compositor has no token
+  registry/validity check, so honoring activation by switching Spaces would
+  let any client steal focus across the desktop. The active-Space rule gives
+  launches focus while keeping background-app attention non-disruptive. When
+  T-23's app-index lands real activation tokens, the Space decision should be
+  revisited (a token with a recent input serial could justify a switch).
+- **Broadcast order is focus-then-attention** (`broadcast_shell_events`:
+  workspace → window → input → attention). Any future consumer that reacts to
+  both must be order-independent; the Dock guard is the pattern.
+- **`request_activation` now uses `window_for_surface`, which is model-aware.**
+  Do not reintroduce a direct `self.space.elements()` lookup for activation
+  (or any by-surface lookup); inactive-Space windows live only in the model.
+
+### Hand-off / open items (remaining T-10 slices)
+
+1. **Trash-state integration test with Files** (T-18) and the GVfs backends
+   when the GIO dev headers exist.
+2. **60 Hz magnification measurement** (acceptance): needs a nested session on
+   baseline hardware.
+3. **Live AT-SPI walkthrough** (T-31): the keyboard half is scripted.
+4. **Revisit activation tokens** with T-23: validate token data (serial /
+   app_id) before granting focus, and decide whether a valid launch token may
+   switch Spaces.
+
+### Gate status
+
+`cargo test --workspace` green; `shell_protocol_conformance` 24/24 (incl. the
+new activation test); `make qml-test` 13/13 after rebuilding the shell with
+the `onDockAttention` guard; `cargo fmt --check` and `cargo clippy
+--workspace --all-targets -D warnings` green. No tasks/10-dock.md acceptance
+box is directly closed by this slice (the focus gap was not one); it removes
+the last non-blocked T-10 item.

@@ -897,8 +897,8 @@ its newest window. Open for the remaining slices: the drag *source*
 (Files/launcher, T-17/T-18), the Trash-with-Files integration (T-18), the GVfs
 backends, per-output *sizing* (T-11/T-16), the live AT-SPI dump, the core-loop/
 60 Hz measurements, and the xdg-activation focus gap noted in PROGRESS (a
-launched app's first window is not keyboard-focused until clicked). Details and
-hand-off: [PROGRESS.md](PROGRESS.md).
+launched app's first window is not keyboard-focused until clicked; fixed by a
+later slice). Details and hand-off: [PROGRESS.md](PROGRESS.md).
 
 T-10 continuation (core-loop close slice): the Phase-2 exit box — the core
 interaction loop's compositor-observable window-state round-trip — is now
@@ -930,6 +930,24 @@ no indicator, and `entryBounce == 0`). Still open and genuinely blocked:
 Trash-with-Files integration (T-18), 60 Hz magnification on baseline hardware,
 and the live keyboard + AT-SPI walkthrough (T-31; the keyboard half is
 scripted). Details and hand-off: [PROGRESS.md](PROGRESS.md).
+
+T-10 continuation (xdg-activation focus slice): the deferred "a launched app's
+first window is not keyboard-focused until clicked" gap is fixed. The
+compositor's `XdgActivationHandler::request_activation` now resolves the
+window through the model (it could be on another Space — the old
+active-Space-only lookup dropped background requests entirely), always emits
+the Dock attention signal (the design's authoritative launch feedback,
+section 8 step 3/FR-4), and then **grants keyboard focus** when the window is
+on the active Space (`activate_window_id`: restore if minimized, raise, set
+the seat keyboard focus) so the launched app is usable without a click. A
+window on a background Space keeps the attention bounce only and does not yank
+the user to another Space. The shell's `onDockAttention` ignores an attention
+request for the already-focused app, so FR-4's "attention stops on focus"
+holds regardless of the focused/attention broadcast order. Scripted by the new
+`xdg_activation_focuses_the_active_space_window` conformance test (active
+Space: focus + attention; background Space: attention, no focus change, no
+Space switch); `event_coverage_conformance` keeps the attention-event
+coverage. Details and hand-off: [PROGRESS.md](PROGRESS.md).
 
 **Foundation milestone E2E (T-01…T-07).** The whole vertical slice now has a
 headless end-to-end test, `compositor/tests/milestone_e2e.rs` (`make e2e`):
