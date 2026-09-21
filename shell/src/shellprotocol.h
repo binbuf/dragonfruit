@@ -143,6 +143,18 @@ public:
     // for the overview's restore chips (FR-6).
     QVariantList minimizedWindows() const;
 
+    // The overview window grid projection (FR-7): one entry per *visible*
+    // window (windowId, title, appId, workspaceIndex, workspaceName, focused)
+    // so a window's overview representation can be dragged onto another Space.
+    // Minimized windows live in the bottom strip and fullscreen windows own a
+    // transient Space, so neither appears here.
+    QVariantList overviewWindows() const;
+
+    // Move a window to the Space with `index` (lockstep: the same index exists
+    // on every output; the compositor resolves the window's own output). The
+    // overview drag-and-drop calls this (`df_toplevel.move_to_workspace`).
+    void moveToplevelToWorkspace(const QString &windowId, int index);
+
     // Drive the compositor's Mission Control overview (T-11 entry point).
     void enterMissionControl();
 

@@ -414,6 +414,56 @@ QVariantList ShellProtocol::minimizedWindows() const
     return result;
 }
 
+QVariantList ShellProtocol::overviewWindows() const
+{
+    // The overview window grid (FR-7): one draggable card per *visible*
+    // window. Minimized windows are excluded from the Space layout and live in
+    // the bottom strip (FR-6); fullscreen windows own a dedicated transient
+    // Space (T-05 FR-3). Neither belongs in the grid. The Space index/name
+    // comes from the same projection the Dock uses, so the shell still keeps
+    // no copy of workspace state.
+    QVariantList result;
+    for (df_toplevel *toplevel : m_toplevelOrder) {
+        const ToplevelInfo &info = m_toplevels.value(toplevel);
+        if ((info.state & 0x1u) != 0 || (info.state & 0x4u) != 0)
+            continue;
+        const WorkspaceInfo ws = m_workspaces.value(info.workspace);
+        QVariantMap map;
+        map.insert(QStringLiteral("windowId"), QString::number(info.windowId));
+        map.insert(QStringLiteral("title"), info.title);
+        map.insert(QStringLiteral("appId"), info.appId);
+        map.insert(QStringLiteral("workspaceIndex"), ws.index);
+        map.insert(QStringLiteral("workspaceName"), ws.name);
+        map.insert(QStringLiteral("focused"), toplevel == m_focused);
+        result.append(map);
+    }
+    return result;
+}
+
+void ShellProtocol::moveToplevelToWorkspace(const QString &windowId, int index)
+{
+    bool ok = false;
+    const quintptr id = windowId.toULongLong(&ok);
+    df_toplevel *toplevel = ok ? toplevelForId(id) : nullptr;
+    if (!toplevel)
+        return;
+    // Spaces are lockstep: every output has the same ordered indices, and the
+    // compositor resolves the window's own output from its current Space. Any
+    // handle with the target index therefore addresses the right Space.
+    df_workspace *target = nullptr;
+    for (auto it = m_workspaces.constBegin(); it != m_workspaces.constEnd(); ++it) {
+        if (it.value().index == index) {
+            target = it.key();
+            break;
+        }
+    }
+    if (!target)
+        return;
+    df_toplevel_move_to_workspace(toplevel, target);
+    if (m_display)
+        wl_display_flush(m_display);
+}
+
 bool ShellProtocol::createDockSurface(DockPosition position, int thickness, int exclusiveZone)
 {
     if (!m_shell || !m_compositor)

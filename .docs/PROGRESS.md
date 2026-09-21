@@ -5473,3 +5473,88 @@ gates) green; `make test` incl. the 66-snapshot gallery regression green.
 Live headless smoke (`dragonfruit dev --headless --shell`) reports
 `overview configured 1280x720`, and a synthetic hot-corner dwell maps the
 surface and logs the overview scene-graph commit path.
+
+
+## T-11 — overview window grid + drag windows between Spaces (third slice)
+
+**State: partial.** Delivery Slice B's last functional piece — dragging a
+window's overview representation onto another Space (FR-7) — is landed
+shell-side, on top of the existing `df_toplevel.move_to_workspace` primitive.
+The per-surface scale/clip/blur *live-surface* grid and the wallpaper slide
+are still T-33's material passes, and the FR-8 frame-time trace is still open.
+
+### What landed
+
+- **The shell now exposes an overview window projection.**
+  `ShellProtocol::overviewWindows()` returns one entry per *visible* window
+  (`windowId`, `title`, `appId`, `workspaceIndex`, `workspaceName`,
+  `focused`), reusing the same `m_toplevels`/`m_workspaces` projection the
+  Dock uses. Minimized windows are excluded (they live in the bottom strip,
+  FR-6) and so are fullscreen windows (they own a transient Space, T-05
+  FR-3). `ShellController::refreshOverviewData` now pushes it to the QML as
+  `windows`.
+- **`ShellProtocol::moveToplevelToWorkspace(windowId, index)`** resolves the
+  window handle and any `df_workspace` with that index (Spaces are lockstep;
+  the compositor resolves the window's own output) and calls
+  `df_toplevel_move_to_workspace`. The controller slot
+  `onOverviewWindowMovedToWorkspace` is wired to the new QML signal.
+- **`Dragonfruit.Overview` window grid (FR-7).** A centered `Flow`
+  (`objectName: "windowGrid"`) renders one card per visible window with its
+  title and current Space name. Each card has a `DragHandler` (threshold 8 px)
+  that lifts it, tracks the pointer, and on release drops onto the Space card
+  under the pointer. The drag model is split into
+  `beginWindowDrag`/`updateWindowDrag`/`dropWindow`/`dropWindowOnWorkspace`/
+  `cancelWindowDrag` so it is unit-testable without synthesizing a full drag
+  (the Dock's section-12 pattern). The hovered Space card highlights
+  (`dropTarget`), and a card click still does the FR-5 selection round-trip.
+  The card is title/app chrome only — the compositor keeps rendering the live
+  surface underneath, so this is not a thumbnail substitution.
+- **Tests.** Four new `tst_overview` cases: the grid renders one card per
+  visible window with the Space label; a click selects (FR-5); a drag onto a
+  Space card highlights it and emits `windowMovedToWorkspace(windowId, index)`;
+  a drop outside any Space emits nothing.
+
+### Gotchas learned (important for the next slice)
+
+- **`df_toplevel.move_to_workspace` only needs the target *index*.** The
+  compositor's `move_window_to_space` resolves the output from the window's
+  current Space, so the shell may pass any `df_workspace` handle with the
+  right index; there is no need to match the window's output. Only
+  `workspace_entered` is emitted on a reassignment (not `workspace_left`), so
+  the shell's `ToplevelInfo.workspace` is simply overwritten and never goes
+  null mid-move.
+- **The window card `TapHandler` and `DragHandler` coexist** because the
+  `DragHandler` has an 8 px threshold: a click never activates the drag. Keep
+  the threshold or card clicks (FR-5) will stop firing.
+- **The QML test-local name `cards` shadows the `cards()` helper** — a
+  `var cards = cards(overview)` is a `TypeError`. Use a distinct name
+  (`spaceCards`).
+- **The shell can only offer title/app cards, not live-surface geometry.** The
+  private protocol does not carry per-window geometry, so a grid of live
+  scaled surfaces (and hit-testing windows in the overview) genuinely needs
+  the T-33 render pass, not a shell projection.
+
+### Hand-off / open items (remaining T-11 slices)
+
+1. **Per-surface scale/clip/blur and the wallpaper slide** (T-33): the
+   "shrink the visible Space, reveal neighbors" look; `render_output` still
+   cannot scale individual windows, so this needs a custom render-element
+   wrapper (T-33's reusable scene-transform pass). The shell grid above is the
+   interim drag affordance until then.
+2. **FR-8 60 Hz frame-time trace** during the full gesture on baseline
+   Intel/AMD; the overview chrome adds another shm commit path to budget.
+   Headless has no renderer, so the trace needs the nested/DRM path.
+3. **Reduced-motion wiring:** `OverviewMachine::set_reduced_motion` still has
+   no writer; the accessibility setting (T-16 / `Theme.reducedMotion`) is it.
+4. **Overview window selection by clicking the live surfaces** is not built —
+   selection today is the minimized strip, the workspace strip, and the new
+   window grid; the compositor does not yet hit-test overview window
+   representations (blocked on T-33 layout).
+
+### Gate status
+
+`cargo test -p dragonfruit-compositor --bins` 124/124; `ctest` 15/15 incl.
+`tst_overview` (11 QML cases) and `qmllint_shell-overview`; `make` design-token
+/ no-capture / desktop-name gates green. No Rust changed, so the conformance
+suites are unaffected; the compositor-side `move_to_workspace` path was
+already covered by `shell_protocol_conformance` and `milestone_e2e`.

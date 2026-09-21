@@ -101,6 +101,7 @@ private slots:
     void onOverviewDataChanged();
     void onOverviewWorkspaceActivated(int index);
     void onOverviewWindowActivated(const QString &windowId);
+    void onOverviewWindowMovedToWorkspace(const QString &windowId, int index);
     void onOverviewDismissRequested();
     void onOverviewPointerMoved(qreal x, qreal y);
     void onOverviewPointerButton(qreal x, qreal y, quint32 button, bool pressed);

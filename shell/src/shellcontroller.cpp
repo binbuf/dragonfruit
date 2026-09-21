@@ -447,6 +447,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onOverviewWorkspaceActivated(int)));
     connect(m_overviewItem, SIGNAL(windowActivated(QString)), this,
             SLOT(onOverviewWindowActivated(QString)));
+    connect(m_overviewItem, SIGNAL(windowMovedToWorkspace(QString,int)), this,
+            SLOT(onOverviewWindowMovedToWorkspace(QString,int)));
     connect(m_overviewItem, SIGNAL(dismissRequested()), this,
             SLOT(onOverviewDismissRequested()));
     connect(m_overviewWindow, &QQuickWindow::afterRendering, this,
@@ -1613,6 +1615,7 @@ void ShellController::refreshOverviewData()
         return;
     m_overviewItem->setProperty("workspaces", m_protocol->overviewWorkspaces());
     m_overviewItem->setProperty("minimizedWindows", m_protocol->minimizedWindows());
+    m_overviewItem->setProperty("windows", m_protocol->overviewWindows());
 }
 
 void ShellController::onOverviewConfigured(int width, int height, quint32)
@@ -1679,6 +1682,15 @@ void ShellController::onOverviewWindowActivated(const QString &windowId)
     // activates its Space, focuses it, and leaves the overview.
     if (m_protocol)
         m_protocol->selectToplevel(windowId);
+}
+
+void ShellController::onOverviewWindowMovedToWorkspace(const QString &windowId, int index)
+{
+    // FR-7: dragging a window's overview representation onto another Space
+    // moves it there. The compositor re-emits the window's `workspace_entered`
+    // and the next `overviewDataChanged` re-reads the projection.
+    if (m_protocol)
+        m_protocol->moveToplevelToWorkspace(windowId, index);
 }
 
 void ShellController::onOverviewDismissRequested()
