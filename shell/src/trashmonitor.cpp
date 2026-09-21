@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: MIT
 #include "trashmonitor.h"
 
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QFileSystemWatcher>
 #include <QSet>
 #include <QStandardPaths>
+#include <QUrl>
 
 namespace {
 
@@ -20,6 +22,50 @@ QString infoPath(const QString &root)
 QString filesPath(const QString &root)
 {
     return root + QStringLiteral("/files");
+}
+
+// Move a file or directory, falling back to copy+remove across filesystems.
+bool movePath(const QString &src, const QString &dst)
+{
+    if (QFile::rename(src, dst))
+        return true;
+    const QFileInfo info(src);
+    if (info.isDir() && !info.isSymLink()) {
+        if (!QDir().mkpath(dst))
+            return false;
+        const QDir dir(src);
+        const QFileInfoList entries =
+            dir.entryInfoList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden);
+        for (const QFileInfo &entry : entries) {
+            if (!movePath(entry.absoluteFilePath(), dst + QLatin1Char('/') + entry.fileName()))
+                return false;
+        }
+        return QDir(src).removeRecursively();
+    }
+    if (QFile::copy(src, dst))
+        return QFile::remove(src);
+    return false;
+}
+
+// A free name inside `filesDir` for `name`: `name`, else `name.N` (T-10
+// section 16, freedesktop Trash spec).
+QString uniqueName(const QString &filesDir, const QString &name)
+{
+    if (!QFileInfo::exists(filesDir + QLatin1Char('/') + name))
+        return name;
+    QString stem = name;
+    QString extension;
+    const qsizetype dot = name.lastIndexOf(QLatin1Char('.'));
+    if (dot > 0) {
+        stem = name.left(dot);
+        extension = name.mid(dot);
+    }
+    for (int i = 1;; ++i) {
+        const QString candidate =
+            stem + QLatin1Char('.') + QString::number(i) + extension;
+        if (!QFileInfo::exists(filesDir + QLatin1Char('/') + candidate))
+            return candidate;
+    }
 }
 
 } // namespace
@@ -153,4 +199,63 @@ int TrashMonitor::empty()
 
     refresh();
     return removed;
+}
+
+int TrashMonitor::trash(const QStringList &paths)
+{
+    m_error.clear();
+    if (m_root.isEmpty() || m_root == QLatin1String("/")) {
+        m_error = QStringLiteral("refusing to trash into an unsafe root");
+        return 0;
+    }
+
+    QDir().mkpath(infoPath(m_root));
+    QDir().mkpath(filesPath(m_root));
+
+    const QString root = QDir(m_root).absolutePath();
+    int trashed = 0;
+    for (const QString &path : paths) {
+        if (path.isEmpty())
+            continue;
+        const QFileInfo info(path);
+        const QString absolute = info.absoluteFilePath();
+        // Never trash the trash itself or the filesystem root.
+        if (absolute == root || absolute == QLatin1String("/")
+            || absolute.startsWith(root + QLatin1Char('/'))) {
+            m_error = QStringLiteral("refusing to trash %1").arg(absolute);
+            continue;
+        }
+        if (!info.exists() && !info.isSymLink()) {
+            m_error = QStringLiteral("no such file: %1").arg(absolute);
+            continue;
+        }
+
+        const QString name = uniqueName(filesPath(m_root), info.fileName());
+        const QString destination = filesPath(m_root) + QLatin1Char('/') + name;
+        if (!movePath(absolute, destination)) {
+            m_error = QStringLiteral("cannot move %1 to the trash").arg(absolute);
+            continue;
+        }
+
+        QFile record(infoPath(m_root) + QLatin1Char('/') + name + kInfoSuffix);
+        if (!record.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            m_error = QStringLiteral("cannot write %1").arg(record.fileName());
+            // Roll the payload back so the trash stays internally consistent.
+            movePath(destination, absolute);
+            continue;
+        }
+        const QString encoded = QString::fromLatin1(QUrl::toPercentEncoding(absolute));
+        const QString when =
+            QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-ddThh:mm:ss"));
+        record.write("[Trash Info]\nPath=");
+        record.write(encoded.toUtf8());
+        record.write("\nDeletionDate=");
+        record.write(when.toUtf8());
+        record.write("\n");
+        record.close();
+        ++trashed;
+    }
+
+    refresh();
+    return trashed;
 }

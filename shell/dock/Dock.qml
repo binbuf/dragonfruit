@@ -78,6 +78,26 @@ Rectangle {
     property var dragBaseCenters: []
     property var dragOriginalPinnedIds: []
 
+    // --- External drops (T-10 section 12) -------------------------------
+    // The shell drives these from its Wayland data-device drag target: the
+    // payload kind is known from the drag source's mime types, the target is
+    // resolved from the pointer position. The shell owns the payload and
+    // performs the resolved action when `externalDropRequested` fires.
+    property bool externalDragActive: false
+    property bool externalPayloadIsApp: false
+    property int externalPayloadCount: 0
+    // The id of the entry under the drag pointer ("" = none).
+    property string externalTargetId: ""
+    // Insertion index in the app region for an application-alias drop; the
+    // live gap reflows the layout around a placeholder entry.
+    property int externalInsertIndex: -1
+    // A stack entry the pointer has dwelled over long enough to spring-load
+    // (out of the first vertical slice; the hook exists, section 17).
+    property string springLoadTargetId: ""
+    // Spring-loading hover delay (ms), shared with Files (T-18). Mirrors
+    // `kSpringLoadMs` in the shell's pure drop core.
+    readonly property int springLoadDelay: 500
+
     // The app entry whose context menu / window chooser is open, plus the
     // entry item each is anchored to. Only one popover is open at a time.
     property var menuEntry: null
@@ -102,6 +122,14 @@ Rectangle {
     // the shell writes it to `dock.pinned`. The list is the complete ordered
     // set of pinned desktop ids (T-10 section 12, FR-9).
     signal pinnedOrderChanged(var desktopIds)
+    // An external drag entered/moved/left/dropped. `targetId`/`targetKind`
+    // identify the entry under the pointer; the shell resolves and performs
+    // the action on the payload it holds (T-10 section 12, FR-9).
+    signal externalDropRequested(string targetId, string targetKind, string desktopId, bool payloadIsApp)
+    signal externalDragChanged()
+    // A stack entry has been hovered long enough to spring-load (T-10
+    // section 12); stacks are out of the first vertical slice.
+    signal springLoadRequested(string targetId)
     // Escape asked to leave Dock keyboard navigation; the shell releases the
     // compositor keyboard focus back to the active window (T-10 section 20).
     signal keyboardFocusReleaseRequested()
@@ -260,8 +288,22 @@ Rectangle {
     // Ordered items: apps, divider, minimized windows, Trash. The order is
     // stable during a drag (the Repeater must not be reset while a DragHandler
     // holds the pointer); the drag gap is applied in `layout` instead.
+    //
+    // An application-alias external drop has no delegate holding the pointer,
+    // so it reflows safely: a placeholder entry opens a real gap at the
+    // insertion index (section 12).
+    readonly property bool externalGap:
+        externalDragActive && externalPayloadIsApp && externalInsertIndex >= 0
+    readonly property var externalPlaceholderEntry: ({
+        id: "__external_drop__", kind: "external", name: "", appId: "",
+        running: false
+    })
     readonly property var items: {
         var out = appEntries.slice();
+        if (externalGap) {
+            var idx = Math.max(0, Math.min(out.length, externalInsertIndex));
+            out.splice(idx, 0, externalPlaceholderEntry);
+        }
         out.push(dividerEntry);
         for (var i = 0; i < minimizedEntries.length; ++i)
             out.push(minimizedEntries[i]);
@@ -322,7 +364,7 @@ Rectangle {
         var best = -1;
         var bestDistance = Number.MAX_VALUE;
         for (var i = 0; i < items.length; ++i) {
-            if (items[i].kind === "divider")
+            if (items[i].kind === "divider" || items[i].kind === "external")
                 continue;
             var d = Math.abs(_baseline.centers[i] - pointerAlong);
             if (d < bestDistance) {
@@ -346,7 +388,7 @@ Rectangle {
     readonly property var navigableItems: {
         var out = [];
         for (var i = 0; i < items.length; ++i) {
-            if (items[i].kind !== "divider")
+            if (items[i].kind !== "divider" && items[i].kind !== "external")
                 out.push(items[i]);
         }
         return out;
@@ -504,7 +546,7 @@ Rectangle {
 
     function isDraggable(entry) {
         return entry && entry.kind !== "divider" && entry.kind !== "trash"
-                && entry.kind !== "minimized";
+                && entry.kind !== "minimized" && entry.kind !== "external";
     }
 
     function currentPinnedIds() {
@@ -652,6 +694,140 @@ Rectangle {
         dragOutOfDock = entry !== undefined && entry.kind === "pinned";
         dragPromote = false;
         finalizeDrag();
+    }
+
+    // --- External drops (T-10 section 12) --------------------------------
+    // The index of the entry whose layout slot is nearest `localX/localY`, or
+    // -1 when the point is outside the bar and its magnified band (a drop on
+    // empty Dock is a no-op, section 12).
+    function itemIndexAtLocal(localX, localY) {
+        var along = axisIsX ? localX : localY;
+        var cross = axisIsX ? localY : localX;
+        var alongStart = axisIsX ? barRect.x : barRect.y;
+        var alongEnd = axisIsX ? barRect.x + barRect.w : barRect.y + barRect.h;
+        var crossStart = axisIsX ? barRect.y : barRect.x;
+        var crossEnd = axisIsX ? barRect.y + barRect.h : barRect.x + barRect.w;
+        if (along < alongStart - iconSize || along > alongEnd + iconSize)
+            return -1;
+        if (cross < crossStart - magnifyBand || cross > crossEnd + magnifyBand)
+            return -1;
+        var l = layout;
+        var best = -1;
+        var bestDistance = Number.MAX_VALUE;
+        for (var i = 0; i < items.length; ++i) {
+            var center = axisIsX ? (l[i].x + l[i].w / 2) : (l[i].y + l[i].h / 2);
+            var d = Math.abs(center - along);
+            if (d < bestDistance) {
+                bestDistance = d;
+                best = i;
+            }
+        }
+        return best;
+    }
+
+    // Insertion index (0..appEntries.length) for an application-alias drop.
+    // Computed against the current app-entry centers, counting the entries
+    // before the pointer, so it is stable while the placeholder reflows.
+    function externalInsertionIndex(localAlong) {
+        var l = layout;
+        var appIdx = 0;
+        for (var i = 0; i < items.length; ++i) {
+            var k = items[i].kind;
+            if (k === "external")
+                continue;
+            if (k === "divider" || k === "trash" || k === "minimized")
+                break;
+            var center = axisIsX ? (l[i].x + l[i].w / 2) : (l[i].y + l[i].h / 2);
+            if (localAlong < center)
+                return appIdx;
+            appIdx++;
+        }
+        return appEntries.length;
+    }
+
+    function beginExternalDrag(payloadIsApp, payloadCount) {
+        closePopovers();
+        hideTimer.stop();
+        revealTimer.stop();
+        externalDragActive = true;
+        externalPayloadIsApp = payloadIsApp;
+        externalPayloadCount = payloadCount;
+        externalTargetId = "";
+        externalInsertIndex = -1;
+        springLoadTargetId = "";
+        springLoadTimer.stop();
+        externalDragChanged();
+    }
+
+    function externalDragTo(sceneX, sceneY) {
+        if (!externalDragActive)
+            return;
+        var local = dock.mapFromItem(null, sceneX, sceneY);
+        var idx = itemIndexAtLocal(local.x, local.y);
+        var id = idx >= 0 ? items[idx].id : "";
+        if (id !== externalTargetId) {
+            externalTargetId = id;
+            // A new target restarts the spring-load dwell (section 12).
+            springLoadTimer.stop();
+            springLoadTargetId = "";
+            if (idx >= 0 && items[idx].kind === "stack")
+                springLoadTimer.start();
+        }
+        if (externalPayloadIsApp) {
+            var insertion = externalInsertionIndex(axisIsX ? local.x : local.y);
+            if (insertion !== externalInsertIndex)
+                externalInsertIndex = insertion;
+        }
+        externalDragChanged();
+    }
+
+    function externalDragLeft() {
+        if (externalDragActive)
+            resetExternalDrag();
+    }
+
+    // Drop at an already-local axis position (test/introspection hook).
+    function externalDropAt(localX, localY) {
+        if (!externalDragActive) {
+            resetExternalDrag();
+            return;
+        }
+        var scene = dock.mapToItem(null, localX, localY);
+        externalDrop(scene.x, scene.y);
+    }
+
+    function externalDrop(sceneX, sceneY) {
+        if (!externalDragActive) {
+            resetExternalDrag();
+            return;
+        }
+        externalDragTo(sceneX, sceneY);
+        var idx = indexOfItemId(externalTargetId);
+        var kind = idx >= 0 ? items[idx].kind : "";
+        var desktopId = idx >= 0 && items[idx].desktopId !== undefined
+                        ? String(items[idx].desktopId) : "";
+        externalDropRequested(externalTargetId, kind, desktopId, externalPayloadIsApp);
+        resetExternalDrag();
+    }
+
+    function resetExternalDrag() {
+        externalDragActive = false;
+        externalPayloadIsApp = false;
+        externalPayloadCount = 0;
+        externalTargetId = "";
+        externalInsertIndex = -1;
+        springLoadTargetId = "";
+        springLoadTimer.stop();
+        externalDragChanged();
+    }
+
+    Timer {
+        id: springLoadTimer
+        interval: dock.springLoadDelay
+        onTriggered: {
+            dock.springLoadTargetId = dock.externalTargetId;
+            dock.springLoadRequested(dock.externalTargetId);
+        }
     }
 
     // The lifted entry follows the pointer on the dock axis and stays on the
@@ -897,7 +1073,7 @@ Rectangle {
             var peak = iconSize * magnifyPeakFactor;
             var falloff = magnifyFalloff * iconSize;
             for (var i = 0; i < n; ++i) {
-                if (list[i].kind === "divider")
+                if (list[i].kind === "divider" || list[i].kind === "external")
                     continue;
                 var d = Math.abs(base.centers[i] - pointerAlong);
                 var t = Math.max(0, Math.min(1, 1 - d / falloff));
@@ -986,7 +1162,7 @@ Rectangle {
             return [edgeRect];
         // While dragging, the whole surface keeps pointer input so the drag
         // can move through the magnified band without leaking to a window.
-        if (dragging)
+        if (dragging || externalDragActive)
             return [{ x: 0, y: 0, w: width, h: height }];
         var out = [barRect];
         var l = layout;
@@ -1033,6 +1209,8 @@ Rectangle {
             indicatorEdge: dock.indicatorEdge
             showIndicator: dock.showIndicators
             keyboardFocused: dock.keyboardFocused && modelData.id === dock.focusedItemId
+            externalDropTarget: dock.externalDragActive
+                                && modelData.id === dock.externalTargetId
             dragging: dock.dragging
             lifted: isDragged
             z: isDragged ? 10 : 0

@@ -12,6 +12,7 @@
 #include <utility>
 
 #include <QVariantMap>
+#include <QSocketNotifier>
 
 #include <fcntl.h>
 #include <sys/mman.h>
@@ -23,6 +24,7 @@
 
 #include <wayland-client.h>
 
+#include "dockdrops.h"
 #include "dragonfruit-core-client-protocol.h"
 // wayland-scanner emits `namespace` as a C argument name for the chrome
 // factory; it is a C++ keyword, so rename it around this one generated
@@ -609,6 +611,16 @@ void ShellProtocol::teardown()
         df_layer_surface_destroy(m_layer);
     if (m_surface)
         wl_surface_destroy(m_surface);
+    resetExternalDrag();
+    if (m_dndReadNotifier) {
+        m_dndReadNotifier->setEnabled(false);
+        delete m_dndReadNotifier;
+        m_dndReadNotifier = nullptr;
+    }
+    if (m_dataDevice)
+        wl_data_device_destroy(m_dataDevice);
+    if (m_dataDeviceManager)
+        wl_data_device_manager_destroy(m_dataDeviceManager);
     if (m_pointer)
         wl_pointer_destroy(m_pointer);
     if (m_keyboard)
@@ -649,6 +661,8 @@ void ShellProtocol::teardown()
     m_pointer = nullptr;
     m_keyboard = nullptr;
     m_seat = nullptr;
+    m_dataDevice = nullptr;
+    m_dataDeviceManager = nullptr;
 }
 
 // --- registry ---------------------------------------------------------------
@@ -682,6 +696,11 @@ void ShellProtocol::onRegistryGlobal(void *data, wl_registry *registry, uint32_t
     } else if (iface == QLatin1String("df_toplevel_manager")) {
         self->m_managerName = name;
         self->m_managerVersion = version;
+    } else if (iface == QLatin1String("wl_data_device_manager")) {
+        self->m_dataDeviceManager = static_cast<wl_data_device_manager *>(
+            wl_registry_bind(registry, name, &wl_data_device_manager_interface,
+                             std::min(version, 3u)));
+        self->maybeCreateDataDevice();
     }
 }
 
@@ -756,6 +775,9 @@ void ShellProtocol::onLayerClosed(void *data, df_layer_surface *)
 void ShellProtocol::onSeatCapabilities(void *data, wl_seat *seat, uint32_t capabilities)
 {
     auto *self = static_cast<ShellProtocol *>(data);
+    // The data device needs the seat, not a capability; bind it once both the
+    // seat and the manager global are known (T-10 external drops).
+    self->maybeCreateDataDevice();
     if ((capabilities & WL_SEAT_CAPABILITY_POINTER) && !self->m_pointer) {
         self->m_pointer = wl_seat_get_pointer(seat);
         static const wl_pointer_listener pointerListener = {
@@ -775,6 +797,203 @@ void ShellProtocol::onSeatCapabilities(void *data, wl_seat *seat, uint32_t capab
 
 void ShellProtocol::onSeatName(void *, wl_seat *, const char *)
 {
+}
+
+void ShellProtocol::maybeCreateDataDevice()
+{
+    if (!m_dataDeviceManager || !m_seat || m_dataDevice)
+        return;
+    m_dataDevice = wl_data_device_manager_get_data_device(m_dataDeviceManager, m_seat);
+    static const wl_data_device_listener listener = {
+        onDataDeviceOffer, onDataDeviceEnter, onDataDeviceLeave,
+        onDataDeviceMotion, onDataDeviceDrop, onDataDeviceSelection,
+    };
+    wl_data_device_add_listener(m_dataDevice, &listener, this);
+}
+
+void ShellProtocol::onDataDeviceOffer(void *data, wl_data_device *, wl_data_offer *offer)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    // A new offer (a drag or a selection) supersedes the previous one. The
+    // shell only consumes drags; a stale selection offer is harmless to drop.
+    if (self->m_dndOffer && self->m_dndOffer != offer) {
+        wl_data_offer_destroy(self->m_dndOffer);
+        self->m_dndOffer = nullptr;
+    }
+    self->m_dndOffer = offer;
+    self->m_dndMimeTypes.clear();
+    static const wl_data_offer_listener offerListener = {
+        onDataOfferMimeType, onDataOfferSourceActions, onDataOfferAction,
+    };
+    wl_data_offer_add_listener(offer, &offerListener, self);
+}
+
+void ShellProtocol::onDataOfferMimeType(void *data, wl_data_offer *, const char *mimeType)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    if (mimeType)
+        self->m_dndMimeTypes.append(QString::fromLatin1(mimeType));
+}
+
+void ShellProtocol::onDataOfferSourceActions(void *, wl_data_offer *, uint32_t)
+{
+}
+
+void ShellProtocol::onDataOfferAction(void *, wl_data_offer *, uint32_t)
+{
+}
+
+void ShellProtocol::onDataDeviceEnter(void *data, wl_data_device *, uint32_t, wl_surface *surface,
+                                      wl_fixed_t x, wl_fixed_t y, wl_data_offer *offer)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    if (self->m_dndOffer != offer) {
+        if (self->m_dndOffer)
+            wl_data_offer_destroy(self->m_dndOffer);
+        self->m_dndOffer = offer;
+    }
+    // Only the Dock is a drop target; a drag over the popup or another chrome
+    // surface is ignored (the shell owns the payload).
+    if (!self->m_dockSurface || surface != self->m_dockSurface) {
+        self->m_dndActive = false;
+        return;
+    }
+    self->m_dndActive = true;
+    self->m_dndPayloadIsApp = self->m_dndMimeTypes.contains(
+        QStringLiteral("application/x-dragonfruit-app"));
+    self->m_dndX = wl_fixed_to_double(x);
+    self->m_dndY = wl_fixed_to_double(y);
+    emit self->dockExternalDragEntered(self->m_dndPayloadIsApp, self->m_dndX, self->m_dndY);
+}
+
+void ShellProtocol::onDataDeviceLeave(void *data, wl_data_device *)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    if (!self->m_dndActive)
+        return;
+    self->m_dndActive = false;
+    emit self->dockExternalDragLeft();
+}
+
+void ShellProtocol::onDataDeviceMotion(void *data, wl_data_device *, uint32_t, wl_fixed_t x,
+                                       wl_fixed_t y)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    if (!self->m_dndActive)
+        return;
+    self->m_dndX = wl_fixed_to_double(x);
+    self->m_dndY = wl_fixed_to_double(y);
+    emit self->dockExternalDragMoved(self->m_dndX, self->m_dndY);
+}
+
+void ShellProtocol::onDataDeviceDrop(void *data, wl_data_device *)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    if (!self->m_dndActive || !self->m_dndOffer) {
+        self->resetExternalDrag();
+        return;
+    }
+    QString mime;
+    if (self->m_dndMimeTypes.contains(QStringLiteral("text/uri-list")))
+        mime = QStringLiteral("text/uri-list");
+    else if (self->m_dndMimeTypes.contains(QStringLiteral("application/x-dragonfruit-app")))
+        mime = QStringLiteral("application/x-dragonfruit-app");
+    if (mime.isEmpty()) {
+        wl_data_offer_finish(self->m_dndOffer);
+        self->resetExternalDrag();
+        return;
+    }
+
+    int fds[2];
+    if (pipe2(fds, O_CLOEXEC) != 0) {
+        wl_data_offer_finish(self->m_dndOffer);
+        self->resetExternalDrag();
+        return;
+    }
+    fcntl(fds[0], F_SETFL, O_NONBLOCK);
+    wl_data_offer_receive(self->m_dndOffer, mime.toUtf8().constData(), fds[1]);
+    wl_data_offer_finish(self->m_dndOffer);
+    ::close(fds[1]);
+
+    self->m_dndMime = mime;
+    self->m_dndData.clear();
+    self->m_dndReadFd = fds[0];
+    if (!self->m_dndReadNotifier) {
+        self->m_dndReadNotifier =
+            new QSocketNotifier(self->m_dndReadFd, QSocketNotifier::Read, self);
+        QObject::connect(self->m_dndReadNotifier, &QSocketNotifier::activated, self,
+                         &ShellProtocol::onDndReadable);
+    } else {
+        self->m_dndReadNotifier->setSocket(self->m_dndReadFd);
+        self->m_dndReadNotifier->setEnabled(true);
+    }
+}
+
+void ShellProtocol::onDataDeviceSelection(void *, wl_data_device *, wl_data_offer *)
+{
+}
+
+void ShellProtocol::onDndReadable()
+{
+    if (m_dndReadFd < 0)
+        return;
+    char buffer[4096];
+    const ssize_t n = ::read(m_dndReadFd, buffer, sizeof(buffer));
+    if (n > 0) {
+        m_dndData.append(buffer, static_cast<int>(n));
+        return;
+    }
+    // EOF (0) or an error: the source has finished writing the payload.
+    if (m_dndReadNotifier)
+        m_dndReadNotifier->setEnabled(false);
+    ::close(m_dndReadFd);
+    m_dndReadFd = -1;
+
+    const bool appMime = m_dndMime == QLatin1String("application/x-dragonfruit-app");
+    QString desktopId;
+    QStringList paths;
+    if (appMime) {
+        desktopId = QString::fromUtf8(m_dndData).trimmed();
+    } else {
+        paths = parseUriList(m_dndData);
+        if (uriListIsApplication(paths)) {
+            desktopId = desktopIdForFile(paths.first());
+            paths.clear();
+        }
+    }
+    const bool payloadIsApp = appMime || !desktopId.isEmpty();
+    const qreal x = m_dndX;
+    const qreal y = m_dndY;
+
+    if (m_dndOffer) {
+        wl_data_offer_destroy(m_dndOffer);
+        m_dndOffer = nullptr;
+    }
+    m_dndActive = false;
+    m_dndPayloadIsApp = false;
+    m_dndMimeTypes.clear();
+    m_dndMime.clear();
+    m_dndData.clear();
+    emit dockExternalDropped(payloadIsApp, desktopId, paths, x, y);
+}
+
+void ShellProtocol::resetExternalDrag()
+{
+    if (m_dndOffer) {
+        wl_data_offer_destroy(m_dndOffer);
+        m_dndOffer = nullptr;
+    }
+    if (m_dndReadFd >= 0) {
+        ::close(m_dndReadFd);
+        m_dndReadFd = -1;
+    }
+    if (m_dndReadNotifier)
+        m_dndReadNotifier->setEnabled(false);
+    m_dndActive = false;
+    m_dndPayloadIsApp = false;
+    m_dndMimeTypes.clear();
+    m_dndMime.clear();
+    m_dndData.clear();
 }
 
 void ShellProtocol::onPointerEnter(void *data, wl_pointer *, uint32_t, wl_surface *surface,

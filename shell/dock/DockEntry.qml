@@ -27,10 +27,16 @@ Item {
     // Keyboard navigation focus (T-10 section 20): draws the design-system
     // FocusRing around the artwork.
     property bool keyboardFocused: false
+    // The entry is the target of an external drag (T-10 section 12): draws a
+    // drop highlight around the artwork.
+    property bool externalDropTarget: false
 
     readonly property string kind: entry.kind !== undefined ? entry.kind : "app"
     readonly property bool isDivider: kind === "divider"
     readonly property bool isTrash: kind === "trash"
+    // A placeholder gap opened by an application-alias external drop; it is
+    // layout only and never interactive.
+    readonly property bool isExternal: kind === "external"
     readonly property bool running: entry.running === true
     readonly property bool attention: entry.attention === true
     readonly property string name: entry.name !== undefined ? entry.name : ""
@@ -91,9 +97,10 @@ Item {
 
     Accessible.role: isDivider ? Accessible.Separator : Accessible.ListItem
     Accessible.name: isDivider ? qsTr("Dock separator")
+                     : isExternal ? qsTr("Drop here")
                      : isTrash ? qsTr("Trash")
                      : name + stateLabel
-    Accessible.focusable: !isDivider
+    Accessible.focusable: !isDivider && !isExternal
 
     // Divider between the app and minimized/Trash regions. It is the drag
     // handle and the Control-click target for the Dock options menu.
@@ -110,7 +117,7 @@ Item {
     // Hover highlight behind the artwork.
     Rectangle {
         objectName: "hoverHighlight"
-        visible: root.hovered && !root.dragging && !root.isDivider
+        visible: root.hovered && !root.dragging && !root.isDivider && !root.isExternal
         x: root.artworkX
         y: root.artworkY
         width: root.iconSize
@@ -118,6 +125,36 @@ Item {
         radius: Theme.controls.dock.radius
         color: Theme.color.controlFill
         opacity: 0.6
+    }
+
+    // A placeholder gap opened by an application-alias external drop: a
+    // translucent slot the dragged app will occupy (T-10 section 12).
+    Rectangle {
+        objectName: "externalPlaceholder"
+        visible: root.isExternal
+        x: root.artworkX
+        y: root.artworkY
+        width: root.iconSize
+        height: root.iconSize
+        radius: Theme.controls.dock.radius
+        color: Theme.color.controlFill
+        opacity: 0.35
+        border.width: 1
+        border.color: Theme.color.border
+    }
+
+    // The entry under an external drag is highlighted as the drop target
+    // (T-10 section 12).
+    Rectangle {
+        objectName: "externalDropHighlight"
+        visible: root.externalDropTarget && !root.isDivider && !root.isExternal
+        x: root.artworkX
+        y: root.artworkY
+        width: root.iconSize
+        height: root.iconSize
+        radius: Theme.controls.dock.radius
+        color: Theme.color.accent
+        opacity: 0.25
     }
 
     // A lifted entry casts a shadow to read as picked up.
@@ -139,13 +176,13 @@ Item {
         objectName: "keyboardFocusRing"
         target: glyph
         cornerRadius: Theme.controls.dock.radius
-        shown: root.keyboardFocused && !root.isDivider
+        shown: root.keyboardFocused && !root.isDivider && !root.isExternal
     }
 
     DockGlyph {
         id: glyph
         objectName: "glyph"
-        visible: !root.isDivider
+        visible: !root.isDivider && !root.isExternal
         kind: root.isTrash ? "trash" : "app"
         name: root.name
         appId: root.appId
@@ -173,7 +210,7 @@ Item {
     // accessible name says why.
     Rectangle {
         objectName: "statusBadge"
-        visible: !root.isDivider && (root.failed || root.missing)
+        visible: !root.isDivider && !root.isExternal && (root.failed || root.missing)
         width: root.indicatorSize
         height: root.indicatorSize
         radius: root.indicatorSize / 2
@@ -188,7 +225,7 @@ Item {
     // window). Hidden when `showIndicators` is off.
     Rectangle {
         objectName: "indicator"
-        visible: root.showIndicator && root.running
+        visible: root.showIndicator && root.running && !root.isExternal
         width: root.indicatorSize
         height: root.indicatorSize
         radius: root.indicatorSize / 2
@@ -211,12 +248,14 @@ Item {
 
     TapHandler {
         acceptedButtons: Qt.LeftButton
+        enabled: !root.isExternal
         onPressedChanged: root.pressed = pressed
         onTapped: root.activated(root.entry)
     }
 
     TapHandler {
         acceptedButtons: Qt.RightButton
+        enabled: !root.isExternal
         onTapped: (eventPoint) => {
             var global = root.mapToItem(null, eventPoint.position.x,
                                         eventPoint.position.y);
@@ -233,7 +272,8 @@ Item {
         id: dragHandler
         objectName: "dragHandler"
         acceptedButtons: Qt.LeftButton
-        enabled: !root.isDivider && !root.isTrash && root.kind !== "minimized"
+        enabled: !root.isDivider && !root.isTrash && !root.isExternal
+                 && root.kind !== "minimized"
         dragThreshold: 8
 
         onActiveChanged: {

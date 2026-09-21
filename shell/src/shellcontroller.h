@@ -8,6 +8,7 @@
 #include <QObject>
 #include <QHash>
 #include <QString>
+#include <QStringList>
 #include <QVariant>
 #include <QVariantList>
 
@@ -67,6 +68,14 @@ private slots:
     void onDockRevealStateChanged();
     void onDockKeyboardFocused(bool focused);
     void onDockKeyboardFocusReleaseRequested();
+    // External drag-and-drop onto the Dock (T-10 section 12).
+    void onDockExternalDragEntered(bool payloadIsApp, qreal x, qreal y);
+    void onDockExternalDragMoved(qreal x, qreal y);
+    void onDockExternalDragLeft();
+    void onDockExternalDropped(bool payloadIsApp, const QString &desktopId,
+                               const QStringList &paths, qreal x, qreal y);
+    void onDockExternalDropRequested(const QString &targetId, const QString &targetKind,
+                                     const QString &desktopId, bool payloadIsApp);
     void onInputAction(const QString &action, const QString &source);
     void onDockPointerMoved(qreal x, qreal y);
     void onDockPointerButton(qreal x, qreal y, quint32 button, bool pressed);
@@ -98,6 +107,9 @@ private:
     // Launch a pinned app through the interim `.desktop` resolver (T-23
     // replaces this). Bounded by a launch timeout; failure raises a notice.
     void launchDockApp(const QString &desktopId);
+    // Launch an app with file arguments (a file dropped on an app icon, T-10
+    // section 12); the files are substituted for the Exec file field codes.
+    void launchDockAppWithFiles(const QString &desktopId, const QStringList &files);
     void failDockLaunch(const QString &desktopId, const QString &reason);
     // Clear a transient "failed" launch state after the notice has shown.
     void scheduleLaunchStateClear(const QString &desktopId);
@@ -163,6 +175,15 @@ private:
     // Compositor app id -> attention-bounce start and deadline (T-10 FR-4).
     QHash<QString, qint64> m_attentionStart;
     QHash<QString, qint64> m_attentionUntil;
+    // The in-flight external-drop payload (T-10 section 12). The shell holds
+    // the payload and resolves the action when the Dock reports the target.
+    // `payloadIsApp` is the drop-time classification (a single `.desktop` URI
+    // is an app alias even though the drag source advertised files).
+    bool m_externalPayloadIsApp = false;
+    QString m_externalDesktopId;
+    QStringList m_externalPaths;
+    qreal m_externalDropX = 0;
+    qreal m_externalDropY = 0;
 
     int m_width = 0;
     int m_height = 0;

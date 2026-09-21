@@ -13,6 +13,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QStringList>
 
 class QFileSystemWatcher;
 
@@ -45,6 +46,13 @@ public:
     // empty operation; it never follows symlinks and never leaves the trash
     // root.
     int empty();
+
+    // Move `paths` into the home trash (freedesktop Trash spec) and re-scan.
+    // Returns the number of items trashed; per-item failures are skipped and
+    // recorded in `lastError()`. Refuses the trash root and `/`. This is the
+    // fallback for GIO `g_file_trash()`; it never leaves the trash root and
+    // never follows symlinks out of it.
+    int trash(const QStringList &paths);
 
 signals:
     void changed();
