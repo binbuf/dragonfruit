@@ -203,6 +203,7 @@ ShellController::ShellController(QObject *parent)
 
 ShellController::~ShellController()
 {
+    delete m_overviewWindow;
     delete m_dockWindow;
     delete m_window;
 }
@@ -422,6 +423,52 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // The running projection may have arrived before the Dock scene existed.
     rebuildDockEntries();
 
+    // Mission Control overview chrome (T-11 Slice B): a third offscreen scene.
+    // It is a pure projection of the compositor's workspace/window state; the
+    // compositor renders the live surfaces underneath.
+    m_overviewWindow = new QQuickWindow;
+    m_overviewWindow->setColor(Qt::transparent);
+    QQmlComponent overviewComponent(m_engine);
+    overviewComponent.loadFromModule(QStringLiteral("Dragonfruit.Overview"),
+                                     QStringLiteral("Overview"));
+    if (overviewComponent.isError()) {
+        fprintf(stderr, "dragonfruit-shell: Overview QML error: %s\n",
+                qPrintable(overviewComponent.errorString()));
+        return false;
+    }
+    QObject *overviewObject = overviewComponent.create();
+    m_overviewItem = qobject_cast<QQuickItem *>(overviewObject);
+    if (!m_overviewItem) {
+        fprintf(stderr, "dragonfruit-shell: Overview QML did not produce an item\n");
+        return false;
+    }
+    m_overviewItem->setParentItem(m_overviewWindow->contentItem());
+    connect(m_overviewItem, SIGNAL(workspaceActivated(int)), this,
+            SLOT(onOverviewWorkspaceActivated(int)));
+    connect(m_overviewItem, SIGNAL(windowActivated(QString)), this,
+            SLOT(onOverviewWindowActivated(QString)));
+    connect(m_overviewItem, SIGNAL(dismissRequested()), this,
+            SLOT(onOverviewDismissRequested()));
+    connect(m_overviewWindow, &QQuickWindow::afterRendering, this,
+            &ShellController::renderOverview);
+    connect(m_protocol, &ShellProtocol::overviewConfigured, this,
+            &ShellController::onOverviewConfigured);
+    connect(m_protocol, &ShellProtocol::overviewChanged, this,
+            &ShellController::onOverviewChanged);
+    connect(m_protocol, &ShellProtocol::overviewProgress, this,
+            &ShellController::onOverviewProgress);
+    connect(m_protocol, &ShellProtocol::overviewDataChanged, this,
+            &ShellController::onOverviewDataChanged);
+    connect(m_protocol, &ShellProtocol::overviewPointerMoved, this,
+            &ShellController::onOverviewPointerMoved);
+    connect(m_protocol, &ShellProtocol::overviewPointerButton, this,
+            &ShellController::onOverviewPointerButton);
+    connect(m_protocol, &ShellProtocol::overviewPointerLeft, this,
+            &ShellController::onOverviewPointerLeft);
+    connect(m_protocol, &ShellProtocol::overviewKeyboardFocused, this,
+            &ShellController::onOverviewKeyboardFocused);
+    refreshOverviewData();
+
     if (!m_protocol->createMenuBarSurface(barHeight, barHeight))
         return false;
     // The dropdown rides a separate `overlay` chrome surface so transient
@@ -437,6 +484,10 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // Dock context menus and the window chooser ride a second `overlay`
     // surface anchored to the Dock's edge (T-10 sections 9/13).
     if (!m_protocol->createDockPopupSurface(m_dockPosition))
+        return false;
+    // The Mission Control overview chrome is a full-output `overlay` surface,
+    // unmapped until the overview opens (T-11 Slice B).
+    if (!m_protocol->createOverviewSurface())
         return false;
 
     // Launch timeout: a launch that produces no window within the bounded
@@ -1552,6 +1603,176 @@ void ShellController::onDockPopupPointerButton(qreal x, qreal y, quint32 button,
 void ShellController::onDockPopupPointerLeft()
 {
     onDockPointerLeft();
+}
+
+// --- Mission Control overview chrome (T-11 Slice B) -------------------------
+
+void ShellController::refreshOverviewData()
+{
+    if (!m_overviewItem)
+        return;
+    m_overviewItem->setProperty("workspaces", m_protocol->overviewWorkspaces());
+    m_overviewItem->setProperty("minimizedWindows", m_protocol->minimizedWindows());
+}
+
+void ShellController::onOverviewConfigured(int width, int height, quint32)
+{
+    // The overview surface covers the whole output; both the pre-layout and
+    // the resolved configure are that size, so accept the first positive one.
+    if (width <= 0 || height <= 0)
+        return;
+    m_overviewWidth = width;
+    m_overviewHeight = height;
+    fprintf(stderr, "dragonfruit-shell: overview configured %dx%d\n", width, height);
+    if (m_overviewActive)
+        renderOverview();
+}
+
+void ShellController::onOverviewChanged(bool active)
+{
+    m_overviewActive = active;
+    if (!m_overviewItem)
+        return;
+    m_overviewItem->setProperty("active", active);
+    if (active) {
+        // The compositor owns workspace truth; re-read the projection and map
+        // the chrome surface. The live window surfaces are already being
+        // transformed by the compositor underneath.
+        refreshOverviewData();
+        if (m_overviewItem)
+            m_overviewItem->forceActiveFocus();
+        renderOverview();
+    } else {
+        // Selection round-trip or a reverse transition: unmap the chrome so it
+        // stops capturing input; the compositor restores the normal scene.
+        if (m_protocol)
+            m_protocol->hideOverview();
+    }
+}
+
+void ShellController::onOverviewProgress(qreal progress, const QString &)
+{
+    if (!m_overviewItem)
+        return;
+    m_overviewItem->setProperty("progress", progress);
+    if (m_overviewActive)
+        scheduleOverviewRender();
+}
+
+void ShellController::onOverviewDataChanged()
+{
+    if (!m_overviewActive)
+        return;
+    refreshOverviewData();
+    scheduleOverviewRender();
+}
+
+void ShellController::onOverviewWorkspaceActivated(int index)
+{
+    if (m_protocol)
+        m_protocol->activateWorkspace(index);
+}
+
+void ShellController::onOverviewWindowActivated(const QString &windowId)
+{
+    // The selection round-trip (FR-5): the compositor restores the window,
+    // activates its Space, focuses it, and leaves the overview.
+    if (m_protocol)
+        m_protocol->selectToplevel(windowId);
+}
+
+void ShellController::onOverviewDismissRequested()
+{
+    if (m_protocol && m_overviewActive)
+        m_protocol->exitMissionControl();
+}
+
+void ShellController::onOverviewKeyboardFocused(bool)
+{
+    // Escape is handled by the overview QML's Keys handler; the compositor
+    // owns the keyboard focus transfer (the surface is OnDemand).
+    if (m_overviewItem && m_overviewActive)
+        m_overviewItem->forceActiveFocus();
+}
+
+void ShellController::onOverviewPointerMoved(qreal x, qreal y)
+{
+    if (!m_overviewWindow)
+        return;
+    const QPointF p(x, y);
+    QMouseEvent event(QEvent::MouseMove, p, p, Qt::NoButton, m_overviewButtons,
+                      Qt::NoModifier);
+    QCoreApplication::sendEvent(m_overviewWindow, &event);
+    scheduleOverviewRender();
+}
+
+void ShellController::onOverviewPointerButton(qreal x, qreal y, quint32 button, bool pressed)
+{
+    if (!m_overviewWindow)
+        return;
+    Qt::MouseButton qtButton = Qt::NoButton;
+    if (button == 0x110)
+        qtButton = Qt::LeftButton;
+    else if (button == 0x111)
+        qtButton = Qt::RightButton;
+    if (pressed)
+        m_overviewButtons |= qtButton;
+    else
+        m_overviewButtons &= ~qtButton;
+    const QPointF p(x, y);
+    QMouseEvent event(pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease, p, p,
+                      qtButton, m_overviewButtons, Qt::NoModifier);
+    QCoreApplication::sendEvent(m_overviewWindow, &event);
+    scheduleOverviewRender();
+}
+
+void ShellController::onOverviewPointerLeft()
+{
+    if (!m_overviewWindow)
+        return;
+    QMouseEvent event(QEvent::MouseMove, QPointF(-1, -1), QPointF(-1, -1), Qt::NoButton,
+                      m_overviewButtons, Qt::NoModifier);
+    QCoreApplication::sendEvent(m_overviewWindow, &event);
+    scheduleOverviewRender();
+}
+
+void ShellController::scheduleOverviewRender()
+{
+    if (m_overviewRenderPending)
+        return;
+    m_overviewRenderPending = true;
+    QTimer::singleShot(0, this, [this]() {
+        m_overviewRenderPending = false;
+        renderOverview();
+    });
+}
+
+void ShellController::renderOverview()
+{
+    if (!m_overviewActive || !m_overviewWindow || !m_overviewItem)
+        return;
+    if (m_overviewWidth <= 0 || m_overviewHeight <= 0)
+        return;
+    // The scene graph just rendered; skip the re-entrant frame our own
+    // `grabWindow` readback produces (FR-14 pattern shared with the Dock).
+    if (!m_overviewFrameGate.frameRendered())
+        return;
+    if (!m_overviewSceneGraphCommitLogged) {
+        m_overviewSceneGraphCommitLogged = true;
+        qInfo() << "shell: overview scene-graph commit path active";
+    }
+    m_overviewItem->setWidth(m_overviewWidth);
+    m_overviewItem->setHeight(m_overviewHeight);
+    if (m_overviewWindow->width() != m_overviewWidth
+        || m_overviewWindow->height() != m_overviewHeight)
+        m_overviewWindow->resize(m_overviewWidth, m_overviewHeight);
+    if (!m_overviewWindow->isVisible())
+        m_overviewWindow->show();
+    m_overviewFrameGate.beginCommit();
+    const QImage image = m_overviewWindow->grabWindow();
+    m_overviewFrameGate.endCommit();
+    if (!image.isNull() && m_protocol)
+        m_protocol->commitOverviewImage(image);
 }
 
 void ShellController::onDockEntryMenuAction(const QString &action, const QVariant &payload)

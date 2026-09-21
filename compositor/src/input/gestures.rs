@@ -146,6 +146,11 @@ impl ProgressPipeline {
         self.active.as_ref().map(|active| active.action)
     }
 
+    /// The trigger that started the in-flight transition, if any.
+    pub fn trigger(&self) -> Option<TriggerKind> {
+        self.active.as_ref().map(|active| active.trigger)
+    }
+
     pub fn progress(&self) -> f64 {
         self.active.as_ref().map_or(0.0, |active| active.progress)
     }

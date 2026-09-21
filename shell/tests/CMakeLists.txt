@@ -62,3 +62,24 @@ set_tests_properties(tst_dockcore PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+# Overview chrome tests (T-11): workspace strip (incl. fullscreen Spaces),
+# minimized-window strip, selection signals, and the shared progress fade.
+qt_add_executable(tst_overview
+    tst_overview.cpp
+)
+target_link_libraries(tst_overview PRIVATE
+    Qt6::QuickTest
+    dragonfruit-design-systemplugin
+    dragonfruit-shell-overviewplugin
+)
+qt_import_qml_plugins(tst_overview)
+
+add_test(
+    NAME tst_overview
+    COMMAND tst_overview -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_overview.qml
+)
+set_tests_properties(tst_overview PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)

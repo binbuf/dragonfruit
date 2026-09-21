@@ -356,6 +356,21 @@ pub mod component {
         pub const SCROLLBAR_RADIUS: f32 = 999.0_f32;
         pub const MIN_THUMB: f32 = 24.0_f32;
     }
+    pub mod overview {
+        pub const STRIP_GAP: f32 = 12.0_f32;
+        pub const STRIP_MARGIN: f32 = 16.0_f32;
+        pub const CARD_WIDTH: f32 = 132.0_f32;
+        pub const CARD_HEIGHT: f32 = 84.0_f32;
+        pub const CARD_PADDING: f32 = 8.0_f32;
+        pub const CARD_RADIUS: f32 = 14.0_f32;
+        pub const CHIP_HEIGHT: f32 = 36.0_f32;
+        pub const CHIP_RADIUS: f32 = 10.0_f32;
+        pub const CHIP_GAP: f32 = 8.0_f32;
+        pub const CHIP_PADDING: f32 = 10.0_f32;
+        pub const FONT_SIZE: f32 = 13.0_f32;
+        pub const TITLE_SIZE: f32 = 12.0_f32;
+        pub const SCRIM_OPACITY: f32 = 0.18_f32;
+    }
 }
 
 /// A named motion: full duration, cubic-bezier control points, and

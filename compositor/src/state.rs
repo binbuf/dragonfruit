@@ -259,6 +259,10 @@ pub struct DfState {
     pub grab_arbiter: GrabArbiter<ClientId>,
     /// Pending hot-corner dwell timer, if armed.
     pub hot_corner_timer: Option<RegistrationToken>,
+    /// Pending overview animation-clock timer, if a discrete trigger's
+    /// transition is in flight (T-11). One reusable timer; the callback
+    /// re-arms it until the curve reaches 1.0.
+    pub overview_timer: Option<RegistrationToken>,
 
     // --- private shell protocols (T-07) -------------------------------------
     /// Handshake/trust, chrome surfaces, and the window/workspace/output
@@ -375,6 +379,7 @@ impl DfState {
             input_dispatch: InputDispatch::new(),
             grab_arbiter: GrabArbiter::new(),
             hot_corner_timer: None,
+            overview_timer: None,
             shell,
             stats: RenderStats::default(),
         }
@@ -1129,6 +1134,11 @@ impl DfState {
                 }
                 if let Some(commit) = outcome.commit {
                     self.apply_overview_commit(commit);
+                } else if self.overview.is_discrete() {
+                    // The transition is animated on the compositor clock
+                    // (T-11): the timer advances the same pipeline a gesture
+                    // would, so keyboard/hot-corner switches slide.
+                    crate::input::schedule_overview_timer(self);
                 }
             }
         } else {

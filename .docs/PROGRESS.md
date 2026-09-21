@@ -5367,3 +5367,109 @@ materials are **not** landed.
 tasks/11 acceptance box is closed yet (the transition diagram's visual review
 and the frame-time trace are open).
 
+
+## T-11 — animation clock, Mission Control chrome, multi-monitor lockstep (second slice)
+
+**State: partial.** Delivery Slice B minus the window grid is landed: the
+overview now has a real shell chrome surface (workspace strip incl. fullscreen
+Spaces, minimized-window restore strip, selection round-trip). Discrete
+triggers animate on a compositor clock instead of snapping, and a
+multi-monitor lockstep conformance test covers the protocol path. Scale/clip/
+blur materials and the window grid/drag-between-Spaces are still open
+(T-33 / a later T-11 slice).
+
+### What landed
+
+- **Compositor animation clock (`overview/mod.rs`, `input.rs`, `state.rs`).**
+  `OverviewMachine::drive` no longer runs the whole 0→1 curve synchronously:
+  it begins the transition, records a `DiscreteProgress { start_time,
+  duration_ms }`, and returns only the `Begin` (commit `None`).
+  `advance_discrete(now)` samples the shared pipeline and, at 1.0, ends and
+  commits. `is_discrete()` gates the clock. Reduced motion still takes a
+  single synchronous step, so its commit rule is unchanged.
+  `DfState.overview_timer` holds one reusable calloop timer;
+  `input::schedule_overview_timer` arms it at ~16 ms and
+  `poll_overview_animation` advances the pipeline, calls
+  `apply_overview_scene` (so the translation slide is visible), commits, and
+  re-arms until done. `dispatch_input_action` arms it. This makes
+  keyboard/hot-corner switches literally share the gesture curve (FR-1/FR-4).
+- **Shell Mission Control chrome (Slice B).** New `Dragonfruit.Overview` QML
+  module (`shell/overview/Overview.qml`): a transparent full-output scene with
+  a top workspace strip (one clickable card per Space, active highlight, a
+  fullscreen badge for dedicated Spaces) and a bottom minimized-window strip
+  (click restores through `select_overview_toplevel`). The strips fade/slide
+  with the shared `progress`. New `component.overview` token group
+  (`Theme.controls.overview.*`). `ShellProtocol` creates a full-output
+  `overlay` `df_layer_surface` (namespace `overview`, no reserved zone,
+  OnDemand keyboard), maps it only while the overview is open, routes
+  pointer/keyboard input to it, and exposes `overviewChanged`,
+  `overviewProgress`, `overviewDataChanged`, `overviewConfigured`,
+  `overviewWorkspaces()`, `minimizedWindows()`, `activateWorkspace(index)`,
+  and `exitMissionControl()`. `ShellController` owns the third offscreen
+  window, commits it from `afterRendering` (same gate/FR-14 path as the Dock),
+  and synthesizes Qt events for the strip clicks and Escape. No compositor
+  render change was needed: `chrome_render_elements` already composites
+  layers ≥ 2.
+- **Multi-monitor lockstep test.** `workspace_switch_is_lockstep_across_outputs`
+  (`shell_protocol_conformance.rs`) attaches a second synthetic output, drives
+  Ctrl+Right (which now animates on the clock), and asserts exactly two
+  `workspace_activated` events both with index 1 and no output on a different
+  index. New `tst_overview` (8 QML cases) covers the strip, badges, selection
+  signals, Escape, and the progress fade.
+
+### Gotchas learned (important for the next slice)
+
+- **A gesture must cancel/restart an in-flight discrete clock.** `drive_gesture`
+  used to `begin_gesture` only when the pipeline was idle. With the clock, a
+  hot-corner/keyboard transition can still be active when a gesture arrives;
+  the old check skipped `begin_gesture`, so the recorded trigger stayed
+  `HotCorner`/`Keyboard` and the gesture's `input_action` never appeared.
+  Fix: continue only when `overview.active_is_gesture()` and the kind matches
+  (`ProgressPipeline::trigger()` is the new accessor); otherwise begin, which
+  cancels the discrete transition first. `synthetic_input_drives_shortcuts_...`
+  now waits for the hot-corner overview to commit before the gesture, since
+  the two no longer collapse into one synchronous step.
+- **The manager `workspace_activated` event is the per-switch signal.**
+  `df_workspace.activated` is only re-sent by `sync_workspaces` on structural
+  changes, so the strip's active highlight must listen to
+  `df_toplevel_manager.workspace_activated` (the listener slot was previously
+  `nullptr`). Activation is lockstep, so `onManagerWorkspaceActivated` marks
+  every Space with that index active and all others inactive.
+- **Do not combine `anchors.top/bottom` with `y` in the strip layout.** The
+  anchor wins and the slide silently does not happen; bind the strip's
+  `anchors.topMargin`/`bottomMargin` to `progress` instead.
+- **The overview QML test must size the item.** `Overview` has no implicit
+  size (the controller sets it from the configure); without `width`/`height`
+  the bottom strip sits at a negative `y` and the chip clicks never land.
+- **The shell's overview surface configures even while unmapped**, so
+  `onOverviewConfigured` can size the offscreen window before the first open.
+
+### Hand-off / open items (remaining T-11 slices)
+
+1. **Window grid + dragging windows between Spaces** (FR-7): needs the
+   per-surface scale/clip layout (T-33) and the shell overview drag plus
+   `df_toplevel.move_to_workspace` (the model primitive exists).
+2. **Per-surface scale/clip/blur and the wallpaper slide** (T-33): the
+   "shrink the visible Space, reveal neighbors" look; `render_output` still
+   cannot scale individual windows, so this needs a custom render-element
+   wrapper.
+3. **FR-8 60 Hz frame-time trace** during the full gesture on baseline
+   Intel/AMD; the overview chrome adds another shm commit path to budget.
+4. **Reduced-motion wiring:** `OverviewMachine::set_reduced_motion` still has
+   no writer; the accessibility setting (T-16 / `Theme.reducedMotion`) is it.
+5. **Overview window selection by clicking the live surfaces** is not built —
+   selection today is the minimized strip and workspace strip only; the
+   compositor does not yet hit-test overview window representations.
+
+### Gate status
+
+`cargo test -p dragonfruit-compositor --bins` 124/124; `make e2e`
+(`shell_protocol_conformance` 26/26 incl. the new lockstep test,
+`window_conformance`, `xwayland_conformance`, `milestone_e2e`,
+`shell_idle_trace`, `idle_trace`, `protocol_surface`) green; `make lint`
+(fmt, clippy -D warnings, ctest 15/15 incl. `tst_overview` and
+`qmllint_shell-overview`, gen-tokens, design-token/desktop-name/no-capture
+gates) green; `make test` incl. the 66-snapshot gallery regression green.
+Live headless smoke (`dragonfruit dev --headless --shell`) reports
+`overview configured 1280x720`, and a synthetic hot-corner dwell maps the
+surface and logs the overview scene-graph commit path.

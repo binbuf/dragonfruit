@@ -94,6 +94,18 @@ private slots:
     void onDockPopupPointerMoved(qreal x, qreal y);
     void onDockPopupPointerButton(qreal x, qreal y, quint32 button, bool pressed);
     void onDockPopupPointerLeft();
+    // Mission Control overview chrome (T-11 Slice B).
+    void onOverviewConfigured(int width, int height, quint32 serial);
+    void onOverviewChanged(bool active);
+    void onOverviewProgress(qreal progress, const QString &action);
+    void onOverviewDataChanged();
+    void onOverviewWorkspaceActivated(int index);
+    void onOverviewWindowActivated(const QString &windowId);
+    void onOverviewDismissRequested();
+    void onOverviewPointerMoved(qreal x, qreal y);
+    void onOverviewPointerButton(qreal x, qreal y, quint32 button, bool pressed);
+    void onOverviewPointerLeft();
+    void onOverviewKeyboardFocused(bool focused);
     void onDockLaunchTick();
     void onDockAttention(const QString &appId);
     void onDockAnimationTick();
@@ -105,6 +117,12 @@ private:
     void applyFocusedApp();
     void render();
     void renderDock();
+    // Mission Control overview chrome (T-11 Slice B): re-read the workspace /
+    // minimized-window projection from the protocol into the QML, and commit
+    // the transparent chrome surface while the overview is open.
+    void refreshOverviewData();
+    void renderOverview();
+    void scheduleOverviewRender();
     // Rebuild the Dock's ordered entries (pinned + running) and hand them to
     // the QML scene.
     void rebuildDockEntries();
@@ -181,6 +199,18 @@ private:
     QQuickItem *m_item = nullptr;
     QQuickWindow *m_dockWindow = nullptr;
     QQuickItem *m_dockItem = nullptr;
+    // Mission Control overview chrome (T-11 Slice B): a third offscreen scene
+    // rendered into the full-output `overlay` surface while the overview is
+    // open. The compositor draws the live window surfaces underneath.
+    QQuickWindow *m_overviewWindow = nullptr;
+    QQuickItem *m_overviewItem = nullptr;
+    int m_overviewWidth = 0;
+    int m_overviewHeight = 0;
+    bool m_overviewActive = false;
+    bool m_overviewRenderPending = false;
+    Qt::MouseButtons m_overviewButtons = Qt::NoButton;
+    FrameCommitGate m_overviewFrameGate;
+    bool m_overviewSceneGraphCommitLogged = false;
     QSocketNotifier *m_notifier = nullptr;
     QTimer *m_launchTimer = nullptr;
     QTimer *m_dockAnimTimer = nullptr;
