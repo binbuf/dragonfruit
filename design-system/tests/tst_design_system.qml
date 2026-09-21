@@ -405,6 +405,70 @@ TestCase {
                "an open submenu must extend the committed content rect");
     }
 
+    // -- MenuBarMenu submenus (T-10 section 13) ----------------------------
+
+    function test_menu_submenu_opens_and_activates() {
+        var m = make(menuComponent, {
+            title: "File",
+            model: [
+                { label: "Open With", type: "submenu",
+                  submenu: [{ label: "Text" }, { label: "Image" }] }
+            ]
+        });
+        triggeredSpy.target = m;
+        triggeredSpy.clear();
+        m.openMenu();
+        waitForRendering(stage);
+        compare(m.openSubmenuIndex, -1);
+        keyClick(Qt.Key_Right);
+        compare(m.openSubmenuIndex, 0);
+        compare(m.submenuEntries.length, 2);
+        compare(m.submenuHighlightedIndex, 0);
+        keyClick(Qt.Key_Down);
+        compare(m.submenuHighlightedIndex, 1);
+        keyClick(Qt.Key_Return);
+        compare(triggeredSpy.count, 1);
+        compare(triggeredSpy.signalArguments[0][1].label, "Image");
+        compare(m.open, false);
+        compare(m.openSubmenuIndex, -1);
+    }
+
+    function test_menu_submenu_escape_closes_only_submenu() {
+        var m = make(menuComponent, {
+            title: "File",
+            model: [
+                { label: "Options", type: "submenu",
+                  submenu: [{ label: "One" }, { label: "Two" }] }
+            ]
+        });
+        m.openMenu();
+        waitForRendering(stage);
+        m.openSubmenu(0);
+        compare(m.openSubmenuIndex, 0);
+        keyClick(Qt.Key_Escape);
+        compare(m.openSubmenuIndex, -1);
+        compare(m.open, true);
+        keyClick(Qt.Key_Escape);
+        compare(m.open, false);
+    }
+
+    function test_menu_content_rect_covers_submenu() {
+        var m = make(menuComponent, {
+            title: "File",
+            model: [
+                { label: "Options", type: "submenu",
+                  submenu: [{ label: "A" }, { label: "B" }] }
+            ]
+        });
+        m.openMenu();
+        waitForRendering(stage);
+        var closedWidth = m.contentRect.w;
+        m.openSubmenu(0);
+        waitForRendering(stage);
+        verify(m.contentRect.w > closedWidth,
+               "an open submenu must extend the committed content rect");
+    }
+
     // -- SearchField (FR-1) -------------------------------------------------
 
     function test_search_field_escape_clears() {

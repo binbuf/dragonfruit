@@ -3884,3 +3884,106 @@ unchecked in `tasks/10-dock.md`: the Files-side Trash integration test (needs
 T-18), the external-drag walkthrough (needs a drag source, T-17/T-18), the
 scene-graph FR-14 render path, the live AT-SPI walkthrough, multi-output
 hotplug per-output popovers, plus the core-loop and 60 Hz measurements.
+
+## T-10 continuation — MenuBarMenu submenus (fifteenth slice)
+
+**State: partial.** The design-system `MenuBarMenu` now opens real nested
+submenus, the same model the `ContextMenu` port uses. This closes the
+"`MenuBarMenu` submenus" hand-off item and unblocks T-22's app menu (and the
+app Options submenu) from having a submenu-capable menu bar. The **drag
+source** (Files/launcher, T-17/T-18) and its end-to-end walkthrough, the GVfs
+Trash/downloads backends (GIO headers absent), the app Options submenu,
+per-output sizing, the scene-graph render path, and the live AT-SPI dump are
+unchanged.
+
+### What landed
+
+- **`design-system/components/MenuBarMenu.qml`.** A top-level row of
+  `type: "submenu"` (children in its `submenu`/`items` array) opens a nested
+  `SubmenuPanel` beside the dropdown on a delayed hover
+  (`Theme.controls.contextMenu.submenuDelay`, the T-09 drag-through rule) or
+  Right-arrow. Keyboard: Up/Down move within the open submenu, Left closes it,
+  Right opens it, Return/Space activates, Escape closes the submenu first and
+  only then the dropdown. The panel flips to the menu's left when it would
+  leave the window. `entries`/`menuModel` gained `submenu`, `keepOpen`, and
+  `hasSubmenu`; `submenuModel`/`submenuEntries`/`activateSubmenu`/
+  `moveSubmenuHighlight` mirror `ContextMenu` exactly.
+- **`contentRect`** publishes the union of the dropdown and any open submenu
+  in root coordinates. `MenuBar._dropdownRect` now maps `item.contentRect`
+  instead of `popup.width/height`, so the shell's `overlay` popup surface
+  grows to contain the nested panel instead of clipping it. The geometry
+  contract is the **logical** popup rectangle (`popup.x`/`popup.y`), not the
+  mid-open/close scaled `mapToItem` rect.
+- **`Popup.qml`** gained `escapeCloses` (default true) and an
+  `escapePressed()` signal, so a menu can intercept Escape (to close the
+  submenu first) without the popup dismissing. Existing Popup behavior is
+  unchanged (`escapeCloses: true` still hides on Escape).
+- **Shell demo menu + gallery.** `demoAppMenu()`'s View menu carries a
+  "Sort By" submenu (a new `menuSubmenu()` helper), so `--placeholders` shows
+  the nested path live; the gallery `MenuPage` open `MenuBarMenu` carries an
+  "Open With" submenu. The three `menu_*.png` goldens were regenerated (the
+  menu page has one more row).
+- **Tests.** `tst_design_system` gained three cases (submenu open/activate,
+  Escape closes only the submenu, `contentRect` grows). `tst_menubar` gained
+  `test_dropdown_geometry_includes_open_submenu` (the overlay dropdown grows
+  when the submenu opens and returns to zero on close).
+
+### Gotchas learned (important for the next session)
+
+- **`mapToItem()` is not a tracked dependency in a QML binding.** A
+  `readonly property var contentRect` built from `popup.mapToItem(root, 0, 0)`
+  never re-evaluated when the popup moved, so `MenuBar._dropdownRect` read a
+  stale rectangle (the popup's pre-layout position). Fix: build the rect from
+  `popup.x`/`popup.y` (tracked properties) and use the panel's `x`/`y`
+  (already root-relative) rather than `mapToItem`. If a future rect must
+  include a scale transform, read the animated property explicitly too.
+- **Gate the submenu contribution on `openSubmenuIndex`, not
+  `submenuPanel.visible`.** `visible` is `opacity > 0` and only flips after
+  the fade-in starts, so a `visible`-gated `contentRect` is empty on the first
+  open frame and makes the geometry test race a 160 ms animation (which made
+  `waitForRendering` take ~5 s and destabilized a later Canvas test).
+- **The `StatusGlyph` Canvas test was a latent flake, now fixed.**
+  `test_status_glyphs_render_pixels` grabbed once and could see a blank Canvas
+  before the queued `requestPaint` ran (the T-09 Canvas lesson). It is now a
+  `tryVerify(..., 2000)` around the grab, so the extra menu renders no longer
+  trip it. The suite is back to ~0.8 s.
+- **`Theme.controls.contextMenu.submenuDelay` is reused** by the menu bar
+  submenu. If the menu-bar feel needs a different delay, add a
+  `menuBarMenu.submenuDelay` token rather than changing the context-menu one.
+- **Nested submenus (a submenu inside a submenu) are still inert** (the
+  chevron shows, the row does nothing), exactly like `ContextMenu`. Do the two
+  components together if that is ever needed.
+
+### Hand-off / open items (remaining T-10 slices)
+
+1. **The drag source** (Files/launcher, T-17/T-18): export `text/uri-list`
+   and `application/x-dragonfruit-app` from a `wl_data_source`, start the drag
+   on an implicit pointer grab, and add the scripted end-to-end walkthrough
+   (source client + shell target). The shell target side is complete.
+2. **GVfs Trash completion** (section 16) — GIO dev headers are absent on this
+   host, so `TrashMonitor`/`DownloadsMonitor` stay on the sanctioned
+   filesystem fallback; switch them to `GFileMonitor`/GIO when the headers
+   exist. Mount-unavailable dimming, Empty Trash progress, and
+   `org.dragonfruit.Files1` activation (T-18) remain.
+3. **App Options submenu** (section 13): Assign To, Open at Login (T-24),
+   Show in Files (T-18). The submenu it needs now exists.
+4. **Per-output sizing** (section 18): chrome surfaces still size from the
+   first output; `matches_output` is the filter hook.
+5. **Scene-graph render path** (FR-14): the Dock still commits on demand via
+   `grabWindow`; the durable `QQuickWindow::afterRendering` fix is shared with
+   the T-09 deferred-polish backlog.
+6. **Live AT-SPI dump** (section 20): the QML roles and the keyboard seat path
+   exist; a session-bus `atspi` walkthrough is T-31.
+
+### Gate status
+
+`make lint` green (`cargo fmt --check`, `clippy -D warnings`, ctest 13/13 incl.
+`tst_menubar` 22 and `tst_design_system`, `gen-tokens --check`, the
+design-token/desktop-name/no-capture gates); `make e2e` green; gallery visual
+regression 66/66 (three `menu_*` goldens regenerated); live headless smoke
+(`dragonfruit dev --headless --shell`) reports `menu bar configured 1280x28`,
+`Dock configured 1280x124`, and a clean teardown. Acceptance criteria still
+unchecked in `tasks/10-dock.md`: the Files-side Trash integration test (T-18),
+the external-drag walkthrough (drag source, T-17/T-18), the scene-graph FR-14
+render path, the live AT-SPI walkthrough, multi-output per-output popovers,
+plus the core-loop and 60 Hz measurements.

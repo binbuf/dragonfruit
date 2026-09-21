@@ -89,7 +89,7 @@ Updated when a task is partially or completely finished; see
 | Phase | Tickets |
 |---|---|
 | 1 · Foundation | T-01 ✅ done · T-02 🔄 partial (compositor core) · T-03 🔄 partial (input engine) · T-04 🔄 partial (window model) · T-05 🔄 partial (Spaces model) · T-06 🔄 partial (Xwayland) · T-07 🔄 partial (private shell protocols) |
-| 2 · Experience | T-08 ✅ done (design system; app-level chrome lint + live AT-SPI dump deferred) · T-09 🔄 partial (menu bar + shell bootstrap + overlay-layer dropdown + scripted output hotplug; T-20/T-22 content open) · T-10 🔄 partial (Dock presentation core + shell surface + running entries/activation + launch/pinned persistence + launch/attention bounce + magnified-band input region + app context menus/window chooser + drag rearrangement (reorder/promote/remove) + live `dock.*` settings/divider menu/reduced motion + left/right reserved-zone foundation + per-position (left/right) surfaces, vertical layout, beside-the-bar popovers, corrected auto-hide translation and edge-band reveal/re-hide state machine + Trash state/count via a home-trash watcher, click-to-Files at `trash://`, and the Open/Empty Trash menu with an Empty Trash confirmation + Control-F3/Super+Option+D `focus-dock`/`toggle-dock` shortcuts and in-Dock keyboard navigation (arrows/Return/menu/type-jump, FocusRing, Escape `release_keyboard_focus` + design-system nested submenus and the divider Position on Screen submenu + external drops (a Wayland data-device drag destination, drop-to-pin / open-with-files / trash / Downloads, live insertion gap and drop highlight, spring-loading hook) + the Downloads stack (folder watch, listing popover, new-items badge, drop-to-move, the spring-load consumer) and recent/suggested apps); drag *source* (T-17/T-18), app Options submenu, per-output sizing, scene-graph render path, live AT-SPI dump open) · T-11 … T-14 pending |
+| 2 · Experience | T-08 ✅ done (design system; app-level chrome lint + live AT-SPI dump deferred) · T-09 🔄 partial (menu bar + shell bootstrap + overlay-layer dropdown + scripted output hotplug; T-20/T-22 content open) · T-10 🔄 partial (Dock presentation core + shell surface + running entries/activation + launch/pinned persistence + launch/attention bounce + magnified-band input region + app context menus/window chooser + drag rearrangement (reorder/promote/remove) + live `dock.*` settings/divider menu/reduced motion + left/right reserved-zone foundation + per-position (left/right) surfaces, vertical layout, beside-the-bar popovers, corrected auto-hide translation and edge-band reveal/re-hide state machine + Trash state/count via a home-trash watcher, click-to-Files at `trash://`, and the Open/Empty Trash menu with an Empty Trash confirmation + Control-F3/Super+Option+D `focus-dock`/`toggle-dock` shortcuts and in-Dock keyboard navigation (arrows/Return/menu/type-jump, FocusRing, Escape `release_keyboard_focus` + design-system nested submenus and the divider Position on Screen submenu + external drops (a Wayland data-device drag destination, drop-to-pin / open-with-files / trash / Downloads, live insertion gap and drop highlight, spring-loading hook) + the Downloads stack (folder watch, listing popover, new-items badge, drop-to-move, the spring-load consumer) and recent/suggested apps + `MenuBarMenu` submenus); drag *source* (T-17/T-18), app Options submenu, per-output sizing, scene-graph render path, live AT-SPI dump open) · T-11 … T-14 pending |
 | 3 · Flagship apps | T-15 … T-19 pending |
 | 4 · System integration | T-20 … T-23 pending |
 | 5 · Desktop infrastructure | T-24 … T-29 pending |
@@ -679,6 +679,25 @@ when the GIO headers exist, the app Options submenu, per-output sizing, the
 scene-graph render path, the live AT-SPI dump, and `MenuBarMenu` submenus.
 Details and hand-off: [PROGRESS.md](PROGRESS.md).
 
+T-10 continuation (MenuBarMenu submenus slice): the design-system `MenuBarMenu`
+now opens real nested submenus, the same model as the `ContextMenu` port. A
+top-level row of `type: "submenu"` (children in its `submenu`/`items` array)
+opens a nested panel beside the dropdown on a delayed hover (the
+`contextMenu.submenuDelay` token) or Right-arrow, with Up/Down/Left/Escape/
+Return keyboard operation; Escape closes the submenu before the dropdown, and
+the panel flips to the menu's left near the window edge. `MenuBarMenu`
+publishes `contentRect` — the union of the dropdown and any open submenu — and
+the shell's `MenuBar` overlay geometry now uses it, so the committed popup
+surface grows to contain the nested panel instead of clipping it. The
+`Popup` component gained an `escapeCloses`/`escapePressed` hook so a menu can
+handle Escape itself; the demo app menu (`--placeholders`) carries a "Sort By"
+submenu and the gallery MenuPage shows one. Scripted by three design-system
+cases and a `tst_menubar` overlay-geometry case. Open for the remaining
+slices: the **drag source** (Files/launcher, T-17/T-18) and its end-to-end
+walkthrough, the GVfs Trash/downloads backends when the GIO headers exist, the
+app Options submenu, per-output sizing, the scene-graph render path, and the
+live AT-SPI dump. Details and hand-off: [PROGRESS.md](PROGRESS.md).
+
 **Foundation milestone E2E (T-01…T-07).** The whole vertical slice now has a
 headless end-to-end test, `compositor/tests/milestone_e2e.rs` (`make e2e`):
 one live session with a shell client, a Wayland app, and an X11 app attached
@@ -711,7 +730,7 @@ the shell's own chrome rendering (T-09/T-10).
 2. **Experience**
    - [x] Design system (T-08: token architecture + all 20 components + gallery/visual regression; app-level chrome lint + live AT-SPI dump deferred)
    - [ ] Top bar (T-09 partial: menu-bar render/interaction + shell bootstrap live, restart/idle scripts passing, chrome input routing + overlay-layer dropdown landed and scripted, output hotplug scripted, always-present system menu (dragonfruit mark) + application menu (Files on the desktop) landed; T-20 status adapters, T-22 app-exported menus, and the fixed-menu action wiring (T-16/T-24/T-26) open)
-     - [ ] Dock (T-10 partial: presentation/interaction core + shell `top` surface with bottom reserved zone + launch/pinned persistence + launch/attention bounce + magnified-band input region + app context menus and window chooser + drag rearrangement (reorder/promote/remove) + live `dock.*` settings + per-position (left/right) surfaces and vertical layout + edge-band auto-hide reveal/re-hide + Trash state/count via a home-trash watcher with click-to-Files and the Open/Empty Trash menu with confirmation + Control-F3/Super+Option+D `focus-dock`/`toggle-dock` shortcuts with in-Dock keyboard navigation and an Escape `release_keyboard_focus` path and design-system nested submenus with the divider Position on Screen submenu + external drops (Wayland data-device drag destination, drop-to-pin/open-with-files/trash/Downloads, live insertion gap and drop highlight, spring-loading hook) + the Downloads stack (folder watch, listing popover, new-items badge, drop-to-move, the spring-load consumer) and recent/suggested apps landed and scripted; drag *source* (T-17/T-18), app Options submenu, per-output sizing, scene-graph render path, live AT-SPI dump open)
+     - [ ] Dock (T-10 partial: presentation/interaction core + shell `top` surface with bottom reserved zone + launch/pinned persistence + launch/attention bounce + magnified-band input region + app context menus and window chooser + drag rearrangement (reorder/promote/remove) + live `dock.*` settings + per-position (left/right) surfaces and vertical layout + edge-band auto-hide reveal/re-hide + Trash state/count via a home-trash watcher with click-to-Files and the Open/Empty Trash menu with confirmation + Control-F3/Super+Option+D `focus-dock`/`toggle-dock` shortcuts with in-Dock keyboard navigation and an Escape `release_keyboard_focus` path and design-system nested submenus with the divider Position on Screen submenu + external drops (Wayland data-device drag destination, drop-to-pin/open-with-files/trash/Downloads, live insertion gap and drop highlight, spring-loading hook) + the Downloads stack (folder watch, listing popover, new-items badge, drop-to-move, the spring-load consumer) and recent/suggested apps landed and scripted + design-system `MenuBarMenu` submenus; drag *source* (T-17/T-18), app Options submenu, per-output sizing, scene-graph render path, live AT-SPI dump open)
    - [ ] Window switching
    - [ ] Mission Control
    - [ ] Workspace gestures

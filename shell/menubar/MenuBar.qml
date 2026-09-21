@@ -66,6 +66,14 @@ Rectangle {
         var item = menuRepeater.itemAt(openMenuIndex);
         if (!item || !item.popup)
             return { x: 0, y: 0, w: 0, h: 0 };
+        // `contentRect` is the dropdown unioned with any open submenu, so the
+        // overlay surface grows to contain the nested panel instead of
+        // clipping it.
+        var rect = item.contentRect;
+        if (rect && rect.w > 0 && rect.h > 0) {
+            var origin = item.mapToItem(menuBar, rect.x, rect.y);
+            return { x: origin.x, y: origin.y, w: rect.w, h: rect.h };
+        }
         var popup = item.popup;
         var topLeft = popup.mapToItem(menuBar, 0, 0);
         return { x: topLeft.x, y: topLeft.y, w: popup.width, h: popup.height };

@@ -250,7 +250,10 @@ Item {
             waitForRendering(stage);
             var appMenu = bar.appMenuAt(1);
             var popup = appMenu.popup;
-            var topLeft = popup.mapToItem(bar, 0, 0);
+            // The geometry contract is the logical dropdown rectangle (the
+            // open/close scale animation is cosmetic), so compare against the
+            // popup's logical origin, not its scaled mapped origin.
+            var topLeft = appMenu.mapToItem(bar, popup.x, popup.y);
             verify(bar.dropdownWidth > 0);
             verify(bar.dropdownHeight > 0);
             compare(bar.dropdownX, topLeft.x);
@@ -258,6 +261,36 @@ Item {
             // The dropdown hangs below the bar, which is what the shell uses
             // to place the separate overlay surface.
             verify(bar.dropdownY >= bar.height);
+
+            bar.closeMenus();
+            waitForRendering(stage);
+            compare(bar.dropdownWidth, 0);
+        }
+
+        function test_dropdown_geometry_includes_open_submenu() {
+            var fixed = fixedMenus();
+            var bar = make(menuBarComponent, {
+                width: 600,
+                appName: "Safari",
+                appMenuModel: [
+                    { title: "File", items: [
+                        { label: "Open With", type: "submenu",
+                          submenu: [{ label: "Text Editor" }, { label: "Preview" }] }
+                    ] }
+                ],
+                systemMenuItems: fixed.systemMenuItems,
+                applicationMenuItems: fixed.applicationMenuItems
+            });
+            // Fixed system + app menus occupy 0 and 1; the File menu is 2.
+            bar.openMenu(2);
+            waitForRendering(stage);
+            var closedWidth = bar.dropdownWidth;
+            verify(closedWidth > 0);
+
+            bar.appMenuAt(2).openSubmenu(0);
+            waitForRendering(stage);
+            verify(bar.dropdownWidth > closedWidth,
+                   "the overlay dropdown must grow to contain the submenu");
 
             bar.closeMenus();
             waitForRendering(stage);
@@ -440,9 +473,13 @@ Item {
                          "control-center", "mission-control"];
             for (var i = 0; i < names.length; ++i) {
                 var glyph = make(glyphComponent, { name: names[i], size: 24 });
-                var img = grabImage(glyph);
-                verify(imageContainsColor(img, Theme.color.textPrimary),
-                       "glyph " + names[i] + " should render visible pixels");
+                // Canvas paints are asynchronous; retry the grab so the test is
+                // not racy against the queued `requestPaint` (a pre-existing
+                // flake that surfaced under the extra menu renders).
+                tryVerify(function() {
+                    return imageContainsColor(grabImage(glyph),
+                                              Theme.color.textPrimary);
+                }, 2000, "glyph " + names[i] + " should render visible pixels");
                 glyph.destroy();
             }
         }
