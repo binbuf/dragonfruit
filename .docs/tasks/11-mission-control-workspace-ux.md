@@ -126,9 +126,12 @@ they are delivered as slices of one ticket, not split into a second pipeline:
 - [x] Trigger-parity test passes (FR-1). *(First slice: `overview` unit
       tests drive gesture/keyboard/hot-corner/shell through one machine;
       `shell_protocol_conformance::overview_state_machine_has_trigger_parity`
-      proves a gesture and a hot corner toggle the same overview state.)*
+      proves a gesture and a hot corner toggle the same overview state; U-7
+      adds `shell_request_drives_the_overview_pipeline` for the
+      private-protocol requests.)*
 - [ ] Frame-time trace during full gesture stays within budget on
-      baseline Intel/AMD.
+      baseline Intel/AMD. *(U-2 landed the instrumentation and the headless
+      CI-budget assertion; the hardware run is B-5.)*
 - [ ] Video-in-overview test (FR-2) passes.
 - [ ] Phase-2 exit: the 30-second loop including Mission Control at zero
       dropped frames.
@@ -147,7 +150,8 @@ they are delivered as slices of one ticket, not split into a second pipeline:
   threshold and keep it measurable.
 - Overview window occlusion/layout algorithm (which window peeks at what
   position) needs a spec: grid vs. macOS-style cascade; pick, document,
-  iterate.
+  iterate. *Decided (U-5):* grid, documented in
+  [03-workspaces.md](../design/03-workspaces.md#window-layout-and-occlusion-t-11-u-5).
 
 ## Remaining work — unblocked
 
@@ -155,45 +159,55 @@ Items that need no unfinished dependency (T-33 materials, image wallpaper,
 or baseline Intel/AMD hardware) and can land on the existing model/protocol.
 Each is scoped to be independently testable in CI.
 
-- **U-1 · FR-9 reduced-motion wiring.** `OverviewMachine::set_reduced_motion`
-  has no writer today. Add an additive private-protocol request (e.g.
-  `df_toplevel_manager.set_reduced_motion`) and a shell sender driven by
-  `Theme.reducedMotion` / `dock.settings.json` (`DockSettings::reduceMotion`);
-  T-15/T-16 later become the canonical source. Verify every transition kind
-  (workspace slide, Mission Control open/close, Desktop Reveal) takes the
-  single-step path and still applies the same commit rule. Seam: T-07
-  protocol + T-11.
-- **U-2 · FR-8 frame-time measurement infrastructure.** There is no per-frame
-  timing anywhere (`render.rs`/backends only schedule DRM vblank). Extend
-  `RenderStats` with per-frame durations and emit a trace from `dump_stats`
-  (SIGUSR1); add a headless conformance test that drives a full overview
-  gesture and asserts the trace exists and the animation-clock frame
+- **U-1 · FR-9 reduced-motion wiring.** ✅ landed. `df_toplevel_manager`
+  grew the additive v3 `set_reduced_motion` request; the shell mirrors
+  `accessibility.reduceMotion` (`ShellController::applyDockSettings` →
+  `ShellProtocol::setReducedMotion`) and the compositor forwards it to
+  `OverviewMachine::set_reduced_motion` (`DfState::set_reduced_motion`).
+  `overview::tests::reduced_motion_single_steps_every_transition_kind` and
+  `shell_protocol_conformance::reduced_motion_request_single_steps_the_overview`
+  prove every transition kind (workspace slide, Mission Control, Desktop
+  Reveal) takes the single-step path and still applies the same commit rule.
+  T-15/T-16 later become the canonical settings source.
+- **U-2 · FR-8 frame-time measurement infrastructure.** ✅ landed.
+  `RenderStats` now records per-frame compositor-work durations and the
+  interval since the previous rendered frame (bounded 8192-sample ring);
+  `session.rs` times each rendered frame and `dump_stats` (SIGUSR1 + clean
+  exit) prints a summary plus, with `DRAGONFRUIT_FRAME_TRACE`, the full
+  `frame-trace` lines. `overview_gesture_frame_trace_stays_within_budget`
+  drives a full gesture and asserts the trace exists and the animation-clock
   intervals stay within a CI budget. The hardware budget run is B-5.
 - **U-3 · FR-2 live-surface conformance test.** Add a headless test proving no
   thumbnails are ever substituted: a client surface stays mapped and keeps
   receiving frame callbacks (a playing video keeps playing) through a full
   overview/workspace transition. The "at reduced scale" clause is B-1.
-- **U-4 · Overview chrome per-output coverage/sizing.**
-  `createOverviewSurface` creates the overlay with a null output; verify and
-  land per-output coverage so the workspace strip, minimized strip, and window
-  grid appear on every display. Shares the T-11/T-16 per-output sizing seam;
-  the underlying state is already lockstep (tested).
-- **U-5 · Overview layout algorithm spec.** Pick and document grid vs.
-  macOS-style cascade for window placement/occlusion (see Risks); the shell
-  grid is the interim representation. Implementation is B-9.
-- **U-6 · Reduced-motion shell-chrome variants.** The QML strips/grid fade and
-  slide with `progress`; add an explicit reduced-motion path (instant
-  appearance, no slide) matching the design-system rule. Compositor half is
-  U-1.
-- **U-7 · Shell-request trigger-parity conformance.** The machine's
-  `TriggerKind::Shell` path and the menu-bar button are unit/QML tested, but
-  no end-to-end conformance test drives the private-protocol
-  `enter_mission_control`/`exit_mission_control` requests and asserts they
-  commit through the same pipeline as gesture/keyboard/hot corner (FR-1).
-- **U-8 · Hit-test-transfer conformance test.** `InputOwner`/`surface_under`
-  transfer is unit-tested only; add a headless test that pointer input does
-  not reach window surfaces while the overview owns input and returns to the
-  normal focus path once ownership returns (FR-6).
+- **U-4 · Overview chrome per-output coverage/sizing.** 🔄 partial. A
+  full-output `overlay` (anchored on all four edges — Mission Control) now
+  spans **every** output even when chrome focus was captured on one
+  (`LayerSurfaceState::is_full_output`/`visible_on_output`, unit-tested),
+  while per-output popovers keep their T-10 behavior. True per-output *sizing*
+  is still open: the shell renders one offscreen scene sized from the primary
+  configure, so one surface/scene per output remains the T-11/T-16 seam.
+- **U-5 · Overview layout algorithm spec.** ✅ landed. The grid algorithm
+  (membership, ordering, grid shape, uniform scale, no occlusion, overflow)
+  is documented in
+  [03-workspaces.md](../design/03-workspaces.md#window-layout-and-occlusion-t-11-u-5).
+  Implementation is B-9.
+- **U-6 · Reduced-motion shell-chrome variants.** ✅ landed. `Overview.qml`
+  derives `revealProgress` from `Theme.reducedMotion` (instant appearance, no
+  slide/fade of the strips, grid, or scrim); `tst_overview` covers it. The
+  compositor half is U-1.
+- **U-7 · Shell-request trigger-parity conformance.** ✅ landed.
+  `enter_mission_control`/`exit_mission_control` now route through
+  `DfState::drive_overview_request` into the one machine and pipeline (the
+  new directional `OverviewMachine::drive_overview` commits the requested
+  state instead of toggling). `shell_request_drives_the_overview_pipeline`
+  asserts the shared `shell` input action and progress events for both
+  directions.
+- **U-8 · Hit-test-transfer conformance test.** ✅ landed.
+  `overview_owns_pointer_hit_testing_until_it_closes` proves pointer motion
+  does not reach window surfaces while the overview owns input and returns to
+  the normal focus path once ownership returns (FR-6).
 
 ## Remaining work — blocked
 
@@ -232,22 +246,25 @@ Each is scoped to be independently testable in CI.
 
 | Req | Status | Remaining |
 |---|---|---|
-| FR-1 one machine / trigger parity | ✅ landed (unit + gesture/hot-corner conformance) | U-7 shell-request end-to-end |
+| FR-1 one machine / trigger parity | ✅ landed (unit + gesture/hot-corner/shell conformance) | — |
 | FR-2 live textures, never thumbnails | 🔄 live translation only | U-3 test · B-1 scale |
 | FR-3 commit thresholds tunable | ✅ landed | — |
 | FR-4 interruptibility | ✅ landed | — |
 | FR-5 selection round-trip | ✅ landed (strips + window grid) | B-3 live-surface click |
 | FR-6 minimized bottom strip | ✅ landed | — |
 | FR-7 drag window between Spaces | ✅ landed (shell window grid) | B-4 live-surface grid drag |
-| FR-8 60 Hz, no dropped frames | ❌ not measured | U-2 infra · B-5 hardware · B-6 tiers |
-| FR-9 reduced-motion variant | 🔄 machine supports, no writer | U-1 wiring · U-6 QML |
+| FR-8 60 Hz, no dropped frames | 🔄 infra + CI-budget trace landed | B-5 hardware · B-6 tiers |
+| FR-9 reduced-motion variant | ✅ landed (protocol v3 + shell + QML) | T-15/T-16 canonical source |
 | FR-10 fullscreen Space in strip | ✅ landed | — |
 
 Scope/acceptance deltas: scope item 1 (transition diagram) is partial → B-1/B-7;
 item 4 (workspace switch with wallpaper) → B-2; item 5 (overview chrome) is
-done except the live-surface grid → B-4; item 6 (hit-test transfer) is done
-with only U-8's conformance test missing; item 7 (reduced motion) → U-1/U-6;
-item 8 (performance) → U-2/B-5/B-6. Acceptance "visual-frame reviewed in nested
-mode" → B-7; "frame-time trace" → U-2/B-5; "video-in-overview test" → U-3/B-1;
-"Phase-2 exit" → B-8. Risks: blur/scale budget threshold → B-6; layout
-algorithm spec → U-5 (spec) / B-9 (implementation).
+done except the live-surface grid → B-4, and full-output overlay coverage is
+landed (U-4) with per-output sizing still on the T-16 seam; item 6 (hit-test
+transfer) is done, with U-8's conformance test landed; item 7 (reduced motion)
+is done (U-1/U-6); item 8 (performance) has the instrumentation landed (U-2)
+and the hardware budget still open → B-5/B-6. Acceptance "visual-frame reviewed
+in nested mode" → B-7; "frame-time trace" → U-2 (landed) / B-5 (hardware);
+"video-in-overview test" → U-3/B-1; "Phase-2 exit" → B-8. Risks: blur/scale
+budget threshold → B-6; layout algorithm spec → U-5 (landed) / B-9
+(implementation).

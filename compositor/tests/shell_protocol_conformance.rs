@@ -748,6 +748,7 @@ struct CompositorProcess {
     socket_path: PathBuf,
     token_path: PathBuf,
     stderr_path: PathBuf,
+    stdout_path: PathBuf,
     synthetic_path: Option<PathBuf>,
     synthetic_output_path: Option<PathBuf>,
 }
@@ -774,6 +775,7 @@ impl Drop for CompositorProcess {
         let _ = std::fs::remove_file(self.socket_path.with_extension("lock"));
         let _ = std::fs::remove_file(&self.token_path);
         let _ = std::fs::remove_file(&self.stderr_path);
+        let _ = std::fs::remove_file(&self.stdout_path);
         if let Some(path) = &self.synthetic_path {
             let _ = std::fs::remove_file(path);
         }
@@ -807,12 +809,40 @@ impl CompositorProcess {
         synthetic_path: Option<&Path>,
         synthetic_output_path: Option<&Path>,
     ) -> Self {
+        Self::start_impl(
+            socket_name,
+            tokens,
+            synthetic_path,
+            synthetic_output_path,
+            false,
+        )
+    }
+
+    /// Start with the synthetic-input harness and the U-2 per-frame timing
+    /// trace enabled (`DRAGONFRUIT_FRAME_TRACE`).
+    fn start_with_synthetic_trace(
+        socket_name: &str,
+        tokens: &[String],
+        synthetic_path: Option<&Path>,
+    ) -> Self {
+        Self::start_impl(socket_name, tokens, synthetic_path, None, true)
+    }
+
+    fn start_impl(
+        socket_name: &str,
+        tokens: &[String],
+        synthetic_path: Option<&Path>,
+        synthetic_output_path: Option<&Path>,
+        frame_trace: bool,
+    ) -> Self {
         let socket_name = format!("{socket_name}-{}", std::process::id());
         let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
         let socket_path = PathBuf::from(&runtime_dir).join(&socket_name);
         let token_path = PathBuf::from(&runtime_dir).join(format!("{socket_name}.launch-token"));
         let stderr_path = std::env::temp_dir().join(format!("{socket_name}.stderr"));
         let stderr_file = std::fs::File::create(&stderr_path).expect("create stderr log");
+        let stdout_path = std::env::temp_dir().join(format!("{socket_name}.stdout"));
+        let stdout_file = std::fs::File::create(&stdout_path).expect("create stdout log");
 
         let mut command = Command::new(env!("CARGO_BIN_EXE_dragonfruit-compositor"));
         command
@@ -821,8 +851,11 @@ impl CompositorProcess {
             .arg("--socket-name")
             .arg(&socket_name)
             .env("DRAGONFRUIT_LAUNCH_TOKENS", tokens.join(","))
-            .stdout(Stdio::null())
+            .stdout(Stdio::from(stdout_file))
             .stderr(Stdio::from(stderr_file));
+        if frame_trace {
+            command.env("DRAGONFRUIT_FRAME_TRACE", "1");
+        }
         if let Some(path) = synthetic_path {
             command.env("DRAGONFRUIT_SYNTHETIC_INPUT", path);
         }
@@ -856,6 +889,7 @@ impl CompositorProcess {
             socket_path,
             token_path,
             stderr_path,
+            stdout_path,
             synthetic_path: synthetic_path.map(Path::to_path_buf),
             synthetic_output_path: synthetic_output_path.map(Path::to_path_buf),
         }
@@ -866,6 +900,31 @@ impl CompositorProcess {
             .expect("token file readable")
             .trim()
             .to_string()
+    }
+
+    /// The compositor's stdout log so far (frame-timing traces, stats).
+    fn read_stdout(&self) -> String {
+        std::fs::read_to_string(&self.stdout_path).unwrap_or_default()
+    }
+
+    /// Send SIGUSR1 so the compositor dumps its counters/trace, then return
+    /// the stdout accumulated up to `timeout`.
+    fn dump_and_read_stdout(&self, timeout: Duration) -> String {
+        unsafe {
+            kill(self.child.id() as i32, SIGUSR1);
+        }
+        let deadline = Instant::now() + timeout;
+        loop {
+            let text = self.read_stdout();
+            if text.contains("frame timing") {
+                return text;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "no frame-timing dump after SIGUSR1"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
     }
 
     fn shutdown(mut self) {
@@ -898,6 +957,7 @@ impl CompositorProcess {
 }
 
 const SIGTERM: i32 = 15;
+const SIGUSR1: i32 = 10;
 
 unsafe extern "C" {
     fn kill(pid: i32, sig: i32) -> i32;
@@ -2695,6 +2755,369 @@ fn overview_state_machine_has_trigger_parity() {
         &mut state,
         Duration::from_secs(5),
         |state| state.workspace_activated.contains(&1),
+    );
+
+    manager.destroy();
+    let _ = conn.flush();
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}
+
+/// T-11 FR-1 (U-7): the private-protocol `enter_mission_control` /
+/// `exit_mission_control` requests drive the *same* overview machine and
+/// progress pipeline as a gesture, keyboard shortcut, or hot corner — they
+/// are recorded in the shared input outbox and emit shared `progress`
+/// events, not applied through a second, discrete code path.
+#[test]
+fn shell_request_drives_the_overview_pipeline() {
+    let token = "5c".repeat(32);
+    let proc = CompositorProcess::start("dragonfruit-conformance-overview-shell", &[token]);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (name, version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, name, version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+    let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
+    let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.outputs.is_empty() && state.workspaces.len() >= 3 && state.done_count > 0,
+    );
+
+    // --- enter: the request must produce the shared action + progress ------
+    state.overviews.clear();
+    state.input_actions.clear();
+    state.progress_events = 0;
+    manager.enter_mission_control();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.overviews.iter().any(|(active, _)| *active == 1),
+    );
+    assert!(
+        state
+            .input_actions
+            .iter()
+            .any(|(action, source, _)| action == "mission-control" && source == "shell"),
+        "the shell request must be recorded as a `shell` input action: {:?}",
+        state.input_actions
+    );
+    assert!(
+        state.progress_events > 0,
+        "the shell request must emit shared progress events through the pipeline"
+    );
+
+    // --- exit: the same pipeline, targeting the closed state --------------
+    state.overviews.clear();
+    state.input_actions.clear();
+    state.progress_events = 0;
+    manager.exit_mission_control();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.overviews.iter().any(|(active, _)| *active == 0),
+    );
+    assert!(
+        state
+            .input_actions
+            .iter()
+            .any(|(action, source, _)| action == "mission-control" && source == "shell"),
+        "the exit request shares the same outbox path"
+    );
+    assert!(
+        state.progress_events > 0,
+        "the exit request shares the same progress pipeline"
+    );
+
+    manager.destroy();
+    let _ = conn.flush();
+    proc.shutdown();
+}
+
+/// T-11 FR-9 (U-1): the shell mirrors `accessibility.reduceMotion` into the
+/// compositor over the additive v3 `set_reduced_motion` request; a subsequent
+/// Mission Control request takes the single-step path (Begin/Update/End, no
+/// animation clock) while still committing through the same rule.
+#[test]
+fn reduced_motion_request_single_steps_the_overview() {
+    let token = "5f".repeat(32);
+    let proc = CompositorProcess::start("dragonfruit-conformance-reduced-motion", &[token]);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (name, version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, name, version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+    let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
+    assert_eq!(
+        manager_version, 3,
+        "the manager must advertise the v3 request"
+    );
+    let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.outputs.is_empty() && state.workspaces.len() >= 3 && state.done_count > 0,
+    );
+
+    // Enable reduced motion, then open Mission Control.
+    manager.set_reduced_motion(1);
+    state.overviews.clear();
+    state.progress_events = 0;
+    manager.enter_mission_control();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.overviews.iter().any(|(active, _)| *active == 1),
+    );
+    // A single step emits exactly Begin + Update + committed End; the
+    // animated path emits one Update per animation-clock tick.
+    assert!(
+        state.progress_events <= 3,
+        "reduced motion must take the single-step path, saw {} progress events",
+        state.progress_events
+    );
+
+    // Turning it back off restores the animated path; the request still
+    // commits through the same pipeline.
+    manager.set_reduced_motion(0);
+    state.overviews.clear();
+    manager.exit_mission_control();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.overviews.iter().any(|(active, _)| *active == 0),
+    );
+
+    manager.destroy();
+    let _ = conn.flush();
+    proc.shutdown();
+}
+
+/// T-11 FR-6 (U-8): while Mission Control owns pointer input, window
+/// surfaces are not hit-tested; ownership returns explicitly when the
+/// overview closes, and the normal focus path resumes.
+#[test]
+fn overview_owns_pointer_hit_testing_until_it_closes() {
+    let token = "5d".repeat(32);
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir)
+        .join(format!("dragonfruit-synth-hittest-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-overview-hittest",
+        std::slice::from_ref(&token),
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (name, version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, name, version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+    let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
+    let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.outputs.is_empty() && state.workspaces.len() >= 3 && state.done_count > 0,
+    );
+
+    // A real window, centered on the 1280x720 output.
+    let (_surface, _xdg_surface, _toplevel, _file) =
+        map_toplevel(&mut state, &mut queue, "HitTest", "org.dragonfruit.HitTest");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.toplevels.is_empty(),
+    );
+
+    // The pointer reaches the window's surface normally.
+    state.pointer_enters = 0;
+    state.pointer_leaves = 0;
+    input.send("motion-abs 0.5 0.5");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.pointer_enters > 0,
+    );
+
+    // Open Mission Control: the overview now owns hit-testing.
+    manager.enter_mission_control();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.overviews.iter().any(|(active, _)| *active == 1),
+    );
+
+    let enters_before = state.pointer_enters;
+    let leaves_before = state.pointer_leaves;
+    input.send("motion-abs 0.5 0.5");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.pointer_leaves > leaves_before,
+    );
+    assert_eq!(
+        state.pointer_enters, enters_before,
+        "no window surface may be hit-tested while the overview owns input"
+    );
+
+    // Close the overview: ownership returns explicitly and the window is
+    // hit-tested again.
+    manager.exit_mission_control();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.overviews.iter().any(|(active, _)| *active == 0),
+    );
+    let enters_before = state.pointer_enters;
+    input.send("motion-abs 0.5 0.5");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.pointer_enters > enters_before,
+    );
+
+    manager.destroy();
+    let _ = conn.flush();
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}
+
+/// T-11 FR-8 (U-2): a full overview gesture produces a per-frame timing
+/// trace whose animation-clock frame intervals stay within a CI budget.
+#[test]
+fn overview_gesture_frame_trace_stays_within_budget() {
+    let token = "5e".repeat(32);
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir).join(format!(
+        "dragonfruit-synth-frametime-{}",
+        std::process::id()
+    ));
+    let proc = CompositorProcess::start_with_synthetic_trace(
+        "dragonfruit-conformance-overview-frametime",
+        std::slice::from_ref(&token),
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (name, version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, name, version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+    let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
+    let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.outputs.is_empty() && state.workspaces.len() >= 3 && state.done_count > 0,
+    );
+
+    // A full overview gesture (open, then close) exercises the animation.
+    input.send("swipe-begin 4");
+    input.send("swipe-update 0 -100");
+    input.send("swipe-update 0 -100");
+    input.send("swipe-end");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.overviews.iter().any(|(active, _)| *active == 1),
+    );
+    // Close it through the shell request so the reverse transition renders
+    // too (a four-finger *down* swipe is Desktop Reveal, not a close).
+    manager.exit_mission_control();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.overviews.iter().any(|(active, _)| *active == 0),
+    );
+
+    let stdout = proc.dump_and_read_stdout(Duration::from_secs(5));
+    let mut samples = 0usize;
+    let mut max_interval_ms = 0u32;
+    for line in stdout.lines() {
+        let Some(rest) = line.split("frame-trace").nth(1) else {
+            continue;
+        };
+        samples += 1;
+        for field in rest.split_whitespace() {
+            if let Some(value) = field.strip_prefix("interval_ms=") {
+                max_interval_ms = max_interval_ms.max(value.parse().unwrap_or(0));
+            }
+        }
+    }
+    assert!(samples > 0, "the gesture must produce a frame-time trace");
+    // Generous CI budget: the animation clock is 16 ms and the headless loop
+    // renders on demand, so a rendered-frame gap over 100 ms means a stall.
+    assert!(
+        max_interval_ms <= 100,
+        "frame interval {max_interval_ms} ms exceeds the CI budget"
     );
 
     manager.destroy();

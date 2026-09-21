@@ -161,6 +161,10 @@ public:
     // Leave the Mission Control overview (Escape / click-away in the chrome).
     void exitMissionControl();
 
+    // Mirror the reduced-motion policy into the compositor (T-11 U-1 / FR-9),
+    // so every compositor-driven transition takes the single-step path.
+    void setReducedMotion(bool enabled);
+
     // App-level activation for a Dock click (T-10): the compositor picks the
     // app's most recent window, switches to its Space, and restores it.
     void activateApp(const QString &appId);

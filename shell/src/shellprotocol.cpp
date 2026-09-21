@@ -173,7 +173,7 @@ void ShellProtocol::bindTrustedGlobals()
     if (m_managerName) {
         m_manager = static_cast<df_toplevel_manager *>(
             wl_registry_bind(m_registry, m_managerName, &df_toplevel_manager_interface,
-                             std::min(m_managerVersion, 2u)));
+                             std::min(m_managerVersion, 3u)));
         static const df_toplevel_manager_listener managerListener = {
             onManagerOutput,
             onManagerWorkspace,
@@ -768,6 +768,16 @@ void ShellProtocol::exitMissionControl()
 {
     if (m_manager)
         df_toplevel_manager_exit_mission_control(m_manager);
+    if (m_display)
+        wl_display_flush(m_display);
+}
+
+void ShellProtocol::setReducedMotion(bool enabled)
+{
+    // T-11 U-1 / FR-9: mirror the design-system reduced-motion policy so the
+    // compositor's transitions take the single-step path. Additive in v3.
+    if (m_manager)
+        df_toplevel_manager_set_reduced_motion(m_manager, enabled ? 1u : 0u);
     if (m_display)
         wl_display_flush(m_display);
 }

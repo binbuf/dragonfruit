@@ -24,7 +24,7 @@
 -->
 <protocol name="dragonfruit_toplevel">
 
-  <interface name="df_toplevel_manager" version="2">
+  <interface name="df_toplevel_manager" version="3">
     <description summary="window/workspace/output control for trusted clients">
       The manager is per-client. On bind the compositor replays the current
       scene: it announces every output, workspace, and toplevel, then emits
@@ -157,6 +157,18 @@
     <event name="done">
       <description summary="the preceding batch of events is complete"/>
     </event>
+
+    <!-- Declared last so its `since` stays non-decreasing for the scanner
+         *and* every pre-existing message keeps its opcode (append-only). -->
+    <request name="set_reduced_motion" since="3">
+      <description summary="set the compositor's reduced-motion policy">
+        The shell mirrors `accessibility.reduceMotion` here so every
+        compositor-driven transition (workspace slide, Mission Control open/
+        close, Desktop Reveal) takes the single-step path while still
+        applying the same commit rule (T-11 FR-9). Additive in v3.
+      </description>
+      <arg name="enabled" type="uint"/>
+    </request>
 
     <enum name="hot_corner">
       <entry name="top_left" value="0"/>

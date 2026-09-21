@@ -84,7 +84,8 @@ use smithay::wayland::xdg_activation::{
     XdgActivationToken, XdgActivationTokenData, XdgActivationHandler, XdgActivationState,
 };
 use smithay::xwayland::XWaylandClientData;
-use std::time::Duration;
+use std::collections::VecDeque;
+use std::time::{Duration, Instant};
 
 use crate::identity::AppResolver;
 use crate::input::constraint::{constraint_geometry, PointerConstraintGrab};
@@ -133,8 +134,18 @@ impl ClientData for DfClientState {
     fn disconnected(&self, _client_id: ClientId, _reason: DisconnectReason) {}
 }
 
-/// Render-path counters (FR-5: verified via render-path counters).
-#[derive(Debug, Default, Clone, Copy)]
+/// One rendered frame's timing sample (T-11 U-2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FrameSample {
+    /// Wall time spent doing the compositor work for this frame.
+    pub duration_us: u32,
+    /// Time since the previous rendered frame (`0` for the first).
+    pub interval_ms: u32,
+}
+
+/// Render-path counters (FR-5: verified via render-path counters) plus the
+/// per-frame timing trace T-11 U-2 needs for the FR-8 frame budget.
+#[derive(Debug, Default)]
 pub struct RenderStats {
     /// Frames actually rendered (or scanout-composited).
     pub frames_rendered: u64,
@@ -143,6 +154,75 @@ pub struct RenderStats {
     /// Frames pushed through the direct-scanout path instead of GL
     /// compositing (DRM backend only).
     pub direct_scanouts: u64,
+    /// Bounded ring of recent frame samples, newest last.
+    samples: VecDeque<FrameSample>,
+    frame_time_us_total: u64,
+    frame_time_us_max: u64,
+    max_interval_ms: u64,
+    last_frame_at: Option<Instant>,
+    /// Emit the full per-frame trace from [`DfState::dump_stats`]
+    /// (`DRAGONFRUIT_FRAME_TRACE`).
+    verbose: bool,
+}
+
+impl RenderStats {
+    /// Frame samples kept for the trace/summary.
+    pub const FRAME_TRACE_CAPACITY: usize = 8192;
+
+    /// Fresh counters; the verbose flag is read once from the environment so
+    /// `dump_stats` (including the SIGUSR1 path) can emit the frame trace.
+    pub fn new() -> Self {
+        Self {
+            verbose: std::env::var_os("DRAGONFRUIT_FRAME_TRACE").is_some(),
+            ..Self::default()
+        }
+    }
+
+    /// Record one rendered frame: how long the compositor work took and how
+    /// long since the previous rendered frame (the animation-clock interval).
+    pub fn record_frame(&mut self, duration: Duration) {
+        let now = Instant::now();
+        let interval_ms = self
+            .last_frame_at
+            .map(|last| {
+                now.duration_since(last)
+                    .as_millis()
+                    .min(u128::from(u32::MAX)) as u32
+            })
+            .unwrap_or(0);
+        self.last_frame_at = Some(now);
+        let duration_us = duration.as_micros().min(u128::from(u32::MAX)) as u32;
+        self.frame_time_us_total += u64::from(duration_us);
+        self.frame_time_us_max = self.frame_time_us_max.max(u64::from(duration_us));
+        self.max_interval_ms = self.max_interval_ms.max(u64::from(interval_ms));
+        if self.samples.len() == Self::FRAME_TRACE_CAPACITY {
+            self.samples.pop_front();
+        }
+        self.samples.push_back(FrameSample {
+            duration_us,
+            interval_ms,
+        });
+    }
+
+    /// Recorded frame samples, oldest first.
+    pub fn frame_samples(&self) -> impl Iterator<Item = &FrameSample> {
+        self.samples.iter()
+    }
+
+    /// A one-line frame-timing summary for `dump_stats`.
+    pub fn frame_summary(&self) -> String {
+        let count = self.samples.len() as u64;
+        let avg_us = self.frame_time_us_total.checked_div(count).unwrap_or(0);
+        format!(
+            "samples={count} avg_us={avg_us} max_us={} max_interval_ms={}",
+            self.frame_time_us_max, self.max_interval_ms
+        )
+    }
+
+    /// Whether [`DfState::dump_stats`] should print the full frame trace.
+    pub fn frame_trace_verbose(&self) -> bool {
+        self.verbose
+    }
 }
 
 /// Central compositor state: protocols, outputs, scene, seat.
@@ -381,7 +461,7 @@ impl DfState {
             hot_corner_timer: None,
             overview_timer: None,
             shell,
-            stats: RenderStats::default(),
+            stats: RenderStats::new(),
         }
     }
 
@@ -1098,6 +1178,21 @@ impl DfState {
             self.stats.frames_skipped_no_damage,
             self.stats.direct_scanouts
         );
+        // Frame-time trace (T-11 U-2 / FR-8): the summary is always emitted;
+        // the full per-frame trace is opt-in so the exit log stays readable.
+        println!(
+            "dragonfruit-compositor: frame timing ({label}): {}",
+            self.stats.frame_summary()
+        );
+        if self.stats.frame_trace_verbose() {
+            for (index, sample) in self.stats.frame_samples().enumerate() {
+                println!(
+                    "dragonfruit-compositor: frame-trace ({label}): index={index} \
+                     duration_us={} interval_ms={}",
+                    sample.duration_us, sample.interval_ms
+                );
+            }
+        }
         // Identity resolution rate (T-06 acceptance): the misses are the
         // input T-23's app-index heuristics consume.
         let misses: Vec<&str> = self.app_resolver.misses().collect();
@@ -1176,15 +1271,49 @@ impl DfState {
     /// Enter or leave the Mission Control overview directly (private
     /// protocol enter/exit, selection round-trip). Keeps the machine the
     /// single source of truth and broadcasts the change.
+    #[allow(dead_code)] // Selection round-trip / T-12 reuse.
     pub fn set_overview(&mut self, active: bool) {
         self.overview.set_overview(active);
         self.broadcast_overview();
         self.needs_redraw = true;
     }
 
+    /// Drive an explicit Mission Control enter/leave from the shell (U-7).
+    ///
+    /// The request is recorded in the input outbox and driven through the
+    /// *same* overview machine and progress pipeline as a gesture, keyboard
+    /// shortcut, or hot corner, so the private-protocol trigger has exactly
+    /// the same progress curve and commit rule (T-11 FR-1). The transition is
+    /// animated on the compositor clock, not applied synchronously.
+    pub fn drive_overview_request(&mut self, active: bool, serial: u32) {
+        self.input_dispatch
+            .action(InputAction::MissionControl, TriggerKind::Shell, serial);
+        let now = self.now_msec();
+        let outcome = self
+            .overview
+            .drive_overview(active, TriggerKind::Shell, now);
+        for event in outcome.events {
+            self.input_dispatch.progress(event);
+        }
+        if let Some(commit) = outcome.commit {
+            self.apply_overview_commit(commit);
+        } else if self.overview.is_discrete() {
+            crate::input::schedule_overview_timer(self);
+        }
+        self.needs_redraw = true;
+    }
+
     /// Whether the overview controller currently owns pointer hit-testing.
     pub fn overview_input_owner(&self) -> InputOwner {
         self.overview.input_owner()
+    }
+
+    /// Set the reduced-motion policy for every compositor-driven transition
+    /// (T-11 U-1 / FR-9). The shell mirrors `accessibility.reduceMotion` here
+    /// over the private protocol; each transition still runs the one machine
+    /// and the same commit rule, just as a single step.
+    pub fn set_reduced_motion(&mut self, reduced: bool) {
+        self.overview.set_reduced_motion(reduced);
     }
 
     /// Offset the live window surfaces for an in-flight overview/workspace

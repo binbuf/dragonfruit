@@ -145,6 +145,24 @@ Item {
             compare(strip.opacity, 1);
         }
 
+        // U-6: reduced motion appears instantly at the final position, with
+        // no dependence on the progress slide/fade.
+        function test_reduced_motion_reveals_chrome_without_sliding() {
+            var previous = Theme.reducedMotion;
+            Theme.reducedMotion = true;
+            var overview = make({ workspaces: spaces(), minimizedWindows: minimized(),
+                                  windows: windows(), progress: 0, active: true });
+            compare(overview.revealProgress, 1,
+                    "reduced motion ignores the (instant) progress sample");
+            compare(findChild(overview, "workspaceStrip").opacity, 1);
+            compare(findChild(overview, "scrim").opacity,
+                    Theme.controls.overview.scrimOpacity);
+            overview.active = false;
+            waitForRendering(stage);
+            compare(overview.revealProgress, 0, "hidden instantly too");
+            Theme.reducedMotion = previous;
+        }
+
         function test_window_grid_renders_one_card_per_visible_window() {
             var overview = make({ windows: windows(), progress: 1, active: true });
             var list = windowCards(overview);

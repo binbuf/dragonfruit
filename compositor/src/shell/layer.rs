@@ -147,7 +147,23 @@ impl LayerSurfaceState {
         if self.layer != LAYER_OVERLAY || self.output.is_some() {
             return true;
         }
+        // A full-output overlay (anchored on all four edges) is a session-wide
+        // layer such as Mission Control, not a per-output popover: it spans
+        // every display (T-11 U-4). Per-output popovers anchor to fewer edges.
+        if self.is_full_output() {
+            return true;
+        }
         chrome_focus_output.map_or(true, |name| name == output_name)
+    }
+
+    /// Whether the surface covers the whole output on both axes (anchored to
+    /// all four edges). Used to distinguish session-wide overlays (Mission
+    /// Control) from per-output popovers.
+    pub fn is_full_output(&self) -> bool {
+        self.anchored(ANCHOR_TOP)
+            && self.anchored(ANCHOR_BOTTOM)
+            && self.anchored(ANCHOR_LEFT)
+            && self.anchored(ANCHOR_RIGHT)
     }
 
     /// Resolve the surface rectangle for `output` geometry.
@@ -466,6 +482,32 @@ mod tests {
         // An output that detached while focused matches no remaining output,
         // so the popover disappears instead of moving to another display.
         assert!(!popup.visible_on_output("HEADLESS-1", Some("HDMI-A-1")));
+    }
+
+    #[test]
+    fn full_output_overlays_span_every_output() {
+        // Mission Control is an `overlay` anchored to all four edges: it must
+        // cover every display even when chrome focus was captured on one
+        // (T-11 U-4), unlike a per-output popover.
+        let overview = LayerSurfaceState {
+            layer: LAYER_OVERLAY,
+            anchor: ANCHOR_TOP | ANCHOR_BOTTOM | ANCHOR_LEFT | ANCHOR_RIGHT,
+            exclusive_zone: -1,
+            ..Default::default()
+        };
+        assert!(overview.is_full_output());
+        assert!(overview.visible_on_output("HEADLESS-1", Some("HDMI-A-1")));
+        assert!(overview.visible_on_output("HDMI-A-1", Some("HDMI-A-1")));
+
+        // A three-edge overlay (a popover spanning the width but not height)
+        // stays per-output.
+        let popover = LayerSurfaceState {
+            layer: LAYER_OVERLAY,
+            anchor: ANCHOR_TOP | ANCHOR_LEFT | ANCHOR_RIGHT,
+            ..Default::default()
+        };
+        assert!(!popover.is_full_output());
+        assert!(!popover.visible_on_output("HDMI-A-1", Some("HEADLESS-1")));
     }
 
     #[test]

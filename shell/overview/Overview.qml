@@ -34,6 +34,14 @@ Item {
     property real progress: 0
     property bool active: false
 
+    // Reduced motion (T-11 FR-9 / U-6): instant appearance, no slide or
+    // fade. The compositor half (U-1) already single-steps the transition;
+    // this keeps the shell chrome from interpolating its margins/opacity
+    // with the (instant) progress sample.
+    readonly property real revealProgress: Theme.reducedMotion
+        ? (root.active ? 1.0 : 0.0)
+        : root.progress
+
     // Drag state for moving a window between Spaces (FR-7). `dragWorkspaceIndex`
     // is the Space card under the pointer, or -1 outside any card.
     property string draggingWindowId: ""
@@ -114,7 +122,7 @@ Item {
         objectName: "scrim"
         anchors.fill: parent
         color: Theme.color.shadowColor
-        opacity: Theme.controls.overview.scrimOpacity * root.progress
+        opacity: Theme.controls.overview.scrimOpacity * root.revealProgress
     }
 
     // --- workspace strip --------------------------------------------------
@@ -124,11 +132,11 @@ Item {
         anchors.top: parent.top
         anchors.topMargin: Theme.controls.menuBar.height
                           + Theme.controls.overview.stripMargin
-                          - Theme.controls.overview.stripMargin * (1.0 - root.progress)
+                          - Theme.controls.overview.stripMargin * (1.0 - root.revealProgress)
         anchors.horizontalCenter: parent.horizontalCenter
         spacing: Theme.controls.overview.stripGap
         // Fade in with the shared progress curve.
-        opacity: Math.min(1.0, root.progress * 1.5)
+        opacity: Math.min(1.0, root.revealProgress * 1.5)
 
         Repeater {
             model: root.workspaces
@@ -207,7 +215,7 @@ Item {
                         Theme.controls.overview.cardWidth * 4
                         + Theme.controls.overview.stripGap * 3)
         spacing: Theme.controls.overview.stripGap
-        opacity: Math.min(1.0, root.progress * 1.5)
+        opacity: Math.min(1.0, root.revealProgress * 1.5)
 
         Repeater {
             model: root.windows
@@ -301,10 +309,10 @@ Item {
         objectName: "minimizedStrip"
         anchors.bottom: parent.bottom
         anchors.bottomMargin: Theme.controls.overview.stripMargin
-                              + Theme.controls.overview.stripMargin * (1.0 - root.progress)
+                              + Theme.controls.overview.stripMargin * (1.0 - root.revealProgress)
         anchors.horizontalCenter: parent.horizontalCenter
         spacing: Theme.controls.overview.chipGap
-        opacity: Math.min(1.0, root.progress * 1.5)
+        opacity: Math.min(1.0, root.revealProgress * 1.5)
 
         Repeater {
             model: root.minimizedWindows

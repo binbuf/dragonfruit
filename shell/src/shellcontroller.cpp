@@ -1073,13 +1073,17 @@ void ShellController::applyDockSettings(bool reconfigure)
                                     ? QStringLiteral("right")
                                     : QStringLiteral("bottom"));
     // Reduced motion is a global animation policy: bind it onto the
-    // design-system singleton so the whole shell reacts (T-10 section 20).
+    // design-system singleton so the whole shell reacts (T-10 section 20),
+    // and mirror it into the compositor so every compositor-driven
+    // transition takes the single-step path (T-11 U-1 / FR-9).
     if (m_engine) {
         if (QObject *theme = m_engine->singletonInstance<QObject *>(
                 QStringLiteral("Dragonfruit"), QStringLiteral("Theme"))) {
             theme->setProperty("reducedMotion", m_settings.reduceMotion());
         }
     }
+    if (m_protocol)
+        m_protocol->setReducedMotion(m_settings.reduceMotion());
     if (!reconfigure || !m_protocol)
         return;
     // Adopt the new edge before the layout clamp so `computeDockOverflow`

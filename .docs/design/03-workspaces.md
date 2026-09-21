@@ -91,6 +91,44 @@ reversible at any progress value.
   drives the **same** progress pipeline. There is exactly one overview
   state machine; there is no second, discrete "instant" code path.
 
+### Window layout and occlusion (T-11 U-5)
+
+Mission Control lays the live window surfaces out as a **grid**, not a
+macOS-style cascade. A cascade (overlapping windows fanned from a corner)
+looks natural with a handful of windows but makes hit-testing ambiguous,
+hides most of every surface, and gets worse as windows are added — the
+opposite of the "every window is one gesture away" goal. A grid is
+deterministic, keeps every surface fully visible, and matches the shell's
+workspace-strip metaphor.
+
+The algorithm (implemented against the transformed live surfaces in B-9;
+the shell's title-card grid is the interim representation):
+
+- **Membership.** Visible windows of the active Space, plus the visible
+  windows of neighboring Spaces (revealed by the transition), minus
+  minimized windows (they live in the bottom strip, FR-6) and minus
+  fullscreen windows (they own a dedicated Space card in the strip,
+  FR-10).
+- **Ordering.** Active Space first, then the other Spaces in strip order;
+  within a Space, top of the stacking order first (most recently used
+  first). Ordering is stable across a transition so a window does not
+  swap cells mid-gesture.
+- **Grid shape.** Columns = `ceil(sqrt(n))`, adjusted so the grid's aspect
+  ratio is closest to the visible workspace's aspect ratio; rows fill
+  left-to-right, top-to-bottom.
+- **Scaling.** One uniform scale for every window: the largest window (in
+  logical size) must fit its cell minus the layout margin. All windows
+  share the scale so relative sizes read correctly; each is centered in
+  its cell.
+- **Occlusion.** None by construction — cells do not overlap. Hit-testing
+  uses the transformed on-screen rects, not the original window geometry
+  (B-3).
+- **Overflow.** As `n` grows the uniform scale shrinks; below a readable
+  floor the grid pages (the active page is the one containing the active
+  window). Paging is a follow-up; the floor keeps the first cut simple.
+- **Reduced motion.** The layout is the same; only the transition between
+  the normal scene and the layout takes the single-step path (FR-9).
+
 ## Design rules
 
 - **Live surfaces, always.** Never replace windows with thumbnails during an
