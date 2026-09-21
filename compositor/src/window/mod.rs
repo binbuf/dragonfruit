@@ -116,9 +116,11 @@ struct WindowEntry {
 pub struct WindowModel {
     entries: HashMap<Window, WindowEntry>,
     cascades: HashMap<String, Cascade>,
-    /// Most-recently-focused window ids, newest first. Drives the app
-    /// switcher's recency order (T-12); the compositor owns it because only
-    /// the compositor sees every focus transition (T-07).
+    /// Window ids ordered most-recent first: a newly mapped window enters at
+    /// the front and focus moves a window to the front. Drives the app
+    /// switcher's order (T-12) and the Dock's "activate most recent window"
+    /// (`activate_app`); the compositor owns it because only the compositor
+    /// sees every window and focus transition (T-07).
     recency: Vec<WindowId>,
     next_id: u64,
 }
@@ -144,8 +146,12 @@ impl WindowModel {
                 decorations: DecorationTier::default(),
             },
         );
-        // A new window is the least-recently-used until it is focused.
-        self.recency.push(id);
+        // A new window is the most recent until another window is focused.
+        // The Dock projects an app entry from the window list, not from
+        // focus, so `activate_app` must find a window that has never been
+        // focused; the newest of several is the best default, and a window
+        // that is then focused moves to the front via `touch_recency`.
+        self.recency.insert(0, id);
         id
     }
 

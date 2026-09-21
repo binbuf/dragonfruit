@@ -879,6 +879,27 @@ slices are the drag *source* (T-17/T-18), the Trash-with-Files integration
 dump, and the core-loop/60 Hz measurements. Details and hand-off:
 [PROGRESS.md](PROGRESS.md).
 
+T-10 continuation (click-tree activation slice): the Dock's two private-protocol
+activation paths are now scripted and a real "most recent window" bug is fixed.
+`dock_click_tree_activation_conformance` maps two windows of one app plus one of
+another and drives `df_toplevel_manager.activate_app` (a plain click on a
+running app entry, section 8) and `select_overview_toplevel` (a window-chooser
+row, section 9/FR-5) over the protocol: `activate_app` must select the app's
+most recent window even before any of its windows has held focus, restore a
+minimized one, and `select_overview_toplevel` must switch to the window's Space
+and focus it. The test caught that `WindowModel::recency` treated a newly mapped
+window as the *least* recent until focused, so `activate_app` (and the app
+switcher's `apps_by_recency`) picked the oldest never-focused window of an app —
+the opposite of "most recent". `WindowModel::insert` now enters a window at the
+front of `recency` (a window is most recent when mapped, and `touch_recency`
+moves it to the front on focus), so a Dock click on a background app resolves to
+its newest window. Open for the remaining slices: the drag *source*
+(Files/launcher, T-17/T-18), the Trash-with-Files integration (T-18), the GVfs
+backends, per-output *sizing* (T-11/T-16), the live AT-SPI dump, the core-loop/
+60 Hz measurements, and the xdg-activation focus gap noted in PROGRESS (a
+launched app's first window is not keyboard-focused until clicked). Details and
+hand-off: [PROGRESS.md](PROGRESS.md).
+
 **Foundation milestone E2E (T-01…T-07).** The whole vertical slice now has a
 headless end-to-end test, `compositor/tests/milestone_e2e.rs` (`make e2e`):
 one live session with a shell client, a Wayland app, and an X11 app attached

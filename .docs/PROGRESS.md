@@ -4910,3 +4910,105 @@ clean teardown, with no QML property/binding errors from the new
 **"Multi-output: Dock appears on hotplug and per-output popovers do not float
 across outputs"** acceptance checkbox (both halves now scripted) and the
 section 22 Trash-unavailable row; the other unchecked boxes are unchanged.
+
+## T-10 continuation — click-tree activation conformance (twenty-fifth slice)
+
+**State: partial.** The Dock's two private-protocol activation paths now have
+a scripted conformance test and a real "most recent window" bug is fixed. The
+remaining open items (drag *source*, Trash-with-Files integration, GVfs
+backends, per-output *sizing*, live AT-SPI dump, core-loop/60 Hz measurements)
+are unchanged and still blocked on T-11/T-15/T-16/T-17/T-18/T-23/T-31 or
+hardware.
+
+### What landed
+
+- **`dock_click_tree_activation_conformance`**
+  (`compositor/tests/shell_protocol_conformance.rs`). Maps two windows of one
+  app (`org.dragonfruit.DockApp`) plus one of another, then drives the two
+  paths the shell uses to bring a window forward:
+  - `df_toplevel_manager.activate_app` — a plain click on a running app entry
+    (section 8). Asserts it selects the app's **most recent** window even
+    though **no window of the app has ever held focus**, and that an
+    unrelated `app_id` resolves to its own window.
+  - `activate_app` on a **minimized** window — restores it (Minimized flag
+    clears) and focuses it (section 8: "one window, minimized → unminimize +
+    activate").
+  - `select_overview_toplevel` — a window-chooser row (section 9/FR-5).
+    Asserts it switches to the window's Space (`workspace_activated` = 1) and
+    focuses it.
+- **Bug fixed: `WindowModel::recency` treated a new window as least-recent.**
+  `insert` pushed each new id to the *back* of `recency` ("least-recently-used
+  until focused"), but `most_recent_window_of_app` (the Dock's `activate_app`)
+  and `apps_by_recency` (the app switcher) take the **first** matching id. So
+  for an app whose windows had never been focused — exactly the case a Dock
+  entry is projected from, since the entry comes from the window list, not
+  from focus — the compositor picked the **oldest** window, the opposite of
+  "most recent". `WindowModel::insert` now enters a window at the **front**
+  of `recency`; `touch_recency` still moves it to the front on focus, so a
+  window is most recent when it is mapped or focused. The field doc and the
+  insert comment were updated.
+
+### Gotchas learned (important for the next slice)
+
+- **`minimize_window` does not clear keyboard focus.** It unmaps the window
+  but leaves `active_window` (and the seat focus) pointing at it. A test that
+  minimizes the *focused* window and then calls `activate_app` will not see a
+  new `focused` event: `activate_window_id` re-focuses the same window and
+  `focus_changed` early-returns because `new_active == active_window`. The
+  test therefore focuses the *other* app first, so restoring the minimized
+  window is a genuine focus transition. Any future assertion that "activate
+  emits focused" must account for this.
+- **`focused` is emitted only on a real transition.** `broadcast_window_events`
+  sends `manager.focused(active_window)` when a `Focused`/`Unfocused` window
+  event drained; calling `activate_window_id` on the already-active window is
+  a silent no-op over the wire. Drive activation to a *different* window
+  before asserting a new focus event.
+- **`activate_window_id` already does the whole Dock click semantics** —
+  restore if minimized, switch to the window's Space (`activate_all`), map on
+  the active Space, and set keyboard focus. Both `activate_app` and
+  `select_overview_toplevel` funnel through it; the only difference is the
+  selection (`app_id` → most recent window vs. an explicit handle).
+- **Never-focused windows are now visible to the app switcher too.**
+  `apps_by_recency` iterates `recency`, so the same fix means an app whose
+  windows have not been focused yet is cycleable. This is desirable but was
+  not separately asserted (T-12 owns the switcher UI).
+
+### Follow-up discovered (not fixed here)
+
+- **xdg-activation does not focus the window.** `DfState::request_activation`
+  sets `window.set_activated(true)` and calls `notify_attention` (the Dock
+  bounce) but never sets keyboard focus, despite its comment saying activation
+  "requests focus the surface for now". Combined with `map_pending_windows`
+  not focusing on map, a freshly launched app's first window is not
+  keyboard-focused until the user clicks it. This is a compositor/T-04 (or
+  T-12 launch-registry) question, not a Dock one — the Dock's click now works
+  via the fixed `activate_app`, so it is deferred rather than patched here.
+  Revisit when the launch/attention lifecycle is tightened; focusing in
+  `request_activation` would also need to be reconciled with the attention
+  bounce's "stops on focus" rule (section 8.1).
+
+### Hand-off / open items (remaining T-10 slices)
+
+1. **The drag *source*** (Files/launcher, T-17/T-18): a real `wl_data_source`
+   in the app plus an end-to-end walkthrough that drops onto the running shell
+   (not a raw stand-in).
+2. **Trash-state integration test with Files** (T-18): needs
+   `org.dragonfruit.Files1` activation.
+3. **GVfs Trash/downloads backends** when the GIO dev headers exist.
+4. **Per-output sizing** (T-11/T-16): chrome still sizes its buffer from the
+   first output.
+5. **Live AT-SPI dump** (T-31).
+6. **Core-loop + 60 Hz measurements** (acceptance): need a nested session on
+   baseline hardware.
+7. **xdg-activation focus** (above): a launched window is not focused until
+   clicked; needs a T-04/T-12 decision.
+
+### Gate status
+
+`make e2e` green (23/23 `shell_protocol_conformance` incl. the new
+click-tree case, plus the window/Xwayland/idle/protocol-surface suites);
+`cargo test --workspace` green; `cargo clippy --workspace --all-targets -D
+warnings` and `cargo fmt --check` green; `make qml-test` green (13/13). No
+tasks/10-dock.md acceptance checkbox is closed by this slice; it advances
+FR-1 (click tree) and FR-5 (chooser selection) and removes a latent
+activation bug. The other unchecked boxes are unchanged.

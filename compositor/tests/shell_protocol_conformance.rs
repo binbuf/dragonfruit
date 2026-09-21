@@ -1664,6 +1664,197 @@ fn toplevel_handle_requests_round_trip() {
     proc.shutdown();
 }
 
+/// T-10 section 8/9 click tree (FR-1/FR-5): the two private-protocol paths
+/// the Dock uses to bring a window forward are
+/// `df_toplevel_manager.activate_app` (a plain click on a running app entry)
+/// and `select_overview_toplevel` (a row in the window chooser). Both must
+/// pick the app's most recent window, restore it when minimized, switch to
+/// its Space, and focus it.
+///
+/// The Dock projects an entry from the window list, not from focus, so a
+/// click must find the app's windows even before any of them has been
+/// focused. This test maps two windows of one app and one of another, then
+/// drives both requests over the protocol.
+#[test]
+fn dock_click_tree_activation_conformance() {
+    const APP: &str = "org.dragonfruit.DockApp";
+    const OTHER: &str = "org.dragonfruit.OtherApp";
+
+    let token = "88".repeat(32);
+    let proc = CompositorProcess::start("dragonfruit-conformance-click-tree", &[token]);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (name, version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, name, version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+
+    let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
+    let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.workspaces.len() >= 3 && state.done_count > 0,
+    );
+
+    // Map two windows of one app, then a third of another. Each is mapped
+    // (and awaited) in turn, so announcement order is stable.
+    let (surface_a, xdg_a, toplevel_a, _file_a) =
+        map_toplevel(&mut state, &mut queue, "Dock A", APP);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.toplevels.is_empty(),
+    );
+    let handle_a = state.toplevels[0].clone();
+
+    let (surface_b, xdg_b, toplevel_b, _file_b) =
+        map_toplevel(&mut state, &mut queue, "Dock B", APP);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.toplevels.len() >= 2,
+    );
+    let handle_b = state.toplevels[1].clone();
+
+    let (surface_c, xdg_c, toplevel_c, _file_c) =
+        map_toplevel(&mut state, &mut queue, "Other", OTHER);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.toplevels.len() >= 3,
+    );
+    let handle_c = state.toplevels[2].clone();
+
+    let focused_is = |state: &TestClient, expected: &df_toplevel::DfToplevel| {
+        state
+            .focused
+            .iter()
+            .flatten()
+            .any(|handle| handle == expected)
+    };
+
+    // --- a plain Dock click with no window ever focused ------------------
+    // `activate_app` must find the app's windows even though none has held
+    // focus yet, and select the most recently mapped one (B).
+    state.focused.clear();
+    manager.activate_app(APP.to_string());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.focused.iter().any(Option::is_some),
+    );
+    assert!(
+        focused_is(&state, &handle_b),
+        "activate_app must pick the app's most recent window (B): {:?}",
+        state.focused
+    );
+
+    // --- an unrelated app resolves to its own window ---------------------
+    state.focused.clear();
+    manager.activate_app(OTHER.to_string());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.focused.iter().any(Option::is_some),
+    );
+    assert!(
+        focused_is(&state, &handle_c),
+        "activate_app must resolve the other app's window: {:?}",
+        state.focused
+    );
+
+    // --- a minimized window is restored, not merely focused --------------
+    handle_b.minimize();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .toplevel_states
+                .iter()
+                .any(|flags| flags & df_toplevel::State::Minimized.bits() != 0)
+        },
+    );
+    state.focused.clear();
+    state.toplevel_states.clear();
+    manager.activate_app(APP.to_string());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| focused_is(state, &handle_b),
+    );
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .toplevel_states
+                .iter()
+                .any(|flags| flags & df_toplevel::State::Minimized.bits() == 0)
+        },
+    );
+
+    // --- the chooser selects a specific window and its Space -------------
+    let second = state.workspaces[1].clone();
+    handle_a.move_to_workspace(&second);
+    let _ = queue.roundtrip(&mut state);
+    state.workspace_activated.clear();
+    state.focused.clear();
+    manager.select_overview_toplevel(&handle_a);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.workspace_activated.contains(&1),
+    );
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| focused_is(state, &handle_a),
+    );
+
+    for toplevel in [&toplevel_a, &toplevel_b, &toplevel_c] {
+        toplevel.destroy();
+    }
+    for surface in [&surface_a, &surface_b, &surface_c] {
+        surface.destroy();
+    }
+    for xdg_surface in [&xdg_a, &xdg_b, &xdg_c] {
+        xdg_surface.destroy();
+    }
+    manager.destroy();
+    let _ = conn.flush();
+    proc.shutdown();
+}
+
 /// Map a toplevel and return its proxies plus the backing file (which must
 /// outlive the first flush).
 #[allow(clippy::type_complexity)]
