@@ -3987,3 +3987,91 @@ unchecked in `tasks/10-dock.md`: the Files-side Trash integration test (T-18),
 the external-drag walkthrough (drag source, T-17/T-18), the scene-graph FR-14
 render path, the live AT-SPI walkthrough, multi-output per-output popovers,
 plus the core-loop and 60 Hz measurements.
+
+## T-10 continuation — Scene-graph render path (sixteenth slice)
+
+**State: partial.** The Dock and the menu bar now commit every frame the
+scene graph renders, driven by `QQuickWindow::afterRendering`, with no
+sampling timer. This lands FR-14 and closes the T-09 "shell snapshot
+renderer" deferred-polish item (shared by design with the Dock animation).
+The **drag source** (Files/launcher, T-17/T-18) and its end-to-end
+walkthrough, the GVfs Trash/downloads backends (GIO headers absent), the app
+Options submenu, per-output sizing, and the live AT-SPI dump are unchanged.
+
+### What landed
+
+- **`shell/src/framecommitgate.h`** — a tiny pure `FrameCommitGate` in the
+  Wayland-free dockcore library. `frameRendered()` returns true when a
+  scene-graph frame should be committed; `beginCommit()`/`endCommit()` bracket
+  the `grabWindow()` readback and suppress the re-entrant frame it produces.
+  It counts scene frames and commits for diagnostics. Unit-tested by two
+  `tst_dockcore` cases (the re-entrancy guard and `reset()`).
+- **`ShellController`** connects `QQuickWindow::afterRendering` for both the
+  Dock window and the menu-bar window. A rendered frame schedules a commit on
+  the next event-loop turn (`scheduleDockRender()`/`scheduleRender()`, both
+  already coalesced), and both `renderDock()`/`render()` now wrap their
+  `grabWindow()` in the gate. A one-shot `scene-graph commit path active`
+  qInfo confirms the hook fired (visible in the live smoke).
+- **Removed the timer bursts**: `m_animationTimer` (menu popup fade, 16 ms ×
+  ~220 ms) and `m_dockPopupTimer` (Dock popover fade, 16 ms × ~220 ms) are
+  gone, along with `startAnimationRenders()`/`startDockAnimationRenders()` and
+  their call sites. QML-driven animation (magnification from pointer moves,
+  popover fade/scale, the drag-gap `Behavior on x`, the popover close tail)
+  now dirties the scene and the `afterRendering` hook commits each frame.
+- **The bounce clock is unchanged in spirit**: `m_dockAnimTimer` still ticks
+  the launch/attention model at 16 ms (compositor-clock semantics, FR-4), but
+  it no longer calls `renderDock()` directly — `rebuildDockEntries()` updates
+  the QML model, which renders through the hook. Idle Dock still wakes
+  nothing (FR-8).
+
+### Gotchas learned (important for the next session)
+
+- **`grabWindow()` emits `afterRendering` again.** The readback re-renders the
+  scene, so a naive `afterRendering → schedule → grabWindow` is an infinite
+  commit loop. The `FrameCommitGate` guard is load-bearing; do not remove it.
+  Verified with a standalone offscreen Qt program: a 250 ms animation produced
+  20 scene frames, and without the guard the commits doubled to 40.
+- **`afterRendering` fires under the shell's forced offscreen QPA and under
+  `QT_QUICK_BACKEND=software`** (also verified standalone), so the hook is
+  valid in the headless smoke and in CI-style offscreen runs. It fires once
+  per dirty scene-graph frame, including when the scene graph is dirtied by a
+  plain property change (so a shell-driven model update renders).
+- **The readback still costs a second render per committed frame.** The design
+  explicitly allows the `afterRendering` path; a `QQuickRenderControl` +
+  render-target readback that renders once is a possible later optimization,
+  but there is no public "read the just-rendered frame" API on the offscreen
+  software path, so the gate + `grabWindow` is the pragmatic durable fix.
+- **Do not reintroduce a fixed frame burst for popovers.** The old
+  `startAnimationRenders(ms)` trick existed only because commits were
+  timer-driven; with the hook it is redundant and would double-commit.
+
+### Hand-off / open items (remaining T-10 slices)
+
+1. **The drag source** (Files/launcher, T-17/T-18): export `text/uri-list`
+   and `application/x-dragonfruit-app` from a `wl_data_source`, start the drag
+   on an implicit pointer grab, and add the scripted end-to-end walkthrough
+   (source client + shell target). The shell target side is complete.
+2. **GVfs Trash completion** (section 16) — GIO dev headers are absent on this
+   host, so `TrashMonitor`/`DownloadsMonitor` stay on the sanctioned
+   filesystem fallback; switch them to `GFileMonitor`/GIO when the headers
+   exist. Mount-unavailable dimming, Empty Trash progress, and
+   `org.dragonfruit.Files1` activation (T-18) remain.
+3. **App Options submenu** (section 13): Assign To, Open at Login (T-24),
+   Show in Files (T-18). The submenu it needs now exists.
+4. **Per-output sizing** (section 18): chrome surfaces still size from the
+   first output; `matches_output` is the filter hook.
+5. **Live AT-SPI dump** (section 20): the QML roles and the keyboard seat path
+   exist; a session-bus `atspi` walkthrough is T-31.
+
+### Gate status
+
+`make lint` green (`cargo fmt --check`, `clippy -D warnings`, ctest 13/13 incl.
+`tst_dockcore` 37 and `tst_dock`, `gen-tokens --check`, the design-token/
+desktop-name/no-capture gates); live headless smoke
+(`dragonfruit dev --headless --shell`) reports `menu bar configured 1280x28`,
+`Dock configured 1280x124`, both `scene-graph commit path active` lines, and a
+clean teardown. Acceptance criteria still unchecked in `tasks/10-dock.md`: the
+Files-side Trash integration test (T-18), the external-drag walkthrough (drag
+source, T-17/T-18), the live AT-SPI walkthrough, multi-output per-output
+popovers, plus the core-loop and 60 Hz measurements. (FR-14 is now landed but
+the 60 Hz budget measurement remains part of the acceptance suite.)

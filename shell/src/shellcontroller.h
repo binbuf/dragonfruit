@@ -16,6 +16,7 @@
 #include "dockpins.h"
 #include "docksettings.h"
 #include "downloadsmonitor.h"
+#include "framecommitgate.h"
 #include "shellprotocol.h"
 #include "trashmonitor.h"
 
@@ -133,14 +134,15 @@ private:
     int iconSizeForSize(double size) const;
     // Map the `dock.position` string onto the protocol edge enum.
     ShellProtocol::DockPosition dockPosition() const;
-    // Render the Dock every ~16 ms for `ms`, to capture a popover open/close
-    // animation.
-    void startDockAnimationRenders(int ms);
     // Coalesce a render onto the next event-loop turn (QML visual state has
     // changed but the compositor has not been told yet).
     void scheduleRender();
-    // Render every ~16 ms for `ms`, to capture a popup open/close animation.
-    void startAnimationRenders(int ms);
+    // Scene-graph frame hooks (FR-14): a frame the Dock/menu-bar window just
+    // rendered is committed on the next event-loop turn, so QML-driven
+    // animation (magnification, popover fade, drag gaps) reaches the
+    // compositor without a sampling timer.
+    void onDockAfterRendering();
+    void onMenuAfterRendering();
     // Force the launch state to neutral (no focus ring, no hover) and commit
     // it, so the first visible frame is not a transient highlight.
     void settleInitialState();
@@ -155,10 +157,8 @@ private:
     QQuickWindow *m_dockWindow = nullptr;
     QQuickItem *m_dockItem = nullptr;
     QSocketNotifier *m_notifier = nullptr;
-    QTimer *m_animationTimer = nullptr;
     QTimer *m_launchTimer = nullptr;
     QTimer *m_dockAnimTimer = nullptr;
-    QTimer *m_dockPopupTimer = nullptr;
     QFileSystemWatcher *m_settingsWatcher = nullptr;
     // Interim home-trash state for the Dock's Trash entry (section 16). The
     // GIO/GVfs backend replaces it when the dev headers are available.
@@ -223,7 +223,14 @@ private:
     int m_dockPopoverWidth = 0;
     int m_dockPopoverHeight = 0;
     bool m_dockPopoverMapped = false;
-    int m_dockPopupTicks = 0;
+    // Scene-graph frame gates (FR-14): the Dock and menu-bar windows commit
+    // from `afterRendering`, and the gate suppresses the re-entrant frame the
+    // `grabWindow()` readback itself produces.
+    FrameCommitGate m_dockFrameGate;
+    FrameCommitGate m_menuFrameGate;
+    // One-shot diagnostics: confirm the scene-graph commit path is live.
+    bool m_dockSceneGraphCommitLogged = false;
+    bool m_menuSceneGraphCommitLogged = false;
     // True while the Dock chrome surface holds the keyboard (T-10 section
     // 20), so key events are routed to the Dock scene for navigation.
     bool m_dockKeyboardFocused = false;
@@ -235,7 +242,6 @@ private:
     // True while a dropdown is open; the overlay popup surface is mapped then.
     bool m_menuOpen = false;
     bool m_renderPending = false;
-    int m_animationTicks = 0;
     Qt::MouseButtons m_buttons = Qt::NoButton;
     QString m_appId;
     QString m_appTitle;

@@ -286,6 +286,10 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onAppMenuTriggered(int,int,QVariant)));
     if (QObject *clock = m_item->findChild<QObject *>(QStringLiteral("clock")))
         connect(clock, SIGNAL(nowChanged()), this, SLOT(onClockTick()));
+    // Scene-graph render path (FR-14): the menu-bar dropdown's open/close
+    // fade is committed from the scene graph, not a sampling timer.
+    connect(m_window, &QQuickWindow::afterRendering, this,
+            &ShellController::onMenuAfterRendering);
 
     connect(m_protocol, &ShellProtocol::configured, this, &ShellController::onConfigured);
     connect(m_protocol, &ShellProtocol::focusedAppChanged, this,
@@ -380,6 +384,11 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onDockDownloadsFolderRequested()));
     connect(m_dockItem, SIGNAL(downloadsViewed()), this,
             SLOT(onDockDownloadsViewed()));
+    // Scene-graph render path (FR-14): commit a frame whenever the Dock scene
+    // graph renders one, so QML-driven animation (magnification, popover
+    // fade/scale, drag gaps) reaches the compositor without a sampling timer.
+    connect(m_dockWindow, &QQuickWindow::afterRendering, this,
+            &ShellController::onDockAfterRendering);
     // The Trash entry's state comes from the home-trash watch (section 16);
     // deletions by any application update the full/count state.
     m_trash = new TrashMonitor(TrashMonitor::defaultRoot(), this);
@@ -425,16 +434,6 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     if (!m_protocol->createDockPopupSurface(m_dockPosition))
         return false;
 
-    // The shell snapshots the QML scene into a shm buffer on demand; a popup
-    // open/close animation needs a short burst of frames to be legible.
-    m_animationTimer = new QTimer(this);
-    m_animationTimer->setInterval(16);
-    connect(m_animationTimer, &QTimer::timeout, this, [this]() {
-        render();
-        if (--m_animationTicks <= 0)
-            m_animationTimer->stop();
-    });
-
     // Launch timeout: a launch that produces no window within the bounded
     // window returns to not-running and raises a one-shot notice (T-10
     // section 8.5). This is the interim stand-in for the app-index
@@ -445,21 +444,12 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
 
     // Dock animation clock (T-10 section 8.1): 16 ms while a launch or
     // attention bounce is in flight, stopped otherwise so the idle Dock
-    // contributes zero wakeups (FR-8). The durable scene-graph render path
-    // (FR-14) replaces the on-demand grab later.
+    // contributes zero wakeups (FR-8). The clock only advances the model; the
+    // resulting QML change renders through the scene-graph commit path
+    // (`afterRendering`, FR-14), not a render timer.
     m_dockAnimTimer = new QTimer(this);
     m_dockAnimTimer->setInterval(16);
     connect(m_dockAnimTimer, &QTimer::timeout, this, &ShellController::onDockAnimationTick);
-
-    // Dock popover open/close animation burst (the durable scene-graph render
-    // path is still deferred; FR-14).
-    m_dockPopupTimer = new QTimer(this);
-    m_dockPopupTimer->setInterval(16);
-    connect(m_dockPopupTimer, &QTimer::timeout, this, [this]() {
-        renderDock();
-        if (--m_dockPopupTicks <= 0)
-            m_dockPopupTimer->stop();
-    });
 
     const int fd = m_protocol->displayFd();
     m_notifier = new QSocketNotifier(fd, QSocketNotifier::Read, this);
@@ -615,16 +605,15 @@ void ShellController::onAppMenuOpened(int)
 {
     m_menuOpen = true;
     updatePopupGeometry();
-    // Capture the popup fade/scale-in (popupOpen = 160 ms).
-    startAnimationRenders(220);
+    // The popup's fade/scale-in is QML-driven; the scene-graph hook commits
+    // every frame it renders (FR-14).
 }
 
 void ShellController::onAppMenuClosed()
 {
     m_menuOpen = false;
     // Let the close animation (popupClose = 100 ms) play before unmapping the
-    // overlay surface.
-    startAnimationRenders(160);
+    // overlay surface; the scene-graph hook commits the frames it renders.
     QTimer::singleShot(140, this, [this]() {
         if (!m_menuOpen)
             updatePopupGeometry();
@@ -682,13 +671,15 @@ void ShellController::scheduleRender()
     });
 }
 
-void ShellController::startAnimationRenders(int ms)
+void ShellController::onMenuAfterRendering()
 {
-    if (!m_animationTimer)
+    if (!m_menuFrameGate.frameRendered())
         return;
-    m_animationTicks = qMax(1, ms / m_animationTimer->interval());
-    if (!m_animationTimer->isActive())
-        m_animationTimer->start();
+    if (!m_menuSceneGraphCommitLogged) {
+        m_menuSceneGraphCommitLogged = true;
+        qInfo() << "shell: menu-bar scene-graph commit path active (FR-14)";
+    }
+    scheduleRender();
 }
 
 void ShellController::updatePopupGeometry()
@@ -1504,8 +1495,9 @@ void ShellController::onDockPinnedOrderChanged(const QVariant &desktopIds)
 
 void ShellController::onDockPopoverChanged()
 {
+    // The popover fade/scale is QML-driven; the scene-graph hook commits
+    // every frame it renders (FR-14).
     scheduleDockRender();
-    startDockAnimationRenders(220);
 }
 
 void ShellController::onDockRevealStateChanged()
@@ -1564,13 +1556,15 @@ void ShellController::onDockDownloadsFolderRequested()
         qInfo() << "shell: Dock opened the Downloads folder";
 }
 
-void ShellController::startDockAnimationRenders(int ms)
+void ShellController::onDockAfterRendering()
 {
-    if (!m_dockPopupTimer)
+    if (!m_dockFrameGate.frameRendered())
         return;
-    m_dockPopupTicks = qMax(1, ms / m_dockPopupTimer->interval());
-    if (!m_dockPopupTimer->isActive())
-        m_dockPopupTimer->start();
+    if (!m_dockSceneGraphCommitLogged) {
+        m_dockSceneGraphCommitLogged = true;
+        qInfo() << "shell: Dock scene-graph commit path active (FR-14)";
+    }
+    scheduleDockRender();
 }
 
 void ShellController::scheduleDockRender()
@@ -1618,7 +1612,12 @@ void ShellController::renderDock()
         m_dockWindow->resize(windowWidth, windowHeight);
     if (!m_dockWindow->isVisible())
         m_dockWindow->show();
+    // `grabWindow()` renders the scene again, which emits `afterRendering`;
+    // the gate suppresses that re-entrant schedule so the commit cannot loop
+    // (FR-14).
+    m_dockFrameGate.beginCommit();
     const QImage image = m_dockWindow->grabWindow();
+    m_dockFrameGate.endCommit();
 
     // The input region is the visible bar plus the currently magnified or
     // bouncing icon rectangles; the transparent magnified band and the hidden
@@ -1694,7 +1693,10 @@ void ShellController::render()
         m_window->resize(m_width, windowHeight);
     if (!m_window->isVisible())
         m_window->show();
+    // See `renderDock()`: the readback re-renders and must not re-schedule.
+    m_menuFrameGate.beginCommit();
     const QImage image = m_window->grabWindow();
+    m_menuFrameGate.endCommit();
     if (!m_protocol->commitImage(image.copy(0, 0, m_width, m_barHeight)))
         qWarning() << "shell: failed to commit the menu bar:" << m_protocol->lastError();
     if (popupShown) {
