@@ -2546,6 +2546,16 @@ fn synthetic_input_drives_shortcuts_hot_corners_and_gestures() {
         "the hot corner must dispatch through the same outbox: {:?}",
         state.input_actions
     );
+    // A discrete trigger animates on the compositor clock (T-11), so wait for
+    // it to commit and open the overview before the next trigger.
+    state.overviews.clear();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.overviews.iter().any(|(active, _)| *active == 1),
+    );
 
     // --- gesture: four-finger vertical swipe drives shared progress ------
     state.input_actions.clear();
@@ -2693,6 +2703,113 @@ fn overview_state_machine_has_trigger_parity() {
     assert!(
         !synthetic_path.exists(),
         "teardown leak: synthetic-input socket survived"
+    );
+}
+
+/// T-11 Slice C: Mission Control / workspace switching is **lockstep** across
+/// every output. The model is lockstep by construction and
+/// `apply_overview_scene` loops per output; this proves the protocol path too:
+/// a keyboard switch (which now animates on the compositor clock) activates
+/// the *same* Space index on both displays, and no output switches to a
+/// different index.
+#[test]
+fn workspace_switch_is_lockstep_across_outputs() {
+    let token = "ab".repeat(32);
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let input_path = PathBuf::from(&runtime_dir)
+        .join(format!("dragonfruit-synth-lockstep-{}", std::process::id()));
+    let output_path = PathBuf::from(&runtime_dir).join(format!(
+        "dragonfruit-synth-lockstep-out-{}",
+        std::process::id()
+    ));
+    let proc = CompositorProcess::start_with_harnesses(
+        "dragonfruit-conformance-lockstep",
+        std::slice::from_ref(&token),
+        Some(&input_path),
+        Some(&output_path),
+    );
+    let input = SyntheticInput::connect(&input_path);
+    let outputs = SyntheticOutput::connect(&output_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (name, version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, name, version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+    let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
+    let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.outputs.is_empty() && state.workspaces.len() >= 3 && state.done_count > 0,
+    );
+
+    // Attach a second display; it gets its own three Spaces.
+    outputs.send("add HDMI-A-1 1920 1080 1280 0");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state.output_names.iter().any(|name| name == "HDMI-A-1") && state.workspaces.len() >= 6
+        },
+    );
+
+    // Ctrl+Right: the system WorkspaceNext shortcut. It drives the same
+    // animated pipeline as a gesture (T-11 animation clock).
+    state.workspace_activated.clear();
+    input.send("key 29 down\nkey 106 down\nkey 106 up\nkey 29 up");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .workspace_activated
+                .iter()
+                .filter(|i| **i == 1)
+                .count()
+                >= 2
+        },
+    );
+
+    let ones = state
+        .workspace_activated
+        .iter()
+        .filter(|index| **index == 1)
+        .count();
+    assert_eq!(
+        ones, 2,
+        "every output switches to Space 1 in lockstep: {:?}",
+        state.workspace_activated
+    );
+    assert!(
+        state.workspace_activated.iter().all(|index| *index == 1),
+        "no output switched to a different index: {:?}",
+        state.workspace_activated
+    );
+
+    drop(manager);
+    drop(core);
+    let _ = conn.flush();
+    proc.shutdown();
+    assert!(
+        !input_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+    assert!(
+        !output_path.exists(),
+        "teardown leak: synthetic-output socket survived"
     );
 }
 

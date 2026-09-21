@@ -124,6 +124,18 @@ pub struct DriveOutcome {
     pub commit: Option<TransitionCommit>,
 }
 
+/// An in-flight discrete transition (keyboard, hot corner, shell request).
+///
+/// The transition is advanced by the compositor's animation clock rather than
+/// run synchronously, so a keyboard/hot-corner switch slides exactly like a
+/// gesture ([`Self::advance_discrete`]). This is what makes "one rule for
+/// swipes, pinches, and hot corners" literally true (T-11 FR-1/FR-4).
+#[derive(Debug, Clone, Copy)]
+struct DiscreteProgress {
+    start_time: u64,
+    duration_ms: u64,
+}
+
 /// The single overview/workspace-transition state machine.
 #[derive(Debug, Clone)]
 pub struct OverviewMachine {
@@ -133,6 +145,7 @@ pub struct OverviewMachine {
     overview_active: bool,
     desktop_revealed: bool,
     selection: Option<WindowId>,
+    discrete: Option<DiscreteProgress>,
 }
 
 impl Default for OverviewMachine {
@@ -150,6 +163,7 @@ impl OverviewMachine {
             overview_active: false,
             desktop_revealed: false,
             selection: None,
+            discrete: None,
         }
     }
 
@@ -175,6 +189,22 @@ impl OverviewMachine {
     /// Whether a transition is currently in flight.
     pub fn is_active(&self) -> bool {
         self.pipeline.is_active()
+    }
+
+    /// Whether the in-flight transition was started by a gesture. A discrete
+    /// trigger's animation clock can still be running when the next gesture
+    /// arrives; the gesture must cancel it and start its own transition so
+    /// the recorded trigger is the gesture (T-11 FR-1).
+    pub fn active_is_gesture(&self) -> bool {
+        self.pipeline.is_active()
+            && matches!(self.pipeline.trigger(), Some(TriggerKind::Gesture(_)))
+    }
+
+    /// Whether a discrete trigger's transition is waiting on the animation
+    /// clock. While true the caller must keep calling
+    /// [`Self::advance_discrete`] until it returns a commit.
+    pub fn is_discrete(&self) -> bool {
+        self.discrete.is_some()
     }
 
     /// Clamped progress of the in-flight transition (`0.0` when idle).
@@ -224,8 +254,10 @@ impl OverviewMachine {
     ///
     /// A trigger that arrives mid-transition first cancels the in-flight one
     /// (reversibility, FR-4) rather than waiting for it to finish. The
-    /// commit rule is unchanged: the release must cross the progress or
-    /// velocity threshold.
+    /// transition is *not* run synchronously: it begins here and is advanced
+    /// by [`Self::advance_discrete`] on the compositor's animation clock, so
+    /// the translation-based slide is visible and the commit rule is shared
+    /// with gestures. Reduced motion still takes a single synchronous step.
     pub fn drive(&mut self, kind: OverviewKind, trigger: TriggerKind, now: u64) -> DriveOutcome {
         let mut events = Vec::new();
         if let Some(event) = self.cancel_active(now) {
@@ -240,10 +272,46 @@ impl OverviewMachine {
             if let Some(event) = self.pipeline.end(now, false) {
                 events.push(event);
             }
-        } else {
-            events.extend(self.pipeline.drive_discrete(kind.action(), trigger, now));
+            let commit = self.commit_from_events(&events);
+            return DriveOutcome { events, commit };
         }
-        let commit = self.commit_from_events(&events);
+        events.push(self.pipeline.begin(kind.action(), trigger, now));
+        self.discrete = Some(DiscreteProgress {
+            start_time: now,
+            duration_ms: self.pipeline.config().discrete_duration_ms.max(1),
+        });
+        DriveOutcome {
+            events,
+            commit: None,
+        }
+    }
+
+    /// Advance an in-flight discrete transition to `now`, returning the
+    /// progress sample(s) and the commit when the curve reaches 1.0.
+    ///
+    /// This is the animation-clock half of [`Self::drive`]: the compositor
+    /// arms a ~16 ms timer while [`Self::is_discrete`] is true and calls this
+    /// until it yields a commit (or the transition is cancelled).
+    pub fn advance_discrete(&mut self, now: u64) -> DriveOutcome {
+        let mut events = Vec::new();
+        let Some(discrete) = self.discrete else {
+            return DriveOutcome::default();
+        };
+        let duration = discrete.duration_ms.max(1) as f64;
+        let elapsed = now.saturating_sub(discrete.start_time) as f64;
+        let progress = (elapsed / duration).clamp(0.0, 1.0);
+        if let Some(event) = self.pipeline.set_progress(progress, now) {
+            events.push(event);
+        }
+        let commit = if progress >= 1.0 {
+            self.discrete = None;
+            if let Some(event) = self.pipeline.end(now, false) {
+                events.push(event);
+            }
+            self.commit_from_events(&events)
+        } else {
+            None
+        };
         DriveOutcome { events, commit }
     }
 
@@ -298,6 +366,7 @@ impl OverviewMachine {
             }
         }
         self.kind = None;
+        self.discrete = None;
     }
 
     /// Record the window selected in the overview and leave the overview
@@ -307,6 +376,8 @@ impl OverviewMachine {
     pub fn select(&mut self, window: WindowId) {
         self.selection = Some(window);
         self.overview_active = false;
+        self.kind = None;
+        self.discrete = None;
     }
 
     /// Clear the selection without touching the overview state.
@@ -325,6 +396,7 @@ impl OverviewMachine {
 
     /// Cancel any in-flight transition, returning its `End` event.
     pub fn cancel_active(&mut self, now: u64) -> Option<ProgressEvent> {
+        self.discrete = None;
         if !self.pipeline.is_active() {
             return None;
         }
@@ -385,6 +457,26 @@ mod tests {
             .collect()
     }
 
+    /// Drive a discrete trigger and run its animation clock to completion,
+    /// the way the compositor's timer does.
+    fn drive_to_completion(
+        machine: &mut OverviewMachine,
+        kind: OverviewKind,
+        trigger: TriggerKind,
+        now: u64,
+    ) -> DriveOutcome {
+        let mut outcome = machine.drive(kind, trigger, now);
+        let duration = machine.config().discrete_duration_ms;
+        while machine.is_discrete() {
+            let next = machine.advance_discrete(now + duration);
+            outcome.events.extend(next.events);
+            if next.commit.is_some() {
+                outcome.commit = next.commit;
+            }
+        }
+        outcome
+    }
+
     #[test]
     fn every_trigger_kind_produces_the_same_curve_and_commit() {
         let triggers = [
@@ -393,9 +485,17 @@ mod tests {
             TriggerKind::Shell,
             TriggerKind::Gesture(GestureKind::Swipe { fingers: 4 }),
         ];
-        let reference = machine().drive(OverviewKind::MissionControl, triggers[0], 0);
+        let mut reference_machine = machine();
+        let reference = drive_to_completion(
+            &mut reference_machine,
+            OverviewKind::MissionControl,
+            triggers[0],
+            0,
+        );
         for trigger in triggers {
-            let outcome = machine().drive(OverviewKind::MissionControl, trigger, 0);
+            let mut machine = machine();
+            let outcome =
+                drive_to_completion(&mut machine, OverviewKind::MissionControl, trigger, 0);
             assert_eq!(
                 curve(&outcome),
                 curve(&reference),
@@ -407,16 +507,26 @@ mod tests {
 
     #[test]
     fn workspace_switch_commits_the_direction() {
+        let mut next = machine();
         assert_eq!(
-            machine()
-                .drive(OverviewKind::WorkspaceNext, TriggerKind::Keyboard, 0)
-                .commit,
+            drive_to_completion(
+                &mut next,
+                OverviewKind::WorkspaceNext,
+                TriggerKind::Keyboard,
+                0
+            )
+            .commit,
             Some(TransitionCommit::SwitchWorkspace(1))
         );
+        let mut prev = machine();
         assert_eq!(
-            machine()
-                .drive(OverviewKind::WorkspacePrev, TriggerKind::Keyboard, 0)
-                .commit,
+            drive_to_completion(
+                &mut prev,
+                OverviewKind::WorkspacePrev,
+                TriggerKind::Keyboard,
+                0
+            )
+            .commit,
             Some(TransitionCommit::SwitchWorkspace(-1))
         );
     }
@@ -424,12 +534,22 @@ mod tests {
     #[test]
     fn mission_control_toggles_and_tracks_the_overview() {
         let mut machine = machine();
-        let open = machine.drive(OverviewKind::MissionControl, TriggerKind::Keyboard, 0);
+        let open = drive_to_completion(
+            &mut machine,
+            OverviewKind::MissionControl,
+            TriggerKind::Keyboard,
+            0,
+        );
         assert_eq!(open.commit, Some(TransitionCommit::SetOverview(true)));
         machine.apply_commit(open.commit.unwrap());
         assert!(machine.overview_active());
 
-        let close = machine.drive(OverviewKind::MissionControl, TriggerKind::Keyboard, 1000);
+        let close = drive_to_completion(
+            &mut machine,
+            OverviewKind::MissionControl,
+            TriggerKind::Keyboard,
+            1000,
+        );
         assert_eq!(close.commit, Some(TransitionCommit::SetOverview(false)));
         machine.apply_commit(close.commit.unwrap());
         assert!(!machine.overview_active());
@@ -448,7 +568,7 @@ mod tests {
         assert!(machine.is_active());
 
         // A discrete reverse arrives: it must cancel immediately, then begin
-        // the opposite transition and commit the Space switch.
+        // the opposite transition (the animation clock commits it later).
         let outcome = machine.drive(OverviewKind::WorkspacePrev, TriggerKind::Keyboard, 20);
         assert_eq!(outcome.events[0].phase, ProgressPhase::End);
         assert!(
@@ -456,7 +576,39 @@ mod tests {
             "the old transition is cancelled"
         );
         assert_eq!(outcome.events[1].phase, ProgressPhase::Begin);
-        assert_eq!(outcome.commit, Some(TransitionCommit::SwitchWorkspace(-1)));
+        assert_eq!(outcome.commit, None, "the reverse animates on the clock");
+        let duration = machine.config().discrete_duration_ms;
+        let mut commit = outcome.commit;
+        while machine.is_discrete() {
+            let next = machine.advance_discrete(20 + duration);
+            if next.commit.is_some() {
+                commit = next.commit;
+            }
+        }
+        assert_eq!(commit, Some(TransitionCommit::SwitchWorkspace(-1)));
+    }
+
+    #[test]
+    fn discrete_trigger_advances_on_the_clock_then_commits() {
+        let mut machine = machine();
+        let started = machine.drive(OverviewKind::WorkspaceNext, TriggerKind::Keyboard, 0);
+        assert_eq!(started.events.len(), 1, "only the Begin is synchronous");
+        assert_eq!(started.commit, None);
+        assert!(machine.is_discrete());
+
+        // Halfway: a progress sample, no commit yet.
+        let half = machine.advance_discrete(machine.config().discrete_duration_ms / 2);
+        assert_eq!(half.events.last().unwrap().phase, ProgressPhase::Update);
+        assert!(half.commit.is_none());
+        assert!(machine.is_active());
+        assert!(machine.is_discrete());
+
+        // At the duration: the curve reaches 1.0 and commits.
+        let end = machine.advance_discrete(machine.config().discrete_duration_ms);
+        assert_eq!(end.events.last().unwrap().phase, ProgressPhase::End);
+        assert!(end.events.last().unwrap().committed);
+        assert_eq!(end.commit, Some(TransitionCommit::SwitchWorkspace(1)));
+        assert!(!machine.is_discrete());
     }
 
     #[test]

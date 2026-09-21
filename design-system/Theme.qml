@@ -364,6 +364,21 @@ QtObject {
             readonly property int scrollbarRadius: 999
             readonly property int minThumb: 24
         }
+        readonly property var overview: QtObject {
+            readonly property int stripGap: 12
+            readonly property int stripMargin: 16
+            readonly property int cardWidth: 132
+            readonly property int cardHeight: 84
+            readonly property int cardPadding: 8
+            readonly property int cardRadius: 14
+            readonly property int chipHeight: 36
+            readonly property int chipRadius: 10
+            readonly property int chipGap: 8
+            readonly property int chipPadding: 10
+            readonly property int fontSize: 13
+            readonly property int titleSize: 12
+            readonly property real scrimOpacity: 0.18
+        }
     }
 
     readonly property var motion: QtObject {

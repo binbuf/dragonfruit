@@ -117,8 +117,37 @@ public:
     // ARGB32(_Premultiplied).
     bool commitImage(const QImage &image);
 
+    // Create the Mission Control overview chrome surface (T-11 Slice B): a
+    // full-output `overlay` layer surface, namespace "overview", that starts
+    // unmapped. It draws only the workspace strip and the minimized-window
+    // strip; the compositor renders the live window surfaces underneath. It
+    // takes keyboard focus on demand so Escape can dismiss the overview.
+    bool createOverviewSurface();
+
+    // Attach `image` to the overview surface and commit. The image must be
+    // ARGB32(_Premultiplied).
+    bool commitOverviewImage(const QImage &image);
+
+    // Unmap the overview surface (attach a null buffer).
+    bool hideOverview();
+
+    // Activate a Space by its index (the workspace strip click, FR-10). The
+    // compositor switches every output in lockstep.
+    void activateWorkspace(int index);
+
+    // The workspace strip projection (index, name, fullscreen, active),
+    // ordered by index. The shell never keeps its own copy of Space state.
+    QVariantList overviewWorkspaces() const;
+
+    // The minimized-window bottom strip projection (windowId, title, appId)
+    // for the overview's restore chips (FR-6).
+    QVariantList minimizedWindows() const;
+
     // Drive the compositor's Mission Control overview (T-11 entry point).
     void enterMissionControl();
+
+    // Leave the Mission Control overview (Escape / click-away in the chrome).
+    void exitMissionControl();
 
     // App-level activation for a Dock click (T-10): the compositor picks the
     // app's most recent window, switches to its Space, and restores it.
@@ -166,6 +195,7 @@ signals:
     void popupConfigured(int width, int height, uint32_t serial);
     void dockConfigured(int width, int height, uint32_t serial);
     void dockPopupConfigured(int width, int height, uint32_t serial);
+    void overviewConfigured(int width, int height, uint32_t serial);
     void surfaceClosed();
     void focusedAppChanged(const QString &appId, const QString &title);
     // xdg-activation attention for an app's toplevel (T-10 FR-4): the Dock
@@ -193,6 +223,19 @@ signals:
     // Dock while the bar still tracks its own focus.
     void dockKeyboardFocused(bool focused);
     void keyEvent(uint32_t key, bool pressed);
+    // Mission Control overview (T-11): the compositor's single overview state
+    // machine entered/left, and one progress-pipeline sample for the in-flight
+    // transition. `overviewDataChanged` means the workspace/minimized-window
+    // projection should be re-read (a Space or window changed).
+    void overviewChanged(bool active);
+    void overviewProgress(qreal progress, const QString &action);
+    void overviewDataChanged();
+    // Input on the overview surface, in surface-local (output) coordinates.
+    void overviewPointerMoved(qreal x, qreal y);
+    void overviewPointerButton(qreal x, qreal y, uint32_t button, bool pressed);
+    void overviewPointerLeft();
+    // The overview surface specifically holds the keyboard (Escape dismiss).
+    void overviewKeyboardFocused(bool focused);
     // External drag-and-drop onto the Dock (T-10 section 12). The shell binds
     // the seat's data device, so a drag from another client (Files, a
     // launcher) is delivered here. Coordinates are Dock-surface-local; the
@@ -227,6 +270,11 @@ private:
     struct WorkspaceInfo {
         int index = -1;
         QString name;
+        // A dedicated Space owned by a fullscreen window while it exists
+        // (T-05 FR-3); the strip marks it (T-11 FR-10).
+        bool fullscreen = false;
+        // Whether this is the active Space on its output.
+        bool active = false;
     };
 
     void bindTrustedGlobals();
@@ -255,6 +303,8 @@ private:
                                 int32_t width, int32_t height);
     static void onDockPopupConfigure(void *data, df_layer_surface *layer, uint32_t serial,
                                      int32_t width, int32_t height);
+    static void onOverviewConfigure(void *data, df_layer_surface *layer, uint32_t serial,
+                                    int32_t width, int32_t height);
     static void onLayerClosed(void *data, df_layer_surface *layer);
     static void onSeatCapabilities(void *data, wl_seat *seat, uint32_t capabilities);
     static void onSeatName(void *data, wl_seat *seat, const char *name);
@@ -299,6 +349,8 @@ private:
     static void onManagerFocused(void *data, df_toplevel_manager *manager, df_toplevel *id);
     static void onManagerOutput(void *data, df_toplevel_manager *manager, df_output *id);
     static void onManagerWorkspace(void *data, df_toplevel_manager *manager, df_workspace *id);
+    static void onManagerWorkspaceActivated(void *data, df_toplevel_manager *manager,
+                                            df_workspace *workspace, uint32_t index);
     static void onManagerAttention(void *data, df_toplevel_manager *manager, df_toplevel *id);
     static void onManagerHotCorner(void *data, df_toplevel_manager *manager, uint32_t corner,
                                    const char *output);
@@ -382,9 +434,20 @@ private:
     // True while the pointer is over the Dock popover; its coordinates are
     // popover-local and translated by the shell controller.
     bool m_pointerOnDockPopup = false;
+    // Mission Control overview chrome (T-11): a full-output `overlay` surface
+    // mapped only while the overview is open, plus the shared progress sample.
+    wl_surface *m_overviewSurface = nullptr;
+    df_layer_surface *m_overviewLayer = nullptr;
+    bool m_overviewMapped = false;
+    bool m_pointerOnOverview = false;
+    bool m_overviewActive = false;
+    qreal m_overviewProgress = 0.0;
     // True while the Dock surface holds the keyboard (T-10 section 20), so
     // key events are routed to the Dock scene.
     bool m_keyboardOnDock = false;
+    // True while the overview surface holds the keyboard (T-11): Escape
+    // dismisses the overview.
+    bool m_keyboardOnOverview = false;
     wl_seat *m_seat = nullptr;
     wl_pointer *m_pointer = nullptr;
     wl_keyboard *m_keyboard = nullptr;

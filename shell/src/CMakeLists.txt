@@ -97,6 +97,7 @@ target_link_libraries(dragonfruit-shell PRIVATE
     dragonfruit-design-systemplugin
     dragonfruit-shell-menubarplugin
     dragonfruit-shell-dockplugin
+    dragonfruit-shell-overviewplugin
 )
 if(TARGET PkgConfig::WAYLAND_CLIENT)
     target_link_libraries(dragonfruit-shell PRIVATE PkgConfig::WAYLAND_CLIENT)

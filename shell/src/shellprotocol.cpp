@@ -178,7 +178,7 @@ void ShellProtocol::bindTrustedGlobals()
             onManagerOutput,
             onManagerWorkspace,
             onManagerToplevel,
-            nullptr, // workspace_activated (unused)
+            onManagerWorkspaceActivated,
             onManagerFocused,
             onManagerAttention,
             onManagerHotCorner,
@@ -292,6 +292,126 @@ bool ShellProtocol::commitImage(const QImage &image)
     if (!m_surface)
         return false;
     return commitTo(m_surface, image);
+}
+
+bool ShellProtocol::createOverviewSurface()
+{
+    if (m_overviewSurface || m_overviewLayer)
+        return true;
+    if (!m_shell || !m_compositor)
+        return fail(QStringLiteral("df_shell is not available"));
+
+    m_overviewSurface = wl_compositor_create_surface(m_compositor);
+    m_overviewLayer = df_shell_get_layer_surface(m_shell, m_overviewSurface, nullptr,
+                                                 DF_SHELL_LAYER_OVERLAY, "overview");
+    if (!m_overviewLayer)
+        return fail(QStringLiteral("compositor refused the overview layer surface"));
+    static const df_layer_surface_listener listener = { onOverviewConfigure, onLayerClosed };
+    df_layer_surface_add_listener(m_overviewLayer, &listener, this);
+
+    // Cover the whole output; reserve nothing (the overview is transient) and
+    // take the keyboard on demand so Escape can dismiss it. It is mapped only
+    // while the overview is open, so it never blocks the normal scene.
+    df_layer_surface_set_anchor(m_overviewLayer,
+                                kAnchorTop | kAnchorBottom | kAnchorLeft | kAnchorRight);
+    df_layer_surface_set_exclusive_zone(m_overviewLayer, -1);
+    df_layer_surface_set_keyboard_interaction(
+        m_overviewLayer, DF_LAYER_SURFACE_KEYBOARD_INTERACTION_ON_DEMAND);
+    wl_surface_attach(m_overviewSurface, nullptr, 0, 0);
+    wl_surface_commit(m_overviewSurface);
+    if (wl_display_flush(m_display) < 0)
+        return fail(QStringLiteral("failed to flush the overview surface creation"));
+    return true;
+}
+
+bool ShellProtocol::commitOverviewImage(const QImage &image)
+{
+    if (!m_overviewSurface)
+        return false;
+    if (!commitTo(m_overviewSurface, image))
+        return false;
+    m_overviewMapped = true;
+    return true;
+}
+
+bool ShellProtocol::hideOverview()
+{
+    if (!m_overviewSurface || !m_overviewLayer)
+        return false;
+    if (!m_overviewMapped)
+        return true;
+    wl_surface_attach(m_overviewSurface, nullptr, 0, 0);
+    wl_surface_commit(m_overviewSurface);
+    m_overviewMapped = false;
+    if (m_display)
+        wl_display_flush(m_display);
+    return true;
+}
+
+void ShellProtocol::activateWorkspace(int index)
+{
+    if (!m_display)
+        return;
+    // Spaces are per-output; activation is lockstep, so any output's Space at
+    // this index addresses the same switch (T-05).
+    for (auto it = m_workspaces.constBegin(); it != m_workspaces.constEnd(); ++it) {
+        if (it.value().index == index) {
+            df_workspace_activate(it.key());
+            wl_display_flush(m_display);
+            return;
+        }
+    }
+}
+
+QVariantList ShellProtocol::overviewWorkspaces() const
+{
+    // Spaces are per-output and lockstep; the strip shows one card per index.
+    // The dedicated fullscreen Space exists (empty) on every output but only
+    // the owning output marks it fullscreen, so merge the per-index flags
+    // instead of trusting whichever hash entry is seen first.
+    QMap<int, QVariantMap> byIndex;
+    for (const WorkspaceInfo &info : m_workspaces) {
+        if (info.index < 0)
+            continue;
+        auto it = byIndex.find(info.index);
+        if (it == byIndex.end()) {
+            QVariantMap map;
+            map.insert(QStringLiteral("index"), info.index);
+            map.insert(QStringLiteral("name"), info.name);
+            map.insert(QStringLiteral("fullscreen"), info.fullscreen);
+            map.insert(QStringLiteral("active"), info.active);
+            byIndex.insert(info.index, map);
+        } else {
+            it.value().insert(QStringLiteral("fullscreen"),
+                              it.value().value(QStringLiteral("fullscreen")).toBool()
+                                  || info.fullscreen);
+            it.value().insert(QStringLiteral("active"),
+                              it.value().value(QStringLiteral("active")).toBool()
+                                  || info.active);
+            if (it.value().value(QStringLiteral("name")).toString().isEmpty())
+                it.value().insert(QStringLiteral("name"), info.name);
+        }
+    }
+    QVariantList result;
+    for (auto it = byIndex.constBegin(); it != byIndex.constEnd(); ++it)
+        result.append(it.value());
+    return result;
+}
+
+QVariantList ShellProtocol::minimizedWindows() const
+{
+    QVariantList result;
+    for (df_toplevel *toplevel : m_toplevelOrder) {
+        const ToplevelInfo &info = m_toplevels.value(toplevel);
+        if ((info.state & 0x1u) == 0)
+            continue;
+        QVariantMap map;
+        map.insert(QStringLiteral("windowId"), QString::number(info.windowId));
+        map.insert(QStringLiteral("title"), info.title);
+        map.insert(QStringLiteral("appId"), info.appId);
+        result.append(map);
+    }
+    return result;
 }
 
 bool ShellProtocol::createDockSurface(DockPosition position, int thickness, int exclusiveZone)
@@ -594,6 +714,14 @@ void ShellProtocol::enterMissionControl()
         wl_display_flush(m_display);
 }
 
+void ShellProtocol::exitMissionControl()
+{
+    if (m_manager)
+        df_toplevel_manager_exit_mission_control(m_manager);
+    if (m_display)
+        wl_display_flush(m_display);
+}
+
 int ShellProtocol::displayFd() const
 {
     return m_display ? wl_display_get_fd(m_display) : -1;
@@ -604,6 +732,10 @@ void ShellProtocol::teardown()
     for (wl_buffer *buffer : std::as_const(m_buffers))
         wl_buffer_destroy(buffer);
     m_buffers.clear();
+    if (m_overviewLayer)
+        df_layer_surface_destroy(m_overviewLayer);
+    if (m_overviewSurface)
+        wl_surface_destroy(m_overviewSurface);
     if (m_dockPopupLayer)
         df_layer_surface_destroy(m_dockPopupLayer);
     if (m_dockPopupSurface)
@@ -664,6 +796,11 @@ void ShellProtocol::teardown()
     m_dockPopupLayer = nullptr;
     m_dockPopupSurface = nullptr;
     m_dockPopupMapped = false;
+    m_overviewLayer = nullptr;
+    m_overviewSurface = nullptr;
+    m_overviewMapped = false;
+    m_pointerOnOverview = false;
+    m_keyboardOnOverview = false;
     m_manager = nullptr;
     m_shell = nullptr;
     m_core = nullptr;
@@ -771,6 +908,15 @@ void ShellProtocol::onDockPopupConfigure(void *data, df_layer_surface *, uint32_
     if (self->m_dockPopupLayer)
         df_layer_surface_ack_configure(self->m_dockPopupLayer, serial);
     emit self->dockPopupConfigured(width, height, serial);
+}
+
+void ShellProtocol::onOverviewConfigure(void *data, df_layer_surface *, uint32_t serial,
+                                        int32_t width, int32_t height)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    if (self->m_overviewLayer)
+        df_layer_surface_ack_configure(self->m_overviewLayer, serial);
+    emit self->overviewConfigured(width, height, serial);
 }
 
 void ShellProtocol::onLayerClosed(void *data, df_layer_surface *)
@@ -1013,8 +1159,16 @@ void ShellProtocol::onPointerEnter(void *data, wl_pointer *, uint32_t, wl_surfac
     self->m_pointerOnDockPopup =
         self->m_dockPopupSurface && surface == self->m_dockPopupSurface;
     self->m_pointerOnDock = self->m_dockSurface && surface == self->m_dockSurface;
+    self->m_pointerOnOverview =
+        self->m_overviewSurface && surface == self->m_overviewSurface;
     self->m_pointerX = wl_fixed_to_double(x) + (self->m_pointerOnPopup ? self->m_popupX : 0);
     self->m_pointerY = wl_fixed_to_double(y) + (self->m_pointerOnPopup ? self->m_popupY : 0);
+    if (self->m_pointerOnOverview) {
+        self->m_pointerX = wl_fixed_to_double(x);
+        self->m_pointerY = wl_fixed_to_double(y);
+        emit self->overviewPointerMoved(self->m_pointerX, self->m_pointerY);
+        return;
+    }
     if (self->m_pointerOnDockPopup) {
         self->m_pointerX = wl_fixed_to_double(x);
         self->m_pointerY = wl_fixed_to_double(y);
@@ -1033,12 +1187,16 @@ void ShellProtocol::onPointerEnter(void *data, wl_pointer *, uint32_t, wl_surfac
 void ShellProtocol::onPointerLeave(void *data, wl_pointer *, uint32_t, wl_surface *)
 {
     auto *self = static_cast<ShellProtocol *>(data);
+    const bool wasOverview = self->m_pointerOnOverview;
     const bool wasDockPopup = self->m_pointerOnDockPopup;
     const bool wasDock = self->m_pointerOnDock;
     self->m_pointerOnPopup = false;
     self->m_pointerOnDockPopup = false;
     self->m_pointerOnDock = false;
-    if (wasDockPopup)
+    self->m_pointerOnOverview = false;
+    if (wasOverview)
+        emit self->overviewPointerLeft();
+    else if (wasDockPopup)
         emit self->dockPopupPointerLeft();
     else if (wasDock)
         emit self->dockPointerLeft();
@@ -1052,6 +1210,12 @@ void ShellProtocol::onPointerMotion(void *data, wl_pointer *, uint32_t, wl_fixed
     auto *self = static_cast<ShellProtocol *>(data);
     self->m_pointerX = wl_fixed_to_double(x) + (self->m_pointerOnPopup ? self->m_popupX : 0);
     self->m_pointerY = wl_fixed_to_double(y) + (self->m_pointerOnPopup ? self->m_popupY : 0);
+    if (self->m_pointerOnOverview) {
+        self->m_pointerX = wl_fixed_to_double(x);
+        self->m_pointerY = wl_fixed_to_double(y);
+        emit self->overviewPointerMoved(self->m_pointerX, self->m_pointerY);
+        return;
+    }
     if (self->m_pointerOnDockPopup) {
         self->m_pointerX = wl_fixed_to_double(x);
         self->m_pointerY = wl_fixed_to_double(y);
@@ -1071,6 +1235,11 @@ void ShellProtocol::onPointerButton(void *data, wl_pointer *, uint32_t, uint32_t
                                     uint32_t state)
 {
     auto *self = static_cast<ShellProtocol *>(data);
+    if (self->m_pointerOnOverview) {
+        emit self->overviewPointerButton(self->m_pointerX, self->m_pointerY, button,
+                                         state == WL_POINTER_BUTTON_STATE_PRESSED);
+        return;
+    }
     if (self->m_pointerOnDockPopup) {
         emit self->dockPopupPointerButton(self->m_pointerX, self->m_pointerY, button,
                                           state == WL_POINTER_BUTTON_STATE_PRESSED);
@@ -1100,9 +1269,13 @@ void ShellProtocol::onKeyboardEnter(void *data, wl_keyboard *, uint32_t, wl_surf
 {
     auto *self = static_cast<ShellProtocol *>(data);
     self->m_keyboardOnDock = self->m_dockSurface && surface == self->m_dockSurface;
+    self->m_keyboardOnOverview =
+        self->m_overviewSurface && surface == self->m_overviewSurface;
     emit self->keyboardFocused(true);
     if (self->m_keyboardOnDock)
         emit self->dockKeyboardFocused(true);
+    if (self->m_keyboardOnOverview)
+        emit self->overviewKeyboardFocused(true);
 }
 
 void ShellProtocol::onKeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surface *surface)
@@ -1110,10 +1283,15 @@ void ShellProtocol::onKeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surf
     auto *self = static_cast<ShellProtocol *>(data);
     const bool wasDock = self->m_keyboardOnDock
             || (self->m_dockSurface && surface == self->m_dockSurface);
+    const bool wasOverview = self->m_keyboardOnOverview
+            || (self->m_overviewSurface && surface == self->m_overviewSurface);
     self->m_keyboardOnDock = false;
+    self->m_keyboardOnOverview = false;
     emit self->keyboardFocused(false);
     if (wasDock)
         emit self->dockKeyboardFocused(false);
+    if (wasOverview)
+        emit self->overviewKeyboardFocused(false);
 }
 
 void ShellProtocol::onKeyboardKey(void *data, wl_keyboard *, uint32_t, uint32_t, uint32_t key,
@@ -1151,6 +1329,21 @@ void ShellProtocol::onManagerWorkspace(void *data, df_toplevel_manager *, df_wor
         onWorkspaceDone,
     };
     df_workspace_add_listener(id, &listener, self);
+}
+
+void ShellProtocol::onManagerWorkspaceActivated(void *data, df_toplevel_manager *,
+                                                df_workspace *workspace, uint32_t index)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    // The manager's activation event is the per-switch signal (the
+    // `df_workspace.activated` property is only re-sent on structural syncs).
+    // Activation is lockstep, so every Space with this index is active and
+    // every other index is not (T-05/T-11).
+    self->m_activeWorkspace = workspace;
+    for (auto it = self->m_workspaces.begin(); it != self->m_workspaces.end(); ++it)
+        it.value().active = (it.value().index == static_cast<int>(index));
+    fprintf(stderr, "dragonfruit-shell: workspace activated index=%u\n", index);
+    emit self->overviewDataChanged();
 }
 
 void ShellProtocol::onManagerToplevel(void *data, df_toplevel_manager *, df_toplevel *id)
@@ -1197,8 +1390,15 @@ void ShellProtocol::onManagerHotCorner(void *, df_toplevel_manager *, uint32_t, 
 {
 }
 
-void ShellProtocol::onManagerOverview(void *, df_toplevel_manager *, uint32_t, df_toplevel *)
+void ShellProtocol::onManagerOverview(void *data, df_toplevel_manager *, uint32_t active,
+                                      df_toplevel *)
 {
+    auto *self = static_cast<ShellProtocol *>(data);
+    // The compositor's single overview state machine is the source of truth
+    // (T-11); the shell only mirrors it for the chrome.
+    self->m_overviewActive = active != 0;
+    emit self->overviewChanged(self->m_overviewActive);
+    emit self->overviewDataChanged();
 }
 
 void ShellProtocol::onManagerAppSwitcher(void *, df_toplevel_manager *, uint32_t, const char *,
@@ -1216,9 +1416,16 @@ void ShellProtocol::onManagerInputAction(void *data, df_toplevel_manager *, cons
                            QString::fromUtf8(source ? source : ""));
 }
 
-void ShellProtocol::onManagerProgress(void *, df_toplevel_manager *, const char *, int32_t, int32_t,
-                                      int32_t, uint32_t, uint32_t, uint32_t)
+void ShellProtocol::onManagerProgress(void *data, df_toplevel_manager *, const char *action,
+                                      int32_t progress, int32_t, int32_t, uint32_t, uint32_t,
+                                      uint32_t)
 {
+    auto *self = static_cast<ShellProtocol *>(data);
+    // One shared pipeline sample for the in-flight transition (T-11 FR-1):
+    // the overview chrome fades/slides with the same curve as the gesture.
+    self->m_overviewProgress = wl_fixed_to_double(progress);
+    emit self->overviewProgress(self->m_overviewProgress,
+                                QString::fromUtf8(action ? action : ""));
 }
 
 void ShellProtocol::onManagerAppAccelerator(void *, df_toplevel_manager *, const char *,
@@ -1325,6 +1532,9 @@ void ShellProtocol::emitDockState()
         windows.append(window);
     }
     emit dockStateChanged(buildDockProjection(windows));
+    // The overview strip is a projection of the same window/workspace state
+    // (T-11); refresh it whenever the running set changes.
+    emit overviewDataChanged();
 }
 
 df_toplevel *ShellProtocol::toplevelForId(quintptr windowId) const
@@ -1369,14 +1579,24 @@ void ShellProtocol::onWorkspaceIndex(void *data, df_workspace *workspace, uint32
     self->m_workspaces[workspace].index = static_cast<int>(index);
     self->emitDockState();
 }
-void ShellProtocol::onWorkspaceActivated(void *data, df_workspace *workspace, uint32_t)
+void ShellProtocol::onWorkspaceActivated(void *data, df_workspace *workspace, uint32_t active)
 {
     // The event names the Space that just became active (T-10 section 13);
-    // remember it so "Assign to This Desktop" can target it.
+    // remember it so "Assign to This Desktop" can target it. The strip also
+    // highlights the active card (T-11).
     auto *self = static_cast<ShellProtocol *>(data);
     self->m_activeWorkspace = workspace;
+    self->m_workspaces[workspace].active = active != 0;
+    emit self->overviewDataChanged();
 }
-void ShellProtocol::onWorkspaceFullscreen(void *, df_workspace *, uint32_t) {}
+void ShellProtocol::onWorkspaceFullscreen(void *data, df_workspace *workspace, uint32_t fullscreen)
+{
+    // A fullscreen window owns a dedicated Space while it exists; the
+    // workspace strip marks it (T-11 FR-10).
+    auto *self = static_cast<ShellProtocol *>(data);
+    self->m_workspaces[workspace].fullscreen = fullscreen != 0;
+    emit self->overviewDataChanged();
+}
 void ShellProtocol::onWorkspaceWallpaper(void *, df_workspace *, const char *, uint32_t, uint32_t) {}
 void ShellProtocol::onWorkspaceRemoved(void *data, df_workspace *workspace)
 {
@@ -1385,5 +1605,6 @@ void ShellProtocol::onWorkspaceRemoved(void *data, df_workspace *workspace)
     // Never keep a dangling active-Space pointer for "Assign to This Desktop".
     if (self->m_activeWorkspace == workspace)
         self->m_activeWorkspace = nullptr;
+    emit self->overviewDataChanged();
 }
 void ShellProtocol::onWorkspaceDone(void *, df_workspace *) {}
