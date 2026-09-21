@@ -102,6 +102,9 @@ Rectangle {
     // the shell writes it to `dock.pinned`. The list is the complete ordered
     // set of pinned desktop ids (T-10 section 12, FR-9).
     signal pinnedOrderChanged(var desktopIds)
+    // Escape asked to leave Dock keyboard navigation; the shell releases the
+    // compositor keyboard focus back to the active window (T-10 section 20).
+    signal keyboardFocusReleaseRequested()
 
     // --- Geometry constants ---------------------------------------------
     readonly property real padding: Theme.controls.dock.padding
@@ -442,6 +445,12 @@ Rectangle {
             var entry = focusedEntry();
             if (entry)
                 openEntryMenu(entry);
+            event.accepted = true;
+        } else if (event.key === Qt.Key_Escape) {
+            // Leave keyboard navigation; the shell releases compositor focus
+            // back to the active window (T-10 section 20).
+            keyboardFocusReleaseRequested();
+            endKeyboardNavigation();
             event.accepted = true;
         } else if (event.text.length === 1 && event.text >= " ") {
             typeBuffer += event.text;

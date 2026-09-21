@@ -66,6 +66,7 @@ private slots:
     void onDockPopoverChanged();
     void onDockRevealStateChanged();
     void onDockKeyboardFocused(bool focused);
+    void onDockKeyboardFocusReleaseRequested();
     void onInputAction(const QString &action, const QString &source);
     void onDockPointerMoved(qreal x, qreal y);
     void onDockPointerButton(qreal x, qreal y, quint32 button, bool pressed);

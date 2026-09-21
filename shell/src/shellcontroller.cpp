@@ -344,6 +344,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     connect(m_dockItem, SIGNAL(popoverChanged()), this, SLOT(onDockPopoverChanged()));
     connect(m_dockItem, SIGNAL(revealStateChanged()), this,
             SLOT(onDockRevealStateChanged()));
+    connect(m_dockItem, SIGNAL(keyboardFocusReleaseRequested()), this,
+            SLOT(onDockKeyboardFocusReleaseRequested()));
     // The Trash entry's state comes from the home-trash watch (section 16);
     // deletions by any application update the full/count state.
     m_trash = new TrashMonitor(TrashMonitor::defaultRoot(), this);
@@ -760,6 +762,16 @@ void ShellController::onDockKeyboardFocused(bool focused)
         QMetaObject::invokeMethod(m_dockItem, "endKeyboardNavigation");
     }
     scheduleDockRender();
+}
+
+void ShellController::onDockKeyboardFocusReleaseRequested()
+{
+    // Escape left Dock keyboard navigation (T-10 section 20). The Dock has
+    // already cleared its ring; ask the compositor to restore the active
+    // window's keyboard focus. The resulting wl_keyboard.leave routes back
+    // through onDockKeyboardFocused(false), so the state stays compositor-led.
+    if (m_dockKeyboardFocused)
+        m_protocol->releaseKeyboardFocus();
 }
 
 void ShellController::onInputAction(const QString &action, const QString &)

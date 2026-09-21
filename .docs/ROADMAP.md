@@ -89,7 +89,7 @@ Updated when a task is partially or completely finished; see
 | Phase | Tickets |
 |---|---|
 | 1 · Foundation | T-01 ✅ done · T-02 🔄 partial (compositor core) · T-03 🔄 partial (input engine) · T-04 🔄 partial (window model) · T-05 🔄 partial (Spaces model) · T-06 🔄 partial (Xwayland) · T-07 🔄 partial (private shell protocols) |
-| 2 · Experience | T-08 ✅ done (design system; app-level chrome lint + live AT-SPI dump deferred) · T-09 🔄 partial (menu bar + shell bootstrap + overlay-layer dropdown + scripted output hotplug; T-20/T-22 content open) · T-10 🔄 partial (Dock presentation core + shell surface + running entries/activation + launch/pinned persistence + launch/attention bounce + magnified-band input region + app context menus/window chooser + drag rearrangement (reorder/promote/remove) + live `dock.*` settings/divider menu/reduced motion + left/right reserved-zone foundation + per-position (left/right) surfaces, vertical layout, beside-the-bar popovers, corrected auto-hide translation and edge-band reveal/re-hide state machine + Trash state/count via a home-trash watcher, click-to-Files at `trash://`, and the Open/Empty Trash menu with an Empty Trash confirmation + Control-F3/Super+Option+D `focus-dock`/`toggle-dock` shortcuts and in-Dock keyboard navigation (arrows/Return/menu/type-jump, FocusRing); external drops, Options submenu, per-output sizing, scene-graph render path, live AT-SPI dump open) · T-11 … T-14 pending |
+| 2 · Experience | T-08 ✅ done (design system; app-level chrome lint + live AT-SPI dump deferred) · T-09 🔄 partial (menu bar + shell bootstrap + overlay-layer dropdown + scripted output hotplug; T-20/T-22 content open) · T-10 🔄 partial (Dock presentation core + shell surface + running entries/activation + launch/pinned persistence + launch/attention bounce + magnified-band input region + app context menus/window chooser + drag rearrangement (reorder/promote/remove) + live `dock.*` settings/divider menu/reduced motion + left/right reserved-zone foundation + per-position (left/right) surfaces, vertical layout, beside-the-bar popovers, corrected auto-hide translation and edge-band reveal/re-hide state machine + Trash state/count via a home-trash watcher, click-to-Files at `trash://`, and the Open/Empty Trash menu with an Empty Trash confirmation + Control-F3/Super+Option+D `focus-dock`/`toggle-dock` shortcuts and in-Dock keyboard navigation (arrows/Return/menu/type-jump, FocusRing, Escape `release_keyboard_focus`); external drops, Options submenu, per-output sizing, scene-graph render path, live AT-SPI dump open) · T-11 … T-14 pending |
 | 3 · Flagship apps | T-15 … T-19 pending |
 | 4 · System integration | T-20 … T-23 pending |
 | 5 · Desktop infrastructure | T-24 … T-29 pending |
@@ -593,6 +593,24 @@ submenus, per-output sizing, the scene-graph render path, the live AT-SPI
 dump, and a protocol path for Escape to release compositor keyboard focus.
 Details and hand-off: [PROGRESS.md](PROGRESS.md).
 
+T-10 continuation (keyboard-focus-release slice): Escape can now leave Dock
+keyboard navigation and hand the keyboard back to the active window
+(section 20). The private `df_toplevel_manager` grew an additive
+`release_keyboard_focus` request, so the interface is now **version 2** (the
+other private interfaces stay at version 1); the compositor's existing
+`restore_window_keyboard_focus` path is reused, and the request is inert when
+no chrome surface held the keyboard or the active window is gone. The Dock QML
+emits `keyboardFocusReleaseRequested` on Escape and clears its ring; the shell
+routes it to `ShellProtocol::releaseKeyboardFocus()`, and the compositor's
+`wl_keyboard.leave` then drives `onDockKeyboardFocused(false)` so the state
+stays compositor-led rather than shell-faked. Scripted by a new `tst_dock`
+case (`test_keyboard_escape_releases_focus`) and an extension to
+`focus_dock_shortcut_hands_the_keyboard_to_the_dock` asserting the Dock's
+keyboard leave. Open for the remaining slices: external drops, GVfs Trash
+completion, the Options/Position submenus, per-output sizing, the scene-graph
+render path, and the live AT-SPI dump. Details and hand-off:
+[PROGRESS.md](PROGRESS.md).
+
 **Foundation milestone E2E (T-01…T-07).** The whole vertical slice now has a
 headless end-to-end test, `compositor/tests/milestone_e2e.rs` (`make e2e`):
 one live session with a shell client, a Wayland app, and an X11 app attached
@@ -625,7 +643,7 @@ the shell's own chrome rendering (T-09/T-10).
 2. **Experience**
    - [x] Design system (T-08: token architecture + all 20 components + gallery/visual regression; app-level chrome lint + live AT-SPI dump deferred)
    - [ ] Top bar (T-09 partial: menu-bar render/interaction + shell bootstrap live, restart/idle scripts passing, chrome input routing + overlay-layer dropdown landed and scripted, output hotplug scripted, always-present system menu (dragonfruit mark) + application menu (Files on the desktop) landed; T-20 status adapters, T-22 app-exported menus, and the fixed-menu action wiring (T-16/T-24/T-26) open)
-    - [ ] Dock (T-10 partial: presentation/interaction core + shell `top` surface with bottom reserved zone + launch/pinned persistence + launch/attention bounce + magnified-band input region + app context menus and window chooser + drag rearrangement (reorder/promote/remove) + live `dock.*` settings + per-position (left/right) surfaces and vertical layout + edge-band auto-hide reveal/re-hide + Trash state/count via a home-trash watcher with click-to-Files and the Open/Empty Trash menu with confirmation + Control-F3/Super+Option+D `focus-dock`/`toggle-dock` shortcuts with in-Dock keyboard navigation landed and scripted; external drops, Options submenu, per-output sizing, scene-graph render path, live AT-SPI dump open)
+    - [ ] Dock (T-10 partial: presentation/interaction core + shell `top` surface with bottom reserved zone + launch/pinned persistence + launch/attention bounce + magnified-band input region + app context menus and window chooser + drag rearrangement (reorder/promote/remove) + live `dock.*` settings + per-position (left/right) surfaces and vertical layout + edge-band auto-hide reveal/re-hide + Trash state/count via a home-trash watcher with click-to-Files and the Open/Empty Trash menu with confirmation + Control-F3/Super+Option+D `focus-dock`/`toggle-dock` shortcuts with in-Dock keyboard navigation and an Escape `release_keyboard_focus` path landed and scripted; external drops, Options submenu, per-output sizing, scene-graph render path, live AT-SPI dump open)
    - [ ] Window switching
    - [ ] Mission Control
    - [ ] Workspace gestures

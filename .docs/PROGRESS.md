@@ -3461,3 +3461,95 @@ Trash integration test (needs T-18), external-drag walkthroughs, the
 scene-graph FR-14 render path, the live AT-SPI walkthrough (keyboard is now
 landed), multi-output hotplug per-output popovers, plus the core-loop and
 60 Hz measurements.
+
+## T-10 — keyboard focus release (Escape) slice
+
+**State: partial.** Escape now leaves Dock keyboard navigation and hands the
+keyboard back to the active window (T-10 section 20). This closes the
+"Escape cannot release compositor keyboard focus" gap from the
+keyboard-navigation slice. The remaining slices (external drops, GVfs Trash
+completion, Options/Position submenus, per-output sizing, scene-graph render
+path, live AT-SPI dump) are unchanged and listed at the end.
+
+### What landed
+
+- **Protocol** (`protocols/dragonfruit-toplevel.xml`). The private
+  `df_toplevel_manager` gained an additive `release_keyboard_focus` request
+  (placed before `destroy` so existing request opcodes are stable) and its
+  interface version bumped **1 → 2**. The other private interfaces
+  (`df_core`, `df_shell`, `df_toplevel`, `df_workspace`, `df_output`) stay at
+  version 1; only the manager needs v2.
+- **Compositor** (`shell/mod.rs`). A new `MANAGER_INTERFACE_VERSION = 2`
+  constant is used for the manager global only (`create_global`), leaving
+  `INTERFACE_VERSION` at 1. The request handler calls the existing
+  `DfState::restore_window_keyboard_focus()` only when
+  `DfState::chrome_has_keyboard_focus()` is true, so it is inert when no
+  chrome surface held the keyboard or the active window is gone.
+- **Shell client** (`shellprotocol.{h,cpp}`). `ShellProtocol` binds the
+  manager at `min(m_managerVersion, 2)` and exposes `releaseKeyboardFocus()`
+  (`df_toplevel_manager_release_keyboard_focus`).
+- **Shell controller** (`shellcontroller.{h,cpp}`). Connects the Dock's new
+  `keyboardFocusReleaseRequested` signal to a slot that calls
+  `releaseKeyboardFocus()` when the Dock currently holds focus. It does **not**
+  fake the UI transition: the compositor's `wl_keyboard.leave` routes back
+  through `onDockKeyboardFocused(false)`.
+- **Dock QML** (`Dock.qml`). A `keyboardFocusReleaseRequested()` signal and a
+  `Keys.onPressed` Escape branch that emits it and calls
+  `endKeyboardNavigation()` for immediate ring feedback. The popover guard
+  (`if (!keyboardFocused || popoverOpen) return`) still lets an open
+  ContextMenu/chooser own Escape.
+- **Tests.** `shell_protocol_conformance.rs`'s
+  `focus_dock_shortcut_hands_the_keyboard_to_the_dock` now sends
+  `release_keyboard_focus` after FocusDock and asserts the Dock's
+  `wl_keyboard.leave`. `tst_dock.qml` gains
+  `test_keyboard_escape_releases_focus` (Escape emits the signal once and
+  clears `keyboardFocused`/`focusedItemId`). 85/85 `tst_dock` cases pass.
+
+### Notes for subsequent tasks
+
+- **Protocol interface versions are now per-interface.** Bump the specific
+  interface in the XML when adding a member (the scanner reads the XML
+  `version`); do not reflexively bump the shared `INTERFACE_VERSION`. The
+  shell binds each private global with its own `min(advertised, known)` —
+  update that `min` when the interface bumps.
+- **Add new requests before `destroy`** to keep existing request opcodes
+  stable (the destructor conventionally stays last).
+- **Chrome focus release is compositor-led.** The shell asks; the compositor
+  moves `wl_keyboard` focus and the resulting enter/leave drives the shell
+  UI. Keep it that way — do not set `keyboardFocused` false and assume the
+  compositor agrees.
+- A release request with no active window drops focus to `None`, which is the
+  correct "desktop has focus" state; tests can rely on the leave event.
+
+### Hand-off / open items (remaining T-10 slices)
+
+1. **External drops and spring-loading** (section 12): app/file drops on an
+   icon, Trash, or the Downloads stack. Needs the drag source plus
+   `app-index`/GIO launch with a file argument (T-17/T-18).
+2. **Trash completion** (section 16): GVfs `trash://` `GFileMonitor` +
+   `g_file_trash()` when the GIO dev headers are available;
+   `org.dragonfruit.Files1` activation once T-18 exists.
+3. **Options submenu + "Position on Screen"** (section 13): the app Options ▸
+   submenu and the divider position entry. Needs the design-system submenu
+   open logic and, for Assign To/Open at Login/Show in Files, compositor
+   app/space requests and T-18.
+4. **Per-output sizing** (section 18): chrome surfaces still size from the
+   first output; `matches_output` is the filter hook.
+5. **Scene-graph render path** (FR-14): the Dock still commits on demand via
+   `grabWindow`; the durable `QQuickWindow::afterRendering`/render-control
+   fix is shared with the T-09 deferred-polish backlog.
+6. **Live AT-SPI dump** (section 20): the QML roles exist and the keyboard
+   seat path now exists; a session-bus `atspi` walkthrough is T-31.
+
+### Gate status
+
+`make lint` green (`cargo fmt --check`, `clippy -D warnings`, ctest 13/13
+incl. `tst_dock` 85 cases and `qmllint_shell-dock`, `gen-tokens --check`, the
+design-token/desktop-name/no-capture gates); `make e2e` green (19/19
+`shell_protocol_conformance` incl. the extended focus-dock/release test, plus
+the window/Xwayland/idle suites).
+
+Acceptance criteria still unchecked in `tasks/10-dock.md`: the Files-side
+Trash integration test (needs T-18), external-drag walkthroughs, the
+scene-graph FR-14 render path, the live AT-SPI walkthrough, multi-output
+hotplug per-output popovers, plus the core-loop and 60 Hz measurements.
