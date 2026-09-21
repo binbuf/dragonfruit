@@ -325,6 +325,12 @@ Item {
                         { label: qsTr("New Folder"), shortcut: "⇧⌘N" },
                         { type: "separator" },
                         { label: qsTr("Open…"), shortcut: "⌘O" },
+                        { label: qsTr("Open With"), type: "submenu",
+                          submenu: [
+                              { label: qsTr("Text Editor") },
+                              { label: qsTr("Preview") },
+                              { label: qsTr("Archive Utility") }
+                          ] },
                         { label: qsTr("Close Window"), shortcut: "⌘W" },
                         { type: "separator" },
                         { label: qsTr("Show in Sidebar"), checked: true, checkable: true },

@@ -102,6 +102,15 @@ QVariantMap menuSeparator()
     return entry;
 }
 
+QVariantMap menuSubmenu(const QString &label, const QVariantList &items)
+{
+    QVariantMap entry;
+    entry.insert(QStringLiteral("label"), label);
+    entry.insert(QStringLiteral("type"), QStringLiteral("submenu"));
+    entry.insert(QStringLiteral("submenu"), items);
+    return entry;
+}
+
 // The fixed system menu (the dragonfruit mark), always leftmost. The actions
 // are session/system operations: Settings (T-16), App Store (no equivalent
 // yet), Sleep/Restart/Shut Down/Log Out (logind, T-24), Lock Screen (T-26).
@@ -174,7 +183,12 @@ QVariantList demoAppMenu()
     view.insert(QStringLiteral("title"), QStringLiteral("View"));
     view.insert(QStringLiteral("items"),
                 QVariantList{menuEntry(QStringLiteral("Zoom")),
-                             menuEntry(QStringLiteral("Enter Full Screen"), QStringLiteral("Ctrl+Ctrl+F"))});
+                             menuEntry(QStringLiteral("Enter Full Screen"), QStringLiteral("Ctrl+Ctrl+F")),
+                             menuSeparator(),
+                             menuSubmenu(QStringLiteral("Sort By"),
+                                         QVariantList{menuEntry(QStringLiteral("Name"), QString(), QStringLiteral("sort-name")),
+                                                      menuEntry(QStringLiteral("Size"), QString(), QStringLiteral("sort-size")),
+                                                      menuEntry(QStringLiteral("Kind"), QString(), QStringLiteral("sort-kind"))})});
     menu << view;
 
     return menu;

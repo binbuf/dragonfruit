@@ -16,12 +16,16 @@ Item {
     property int verticalPadding: Theme.controls.popup.padding
     property int accessibleRole: Accessible.Pane
     property string accessibleName: ""
+    // When false the owner handles Escape itself (e.g. a menu with an open
+    // submenu closes the submenu first) and the popup stays open.
+    property bool escapeCloses: true
 
     default property alias contentData: contentColumn.data
     property alias content: contentColumn
 
     signal opened()
     signal closed()
+    signal escapePressed()
 
     function show() { root.open = true; }
     function hide() { root.open = false; }
@@ -96,7 +100,9 @@ Item {
     }
 
     Keys.onEscapePressed: (event) => {
-        root.hide();
+        root.escapePressed();
+        if (root.escapeCloses)
+            root.hide();
         event.accepted = true;
     }
 
