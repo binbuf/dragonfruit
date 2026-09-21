@@ -4182,3 +4182,121 @@ criteria still unchecked in `tasks/10-dock.md`: the Files-side Trash
 integration test (T-18), the external-drag walkthrough (drag source,
 T-17/T-18), the live AT-SPI walkthrough, multi-output per-output popovers,
 plus the core-loop and 60 Hz measurements.
+
+## T-10 continuation — divider drag-to-resize (eighteenth slice)
+
+**State: partial.** The divider between the Dock's app and minimized/Trash
+regions is now the resize handle (T-10 section 5): dragging it grows or
+shrinks the icons and writes `dock.size`, with a live un-persisted preview
+while dragging and a single commit on release. The next unblocked T-10
+items are overflow clamping (section 5.1), the drag *source*
+(T-17/T-18), GVfs Trash completion (GIO dev headers absent), per-output
+sizing, and the live AT-SPI dump.
+
+### What landed
+
+- **Dock QML** (`shell/dock/Dock.qml`). A `resizing` state plus
+  `beginDividerResize` / `updateDividerResize` /
+  `updateDividerResizeAt` / `endDividerResize`. The icon size grows linearly
+  with the handle's distance from the Dock centre and shrinks as it moves
+  back (`resizeStartIconSize + (distance - resizeStartDistance)`), clamped to
+  `iconSizeMin..iconSizeMax`; the icon size maps onto `dock.size` via
+  `iconSizeFraction` (the shell's `iconSizeForSize` maps it back). Two new
+  signals: `dockSizePreview(fraction)` on every move and
+  `dockSizeChanged(fraction)` on release. `magnifying` and `hideIfIdle` are
+  suppressed while resizing, and `inputRects` keeps the whole surface
+  interactive so the drag never leaks to a window (FR-13). The divider
+  slot stays 1 px; only the hit target grows.
+- **Entry QML** (`shell/dock/DockEntry.qml`). The divider gained an
+  invisible `dividerHit` item (≥16 px wide, centred on the 1 px separator)
+  carrying a `DragHandler` (`dividerDragHandler`) that reports scene
+  coordinates through `dividerResizeBegan/Moved/Ended`. The app-drag
+  `DragHandler` was already disabled for the divider, so the two never
+  conflict.
+- **Shell** (`shell/src/shellcontroller.{h,cpp}`). The two signals are
+  connected to `onDockSizePreview` / `onDockSizeChanged`. Both call
+  `m_settings.setSize(fraction)` (the existing clamp) and the new
+  `applyDockSizeOnly`, which re-reads `barThickness`/`magnifyBand`,
+  reconfigure the Dock surface (`configureDockSurface`) and renders — but
+  deliberately does **not** call `rebuildDockEntries`, so the QML
+  `DragHandler` holding the pointer is not destroyed. The commit path also
+  saves (`saveDockSettings`).
+- **Tests** (`shell/tests/tst_dock.qml`). Four cases: the preview/commit
+  fraction round-trip and single-commit-on-release, clamping at both ends of
+  the icon range, magnification suppression + full-surface input while
+  resizing, and a real `mousePress`/`mouseMove`/`mouseRelease` drag on the
+  divider's expanded hit target that grows the icon size and commits once.
+
+### Gotchas learned (important for the next slice)
+
+- **A live resize must not rebuild the entry model.** `applyDockSettings`
+  calls `rebuildDockEntries()`, which sets the `entries` property and
+  recomputes `items`; the Repeater would reset the delegate whose
+  `DragHandler` is holding the pointer. The size path is therefore split
+  into `applyDockSizeOnly` (no rebuild) and the existing full apply. Any new
+  live property that only affects geometry should do the same.
+- **The divider is 1 px wide.** Its `DockEntry` layout slot is
+  `dividerWidth` (1), so pointer handlers on the delegate root can only be
+  hit in a 1 px column. The fix is a wider transparent child
+  (`dividerHit`) centred on it; the layout slot is unchanged.
+- **`DragHandler.centroid` is only reported while active.** The first move
+  that crosses `dragThreshold` fires `activeChanged` at the *already-moved*
+  position, so a test must make two moves (one to activate, one to resize)
+  or the delta is measured as zero. Real drags emit many moves so this is a
+  test-only concern.
+- **Setting a QML property from C++ does not restart a drag.** The shell
+  writes `iconSize` on every preview; the QML computes the next value from
+  `resizeStartIconSize` and the pointer distance, not from the current
+  `iconSize`, so the round-trip cannot drift or feed back.
+- **The Dock surface extent lags a preview by one configure.** For a bottom
+  Dock `m_dockHeight` only updates in `onDockConfigured`; a preview renders
+  once at the old height (briefly clipping a grown bar) then the configure
+  arrives and re-renders. This is the same behavior as the live-settings
+  slice and is acceptable; a future slice could render only after the
+  configure.
+
+### Hand-off / open items (remaining T-10 slices)
+
+1. **Dock overflow clamp (section 5.1).** Not implemented: a Dock wider
+   than its output still centers and clips. The spec wants `dock.size`
+   clamped at layout time so the pinned set fits at the minimum icon size,
+   temporary/recent entries hidden first, pinned never dropped, and a
+   warning logged once per session. The divider resize is the natural place
+   to bound `dock.size`; the shell knows the output length (`m_dockWidth`/
+   `m_dockHeight`) and the token geometry.
+2. **The drag source** (Files/launcher, T-17/T-18): export `text/uri-list`
+   and `application/x-dragonfruit-app` from a `wl_data_source`, start the
+   drag on an implicit pointer grab, and add the scripted end-to-end
+   walkthrough (source client + shell target). The shell target side is
+   complete. Smithay's `update_focus` only sends a data offer to a
+   **different** client, so the test needs a second source client. This
+   should use the drag payload to update `dock.size` via the internal
+   reorder path.
+3. **GVfs Trash completion** (section 16) — GIO dev headers are absent on
+   this host, so `TrashMonitor`/`DownloadsMonitor` stay on the sanctioned
+   filesystem fallback; switch them to `GFileMonitor`/GIO when the headers
+   exist. Mount-unavailable dimming, Empty Trash progress, and
+   `org.dragonfruit.Files1` activation (T-18) remain.
+4. **Per-output sizing** (section 18): chrome surfaces still size from the
+   first output; `matches_output` is the filter hook. A popover created with
+   `output = None` still renders on every output, which is the acceptance
+   criterion "per-output popovers do not float across outputs".
+5. **Live AT-SPI dump** (section 20): the QML roles and the keyboard seat
+   path exist; a session-bus `atspi` walkthrough is T-31.
+6. **Assign To follow-ups** (T-04/T-05): sticky "All Desktops" and "None"
+   need compositor state; until then the two menu rows log pending.
+
+### Gate status
+
+`make lint` green (`cargo fmt --check`, `clippy -D warnings`, ctest 13/13 incl.
+`tst_dock` 103 and `tst_dockcore` 37, `gen-tokens --check`, the design-token/
+desktop-name/no-capture gates); `make e2e` green (19/19
+`shell_protocol_conformance` plus the window/Xwayland/idle suites); live
+headless smoke (`dragonfruit dev --headless --shell`) reports
+`menu bar configured 1280x28`, `Dock configured 1280x124`,
+`output reserved zone edge=1 thickness=60`, both `scene-graph commit path
+active` lines, and a clean teardown. Acceptance criteria still unchecked in
+`tasks/10-dock.md`: the Files-side Trash integration test (T-18), the
+external-drag walkthrough (drag source, T-17/T-18), the live AT-SPI
+walkthrough, multi-output per-output popovers, plus the core-loop and 60 Hz
+measurements.

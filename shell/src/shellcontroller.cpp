@@ -384,6 +384,10 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onDockDownloadsFolderRequested()));
     connect(m_dockItem, SIGNAL(downloadsViewed()), this,
             SLOT(onDockDownloadsViewed()));
+    connect(m_dockItem, SIGNAL(dockSizePreview(qreal)), this,
+            SLOT(onDockSizePreview(qreal)));
+    connect(m_dockItem, SIGNAL(dockSizeChanged(qreal)), this,
+            SLOT(onDockSizeChanged(qreal)));
     // Scene-graph render path (FR-14): commit a frame whenever the Dock scene
     // graph renders one, so QML-driven animation (magnification, popover
     // fade/scale, drag gaps) reaches the compositor without a sampling timer.
@@ -1055,6 +1059,36 @@ void ShellController::saveDockSettings()
 {
     if (!m_settings.save())
         qWarning() << "shell: cannot save Dock settings:" << m_settings.lastError();
+}
+
+// The divider resize handle (T-10 section 5): a live preview re-lays-out the
+// Dock without persisting, and the release commits (saves) it. Neither path
+// rebuilds the entries: the Repeater model must stay stable while the QML
+// delegate's DragHandler holds the pointer.
+void ShellController::onDockSizePreview(qreal fraction)
+{
+    m_settings.setSize(fraction);
+    applyDockSizeOnly();
+}
+
+void ShellController::onDockSizeChanged(qreal fraction)
+{
+    m_settings.setSize(fraction);
+    applyDockSizeOnly();
+    saveDockSettings();
+}
+
+void ShellController::applyDockSizeOnly()
+{
+    if (!m_dockItem || !m_protocol)
+        return;
+    m_dockItem->setProperty("iconSize", iconSizeForSize(m_settings.size()));
+    m_dockBarThickness = qRound(m_dockItem->property("barThickness").toReal());
+    m_dockThickness = m_dockBarThickness + qCeil(m_dockItem->property("magnifyBand").toReal());
+    const int exclusive = m_settings.autohide() ? 0 : m_dockBarThickness;
+    if (!m_protocol->configureDockSurface(m_dockPosition, m_dockThickness, exclusive))
+        qWarning() << "shell: cannot resize the Dock surface:" << m_protocol->lastError();
+    renderDock();
 }
 
 void ShellController::onSettingsFileChanged()
