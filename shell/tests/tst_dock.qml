@@ -30,6 +30,8 @@ Item {
         SignalSpy { id: popoverSpy; signalName: "popoverChanged" }
         SignalSpy { id: pinnedOrderSpy; signalName: "pinnedOrderChanged" }
         SignalSpy { id: releaseFocusSpy; signalName: "keyboardFocusReleaseRequested" }
+        SignalSpy { id: externalDropSpy; signalName: "externalDropRequested" }
+        SignalSpy { id: externalDragSpy; signalName: "externalDragChanged" }
 
         // Reduced motion is a global singleton; reset it before every test so
         // a failure mid-test cannot leak into the next one.
@@ -1369,6 +1371,109 @@ Item {
             keyClick(Qt.Key_Up);
             waitForRendering(stage);
             compare(dock.focusedItemId, "files");
+        }
+
+        // -- External drops (T-10 section 12) --------------------------------
+
+        function test_external_file_drag_highlights_the_target() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "A", true), app("b", "B", true) ]
+            });
+            externalDragSpy.target = dock;
+            externalDragSpy.clear();
+            dock.beginExternalDrag(false, 2);
+            compare(dock.externalDragActive, true);
+            compare(dock.externalPayloadIsApp, false);
+            compare(dock.externalPayloadCount, 2);
+            compare(dock.inputRects.length, 1); // whole surface while dragging
+
+            var slot = dock.layout[0];
+            var local = dock.mapToItem(null, slot.x + slot.w / 2, slot.y + slot.h / 2);
+            dock.externalDragTo(local.x, local.y);
+            compare(dock.externalTargetId, "a");
+            waitForRendering(stage);
+            compare(dock.itemAt(0).externalDropTarget, true);
+            compare(dock.itemAt(1).externalDropTarget, false);
+
+            dock.externalDragLeft();
+            compare(dock.externalDragActive, false);
+            compare(dock.externalTargetId, "");
+        }
+
+        function test_external_app_drop_opens_a_live_gap() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "A", true), app("b", "B", true) ]
+            });
+            externalDropSpy.target = dock;
+            externalDropSpy.clear();
+            dock.beginExternalDrag(true, 1);
+            // Drop to the left of the first app: insertion index 0, so the
+            // placeholder is the first item and the apps shift right.
+            var slot = dock.layout[0];
+            var local = dock.mapToItem(null, slot.x - 2, slot.y + slot.h / 2);
+            dock.externalDragTo(local.x, local.y);
+            compare(dock.externalGap, true);
+            compare(dock.externalInsertIndex, 0);
+            compare(dock.items[0].kind, "external");
+            compare(dock.items[1].id, "a");
+
+            dock.externalDrop(local.x, local.y);
+            compare(externalDropSpy.count, 1);
+            compare(externalDropSpy.signalArguments[0][0], "__external_drop__");
+            compare(externalDropSpy.signalArguments[0][1], "external");
+            compare(externalDropSpy.signalArguments[0][3], true);
+            compare(dock.externalDragActive, false);
+        }
+
+        function test_external_drop_over_trash_reports_trash() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "A", true) ]
+            });
+            externalDropSpy.target = dock;
+            externalDropSpy.clear();
+            dock.beginExternalDrag(false, 1);
+            var trash = dock.layout[dock.layout.length - 1];
+            var local = dock.mapToItem(null, trash.x + trash.w / 2,
+                                       trash.y + trash.h / 2);
+            dock.externalDrop(local.x, local.y);
+            compare(externalDropSpy.count, 1);
+            compare(externalDropSpy.signalArguments[0][1], "trash");
+            compare(externalDropSpy.signalArguments[0][3], false);
+        }
+
+        function test_external_drop_on_empty_dock_is_a_no_op() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "A", true) ]
+            });
+            externalDropSpy.target = dock;
+            externalDropSpy.clear();
+            dock.beginExternalDrag(false, 1);
+            // Far outside the bar and its magnified band.
+            dock.externalDropAt(-100, -100);
+            compare(externalDropSpy.count, 1);
+            compare(externalDropSpy.signalArguments[0][0], "");
+            compare(externalDropSpy.signalArguments[0][1], "");
+        }
+
+        function test_external_drop_cancel_resets_state() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "A", true) ]
+            });
+            dock.beginExternalDrag(true, 3);
+            var slot = dock.layout[0];
+            var local = dock.mapToItem(null, slot.x + slot.w / 2, slot.y + slot.h / 2);
+            dock.externalDragTo(local.x, local.y);
+            compare(dock.externalGap, true);
+            dock.externalDragLeft();
+            compare(dock.externalDragActive, false);
+            compare(dock.externalGap, false);
+            compare(dock.externalPayloadCount, 0);
+            compare(dock.externalInsertIndex, -1);
         }
 
         // -- Artwork --------------------------------------------------------

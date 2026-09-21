@@ -3,6 +3,7 @@
 // `dock.pinned` persistence, and the pure pinned+running entry merge. Runs
 // headless with no compositor, Wayland, or QML.
 #include "desktopentry.h"
+#include "dockdrops.h"
 #include "dockmodel.h"
 #include "dockpins.h"
 #include "docksettings.h"
@@ -10,9 +11,11 @@
 
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QUrl>
 
 namespace {
 
@@ -559,6 +562,106 @@ private slots:
         TrashMonitor monitor(QStringLiteral("/"));
         QCOMPARE(monitor.empty(), -1);
         QVERIFY(!monitor.lastError().isEmpty());
+    }
+
+    void trashMonitorTrashMovesFilesAndWritesInfo()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString root = dir.path() + QStringLiteral("/Trash");
+        const QString source = dir.path() + QStringLiteral("/note.txt");
+        writeFile(source, QStringLiteral("hello"));
+
+        TrashMonitor monitor(root);
+        monitor.start();
+        QCOMPARE(monitor.itemCount(), 0);
+
+        const int trashed = monitor.trash(QStringList{source});
+        QCOMPARE(trashed, 1);
+        QVERIFY(monitor.isFull());
+        QCOMPARE(monitor.itemCount(), 1);
+        QVERIFY(!QFileInfo::exists(source));
+        QVERIFY(QFileInfo::exists(root + QStringLiteral("/files/note.txt")));
+
+        QFile record(root + QStringLiteral("/info/note.txt.trashinfo"));
+        QVERIFY(record.open(QIODevice::ReadOnly));
+        const QString contents = QString::fromUtf8(record.readAll());
+        QVERIFY(contents.startsWith(QStringLiteral("[Trash Info]\n")));
+        QVERIFY(contents.contains(QStringLiteral("DeletionDate=")));
+        // The original path is percent-encoded in the record.
+        const QString encoded = QString::fromLatin1(QUrl::toPercentEncoding(source));
+        QVERIFY(contents.contains(QStringLiteral("Path=") + encoded));
+
+        // A second item with the same basename gets a unique name.
+        writeFile(source, QStringLiteral("again"));
+        QCOMPARE(monitor.trash(QStringList{source}), 1);
+        QCOMPARE(monitor.itemCount(), 2);
+        QVERIFY(QFileInfo::exists(root + QStringLiteral("/files/note.1.txt")));
+    }
+
+    void trashMonitorRefusesTrashingItself()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString root = dir.path() + QStringLiteral("/Trash");
+        QVERIFY(QDir().mkpath(root + QStringLiteral("/files")));
+        TrashMonitor monitor(root);
+        monitor.start();
+        QCOMPARE(monitor.trash(QStringList{root + QStringLiteral("/files")}), 0);
+        QVERIFY(!monitor.lastError().isEmpty());
+    }
+
+    // -- external drops --------------------------------------------------
+
+    void parseUriListDecodesFileUris()
+    {
+        const QByteArray payload =
+            "# comment\r\n"
+            "file:///home/x/My%20File.txt\r\n"
+            "\r\n"
+            "https://example.com/not-a-file\r\n"
+            "file:///home/x/plain\r\n";
+        const QStringList paths = parseUriList(payload);
+        QCOMPARE(paths, (QStringList{QStringLiteral("/home/x/My File.txt"),
+                                     QStringLiteral("/home/x/plain")}));
+    }
+
+    void uriListClassifiesApplicationAlias()
+    {
+        QVERIFY(uriListIsApplication(QStringList{QStringLiteral("/tmp/org.example.App.desktop")}));
+        QVERIFY(!uriListIsApplication(QStringList{QStringLiteral("/tmp/readme.txt")}));
+        QVERIFY(!uriListIsApplication(
+            QStringList{QStringLiteral("/tmp/a.desktop"), QStringLiteral("/tmp/b.desktop")}));
+        QCOMPARE(desktopIdForFile(QStringLiteral("/tmp/org.example.App.desktop")),
+                 QStringLiteral("org.example.App.desktop"));
+        QCOMPARE(desktopIdForFile(QStringLiteral("/tmp/readme.txt")), QString());
+    }
+
+    void dropActionsFollowTargetAndPayload()
+    {
+        using Payload = DockDropPayload;
+        using Action = DockDropAction;
+        // An app alias pins on the app region / empty Dock, no-op elsewhere.
+        QCOMPARE(dockDropActionFor(QString(), Payload::Application), Action::PinApp);
+        QCOMPARE(dockDropActionFor(QStringLiteral("pinned"), Payload::Application),
+                 Action::PinApp);
+        QCOMPARE(dockDropActionFor(QStringLiteral("temporary"), Payload::Application),
+                 Action::PinApp);
+        QCOMPARE(dockDropActionFor(QStringLiteral("trash"), Payload::Application),
+                 Action::None);
+        QCOMPARE(dockDropActionFor(QStringLiteral("divider"), Payload::Application),
+                 Action::None);
+        // Files follow the target.
+        QCOMPARE(dockDropActionFor(QStringLiteral("pinned"), Payload::Files),
+                 Action::OpenWithApp);
+        QCOMPARE(dockDropActionFor(QStringLiteral("temporary"), Payload::Files),
+                 Action::OpenWithApp);
+        QCOMPARE(dockDropActionFor(QStringLiteral("trash"), Payload::Files),
+                 Action::TrashFiles);
+        QCOMPARE(dockDropActionFor(QStringLiteral("stack"), Payload::Files),
+                 Action::MoveToDownloads);
+        QCOMPARE(dockDropActionFor(QStringLiteral("divider"), Payload::Files), Action::None);
+        QCOMPARE(dockDropActionFor(QStringLiteral("minimized"), Payload::Files), Action::None);
     }
 
     // -- bounce clocks ---------------------------------------------------

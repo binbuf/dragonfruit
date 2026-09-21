@@ -3635,3 +3635,130 @@ hand-off; the app Options ▸ submenu remains deferred (see below).
 `gen-tokens --check`, design-token/desktop-name/no-capture gates); `make e2e`
 green; gallery visual regression 66/66; live headless smoke reports
 `Dock configured 1280x124` / `edge=1 thickness=60`.
+
+## T-10 continuation — external drops (thirteenth slice)
+
+**State: partial.** The Dock is now a real external drop target (section 12,
+FR-9): a file/app drag from another client can be dropped on an app icon, the
+Trash, or the Downloads stack. The **drag source** (Files/launcher) and the
+end-to-end walkthrough remain — they are T-17/T-18, and the hand-off at the end
+lists them. All other remaining T-10 slices (app Options submenu, per-output
+sizing, scene-graph render path, live AT-SPI dump) are unchanged.
+
+### What landed
+
+- **Pure drop core** (`shell/src/dockdrops.{h,cpp}`, in the Wayland-free
+  `dragonfruit-shell-dockcore` static lib). `parseUriList()` decodes an RFC
+  2483 `text/uri-list` (comments/blank/CRLF tolerated, only `file://` kept);
+  `uriListIsApplication()`/`desktopIdForFile()` classify a single `.desktop`
+  alias; `dockDropActionFor(targetKind, payload)` resolves the action
+  (`PinApp` / `OpenWithApp` / `TrashFiles` / `MoveToDownloads` / `None`);
+  `downloadsDirectory()` honors `$XDG_DOWNLOAD_DIR`; `kSpringLoadMs` (500) is
+  the shared spring-load delay. Unit-tested in `tst_dockcore`.
+- **`TrashMonitor::trash()`** implements the freedesktop home-trash move:
+  a unique name (`name`, then `name.N`), a `[Trash Info]` record with a
+  percent-encoded `Path=` and a `DeletionDate=`, a copy+remove fallback across
+  filesystems (recursive for directories), and a refusal of the trash root and
+  `/`. Re-scans and emits `changed()`. Unit-tested (move, record, collision,
+  self-refusal).
+- **Shell Wayland DnD target** (`ShellProtocol`). The shell binds
+  `wl_data_device_manager`, creates the seat's `wl_data_device`, and handles
+  `data_offer`/`enter`/`leave`/`motion`/`drop`. Only the Dock surface is a
+  target. On `drop` it reads the offer into a `pipe2(O_CLOEXEC)` read end
+  drained by a `QSocketNotifier` (non-blocking), then emits
+  `dockExternalDropped(payloadIsApp, desktopId, paths, x, y)`. Enter/motion
+  coordinates are Dock-surface-local and the controller offsets them into the
+  offscreen scene exactly like pointer events.
+- **Controller actions** (`ShellController`). An app alias is added to
+  `dock.pinned` and saved; files open through the target app's Exec with the
+  new `launchDockAppWithFiles()` (`%f/%F/%u/%U` substitution, reusing the
+  launch-state/bounce machinery); Trash calls `TrashMonitor::trash()`; the
+  Downloads stack moves files into `downloadsDirectory()`. A drop on the
+  divider/empty Dock is a no-op.
+- **Dock QML** (`Dock.qml`, `DockEntry.qml`). `beginExternalDrag` /
+  `externalDragTo` / `externalDragLeft` / `externalDrop` / `externalDropAt`
+  (test hook) drive an `externalDragActive` state. An application alias opens
+  a **live insertion gap** via an `"external"` placeholder entry spliced into
+  `items` (safe to reflow because no QML `DragHandler` holds the pointer — the
+  internal-drag lesson does not apply). A file drag highlights the entry under
+  the pointer (`DockEntry.externalDropTarget`). The whole surface stays in the
+  input region during a drag so the transparent band does not leak (FR-13). A
+  stack hover starts the `springLoadTimer` (`springLoadRequested`), the hook
+  for T-17/T-18 stacks (out of the first vertical slice).
+- **Tests.** `tst_dockcore` +6 (URI decode, alias classification, action
+  matrix, trash move/record/collision, self-refusal). `tst_dock` +5 (file
+  target highlight, app live gap + signal, Trash target, empty-Dock no-op,
+  cancel reset). All gates green (below).
+
+### Gotchas learned (important for the drag-source slice)
+
+- **No compositor change was needed.** Smithay's DnD grab passes the pointer's
+  current focus to `update_focus`, and our `input::surface_under` already
+  hit-tests chrome surfaces first, so a drag over the Dock bar sends
+  `wl_data_device.enter` to the shell. The surface's input region is honored
+  (`under_from_surface_tree` → `contains_point`), so the drag must first enter
+  over the bar; once `externalDragActive` is set the shell publishes the whole
+  surface and the rest of the drag stays on the Dock.
+- **The drag source must be a different client than the shell.** Smithay's
+  `update_focus` only sends a data offer when `data_source.is_some()`; for a
+  same-client drag (`origin.id().same_client_as(&surface.id())`) it sends an
+  `enter` with a null offer and no payload. An end-to-end test therefore needs
+  a second (source) client, which is why it is not scripted yet.
+- **A single `.desktop` URI is a files payload until it is read.** The drag
+  source advertises `text/uri-list`, so `payloadIsApp` is false at enter time;
+  the drop-time classification in `ShellProtocol::onDndReadable` promotes a
+  lone `.desktop` to an app alias. The controller must use the **drop-time**
+  `m_externalPayloadIsApp`, not the QML signal's enter-time flag, or a
+  `.desktop` drop would take the `OpenWithApp` branch.
+- **The external placeholder reflows `items`, which is safe.** The internal
+  drag forbids changing the Repeater model (it would destroy the `DragHandler`
+  holding the pointer); an external drag is driven by the shell, not a QML
+  handler, so inserting the placeholder is fine. Keep `externalInsertIndex`
+  computed against the current app-entry centers, not `_baseline` (which
+  already contains the placeholder and would oscillate).
+- **`QSocketNotifier` is `setSocket`, not `setFd`, in Qt 6.11.** The drop pipe
+  read end is non-blocking; read until EOF, then parse and emit. Use
+  `pipe2(..., O_CLOEXEC)` so the fd does not leak into a `startDetached` app.
+- **Spring-loading has no subject yet.** No entry has `kind: "stack"`
+  (`Downloads stack` and recents are out of the first vertical slice, section
+  17), so `springLoadTimer` never starts; the hook and the constant are in
+  place for T-17/T-18.
+
+### Hand-off / open items (remaining T-10 slices)
+
+1. **The drag source** (Files/launcher, T-17/T-18): export `text/uri-list`
+  (files) and `application/x-dragonfruit-app` (an app alias) from a
+  `wl_data_source`, start the drag on an implicit pointer grab, and add the
+  scripted end-to-end walkthrough (source client + shell target) to
+  `shell_protocol_conformance` or a new suite. The shell side is complete.
+2. **GVfs Trash completion** (section 16): switch `TrashMonitor` to the GVfs
+   `GFileMonitor` + GIO empty/trash when the GIO dev headers are available;
+   mount-unavailable dimming; Empty Trash progress; `org.dragonfruit.Files1`
+   activation once T-18 exists.
+3. **App Options submenu** (section 13): Assign To (needs an active-Space
+   request/app-level assignment), Open at Login (T-24), Show in Files (T-18).
+   The design-system submenu it needs has landed.
+4. **Downloads stack + recents** (section 17): the stack entry and its
+   fan/grid/list popover, the `springLoadRequested` consumer, and a badge for
+   new items. The drop action (`MoveToDownloads`) is already implemented.
+5. **Per-output sizing** (section 18): chrome surfaces still size from the
+   first output; `matches_output` is the filter hook.
+6. **Scene-graph render path** (FR-14): the Dock still commits on demand via
+   `grabWindow`; the durable `QQuickWindow::afterRendering`/render-control fix
+   is shared with the T-09 deferred-polish backlog.
+7. **Live AT-SPI dump** (section 20): the QML roles exist and the keyboard
+   seat path exists; a session-bus `atspi` walkthrough is T-31.
+
+### Gate status
+
+`make lint` green (`cargo fmt --check`, `clippy -D warnings`, ctest 13/13 incl.
+`tst_dock` 91 and `tst_dockcore` 28, `gen-tokens --check`, the design-token/
+desktop-name/no-capture gates); `make e2e` green (19/19
+`shell_protocol_conformance` plus the window/Xwayland/idle suites); gallery
+visual regression 66/66; live headless smoke reports `Dock configured
+1280x124` / `edge=1 thickness=60` with the data device bound and a clean
+teardown. Acceptance criteria still unchecked in `tasks/10-dock.md`: the
+Files-side Trash integration test (needs T-18), the external-drag walkthrough
+(needs a drag source, T-17/T-18), the scene-graph FR-14 render path, the live
+AT-SPI walkthrough, multi-output hotplug per-output popovers, plus the
+core-loop and 60 Hz measurements.

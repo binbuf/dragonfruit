@@ -26,6 +26,7 @@
 #include <cstdio>
 
 #include "desktopentry.h"
+#include "dockdrops.h"
 #include "dockmodel.h"
 #include "dockpins.h"
 #include "shellprotocol.h"
@@ -300,6 +301,14 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             &ShellController::onDockKeyboardFocused);
     connect(m_protocol, &ShellProtocol::inputAction, this,
             &ShellController::onInputAction);
+    connect(m_protocol, &ShellProtocol::dockExternalDragEntered, this,
+            &ShellController::onDockExternalDragEntered);
+    connect(m_protocol, &ShellProtocol::dockExternalDragMoved, this,
+            &ShellController::onDockExternalDragMoved);
+    connect(m_protocol, &ShellProtocol::dockExternalDragLeft, this,
+            &ShellController::onDockExternalDragLeft);
+    connect(m_protocol, &ShellProtocol::dockExternalDropped, this,
+            &ShellController::onDockExternalDropped);
 
     applyStatusItems();
     // The system menu (dragonfruit mark) is fixed for the session; the Log Out
@@ -346,6 +355,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onDockRevealStateChanged()));
     connect(m_dockItem, SIGNAL(keyboardFocusReleaseRequested()), this,
             SLOT(onDockKeyboardFocusReleaseRequested()));
+    connect(m_dockItem, SIGNAL(externalDropRequested(QString,QString,QString,bool)), this,
+            SLOT(onDockExternalDropRequested(QString,QString,QString,bool)));
     // The Trash entry's state comes from the home-trash watch (section 16);
     // deletions by any application update the full/count state.
     m_trash = new TrashMonitor(TrashMonitor::defaultRoot(), this);
@@ -774,6 +785,117 @@ void ShellController::onDockKeyboardFocusReleaseRequested()
         m_protocol->releaseKeyboardFocus();
 }
 
+void ShellController::onDockExternalDragEntered(bool payloadIsApp, qreal x, qreal y)
+{
+    if (!m_dockItem)
+        return;
+    // Reveal a hidden Dock so the drop target is visible (T-10 section 15).
+    QMetaObject::invokeMethod(m_dockItem, "reveal");
+    // The payload count is unknown until the drop; the Dock only needs the
+    // kind to choose the highlight or the live gap.
+    QMetaObject::invokeMethod(m_dockItem, "beginExternalDrag", Q_ARG(QVariant, payloadIsApp),
+                              Q_ARG(QVariant, 0));
+    onDockExternalDragMoved(x, y);
+}
+
+void ShellController::onDockExternalDragMoved(qreal x, qreal y)
+{
+    if (!m_dockItem)
+        return;
+    // Dock-surface-local -> offscreen-scene coordinates (the same offset the
+    // pointer bridge applies for a popover's headroom/gutter).
+    QMetaObject::invokeMethod(m_dockItem, "externalDragTo",
+                              Q_ARG(QVariant, x + m_dockItemOffsetX),
+                              Q_ARG(QVariant, y + m_dockItemOffsetY));
+    scheduleDockRender();
+}
+
+void ShellController::onDockExternalDragLeft()
+{
+    if (!m_dockItem)
+        return;
+    QMetaObject::invokeMethod(m_dockItem, "externalDragLeft");
+    scheduleDockRender();
+}
+
+void ShellController::onDockExternalDropped(bool payloadIsApp, const QString &desktopId,
+                                            const QStringList &paths, qreal x, qreal y)
+{
+    m_externalPayloadIsApp = payloadIsApp;
+    m_externalDesktopId = desktopId;
+    m_externalPaths = paths;
+    m_externalDropX = x + m_dockItemOffsetX;
+    m_externalDropY = y + m_dockItemOffsetY;
+    if (!m_dockItem) {
+        m_externalDesktopId.clear();
+        m_externalPaths.clear();
+        return;
+    }
+    // The Dock resolves the target and synchronously emits
+    // `externalDropRequested`, which performs the action below.
+    QMetaObject::invokeMethod(m_dockItem, "externalDrop", Q_ARG(QVariant, m_externalDropX),
+                              Q_ARG(QVariant, m_externalDropY));
+    scheduleDockRender();
+}
+
+void ShellController::onDockExternalDropRequested(const QString &targetId,
+                                                  const QString &targetKind,
+                                                  const QString &desktopId, bool payloadIsApp)
+{
+    Q_UNUSED(targetId)
+    Q_UNUSED(payloadIsApp)
+    // Use the drop-time classification, not the QML's enter-time kind: a
+    // single `.desktop` URI is an app alias even though it arrived as files.
+    const DockDropAction action = dockDropActionFor(
+        targetKind, m_externalPayloadIsApp ? DockDropPayload::Application
+                                           : DockDropPayload::Files);
+    switch (action) {
+    case DockDropAction::PinApp: {
+        const QString id = m_externalDesktopId;
+        if (id.isEmpty()) {
+            qWarning() << "shell: Dock external app drop had no desktop id";
+        } else if (!m_pins.contains(id)) {
+            m_pins.add(id);
+            m_pins.save();
+            rebuildDockEntries();
+            qInfo() << "shell: Dock pinned" << id << "from an external drop";
+        }
+        break;
+    }
+    case DockDropAction::OpenWithApp:
+        if (desktopId.isEmpty())
+            qWarning() << "shell: Dock file drop on an unresolved app entry";
+        else
+            launchDockAppWithFiles(desktopId, m_externalPaths);
+        break;
+    case DockDropAction::TrashFiles: {
+        const int trashed = m_trash->trash(m_externalPaths);
+        qInfo() << "shell: Dock trashed" << trashed << "of" << m_externalPaths.size()
+                << "dropped items";
+        break;
+    }
+    case DockDropAction::MoveToDownloads: {
+        const QString downloads = downloadsDirectory();
+        QDir().mkpath(downloads);
+        for (const QString &path : m_externalPaths) {
+            const QString destination =
+                downloads + QLatin1Char('/') + QFileInfo(path).fileName();
+            if (QFile::rename(path, destination))
+                qInfo() << "shell: Dock moved" << path << "to Downloads";
+            else
+                qWarning() << "shell: Dock could not move" << path << "to Downloads";
+        }
+        break;
+    }
+    case DockDropAction::None:
+    default:
+        break;
+    }
+    m_externalPayloadIsApp = false;
+    m_externalDesktopId.clear();
+    m_externalPaths.clear();
+}
+
 void ShellController::onInputAction(const QString &action, const QString &)
 {
     if (action == QLatin1String("toggle-dock")) {
@@ -1103,12 +1225,17 @@ void ShellController::openTrashInFiles()
 
 void ShellController::launchDockApp(const QString &desktopId)
 {
+    launchDockAppWithFiles(desktopId, QStringList());
+}
+
+void ShellController::launchDockAppWithFiles(const QString &desktopId, const QStringList &files)
+{
     const DesktopEntry entry = m_index.byId(desktopId);
     if (!DesktopEntryIndex::isLaunchable(entry)) {
         failDockLaunch(desktopId, QStringLiteral("no usable .desktop entry"));
         return;
     }
-    const QStringList argv = DesktopEntryIndex::buildLaunchCommand(entry);
+    const QStringList argv = DesktopEntryIndex::buildLaunchCommand(entry, files);
     if (argv.isEmpty()) {
         failDockLaunch(desktopId, QStringLiteral("empty launch command"));
         return;
@@ -1118,7 +1245,8 @@ void ShellController::launchDockApp(const QString &desktopId)
         failDockLaunch(desktopId, QStringLiteral("QProcess::startDetached failed"));
         return;
     }
-    qInfo() << "shell: Dock launched" << entry.name << "pid" << pid;
+    qInfo() << "shell: Dock launched" << entry.name << "pid" << pid
+            << (files.isEmpty() ? QString() : QStringLiteral("with %1 file(s)").arg(files.size()));
     m_launchStates.insert(desktopId, QStringLiteral("launching"));
     m_launchStart.insert(desktopId, QDateTime::currentMSecsSinceEpoch());
     m_launchDeadlines.insert(desktopId, QDateTime::currentMSecsSinceEpoch() + kLaunchTimeoutMs);

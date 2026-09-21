@@ -7,6 +7,7 @@
 // this class only speaks Wayland.
 #pragma once
 
+#include <QByteArray>
 #include <QHash>
 #include <QImage>
 #include <QList>
@@ -14,6 +15,7 @@
 #include <QRect>
 #include <QSet>
 #include <QString>
+#include <QStringList>
 #include <QVariantList>
 
 #include <cstdint>
@@ -29,6 +31,8 @@ struct df_toplevel_manager;
 struct df_toplevel;
 struct df_output;
 struct df_workspace;
+
+class QSocketNotifier;
 
 class ShellProtocol : public QObject
 {
@@ -183,6 +187,18 @@ signals:
     // Dock while the bar still tracks its own focus.
     void dockKeyboardFocused(bool focused);
     void keyEvent(uint32_t key, bool pressed);
+    // External drag-and-drop onto the Dock (T-10 section 12). The shell binds
+    // the seat's data device, so a drag from another client (Files, a
+    // launcher) is delivered here. Coordinates are Dock-surface-local; the
+    // controller offsets them into the offscreen scene like pointer events.
+    void dockExternalDragEntered(bool payloadIsApp, qreal x, qreal y);
+    void dockExternalDragMoved(qreal x, qreal y);
+    void dockExternalDragLeft();
+    // A drop arrived. `payloadIsApp` selects the payload: `desktopId` is the
+    // application alias (an `application/x-dragonfruit-app` value or a single
+    // `.desktop` URI); otherwise `paths` are the dropped files.
+    void dockExternalDropped(bool payloadIsApp, const QString &desktopId,
+                             const QStringList &paths, qreal x, qreal y);
     // A compositor input action broadcast (`df_toplevel_manager.input_action`,
     // T-07). The Dock uses `focus-dock` and `toggle-dock` (T-10 section 20).
     void inputAction(const QString &action, const QString &source);
@@ -210,6 +226,8 @@ private:
     void bindTrustedGlobals();
     void teardown();
     bool fail(const QString &message);
+    // Bind the seat's data device once both the manager and the seat exist.
+    void maybeCreateDataDevice();
     // Rebuild the Dock's running-app projection and emit `dockStateChanged`.
     void emitDockState();
     // Resolve a window handle back to its `df_toplevel` (null when gone).
@@ -255,6 +273,22 @@ private:
     static void onKeyboardModifiers(void *data, wl_keyboard *keyboard, uint32_t serial,
                                     uint32_t modsDepressed, uint32_t modsLatched,
                                     uint32_t modsLocked, uint32_t group);
+    // wl_data_device / wl_data_offer (external DnD target, T-10 section 12).
+    static void onDataDeviceOffer(void *data, wl_data_device *device, wl_data_offer *offer);
+    static void onDataDeviceEnter(void *data, wl_data_device *device, uint32_t serial,
+                                  wl_surface *surface, wl_fixed_t x, wl_fixed_t y,
+                                  wl_data_offer *offer);
+    static void onDataDeviceLeave(void *data, wl_data_device *device);
+    static void onDataDeviceMotion(void *data, wl_data_device *device, uint32_t time,
+                                   wl_fixed_t x, wl_fixed_t y);
+    static void onDataDeviceDrop(void *data, wl_data_device *device);
+    static void onDataDeviceSelection(void *data, wl_data_device *device, wl_data_offer *offer);
+    static void onDataOfferMimeType(void *data, wl_data_offer *offer, const char *mimeType);
+    static void onDataOfferSourceActions(void *data, wl_data_offer *offer, uint32_t actions);
+    static void onDataOfferAction(void *data, wl_data_offer *offer, uint32_t action);
+    // Read the drop payload from the pipe once the source has written it.
+    void onDndReadable();
+    void resetExternalDrag();
     static void onManagerToplevel(void *data, df_toplevel_manager *manager, df_toplevel *id);
     static void onManagerFocused(void *data, df_toplevel_manager *manager, df_toplevel *id);
     static void onManagerOutput(void *data, df_toplevel_manager *manager, df_output *id);
@@ -350,6 +384,22 @@ private:
     wl_keyboard *m_keyboard = nullptr;
     qreal m_pointerX = 0;
     qreal m_pointerY = 0;
+
+    // External drag-and-drop target (T-10 section 12): the seat's data device
+    // and the in-flight offer. The shell reads a `text/uri-list` (files) or an
+    // application alias on drop.
+    wl_data_device_manager *m_dataDeviceManager = nullptr;
+    wl_data_device *m_dataDevice = nullptr;
+    wl_data_offer *m_dndOffer = nullptr;
+    QStringList m_dndMimeTypes;
+    QString m_dndMime;
+    bool m_dndActive = false;
+    bool m_dndPayloadIsApp = false;
+    qreal m_dndX = 0;
+    qreal m_dndY = 0;
+    int m_dndReadFd = -1;
+    QSocketNotifier *m_dndReadNotifier = nullptr;
+    QByteArray m_dndData;
 
     uint32_t m_coreName = 0;
     uint32_t m_coreVersion = 0;
