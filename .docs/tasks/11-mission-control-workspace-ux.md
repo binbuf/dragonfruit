@@ -132,7 +132,11 @@ they are delivered as slices of one ticket, not split into a second pipeline:
 - [ ] Frame-time trace during full gesture stays within budget on
       baseline Intel/AMD. *(U-2 landed the instrumentation and the headless
       CI-budget assertion; the hardware run is B-5.)*
-- [ ] Video-in-overview test (FR-2) passes.
+- [x] Video-in-overview test (FR-2) passes. *(U-3:
+      `overview_transition_keeps_live_surfaces_mapped` proves a client surface
+      stays mapped and keeps receiving `wl_surface.frame` callbacks — and keeps
+      committing fresh buffers — across a full Mission Control and workspace
+      round-trip; the "at reduced scale" clause is B-1.)*
 - [ ] Phase-2 exit: the 30-second loop including Mission Control at zero
       dropped frames.
 
@@ -177,10 +181,17 @@ Each is scoped to be independently testable in CI.
   `frame-trace` lines. `overview_gesture_frame_trace_stays_within_budget`
   drives a full gesture and asserts the trace exists and the animation-clock
   intervals stay within a CI budget. The hardware budget run is B-5.
-- **U-3 · FR-2 live-surface conformance test.** Add a headless test proving no
-  thumbnails are ever substituted: a client surface stays mapped and keeps
-  receiving frame callbacks (a playing video keeps playing) through a full
-  overview/workspace transition. The "at reduced scale" clause is B-1.
+- **U-3 · FR-2 live-surface conformance test.** ✅ landed.
+  `overview_transition_keeps_live_surfaces_mapped` maps a real client surface,
+  registers `wl_surface.frame` callbacks, and commits fresh buffers (the
+  "playing video") through a Mission Control open and a workspace round-trip:
+  every frame callback is delivered while the overview owns input and after the
+  surface returns to the active Space, and the surface is never closed (no
+  thumbnail substitution). The headless backend now delivers frame callbacks
+  (`render::post_repaint_headless` from its render hook) so this is CI-able on
+  the backend without a render report; nested keeps the render-report path
+  (DRM still needs `render::post_repaint` wired — see PROGRESS). The "at
+  reduced scale" clause is B-1.
 - **U-4 · Overview chrome per-output coverage/sizing.** 🔄 partial. A
   full-output `overlay` (anchored on all four edges — Mission Control) now
   spans **every** output even when chrome focus was captured on one
@@ -247,7 +258,7 @@ Each is scoped to be independently testable in CI.
 | Req | Status | Remaining |
 |---|---|---|
 | FR-1 one machine / trigger parity | ✅ landed (unit + gesture/hot-corner/shell conformance) | — |
-| FR-2 live textures, never thumbnails | 🔄 live translation only | U-3 test · B-1 scale |
+| FR-2 live textures, never thumbnails | ✅ landed (live translation + frame-callback conformance) | B-1 scale |
 | FR-3 commit thresholds tunable | ✅ landed | — |
 | FR-4 interruptibility | ✅ landed | — |
 | FR-5 selection round-trip | ✅ landed (strips + window grid) | B-3 live-surface click |
@@ -265,6 +276,7 @@ transfer) is done, with U-8's conformance test landed; item 7 (reduced motion)
 is done (U-1/U-6); item 8 (performance) has the instrumentation landed (U-2)
 and the hardware budget still open → B-5/B-6. Acceptance "visual-frame reviewed
 in nested mode" → B-7; "frame-time trace" → U-2 (landed) / B-5 (hardware);
-"video-in-overview test" → U-3/B-1; "Phase-2 exit" → B-8. Risks: blur/scale
+"video-in-overview test" → U-3 (landed) / B-1 (reduced scale); "Phase-2 exit" →
+B-8. Risks: blur/scale
 budget threshold → B-6; layout algorithm spec → U-5 (landed) / B-9
 (implementation).

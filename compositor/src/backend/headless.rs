@@ -61,6 +61,14 @@ pub fn run(socket_name: &str) -> Result<(), String> {
                 // on this backend without a display.
                 if state.needs_redraw {
                     state.stats.frames_rendered += 1;
+                    // T-11 U-3: drive the same frame path a real backend does,
+                    // so a client's `wl_surface.frame` callbacks are delivered
+                    // in CI (FR-2: a playing video keeps playing). No pixels
+                    // are rendered or presented.
+                    if let Some(output) = state.space.outputs().next().cloned() {
+                        let now = state.clock.now();
+                        crate::render::post_repaint_headless(state, &output, now.into());
+                    }
                 } else {
                     state.stats.frames_skipped_no_damage += 1;
                 }

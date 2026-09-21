@@ -79,6 +79,29 @@ pub fn take_presentation_feedback(
     feedback
 }
 
+/// Send frame callbacks for the live windows of `output` on a backend with no
+/// render report (headless).
+///
+/// Nested derives each surface's primary scan-out output from the render
+/// element states ([`post_repaint`]); headless has neither a renderer nor a
+/// report, so its single output is authoritative. Every live window mapped on
+/// it is treated as presented and gets its pending `wl_callback.frame`
+/// callbacks, exactly as a real backend would. This sends no pixels and
+/// presents nothing — it exists so a CI client (and the T-11 FR-2 "a playing
+/// video keeps playing" conformance test) advances through the same frame
+/// path.
+pub fn post_repaint_headless(state: &DfState, output: &Output, time: Duration) {
+    for window in state.space.elements() {
+        if state.space.outputs_for_element(window).contains(output) {
+            // Throttle zero and an explicit primary output: the single headless
+            // output is always the presentation target.
+            window.send_frame(output, time, Some(Duration::ZERO), |_, _| {
+                Some(output.clone())
+            });
+        }
+    }
+}
+
 /// After a successful frame: send frame callbacks (throttled) and update
 /// the preferred fractional scale the surfaces were displayed at.
 pub fn post_repaint(

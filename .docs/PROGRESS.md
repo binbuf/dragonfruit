@@ -5671,3 +5671,60 @@ dragonfruit-compositor --bin dragonfruit-compositor` 127/127, the full
 `tst_overview` 13 QML cases); clippy `-D warnings` and `cargo fmt --check`
 clean; the shell (`dragonfruit-shell`) and Qt bindings build with no
 wayland-scanner warnings.
+
+## T-11 — FR-2 live-surface conformance: frame callbacks on headless (fifth slice)
+
+**State: U-3 landed; the T-11 "remaining work — unblocked" list is closed**
+(U-1/U-2/U-3/U-5/U-6/U-7/U-8 done, U-4 done except per-output *sizing*, which is
+explicitly the T-11/T-16 seam). `cargo test -p dragonfruit-compositor` is green
+(127 unit + 31 `shell_protocol_conformance` + the other suites); clippy
+`-D warnings` and `cargo fmt --check` clean.
+
+### The test (`shell_protocol_conformance::overview_transition_keeps_live_surfaces_mapped`)
+
+- Maps a real `xdg_toplevel`, then repeatedly registers `wl_surface.frame` and
+  commits a fresh shm buffer ("a playing video keeps playing"): once normally,
+  once while Mission Control is open, and once after a workspace switch away
+  and back. Each callback must be delivered (`state.frame_callbacks` grows),
+  and the surface is never closed (`toplevel_closed == 0`) and stays the one
+  window (`toplevels.len() == 1`) — the proof that no thumbnail is
+  substituted. If the compositor unmapped the client surface to show a
+  thumbnail, frame callbacks would stop.
+- The test client gained a `wl_callback` `Dispatch` (counts `Done`) and a
+  `present_frame()` helper (`surface.frame()` + attach + commit). The
+  frame callback request only lands on the compositor when the surface
+  commits, so `present_frame` attaches a new buffer in the same commit — which
+  is also what makes the compositor render (and therefore deliver) again.
+
+### The enabler: headless now sends frame callbacks
+
+- The headless backend's render hook had no render report, so it never sent
+  `wl_surface.frame` callbacks — a CI client that waits on one (any video
+  player) would stall. `render::post_repaint_headless(state, output, time)`
+  treats the single headless output as the primary scan-out output and sends
+  each live window's pending callbacks (`send_frame(.., Some(Duration::ZERO),
+  |_,_| Some(output.clone()))`). It renders/presents nothing; it only advances
+  the same frame path nested/DRM use. Called from the headless hook inside the
+  `needs_redraw` branch, next to the `frames_rendered` counter, so the FR-2
+  idle trace is unaffected (no window ⇒ no callbacks; the chrome surfaces are
+  not in `space.elements()`).
+- **Why the custom closure:** `send_frames_surface_tree` only sends when the
+  surface's primary scan-out output equals the given output **or** the frame is
+  overdue for the throttle. Headless has no render-element states to derive a
+  primary output from, so the closure returns the single output and the
+  throttle is `ZERO`; nested/DRM keep deriving it from the render report
+  (`render::post_repaint`).
+
+### Notes for subsequent tasks
+
+- **DRM never calls `render::post_repaint`** (only nested does; DRM updates
+  primary scanout and queues presentation feedback but does not send frame
+  callbacks). That is a real FR-2/FR-3 gap on hardware: any DRM client that
+  waits on `wl_surface.frame` will stall. Fix it with the nested path
+  (`post_repaint`) when the DRM session is first exercised (T-02 hardware
+  bring-up / B-5). `render::post_repaint_headless` is the no-report fallback,
+  not the DRM path.
+- The headless backend is now a more faithful CI stand-in: a future headless
+  test can drive a client that only advances on frame callbacks.
+- The `wl_callback` `Dispatch` and `present_frame` helper are reusable for any
+  future "the live surface kept playing" test.
