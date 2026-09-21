@@ -68,6 +68,11 @@ Item {
     signal dragBegan(var entry, real sceneX, real sceneY)
     signal dragMoved(var entry, real sceneX, real sceneY)
     signal dragEnded(var entry, real sceneX, real sceneY)
+    // The divider resize handle (T-10 section 5): scene coordinates so the
+    // Dock maps them into its axis space.
+    signal dividerResizeBegan(real sceneX, real sceneY)
+    signal dividerResizeMoved(real sceneX, real sceneY)
+    signal dividerResizeEnded()
 
     implicitWidth: verticalIndicator ? iconSize + indicatorSpace : iconSize
     implicitHeight: verticalIndicator ? iconSize : iconSize + indicatorSpace
@@ -124,6 +129,37 @@ Item {
         width: 1
         height: root.height * 0.7
         color: Theme.color.separator
+    }
+
+    // The divider is only 1 px wide, so the drag handle is a wider invisible
+    // hit target centred on it (T-10 section 5). The layout slot stays 1 px;
+    // only the pointer target grows.
+    Item {
+        objectName: "dividerHit"
+        visible: root.isDivider
+        anchors.centerIn: parent
+        width: Math.max(16, root.iconSize * 0.4)
+        height: root.height
+
+        DragHandler {
+            id: dividerDragHandler
+            objectName: "dividerDragHandler"
+            acceptedButtons: Qt.LeftButton
+            dragThreshold: 4
+            onActiveChanged: {
+                var p = centroid.scenePosition;
+                if (active)
+                    root.dividerResizeBegan(p.x, p.y);
+                else
+                    root.dividerResizeEnded();
+            }
+            onCentroidChanged: {
+                if (!active)
+                    return;
+                var p = centroid.scenePosition;
+                root.dividerResizeMoved(p.x, p.y);
+            }
+        }
     }
 
     // Hover highlight behind the artwork.

@@ -84,6 +84,15 @@ Rectangle {
     property var dragBaseCenters: []
     property var dragOriginalPinnedIds: []
 
+    // Divider resize (T-10 section 5): dragging the separator changes
+    // `dock.size`, growing the icons as the handle moves away from the Dock
+    // centre and shrinking them as it moves back. `dockSizePreview` fires on
+    // every move (the shell re-lays-out without saving); `dockSizeChanged`
+    // fires on release and is persisted.
+    property bool resizing: false
+    property real resizeStartIconSize: 0
+    property real resizeStartDistance: 0
+
     // --- External drops (T-10 section 12) -------------------------------
     // The shell drives these from its Wayland data-device drag target: the
     // payload kind is known from the drag source's mime types, the target is
@@ -136,6 +145,11 @@ Rectangle {
     // the action on the payload it holds (T-10 section 12, FR-9).
     signal externalDropRequested(string targetId, string targetKind, string desktopId, bool payloadIsApp)
     signal externalDragChanged()
+    // The divider resize handle moved: `dockSizePreview` is the live
+    // un-persisted preview and `dockSizeChanged` is the committed value
+    // (T-10 section 5). Both carry a `dock.size` fraction in 0..1.
+    signal dockSizePreview(real fraction)
+    signal dockSizeChanged(real fraction)
     // A stack entry has been hovered long enough to spring-load (T-10
     // section 12); the Dock opens the Downloads stack popover on the fire.
     signal springLoadRequested(string targetId)
@@ -223,7 +237,7 @@ Rectangle {
     // Re-hide only when nothing holds the Dock open: no popover, no drag, and
     // the pointer has left the surface (T-10 section 15).
     function hideIfIdle() {
-        if (autoHide && !popoverOpen && !dragging && !dockHover.hovered)
+        if (autoHide && !popoverOpen && !dragging && !resizing && !dockHover.hovered)
             hide();
     }
 
@@ -399,7 +413,7 @@ Rectangle {
 
     readonly property bool magnifying:
         magnification > 0 && pointerAlong >= 0 && anchorIndex >= 0
-        && !popoverOpen && !dragging && revealed
+        && !popoverOpen && !dragging && !resizing && revealed
 
     // Magnification is suppressed while a context menu, chooser, or stack
     // popover is open (T-10 section 14).
@@ -736,6 +750,64 @@ Rectangle {
         dragOutOfDock = entry !== undefined && entry.kind === "pinned";
         dragPromote = false;
         finalizeDrag();
+    }
+
+    // --- Divider resize (T-10 section 5) ---------------------------------
+    // The separator is the Dock's resize handle: dragging it away from the
+    // Dock centre grows the icons, toward it shrinks them. The icon size maps
+    // linearly onto `dock.size` in 0..1 (section 19), so the shell only
+    // persists the fraction. The surface is reconfigured live via the preview
+    // signal; the committed value is saved on release.
+    readonly property real axisCenter: axisLength / 2
+
+    function iconSizeFraction(value) {
+        var span = iconSizeMax - iconSizeMin;
+        if (span <= 0)
+            return 0;
+        return Math.max(0, Math.min(1, (value - iconSizeMin) / span));
+    }
+
+    function beginDividerResize(sceneX, sceneY) {
+        closePopovers();
+        hideTimer.stop();
+        revealTimer.stop();
+        var local = dock.mapFromItem(null, sceneX, sceneY);
+        var along = axisIsX ? local.x : local.y;
+        resizing = true;
+        resizeStartIconSize = iconSize;
+        resizeStartDistance = Math.abs(along - axisCenter);
+    }
+
+    function dividerResizeIcon(sceneX, sceneY) {
+        if (!resizing)
+            return iconSize;
+        var local = dock.mapFromItem(null, sceneX, sceneY);
+        var along = axisIsX ? local.x : local.y;
+        var distance = Math.abs(along - axisCenter);
+        return Math.max(iconSizeMin,
+                        Math.min(iconSizeMax,
+                                 resizeStartIconSize + (distance - resizeStartDistance)));
+    }
+
+    function updateDividerResize(sceneX, sceneY) {
+        updateDividerResizeAt(dividerResizeIcon(sceneX, sceneY));
+    }
+
+    // Apply an already-computed icon size (clamped to the size range); split
+    // out so tests can drive the model without a live pointer.
+    function updateDividerResizeAt(value) {
+        if (!resizing)
+            return;
+        var clamped = Math.max(iconSizeMin, Math.min(iconSizeMax, value));
+        iconSize = clamped;
+        dockSizePreview(iconSizeFraction(clamped));
+    }
+
+    function endDividerResize() {
+        if (!resizing)
+            return;
+        resizing = false;
+        dockSizeChanged(iconSizeFraction(iconSize));
     }
 
     // --- External drops (T-10 section 12) --------------------------------
@@ -1285,7 +1357,7 @@ Rectangle {
             return [edgeRect];
         // While dragging, the whole surface keeps pointer input so the drag
         // can move through the magnified band without leaking to a window.
-        if (dragging || externalDragActive)
+        if (dragging || externalDragActive || resizing)
             return [{ x: 0, y: 0, w: width, h: height }];
         var out = [barRect];
         var l = layout;
@@ -1368,6 +1440,10 @@ Rectangle {
             onDragBegan: (entry, sx, sy) => dock.beginDrag(entry)
             onDragMoved: (entry, sx, sy) => dock.updateDrag(entry, sx, sy)
             onDragEnded: (entry, sx, sy) => dock.endDrag(entry, sx, sy)
+
+            onDividerResizeBegan: (sx, sy) => dock.beginDividerResize(sx, sy)
+            onDividerResizeMoved: (sx, sy) => dock.updateDividerResize(sx, sy)
+            onDividerResizeEnded: () => dock.endDividerResize()
 
             onActivated: (entry) => {
                 // The click tree (T-10 section 8): a running app with more

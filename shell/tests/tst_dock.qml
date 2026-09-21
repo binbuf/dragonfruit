@@ -36,6 +36,8 @@ Item {
         SignalSpy { id: downloadSpy; signalName: "downloadActivated" }
         SignalSpy { id: downloadsFolderSpy; signalName: "downloadsFolderRequested" }
         SignalSpy { id: downloadsViewedSpy; signalName: "downloadsViewed" }
+        SignalSpy { id: sizePreviewSpy; signalName: "dockSizePreview" }
+        SignalSpy { id: sizeChangedSpy; signalName: "dockSizeChanged" }
 
         // Reduced motion is a global singleton; reset it before every test so
         // a failure mid-test cannot leak into the next one.
@@ -1169,6 +1171,94 @@ Item {
             compare(pinnedOrderSpy.count, 1);
             compare(pinnedOrderSpy.signalArguments[0][0].join(","),
                     "b.desktop,a.desktop,c.desktop");
+        }
+
+        // -- Divider resize (T-10 section 5) -------------------------------
+
+        function test_divider_resize_previews_and_commits_fraction() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "A", true), app("b", "B", true) ]
+            });
+            sizePreviewSpy.target = dock;
+            sizeChangedSpy.target = dock;
+            sizePreviewSpy.clear();
+            sizeChangedSpy.clear();
+            dock.beginDividerResize(0, 0);
+            compare(dock.resizing, true);
+            var bigger = dock.iconSize + 8;
+            dock.updateDividerResizeAt(bigger);
+            compare(dock.iconSize, bigger);
+            compare(sizePreviewSpy.count, 1);
+            var expected = (bigger - dock.iconSizeMin)
+                           / (dock.iconSizeMax - dock.iconSizeMin);
+            fuzzyCompare(sizePreviewSpy.signalArguments[0][0], expected, 0.001);
+            dock.endDividerResize();
+            compare(dock.resizing, false);
+            // Exactly one committed value, matching the last preview.
+            compare(sizeChangedSpy.count, 1);
+            fuzzyCompare(sizeChangedSpy.signalArguments[0][0],
+                         sizePreviewSpy.signalArguments[0][0], 0.001);
+        }
+
+        function test_divider_resize_clamps_to_the_icon_range() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "A", true) ]
+            });
+            sizePreviewSpy.target = dock;
+            sizePreviewSpy.clear();
+            dock.beginDividerResize(0, 0);
+            dock.updateDividerResizeAt(9999);
+            compare(dock.iconSize, dock.iconSizeMax);
+            fuzzyCompare(sizePreviewSpy.signalArguments[0][0], 1.0, 0.001);
+            dock.updateDividerResizeAt(-9999);
+            compare(dock.iconSize, dock.iconSizeMin);
+            fuzzyCompare(sizePreviewSpy.signalArguments[1][0], 0.0, 0.001);
+            dock.endDividerResize();
+        }
+
+        function test_divider_resize_suppresses_magnification_and_keeps_input() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, magnification: 0.5,
+                entries: [ app("a", "A", true), app("b", "B", true) ]
+            });
+            dock.pointerAlong = dock._baseline.centers[0];
+            waitForRendering(stage);
+            compare(dock.magnifying, true);
+            dock.beginDividerResize(0, 0);
+            compare(dock.magnifying, false);
+            // The whole surface stays interactive so the drag never leaks.
+            compare(dock.inputRects.length, 1);
+            compare(dock.inputRects[0].w, dock.width);
+            dock.endDividerResize();
+        }
+
+        function test_mouse_drag_on_divider_resizes_the_dock() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "A", true), app("b", "B", true) ]
+            });
+            sizeChangedSpy.target = dock;
+            sizeChangedSpy.clear();
+            var divider = dock.itemAt(dock.indexOfItemId("__divider__"));
+            compare(divider.isDivider, true);
+            // The visible divider is 1 px wide; the invisible hit target is
+            // centred on it and wider.
+            verify(findChild(divider, "dividerHit").width >= 16);
+            var x = divider.x + divider.width / 2;
+            var y = divider.y + divider.height / 2;
+            var start = dock.iconSize;
+            mousePress(dock, x, y);
+            // The first move crosses the drag threshold and starts the
+            // resize; the second is the actual resize delta.
+            mouseMove(dock, x + 8, y, 40, Qt.LeftButton);
+            mouseMove(dock, x + 38, y, 40, Qt.LeftButton);
+            compare(dock.resizing, true);
+            verify(dock.iconSize > start);
+            mouseRelease(dock, x + 38, y, Qt.LeftButton);
+            compare(dock.resizing, false);
+            compare(sizeChangedSpy.count, 1);
         }
 
         // -- Live settings and the divider menu (T-10 section 19) ----------

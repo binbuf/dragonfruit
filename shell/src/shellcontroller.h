@@ -83,6 +83,9 @@ private slots:
     void onDockDownloadsFolderRequested();
     void onDockDownloadsViewed();
     void onDownloadsChanged();
+    // The divider resize handle writes `dock.size` (T-10 section 5).
+    void onDockSizePreview(qreal fraction);
+    void onDockSizeChanged(qreal fraction);
     void onInputAction(const QString &action, const QString &source);
     void onDockPointerMoved(qreal x, qreal y);
     void onDockPointerButton(qreal x, qreal y, quint32 button, bool pressed);
@@ -134,6 +137,10 @@ private:
     void applyDockSettings(bool reconfigure);
     // Persist `dock.*` (interim; settingsd owns this at T-15).
     void saveDockSettings();
+    // Apply an already-set `dock.size` to the Dock QML and reconfigure the
+    // surface without rebuilding entries (the divider drag must not reset the
+    // QML delegate that holds the pointer; T-10 section 5).
+    void applyDockSizeOnly();
     // Map `dock.size` (0..1) onto the icon-size token range.
     int iconSizeForSize(double size) const;
     // Map the `dock.position` string onto the protocol edge enum.
