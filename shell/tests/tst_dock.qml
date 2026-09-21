@@ -476,6 +476,12 @@ Item {
             compare(entry.failed, true);
             verify(entry.Accessible.name.indexOf("failed") >= 0);
             compare(findChild(entry, "statusBadge").visible, true);
+            // FR-1 launch failure: the bounce stops and no running indicator
+            // is left behind (the entry is not running and carries no bounce
+            // phase, so a subsequent frame cannot animate it).
+            compare(entry.running, false);
+            compare(findChild(entry, "indicator").visible, false);
+            compare(dock.entryBounce(entry), 0);
         }
 
         function test_missing_pinned_app_is_marked_not_found() {
