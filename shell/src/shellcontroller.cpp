@@ -1257,6 +1257,13 @@ void ShellController::onDockAttention(const QString &appId)
 {
     if (appId.isEmpty())
         return;
+    // FR-4: attention stops on focus. An app that already holds focus needs
+    // no bounce, and guarding here makes the relative order of the focused
+    // and attention broadcasts irrelevant (a newly activated window is
+    // focused by the compositor, so its launch feedback is the launch state,
+    // not a bounce).
+    if (appId == m_appId)
+        return;
     // An attention request reveals a hidden auto-hide Dock immediately
     // (T-10 section 15).
     if (m_dockItem)
