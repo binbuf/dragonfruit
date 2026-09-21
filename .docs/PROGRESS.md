@@ -4300,3 +4300,109 @@ active` lines, and a clean teardown. Acceptance criteria still unchecked in
 external-drag walkthrough (drag source, T-17/T-18), the live AT-SPI
 walkthrough, multi-output per-output popovers, plus the core-loop and 60 Hz
 measurements.
+
+## T-10 continuation — overflow clamp (nineteenth slice)
+
+**State: partial.** A Dock whose content exceeds the output is now an error
+state instead of silent clipping (T-10 section 5.1). At layout time the shell
+clamps the effective icon size to the largest value that fits and hides
+overflow temporary/recent entries (recents first, then temporaries; pinned and
+minimized entries are never dropped), and logs one warning per session. The
+next unblocked T-10 items are the drag *source* (T-17/T-18), GVfs Trash
+completion (GIO dev headers absent), per-output sizing, and the live AT-SPI
+dump.
+
+### What landed
+
+- **Pure core** (`shell/src/dockmodel.{h,cpp}`). A new
+  `applyDockOverflow(entries, availableLength, requestedIconSize, iconMin,
+  iconMax, gap, dividerWidth, fixedCount=2, minimizedVisible=true)` returns a
+  `DockOverflowResult { entries, iconSize, hiddenTemporary, hiddenRecent,
+  clamped, overflowed }`. The axis length is `(count-1)*(icon+gap) +
+  dividerWidth`; the largest fitting icon is derived directly, and only if
+  even the minimum overflows are droppable entries removed. Recents are hidden
+  from the end first, then temporaries, so the pinned prefix is untouched. An
+  unknown entry kind counts as fixed (non-droppable). `minimizedVisible`
+  mirrors `dock.minimizeIntoTileIcon` (the QML hides minimized entries when
+  it is on, so they must not count toward overflow).
+- **Shell** (`shell/src/shellcontroller.{h,cpp}`). `m_dockAllEntries` keeps the
+  full built entry list so a size/geometry change can re-clamp without
+  rebuilding. `computeDockOverflow()` reads the token geometry
+  (`gap`/`dividerWidth`/`iconSizeMin`/`iconSizeMax`) and the output length
+  (`m_dockWidth` for a bottom Dock, `m_dockHeight` for a vertical one).
+  `applyDockOverflowResult()` sets the effective icon size and the baseline
+  bar/magnified-band thickness; `rebuildDockEntries()` always republishes the
+  entries (bounce phases changed), while `onDockConfigured()` only resets the
+  Repeater model when the hidden set actually changed, and the divider resize
+  (`applyDockSizeOnly()`) never touches the entries. `warnDockOverflow()`
+  fires once per session. `applyDockSettings()` now adopts the new edge and
+  resets the stretch dimension *before* the rebuild so the clamp reads the
+  right axis.
+- **Tests** (`shell/tests/tst_dockcore.cpp`). Six cases: fits at the requested
+  size (no-op), clamps the icon down above the minimum, hides the recent then
+  a temporary at the minimum (pinned kept, exact counts), never drops pinned
+  when even the minimum overflows (`overflowed`), honors
+  `minimizedVisible`, and ignores an unknown (zero) output length.
+
+### Gotchas learned (important for the next slice)
+
+- **The clamp is an *effective* size, not a persisted one.** The user's
+  `dock.size` is never overwritten by the clamp, so content shrinking later
+  restores the requested size. The divider commit therefore persists the
+  QML's clamped `iconSize` fraction; a drag past the fitting size is bounded
+  by the shell on every preview.
+- **`onDockConfigured()` is on the divider-resize path.** A resize
+  reconfigures the surface, so the configure handler must not blindly
+  re-publish `entries` or it destroys the `DragHandler` delegate holding the
+  pointer. The cached `m_dockHiddenTemporary`/`m_dockHiddenRecent` guard is
+  what makes the re-clamp safe (the internal-reorder lesson again).
+- **The hidden set only changes with the axis length, not the icon size.** At
+  the minimum the icon cannot shrink further, so hiding is a function of
+  `availableLength` and the entry counts; a live divider drag (which changes
+  only the icon size) never changes the hidden set. That is why
+  `applyDockSizeOnly()` can skip the entries entirely.
+- **`fixedCount` is stack + trash (2) and the divider is always counted.**
+  `buildDockEntries` returns only pinned/temporary/recent/minimized; the QML
+  adds the divider, the Downloads stack, and the Trash. Keep those numbers in
+  sync if a new permanent entry is added.
+- **Visual clipping is already handled by the buffer copy.** `renderDock()`
+  commits `image.copy(..., m_dockWidth, m_dockHeight)`, so content that still
+  overflows at the minimum (too many pinned apps) is clipped to the output by
+  the compositor's surface bounds; no `clip:` on the QML root is needed (and
+  it would clip popovers that render into the scene gutters).
+
+### Hand-off / open items (remaining T-10 slices)
+
+1. **The drag source** (Files/launcher, T-17/T-18): export `text/uri-list`
+   and `application/x-dragonfruit-app` from a `wl_data_source`, start the drag
+   on an implicit pointer grab, and add the scripted end-to-end walkthrough
+   (source client + shell target). The shell target side is complete.
+   Smithay's `update_focus` only sends a data offer to a **different** client,
+   so the test needs a second source client.
+2. **GVfs Trash completion** (section 16) — GIO dev headers are absent on this
+   host, so `TrashMonitor`/`DownloadsMonitor` stay on the sanctioned
+   filesystem fallback; switch them to `GFileMonitor`/GIO when the headers
+   exist. Mount-unavailable dimming, Empty Trash progress, and
+   `org.dragonfruit.Files1` activation (T-18) remain.
+3. **Per-output sizing** (section 18): chrome surfaces still size from the
+   first output; `matches_output` is the filter hook. A popover created with
+   `output = None` still renders on every output, which is the acceptance
+   criterion "per-output popovers do not float across outputs".
+4. **Live AT-SPI dump** (section 20): the QML roles and the keyboard seat
+   path exist; a session-bus `atspi` walkthrough is T-31.
+5. **Assign To follow-ups** (T-04/T-05): sticky "All Desktops" and "None"
+   need compositor state; until then the two menu rows log pending.
+
+### Gate status
+
+`make lint` green (`cargo fmt --check`, `clippy -D warnings`, ctest 13/13 incl.
+`tst_dock` 103 and `tst_dockcore` 43, `gen-tokens --check`, the design-token/
+desktop-name/no-capture gates); live headless smoke
+(`dragonfruit dev --headless --shell`) reports `menu bar configured 1280x28`,
+`Dock configured 1280x124`, `output reserved zone edge=1 thickness=60`, both
+`scene-graph commit path active` lines, and a clean teardown (content fits, so
+no overflow warning). Acceptance criteria still unchecked in
+`tasks/10-dock.md`: the Files-side Trash integration test (T-18), the
+external-drag walkthrough (drag source, T-17/T-18), the live AT-SPI
+walkthrough, multi-output per-output popovers, plus the core-loop and 60 Hz
+measurements.

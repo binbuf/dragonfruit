@@ -13,6 +13,7 @@
 #include <QVariantList>
 
 #include "desktopentry.h"
+#include "dockmodel.h"
 #include "dockpins.h"
 #include "docksettings.h"
 #include "downloadsmonitor.h"
@@ -143,6 +144,19 @@ private:
     void applyDockSizeOnly();
     // Map `dock.size` (0..1) onto the icon-size token range.
     int iconSizeForSize(double size) const;
+    // Recompute the T-10 section 5.1 overflow clamp from `m_dockAllEntries`
+    // and the current output length: the effective icon size, the entries
+    // with overflow temporary/recent hidden, and the overflow flags.
+    DockOverflowResult computeDockOverflow() const;
+    // Adopt an overflow result: set the effective icon size and the baseline
+    // bar/magnified-band thickness. `allowEntries` is false for the divider
+    // resize, where the Repeater model must stay stable while the QML delegate
+    // holds the pointer; when `allowEntries` is true the entries are only
+    // re-published if the hidden set changed unless `forceEntries` is set.
+    void applyDockOverflowResult(const DockOverflowResult &overflow, bool allowEntries,
+                                 bool forceEntries = false);
+    // Log the one-per-session overflow warning (section 5.1).
+    void warnDockOverflow(const DockOverflowResult &overflow);
     // Map the `dock.position` string onto the protocol edge enum.
     ShellProtocol::DockPosition dockPosition() const;
     // Coalesce a render onto the next event-loop turn (QML visual state has
@@ -188,6 +202,15 @@ private:
     // The shell's running-window projection, kept so the pinned set can be
     // merged on every change.
     QVariantList m_runningEntries;
+    // The full built Dock entries (before the section 5.1 overflow clamp), so
+    // a size or geometry change can re-clamp without rebuilding.
+    QVariantList m_dockAllEntries;
+    // How many temporary/recent entries the last applied layout hid, so a
+    // geometry change only resets the Repeater model when it must.
+    int m_dockHiddenTemporary = 0;
+    int m_dockHiddenRecent = 0;
+    // One warning per session for the Dock-overflow error state (section 5.1).
+    bool m_dockOverflowWarned = false;
     // Pinned desktop id -> "launching" | "failed" (transient).
     QHash<QString, QString> m_launchStates;
     // Pinned desktop id -> deadline (ms since epoch) for the launch timeout.

@@ -37,6 +37,28 @@ QVariantList buildRecentEntries(const QStringList &recentIds, const QStringList 
                                 const QVariantList &running, const DesktopEntryIndex &index,
                                 int limit = 3);
 
+// The T-10 section 5.1 overflow clamp. A Dock wider than its output is an
+// error state: `dock.size` is clamped so the content fits, overflow
+// temporary/recent entries are hidden (recents first, then temporaries;
+// pinned and minimized entries are never dropped), and a warning is logged
+// once per session by the caller. `fixedCount` is the number of permanent
+// non-app entries besides the divider (the Downloads stack and the Trash);
+// the divider is always counted. `minimizedVisible` is false when
+// `dock.minimizeIntoTileIcon` hides the minimized entries.
+struct DockOverflowResult {
+    QVariantList entries; // `entries` with overflow temporary/recent removed
+    int iconSize = 0;     // effective icon size in px (never above requested)
+    int hiddenTemporary = 0;
+    int hiddenRecent = 0;
+    bool clamped = false;    // the size was reduced or entries were hidden
+    bool overflowed = false; // content still exceeds the axis at the minimum
+};
+
+DockOverflowResult applyDockOverflow(const QVariantList &entries, int availableLength,
+                                     int requestedIconSize, int iconMin, int iconMax,
+                                     int gap, int dividerWidth, int fixedCount = 2,
+                                     bool minimizedVisible = true);
+
 // T-10 section 8.1 bounce clocks. A launch bounce is three hops over
 // `kLaunchBounceMs`; an attention bounce repeats one hop every
 // `kAttentionBounceHopMs` until the controller's deadline. Both return the

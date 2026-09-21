@@ -35,6 +35,36 @@ QString makeAppDir(QTemporaryDir &dir)
     QDir().mkpath(apps);
     return apps;
 }
+
+QVariantList makeOverflowEntries(int pinned, int temporary, int recent, int minimized)
+{
+    QVariantList entries;
+    const auto add = [&entries](const QString &kind, const QString &id) {
+        entries.append(QVariantMap{{QStringLiteral("id"), id},
+                                   {QStringLiteral("kind"), kind},
+                                   {QStringLiteral("running"),
+                                    kind != QLatin1String("recent")}});
+    };
+    for (int i = 0; i < pinned; ++i)
+        add(QStringLiteral("pinned"), QStringLiteral("pin%1").arg(i));
+    for (int i = 0; i < temporary; ++i)
+        add(QStringLiteral("temporary"), QStringLiteral("tmp%1").arg(i));
+    for (int i = 0; i < recent; ++i)
+        add(QStringLiteral("recent"), QStringLiteral("recent%1").arg(i));
+    for (int i = 0; i < minimized; ++i)
+        add(QStringLiteral("minimized"), QStringLiteral("min%1").arg(i));
+    return entries;
+}
+
+int countKind(const QVariantList &entries, const QString &kind)
+{
+    int count = 0;
+    for (const QVariant &value : entries) {
+        if (value.toMap().value(QStringLiteral("kind")).toString() == kind)
+            ++count;
+    }
+    return count;
+}
 } // namespace
 
 class TestDockCore : public QObject
@@ -806,6 +836,115 @@ private slots:
                  QStringLiteral("recent.desktop"));
         QCOMPARE(entries.at(2).toMap().value(QStringLiteral("kind")).toString(),
                  QStringLiteral("minimized"));
+    }
+
+    // -- overflow clamp (T-10 section 5.1) --------------------------------
+
+    void overflowFitsLeavesTheLayoutAlone()
+    {
+        const QVariantList entries = makeOverflowEntries(3, 0, 0, 0);
+        const DockOverflowResult result =
+            applyDockOverflow(entries, 400, 48, 32, 64, 6, 1);
+        QVERIFY(!result.clamped);
+        QVERIFY(!result.overflowed);
+        QCOMPARE(result.iconSize, 48);
+        QCOMPARE(result.hiddenTemporary, 0);
+        QCOMPARE(result.hiddenRecent, 0);
+        QCOMPARE(result.entries.size(), entries.size());
+    }
+
+    void overflowClampsIconSizeDownToFit()
+    {
+        // 6 items at icon 48 need 5*(48+6)+1 = 271 px; at 250 the icon is
+        // clamped to the largest fitting size above the minimum (43 px).
+        const QVariantList entries = makeOverflowEntries(3, 0, 0, 0);
+        const DockOverflowResult result =
+            applyDockOverflow(entries, 250, 48, 32, 64, 6, 1);
+        QVERIFY(result.clamped);
+        QVERIFY(!result.overflowed);
+        QCOMPARE(result.iconSize, 43);
+        QCOMPARE(result.hiddenTemporary, 0);
+        QCOMPARE(result.hiddenRecent, 0);
+        QCOMPARE(result.entries.size(), entries.size());
+    }
+
+    void overflowHidesRecentsBeforeTemporaries()
+    {
+        // 3 pinned + 2 temporary + 1 recent = 9 items; at the minimum icon
+        // (32) 9 items need 305 px. At 280 only the recent must go.
+        const QVariantList entries = makeOverflowEntries(3, 2, 1, 0);
+        const DockOverflowResult one =
+            applyDockOverflow(entries, 280, 48, 32, 64, 6, 1);
+        QVERIFY(one.clamped);
+        QVERIFY(!one.overflowed);
+        QCOMPARE(one.iconSize, 32);
+        QCOMPARE(one.hiddenRecent, 1);
+        QCOMPARE(one.hiddenTemporary, 0);
+        QCOMPARE(one.entries.size(), entries.size() - 1);
+        // The removed entry is the recent one; every pinned entry survives.
+        QCOMPARE(countKind(one.entries, QStringLiteral("pinned")), 3);
+        QCOMPARE(countKind(one.entries, QStringLiteral("temporary")), 2);
+        QCOMPARE(countKind(one.entries, QStringLiteral("recent")), 0);
+
+        // At 250 both droppable regions shrink: the recent first, then one
+        // temporary. Pinned are never dropped.
+        const DockOverflowResult two =
+            applyDockOverflow(entries, 250, 48, 32, 64, 6, 1);
+        QVERIFY(two.clamped);
+        QVERIFY(!two.overflowed);
+        QCOMPARE(two.iconSize, 32);
+        QCOMPARE(two.hiddenRecent, 1);
+        QCOMPARE(two.hiddenTemporary, 1);
+        QCOMPARE(two.entries.size(), entries.size() - 2);
+        QCOMPARE(countKind(two.entries, QStringLiteral("pinned")), 3);
+        QCOMPARE(countKind(two.entries, QStringLiteral("temporary")), 1);
+        QCOMPARE(countKind(two.entries, QStringLiteral("recent")), 0);
+    }
+
+    void overflowNeverDropsPinned()
+    {
+        // 13 items with no droppable entries: even at the minimum the pinned
+        // set overflows, so nothing is hidden and the error is reported.
+        const QVariantList entries = makeOverflowEntries(10, 0, 0, 0);
+        const DockOverflowResult result =
+            applyDockOverflow(entries, 100, 48, 32, 64, 6, 1);
+        QVERIFY(result.clamped);
+        QVERIFY(result.overflowed);
+        QCOMPARE(result.iconSize, 32);
+        QCOMPARE(result.hiddenTemporary, 0);
+        QCOMPARE(result.hiddenRecent, 0);
+        QCOMPARE(result.entries.size(), entries.size());
+        QCOMPARE(countKind(result.entries, QStringLiteral("pinned")), 10);
+    }
+
+    void overflowHonorsHiddenMinimizedEntries()
+    {
+        // 3 pinned + 5 minimized: with the minimized region hidden the content
+        // fits at 300 px; when it is visible the same layout overflows.
+        const QVariantList entries = makeOverflowEntries(3, 0, 0, 5);
+        const DockOverflowResult visible =
+            applyDockOverflow(entries, 300, 48, 32, 64, 6, 1, 2, true);
+        QVERIFY(visible.clamped);
+        QCOMPARE(visible.iconSize, 32);
+        QVERIFY(visible.overflowed);
+
+        const DockOverflowResult hidden =
+            applyDockOverflow(entries, 300, 48, 32, 64, 6, 1, 2, false);
+        QVERIFY(!hidden.clamped);
+        QVERIFY(!hidden.overflowed);
+        QCOMPARE(hidden.iconSize, 48);
+    }
+
+    void overflowIgnoresZeroLength()
+    {
+        // Before the first configure the output length is unknown: no clamp.
+        const QVariantList entries = makeOverflowEntries(20, 5, 5, 5);
+        const DockOverflowResult result =
+            applyDockOverflow(entries, 0, 48, 32, 64, 6, 1);
+        QVERIFY(!result.clamped);
+        QVERIFY(!result.overflowed);
+        QCOMPARE(result.iconSize, 48);
+        QCOMPARE(result.entries.size(), entries.size());
     }
 
     // -- bounce clocks ---------------------------------------------------
