@@ -834,8 +834,12 @@ key shape**, so T-15 adopts the file without a migration (T-15 FR-1).
 - [ ] Trash state integration test with Files and a third-party deletion.
 - [ ] Drag rearrangement and context-menu walkthroughs scripted.
 - [ ] Keyboard + AT-SPI walkthrough and reduced-motion pass.
-- [ ] Multi-output: Dock appears on hotplug and per-output popovers do not
-      float across outputs.
+- [x] Multi-output: Dock appears on hotplug and per-output popovers do not
+      float across outputs. *(Scripted: `overlay_popover_is_per_output` covers
+      the popover half; `dock_follows_output_hotplug` attaches a second output
+      and asserts the Dock's baseline reserved zone reaches the new output
+      specifically and the Dock surface reconfigures. The shell creates its
+      Dock with `output = None`, so the compositor renders it on every output.)*
 
 ## Test plan
 

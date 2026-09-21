@@ -32,6 +32,13 @@ public:
     int itemCount() const { return m_count; }
     QString lastError() const { return m_error; }
 
+    // Whether the trash backend is reachable (T-10 section 16, lifecycle
+    // matrix "Trash mount unavailable"). A missing root is a healthy empty
+    // trash (created on demand); a root that exists but cannot be read, or
+    // whose nearest existing ancestor is not writable, is unavailable — the
+    // Dock dims the entry and disables its menu and never blocks the session.
+    bool isAvailable() const { return m_available; }
+
     // Start/stop watching `info` and `files`. Idle contributes zero wakeups;
     // a filesystem event triggers a re-scan and emits changed().
     void start();
@@ -63,10 +70,12 @@ private slots:
 private:
     void rescan(bool emitSignal);
     void syncWatches();
+    bool computeAvailable() const;
 
     QString m_root;
     QString m_error;
     int m_count = 0;
+    bool m_available = true;
     bool m_watching = false;
     QFileSystemWatcher *m_watcher = nullptr;
 };

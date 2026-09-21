@@ -4808,3 +4808,105 @@ green. The new test was run five consecutive times (and once under
 `make e2e`'s parallel binaries) with no flake after the synchronisation fixes
 above. No tasks/10-dock.md acceptance checkbox is closed by this slice; the
 remaining unchecked boxes are unchanged from the twenty-second slice.
+
+## T-10 continuation — Trash-unavailable lifecycle + multi-output Dock hotplug (twenty-fourth slice)
+
+**State: partial.** Two of the last host-closable T-10 acceptance/lifecycle
+gaps are now closed. The section 22 lifecycle row **"Trash mount
+unavailable → dimmed entry, disabled menu; session unaffected"** is
+implemented and scripted, and the section 18 acceptance criterion
+**"Multi-output: Dock appears on hotplug"** now has a scripted conformance
+test (the per-output-popover half already existed). The remaining open items
+(drag *source*, Trash-with-Files integration, GVfs backends, per-output
+*sizing*, live AT-SPI dump, core-loop/60 Hz measurements) are unchanged and
+all blocked on T-11/T-15/T-16/T-17/T-18/T-23/T-31 or hardware.
+
+### What landed
+
+- **Trash availability model** (`shell/src/trashmonitor.{h,cpp}`).
+  `TrashMonitor::isAvailable()` reports whether the backend is reachable. A
+  **missing root is a healthy empty trash** (created on demand); a root that
+  exists but is unreadable, or whose nearest existing ancestor is not
+  writable (a read-only/unmounted parent), is unavailable. `rescan()` now
+  emits `changed()` when availability flips, not only when the count does;
+  `rescan`/`start` compute it via `computeAvailable()`.
+- **Controller hand-off** (`shell/src/shellcontroller.cpp`). `trashAvailable`
+  is pushed to the Dock scene at start and on every `TrashMonitor::changed`.
+- **Dock presentation** (`shell/dock/Dock.qml`, `DockEntry.qml`). The Trash
+  entry carries `available`; when false the glyph dims (0.4), a warning
+  status badge appears, the accessible name reads "Trash, unavailable", the
+  context menu degrades to a single disabled **"Trash unavailable"** row,
+  and activating the entry is inert. An available Trash is byte-for-byte
+  unchanged.
+- **Tests.** `tst_dockcore`: `trashMonitorIsAvailableForAMissingRoot`,
+  `trashMonitorReportsAnUnreadableRootAsUnavailable` (mode-000 root), and
+  `trashMonitorRefusesUnsafeRoot` now asserts unavailable for `/`.
+  `tst_dock`: `test_trash_unavailable_is_dimmed_and_disabled` (dim + badge +
+  accessible name + disabled menu + inert click).
+- **Multi-output Dock hotplug** (`compositor/tests/shell_protocol_conformance.rs`).
+  New `dock_follows_output_hotplug`: a trusted shell creates the menu bar
+  *and* a `dock` layer surface (both `output = None`), a synthetic
+  `HDMI-A-1` is attached, and the test asserts the **new output specifically**
+  receives both the top (28) and bottom (60) reserved zones and that the Dock
+  surface is reconfigured; detaching removes the output's three Spaces. The
+  harness gained per-output/per-surface tracking
+  (`output_reserved_by_id`, `output_name_by_id`, `layer_configures_by_id`).
+
+### Gotchas learned (important for the next slice)
+
+- **`open_trusted_bar` does not bind the manager.** Reserved zones arrive as
+  `df_output` events delivered through `df_toplevel_manager`, so a test that
+  wants to observe them must bind the manager too (the same client can be
+  shell and observer, as `shell_output_hotplug_reanchors_chrome` does). The
+  first draft of `dock_follows_output_hotplug` timed out because it only
+  bound `df_core`/`df_shell`.
+- **`output_reserved` / `layer_configures` are aggregate vectors**, so they
+  cannot prove *which* output got a zone. Key them by
+  `resource.id().protocol_id()` (requires `wayland_client::Proxy` in scope).
+  `output_name_by_id` pairs a name to that id.
+- **`TrashMonitor::m_available` defaults true and is only computed by
+  `rescan`.** A test that calls `empty()`/`trash()` without `start()`/
+  `refresh()` sees the default; `trashMonitorRefusesUnsafeRoot` now calls
+  `start()` before asserting.
+- **Availability must not treat a missing root as unavailable.** The trash is
+  created lazily by `trash()`; only an unreadable existing root or an
+  unwritable nearest ancestor means a real mount/permission failure.
+- **QML: `dock.items` includes the divider, Downloads stack, and Trash** even
+  with no app entries; the Trash is always the last item
+  (`dock.itemAt(dock.items.length - 1)`), not `itemAt(0)`.
+- **`Accessible.name` for Trash now appends `stateLabel`** (empty when
+  available), so the available name is unchanged but the unavailable name
+  carries the state — keep that shape if the Trash label grows.
+
+### Hand-off / open items (remaining T-10 slices)
+
+1. **The drag *source*** (Files/launcher, T-17/T-18): a real
+   `wl_data_source` in the app plus an end-to-end walkthrough that drops onto
+   the running shell (not a raw stand-in).
+2. **Trash-state integration test with Files** (T-18): needs
+   `org.dragonfruit.Files1` activation; the third-party deletion half is
+   covered by `trashMonitorWatchesForThirdPartyChanges`.
+3. **GVfs Trash/downloads backends** when the GIO dev headers exist; the
+   sanctioned filesystem fallbacks (and now their unavailable state) are in
+   place.
+4. **Per-output sizing** (T-11/T-16): chrome still sizes its buffer from the
+   first output; `visible_on_output` is the placement half already done.
+5. **Live AT-SPI dump** (T-31).
+6. **Core-loop + 60 Hz measurements** (acceptance): need a nested session on
+   baseline hardware; the headless harness has no seat.
+
+### Gate status
+
+`make qml-test` green (13/13; `tst_dockcore` 51 passed, `tst_dock` 110
+passed), `make e2e` green (22/22 `shell_protocol_conformance` incl. the new
+hotplug case, plus the window/Xwayland/idle suites), `cargo fmt --check`,
+`cargo clippy --workspace --all-targets -D warnings`, `check-tokens`,
+`check-design-tokens`, `check-desktop-names`, and `check-no-capture-grab` all
+green. Live headless smoke (`dragonfruit dev --headless --shell`) reports
+`menu bar configured 1280x28`, `Dock configured 1280x124`, `output reserved
+zone edge=1 thickness=60`, both `scene-graph commit path active` lines, and a
+clean teardown, with no QML property/binding errors from the new
+`trashAvailable` hand-off. This slice closes the tasks/10-dock.md
+**"Multi-output: Dock appears on hotplug and per-output popovers do not float
+across outputs"** acceptance checkbox (both halves now scripted) and the
+section 22 Trash-unavailable row; the other unchecked boxes are unchanged.

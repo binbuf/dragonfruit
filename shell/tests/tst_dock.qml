@@ -973,6 +973,31 @@ Item {
             compare(menuActionSpy.signalArguments[0][0], "open_trash");
         }
 
+        function test_trash_unavailable_is_dimmed_and_disabled() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, entries: [], trashFull: false,
+                trashAvailable: false
+            });
+            var entry = dock.itemAt(dock.items.length - 1);
+            compare(entry.kind, "trash");
+            compare(entry.trashUnavailable, true);
+            verify(entry.Accessible.name.indexOf("unavailable") >= 0);
+            verify(findChild(entry, "glyph").opacity < 1.0);
+            compare(findChild(entry, "statusBadge").visible, true);
+            // The menu degrades to a single disabled row...
+            menuActionSpy.target = dock;
+            menuActionSpy.clear();
+            dock.openEntryMenu(dock.trashEntry);
+            var menu = findChild(dock, "entryMenu");
+            var labels = menuLabels(menu);
+            compare(labels.length, 1);
+            compare(labels[0], "Trash unavailable");
+            compare(menu.entries[0].enabled, false);
+            // ...and activating the entry is inert (never a broken operation).
+            dock.activateEntry(dock.trashEntry);
+            compare(menuActionSpy.count, 0);
+        }
+
         function test_multi_window_click_opens_chooser() {
             var dock = make(dockComponent, {
                 width: 1280, height: 160,

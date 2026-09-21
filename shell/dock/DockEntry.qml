@@ -47,6 +47,9 @@ Item {
     readonly property string name: entry.name !== undefined ? entry.name : ""
     readonly property string appId: entry.appId !== undefined ? entry.appId : ""
     readonly property bool trashFull: entry.trashFull === true
+    // The Trash backend is unreachable (T-10 section 16 lifecycle): dim the
+    // entry and say so, but never block the session.
+    readonly property bool trashUnavailable: isTrash && entry.available === false
     readonly property bool launching: entry.launch === "launching"
     readonly property bool failed: entry.launch === "failed"
     readonly property bool missing: entry.missing === true
@@ -95,7 +98,7 @@ Item {
     // section 20).
     readonly property string stateLabel: {
         if (isTrash)
-            return "";
+            return trashUnavailable ? qsTr(", unavailable") : "";
         if (isStack) {
             var items = stackCount === 1 ? qsTr(", 1 item") : qsTr(", %1 items").arg(stackCount);
             if (badge > 0)
@@ -114,7 +117,7 @@ Item {
     Accessible.role: isDivider ? Accessible.Separator : Accessible.ListItem
     Accessible.name: isDivider ? qsTr("Dock separator")
                      : isExternal ? qsTr("Drop here")
-                     : isTrash ? qsTr("Trash")
+                     : isTrash ? qsTr("Trash") + stateLabel
                      : isStack ? qsTr("Downloads") + stateLabel
                      : name + stateLabel
     Accessible.focusable: !isDivider && !isExternal
@@ -240,7 +243,9 @@ Item {
         y: root.artworkY
         scale: root.pressedScale * root.pulseScale * root.liftScale
         transformOrigin: Item.Center
-        opacity: root.launching ? 0.6 : root.missing ? 0.45 : 1.0
+        opacity: root.launching ? 0.6
+                 : root.missing ? 0.45
+                 : root.trashUnavailable ? 0.4 : 1.0
 
         Behavior on scale {
             NumberAnimation {
@@ -253,12 +258,13 @@ Item {
         }
     }
 
-    // A launch failure or an unresolved pinned identity is a state, not a
-    // crash (T-10 sections 8.5, 4.2): a small badge marks it and the
-    // accessible name says why.
+    // A launch failure, an unresolved pinned identity, or an unreachable
+    // Trash backend is a state, not a crash (T-10 sections 8.5, 4.2, 16): a
+    // small badge marks it and the accessible name says why.
     Rectangle {
         objectName: "statusBadge"
-        visible: !root.isDivider && !root.isExternal && (root.failed || root.missing)
+        visible: !root.isDivider && !root.isExternal
+                 && (root.failed || root.missing || root.trashUnavailable)
         width: root.indicatorSize
         height: root.indicatorSize
         radius: root.indicatorSize / 2
