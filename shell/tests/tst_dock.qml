@@ -278,7 +278,7 @@ Item {
             });
             compare(left.hideX, 0);
             left.hide();
-            waitForRendering(stage);
+            wait(Theme.motion.dockReveal.duration + 40);
             verify(left.hideX < 0);
             verify(left.barRect.x < 0);
 
@@ -288,7 +288,7 @@ Item {
                 entries: [ app("a", "A", true) ]
             });
             right.hide();
-            waitForRendering(stage);
+            wait(Theme.motion.dockReveal.duration + 40);
             verify(right.hideX > 0);
             verify(right.barRect.x > 160 - right.barThickness);
         }
@@ -302,13 +302,13 @@ Item {
             });
             compare(dock.hideOffset, 0);
             dock.hide();
-            waitForRendering(stage);
+            wait(Theme.motion.dockReveal.duration + 40);
             verify(dock.hideOffset >= dock.barThickness);
             // A bottom bar hides downward, off the bottom edge.
             verify(dock.hideY > 0);
             verify(dock.barRect.y > dock.magnifyBand);
             dock.reveal();
-            waitForRendering(stage);
+            wait(Theme.motion.dockReveal.duration + 40);
             compare(dock.hideOffset, 0);
         }
 
@@ -318,6 +318,69 @@ Item {
                 entries: [ app("a", "A", true) ]
             });
             compare(dock.hideOffset, 0);
+        }
+
+        function test_auto_hide_translation_is_animated() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, autoHide: true, revealed: true,
+                entries: [ app("a", "A", true) ]
+            });
+            compare(dock.hideOffset, 0);
+            dock.hide();
+            // Mid-flight: the slide has begun but has not reached the target
+            // (FR-14: the reveal/hide is a real motion, not a snap).
+            wait(Math.floor(Theme.motion.dockReveal.duration / 4));
+            verify(dock.hideOffset > 0);
+            verify(dock.hideOffset < dock.barThickness);
+            wait(Theme.motion.dockReveal.duration + 80);
+            verify(dock.hideOffset >= dock.barThickness);
+        }
+
+        function test_auto_hide_reduced_motion_snaps() {
+            Theme.reducedMotion = true;
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, autoHide: true, revealed: true,
+                entries: [ app("a", "A", true) ]
+            });
+            dock.hide();
+            waitForRendering(stage);
+            compare(dock.hideOffset,
+                    dock.barThickness + Theme.controls.dock.edgeMargin);
+        }
+
+        function test_keyboard_focus_suppresses_rehide() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, autoHide: true, revealed: true,
+                entries: [ app("files", "Files", true) ]
+            });
+            // Pointer off the Dock; keyboard navigation now owns it.
+            mouseMove(stage, 640, dock.height + 40);
+            waitForRendering(stage);
+            dock.beginKeyboardNavigation();
+            compare(dock.keyboardFocused, true);
+            dock.scheduleHide();
+            wait(Theme.controls.dock.hideDelay
+                 + Theme.motion.dockReveal.duration + 80);
+            compare(dock.revealed, true);
+            // Leaving keyboard navigation restores the normal re-hide delay.
+            dock.endKeyboardNavigation();
+            wait(Theme.controls.dock.hideDelay
+                 + Theme.motion.dockReveal.duration + 80);
+            compare(dock.revealed, false);
+        }
+
+        function test_reveal_cancels_a_pending_rehide() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, autoHide: true, revealed: true,
+                entries: [ app("a", "A", true) ]
+            });
+            mouseMove(stage, 640, dock.height + 40);
+            waitForRendering(stage);
+            dock.scheduleHide();       // a re-hide is now pending
+            dock.reveal();             // must cancel it
+            wait(Theme.controls.dock.hideDelay
+                 + Theme.motion.dockReveal.duration + 80);
+            compare(dock.revealed, true);
         }
 
         // -- Activation -----------------------------------------------------
