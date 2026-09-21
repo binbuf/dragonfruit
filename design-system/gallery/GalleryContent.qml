@@ -533,7 +533,13 @@ Item {
                     accessibleName: qsTr("Item actions")
                     model: [
                         { label: qsTr("Open"), shortcut: "⌘O" },
-                        { label: qsTr("Open With"), type: "submenu" },
+                        { label: qsTr("Open With"), type: "submenu",
+                          submenu: [
+                              { label: qsTr("Text Editor") },
+                              { label: qsTr("Image Viewer") },
+                              { type: "separator" },
+                              { label: qsTr("Other…") }
+                          ] },
                         { type: "separator" },
                         { label: qsTr("Get Info"), shortcut: "⌘I" },
                         { label: qsTr("Rename"), shortcut: "↵" },

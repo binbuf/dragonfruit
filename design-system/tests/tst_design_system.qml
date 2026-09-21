@@ -345,6 +345,66 @@ TestCase {
         compare(triggeredSpy.count, 0);
     }
 
+    function test_context_menu_submenu_opens_and_activates() {
+        var cm = make(contextMenuComponent, {
+            model: [
+                { label: "Open With", type: "submenu",
+                  submenu: [{ label: "Text" }, { label: "Image" }] }
+            ]
+        });
+        triggeredSpy.target = cm;
+        triggeredSpy.clear();
+        cm.showAt(10, 10);
+        waitForRendering(stage);
+        compare(cm.openSubmenuIndex, -1);
+        keyClick(Qt.Key_Right);
+        compare(cm.openSubmenuIndex, 0);
+        compare(cm.submenuEntries.length, 2);
+        compare(cm.submenuHighlightedIndex, 0);
+        keyClick(Qt.Key_Down);
+        compare(cm.submenuHighlightedIndex, 1);
+        keyClick(Qt.Key_Return);
+        compare(triggeredSpy.count, 1);
+        compare(triggeredSpy.signalArguments[0][1].label, "Image");
+        compare(cm.open, false);
+        compare(cm.openSubmenuIndex, -1);
+    }
+
+    function test_context_menu_submenu_escape_closes_only_submenu() {
+        var cm = make(contextMenuComponent, {
+            model: [
+                { label: "Options", type: "submenu",
+                  submenu: [{ label: "One" }, { label: "Two" }] }
+            ]
+        });
+        cm.showAt(10, 10);
+        waitForRendering(stage);
+        cm.openSubmenu(0);
+        compare(cm.openSubmenuIndex, 0);
+        keyClick(Qt.Key_Escape);
+        compare(cm.openSubmenuIndex, -1);
+        compare(cm.open, true);
+        keyClick(Qt.Key_Escape);
+        compare(cm.open, false);
+    }
+
+    function test_context_menu_content_rect_covers_submenu() {
+        var cm = make(contextMenuComponent, {
+            model: [
+                { label: "Options", type: "submenu",
+                  submenu: [{ label: "A" }, { label: "B" }] }
+            ]
+        });
+        cm.showAt(10, 10);
+        waitForRendering(stage);
+        var closedWidth = cm.contentRect.w;
+        cm.openSubmenu(0);
+        wait(300);
+        waitForRendering(stage);
+        verify(cm.contentRect.w > closedWidth,
+               "an open submenu must extend the committed content rect");
+    }
+
     // -- SearchField (FR-1) -------------------------------------------------
 
     function test_search_field_escape_clears() {

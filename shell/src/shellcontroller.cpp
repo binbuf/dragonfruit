@@ -1279,6 +1279,15 @@ void ShellController::onDockEntryMenuAction(const QString &action, const QVarian
         m_settings.setAutohide(!m_settings.autohide());
         saveDockSettings();
         applyDockSettings(true);
+    } else if (action == QLatin1String("set_position")) {
+        // The divider's "Position on Screen" submenu (T-10 section 5). The
+        // surface is re-anchored live; the QML layout mirrors vertically.
+        const QString position = map.value(QStringLiteral("position")).toString();
+        if (!position.isEmpty() && position != m_settings.position()) {
+            m_settings.setPosition(position);
+            saveDockSettings();
+            applyDockSettings(true);
+        }
     } else if (action == QLatin1String("open_dock_settings")) {
         // T-16 owns the Desktop & Dock pane; the entry point is wired.
         qInfo() << "shell: Dock Settings requested (T-16)";
