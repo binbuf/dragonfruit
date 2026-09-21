@@ -181,7 +181,7 @@ void ShellProtocol::bindTrustedGlobals()
     if (m_managerName) {
         m_manager = static_cast<df_toplevel_manager *>(
             wl_registry_bind(m_registry, m_managerName, &df_toplevel_manager_interface,
-                             std::min(m_managerVersion, 1u)));
+                             std::min(m_managerVersion, 2u)));
         static const df_toplevel_manager_listener managerListener = {
             onManagerOutput,
             onManagerWorkspace,
@@ -455,6 +455,17 @@ void ShellProtocol::activateApp(const QString &appId)
         return;
     const QByteArray id = appId.toUtf8();
     df_toplevel_manager_activate_app(m_manager, id.constData());
+    if (m_display)
+        wl_display_flush(m_display);
+}
+
+void ShellProtocol::releaseKeyboardFocus()
+{
+    if (!m_manager)
+        return;
+    // T-10 section 20: Escape exits Dock keyboard navigation; ask the
+    // compositor to restore the active window's keyboard focus.
+    df_toplevel_manager_release_keyboard_focus(m_manager);
     if (m_display)
         wl_display_flush(m_display);
 }

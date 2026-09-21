@@ -44,6 +44,10 @@ use trust::{Refusal, TrustModel, TrustedRole};
 /// The version of every private interface this compositor implements.
 const INTERFACE_VERSION: u32 = 1;
 
+/// `df_toplevel_manager` is version 2 since `release_keyboard_focus` was
+/// added (T-10). The other interfaces stay at [`INTERFACE_VERSION`].
+const MANAGER_INTERFACE_VERSION: u32 = 2;
+
 /// Error code posted when an untrusted client binds a private global.
 const ERROR_ACCESS_DENIED: u32 = 1;
 
@@ -114,7 +118,7 @@ impl ShellProtocolState {
             display.create_global::<DfState, df_shell::DfShell, ()>(INTERFACE_VERSION, ());
         let toplevel_global = display
             .create_global::<DfState, df_toplevel_manager::DfToplevelManager, ()>(
-                INTERFACE_VERSION,
+                MANAGER_INTERFACE_VERSION,
                 (),
             );
         ShellProtocolState {
@@ -1629,6 +1633,16 @@ impl Dispatch<df_toplevel_manager::DfToplevelManager, ()> for DfState {
             }
             df_toplevel_manager::Request::CycleAppSwitcher { direction } => {
                 state.cycle_app_switcher(direction);
+            }
+            df_toplevel_manager::Request::ReleaseKeyboardFocus => {
+                // T-10 section 20: the shell releases chrome keyboard focus
+                // (Escape exits Dock keyboard navigation) so the active window
+                // gets the keyboard back. A no-op when no chrome surface held
+                // it or the active window is gone.
+                if state.chrome_has_keyboard_focus() {
+                    state.restore_window_keyboard_focus();
+                    state.needs_redraw = true;
+                }
             }
             df_toplevel_manager::Request::Destroy => {}
         }

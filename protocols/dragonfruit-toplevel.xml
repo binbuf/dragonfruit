@@ -24,7 +24,7 @@
 -->
 <protocol name="dragonfruit_toplevel">
 
-  <interface name="df_toplevel_manager" version="1">
+  <interface name="df_toplevel_manager" version="2">
     <description summary="window/workspace/output control for trusted clients">
       The manager is per-client. On bind the compositor replays the current
       scene: it announces every output, workspace, and toplevel, then emits
@@ -66,6 +66,15 @@
     <request name="cycle_app_switcher">
       <description summary="app switcher: move the selection by one app"/>
       <arg name="direction" type="int" summary="+1 forward, -1 backward"/>
+    </request>
+
+    <request name="release_keyboard_focus">
+      <description summary="release chrome keyboard focus back to the active window">
+        The shell calls this when keyboard focus leaves a chrome surface
+        (T-10: Escape exits Dock keyboard navigation) so the compositor can
+        restore the active window's focus. Inert when the active window is
+        gone or no chrome surface held the keyboard.
+      </description>
     </request>
 
     <request name="destroy" type="destructor"/>

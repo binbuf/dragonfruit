@@ -3393,6 +3393,21 @@ fn focus_dock_shortcut_hands_the_keyboard_to_the_dock() {
         },
     );
 
+    // --- ReleaseKeyboardFocus: Escape leaves Dock keyboard navigation ----
+    // The Dock still holds the keyboard after FocusDock; the shell's release
+    // request returns it to the active window (none here), so the Dock sees
+    // `wl_keyboard.leave` and the compositor no longer counts it as focused.
+    state.keyboard_leaves = 0;
+    manager.release_keyboard_focus();
+    let _ = conn.flush();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.keyboard_leaves > 0,
+    );
+
     drop(dock);
     drop(dock_surface);
     drop(manager);

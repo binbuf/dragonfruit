@@ -29,6 +29,7 @@ Item {
         SignalSpy { id: windowSpy; signalName: "windowActivated" }
         SignalSpy { id: popoverSpy; signalName: "popoverChanged" }
         SignalSpy { id: pinnedOrderSpy; signalName: "pinnedOrderChanged" }
+        SignalSpy { id: releaseFocusSpy; signalName: "keyboardFocusReleaseRequested" }
 
         // Reduced motion is a global singleton; reset it before every test so
         // a failure mid-test cannot leak into the next one.
@@ -1307,6 +1308,23 @@ Item {
             compare(dock.focusedItemId, "files");
             dock.endKeyboardNavigation();
             waitForRendering(stage);
+            compare(dock.keyboardFocused, false);
+            compare(dock.focusedItemId, "");
+        }
+
+        function test_keyboard_escape_releases_focus() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("files", "Files", true), app("term", "Terminal", true) ]
+            });
+            releaseFocusSpy.target = dock;
+            releaseFocusSpy.clear();
+            dock.forceActiveFocus();
+            dock.beginKeyboardNavigation();
+            waitForRendering(stage);
+            keyClick(Qt.Key_Escape);
+            waitForRendering(stage);
+            compare(releaseFocusSpy.count, 1);
             compare(dock.keyboardFocused, false);
             compare(dock.focusedItemId, "");
         }

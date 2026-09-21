@@ -134,6 +134,11 @@ public:
     // 13). The compositor does not expose an app-level quit.
     void closeApp(const QString &appId);
 
+    // Release chrome keyboard focus (T-10 section 20): the compositor hands
+    // the keyboard back to the active window. Sent when Escape exits Dock
+    // keyboard navigation.
+    void releaseKeyboardFocus();
+
     // The compositor connection fd, for the Qt event-loop notifier.
     int displayFd() const;
 
