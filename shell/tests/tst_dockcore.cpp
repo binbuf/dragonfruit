@@ -8,6 +8,7 @@
 #include "dockpins.h"
 #include "docksettings.h"
 #include "downloadsmonitor.h"
+#include "framecommitgate.h"
 #include "trashmonitor.h"
 
 #include <QDir>
@@ -833,6 +834,37 @@ private slots:
         QCOMPARE(dockAttentionBouncePhase(kAttentionBounceHopMs), 0.0);
         QVERIFY(qAbs(dockAttentionBouncePhase(kAttentionBounceHopMs + kAttentionBounceHopMs / 2)
                      - 0.5) < 1e-9);
+    }
+
+    // -- scene-graph frame gate (FR-14) ----------------------------------
+
+    void frameGateSchedulesEachSceneGraphFrame()
+    {
+        FrameCommitGate gate;
+        // A rendered scene-graph frame schedules a commit; the readback's own
+        // re-render (bracketed by begin/endCommit) must not schedule another.
+        QVERIFY(gate.frameRendered());
+        gate.beginCommit();
+        QVERIFY(gate.committing());
+        QVERIFY(!gate.frameRendered());
+        gate.endCommit();
+        QVERIFY(!gate.committing());
+        QVERIFY(gate.frameRendered());
+        QCOMPARE(gate.sceneFrames(), quint64(3));
+        QCOMPARE(gate.committedFrames(), quint64(1));
+    }
+
+    void frameGateResetClearsCounters()
+    {
+        FrameCommitGate gate;
+        gate.frameRendered();
+        gate.beginCommit();
+        gate.endCommit();
+        gate.reset();
+        QVERIFY(!gate.committing());
+        QCOMPARE(gate.sceneFrames(), quint64(0));
+        QCOMPARE(gate.committedFrames(), quint64(0));
+        QVERIFY(gate.frameRendered());
     }
 };
 
