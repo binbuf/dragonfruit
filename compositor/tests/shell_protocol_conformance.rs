@@ -18,7 +18,7 @@ use std::time::{Duration, Instant};
 
 use wayland_client::protocol::wl_data_device_manager::DndAction;
 use wayland_client::protocol::{
-    wl_buffer, wl_compositor, wl_data_device, wl_data_device_manager, wl_data_offer,
+    wl_buffer, wl_callback, wl_compositor, wl_data_device, wl_data_device_manager, wl_data_offer,
     wl_data_source, wl_keyboard, wl_pointer, wl_region, wl_registry, wl_seat, wl_shm, wl_shm_pool,
     wl_surface,
 };
@@ -142,6 +142,8 @@ struct TestClient {
     attentions: Vec<df_toplevel::DfToplevel>,
     hot_corners: Vec<(u32, String)>,
     overviews: Vec<(u32, bool)>,
+    /// `wl_callback.frame` callbacks delivered to this client (T-11 U-3).
+    frame_callbacks: usize,
     app_switchers: Vec<(u32, Option<String>, i32)>,
     input_actions: Vec<(String, String, u32)>,
     progress_events: usize,
@@ -437,6 +439,21 @@ impl Dispatch<df_toplevel::DfToplevel, ()> for TestClient {
             df_toplevel::Event::OutputLeft { .. } => state.toplevel_output_left += 1,
             df_toplevel::Event::Closed => state.toplevel_closed += 1,
             _ => {}
+        }
+    }
+}
+
+impl Dispatch<wl_callback::WlCallback, ()> for TestClient {
+    fn event(
+        state: &mut Self,
+        _: &wl_callback::WlCallback,
+        event: wl_callback::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let wl_callback::Event::Done { .. } = event {
+            state.frame_callbacks += 1;
         }
     }
 }
@@ -3035,6 +3052,178 @@ fn overview_owns_pointer_hit_testing_until_it_closes() {
         !synthetic_path.exists(),
         "teardown leak: synthetic-input socket survived"
     );
+}
+
+/// T-11 FR-2 (U-3): Mission Control and workspace switching transform the
+/// *live* surfaces, never thumbnails. A client surface stays mapped and keeps
+/// receiving `wl_surface.frame` callbacks — and can keep committing fresh
+/// buffers, "a playing video keeps playing" — across a full overview and a
+/// workspace round-trip. Substituting a thumbnail would require unmapping the
+/// client surface, which would stop the callbacks.
+#[test]
+fn overview_transition_keeps_live_surfaces_mapped() {
+    let token = "a1".repeat(32);
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path =
+        PathBuf::from(&runtime_dir).join(format!("dragonfruit-synth-live-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-overview-live",
+        std::slice::from_ref(&token),
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (name, version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, name, version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+    let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
+    let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.outputs.is_empty() && state.workspaces.len() >= 3 && state.done_count > 0,
+    );
+
+    // A live surface with a real buffer, as a video player would have.
+    let (surface, _xdg_surface, _toplevel, file) =
+        map_toplevel(&mut state, &mut queue, "Live", "org.dragonfruit.Live");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.toplevels.is_empty(),
+    );
+    // Keep the shm backing files alive for the whole test; the buffers
+    // reference the mapping until the compositor releases them.
+    let mut files = vec![file];
+
+    // --- baseline: a normal presented frame delivers its callback ---------
+    let before = state.frame_callbacks;
+    files.push(present_frame(&mut state, &queue, &surface));
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.frame_callbacks > before,
+    );
+
+    // --- Mission Control: the live surface keeps playing ------------------
+    input.send("swipe-begin 4");
+    input.send("swipe-update 0 -100");
+    input.send("swipe-update 0 -100");
+    input.send("swipe-end");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.overviews.iter().any(|(active, _)| *active == 1),
+    );
+    let before = state.frame_callbacks;
+    files.push(present_frame(&mut state, &queue, &surface));
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.frame_callbacks > before,
+    );
+    assert_eq!(
+        state.toplevel_closed, 0,
+        "the live surface must stay mapped in the overview"
+    );
+
+    manager.exit_mission_control();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.overviews.iter().any(|(active, _)| *active == 0),
+    );
+
+    // --- workspace round-trip: the surface survives and resumes -----------
+    state.workspace_activated.clear();
+    input.send("swipe-begin 3");
+    input.send("swipe-update -100 0");
+    input.send("swipe-update -100 0");
+    input.send("swipe-end");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.workspace_activated.contains(&1),
+    );
+    state.workspace_activated.clear();
+    input.send("swipe-begin 3");
+    input.send("swipe-update 100 0");
+    input.send("swipe-update 100 0");
+    input.send("swipe-end");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.workspace_activated.contains(&0),
+    );
+
+    // Back on its Space, the same live surface presents again.
+    let before = state.frame_callbacks;
+    files.push(present_frame(&mut state, &queue, &surface));
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.frame_callbacks > before,
+    );
+
+    assert_eq!(
+        state.toplevel_closed, 0,
+        "no thumbnail substitution: the surface was never closed"
+    );
+    assert_eq!(
+        state.toplevels.len(),
+        1,
+        "the window is still the one client surface, not a thumbnail object"
+    );
+
+    manager.destroy();
+    let _ = conn.flush();
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}
+
+/// Commit a fresh buffer and request a `wl_surface.frame` callback on
+/// `surface` (T-11 U-3): the client half of "a playing video keeps playing".
+/// The returned backing file must outlive the buffer.
+fn present_frame(
+    state: &mut TestClient,
+    queue: &EventQueue<TestClient>,
+    surface: &wl_surface::WlSurface,
+) -> std::fs::File {
+    let qh = queue.handle();
+    let _callback = surface.frame(&qh, ());
+    let (buffer, file) = shm_buffer(state, &qh, 200, 150);
+    surface.attach(Some(&buffer), 0, 0);
+    surface.commit();
+    file
 }
 
 /// T-11 FR-8 (U-2): a full overview gesture produces a per-frame timing
