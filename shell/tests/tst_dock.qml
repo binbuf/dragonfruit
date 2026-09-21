@@ -683,15 +683,86 @@ Item {
             });
             dock.openEntryMenu(dock.items[0]);
             var menu = findChild(dock, "entryMenu");
-            // 2 windows, separator, Show All Windows, separator, Remove, separator, Quit
-            compare(menu.entries.length, 8);
+            // 2 windows, sep, Show All Windows, sep, Remove, Options, sep, Quit
+            compare(menu.entries.length, 9);
             compare(menu.entries[0].label, "A");
             compare(menu.entries[0].checked, true);
             compare(menu.entries[1].label, "B (minimized)");
             compare(menu.entries[1].shortcut, "Space 2");
             compare(menu.entries[3].label, "Show All Windows");
             compare(menu.entries[5].label, "Remove from Dock");
-            compare(menu.entries[7].label, "Quit");
+            compare(menu.entries[6].label, "Options");
+            compare(menu.entries[6].type, "submenu");
+            compare(menu.entries[8].label, "Quit");
+        }
+
+        function test_app_options_submenu_has_assign_login_and_show_in_files() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("files", "Files", false) ]
+            });
+            menuActionSpy.target = dock;
+            menuActionSpy.clear();
+            dock.openEntryMenu(dock.items[0]);
+            var menu = findChild(dock, "entryMenu");
+            var labels = menuLabels(menu);
+            var optionsIndex = labels.indexOf("Options");
+            verify(optionsIndex >= 0);
+            menu.openSubmenu(optionsIndex);
+            waitForRendering(stage);
+            var subLabels = [];
+            for (var j = 0; j < menu.submenuEntries.length; ++j)
+                subLabels.push(menu.submenuEntries[j].label);
+            verify(subLabels.indexOf("Assign to This Desktop") >= 0);
+            verify(subLabels.indexOf("Assign to All Desktops") >= 0);
+            verify(subLabels.indexOf("Assign to None") >= 0);
+            verify(subLabels.indexOf("Open at Login") >= 0);
+            verify(subLabels.indexOf("Show in Files") >= 0);
+            // Selecting a choice emits the assign action with its target.
+            var assignIndex = subLabels.indexOf("Assign to This Desktop");
+            menu.activateSubmenu(assignIndex);
+            compare(menuActionSpy.count, 1);
+            compare(menuActionSpy.signalArguments[0][0], "assign_to");
+            compare(menuActionSpy.signalArguments[0][1].target, "this");
+            compare(menuActionSpy.signalArguments[0][1].desktopId, "files.desktop");
+        }
+
+        function test_pinned_not_running_menu_has_options_and_show_in_files() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("files", "Files", false) ]
+            });
+            dock.openEntryMenu(dock.items[0]);
+            var menu = findChild(dock, "entryMenu");
+            var labels = menuLabels(menu);
+            // Open · Options ▸ · Show in Files · Remove from Dock
+            verify(labels.indexOf("Open") >= 0);
+            verify(labels.indexOf("Options") >= 0);
+            verify(labels.indexOf("Show in Files") >= 0);
+            verify(labels.indexOf("Remove from Dock") >= 0);
+            compare(labels.indexOf("Quit") < 0, true);
+        }
+
+        function test_minimized_entry_menu_lists_windows_and_quit() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ { id: "win:1", appId: "files", name: "Doc",
+                             kind: "minimized", running: false, minimized: true,
+                             windowList: [
+                                 { windowId: "1", title: "Doc", minimized: true },
+                                 { windowId: "2", title: "Other", focused: true }
+                             ] } ]
+            });
+            dock.openEntryMenu(dock.items[1]); // divider, minimized, stack, trash
+            var menu = findChild(dock, "entryMenu");
+            var labels = menuLabels(menu);
+            verify(labels.indexOf("Doc (minimized)") >= 0);
+            verify(labels.indexOf("Other") >= 0);
+            verify(labels.indexOf("Show All Windows") >= 0);
+            verify(labels.indexOf("Quit") >= 0);
+            // A minimized-window entry is not an app entry: no Open/Options.
+            compare(labels.indexOf("Open") < 0, true);
+            compare(labels.indexOf("Options") < 0, true);
         }
 
         function test_menu_keep_in_dock_for_temporary_app() {

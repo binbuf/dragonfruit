@@ -125,6 +125,10 @@ private:
     // Open the Trash in Files (`org.dragonfruit.Files1` / the Files .desktop;
     // T-18 owns the app). The entry point is wired now.
     void openTrashInFiles();
+    // Reveal an app's executable in Files (the Dock "Show in Files" /
+    // Command-click action, T-10 section 13). T-18 owns Files; the entry
+    // point is wired now.
+    void showDockAppInFiles(const QString &desktopId, const QString &appId);
     // Push the `dock.*` settings onto the Dock QML and, when the geometry
     // changed, reconfigure the chrome surface (T-10 section 19).
     void applyDockSettings(bool reconfigure);

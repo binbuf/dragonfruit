@@ -124,6 +124,12 @@ public:
     // app's most recent window, switches to its Space, and restores it.
     void activateApp(const QString &appId);
 
+    // Assign every window of `appId` to the currently active Space (the Dock
+    // "Options ▸ Assign to This Desktop" action, T-10 section 13). The
+    // compositor has no sticky/all-Spaces assignment, so "All Desktops" and
+    // "None" are handled by the controller as pending.
+    void assignAppToActiveWorkspace(const QString &appId);
+
     // Window-level activation for the Dock window chooser (T-10 FR-5): the
     // compositor restores the window if minimized, switches to its Space, and
     // focuses it (`select_overview_toplevel` semantics). `windowId` is the
@@ -424,6 +430,9 @@ private:
     QHash<quintptr, df_toplevel *> m_toplevelById;
     // Announced Spaces, resolved to an index/name for chooser row labels.
     QHash<df_workspace *, WorkspaceInfo> m_workspaces;
+    // The Space the last `workspace_activated` event named (T-10 section 13);
+    // "Assign to This Desktop" moves an app's windows here.
+    df_workspace *m_activeWorkspace = nullptr;
     df_toplevel *m_focused = nullptr;
     QSet<wl_buffer *> m_buffers;
 };

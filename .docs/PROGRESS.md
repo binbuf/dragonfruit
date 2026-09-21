@@ -4075,3 +4075,110 @@ Files-side Trash integration test (T-18), the external-drag walkthrough (drag
 source, T-17/T-18), the live AT-SPI walkthrough, multi-output per-output
 popovers, plus the core-loop and 60 Hz measurements. (FR-14 is now landed but
 the 60 Hz budget measurement remains part of the acceptance suite.)
+
+## T-10 continuation — app Options submenu + minimized-entry menu (seventeenth slice)
+
+**State: partial.** The app context menu now matches section 13: every app
+entry carries an `Options ▸` submenu (Assign To / Open at Login / Show in
+Files), and a minimized-window entry now shows its owning app's full window
+list plus Show All Windows and Quit instead of a dead "Open". "Assign to This
+Desktop" is functional; the two other Assign To choices and Open at Login are
+logged pending on their owning tickets. The **drag source** (Files/launcher,
+T-17/T-18) and its end-to-end walkthrough, the GVfs Trash/downloads backends
+(GIO headers absent), per-output sizing, and the live AT-SPI dump are
+unchanged.
+
+### What landed
+
+- **`Dock.qml` menu model** (`menuModel` + new `optionsMenuModel`). App
+  entries get `Options ▸` with the one-level design-system submenu (nested
+  submenus are still deferred, so the three Assign To choices are direct rows,
+  not the macOS nested `Assign To ▸`): "Assign to This Desktop" / "Assign to
+  All Desktops" / "Assign to None", a separator, "Open at Login", and "Show in
+  Files". Running apps get `Keep/Remove from Dock · Options ▸ · Quit`; pinned
+  not-running apps get `Open · Options ▸ · Show in Files · Remove from Dock`.
+  The window-list block is now built for any entry that carries a `windowList`
+  (previously only when `running`), so a minimized entry renders its app's
+  windows, and the new `minimized` branch adds `Show All Windows` + `Quit`.
+- **`ShellProtocol::assignAppToActiveWorkspace(appId)`** (`shellprotocol.*`).
+  The shell now records the `df_workspace` named by the `workspace_activated`
+  event (`onWorkspaceActivated` was a no-op) and moves every toplevel whose
+  `appId` matches onto it with `df_toplevel.move_to_workspace`. This is the
+  real implementation of "Assign to This Desktop".
+- **`ShellController::showDockAppInFiles(desktopId, appId)`**. Resolves the
+  app (desktop id, then compositor app id), takes the executable from the
+  interim `.desktop` launch command, and opens Files at it through the same
+  interim launcher the Trash uses (`org.dragonfruit.Files1` replaces the
+  target at T-18). If Files is not installed it logs and does nothing.
+- **`onDockEntryMenuAction` dispatch** for the three new actions:
+  `assign_to` (`this` → the protocol call; `all`/`none` → pending logs),
+  `open_at_login` (pending T-24), and `show_in_files`.
+- **Tests** (`shell/tests/tst_dock.qml`): the running-app menu count/index
+  assertions were updated for the new `Options` row; three new cases cover the
+  Options submenu contents and `assign_to` dispatch/payload, the
+  pinned-not-running menu (`Open`/`Options`/`Show in Files`/`Remove`, no
+  `Quit`), and the minimized-entry menu (window list, `Show All Windows`,
+  `Quit`, and no `Open`/`Options`).
+
+### Gotchas learned (important for the next session)
+
+- **`workspace_activated` carries the Space index, not an "active" flag**
+  (`protocols/dragonfruit-toplevel.xml`: `<arg name="workspace"/>` +
+  `<arg name="index"/>`). The old shell handler named the second argument
+  `active` and ignored it. It is emitted once per activation (see
+  `shell/mod.rs` `WorkspaceEventKind::Activated`), so simply storing the
+  `workspace` object on every event is the correct "last active Space" model
+  for a single-output MVP.
+- **The compositor has no sticky/all-Spaces and no "unassigned" app state.**
+  `df_toplevel.move_to_workspace` is the only assignment primitive. "Assign to
+  All Desktops" and "Assign to None" cannot be honestly implemented until
+  T-04/T-05 grow those states; they are logged pending rather than silently
+  no-op'ing or being disabled.
+- **The design-system submenu is one level.** `ContextMenu.activateSubmenu`
+  explicitly returns for a `type: "submenu"` row ("Nested submenus are a
+  follow-up"), so a nested `Assign To ▸` inside `Options ▸` would render a
+  chevron that does nothing. The Options submenu therefore flattens the three
+  Assign To choices. If the macOS nesting is wanted later, land nested
+  submenus in `ContextMenu`/`MenuBarMenu` first.
+- **`windowList` is present on minimized entries** (`emitDockState` attaches
+  the owning app's full list to each minimized row), which is why the menu
+  model can build the app window list from a minimized entry. The old
+  `running && list.length > 0` guard dropped it; the new guard keys off the
+  list alone.
+- **`test_menu_model_lists_windows_and_actions` asserts exact row indices.**
+  Adding a row shifts them; keep the index assertions in sync when the menu
+  model changes.
+
+### Hand-off / open items (remaining T-10 slices)
+
+1. **The drag source** (Files/launcher, T-17/T-18): export `text/uri-list`
+   and `application/x-dragonfruit-app` from a `wl_data_source`, start the drag
+   on an implicit pointer grab, and add the scripted end-to-end walkthrough
+   (source client + shell target). The shell target side is complete. The
+   thirteenth-slice notes record the trap: smithay's `update_focus` only sends
+   a data offer to a **different** client, so the test needs a second source
+   client, not the shell itself.
+2. **GVfs Trash completion** (section 16) — GIO dev headers are absent on this
+   host, so `TrashMonitor`/`DownloadsMonitor` stay on the sanctioned
+   filesystem fallback; switch them to `GFileMonitor`/GIO when the headers
+   exist. Mount-unavailable dimming, Empty Trash progress, and
+   `org.dragonfruit.Files1` activation (T-18) remain.
+3. **Per-output sizing** (section 18): chrome surfaces still size from the
+   first output; `matches_output` is the filter hook.
+4. **Live AT-SPI dump** (section 20): the QML roles and the keyboard seat path
+   exist; a session-bus `atspi` walkthrough is T-31.
+5. **Assign To follow-ups** (T-04/T-05): sticky "All Desktops" and "None"
+   need compositor state; until then the two menu rows log pending.
+
+### Gate status
+
+`make lint` green (`cargo fmt --check`, `clippy -D warnings`, ctest 13/13 incl.
+`tst_dock` 99 and `tst_dockcore` 37, `gen-tokens --check`, the design-token/
+desktop-name/no-capture gates); live headless smoke
+(`dragonfruit dev --headless --shell`) reports `menu bar configured 1280x28`,
+`Dock configured 1280x124`, `output reserved zone edge=1 thickness=60`, both
+`scene-graph commit path active` lines, and a clean teardown. Acceptance
+criteria still unchecked in `tasks/10-dock.md`: the Files-side Trash
+integration test (T-18), the external-drag walkthrough (drag source,
+T-17/T-18), the live AT-SPI walkthrough, multi-output per-output popovers,
+plus the core-loop and 60 Hz measurements.
