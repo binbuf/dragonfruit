@@ -101,8 +101,6 @@ pub struct ShellProtocolState {
     layers: Vec<LayerEntry>,
     /// Reserved zones aggregated from chrome surfaces (menu bar, Dock).
     pub reserved: crate::window::ReservedZones,
-    pub overview_active: bool,
-    pub overview_selected: Option<WindowId>,
     pub app_switcher: AppSwitcherState,
     /// The output a chrome surface last took keyboard focus on. Transient
     /// `overlay` chrome with no explicit output (popovers, menus, OSD) is
@@ -134,8 +132,6 @@ impl ShellProtocolState {
             sessions: HashMap::new(),
             layers: Vec::new(),
             reserved: crate::window::ReservedZones::default(),
-            overview_active: false,
-            overview_selected: None,
             app_switcher: AppSwitcherState::default(),
             chrome_focus_output: None,
             attention: Vec::new(),
@@ -1217,7 +1213,8 @@ impl DfState {
     /// Broadcast Mission Control state.
     pub fn broadcast_overview(&mut self) {
         let sessions = self.manager_sessions();
-        let selected = self.shell.overview_selected;
+        let active = self.overview.overview_active();
+        let selected = self.overview.selection();
         for (client, manager) in &sessions {
             let resource = selected.and_then(|id| {
                 self.shell
@@ -1225,7 +1222,7 @@ impl DfState {
                     .get(client)
                     .and_then(|session| session.toplevels.get(&id).cloned())
             });
-            manager.overview_changed(self.shell.overview_active as u32, resource.as_ref());
+            manager.overview_changed(active as u32, resource.as_ref());
             manager.done();
         }
     }
@@ -1622,18 +1619,16 @@ impl Dispatch<df_toplevel_manager::DfToplevelManager, ()> for DfState {
                 }
             }
             df_toplevel_manager::Request::EnterMissionControl => {
-                state.shell.overview_active = true;
-                state.broadcast_overview();
+                state.set_overview(true);
             }
             df_toplevel_manager::Request::ExitMissionControl => {
-                state.shell.overview_active = false;
-                state.shell.overview_selected = None;
-                state.broadcast_overview();
+                state.set_overview(false);
             }
             df_toplevel_manager::Request::SelectOverviewToplevel { toplevel } => {
                 if let Some(id) = toplevel.data::<ToplevelUserData>().map(|data| data.id) {
-                    state.shell.overview_selected = Some(id);
-                    state.shell.overview_active = false;
+                    // Selection round-trip (FR-5): remember the choice, leave
+                    // the overview, then activate its Space and raise/focus.
+                    state.overview.select(id);
                     state.activate_window_id(id);
                     state.broadcast_overview();
                 }

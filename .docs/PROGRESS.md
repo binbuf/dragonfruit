@@ -5251,3 +5251,119 @@ the `onDockAttention` guard; `cargo fmt --check` and `cargo clippy
 --workspace --all-targets -D warnings` green. No tasks/10-dock.md acceptance
 box is directly closed by this slice (the focus gap was not one); it removes
 the last non-blocked T-10 item.
+
+## T-11 — Mission Control & workspace-switch UX (first slice)
+
+**State: partial.** The compositor side of the "one overview state machine"
+and the workspace-switch pipeline (delivery Slice A) are landed and scripted.
+The Mission Control overview chrome (workspace strip, minimized-window bottom
+strip, dragging windows between Spaces) and the per-surface scale/clip/blur
+materials are **not** landed.
+
+### What landed
+
+- **`compositor/src/overview/` — the single overview state machine.** It
+  wraps the T-03 `ProgressPipeline` (clamp → rubber-band → velocity → commit)
+  and adds the overview decisions:
+  - `OverviewKind` (`WorkspaceNext`/`WorkspacePrev`/`MissionControl`/
+    `DesktopReveal`) resolved from the existing `InputAction`;
+  - `TransitionCommit` (`SwitchWorkspace(delta)` / `SetOverview(bool)` /
+    `SetDesktopReveal(bool)`) — what a *committed* release applies; a
+    sub-threshold release returns `None` and animates back;
+  - `InputOwner` — explicit pointer-hit-test ownership;
+  - the selection round-trip (`select`, cleared on overview close).
+  `OverviewMachine::drive` is the discrete entry point (keyboard, hot corner,
+  shell, menu-bar button); `begin_gesture`/`update_gesture`/`end_gesture` is
+  the gesture entry point. Both share one pipeline, so trigger parity is by
+  construction (FR-1). A trigger that arrives mid-transition cancels the
+  in-flight one first (FR-4). Reduced motion keeps the same commit rule but
+  takes a single step.
+- **`DfState::apply_overview_commit` is the one place a transition changes
+  the scene.** It applies the Space switch (via `WorkspaceModel::switch_all`)
+  or sets the overview and broadcasts `overview_changed`; every trigger ends
+  up here. `handle_workspace_action` is now only for the non-progress
+  `WorkspaceActivate` path.
+- **`DfState::apply_overview_scene` translates live surfaces during a
+  workspace slide.** It maps the active Space's windows and the adjacent
+  Space's windows (minimized excluded) and offsets them by the gesture
+  progress, so a swipe is a continuous, reversible slide of the real
+  textures — never thumbnails. This first slice is translation-only; scale,
+  clip, and blur need T-33's material passes, and the wallpaper is still a
+  flat clear color, so the background does not slide yet.
+- **Hit-testing transfers explicitly** (`input::surface_under`): while an
+  overview-kind transition runs or the overview is open, the window space is
+  not hit-tested; chrome (menu bar/Dock) still is, so the Dock can be used to
+  get back. Ownership returns when the transition ends (FR-6).
+- **The shell's private-protocol enter/exit/select requests drive the same
+  machine.** `ShellProtocolState::overview_active`/`overview_selected` were
+  removed; the machine is the single source of truth and `broadcast_overview`
+  reads it. `select_overview_toplevel` records the selection, leaves the
+  overview, and activates/focuses (FR-5).
+- **Tests.** 10 new unit tests in `overview` (trigger parity, direction
+  commit, toggle, mid-transition reversal, sub-threshold release, rubber-band,
+  hit-test transfer, selection round-trip, reduced motion) and a new headless
+  `shell_protocol_conformance::overview_state_machine_has_trigger_parity`
+  (four-finger gesture opens the overview → hot corner toggles it closed →
+  three-finger horizontal gesture slides to Space 1, exercising the
+  translation path). The pre-existing
+  `synthetic_input_drives_shortcuts_hot_corners_and_gestures` still passes
+  unchanged.
+
+### Gotchas learned (important for the next slice)
+
+- **`render_output` cannot scale individual windows.** The `scale` argument
+  only affects the *position* passed to each element (`WaylandSurfaceRenderElement`
+  computes its draw size from `view.dst` and the output scale), so shrinking
+  the visible Space / laying windows out in an overview grid requires a
+  custom render-element wrapper — that is T-33's material pipeline, not
+  something to hack into `Space`. This is why Slice A is translation-only.
+- **`Space::map_element` is also the move primitive.** It removes/reinserts
+  an already-mapped element, so the slide is just `map_element` with a new
+  location; no separate `move_element` call exists. Remember to re-check
+  `WindowModel::state(...).is_visible()` or minimized windows get pulled into
+  the slide.
+- **The overview owns input as soon as it *starts* opening**, not when it
+  commits, because the gesture that opened it is already consuming pointer
+  input. `surface_under` gates the window space on `InputOwner::Overview`;
+  keep chrome hit-testing above that gate or the user can be trapped.
+- **Toggling is derived, not stored in two places.** `MissionControl`'s
+  commit is `SetOverview(!overview_active)`; the machine's `overview_active`
+  is updated only in `apply_commit`. Do not set `shell.overview_active`
+  directly again — it no longer exists.
+- **No animation clock yet.** Discrete triggers run their whole
+  `drive_discrete` curve synchronously, so keyboard/hot-corner switches snap
+  rather than animate; only gesture-driven transitions are visually
+  continuous. A timed driver belongs with T-35/T-33. This is also why the
+  scene translation is only applied on gesture updates.
+
+### Hand-off / open items (remaining T-11 slices)
+
+1. **Mission Control overview chrome** (Slice B): workspace strip (including
+   fullscreen Spaces, FR-10), minimized-window bottom strip restorable by
+   click (FR-6), window selection visual + dragging windows between Spaces
+   (FR-7). The protocol already carries the needed state (`df_workspace`
+   `index`/`fullscreen`/`activated`, `overview_changed`, `progress`); this is
+   shell QML + a `df_layer_surface` overview layer.
+2. **Per-surface scale/clip/blur and the wallpaper slide** (T-33): the
+   flagship "shrink the visible Space, reveal neighbors" look and the
+   compositor-rendered background sliding with its Space.
+3. **FR-8 60 Hz frame-time trace** during the full gesture on baseline
+   Intel/AMD (also the Phase-2 exit criterion); multi-monitor lockstep during
+   the overview.
+4. **Reduced-motion wiring**: `OverviewMachine::set_reduced_motion` exists but
+   nothing sets it yet — the accessibility setting (design-system
+   `Theme.reducedMotion` / T-16) is the writer.
+5. **Window dragging between Spaces in the overview** (FR-7): needs the shell
+   overview drag plus `df_toplevel.move_to_workspace`; the model primitive
+   (`WorkspaceModel::move_window`) already exists.
+
+### Gate status
+
+`cargo test -p dragonfruit-compositor --bins` 123/123; `make e2e`
+(`milestone_e2e`, `window_conformance`, `xwayland_conformance`,
+`shell_protocol_conformance` 25/25, `shell_idle_trace`, `idle_trace`,
+`protocol_surface`) green; `cargo clippy -p dragonfruit-compositor
+--all-targets -D warnings` and `cargo fmt --all -- --check` green. No
+tasks/11 acceptance box is closed yet (the transition diagram's visual review
+and the frame-time trace are open).
+

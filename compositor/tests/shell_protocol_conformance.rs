@@ -2607,6 +2607,95 @@ fn synthetic_input_drives_shortcuts_hot_corners_and_gestures() {
     );
 }
 
+/// T-11 FR-1: a gesture and a hot corner drive the *same* overview state
+/// machine, so one opens Mission Control and the other toggles it closed.
+#[test]
+fn overview_state_machine_has_trigger_parity() {
+    let token = "77".repeat(32);
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir)
+        .join(format!("dragonfruit-synth-overview-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-overview",
+        std::slice::from_ref(&token),
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (name, version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, name, version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+    let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
+    let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.outputs.is_empty() && state.workspaces.len() >= 3 && state.done_count > 0,
+    );
+
+    // --- gesture: a four-finger vertical swipe opens Mission Control ------
+    state.overviews.clear();
+    state.progress_events = 0;
+    input.send("swipe-begin 4");
+    input.send("swipe-update 0 -100");
+    input.send("swipe-update 0 -100");
+    input.send("swipe-end");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.overviews.iter().any(|(active, _)| *active == 1),
+    );
+    assert!(
+        state.progress_events > 0,
+        "the overview transition must emit shared progress events"
+    );
+
+    // --- hot corner: the same machine, now toggling it closed ------------
+    state.overviews.clear();
+    input.send("motion-abs 0.001 0.001");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.overviews.iter().any(|(active, _)| *active == 0),
+    );
+
+    // --- workspace slide: the same pipeline translates live surfaces -----
+    state.workspace_activated.clear();
+    input.send("swipe-begin 3");
+    input.send("swipe-update -100 0");
+    input.send("swipe-update -100 0");
+    input.send("swipe-end");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.workspace_activated.contains(&1),
+    );
+
+    manager.destroy();
+    let _ = conn.flush();
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}
+
 /// T-03 FR-5 (sanctioned half): the shell authenticates with a launch token
 /// and is then allowed to install a pointer grab. Its locked pointer stays
 /// frozen even as synthetic motion arrives.

@@ -123,7 +123,10 @@ they are delivered as slices of one ticket, not split into a second pipeline:
 
 - [ ] The transition diagram above is implemented and visual-frame
       reviewed in nested mode.
-- [ ] Trigger-parity test passes (FR-1).
+- [x] Trigger-parity test passes (FR-1). *(First slice: `overview` unit
+      tests drive gesture/keyboard/hot-corner/shell through one machine;
+      `shell_protocol_conformance::overview_state_machine_has_trigger_parity`
+      proves a gesture and a hot corner toggle the same overview state.)*
 - [ ] Frame-time trace during full gesture stays within budget on
       baseline Intel/AMD.
 - [ ] Video-in-overview test (FR-2) passes.
