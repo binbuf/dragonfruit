@@ -546,6 +546,30 @@ Item {
             verify(dock.itemAt(0).Accessible.name.indexOf("attention") >= 0);
         }
 
+        // T-10 section 22: an app that exits mid-bounce must resolve — the
+        // entry is removed, no stale bounce or input rect survives.
+        function test_removing_a_bouncing_entry_resolves_the_animation() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "A", true), app("b", "B", true) ]
+            });
+            dock.entries = [ { id: "a", appId: "a", name: "A", kind: "pinned",
+                               pinned: true, running: true, attention: true,
+                               bounce: 0.5 },
+                             app("b", "B", true) ];
+            waitForRendering(stage);
+            var bouncedRects = dock.inputRects.length;
+            compare(dock.appEntries.length, 2);
+
+            // The app quits while bouncing: the projection drops its entry.
+            dock.entries = [ app("b", "B", true) ];
+            waitForRendering(stage);
+            compare(dock.appEntries.length, 1);
+            compare(dock.appEntries[0].id, "b");
+            compare(dock.entryBounce(dock.appEntries[0]), 0);
+            verify(dock.inputRects.length < bouncedRects);
+        }
+
         function test_idle_input_region_is_bar_only() {
             var dock = make(dockComponent, {
                 width: 1280, height: 160,

@@ -25,6 +25,7 @@
 #include <wayland-client.h>
 
 #include "dockdrops.h"
+#include "dockprojection.h"
 #include "dragonfruit-core-client-protocol.h"
 // wayland-scanner emits `namespace` as a C argument name for the chrome
 // factory; it is a C++ keyword, so rename it around this one generated
@@ -92,17 +93,6 @@ int createShmFile(size_t size)
         return -1;
     }
     return fd;
-}
-
-// Human-readable fallback name for an unresolved app id. The real name and
-// icon come from app-index (T-23); until then the last reverse-DNS segment
-// is a better Dock label than the raw id.
-QString displayNameForAppId(const QString &appId)
-{
-    if (appId.isEmpty())
-        return QStringLiteral("Unknown");
-    const qsizetype dot = appId.lastIndexOf(QLatin1Char('.'));
-    return dot >= 0 ? appId.mid(dot + 1) : appId;
 }
 
 } // namespace
@@ -1313,105 +1303,28 @@ void ShellProtocol::onToplevelDone(void *, df_toplevel *)
 {
 }
 
+// The running projection is built by the pure `buildDockProjection` core
+// (dockprojection.h): the section 22 lifecycle grouping (app_id changes,
+// cross-Space windows, minimize state, rapid open/close) is unit-tested by
+// tst_dockcore. This method only resolves the private-protocol data.
 void ShellProtocol::emitDockState()
 {
-    struct AppGroup {
-        QString name;
-        QVariantList windows;
-        int minimized = 0;
-    };
-    QHash<QString, AppGroup> groups;
-    QList<df_toplevel *> minimizedToplevels;
-    QVariantList minimizedEntries;
-
-    // Most-recent-first: the focused window leads, then reverse announcement
-    // order. The compositor does not expose its recency list to the shell.
-    const auto rowFor = [this](df_toplevel *toplevel) {
-        const ToplevelInfo &info = m_toplevels.value(toplevel);
-        QVariantMap row;
-        // A decimal string: a 64-bit pointer does not survive a QML `number`.
-        row.insert(QStringLiteral("windowId"), QString::number(info.windowId));
-        row.insert(QStringLiteral("title"),
-                   info.title.isEmpty() ? displayNameForAppId(info.appId) : info.title);
-        row.insert(QStringLiteral("minimized"), (info.state & 0x1u) != 0);
-        row.insert(QStringLiteral("focused"), toplevel == m_focused);
-        const WorkspaceInfo ws = m_workspaces.value(info.workspace);
-        if (ws.index >= 0) {
-            row.insert(QStringLiteral("workspaceIndex"), ws.index);
-            row.insert(QStringLiteral("workspaceName"),
-                       ws.name.isEmpty() ? QStringLiteral("Space %1").arg(ws.index + 1)
-                                         : ws.name);
-        }
-        return row;
-    };
-
+    QList<DockWindow> windows;
+    windows.reserve(m_toplevelOrder.size());
     for (df_toplevel *toplevel : std::as_const(m_toplevelOrder)) {
         const ToplevelInfo &info = m_toplevels.value(toplevel);
-        const QString key = info.appId.isEmpty() ? QStringLiteral("__unknown__") : info.appId;
-        AppGroup &group = groups[key];
-        if (group.name.isEmpty())
-            group.name = displayNameForAppId(info.appId);
-        const QVariantMap row = rowFor(toplevel);
-        group.windows.prepend(row);
-        if (row.value(QStringLiteral("minimized")).toBool()) {
-            group.minimized += 1;
-            minimizedToplevels.append(toplevel);
-        }
+        const WorkspaceInfo ws = m_workspaces.value(info.workspace);
+        DockWindow window;
+        window.windowId = info.windowId;
+        window.appId = info.appId;
+        window.title = info.title;
+        window.minimized = (info.state & 0x1u) != 0;
+        window.focused = toplevel == m_focused;
+        window.workspaceIndex = ws.index;
+        window.workspaceName = ws.name;
+        windows.append(window);
     }
-
-    // The focused window leads its app's list (the chooser's checkmark).
-    for (auto it = groups.begin(); it != groups.end(); ++it) {
-        QVariantList &windows = it.value().windows;
-        for (int i = 1; i < windows.size(); ++i) {
-            if (windows.at(i).toMap().value(QStringLiteral("focused")).toBool()) {
-                windows.move(i, 0);
-                break;
-            }
-        }
-    }
-
-    QVariantList entries;
-    for (auto it = groups.constBegin(); it != groups.constEnd(); ++it) {
-        QVariantMap entry;
-        entry.insert(QStringLiteral("id"), it.key());
-        entry.insert(QStringLiteral("appId"),
-                     it.key() == QLatin1String("__unknown__") ? QString() : it.key());
-        entry.insert(QStringLiteral("name"), it.value().name);
-        entry.insert(QStringLiteral("kind"), QStringLiteral("temporary"));
-        entry.insert(QStringLiteral("running"), true);
-        entry.insert(QStringLiteral("windows"), it.value().windows.size());
-        entry.insert(QStringLiteral("windowList"), it.value().windows);
-        entry.insert(QStringLiteral("minimized"),
-                     it.value().minimized == it.value().windows.size());
-        entries.append(entry);
-    }
-    std::sort(entries.begin(), entries.end(), [](const QVariant &a, const QVariant &b) {
-        return a.toMap().value(QStringLiteral("name")).toString()
-                < b.toMap().value(QStringLiteral("name")).toString();
-    });
-
-    // Per-window minimized entries carry their app's full window list so the
-    // owning app's menu/chooser works from the minimized entry too (T-10
-    // section 13).
-    for (df_toplevel *toplevel : std::as_const(minimizedToplevels)) {
-        const ToplevelInfo &info = m_toplevels.value(toplevel);
-        const QString key = info.appId.isEmpty() ? QStringLiteral("__unknown__") : info.appId;
-        const AppGroup group = groups.value(key);
-        QVariantMap entry;
-        entry.insert(QStringLiteral("id"),
-                     QStringLiteral("win:%1").arg(static_cast<qulonglong>(info.windowId)));
-        entry.insert(QStringLiteral("windowId"), QString::number(info.windowId));
-        entry.insert(QStringLiteral("appId"), info.appId);
-        entry.insert(QStringLiteral("name"),
-                     info.title.isEmpty() ? group.name : info.title);
-        entry.insert(QStringLiteral("kind"), QStringLiteral("minimized"));
-        entry.insert(QStringLiteral("running"), false);
-        entry.insert(QStringLiteral("minimized"), true);
-        entry.insert(QStringLiteral("windowList"), group.windows);
-        minimizedEntries.append(entry);
-    }
-    entries += minimizedEntries;
-    emit dockStateChanged(entries);
+    emit dockStateChanged(buildDockProjection(windows));
 }
 
 df_toplevel *ShellProtocol::toplevelForId(quintptr windowId) const

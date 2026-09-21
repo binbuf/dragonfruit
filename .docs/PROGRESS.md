@@ -4608,3 +4608,104 @@ all green. Live headless smoke (`dragonfruit dev --headless --shell`) reports
 active` lines, and a clean teardown. No acceptance checkbox in
 `tasks/10-dock.md` is closed by this slice; the remaining unchecked boxes are
 unchanged from the twentieth slice.
+
+## T-10 continuation — lifecycle edge-case suite (twenty-second slice)
+
+**State: partial.** The section 22 lifecycle edge-case matrix now has a
+scripted, headless home. The Dock's running-app projection was extracted from
+`ShellProtocol::emitDockState` into a pure, unit-tested core
+(`shell/src/dockprojection.{h,cpp}`, in the Wayland-free dockcore lib), and
+`tst_dockcore` + `tst_dock` now cover the matrix rows that were previously
+only implied. This is the "Lifecycle edge-case suite (launch failure, exit
+mid-animation, cross-workspace windows, inconsistent identifiers, identity
+change) scripted and passing" acceptance item, minus launch failure which was
+already scripted and is unchanged.
+
+### What landed
+
+- **Pure projection core** (`shell/src/dockprojection.{h,cpp}`). `DockWindow`
+  is the resolved per-window input (window id, app id, title, minimized,
+  focused, Space index/name); `buildDockProjection` reproduces the exact
+  grouping `emitDockState` used to do inline: one `temporary` app entry per
+  distinct app id (empty id → one generic `__unknown__` group), each with a
+  most-recent-first `windowList` that leads with the focused window and a
+  `minimized` flag true only when *all* its windows are minimized, the app
+  entries name-sorted, then one `minimized` row per minimized window carrying
+  its app's full window list. `displayNameForAppId` moved here from the
+  `shellprotocol.cpp` anonymous namespace (one definition now).
+- **Protocol method is a thin adapter.** `ShellProtocol::emitDockState` now
+  only resolves `ToplevelInfo`/`WorkspaceInfo` into `DockWindow`s and calls
+  the pure builder. Behavior is byte-for-byte identical (the conformance and
+  milestone suites still pass), but the section 22 rules are now unit-tested
+  instead of living unreachable inside a `wl_*` listener.
+- **`tst_dockcore` cases** (`projectionGroupsByAppAndLeadsWithFocused`,
+  `projectionMinimizedFlagOnlyWhenAllWindowsMinimized`,
+  `projectionIdentityChangeRehomesAndMerges`,
+  `projectionCarriesTheWorkspaceForCrossSpaceWindows`,
+  `projectionRapidOpenCloseHasNoStaleRows`,
+  `projectionLastWindowClosedRemovesTheApp`,
+  `projectionUnknownAppIdUsesOneGenericGroup`). These cover the matrix rows
+  "app_id changes after mapping → re-homed/merged", "windows on another
+  Space → window list carries the Space", "all windows minimized → flag +
+  preserved group list", "missing identity → generic group", "rapid
+  window open/close → no stale rows", and "last window closes → entry gone".
+- **`tst_dock` case** `test_removing_a_bouncing_entry_resolves_the_animation`:
+  an entry removed from the model mid-bounce disappears, its bounce resolves
+  to zero, and the input region shrinks — the presentation half of "app exits
+  mid-animation".
+
+### Gotchas learned (important for the next slice)
+
+- **`Dock.items` is not the app entry list.** It appends the divider, the
+  Downloads stack, and the Trash on top of `appEntries`. Assert on
+  `dock.appEntries` (or `countKind`) when testing the running projection; the
+  first draft of the new QML test compared `items.length` to 1 and saw 4.
+- **`std::sort` on app names is not stable, but names are distinct in
+  practice.** The A/B grouping order is otherwise `QHash` iteration order; if
+  a future test needs deterministic equal-name ordering, switch to
+  `std::stable_sort` or break ties by id.
+- **The projection is the single re-homing point.** Because a window's
+  `app_id` change just re-runs `emitDockState`, the "re-homed + merged" rule
+  is a property of `buildDockProjection`, not of `WindowModel`. Do not add
+  shell-side migration state for identity changes; keep the projection the
+  only grouping authority.
+- **`displayNameForAppId` now lives in `dockprojection.h`** and is the one
+  fallback-label helper. `dockmodel.cpp`'s `displayNameForIdentity` is a
+  separate function for pinned/raw identities (it also strips `.desktop`);
+  they are intentionally not merged.
+- **The minimized entry intentionally omits the Space fields** (it did before
+  this slice). It carries `windowList` instead, so the owning app's menu works
+  from the minimized row. Keep that shape unless the chooser needs per-row
+  Spaces on minimized entries too.
+
+### Hand-off / open items (remaining T-10 slices)
+
+1. **Trash-state integration test with Files** (acceptance): needs T-18's
+   `org.dragonfruit.Files1` activation; the third-party deletion half is
+   already covered by `trashMonitorWatchesForThirdPartyChanges`.
+2. **Drag *source*** (Files/launcher, T-17/T-18) and its end-to-end
+   walkthrough; the shell target side is complete.
+3. **GVfs Trash/downloads backends** when the GIO dev headers exist; the
+   sanctioned filesystem fallbacks are in place.
+4. **Per-output sizing** (T-11/T-16): chrome still sizes its buffer from the
+   first output; `visible_on_output` is the placement half already done.
+5. **App Options Assign-To follow-ups** (T-04/T-05): sticky "All Desktops"
+   and "None" need compositor Space state; the two menu rows log pending.
+6. **Live AT-SPI dump** (T-31).
+7. **Core-loop + 60 Hz measurements** (acceptance): need a nested session on
+   baseline hardware; the headless harness has no seat.
+
+### Gate status
+
+`make qml-test` green (13/13; `tst_dock` 108 passed, `tst_dockcore` 50
+passed), `check-tokens`, `check-design-tokens`, `check-desktop-names`,
+`check-no-capture-grab`, and `make e2e` (20/20 `shell_protocol_conformance` +
+window/Xwayland/idle suites) all green. Live headless smoke
+(`dragonfruit dev --headless --shell`) reports `menu bar configured 1280x28`,
+`Dock configured 1280x124`, `output reserved zone edge=1 thickness=60`, both
+`scene-graph commit path active` lines, and a clean teardown. The
+tasks/10-dock.md "Lifecycle edge-case suite" checkbox is now substantially
+covered (launch failure was already scripted; exit mid-animation, identity
+change, cross-Space windows, inconsistent identifiers, and rapid open/close
+are now scripted); the box is left unchecked only because the ticket also
+names the app-index/settingsd restart rows, which wait on T-23/T-15.

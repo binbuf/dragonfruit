@@ -6,6 +6,7 @@
 #include "dockdrops.h"
 #include "dockmodel.h"
 #include "dockpins.h"
+#include "dockprojection.h"
 #include "docksettings.h"
 #include "downloadsmonitor.h"
 #include "framecommitgate.h"
@@ -64,6 +65,33 @@ int countKind(const QVariantList &entries, const QString &kind)
             ++count;
     }
     return count;
+}
+
+// The projection's app entry `appId` (`__unknown__` for an empty id).
+QVariantMap entryForAppId(const QVariantList &entries, const QString &appId)
+{
+    const QString key = appId.isEmpty() ? QStringLiteral("__unknown__") : appId;
+    for (const QVariant &value : entries) {
+        const QVariantMap map = value.toMap();
+        if (map.value(QStringLiteral("id")).toString() == key)
+            return map;
+    }
+    return {};
+}
+
+DockWindow window(quintptr id, const QString &appId, const QString &title,
+                  bool minimized = false, bool focused = false, int workspace = -1,
+                  const QString &workspaceName = {})
+{
+    DockWindow w;
+    w.windowId = id;
+    w.appId = appId;
+    w.title = title;
+    w.minimized = minimized;
+    w.focused = focused;
+    w.workspaceIndex = workspace;
+    w.workspaceName = workspaceName;
+    return w;
 }
 } // namespace
 
@@ -504,6 +532,154 @@ private slots:
         // The drag "Keep in Dock" promotion needs the resolved desktop id.
         QCOMPARE(entry.value(QStringLiteral("desktopId")).toString(),
                  QStringLiteral("org.example.Terminal.desktop"));
+    }
+
+    // -- running-app projection (section 22 lifecycle matrix) ------------
+
+    void projectionGroupsByAppAndLeadsWithFocused()
+    {
+        const QVariantList entries = buildDockProjection({
+            window(1, QStringLiteral("org.example.Alpha"), QStringLiteral("one")),
+            window(2, QStringLiteral("org.example.Alpha"), QStringLiteral("two"), false, true),
+            window(3, QStringLiteral("org.example.Beta"), QStringLiteral("beta")),
+        });
+
+        QCOMPARE(countKind(entries, QStringLiteral("temporary")), 2);
+        const QVariantMap alpha = entryForAppId(entries, QStringLiteral("org.example.Alpha"));
+        QCOMPARE(alpha.value(QStringLiteral("name")).toString(), QStringLiteral("Alpha"));
+        QCOMPARE(alpha.value(QStringLiteral("windows")).toInt(), 2);
+        QCOMPARE(alpha.value(QStringLiteral("minimized")).toBool(), false);
+        const QVariantList alphaWindows = alpha.value(QStringLiteral("windowList")).toList();
+        QCOMPARE(alphaWindows.size(), 2);
+        // The focused window leads its app's list (the chooser checkmark).
+        QCOMPARE(alphaWindows.at(0).toMap().value(QStringLiteral("title")).toString(),
+                 QStringLiteral("two"));
+        QCOMPARE(alphaWindows.at(1).toMap().value(QStringLiteral("title")).toString(),
+                 QStringLiteral("one"));
+
+        const QVariantMap beta = entryForAppId(entries, QStringLiteral("org.example.Beta"));
+        QCOMPARE(beta.value(QStringLiteral("windows")).toInt(), 1);
+    }
+
+    void projectionMinimizedFlagOnlyWhenAllWindowsMinimized()
+    {
+        const QVariantList entries = buildDockProjection({
+            window(1, QStringLiteral("org.example.Alpha"), QStringLiteral("a1"), true),
+            window(2, QStringLiteral("org.example.Alpha"), QStringLiteral("a2"), false),
+            window(3, QStringLiteral("org.example.Beta"), QStringLiteral("b1"), true),
+        });
+
+        // Alpha still has a visible window: its app entry is not minimized,
+        // but the minimized window still gets its own row.
+        const QVariantMap alpha = entryForAppId(entries, QStringLiteral("org.example.Alpha"));
+        QCOMPARE(alpha.value(QStringLiteral("minimized")).toBool(), false);
+        QCOMPARE(alpha.value(QStringLiteral("windowList")).toList().size(), 2);
+        QCOMPARE(countKind(entries, QStringLiteral("minimized")), 2);
+
+        // Beta's only window is minimized: the app entry reports minimized.
+        const QVariantMap beta = entryForAppId(entries, QStringLiteral("org.example.Beta"));
+        QCOMPARE(beta.value(QStringLiteral("minimized")).toBool(), true);
+
+        // The minimized entry carries its app's full window list so the menu
+        // works from it (section 13).
+        for (const QVariant &value : entries) {
+            const QVariantMap map = value.toMap();
+            if (map.value(QStringLiteral("kind")).toString() != QLatin1String("minimized"))
+                continue;
+            if (map.value(QStringLiteral("appId")).toString() == QLatin1String("org.example.Alpha"))
+                QCOMPARE(map.value(QStringLiteral("windowList")).toList().size(), 2);
+        }
+    }
+
+    void projectionIdentityChangeRehomesAndMerges()
+    {
+        // Before the change: two apps, one window each.
+        const QVariantList before = buildDockProjection({
+            window(1, QStringLiteral("org.example.Alpha"), QStringLiteral("a")),
+            window(2, QStringLiteral("org.example.Beta"), QStringLiteral("b")),
+        });
+        QCOMPARE(countKind(before, QStringLiteral("temporary")), 2);
+
+        // window 2's app_id changes to Alpha: its row must move into the
+        // Alpha entry and no stale Beta entry may remain.
+        const QVariantList after = buildDockProjection({
+            window(1, QStringLiteral("org.example.Alpha"), QStringLiteral("a")),
+            window(2, QStringLiteral("org.example.Alpha"), QStringLiteral("b")),
+        });
+        QCOMPARE(countKind(after, QStringLiteral("temporary")), 1);
+        const QVariantMap alpha = entryForAppId(after, QStringLiteral("org.example.Alpha"));
+        QCOMPARE(alpha.value(QStringLiteral("windows")).toInt(), 2);
+        QVERIFY(entryForAppId(after, QStringLiteral("org.example.Beta")).isEmpty());
+    }
+
+    void projectionCarriesTheWorkspaceForCrossSpaceWindows()
+    {
+        const QVariantList entries = buildDockProjection({
+            window(1, QStringLiteral("org.example.Alpha"), QStringLiteral("a"), false, false,
+                   2, QStringLiteral("Code")),
+            window(2, QStringLiteral("org.example.Alpha"), QStringLiteral("b"), false, false, 0),
+        });
+        const QVariantList windows =
+            entryForAppId(entries, QStringLiteral("org.example.Alpha"))
+                .value(QStringLiteral("windowList"))
+                .toList();
+        QCOMPARE(windows.size(), 2);
+        // Newest first: window 2 (Space index 0, a generated name).
+        QCOMPARE(windows.at(0).toMap().value(QStringLiteral("workspaceIndex")).toInt(), 0);
+        QCOMPARE(windows.at(0).toMap().value(QStringLiteral("workspaceName")).toString(),
+                 QStringLiteral("Space 1"));
+        QCOMPARE(windows.at(1).toMap().value(QStringLiteral("workspaceIndex")).toInt(), 2);
+        QCOMPARE(windows.at(1).toMap().value(QStringLiteral("workspaceName")).toString(),
+                 QStringLiteral("Code"));
+    }
+
+    void projectionRapidOpenCloseHasNoStaleRows()
+    {
+        const QVariantList many = buildDockProjection({
+            window(1, QStringLiteral("org.example.Alpha"), QStringLiteral("a")),
+            window(2, QStringLiteral("org.example.Alpha"), QStringLiteral("b")),
+            window(3, QStringLiteral("org.example.Alpha"), QStringLiteral("c")),
+        });
+        QCOMPARE(entryForAppId(many, QStringLiteral("org.example.Alpha"))
+                     .value(QStringLiteral("windows"))
+                     .toInt(),
+                 3);
+
+        // Two windows close before the next projection: only the survivor is
+        // reported, with no stale window ids or rows.
+        const QVariantList after = buildDockProjection({
+            window(1, QStringLiteral("org.example.Alpha"), QStringLiteral("a")),
+        });
+        const QVariantMap alpha = entryForAppId(after, QStringLiteral("org.example.Alpha"));
+        QCOMPARE(alpha.value(QStringLiteral("windows")).toInt(), 1);
+        QCOMPARE(alpha.value(QStringLiteral("windowList")).toList().size(), 1);
+        QCOMPARE(alpha.value(QStringLiteral("windowList"))
+                     .toList()
+                     .at(0)
+                     .toMap()
+                     .value(QStringLiteral("windowId"))
+                     .toString(),
+                 QStringLiteral("1"));
+        QCOMPARE(countKind(after, QStringLiteral("minimized")), 0);
+    }
+
+    void projectionLastWindowClosedRemovesTheApp()
+    {
+        QVERIFY(buildDockProjection({}).isEmpty());
+    }
+
+    void projectionUnknownAppIdUsesOneGenericGroup()
+    {
+        const QVariantList entries = buildDockProjection({
+            window(1, QString(), QStringLiteral("no identity")),
+            window(2, QString(), QStringLiteral("also no identity")),
+        });
+        QCOMPARE(countKind(entries, QStringLiteral("temporary")), 1);
+        const QVariantMap unknown = entryForAppId(entries, QString());
+        QVERIFY(!unknown.isEmpty());
+        QCOMPARE(unknown.value(QStringLiteral("appId")).toString(), QString());
+        QCOMPARE(unknown.value(QStringLiteral("name")).toString(), QStringLiteral("Unknown"));
+        QCOMPARE(unknown.value(QStringLiteral("windows")).toInt(), 2);
     }
 
     // -- trash monitor ---------------------------------------------------
