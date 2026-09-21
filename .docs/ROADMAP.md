@@ -89,7 +89,7 @@ Updated when a task is partially or completely finished; see
 | Phase | Tickets |
 |---|---|
 | 1 · Foundation | T-01 ✅ done · T-02 🔄 partial (compositor core) · T-03 🔄 partial (input engine) · T-04 🔄 partial (window model) · T-05 🔄 partial (Spaces model) · T-06 🔄 partial (Xwayland) · T-07 🔄 partial (private shell protocols) |
-| 2 · Experience | T-08 ✅ done (design system; app-level chrome lint + live AT-SPI dump deferred) · T-09 🔄 partial (menu bar + shell bootstrap + overlay-layer dropdown + scripted output hotplug; T-20/T-22 content open) · T-10 🔄 partial (Dock presentation core + shell surface + running entries/activation + launch/pinned persistence + launch/attention bounce + magnified-band input region + app context menus/window chooser + drag rearrangement (reorder/promote/remove) + live `dock.*` settings/divider menu/reduced motion + left/right reserved-zone foundation + per-position (left/right) surfaces, vertical layout, beside-the-bar popovers, corrected auto-hide translation and edge-band reveal/re-hide state machine + Trash state/count via a home-trash watcher, click-to-Files at `trash://`, and the Open/Empty Trash menu with an Empty Trash confirmation + Control-F3/Super+Option+D `focus-dock`/`toggle-dock` shortcuts and in-Dock keyboard navigation (arrows/Return/menu/type-jump, FocusRing, Escape `release_keyboard_focus` + design-system nested submenus and the divider Position on Screen submenu + external drops (a Wayland data-device drag destination, drop-to-pin / open-with-files / trash / Downloads, live insertion gap and drop highlight, spring-loading hook) + the Downloads stack (folder watch, listing popover, new-items badge, drop-to-move, the spring-load consumer) and recent/suggested apps + `MenuBarMenu` submenus + the scene-graph render path for both chrome surfaces (`afterRendering` commits, no sampling timer, FR-14) + the app `Options ▸` submenu (Assign To / Open at Login / Show in Files) and the corrected minimized-entry window list + the divider drag-to-resize handle (`dock.size` live preview/commit) and the section 5.1 overflow clamp (effective icon size + temporary/recent hiding, one warning per session) + per-output overlay popovers (a popover with no explicit output renders/hit-tests only on the output chrome was last focused on, so it does not float across displays)); drag *source* (T-17/T-18), per-output sizing, live AT-SPI dump open) · T-11 … T-14 pending |
+| 2 · Experience | T-08 ✅ done (design system; app-level chrome lint + live AT-SPI dump deferred) · T-09 🔄 partial (menu bar + shell bootstrap + overlay-layer dropdown + scripted output hotplug; T-20/T-22 content open) · T-10 🔄 partial (Dock presentation core + shell surface + running entries/activation + launch/pinned persistence + launch/attention bounce + magnified-band input region + app context menus/window chooser + drag rearrangement (reorder/promote/remove) + live `dock.*` settings/divider menu/reduced motion + left/right reserved-zone foundation + per-position (left/right) surfaces, vertical layout, beside-the-bar popovers, corrected auto-hide translation and edge-band reveal/re-hide state machine + Trash state/count via a home-trash watcher, click-to-Files at `trash://`, and the Open/Empty Trash menu with an Empty Trash confirmation + Control-F3/Super+Option+D `focus-dock`/`toggle-dock` shortcuts and in-Dock keyboard navigation (arrows/Return/menu/type-jump, FocusRing, Escape `release_keyboard_focus` + design-system nested submenus and the divider Position on Screen submenu + external drops (a Wayland data-device drag destination, drop-to-pin / open-with-files / trash / Downloads, live insertion gap and drop highlight, spring-loading hook) + the Downloads stack (folder watch, listing popover, new-items badge, drop-to-move, the spring-load consumer) and recent/suggested apps + `MenuBarMenu` submenus + the scene-graph render path for both chrome surfaces (`afterRendering` commits, no sampling timer, FR-14) + the app `Options ▸` submenu (Assign To / Open at Login / Show in Files) and the corrected minimized-entry window list + the divider drag-to-resize handle (`dock.size` live preview/commit) and the section 5.1 overflow clamp (effective icon size + temporary/recent hiding, one warning per session) + per-output overlay popovers (a popover with no explicit output renders/hit-tests only on the output chrome was last focused on, so it does not float across displays) + the animated auto-hide reveal/hide (`motion.dockReveal`, FR-14) with keyboard-focus re-hide suppression and reveal-cancels-rehide)); drag *source* (T-17/T-18), per-output sizing, live AT-SPI dump open) · T-11 … T-14 pending |
 | 3 · Flagship apps | T-15 … T-19 pending |
 | 4 · System integration | T-20 … T-23 pending |
 | 5 · Desktop infrastructure | T-24 … T-29 pending |
@@ -797,6 +797,26 @@ for the remaining slices: the drag source (Files/launcher, T-17/T-18) and its
 end-to-end walkthrough, the GVfs Trash/downloads backends when the GIO headers
 exist, per-output *sizing* (chrome still sizes its buffer from the first
 output; T-11/T-16), and the live AT-SPI dump. Details and hand-off:
+[PROGRESS.md](PROGRESS.md).
+
+T-10 continuation (auto-hide motion slice): the auto-hide reveal/hide is now a
+real animated slide instead of a snap. A new `motion.dockReveal` token (160 ms,
+ease-out, reduced-motion duration 0) drives a `Behavior` on the Dock's
+`hideOffset`; because the FR-14 scene-graph commit path delivers every frame,
+the bar slides off (and back onto) its edge instead of jumping, and reduced
+motion makes the transition instant. The section 15 re-hide suppression list is
+now complete: `hideIfIdle`/`scheduleHide` refuse to hide while the Dock holds
+keyboard focus, `reveal()` cancels a pending re-hide timer (a reveal could
+otherwise be undone by a stale timer), and leaving keyboard navigation
+(`endKeyboardNavigation`) restores the normal re-hide delay. External-drag
+reveal was already handled by the T-13 external-drop slice. Five new `tst_dock`
+cases cover the animated slide (mid-flight and settled), the reduced-motion
+snap, keyboard-focus suppression of re-hide, and reveal cancelling a pending
+re-hide. Open for the remaining slices: the drag source (Files/launcher,
+T-17/T-18) and its end-to-end walkthrough, the GVfs Trash/downloads backends
+when the GIO headers exist, per-output *sizing* (chrome still sizes its buffer
+from the first output; T-11/T-16), the app Options Assign-To follow-ups
+(T-04/T-05), and the live AT-SPI dump. Details and hand-off:
 [PROGRESS.md](PROGRESS.md).
 
 **Foundation milestone E2E (T-01…T-07).** The whole vertical slice now has a

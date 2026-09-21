@@ -4528,3 +4528,83 @@ covered by `overlay_popover_is_per_output`; the Dock-on-hotplug half rides the
 same `chrome_surfaces` mechanism tested by
 `shell_output_hotplug_reanchors_chrome`, but per-output *sizing* (T-11/T-16)
 is still open, so the box is left unchecked.
+
+## T-10 continuation — auto-hide motion + keyboard suppression (twenty-first slice)
+
+**State: partial.** The auto-hide reveal/hide is now a real animated slide
+(FR-14) instead of a snap, and the section 15 re-hide suppression list is
+complete. The next unblocked T-10 items are the drag *source* (T-17/T-18),
+GVfs Trash completion (GIO dev headers absent), per-output *sizing*
+(T-11/T-16), the app Options Assign-To follow-ups (T-04/T-05), and the live
+AT-SPI dump (T-31).
+
+### What landed
+
+- **Motion token** (`design-system/tokens/tokens.json`). New
+  `motion.dockReveal` (duration `primitive.duration.normal` = 160 ms, curve
+  `[0.2, 0.0, 0.0, 1.0]`, `reducedDuration: 0`). `scripts/gen-tokens.py`
+  regenerates `design-system/Theme.qml` and `compositor/src/design_tokens.rs`
+  (`Theme.motion.dockReveal.duration`/`.curve`, `motion::DOCK_REVEAL`).
+- **Animated translation** (`shell/dock/Dock.qml`). `hideOffset` is now a
+  writable property with a binding and a `Behavior on hideOffset` driving a
+  `NumberAnimation` from `motion.dockReveal`; `hideX`/`hideY` and every
+  consumer (`layout`, `barRect`) follow it. Because the FR-14 scene-graph path
+  commits every rendered frame, the slide reaches the compositor frame by
+  frame with no sampling timer. Under reduced motion the token duration is 0,
+  so the transition is instant.
+- **Keyboard-focus re-hide suppression** (`shell/dock/Dock.qml`).
+  `hideIfIdle` and `scheduleHide` now also require `!keyboardFocused`, and
+  `endKeyboardNavigation` calls `scheduleHide()` so leaving keyboard
+  navigation restores the normal delay.
+- **Reveal cancels a pending re-hide.** `reveal()` now stops `hideTimer` as
+  well as `revealTimer`; previously a hide timer started before a reveal could
+  fire and slide the Dock straight back out.
+- **Tests** (`shell/tests/tst_dock.qml`). Five new cases:
+  `test_auto_hide_translation_is_animated` (mid-flight offset is between 0 and
+  the target, then settles), `test_auto_hide_reduced_motion_snaps`,
+  `test_keyboard_focus_suppresses_rehide` (stays revealed while focused, hides
+  after focus leaves), and `test_reveal_cancels_a_pending_rehide`; the three
+  existing translation tests now `wait()` for the slide instead of asserting
+  the old instant snap.
+
+### Gotchas learned (important for the next slice)
+
+- **`Behavior` on a bound property is the right shape here.** `hideOffset`
+  keeps its declarative binding; the Behavior animates whenever the binding
+  re-evaluates (`revealed`/`autoHide`/`barThickness` change). Do not convert
+  the derived `hideX`/`hideY` to writable properties — the input region and
+  `barRect` must stay consistent with the same animated value.
+- **The input region intentionally flips on `revealed`, not on the animated
+  offset.** A hiding Dock becomes click-through immediately (`[edgeRect]`)
+  while the bar is still sliding out, and a revealing Dock's `barRect` follows
+  the slide. That is the desired FR-13 behavior; do not gate `inputRects` on
+  the animation.
+- **Existing translation tests had to become time-aware.** Any test that
+  asserts a settled translation after `hide()`/`reveal()` must
+  `wait(Theme.motion.dockReveal.duration + margin)`; `waitForRendering` alone
+  only advances a frame or two and can observe a mid-flight value.
+- **`test_auto_hide_translation_is_animated` asserts a mid-flight range, not an
+  exact value.** It waits a quarter of the duration and checks
+  `0 < hideOffset < barThickness`, which is robust to timer granularity; keep
+  it range-based if the curve/duration is retuned.
+- **External-drag reveal was already done** (`onDockExternalDragEntered`
+  invokes `reveal()` before `beginExternalDrag`), so this slice only had the
+  translation and keyboard half to close. Do not duplicate the reveal there.
+- **A direct run of `build/shell/tests/tst_dock` reports one failure for the
+  `tst_design_system` compile (missing gallery plugin import path) that ctest
+  does not hit.** Use `make qml-test` / ctest as the gate; the direct binary
+  is only useful for reading per-case PASS lines (set
+  `QML_DISABLE_DISK_CACHE=1`).
+
+### Gate status
+
+`make qml-test` green (13/13; `tst_dock` 129 passed in a direct run),
+`cargo fmt --check`, `clippy -D warnings`, `make check-tokens`,
+`check-design-tokens`, `check-desktop-names`, `check-no-capture-grab`, and
+`make e2e` (20/20 `shell_protocol_conformance` + window/Xwayland/idle suites)
+all green. Live headless smoke (`dragonfruit dev --headless --shell`) reports
+`menu bar configured 1280x28`, `Dock configured 1280x124`,
+`output reserved zone edge=1 thickness=60`, both `scene-graph commit path
+active` lines, and a clean teardown. No acceptance checkbox in
+`tasks/10-dock.md` is closed by this slice; the remaining unchecked boxes are
+unchanged from the twentieth slice.

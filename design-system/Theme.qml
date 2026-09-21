@@ -412,6 +412,11 @@ QtObject {
             readonly property int duration: tokens.reducedMotion ? 0 : 160
             readonly property var curve: [0.34, 1.56, 0.64, 1.0, 1.0, 1.0]
         }
+        readonly property QtObject dockReveal: QtObject {
+            readonly property int fullDuration: 160
+            readonly property int duration: tokens.reducedMotion ? 0 : 160
+            readonly property var curve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0]
+        }
         readonly property QtObject windowOpen: QtObject {
             readonly property int fullDuration: 160
             readonly property int duration: tokens.reducedMotion ? 0 : 160

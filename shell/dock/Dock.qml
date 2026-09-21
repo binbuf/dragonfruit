@@ -194,8 +194,19 @@ Rectangle {
     // The bar is translated off its anchored edge by its own thickness plus
     // the edge margin. `hideOffset` is the magnitude; `hideX`/`hideY` are the
     // per-axis translation for the configured position (T-10 sections 5/15).
-    readonly property real hideOffset:
+    //
+    // The slide is animated (FR-14): the scene-graph commit path delivers
+    // every frame, so the reveal/hide is a real motion instead of the former
+    // snap. Reduced motion collapses the duration to 0 in the token, which
+    // makes the transition instant.
+    property real hideOffset:
         autoHide && !revealed ? barThickness + Theme.controls.dock.edgeMargin : 0
+    Behavior on hideOffset {
+        NumberAnimation {
+            duration: Theme.motion.dockReveal.duration
+            easing.bezierCurve: Theme.motion.dockReveal.curve
+        }
+    }
     readonly property real hideX:
         position === "left" ? -hideOffset : position === "right" ? hideOffset : 0
     readonly property real hideY: position === "bottom" ? hideOffset : 0
@@ -225,6 +236,10 @@ Rectangle {
 
     function reveal() {
         revealTimer.stop();
+        // A reveal supersedes a pending re-hide; without this, a hide timer
+        // started before the reveal can fire and slide the Dock straight back
+        // out.
+        hideTimer.stop();
         if (!revealed)
             revealed = true;
     }
@@ -234,16 +249,18 @@ Rectangle {
             revealed = false;
     }
 
-    // Re-hide only when nothing holds the Dock open: no popover, no drag, and
-    // the pointer has left the surface (T-10 section 15).
+    // Re-hide only when nothing holds the Dock open: no popover, no drag, no
+    // Dock keyboard focus, and the pointer has left the surface (T-10 section
+    // 15).
     function hideIfIdle() {
-        if (autoHide && !popoverOpen && !dragging && !resizing && !dockHover.hovered)
+        if (autoHide && !popoverOpen && !dragging && !resizing
+                && !keyboardFocused && !dockHover.hovered)
             hide();
     }
 
     // Schedule a re-hide when a popover closes and the pointer is elsewhere.
     function scheduleHide() {
-        if (autoHide && revealed && !dockHover.hovered)
+        if (autoHide && revealed && !keyboardFocused && !dockHover.hovered)
             hideTimer.restart();
     }
 
@@ -445,6 +462,9 @@ Rectangle {
     function endKeyboardNavigation() {
         keyboardFocused = false;
         focusedItemId = "";
+        // Keyboard focus suppresses re-hide (section 15); once it leaves, the
+        // normal re-hide delay applies if the pointer is elsewhere.
+        scheduleHide();
     }
 
     function moveKeyboardFocus(delta) {

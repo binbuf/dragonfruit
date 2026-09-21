@@ -414,6 +414,11 @@ pub mod motion {
         curve: [0.34_f32, 1.56_f32, 0.64_f32, 1.0_f32],
         reduced_duration_ms: 0_u32,
     };
+    pub const DOCK_REVEAL: Motion = Motion {
+        duration_ms: 160_u32,
+        curve: [0.2_f32, 0.0_f32, 0.0_f32, 1.0_f32],
+        reduced_duration_ms: 0_u32,
+    };
     pub const WINDOW_OPEN: Motion = Motion {
         duration_ms: 160_u32,
         curve: [0.2_f32, 0.0_f32, 0.0_f32, 1.0_f32],
