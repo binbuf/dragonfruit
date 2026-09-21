@@ -5012,3 +5012,88 @@ warnings` and `cargo fmt --check` green; `make qml-test` green (13/13). No
 tasks/10-dock.md acceptance checkbox is closed by this slice; it advances
 FR-1 (click tree) and FR-5 (chooser selection) and removes a latent
 activation bug. The other unchecked boxes are unchanged.
+
+## T-10 continuation — core interaction loop close (twenty-sixth slice)
+
+**State: the Phase-2 exit box "Core interaction loop steps pass" is now
+closed.** The compositor-observable window-state round-trip is scripted end
+to end — activate (most-recent, never-focused), minimize, restore from the
+Dock, Space-switch via the window chooser, and **close** — and the test
+exposed and fixed a real cross-Space lifecycle bug. The remaining T-10 open
+items (drag *source*, Trash-with-Files integration, GVfs backends, per-output
+*sizing*, live AT-SPI dump, 60 Hz measurements, xdg-activation focus) are
+unchanged and blocked on T-11/T-15/T-16/T-17/T-18/T-23/T-31 or hardware.
+
+### What landed
+
+- **`dock_click_tree_activation_conformance` gained the close step**
+  (`compositor/tests/shell_protocol_conformance.rs`). The harness's
+  `xdg_toplevel` dispatch now counts `xdg_tl::Event::Close`
+  (`toplevel_close_requests`). The test asserts that `df_toplevel.close` (the
+  Dock "Quit" action) reaches the client, that the client's teardown makes the
+  manager announce `Closed`, and it does this for the **frontmost
+  (active-Space) window** and for a window left on **another Space**. The
+  cross-Space case is the one the Dock chooser cares about (FR-5: it lists
+  windows across all Spaces).
+- **Bug fixed: `window_for_surface` only searched the active Space.**
+  `DfState::window_for_surface` looked in `self.space.elements()` (the active
+  Space of the focused output), then `pending_windows`, then popups. A window
+  assigned to an inactive Space is in the `WindowModel` but **not** in
+  `space`, so the lookup returned `None`. `toplevel_destroyed` therefore
+  returned early for such a window and never pushed `Unmapped`, so the shell
+  never got `df_toplevel.closed` — a stale chooser row and running indicator
+  survived a Quit on another Space. The same limitation silently dropped
+  `title`/`app_id`/state-change/`minimize`/`maximize`/`fullscreen`/move
+  requests for inactive-Space windows, because every one of those handlers
+  resolves through `window_for_surface`. The lookup now falls back to the
+  whole `WindowModel` (`self.windows.windows()`) before the pending/popup
+  paths, so a non-active-Space window resolves everywhere.
+
+### Gotchas learned (important for the next slice)
+
+- **`self.space` is the *active* Space only.** Any code that needs to find or
+  mutate a window by surface must use `window_for_surface` (now model-aware)
+  or `window_by_id`; do not reach into `self.space.elements()` directly for a
+  cross-Space operation. The model (`WindowModel`) is the source of truth for
+  the full window set.
+- **A `df_toplevel.close` reaches the client via `window_by_id` regardless of
+  Space** (the `df_toplevel` dispatch already resolved by id), but the
+  *completion* (`Closed` broadcast) depends on the destroy lookup, which was
+  the broken half. When testing a close, destroy the toplevel and wait for
+  `df_toplevel.closed`, not just for the client-side `xdg_toplevel.close`.
+- **The client-side close event needs its own dispatch arm.** The harness
+  previously ignored `xdg_tl::Event::Close`; tracking it (`toplevel_close_requests`)
+  is what lets a test assert the request was delivered to the app before the
+  app tears down.
+- **`xdg_toplevel.close` targets the client, not the compositor.** The
+  `df_toplevel.close` request is only a `send_close`; nothing is unmapped and
+  no `Closed` is emitted until the client destroys its `xdg_toplevel`/surface.
+  A test must drive that teardown itself.
+
+### Hand-off / open items (remaining T-10 slices)
+
+1. **The drag *source*** (Files/launcher, T-17/T-18): a real `wl_data_source`
+   in the app plus an end-to-end walkthrough that drops onto the running shell
+   (not a raw stand-in).
+2. **Trash-state integration test with Files** (T-18): needs
+   `org.dragonfruit.Files1` activation.
+3. **GVfs Trash/downloads backends** when the GIO dev headers exist.
+4. **Per-output sizing** (T-11/T-16): chrome still sizes its buffer from the
+   first output.
+5. **Live AT-SPI dump** (T-31).
+6. **60 Hz magnification measurement** (acceptance): needs a nested session on
+   baseline hardware.
+7. **xdg-activation focus** (previous slice): a launched window is not
+   keyboard-focused until clicked; needs a T-04/T-12 decision.
+
+### Gate status
+
+`cargo test --workspace` green; `shell_protocol_conformance` 23/23 (incl. the
+extended close case); the `window_for_surface` change re-ran the full
+`make e2e` set (`milestone_e2e`, `window_conformance`,
+`xwayland_conformance`, `shell_idle_trace`, `idle_trace`, `protocol_surface`)
+green; `cargo clippy --workspace --all-targets -D warnings` and
+`cargo fmt --check` green. This slice closes the tasks/10-dock.md **"Core
+interaction loop steps pass: launch → Dock animation → … → minimize →
+restore from Dock → close (Phase-2 exit)"** acceptance checkbox; the other
+unchecked boxes are unchanged.

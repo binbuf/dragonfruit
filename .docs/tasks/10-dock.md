@@ -824,8 +824,18 @@ key shape**, so T-15 adopts the file without a migration (T-15 FR-1).
 
 ## Acceptance criteria
 
-- [ ] Core interaction loop steps pass: launch → Dock animation → … →
-      minimize → restore from Dock → close (Phase-2 exit).
+- [x] Core interaction loop steps pass: launch → Dock animation → … →
+      minimize → restore from Dock → close (Phase-2 exit). *(The launch and
+      animation steps are the shell's `onDockEntryActivated`/`launchDockApp`
+      path and the `tst_dock` launch/attention-bounce cases; the
+      compositor-observable window-state round-trip is scripted by
+      `dock_click_tree_activation_conformance`: `activate_app` selects the
+      app's most recent never-focused window and restores a minimized one,
+      `select_overview_toplevel` switches Space and focuses, and
+      `df_toplevel.close` reaches the client, which tears the window down and
+      the manager announces `Closed` — for both the active-Space window and a
+      window on another Space (the latter drove a `window_for_surface`
+      fix).)*
 - [ ] Lifecycle edge-case suite (launch failure, exit mid-animation,
       cross-workspace windows, inconsistent identifiers, identity change)
       scripted and passing.

@@ -131,6 +131,9 @@ struct TestClient {
     toplevel_workspace_left: usize,
     toplevel_output_entered: usize,
     toplevel_output_left: usize,
+    /// `xdg_toplevel.close` requests the compositor forwarded to this client
+    /// (the Dock "Quit"/window-close half of the core interaction loop).
+    toplevel_close_requests: usize,
     toplevel_closed: usize,
     layer_configures: Vec<(u32, i32, i32)>,
     layer_closed: usize,
@@ -725,13 +728,16 @@ impl Dispatch<xdg_surface::XdgSurface, ()> for TestClient {
 
 impl Dispatch<xdg_tl::XdgToplevel, ()> for TestClient {
     fn event(
-        _: &mut Self,
+        state: &mut Self,
         _: &xdg_tl::XdgToplevel,
-        _: xdg_tl::Event,
+        event: xdg_tl::Event,
         _: &(),
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
+        if let xdg_tl::Event::Close = event {
+            state.toplevel_close_requests += 1;
+        }
     }
 }
 
@@ -1664,12 +1670,15 @@ fn toplevel_handle_requests_round_trip() {
     proc.shutdown();
 }
 
-/// T-10 section 8/9 click tree (FR-1/FR-5): the two private-protocol paths
-/// the Dock uses to bring a window forward are
-/// `df_toplevel_manager.activate_app` (a plain click on a running app entry)
-/// and `select_overview_toplevel` (a row in the window chooser). Both must
-/// pick the app's most recent window, restore it when minimized, switch to
-/// its Space, and focus it.
+/// T-10 section 8/9 click tree (FR-1/FR-5) and the Phase-2 core interaction
+/// loop (`tasks/10-dock.md` acceptance: launch → minimize → restore from Dock
+/// → close). The two private-protocol paths the Dock uses to bring a window
+/// forward are `df_toplevel_manager.activate_app` (a plain click on a running
+/// app entry) and `select_overview_toplevel` (a row in the window chooser).
+/// Both must pick the app's most recent window, restore it when minimized,
+/// switch to its Space, and focus it. Closing the window (the Dock "Quit"
+/// action) must reach the client as `xdg_toplevel.close` and retire the
+/// handle.
 ///
 /// The Dock projects an entry from the window list, not from focus, so a
 /// click must find the app's windows even before any of them has been
@@ -1706,7 +1715,9 @@ fn dock_click_tree_activation_conformance() {
     );
 
     // Map two windows of one app, then a third of another. Each is mapped
-    // (and awaited) in turn, so announcement order is stable.
+    // (and awaited) in turn, so announcement order is stable. A mapping is
+    // what the compositor observes when the shell's launch path
+    // (`launchDockApp` → app-index → new process) finally presents a window.
     let (surface_a, xdg_a, toplevel_a, _file_a) =
         map_toplevel(&mut state, &mut queue, "Dock A", APP);
     wait_for(
@@ -1841,15 +1852,58 @@ fn dock_click_tree_activation_conformance() {
         |state| focused_is(state, &handle_a),
     );
 
-    for toplevel in [&toplevel_a, &toplevel_b, &toplevel_c] {
-        toplevel.destroy();
-    }
-    for surface in [&surface_a, &surface_b, &surface_c] {
-        surface.destroy();
-    }
-    for xdg_surface in [&xdg_a, &xdg_b, &xdg_c] {
-        xdg_surface.destroy();
-    }
+    // --- close: the Dock "Quit" action retires the window ----------------
+    // `df_toplevel.close` is a request to the *client*, which acks by
+    // tearing down its xdg surface. The manager must then announce Closed.
+    // Close the frontmost (active-Space) window, matching a Dock "Quit".
+    state.toplevel_close_requests = 0;
+    state.toplevel_closed = 0;
+    handle_a.close();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.toplevel_close_requests >= 1,
+    );
+    toplevel_a.destroy();
+    surface_a.destroy();
+    xdg_a.destroy();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.toplevel_closed >= 1,
+    );
+
+    // A window on a non-active Space must retire too: the Dock chooser
+    // lists every Space, so a Quit there must clear the row (FR-5). C is
+    // still on Space 0 while Space 1 is active.
+    state.toplevel_close_requests = 0;
+    let closed_before = state.toplevel_closed;
+    handle_c.close();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.toplevel_close_requests >= 1,
+    );
+    toplevel_c.destroy();
+    surface_c.destroy();
+    xdg_c.destroy();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.toplevel_closed > closed_before,
+    );
+
+    toplevel_b.destroy();
+    surface_b.destroy();
+    xdg_b.destroy();
     manager.destroy();
     let _ = conn.flush();
     proc.shutdown();
