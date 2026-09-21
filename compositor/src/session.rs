@@ -135,7 +135,14 @@ pub fn run_session(socket_name: &str, hooks: BackendHooks) -> Result<(), String>
         state.space.refresh();
         state.popups.cleanup();
 
+        // T-11 U-2 / FR-8: time each rendered frame and record the interval
+        // since the last one, so `dump_stats` can prove the gesture budget.
+        let frame_start = std::time::Instant::now();
+        let frames_before = state.stats.frames_rendered;
         (render)(&mut state)?;
+        if state.stats.frames_rendered != frames_before {
+            state.stats.record_frame(frame_start.elapsed());
+        }
 
         // Drain the T-03/T-04/T-05 outboxes into the private shell protocol
         // (T-07): window/workspace/focus/attention and input events are

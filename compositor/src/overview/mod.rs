@@ -146,6 +146,10 @@ pub struct OverviewMachine {
     desktop_revealed: bool,
     selection: Option<WindowId>,
     discrete: Option<DiscreteProgress>,
+    /// Set by a directional shell request ([`Self::drive_overview`]) so the
+    /// Mission Control commit targets the requested state instead of toggling
+    /// (U-7). Cleared when the transition commits or is cancelled.
+    requested_overview: Option<bool>,
 }
 
 impl Default for OverviewMachine {
@@ -164,6 +168,7 @@ impl OverviewMachine {
             desktop_revealed: false,
             selection: None,
             discrete: None,
+            requested_overview: None,
         }
     }
 
@@ -259,11 +264,33 @@ impl OverviewMachine {
     /// the translation-based slide is visible and the commit rule is shared
     /// with gestures. Reduced motion still takes a single synchronous step.
     pub fn drive(&mut self, kind: OverviewKind, trigger: TriggerKind, now: u64) -> DriveOutcome {
+        self.drive_towards(kind, trigger, now, None)
+    }
+
+    /// Drive an explicit Mission Control enter/leave request through the
+    /// same pipeline as every other trigger (U-7).
+    ///
+    /// Unlike the toggle triggers (keyboard, hot corner, gesture), the shell
+    /// request names its target state, so an explicit `enter` while already
+    /// open does not close the overview. The progress curve and commit rule
+    /// are identical to [`Self::drive`].
+    pub fn drive_overview(&mut self, active: bool, trigger: TriggerKind, now: u64) -> DriveOutcome {
+        self.drive_towards(OverviewKind::MissionControl, trigger, now, Some(active))
+    }
+
+    fn drive_towards(
+        &mut self,
+        kind: OverviewKind,
+        trigger: TriggerKind,
+        now: u64,
+        target: Option<bool>,
+    ) -> DriveOutcome {
         let mut events = Vec::new();
         if let Some(event) = self.cancel_active(now) {
             events.push(event);
         }
         self.kind = Some(kind);
+        self.requested_overview = target;
         if self.reduced_motion {
             events.push(self.pipeline.begin(kind.action(), trigger, now));
             if let Some(event) = self.pipeline.set_progress(1.0, now) {
@@ -328,6 +355,7 @@ impl OverviewMachine {
             events.push(event);
         }
         self.kind = Some(kind);
+        self.requested_overview = None;
         events.push(self.pipeline.begin(kind.action(), trigger, now));
         events
     }
@@ -367,6 +395,7 @@ impl OverviewMachine {
         }
         self.kind = None;
         self.discrete = None;
+        self.requested_overview = None;
     }
 
     /// Record the window selected in the overview and leave the overview
@@ -378,6 +407,7 @@ impl OverviewMachine {
         self.overview_active = false;
         self.kind = None;
         self.discrete = None;
+        self.requested_overview = None;
     }
 
     /// Clear the selection without touching the overview state.
@@ -389,6 +419,7 @@ impl OverviewMachine {
     /// that do not animate). Keeps the machine the single source of truth.
     pub fn set_overview(&mut self, active: bool) {
         self.overview_active = active;
+        self.requested_overview = None;
         if !active {
             self.selection = None;
         }
@@ -397,6 +428,7 @@ impl OverviewMachine {
     /// Cancel any in-flight transition, returning its `End` event.
     pub fn cancel_active(&mut self, now: u64) -> Option<ProgressEvent> {
         self.discrete = None;
+        self.requested_overview = None;
         if !self.pipeline.is_active() {
             return None;
         }
@@ -421,7 +453,9 @@ impl OverviewMachine {
         Some(match kind {
             OverviewKind::WorkspaceNext => TransitionCommit::SwitchWorkspace(1),
             OverviewKind::WorkspacePrev => TransitionCommit::SwitchWorkspace(-1),
-            OverviewKind::MissionControl => TransitionCommit::SetOverview(!self.overview_active),
+            OverviewKind::MissionControl => TransitionCommit::SetOverview(
+                self.requested_overview.unwrap_or(!self.overview_active),
+            ),
             OverviewKind::DesktopReveal => {
                 TransitionCommit::SetDesktopReveal(!self.desktop_revealed)
             }
@@ -698,5 +732,88 @@ mod tests {
         // One Begin, one Update, one committed End — no animation steps.
         assert_eq!(outcome.events.len(), 3);
         assert!(outcome.events.last().unwrap().committed);
+    }
+
+    /// U-7: the shell's explicit enter/leave drives the same pipeline but
+    /// commits the *requested* state instead of toggling, so a repeated
+    /// enter while open does not close the overview.
+    #[test]
+    fn shell_request_drives_directionally_through_the_same_curve() {
+        let mut machine = machine();
+        // The explicit enter uses the same discrete animation clock.
+        let enter = machine.drive_overview(true, TriggerKind::Shell, 0);
+        assert_eq!(enter.commit, None, "it animates on the clock");
+        assert!(machine.is_discrete());
+        let duration = machine.config().discrete_duration_ms;
+        let mut commit = enter.commit;
+        while machine.is_discrete() {
+            let next = machine.advance_discrete(duration);
+            if next.commit.is_some() {
+                commit = next.commit;
+            }
+        }
+        assert_eq!(commit, Some(TransitionCommit::SetOverview(true)));
+        machine.apply_commit(commit.unwrap());
+        assert!(machine.overview_active());
+
+        // An explicit enter while already open still targets `true` (no
+        // toggle), so the overview stays open.
+        let repeat = machine.drive_overview(true, TriggerKind::Shell, 1000);
+        assert_eq!(repeat.commit, None);
+        let mut commit = None;
+        while machine.is_discrete() {
+            let next = machine.advance_discrete(2000);
+            if next.commit.is_some() {
+                commit = next.commit;
+            }
+        }
+        assert_eq!(commit, Some(TransitionCommit::SetOverview(true)));
+
+        // And the explicit exit targets `false`.
+        let exit = machine.drive_overview(false, TriggerKind::Shell, 3000);
+        let mut commit = exit.commit;
+        while machine.is_discrete() {
+            let next = machine.advance_discrete(4000);
+            if next.commit.is_some() {
+                commit = next.commit;
+            }
+        }
+        assert_eq!(commit, Some(TransitionCommit::SetOverview(false)));
+    }
+
+    /// U-1/FR-9: every transition kind takes the single-step path under
+    /// reduced motion while still applying the same commit rule.
+    #[test]
+    fn reduced_motion_single_steps_every_transition_kind() {
+        let cases = [
+            (
+                OverviewKind::WorkspaceNext,
+                TransitionCommit::SwitchWorkspace(1),
+            ),
+            (
+                OverviewKind::WorkspacePrev,
+                TransitionCommit::SwitchWorkspace(-1),
+            ),
+            (
+                OverviewKind::MissionControl,
+                TransitionCommit::SetOverview(true),
+            ),
+            (
+                OverviewKind::DesktopReveal,
+                TransitionCommit::SetDesktopReveal(true),
+            ),
+        ];
+        for (kind, expected) in cases {
+            let mut machine = machine();
+            machine.set_reduced_motion(true);
+            let outcome = machine.drive(kind, TriggerKind::Shell, 0);
+            assert_eq!(
+                outcome.commit,
+                Some(expected),
+                "{kind:?} must commit in one step"
+            );
+            assert_eq!(outcome.events.len(), 3, "{kind:?}: Begin/Update/End only");
+            assert!(!machine.is_discrete(), "{kind:?} must not arm the clock");
+        }
     }
 }

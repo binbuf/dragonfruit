@@ -44,9 +44,10 @@ use trust::{Refusal, TrustModel, TrustedRole};
 /// The version of every private interface this compositor implements.
 const INTERFACE_VERSION: u32 = 1;
 
-/// `df_toplevel_manager` is version 2 since `release_keyboard_focus` was
-/// added (T-10). The other interfaces stay at [`INTERFACE_VERSION`].
-const MANAGER_INTERFACE_VERSION: u32 = 2;
+/// `df_toplevel_manager` is version 3 since `set_reduced_motion` was added
+/// (T-11 U-1); `release_keyboard_focus` was the v2 addition (T-10). The
+/// other interfaces stay at [`INTERFACE_VERSION`].
+const MANAGER_INTERFACE_VERSION: u32 = 3;
 
 /// Error code posted when an untrusted client binds a private global.
 const ERROR_ACCESS_DENIED: u32 = 1;
@@ -1619,10 +1620,12 @@ impl Dispatch<df_toplevel_manager::DfToplevelManager, ()> for DfState {
                 }
             }
             df_toplevel_manager::Request::EnterMissionControl => {
-                state.set_overview(true);
+                // U-7: the shell request drives the one overview machine and
+                // its progress pipeline exactly like a gesture/hot corner.
+                state.drive_overview_request(true, SERIAL_COUNTER.next_serial().into());
             }
             df_toplevel_manager::Request::ExitMissionControl => {
-                state.set_overview(false);
+                state.drive_overview_request(false, SERIAL_COUNTER.next_serial().into());
             }
             df_toplevel_manager::Request::SelectOverviewToplevel { toplevel } => {
                 if let Some(id) = toplevel.data::<ToplevelUserData>().map(|data| data.id) {
@@ -1650,6 +1653,12 @@ impl Dispatch<df_toplevel_manager::DfToplevelManager, ()> for DfState {
                     state.restore_window_keyboard_focus();
                     state.needs_redraw = true;
                 }
+            }
+            df_toplevel_manager::Request::SetReducedMotion { enabled } => {
+                // T-11 U-1: mirror the shell's reduced-motion policy into the
+                // overview machine; every transition then takes the single
+                // step while keeping the same commit rule (FR-9).
+                state.set_reduced_motion(enabled != 0);
             }
             df_toplevel_manager::Request::Destroy => {}
         }
