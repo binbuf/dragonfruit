@@ -272,6 +272,7 @@ pub mod component {
         pub const ROW_HEIGHT: f32 = 26.0_f32;
         pub const MIN_WIDTH: f32 = 180.0_f32;
         pub const SHORTCUT_GAP: f32 = 24.0_f32;
+        pub const SUBMENU_DELAY: f32 = 150.0_f32;
     }
     pub mod focus_ring {
         pub const WIDTH: f32 = 2.0_f32;

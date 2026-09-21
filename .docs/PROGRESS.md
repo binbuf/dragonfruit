@@ -3553,3 +3553,85 @@ Acceptance criteria still unchecked in `tasks/10-dock.md`: the Files-side
 Trash integration test (needs T-18), external-drag walkthroughs, the
 scene-graph FR-14 render path, the live AT-SPI walkthrough, multi-output
 hotplug per-output popovers, plus the core-loop and 60 Hz measurements.
+
+## T-10 — nested submenus + divider Position on Screen (twelfth slice)
+
+**State: partial.** The design-system `ContextMenu` now has real submenu
+support, and the Dock's divider menu uses it for "Position on Screen". This
+closes the "design-system submenu open logic" prerequisite from the previous
+hand-off; the app Options ▸ submenu remains deferred (see below).
+
+### What landed
+
+- **Design-system `ContextMenu`** (`design-system/components/ContextMenu.qml`):
+  a row of `type: "submenu"` carries children in its `submenu` (or `items`)
+  array and opens a nested `SubmenuPanel` beside the row. Opens on a delayed
+  hover (`contextMenu.submenuDelay`, new token) or Right-arrow; Down/Up
+  navigate the submenu, Left/Escape close it (Escape closes the submenu first,
+  the menu on the second press), Return/Space activate. Moving the pointer
+  from the row into the panel fires no main-row hover, so the submenu stays
+  open (the T-09 drag-through rule). `contentRect` reports the union of the
+  menu and its open submenu, and `submenuFlips` opens the panel to the left
+  when it would leave the parent (a right-edge Dock).
+- **`Dock.qml`**: `dividerMenuModel()` gained a **Position on Screen ▸**
+  submenu (Bottom/Left/Right, checkmarked against `dock.position`);
+  `popoverRect` now maps `ContextMenu.contentRect` so the nested panel is
+  committed into the Dock's `overlay` surface with the shell's existing
+  gutter/headroom handling.
+- **`ShellController`**: the `set_position` action writes `dock.position` via
+  the live `DockSettings` model and calls `applyDockSettings(true)`, which
+  already re-anchors/re-sizes the surface and pauses rendering across the
+  switch (the per-position slice).
+- **Tests**: four new `tst_design_system` cases (open+activate, Escape closes
+  only the submenu, contentRect grows, keyboard) and one new `tst_dock` case
+  (`test_divider_menu_position_submenu_changes_position`). `make lint` green
+  (`tst_dock` 86 cases, `tst_design_system` 32 cases); `make e2e` green;
+  gallery visual regression 66/66 unchanged; live headless smoke still reports
+  `Dock configured 1280x124` / `edge=1 thickness=60`.
+
+### Notes for subsequent tasks
+
+- **Submenu model shape is `submenu` (or `items`) on the row.** The design
+  system normalizes it; a caller only supplies `{ type: "submenu", label,
+  submenu: [...] }`. Nested submenus render a chevron but `activateSubmenu`
+  is inert (a follow-up) so a row can never silently activate a parent.
+- **`MenuBarMenu` still has chevrons but no submenu panels.** It shares the
+  row shape; port the `SubmenuPanel`/`contentRect` logic there when T-22
+  menus need submenus (the app menu currently has none).
+- **The committed popover rect must include submenus.** Any new popover
+  container should expose a `contentRect` in the same `{x,y,w,h}` shape; the
+  Dock's `popoverRect` falls back to `width`/`height` for containers without
+  one (the window chooser).
+- **`dock.position` writes are live.** The divider submenu calls
+  `applyDockSettings(true)`; a position change still dismisses open popovers
+  and waits for the next configure (the per-position slice rule).
+- The app Options ▸ submenu needs the active-Space index (for "Assign To This
+  Desktop") and T-18 Files ("Show in Files"); no shell request exists for
+  app-level assignment, so it is not wired.
+
+### Hand-off / open items (remaining T-10 slices)
+
+1. **External drops and spring-loading** (section 12): app/file drops on an
+   icon, Trash, or the Downloads stack. Needs the drag source plus
+   `app-index`/GIO launch with a file argument (T-17/T-18).
+2. **GVfs Trash completion** (section 16): GVfs `trash://` `GFileMonitor` +
+   `g_file_trash()` when the GIO dev headers are available;
+   `org.dragonfruit.Files1` activation once T-18 exists.
+3. **App Options submenu** (section 13): Assign To (needs an active-Space
+   request/app-level assignment), Open at Login (T-24), Show in Files (T-18).
+   The design-system submenu it needs has landed.
+4. **Per-output sizing** (section 18): chrome surfaces still size from the
+   first output; `matches_output` is the filter hook.
+5. **Scene-graph render path** (FR-14): the Dock still commits on demand via
+   `grabWindow`; the durable `QQuickWindow::afterRendering`/render-control
+   fix is shared with the T-09 deferred-polish backlog.
+6. **Live AT-SPI dump** (section 20): the QML roles exist and the keyboard
+   seat path exists; a session-bus `atspi` walkthrough is T-31.
+7. **`MenuBarMenu` submenus** (T-09/T-22): port the new submenu panel.
+
+### Gate status
+
+`make lint` green (ctest 13/13 incl. `tst_dock` 86 and `tst_design_system` 32,
+`gen-tokens --check`, design-token/desktop-name/no-capture gates); `make e2e`
+green; gallery visual regression 66/66; live headless smoke reports
+`Dock configured 1280x124` / `edge=1 thickness=60`.

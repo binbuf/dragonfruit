@@ -280,6 +280,7 @@ QtObject {
             readonly property int rowHeight: 26
             readonly property int minWidth: 180
             readonly property int shortcutGap: 24
+            readonly property int submenuDelay: 150
         }
         readonly property var focusRing: QtObject {
             readonly property int width: 2

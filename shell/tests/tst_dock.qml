@@ -1175,6 +1175,32 @@ Item {
             verify(labelsOn.indexOf("Turn Hiding Off") >= 0);
         }
 
+        function test_divider_menu_position_submenu_changes_position() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, position: "bottom",
+                entries: [ app("a", "A", true) ]
+            });
+            menuActionSpy.target = dock;
+            menuActionSpy.clear();
+            dock.openEntryMenu(dock.items[1]); // the divider
+            var menu = findChild(dock, "entryMenu");
+            var labels = menuLabels(menu);
+            var posIndex = labels.indexOf("Position on Screen");
+            verify(posIndex >= 0);
+            menu.openSubmenu(posIndex);
+            waitForRendering(stage);
+            compare(menu.openSubmenuIndex, posIndex);
+            var subLabels = [];
+            for (var j = 0; j < menu.submenuEntries.length; ++j)
+                subLabels.push(menu.submenuEntries[j].label);
+            var leftIndex = subLabels.indexOf("Left");
+            verify(leftIndex >= 0);
+            menu.activateSubmenu(leftIndex);
+            compare(menuActionSpy.count, 1);
+            compare(menuActionSpy.signalArguments[0][0], "set_position");
+            compare(menuActionSpy.signalArguments[0][1].position, "left");
+        }
+
         function test_autohide_off_never_hides() {
             var dock = make(dockComponent, {
                 width: 1280, height: 160, autoHide: false, revealed: true,

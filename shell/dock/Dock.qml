@@ -739,8 +739,9 @@ Rectangle {
     }
 
     // The divider menu (T-10 section 13): the magnification and hiding
-    // toggles and the Settings entry point. Position-on-screen (T-10 section
-    // 5) is not wired into this menu yet; Dock Settings is T-16.
+    // toggles, the position submenu, and the Settings entry point. Position
+    // is written through the shell's live `dock.position` model; Dock
+    // Settings is T-16.
     function dividerMenuModel() {
         var out = [];
         out.push({
@@ -754,6 +755,30 @@ Rectangle {
             type: "item",
             label: autoHide ? qsTr("Turn Hiding Off") : qsTr("Turn Hiding On"),
             action: "toggle_autohide", checkable: true, checked: autoHide
+        });
+        out.push({ type: "separator" });
+        out.push({
+            type: "submenu", label: qsTr("Position on Screen"),
+            submenu: [
+                {
+                    type: "item", label: qsTr("Bottom"),
+                    action: "set_position", checkable: true,
+                    checked: position === "bottom",
+                    payload: { position: "bottom" }
+                },
+                {
+                    type: "item", label: qsTr("Left"),
+                    action: "set_position", checkable: true,
+                    checked: position === "left",
+                    payload: { position: "left" }
+                },
+                {
+                    type: "item", label: qsTr("Right"),
+                    action: "set_position", checkable: true,
+                    checked: position === "right",
+                    payload: { position: "right" }
+                }
+            ]
         });
         out.push({ type: "separator" });
         out.push({
@@ -796,7 +821,9 @@ Rectangle {
     }
 
     // The open popover's rectangle in Dock-scene coordinates, or an empty
-    // rect. The shell renders it into the Dock's `overlay` surface.
+    // rect. The shell renders it into the Dock's `overlay` surface. A menu
+    // with an open submenu reports the union of both panels so the nested
+    // panel is not clipped (`ContextMenu.contentRect`).
     readonly property var popoverRect: {
         // `open` keeps the rect valid while the popover fades in/out (the
         // shell captures the animation); `visible` covers the close tail.
@@ -804,6 +831,11 @@ Rectangle {
                  : ((windowChooser.open || windowChooser.visible) ? windowChooser : null);
         if (!popup || popup.width <= 0 || popup.height <= 0)
             return { x: 0, y: 0, w: 0, h: 0 };
+        if (popup.contentRect !== undefined) {
+            var content = popup.contentRect;
+            var origin = popup.mapToItem(dock, content.x, content.y);
+            return { x: origin.x, y: origin.y, w: content.w, h: content.h };
+        }
         var topLeft = popup.mapToItem(dock, 0, 0);
         return { x: topLeft.x, y: topLeft.y, w: popup.width, h: popup.height };
     }
