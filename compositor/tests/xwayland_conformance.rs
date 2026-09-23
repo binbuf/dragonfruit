@@ -266,6 +266,8 @@ struct DecorationReport {
     titlebar: (i32, i32, i32, i32),
     content: (i32, i32, i32, i32),
     state: WindowStateReport,
+    /// Assigned Space id, or -1 when unassigned (T-01.4).
+    space: i64,
 }
 
 fn parse_decorations(report: &str) -> Vec<DecorationReport> {
@@ -300,12 +302,14 @@ fn parse_decorations(report: &str) -> Vec<DecorationReport> {
                 Some("fullscreen") => WindowStateReport::Fullscreen,
                 _ => WindowStateReport::Unknown,
             };
+            let space = parts.next().and_then(|t| t.parse().ok()).unwrap_or(-1);
             Some(DecorationReport {
                 window,
                 server_side,
                 titlebar,
                 content,
                 state,
+                space,
             })
         })
         .collect()
@@ -628,6 +632,301 @@ fn x11_traffic_lights_drive_zoom_minimize_and_close() {
         Duration::from_secs(5),
         "X11 close to destroy the window",
     );
+
+    drop(conn);
+    drop(input);
+    proc.assert_clean_exit();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic socket survived"
+    );
+}
+
+/// Move the synthetic pointer to a global-space point (libinput-normalized).
+fn motion_to(input: &SyntheticInput, x: i32, y: i32) {
+    let nx = f64::from(x) / f64::from(OUTPUT_W);
+    let ny = f64::from(y) / f64::from(OUTPUT_H);
+    input.send(&format!("motion-abs {nx} {ny}"));
+}
+
+/// A left-button down/up at the current pointer location (BTN_LEFT = 272).
+fn click_at(input: &SyntheticInput, x: i32, y: i32) {
+    motion_to(input, x, y);
+    input.send("button 272 down");
+    input.send("button 272 up");
+}
+
+/// The center of a reported titlebar, away from the traffic-light cluster.
+fn titlebar_center(report: &DecorationReport) -> (i32, i32) {
+    let (tx, ty, tw, th) = report.titlebar;
+    (tx + tw / 2, ty + th / 2)
+}
+
+/// Right-click the window's titlebar center to open the window menu.
+fn open_window_menu(input: &SyntheticInput, report: &DecorationReport) {
+    let (cx, cy) = titlebar_center(report);
+    motion_to(input, cx, cy);
+    input.send("button 273 down"); // BTN_RIGHT
+    input.send("button 273 up");
+}
+
+/// Linux evdev key code for Escape (the synthetic harness adds the xkb +8).
+const KEY_ESC: u32 = 1;
+
+fn key_tap(input: &SyntheticInput, code: u32) {
+    input.send(&format!("key {code} down"));
+    input.send(&format!("key {code} up"));
+}
+
+/// `component.contextMenu` geometry used to aim at menu rows (T-01.4).
+const MENU_PADDING: i32 = 6;
+const MENU_ROW_HEIGHT: i32 = 26;
+const MENU_MIN_WIDTH: i32 = 180;
+
+/// One parsed `query window-menu` line (T-01.4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct MenuReport {
+    open: bool,
+    window: u64,
+    rect: (i32, i32, i32, i32),
+    highlighted: i64,
+    submenu_open: bool,
+    submenu_rect: (i32, i32, i32, i32),
+}
+
+fn parse_menu(report: &str) -> MenuReport {
+    let line = report
+        .lines()
+        .find(|line| line.starts_with("window-menu"))
+        .expect("a window-menu line");
+    let mut parts = line.split_whitespace();
+    assert_eq!(parts.next(), Some("window-menu"));
+    let mut n = || -> i64 {
+        parts
+            .next()
+            .and_then(|token| token.parse().ok())
+            .expect("window-menu numeric field")
+    };
+    let open = n() != 0;
+    let window = n() as u64;
+    let rect = (n() as i32, n() as i32, n() as i32, n() as i32);
+    let highlighted = n();
+    let submenu_open = n() != 0;
+    let _submenu_highlighted = n();
+    let submenu_rect = (n() as i32, n() as i32, n() as i32, n() as i32);
+    MenuReport {
+        open,
+        window,
+        rect,
+        highlighted,
+        submenu_open,
+        submenu_rect,
+    }
+}
+
+fn panel_row_center(rect: (i32, i32, i32, i32), index: i32) -> (i32, i32) {
+    let (x, y, _, _) = rect;
+    (
+        x + MENU_PADDING + (MENU_MIN_WIDTH - 2 * MENU_PADDING) / 2,
+        y + MENU_PADDING + index * MENU_ROW_HEIGHT + MENU_ROW_HEIGHT / 2,
+    )
+}
+
+fn menu_row_center(menu: &MenuReport, index: i32) -> (i32, i32) {
+    panel_row_center(menu.rect, index)
+}
+
+fn submenu_row_center(menu: &MenuReport, index: i32) -> (i32, i32) {
+    panel_row_center(menu.submenu_rect, index)
+}
+
+fn wait_for_menu(
+    input: &SyntheticInput,
+    mut predicate: impl FnMut(&MenuReport) -> bool,
+) -> MenuReport {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let menu = parse_menu(&input.query("query window-menu"));
+        if predicate(&menu) {
+            return menu;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "timed out waiting for window-menu state"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// T-01.4 acceptance: the window menu's four commands (Zoom, Minimize, Close,
+/// Move to Space) work for an X11 Tier-2 window through the same state machine
+/// as a Wayland client, and Escape dismisses the menu.
+#[test]
+fn x11_window_menu_runs_all_four_commands() {
+    if !xwayland_available() {
+        eprintln!("skipping: Xwayland is not installed");
+        return;
+    }
+
+    let socket_name = format!("dragonfruit-test-x11-menu-{}", std::process::id());
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir)
+        .join(format!("dragonfruit-x11-menu-synth-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(&socket_name, Some(&synthetic_path));
+    let input = SyntheticInput::connect(&synthetic_path);
+    let Some(display) = proc.wait_for_display() else {
+        eprintln!("skipping: Xwayland did not become ready");
+        return;
+    };
+
+    let (conn, screen_num) = x11rb::connect(Some(&display)).expect("connect to Xwayland");
+    let root = conn.setup().roots[screen_num].root;
+    let screen = &conn.setup().roots[screen_num];
+
+    let make_window = |x: i16, y: i16, w: u16, h: u16| -> X11Window {
+        let window = conn.generate_id().expect("generate window id");
+        let aux = CreateWindowAux::new().background_pixel(screen.white_pixel);
+        conn.create_window(
+            screen.root_depth,
+            window,
+            root,
+            x,
+            y,
+            w,
+            h,
+            0,
+            WindowClass::INPUT_OUTPUT,
+            x11rb::COPY_FROM_PARENT,
+            &aux,
+        )
+        .expect("create_window");
+        conn.map_window(window).expect("map_window");
+        conn.flush().expect("flush");
+        wait_until(
+            || client_list(&conn, root).contains(&window),
+            Duration::from_secs(5),
+            "X11 window to be managed",
+        );
+        window
+    };
+
+    // --- Zoom / Unzoom / Minimize on the first window --------------------
+    let window = make_window(40, 40, 200, 120);
+    let reports = wait_for_report(&input, |reports| {
+        reports
+            .iter()
+            .any(|report| report.server_side && report.state == WindowStateReport::Floating)
+    });
+    let mut report = *reports.iter().find(|report| report.server_side).unwrap();
+    let window_id = report.window;
+
+    // Right-click opens; Escape dismisses.
+    open_window_menu(&input, &report);
+    let menu = wait_for_menu(&input, |menu| menu.open);
+    assert_eq!(menu.window, window_id);
+    key_tap(&input, KEY_ESC);
+    wait_for_menu(&input, |menu| !menu.open);
+
+    // Zoom.
+    open_window_menu(&input, &report);
+    let menu = wait_for_menu(&input, |menu| menu.open);
+    let (cx, cy) = menu_row_center(&menu, 2);
+    click_at(&input, cx, cy);
+    report = report_for(
+        &wait_for_report(&input, |reports| {
+            reports.iter().any(|report| {
+                report.window == window_id && report.state == WindowStateReport::Zoomed
+            })
+        }),
+        window_id,
+    );
+    assert_eq!(
+        (report.content.2, report.content.3),
+        (OUTPUT_W, OUTPUT_H - TITLEBAR_HEIGHT)
+    );
+
+    // Unzoom.
+    open_window_menu(&input, &report);
+    let menu = wait_for_menu(&input, |menu| menu.open);
+    let (cx, cy) = menu_row_center(&menu, 2);
+    click_at(&input, cx, cy);
+    report = report_for(
+        &wait_for_report(&input, |reports| {
+            reports.iter().any(|report| {
+                report.window == window_id && report.state == WindowStateReport::Floating
+            })
+        }),
+        window_id,
+    );
+
+    // Minimize.
+    open_window_menu(&input, &report);
+    let menu = wait_for_menu(&input, |menu| menu.open);
+    let (cx, cy) = menu_row_center(&menu, 1);
+    click_at(&input, cx, cy);
+    let minimized = report_for(
+        &wait_for_report(&input, |reports| {
+            reports.iter().any(|report| {
+                report.window == window_id && report.state == WindowStateReport::Minimized
+            })
+        }),
+        window_id,
+    );
+    assert!(
+        !minimized.server_side,
+        "a minimized X11 window has no titlebar"
+    );
+
+    conn.destroy_window(window).expect("destroy_window");
+    conn.flush().expect("flush");
+    wait_until(
+        || !client_list(&conn, root).contains(&window),
+        Duration::from_secs(5),
+        "the first X11 window to leave _NET_CLIENT_LIST",
+    );
+
+    // --- Close on a second window ----------------------------------------
+    let window2 = make_window(300, 200, 220, 140);
+    let reports = wait_for_report(&input, |reports| {
+        reports
+            .iter()
+            .any(|report| report.server_side && report.state == WindowStateReport::Floating)
+    });
+    let close_report = *reports.iter().find(|report| report.server_side).unwrap();
+    open_window_menu(&input, &close_report);
+    let menu = wait_for_menu(&input, |menu| menu.open);
+    let (cx, cy) = menu_row_center(&menu, 3);
+    click_at(&input, cx, cy);
+    wait_until(
+        || !client_list(&conn, root).contains(&window2),
+        Duration::from_secs(5),
+        "the menu Close to destroy the X11 window",
+    );
+
+    // --- Move to Space on a third window ---------------------------------
+    let _window3 = make_window(500, 300, 200, 120);
+    let reports = wait_for_report(&input, |reports| {
+        reports
+            .iter()
+            .any(|report| report.server_side && report.state == WindowStateReport::Floating)
+    });
+    let move_report = *reports.iter().find(|report| report.server_side).unwrap();
+    let before_space = move_report.space;
+    assert!(before_space >= 0, "a mapped X11 window is assigned a Space");
+
+    open_window_menu(&input, &move_report);
+    let menu = wait_for_menu(&input, |menu| menu.open);
+    let (cx, cy) = menu_row_center(&menu, 0);
+    click_at(&input, cx, cy);
+    let menu = wait_for_menu(&input, |menu| menu.submenu_open);
+    let (cx, cy) = submenu_row_center(&menu, 1);
+    click_at(&input, cx, cy);
+    wait_for_report(&input, |reports| {
+        reports
+            .iter()
+            .any(|report| report.window == move_report.window && report.space != before_space)
+    });
+    wait_for_menu(&input, |menu| !menu.open);
 
     drop(conn);
     drop(input);

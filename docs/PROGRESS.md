@@ -9,6 +9,8 @@
 - **T01 — T-01.1 Titlebar render element**: **State: done.** The SSD titlebar element exists, is sized from the generated; **`compositor/src/window/decoration.rs`** — `TitlebarElement`,
 - **T02 — T-01.2 Traffic-light actions**: **State: done.** Close/minimize/zoom are clickable through the titlebar; **`compositor/src/window/decoration.rs`** — `TitlebarElement::cluster_rect()`
 - **T03 — T-01.3 Titlebar drag, double-click, fullscreen reveal**: **State: done.** A floating window's titlebar drags to move (existing; **`compositor/src/window/decoration.rs`** — `TitlebarDoubleClick`
+- **T04 — T-01.4 Window menu**: **State: done.** A right/Control-click on the SSD titlebar opens a; **`compositor/src/window/menu.rs`** — `WindowMenu`, `WindowMenuRow`,
+- **Follow-ups**: T-04: draw the window-menu labels/icons and the material pass (replaces; T-14: reuse `WindowMenu`/`WindowMenuCommand` for decoration themes; add the
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -271,3 +273,78 @@ Gotchas for later tasks:
 - The titlebar is still a custom element above the whole window `Space`; the
   stacked-window interleaving limitation from T-01.1/T-01.2 is unchanged
   (T-04's per-window scene-element refactor).
+
+## T04 — T-01.4 Window menu
+
+**State: done.** A right/Control-click on the SSD titlebar opens a
+compositor-owned menu (Move to Space, Minimize, Zoom, Close); each row routes
+through `DfState::window_menu_command`, the same primitives the traffic
+lights and shell protocol use. Escape / click-away / focus-loss dismiss;
+keyboard navigation mirrors the design-system `ContextMenu`.
+
+What landed:
+
+- **`compositor/src/window/menu.rs`** — `WindowMenu`, `WindowMenuRow`,
+  `MenuRow`, `MenuKey`/`MenuKeyOutcome`, `MenuActivation`. Geometry from
+  `component.contextMenu` (padding 6, rowHeight 26, minWidth 180) +
+  `component.window.borderWidth`; panel flips/clamps inside the output.
+  Move to Space is a submenu of the window output's Spaces (snapshotted at
+  open time). Keyboard/dismissal mirror `ContextMenu.qml` (Escape closes the
+  submenu first; Up/Down/Home/End move highlight; Right/Left submenu;
+  Enter/Space activates). Rendering is a flat token fill (surface elevated +
+  accent highlight); labels are T-04.
+- **`compositor/src/state.rs`** — `DfState::window_menu: Option<WindowMenu>`;
+  `open_window_menu`, `close_window_menu`, `window_menu_open`,
+  `window_menu_click`, `window_menu_key`. `focus_changed` dismisses on focus
+  loss. `ColorScheme` gained `surface_elevated`/`border`/`accent` and
+  `decoration::color_from_rgba` is now `pub(crate)`.
+- **`compositor/src/input.rs`** — right-click (`BTN_RIGHT`) or
+  Control-left-click opens on a titlebar (same client-surface priority as a
+  left press; revealed fullscreen titlebar wins). While open the menu is
+  modal: pointer presses inside are consumed, outside dismiss; every key is
+  intercepted before the shortcut engine.
+- **`compositor/src/render.rs` + backends** — `window_menu_render_elements`
+  composited above titlebars in nested and DRM.
+- **`compositor/src/input/synthetic.rs`** — `query window-menu` (open,
+  window, panel rect, highlighted, submenu open, submenu rect) and a trailing
+  assigned-Space id on `query decorations` lines.
+- **Tests** — `window_conformance::{window_menu_opens_dismisses_and_is_keyboard_operable,
+  window_menu_runs_zoom_minimize_close_and_move_to_space}` and
+  `xwayland_conformance::x11_window_menu_runs_all_four_commands`. 9 new unit
+  tests in `window::menu`.
+- **Docs / ADR** — `docs/design/05-window-decorations.md` updated; ADR
+  `0002-window-menu-ownership.md`: the menu is compositor-owned and
+  shell-independent.
+
+Commands that work (from the repo root; `make` sets the toolchain env):
+
+- `cargo test -p dragonfruit-compositor --bin dragonfruit-compositor`
+  (153 unit tests).
+- `cargo test -p dragonfruit-compositor --test window_conformance` (10 tests).
+- `cargo test -p dragonfruit-compositor --test xwayland_conformance` (5 tests).
+- `make e2e` (all green). `cargo clippy --workspace --all-targets -- -D warnings`
+  and `cargo fmt --all -- --check` clean.
+
+Gotchas for later tasks:
+
+- The scope said "design-system menu components"; the compositor has no QML
+  or text renderer, so it reproduces the `ContextMenu` geometry and rules in
+  Rust. The shell QML component is not involved (ADR 0002).
+- A Control-left-click now opens the menu instead of dragging the window.
+- The menu snapshots Spaces at open; a workspace change while open leaves it
+  stale until dismissal.
+- Menu rendering is flat and label-less (T-04 draws labels/materials, T-14
+  reuses the model). The current Space is not marked in the submenu.
+- `window_menu_render_elements` draws only on the output containing the menu
+  anchor (the panel is clamped to that output).
+
+## Follow-ups
+
+- T-04: draw the window-menu labels/icons and the material pass (replaces
+  `WindowMenu::render_elements` only; keep the geometry/routing).
+- T-14: reuse `WindowMenu`/`WindowMenuCommand` for decoration themes; add the
+  current-Space check glyph to the Move to Space submenu.
+- T-01.6b: the nested walkthrough/capture for the window menu is batched with
+  the loop capture (no capture artifact in this unit).
+- Per-window scene-element refactor (T-04) still owns the stacked-titlebar /
+  menu interleaving limitation.

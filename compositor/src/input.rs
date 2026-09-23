@@ -77,7 +77,7 @@ use smithay::wayland::tablet_manager::{
 use crate::overview::{InputOwner, OverviewKind};
 use crate::shell::layer::KeyboardInteraction;
 use crate::state::DfState;
-use crate::window::WindowState;
+use crate::window::{MenuKey, WindowState};
 
 /// The chrome (shell layer) surface under a global-space point, with the
 /// surface origin and its keyboard-interaction policy.
@@ -197,6 +197,17 @@ where
                         .raw_latin_sym_or_raw_current_sym()
                         .unwrap_or_else(|| keysym.modified_sym())
                         .raw();
+                    // An open window menu is modal (T-01.4): it consumes
+                    // every key so a shortcut cannot fire underneath it. The
+                    // menu keys navigate/activate/dismiss it.
+                    if data.window_menu.is_some() {
+                        if key_state == KeyState::Pressed {
+                            if let Some(menu_key) = MenuKey::from_keysym(sym) {
+                                data.window_menu_key(menu_key);
+                            }
+                        }
+                        return FilterResult::Intercept(());
+                    }
                     if key_state == KeyState::Released {
                         if data.shortcuts.is_active(sym) {
                             data.shortcuts.note_release(sym);
@@ -255,6 +266,9 @@ where
             if state.update_titlebar_hover(location) {
                 state.needs_redraw = true;
             }
+            if state.window_menu_open() {
+                state.window_menu_hover(location);
+            }
             state.notify_activity();
         }
         InputEvent::PointerMotionAbsolute { event } => {
@@ -294,6 +308,9 @@ where
             if state.update_titlebar_hover(location) {
                 state.needs_redraw = true;
             }
+            if state.window_menu_open() {
+                state.window_menu_hover(location);
+            }
             state.notify_activity();
         }
         InputEvent::PointerButton { event } => {
@@ -313,15 +330,46 @@ where
             // on left-click only (T-10 section 13).
             if button_event.state == ButtonState::Pressed {
                 let location = pointer.current_location();
+                // An open window menu owns pointer input (T-01.4): a press
+                // inside activates a row and is consumed; a press outside
+                // dismisses it and falls through to normal routing.
+                if state.window_menu_open() && state.window_menu_click(location) {
+                    state.notify_activity();
+                    return;
+                }
                 if let Some((surface, _, _)) = chrome_under(state, location) {
                     // Chrome surfaces take keyboard focus only when their
                     // policy allows it (OnDemand/Exclusive); `None` ignores
                     // the click (T-07 FR-1).
                     state.focus_chrome_surface(&surface);
                 } else {
-                    if button_event.button == 0x110
-                    /* BTN_LEFT */
-                    {
+                    // Right-click or Control-click on the titlebar opens the
+                    // window menu (T-01.4). Like the left press, a
+                    // floating/zoomed titlebar is consulted only when no
+                    // client surface is under the point; a revealed
+                    // fullscreen titlebar wins even when one is.
+                    let is_left = button_event.button == 0x110; /* BTN_LEFT */
+                    let is_right = button_event.button == 0x111; /* BTN_RIGHT */
+                    let ctrl = state
+                        .seat
+                        .get_keyboard()
+                        .map(|keyboard| keyboard.modifier_state().ctrl)
+                        .unwrap_or(false);
+                    if is_right || (is_left && ctrl) {
+                        if let Some(window) = state.titlebar_window_at(location) {
+                            let client_surface = surface_under(state, location);
+                            let titlebar_wins = client_surface.is_none()
+                                || state.windows.state(&window) == Some(WindowState::Fullscreen);
+                            if titlebar_wins {
+                                state.activate_window(&window, serial);
+                                state.open_window_menu(&window, location);
+                                state.needs_redraw = true;
+                                state.notify_activity();
+                                return;
+                            }
+                        }
+                    }
+                    if is_left {
                         let client_surface = surface_under(state, location);
                         // The SSD titlebar/controls are compositor chrome.
                         // A floating/zoomed titlebar sits above the client

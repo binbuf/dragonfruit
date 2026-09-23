@@ -88,6 +88,28 @@ pub fn titlebar_render_elements(
     elements
 }
 
+/// Build the solid-fill elements for the open window menu (T-01.4), if any.
+///
+/// The menu is compositor chrome drawn above the titlebars on the output it
+/// was opened on. The panel geometry is clamped to that output when it opens,
+/// so the anchor's output is the one that draws it.
+pub fn window_menu_render_elements(
+    state: &DfState,
+    output: &Output,
+    scale: Scale<f64>,
+) -> Vec<SolidColorRenderElement> {
+    let Some(menu) = state.window_menu.as_ref() else {
+        return Vec::new();
+    };
+    let Some(output_geometry) = state.space.output_geometry(output) else {
+        return Vec::new();
+    };
+    if !output_geometry.contains(menu.anchor) {
+        return Vec::new();
+    }
+    menu.render_elements(scale, output_geometry.loc)
+}
+
 /// Collect presentation feedback for everything composited on `output`.
 pub fn take_presentation_feedback(
     state: &DfState,

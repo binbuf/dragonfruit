@@ -184,6 +184,11 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                     .into_iter()
                     .map(NestedOutputElements::Decoration),
             );
+            custom_elements.extend(
+                crate::render::window_menu_render_elements(state, &output, scale)
+                    .into_iter()
+                    .map(NestedOutputElements::Decoration),
+            );
             render_output(
                 &output,
                 renderer,

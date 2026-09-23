@@ -101,10 +101,11 @@ use crate::window::grab::{MoveGrab, ResizeGrab};
 use crate::window::popup::constrained_popup_geometry;
 use crate::window::resize::SizeConstraints;
 use crate::window::{
-    cascaded_geometry, centered_on, fullscreen_reveal_rect, DecorationTier, DoubleClickTracker,
-    ReservedZones, ShellWindowEvent, TitlebarDoubleClick, TitlebarElement, TrafficLightKind,
-    WindowDispatch, WindowEvent, WindowEventKind, WindowId, WindowInsets, WindowMenuCommand,
-    WindowModel, WindowState, CASCADE_STEP,
+    cascaded_geometry, centered_on, fullscreen_reveal_rect, ColorScheme, DecorationTier,
+    DoubleClickTracker, MenuActivation, MenuKey, MenuKeyOutcome, ReservedZones, ShellWindowEvent,
+    TitlebarDoubleClick, TitlebarElement, TrafficLightKind, WindowDispatch, WindowEvent,
+    WindowEventKind, WindowId, WindowInsets, WindowMenu, WindowMenuCommand, WindowModel,
+    WindowState, CASCADE_STEP,
 };
 use crate::workspace::WorkspaceModel;
 use crate::xwayland::XwaylandState;
@@ -317,6 +318,10 @@ pub struct DfState {
     pub titlebar_double_click: TitlebarDoubleClick,
     /// Double-click detection state for titlebar presses (T-01.3).
     pub titlebar_clicks: DoubleClickTracker,
+    /// The open window menu, if any (T-01.4). Compositor-owned policy: the
+    /// four commands resolve through [`DfState::window_menu_command`], the
+    /// same primitives the traffic lights and shell protocol use.
+    pub window_menu: Option<WindowMenu>,
 
     // --- workspace model (T-05) --------------------------------------------
     /// Per-output ordered Space lists, fullscreen Spaces, wallpaper, window
@@ -463,6 +468,7 @@ impl DfState {
             hovered_titlebar: None,
             titlebar_double_click: TitlebarDoubleClick::default(),
             titlebar_clicks: DoubleClickTracker::new(),
+            window_menu: None,
             workspaces: WorkspaceModel::new(),
             app_resolver: AppResolver::load(),
             xwayland: XwaylandState::default(),
@@ -1037,6 +1043,133 @@ impl DfState {
             serial,
             PointerFocus::Clear,
         );
+    }
+
+    /// Open the window menu for `window` at a global-space point (T-01.4).
+    ///
+    /// The panel snapshots the Spaces of the window's output and stays inside
+    /// that output. The menu owns no window state: it resolves to a
+    /// [`WindowMenuCommand`] and hands it to [`Self::window_menu_command`],
+    /// the same primitives the traffic lights and shell protocol use.
+    pub fn open_window_menu(&mut self, window: &Window, location: Point<f64, Logical>) {
+        let Some(id) = self.windows.id(window) else {
+            return;
+        };
+        let Some(bounds) = self.output_bounds_for(window) else {
+            return;
+        };
+        let spaces: Vec<(usize, String)> = self
+            .output_name_for(window)
+            .map(|output| {
+                self.workspaces
+                    .space_names(&output)
+                    .into_iter()
+                    .enumerate()
+                    .collect()
+            })
+            .unwrap_or_default();
+        let anchor = Point::from((location.x.floor() as i32, location.y.floor() as i32));
+        self.window_menu = Some(WindowMenu::open(
+            id,
+            anchor,
+            &spaces,
+            bounds,
+            ColorScheme::default(),
+        ));
+        self.needs_redraw = true;
+    }
+
+    /// Close the window menu, if one is open.
+    pub fn close_window_menu(&mut self) {
+        if self.window_menu.take().is_some() {
+            self.needs_redraw = true;
+        }
+    }
+
+    /// Whether a window menu is open (T-01.4 test/observation hook).
+    pub fn window_menu_open(&self) -> bool {
+        self.window_menu.is_some()
+    }
+
+    /// Route a pointer press at `location` to the open window menu (T-01.4).
+    ///
+    /// Returns whether the menu consumed the press. A press outside the panel
+    /// dismisses the menu and returns `false`, so the event continues to the
+    /// normal hit-testing (the click-away rule).
+    pub fn window_menu_click(&mut self, location: Point<f64, Logical>) -> bool {
+        let Some(menu) = self.window_menu.as_ref() else {
+            return false;
+        };
+        let point = Point::from((location.x.floor() as i32, location.y.floor() as i32));
+        if !menu.hit(point) {
+            self.close_window_menu();
+            return false;
+        }
+        let window_id = menu.window;
+        let outcome = self
+            .window_menu
+            .as_mut()
+            .map(|menu| menu.activate(point))
+            .unwrap_or(MenuActivation::None);
+        match outcome {
+            MenuActivation::Command(command) => {
+                if let Some(window) = self.window_by_id(window_id) {
+                    self.window_menu_command(&window, command);
+                }
+                self.window_menu = None;
+                self.needs_redraw = true;
+                true
+            }
+            MenuActivation::OpenSubmenu => {
+                self.needs_redraw = true;
+                true
+            }
+            MenuActivation::None => true,
+        }
+    }
+
+    /// Update the menu highlight from pointer motion (design-system hover
+    /// reveal, T-01.4). Returns whether the highlight changed.
+    pub fn window_menu_hover(&mut self, location: Point<f64, Logical>) -> bool {
+        let point = Point::from((location.x.floor() as i32, location.y.floor() as i32));
+        let changed = self
+            .window_menu
+            .as_mut()
+            .map(|menu| menu.hover(point))
+            .unwrap_or(false);
+        if changed {
+            self.needs_redraw = true;
+        }
+        changed
+    }
+
+    /// Route a keyboard key to the open window menu (T-01.4). Returns whether
+    /// the menu consumed the key: while open it owns Escape and navigation.
+    pub fn window_menu_key(&mut self, key: MenuKey) -> bool {
+        let Some(window_id) = self.window_menu.as_ref().map(|menu| menu.window) else {
+            return false;
+        };
+        let outcome = self
+            .window_menu
+            .as_mut()
+            .map(|menu| menu.handle_key(key))
+            .unwrap_or(MenuKeyOutcome::Ignored);
+        match outcome {
+            MenuKeyOutcome::Command(command) => {
+                if let Some(window) = self.window_by_id(window_id) {
+                    self.window_menu_command(&window, command);
+                }
+                self.window_menu = None;
+                self.needs_redraw = true;
+            }
+            MenuKeyOutcome::Changed => self.needs_redraw = true,
+            MenuKeyOutcome::Dismiss => {
+                self.window_menu = None;
+                self.needs_redraw = true;
+            }
+            MenuKeyOutcome::Ignored => {}
+        }
+        true
     }
 
     /// Ask a window's client to close. Wayland toplevels get
@@ -2134,6 +2267,16 @@ impl SeatHandler for DfState {
             None
         };
         let new_active = focused.and_then(|surface| self.window_for_surface(surface));
+        // A window menu is dismissed by focus loss (T-01.4): the design-system
+        // menu rules close on any focus change away from the menu's window.
+        if let Some(menu_window) = self.window_menu.as_ref().map(|menu| menu.window) {
+            let focused_id = new_active
+                .as_ref()
+                .and_then(|window| self.windows.id(window));
+            if focused_id != Some(menu_window) {
+                self.close_window_menu();
+            }
+        }
         if !chrome_focus && new_active != self.active_window {
             if let Some(old) = self.active_window.clone() {
                 // The old window lost focus: dismiss its popups (FR-11)

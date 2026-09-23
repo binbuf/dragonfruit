@@ -17,16 +17,18 @@
 pub mod decoration;
 pub mod events;
 pub mod grab;
+pub mod menu;
 pub mod placement;
 pub mod popup;
 pub mod resize;
 pub mod state;
 
 pub use decoration::{
-    fullscreen_reveal_rect, DoubleClickTracker, TitlebarDoubleClick, TitlebarElement,
+    fullscreen_reveal_rect, ColorScheme, DoubleClickTracker, TitlebarDoubleClick, TitlebarElement,
     TrafficLightKind, WindowInsets,
 };
 pub use events::{ShellWindowEvent, WindowDispatch, WindowEventKind};
+pub use menu::{MenuActivation, MenuKey, MenuKeyOutcome, WindowMenu};
 #[allow(unused_imports)]
 pub use placement::{cascaded_geometry, centered_on, Cascade, CASCADE_SLOTS, CASCADE_STEP};
 #[allow(unused_imports)]

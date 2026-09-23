@@ -30,6 +30,7 @@
 //! touch-down <slot> <x-norm> <y-norm> | touch-motion <slot> <x-norm> <y-norm>
 //! touch-up <slot> | touch-frame
 //! query decorations
+//! query window-menu
 //! set titlebar-double-click zoom|minimize|none
 //! ```
 //!
@@ -37,8 +38,12 @@
 //! conformance tests (T-01.1/T-01.2): instead of injecting input, the
 //! compositor replies to the sender with one `decoration` line per tracked
 //! window (window id, server-side flag, titlebar rect, content rect, window
-//! state) followed by `end`. A datagram socket that never receives replies
-//! is unaffected.
+//! state, assigned Space id) followed by `end`. A datagram socket that never
+//! receives replies is unaffected.
+//!
+//! `query window-menu` (T-01.4) replies with one `window-menu` line
+//! describing the open menu (or `0` when closed) followed by `end`, so the
+//! conformance test can aim at rows and assert dismissal.
 //!
 //! `set titlebar-double-click` sets the session's `dock.titlebarDoubleClick`
 //! behavior (T-01.3) so the conformance test can prove the configured
@@ -608,6 +613,8 @@ pub enum SyntheticCommand {
     TouchFrame,
     /// Read-only SSD titlebar introspection (T-01.1).
     QueryDecorations,
+    /// Read-only window-menu introspection (T-01.4).
+    QueryWindowMenu,
     /// Set `dock.titlebarDoubleClick` for the session (T-01.3 test plumbing).
     SetTitlebarDoubleClick(TitlebarDoubleClick),
 }
@@ -710,7 +717,10 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
         "touch-frame" => SyntheticCommand::TouchFrame,
         "query" => match parts.next() {
             Some("decorations") => SyntheticCommand::QueryDecorations,
-            _ => return Err("query requires a known subject (decorations)".into()),
+            Some("window-menu") => SyntheticCommand::QueryWindowMenu,
+            _ => {
+                return Err("query requires a known subject (decorations, window-menu)".into());
+            }
         },
         "set" => match parts.next() {
             Some("titlebar-double-click") => {
@@ -809,6 +819,9 @@ impl SyntheticCommand {
             SyntheticCommand::QueryDecorations => {
                 unreachable!("query decorations is handled by apply_datagram")
             }
+            SyntheticCommand::QueryWindowMenu => {
+                unreachable!("query window-menu is handled by apply_datagram")
+            }
             // A settings command, not an input event.
             SyntheticCommand::SetTitlebarDoubleClick(_) => {
                 unreachable!("set titlebar-double-click is handled by apply_datagram")
@@ -846,6 +859,15 @@ fn apply_datagram_reply(
                 }
                 applied += 1;
             }
+            Ok(SyntheticCommand::QueryWindowMenu) => {
+                if let Some((socket, peer)) = &reply {
+                    let report = window_menu_report(state);
+                    if let Some(path) = peer.as_pathname() {
+                        let _ = socket.send_to(report.as_bytes(), path);
+                    }
+                }
+                applied += 1;
+            }
             Ok(SyntheticCommand::SetTitlebarDoubleClick(mode)) => {
                 state.set_titlebar_double_click(mode);
                 applied += 1;
@@ -866,10 +888,11 @@ fn apply_datagram_reply(
 /// The `query decorations` report: one line per tracked window.
 ///
 /// `decoration <id> <server_side> <tbx> <tby> <tbw> <tbh> <cx> <cy> <cw> <ch>
-/// <state>` followed by `end`. The titlebar fields are zero when the
+/// <state> <space>` followed by `end`. The titlebar fields are zero when the
 /// compositor draws no titlebar (CSD, hidden, or fullscreen); `<state>` is
 /// `floating`, `zoomed`, `minimized`, or `fullscreen` (T-01.2 makes the
-/// minimize/zoom transitions observable).
+/// minimize/zoom transitions observable). `<space>` is the assigned Space id,
+/// or `-1` when unassigned (T-01.4 Move to Space is observable through it).
 fn decoration_report(state: &DfState) -> String {
     let mut out = String::new();
     for window in state.windows.windows() {
@@ -894,13 +917,49 @@ fn decoration_report(state: &DfState) -> String {
             .state(window)
             .map(|state| state.name())
             .unwrap_or("unknown");
+        let space = state
+            .workspaces
+            .window_space(id)
+            .map(|space| space.0 as i64)
+            .unwrap_or(-1);
         out.push_str(&format!(
-            "decoration {} {} {tx} {ty} {tw} {th} {} {} {} {} {window_state}\n",
+            "decoration {} {} {tx} {ty} {tw} {th} {} {} {} {} {window_state} {space}\n",
             id.0, ssd as u32, content.loc.x, content.loc.y, content.size.w, content.size.h,
         ));
     }
     out.push_str("end\n");
     out
+}
+
+/// The `query window-menu` report (T-01.4).
+///
+/// `window-menu <open> <window> <x> <y> <w> <h> <highlighted> <submenu_open>
+/// <submenu_highlighted> <sx> <sy> <sw> <sh>` followed by `end`. When closed
+/// every numeric field is zero (highlight fields are `-1` when nothing is
+/// highlighted). The `<window>` is the compositor window id the menu acts on;
+/// the `s*` fields are the submenu panel rect (laid out even while closed).
+fn window_menu_report(state: &DfState) -> String {
+    let line = match state.window_menu.as_ref() {
+        Some(menu) => format!(
+            "window-menu 1 {} {} {} {} {} {} {} {} {} {} {} {}",
+            menu.window.0,
+            menu.rect.loc.x,
+            menu.rect.loc.y,
+            menu.rect.size.w,
+            menu.rect.size.h,
+            menu.highlighted.map(|index| index as i64).unwrap_or(-1),
+            menu.open_submenu as u32,
+            menu.submenu_highlighted
+                .map(|index| index as i64)
+                .unwrap_or(-1),
+            menu.submenu_rect.loc.x,
+            menu.submenu_rect.loc.y,
+            menu.submenu_rect.size.w,
+            menu.submenu_rect.size.h,
+        ),
+        None => "window-menu 0 0 0 0 0 0 -1 0 -1 0 0 0 0".to_string(),
+    };
+    format!("{line}\nend\n")
 }
 
 /// Bind the synthetic-input socket and insert its event source.
