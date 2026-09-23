@@ -4,7 +4,7 @@
 //! The per-ticket conformance suites each exercise one subsystem in
 //! isolation. This test composes the whole Foundation vertical slice in a
 //! single live session, the way the phase exit criterion describes it
-//! (docs/tasks/00-index.md, "Phase exit criteria" 1):
+//! (docs/tasks/legacy/00-index.md, "Phase exit criteria" 1):
 //!
 //! 1. Start the compositor on the headless backend and provision a shell
 //!    launch token (T-01/T-02/T-07).

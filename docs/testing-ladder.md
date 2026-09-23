@@ -39,7 +39,7 @@ Extras:
   `XDG_CURRENT_DESKTOP=dragonfruit` injected).
 - `make e2e` — the Foundation milestone harness: one headless session
   with a shell client, a Wayland app, and an X11 app attached at once
-  (`docs/tasks/00-index.md` phase 1). It asserts the private-protocol
+  (`docs/tasks/legacy/00-index.md` phase 1). It asserts the private-protocol
   handshake, chrome reserved zones, window/workspace enumeration and
   control, and a clean teardown. It needs no display, so it is the
   scripted form of the "does the whole vertical slice work together"
