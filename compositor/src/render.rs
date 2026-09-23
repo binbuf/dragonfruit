@@ -8,6 +8,7 @@
 
 use std::time::Duration;
 
+use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::element::surface::{
     render_elements_from_surface_tree, WaylandSurfaceRenderElement,
 };
@@ -58,6 +59,31 @@ where
             1.0,
             Kind::Unspecified,
         ));
+    }
+    elements
+}
+
+/// Build the solid-fill SSD titlebar elements for the windows composited on
+/// `output` (T-01.1). These are custom elements, so they composite *above*
+/// the window [`Space`](smithay::desktop::Space) — the titlebar sits above
+/// its own client surface. Chrome (`chrome_render_elements`) is layered even
+/// higher by the backend's element ordering.
+pub fn titlebar_render_elements(
+    state: &DfState,
+    output: &Output,
+    scale: Scale<f64>,
+) -> Vec<SolidColorRenderElement> {
+    let Some(output_geometry) = state.space.output_geometry(output) else {
+        return Vec::new();
+    };
+    let mut elements = Vec::new();
+    for window in state.space.elements() {
+        if !state.space.outputs_for_element(window).contains(output) {
+            continue;
+        }
+        if let Some(titlebar) = state.titlebar_element(window) {
+            elements.extend(titlebar.render_elements(scale, output_geometry.loc));
+        }
     }
     elements
 }

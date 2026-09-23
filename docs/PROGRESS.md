@@ -1,5 +1,14 @@
 # Progress Notes
 
+<!-- symphony:digest:start -->
+## Key facts (maintained by symphony — do not edit)
+
+- **How this plan runs**: 168 one-session tasks; execution order is [ROADMAP.md](ROADMAP.md). Task ids; 158 nested/human tasks run first; the 10 `[hw]` tasks are Phase 18 (hardware
+- **Environment / toolchain**: Qt/CMake toolchain at `~/.local/df-toolchain/usr` (Qt 6.11, CMake 4.3,; Host is Fedora 44 with a KDE Wayland session (`wayland-0`); the nested backend
+- **Landed foundation**: Compositor core (nested/DRM/headless, calloop, damage-driven rendering), input
+- **T01 — T-01.1 Titlebar render element**: **State: done.** The SSD titlebar element exists, is sized from the generated; **`compositor/src/window/decoration.rs`** — `TitlebarElement`,
+<!-- symphony:digest:end -->
+
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
 "Key facts" digest near the top; each session appends a `## TNN` section with
 environment quirks, decisions that go beyond the design docs, and follow-ups the
@@ -54,3 +63,64 @@ design system + gallery goldens, menu bar, Dock, overview state machine, dev
 workflow (`make dev`/`e2e`/`soak`). Details and follow-ups are in
 [tasks/legacy/PROGRESS.md](tasks/legacy/PROGRESS.md); the new plan builds on this
 rather than rebuilding it.
+## T01 — T-01.1 Titlebar render element
+
+**State: done.** The SSD titlebar element exists, is sized from the generated
+tokens, and carries assertable geometry/insets; Tier-3 (CSD) windows get none.
+
+What landed:
+
+- **`compositor/src/window/decoration.rs`** — `TitlebarElement`,
+  `WindowInsets`, `TrafficLightKind`/`TrafficLightButton`, `ColorScheme`.
+  `TitlebarElement::for_window(window_id, content, tier, state, focused,
+  hovered)` returns `None` for `ClientSide`, for fullscreen, and for minimized
+  windows. The titlebar rect is directly *above* the content
+  (`y = content.y - TITLEBAR_HEIGHT`), so the client area sits below it. The
+  flat fill and the three left-side traffic lights are emitted as
+  `SolidColorRenderElement`s by `render_elements(scale, output_origin)`
+  (hover reveals axis-aligned glyph marks; disabled draws the muted fill with
+  no glyph). `TITLEBAR_HEIGHT == 40` from `component.titlebar.height`.
+- **`compositor/src/render.rs::titlebar_render_elements`** — custom elements
+  above the window `Space`, one list per output.
+- **Backends** — `NestedOutputElements` (nested) and `DrmOutputElements`
+  gained a `Decoration = SolidColorRenderElement` variant; both compose the
+  titlebar elements. Headless has no renderer and is unaffected.
+- **Tier wiring** — Wayland toplevels get `DecorationTier::ServerSide` by
+  default and `ClientSide` only for an explicit `xdg-decoration` CSD request
+  (`state.rs::toplevel_decoration_tier`; runtime changes via
+  `apply_decoration_mode`). X11 already set the tier (unchanged).
+- **Geometry** — `DfState::insets_for` / `titlebar_element`. `zoom_window`
+  insets its usable target by the titlebar, so a zoomed client is configured
+  `usable - 40` tall through the one `configure_window_size` path.
+- **Test plumbing** — the T-03 synthetic-input socket accepts
+  `query decorations` and replies with `decoration <id> <ssd> <tbx> <tby>
+  <tbw> <tbh> <cx> <cy> <cw> <ch>` lines + `end`. The sender must bind its
+  socket (an unbound datagram has no address to reply to); `SyntheticInput`
+  in both test files now binds a `.reply` path.
+
+Commands that work (from the repo root, Makefile sets the env):
+
+- `cargo test -p dragonfruit-compositor --bin dragonfruit-compositor` (137 unit
+  tests, 10 new in `window::decoration`).
+- `cargo test -p dragonfruit-compositor --test window_conformance` (5 tests;
+  `ssd_toplevel_carries_a_titlebar_and_csd_does_not` is the T-01.1 gate).
+- `cargo test -p dragonfruit-compositor --test xwayland_conformance`
+  (`x11_window_carries_the_ssd_titlebar`).
+- `make e2e` (all green).
+
+Gotchas for later tasks:
+
+- `window_conformance::toplevel_zoom_and_fullscreen_round_trip_over_protocol`
+  now expects the maximize configure height `OUTPUT_H - TITLEBAR_HEIGHT`; the
+  floating restore and fullscreen sizes are unchanged (fullscreen hides the
+  titlebar and reserves no inset).
+- The titlebar is *above* the client geometry, so placement/zoom must keep the
+  total decorated bounds in mind; only zoom applies the inset so far.
+- The traffic-light glyphs are placeholder solid marks — T-04 owns the real
+  material/icon pass; `ColorScheme` defaults to `Dark` until T-08 settings.
+- Titlebars are custom elements composited above the whole window `Space`, so
+  with stacked windows a lower window's titlebar can draw over a higher
+  window's content. Correct interleaving needs the per-window scene-element
+  refactor T-04 is already due to do; note it there.
+- Hover is always `false` in `DfState::titlebar_element` until T-01.2; the
+  element already exposes button rects and `button_at` for its hit-test.

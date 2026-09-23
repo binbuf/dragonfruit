@@ -32,6 +32,7 @@ use smithay::backend::libinput::{LibinputInputBackend, LibinputSessionInterface}
 use smithay::backend::renderer::element::memory::{
     MemoryRenderBuffer, MemoryRenderBufferRenderElement,
 };
+use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::element::{AsRenderElements, Kind};
 use smithay::backend::renderer::gles::GlesRenderer;
@@ -85,6 +86,8 @@ render_elements! {
     Pointer=PointerRenderElement<R>,
     Space=SpaceRenderElements<R, E>,
     Chrome=WaylandSurfaceRenderElement<R>,
+    // SSD titlebars (T-01.1): flat solid fills, above the window space.
+    Decoration=SolidColorRenderElement,
 }
 
 render_elements! {
@@ -995,6 +998,13 @@ fn render_surface(
         _,
         DrmOutputElements<UdevRenderer<'_>, WaylandSurfaceRenderElement<UdevRenderer<'_>>>,
     >(&mut renderer, state, &surface.output, scale));
+
+    // SSD titlebars (T-01.1) composite above their client surfaces.
+    custom_elements.extend(
+        crate::render::titlebar_render_elements(state, &surface.output, scale)
+            .into_iter()
+            .map(DrmOutputElements::Decoration),
+    );
 
     let frame_mode = FrameFlags::DEFAULT; // direct scanout where possible
     let wallpaper = state.wallpaper_color_for(&surface.output);

@@ -29,7 +29,14 @@
 //! pinch-begin <fingers> | pinch-update <scale> <rotation> | pinch-end | pinch-cancel
 //! touch-down <slot> <x-norm> <y-norm> | touch-motion <slot> <x-norm> <y-norm>
 //! touch-up <slot> | touch-frame
+//! query decorations
 //! ```
+//!
+//! `query decorations` is a read-only introspection aid for the SSD
+//! conformance tests (T-01.1): instead of injecting input, the compositor
+//! replies to the sender with one `decoration` line per tracked window
+//! (window id, server-side flag, titlebar rect, content rect) followed by
+//! `end`. A datagram socket that never receives replies is unaffected.
 
 use std::os::unix::net::UnixDatagram;
 use std::path::{Path, PathBuf};
@@ -592,6 +599,8 @@ pub enum SyntheticCommand {
         slot: u32,
     },
     TouchFrame,
+    /// Read-only SSD titlebar introspection (T-01.1).
+    QueryDecorations,
 }
 
 fn parse_state(token: &str) -> Result<KeyState, String> {
@@ -690,6 +699,10 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
             slot: parse_u32(parts.next().ok_or("touch-up requires a slot")?)?,
         },
         "touch-frame" => SyntheticCommand::TouchFrame,
+        "query" => match parts.next() {
+            Some("decorations") => SyntheticCommand::QueryDecorations,
+            _ => return Err("query requires a known subject (decorations)".into()),
+        },
         other => return Err(format!("unknown command {other:?}")),
     };
     if parts.next().is_some() {
@@ -771,6 +784,11 @@ impl SyntheticCommand {
             SyntheticCommand::TouchFrame => InputEvent::TouchFrame {
                 event: SyntheticTouchFrameEvent { time },
             },
+            // Read-only query, never turned into an event (apply_datagram
+            // intercepts it and replies to the sender).
+            SyntheticCommand::QueryDecorations => {
+                unreachable!("query decorations is handled by apply_datagram")
+            }
         }
     }
 }
@@ -783,7 +801,11 @@ pub const ENV_SYNTHETIC_INPUT: &str = "DRAGONFRUIT_SYNTHETIC_INPUT";
 ///
 /// Returns the number of commands applied. Malformed lines are logged and
 /// skipped, never fatal.
-pub fn apply_datagram(state: &mut DfState, payload: &[u8]) -> usize {
+fn apply_datagram_reply(
+    state: &mut DfState,
+    payload: &[u8],
+    reply: Option<(&UnixDatagram, std::os::unix::net::SocketAddr)>,
+) -> usize {
     let text = String::from_utf8_lossy(payload);
     let mut applied = 0;
     for line in text.lines() {
@@ -791,6 +813,15 @@ pub fn apply_datagram(state: &mut DfState, payload: &[u8]) -> usize {
             continue;
         }
         match parse_command(line) {
+            Ok(SyntheticCommand::QueryDecorations) => {
+                if let Some((socket, peer)) = &reply {
+                    let report = decoration_report(state);
+                    if let Some(path) = peer.as_pathname() {
+                        let _ = socket.send_to(report.as_bytes(), path);
+                    }
+                }
+                applied += 1;
+            }
             Ok(command) => {
                 let now = state.now_msec() as u32;
                 crate::input::process_input_event(state, command.into_event(now));
@@ -802,6 +833,39 @@ pub fn apply_datagram(state: &mut DfState, payload: &[u8]) -> usize {
         }
     }
     applied
+}
+
+/// The `query decorations` report: one line per tracked window.
+///
+/// `decoration <id> <server_side> <tbx> <tby> <tbw> <tbh> <cx> <cy> <cw> <ch>`
+/// followed by `end`. The titlebar fields are zero when the compositor draws
+/// no titlebar (CSD, hidden, or fullscreen).
+fn decoration_report(state: &DfState) -> String {
+    let mut out = String::new();
+    for window in state.windows.windows() {
+        let Some(id) = state.windows.id(window) else {
+            continue;
+        };
+        let content = state.windows.geometry(window).unwrap_or_default();
+        let element = state.titlebar_element(window);
+        let ssd = element.is_some();
+        let (tx, ty, tw, th) = element
+            .map(|element| {
+                (
+                    element.titlebar.loc.x,
+                    element.titlebar.loc.y,
+                    element.titlebar.size.w,
+                    element.titlebar.size.h,
+                )
+            })
+            .unwrap_or((0, 0, 0, 0));
+        out.push_str(&format!(
+            "decoration {} {} {tx} {ty} {tw} {th} {} {} {} {}\n",
+            id.0, ssd as u32, content.loc.x, content.loc.y, content.size.w, content.size.h,
+        ));
+    }
+    out.push_str("end\n");
+    out
 }
 
 /// Bind the synthetic-input socket and insert its event source.
@@ -830,8 +894,8 @@ pub fn install(state: &mut DfState, path: &Path) -> Result<(), String> {
                 let mut buf = [0u8; 4096];
                 loop {
                     match socket.recv_from(&mut buf) {
-                        Ok((len, _)) => {
-                            apply_datagram(state, &buf[..len]);
+                        Ok((len, peer)) => {
+                            apply_datagram_reply(state, &buf[..len], Some((&*socket, peer)));
                         }
                         Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => break,
                         Err(err) => {

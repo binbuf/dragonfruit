@@ -14,6 +14,7 @@
 //! for stacking (`Space`) and focus (`Seat`); this module adds the state
 //! those layers do not carry.
 
+pub mod decoration;
 pub mod events;
 pub mod grab;
 pub mod placement;
@@ -21,6 +22,7 @@ pub mod popup;
 pub mod resize;
 pub mod state;
 
+pub use decoration::{TitlebarElement, WindowInsets};
 pub use events::{ShellWindowEvent, WindowDispatch, WindowEventKind};
 #[allow(unused_imports)]
 pub use placement::{cascaded_geometry, centered_on, Cascade, CASCADE_SLOTS, CASCADE_STEP};
