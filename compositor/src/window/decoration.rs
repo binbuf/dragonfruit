@@ -15,6 +15,12 @@
 //!   machine. This module still owns only geometry/drawing — it never calls
 //!   a window action itself.
 //!
+//! T-01.3 adds drag-to-move (the press is handed to the existing interactive
+//! move grab), double-click dispatch ([`TitlebarDoubleClick`] honoring
+//! `dock.titlebarDoubleClick`), and the fullscreen hover reveal: a fullscreen
+//! window's titlebar overlays the top of its content and is only laid out
+//! while `hovered` is set from the reveal strip.
+//!
 //! The client's own input regions are untouched: nothing here routes input.
 
 use smithay::backend::renderer::element::solid::SolidColorRenderElement;
@@ -31,6 +37,21 @@ use crate::window::{DecorationTier, WindowId, WindowState};
 
 /// The logical height of the SSD titlebar, from the design tokens.
 pub const TITLEBAR_HEIGHT: i32 = titlebar::HEIGHT as i32;
+
+/// Two titlebar presses within this many milliseconds count as a
+/// double-click (T-01.3).
+pub const TITLEBAR_DOUBLE_CLICK_MS: u64 = 400;
+
+/// A double-click must land within this many logical pixels of the first
+/// press (T-01.3); the window may have shifted a little under the move grab.
+pub const TITLEBAR_DOUBLE_CLICK_SLOP: i32 = 4;
+
+/// The top strip of a fullscreen window's content whose hover reveals the
+/// titlebar (T-01.3). When revealed the titlebar overlays exactly this
+/// strip; fullscreen reserves no inset.
+pub fn fullscreen_reveal_rect(content: Rectangle<i32, Logical>) -> Rectangle<i32, Logical> {
+    Rectangle::new(content.loc, (content.size.w, TITLEBAR_HEIGHT).into())
+}
 
 /// The design-system color scheme the titlebar draws from. The compositor's
 /// live scheme follows desktop settings (T-08); until then the default is
@@ -163,6 +184,91 @@ pub struct TrafficLightButton {
     pub enabled: bool,
 }
 
+/// What a titlebar double-click does (T-01.3), from the shell's
+/// `dock.titlebarDoubleClick` setting. The compositor default is `Zoom`;
+/// the live value follows settings in T-08.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TitlebarDoubleClick {
+    #[default]
+    Zoom,
+    Minimize,
+    None,
+}
+
+impl TitlebarDoubleClick {
+    /// Parse the shell setting spelling (`zoom` | `minimize` | `none`).
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "zoom" => Some(TitlebarDoubleClick::Zoom),
+            "minimize" => Some(TitlebarDoubleClick::Minimize),
+            "none" => Some(TitlebarDoubleClick::None),
+            _ => None,
+        }
+    }
+
+    pub const fn name(self) -> &'static str {
+        match self {
+            TitlebarDoubleClick::Zoom => "zoom",
+            TitlebarDoubleClick::Minimize => "minimize",
+            TitlebarDoubleClick::None => "none",
+        }
+    }
+}
+
+/// One recorded titlebar press, the basis of double-click detection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TitlebarClick {
+    pub window: WindowId,
+    pub time_msec: u64,
+    pub location: Point<i32, Logical>,
+}
+
+/// Double-click detection for titlebar presses (T-01.3). A press is the
+/// second of a double-click when it lands on the same window, within
+/// [`TITLEBAR_DOUBLE_CLICK_SLOP`] logical pixels and
+/// [`TITLEBAR_DOUBLE_CLICK_MS`] milliseconds of the previous press.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct DoubleClickTracker {
+    last: Option<TitlebarClick>,
+}
+
+impl DoubleClickTracker {
+    pub fn new() -> Self {
+        DoubleClickTracker::default()
+    }
+
+    /// Record a press and report whether it is the second of a double-click.
+    /// A double-click consumes the pair, so a third press starts fresh.
+    pub fn register(
+        &mut self,
+        window: WindowId,
+        location: Point<i32, Logical>,
+        now_msec: u64,
+    ) -> bool {
+        let double = self.last.is_some_and(|last| {
+            last.window == window
+                && now_msec.saturating_sub(last.time_msec) <= TITLEBAR_DOUBLE_CLICK_MS
+                && (last.location.x - location.x).abs() <= TITLEBAR_DOUBLE_CLICK_SLOP
+                && (last.location.y - location.y).abs() <= TITLEBAR_DOUBLE_CLICK_SLOP
+        });
+        self.last = if double {
+            None
+        } else {
+            Some(TitlebarClick {
+                window,
+                time_msec: now_msec,
+                location,
+            })
+        };
+        double
+    }
+
+    /// Forget any pending press (e.g. after a move starts or focus changes).
+    pub fn reset(&mut self) {
+        self.last = None;
+    }
+}
+
 /// A fully resolved SSD titlebar: geometry, insets, controls, and the
 /// transient draw state (focus/hover) for one window in one frame.
 #[derive(Debug, Clone, PartialEq)]
@@ -185,7 +291,9 @@ impl TitlebarElement {
     ///
     /// * Tier 3 (client-side decoration) never gets a compositor titlebar
     ///   (the dignity rule, [05-window-decorations.md]).
-    /// * Fullscreen hides the titlebar (T-01.3 adds the hover reveal).
+    /// * Fullscreen hides the titlebar until the pointer hovers the top
+    ///   strip (`hovered`); when revealed it overlays the top of the
+    ///   content and reserves no inset (T-01.3).
     /// * Minimized windows are unmapped.
     pub fn for_window(
         window: WindowId,
@@ -198,17 +306,26 @@ impl TitlebarElement {
         if tier != DecorationTier::ServerSide {
             return None;
         }
-        if !matches!(state, WindowState::Floating | WindowState::Zoomed) {
-            return None;
-        }
         if content.size.w <= 0 || content.size.h <= 0 {
             return None;
         }
-        let insets = WindowInsets::for_tier(tier);
-        let titlebar = Rectangle::new(
-            (content.loc.x, content.loc.y - insets.top).into(),
-            (content.size.w, insets.top).into(),
-        );
+        let (insets, titlebar) = match state {
+            WindowState::Floating | WindowState::Zoomed => {
+                let insets = WindowInsets::for_tier(tier);
+                let titlebar = Rectangle::new(
+                    (content.loc.x, content.loc.y - insets.top).into(),
+                    (content.size.w, insets.top).into(),
+                );
+                (insets, titlebar)
+            }
+            WindowState::Fullscreen => {
+                if !hovered {
+                    return None;
+                }
+                (WindowInsets::NONE, fullscreen_reveal_rect(content))
+            }
+            WindowState::Minimized => return None,
+        };
         let buttons = Self::layout_buttons(titlebar);
         Some(TitlebarElement {
             window,
@@ -267,8 +384,8 @@ impl TitlebarElement {
     }
 
     /// Whether the button cluster's glyphs are revealed. The design reveals
-    /// them on cluster hover (fullscreen hover reveal is T-01.3), staying
-    /// colorless otherwise.
+    /// them on cluster hover; a fullscreen titlebar only exists while its
+    /// reveal strip is hovered, so it reveals too (T-01.3).
     pub fn revealed(&self) -> bool {
         self.hovered
     }
@@ -443,31 +560,111 @@ mod tests {
     }
 
     #[test]
-    fn fullscreen_and_minimized_have_no_titlebar() {
-        for state in [WindowState::Fullscreen, WindowState::Minimized] {
-            assert_eq!(
-                TitlebarElement::for_window(
-                    window_id(),
-                    rect(0, 0, 200, 150),
-                    DecorationTier::ServerSide,
-                    state,
-                    true,
-                    false,
-                ),
-                None,
-                "{state:?} must not carry a titlebar"
-            );
-        }
-        // Zoomed windows do.
-        assert!(TitlebarElement::for_window(
+    fn minimized_never_has_a_titlebar() {
+        assert_eq!(
+            TitlebarElement::for_window(
+                window_id(),
+                rect(0, 0, 200, 150),
+                DecorationTier::ServerSide,
+                WindowState::Minimized,
+                true,
+                true,
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn fullscreen_titlebar_is_hidden_until_the_reveal_strip_is_hovered() {
+        let content = rect(0, 0, 1280, 720);
+        // Not hovered: fullscreen draws nothing.
+        assert_eq!(
+            TitlebarElement::for_window(
+                window_id(),
+                content,
+                DecorationTier::ServerSide,
+                WindowState::Fullscreen,
+                true,
+                false,
+            ),
+            None
+        );
+        // Hovered: the titlebar overlays the top of the content and reserves
+        // no inset.
+        let revealed = TitlebarElement::for_window(
             window_id(),
-            rect(0, 0, 200, 150),
+            content,
             DecorationTier::ServerSide,
-            WindowState::Zoomed,
+            WindowState::Fullscreen,
             true,
-            false,
+            true,
         )
-        .is_some());
+        .expect("hovered fullscreen titlebar");
+        assert_eq!(revealed.insets, WindowInsets::NONE);
+        assert_eq!(revealed.titlebar, rect(0, 0, 1280, TITLEBAR_HEIGHT));
+        assert_eq!(revealed.titlebar.loc, revealed.content.loc);
+        assert!(revealed.revealed());
+    }
+
+    #[test]
+    fn fullscreen_reveal_rect_is_the_top_strip() {
+        let content = rect(10, 20, 800, 600);
+        assert_eq!(
+            fullscreen_reveal_rect(content),
+            rect(10, 20, 800, TITLEBAR_HEIGHT)
+        );
+    }
+
+    #[test]
+    fn double_click_tracker_pairs_presses_on_the_same_window() {
+        let mut tracker = DoubleClickTracker::new();
+        let id = window_id();
+        let at = Point::from((100, 20));
+        assert!(!tracker.register(id, at, 1000));
+        assert!(tracker.register(id, at, 1200), "second press is a double");
+        // The pair is consumed: a third press starts a new pair.
+        assert!(!tracker.register(id, at, 1300));
+    }
+
+    #[test]
+    fn double_click_tracker_rejects_far_or_slow_or_other_window_presses() {
+        let id = window_id();
+        let other = WindowId(2);
+        let at = Point::from((100, 20));
+
+        let mut tracker = DoubleClickTracker::new();
+        tracker.register(id, at, 1000);
+        assert!(!tracker.register(id, at, 1000 + TITLEBAR_DOUBLE_CLICK_MS + 1));
+
+        let mut tracker = DoubleClickTracker::new();
+        tracker.register(id, at, 1000);
+        assert!(!tracker.register(
+            id,
+            Point::from((100 + TITLEBAR_DOUBLE_CLICK_SLOP + 1, 20)),
+            1100
+        ));
+
+        let mut tracker = DoubleClickTracker::new();
+        tracker.register(id, at, 1000);
+        assert!(!tracker.register(other, at, 1100));
+    }
+
+    #[test]
+    fn titlebar_double_click_parses_the_shell_setting() {
+        assert_eq!(
+            TitlebarDoubleClick::parse("zoom"),
+            Some(TitlebarDoubleClick::Zoom)
+        );
+        assert_eq!(
+            TitlebarDoubleClick::parse("minimize"),
+            Some(TitlebarDoubleClick::Minimize)
+        );
+        assert_eq!(
+            TitlebarDoubleClick::parse("none"),
+            Some(TitlebarDoubleClick::None)
+        );
+        assert_eq!(TitlebarDoubleClick::parse("fill"), None);
+        assert_eq!(TitlebarDoubleClick::default(), TitlebarDoubleClick::Zoom);
     }
 
     #[test]

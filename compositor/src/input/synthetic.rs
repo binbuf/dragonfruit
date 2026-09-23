@@ -30,6 +30,7 @@
 //! touch-down <slot> <x-norm> <y-norm> | touch-motion <slot> <x-norm> <y-norm>
 //! touch-up <slot> | touch-frame
 //! query decorations
+//! set titlebar-double-click zoom|minimize|none
 //! ```
 //!
 //! `query decorations` is a read-only introspection aid for the SSD
@@ -38,6 +39,10 @@
 //! window (window id, server-side flag, titlebar rect, content rect, window
 //! state) followed by `end`. A datagram socket that never receives replies
 //! is unaffected.
+//!
+//! `set titlebar-double-click` sets the session's `dock.titlebarDoubleClick`
+//! behavior (T-01.3) so the conformance test can prove the configured
+//! action, not only the default `zoom`.
 
 use std::os::unix::net::UnixDatagram;
 use std::path::{Path, PathBuf};
@@ -55,6 +60,7 @@ use smithay::reexports::calloop::generic::Generic;
 use smithay::reexports::calloop::{Interest, Mode, PostAction};
 
 use crate::state::DfState;
+use crate::window::TitlebarDoubleClick;
 
 /// Marker type defining the synthetic [`InputBackend`] types.
 #[derive(Debug)]
@@ -602,6 +608,8 @@ pub enum SyntheticCommand {
     TouchFrame,
     /// Read-only SSD titlebar introspection (T-01.1).
     QueryDecorations,
+    /// Set `dock.titlebarDoubleClick` for the session (T-01.3 test plumbing).
+    SetTitlebarDoubleClick(TitlebarDoubleClick),
 }
 
 fn parse_state(token: &str) -> Result<KeyState, String> {
@@ -704,6 +712,17 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
             Some("decorations") => SyntheticCommand::QueryDecorations,
             _ => return Err("query requires a known subject (decorations)".into()),
         },
+        "set" => match parts.next() {
+            Some("titlebar-double-click") => {
+                let value = parts
+                    .next()
+                    .ok_or("set titlebar-double-click requires a mode")?;
+                let mode = TitlebarDoubleClick::parse(value)
+                    .ok_or_else(|| format!("expected zoom|minimize|none, got {value:?}"))?;
+                SyntheticCommand::SetTitlebarDoubleClick(mode)
+            }
+            _ => return Err("set requires a known subject (titlebar-double-click)".into()),
+        },
         other => return Err(format!("unknown command {other:?}")),
     };
     if parts.next().is_some() {
@@ -790,6 +809,10 @@ impl SyntheticCommand {
             SyntheticCommand::QueryDecorations => {
                 unreachable!("query decorations is handled by apply_datagram")
             }
+            // A settings command, not an input event.
+            SyntheticCommand::SetTitlebarDoubleClick(_) => {
+                unreachable!("set titlebar-double-click is handled by apply_datagram")
+            }
         }
     }
 }
@@ -821,6 +844,10 @@ fn apply_datagram_reply(
                         let _ = socket.send_to(report.as_bytes(), path);
                     }
                 }
+                applied += 1;
+            }
+            Ok(SyntheticCommand::SetTitlebarDoubleClick(mode)) => {
+                state.set_titlebar_double_click(mode);
                 applied += 1;
             }
             Ok(command) => {

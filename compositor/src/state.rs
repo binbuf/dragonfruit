@@ -101,9 +101,10 @@ use crate::window::grab::{MoveGrab, ResizeGrab};
 use crate::window::popup::constrained_popup_geometry;
 use crate::window::resize::SizeConstraints;
 use crate::window::{
-    cascaded_geometry, centered_on, DecorationTier, ReservedZones, ShellWindowEvent,
-    TitlebarElement, TrafficLightKind, WindowDispatch, WindowEvent, WindowEventKind, WindowId,
-    WindowInsets, WindowMenuCommand, WindowModel, CASCADE_STEP,
+    cascaded_geometry, centered_on, fullscreen_reveal_rect, DecorationTier, DoubleClickTracker,
+    ReservedZones, ShellWindowEvent, TitlebarDoubleClick, TitlebarElement, TrafficLightKind,
+    WindowDispatch, WindowEvent, WindowEventKind, WindowId, WindowInsets, WindowMenuCommand,
+    WindowModel, WindowState, CASCADE_STEP,
 };
 use crate::workspace::WorkspaceModel;
 use crate::xwayland::XwaylandState;
@@ -308,7 +309,14 @@ pub struct DfState {
     pub active_window: Option<Window>,
     /// The window whose traffic-light cluster the pointer is over (T-01.2);
     /// drives glyph reveal. `None` when the pointer is not on a cluster.
+    /// For a fullscreen window this is its top reveal strip (T-01.3).
     pub hovered_titlebar: Option<WindowId>,
+    /// What a titlebar double-click does (T-01.3), from
+    /// `dock.titlebarDoubleClick` (default `zoom`); the live setting lands
+    /// with T-08.
+    pub titlebar_double_click: TitlebarDoubleClick,
+    /// Double-click detection state for titlebar presses (T-01.3).
+    pub titlebar_clicks: DoubleClickTracker,
 
     // --- workspace model (T-05) --------------------------------------------
     /// Per-output ordered Space lists, fullscreen Spaces, wallpaper, window
@@ -453,6 +461,8 @@ impl DfState {
             reserved_zones: ReservedZones::default(),
             active_window: None,
             hovered_titlebar: None,
+            titlebar_double_click: TitlebarDoubleClick::default(),
+            titlebar_clicks: DoubleClickTracker::new(),
             workspaces: WorkspaceModel::new(),
             app_resolver: AppResolver::load(),
             xwayland: XwaylandState::default(),
@@ -865,16 +875,33 @@ impl DfState {
     }
 
     /// The window whose traffic-light cluster contains a global-space point
-    /// (T-01.2), topmost first.
+    /// (T-01.2), topmost first. A fullscreen window has no persistent
+    /// titlebar; its whole top reveal strip counts as the hover target
+    /// (T-01.3).
     pub fn titlebar_hover_at(&self, location: Point<f64, Logical>) -> Option<WindowId> {
         let point = Point::from((location.x.floor() as i32, location.y.floor() as i32));
         let windows: Vec<Window> = self.space.elements().cloned().collect();
         for window in windows.into_iter().rev() {
-            let Some(element) = self.titlebar_element(&window) else {
+            let Some(id) = self.windows.id(&window) else {
                 continue;
             };
-            if element.cluster_rect().contains(point) {
-                return self.windows.id(&window);
+            match self.windows.state(&window) {
+                Some(WindowState::Fullscreen) => {
+                    let Some(content) = self.windows.geometry(&window) else {
+                        continue;
+                    };
+                    if fullscreen_reveal_rect(content).contains(point) {
+                        return Some(id);
+                    }
+                }
+                Some(WindowState::Floating | WindowState::Zoomed) => {
+                    if let Some(element) = self.titlebar_element(&window) {
+                        if element.cluster_rect().contains(point) {
+                            return Some(id);
+                        }
+                    }
+                }
+                _ => {}
             }
         }
         None
@@ -902,6 +929,21 @@ impl DfState {
         None
     }
 
+    /// The topmost window whose titlebar (or, when revealed, fullscreen top
+    /// strip) contains a global-space point (T-01.3). Drives titlebar drag.
+    pub fn titlebar_window_at(&self, location: Point<f64, Logical>) -> Option<Window> {
+        let point = Point::from((location.x.floor() as i32, location.y.floor() as i32));
+        let windows: Vec<Window> = self.space.elements().cloned().collect();
+        for window in windows.into_iter().rev() {
+            if let Some(element) = self.titlebar_element(&window) {
+                if element.hit(point) {
+                    return Some(window);
+                }
+            }
+        }
+        None
+    }
+
     /// Perform a traffic-light action (T-01.2). These are the same
     /// state-machine primitives the shell protocol and window menu call, so
     /// the compositor keeps a single owner of window state.
@@ -917,6 +959,84 @@ impl DfState {
                 }
             }
         }
+    }
+
+    /// Set what a titlebar double-click does (T-01.3). The shell's
+    /// `dock.titlebarDoubleClick` setting is the eventual caller (T-08).
+    pub fn set_titlebar_double_click(&mut self, mode: TitlebarDoubleClick) {
+        self.titlebar_double_click = mode;
+    }
+
+    /// Record a titlebar press, returning whether it completes a
+    /// double-click on the same window (T-01.3). A completed pair is
+    /// consumed so a third press starts fresh.
+    pub fn register_titlebar_click(
+        &mut self,
+        window: &Window,
+        location: Point<f64, Logical>,
+    ) -> bool {
+        let Some(id) = self.windows.id(window) else {
+            return false;
+        };
+        let point = Point::from((location.x.floor() as i32, location.y.floor() as i32));
+        let now = self.now_msec();
+        self.titlebar_clicks.register(id, point, now)
+    }
+
+    /// Apply the configured double-click action (T-01.3): toggle Zoom,
+    /// minimize, or nothing, per `dock.titlebarDoubleClick`.
+    pub fn titlebar_double_click_action(&mut self, window: &Window) {
+        match self.titlebar_double_click {
+            TitlebarDoubleClick::Zoom => {
+                if self.windows.state(window) == Some(crate::window::WindowState::Zoomed) {
+                    self.unzoom_window(window);
+                } else {
+                    self.zoom_window(window);
+                }
+            }
+            TitlebarDoubleClick::Minimize => self.minimize_window(window),
+            TitlebarDoubleClick::None => {}
+        }
+    }
+
+    /// Focus `window` (titlebar activation, T-01.3). The window's toplevel
+    /// surface takes keyboard focus, which updates `active_window` through
+    /// the seat's focus broadcast.
+    pub fn activate_window(&mut self, window: &Window, serial: Serial) {
+        if self.active_window.as_ref() == Some(window) {
+            return;
+        }
+        let Some(surface) = window.wl_surface().map(|surface| surface.into_owned()) else {
+            return;
+        };
+        if let Some(keyboard) = self.seat.get_keyboard() {
+            keyboard.set_focus(self, Some(surface), serial);
+        }
+    }
+
+    /// Start the interactive move grab from a titlebar press (T-01.3). The
+    /// grab is the same [`MoveGrab`] the CSD `xdg_toplevel.move` path uses;
+    /// only floating windows move (zoomed/fullscreen stay put).
+    pub fn begin_titlebar_move(&mut self, window: &Window, serial: Serial) {
+        let Some(pointer) = self.seat.get_pointer() else {
+            return;
+        };
+        let Some(initial_location) = self.space.element_location(window) else {
+            return;
+        };
+        let start_data = GrabStartData {
+            // A titlebar press has no client surface under it, so there is
+            // no focus to restore on grab release.
+            focus: None,
+            button: 0x110,
+            location: pointer.current_location(),
+        };
+        pointer.set_grab(
+            self,
+            MoveGrab::new(start_data, window.clone(), initial_location),
+            serial,
+            PointerFocus::Clear,
+        );
     }
 
     /// Ask a window's client to close. Wayland toplevels get
