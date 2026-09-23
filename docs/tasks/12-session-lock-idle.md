@@ -1,6 +1,6 @@
 # T-12 — Session Lifecycle, Lock Screen, and Idle
 
-> **Track, not a single slice.** This file is the design reference. It is executed as 5 one-session units: [T-12.1](units/053-t-12.1-session-manager-and-services.md) · [T-12.2](units/054-t-12.2-display-manager-entry-and-logout-teardown.md) · [T-12.3](units/055-t-12.3-lock-screen-and-enforcement.md) · [T-12.4](units/056-t-12.4-idle-timers-and-inhibitors.md) · [T-12.5](units/057-t-12.5-suspend-resume-policy-keys-kill-matrix-capture.md). Strict order and prerequisites live in [ROADMAP.md](../ROADMAP.md).
+> **Track, not a single slice.** This file is the design reference. It is executed as 10 one-session units: [T-12.1a](units/081-t-12.1a-session-manager-and-restart-policy.md) · [T-12.1b](units/082-t-12.1b-session-environment-and-units.md) · [T-12.2](units/083-t-12.2-display-manager-entry-and-logout-teardown.md) · [T-12.3a](units/084-t-12.3a-lock-protocol-and-ui.md) · [T-12.3b](units/085-t-12.3b-lock-pam-authentication.md) · [T-12.3c](units/086-t-12.3c-lock-input-capture-and-kill-resistance.md) · [T-12.4a](units/087-t-12.4a-idle-timers.md) · [T-12.4b](units/088-t-12.4b-idle-inhibitors-and-wake.md) · [T-12.5a](units/089-t-12.5a-suspend-resume-cycle.md) · [T-12.5b](units/090-t-12.5b-session-policy-keys-and-kill-matrix.md). Strict order and prerequisites live in [ROADMAP.md](../ROADMAP.md).
 
 | | |
 |---|---|

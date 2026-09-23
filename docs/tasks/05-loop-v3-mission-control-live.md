@@ -1,6 +1,6 @@
 # T-05 — Loop v3: Mission Control on Live Surfaces
 
-> **Track, not a single slice.** This file is the design reference. It is executed as 6 one-session units: [T-05.1](units/019-t-05.1-live-surface-transform-into-the-overview-grid.md) · [T-05.2](units/020-t-05.2-hit-testing-and-selection-on-live-representations.md) · [T-05.3](units/021-t-05.3-drag-a-live-representation-between-spaces.md) · [T-05.4](units/022-t-05.4-image-wallpaper-and-per-space-slide.md) · [T-05.5](units/023-t-05.5-desktop-reveal.md) · [T-05.6](units/024-t-05.6-overview-frame-budget-and-capture.md). Strict order and prerequisites live in [ROADMAP.md](../ROADMAP.md).
+> **Track, not a single slice.** This file is the design reference. It is executed as 7 one-session units: [T-05.1a](units/025-t-05.1a-live-surface-transform.md) · [T-05.1b](units/026-t-05.1b-live-video-and-degrade.md) · [T-05.2](units/027-t-05.2-hit-testing-and-selection-on-live-representations.md) · [T-05.3](units/028-t-05.3-drag-a-live-representation-between-spaces.md) · [T-05.4](units/029-t-05.4-image-wallpaper-and-per-space-slide.md) · [T-05.5](units/030-t-05.5-desktop-reveal.md) · [T-05.6](units/031-t-05.6-overview-frame-budget-and-capture.md). Strict order and prerequisites live in [ROADMAP.md](../ROADMAP.md).
 
 | | |
 |---|---|

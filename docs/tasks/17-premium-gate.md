@@ -1,6 +1,6 @@
 # T-17 — The Premium Experience Gate
 
-> **Track, not a single slice.** This file is the design reference. It is executed as 6 one-session units: [T-17.1](units/099-t-17.1-nested-full-loop-verification.md) · [T-17.2](units/100-t-17.2-drm-full-loop-verification.md) · [T-17.3](units/101-t-17.3-visual-floor-and-reduced-motion-sign-off.md) · [T-17.4](units/102-t-17.4-performance-budget-verification.md) · [T-17.5](units/103-t-17.5-robustness-verification.md) · [T-17.6](units/104-t-17.6-unfamiliar-user-test-and-sign-off-report.md). Strict order and prerequisites live in [ROADMAP.md](../ROADMAP.md).
+> **Track, not a single slice.** This file is the design reference. It is executed as 9 one-session units: [T-17.1a](units/160-t-17.1a-nested-window-loop-verification.md) · [T-17.1b](units/161-t-17.1b-workspace-overview-switcher-verification.md) · [T-17.1c](units/162-t-17.1c-flatpak-browser-verification.md) · [T-17.2](units/163-t-17.2-drm-full-loop-verification.md) · [T-17.3](units/164-t-17.3-visual-floor-and-reduced-motion-sign-off.md) · [T-17.4](units/165-t-17.4-performance-budget-verification.md) · [T-17.5a](units/166-t-17.5a-absent-daemon-and-crash-matrix.md) · [T-17.5b](units/167-t-17.5b-leak-and-lock-enforcement-verification.md) · [T-17.6](units/168-t-17.6-unfamiliar-user-test-and-sign-off-report.md). Strict order and prerequisites live in [ROADMAP.md](../ROADMAP.md).
 
 | | |
 |---|---|

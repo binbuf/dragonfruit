@@ -1,6 +1,6 @@
 # T-02 — Loop v1: Window Lifecycle Motion
 
-> **Track, not a single slice.** This file is the design reference. It is executed as 4 one-session units: [T-02.1](units/007-t-02.1-animation-clock-and-window-appear.md) · [T-02.2](units/008-t-02.2-minimize-and-restore-motion.md) · [T-02.3](units/009-t-02.3-zoom-and-fullscreen-transitions.md) · [T-02.4](units/010-t-02.4-close-ghost-interruptibility-capture.md). Strict order and prerequisites live in [ROADMAP.md](../ROADMAP.md).
+> **Track, not a single slice.** This file is the design reference. It is executed as 6 one-session units: [T-02.1a](units/008-t-02.1a-animation-clock.md) · [T-02.1b](units/009-t-02.1b-window-appear.md) · [T-02.2](units/010-t-02.2-minimize-and-restore-motion.md) · [T-02.3](units/011-t-02.3-zoom-and-fullscreen-transitions.md) · [T-02.4a](units/012-t-02.4a-close-ghost.md) · [T-02.4b](units/013-t-02.4b-close-interruptibility-and-idle-trace.md). Strict order and prerequisites live in [ROADMAP.md](../ROADMAP.md).
 
 | | |
 |---|---|

@@ -1,6 +1,6 @@
 # T-01 — Loop v0: Window Controls and the First End-to-End Demo
 
-> **Track, not a single slice.** This file is the design reference. It is executed as 6 one-session units: [T-01.1](units/001-t-01.1-titlebar-render-element.md) · [T-01.2](units/002-t-01.2-traffic-light-actions.md) · [T-01.3](units/003-t-01.3-titlebar-drag-double-click-fullscreen-reveal.md) · [T-01.4](units/004-t-01.4-window-menu.md) · [T-01.5](units/005-t-01.5-decoration-tier-policy-and-x11-correctness.md) · [T-01.6](units/006-t-01.6-make-demo-harness-and-loop-integration.md). Strict order and prerequisites live in [ROADMAP.md](../ROADMAP.md).
+> **Track, not a single slice.** This file is the design reference. It is executed as 7 one-session units: [T-01.1](units/001-t-01.1-titlebar-render-element.md) · [T-01.2](units/002-t-01.2-traffic-light-actions.md) · [T-01.3](units/003-t-01.3-titlebar-drag-double-click-fullscreen-reveal.md) · [T-01.4](units/004-t-01.4-window-menu.md) · [T-01.5](units/005-t-01.5-decoration-tier-policy-and-x11-correctness.md) · [T-01.6a](units/006-t-01.6a-make-demo-harness.md) · [T-01.6b](units/007-t-01.6b-loop-integration-capture.md). Strict order and prerequisites live in [ROADMAP.md](../ROADMAP.md).
 
 | | |
 |---|---|

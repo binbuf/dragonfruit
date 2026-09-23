@@ -1,6 +1,6 @@
 # T-14 — Global Menu, App Index, and Compatibility Bridges
 
-> **Track, not a single slice.** This file is the design reference. It is executed as 7 one-session units: [T-14.1](units/065-t-14.1-app-index-service.md) · [T-14.2](units/066-t-14.2-menu-broker.md) · [T-14.3](units/067-t-14.3-statusnotifier-appindicator-tray.md) · [T-14.4](units/068-t-14.4-dbusmenu-bridge.md) · [T-14.5](units/069-t-14.5-xdnd-bridge.md) · [T-14.6](units/070-t-14.6-strange-app-zoo.md) · [T-14.7](units/071-t-14.7-retire-interim-paths.md). Strict order and prerequisites live in [ROADMAP.md](../ROADMAP.md).
+> **Track, not a single slice.** This file is the design reference. It is executed as 11 one-session units: [T-14.1a](units/103-t-14.1a-app-index-identity-and-icons.md) · [T-14.1b](units/104-t-14.1b-app-index-events-and-recency.md) · [T-14.1c](units/105-t-14.1c-app-index-subscription.md) · [T-14.2a](units/106-t-14.2a-menu-broker-export-and-fixed-menu.md) · [T-14.2b](units/107-t-14.2b-menu-broker-accelerators-and-toggle.md) · [T-14.3](units/108-t-14.3-statusnotifier-appindicator-tray.md) · [T-14.4](units/109-t-14.4-dbusmenu-bridge.md) · [T-14.5](units/110-t-14.5-xdnd-bridge.md) · [T-14.6a](units/111-t-14.6a-strange-app-zoo-run.md) · [T-14.6b](units/112-t-14.6b-strange-app-zoo-fixes.md) · [T-14.7](units/113-t-14.7-retire-interim-paths.md). Strict order and prerequisites live in [ROADMAP.md](../ROADMAP.md).
 
 | | |
 |---|---|

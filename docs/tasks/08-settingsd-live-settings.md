@@ -1,6 +1,6 @@
 # T-08 — settingsd: One Owner for Desktop Settings
 
-> **Track, not a single slice.** This file is the design reference. It is executed as 3 one-session units: [T-08.1](units/033-t-08.1-settingsd-daemon-core-and-d-bus-api.md) · [T-08.2](units/034-t-08.2-consumer-migration-to-settingsd.md) · [T-08.3](units/035-t-08.3-restart-resync-and-key-schema-documentation.md). Strict order and prerequisites live in [ROADMAP.md](../ROADMAP.md).
+> **Track, not a single slice.** This file is the design reference. It is executed as 6 one-session units: [T-08.1a](units/045-t-08.1a-settingsd-model-and-dbus-api.md) · [T-08.1b](units/046-t-08.1b-settingsd-persistence-and-migrations.md) · [T-08.2a](units/047-t-08.2a-shell-migration-to-settingsd.md) · [T-08.2b](units/048-t-08.2b-design-system-theme-binding.md) · [T-08.2c](units/049-t-08.2c-compositor-policy-migration.md) · [T-08.3](units/050-t-08.3-restart-resync-and-key-schema-documentation.md). Strict order and prerequisites live in [ROADMAP.md](../ROADMAP.md).
 
 | | |
 |---|---|

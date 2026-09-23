@@ -1,6 +1,6 @@
 # T-07 — Menu Bar Goes Live: Wi-Fi, Volume, Battery
 
-> **Track, not a single slice.** This file is the design reference. It is executed as 6 one-session units: [T-07.1](units/027-t-07.1-adapter-framework-and-contract.md) · [T-07.2](units/028-t-07.2-networking-adapter-networkmanager.md) · [T-07.3](units/029-t-07.3-audio-adapter-pipewire-wireplumber.md) · [T-07.4](units/030-t-07.4-power-adapter-upower.md) · [T-07.5](units/031-t-07.5-status-item-menus-and-placeholder-removal.md) · [T-07.6](units/032-t-07.6-absent-daemon-matrix-and-capture.md). Strict order and prerequisites live in [ROADMAP.md](../ROADMAP.md).
+> **Track, not a single slice.** This file is the design reference. It is executed as 10 one-session units: [T-07.1a](units/035-t-07.1a-adapter-contract-and-mock.md) · [T-07.1b](units/036-t-07.1b-subscription-restart-and-absence.md) · [T-07.2a](units/037-t-07.2a-networkmanager-read-path.md) · [T-07.2b](units/038-t-07.2b-networkmanager-join-and-polkit.md) · [T-07.3](units/039-t-07.3-audio-adapter-pipewire-wireplumber.md) · [T-07.4](units/040-t-07.4-power-adapter-upower.md) · [T-07.5a](units/041-t-07.5a-wifi-and-volume-menus.md) · [T-07.5b](units/042-t-07.5b-battery-menu-and-placeholder-removal.md) · [T-07.6a](units/043-t-07.6a-absent-daemon-matrix.md) · [T-07.6b](units/044-t-07.6b-idle-trace-and-capture.md). Strict order and prerequisites live in [ROADMAP.md](../ROADMAP.md).
 
 | | |
 |---|---|

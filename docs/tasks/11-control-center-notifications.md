@@ -1,6 +1,6 @@
 # T-11 — Control Center, Notifications, and OSD
 
-> **Track, not a single slice.** This file is the design reference. It is executed as 4 one-session units: [T-11.1](units/049-t-11.1-notification-service.md) · [T-11.2](units/050-t-11.2-dnd-focus-policy-and-menu-bar-reflection.md) · [T-11.3](units/051-t-11.3-control-center-panel.md) · [T-11.4](units/052-t-11.4-osd-and-ambient-capture.md). Strict order and prerequisites live in [ROADMAP.md](../ROADMAP.md).
+> **Track, not a single slice.** This file is the design reference. It is executed as 8 one-session units: [T-11.1a](units/073-t-11.1a-notification-service-core.md) · [T-11.1b](units/074-t-11.1b-notification-actions-and-dock-badge.md) · [T-11.2a](units/075-t-11.2a-dnd-focus-policy.md) · [T-11.2b](units/076-t-11.2b-dnd-reflection-and-dock-failure.md) · [T-11.3a](units/077-t-11.3a-control-center-panel-and-tiles.md) · [T-11.3b](units/078-t-11.3b-control-center-focus-dark-a11y.md) · [T-11.4a](units/079-t-11.4a-osd-overlay.md) · [T-11.4b](units/080-t-11.4b-osd-a11y-and-captures.md). Strict order and prerequisites live in [ROADMAP.md](../ROADMAP.md).
 
 | | |
 |---|---|

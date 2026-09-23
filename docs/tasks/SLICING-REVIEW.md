@@ -341,3 +341,122 @@ Two residual risks remain and should be re-checked at each track boundary:
 - **The hardware rail is real.** This host has no free logind seat, so T-03.2–4,
   T-16.4/5/9–11, and T-17.2/4 cannot be completed here. They must be tracked as
   open and swept together, not dribbled out and forgotten.
+
+---
+
+# Second pass — are the 104 *units* session-sized? (2026-09-23)
+
+The first pass cut the 17 slices into 104 units. This pass asks the same
+question of those units, for the same bar: **one fast, small-context agent, one
+working session, end to end.** A unit fits only if it is one subsystem (or one
+thin wiring change), has at most three independently verifiable behaviours, adds
+no framework *and* its consumers in the same change, and can lean on an existing
+harness rather than build one.
+
+**Verdict: no — 46 of the 104 still exceed one session.** They cluster into five
+recurring shapes:
+
+1. **Harness plus verification in one ticket** — T-01.6, T-03.1.
+2. **A framework plus its consumers** — T-08.1/.2, T-14.1.
+3. **Multi-subsystem bundles** — T-10.4/.6, T-12.3, T-17.1.
+4. **Instrument + scheme + capture in one ticket** — T-04.4, T-12.5.
+5. **Adapter + pane + tile + absence in one ticket** — every T-15.1–15.15.
+
+The other 58 units are left as written; a few are watch-listed below.
+
+## The re-cut
+
+The 46 units were split in place. IDs use a letter suffix (`T-01.6a`); child
+units are strictly sequential (`a → b → c`), and each has its own headless test
+and capture note. The executable sequence is now **168 units**, renumbered so the file prefix
+equals the order. A short third pass then split the last 12 borderline units
+(below), so every unit is a confident one-or-two-pass session. The 17 track files and
+[ROADMAP.md](../ROADMAP.md) were regenerated from the unit files.
+
+| Old unit | Split into | Why it did not fit |
+|---|---|---|
+| T-01.6 | T-01.6a · T-01.6b | `make demo` harness vs. the Dock/menu-bar integration walkthrough |
+| T-02.1 | T-02.1a · T-02.1b | animation clock/idle assertion vs. the appear transition |
+| T-03.1 | T-03.1a · T-03.1b | idle + animation-frame trace vs. latency + scanout instruments |
+| T-04.1 | T-04.1a · T-04.1b | shadows vs. rounded-corner clipping |
+| T-04.4 | T-04.4a · T-04.4b | degrade tiers vs. schemes + reduced motion + sign-off package |
+| T-06.2 | T-06.2a · T-06.2b | overlay + live previews vs. commit + Cmd+` + interruptibility |
+| T-07.1 | T-07.1a · T-07.1b | contract + states + mock vs. subscription + restart + absence |
+| T-07.2 | T-07.2a · T-07.2b | NetworkManager read path vs. join + polkit degradation |
+| T-07.5 | T-07.5a · T-07.5b | Wi-Fi + volume menus vs. battery + placeholder removal + a11y |
+| T-08.1 | T-08.1a · T-08.1b | model + D-Bus API vs. persistence + migrations |
+| T-08.2 | T-08.2a · T-08.2b · T-08.2c | shell vs. design-system vs. compositor consumers |
+| T-09.1 | T-09.1a · T-09.1b | app shell vs. live-apply plumbing |
+| T-10.1 | T-10.1a · T-10.1b | streaming listing/model vs. sorting + platform fallback |
+| T-10.3 | T-10.3a · T-10.3b | trash vs. folder watcher |
+| T-10.4 | T-10.4a · T-10.4b · T-10.4c | window/toolbar/sidebar vs. views vs. menus + multi-select |
+| T-10.6 | T-10.6a · T-10.6b · T-10.6c | trash source vs. drop/empty vs. navigation + identity |
+| T-11.1 | T-11.1a · T-11.1b | service + banners vs. actions + Dock-badge replacement |
+| T-11.3 | T-11.3a · T-11.3b | panel + core tiles vs. Focus/dark + a11y |
+| T-12.1 | T-12.1a · T-12.1b | manager + restart policy vs. environment + units |
+| T-12.3 | T-12.3a · T-12.3b · T-12.3c | protocol + UI vs. PAM auth vs. capture + kill-resistance |
+| T-12.5 | T-12.5a · T-12.5b | suspend/resume cycle vs. policy keys + kill matrix + capture |
+| T-13.3 | T-13.3a · T-13.3b | selection modes vs. save/copy + portal-only gate |
+| T-13.4 | T-13.4a · T-13.4b | portal + picker vs. PipeWire stream + fallback |
+| T-14.1 | T-14.1a · T-14.1b · T-14.1c | identity/icons vs. events/recency vs. subscription |
+| T-14.2 | T-14.2a · T-14.2b | export model + fixed menu vs. accelerators + toggle |
+| T-14.6 | T-14.6a · T-14.6b | zoo run + matrix vs. the fixes it surfaces |
+| T-15.1–15.15 | T-15.Na · T-15.Nb | adapter (backend + tests) vs. pane + tile + absence case |
+| T-16.1 | T-16.1a · T-16.1b | per-output chrome sizing/zones vs. window placement |
+| T-16.3 | T-16.3a · T-16.3b | integer-scaled Xwayland vs. viewport downscale + chrome |
+| T-16.6 | T-16.6a · T-16.6b | AT-SPI + keyboard-only vs. magnifier + reduced-motion sweep |
+| T-17.1 | T-17.1a · T-17.1b · T-17.1c | window loop vs. navigation vs. Flatpak/portal matrix |
+| T-17.5 | T-17.5a · T-17.5b | absent-daemon + crash matrix vs. leak + lock checks |
+
+## Ordering corrections applied with the re-cut
+
+1. **Hardware no longer gates the nested tail.** Four nested units hard-depended
+   on `[hw]` units, which on a hostless machine stalled T-16.6→T-17.6:
+   T-16.6a now depends on T-16.3b (not T-16.5); T-17.1a on T-16.8 (not
+   T-16.11); T-17.3 on T-17.1c (not T-17.2); T-17.5a on T-17.3 (not T-17.4).
+   A dependency check now reports **zero nested units transitively gated by the
+   hardware rail.**
+2. **Split parents become chains, not parallel branches.** Each child `b`/`c`
+   depends on the child before it, and the unit that previously depended on the
+   parent now depends on the last child — so the strict sequence is preserved
+   with no forward references. The validator reports zero forward/backward
+   dependency errors and zero broken links.
+3. **T-15 is now 31 units, not 16.** This is the largest track and was the
+   first pass's own named residual risk; the adapter/pane split is the cut that
+   makes each piece one session.
+
+## Third pass — remove the remaining borderline units
+
+Twelve units still bundled 3–5 distinct behaviours or two subsystems. They were
+split so no unit should need more than two attempts in a fresh session:
+
+| Old unit | Split into | Why |
+|---|---|---|
+| T-02.4 | T-02.4a · T-02.4b | close ghost vs. interruptibility + idle trace |
+| T-05.1 | T-05.1a · T-05.1b | grid transform vs. live video at scale + degrade |
+| T-07.6 | T-07.6a · T-07.6b | absent-daemon matrix vs. idle trace + capture |
+| T-09.6 | T-09.6a · T-09.6b | menu model vs. absence matrix + wave captures |
+| T-10.2 | T-10.2a · T-10.2b | operations vs. optimistic semantics + preservation |
+| T-11.2 | T-11.2a · T-11.2b | DND/Focus policy vs. menu-bar reflection + Dock failure |
+| T-11.4 | T-11.4a · T-11.4b | OSD overlay vs. keyboard/a11y + captures |
+| T-12.4 | T-12.4a · T-12.4b | idle timers vs. inhibitors + wake restore |
+| T-13.1 | T-13.1a · T-13.1b | backend + session service vs. Settings/GlobalShortcuts |
+| T-13.2 | T-13.2a · T-13.2b | FileChooser portal + client vs. picker UI |
+| T-13.5 | T-13.5a · T-13.5b | clipboard round-trips vs. history (if specified) |
+| T-16.8 | T-16.8a · T-16.8b | crash/kill matrix vs. compositor-death docs + policy |
+
+## Watch-list (intentionally whole)
+
+- **T-17.3** visual floor and reduced-motion sign-off — verification-only and
+  mostly human; keep whole.
+- **T-17.6** the unfamiliar-user test — human, not agent-completable by design.
+- **T-03.2–4, T-16.4/5/9–11, T-17.2/4** — `[hw]`; exploratory by nature and
+  swept on the hardware rail.
+
+## Definition of done (unchanged)
+
+The split does not weaken the bar. Every unit still ends with: code merged and
+building; a headless test green in `make e2e`; `make check`/`make soak`
+unchanged; reduced-motion/degrade variants where an animation or budget effect
+is added; a `docs/captures/` artifact and a `PROGRESS.md` note; and an explicit
+"Explicitly deferred" list. Human sign-off stays batched at the track boundary.

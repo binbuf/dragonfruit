@@ -1,6 +1,6 @@
 # T-06 — Loop v4: The App Switcher
 
-> **Track, not a single slice.** This file is the design reference. It is executed as 2 one-session units: [T-06.1](units/025-t-06.1-app-switcher-state-machine.md) · [T-06.2](units/026-t-06.2-switcher-overlay-with-live-previews.md). Strict order and prerequisites live in [ROADMAP.md](../ROADMAP.md).
+> **Track, not a single slice.** This file is the design reference. It is executed as 3 one-session units: [T-06.1](units/032-t-06.1-app-switcher-state-machine.md) · [T-06.2a](units/033-t-06.2a-switcher-overlay-and-previews.md) · [T-06.2b](units/034-t-06.2b-switcher-commit-and-cycling.md). Strict order and prerequisites live in [ROADMAP.md](../ROADMAP.md).
 
 | | |
 |---|---|

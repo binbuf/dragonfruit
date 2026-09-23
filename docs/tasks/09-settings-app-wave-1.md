@@ -1,6 +1,6 @@
 # T-09 — Settings Wave 1: The App and Its Core Panes
 
-> **Track, not a single slice.** This file is the design reference. It is executed as 6 one-session units: [T-09.1](units/036-t-09.1-settings-app-shell.md) · [T-09.2](units/037-t-09.2-appearance-pane.md) · [T-09.3](units/038-t-09.3-wallpaper-pane.md) · [T-09.4](units/039-t-09.4-desktop-dock-pane.md) · [T-09.5](units/040-t-09.5-displays-basic-pane.md) · [T-09.6](units/041-t-09.6-menu-model-absence-matrix-wave-sign-off.md). Strict order and prerequisites live in [ROADMAP.md](../ROADMAP.md).
+> **Track, not a single slice.** This file is the design reference. It is executed as 8 one-session units: [T-09.1a](units/051-t-09.1a-settings-app-shell.md) · [T-09.1b](units/052-t-09.1b-settings-live-apply.md) · [T-09.2](units/053-t-09.2-appearance-pane.md) · [T-09.3](units/054-t-09.3-wallpaper-pane.md) · [T-09.4](units/055-t-09.4-desktop-dock-pane.md) · [T-09.5](units/056-t-09.5-displays-basic-pane.md) · [T-09.6a](units/057-t-09.6a-menu-model-publication.md) · [T-09.6b](units/058-t-09.6b-absence-matrix-and-wave-captures.md). Strict order and prerequisites live in [ROADMAP.md](../ROADMAP.md).
 
 | | |
 |---|---|

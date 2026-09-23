@@ -1,6 +1,6 @@
 # T-03 — Real Session: DRM Bring-Up and Performance Baseline
 
-> **Track, not a single slice.** This file is the design reference. It is executed as 4 one-session units: [T-03.1](units/011-t-03.1-nested-performance-budgets-host-rail.md) · [T-03.2](units/012-t-03.2-drm-first-bring-up.md) · [T-03.3](units/013-t-03.3-hardware-input-validation.md) · [T-03.4](units/014-t-03.4-drm-soak-teardown-runbook.md). Strict order and prerequisites live in [ROADMAP.md](../ROADMAP.md).
+> **Track, not a single slice.** This file is the design reference. It is executed as 5 one-session units: [T-03.1a](units/014-t-03.1a-nested-idle-and-animation-budget.md) · [T-03.1b](units/015-t-03.1b-latency-and-scanout-instruments.md) · [T-03.2](units/016-t-03.2-drm-first-bring-up.md) · [T-03.3](units/017-t-03.3-hardware-input-validation.md) · [T-03.4](units/018-t-03.4-drm-soak-teardown-runbook.md). Strict order and prerequisites live in [ROADMAP.md](../ROADMAP.md).
 
 | | |
 |---|---|

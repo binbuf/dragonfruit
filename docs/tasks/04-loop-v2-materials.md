@@ -1,6 +1,6 @@
 # T-04 — Loop v2: Materials (Blur, Shadows, Rounded Corners)
 
-> **Track, not a single slice.** This file is the design reference. It is executed as 4 one-session units: [T-04.1](units/015-t-04.1-real-shadows-and-rounded-corner-clipping.md) · [T-04.2](units/016-t-04.2-backdrop-blur-pass.md) · [T-04.3](units/017-t-04.3-reusable-scene-transform-pass.md) · [T-04.4](units/018-t-04.4-material-degrade-tiers-schemes-sign-off-package.md). Strict order and prerequisites live in [ROADMAP.md](../ROADMAP.md).
+> **Track, not a single slice.** This file is the design reference. It is executed as 6 one-session units: [T-04.1a](units/019-t-04.1a-shadows.md) · [T-04.1b](units/020-t-04.1b-rounded-corner-clipping.md) · [T-04.2](units/021-t-04.2-backdrop-blur-pass.md) · [T-04.3](units/022-t-04.3-reusable-scene-transform-pass.md) · [T-04.4a](units/023-t-04.4a-material-degrade-tiers.md) · [T-04.4b](units/024-t-04.4b-material-schemes-and-sign-off-package.md). Strict order and prerequisites live in [ROADMAP.md](../ROADMAP.md).
 
 | | |
 |---|---|
