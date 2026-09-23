@@ -33,7 +33,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             libxkbcommon-dev libwayland-dev ninja-build \
-            libdrm-dev libgbm-dev libinput-dev libseat-dev libudev-dev
+            libdrm-dev libgbm-dev libinput-dev libseat-dev libudev-dev \
+            xwayland x11-utils
 
       - uses: dtolnay/rust-toolchain@master
         with:
@@ -98,6 +99,19 @@ jobs:
 
       - name: Gallery visual regression (T-08 FR-6)
         run: ./scripts/check-gallery-snapshots.py 2>&1 | tee logs/gallery-visual.log
+
+      # T-01.6a: `make demo` is the same target the human walkthrough uses.
+      # CI has no host Wayland session, so it runs the headless scripted
+      # half: launch the shell + a Qt/Wayland app + an X11 app, settle,
+      # assert every child is alive, tear down, assert no leaked socket.
+      - name: Demo harness — scripted half (T-01.6a)
+        run: |
+          set -e
+          XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          sudo mkdir -p "$XDG_RUNTIME_DIR"
+          sudo chown "$(id -u)" "$XDG_RUNTIME_DIR"
+          export XDG_RUNTIME_DIR
+          make demo 2>&1 | tee logs/demo.log
 
       - name: Upload build logs
         if: always()

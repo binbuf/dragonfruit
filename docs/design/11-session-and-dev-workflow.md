@@ -38,6 +38,35 @@ This gets roughly 80–90% of everyday development: layouts, menus, Dock, app
 launching, workspace logic, Files, Settings, animations, and most protocol
 work.
 
+### The demo harness: `make demo`
+
+Every vertical slice is verified through one command, on the same path CI
+uses:
+
+```bash
+make demo          # nested: shell + a Qt/Wayland app + an X11 app + checklist
+make demo DEMO_ARGS=--headless   # the scripted half, forced headless
+```
+
+`make demo` builds the tree (Cargo + CMake) and then launches the nested
+compositor, the shell, a first-party Qt/Wayland app, and an X11 app against
+the private socket, and prints the checklist of steps the human performs at
+track sign-off (drag, double-click zoom, minimize/restore, close, window
+menu). Closing the Dragonfruit window ends the session; teardown is
+deterministic and leaves the host session untouched. `--launch CMD...` (may
+be repeated) adds extra programs to the session.
+
+With no host Wayland session — CI — the same target falls back to the
+**headless scripted half**: launch the compositor, shell, and clients,
+settle, assert every child is still alive, tear down, and assert no socket
+leaked. That is the launch+teardown smoke wired into `make e2e` (which runs
+`make demo DEMO_ARGS=--headless`) and the CI workflow. The X11 half is
+skipped, with a note, when Xwayland or the X11 demo app (`xmessage`) is
+missing; a Wayland-only session is a normal state.
+
+`DF_DEMO_QT_APP`, `DF_DEMO_X11_APP`, and `DF_QML_IMPORT_PATH` override the
+app/QML paths the harness discovers under `build/`.
+
 ## Real-hardware testing is a separate login session
 
 For DRM/KMS, multi-monitor, suspend/resume, GPU-vendor behavior, VRR, and

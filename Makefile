@@ -10,6 +10,7 @@ CMAKE ?= cmake
 CTEST ?= ctest
 BUILD_DIR ?= build
 SOAK_CYCLES ?= 100
+DEMO_ARGS ?=
 DF_TOOLCHAIN ?= $(HOME)/.local/df-toolchain/usr
 DF_DEVROOT ?= $(HOME)/.local/df-devroot/lib64
 
@@ -32,7 +33,7 @@ endif
 
 .DEFAULT_GOAL := help
 .PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test \
-        visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev soak e2e \
+        visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev demo soak e2e \
         check-desktop-names check-no-capture-grab check-design-tokens clean
 
 help:
@@ -40,6 +41,7 @@ help:
 	@echo "  make build    — build everything (Rust workspace + Qt/CMake)"
 	@echo "  make test     — run all tests (cargo + ctest + gallery visual regression)"
 	@echo "  make e2e      — T-01…T-07 Foundation vertical-slice + conformance suites"
+	@echo "  make demo     — T-01 loop demo (nested; headless/scripted in CI)"
 	@echo "  make lint     — fmt --check, clippy, qmllint, token freshness, desktop-name gate"
 	@echo "  make check    — lint + test + teardown soak gate"
 	@echo "  make dev      — dragonfruit dev --nested (daily workflow)"
@@ -70,7 +72,11 @@ cargo-test:
 # X11 app in one live headless session) plus every per-ticket conformance
 # suite. This is the fast, CI-able "does the whole thing work together"
 # check; `make test` runs it too, this just makes the milestone explicit.
-e2e: cargo-build
+#
+# The T-01.6a demo harness is part of the gate: `make demo` with a forced
+# headless backend is the scripted half (launch + teardown, assert no leaked
+# socket), the same target CI and the human walkthrough use.
+e2e: build
 	$(CARGO) test -p dragonfruit-compositor \
 	    --test milestone_e2e \
 	    --test window_conformance \
@@ -79,6 +85,7 @@ e2e: cargo-build
 	    --test shell_idle_trace \
 	    --test idle_trace \
 	    --test protocol_surface
+	$(MAKE) demo DEMO_ARGS=--headless
 
 qml-test:
 	@[ -f $(BUILD_DIR)/build.ninja ] || $(CMAKE) -S . -B $(BUILD_DIR) -G Ninja
@@ -125,6 +132,14 @@ check: lint test soak
 
 dev: build
 	$(CARGO) run -p dragonfruit-dev --bin dragonfruit -- dev --nested --shell
+
+# T-01.6a: one command that builds and launches the loop demo. With a host
+# Wayland session it opens the nested compositor for the human walkthrough
+# (shell + a Qt/Wayland app + an X11 app + the printed checklist); with none
+# — CI — it runs the headless scripted half. `DEMO_ARGS=--headless` forces
+# the scripted path on a dev machine (`make e2e` does this).
+demo: build
+	$(CARGO) run -p dragonfruit-dev --bin dragonfruit -- dev --demo $(DEMO_ARGS)
 
 soak: cargo-build
 	$(CARGO) run -p dragonfruit-dev --bin dragonfruit -- dev --soak $(SOAK_CYCLES)

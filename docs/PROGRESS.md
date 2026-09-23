@@ -11,7 +11,8 @@
 - **T03 — T-01.3 Titlebar drag, double-click, fullscreen reveal**: **State: done.** A floating window's titlebar drags to move (existing; **`compositor/src/window/decoration.rs`** — `TitlebarDoubleClick`
 - **T04 — T-01.4 Window menu**: **State: done.** A right/Control-click on the SSD titlebar opens a; **`compositor/src/window/menu.rs`** — `WindowMenu`, `WindowMenuRow`,
 - **T05 — T-01.5 Decoration tier policy and X11 correctness**: **State: done.** The three decoration classes are honored and the X11; **`compositor/src/state.rs`** — new `DfState::set_decoration_tier(window,
-- **Follow-ups**: T-16: publish `_NET_FRAME_EXTENTS` for Tier-2 X11 windows so clients can; Zoom (and any future re-layout) on an inset change should reuse
+- **T06 — T-01.6a `make demo` harness**: **State: done.** One `make demo` target builds the tree and runs the T-01 loop; **`Makefile`** — `demo: build` → `cargo run -p dragonfruit-dev -- dev --demo
+- **Follow-ups**: Add the QML import-dir define (`DF_QML_IMPORT_DIR`) to the first-party apps'; T-16: publish `_NET_FRAME_EXTENTS` for Tier-2 X11 windows so clients can
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -388,8 +389,65 @@ Gotchas for later tasks:
 - Floating windows add/remove the titlebar above their content with no
   resize; only zoomed windows reflow.
 
+## T06 — T-01.6a `make demo` harness
+
+**State: done.** One `make demo` target builds the tree and runs the T-01 loop
+demo; the same target runs headless as the CI scripted half and is wired into
+`make e2e`.
+
+What landed:
+
+- **`Makefile`** — `demo: build` → `cargo run -p dragonfruit-dev -- dev --demo
+  $(DEMO_ARGS)`; new `DEMO_ARGS` variable; `e2e` now depends on `build` and
+  ends with `$(MAKE) demo DEMO_ARGS=--headless`. `demo` added to `.PHONY` and
+  `help`.
+- **`tools/dragonfruit-dev/src/demo.rs`** (new) — `qt_app()`, `x11_app()`,
+  `qml_import_path()`, `checklist()`, `SCRIPTED_SETTLE` (3000 ms). Overrides:
+  `DF_DEMO_QT_APP`, `DF_DEMO_X11_APP`, `DF_QML_IMPORT_PATH`. 3 unit tests.
+- **`tools/dragonfruit-dev/src/main.rs`** — `dev --demo` subcommand and a
+  refactor of the session lifecycle into `start_session` / `launch_program` /
+  `launch_shell` / `teardown_session` / `wait_for_compositor_exit`, shared by
+  `run_dev_session` and `run_demo_session`. Demo backend: explicit flag wins,
+  else nested when `WAYLAND_DISPLAY` is set, else headless (scripted). Launches
+  shell + Qt/Wayland app (`QT_QPA_PLATFORM=wayland`, `QML_IMPORT_PATH=build/qml`,
+  software rendering when headless) + X11 app (`xmessage`). Exit non-zero on a
+  launch failure, an early child death in the scripted half, or a dirty
+  teardown. 3 new unit tests (parser).
+- **CI** — `.github/workflows/ci.yml` installs `xwayland`/`x11-utils` and runs
+  `make demo` after the Qt build.
+- **Docs** — `docs/design/11-session-and-dev-workflow.md` "The demo harness"
+  section; `README.md` dev-workflow section.
+
+Commands that work (from the repo root; `make` sets the toolchain env):
+
+- `make demo DEMO_ARGS=--headless` → exit 0; prints the checklist, launches
+  shell + Qt + X11, `all children alive after settle`, clean teardown.
+- `make demo` (host Wayland session) → nested; SIGTERM/window close → exit 0,
+  no socket leak.
+- `make e2e` → exit 0 (7 conformance suites + demo smoke).
+- `cargo test -p dragonfruit-dev` (6 tests); `make clippy`; `cargo fmt --all
+  -- --check`; `make soak SOAK_CYCLES=3` — all clean.
+
+Gotchas for later tasks:
+
+- **Fixed a pre-existing `--launch` parser bug**: each `--launch` overwrote the
+  previous group, so only one extra app could launch. Repeated `--launch` now
+  accumulates.
+- First-party Qt apps need `QML_IMPORT_PATH=build/qml` at runtime (the shell
+  bakes an equivalent define; the apps do not). The demo exports it.
+- `make e2e` now builds the Qt/CMake side (it depends on `build`), because the
+  demo needs the shell and apps.
+- X11 half is skipped, with a note, when Xwayland or `xmessage` is absent; a
+  Wayland-only `make demo` is valid and exits 0.
+- The demo auto-launches both clients (scope says launch them); the checklist
+  still directs the human to the Dock. The Dock/menu-bar integration capture is
+  T-01.6b.
+
 ## Follow-ups
 
+- Add the QML import-dir define (`DF_QML_IMPORT_DIR`) to the first-party apps'
+  CMake so they run without `QML_IMPORT_PATH`; today only the shell has it and
+  the demo harness supplies the env.
 - T-16: publish `_NET_FRAME_EXTENTS` for Tier-2 X11 windows so clients can
   position menus/tooltips relative to the compositor titlebar.
 - Zoom (and any future re-layout) on an inset change should reuse
