@@ -1041,6 +1041,192 @@ fn traffic_lights_drive_zoom_minimize_and_close() {
     );
 }
 
+/// Move the synthetic pointer to a global-space point (normalized like
+/// libinput's absolute coordinates).
+fn motion_to(input: &SyntheticInput, x: i32, y: i32) {
+    let nx = f64::from(x) / f64::from(OUTPUT_W);
+    let ny = f64::from(y) / f64::from(OUTPUT_H);
+    input.send(&format!("motion-abs {nx} {ny}"));
+}
+
+/// A left-button down/up at the current pointer location (BTN_LEFT = 272).
+fn click(input: &SyntheticInput) {
+    input.send("button 272 down");
+    input.send("button 272 up");
+}
+
+/// The center of a reported titlebar, away from the traffic-light cluster.
+fn titlebar_center(report: &DecorationReport) -> (i32, i32) {
+    let (tx, ty, tw, th) = report.titlebar;
+    (tx + tw / 2, ty + th / 2)
+}
+
+/// T-01.3 acceptance: a drag from the SSD titlebar starts the existing
+/// interactive move grab and moves the window; a double-click dispatches the
+/// configured `dock.titlebarDoubleClick` action (default zoom, minimize when
+/// set). Movement is observed through the window's content geometry.
+#[test]
+fn titlebar_drag_and_double_click_move_and_zoom() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path =
+        PathBuf::from(&runtime_dir).join(format!("dragonfruit-drag-synth-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-drag",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (surface, xdg_surface, toplevel, file) = map_toplevel(&mut state, &mut queue);
+    let reports = wait_for_report(&mut state, &mut queue, &input, |reports| {
+        reports
+            .iter()
+            .any(|report| report.server_side && report.state == WindowStateReport::Floating)
+    });
+    let window = reports
+        .iter()
+        .find(|report| report.server_side)
+        .expect("a mapped SSD toplevel")
+        .window;
+    let before = *reports
+        .iter()
+        .find(|report| report.window == window)
+        .unwrap();
+
+    // --- drag from the titlebar moves the window -------------------------
+    let (cx, cy) = titlebar_center(&before);
+    motion_to(&input, cx, cy);
+    input.send("button 272 down");
+    input.send("motion 60 40");
+    input.send("button 272 up");
+    let after = wait_for_window(&mut state, &mut queue, &input, window, |report| {
+        report.content.0 - before.content.0 == 60 && report.content.1 - before.content.1 == 40
+    });
+    assert_eq!(
+        (
+            after.content.0 - before.content.0,
+            after.content.1 - before.content.1
+        ),
+        (60, 40),
+        "the titlebar drag must move the window by the pointer delta"
+    );
+
+    // --- double-click (default zoom) zooms the window --------------------
+    // Wait out the drag press so it cannot pair with the next click.
+    std::thread::sleep(Duration::from_millis(500));
+    let (cx, cy) = titlebar_center(&after);
+    motion_to(&input, cx, cy);
+    click(&input);
+    click(&input);
+    let zoomed = wait_for_window(&mut state, &mut queue, &input, window, |report| {
+        report.state == WindowStateReport::Zoomed
+    });
+    assert_eq!(
+        (zoomed.content.2, zoomed.content.3),
+        (OUTPUT_W, OUTPUT_H - TITLEBAR_HEIGHT),
+        "double-click must zoom the window: {zoomed:?}"
+    );
+
+    // --- configured `minimize` double-click minimizes --------------------
+    input.send("set titlebar-double-click minimize");
+    std::thread::sleep(Duration::from_millis(500));
+    let (cx, cy) = titlebar_center(&zoomed);
+    motion_to(&input, cx, cy);
+    click(&input);
+    click(&input);
+    let minimized = wait_for_window(&mut state, &mut queue, &input, window, |report| {
+        report.state == WindowStateReport::Minimized
+    });
+    assert!(
+        !minimized.server_side && minimized.titlebar == (0, 0, 0, 0),
+        "a configured minimize double-click hides the titlebar: {minimized:?}"
+    );
+
+    surface.destroy();
+    toplevel.destroy();
+    xdg_surface.destroy();
+    drop(file);
+    drop(conn);
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic socket survived"
+    );
+}
+
+/// T-01.3 acceptance: a fullscreen window hides its titlebar until the
+/// pointer hovers its top reveal strip, then the titlebar overlays the top of
+/// the content and reserves no inset.
+#[test]
+fn fullscreen_hover_reveals_the_titlebar() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir).join(format!(
+        "dragonfruit-fullscreen-synth-{}",
+        std::process::id()
+    ));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-fullscreen",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (surface, xdg_surface, toplevel, file) = map_toplevel(&mut state, &mut queue);
+    let reports = wait_for_report(&mut state, &mut queue, &input, |reports| {
+        reports.iter().any(|report| report.server_side)
+    });
+    let window = reports
+        .iter()
+        .find(|report| report.server_side)
+        .expect("a mapped SSD toplevel")
+        .window;
+
+    toplevel.set_fullscreen(None);
+    let hidden = wait_for_window(&mut state, &mut queue, &input, window, |report| {
+        report.state == WindowStateReport::Fullscreen
+    });
+    assert!(
+        !hidden.server_side && hidden.titlebar == (0, 0, 0, 0),
+        "fullscreen hides the titlebar until hovered: {hidden:?}"
+    );
+    assert_eq!(
+        (hidden.content.2, hidden.content.3),
+        (OUTPUT_W, OUTPUT_H),
+        "fullscreen fills the output"
+    );
+
+    // Hover the top reveal strip: the titlebar appears, overlaid on the
+    // content, reserving no inset.
+    motion_to(&input, OUTPUT_W / 2, TITLEBAR_HEIGHT / 2);
+    let revealed = wait_for_window(&mut state, &mut queue, &input, window, |report| {
+        report.state == WindowStateReport::Fullscreen && report.server_side
+    });
+    assert_eq!(revealed.titlebar.3, TITLEBAR_HEIGHT);
+    assert_eq!(
+        revealed.titlebar.1, revealed.content.1,
+        "overlay at content top"
+    );
+    assert_eq!(revealed.titlebar.2, revealed.content.2);
+
+    // Moving away hides it again.
+    motion_to(&input, OUTPUT_W / 2, OUTPUT_H / 2);
+    let hidden_again = wait_for_window(&mut state, &mut queue, &input, window, |report| {
+        report.state == WindowStateReport::Fullscreen && !report.server_side
+    });
+    assert_eq!(hidden_again.titlebar, (0, 0, 0, 0));
+
+    surface.destroy();
+    toplevel.destroy();
+    xdg_surface.destroy();
+    drop(file);
+    drop(conn);
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic socket survived"
+    );
+}
+
 #[test]
 fn popup_configure_is_constrained_to_the_output() {
     let proc = CompositorProcess::start("dragonfruit-conformance-popup");

@@ -77,6 +77,7 @@ use smithay::wayland::tablet_manager::{
 use crate::overview::{InputOwner, OverviewKind};
 use crate::shell::layer::KeyboardInteraction;
 use crate::state::DfState;
+use crate::window::WindowState;
 
 /// The chrome (shell layer) surface under a global-space point, with the
 /// surface origin and its keyboard-interaction policy.
@@ -318,23 +319,36 @@ where
                     // the click (T-07 FR-1).
                     state.focus_chrome_surface(&surface);
                 } else {
-                    // The SSD titlebar/controls are compositor chrome drawn
-                    // above the client surface, so a left press on a traffic
-                    // light acts directly and is never forwarded (T-01.2).
-                    // The titlebar is *only* consulted when no client
-                    // surface (toplevel, popup, or input region) is under
-                    // the point, so popups and client input keep priority.
                     if button_event.button == 0x110
                     /* BTN_LEFT */
                     {
                         let client_surface = surface_under(state, location);
-                        if client_surface.is_none() {
-                            if let Some((window, kind)) = state.titlebar_button_at(location) {
-                                state.traffic_light_action(&window, kind);
-                                state.needs_redraw = true;
-                                state.notify_activity();
-                                return;
+                        // The SSD titlebar/controls are compositor chrome.
+                        // A floating/zoomed titlebar sits above the client
+                        // area, so it is consulted only when no client
+                        // surface (toplevel, popup, or input region) is under
+                        // the point — popups and client input keep priority.
+                        // A revealed fullscreen titlebar overlays the client,
+                        // so it wins even when a client surface is under
+                        // (T-01.3).
+                        let titlebar_window = state.titlebar_window_at(location);
+                        let titlebar_wins = titlebar_window.as_ref().is_some_and(|window| {
+                            client_surface.is_none()
+                                || state.windows.state(window) == Some(WindowState::Fullscreen)
+                        });
+                        if titlebar_wins {
+                            let window = titlebar_window.expect("titlebar window checked above");
+                            state.activate_window(&window, serial);
+                            if let Some((light, kind)) = state.titlebar_button_at(location) {
+                                state.traffic_light_action(&light, kind);
+                            } else if state.register_titlebar_click(&window, location) {
+                                state.titlebar_double_click_action(&window);
+                            } else if state.windows.state(&window) == Some(WindowState::Floating) {
+                                state.begin_titlebar_move(&window, serial);
                             }
+                            state.needs_redraw = true;
+                            state.notify_activity();
+                            return;
                         }
                         if let Some((surface, _)) = client_surface {
                             if let Some(keyboard) = state.seat.get_keyboard() {

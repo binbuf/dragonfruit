@@ -8,6 +8,7 @@
 - **Landed foundation**: Compositor core (nested/DRM/headless, calloop, damage-driven rendering), input
 - **T01 — T-01.1 Titlebar render element**: **State: done.** The SSD titlebar element exists, is sized from the generated; **`compositor/src/window/decoration.rs`** — `TitlebarElement`,
 - **T02 — T-01.2 Traffic-light actions**: **State: done.** Close/minimize/zoom are clickable through the titlebar; **`compositor/src/window/decoration.rs`** — `TitlebarElement::cluster_rect()`
+- **T03 — T-01.3 Titlebar drag, double-click, fullscreen reveal**: **State: done.** A floating window's titlebar drags to move (existing; **`compositor/src/window/decoration.rs`** — `TitlebarDoubleClick`
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -194,3 +195,79 @@ Gotchas for later tasks:
   `minimize_window` behavior); a later task may want focus hand-off.
 - X11 close is new here: `close_window` is the one place Wayland and X11 close
   converge; use it instead of `toplevel.send_close()` directly.
+
+## T03 — T-01.3 Titlebar drag, double-click, fullscreen reveal
+
+**State: done.** A floating window's titlebar drags to move (existing
+`MoveGrab`), a double-click dispatches the configured
+`dock.titlebarDoubleClick`, and a fullscreen window reveals an overlay
+titlebar on top-strip hover. All geometry still flows through
+`move_window`/`configure_window_size`.
+
+What landed:
+
+- **`compositor/src/window/decoration.rs`** — `TitlebarDoubleClick`
+  (`Zoom` default | `Minimize` | `None`, with `parse`/`name`),
+  `DoubleClickTracker`/`TitlebarClick` (400 ms, 4 px slop),
+  `fullscreen_reveal_rect(content)` (the top `TITLEBAR_HEIGHT` strip), and
+  `TitlebarElement::for_window` now lays out a fullscreen titlebar as an
+  overlay on the content (`titlebar.loc == content.loc`, `insets == NONE`)
+  only while `hovered`. Floating/zoomed geometry is unchanged.
+- **`compositor/src/state.rs`** — `DfState::titlebar_double_click` +
+  `titlebar_clicks` fields; `set_titlebar_double_click`,
+  `register_titlebar_click`, `titlebar_double_click_action`,
+  `titlebar_window_at` (topmost titlebar under a point),
+  `activate_window(window, serial)`, `begin_titlebar_move(window, serial)`.
+  `titlebar_hover_at` now returns a fullscreen window's id when the pointer
+  is in its reveal strip. `focus_window` already existed on `DfState` in
+  `xwayland.rs`, hence the name `activate_window` for titlebar activation.
+- **`compositor/src/input.rs`** — left press on compositor chrome now: finds
+  the topmost titlebar window; a floating/zoomed titlebar still requires
+  `surface_under(..).is_none()` (popup/client priority), a revealed
+  fullscreen titlebar wins even when a client surface is under it; then it
+  activates the window and dispatches light action → double-click →
+  `MoveGrab` (floating only). Drag is not offered on zoomed/fullscreen.
+- **`compositor/src/input/synthetic.rs`** — new
+  `set titlebar-double-click zoom|minimize|none` command (test plumbing).
+- **Tests** — `window_conformance::titlebar_drag_and_double_click_move_and_zoom`
+  (drag moves content by the pointer delta; default double-click zooms to
+  `OUTPUT_W × OUTPUT_H - TITLEBAR_HEIGHT`; after setting `minimize` a
+  double-click minimizes). `window_conformance::fullscreen_hover_reveals_the_titlebar`
+  (fullscreen hides the bar, top-strip hover reveals it at the content top
+  with no inset, moving away hides it). Decoration unit tests cover the
+  fullscreen overlay, the reveal rect, the tracker, and the setting parse.
+- **Docs / ADR** — `docs/design/05-window-decorations.md` behavior spec +
+  status updated. ADR `0001-titlebar-double-click-setting-owner.md`: the
+  compositor holds the setting until T-08 settingsd pushes it.
+
+Commands that work (from the repo root; `make` sets the toolchain env):
+
+- `cargo test -p dragonfruit-compositor --bin dragonfruit-compositor`
+  (144 unit tests; +5 in `window::decoration`).
+- `cargo test -p dragonfruit-compositor --test window_conformance` (8 tests).
+- `cargo test -p dragonfruit-compositor --test xwayland_conformance` (4 tests).
+- `make e2e` (all green). `cargo clippy --workspace --all-targets -- -D warnings`
+  and `cargo fmt --all -- --check` clean.
+
+Gotchas for later tasks:
+
+- T-01.2's "clicking a light does not focus" is superseded: any titlebar
+  press now calls `activate_window` first, so the window takes keyboard
+  focus. The old `titlebar_element`'s `focused` flag follows it. Activation
+  only sets keyboard focus; it does not raise the window in the `Space`
+  (existing click-to-focus does not raise either).
+- `dock.titlebarDoubleClick` is not yet wired to the shell; the compositor
+  default is `Zoom` and the synthetic command sets it. T-08 must call
+  `DfState::set_titlebar_double_click` (ADR 0001).
+- Double-click pairs on `(window, time, location)`; a drag press leaves a
+  pending click for 400 ms. A synthetic test that drags then double-clicks
+  must sleep > 400 ms (or use a different window) to avoid a false pair.
+- Fullscreen reveal zone == the titlebar overlay rect (top
+  `TITLEBAR_HEIGHT` of the content). Because the overlay covers client
+  pixels, it intercepts presses there while revealed; hidden, client input
+  is untouched.
+- Zoomed/fullscreen windows do not start a titlebar move (grab module's
+  contract); if a later task wants drag-to-unzoom, add it deliberately.
+- The titlebar is still a custom element above the whole window `Space`; the
+  stacked-window interleaving limitation from T-01.1/T-01.2 is unchanged
+  (T-04's per-window scene-element refactor).

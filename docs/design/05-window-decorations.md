@@ -47,11 +47,13 @@ Our decorations, wherever they appear, behave identically:
 
 - Traffic-light glyphs reveal on hover of the button cluster; colorless
   otherwise.
-- Double-click on the titlebar zooms; right-click opens the window menu
-  (Move to Space, Minimize, Zoom, Close — see
+- Dragging the titlebar starts an interactive move.
+- Double-click on the titlebar dispatches the `dock.titlebarDoubleClick`
+  action (`zoom` by default, or `minimize`/`none`); right-click opens the
+  window menu (Move to Space, Minimize, Zoom, Close — see
   [03-workspaces.md](03-workspaces.md)).
-- Fullscreen windows hide the titlebar; a hover reveal keeps controls
-  reachable.
+- Fullscreen windows hide the titlebar; a hover reveal of the top strip
+  overlays it on the content and keeps controls reachable.
 
 ## Product promise
 
@@ -96,3 +98,27 @@ and no second owner of truth. The titlebar is only hit-tested when no client
 surface (toplevel, popup, or input region) and no chrome surface is under the
 pointer, so popups, IME, and per-surface input regions keep priority. Reduced
 motion is N/A here: no animation is introduced (lifecycle motion is T-02).
+
+T-01.3 completes the titlebar gesture set on the same element and the same
+state machine:
+
+- A left press on a floating window's titlebar (not on a light) activates the
+  window and starts the existing interactive `MoveGrab`; movement clamps to
+  the output and geometry keeps flowing through the one
+  `configure_window_size`/`move_window` path.
+- Two titlebar presses on the same window within 400 ms and 4 logical pixels
+  count as a double-click; it dispatches `TitlebarDoubleClick` — `zoom`
+  (default), `minimize`, or `none` — mirroring the shell's
+  `dock.titlebarDoubleClick`. Until T-08 settingsd owns the live value, the
+  compositor holds the field (default `zoom`) and a synthetic-input command
+  sets it for tests (see ADR 0001).
+- A fullscreen window has no persistent titlebar; when the pointer enters the
+  top `component.titlebar.height` strip, the titlebar is laid out as an
+  overlay on the content (no inset) and its glyphs reveal. Moving away hides
+  it again. The overlay wins the titlebar hit-test even though a client
+  surface is under it, because it is compositor chrome that only exists while
+  revealed.
+
+Zoomed and fullscreen windows are not interactively moved (matching the grab
+module's contract); multi-monitor drag polish is T-16. The window menu is
+T-01.4.
