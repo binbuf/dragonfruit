@@ -78,6 +78,8 @@ struct TestClient {
     pointer_button_serials: Vec<u32>,
     toplevel_configures: Vec<ToplevelConfigure>,
     popup_configures: Vec<PopupConfigure>,
+    /// Number of `xdg_toplevel.close` events delivered (T-01.2 close control).
+    toplevel_close_count: usize,
 }
 
 impl Dispatch<wl_registry::WlRegistry, ()> for TestClient {
@@ -252,17 +254,22 @@ impl Dispatch<xdg_toplevel::XdgToplevel, ()> for TestClient {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        if let xdg_toplevel::Event::Configure {
-            width,
-            height,
-            states,
-        } = event
-        {
-            state.toplevel_configures.push(ToplevelConfigure {
+        match event {
+            xdg_toplevel::Event::Configure {
                 width,
                 height,
-                states: parse_states(&states),
-            });
+                states,
+            } => {
+                state.toplevel_configures.push(ToplevelConfigure {
+                    width,
+                    height,
+                    states: parse_states(&states),
+                });
+            }
+            xdg_toplevel::Event::Close => {
+                state.toplevel_close_count += 1;
+            }
+            _ => {}
         }
     }
 }
@@ -504,6 +511,16 @@ impl Drop for SyntheticInput {
     }
 }
 
+/// The window state as reported by `query decorations` (T-01.2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WindowStateReport {
+    Floating,
+    Zoomed,
+    Minimized,
+    Fullscreen,
+    Unknown,
+}
+
 /// One parsed `query decorations` line.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct DecorationReport {
@@ -511,6 +528,7 @@ struct DecorationReport {
     server_side: bool,
     titlebar: (i32, i32, i32, i32),
     content: (i32, i32, i32, i32),
+    state: WindowStateReport,
 }
 
 /// Parse the `decoration` lines of a report (ignoring the trailing `end`).
@@ -525,24 +543,50 @@ fn parse_decorations(report: &str) -> Vec<DecorationReport> {
             let n = |parts: &mut std::str::SplitWhitespace| -> Option<i32> {
                 parts.next()?.parse().ok()
             };
+            let window = parts.next()?.parse().ok()?;
+            let server_side = parts.next()? == "1";
+            let titlebar = (
+                n(&mut parts)?,
+                n(&mut parts)?,
+                n(&mut parts)?,
+                n(&mut parts)?,
+            );
+            let content = (
+                n(&mut parts)?,
+                n(&mut parts)?,
+                n(&mut parts)?,
+                n(&mut parts)?,
+            );
+            let state = match parts.next() {
+                Some("floating") => WindowStateReport::Floating,
+                Some("zoomed") => WindowStateReport::Zoomed,
+                Some("minimized") => WindowStateReport::Minimized,
+                Some("fullscreen") => WindowStateReport::Fullscreen,
+                _ => WindowStateReport::Unknown,
+            };
             Some(DecorationReport {
-                window: parts.next()?.parse().ok()?,
-                server_side: parts.next()? == "1",
-                titlebar: (
-                    n(&mut parts)?,
-                    n(&mut parts)?,
-                    n(&mut parts)?,
-                    n(&mut parts)?,
-                ),
-                content: (
-                    n(&mut parts)?,
-                    n(&mut parts)?,
-                    n(&mut parts)?,
-                    n(&mut parts)?,
-                ),
+                window,
+                server_side,
+                titlebar,
+                content,
+                state,
             })
         })
         .collect()
+}
+
+/// Traffic-light geometry from `component.trafficLights` tokens, used to aim
+/// the synthetic pointer at each control (T-01.2).
+const LIGHT_DIAMETER: i32 = 12;
+const LIGHT_GAP: i32 = 8;
+const LIGHT_INSET: i32 = 12;
+
+/// The global-space center of a traffic light on a reported titlebar.
+fn light_center(report: &DecorationReport, index: i32) -> (i32, i32) {
+    let (tx, ty, _tw, th) = report.titlebar;
+    let cx = tx + LIGHT_INSET + LIGHT_DIAMETER / 2 + index * (LIGHT_DIAMETER + LIGHT_GAP);
+    let cy = ty + th / 2;
+    (cx, cy)
 }
 
 /// Dispatch until `pred` is true or the timeout expires (bounded with
@@ -865,6 +909,136 @@ fn wait_for_report(
         );
         std::thread::sleep(Duration::from_millis(20));
     }
+}
+
+/// Query `query decorations` until the window with `window` id satisfies
+/// `predicate`, retrying while the scene catches up.
+fn wait_for_window(
+    state: &mut TestClient,
+    queue: &mut EventQueue<TestClient>,
+    input: &SyntheticInput,
+    window: u64,
+    mut predicate: impl FnMut(&DecorationReport) -> bool,
+) -> DecorationReport {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        queue.roundtrip(state).expect("roundtrip while waiting");
+        let reports = parse_decorations(&input.query("query decorations"));
+        if let Some(report) = reports.iter().find(|report| report.window == window) {
+            if predicate(report) {
+                return *report;
+            }
+        }
+        assert!(
+            Instant::now() < deadline,
+            "timed out waiting for window {window} state"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// Aim the synthetic pointer at the traffic light at `index`
+/// (0=close, 1=minimize, 2=zoom) and click it.
+fn click_light(input: &SyntheticInput, report: &DecorationReport, index: i32) {
+    let (cx, cy) = light_center(report, index);
+    let nx = f64::from(cx) / f64::from(OUTPUT_W);
+    let ny = f64::from(cy) / f64::from(OUTPUT_H);
+    input.send(&format!("motion-abs {nx} {ny}"));
+    input.send("button 272 down");
+    input.send("button 272 up");
+}
+
+/// T-01.2 acceptance: synthetic pointer clicks on the traffic lights drive
+/// zoom/unzoom, minimize, and close through the existing window state
+/// machine, observed over the protocol.
+#[test]
+fn traffic_lights_drive_zoom_minimize_and_close() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir)
+        .join(format!("dragonfruit-traffic-synth-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-traffic",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (surface, xdg_surface, toplevel, file) = map_toplevel(&mut state, &mut queue);
+    let reports = wait_for_report(&mut state, &mut queue, &input, |reports| {
+        reports
+            .iter()
+            .any(|report| report.server_side && report.state == WindowStateReport::Floating)
+    });
+    let window = reports
+        .iter()
+        .find(|report| report.server_side)
+        .expect("a mapped SSD toplevel")
+        .window;
+    let mut report = *reports
+        .iter()
+        .find(|report| report.window == window)
+        .unwrap();
+
+    // --- green (zoom): fills the usable area below the titlebar ----------
+    click_light(&input, &report, 2);
+    report = wait_for_window(&mut state, &mut queue, &input, window, |report| {
+        report.state == WindowStateReport::Zoomed
+    });
+    assert_eq!(
+        (report.content.2, report.content.3),
+        (OUTPUT_W, OUTPUT_H - TITLEBAR_HEIGHT),
+        "zoom must fill the usable area: {report:?}"
+    );
+
+    // --- green again (unzoom): restores the floating size ----------------
+    click_light(&input, &report, 2);
+    report = wait_for_window(&mut state, &mut queue, &input, window, |report| {
+        report.state == WindowStateReport::Floating
+    });
+    assert_eq!((report.content.2, report.content.3), (WINDOW_W, WINDOW_H));
+
+    // --- yellow (minimize): hidden, no titlebar --------------------------
+    click_light(&input, &report, 1);
+    report = wait_for_window(&mut state, &mut queue, &input, window, |report| {
+        report.state == WindowStateReport::Minimized
+    });
+    assert!(
+        !report.server_side && report.titlebar == (0, 0, 0, 0),
+        "a minimized window draws no titlebar: {report:?}"
+    );
+
+    // --- red (close) on a fresh window -----------------------------------
+    let (surface2, xdg_surface2, toplevel2, file2) = map_toplevel(&mut state, &mut queue);
+    let reports = wait_for_report(&mut state, &mut queue, &input, |reports| {
+        reports.iter().filter(|report| report.server_side).count() == 1
+    });
+    let close_report = *reports
+        .iter()
+        .find(|report| report.server_side)
+        .expect("the fresh window must carry a titlebar");
+    click_light(&input, &close_report, 0);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.toplevel_close_count > 0,
+    );
+
+    surface2.destroy();
+    toplevel2.destroy();
+    xdg_surface2.destroy();
+    toplevel.destroy();
+    xdg_surface.destroy();
+    surface.destroy();
+    drop(file2);
+    drop(file);
+    drop(conn);
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic socket survived"
+    );
 }
 
 #[test]

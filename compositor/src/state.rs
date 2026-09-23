@@ -102,8 +102,8 @@ use crate::window::popup::constrained_popup_geometry;
 use crate::window::resize::SizeConstraints;
 use crate::window::{
     cascaded_geometry, centered_on, DecorationTier, ReservedZones, ShellWindowEvent,
-    TitlebarElement, WindowDispatch, WindowEvent, WindowEventKind, WindowId, WindowInsets,
-    WindowMenuCommand, WindowModel, CASCADE_STEP,
+    TitlebarElement, TrafficLightKind, WindowDispatch, WindowEvent, WindowEventKind, WindowId,
+    WindowInsets, WindowMenuCommand, WindowModel, CASCADE_STEP,
 };
 use crate::workspace::WorkspaceModel;
 use crate::xwayland::XwaylandState;
@@ -306,6 +306,9 @@ pub struct DfState {
     pub reserved_zones: ReservedZones,
     /// The window that currently owns keyboard focus, if any.
     pub active_window: Option<Window>,
+    /// The window whose traffic-light cluster the pointer is over (T-01.2);
+    /// drives glyph reveal. `None` when the pointer is not on a cluster.
+    pub hovered_titlebar: Option<WindowId>,
 
     // --- workspace model (T-05) --------------------------------------------
     /// Per-output ordered Space lists, fullscreen Spaces, wallpaper, window
@@ -449,6 +452,7 @@ impl DfState {
             window_dispatch: WindowDispatch::new(),
             reserved_zones: ReservedZones::default(),
             active_window: None,
+            hovered_titlebar: None,
             workspaces: WorkspaceModel::new(),
             app_resolver: AppResolver::load(),
             xwayland: XwaylandState::default(),
@@ -836,14 +840,100 @@ impl DfState {
     }
 
     /// The SSD titlebar element for `window`, if the compositor must draw
-    /// one (T-01.1). `hovered` is always false until T-01.2 wires hover.
+    /// one (T-01.1). The glyphs reveal while the pointer is over the
+    /// traffic-light cluster (T-01.2).
     pub fn titlebar_element(&self, window: &Window) -> Option<TitlebarElement> {
         let id = self.windows.id(window)?;
         let geometry = self.windows.geometry(window)?;
         let state = self.windows.state(window)?;
         let tier = self.windows.decorations(window);
         let focused = self.active_window.as_ref() == Some(window);
-        TitlebarElement::for_window(id, geometry, tier, state, focused, false)
+        let hovered = self.hovered_titlebar == Some(id);
+        TitlebarElement::for_window(id, geometry, tier, state, focused, hovered)
+    }
+
+    /// Recompute which titlebar (if any) the pointer is hovering, returning
+    /// whether the reveal state changed so the caller can schedule a redraw.
+    pub fn update_titlebar_hover(&mut self, location: Point<f64, Logical>) -> bool {
+        let hovered = self.titlebar_hover_at(location);
+        if hovered != self.hovered_titlebar {
+            self.hovered_titlebar = hovered;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// The window whose traffic-light cluster contains a global-space point
+    /// (T-01.2), topmost first.
+    pub fn titlebar_hover_at(&self, location: Point<f64, Logical>) -> Option<WindowId> {
+        let point = Point::from((location.x.floor() as i32, location.y.floor() as i32));
+        let windows: Vec<Window> = self.space.elements().cloned().collect();
+        for window in windows.into_iter().rev() {
+            let Some(element) = self.titlebar_element(&window) else {
+                continue;
+            };
+            if element.cluster_rect().contains(point) {
+                return self.windows.id(&window);
+            }
+        }
+        None
+    }
+
+    /// The topmost window and traffic-light button under a global-space
+    /// point (T-01.2). The titlebar is compositor chrome drawn above the
+    /// window `Space`, so this is consulted before client surface routing;
+    /// only the button rects are intercepted, so clicks on the client area
+    /// or between the lights still route to the client unchanged.
+    pub fn titlebar_button_at(
+        &self,
+        location: Point<f64, Logical>,
+    ) -> Option<(Window, TrafficLightKind)> {
+        let point = Point::from((location.x.floor() as i32, location.y.floor() as i32));
+        let windows: Vec<Window> = self.space.elements().cloned().collect();
+        for window in windows.into_iter().rev() {
+            let Some(element) = self.titlebar_element(&window) else {
+                continue;
+            };
+            if let Some(kind) = element.button_at(point) {
+                return Some((window, kind));
+            }
+        }
+        None
+    }
+
+    /// Perform a traffic-light action (T-01.2). These are the same
+    /// state-machine primitives the shell protocol and window menu call, so
+    /// the compositor keeps a single owner of window state.
+    pub fn traffic_light_action(&mut self, window: &Window, kind: TrafficLightKind) {
+        match kind {
+            TrafficLightKind::Close => self.close_window(window),
+            TrafficLightKind::Minimize => self.minimize_window(window),
+            TrafficLightKind::Zoom => {
+                if self.windows.state(window) == Some(crate::window::WindowState::Zoomed) {
+                    self.unzoom_window(window);
+                } else {
+                    self.zoom_window(window);
+                }
+            }
+        }
+    }
+
+    /// Ask a window's client to close. Wayland toplevels get
+    /// `xdg_toplevel.close`; X11 windows get `WM_DELETE_WINDOW` (or are
+    /// destroyed when the client does not support it). The SSD close
+    /// control, the window menu, and `df_toplevel.close` all share this one
+    /// path so close behaves identically however it is requested.
+    pub fn close_window(&mut self, window: &Window) {
+        if let Some(x11) = window.x11_surface() {
+            if let Err(err) = x11.close() {
+                eprintln!("dragonfruit-compositor: failed to close X11 window: {err}");
+            }
+            return;
+        }
+        if let Some(toplevel) = window.toplevel() {
+            toplevel.send_close();
+        }
     }
 
     /// Move a floating window to `location` (the caller clamps to output).
@@ -1064,9 +1154,7 @@ impl DfState {
                 }
             }
             WindowMenuCommand::Close => {
-                if let Some(toplevel) = window.toplevel() {
-                    toplevel.send_close();
-                }
+                self.close_window(window);
             }
         }
     }

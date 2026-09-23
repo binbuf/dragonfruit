@@ -1753,11 +1753,7 @@ impl Dispatch<df_toplevel::DfToplevel, ToplevelUserData> for DfState {
         };
         match request {
             df_toplevel::Request::Activate => state.activate_window_id(data.id),
-            df_toplevel::Request::Close => {
-                if let Some(toplevel) = window.toplevel() {
-                    toplevel.send_close();
-                }
-            }
+            df_toplevel::Request::Close => state.close_window(&window),
             df_toplevel::Request::Minimize => state.minimize_window(&window),
             df_toplevel::Request::Unminimize => state.restore_window(&window),
             df_toplevel::Request::Zoom => state.zoom_window(&window),

@@ -25,6 +25,10 @@ use x11rb::wrapper::ConnectionExt as _;
 const SOCKET_WAIT: Duration = Duration::from_secs(10);
 const X11_WAIT: Duration = Duration::from_secs(10);
 
+/// Headless output size (see `backend/mod.rs::HEADLESS_MODE_SIZE`).
+const OUTPUT_W: i32 = 1280;
+const OUTPUT_H: i32 = 720;
+
 struct CompositorProcess {
     child: Child,
     socket_path: PathBuf,
@@ -222,11 +226,16 @@ impl SyntheticInput {
         }
     }
 
-    /// Send a query and read the compositor's datagram reply.
-    fn query(&self, command: &str) -> String {
+    /// Send a raw synthetic-input command (no reply expected).
+    fn send(&self, command: &str) {
         self.socket
             .send_to(command.as_bytes(), &self.path)
-            .expect("send synthetic query");
+            .unwrap_or_else(|err| panic!("send synthetic {command:?}: {err}"));
+    }
+
+    /// Send a query and read the compositor's datagram reply.
+    fn query(&self, command: &str) -> String {
+        self.send(command);
         let mut buf = [0u8; 16 * 1024];
         let len = self.socket.recv(&mut buf).expect("synthetic query reply");
         String::from_utf8_lossy(&buf[..len]).into_owned()
@@ -239,12 +248,24 @@ impl Drop for SyntheticInput {
     }
 }
 
+/// The window state as reported by `query decorations` (T-01.2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WindowStateReport {
+    Floating,
+    Zoomed,
+    Minimized,
+    Fullscreen,
+    Unknown,
+}
+
 /// One parsed `query decorations` line.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct DecorationReport {
+    window: u64,
     server_side: bool,
     titlebar: (i32, i32, i32, i32),
     content: (i32, i32, i32, i32),
+    state: WindowStateReport,
 }
 
 fn parse_decorations(report: &str) -> Vec<DecorationReport> {
@@ -258,24 +279,84 @@ fn parse_decorations(report: &str) -> Vec<DecorationReport> {
             let n = |parts: &mut std::str::SplitWhitespace| -> Option<i32> {
                 parts.next()?.parse().ok()
             };
-            let _id: u64 = parts.next()?.parse().ok()?;
+            let window = parts.next()?.parse().ok()?;
+            let server_side = parts.next()? == "1";
+            let titlebar = (
+                n(&mut parts)?,
+                n(&mut parts)?,
+                n(&mut parts)?,
+                n(&mut parts)?,
+            );
+            let content = (
+                n(&mut parts)?,
+                n(&mut parts)?,
+                n(&mut parts)?,
+                n(&mut parts)?,
+            );
+            let state = match parts.next() {
+                Some("floating") => WindowStateReport::Floating,
+                Some("zoomed") => WindowStateReport::Zoomed,
+                Some("minimized") => WindowStateReport::Minimized,
+                Some("fullscreen") => WindowStateReport::Fullscreen,
+                _ => WindowStateReport::Unknown,
+            };
             Some(DecorationReport {
-                server_side: parts.next()? == "1",
-                titlebar: (
-                    n(&mut parts)?,
-                    n(&mut parts)?,
-                    n(&mut parts)?,
-                    n(&mut parts)?,
-                ),
-                content: (
-                    n(&mut parts)?,
-                    n(&mut parts)?,
-                    n(&mut parts)?,
-                    n(&mut parts)?,
-                ),
+                window,
+                server_side,
+                titlebar,
+                content,
+                state,
             })
         })
         .collect()
+}
+
+/// Traffic-light geometry from `component.trafficLights` tokens (T-01.2).
+const LIGHT_DIAMETER: i32 = 12;
+const LIGHT_GAP: i32 = 8;
+const LIGHT_INSET: i32 = 12;
+
+fn light_center(report: &DecorationReport, index: i32) -> (i32, i32) {
+    let (tx, ty, _tw, th) = report.titlebar;
+    let cx = tx + LIGHT_INSET + LIGHT_DIAMETER / 2 + index * (LIGHT_DIAMETER + LIGHT_GAP);
+    let cy = ty + th / 2;
+    (cx, cy)
+}
+
+/// Aim the synthetic pointer at one traffic light and click it.
+fn click_light(input: &SyntheticInput, report: &DecorationReport, index: i32) {
+    let (cx, cy) = light_center(report, index);
+    let nx = f64::from(cx) / f64::from(OUTPUT_W);
+    let ny = f64::from(cy) / f64::from(OUTPUT_H);
+    input.send(&format!("motion-abs {nx} {ny}"));
+    input.send("button 272 down");
+    input.send("button 272 up");
+}
+
+/// Poll `query decorations` until `predicate` holds.
+fn wait_for_report(
+    input: &SyntheticInput,
+    mut predicate: impl FnMut(&[DecorationReport]) -> bool,
+) -> Vec<DecorationReport> {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let reports = parse_decorations(&input.query("query decorations"));
+        if predicate(&reports) {
+            return reports;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "timed out waiting for decoration state"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+fn report_for(reports: &[DecorationReport], window: u64) -> DecorationReport {
+    *reports
+        .iter()
+        .find(|report| report.window == window)
+        .expect("reported window")
 }
 
 /// The design-system SSD titlebar height (T-01.1).
@@ -416,6 +497,136 @@ fn x11_window_carries_the_ssd_titlebar() {
         ssd.titlebar.1 + ssd.titlebar.3,
         ssd.content.1,
         "the X11 client area must sit below the titlebar"
+    );
+
+    drop(conn);
+    drop(input);
+    proc.assert_clean_exit();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic socket survived"
+    );
+}
+
+/// T-01.2 acceptance: synthetic pointer clicks on the traffic lights drive
+/// zoom/unzoom, minimize, and close for an X11 client through the same state
+/// machine as a Wayland client.
+#[test]
+fn x11_traffic_lights_drive_zoom_minimize_and_close() {
+    if !xwayland_available() {
+        eprintln!("skipping: Xwayland is not installed");
+        return;
+    }
+
+    let socket_name = format!("dragonfruit-test-x11-traffic-{}", std::process::id());
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir).join(format!(
+        "dragonfruit-x11-traffic-synth-{}",
+        std::process::id()
+    ));
+    let proc = CompositorProcess::start_with_synthetic(&socket_name, Some(&synthetic_path));
+    let input = SyntheticInput::connect(&synthetic_path);
+    let Some(display) = proc.wait_for_display() else {
+        eprintln!("skipping: Xwayland did not become ready");
+        return;
+    };
+
+    let (conn, screen_num) = x11rb::connect(Some(&display)).expect("connect to Xwayland");
+    let root = conn.setup().roots[screen_num].root;
+    let screen = &conn.setup().roots[screen_num];
+
+    let make_window = |x: i16, y: i16, w: u16, h: u16| -> X11Window {
+        let window = conn.generate_id().expect("generate window id");
+        let aux = CreateWindowAux::new().background_pixel(screen.white_pixel);
+        conn.create_window(
+            screen.root_depth,
+            window,
+            root,
+            x,
+            y,
+            w,
+            h,
+            0,
+            WindowClass::INPUT_OUTPUT,
+            x11rb::COPY_FROM_PARENT,
+            &aux,
+        )
+        .expect("create_window");
+        conn.map_window(window).expect("map_window");
+        conn.flush().expect("flush");
+        wait_until(
+            || client_list(&conn, root).contains(&window),
+            Duration::from_secs(5),
+            "X11 window to be managed",
+        );
+        window
+    };
+
+    let _window = make_window(40, 40, 200, 120);
+    let reports = wait_for_report(&input, |reports| {
+        reports
+            .iter()
+            .any(|report| report.server_side && report.state == WindowStateReport::Floating)
+    });
+    let mut report = *reports.iter().find(|report| report.server_side).unwrap();
+    let window_id = report.window;
+    let floating_content = report.content;
+
+    // --- green (zoom) ----------------------------------------------------
+    click_light(&input, &report, 2);
+    let reports = wait_for_report(&input, |reports| {
+        reports
+            .iter()
+            .any(|report| report.window == window_id && report.state == WindowStateReport::Zoomed)
+    });
+    report = report_for(&reports, window_id);
+    assert_eq!(
+        (report.content.2, report.content.3),
+        (OUTPUT_W, OUTPUT_H - TITLEBAR_HEIGHT),
+        "X11 zoom must fill the usable area: {report:?}"
+    );
+    assert!(report.server_side, "a zoomed X11 window keeps its titlebar");
+
+    // --- green again (unzoom) --------------------------------------------
+    click_light(&input, &report, 2);
+    let reports = wait_for_report(&input, |reports| {
+        reports
+            .iter()
+            .any(|report| report.window == window_id && report.state == WindowStateReport::Floating)
+    });
+    report = report_for(&reports, window_id);
+    assert_eq!(
+        report.content, floating_content,
+        "unzoom must restore the X11 floating geometry"
+    );
+
+    // --- yellow (minimize) -----------------------------------------------
+    click_light(&input, &report, 1);
+    let reports = wait_for_report(&input, |reports| {
+        reports.iter().any(|report| {
+            report.window == window_id && report.state == WindowStateReport::Minimized
+        })
+    });
+    report = report_for(&reports, window_id);
+    assert!(
+        !report.server_side && report.titlebar == (0, 0, 0, 0),
+        "a minimized X11 window draws no titlebar: {report:?}"
+    );
+
+    // --- red (close) on a second window ----------------------------------
+    let window2 = make_window(300, 200, 220, 140);
+    let reports = wait_for_report(&input, |reports| {
+        reports.iter().filter(|report| report.server_side).count() == 1
+    });
+    let close_report = *reports
+        .iter()
+        .find(|report| report.server_side)
+        .expect("the second X11 window must carry a titlebar");
+    click_light(&input, &close_report, 0);
+    wait_until(
+        || !client_list(&conn, root).contains(&window2),
+        Duration::from_secs(5),
+        "X11 close to destroy the window",
     );
 
     drop(conn);

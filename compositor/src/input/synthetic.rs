@@ -33,10 +33,11 @@
 //! ```
 //!
 //! `query decorations` is a read-only introspection aid for the SSD
-//! conformance tests (T-01.1): instead of injecting input, the compositor
-//! replies to the sender with one `decoration` line per tracked window
-//! (window id, server-side flag, titlebar rect, content rect) followed by
-//! `end`. A datagram socket that never receives replies is unaffected.
+//! conformance tests (T-01.1/T-01.2): instead of injecting input, the
+//! compositor replies to the sender with one `decoration` line per tracked
+//! window (window id, server-side flag, titlebar rect, content rect, window
+//! state) followed by `end`. A datagram socket that never receives replies
+//! is unaffected.
 
 use std::os::unix::net::UnixDatagram;
 use std::path::{Path, PathBuf};
@@ -837,9 +838,11 @@ fn apply_datagram_reply(
 
 /// The `query decorations` report: one line per tracked window.
 ///
-/// `decoration <id> <server_side> <tbx> <tby> <tbw> <tbh> <cx> <cy> <cw> <ch>`
-/// followed by `end`. The titlebar fields are zero when the compositor draws
-/// no titlebar (CSD, hidden, or fullscreen).
+/// `decoration <id> <server_side> <tbx> <tby> <tbw> <tbh> <cx> <cy> <cw> <ch>
+/// <state>` followed by `end`. The titlebar fields are zero when the
+/// compositor draws no titlebar (CSD, hidden, or fullscreen); `<state>` is
+/// `floating`, `zoomed`, `minimized`, or `fullscreen` (T-01.2 makes the
+/// minimize/zoom transitions observable).
 fn decoration_report(state: &DfState) -> String {
     let mut out = String::new();
     for window in state.windows.windows() {
@@ -859,8 +862,13 @@ fn decoration_report(state: &DfState) -> String {
                 )
             })
             .unwrap_or((0, 0, 0, 0));
+        let window_state = state
+            .windows
+            .state(window)
+            .map(|state| state.name())
+            .unwrap_or("unknown");
         out.push_str(&format!(
-            "decoration {} {} {tx} {ty} {tw} {th} {} {} {} {}\n",
+            "decoration {} {} {tx} {ty} {tw} {th} {} {} {} {} {window_state}\n",
             id.0, ssd as u32, content.loc.x, content.loc.y, content.size.w, content.size.h,
         ));
     }
