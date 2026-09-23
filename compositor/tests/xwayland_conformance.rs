@@ -512,6 +512,161 @@ fn x11_window_carries_the_ssd_titlebar() {
     );
 }
 
+/// T-01.5: an X11 window that asks to be undecorated via `_MOTIF_WM_HINTS`
+/// gets no compositor titlebar (the double-decoration guard). A runtime hint
+/// flip reflows a zoomed window through `configure_window_size`, and the X
+/// server actually receives the inset-adjusted geometry.
+#[test]
+fn x11_decoration_tier_follows_motif_hints_and_configures_insets() {
+    if !xwayland_available() {
+        eprintln!("skipping: Xwayland is not installed");
+        return;
+    }
+
+    let socket_name = format!("dragonfruit-test-x11-tier-{}", std::process::id());
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir)
+        .join(format!("dragonfruit-x11-tier-synth-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(&socket_name, Some(&synthetic_path));
+    let input = SyntheticInput::connect(&synthetic_path);
+    let Some(display) = proc.wait_for_display() else {
+        eprintln!("skipping: Xwayland did not become ready");
+        return;
+    };
+
+    let (conn, screen_num) = x11rb::connect(Some(&display)).expect("connect to Xwayland");
+    let root = conn.setup().roots[screen_num].root;
+    let screen = &conn.setup().roots[screen_num];
+    let motif = conn
+        .intern_atom(false, b"_MOTIF_WM_HINTS")
+        .expect("intern _MOTIF_WM_HINTS")
+        .reply()
+        .expect("intern reply")
+        .atom;
+
+    let window = conn.generate_id().expect("generate window id");
+    let aux = CreateWindowAux::new().background_pixel(screen.white_pixel);
+    conn.create_window(
+        screen.root_depth,
+        window,
+        root,
+        40,
+        40,
+        200,
+        120,
+        0,
+        WindowClass::INPUT_OUTPUT,
+        x11rb::COPY_FROM_PARENT,
+        &aux,
+    )
+    .expect("create_window");
+    // `MWM_HINTS_DECORATIONS` flag set, decorations field 0: the client asks
+    // to draw its own decoration. Set before the first map.
+    conn.change_property32(PropMode::REPLACE, window, motif, motif, &[2, 0, 0, 0, 0])
+        .expect("set motif hints");
+    conn.map_window(window).expect("map_window");
+    conn.flush().expect("flush");
+
+    wait_until(
+        || client_list(&conn, root).contains(&window),
+        Duration::from_secs(5),
+        "X11 window to be managed",
+    );
+
+    let reports = wait_for_report(&input, |reports| !reports.is_empty());
+    let report = report_for(&reports, reports[0].window);
+    assert!(
+        !report.server_side && report.titlebar == (0, 0, 0, 0),
+        "an explicitly undecorated X11 window must not get our titlebar: {report:?}"
+    );
+    assert_eq!((report.content.2, report.content.3), (200, 120));
+    let window_id = report.window;
+
+    // The client now asks for WM decoration: we must add exactly one titlebar.
+    conn.change_property32(PropMode::REPLACE, window, motif, motif, &[2, 0, 2, 0, 0])
+        .expect("set motif hints");
+    conn.flush().expect("flush");
+    let reports = wait_for_report(&input, |reports| {
+        reports
+            .iter()
+            .any(|report| report.window == window_id && report.server_side)
+    });
+    let report = report_for(&reports, window_id);
+    assert_eq!(report.titlebar.3, TITLEBAR_HEIGHT);
+
+    // Zoom through the green light: the client fits under the titlebar.
+    click_light(&input, &report, 2);
+    let reports = wait_for_report(&input, |reports| {
+        reports
+            .iter()
+            .any(|report| report.window == window_id && report.state == WindowStateReport::Zoomed)
+    });
+    let report = report_for(&reports, window_id);
+    assert!(
+        report.server_side,
+        "a zoomed X11 SSD window keeps its titlebar"
+    );
+    assert_eq!(
+        (report.content.2, report.content.3),
+        (OUTPUT_W, OUTPUT_H - TITLEBAR_HEIGHT)
+    );
+
+    // The inset size really reached the X server (via `configure_window_size`):
+    // the X client window is one titlebar shorter than the output. Smithay
+    // reparents the client into a frame, so its own origin is (0, 0); the
+    // frame's position (the content offset) is verified through the report
+    // geometry above.
+    wait_until(
+        || {
+            conn.get_geometry(window)
+                .ok()
+                .and_then(|cookie| cookie.reply().ok())
+                .map(|g| (i32::from(g.width), i32::from(g.height)))
+                == Some((OUTPUT_W, OUTPUT_H - TITLEBAR_HEIGHT))
+        },
+        Duration::from_secs(5),
+        "the X server to receive the inset-adjusted configure",
+    );
+
+    // Runtime flip to undecorated while zoomed: the titlebar disappears and
+    // the client reclaims the full output through the same configure path.
+    conn.change_property32(PropMode::REPLACE, window, motif, motif, &[2, 0, 0, 0, 0])
+        .expect("set motif hints");
+    conn.flush().expect("flush");
+    let reports = wait_for_report(&input, |reports| {
+        reports
+            .iter()
+            .any(|report| report.window == window_id && !report.server_side)
+    });
+    let report = report_for(&reports, window_id);
+    assert_eq!(
+        (report.content.2, report.content.3),
+        (OUTPUT_W, OUTPUT_H),
+        "an undecorated zoomed X11 window fills the output (no decoration gap)"
+    );
+    wait_until(
+        || {
+            conn.get_geometry(window)
+                .ok()
+                .and_then(|cookie| cookie.reply().ok())
+                .map(|g| (i32::from(g.width), i32::from(g.height)))
+                == Some((OUTPUT_W, OUTPUT_H))
+        },
+        Duration::from_secs(5),
+        "the X server to receive the full-output configure",
+    );
+
+    conn.destroy_window(window).expect("destroy_window");
+    conn.flush().expect("flush");
+    drop(conn);
+    drop(input);
+    proc.assert_clean_exit();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic socket survived"
+    );
+}
+
 /// T-01.2 acceptance: synthetic pointer clicks on the traffic lights drive
 /// zoom/unzoom, minimize, and close for an X11 client through the same state
 /// machine as a Wayland client.
