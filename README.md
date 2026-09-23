@@ -86,14 +86,19 @@ any hardcoded desktop name — `dragonfruit` is the only legal value
 
 ```bash
 make dev      # = dragonfruit dev --nested
+make demo     # nested loop demo: shell + Qt app + X11 app + checklist
 ```
 
 The compositor opens as a window on your host Wayland session, creates
 its own private socket, and tears everything down on exit — the host
-session is never disturbed. Extras:
+session is never disturbed. `make demo` is the per-slice demo harness
+(T-01.6a): it builds, launches the shell and two clients, and prints the
+walkthrough checklist. With no host Wayland session (CI) it runs the same
+target headless as a launch+teardown smoke. Extras:
 
 ```bash
 dragonfruit dev --nested --launch APP   # run an app against the nested session
+dragonfruit dev --demo --headless       # force the scripted half
 make soak                               # 100 clean-exit cycles, zero strays
 dragonfruit dev --soak 50               # same gate, headless (what CI runs)
 ```
