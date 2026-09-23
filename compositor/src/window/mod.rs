@@ -22,7 +22,7 @@ pub mod popup;
 pub mod resize;
 pub mod state;
 
-pub use decoration::{TitlebarElement, WindowInsets};
+pub use decoration::{TitlebarElement, TrafficLightKind, WindowInsets};
 pub use events::{ShellWindowEvent, WindowDispatch, WindowEventKind};
 #[allow(unused_imports)]
 pub use placement::{cascaded_geometry, centered_on, Cascade, CASCADE_SLOTS, CASCADE_STEP};

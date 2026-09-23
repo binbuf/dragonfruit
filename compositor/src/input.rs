@@ -251,6 +251,9 @@ where
             );
             pointer.frame(state);
             update_hot_corners(state, location);
+            if state.update_titlebar_hover(location) {
+                state.needs_redraw = true;
+            }
             state.notify_activity();
         }
         InputEvent::PointerMotionAbsolute { event } => {
@@ -287,6 +290,9 @@ where
             );
             pointer.frame(state);
             update_hot_corners(state, location);
+            if state.update_titlebar_hover(location) {
+                state.needs_redraw = true;
+            }
             state.notify_activity();
         }
         InputEvent::PointerButton { event } => {
@@ -312,10 +318,25 @@ where
                     // the click (T-07 FR-1).
                     state.focus_chrome_surface(&surface);
                 } else {
+                    // The SSD titlebar/controls are compositor chrome drawn
+                    // above the client surface, so a left press on a traffic
+                    // light acts directly and is never forwarded (T-01.2).
+                    // The titlebar is *only* consulted when no client
+                    // surface (toplevel, popup, or input region) is under
+                    // the point, so popups and client input keep priority.
                     if button_event.button == 0x110
                     /* BTN_LEFT */
                     {
-                        if let Some((surface, _)) = surface_under(state, location) {
+                        let client_surface = surface_under(state, location);
+                        if client_surface.is_none() {
+                            if let Some((window, kind)) = state.titlebar_button_at(location) {
+                                state.traffic_light_action(&window, kind);
+                                state.needs_redraw = true;
+                                state.notify_activity();
+                                return;
+                            }
+                        }
+                        if let Some((surface, _)) = client_surface {
                             if let Some(keyboard) = state.seat.get_keyboard() {
                                 keyboard.set_focus(state, Some(surface), serial);
                             }

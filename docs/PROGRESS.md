@@ -7,6 +7,7 @@
 - **Environment / toolchain**: Qt/CMake toolchain at `~/.local/df-toolchain/usr` (Qt 6.11, CMake 4.3,; Host is Fedora 44 with a KDE Wayland session (`wayland-0`); the nested backend
 - **Landed foundation**: Compositor core (nested/DRM/headless, calloop, damage-driven rendering), input
 - **T01 — T-01.1 Titlebar render element**: **State: done.** The SSD titlebar element exists, is sized from the generated; **`compositor/src/window/decoration.rs`** — `TitlebarElement`,
+- **T02 — T-01.2 Traffic-light actions**: **State: done.** Close/minimize/zoom are clickable through the titlebar; **`compositor/src/window/decoration.rs`** — `TitlebarElement::cluster_rect()`
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -124,3 +125,72 @@ Gotchas for later tasks:
   refactor T-04 is already due to do; note it there.
 - Hover is always `false` in `DfState::titlebar_element` until T-01.2; the
   element already exposes button rects and `button_at` for its hit-test.
+
+## T02 — T-01.2 Traffic-light actions
+
+**State: done.** Close/minimize/zoom are clickable through the titlebar
+hit-test and wired to the existing window state machine; hover reveals the
+glyphs. No new window state or second owner of truth.
+
+What landed:
+
+- **`compositor/src/window/decoration.rs`** — `TitlebarElement::cluster_rect()`
+  (the union of the three button rects that drives glyph reveal; hovering the
+  bar elsewhere does not reveal). `button_at` already skipped disabled
+  buttons.
+- **`compositor/src/state.rs`** — new field `DfState::hovered_titlebar:
+  Option<WindowId>`. `titlebar_element` now sets `hovered` from it;
+  `titlebar_hover_at` / `update_titlebar_hover` recompute it from a pointer
+  point; `titlebar_button_at` returns the topmost `(Window, TrafficLightKind)`
+  under a point; `traffic_light_action` maps Close→`close_window`,
+  Minimize→`minimize_window`, Zoom→`zoom_window`/`unzoom_window`; new
+  `close_window` handles Wayland (`toplevel.send_close()`) and X11
+  (`X11Surface::close()`, i.e. `WM_DELETE_WINDOW` or destroy). The window menu
+  Close arm and the shell protocol `df_toplevel.close` now call the same
+  `close_window`.
+- **`compositor/src/input.rs`** — `PointerButton` (left, pressed): chrome wins
+  first; otherwise the titlebar is consulted only when `surface_under` is
+  `None`, then a click on a light is consumed (`return`, never forwarded);
+  a left click on a client surface still focuses as before. `PointerMotion`
+  and `PointerMotionAbsolute` call `update_titlebar_hover` and schedule a
+  redraw on change.
+- **`compositor/src/input/synthetic.rs`** — `query decorations` now appends
+  the window state (`floating|zoomed|minimized|fullscreen`) as an 11th field,
+  so minimize/zoom are observable over the harness. Backward compatible
+  (existing parsers ignore trailing tokens). `decoration_report` doc updated.
+- **Tests** — `window_conformance::traffic_lights_drive_zoom_minimize_and_close`
+  (Wayland: green zooms to `OUTPUT_W × OUTPUT_H - TITLEBAR_HEIGHT`, green
+  again unzooms to 200×150, yellow reports `minimized` with no titlebar, a
+  fresh window's red delivers `xdg_toplevel.close`). `xwayland_conformance::
+  x11_traffic_lights_drive_zoom_minimize_and_close` (same four actions for an
+  X11 client; close removes the window from `_NET_CLIENT_LIST`).
+- **Docs** — `docs/design/05-window-decorations.md` implementation status
+  updated (reduced motion recorded N/A: no animation in this slice).
+
+Commands that work (from the repo root; `make` sets the toolchain env):
+
+- `cargo test -p dragonfruit-compositor --bin dragonfruit-compositor`
+  (139 unit tests; +2 in `window::decoration`).
+- `cargo test -p dragonfruit-compositor --test window_conformance` (6 tests).
+- `cargo test -p dragonfruit-compositor --test xwayland_conformance` (4 tests).
+- `cargo clippy -p dragonfruit-compositor --all-targets -- -D warnings` clean,
+  `cargo fmt --all -- --check` clean.
+
+Gotchas for later tasks:
+
+- Traffic-light geometry comes from `component.trafficLights` tokens:
+  diameter 12, gap 8, inset 12; centers are at
+  `tx + 12 + 6 + index*(12+8)`, `ty + h/2` (0=close, 1=minimize, 2=zoom).
+  Tests hardcode these; if the tokens move, update
+  `window_conformance.rs` / `xwayland_conformance.rs`.
+- The titlebar interception deliberately requires `surface_under(...).is_none()`.
+  With stacked windows a top window's titlebar button under a lower window's
+  content will lose to that content — the same per-window scene-element
+  limitation T-04 owns (titlebars are custom elements above the whole `Space`).
+- Clicking a traffic light does **not** focus/raise the window in this slice
+  (T-01.3 drag/activation can add it). Actions work on an unfocused window;
+  the lights draw muted but still respond.
+- Minimize leaves `active_window` pointing at the hidden window (pre-existing
+  `minimize_window` behavior); a later task may want focus hand-off.
+- X11 close is new here: `close_window` is the one place Wayland and X11 close
+  converge; use it instead of `toplevel.send_close()` directly.

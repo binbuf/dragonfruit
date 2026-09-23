@@ -9,8 +9,11 @@
 //! * geometry/insets are deterministic and unit-testable without a GPU;
 //! * the fill is a flat token color (real materials — blur, shadow, rounded
 //!   corners — are T-04 and replace [`TitlebarElement::render_elements`]);
-//! * hover and disabled *drawing* exist now; interaction (which would set
-//!   `hovered`) is T-01.2.
+//! * hover and disabled *drawing* exist now; T-01.2 wires interaction: the
+//!   compositor sets `hovered` from the pointer and routes button presses
+//!   through [`TitlebarElement::button_at`] to the existing window state
+//!   machine. This module still owns only geometry/drawing — it never calls
+//!   a window action itself.
 //!
 //! The client's own input regions are untouched: nothing here routes input.
 
@@ -245,6 +248,17 @@ impl TitlebarElement {
             .iter()
             .find(|button| button.enabled && button.rect.contains(point))
             .map(|button| button.kind)
+    }
+
+    /// The bounds of the button cluster: the hover target that reveals the
+    /// glyphs (T-01.2). Hovering anywhere in the titlebar does not reveal
+    /// them, only the cluster does (05-window-decorations.md behavior spec).
+    pub fn cluster_rect(&self) -> Rectangle<i32, Logical> {
+        let mut buttons = self.buttons.iter();
+        let Some(first) = buttons.next() else {
+            return Rectangle::new(self.titlebar.loc, (0, 0).into());
+        };
+        buttons.fold(first.rect, |union, button| union.merge(button.rect))
     }
 
     /// Whether `point` is inside the titlebar.
@@ -499,6 +513,30 @@ mod tests {
         assert_eq!(titlebar.button_at(Point::from((399, 60))), None);
         assert!(titlebar.hit(Point::from((200, 20))));
         assert!(!titlebar.hit(Point::from((200, 60))));
+    }
+
+    #[test]
+    fn cluster_rect_spans_every_button_but_not_the_whole_titlebar() {
+        let titlebar = ssd(rect(0, 40, 900, 300));
+        let cluster = titlebar.cluster_rect();
+        for button in &titlebar.buttons {
+            assert!(
+                cluster.contains_rect(button.rect),
+                "cluster must cover each light"
+            );
+        }
+        // The far end of a wide titlebar is outside the cluster.
+        assert!(!cluster.contains(Point::from((880, cluster.loc.y + 1))));
+        // A point above/below the lights is outside the vertically tight
+        // cluster even though it is inside the titlebar.
+        assert!(!cluster.contains(Point::from((
+            cluster.loc.x + 1,
+            titlebar.titlebar.loc.y + 1
+        ))));
+        assert!(titlebar.hit(Point::from((
+            cluster.loc.x + 1,
+            titlebar.titlebar.loc.y + 1
+        ))));
     }
 
     #[test]

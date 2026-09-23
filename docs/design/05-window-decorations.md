@@ -84,5 +84,15 @@ hides the titlebar and reserves nothing. A client that requests CSD via
 compositor titlebar — the tier-3 dignity rule.
 
 Explicitly deferred: real materials (blur/shadow/rounded corners, T-04),
-titlebar interaction (hover/hit-test/actions, T-01.2–T-01.3), and the live
-color scheme (settings, T-08).
+drag-to-move and double-click zoom on the titlebar (T-01.3), the window
+menu (T-01.4), and the live color scheme (settings, T-08).
+
+T-01.2 adds the traffic-light interaction on top of the element: the
+compositor tracks which button cluster the pointer is over (glyph reveal),
+and a left press on a light is consumed before client routing and mapped to
+the existing window state machine — close (`xdg_toplevel.close` /
+`WM_DELETE_WINDOW`), minimize, and zoom/unzoom. There is no new window state
+and no second owner of truth. The titlebar is only hit-tested when no client
+surface (toplevel, popup, or input region) and no chrome surface is under the
+pointer, so popups, IME, and per-surface input regions keep priority. Reduced
+motion is N/A here: no animation is introduced (lifecycle motion is T-02).
