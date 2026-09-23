@@ -1445,8 +1445,50 @@ impl DfState {
             return;
         };
         let tier = toplevel_decoration_tier(toplevel);
-        if self.windows.set_decorations(&window, tier) {
-            self.needs_redraw = true;
+        self.set_decoration_tier(&window, tier);
+    }
+
+    /// Set a mapped window's decoration tier and reflow its geometry when the
+    /// reserved inset changes (T-01.5).
+    ///
+    /// Only a zoomed window's *client* geometry depends on the inset: a Tier-2
+    /// zoomed client fits below its titlebar, a Tier-3 one fills the whole
+    /// usable area. A runtime tier flip (an `xdg-decoration` request, or an
+    /// X11 `_MOTIF_WM_HINTS` update) must therefore be applied through
+    /// `configure_window_size`; otherwise the titlebar would either overlap
+    /// the client or leave the strip it used to occupy empty — the
+    /// double-decoration guard in both directions.
+    pub(crate) fn set_decoration_tier(&mut self, window: &Window, tier: DecorationTier) {
+        if !self.windows.set_decorations(window, tier) {
+            return;
+        }
+        self.reapply_insets(window);
+        self.needs_redraw = true;
+    }
+
+    /// Recompute a zoomed window's geometry after its insets changed.
+    ///
+    /// This reuses the same usable-area/inset math as [`Self::zoom_window`]
+    /// and pushes the new content size through the single
+    /// `configure_window_size` path. Floating and fullscreen windows reserve
+    /// no inset, so they need no reflow (their titlebar is drawn above or
+    /// overlaid on the content).
+    fn reapply_insets(&mut self, window: &Window) {
+        if self.windows.state(window) != Some(WindowState::Zoomed) {
+            return;
+        }
+        let Some(target) = self.usable_geometry_for(window) else {
+            return;
+        };
+        let target = self.insets_for(window).inset(target);
+        let Some(machine) = self.windows.machine_mut(window) else {
+            return;
+        };
+        machine.set_state_geometry(WindowState::Zoomed, target);
+        let geometry = machine.geometry();
+        if self.window_on_active_space(window) {
+            self.space.map_element(window.clone(), geometry.loc, false);
+            self.configure_window_size(window, geometry.size);
         }
     }
 

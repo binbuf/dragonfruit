@@ -534,8 +534,7 @@ impl XwmHandler for DfState {
             }
             WmWindowProperty::MotifHints => {
                 let tier = Self::x11_decoration_tier(&surface);
-                self.windows.set_decorations(&window, tier);
-                self.needs_redraw = true;
+                self.set_decoration_tier(&window, tier);
             }
             WmWindowProperty::TransientFor => {
                 if let Some(parent) = surface

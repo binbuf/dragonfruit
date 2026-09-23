@@ -893,6 +893,216 @@ fn ssd_toplevel_carries_a_titlebar_and_csd_does_not() {
     );
 }
 
+/// Build and map a toplevel that requests `mode` via `xdg-decoration`
+/// (T-01.5). Returns the decoration proxy so a test can flip the mode later.
+#[allow(clippy::type_complexity)]
+fn map_toplevel_with_decoration(
+    state: &mut TestClient,
+    queue: &mut EventQueue<TestClient>,
+    mode: zxdg_toplevel_decoration_v1::Mode,
+) -> (
+    wl_surface::WlSurface,
+    xdg_surface::XdgSurface,
+    xdg_toplevel::XdgToplevel,
+    zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1,
+    std::fs::File,
+) {
+    let qh = queue.handle();
+    let compositor = state.compositor.clone().unwrap();
+    let wm_base = state.xdg_wm_base.clone().unwrap();
+    let manager = state
+        .decoration_manager
+        .clone()
+        .expect("zxdg_decoration_manager_v1 not advertised");
+
+    let surface = compositor.create_surface(&qh, ());
+    let xdg_surface = wm_base.get_xdg_surface(&surface, &qh, ());
+    let toplevel = xdg_surface.get_toplevel(&qh, ());
+    toplevel.set_title("Decorated".into());
+    let decoration = manager.get_toplevel_decoration(&toplevel, &qh, ());
+    decoration.set_mode(mode);
+    surface.commit();
+    queue.roundtrip(state).expect("initial configure");
+    let (buffer, file) = shm_buffer(state, &qh, WINDOW_W, WINDOW_H);
+    surface.attach(Some(&buffer), 0, 0);
+    surface.commit();
+    queue.roundtrip(state).expect("map commit");
+
+    (surface, xdg_surface, toplevel, decoration, file)
+}
+
+/// T-01.5 acceptance: the decoration-tier matrix renders side by side — the
+/// compositor default and an explicit server-side request each get exactly
+/// one of our titlebars, and an explicit client-side request keeps its own
+/// (no double decoration).
+#[test]
+fn decoration_tier_matrix_default_explicit_ssd_and_csd_side_by_side() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir).join(format!(
+        "dragonfruit-tier-matrix-synth-{}",
+        std::process::id()
+    ));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-tier-matrix",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    // Default: no `xdg-decoration` request, compositor default SSD.
+    let (d_surface, d_xdg, d_toplevel, d_file) = map_toplevel(&mut state, &mut queue);
+    // Explicit server-side (Qt-style).
+    let (s_surface, s_xdg, s_toplevel, s_decoration, s_file) = map_toplevel_with_decoration(
+        &mut state,
+        &mut queue,
+        zxdg_toplevel_decoration_v1::Mode::ServerSide,
+    );
+    // Explicit client-side (a GTK headerbar): keeps its own decoration.
+    let (c_surface, c_xdg, c_toplevel, c_decoration, c_file) = map_toplevel_with_decoration(
+        &mut state,
+        &mut queue,
+        zxdg_toplevel_decoration_v1::Mode::ClientSide,
+    );
+
+    let reports = wait_for_report(&mut state, &mut queue, &input, |reports| reports.len() >= 3);
+    assert_eq!(reports.len(), 3, "three tracked windows: {reports:?}");
+    assert_eq!(
+        reports.iter().filter(|report| report.server_side).count(),
+        2,
+        "the default and explicit-SSD windows carry one titlebar each: {reports:?}"
+    );
+
+    let csd = reports
+        .iter()
+        .find(|report| !report.server_side)
+        .expect("the CSD window must be tracked");
+    assert_eq!(
+        csd.titlebar,
+        (0, 0, 0, 0),
+        "a CSD client must keep its own decoration, not get a compositor titlebar"
+    );
+    assert_eq!(
+        (csd.content.2, csd.content.3),
+        (WINDOW_W, WINDOW_H),
+        "the CSD client keeps its full content size"
+    );
+
+    for ssd in reports.iter().filter(|report| report.server_side) {
+        assert_eq!(ssd.titlebar.3, TITLEBAR_HEIGHT, "token titlebar height");
+        assert_eq!(ssd.titlebar.1 + ssd.titlebar.3, ssd.content.1);
+        assert_eq!(ssd.titlebar.2, ssd.content.2);
+        assert_eq!((ssd.content.2, ssd.content.3), (WINDOW_W, WINDOW_H));
+    }
+
+    c_decoration.destroy();
+    c_toplevel.destroy();
+    c_xdg.destroy();
+    c_surface.destroy();
+    s_decoration.destroy();
+    s_toplevel.destroy();
+    s_xdg.destroy();
+    s_surface.destroy();
+    d_toplevel.destroy();
+    d_xdg.destroy();
+    d_surface.destroy();
+    drop(c_file);
+    drop(s_file);
+    drop(d_file);
+    drop(conn);
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic socket survived"
+    );
+}
+
+/// T-01.5 double-decoration guard: a runtime `xdg-decoration` flip on a
+/// zoomed window reflows the client through `configure_window_size` — a CSD
+/// request reclaims the titlebar strip, an SSD request gives it back.
+#[test]
+fn runtime_decoration_tier_change_reflows_a_zoomed_window() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir).join(format!(
+        "dragonfruit-tier-reflow-synth-{}",
+        std::process::id()
+    ));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-tier-reflow",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (surface, xdg_surface, toplevel, decoration, file) = map_toplevel_with_decoration(
+        &mut state,
+        &mut queue,
+        zxdg_toplevel_decoration_v1::Mode::ServerSide,
+    );
+    let reports = wait_for_report(&mut state, &mut queue, &input, |reports| {
+        reports
+            .iter()
+            .any(|report| report.server_side && report.state == WindowStateReport::Floating)
+    });
+    let window = reports
+        .iter()
+        .find(|report| report.server_side)
+        .expect("a mapped SSD toplevel")
+        .window;
+    let mut report = *reports
+        .iter()
+        .find(|report| report.window == window)
+        .unwrap();
+
+    // Zoom: the client fits below the titlebar.
+    click_light(&input, &report, 2);
+    report = wait_for_window(&mut state, &mut queue, &input, window, |report| {
+        report.state == WindowStateReport::Zoomed
+    });
+    assert!(report.server_side);
+    assert_eq!(
+        (report.content.2, report.content.3),
+        (OUTPUT_W, OUTPUT_H - TITLEBAR_HEIGHT)
+    );
+
+    // Flip to CSD: the titlebar goes away and the client reclaims the strip.
+    decoration.set_mode(zxdg_toplevel_decoration_v1::Mode::ClientSide);
+    queue.roundtrip(&mut state).expect("csd mode request");
+    report = wait_for_window(&mut state, &mut queue, &input, window, |report| {
+        report.state == WindowStateReport::Zoomed && !report.server_side
+    });
+    assert_eq!(report.titlebar, (0, 0, 0, 0));
+    assert_eq!(
+        (report.content.2, report.content.3),
+        (OUTPUT_W, OUTPUT_H),
+        "an undecorated zoomed window fills the whole output (no decoration gap)"
+    );
+
+    // Flip back to SSD: the titlebar returns and the client shrinks by it.
+    decoration.set_mode(zxdg_toplevel_decoration_v1::Mode::ServerSide);
+    queue.roundtrip(&mut state).expect("ssd mode request");
+    report = wait_for_window(&mut state, &mut queue, &input, window, |report| {
+        report.state == WindowStateReport::Zoomed && report.server_side
+    });
+    assert_eq!(report.titlebar.3, TITLEBAR_HEIGHT);
+    assert_eq!(
+        (report.content.2, report.content.3),
+        (OUTPUT_W, OUTPUT_H - TITLEBAR_HEIGHT),
+        "a decorated zoomed window fits under its titlebar"
+    );
+
+    decoration.destroy();
+    toplevel.destroy();
+    xdg_surface.destroy();
+    surface.destroy();
+    drop(file);
+    drop(conn);
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic socket survived"
+    );
+}
+
 /// Query `query decorations`, retrying while the scene catches up.
 fn wait_for_report(
     state: &mut TestClient,

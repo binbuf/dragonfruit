@@ -10,7 +10,8 @@
 - **T02 — T-01.2 Traffic-light actions**: **State: done.** Close/minimize/zoom are clickable through the titlebar; **`compositor/src/window/decoration.rs`** — `TitlebarElement::cluster_rect()`
 - **T03 — T-01.3 Titlebar drag, double-click, fullscreen reveal**: **State: done.** A floating window's titlebar drags to move (existing; **`compositor/src/window/decoration.rs`** — `TitlebarDoubleClick`
 - **T04 — T-01.4 Window menu**: **State: done.** A right/Control-click on the SSD titlebar opens a; **`compositor/src/window/menu.rs`** — `WindowMenu`, `WindowMenuRow`,
-- **Follow-ups**: T-04: draw the window-menu labels/icons and the material pass (replaces; T-14: reuse `WindowMenu`/`WindowMenuCommand` for decoration themes; add the
+- **T05 — T-01.5 Decoration tier policy and X11 correctness**: **State: done.** The three decoration classes are honored and the X11; **`compositor/src/state.rs`** — new `DfState::set_decoration_tier(window,
+- **Follow-ups**: T-16: publish `_NET_FRAME_EXTENTS` for Tier-2 X11 windows so clients can; Zoom (and any future re-layout) on an inset change should reuse
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -338,8 +339,61 @@ Gotchas for later tasks:
 - `window_menu_render_elements` draws only on the output containing the menu
   anchor (the panel is clamped to that output).
 
+## T05 — T-01.5 Decoration tier policy and X11 correctness
+
+**State: done.** The three decoration classes are honored and the X11
+configure flows the titlebar inset through the one geometry path.
+
+What landed:
+
+- **`compositor/src/state.rs`** — new `DfState::set_decoration_tier(window,
+  tier)` (pub(crate)) is the single entry point for a mapped tier change: sets
+  the model and, when the reserved inset changes, reflows a zoomed window via
+  `reapply_insets` (same `usable_geometry_for` + `insets_for` +
+  `configure_window_size` math as `zoom_window`). `apply_decoration_mode`
+  routes through it. Floating/fullscreen windows reserve no inset and are not
+  resized.
+- **`compositor/src/xwayland.rs`** — `_MOTIF_WM_HINTS` property updates call
+  `set_decoration_tier`, so runtime X11 tier flips reflow. Tier mapping is
+  unchanged: motif decorations=0 → ClientSide (no titlebar), else ServerSide.
+- **Tests** — `window_conformance::{decoration_tier_matrix_default_explicit_ssd_and_csd_side_by_side,
+  runtime_decoration_tier_change_reflows_a_zoomed_window}` (2 new, 12 total);
+  `xwayland_conformance::x11_decoration_tier_follows_motif_hints_and_configures_insets`
+  (1 new, 6 total). `cargo test -p dragonfruit-compositor --bin
+  dragonfruit-compositor` 153 unit tests unchanged.
+- **Docs** — `docs/design/05-window-decorations.md` T-01.5 section added. No
+  ADR (applies the policy already recorded in 05 and ADR 0001/0002).
+
+Commands that work (from the repo root; `make` sets the toolchain env;
+`PKG_CONFIG_PATH` must be `$HOME/.local/df-devroot/lib64/pkgconfig` when
+driving cargo directly):
+
+- `make e2e` (exit 0, 7 suites green).
+- `cargo clippy --workspace --all-targets -- -D warnings`,
+  `cargo fmt --all -- --check` clean.
+
+Gotchas for later tasks:
+
+- Smithay reparents managed X11 windows into a frame window, so
+  `x11rb`'s `get_geometry(client)` returns origin (0,0) and only the size is
+  meaningful; the content offset lives in the compositor's report/frame.
+  Verify X11 geometry by size, not by the client window's x/y.
+- A zoomed window's inset is only re-applied on a *tier change*. Other
+  inset-changing events (reserved zones, output mode) still need the same
+  reflow — `zoom_window` with a changed target updates the stored zoomed
+  geometry but `changed == false`, so it neither remaps nor reconfigures.
+  A later task should fix or reuse `reapply_insets` there.
+- `_NET_FRAME_EXTENTS` is not published to X11 clients; they cannot see the
+  40 px titlebar strip.
+- Floating windows add/remove the titlebar above their content with no
+  resize; only zoomed windows reflow.
+
 ## Follow-ups
 
+- T-16: publish `_NET_FRAME_EXTENTS` for Tier-2 X11 windows so clients can
+  position menus/tooltips relative to the compositor titlebar.
+- Zoom (and any future re-layout) on an inset change should reuse
+  `DfState::reapply_insets`; today only a decoration-tier change reflows.
 - T-04: draw the window-menu labels/icons and the material pass (replaces
   `WindowMenu::render_elements` only; keep the geometry/routing).
 - T-14: reuse `WindowMenu`/`WindowMenuCommand` for decoration themes; add the

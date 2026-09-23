@@ -140,3 +140,28 @@ and pointer input. The four commands are proven for a Wayland and an X11
 window in `window_conformance` / `xwayland_conformance`. The visual pass is
 flat and label-less for now (no text renderer yet); T-04 draws the real
 labels and materials, and T-14 reuses the menu for decoration themes.
+
+T-01.5 pins down the tier policy and the X11 path:
+
+- The tier comes from `xdg-decoration`: the compositor default and an
+  explicit `ServerSide` request are Tier 2; only an explicit `ClientSide`
+  request is Tier 3. An X11 window that sets `_MOTIF_WM_HINTS` with the
+  decoration bit clear (it draws its own) is Tier 3; every other X11 window is
+  Tier 2, because Xwayland never draws Wayland CSD. The three cases are
+  asserted side by side in
+  `window_conformance::decoration_tier_matrix_default_explicit_ssd_and_csd_side_by_side`,
+  and an X11 `_MOTIF_WM_HINTS` flip is covered in `xwayland_conformance`.
+- Only Tier 2 is given a compositor titlebar; Tier 3 keeps its full client
+  area and reserves no inset (no double decoration in either direction).
+- The tier is not permanent. A runtime `xdg-decoration` mode change or an X11
+  `_MOTIF_WM_HINTS` update re-applies the reserved inset through the single
+  `configure_window_size` path (`DfState::set_decoration_tier`): a zoomed
+  window that flips to Tier 3 reclaims the titlebar strip and one that flips
+  back gives it up again. Without this the titlebar would overlap the client
+  or leave the strip empty.
+- The X11 configure is the same geometry path as a Wayland toplevel: a zoomed
+  Tier-2 X11 window is configured one titlebar shorter than the output (its
+  frame offset by the strip), verified against the real X server geometry in
+  `xwayland_conformance::x11_decoration_tier_follows_motif_hints_and_configures_insets`.
+  `_NET_FRAME_EXTENTS` is not published yet; the report is documented as
+  deferred to the T-16 compatibility polish.
