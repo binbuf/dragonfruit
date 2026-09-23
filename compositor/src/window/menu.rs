@@ -462,8 +462,8 @@ impl WindowMenu {
     }
 
     /// The solid-fill render elements for the menu, in output-local physical
-    /// coordinates. Ordered panel border → panel → highlight → submenu, so a
-    /// back-to-front renderer draws them correctly.
+    /// coordinates, ordered front-to-back (highlights and the submenu in
+    /// front, panel borders at the back) as Smithay's damage tracker requires.
     pub fn render_elements(
         &self,
         scale: Scale<f64>,
@@ -518,6 +518,10 @@ impl WindowMenu {
         if self.open_submenu {
             push_panel(self.submenu_rect, self.submenu_highlighted, &self.submenu);
         }
+
+        // Built back-to-front above; Smithay consumes front-to-back and draws
+        // in reverse, so an opaque panel would otherwise cull its highlight.
+        elements.reverse();
         elements
     }
 }
@@ -701,6 +705,16 @@ mod tests {
         let elements = menu.render_elements(1.0.into(), Point::from((0, 0)));
         // Border + panel + one highlight.
         assert_eq!(elements.len(), 3);
+        // Front-to-back: the highlight leads so the opaque panel (next) cannot
+        // cull it; the bordered panel is last (backmost).
+        use smithay::backend::renderer::element::Element;
+        let highlight = elements[0].geometry(1.0.into());
+        let panel = elements.last().expect("panel border").geometry(1.0.into());
+        assert!(
+            highlight.size.w < panel.size.w,
+            "the highlight must come before the wider panel in front-to-back order"
+        );
+        assert_eq!(panel.size.w, menu.rect.size.w + 2 * MENU_BORDER_WIDTH);
         let open = {
             menu.open_submenu = true;
             menu.submenu_highlighted = Some(0);

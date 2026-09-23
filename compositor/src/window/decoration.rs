@@ -426,8 +426,8 @@ impl TitlebarElement {
     }
 
     /// The solid-fill render elements for this titlebar, in output-local
-    /// physical coordinates. The list is ordered background → lights →
-    /// glyphs, so a back-to-front renderer draws them correctly.
+    /// physical coordinates, ordered front-to-back (glyphs → lights →
+    /// background) as Smithay's damage tracker requires.
     ///
     /// This is the flat T-01.1 fill; T-04 replaces it with the material pass
     /// (translucency, blur, rounding) while keeping the geometry above.
@@ -456,7 +456,8 @@ impl TitlebarElement {
             ));
         };
 
-        // Background: the flat chrome fill.
+        // Build back-to-front (background → lights → glyphs); reverse at the
+        // end for Smithay's front-to-back element order.
         push(self.titlebar, color_from_rgba(self.scheme.chrome()));
 
         let reveal = self.revealed();
@@ -468,6 +469,12 @@ impl TitlebarElement {
                 }
             }
         }
+
+        // Smithay's `OutputDamageTracker::render_output` consumes elements
+        // front-to-back and draws them in reverse, and an opaque element culls
+        // everything that follows it. Without this reversal the opaque chrome
+        // fill would cull its own lights and glyphs (they would never appear).
+        elements.reverse();
         elements
     }
 }
@@ -832,10 +839,33 @@ mod tests {
         let titlebar = ssd(rect(100, 200, 200, 150));
         let local = titlebar.render_elements(1.0.into(), Point::from((0, 0)));
         let shifted = titlebar.render_elements(1.0.into(), Point::from((100, 200)));
-        let local_bg = local[0].geometry(1.0.into()).loc;
-        let shifted_bg = shifted[0].geometry(1.0.into()).loc;
+        // The background is the last (backmost) element in front-to-back order.
+        let local_bg = local.last().expect("background").geometry(1.0.into()).loc;
+        let shifted_bg = shifted.last().expect("background").geometry(1.0.into()).loc;
         assert_eq!(local_bg, (100, 160).into());
         assert_eq!(shifted_bg, (0, -40).into());
+    }
+
+    #[test]
+    fn render_elements_are_front_to_back_with_the_opaque_background_last() {
+        let titlebar = ssd(rect(0, 40, 400, 300));
+        let elements = titlebar.render_elements(1.0.into(), Point::from((0, 0)));
+        assert_eq!(elements.len(), 4, "background + three lights");
+        // The lights come first (front) so the opaque titlebar fill, which is
+        // last (back), cannot cull them: an opaque element hides everything
+        // that follows it in Smithay's front-to-back list.
+        let diameter = traffic_lights::DIAMETER as i32;
+        for light in &elements[..3] {
+            assert_eq!(light.geometry(1.0.into()).size, (diameter, diameter).into());
+        }
+        assert_eq!(
+            elements
+                .last()
+                .expect("background")
+                .geometry(1.0.into())
+                .size,
+            (400, TITLEBAR_HEIGHT).into()
+        );
     }
 
     #[test]
