@@ -21,7 +21,7 @@ rust-version = "1.80.1"
 # Pinned dependency set.
 #
 # Smithay is pinned to an exact version on purpose: upgrades are deliberate,
-# mechanical events, never pulled in transitively (see .docs/design/14-risks.md
+# mechanical events, never pulled in transitively (see docs/design/14-risks.md
 # and docs/ipc-versioning.md for the lockstep rules that apply to the rest of
 # the dependency set).
 #

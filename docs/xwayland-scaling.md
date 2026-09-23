@@ -2,9 +2,9 @@
 
 Decision record for the T-06 open question ("scale-viewport per X11 surface
 vs integer scale"), from
-[../.docs/tasks/06-xwayland.md](../.docs/tasks/06-xwayland.md). The design
+[../docs/tasks/06-xwayland.md](../docs/tasks/06-xwayland.md). The design
 direction is `viewporter` + `fractional-scale`
-([../.docs/design/02-compositor.md](../.docs/design/02-compositor.md)),
+([../docs/design/02-compositor.md](../docs/design/02-compositor.md)),
 which is a Wayland-client mechanism; X11 clients cannot opt in.
 
 ## Decision

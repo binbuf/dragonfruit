@@ -5,7 +5,7 @@
 //! The design rule is absolute: gesture, keyboard shortcut, hot corner, the
 //! menu-bar Mission Control button, and the shell's private-protocol
 //! requests all drive the *same* progress pipeline
-//! ([03-workspaces.md](../../.docs/design/03-workspaces.md)). There is no
+//! ([03-workspaces.md](../../docs/design/03-workspaces.md)). There is no
 //! second, discrete "instant" code path. This module owns that machine.
 //!
 //! It wraps the T-03 [`ProgressPipeline`] (clamp → rubber-band → velocity →

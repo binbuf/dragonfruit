@@ -5,7 +5,7 @@
 //! host session with its own Wayland socket, optionally launches extra
 //! programs against that socket, and tears everything down on exit — the
 //! host session is never disturbed
-//! (.docs/design/11-session-and-dev-workflow.md).
+//! (docs/design/11-session-and-dev-workflow.md).
 //!
 //! `dragonfruit dev --soak N` is the teardown-hygiene gate: it runs N
 //! headless sessions and verifies zero stray processes and zero stray

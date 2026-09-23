@@ -6,7 +6,7 @@
 //! Keyboard shortcuts, trackpad gestures, and hot corners all resolve to
 //! the same [`InputAction`] and are dispatched through the same path, so a
 //! Mission Control trigger behaves identically no matter how it started
-//! ([03-workspaces.md](../../.docs/design/03-workspaces.md)). The shell
+//! ([03-workspaces.md](../../docs/design/03-workspaces.md)). The shell
 //! consumes the resulting event stream over the private protocol (T-07);
 //! until that lands, [`super::dispatch::InputDispatch`] is the single
 //! outbox and audit log.
@@ -124,7 +124,7 @@ impl HotCorner {
 }
 
 /// Where an action came from — the same action has one event shape
-/// regardless of trigger ([04-shell.md](../../.docs/design/04-shell.md)).
+/// regardless of trigger ([04-shell.md](../../docs/design/04-shell.md)).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TriggerKind {
     Keyboard,

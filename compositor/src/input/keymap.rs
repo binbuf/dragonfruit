@@ -6,7 +6,7 @@
 //! [`super::shortcuts`] for binding resolution.
 //!
 //! The compositor owns the seat keymap; clients cannot substitute their own
-//! ([02-compositor.md](../../.docs/design/02-compositor.md)). Changing the
+//! ([02-compositor.md](../../docs/design/02-compositor.md)). Changing the
 //! role mapping in `df-ipc` changes it for the compositor, the shell, and
 //! first-party apps at once.
 

@@ -3,7 +3,7 @@
 #
 # T-02 FR-8: no `wlr-screencopy`-style arbitrary-grab capture protocols
 # are implemented or advertised, ever. Capture is portal-only
-# (.docs/design/02-compositor.md). This gate greps the compositor and the
+# (docs/design/02-compositor.md). This gate greps the compositor and the
 # protocol XMLs for any screencopy/export-dmabuf/image-capture *use*; a
 # hit fails the build. (Doc comments explaining the prohibition and the
 # negative test's forbidden list are exempt: they reference the names

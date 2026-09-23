@@ -7,8 +7,8 @@ the Linux stack (Wayland, logind, NetworkManager, PipeWire, …).
 
 **Status: pre-alpha.** The repository is at T-01 (scaffolding, CI,
 licensing, nested dev workflow) of the
-[task index](.docs/tasks/00-index.md); the design docs in
-[.docs/design/](.docs/design/) are the source of truth.
+[task index](docs/tasks/00-index.md); the design docs in
+[docs/design/](docs/design/) are the source of truth.
 
 ## Repository layout
 
@@ -116,8 +116,8 @@ attribution, and [docs/licensing.md](docs/licensing.md) for the policy.
 
 ## More docs
 
-- [Design docs](.docs/design/00-overview.md) — architecture, roadmap
+- [Design docs](docs/design/00-overview.md) — architecture, roadmap
   inputs, risks
-- [Roadmap](.docs/ROADMAP.md) and [task index](.docs/tasks/00-index.md)
+- [Roadmap](docs/ROADMAP.md) and [task index](docs/tasks/00-index.md)
 - [IPC versioning policy](docs/ipc-versioning.md)
 - [Testing ladder](docs/testing-ladder.md)

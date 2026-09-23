@@ -37,7 +37,7 @@ pub const LOCKSTEP_MARKER: &str = "dragonfruit lockstep-version:";
 /// This mapping is chosen once, here, and consumed by the compositor's
 /// shortcut engine, its xkb keymap, the menu-broker, and every first-party
 /// accelerator — so applications cannot drift from the shell
-/// ([02-compositor.md](../../.docs/design/02-compositor.md#keymap-conventions)).
+/// ([02-compositor.md](../../docs/design/02-compositor.md#keymap-conventions)).
 ///
 /// `xkb_mod_name` values match xkbcommon's `MOD_NAME_*` constants exactly;
 /// `physical_name` is the user-facing key name used in menus and docs.

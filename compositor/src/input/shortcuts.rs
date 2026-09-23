@@ -10,9 +10,9 @@
 //! interface (T-27). **No client grabs keys directly** — the seat's key
 //! filter intercepts every binding before it reaches a client, and the
 //! protocols that would let a client install a raw grab are not advertised
-//! ([02-compositor.md](../../.docs/design/02-compositor.md)).
+//! ([02-compositor.md](../../docs/design/02-compositor.md)).
 //!
-//! Conflict resolution ([06-global-menu.md](../../.docs/design/06-global-menu.md)):
+//! Conflict resolution ([06-global-menu.md](../../docs/design/06-global-menu.md)):
 //! system shortcuts take precedence over application accelerators, and the
 //! focused window's menu wins among application accelerators.
 
@@ -91,7 +91,7 @@ pub enum GrabKind {
 ///
 /// The compositor sanctions a small set of trusted session clients (the
 /// shell and the Files desktop surface) with one-time launch tokens
-/// ([02-compositor.md](../../.docs/design/02-compositor.md)); everyone else
+/// ([02-compositor.md](../../docs/design/02-compositor.md)); everyone else
 /// is logged and refused.
 ///
 /// The client key is generic so the live compositor can key on Smithay's

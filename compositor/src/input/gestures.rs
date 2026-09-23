@@ -5,7 +5,7 @@
 //!
 //! Trackpad swipes and pinches are recognized here, in the compositor,
 //! and fed into **the same** [`ProgressPipeline`] that keyboard and
-//! hot-corner triggers drive ([03-workspaces.md](../../.docs/design/03-workspaces.md)).
+//! hot-corner triggers drive ([03-workspaces.md](../../docs/design/03-workspaces.md)).
 //! There is no gesture-only code path: every trigger produces the same
 //! clamped 0→1 progress events with velocity, so a workspace switch is
 //! continuous and reversible regardless of how it started.
@@ -19,7 +19,7 @@ use super::action::{GestureKind, InputAction, TriggerKind};
 
 /// Tunables for gesture recognition. Defaults are a starting point for
 /// on-device tuning against the commit rules in
-/// [03-workspaces.md](../../.docs/design/03-workspaces.md).
+/// [03-workspaces.md](../../docs/design/03-workspaces.md).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct GestureConfig {
     /// Horizontal travel (logical px) for a full 0→1 workspace swipe.

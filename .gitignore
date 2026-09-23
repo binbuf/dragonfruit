@@ -23,5 +23,5 @@ screenshot.png
 /harness/
 
 # Local art-direction reference screenshots (not original project assets;
-# must never ship — see .docs/design/14-risks.md).
-/.docs/reference/macos/
+# must never ship — see docs/design/14-risks.md).
+/docs/reference/macos/
