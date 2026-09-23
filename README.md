@@ -5,10 +5,12 @@ Qt Quick (QML) shell and first-party apps, and small Rust services over
 D-Bus — macOS-inspired interaction, original assets and code, built on
 the Linux stack (Wayland, logind, NetworkManager, PipeWire, …).
 
-**Status: pre-alpha.** The repository is at T-01 (scaffolding, CI,
-licensing, nested dev workflow) of the
-[task index](docs/tasks/00-index.md); the design docs in
-[docs/design/](docs/design/) are the source of truth.
+**Status: pre-alpha.** The compositor core, input, window model, Spaces,
+Xwayland, private shell protocols, design system, menu bar, and Dock are
+built (the inherited foundation). The current plan is a sequence of vertical
+slices that turn that machinery into a testable desktop — see the
+[roadmap](docs/ROADMAP.md). The design docs in
+[docs/design/](docs/design/) are the source of truth for what to build.
 
 ## Repository layout
 
@@ -48,7 +50,7 @@ sudo dnf install rustc cargo qt6-qtdeclarative-devel cmake ninja-build \
 finds them at `$DF_TOOLCHAIN` or `~/.local/df-toolchain/usr`. On machines
 without the DRM `-devel` packages, a user-space sysroot at
 `~/.local/df-devroot/lib64` is picked up automatically — see
-`PROGRESS.md`, T-02.)
+`docs/tasks/legacy/PROGRESS.md`, T-02.)
 
 ## Build
 
@@ -118,6 +120,6 @@ attribution, and [docs/licensing.md](docs/licensing.md) for the policy.
 
 - [Design docs](docs/design/00-overview.md) — architecture, roadmap
   inputs, risks
-- [Roadmap](docs/ROADMAP.md) and [task index](docs/tasks/00-index.md)
+- [Roadmap](docs/ROADMAP.md) — the strict work-unit sequence
 - [IPC versioning policy](docs/ipc-versioning.md)
 - [Testing ladder](docs/testing-ladder.md)

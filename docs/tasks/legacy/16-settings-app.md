@@ -7,7 +7,7 @@
 | **Depends on** | [T-08](08-design-system.md) · [T-15](15-settingsd-settings-model.md) · [T-20](20-system-service-adapters.md) · [T-07](07-private-shell-protocols.md) (Displays/output API) · [T-03](03-input-keymaps-shortcuts.md) (input panes) |
 | **Blocks** | Phase-3 exit (Settings fully configures every pane it ships) |
 | **Estimate** | XL |
-| **Design docs** | [08-settings.md](../design/08-settings.md) · [10-design-system.md](../design/10-design-system.md) · [ROADMAP.md](../ROADMAP.md) |
+| **Design docs** | [08-settings.md](../../design/08-settings.md) · [10-design-system.md](../../design/10-design-system.md) · [ROADMAP.md](../../ROADMAP.md) |
 
 ## Summary
 
@@ -22,9 +22,9 @@ allowed to precede the 30-second loop).
 Settings is one of the two flagship apps. The pane list mirrors the macOS
 IA (see `../reference/System_Preferences.md`), each pane's routing made
 explicit — no pane is "a wrapper around a GNOME dialog"
-([08-settings.md](../design/08-settings.md)). The roadmap's guardrail: we
+([08-settings.md](../../design/08-settings.md)). The roadmap's guardrail: we
 deliberately do **not** spend months cloning every page before the desktop
-feels good ([ROADMAP.md](../ROADMAP.md)).
+feels good ([ROADMAP.md](../../ROADMAP.md)).
 
 ## MVP slice (for T-34)
 
@@ -62,7 +62,7 @@ are post-gate and must not delay the loop. A pane ships only when complete
      Spotlight-equivalent — roadmap "later"); Internet Accounts (GOA) —
      "deferred, not core"; Screen Time/AI — **not planned**.
 3. **Pane routing** exactly per
-   [08-settings.md](../design/08-settings.md):
+   [08-settings.md](../../design/08-settings.md):
    | Pane | Routed to |
    |---|---|
    | Wi-Fi / Network | NetworkManager |
@@ -87,7 +87,7 @@ are post-gate and must not delay the loop. A pane ships only when complete
    daemon is missing (VM-masked verification).
 5. **Global menu integration**: menu model publication with live
    enable/disable, and the **Global application menu toggle** from
-   [06-global-menu.md](../design/06-global-menu.md) (On → compatible apps
+   [06-global-menu.md](../../design/06-global-menu.md) (On → compatible apps
    show `File Edit View Window Help`; non-compatible show app name only;
    Off → first-party apps restore local menus immediately).
 
@@ -132,7 +132,7 @@ are post-gate and must not delay the loop. A pane ships only when complete
 
 ## Risks / open questions
 
-- Scope creep is the named project risk ([14-risks.md](../design/14-risks.md)):
+- Scope creep is the named project risk ([14-risks.md](../../design/14-risks.md)):
   the wave order is the guardrail; a complete printer page never precedes
   the 30-second loop.
 - Displays pane breadth (color management/HDR staging protocol) depends on

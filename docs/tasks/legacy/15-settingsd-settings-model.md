@@ -7,7 +7,7 @@
 | **Depends on** | [T-01](01-repo-scaffolding-ci-licensing.md) · [T-20](20-system-service-adapters.md) (**host-services providers only**; see MVP slice) |
 | **Blocks** | [T-16](16-settings-app.md) · [T-14](14-hot-corners-desktop-background.md) (persistence) · [T-10](10-dock.md) (dock pinning keys) |
 | **Estimate** | L |
-| **Design docs** | [08-settings.md](../design/08-settings.md) · [07-system-integration.md](../design/07-system-integration.md) · [01-architecture.md](../design/01-architecture.md) |
+| **Design docs** | [08-settings.md](../../design/08-settings.md) · [07-system-integration.md](../../design/07-system-integration.md) · [01-architecture.md](../../design/01-architecture.md) |
 
 ## Summary
 
@@ -21,11 +21,11 @@ migrations.
 ## Background
 
 Exactly one process owns each class of state
-([01-architecture.md](../design/01-architecture.md)): desktop settings and
+([01-architecture.md](../../design/01-architecture.md)): desktop settings and
 their persistence belong to `settingsd`. It is independently restartable;
 clients re-read cached state on reappearance. Settings should say "check
 for updates," not "execute a `dnf5` command" — the distro adapter is
-isolated behind a trait ([08-settings.md](../design/08-settings.md)).
+isolated behind a trait ([08-settings.md](../../design/08-settings.md)).
 
 ## MVP slice (for T-34)
 
@@ -56,14 +56,14 @@ settings model the shell and compositor consume.
      compositor, shell, and apps react to a single source of truth.
    - Suffix per major version (`…1`), additive-only within a release —
      same policy as private Wayland protocols
-     ([01-architecture.md](../design/01-architecture.md)).
+     ([01-architecture.md](../../design/01-architecture.md)).
 3. **Persistence**:
    - `$XDG_CONFIG_HOME/dragonfruit/`, **written by settingsd only**.
    - Schema-documented format with named keys.
    - **Schema changes are additive within a release; migrations run at
      settingsd startup.**
 4. **Distro provider interface** (from
-   [08-settings.md](../design/08-settings.md)):
+   [08-settings.md](../../design/08-settings.md)):
    ```rust
    trait SystemProvider {
        async fn distribution_info(&self) -> DistributionInfo;
@@ -86,7 +86,7 @@ settings model the shell and compositor consume.
 - The Settings **app** UI (T-16).
 - Host-daemon logic itself (T-20).
 - Files' app preferences (Files state, not desktop-wide —
-  [09-files.md](../design/09-files.md)).
+  [09-files.md](../../design/09-files.md)).
 
 ## Requirements
 
@@ -101,7 +101,7 @@ settings model the shell and compositor consume.
   tests; `DebianProvider` is a stub with a documented plan (T-32).
 - FR-5: settingsd never needs the system bus and never runs as root;
   privileged operations delegate to host services behind polkit
-  ([07-system-integration.md](../design/07-system-integration.md)).
+  ([07-system-integration.md](../../design/07-system-integration.md)).
 - FR-6: Absent host daemons surface as explicit "unavailable" states on the
   relevant keys — never errors, never startup blockers.
 - FR-7: Kill/restart of settingsd: compositor/shell re-sync, no setting

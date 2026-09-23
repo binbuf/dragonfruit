@@ -7,7 +7,7 @@
 | **Depends on** | [T-09](09-menu-bar.md) · [T-20](20-system-service-adapters.md) · [T-08](08-design-system.md) · [T-25](25-notifications-and-osd.md) (Focus/DND source) |
 | **Blocks** | Daily-driver bar (system controls) |
 | **Estimate** | L |
-| **Design docs** | [04-shell.md](../design/04-shell.md) · [07-system-integration.md](../design/07-system-integration.md) |
+| **Design docs** | [04-shell.md](../../design/04-shell.md) · [07-system-integration.md](../../design/07-system-integration.md) |
 
 ## Summary
 
@@ -18,14 +18,14 @@ internally reusing the Linux adapters, never talking to hardware directly.
 ## Background
 
 The user sees one highly curated panel; internally it is sensibly reusing
-Linux components ([04-shell.md](../design/04-shell.md)). The shell is
+Linux components ([04-shell.md](../../design/04-shell.md)). The shell is
 crashable and restartable; system state arrives via adapters; the shell
 never talks to hardware directly.
 
 ## Scope
 
 The panel tree (from
-[04-shell.md](../design/04-shell.md)):
+[04-shell.md](../../design/04-shell.md)):
 
 ```text
 Control Center

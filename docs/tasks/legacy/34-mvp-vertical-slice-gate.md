@@ -7,7 +7,7 @@
 | **Depends on** | [T-33](33-compositor-effects-materials.md) · [T-35](35-window-lifecycle-animations.md) · [T-13](13-window-decorations-ssd.md) · [T-11](11-mission-control-workspace-ux.md) · [T-12](12-app-switcher.md) · [T-09](09-menu-bar.md) (with the [T-20](20-system-service-adapters.md) MVP slice) · [T-15](15-settingsd-settings-model.md)/[T-16](16-settings-app.md) · [T-17](17-files-core.md)/[T-18](18-files-app.md) · [T-24](24-session-lifecycle.md) · [T-01](01-repo-scaffolding-ci-licensing.md) nested workflow |
 | **Blocks** | First user-facing "working desktop MVP" milestone · Phase-2/3 exit |
 | **Estimate** | M |
-| **Design docs** | [ROADMAP.md](../ROADMAP.md) · [11-session-and-dev-workflow.md](../design/11-session-and-dev-workflow.md) · [00-overview.md](../design/00-overview.md) |
+| **Design docs** | [ROADMAP.md](../../ROADMAP.md) · [11-session-and-dev-workflow.md](../../design/11-session-and-dev-workflow.md) · [00-overview.md](../../design/00-overview.md) |
 
 ## Summary
 
@@ -24,7 +24,7 @@ features, only integration, measurement, and the visual floor.
 ## Background
 
 The loop and the vertical slice are defined in
-[ROADMAP.md](../ROADMAP.md); the Experience phase exit is "the 30-second
+[ROADMAP.md](../../ROADMAP.md); the Experience phase exit is "the 30-second
 interaction loop runs with zero dropped frames". The Dock slices (T-10) have
 already scripted the compositor-observable half of the loop
 (activate/restore/close, `Closed` for cross-Space windows). What remains is

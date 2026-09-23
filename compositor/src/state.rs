@@ -4,7 +4,7 @@
 //! One [`DfState`] serves every backend (nested, DRM, headless); backends
 //! only add outputs, a renderer, and input devices on top. The protocol
 //! surface advertised here is exactly the list in
-//! docs/tasks/02-compositor-core.md — no missing, no extras:
+//! docs/tasks/legacy/02-compositor-core.md — no missing, no extras:
 //!
 //! `xdg-shell`, `xdg-output`, `presentation-time`, `linux-dmabuf`,
 //! `viewporter`, `fractional-scale`, `xdg-decoration`, pointer constraints,

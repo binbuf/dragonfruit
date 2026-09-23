@@ -1748,7 +1748,7 @@ fn toplevel_handle_requests_round_trip() {
 }
 
 /// T-10 section 8/9 click tree (FR-1/FR-5) and the Phase-2 core interaction
-/// loop (`tasks/10-dock.md` acceptance: launch → minimize → restore from Dock
+/// loop (`docs/tasks/legacy/10-dock.md` acceptance: launch → minimize → restore from Dock
 /// → close). The two private-protocol paths the Dock uses to bring a window
 /// forward are `df_toplevel_manager.activate_app` (a plain click on a running
 /// app entry) and `select_overview_toplevel` (a row in the window chooser).

@@ -7,7 +7,7 @@
 | **Depends on** | [T-07](07-private-shell-protocols.md) · [T-08](08-design-system.md) · [T-09](09-menu-bar.md) · [T-20](20-system-service-adapters.md) |
 | **Blocks** | Daily-driver bar (notifications + OSD) · [T-21](21-control-center.md) Focus/DND · [T-27](27-portal-backend.md) (notification portal) |
 | **Estimate** | L |
-| **Design docs** | [04-shell.md](../design/04-shell.md) · [01-architecture.md](../design/01-architecture.md) |
+| **Design docs** | [04-shell.md](../../design/04-shell.md) · [01-architecture.md](../../design/01-architecture.md) |
 
 ## Summary
 
@@ -21,10 +21,10 @@ warnings.
 
 A contemporary desktop ships independent idle, OSD, notifications,
 screenshot, portal, and settings-daemon components
-([ROADMAP.md](../ROADMAP.md)). Focus/DND lives with the
+([ROADMAP.md](../../ROADMAP.md)). Focus/DND lives with the
 notification service so Control Center and the menu bar share one source
-of truth ([04-shell.md](../design/04-shell.md)). Both are restartable;
-transient state may be lost ([01-architecture.md](../design/01-architecture.md)).
+of truth ([04-shell.md](../../design/04-shell.md)). Both are restartable;
+transient state may be lost ([01-architecture.md](../../design/01-architecture.md)).
 
 ## Scope
 
@@ -54,13 +54,13 @@ transient state may be lost ([01-architecture.md](../design/01-architecture.md))
    except critical warnings (policy decision recorded in-repo).
 3. **Feedback rule**: Screenshot and OSD feedback follow the same
    design-system motion rules as the rest of the chrome
-   ([04-shell.md](../design/04-shell.md)).
+   ([04-shell.md](../../design/04-shell.md)).
 
 ### Out of scope
 
 - Idle/lock policy (T-26) — the notification service is *not* the idle
   service; the compositor owns idle thresholds
-  ([11-session-and-dev-workflow.md](../design/11-session-and-dev-workflow.md)).
+  ([11-session-and-dev-workflow.md](../../design/11-session-and-dev-workflow.md)).
 - Screenshot feedback UI (T-28).
 
 ## Requirements

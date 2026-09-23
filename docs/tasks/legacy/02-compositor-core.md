@@ -7,7 +7,7 @@
 | **Depends on** | [T-01](01-repo-scaffolding-ci-licensing.md) |
 | **Blocks** | [T-03](03-input-keymaps-shortcuts.md) · [T-04](04-window-model.md) · [T-05](05-spaces-model.md) · [T-06](06-xwayland.md) · [T-07](07-private-shell-protocols.md) · [T-13](13-window-decorations-ssd.md) · [T-33](33-compositor-effects-materials.md) · [T-35](35-window-lifecycle-animations.md) · [T-20](20-system-service-adapters.md) · [T-24](24-session-lifecycle.md) · [T-26](26-lock-screen-idle.md) · [T-27](27-portal-backend.md) · [T-29](29-clipboard-auth-agent.md) |
 | **Estimate** | XL |
-| **Design docs** | [02-compositor.md](../design/02-compositor.md) · [01-architecture.md](../design/01-architecture.md) · [ROADMAP.md](../ROADMAP.md) |
+| **Design docs** | [02-compositor.md](../../design/02-compositor.md) · [01-architecture.md](../../design/01-architecture.md) · [ROADMAP.md](../../ROADMAP.md) |
 
 ## Summary
 
@@ -21,10 +21,10 @@ boundaries, and shell protocols** — and excludes all product/hardware logic.
 ## Background
 
 The compositor is the heart of the desktop and the only process that touches
-the seat, DRM/KMS, or raw input ([01-architecture.md](../design/01-architecture.md)).
+the seat, DRM/KMS, or raw input ([01-architecture.md](../../design/01-architecture.md)).
 Everything visual that differentiates Dragonfruit (Mission Control, Spaces,
 Dock coherence) works because the compositor owns the scene graph
-([02-compositor.md](../design/02-compositor.md)).
+([02-compositor.md](../../design/02-compositor.md)).
 
 ## Scope
 
@@ -61,7 +61,7 @@ Dock coherence) works because the compositor owns the scene graph
    - **Multi-GPU**: render on primary node, import GBM buffers across
      devices, automatic fallback when a GPU disappears — device *loss* is
      part of the hotplug story.
-4. **Standard protocol surface** ([02-compositor.md](../design/02-compositor.md)):
+4. **Standard protocol surface** ([02-compositor.md](../../design/02-compositor.md)):
    - `xdg-shell`, `xdg-output`, `presentation-time`, `linux-dmabuf`
    - `viewporter` + `fractional-scale` (fractional scaling)
    - `xdg-decoration` (SSD negotiation — feeds T-13)
@@ -93,10 +93,10 @@ Dock coherence) works because the compositor owns the scene graph
 - Xwayland (T-06).
 - Wi-Fi/Bluetooth/audio/power logic, file-manager behavior, menu models —
   explicitly never in the compositor
-  ([02-compositor.md](../design/02-compositor.md) "Out of scope").
+  ([02-compositor.md](../../design/02-compositor.md) "Out of scope").
 - Accessibility magnification (compositor screen zoom) — compositor-owned
   per
-  ([02-compositor.md](../design/02-compositor.md)), but scheduled with
+  ([02-compositor.md](../../design/02-compositor.md)), but scheduled with
   [T-31](31-polish-hardening.md) accessibility work; the render pipeline
   here must not preclude a whole-scene transform.
 
@@ -139,8 +139,8 @@ Dock coherence) works because the compositor owns the scene graph
 ## Risks / open questions
 
 - The genuinely hard part is not drawing — it is "boringly reliable"
-  GPU/hotplug/suspend behavior ([02-compositor.md](../design/02-compositor.md),
-  [14-risks.md](../design/14-risks.md)). Soak tests belong to T-31; hooks
+  GPU/hotplug/suspend behavior ([02-compositor.md](../../design/02-compositor.md),
+  [14-risks.md](../../design/14-risks.md)). Soak tests belong to T-31; hooks
   land here.
 - Smithay coverage for `xx-color-management-v1` staging may lag — track
   upstream, gate the Displays color UI accordingly.

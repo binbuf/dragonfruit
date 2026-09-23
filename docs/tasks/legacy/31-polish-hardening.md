@@ -7,7 +7,7 @@
 | **Depends on** | All prior phases; feeds from every ticket's risk list |
 | **Blocks** | Daily-driver bar (final) · "confidently given to arbitrary users" |
 | **Estimate** | XL (continuous) |
-| **Design docs** | [ROADMAP.md](../ROADMAP.md) · [14-risks.md](../design/14-risks.md) · [02-compositor.md](../design/02-compositor.md) |
+| **Design docs** | [ROADMAP.md](../../ROADMAP.md) · [14-risks.md](../../design/14-risks.md) · [02-compositor.md](../../design/02-compositor.md) |
 
 ## Summary
 
@@ -20,14 +20,14 @@ tests in a VM matrix as the exit gate.
 ## Background
 
 The daily-driver bar
-([ROADMAP.md](../ROADMAP.md)) spans displays, windowing,
+([ROADMAP.md](../../ROADMAP.md)) spans displays, windowing,
 input, session, security, power, desktop services, portals, networking,
 Bluetooth, audio, storage, clipboard, accessibility, applications, and
 hardware (Intel/AMD baseline, then NVIDIA). Phase-7 exit: "multi-monitor
 hotplug, 100 suspend/resume cycles, and fractional scaling pass scripted
 soak tests in a VM matrix." The biggest technical risk is not drawing
 macOS-looking controls — it is making the environment **boringly
-reliable** ([14-risks.md](../design/14-risks.md)).
+reliable** ([14-risks.md](../../design/14-risks.md)).
 
 ## Scope
 
@@ -55,7 +55,7 @@ reliable** ([14-risks.md](../design/14-risks.md)).
 
 - Input-method (`text-input`/input-method) real-world validation
   (CJK IMEs) — early-integration promise from
-  [02-compositor.md](../design/02-compositor.md) realized here as
+  [02-compositor.md](../../design/02-compositor.md) realized here as
   long-tail polish.
 - Accessibility pass: keyboard-only full-desktop walkthrough, AT-SPI
   audit of shell + flagship apps, compositor magnification
@@ -64,7 +64,7 @@ reliable** ([14-risks.md](../design/14-risks.md)).
 
 ### 4. Performance
 
-- Enforce the budgets from [ROADMAP.md](../ROADMAP.md) in
+- Enforce the budgets from [ROADMAP.md](../../ROADMAP.md) in
   the dev loop: 60 Hz workspace/Mission Control; input-to-photon < 1
   frame; idle zero-damage/zero-wakeup; one frame of work per animation
   frame; Files budgets (T-17/T-18).
@@ -75,10 +75,10 @@ reliable** ([14-risks.md](../design/14-risks.md)).
 
 - Protocol fuzzing of compositor and private protocols (robustness-first:
   never crash on malformed requests —
-  [14-risks.md](../design/14-risks.md)).
+  [14-risks.md](../../design/14-risks.md)).
 - Restart drills for every restartable component under load (the crash
   policy table from
-  [01-architecture.md](../design/01-architecture.md)).
+  [01-architecture.md](../../design/01-architecture.md)).
 - Journal/telemetry (opt-in) for post-mortem compositor crashes.
 
 ### 6. Localization
@@ -90,7 +90,7 @@ reliable** ([14-risks.md](../design/14-risks.md)).
 
 - New features — polish phase freezes scope; anything new goes to a
   post-1.0 board (scope-creep guardrail,
-  [14-risks.md](../design/14-risks.md)).
+  [14-risks.md](../../design/14-risks.md)).
 
 ## Requirements
 

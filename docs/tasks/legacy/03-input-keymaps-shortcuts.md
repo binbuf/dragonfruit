@@ -7,7 +7,7 @@
 | **Depends on** | [T-02](02-compositor-core.md) |
 | **Blocks** | [T-11](11-mission-control-workspace-ux.md) · [T-12](12-app-switcher.md) · [T-14](14-hot-corners-desktop-background.md) (hot-corner dispatch) · [T-16](16-settings-app.md) (input panes) · [T-28](28-screenshot-recording-ui.md) (keybind) |
 | **Estimate** | L |
-| **Design docs** | [02-compositor.md](../design/02-compositor.md) · [03-workspaces.md](../design/03-workspaces.md) · [04-shell.md](../design/04-shell.md) |
+| **Design docs** | [02-compositor.md](../../design/02-compositor.md) · [03-workspaces.md](../../design/03-workspaces.md) · [04-shell.md](../../design/04-shell.md) |
 
 ## Summary
 
@@ -19,10 +19,10 @@ hot-corner detection in the compositor's input path.
 ## Background
 
 The compositor is the only process that sees raw input
-([01-architecture.md](../design/01-architecture.md)). System shortcuts,
+([01-architecture.md](../../design/01-architecture.md)). System shortcuts,
 gestures, and hot corners must all drive **the same** animation pipelines so
 behavior is identical regardless of trigger
-([03-workspaces.md](../design/03-workspaces.md)).
+([03-workspaces.md](../../design/03-workspaces.md)).
 
 ## Scope
 
@@ -64,7 +64,7 @@ behavior is identical regardless of trigger
   progress events they consume.
 - Accessibility magnification (compositor screen zoom) — related but
   separable; scheduled with [T-31](31-polish-hardening.md) accessibility
-  work per [02-compositor.md](../design/02-compositor.md).
+  work per [02-compositor.md](../../design/02-compositor.md).
 
 ## Requirements
 
@@ -106,6 +106,6 @@ behavior is identical regardless of trigger
 
 - Gesture thresholds and rubber-banding constants need on-device tuning
   against the commit rules in
-  [03-workspaces.md](../design/03-workspaces.md); parameterize, don't
+  [03-workspaces.md](../../design/03-workspaces.md); parameterize, don't
   hardcode.
 - Some devices emit quirky gesture events; keep a device quirk table.

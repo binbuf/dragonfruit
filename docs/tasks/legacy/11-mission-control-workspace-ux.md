@@ -7,7 +7,7 @@
 | **Depends on** | [T-03](03-input-keymaps-shortcuts.md) · [T-05](05-spaces-model.md) · [T-07](07-private-shell-protocols.md) · [T-08](08-design-system.md) · [T-09](09-menu-bar.md) · [T-33](33-compositor-effects-materials.md) (scale/clip/blur transforms) |
 | **Blocks** | Phase-2 exit (zero-dropped-frame loop) · [T-12](12-app-switcher.md) (cross-Space activation) · [T-14](14-hot-corners-desktop-background.md) (Desktop Reveal shares the pipeline) · [T-34](34-mvp-vertical-slice-gate.md) · [T-31](31-polish-hardening.md) |
 | **Estimate** | XL |
-| **Design docs** | [03-workspaces.md](../design/03-workspaces.md) · [10-design-system.md](../design/10-design-system.md) · [ROADMAP.md](../ROADMAP.md) |
+| **Design docs** | [03-workspaces.md](../../design/03-workspaces.md) · [10-design-system.md](../../design/10-design-system.md) · [ROADMAP.md](../../ROADMAP.md) |
 
 ## Summary
 
@@ -21,10 +21,10 @@ animation as a continuous reversible progress pipeline.
 
 Mission Control does not screen-scrape: the compositor keeps rendering the
 real surfaces while applying scale, translation, clipping, blur/shadow, and
-workspace transformations ([03-workspaces.md](../design/03-workspaces.md)).
+workspace transformations ([03-workspaces.md](../../design/03-workspaces.md)).
 This is the flagship "because we own the compositor" feature and the core of
 the 30-second interaction loop
-([ROADMAP.md](../ROADMAP.md)).
+([ROADMAP.md](../../ROADMAP.md)).
 
 ## Delivery slices (MVP order)
 
@@ -49,7 +49,7 @@ they are delivered as slices of one ticket, not split into a second pipeline:
 ### In scope
 
 1. **The transition** (from
-   [03-workspaces.md](../design/03-workspaces.md)):
+   [03-workspaces.md](../../design/03-workspaces.md)):
    ```text
    normal scene
        │ gesture progress 0 → 1
@@ -155,7 +155,7 @@ they are delivered as slices of one ticket, not split into a second pipeline:
 - Overview window occlusion/layout algorithm (which window peeks at what
   position) needs a spec: grid vs. macOS-style cascade; pick, document,
   iterate. *Decided (U-5):* grid, documented in
-  [03-workspaces.md](../design/03-workspaces.md#window-layout-and-occlusion-t-11-u-5).
+  [03-workspaces.md](../../design/03-workspaces.md#window-layout-and-occlusion-t-11-u-5).
 
 ## Remaining work — unblocked
 
@@ -202,7 +202,7 @@ Each is scoped to be independently testable in CI.
 - **U-5 · Overview layout algorithm spec.** ✅ landed. The grid algorithm
   (membership, ordering, grid shape, uniform scale, no occlusion, overflow)
   is documented in
-  [03-workspaces.md](../design/03-workspaces.md#window-layout-and-occlusion-t-11-u-5).
+  [03-workspaces.md](../../design/03-workspaces.md#window-layout-and-occlusion-t-11-u-5).
   Implementation is B-9.
 - **U-6 · Reduced-motion shell-chrome variants.** ✅ landed. `Overview.qml`
   derives `revealProgress` from `Theme.reducedMotion` (instant appearance, no

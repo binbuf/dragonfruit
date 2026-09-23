@@ -7,7 +7,7 @@
 | **Depends on** | [T-27](27-portal-backend.md) (capture path) · [T-03](03-input-keymaps-shortcuts.md) (keybind) · [T-08](08-design-system.md) · [T-07](07-private-shell-protocols.md) |
 | **Blocks** | Daily-driver bar (screenshots/recordings) |
 | **Estimate** | M |
-| **Design docs** | [04-shell.md](../design/04-shell.md) · [07-system-integration.md](../design/07-system-integration.md) |
+| **Design docs** | [04-shell.md](../../design/04-shell.md) · [07-system-integration.md](../../design/07-system-integration.md) |
 
 ## Summary
 
@@ -20,10 +20,10 @@ never a private grab path.
 
 The capture UI is a shell surface; the capture itself goes through the
 portal capture path (single-frame and PipeWire streams —
-[07-system-integration.md](../design/07-system-integration.md)); the
+[07-system-integration.md](../../design/07-system-integration.md)); the
 keybind is a compositor global shortcut; screenshot and OSD feedback
 follow the same design-system motion rules as the rest of the chrome
-([04-shell.md](../design/04-shell.md)).
+([04-shell.md](../../design/04-shell.md)).
 
 ## Scope
 

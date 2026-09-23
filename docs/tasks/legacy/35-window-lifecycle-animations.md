@@ -7,7 +7,7 @@
 | **Depends on** | [T-02](02-compositor-core.md) (frame pacing) · [T-04](04-window-model.md) (window states) · [T-33](33-compositor-effects-materials.md) (transform/blur pass) · [T-08](08-design-system.md) (motion tokens) · [T-10](10-dock.md) (tile geometry) |
 | **Blocks** | [T-34](34-mvp-vertical-slice-gate.md) · Phase-2 exit (loop animations) |
 | **Estimate** | L |
-| **Design docs** | [02-compositor.md](../design/02-compositor.md) · [04-shell.md](../design/04-shell.md) · [10-design-system.md](../design/10-design-system.md) · [ROADMAP.md](../ROADMAP.md) |
+| **Design docs** | [02-compositor.md](../../design/02-compositor.md) · [04-shell.md](../../design/04-shell.md) · [10-design-system.md](../../design/10-design-system.md) · [ROADMAP.md](../../ROADMAP.md) |
 
 ## Summary
 
@@ -21,7 +21,7 @@ else in the 30-second loop that currently has no owner ("window appears",
 ## Background
 
 The vertical slice and the loop name these animations explicitly
-([ROADMAP.md](../ROADMAP.md)): *window appears*, *minimize*, *restore from
+([ROADMAP.md](../../ROADMAP.md)): *window appears*, *minimize*, *restore from
 Dock*. T-10 owns the Dock bounce, T-11 owns workspace switch and the
 overview, T-33 owns the transform/blur machinery they compose, but no ticket
 currently owns the window's own open/close/minimize/zoom motion. Without it
@@ -29,7 +29,7 @@ the loop is functional but abrupt — the same class of gap as the missing
 materials.
 
 Motion policy is fixed by the design system
-([10-design-system.md](../design/10-system-design.md)): every animation has
+([10-design-system.md](../../design/10-design-system.md)): every animation has
 a reduced-motion variant, and gesture/transition paths are progress-based
 and interruptible with no discrete "instant" path.
 

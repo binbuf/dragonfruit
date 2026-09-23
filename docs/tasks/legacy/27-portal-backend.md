@@ -7,7 +7,7 @@
 | **Depends on** | [T-02](02-compositor-core.md) (capture path) · [T-17](17-files-core.md) (FileChooser) · [T-24](24-session-lifecycle.md) (`portals.conf`, session env) · [T-25](25-notifications-and-osd.md) (notification proxying if needed) |
 | **Blocks** | Daily-driver bar (portals) · Phase-5 exit (Flatpak browser matrix) · [T-28](28-screenshot-recording-ui.md) |
 | **Estimate** | L |
-| **Design docs** | [07-system-integration.md](../design/07-system-integration.md) · [02-compositor.md](../design/02-compositor.md) · [09-files.md](../design/09-files.md) · [11-session-and-dev-workflow.md](../design/11-session-and-dev-workflow.md) |
+| **Design docs** | [07-system-integration.md](../../design/07-system-integration.md) · [02-compositor.md](../../design/02-compositor.md) · [09-files.md](../../design/09-files.md) · [11-session-and-dev-workflow.md](../../design/11-session-and-dev-workflow.md) |
 
 ## Summary
 
@@ -21,14 +21,14 @@ conferencing programs work out of the box.
 
 Portal support arrives **surprisingly early** once the desktop is a real
 Wayland session
-([11-session-and-dev-workflow.md](../design/11-session-and-dev-workflow.md)).
+([11-session-and-dev-workflow.md](../../design/11-session-and-dev-workflow.md)).
 The portal project is designed around a common frontend with
-DE-specific backends ([07-system-integration.md](../design/07-system-integration.md)).
+DE-specific backends ([07-system-integration.md](../../design/07-system-integration.md)).
 The FileChooser is delegated to **Files in chooser mode** over the same
 `files-core` — one browsing implementation, one set of semantics; on macOS
 the open/save panel *is* the file manager's
-([09-files.md](../design/09-files.md)). Capture is portal-only by policy
-([02-compositor.md](../design/02-compositor.md)).
+([09-files.md](../../design/09-files.md)). Capture is portal-only by policy
+([02-compositor.md](../../design/02-compositor.md)).
 
 ## Scope
 
@@ -56,13 +56,13 @@ the open/save panel *is* the file manager's
 6. **`portals.conf`**: restrict portal backends to
    `xdg-desktop-portal-dragonfruit` plus the generic/GTK backends so
    Flatpak apps work out of the box
-   ([12-packaging.md](../design/12-packaging.md)).
+   ([12-packaging.md](../../design/12-packaging.md)).
 7. **Registration**: `XDG_CURRENT_DESKTOP=dragonfruit` selects the backend
    (T-24 environment); `security-context` metadata respected for
    sandboxed callers (identity in consent prompts).
 8. **Restartability**: fails soft — an unavailable backend yields
    portal-level fallbacks (generic backends), never a broken app
-   ([01-architecture.md](../design/01-architecture.md)).
+   ([01-architecture.md](../../design/01-architecture.md)).
 
 ### Out of scope
 
@@ -78,7 +78,7 @@ the open/save panel *is* the file manager's
 - FR-2: FileChooser chooser-mode shares every semantic with Files windows
   (collation, sort, hidden toggle, spring-load if applicable, recent
   locations) — the "one implementation" hard rule
-  ([09-files.md](../design/09-files.md)).
+  ([09-files.md](../../design/09-files.md)).
 - FR-3: Screenshot + screencast consent flow: per-request user approval
   with per-window/per-monitor choice; locked session refuses (with T-26).
 - FR-4: GlobalShortcuts round-trip: register → trigger while app focused →

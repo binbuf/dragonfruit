@@ -7,7 +7,7 @@
 | **Depends on** | [T-01](01-repo-scaffolding-ci-licensing.md) (licensing) · [T-24](24-session-lifecycle.md) (units) · everything shippable |
 | **Blocks** | First public release · COPR · Fedora Spin |
 | **Estimate** | L (Fedora) + L (Debian, later) |
-| **Design docs** | [12-packaging.md](../design/12-packaging.md) · [01-architecture.md](../design/01-architecture.md) |
+| **Design docs** | [12-packaging.md](../../design/12-packaging.md) · [01-architecture.md](../../design/01-architecture.md) |
 
 ## Summary
 
@@ -21,7 +21,7 @@ daemon abstraction boundary.
 
 Fedora is the reference platform; very little of the desktop knows it is
 running on Fedora
-([12-packaging.md](../design/12-packaging.md)). Fedora's official Sway,
+([12-packaging.md](../../design/12-packaging.md)). Fedora's official Sway,
 COSMIC, Budgie, and Xfce spins prove both the distribution and
 parallel-install models.
 
@@ -30,7 +30,7 @@ parallel-install models.
 ### Fedora packaging (in scope)
 
 1. **RPM set** (from
-   [12-packaging.md](../design/12-packaging.md)):
+   [12-packaging.md](../../design/12-packaging.md)):
    ```text
    dragonfruit-compositor
    dragonfruit-shell
@@ -61,7 +61,7 @@ parallel-install models.
    - **No package requires, recommends, or obsoletes anything GNOME.**
    - **Default handlers**: register `dragonfruit-files.desktop` as the
      default `inode/directory` handler, so folder-opening from any app or
-     portal routes to Files ([09-files.md](../design/09-files.md)).
+     portal routes to Files ([09-files.md](../../design/09-files.md)).
 3. **Distribution path**:
    1. **COPR** for early testers.
    2. **Official repositories** once stable.
@@ -77,14 +77,14 @@ parallel-install models.
   packaging, dependency versions, defaults, and distro-specific
   administration.
 - `DebianProvider` implements the `SystemProvider` trait
-  ([08-settings.md](../design/08-settings.md)); everything above the
+  ([08-settings.md](../../design/08-settings.md)); everything above the
   interface is identical.
 - Layout: `packaging/debian/`.
 
 ### Out of scope
 
 - Any greeter/display-manager packaging (GDM reused —
-  [01-architecture.md](../design/01-architecture.md)).
+  [01-architecture.md](../../design/01-architecture.md)).
 - Non-Fedora/non-Debian families (arch etc.) — community, later.
 
 ## Requirements

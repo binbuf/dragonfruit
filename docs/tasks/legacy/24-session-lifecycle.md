@@ -7,7 +7,7 @@
 | **Depends on** | [T-02](02-compositor-core.md) · [T-01](01-repo-scaffolding-ci-licensing.md) · [T-20](20-system-service-adapters.md) (logind adapter A11 — implemented **as part of this ticket**, not gated on the full adapter roster) |
 | **Blocks** | [T-34](34-mvp-vertical-slice-gate.md) (real-session run) · Daily-driver bar (clean startup/shutdown/crash behavior) · real-hardware testing of everything |
 | **Estimate** | L |
-| **Design docs** | [11-session-and-dev-workflow.md](../design/11-session-and-dev-workflow.md) · [01-architecture.md](../design/01-architecture.md) · [12-packaging.md](../design/12-packaging.md) |
+| **Design docs** | [11-session-and-dev-workflow.md](../../design/11-session-and-dev-workflow.md) · [01-architecture.md](../../design/01-architecture.md) · [12-packaging.md](../../design/12-packaging.md) |
 
 ## Summary
 
@@ -19,10 +19,10 @@ Wayland-session registration, and logind integration (locking, sleep, VT).
 ## Background
 
 Sessions start and end as a unit; **no live compositor handoff**
-([00-overview.md](../design/00-overview.md)). Startup order, restart
+([00-overview.md](../../design/00-overview.md)). Startup order, restart
 policies, and the environment contract are specified once here
-([01-architecture.md](../design/01-architecture.md),
-[11-session-and-dev-workflow.md](../design/11-session-and-dev-workflow.md)).
+([01-architecture.md](../../design/01-architecture.md),
+[11-session-and-dev-workflow.md](../../design/11-session-and-dev-workflow.md)).
 
 ## Dependency and safety notes
 
@@ -41,7 +41,7 @@ policies, and the environment contract are specified once here
 ### In scope
 
 1. **Unit composition** (from
-   [11-session-and-dev-workflow.md](../design/11-session-and-dev-workflow.md)):
+   [11-session-and-dev-workflow.md](../../design/11-session-and-dev-workflow.md)):
    ```text
    graphical-session.target (systemd --user)
      └── dragonfruit-session.target
@@ -70,7 +70,7 @@ policies, and the environment contract are specified once here
    DE-sensitive libraries use.
 6. **GDM integration**: Wayland-session descriptor
    (`dragonfruit.desktop`); **we ship a session entry, not a greeter** —
-   login stays with GDM ([01-architecture.md](../design/01-architecture.md)).
+   login stays with GDM ([01-architecture.md](../../design/01-architecture.md)).
    Parallel-install rule: install alongside GNOME, never replace it.
 7. **logind integration**:
    - `LockSession`/`UnlockSession` requests drive the lock screen (T-26).
@@ -82,7 +82,7 @@ policies, and the environment contract are specified once here
    development user (avoid user-session service collisions while running
    GNOME on another VT).
 9. **Crash policy table** from
-   [01-architecture.md](../design/01-architecture.md) enforced by unit
+   [01-architecture.md](../../design/01-architecture.md) enforced by unit
    config: shell always-restarts; services on-failure; portal fails-soft;
    compositor death = session end.
 

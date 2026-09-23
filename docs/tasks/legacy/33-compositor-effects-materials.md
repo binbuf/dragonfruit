@@ -7,7 +7,7 @@
 | **Depends on** | [T-02](02-compositor-core.md) · [T-08](08-design-system.md) |
 | **Blocks** | [T-13](13-window-decorations-ssd.md) · [T-11](11-mission-control-workspace-ux.md) · [T-35](35-window-lifecycle-animations.md) · [T-09](09-menu-bar.md)/[T-10](10-dock.md) visual quality · [T-34](34-mvp-vertical-slice-gate.md) · Phase-2 exit |
 | **Estimate** | L |
-| **Design docs** | [02-compositor.md](../design/02-compositor.md) · [10-design-system.md](../design/10-design-system.md) · [05-window-decorations.md](../design/05-window-decorations.md) |
+| **Design docs** | [02-compositor.md](../../design/02-compositor.md) · [10-design-system.md](../../design/10-design-system.md) · [05-window-decorations.md](../../design/05-window-decorations.md) |
 
 ## Summary
 
@@ -28,12 +28,12 @@ effects are a **compositor render pass over live surface buffers**:
 > Effects (blur, shadows, workspace scale/clip transforms) are compositor
 > render passes over **live surface buffers** — never client re-renders,
 > never screenshots, never third-party recompositing.
-> ([02-compositor.md](../design/02-compositor.md))
+> ([02-compositor.md](../../design/02-compositor.md))
 
 > Client-provided opaque, translucent, and input regions are honored: input
 > outside the input region falls through, and translucent regions
 > participate in the blur pass rather than fighting it.
-> ([02-compositor.md](../design/02-compositor.md))
+> ([02-compositor.md](../../design/02-compositor.md))
 
 Today `compositor/src/render.rs` only builds plain surface elements — no
 blur, shadow, or corner pass — and the design system ships a layered
@@ -77,14 +77,14 @@ popovers look flat.
 - **FR-2**: Shadows and rounded corners are token-driven and visually
   identical between compositor SSD and the QML `TitleBar` (feeds T-13 FR-2).
 - **FR-3**: Client translucent regions participate in the blur pass
-  ([02-compositor.md](../design/02-compositor.md)); input-region semantics are
+  ([02-compositor.md](../../design/02-compositor.md)); input-region semantics are
   unchanged.
 - **FR-4**: One effect pass per frame; the overview transform + blur fits the
   frame budget with several live windows on baseline Intel/AMD.
 - **FR-5**: A reduced/low-power mode disables blur while keeping state
   legible; no effect wakes the shell or the compositor while idle.
 - **FR-6**: No screenshots, no client re-renders, no third-party
-  recompositing ([02-compositor.md](../design/02-compositor.md)); the
+  recompositing ([02-compositor.md](../../design/02-compositor.md)); the
   no-screencopy gate (T-02 FR-8) still passes.
 
 ## Acceptance criteria
@@ -110,7 +110,7 @@ popovers look flat.
 ## Risks / open questions
 
 - Blur + scale on an iGPU is the frame-budget risk
-  ([14-risks.md](../design/14-risks.md)); define quality tiers (radius,
+  ([14-risks.md](../../design/14-risks.md)); define quality tiers (radius,
   downsample) and a measurable degrade threshold.
 - GL vs Qt scene-graph rounding/antialiasing may break literal pixel-diff
   (T-13 risk); diff with tolerance and keep identity via shared tokens + the

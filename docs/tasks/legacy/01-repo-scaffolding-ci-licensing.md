@@ -7,7 +7,7 @@
 | **Depends on** | — (first ticket) |
 | **Blocks** | All others |
 | **Estimate** | M |
-| **Design docs** | [01-architecture.md](../design/01-architecture.md) · [11-session-and-dev-workflow.md](../design/11-session-and-dev-workflow.md) · [14-risks.md](../design/14-risks.md) |
+| **Design docs** | [01-architecture.md](../../design/01-architecture.md) · [11-session-and-dev-workflow.md](../../design/11-session-and-dev-workflow.md) · [14-risks.md](../../design/14-risks.md) |
 
 ## Summary
 
@@ -22,13 +22,13 @@ Dragonfruit is many cooperating processes — a Rust/Smithay compositor, a
 Qt Quick shell, Rust services, first-party apps, a portal backend, packaging.
 The repository layout, IPC versioning rules, and the nested-first development
 loop are decided once, here, so later tickets never re-litigate them
-([01-architecture.md](../design/01-architecture.md)).
+([01-architecture.md](../../design/01-architecture.md)).
 
 ## Scope
 
 ### In scope
 
-1. **Monorepo layout** (from [01-architecture.md](../design/01-architecture.md)):
+1. **Monorepo layout** (from [01-architecture.md](../../design/01-architecture.md)):
 
    ```text
    desktop/
@@ -59,12 +59,12 @@ loop are decided once, here, so later tickets never re-litigate them
    Qt 6 / Qt Quick components; a top-level task runner that builds the
    lockstep set (compositor + shell + protocol XMLs together).
 3. **Licensing decision** — final call is a **blocker for the first public
-   release** ([14-risks.md](../design/14-risks.md)): **MIT repo-wide**,
+   release** ([14-risks.md](../../design/14-risks.md)): **MIT repo-wide**,
    including the private protocol XMLs (so any third party may implement
    them freely). Record LICENSE files, SPDX headers, a NOTICE for
    third-party attribution, and a contribution/licensing policy (including
    the Qt commercial decision trigger from
-   [14-risks.md](../design/14-risks.md)).
+   [14-risks.md](../../design/14-risks.md)).
 4. **CI pipeline**: build + unit tests for every crate and QML module; the
    compositor runs its test suite on the **headless backend** in CI
    (no display required).
@@ -74,14 +74,14 @@ loop are decided once, here, so later tickets never re-litigate them
    Quitting it must leave the host session (e.g. GNOME) completely
    undisturbed — no stray processes, sockets, or env leaks.
 6. **Testing-ladder tooling** (from
-   [11-session-and-dev-workflow.md](../design/11-session-and-dev-workflow.md)):
+   [11-session-and-dev-workflow.md](../../design/11-session-and-dev-workflow.md)):
    scripted helpers for each rung — nested, dedicated-user real session, VM,
    primary machine, GPU-matrix machines.
 7. **Crash/teardown hygiene**: a dev helper that verifies clean session
    teardown (no leaked VT master, no orphaned clients) — this becomes the
    Foundation phase-exit test.
 8. **IPC versioning policy** (from
-   [01-architecture.md](../design/01-architecture.md)): written into the
+   [01-architecture.md](../../design/01-architecture.md)): written into the
    repo before the first protocol lands — private Wayland protocols are
    versioned and **additive-only** within a stable release; compositor,
    shell, and protocol XMLs ship as a lockstep set with cross-version
@@ -108,7 +108,7 @@ loop are decided once, here, so later tickets never re-litigate them
   the private socket path, and tears everything down on exit.
 - FR-6: The repo documents the second-VT workflow with a **dedicated
   development user** to avoid user-session service collisions
-  ([11-session-and-dev-workflow.md](../design/11-session-and-dev-workflow.md)).
+  ([11-session-and-dev-workflow.md](../../design/11-session-and-dev-workflow.md)).
 - FR-7: The IPC versioning policy (scope item 8) is documented in-repo and
   enforced from the first commit: protocol XMLs carry versions, and the
   lockstep handshake rejects cross-version mixing.
@@ -116,11 +116,11 @@ loop are decided once, here, so later tickets never re-litigate them
 ## Technical notes
 
 - Pin Smithay per release; upgrades are deliberate, mechanical events
-  ([14-risks.md](../design/14-risks.md) — upstream churn mitigation).
+  ([14-risks.md](../../design/14-risks.md) — upstream churn mitigation).
 - The compositor is kept a **thin policy layer over Smithay** so upstream API
   changes stay mechanical.
 - `XDG_CURRENT_DESKTOP=dragonfruit` is chosen once here (public contract —
-  see [11-session-and-dev-workflow.md](../design/11-session-and-dev-workflow.md));
+  see [11-session-and-dev-workflow.md](../../design/11-session-and-dev-workflow.md));
   grep for hardcoded desktop names must come up empty.
 
 ## Acceptance criteria

@@ -7,7 +7,7 @@
 | **Depends on** | [T-03](03-input-keymaps-shortcuts.md) · [T-05](05-spaces-model.md) (Space activation, minimized restore) · [T-07](07-private-shell-protocols.md) · [T-08](08-design-system.md) · [T-11](11-mission-control-workspace-ux.md) (Space-switch progress pipeline) · [T-33](33-compositor-effects-materials.md) (overlay materials) · [T-23](23-app-index.md) (identity; stub until it lands) |
 | **Blocks** | [T-34](34-mvp-vertical-slice-gate.md) · Phase-2 exit (core loop) |
 | **Estimate** | M |
-| **Design docs** | [02-compositor.md](../design/02-compositor.md) · [04-shell.md](../design/04-shell.md) |
+| **Design docs** | [02-compositor.md](../../design/02-compositor.md) · [04-shell.md](../../design/04-shell.md) |
 
 ## Summary
 
@@ -20,14 +20,14 @@ the selected app, animated in and out, workspace-aware.
 The compositor owns the global keybind, the window list, and workspace
 awareness; the shell draws the overlay. Per-window selection stays with the
 Dock window chooser and Mission Control — the switcher stays app-first, the
-macOS mental model ([04-shell.md](../design/04-shell.md)).
+macOS mental model ([04-shell.md](../../design/04-shell.md)).
 
 ## Scope
 
 ### In scope
 
 1. **Compositor side**: global keybind (Super/Mod4+Tab per the Cmd=Super
-   mapping in [02-compositor.md](../design/02-compositor.md)); recency
+   mapping in [02-compositor.md](../../design/02-compositor.md)); recency
    tracking; app-level grouping via app identity — keyed by raw
    `app_id` (Wayland) / `WM_CLASS` (Xwayland) until [T-23](23-app-index.md)
    lands, so this ticket has **no forward dependency on Phase 4** (same
@@ -38,7 +38,7 @@ macOS mental model ([04-shell.md](../design/04-shell.md)).
    selection highlight, animated entry/exit per design-system motion
    tokens, reduced-motion variant.
 3. **Interaction model** (from
-   [04-shell.md](../design/04-shell.md)):
+   [04-shell.md](../../design/04-shell.md)):
    ```text
    hold switch key   → overlay lists running apps by recency
    cycle             → apps; modifier cycles windows within the selected app

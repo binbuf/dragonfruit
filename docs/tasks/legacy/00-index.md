@@ -1,13 +1,13 @@
 # Dragonfruit — Task Index
 
 High-level implementation tickets derived from the design documents in
-[../design/](../design/). Each ticket is a unit of deliverable work with scope,
+[../design/](../../design/). Each ticket is a unit of deliverable work with scope,
 requirements, acceptance criteria, and dependencies. Tickets reference the
 design doc that governs them; when ticket and design doc disagree, the design
 doc wins and the ticket gets fixed.
 
 Estimates assume **one strong full-time Linux/Wayland engineer** (see
-[../ROADMAP.md](../ROADMAP.md)): convincing prototype
+[../ROADMAP.md](../../ROADMAP.md)): convincing prototype
 1–3 months, daily-drivable 6–12 months, arbitrary users beyond a year.
 
 - **S** < 1 week · **M** 1–2 weeks · **L** 2–6 weeks · **XL** > 6 weeks
@@ -15,7 +15,7 @@ Estimates assume **one strong full-time Linux/Wayland engineer** (see
 ## Phase map
 
 The phases follow the implementation sequence in
-[../ROADMAP.md](../ROADMAP.md). Phases do not fade into
+[../ROADMAP.md](../../ROADMAP.md). Phases do not fade into
 each other; each has hard exit criteria.
 
 | Phase | Theme | Tickets |
@@ -32,7 +32,7 @@ each other; each has hard exit criteria.
 
 ## The first vertical slice (Phase 1–2 target)
 
-The demo MVP — from [../ROADMAP.md](../ROADMAP.md):
+The demo MVP — from [../ROADMAP.md](../../ROADMAP.md):
 
 ```text
 Compositor: single-monitor output · mouse+keyboard · floating windows ·
@@ -121,7 +121,7 @@ T-33 + T-35 + T-13 + T-11 + T-12 + T-09 + T-20.slice + T-15/T-16 + T-17/T-18 + T
 
 ## Phase exit criteria
 
-From [../ROADMAP.md](../ROADMAP.md); tickets within a phase
+From [../ROADMAP.md](../../ROADMAP.md); tickets within a phase
 are not "done" until the phase criterion passes:
 
 1. **Foundation:** nested and DRM sessions both run the vertical slice;
@@ -162,19 +162,19 @@ These recur in nearly every ticket; each ticket links back to its source:
 
 - **No duplicated state machines.** Compositor owns windows/workspaces/outputs;
   settingsd owns settings; the shell observes and renders
-  ([01-architecture.md](../design/01-architecture.md)).
+  ([01-architecture.md](../../design/01-architecture.md)).
 - **Everything but the compositor is restartable**; compositor death ends the
-  session by design ([01-architecture.md](../design/01-architecture.md)).
+  session by design ([01-architecture.md](../../design/01-architecture.md)).
 - **Gesture-driven transitions are progress-based and interruptible.** A
   discrete "instant" code path is a bug
-  ([10-design-system.md](../design/10-design-system.md)).
+  ([10-design-system.md](../../design/10-design-system.md)).
 - **Reduced-motion variant required** for every animation
-  ([10-design-system.md](../design/10-design-system.md)).
+  ([10-design-system.md](../../design/10-design-system.md)).
 - **Degrade gracefully when a host daemon is absent** — absence is a normal
-  state, not an error ([07-system-integration.md](../design/07-system-integration.md)).
+  state, not an error ([07-system-integration.md](../../design/07-system-integration.md)).
 - **Reuse the plumbing.** We never write an SMB client, indexer, thumbnail
   daemon, file-watching daemon, credential store, or privilege-escalation
-  scheme ([09-files.md](../design/09-files.md),
-  [07-system-integration.md](../design/07-system-integration.md)).
+  scheme ([09-files.md](../../design/09-files.md),
+  [07-system-integration.md](../../design/07-system-integration.md)).
 - **Original assets only.** Reproduce the interaction model, never Apple's
-  bitmap output ([14-risks.md](../design/14-risks.md)).
+  bitmap output ([14-risks.md](../../design/14-risks.md)).

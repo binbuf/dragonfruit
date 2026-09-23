@@ -7,7 +7,7 @@
 | **Depends on** | [T-07](07-private-shell-protocols.md) (focus tracking) · [T-09](09-menu-bar.md) (rendering) · [T-08](08-design-system.md) (`MenuBarMenu` component) |
 | **Blocks** | [T-16](16-settings-app.md) / [T-18](18-files-app.md) menu publication · Phase-6 exit (DBusMenu bridge) |
 | **Estimate** | L |
-| **Design docs** | [06-global-menu.md](../design/06-global-menu.md) · [04-shell.md](../design/04-shell.md) |
+| **Design docs** | [06-global-menu.md](../../design/06-global-menu.md) · [04-shell.md](../../design/04-shell.md) |
 
 ## Summary
 
@@ -21,7 +21,7 @@ break an app's internal menu; the feature is a toggle).
 
 A global menu is not a fundamental Wayland capability — an application has
 to export a meaningful menu model somehow
-([06-global-menu.md](../design/06-global-menu.md)). We build the broker
+([06-global-menu.md](../../design/06-global-menu.md)). We build the broker
 with a priority order and a hard never-break-apps rule rather than forcing
 Unity-era injection modules into every toolkit.
 
@@ -30,7 +30,7 @@ Unity-era injection modules into every toolkit.
 ### In scope
 
 1. **Priority order** (from
-   [06-global-menu.md](../design/06-global-menu.md)):
+   [06-global-menu.md](../../design/06-global-menu.md)):
    ```text
    Active window
         │
@@ -72,7 +72,7 @@ Unity-era injection modules into every toolkit.
    - **The feature is a toggle.** When off, our first-party applications
      restore their local menu presentation immediately.
 6. **Restart behavior**: restartable; while absent the menu bar falls
-   back to app-name display ([01-architecture.md](../design/01-architecture.md)).
+   back to app-name display ([01-architecture.md](../../design/01-architecture.md)).
 7. **Known limitation** handled by design: GTK apps frequently don't
    export DBusMenu under Wayland — that's an application-cooperation
    problem; we surface Tier 3 and never fight it.
@@ -90,7 +90,7 @@ Unity-era injection modules into every toolkit.
   open-menu-tracks-focus-change convention works (switch apps under an
   open menu).
 - FR-2: First-party publication: both flagship apps' full menus (per
-  [09-files.md](../design/09-files.md) for Files) round-trip through the
+  [09-files.md](../../design/09-files.md) for Files) round-trip through the
   broker with live enable/disable.
 - FR-3: Accelerator registration/unregistration follows focus; system
   shortcuts always win (test: register a menu accelerator that collides

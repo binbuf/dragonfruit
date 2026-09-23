@@ -7,7 +7,7 @@
 | **Depends on** | [T-07](07-private-shell-protocols.md) · [T-08](08-design-system.md) · [T-20](20-system-service-adapters.md) (status items) · [T-22](22-global-menu-broker.md) (app menu, may stub initially) |
 | **Blocks** | [T-10](10-dock.md) · [T-11](11-mission-control-workspace-ux.md) (Mission Control entry point) · [T-14](14-hot-corners-desktop-background.md) · [T-21](21-control-center.md) · [T-25](25-notifications-and-osd.md) · [T-30](30-compatibility-bridges.md) (tray bridge) · [T-34](34-mvp-vertical-slice-gate.md) |
 | **Estimate** | L |
-| **Design docs** | [04-shell.md](../design/04-shell.md) · [06-global-menu.md](../design/06-global-menu.md) |
+| **Design docs** | [04-shell.md](../../design/04-shell.md) · [06-global-menu.md](../../design/06-global-menu.md) |
 
 ## Summary
 
@@ -27,7 +27,7 @@ Menu bar, Dock, Control Center, banners, and OSD are Wayland surfaces the
 shell creates through the private shell protocol; chrome renders
 independently of client content — during a workspace switch, client
 surfaces shrink or slide while the chrome follows its own animation curves
-([04-shell.md](../design/04-shell.md)). The shell is crashable and
+([04-shell.md](../../design/04-shell.md)). The shell is crashable and
 restartable without taking down the compositor.
 
 ## MVP slice (for T-34)
@@ -53,7 +53,7 @@ block T-34.
    - The nested dev workflow runs the full shell
      (`dragonfruit dev --nested`).
 2. **Menu bar layout** (left → right, per
-   [04-shell.md](../design/04-shell.md)):
+   [04-shell.md](../../design/04-shell.md)):
    - **System menu** (dragonfruit mark, always present): About This System,
      System Settings, App Store, Sleep, Restart, Shut Down, Lock Screen,
      Log Out <user>.
@@ -71,7 +71,7 @@ block T-34.
 3. **App menu rendering**: macOS-style menu with click-to-open, drag-through
    submenus with delayed hover, Escape/focus-loss dismissal, open menu
    tracks focused-window switches underneath
-   ([06-global-menu.md](../design/06-global-menu.md) interaction rules).
+   ([06-global-menu.md](../../design/06-global-menu.md) interaction rules).
 4. **Clock** with locale/region formatting.
 5. **Status item slots**: sizing, hover, dark/light treatment unified so
    first-party and (later, T-30) third-party StatusNotifier items render
@@ -95,7 +95,7 @@ block T-34.
   **application menu** (focused app's name, or Files on the empty desktop),
   then the broker-resolved menu when available. An app that exports nothing
   still gets both fixed menus (broker priority 3 —
-  [06-global-menu.md](../design/06-global-menu.md)).
+  [06-global-menu.md](../../design/06-global-menu.md)).
 - FR-3: Menu interaction: click-to-open, drag-through submenus with delayed
   hover, Escape and focus-loss dismissal, live switch when focus changes
   under an open menu. Drag-through spans the fixed menus and the app's
@@ -167,7 +167,7 @@ Implemented and verified in this session:
   Bluetooth rune, outline/fill/nub battery, toggle-pill Control Center),
   plus the locale short date in the clock. The real macOS screenshots in
   `docs/reference/macos/` are a **style reference only** — per
-  [14-risks.md](../design/14-risks.md) we do not copy Apple's SF Symbols.
+  [14-risks.md](../../design/14-risks.md) we do not copy Apple's SF Symbols.
 - **Dev workflow**: `dragonfruit dev --nested --shell` (and `make dev`)
   launches the shell with the provisioned token and owns it in `ChildGuard`.
 
@@ -336,7 +336,7 @@ Hand-off (T-09 continuation):
 6. **App Store item is disabled.** There is no app-store equivalent in the
    project; the item ships disabled so the system menu matches the macOS
    concept without implying a store. Decide later whether to repurpose it as a
-   distro/package UI entry or drop it (see [04-shell.md](../design/04-shell.md)).
+   distro/package UI entry or drop it (see [04-shell.md](../../design/04-shell.md)).
 
 ### Deferred polish (not blocking T-10+)
 
@@ -346,7 +346,7 @@ host-cursor hover; the focus-ring cause is ruled out), choppy popup
 open/close, and hover/drag-through timing. The durable fix — commit from
 `QQuickWindow::afterRendering` while the scene is dirty — is shared with
 T-10's Dock animation and should land there. Details and diagnostics:
-[PROGRESS.md](../PROGRESS.md), "T-09 deferred polish backlog".
+[PROGRESS.md](PROGRESS.md), "T-09 deferred polish backlog".
 
 ## Test plan
 

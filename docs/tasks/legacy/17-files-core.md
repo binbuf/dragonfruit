@@ -7,7 +7,7 @@
 | **Depends on** | [T-01](01-repo-scaffolding-ci-licensing.md) |
 | **Blocks** | [T-18](18-files-app.md) · [T-19](19-desktop-icons.md) · [T-27](27-portal-backend.md) (FileChooser) · [T-34](34-mvp-vertical-slice-gate.md) (MVP slice) |
 | **Estimate** | XL |
-| **Design docs** | [09-files.md](../design/09-files.md) |
+| **Design docs** | [09-files.md](../../design/09-files.md) |
 
 ## Summary
 
@@ -23,7 +23,7 @@ backend.
 We own what users perceive as "how Finder works" — the browsing model,
 view semantics, selection, drag-and-drop, operation semantics — while GVfs
 provides `trash://`, `recent://`, `network://`, `admin://`, and the UDisks2
-volume monitor ([09-files.md](../design/09-files.md)). **Backend reused;
+volume monitor ([09-files.md](../../design/09-files.md)). **Backend reused;
 behavior ours.**
 
 ## MVP slice (for T-34)
@@ -112,7 +112,7 @@ follow.
 - The Files **UI** (T-18); desktop surface (T-19); portal (T-27).
 - Any SMB/SFTP client, indexer, thumbnail daemon, file-watching daemon, or
   credential store — hard rule: **we never write these**
-  ([09-files.md](../design/09-files.md)).
+  ([09-files.md](../../design/09-files.md)).
 
 ## Requirements
 

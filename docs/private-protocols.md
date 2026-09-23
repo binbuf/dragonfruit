@@ -120,7 +120,7 @@ is acked with `done` after the scene applies it (FR-3).
   `done`, `removed`. Requests set mode/scale/transform (applied through
   Smithay's `Output::change_current_state`); VRR and night light are accepted
   and acked but their backend plumbing is a T-16 displays-pane item (see
-  [PROGRESS.md](../docs/PROGRESS.md), T-02).
+  [PROGRESS.md](tasks/legacy/PROGRESS.md), T-02 (legacy)).
 - **Manager events** carry the cross-cutting broadcasts: `workspace_activated`,
   `focused`, `attention` (xdg-activation / demands-attention → Dock bounce),
   `hot_corner` (the same event whether triggered by pointer, gesture, or

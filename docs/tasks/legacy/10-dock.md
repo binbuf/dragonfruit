@@ -8,7 +8,7 @@
 | **Coordinates with** | [T-11](11-mission-control-workspace-ux.md) (Show All Windows, minimized strip) · [T-12](12-app-switcher.md) (shared app identity/recency) · [T-13](13-window-decorations-ssd.md) (minimize animation) · [T-16](16-settings-app.md) (Desktop & Dock pane) · [T-18](18-files-app.md) (Trash, `org.dragonfruit.Files1`) · [T-25](25-notifications-and-osd.md) (launch-failure notice) |
 | **Blocks** | Phase-2 exit (core interaction loop) |
 | **Estimate** | L (Dock core) + L (polish slice) |
-| **Design docs** | [04-shell.md](../design/04-shell.md) · [08-settings.md](../design/08-settings.md) · [09-files.md](../design/09-files.md) · [10-design-system.md](../design/10-design-system.md) · [03-workspaces.md](../design/03-workspaces.md) · [02-compositor.md](../design/02-compositor.md) · [14-risks.md](../design/14-risks.md) · [ROADMAP.md](../ROADMAP.md) |
+| **Design docs** | [04-shell.md](../../design/04-shell.md) · [08-settings.md](../../design/08-settings.md) · [09-files.md](../../design/09-files.md) · [10-design-system.md](../../design/10-design-system.md) · [03-workspaces.md](../../design/03-workspaces.md) · [02-compositor.md](../../design/02-compositor.md) · [14-risks.md](../../design/14-risks.md) · [ROADMAP.md](../../ROADMAP.md) |
 
 ## Summary
 
@@ -18,7 +18,7 @@ auto-hide, drag rearrangement, contextual menus, a multi-window chooser,
 the Downloads stack, and the Files-backed Trash on the right end.
 
 The Dock is the second half of the core interaction loop
-([ROADMAP.md](../ROADMAP.md)): it is how a session *starts* an app and how a
+([ROADMAP.md](../../ROADMAP.md)): it is how a session *starts* an app and how a
 minimized window comes *back*. It is a persistent chrome surface (not a
 window), it renders on every output, and it holds no authoritative state of
 its own — every entry is a projection of compositor, app-index, GVfs, or
@@ -34,7 +34,7 @@ scenario.
 The Dock obtains window/app state **directly from the compositor** rather
 than inferring it through public protocols, using app-index to resolve
 `app_id` / `WM_CLASS` to `.desktop` applications
-([04-shell.md](../design/04-shell.md)). It is a consumer of the private
+([04-shell.md](../../design/04-shell.md)). It is a consumer of the private
 shell protocols (T-07), never a second owner of window, workspace, or
 identity state.
 
@@ -46,7 +46,7 @@ or shell restart, a Trash mount that disappears, and output hotplug.
 The real macOS screenshots in `docs/reference/macos/` (notably the desktop
 with Dock, the Files sidebar, and the **Desktop & Dock** settings pane) are
 a **style and information-architecture reference only** — per
-[14-risks.md](../design/14-risks.md) we do not copy Apple's assets or
+[14-risks.md](../../design/14-risks.md) we do not copy Apple's assets or
 branding. The Desktop & Dock pane reference fixes the setting *set* we must
 eventually expose (section 19); the visual design is ours.
 
@@ -78,7 +78,7 @@ Invariants, held at all times:
    popovers never change the usable area (section 2).
 5. **Interruptible, progress-based motion.** Magnification, auto-hide, drag
    gaps, and bounce are recomputed per frame; there is no discrete
-   "instant" code path ([10-design-system.md](../design/10-design-system.md)).
+   "instant" code path ([10-design-system.md](../../design/10-design-system.md)).
 6. **Restart-safe.** A shell restart re-syncs from the compositor, app-index,
    and settingsd with no Dock-local state to lose (pins live in settingsd,
    window/Space state in the compositor).
@@ -308,7 +308,7 @@ and the animation clocks. Idle Dock contributes zero wakeups (FR-8).
 ### 8. Launch
 
 Click semantics (the macOS decision tree from
-[04-shell.md](../design/04-shell.md)):
+[04-shell.md](../../design/04-shell.md)):
 
 ```text
 App entry (pinned or temporary)
@@ -507,7 +507,7 @@ drag-through rule from T-09.
 - Menus track state: if the app exits while its menu is open, the menu
   dismisses; if a window opens/closes, the window list updates.
 - Empty Trash is destructive and opens a design-system confirmation sheet
-  (matching Files' policy, [09-files.md](../design/09-files.md)) before
+  (matching Files' policy, [09-files.md](../../design/09-files.md)) before
   invoking the GVfs empty operation.
 
 ### 14. Magnification
@@ -599,7 +599,7 @@ Dock later (T-16). Behavior:
   deletions by other applications. The Dock uses `GFileMonitor` on the
   trash backend; it never re-implements the freedesktop Trash spec and
   there is **zero IPC between the shell and Files**
-  ([09-files.md](../design/09-files.md)).
+  ([09-files.md](../../design/09-files.md)).
 - Icon reflects empty vs non-empty (full trash shows the crumpled-paper
   state); the badge updates within one GVfs event, including deletions made
   by other apps (FR-6).
@@ -906,7 +906,7 @@ key shape**, so T-15 adopts the file without a migration (T-15 FR-1).
   renderer; the deferred T-09 polish (commit from
   `QQuickWindow::afterRendering` while the scene is dirty) is shared with
   the Dock's magnification animation and should land here
-  ([PROGRESS.md](../PROGRESS.md), "T-09 deferred polish backlog").
+  ([PROGRESS.md](PROGRESS.md), "T-09 deferred polish backlog").
 
 ## Decisions required before implementation
 

@@ -7,7 +7,7 @@
 | **Depends on** | [T-22](22-global-menu-broker.md) · [T-09](09-menu-bar.md) · [T-13](13-window-decorations-ssd.md) · [T-06](06-xwayland.md) |
 | **Blocks** | Phase-6 exit |
 | **Estimate** | L |
-| **Design docs** | [ROADMAP.md](../ROADMAP.md) · [06-global-menu.md](../design/06-global-menu.md) · [04-shell.md](../design/04-shell.md) · [05-window-decorations.md](../design/05-window-decorations.md) · [14-risks.md](../design/14-risks.md) |
+| **Design docs** | [ROADMAP.md](../../ROADMAP.md) · [06-global-menu.md](../../design/06-global-menu.md) · [04-shell.md](../../design/04-shell.md) · [05-window-decorations.md](../../design/05-window-decorations.md) · [14-risks.md](../../design/14-risks.md) |
 
 ## Summary
 
@@ -20,7 +20,7 @@ decoration themes, GTK left-side-button steering, and the tracked
 
 The roadmap's compatibility phase: "third-party decoration themes,
 DBusMenu global-menu bridge, StatusNotifier/AppIndicator support, strange
-Xwayland applications" ([ROADMAP.md](../ROADMAP.md)). Phase-6
+Xwayland applications" ([ROADMAP.md](../../ROADMAP.md)). Phase-6
 exit: "a DBusMenu-exporting Qt app shows a global menu; a StatusNotifier
 tray item renders in the menu bar."
 
@@ -30,20 +30,20 @@ tray item renders in the menu bar."
 
 - Bridge third-party DBusMenu exports into the menu-broker representation
   (Tier 2 of the broker's priority order,
-  [06-global-menu.md](../design/06-global-menu.md)).
+  [06-global-menu.md](../../design/06-global-menu.md)).
 - Accelerator strings parsed by the broker and registered with the
   compositor **while the owning window is focused** (T-22 FR rules).
 - Hard rules carry over: never remove the app's internal menu; show
   globally only on successful export; GTK-under-Wayland apps that don't
   export stay Tier 3 (app name only) — never fight it
-  ([06-global-menu.md](../design/06-global-menu.md)).
+  ([06-global-menu.md](../../design/06-global-menu.md)).
 - Bridge live updates: about-to-show, item activation, dynamic
   enable/checked state, icons.
 
 ### 2. StatusNotifierItem / AppIndicator tray
 
 - Menu bar's system area hosts SNI exports "through a bridge, shipped in
-  the compatibility phase" ([04-shell.md](../design/04-shell.md)) — the
+  the compatibility phase" ([04-shell.md](../../design/04-shell.md)) — the
   de-facto Linux tray standard (KDE/Ayatana lineages).
 - **Third-party items get the same sizing, hover, and dark/light treatment
   as first-party items** — they live inside the menu bar's slot system
@@ -54,7 +54,7 @@ tray item renders in the menu bar."
 ### 3. Third-party decoration themes + GTK steering
 
 - Ship the mechanism for third-party SSD **decoration themes** over the
-  design-system token model ([05-window-decorations.md](../design/05-window-decorations.md)
+  design-system token model ([05-window-decorations.md](../../design/05-window-decorations.md)
   lists them as a compatibility work item).
 - Document + configure **GTK settings that steer CSD buttons left** so
   cooperative GTK apps place controls on the left (Tier 3 improvement —
@@ -64,7 +64,7 @@ tray item renders in the menu bar."
 
 ### 4. Xwayland application zoo
 
-- A **tracked app zoo** ([14-risks.md](../design/14-risks.md)): fixture
+- A **tracked app zoo** ([14-risks.md](../../design/14-risks.md)): fixture
   list of known-difficult X11 apps (older SDL games, Java/Swing apps,
   multi-window tools with odd transient hints, apps with override-redirect
   menus) plus a scripted exercise harness.
@@ -76,7 +76,7 @@ tray item renders in the menu bar."
 ### Out of scope
 
 - Electron/Chromium CSD redesign (we don't inject — the accepted
-  compromise stands, [14-risks.md](../design/14-risks.md)).
+  compromise stands, [14-risks.md](../../design/14-risks.md)).
 - Flatpak portal compatibility (that's T-27, already Phase 5).
 
 ## Requirements

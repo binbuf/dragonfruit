@@ -7,7 +7,7 @@
 | **Depends on** | [T-02](02-compositor-core.md) (`ext-session-lock-v1`, `ext-idle-notify`) · [T-07](07-private-shell-protocols.md) · [T-24](24-session-lifecycle.md) (logind LockSession) · [T-08](08-design-system.md) |
 | **Blocks** | Daily-driver bar (trustworthy lock screen) · Phase-5 exit (kill tests) |
 | **Estimate** | L |
-| **Design docs** | [11-session-and-dev-workflow.md](../design/11-session-and-dev-workflow.md) · [01-architecture.md](../design/01-architecture.md) · [08-settings.md](../design/08-settings.md) |
+| **Design docs** | [11-session-and-dev-workflow.md](../../design/11-session-and-dev-workflow.md) · [01-architecture.md](../../design/01-architecture.md) · [08-settings.md](../../design/08-settings.md) |
 
 ## Summary
 
@@ -19,10 +19,10 @@ rendered by the shell but enforced by the compositor.
 ## Background
 
 Locking is **fail-secure: no code path, including a crash, unlocks a
-locked session** ([01-architecture.md](../design/01-architecture.md)).
+locked session** ([01-architecture.md](../../design/01-architecture.md)).
 `LockSession`/`UnlockSession` requests drive the lock screen; idle locking
 uses `ext-idle-notify` thresholds owned by the compositor
-([11-session-and-dev-workflow.md](../design/11-session-and-dev-workflow.md)).
+([11-session-and-dev-workflow.md](../../design/11-session-and-dev-workflow.md)).
 
 ## Scope
 
@@ -60,7 +60,7 @@ uses `ext-idle-notify` thresholds owned by the compositor
 ### Out of scope
 
 - Screen dimming/DPMS details beyond thresholds (T-31 polish).
-- GDM/greeter (reused, [01-architecture.md](../design/01-architecture.md)).
+- GDM/greeter (reused, [01-architecture.md](../../design/01-architecture.md)).
 
 ## Requirements
 
@@ -90,7 +90,7 @@ uses `ext-idle-notify` thresholds owned by the compositor
 ## Test plan
 
 - Automated kill drills (the testing-ladder VM stage —
-  [11-session-and-dev-workflow.md](../design/11-session-and-dev-workflow.md)).
+  [11-session-and-dev-workflow.md](../../design/11-session-and-dev-workflow.md)).
 - Malicious-client suite during lock (protocol fuzz).
 - Multi-monitor lock/unlock matrix.
 

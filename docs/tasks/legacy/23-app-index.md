@@ -7,7 +7,7 @@
 | **Depends on** | [T-01](01-repo-scaffolding-ci-licensing.md) |
 | **Blocks** | [T-10](10-dock.md) · [T-12](12-app-switcher.md) (identity) · [T-16](16-settings-app.md) (Search pane later) |
 | **Estimate** | M |
-| **Design docs** | [02-compositor.md](../design/02-compositor.md) · [01-architecture.md](../design/01-architecture.md) · [08-settings.md](../design/08-settings.md) |
+| **Design docs** | [02-compositor.md](../../design/02-compositor.md) · [01-architecture.md](../../design/01-architecture.md) · [08-settings.md](../../design/08-settings.md) |
 
 ## Summary
 
@@ -21,8 +21,8 @@ Spotlight-equivalent.
 
 State ownership: application identity (`app_id` → `.desktop`, icon, name)
 belongs to `app-index`
-([01-architecture.md](../design/01-architecture.md)). The resolver must
-maintain fallbacks ([02-compositor.md](../design/02-compositor.md)):
+([01-architecture.md](../../design/01-architecture.md)). The resolver must
+maintain fallbacks ([02-compositor.md](../../design/02-compositor.md)):
 `xdg_toplevel` `app_id` (primary, Wayland clients) → Xwayland `WM_CLASS`
 (X11 clients) → heuristics for inconsistent identifiers. Restartable;
 consumers re-query on reappearance.
@@ -54,7 +54,7 @@ consumers re-query on reappearance.
 5. **Search foundation (later, but designed now)**: the Settings **Search
    pane** routes to app-index (Spotlight-equivalent, roadmap "later") —
    schema hooks for name/keyword/metadata search over applications; Files'
-   content search is *not* here ([09-files.md](../design/09-files.md) —
+   content search is *not* here ([09-files.md](../../design/09-files.md) —
    we never write an indexer beyond app metadata).
 6. **Heuristic learning**: every resolution miss is logged and folded back
    into the heuristic table (the Dock's identity-miss risk from T-10).
@@ -63,7 +63,7 @@ consumers re-query on reappearance.
 
 - File associations (`mimeapps.list` — GIO/AppInfo in files-core; app-index
   is explicitly *not* involved there, per
-  [09-files.md](../design/09-files.md)).
+  [09-files.md](../../design/09-files.md)).
 - File-content indexing or a general Spotlight daemon — the search story
   beyond app metadata stays "later" and must not become an indexer
   project.

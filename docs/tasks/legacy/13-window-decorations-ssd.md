@@ -7,7 +7,7 @@
 | **Depends on** | [T-02](02-compositor-core.md) · [T-33](33-compositor-effects-materials.md) (titlebar shadows/translucency/rounding) · [T-04](04-window-model.md) · [T-05](05-spaces-model.md) (Spaces list for the window menu) · [T-06](06-xwayland.md) (Xwayland Tier-2 path) · [T-08](08-design-system.md) |
 | **Blocks** | [T-30](30-compatibility-bridges.md) (decoration themes) · [T-34](34-mvp-vertical-slice-gate.md) · Phase-2 exit (traffic lights in loop) |
 | **Estimate** | L |
-| **Design docs** | [03-workspaces.md](../design/03-workspaces.md) · [05-window-decorations.md](../design/05-window-decorations.md) · [10-design-system.md](../design/10-design-system.md) |
+| **Design docs** | [03-workspaces.md](../../design/03-workspaces.md) · [05-window-decorations.md](../../design/05-window-decorations.md) · [10-design-system.md](../../design/10-design-system.md) |
 
 ## Summary
 
@@ -21,7 +21,7 @@ documented three-tier policy for third-party apps.
 
 Wayland's `xdg-shell` makes clients responsible for their own decoration by
 default; we cannot reliably replace part of an application's pixels
-([05-window-decorations.md](../design/05-window-decorations.md)). The
+([05-window-decorations.md](../../design/05-window-decorations.md)). The
 product promise is bounded: **"traffic lights wherever the application
 permits native desktop decoration."** The decoration visual design is owned
 by the design system so SSD titlebars and first-party app titlebars look
@@ -32,7 +32,7 @@ identical.
 ### In scope
 
 1. **Negotiation** (per
-   [05-window-decorations.md](../design/05-window-decorations.md)):
+   [05-window-decorations.md](../../design/05-window-decorations.md)):
    - Client requests SSD → compositor-drawn titlebar (Tier 2).
    - No decoration request → **compositor default is SSD**
      (cooperative-by-default; CSD only when the client asks).
@@ -51,7 +51,7 @@ identical.
      colorless otherwise.
    - **Double-click on the titlebar zooms** (T-04 Zoom state).
    - **Right-click opens the window menu**: Move to Space, Minimize, Zoom,
-     Close ([03-workspaces.md](../design/03-workspaces.md)).
+     Close ([03-workspaces.md](../../design/03-workspaces.md)).
    - **Fullscreen windows hide the titlebar; a hover reveal keeps controls
      reachable.**
 4. **Snap/geometry integration**: resize edges, double-click zoom, and
@@ -80,7 +80,7 @@ identical.
   decided (macOS does nothing special by default — keep it boring), and
   resize handles work on all edges.
 - FR-5: Traffic-light glyphs are our own original artwork (IP rule,
-  [14-risks.md](../design/14-risks.md)) — not Apple's.
+  [14-risks.md](../../design/14-risks.md)) — not Apple's.
 - FR-6: The window menu's "Move to Space" lists Spaces from T-05 and works
   for Xwayland windows too.
 

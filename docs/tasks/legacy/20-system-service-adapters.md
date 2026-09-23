@@ -7,7 +7,7 @@
 | **Depends on** | [T-01](01-repo-scaffolding-ci-licensing.md) · [T-02](02-compositor-core.md) (D-Bus in compositor loop is separate; these are session-bus clients) |
 | **Blocks** | [T-09](09-menu-bar.md) (status items) · [T-16](16-settings-app.md) (panes) · [T-21](21-control-center.md) · [T-34](34-mvp-vertical-slice-gate.md) (MVP slice A1/A3/A4) · Phase-4 exit |
 | **Estimate** | L (per-adapter S) |
-| **Design docs** | [07-system-integration.md](../design/07-system-integration.md) · [08-settings.md](../design/08-settings.md) |
+| **Design docs** | [07-system-integration.md](../../design/07-system-integration.md) · [08-settings.md](../../design/08-settings.md) |
 
 ## Summary
 
@@ -21,7 +21,7 @@ degrades gracefully when its daemon is absent.
 
 Every subsystem already exposes a D-Bus (or equivalent) API intended exactly
 for custom desktop frontends
-([07-system-integration.md](../design/07-system-integration.md)). Adapters
+([07-system-integration.md](../../design/07-system-integration.md)). Adapters
 are small modules exposing a stable internal API; **nothing above the
 adapter knows which daemon implements it**. Absence of a daemon is a normal
 state, not an error.
@@ -55,7 +55,7 @@ Because the vertical slice lists Wi-Fi/volume/battery explicitly, these are
 | A12 | Privileged ops | polkit + host policy infra | Authentication-agent integration only — never roll our own privilege escalation |
 
 ### Principles (verbatim from
-[07-system-integration.md](../design/07-system-integration.md))
+[07-system-integration.md](../../design/07-system-integration.md))
 
 1. **Replace the presentation, not the stack.**
 2. **Adapters are thin and testable** — stable internal API, mockable,

@@ -7,7 +7,7 @@
 | **Depends on** | [T-17](17-files-core.md) · [T-18](18-files-app.md) · [T-07](07-private-shell-protocols.md) (trusted desktop-layer surface + launch token) · [T-14](14-hot-corners-desktop-background.md) (Desktop Reveal) |
 | **Blocks** | — |
 | **Estimate** | L |
-| **Design docs** | [09-files.md](../design/09-files.md) · [04-shell.md](../design/04-shell.md) · [02-compositor.md](../design/02-compositor.md) |
+| **Design docs** | [09-files.md](../../design/09-files.md) · [04-shell.md](../../design/04-shell.md) · [02-compositor.md](../../design/02-compositor.md) |
 
 ## Summary
 
@@ -23,9 +23,9 @@ contracts (trusted-process admission, reveal interplay) are decided now.
 Desktop icons belong to Files, rendered through a compositor desktop-layer
 surface; the private layer protocol admits a fixed set of trusted session
 processes by launch token — the shell, and this surface
-([02-compositor.md](../design/02-compositor.md), [09-files.md](../design/09-files.md)).
+([02-compositor.md](../../design/02-compositor.md), [09-files.md](../../design/09-files.md)).
 Desktop Reveal must work regardless and later exposes icons
-([04-shell.md](../design/04-shell.md)).
+([04-shell.md](../../design/04-shell.md)).
 
 ## Scope
 

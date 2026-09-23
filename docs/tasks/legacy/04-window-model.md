@@ -7,7 +7,7 @@
 | **Depends on** | [T-02](02-compositor-core.md) · [T-03](03-input-keymaps-shortcuts.md) |
 | **Blocks** | [T-05](05-spaces-model.md) · [T-06](06-xwayland.md) · [T-07](07-private-shell-protocols.md) · [T-13](13-window-decorations-ssd.md) · [T-35](35-window-lifecycle-animations.md) |
 | **Estimate** | L |
-| **Design docs** | [02-compositor.md](../design/02-compositor.md) · [03-workspaces.md](../design/03-workspaces.md) |
+| **Design docs** | [02-compositor.md](../../design/02-compositor.md) · [03-workspaces.md](../../design/03-workspaces.md) |
 
 ## Summary
 
@@ -20,7 +20,7 @@ shell restarts untouched.
 ## Background
 
 Windows, focus, stacking, and workspace assignment are **compositor state
-the shell never co-owns** ([02-compositor.md](../design/02-compositor.md)).
+the shell never co-owns** ([02-compositor.md](../../design/02-compositor.md)).
 Getting the state machine right is what lets the Dock, app switcher, and
 Mission Control be mere observers.
 
@@ -59,12 +59,12 @@ Mission Control be mere observers.
    floating windows, serving both SSD titlebar/edge input (T-13) and CSD
    clients' `xdg_toplevel` move/resize requests — the machinery behind the
    "focus / move / resize" rung of the vertical slice
-   ([ROADMAP.md](../ROADMAP.md)).
+   ([ROADMAP.md](../../ROADMAP.md)).
 8. **Popups** (`xdg_popup`): positioner-constraint placement, popup input
    grabs, dismissal (click-away, Escape, parent unfocus), and stacking
    above their toplevel — the substrate for app menus, context menus, and
    the window menu alike
-   ([02-compositor.md](../design/02-compositor.md) lists popups with
+   ([02-compositor.md](../../design/02-compositor.md) lists popups with
    transient dialogs).
 
 ### Out of scope
@@ -120,7 +120,7 @@ Mission Control be mere observers.
   requests plus `xdg_popup` placement matrices.
 - Malformed-client suite: clients sending contradictory state requests never
   crash the compositor (protocol-robustness rule from
-  [14-risks.md](../design/14-risks.md)).
+  [14-risks.md](../../design/14-risks.md)).
 - Nested-session UI test with the design-system gallery (T-08) as the
   window source.
 

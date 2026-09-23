@@ -7,7 +7,7 @@
 | **Depends on** | [T-02](02-compositor-core.md) (`wlr-data-control`) · [T-08](08-design-system.md) · [T-07](07-private-shell-protocols.md) · [T-20](20-system-service-adapters.md) (A12) |
 | **Blocks** | Daily-driver bar (clipboard; auth UI consistency) |
 | **Estimate** | M |
-| **Design docs** | [07-system-integration.md](../design/07-system-integration.md) · [04-shell.md](../design/04-shell.md) · [02-compositor.md](../design/02-compositor.md) |
+| **Design docs** | [07-system-integration.md](../../design/07-system-integration.md) · [04-shell.md](../../design/04-shell.md) · [02-compositor.md](../../design/02-compositor.md) |
 
 ## Summary
 
@@ -22,13 +22,13 @@ instead of a toolkit default.
 
 The compositor implements `wlr-data-control` "so the shell's clipboard
 manager sees text, images, and files"
-([02-compositor.md](../design/02-compositor.md)). The shell hosts the
+([02-compositor.md](../../design/02-compositor.md)). The shell hosts the
 polkit authentication agent "so privileged operations requested by
 Settings, Control Center, and our services surface one consistent,
-design-system prompt" ([04-shell.md](../design/04-shell.md)). Privileged
+design-system prompt" ([04-shell.md](../../design/04-shell.md)). Privileged
 operations are delegated to system services behind polkit — nothing of
 ours runs as root, and we never roll our own privilege escalation
-([07-system-integration.md](../design/07-system-integration.md)).
+([07-system-integration.md](../../design/07-system-integration.md)).
 
 ## Scope
 
@@ -41,7 +41,7 @@ ours runs as root, and we never roll our own privilege escalation
    keyboard-navigable; AT-SPI roles.
 3. Formats: text (incl. UTF-8 oddities), images (common formats), and
    **files** (URI lists) — the daily-driver clipboard bar
-   ([ROADMAP.md](../ROADMAP.md)) lists "text, images, files."
+   ([ROADMAP.md](../../ROADMAP.md)) lists "text, images, files."
 4. Size/privacy policy: cap history size and entry size; clear on
    lock/unlock (configurable); no cloud anything.
 
@@ -56,7 +56,7 @@ ours runs as root, and we never roll our own privilege escalation
    (A12 adapter rules).
 4. Restartable — the system falls back to another agent if ours is absent;
   we ship ours so the default look is consistent
-  ([04-shell.md](../design/04-shell.md)).
+  ([04-shell.md](../../design/04-shell.md)).
 
 ### Out of scope
 

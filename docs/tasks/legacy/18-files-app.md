@@ -7,7 +7,7 @@
 | **Depends on** | [T-08](08-design-system.md) · [T-17](17-files-core.md) · [T-22](22-global-menu-broker.md) (menu model publication) |
 | **Blocks** | Phase-3 exit (Files MVP scope) · [T-19](19-desktop-icons.md) |
 | **Estimate** | XL |
-| **Design docs** | [09-files.md](../design/09-files.md) · [10-design-system.md](../design/10-design-system.md) |
+| **Design docs** | [09-files.md](../../design/09-files.md) · [10-design-system.md](../../design/10-design-system.md) |
 
 ## Summary
 
@@ -20,7 +20,7 @@ published to the menu-broker.
 ## Background
 
 Files is an **ordinary application** — no daemon supports it, the session
-runs fine without it ([09-files.md](../design/09-files.md)). Everything
+runs fine without it ([09-files.md](../../design/09-files.md)). Everything
 users perceive as "how Finder works" is ours; the backend is GVfs/UDisks.
 
 ## MVP slice (for T-34)
@@ -96,7 +96,7 @@ traffic lights, and publishes its menu model at the gate.
    - Icon view = arrow-navigable grid; list view = AT-SPI table — keyboard
      and screen-reader use are component-level guarantees.
 4. **Selection and keyboard** (Cmd=Super/Mod4, Option=Alt): the full table
-   from [09-files.md](../design/09-files.md) — Open Cmd+O/Cmd+Down,
+   from [09-files.md](../../design/09-files.md) — Open Cmd+O/Cmd+Down,
    Enclosing Cmd+Up, Back/Forward Cmd+[/], **Rename Return**, Quick Look
    Space (reserved day one), New Folder Shift+Cmd+N, Move to Trash
    Cmd+Delete, Delete Immediately Option+Cmd+Delete, Duplicate Cmd+D, Make
@@ -107,7 +107,7 @@ traffic lights, and publishes its menu model at the gate.
    a bug, re-read the design doc.**
 5. **Context menus** per the Finder rule (everything under the pointer):
    item / multiple items / folder / background / volume / trash-item rows
-   from [09-files.md](../design/09-files.md); sensitive items (Trash,
+   from [09-files.md](../../design/09-files.md); sensitive items (Trash,
    Delete Immediately, Eject on busy volume) carry confirmation sheets.
    Same menu engine/components as the menu bar — **no context-menu-only
    code path**.
@@ -129,7 +129,7 @@ traffic lights, and publishes its menu model at the gate.
    new windows open, show all extensions, warn before emptying Trash,
    spring-load delay, keep-arranged defaults, default search scope.
 10. **Menu model**: the full File/Edit/View/Go/Window/Help menu from
-    [09-files.md](../design/09-files.md) via `MenuBarMenu`, with live
+    [09-files.md](../../design/09-files.md) via `MenuBarMenu`, with live
     enable/disable driven by selection.
 
 ### Out of scope (Later list — recorded, not built here)
@@ -141,7 +141,7 @@ desktop icons (T-19), folder size in list view.
 
 ## Requirements
 
-- FR-1: MVP scope (from [09-files.md](../design/09-files.md)) fully
+- FR-1: MVP scope (from [09-files.md](../../design/09-files.md)) fully
   works: Recents/Favorites sidebar; Home/Computer; xdg-user-dirs locations;
   mounted disks + removable storage with mount-on-demand and eject/busy UX;
   Trash (Put Back, empty); icon+list views; the single ops engine (copy/
