@@ -88,6 +88,30 @@ impl ColorScheme {
         }
     }
 
+    /// Elevated surface fill (popovers, menus; T-01.4).
+    pub const fn surface_elevated(self) -> [u8; 4] {
+        match self {
+            ColorScheme::Light => semantic::light::color::SURFACE_ELEVATED,
+            ColorScheme::Dark => semantic::dark::color::SURFACE_ELEVATED,
+        }
+    }
+
+    /// Border color (menus, windows; T-01.4).
+    pub const fn border(self) -> [u8; 4] {
+        match self {
+            ColorScheme::Light => semantic::light::color::BORDER,
+            ColorScheme::Dark => semantic::dark::color::BORDER,
+        }
+    }
+
+    /// Accent fill (menu highlight; T-01.4).
+    pub const fn accent(self) -> [u8; 4] {
+        match self {
+            ColorScheme::Light => semantic::light::color::ACCENT,
+            ColorScheme::Dark => semantic::dark::color::ACCENT,
+        }
+    }
+
     /// The lit fill of a traffic light.
     pub const fn light(self, kind: TrafficLightKind) -> [u8; 4] {
         match (self, kind) {
@@ -449,7 +473,7 @@ impl TitlebarElement {
 }
 
 /// Convert an RGBA byte token to a renderer color.
-fn color_from_rgba(rgba: [u8; 4]) -> Color32F {
+pub(crate) fn color_from_rgba(rgba: [u8; 4]) -> Color32F {
     Color32F::new(
         rgba[0] as f32 / 255.0,
         rgba[1] as f32 / 255.0,

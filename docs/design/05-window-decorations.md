@@ -87,7 +87,9 @@ compositor titlebar — the tier-3 dignity rule.
 
 Explicitly deferred: real materials (blur/shadow/rounded corners, T-04),
 drag-to-move and double-click zoom on the titlebar (T-01.3), the window
-menu (T-01.4), and the live color scheme (settings, T-08).
+menu's real labels/icons (T-01.4 lands the geometry and command routing as
+flat token fills, the same placeholder stage as the T-01.1 glyphs), and the
+live color scheme (settings, T-08).
 
 T-01.2 adds the traffic-light interaction on top of the element: the
 compositor tracks which button cluster the pointer is over (glyph reveal),
@@ -120,5 +122,21 @@ state machine:
   revealed.
 
 Zoomed and fullscreen windows are not interactively moved (matching the grab
-module's contract); multi-monitor drag polish is T-16. The window menu is
-T-01.4.
+module's contract); multi-monitor drag polish is T-16.
+
+T-01.4 adds the window menu on the same element and the same state machine.
+A right-click or Control-click on a titlebar opens a compositor-owned menu
+(`compositor/src/window/menu.rs`) whose rows are **Move to Space** (a submenu
+of the window output's Spaces), **Minimize**, **Zoom**, and **Close**. The
+menu holds no window state: each row resolves to a `WindowMenuCommand` and
+is applied by `DfState::window_menu_command`, the same primitives the traffic
+lights and the shell protocol use. Panel geometry and dismissal mirror the
+design-system `ContextMenu`: rows are `component.contextMenu.rowHeight` tall
+inside `padding`, the panel flips/clamps to stay inside the output, Escape
+closes an open submenu and then the menu, Up/Down/Home/End move the
+highlight, Right/Left open/close the submenu, Enter/Space activates, and
+click-away or focus loss dismisses. While open the menu is modal to keyboard
+and pointer input. The four commands are proven for a Wayland and an X11
+window in `window_conformance` / `xwayland_conformance`. The visual pass is
+flat and label-less for now (no text renderer yet); T-04 draws the real
+labels and materials, and T-14 reuses the menu for decoration themes.

@@ -529,6 +529,8 @@ struct DecorationReport {
     titlebar: (i32, i32, i32, i32),
     content: (i32, i32, i32, i32),
     state: WindowStateReport,
+    /// Assigned Space id, or -1 when unassigned (T-01.4).
+    space: i64,
 }
 
 /// Parse the `decoration` lines of a report (ignoring the trailing `end`).
@@ -564,12 +566,14 @@ fn parse_decorations(report: &str) -> Vec<DecorationReport> {
                 Some("fullscreen") => WindowStateReport::Fullscreen,
                 _ => WindowStateReport::Unknown,
             };
+            let space = parts.next().and_then(|t| t.parse().ok()).unwrap_or(-1);
             Some(DecorationReport {
                 window,
                 server_side,
                 titlebar,
                 content,
                 state,
+                space,
             })
         })
         .collect()
@@ -1059,6 +1063,325 @@ fn click(input: &SyntheticInput) {
 fn titlebar_center(report: &DecorationReport) -> (i32, i32) {
     let (tx, ty, tw, th) = report.titlebar;
     (tx + tw / 2, ty + th / 2)
+}
+
+/// One parsed `query window-menu` line (T-01.4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct MenuReport {
+    open: bool,
+    window: u64,
+    rect: (i32, i32, i32, i32),
+    highlighted: i64,
+    submenu_open: bool,
+    submenu_highlighted: i64,
+    submenu_rect: (i32, i32, i32, i32),
+}
+
+fn parse_menu(report: &str) -> MenuReport {
+    let line = report
+        .lines()
+        .find(|line| line.starts_with("window-menu"))
+        .expect("a window-menu line");
+    let mut parts = line.split_whitespace();
+    assert_eq!(parts.next(), Some("window-menu"));
+    let mut n = || -> i64 {
+        parts
+            .next()
+            .and_then(|token| token.parse().ok())
+            .expect("window-menu numeric field")
+    };
+    let open = n() != 0;
+    let window = n() as u64;
+    let rect = (n() as i32, n() as i32, n() as i32, n() as i32);
+    let highlighted = n();
+    let submenu_open = n() != 0;
+    let submenu_highlighted = n();
+    let submenu_rect = (n() as i32, n() as i32, n() as i32, n() as i32);
+    MenuReport {
+        open,
+        window,
+        rect,
+        highlighted,
+        submenu_open,
+        submenu_highlighted,
+        submenu_rect,
+    }
+}
+
+/// `component.contextMenu` geometry used to aim at rows (T-01.4).
+const MENU_PADDING: i32 = 6;
+const MENU_ROW_HEIGHT: i32 = 26;
+const MENU_MIN_WIDTH: i32 = 180;
+
+fn panel_row_center(rect: (i32, i32, i32, i32), index: i32) -> (i32, i32) {
+    let (x, y, _, _) = rect;
+    (
+        x + MENU_PADDING + (MENU_MIN_WIDTH - 2 * MENU_PADDING) / 2,
+        y + MENU_PADDING + index * MENU_ROW_HEIGHT + MENU_ROW_HEIGHT / 2,
+    )
+}
+
+fn menu_row_center(menu: &MenuReport, index: i32) -> (i32, i32) {
+    panel_row_center(menu.rect, index)
+}
+
+fn submenu_row_center(menu: &MenuReport, index: i32) -> (i32, i32) {
+    panel_row_center(menu.submenu_rect, index)
+}
+
+/// Right-click the window's titlebar center to open the window menu.
+fn open_window_menu(input: &SyntheticInput, report: &DecorationReport) {
+    let (cx, cy) = titlebar_center(report);
+    motion_to(input, cx, cy);
+    input.send("button 273 down"); // BTN_RIGHT
+    input.send("button 273 up");
+}
+
+/// Left-click at a global-space point.
+fn click_at(input: &SyntheticInput, x: i32, y: i32) {
+    motion_to(input, x, y);
+    input.send("button 272 down");
+    input.send("button 272 up");
+}
+
+/// Poll `query window-menu` until `predicate` holds.
+fn wait_for_menu(
+    input: &SyntheticInput,
+    mut predicate: impl FnMut(&MenuReport) -> bool,
+) -> MenuReport {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let menu = parse_menu(&input.query("query window-menu"));
+        if predicate(&menu) {
+            return menu;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "timed out waiting for window-menu state; last={menu:?}"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// Linux evdev key codes (the synthetic harness adds the xkb +8 offset).
+const KEY_ESC: u32 = 1;
+const KEY_ENTER: u32 = 28;
+const KEY_DOWN: u32 = 108;
+
+fn key_tap(input: &SyntheticInput, code: u32) {
+    input.send(&format!("key {code} down"));
+    input.send(&format!("key {code} up"));
+}
+
+/// T-01.4 acceptance: a right-click on the SSD titlebar opens the window menu;
+/// Escape, a click-away, and focus loss dismiss it; the keyboard navigates
+/// and activates it. The keyboard path zooms the window to prove the command
+/// is routed through the existing state machine.
+#[test]
+fn window_menu_opens_dismisses_and_is_keyboard_operable() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path =
+        PathBuf::from(&runtime_dir).join(format!("dragonfruit-menu-synth-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-menu",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (surface, xdg_surface, toplevel, file) = map_toplevel(&mut state, &mut queue);
+    let reports = wait_for_report(&mut state, &mut queue, &input, |reports| {
+        reports
+            .iter()
+            .any(|report| report.server_side && report.state == WindowStateReport::Floating)
+    });
+    let report = *reports
+        .iter()
+        .find(|report| report.server_side)
+        .expect("a mapped SSD toplevel");
+    let window = report.window;
+
+    // --- right-click opens the menu --------------------------------------
+    open_window_menu(&input, &report);
+    let menu = wait_for_menu(&input, |menu| menu.open);
+    assert_eq!(menu.window, window, "the menu acts on the clicked window");
+    assert_eq!(menu.highlighted, 0, "the first row is highlighted on open");
+    assert!(!menu.submenu_open);
+
+    // --- Escape dismisses -------------------------------------------------
+    key_tap(&input, KEY_ESC);
+    let menu = wait_for_menu(&input, |menu| !menu.open);
+    assert!(!menu.open, "Escape must dismiss the menu");
+
+    // --- click-away dismisses --------------------------------------------
+    open_window_menu(&input, &report);
+    wait_for_menu(&input, |menu| menu.open);
+    click_at(&input, 5, 5);
+    wait_for_menu(&input, |menu| !menu.open);
+
+    // --- keyboard: Down, Down, Enter activates Zoom -----------------------
+    open_window_menu(&input, &report);
+    wait_for_menu(&input, |menu| menu.open);
+    key_tap(&input, KEY_DOWN);
+    key_tap(&input, KEY_DOWN);
+    let menu = wait_for_menu(&input, |menu| menu.open && menu.highlighted == 2);
+    assert_eq!(menu.highlighted, 2, "Down must move the highlight to Zoom");
+    key_tap(&input, KEY_ENTER);
+    let zoomed = wait_for_window(&mut state, &mut queue, &input, window, |report| {
+        report.state == WindowStateReport::Zoomed
+    });
+    assert_eq!(
+        (zoomed.content.2, zoomed.content.3),
+        (OUTPUT_W, OUTPUT_H - TITLEBAR_HEIGHT),
+        "Enter on Zoom must zoom the window: {zoomed:?}"
+    );
+    wait_for_menu(&input, |menu| !menu.open);
+
+    surface.destroy();
+    toplevel.destroy();
+    xdg_surface.destroy();
+    drop(file);
+    drop(conn);
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic socket survived"
+    );
+}
+
+/// Wait for a newly mapped SSD window: one whose id is not in `seen`.
+fn wait_for_new_window(
+    state: &mut TestClient,
+    queue: &mut EventQueue<TestClient>,
+    input: &SyntheticInput,
+    seen: &[u64],
+) -> DecorationReport {
+    let reports = wait_for_report(state, queue, input, |reports| {
+        reports
+            .iter()
+            .any(|report| report.server_side && !seen.contains(&report.window))
+    });
+    *reports
+        .iter()
+        .find(|report| report.server_side && !seen.contains(&report.window))
+        .expect("a newly mapped SSD window")
+}
+
+/// T-01.4 acceptance: pointer clicks on the window-menu rows run Zoom,
+/// Minimize, Close, and Move to Space for a Wayland window, all through the
+/// existing window state machine.
+#[test]
+fn window_menu_runs_zoom_minimize_close_and_move_to_space() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir).join(format!(
+        "dragonfruit-menu-commands-synth-{}",
+        std::process::id()
+    ));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-menu-commands",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+    // Every window id the test has already acted on, so a phase always aims
+    // at the window it just mapped (not a stale one from a previous phase).
+    let mut seen: Vec<u64> = Vec::new();
+
+    // --- Zoom then Unzoom through the menu -------------------------------
+    let (surface, xdg_surface, toplevel, file) = map_toplevel(&mut state, &mut queue);
+    let mut report = wait_for_new_window(&mut state, &mut queue, &input, &seen);
+    seen.push(report.window);
+    let window = report.window;
+
+    open_window_menu(&input, &report);
+    let menu = wait_for_menu(&input, |menu| menu.open);
+    let (cx, cy) = menu_row_center(&menu, 2); // Zoom
+    click_at(&input, cx, cy);
+    report = wait_for_window(&mut state, &mut queue, &input, window, |report| {
+        report.state == WindowStateReport::Zoomed
+    });
+    assert_eq!(
+        (report.content.2, report.content.3),
+        (OUTPUT_W, OUTPUT_H - TITLEBAR_HEIGHT)
+    );
+
+    open_window_menu(&input, &report);
+    let menu = wait_for_menu(&input, |menu| menu.open);
+    let (cx, cy) = menu_row_center(&menu, 2); // Zoom toggles back
+    click_at(&input, cx, cy);
+    report = wait_for_window(&mut state, &mut queue, &input, window, |report| {
+        report.state == WindowStateReport::Floating
+    });
+    assert_eq!((report.content.2, report.content.3), (WINDOW_W, WINDOW_H));
+
+    // --- Minimize through the menu ---------------------------------------
+    open_window_menu(&input, &report);
+    let menu = wait_for_menu(&input, |menu| menu.open);
+    let (cx, cy) = menu_row_center(&menu, 1); // Minimize
+    click_at(&input, cx, cy);
+    let minimized = wait_for_window(&mut state, &mut queue, &input, window, |report| {
+        report.state == WindowStateReport::Minimized
+    });
+    assert!(!minimized.server_side);
+
+    surface.destroy();
+    toplevel.destroy();
+    xdg_surface.destroy();
+    drop(file);
+
+    // --- Close through the menu ------------------------------------------
+    let (surface2, xdg_surface2, toplevel2, file2) = map_toplevel(&mut state, &mut queue);
+    let close_report = wait_for_new_window(&mut state, &mut queue, &input, &seen);
+    seen.push(close_report.window);
+    open_window_menu(&input, &close_report);
+    let menu = wait_for_menu(&input, |menu| menu.open);
+    let (cx, cy) = menu_row_center(&menu, 3); // Close
+    click_at(&input, cx, cy);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.toplevel_close_count > 0,
+    );
+    surface2.destroy();
+    toplevel2.destroy();
+    xdg_surface2.destroy();
+    drop(file2);
+
+    // --- Move to Space through the submenu -------------------------------
+    let (surface3, xdg_surface3, toplevel3, file3) = map_toplevel(&mut state, &mut queue);
+    let move_report = wait_for_new_window(&mut state, &mut queue, &input, &seen);
+    seen.push(move_report.window);
+    let before_space = move_report.space;
+    assert!(before_space >= 0, "a mapped window is assigned a Space");
+
+    open_window_menu(&input, &move_report);
+    let menu = wait_for_menu(&input, |menu| menu.open);
+    let (cx, cy) = menu_row_center(&menu, 0); // Move to Space
+    click_at(&input, cx, cy);
+    let menu = wait_for_menu(&input, |menu| menu.submenu_open);
+    let (cx, cy) = submenu_row_center(&menu, 1); // Space 2
+    click_at(&input, cx, cy);
+    wait_for_window(
+        &mut state,
+        &mut queue,
+        &input,
+        move_report.window,
+        |report| report.space != before_space,
+    );
+    wait_for_menu(&input, |menu| !menu.open);
+
+    surface3.destroy();
+    toplevel3.destroy();
+    xdg_surface3.destroy();
+    drop(file3);
+    drop(conn);
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic socket survived"
+    );
 }
 
 /// T-01.3 acceptance: a drag from the SSD titlebar starts the existing

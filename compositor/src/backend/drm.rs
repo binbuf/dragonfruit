@@ -1006,6 +1006,13 @@ fn render_surface(
             .map(DrmOutputElements::Decoration),
     );
 
+    // The open window menu (T-01.4) composites above the titlebars.
+    custom_elements.extend(
+        crate::render::window_menu_render_elements(state, &surface.output, scale)
+            .into_iter()
+            .map(DrmOutputElements::Decoration),
+    );
+
     let frame_mode = FrameFlags::DEFAULT; // direct scanout where possible
     let wallpaper = state.wallpaper_color_for(&surface.output);
     let result =
