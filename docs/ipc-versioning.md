@@ -2,7 +2,7 @@
 
 Dragonfruit is many cooperating processes. They talk over two channels,
 and both are versioned contracts governed by this policy (from
-[../.docs/design/01-architecture.md](../.docs/design/01-architecture.md)):
+[../docs/design/01-architecture.md](../docs/design/01-architecture.md)):
 
 1. **Private Wayland protocols** (`protocols/*.xml`) —
    compositor ↔ shell communication: workspace enumeration, window
@@ -60,7 +60,7 @@ suffix, e.g. `org.dragonfruit.Settings1`:
 `XDG_CURRENT_DESKTOP=dragonfruit` is chosen once and is a public
 contract (toolkits, `portals.conf`, and `XDG_CURRENT_DESKTOP`-sensitive
 libraries key off it — see
-[../.docs/design/11-session-and-dev-workflow.md](../.docs/design/11-session-and-dev-workflow.md)).
+[../docs/design/11-session-and-dev-workflow.md](../docs/design/11-session-and-dev-workflow.md)).
 Only the literal `dragonfruit` is legal anywhere in the tree;
 `scripts/check-desktop-names.sh` fails the build (and CI) on any
 hardcoded desktop name.

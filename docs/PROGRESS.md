@@ -925,7 +925,7 @@ later ticket lands · **[upstream]** depends on Smithay/upstream.
       `image/png` and `text/uri-list` and reads them back both directions.
 - [x] **[host]** Decide and document the Xwayland fractional-scaling policy:
       **integer-scaled Xwayland + per-surface viewport downscale**, written
-      up in [docs/xwayland-scaling.md](../docs/xwayland-scaling.md). Xwayland
+      up in [docs/xwayland-scaling.md](/xwayland-scaling.md). Xwayland
       runs at `ceil(output_scale)`; the compositor downscales each X11
       toplevel with `wp_viewport` to the fractional logical size. Plumbing
       is deferred to T-13/T-31; X11 currently renders at 1x.
@@ -1028,7 +1028,7 @@ all green under `make e2e` / `make test` / `make lint`:
   requests, contradictory min>max size hints, re-entrant
   fullscreen/maximize, and a fullscreen-toplevel destroy.
 - **T-06 fractional-scaling policy** documented in
-  [docs/xwayland-scaling.md](../docs/xwayland-scaling.md).
+  [docs/xwayland-scaling.md](.//xwayland-scaling.md).
 - **T-04 input-region passthrough** confirmed against Smithay (no code
   change).
 
@@ -1357,13 +1357,13 @@ the behaviors the desktop must have when the shell (T-09/T-10) and session
   override it.
 - **Do not add host-accent adoption silently.** If we ever want it, make it
   an explicit settingsd option (T-15/T-16), because the visual identity is
-  deliberately ours (`.docs/design/14-risks.md`).
+  deliberately ours (`docs/design/14-risks.md`).
 
 ### There is no live compositor handoff — never attempt one
 
 Wayland clients are bound to one compositor; there is no standardized way
-to migrate live windows. `.docs/design/14-risks.md` ("No live compositor
-handoff") and `.docs/design/11-session-and-dev-workflow.md` are the
+to migrate live windows. `docs/design/14-risks.md` ("No live compositor
+handoff") and `docs/design/11-session-and-dev-workflow.md` are the
 authority. The two supported paths, and the expected behavior of each:
 
 1. **Nested on the existing desktop (daily dev, e.g. KDE Plasma).**
@@ -1584,10 +1584,10 @@ Notes for subsequent tasks:
 
 After the first nested capture, the status glyphs were given a visual style
 pass. Decision (maintainer): **original geometry only, polished to read as a
-macOS-style family** — not replicas of Apple's SF Symbols. `.docs/reference/
+macOS-style family** — not replicas of Apple's SF Symbols. `docs/reference/
 macos/` holds real macOS screenshots (the menu-bar status icons are AirDrop,
 Bluetooth, Wi-Fi, battery, Spotlight, date, Control Center). Per
-[14-risks.md](../.docs/design/14-risks.md) ("reproduce the interaction
+[14-risks.md](../docs/design/14-risks.md) ("reproduce the interaction
 quality and mental model, not Apple's bitmap output"; do not ship "Apple
 icons" / "pixel-copied proprietary artwork"), the glyphs stay our own
 geometry. The reference is a style guide only.
@@ -1626,7 +1626,7 @@ Notes for subsequent tasks:
   (T-25) will hit this if they use `Canvas`. A cleaner long-term fix is to
   drive the commit from `QQuickWindow::afterRendering` (or a render-control
   path) instead of a timer; revisit with T-10.
-- **`.docs/reference/macos/` is a style reference, not an asset source.** See
+- **`docs/reference/macos/` is a style reference, not an asset source.** See
   the IP rule in 14-risks.md before drawing anything that looks like an Apple
   icon. The status glyphs are original geometry in `StatusGlyph.qml`.
 - **Date format is the host locale's** (`Qt.locale().dateFormat`); this host
@@ -5645,7 +5645,7 @@ dragonfruit-compositor --bin dragonfruit-compositor` 127/127, the full
   scene per output is the T-11/T-16 seam.
 - The layout decision (grid, not cascade; membership/ordering/grid-shape/
   uniform-scale/no-occlusion/overflow) is documented in
-  `.docs/design/03-workspaces.md` under "Window layout and occlusion
+  `docs/design/03-workspaces.md` under "Window layout and occlusion
   (T-11 U-5)"; implementation against live surfaces is B-9.
 
 ### Gotchas

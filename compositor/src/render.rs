@@ -4,7 +4,7 @@
 //! Backends build their element list from the [`Space`] via Smithay's
 //! `render_output`/`output_elements` helpers — effects are compositor
 //! render passes over live surface buffers, never client re-renders
-//! ([02-compositor.md](../.docs/design/02-compositor.md)).
+//! ([02-compositor.md](../docs/design/02-compositor.md)).
 
 use std::time::Duration;
 

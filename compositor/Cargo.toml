@@ -9,7 +9,7 @@ rust-version.workspace = true
 
 # The compositor is a thin policy layer over Smithay. Smithay is pinned to an
 # exact version for the whole workspace (see the root Cargo.toml); upgrades
-# are deliberate, mechanical events (.docs/design/14-risks.md).
+# are deliberate, mechanical events (docs/design/14-risks.md).
 [dependencies]
 smithay.workspace = true
 calloop.workspace = true

@@ -2,7 +2,7 @@
 
 This document records the Dragonfruit licensing decision. It is a
 **blocker for the first public release** (see
-[../.docs/design/14-risks.md](../.docs/design/14-risks.md)): nothing is
+[../docs/design/14-risks.md](../docs/design/14-risks.md)): nothing is
 distributed publicly until the rules below are reviewed and signed off.
 
 ## Decision
@@ -55,7 +55,7 @@ constraints between components. Two rules still matter:
 
 ## Qt commercial decision trigger
 
-From [../.docs/design/14-risks.md](../.docs/design/14-risks.md): if the
+From [../docs/design/14-risks.md](../docs/design/14-risks.md): if the
 project ever needs a **statically linked, non-LGPL Qt distribution, or
 Qt modules only available under a commercial license**, that is a
 deliberate project-level decision — it changes distribution terms and

@@ -7,7 +7,7 @@
 //! [`super::dispatch::InputDispatch`] outbox as keyboard shortcuts and
 //! gestures, so a Mission Control corner, a Ctrl+Up, and a four-finger
 //! swipe produce one identical event stream
-//! ([04-shell.md](../../.docs/design/04-shell.md)).
+//! ([04-shell.md](../../docs/design/04-shell.md)).
 //!
 //! Each output has its own corners (T-14 documents multi-monitor
 //! assignment). Detection uses a dwell time so a pointer merely crossing a

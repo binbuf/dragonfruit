@@ -158,7 +158,7 @@ multitouch + pen pressure; wiring the outbox to the shell over the private
 protocol (T-07); menu-broker/portal accelerator registration (T-22/T-27);
 per-device libinput acceleration/scroll live application (needs backend
 device handles, T-16); on-device gesture tuning; unclaimed-gesture
-pass-through policy. See [keymap.md](../docs/keymap.md) for the in-repo
+pass-through policy. See [keymap.md](.//keymap.md) for the in-repo
 keymap decision. Details: [PROGRESS.md](PROGRESS.md).
 
 T-04 is partial: the four-state window machine (floating/minimized/zoomed/
@@ -239,7 +239,7 @@ stack) and is replaced by `app-index` in T-23; Smithay 0.7's `X11Wm`
 source closure forms a calloop `Rc` cycle, so the compositor explicitly
 unlinks its socket on teardown (T-31/upstream follow-up). The
 fractional-scaling policy is decided and documented in
-[docs/xwayland-scaling.md](../docs/xwayland-scaling.md) (integer-scaled
+[docs/xwayland-scaling.md](.//xwayland-scaling.md) (integer-scaled
 Xwayland + per-surface viewport downscale; plumbing lands with
 T-13/T-31). Details: [PROGRESS.md](PROGRESS.md).
 
@@ -258,7 +258,7 @@ matrix (untrusted bind, invalid token, wrong version, replayed token),
 chrome configure/reserved zones, and output/workspace/toplevel request
 round-trips; the token model and layer geometry are unit-tested; deviations
 from the `wlr-*` precedents are documented in
-[docs/private-protocols.md](../docs/private-protocols.md). The compliance
+[docs/private-protocols.md](.//private-protocols.md). The compliance
 client now also asserts output geometry/mode/transform, workspace
 index/activated/fullscreen/removed, focus, attention (`xdg-activation`),
 app-switcher state, and toplevel output/workspace/closed transitions, and

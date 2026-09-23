@@ -43,7 +43,7 @@ failures, an app exiting mid-animation, windows opening on other Spaces,
 apps with inconsistent identifiers, an uninstalled pinned app, a settingsd
 or shell restart, a Trash mount that disappears, and output hotplug.
 
-The real macOS screenshots in `.docs/reference/macos/` (notably the desktop
+The real macOS screenshots in `docs/reference/macos/` (notably the desktop
 with Dock, the Files sidebar, and the **Desktop & Dock** settings pane) are
 a **style and information-architecture reference only** — per
 [14-risks.md](../design/14-risks.md) we do not copy Apple's assets or

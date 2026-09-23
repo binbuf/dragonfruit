@@ -6,7 +6,7 @@
 #
 # Static QML module: first-party apps and shell chrome link it directly,
 # which is what makes "every first-party application consumes these
-# components" enforceable at build time (.docs/design/10-design-system.md).
+# components" enforceable at build time (docs/design/10-design-system.md).
 
 # `pragma Singleton` is not auto-detected by this Qt build system: the source
 # property is what makes the generated qmldir register `Theme` as a singleton.

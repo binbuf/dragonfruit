@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use wayland_client::protocol::{wl_registry, wl_surface};
 use wayland_client::{Connection, Dispatch, QueueHandle};
 
-/// The exact protocol surface from .docs/tasks/02-compositor-core.md.
+/// The exact protocol surface from docs/tasks/02-compositor-core.md.
 ///
 /// `zwp_linux_dmabuf_v1` is backend-dependent: it is only advertised when
 /// the backend has a renderer (headless deliberately does not), so it is

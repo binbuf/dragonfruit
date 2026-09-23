@@ -4,7 +4,7 @@ import Dragonfruit
 
 // Original vector glyphs for menu-bar status items (T-09 FR-5). Every mark
 // is geometry we own — no bitmap assets and no copied proprietary artwork
-// (see .docs/design/14-risks.md). The visual language is tuned to read as a
+// (see docs/design/14-risks.md). The visual language is tuned to read as a
 // macOS-style menu bar: monochrome, one uniform optical stroke with rounded
 // caps/joins, even optical sizing, and a filled level element where macOS
 // uses one (Wi-Fi origin dot, battery fill).

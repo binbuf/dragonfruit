@@ -2,7 +2,7 @@
 //! Spaces: the compositor's workspace model (T-05).
 //!
 //! Workspace organization is an **internal compositor primitive**
-//! ([03-workspaces.md](../../.docs/design/03-workspaces.md)): the
+//! ([03-workspaces.md](../../docs/design/03-workspaces.md)): the
 //! compositor owns creation, removal, ordering, and activation, and the
 //! shell is a pure consumer of the event stream over the private protocol
 //! (T-07). This module is deliberately pure — it deals in
@@ -45,7 +45,7 @@ use std::collections::HashMap;
 use crate::window::WindowId;
 
 /// The number of Spaces every output starts with (the vertical slice ships
-/// three — [ROADMAP.md](../../.docs/ROADMAP.md)).
+/// three — [ROADMAP.md](../../docs/ROADMAP.md)).
 pub const INITIAL_SPACES: usize = 3;
 
 /// A compositor-stable workspace identifier. Stable across shell restarts

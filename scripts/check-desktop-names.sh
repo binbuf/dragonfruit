@@ -5,7 +5,7 @@
 # hardcodes a desktop name. `dragonfruit` is the only legal name
 # (XDG_CURRENT_DESKTOP is a public contract — docs/ipc-versioning.md).
 #
-# Design docs (.docs/) are exempt: they legitimately discuss other
+# Design docs (docs/) are exempt: they legitimately discuss other
 # desktops. Code, build files, and scripts are not. A line carrying the
 # marker `df-allow-desktop-name` is exempt (negative tests, etc.).
 set -uo pipefail

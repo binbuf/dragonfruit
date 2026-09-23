@@ -13,8 +13,8 @@ shared versioning crate (`df-ipc`) that every Dragonfruit process embeds.
 
 The full reference — semantics, the refusal matrix, deviations from the
 `wlr-*` precedents, and how the Rust and Qt bindings are generated — is in
-[docs/private-protocols.md](../docs/private-protocols.md). The versioning
-policy is in [docs/ipc-versioning.md](../docs/ipc-versioning.md).
+[docs/private-protocols.md](.//private-protocols.md). The versioning
+policy is in [docs/ipc-versioning.md](.//ipc-versioning.md).
 
 ## Rules
 

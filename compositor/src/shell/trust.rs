@@ -3,7 +3,7 @@
 //!
 //! Chrome surfaces, window/workspace control, and output management are a
 //! privilege of a fixed set of trusted session processes, not a public
-//! extension surface ([02-compositor.md](../../.docs/design/02-compositor.md)).
+//! extension surface ([02-compositor.md](../../docs/design/02-compositor.md)).
 //! Each trusted process is provisioned with a **one-time launch token
 //! out-of-band at startup** (via the session environment, T-24): the shell,
 //! and — when desktop icons ship — the Files desktop surface (T-19).

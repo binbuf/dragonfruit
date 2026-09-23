@@ -4,7 +4,7 @@
 //! Both the nested (winit) and DRM (libinput) backends feed their events
 //! through [`process_input_event`]; there is no backend-specific input
 //! path. T-02's routing forwards events to the focused client and
-//! implements click-to-focus ([02-compositor.md](../../.docs/design/02-compositor.md));
+//! implements click-to-focus ([02-compositor.md](../../docs/design/02-compositor.md));
 //! T-03 adds the pieces the compositor owns:
 //!
 //! * the xkb keymap and Cmd/Option mapping ([`keymap`]),

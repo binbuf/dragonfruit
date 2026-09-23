@@ -2,7 +2,7 @@
 
 Compositor↔shell communication runs over **private, versioned Wayland
 protocols** — never by scraping public protocols
-([01-architecture.md](../.docs/design/01-architecture.md)). The XMLs live in
+([01-architecture.md](../docs/design/01-architecture.md)). The XMLs live in
 [`protocols/`](../protocols/) and ship as a lockstep set with the compositor
 and shell; the versioning rules are in
 [ipc-versioning.md](ipc-versioning.md).
@@ -111,7 +111,7 @@ is acked with `done` after the scene applies it (FR-3).
   `workspace_entered`/`left`, `output_entered`/`left`, `closed`, `done`.
 - **`df_workspace`** is one Space on one output. Spaces are per-output and
   ordered; activation is lockstep across outputs
-  ([03-workspaces.md](../.docs/design/03-workspaces.md)). A fullscreen window
+  ([03-workspaces.md](../docs/design/03-workspaces.md)). A fullscreen window
   owns a dedicated, transient Space (`fullscreen` true). Requests: `activate`,
   `set_wallpaper`; events: `name`, `index`, `activated`, `fullscreen`,
   `wallpaper`, `removed`, `done`.
@@ -120,7 +120,7 @@ is acked with `done` after the scene applies it (FR-3).
   `done`, `removed`. Requests set mode/scale/transform (applied through
   Smithay's `Output::change_current_state`); VRR and night light are accepted
   and acked but their backend plumbing is a T-16 displays-pane item (see
-  [PROGRESS.md](../.docs/PROGRESS.md), T-02).
+  [PROGRESS.md](../docs/PROGRESS.md), T-02).
 - **Manager events** carry the cross-cutting broadcasts: `workspace_activated`,
   `focused`, `attention` (xdg-activation / demands-attention → Dock bounce),
   `hot_corner` (the same event whether triggered by pointer, gesture, or
@@ -143,11 +143,11 @@ We studied the wlr protocols and own our own; the meaningful deviations:
 
 | Area | wlr precedent | Dragonfruit | Why |
 |---|---|---|---|
-| Access | public extension surface | token-gated, trusted processes only | chrome is a privilege, not a public API ([02-compositor.md](../.docs/design/02-compositor.md)) |
-| Versioning | per-interface `version` | lockstep set + handshake refusal | cross-version mixing is unsupported ([01-architecture.md](../.docs/design/01-architecture.md)) |
+| Access | public extension surface | token-gated, trusted processes only | chrome is a privilege, not a public API ([02-compositor.md](../docs/design/02-compositor.md)) |
+| Versioning | per-interface `version` | lockstep set + handshake refusal | cross-version mixing is unsupported ([01-architecture.md](../docs/design/01-architecture.md)) |
 | Window identity | `wlr-foreign-toplevel` handle | compositor-stable `WindowId` in the handle | survives shell restarts; the shell never invents ids |
 | Workspaces | none | first-class `df_workspace` + lockstep activation | Spaces are a compositor primitive (T-05) |
-| Mission Control / app switcher | none | `overview_changed`, `app_switcher`, recency order | compositor-driven, shell-rendered ([04-shell.md](../.docs/design/04-shell.md)) |
+| Mission Control / app switcher | none | `overview_changed`, `app_switcher`, recency order | compositor-driven, shell-rendered ([04-shell.md](../docs/design/04-shell.md)) |
 | Launch feedback | `xdg-activation` is public | `attention` broadcast to the shell | Dock bounce (T-10) without polling |
 | Output extras | mode/scale/transform | + VRR, night light, reserved zones | Displays pane (T-16) and chrome reserves |
 | Capture | `wlr-screencopy` exists | never advertised; portal-only | "if a capture is not a portal request, the answer is no" |
