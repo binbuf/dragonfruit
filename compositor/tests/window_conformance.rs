@@ -24,6 +24,9 @@ use wayland_client::protocol::{
     wl_buffer, wl_compositor, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface,
 };
 use wayland_client::{Connection, Dispatch, EventQueue, QueueHandle};
+use wayland_protocols::xdg::decoration::zv1::client::{
+    zxdg_decoration_manager_v1, zxdg_toplevel_decoration_v1,
+};
 use wayland_protocols::xdg::shell::client::{
     xdg_popup, xdg_positioner, xdg_surface, xdg_toplevel, xdg_wm_base,
 };
@@ -36,6 +39,11 @@ const OUTPUT_H: i32 = 720;
 /// the restored configure after unzoom/unfullscreen) uses this.
 const WINDOW_W: i32 = 200;
 const WINDOW_H: i32 = 150;
+
+/// The design-system SSD titlebar height (`component.titlebar.height` in
+/// `design-system/tokens/tokens.json`). The compositor reserves this strip
+/// above a Tier-2 client's content (T-01.1).
+const TITLEBAR_HEIGHT: i32 = 40;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ToplevelConfigure {
@@ -63,6 +71,7 @@ struct TestClient {
     compositor: Option<wl_compositor::WlCompositor>,
     shm: Option<wl_shm::WlShm>,
     xdg_wm_base: Option<xdg_wm_base::XdgWmBase>,
+    decoration_manager: Option<zxdg_decoration_manager_v1::ZxdgDecorationManagerV1>,
     seat: Option<wl_seat::WlSeat>,
     pointer: Option<wl_pointer::WlPointer>,
     /// Serial of each pointer button press delivered to the client.
@@ -95,6 +104,9 @@ impl Dispatch<wl_registry::WlRegistry, ()> for TestClient {
                 }
                 "xdg_wm_base" => {
                     state.xdg_wm_base = Some(registry.bind(name, version.min(6), qh, ()));
+                }
+                "zxdg_decoration_manager_v1" => {
+                    state.decoration_manager = Some(registry.bind(name, version.min(1), qh, ()));
                 }
                 "wl_seat" => {
                     state.seat = Some(registry.bind(name, version.min(9), qh, ()));
@@ -293,6 +305,30 @@ impl Dispatch<xdg_popup::XdgPopup, ()> for TestClient {
     }
 }
 
+impl Dispatch<zxdg_decoration_manager_v1::ZxdgDecorationManagerV1, ()> for TestClient {
+    fn event(
+        _: &mut Self,
+        _: &zxdg_decoration_manager_v1::ZxdgDecorationManagerV1,
+        _: zxdg_decoration_manager_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1, ()> for TestClient {
+    fn event(
+        _: &mut Self,
+        _: &zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1,
+        _: zxdg_toplevel_decoration_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
 /// Decode the `xdg_toplevel.configure` states array (native-endian u32s).
 fn parse_states(bytes: &[u8]) -> Vec<u32> {
     bytes
@@ -417,18 +453,28 @@ unsafe extern "C" {
     fn kill(pid: i32, sig: i32) -> i32;
 }
 
-/// Sends synthetic-input commands to the T-03 harness socket.
+/// Sends synthetic-input commands to the T-03 harness socket and reads the
+/// `query` replies (T-01.1 decoration introspection). The reply socket is
+/// bound so the compositor can address its answer back to us.
 struct SyntheticInput {
     socket: std::os::unix::net::UnixDatagram,
     path: PathBuf,
+    reply_path: PathBuf,
 }
 
 impl SyntheticInput {
     fn connect(path: &Path) -> Self {
-        let socket = std::os::unix::net::UnixDatagram::unbound().expect("unbound datagram");
+        let reply_path = path.with_extension("reply");
+        let _ = std::fs::remove_file(&reply_path);
+        let socket = std::os::unix::net::UnixDatagram::bind(&reply_path)
+            .expect("failed to bind synthetic reply socket");
+        socket
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .expect("set reply timeout");
         Self {
             socket,
             path: path.to_path_buf(),
+            reply_path,
         }
     }
 
@@ -438,6 +484,65 @@ impl SyntheticInput {
             .send_to(command.as_bytes(), &self.path)
             .unwrap_or_else(|err| panic!("failed to send synthetic {command:?}: {err}"));
     }
+
+    /// Send a query and read the compositor's datagram reply.
+    #[track_caller]
+    fn query(&self, command: &str) -> String {
+        self.send(command);
+        let mut buf = [0u8; 16 * 1024];
+        let len = self
+            .socket
+            .recv(&mut buf)
+            .unwrap_or_else(|err| panic!("no reply to {command:?}: {err}"));
+        String::from_utf8_lossy(&buf[..len]).into_owned()
+    }
+}
+
+impl Drop for SyntheticInput {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.reply_path);
+    }
+}
+
+/// One parsed `query decorations` line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct DecorationReport {
+    window: u64,
+    server_side: bool,
+    titlebar: (i32, i32, i32, i32),
+    content: (i32, i32, i32, i32),
+}
+
+/// Parse the `decoration` lines of a report (ignoring the trailing `end`).
+fn parse_decorations(report: &str) -> Vec<DecorationReport> {
+    report
+        .lines()
+        .filter_map(|line| {
+            let mut parts = line.split_whitespace();
+            if parts.next()? != "decoration" {
+                return None;
+            }
+            let n = |parts: &mut std::str::SplitWhitespace| -> Option<i32> {
+                parts.next()?.parse().ok()
+            };
+            Some(DecorationReport {
+                window: parts.next()?.parse().ok()?,
+                server_side: parts.next()? == "1",
+                titlebar: (
+                    n(&mut parts)?,
+                    n(&mut parts)?,
+                    n(&mut parts)?,
+                    n(&mut parts)?,
+                ),
+                content: (
+                    n(&mut parts)?,
+                    n(&mut parts)?,
+                    n(&mut parts)?,
+                    n(&mut parts)?,
+                ),
+            })
+        })
+        .collect()
 }
 
 /// Dispatch until `pred` is true or the timeout expires (bounded with
@@ -584,7 +689,13 @@ fn toplevel_zoom_and_fullscreen_round_trip_over_protocol() {
         zoomed.has(xdg_toplevel::State::Maximized),
         "maximize configure must carry the maximized state: {zoomed:?}"
     );
-    assert_eq!((zoomed.width, zoomed.height), (OUTPUT_W, OUTPUT_H));
+    // The client area fills the usable output *below* its SSD titlebar
+    // (T-01.1): zoom configures the content, and the titlebar occupies the
+    // top strip.
+    assert_eq!(
+        (zoomed.width, zoomed.height),
+        (OUTPUT_W, OUTPUT_H - TITLEBAR_HEIGHT)
+    );
 
     // --- unmaximize restores the floating geometry -----------------------
     state.toplevel_configures.clear();
@@ -627,6 +738,133 @@ fn toplevel_zoom_and_fullscreen_round_trip_over_protocol() {
     surface.destroy();
     toplevel.destroy();
     proc.shutdown();
+}
+
+/// T-01.1 acceptance: a mapped Wayland toplevel carries an SSD titlebar with
+/// the token height and insets, a CSD client carries none, and the client
+/// area sits directly below the titlebar. Asserted over the T-03
+/// synthetic-input observation socket.
+#[test]
+fn ssd_toplevel_carries_a_titlebar_and_csd_does_not() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir).join(format!(
+        "dragonfruit-decoration-synth-{}",
+        std::process::id()
+    ));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-decoration",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    // No `xdg-decoration` request: the compositor default is SSD.
+    let (surface, xdg_surface, toplevel, file) = map_toplevel(&mut state, &mut queue);
+    let report = wait_for_report(&mut state, &mut queue, &input, |reports| {
+        reports.iter().any(|report| report.server_side)
+    });
+    let ssd = *report
+        .iter()
+        .find(|report| report.server_side)
+        .expect("a mapped SSD toplevel must carry a titlebar");
+
+    // Expected insets: the titlebar is the token height, exactly above the
+    // client area and sharing its horizontal extent.
+    assert_eq!(
+        ssd.titlebar.3, TITLEBAR_HEIGHT,
+        "titlebar height must come from the design tokens: {ssd:?}"
+    );
+    assert_eq!(ssd.titlebar.0, ssd.content.0);
+    assert_eq!(ssd.titlebar.2, ssd.content.2);
+    assert_eq!(
+        ssd.titlebar.1 + ssd.titlebar.3,
+        ssd.content.1,
+        "the client area must be configured directly below the titlebar"
+    );
+    assert_eq!((ssd.content.2, ssd.content.3), (WINDOW_W, WINDOW_H));
+
+    // A CSD client asks for client-side decoration before its first commit.
+    let qh = queue.handle();
+    let compositor = state.compositor.clone().unwrap();
+    let wm_base = state.xdg_wm_base.clone().unwrap();
+    let manager = state
+        .decoration_manager
+        .clone()
+        .expect("zxdg_decoration_manager_v1 not advertised");
+    let csd_surface = compositor.create_surface(&qh, ());
+    let csd_xdg_surface = wm_base.get_xdg_surface(&csd_surface, &qh, ());
+    let csd_toplevel = csd_xdg_surface.get_toplevel(&qh, ());
+    csd_toplevel.set_title("CSD".into());
+    let decoration = manager.get_toplevel_decoration(&csd_toplevel, &qh, ());
+    decoration.set_mode(zxdg_toplevel_decoration_v1::Mode::ClientSide);
+    csd_surface.commit();
+    queue.roundtrip(&mut state).expect("csd initial configure");
+    let (csd_buffer, csd_file) = shm_buffer(&state, &qh, WINDOW_W, WINDOW_H);
+    csd_surface.attach(Some(&csd_buffer), 0, 0);
+    csd_surface.commit();
+    queue.roundtrip(&mut state).expect("csd map commit");
+
+    let report = wait_for_report(&mut state, &mut queue, &input, |reports| {
+        reports.len() >= 2 && reports.iter().any(|report| !report.server_side)
+    });
+    assert_eq!(report.len(), 2, "two tracked windows: {report:?}");
+    let csd = *report
+        .iter()
+        .find(|report| !report.server_side)
+        .expect("the CSD window must be tracked");
+    assert_eq!(
+        csd.titlebar,
+        (0, 0, 0, 0),
+        "a CSD client must not be given a compositor titlebar"
+    );
+    assert_eq!(
+        (csd.content.2, csd.content.3),
+        (WINDOW_W, WINDOW_H),
+        "the CSD client keeps its own full content size"
+    );
+    assert_eq!(
+        report.iter().filter(|report| report.server_side).count(),
+        1,
+        "only the SSD window carries a titlebar: {report:?}"
+    );
+
+    decoration.destroy();
+    csd_toplevel.destroy();
+    csd_xdg_surface.destroy();
+    csd_surface.destroy();
+    toplevel.destroy();
+    xdg_surface.destroy();
+    surface.destroy();
+    drop(csd_file);
+    drop(file);
+    drop(conn);
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic socket survived"
+    );
+}
+
+/// Query `query decorations`, retrying while the scene catches up.
+fn wait_for_report(
+    state: &mut TestClient,
+    queue: &mut EventQueue<TestClient>,
+    input: &SyntheticInput,
+    mut predicate: impl FnMut(&[DecorationReport]) -> bool,
+) -> Vec<DecorationReport> {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        queue.roundtrip(state).expect("roundtrip while waiting");
+        let reports = parse_decorations(&input.query("query decorations"));
+        if predicate(&reports) {
+            return reports;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "timed out waiting for decoration report"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
 }
 
 #[test]

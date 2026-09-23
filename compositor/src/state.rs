@@ -101,8 +101,9 @@ use crate::window::grab::{MoveGrab, ResizeGrab};
 use crate::window::popup::constrained_popup_geometry;
 use crate::window::resize::SizeConstraints;
 use crate::window::{
-    cascaded_geometry, centered_on, ReservedZones, ShellWindowEvent, WindowDispatch, WindowEvent,
-    WindowEventKind, WindowId, WindowMenuCommand, WindowModel, CASCADE_STEP,
+    cascaded_geometry, centered_on, DecorationTier, ReservedZones, ShellWindowEvent,
+    TitlebarElement, WindowDispatch, WindowEvent, WindowEventKind, WindowId, WindowInsets,
+    WindowMenuCommand, WindowModel, CASCADE_STEP,
 };
 use crate::workspace::WorkspaceModel;
 use crate::xwayland::XwaylandState;
@@ -546,6 +547,11 @@ impl DfState {
             if let Some(toplevel) = window.toplevel() {
                 self.windows.set_app_id(&window, toplevel_app_id(toplevel));
                 self.windows.set_title(&window, toplevel_title(toplevel));
+                // Decoration tier from `xdg-decoration`: the compositor
+                // default is SSD, a client that asked for CSD keeps its own
+                // decoration and gets no compositor titlebar (T-01.1).
+                self.windows
+                    .set_decorations(&window, toplevel_decoration_tier(toplevel));
             }
             if let Some(parent) = parent {
                 self.windows.set_parent(&window, &parent);
@@ -817,6 +823,29 @@ impl DfState {
         Some(self.reserved_zones.usable(output))
     }
 
+    /// The decoration insets the compositor reserves for `window` (T-01.1).
+    ///
+    /// A Tier-3 (client-side-decorated) window reserves nothing; a Tier-2
+    /// window reserves the SSD titlebar strip. Fullscreen hides the
+    /// titlebar, so it reserves nothing either.
+    pub fn insets_for(&self, window: &Window) -> WindowInsets {
+        if self.windows.state(window) == Some(crate::window::WindowState::Fullscreen) {
+            return WindowInsets::NONE;
+        }
+        WindowInsets::for_tier(self.windows.decorations(window))
+    }
+
+    /// The SSD titlebar element for `window`, if the compositor must draw
+    /// one (T-01.1). `hovered` is always false until T-01.2 wires hover.
+    pub fn titlebar_element(&self, window: &Window) -> Option<TitlebarElement> {
+        let id = self.windows.id(window)?;
+        let geometry = self.windows.geometry(window)?;
+        let state = self.windows.state(window)?;
+        let tier = self.windows.decorations(window);
+        let focused = self.active_window.as_ref() == Some(window);
+        TitlebarElement::for_window(id, geometry, tier, state, focused, false)
+    }
+
     /// Move a floating window to `location` (the caller clamps to output).
     pub fn move_window(&mut self, window: &Window, location: Point<i32, Logical>) {
         let Some(size) = self.windows.floating_geometry(window).map(|geo| geo.size) else {
@@ -874,6 +903,10 @@ impl DfState {
         let Some(target) = self.usable_geometry_for(window) else {
             return;
         };
+        // A decorated window's client area fits *below* its titlebar inside
+        // the usable area: the titlebar inset is applied once here, on the
+        // same geometry path every configure flows through (T-01.1).
+        let target = self.insets_for(window).inset(target);
         let Some(transition) = self.windows.apply(window, WindowEvent::Zoom, target) else {
             return;
         };
@@ -1061,6 +1094,19 @@ impl DfState {
         }
         self.broadcast_state(window);
         self.needs_redraw = true;
+    }
+
+    /// Update a mapped window's decoration tier after an `xdg-decoration`
+    /// mode change (T-01.1). Pre-map toplevels are skipped here; the mapping
+    /// path reads the pending mode directly.
+    fn apply_decoration_mode(&mut self, toplevel: &ToplevelSurface) {
+        let Some(window) = self.window_for_surface(toplevel.wl_surface()) else {
+            return;
+        };
+        let tier = toplevel_decoration_tier(toplevel);
+        if self.windows.set_decorations(&window, tier) {
+            self.needs_redraw = true;
+        }
     }
 
     /// Send a configure with `size` to a toplevel if it changed.
@@ -1460,6 +1506,16 @@ fn toplevel_title(surface: &ToplevelSurface) -> Option<String> {
     })
 }
 
+/// The decoration tier a toplevel asks for (T-01.1). The compositor default
+/// is server-side; only an explicit CSD request keeps the client's own
+/// decoration, and then the compositor must never draw a titlebar over it.
+fn toplevel_decoration_tier(toplevel: &ToplevelSurface) -> DecorationTier {
+    match toplevel.with_pending_state(|state| state.decoration_mode) {
+        Some(DecorationMode::ClientSide) => DecorationTier::ClientSide,
+        _ => DecorationTier::ServerSide,
+    }
+}
+
 impl BufferHandler for DfState {
     fn buffer_destroyed(&mut self, _buffer: &wl_buffer::WlBuffer) {}
 }
@@ -1797,6 +1853,7 @@ impl XdgDecorationHandler for DfState {
         toplevel.with_pending_state(|state| {
             state.decoration_mode = Some(mode);
         });
+        self.apply_decoration_mode(&toplevel);
         if toplevel.is_initial_configure_sent() {
             toplevel.send_pending_configure();
         }
@@ -1806,6 +1863,7 @@ impl XdgDecorationHandler for DfState {
         toplevel.with_pending_state(|state| {
             state.decoration_mode = Some(DecorationMode::ServerSide);
         });
+        self.apply_decoration_mode(&toplevel);
         if toplevel.is_initial_configure_sent() {
             toplevel.send_pending_configure();
         }

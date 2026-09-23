@@ -14,17 +14,29 @@ use std::time::Duration;
 
 use smithay::backend::egl::EGLDevice;
 use smithay::backend::renderer::damage::OutputDamageTracker;
+use smithay::backend::renderer::element::solid::SolidColorRenderElement;
+use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::glow::GlowRenderer;
-use smithay::backend::renderer::{ImportDma, ImportMemWl};
+use smithay::backend::renderer::{ImportAll, ImportDma, ImportMem, ImportMemWl};
 use smithay::backend::winit::{self, WinitEvent, WinitGraphicsBackend};
 use smithay::desktop::space::render_output;
 use smithay::output::{Mode, PhysicalProperties, Subpixel};
 use smithay::reexports::wayland_protocols::wp::presentation_time::server::wp_presentation_feedback;
+use smithay::render_elements;
 use smithay::wayland::presentation::Refresh;
 
 use crate::backend::{add_output, add_seat_capabilities};
 use crate::session::{run_session, BackendHooks};
 use crate::{render, LOCKSTEP_VERSION};
+
+// Custom elements for the nested output: shell chrome (menu bar, overlays)
+// and the compositor-drawn SSD titlebars (T-01.1). One enum so both kinds
+// can composite above the window space in a single render pass.
+render_elements! {
+    pub NestedOutputElements<R> where R: ImportAll + ImportMem + ImportMemWl;
+    Chrome=WaylandSurfaceRenderElement<R>,
+    Decoration=SolidColorRenderElement,
+}
 
 pub fn run(socket_name: &str) -> Result<(), String> {
     println!("dragonfruit-compositor: starting (backend=nested, lockstep-ipc=v{LOCKSTEP_VERSION})");
@@ -163,12 +175,15 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
         Ok((renderer, mut framebuffer)) => {
             let scale = smithay::utils::Scale::from(output.current_scale().fractional_scale());
             // Chrome surfaces (menu bar, overlays) composite above the
-            // window space (T-09).
-            let custom_elements: Vec<
-                smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement<
-                    GlowRenderer,
-                >,
-            > = crate::render::chrome_render_elements(renderer, state, &output, scale);
+            // window space (T-09); SSD titlebars composite above their own
+            // client surface (T-01.1).
+            let mut custom_elements: Vec<NestedOutputElements<GlowRenderer>> =
+                crate::render::chrome_render_elements(renderer, state, &output, scale);
+            custom_elements.extend(
+                crate::render::titlebar_render_elements(state, &output, scale)
+                    .into_iter()
+                    .map(NestedOutputElements::Decoration),
+            );
             render_output(
                 &output,
                 renderer,

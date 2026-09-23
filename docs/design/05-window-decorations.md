@@ -70,3 +70,19 @@ accepted compromises (see [00-overview.md](00-overview.md)).
   and first-party app titlebars look identical.
 - Third-party decoration themes ship later, as a compatibility work item in
   the roadmap (see [ROADMAP.md](../ROADMAP.md)).
+
+## Implementation status (T-01)
+
+The T-01 loop lands the SSD titlebar element from the generated tokens
+(`compositor/src/window/decoration.rs`): a flat token fill with square
+corners, left-side close/minimize/zoom lights, and hover/disabled *drawing*.
+The titlebar reserves its height as a top inset (`component.titlebar.height`,
+40 logical px) above the client area, so a zoomed client is configured one
+titlebar shorter through the single `configure_window_size` path; fullscreen
+hides the titlebar and reserves nothing. A client that requests CSD via
+`xdg-decoration` (or an X11 client marked undecorated) is never given a
+compositor titlebar — the tier-3 dignity rule.
+
+Explicitly deferred: real materials (blur/shadow/rounded corners, T-04),
+titlebar interaction (hover/hit-test/actions, T-01.2–T-01.3), and the live
+color scheme (settings, T-08).
