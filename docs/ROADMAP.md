@@ -18,7 +18,7 @@ dependency fan-in.
 
 The remaining work is cut into **tracks** (the 17 named slices, kept as design
 references) and executed as a strict, single-session **work-unit** sequence in
-[units/](tasks/units/). Every unit ends with its headless tests green and a capture
+[tasks/](tasks/). Every unit ends with its headless tests green and a capture
 artifact committed; human sign-off is batched at the track boundary. Each unit
 extends the previous demo rather than starting a new subsystem. The underlying
 design is unchanged; only the sequence, the size of a task, and the acceptance
@@ -59,230 +59,266 @@ at the track boundary rather than per unit.
 ## The tracks
 
 The 17 named slices are now **tracks**: design references, not single sessions.
-Every track is decomposed into one-session **work units** in [units/](tasks/units/),
+Every track is decomposed into one-session **work units** in [tasks/](tasks/),
 listed in strict execution order below. A unit ends with its headless test green
 in `make e2e`, `make check`/`make soak` unchanged, and a capture artifact
 committed. Human sign-off (watch the demo, compare to the design docs and the
 gallery goldens) is **batched at the track boundary**, not part of a unit — see
-[SLICING-REVIEW.md](tasks/SLICING-REVIEW.md) for why the old definition of done made
+[SLICING-REVIEW.md](SLICING-REVIEW.md) for why the old definition of done made
 every task un-completable.
 
 | Track | Design reference | Units | Demo you can watch |
 |---|---|---|---|
-| [T-01](tasks/01-loop-v0-window-controls.md) | Loop v0 — window controls | 7 | launch → titled window → drag/zoom/minimize/restore/close |
-| [T-02](tasks/02-loop-v1-lifecycle-motion.md) | Loop v1 — lifecycle motion | 6 | the loop with appear/minimize/restore/zoom/close motion |
-| [T-03](tasks/03-real-session-bringup-perf.md) | Real session — bring-up & perf | 5 | the loop on DRM/logind, budgets measured [hw] |
-| [T-04](tasks/04-loop-v2-materials.md) | Loop v2 — materials | 6 | blur, shadows, rounded corners |
-| [T-05](tasks/05-loop-v3-mission-control-live.md) | Loop v3 — Mission Control live | 7 | live-surface overview, wallpaper slide, Desktop Reveal |
-| [T-06](tasks/06-loop-v4-app-switcher.md) | Loop v4 — app switcher | 3 | Cmd+Tab with live previews |
-| [T-07](tasks/07-menu-bar-live-status.md) | Menu bar goes live | 10 | real Wi-Fi, volume, battery |
-| [T-08](tasks/08-settingsd-live-settings.md) | settingsd — one owner | 6 | one owner for settings, live signals |
-| [T-09](tasks/09-settings-app-wave-1.md) | Settings Wave 1 | 8 | Appearance, Wallpaper, Desktop & Dock, Displays-basic |
-| [T-10](tasks/10-files-mvp.md) | Files MVP | 14 | browse, open, rename, trash; Dock↔Files Trash |
-| [T-11](tasks/11-control-center-notifications.md) | Control Center + notifications | 8 | panel, banners, OSD |
-| [T-12](tasks/12-session-lock-idle.md) | Session + lock + idle | 10 | real login session, lock, idle, suspend [hw] |
-| [T-13](tasks/13-portals-capture-clipboard.md) | Portals + capture + clipboard | 12 | Flatpak browser walkthrough |
-| [T-14](tasks/14-global-menu-app-index-compat.md) | Global menu + app index + compat | 11 | real menus, tray, DBusMenu, XDnD, zoo |
-| [T-15](tasks/15-system-services-breadth.md) | System services + Settings Waves 2–3 | 31 | Bluetooth, storage, printers, users, … |
-| [T-16](tasks/16-platform-polish-packaging.md) | Platform polish + packaging | 15 | multi-monitor, scaling, soak, a11y, i18n, packages [hw] |
-| [T-17](tasks/17-premium-gate.md) | The premium experience gate | 9 | the full loop on nested + DRM, at the visual floor |
+| [T-01](design/tracks/01-loop-v0-window-controls.md) | Loop v0 — window controls | 7 | launch → titled window → drag/zoom/minimize/restore/close |
+| [T-02](design/tracks/02-loop-v1-lifecycle-motion.md) | Loop v1 — lifecycle motion | 6 | the loop with appear/minimize/restore/zoom/close motion |
+| [T-03](design/tracks/03-real-session-bringup-perf.md) | Real session — bring-up & perf | 5 | the loop on DRM/logind, budgets measured [hw] |
+| [T-04](design/tracks/04-loop-v2-materials.md) | Loop v2 — materials | 6 | blur, shadows, rounded corners |
+| [T-05](design/tracks/05-loop-v3-mission-control-live.md) | Loop v3 — Mission Control live | 7 | live-surface overview, wallpaper slide, Desktop Reveal |
+| [T-06](design/tracks/06-loop-v4-app-switcher.md) | Loop v4 — app switcher | 3 | Cmd+Tab with live previews |
+| [T-07](design/tracks/07-menu-bar-live-status.md) | Menu bar goes live | 10 | real Wi-Fi, volume, battery |
+| [T-08](design/tracks/08-settingsd-live-settings.md) | settingsd — one owner | 6 | one owner for settings, live signals |
+| [T-09](design/tracks/09-settings-app-wave-1.md) | Settings Wave 1 | 8 | Appearance, Wallpaper, Desktop & Dock, Displays-basic |
+| [T-10](design/tracks/10-files-mvp.md) | Files MVP | 14 | browse, open, rename, trash; Dock↔Files Trash |
+| [T-11](design/tracks/11-control-center-notifications.md) | Control Center + notifications | 8 | panel, banners, OSD |
+| [T-12](design/tracks/12-session-lock-idle.md) | Session + lock + idle | 10 | real login session, lock, idle, suspend [hw] |
+| [T-13](design/tracks/13-portals-capture-clipboard.md) | Portals + capture + clipboard | 12 | Flatpak browser walkthrough |
+| [T-14](design/tracks/14-global-menu-app-index-compat.md) | Global menu + app index + compat | 11 | real menus, tray, DBusMenu, XDnD, zoo |
+| [T-15](design/tracks/15-system-services-breadth.md) | System services + Settings Waves 2–3 | 31 | Bluetooth, storage, printers, users, … |
+| [T-16](design/tracks/16-platform-polish-packaging.md) | Platform polish + packaging | 15 | multi-monitor, scaling, soak, a11y, i18n, packages [hw] |
+| [T-17](design/tracks/17-premium-gate.md) | The premium experience gate | 9 | the full loop on nested + DRM, at the visual floor |
 
 ## Work units (strict order)
 
-168 below are the executable sequence. Each is one focused session. A unit's
-"Depends on" is mandatory except for the hardware rail below. `[hw]` units
-cannot run on this host (no free logind seat / VM); they are ordered where they
-belong but may be marked **open** and skipped, then swept on the hardware rail
-before T-17. Everything else is nested/headless and must run.
+The 168 one-session tasks below are the executable sequence. symphony walks them in
+file order, runs each in a fresh session, verifies with `make e2e` and commits.
+The 10 `[hw]` tasks (DRM/logind, driver matrix, suspend soak, clean-VM packaging)
+are collected into the final Hardware rail phase so the nested pipeline runs to
+completion unattended; sweep them on a machine with a seat or a clean VM with
+`./.symphony/symphony run --from T159`.
 
-| # | Unit | [hw] | Depends on |
-|---|---|---|---|
-| 1 | [T-01.1 — Titlebar render element](tasks/units/001-t-01.1-titlebar-render-element.md) | — | inherited foundation |
-| 2 | [T-01.2 — Traffic-light actions](tasks/units/002-t-01.2-traffic-light-actions.md) | — | T-01.1 |
-| 3 | [T-01.3 — Titlebar drag, double-click, fullscreen reveal](tasks/units/003-t-01.3-titlebar-drag-double-click-fullscreen-reveal.md) | — | T-01.2 |
-| 4 | [T-01.4 — Window menu](tasks/units/004-t-01.4-window-menu.md) | — | T-01.3 |
-| 5 | [T-01.5 — Decoration tier policy and X11 correctness](tasks/units/005-t-01.5-decoration-tier-policy-and-x11-correctness.md) | — | T-01.4 |
-| 6 | [T-01.6a — `make demo` harness](tasks/units/006-t-01.6a-make-demo-harness.md) | — | T-01.5 |
-| 7 | [T-01.6b — Loop integration walkthrough and capture](tasks/units/007-t-01.6b-loop-integration-capture.md) | — | T-01.6a |
-| 8 | [T-02.1a — Animation clock and frame discipline](tasks/units/008-t-02.1a-animation-clock.md) | — | T-01.6b |
-| 9 | [T-02.1b — Window appear transition](tasks/units/009-t-02.1b-window-appear.md) | — | T-02.1a |
-| 10 | [T-02.2 — Minimize and restore motion](tasks/units/010-t-02.2-minimize-and-restore-motion.md) | — | T-02.1b |
-| 11 | [T-02.3 — Zoom and fullscreen transitions](tasks/units/011-t-02.3-zoom-and-fullscreen-transitions.md) | — | T-02.2 |
-| 12 | [T-02.4a — Close ghost](tasks/units/012-t-02.4a-close-ghost.md) | — | T-02.3 |
-| 13 | [T-02.4b — Close interruptibility and idle trace](tasks/units/013-t-02.4b-close-interruptibility-and-idle-trace.md) | — | T-02.4a |
-| 14 | [T-03.1a — Nested idle trace and animation frame budget](tasks/units/014-t-03.1a-nested-idle-and-animation-budget.md) | — | T-02.2 |
-| 15 | [T-03.1b — Latency instrument and direct-scanout template](tasks/units/015-t-03.1b-latency-and-scanout-instruments.md) | — | T-03.1a |
-| 16 | [T-03.2 — DRM first bring-up](tasks/units/016-t-03.2-drm-first-bring-up.md) | yes | T-01.6b |
-| 17 | [T-03.3 — Hardware input validation](tasks/units/017-t-03.3-hardware-input-validation.md) | yes | T-03.2 |
-| 18 | [T-03.4 — DRM soak, teardown, runbook](tasks/units/018-t-03.4-drm-soak-teardown-runbook.md) | yes | T-03.3 |
-| 19 | [T-04.1a — Real shadows](tasks/units/019-t-04.1a-shadows.md) | — | T-02.4b |
-| 20 | [T-04.1b — Rounded-corner clipping](tasks/units/020-t-04.1b-rounded-corner-clipping.md) | — | T-04.1a |
-| 21 | [T-04.2 — Backdrop blur pass](tasks/units/021-t-04.2-backdrop-blur-pass.md) | — | T-04.1b |
-| 22 | [T-04.3 — Reusable scene-transform pass](tasks/units/022-t-04.3-reusable-scene-transform-pass.md) | — | T-04.2 |
-| 23 | [T-04.4a — Material degrade tiers and instrumentation](tasks/units/023-t-04.4a-material-degrade-tiers.md) | — | T-04.3 |
-| 24 | [T-04.4b — Light/dark, reduced motion, and sign-off package](tasks/units/024-t-04.4b-material-schemes-and-sign-off-package.md) | — | T-04.4a |
-| 25 | [T-05.1a — Live-surface transform into the grid](tasks/units/025-t-05.1a-live-surface-transform.md) | — | T-04.4b |
-| 26 | [T-05.1b — Live video at scale and degrade](tasks/units/026-t-05.1b-live-video-and-degrade.md) | — | T-05.1a |
-| 27 | [T-05.2 — Hit-testing and selection on live representations](tasks/units/027-t-05.2-hit-testing-and-selection-on-live-representations.md) | — | T-05.1b |
-| 28 | [T-05.3 — Drag a live representation between Spaces](tasks/units/028-t-05.3-drag-a-live-representation-between-spaces.md) | — | T-05.2 |
-| 29 | [T-05.4 — Image wallpaper and per-Space slide](tasks/units/029-t-05.4-image-wallpaper-and-per-space-slide.md) | — | T-05.3 |
-| 30 | [T-05.5 — Desktop Reveal](tasks/units/030-t-05.5-desktop-reveal.md) | — | T-05.4 |
-| 31 | [T-05.6 — Overview frame budget and capture](tasks/units/031-t-05.6-overview-frame-budget-and-capture.md) | — | T-05.5 |
-| 32 | [T-06.1 — App-switcher state machine](tasks/units/032-t-06.1-app-switcher-state-machine.md) | — | T-05.6 |
-| 33 | [T-06.2a — Switcher overlay and live previews](tasks/units/033-t-06.2a-switcher-overlay-and-previews.md) | — | T-06.1 |
-| 34 | [T-06.2b — Switcher commit, Cmd+` cycling, interruptibility](tasks/units/034-t-06.2b-switcher-commit-and-cycling.md) | — | T-06.2a |
-| 35 | [T-07.1a — Adapter contract, states, and mock](tasks/units/035-t-07.1a-adapter-contract-and-mock.md) | — | T-01.6b |
-| 36 | [T-07.1b — Event subscription, restart re-subscribe, absence](tasks/units/036-t-07.1b-subscription-restart-and-absence.md) | — | T-07.1a |
-| 37 | [T-07.2a — NetworkManager read path](tasks/units/037-t-07.2a-networkmanager-read-path.md) | — | T-07.1b |
-| 38 | [T-07.2b — NetworkManager join and polkit degradation](tasks/units/038-t-07.2b-networkmanager-join-and-polkit.md) | — | T-07.2a |
-| 39 | [T-07.3 — Audio adapter (PipeWire/WirePlumber)](tasks/units/039-t-07.3-audio-adapter-pipewire-wireplumber.md) | — | T-07.2b |
-| 40 | [T-07.4 — Power adapter (UPower)](tasks/units/040-t-07.4-power-adapter-upower.md) | — | T-07.3 |
-| 41 | [T-07.5a — Wi-Fi and volume status menus](tasks/units/041-t-07.5a-wifi-and-volume-menus.md) | — | T-07.4 |
-| 42 | [T-07.5b — Battery menu, placeholder removal, keyboard a11y](tasks/units/042-t-07.5b-battery-menu-and-placeholder-removal.md) | — | T-07.5a |
-| 43 | [T-07.6a — Absent-daemon masking matrix](tasks/units/043-t-07.6a-absent-daemon-matrix.md) | — | T-07.5b |
-| 44 | [T-07.6b — Menu-bar idle trace and capture](tasks/units/044-t-07.6b-idle-trace-and-capture.md) | — | T-07.6a |
-| 45 | [T-08.1a — settingsd config model and D-Bus API](tasks/units/045-t-08.1a-settingsd-model-and-dbus-api.md) | — | T-01.6b |
-| 46 | [T-08.1b — settingsd persistence and migrations](tasks/units/046-t-08.1b-settingsd-persistence-and-migrations.md) | — | T-08.1a |
-| 47 | [T-08.2a — Shell migration to settingsd](tasks/units/047-t-08.2a-shell-migration-to-settingsd.md) | — | T-08.1b |
-| 48 | [T-08.2b — Design-system Theme binding](tasks/units/048-t-08.2b-design-system-theme-binding.md) | — | T-08.2a |
-| 49 | [T-08.2c — Compositor motion/input policy migration](tasks/units/049-t-08.2c-compositor-policy-migration.md) | — | T-08.2b |
-| 50 | [T-08.3 — Restart, resync, and key-schema documentation](tasks/units/050-t-08.3-restart-resync-and-key-schema-documentation.md) | — | T-08.2c |
-| 51 | [T-09.1a — Settings app shell](tasks/units/051-t-09.1a-settings-app-shell.md) | — | T-08.3 |
-| 52 | [T-09.1b — Settings live-apply plumbing](tasks/units/052-t-09.1b-settings-live-apply.md) | — | T-09.1a |
-| 53 | [T-09.2 — Appearance pane](tasks/units/053-t-09.2-appearance-pane.md) | — | T-09.1b |
-| 54 | [T-09.3 — Wallpaper pane](tasks/units/054-t-09.3-wallpaper-pane.md) | — | T-09.2 |
-| 55 | [T-09.4 — Desktop & Dock pane](tasks/units/055-t-09.4-desktop-dock-pane.md) | — | T-09.3 |
-| 56 | [T-09.5 — Displays-basic pane](tasks/units/056-t-09.5-displays-basic-pane.md) | — | T-09.4 |
-| 57 | [T-09.6a — Settings menu-model publication](tasks/units/057-t-09.6a-menu-model-publication.md) | — | T-09.5 |
-| 58 | [T-09.6b — Settings absence matrix and wave captures](tasks/units/058-t-09.6b-absence-matrix-and-wave-captures.md) | — | T-09.6a |
-| 59 | [T-10.1a — files-core streaming listing and model](tasks/units/059-t-10.1a-files-core-streaming-listing.md) | — | T-08.3 |
-| 60 | [T-10.1b — files-core sorting and platform fallback](tasks/units/060-t-10.1b-files-core-sorting-and-platform.md) | — | T-10.1a |
-| 61 | [T-10.2a — files-core operations](tasks/units/061-t-10.2a-files-core-operations.md) | — | T-10.1b |
-| 62 | [T-10.2b — Optimistic semantics and state preservation](tasks/units/062-t-10.2b-optimistic-semantics.md) | — | T-10.2a |
-| 63 | [T-10.3a — files-core trash](tasks/units/063-t-10.3a-files-core-trash.md) | — | T-10.2b |
-| 64 | [T-10.3b — files-core folder watcher](tasks/units/064-t-10.3b-files-core-folder-watcher.md) | — | T-10.3a |
-| 65 | [T-10.4a — Files window, toolbar, and sidebar](tasks/units/065-t-10.4a-files-window-toolbar-sidebar.md) | — | T-10.3b |
-| 66 | [T-10.4b — Files list and icon views](tasks/units/066-t-10.4b-files-list-and-icon-views.md) | — | T-10.4a |
-| 67 | [T-10.4c — Files context menus, multi-select, optimistic UI](tasks/units/067-t-10.4c-files-context-menus-multiselect.md) | — | T-10.4b |
-| 68 | [T-10.5 — Files performance budgets](tasks/units/068-t-10.5-files-performance-budgets.md) | — | T-10.4c |
-| 69 | [T-10.6a — Dock trash source](tasks/units/069-t-10.6a-dock-trash-source.md) | — | T-10.5 |
-| 70 | [T-10.6b — Drop-to-trash, Empty Trash, trash://](tasks/units/070-t-10.6b-dock-drop-to-trash-and-empty.md) | — | T-10.6a |
-| 71 | [T-10.6c — Show in Files, Downloads, and .desktop identity](tasks/units/071-t-10.6c-files-navigation-and-desktop-identity.md) | — | T-10.6b |
-| 72 | [T-10.7 — Files capture and acceptance walkthrough](tasks/units/072-t-10.7-files-capture-and-acceptance-walkthrough.md) | — | T-10.6c |
-| 73 | [T-11.1a — Notification service core](tasks/units/073-t-11.1a-notification-service-core.md) | — | T-07.6b |
-| 74 | [T-11.1b — Notification actions and Dock badge replacement](tasks/units/074-t-11.1b-notification-actions-and-dock-badge.md) | — | T-11.1a |
-| 75 | [T-11.2a — DND/Focus policy](tasks/units/075-t-11.2a-dnd-focus-policy.md) | — | T-11.1b |
-| 76 | [T-11.2b — DND/Focus menu-bar reflection and Dock failure path](tasks/units/076-t-11.2b-dnd-reflection-and-dock-failure.md) | — | T-11.2a |
-| 77 | [T-11.3a — Control Center panel and core tiles](tasks/units/077-t-11.3a-control-center-panel-and-tiles.md) | — | T-11.2b |
-| 78 | [T-11.3b — Focus/DND, dark mode, and Control Center a11y](tasks/units/078-t-11.3b-control-center-focus-dark-a11y.md) | — | T-11.3a |
-| 79 | [T-11.4a — OSD overlay](tasks/units/079-t-11.4a-osd-overlay.md) | — | T-11.3b |
-| 80 | [T-11.4b — OSD keyboard/a11y and captures](tasks/units/080-t-11.4b-osd-a11y-and-captures.md) | — | T-11.4a |
-| 81 | [T-12.1a — Session manager and restart policy](tasks/units/081-t-12.1a-session-manager-and-restart-policy.md) | — | T-08.3 |
-| 82 | [T-12.1b — Session environment, systemd units, second-VT](tasks/units/082-t-12.1b-session-environment-and-units.md) | — | T-12.1a |
-| 83 | [T-12.2 — Display-manager entry and logout teardown](tasks/units/083-t-12.2-display-manager-entry-and-logout-teardown.md) | — | T-12.1b |
-| 84 | [T-12.3a — Lock protocol and lock UI](tasks/units/084-t-12.3a-lock-protocol-and-ui.md) | — | T-12.2 |
-| 85 | [T-12.3b — Lock PAM authentication](tasks/units/085-t-12.3b-lock-pam-authentication.md) | — | T-12.3a |
-| 86 | [T-12.3c — Lock input capture and kill-resistance](tasks/units/086-t-12.3c-lock-input-capture-and-kill-resistance.md) | — | T-12.3b |
-| 87 | [T-12.4a — Idle timers](tasks/units/087-t-12.4a-idle-timers.md) | — | T-12.3c |
-| 88 | [T-12.4b — Idle inhibitors and wake restore](tasks/units/088-t-12.4b-idle-inhibitors-and-wake.md) | — | T-12.4a |
-| 89 | [T-12.5a — Suspend/resume cycle](tasks/units/089-t-12.5a-suspend-resume-cycle.md) | — | T-12.4b |
-| 90 | [T-12.5b — Session policy keys, kill matrix, capture](tasks/units/090-t-12.5b-session-policy-keys-and-kill-matrix.md) | — | T-12.5a |
-| 91 | [T-13.1a — Portal backend and session service](tasks/units/091-t-13.1a-portal-backend-and-session-service.md) | — | T-12.5b |
-| 92 | [T-13.1b — Settings and GlobalShortcuts portals](tasks/units/092-t-13.1b-settings-and-globalshortcuts-portals.md) | — | T-13.1a |
-| 93 | [T-13.2a — FileChooser portal](tasks/units/093-t-13.2a-filechooser-portal.md) | — | T-13.1b |
-| 94 | [T-13.2b — FileChooser picker UI](tasks/units/094-t-13.2b-filechooser-picker-ui.md) | — | T-13.2a |
-| 95 | [T-13.3a — Screenshot portal and selection UI](tasks/units/095-t-13.3a-screenshot-portal-and-selection.md) | — | T-13.2b |
-| 96 | [T-13.3b — Screenshot save/copy and portal-only gate](tasks/units/096-t-13.3b-screenshot-save-copy-and-gate.md) | — | T-13.3a |
-| 97 | [T-13.4a — ScreenCast portal and source picker](tasks/units/097-t-13.4a-screencast-portal-and-picker.md) | — | T-13.3b |
-| 98 | [T-13.4b — ScreenCast stream and stills fallback](tasks/units/098-t-13.4b-screencast-stream-and-fallback.md) | — | T-13.4a |
-| 99 | [T-13.5a — Clipboard text/image/uri-list round-trips](tasks/units/099-t-13.5a-clipboard-round-trips.md) | — | T-13.4b |
-| 100 | [T-13.5b — Clipboard history (if specified)](tasks/units/100-t-13.5b-clipboard-history.md) | — | T-13.5a |
-| 101 | [T-13.6 — polkit authentication agent](tasks/units/101-t-13.6-polkit-authentication-agent.md) | — | T-13.5b |
-| 102 | [T-13.7 — Flatpak validation and capture](tasks/units/102-t-13.7-flatpak-validation-and-capture.md) | — | T-13.6 |
-| 103 | [T-14.1a — app-index identity resolution and icons](tasks/units/103-t-14.1a-app-index-identity-and-icons.md) | — | T-09.6b |
-| 104 | [T-14.1b — app-index events, launch registry, recency](tasks/units/104-t-14.1b-app-index-events-and-recency.md) | — | T-14.1a |
-| 105 | [T-14.1c — app-index subscription API](tasks/units/105-t-14.1c-app-index-subscription.md) | — | T-14.1b |
-| 106 | [T-14.2a — menu-broker export model and fixed menu](tasks/units/106-t-14.2a-menu-broker-export-and-fixed-menu.md) | — | T-14.1c |
-| 107 | [T-14.2b — menu-broker accelerators and toggle](tasks/units/107-t-14.2b-menu-broker-accelerators-and-toggle.md) | — | T-14.2a |
-| 108 | [T-14.3 — StatusNotifier/AppIndicator tray](tasks/units/108-t-14.3-statusnotifier-appindicator-tray.md) | — | T-14.2b |
-| 109 | [T-14.4 — DBusMenu bridge](tasks/units/109-t-14.4-dbusmenu-bridge.md) | — | T-14.3 |
-| 110 | [T-14.5 — XDnD bridge](tasks/units/110-t-14.5-xdnd-bridge.md) | — | T-14.4 |
-| 111 | [T-14.6a — Strange-app zoo run and matrix](tasks/units/111-t-14.6a-strange-app-zoo-run.md) | — | T-14.5 |
-| 112 | [T-14.6b — Strange-app zoo fixes](tasks/units/112-t-14.6b-strange-app-zoo-fixes.md) | — | T-14.6a |
-| 113 | [T-14.7 — Retire interim paths](tasks/units/113-t-14.7-retire-interim-paths.md) | — | T-14.6b |
-| 114 | [T-15.1a — Bluetooth adapter](tasks/units/114-t-15.1a-bluetooth-adapter.md) | — | T-14.7 |
-| 115 | [T-15.1b — Bluetooth pane and tile](tasks/units/115-t-15.1b-bluetooth-pane-and-tile.md) | — | T-15.1a |
-| 116 | [T-15.2a — Storage and removable media adapter](tasks/units/116-t-15.2a-storage-and-removable-media-adapter.md) | — | T-15.1b |
-| 117 | [T-15.2b — Storage and removable media pane and tile](tasks/units/117-t-15.2b-storage-and-removable-media-pane-and-tile.md) | — | T-15.2a |
-| 118 | [T-15.3a — Sound and routing adapter](tasks/units/118-t-15.3a-sound-and-routing-adapter.md) | — | T-15.2b |
-| 119 | [T-15.3b — Sound and routing pane and tile](tasks/units/119-t-15.3b-sound-and-routing-pane-and-tile.md) | — | T-15.3a |
-| 120 | [T-15.4a — Keyboard, Mouse, and Trackpad adapter](tasks/units/120-t-15.4a-keyboard-mouse-and-trackpad-adapter.md) | — | T-15.3b |
-| 121 | [T-15.4b — Keyboard, Mouse, and Trackpad pane and tile](tasks/units/121-t-15.4b-keyboard-mouse-and-trackpad-pane-and-tile.md) | — | T-15.4a |
-| 122 | [T-15.5a — Mission Control and hot corners adapter](tasks/units/122-t-15.5a-mission-control-and-hot-corners-adapter.md) | — | T-15.4b |
-| 123 | [T-15.5b — Mission Control and hot corners pane and tile](tasks/units/123-t-15.5b-mission-control-and-hot-corners-pane-and-tile.md) | — | T-15.5a |
-| 124 | [T-15.6a — Battery and power profiles adapter](tasks/units/124-t-15.6a-battery-and-power-profiles-adapter.md) | — | T-15.5b |
-| 125 | [T-15.6b — Battery and power profiles pane and tile](tasks/units/125-t-15.6b-battery-and-power-profiles-pane-and-tile.md) | — | T-15.6a |
-| 126 | [T-15.7a — Notifications and Focus adapter](tasks/units/126-t-15.7a-notifications-and-focus-adapter.md) | — | T-15.6b |
-| 127 | [T-15.7b — Notifications and Focus pane and tile](tasks/units/127-t-15.7b-notifications-and-focus-pane-and-tile.md) | — | T-15.7a |
-| 128 | [T-15.8a — Lock Screen policy adapter](tasks/units/128-t-15.8a-lock-screen-policy-adapter.md) | — | T-15.7b |
-| 129 | [T-15.8b — Lock Screen policy pane and tile](tasks/units/129-t-15.8b-lock-screen-policy-pane-and-tile.md) | — | T-15.8a |
-| 130 | [T-15.9a — Menu Bar configuration adapter](tasks/units/130-t-15.9a-menu-bar-configuration-adapter.md) | — | T-15.8b |
-| 131 | [T-15.9b — Menu Bar configuration pane and tile](tasks/units/131-t-15.9b-menu-bar-configuration-pane-and-tile.md) | — | T-15.9a |
-| 132 | [T-15.10a — General, About, and Updates adapter](tasks/units/132-t-15.10a-general-about-and-updates-adapter.md) | — | T-15.9b |
-| 133 | [T-15.10b — General, About, and Updates pane and tile](tasks/units/133-t-15.10b-general-about-and-updates-pane-and-tile.md) | — | T-15.10a |
-| 134 | [T-15.11a — Users and Groups adapter](tasks/units/134-t-15.11a-users-and-groups-adapter.md) | — | T-15.10b |
-| 135 | [T-15.11b — Users and Groups pane and tile](tasks/units/135-t-15.11b-users-and-groups-pane-and-tile.md) | — | T-15.11a |
-| 136 | [T-15.12a — Printers and Scanners adapter](tasks/units/136-t-15.12a-printers-and-scanners-adapter.md) | — | T-15.11b |
-| 137 | [T-15.12b — Printers and Scanners pane and tile](tasks/units/137-t-15.12b-printers-and-scanners-pane-and-tile.md) | — | T-15.12a |
-| 138 | [T-15.13a — Privacy and Security adapter](tasks/units/138-t-15.13a-privacy-and-security-adapter.md) | — | T-15.12b |
-| 139 | [T-15.13b — Privacy and Security pane and tile](tasks/units/139-t-15.13b-privacy-and-security-pane-and-tile.md) | — | T-15.13a |
-| 140 | [T-15.14a — Accessibility adapter](tasks/units/140-t-15.14a-accessibility-adapter.md) | — | T-15.13b |
-| 141 | [T-15.14b — Accessibility pane and tile](tasks/units/141-t-15.14b-accessibility-pane-and-tile.md) | — | T-15.14a |
-| 142 | [T-15.15a — Network advanced (VPN) adapter](tasks/units/142-t-15.15a-network-advanced-vpn-adapter.md) | — | T-15.14b |
-| 143 | [T-15.15b — Network advanced (VPN) pane and tile](tasks/units/143-t-15.15b-network-advanced-vpn-pane-and-tile.md) | — | T-15.15a |
-| 144 | [T-15.16 — Absent-daemon matrix and breadth capture](tasks/units/144-t-15.16-absent-daemon-matrix-and-breadth-capture.md) | — | T-15.15b |
-| 145 | [T-16.1a — Per-output chrome sizing and reserved zones](tasks/units/145-t-16.1a-per-output-chrome-sizing.md) | — | T-15.16 |
-| 146 | [T-16.1b — Per-output window placement](tasks/units/146-t-16.1b-per-output-window-placement.md) | — | T-16.1a |
-| 147 | [T-16.2 — Hotplug under load and lockstep](tasks/units/147-t-16.2-hotplug-under-load-and-lockstep.md) | — | T-16.1b |
-| 148 | [T-16.3a — Integer-scaled Xwayland](tasks/units/148-t-16.3a-integer-scaled-xwayland.md) | — | T-16.2 |
-| 149 | [T-16.3b — Viewport downscale and chrome sizing](tasks/units/149-t-16.3b-viewport-downscale-and-chrome.md) | — | T-16.3a |
-| 150 | [T-16.4 — Suspend/resume soak](tasks/units/150-t-16.4-suspend-resume-soak.md) | yes | T-16.3b |
-| 151 | [T-16.5 — Graphics driver matrix](tasks/units/151-t-16.5-graphics-driver-matrix.md) | yes | T-16.4 |
-| 152 | [T-16.6a — AT-SPI and keyboard-only audit](tasks/units/152-t-16.6a-atspi-and-keyboard-audit.md) | — | T-16.3b |
-| 153 | [T-16.6b — Magnifier and reduced-motion sweep](tasks/units/153-t-16.6b-magnifier-and-reduced-motion-sweep.md) | — | T-16.6a |
-| 154 | [T-16.7 — Localization and i18n](tasks/units/154-t-16.7-localization-and-i18n.md) | — | T-16.6b |
-| 155 | [T-16.8a — Crash/kill matrix](tasks/units/155-t-16.8a-crash-kill-matrix.md) | — | T-16.7 |
-| 156 | [T-16.8b — Compositor-death behavior and restart-policy docs](tasks/units/156-t-16.8b-compositor-death-and-restart-policy.md) | — | T-16.8a |
-| 157 | [T-16.9 — Fedora packaging and CI](tasks/units/157-t-16.9-fedora-packaging-and-ci.md) | yes | T-16.8b |
-| 158 | [T-16.10 — Debian packaging and CI](tasks/units/158-t-16.10-debian-packaging-and-ci.md) | yes | T-16.9 |
-| 159 | [T-16.11 — Packaged-build performance re-measure](tasks/units/159-t-16.11-packaged-build-performance-re-measure.md) | yes | T-16.10 |
-| 160 | [T-17.1a — Nested window loop verification](tasks/units/160-t-17.1a-nested-window-loop-verification.md) | — | T-16.8b |
-| 161 | [T-17.1b — Workspace, Mission Control, and app-switch verification](tasks/units/161-t-17.1b-workspace-overview-switcher-verification.md) | — | T-17.1a |
-| 162 | [T-17.1c — Flatpak/browser end-to-end verification](tasks/units/162-t-17.1c-flatpak-browser-verification.md) | — | T-17.1b |
-| 163 | [T-17.2 — DRM full-loop verification](tasks/units/163-t-17.2-drm-full-loop-verification.md) | yes | T-17.1c |
-| 164 | [T-17.3 — Visual floor and reduced-motion sign-off](tasks/units/164-t-17.3-visual-floor-and-reduced-motion-sign-off.md) | — | T-17.1c |
-| 165 | [T-17.4 — Performance budget verification](tasks/units/165-t-17.4-performance-budget-verification.md) | yes | T-17.3 |
-| 166 | [T-17.5a — Absent-daemon and crash matrix verification](tasks/units/166-t-17.5a-absent-daemon-and-crash-matrix.md) | — | T-17.3 |
-| 167 | [T-17.5b — Leak and lock enforcement verification](tasks/units/167-t-17.5b-leak-and-lock-enforcement-verification.md) | — | T-17.5a |
-| 168 | [T-17.6 — Unfamiliar-user test and sign-off report](tasks/units/168-t-17.6-unfamiliar-user-test-and-sign-off-report.md) | — | T-17.5b |
+## Phase 1 — T-01 Loop v0: window controls
 
-### Hardware rail
+- [ ] T01 — T-01.1 Titlebar render element → [tasks/001-t-01.1-titlebar-render-element.md](tasks/001-t-01.1-titlebar-render-element.md)
+- [ ] T02 — T-01.2 Traffic-light actions → [tasks/002-t-01.2-traffic-light-actions.md](tasks/002-t-01.2-traffic-light-actions.md)
+- [ ] T03 — T-01.3 Titlebar drag, double-click, fullscreen reveal → [tasks/003-t-01.3-titlebar-drag-double-click-fullscreen-reveal.md](tasks/003-t-01.3-titlebar-drag-double-click-fullscreen-reveal.md)
+- [ ] T04 — T-01.4 Window menu → [tasks/004-t-01.4-window-menu.md](tasks/004-t-01.4-window-menu.md)
+- [ ] T05 — T-01.5 Decoration tier policy and X11 correctness → [tasks/005-t-01.5-decoration-tier-policy-and-x11-correctness.md](tasks/005-t-01.5-decoration-tier-policy-and-x11-correctness.md)
+- [ ] T06 — T-01.6a `make demo` harness → [tasks/006-t-01.6a-make-demo-harness.md](tasks/006-t-01.6a-make-demo-harness.md)
+- [ ] T07 — T-01.6b Loop integration walkthrough and capture → [tasks/007-t-01.6b-loop-integration-capture.md](tasks/007-t-01.6b-loop-integration-capture.md)
 
-These units need a seat, spare GPU, or clean VM. When no hardware is available,
-mark them open — do not skip them silently — and continue the sequence.
+## Phase 2 — T-02 Loop v1: lifecycle motion
 
-- [T-03.2 — DRM first bring-up](tasks/units/016-t-03.2-drm-first-bring-up.md) — yes
-- [T-03.3 — Hardware input validation](tasks/units/017-t-03.3-hardware-input-validation.md) — yes
-- [T-03.4 — DRM soak, teardown, runbook](tasks/units/018-t-03.4-drm-soak-teardown-runbook.md) — yes
-- [T-16.4 — Suspend/resume soak](tasks/units/150-t-16.4-suspend-resume-soak.md) — yes
-- [T-16.5 — Graphics driver matrix](tasks/units/151-t-16.5-graphics-driver-matrix.md) — yes
-- [T-16.9 — Fedora packaging and CI](tasks/units/157-t-16.9-fedora-packaging-and-ci.md) — yes
-- [T-16.10 — Debian packaging and CI](tasks/units/158-t-16.10-debian-packaging-and-ci.md) — yes
-- [T-16.11 — Packaged-build performance re-measure](tasks/units/159-t-16.11-packaged-build-performance-re-measure.md) — yes
-- [T-17.2 — DRM full-loop verification](tasks/units/163-t-17.2-drm-full-loop-verification.md) — yes
-- [T-17.4 — Performance budget verification](tasks/units/165-t-17.4-performance-budget-verification.md) — yes
+- [ ] T08 — T-02.1a Animation clock and frame discipline → [tasks/008-t-02.1a-animation-clock.md](tasks/008-t-02.1a-animation-clock.md)
+- [ ] T09 — T-02.1b Window appear transition → [tasks/009-t-02.1b-window-appear.md](tasks/009-t-02.1b-window-appear.md)
+- [ ] T10 — T-02.2 Minimize and restore motion → [tasks/010-t-02.2-minimize-and-restore-motion.md](tasks/010-t-02.2-minimize-and-restore-motion.md)
+- [ ] T11 — T-02.3 Zoom and fullscreen transitions → [tasks/011-t-02.3-zoom-and-fullscreen-transitions.md](tasks/011-t-02.3-zoom-and-fullscreen-transitions.md)
+- [ ] T12 — T-02.4a Close ghost → [tasks/012-t-02.4a-close-ghost.md](tasks/012-t-02.4a-close-ghost.md)
+- [ ] T13 — T-02.4b Close interruptibility and idle trace → [tasks/013-t-02.4b-close-interruptibility-and-idle-trace.md](tasks/013-t-02.4b-close-interruptibility-and-idle-trace.md)
 
-### Delivery order (unchanged in intent)
+## Phase 3 — T-03 Real session: bring-up and perf
+
+- [ ] T14 — T-03.1a Nested idle trace and animation frame budget → [tasks/014-t-03.1a-nested-idle-and-animation-budget.md](tasks/014-t-03.1a-nested-idle-and-animation-budget.md)
+- [ ] T15 — T-03.1b Latency instrument and direct-scanout template → [tasks/015-t-03.1b-latency-and-scanout-instruments.md](tasks/015-t-03.1b-latency-and-scanout-instruments.md)
+
+## Phase 4 — T-04 Loop v2: materials
+
+- [ ] T16 — T-04.1a Real shadows → [tasks/016-t-04.1a-shadows.md](tasks/016-t-04.1a-shadows.md)
+- [ ] T17 — T-04.1b Rounded-corner clipping → [tasks/017-t-04.1b-rounded-corner-clipping.md](tasks/017-t-04.1b-rounded-corner-clipping.md)
+- [ ] T18 — T-04.2 Backdrop blur pass → [tasks/018-t-04.2-backdrop-blur-pass.md](tasks/018-t-04.2-backdrop-blur-pass.md)
+- [ ] T19 — T-04.3 Reusable scene-transform pass → [tasks/019-t-04.3-reusable-scene-transform-pass.md](tasks/019-t-04.3-reusable-scene-transform-pass.md)
+- [ ] T20 — T-04.4a Material degrade tiers and instrumentation → [tasks/020-t-04.4a-material-degrade-tiers.md](tasks/020-t-04.4a-material-degrade-tiers.md)
+- [ ] T21 — T-04.4b Light/dark, reduced motion, and sign-off package → [tasks/021-t-04.4b-material-schemes-and-sign-off-package.md](tasks/021-t-04.4b-material-schemes-and-sign-off-package.md)
+
+## Phase 5 — T-05 Loop v3: Mission Control live
+
+- [ ] T22 — T-05.1a Live-surface transform into the grid → [tasks/022-t-05.1a-live-surface-transform.md](tasks/022-t-05.1a-live-surface-transform.md)
+- [ ] T23 — T-05.1b Live video at scale and degrade → [tasks/023-t-05.1b-live-video-and-degrade.md](tasks/023-t-05.1b-live-video-and-degrade.md)
+- [ ] T24 — T-05.2 Hit-testing and selection on live representations → [tasks/024-t-05.2-hit-testing-and-selection-on-live-representations.md](tasks/024-t-05.2-hit-testing-and-selection-on-live-representations.md)
+- [ ] T25 — T-05.3 Drag a live representation between Spaces → [tasks/025-t-05.3-drag-a-live-representation-between-spaces.md](tasks/025-t-05.3-drag-a-live-representation-between-spaces.md)
+- [ ] T26 — T-05.4 Image wallpaper and per-Space slide → [tasks/026-t-05.4-image-wallpaper-and-per-space-slide.md](tasks/026-t-05.4-image-wallpaper-and-per-space-slide.md)
+- [ ] T27 — T-05.5 Desktop Reveal → [tasks/027-t-05.5-desktop-reveal.md](tasks/027-t-05.5-desktop-reveal.md)
+- [ ] T28 — T-05.6 Overview frame budget and capture → [tasks/028-t-05.6-overview-frame-budget-and-capture.md](tasks/028-t-05.6-overview-frame-budget-and-capture.md)
+
+## Phase 6 — T-06 Loop v4: app switcher
+
+- [ ] T29 — T-06.1 App-switcher state machine → [tasks/029-t-06.1-app-switcher-state-machine.md](tasks/029-t-06.1-app-switcher-state-machine.md)
+- [ ] T30 — T-06.2a Switcher overlay and live previews → [tasks/030-t-06.2a-switcher-overlay-and-previews.md](tasks/030-t-06.2a-switcher-overlay-and-previews.md)
+- [ ] T31 — T-06.2b Switcher commit, Cmd+` cycling, interruptibility → [tasks/031-t-06.2b-switcher-commit-and-cycling.md](tasks/031-t-06.2b-switcher-commit-and-cycling.md)
+
+## Phase 7 — T-07 Menu bar goes live
+
+- [ ] T32 — T-07.1a Adapter contract, states, and mock → [tasks/032-t-07.1a-adapter-contract-and-mock.md](tasks/032-t-07.1a-adapter-contract-and-mock.md)
+- [ ] T33 — T-07.1b Event subscription, restart re-subscribe, absence → [tasks/033-t-07.1b-subscription-restart-and-absence.md](tasks/033-t-07.1b-subscription-restart-and-absence.md)
+- [ ] T34 — T-07.2a NetworkManager read path → [tasks/034-t-07.2a-networkmanager-read-path.md](tasks/034-t-07.2a-networkmanager-read-path.md)
+- [ ] T35 — T-07.2b NetworkManager join and polkit degradation → [tasks/035-t-07.2b-networkmanager-join-and-polkit.md](tasks/035-t-07.2b-networkmanager-join-and-polkit.md)
+- [ ] T36 — T-07.3 Audio adapter (PipeWire/WirePlumber) → [tasks/036-t-07.3-audio-adapter-pipewire-wireplumber.md](tasks/036-t-07.3-audio-adapter-pipewire-wireplumber.md)
+- [ ] T37 — T-07.4 Power adapter (UPower) → [tasks/037-t-07.4-power-adapter-upower.md](tasks/037-t-07.4-power-adapter-upower.md)
+- [ ] T38 — T-07.5a Wi-Fi and volume status menus → [tasks/038-t-07.5a-wifi-and-volume-menus.md](tasks/038-t-07.5a-wifi-and-volume-menus.md)
+- [ ] T39 — T-07.5b Battery menu, placeholder removal, keyboard a11y → [tasks/039-t-07.5b-battery-menu-and-placeholder-removal.md](tasks/039-t-07.5b-battery-menu-and-placeholder-removal.md)
+- [ ] T40 — T-07.6a Absent-daemon masking matrix → [tasks/040-t-07.6a-absent-daemon-matrix.md](tasks/040-t-07.6a-absent-daemon-matrix.md)
+- [ ] T41 — T-07.6b Menu-bar idle trace and capture → [tasks/041-t-07.6b-idle-trace-and-capture.md](tasks/041-t-07.6b-idle-trace-and-capture.md)
+
+## Phase 8 — T-08 settingsd: one owner
+
+- [ ] T42 — T-08.1a settingsd config model and D-Bus API → [tasks/042-t-08.1a-settingsd-model-and-dbus-api.md](tasks/042-t-08.1a-settingsd-model-and-dbus-api.md)
+- [ ] T43 — T-08.1b settingsd persistence and migrations → [tasks/043-t-08.1b-settingsd-persistence-and-migrations.md](tasks/043-t-08.1b-settingsd-persistence-and-migrations.md)
+- [ ] T44 — T-08.2a Shell migration to settingsd → [tasks/044-t-08.2a-shell-migration-to-settingsd.md](tasks/044-t-08.2a-shell-migration-to-settingsd.md)
+- [ ] T45 — T-08.2b Design-system Theme binding → [tasks/045-t-08.2b-design-system-theme-binding.md](tasks/045-t-08.2b-design-system-theme-binding.md)
+- [ ] T46 — T-08.2c Compositor motion/input policy migration → [tasks/046-t-08.2c-compositor-policy-migration.md](tasks/046-t-08.2c-compositor-policy-migration.md)
+- [ ] T47 — T-08.3 Restart, resync, and key-schema documentation → [tasks/047-t-08.3-restart-resync-and-key-schema-documentation.md](tasks/047-t-08.3-restart-resync-and-key-schema-documentation.md)
+
+## Phase 9 — T-09 Settings Wave 1
+
+- [ ] T48 — T-09.1a Settings app shell → [tasks/048-t-09.1a-settings-app-shell.md](tasks/048-t-09.1a-settings-app-shell.md)
+- [ ] T49 — T-09.1b Settings live-apply plumbing → [tasks/049-t-09.1b-settings-live-apply.md](tasks/049-t-09.1b-settings-live-apply.md)
+- [ ] T50 — T-09.2 Appearance pane → [tasks/050-t-09.2-appearance-pane.md](tasks/050-t-09.2-appearance-pane.md)
+- [ ] T51 — T-09.3 Wallpaper pane → [tasks/051-t-09.3-wallpaper-pane.md](tasks/051-t-09.3-wallpaper-pane.md)
+- [ ] T52 — T-09.4 Desktop & Dock pane → [tasks/052-t-09.4-desktop-dock-pane.md](tasks/052-t-09.4-desktop-dock-pane.md)
+- [ ] T53 — T-09.5 Displays-basic pane → [tasks/053-t-09.5-displays-basic-pane.md](tasks/053-t-09.5-displays-basic-pane.md)
+- [ ] T54 — T-09.6a Settings menu-model publication → [tasks/054-t-09.6a-menu-model-publication.md](tasks/054-t-09.6a-menu-model-publication.md)
+- [ ] T55 — T-09.6b Settings absence matrix and wave captures → [tasks/055-t-09.6b-absence-matrix-and-wave-captures.md](tasks/055-t-09.6b-absence-matrix-and-wave-captures.md)
+
+## Phase 10 — T-10 Files MVP
+
+- [ ] T56 — T-10.1a files-core streaming listing and model → [tasks/056-t-10.1a-files-core-streaming-listing.md](tasks/056-t-10.1a-files-core-streaming-listing.md)
+- [ ] T57 — T-10.1b files-core sorting and platform fallback → [tasks/057-t-10.1b-files-core-sorting-and-platform.md](tasks/057-t-10.1b-files-core-sorting-and-platform.md)
+- [ ] T58 — T-10.2a files-core operations → [tasks/058-t-10.2a-files-core-operations.md](tasks/058-t-10.2a-files-core-operations.md)
+- [ ] T59 — T-10.2b Optimistic semantics and state preservation → [tasks/059-t-10.2b-optimistic-semantics.md](tasks/059-t-10.2b-optimistic-semantics.md)
+- [ ] T60 — T-10.3a files-core trash → [tasks/060-t-10.3a-files-core-trash.md](tasks/060-t-10.3a-files-core-trash.md)
+- [ ] T61 — T-10.3b files-core folder watcher → [tasks/061-t-10.3b-files-core-folder-watcher.md](tasks/061-t-10.3b-files-core-folder-watcher.md)
+- [ ] T62 — T-10.4a Files window, toolbar, and sidebar → [tasks/062-t-10.4a-files-window-toolbar-sidebar.md](tasks/062-t-10.4a-files-window-toolbar-sidebar.md)
+- [ ] T63 — T-10.4b Files list and icon views → [tasks/063-t-10.4b-files-list-and-icon-views.md](tasks/063-t-10.4b-files-list-and-icon-views.md)
+- [ ] T64 — T-10.4c Files context menus, multi-select, optimistic UI → [tasks/064-t-10.4c-files-context-menus-multiselect.md](tasks/064-t-10.4c-files-context-menus-multiselect.md)
+- [ ] T65 — T-10.5 Files performance budgets → [tasks/065-t-10.5-files-performance-budgets.md](tasks/065-t-10.5-files-performance-budgets.md)
+- [ ] T66 — T-10.6a Dock trash source → [tasks/066-t-10.6a-dock-trash-source.md](tasks/066-t-10.6a-dock-trash-source.md)
+- [ ] T67 — T-10.6b Drop-to-trash, Empty Trash, trash:// → [tasks/067-t-10.6b-dock-drop-to-trash-and-empty.md](tasks/067-t-10.6b-dock-drop-to-trash-and-empty.md)
+- [ ] T68 — T-10.6c Show in Files, Downloads, and .desktop identity → [tasks/068-t-10.6c-files-navigation-and-desktop-identity.md](tasks/068-t-10.6c-files-navigation-and-desktop-identity.md)
+- [ ] T69 — T-10.7 Files capture and acceptance walkthrough → [tasks/069-t-10.7-files-capture-and-acceptance-walkthrough.md](tasks/069-t-10.7-files-capture-and-acceptance-walkthrough.md)
+
+## Phase 11 — T-11 Control Center + notifications
+
+- [ ] T70 — T-11.1a Notification service core → [tasks/070-t-11.1a-notification-service-core.md](tasks/070-t-11.1a-notification-service-core.md)
+- [ ] T71 — T-11.1b Notification actions and Dock badge replacement → [tasks/071-t-11.1b-notification-actions-and-dock-badge.md](tasks/071-t-11.1b-notification-actions-and-dock-badge.md)
+- [ ] T72 — T-11.2a DND/Focus policy → [tasks/072-t-11.2a-dnd-focus-policy.md](tasks/072-t-11.2a-dnd-focus-policy.md)
+- [ ] T73 — T-11.2b DND/Focus menu-bar reflection and Dock failure path → [tasks/073-t-11.2b-dnd-reflection-and-dock-failure.md](tasks/073-t-11.2b-dnd-reflection-and-dock-failure.md)
+- [ ] T74 — T-11.3a Control Center panel and core tiles → [tasks/074-t-11.3a-control-center-panel-and-tiles.md](tasks/074-t-11.3a-control-center-panel-and-tiles.md)
+- [ ] T75 — T-11.3b Focus/DND, dark mode, and Control Center a11y → [tasks/075-t-11.3b-control-center-focus-dark-a11y.md](tasks/075-t-11.3b-control-center-focus-dark-a11y.md)
+- [ ] T76 — T-11.4a OSD overlay → [tasks/076-t-11.4a-osd-overlay.md](tasks/076-t-11.4a-osd-overlay.md)
+- [ ] T77 — T-11.4b OSD keyboard/a11y and captures → [tasks/077-t-11.4b-osd-a11y-and-captures.md](tasks/077-t-11.4b-osd-a11y-and-captures.md)
+
+## Phase 12 — T-12 Session + lock + idle
+
+- [ ] T78 — T-12.1a Session manager and restart policy → [tasks/078-t-12.1a-session-manager-and-restart-policy.md](tasks/078-t-12.1a-session-manager-and-restart-policy.md)
+- [ ] T79 — T-12.1b Session environment, systemd units, second-VT → [tasks/079-t-12.1b-session-environment-and-units.md](tasks/079-t-12.1b-session-environment-and-units.md)
+- [ ] T80 — T-12.2 Display-manager entry and logout teardown → [tasks/080-t-12.2-display-manager-entry-and-logout-teardown.md](tasks/080-t-12.2-display-manager-entry-and-logout-teardown.md)
+- [ ] T81 — T-12.3a Lock protocol and lock UI → [tasks/081-t-12.3a-lock-protocol-and-ui.md](tasks/081-t-12.3a-lock-protocol-and-ui.md)
+- [ ] T82 — T-12.3b Lock PAM authentication → [tasks/082-t-12.3b-lock-pam-authentication.md](tasks/082-t-12.3b-lock-pam-authentication.md)
+- [ ] T83 — T-12.3c Lock input capture and kill-resistance → [tasks/083-t-12.3c-lock-input-capture-and-kill-resistance.md](tasks/083-t-12.3c-lock-input-capture-and-kill-resistance.md)
+- [ ] T84 — T-12.4a Idle timers → [tasks/084-t-12.4a-idle-timers.md](tasks/084-t-12.4a-idle-timers.md)
+- [ ] T85 — T-12.4b Idle inhibitors and wake restore → [tasks/085-t-12.4b-idle-inhibitors-and-wake.md](tasks/085-t-12.4b-idle-inhibitors-and-wake.md)
+- [ ] T86 — T-12.5a Suspend/resume cycle → [tasks/086-t-12.5a-suspend-resume-cycle.md](tasks/086-t-12.5a-suspend-resume-cycle.md)
+- [ ] T87 — T-12.5b Session policy keys, kill matrix, capture → [tasks/087-t-12.5b-session-policy-keys-and-kill-matrix.md](tasks/087-t-12.5b-session-policy-keys-and-kill-matrix.md)
+
+## Phase 13 — T-13 Portals + capture + clipboard
+
+- [ ] T88 — T-13.1a Portal backend and session service → [tasks/088-t-13.1a-portal-backend-and-session-service.md](tasks/088-t-13.1a-portal-backend-and-session-service.md)
+- [ ] T89 — T-13.1b Settings and GlobalShortcuts portals → [tasks/089-t-13.1b-settings-and-globalshortcuts-portals.md](tasks/089-t-13.1b-settings-and-globalshortcuts-portals.md)
+- [ ] T90 — T-13.2a FileChooser portal → [tasks/090-t-13.2a-filechooser-portal.md](tasks/090-t-13.2a-filechooser-portal.md)
+- [ ] T91 — T-13.2b FileChooser picker UI → [tasks/091-t-13.2b-filechooser-picker-ui.md](tasks/091-t-13.2b-filechooser-picker-ui.md)
+- [ ] T92 — T-13.3a Screenshot portal and selection UI → [tasks/092-t-13.3a-screenshot-portal-and-selection.md](tasks/092-t-13.3a-screenshot-portal-and-selection.md)
+- [ ] T93 — T-13.3b Screenshot save/copy and portal-only gate → [tasks/093-t-13.3b-screenshot-save-copy-and-gate.md](tasks/093-t-13.3b-screenshot-save-copy-and-gate.md)
+- [ ] T94 — T-13.4a ScreenCast portal and source picker → [tasks/094-t-13.4a-screencast-portal-and-picker.md](tasks/094-t-13.4a-screencast-portal-and-picker.md)
+- [ ] T95 — T-13.4b ScreenCast stream and stills fallback → [tasks/095-t-13.4b-screencast-stream-and-fallback.md](tasks/095-t-13.4b-screencast-stream-and-fallback.md)
+- [ ] T96 — T-13.5a Clipboard text/image/uri-list round-trips → [tasks/096-t-13.5a-clipboard-round-trips.md](tasks/096-t-13.5a-clipboard-round-trips.md)
+- [ ] T97 — T-13.5b Clipboard history (if specified) → [tasks/097-t-13.5b-clipboard-history.md](tasks/097-t-13.5b-clipboard-history.md)
+- [ ] T98 — T-13.6 polkit authentication agent → [tasks/098-t-13.6-polkit-authentication-agent.md](tasks/098-t-13.6-polkit-authentication-agent.md)
+- [ ] T99 — T-13.7 Flatpak validation and capture → [tasks/099-t-13.7-flatpak-validation-and-capture.md](tasks/099-t-13.7-flatpak-validation-and-capture.md)
+
+## Phase 14 — T-14 Global menu + app index + compat
+
+- [ ] T100 — T-14.1a app-index identity resolution and icons → [tasks/100-t-14.1a-app-index-identity-and-icons.md](tasks/100-t-14.1a-app-index-identity-and-icons.md)
+- [ ] T101 — T-14.1b app-index events, launch registry, recency → [tasks/101-t-14.1b-app-index-events-and-recency.md](tasks/101-t-14.1b-app-index-events-and-recency.md)
+- [ ] T102 — T-14.1c app-index subscription API → [tasks/102-t-14.1c-app-index-subscription.md](tasks/102-t-14.1c-app-index-subscription.md)
+- [ ] T103 — T-14.2a menu-broker export model and fixed menu → [tasks/103-t-14.2a-menu-broker-export-and-fixed-menu.md](tasks/103-t-14.2a-menu-broker-export-and-fixed-menu.md)
+- [ ] T104 — T-14.2b menu-broker accelerators and toggle → [tasks/104-t-14.2b-menu-broker-accelerators-and-toggle.md](tasks/104-t-14.2b-menu-broker-accelerators-and-toggle.md)
+- [ ] T105 — T-14.3 StatusNotifier/AppIndicator tray → [tasks/105-t-14.3-statusnotifier-appindicator-tray.md](tasks/105-t-14.3-statusnotifier-appindicator-tray.md)
+- [ ] T106 — T-14.4 DBusMenu bridge → [tasks/106-t-14.4-dbusmenu-bridge.md](tasks/106-t-14.4-dbusmenu-bridge.md)
+- [ ] T107 — T-14.5 XDnD bridge → [tasks/107-t-14.5-xdnd-bridge.md](tasks/107-t-14.5-xdnd-bridge.md)
+- [ ] T108 — T-14.6a Strange-app zoo run and matrix → [tasks/108-t-14.6a-strange-app-zoo-run.md](tasks/108-t-14.6a-strange-app-zoo-run.md)
+- [ ] T109 — T-14.6b Strange-app zoo fixes → [tasks/109-t-14.6b-strange-app-zoo-fixes.md](tasks/109-t-14.6b-strange-app-zoo-fixes.md)
+- [ ] T110 — T-14.7 Retire interim paths → [tasks/110-t-14.7-retire-interim-paths.md](tasks/110-t-14.7-retire-interim-paths.md)
+
+## Phase 15 — T-15 System services + Settings Waves 2–3
+
+- [ ] T111 — T-15.1a Bluetooth adapter → [tasks/111-t-15.1a-bluetooth-adapter.md](tasks/111-t-15.1a-bluetooth-adapter.md)
+- [ ] T112 — T-15.1b Bluetooth pane and tile → [tasks/112-t-15.1b-bluetooth-pane-and-tile.md](tasks/112-t-15.1b-bluetooth-pane-and-tile.md)
+- [ ] T113 — T-15.2a Storage and removable media adapter → [tasks/113-t-15.2a-storage-and-removable-media-adapter.md](tasks/113-t-15.2a-storage-and-removable-media-adapter.md)
+- [ ] T114 — T-15.2b Storage and removable media pane and tile → [tasks/114-t-15.2b-storage-and-removable-media-pane-and-tile.md](tasks/114-t-15.2b-storage-and-removable-media-pane-and-tile.md)
+- [ ] T115 — T-15.3a Sound and routing adapter → [tasks/115-t-15.3a-sound-and-routing-adapter.md](tasks/115-t-15.3a-sound-and-routing-adapter.md)
+- [ ] T116 — T-15.3b Sound and routing pane and tile → [tasks/116-t-15.3b-sound-and-routing-pane-and-tile.md](tasks/116-t-15.3b-sound-and-routing-pane-and-tile.md)
+- [ ] T117 — T-15.4a Keyboard, Mouse, and Trackpad adapter → [tasks/117-t-15.4a-keyboard-mouse-and-trackpad-adapter.md](tasks/117-t-15.4a-keyboard-mouse-and-trackpad-adapter.md)
+- [ ] T118 — T-15.4b Keyboard, Mouse, and Trackpad pane and tile → [tasks/118-t-15.4b-keyboard-mouse-and-trackpad-pane-and-tile.md](tasks/118-t-15.4b-keyboard-mouse-and-trackpad-pane-and-tile.md)
+- [ ] T119 — T-15.5a Mission Control and hot corners adapter → [tasks/119-t-15.5a-mission-control-and-hot-corners-adapter.md](tasks/119-t-15.5a-mission-control-and-hot-corners-adapter.md)
+- [ ] T120 — T-15.5b Mission Control and hot corners pane and tile → [tasks/120-t-15.5b-mission-control-and-hot-corners-pane-and-tile.md](tasks/120-t-15.5b-mission-control-and-hot-corners-pane-and-tile.md)
+- [ ] T121 — T-15.6a Battery and power profiles adapter → [tasks/121-t-15.6a-battery-and-power-profiles-adapter.md](tasks/121-t-15.6a-battery-and-power-profiles-adapter.md)
+- [ ] T122 — T-15.6b Battery and power profiles pane and tile → [tasks/122-t-15.6b-battery-and-power-profiles-pane-and-tile.md](tasks/122-t-15.6b-battery-and-power-profiles-pane-and-tile.md)
+- [ ] T123 — T-15.7a Notifications and Focus adapter → [tasks/123-t-15.7a-notifications-and-focus-adapter.md](tasks/123-t-15.7a-notifications-and-focus-adapter.md)
+- [ ] T124 — T-15.7b Notifications and Focus pane and tile → [tasks/124-t-15.7b-notifications-and-focus-pane-and-tile.md](tasks/124-t-15.7b-notifications-and-focus-pane-and-tile.md)
+- [ ] T125 — T-15.8a Lock Screen policy adapter → [tasks/125-t-15.8a-lock-screen-policy-adapter.md](tasks/125-t-15.8a-lock-screen-policy-adapter.md)
+- [ ] T126 — T-15.8b Lock Screen policy pane and tile → [tasks/126-t-15.8b-lock-screen-policy-pane-and-tile.md](tasks/126-t-15.8b-lock-screen-policy-pane-and-tile.md)
+- [ ] T127 — T-15.9a Menu Bar configuration adapter → [tasks/127-t-15.9a-menu-bar-configuration-adapter.md](tasks/127-t-15.9a-menu-bar-configuration-adapter.md)
+- [ ] T128 — T-15.9b Menu Bar configuration pane and tile → [tasks/128-t-15.9b-menu-bar-configuration-pane-and-tile.md](tasks/128-t-15.9b-menu-bar-configuration-pane-and-tile.md)
+- [ ] T129 — T-15.10a General, About, and Updates adapter → [tasks/129-t-15.10a-general-about-and-updates-adapter.md](tasks/129-t-15.10a-general-about-and-updates-adapter.md)
+- [ ] T130 — T-15.10b General, About, and Updates pane and tile → [tasks/130-t-15.10b-general-about-and-updates-pane-and-tile.md](tasks/130-t-15.10b-general-about-and-updates-pane-and-tile.md)
+- [ ] T131 — T-15.11a Users and Groups adapter → [tasks/131-t-15.11a-users-and-groups-adapter.md](tasks/131-t-15.11a-users-and-groups-adapter.md)
+- [ ] T132 — T-15.11b Users and Groups pane and tile → [tasks/132-t-15.11b-users-and-groups-pane-and-tile.md](tasks/132-t-15.11b-users-and-groups-pane-and-tile.md)
+- [ ] T133 — T-15.12a Printers and Scanners adapter → [tasks/133-t-15.12a-printers-and-scanners-adapter.md](tasks/133-t-15.12a-printers-and-scanners-adapter.md)
+- [ ] T134 — T-15.12b Printers and Scanners pane and tile → [tasks/134-t-15.12b-printers-and-scanners-pane-and-tile.md](tasks/134-t-15.12b-printers-and-scanners-pane-and-tile.md)
+- [ ] T135 — T-15.13a Privacy and Security adapter → [tasks/135-t-15.13a-privacy-and-security-adapter.md](tasks/135-t-15.13a-privacy-and-security-adapter.md)
+- [ ] T136 — T-15.13b Privacy and Security pane and tile → [tasks/136-t-15.13b-privacy-and-security-pane-and-tile.md](tasks/136-t-15.13b-privacy-and-security-pane-and-tile.md)
+- [ ] T137 — T-15.14a Accessibility adapter → [tasks/137-t-15.14a-accessibility-adapter.md](tasks/137-t-15.14a-accessibility-adapter.md)
+- [ ] T138 — T-15.14b Accessibility pane and tile → [tasks/138-t-15.14b-accessibility-pane-and-tile.md](tasks/138-t-15.14b-accessibility-pane-and-tile.md)
+- [ ] T139 — T-15.15a Network advanced (VPN) adapter → [tasks/139-t-15.15a-network-advanced-vpn-adapter.md](tasks/139-t-15.15a-network-advanced-vpn-adapter.md)
+- [ ] T140 — T-15.15b Network advanced (VPN) pane and tile → [tasks/140-t-15.15b-network-advanced-vpn-pane-and-tile.md](tasks/140-t-15.15b-network-advanced-vpn-pane-and-tile.md)
+- [ ] T141 — T-15.16 Absent-daemon matrix and breadth capture → [tasks/141-t-15.16-absent-daemon-matrix-and-breadth-capture.md](tasks/141-t-15.16-absent-daemon-matrix-and-breadth-capture.md)
+
+## Phase 16 — T-16 Platform polish + packaging
+
+- [ ] T142 — T-16.1a Per-output chrome sizing and reserved zones → [tasks/142-t-16.1a-per-output-chrome-sizing.md](tasks/142-t-16.1a-per-output-chrome-sizing.md)
+- [ ] T143 — T-16.1b Per-output window placement → [tasks/143-t-16.1b-per-output-window-placement.md](tasks/143-t-16.1b-per-output-window-placement.md)
+- [ ] T144 — T-16.2 Hotplug under load and lockstep → [tasks/144-t-16.2-hotplug-under-load-and-lockstep.md](tasks/144-t-16.2-hotplug-under-load-and-lockstep.md)
+- [ ] T145 — T-16.3a Integer-scaled Xwayland → [tasks/145-t-16.3a-integer-scaled-xwayland.md](tasks/145-t-16.3a-integer-scaled-xwayland.md)
+- [ ] T146 — T-16.3b Viewport downscale and chrome sizing → [tasks/146-t-16.3b-viewport-downscale-and-chrome.md](tasks/146-t-16.3b-viewport-downscale-and-chrome.md)
+- [ ] T147 — T-16.6a AT-SPI and keyboard-only audit → [tasks/147-t-16.6a-atspi-and-keyboard-audit.md](tasks/147-t-16.6a-atspi-and-keyboard-audit.md)
+- [ ] T148 — T-16.6b Magnifier and reduced-motion sweep → [tasks/148-t-16.6b-magnifier-and-reduced-motion-sweep.md](tasks/148-t-16.6b-magnifier-and-reduced-motion-sweep.md)
+- [ ] T149 — T-16.7 Localization and i18n → [tasks/149-t-16.7-localization-and-i18n.md](tasks/149-t-16.7-localization-and-i18n.md)
+- [ ] T150 — T-16.8a Crash/kill matrix → [tasks/150-t-16.8a-crash-kill-matrix.md](tasks/150-t-16.8a-crash-kill-matrix.md)
+- [ ] T151 — T-16.8b Compositor-death behavior and restart-policy docs → [tasks/151-t-16.8b-compositor-death-and-restart-policy.md](tasks/151-t-16.8b-compositor-death-and-restart-policy.md)
+
+## Phase 17 — T-17 The premium experience gate
+
+- [ ] T152 — T-17.1a Nested window loop verification → [tasks/152-t-17.1a-nested-window-loop-verification.md](tasks/152-t-17.1a-nested-window-loop-verification.md)
+- [ ] T153 — T-17.1b Workspace, Mission Control, and app-switch verification → [tasks/153-t-17.1b-workspace-overview-switcher-verification.md](tasks/153-t-17.1b-workspace-overview-switcher-verification.md)
+- [ ] T154 — T-17.1c Flatpak/browser end-to-end verification → [tasks/154-t-17.1c-flatpak-browser-verification.md](tasks/154-t-17.1c-flatpak-browser-verification.md)
+- [ ] T155 — T-17.3 Visual floor and reduced-motion sign-off → [tasks/155-t-17.3-visual-floor-and-reduced-motion-sign-off.md](tasks/155-t-17.3-visual-floor-and-reduced-motion-sign-off.md)
+- [ ] T156 — T-17.5a Absent-daemon and crash matrix verification → [tasks/156-t-17.5a-absent-daemon-and-crash-matrix.md](tasks/156-t-17.5a-absent-daemon-and-crash-matrix.md)
+- [ ] T157 — T-17.5b Leak and lock enforcement verification → [tasks/157-t-17.5b-leak-and-lock-enforcement-verification.md](tasks/157-t-17.5b-leak-and-lock-enforcement-verification.md)
+- [ ] T158 — T-17.6 Unfamiliar-user test and sign-off report → [tasks/158-t-17.6-unfamiliar-user-test-and-sign-off-report.md](tasks/158-t-17.6-unfamiliar-user-test-and-sign-off-report.md)
+
+## Phase 18 — Hardware rail (seat / spare GPU / clean VM)
+
+- [ ] T159 — T-03.2 DRM first bring-up → [tasks/159-t-03.2-drm-first-bring-up.md](tasks/159-t-03.2-drm-first-bring-up.md)
+- [ ] T160 — T-03.3 Hardware input validation → [tasks/160-t-03.3-hardware-input-validation.md](tasks/160-t-03.3-hardware-input-validation.md)
+- [ ] T161 — T-03.4 DRM soak, teardown, runbook → [tasks/161-t-03.4-drm-soak-teardown-runbook.md](tasks/161-t-03.4-drm-soak-teardown-runbook.md)
+- [ ] T162 — T-16.4 Suspend/resume soak → [tasks/162-t-16.4-suspend-resume-soak.md](tasks/162-t-16.4-suspend-resume-soak.md)
+- [ ] T163 — T-16.5 Graphics driver matrix → [tasks/163-t-16.5-graphics-driver-matrix.md](tasks/163-t-16.5-graphics-driver-matrix.md)
+- [ ] T164 — T-16.9 Fedora packaging and CI → [tasks/164-t-16.9-fedora-packaging-and-ci.md](tasks/164-t-16.9-fedora-packaging-and-ci.md)
+- [ ] T165 — T-16.10 Debian packaging and CI → [tasks/165-t-16.10-debian-packaging-and-ci.md](tasks/165-t-16.10-debian-packaging-and-ci.md)
+- [ ] T166 — T-16.11 Packaged-build performance re-measure → [tasks/166-t-16.11-packaged-build-performance-re-measure.md](tasks/166-t-16.11-packaged-build-performance-re-measure.md)
+- [ ] T167 — T-17.2 DRM full-loop verification → [tasks/167-t-17.2-drm-full-loop-verification.md](tasks/167-t-17.2-drm-full-loop-verification.md)
+- [ ] T168 — T-17.4 Performance budget verification → [tasks/168-t-17.4-performance-budget-verification.md](tasks/168-t-17.4-performance-budget-verification.md)
+
+## Delivery order (unchanged in intent)
 
 1. **Make the loop real** — T-01, T-02.
 2. **Prove it on hardware early** — T-03 (hardware rail; never blocks the
@@ -293,7 +329,7 @@ mark them open — do not skip them silently — and continue the sequence.
 6. **Make it a desktop** — T-12 … T-16.
 7. **Gate the premium experience** — T-17.
 
-### Why this order
+## Why this order
 
 - **Vertical before horizontal.** Each unit crosses compositor → shell → app
   where it needs to, so integration bugs surface in days, not at the end.
