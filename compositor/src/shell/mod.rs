@@ -1024,14 +1024,16 @@ impl DfState {
         let mut focus_changed = false;
         for event in events {
             match event.kind {
-                WindowEventKind::Mapped | WindowEventKind::Unmapped => {
-                    // Announce/close per manager.
+                WindowEventKind::Mapped | WindowEventKind::Unmapped | WindowEventKind::Closed => {
+                    // Announce/close per manager. `Unmapped` is a client
+                    // destroy; `Closed` is a settled close ghost (T-02.4a).
+                    // Both mean the toplevel resource goes away.
                     for (client, manager) in &sessions {
                         match event.kind {
                             WindowEventKind::Mapped => {
                                 self.announce_one_toplevel(client, manager, event.id);
                             }
-                            WindowEventKind::Unmapped => {
+                            WindowEventKind::Unmapped | WindowEventKind::Closed => {
                                 if let Some(session) = self.shell.sessions.get_mut(client) {
                                     if let Some(resource) = session.toplevels.remove(&event.id) {
                                         resource.closed();

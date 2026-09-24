@@ -40,6 +40,7 @@
 //! set launch-origin <app-id> <x> <y> <width> <height>
 //! minimize <window-id>
 //! restore <window-id>
+//! close <window-id>
 //! zoom <window-id> | unzoom <window-id>
 //! fullscreen <window-id> | unfullscreen <window-id>
 //! animate-dummy <duration-ms>
@@ -56,9 +57,9 @@
 //! describing the open menu (or `0` when closed) followed by `end`, so the
 //! conformance test can aim at rows and assert dismissal.
 //!
-//! `query motion` (T-02.1b/T-02.2/T-02.3) replies with one `motion` line per
-//! window that has an appear/minimize/restore/zoom/fullscreen record,
-//! followed by `end`. `query events` replies with the pending
+//! `query motion` (T-02.1b/T-02.2/T-02.3/T-02.4a) replies with one `motion`
+//! line per window that has an appear/minimize/restore/close/zoom/fullscreen
+//! record, followed by `end`. `query events` replies with the pending
 //! window-lifecycle outbox lines (the same events the shell drains) followed
 //! by `end`.
 //!
@@ -68,7 +69,9 @@
 //!
 //! `minimize`/`restore <window-id>` drive the lifecycle motion for a window
 //! by its compositor id (T-02.2 test plumbing), the same primitive the
-//! traffic light and the private protocol use. `zoom`/`unzoom` and
+//! traffic light and the private protocol use. `close <window-id>` starts the
+//! close ghost and commits the removal when it settles (T-02.4a).
+//! `zoom`/`unzoom` and
 //! `fullscreen`/`unfullscreen <window-id>` do the same for the T-02.3 geometry
 //! transitions.
 //!
@@ -667,6 +670,8 @@ pub enum SyntheticCommand {
     MinimizeWindow(WindowId),
     /// Restore the window with this compositor id (T-02.2 test plumbing).
     RestoreWindow(WindowId),
+    /// Close the window with this compositor id (T-02.4a test plumbing).
+    CloseWindow(WindowId),
     /// Zoom the window with this compositor id (T-02.3 test plumbing).
     ZoomWindow(WindowId),
     /// Unzoom the window with this compositor id (T-02.3 test plumbing).
@@ -818,6 +823,13 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
                 .ok_or("restore requires a window id")?
                 .parse()
                 .map_err(|_| "restore window id must be a non-negative integer".to_string())?,
+        )),
+        "close" => SyntheticCommand::CloseWindow(WindowId(
+            parts
+                .next()
+                .ok_or("close requires a window id")?
+                .parse()
+                .map_err(|_| "close window id must be a non-negative integer".to_string())?,
         )),
         "zoom" => SyntheticCommand::ZoomWindow(WindowId(
             parts
@@ -998,6 +1010,9 @@ impl SyntheticCommand {
             SyntheticCommand::RestoreWindow(_) => {
                 unreachable!("restore is handled by apply_datagram")
             }
+            SyntheticCommand::CloseWindow(_) => {
+                unreachable!("close is handled by apply_datagram")
+            }
             SyntheticCommand::ZoomWindow(_) => {
                 unreachable!("zoom is handled by apply_datagram")
             }
@@ -1104,6 +1119,10 @@ fn apply_datagram_reply(
             }
             Ok(SyntheticCommand::RestoreWindow(id)) => {
                 state.restore_window_by_id(id);
+                applied += 1;
+            }
+            Ok(SyntheticCommand::CloseWindow(id)) => {
+                state.close_window_by_id(id);
                 applied += 1;
             }
             Ok(SyntheticCommand::ZoomWindow(id)) => {
@@ -1222,7 +1241,8 @@ fn window_menu_report(state: &DfState) -> String {
 ///
 /// `motion <window> <kind> <active> <completed> <frames> <ox> <oy> <ow> <oh>
 /// <tx> <ty> <tw> <th>` per window with a motion record, followed by `end`.
-/// `<kind>` is `appear`, `minimize`, `restore`, `zoom`, or `fullscreen`;
+/// `<kind>` is `appear`, `minimize`, `restore`, `close`, `zoom`, or
+/// `fullscreen`;
 /// `<active>` is 1 while the motion is in flight, `<completed>` 1 once it has
 /// committed, and `<frames>` is the number of animation-clock frames it has
 /// been stepped for (the reduced-motion check is `frames == 1`). The `o*`
@@ -1255,11 +1275,11 @@ fn motion_report(state: &DfState) -> String {
 /// The `query events` report (T-02.2): the pending window-lifecycle outbox.
 ///
 /// `event <kind> <window> [<state>]` per pending event, followed by `end`.
-/// `<kind>` is `mapped`, `unmapped`, `focused`, `unfocused`, `title-changed`,
-/// `app-id-changed`, or `state-changed` (the last carries the new state as
-/// `floating`/`zoomed`/`minimized`/`fullscreen`). The events are *peeked*, not
-/// drained, so a headless test (no shell) can assert what the shell would
-/// learn.
+/// `<kind>` is `mapped`, `unmapped`, `closed`, `focused`, `unfocused`,
+/// `title-changed`, `app-id-changed`, or `state-changed` (the last carries the
+/// new state as `floating`/`zoomed`/`minimized`/`fullscreen`). The events are
+/// *peeked*, not drained, so a headless test (no shell) can assert what the
+/// shell would learn.
 fn window_events_report(state: &DfState) -> String {
     let mut out = String::new();
     for event in state.window_dispatch.events() {
@@ -1404,6 +1424,10 @@ mod tests {
         assert_eq!(
             parse_command("restore 3").unwrap(),
             SyntheticCommand::RestoreWindow(WindowId(3))
+        );
+        assert_eq!(
+            parse_command("close 3").unwrap(),
+            SyntheticCommand::CloseWindow(WindowId(3))
         );
         assert_eq!(
             parse_command("zoom 3").unwrap(),

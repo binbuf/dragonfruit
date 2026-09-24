@@ -416,26 +416,13 @@ impl DfState {
         let Some(window) = self.x11_window_for(surface) else {
             return;
         };
-        self.dismiss_popups_for(&window);
-        let was_fullscreen = self.windows.state(&window) == Some(WindowState::Fullscreen);
-        let id = self.windows.remove(&window);
-        if self.active_window.as_ref() == Some(&window) {
-            self.active_window = None;
+        // A live close ghost owns the removal: the X client may be destroyed
+        // as soon as it gets WM_DELETE_WINDOW, but the model entry is removed
+        // exactly once when the fade/scale-out settles (T-02.4a).
+        if self.windows.is_closing(&window) {
+            return;
         }
-        if let Some(id) = id {
-            if was_fullscreen {
-                self.workspaces.exit_fullscreen(id);
-            }
-            self.workspaces.forget_window(id);
-            self.window_dispatch.push(crate::window::ShellWindowEvent {
-                kind: WindowEventKind::Unmapped,
-                id,
-                app_id: None,
-                title: None,
-            });
-        }
-        self.space.unmap_elem(&window);
-        self.needs_redraw = true;
+        self.remove_window(&window, WindowEventKind::Unmapped);
     }
 }
 

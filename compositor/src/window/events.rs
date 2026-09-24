@@ -19,6 +19,9 @@ pub enum WindowEventKind {
     Mapped,
     /// A window left the scene.
     Unmapped,
+    /// A window's close transition committed: the window has been removed
+    /// from the model after its fade/scale-out ghost settled (T-02.4a).
+    Closed,
     /// The window became the active window.
     Focused,
     /// The window stopped being the active window.
@@ -37,6 +40,7 @@ impl WindowEventKind {
         match self {
             WindowEventKind::Mapped => "mapped",
             WindowEventKind::Unmapped => "unmapped",
+            WindowEventKind::Closed => "closed",
             WindowEventKind::Focused => "focused",
             WindowEventKind::Unfocused => "unfocused",
             WindowEventKind::TitleChanged => "title-changed",

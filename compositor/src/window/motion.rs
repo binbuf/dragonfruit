@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 //! The window lifecycle motion (T-02.1b appear; T-02.2 minimize/restore;
-//! T-02.3 zoom/fullscreen).
+//! T-02.3 zoom/fullscreen; T-02.4a close).
 //!
 //! A window scales and fades between an *origin* rectangle and its final
 //! geometry. For the launch motions the origin is the owning Dock entry's
@@ -10,19 +10,20 @@
 //! design requires. For zoom/fullscreen the origin is the geometry the window
 //! occupied *before* the state change.
 //!
-//! Five motions share this one type:
+//! Six motions share this one type:
 //!
 //! * **appear** — a newly mapped window grows/fades in from the origin;
 //! * **restore** — a minimized window grows back out of the origin;
 //! * **minimize** — a visible window shrinks/fades into the origin;
+//! * **close** — a closing window shrinks/fades out into the origin;
 //! * **zoom** — a floating window grows into / out of the usable area;
 //! * **fullscreen** — a window grows into / out of the fullscreen geometry.
 //!
 //! Appear and restore are the same interpolation (origin → target, alpha
-//! `0 → 1`); minimize is its reverse (target → origin, alpha `1 → 0`).
-//! Zoom and fullscreen interpolate geometry with **alpha fixed at 1.0**: the
-//! window is visible at both ends, so there is nothing to fade. One
-//! [`MotionFrame`] carries the render transform for all five and the render
+//! `0 → 1`); minimize and close are its reverse (target → origin, alpha
+//! `1 → 0`). Zoom and fullscreen interpolate geometry with **alpha fixed at
+//! 1.0**: the window is visible at both ends, so there is nothing to fade. One
+//! [`MotionFrame`] carries the render transform for all six and the render
 //! layer needs no second effect path.
 //!
 //! The transition is pure timing plus geometry: it lives in the window model
@@ -57,6 +58,9 @@ pub enum WindowMotionKind {
     Minimize,
     /// A minimized window fades/scales back out of the origin.
     Restore,
+    /// A closing window fades/scales out into the origin. The window is
+    /// removed from the model only when the motion completes (T-02.4a).
+    Close,
     /// A floating window grows into (or shrinks out of) its zoomed geometry.
     Zoom,
     /// A window grows into (or shrinks out of) its fullscreen geometry.
@@ -70,6 +74,7 @@ impl WindowMotionKind {
             WindowMotionKind::Appear => "appear",
             WindowMotionKind::Minimize => "minimize",
             WindowMotionKind::Restore => "restore",
+            WindowMotionKind::Close => "close",
             WindowMotionKind::Zoom => "zoom",
             WindowMotionKind::Fullscreen => "fullscreen",
         }
@@ -77,23 +82,35 @@ impl WindowMotionKind {
 
     /// Whether the interpolation runs `target → origin` (a shrink/fade-out).
     pub const fn is_reversing(self) -> bool {
-        matches!(self, WindowMotionKind::Minimize)
+        matches!(self, WindowMotionKind::Minimize | WindowMotionKind::Close)
     }
 
     /// Whether the motion fades the window at either end.
     ///
-    /// Appear/restore fade in and minimize fades out; zoom/fullscreen are
+    /// Appear/restore fade in and minimize/close fade out; zoom/fullscreen are
     /// visible at both ends, so they interpolate geometry with alpha `1.0`.
     pub const fn fades(self) -> bool {
         !matches!(self, WindowMotionKind::Zoom | WindowMotionKind::Fullscreen)
     }
 
-    /// The design-system motion token this kind is timed with. Minimize
-    /// shrinks out on the close curve; every other motion grows/retargets on
-    /// the open curve.
+    /// Whether the window is held as a **ghost** (unmapped from `Space`) for
+    /// the duration of this motion.
+    ///
+    /// Minimize and close take the window out of the layout and the input path
+    /// immediately; the render layer draws their surface (and titlebar) from
+    /// [`WindowModel::active_motions`](super::WindowModel::active_motions)
+    /// instead of the `Space` walk. Appear/restore/zoom/fullscreen stay
+    /// mapped.
+    pub const fn is_ghost(self) -> bool {
+        matches!(self, WindowMotionKind::Minimize | WindowMotionKind::Close)
+    }
+
+    /// The design-system motion token this kind is timed with. Minimize and
+    /// close shrink out on the close curve; every other motion
+    /// grows/retargets on the open curve.
     const fn token(self) -> Motion {
         match self {
-            WindowMotionKind::Minimize => motion::WINDOW_CLOSE,
+            WindowMotionKind::Minimize | WindowMotionKind::Close => motion::WINDOW_CLOSE,
             WindowMotionKind::Appear
             | WindowMotionKind::Restore
             | WindowMotionKind::Zoom
@@ -377,6 +394,48 @@ mod tests {
         let tile = rect(10, 10, 48, 48);
         let target = rect(200, 200, 800, 600);
         let transition = WindowMotion::new(WindowMotionKind::Minimize, tile, target, 1000, true);
+        assert!(transition.is_done(1000));
+        let frame = transition.frame(1000);
+        assert_eq!(frame.rect, tile);
+        assert_eq!(frame.alpha, 0.0);
+    }
+
+    #[test]
+    fn close_runs_target_to_origin_and_fades_out() {
+        let tile = rect(24, 30, 48, 48);
+        let target = rect(200, 200, 800, 600);
+        let transition = WindowMotion::new(WindowMotionKind::Close, tile, target, 0, false);
+
+        // At t=0 the window is exactly its geometry, opaque, and it is a
+        // ghost (out of the layout) for the whole motion.
+        let start = transition.frame(0);
+        assert_eq!(start.rect, target);
+        assert_eq!(start.scale, Scale::from((1.0, 1.0)));
+        assert_eq!(start.alpha, 1.0);
+        assert!(WindowMotionKind::Close.is_ghost());
+        assert!(WindowMotionKind::Close.is_reversing());
+        assert!(WindowMotionKind::Close.fades());
+        assert!(!WindowMotionKind::Appear.is_ghost());
+
+        // At the end it has shrunk into the tile and faded out.
+        let end_ms = motion::WINDOW_CLOSE.duration_ms as u64;
+        let end = transition.frame(end_ms);
+        assert_eq!(end.rect, tile);
+        assert_eq!(end.alpha, 0.0);
+        assert!(end.scale.x < 1.0);
+
+        // Mid-flight it is strictly between the tile and the window.
+        let mid = transition.frame(end_ms / 2);
+        assert!(mid.rect.size.w > tile.size.w && mid.rect.size.w < target.size.w);
+        assert!(mid.alpha > 0.0 && mid.alpha < 1.0);
+        assert!(transition.is_done(end_ms));
+    }
+
+    #[test]
+    fn reduced_motion_close_completes_on_the_first_step() {
+        let tile = rect(24, 30, 48, 48);
+        let target = rect(200, 200, 800, 600);
+        let transition = WindowMotion::new(WindowMotionKind::Close, tile, target, 1000, true);
         assert!(transition.is_done(1000));
         let frame = transition.frame(1000);
         assert_eq!(frame.rect, tile);

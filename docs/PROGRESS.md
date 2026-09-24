@@ -17,6 +17,7 @@
 - **T09 — T-02.1b Window appear transition**: **State: done.** A newly mapped window scales/fades in from its Dock tile on; **`compositor/src/window/appear.rs`** (new) — `AppearTransition`
 - **T10 — T-02.2 Minimize and restore motion**: **State: done.** Minimize shrinks a window into its Dock entry's tile and; **`compositor/src/window/motion.rs`** (renamed from `appear.rs`) —
 - **T11 — T-02.3 Zoom and fullscreen transitions**: **State: done.** Zoom/unzoom and fullscreen/unfullscreen animate between the; **`compositor/src/window/motion.rs`** — `WindowMotionKind::{Zoom,
+- **T12 — T-02.4a Close ghost**: **State: done.** A closing window shrinks/fades out into its app's Dock tile; **`compositor/src/window/motion.rs`** — `WindowMotionKind::Close` (reverse
 - **Follow-ups**: Add the QML import-dir define (`DF_QML_IMPORT_DIR`) to the first-party apps'; T-16: publish `_NET_FRAME_EXTENTS` for Tier-2 X11 windows so clients can
 <!-- symphony:digest:end -->
 
@@ -783,6 +784,72 @@ Gotchas for later tasks:
 - `reapply_insets` (a runtime decoration-tier change on a zoomed window) still
   jumps; only explicit zoom/fullscreen transitions animate today.
 
+## T12 — T-02.4a Close ghost
+
+**State: done.** A closing window shrinks/fades out into its app's Dock tile
+(or the centered fallback) as a ghost that leaves the input path and the
+layout at once; it stays in the model until the motion settles and is then
+removed exactly once with a `Closed` broadcast. A client that destroys its
+surface mid-ghost does not double-remove (the destroy is deferred to the
+motion).
+
+What landed:
+
+- **`compositor/src/window/motion.rs`** — `WindowMotionKind::Close` (reverse
+  like minimize, `motion::WINDOW_CLOSE`), `is_ghost()` (`Minimize | Close`),
+  doc "six motions"; 2 new unit tests (12 total).
+- **`compositor/src/window/mod.rs`** — `WindowModel::is_closing(window)`
+  (live `Close` motion, not completed).
+- **`compositor/src/window/events.rs`** — `WindowEventKind::Closed` ("closed");
+  the shell treats it like `Unmapped` (drop the toplevel resource, `closed()`).
+- **`compositor/src/state.rs`** — `close_window` now: no-op while already
+  closing; dismisses popups/its window menu; unmaps; `begin_window_motion(
+  Close, geometry)` (origin = Dock tile/centered); then sends the client close
+  request. `close_window_by_id(id)`. New single teardown path
+  `remove_window(window, kind)` (idempotent via `WindowModel::remove`), used by
+  `toplevel_destroyed` (`Unmapped`), `destroy_x11_window` (`Unmapped`), and
+  `step_window_motions` (`Closed`). `toplevel_destroyed`/`destroy_x11_window`
+  return early while `is_closing`. `apply_workspace_layout` never remaps a
+  closing window.
+- **`compositor/src/render.rs`** — the ghost walk in
+  `window_render_elements`/`titlebar_render_elements` uses
+  `motion.kind.is_ghost()` and skips dead windows (`IsAlive`).
+- **`compositor/src/xwayland.rs`** — `destroy_x11_window` defers/uses
+  `remove_window`.
+- **Synthetic hook** — `close <window-id>`; `query motion` kind `close`,
+  `query events` kind `closed`.
+- **Tests** — `window_conformance.rs`:
+  `close_fades_out_inert_and_commits_removal_exactly_once` (21/21): asserts the
+  close record's tile origin/target, that the window stays tracked while the
+  ghost is live, that a click over its old rect reaches no client, that it
+  disappears from `query decorations`, and that exactly one `event closed` is
+  broadcast.
+- **Docs** — ADR `0007-close-ghost-deferred-removal.md`;
+  `docs/design/02-compositor.md` "Window lifecycle motion".
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `make cargo-test` — 176 bin unit + all suites green (window_conformance
+  21/21; animation_clock, shell_protocol_conformance 32/32, xwayland 6/6).
+- `make clippy`; `make fmt-check` — clean.
+- `make e2e` — green (headless demo logs `animations_started=1
+  animations_completed=1`).
+
+Gotchas for later tasks:
+
+- There is exactly **one** teardown path now: `DfState::remove_window`. Never
+  remove a `WindowModel` entry by hand or broadcast `Unmapped`/`Closed`
+  anywhere else; the `WindowModel::remove` return is the exactly-once guard.
+- The close ghost's removal is committed by the **motion** (`step_window_motions`),
+  not by the client destroy; `toplevel_destroyed`/`destroy_x11_window` must
+  keep the `is_closing` early-return or a real client will double-remove.
+- A closing window is a ghost (`is_ghost()` is `Minimize | Close`); render from
+  `WindowModel::active_motions`, never from `Space`; guard dead windows.
+- `close_window` sends the client close request itself; do not also send it
+  from the shell/protocol.
+- Veto/interrupt/retarget and the idle trace are T-02.4b; do not register a
+  second motion driver.
+
 ## Follow-ups
 
 - Add the QML import-dir define (`DF_QML_IMPORT_DIR`) to the first-party apps'
@@ -813,6 +880,8 @@ Gotchas for later tasks:
   `ShellController::launchDockAppWithFiles` to `ShellProtocol::setLaunchOrigin`
   (needs the T-23 `desktopId`→`app_id` resolver). Until then real launches use
   the centered fallback.
-- T-02.4: reuse `WindowMotion`/`MotionFrame` for the close ghost (add a
-  `Close` kind and hold the surface until completion); do not add a parallel
-  effect path. T-04 composes scale/clip/blur onto the same frame.
+- T-02.4b: add close interruption/retarget and the idle trace. The close ghost
+  machinery (single `remove_window` path, `Closed` event) is in place; a client
+  veto of `xdg_toplevel.close` is not modelled yet — T-02.4a commits removal
+  when the transition settles. T-04 composes scale/clip/blur onto the same
+  `MotionFrame`.
