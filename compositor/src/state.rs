@@ -88,6 +88,7 @@ use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant};
 
 use crate::animation::{Animation, AnimationClock, Tween, TweenAnimation};
+use crate::app_switcher::{AppSwitcher, SwitchStep, SwitcherApp};
 use crate::identity::AppResolver;
 use crate::input::constraint::{constraint_geometry, PointerConstraintGrab};
 use crate::input::dispatch::InputDispatch;
@@ -370,6 +371,9 @@ pub struct DfState {
     /// corners, wrapped in the one overview/workspace-transition state
     /// machine (T-11).
     pub overview: OverviewMachine,
+    /// The Cmd-Tab app switcher (T-06.1): the compositor owns the chord and
+    /// the recency selection; the shell only renders the protocol projection.
+    pub app_switcher: AppSwitcher,
     /// The in-flight Mission Control pointer drag of a live representation
     /// (T-05.3), if any. The press begins it, motion updates it, and the
     /// release either moves the window to the Space card under the pointer or
@@ -549,6 +553,7 @@ impl DfState {
             shortcuts,
             gestures,
             overview,
+            app_switcher: AppSwitcher::new(),
             grid_drag: None,
             hot_corners,
             input_settings,
@@ -2423,6 +2428,89 @@ impl DfState {
             self.focus_dock();
         }
         self.needs_redraw = true;
+    }
+
+    // --- app switcher (T-06.1) ---------------------------------------------
+
+    /// The app-switcher entries: one per app in [`WindowModel::recency`]
+    /// order, each carrying the app's most recent window. This is the one
+    /// recency projection; the shell never re-derives it.
+    fn app_switcher_entries(&self) -> Vec<SwitcherApp> {
+        let mut entries: Vec<SwitcherApp> = Vec::new();
+        for id in self.windows.recency() {
+            let Some(window) = self.window_by_id(*id) else {
+                continue;
+            };
+            let app = self
+                .windows
+                .app_id(&window)
+                .map(str::to_string)
+                .unwrap_or_else(|| "<unknown>".to_string());
+            if !entries.iter().any(|entry| entry.app_id == app) {
+                entries.push(SwitcherApp::new(app, *id));
+            }
+        }
+        entries
+    }
+
+    /// The focused app's id — the app the switcher's first selection steps
+    /// away from.
+    fn focused_app_id(&self) -> Option<String> {
+        self.active_window
+            .as_ref()
+            .and_then(|window| self.windows.app_id(window).map(str::to_string))
+    }
+
+    /// Open or cycle the app switcher from a compositor key trigger
+    /// (Cmd+Tab, Cmd+Shift+Tab, the arrow keys).
+    ///
+    /// The chord is owned by the compositor's input path, never a client
+    /// ([02-compositor.md]): the shortcut engine resolves Cmd+Tab and this
+    /// method applies the state. `source` distinguishes the keyboard path from
+    /// the shell's private-protocol request.
+    pub fn app_switcher_key(&mut self, step: SwitchStep, source: TriggerKind, serial: u32) {
+        self.input_dispatch
+            .action(InputAction::AppSwitcher, source, serial);
+        let entries = self.app_switcher_entries();
+        let focused = self.focused_app_id();
+        if self.app_switcher.is_active() {
+            self.app_switcher.step(step);
+        } else {
+            self.app_switcher.open(entries, focused.as_deref(), step);
+        }
+        self.broadcast_app_switcher();
+        self.needs_redraw = true;
+    }
+
+    /// The switcher's Command modifier state changed.
+    ///
+    /// The switcher commits when Command is released, exactly once:
+    /// [`AppSwitcher::commit`] clears the active state before the activation,
+    /// so a duplicate release cannot focus twice.
+    pub fn app_switcher_modifier(&mut self, command_held: bool) {
+        if !command_held && self.app_switcher.is_active() {
+            self.app_switcher_commit();
+        }
+    }
+
+    /// Commit the app switcher: activate the selected app's most recent window
+    /// through the one [`Self::activate_window_id`] path (cross-Space,
+    /// restore-if-minimized, focus), then broadcast the closed projection.
+    pub fn app_switcher_commit(&mut self) {
+        let Some(entry) = self.app_switcher.commit() else {
+            return;
+        };
+        self.activate_window_id(entry.window);
+        self.broadcast_app_switcher();
+        self.needs_redraw = true;
+    }
+
+    /// Cancel the app switcher with no focus change (Escape).
+    pub fn app_switcher_cancel(&mut self) {
+        if self.app_switcher.cancel() {
+            self.broadcast_app_switcher();
+            self.needs_redraw = true;
+        }
     }
 
     /// Apply a committed overview transition to the compositor.

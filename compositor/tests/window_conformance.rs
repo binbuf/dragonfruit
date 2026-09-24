@@ -4780,3 +4780,243 @@ fn desktop_reveal_translates_live_surfaces_and_respects_reduced_motion() {
         "teardown leak: synthetic-input socket survived"
     );
 }
+
+// --- app switcher (T-06.1) --------------------------------------------------
+
+/// One parsed `switcher app` line from `query switcher` (T-06.1): the recency
+/// entry's index, app id, and most-recent window id.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SwitcherEntryReport {
+    index: usize,
+    app_id: String,
+    window: u64,
+}
+
+/// The parsed `query switcher` reply (T-06.1).
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SwitcherReport {
+    active: bool,
+    app: Option<String>,
+    direction: i32,
+    selected: Option<usize>,
+    entries: Vec<SwitcherEntryReport>,
+    focus: i64,
+}
+
+/// Parse a `query switcher` report (T-06.1). The state line is
+/// `switcher active=.. app=.. direction=.. selected=.. count=.. focus=..`,
+/// followed by `switcher app <i> <app_id> <window>` entry lines.
+fn parse_switcher(report: &str) -> SwitcherReport {
+    let mut parsed = SwitcherReport {
+        active: false,
+        app: None,
+        direction: 0,
+        selected: None,
+        entries: Vec::new(),
+        focus: -1,
+    };
+    for line in report.lines() {
+        let mut parts = line.split_whitespace();
+        if parts.next() != Some("switcher") {
+            continue;
+        }
+        match parts.next() {
+            Some("app") => {
+                let Some(index) = parts.next().and_then(|value| value.parse::<usize>().ok()) else {
+                    continue;
+                };
+                let Some(app_id) = parts.next().map(str::to_string) else {
+                    continue;
+                };
+                let Some(window) = parts.next().and_then(|value| value.parse::<u64>().ok()) else {
+                    continue;
+                };
+                parsed.entries.push(SwitcherEntryReport {
+                    index,
+                    app_id,
+                    window,
+                });
+            }
+            Some(state_token) => {
+                let fields: std::collections::HashMap<&str, &str> = std::iter::once(state_token)
+                    .chain(parts)
+                    .filter_map(|value| value.split_once('='))
+                    .collect();
+                for (key, value) in fields {
+                    match key {
+                        "active" => parsed.active = value == "1",
+                        "app" if value != "-" => parsed.app = Some(value.to_string()),
+                        "direction" => parsed.direction = value.parse().unwrap_or(0),
+                        "selected" => {
+                            parsed.selected = value
+                                .parse::<i64>()
+                                .ok()
+                                .and_then(|index| (index >= 0).then_some(index as usize));
+                        }
+                        "focus" => parsed.focus = value.parse().unwrap_or(-1),
+                        _ => {}
+                    }
+                }
+            }
+            None => {}
+        }
+    }
+    parsed
+}
+
+/// Poll `query switcher` until `pred` holds (T-06.1).
+#[track_caller]
+fn wait_for_switcher(
+    input: &SyntheticInput,
+    timeout: Duration,
+    mut pred: impl FnMut(&SwitcherReport) -> bool,
+) -> SwitcherReport {
+    let deadline = Instant::now() + timeout;
+    loop {
+        let report = parse_switcher(&input.query("query switcher"));
+        if pred(&report) {
+            return report;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "app switcher never reached the expected state: {report:?}"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// T-06.1 acceptance: the compositor-owned Cmd-Tab state machine opens on the
+/// chord (skipping the focused app), cycles forward and backward, commits the
+/// selection on the modifier release through the one activation path, and
+/// cancels with Escape without changing focus. The chord is driven through the
+/// real input path (the shortcut engine), not a client request, and the
+/// recency order comes from `WindowModel`.
+#[test]
+fn app_switcher_opens_cycles_commits_once_and_escape_cancels() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path =
+        PathBuf::from(&runtime_dir).join(format!("dragonfruit-switcher-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-switcher",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    // Two apps; the second mapped (B) is the most recent and focused.
+    let mut mapped = Vec::new();
+    for app in ["org.dragonfruit.SwA", "org.dragonfruit.SwB"] {
+        let (surface, _xdg_surface, toplevel, file) =
+            map_toplevel_with_app_id(&mut state, &mut queue, app);
+        mapped.push((surface, toplevel, file));
+    }
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |_| parse_decorations(&input.query("query decorations")).len() == 2,
+    );
+
+    // At rest the switcher is closed and holds no recency entries.
+    let idle = parse_switcher(&input.query("query switcher"));
+    assert!(!idle.active, "the switcher starts closed: {idle:?}");
+    assert!(idle.entries.is_empty());
+
+    // Cmd+Tab opens it. The recency order is B (last mapped) then A; with no
+    // window focused yet the first selection is the most recent app, B.
+    input.send("key 125 down\nkey 15 down");
+    let opened = wait_for_switcher(&input, Duration::from_secs(5), |report| {
+        report.active && report.entries.len() == 2
+    });
+    assert_eq!(opened.direction, 1, "Cmd+Tab is the forward direction");
+    assert_eq!(opened.entries[0].app_id, "org.dragonfruit.SwB");
+    assert_eq!(opened.entries[1].app_id, "org.dragonfruit.SwA");
+    assert_eq!(opened.app.as_deref(), Some("org.dragonfruit.SwB"));
+    assert_eq!(opened.selected, Some(0));
+    let window_a = opened.entries[1].window;
+    input.send("key 15 up");
+
+    // Tab steps forward (0 -> 1) then wraps (1 -> 0).
+    input.send("key 15 down");
+    let forward = wait_for_switcher(&input, Duration::from_secs(5), |report| {
+        report.selected == Some(1)
+    });
+    assert_eq!(forward.app.as_deref(), Some("org.dragonfruit.SwA"));
+    input.send("key 15 up");
+    input.send("key 15 down");
+    wait_for_switcher(&input, Duration::from_secs(5), |report| {
+        report.selected == Some(0)
+    });
+    input.send("key 15 up");
+
+    // Shift+Tab reverses (backward from 0 to 1).
+    input.send("key 42 down\nkey 15 down");
+    let reversed = wait_for_switcher(&input, Duration::from_secs(5), |report| {
+        report.selected == Some(1)
+    });
+    assert_eq!(
+        reversed.direction, -1,
+        "Shift+Tab is the backward direction"
+    );
+    input.send("key 15 up\nkey 42 up");
+
+    // The arrow keys move the selection too (Up backward, Down forward).
+    input.send("key 103 down");
+    wait_for_switcher(&input, Duration::from_secs(5), |report| {
+        report.selected == Some(0)
+    });
+    input.send("key 103 up");
+    input.send("key 108 down");
+    wait_for_switcher(&input, Duration::from_secs(5), |report| {
+        report.selected == Some(1)
+    });
+    input.send("key 108 up");
+
+    // Releasing Command commits the selection exactly once: A focuses and the
+    // switcher closes. A stray second release must not activate again.
+    input.send("key 125 up");
+    let committed = wait_for_switcher(&input, Duration::from_secs(5), |report| !report.active);
+    assert_eq!(
+        committed.focus, window_a as i64,
+        "the release activated the selected app's most recent window"
+    );
+    input.send("key 125 up");
+    let after = parse_switcher(&input.query("query switcher"));
+    assert!(
+        !after.active,
+        "a second release must not reopen or recommit"
+    );
+    assert_eq!(after.focus, window_a as i64, "focus did not change again");
+
+    // Escape cancels with no focus change. Focus is now A, so A is the most
+    // recent entry and the first selection is B again.
+    input.send("key 125 down\nkey 15 down");
+    let reopened = wait_for_switcher(&input, Duration::from_secs(5), |report| {
+        report.active && report.entries.len() == 2
+    });
+    assert_eq!(
+        reopened.entries[0].app_id, "org.dragonfruit.SwA",
+        "the focus order followed the commit"
+    );
+    assert_eq!(reopened.app.as_deref(), Some("org.dragonfruit.SwB"));
+    assert_eq!(reopened.focus, window_a as i64);
+    input.send("key 15 up");
+    input.send("key 1 down\nkey 1 up");
+    let cancelled = wait_for_switcher(&input, Duration::from_secs(5), |report| !report.active);
+    assert_eq!(
+        cancelled.focus, window_a as i64,
+        "Escape must not change focus"
+    );
+    input.send("key 125 up");
+
+    for (surface, toplevel, _file) in mapped {
+        surface.destroy();
+        toplevel.destroy();
+    }
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}

@@ -13,6 +13,7 @@
 use std::process::ExitCode;
 
 mod animation;
+mod app_switcher;
 mod backend;
 mod design_tokens;
 mod identity;

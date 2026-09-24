@@ -26,6 +26,7 @@ use wayland_server::backend::{ClientId, GlobalId};
 use wayland_server::protocol::wl_surface::WlSurface;
 use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource};
 
+use crate::app_switcher::SwitchStep;
 use crate::input::action::{HotCorner, TriggerKind};
 use crate::input::gestures::ProgressPhase;
 use crate::input::ShellInputEvent;
@@ -88,14 +89,6 @@ pub struct ChromeSurface {
     pub keyboard: KeyboardInteraction,
 }
 
-/// App-switcher overlay state (T-12 consumes; T-07 owns the state machine).
-#[derive(Debug, Clone, Default)]
-pub struct AppSwitcherState {
-    pub active: bool,
-    pub app_id: Option<String>,
-    pub direction: i32,
-}
-
 /// The compositor's private-shell-protocol state.
 #[derive(Debug)]
 pub struct ShellProtocolState {
@@ -107,7 +100,6 @@ pub struct ShellProtocolState {
     layers: Vec<LayerEntry>,
     /// Reserved zones aggregated from chrome surfaces (menu bar, Dock).
     pub reserved: crate::window::ReservedZones,
-    pub app_switcher: AppSwitcherState,
     /// The output a chrome surface last took keyboard focus on. Transient
     /// `overlay` chrome with no explicit output (popovers, menus, OSD) is
     /// shown only on this output, so it never floats across displays (T-10
@@ -138,7 +130,6 @@ impl ShellProtocolState {
             sessions: HashMap::new(),
             layers: Vec::new(),
             reserved: crate::window::ReservedZones::default(),
-            app_switcher: AppSwitcherState::default(),
             chrome_focus_output: None,
             attention: Vec::new(),
         }
@@ -1250,38 +1241,21 @@ impl DfState {
         }
     }
 
-    /// Broadcast app-switcher state.
+    /// Broadcast app-switcher state from the one compositor-owned machine
+    /// (T-06.1). The shell renders this projection; it never owns the state.
     pub fn broadcast_app_switcher(&mut self) {
         let sessions = self.manager_sessions();
-        let state = self.shell.app_switcher.clone();
+        let active = self.app_switcher.is_active();
+        let app_id = self.app_switcher.selected_app().map(str::to_string);
+        let direction = self.app_switcher.direction();
         for (_, manager) in &sessions {
             manager.app_switcher(
-                state.active as u32,
-                protocol_string_opt(state.app_id.clone()),
-                state.direction,
+                active as u32,
+                protocol_string_opt(app_id.clone()),
+                direction,
             );
             manager.done();
         }
-    }
-
-    /// Windows in app-switcher (recency) order, grouped by app.
-    fn apps_by_recency(&self) -> Vec<(String, Vec<WindowId>)> {
-        let mut apps: Vec<(String, Vec<WindowId>)> = Vec::new();
-        for id in self.windows.recency() {
-            let Some(window) = self.window_by_id(*id) else {
-                continue;
-            };
-            let app = self
-                .windows
-                .app_id(&window)
-                .map(str::to_string)
-                .unwrap_or_else(|| "<unknown>".to_string());
-            match apps.iter_mut().find(|(existing, _)| *existing == app) {
-                Some((_, windows)) => windows.push(*id),
-                None => apps.push((app, vec![*id])),
-            }
-        }
-        apps
     }
 }
 
@@ -1735,42 +1709,17 @@ impl DfState {
             .copied()
     }
 
+    /// The shell's `cycle_app_switcher` request drives the *same*
+    /// compositor-owned machine as the Cmd+Tab chord, recorded with the shell
+    /// trigger. Cycling never focuses; only a commit does (T-06.1).
     fn cycle_app_switcher(&mut self, direction: i32) {
-        let apps = self.apps_by_recency();
-        if apps.is_empty() {
-            self.shell.app_switcher = AppSwitcherState::default();
-            self.broadcast_app_switcher();
-            return;
-        }
-        let current = self
-            .shell
-            .app_switcher
-            .app_id
-            .as_deref()
-            .and_then(|app| apps.iter().position(|(candidate, _)| candidate == app));
-        let next = match current {
-            Some(index) => {
-                let len = apps.len() as i32;
-                (((index as i32 + direction) % len + len) % len) as usize
-            }
-            None => {
-                if direction < 0 {
-                    apps.len() - 1
-                } else {
-                    0
-                }
-            }
+        let step = if direction < 0 {
+            SwitchStep::Backward
+        } else {
+            SwitchStep::Forward
         };
-        let (app_id, windows) = &apps[next];
-        self.shell.app_switcher = AppSwitcherState {
-            active: true,
-            app_id: Some(app_id.clone()),
-            direction,
-        };
-        if let Some(first) = windows.first().copied() {
-            self.activate_window_id(first);
-        }
-        self.broadcast_app_switcher();
+        let serial = SERIAL_COUNTER.next_serial().into();
+        self.app_switcher_key(step, TriggerKind::Shell, serial);
     }
 }
 
