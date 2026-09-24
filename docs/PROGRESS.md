@@ -18,6 +18,7 @@
 - **T10 — T-02.2 Minimize and restore motion**: **State: done.** Minimize shrinks a window into its Dock entry's tile and; **`compositor/src/window/motion.rs`** (renamed from `appear.rs`) —
 - **T11 — T-02.3 Zoom and fullscreen transitions**: **State: done.** Zoom/unzoom and fullscreen/unfullscreen animate between the; **`compositor/src/window/motion.rs`** — `WindowMotionKind::{Zoom,
 - **T12 — T-02.4a Close ghost**: **State: done.** A closing window shrinks/fades out into its app's Dock tile; **`compositor/src/window/motion.rs`** — `WindowMotionKind::Close` (reverse
+- **T13 — T-02.4b Close interruptibility and idle trace**: **State: done.** A live close ghost reverses mid-flight without waiting: a; **`compositor/src/state.rs`** — `close_window` clears keyboard focus when it
 - **Follow-ups**: Add the QML import-dir define (`DF_QML_IMPORT_DIR`) to the first-party apps'; T-16: publish `_NET_FRAME_EXTENTS` for Tier-2 X11 windows so clients can
 <!-- symphony:digest:end -->
 
@@ -850,6 +851,72 @@ Gotchas for later tasks:
 - Veto/interrupt/retarget and the idle trace are T-02.4b; do not register a
   second motion driver.
 
+## T13 — T-02.4b Close interruptibility and idle trace
+
+**State: done.** A live close ghost reverses mid-flight without waiting: a
+restore/`interrupt-close` replaces the `Close` with a `Restore` from the
+ghost's *current* interpolated rect, re-enters the window in the layout and
+input path at once, and returns focus; the pending removal is dropped with
+the replaced motion, so no `Closed` is broadcast. A close ghost now releases
+keyboard focus the moment it becomes a ghost (no phantom focus target). After
+the reverse→close loop settles, the render/clock counters are flat.
+
+What landed:
+
+- **`compositor/src/state.rs`** — `close_window` clears keyboard focus when it
+  starts the ghost and **mirrors** the unset in the model (`active_window =
+  None`, `Unfocused` broadcast, shortcut scope cleared); Smithay does not call
+  `focus_changed` when focus is unset, so the compositor must. New
+  `interrupt_close(window)` / `interrupt_close_by_id(id)`: a live close is
+  replaced by a `Restore` from the current frame (via
+  `begin_window_motion_from`), the window is re-mapped when its state is
+  visible and its Space active, and it is re-focused. `restore_window`
+  delegates a closing target to `interrupt_close`.
+- **`compositor/src/window/motion.rs`** — `WindowMotionKind::is_close()`; 1 new
+  unit test (13 total) proving a close reversed mid-flight restores from the
+  partial rect.
+- **`compositor/src/input/synthetic.rs`** — `interrupt-close <id>` (alias
+  `reopen <id>`); parse test.
+- **`compositor/tests/window_conformance.rs`** — `CompositorProcess` now pipes
+  stdout and parses the SIGUSR1 render stats. New
+  `close_reverses_mid_flight_and_the_idle_trace_stays_flat` (22/22): asserts
+  the close releases focus, the reverse starts strictly between the Dock tile
+  and the geometry (no jump), no `closed` while the ghost is live, the reverse
+  resolves back to the window, a later real close broadcasts `closed` exactly
+  once, and `frames_rendered`/`animation_frames_stepped` are flat after the
+  loop.
+- **`scripts/capture-motion.sh`** (new) + `capture-demo-driver.py` (`--prefix`,
+  `--reduced`) — runs the nested lifecycle walkthrough twice (normal and
+  `accessibility.reduceMotion`) and writes `docs/captures/t02-lifecycle-motion*`
+  stills plus `t02-lifecycle-motion.mp4` and
+  `t02-lifecycle-motion-reduced.mp4`.
+- **Docs** — ADR `0008-close-interruption-and-ghost-focus.md`;
+  `docs/design/02-compositor.md` "Window lifecycle motion".
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `cargo test -p dragonfruit-compositor` — 177 bin unit + all suites green
+  (window_conformance 22/22).
+- `make clippy`; `make fmt-check` — clean.
+- `make e2e` — green (headless demo clean teardown).
+- `SETTLE=8 bash scripts/capture-motion.sh` — needs a host Wayland session,
+  spectacle, ffmpeg and Pillow (not CI).
+
+Gotchas for later tasks:
+
+- A close ghost **drops focus by hand**; do not rely on `focus_changed(None)`.
+  `after_workspace_change` still has this latent gap (it calls
+  `set_focus(None)` but never mirrors `active_window`/`Unfocused`).
+- The reverse goes through `begin_window_motion_from`, which reads the live
+  close frame; keep using it so interruptions never jump.
+- Never remove the replaced close motion's window: `step_window_motions`
+  commits removal only while the motion kind is still `Close`.
+- A well-behaved Wayland client destroys itself on `send_close`, so a live
+  close cannot be visually interrupted in the demo; the reversal is drivable
+  through the `interrupt-close` hook only when the client stays mapped.
+- The T-02 capture is assembled from **settled stills** (no scriptable Wayland
+  screen recorder in this environment); live motion is T-03.1a's frame trace.
+
 ## Follow-ups
 
 - Add the QML import-dir define (`DF_QML_IMPORT_DIR`) to the first-party apps'
@@ -880,8 +947,9 @@ Gotchas for later tasks:
   `ShellController::launchDockAppWithFiles` to `ShellProtocol::setLaunchOrigin`
   (needs the T-23 `desktopId`→`app_id` resolver). Until then real launches use
   the centered fallback.
-- T-02.4b: add close interruption/retarget and the idle trace. The close ghost
-  machinery (single `remove_window` path, `Closed` event) is in place; a client
-  veto of `xdg_toplevel.close` is not modelled yet — T-02.4a commits removal
-  when the transition settles. T-04 composes scale/clip/blur onto the same
-  `MotionFrame`.
+- T-02.4b (done in T13): close interruption/reversal and the idle trace
+  landed. Remaining follow-ups: (a) the T-07 shell/Dock "activate a closing
+  window" path should call `DfState::interrupt_close` once it exists; (b)
+  `after_workspace_change` should mirror `active_window`/`Unfocused` when it
+  drops focus (same Smithay unset gap as close); (c) T-04 composes
+  scale/clip/blur onto the same `MotionFrame`.

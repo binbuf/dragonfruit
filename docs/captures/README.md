@@ -23,6 +23,11 @@ nested session over the synthetic-input harness: `t01-loop-v0.png` (the whole
 loop), `-wayland`, `-x11`, `-titlebar`, `-dock`, `-dock-minimized`, `-menu`,
 `-zoomed`, `-minimized`, `-restored`, `-closed`, plus `t01-loop-v0.mp4`.
 
+T-02's lifecycle-motion stills are produced by `scripts/capture-motion.sh`,
+which runs the same nested walkthrough twice (once normally, once with
+`accessibility.reduceMotion`) and writes `t02-lifecycle-motion*.png` plus
+`t02-lifecycle-motion.mp4` and `t02-lifecycle-motion-reduced.mp4`.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture
