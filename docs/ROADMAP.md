@@ -110,7 +110,7 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 
 - [x] T08 — T-02.1a Animation clock and frame discipline → [tasks/008-t-02.1a-animation-clock.md](tasks/008-t-02.1a-animation-clock.md)
 - [x] T09 — T-02.1b Window appear transition → [tasks/009-t-02.1b-window-appear.md](tasks/009-t-02.1b-window-appear.md) ⟵ accepted
-- [ ] T10 — T-02.2 Minimize and restore motion → [tasks/010-t-02.2-minimize-and-restore-motion.md](tasks/010-t-02.2-minimize-and-restore-motion.md)
+- [~] T10 — T-02.2 Minimize and restore motion → [tasks/010-t-02.2-minimize-and-restore-motion.md](tasks/010-t-02.2-minimize-and-restore-motion.md) ⟵ running
 - [ ] T11 — T-02.3 Zoom and fullscreen transitions → [tasks/011-t-02.3-zoom-and-fullscreen-transitions.md](tasks/011-t-02.3-zoom-and-fullscreen-transitions.md)
 - [ ] T12 — T-02.4a Close ghost → [tasks/012-t-02.4a-close-ghost.md](tasks/012-t-02.4a-close-ghost.md)
 - [ ] T13 — T-02.4b Close interruptibility and idle trace → [tasks/013-t-02.4b-close-interruptibility-and-idle-trace.md](tasks/013-t-02.4b-close-interruptibility-and-idle-trace.md)
