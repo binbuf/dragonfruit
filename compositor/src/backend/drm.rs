@@ -1033,6 +1033,11 @@ fn render_surface(
                 reschedule_probe(state, node, crtc);
             } else {
                 state.stats.frames_rendered += 1;
+                // The DrmCompositor queues the frame callbacks; count the live
+                // windows as the frame-callback batches it will deliver, so the
+                // idle/ wakeup budget (T-03.1a) is measurable on DRM too.
+                state.stats.client_wakeups +=
+                    crate::render::count_output_windows(state, &surface.output);
                 // Primary scanout bookkeeping for presentation feedback.
                 update_primary_scanout(state, &render_frame_result.states);
                 let feedback = render::take_presentation_feedback(

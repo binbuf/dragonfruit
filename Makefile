@@ -11,6 +11,7 @@ CTEST ?= ctest
 BUILD_DIR ?= build
 SOAK_CYCLES ?= 100
 DEMO_ARGS ?=
+IDLE_TRACE_SECS ?= 60
 DF_TOOLCHAIN ?= $(HOME)/.local/df-toolchain/usr
 DF_DEVROOT ?= $(HOME)/.local/df-devroot/lib64
 
@@ -34,13 +35,14 @@ endif
 .DEFAULT_GOAL := help
 .PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test \
         visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev demo soak e2e \
-        check-desktop-names check-no-capture-grab check-design-tokens clean
+        idle-trace check-desktop-names check-no-capture-grab check-design-tokens clean
 
 help:
 	@echo "Dragonfruit build targets:"
 	@echo "  make build    — build everything (Rust workspace + Qt/CMake)"
 	@echo "  make test     — run all tests (cargo + ctest + gallery visual regression)"
 	@echo "  make e2e      — T-01…T-07 Foundation vertical-slice + conformance suites"
+	@echo "  make idle-trace — T-03.1a 60 s idle/animation frame budget trace"
 	@echo "  make demo     — T-01 loop demo (nested; headless/scripted in CI)"
 	@echo "  make lint     — fmt --check, clippy, qmllint, token freshness, desktop-name gate"
 	@echo "  make check    — lint + test + teardown soak gate"
@@ -87,6 +89,14 @@ e2e: build
 	    --test animation_clock \
 	    --test protocol_surface
 	$(MAKE) demo DEMO_ARGS=--headless
+
+# T-03.1a: the idle/animation frame budget trace. `make e2e` runs the same
+# test at the short in-suite window; this target sets the acceptance window
+# (default 60 s, override with IDLE_TRACE_SECS) and streams the raw counters
+# (`scripts/idle-trace.sh` wraps it and records the log).
+idle-trace: cargo-build
+	DF_IDLE_TRACE_SECS=$(IDLE_TRACE_SECS) $(CARGO) test -p dragonfruit-compositor \
+	    --test idle_trace -- --nocapture
 
 qml-test:
 	@[ -f $(BUILD_DIR)/build.ninja ] || $(CMAKE) -S . -B $(BUILD_DIR) -G Ninja

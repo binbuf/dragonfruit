@@ -319,7 +319,8 @@ pub fn take_presentation_feedback(
 /// presents nothing — it exists so a CI client (and the T-11 FR-2 "a playing
 /// video keeps playing" conformance test) advances through the same frame
 /// path.
-pub fn post_repaint_headless(state: &DfState, output: &Output, time: Duration) {
+pub fn post_repaint_headless(state: &mut DfState, output: &Output, time: Duration) {
+    let mut wakeups = 0u64;
     for window in state.space.elements() {
         if state.space.outputs_for_element(window).contains(output) {
             // Throttle zero and an explicit primary output: the single headless
@@ -327,8 +328,23 @@ pub fn post_repaint_headless(state: &DfState, output: &Output, time: Duration) {
             window.send_frame(output, time, Some(Duration::ZERO), |_, _| {
                 Some(output.clone())
             });
+            wakeups += 1;
         }
     }
+    // One frame-callback batch per live window: the idle budget's direct
+    // "client wakeups" counter (T-03.1a).
+    state.stats.client_wakeups += wakeups;
+}
+
+/// Count the live windows composited on `output` — the frames a real backend
+/// would wake with a frame-callback batch. Shared with the DRM backend, whose
+/// frame callbacks are queued by Smithay's `DrmCompositor` rather than here.
+pub fn count_output_windows(state: &DfState, output: &Output) -> u64 {
+    state
+        .space
+        .elements()
+        .filter(|window| state.space.outputs_for_element(window).contains(output))
+        .count() as u64
 }
 
 /// After a successful frame: send frame callbacks (throttled) and update
@@ -341,6 +357,7 @@ pub fn post_repaint(
 ) {
     let throttle = Some(Duration::from_secs(1));
 
+    let mut wakeups = 0u64;
     for window in state.space.elements() {
         window.with_surfaces(|surface, surface_states| {
             let primary_scanout_output = surface_primary_scanout_output(surface, surface_states);
@@ -353,6 +370,10 @@ pub fn post_repaint(
 
         if state.space.outputs_for_element(window).contains(output) {
             window.send_frame(output, time, throttle, surface_primary_scanout_output);
+            wakeups += 1;
         }
     }
+    // One frame-callback batch per live window: the idle budget's direct
+    // "client wakeups" counter (T-03.1a).
+    state.stats.client_wakeups += wakeups;
 }

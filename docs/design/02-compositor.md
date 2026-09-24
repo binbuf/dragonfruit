@@ -104,6 +104,20 @@ transition reads it when it builds its tween and takes one step through the
 same commit path, never a second "instant" path. See
 [ADR 0003](adr/0003-shared-animation-clock.md).
 
+#### Idle and animation frame trace (T-03.1a)
+
+The render-path counters emitted on `SIGUSR1`/clean exit are the trace
+contract (`compositor/src/state.rs::dump_stats`): `frames_rendered`,
+`frames_skipped_no_damage`, `direct_scanouts`, `animation_frames_stepped`
+and `client_wakeups`. `client_wakeups` counts the frame-callback batches
+handed to mapped windows, so the idle budget is measured directly instead of
+inferred from the render count. `idle_trace.rs` asserts every budget counter
+flat across a configurable window (`DF_IDLE_TRACE_SECS`) and asserts
+`frames_rendered` advances by exactly `animation_frames_stepped` while the
+clock's calibration animation runs; `scripts/idle-trace.sh` / `make idle-trace`
+records the 60 s acceptance line. See
+[ADR 0009](adr/0009-idle-trace-instrumentation.md).
+
 #### Window lifecycle motion (T-02.1b appear; T-02.2 minimize/restore; T-02.3 zoom/fullscreen; T-02.4a close; T-02.4b interrupt)
 
 A window scales and fades between an *origin* rectangle and its final
