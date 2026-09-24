@@ -32,6 +32,7 @@
 - **T24 — T-05.2 Hit-testing and selection on live representations**: **State: done.** A left click on a live Mission Control representation; **`compositor/src/overview/grid.rs`** — `GridLayout::window_at(point,
 - **T25 — T-05.3 Drag a live representation between Spaces**: **State: done.** Pressing on a live Mission Control representation and dragging; **`compositor/src/overview/grid.rs`** — `GridDrag { window, start, current }`
 - **T26 — T-05.4 Image wallpaper and per-Space slide**: **State: done.** A Space's wallpaper can be an image (`source` + `fit`) decoded; **`compositor/src/wallpaper.rs`** (new) — `sample_wallpaper` (pure
+- **T27 — T-05.5 Desktop Reveal**: **State: done.** Ctrl+Down routes `DesktopReveal` through the one overview; **`compositor/src/overview/reveal.rs`** (new) — `escape_rect` (the off-screen
 - **Follow-ups**: T-05.1a (done in T22): the live-surface grid landed as a render-time; T-04.4b (done in T21): the live scheme is on `DfState` (ADR 0016) and
 <!-- symphony:digest:end -->
 
@@ -1757,6 +1758,74 @@ Gotchas for later tasks:
   (T-08/T-16).
 - Nested capture of the live slide is T-05.6 (this session verified headlessly
   via `query wallpaper`).
+
+## T27 — T-05.5 Desktop Reveal
+
+**State: done.** Ctrl+Down routes `DesktopReveal` through the one overview
+state machine and the one reusable scene transform. The live window surfaces
+slide out of their nearest horizontal edge (exposing the compositor-drawn
+wallpaper), a second trigger restores, and the reduced-motion variant fades
+the surfaces in place instead of translating. Headless conformance covers the
+full open/restore/reduced-motion path; the nested capture stays with T-05.6.
+
+What landed:
+
+- **`compositor/src/overview/reveal.rs`** (new) — `escape_rect` (the off-screen
+  target past the nearest edge) and `reveal_frame(source, area, progress,
+  reduced_motion)`. Reduced motion keeps the rect and fades `1 → 0`; full
+  motion translates and stays opaque. 4 unit tests.
+- **`compositor/src/overview/mod.rs`** — `OverviewMachine::desktop_reveal_progress`
+  (mirrors `overview_grid_progress`: `1 - progress` while closing, `1.0`
+  settled, `None` hidden). `input_owner` now keeps pointer hit-testing with the
+  overview while `desktop_revealed`, so committed geometry is never hit-tested
+  against the transformed scene. 2 new unit tests.
+- **`compositor/src/state.rs`** — `DfState::desktop_reveal_progress` /
+  `desktop_reveal_frame`; `window_render_frame` becomes
+  `overview_grid_frame → desktop_reveal_frame → window_motion_frame`, so the
+  surface, SSD titlebar, and shadow share the one mapping.
+- **`compositor/src/input/synthetic.rs`** — new `query reveal`
+  (`reveal none` or `reveal progress=<t> reduced=<0|1>` + one `reveal window
+  <id> <sx> <sy> <sw> <sh> <tx> <ty> <tw> <th> <alpha>` line per live surface)
+  + parser test.
+- **`compositor/tests/window_conformance.rs`** — new
+  `desktop_reveal_translates_live_surfaces_and_respects_reduced_motion`
+  (30/30 conformance green): Ctrl+Down (`key 29`/`key 108`) reveals both live
+  surfaces off-screen and opaque, they stay mapped, the wallpaper is still
+  drawn, a second Ctrl+Down restores, and `set reduced-motion on` fades in
+  place (`target == source`, `alpha == 0`).
+- **Docs** — `02-compositor.md` "Desktop Reveal (T-05.5)"; `04-shell.md`
+  desktop-background paragraph. No ADR: this reuses the T-04/T-05 pipeline and
+  adds no new schema/library/protocol.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `cargo test -p dragonfruit-compositor` — **252** bin unit tests + every
+  integration suite green (`window_conformance` 30/30, `shell_protocol` 32/32).
+  Direct cargo needs `PKG_CONFIG_PATH=~/.local/df-devroot/lib64/pkgconfig` and
+  `RUSTFLAGS=-L ~/.local/df-devroot/lib64`; the conformance tests need
+  `XDG_RUNTIME_DIR`.
+- `cargo clippy -p dragonfruit-compositor --all-targets -- -D warnings` clean;
+  `cargo fmt -p dragonfruit-compositor -- --check` clean.
+
+Gotchas for later tasks:
+
+- **One reveal seam**: `overview::reveal::reveal_frame` is pure geometry;
+  `DfState::desktop_reveal_frame` is the only place the scene resolves it, and
+  `window_render_frame` is the only consumer. Do not add a second transform or
+  a second progress function.
+- The reveal uses the **render-time** transform (like the grid), not the
+  `apply_overview_scene` `space.map_element` mutation the workspace slide uses.
+  Do not route reveal through `apply_overview_scene`.
+- `desktop_reveal_progress` reports `None` at rest and `Some(1.0)` settled;
+  `input_owner` stays `Overview` while revealed, so a left press currently does
+  nothing (no click-to-restore). Escape/click/timeout restore is *not*
+  implemented; only a second Ctrl+Down (toggle) restores. Legacy T-14 listed
+  those; a later task can widen `overview_end_drag`/press handling.
+- `query reveal` iterates `windows.windows()` and skips a window whose
+  `desktop_reveal_frame` is `None`; a window on an inactive Space is not drawn
+  by the reveal.
+- Nested capture of the live reveal + gesture frame trace is **T-05.6** (this
+  session verified headlessly via `query reveal`).
 
 ## Follow-ups
 

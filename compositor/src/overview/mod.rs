@@ -25,6 +25,7 @@
 #![allow(dead_code)] // Forward-looking API consumed by T-12/T-14/T-16.
 
 pub mod grid;
+pub mod reveal;
 
 use crate::input::action::{InputAction, TriggerKind};
 use crate::input::gestures::{ProgressConfig, ProgressEvent, ProgressPipeline};
@@ -234,6 +235,29 @@ impl OverviewMachine {
         self.desktop_revealed
     }
 
+    /// The Desktop Reveal progress: `None` when the desktop is not revealed,
+    /// otherwise `Some(t)` with `t` in `0.0..=1.0` (`0` = the normal scene,
+    /// `1` = fully revealed) (T-05.5).
+    ///
+    /// Mirrors [`crate::state::DfState::overview_grid_progress`]: during an
+    /// opening transition `t` is the shared pipeline progress, during a closing
+    /// transition it is `1 - progress`, and once settled it is `1.0`. Reduced
+    /// motion single-steps the pipeline, so the settled value is immediate.
+    pub fn desktop_reveal_progress(&self) -> Option<f64> {
+        match self.kind {
+            Some(OverviewKind::DesktopReveal) if self.is_active() => {
+                let progress = self.progress();
+                Some(if self.desktop_revealed {
+                    1.0 - progress
+                } else {
+                    progress
+                })
+            }
+            _ if self.desktop_revealed => Some(1.0),
+            _ => None,
+        }
+    }
+
     /// The window selected in the overview, if any (FR-5).
     pub fn selection(&self) -> Option<WindowId> {
         self.selection
@@ -249,7 +273,10 @@ impl OverviewMachine {
         let in_overview_transition = self
             .kind
             .is_some_and(|kind| kind.is_overview() && self.pipeline.is_active());
-        if self.overview_active || in_overview_transition {
+        // A settled Desktop Reveal is a transformed scene too: the live
+        // surfaces are drawn off-screen, so committed geometry must not be
+        // hit-tested until the reveal is restored. Own input for its duration.
+        if self.overview_active || self.desktop_revealed || in_overview_transition {
             InputOwner::Overview
         } else {
             InputOwner::Normal
@@ -817,5 +844,63 @@ mod tests {
             assert_eq!(outcome.events.len(), 3, "{kind:?}: Begin/Update/End only");
             assert!(!machine.is_discrete(), "{kind:?} must not arm the clock");
         }
+    }
+
+    /// T-05.5: Desktop Reveal shares the one pipeline, commits through the one
+    /// rule, and reports a progress that interpolates on the clock and settles
+    /// at 1.0.
+    #[test]
+    fn desktop_reveal_interpolates_then_settles() {
+        let mut machine = machine();
+        assert_eq!(machine.desktop_reveal_progress(), None, "hidden at rest");
+
+        // Opening: the progress is the shared pipeline progress.
+        let started = machine.drive(OverviewKind::DesktopReveal, TriggerKind::Keyboard, 0);
+        assert_eq!(started.commit, None, "it animates on the clock");
+        machine.advance_discrete(machine.config().discrete_duration_ms / 2);
+        let mid = machine.desktop_reveal_progress().unwrap();
+        assert!(mid > 0.0 && mid < 1.0, "mid-flight progress: {mid}");
+        let mut commit = started.commit;
+        while machine.is_discrete() {
+            let next = machine.advance_discrete(machine.config().discrete_duration_ms);
+            if next.commit.is_some() {
+                commit = next.commit;
+            }
+        }
+        assert_eq!(commit, Some(TransitionCommit::SetDesktopReveal(true)));
+        machine.apply_commit(commit.unwrap());
+        assert_eq!(machine.desktop_reveal_progress(), Some(1.0));
+
+        // Closing: the progress reverses to 0 and the state clears.
+        let closing = machine.drive(OverviewKind::DesktopReveal, TriggerKind::Keyboard, 1000);
+        machine.advance_discrete(1000 + machine.config().discrete_duration_ms / 2);
+        let mid = machine.desktop_reveal_progress().unwrap();
+        assert!(mid > 0.0 && mid < 1.0, "closing progress reverses: {mid}");
+        let mut commit = closing.commit;
+        while machine.is_discrete() {
+            let next = machine.advance_discrete(2000);
+            if next.commit.is_some() {
+                commit = next.commit;
+            }
+        }
+        assert_eq!(commit, Some(TransitionCommit::SetDesktopReveal(false)));
+        machine.apply_commit(commit.unwrap());
+        assert_eq!(machine.desktop_reveal_progress(), None);
+    }
+
+    /// T-05.5: reduced motion still commits Desktop Reveal through the same
+    /// rule and reports the settled progress immediately.
+    #[test]
+    fn desktop_reveal_reduced_motion_settles_in_one_step() {
+        let mut machine = machine();
+        machine.set_reduced_motion(true);
+        let outcome = machine.drive(OverviewKind::DesktopReveal, TriggerKind::Keyboard, 0);
+        assert_eq!(
+            outcome.commit,
+            Some(TransitionCommit::SetDesktopReveal(true))
+        );
+        assert!(!machine.is_discrete());
+        machine.apply_commit(outcome.commit.unwrap());
+        assert_eq!(machine.desktop_reveal_progress(), Some(1.0));
     }
 }

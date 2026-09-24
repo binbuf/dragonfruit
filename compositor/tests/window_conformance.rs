@@ -4414,3 +4414,191 @@ fn wallpaper_follows_the_active_space_and_slides_with_it() {
         "teardown leak: synthetic-input socket survived"
     );
 }
+
+/// One parsed `reveal window` line from `query reveal` (T-05.5): the committed
+/// source rect, the interpolated reveal target, and the alpha.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct RevealWindowReport {
+    window: u64,
+    source: (i32, i32, i32, i32),
+    target: (i32, i32, i32, i32),
+    alpha: f64,
+}
+
+/// The parsed `query reveal` reply (T-05.5).
+#[derive(Debug, Clone, PartialEq)]
+struct RevealReport {
+    active: bool,
+    progress: f64,
+    reduced: bool,
+    windows: Vec<RevealWindowReport>,
+}
+
+/// Parse a `query reveal` report (T-05.5).
+fn parse_reveal(report: &str) -> RevealReport {
+    let mut parsed = RevealReport {
+        active: false,
+        progress: 0.0,
+        reduced: false,
+        windows: Vec::new(),
+    };
+    for line in report.lines() {
+        let mut parts = line.split_whitespace();
+        if parts.next() != Some("reveal") {
+            continue;
+        }
+        match parts.next() {
+            Some("none") => parsed.active = false,
+            Some(token) if token.starts_with("progress=") => {
+                parsed.active = true;
+                parsed.progress = token["progress=".len()..].parse().unwrap_or(0.0);
+                let fields: std::collections::HashMap<&str, &str> =
+                    parts.filter_map(|value| value.split_once('=')).collect();
+                parsed.reduced = fields.get("reduced").copied() == Some("1");
+            }
+            Some("window") => {
+                let Some(window) = parts.next().and_then(|value| value.parse::<u64>().ok()) else {
+                    continue;
+                };
+                let values: Vec<f64> = parts
+                    .filter_map(|value| value.parse::<f64>().ok())
+                    .collect();
+                if values.len() != 9 {
+                    continue;
+                }
+                parsed.windows.push(RevealWindowReport {
+                    window,
+                    source: (
+                        values[0] as i32,
+                        values[1] as i32,
+                        values[2] as i32,
+                        values[3] as i32,
+                    ),
+                    target: (
+                        values[4] as i32,
+                        values[5] as i32,
+                        values[6] as i32,
+                        values[7] as i32,
+                    ),
+                    alpha: values[8],
+                });
+            }
+            _ => {}
+        }
+    }
+    parsed
+}
+
+/// Poll `query reveal` until `pred` holds (T-05.5).
+#[track_caller]
+fn wait_for_reveal(
+    input: &SyntheticInput,
+    timeout: Duration,
+    mut pred: impl FnMut(&RevealReport) -> bool,
+) -> RevealReport {
+    let deadline = Instant::now() + timeout;
+    loop {
+        let report = parse_reveal(&input.query("query reveal"));
+        if pred(&report) {
+            return report;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "reveal never reached the expected state: {report:?}"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// T-05.5 acceptance: Ctrl+Down routes Desktop Reveal through the same
+/// overview pipeline and scene transform. The live window surfaces slide out
+/// of their nearest horizontal edges (exposing the compositor-drawn
+/// background), the reveal is reversible by a second trigger, and the
+/// reduced-motion variant fades in place instead of translating.
+#[test]
+fn desktop_reveal_translates_live_surfaces_and_respects_reduced_motion() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path =
+        PathBuf::from(&runtime_dir).join(format!("dragonfruit-reveal-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-reveal",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (_conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let mut mapped = Vec::new();
+    for app in ["org.dragonfruit.RevealA", "org.dragonfruit.RevealB"] {
+        let (surface, _xdg_surface, toplevel, file) =
+            map_toplevel_with_app_id(&mut state, &mut queue, app);
+        mapped.push((surface, toplevel, file));
+    }
+
+    // At rest: no reveal.
+    assert!(
+        !parse_reveal(&input.query("query reveal")).active,
+        "the desktop must not be revealed before Ctrl+Down"
+    );
+
+    // Ctrl+Down (evdev 29 = Left Ctrl, 108 = Down) opens Desktop Reveal.
+    input.send("key 29 down\nkey 108 down\nkey 108 up\nkey 29 up");
+    let reveal = wait_for_reveal(&input, Duration::from_secs(5), |report| {
+        report.active && (report.progress - 1.0).abs() < 1e-6 && report.windows.len() == 2
+    });
+    assert!(!reveal.reduced, "full motion is the default");
+    for window in &reveal.windows {
+        assert_ne!(
+            window.target, window.source,
+            "the live surface slid away from its committed rect: {window:?}"
+        );
+        // The window cleared its nearest horizontal edge, so the desktop is
+        // legibly exposed.
+        let (x, _, w, _) = window.target;
+        assert!(
+            x + w <= 0 || x >= OUTPUT_W,
+            "the revealed surface is off the output: {window:?}"
+        );
+        assert_eq!(window.alpha, 1.0, "full motion keeps the surface opaque");
+    }
+    // Still the two live client surfaces, never thumbnails.
+    assert_eq!(
+        parse_decorations(&input.query("query decorations")).len(),
+        2,
+        "the live surfaces stay tracked while revealed"
+    );
+    // The compositor-drawn background is still the active Space at rest.
+    let wallpaper = parse_wallpaper(&input.query("query wallpaper"));
+    assert_eq!(wallpaper.slots.len(), 1, "the desktop wallpaper is drawn");
+    assert_eq!(wallpaper.slots[0].offset, 0);
+
+    // A second Ctrl+Down restores: the surfaces return to their committed
+    // rects and the reveal state clears.
+    input.send("key 29 down\nkey 108 down\nkey 108 up\nkey 29 up");
+    wait_for_reveal(&input, Duration::from_secs(5), |report| !report.active);
+
+    // Reduced motion: Ctrl+Down still commits through the one pipeline, but
+    // the window fades in place rather than translating.
+    input.send("set reduced-motion on");
+    input.send("key 29 down\nkey 108 down\nkey 108 up\nkey 29 up");
+    let reduced = wait_for_reveal(&input, Duration::from_secs(5), |report| {
+        report.active && (report.progress - 1.0).abs() < 1e-6 && report.windows.len() == 2
+    });
+    assert!(reduced.reduced, "the reduced-motion policy is reported");
+    for window in &reduced.windows {
+        assert_eq!(
+            window.target, window.source,
+            "reduced motion never translates: {window:?}"
+        );
+        assert_eq!(window.alpha, 0.0, "the surface fades out instead");
+    }
+
+    for (surface, toplevel, _file) in mapped {
+        surface.destroy();
+        toplevel.destroy();
+    }
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}

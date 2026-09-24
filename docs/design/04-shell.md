@@ -128,7 +128,10 @@ Desktop icons are a later work item and belong to **Files** — the macOS
 model, where the file manager owns the desktop — rendered through a
 compositor desktop-layer surface. The MVP ships plain wallpaper. The Desktop
 Reveal hot corner works regardless: it moves windows aside to expose the
-background (see [09-files.md](09-files.md)).
+background (see [09-files.md](09-files.md)). Desktop Reveal shares the one
+overview pipeline and scene transform: the live surfaces slide out of their
+nearest screen edge (reduced motion fades them in place), and `query reveal`
+exposes the progress headlessly (see [02-compositor.md](02-compositor.md)).
 
 ## Screenshot and screen recording
 

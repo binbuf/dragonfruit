@@ -689,6 +689,10 @@ pub enum SyntheticCommand {
     /// render layer draws this frame (index, horizontal offset, fit, source),
     /// followed by `end`.
     QueryWallpaper,
+    /// Read-only Desktop Reveal introspection (T-05.5): the reveal progress and
+    /// one `reveal window` line per live surface the render layer translates
+    /// (source rect, interpolated target rect, alpha), followed by `end`.
+    QueryReveal,
     /// Set `dock.titlebarDoubleClick` for the session (T-01.3 test plumbing).
     SetTitlebarDoubleClick(TitlebarDoubleClick),
     /// Set the compositor reduced-motion policy (T-02.1b test plumbing).
@@ -859,9 +863,10 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
             Some("grid") => SyntheticCommand::QueryGrid,
             Some("spaces") => SyntheticCommand::QuerySpaces,
             Some("wallpaper") => SyntheticCommand::QueryWallpaper,
+            Some("reveal") => SyntheticCommand::QueryReveal,
             _ => {
                 return Err(
-                    "query requires a known subject (decorations, window-menu, motion, events, latency, scanout, degrade, material, grid, spaces)"
+                    "query requires a known subject (decorations, window-menu, motion, events, latency, scanout, degrade, material, grid, spaces, wallpaper, reveal)"
                         .into(),
                 );
             }
@@ -1101,6 +1106,9 @@ impl SyntheticCommand {
             SyntheticCommand::QueryWallpaper => {
                 unreachable!("query wallpaper is handled by apply_datagram")
             }
+            SyntheticCommand::QueryReveal => {
+                unreachable!("query reveal is handled by apply_datagram")
+            }
             // A settings command, not an input event.
             SyntheticCommand::SetTitlebarDoubleClick(_) => {
                 unreachable!("set titlebar-double-click is handled by apply_datagram")
@@ -1265,6 +1273,15 @@ fn apply_datagram_reply(
             Ok(SyntheticCommand::QueryWallpaper) => {
                 if let Some((socket, peer)) = &reply {
                     let report = wallpaper_report(state);
+                    if let Some(path) = peer.as_pathname() {
+                        let _ = socket.send_to(report.as_bytes(), path);
+                    }
+                }
+                applied += 1;
+            }
+            Ok(SyntheticCommand::QueryReveal) => {
+                if let Some((socket, peer)) = &reply {
+                    let report = reveal_report(state);
                     if let Some(path) = peer.as_pathname() {
                         let _ = socket.send_to(report.as_bytes(), path);
                     }
@@ -1720,6 +1737,51 @@ fn wallpaper_report(state: &DfState) -> String {
     out
 }
 
+/// The `query reveal` report (T-05.5): the Desktop Reveal transform.
+///
+/// `reveal none` when the desktop is not revealed, otherwise
+/// `reveal progress=<t> reduced=<0|1>` followed by one `reveal window <id>
+/// <sx> <sy> <sw> <sh> <tx> <ty> <tw> <th> <alpha>` line per live surface the
+/// render layer draws (committed source rect and interpolated target rect),
+/// then `end`. The target is exactly the mapping `window_render_frame` hands
+/// the reusable scene transform, so a headless test can assert the reveal
+/// without a GPU.
+fn reveal_report(state: &DfState) -> String {
+    let Some(progress) = state.desktop_reveal_progress() else {
+        return "reveal none\nend\n".to_string();
+    };
+    let mut out = format!(
+        "reveal progress={progress:.3} reduced={}\n",
+        state.overview.reduced_motion() as u32,
+    );
+    for window in state.windows.windows() {
+        let Some(id) = state.windows.id(window) else {
+            continue;
+        };
+        let Some(source) = state.windows.geometry(window) else {
+            continue;
+        };
+        let Some(frame) = state.desktop_reveal_frame(window) else {
+            continue;
+        };
+        out.push_str(&format!(
+            "reveal window {} {} {} {} {} {} {} {} {} {:.3}\n",
+            id.0,
+            source.loc.x,
+            source.loc.y,
+            source.size.w,
+            source.size.h,
+            frame.rect.loc.x,
+            frame.rect.loc.y,
+            frame.rect.size.w,
+            frame.rect.size.h,
+            frame.alpha,
+        ));
+    }
+    out.push_str("end\n");
+    out
+}
+
 /// Only the headless and nested backends call this, and only when
 /// [`ENV_SYNTHETIC_INPUT`] is set; the socket is removed by the caller at
 /// teardown.
@@ -1937,6 +1999,10 @@ mod tests {
         assert_eq!(
             parse_command("query wallpaper").unwrap(),
             SyntheticCommand::QueryWallpaper
+        );
+        assert_eq!(
+            parse_command("query reveal").unwrap(),
+            SyntheticCommand::QueryReveal
         );
     }
 
