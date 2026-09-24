@@ -97,7 +97,7 @@ use crate::input::settings::InputSettings;
 use crate::input::shortcuts::{GrabArbiter, GrabKind, ShortcutEngine};
 use crate::input::{InputAction, TriggerKind};
 use crate::instrument::LatencyInstrument;
-use crate::overview::grid::{grid_layout, GridCandidate, GridLayout};
+use crate::overview::grid::{grid_layout, GridCandidate, GridLayout, GridMaterial};
 use crate::overview::{InputOwner, OverviewKind, OverviewMachine, TransitionCommit};
 use crate::shell::ShellProtocolState;
 use crate::window::grab::{MoveGrab, ResizeGrab};
@@ -2558,6 +2558,23 @@ impl DfState {
         let area = self.space.output_geometry(output)?;
         let candidates = self.grid_candidates(&output.name());
         Some((progress, grid_layout(area, &candidates)))
+    }
+
+    /// The material the Mission Control grid composes its live surfaces with
+    /// while the overview is open (T-05.1b): the active T-04.4a degrade tier
+    /// plus the elevation shadow and material-blur state that tier selects.
+    /// `None` when the grid is closed.
+    ///
+    /// One accessor so the render layer and the `query grid` introspection
+    /// both resolve the grid material the same way, and the tier the
+    /// `set degrade-tier` command pins is exactly the one a grid window draws
+    /// with.
+    pub fn overview_grid_material(&self) -> Option<GridMaterial> {
+        self.overview_grid_progress()?;
+        Some(GridMaterial::resolve(
+            self.degrade.tier(),
+            self.color_scheme,
+        ))
     }
 
     /// The grid render frame for `window` while Mission Control is open: its

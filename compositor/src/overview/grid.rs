@@ -24,7 +24,11 @@
 use smithay::utils::{Logical, Rectangle, Scale};
 
 use crate::design_tokens::component::overview;
+use crate::window::backdrop::{BackdropSpec, MaterialRole};
+use crate::window::decoration::ColorScheme;
+use crate::window::degrade::DegradeTier;
 use crate::window::motion::MotionFrame;
+use crate::window::shadow::{ShadowLevel, ShadowSpec};
 use crate::window::WindowId;
 
 /// The layout margin between a grid cell's edge and the window scaled into it,
@@ -116,6 +120,46 @@ impl GridLayout {
 
     pub fn is_empty(&self) -> bool {
         self.placements.is_empty()
+    }
+}
+
+/// The material the Mission Control grid composes its **live** surfaces with
+/// (T-05.1b): the active T-04.4a [`DegradeTier`] plus the elevation shadow and
+/// the material-blur state that tier selects.
+///
+/// The grid never resolves its own material: [`Self::resolve`] starts from the
+/// same `component.elevation.high` / scheme tokens a normal window uses and
+/// maps them through the tier, so a live surface in the grid is shaded exactly
+/// like the same window outside it and the tier the `set degrade-tier` command
+/// pins is exactly the one the grid draws with. [`Self::blur`] is `None` at
+/// [`DegradeTier::Minimal`] (blur off), which is the tier's material-blur
+/// state the overview's chrome backdrop also reads.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GridMaterial {
+    /// The tier the grid composes at.
+    pub tier: DegradeTier,
+    /// The elevation shadow a live surface in the grid casts at this tier.
+    pub shadow: ShadowSpec,
+    /// The token-resolved grid/overview blur, `None` when the tier turns blur
+    /// off ([`DegradeTier::Minimal`]).
+    pub blur: Option<BackdropSpec>,
+}
+
+impl GridMaterial {
+    /// Resolve the grid material from the active degrade `tier` and color
+    /// `scheme`.
+    pub fn resolve(tier: DegradeTier, scheme: ColorScheme) -> Self {
+        GridMaterial {
+            tier,
+            shadow: tier.shadow(ShadowLevel::High.spec(scheme)),
+            blur: tier.backdrop(MaterialRole::Chrome.spec(scheme)),
+        }
+    }
+
+    /// Whether the material blur is drawn at this tier. `false` at
+    /// [`DegradeTier::Minimal`].
+    pub fn blur_enabled(&self) -> bool {
+        self.blur.is_some()
     }
 }
 
@@ -441,5 +485,52 @@ mod tests {
                 assert!(!a.cell.overlaps(b.cell));
             }
         }
+    }
+
+    #[test]
+    fn grid_material_follows_the_degrade_tier() {
+        // Full is the token material untouched: the high elevation shadow and
+        // the token blur.
+        let full = GridMaterial::resolve(DegradeTier::Full, ColorScheme::Dark);
+        assert_eq!(full.tier, DegradeTier::Full);
+        assert_eq!(full.shadow, ShadowLevel::High.spec(ColorScheme::Dark));
+        assert!(full.blur_enabled());
+
+        // Reduced shrinks the shadow geometry and layers but keeps the blur;
+        // the scheme tone and offset are preserved.
+        let reduced = GridMaterial::resolve(DegradeTier::Reduced, ColorScheme::Dark);
+        assert!(reduced.shadow.blur < full.shadow.blur);
+        assert!(reduced.shadow.layers < full.shadow.layers && reduced.shadow.layers >= 1);
+        assert_eq!(reduced.shadow.color, full.shadow.color);
+        assert_eq!(reduced.shadow.offset_y, full.shadow.offset_y);
+        assert!(reduced.blur_enabled());
+
+        // Minimal turns the blur off and tightens the shadow further; the
+        // window still casts a legible, rounded shadow.
+        let minimal = GridMaterial::resolve(DegradeTier::Minimal, ColorScheme::Dark);
+        assert!(!minimal.blur_enabled());
+        assert_eq!(minimal.blur, None);
+        assert!(minimal.shadow.blur < reduced.shadow.blur);
+        assert!(minimal.shadow.layers >= 1);
+    }
+
+    #[test]
+    fn grid_material_follows_the_scheme() {
+        use crate::design_tokens::semantic;
+        let light = GridMaterial::resolve(DegradeTier::Full, ColorScheme::Light);
+        let dark = GridMaterial::resolve(DegradeTier::Full, ColorScheme::Dark);
+        assert_eq!(light.shadow.color, semantic::light::color::SHADOW_COLOR);
+        assert_eq!(
+            light.shadow.opacity,
+            semantic::light::material::SHADOW_OPACITY
+        );
+        assert_eq!(
+            dark.shadow.opacity,
+            semantic::dark::material::SHADOW_OPACITY
+        );
+        assert_ne!(
+            light.shadow.opacity, dark.shadow.opacity,
+            "scheme opacity differs"
+        );
     }
 }
