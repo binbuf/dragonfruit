@@ -480,6 +480,28 @@ partly-on-screen slots are reported, so a settled scene never decodes a
 neighbour's image. `query wallpaper` reports the in-flight slide and one
 `wallpaper slot` line per drawn Space (index, offset, fit, source).
 
+### Desktop Reveal (T-05.5)
+
+Desktop Reveal (Ctrl+Down, or the reveal hot corner later in T-16) is not a
+second transition: it routes the `DesktopReveal` action through the one
+overview state machine and the one reusable scene transform. The machine's
+`desktop_reveal_progress` interpolates on the shared pipeline exactly like the
+grid's (`0` = the normal scene, `1` = fully revealed; a closing transition
+reverses), and `DfState::window_render_frame` composes the reveal frame
+between the grid frame and the lifecycle motion, so the client surface, SSD
+titlebar, and shadow all share one mapping (never a thumbnail).
+
+The geometry is pure (`overview::reveal`): at full progress each window slides
+out past the **nearest horizontal edge** of its output's `escape_rect`, so the
+compositor-drawn wallpaper is left exposed. Reduced motion keeps the rect in
+place and fades the window `1 → 0` instead (the documented "fade states
+without translation" variant), still committing through the one rule. While
+the desktop is revealed the overview owns pointer hit-testing, so committed
+window geometry is never hit-tested against the transformed scene; a second
+trigger restores. `query reveal` reports the progress and one `reveal window`
+line per live surface (source rect, interpolated target, alpha), the headless
+seam the conformance test asserts.
+
 ## Window model
 
 - **States.** A window is floating, minimized, zoomed, or fullscreen, with

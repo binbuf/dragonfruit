@@ -100,6 +100,7 @@ use crate::instrument::LatencyInstrument;
 use crate::overview::grid::{
     grid_layout, strip_space_at, GridCandidate, GridDrag, GridLayout, GridMaterial,
 };
+use crate::overview::reveal::reveal_frame;
 use crate::overview::{InputOwner, OverviewKind, OverviewMachine, TransitionCommit};
 use crate::shell::ShellProtocolState;
 use crate::wallpaper::{slide_offset, slide_slots, WallpaperCache, WallpaperSlot};
@@ -2589,6 +2590,14 @@ impl DfState {
         }
     }
 
+    /// The Desktop Reveal progress (T-05.5): `None` when the desktop is not
+    /// revealed, otherwise `Some(t)` in `0.0..=1.0`. Delegates to the one
+    /// overview machine so keyboard, gesture, hot-corner, and shell triggers
+    /// all share the same curve.
+    pub fn desktop_reveal_progress(&self) -> Option<f64> {
+        self.overview.desktop_reveal_progress()
+    }
+
     /// The live surfaces offered to the Mission Control grid on `output`: the
     /// visible, non-closing, non-fullscreen windows of its active Space,
     /// ordered most-recently-used first (the documented membership and
@@ -2795,12 +2804,39 @@ impl DfState {
         Some(frame)
     }
 
+    /// The render frame for `window` while the desktop is revealed (T-05.5):
+    /// the window slid out of its nearest horizontal edge (or faded in place
+    /// under reduced motion). `None` when the desktop is not revealed, so the
+    /// normal lifecycle path stays in charge.
+    pub fn desktop_reveal_frame(&self, window: &Window) -> Option<MotionFrame> {
+        let progress = self.desktop_reveal_progress()?;
+        if progress <= 0.0 {
+            return None;
+        }
+        let output = self
+            .space
+            .outputs_for_element(window)
+            .into_iter()
+            .next()
+            .or_else(|| self.space.outputs().next().cloned())?;
+        let area = self.space.output_geometry(&output)?;
+        let geometry = self.windows.geometry(window)?;
+        Some(reveal_frame(
+            geometry,
+            area,
+            progress,
+            self.overview.reduced_motion(),
+        ))
+    }
+
     /// The render frame a window is drawn with: the Mission Control grid
-    /// placement while the overview is open, else its lifecycle motion. One
-    /// accessor so the surface, SSD titlebar, and shadow always share the same
-    /// mapping (T-04.3's "one transform").
+    /// placement while the overview is open, the Desktop Reveal translation
+    /// while the desktop is revealed, else its lifecycle motion. One accessor
+    /// so the surface, SSD titlebar, and shadow always share the same mapping
+    /// (T-04.3's "one transform").
     pub fn window_render_frame(&self, window: &Window, now_ms: u64) -> Option<MotionFrame> {
         self.overview_grid_frame(window)
+            .or_else(|| self.desktop_reveal_frame(window))
             .or_else(|| self.window_motion_frame(window, now_ms))
     }
 
