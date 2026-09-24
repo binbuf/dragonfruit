@@ -64,6 +64,10 @@ struct RenderStats {
     direct_scanouts: u64,
     animation_frames_stepped: u64,
     client_wakeups: u64,
+    /// Reusable scene-transform pass (T-04.3): output-frames that composed a
+    /// scene transform, and duplicate requests skipped (must stay 0).
+    scene_transforms: u64,
+    scene_transform_skipped: u64,
 }
 
 fn parse_stats(line: &str) -> Option<RenderStats> {
@@ -90,12 +94,24 @@ fn parse_stats(line: &str) -> Option<RenderStats> {
         .strip_prefix("client_wakeups=")?
         .parse()
         .ok()?;
+    // The T-03.1b latency fields sit between `client_wakeups` and the T-04.3
+    // scene-transform fields (ADR 0009 append-only); skip them by prefix.
+    let scene_transforms = parts
+        .find_map(|part| part.strip_prefix("scene_transforms="))?
+        .parse()
+        .ok()?;
+    let scene_transform_skipped = parts
+        .find_map(|part| part.strip_prefix("scene_transform_skipped="))?
+        .parse()
+        .ok()?;
     Some(RenderStats {
         frames_rendered,
         frames_skipped_no_damage,
         direct_scanouts,
         animation_frames_stepped,
         client_wakeups,
+        scene_transforms,
+        scene_transform_skipped,
     })
 }
 
@@ -119,6 +135,17 @@ fn assert_idle_flat(first: &RenderStats, second: &RenderStats, window: Duration)
     assert_eq!(
         second.client_wakeups, first.client_wakeups,
         "the compositor woke a client while idle: {first:?} -> {second:?}",
+    );
+    // Reusable scene-transform pass (T-04.3): composing a transform is a
+    // render-time effect, so an idle compositor must never apply one, and the
+    // double-transform guard must never fire.
+    assert_eq!(
+        second.scene_transforms, first.scene_transforms,
+        "the scene-transform pass ran while idle: {first:?} -> {second:?}",
+    );
+    assert_eq!(
+        second.scene_transform_skipped, 0,
+        "the scene-transform double-application guard fired: {second:?}",
     );
 }
 
