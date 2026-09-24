@@ -39,6 +39,7 @@
 //! query scanout
 //! query degrade
 //! query material
+//! query grid
 //! set titlebar-double-click zoom|minimize|none
 //! set reduced-motion on|off
 //! set launch-origin <app-id> <x> <y> <width> <height>
@@ -673,6 +674,10 @@ pub enum SyntheticCommand {
     /// the compositor materials render with and the resolved chrome/shadow
     /// tones, followed by `end`.
     QueryMaterial,
+    /// Read-only Mission Control grid introspection (T-05.1a): the overview's
+    /// grid progress and one `grid` line per placed live surface, followed by
+    /// `end`.
+    QueryGrid,
     /// Set `dock.titlebarDoubleClick` for the session (T-01.3 test plumbing).
     SetTitlebarDoubleClick(TitlebarDoubleClick),
     /// Set the compositor reduced-motion policy (T-02.1b test plumbing).
@@ -840,9 +845,10 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
             Some("scanout") => SyntheticCommand::QueryScanout,
             Some("degrade") => SyntheticCommand::QueryDegrade,
             Some("material") => SyntheticCommand::QueryMaterial,
+            Some("grid") => SyntheticCommand::QueryGrid,
             _ => {
                 return Err(
-                    "query requires a known subject (decorations, window-menu, motion, events, latency, scanout, degrade, material)"
+                    "query requires a known subject (decorations, window-menu, motion, events, latency, scanout, degrade, material, grid)"
                         .into(),
                 );
             }
@@ -1073,6 +1079,9 @@ impl SyntheticCommand {
             SyntheticCommand::QueryMaterial => {
                 unreachable!("query material is handled by apply_datagram")
             }
+            SyntheticCommand::QueryGrid => {
+                unreachable!("query grid is handled by apply_datagram")
+            }
             // A settings command, not an input event.
             SyntheticCommand::SetTitlebarDoubleClick(_) => {
                 unreachable!("set titlebar-double-click is handled by apply_datagram")
@@ -1210,6 +1219,15 @@ fn apply_datagram_reply(
             Ok(SyntheticCommand::QueryMaterial) => {
                 if let Some((socket, peer)) = &reply {
                     let report = material_report(state);
+                    if let Some(path) = peer.as_pathname() {
+                        let _ = socket.send_to(report.as_bytes(), path);
+                    }
+                }
+                applied += 1;
+            }
+            Ok(SyntheticCommand::QueryGrid) => {
+                if let Some((socket, peer)) = &reply {
+                    let report = grid_report(state);
                     if let Some(path) = peer.as_pathname() {
                         let _ = socket.send_to(report.as_bytes(), path);
                     }
@@ -1505,6 +1523,57 @@ fn material_report(state: &DfState) -> String {
         hex(scheme.accent()),
     )
 }
+
+/// The `query grid` report (T-05.1a): the Mission Control live-surface grid.
+///
+/// `grid none` when no grid is shown (the overview is closed), otherwise
+/// `grid progress=<t>` followed by one `grid output <name> columns=<c>
+/// rows=<r> scale=<s>` line and one `grid window <id> <sx> <sy> <sw> <sh>
+/// <tx> <ty> <tw> <th> <cx> <cy> <cw> <ch>` line per placed live surface
+/// (source geometry, grid target, and the un-scaled cell), then `end`. The
+/// placement is the *live* surface mapping — there is no thumbnail object.
+fn grid_report(state: &DfState) -> String {
+    let Some(progress) = state.overview_grid_progress() else {
+        return "grid none\nend\n".to_string();
+    };
+    let mut out = format!("grid progress={progress:.3}\n");
+    for output in state.space.outputs() {
+        let Some((_, layout)) = state.overview_grid_layout(output) else {
+            continue;
+        };
+        out.push_str(&format!(
+            "grid output {} columns={} rows={} scale={:.4}\n",
+            output.name(),
+            layout.columns,
+            layout.rows,
+            layout.scale,
+        ));
+        for placement in &layout.placements {
+            // The `target` is the *interpolated* render rect at the current
+            // progress (equal to the grid target once settled), so the report
+            // is the transform the renderer uses this frame.
+            let target = placement.frame(progress).rect;
+            out.push_str(&format!(
+                "grid window {} {} {} {} {} {} {} {} {} {} {} {} {}\n",
+                placement.window.0,
+                placement.source.loc.x,
+                placement.source.loc.y,
+                placement.source.size.w,
+                placement.source.size.h,
+                target.loc.x,
+                target.loc.y,
+                target.size.w,
+                target.size.h,
+                placement.cell.loc.x,
+                placement.cell.loc.y,
+                placement.cell.size.w,
+                placement.cell.size.h,
+            ));
+        }
+    }
+    out.push_str("end\n");
+    out
+}
 ///
 /// Only the headless and nested backends call this, and only when
 /// [`ENV_SYNTHETIC_INPUT`] is set; the socket is removed by the caller at
@@ -1711,6 +1780,10 @@ mod tests {
         assert_eq!(
             parse_command("set color-scheme dark").unwrap(),
             SyntheticCommand::SetColorScheme(ColorScheme::Dark)
+        );
+        assert_eq!(
+            parse_command("query grid").unwrap(),
+            SyntheticCommand::QueryGrid
         );
     }
 

@@ -205,7 +205,7 @@ where
         }
         let location = render_location - output_geometry.loc;
         let location_phys = location.to_physical_precise_round(scale);
-        match state.window_motion_frame(window, now) {
+        match state.window_render_frame(window, now) {
             Some(frame) => {
                 let transformed = push_motion_elements(
                     renderer,
@@ -249,7 +249,7 @@ where
         }
         let location = render_location - output_geometry.loc;
         let location_phys = location.to_physical_precise_round(scale);
-        if let Some(frame) = state.window_motion_frame(window, now) {
+        if let Some(frame) = state.window_render_frame(window, now) {
             let transformed =
                 push_motion_elements(renderer, &mut elements, window, location_phys, scale, frame);
             merge_region(&mut scene_region, transformed);
@@ -370,7 +370,7 @@ pub fn window_shadow_render_elements(
             spec,
             scale,
             output_geometry.loc,
-            state.window_motion_frame(window, now),
+            state.window_render_frame(window, now),
         ));
     }
     // Minimizing/closing ghosts carry the same shadow as their titlebar and
@@ -400,7 +400,7 @@ pub fn window_shadow_render_elements(
             spec,
             scale,
             output_geometry.loc,
-            state.window_motion_frame(window, now),
+            state.window_render_frame(window, now),
         ));
     }
     elements
@@ -430,7 +430,7 @@ pub fn titlebar_render_elements(
             elements.extend(titlebar.render_elements(
                 scale,
                 output_geometry.loc,
-                state.window_motion_frame(window, now),
+                state.window_render_frame(window, now),
             ));
         }
     }
@@ -462,7 +462,7 @@ pub fn titlebar_render_elements(
             elements.extend(titlebar.render_elements(
                 scale,
                 output_geometry.loc,
-                state.window_motion_frame(window, now),
+                state.window_render_frame(window, now),
             ));
         }
     }

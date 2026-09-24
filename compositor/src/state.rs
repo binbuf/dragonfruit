@@ -97,6 +97,7 @@ use crate::input::settings::InputSettings;
 use crate::input::shortcuts::{GrabArbiter, GrabKind, ShortcutEngine};
 use crate::input::{InputAction, TriggerKind};
 use crate::instrument::LatencyInstrument;
+use crate::overview::grid::{grid_layout, GridCandidate, GridLayout};
 use crate::overview::{InputOwner, OverviewKind, OverviewMachine, TransitionCommit};
 use crate::shell::ShellProtocolState;
 use crate::window::grab::{MoveGrab, ResizeGrab};
@@ -2481,6 +2482,115 @@ impl DfState {
             self.needs_redraw = true;
         }
         moved
+    }
+
+    // --- Mission Control live-surface grid (T-05.1a) ------------------------
+
+    /// The Mission Control grid progress: `None` when no grid is shown,
+    /// otherwise `Some(t)` with `t` in `0.0..=1.0` (`0` = the normal scene,
+    /// `1` = fully in the grid).
+    ///
+    /// During an *opening* transition `t` is the shared pipeline progress;
+    /// during a *closing* transition it is `1 - progress`; once the overview
+    /// is settled with no transition in flight it is `1.0`. Reduced motion
+    /// single-steps the pipeline, so the same function reports the settled
+    /// value immediately.
+    pub fn overview_grid_progress(&self) -> Option<f64> {
+        let active = self.overview.overview_active();
+        match self.overview.kind() {
+            Some(OverviewKind::MissionControl) if self.overview.is_active() => {
+                let progress = self.overview.progress();
+                Some(if active { 1.0 - progress } else { progress })
+            }
+            _ if active => Some(1.0),
+            _ => None,
+        }
+    }
+
+    /// The live surfaces offered to the Mission Control grid on `output`: the
+    /// visible, non-closing, non-fullscreen windows of its active Space,
+    /// ordered most-recently-used first (the documented membership and
+    /// ordering). Minimized windows live in the bottom strip and fullscreen
+    /// windows own a dedicated Space card, so both are excluded.
+    ///
+    /// Neighbour-Space reveal (the windows of adjacent Spaces, revealed by the
+    /// transition) is a later T-05 slice; it needs the renderer to draw
+    /// unmapped surfaces and is deliberately not wired here.
+    fn grid_candidates(&self, output: &str) -> Vec<GridCandidate> {
+        let Some(active) = self.workspaces.active_space(output) else {
+            return Vec::new();
+        };
+        let mut candidates = Vec::new();
+        for (rank, id) in self.windows.recency().iter().enumerate() {
+            if self.workspaces.window_space(*id) != Some(active) {
+                continue;
+            }
+            let Some(window) = self.windows.window_by_id(*id) else {
+                continue;
+            };
+            let Some(state) = self.windows.state(&window) else {
+                continue;
+            };
+            if !state.is_visible() || state == WindowState::Fullscreen {
+                continue;
+            }
+            if self.windows.is_closing(&window) {
+                continue;
+            }
+            let Some(geometry) = self.windows.geometry(&window) else {
+                continue;
+            };
+            candidates.push(GridCandidate {
+                window: *id,
+                space_index: 0,
+                rank,
+                geometry,
+            });
+        }
+        candidates
+    }
+
+    /// The Mission Control grid for `output` and its interpolated progress, or
+    /// `None` when the overview is not open. The layout is the pure T-05.1a
+    /// algorithm; the render layer maps each placement onto a window surface.
+    pub fn overview_grid_layout(&self, output: &Output) -> Option<(f64, GridLayout)> {
+        let progress = self.overview_grid_progress()?;
+        let area = self.space.output_geometry(output)?;
+        let candidates = self.grid_candidates(&output.name());
+        Some((progress, grid_layout(area, &candidates)))
+    }
+
+    /// The grid render frame for `window` while Mission Control is open: its
+    /// placement interpolated by the overview progress, or `None` when the
+    /// window is not part of the grid (so the lifecycle motion / plain path
+    /// stays in charge).
+    pub fn overview_grid_frame(&self, window: &Window) -> Option<MotionFrame> {
+        let progress = self.overview_grid_progress()?;
+        if progress <= 0.0 {
+            return None;
+        }
+        let id = self.windows.id(window)?;
+        let output = self
+            .space
+            .outputs_for_element(window)
+            .into_iter()
+            .next()
+            .or_else(|| self.space.outputs().next().cloned())?;
+        let area = self.space.output_geometry(&output)?;
+        let candidates = self.grid_candidates(&output.name());
+        let layout = grid_layout(area, &candidates);
+        layout
+            .placement(id)
+            .map(|placement| placement.frame(progress))
+    }
+
+    /// The render frame a window is drawn with: the Mission Control grid
+    /// placement while the overview is open, else its lifecycle motion. One
+    /// accessor so the surface, SSD titlebar, and shadow always share the same
+    /// mapping (T-04.3's "one transform").
+    pub fn window_render_frame(&self, window: &Window, now_ms: u64) -> Option<MotionFrame> {
+        self.overview_grid_frame(window)
+            .or_else(|| self.window_motion_frame(window, now_ms))
     }
 
     /// Replace the input settings and apply them live (FR-7).
