@@ -84,6 +84,11 @@ where
 /// same frame draws nothing, which is the T-04.2 "one effect pass per frame"
 /// invariant. Client translucent regions are honored: the chrome surface's own
 /// buffer composites over the backdrop rather than being clipped out.
+///
+/// The resolved material is mapped through the active [`DegradeTier`]
+/// (T-04.4a): `Reduced` shrinks the feather geometry, and `Minimal` turns the
+/// blur off entirely (no elements, no damage). [`DegradeTier`]:
+/// crate::window::DegradeTier
 pub fn chrome_backdrop_render_elements(
     state: &mut DfState,
     output: &Output,
@@ -100,6 +105,21 @@ pub fn chrome_backdrop_render_elements(
     if surfaces.is_empty() {
         return Vec::new();
     }
+    let scheme = ColorScheme::default();
+    // Resolve the token material per surface and map it through the current
+    // degrade tier (T-04.4a). `None` means "blur off" (the `Minimal` tier), so
+    // the pass draws nothing and owns no damage: forcing the tier visibly
+    // changes the pass.
+    let specs: Vec<_> = surfaces
+        .iter()
+        .map(|chrome| {
+            let role = MaterialRole::from_layer(chrome.layer);
+            state.degrade.tier().backdrop(role.spec(scheme))
+        })
+        .collect();
+    if specs.iter().all(Option::is_none) {
+        return Vec::new();
+    }
     // The chrome band: the union of the top/overlay surfaces on this output,
     // in output-local logical coordinates. This is the damage the pass owns.
     let region = surfaces
@@ -114,12 +134,11 @@ pub fn chrome_backdrop_render_elements(
     {
         return Vec::new();
     }
-    let scheme = ColorScheme::default();
     let mut elements = Vec::new();
-    for chrome in &surfaces {
-        let role = MaterialRole::from_layer(chrome.layer);
-        let spec = role.spec(scheme);
-        elements.extend(backdrop_elements(chrome.geometry, spec, scale));
+    for (chrome, spec) in surfaces.iter().zip(&specs) {
+        if let Some(spec) = spec {
+            elements.extend(backdrop_elements(chrome.geometry, *spec, scale));
+        }
     }
     elements
 }
@@ -325,7 +344,13 @@ pub fn window_shadow_render_elements(
     let now = state.now_msec();
     // The live scheme follows desktop settings (T-08); dark is the default
     // that reads over arbitrary application pixels, matching the titlebar.
-    let spec = ShadowLevel::High.spec(ColorScheme::default());
+    // The elevation geometry is mapped through the material degrade tier
+    // (T-04.4a): budget pressure tightens the spread/layers while keeping the
+    // scheme tone, so windows stay legible at every tier.
+    let spec = state
+        .degrade
+        .tier()
+        .shadow(ShadowLevel::High.spec(ColorScheme::default()));
     let mut elements = Vec::new();
     for window in state.space.elements() {
         if !state.space.outputs_for_element(window).contains(output) {

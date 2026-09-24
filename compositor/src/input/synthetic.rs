@@ -37,9 +37,12 @@
 //! query events
 //! query latency
 //! query scanout
+//! query degrade
 //! set titlebar-double-click zoom|minimize|none
 //! set reduced-motion on|off
 //! set launch-origin <app-id> <x> <y> <width> <height>
+//! set degrade-tier full|reduced|minimal
+//! set degrade-budget <microseconds>
 //! minimize <window-id>
 //! restore <window-id>
 //! close <window-id>
@@ -98,7 +101,7 @@ use smithay::reexports::calloop::generic::Generic;
 use smithay::reexports::calloop::{Interest, Mode, PostAction};
 
 use crate::state::DfState;
-use crate::window::{TitlebarDoubleClick, WindowEventKind, WindowId};
+use crate::window::{DegradeTier, TitlebarDoubleClick, WindowEventKind, WindowId};
 
 /// Marker type defining the synthetic [`InputBackend`] types.
 #[derive(Debug)]
@@ -660,6 +663,10 @@ pub enum SyntheticCommand {
     /// Read-only direct-scanout counter-template introspection (T-03.1b):
     /// the scanout-relevant render counters, followed by `end`.
     QueryScanout,
+    /// Read-only material degrade-tier introspection (T-04.4a): the selected
+    /// tier, whether it is pinned, the frame budget, and the selection
+    /// counters, followed by `end`.
+    QueryDegrade,
     /// Set `dock.titlebarDoubleClick` for the session (T-01.3 test plumbing).
     SetTitlebarDoubleClick(TitlebarDoubleClick),
     /// Set the compositor reduced-motion policy (T-02.1b test plumbing).
@@ -674,6 +681,12 @@ pub enum SyntheticCommand {
         width: i32,
         height: i32,
     },
+    /// Pin the material degrade tier (T-04.4a test plumbing): `full`,
+    /// `reduced`, or `minimal`.
+    SetDegradeTier(DegradeTier),
+    /// Set the frame budget the degrade controller selects against, in
+    /// microseconds (T-04.4a test plumbing).
+    SetDegradeBudget(u32),
     /// Minimize the window with this compositor id (T-02.2 test plumbing).
     MinimizeWindow(WindowId),
     /// Restore the window with this compositor id (T-02.2 test plumbing).
@@ -816,9 +829,10 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
             Some("events") => SyntheticCommand::QueryEvents,
             Some("latency") => SyntheticCommand::QueryLatency,
             Some("scanout") => SyntheticCommand::QueryScanout,
+            Some("degrade") => SyntheticCommand::QueryDegrade,
             _ => {
                 return Err(
-                    "query requires a known subject (decorations, window-menu, motion, events, latency, scanout)"
+                    "query requires a known subject (decorations, window-menu, motion, events, latency, scanout, degrade)"
                         .into(),
                 );
             }
@@ -914,9 +928,24 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
                     height,
                 }
             }
+            Some("degrade-tier") => {
+                let value = parts.next().ok_or("set degrade-tier requires a tier")?;
+                let tier = DegradeTier::from_name(value)
+                    .ok_or_else(|| format!("expected full|reduced|minimal, got {value:?}"))?;
+                SyntheticCommand::SetDegradeTier(tier)
+            }
+            Some("degrade-budget") => SyntheticCommand::SetDegradeBudget(
+                parts
+                    .next()
+                    .ok_or("set degrade-budget requires microseconds")?
+                    .parse()
+                    .map_err(|_| {
+                        "degrade-budget must be an integer number of microseconds".to_string()
+                    })?,
+            ),
             _ => {
                 return Err(
-                    "set requires a known subject (titlebar-double-click, reduced-motion, launch-origin)"
+                    "set requires a known subject (titlebar-double-click, reduced-motion, launch-origin, degrade-tier, degrade-budget)"
                         .into(),
                 );
             }
@@ -1022,6 +1051,9 @@ impl SyntheticCommand {
             SyntheticCommand::QueryScanout => {
                 unreachable!("query scanout is handled by apply_datagram")
             }
+            SyntheticCommand::QueryDegrade => {
+                unreachable!("query degrade is handled by apply_datagram")
+            }
             // A settings command, not an input event.
             SyntheticCommand::SetTitlebarDoubleClick(_) => {
                 unreachable!("set titlebar-double-click is handled by apply_datagram")
@@ -1031,6 +1063,12 @@ impl SyntheticCommand {
             }
             SyntheticCommand::SetLaunchOrigin { .. } => {
                 unreachable!("set launch-origin is handled by apply_datagram")
+            }
+            SyntheticCommand::SetDegradeTier(_) => {
+                unreachable!("set degrade-tier is handled by apply_datagram")
+            }
+            SyntheticCommand::SetDegradeBudget(_) => {
+                unreachable!("set degrade-budget is handled by apply_datagram")
             }
             SyntheticCommand::MinimizeWindow(_) => {
                 unreachable!("minimize is handled by apply_datagram")
@@ -1138,8 +1176,25 @@ fn apply_datagram_reply(
                 }
                 applied += 1;
             }
+            Ok(SyntheticCommand::QueryDegrade) => {
+                if let Some((socket, peer)) = &reply {
+                    let report = degrade_report(state);
+                    if let Some(path) = peer.as_pathname() {
+                        let _ = socket.send_to(report.as_bytes(), path);
+                    }
+                }
+                applied += 1;
+            }
             Ok(SyntheticCommand::SetTitlebarDoubleClick(mode)) => {
                 state.set_titlebar_double_click(mode);
+                applied += 1;
+            }
+            Ok(SyntheticCommand::SetDegradeTier(tier)) => {
+                state.set_degrade_tier(tier);
+                applied += 1;
+            }
+            Ok(SyntheticCommand::SetDegradeBudget(budget_us)) => {
+                state.set_degrade_budget_us(budget_us);
                 applied += 1;
             }
             Ok(SyntheticCommand::SetReducedMotion(enabled)) => {
@@ -1380,6 +1435,15 @@ fn scanout_report(state: &DfState) -> String {
         counter.frames_considered(),
     )
 }
+
+/// The `query degrade` report (T-04.4a): the material degrade-tier state.
+///
+/// `degrade tier=<full|reduced|minimal> forced=<0|1> budget_us=<n> samples=<n>
+/// over_budget=<n> downgrades=<n> upgrades=<n> tiers=full:.. reduced:.. minimal:..`
+/// followed by `end`.
+fn degrade_report(state: &DfState) -> String {
+    format!("degrade {}\nend\n", state.degrade.summary())
+}
 ///
 /// Only the headless and nested backends call this, and only when
 /// [`ENV_SYNTHETIC_INPUT`] is set; the socket is removed by the caller at
@@ -1559,6 +1623,22 @@ mod tests {
                 height: 48,
             }
         );
+        assert_eq!(
+            parse_command("query degrade").unwrap(),
+            SyntheticCommand::QueryDegrade
+        );
+        assert_eq!(
+            parse_command("set degrade-tier reduced").unwrap(),
+            SyntheticCommand::SetDegradeTier(DegradeTier::Reduced)
+        );
+        assert_eq!(
+            parse_command("set degrade-tier minimal").unwrap(),
+            SyntheticCommand::SetDegradeTier(DegradeTier::Minimal)
+        );
+        assert_eq!(
+            parse_command("set degrade-budget 12000").unwrap(),
+            SyntheticCommand::SetDegradeBudget(12_000)
+        );
     }
 
     #[test]
@@ -1569,6 +1649,10 @@ mod tests {
         assert!(parse_command("motion 1").is_err());
         assert!(parse_command("motion 1 2 3").is_err());
         assert!(parse_command("teleport 1 2").is_err());
+        assert!(parse_command("query vibe").is_err());
+        assert!(parse_command("set degrade-tier ultra").is_err());
+        assert!(parse_command("set degrade-tier").is_err());
+        assert!(parse_command("set degrade-budget fast").is_err());
     }
 
     #[test]

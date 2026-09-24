@@ -732,6 +732,58 @@ fn parse_motion(report: &str) -> Vec<MotionReport> {
         .collect()
 }
 
+/// One parsed `query degrade` line (T-04.4a).
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DegradeReport {
+    tier: String,
+    forced: bool,
+    budget_us: u32,
+    samples: u64,
+    downgrades: u64,
+    upgrades: u64,
+    tier_frames: (u64, u64, u64),
+}
+
+/// Parse the `degrade` line of a `query degrade` reply (ignoring `end`).
+fn parse_degrade(report: &str) -> DegradeReport {
+    let line = report
+        .lines()
+        .find(|line| line.starts_with("degrade "))
+        .unwrap_or_else(|| panic!("no degrade line in {report:?}"));
+    let field = |name: &str| -> String {
+        line.split_whitespace()
+            .skip(1)
+            .find_map(|token| token.strip_prefix(name)?.strip_prefix('='))
+            .unwrap_or_else(|| panic!("missing {name} in {line:?}"))
+            .to_string()
+    };
+    let tier_frames = field("tiers");
+    let mut frames = (0u64, 0u64, 0u64);
+    for part in tier_frames.split(',') {
+        let (name, value) = part
+            .split_once(':')
+            .unwrap_or_else(|| panic!("bad tier counter in {tier_frames:?}"));
+        let value: u64 = value
+            .parse()
+            .unwrap_or_else(|_| panic!("bad tier counter in {tier_frames:?}"));
+        match name {
+            "full" => frames.0 = value,
+            "reduced" => frames.1 = value,
+            "minimal" => frames.2 = value,
+            other => panic!("unknown tier counter {other:?}"),
+        }
+    }
+    DegradeReport {
+        tier: field("tier"),
+        forced: field("forced") == "1",
+        budget_us: field("budget_us").parse().expect("budget_us"),
+        samples: field("samples").parse().expect("samples"),
+        downgrades: field("downgrades").parse().expect("downgrades"),
+        upgrades: field("upgrades").parse().expect("upgrades"),
+        tier_frames: frames,
+    }
+}
+
 /// Traffic-light geometry from `component.trafficLights` tokens, used to aim
 /// the synthetic pointer at each control (T-01.2).
 const LIGHT_DIAMETER: i32 = 12;
@@ -3304,6 +3356,128 @@ fn close_reverses_mid_flight_and_the_idle_trace_stays_flat() {
         restore.origin, second.frames_rendered, second.animation_frames_stepped,
     );
 
+    surface.destroy();
+    toplevel.destroy();
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}
+
+/// T-04.4a acceptance: the material degrade tier is selectable over the
+/// synthetic harness (and reported), and a T-02 lifecycle motion still
+/// interpolates and commits at the most degraded tier — the tier changes the
+/// material geometry, never the scene mapping.
+#[test]
+fn material_degrade_tiers_select_and_transitions_stay_correct() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path =
+        PathBuf::from(&runtime_dir).join(format!("dragonfruit-degrade-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-degrade",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    // The default selection is Full, unpinned, against the 16 ms frame budget.
+    let report = parse_degrade(&input.query("query degrade"));
+    assert_eq!(report.tier, "full");
+    assert!(!report.forced);
+    assert_eq!(report.budget_us, 16_000);
+    assert_eq!(report.downgrades, 0);
+    assert_eq!(report.upgrades, 0);
+
+    // Every tier is selectable and, once forced, reported as pinned.
+    for tier in ["reduced", "minimal", "full"] {
+        input.send(&format!("set degrade-tier {tier}"));
+        let report = parse_degrade(&input.query("query degrade"));
+        assert_eq!(report.tier, tier, "forced tier must be reported");
+        assert!(report.forced, "a forced tier reports forced=1");
+    }
+
+    // The budget is selectable too.
+    input.send("set degrade-budget 12000");
+    assert_eq!(
+        parse_degrade(&input.query("query degrade")).budget_us,
+        12_000
+    );
+
+    // A lifecycle motion at the most degraded tier: the reusable scene
+    // transform still maps the committed surface onto the interpolated rect,
+    // and the motion commits the same target geometry as at Full.
+    input.send("set degrade-tier minimal");
+    let before = parse_degrade(&input.query("query degrade"));
+
+    let app_id = "org.dragonfruit.Degrade";
+    input.send(&format!("set launch-origin {app_id} 100 120 48 48"));
+    let (surface, _xdg_surface, toplevel, _file) =
+        map_toplevel_with_app_id(&mut state, &mut queue, app_id);
+
+    let motions = wait_for_motion(&input, |motions| {
+        motions.iter().any(|m| m.kind == "appear" && m.completed)
+    });
+    let appear = motions
+        .iter()
+        .find(|m| m.kind == "appear")
+        .expect("an appear record");
+    let window = appear.window;
+    let floating = appear.target;
+    assert_eq!(appear.origin, (100, 120, 48, 48));
+
+    input.send(&format!("minimize {window}"));
+    let minimized = wait_for_window(&mut state, &mut queue, &input, window, |report| {
+        report.state == WindowStateReport::Minimized
+    });
+    assert_eq!(
+        minimized.content, floating,
+        "minimize must keep the restore geometry at Minimal: {minimized:?}"
+    );
+    let motions = wait_for_motion(&input, |motions| {
+        motions.iter().any(|m| m.kind == "minimize" && m.completed)
+    });
+    let minimize = motions
+        .iter()
+        .find(|m| m.kind == "minimize")
+        .expect("a minimize record");
+    assert_eq!(minimize.target, floating);
+    assert_eq!(minimize.origin, (100, 120, 48, 48));
+    assert!(
+        minimize.frames >= 3,
+        "the degraded pass must still animate, got {} frames: {minimize:?}",
+        minimize.frames
+    );
+
+    // Restore resolves back to the original geometry at the same tier.
+    input.send(&format!("restore {window}"));
+    wait_for_window(&mut state, &mut queue, &input, window, |report| {
+        report.state == WindowStateReport::Floating && report.content == floating
+    });
+    let motions = wait_for_motion(&input, |motions| {
+        motions.iter().any(|m| m.kind == "restore" && m.completed)
+    });
+    assert!(
+        motions.iter().all(|m| m.completed),
+        "nothing may be left live on the clock: {motions:?}"
+    );
+
+    // The pass is instrumented: the forced tier is still reported and the
+    // rendered animation frames were counted at it.
+    let after = parse_degrade(&input.query("query degrade"));
+    assert_eq!(after.tier, "minimal");
+    assert!(after.forced);
+    assert!(
+        after.samples > before.samples,
+        "the motion must have rendered frames the degrade counter observed: \
+         {before:?} -> {after:?}"
+    );
+    assert!(
+        after.tier_frames.2 > before.tier_frames.2,
+        "the rendered frames must be counted at the minimal tier: {before:?} -> {after:?}"
+    );
+
+    let _ = conn;
     surface.destroy();
     toplevel.destroy();
     proc.shutdown();
