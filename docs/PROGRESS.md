@@ -25,6 +25,7 @@
 - **T17 — T-04.1b Rounded-corner clipping**: **State: done.** Rounded corners are a token-derived geometry mask on the; **`compositor/src/window/corner.rs`** (new) — `CornerMask`
 - **T18 — T-04.2 Backdrop blur pass**: **State: done.** The chrome material pass exists and is token-driven, applied; **`compositor/src/window/backdrop.rs`** (new) — `MaterialRole`
 - **T19 — T-04.3 Reusable scene-transform pass**: **State: done.** One reusable scene transform exists (scale/translate + optional; **`compositor/src/window/pass.rs`** (new) — `FramePass`: the single shared
+- **T20 — T-04.4a Material degrade tiers and instrumentation**: **State: done.** One ordered material-quality ladder (`Full` → `Reduced` →; **`compositor/src/window/degrade.rs`** (new) — `DegradeTier` (`Full`
 - **Follow-ups**: T-04.3 (done in T19): the reusable `SceneTransform`/`SceneTransformPass`; T-04.2 follow-up: replace the flat-tone backdrop with a **real
 <!-- symphony:digest:end -->
 
@@ -1306,6 +1307,73 @@ Gotchas for later tasks:
 - Folding the T-04.2 chrome backdrop element generation into this pass is still
   open; the guard is already shared, so only the element builder moves.
 
+## T20 — T-04.4a Material degrade tiers and instrumentation
+
+**State: done.** One ordered material-quality ladder (`Full` → `Reduced` →
+`Minimal`) and one budget selector exist; the backdrop and shadow passes render
+through the selected tier, a tier can be pinned over the synthetic harness, and
+the selection is reported on a new `degrade stats` line. The window lifecycle
+motion is unchanged by the tier (it changes material geometry, not the scene
+mapping). ADR 0015 is the contract.
+
+What landed:
+
+- **`compositor/src/window/degrade.rs`** (new) — `DegradeTier` (`Full`
+  unchanged; `Reduced` halves radius/blur/layers; `Minimal` backdrop blur
+  **off**, small tight shadow), `DegradeTier::{backdrop,shadow}` pure geometry
+  scaling (opacity/tone/offset preserved, layers never below 1),
+  `DegradeController` (EMA + hysteresis: downgrade after 12 over-budget frames,
+  recover after 180 clearly-under-budget frames; `force`/`release`;
+  `budget_us` default `animation::FRAME_INTERVAL`=16000, env
+  `DRAGONFRUIT_FRAME_BUDGET_US`), and `summary()`. 9 unit tests.
+- **`compositor/src/render.rs`** — `chrome_backdrop_render_elements` maps each
+  `MaterialRole` spec through `state.degrade.tier()`; at `Minimal` it emits no
+  elements and records **no** backdrop damage/application.
+  `window_shadow_render_elements` maps the `ShadowLevel::High` spec through the
+  tier.
+- **`compositor/src/state.rs`** — `DfState.degrade`; `set_degrade_tier` (pins +
+  requests a redraw), `set_degrade_budget_us`; `dump_stats` prints
+  `degrade stats: tier=… forced=… budget_us=… samples=… over_budget=…
+  downgrades=… upgrades=… tiers=full:…,reduced:…,minimal:…`.
+- **`compositor/src/session.rs`** — each rendered frame's duration is fed to
+  `degrade.observe` (the same `Duration` `RenderStats` records); inert while
+  idle, never forces a redraw.
+- **`compositor/src/input/synthetic.rs`** — `query degrade`,
+  `set degrade-tier full|reduced|minimal`, `set degrade-budget <us>`.
+- **`compositor/tests/window_conformance.rs`** — new
+  `material_degrade_tiers_select_and_transitions_stay_correct`: default/forced
+  tiers round-trip, the budget is selectable, and an appear/minimize/restore
+  runs at `Minimal` with the same origin/target geometry and counted frames.
+- **Docs** — ADR `0015-material-degrade-tiers.md`; `02-compositor.md`
+  "Material degrade tiers (T-04.4a)".
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `cargo test -p dragonfruit-compositor` — 223 bin unit tests + all suites
+  green (window_conformance now 23/23). Direct cargo needs
+  `PKG_CONFIG_PATH=~/.local/df-devroot/lib64/pkgconfig` and
+  `RUSTFLAGS=-L ~/.local/df-devroot/lib64`.
+- `make e2e` green (exit log shows
+  `degrade stats (exit): tier=full forced=0 budget_us=16000 samples=33 …`);
+  `make lint` green; `make fmt-check`; `make clippy` — green.
+
+Gotchas for later tasks:
+
+- **T-05.1b/T-05.6 consume `DegradeTier`/`DegradeController`; do not add a
+  second degrade ladder.** Route a new material's token spec through
+  `DegradeTier` and read `DfState::degrade.tier()`.
+- `Minimal` is *blur off*, not shadow off: `DegradeTier::shadow` keeps a small
+  tight ring so windows stay legible. `DegradeTier::backdrop` returns `None` at
+  `Minimal`, so the backdrop pass owns no damage there.
+- The controller is **fed by rendered-frame durations** (`session.rs`); it is
+  flat and zero-sample on headless (nothing renders), so only nested/DRM move
+  it. `force()` pins a tier for deterministic tests.
+- `budget_us` default is 16000 (the shared `FRAME_INTERVAL`); override with
+  `DRAGONFRUIT_FRAME_BUDGET_US` or `set degrade-budget`.
+- The degrade tier does **not** touch the T-04.3 `SceneTransform`/`FramePass`
+  guards or the lifecycle mapping; keep it that way (T-02 correctness at every
+  tier).
+
 ## Follow-ups
 
 - T-04.3 (done in T19): the reusable `SceneTransform`/`SceneTransformPass`
@@ -1317,15 +1385,16 @@ Gotchas for later tasks:
 - T-04.2 follow-up: replace the flat-tone backdrop with a **real
   texture-sampling blur** (Kawase vs dual-pass Gaussian) behind the same
   tokens; the legacy FR-1 live-content test (video under the bar) needs it.
-- T-04.4a: the degrade tier should drop feather layers / turn the backdrop off
-  under budget pressure; `BackdropSpec.layers` and `BackdropPass.skipped` are
-  the knobs, and `material stats` is the instrument.
+- T-04.4a (done in T20): the degrade ladder/selector landed
+  (`window/degrade.rs`, ADR 0015); `DegradeTier` is the knob for backdrop and
+  shadow, `degrade stats` is the instrument. Remaining: (a) T-04.4b wires the
+  light/dark scheme into the degraded passes (render still uses
+  `ColorScheme::default()`); (b) a *real* measurement on nested/DRM should
+  record a frame trace with the tier moving under load (headless never renders).
 - T-04.1a/2: chrome surfaces (menu bar, Dock, popovers, OSD) still get no
   compositor shadow; they rely on QML `Shadow`. The shared
   `component.elevation` group is ready for the compositor chrome pass and for
   the `Overlay` level.
-- T-04.4a: the degrade tier should be able to drop to fewer shadow layers /
-  `ShadowLevel::Low` under budget pressure; `ShadowSpec.layers` is the knob.
 - T-08: `render::window_shadow_render_elements` uses `ColorScheme::default()`
   (dark); wire the live scheme when settingsd owns it.
 - Add the QML import-dir define (`DF_QML_IMPORT_DIR`) to the first-party apps'

@@ -302,6 +302,36 @@ surface's own elements is deferred to the renderer; the transform supplies the
 mask geometry (ADR 0012). See
 [ADR 0014](adr/0014-reusable-scene-transform-pass.md).
 
+### Material degrade tiers (T-04.4a)
+
+The materials are the first compositor effect with a real iGPU frame-budget
+risk, so they degrade along one ordered ladder —
+`compositor/src/window/degrade.rs`:
+
+- `Full` is the token material as designed.
+- `Reduced` shrinks the radius/blur geometry and roughly halves the layers.
+- `Minimal` turns the backdrop blur **off** entirely and collapses the shadow
+  to a small tight ring; the window stays rounded and legible.
+
+A tier maps a token-resolved `BackdropSpec`/`ShadowSpec` through pure geometry
+scaling, so `render::chrome_backdrop_render_elements` and
+`render::window_shadow_render_elements` apply it where the material is
+resolved. At `Minimal` the backdrop pass emits no elements and owns no damage;
+the design tokens remain the single source and no opacity/tone is invented
+(ADR 0011/0013). The lifecycle motion and the T-04.3 scene transform are
+untouched — the tier changes material geometry, never the scene mapping, so
+T-02 transitions render correctly at every tier.
+
+`DegradeController` selects the tier from rendered-frame durations against a
+frame budget (default `animation::FRAME_INTERVAL`, 16 ms; overridable with
+`DRAGONFRUIT_FRAME_BUDGET_US`) using an EMA plus hysteresis, so a stray spike
+cannot degrade the UI and a tier cannot oscillate. A tier can be pinned
+(`set degrade-tier` over the synthetic harness, or `set_degrade_tier`) for a
+deterministic test or feature. The selection never forces a redraw, so the
+idle trace stays flat. The state is reported on a `degrade stats` render-stats
+line and by `query degrade`. See
+[ADR 0015](adr/0015-material-degrade-tiers.md).
+
 ## Window model
 
 - **States.** A window is floating, minimized, zoomed, or fullscreen, with

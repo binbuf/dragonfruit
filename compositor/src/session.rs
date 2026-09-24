@@ -141,7 +141,12 @@ pub fn run_session(socket_name: &str, hooks: BackendHooks) -> Result<(), String>
         let frames_before = state.stats.frames_rendered;
         (render)(&mut state)?;
         if state.stats.frames_rendered != frames_before {
-            state.stats.record_frame(frame_start.elapsed());
+            let frame_duration = frame_start.elapsed();
+            state.stats.record_frame(frame_duration);
+            // T-04.4a: feed the same duration to the material degrade-tier
+            // selector, so the backdrop/shadow passes give ground when the
+            // frame budget is under pressure. Inert while idle.
+            state.degrade.observe(frame_duration);
         }
 
         // Drain the T-03/T-04/T-05 outboxes into the private shell protocol

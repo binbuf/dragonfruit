@@ -17,6 +17,7 @@
 pub mod backdrop;
 pub mod corner;
 pub mod decoration;
+pub mod degrade;
 pub mod events;
 pub mod grab;
 pub mod menu;
@@ -40,6 +41,8 @@ pub use decoration::{
     fullscreen_reveal_rect, ColorScheme, DoubleClickTracker, TitlebarDoubleClick, TitlebarElement,
     TrafficLightKind, WindowInsets,
 };
+#[allow(unused_imports)]
+pub use degrade::{DegradeController, DegradeTier};
 pub use events::{ShellWindowEvent, WindowDispatch, WindowEventKind};
 pub use menu::{MenuActivation, MenuKey, MenuKeyOutcome, WindowMenu};
 pub use motion::{MotionFrame, WindowMotion, WindowMotionKind};

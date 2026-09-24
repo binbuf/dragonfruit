@@ -104,11 +104,11 @@ use crate::window::popup::constrained_popup_geometry;
 use crate::window::resize::SizeConstraints;
 use crate::window::{
     cascaded_geometry, centered_on, fullscreen_reveal_rect, BackdropPass, ColorScheme,
-    DecorationTier, DoubleClickTracker, MenuActivation, MenuKey, MenuKeyOutcome, MotionFrame,
-    ReservedZones, SceneTransformPass, ShellWindowEvent, TitlebarDoubleClick, TitlebarElement,
-    TrafficLightKind, WindowDispatch, WindowEvent, WindowEventKind, WindowId, WindowInsets,
-    WindowMenu, WindowMenuCommand, WindowModel, WindowMotion, WindowMotionKind, WindowState,
-    CASCADE_STEP,
+    DecorationTier, DegradeController, DegradeTier, DoubleClickTracker, MenuActivation, MenuKey,
+    MenuKeyOutcome, MotionFrame, ReservedZones, SceneTransformPass, ShellWindowEvent,
+    TitlebarDoubleClick, TitlebarElement, TrafficLightKind, WindowDispatch, WindowEvent,
+    WindowEventKind, WindowId, WindowInsets, WindowMenu, WindowMenuCommand, WindowModel,
+    WindowMotion, WindowMotionKind, WindowState, CASCADE_STEP,
 };
 use crate::workspace::WorkspaceModel;
 use crate::xwayland::XwaylandState;
@@ -406,6 +406,11 @@ pub struct DfState {
     /// Monotonic serial of the last rendered frame (T-04.2/T-04.3), both
     /// passes' frame key.
     pub render_serial: u64,
+    /// Material degrade-tier selection (T-04.4a): observes rendered-frame
+    /// durations against a frame budget and picks the [`DegradeTier`] that the
+    /// backdrop and shadow passes render at. Selectable (pinned) for tests and
+    /// for a feature that wants a deterministic tier.
+    pub degrade: DegradeController,
 
     pub stats: RenderStats,
 }
@@ -529,6 +534,7 @@ impl DfState {
             material_pass: BackdropPass::new(),
             scene_pass: SceneTransformPass::new(),
             render_serial: 0,
+            degrade: DegradeController::new(),
             stats: RenderStats::new(),
         }
     }
@@ -2123,6 +2129,20 @@ impl DfState {
         self.scene_pass.begin_frame(self.render_serial);
     }
 
+    /// Pin the material degrade tier (T-04.4a) and request a redraw so the
+    /// newly selected geometry is drawn. Used by `set degrade-tier` and by a
+    /// feature that wants a deterministic tier.
+    pub fn set_degrade_tier(&mut self, tier: DegradeTier) {
+        self.degrade.force(tier);
+        self.needs_redraw = true;
+    }
+
+    /// Set the frame budget the degrade controller selects against (T-04.4a),
+    /// in microseconds. Does not itself change the tier.
+    pub fn set_degrade_budget_us(&mut self, budget_us: u32) {
+        self.degrade.set_budget_us(budget_us);
+    }
+
     /// Print the render-path counters (FR-2/FR-5 observability).
     ///
     /// Emitted on SIGUSR1 and on clean exit so the idle-trace (FR-2) and
@@ -2188,6 +2208,15 @@ impl DfState {
              backdrop_passes={} backdrop_skipped={}",
             self.material_pass.applications(),
             self.material_pass.skipped(),
+        );
+        // Material degrade tiers (T-04.4a): which tier the backdrop/shadow
+        // passes render at, whether it is pinned, the budget it selects
+        // against, and the selection counters. `forced=1` means a test or a
+        // feature pinned the tier; otherwise `downgrades`/`upgrades` show the
+        // controller moving under budget pressure.
+        println!(
+            "dragonfruit-compositor: degrade stats ({label}): {}",
+            self.degrade.summary(),
         );
         // Frame-time trace (T-11 U-2 / FR-8): the summary is always emitted;
         // the full per-frame trace is opt-in so the exit log stays readable.
