@@ -80,9 +80,13 @@ pub struct ChromeSurface {
     /// Output-local logical position.
     pub location: Point<i32, Logical>,
     /// The surface's full output-local logical rectangle (`location` plus its
-    /// configured size). The material pass (T-04.2) reads it for the backdrop
-    /// band; the compositor composites by `location`.
+    /// configured size). The compositor composites by `location`.
     pub geometry: Rectangle<i32, Logical>,
+    /// The output-local rect the surface actually paints — the visible chrome
+    /// the backdrop material (T-04.2) belongs behind. For the Dock this is the
+    /// bar slab, not the transparent magnification band above it. See
+    /// [`crate::window::panel_bounds`].
+    pub panel: Rectangle<i32, Logical>,
     /// The layer the surface requested (`df_shell.layer`).
     pub layer: u32,
     /// Keyboard-interaction policy (`df_layer_surface.set_keyboard_interaction`).
@@ -402,17 +406,37 @@ impl DfState {
             })
             .map(|entry| {
                 let geometry = entry.state.geometry(output_geometry);
+                let geometry = Rectangle::new(
+                    (
+                        geometry.loc.x - output_geometry.loc.x,
+                        geometry.loc.y - output_geometry.loc.y,
+                    )
+                        .into(),
+                    geometry.size,
+                );
+                // The visible panel: the reserved bar strip, narrowed by the
+                // part the client declares interactive. The Dock's input region
+                // excludes its transparent magnification band, so this keeps the
+                // backdrop off the band and off the area beside the bar.
+                let region = smithay::wayland::compositor::with_states(&entry.surface, |states| {
+                    states
+                        .cached_state
+                        .get::<smithay::wayland::compositor::SurfaceAttributes>()
+                        .current()
+                        .input_region
+                        .clone()
+                })
+                .and_then(|region| crate::input::constraint::region_bounds(&region));
+                let panel = crate::window::panel_bounds(
+                    geometry,
+                    entry.state.reserved_rect(geometry),
+                    region,
+                );
                 ChromeSurface {
                     surface: entry.surface.clone(),
-                    location: geometry.loc - output_geometry.loc,
-                    geometry: Rectangle::new(
-                        (
-                            geometry.loc.x - output_geometry.loc.x,
-                            geometry.loc.y - output_geometry.loc.y,
-                        )
-                            .into(),
-                        geometry.size,
-                    ),
+                    location: geometry.loc,
+                    geometry,
+                    panel,
                     layer: entry.state.layer,
                     keyboard: entry.state.keyboard,
                 }

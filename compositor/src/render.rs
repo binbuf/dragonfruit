@@ -190,7 +190,7 @@ pub fn chrome_backdrop_render_elements(
         .chrome_surfaces(output.name().as_str(), output_geometry)
         .into_iter()
         .filter(|chrome| chrome.layer >= 2)
-        .filter(|chrome| is_backdrop_panel(chrome.geometry, output_size))
+        .filter(|chrome| is_backdrop_panel(chrome.panel, output_size))
         .filter(|chrome| {
             with_renderer_surface_state(&chrome.surface, |surface| surface.buffer().is_some())
                 .unwrap_or(false)
@@ -220,7 +220,7 @@ pub fn chrome_backdrop_render_elements(
     // in output-local logical coordinates. This is the damage the pass owns.
     let region = surfaces
         .iter()
-        .map(|chrome| chrome.geometry)
+        .map(|chrome| chrome.panel)
         .reduce(|a, b| a.merge(b))
         .unwrap_or_default();
     if state
@@ -233,7 +233,7 @@ pub fn chrome_backdrop_render_elements(
     let mut elements = Vec::new();
     for (chrome, spec) in surfaces.iter().zip(&specs) {
         if let Some(spec) = spec {
-            elements.extend(backdrop_elements(chrome.geometry, *spec, scale));
+            elements.extend(backdrop_elements(chrome.panel, *spec, scale));
         }
     }
     elements

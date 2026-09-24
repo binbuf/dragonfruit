@@ -234,6 +234,48 @@ impl LayerSurfaceState {
             _ => None,
         }
     }
+
+    /// The visible strip this surface reserves on its anchored edge, within
+    /// `geometry` (the menu bar's bar, the Dock's bar), or `None` when it
+    /// reserves nothing (popovers, overlays, auto-hidden chrome).
+    ///
+    /// The Dock's layer surface is larger than its bar: the extra
+    /// `magnifyBand` above/beside the bar is transparent room for magnified
+    /// icons. The reserved zone reports the bar only, so this is the visible
+    /// chrome the backdrop material belongs behind.
+    pub fn reserved_rect(
+        &self,
+        geometry: Rectangle<i32, Logical>,
+    ) -> Option<Rectangle<i32, Logical>> {
+        let (edge, thickness) = self.reserved()?;
+        if thickness <= 0 {
+            return None;
+        }
+        Some(match edge {
+            Edge::Top => Rectangle::new(
+                geometry.loc,
+                (geometry.size.w, thickness.min(geometry.size.h)).into(),
+            ),
+            Edge::Bottom => {
+                let h = thickness.min(geometry.size.h);
+                Rectangle::new(
+                    (geometry.loc.x, geometry.loc.y + geometry.size.h - h).into(),
+                    (geometry.size.w, h).into(),
+                )
+            }
+            Edge::Left => Rectangle::new(
+                geometry.loc,
+                (thickness.min(geometry.size.w), geometry.size.h).into(),
+            ),
+            Edge::Right => {
+                let w = thickness.min(geometry.size.w);
+                Rectangle::new(
+                    (geometry.loc.x + geometry.size.w - w, geometry.loc.y).into(),
+                    (w, geometry.size.h).into(),
+                )
+            }
+        })
+    }
 }
 
 /// Fold a set of chrome surfaces into the compositor's global reserved
@@ -308,6 +350,57 @@ mod tests {
             Rectangle::new(Point::from((0, 1000)), (1920, 80).into())
         );
         assert_eq!(dock.reserved(), Some((Edge::Bottom, 80)));
+    }
+
+    #[test]
+    fn reserved_rect_is_the_visible_bar_not_the_whole_surface() {
+        // A bottom Dock surface is taller than its bar: the transparent
+        // magnification band sits above the reserved bar.
+        let dock = LayerSurfaceState {
+            anchor: ANCHOR_BOTTOM | ANCHOR_LEFT | ANCHOR_RIGHT,
+            height: 131,
+            exclusive_zone: 67,
+            ..Default::default()
+        };
+        let surface = dock.geometry(output());
+        assert_eq!(
+            dock.reserved_rect(surface),
+            Some(Rectangle::new(Point::from((0, 1013)), (1920, 67).into())),
+            "the panel is the anchored bar strip, band excluded"
+        );
+
+        // A menu bar reserves its whole surface.
+        let bar = LayerSurfaceState {
+            exclusive_zone: 24,
+            ..anchored_top_bar()
+        };
+        assert_eq!(
+            bar.reserved_rect(bar.geometry(output())),
+            Some(bar.geometry(output()))
+        );
+
+        // A popover (no reserve) has no separate panel rect.
+        let popover = LayerSurfaceState {
+            width: 320,
+            height: 200,
+            ..Default::default()
+        };
+        assert_eq!(popover.reserved_rect(popover.geometry(output())), None);
+
+        // A left/right Dock rotates the strip with the anchored edge.
+        let right = LayerSurfaceState {
+            anchor: ANCHOR_RIGHT | ANCHOR_TOP | ANCHOR_BOTTOM,
+            width: 131,
+            exclusive_zone: 67,
+            ..Default::default()
+        };
+        assert_eq!(
+            right.reserved_rect(right.geometry(output())),
+            Some(Rectangle::new(
+                Point::from((1920 - 67, 0)),
+                (67, 1080).into()
+            ))
+        );
     }
 
     #[test]
