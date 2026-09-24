@@ -352,12 +352,25 @@ where
                     // the click (T-07 FR-1).
                     state.focus_chrome_surface(&surface);
                 } else {
+                    let is_left = button_event.button == 0x110; /* BTN_LEFT */
+                    // Mission Control owns the scene: a left press hit-tests
+                    // the *live* grid transform (T-05.2) and a hit routes
+                    // through the one selection round-trip. Committed window
+                    // geometry is never hit-tested while the overview owns
+                    // input, so a click cannot land on a window drawn
+                    // elsewhere.
+                    if is_left && state.overview_input_owner() == InputOwner::Overview {
+                        if let Some(id) = state.overview_window_at(location) {
+                            state.select_overview_window(id);
+                            state.notify_activity();
+                            return;
+                        }
+                    }
                     // Right-click or Control-click on the titlebar opens the
                     // window menu (T-01.4). Like the left press, a
                     // floating/zoomed titlebar is consulted only when no
                     // client surface is under the point; a revealed
                     // fullscreen titlebar wins even when one is.
-                    let is_left = button_event.button == 0x110; /* BTN_LEFT */
                     let is_right = button_event.button == 0x111; /* BTN_RIGHT */
                     let ctrl = state
                         .seat

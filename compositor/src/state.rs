@@ -2334,6 +2334,19 @@ impl DfState {
         self.needs_redraw = true;
     }
 
+    /// Route the Mission Control selection round-trip for a live surface
+    /// (T-05.2 / FR-5): remember the choice, leave the overview, activate the
+    /// window's Space, then raise and focus it, and broadcast the change.
+    ///
+    /// One path shared by the shell's `select_overview_toplevel` request and a
+    /// pointer click on a live representation, so keyboard and pointer
+    /// selection cannot diverge.
+    pub fn select_overview_window(&mut self, id: WindowId) {
+        self.overview.select(id);
+        self.activate_window_id(id);
+        self.broadcast_overview();
+    }
+
     /// Enter or leave the Mission Control overview directly (private
     /// protocol enter/exit, selection round-trip). Keeps the machine the
     /// single source of truth and broadcasts the change.
@@ -2558,6 +2571,26 @@ impl DfState {
         let area = self.space.output_geometry(output)?;
         let candidates = self.grid_candidates(&output.name());
         Some((progress, grid_layout(area, &candidates)))
+    }
+
+    /// The live window under `point` while Mission Control owns the scene, or
+    /// `None` (T-05.2).
+    ///
+    /// Hit-tests the *interpolated* render rects `overview_grid_layout`
+    /// produces — the exact transform the renderer and `query grid` report —
+    /// not the committed geometry, so a click lands on the live representation
+    /// the user sees. Only the output containing `point` is consulted; the
+    /// point is in global logical space (the pointer's current location).
+    pub fn overview_window_at(&self, point: Point<f64, Logical>) -> Option<WindowId> {
+        self.overview_grid_progress()?;
+        self.space.outputs().find_map(|output| {
+            let geometry = self.space.output_geometry(output)?;
+            if !geometry.to_f64().contains(point) {
+                return None;
+            }
+            let (progress, layout) = self.overview_grid_layout(output)?;
+            layout.window_at(point, progress)
+        })
     }
 
     /// The material the Mission Control grid composes its live surfaces with

@@ -3995,3 +3995,85 @@ fn overview_grid_keeps_live_video_advancing_and_applies_degrade_tier() {
         "teardown leak: synthetic-input socket survived"
     );
 }
+
+/// T-05.2 acceptance: with Mission Control open, a left click on a **live**
+/// representation hit-tests the interpolated grid transform (not the
+/// committed geometry), routes through the one selection round-trip, closes
+/// the overview, and focuses that window. The other live surfaces stay mapped
+/// throughout (the selection is on the real surface, never a thumbnail).
+#[test]
+fn overview_click_selects_and_focuses_the_live_representation() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path =
+        PathBuf::from(&runtime_dir).join(format!("dragonfruit-grid-select-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-grid-select",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (_conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let mut mapped = Vec::new();
+    for app in [
+        "org.dragonfruit.SelA",
+        "org.dragonfruit.SelB",
+        "org.dragonfruit.SelC",
+    ] {
+        let (surface, _xdg_surface, toplevel, file) =
+            map_toplevel_with_app_id(&mut state, &mut queue, app);
+        mapped.push((surface, toplevel, file));
+    }
+
+    // Open Mission Control and settle it: three live representations.
+    input.send("swipe-begin 4");
+    input.send("swipe-update 0 -100");
+    input.send("swipe-update 0 -100");
+    input.send("swipe-end");
+    let grid = wait_for_grid(&input, Duration::from_secs(5), |grid| {
+        grid.active && (grid.progress - 1.0).abs() < 1e-6 && grid.windows.len() == 3
+    });
+
+    // Pick the representation whose scaled target center falls *outside* its
+    // own committed rect, so the hit can only be the transformed surface.
+    let chosen = grid
+        .windows
+        .iter()
+        .copied()
+        .find(|window| {
+            let (x, y, w, h) = window.target;
+            let (cx, cy) = (x + w / 2, y + h / 2);
+            let (sx, sy, sw, sh) = window.source;
+            !(cx >= sx && cx < sx + sw && cy >= sy && cy < sy + sh)
+        })
+        .unwrap_or_else(|| panic!("a grid target must move off its committed rect: {grid:?}"));
+    let (tx, ty, tw, th) = chosen.target;
+    let (cx, cy) = (tx + tw / 2, ty + th / 2);
+
+    // Pointer selection on the live representation.
+    click_at(&input, cx, cy);
+
+    // The overview reverses/leaves and that window focuses.
+    wait_for_grid(&input, Duration::from_secs(5), |grid| !grid.active);
+    wait_for_event(
+        &input,
+        &format!("event focused {}", chosen.window),
+        Duration::from_secs(5),
+    );
+
+    // The scene is back to live surfaces: all three remain mapped.
+    assert_eq!(
+        parse_decorations(&input.query("query decorations")).len(),
+        3,
+        "selection must not unmap the live surfaces"
+    );
+
+    for (surface, toplevel, _file) in mapped {
+        surface.destroy();
+        toplevel.destroy();
+    }
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}

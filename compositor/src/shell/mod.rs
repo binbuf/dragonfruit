@@ -1653,9 +1653,9 @@ impl Dispatch<df_toplevel_manager::DfToplevelManager, ()> for DfState {
                 if let Some(id) = toplevel.data::<ToplevelUserData>().map(|data| data.id) {
                     // Selection round-trip (FR-5): remember the choice, leave
                     // the overview, then activate its Space and raise/focus.
-                    state.overview.select(id);
-                    state.activate_window_id(id);
-                    state.broadcast_overview();
+                    // The same path a pointer click on a live representation
+                    // takes (T-05.2).
+                    state.select_overview_window(id);
                 }
             }
             df_toplevel_manager::Request::ActivateApp { app_id } => {
