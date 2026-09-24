@@ -162,6 +162,15 @@ where
     B::TabletToolTipEvent: backend_input::TabletToolTipEvent<B>,
     B::TabletToolButtonEvent: backend_input::TabletToolButtonEvent<B>,
 {
+    // T-03.1b input-to-photon latency: stamp the input before routing it so
+    // the next presented frame can be credited with the round trip. Device
+    // hotplug is not user input and must not start a sample.
+    if !matches!(
+        &event,
+        InputEvent::DeviceAdded { .. } | InputEvent::DeviceRemoved { .. }
+    ) {
+        state.stats.latency.note_input(Instant::now());
+    }
     match event {
         InputEvent::DeviceAdded { device } => {
             if device.has_capability(backend_input::DeviceCapability::TabletTool) {

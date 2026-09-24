@@ -35,6 +35,8 @@
 //! query window-menu
 //! query motion
 //! query events
+//! query latency
+//! query scanout
 //! set titlebar-double-click zoom|minimize|none
 //! set reduced-motion on|off
 //! set launch-origin <app-id> <x> <y> <width> <height>
@@ -652,6 +654,12 @@ pub enum SyntheticCommand {
     /// Read-only window-lifecycle outbox introspection (T-02.2): the pending
     /// `ShellWindowEvent`s the shell would drain, followed by `end`.
     QueryEvents,
+    /// Read-only input-to-photon latency introspection (T-03.1b): the
+    /// instrument counters, followed by `end`.
+    QueryLatency,
+    /// Read-only direct-scanout counter-template introspection (T-03.1b):
+    /// the scanout-relevant render counters, followed by `end`.
+    QueryScanout,
     /// Set `dock.titlebarDoubleClick` for the session (T-01.3 test plumbing).
     SetTitlebarDoubleClick(TitlebarDoubleClick),
     /// Set the compositor reduced-motion policy (T-02.1b test plumbing).
@@ -806,9 +814,11 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
             // the T-02.1b tests and scripts keep working.
             Some("motion") | Some("appear") => SyntheticCommand::QueryMotion,
             Some("events") => SyntheticCommand::QueryEvents,
+            Some("latency") => SyntheticCommand::QueryLatency,
+            Some("scanout") => SyntheticCommand::QueryScanout,
             _ => {
                 return Err(
-                    "query requires a known subject (decorations, window-menu, motion, events)"
+                    "query requires a known subject (decorations, window-menu, motion, events, latency, scanout)"
                         .into(),
                 );
             }
@@ -1006,6 +1016,12 @@ impl SyntheticCommand {
             SyntheticCommand::QueryEvents => {
                 unreachable!("query events is handled by apply_datagram")
             }
+            SyntheticCommand::QueryLatency => {
+                unreachable!("query latency is handled by apply_datagram")
+            }
+            SyntheticCommand::QueryScanout => {
+                unreachable!("query scanout is handled by apply_datagram")
+            }
             // A settings command, not an input event.
             SyntheticCommand::SetTitlebarDoubleClick(_) => {
                 unreachable!("set titlebar-double-click is handled by apply_datagram")
@@ -1098,6 +1114,24 @@ fn apply_datagram_reply(
             Ok(SyntheticCommand::QueryEvents) => {
                 if let Some((socket, peer)) = &reply {
                     let report = window_events_report(state);
+                    if let Some(path) = peer.as_pathname() {
+                        let _ = socket.send_to(report.as_bytes(), path);
+                    }
+                }
+                applied += 1;
+            }
+            Ok(SyntheticCommand::QueryLatency) => {
+                if let Some((socket, peer)) = &reply {
+                    let report = latency_report(state);
+                    if let Some(path) = peer.as_pathname() {
+                        let _ = socket.send_to(report.as_bytes(), path);
+                    }
+                }
+                applied += 1;
+            }
+            Ok(SyntheticCommand::QueryScanout) => {
+                if let Some((socket, peer)) = &reply {
+                    let report = scanout_report(state);
                     if let Some(path) = peer.as_pathname() {
                         let _ = socket.send_to(report.as_bytes(), path);
                     }
@@ -1315,7 +1349,37 @@ fn window_events_report(state: &DfState) -> String {
     out
 }
 
-/// Bind the synthetic-input socket and insert its event source.
+/// The `query latency` report (T-03.1b).
+///
+/// `latency last_us=<n> max_us=<n> samples=<n> dropped=<n>
+/// within_one_frame_60hz=<0|1>` followed by `end`.
+fn latency_report(state: &DfState) -> String {
+    let latency = &state.stats.latency;
+    format!(
+        "latency last_us={} max_us={} samples={} dropped={} within_one_frame_60hz={}\nend\n",
+        latency.last_us(),
+        latency.max_us(),
+        latency.samples(),
+        latency.dropped(),
+        latency.within_one_frame(60) as u32,
+    )
+}
+
+/// The `query scanout` report (T-03.1b): the direct-scanout counter template.
+///
+/// `scanout direct_scanouts=<n> frames_rendered=<n> frames_skipped_no_damage=<n>
+/// considered=<n>` followed by `end`.
+fn scanout_report(state: &DfState) -> String {
+    let counter = crate::instrument::ScanoutCounter::read(&state.stats);
+    format!(
+        "scanout direct_scanouts={} frames_rendered={} frames_skipped_no_damage={} \
+         considered={}\nend\n",
+        counter.direct_scanouts,
+        counter.frames_rendered,
+        counter.frames_skipped_no_damage,
+        counter.frames_considered(),
+    )
+}
 ///
 /// Only the headless and nested backends call this, and only when
 /// [`ENV_SYNTHETIC_INPUT`] is set; the socket is removed by the caller at
@@ -1435,6 +1499,14 @@ mod tests {
         assert_eq!(
             parse_command("query events").unwrap(),
             SyntheticCommand::QueryEvents
+        );
+        assert_eq!(
+            parse_command("query latency").unwrap(),
+            SyntheticCommand::QueryLatency
+        );
+        assert_eq!(
+            parse_command("query scanout").unwrap(),
+            SyntheticCommand::QueryScanout
         );
         assert_eq!(
             parse_command("minimize 3").unwrap(),

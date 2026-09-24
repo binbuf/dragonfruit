@@ -1038,6 +1038,10 @@ fn render_surface(
                 // idle/ wakeup budget (T-03.1a) is measurable on DRM too.
                 state.stats.client_wakeups +=
                     crate::render::count_output_windows(state, &surface.output);
+                // A presented frame: credit any pending input with its
+                // input-to-photon round trip (T-03.1b). The nested/headless
+                // paths do this in `render::post_repaint*`.
+                state.stats.latency.note_present(std::time::Instant::now());
                 // Primary scanout bookkeeping for presentation feedback.
                 update_primary_scanout(state, &render_frame_result.states);
                 let feedback = render::take_presentation_feedback(

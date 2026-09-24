@@ -96,6 +96,7 @@ use crate::input::hot_corners::HotCornerDetector;
 use crate::input::settings::InputSettings;
 use crate::input::shortcuts::{GrabArbiter, GrabKind, ShortcutEngine};
 use crate::input::{InputAction, TriggerKind};
+use crate::instrument::LatencyInstrument;
 use crate::overview::{InputOwner, OverviewKind, OverviewMachine, TransitionCommit};
 use crate::shell::ShellProtocolState;
 use crate::window::grab::{MoveGrab, ResizeGrab};
@@ -165,6 +166,10 @@ pub struct RenderStats {
     /// actually presented, so a flat counter proves the compositor woke no
     /// client (T-03.1a).
     pub client_wakeups: u64,
+    /// Input-to-photon latency accumulator (T-03.1b): stamped by input
+    /// routing, sampled by the presenting backend. A flat, zero-sample
+    /// instrument while idle proves no input was mis-credited.
+    pub latency: LatencyInstrument,
     /// Bounded ring of recent frame samples, newest last.
     samples: VecDeque<FrameSample>,
     frame_time_us_total: u64,
@@ -2094,12 +2099,32 @@ impl DfState {
         println!(
             "dragonfruit-compositor: render stats ({label}): \
              frames_rendered={} frames_skipped_no_damage={} direct_scanouts={} \
-             animation_frames_stepped={} client_wakeups={}",
+             animation_frames_stepped={} client_wakeups={} \
+             latency_us_last={} latency_us_max={} latency_samples={} latency_dropped={}",
             self.stats.frames_rendered,
             self.stats.frames_skipped_no_damage,
             self.stats.direct_scanouts,
             self.animation_clock.frames_stepped(),
             self.stats.client_wakeups,
+            self.stats.latency.last_us(),
+            self.stats.latency.max_us(),
+            self.stats.latency.samples(),
+            self.stats.latency.dropped(),
+        );
+        // Input-to-photon latency instrument (T-03.1b): the render-stats line
+        // above has the positional fields; this line is the human-readable
+        // form and states the pass/fail against one 60 Hz frame.
+        println!(
+            "dragonfruit-compositor: latency stats ({label}): {} within_one_frame_60hz={}",
+            self.stats.latency.summary(),
+            self.stats.latency.within_one_frame(60),
+        );
+        // Direct-scanout counter template (T-03.1b): the DRM rail snapshots
+        // this before/after a condition to prove engagement. On headless it is
+        // always zero (`direct_scanouts=0`).
+        println!(
+            "dragonfruit-compositor: scanout stats ({label}): {}",
+            crate::instrument::ScanoutCounter::read(&self.stats).report(),
         );
         // Animation-clock counters (T-02.1a): `frames_stepped` is the number
         // of animation frames the clock advanced; while an animation is live
