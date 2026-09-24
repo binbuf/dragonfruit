@@ -89,6 +89,34 @@ pub fn centered_on(
     Rectangle::new(loc, window)
 }
 
+/// The geometry for a client that set an ICCCM **user-specified** position
+/// (`USPosition`), which a window manager must honor. Negative offsets are
+/// measured from the output's right/bottom edges, exactly as X geometry does.
+/// The result is clamped so the window always stays on the output.
+pub fn user_positioned_geometry(
+    output: Rectangle<i32, Logical>,
+    window: Size<i32, Logical>,
+    position: (i32, i32),
+) -> Rectangle<i32, Logical> {
+    let (raw_x, raw_y) = position;
+    let x = if raw_x < 0 {
+        output.loc.x + output.size.w + raw_x - window.w
+    } else {
+        output.loc.x + raw_x
+    };
+    let y = if raw_y < 0 {
+        output.loc.y + output.size.h + raw_y - window.h
+    } else {
+        output.loc.y + raw_y
+    };
+    let max_x = output.loc.x + (output.size.w - window.w).max(0);
+    let max_y = output.loc.y + (output.size.h - window.h).max(0);
+    Rectangle::new(
+        (x.clamp(output.loc.x, max_x), y.clamp(output.loc.y, max_y)).into(),
+        window,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -159,6 +187,24 @@ mod tests {
         let parent = rect(200, 150, 800, 600);
         let dialog = centered_on(parent, Size::from((400, 300)));
         assert_eq!(dialog, rect(400, 300, 400, 300));
+    }
+
+    #[test]
+    fn user_positioned_geometry_honors_positive_offsets() {
+        let geo = user_positioned_geometry(output(), Size::from((320, 160)), (1500, 40));
+        assert_eq!(geo, rect(1500, 40, 320, 160));
+    }
+
+    #[test]
+    fn user_positioned_geometry_measures_negative_offsets_from_the_far_edges() {
+        let geo = user_positioned_geometry(output(), Size::from((320, 160)), (-40, -120));
+        assert_eq!(geo, rect(1920 - 40 - 320, 1080 - 120 - 160, 320, 160));
+    }
+
+    #[test]
+    fn user_positioned_geometry_clamps_onto_the_output() {
+        let geo = user_positioned_geometry(output(), Size::from((320, 160)), (5000, -5000));
+        assert_eq!(geo, rect(1920 - 320, 0, 320, 160));
     }
 
     #[test]

@@ -61,8 +61,10 @@ Item {
     readonly property bool verticalIndicator:
         indicatorEdge === "left" || indicatorEdge === "right"
     readonly property real indicatorSize: Theme.controls.dock.indicatorSize
+    // Reserved for every entry (not just running ones) so the Dock keeps all
+    // artwork on one baseline; the dot itself still only shows when running.
     readonly property real indicatorSpace:
-        showIndicator && running ? Theme.controls.dock.indicatorGap + indicatorSize : 0
+        showIndicator ? Theme.controls.dock.indicatorGap + indicatorSize : 0
 
     signal activated(var entry)
     signal contextMenuRequested(var entry, real globalX, real globalY)

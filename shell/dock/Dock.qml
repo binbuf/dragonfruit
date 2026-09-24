@@ -170,7 +170,13 @@ Rectangle {
     readonly property real padding: Theme.controls.dock.padding
     readonly property real gap: Theme.controls.dock.gap
     readonly property real dividerWidth: 1
-    readonly property real barThickness: iconSize + 2 * padding
+    // Room reserved below every entry's artwork for a running indicator. It is
+    // reserved for all entries, not only running ones, so running and idle
+    // icons share one baseline (a per-running reservation lifts the running
+    // icons, which reads as a magnification bump).
+    readonly property real indicatorSpace:
+        showIndicators ? Theme.controls.dock.indicatorGap + Theme.controls.dock.indicatorSize : 0
+    readonly property real barThickness: iconSize + indicatorSpace + 2 * padding
     // `dock.magnification` (0..1, 0 = off) maps onto the peak icon factor;
     // 0.5 (the default) lands on the `magnifyPeak` token (T-10 section 19).
     readonly property real magnifyPeakFactor:
@@ -1249,11 +1255,6 @@ Rectangle {
         return { x: topLeft.x, y: topLeft.y, w: popup.width, h: popup.height };
     }
 
-    function indicatorSpace(entry) {
-        return showIndicators && entry.running
-                ? gap + Theme.controls.dock.indicatorSize : 0;
-    }
-
     function scaledGap(a, b, aDivider, bDivider) {
         if (aDivider || bDivider)
             return gap;
@@ -1333,7 +1334,7 @@ Rectangle {
         var out = [];
         for (var j = 0; j < n; ++j) {
             var isDivider = list[j].kind === "divider";
-            var extra = isDivider ? 0 : indicatorSpace(list[j]);
+            var extra = isDivider ? 0 : indicatorSpace;
             var bounce = isDivider ? 0 : entryBounce(list[j]);
             if (axisIsX) {
                 var h = sizes[j] + extra;
@@ -1515,9 +1516,11 @@ Rectangle {
             if (dock.axisIsX)
                 return Math.max(0, Math.min(dock.width - width,
                     dock.menuAnchor.x + (dock.menuAnchor.width - width) / 2));
+            // Beside the bar (not the entry), so the popover always clears the
+            // bar regardless of the entry's inset.
             return dock.position === "left"
-                    ? dock.menuAnchor.x + dock.menuAnchor.width + 4
-                    : dock.menuAnchor.x - width - 4;
+                    ? dock.barRect.x + dock.barRect.w + 4
+                    : dock.barRect.x - width - 4;
         }
         y: {
             if (!dock.menuAnchor)
@@ -1567,8 +1570,8 @@ Rectangle {
                 return Math.max(0, Math.min(dock.width - width,
                     dock.chooserAnchor.x + (dock.chooserAnchor.width - width) / 2));
             return dock.position === "left"
-                    ? dock.chooserAnchor.x + dock.chooserAnchor.width + 4
-                    : dock.chooserAnchor.x - width - 4;
+                    ? dock.barRect.x + dock.barRect.w + 4
+                    : dock.barRect.x - width - 4;
         }
         y: {
             if (!dock.chooserAnchor)
@@ -1609,8 +1612,8 @@ Rectangle {
                 return Math.max(0, Math.min(dock.width - width,
                     dock.stackAnchor.x + (dock.stackAnchor.width - width) / 2));
             return dock.position === "left"
-                    ? dock.stackAnchor.x + dock.stackAnchor.width + 4
-                    : dock.stackAnchor.x - width - 4;
+                    ? dock.barRect.x + dock.barRect.w + 4
+                    : dock.barRect.x - width - 4;
         }
         y: {
             if (!dock.stackAnchor)

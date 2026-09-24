@@ -429,8 +429,10 @@ impl TitlebarElement {
     /// physical coordinates, ordered front-to-back (glyphs → lights →
     /// background) as Smithay's damage tracker requires.
     ///
-    /// This is the flat T-01.1 fill; T-04 replaces it with the material pass
-    /// (translucency, blur, rounding) while keeping the geometry above.
+    /// The lights are rasterized as circles (stacks of solid strips); the
+    /// chrome itself is still a flat square fill. T-04 replaces both with the
+    /// material pass (translucency, blur, rounding) while keeping the geometry
+    /// above.
     pub fn render_elements(
         &self,
         scale: Scale<f64>,
@@ -462,7 +464,10 @@ impl TitlebarElement {
 
         let reveal = self.revealed();
         for button in &self.buttons {
-            push(button.rect, self.fill_color(button));
+            let fill = self.fill_color(button);
+            for strip in circle_rects(button.rect) {
+                push(strip, fill);
+            }
             if button.enabled && reveal {
                 for glyph in glyph_rects(button.kind, button.rect) {
                     push(glyph, color_from_rgba(self.scheme.traffic_glyph()));
@@ -487,6 +492,39 @@ pub(crate) fn color_from_rgba(rgba: [u8; 4]) -> Color32F {
         rgba[2] as f32 / 255.0,
         rgba[3] as f32 / 255.0,
     )
+}
+
+/// Rasterize the filled circle inscribed in `button` as 1px-tall solid strips.
+///
+/// The compositor has no vector rasterizer yet, so the macOS-style round
+/// traffic lights are built from solid rectangles like the glyphs. The strips
+/// are computed in logical coordinates, so the physical strip count does not
+/// grow with the output scale. T-04's material pass may replace them with a
+/// real (antialiased) texture.
+fn circle_rects(button: Rectangle<i32, Logical>) -> Vec<Rectangle<i32, Logical>> {
+    let diameter = button.size.w.min(button.size.h);
+    if diameter <= 0 {
+        return Vec::new();
+    }
+    let radius = diameter as f64 / 2.0;
+    let center_x = button.loc.x as f64 + radius;
+    let mut rects = Vec::with_capacity(diameter as usize);
+    for row in 0..diameter {
+        // Sample the chord at the row centre, so the widest row spans the
+        // full diameter and the pole rows are the narrowest.
+        let dy = row as f64 + 0.5 - radius;
+        let half = (radius * radius - dy * dy).max(0.0).sqrt();
+        let width = (half * 2.0).round() as i32;
+        if width <= 0 {
+            continue;
+        }
+        let x = (center_x - width as f64 / 2.0).round() as i32;
+        rects.push(Rectangle::new(
+            (x, button.loc.y + row).into(),
+            (width, 1).into(),
+        ));
+    }
+    rects
 }
 
 /// Axis-aligned marks approximating the control glyphs at token scale. The
@@ -767,14 +805,44 @@ mod tests {
         ))));
     }
 
+    /// The number of solid strips the three rasterized lights contribute.
+    fn light_strip_count(titlebar: &TitlebarElement) -> usize {
+        titlebar
+            .buttons
+            .iter()
+            .map(|button| circle_rects(button.rect).len())
+            .sum()
+    }
+
     #[test]
     fn idle_titlebar_draws_fill_and_lights_but_no_glyphs() {
         let mut titlebar = ssd(rect(0, 40, 200, 150));
         titlebar.hovered = false;
         titlebar.focused = true;
         let elements = titlebar.render_elements(1.0.into(), Point::from((0, 0)));
-        // 1 background + 3 lights, no glyphs while not hovered.
-        assert_eq!(elements.len(), 1 + 3);
+        // 1 background + the light strips, no glyphs while not hovered.
+        assert_eq!(elements.len(), 1 + light_strip_count(&titlebar));
+    }
+
+    #[test]
+    fn traffic_lights_are_rasterized_as_circles() {
+        let button = rect(10, 10, 12, 12);
+        let strips = circle_rects(button);
+        assert_eq!(strips.len(), 12, "one strip per logical row");
+        let widths: Vec<i32> = strips.iter().map(|strip| strip.size.w).collect();
+        // The widest strip spans the full diameter at the vertical centre;
+        // the pole rows are narrower, so the silhouette is round, not square.
+        assert_eq!(*widths.iter().max().unwrap(), 12);
+        assert!(
+            widths[0] < 12,
+            "the top row must be narrower than the middle"
+        );
+        assert!(widths[11] < 12, "the bottom row must be narrower");
+        for strip in &strips {
+            assert_eq!(strip.size.h, 1);
+            assert!(strip.loc.x >= button.loc.x);
+            assert!(strip.loc.x + strip.size.w <= button.loc.x + button.size.w);
+        }
     }
 
     #[test]
@@ -831,7 +899,7 @@ mod tests {
         let total = titlebar
             .render_elements(1.0.into(), Point::from((0, 0)))
             .len();
-        assert_eq!(total, 1 + 3 + glyphs);
+        assert_eq!(total, 1 + light_strip_count(&titlebar) + glyphs);
     }
 
     #[test]
@@ -850,22 +918,25 @@ mod tests {
     fn render_elements_are_front_to_back_with_the_opaque_background_last() {
         let titlebar = ssd(rect(0, 40, 400, 300));
         let elements = titlebar.render_elements(1.0.into(), Point::from((0, 0)));
-        assert_eq!(elements.len(), 4, "background + three lights");
+        let background = elements.last().expect("background");
+        assert_eq!(
+            background.geometry(1.0.into()).size,
+            (400, TITLEBAR_HEIGHT).into()
+        );
         // The lights come first (front) so the opaque titlebar fill, which is
         // last (back), cannot cull them: an opaque element hides everything
         // that follows it in Smithay's front-to-back list.
+        let cluster = titlebar.cluster_rect();
         let diameter = traffic_lights::DIAMETER as i32;
-        for light in &elements[..3] {
-            assert_eq!(light.geometry(1.0.into()).size, (diameter, diameter).into());
+        for light in &elements[..elements.len() - 1] {
+            let geo = light.geometry(1.0.into());
+            assert_eq!(geo.size.h, 1, "a light strip is one logical pixel tall");
+            assert!(geo.size.w <= diameter);
+            assert!(geo.loc.x >= cluster.loc.x);
+            assert!(geo.loc.x + geo.size.w <= cluster.loc.x + cluster.size.w);
+            assert!(geo.loc.y >= cluster.loc.y);
+            assert!(geo.loc.y < cluster.loc.y + cluster.size.h);
         }
-        assert_eq!(
-            elements
-                .last()
-                .expect("background")
-                .geometry(1.0.into())
-                .size,
-            (400, TITLEBAR_HEIGHT).into()
-        );
     }
 
     #[test]

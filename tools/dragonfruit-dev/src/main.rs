@@ -706,7 +706,16 @@ fn run_demo_session(args: &DevArgs) -> ExitCode {
     // session is valid, so skip it with a note rather than failing.
     match (session.display.clone(), &x11) {
         (Some(display), Some(app)) => {
+            // Pin the X11 window to the top-right corner (negative offsets are
+            // measured from the output's far edges, so this is independent of
+            // the output size). The compositor honors the ICCCM
+            // user-specified position, so the X11 demo window no longer lands
+            // on top of the centered Settings window.
             let args = vec![
+                "-geometry".to_string(),
+                // content y=80 keeps the compositor's 40px SSD titlebar
+                // (drawn above the content) clear of the 28px menu bar.
+                "320x160-40+80".to_string(),
                 "-title".to_string(),
                 "Dragonfruit X11".to_string(),
                 "Dragonfruit X11 demo window".to_string(),
@@ -772,12 +781,31 @@ fn run_demo_session(args: &DevArgs) -> ExitCode {
         }
     } else {
         // Nested human walkthrough: block until the Dragonfruit window is
-        // closed (or Ctrl-C). A client the human closes mid-demo is normal
-        // (exit 0); a client that crashes is a failure.
-        wait_for_compositor_exit(&mut session, "dragonfruit demo: shutting down");
-        for message in session.guard.failed_children() {
-            eprintln!("dragonfruit demo: {message}");
-            dirty = true;
+        // closed (or Ctrl-C). A client that exits with a failure *while the
+        // compositor is still running* is a crash; once the compositor is
+        // gone, every client exit is just the lost connection — the
+        // documented way to end the session — so those are not failures.
+        let mut reported: std::collections::HashSet<String> = std::collections::HashSet::new();
+        loop {
+            if session
+                .guard
+                .compositor()
+                .try_wait()
+                .is_ok_and(|status| status.is_some())
+            {
+                break;
+            }
+            if signalled() {
+                println!("dragonfruit demo: shutting down");
+                break;
+            }
+            for message in session.guard.failed_children() {
+                if reported.insert(message.clone()) {
+                    eprintln!("dragonfruit demo: {message}");
+                    dirty = true;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(20));
         }
     }
 
