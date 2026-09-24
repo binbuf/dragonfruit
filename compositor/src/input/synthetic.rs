@@ -672,6 +672,9 @@ pub enum SyntheticCommand {
     RestoreWindow(WindowId),
     /// Close the window with this compositor id (T-02.4a test plumbing).
     CloseWindow(WindowId),
+    /// Reverse a live close ghost of the window with this compositor id
+    /// (T-02.4b test plumbing); a no-op when nothing is closing.
+    InterruptClose(WindowId),
     /// Zoom the window with this compositor id (T-02.3 test plumbing).
     ZoomWindow(WindowId),
     /// Unzoom the window with this compositor id (T-02.3 test plumbing).
@@ -830,6 +833,15 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
                 .ok_or("close requires a window id")?
                 .parse()
                 .map_err(|_| "close window id must be a non-negative integer".to_string())?,
+        )),
+        "interrupt-close" | "reopen" => SyntheticCommand::InterruptClose(WindowId(
+            parts
+                .next()
+                .ok_or("interrupt-close requires a window id")?
+                .parse()
+                .map_err(|_| {
+                    "interrupt-close window id must be a non-negative integer".to_string()
+                })?,
         )),
         "zoom" => SyntheticCommand::ZoomWindow(WindowId(
             parts
@@ -1013,6 +1025,9 @@ impl SyntheticCommand {
             SyntheticCommand::CloseWindow(_) => {
                 unreachable!("close is handled by apply_datagram")
             }
+            SyntheticCommand::InterruptClose(_) => {
+                unreachable!("interrupt-close is handled by apply_datagram")
+            }
             SyntheticCommand::ZoomWindow(_) => {
                 unreachable!("zoom is handled by apply_datagram")
             }
@@ -1123,6 +1138,10 @@ fn apply_datagram_reply(
             }
             Ok(SyntheticCommand::CloseWindow(id)) => {
                 state.close_window_by_id(id);
+                applied += 1;
+            }
+            Ok(SyntheticCommand::InterruptClose(id)) => {
+                state.interrupt_close_by_id(id);
                 applied += 1;
             }
             Ok(SyntheticCommand::ZoomWindow(id)) => {
@@ -1428,6 +1447,15 @@ mod tests {
         assert_eq!(
             parse_command("close 3").unwrap(),
             SyntheticCommand::CloseWindow(WindowId(3))
+        );
+        assert_eq!(
+            parse_command("interrupt-close 3").unwrap(),
+            SyntheticCommand::InterruptClose(WindowId(3))
+        );
+        assert_eq!(
+            parse_command("reopen 3").unwrap(),
+            SyntheticCommand::InterruptClose(WindowId(3)),
+            "reopen is an alias for interrupting a close"
         );
         assert_eq!(
             parse_command("zoom 3").unwrap(),

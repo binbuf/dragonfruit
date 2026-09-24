@@ -104,7 +104,7 @@ transition reads it when it builds its tween and takes one step through the
 same commit path, never a second "instant" path. See
 [ADR 0003](adr/0003-shared-animation-clock.md).
 
-#### Window lifecycle motion (T-02.1b appear; T-02.2 minimize/restore; T-02.3 zoom/fullscreen; T-02.4a close)
+#### Window lifecycle motion (T-02.1b appear; T-02.2 minimize/restore; T-02.3 zoom/fullscreen; T-02.4a close; T-02.4b interrupt)
 
 A window scales and fades between an *origin* rectangle and its final
 geometry on that clock. For the launch motions the origin is the owning Dock
@@ -142,13 +142,22 @@ there is no orphaned surface and no stale state. A **closing** window uses
 the same ghost machinery: `close_window` unmaps it at once (input-inert) and
 starts a `Close` motion; the model entry is removed exactly once when it
 settles, broadcasting `Closed` (a client destroy during the motion is
-deferred to the same single removal). `dock.minimizedAnimation`
+deferred to the same single removal). Every transition is **interruptible**:
+a new request mid-flight starts from the current interpolated rect rather
+than waiting. For a close this is `DfState::interrupt_close` (or a restore of a
+closing window): it replaces the `Close` with a `Restore` from the partial
+ghost rect, re-enters the window at once, and restores focus, so the pending
+removal is dropped and no `Closed` is broadcast. A close ghost also releases
+keyboard focus the moment it becomes a ghost, so an input-inert window is
+never a phantom focus target (the compositor mirrors the unset itself because
+Smithay does not report it). `dock.minimizedAnimation`
 is `scale` in this slice (`none` is the reduced-motion fallback: the states
 still change and the motion collapses to one step). See
 [ADR 0004](adr/0004-window-appear-origin-and-transform.md),
 [ADR 0005](adr/0005-minimize-restore-motion-and-ghost.md),
-[ADR 0006](adr/0006-zoom-fullscreen-geometry-motion.md), and
-[ADR 0007](adr/0007-close-ghost-deferred-removal.md). T-04 reuses this
+[ADR 0006](adr/0006-zoom-fullscreen-geometry-motion.md),
+[ADR 0007](adr/0007-close-ghost-deferred-removal.md), and
+[ADR 0008](adr/0008-close-interruption-and-ghost-focus.md). T-04 reuses this
 per-window transform for scale/clip/blur.
 
 ## Window model

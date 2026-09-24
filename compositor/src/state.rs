@@ -1221,6 +1221,20 @@ impl DfState {
         // Input-inert from the first frame: unmap, then play the ghost.
         let geometry = self.windows.geometry(window).unwrap_or_default();
         self.space.unmap_elem(window);
+        // A ghost must never stay the keyboard focus target (T-02.4b): clear
+        // the seat focus and mirror it in the model. Smithay does not invoke
+        // `focus_changed` when the focus is *unset*, so the active window and
+        // the `Unfocused` broadcast must be updated here by hand.
+        if self.active_window.as_ref() == Some(window) {
+            if let Some(keyboard) = self.seat.get_keyboard() {
+                keyboard.set_focus(self, None, SERIAL_COUNTER.next_serial());
+            }
+            if let Some(old) = self.active_window.take() {
+                self.dismiss_popups_for(&old);
+                self.broadcast_window(&old, WindowEventKind::Unfocused);
+                self.shortcuts.set_focused_app(None);
+            }
+        }
         self.begin_window_motion(window, WindowMotionKind::Close, geometry);
         // Ask the client to close. If it destroys the surface before the
         // ghost settles, `toplevel_destroyed` defers the removal to the
@@ -1243,6 +1257,52 @@ impl DfState {
                 self.close_window(&window);
                 true
             }
+            None => false,
+        }
+    }
+
+    /// Reverse a live close ghost without waiting for it to finish (T-02.4b).
+    ///
+    /// A close is interruptible: before the fade/scale-out settles, a request
+    /// that brings the window back — the shell/Dock activating it, a restore,
+    /// or an explicit cancel — reverses the motion from its **current
+    /// interpolated rect** rather than jumping, re-enters the window in the
+    /// layout and the input path at once, and returns focus to it (the ghost
+    /// released focus at close time). Replacing the `Close` motion drops the
+    /// pending removal with it, so no `Closed` is ever broadcast and the
+    /// window is not removed.
+    ///
+    /// Returns whether a live close was actually reversed.
+    pub fn interrupt_close(&mut self, window: &Window) -> bool {
+        if !self.windows.is_closing(window) {
+            return false;
+        }
+        let Some(geometry) = self.windows.geometry(window) else {
+            return false;
+        };
+        let visible = self
+            .windows
+            .state(window)
+            .is_some_and(|state| state.is_visible());
+        let reenter = visible && self.window_on_active_space(window);
+        if reenter {
+            self.space.map_element(window.clone(), geometry.loc, true);
+        }
+        // The reverse starts from the live close frame (begin_window_motion_from
+        // reads it), so it picks up exactly where the ghost was.
+        self.begin_window_motion(window, WindowMotionKind::Restore, geometry);
+        if reenter {
+            self.activate_window(window, SERIAL_COUNTER.next_serial());
+        }
+        self.needs_redraw = true;
+        true
+    }
+
+    /// Reverse the close ghost of the window with compositor id `id`
+    /// (synthetic-input / shell seam). Returns whether a live close was found.
+    pub fn interrupt_close_by_id(&mut self, id: WindowId) -> bool {
+        match self.window_by_id(id) {
+            Some(window) => self.interrupt_close(&window),
             None => false,
         }
     }
@@ -1467,6 +1527,12 @@ impl DfState {
     /// of the app's Dock tile on the shared clock (T-02.2).
     pub fn restore_window(&mut self, window: &Window) {
         for target in self.windows.transient_tree(window) {
+            // A restore of a closing window is an interruption: reverse the
+            // ghost instead of waiting for it to commit (T-02.4b).
+            if self.windows.is_closing(&target) {
+                self.interrupt_close(&target);
+                continue;
+            }
             let Some(transition) =
                 self.windows
                     .apply(&target, WindowEvent::Restore, Rectangle::default())

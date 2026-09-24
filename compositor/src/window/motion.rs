@@ -105,6 +105,13 @@ impl WindowMotionKind {
         matches!(self, WindowMotionKind::Minimize | WindowMotionKind::Close)
     }
 
+    /// Whether this is the close ghost. A live close owns the model entry's
+    /// removal; reversing one (T-02.4b) replaces the motion, which drops the
+    /// pending removal before it can commit.
+    pub const fn is_close(self) -> bool {
+        matches!(self, WindowMotionKind::Close)
+    }
+
     /// The design-system motion token this kind is timed with. Minimize and
     /// close shrink out on the close curve; every other motion
     /// grows/retargets on the open curve.
@@ -440,6 +447,44 @@ mod tests {
         let frame = transition.frame(1000);
         assert_eq!(frame.rect, tile);
         assert_eq!(frame.alpha, 0.0);
+    }
+
+    /// T-02.4b: a close caught mid-flight reverses into a restore from the
+    /// *current* interpolated rect (not the tile), so an interruption never
+    /// jumps.
+    #[test]
+    fn a_close_reversed_mid_flight_restores_from_the_partial_rect() {
+        let tile = rect(24, 30, 48, 48);
+        let target = rect(200, 200, 800, 600);
+        let close = WindowMotion::new(WindowMotionKind::Close, tile, target, 0, false);
+        let end_ms = motion::WINDOW_CLOSE.duration_ms as u64;
+        let partial = close.frame(end_ms / 2).rect;
+        assert!(
+            partial.size.w > tile.size.w && partial.size.w < target.size.w,
+            "the partial rect is between the tile and the window: {partial:?}"
+        );
+
+        // The reversal is a restore whose origin is that partial ghost rect.
+        let restore = WindowMotion::new(
+            WindowMotionKind::Restore,
+            partial,
+            target,
+            end_ms / 2,
+            false,
+        );
+        let start = restore.frame(end_ms / 2);
+        assert_eq!(
+            start.rect, partial,
+            "the restore starts where the close was"
+        );
+        assert!(start.alpha < 1.0, "the ghost was fading out");
+        // It grows back to the exact window geometry, opaque, and does not
+        // remove the window (restore is not a ghost).
+        let end = restore.frame(end_ms / 2 + motion::WINDOW_OPEN.duration_ms as u64);
+        assert_eq!(end.rect, target);
+        assert_eq!(end.alpha, 1.0);
+        assert!(!WindowMotionKind::Restore.is_ghost());
+        assert!(!WindowMotionKind::Restore.is_close());
     }
 
     #[test]

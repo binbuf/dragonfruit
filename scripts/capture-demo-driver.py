@@ -192,6 +192,11 @@ def run(args):
     synth = Synthetic(args.synth)
     cap = Capturer(synth, args.outdir, args.scratch)
     steps = []
+    prefix = args.prefix
+    if args.reduced:
+        synth.send("set reduced-motion on")
+        time.sleep(0.3)
+        log("reduced motion enabled")
 
     # --- 1. the mapped loop ------------------------------------------------
     init = cap.full("initial")
@@ -203,7 +208,7 @@ def run(args):
     log(f"Wayland/SSD window {settings['window']} tb={settings['tb']}")
     log(f"X11 window {x11['window']} tb={x11['tb']}")
     steps.append(("initial: both windows mapped, Dock running indicators", init))
-    cap.still(init, "t01-loop-v0.png")
+    cap.still(init, f"{prefix}.png")
 
     tc = titlebar_center(settings["tb"])
 
@@ -212,27 +217,27 @@ def run(args):
     time.sleep(0.5)
     focused = cap.full("focused")
     steps.append(("focused: clicked the Wayland titlebar; menu bar shows its app", focused))
-    cap.still(focused, "t01-loop-v0-wayland.png", box=(
+    cap.still(focused, f"{prefix}-wayland.png", box=(
         settings["content"][0] - 8,
         settings["content"][1] - 40 - 8,
         settings["content"][2] + 16,
         settings["content"][3] + 40 + 16,
     ))
-    cap.still(focused, "t01-loop-v0-x11.png", box=(
+    cap.still(focused, f"{prefix}-x11.png", box=(
         x11["content"][0] - 8,
         x11["content"][1] - 40 - 8,
         x11["content"][2] + 16,
         x11["content"][3] + 40 + 16,
     ))
     dock_band = (700, NESTED_H - 140, 560, 140)
-    cap.still(focused, "t01-loop-v0-dock.png", box=dock_band)
+    cap.still(focused, f"{prefix}-dock.png", box=dock_band)
     titlebar_box = (
         settings["tb"][0] - 10,
         settings["tb"][1] - 6,
         settings["tb"][2] + 20,
         settings["tb"][3] + 12,
     )
-    cap.still(focused, "t01-loop-v0-titlebar.png", box=titlebar_box)
+    cap.still(focused, f"{prefix}-titlebar.png", box=titlebar_box)
 
     # --- 3. window menu ----------------------------------------------------
     synth.click(*tc, button=BTN_RIGHT)
@@ -240,7 +245,7 @@ def run(args):
         raise RuntimeError("right-click on the titlebar did not open the window menu")
     menu = cap.full("menu")
     steps.append(("window menu: right-click on the titlebar opens it", menu))
-    cap.still(menu, "t01-loop-v0-menu.png", box=(900, 240, 360, 220))
+    cap.still(menu, f"{prefix}-menu.png", box=(900, 240, 360, 220))
     synth.key(KEY_ESCAPE)
     time.sleep(0.3)
 
@@ -250,7 +255,7 @@ def run(args):
     time.sleep(0.3)
     zfull = cap.full("zoomed")
     steps.append(("zoomed: double-click on the titlebar fills the usable area", zfull))
-    cap.still(zfull, "t01-loop-v0-zoomed.png")
+    cap.still(zfull, f"{prefix}-zoomed.png")
     synth.double_click(*titlebar_center(zoomed["tb"]))
     synth.wait_state(settings["window"], ("floating",))
     time.sleep(0.3)
@@ -262,8 +267,8 @@ def run(args):
     time.sleep(0.4)
     mini = cap.full("minimized")
     steps.append(("minimized: yellow light; the window's Dock entry collapses", mini))
-    cap.still(mini, "t01-loop-v0-minimized.png")
-    cap.still(mini, "t01-loop-v0-dock-minimized.png", box=dock_band)
+    cap.still(mini, f"{prefix}-minimized.png")
+    cap.still(mini, f"{prefix}-dock-minimized.png", box=dock_band)
 
     # --- 6. restore from the Dock -----------------------------------------
     # The minimized entry appears to the right of the app's running tile, and
@@ -312,7 +317,7 @@ def run(args):
     time.sleep(0.3)
     rest = cap.full("restored")
     steps.append(("restored: the Dock click brings the window back and focuses it", rest))
-    cap.still(rest, "t01-loop-v0-restored.png")
+    cap.still(rest, f"{prefix}-restored.png")
 
     # --- 7. close: the Dock entry resolves ---------------------------------
     row = next(r for r in synth.decorations() if r["window"] == settings["window"])
@@ -326,7 +331,7 @@ def run(args):
     closed = cap.full("closed")
     remaining = [r["window"] for r in synth.decorations()]
     steps.append(("closed: red light closes the window; its Dock entry is gone", closed))
-    cap.still(closed, "t01-loop-v0-closed.png")
+    cap.still(closed, f"{prefix}-closed.png")
     log(f"windows remaining after close: {remaining}")
 
     with open(os.path.join(cap.scratch, "walkthrough.txt"), "w") as handle:
@@ -341,6 +346,16 @@ def main():
     parser.add_argument("--synth", required=True)
     parser.add_argument("--outdir", required=True)
     parser.add_argument("--scratch", required=True)
+    parser.add_argument(
+        "--prefix",
+        default="t01-loop-v0",
+        help="output still name prefix (default: t01-loop-v0)",
+    )
+    parser.add_argument(
+        "--reduced",
+        action="store_true",
+        help="drive the walkthrough with accessibility.reduceMotion on",
+    )
     args = parser.parse_args()
     try:
         run(args)

@@ -18,6 +18,7 @@
 use std::os::fd::AsFd;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
 use wayland_client::protocol::{
@@ -344,10 +345,49 @@ fn parse_states(bytes: &[u8]) -> Vec<u32> {
         .collect()
 }
 
+/// The render-path counters the compositor dumps on SIGUSR1 (FR-2 idle trace,
+/// T-02.4b). Mirrors `compositor/tests/idle_trace.rs`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct RenderStats {
+    frames_rendered: u64,
+    frames_skipped_no_damage: u64,
+    direct_scanouts: u64,
+    animation_frames_stepped: u64,
+}
+
+fn parse_stats(line: &str) -> Option<RenderStats> {
+    let rest = line.split("frames_rendered=").nth(1)?;
+    let mut parts = rest.split_whitespace();
+    let frames_rendered = parts.next()?.parse().ok()?;
+    let frames_skipped_no_damage = parts
+        .next()?
+        .strip_prefix("frames_skipped_no_damage=")?
+        .parse()
+        .ok()?;
+    let direct_scanouts = parts
+        .next()?
+        .strip_prefix("direct_scanouts=")?
+        .parse()
+        .ok()?;
+    let animation_frames_stepped = parts
+        .next()?
+        .strip_prefix("animation_frames_stepped=")?
+        .parse()
+        .ok()?;
+    Some(RenderStats {
+        frames_rendered,
+        frames_skipped_no_damage,
+        direct_scanouts,
+        animation_frames_stepped,
+    })
+}
+
 struct CompositorProcess {
     child: Child,
     socket_path: PathBuf,
     synthetic_path: Option<PathBuf>,
+    stats_rx: Receiver<RenderStats>,
+    reader: Option<std::thread::JoinHandle<()>>,
 }
 
 impl Drop for CompositorProcess {
@@ -360,6 +400,10 @@ impl Drop for CompositorProcess {
             let _ = self.child.kill();
         }
         let _ = self.child.wait();
+        // The reader thread ends when the child's stdout pipe closes.
+        if let Some(reader) = self.reader.take() {
+            let _ = reader.join();
+        }
         // Best-effort cleanup for a hard-killed run (SIGKILL skips the
         // compositor's own socket removal).
         let _ = std::fs::remove_file(&self.socket_path);
@@ -385,12 +429,28 @@ impl CompositorProcess {
             .arg("headless")
             .arg("--socket-name")
             .arg(&socket_name)
-            .stdout(Stdio::null())
+            .stdout(Stdio::piped())
             .stderr(Stdio::null());
         if let Some(path) = synthetic_path {
             command.env("DRAGONFRUIT_SYNTHETIC_INPUT", path);
         }
         let mut child = command.spawn().expect("failed to start compositor");
+        let stdout = child.stdout.take().expect("stdout piped");
+
+        // Stream the SIGUSR1 render-stats lines into a channel so a test can
+        // assert the idle trace (T-02.4b).
+        let (tx, rx) = mpsc::channel();
+        let reader = std::thread::spawn(move || {
+            use std::io::{BufRead, BufReader};
+            let reader = BufReader::new(stdout);
+            for line in reader.lines().map_while(Result::ok) {
+                if let Some(stats) = parse_stats(&line) {
+                    if tx.send(stats).is_err() {
+                        break;
+                    }
+                }
+            }
+        });
 
         let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
         let socket_path = PathBuf::from(runtime_dir).join(&socket_name);
@@ -420,7 +480,23 @@ impl CompositorProcess {
             child,
             socket_path,
             synthetic_path: synthetic_path.map(Path::to_path_buf),
+            stats_rx: rx,
+            reader: Some(reader),
         }
+    }
+
+    /// SIGUSR1 the compositor to dump the render counters.
+    fn signal(&self, sig: i32) {
+        unsafe {
+            kill(self.child.id() as i32, sig);
+        }
+    }
+
+    /// Wait for the next SIGUSR1 render-stats sample.
+    fn sample(&self) -> RenderStats {
+        self.stats_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("compositor did not emit render stats after SIGUSR1")
     }
 
     /// SIGTERM the compositor and assert it tears down cleanly (no stray
@@ -451,9 +527,14 @@ impl CompositorProcess {
             "teardown leak: socket {} survived exit",
             self.socket_path.display()
         );
+        // The stdout pipe closed with the child; drain the reader thread.
+        if let Some(reader) = self.reader.take() {
+            let _ = reader.join();
+        }
     }
 }
 
+const SIGUSR1: i32 = 10;
 const SIGTERM: i32 = 15;
 
 unsafe extern "C" {
@@ -3001,6 +3082,226 @@ fn close_fades_out_inert_and_commits_removal_exactly_once() {
     assert!(
         motions.iter().all(|m| m.window != window),
         "no motion record may outlive the closed window: {motions:?}"
+    );
+
+    surface.destroy();
+    toplevel.destroy();
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}
+
+/// Count the exact `event <kind> <window>` lines in a `query events` report.
+fn count_events(report: &str, needle: &str) -> usize {
+    report.lines().filter(|line| *line == needle).count()
+}
+
+/// Poll `query events` (which peeks, not drains) until `needle` appears.
+#[track_caller]
+fn wait_for_event(input: &SyntheticInput, needle: &str, timeout: Duration) -> String {
+    let deadline = Instant::now() + timeout;
+    loop {
+        let report = input.query("query events");
+        if report.lines().any(|line| line == needle) {
+            return report;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "event {needle:?} never appeared: {report:?}"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// T-02.4b acceptance: a live close ghost **reverses mid-flight** from its
+/// current interpolated rect (no waiting, no jump), the window is never
+/// removed, it released focus the moment it became a ghost (no phantom focus
+/// target), and after the loop settles the idle trace stays flat.
+#[test]
+fn close_reverses_mid_flight_and_the_idle_trace_stays_flat() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir)
+        .join(format!("dragonfruit-close-reverse-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-close-reverse",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let app_id = "org.dragonfruit.CloseReverse";
+    let tile = (100, 120, 48, 48);
+    input.send(&format!(
+        "set launch-origin {app_id} {} {} {} {}",
+        tile.0, tile.1, tile.2, tile.3
+    ));
+    let _ = input.query("query motion");
+    let (surface, _xdg_surface, toplevel, _file) =
+        map_toplevel_with_app_id(&mut state, &mut queue, app_id);
+
+    let motions = wait_for_motion(&input, |motions| {
+        motions.iter().any(|m| m.kind == "appear" && m.completed)
+    });
+    let appear = motions
+        .iter()
+        .find(|m| m.kind == "appear")
+        .expect("an appear record");
+    let window = appear.window;
+    let floating = appear.target;
+
+    // Focus the window by clicking its content, so the close can be shown to
+    // release the keyboard focus when it becomes a ghost.
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.pointer.is_some(),
+    );
+    let (cx, cy) = (floating.0 + floating.2 / 2, floating.1 + floating.3 / 2);
+    motion_to(&input, cx, cy);
+    click(&input);
+    wait_for_event(
+        &input,
+        &format!("event focused {window}"),
+        Duration::from_secs(5),
+    );
+
+    // --- close: ghost at once, focus released, no removal yet --------------
+    let report = input.query_batch(&format!("close {window}\nquery motion"));
+    let motions = parse_motion(&report);
+    let close = motions
+        .iter()
+        .find(|m| m.kind == "close")
+        .expect("a close record");
+    assert!(
+        close.active && !close.completed,
+        "the close must be in flight immediately: {close:?}"
+    );
+    assert_eq!(close.origin, tile, "the ghost shrinks into the Dock tile");
+    assert_eq!(close.target, floating, "the ghost leaves from the geometry");
+    // The ghost releases the keyboard focus it held (no phantom target).
+    let events = wait_for_event(
+        &input,
+        &format!("event unfocused {window}"),
+        Duration::from_secs(2),
+    );
+    assert_eq!(
+        count_events(&events, &format!("event closed {window}")),
+        0,
+        "the close must not commit while the ghost is live: {events}"
+    );
+
+    // Catch it mid-flight (at least one frame in) and reverse it.
+    let motions = wait_for_motion(&input, |motions| {
+        motions
+            .iter()
+            .any(|m| m.kind == "close" && !m.completed && m.frames >= 1)
+    });
+    let close = motions
+        .iter()
+        .find(|m| m.kind == "close")
+        .expect("a live close record");
+    assert!(!close.completed, "the close must still be in flight");
+
+    let report = input.query_batch(&format!("interrupt-close {window}\nquery motion"));
+    let motions = parse_motion(&report);
+    assert!(
+        motions.iter().all(|m| !(m.kind == "close" && m.active)),
+        "the close must be replaced by the reverse: {motions:?}"
+    );
+    let restore = motions
+        .iter()
+        .find(|m| m.kind == "restore")
+        .expect("the reverse restore record");
+    assert_eq!(
+        restore.target, floating,
+        "the reverse returns to the window geometry: {restore:?}"
+    );
+    assert_ne!(
+        restore.origin, floating,
+        "the reverse must start from the partial ghost, not jump: {restore:?}"
+    );
+    assert!(
+        restore.origin.2 > tile.2 && restore.origin.2 < floating.2,
+        "the reverse starts from the interpolated ghost rect: origin={:?} (tile={tile:?}, floating={floating:?})",
+        restore.origin
+    );
+    let events = input.query("query events");
+    assert_eq!(
+        count_events(&events, &format!("event closed {window}")),
+        0,
+        "an interrupted close must not commit removal: {events}"
+    );
+
+    // The reverse resolves back to the window and the entry stays tracked.
+    let motions = wait_for_motion(&input, |motions| {
+        motions.iter().any(|m| m.kind == "restore" && m.completed)
+    });
+    let restore = motions
+        .iter()
+        .find(|m| m.kind == "restore")
+        .expect("the completed restore");
+    assert!(restore.frames >= 1);
+    wait_for_window(&mut state, &mut queue, &input, window, |report| {
+        report.state == WindowStateReport::Floating && report.content == floating
+    });
+    assert!(
+        parse_decorations(&input.query("query decorations"))
+            .iter()
+            .any(|d| d.window == window),
+        "the reversed window stays in the model"
+    );
+
+    // --- close again, this time to completion ------------------------------
+    input.send(&format!("close {window}"));
+    let decorations = wait_for_report(&mut state, &mut queue, &input, |reports| {
+        !reports.iter().any(|report| report.window == window)
+    });
+    assert!(
+        decorations.iter().all(|report| report.window != window),
+        "the settled close must remove the window: {decorations:?}"
+    );
+    let events = input.query("query events");
+    assert_eq!(
+        count_events(&events, &format!("event closed {window}")),
+        1,
+        "the settled close commits removal exactly once: {events:?}"
+    );
+    let motions = parse_motion(&input.query("query motion"));
+    assert!(
+        motions.iter().all(|m| m.window != window),
+        "no motion record may outlive the closed window: {motions:?}"
+    );
+
+    // --- idle trace flat after the loop ------------------------------------
+    // The last close disarms the clock; a correct compositor renders nothing
+    // and steps no animation while idle. SIGUSR1 dumps the counters.
+    std::thread::sleep(Duration::from_millis(300));
+    proc.signal(SIGUSR1);
+    let _warmup = proc.sample();
+    std::thread::sleep(Duration::from_millis(250));
+    proc.signal(SIGUSR1);
+    let first = proc.sample();
+    std::thread::sleep(Duration::from_millis(600));
+    proc.signal(SIGUSR1);
+    let second = proc.sample();
+    assert_eq!(
+        second.frames_rendered,
+        first.frames_rendered,
+        "idle after the loop rendered {} new frame(s): {first:?} -> {second:?}",
+        second.frames_rendered - first.frames_rendered,
+    );
+    assert_eq!(
+        second.animation_frames_stepped, first.animation_frames_stepped,
+        "the animation clock ticked while idle: {first:?} -> {second:?}",
+    );
+    eprintln!(
+        "close interrupt trace: reverse origin={:?}, idle flat at frames_rendered={}, \
+         animation_frames_stepped={}",
+        restore.origin, second.frames_rendered, second.animation_frames_stepped,
     );
 
     surface.destroy();
