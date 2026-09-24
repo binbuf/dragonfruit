@@ -122,7 +122,7 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 
 ## Phase 4 — T-04 Loop v2: materials
 
-- [ ] T16 — T-04.1a Real shadows → [tasks/016-t-04.1a-shadows.md](tasks/016-t-04.1a-shadows.md)
+- [~] T16 — T-04.1a Real shadows → [tasks/016-t-04.1a-shadows.md](tasks/016-t-04.1a-shadows.md) ⟵ running
 - [ ] T17 — T-04.1b Rounded-corner clipping → [tasks/017-t-04.1b-rounded-corner-clipping.md](tasks/017-t-04.1b-rounded-corner-clipping.md)
 - [ ] T18 — T-04.2 Backdrop blur pass → [tasks/018-t-04.2-backdrop-blur-pass.md](tasks/018-t-04.2-backdrop-blur-pass.md)
 - [ ] T19 — T-04.3 Reusable scene-transform pass → [tasks/019-t-04.3-reusable-scene-transform-pass.md](tasks/019-t-04.3-reusable-scene-transform-pass.md)
