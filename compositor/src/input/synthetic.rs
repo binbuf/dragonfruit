@@ -1527,16 +1527,30 @@ fn material_report(state: &DfState) -> String {
 /// The `query grid` report (T-05.1a): the Mission Control live-surface grid.
 ///
 /// `grid none` when no grid is shown (the overview is closed), otherwise
-/// `grid progress=<t>` followed by one `grid output <name> columns=<c>
-/// rows=<r> scale=<s>` line and one `grid window <id> <sx> <sy> <sw> <sh>
-/// <tx> <ty> <tw> <th> <cx> <cy> <cw> <ch>` line per placed live surface
-/// (source geometry, grid target, and the un-scaled cell), then `end`. The
-/// placement is the *live* surface mapping — there is no thumbnail object.
+/// `grid progress=<t>` followed by one `grid material tier=<name> blur=<0|1>
+/// shadow_layers=<n> shadow_radius=<r> shadow_opacity=<o>` line (the T-05.1b
+/// grid material, mapped through the active T-04.4a degrade tier), one `grid
+/// output <name> columns=<c> rows=<r> scale=<s>` line and one `grid window
+/// <id> <sx> <sy> <sw> <sh> <tx> <ty> <tw> <th> <cx> <cy> <cw> <ch>` line per
+/// placed live surface (source geometry, grid target, and the un-scaled cell),
+/// then `end`. The placement is the *live* surface mapping — there is no
+/// thumbnail object.
 fn grid_report(state: &DfState) -> String {
     let Some(progress) = state.overview_grid_progress() else {
         return "grid none\nend\n".to_string();
     };
     let mut out = format!("grid progress={progress:.3}\n");
+    if let Some(material) = state.overview_grid_material() {
+        out.push_str(&format!(
+            "grid material tier={} blur={} shadow_layers={} shadow_radius={:.1} \
+             shadow_opacity={:.3}\n",
+            material.tier.name(),
+            material.blur_enabled() as u32,
+            material.shadow.layers,
+            material.shadow.radius,
+            material.shadow.opacity,
+        ));
+    }
     for output in state.space.outputs() {
         let Some((_, layout)) = state.overview_grid_layout(output) else {
             continue;

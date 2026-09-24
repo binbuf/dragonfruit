@@ -3625,11 +3625,23 @@ struct GridWindowReport {
     cell: (i32, i32, i32, i32),
 }
 
-/// The parsed `query grid` reply (T-05.1a).
+/// The parsed `grid material` line from `query grid` (T-05.1b): the active
+/// material degrade tier and the shadow/blur it selects for the grid.
+#[derive(Debug, Clone, PartialEq)]
+struct GridMaterialReport {
+    tier: String,
+    blur: bool,
+    shadow_layers: u32,
+    shadow_radius: f64,
+    shadow_opacity: f64,
+}
+
+/// The parsed `query grid` reply (T-05.1a/T-05.1b).
 #[derive(Debug, Clone, PartialEq)]
 struct GridReport {
     active: bool,
     progress: f64,
+    material: Option<GridMaterialReport>,
     windows: Vec<GridWindowReport>,
 }
 
@@ -3640,6 +3652,7 @@ fn parse_grid(report: &str) -> GridReport {
     let mut parsed = GridReport {
         active: false,
         progress: 0.0,
+        material: None,
         windows: Vec::new(),
     };
     for line in report.lines() {
@@ -3652,6 +3665,26 @@ fn parse_grid(report: &str) -> GridReport {
             Some(token) if token.starts_with("progress=") => {
                 parsed.active = true;
                 parsed.progress = token["progress=".len()..].parse().unwrap_or(0.0);
+            }
+            Some("material") => {
+                let fields: std::collections::HashMap<&str, &str> =
+                    parts.filter_map(|value| value.split_once('=')).collect();
+                parsed.material = Some(GridMaterialReport {
+                    tier: fields.get("tier").copied().unwrap_or_default().to_string(),
+                    blur: fields.get("blur").copied() == Some("1"),
+                    shadow_layers: fields
+                        .get("shadow_layers")
+                        .and_then(|value| value.parse().ok())
+                        .unwrap_or(0),
+                    shadow_radius: fields
+                        .get("shadow_radius")
+                        .and_then(|value| value.parse().ok())
+                        .unwrap_or(0.0),
+                    shadow_opacity: fields
+                        .get("shadow_opacity")
+                        .and_then(|value| value.parse().ok())
+                        .unwrap_or(0.0),
+                });
             }
             Some("output") => {}
             Some("window") => {
@@ -3814,6 +3847,148 @@ fn overview_grid_transforms_live_surfaces_into_the_grid() {
         surface.destroy();
         toplevel.destroy();
     }
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}
+
+/// T-05.1b acceptance: a committing client ("video") keeps advancing at the
+/// reduced grid scale — fresh buffers keep producing compositor frames while
+/// Mission Control is open and the grid keeps tracking the one live surface
+/// (never a frozen thumbnail) — and the T-04 material degrade tier is
+/// selectable and applied to the grid composition.
+#[test]
+fn overview_grid_keeps_live_video_advancing_and_applies_degrade_tier() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path =
+        PathBuf::from(&runtime_dir).join(format!("dragonfruit-video-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-grid-video",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    // A committing "video" surface, mapped with a real buffer.
+    let (surface, _xdg_surface, toplevel, initial) =
+        map_toplevel_with_app_id(&mut state, &mut queue, "org.dragonfruit.Video");
+    let mut files = vec![initial];
+
+    // Open Mission Control and settle it.
+    input.send("swipe-begin 4");
+    input.send("swipe-update 0 -100");
+    input.send("swipe-update 0 -100");
+    input.send("swipe-end");
+    let settled = wait_for_grid(&input, Duration::from_secs(5), |grid| {
+        grid.active && (grid.progress - 1.0).abs() < 1e-6 && grid.windows.len() == 1
+    });
+    // Full is the default grid material: the high-elevation token shadow with
+    // the material blur on.
+    let full = settled
+        .material
+        .expect("the grid reports the material it composes with");
+    assert_eq!(full.tier, "full");
+    assert!(full.blur, "Full keeps the material blur on");
+    assert_eq!(
+        full.shadow_layers, 8,
+        "the high elevation token layer count"
+    );
+    assert!(full.shadow_radius > 0.0 && full.shadow_opacity > 0.0);
+
+    // --- the live surface keeps advancing while scaled --------------------
+    // Every commit must produce a render on the headless backend, exactly as
+    // a real backend would, and the surface must stay the one live window in
+    // the grid (a thumbnail substitution would unmap it).
+    proc.signal(SIGUSR1);
+    let before = proc.sample();
+    for _ in 0..3 {
+        let qh = queue.handle();
+        let (buffer, file) = shm_buffer(&state, &qh, WINDOW_W, WINDOW_H);
+        surface.attach(Some(&buffer), 0, 0);
+        surface.commit();
+        queue.roundtrip(&mut state).expect("video commit");
+        files.push(file);
+    }
+    proc.signal(SIGUSR1);
+    let after = proc.sample();
+    assert!(
+        after.frames_rendered > before.frames_rendered,
+        "the playing video must keep producing frames in the grid: {before:?} -> {after:?}"
+    );
+
+    // The grid still reports the one live surface at its committed geometry:
+    // the transform follows the live window, not a cached copy.
+    let live = parse_grid(&input.query("query grid"));
+    assert!(
+        live.active,
+        "the grid stays open across the commits: {live:?}"
+    );
+    assert_eq!(
+        live.windows.len(),
+        1,
+        "one live surface in the grid: {live:?}"
+    );
+    assert_eq!(
+        (live.windows[0].source.2, live.windows[0].source.3),
+        (WINDOW_W, WINDOW_H),
+        "the grid source is the committed live rect: {:?}",
+        live.windows[0],
+    );
+    assert_eq!(
+        parse_decorations(&input.query("query decorations")).len(),
+        1,
+        "the live surface stays mapped while it advances in the grid"
+    );
+
+    // --- the degrade tier is selectable and applied to the grid -----------
+    for (tier, blur, layers) in [("reduced", true, 4u32), ("minimal", false, 2u32)] {
+        input.send(&format!("set degrade-tier {tier}"));
+        let report = wait_for_grid(&input, Duration::from_secs(5), |grid| {
+            grid.active && grid.material.as_ref().is_some_and(|m| m.tier == tier)
+        });
+        let material = report.material.expect("the grid reports its material");
+        assert_eq!(material.blur, blur, "blur state at {tier}");
+        assert_eq!(material.shadow_layers, layers, "shadow layers at {tier}");
+        assert!(
+            material.shadow_layers < full.shadow_layers,
+            "{tier} must tighten the grid shadow below Full"
+        );
+        assert!(
+            material.shadow_radius < full.shadow_radius,
+            "{tier} must shrink the grid shadow geometry below Full"
+        );
+    }
+
+    // Restoring Full restores the token material, and the grid is still the
+    // same live surface throughout.
+    input.send("set degrade-tier full");
+    let restored = wait_for_grid(&input, Duration::from_secs(5), |grid| {
+        grid.active
+            && grid
+                .material
+                .as_ref()
+                .is_some_and(|material| material.tier == "full" && material.blur)
+    });
+    assert_eq!(restored.material.unwrap().shadow_layers, full.shadow_layers);
+    assert_eq!(
+        parse_decorations(&input.query("query decorations")).len(),
+        1,
+        "the live surface survives the tier changes"
+    );
+
+    // Closing reverses to no grid at all.
+    input.send("swipe-begin 4");
+    input.send("swipe-update 0 -100");
+    input.send("swipe-update 0 -100");
+    input.send("swipe-end");
+    wait_for_grid(&input, Duration::from_secs(5), |grid| !grid.active);
+
+    let _ = conn;
+    drop(files);
+    surface.destroy();
+    toplevel.destroy();
     proc.shutdown();
     assert!(
         !synthetic_path.exists(),

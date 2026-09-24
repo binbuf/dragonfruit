@@ -382,6 +382,28 @@ and Space assignment are untouched; input ownership transfer is T-05.2.
 headless conformance test asserts the geometry. See
 [ADR 0017](adr/0017-overview-grid-render-transform.md).
 
+### Live video at scale and the grid material (T-05.1b)
+
+The grid transform is render-time only, so a window that is still committing
+buffers keeps advancing at the reduced scale: the surface stays mapped in the
+`Space`, keeps its `wl_surface.frame` callbacks (`post_repaint`/`post_repaint_headless`),
+and the grid recomputes its placement from the live committed geometry — never
+a thumbnail, never a cached copy. A committing client therefore renders frames
+while Mission Control is open, which is the "a playing video keeps playing"
+acceptance on the live-surface path.
+
+The grid composes its material through the **active T-04.4a degrade tier**, and
+never resolves its own values: `DfState::overview_grid_material` returns a
+`GridMaterial` (`overview/grid.rs`) built by `GridMaterial::resolve(tier,
+scheme)`, which maps the high-elevation token shadow and the material blur
+through the tier exactly as the window path does. `render::window_shadow_render_elements`
+uses that grid material while the overview is open (otherwise the global tier),
+so the tier the `set degrade-tier` command pins is precisely the one a live
+surface in the grid draws with; `Minimal` turns the grid blur off and tightens
+the shadow, `Reduced` shrinks both. `query grid` reports
+`grid material tier=… blur=… shadow_layers=… shadow_radius=… shadow_opacity=…`,
+the headless seam the conformance test asserts.
+
 Neighbour-Space reveal (transforming the adjacent Spaces' surfaces, which are
 unmapped from the `Space`) and per-output chrome insets are later T-05 slices.
 

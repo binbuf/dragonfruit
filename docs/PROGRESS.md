@@ -28,6 +28,7 @@
 - **T20 — T-04.4a Material degrade tiers and instrumentation**: **State: done.** One ordered material-quality ladder (`Full` → `Reduced` →; **`compositor/src/window/degrade.rs`** (new) — `DegradeTier` (`Full`
 - **T21 — T-04.4b Light/dark, reduced motion, and sign-off package**: **State: done.** One live `ColorScheme` on `DfState` now drives every; **`compositor/src/window/decoration.rs`** — `ColorScheme::name`/`parse`
 - **T22 — T-05.1a Live-surface transform into the grid**: **State: done.** Mission Control now transforms the **live** window surfaces; **`compositor/src/overview/grid.rs`** (new) — `grid_layout` (candidates
+- **T23 — T-05.1b Live video at scale and degrade**: **State: done.** A committing "video" client keeps advancing at the reduced; **`compositor/src/overview/grid.rs`** — `GridMaterial { tier, shadow, blur }`
 - **Follow-ups**: T-05.1a (done in T22): the live-surface grid landed as a render-time; T-04.4b (done in T21): the live scheme is on `DfState` (ADR 0016) and
 <!-- symphony:digest:end -->
 
@@ -1515,16 +1516,78 @@ Gotchas for later tasks:
 - The renderer is flat solid-color, so the grid is geometry-asserted, not
   pixel-asserted; `query grid` is the deterministic seam.
 
+## T23 — T-05.1b Live video at scale and degrade
+
+**State: done.** A committing "video" client keeps advancing at the reduced
+grid scale and the T-04.4a material degrade tier is selectable and applied to
+the Mission Control grid. The transform is render-time only, so the surface
+stays mapped and keeps its frame callbacks while scaled; the grid never
+resolves its own material.
+
+What landed:
+
+- **`compositor/src/overview/grid.rs`** — `GridMaterial { tier, shadow, blur }`
+  and `GridMaterial::resolve(tier, scheme)`: the high-elevation token shadow
+  and the material blur mapped through the active degrade tier. 2 unit tests.
+- **`compositor/src/state.rs`** — `DfState::overview_grid_material()` (`None`
+  when the grid is closed): the one accessor the renderer and `query grid` both
+  use.
+- **`compositor/src/render.rs`** — `window_shadow_render_elements` resolves its
+  shadow through `overview_grid_material` while the overview is open, else the
+  global tier.
+- **`compositor/src/input/synthetic.rs`** — `query grid` gained
+  `grid material tier=<name> blur=<0|1> shadow_layers=<n> shadow_radius=<r>
+  shadow_opacity=<o>` (wire format documented). `minimal` → `blur=0`.
+- **`compositor/tests/window_conformance.rs`** — new
+  `overview_grid_keeps_live_video_advancing_and_applies_degrade_tier`: three
+  fresh buffer commits advance `frames_rendered` while the grid is settled, the
+  grid still lists the one live surface at its committed geometry, and
+  `set degrade-tier reduced|minimal|full` moves the reported grid material
+  (blur flag, shadow layers/radius) with the surface staying mapped.
+  `parse_grid` parses the material line.
+- **Docs** — `02-compositor.md` "Live video at scale and the grid material
+  (T-05.1b)". No new ADR (extends ADR 0015/0017).
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `cargo test -p dragonfruit-compositor --bin dragonfruit-compositor` — 233
+  bin unit tests green (`overview::grid` now 9). Direct cargo needs
+  `PKG_CONFIG_PATH=~/.local/df-devroot/lib64/pkgconfig` and
+  `RUSTFLAGS=-L ~/.local/df-devroot/lib64`.
+- `cargo test -p dragonfruit-compositor --test window_conformance` — 26/26
+  green.
+
+Gotchas for later tasks:
+
+- **The grid material is the degrade seam.** Read
+  `DfState::overview_grid_material`; do not add a second grid shadow/blur
+  resolver in a T-05 slice. `blur` is the tier's blur state (the overview
+  chrome backdrop also reads it), not a per-window texture blur.
+- **T-05.2 hit-testing** should use `overview_grid_layout`'s transformed rects
+  and must not unmap surfaces: the live-video test asserts the surface stays in
+  `query decorations` across commits and tier changes (a thumbnail substitution
+  would break it).
+- The reusable `SceneTransform`'s `clip`/`blur` attachments are still **not**
+  composed onto third-party client surface elements (the renderer has no clip
+  element); the grid material stays in the solid-fill pass. The T-04.3 clip
+  follow-up remains open.
+- Headless never renders, so the tier's grid effect is asserted through
+  `query grid` (`grid material …`) and `frames_rendered`; the pixel capture is
+  T-05.6.
+
 ## Follow-ups
 
 - T-05.1a (done in T22): the live-surface grid landed as a render-time
-  transform (ADR 0017). Remaining: (a) T-05.1b keeps a committing client
-  ("video") playing at the scaled target and composes the degrade tier;
+  transform (ADR 0017). Remaining: (a) T-05.1b (done in T23) keeps a committing
+  client ("video") playing at the scaled target and composes the degrade tier
+  through `overview_grid_material`;
   (b) neighbor-Space reveal — draw the adjacent Spaces' surfaces (unmapped
   from `Space`) as extra `GridCandidate`s; (c) T-05.2 transfers hit-testing
   using `overview_grid_layout` rects; (d) T-05.3 drag reuses `GridPlacement`;
   (e) per-output chrome insets for the grid area; (f) paging at
-  `MIN_GRID_SCALE`.
+  `MIN_GRID_SCALE`; (g) compose the reusable `SceneTransform`'s clip/blur
+  attachments onto third-party client surface elements (the renderer still has
+  no clip element).
 - T-04.4b (done in T21): the live scheme is on `DfState` (ADR 0016) and
   `window/degrade.rs` already scales the scheme-resolved spec. Remaining: (a)
   T-08 must mirror `appearance.colorScheme` into `set_color_scheme` (today only

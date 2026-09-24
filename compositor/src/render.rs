@@ -347,11 +347,16 @@ pub fn window_shadow_render_elements(
     // that reads over arbitrary application pixels, matching the titlebar.
     // The elevation geometry is mapped through the material degrade tier
     // (T-04.4a): budget pressure tightens the spread/layers while keeping the
-    // scheme tone, so windows stay legible at every tier.
-    let spec = state
-        .degrade
-        .tier()
-        .shadow(ShadowLevel::High.spec(state.color_scheme));
+    // scheme tone, so windows stay legible at every tier. While Mission
+    // Control is open the grid material (T-05.1b) is the single source, so the
+    // tier the overview composes with is exactly the one `query grid` reports.
+    let spec = match state.overview_grid_material() {
+        Some(material) => material.shadow,
+        None => state
+            .degrade
+            .tier()
+            .shadow(ShadowLevel::High.spec(state.color_scheme)),
+    };
     let mut elements = Vec::new();
     for window in state.space.elements() {
         if !state.space.outputs_for_element(window).contains(output) {
