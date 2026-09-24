@@ -61,8 +61,7 @@ Item {
             case 19: return popoverPageComponent;
             case 20: return scrollViewPageComponent;
             default: return iconsPageComponent;
-            }
-        }
+            }        }
     }
 
     Component { id: tokensPageComponent; TokensPage { } }
@@ -198,6 +197,46 @@ Item {
                         font.pixelSize: Theme.primitive.font.sizeMd
                     }
                     Toggle { text: qsTr("Reduce transparency"); checked: true }
+                }
+            }
+        }
+        // T-04.1a: the shared elevation tokens rendered through the same Shadow
+        // component the window and the compositor shadow pass consume, so the
+        // four levels can be reviewed at once.
+        Section {
+            heading: qsTr("Elevation levels — component.elevation.*")
+            Row {
+                spacing: Theme.primitive.spacing.xxl
+                Repeater {
+                    model: ["low", "med", "high", "overlay"]
+                    delegate: Item {
+                        id: cell
+                        required property string modelData
+                        width: 130
+                        height: 120
+                        Shadow {
+                            anchors.fill: panel
+                            level: cell.modelData
+                            radius: Theme.primitive.radius.md
+                        }
+                        Rectangle {
+                            id: panel
+                            anchors.centerIn: parent
+                            width: 96
+                            height: 64
+                            radius: Theme.primitive.radius.md
+                            color: Theme.color.surfaceElevated
+                            border.width: Theme.controls.window.borderWidth
+                            border.color: Theme.color.border
+                            antialiasing: true
+                            Text {
+                                anchors.centerIn: parent
+                                text: cell.modelData
+                                color: Theme.color.textSecondary
+                                font.pixelSize: Theme.primitive.font.sizeSm
+                            }
+                        }
+                    }
                 }
             }
         }

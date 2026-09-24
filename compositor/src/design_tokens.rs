@@ -350,6 +350,28 @@ pub mod component {
         pub const LAYERS: f32 = 8.0_f32;
         pub const OFFSET_Y: f32 = 5.0_f32;
     }
+    pub mod elevation {
+        pub mod low {
+            pub const BLUR: f32 = 8.0_f32;
+            pub const OFFSET_Y: f32 = 5.0_f32;
+            pub const LAYERS: f32 = 8.0_f32;
+        }
+        pub mod med {
+            pub const BLUR: f32 = 20.0_f32;
+            pub const OFFSET_Y: f32 = 5.0_f32;
+            pub const LAYERS: f32 = 8.0_f32;
+        }
+        pub mod high {
+            pub const BLUR: f32 = 40.0_f32;
+            pub const OFFSET_Y: f32 = 5.0_f32;
+            pub const LAYERS: f32 = 8.0_f32;
+        }
+        pub mod overlay {
+            pub const BLUR: f32 = 64.0_f32;
+            pub const OFFSET_Y: f32 = 5.0_f32;
+            pub const LAYERS: f32 = 8.0_f32;
+        }
+    }
     pub mod scroll_view {
         pub const SCROLLBAR_WIDTH: f32 = 8.0_f32;
         pub const SCROLLBAR_MARGIN: f32 = 2.0_f32;

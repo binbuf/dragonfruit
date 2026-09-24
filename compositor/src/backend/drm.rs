@@ -1014,6 +1014,14 @@ fn render_surface(
             .map(DrmOutputElements::Decoration),
     );
 
+    // Elevation-token-driven shadows (T-04.1a) composite below the window
+    // surfaces, so the ring beyond a window is visible.
+    custom_elements.extend(
+        crate::render::window_shadow_render_elements(state, &surface.output, scale)
+            .into_iter()
+            .map(DrmOutputElements::Decoration),
+    );
+
     let frame_mode = FrameFlags::DEFAULT; // direct scanout where possible
     let wallpaper = state.wallpaper_color_for(&surface.output);
     let result =

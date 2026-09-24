@@ -16,6 +16,9 @@ Item {
     property string title: ""
     property bool active: true
     property bool showShadow: true
+    // The elevation level the window casts (component.elevation.*). The
+    // compositor's SSD shadow uses the same level, so the two agree (FR-2).
+    property string shadowLevel: "high"
     property real cornerRadius: Theme.controls.window.radius
 
     implicitWidth: 640
@@ -23,6 +26,7 @@ Item {
 
     Shadow {
         visible: root.showShadow
+        level: root.shadowLevel
         width: root.width
         height: root.height
         radius: root.cornerRadius

@@ -54,6 +54,13 @@ module for the compositor. Sharing the source is what makes
 compositor-drawn SSD titlebars and first-party `TitleBar`s unable to drift
 apart (see [05-window-decorations.md](05-window-decorations.md)).
 
+The `component.elevation.{low,med,high,overlay}` group is the shared shadow
+source (T-04.1a): each level resolves the primitive elevation scale into the
+`blur`/`offsetY`/`layers` that both the `Shadow` QML component and the
+compositor's window-shadow pass read, so surface shadow geometry is identical
+across the process boundary by construction (see
+[ADR 0011](adr/0011-elevation-shadow-tokens.md)).
+
 ## Motion
 
 Named curves and durations (`motion.spaces-switch`, `motion.dock-magnify`,

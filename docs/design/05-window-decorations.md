@@ -165,3 +165,13 @@ T-01.5 pins down the tier policy and the X11 path:
   `xwayland_conformance::x11_decoration_tier_follows_motif_hints_and_configures_insets`.
   `_NET_FRAME_EXTENTS` is not published yet; the report is documented as
   deferred to the T-16 compatibility polish.
+
+T-04.1a makes the decoration read as a real material: an SSD window now casts
+a soft drop shadow drawn by the compositor behind the whole decorated window
+(titlebar included), and the same elevation tokens drive the first-party QML
+`AppWindow`/`Shadow` (FR-2; see
+[02-compositor.md](02-compositor.md) and
+[ADR 0011](adr/0011-elevation-shadow-tokens.md)). The titlebar chrome itself
+is still a flat token fill with square corners: the real chrome shadow,
+rounded-corner clipping, and translucency are the following T-04 material
+tasks, on the same element and the same geometry.

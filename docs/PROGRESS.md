@@ -21,7 +21,8 @@
 - **T13 — T-02.4b Close interruptibility and idle trace**: **State: done.** A live close ghost reverses mid-flight without waiting: a; **`compositor/src/state.rs`** — `close_window` clears keyboard focus when it
 - **T14 — T-03.1a Nested idle trace and animation frame budget**: **State: done.** The idle/animation frame trace is now a real instrument (a; **60.0 s idle window**: `frames_rendered=1` (flat, +0),
 - **T15 — T-03.1b Latency instrument and direct-scanout template**: **State: done.** The input-to-photon latency instrument is real and the; **nested latency**: n=50, min=3501 us, median=13878 us, p95=15223 us,
-- **Follow-ups**: Add the QML import-dir define (`DF_QML_IMPORT_DIR`) to the first-party apps'; T-16: publish `_NET_FRAME_EXTENTS` for Tier-2 X11 windows so clients can
+- **T16 — T-04.1a Real shadows**: **State: done.** Elevation-token shadows exist on both sides of the process; **Tokens** — new `component.elevation.{low,med,high,overlay}` in
+- **Follow-ups**: T-04.1b (next): add rounded-corner clipping on the same window/shadow pass;; T-04.2: chrome surfaces (menu bar, Dock, popovers, OSD) still get no
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -1044,8 +1045,97 @@ Gotchas for later tasks:
   T-03.2/T-03.4 confirm the number and the `direct_scanouts` engagement under
   a fullscreen client.
 
+## T16 — T-04.1a Real shadows
+
+**State: done.** Elevation-token shadows exist on both sides of the process
+boundary from one source. The compositor draws a soft drop shadow behind
+every decorated (non-fullscreen) window; the QML `Shadow`/`AppWindow` consume
+the same token group, so the two agree by construction (FR-2).
+
+What landed:
+
+- **Tokens** — new `component.elevation.{low,med,high,overlay}` in
+  `design-system/tokens/tokens.json`, each resolving `blur`/`offsetY`/`layers`
+  from `primitive.elevation.*` + `component.shadow.*`; regenerated
+  `design-system/Theme.qml` and `compositor/src/design_tokens.rs`
+  (`component::elevation::*`). `make check-tokens` green.
+- **`compositor/src/window/shadow.rs`** (new) — `ShadowLevel`
+  (`Low`/`Med`/`High`/`Overlay`), `ShadowSpec::spec(scheme)`,
+  `shadow_layers` (the `Shadow.qml` layered-rectangle formula in logical px),
+  `shadow_bounds`, `shadow_elements` (front-to-back solid elements, output
+  origin + scale + `MotionFrame`). 7 unit tests. `ShadowLevel::High` is the
+  floating/SSD window level; dark is the default scheme until T-08.
+- **`compositor/src/render.rs`** — `window_shadow_render_elements(state,
+  output, scale)`: shadows every non-fullscreen window (whole decorated rect
+  via `WindowInsets::outset`) plus minimizing/closing ghosts, behind the
+  window surfaces.
+- **`compositor/src/window/decoration.rs`** — `WindowInsets::outset` (inverse
+  of `inset`) and `motion_transform` extracted to a `pub(crate)` helper shared
+  by the titlebar and the shadow; the titlebar output is byte-identical.
+- **`compositor/src/backend/nested.rs`**, **`backend/drm.rs`** — shadow
+  elements appended **after** `window_render_elements` (backmost in the
+  front-to-back list) so they composite below their window. DRM is wired but
+  untested (no hardware), like the rest of that rail.
+- **QML** — `Shadow.qml` gained `level` (default `"high"`), deriving
+  `blur`/`offset`/`layers` from `Theme.controls.elevation[level]`;
+  `AppWindow.qml` gained `shadowLevel` (default `"high"`). Existing window /
+  popup / menu geometry is unchanged (defaults resolve to the old values).
+- **Gallery** — `GalleryContent.qml` `WindowPage` now shows the four
+  elevation levels through `Shadow`; **only**
+  `design-system/gallery/snapshots/window_{light,dark,dark_reduced}.png`
+  changed.
+- **Tests** — `tst_design_system.qml`
+  `test_shadow_geometry_comes_from_elevation_tokens`; `shadow.rs` geometry
+  tests; `decoration.rs` `outset_is_the_inverse_of_inset`.
+- **Docs** — ADR `0011-elevation-shadow-tokens.md`;
+  `docs/design/02-compositor.md` "Window shadows (T-04.1a)";
+  `docs/design/05-window-decorations.md`; `docs/design/10-design-system.md`.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `cargo test -p dragonfruit-compositor` — 190 bin unit + all suites green
+  (window_conformance 22/22, idle_trace 1/1, latency_trace 1/1).
+- `make qml-test` (tst_design_system + all ctest targets), `make clippy`,
+  `make fmt-check`, `make check-tokens`, `make check-design-tokens` — green.
+- `./scripts/check-gallery-snapshots.py --strict` — 66/66 (the committed
+  goldens, with only the 3 `window_*` files updated).
+
+Gotchas for later tasks:
+
+- **Shadow geometry is token-only.** Do not hardcode a blur/offset/layer in
+  either side; add/extend `component.elevation` in `tokens.json` and
+  regenerate. ADR 0011 is the contract.
+- The compositor shadow is **rectangular and unblurred** (rounded corners and
+  blur are T-04.1b/T-04.2). It is a stack of translucent
+  `SolidColorRenderElement`s, not a shader; `Shadow.qml` remains the app-side
+  fallback.
+- Shadow elements must stay **after** `window_render_elements` in the
+  per-backend front-to-back list (last = backmost). Moving them before the
+  window surface draws the shadow over the window.
+- `motion_transform` (in `decoration.rs`) now owns the lifecycle transform for
+  both chrome and shadows; reuse it rather than re-deriving scale/offset. Its
+  signature is `(rect, color, target, Option<MotionFrame>)`.
+- The gallery goldens in this tree: `make gallery-snapshot` rewrites **all**
+  66 and shows every page as modified (the committed bytes differ from a fresh
+  render by <1%; `--strict` passes). To update goldens for a change, render to
+  a temp dir and copy only the affected `*.png` (see
+  `DRAGONFRUIT_GALLERY_SNAPSHOT` in `gallery/main.cpp`), or accept the churn.
+- `AppWindow.shadowLevel`/`Shadow.level` default to `"high"`; changing the
+  default changes the window goldens.
+
 ## Follow-ups
 
+- T-04.1b (next): add rounded-corner clipping on the same window/shadow pass;
+  the layered `shadow_layers` geometry should follow `component.window.radius`
+  so the shadow corner matches the window.
+- T-04.2: chrome surfaces (menu bar, Dock, popovers, OSD) still get no
+  compositor shadow/blur; they rely on QML `Shadow`. The shared
+  `component.elevation` group is ready for the compositor chrome pass and for
+  the `Overlay` level.
+- T-04.4a: the degrade tier should be able to drop to fewer shadow layers /
+  `ShadowLevel::Low` under budget pressure; `ShadowSpec.layers` is the knob.
+- T-08: `render::window_shadow_render_elements` uses `ColorScheme::default()`
+  (dark); wire the live scheme when settingsd owns it.
 - Add the QML import-dir define (`DF_QML_IMPORT_DIR`) to the first-party apps'
   CMake so they run without `QML_IMPORT_PATH`; today only the shell has it and
   the demo harness supplies the env.

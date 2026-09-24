@@ -25,6 +25,7 @@ TestCase {
     Component { id: lightsComponent; TrafficLights { } }
     Component { id: titleBarComponent; TitleBar { } }
     Component { id: ssdComponent; SsdTitlebarReference { } }
+    Component { id: shadowComponent; Shadow { width: 120; height: 80 } }
     Component { id: popupComponent; Popup { } }
     Component { id: menuComponent; MenuBarMenu { } }
     Component { id: rectComponent; Rectangle { } }
@@ -231,6 +232,29 @@ TestCase {
                 channel(Theme.color.close.r));
         verify(app.equals(ssd),
                "app TitleBar and compositor SSD reference must render identically at the same tokens");
+    }
+
+    // -- Shadows (T-04.1a, FR-2) -------------------------------------------
+
+    function test_shadow_geometry_comes_from_elevation_tokens() {
+        var high = Theme.controls.elevation.high;
+        var shadow = make(shadowComponent, { width: 120, height: 80, level: "high" });
+        compare(shadow.blur, high.blur);
+        compare(shadow.layers, high.layers);
+        compare(shadow.offset.y, high.offsetY);
+
+        // Switching the level re-derives the geometry from the token group,
+        // exactly as the compositor's shadow pass does.
+        shadow.level = "overlay";
+        waitForRendering(stage);
+        compare(shadow.blur, Theme.controls.elevation.overlay.blur);
+        compare(shadow.offset.y, Theme.controls.elevation.overlay.offsetY);
+
+        // The four levels follow the primitive elevation scale.
+        compare(Theme.controls.elevation.low.blur, Theme.primitive.elevation.low);
+        compare(Theme.controls.elevation.med.blur, Theme.primitive.elevation.med);
+        compare(Theme.controls.elevation.high.blur, Theme.primitive.elevation.high);
+        compare(Theme.controls.elevation.overlay.blur, Theme.primitive.elevation.overlay);
     }
 
     // -- Button (FR-1) ------------------------------------------------------
