@@ -51,6 +51,14 @@ wayland-server = "=0.31.10"
 # DRM connector scanning helpers (kept in lockstep with the smithay pin).
 smithay-drm-extras = { version = "0.1.0", default-features = false }
 
+# Image wallpaper decode (T-05.4). PNG + JPEG only; the compositor never
+# re-encodes and never decodes per frame (the decoded raster is cached —
+# see docs/design/adr/0019-image-wallpaper-decode-and-slide.md).
+image = { version = "=0.25.10", default-features = false, features = [
+    "png",
+    "jpeg",
+] }
+
 df-ipc = { path = "protocols/df-ipc", version = "0.1.0" }
 
 [profile.release]

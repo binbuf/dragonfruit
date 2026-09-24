@@ -457,6 +457,29 @@ that an assignment changed. The shell title-card grid remains the
 keyboard/accessible path (neighbour-Space reveal, which would let the live grid
 show the destination Space, is a later T-05 slice).
 
+### Image wallpaper and the per-Space slide (T-05.4)
+
+Each Space's [`Wallpaper`](../compositor/src/workspace/mod.rs) may carry an
+image `source` and a `fit` (`fill` cover, `fit` contain, `stretch`, `center`).
+`wallpaper::sample_wallpaper` is the pure source/fit mapping (image pixels to an
+output-local destination); `wallpaper::WallpaperCache` decodes a source **once**
+with the `image` crate (PNG/JPEG) and keeps it as a Smithay
+`MemoryRenderBuffer`, so a large image is never decoded per frame — the render
+loop only imports the cached buffer and samples it. In the backends
+`render::wallpaper_render_elements` builds the wallpaper elements *behind* every
+window (the bottom of the front-to-back list); an image composites over its
+solid fallback, and no image (or an undecodable source) falls back to the
+`color`, preserving the pre-T-05.4 behavior (ADR 0019).
+
+`DfState::wallpaper_slots` resolves which Spaces are drawn: normally just the
+active Space at offset `0`, but during a workspace switch the outgoing and
+incoming Spaces are both reported at the same horizontal offsets the live window
+surfaces take (`wallpaper::slide_offset`, shared with
+`DfState::apply_overview_scene`), so the background moves with its Space. Only
+partly-on-screen slots are reported, so a settled scene never decodes a
+neighbour's image. `query wallpaper` reports the in-flight slide and one
+`wallpaper slot` line per drawn Space (index, offset, fit, source).
+
 ## Window model
 
 - **States.** A window is floating, minimized, zoomed, or fullscreen, with

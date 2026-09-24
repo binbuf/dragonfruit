@@ -106,6 +106,7 @@ use smithay::reexports::calloop::{Interest, Mode, PostAction};
 
 use crate::state::DfState;
 use crate::window::{ColorScheme, DegradeTier, TitlebarDoubleClick, WindowEventKind, WindowId};
+use crate::workspace::WallpaperFit;
 
 /// Marker type defining the synthetic [`InputBackend`] types.
 #[derive(Debug)]
@@ -683,6 +684,11 @@ pub enum SyntheticCommand {
     /// Read-only workspace introspection (T-05.3): one `space` line per Space
     /// (output, index, id, active flag, window count), followed by `end`.
     QuerySpaces,
+    /// Read-only per-Space wallpaper introspection (T-05.4): the in-flight
+    /// slide (direction/progress) and one `wallpaper slot` line per Space the
+    /// render layer draws this frame (index, horizontal offset, fit, source),
+    /// followed by `end`.
+    QueryWallpaper,
     /// Set `dock.titlebarDoubleClick` for the session (T-01.3 test plumbing).
     SetTitlebarDoubleClick(TitlebarDoubleClick),
     /// Set the compositor reduced-motion policy (T-02.1b test plumbing).
@@ -852,6 +858,7 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
             Some("material") => SyntheticCommand::QueryMaterial,
             Some("grid") => SyntheticCommand::QueryGrid,
             Some("spaces") => SyntheticCommand::QuerySpaces,
+            Some("wallpaper") => SyntheticCommand::QueryWallpaper,
             _ => {
                 return Err(
                     "query requires a known subject (decorations, window-menu, motion, events, latency, scanout, degrade, material, grid, spaces)"
@@ -1091,6 +1098,9 @@ impl SyntheticCommand {
             SyntheticCommand::QuerySpaces => {
                 unreachable!("query spaces is handled by apply_datagram")
             }
+            SyntheticCommand::QueryWallpaper => {
+                unreachable!("query wallpaper is handled by apply_datagram")
+            }
             // A settings command, not an input event.
             SyntheticCommand::SetTitlebarDoubleClick(_) => {
                 unreachable!("set titlebar-double-click is handled by apply_datagram")
@@ -1246,6 +1256,15 @@ fn apply_datagram_reply(
             Ok(SyntheticCommand::QuerySpaces) => {
                 if let Some((socket, peer)) = &reply {
                     let report = spaces_report(state);
+                    if let Some(path) = peer.as_pathname() {
+                        let _ = socket.send_to(report.as_bytes(), path);
+                    }
+                }
+                applied += 1;
+            }
+            Ok(SyntheticCommand::QueryWallpaper) => {
+                if let Some((socket, peer)) = &reply {
+                    let report = wallpaper_report(state);
                     if let Some(path) = peer.as_pathname() {
                         let _ = socket.send_to(report.as_bytes(), path);
                     }
@@ -1657,6 +1676,50 @@ fn spaces_report(state: &DfState) -> String {
     out
 }
 
+/// The compositor's [`WallpaperFit`] name (the `query wallpaper` report).
+fn wallpaper_fit_name(fit: WallpaperFit) -> &'static str {
+    match fit {
+        WallpaperFit::Fill => "fill",
+        WallpaperFit::Fit => "fit",
+        WallpaperFit::Stretch => "stretch",
+        WallpaperFit::Center => "center",
+    }
+}
+
+/// The `query wallpaper` report (T-05.4): the per-Space wallpapers the render
+/// layer draws on every output this frame.
+///
+/// One `wallpaper output <name> active=<i> direction=<d> progress=<p>` line per
+/// output (`direction`/`progress` are the in-flight workspace slide), then one
+/// `wallpaper slot index=<i> offset=<x> fit=<name> source=<path|->` line per
+/// visible Space (`offset` is output-local logical pixels; a mid-switch shows
+/// the active Space and the neighbour sliding in). At rest exactly the active
+/// Space is reported at offset `0`.
+fn wallpaper_report(state: &DfState) -> String {
+    let mut out = String::new();
+    for output in state.space.outputs() {
+        let name = output.name();
+        let active = state.workspaces.active_index(&name).unwrap_or(0);
+        let (direction, progress) = state.wallpaper_slide();
+        out.push_str(&format!(
+            "wallpaper output {} active={} direction={} progress={:.3}\n",
+            name, active, direction, progress,
+        ));
+        for slot in state.wallpaper_slots(output) {
+            let source = slot.wallpaper.source.as_deref().unwrap_or("-");
+            out.push_str(&format!(
+                "wallpaper slot index={} offset={} fit={} source={}\n",
+                slot.index,
+                slot.offset_x,
+                wallpaper_fit_name(slot.wallpaper.fit),
+                source,
+            ));
+        }
+    }
+    out.push_str("end\n");
+    out
+}
+
 /// Only the headless and nested backends call this, and only when
 /// [`ENV_SYNTHETIC_INPUT`] is set; the socket is removed by the caller at
 /// teardown.
@@ -1870,6 +1933,10 @@ mod tests {
         assert_eq!(
             parse_command("query spaces").unwrap(),
             SyntheticCommand::QuerySpaces
+        );
+        assert_eq!(
+            parse_command("query wallpaper").unwrap(),
+            SyntheticCommand::QueryWallpaper
         );
     }
 

@@ -91,6 +91,8 @@ render_elements! {
     // A window mid-appear: scaled about its target and translated from the
     // Dock tile origin (T-02.1b).
     Appear=RelocateRenderElement<RescaleRenderElement<WaylandSurfaceRenderElement<R>>>,
+    // The per-Space wallpaper (T-05.4): behind the windows.
+    Wallpaper=crate::render::WallpaperRenderElement<R>,
 }
 
 render_elements! {
@@ -1035,6 +1037,14 @@ fn render_surface(
         crate::render::window_shadow_render_elements(state, &surface.output, scale)
             .into_iter()
             .map(DrmOutputElements::Decoration),
+    );
+
+    // The per-Space wallpaper is the bottom-most layer (T-05.4): it fills the
+    // clear color and slides with its Space during a switch.
+    custom_elements.extend(
+        crate::render::wallpaper_render_elements(&mut renderer, state, &surface.output, scale)
+            .into_iter()
+            .map(DrmOutputElements::Wallpaper),
     );
 
     let frame_mode = FrameFlags::DEFAULT; // direct scanout where possible

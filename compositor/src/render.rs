@@ -8,6 +8,7 @@
 
 use std::time::{Duration, Instant};
 
+use smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement;
 use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::element::surface::{
     render_elements_from_surface_tree, WaylandSurfaceRenderElement,
@@ -15,20 +16,97 @@ use smithay::backend::renderer::element::surface::{
 use smithay::backend::renderer::element::utils::{
     Relocate, RelocateRenderElement, RescaleRenderElement,
 };
-use smithay::backend::renderer::element::{AsRenderElements, Kind, RenderElementStates};
-use smithay::backend::renderer::{ImportAll, Renderer};
+use smithay::backend::renderer::element::{AsRenderElements, Id, Kind, RenderElementStates};
+use smithay::backend::renderer::utils::CommitCounter;
+use smithay::backend::renderer::{Color32F, ImportAll, ImportMem, Renderer};
 use smithay::desktop::utils::{
     surface_presentation_feedback_flags_from_states, surface_primary_scanout_output,
     OutputPresentationFeedback,
 };
 use smithay::output::Output;
+use smithay::render_elements;
 use smithay::utils::{IsAlive, Logical, Rectangle, Scale};
 use smithay::wayland::fractional_scale::with_fractional_scale;
 
 use crate::state::DfState;
+use crate::wallpaper::sample_wallpaper;
 use crate::window::{
     backdrop_elements, shadow_elements, MaterialRole, SceneTransform, ShadowLevel, WindowState,
 };
+
+// The two kinds of wallpaper element a backend can composite (T-05.4): a
+// decoded image sampled into its fitted destination, or the solid fallback /
+// letterbox fill. Both are drawn behind every window (callers append them
+// last in the front-to-back list, so they sit at the bottom).
+render_elements! {
+    pub WallpaperRenderElement<R> where R: ImportAll + ImportMem;
+    Image=MemoryRenderBufferRenderElement<R>,
+    Solid=SolidColorRenderElement,
+}
+
+/// Build the per-Space wallpaper elements for `output` (T-05.4), which
+/// composite **below** every window and the chrome.
+///
+/// Each [`crate::wallpaper::WallpaperSlot`] the state reports is drawn: an
+/// image wallpaper is sampled through [`sample_wallpaper`] and imported from
+/// the decode cache (never decoded here), and a solid fill is drawn behind it
+/// for the letterbox / no-image case. During a workspace switch the active and
+/// incoming Spaces are both reported at the same horizontal offsets the live
+/// window surfaces take, so the background slides with its Space.
+///
+/// The caller passes the same `scale` the rest of the frame uses; the image is
+/// scaled by the GPU sampler from the one cached raster, so a large source is
+/// never re-decoded per frame.
+pub fn wallpaper_render_elements<R>(
+    renderer: &mut R,
+    state: &mut DfState,
+    output: &Output,
+    scale: Scale<f64>,
+) -> Vec<WallpaperRenderElement<R>>
+where
+    R: Renderer + ImportAll + ImportMem,
+    R::TextureId: Clone + Send + 'static,
+{
+    let Some(output_geometry) = state.space.output_geometry(output) else {
+        return Vec::new();
+    };
+    let mut elements = Vec::new();
+    for slot in state.wallpaper_slots(output) {
+        // The slot's rectangle: the whole output translated by the slide
+        // offset, so the fallback fill moves with the Space too.
+        let target = Rectangle::new((slot.offset_x, 0).into(), output_geometry.size);
+        let color = slot.wallpaper.color;
+        // Front-to-back: the image composites over its own solid fallback.
+        let image = slot.wallpaper.source.as_deref().and_then(|source| {
+            let decoded = state.wallpaper_cache.get(source)?;
+            let sample = sample_wallpaper(decoded.size, slot.wallpaper.fit, target);
+            if sample.dest.size.w <= 0 || sample.dest.size.h <= 0 {
+                return None;
+            }
+            MemoryRenderBufferRenderElement::from_buffer(
+                renderer,
+                sample.dest.loc.to_f64().to_physical(scale),
+                decoded.buffer(),
+                Some(1.0),
+                Some(sample.src),
+                Some(sample.dest.size),
+                Kind::Unspecified,
+            )
+            .ok()
+        });
+        if let Some(image) = image {
+            elements.push(WallpaperRenderElement::Image(image));
+        }
+        elements.push(WallpaperRenderElement::Solid(SolidColorRenderElement::new(
+            Id::new(),
+            target.to_physical_precise_round(scale),
+            CommitCounter::default(),
+            Color32F::new(color[0], color[1], color[2], color[3]),
+            Kind::Unspecified,
+        )));
+    }
+    elements
+}
 
 /// Build render elements for the shell's chrome surfaces (menu bar, Dock,
 /// overlays) on `output`, in layer order (T-09).
