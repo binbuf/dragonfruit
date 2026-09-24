@@ -340,6 +340,14 @@ impl WindowModel {
             .map(|motion| motion.frame(now_ms))
     }
 
+    /// Whether `window` has a **live close** motion: it is input-inert, out of
+    /// the layout, and owned by the close ghost until the motion commits its
+    /// removal (T-02.4a). The window stays in the model until then.
+    pub fn is_closing(&self, window: &Window) -> bool {
+        self.motion(window)
+            .is_some_and(|motion| motion.kind == WindowMotionKind::Close && !motion.completed)
+    }
+
     /// Advance every lifecycle motion one clock frame. Returns the windows
     /// whose motion reached its end this frame and whether any motion is
     /// still live.

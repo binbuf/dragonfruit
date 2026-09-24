@@ -22,7 +22,7 @@ use smithay::desktop::utils::{
     OutputPresentationFeedback,
 };
 use smithay::output::Output;
-use smithay::utils::Scale;
+use smithay::utils::{IsAlive, Scale};
 use smithay::wayland::fractional_scale::with_fractional_scale;
 
 use crate::state::DfState;
@@ -129,10 +129,13 @@ where
             }
         }
     }
-    // Minimizing ghosts: unmapped from `Space` but still drawn until the
-    // motion completes.
+    // Minimizing/closing ghosts: unmapped from `Space` but still drawn until
+    // the motion completes.
     for (window, motion) in state.windows.active_motions() {
-        if motion.kind != crate::window::WindowMotionKind::Minimize {
+        if !motion.kind.is_ghost() {
+            continue;
+        }
+        if !window.alive() {
             continue;
         }
         if state.space.element_location(window).is_some() {
@@ -231,9 +234,13 @@ pub fn titlebar_render_elements(
             ));
         }
     }
-    // Titlebars for minimizing ghosts (unmapped from `Space` but still drawn).
+    // Titlebars for minimizing/closing ghosts (unmapped from `Space` but
+    // still drawn).
     for (window, motion) in state.windows.active_motions() {
-        if motion.kind != crate::window::WindowMotionKind::Minimize {
+        if !motion.kind.is_ghost() {
+            continue;
+        }
+        if !window.alive() {
             continue;
         }
         if state.space.element_location(window).is_some() {

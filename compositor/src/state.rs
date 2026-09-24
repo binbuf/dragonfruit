@@ -712,7 +712,9 @@ impl DfState {
                 .windows
                 .state(&window)
                 .is_some_and(|state| state.is_visible());
-            if visible && self.window_on_active_space_id(id) {
+            // A closing window is a ghost: keep it out of the layout and the
+            // input path even if a workspace change happens mid-motion.
+            if visible && !self.windows.is_closing(&window) && self.window_on_active_space_id(id) {
                 let geometry = self.windows.geometry(&window).unwrap_or_default();
                 self.space.map_element(window.clone(), geometry.loc, false);
                 changed = true;
@@ -1198,15 +1200,50 @@ impl DfState {
     /// destroyed when the client does not support it). The SSD close
     /// control, the window menu, and `df_toplevel.close` all share this one
     /// path so close behaves identically however it is requested.
+    ///
+    /// The window leaves the layout and the input path immediately and its
+    /// surface is held as a **ghost** that shrinks/fades out on the shared
+    /// clock; it is removed from the model only when that motion completes
+    /// (T-02.4a). A re-entrant close request is a no-op: the live ghost owns
+    /// the single removal.
     pub fn close_window(&mut self, window: &Window) {
+        if !self.windows.contains(window) || self.windows.is_closing(window) {
+            return;
+        }
+        self.dismiss_popups_for(window);
+        if self
+            .window_menu
+            .as_ref()
+            .is_some_and(|menu| self.windows.id(window) == Some(menu.window))
+        {
+            self.window_menu = None;
+        }
+        // Input-inert from the first frame: unmap, then play the ghost.
+        let geometry = self.windows.geometry(window).unwrap_or_default();
+        self.space.unmap_elem(window);
+        self.begin_window_motion(window, WindowMotionKind::Close, geometry);
+        // Ask the client to close. If it destroys the surface before the
+        // ghost settles, `toplevel_destroyed` defers the removal to the
+        // motion so it still commits exactly once.
         if let Some(x11) = window.x11_surface() {
             if let Err(err) = x11.close() {
                 eprintln!("dragonfruit-compositor: failed to close X11 window: {err}");
             }
-            return;
-        }
-        if let Some(toplevel) = window.toplevel() {
+        } else if let Some(toplevel) = window.toplevel() {
             toplevel.send_close();
+        }
+        self.needs_redraw = true;
+    }
+
+    /// Close the window with compositor id `id` (synthetic-input / shell
+    /// seam). Returns whether a window was found.
+    pub fn close_window_by_id(&mut self, id: WindowId) -> bool {
+        match self.window_by_id(id) {
+            Some(window) => {
+                self.close_window(&window);
+                true
+            }
+            None => false,
         }
     }
 
@@ -1701,6 +1738,51 @@ impl DfState {
         }
     }
 
+    /// Remove `window` from the model and the scene, broadcasting `kind`.
+    ///
+    /// This is the single teardown path for every removal — a client destroy
+    /// (`Unmapped`) and a completed close ghost (`Closed`, T-02.4a). It is
+    /// idempotent: once the entry is gone a second call is a no-op, so the
+    /// close animation and an early client destroy can never remove the same
+    /// window twice.
+    pub(crate) fn remove_window(&mut self, window: &Window, kind: WindowEventKind) {
+        let Some(id) = self.windows.id(window) else {
+            return;
+        };
+        self.dismiss_popups_for(window);
+        if self.active_window.as_ref() == Some(window) {
+            self.active_window = None;
+        }
+        if self.hovered_titlebar == Some(id) {
+            self.hovered_titlebar = None;
+        }
+        if self
+            .window_menu
+            .as_ref()
+            .is_some_and(|menu| menu.window == id)
+        {
+            self.window_menu = None;
+        }
+        // A destroyed fullscreen window takes its dedicated Space with it
+        // (T-05 FR-3), so the strip does not keep a phantom Space.
+        let was_fullscreen = self.windows.state(window) == Some(WindowState::Fullscreen);
+        let Some(id) = self.windows.remove(window) else {
+            return;
+        };
+        if was_fullscreen {
+            self.workspaces.exit_fullscreen(id);
+        }
+        self.workspaces.forget_window(id);
+        self.window_dispatch.push(ShellWindowEvent {
+            kind,
+            id,
+            app_id: None,
+            title: None,
+        });
+        self.space.unmap_elem(window);
+        self.needs_redraw = true;
+    }
+
     /// Compute and store a popup's constrained geometry (FR-11).
     fn set_popup_geometry(&mut self, surface: &PopupSurface, positioner: PositionerState) {
         let parent_geometry = surface
@@ -1820,9 +1902,9 @@ impl DfState {
         self.begin_window_motion(window, WindowMotionKind::Appear, target);
     }
 
-    /// Begin a launch lifecycle motion (appear/minimize/restore) for `window`
-    /// and arm the shared clock. The origin defaults to the app's Dock tile
-    /// (or the centered fallback).
+    /// Begin a launch lifecycle motion (appear/minimize/restore/close) for
+    /// `window` and arm the shared clock. The origin defaults to the app's
+    /// Dock tile (or the centered fallback).
     ///
     /// One driver closure steps *every* window motion once per clock frame;
     /// [`Self::window_motion_driver`] keeps a new motion from registering a
@@ -1876,12 +1958,11 @@ impl DfState {
         self.windows.motion_frame(window, now_ms)
     }
 
-    /// The SSD titlebar element for a window mid-minimize.
+    /// The SSD titlebar element for a window mid-minimize or mid-close.
     ///
-    /// A minimizing window is already in the `Minimized` state (so it is
-    /// input-inert and out of the layout), but its ghost still carries the
-    /// pre-minimize titlebar; this lays that out as if floating so the
-    /// decoration shrinks with the content.
+    /// Such a window is already out of the layout (so it is input-inert), but
+    /// its ghost still carries the pre-transition titlebar; this lays that out
+    /// as if floating so the decoration shrinks with the content.
     pub fn titlebar_element_for_motion(&self, window: &Window) -> Option<TitlebarElement> {
         let id = self.windows.id(window)?;
         let geometry = self.windows.geometry(window)?;
@@ -1896,6 +1977,14 @@ impl DfState {
     pub fn step_window_motions(&mut self, now_ms: u64) -> bool {
         let (done, mut active) = self.windows.step_motions(now_ms);
         for window in done {
+            // A close ghost owns the model entry: at completion the window is
+            // removed exactly once and the shell is told it closed (T-02.4a).
+            if self.windows.motion(&window).map(|motion| motion.kind)
+                == Some(WindowMotionKind::Close)
+            {
+                self.remove_window(&window, WindowEventKind::Closed);
+                continue;
+            }
             // An appear/restore commits back to its final geometry (it was
             // already mapped there); a minimize stays unmapped, so only a
             // visible window is re-asserted.
@@ -2543,28 +2632,14 @@ impl XdgShellHandler for DfState {
                 toplevel.send_close();
             }
         }
-        // A destroyed fullscreen window takes its dedicated Space with it
-        // (T-05 FR-3), so the strip does not keep a phantom Space.
-        let was_fullscreen =
-            self.windows.state(&window) == Some(crate::window::WindowState::Fullscreen);
-        let id = self.windows.remove(&window);
-        if self.active_window.as_ref() == Some(&window) {
-            self.active_window = None;
+        // A live close ghost owns the removal: the client may destroy the
+        // surface as soon as it gets the close request, but the model entry
+        // (and its removal broadcast) is committed exactly once when the
+        // fade/scale-out settles (T-02.4a).
+        if self.windows.is_closing(&window) {
+            return;
         }
-        if let Some(id) = id {
-            if was_fullscreen {
-                self.workspaces.exit_fullscreen(id);
-            }
-            self.workspaces.forget_window(id);
-            self.window_dispatch.push(ShellWindowEvent {
-                kind: WindowEventKind::Unmapped,
-                id,
-                app_id: None,
-                title: None,
-            });
-        }
-        self.space.unmap_elem(&window);
-        self.needs_redraw = true;
+        self.remove_window(&window, WindowEventKind::Unmapped);
     }
 }
 

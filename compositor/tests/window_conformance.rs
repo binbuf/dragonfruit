@@ -2866,3 +2866,148 @@ fn reduced_motion_zoom_and_fullscreen_take_a_single_frame() {
         "teardown leak: synthetic-input socket survived"
     );
 }
+
+/// T-02.4a acceptance: a closing window fades/scales out as a ghost that takes
+/// no input, and its removal from the model commits exactly once when the
+/// motion settles. The window stays tracked (and out of `Space`) while the
+/// ghost is live.
+#[test]
+fn close_fades_out_inert_and_commits_removal_exactly_once() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path =
+        PathBuf::from(&runtime_dir).join(format!("dragonfruit-close-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-close",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let app_id = "org.dragonfruit.Close";
+    let tile = (100, 120, 48, 48);
+    input.send(&format!(
+        "set launch-origin {app_id} {} {} {} {}",
+        tile.0, tile.1, tile.2, tile.3
+    ));
+    let _ = input.query("query motion");
+    let (surface, _xdg_surface, toplevel, _file) =
+        map_toplevel_with_app_id(&mut state, &mut queue, app_id);
+
+    // Settle the appear so the floating geometry is known and stable.
+    let motions = wait_for_motion(&input, |motions| {
+        motions.iter().any(|m| m.kind == "appear" && m.completed)
+    });
+    let appear = motions
+        .iter()
+        .find(|m| m.kind == "appear")
+        .expect("an appear record");
+    let window = appear.window;
+    let floating = appear.target;
+
+    // Prove the open window takes input: click its content.
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.pointer.is_some(),
+    );
+    let (cx, cy) = (floating.0 + floating.2 / 2, floating.1 + floating.3 / 2);
+    motion_to(&input, cx, cy);
+    click(&input);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.pointer_button_serials.is_empty(),
+    );
+    state.pointer_button_serials.clear();
+
+    // --- close: the ghost is recorded immediately, still tracked ----------
+    // The duplicate `close` proves a re-entrant request is a no-op: the live
+    // ghost owns the single removal.
+    let report = input.query_batch(&format!("close {window}\nclose {window}\nquery motion"));
+    let motions = parse_motion(&report);
+    let closes: Vec<&MotionReport> = motions.iter().filter(|m| m.kind == "close").collect();
+    assert_eq!(
+        closes.len(),
+        1,
+        "a second close must not start a second ghost: {motions:?}"
+    );
+    let close = closes[0];
+    assert_eq!(close.window, window);
+    assert_eq!(
+        close.origin, tile,
+        "the close ghost shrinks into the app's Dock tile: {close:?}"
+    );
+    assert_eq!(
+        close.target, floating,
+        "the close ghost leaves from the window's geometry: {close:?}"
+    );
+    assert!(
+        close.active && !close.completed,
+        "the close must be in flight immediately: {close:?}"
+    );
+    assert!(
+        parse_decorations(&input.query("query decorations"))
+            .iter()
+            .any(|d| d.window == window),
+        "the window must stay in the model until the ghost settles"
+    );
+
+    // The compositor asked the client to close.
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.toplevel_close_count > 0,
+    );
+
+    // --- input-inert: the ghost is not hit by the pointer ------------------
+    // It left `Space` at close time, so a motion back over its old rect finds
+    // no surface and the following click reaches no client.
+    state.pointer_button_serials.clear();
+    motion_to(&input, cx, cy);
+    click(&input);
+    queue.roundtrip(&mut state).expect("roundtrip after click");
+    std::thread::sleep(Duration::from_millis(50));
+    queue.roundtrip(&mut state).expect("roundtrip after click");
+    assert!(
+        state.pointer_button_serials.is_empty(),
+        "a closing ghost must not receive input: {:?}",
+        state.pointer_button_serials
+    );
+
+    // --- removal commits exactly once --------------------------------------
+    let decorations = wait_for_report(&mut state, &mut queue, &input, |reports| {
+        !reports.iter().any(|report| report.window == window)
+    });
+    assert!(
+        decorations.iter().all(|report| report.window != window),
+        "the closed window must be gone from the model: {decorations:?}"
+    );
+    let events = input.query("query events");
+    let closed = events
+        .lines()
+        .filter(|line| *line == format!("event closed {window}"))
+        .count();
+    assert_eq!(
+        closed, 1,
+        "removal must be broadcast exactly once: {events:?}"
+    );
+    let motions = parse_motion(&input.query("query motion"));
+    assert!(
+        motions.iter().all(|m| m.window != window),
+        "no motion record may outlive the closed window: {motions:?}"
+    );
+
+    surface.destroy();
+    toplevel.destroy();
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}
