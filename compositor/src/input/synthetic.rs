@@ -40,6 +40,7 @@
 //! query degrade
 //! query material
 //! query grid
+//! query spaces
 //! set titlebar-double-click zoom|minimize|none
 //! set reduced-motion on|off
 //! set launch-origin <app-id> <x> <y> <width> <height>
@@ -676,8 +677,12 @@ pub enum SyntheticCommand {
     QueryMaterial,
     /// Read-only Mission Control grid introspection (T-05.1a): the overview's
     /// grid progress and one `grid` line per placed live surface, followed by
-    /// `end`.
+    /// `end`. T-05.3 adds a `grid drag` line while a live representation is
+    /// being dragged.
     QueryGrid,
+    /// Read-only workspace introspection (T-05.3): one `space` line per Space
+    /// (output, index, id, active flag, window count), followed by `end`.
+    QuerySpaces,
     /// Set `dock.titlebarDoubleClick` for the session (T-01.3 test plumbing).
     SetTitlebarDoubleClick(TitlebarDoubleClick),
     /// Set the compositor reduced-motion policy (T-02.1b test plumbing).
@@ -846,9 +851,10 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
             Some("degrade") => SyntheticCommand::QueryDegrade,
             Some("material") => SyntheticCommand::QueryMaterial,
             Some("grid") => SyntheticCommand::QueryGrid,
+            Some("spaces") => SyntheticCommand::QuerySpaces,
             _ => {
                 return Err(
-                    "query requires a known subject (decorations, window-menu, motion, events, latency, scanout, degrade, material, grid)"
+                    "query requires a known subject (decorations, window-menu, motion, events, latency, scanout, degrade, material, grid, spaces)"
                         .into(),
                 );
             }
@@ -1082,6 +1088,9 @@ impl SyntheticCommand {
             SyntheticCommand::QueryGrid => {
                 unreachable!("query grid is handled by apply_datagram")
             }
+            SyntheticCommand::QuerySpaces => {
+                unreachable!("query spaces is handled by apply_datagram")
+            }
             // A settings command, not an input event.
             SyntheticCommand::SetTitlebarDoubleClick(_) => {
                 unreachable!("set titlebar-double-click is handled by apply_datagram")
@@ -1228,6 +1237,15 @@ fn apply_datagram_reply(
             Ok(SyntheticCommand::QueryGrid) => {
                 if let Some((socket, peer)) = &reply {
                     let report = grid_report(state);
+                    if let Some(path) = peer.as_pathname() {
+                        let _ = socket.send_to(report.as_bytes(), path);
+                    }
+                }
+                applied += 1;
+            }
+            Ok(SyntheticCommand::QuerySpaces) => {
+                if let Some((socket, peer)) = &reply {
+                    let report = spaces_report(state);
                     if let Some(path) = peer.as_pathname() {
                         let _ = socket.send_to(report.as_bytes(), path);
                     }
@@ -1551,6 +1569,23 @@ fn grid_report(state: &DfState) -> String {
             material.shadow.opacity,
         ));
     }
+    // A live-representation drag in flight (T-05.3): the window, the current
+    // pointer point, whether the click/drag threshold was crossed, and the
+    // Space index its release would target (`-1` off the strip).
+    if let Some(drag) = state.overview_drag() {
+        let target = state
+            .overview_drop_space_at(drag.current)
+            .map(|index| index as i64)
+            .unwrap_or(-1);
+        out.push_str(&format!(
+            "grid drag {} {:.1} {:.1} moved={} target={}\n",
+            drag.window.0,
+            drag.current.x,
+            drag.current.y,
+            drag.moved() as u32,
+            target,
+        ));
+    }
     for output in state.space.outputs() {
         let Some((_, layout)) = state.overview_grid_layout(output) else {
             continue;
@@ -1588,7 +1623,40 @@ fn grid_report(state: &DfState) -> String {
     out.push_str("end\n");
     out
 }
-///
+
+/// The `query spaces` report (T-05.3): one `space` line per Space on every
+/// output — the lockstep strip order, each Space's stable id, its active flag,
+/// and how many windows are assigned to it — followed by `end`. The shell
+/// derives the same projection from the private protocol; this is the
+/// read-only headless introspection the drag conformance test uses to prove
+/// the destination Space, not just that an assignment changed.
+fn spaces_report(state: &DfState) -> String {
+    let mut out = String::new();
+    for output in state.space.outputs() {
+        let name = output.name();
+        let ids = state.workspaces.space_ids(&name);
+        let active = state.workspaces.active_index(&name);
+        for (index, id) in ids.iter().enumerate() {
+            let windows = state
+                .windows
+                .windows()
+                .filter_map(|window| state.windows.id(window))
+                .filter(|window| state.workspaces.window_space(*window) == Some(*id))
+                .count();
+            out.push_str(&format!(
+                "space {} {} {} active={} windows={}\n",
+                name,
+                index,
+                id.0,
+                (Some(index) == active) as u32,
+                windows,
+            ));
+        }
+    }
+    out.push_str("end\n");
+    out
+}
+
 /// Only the headless and nested backends call this, and only when
 /// [`ENV_SYNTHETIC_INPUT`] is set; the socket is removed by the caller at
 /// teardown.
@@ -1798,6 +1866,10 @@ mod tests {
         assert_eq!(
             parse_command("query grid").unwrap(),
             SyntheticCommand::QueryGrid
+        );
+        assert_eq!(
+            parse_command("query spaces").unwrap(),
+            SyntheticCommand::QuerySpaces
         );
     }
 

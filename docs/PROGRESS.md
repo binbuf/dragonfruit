@@ -30,6 +30,7 @@
 - **T22 — T-05.1a Live-surface transform into the grid**: **State: done.** Mission Control now transforms the **live** window surfaces; **`compositor/src/overview/grid.rs`** (new) — `grid_layout` (candidates
 - **T23 — T-05.1b Live video at scale and degrade**: **State: done.** A committing "video" client keeps advancing at the reduced; **`compositor/src/overview/grid.rs`** — `GridMaterial { tier, shadow, blur }`
 - **T24 — T-05.2 Hit-testing and selection on live representations**: **State: done.** A left click on a live Mission Control representation; **`compositor/src/overview/grid.rs`** — `GridLayout::window_at(point,
+- **T25 — T-05.3 Drag a live representation between Spaces**: **State: done.** Pressing on a live Mission Control representation and dragging; **`compositor/src/overview/grid.rs`** — `GridDrag { window, start, current }`
 - **Follow-ups**: T-05.1a (done in T22): the live-surface grid landed as a render-time; T-04.4b (done in T21): the live scheme is on `DfState` (ADR 0016) and
 <!-- symphony:digest:end -->
 
@@ -1631,6 +1632,71 @@ Gotchas for later tasks:
 - Neighbour-Space reveal and per-output insets remain unwired; `window_at`
   covers only the placements `overview_grid_layout` produces (active Space).
 
+## T25 — T-05.3 Drag a live representation between Spaces
+
+**State: done.** Pressing on a live Mission Control representation and dragging
+it onto another Space's workspace-strip card moves the window there through the
+one `move_to_workspace` primitive. A press that never crosses the drag
+threshold is still the T-05.2 selection. The overview stays open after a drop
+and every live surface stays mapped.
+
+What landed:
+
+- **`compositor/src/overview/grid.rs`** — `GridDrag { window, start, current }`
+  with `moved()` / `offset()`, `DRAG_THRESHOLD = 8.0`, and the pure strip
+  geometry `strip_card_rect` / `strip_space_at` (the shell's centered layout
+  reproduced from `component::overview` + `component::menu_bar` tokens,
+  `STRIP_TOP = 28 + 16`). 3 new unit tests (`overview::grid` now 17). No new
+  transform — reuses `GridPlacement`.
+- **`compositor/src/state.rs`** — `DfState::grid_drag` +
+  `overview_begin_drag` / `overview_update_drag` / `overview_end_drag` /
+  `overview_drag` / `overview_drop_space_at`. `overview_grid_frame` applies the
+  drag offset so the live surface, SSD titlebar, and shadow follow the pointer.
+  `overview_end_drag` reuses `select_overview_window` (click) and
+  `move_window_to_space` (drop).
+- **`compositor/src/input.rs`** — left press in `InputOwner::Overview` begins
+  the drag; `PointerMotion` updates it; a left release ends it.
+- **`compositor/src/input/synthetic.rs`** — `query grid` gained
+  `grid drag <window> <x> <y> moved=<0|1> target=<index|-1>`; new
+  `query spaces` (`space <output> <index> <id> active=<0|1> windows=<n>`).
+  Parser + unit test updated.
+- **`compositor/tests/window_conformance.rs`** — new
+  `overview_drag_moves_the_live_representation_between_spaces` (28/28
+  conformance green): press a live target, drag to the Space-1 card
+  (`(640, 86)` on 1280x720), release, assert it left the active grid, Space 1
+  holds it, the decoration's `space` equals Space 1's id, the overview stayed
+  open, and all three surfaces stayed mapped.
+- **Docs** — `02-compositor.md` "Dragging a live representation between Spaces
+  (T-05.3)"; new ADR `0018-overview-drag-drop-target.md`.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `cargo test -p dragonfruit-compositor --bin dragonfruit-compositor` — **238**
+  bin unit tests green.
+- `cargo test -p dragonfruit-compositor --test window_conformance` — **28/28**
+  green. Direct cargo needs
+  `PKG_CONFIG_PATH=~/.local/df-devroot/lib64/pkgconfig` and
+  `RUSTFLAGS=-L ~/.local/df-devroot/lib64`.
+- `cargo clippy -p dragonfruit-compositor --all-targets -- -D warnings` clean;
+  `cargo fmt -p dragonfruit-compositor -- --check` clean.
+
+Gotchas for later tasks:
+
+- **One drag seam**: `overview_begin/update/end_drag` in `DfState`; the pure
+  geometry (`GridDrag`, `strip_*`) in `overview::grid`. Do not add a second
+  transform or hit test. Neighbour-Space reveal only widens
+  `overview_drop_space_at`.
+- The drop target is the **strip card under the pointer**, reproduced from the
+  shared tokens; a drop off the strip or on the source Space is cancelled.
+  Multi-monitor drag edges stay T-16.
+- In a nested session the shell's transparent overview surface still captures
+  pointer input, so the shell title-card drag remains the user path; the
+  compositor drag is the same headless/test seam as T-05.2. Nested capture is
+  T-05.6.
+- `query spaces` reports `SpaceId.0` (what `query decorations`' `space` field
+  carries), so tests can prove the destination index, not just that an
+  assignment changed.
+
 ## Follow-ups
 
 - T-05.1a (done in T22): the live-surface grid landed as a render-time
@@ -1640,8 +1706,10 @@ Gotchas for later tasks:
   (b) neighbor-Space reveal — draw the adjacent Spaces' surfaces (unmapped
   from `Space`) as extra `GridCandidate`s; (c) T-05.2 (done in T24) transfers
   hit-testing to the interpolated `GridPlacement` rects via
-  `overview_window_at`; (d) T-05.3 drag reuses `GridPlacement`;
-  (e) per-output chrome insets for the grid area; (f) paging at
+  `overview_window_at`; (d) T-05.3 (done in T25) drags the live representation
+  onto the workspace-strip card under the pointer and reuses `GridPlacement`
+  (ADR 0018); the drop target widens to the revealed Space regions when (b)
+  lands; (e) per-output chrome insets for the grid area; (f) paging at
   `MIN_GRID_SCALE`; (g) compose the reusable `SceneTransform`'s clip/blur
   attachments onto third-party client surface elements (the renderer still has
   no clip element).

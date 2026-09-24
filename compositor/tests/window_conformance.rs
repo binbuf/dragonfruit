@@ -3636,12 +3636,25 @@ struct GridMaterialReport {
     shadow_opacity: f64,
 }
 
-/// The parsed `query grid` reply (T-05.1a/T-05.1b).
+/// The parsed `grid drag` line from `query grid` (T-05.3): the dragged live
+/// representation, the current pointer point, whether the drag threshold was
+/// crossed, and the Space index its release targets (`-1` off the strip).
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct GridDragReport {
+    window: u64,
+    x: f64,
+    y: f64,
+    moved: bool,
+    target: i64,
+}
+
+/// The parsed `query grid` reply (T-05.1a/T-05.1b/T-05.3).
 #[derive(Debug, Clone, PartialEq)]
 struct GridReport {
     active: bool,
     progress: f64,
     material: Option<GridMaterialReport>,
+    drag: Option<GridDragReport>,
     windows: Vec<GridWindowReport>,
 }
 
@@ -3653,6 +3666,7 @@ fn parse_grid(report: &str) -> GridReport {
         active: false,
         progress: 0.0,
         material: None,
+        drag: None,
         windows: Vec::new(),
     };
     for line in report.lines() {
@@ -3687,6 +3701,31 @@ fn parse_grid(report: &str) -> GridReport {
                 });
             }
             Some("output") => {}
+            Some("drag") => {
+                let Some(window) = parts.next().and_then(|value| value.parse::<u64>().ok()) else {
+                    continue;
+                };
+                let x = parts
+                    .next()
+                    .and_then(|value| value.parse().ok())
+                    .unwrap_or(0.0);
+                let y = parts
+                    .next()
+                    .and_then(|value| value.parse().ok())
+                    .unwrap_or(0.0);
+                let fields: std::collections::HashMap<&str, &str> =
+                    parts.filter_map(|value| value.split_once('=')).collect();
+                parsed.drag = Some(GridDragReport {
+                    window,
+                    x,
+                    y,
+                    moved: fields.get("moved").copied() == Some("1"),
+                    target: fields
+                        .get("target")
+                        .and_then(|value| value.parse().ok())
+                        .unwrap_or(-1),
+                });
+            }
             Some("window") => {
                 let Some(window) = parts.next().and_then(|value| value.parse::<u64>().ok()) else {
                     continue;
@@ -3729,6 +3768,43 @@ fn wait_for_grid(
         );
         std::thread::sleep(Duration::from_millis(20));
     }
+}
+
+/// One parsed `space` line from `query spaces` (T-05.3).
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SpaceReport {
+    output: String,
+    index: usize,
+    id: u64,
+    active: bool,
+    windows: usize,
+}
+
+fn parse_spaces(report: &str) -> Vec<SpaceReport> {
+    report
+        .lines()
+        .filter_map(|line| {
+            let mut parts = line.split_whitespace();
+            if parts.next()? != "space" {
+                return None;
+            }
+            let output = parts.next()?.to_string();
+            let index = parts.next()?.parse().ok()?;
+            let id = parts.next()?.parse().ok()?;
+            let fields: std::collections::HashMap<&str, &str> =
+                parts.filter_map(|value| value.split_once('=')).collect();
+            Some(SpaceReport {
+                output,
+                index,
+                id,
+                active: fields.get("active").copied() == Some("1"),
+                windows: fields
+                    .get("windows")
+                    .and_then(|value| value.parse().ok())
+                    .unwrap_or(0),
+            })
+        })
+        .collect()
 }
 
 /// T-05.1a acceptance: with Mission Control open, the **live** window surfaces
@@ -4066,6 +4142,107 @@ fn overview_click_selects_and_focuses_the_live_representation() {
         3,
         "selection must not unmap the live surfaces"
     );
+
+    for (surface, toplevel, _file) in mapped {
+        surface.destroy();
+        toplevel.destroy();
+    }
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}
+
+/// T-05.3 acceptance: with Mission Control open, pressing on a **live**
+/// representation and dragging it onto another Space's workspace-strip card
+/// assigns the window to that Space through `move_to_workspace`. The overview
+/// stays open and the moved window leaves the active grid; every live surface
+/// stays mapped (a drag never substitutes a thumbnail). A press that does not
+/// cross the drag threshold is still the T-05.2 selection (covered by
+/// `overview_click_selects_and_focuses_the_live_representation`).
+#[test]
+fn overview_drag_moves_the_live_representation_between_spaces() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path =
+        PathBuf::from(&runtime_dir).join(format!("dragonfruit-grid-drag-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-grid-drag",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (_conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let mut mapped = Vec::new();
+    for app in [
+        "org.dragonfruit.DragA",
+        "org.dragonfruit.DragB",
+        "org.dragonfruit.DragC",
+    ] {
+        let (surface, _xdg_surface, toplevel, file) =
+            map_toplevel_with_app_id(&mut state, &mut queue, app);
+        mapped.push((surface, toplevel, file));
+    }
+
+    // One output, three Spaces; all three windows start on the active Space.
+    let spaces = parse_spaces(&input.query("query spaces"));
+    let target = spaces
+        .iter()
+        .find(|space| space.index == 1)
+        .unwrap_or_else(|| panic!("a Space at index 1 must exist: {spaces:?}"))
+        .clone();
+    assert!(target.windows == 0, "destinations start empty: {spaces:?}");
+
+    // Open Mission Control and settle it: three live representations.
+    input.send("swipe-begin 4");
+    input.send("swipe-update 0 -100");
+    input.send("swipe-update 0 -100");
+    input.send("swipe-end");
+    let grid = wait_for_grid(&input, Duration::from_secs(5), |grid| {
+        grid.active && (grid.progress - 1.0).abs() < 1e-6 && grid.windows.len() == 3
+    });
+    let chosen = grid.windows[0];
+
+    // Press on the live representation, drag onto the Space-1 strip card, and
+    // release. The compositor computes the same centered strip layout the
+    // shell draws (menuBar.height + stripMargin at the top, cards centered).
+    let (tx, ty, tw, th) = chosen.target;
+    motion_to(&input, tx + tw / 2, ty + th / 2);
+    input.send("button 272 down");
+    motion_to(&input, 640, 44 + 42);
+    let dragging = wait_for_grid(&input, Duration::from_secs(5), |grid| {
+        grid.drag
+            .is_some_and(|drag| drag.window == chosen.window && drag.moved && drag.target == 1)
+    });
+    assert!(
+        dragging.active,
+        "the overview stays open while dragging in it"
+    );
+    input.send("button 272 up");
+
+    // The window left the active Space's grid; the overview did not close.
+    let grid = wait_for_grid(&input, Duration::from_secs(5), |grid| {
+        grid.active && !grid.windows.iter().any(|w| w.window == chosen.window)
+    });
+    assert_eq!(grid.windows.len(), 2, "the moved window left the grid");
+
+    // It is assigned to Space index 1 (the strip card it was dropped on).
+    let spaces = parse_spaces(&input.query("query spaces"));
+    let destination = spaces
+        .iter()
+        .find(|space| space.index == 1)
+        .expect("the destination Space");
+    assert_eq!(destination.windows, 1, "Space 1 holds the moved window");
+    let decorations = parse_decorations(&input.query("query decorations"));
+    let moved = decorations
+        .iter()
+        .find(|decoration| decoration.window == chosen.window)
+        .expect("the moved window is still tracked");
+    assert_eq!(
+        moved.space, destination.id as i64,
+        "the window is assigned to the dropped-on Space"
+    );
+    assert_eq!(decorations.len(), 3, "a drag never unmaps a live surface");
 
     for (surface, toplevel, _file) in mapped {
         surface.destroy();
