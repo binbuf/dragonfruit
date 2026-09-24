@@ -24,7 +24,8 @@
 - **T16 — T-04.1a Real shadows**: **State: done.** Elevation-token shadows exist on both sides of the process; **Tokens** — new `component.elevation.{low,med,high,overlay}` in
 - **T17 — T-04.1b Rounded-corner clipping**: **State: done.** Rounded corners are a token-derived geometry mask on the; **`compositor/src/window/corner.rs`** (new) — `CornerMask`
 - **T18 — T-04.2 Backdrop blur pass**: **State: done.** The chrome material pass exists and is token-driven, applied; **`compositor/src/window/backdrop.rs`** (new) — `MaterialRole`
-- **Follow-ups**: T-04.3 (next): fold the backdrop pass into the reusable scale/translate/; T-04.2 follow-up: replace the flat-tone backdrop with a **real
+- **T19 — T-04.3 Reusable scene-transform pass**: **State: done.** One reusable scene transform exists (scale/translate + optional; **`compositor/src/window/pass.rs`** (new) — `FramePass`: the single shared
+- **Follow-ups**: T-04.3 (done in T19): the reusable `SceneTransform`/`SceneTransformPass`; T-04.2 follow-up: replace the flat-tone backdrop with a **real
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -1243,11 +1244,76 @@ Gotchas for later tasks:
 - Feather layers never extend past the chrome band (asserted); the pass never
   forces a redraw, so idle stays zero-damage (`shell_idle_trace` green).
 
+## T19 — T-04.3 Reusable scene-transform pass
+
+**State: done.** One reusable scene transform exists (scale/translate + optional
+token `CornerMask` clip + optional token `BackdropSpec` blur) and is exercised
+by the window lifecycle render path and by unit tests. One effect pass per
+frame is guarded by the shared `FramePass`; the pass is instrumented on the
+render-stats line and the idle trace asserts it flat. ADR 0014 is the contract.
+
+What landed:
+
+- **`compositor/src/window/pass.rs`** (new) — `FramePass`: the single shared
+  once-per-frame/per-output guard + damage recorder. 2 unit tests.
+- **`compositor/src/window/scene_transform.rs`** (new) — `SceneTransform`
+  (`source`→`target` scale/translate; `clip: Option<CornerMask>`; `blur:
+  Option<BackdropSpec>`; `new`/`identity`/`from_motion`/`with_clip`/`with_blur`/
+  `scale`/`offset`/`map_point`/`map_rect`/`clip_spans`/`blur_layers`/
+  `blur_elements`/`is_identity`) and `SceneTransformPass`. `from_motion` uses
+  `MotionFrame::scale_for(surface_size)` (committed-surface scale), **not**
+  `frame.scale`. 7 unit tests.
+- **`compositor/src/render.rs`** — `push_motion_elements` wraps through
+  `SceneTransform::from_motion` (same `Rescale`+`Relocate` pair, no behavior
+  change); `window_render_elements` now takes `&mut DfState` and opens the pass
+  once per output with the union of transformed window rects (output-local
+  logical), via `merge_region`.
+- **`compositor/src/state.rs`** — `DfState.scene_pass`; `begin_render_frame`
+  opens it with `render_serial`; render-stats line appends `scene_transforms`
+  and `scene_transform_skipped` after the T-03.1b latency fields (ADR 0009
+  append-only).
+- **`compositor/src/window/backdrop.rs`** — `BackdropPass` re-expressed on
+  `FramePass`; public API and tests unchanged.
+- **`compositor/tests/idle_trace.rs`** — parses the two new fields; asserts the
+  transform pass is flat while idle and the skip guard stays `0`.
+- **Docs** — ADR `0014-reusable-scene-transform-pass.md`; `02-compositor.md`
+  "Reusable scene-transform pass (T-04.3)".
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `cargo test -p dragonfruit-compositor --bin dragonfruit-compositor` — 214
+  unit tests green (9 new).
+- `make e2e` green (window_conformance 22/22, shell_protocol_conformance 32/32,
+  idle_trace, shell_idle_trace, milestone_e2e, xwayland_conformance,
+  latency_trace, animation_clock, protocol_surface + scripted demo).
+- `make lint` green (workspace clippy `-D warnings`, qmllint, qml tests 15/15,
+  token/design-token/desktop-name/capture-grab gates);
+  `./scripts/check-gallery-snapshots.py --strict` 66/66.
+
+Gotchas for later tasks:
+
+- **T-05/T-06/T-11 consume `SceneTransform`/`SceneTransformPass`; do not add a
+  second transform.** Future effects wrap `FramePass`, not a new guard.
+- T-05's grid builds the transform from its layout rects; the lifecycle motion
+  already renders through the same `from_motion` mapping.
+- **Clip is geometry only right now**: the transform carries the `CornerMask`,
+  but live client surface elements are still not cropped per window (Smithay
+  keys them for presentation feedback; T-04.1b's limitation). T-05 owns the
+  element wrap (`CropRenderElement`/`constrain_render_elements` exist in
+  Smithay 0.7).
+- Headless never renders, so `scene_transforms` stays `0` there; the counters
+  move only on nested/DRM renders.
+- Folding the T-04.2 chrome backdrop element generation into this pass is still
+  open; the guard is already shared, so only the element builder moves.
+
 ## Follow-ups
 
-- T-04.3 (next): fold the backdrop pass into the reusable scale/translate/
-  **clip** pass; `BackdropPass` and `MaterialRole` are the seam. Round
-  third-party client surfaces with `CornerMask` (the clipping gap T-04.1b left).
+- T-04.3 (done in T19): the reusable `SceneTransform`/`SceneTransformPass`
+  landed and the lifecycle motion renders through it. Remaining: (a) fold the
+  T-04.2 chrome backdrop **element generation** into the pass (the `FramePass`
+  guard is already shared; `BackdropPass`/`MaterialRole` are the seam); (b)
+  apply the carried `CornerMask` clip to live third-party client surface
+  elements when T-05 composes the grid (the T-04.1b gap remained by design).
 - T-04.2 follow-up: replace the flat-tone backdrop with a **real
   texture-sampling blur** (Kawase vs dual-pass Gaussian) behind the same
   tokens; the legacy FR-1 live-content test (video under the bar) needs it.

@@ -105,9 +105,10 @@ use crate::window::resize::SizeConstraints;
 use crate::window::{
     cascaded_geometry, centered_on, fullscreen_reveal_rect, BackdropPass, ColorScheme,
     DecorationTier, DoubleClickTracker, MenuActivation, MenuKey, MenuKeyOutcome, MotionFrame,
-    ReservedZones, ShellWindowEvent, TitlebarDoubleClick, TitlebarElement, TrafficLightKind,
-    WindowDispatch, WindowEvent, WindowEventKind, WindowId, WindowInsets, WindowMenu,
-    WindowMenuCommand, WindowModel, WindowMotion, WindowMotionKind, WindowState, CASCADE_STEP,
+    ReservedZones, SceneTransformPass, ShellWindowEvent, TitlebarDoubleClick, TitlebarElement,
+    TrafficLightKind, WindowDispatch, WindowEvent, WindowEventKind, WindowId, WindowInsets,
+    WindowMenu, WindowMenuCommand, WindowModel, WindowMotion, WindowMotionKind, WindowState,
+    CASCADE_STEP,
 };
 use crate::workspace::WorkspaceModel;
 use crate::xwayland::XwaylandState;
@@ -397,8 +398,13 @@ pub struct DfState {
     /// by [`Self::begin_render_frame`], then applied once per output, so the
     /// chrome backdrop can never be drawn twice in a frame.
     pub material_pass: BackdropPass,
-    /// Monotonic serial of the last rendered frame (T-04.2), the material
-    /// pass's frame key.
+    /// Reusable scene-transform pass bookkeeping (T-04.3): opened once per
+    /// rendered frame by [`Self::begin_render_frame`], then composed at most
+    /// once per output, so a scene transform can never be applied twice in a
+    /// frame. T-05/T-06 compose the transform this guards.
+    pub scene_pass: SceneTransformPass,
+    /// Monotonic serial of the last rendered frame (T-04.2/T-04.3), both
+    /// passes' frame key.
     pub render_serial: u64,
 
     pub stats: RenderStats,
@@ -521,6 +527,7 @@ impl DfState {
             dock_tiles: HashMap::new(),
             shell,
             material_pass: BackdropPass::new(),
+            scene_pass: SceneTransformPass::new(),
             render_serial: 0,
             stats: RenderStats::new(),
         }
@@ -2101,16 +2108,19 @@ impl DfState {
         active
     }
 
-    /// Open a rendered frame and its material pass (T-04.2).
+    /// Open a rendered frame and its material/scene-transform passes
+    /// (T-04.2/T-04.3).
     ///
     /// Called by a backend immediately before it builds its element list.
-    /// Bumping the render serial re-opens [`Self::material_pass`], so each
-    /// output applies the chrome backdrop exactly once for this frame and a
-    /// repeated request is counted as skipped (one effect pass per frame, no
-    /// double-blur).
+    /// Bumping the render serial re-opens [`Self::material_pass`] and
+    /// [`Self::scene_pass`], so each output applies the chrome backdrop and at
+    /// most one scene transform for this frame and a repeated request is
+    /// counted as skipped (one effect pass per frame, no double-blur and no
+    /// double-transform).
     pub fn begin_render_frame(&mut self) {
         self.render_serial = self.render_serial.wrapping_add(1);
         self.material_pass.begin_frame(self.render_serial);
+        self.scene_pass.begin_frame(self.render_serial);
     }
 
     /// Print the render-path counters (FR-2/FR-5 observability).
@@ -2122,7 +2132,8 @@ impl DfState {
             "dragonfruit-compositor: render stats ({label}): \
              frames_rendered={} frames_skipped_no_damage={} direct_scanouts={} \
              animation_frames_stepped={} client_wakeups={} \
-             latency_us_last={} latency_us_max={} latency_samples={} latency_dropped={}",
+             latency_us_last={} latency_us_max={} latency_samples={} latency_dropped={} \
+             scene_transforms={} scene_transform_skipped={}",
             self.stats.frames_rendered,
             self.stats.frames_skipped_no_damage,
             self.stats.direct_scanouts,
@@ -2132,6 +2143,13 @@ impl DfState {
             self.stats.latency.max_us(),
             self.stats.latency.samples(),
             self.stats.latency.dropped(),
+            // Reusable scene-transform pass (T-04.3): output-frames that
+            // composed a scene transform and the duplicate requests skipped
+            // (`scene_transform_skipped` must stay 0 — one effect pass per
+            // frame, no double-transform). Appended after the T-03.1b latency
+            // fields (ADR 0009 append-only).
+            self.scene_pass.applications(),
+            self.scene_pass.skipped(),
         );
         // Input-to-photon latency instrument (T-03.1b): the render-stats line
         // above has the positional fields; this line is the human-readable

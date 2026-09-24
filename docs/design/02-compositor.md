@@ -273,6 +273,35 @@ swappable behind the token values; T-04.3 folds the pass into the reusable
 scene transform and T-04.4a degrades it. See
 [ADR 0013](adr/0013-backdrop-blur-pass.md).
 
+### Reusable scene-transform pass (T-04.3)
+
+T-05's Mission Control live-surface grid and T-06's app switcher transform the
+**real** window surfaces — never thumbnails — and they must not each build
+their own pipeline. The one transform is
+`compositor/src/window/scene_transform.rs`: a `SceneTransform` maps a `source`
+rectangle onto a `target` rectangle (scale/translate) and carries an optional
+token-derived `CornerMask` clip (ADR 0012) and an optional token-driven
+`BackdropSpec` blur (ADR 0013). It is pure logical geometry plus rectangle
+materials, so it is asserted headless without a GPU.
+
+The T-02 lifecycle motion renders through the same transform:
+`SceneTransform::from_motion` derives the scale/offset from a `MotionFrame`
+using `MotionFrame::scale_for` (the committed surface size, not the
+target-relative chrome scale), so appear/minimize/zoom and the T-05 grid share
+one mapping and one code path.
+
+`SceneTransformPass` owns the per-frame guard on the shared
+`window/pass.rs::FramePass` (which `BackdropPass` also uses): the backend opens
+the frame once (`DfState::begin_render_frame`) and each output composes at most
+one transform; a duplicate is counted as `skipped` and draws nothing — the
+T-04.3 **one effect pass per frame (no double-transform)** invariant, reported
+on the render-stats line as `scene_transforms` / `scene_transform_skipped`
+(`scene_transform_skipped` must stay zero). The pass never forces a redraw, so
+the idle trace stays at zero damage. Applying the clip to a third-party
+surface's own elements is deferred to the renderer; the transform supplies the
+mask geometry (ADR 0012). See
+[ADR 0014](adr/0014-reusable-scene-transform-pass.md).
+
 ## Window model
 
 - **States.** A window is floating, minimized, zoomed, or fullscreen, with

@@ -21,9 +21,11 @@ pub mod events;
 pub mod grab;
 pub mod menu;
 pub mod motion;
+pub mod pass;
 pub mod placement;
 pub mod popup;
 pub mod resize;
+pub mod scene_transform;
 pub mod shadow;
 pub mod state;
 
@@ -42,6 +44,8 @@ pub use events::{ShellWindowEvent, WindowDispatch, WindowEventKind};
 pub use menu::{MenuActivation, MenuKey, MenuKeyOutcome, WindowMenu};
 pub use motion::{MotionFrame, WindowMotion, WindowMotionKind};
 #[allow(unused_imports)]
+pub use pass::FramePass;
+#[allow(unused_imports)]
 pub use placement::{
     cascaded_geometry, centered_on, user_positioned_geometry, Cascade, CASCADE_SLOTS, CASCADE_STEP,
 };
@@ -49,6 +53,8 @@ pub use placement::{
 pub use resize::{
     apply_aspect, clamp_move, clamp_within_output, resize_geometry, ResizeEdge, SizeConstraints,
 };
+#[allow(unused_imports)]
+pub use scene_transform::{SceneTransform, SceneTransformPass};
 #[allow(unused_imports)]
 pub use shadow::{
     shadow_bounds, shadow_elements, shadow_layers, ShadowLayer, ShadowLevel, ShadowSpec,

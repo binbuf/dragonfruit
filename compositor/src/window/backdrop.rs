@@ -40,6 +40,7 @@ use smithay::utils::{Logical, Rectangle, Scale};
 use crate::design_tokens::{component, semantic};
 use crate::window::corner::{rounded_rect_spans, RoundedCorners};
 use crate::window::decoration::{color_from_rgba, ColorScheme};
+use crate::window::pass::FramePass;
 
 /// The layer a chrome surface requested at which it stops being persistent
 /// chrome and becomes transient overlay chrome (menus/popovers/OSD).
@@ -244,25 +245,17 @@ pub fn backdrop_elements(
 /// same output in the same frame is counted as `skipped` and returns `None`,
 /// so the pass can never draw twice.
 #[derive(Debug, Default)]
-pub struct BackdropPass {
-    frame: u64,
-    applied_outputs: Vec<String>,
-    applications: u64,
-    skipped: u64,
-    damage: Vec<Rectangle<i32, Logical>>,
-}
+pub struct BackdropPass(FramePass);
 
 impl BackdropPass {
     pub fn new() -> Self {
-        BackdropPass::default()
+        BackdropPass(FramePass::new())
     }
 
     /// Open a frame. Clears the per-output application set and the damage
     /// recorded for it. `frame` is the renderer's monotonic render serial.
     pub fn begin_frame(&mut self, frame: u64) {
-        self.frame = frame;
-        self.applied_outputs.clear();
-        self.damage.clear();
+        self.0.begin_frame(frame);
     }
 
     /// Apply the backdrop for `output` this frame. `region` is the union of
@@ -274,39 +267,30 @@ impl BackdropPass {
         output: &str,
         region: Rectangle<i32, Logical>,
     ) -> Option<Rectangle<i32, Logical>> {
-        if self.applied_outputs.iter().any(|name| name == output) {
-            self.skipped += 1;
-            return None;
-        }
-        self.applied_outputs.push(output.to_string());
-        self.applications += 1;
-        if region.size.w > 0 && region.size.h > 0 {
-            self.damage.push(region);
-        }
-        Some(region)
+        self.0.apply(output, region)
     }
 
     /// The frame serial this pass is open for.
     pub fn frame(&self) -> u64 {
-        self.frame
+        self.0.frame()
     }
 
     /// Number of outputs the pass actually applied the backdrop for (one per
     /// output per frame; the effect-pass count).
     pub fn applications(&self) -> u64 {
-        self.applications
+        self.0.applications()
     }
 
     /// Number of requests skipped because the output already applied the
     /// backdrop this frame (the double-blur counter — must stay `0` in a
     /// correct render loop).
     pub fn skipped(&self) -> u64 {
-        self.skipped
+        self.0.skipped()
     }
 
     /// The damage of the current frame's applications (output-local logical).
     pub fn damage(&self) -> &[Rectangle<i32, Logical>] {
-        &self.damage
+        self.0.damage()
     }
 }
 

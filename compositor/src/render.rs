@@ -22,12 +22,13 @@ use smithay::desktop::utils::{
     OutputPresentationFeedback,
 };
 use smithay::output::Output;
-use smithay::utils::{IsAlive, Scale};
+use smithay::utils::{IsAlive, Logical, Rectangle, Scale};
 use smithay::wayland::fractional_scale::with_fractional_scale;
 
 use crate::state::DfState;
 use crate::window::{
-    backdrop_elements, shadow_elements, ColorScheme, MaterialRole, ShadowLevel, WindowState,
+    backdrop_elements, shadow_elements, ColorScheme, MaterialRole, SceneTransform, ShadowLevel,
+    WindowState,
 };
 
 /// Build render elements for the shell's chrome surfaces (menu bar, Dock,
@@ -139,10 +140,14 @@ pub fn chrome_backdrop_render_elements(
 /// surface is held as a ghost until the motion completes; those are rendered
 /// from the window model after the space walk with the same transform.
 ///
+/// Every in-flight window contributes to the reusable scene-transform pass
+/// (T-04.3): the output composes at most one transform per frame, recorded via
+/// [`DfState::scene_pass`], so the scene is never transformed twice.
+///
 /// [`Space`]: smithay::desktop::Space
 pub fn window_render_elements<R, E>(
     renderer: &mut R,
-    state: &DfState,
+    state: &mut DfState,
     output: &Output,
     scale: Scale<f64>,
 ) -> Vec<E>
@@ -157,6 +162,9 @@ where
     };
     let now = state.now_msec();
     let mut elements: Vec<E> = Vec::new();
+    // The union of the transformed window rects (global logical) this output
+    // composed; `None` when every window draws untransformed.
+    let mut scene_region: Option<Rectangle<i32, Logical>> = None;
     // `Space::elements` is bottom-to-top; the damage tracker consumes
     // front-to-back, so iterate in reverse (exactly like the space path).
     for window in state.space.elements().rev() {
@@ -179,7 +187,15 @@ where
         let location_phys = location.to_physical_precise_round(scale);
         match state.window_motion_frame(window, now) {
             Some(frame) => {
-                push_motion_elements(renderer, &mut elements, window, location_phys, scale, frame);
+                let transformed = push_motion_elements(
+                    renderer,
+                    &mut elements,
+                    window,
+                    location_phys,
+                    scale,
+                    frame,
+                );
+                merge_region(&mut scene_region, transformed);
             }
             None => {
                 elements.extend(window.render_elements::<E>(renderer, location_phys, scale, 1.0));
@@ -214,15 +230,38 @@ where
         let location = render_location - output_geometry.loc;
         let location_phys = location.to_physical_precise_round(scale);
         if let Some(frame) = state.window_motion_frame(window, now) {
-            push_motion_elements(renderer, &mut elements, window, location_phys, scale, frame);
+            let transformed =
+                push_motion_elements(renderer, &mut elements, window, location_phys, scale, frame);
+            merge_region(&mut scene_region, transformed);
         }
     }
+    // Open the reusable scene-transform pass for this output at most once per
+    // frame (T-04.3). The damage is the union of the interpolated window
+    // rects, converted to output-local logical coordinates.
+    if let Some(mut region) = scene_region {
+        region.loc -= output_geometry.loc;
+        state.scene_pass.apply(output.name().as_str(), region);
+    }
     elements
+}
+
+/// Extend `region` with `rect`, or set it when empty. The scene-transform
+/// pass's damage is the union of every transformed window rect on an output.
+fn merge_region(region: &mut Option<Rectangle<i32, Logical>>, rect: Rectangle<i32, Logical>) {
+    *region = Some(match *region {
+        Some(existing) => existing.merge(rect),
+        None => rect,
+    });
 }
 
 /// Push one window's surface elements wrapped in `Rescale`+`Relocate` with
 /// the motion frame's scale/fade. Shared by the `Space` walk and the
 /// minimizing-ghost walk.
+///
+/// The wrapping is expressed through the reusable [`SceneTransform`] (T-04.3):
+/// the transform's scale/offset are exactly the `Rescale`+`Relocate` pair, so
+/// the lifecycle motion and T-05's grid share one mapping. Returns the
+/// transform's target rect (global logical), for the pass's damage union.
 fn push_motion_elements<R, E>(
     renderer: &mut R,
     elements: &mut Vec<E>,
@@ -230,7 +269,8 @@ fn push_motion_elements<R, E>(
     location_phys: smithay::utils::Point<i32, smithay::utils::Physical>,
     scale: Scale<f64>,
     frame: crate::window::MotionFrame,
-) where
+) -> Rectangle<i32, Logical>
+where
     R: Renderer + ImportAll,
     R::TextureId: Clone + 'static,
     E: From<WaylandSurfaceRenderElement<R>>
@@ -244,8 +284,8 @@ fn push_motion_elements<R, E>(
     // (so the two are equal), while a zoom/fullscreen resizes the client
     // mid-flight and each committed buffer must map onto the interpolated
     // rect for the geometry to stay continuous.
-    let surface_size = window.geometry().size;
-    let surface_scale = frame.scale_for(surface_size);
+    let transform = SceneTransform::from_motion(frame, window.geometry().size);
+    let surface_scale = transform.scale();
     let fade = window.render_elements::<WaylandSurfaceRenderElement<R>>(
         renderer,
         location_phys,
@@ -256,11 +296,12 @@ fn push_motion_elements<R, E>(
         let scaled = RescaleRenderElement::from_element(element, location_phys, surface_scale);
         let relocated = RelocateRenderElement::from_element(
             scaled,
-            frame.offset.to_physical_precise_round(scale),
+            transform.offset().to_physical_precise_round(scale),
             Relocate::Relative,
         );
         elements.push(relocated.into());
     }
+    transform.target
 }
 
 /// Build the elevation-token-driven drop shadows for the windows composited
