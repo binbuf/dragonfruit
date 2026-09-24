@@ -503,6 +503,24 @@ impl SyntheticInput {
             .unwrap_or_else(|err| panic!("no reply to {command:?}: {err}"));
         String::from_utf8_lossy(&buf[..len]).into_owned()
     }
+
+    /// Send several newline-separated commands as one datagram and read the
+    /// reply to the trailing query. Because the compositor applies every line
+    /// in the datagram before the animation clock's timer can fire, a test can
+    /// observe the exact state a command leaves *immediately* — e.g. the
+    /// origin of a just-started zoom, before its first frame.
+    #[track_caller]
+    fn query_batch(&self, commands: &str) -> String {
+        self.socket
+            .send_to(commands.as_bytes(), &self.path)
+            .unwrap_or_else(|err| panic!("failed to send synthetic {commands:?}: {err}"));
+        let mut buf = [0u8; 16 * 1024];
+        let len = self
+            .socket
+            .recv(&mut buf)
+            .unwrap_or_else(|err| panic!("no reply to {commands:?}: {err}"));
+        String::from_utf8_lossy(&buf[..len]).into_owned()
+    }
 }
 
 impl Drop for SyntheticInput {
@@ -2408,6 +2426,433 @@ fn reduced_motion_minimize_and_restore_take_a_single_frame() {
     });
     let restore = motions.iter().find(|m| m.kind == "restore").unwrap();
     assert_eq!(restore.frames, 1, "reduced restore is one frame");
+    assert!(
+        motions.iter().all(|m| m.completed),
+        "nothing may be left live: {motions:?}"
+    );
+
+    surface.destroy();
+    toplevel.destroy();
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}
+
+/// T-02.3 acceptance: zoom animates from the floating geometry to the usable
+/// area (below the SSD titlebar), unzoom animates back, and each commits the
+/// final geometry. The transition is render-only: the model geometry changes
+/// immediately and the motion record carries the interpolated origin/target.
+#[test]
+fn zoom_and_unzoom_interpolate_between_geometries_and_commit() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path =
+        PathBuf::from(&runtime_dir).join(format!("dragonfruit-zoom-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-zoom",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (_conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let app_id = "org.dragonfruit.Zoom";
+    input.send(&format!("set launch-origin {app_id} 100 120 48 48"));
+    let _ = input.query("query motion");
+    let (surface, _xdg_surface, toplevel, _file) =
+        map_toplevel_with_app_id(&mut state, &mut queue, app_id);
+
+    // Settle the appear so the floating geometry is known and stable.
+    let motions = wait_for_motion(&input, |motions| {
+        motions.iter().any(|m| m.kind == "appear" && m.completed)
+    });
+    let appear = motions
+        .iter()
+        .find(|m| m.kind == "appear")
+        .expect("an appear record");
+    let window = appear.window;
+    let floating = appear.target;
+
+    // --- zoom: the motion is recorded immediately, leaving from floating ---
+    let report = input.query_batch(&format!("zoom {window}\nquery motion"));
+    let motions = parse_motion(&report);
+    let zoom = motions
+        .iter()
+        .find(|m| m.kind == "zoom")
+        .expect("a zoom record after `zoom`");
+    assert_eq!(zoom.window, window);
+    assert_eq!(
+        zoom.origin, floating,
+        "zoom must leave from the floating geometry: {zoom:?}"
+    );
+    assert_eq!(
+        zoom.target,
+        (0, TITLEBAR_HEIGHT, OUTPUT_W, OUTPUT_H - TITLEBAR_HEIGHT),
+        "zoom must fill the usable area below the titlebar: {zoom:?}"
+    );
+    assert!(
+        zoom.active && !zoom.completed,
+        "the zoom must be in flight immediately: {zoom:?}"
+    );
+    let zoomed = zoom.target;
+
+    // It steps several intermediate frames and commits the target.
+    let motions = wait_for_motion(&input, |motions| {
+        motions.iter().any(|m| m.kind == "zoom" && m.completed)
+    });
+    let zoom = motions
+        .iter()
+        .find(|m| m.kind == "zoom")
+        .expect("the zoom record");
+    assert!(
+        zoom.frames >= 3,
+        "a full zoom must step multiple frames, got {}: {zoom:?}",
+        zoom.frames
+    );
+    let report = wait_for_window(&mut state, &mut queue, &input, window, |report| {
+        report.state == WindowStateReport::Zoomed
+    });
+    assert_eq!(
+        report.content, zoomed,
+        "the committed geometry must be the zoom target: {report:?}"
+    );
+
+    // --- unzoom: back to floating, leaving from the zoomed geometry --------
+    let report = input.query_batch(&format!("unzoom {window}\nquery motion"));
+    let motions = parse_motion(&report);
+    let unzoom = motions
+        .iter()
+        .find(|m| m.kind == "zoom" && m.origin == zoomed)
+        .expect("an unzoom record leaving from the zoomed geometry");
+    assert_eq!(
+        unzoom.target, floating,
+        "unzoom must return to the floating geometry: {unzoom:?}"
+    );
+    assert!(unzoom.active && !unzoom.completed);
+
+    let motions = wait_for_motion(&input, |motions| {
+        motions
+            .iter()
+            .any(|m| m.kind == "zoom" && m.target == floating && m.completed)
+    });
+    let unzoom = motions
+        .iter()
+        .find(|m| m.kind == "zoom" && m.target == floating)
+        .expect("the unzoom record");
+    assert!(
+        unzoom.frames >= 3,
+        "a full unzoom must step multiple frames: {unzoom:?}"
+    );
+    let report = wait_for_window(&mut state, &mut queue, &input, window, |report| {
+        report.state == WindowStateReport::Floating
+    });
+    assert_eq!(
+        report.content, floating,
+        "unzoom must restore the original geometry: {report:?}"
+    );
+
+    surface.destroy();
+    toplevel.destroy();
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}
+
+/// T-02.3 acceptance: fullscreen grows a window into the full output geometry
+/// and unfullscreen shrinks it back, both on the shared clock with an
+/// intermediate frame count and a committed final geometry.
+#[test]
+fn fullscreen_and_unfullscreen_interpolate_between_geometries_and_commit() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir).join(format!(
+        "dragonfruit-fullscreen-motion-{}",
+        std::process::id()
+    ));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-fullscreen-motion",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (_conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let app_id = "org.dragonfruit.Fullscreen";
+    input.send(&format!("set launch-origin {app_id} 60 80 48 48"));
+    let _ = input.query("query motion");
+    let (surface, _xdg_surface, toplevel, _file) =
+        map_toplevel_with_app_id(&mut state, &mut queue, app_id);
+
+    let motions = wait_for_motion(&input, |motions| {
+        motions.iter().any(|m| m.kind == "appear" && m.completed)
+    });
+    let appear = motions
+        .iter()
+        .find(|m| m.kind == "appear")
+        .expect("an appear record");
+    let window = appear.window;
+    let floating = appear.target;
+
+    // --- fullscreen: grows from floating to the full output geometry -------
+    let report = input.query_batch(&format!("fullscreen {window}\nquery motion"));
+    let motions = parse_motion(&report);
+    let fullscreen = motions
+        .iter()
+        .find(|m| m.kind == "fullscreen")
+        .expect("a fullscreen record");
+    assert_eq!(
+        fullscreen.origin, floating,
+        "fullscreen must leave from the floating geometry: {fullscreen:?}"
+    );
+    assert_eq!(
+        fullscreen.target,
+        (0, 0, OUTPUT_W, OUTPUT_H),
+        "fullscreen must fill the whole output: {fullscreen:?}"
+    );
+    assert!(fullscreen.active && !fullscreen.completed);
+    let full = fullscreen.target;
+
+    let motions = wait_for_motion(&input, |motions| {
+        motions
+            .iter()
+            .any(|m| m.kind == "fullscreen" && m.completed)
+    });
+    let fullscreen = motions
+        .iter()
+        .find(|m| m.kind == "fullscreen")
+        .expect("the fullscreen record");
+    assert!(
+        fullscreen.frames >= 3,
+        "a full fullscreen must step multiple frames: {fullscreen:?}"
+    );
+    let report = wait_for_window(&mut state, &mut queue, &input, window, |report| {
+        report.state == WindowStateReport::Fullscreen
+    });
+    assert_eq!(report.content, full);
+
+    // --- unfullscreen: shrinks back to the floating geometry ---------------
+    let report = input.query_batch(&format!("unfullscreen {window}\nquery motion"));
+    let motions = parse_motion(&report);
+    let unfullscreen = motions
+        .iter()
+        .find(|m| m.kind == "fullscreen" && m.origin == full)
+        .expect("an unfullscreen record leaving from the full geometry");
+    assert_eq!(unfullscreen.target, floating);
+
+    let motions = wait_for_motion(&input, |motions| {
+        motions
+            .iter()
+            .any(|m| m.kind == "fullscreen" && m.target == floating && m.completed)
+    });
+    let unfullscreen = motions
+        .iter()
+        .find(|m| m.kind == "fullscreen" && m.target == floating)
+        .expect("the unfullscreen record");
+    assert!(unfullscreen.frames >= 3);
+    let report = wait_for_window(&mut state, &mut queue, &input, window, |report| {
+        report.state == WindowStateReport::Floating
+    });
+    assert_eq!(report.content, floating);
+
+    surface.destroy();
+    toplevel.destroy();
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}
+
+/// T-02.3 interruptibility: an unzoom requested while a zoom is mid-flight
+/// starts from the window's *current* interpolated rect — it does not wait
+/// for the zoom to finish — and still commits the floating geometry.
+#[test]
+fn zoom_retargets_mid_flight_without_waiting() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir)
+        .join(format!("dragonfruit-zoom-interrupt-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-zoom-interrupt",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (_conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let app_id = "org.dragonfruit.ZoomInterrupt";
+    input.send(&format!("set launch-origin {app_id} 100 120 48 48"));
+    let _ = input.query("query motion");
+    let (surface, _xdg_surface, toplevel, _file) =
+        map_toplevel_with_app_id(&mut state, &mut queue, app_id);
+
+    let motions = wait_for_motion(&input, |motions| {
+        motions.iter().any(|m| m.kind == "appear" && m.completed)
+    });
+    let appear = motions
+        .iter()
+        .find(|m| m.kind == "appear")
+        .expect("an appear record");
+    let window = appear.window;
+    let floating = appear.target;
+
+    // Start the zoom and catch it before it settles (at least one frame in).
+    input.send(&format!("zoom {window}"));
+    let motions = wait_for_motion(&input, |motions| {
+        motions
+            .iter()
+            .any(|m| m.kind == "zoom" && !m.completed && m.frames >= 1)
+    });
+    let zoom = motions
+        .iter()
+        .find(|m| m.kind == "zoom")
+        .expect("a live zoom record");
+    let zoomed = zoom.target;
+    assert!(
+        !zoom.completed,
+        "the zoom must still be in flight to test interruption: {zoom:?}"
+    );
+
+    // Retarget immediately.
+    let report = input.query_batch(&format!("unzoom {window}\nquery motion"));
+    let motions = parse_motion(&report);
+    let unzoom = motions
+        .iter()
+        .find(|m| m.kind == "zoom" && m.target == floating)
+        .expect("the retargeted unzoom record");
+    assert!(
+        unzoom.origin != zoomed,
+        "the unzoom must not wait for the zoom to finish: {unzoom:?}"
+    );
+    assert!(
+        unzoom.origin.2 > floating.2 && unzoom.origin.2 < zoomed.2,
+        "the unzoom must start from the partial interpolated rect: {:?} (floating={floating:?}, zoomed={zoomed:?})",
+        unzoom.origin
+    );
+    assert!(
+        unzoom.origin.3 > floating.3 && unzoom.origin.3 < zoomed.3,
+        "the retargeted height must also be partial: {:?}",
+        unzoom.origin
+    );
+
+    // It resolves cleanly to the floating geometry.
+    let motions = wait_for_motion(&input, |motions| {
+        motions
+            .iter()
+            .any(|m| m.kind == "zoom" && m.target == floating && m.completed)
+    });
+    let unzoom = motions
+        .iter()
+        .find(|m| m.kind == "zoom" && m.target == floating)
+        .expect("the retargeted unzoom record");
+    assert!(unzoom.frames >= 1);
+    let report = wait_for_window(&mut state, &mut queue, &input, window, |report| {
+        report.state == WindowStateReport::Floating
+    });
+    assert_eq!(report.content, floating);
+
+    surface.destroy();
+    toplevel.destroy();
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}
+
+/// T-02.3 reduced motion: zoom/unzoom and fullscreen/unfullscreen each take a
+/// single clock step through the same commit path, and the geometry still
+/// lands exactly.
+#[test]
+fn reduced_motion_zoom_and_fullscreen_take_a_single_frame() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir)
+        .join(format!("dragonfruit-zoom-reduced-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-zoom-reduced",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (_conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let app_id = "org.dragonfruit.ZoomReduced";
+    input.send("set reduced-motion on");
+    input.send(&format!("set launch-origin {app_id} 30 40 48 48"));
+    let _ = input.query("query motion");
+    let (surface, _xdg_surface, toplevel, _file) =
+        map_toplevel_with_app_id(&mut state, &mut queue, app_id);
+
+    let motions = wait_for_motion(&input, |motions| {
+        motions.iter().any(|m| m.kind == "appear" && m.completed)
+    });
+    let appear = motions
+        .iter()
+        .find(|m| m.kind == "appear")
+        .expect("an appear record");
+    let window = appear.window;
+    let floating = appear.target;
+    assert_eq!(appear.frames, 1, "reduced-motion appear is one frame");
+    let zoomed = (0, TITLEBAR_HEIGHT, OUTPUT_W, OUTPUT_H - TITLEBAR_HEIGHT);
+    let full = (0, 0, OUTPUT_W, OUTPUT_H);
+
+    // Zoom: one step, state zoomed at the usable geometry.
+    input.send(&format!("zoom {window}"));
+    let motions = wait_for_motion(&input, |motions| {
+        motions.iter().any(|m| m.kind == "zoom" && m.completed)
+    });
+    let zoom = motions.iter().find(|m| m.kind == "zoom").unwrap();
+    assert_eq!(zoom.frames, 1, "reduced-motion zoom is one frame: {zoom:?}");
+    assert_eq!(zoom.target, zoomed);
+    wait_for_window(&mut state, &mut queue, &input, window, |report| {
+        report.state == WindowStateReport::Zoomed && report.content == zoomed
+    });
+
+    // Unzoom: one step, floating again.
+    input.send(&format!("unzoom {window}"));
+    let motions = wait_for_motion(&input, |motions| {
+        motions
+            .iter()
+            .any(|m| m.kind == "zoom" && m.target == floating && m.completed)
+    });
+    let unzoom = motions
+        .iter()
+        .find(|m| m.kind == "zoom" && m.target == floating)
+        .unwrap();
+    assert_eq!(
+        unzoom.frames, 1,
+        "reduced-motion unzoom is one frame: {unzoom:?}"
+    );
+
+    // Fullscreen: one step, the whole output.
+    input.send(&format!("fullscreen {window}"));
+    let motions = wait_for_motion(&input, |motions| {
+        motions
+            .iter()
+            .any(|m| m.kind == "fullscreen" && m.completed)
+    });
+    let fullscreen = motions.iter().find(|m| m.kind == "fullscreen").unwrap();
+    assert_eq!(
+        fullscreen.frames, 1,
+        "reduced-motion fullscreen is one frame: {fullscreen:?}"
+    );
+    assert_eq!(fullscreen.target, full);
+    wait_for_window(&mut state, &mut queue, &input, window, |report| {
+        report.state == WindowStateReport::Fullscreen && report.content == full
+    });
+
+    // Unfullscreen: one step, floating again.
+    input.send(&format!("unfullscreen {window}"));
+    let motions = wait_for_motion(&input, |motions| {
+        motions
+            .iter()
+            .any(|m| m.kind == "fullscreen" && m.target == floating && m.completed)
+    });
+    let unfullscreen = motions
+        .iter()
+        .find(|m| m.kind == "fullscreen" && m.target == floating)
+        .unwrap();
+    assert_eq!(
+        unfullscreen.frames, 1,
+        "reduced-motion unfullscreen is one frame: {unfullscreen:?}"
+    );
     assert!(
         motions.iter().all(|m| m.completed),
         "nothing may be left live: {motions:?}"

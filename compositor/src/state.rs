@@ -1263,6 +1263,10 @@ impl DfState {
     }
 
     /// Zoom a window to fill the usable area (FR-1/FR-2).
+    ///
+    /// The state change is immediate (the window stays mapped and
+    /// input-correct at the zoomed geometry); the visible tween from the
+    /// floating geometry is render-only and runs on the shared clock (T-02.3).
     pub fn zoom_window(&mut self, window: &Window) {
         let Some(target) = self.usable_geometry_for(window) else {
             return;
@@ -1271,6 +1275,7 @@ impl DfState {
         // the usable area: the titlebar inset is applied once here, on the
         // same geometry path every configure flows through (T-01.1).
         let target = self.insets_for(window).inset(target);
+        let from = self.windows.geometry(window);
         let Some(transition) = self.windows.apply(window, WindowEvent::Zoom, target) else {
             return;
         };
@@ -1286,10 +1291,16 @@ impl DfState {
             }
         }
         self.apply_window_transition(window, transition);
+        if transition.changed {
+            if let Some(from) = from {
+                self.begin_window_motion_from(window, WindowMotionKind::Zoom, from, target);
+            }
+        }
     }
 
     /// Return a zoomed window to its floating geometry.
     pub fn unzoom_window(&mut self, window: &Window) {
+        let from = self.windows.geometry(window);
         let Some(transition) =
             self.windows
                 .apply(window, WindowEvent::Unzoom, Rectangle::default())
@@ -1304,10 +1315,18 @@ impl DfState {
             }
         }
         self.apply_window_transition(window, transition);
+        if transition.changed {
+            let target = self.windows.geometry(window);
+            if let (Some(from), Some(target)) = (from, target) {
+                self.begin_window_motion_from(window, WindowMotionKind::Zoom, from, target);
+            }
+        }
     }
 
     /// Enter fullscreen: the window moves to a dedicated Space created for
     /// it (FR-3), which appears in the strip right after the origin Space.
+    /// The geometry change is immediate; the grow into it is a render-only
+    /// tween on the shared clock (T-02.3).
     pub fn fullscreen_window(&mut self, window: &Window) {
         let Some(target) = self.output_bounds_for(window) else {
             return;
@@ -1324,6 +1343,7 @@ impl DfState {
                 }
             }
         }
+        let from = self.windows.geometry(window);
         let Some(transition) = self
             .windows
             .apply(window, WindowEvent::EnterFullscreen, target)
@@ -1343,11 +1363,17 @@ impl DfState {
             // Space's windows on the owner output too.
             self.apply_workspace_layout();
         }
+        if transition.changed {
+            if let Some(from) = from {
+                self.begin_window_motion_from(window, WindowMotionKind::Fullscreen, from, target);
+            }
+        }
     }
 
     /// Leave fullscreen for the state it was entered from, destroying the
     /// dedicated Space and returning to the origin Space (FR-3).
     pub fn unfullscreen_window(&mut self, window: &Window) {
+        let from = self.windows.geometry(window);
         let Some(transition) =
             self.windows
                 .apply(window, WindowEvent::ExitFullscreen, Rectangle::default())
@@ -1366,6 +1392,12 @@ impl DfState {
         }
         self.apply_window_transition(window, transition);
         self.apply_workspace_layout();
+        if transition.changed {
+            let target = self.windows.geometry(window);
+            if let (Some(from), Some(target)) = (from, target) {
+                self.begin_window_motion_from(window, WindowMotionKind::Fullscreen, from, target);
+            }
+        }
     }
 
     /// Minimize a window and its transients (FR-6).
@@ -1441,6 +1473,53 @@ impl DfState {
         match self.window_by_id(id) {
             Some(window) => {
                 self.restore_window(&window);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Zoom the window with compositor id `id` (synthetic-input / shell seam).
+    pub fn zoom_window_by_id(&mut self, id: WindowId) -> bool {
+        match self.window_by_id(id) {
+            Some(window) => {
+                self.zoom_window(&window);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Unzoom the window with compositor id `id` (synthetic-input / shell
+    /// seam).
+    pub fn unzoom_window_by_id(&mut self, id: WindowId) -> bool {
+        match self.window_by_id(id) {
+            Some(window) => {
+                self.unzoom_window(&window);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Enter fullscreen for the window with compositor id `id`
+    /// (synthetic-input / shell seam).
+    pub fn fullscreen_window_by_id(&mut self, id: WindowId) -> bool {
+        match self.window_by_id(id) {
+            Some(window) => {
+                self.fullscreen_window(&window);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Leave fullscreen for the window with compositor id `id`
+    /// (synthetic-input / shell seam).
+    pub fn unfullscreen_window_by_id(&mut self, id: WindowId) -> bool {
+        match self.window_by_id(id) {
+            Some(window) => {
+                self.unfullscreen_window(&window);
                 true
             }
             None => false,
@@ -1741,7 +1820,9 @@ impl DfState {
         self.begin_window_motion(window, WindowMotionKind::Appear, target);
     }
 
-    /// Begin a lifecycle motion for `window` and arm the shared clock.
+    /// Begin a launch lifecycle motion (appear/minimize/restore) for `window`
+    /// and arm the shared clock. The origin defaults to the app's Dock tile
+    /// (or the centered fallback).
     ///
     /// One driver closure steps *every* window motion once per clock frame;
     /// [`Self::window_motion_driver`] keeps a new motion from registering a
@@ -1752,14 +1833,28 @@ impl DfState {
         kind: WindowMotionKind,
         geometry: Rectangle<i32, Logical>,
     ) -> bool {
+        let origin = self.motion_origin_for(window, geometry);
+        self.begin_window_motion_from(window, kind, origin, geometry)
+    }
+
+    /// Begin a lifecycle motion with an explicit fallback origin, used by the
+    /// geometry transitions (zoom/fullscreen) whose origin is the geometry the
+    /// window is leaving rather than its Dock tile.
+    ///
+    /// Interruptibility: a new transition mid-flight starts from the window's
+    /// *current* interpolated rect rather than jumping, so a re-entrant
+    /// zoom/unzoom retargets without waiting.
+    fn begin_window_motion_from(
+        &mut self,
+        window: &Window,
+        kind: WindowMotionKind,
+        fallback_origin: Rectangle<i32, Logical>,
+        geometry: Rectangle<i32, Logical>,
+    ) -> bool {
         let now = self.now_msec();
-        // Retarget without waiting: a new transition mid-flight starts from
-        // the window's *current* interpolated rect rather than jumping back to
-        // the tile. A settled window starts from its Dock-tile origin (or the
-        // centered fallback).
         let origin = match self.windows.motion_frame(window, now) {
             Some(frame) => frame.rect,
-            None => self.motion_origin_for(window, geometry),
+            None => fallback_origin,
         };
         let reduced = self.animation_clock.reduced_motion();
         if !self.windows.set_motion(

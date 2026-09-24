@@ -40,6 +40,8 @@
 //! set launch-origin <app-id> <x> <y> <width> <height>
 //! minimize <window-id>
 //! restore <window-id>
+//! zoom <window-id> | unzoom <window-id>
+//! fullscreen <window-id> | unfullscreen <window-id>
 //! animate-dummy <duration-ms>
 //! ```
 //!
@@ -54,10 +56,11 @@
 //! describing the open menu (or `0` when closed) followed by `end`, so the
 //! conformance test can aim at rows and assert dismissal.
 //!
-//! `query motion` (T-02.1b/T-02.2) replies with one `motion` line per window
-//! that has an appear/minimize/restore record, followed by `end`. `query
-//! events` replies with the pending window-lifecycle outbox lines (the same
-//! events the shell drains) followed by `end`.
+//! `query motion` (T-02.1b/T-02.2/T-02.3) replies with one `motion` line per
+//! window that has an appear/minimize/restore/zoom/fullscreen record,
+//! followed by `end`. `query events` replies with the pending
+//! window-lifecycle outbox lines (the same events the shell drains) followed
+//! by `end`.
 //!
 //! `set titlebar-double-click` sets the session's `dock.titlebarDoubleClick`
 //! behavior (T-01.3) so the conformance test can prove the configured
@@ -65,7 +68,9 @@
 //!
 //! `minimize`/`restore <window-id>` drive the lifecycle motion for a window
 //! by its compositor id (T-02.2 test plumbing), the same primitive the
-//! traffic light and the private protocol use.
+//! traffic light and the private protocol use. `zoom`/`unzoom` and
+//! `fullscreen`/`unfullscreen <window-id>` do the same for the T-02.3 geometry
+//! transitions.
 //!
 //! `animate-dummy <ms>` starts a scene-free animation on the shared clock
 //! (T-02.1a/T-03.1a) so a headless test can assert the frame discipline:
@@ -662,6 +667,14 @@ pub enum SyntheticCommand {
     MinimizeWindow(WindowId),
     /// Restore the window with this compositor id (T-02.2 test plumbing).
     RestoreWindow(WindowId),
+    /// Zoom the window with this compositor id (T-02.3 test plumbing).
+    ZoomWindow(WindowId),
+    /// Unzoom the window with this compositor id (T-02.3 test plumbing).
+    UnzoomWindow(WindowId),
+    /// Enter fullscreen for the window with this compositor id (T-02.3).
+    FullscreenWindow(WindowId),
+    /// Leave fullscreen for the window with this compositor id (T-02.3).
+    UnfullscreenWindow(WindowId),
     /// Start a scene-free animation on the shared clock (T-02.1a test
     /// plumbing; the frame-discipline calibration animation).
     AnimateDummy {
@@ -805,6 +818,34 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
                 .ok_or("restore requires a window id")?
                 .parse()
                 .map_err(|_| "restore window id must be a non-negative integer".to_string())?,
+        )),
+        "zoom" => SyntheticCommand::ZoomWindow(WindowId(
+            parts
+                .next()
+                .ok_or("zoom requires a window id")?
+                .parse()
+                .map_err(|_| "zoom window id must be a non-negative integer".to_string())?,
+        )),
+        "unzoom" => SyntheticCommand::UnzoomWindow(WindowId(
+            parts
+                .next()
+                .ok_or("unzoom requires a window id")?
+                .parse()
+                .map_err(|_| "unzoom window id must be a non-negative integer".to_string())?,
+        )),
+        "fullscreen" => SyntheticCommand::FullscreenWindow(WindowId(
+            parts
+                .next()
+                .ok_or("fullscreen requires a window id")?
+                .parse()
+                .map_err(|_| "fullscreen window id must be a non-negative integer".to_string())?,
+        )),
+        "unfullscreen" => SyntheticCommand::UnfullscreenWindow(WindowId(
+            parts
+                .next()
+                .ok_or("unfullscreen requires a window id")?
+                .parse()
+                .map_err(|_| "unfullscreen window id must be a non-negative integer".to_string())?,
         )),
         "set" => match parts.next() {
             Some("titlebar-double-click") => {
@@ -957,6 +998,18 @@ impl SyntheticCommand {
             SyntheticCommand::RestoreWindow(_) => {
                 unreachable!("restore is handled by apply_datagram")
             }
+            SyntheticCommand::ZoomWindow(_) => {
+                unreachable!("zoom is handled by apply_datagram")
+            }
+            SyntheticCommand::UnzoomWindow(_) => {
+                unreachable!("unzoom is handled by apply_datagram")
+            }
+            SyntheticCommand::FullscreenWindow(_) => {
+                unreachable!("fullscreen is handled by apply_datagram")
+            }
+            SyntheticCommand::UnfullscreenWindow(_) => {
+                unreachable!("unfullscreen is handled by apply_datagram")
+            }
             // A clock command, not an input event.
             SyntheticCommand::AnimateDummy { .. } => {
                 unreachable!("animate-dummy is handled by apply_datagram")
@@ -1051,6 +1104,22 @@ fn apply_datagram_reply(
             }
             Ok(SyntheticCommand::RestoreWindow(id)) => {
                 state.restore_window_by_id(id);
+                applied += 1;
+            }
+            Ok(SyntheticCommand::ZoomWindow(id)) => {
+                state.zoom_window_by_id(id);
+                applied += 1;
+            }
+            Ok(SyntheticCommand::UnzoomWindow(id)) => {
+                state.unzoom_window_by_id(id);
+                applied += 1;
+            }
+            Ok(SyntheticCommand::FullscreenWindow(id)) => {
+                state.fullscreen_window_by_id(id);
+                applied += 1;
+            }
+            Ok(SyntheticCommand::UnfullscreenWindow(id)) => {
+                state.unfullscreen_window_by_id(id);
                 applied += 1;
             }
             Ok(SyntheticCommand::AnimateDummy { duration_ms }) => {
@@ -1149,15 +1218,16 @@ fn window_menu_report(state: &DfState) -> String {
     format!("{line}\nend\n")
 }
 
-/// The `query motion` report (T-02.1b/T-02.2).
+/// The `query motion` report (T-02.1b/T-02.2/T-02.3).
 ///
 /// `motion <window> <kind> <active> <completed> <frames> <ox> <oy> <ow> <oh>
 /// <tx> <ty> <tw> <th>` per window with a motion record, followed by `end`.
-/// `<kind>` is `appear`, `minimize`, or `restore`; `<active>` is 1 while the
-/// motion is in flight, `<completed>` 1 once it has committed, and `<frames>`
-/// is the number of animation-clock frames it has been stepped for (the
-/// reduced-motion check is `frames == 1`). The `o*` fields are the motion
-/// origin (Dock tile or centered fallback) and `t*` the final geometry.
+/// `<kind>` is `appear`, `minimize`, `restore`, `zoom`, or `fullscreen`;
+/// `<active>` is 1 while the motion is in flight, `<completed>` 1 once it has
+/// committed, and `<frames>` is the number of animation-clock frames it has
+/// been stepped for (the reduced-motion check is `frames == 1`). The `o*`
+/// fields are the motion origin (Dock tile, centered fallback, or the
+/// geometry being left for zoom/fullscreen) and `t*` the final geometry.
 fn motion_report(state: &DfState) -> String {
     let mut out = String::new();
     for (_, id, motion) in state.windows.motions() {
@@ -1334,6 +1404,22 @@ mod tests {
         assert_eq!(
             parse_command("restore 3").unwrap(),
             SyntheticCommand::RestoreWindow(WindowId(3))
+        );
+        assert_eq!(
+            parse_command("zoom 3").unwrap(),
+            SyntheticCommand::ZoomWindow(WindowId(3))
+        );
+        assert_eq!(
+            parse_command("unzoom 3").unwrap(),
+            SyntheticCommand::UnzoomWindow(WindowId(3))
+        );
+        assert_eq!(
+            parse_command("fullscreen 3").unwrap(),
+            SyntheticCommand::FullscreenWindow(WindowId(3))
+        );
+        assert_eq!(
+            parse_command("unfullscreen 3").unwrap(),
+            SyntheticCommand::UnfullscreenWindow(WindowId(3))
         );
         assert_eq!(
             parse_command("set reduced-motion on").unwrap(),
