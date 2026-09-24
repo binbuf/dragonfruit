@@ -12,7 +12,10 @@ use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::element::surface::{
     render_elements_from_surface_tree, WaylandSurfaceRenderElement,
 };
-use smithay::backend::renderer::element::{Kind, RenderElementStates};
+use smithay::backend::renderer::element::utils::{
+    Relocate, RelocateRenderElement, RescaleRenderElement,
+};
+use smithay::backend::renderer::element::{AsRenderElements, Kind, RenderElementStates};
 use smithay::backend::renderer::{ImportAll, Renderer};
 use smithay::desktop::utils::{
     surface_presentation_feedback_flags_from_states, surface_primary_scanout_output,
@@ -63,11 +66,90 @@ where
     elements
 }
 
+/// Build the client-surface render elements for the windows composited on
+/// `output`, applying each window's appear transform (T-02.1b).
+///
+/// This is the per-window replacement for the window half of
+/// `smithay::desktop::space::render_output`: it walks the [`Space`] in the
+/// same front-to-back order and resolves the same locations/scale, but wraps
+/// a window that is mid-appear in a `Rescale`+`Relocate` pair and fades it
+/// through the surface-tree alpha, so the window scales/fades from its appear
+/// origin. A window with no in-flight appear produces byte-identical
+/// elements to the space path.
+///
+/// [`Space`]: smithay::desktop::Space
+pub fn window_render_elements<R, E>(
+    renderer: &mut R,
+    state: &DfState,
+    output: &Output,
+    scale: Scale<f64>,
+) -> Vec<E>
+where
+    R: Renderer + ImportAll,
+    R::TextureId: Clone + 'static,
+    E: From<WaylandSurfaceRenderElement<R>>
+        + From<RelocateRenderElement<RescaleRenderElement<WaylandSurfaceRenderElement<R>>>>,
+{
+    let Some(output_geometry) = state.space.output_geometry(output) else {
+        return Vec::new();
+    };
+    let now = state.now_msec();
+    let mut elements: Vec<E> = Vec::new();
+    // `Space::elements` is bottom-to-top; the damage tracker consumes
+    // front-to-back, so iterate in reverse (exactly like the space path).
+    for window in state.space.elements().rev() {
+        if !state.space.outputs_for_element(window).contains(output) {
+            continue;
+        }
+        let Some(location) = state.space.element_location(window) else {
+            continue;
+        };
+        // The surface origin is the element location minus the window's own
+        // geometry offset (mirrors `InnerElement::render_location`). The bbox
+        // is shifted the same way for the output-overlap test.
+        let render_location = location - window.geometry().loc;
+        let mut bbox = window.bbox_with_popups();
+        bbox.loc += render_location;
+        if !output_geometry.overlaps(bbox) {
+            continue;
+        }
+        let location = render_location - output_geometry.loc;
+        let location_phys = location.to_physical_precise_round(scale);
+        match state.window_appear_frame(window, now) {
+            Some(frame) => {
+                // Fade through the surface-tree alpha, then scale about the
+                // window's physical target origin and translate to the
+                // interpolated rect.
+                let fade = window.render_elements::<WaylandSurfaceRenderElement<R>>(
+                    renderer,
+                    location_phys,
+                    scale,
+                    frame.alpha,
+                );
+                for element in fade {
+                    let scaled =
+                        RescaleRenderElement::from_element(element, location_phys, frame.scale);
+                    let relocated = RelocateRenderElement::from_element(
+                        scaled,
+                        frame.offset.to_physical_precise_round(scale),
+                        Relocate::Relative,
+                    );
+                    elements.push(relocated.into());
+                }
+            }
+            None => {
+                elements.extend(window.render_elements::<E>(renderer, location_phys, scale, 1.0));
+            }
+        }
+    }
+    elements
+}
+
 /// Build the solid-fill SSD titlebar elements for the windows composited on
 /// `output` (T-01.1). These are custom elements, so they composite *above*
 /// the window [`Space`](smithay::desktop::Space) — the titlebar sits above
-/// its own client surface. Chrome (`chrome_render_elements`) is layered even
-/// higher by the backend's element ordering.
+/// its own client surface. An appearing window's titlebar carries the same
+/// scale/fade as its content (T-02.1b).
 pub fn titlebar_render_elements(
     state: &DfState,
     output: &Output,
@@ -76,13 +158,18 @@ pub fn titlebar_render_elements(
     let Some(output_geometry) = state.space.output_geometry(output) else {
         return Vec::new();
     };
+    let now = state.now_msec();
     let mut elements = Vec::new();
     for window in state.space.elements() {
         if !state.space.outputs_for_element(window).contains(output) {
             continue;
         }
         if let Some(titlebar) = state.titlebar_element(window) {
-            elements.extend(titlebar.render_elements(scale, output_geometry.loc));
+            elements.extend(titlebar.render_elements(
+                scale,
+                output_geometry.loc,
+                state.window_appear_frame(window, now),
+            ));
         }
     }
     elements

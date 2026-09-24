@@ -33,7 +33,10 @@
 //! touch-up <slot> | touch-frame
 //! query decorations
 //! query window-menu
+//! query appear
 //! set titlebar-double-click zoom|minimize|none
+//! set reduced-motion on|off
+//! set launch-origin <app-id> <x> <y> <width> <height>
 //! animate-dummy <duration-ms>
 //! ```
 //!
@@ -563,7 +566,7 @@ impl InputBackend for SyntheticInputBackend {
 }
 
 /// One parsed synthetic input command.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum SyntheticCommand {
     Key {
         keycode: u32,
@@ -623,8 +626,22 @@ pub enum SyntheticCommand {
     QueryDecorations,
     /// Read-only window-menu introspection (T-01.4).
     QueryWindowMenu,
+    /// Read-only appear-transition introspection (T-02.1b). One line per
+    /// window that has an appear record, followed by `end`.
+    QueryAppear,
     /// Set `dock.titlebarDoubleClick` for the session (T-01.3 test plumbing).
     SetTitlebarDoubleClick(TitlebarDoubleClick),
+    /// Set the compositor reduced-motion policy (T-02.1b test plumbing).
+    SetReducedMotion(bool),
+    /// Set the Dock tile origin an app's next window appears from (T-02.1b
+    /// test plumbing for `df_toplevel_manager.set_launch_origin`).
+    SetLaunchOrigin {
+        app_id: String,
+        x: i32,
+        y: i32,
+        width: i32,
+        height: i32,
+    },
     /// Start a scene-free animation on the shared clock (T-02.1a test
     /// plumbing; the frame-discipline calibration animation).
     AnimateDummy {
@@ -657,6 +674,12 @@ fn parse_u32(token: &str) -> Result<u32, String> {
     token
         .parse::<u32>()
         .map_err(|_| format!("expected a non-negative integer, got {token:?}"))
+}
+
+fn parse_i32(token: &str) -> Result<i32, String> {
+    token
+        .parse::<i32>()
+        .map_err(|_| format!("expected an integer, got {token:?}"))
 }
 
 /// Parse one command line (the inverse of the wire format in the module
@@ -738,8 +761,11 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
         "query" => match parts.next() {
             Some("decorations") => SyntheticCommand::QueryDecorations,
             Some("window-menu") => SyntheticCommand::QueryWindowMenu,
+            Some("appear") => SyntheticCommand::QueryAppear,
             _ => {
-                return Err("query requires a known subject (decorations, window-menu)".into());
+                return Err(
+                    "query requires a known subject (decorations, window-menu, appear)".into(),
+                );
             }
         },
         "set" => match parts.next() {
@@ -751,7 +777,36 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
                     .ok_or_else(|| format!("expected zoom|minimize|none, got {value:?}"))?;
                 SyntheticCommand::SetTitlebarDoubleClick(mode)
             }
-            _ => return Err("set requires a known subject (titlebar-double-click)".into()),
+            Some("reduced-motion") => match parts.next() {
+                Some("on") | Some("1") => SyntheticCommand::SetReducedMotion(true),
+                Some("off") | Some("0") => SyntheticCommand::SetReducedMotion(false),
+                other => {
+                    return Err(format!("expected on|off, got {other:?}"));
+                }
+            },
+            Some("launch-origin") => {
+                let app_id = parts
+                    .next()
+                    .ok_or("set launch-origin requires an app id")?
+                    .to_string();
+                let x = parse_i32(parts.next().ok_or("set launch-origin requires x")?)?;
+                let y = parse_i32(parts.next().ok_or("set launch-origin requires y")?)?;
+                let width = parse_i32(parts.next().ok_or("set launch-origin requires width")?)?;
+                let height = parse_i32(parts.next().ok_or("set launch-origin requires height")?)?;
+                SyntheticCommand::SetLaunchOrigin {
+                    app_id,
+                    x,
+                    y,
+                    width,
+                    height,
+                }
+            }
+            _ => {
+                return Err(
+                    "set requires a known subject (titlebar-double-click, reduced-motion, launch-origin)"
+                        .into(),
+                );
+            }
         },
         other => return Err(format!("unknown command {other:?}")),
     };
@@ -842,9 +897,18 @@ impl SyntheticCommand {
             SyntheticCommand::QueryWindowMenu => {
                 unreachable!("query window-menu is handled by apply_datagram")
             }
+            SyntheticCommand::QueryAppear => {
+                unreachable!("query appear is handled by apply_datagram")
+            }
             // A settings command, not an input event.
             SyntheticCommand::SetTitlebarDoubleClick(_) => {
                 unreachable!("set titlebar-double-click is handled by apply_datagram")
+            }
+            SyntheticCommand::SetReducedMotion(_) => {
+                unreachable!("set reduced-motion is handled by apply_datagram")
+            }
+            SyntheticCommand::SetLaunchOrigin { .. } => {
+                unreachable!("set launch-origin is handled by apply_datagram")
             }
             // A clock command, not an input event.
             SyntheticCommand::AnimateDummy { .. } => {
@@ -892,8 +956,37 @@ fn apply_datagram_reply(
                 }
                 applied += 1;
             }
+            Ok(SyntheticCommand::QueryAppear) => {
+                if let Some((socket, peer)) = &reply {
+                    let report = appear_report(state);
+                    if let Some(path) = peer.as_pathname() {
+                        let _ = socket.send_to(report.as_bytes(), path);
+                    }
+                }
+                applied += 1;
+            }
             Ok(SyntheticCommand::SetTitlebarDoubleClick(mode)) => {
                 state.set_titlebar_double_click(mode);
+                applied += 1;
+            }
+            Ok(SyntheticCommand::SetReducedMotion(enabled)) => {
+                state.set_reduced_motion(enabled);
+                applied += 1;
+            }
+            Ok(SyntheticCommand::SetLaunchOrigin {
+                app_id,
+                x,
+                y,
+                width,
+                height,
+            }) => {
+                state.set_launch_origin(
+                    &app_id,
+                    smithay::utils::Rectangle::new(
+                        (x, y).into(),
+                        (width.max(1), height.max(1)).into(),
+                    ),
+                );
                 applied += 1;
             }
             Ok(SyntheticCommand::AnimateDummy { duration_ms }) => {
@@ -990,6 +1083,38 @@ fn window_menu_report(state: &DfState) -> String {
         None => "window-menu 0 0 0 0 0 0 -1 0 -1 0 0 0 0".to_string(),
     };
     format!("{line}\nend\n")
+}
+
+/// The `query appear` report (T-02.1b).
+///
+/// `appear <window> <active> <completed> <frames> <ox> <oy> <ow> <oh>
+/// <tx> <ty> <tw> <th>` per window with an appear record, followed by `end`.
+/// `<active>` is 1 while the transition is in flight, `<completed>` 1 once it
+/// has committed the target, and `<frames>` is the number of animation-clock
+/// frames it has been stepped for (the reduced-motion check is `frames == 1`).
+/// The `o*` fields are the appear origin (Dock tile or centered fallback) and
+/// `t*` the final geometry.
+fn appear_report(state: &DfState) -> String {
+    let mut out = String::new();
+    for (id, appear) in state.windows.appearances() {
+        out.push_str(&format!(
+            "appear {} {} {} {} {} {} {} {} {} {} {} {}\n",
+            id.0,
+            (!appear.completed) as u32,
+            appear.completed as u32,
+            appear.frames,
+            appear.origin.loc.x,
+            appear.origin.loc.y,
+            appear.origin.size.w,
+            appear.origin.size.h,
+            appear.target.loc.x,
+            appear.target.loc.y,
+            appear.target.size.w,
+            appear.target.size.h,
+        ));
+    }
+    out.push_str("end\n");
+    out
 }
 
 /// Bind the synthetic-input socket and insert its event source.
@@ -1099,6 +1224,24 @@ mod tests {
         assert_eq!(
             parse_command("animate-dummy 160").unwrap(),
             SyntheticCommand::AnimateDummy { duration_ms: 160 }
+        );
+        assert_eq!(
+            parse_command("query appear").unwrap(),
+            SyntheticCommand::QueryAppear
+        );
+        assert_eq!(
+            parse_command("set reduced-motion on").unwrap(),
+            SyntheticCommand::SetReducedMotion(true)
+        );
+        assert_eq!(
+            parse_command("set launch-origin org.dragonfruit.App 10 20 48 48").unwrap(),
+            SyntheticCommand::SetLaunchOrigin {
+                app_id: "org.dragonfruit.App".into(),
+                x: 10,
+                y: 20,
+                width: 48,
+                height: 48,
+            }
         );
     }
 

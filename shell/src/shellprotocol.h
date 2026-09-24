@@ -165,6 +165,11 @@ public:
     // so every compositor-driven transition takes the single-step path.
     void setReducedMotion(bool enabled);
 
+    // Hand the Dock entry's tile rectangle (logical global pixels) to the
+    // compositor so the launching app's window appears from it (T-02.1b,
+    // `df_toplevel_manager.set_launch_origin`, additive in v4).
+    void setLaunchOrigin(const QString &appId, int x, int y, int width, int height);
+
     // App-level activation for a Dock click (T-10): the compositor picks the
     // app's most recent window, switches to its Space, and restores it.
     void activateApp(const QString &appId);

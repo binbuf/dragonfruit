@@ -579,6 +579,57 @@ fn parse_decorations(report: &str) -> Vec<DecorationReport> {
         .collect()
 }
 
+/// One parsed `query appear` line (T-02.1b).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct AppearReport {
+    window: u64,
+    active: bool,
+    completed: bool,
+    frames: u64,
+    origin: (i32, i32, i32, i32),
+    target: (i32, i32, i32, i32),
+}
+
+/// Parse the `appear` lines of a report (ignoring the trailing `end`).
+fn parse_appear(report: &str) -> Vec<AppearReport> {
+    report
+        .lines()
+        .filter_map(|line| {
+            let mut parts = line.split_whitespace();
+            if parts.next()? != "appear" {
+                return None;
+            }
+            let n = |parts: &mut std::str::SplitWhitespace| -> Option<i32> {
+                parts.next()?.parse().ok()
+            };
+            let window = parts.next()?.parse().ok()?;
+            let active = parts.next()? == "1";
+            let completed = parts.next()? == "1";
+            let frames = parts.next()?.parse().ok()?;
+            let origin = (
+                n(&mut parts)?,
+                n(&mut parts)?,
+                n(&mut parts)?,
+                n(&mut parts)?,
+            );
+            let target = (
+                n(&mut parts)?,
+                n(&mut parts)?,
+                n(&mut parts)?,
+                n(&mut parts)?,
+            );
+            Some(AppearReport {
+                window,
+                active,
+                completed,
+                frames,
+                origin,
+                target,
+            })
+        })
+        .collect()
+}
+
 /// Traffic-light geometry from `component.trafficLights` tokens, used to aim
 /// the synthetic pointer at each control (T-01.2).
 const LIGHT_DIAMETER: i32 = 12;
@@ -709,6 +760,40 @@ fn map_toplevel(
     queue.roundtrip(state).expect("initial configure");
 
     // Acknowledge the initial configure happened in the handler, then map.
+    let (buffer, file) = shm_buffer(state, &qh, WINDOW_W, WINDOW_H);
+    surface.attach(Some(&buffer), 0, 0);
+    surface.commit();
+    queue.roundtrip(state).expect("map commit");
+
+    (surface, xdg_surface, toplevel, file)
+}
+
+/// Build and map a toplevel advertising `app_id` before its first commit, so
+/// the compositor can match a launch-origin hint to it (T-02.1b).
+#[allow(clippy::type_complexity)]
+fn map_toplevel_with_app_id(
+    state: &mut TestClient,
+    queue: &mut EventQueue<TestClient>,
+    app_id: &str,
+) -> (
+    wl_surface::WlSurface,
+    xdg_surface::XdgSurface,
+    xdg_toplevel::XdgToplevel,
+    std::fs::File,
+) {
+    let qh = queue.handle();
+    let compositor = state.compositor.clone().unwrap();
+    let wm_base = state.xdg_wm_base.clone().unwrap();
+
+    let surface = compositor.create_surface(&qh, ());
+    let xdg_surface = wm_base.get_xdg_surface(&surface, &qh, ());
+    let toplevel = xdg_surface.get_toplevel(&qh, ());
+    toplevel.set_app_id(app_id.into());
+    toplevel.set_title("Appear".into());
+    // First commit with no buffer triggers the initial configure.
+    surface.commit();
+    queue.roundtrip(state).expect("initial configure");
+
     let (buffer, file) = shm_buffer(state, &qh, WINDOW_W, WINDOW_H);
     surface.attach(Some(&buffer), 0, 0);
     surface.commit();
@@ -1958,6 +2043,134 @@ fn move_and_resize_requests_are_served_over_protocol() {
     );
     input.send("button 272 up");
     let _ = queue.roundtrip(&mut state);
+
+    surface.destroy();
+    toplevel.destroy();
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}
+
+/// T-02.1b acceptance: a launched window appears from the Dock tile the shell
+/// handed off (`set launch_origin`) and commits its final geometry.
+#[test]
+fn window_appear_plays_from_the_dock_tile_origin_and_commits_the_target() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path =
+        PathBuf::from(&runtime_dir).join(format!("dragonfruit-appear-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-appear",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (_conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    // Hand the compositor the Dock tile before the app maps. The synchronous
+    // query forces the preceding datagram to be processed before the map
+    // commit, so the origin cannot race the appearance.
+    let app_id = "org.dragonfruit.Appear";
+    input.send(&format!("set launch-origin {app_id} 100 120 48 48"));
+    let _ = input.query("query appear");
+
+    let (surface, _xdg_surface, toplevel, _file) =
+        map_toplevel_with_app_id(&mut state, &mut queue, app_id);
+
+    // Let the appear run to completion.
+    std::thread::sleep(Duration::from_millis(500));
+    let appear = parse_appear(&input.query("query appear"));
+    assert_eq!(
+        appear.len(),
+        1,
+        "one window must carry an appear record: {appear:?}"
+    );
+    let a = appear[0];
+    assert_eq!(
+        a.origin,
+        (100, 120, 48, 48),
+        "the appear must start from the shell-supplied Dock tile: {a:?}"
+    );
+    assert!(
+        a.completed && !a.active,
+        "the appear must have committed: {a:?}"
+    );
+    assert!(
+        a.frames >= 5,
+        "a full appear must step multiple frames, got {}: {a:?}",
+        a.frames
+    );
+
+    // The committed geometry is the appearance's target, and it is the model
+    // geometry the shell sees.
+    let decorations = parse_decorations(&input.query("query decorations"));
+    let d = decorations
+        .iter()
+        .find(|d| d.window == a.window)
+        .expect("window tracked");
+    assert_eq!(
+        d.content, a.target,
+        "the appear target must be the committed geometry: {d:?} vs {a:?}"
+    );
+    assert_eq!((d.content.2, d.content.3), (WINDOW_W, WINDOW_H));
+
+    surface.destroy();
+    toplevel.destroy();
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}
+
+/// T-02.1b acceptance: with reduced motion the appear collapses to a single
+/// clock step through the same commit path, and the centered/origin geometry
+/// still lands.
+#[test]
+fn reduced_motion_appear_takes_a_single_frame() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir)
+        .join(format!("dragonfruit-appear-reduced-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-appear-reduced",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (_conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let app_id = "org.dragonfruit.AppearReduced";
+    input.send("set reduced-motion on");
+    input.send(&format!("set launch-origin {app_id} 50 60 48 48"));
+    let _ = input.query("query appear");
+
+    let (surface, _xdg_surface, toplevel, _file) =
+        map_toplevel_with_app_id(&mut state, &mut queue, app_id);
+
+    std::thread::sleep(Duration::from_millis(300));
+    let appear = parse_appear(&input.query("query appear"));
+    assert_eq!(
+        appear.len(),
+        1,
+        "one window must carry an appear record: {appear:?}"
+    );
+    let a = appear[0];
+    assert_eq!(
+        a.origin,
+        (50, 60, 48, 48),
+        "the reduced-motion appear keeps the supplied origin: {a:?}"
+    );
+    assert!(a.completed, "the reduced-motion appear must commit: {a:?}");
+    assert_eq!(
+        a.frames, 1,
+        "reduced motion must collapse the appear to one frame: {a:?}"
+    );
+
+    let decorations = parse_decorations(&input.query("query decorations"));
+    let d = decorations
+        .iter()
+        .find(|d| d.window == a.window)
+        .expect("window tracked");
+    assert_eq!(d.content, a.target);
 
     surface.destroy();
     toplevel.destroy();
