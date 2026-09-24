@@ -29,7 +29,10 @@ The first vertical slice ships three workspaces (see
   window is fullscreen and appears in the workspace strip accordingly.
 - **Each Space carries its own wallpaper**, compositor-rendered as part of the
   workspace scene so the background slides with the Space during switches,
-  exactly like its windows; the shell never draws the desktop background.
+  exactly like its windows; the shell never draws the desktop background. A
+  wallpaper may name an image `source` with a `fit` (fill/fit/stretch/center),
+  decoded once and cached by the compositor; without an image it renders its
+  solid `color` (T-05.4).
 - **Windows belong to applications, not Spaces.** Apps remember the Space
   they were assigned to; windows move between Spaces via the window menu
   ("Move to Space") or by dragging in the overview.

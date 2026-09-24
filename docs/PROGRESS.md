@@ -31,6 +31,7 @@
 - **T23 — T-05.1b Live video at scale and degrade**: **State: done.** A committing "video" client keeps advancing at the reduced; **`compositor/src/overview/grid.rs`** — `GridMaterial { tier, shadow, blur }`
 - **T24 — T-05.2 Hit-testing and selection on live representations**: **State: done.** A left click on a live Mission Control representation; **`compositor/src/overview/grid.rs`** — `GridLayout::window_at(point,
 - **T25 — T-05.3 Drag a live representation between Spaces**: **State: done.** Pressing on a live Mission Control representation and dragging; **`compositor/src/overview/grid.rs`** — `GridDrag { window, start, current }`
+- **T26 — T-05.4 Image wallpaper and per-Space slide**: **State: done.** A Space's wallpaper can be an image (`source` + `fit`) decoded; **`compositor/src/wallpaper.rs`** (new) — `sample_wallpaper` (pure
 - **Follow-ups**: T-05.1a (done in T22): the live-surface grid landed as a render-time; T-04.4b (done in T21): the live scheme is on `DfState` (ADR 0016) and
 <!-- symphony:digest:end -->
 
@@ -1697,6 +1698,66 @@ Gotchas for later tasks:
   carries), so tests can prove the destination index, not just that an
   assignment changed.
 
+## T26 — T-05.4 Image wallpaper and per-Space slide
+
+**State: done.** A Space's wallpaper can be an image (`source` + `fit`) decoded
+once and cached, rendered behind the windows per Space, and slid horizontally
+with its Space during a workspace switch. No image (or an undecodable source)
+keeps the solid color fallback.
+
+What landed:
+
+- **`compositor/src/wallpaper.rs`** (new) — `sample_wallpaper` (pure
+  fill/fit/stretch/center mapping: source crop + output-local dest),
+  `WallpaperCache` (decode-once via the `image` crate into a Smithay
+  `MemoryRenderBuffer`; misses are cached so a broken path is not retried per
+  frame), `slide_offset` / `slide_slots` (the per-Space slide, **shared** with
+  `DfState::apply_overview_scene`), `WallpaperSlot`. 8 unit tests.
+- **`compositor/src/render.rs`** — `WallpaperRenderElement` (`Image` / `Solid`)
+  and `wallpaper_render_elements`: image sampled to its fitted dest over a
+  solid fallback, appended **last** (bottom-most) in each backend's
+  front-to-back list.
+- **`compositor/src/state.rs`** — `wallpaper_cache` field; `wallpaper_slide`;
+  `wallpaper_slots`; `apply_overview_scene` refactored to `slide_offset`.
+- **`compositor/src/backend/{nested,drm}.rs`** — `Wallpaper` element variant,
+  appended after the shadows.
+- **`compositor/src/input/synthetic.rs`** — new `query wallpaper` (slide
+  direction/progress + one `wallpaper slot index= offset= fit= source=` line
+  per drawn Space) + parser test.
+- **`compositor/tests/window_conformance.rs`** — new
+  `wallpaper_follows_the_active_space_and_slides_with_it` (29/29 green).
+- **Dependency** — `image = 0.25.10`, `default-features = false`, features
+  `png` + `jpeg`, pinned in the workspace deps.
+- **Docs** — `02-compositor.md` "Image wallpaper and the per-Space slide
+  (T-05.4)", `03-workspaces.md` wallpaper bullet, ADR
+  `0019-image-wallpaper-decode-and-slide.md`.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `cargo test -p dragonfruit-compositor --bin dragonfruit-compositor` — **246**
+  bin unit tests green (`wallpaper` 8).
+- `cargo test -p dragonfruit-compositor --test window_conformance` — **29/29**
+  green. Direct cargo needs
+  `PKG_CONFIG_PATH=~/.local/df-devroot/lib64/pkgconfig` and
+  `RUSTFLAGS=-L ~/.local/df-devroot/lib64`.
+- `cargo clippy -p dragonfruit-compositor --all-targets -- -D warnings` clean;
+  `cargo fmt -p dragonfruit-compositor -- --check` clean.
+
+Gotchas for later tasks:
+
+- **One wallpaper seam**: `render::wallpaper_render_elements` +
+  `WallpaperRenderElement`; the slide reuses `wallpaper::slide_offset` (do not
+  add a second transform). Append the wallpaper **last** in the element list.
+- The base clear color is still `wallpaper_color_for` (active Space fallback);
+  the solid element duplicates it and covers the neighbour's letterbox mid-slide.
+- `to_rgba8()` bytes are uploaded as `Fourcc::Abgr8888` (GL `RGBA8`); keep that
+  pairing.
+- `WallpaperCache` is per source path and caches misses. A replaced file at the
+  same path needs `clear()`; `set_wallpaper` does **not** invalidate it yet
+  (T-08/T-16).
+- Nested capture of the live slide is T-05.6 (this session verified headlessly
+  via `query wallpaper`).
+
 ## Follow-ups
 
 - T-05.1a (done in T22): the live-surface grid landed as a render-time
@@ -1787,3 +1848,8 @@ Gotchas for later tasks:
 - T-03.2/T-03.4: hook `DrmCompositor`'s frame-callback delivery so
   `client_wakeups` is exact on DRM instead of the `count_output_windows`
   upper bound; record the DRM 60 s trace alongside the nested one.
+- T-05.4 (done in T26): image wallpaper decode/cache + per-Space slide
+  (ADR 0019). Remaining: (a) `DfWorkspace::SetWallpaper` does not invalidate
+  `DfState::wallpaper_cache` (add `clear()`/per-path invalidation when
+  settingsd/T-16 drives wallpaper changes); (b) nested capture of the live
+  slide is T-05.6; (c) per-output wallpaper animation polish is T-16.

@@ -24,6 +24,8 @@ wayland-scanner = "0.31"
 wayland-backend = "0.3"
 # bitflags is referenced by wayland-scanner's generated bitfield enums.
 bitflags = "2"
+# Image wallpaper decode (T-05.4): decoded once and cached, never per frame.
+image.workspace = true
 
 [dev-dependencies]
 # Server-side test client: the protocol-surface smoke test connects to the

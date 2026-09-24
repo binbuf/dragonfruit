@@ -4254,3 +4254,163 @@ fn overview_drag_moves_the_live_representation_between_spaces() {
         "teardown leak: synthetic-input socket survived"
     );
 }
+
+/// One parsed `wallpaper slot` line from `query wallpaper` (T-05.4).
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct WallpaperSlotReport {
+    index: usize,
+    offset: i32,
+    fit: String,
+    source: String,
+}
+
+/// The parsed `query wallpaper` reply (T-05.4).
+#[derive(Debug, Clone, PartialEq)]
+struct WallpaperReport {
+    active: usize,
+    direction: i32,
+    progress: f64,
+    slots: Vec<WallpaperSlotReport>,
+}
+
+/// Parse a `query wallpaper` report (T-05.4).
+fn parse_wallpaper(report: &str) -> WallpaperReport {
+    let mut parsed = WallpaperReport {
+        active: 0,
+        direction: 0,
+        progress: 0.0,
+        slots: Vec::new(),
+    };
+    for line in report.lines() {
+        let mut parts = line.split_whitespace();
+        if parts.next() != Some("wallpaper") {
+            continue;
+        }
+        match parts.next() {
+            Some("output") => {
+                let fields: std::collections::HashMap<&str, &str> =
+                    parts.filter_map(|value| value.split_once('=')).collect();
+                parsed.active = fields
+                    .get("active")
+                    .and_then(|value| value.parse().ok())
+                    .unwrap_or(0);
+                parsed.direction = fields
+                    .get("direction")
+                    .and_then(|value| value.parse().ok())
+                    .unwrap_or(0);
+                parsed.progress = fields
+                    .get("progress")
+                    .and_then(|value| value.parse().ok())
+                    .unwrap_or(0.0);
+            }
+            Some("slot") => {
+                let fields: std::collections::HashMap<&str, &str> =
+                    parts.filter_map(|value| value.split_once('=')).collect();
+                parsed.slots.push(WallpaperSlotReport {
+                    index: fields
+                        .get("index")
+                        .and_then(|value| value.parse().ok())
+                        .unwrap_or(0),
+                    offset: fields
+                        .get("offset")
+                        .and_then(|value| value.parse().ok())
+                        .unwrap_or(0),
+                    fit: fields.get("fit").copied().unwrap_or_default().to_string(),
+                    source: fields
+                        .get("source")
+                        .copied()
+                        .unwrap_or_default()
+                        .to_string(),
+                });
+            }
+            _ => {}
+        }
+    }
+    parsed
+}
+
+/// Poll `query wallpaper` until `pred` holds (T-05.4).
+#[track_caller]
+fn wait_for_wallpaper(
+    input: &SyntheticInput,
+    timeout: Duration,
+    mut pred: impl FnMut(&WallpaperReport) -> bool,
+) -> WallpaperReport {
+    let deadline = Instant::now() + timeout;
+    loop {
+        let report = parse_wallpaper(&input.query("query wallpaper"));
+        if pred(&report) {
+            return report;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "wallpaper never reached the expected state: {report:?}"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// T-05.4 acceptance: the per-Space wallpaper follows its Space. At rest the
+/// active Space's wallpaper is drawn at the origin (with the solid color
+/// fallback when no image is configured), and a workspace switch slides the
+/// outgoing and incoming Spaces' wallpapers horizontally together with the
+/// live window surfaces.
+#[test]
+fn wallpaper_follows_the_active_space_and_slides_with_it() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path =
+        PathBuf::from(&runtime_dir).join(format!("dragonfruit-wallpaper-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-wallpaper",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+
+    // At rest: exactly the active Space, at offset 0, on the color fallback
+    // (no image is configured) — the pre-T-05.4 behavior still works.
+    let rest = parse_wallpaper(&input.query("query wallpaper"));
+    assert_eq!(rest.direction, 0, "no switch is running: {rest:?}");
+    assert_eq!(rest.progress, 0.0);
+    assert_eq!(rest.slots.len(), 1, "only the active Space: {rest:?}");
+    assert_eq!(rest.slots[0].index, rest.active);
+    assert_eq!(rest.slots[0].offset, 0);
+    assert_eq!(rest.slots[0].source, "-", "color fallback: {rest:?}");
+
+    // A three-finger horizontal swipe switches to the next Space. Caught
+    // mid-flight, both the outgoing and incoming wallpapers are on-screen and
+    // moving in opposite directions.
+    input.send("swipe-begin 3");
+    input.send("swipe-update -50 0");
+    let mid = wait_for_wallpaper(&input, Duration::from_secs(5), |report| {
+        report.direction == 1 && report.progress > 0.0 && report.progress < 1.0
+    });
+    assert_eq!(mid.slots.len(), 2, "two Spaces slide: {mid:?}");
+    assert_eq!(mid.slots[0].index, rest.active);
+    assert!(
+        mid.slots[0].offset < 0,
+        "the active Space's wallpaper slides out: {mid:?}"
+    );
+    assert_eq!(mid.slots[1].index, rest.active + 1);
+    assert!(
+        mid.slots[1].offset > 0,
+        "the incoming Space's wallpaper slides in: {mid:?}"
+    );
+    assert!(
+        mid.slots.iter().all(|slot| slot.source == "-"),
+        "the fallback wallpapers still render during the slide: {mid:?}"
+    );
+
+    // Cancelling the gesture returns to the active Space at rest.
+    input.send("swipe-cancel");
+    let after = wait_for_wallpaper(&input, Duration::from_secs(5), |report| {
+        report.direction == 0 && report.slots.len() == 1
+    });
+    assert_eq!(after.slots[0].index, rest.active);
+    assert_eq!(after.slots[0].offset, 0);
+
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}

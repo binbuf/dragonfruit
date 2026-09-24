@@ -39,6 +39,8 @@ render_elements! {
     // A window mid-appear: scaled about its target and translated from the
     // Dock tile origin (T-02.1b).
     Appear=RelocateRenderElement<RescaleRenderElement<WaylandSurfaceRenderElement<R>>>,
+    // The per-Space wallpaper (T-05.4): behind the windows.
+    Wallpaper=crate::render::WallpaperRenderElement<R>,
 }
 
 pub fn run(socket_name: &str) -> Result<(), String> {
@@ -232,6 +234,13 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                 crate::render::window_shadow_render_elements(state, &output, scale)
                     .into_iter()
                     .map(NestedOutputElements::Decoration),
+            );
+            // The per-Space wallpaper is the bottom-most layer (T-05.4): it
+            // fills the clear color and slides with its Space during a switch.
+            custom_elements.extend(
+                crate::render::wallpaper_render_elements(renderer, state, &output, scale)
+                    .into_iter()
+                    .map(NestedOutputElements::Wallpaper),
             );
             data.damage_tracker.render_output(
                 renderer,

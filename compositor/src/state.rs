@@ -102,6 +102,7 @@ use crate::overview::grid::{
 };
 use crate::overview::{InputOwner, OverviewKind, OverviewMachine, TransitionCommit};
 use crate::shell::ShellProtocolState;
+use crate::wallpaper::{slide_offset, slide_slots, WallpaperCache, WallpaperSlot};
 use crate::window::grab::{MoveGrab, ResizeGrab};
 use crate::window::popup::constrained_popup_geometry;
 use crate::window::resize::SizeConstraints;
@@ -345,6 +346,11 @@ pub struct DfState {
     /// assignment, and app Space memory. The compositor is the sole owner;
     /// the shell consumes events and keeps no copy.
     pub workspaces: WorkspaceModel,
+    /// The wallpaper decode cache (T-05.4): a Space's `source` image is
+    /// decoded once and kept as a GPU-importable buffer, so the render loop
+    /// never decodes per frame. A source that cannot be decoded falls back to
+    /// the wallpaper's solid `color`.
+    pub wallpaper_cache: WallpaperCache,
 
     // --- application identity (T-06 interim; T-23 owns app-index) -----------
     /// WM_CLASS -> `.desktop` resolver for X11 (and the seam T-23 replaces).
@@ -529,6 +535,7 @@ impl DfState {
             titlebar_clicks: DoubleClickTracker::new(),
             window_menu: None,
             workspaces: WorkspaceModel::new(),
+            wallpaper_cache: WallpaperCache::new(),
             app_resolver: AppResolver::load(),
             xwayland: XwaylandState::default(),
             shortcuts,
@@ -839,6 +846,54 @@ impl DfState {
             .map(|wallpaper| wallpaper.color)
             .unwrap_or([0.0, 0.0, 0.0, 1.0]);
         Color32F::new(color[0], color[1], color[2], color[3])
+    }
+
+    /// The in-flight workspace slide: `(direction, progress)` while a
+    /// workspace switch is running, `(0, 0.0)` otherwise. The render layer and
+    /// the `query wallpaper` introspection share this one seam, so the
+    /// wallpaper offsets mirror the live window slide exactly.
+    pub fn wallpaper_slide(&self) -> (i32, f64) {
+        match self.overview.kind() {
+            Some(kind) if kind.is_workspace_switch() && self.overview.is_active() => {
+                (kind.direction(), self.overview.progress())
+            }
+            _ => (0, 0.0),
+        }
+    }
+
+    /// The wallpaper slots to draw on `output` this frame (T-05.4): the active
+    /// Space, plus the neighbour sliding in during an in-flight workspace
+    /// switch. At rest this is exactly the active Space at offset `0`, so a
+    /// settled scene never decodes a neighbour's image.
+    ///
+    /// The offsets are the same translation the live window surfaces take
+    /// ([`Self::apply_overview_scene`]), so the wallpaper moves with its Space.
+    pub fn wallpaper_slots(&self, output: &Output) -> Vec<WallpaperSlot> {
+        let output_name = output.name();
+        let Some(active) = self.workspaces.active_index(&output_name) else {
+            return Vec::new();
+        };
+        let count = self.workspaces.space_count(&output_name);
+        let (direction, progress) = self.wallpaper_slide();
+        let Some(width) = self
+            .space
+            .output_geometry(output)
+            .map(|geometry| geometry.size.w)
+        else {
+            return Vec::new();
+        };
+        let mut slots = Vec::new();
+        for (index, offset_x) in slide_slots(active, count, direction, progress, width) {
+            let Some(wallpaper) = self.workspaces.wallpaper_at(&output_name, index).cloned() else {
+                continue;
+            };
+            slots.push(WallpaperSlot {
+                index,
+                offset_x,
+                wallpaper,
+            });
+        }
+        slots
     }
 
     /// Hotplug attach: a fresh Space list for the new output (FR-7).
@@ -2491,12 +2546,8 @@ impl DfState {
             let Some(index) = spaces.iter().position(|candidate| *candidate == space) else {
                 continue;
             };
-            let target = active as i32 + direction;
-            let offset = if index == active {
-                -direction as f64 * progress
-            } else if target >= 0 && target < spaces.len() as i32 && index as i32 == target {
-                -direction as f64 * progress + direction as f64
-            } else {
+            let Some(offset) = slide_offset(active, index, spaces.len(), direction, progress)
+            else {
                 continue;
             };
             let Some(width) = widths.get(&output).copied() else {

@@ -24,6 +24,7 @@ mod session;
 mod shell;
 mod shell_protocol;
 mod state;
+mod wallpaper;
 mod window;
 mod workspace;
 mod xwayland;
