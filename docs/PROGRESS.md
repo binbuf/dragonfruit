@@ -29,6 +29,7 @@
 - **T21 — T-04.4b Light/dark, reduced motion, and sign-off package**: **State: done.** One live `ColorScheme` on `DfState` now drives every; **`compositor/src/window/decoration.rs`** — `ColorScheme::name`/`parse`
 - **T22 — T-05.1a Live-surface transform into the grid**: **State: done.** Mission Control now transforms the **live** window surfaces; **`compositor/src/overview/grid.rs`** (new) — `grid_layout` (candidates
 - **T23 — T-05.1b Live video at scale and degrade**: **State: done.** A committing "video" client keeps advancing at the reduced; **`compositor/src/overview/grid.rs`** — `GridMaterial { tier, shadow, blur }`
+- **T24 — T-05.2 Hit-testing and selection on live representations**: **State: done.** A left click on a live Mission Control representation; **`compositor/src/overview/grid.rs`** — `GridLayout::window_at(point,
 - **Follow-ups**: T-05.1a (done in T22): the live-surface grid landed as a render-time; T-04.4b (done in T21): the live scheme is on `DfState` (ADR 0016) and
 <!-- symphony:digest:end -->
 
@@ -1575,6 +1576,61 @@ Gotchas for later tasks:
   `query grid` (`grid material …`) and `frames_rendered`; the pixel capture is
   T-05.6.
 
+## T24 — T-05.2 Hit-testing and selection on live representations
+
+**State: done.** A left click on a live Mission Control representation
+hit-tests the **interpolated** grid transform (never the committed geometry)
+and routes through the existing selection round-trip: the choice is recorded,
+the overview leaves, the window's Space activates, and the window is raised and
+focused. The selected window is the real surface and stays mapped.
+
+What landed:
+
+- **`compositor/src/overview/grid.rs`** — `GridLayout::window_at(point,
+  progress)`: finds the placement whose `GridPlacement::frame(progress).rect`
+  (the renderer's exact rect) contains the point; placements are
+  most-recently-used first, so the MRU/topmost window wins overlapping hits.
+  3 new unit tests. No new transform.
+- **`compositor/src/state.rs`** — `DfState::overview_window_at(point)` (output
+  under the point + its interpolated grid layout) and
+  `DfState::select_overview_window(id)` (the one round-trip, shared with the
+  shell request).
+- **`compositor/src/shell/mod.rs`** — `select_overview_toplevel` now calls
+  `select_overview_window`, so keyboard and pointer selection share one path.
+- **`compositor/src/input.rs`** — on `ButtonState::Pressed`, inside the
+  no-chrome branch, a left press while `InputOwner::Overview` hit-tests the
+  grid first and returns on a hit; titlebar/menu handling is never reached
+  with committed geometry in the overview.
+- **`compositor/tests/window_conformance.rs`** — new
+  `overview_click_selects_and_focuses_the_live_representation`.
+- **Docs** — `02-compositor.md` "Pointer selection on live representations
+  (T-05.2)". No new ADR.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `cargo test -p dragonfruit-compositor --bin dragonfruit-compositor` — **235**
+  bin unit tests green (`overview::grid` now 14).
+- `cargo test -p dragonfruit-compositor --test window_conformance` — **27/27**
+  green. Direct cargo needs
+  `PKG_CONFIG_PATH=~/.local/df-devroot/lib64/pkgconfig` and
+  `RUSTFLAGS=-L ~/.local/df-devroot/lib64`.
+- `cargo clippy -p dragonfruit-compositor --all-targets -- -D warnings` clean;
+  `cargo fmt -p dragonfruit-compositor -- --check` clean.
+
+Gotchas for later tasks:
+
+- **One hit-test seam**: `overview_window_at` / `GridLayout::window_at`. T-05.3
+  drag must reuse `GridPlacement`; do not add a second transform or hit test.
+- Selection is immediate (no reverse animation), matching the existing
+  `select_overview_toplevel` round-trip. `overview_grid_progress` returns `None`
+  the moment `overview.select` clears `overview_active`, so the grid is gone on
+  the next frame.
+- The test picks a representation whose `target` center is outside its own
+  `source` rect, proving the transformed hit (a committed-geometry hit would
+  not fire that focus). The pixel/nested capture is T-05.6.
+- Neighbour-Space reveal and per-output insets remain unwired; `window_at`
+  covers only the placements `overview_grid_layout` produces (active Space).
+
 ## Follow-ups
 
 - T-05.1a (done in T22): the live-surface grid landed as a render-time
@@ -1582,8 +1638,9 @@ Gotchas for later tasks:
   client ("video") playing at the scaled target and composes the degrade tier
   through `overview_grid_material`;
   (b) neighbor-Space reveal — draw the adjacent Spaces' surfaces (unmapped
-  from `Space`) as extra `GridCandidate`s; (c) T-05.2 transfers hit-testing
-  using `overview_grid_layout` rects; (d) T-05.3 drag reuses `GridPlacement`;
+  from `Space`) as extra `GridCandidate`s; (c) T-05.2 (done in T24) transfers
+  hit-testing to the interpolated `GridPlacement` rects via
+  `overview_window_at`; (d) T-05.3 drag reuses `GridPlacement`;
   (e) per-output chrome insets for the grid area; (f) paging at
   `MIN_GRID_SCALE`; (g) compose the reusable `SceneTransform`'s clip/blur
   attachments onto third-party client surface elements (the renderer still has

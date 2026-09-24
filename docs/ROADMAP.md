@@ -133,7 +133,7 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 
 - [x] T22 — T-05.1a Live-surface transform into the grid → [tasks/022-t-05.1a-live-surface-transform.md](tasks/022-t-05.1a-live-surface-transform.md)
 - [x] T23 — T-05.1b Live video at scale and degrade → [tasks/023-t-05.1b-live-video-and-degrade.md](tasks/023-t-05.1b-live-video-and-degrade.md)
-- [ ] T24 — T-05.2 Hit-testing and selection on live representations → [tasks/024-t-05.2-hit-testing-and-selection-on-live-representations.md](tasks/024-t-05.2-hit-testing-and-selection-on-live-representations.md)
+- [x] T24 — T-05.2 Hit-testing and selection on live representations → [tasks/024-t-05.2-hit-testing-and-selection-on-live-representations.md](tasks/024-t-05.2-hit-testing-and-selection-on-live-representations.md)
 - [ ] T25 — T-05.3 Drag a live representation between Spaces → [tasks/025-t-05.3-drag-a-live-representation-between-spaces.md](tasks/025-t-05.3-drag-a-live-representation-between-spaces.md)
 - [ ] T26 — T-05.4 Image wallpaper and per-Space slide → [tasks/026-t-05.4-image-wallpaper-and-per-space-slide.md](tasks/026-t-05.4-image-wallpaper-and-per-space-slide.md)
 - [ ] T27 — T-05.5 Desktop Reveal → [tasks/027-t-05.5-desktop-reveal.md](tasks/027-t-05.5-desktop-reveal.md)
@@ -478,11 +478,11 @@ This plan restarts at T-01, so a legacy "T-13" and a new "T-13" are different
 tickets; use this table to translate.
 
 <!-- symphony:status -->
-**Pipeline status** — updated 2026-09-24T17:29:44Z · 23/168 done
+**Pipeline status** — updated 2026-09-24T17:33:00Z · 24/168 done
 
-- Completed: T01, T02, T03, T04, T05, T06, T07, T08, T09, T10, T11, T12, T13, T14, T15, T16, T17, T18, T19, T20, T21, T22, T23
+- Completed: T01, T02, T03, T04, T05, T06, T07, T08, T09, T10, T11, T12, T13, T14, T15, T16, T17, T18, T19, T20, T21, T22, T23, T24
 - Blocked: none
 - Failed: none
-- Remaining: T24, T25, T26, T27, T28, T29, T30, T31, T32, T33, T34, T35, T36, T37, T38, T39, T40, T41, T42, T43, T44, T45, T46, T47, T48, T49, T50, T51, T52, T53, T54, T55, T56, T57, T58, T59, T60, T61, T62, T63, T64, T65, T66, T67, T68, T69, T70, T71, T72, T73, T74, T75, T76, T77, T78, T79, T80, T81, T82, T83, T84, T85, T86, T87, T88, T89, T90, T91, T92, T93, T94, T95, T96, T97, T98, T99, T100, T101, T102, T103, T104, T105, T106, T107, T108, T109, T110, T111, T112, T113, T114, T115, T116, T117, T118, T119, T120, T121, T122, T123, T124, T125, T126, T127, T128, T129, T130, T131, T132, T133, T134, T135, T136, T137, T138, T139, T140, T141, T142, T143, T144, T145, T146, T147, T148, T149, T150, T151, T152, T153, T154, T155, T156, T157, T158, T159, T160, T161, T162, T163, T164, T165, T166, T167, T168
-- Last finished: T23 — done · Live video keeps advancing at reduced grid scale and the T-04 degrade tier is selectable/applied to the grid via overview_grid_material; 233 unit + 26 conformance tests green.
+- Remaining: T25, T26, T27, T28, T29, T30, T31, T32, T33, T34, T35, T36, T37, T38, T39, T40, T41, T42, T43, T44, T45, T46, T47, T48, T49, T50, T51, T52, T53, T54, T55, T56, T57, T58, T59, T60, T61, T62, T63, T64, T65, T66, T67, T68, T69, T70, T71, T72, T73, T74, T75, T76, T77, T78, T79, T80, T81, T82, T83, T84, T85, T86, T87, T88, T89, T90, T91, T92, T93, T94, T95, T96, T97, T98, T99, T100, T101, T102, T103, T104, T105, T106, T107, T108, T109, T110, T111, T112, T113, T114, T115, T116, T117, T118, T119, T120, T121, T122, T123, T124, T125, T126, T127, T128, T129, T130, T131, T132, T133, T134, T135, T136, T137, T138, T139, T140, T141, T142, T143, T144, T145, T146, T147, T148, T149, T150, T151, T152, T153, T154, T155, T156, T157, T158, T159, T160, T161, T162, T163, T164, T165, T166, T167, T168
+- Last finished: T24 — done · Mission Control pointer clicks now hit-test the interpolated live grid and route through the one selection round-trip (focus + Space activate); 235 unit + 27 conformance tests green.
 <!-- /symphony:status -->

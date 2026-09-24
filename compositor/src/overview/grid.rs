@@ -21,7 +21,7 @@
 //! Space first, then strip order, most-recently-used first within a Space, so
 //! a window never swaps cells mid-gesture.
 
-use smithay::utils::{Logical, Rectangle, Scale};
+use smithay::utils::{Logical, Point, Rectangle, Scale};
 
 use crate::design_tokens::component::overview;
 use crate::window::backdrop::{BackdropSpec, MaterialRole};
@@ -120,6 +120,23 @@ impl GridLayout {
 
     pub fn is_empty(&self) -> bool {
         self.placements.is_empty()
+    }
+
+    /// The window whose *interpolated* render rect contains `point` at
+    /// `progress`, or `None`.
+    ///
+    /// Placements are ordered most-recently-used first — the top of the
+    /// window stack — so the first hit is the topmost window when two
+    /// committed rects overlap mid-transition; the settled grid's cells never
+    /// overlap. This is the Mission Control pointer hit-test seam (T-05.2): it
+    /// reuses [`GridPlacement::frame`], the exact rect the renderer draws, so a
+    /// click always lands on the live representation the user sees (never the
+    /// committed geometry).
+    pub fn window_at(&self, point: Point<f64, Logical>, progress: f64) -> Option<WindowId> {
+        self.placements
+            .iter()
+            .find(|placement| placement.frame(progress).rect.to_f64().contains(point))
+            .map(|placement| placement.window)
     }
 }
 
@@ -467,6 +484,59 @@ mod tests {
         let low = placement.source.size.w.min(placement.target.size.w);
         let high = placement.source.size.w.max(placement.target.size.w);
         assert!(mid.rect.size.w > low && mid.rect.size.w < high);
+    }
+
+    #[test]
+    fn window_at_hits_the_interpolated_render_rect() {
+        // The committed rect sits away from the cell, so the scaled target is
+        // disjoint from it and a point can fall in one but not the other.
+        let candidates = vec![candidate(1, 0, 900, 100, 400, 300)];
+        let layout = grid_layout(rect(0, 0, 600, 600), &candidates);
+        let placement = layout.placement(WindowId(1)).unwrap();
+
+        // At progress 0 the hit follows the committed geometry.
+        assert_eq!(
+            layout.window_at(Point::from((950.0, 250.0)), 0.0),
+            Some(WindowId(1))
+        );
+        assert_eq!(layout.window_at(Point::from((10.0, 10.0)), 0.0), None);
+
+        // Settled, only the grid target is hit: a point inside the committed
+        // rect but outside the scaled target must miss (the live
+        // representation, not the old geometry).
+        let target = placement.target;
+        let outside_target = Point::from((950.0, 250.0));
+        assert!(
+            placement.source.to_f64().contains(outside_target),
+            "the test point is inside the committed rect"
+        );
+        assert!(
+            !target.to_f64().contains(outside_target),
+            "and outside the grid target"
+        );
+        assert_eq!(layout.window_at(outside_target, 1.0), None);
+        let center = Point::from((
+            f64::from(target.loc.x + target.size.w / 2),
+            f64::from(target.loc.y + target.size.h / 2),
+        ));
+        assert_eq!(layout.window_at(center, 1.0), Some(WindowId(1)));
+    }
+
+    #[test]
+    fn window_at_returns_the_topmost_of_two_overlapping_windows() {
+        // Two windows share a committed rect; the more recent (rank 0) is
+        // offered first, so it wins the hit test mid-transition.
+        let candidates = vec![
+            candidate(1, 0, 100, 100, 400, 300),
+            candidate(2, 1, 100, 100, 400, 300),
+        ];
+        let layout = grid_layout(rect(0, 0, 1200, 800), &candidates);
+        assert_eq!(layout.placements[0].window, WindowId(1));
+        assert_eq!(
+            layout.window_at(Point::from((300.0, 250.0)), 0.0),
+            Some(WindowId(1)),
+            "the most-recently-used window is the top of the stack"
+        );
     }
 
     #[test]

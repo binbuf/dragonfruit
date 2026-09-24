@@ -377,9 +377,9 @@ overview progress (`0` normal, `1` grid). `window_render_frame` returns that
 frame while the grid is shown and the lifecycle motion otherwise, so the
 client surface, the SSD titlebar, and the shadow all carry the same mapping
 and the transition is continuous and reversible. The committed geometry, focus,
-and Space assignment are untouched; input ownership transfer is T-05.2.
-`query grid` reports the progress and one line per placed live surface, and the
-headless conformance test asserts the geometry. See
+and Space assignment are untouched; pointer hit-testing over the transform is
+T-05.2. `query grid` reports the progress and one line per placed live surface,
+and the headless conformance test asserts the geometry. See
 [ADR 0017](adr/0017-overview-grid-render-transform.md).
 
 ### Live video at scale and the grid material (T-05.1b)
@@ -406,6 +406,25 @@ the headless seam the conformance test asserts.
 
 Neighbour-Space reveal (transforming the adjacent Spaces' surfaces, which are
 unmapped from the `Space`) and per-output chrome insets are later T-05 slices.
+
+### Pointer selection on live representations (T-05.2)
+
+While Mission Control owns pointer input (`InputOwner::Overview`), a left press
+is hit-tested against the **interpolated** grid transform, never the committed
+geometry. `GridLayout::window_at(point, progress)` reuses
+`GridPlacement::frame` — the exact rect the renderer draws — so a click lands on
+the live representation the user sees; placements are most-recently-used first,
+so the topmost window wins when two committed rects overlap mid-transition, and
+the settled cells never overlap. `DfState::overview_window_at` finds the output
+containing the point and returns the hit window.
+
+A hit routes through `DfState::select_overview_window`, the **one** selection
+round-trip shared with the shell's `select_overview_toplevel` request: remember
+the choice, leave the overview, activate the window's Space, raise and focus it,
+and broadcast. The selected window is the real surface and stays mapped — the
+other live surfaces are unaffected. `input.rs` performs the hit test before any
+titlebar/menu handling, so committed geometry is never consulted while the
+overview is up.
 
 ## Window model
 
