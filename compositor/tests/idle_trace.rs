@@ -30,6 +30,7 @@ struct RenderStats {
     frames_rendered: u64,
     frames_skipped_no_damage: u64,
     direct_scanouts: u64,
+    animation_frames_stepped: u64,
 }
 
 fn parse_stats(line: &str) -> Option<RenderStats> {
@@ -46,10 +47,16 @@ fn parse_stats(line: &str) -> Option<RenderStats> {
         .strip_prefix("direct_scanouts=")?
         .parse()
         .ok()?;
+    let animation_frames_stepped = parts
+        .next()?
+        .strip_prefix("animation_frames_stepped=")?
+        .parse()
+        .ok()?;
     Some(RenderStats {
         frames_rendered,
         frames_skipped_no_damage,
         direct_scanouts,
+        animation_frames_stepped,
     })
 }
 
@@ -200,10 +207,18 @@ fn idle_steady_state_renders_zero_frames() {
         second.direct_scanouts, first.direct_scanouts,
         "headless must never direct-scanout: {first:?} -> {second:?}",
     );
+    assert_eq!(
+        second.animation_frames_stepped, first.animation_frames_stepped,
+        "the animation clock ticked while idle: {first:?} -> {second:?}",
+    );
 
     eprintln!(
-        "idle trace: frames_rendered={} (flat), frames_skipped_no_damage {} -> {}",
-        second.frames_rendered, first.frames_skipped_no_damage, second.frames_skipped_no_damage,
+        "idle trace: frames_rendered={} (flat), animation_frames_stepped={} (flat), \
+         frames_skipped_no_damage {} -> {}",
+        second.frames_rendered,
+        second.animation_frames_stepped,
+        first.frames_skipped_no_damage,
+        second.frames_skipped_no_damage,
     );
 
     proc.shutdown();

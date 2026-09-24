@@ -91,6 +91,19 @@ driven per-output on vblank. Scene updates and GPU work are single-threaded
 per output until profiling proves otherwise; correctness beats parallelism in
 a display server.
 
+### Animation clock
+
+Every compositor-side lifecycle transition (window appear/minimize/zoom/close,
+the overview slide, the scene transforms) runs on **one** shared animation
+clock (`compositor/src/animation.rs`). A single frame-scheduled calloop timer
+is armed only while an animation is live; each tick advances every running
+transition exactly once and requests exactly one compositor frame, and a
+settled clock is not armed at all — zero damage, zero client wakeups
+(FR-2). `accessibility.reduceMotion` is a single flag on the clock: each
+transition reads it when it builds its tween and takes one step through the
+same commit path, never a second "instant" path. See
+[ADR 0003](adr/0003-shared-animation-clock.md).
+
 ## Window model
 
 - **States.** A window is floating, minimized, zoomed, or fullscreen, with
