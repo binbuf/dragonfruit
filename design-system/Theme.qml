@@ -358,6 +358,28 @@ QtObject {
             readonly property int layers: 8
             readonly property int offsetY: 5
         }
+        readonly property var elevation: QtObject {
+            readonly property var low: QtObject {
+                readonly property int blur: 8
+                readonly property int offsetY: 5
+                readonly property int layers: 8
+            }
+            readonly property var med: QtObject {
+                readonly property int blur: 20
+                readonly property int offsetY: 5
+                readonly property int layers: 8
+            }
+            readonly property var high: QtObject {
+                readonly property int blur: 40
+                readonly property int offsetY: 5
+                readonly property int layers: 8
+            }
+            readonly property var overlay: QtObject {
+                readonly property int blur: 64
+                readonly property int offsetY: 5
+                readonly property int layers: 8
+            }
+        }
         readonly property var scrollView: QtObject {
             readonly property int scrollbarWidth: 8
             readonly property int scrollbarMargin: 2

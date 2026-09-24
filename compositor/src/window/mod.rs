@@ -22,6 +22,7 @@ pub mod motion;
 pub mod placement;
 pub mod popup;
 pub mod resize;
+pub mod shadow;
 pub mod state;
 
 pub use decoration::{
@@ -38,6 +39,10 @@ pub use placement::{
 #[allow(unused_imports)]
 pub use resize::{
     apply_aspect, clamp_move, clamp_within_output, resize_geometry, ResizeEdge, SizeConstraints,
+};
+#[allow(unused_imports)]
+pub use shadow::{
+    shadow_bounds, shadow_elements, shadow_layers, ShadowLayer, ShadowLevel, ShadowSpec,
 };
 pub use state::{WindowEvent, WindowState, WindowStateMachine, WindowTransition};
 

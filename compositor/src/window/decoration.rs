@@ -172,6 +172,17 @@ impl WindowInsets {
             (w, h).into(),
         )
     }
+
+    /// Grow and offset `rect` back out by these insets (the whole decorated
+    /// window, titlebar included). The inverse of [`Self::inset`].
+    pub fn outset(self, rect: Rectangle<i32, Logical>) -> Rectangle<i32, Logical> {
+        let w = (rect.size.w + self.left + self.right).max(0);
+        let h = (rect.size.h + self.top + self.bottom).max(0);
+        Rectangle::new(
+            (rect.loc.x - self.left, rect.loc.y - self.top).into(),
+            (w, h).into(),
+        )
+    }
 }
 
 /// The three left-side window controls.
@@ -458,33 +469,9 @@ impl TitlebarElement {
         // rects (the rects are already relative to the window's target
         // geometry).
         let target = self.content;
-        let transform = |rect: Rectangle<i32, Logical>,
-                         color: Color32F|
-         -> (Rectangle<i32, Logical>, Color32F) {
-            match motion {
-                Some(frame) => {
-                    let rel = rect.loc - target.loc;
-                    let scaled_loc = frame.rect.loc
-                        + Point::from((
-                            (f64::from(rel.x) * frame.scale.x).round() as i32,
-                            (f64::from(rel.y) * frame.scale.y).round() as i32,
-                        ));
-                    let scaled_size = (f64::from(rect.size.w) * frame.scale.x).round() as i32;
-                    let scaled_size_h = (f64::from(rect.size.h) * frame.scale.y).round() as i32;
-                    (
-                        Rectangle::new(
-                            scaled_loc,
-                            (scaled_size.max(1), scaled_size_h.max(1)).into(),
-                        ),
-                        color * frame.alpha,
-                    )
-                }
-                None => (rect, color),
-            }
-        };
 
         let mut push = |rect: Rectangle<i32, Logical>, color: Color32F| {
-            let (rect, color) = transform(rect, color);
+            let (rect, color) = motion_transform(rect, color, target, motion);
             elements.push(SolidColorRenderElement::new(
                 Id::new(),
                 to_physical(local(rect)),
@@ -528,6 +515,37 @@ pub(crate) fn color_from_rgba(rgba: [u8; 4]) -> Color32F {
         rgba[2] as f32 / 255.0,
         rgba[3] as f32 / 255.0,
     )
+}
+
+/// Apply a window lifecycle [`MotionFrame`] to one chrome rect and its color
+/// (T-02.1b/T-02.2). `target` is the window's committed geometry the frame's
+/// scale/offset are relative to; the rect is scaled about it, translated to
+/// the interpolated location, and faded by the frame's alpha. Shared by the
+/// SSD titlebar and the window shadow (T-04.1a) so both carry the same
+/// transform as the client surface.
+pub(crate) fn motion_transform(
+    rect: Rectangle<i32, Logical>,
+    color: Color32F,
+    target: Rectangle<i32, Logical>,
+    motion: Option<MotionFrame>,
+) -> (Rectangle<i32, Logical>, Color32F) {
+    match motion {
+        Some(frame) => {
+            let rel = rect.loc - target.loc;
+            let scaled_loc = frame.rect.loc
+                + Point::from((
+                    (f64::from(rel.x) * frame.scale.x).round() as i32,
+                    (f64::from(rel.y) * frame.scale.y).round() as i32,
+                ));
+            let scaled_w = (f64::from(rect.size.w) * frame.scale.x).round() as i32;
+            let scaled_h = (f64::from(rect.size.h) * frame.scale.y).round() as i32;
+            (
+                Rectangle::new(scaled_loc, (scaled_w.max(1), scaled_h.max(1)).into()),
+                color * frame.alpha,
+            )
+        }
+        None => (rect, color),
+    }
 }
 
 /// Rasterize the filled circle inscribed in `button` as 1px-tall solid strips.
@@ -983,5 +1001,19 @@ mod tests {
             insets.inset(rect(0, 0, 200, 190)),
             rect(0, TITLEBAR_HEIGHT, 200, 190 - TITLEBAR_HEIGHT)
         );
+    }
+
+    #[test]
+    fn outset_is_the_inverse_of_inset() {
+        let insets = WindowInsets::for_tier(DecorationTier::ServerSide);
+        let content = rect(10, 50, 400, 300);
+        let window = insets.outset(content);
+        // The whole decorated window grows upward by the titlebar strip.
+        assert_eq!(
+            window,
+            rect(10, 50 - TITLEBAR_HEIGHT, 400, 300 + TITLEBAR_HEIGHT)
+        );
+        // Round-trips back to the client area.
+        assert_eq!(insets.inset(window), content);
     }
 }

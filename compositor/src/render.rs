@@ -26,6 +26,7 @@ use smithay::utils::{IsAlive, Scale};
 use smithay::wayland::fractional_scale::with_fractional_scale;
 
 use crate::state::DfState;
+use crate::window::{shadow_elements, ColorScheme, ShadowLevel, WindowState};
 
 /// Build render elements for the shell's chrome surfaces (menu bar, Dock,
 /// overlays) on `output`, in layer order (T-09).
@@ -204,6 +205,82 @@ fn push_motion_elements<R, E>(
         );
         elements.push(relocated.into());
     }
+}
+
+/// Build the elevation-token-driven drop shadows for the windows composited
+/// on `output` (T-04.1a), which composite *below* their client surface.
+///
+/// A shadow is a custom element like the SSD titlebar, but it must sit behind
+/// its window: callers append these **after** [`window_render_elements`] in
+/// the front-to-back list. The whole decorated window (the SSD titlebar strip
+/// included) is shadowed, from `component.elevation.high` and the active
+/// scheme's `material.shadowOpacity`/`color.shadowColor`, and a window
+/// mid-motion carries the same lifecycle transform as its content. Fullscreen
+/// windows are not shadowed; a minimizing/closing ghost is.
+pub fn window_shadow_render_elements(
+    state: &DfState,
+    output: &Output,
+    scale: Scale<f64>,
+) -> Vec<SolidColorRenderElement> {
+    let Some(output_geometry) = state.space.output_geometry(output) else {
+        return Vec::new();
+    };
+    let now = state.now_msec();
+    // The live scheme follows desktop settings (T-08); dark is the default
+    // that reads over arbitrary application pixels, matching the titlebar.
+    let spec = ShadowLevel::High.spec(ColorScheme::default());
+    let mut elements = Vec::new();
+    for window in state.space.elements() {
+        if !state.space.outputs_for_element(window).contains(output) {
+            continue;
+        }
+        // A fullscreen window is the whole output; it casts no shadow.
+        if state.windows.state(window) == Some(WindowState::Fullscreen) {
+            continue;
+        }
+        let Some(geometry) = state.windows.geometry(window) else {
+            continue;
+        };
+        let window_rect = state.insets_for(window).outset(geometry);
+        elements.extend(shadow_elements(
+            window_rect,
+            spec,
+            scale,
+            output_geometry.loc,
+            state.window_motion_frame(window, now),
+        ));
+    }
+    // Minimizing/closing ghosts carry the same shadow as their titlebar and
+    // surface, even though the window is already unmapped from `Space`.
+    for (window, motion) in state.windows.active_motions() {
+        if !motion.kind.is_ghost() {
+            continue;
+        }
+        if !window.alive() {
+            continue;
+        }
+        if state.space.element_location(window).is_some() {
+            continue;
+        }
+        if !state.window_on_active_space(window) {
+            continue;
+        }
+        let Some(geometry) = state.windows.geometry(window) else {
+            continue;
+        };
+        if !output_geometry.overlaps(geometry) {
+            continue;
+        }
+        let window_rect = state.insets_for(window).outset(geometry);
+        elements.extend(shadow_elements(
+            window_rect,
+            spec,
+            scale,
+            output_geometry.loc,
+            state.window_motion_frame(window, now),
+        ));
+    }
+    elements
 }
 
 /// Build the solid-fill SSD titlebar elements for the windows composited on

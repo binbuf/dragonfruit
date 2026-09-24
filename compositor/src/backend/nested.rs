@@ -215,6 +215,13 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
             custom_elements.extend(crate::render::window_render_elements(
                 renderer, state, &output, scale,
             ));
+            // Elevation-token-driven shadows composite below the window
+            // surfaces (T-04.1a), so the ring beyond a window is visible.
+            custom_elements.extend(
+                crate::render::window_shadow_render_elements(state, &output, scale)
+                    .into_iter()
+                    .map(NestedOutputElements::Decoration),
+            );
             data.damage_tracker.render_output(
                 renderer,
                 &mut framebuffer,

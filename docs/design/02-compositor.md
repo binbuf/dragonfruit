@@ -193,6 +193,27 @@ still change and the motion collapses to one step). See
 [ADR 0008](adr/0008-close-interruption-and-ghost-focus.md). T-04 reuses this
 per-window transform for scale/clip/blur.
 
+### Window shadows (T-04.1a)
+
+Every decorated window is drawn over a soft drop shadow
+(`compositor/src/window/shadow.rs`, `render::window_shadow_render_elements`).
+The shadow is a stack of translucent rectangles — the same layered-rectangle
+formula the design system's `Shadow.qml` uses — built entirely from the
+**generated elevation tokens** so a compositor-drawn SSD window and a
+first-party QML `AppWindow` cannot drift (FR-2): `blur`/`offsetY`/`layers`
+come from `component.elevation.{low,med,high,overlay}` (which reference
+`primitive.elevation.*`), and the color/opacity come from the active scheme's
+`color.shadowColor`/`material.shadowOpacity`. A floating/SSD window is at
+`high`; the QML `Shadow` selects the same level by name. The whole decorated
+window (the SSD titlebar strip included, via `WindowInsets::outset`) is
+shadowed, a window mid-appear/minimize/zoom carries the same lifecycle
+`MotionFrame` as its content, and a minimizing/closing ghost keeps its shadow.
+Fullscreen windows cast none. Shadows are custom elements appended **after**
+`window_render_elements` in the front-to-back list, so they composite *below*
+their window. Rounded corners and a real backdrop blur land in T-04.1b/T-04.2
+on this same geometry; the shadow then becomes one layer of the material pass.
+See [ADR 0011](adr/0011-elevation-shadow-tokens.md).
+
 ## Window model
 
 - **States.** A window is floating, minimized, zoomed, or fullscreen, with
