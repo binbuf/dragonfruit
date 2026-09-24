@@ -212,6 +212,33 @@ pub fn is_backdrop_panel(
     geometry.size != output_size
 }
 
+/// Resolve the rect a chrome surface actually paints — the panel the backdrop
+/// material belongs behind.
+///
+/// `geometry` is the full output-local layer-surface rect. `reserved` is the
+/// visible strip the surface reserves on its anchored edge (the menu bar / Dock
+/// bar), and `region` is the bounding box of the part the client declares
+/// interactive, in surface-local coordinates. The Dock sets its input region to
+/// the visible bar, so the transparent magnification band is excluded; placing
+/// `region` and intersecting it with `reserved` also stops a magnified or
+/// bouncing icon that pokes into the band from growing the panel. With neither
+/// signal the whole geometry is the panel (popovers, overlays).
+pub fn panel_bounds(
+    geometry: Rectangle<i32, Logical>,
+    reserved: Option<Rectangle<i32, Logical>>,
+    region: Option<Rectangle<i32, Logical>>,
+) -> Rectangle<i32, Logical> {
+    let region = region
+        .filter(|rect| rect.size.w > 0 && rect.size.h > 0)
+        .and_then(|rect| Rectangle::new(geometry.loc + rect.loc, rect.size).intersection(geometry));
+    let panel = match (region, reserved) {
+        (Some(region), Some(reserved)) => region.intersection(reserved),
+        (Some(region), None) => Some(region),
+        (None, reserved) => reserved,
+    };
+    panel.unwrap_or(geometry)
+}
+
 /// The bounding rectangle of a backdrop: the full chrome band (layer 0).
 pub fn backdrop_bounds(
     rect: Rectangle<i32, Logical>,
@@ -383,6 +410,45 @@ mod tests {
         // A full-output overlay (Mission Control, Desktop Reveal) is a
         // scene-wide surface that draws its own scrim, never frosted whole.
         assert!(!is_backdrop_panel(rect(0, 0, 1920, 1200), output));
+    }
+
+    #[test]
+    fn panel_bounds_lands_on_the_visible_bar_not_the_whole_surface() {
+        // A bottom Dock: full surface 1920x131 at the output bottom; the
+        // reserved bar is the bottom 67px; the input region (surface-local)
+        // is the centred 400px bar slab at y=64.
+        let dock = rect(0, 1069, 1920, 131);
+        let bar = rect(0, 1133, 1920, 67);
+        let region = rect(760, 64, 400, 67);
+        assert_eq!(
+            panel_bounds(dock, Some(bar), Some(region)),
+            rect(760, 1133, 400, 67)
+        );
+
+        // A magnified icon pokes into the transparent band (surface-local
+        // y=10..131); the panel must still stop at the reserved bar.
+        let magnified = rect(700, 10, 520, 121);
+        assert_eq!(
+            panel_bounds(dock, Some(bar), Some(magnified)),
+            rect(700, 1133, 520, 67)
+        );
+
+        // Without an input region the reserved bar is still the panel.
+        assert_eq!(panel_bounds(dock, Some(bar), None), bar);
+
+        // A menu bar reserves its whole surface; a popover reserves nothing
+        // and is fully painted, so both keep their full geometry.
+        let menubar = rect(0, 0, 1920, 28);
+        assert_eq!(panel_bounds(menubar, Some(menubar), None), menubar);
+        let popover = rect(300, 100, 320, 200);
+        assert_eq!(panel_bounds(popover, None, None), popover);
+
+        // A region wholly outside the surface is ignored rather than inventing
+        // area.
+        assert_eq!(
+            panel_bounds(dock, Some(bar), Some(rect(5000, 5000, 10, 10))),
+            bar
+        );
     }
 
     #[test]
