@@ -30,7 +30,9 @@ pub use decoration::{
 pub use events::{ShellWindowEvent, WindowDispatch, WindowEventKind};
 pub use menu::{MenuActivation, MenuKey, MenuKeyOutcome, WindowMenu};
 #[allow(unused_imports)]
-pub use placement::{cascaded_geometry, centered_on, Cascade, CASCADE_SLOTS, CASCADE_STEP};
+pub use placement::{
+    cascaded_geometry, centered_on, user_positioned_geometry, Cascade, CASCADE_SLOTS, CASCADE_STEP,
+};
 #[allow(unused_imports)]
 pub use resize::{
     apply_aspect, clamp_move, clamp_within_output, resize_geometry, ResizeEdge, SizeConstraints,
