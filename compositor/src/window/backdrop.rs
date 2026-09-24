@@ -35,7 +35,7 @@ use smithay::backend::renderer::element::Id;
 use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::utils::CommitCounter;
 use smithay::backend::renderer::Color32F;
-use smithay::utils::{Logical, Rectangle, Scale};
+use smithay::utils::{Logical, Rectangle, Scale, Size};
 
 use crate::design_tokens::{component, semantic};
 use crate::window::corner::{rounded_rect_spans, RoundedCorners};
@@ -197,6 +197,21 @@ pub fn backdrop_layers(rect: Rectangle<i32, Logical>, spec: BackdropSpec) -> Vec
     result
 }
 
+/// Whether the backdrop material applies to a chrome surface occupying
+/// `geometry` on an output of `output_size` (both output-local logical).
+///
+/// A surface that fills the whole output is a **scene-wide overlay** — Mission
+/// Control, Desktop Reveal — not a translucent panel: it composites the live
+/// scene and draws its own scrim, so the compositor must not frost the entire
+/// output for it. T-04.2's backdrop is for the menu bar, the Dock, and
+/// popovers, which are all smaller than the output.
+pub fn is_backdrop_panel(
+    geometry: Rectangle<i32, Logical>,
+    output_size: Size<i32, Logical>,
+) -> bool {
+    geometry.size != output_size
+}
+
 /// The bounding rectangle of a backdrop: the full chrome band (layer 0).
 pub fn backdrop_bounds(
     rect: Rectangle<i32, Logical>,
@@ -355,6 +370,19 @@ mod tests {
         assert_eq!(MaterialRole::from_layer(4), MaterialRole::Popup);
         assert_eq!(MaterialRole::Chrome.name(), "chrome");
         assert_eq!(MaterialRole::Popup.name(), "popup");
+    }
+
+    #[test]
+    fn only_sub_output_panels_get_the_backdrop() {
+        let output = Size::from((1920, 1200));
+        // The menu bar and the Dock are panels: they get the material.
+        assert!(is_backdrop_panel(rect(0, 0, 1920, 28), output));
+        assert!(is_backdrop_panel(rect(0, 1069, 1920, 131), output));
+        // A popover is a panel even when it is large.
+        assert!(is_backdrop_panel(rect(700, 100, 520, 900), output));
+        // A full-output overlay (Mission Control, Desktop Reveal) is a
+        // scene-wide surface that draws its own scrim, never frosted whole.
+        assert!(!is_backdrop_panel(rect(0, 0, 1920, 1200), output));
     }
 
     #[test]

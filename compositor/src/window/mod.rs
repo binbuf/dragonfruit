@@ -32,8 +32,8 @@ pub mod state;
 
 #[allow(unused_imports)]
 pub use backdrop::{
-    backdrop_bounds, backdrop_elements, backdrop_layers, BackdropLayer, BackdropPass, BackdropSpec,
-    MaterialRole,
+    backdrop_bounds, backdrop_elements, backdrop_layers, is_backdrop_panel, BackdropLayer,
+    BackdropPass, BackdropSpec, MaterialRole,
 };
 #[allow(unused_imports)]
 pub use corner::{corner_squares, rounded_rect_spans, CornerMask, RoundedCorners};

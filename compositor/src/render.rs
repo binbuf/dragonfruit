@@ -17,7 +17,7 @@ use smithay::backend::renderer::element::utils::{
     Relocate, RelocateRenderElement, RescaleRenderElement,
 };
 use smithay::backend::renderer::element::{AsRenderElements, Id, Kind, RenderElementStates};
-use smithay::backend::renderer::utils::CommitCounter;
+use smithay::backend::renderer::utils::{with_renderer_surface_state, CommitCounter};
 use smithay::backend::renderer::{Color32F, ImportAll, ImportMem, Renderer};
 use smithay::desktop::utils::{
     surface_presentation_feedback_flags_from_states, surface_primary_scanout_output,
@@ -31,7 +31,8 @@ use smithay::wayland::fractional_scale::with_fractional_scale;
 use crate::state::DfState;
 use crate::wallpaper::sample_wallpaper;
 use crate::window::{
-    backdrop_elements, shadow_elements, MaterialRole, SceneTransform, ShadowLevel, WindowState,
+    backdrop_elements, is_backdrop_panel, shadow_elements, MaterialRole, SceneTransform,
+    ShadowLevel, WindowState,
 };
 
 // The two kinds of wallpaper element a backend can composite (T-05.4): a
@@ -174,10 +175,26 @@ pub fn chrome_backdrop_render_elements(
     let Some(output_geometry) = state.space.output_geometry(output) else {
         return Vec::new();
     };
+    // Only *panels that are actually on screen* get a backdrop:
+    //
+    // * A layer surface that has not committed a buffer is unmapped. The shell
+    //   still gives it geometry (the overview is sized offscreen before its
+    //   first open), but there are no pixels to sit behind, so frosting that
+    //   rect would just wash the scene.
+    // * A surface that fills the whole output is a scene-wide overlay (Mission
+    //   Control, Desktop Reveal), not a translucent panel; it draws its own
+    //   scrim over the live scene. Without this the T-05 overview overlay would
+    //   frost the entire desktop at every degrade tier except `minimal`.
+    let output_size = output_geometry.size;
     let surfaces: Vec<_> = state
         .chrome_surfaces(output.name().as_str(), output_geometry)
         .into_iter()
         .filter(|chrome| chrome.layer >= 2)
+        .filter(|chrome| is_backdrop_panel(chrome.geometry, output_size))
+        .filter(|chrome| {
+            with_renderer_surface_state(&chrome.surface, |surface| surface.buffer().is_some())
+                .unwrap_or(false)
+        })
         .collect();
     if surfaces.is_empty() {
         return Vec::new();
