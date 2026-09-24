@@ -23,7 +23,7 @@
 
 use smithay::utils::{Logical, Point, Rectangle, Scale};
 
-use crate::design_tokens::component::overview;
+use crate::design_tokens::component::{menu_bar, overview};
 use crate::window::backdrop::{BackdropSpec, MaterialRole};
 use crate::window::decoration::ColorScheme;
 use crate::window::degrade::DegradeTier;
@@ -40,6 +40,105 @@ pub const GRID_MARGIN: i32 = overview::STRIP_MARGIN as i32;
 /// windows; paging at the floor is a documented follow-up (the active page
 /// contains the active window). Exposed so the future pager shares the number.
 pub const MIN_GRID_SCALE: f64 = 0.1;
+
+/// The pointer travel (logical px) a Mission Control press must cover before
+/// it counts as a drag of the live representation rather than a click. Matches
+/// the shell grid's `DragHandler.dragThreshold` (8), so both drag entry points
+/// feel the same.
+pub const DRAG_THRESHOLD: f64 = 8.0;
+
+/// The top of the settled overview workspace strip: the menu bar height plus
+/// the strip margin. This is the shell's `anchors.topMargin` when the overview
+/// is fully revealed (`revealProgress == 1`), reproduced from the shared
+/// tokens so the compositor can resolve a live-representation drop onto the
+/// same cards the shell draws.
+pub const STRIP_TOP: i32 = menu_bar::HEIGHT as i32 + overview::STRIP_MARGIN as i32;
+
+/// The rectangle of the workspace-strip card at `index`, centered horizontally
+/// in `area` exactly like the shell's `Row { anchors.horizontalCenter }`:
+/// `count` cards of `CARD_WIDTH`, `STRIP_GAP` apart, starting at [`STRIP_TOP`].
+/// `None` when `index` is out of range.
+pub fn strip_card_rect(
+    area: Rectangle<i32, Logical>,
+    count: usize,
+    index: usize,
+) -> Option<Rectangle<i32, Logical>> {
+    if count == 0 || index >= count {
+        return None;
+    }
+    let card_w = overview::CARD_WIDTH as i32;
+    let card_h = overview::CARD_HEIGHT as i32;
+    let gap = overview::STRIP_GAP as i32;
+    let total = count as i32 * card_w + (count as i32 - 1) * gap;
+    let start_x = area.loc.x + (area.size.w - total) / 2;
+    let x = start_x + index as i32 * (card_w + gap);
+    Some(Rectangle::new(
+        (x, area.loc.y + STRIP_TOP).into(),
+        (card_w, card_h).into(),
+    ))
+}
+
+/// The Space index whose workspace-strip card contains `point`, or `None` when
+/// the point is off the strip. This is the Mission Control drag drop-target
+/// resolver (T-05.3): the compositor computes the same centered strip layout
+/// the shell draws, so dropping a live representation on a Space card assigns
+/// the window to that Space.
+pub fn strip_space_at(
+    area: Rectangle<i32, Logical>,
+    count: usize,
+    point: Point<f64, Logical>,
+) -> Option<usize> {
+    (0..count).find(|index| {
+        strip_card_rect(area, count, *index).is_some_and(|rect| rect.to_f64().contains(point))
+    })
+}
+
+/// An in-flight Mission Control pointer drag of a live representation (T-05.3).
+///
+/// The press records the window and the start point; motion updates `current`.
+/// [`Self::moved`] is the click/drag discriminator (the shared
+/// [`DRAG_THRESHOLD`]); the render layer applies [`Self::offset`] so the live
+/// surface follows the pointer, and the drop resolves the target Space from
+/// the release point over the workspace strip ([`strip_space_at`]).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GridDrag {
+    pub window: WindowId,
+    pub start: Point<f64, Logical>,
+    pub current: Point<f64, Logical>,
+}
+
+impl GridDrag {
+    pub fn new(window: WindowId, start: Point<f64, Logical>) -> Self {
+        GridDrag {
+            window,
+            start,
+            current: start,
+        }
+    }
+
+    /// Track the pointer.
+    pub fn update(&mut self, point: Point<f64, Logical>) {
+        self.current = point;
+    }
+
+    /// Whether the pointer has travelled far enough to be a drag (rather than
+    /// a click). A press that never crosses [`DRAG_THRESHOLD`] is the T-05.2
+    /// selection round-trip.
+    pub fn moved(&self) -> bool {
+        let dx = self.current.x - self.start.x;
+        let dy = self.current.y - self.start.y;
+        (dx * dx + dy * dy).sqrt() >= DRAG_THRESHOLD
+    }
+
+    /// The translation from the press point to the current point, in logical
+    /// pixels, so the dragged live surface follows the pointer.
+    pub fn offset(&self) -> (i32, i32) {
+        (
+            (self.current.x - self.start.x).round() as i32,
+            (self.current.y - self.start.y).round() as i32,
+        )
+    }
+}
 
 /// One window offered to the grid. `space_index` is the window's position in
 /// the strip order (0 = active Space); `rank` is its recency rank *within* its
@@ -555,6 +654,46 @@ mod tests {
                 assert!(!a.cell.overlaps(b.cell));
             }
         }
+    }
+
+    #[test]
+    fn strip_cards_are_centered_with_the_documented_geometry() {
+        let area = rect(0, 0, 1280, 720);
+        let count = 3;
+        let card_w = overview::CARD_WIDTH as i32;
+        let gap = overview::STRIP_GAP as i32;
+        let total = count as i32 * card_w + (count as i32 - 1) * gap;
+        let first = strip_card_rect(area, count, 0).unwrap();
+        assert_eq!(first.loc, Point::from(((1280 - total) / 2, STRIP_TOP)));
+        assert_eq!(first.size, (card_w, overview::CARD_HEIGHT as i32).into());
+        let second = strip_card_rect(area, count, 1).unwrap();
+        assert_eq!(second.loc.x, first.loc.x + card_w + gap);
+        // The middle card is centered on the output center.
+        assert_eq!(second.loc.x + card_w / 2, 640);
+        assert!(strip_card_rect(area, count, count).is_none());
+    }
+
+    #[test]
+    fn strip_space_at_hits_the_card_under_the_point() {
+        let area = rect(0, 0, 1280, 720);
+        let middle = strip_card_rect(area, 3, 1).unwrap();
+        let center = Point::from((
+            f64::from(middle.loc.x + middle.size.w / 2),
+            f64::from(middle.loc.y + middle.size.h / 2),
+        ));
+        assert_eq!(strip_space_at(area, 3, center), Some(1));
+        // Away from the strip (the window grid area) there is no drop target.
+        assert_eq!(strip_space_at(area, 3, Point::from((640.0, 400.0))), None);
+    }
+
+    #[test]
+    fn drag_distinguishes_a_click_from_a_drag() {
+        let mut drag = GridDrag::new(WindowId(1), Point::from((100.0, 100.0)));
+        drag.update(Point::from((103.0, 103.0)));
+        assert!(!drag.moved(), "inside the threshold is still a click");
+        drag.update(Point::from((120.0, 100.0)));
+        assert!(drag.moved());
+        assert_eq!(drag.offset(), (20, 0));
     }
 
     #[test]

@@ -97,7 +97,9 @@ use crate::input::settings::InputSettings;
 use crate::input::shortcuts::{GrabArbiter, GrabKind, ShortcutEngine};
 use crate::input::{InputAction, TriggerKind};
 use crate::instrument::LatencyInstrument;
-use crate::overview::grid::{grid_layout, GridCandidate, GridLayout, GridMaterial};
+use crate::overview::grid::{
+    grid_layout, strip_space_at, GridCandidate, GridDrag, GridLayout, GridMaterial,
+};
 use crate::overview::{InputOwner, OverviewKind, OverviewMachine, TransitionCommit};
 use crate::shell::ShellProtocolState;
 use crate::window::grab::{MoveGrab, ResizeGrab};
@@ -361,6 +363,11 @@ pub struct DfState {
     /// corners, wrapped in the one overview/workspace-transition state
     /// machine (T-11).
     pub overview: OverviewMachine,
+    /// The in-flight Mission Control pointer drag of a live representation
+    /// (T-05.3), if any. The press begins it, motion updates it, and the
+    /// release either moves the window to the Space card under the pointer or
+    /// falls back to the T-05.2 selection round-trip.
+    pub grid_drag: Option<GridDrag>,
     /// Hot-corner dwell detection.
     pub hot_corners: HotCornerDetector,
     /// The live input settings model (FR-7).
@@ -527,6 +534,7 @@ impl DfState {
             shortcuts,
             gestures,
             overview,
+            grid_drag: None,
             hot_corners,
             input_settings,
             input_dispatch: InputDispatch::new(),
@@ -2287,6 +2295,9 @@ impl DfState {
     pub fn dispatch_input_action(&mut self, action: InputAction, source: TriggerKind, serial: u32) {
         self.input_dispatch.action(action, source, serial);
         if let Some(kind) = OverviewKind::from_action(action) {
+            // Any overview trigger ends a pointer drag: the scene it started
+            // in is about to move.
+            self.grid_drag = None;
             if !matches!(source, TriggerKind::Gesture(_)) {
                 let now = self.now_msec();
                 let outcome = self.overview.drive(kind, source, now);
@@ -2321,6 +2332,10 @@ impl DfState {
     /// every trigger (gesture, keyboard, hot corner, shell request) ends up
     /// in the same code path — the one-machine rule.
     pub fn apply_overview_commit(&mut self, commit: TransitionCommit) {
+        // A committed transition (especially leaving the overview) ends any
+        // in-flight live-representation drag so a stale press cannot move a
+        // window after the scene it started in is gone.
+        self.grid_drag = None;
         self.overview.apply_commit(commit);
         match commit {
             TransitionCommit::SwitchWorkspace(delta) => {
@@ -2342,6 +2357,7 @@ impl DfState {
     /// pointer click on a live representation, so keyboard and pointer
     /// selection cannot diverge.
     pub fn select_overview_window(&mut self, id: WindowId) {
+        self.grid_drag = None;
         self.overview.select(id);
         self.activate_window_id(id);
         self.broadcast_overview();
@@ -2352,6 +2368,7 @@ impl DfState {
     /// single source of truth and broadcasts the change.
     #[allow(dead_code)] // Selection round-trip / T-12 reuse.
     pub fn set_overview(&mut self, active: bool) {
+        self.grid_drag = None;
         self.overview.set_overview(active);
         self.broadcast_overview();
         self.needs_redraw = true;
@@ -2365,6 +2382,7 @@ impl DfState {
     /// the same progress curve and commit rule (T-11 FR-1). The transition is
     /// animated on the compositor clock, not applied synchronously.
     pub fn drive_overview_request(&mut self, active: bool, serial: u32) {
+        self.grid_drag = None;
         self.input_dispatch
             .action(InputAction::MissionControl, TriggerKind::Shell, serial);
         let now = self.now_msec();
@@ -2593,6 +2611,89 @@ impl DfState {
         })
     }
 
+    /// Begin dragging the live representation of `window` from `point`
+    /// (T-05.3). A no-op unless the Mission Control grid is showing.
+    pub fn overview_begin_drag(&mut self, window: WindowId, point: Point<f64, Logical>) {
+        if self.overview_grid_progress().is_none() {
+            return;
+        }
+        if self.windows.window_by_id(window).is_none() {
+            return;
+        }
+        self.grid_drag = Some(GridDrag::new(window, point));
+        self.needs_redraw = true;
+    }
+
+    /// Track the pointer while a live representation is being dragged (T-05.3).
+    pub fn overview_update_drag(&mut self, point: Point<f64, Logical>) {
+        if let Some(drag) = self.grid_drag.as_mut() {
+            drag.update(point);
+            self.needs_redraw = true;
+        }
+    }
+
+    /// The in-flight drag, if any (`query grid` introspection and tests).
+    pub fn overview_drag(&self) -> Option<GridDrag> {
+        self.grid_drag
+    }
+
+    /// The Space index a live representation would drop onto at `point`
+    /// (T-05.3): the workspace-strip card under the point on the output that
+    /// contains it, or `None` off the strip.
+    pub fn overview_drop_space_at(&self, point: Point<f64, Logical>) -> Option<usize> {
+        let output = self.space.outputs().find(|output| {
+            self.space
+                .output_geometry(output)
+                .is_some_and(|geometry| geometry.to_f64().contains(point))
+        })?;
+        let area = self.space.output_geometry(output)?;
+        let count = self.workspaces.space_ids(&output.name()).len();
+        strip_space_at(area, count, point)
+    }
+
+    /// Finish a live-representation drag at `point` (T-05.3).
+    ///
+    /// A press that never crossed [`crate::overview::grid::DRAG_THRESHOLD`] is
+    /// a click and takes the T-05.2 selection round-trip. A real drag that
+    /// ended over a **different** Space's strip card moves the window there
+    /// through [`Self::move_window_to_space`] (the one assignment primitive)
+    /// and leaves the overview open so more windows can be arranged. A drag
+    /// that ended off the strip, or on the window's own Space, is cancelled.
+    ///
+    /// Returns true when the window was moved.
+    pub fn overview_end_drag(&mut self, point: Point<f64, Logical>) -> bool {
+        let Some(mut drag) = self.grid_drag.take() else {
+            return false;
+        };
+        drag.update(point);
+        if !drag.moved() {
+            self.select_overview_window(drag.window);
+            return false;
+        }
+        let Some(target) = self.overview_drop_space_at(point) else {
+            self.needs_redraw = true;
+            return false;
+        };
+        let Some(window) = self.windows.window_by_id(drag.window) else {
+            return false;
+        };
+        // Already there: a drop back on the source Space is a no-op.
+        let current = self.workspaces.window_space(drag.window).and_then(|space| {
+            let output = self.workspaces.space_output(space)?.to_string();
+            let index = self
+                .workspaces
+                .space_ids(&output)
+                .iter()
+                .position(|candidate| *candidate == space)?;
+            Some((output, index))
+        });
+        if current.is_some_and(|(_, index)| index == target) {
+            return false;
+        }
+        self.move_window_to_space(&window, target);
+        true
+    }
+
     /// The material the Mission Control grid composes its live surfaces with
     /// while the overview is open (T-05.1b): the active T-04.4a degrade tier
     /// plus the elevation shadow and material-blur state that tier selects.
@@ -2629,9 +2730,18 @@ impl DfState {
         let area = self.space.output_geometry(&output)?;
         let candidates = self.grid_candidates(&output.name());
         let layout = grid_layout(area, &candidates);
-        layout
-            .placement(id)
-            .map(|placement| placement.frame(progress))
+        let mut frame = layout.placement(id)?.frame(progress);
+        // A live representation being dragged follows the pointer: the same
+        // offset is applied to the surface, SSD titlebar, and shadow because
+        // they all render through `window_render_frame`.
+        if let Some(drag) = self.grid_drag.filter(|drag| drag.window == id) {
+            let (dx, dy) = drag.offset();
+            frame.rect.loc.x += dx;
+            frame.rect.loc.y += dy;
+            frame.offset.x += dx;
+            frame.offset.y += dy;
+        }
+        Some(frame)
     }
 
     /// The render frame a window is drawn with: the Mission Control grid

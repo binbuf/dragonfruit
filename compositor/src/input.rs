@@ -271,6 +271,9 @@ where
                 },
             );
             pointer.frame(state);
+            // A live-representation drag follows the pointer (T-05.3); a
+            // no-op when nothing is being dragged.
+            state.overview_update_drag(location);
             update_hot_corners(state, location);
             if state.update_titlebar_hover(location) {
                 state.needs_redraw = true;
@@ -313,6 +316,9 @@ where
                 },
             );
             pointer.frame(state);
+            // A live-representation drag follows the pointer (T-05.3); a
+            // no-op when nothing is being dragged.
+            state.overview_update_drag(location);
             update_hot_corners(state, location);
             if state.update_titlebar_hover(location) {
                 state.needs_redraw = true;
@@ -354,14 +360,15 @@ where
                 } else {
                     let is_left = button_event.button == 0x110; /* BTN_LEFT */
                     // Mission Control owns the scene: a left press hit-tests
-                    // the *live* grid transform (T-05.2) and a hit routes
-                    // through the one selection round-trip. Committed window
-                    // geometry is never hit-tested while the overview owns
-                    // input, so a click cannot land on a window drawn
-                    // elsewhere.
+                    // the *live* grid transform and begins a drag of that
+                    // live representation (T-05.3). A press that never crosses
+                    // the drag threshold resolves as the T-05.2 selection
+                    // round-trip on release. Committed window geometry is
+                    // never hit-tested while the overview owns input, so a
+                    // press cannot land on a window drawn elsewhere.
                     if is_left && state.overview_input_owner() == InputOwner::Overview {
                         if let Some(id) = state.overview_window_at(location) {
-                            state.select_overview_window(id);
+                            state.overview_begin_drag(id, location);
                             state.notify_activity();
                             return;
                         }
@@ -436,6 +443,18 @@ where
                         }
                     }
                 }
+            }
+
+            // Release of a Mission Control live-representation drag (T-05.3):
+            // a drag that ended on another Space's strip card moves the window
+            // there; a press that never moved is the T-05.2 selection.
+            if button_event.state == ButtonState::Released
+                && button_event.button == 0x110
+                && state.overview_drag().is_some()
+            {
+                let location = pointer.current_location();
+                let _ = state.overview_end_drag(location);
+                state.notify_activity();
             }
 
             pointer.button(state, &button_event);

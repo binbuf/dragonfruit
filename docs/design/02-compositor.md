@@ -418,13 +418,44 @@ so the topmost window wins when two committed rects overlap mid-transition, and
 the settled cells never overlap. `DfState::overview_window_at` finds the output
 containing the point and returns the hit window.
 
-A hit routes through `DfState::select_overview_window`, the **one** selection
-round-trip shared with the shell's `select_overview_toplevel` request: remember
-the choice, leave the overview, activate the window's Space, raise and focus it,
-and broadcast. The selected window is the real surface and stays mapped — the
-other live surfaces are unaffected. `input.rs` performs the hit test before any
-titlebar/menu handling, so committed geometry is never consulted while the
-overview is up.
+A hit begins a live-representation **drag** (T-05.3) rather than selecting
+immediately: the press records the window and start point, and a release that
+never crossed the drag threshold resolves as the selection round-trip. That
+round-trip is `DfState::select_overview_window`, the **one** path shared with
+the shell's `select_overview_toplevel` request: remember the choice, leave the
+overview, activate the window's Space, raise and focus it, and broadcast. The
+selected window is the real surface and stays mapped — the other live surfaces
+are unaffected. `input.rs` performs the hit test before any titlebar/menu
+handling, so committed geometry is never consulted while the overview is up.
+
+### Dragging a live representation between Spaces (T-05.3)
+
+A left press on a live representation starts a `GridDrag` (`overview::grid`):
+the window, the press point, and the current pointer point. Motion updates it
+(`DfState::overview_update_drag`) and `DfState::overview_grid_frame` translates
+that one window's grid frame by `GridDrag::offset`, so the live surface (and
+its SSD titlebar and shadow, which share `window_render_frame`) follows the
+pointer. `DRAG_THRESHOLD` (8 logical px, the same as the shell grid's
+`DragHandler`) is the click/drag discriminator.
+
+A release resolves the drop target to a Space: `GridDrag` drops onto the
+**workspace-strip card under the pointer**. The compositor reproduces the
+shell's centered strip layout from the shared tokens
+(`strip_card_rect`/`strip_space_at`: menu-bar height + strip margin at the top,
+`CARD_WIDTH` cards `STRIP_GAP` apart, centered horizontally), so dropping on a
+Space card is the same gesture the shell's title-card grid offers. A drop on a
+*different* Space calls `DfState::move_window_to_space` — the one assignment
+primitive, which also updates the app's Space memory and reflows the scene — and
+leaves the overview open so more windows can be arranged. A drop off the strip
+or back on the source Space is cancelled; a press that never moved is the
+T-05.2 selection.
+
+`query grid` reports the in-flight drag (`grid drag <window> <x> <y> moved=<0|1>
+target=<index|-1>`), and `query spaces` reports each Space's index, id, active
+flag, and window count so a headless test can prove the destination, not just
+that an assignment changed. The shell title-card grid remains the
+keyboard/accessible path (neighbour-Space reveal, which would let the live grid
+show the destination Space, is a later T-05 slice).
 
 ## Window model
 
