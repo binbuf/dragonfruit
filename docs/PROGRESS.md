@@ -34,7 +34,8 @@
 - **T26 — T-05.4 Image wallpaper and per-Space slide**: **State: done.** A Space's wallpaper can be an image (`source` + `fit`) decoded; **`compositor/src/wallpaper.rs`** (new) — `sample_wallpaper` (pure
 - **T27 — T-05.5 Desktop Reveal**: **State: done.** Ctrl+Down routes `DesktopReveal` through the one overview; **`compositor/src/overview/reveal.rs`** (new) — `escape_rect` (the off-screen
 - **T28 — T-05.6 Overview frame budget and capture**: **State: done.** The overview gesture now has its own **gesture-scoped** 60 Hz; **`compositor/src/instrument.rs`** — `GestureBudgetTrace`: render-duration
-- **Follow-ups**: T-05.1a (done in T22): the live-surface grid landed as a render-time; T-04.4b (done in T21): the live scheme is on `DfState` (ADR 0016) and
+- **T29 — T-06.1 App-switcher state machine**: **State: done.** The compositor now owns a real Cmd-Tab app switcher: open on; **`compositor/src/app_switcher.rs`** (new) — `AppSwitcher` pure machine
+- **Follow-ups**: T-06.1 (done in T29): the compositor switcher machine landed (ADR 0021).; T-05.1a (done in T22): the live-surface grid landed as a render-time
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -1906,8 +1907,78 @@ Gotchas for later tasks:
   overview (as expected); the difference is in the transition/clip, not the
   settled state.
 
+## T29 — T-06.1 App-switcher state machine
+
+**State: done.** The compositor now owns a real Cmd-Tab app switcher: open on
+the chord, Tab/Shift+Tab and the arrows cycle/reverse, Command release commits
+exactly once through `activate_window_id`, Escape cancels with no focus change.
+The chord is resolved by the shortcut engine (not a client), the order is
+`WindowModel` recency, and the private `app_switcher` event projects the one
+machine. The shell overlay is T-06.2.
+
+What landed:
+
+- **`compositor/src/app_switcher.rs`** (new) — `AppSwitcher` pure machine
+  (`open`/`step`/`commit`/`cancel`, `selected_app`/`selected_window`/
+  `direction`), `SwitchStep`, `SwitcherApp { app_id, window }`. Open's first
+  selection steps one app away from the focused app (wraps; a single app
+  selects itself; empty list stays closed). 7 unit tests.
+- **`compositor/src/state.rs`** — `DfState::app_switcher: AppSwitcher`;
+  `app_switcher_entries` (one per app in recency order, most recent window),
+  `focused_app_id`, `app_switcher_key`, `app_switcher_modifier` (commits on
+  `!command_held`), `app_switcher_commit`, `app_switcher_cancel`.
+- **`compositor/src/input.rs`** — the keyboard filter resolves Cmd+Tab /
+  Cmd+Shift+Tab via the shortcut engine (`app_switcher_key`), consumes Tab /
+  arrows / Escape while open, and calls `app_switcher_modifier(mods.logo)` on
+  every key release.
+- **`compositor/src/input/shortcuts.rs`** — added the Cmd+Shift+Tab →
+  `AppSwitcher` binding.
+- **`compositor/src/shell/mod.rs`** — removed the duplicate shell-side
+  `AppSwitcherState`; `broadcast_app_switcher` projects `DfState::app_switcher`;
+  `cycle_app_switcher` drives the same machine with the shell trigger.
+- **`compositor/src/input/synthetic.rs`** — new `query switcher`
+  (`switcher active=.. app=.. direction=.. selected=.. count=.. focus=..` + one
+  `switcher app <i> <app_id> <window>` line per entry) + parser test.
+- **`compositor/tests/window_conformance.rs`** — new
+  `app_switcher_opens_cycles_commits_once_and_escape_cancels` (32/32 green).
+- **Docs** — `02-compositor.md` "App-switcher state (T-06.1)"; `04-shell.md`
+  app-switcher paragraph; ADR `0021-app-switcher-state-machine.md`.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `cargo test -p dragonfruit-compositor` — **261** bin unit tests + every
+  integration suite green (`window_conformance` 32/32, `shell_protocol` 32/32).
+  Direct cargo needs `PKG_CONFIG_PATH=~/.local/df-devroot/lib64/pkgconfig` and
+  `RUSTFLAGS=-L ~/.local/df-devroot/lib64`; conformance needs `XDG_RUNTIME_DIR`.
+- `cargo clippy -p dragonfruit-compositor --all-targets -- -D warnings` clean;
+  `cargo fmt -p dragonfruit-compositor -- --check` clean.
+
+Gotchas for later tasks:
+
+- **One machine**: `DfState::app_switcher`. The shell must render the
+  `app_switcher` projection and never re-derive recency or selection.
+- Cycling never focuses; only commit activates (one `activate_window_id`:
+  cross-Space, restore-if-minimized, focus).
+- The machine snapshots the app list at open; a window closing mid-hold is not
+  reaped until the next open. T-06.2 can widen this if the overlay needs live
+  membership.
+- The initial selection skips the focused app, but headless tests with two
+  fresh windows have no focused window yet, so the first selection is the most
+  recent app (integration test relies on this).
+- Within-app Cmd+` cycling stays T-06.2b and must extend this machine, not add
+  a second binding path.
+
 ## Follow-ups
 
+- T-06.1 (done in T29): the compositor switcher machine landed (ADR 0021).
+  Remaining: (a) T-06.2a consumes `df_toplevel_manager.app_switcher` in
+  `shell/src/shellprotocol.cpp` (today `onManagerAppSwitcher` is a no-op) and
+  renders the centered overlay with live previews; (b) T-06.2b adds Cmd+`
+  within-app window cycling, extending `AppSwitcher` rather than adding a
+  second binding path; (c) the switcher snapshots the app list at open, so a
+  window closing mid-hold is not reaped until the next open — widen if the
+  overlay needs live membership; (d) nested capture of the switcher overlay is
+  T-06.2.
 - T-05.1a (done in T22): the live-surface grid landed as a render-time
   transform (ADR 0017). Remaining: (a) T-05.1b (done in T23) keeps a committing
   client ("video") playing at the scaled target and composes the degrade tier

@@ -64,6 +64,7 @@ use smithay::backend::input::{
 };
 use smithay::desktop::utils::under_from_surface_tree;
 use smithay::desktop::WindowSurfaceType;
+use smithay::input::keyboard::xkb::keysyms;
 use smithay::input::keyboard::FilterResult;
 use smithay::input::pointer::{AxisFrame, ButtonEvent, MotionEvent};
 use smithay::input::touch::{DownEvent, MotionEvent as TouchMotionEvent, UpEvent};
@@ -74,6 +75,7 @@ use smithay::wayland::tablet_manager::{
     TabletDescriptor, TabletHandle, TabletSeatTrait, TabletToolHandle,
 };
 
+use crate::app_switcher::SwitchStep;
 use crate::overview::{InputOwner, OverviewKind};
 use crate::shell::layer::KeyboardInteraction;
 use crate::state::DfState;
@@ -218,6 +220,12 @@ where
                         return FilterResult::Intercept(());
                     }
                     if key_state == KeyState::Released {
+                        // The app switcher commits when its Command modifier
+                        // is released — exactly once, because the machine
+                        // clears its active state. A non-modifier release
+                        // (Tab, an arrow) leaves Command held and does not
+                        // commit.
+                        data.app_switcher_modifier(mods.logo);
                         if data.shortcuts.is_active(sym) {
                             data.shortcuts.note_release(sym);
                             return FilterResult::Intercept(());
@@ -230,6 +238,19 @@ where
                         return FilterResult::Intercept(());
                     }
                     match data.shortcuts.resolve(mods, sym) {
+                        // The Cmd-Tab chord opens/cycles the app switcher. The
+                        // shortcut engine owns the binding; Shift selects the
+                        // backward direction (Cmd+Shift+Tab).
+                        Some(ShortcutOutcome::System(InputAction::AppSwitcher)) => {
+                            data.shortcuts.note_press(sym);
+                            let step = if mods.shift {
+                                SwitchStep::Backward
+                            } else {
+                                SwitchStep::Forward
+                            };
+                            data.app_switcher_key(step, TriggerKind::Keyboard, serial.into());
+                            FilterResult::Intercept(())
+                        }
                         Some(ShortcutOutcome::System(action)) => {
                             data.shortcuts.note_press(sym);
                             data.dispatch_input_action(
@@ -252,7 +273,36 @@ where
                             );
                             FilterResult::Intercept(())
                         }
-                        None => FilterResult::Forward,
+                        None => {
+                            // Modal app-switcher keys (T-06.1): Escape cancels
+                            // with no focus change; the arrow keys cycle.
+                            if data.app_switcher.is_active() {
+                                if sym == keysyms::KEY_Escape {
+                                    data.shortcuts.note_press(sym);
+                                    data.app_switcher_cancel();
+                                    return FilterResult::Intercept(());
+                                }
+                                let step = match sym {
+                                    keysyms::KEY_Left | keysyms::KEY_Up => {
+                                        Some(SwitchStep::Backward)
+                                    }
+                                    keysyms::KEY_Right | keysyms::KEY_Down => {
+                                        Some(SwitchStep::Forward)
+                                    }
+                                    _ => None,
+                                };
+                                if let Some(step) = step {
+                                    data.shortcuts.note_press(sym);
+                                    data.app_switcher_key(
+                                        step,
+                                        TriggerKind::Keyboard,
+                                        serial.into(),
+                                    );
+                                    return FilterResult::Intercept(());
+                                }
+                            }
+                            FilterResult::Forward
+                        }
                     }
                 },
             );

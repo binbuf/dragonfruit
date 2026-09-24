@@ -111,6 +111,14 @@ Per-window selection is covered by the Dock window chooser and Mission
 Control (see [03-workspaces.md](03-workspaces.md)); the switcher stays
 app-first.
 
+The compositor-side state machine (T-06.1) lives in `app_switcher.rs`: Cmd+Tab
+opens/closes, Tab and the arrows cycle, Command release commits the selected
+app through the existing `activate_window_id` path (cross-Space,
+restore-if-minimized), and Escape cancels with no focus change. It broadcasts
+the `df_toplevel_manager.app_switcher` event; the shell consumes it to draw the
+centered `overlay` chrome surface in T-06.2 (one card per app, live previews,
+never thumbnails).
+
 ## Hot corners
 
 Configurable screen-corner triggers (Mission Control, notification center,

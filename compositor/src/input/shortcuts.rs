@@ -295,6 +295,13 @@ pub fn default_system_bindings() -> Vec<Shortcut> {
         Shortcut::new(control, keysyms::KEY_Up, InputAction::MissionControl),
         Shortcut::new(control, keysyms::KEY_Down, InputAction::DesktopReveal),
         Shortcut::new(command, keysyms::KEY_Tab, InputAction::AppSwitcher),
+        // Cmd+Shift+Tab is the same switcher action in the reverse direction;
+        // the input path derives the direction from the held Shift role.
+        Shortcut::new(
+            command.union(shift),
+            keysyms::KEY_Tab,
+            InputAction::AppSwitcher,
+        ),
         Shortcut::new(
             command.union(shift),
             keysyms::KEY_3,

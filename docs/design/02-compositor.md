@@ -536,6 +536,39 @@ and an over-budget frame under load) and the T-04 ladder downgrades to the
 `reduced` tier; the shortfall is recorded, not hidden. `make e2e` and
 `make soak` remain green.
 
+### App-switcher state (T-06.1)
+
+The Cmd-Tab app switcher is **compositor-driven and shell-rendered**: the
+compositor owns the chord (through the global shortcut engine, never a client)
+and the recency order; the shell draws the overlay from the
+`df_toplevel_manager.app_switcher` projection (see [04-shell.md](04-shell.md)).
+The state machine is `compositor/src/app_switcher.rs` (`AppSwitcher`),
+deliberately pure so open/cycle/reverse/commit/cancel are unit-testable without
+a live compositor.
+
+- **Open.** Cmd+Tab opens the switcher through the shortcut engine; the first
+  selection steps one app away from the focused app (so a release actually
+  switches), wrapping when there is a single app. Cmd+Shift+Tab opens backward.
+  Entries are one per app in `WindowModel::recency` order, each carrying the
+  app's most recent window.
+- **Cycle.** A repeat Tab steps forward; Shift+Tab, Left, and Up step backward;
+  Right and Down step forward. The switcher consumes its own keys (and their
+  releases) while open, so a held Tab does not cycle: repeats are routed by the
+  shortcut engine, and auto-repeat of an intercepted key is ignored.
+- **Commit.** Releasing Command commits exactly once — `AppSwitcher::commit`
+  clears the active state before returning the selection — and activates the
+  selected app's most recent window through the one
+  `DfState::activate_window_id` path (cross-Space, restore-if-minimized,
+  focus).
+- **Cancel.** Escape clears the switcher with no focus change.
+
+`query switcher` is the headless introspection (active, selected app/index,
+direction, recency entries, and the active window), so a protocol test can
+prove a commit changed focus and a cancel did not. The private-protocol
+`cycle_app_switcher` request drives the *same* machine with the shell trigger;
+cycling never focuses, only a commit does. The overlay itself, its live
+previews, and the within-app Cmd+` window cycle are T-06.2.
+
 ## Window model
 
 - **States.** A window is floating, minimized, zoomed, or fullscreen, with

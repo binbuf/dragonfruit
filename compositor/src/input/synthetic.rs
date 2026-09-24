@@ -41,6 +41,7 @@
 //! query material
 //! query grid
 //! query gesture
+//! query switcher
 //! query spaces
 //! set titlebar-double-click zoom|minimize|none
 //! set reduced-motion on|off
@@ -698,6 +699,9 @@ pub enum SyntheticCommand {
     /// compositor rendered while the overview gesture was live, judged against
     /// one 60 Hz frame, followed by `end`.
     QueryGesture,
+    /// Read-only app-switcher introspection (T-06.1): the machine's active
+    /// flag, selection, and recency entries, followed by `end`.
+    QuerySwitcher,
     /// Set `dock.titlebarDoubleClick` for the session (T-01.3 test plumbing).
     SetTitlebarDoubleClick(TitlebarDoubleClick),
     /// Set the compositor reduced-motion policy (T-02.1b test plumbing).
@@ -870,9 +874,10 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
             Some("wallpaper") => SyntheticCommand::QueryWallpaper,
             Some("reveal") => SyntheticCommand::QueryReveal,
             Some("gesture") => SyntheticCommand::QueryGesture,
+            Some("switcher") => SyntheticCommand::QuerySwitcher,
             _ => {
                 return Err(
-                    "query requires a known subject (decorations, window-menu, motion, events, latency, scanout, degrade, material, grid, spaces, wallpaper, reveal, gesture)"
+                    "query requires a known subject (decorations, window-menu, motion, events, latency, scanout, degrade, material, grid, spaces, wallpaper, reveal, gesture, switcher)"
                         .into(),
                 );
             }
@@ -1118,6 +1123,9 @@ impl SyntheticCommand {
             SyntheticCommand::QueryGesture => {
                 unreachable!("query gesture is handled by apply_datagram")
             }
+            SyntheticCommand::QuerySwitcher => {
+                unreachable!("query switcher is handled by apply_datagram")
+            }
             // A settings command, not an input event.
             SyntheticCommand::SetTitlebarDoubleClick(_) => {
                 unreachable!("set titlebar-double-click is handled by apply_datagram")
@@ -1300,6 +1308,15 @@ fn apply_datagram_reply(
             Ok(SyntheticCommand::QueryGesture) => {
                 if let Some((socket, peer)) = &reply {
                     let report = gesture_report(state);
+                    if let Some(path) = peer.as_pathname() {
+                        let _ = socket.send_to(report.as_bytes(), path);
+                    }
+                }
+                applied += 1;
+            }
+            Ok(SyntheticCommand::QuerySwitcher) => {
+                if let Some((socket, peer)) = &reply {
+                    let report = switcher_report(state);
                     if let Some(path) = peer.as_pathname() {
                         let _ = socket.send_to(report.as_bytes(), path);
                     }
@@ -1817,6 +1834,47 @@ fn gesture_report(state: &DfState) -> String {
     )
 }
 
+/// The `query switcher` report (T-06.1): the app-switcher state machine.
+///
+/// `switcher active=<0|1> app=<app_id|-> direction=<d> selected=<i> count=<n>
+/// focus=<window|-1>` followed by one `switcher app <i> <app_id> <window>`
+/// line per recency entry, then `end`. `selected` is `-1` when closed, and
+/// `focus` is the active window id (`-1` when none), so a headless test can
+/// prove a commit changed focus and a cancel did not.
+fn switcher_report(state: &DfState) -> String {
+    let switcher = &state.app_switcher;
+    let app = switcher.selected_app().unwrap_or("-");
+    let selected = switcher
+        .selected_index()
+        .map(|index| index as i64)
+        .unwrap_or(-1);
+    let direction = switcher.direction();
+    let count = switcher.entries().len();
+    let focus = state
+        .active_window
+        .as_ref()
+        .and_then(|window| state.windows.id(window))
+        .map(|id| id.0 as i64)
+        .unwrap_or(-1);
+    let mut out = format!(
+        "switcher active={} app={} direction={} selected={} count={} focus={}\n",
+        switcher.is_active() as u32,
+        app,
+        direction,
+        selected,
+        count,
+        focus,
+    );
+    for (index, entry) in switcher.entries().iter().enumerate() {
+        out.push_str(&format!(
+            "switcher app {} {} {}\n",
+            index, entry.app_id, entry.window.0,
+        ));
+    }
+    out.push_str("end\n");
+    out
+}
+
 /// Only the headless and nested backends call this, and only when
 /// [`ENV_SYNTHETIC_INPUT`] is set; the socket is removed by the caller at
 /// teardown.
@@ -2042,6 +2100,10 @@ mod tests {
         assert_eq!(
             parse_command("query gesture").unwrap(),
             SyntheticCommand::QueryGesture
+        );
+        assert_eq!(
+            parse_command("query switcher").unwrap(),
+            SyntheticCommand::QuerySwitcher
         );
     }
 
