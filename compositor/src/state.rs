@@ -96,7 +96,7 @@ use crate::input::hot_corners::HotCornerDetector;
 use crate::input::settings::InputSettings;
 use crate::input::shortcuts::{GrabArbiter, GrabKind, ShortcutEngine};
 use crate::input::{InputAction, TriggerKind};
-use crate::instrument::LatencyInstrument;
+use crate::instrument::{GestureBudgetTrace, LatencyInstrument};
 use crate::overview::grid::{
     grid_layout, strip_space_at, GridCandidate, GridDrag, GridLayout, GridMaterial,
 };
@@ -426,6 +426,13 @@ pub struct DfState {
     /// backdrop and shadow passes render at. Selectable (pinned) for tests and
     /// for a feature that wants a deterministic tier.
     pub degrade: DegradeController,
+    /// Gesture-scoped frame-budget trace (T-05.6): records every rendered
+    /// frame's cadence while an overview transition (Mission Control, a Space
+    /// slide, or Desktop Reveal) is live, so the full gesture can be judged
+    /// against one 60 Hz frame — or its shortfall recorded. Fed by
+    /// [`Self::observe_rendered_frame`]; reported by `query gesture` and the
+    /// `gesture budget` stats line.
+    pub gesture_trace: GestureBudgetTrace,
     /// The live light/dark color scheme every compositor-drawn material
     /// (SSD titlebar, window menu, chrome backdrop, window shadow) renders
     /// with (T-04.4b). Defaults to dark; the settings owner (T-08) sets it
@@ -557,6 +564,7 @@ impl DfState {
             scene_pass: SceneTransformPass::new(),
             render_serial: 0,
             degrade: DegradeController::new(),
+            gesture_trace: GestureBudgetTrace::new(),
             color_scheme: ColorScheme::default(),
             stats: RenderStats::new(),
         }
@@ -2226,6 +2234,34 @@ impl DfState {
         self.degrade.set_budget_us(budget_us);
     }
 
+    /// Feed one rendered frame to every timing instrument (T-03.1a/T-03.1b/
+    /// T-04.4a/T-05.6). Called once per rendered frame by the session loop.
+    ///
+    /// The global frame trace and the degrade controller always observe the
+    /// frame (idle frames are not rendered, so both stay inert while idle);
+    /// the gesture trace observes it only while the overview is live, and
+    /// finishes when the gesture settles so a later query reads the completed
+    /// gesture's budget.
+    pub fn observe_rendered_frame(&mut self, duration: Duration) {
+        self.stats.record_frame(duration);
+        self.degrade.observe(duration);
+        if self.overview_frame_budget_active() {
+            self.gesture_trace.record(Instant::now(), duration);
+        } else {
+            self.gesture_trace.finish();
+        }
+    }
+
+    /// Whether an overview transition or settled overview/reveal is live, so
+    /// the rendered frame belongs to the T-05.6 gesture budget. A workspace
+    /// slide, Mission Control, and Desktop Reveal all count: they are the same
+    /// one progress pipeline and the same live-surface transform.
+    pub fn overview_frame_budget_active(&self) -> bool {
+        self.overview.is_active()
+            || self.overview.overview_active()
+            || self.overview.desktop_revealed()
+    }
+
     /// Print the render-path counters (FR-2/FR-5 observability).
     ///
     /// Emitted on SIGUSR1 and on clean exit so the idle-trace (FR-2) and
@@ -2307,6 +2343,13 @@ impl DfState {
         println!(
             "dragonfruit-compositor: degrade stats ({label}): {}",
             self.degrade.summary(),
+        );
+        // Gesture frame budget (T-05.6): the cadence of the frames rendered
+        // while the last/current overview gesture was live, judged against one
+        // 60 Hz frame. `held=0` is a recorded shortfall, not a failure to hide.
+        println!(
+            "dragonfruit-compositor: gesture budget ({label}): {}",
+            self.gesture_trace.summary(),
         );
         // Frame-time trace (T-11 U-2 / FR-8): the summary is always emitted;
         // the full per-frame trace is opt-in so the exit log stays readable.

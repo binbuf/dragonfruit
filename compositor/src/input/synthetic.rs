@@ -40,6 +40,7 @@
 //! query degrade
 //! query material
 //! query grid
+//! query gesture
 //! query spaces
 //! set titlebar-double-click zoom|minimize|none
 //! set reduced-motion on|off
@@ -693,6 +694,10 @@ pub enum SyntheticCommand {
     /// one `reveal window` line per live surface the render layer translates
     /// (source rect, interpolated target rect, alpha), followed by `end`.
     QueryReveal,
+    /// Read-only gesture frame-budget introspection (T-05.6): the frames the
+    /// compositor rendered while the overview gesture was live, judged against
+    /// one 60 Hz frame, followed by `end`.
+    QueryGesture,
     /// Set `dock.titlebarDoubleClick` for the session (T-01.3 test plumbing).
     SetTitlebarDoubleClick(TitlebarDoubleClick),
     /// Set the compositor reduced-motion policy (T-02.1b test plumbing).
@@ -864,9 +869,10 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
             Some("spaces") => SyntheticCommand::QuerySpaces,
             Some("wallpaper") => SyntheticCommand::QueryWallpaper,
             Some("reveal") => SyntheticCommand::QueryReveal,
+            Some("gesture") => SyntheticCommand::QueryGesture,
             _ => {
                 return Err(
-                    "query requires a known subject (decorations, window-menu, motion, events, latency, scanout, degrade, material, grid, spaces, wallpaper, reveal)"
+                    "query requires a known subject (decorations, window-menu, motion, events, latency, scanout, degrade, material, grid, spaces, wallpaper, reveal, gesture)"
                         .into(),
                 );
             }
@@ -1109,6 +1115,9 @@ impl SyntheticCommand {
             SyntheticCommand::QueryReveal => {
                 unreachable!("query reveal is handled by apply_datagram")
             }
+            SyntheticCommand::QueryGesture => {
+                unreachable!("query gesture is handled by apply_datagram")
+            }
             // A settings command, not an input event.
             SyntheticCommand::SetTitlebarDoubleClick(_) => {
                 unreachable!("set titlebar-double-click is handled by apply_datagram")
@@ -1282,6 +1291,15 @@ fn apply_datagram_reply(
             Ok(SyntheticCommand::QueryReveal) => {
                 if let Some((socket, peer)) = &reply {
                     let report = reveal_report(state);
+                    if let Some(path) = peer.as_pathname() {
+                        let _ = socket.send_to(report.as_bytes(), path);
+                    }
+                }
+                applied += 1;
+            }
+            Ok(SyntheticCommand::QueryGesture) => {
+                if let Some((socket, peer)) = &reply {
+                    let report = gesture_report(state);
                     if let Some(path) = peer.as_pathname() {
                         let _ = socket.send_to(report.as_bytes(), path);
                     }
@@ -1782,6 +1800,23 @@ fn reveal_report(state: &DfState) -> String {
     out
 }
 
+/// The `query gesture` report (T-05.6): the gesture-scoped frame budget.
+///
+/// `gesture tracing=<0|1> frames=<n> over_budget=<n> stalls=<n>
+/// max_frame_us=<n> max_interval_ms=<n> budget_us=<n> held=<0|1>
+/// tier=<full|reduced|minimal>` followed by `end`. `frames` counts the
+/// rendered frames while the overview gesture was live, `over_budget` counts
+/// frames slower than one 60 Hz frame, and `held` is the honest verdict. The
+/// `tier` is the live T-04.4a degrade tier the grid material composes at, so a
+/// run can show the budget being held *because* the material degraded.
+fn gesture_report(state: &DfState) -> String {
+    format!(
+        "gesture {} tier={}\nend\n",
+        state.gesture_trace.summary(),
+        state.degrade.tier().name(),
+    )
+}
+
 /// Only the headless and nested backends call this, and only when
 /// [`ENV_SYNTHETIC_INPUT`] is set; the socket is removed by the caller at
 /// teardown.
@@ -2003,6 +2038,10 @@ mod tests {
         assert_eq!(
             parse_command("query reveal").unwrap(),
             SyntheticCommand::QueryReveal
+        );
+        assert_eq!(
+            parse_command("query gesture").unwrap(),
+            SyntheticCommand::QueryGesture
         );
     }
 

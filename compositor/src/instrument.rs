@@ -22,6 +22,15 @@
 //!   the counter advances for an unobstructed fullscreen client and stays flat
 //!   for a window that still needs compositing. It owns no state and reads
 //!   only `DfState::stats`.
+//!
+//! * [`GestureBudgetTrace`] (T-05.6) is the **gesture-scoped** frame-budget
+//!   instrument: while an overview transition (Mission Control, a Space slide,
+//!   or Desktop Reveal) is live, every rendered frame's cadence is recorded so
+//!   the full gesture's hold on the 60 Hz budget can be asserted — or its
+//!   shortfall reported honestly. It is the T-03 `RenderStats` frame trace
+//!   scoped to the gesture instead of the whole session, and it lives on
+//!   `DfState` (not inside `RenderStats`) because `DfState` owns the overview
+//!   state that scopes it.
 
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
@@ -189,6 +198,186 @@ impl ScanoutCounter {
     }
 }
 
+/// Gesture-scoped frame-budget trace (T-05.6).
+///
+/// The overview gesture is the material track's named frame-budget risk
+/// (blur and scale over many windows on an iGPU). The session already records
+/// every rendered frame in [`RenderStats`]; this instrument narrows that to
+/// the frames the compositor renders **while an overview transition/overview
+/// state is live**, so the full gesture can be judged against one 60 Hz frame
+/// without the idle session polluting the numbers.
+///
+/// A frame is over budget when its render **duration** exceeds `budget_us`;
+/// a presentation is dropped when the **interval** since the previous recorded
+/// frame exceeds `DROPPED_RATIO * budget_us`. The two are kept distinct so a
+/// slow-but-caught-up frame is not a dropped presentation and a jittery
+/// cadence is not a slow frame.
+///
+/// The trace auto-begins on the first recorded active frame and auto-finishes
+/// when the gesture settles, so the caller only has to say "the overview is
+/// active this frame". It is deliberately pure timing plus counters (no
+/// clock), so it is unit-testable and inert while idle.
+#[derive(Debug)]
+pub struct GestureBudgetTrace {
+    tracing: bool,
+    frames: u64,
+    over_budget_frames: u64,
+    dropped_frames: u64,
+    max_frame_us: u32,
+    max_interval_ms: u32,
+    total_frame_us: u64,
+    last_at: Option<Instant>,
+    budget_us: u32,
+}
+
+impl Default for GestureBudgetTrace {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[allow(dead_code)] // The getters are the instrument API; T-06/T-16 read them.
+impl GestureBudgetTrace {
+    /// A dropped presentation is an interval past this multiple of the budget:
+    /// more than half a frame late means a vsync was missed. The extra slack
+    /// keeps normal timer/scheduler jitter from being reported as a shortfall.
+    pub const DROPPED_RATIO: f64 = 1.5;
+
+    /// The default budget is the shared animation frame interval (16 ms), the
+    /// same knob the T-04.4a degrade controller selects against.
+    pub fn new() -> Self {
+        Self::with_budget_us(crate::animation::FRAME_INTERVAL.as_micros() as u32)
+    }
+
+    /// A trace against an explicit budget in microseconds.
+    pub fn with_budget_us(budget_us: u32) -> Self {
+        Self {
+            tracing: false,
+            frames: 0,
+            over_budget_frames: 0,
+            dropped_frames: 0,
+            max_frame_us: 0,
+            max_interval_ms: 0,
+            total_frame_us: 0,
+            last_at: None,
+            budget_us: budget_us.max(1),
+        }
+    }
+
+    /// Start (or restart) a gesture trace, clearing the counters.
+    pub fn begin(&mut self, now: Instant) {
+        self.tracing = true;
+        self.frames = 0;
+        self.over_budget_frames = 0;
+        self.dropped_frames = 0;
+        self.max_frame_us = 0;
+        self.max_interval_ms = 0;
+        self.total_frame_us = 0;
+        self.last_at = Some(now);
+    }
+
+    /// Record one rendered frame while the overview is live. The first frame
+    /// after a [`Self::begin`] has no interval and only anchors the cadence.
+    ///
+    /// A frame is over budget when its **render duration** exceeds the budget;
+    /// a presentation is dropped when the **interval** since the previous
+    /// recorded frame exceeds [`Self::DROPPED_RATIO`] budgets. The two are
+    /// kept distinct because a slow-but-caught-up frame is not a dropped
+    /// presentation, and a jittery cadence is not a slow frame.
+    pub fn record(&mut self, now: Instant, duration: Duration) {
+        if !self.tracing {
+            self.begin(now);
+        }
+        let interval = self
+            .last_at
+            .map(|last| now.saturating_duration_since(last))
+            .unwrap_or_default();
+        self.last_at = Some(now);
+        let frame_us = duration.as_micros().min(u128::from(u32::MAX)) as u32;
+        let interval_ms = interval.as_millis().min(u128::from(u32::MAX)) as u32;
+        self.max_frame_us = self.max_frame_us.max(frame_us);
+        self.max_interval_ms = self.max_interval_ms.max(interval_ms);
+        self.total_frame_us += u64::from(frame_us);
+        // The first frame only anchors the cadence: there is no previous
+        // presentation to measure against.
+        if self.frames > 0 {
+            if u64::from(frame_us) > u64::from(self.budget_us) {
+                self.over_budget_frames += 1;
+            }
+            let dropped_us = (Self::DROPPED_RATIO * f64::from(self.budget_us)) as u128;
+            if interval.as_micros() > dropped_us {
+                self.dropped_frames += 1;
+            }
+        }
+        self.frames += 1;
+    }
+
+    /// Finish the gesture trace, keeping the counters for the next query. A
+    /// no-op when nothing is being traced.
+    pub fn finish(&mut self) {
+        self.tracing = false;
+    }
+
+    /// Whether a gesture trace is in flight.
+    pub fn tracing(&self) -> bool {
+        self.tracing
+    }
+
+    /// Frames recorded for the current (or last) gesture.
+    pub fn frames(&self) -> u64 {
+        self.frames
+    }
+
+    /// Frames whose render duration exceeded the budget.
+    pub fn over_budget_frames(&self) -> u64 {
+        self.over_budget_frames
+    }
+
+    /// Presentations that missed a vsync (interval past
+    /// [`Self::DROPPED_RATIO`] budgets).
+    pub fn dropped_frames(&self) -> u64 {
+        self.dropped_frames
+    }
+
+    /// Largest rendered-frame duration seen, in microseconds.
+    pub fn max_frame_us(&self) -> u32 {
+        self.max_frame_us
+    }
+
+    /// Largest presented-frame interval seen, in milliseconds.
+    pub fn max_interval_ms(&self) -> u32 {
+        self.max_interval_ms
+    }
+
+    /// The frame budget in microseconds.
+    pub fn budget_us(&self) -> u32 {
+        self.budget_us
+    }
+
+    /// Whether the gesture held the budget: at least one frame and neither an
+    /// over-budget frame nor a dropped presentation. The honest "60 Hz or not"
+    /// answer.
+    pub fn held(&self) -> bool {
+        self.frames > 0 && self.over_budget_frames == 0 && self.dropped_frames == 0
+    }
+
+    /// One-line summary for the `dump_stats` / `query gesture` trace.
+    pub fn summary(&self) -> String {
+        format!(
+            "tracing={} frames={} over_budget={} dropped={} max_frame_us={} max_interval_ms={} \
+             budget_us={} held={}",
+            self.tracing as u32,
+            self.frames,
+            self.over_budget_frames,
+            self.dropped_frames,
+            self.max_frame_us,
+            self.max_interval_ms,
+            self.budget_us,
+            self.held() as u32,
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -268,5 +457,65 @@ mod tests {
         let still = ScanoutCounter::read(&stats_with(7, 20, 2));
         assert_eq!(still.advanced_since(&after), 0);
         assert!(!still.engaged_since(&after));
+    }
+
+    #[test]
+    fn gesture_trace_holds_the_budget_on_a_steady_cadence() {
+        let mut trace = GestureBudgetTrace::with_budget_us(16_000);
+        assert!(!trace.tracing());
+        let t0 = Instant::now();
+        // 16 ms apart, 2 ms of work: the first frame anchors, the rest hold.
+        trace.record(t0, Duration::from_millis(2));
+        trace.record(t0 + Duration::from_millis(16), Duration::from_millis(2));
+        trace.record(t0 + Duration::from_millis(32), Duration::from_millis(2));
+        assert!(trace.tracing(), "recording auto-begins the trace");
+        assert_eq!(trace.frames(), 3);
+        assert_eq!(trace.over_budget_frames(), 0);
+        assert_eq!(trace.dropped_frames(), 0);
+        assert_eq!(trace.max_interval_ms(), 16);
+        assert_eq!(trace.max_frame_us(), 2_000);
+        assert!(trace.held());
+
+        // A new gesture restarts the counters.
+        trace.finish();
+        assert!(!trace.tracing());
+        trace.begin(t0 + Duration::from_secs(1));
+        assert!(trace.tracing());
+        assert_eq!(trace.frames(), 0);
+        assert!(!trace.held(), "an empty trace is not a held gesture");
+    }
+
+    #[test]
+    fn gesture_trace_records_over_budget_frames_and_dropped_presentations() {
+        let mut trace = GestureBudgetTrace::with_budget_us(16_000);
+        let t0 = Instant::now();
+        trace.record(t0, Duration::from_millis(2));
+        // A 28 ms gap is over the 1.5x drop threshold: a missed vsync.
+        trace.record(t0 + Duration::from_millis(28), Duration::from_millis(30));
+        assert_eq!(trace.dropped_frames(), 1);
+        assert_eq!(trace.over_budget_frames(), 1, "30 ms of work exceeds 16 ms");
+        // A 20 ms cadence is jittery but not a dropped presentation.
+        trace.record(t0 + Duration::from_millis(48), Duration::from_millis(2));
+        assert_eq!(trace.over_budget_frames(), 1);
+        assert_eq!(trace.dropped_frames(), 1);
+        assert_eq!(trace.max_frame_us(), 30_000);
+        assert_eq!(trace.max_interval_ms(), 28);
+        assert!(!trace.held(), "the shortfall is recorded, not hidden");
+        trace.finish();
+        assert!(!trace.tracing());
+        // The summary is one parseable line.
+        let summary = trace.summary();
+        for field in [
+            "tracing=0",
+            "frames=3",
+            "over_budget=1",
+            "dropped=1",
+            "max_frame_us=30000",
+            "max_interval_ms=28",
+            "budget_us=16000",
+            "held=0",
+        ] {
+            assert!(summary.contains(field), "missing {field:?} in {summary:?}");
+        }
     }
 }

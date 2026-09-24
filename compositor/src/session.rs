@@ -142,11 +142,10 @@ pub fn run_session(socket_name: &str, hooks: BackendHooks) -> Result<(), String>
         (render)(&mut state)?;
         if state.stats.frames_rendered != frames_before {
             let frame_duration = frame_start.elapsed();
-            state.stats.record_frame(frame_duration);
-            // T-04.4a: feed the same duration to the material degrade-tier
-            // selector, so the backdrop/shadow passes give ground when the
-            // frame budget is under pressure. Inert while idle.
-            state.degrade.observe(frame_duration);
+            // T-03.1a/T-03.1b/T-04.4a/T-05.6: one entry point feeds the frame
+            // trace, the latency/degrade instruments, and the gesture-scoped
+            // budget trace, so the render loop has a single timing seam.
+            state.observe_rendered_frame(frame_duration);
         }
 
         // Drain the T-03/T-04/T-05 outboxes into the private shell protocol
