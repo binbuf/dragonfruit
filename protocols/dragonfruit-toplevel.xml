@@ -173,13 +173,14 @@
     <!-- Appended after `set_reduced_motion` so the scanner's `since` stays
          non-decreasing and every pre-existing message keeps its opcode. -->
     <request name="set_launch_origin" since="4">
-      <description summary="set the Dock tile a launching app's window appears from">
+      <description summary="set the Dock tile an app's windows appear from and minimize into">
         The shell sends the Dock entry's tile rectangle (logical global
         pixels) when it launches an app, so the compositor's window-appear
-        transition scales and fades from the tile (T-02.1b). Keyed by
-        `app_id` and consumed by the first window of that app; when the shell
-        never sends one (headless, or a non-Dock launch) the compositor falls
-        back to a centered origin. Additive in v4.
+        transition scales and fades from the tile (T-02.1b) and minimize/
+        restore scale into and out of it (T-02.2). Keyed by `app_id` and
+        remembered for the app's lifecycle motions; when the shell never sends
+        one (headless, or a non-Dock launch) the compositor falls back to a
+        centered origin. Additive in v4.
       </description>
       <arg name="app_id" type="string"/>
       <arg name="x" type="int"/>

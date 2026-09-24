@@ -104,20 +104,33 @@ transition reads it when it builds its tween and takes one step through the
 same commit path, never a second "instant" path. See
 [ADR 0003](adr/0003-shared-animation-clock.md).
 
-#### Window appear (T-02.1b)
+#### Window lifecycle motion (T-02.1b appear; T-02.2 minimize/restore)
 
-A newly mapped window scales and fades in from an *origin* rectangle to its
-final geometry on that clock. The origin is the owning Dock entry's tile,
-supplied by the shell over the private protocol
-(`df_toplevel_manager.set_launch_origin`, additive in v4); when the shell
-never sends one — headless, or a non-Dock launch — the compositor degrades to
-a centered origin (the final rect shrunk about its center). The transition
-lives in the window model (`compositor/src/window/appear.rs`) and the render
-layer wraps the window's surface elements (and its SSD titlebar) in a
-scale/relocate pair with a surface alpha fade, so the model geometry stays the
-final one and input never moves. T-04 reuses this per-window transform for
-scale/clip/blur; T-02.2 reuses the origin hand-off for minimize. See
-[ADR 0004](adr/0004-window-appear-origin-and-transform.md).
+A window scales and fades between an *origin* rectangle and its final
+geometry on that clock. The origin is the owning Dock entry's tile, supplied
+by the shell over the private protocol
+(`df_toplevel_manager.set_launch_origin`, additive in v4, keyed by `app_id`
+and remembered for the app's lifecycle motions); when the shell never sends
+one — headless, or a non-Dock launch — the compositor degrades to a centered
+origin (the final rect shrunk about its center). Three motions share one
+`WindowMotion` type (`compositor/src/window/motion.rs`): **appear** (a newly
+mapped window grows/fades in), **restore** (a minimized window grows back
+out), and **minimize** (a visible window shrinks/fades into the tile). Appear
+and restore are the same interpolation; minimize is its reverse, so one
+`MotionFrame` carries the render transform for all three.
+
+The render layer (`render::window_render_elements`) wraps the window's
+surface elements (and its SSD titlebar) in a scale/relocate pair with a
+surface alpha fade, so the model geometry stays the final one and **input
+never moves**. A minimizing window leaves the layout and the focus/input path
+immediately (state broadcast, unmapped from `Space`) but its surface is held
+as a **ghost rendered from the window model** until the motion completes, so
+there is no orphaned surface and no stale state. `dock.minimizedAnimation`
+is `scale` in this slice (`none` is the reduced-motion fallback: the states
+still change and the motion collapses to one step). See
+[ADR 0004](adr/0004-window-appear-origin-and-transform.md) and
+[ADR 0005](adr/0005-minimize-restore-motion-and-ghost.md). T-04 reuses this
+per-window transform for scale/clip/blur.
 
 ## Window model
 

@@ -33,7 +33,7 @@ use crate::design_tokens::{
     component::{titlebar, traffic_lights},
     semantic,
 };
-use crate::window::appear::AppearFrame;
+use crate::window::motion::MotionFrame;
 use crate::window::{DecorationTier, WindowId, WindowState};
 
 /// The logical height of the SSD titlebar, from the design tokens.
@@ -430,9 +430,10 @@ impl TitlebarElement {
     /// physical coordinates, ordered front-to-back (glyphs → lights →
     /// background) as Smithay's damage tracker requires.
     ///
-    /// `appear` carries the window's in-flight appear frame (T-02.1b): the
-    /// titlebar is drawn with the same scale/fade as the client surface, so
-    /// the decoration does not detach from a window that is still scaling in.
+    /// `motion` carries the window's in-flight lifecycle frame (T-02.1b/
+    /// T-02.2): the titlebar is drawn with the same scale/fade as the client
+    /// surface, so the decoration does not detach from a window that is still
+    /// scaling in, restoring, or minimizing.
     ///
     /// The lights are rasterized as circles (stacks of solid strips); the
     /// chrome itself is still a flat square fill. T-04 replaces both with the
@@ -442,7 +443,7 @@ impl TitlebarElement {
         &self,
         scale: Scale<f64>,
         output_origin: Point<i32, Logical>,
-        appear: Option<AppearFrame>,
+        motion: Option<MotionFrame>,
     ) -> Vec<SolidColorRenderElement> {
         let mut elements = Vec::new();
         let origin = output_origin;
@@ -453,13 +454,14 @@ impl TitlebarElement {
                 rect.size,
             )
         };
-        // Track the scale/fade of the appear transform on the titlebar rects
-        // (the rects are already relative to the window's target geometry).
+        // Track the scale/fade of the lifecycle transform on the titlebar
+        // rects (the rects are already relative to the window's target
+        // geometry).
         let target = self.content;
         let transform = |rect: Rectangle<i32, Logical>,
                          color: Color32F|
          -> (Rectangle<i32, Logical>, Color32F) {
-            match appear {
+            match motion {
                 Some(frame) => {
                     let rel = rect.loc - target.loc;
                     let scaled_loc = frame.rect.loc

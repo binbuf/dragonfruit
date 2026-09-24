@@ -14,23 +14,23 @@
 //! for stacking (`Space`) and focus (`Seat`); this module adds the state
 //! those layers do not carry.
 
-pub mod appear;
 pub mod decoration;
 pub mod events;
 pub mod grab;
 pub mod menu;
+pub mod motion;
 pub mod placement;
 pub mod popup;
 pub mod resize;
 pub mod state;
 
-pub use appear::{AppearFrame, AppearTransition};
 pub use decoration::{
     fullscreen_reveal_rect, ColorScheme, DoubleClickTracker, TitlebarDoubleClick, TitlebarElement,
     TrafficLightKind, WindowInsets,
 };
 pub use events::{ShellWindowEvent, WindowDispatch, WindowEventKind};
 pub use menu::{MenuActivation, MenuKey, MenuKeyOutcome, WindowMenu};
+pub use motion::{MotionFrame, WindowMotion, WindowMotionKind};
 #[allow(unused_imports)]
 pub use placement::{
     cascaded_geometry, centered_on, user_positioned_geometry, Cascade, CASCADE_SLOTS, CASCADE_STEP,
@@ -120,8 +120,9 @@ struct WindowEntry {
     app_id: Option<String>,
     title: Option<String>,
     decorations: DecorationTier,
-    /// The in-flight (or last completed) appear transition (T-02.1b).
-    appear: Option<AppearTransition>,
+    /// The in-flight (or last completed) lifecycle motion (T-02.1b/T-02.2):
+    /// appear, minimize, or restore.
+    motion: Option<WindowMotion>,
 }
 
 /// Compositor-owned window metadata, keyed by Smithay [`Window`].
@@ -157,7 +158,7 @@ impl WindowModel {
                 app_id: None,
                 title: None,
                 decorations: DecorationTier::default(),
-                appear: None,
+                motion: None,
             },
         );
         // A new window is the most recent until another window is focused.
@@ -312,48 +313,49 @@ impl WindowModel {
         true
     }
 
-    // --- appear transition (T-02.1b) ---------------------------------------
+    // --- lifecycle motion (T-02.1b appear; T-02.2 minimize/restore) --------
 
-    /// Begin (or replace) `window`'s appear transition.
-    pub fn set_appear(&mut self, window: &Window, transition: AppearTransition) -> bool {
+    /// Begin (or replace) `window`'s lifecycle motion. Replacing a live
+    /// motion retargets it without waiting (the interruptibility rule).
+    pub fn set_motion(&mut self, window: &Window, motion: WindowMotion) -> bool {
         let Some(entry) = self.entries.get_mut(window) else {
             return false;
         };
-        entry.appear = Some(transition);
+        entry.motion = Some(motion);
         true
     }
 
-    /// `window`'s appear transition, if one was ever recorded.
-    pub fn appear(&self, window: &Window) -> Option<&AppearTransition> {
+    /// `window`'s lifecycle motion, if one was ever recorded.
+    pub fn motion(&self, window: &Window) -> Option<&WindowMotion> {
         self.entries
             .get(window)
-            .and_then(|entry| entry.appear.as_ref())
+            .and_then(|entry| entry.motion.as_ref())
     }
 
-    /// `window`'s live render frame, or `None` when it is not appearing (or
-    /// has completed). Identity is never wrapped.
-    pub fn appear_frame(&self, window: &Window, now_ms: u64) -> Option<AppearFrame> {
-        self.appear(window)
-            .filter(|transition| !transition.completed)
-            .map(|transition| transition.frame(now_ms))
+    /// `window`'s live render frame, or `None` when it has no motion (or has
+    /// completed). Identity is never wrapped.
+    pub fn motion_frame(&self, window: &Window, now_ms: u64) -> Option<MotionFrame> {
+        self.motion(window)
+            .filter(|motion| !motion.completed)
+            .map(|motion| motion.frame(now_ms))
     }
 
-    /// Advance every appear transition one clock frame. Returns the windows
-    /// whose transition reached its end this frame (to commit the target) and
-    /// whether any transition is still live.
-    pub fn step_appearances(&mut self, now_ms: u64) -> (Vec<Window>, bool) {
+    /// Advance every lifecycle motion one clock frame. Returns the windows
+    /// whose motion reached its end this frame and whether any motion is
+    /// still live.
+    pub fn step_motions(&mut self, now_ms: u64) -> (Vec<Window>, bool) {
         let mut done = Vec::new();
         let mut active = false;
         for (window, entry) in self.entries.iter_mut() {
-            let Some(appear) = entry.appear.as_mut() else {
+            let Some(motion) = entry.motion.as_mut() else {
                 continue;
             };
-            if appear.completed {
+            if motion.completed {
                 continue;
             }
-            appear.frames += 1;
-            if appear.is_done(now_ms) {
-                appear.completed = true;
+            motion.frames += 1;
+            if motion.is_done(now_ms) {
+                motion.completed = true;
                 done.push(window.clone());
             } else {
                 active = true;
@@ -362,12 +364,24 @@ impl WindowModel {
         (done, active)
     }
 
-    /// Every recorded appear transition (live and completed), for the
-    /// `query appear` test hook.
-    pub fn appearances(&self) -> impl Iterator<Item = (WindowId, &AppearTransition)> {
-        self.entries
-            .values()
-            .filter_map(|entry| entry.appear.as_ref().map(|appear| (entry.id, appear)))
+    /// Every recorded lifecycle motion (live and completed), with the window
+    /// it belongs to, for the `query motion` test hook.
+    pub fn motions(&self) -> impl Iterator<Item = (&Window, WindowId, &WindowMotion)> {
+        self.entries.iter().filter_map(|(window, entry)| {
+            entry
+                .motion
+                .as_ref()
+                .map(|motion| (window, entry.id, motion))
+        })
+    }
+
+    /// Every live (not yet completed) lifecycle motion with its window. The
+    /// render layer draws an active minimize ghost from this even though the
+    /// window is unmapped from the [`Space`](smithay::desktop::Space).
+    pub fn active_motions(&self) -> impl Iterator<Item = (&Window, &WindowMotion)> {
+        self.motions()
+            .filter(|(_, _, motion)| !motion.completed)
+            .map(|(window, _, motion)| (window, motion))
     }
 
     /// Make `child` a transient of `parent` (replacing any previous parent).

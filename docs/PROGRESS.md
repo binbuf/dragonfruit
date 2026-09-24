@@ -15,6 +15,7 @@
 - **T07 — T-01.6b Loop integration walkthrough and capture**: **State: done.** The live nested walkthrough of the T-01 loop is scripted and; **`scripts/capture-demo.sh`** (new) + **`scripts/capture-demo-driver.py`**
 - **T08 — T-02.1a Animation clock and frame discipline**: **State: done.** One shared compositor animation clock exists; the overview's; **`compositor/src/animation.rs`** (new) — `FRAME_INTERVAL` (16 ms),
 - **T09 — T-02.1b Window appear transition**: **State: done.** A newly mapped window scales/fades in from its Dock tile on; **`compositor/src/window/appear.rs`** (new) — `AppearTransition`
+- **T10 — T-02.2 Minimize and restore motion**: **State: done.** Minimize shrinks a window into its Dock entry's tile and; **`compositor/src/window/motion.rs`** (renamed from `appear.rs`) —
 - **Follow-ups**: Add the QML import-dir define (`DF_QML_IMPORT_DIR`) to the first-party apps'; T-16: publish `_NET_FRAME_EXTENTS` for Tier-2 X11 windows so clients can
 <!-- symphony:digest:end -->
 
@@ -643,6 +644,85 @@ Gotchas for later tasks:
 - The appear keys on `app_id`; a window whose `app_id` arrives after mapping
   gets the centered origin.
 
+## T10 — T-02.2 Minimize and restore motion
+
+**State: done.** Minimize shrinks a window into its Dock entry's tile and
+restore grows it back out on the shared clock; the window leaves the layout
+and input path immediately and is held as a model-rendered ghost until the
+motion settles, so the sequence leaves no orphan and no stale state.
+Reduced motion (and `minimizedAnimation=none`) collapses each motion to one
+step through the same commit path.
+
+What landed:
+
+- **`compositor/src/window/motion.rs`** (renamed from `appear.rs`) —
+  `WindowMotionKind` (`Appear`/`Minimize`/`Restore`), `WindowMotion`
+  (`new`, `appear`, `centered_origin`, `progress`, `is_done`, `frame`),
+  `MotionFrame`, `APPEAR_MIN_SCALE = 0.8`; 6 unit tests. Appear/restore
+  interpolate `origin → target` (alpha `0 → 1`); minimize is the exact
+  reverse. The render transform is always relative to `target`, so input and
+  layout never move.
+- **`compositor/src/window/mod.rs`** — `WindowEntry.motion`;
+  `WindowModel::{set_motion, motion, motion_frame, step_motions, motions,
+  active_motions}`.
+- **`compositor/src/state.rs`** — `minimize_window` unmaps + broadcasts state
+  immediately, then starts a `Minimize` motion (origin = tile, target =
+  restore geometry); `restore_window` maps immediately and starts a `Restore`
+  motion; `minimize_window_by_id`/`restore_window_by_id`; `dock_tiles` (was
+  `pending_appear_origins`) is now **remembered, not consumed**, so minimize/
+  restore reuse the launch tile (`motion_origin_for`, centered fallback);
+  `titlebar_element_for_motion`; `step_window_motions`; `window_motion_driver`
+  keeps exactly one clock closure stepping every motion once per frame.
+- **`compositor/src/render.rs`** — `window_render_elements` and
+  `titlebar_render_elements` walk `WindowModel::active_motions` in addition to
+  `Space`, drawing a minimizing ghost (unmapped) with the same transform;
+  `push_motion_elements` is the shared helper.
+- **`compositor/src/shell/mod.rs`** — `broadcast_window_events` no longer
+  drains the window outbox when no trusted manager is connected (headless
+  observability; a late-bound shell replays the scene). `set_launch_origin`
+  dispatch comment updated.
+- **Synthetic hooks** — `query motion` (`query appear` is kept as an alias),
+  `query events` (peek `WindowDispatch`), `minimize <id>`, `restore <id>`.
+- **`WindowDispatch::events()`** peek accessor.
+- **Tests** — `window_conformance.rs`:
+  `minimize_and_restore_play_through_the_dock_tile_and_resolve_cleanly`,
+  `reduced_motion_minimize_and_restore_take_a_single_frame`; the two T-02.1b
+  appear tests moved to `query motion`/`parse_motion`.
+- **Docs** — ADR `0005-minimize-restore-motion-and-ghost.md`;
+  `docs/design/02-compositor.md` "Window lifecycle motion";
+  `docs/private-protocols.md`; `protocols/dragonfruit-toplevel.xml`
+  `set_launch_origin` description.
+
+Commands that work (from the repo root; `make` sets the toolchain env):
+
+- `cargo test -p dragonfruit-compositor` — 170 bin unit + all suites green
+  (window_conformance 16/16 incl. the 2 new minimize tests; animation_clock
+  2/2; shell_protocol_conformance 32/32; idle traces).
+- `cargo clippy --workspace --all-targets -- -D warnings`;
+  `cargo fmt --all -- --check` — clean.
+- `make e2e` — green (headless demo still logs `animations_started=1
+  animations_completed=1`).
+
+Gotchas for later tasks:
+
+- Use `WindowMotion`/`MotionFrame` for every per-window effect; never add a
+  second path. Minimize is the only kind that is a *ghost* (unmapped); appear
+  and restore stay in `Space`.
+- `window_motion_driver` must guard any future per-window motion that arms the
+  clock, or the whole set will be stepped once per registered closure.
+- A minimizing window is never in `Space`, so hit-testing, hover, workspace
+  layout, and `take_presentation_feedback` skip it automatically; the ghost is
+  rendered only from `active_motions`.
+- `Tween::from_motion(..., reduced_motion)` is the reduced-motion hook;
+  `dock.minimizedAnimation=none` is the same collapse, so no protocol request
+  exists for it.
+- The shell still does not send `setLaunchOrigin`: the Dock tile rect is not
+  threaded from QML and `desktopId` → `app_id` is the T-23 resolver; real
+  launches use the centered fallback.
+- T-02.3: zoom/fullscreen are render-only (a window must stay mapped and not
+  change state mid-motion unless the state machine says so); reuse
+  `MotionFrame` and the same clock.
+
 ## Follow-ups
 
 - Add the QML import-dir define (`DF_QML_IMPORT_DIR`) to the first-party apps'
@@ -663,10 +743,12 @@ Gotchas for later tasks:
   only today.
 - Per-window scene-element refactor (T-04) still owns the stacked-titlebar /
   menu interleaving limitation.
-- T-02.2/T-10: thread the Dock entry's tile rectangle from QML through
-  `ShellController::launchDockAppWithFiles` to
-  `ShellProtocol::setLaunchOrigin` (needs the T-23 `desktopId`→`app_id`
-  resolver); until then window appear uses the centered fallback.
-- T-02/T-04: reuse `window_render_elements`/`AppearFrame` for minimize,
-  restore, close-ghost, and the material scale/clip/blur instead of adding a
-  parallel effect path.
+- T-02.2/T-10: the compositor now remembers the app-keyed Dock tile
+  (`DfState::dock_tiles`) and reuses it for appear/minimize/restore; the shell
+  still must thread the Dock entry's tile rectangle from QML through
+  `ShellController::launchDockAppWithFiles` to `ShellProtocol::setLaunchOrigin`
+  (needs the T-23 `desktopId`→`app_id` resolver). Until then real launches use
+  the centered fallback.
+- T-02.4: reuse `WindowMotion`/`MotionFrame` for the close ghost (add a
+  `Close` kind and hold the surface until completion); do not add a parallel
+  effect path. T-04 composes scale/clip/blur onto the same frame.

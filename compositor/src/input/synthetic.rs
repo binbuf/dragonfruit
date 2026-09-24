@@ -33,10 +33,13 @@
 //! touch-up <slot> | touch-frame
 //! query decorations
 //! query window-menu
-//! query appear
+//! query motion
+//! query events
 //! set titlebar-double-click zoom|minimize|none
 //! set reduced-motion on|off
 //! set launch-origin <app-id> <x> <y> <width> <height>
+//! minimize <window-id>
+//! restore <window-id>
 //! animate-dummy <duration-ms>
 //! ```
 //!
@@ -51,9 +54,18 @@
 //! describing the open menu (or `0` when closed) followed by `end`, so the
 //! conformance test can aim at rows and assert dismissal.
 //!
+//! `query motion` (T-02.1b/T-02.2) replies with one `motion` line per window
+//! that has an appear/minimize/restore record, followed by `end`. `query
+//! events` replies with the pending window-lifecycle outbox lines (the same
+//! events the shell drains) followed by `end`.
+//!
 //! `set titlebar-double-click` sets the session's `dock.titlebarDoubleClick`
 //! behavior (T-01.3) so the conformance test can prove the configured
 //! action, not only the default `zoom`.
+//!
+//! `minimize`/`restore <window-id>` drive the lifecycle motion for a window
+//! by its compositor id (T-02.2 test plumbing), the same primitive the
+//! traffic light and the private protocol use.
 //!
 //! `animate-dummy <ms>` starts a scene-free animation on the shared clock
 //! (T-02.1a/T-03.1a) so a headless test can assert the frame discipline:
@@ -76,7 +88,7 @@ use smithay::reexports::calloop::generic::Generic;
 use smithay::reexports::calloop::{Interest, Mode, PostAction};
 
 use crate::state::DfState;
-use crate::window::TitlebarDoubleClick;
+use crate::window::{TitlebarDoubleClick, WindowEventKind, WindowId};
 
 /// Marker type defining the synthetic [`InputBackend`] types.
 #[derive(Debug)]
@@ -626,15 +638,19 @@ pub enum SyntheticCommand {
     QueryDecorations,
     /// Read-only window-menu introspection (T-01.4).
     QueryWindowMenu,
-    /// Read-only appear-transition introspection (T-02.1b). One line per
-    /// window that has an appear record, followed by `end`.
-    QueryAppear,
+    /// Read-only lifecycle-motion introspection (T-02.1b/T-02.2). One line
+    /// per window that has a motion record, followed by `end`.
+    QueryMotion,
+    /// Read-only window-lifecycle outbox introspection (T-02.2): the pending
+    /// `ShellWindowEvent`s the shell would drain, followed by `end`.
+    QueryEvents,
     /// Set `dock.titlebarDoubleClick` for the session (T-01.3 test plumbing).
     SetTitlebarDoubleClick(TitlebarDoubleClick),
     /// Set the compositor reduced-motion policy (T-02.1b test plumbing).
     SetReducedMotion(bool),
-    /// Set the Dock tile origin an app's next window appears from (T-02.1b
-    /// test plumbing for `df_toplevel_manager.set_launch_origin`).
+    /// Set the Dock tile origin an app's window appears from and minimizes
+    /// into (T-02.1b/T-02.2 test plumbing for
+    /// `df_toplevel_manager.set_launch_origin`).
     SetLaunchOrigin {
         app_id: String,
         x: i32,
@@ -642,6 +658,10 @@ pub enum SyntheticCommand {
         width: i32,
         height: i32,
     },
+    /// Minimize the window with this compositor id (T-02.2 test plumbing).
+    MinimizeWindow(WindowId),
+    /// Restore the window with this compositor id (T-02.2 test plumbing).
+    RestoreWindow(WindowId),
     /// Start a scene-free animation on the shared clock (T-02.1a test
     /// plumbing; the frame-discipline calibration animation).
     AnimateDummy {
@@ -761,13 +781,31 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
         "query" => match parts.next() {
             Some("decorations") => SyntheticCommand::QueryDecorations,
             Some("window-menu") => SyntheticCommand::QueryWindowMenu,
-            Some("appear") => SyntheticCommand::QueryAppear,
+            // `motion` is the T-02.2 name; `appear` is kept as an alias so
+            // the T-02.1b tests and scripts keep working.
+            Some("motion") | Some("appear") => SyntheticCommand::QueryMotion,
+            Some("events") => SyntheticCommand::QueryEvents,
             _ => {
                 return Err(
-                    "query requires a known subject (decorations, window-menu, appear)".into(),
+                    "query requires a known subject (decorations, window-menu, motion, events)"
+                        .into(),
                 );
             }
         },
+        "minimize" => SyntheticCommand::MinimizeWindow(WindowId(
+            parts
+                .next()
+                .ok_or("minimize requires a window id")?
+                .parse()
+                .map_err(|_| "minimize window id must be a non-negative integer".to_string())?,
+        )),
+        "restore" => SyntheticCommand::RestoreWindow(WindowId(
+            parts
+                .next()
+                .ok_or("restore requires a window id")?
+                .parse()
+                .map_err(|_| "restore window id must be a non-negative integer".to_string())?,
+        )),
         "set" => match parts.next() {
             Some("titlebar-double-click") => {
                 let value = parts
@@ -897,8 +935,11 @@ impl SyntheticCommand {
             SyntheticCommand::QueryWindowMenu => {
                 unreachable!("query window-menu is handled by apply_datagram")
             }
-            SyntheticCommand::QueryAppear => {
-                unreachable!("query appear is handled by apply_datagram")
+            SyntheticCommand::QueryMotion => {
+                unreachable!("query motion is handled by apply_datagram")
+            }
+            SyntheticCommand::QueryEvents => {
+                unreachable!("query events is handled by apply_datagram")
             }
             // A settings command, not an input event.
             SyntheticCommand::SetTitlebarDoubleClick(_) => {
@@ -909,6 +950,12 @@ impl SyntheticCommand {
             }
             SyntheticCommand::SetLaunchOrigin { .. } => {
                 unreachable!("set launch-origin is handled by apply_datagram")
+            }
+            SyntheticCommand::MinimizeWindow(_) => {
+                unreachable!("minimize is handled by apply_datagram")
+            }
+            SyntheticCommand::RestoreWindow(_) => {
+                unreachable!("restore is handled by apply_datagram")
             }
             // A clock command, not an input event.
             SyntheticCommand::AnimateDummy { .. } => {
@@ -956,9 +1003,18 @@ fn apply_datagram_reply(
                 }
                 applied += 1;
             }
-            Ok(SyntheticCommand::QueryAppear) => {
+            Ok(SyntheticCommand::QueryMotion) => {
                 if let Some((socket, peer)) = &reply {
-                    let report = appear_report(state);
+                    let report = motion_report(state);
+                    if let Some(path) = peer.as_pathname() {
+                        let _ = socket.send_to(report.as_bytes(), path);
+                    }
+                }
+                applied += 1;
+            }
+            Ok(SyntheticCommand::QueryEvents) => {
+                if let Some((socket, peer)) = &reply {
+                    let report = window_events_report(state);
                     if let Some(path) = peer.as_pathname() {
                         let _ = socket.send_to(report.as_bytes(), path);
                     }
@@ -987,6 +1043,14 @@ fn apply_datagram_reply(
                         (width.max(1), height.max(1)).into(),
                     ),
                 );
+                applied += 1;
+            }
+            Ok(SyntheticCommand::MinimizeWindow(id)) => {
+                state.minimize_window_by_id(id);
+                applied += 1;
+            }
+            Ok(SyntheticCommand::RestoreWindow(id)) => {
+                state.restore_window_by_id(id);
                 applied += 1;
             }
             Ok(SyntheticCommand::AnimateDummy { duration_ms }) => {
@@ -1085,33 +1149,58 @@ fn window_menu_report(state: &DfState) -> String {
     format!("{line}\nend\n")
 }
 
-/// The `query appear` report (T-02.1b).
+/// The `query motion` report (T-02.1b/T-02.2).
 ///
-/// `appear <window> <active> <completed> <frames> <ox> <oy> <ow> <oh>
-/// <tx> <ty> <tw> <th>` per window with an appear record, followed by `end`.
-/// `<active>` is 1 while the transition is in flight, `<completed>` 1 once it
-/// has committed the target, and `<frames>` is the number of animation-clock
-/// frames it has been stepped for (the reduced-motion check is `frames == 1`).
-/// The `o*` fields are the appear origin (Dock tile or centered fallback) and
-/// `t*` the final geometry.
-fn appear_report(state: &DfState) -> String {
+/// `motion <window> <kind> <active> <completed> <frames> <ox> <oy> <ow> <oh>
+/// <tx> <ty> <tw> <th>` per window with a motion record, followed by `end`.
+/// `<kind>` is `appear`, `minimize`, or `restore`; `<active>` is 1 while the
+/// motion is in flight, `<completed>` 1 once it has committed, and `<frames>`
+/// is the number of animation-clock frames it has been stepped for (the
+/// reduced-motion check is `frames == 1`). The `o*` fields are the motion
+/// origin (Dock tile or centered fallback) and `t*` the final geometry.
+fn motion_report(state: &DfState) -> String {
     let mut out = String::new();
-    for (id, appear) in state.windows.appearances() {
+    for (_, id, motion) in state.windows.motions() {
         out.push_str(&format!(
-            "appear {} {} {} {} {} {} {} {} {} {} {} {}\n",
+            "motion {} {} {} {} {} {} {} {} {} {} {} {} {}\n",
             id.0,
-            (!appear.completed) as u32,
-            appear.completed as u32,
-            appear.frames,
-            appear.origin.loc.x,
-            appear.origin.loc.y,
-            appear.origin.size.w,
-            appear.origin.size.h,
-            appear.target.loc.x,
-            appear.target.loc.y,
-            appear.target.size.w,
-            appear.target.size.h,
+            motion.kind.name(),
+            (!motion.completed) as u32,
+            motion.completed as u32,
+            motion.frames,
+            motion.origin.loc.x,
+            motion.origin.loc.y,
+            motion.origin.size.w,
+            motion.origin.size.h,
+            motion.target.loc.x,
+            motion.target.loc.y,
+            motion.target.size.w,
+            motion.target.size.h,
         ));
+    }
+    out.push_str("end\n");
+    out
+}
+
+/// The `query events` report (T-02.2): the pending window-lifecycle outbox.
+///
+/// `event <kind> <window> [<state>]` per pending event, followed by `end`.
+/// `<kind>` is `mapped`, `unmapped`, `focused`, `unfocused`, `title-changed`,
+/// `app-id-changed`, or `state-changed` (the last carries the new state as
+/// `floating`/`zoomed`/`minimized`/`fullscreen`). The events are *peeked*, not
+/// drained, so a headless test (no shell) can assert what the shell would
+/// learn.
+fn window_events_report(state: &DfState) -> String {
+    let mut out = String::new();
+    for event in state.window_dispatch.events() {
+        match &event.kind {
+            WindowEventKind::StateChanged(window_state) => out.push_str(&format!(
+                "event state-changed {} {}\n",
+                event.id.0,
+                window_state.name()
+            )),
+            kind => out.push_str(&format!("event {} {}\n", kind.name(), event.id.0)),
+        }
     }
     out.push_str("end\n");
     out
@@ -1226,8 +1315,25 @@ mod tests {
             SyntheticCommand::AnimateDummy { duration_ms: 160 }
         );
         assert_eq!(
+            parse_command("query motion").unwrap(),
+            SyntheticCommand::QueryMotion
+        );
+        assert_eq!(
             parse_command("query appear").unwrap(),
-            SyntheticCommand::QueryAppear
+            SyntheticCommand::QueryMotion,
+            "the T-02.1b query name stays as an alias"
+        );
+        assert_eq!(
+            parse_command("query events").unwrap(),
+            SyntheticCommand::QueryEvents
+        );
+        assert_eq!(
+            parse_command("minimize 3").unwrap(),
+            SyntheticCommand::MinimizeWindow(WindowId(3))
+        );
+        assert_eq!(
+            parse_command("restore 3").unwrap(),
+            SyntheticCommand::RestoreWindow(WindowId(3))
         );
         assert_eq!(
             parse_command("set reduced-motion on").unwrap(),

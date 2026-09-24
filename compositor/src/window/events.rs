@@ -109,6 +109,11 @@ impl WindowDispatch {
         self.log.drain(..).collect()
     }
 
+    /// Peek at the pending events without draining (test/observability hook).
+    pub fn events(&self) -> impl Iterator<Item = &ShellWindowEvent> {
+        self.log.iter()
+    }
+
     /// Number of pending events.
     pub fn len(&self) -> usize {
         self.log.len()
