@@ -29,6 +29,7 @@ use smithay::backend::renderer::Color32F;
 use smithay::utils::{Logical, Point, Rectangle, Scale};
 
 use crate::design_tokens::{component, semantic};
+use crate::window::corner::{rounded_rect_spans, RoundedCorners};
 use crate::window::decoration::{color_from_rgba, motion_transform, ColorScheme};
 use crate::window::motion::MotionFrame;
 
@@ -94,6 +95,7 @@ impl ShadowLevel {
             blur,
             offset_y,
             layers: layers.max(1.0) as u32,
+            radius: component::window::RADIUS,
             opacity,
             color,
         }
@@ -112,17 +114,23 @@ pub struct ShadowSpec {
     pub offset_y: f32,
     /// Number of stacked layers (`component.elevation.<level>.layers`).
     pub layers: u32,
+    /// The window's corner radius (`component.window.radius`); each layer's
+    /// rounded corner grows from this by its own blur spread, matching
+    /// `Shadow.qml`'s `radius: root.radius + root.blur * spread` (T-04.1b).
+    pub radius: f32,
     /// The scheme's `material.shadowOpacity`.
     pub opacity: f32,
     /// The scheme's `color.shadowColor`, with its token alpha.
     pub color: [u8; 4],
 }
 
-/// One translucent rectangle of a shadow. `rect` is in the same logical
-/// coordinate space as the window it belongs to.
+/// One translucent layer of a shadow. `rect` is in the same logical
+/// coordinate space as the window it belongs to, and `radius` is the rounded
+/// corner that follows the window radius (T-04.1b).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ShadowLayer {
     pub rect: Rectangle<i32, Logical>,
+    pub radius: f32,
     pub color: Color32F,
 }
 
@@ -132,7 +140,9 @@ pub struct ShadowLayer {
 /// Layers are returned back-to-front: index `0` is the softest/farthest
 /// spread and the last is the tightest against the window. This is the exact
 /// formula of `design-system/components/Shadow.qml`, so the compositor and the
-/// QML approximation produce the same shadow from the same tokens.
+/// QML approximation produce the same shadow from the same tokens. Each layer
+/// carries the rounded corner `window.radius + blur * spread`, so the shadow
+/// corner follows the window it belongs to.
 pub fn shadow_layers(rect: Rectangle<i32, Logical>, spec: ShadowSpec) -> Vec<ShadowLayer> {
     let layers = spec.layers.max(1);
     // Each layer carries `shadowOpacity / layers`; stacked, the centre is the
@@ -150,6 +160,7 @@ pub fn shadow_layers(rect: Rectangle<i32, Logical>, spec: ShadowSpec) -> Vec<Sha
         let h = (f64::from(rect.size.h) + 2.0 * blur).round() as i32;
         result.push(ShadowLayer {
             rect: Rectangle::new((x, y).into(), (w.max(1), h.max(1)).into()),
+            radius: spec.radius + blur as f32,
             color: base * per_layer,
         });
     }
@@ -169,6 +180,11 @@ pub fn shadow_bounds(rect: Rectangle<i32, Logical>, spec: ShadowSpec) -> Rectang
 /// Convert the shadow layers into solid render elements for one window, in
 /// output-local physical coordinates and front-to-back order (the tightest
 /// layer first), optionally carrying the window's lifecycle motion.
+///
+/// Each layer is decomposed into the token-derived rounded-corner spans
+/// (T-04.1b) so the shadow's corner follows the window, matching
+/// `Shadow.qml`'s per-layer `radius`. Spans never overlap, so the translucent
+/// layers stack exactly as before.
 pub fn shadow_elements(
     rect: Rectangle<i32, Logical>,
     spec: ShadowSpec,
@@ -178,22 +194,25 @@ pub fn shadow_elements(
 ) -> Vec<SolidColorRenderElement> {
     let mut elements = Vec::new();
     for layer in shadow_layers(rect, spec) {
-        let (layer_rect, color) = motion_transform(layer.rect, layer.color, rect, motion);
-        let local = Rectangle::new(
-            (
-                layer_rect.loc.x - output_origin.x,
-                layer_rect.loc.y - output_origin.y,
-            )
-                .into(),
-            layer_rect.size,
-        );
-        elements.push(SolidColorRenderElement::new(
-            Id::new(),
-            local.to_physical_precise_round(scale),
-            CommitCounter::default(),
-            color,
-            Kind::Unspecified,
-        ));
+        let radius = layer.radius.round() as i32;
+        for span in rounded_rect_spans(layer.rect, radius, RoundedCorners::All) {
+            let (span_rect, color) = motion_transform(span, layer.color, rect, motion);
+            let local = Rectangle::new(
+                (
+                    span_rect.loc.x - output_origin.x,
+                    span_rect.loc.y - output_origin.y,
+                )
+                    .into(),
+                span_rect.size,
+            );
+            elements.push(SolidColorRenderElement::new(
+                Id::new(),
+                local.to_physical_precise_round(scale),
+                CommitCounter::default(),
+                color,
+                Kind::Unspecified,
+            ));
+        }
     }
     // `shadow_layers` is back-to-front; Smithay consumes front-to-back.
     elements.reverse();
@@ -204,10 +223,22 @@ pub fn shadow_elements(
 mod tests {
     use super::*;
     use smithay::backend::renderer::element::Element;
-    use smithay::utils::Size;
+    use smithay::utils::{Physical, Size};
 
     fn rect(x: i32, y: i32, w: i32, h: i32) -> Rectangle<i32, Logical> {
         Rectangle::new(Point::from((x, y)), Size::from((w, h)))
+    }
+
+    /// The bounding rectangle of a shadow element list at `scale`.
+    fn merged_bounds(
+        elements: &[SolidColorRenderElement],
+        scale: Scale<f64>,
+    ) -> Rectangle<i32, Physical> {
+        elements
+            .iter()
+            .map(|element| element.geometry(scale))
+            .reduce(|a, b| a.merge(b))
+            .expect("at least one element")
     }
 
     #[test]
@@ -219,6 +250,8 @@ mod tests {
         assert_eq!(dark.offset_y, 5.0);
         assert_eq!(dark.layers, component::elevation::high::LAYERS as u32);
         assert_eq!(dark.layers, 8);
+        assert_eq!(dark.radius, component::window::RADIUS);
+        assert_eq!(dark.radius, 14.0);
         assert_eq!(dark.opacity, semantic::dark::material::SHADOW_OPACITY);
         assert_eq!(dark.color, semantic::dark::color::SHADOW_COLOR);
 
@@ -265,6 +298,20 @@ mod tests {
         assert!(last.size.w < first.size.w && last.size.h < first.size.h);
         assert!(last.contains_rect(window));
 
+        // The rounded corner follows the window radius plus each layer's blur
+        // spread (matching `Shadow.qml`), so the softest layer is roundest.
+        assert_eq!(layers[0].radius, spec.radius + spec.blur);
+        assert_eq!(
+            layers.last().unwrap().radius,
+            spec.radius + spec.blur / spec.layers as f32
+        );
+        for pair in layers.windows(2) {
+            assert!(
+                pair[0].radius >= pair[1].radius,
+                "the outer layer must be rounder"
+            );
+        }
+
         // Each layer is one `shadowOpacity / layers` slice of the color.
         let expected = color_from_rgba(spec.color) * (spec.opacity / spec.layers as f32);
         assert_eq!(layers[0].color, expected);
@@ -280,6 +327,7 @@ mod tests {
             blur: 40.0,
             offset_y: 5.0,
             layers: 0,
+            radius: component::window::RADIUS,
             opacity: 0.45,
             color: [0, 0, 0, 255],
         };
@@ -293,18 +341,36 @@ mod tests {
     }
 
     #[test]
-    fn shadow_elements_are_physical_front_to_back_with_the_tightest_first() {
+    fn shadow_elements_span_the_rounded_bounds_front_to_back() {
         let window = rect(100, 200, 400, 300);
         let spec = ShadowLevel::High.spec(ColorScheme::Dark);
         let elements = shadow_elements(window, spec, 1.0.into(), Point::from((0, 0)), None);
-        assert_eq!(elements.len(), spec.layers as usize);
+        // The rounded decomposition emits one span per corner row plus the
+        // central band, so a shadow is more than one element per layer.
+        assert!(elements.len() > spec.layers as usize);
 
-        // front-to-back: the tightest layer is first, the widest last.
+        // The union of every span is exactly the shadow bounds.
+        let union = merged_bounds(&elements, 1.0.into());
+        assert_eq!(
+            union,
+            shadow_bounds(window, spec).to_physical_precise_round(1.0)
+        );
+
+        // The front-to-back list starts with the tightest layer and ends with
+        // the softest: the first span is narrower than the widest span.
         let first = elements.first().unwrap().geometry(1.0.into());
-        let last = elements.last().unwrap().geometry(1.0.into());
-        assert!(first.size.w < last.size.w);
-        assert_eq!(last.loc.x, window.loc.x - spec.blur as i32);
-        assert_eq!(last.size.w, window.size.w + 2 * spec.blur as i32);
+        let widest = elements
+            .iter()
+            .map(|element| element.geometry(1.0.into()).size.w)
+            .max()
+            .unwrap();
+        assert!(first.size.w < widest);
+
+        // The corners are clipped: no element covers the softest layer's
+        // outermost pixel (only the arc touches it).
+        assert!(!elements
+            .iter()
+            .any(|element| element.geometry(1.0.into()).contains(union.loc)));
     }
 
     #[test]
@@ -313,17 +379,17 @@ mod tests {
         let spec = ShadowLevel::High.spec(ColorScheme::Dark);
         let local = shadow_elements(window, spec, 1.0.into(), Point::from((0, 0)), None);
         let shifted = shadow_elements(window, spec, 1.0.into(), Point::from((100, 200)), None);
-        // The widest (backmost) layer moves by exactly the output origin.
-        let local_widest = local.last().unwrap().geometry(1.0.into());
-        let shifted_widest = shifted.last().unwrap().geometry(1.0.into());
-        assert_eq!(local_widest.loc.x - shifted_widest.loc.x, 100);
-        assert_eq!(local_widest.loc.y - shifted_widest.loc.y, 200);
+        // The whole shadow moves by exactly the output origin.
+        let local_bounds = merged_bounds(&local, 1.0.into());
+        let shifted_bounds = merged_bounds(&shifted, 1.0.into());
+        assert_eq!(local_bounds.loc.x - shifted_bounds.loc.x, 100);
+        assert_eq!(local_bounds.loc.y - shifted_bounds.loc.y, 200);
+        assert_eq!(local_bounds.size, shifted_bounds.size);
 
         // At scale 2 the physical geometry is exactly double.
         let doubled = shadow_elements(window, spec, 2.0.into(), Point::from((0, 0)), None);
-        let doubled_widest = doubled.last().unwrap().geometry(2.0.into());
-        let doubled_logical = Rectangle::from_size(doubled_widest.size / 2);
-        assert_eq!(doubled_logical.size, local_widest.size);
+        let doubled_bounds = merged_bounds(&doubled, 2.0.into());
+        assert_eq!(doubled_bounds.size, local_bounds.size * 2);
     }
 
     #[test]
@@ -341,11 +407,10 @@ mod tests {
             Point::from((0, 0)),
             Some(motion.frame(0)),
         );
-        let start = begin.last().unwrap().geometry(1.0.into());
-        assert_eq!(start.size.w, window.size.w + 2 * spec.blur as i32);
+        let start = merged_bounds(&begin, 1.0.into());
 
-        // At the end of the minimize the shadow has shrunk to the tile and
-        // faded to nothing.
+        // At the end of the minimize the shadow has shrunk to the tile (the
+        // rounded span union is much smaller than the full window shadow).
         let end_ms = crate::design_tokens::motion::WINDOW_CLOSE.duration_ms as u64;
         let end = shadow_elements(
             window,
@@ -354,9 +419,9 @@ mod tests {
             Point::from((0, 0)),
             Some(motion.frame(end_ms)),
         );
-        let end_last = end.last().unwrap().geometry(1.0.into());
+        let end_bounds = merged_bounds(&end, 1.0.into());
         assert!(
-            end_last.size.w < start.size.w,
+            end_bounds.size.w < start.size.w,
             "the shadow shrinks with the window"
         );
     }

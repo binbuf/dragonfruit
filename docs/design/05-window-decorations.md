@@ -171,7 +171,11 @@ a soft drop shadow drawn by the compositor behind the whole decorated window
 (titlebar included), and the same elevation tokens drive the first-party QML
 `AppWindow`/`Shadow` (FR-2; see
 [02-compositor.md](02-compositor.md) and
-[ADR 0011](adr/0011-elevation-shadow-tokens.md)). The titlebar chrome itself
-is still a flat token fill with square corners: the real chrome shadow,
-rounded-corner clipping, and translucency are the following T-04 material
-tasks, on the same element and the same geometry.
+[ADR 0011](adr/0011-elevation-shadow-tokens.md)). T-04.1b then rounds the
+chrome: the compositor SSD titlebar clips its top corners from
+`component.titlebar.cornerRadius` using the same span decomposition the QML
+`TitleBar`'s full-radius rectangle plus square bottom patch produces, and the
+shadow layers round to `component.window.radius + blur * spread`, matching
+`Shadow.qml` (see [ADR 0012](adr/0012-rounded-corner-mask.md)). The titlebar
+chrome fill is still opaque; translucency and the real backdrop blur are the
+following T-04 material tasks, on the same element and the same geometry.

@@ -22,7 +22,8 @@
 - **T14 — T-03.1a Nested idle trace and animation frame budget**: **State: done.** The idle/animation frame trace is now a real instrument (a; **60.0 s idle window**: `frames_rendered=1` (flat, +0),
 - **T15 — T-03.1b Latency instrument and direct-scanout template**: **State: done.** The input-to-photon latency instrument is real and the; **nested latency**: n=50, min=3501 us, median=13878 us, p95=15223 us,
 - **T16 — T-04.1a Real shadows**: **State: done.** Elevation-token shadows exist on both sides of the process; **Tokens** — new `component.elevation.{low,med,high,overlay}` in
-- **Follow-ups**: T-04.1b (next): add rounded-corner clipping on the same window/shadow pass;; T-04.2: chrome surfaces (menu bar, Dock, popovers, OSD) still get no
+- **T17 — T-04.1b Rounded-corner clipping**: **State: done.** Rounded corners are a token-derived geometry mask on the; **`compositor/src/window/corner.rs`** (new) — `CornerMask`
+- **Follow-ups**: T-04.2 (next): blur under the same surfaces. Reuse `CornerMask` for the blur; T-04.3: fold `CornerMask` into the reusable scale/translate/**clip** pass to
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -1123,11 +1124,75 @@ Gotchas for later tasks:
 - `AppWindow.shadowLevel`/`Shadow.level` default to `"high"`; changing the
   default changes the window goldens.
 
+## T17 — T-04.1b Rounded-corner clipping
+
+**State: done.** Rounded corners are a token-derived geometry mask on the
+compositor side. The SSD titlebar clips its top corners and every shadow layer
+rounds, both from the generated tokens and matching the QML
+`TitleBar`/`Shadow`; the client surface's own pixels are clipped by the T-04.3
+reusable pass (see deviations). All headless/geometry tests, e2e, QML tests,
+and the gallery strict goldens are green.
+
+What landed:
+
+- **`compositor/src/window/corner.rs`** (new) — `CornerMask`
+  (`window()`/`titlebar()`), `RoundedCorners` (`All`/`Top`/`Bottom`),
+  `rounded_rect_spans` (non-overlapping horizontal spans; a rounded rect for
+  the flat renderer), `corner_squares` (the four radius×radius cutouts), and
+  the consts `WINDOW_RADIUS`/`TITLEBAR_RADIUS`. 7 unit tests: span tiling (one
+  span per row, in-bounds), subset-area, monotonically widening corner rows,
+  titlebar bottom stays square, cutout squares equal the token radius, and
+  zero/tiny/degenerate clamps.
+- **`compositor/src/window/decoration.rs`** — `TitlebarElement::render_elements`
+  draws the chrome fill as `CornerMask::titlebar()` spans (top corners rounded
+  to `component.titlebar.cornerRadius`, bottom square), the QML `TitleBar`
+  decomposition exactly. Tests updated for the multi-span fill.
+- **`compositor/src/window/shadow.rs`** — `ShadowSpec.radius` (window token);
+  `ShadowLayer.radius = window.radius + blur * spread`; `shadow_elements`
+  emits the rounded spans per layer, matching `Shadow.qml`'s per-layer
+  `radius: root.radius + root.blur * spread`. Tests rewritten around the
+  merged element bounds (the rounded union equals `shadow_bounds`).
+- **`compositor/src/window/mod.rs`** — exports (with `#[allow(unused_imports)]`
+  for T-04.2/T-04.3).
+- **Docs** — ADR `0012-rounded-corner-mask.md`; `docs/design/02-compositor.md`
+  "Rounded-corner clipping (T-04.1b)"; `docs/design/05-window-decorations.md`.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `cargo test -p dragonfruit-compositor` — 197 bin unit tests + all suites green
+  (window_conformance 22/22, idle_trace 1/1, latency_trace 1/1).
+- `make e2e`; `make qml-test` (15/15); `make clippy`; `make fmt-check`;
+  `make check-tokens`; `make check-design-tokens` — green.
+- `./scripts/check-gallery-snapshots.py --strict` — 66/66 (QML untouched, so
+  the goldens are byte-identical).
+
+Gotchas for later tasks:
+
+- **Radii are token-only.** `WINDOW_RADIUS`/`TITLEBAR_RADIUS` come from
+  `component.window.radius` / `component.titlebar.cornerRadius`; do not
+  hardcode a radius. ADR 0012 is the contract.
+- `rounded_rect_spans` emits ~`2*radius + 1` non-overlapping spans per rounded
+  rect. The shadow is now ~590 solid elements for one `high` window at scale 1;
+  T-04.4a's degrade tier should shrink `CornerMask.radius`/layers rather than
+  add a new shape model.
+- **Client surfaces are not clipped per-window here.** Smithay owns the surface
+  elements and keys them by `Id` for presentation feedback; per-window cropping
+  would duplicate ids and risk frame-callback/direct-scanout. T-04.3's reusable
+  pass owns live-surface `clip`; consume `CornerMask`. Third-party windows keep
+  square *client* bottom corners until then; first-party QML windows round
+  themselves.
+- `ShadowLayer.radius` and `ShadowSpec.radius` are `f32`; `shadow_elements`
+  rounds to `i32` only at span generation.
+- The titlebar fill is now multiple elements (spans); tests that assumed a
+  single backmost fill element were updated (`titlebar_fill_count`).
+
 ## Follow-ups
 
-- T-04.1b (next): add rounded-corner clipping on the same window/shadow pass;
-  the layered `shadow_layers` geometry should follow `component.window.radius`
-  so the shadow corner matches the window.
+- T-04.2 (next): blur under the same surfaces. Reuse `CornerMask` for the blur
+  region; the shadow already covers the whole decorated rect (`WindowInsets::
+  outset`) and the titlebar the same top strip. Do not re-derive a radius.
+- T-04.3: fold `CornerMask` into the reusable scale/translate/**clip** pass to
+  round third-party client surfaces (the one rounding gap left by T-04.1b).
 - T-04.2: chrome surfaces (menu bar, Dock, popovers, OSD) still get no
   compositor shadow/blur; they rely on QML `Shadow`. The shared
   `component.elevation` group is ready for the compositor chrome pass and for
