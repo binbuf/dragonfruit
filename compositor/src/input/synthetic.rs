@@ -38,11 +38,13 @@
 //! query latency
 //! query scanout
 //! query degrade
+//! query material
 //! set titlebar-double-click zoom|minimize|none
 //! set reduced-motion on|off
 //! set launch-origin <app-id> <x> <y> <width> <height>
 //! set degrade-tier full|reduced|minimal
 //! set degrade-budget <microseconds>
+//! set color-scheme light|dark
 //! minimize <window-id>
 //! restore <window-id>
 //! close <window-id>
@@ -101,7 +103,7 @@ use smithay::reexports::calloop::generic::Generic;
 use smithay::reexports::calloop::{Interest, Mode, PostAction};
 
 use crate::state::DfState;
-use crate::window::{DegradeTier, TitlebarDoubleClick, WindowEventKind, WindowId};
+use crate::window::{ColorScheme, DegradeTier, TitlebarDoubleClick, WindowEventKind, WindowId};
 
 /// Marker type defining the synthetic [`InputBackend`] types.
 #[derive(Debug)]
@@ -667,6 +669,10 @@ pub enum SyntheticCommand {
     /// tier, whether it is pinned, the frame budget, and the selection
     /// counters, followed by `end`.
     QueryDegrade,
+    /// Read-only live-scheme introspection (T-04.4b): the light/dark scheme
+    /// the compositor materials render with and the resolved chrome/shadow
+    /// tones, followed by `end`.
+    QueryMaterial,
     /// Set `dock.titlebarDoubleClick` for the session (T-01.3 test plumbing).
     SetTitlebarDoubleClick(TitlebarDoubleClick),
     /// Set the compositor reduced-motion policy (T-02.1b test plumbing).
@@ -687,6 +693,9 @@ pub enum SyntheticCommand {
     /// Set the frame budget the degrade controller selects against, in
     /// microseconds (T-04.4a test plumbing).
     SetDegradeBudget(u32),
+    /// Set the live light/dark color scheme the compositor materials render
+    /// with (T-04.4b test/capture plumbing): `light` or `dark`.
+    SetColorScheme(ColorScheme),
     /// Minimize the window with this compositor id (T-02.2 test plumbing).
     MinimizeWindow(WindowId),
     /// Restore the window with this compositor id (T-02.2 test plumbing).
@@ -830,9 +839,10 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
             Some("latency") => SyntheticCommand::QueryLatency,
             Some("scanout") => SyntheticCommand::QueryScanout,
             Some("degrade") => SyntheticCommand::QueryDegrade,
+            Some("material") => SyntheticCommand::QueryMaterial,
             _ => {
                 return Err(
-                    "query requires a known subject (decorations, window-menu, motion, events, latency, scanout, degrade)"
+                    "query requires a known subject (decorations, window-menu, motion, events, latency, scanout, degrade, material)"
                         .into(),
                 );
             }
@@ -934,6 +944,12 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
                     .ok_or_else(|| format!("expected full|reduced|minimal, got {value:?}"))?;
                 SyntheticCommand::SetDegradeTier(tier)
             }
+            Some("color-scheme") => {
+                let value = parts.next().ok_or("set color-scheme requires a scheme")?;
+                let scheme = ColorScheme::parse(value)
+                    .ok_or_else(|| format!("expected light|dark, got {value:?}"))?;
+                SyntheticCommand::SetColorScheme(scheme)
+            }
             Some("degrade-budget") => SyntheticCommand::SetDegradeBudget(
                 parts
                     .next()
@@ -945,7 +961,7 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
             ),
             _ => {
                 return Err(
-                    "set requires a known subject (titlebar-double-click, reduced-motion, launch-origin, degrade-tier, degrade-budget)"
+                    "set requires a known subject (titlebar-double-click, reduced-motion, launch-origin, degrade-tier, degrade-budget, color-scheme)"
                         .into(),
                 );
             }
@@ -1054,6 +1070,9 @@ impl SyntheticCommand {
             SyntheticCommand::QueryDegrade => {
                 unreachable!("query degrade is handled by apply_datagram")
             }
+            SyntheticCommand::QueryMaterial => {
+                unreachable!("query material is handled by apply_datagram")
+            }
             // A settings command, not an input event.
             SyntheticCommand::SetTitlebarDoubleClick(_) => {
                 unreachable!("set titlebar-double-click is handled by apply_datagram")
@@ -1069,6 +1088,9 @@ impl SyntheticCommand {
             }
             SyntheticCommand::SetDegradeBudget(_) => {
                 unreachable!("set degrade-budget is handled by apply_datagram")
+            }
+            SyntheticCommand::SetColorScheme(_) => {
+                unreachable!("set color-scheme is handled by apply_datagram")
             }
             SyntheticCommand::MinimizeWindow(_) => {
                 unreachable!("minimize is handled by apply_datagram")
@@ -1185,6 +1207,15 @@ fn apply_datagram_reply(
                 }
                 applied += 1;
             }
+            Ok(SyntheticCommand::QueryMaterial) => {
+                if let Some((socket, peer)) = &reply {
+                    let report = material_report(state);
+                    if let Some(path) = peer.as_pathname() {
+                        let _ = socket.send_to(report.as_bytes(), path);
+                    }
+                }
+                applied += 1;
+            }
             Ok(SyntheticCommand::SetTitlebarDoubleClick(mode)) => {
                 state.set_titlebar_double_click(mode);
                 applied += 1;
@@ -1195,6 +1226,10 @@ fn apply_datagram_reply(
             }
             Ok(SyntheticCommand::SetDegradeBudget(budget_us)) => {
                 state.set_degrade_budget_us(budget_us);
+                applied += 1;
+            }
+            Ok(SyntheticCommand::SetColorScheme(scheme)) => {
+                state.set_color_scheme(scheme);
                 applied += 1;
             }
             Ok(SyntheticCommand::SetReducedMotion(enabled)) => {
@@ -1444,6 +1479,32 @@ fn scanout_report(state: &DfState) -> String {
 fn degrade_report(state: &DfState) -> String {
     format!("degrade {}\nend\n", state.degrade.summary())
 }
+
+/// The `query material` report (T-04.4b): the live color scheme and the
+/// resolved token tones the compositor materials render with.
+///
+/// `material scheme=<light|dark> chrome=<rrggbbaa> elevated=<rrggbbaa>
+/// border=<rrggbbaa> accent=<rrggbbaa>` followed by `end`. The tones are the
+/// exact token values the SSD titlebar, window menu, chrome backdrop, and
+/// window shadow resolve for the reported scheme, so a headless test can
+/// prove both schemes render without a GPU.
+fn material_report(state: &DfState) -> String {
+    let scheme = state.color_scheme;
+    let hex = |rgba: [u8; 4]| {
+        format!(
+            "{:02x}{:02x}{:02x}{:02x}",
+            rgba[0], rgba[1], rgba[2], rgba[3]
+        )
+    };
+    format!(
+        "material scheme={} chrome={} elevated={} border={} accent={}\nend\n",
+        scheme.name(),
+        hex(scheme.chrome()),
+        hex(scheme.surface_elevated()),
+        hex(scheme.border()),
+        hex(scheme.accent()),
+    )
+}
 ///
 /// Only the headless and nested backends call this, and only when
 /// [`ENV_SYNTHETIC_INPUT`] is set; the socket is removed by the caller at
@@ -1639,6 +1700,18 @@ mod tests {
             parse_command("set degrade-budget 12000").unwrap(),
             SyntheticCommand::SetDegradeBudget(12_000)
         );
+        assert_eq!(
+            parse_command("query material").unwrap(),
+            SyntheticCommand::QueryMaterial
+        );
+        assert_eq!(
+            parse_command("set color-scheme light").unwrap(),
+            SyntheticCommand::SetColorScheme(ColorScheme::Light)
+        );
+        assert_eq!(
+            parse_command("set color-scheme dark").unwrap(),
+            SyntheticCommand::SetColorScheme(ColorScheme::Dark)
+        );
     }
 
     #[test]
@@ -1653,6 +1726,8 @@ mod tests {
         assert!(parse_command("set degrade-tier ultra").is_err());
         assert!(parse_command("set degrade-tier").is_err());
         assert!(parse_command("set degrade-budget fast").is_err());
+        assert!(parse_command("set color-scheme sepia").is_err());
+        assert!(parse_command("set color-scheme").is_err());
     }
 
     #[test]

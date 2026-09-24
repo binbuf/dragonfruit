@@ -22,9 +22,15 @@ import time
 from PIL import Image
 
 NESTED_W, NESTED_H = 1920, 1200
-# Space 0's default wallpaper (compositor/src/workspace/mod.rs), used to find
-# the nested window on the host screen.
-WALL = (33, 13, 41)
+# The desktop background the compositor clears the nested output with (the
+# active Space wallpaper). The host desktop is a different color, so the
+# nested window is the large region matching this. Keep `WALL_TOL` tight: the
+# host can share a similar hue.
+WALL = (45, 35, 51)
+WALL_TOL = 3
+# The minimum number of sampled background pixels across a row for that row to
+# count as inside the nested window (sampling every 4th column).
+WALL_ROW_MIN = 200
 # Traffic-light geometry from component.trafficLights tokens (T-01.2).
 LIGHT_DIAMETER, LIGHT_GAP, LIGHT_INSET = 12, 8, 12
 BTN_LEFT, BTN_RIGHT = 272, 273
@@ -151,25 +157,32 @@ class Capturer:
         return dest
 
     def detect_rect(self, path):
+        """Locate the nested window from its background color.
+
+        The compositor clears the nested output with the active Space's
+        wallpaper, which the host desktop does not share. We look for the rows
+        that are mostly that color and take their bounding box, which is the
+        nested window rect (the menu bar and Dock are drawn over the same
+        background, so the top/bottom edges are the output edges).
+        """
         im = Image.open(path).convert("RGB")
         px = im.load()
         w, h = im.size
-        minx, miny = w, h
-        for y in range(0, h, 2):
-            for x in range(0, w, 2):
-                c = px[x, y]
-                if (
-                    abs(c[0] - WALL[0]) <= 3
-                    and abs(c[1] - WALL[1]) <= 3
-                    and abs(c[2] - WALL[2]) <= 3
-                ):
-                    minx = min(minx, x)
-                    miny = min(miny, y)
-        if miny >= h:
+
+        def matches(c):
+            return all(abs(c[i] - WALL[i]) <= WALL_TOL for i in range(3))
+
+        rows = []
+        for y in range(0, h):
+            xs = [x for x in range(0, w, 4) if matches(px[x, y])]
+            if len(xs) >= WALL_ROW_MIN:
+                rows.append((y, xs[0], xs[-1]))
+        if not rows:
             raise RuntimeError("nested window not found (no wallpaper pixels)")
-        # The wallpaper starts below the 28px menu bar; the window top is ~30px
-        # above the first wallpaper pixel.
-        self.rect = (minx, miny - 30, NESTED_W, NESTED_H)
+        top = rows[0][0]
+        left = min(row[1] for row in rows)
+        right = max(row[2] for row in rows)
+        self.rect = (left, top, NESTED_W, NESTED_H)
         return self.rect
 
     def still(self, full_path, name, box=None):
@@ -193,15 +206,43 @@ def run(args):
     cap = Capturer(synth, args.outdir, args.scratch)
     steps = []
     prefix = args.prefix
+    # Detect the nested window under the dark scheme: the desktop background
+    # follows the compositor scheme, and dark is the tone the host desktop does
+    # not share, so it identifies the output regardless of the capture target.
+    synth.send("set color-scheme dark")
+    time.sleep(0.3)
+
+    # --- 1. the mapped loop ------------------------------------------------
+    # The nested window may still be mapping/first-painting when we start;
+    # retry the full-screen probe until the background identifies its rect.
+    init = cap.full("initial")
+    for attempt in range(40):
+        try:
+            cap.detect_rect(init)
+            break
+        except RuntimeError:
+            if attempt == 39:
+                raise
+            time.sleep(0.5)
+            init = cap.full("initial")
+    log(f"nested window rect {cap.rect}")
+
+    # Apply the requested capture variant now that the rect is known.
     if args.reduced:
         synth.send("set reduced-motion on")
         time.sleep(0.3)
         log("reduced motion enabled")
-
-    # --- 1. the mapped loop ------------------------------------------------
+    if args.scheme:
+        synth.send(f"set color-scheme {args.scheme}")
+        time.sleep(0.3)
+        log(f"color scheme {args.scheme}")
+    if args.tier:
+        synth.send(f"set degrade-tier {args.tier}")
+        time.sleep(0.3)
+        log(f"material degrade tier {args.tier}")
+    time.sleep(0.5)
     init = cap.full("initial")
-    cap.detect_rect(init)
-    log(f"nested window rect {cap.rect}")
+
     rows = synth.decorations()
     settings = max(rows, key=lambda r: r["content"][2] * r["content"][3])
     x11 = min(rows, key=lambda r: r["content"][2] * r["content"][3])
@@ -248,6 +289,16 @@ def run(args):
     cap.still(menu, f"{prefix}-menu.png", box=(900, 240, 360, 220))
     synth.key(KEY_ESCAPE)
     time.sleep(0.3)
+
+    if args.materials_only:
+        # T-04.4b material sign-off: the mapped window, its titlebar, and the
+        # open menu are the material surfaces; skip the lifecycle walkthrough
+        # (the T-02/T-03 captures own motion and its frame trace).
+        with open(os.path.join(cap.scratch, "walkthrough.txt"), "w") as handle:
+            for label, path in steps:
+                handle.write(f"{label}\n  {path}\n")
+        log("materials capture complete")
+        return steps
 
     # --- 4. zoom (double-click) -------------------------------------------
     synth.double_click(*tc)
@@ -355,6 +406,21 @@ def main():
         "--reduced",
         action="store_true",
         help="drive the walkthrough with accessibility.reduceMotion on",
+    )
+    parser.add_argument(
+        "--scheme",
+        choices=("light", "dark"),
+        help="set the live compositor color scheme before capturing",
+    )
+    parser.add_argument(
+        "--tier",
+        choices=("full", "reduced", "minimal"),
+        help="pin the material degrade tier before capturing",
+    )
+    parser.add_argument(
+        "--materials-only",
+        action="store_true",
+        help="capture the material surfaces and stop before the lifecycle walkthrough",
     )
     args = parser.parse_args()
     try:

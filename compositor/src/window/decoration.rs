@@ -66,6 +66,24 @@ pub enum ColorScheme {
 }
 
 impl ColorScheme {
+    /// The design-system spelling (`light` | `dark`), used by the settings
+    /// seam (T-08) and the synthetic-input material commands (T-04.4b).
+    pub const fn name(self) -> &'static str {
+        match self {
+            ColorScheme::Light => "light",
+            ColorScheme::Dark => "dark",
+        }
+    }
+
+    /// Parse the design-system spelling (`light` | `dark`).
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "light" => Some(ColorScheme::Light),
+            "dark" => Some(ColorScheme::Dark),
+            _ => None,
+        }
+    }
+
     /// Titlebar background (flat fill until the T-04 material pass).
     pub const fn chrome(self) -> [u8; 4] {
         match self {
@@ -797,6 +815,18 @@ mod tests {
         );
         assert_eq!(TitlebarDoubleClick::parse("fill"), None);
         assert_eq!(TitlebarDoubleClick::default(), TitlebarDoubleClick::Zoom);
+    }
+
+    #[test]
+    fn color_scheme_names_and_parses_the_settings_spelling() {
+        assert_eq!(ColorScheme::Light.name(), "light");
+        assert_eq!(ColorScheme::Dark.name(), "dark");
+        assert_eq!(ColorScheme::parse("light"), Some(ColorScheme::Light));
+        assert_eq!(ColorScheme::parse("dark"), Some(ColorScheme::Dark));
+        assert_eq!(ColorScheme::parse("sepia"), None);
+        // The compositor default reads over arbitrary client pixels until the
+        // live setting lands (T-08).
+        assert_eq!(ColorScheme::default(), ColorScheme::Dark);
     }
 
     #[test]

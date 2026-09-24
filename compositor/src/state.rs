@@ -411,6 +411,11 @@ pub struct DfState {
     /// backdrop and shadow passes render at. Selectable (pinned) for tests and
     /// for a feature that wants a deterministic tier.
     pub degrade: DegradeController,
+    /// The live light/dark color scheme every compositor-drawn material
+    /// (SSD titlebar, window menu, chrome backdrop, window shadow) renders
+    /// with (T-04.4b). Defaults to dark; the settings owner (T-08) sets it
+    /// through [`Self::set_color_scheme`].
+    pub color_scheme: ColorScheme,
 
     pub stats: RenderStats,
 }
@@ -535,6 +540,7 @@ impl DfState {
             scene_pass: SceneTransformPass::new(),
             render_serial: 0,
             degrade: DegradeController::new(),
+            color_scheme: ColorScheme::default(),
             stats: RenderStats::new(),
         }
     }
@@ -923,7 +929,14 @@ impl DfState {
         let tier = self.windows.decorations(window);
         let focused = self.active_window.as_ref() == Some(window);
         let hovered = self.hovered_titlebar == Some(id);
-        TitlebarElement::for_window(id, geometry, tier, state, focused, hovered)
+        TitlebarElement::for_window(id, geometry, tier, state, focused, hovered).map(
+            |mut element| {
+                // The live scheme is compositor state (T-04.4b): the titlebar
+                // geometry is scheme-independent, the token fills are not.
+                element.scheme = self.color_scheme;
+                element
+            },
+        )
     }
 
     /// Recompute which titlebar (if any) the pointer is hovering, returning
@@ -1132,7 +1145,7 @@ impl DfState {
             anchor,
             &spaces,
             bounds,
-            ColorScheme::default(),
+            self.color_scheme,
         ));
         self.needs_redraw = true;
     }
@@ -2069,7 +2082,12 @@ impl DfState {
         let geometry = self.windows.geometry(window)?;
         let tier = self.windows.decorations(window);
         let focused = self.active_window.as_ref() == Some(window);
-        TitlebarElement::for_window(id, geometry, tier, WindowState::Floating, focused, false)
+        TitlebarElement::for_window(id, geometry, tier, WindowState::Floating, focused, false).map(
+            |mut element| {
+                element.scheme = self.color_scheme;
+                element
+            },
+        )
     }
 
     /// Advance every lifecycle motion one clock frame. Commits a visible
@@ -2208,6 +2226,13 @@ impl DfState {
              backdrop_passes={} backdrop_skipped={}",
             self.material_pass.applications(),
             self.material_pass.skipped(),
+        );
+        // Live light/dark scheme (T-04.4b): the token set the compositor
+        // materials (SSD titlebar, window menu, chrome backdrop, window
+        // shadow) render with.
+        println!(
+            "dragonfruit-compositor: scheme stats ({label}): scheme={}",
+            self.color_scheme.name(),
         );
         // Material degrade tiers (T-04.4a): which tier the backdrop/shadow
         // passes render at, whether it is pinned, the budget it selects
@@ -2355,6 +2380,17 @@ impl DfState {
     pub fn set_reduced_motion(&mut self, reduced: bool) {
         self.overview.set_reduced_motion(reduced);
         self.animation_clock.set_reduced_motion(reduced);
+    }
+
+    /// Set the live light/dark color scheme every compositor-drawn material
+    /// renders with (T-04.4b). The shell mirrors `appearance.colorScheme`
+    /// here once settingsd owns it (T-08); today the default is dark and the
+    /// synthetic-input `set color-scheme` command is the deterministic seam.
+    pub fn set_color_scheme(&mut self, scheme: ColorScheme) {
+        if self.color_scheme != scheme {
+            self.color_scheme = scheme;
+            self.needs_redraw = true;
+        }
     }
 
     /// Offset the live window surfaces for an in-flight overview/workspace
