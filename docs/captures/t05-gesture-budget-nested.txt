@@ -9,9 +9,9 @@
 # Frame timing is host- and load-dependent: the honest verdict is what
 # the instrumentation reports, not a threshold this script asserts.
 
-gesture[mission-control] tracing=1 frames=6 over_budget=5 dropped=2 max_frame_us=29616 max_interval_ms=42 budget_us=16000 held=0 tier=full
-gesture[desktop-reveal] tracing=1 frames=16 over_budget=3 dropped=3 max_frame_us=29945 max_interval_ms=30 budget_us=16000 held=0 tier=reduced
-gesture[space-slide] tracing=0 frames=2 over_budget=0 dropped=1 max_frame_us=7438 max_interval_ms=30 budget_us=16000 held=0 tier=reduced
+gesture[mission-control] tracing=1 frames=7 over_budget=4 dropped=2 max_frame_us=18863 max_interval_ms=29 budget_us=16000 held=0 tier=reduced
+gesture[desktop-reveal] tracing=1 frames=17 over_budget=0 dropped=0 max_frame_us=9302 max_interval_ms=20 budget_us=16000 held=1 tier=reduced
+gesture[space-slide] tracing=0 frames=2 over_budget=0 dropped=1 max_frame_us=8192 max_interval_ms=30 budget_us=16000 held=0 tier=reduced
 
 # t05-mission-control-live-reduced: one `query gesture` sample per gesture (nested backend).
 # budget_us=16000 is one 60 Hz frame; held=0 records a shortfall rather
@@ -19,15 +19,15 @@ gesture[space-slide] tracing=0 frames=2 over_budget=0 dropped=1 max_frame_us=743
 # Frame timing is host- and load-dependent: the honest verdict is what
 # the instrumentation reports, not a threshold this script asserts.
 
-gesture[mission-control] tracing=1 frames=7 over_budget=5 dropped=2 max_frame_us=19499 max_interval_ms=37 budget_us=16000 held=0 tier=reduced
-gesture[desktop-reveal] tracing=1 frames=1 over_budget=0 dropped=0 max_frame_us=3841 max_interval_ms=0 budget_us=16000 held=1 tier=reduced
-gesture[space-slide] tracing=0 frames=2 over_budget=0 dropped=1 max_frame_us=7296 max_interval_ms=30 budget_us=16000 held=0 tier=reduced
+gesture[mission-control] tracing=1 frames=6 over_budget=5 dropped=2 max_frame_us=45520 max_interval_ms=76 budget_us=16000 held=0 tier=reduced
+gesture[desktop-reveal] tracing=1 frames=1 over_budget=0 dropped=0 max_frame_us=4192 max_interval_ms=0 budget_us=16000 held=1 tier=reduced
+gesture[space-slide] tracing=0 frames=2 over_budget=0 dropped=1 max_frame_us=13643 max_interval_ms=26 budget_us=16000 held=0 tier=reduced
 
 # t05-mission-control-live session exit:
-dragonfruit-compositor: degrade stats (exit): tier=reduced forced=0 budget_us=16000 samples=85 over_budget=25 downgrades=1 upgrades=0 tiers=full:33,reduced:52,minimal:0
-dragonfruit-compositor: gesture budget (exit): tracing=0 frames=2 over_budget=0 dropped=1 max_frame_us=7438 max_interval_ms=30 budget_us=16000 held=0
+dragonfruit-compositor: degrade stats (exit): tier=reduced forced=0 budget_us=16000 samples=92 over_budget=13 downgrades=1 upgrades=0 tiers=full:31,reduced:61,minimal:0
+dragonfruit-compositor: gesture budget (exit): tracing=0 frames=2 over_budget=0 dropped=1 max_frame_us=8192 max_interval_ms=30 budget_us=16000 held=0
 
 # t05-mission-control-live-reduced session exit:
-dragonfruit-compositor: degrade stats (exit): tier=reduced forced=0 budget_us=16000 samples=46 over_budget=13 downgrades=1 upgrades=0 tiers=full:32,reduced:14,minimal:0
-dragonfruit-compositor: gesture budget (exit): tracing=0 frames=2 over_budget=0 dropped=1 max_frame_us=7296 max_interval_ms=30 budget_us=16000 held=0
+dragonfruit-compositor: degrade stats (exit): tier=reduced forced=0 budget_us=16000 samples=39 over_budget=15 downgrades=1 upgrades=0 tiers=full:31,reduced:8,minimal:0
+dragonfruit-compositor: gesture budget (exit): tracing=0 frames=2 over_budget=0 dropped=1 max_frame_us=13643 max_interval_ms=26 budget_us=16000 held=0
 
