@@ -4072,6 +4072,184 @@ fn overview_grid_keeps_live_video_advancing_and_applies_degrade_tier() {
     );
 }
 
+/// The parsed `query gesture` report (T-05.6).
+#[derive(Debug, Clone, PartialEq)]
+struct GestureBudgetReport {
+    tracing: bool,
+    frames: u64,
+    over_budget: u64,
+    dropped: u64,
+    max_frame_us: u64,
+    max_interval_ms: u64,
+    budget_us: u64,
+    held: bool,
+    tier: String,
+}
+
+/// Parse a `query gesture` report (T-05.6): `held` is the honest 60 Hz
+/// verdict and `tier` the T-04.4a degrade tier the grid composes at.
+fn parse_gesture(report: &str) -> GestureBudgetReport {
+    let line = report
+        .lines()
+        .find(|line| line.starts_with("gesture "))
+        .unwrap_or_else(|| panic!("no gesture line in {report:?}"));
+    let fields: std::collections::HashMap<&str, &str> = line
+        .split_whitespace()
+        .filter_map(|value| value.split_once('='))
+        .collect();
+    let number = |key: &str| -> u64 {
+        fields
+            .get(key)
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(0)
+    };
+    GestureBudgetReport {
+        tracing: number("tracing") == 1,
+        frames: number("frames"),
+        over_budget: number("over_budget"),
+        dropped: number("dropped"),
+        max_frame_us: number("max_frame_us"),
+        max_interval_ms: number("max_interval_ms"),
+        budget_us: number("budget_us"),
+        held: number("held") == 1,
+        tier: fields.get("tier").copied().unwrap_or_default().to_string(),
+    }
+}
+
+/// Poll `query gesture` until `pred` holds (T-05.6).
+#[track_caller]
+fn wait_for_gesture(
+    input: &SyntheticInput,
+    timeout: Duration,
+    mut pred: impl FnMut(&GestureBudgetReport) -> bool,
+) -> GestureBudgetReport {
+    let deadline = Instant::now() + timeout;
+    loop {
+        let report = parse_gesture(&input.query("query gesture"));
+        if pred(&report) {
+            return report;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "gesture trace never reached the expected state: {report:?}"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// T-05.6 acceptance: a full overview gesture produces a **gesture-scoped**
+/// frame-budget trace whose verdict is honest (within the 60 Hz budget, or a
+/// recorded dropped frame), and the trace reports the T-04.4a degrade tier the
+/// grid composes at — the "apply degrade tiers under pressure" seam.
+#[test]
+fn overview_gesture_frame_budget_is_traced_and_reports_the_degrade_tier() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path =
+        PathBuf::from(&runtime_dir).join(format!("dragonfruit-gesture-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-gesture-budget",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    // One live surface so the gesture actually transforms a real window.
+    let (surface, _xdg_surface, toplevel, _file) =
+        map_toplevel_with_app_id(&mut state, &mut queue, "org.dragonfruit.Gesture");
+
+    // At rest there is no gesture: an empty trace, not a failure.
+    let idle = parse_gesture(&input.query("query gesture"));
+    assert!(!idle.tracing);
+    assert_eq!(idle.frames, 0);
+    assert!(!idle.held, "no gesture cannot have held the budget");
+    assert_eq!(idle.budget_us, 16_000);
+    assert_eq!(idle.tier, "full", "the default material tier is Full");
+
+    // A full Mission Control gesture: open on the animation clock (the
+    // discrete keyboard trigger shares the one progress pipeline and renders
+    // ~12 frames over its 200 ms curve), then close it the same way.
+    input.send("key 29 down");
+    input.send("key 103 down");
+    input.send("key 29 up");
+    input.send("key 103 up");
+    wait_for_grid(&input, Duration::from_secs(5), |grid| {
+        grid.active && (grid.progress - 1.0).abs() < 1e-6
+    });
+
+    // The settled-open gesture has a live trace: the overview is still up, so
+    // the animation clock rendered the open curve and the trace keeps
+    // recording until the gesture ends.
+    let open = wait_for_gesture(&input, Duration::from_secs(5), |report| report.frames > 0);
+    assert!(
+        open.tracing,
+        "the trace is live while the overview is open: {open:?}"
+    );
+    assert_eq!(open.budget_us, 16_000, "the 16 ms animation frame budget");
+    assert_eq!(
+        open.over_budget, 0,
+        "headless render work is sub-frame: {open:?}"
+    );
+    assert!(
+        open.max_interval_ms <= 100,
+        "a rendered-frame gap over 100 ms is a stall: {open:?}"
+    );
+    if open.held {
+        assert_eq!(open.dropped, 0, "held means no dropped frame: {open:?}");
+    } else {
+        assert!(
+            open.dropped > 0,
+            "a shortfall must be a recorded dropped frame, not a hidden one: {open:?}"
+        );
+    }
+    assert!(
+        open.max_frame_us < 16_000,
+        "the headless frame work fits the budget: {open:?}"
+    );
+    eprintln!(
+        "gesture budget: frames={} over_budget={} dropped={} max_frame_us={} \
+         max_interval_ms={} held={}",
+        open.frames,
+        open.over_budget,
+        open.dropped,
+        open.max_frame_us,
+        open.max_interval_ms,
+        open.held,
+    );
+
+    // The trace reports the live degrade tier the grid composes at; the T-04
+    // ladder is what gives ground under budget pressure (T-04.4a).
+    input.send("set degrade-tier minimal");
+    wait_for_gesture(&input, Duration::from_secs(5), |report| {
+        report.tier == "minimal"
+    });
+    input.send("set degrade-tier full");
+    wait_for_gesture(&input, Duration::from_secs(5), |report| {
+        report.tier == "full"
+    });
+
+    // Close the overview and confirm the trace is no longer live and the
+    // counters from the gesture are retained for the next query.
+    input.send("key 29 down");
+    input.send("key 103 down");
+    input.send("key 29 up");
+    input.send("key 103 up");
+    wait_for_grid(&input, Duration::from_secs(5), |grid| !grid.active);
+    let closed = wait_for_gesture(&input, Duration::from_secs(5), |report| !report.tracing);
+    assert!(
+        closed.frames >= open.frames,
+        "the closing frames join the same gesture trace: {open:?} -> {closed:?}"
+    );
+
+    let _ = conn;
+    surface.destroy();
+    toplevel.destroy();
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}
+
 /// T-05.2 acceptance: with Mission Control open, a left click on a **live**
 /// representation hit-tests the interpolated grid transform (not the
 /// committed geometry), routes through the one selection round-trip, closes

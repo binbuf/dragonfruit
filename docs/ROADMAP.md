@@ -137,7 +137,7 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 - [x] T25 — T-05.3 Drag a live representation between Spaces → [tasks/025-t-05.3-drag-a-live-representation-between-spaces.md](tasks/025-t-05.3-drag-a-live-representation-between-spaces.md)
 - [x] T26 — T-05.4 Image wallpaper and per-Space slide → [tasks/026-t-05.4-image-wallpaper-and-per-space-slide.md](tasks/026-t-05.4-image-wallpaper-and-per-space-slide.md)
 - [x] T27 — T-05.5 Desktop Reveal → [tasks/027-t-05.5-desktop-reveal.md](tasks/027-t-05.5-desktop-reveal.md)
-- [ ] T28 — T-05.6 Overview frame budget and capture → [tasks/028-t-05.6-overview-frame-budget-and-capture.md](tasks/028-t-05.6-overview-frame-budget-and-capture.md)
+- [~] T28 — T-05.6 Overview frame budget and capture → [tasks/028-t-05.6-overview-frame-budget-and-capture.md](tasks/028-t-05.6-overview-frame-budget-and-capture.md) ⟵ failed
 
 ## Phase 6 — T-06 Loop v4: app switcher
 
