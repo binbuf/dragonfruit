@@ -78,6 +78,10 @@ pub struct ChromeSurface {
     pub surface: WlSurface,
     /// Output-local logical position.
     pub location: Point<i32, Logical>,
+    /// The surface's full output-local logical rectangle (`location` plus its
+    /// configured size). The material pass (T-04.2) reads it for the backdrop
+    /// band; the compositor composites by `location`.
+    pub geometry: Rectangle<i32, Logical>,
     /// The layer the surface requested (`df_shell.layer`).
     pub layer: u32,
     /// Keyboard-interaction policy (`df_layer_surface.set_keyboard_interaction`).
@@ -410,6 +414,14 @@ impl DfState {
                 ChromeSurface {
                     surface: entry.surface.clone(),
                     location: geometry.loc - output_geometry.loc,
+                    geometry: Rectangle::new(
+                        (
+                            geometry.loc.x - output_geometry.loc.x,
+                            geometry.loc.y - output_geometry.loc.y,
+                        )
+                            .into(),
+                        geometry.size,
+                    ),
                     layer: entry.state.layer,
                     keyboard: entry.state.keyboard,
                 }

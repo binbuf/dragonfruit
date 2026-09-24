@@ -210,8 +210,8 @@ shadowed, a window mid-appear/minimize/zoom carries the same lifecycle
 `MotionFrame` as its content, and a minimizing/closing ghost keeps its shadow.
 Fullscreen windows cast none. Shadows are custom elements appended **after**
 `window_render_elements` in the front-to-back list, so they composite *below*
-their window. Rounded corners and a real backdrop blur land in T-04.1b/T-04.2
-on this same geometry; the shadow then becomes one layer of the material pass.
+their window. Rounded corners (T-04.1b) and the chrome backdrop (T-04.2) land
+on this same geometry; the shadow becomes one layer of the material pass.
 See [ADR 0011](adr/0011-elevation-shadow-tokens.md).
 
 ### Rounded-corner clipping (T-04.1b)
@@ -235,9 +235,43 @@ A third-party client surface's own pixels are **not** split per window here:
 Smithay owns those elements and keys them for presentation feedback, so
 per-window cropping would duplicate ids and risk the frame-callback and
 direct-scanout paths. The reusable scene-transform pass (T-04.3) owns the
-`clip` of live surfaces and consumes the same mask; T-04.2 blurs inside it.
-First-party QML windows already round themselves. See
+`clip` of live surfaces and consumes the same mask. First-party QML windows
+already round themselves. See
 [ADR 0012](adr/0012-rounded-corner-mask.md).
+
+### Backdrop blur pass (T-04.2)
+
+Every chrome surface — the menu bar, the Dock, and overlay popovers/menus — is
+drawn over a **frosted backdrop**
+(`compositor/src/window/backdrop.rs`, `render::chrome_backdrop_render_elements`)
+so it reads as a material rather than a flat rectangle. The backdrop is built
+entirely from the **generated material tokens**: `material.chromeBlur` /
+`chromeOpacity` for persistent chrome and `material.popupBlur` / `popupOpacity`
+for overlays, per `ColorScheme`, plus the component radius. `TitleBar.qml` and
+`Dock.qml` consume the same `Theme.material` group, so the two sides cannot
+drift (FR-2). A `MaterialRole` maps `df_shell.layer` to the token group; the
+panel is clipped with the same `CornerMask` geometry as the titlebar and
+shadow.
+
+The flat renderer has no texture sampler yet, so the backdrop is a **stack of
+translucent rounded feather layers** from the panel edge inward — the same
+solid-rectangle approximation T-04.1a used for the shadow, with the token blur
+setting the feather depth. It is a separate element drawn **below** the
+chrome's Wayland surface, so a client's translucent regions blend over it
+rather than being punched out (FR-3). The backdrop elements are appended
+**after** the chrome surfaces and **before** the windows, so the panel sits
+behind its chrome and in front of the scene it stands in for; no chrome mapped
+means no backdrop and no extra damage.
+
+`BackdropPass` gates the pass: the backend opens a rendered frame once
+(`DfState::begin_render_frame`) and each output applies the backdrop at most
+once. A repeated `(frame, output)` request is counted as `skipped` and draws
+nothing — the T-04.2 **one effect pass per frame (no double-blur)** invariant,
+reported on the render-stats line as `backdrop_passes` / `backdrop_skipped`
+(`backdrop_skipped` must stay zero). A real texture-sampling blur is deferred,
+swappable behind the token values; T-04.3 folds the pass into the reusable
+scene transform and T-04.4a degrades it. See
+[ADR 0013](adr/0013-backdrop-blur-pass.md).
 
 ## Window model
 

@@ -61,6 +61,13 @@ compositor's window-shadow pass read, so surface shadow geometry is identical
 across the process boundary by construction (see
 [ADR 0011](adr/0011-elevation-shadow-tokens.md)).
 
+The semantic `material` group (`chromeOpacity`/`chromeBlur`,
+`popupOpacity`/`popupBlur`, `shadowOpacity`) is the shared source for surface
+materials (T-04.2): the QML `Theme.material` group tints the shell chrome and
+the compositor's backdrop pass reads the same values, per color scheme, so the
+two sides cannot drift (see
+[ADR 0013](adr/0013-backdrop-blur-pass.md)).
+
 ## Motion
 
 Named curves and durations (`motion.spaces-switch`, `motion.dock-magnify`,

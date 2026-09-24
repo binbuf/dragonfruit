@@ -26,7 +26,9 @@ use smithay::utils::{IsAlive, Scale};
 use smithay::wayland::fractional_scale::with_fractional_scale;
 
 use crate::state::DfState;
-use crate::window::{shadow_elements, ColorScheme, ShadowLevel, WindowState};
+use crate::window::{
+    backdrop_elements, shadow_elements, ColorScheme, MaterialRole, ShadowLevel, WindowState,
+};
 
 /// Build render elements for the shell's chrome surfaces (menu bar, Dock,
 /// overlays) on `output`, in layer order (T-09).
@@ -63,6 +65,60 @@ where
             1.0,
             Kind::Unspecified,
         ));
+    }
+    elements
+}
+
+/// Build the token-driven backdrop blur for the chrome surfaces composited on
+/// `output` (T-04.2), which composite **below** their chrome surface.
+///
+/// The backdrop is the material under a translucent chrome surface: a
+/// token-derived frosted panel (see [`crate::window::backdrop`]) whose corners
+/// come from the component radius. Callers append these **after**
+/// [`chrome_render_elements`] and **before** the window surfaces, so the panel
+/// sits behind its chrome and in front of the windows it stands in for.
+///
+/// The pass is opened once per rendered frame ([`DfState::begin_render_frame`])
+/// and applied once per output; a second request for the same output in the
+/// same frame draws nothing, which is the T-04.2 "one effect pass per frame"
+/// invariant. Client translucent regions are honored: the chrome surface's own
+/// buffer composites over the backdrop rather than being clipped out.
+pub fn chrome_backdrop_render_elements(
+    state: &mut DfState,
+    output: &Output,
+    scale: Scale<f64>,
+) -> Vec<SolidColorRenderElement> {
+    let Some(output_geometry) = state.space.output_geometry(output) else {
+        return Vec::new();
+    };
+    let surfaces: Vec<_> = state
+        .chrome_surfaces(output.name().as_str(), output_geometry)
+        .into_iter()
+        .filter(|chrome| chrome.layer >= 2)
+        .collect();
+    if surfaces.is_empty() {
+        return Vec::new();
+    }
+    // The chrome band: the union of the top/overlay surfaces on this output,
+    // in output-local logical coordinates. This is the damage the pass owns.
+    let region = surfaces
+        .iter()
+        .map(|chrome| chrome.geometry)
+        .reduce(|a, b| a.merge(b))
+        .unwrap_or_default();
+    if state
+        .material_pass
+        .apply(output.name().as_str(), region)
+        .is_none()
+    {
+        return Vec::new();
+    }
+    let scheme = ColorScheme::default();
+    let mut elements = Vec::new();
+    for chrome in &surfaces {
+        let role = MaterialRole::from_layer(chrome.layer);
+        let spec = role.spec(scheme);
+        elements.extend(backdrop_elements(chrome.geometry, spec, scale));
     }
     elements
 }

@@ -941,6 +941,10 @@ fn render_surface(
 
     let scale = Scale::from(surface.output.current_scale().fractional_scale());
 
+    // Open this output's material pass (T-04.2), so the chrome backdrop is
+    // applied at most once for it this frame.
+    state.begin_render_frame();
+
     // The pointer: rendered with Kind::Cursor so DrmCompositor can assign
     // a hardware cursor plane; cursor motion never waits on effects or
     // damage (02-compositor.md).
@@ -999,6 +1003,17 @@ fn render_surface(
         _,
         DrmOutputElements<UdevRenderer<'_>, WaylandSurfaceRenderElement<UdevRenderer<'_>>>,
     >(&mut renderer, state, &surface.output, scale));
+
+    // Backdrop blur under the chrome (T-04.2). NOTE: this rail's element list
+    // is built front-to-back but currently places the window surfaces before
+    // the chrome, so the backdrop composes below the windows here until that
+    // pre-existing ordering is reconciled; DRM is untested (no hardware), like
+    // the rest of this rail.
+    custom_elements.extend(
+        crate::render::chrome_backdrop_render_elements(state, &surface.output, scale)
+            .into_iter()
+            .map(DrmOutputElements::Decoration),
+    );
 
     // SSD titlebars (T-01.1) composite above their client surfaces.
     custom_elements.extend(
