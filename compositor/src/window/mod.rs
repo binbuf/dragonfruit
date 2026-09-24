@@ -14,6 +14,7 @@
 //! for stacking (`Space`) and focus (`Seat`); this module adds the state
 //! those layers do not carry.
 
+pub mod backdrop;
 pub mod corner;
 pub mod decoration;
 pub mod events;
@@ -26,6 +27,11 @@ pub mod resize;
 pub mod shadow;
 pub mod state;
 
+#[allow(unused_imports)]
+pub use backdrop::{
+    backdrop_bounds, backdrop_elements, backdrop_layers, BackdropLayer, BackdropPass, BackdropSpec,
+    MaterialRole,
+};
 #[allow(unused_imports)]
 pub use corner::{corner_squares, rounded_rect_spans, CornerMask, RoundedCorners};
 pub use decoration::{

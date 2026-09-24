@@ -103,11 +103,11 @@ use crate::window::grab::{MoveGrab, ResizeGrab};
 use crate::window::popup::constrained_popup_geometry;
 use crate::window::resize::SizeConstraints;
 use crate::window::{
-    cascaded_geometry, centered_on, fullscreen_reveal_rect, ColorScheme, DecorationTier,
-    DoubleClickTracker, MenuActivation, MenuKey, MenuKeyOutcome, MotionFrame, ReservedZones,
-    ShellWindowEvent, TitlebarDoubleClick, TitlebarElement, TrafficLightKind, WindowDispatch,
-    WindowEvent, WindowEventKind, WindowId, WindowInsets, WindowMenu, WindowMenuCommand,
-    WindowModel, WindowMotion, WindowMotionKind, WindowState, CASCADE_STEP,
+    cascaded_geometry, centered_on, fullscreen_reveal_rect, BackdropPass, ColorScheme,
+    DecorationTier, DoubleClickTracker, MenuActivation, MenuKey, MenuKeyOutcome, MotionFrame,
+    ReservedZones, ShellWindowEvent, TitlebarDoubleClick, TitlebarElement, TrafficLightKind,
+    WindowDispatch, WindowEvent, WindowEventKind, WindowId, WindowInsets, WindowMenu,
+    WindowMenuCommand, WindowModel, WindowMotion, WindowMotionKind, WindowState, CASCADE_STEP,
 };
 use crate::workspace::WorkspaceModel;
 use crate::xwayland::XwaylandState;
@@ -393,6 +393,14 @@ pub struct DfState {
     /// manager. The shell is a pure consumer of the event streams above.
     pub shell: ShellProtocolState,
 
+    /// Backdrop blur pass bookkeeping (T-04.2): opened once per rendered frame
+    /// by [`Self::begin_render_frame`], then applied once per output, so the
+    /// chrome backdrop can never be drawn twice in a frame.
+    pub material_pass: BackdropPass,
+    /// Monotonic serial of the last rendered frame (T-04.2), the material
+    /// pass's frame key.
+    pub render_serial: u64,
+
     pub stats: RenderStats,
 }
 
@@ -512,6 +520,8 @@ impl DfState {
             window_motion_driver: false,
             dock_tiles: HashMap::new(),
             shell,
+            material_pass: BackdropPass::new(),
+            render_serial: 0,
             stats: RenderStats::new(),
         }
     }
@@ -2091,6 +2101,18 @@ impl DfState {
         active
     }
 
+    /// Open a rendered frame and its material pass (T-04.2).
+    ///
+    /// Called by a backend immediately before it builds its element list.
+    /// Bumping the render serial re-opens [`Self::material_pass`], so each
+    /// output applies the chrome backdrop exactly once for this frame and a
+    /// repeated request is counted as skipped (one effect pass per frame, no
+    /// double-blur).
+    pub fn begin_render_frame(&mut self) {
+        self.render_serial = self.render_serial.wrapping_add(1);
+        self.material_pass.begin_frame(self.render_serial);
+    }
+
     /// Print the render-path counters (FR-2/FR-5 observability).
     ///
     /// Emitted on SIGUSR1 and on clean exit so the idle-trace (FR-2) and
@@ -2138,6 +2160,16 @@ impl DfState {
             self.animation_clock.animations_started(),
             self.animation_clock.animations_completed(),
             self.animation_clock.reduced_motion(),
+        );
+        // Backdrop material pass (T-04.2): `backdrop_passes` is the number of
+        // output-frames that applied the chrome backdrop and `backdrop_skipped`
+        // counts duplicate requests, which must stay zero (one effect pass per
+        // frame, no double-blur; the T-04.4a degrade tiers build on this).
+        println!(
+            "dragonfruit-compositor: material stats ({label}): \
+             backdrop_passes={} backdrop_skipped={}",
+            self.material_pass.applications(),
+            self.material_pass.skipped(),
         );
         // Frame-time trace (T-11 U-2 / FR-8): the summary is always emitted;
         // the full per-frame trace is opt-in so the exit log stays readable.

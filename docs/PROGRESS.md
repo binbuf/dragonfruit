@@ -23,7 +23,8 @@
 - **T15 — T-03.1b Latency instrument and direct-scanout template**: **State: done.** The input-to-photon latency instrument is real and the; **nested latency**: n=50, min=3501 us, median=13878 us, p95=15223 us,
 - **T16 — T-04.1a Real shadows**: **State: done.** Elevation-token shadows exist on both sides of the process; **Tokens** — new `component.elevation.{low,med,high,overlay}` in
 - **T17 — T-04.1b Rounded-corner clipping**: **State: done.** Rounded corners are a token-derived geometry mask on the; **`compositor/src/window/corner.rs`** (new) — `CornerMask`
-- **Follow-ups**: T-04.2 (next): blur under the same surfaces. Reuse `CornerMask` for the blur; T-04.3: fold `CornerMask` into the reusable scale/translate/**clip** pass to
+- **T18 — T-04.2 Backdrop blur pass**: **State: done.** The chrome material pass exists and is token-driven, applied; **`compositor/src/window/backdrop.rs`** (new) — `MaterialRole`
+- **Follow-ups**: T-04.3 (next): fold the backdrop pass into the reusable scale/translate/; T-04.2 follow-up: replace the flat-tone backdrop with a **real
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -1186,15 +1187,75 @@ Gotchas for later tasks:
 - The titlebar fill is now multiple elements (spans); tests that assumed a
   single backmost fill element were updated (`titlebar_fill_count`).
 
+## T18 — T-04.2 Backdrop blur pass
+
+**State: done.** The chrome material pass exists and is token-driven, applied
+at most once per `(frame, output)` on the real backends. The blur itself is a
+**flat-tone approximation** — a stack of translucent rounded feather layers
+drawn below the chrome Wayland surface — not a texture-sampling gaussian; the
+flat solid-color renderer has no sampler/offscreen path yet. Same
+approximation status as the T-04.1a shadow; the real sampler is swappable
+behind the tokens the pass already reads. ADR 0013 is the contract.
+
+What landed:
+
+- **`compositor/src/window/backdrop.rs`** (new) — `MaterialRole`
+  (`Chrome`/`Popup` from `df_shell.layer`), `BackdropSpec` (per-scheme
+  `material.{chrome,popup}Blur`/`Opacity` + `component.{menu_bar,popup}.radius`),
+  `backdrop_layers`/`backdrop_bounds`/`backdrop_elements` (rounded via
+  `CornerMask`), and `BackdropPass` (once-per-`(frame, output)` guard with
+  `applications`/`skipped`/`damage`). 8 unit tests.
+- **`compositor/src/render.rs`** — `chrome_backdrop_render_elements(state,
+  output, scale)`: union of the top/overlay chrome bands (output-local logical)
+  is the pass damage; emits the frosted elements.
+- **`compositor/src/state.rs`** — `DfState.material_pass`, `render_serial`,
+  `begin_render_frame()`; `dump_stats` prints
+  `material stats: backdrop_passes=… backdrop_skipped=…` (`skipped` must stay 0).
+- **`compositor/src/shell/mod.rs`** — `ChromeSurface.geometry` (output-local
+  logical rect; `location` unchanged).
+- **`backend/nested.rs`** — `begin_render_frame()` + backdrop elements appended
+  after `chrome_render_elements` (below chrome, above windows).
+  **`backend/drm.rs`** — same wiring, untested (no hardware); that rail's
+  pre-existing window-before-chrome order is noted inline.
+- **Docs** — ADR `0013-backdrop-blur-pass.md`; `02-compositor.md` "Backdrop
+  blur pass (T-04.2)"; `10-design-system.md` material note.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `cargo test -p dragonfruit-compositor` — 205 bin unit tests + all suites
+  green. Direct cargo needs
+  `PKG_CONFIG_PATH=~/.local/df-devroot/lib64/pkgconfig` and
+  `RUSTFLAGS=-L ~/.local/df-devroot/lib64`.
+- `make e2e`; `make qml-test` (15/15); `make clippy`; `make fmt-check`;
+  `make check-tokens`; `make check-design-tokens` — green.
+- `./scripts/check-gallery-snapshots.py --strict` — 66/66 (QML untouched).
+
+Gotchas for later tasks:
+
+- **Tokens only** for blur/opacity/radius. ADR 0013 is the contract.
+- The backdrop is **not a live-scene sample**: the legacy FR-1 "video under the
+  bar keeps updating" bar needs a real sampler that replaces `backdrop_layers`;
+  keep the `BackdropPass` contract.
+- `BackdropPass` keys on `(render_serial, output)`; every new backend/render
+  path must call `DfState::begin_render_frame()` once per rendered frame.
+- Element order: backdrop goes **after** chrome surfaces and **before** the
+  windows in the front-to-back list.
+- Feather layers never extend past the chrome band (asserted); the pass never
+  forces a redraw, so idle stays zero-damage (`shell_idle_trace` green).
+
 ## Follow-ups
 
-- T-04.2 (next): blur under the same surfaces. Reuse `CornerMask` for the blur
-  region; the shadow already covers the whole decorated rect (`WindowInsets::
-  outset`) and the titlebar the same top strip. Do not re-derive a radius.
-- T-04.3: fold `CornerMask` into the reusable scale/translate/**clip** pass to
-  round third-party client surfaces (the one rounding gap left by T-04.1b).
-- T-04.2: chrome surfaces (menu bar, Dock, popovers, OSD) still get no
-  compositor shadow/blur; they rely on QML `Shadow`. The shared
+- T-04.3 (next): fold the backdrop pass into the reusable scale/translate/
+  **clip** pass; `BackdropPass` and `MaterialRole` are the seam. Round
+  third-party client surfaces with `CornerMask` (the clipping gap T-04.1b left).
+- T-04.2 follow-up: replace the flat-tone backdrop with a **real
+  texture-sampling blur** (Kawase vs dual-pass Gaussian) behind the same
+  tokens; the legacy FR-1 live-content test (video under the bar) needs it.
+- T-04.4a: the degrade tier should drop feather layers / turn the backdrop off
+  under budget pressure; `BackdropSpec.layers` and `BackdropPass.skipped` are
+  the knobs, and `material stats` is the instrument.
+- T-04.1a/2: chrome surfaces (menu bar, Dock, popovers, OSD) still get no
+  compositor shadow; they rely on QML `Shadow`. The shared
   `component.elevation` group is ready for the compositor chrome pass and for
   the `Overlay` level.
 - T-04.4a: the degrade tier should be able to drop to fewer shadow layers /

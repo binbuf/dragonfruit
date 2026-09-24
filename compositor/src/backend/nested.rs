@@ -186,6 +186,9 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
         return Ok(());
     }
     state.needs_redraw = false;
+    // Open this frame's material pass, so the chrome backdrop is applied at
+    // most once per output (T-04.2).
+    state.begin_render_frame();
 
     let Some(output) = state.space.outputs().next().cloned() else {
         return Ok(());
@@ -200,6 +203,14 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
             // client surface (T-01.1).
             let mut custom_elements: Vec<NestedOutputElements<GlowRenderer>> =
                 crate::render::chrome_render_elements(renderer, state, &output, scale);
+            // Backdrop blur under the chrome (T-04.2): appended after the
+            // chrome surfaces so it composites below them and in front of the
+            // windows it stands in for.
+            custom_elements.extend(
+                crate::render::chrome_backdrop_render_elements(state, &output, scale)
+                    .into_iter()
+                    .map(NestedOutputElements::Decoration),
+            );
             custom_elements.extend(
                 crate::render::titlebar_render_elements(state, &output, scale)
                     .into_iter()
