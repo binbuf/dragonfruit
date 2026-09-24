@@ -35,7 +35,7 @@ endif
 .DEFAULT_GOAL := help
 .PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test \
         visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev demo soak e2e \
-        idle-trace check-desktop-names check-no-capture-grab check-design-tokens clean
+        idle-trace latency-trace check-desktop-names check-no-capture-grab check-design-tokens clean
 
 help:
 	@echo "Dragonfruit build targets:"
@@ -43,6 +43,7 @@ help:
 	@echo "  make test     — run all tests (cargo + ctest + gallery visual regression)"
 	@echo "  make e2e      — T-01…T-07 Foundation vertical-slice + conformance suites"
 	@echo "  make idle-trace — T-03.1a 60 s idle/animation frame budget trace"
+	@echo "  make latency-trace — T-03.1b nested input-to-photon latency capture"
 	@echo "  make demo     — T-01 loop demo (nested; headless/scripted in CI)"
 	@echo "  make lint     — fmt --check, clippy, qmllint, token freshness, desktop-name gate"
 	@echo "  make check    — lint + test + teardown soak gate"
@@ -86,6 +87,7 @@ e2e: build
 	    --test shell_protocol_conformance \
 	    --test shell_idle_trace \
 	    --test idle_trace \
+	    --test latency_trace \
 	    --test animation_clock \
 	    --test protocol_surface
 	$(MAKE) demo DEMO_ARGS=--headless
@@ -97,6 +99,12 @@ e2e: build
 idle-trace: cargo-build
 	DF_IDLE_TRACE_SECS=$(IDLE_TRACE_SECS) $(CARGO) test -p dragonfruit-compositor \
 	    --test idle_trace -- --nocapture
+
+# T-03.1b: the nested input-to-photon latency capture. Needs a host Wayland
+# session and the built toolchain tree (`make build`); records the raw samples
+# to docs/captures/t03-latency-nested.txt. `scripts/latency-trace.sh` wraps it.
+latency-trace: cargo-build
+	bash scripts/latency-trace.sh
 
 qml-test:
 	@[ -f $(BUILD_DIR)/build.ninja ] || $(CMAKE) -S . -B $(BUILD_DIR) -G Ninja

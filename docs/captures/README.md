@@ -34,6 +34,13 @@ It is a text artifact, not a recording: the numbers on the `SIGUSR1`
 render-stats line are the budget evidence (T-03.2/T-03.4 add the DRM run and
 the latency capture).
 
+T-03.1b's capture is `t03-latency-nested.txt`, produced by
+`scripts/latency-trace.sh` (`make latency-trace`): it runs the nested demo,
+injects real input over the synthetic-input harness and records the
+input-to-photon latency samples plus an honest pass/fail against one 60 Hz
+frame. Also a text artifact — the direct-scanout counter is the `scanout stats`
+line in the same trace, and T-03.4 fills the DRM half on hardware.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

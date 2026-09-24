@@ -118,6 +118,25 @@ clock's calibration animation runs; `scripts/idle-trace.sh` / `make idle-trace`
 records the 60 s acceptance line. See
 [ADR 0009](adr/0009-idle-trace-instrumentation.md).
 
+#### Input-to-photon latency and direct scanout (T-03.1b)
+
+The same trace carries two more instruments. `instrument::LatencyInstrument`
+measures **input-to-photon latency**: `input::process_input_event` stamps the
+earliest input since the last presented frame, and the presenting backend
+samples the delta at nested `render::post_repaint`, headless
+`render::post_repaint_headless`, or DRM `backend::drm::render_surface`. An
+input older than 250 ms when a frame presents is discarded rather than
+credited, so a no-damage pointer move cannot inflate a later redraw. The
+render-stats line appends `latency_us_last`, `latency_us_max`,
+`latency_samples` and `latency_dropped` after `client_wakeups` (append-only,
+ADR 0009); `scripts/latency-trace.sh` records the nested raw samples with
+`query latency`. `instrument::ScanoutCounter` is the **direct-scanout counter
+template**: a read-only snapshot of `direct_scanouts`/`frames_rendered`/
+`frames_skipped_no_damage` that the DRM rail snapshots before/after a
+condition to prove `direct_scanouts` engages for an unobstructed fullscreen
+client and not otherwise (`scanout stats`, `query scanout`). See
+[ADR 0010](adr/0010-latency-and-scanout-instruments.md).
+
 #### Window lifecycle motion (T-02.1b appear; T-02.2 minimize/restore; T-02.3 zoom/fullscreen; T-02.4a close; T-02.4b interrupt)
 
 A window scales and fades between an *origin* rectangle and its final

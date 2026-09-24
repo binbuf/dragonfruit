@@ -6,7 +6,7 @@
 //! render passes over live surface buffers, never client re-renders
 //! ([02-compositor.md](../docs/design/02-compositor.md)).
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::element::surface::{
@@ -334,6 +334,9 @@ pub fn post_repaint_headless(state: &mut DfState, output: &Output, time: Duratio
     // One frame-callback batch per live window: the idle budget's direct
     // "client wakeups" counter (T-03.1a).
     state.stats.client_wakeups += wakeups;
+    // This is a presented frame (headless's stand-in for the photon): credit
+    // any pending input with its input-to-photon round trip (T-03.1b).
+    state.stats.latency.note_present(Instant::now());
 }
 
 /// Count the live windows composited on `output` — the frames a real backend
@@ -376,4 +379,7 @@ pub fn post_repaint(
     // One frame-callback batch per live window: the idle budget's direct
     // "client wakeups" counter (T-03.1a).
     state.stats.client_wakeups += wakeups;
+    // This frame was presented (nested `submit`): credit any pending input
+    // with its input-to-photon round trip (T-03.1b).
+    state.stats.latency.note_present(Instant::now());
 }

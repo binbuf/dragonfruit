@@ -20,6 +20,7 @@
 - **T12 — T-02.4a Close ghost**: **State: done.** A closing window shrinks/fades out into its app's Dock tile; **`compositor/src/window/motion.rs`** — `WindowMotionKind::Close` (reverse
 - **T13 — T-02.4b Close interruptibility and idle trace**: **State: done.** A live close ghost reverses mid-flight without waiting: a; **`compositor/src/state.rs`** — `close_window` clears keyboard focus when it
 - **T14 — T-03.1a Nested idle trace and animation frame budget**: **State: done.** The idle/animation frame trace is now a real instrument (a; **60.0 s idle window**: `frames_rendered=1` (flat, +0),
+- **T15 — T-03.1b Latency instrument and direct-scanout template**: **State: done.** The input-to-photon latency instrument is real and the; **nested latency**: n=50, min=3501 us, median=13878 us, p95=15223 us,
 - **Follow-ups**: Add the QML import-dir define (`DF_QML_IMPORT_DIR`) to the first-party apps'; T-16: publish `_NET_FRAME_EXTENTS` for Tier-2 X11 windows so clients can
 <!-- symphony:digest:end -->
 
@@ -984,6 +985,65 @@ Gotchas for later tasks:
 - The in-suite idle window is 10 s for speed; the 60 s acceptance is
   `make idle-trace` / `scripts/idle-trace.sh`.
 
+## T15 — T-03.1b Latency instrument and direct-scanout template
+
+**State: done.** The input-to-photon latency instrument is real and the
+direct-scanout counter template is in place. Raw nested numbers from
+`bash scripts/latency-trace.sh` (host Wayland session, nested backend 60 Hz;
+the raw report is committed as `docs/captures/t03-latency-nested.txt`):
+
+- **nested latency**: n=50, min=3501 us, median=13878 us, p95=15223 us,
+  max=15853 us; one 60 Hz frame = 16666 us → **pass** (max under one frame);
+  skipped(no-damage)=0, dropped(stale)=0.
+- **headless** (`compositor/tests/latency_trace.rs`, in `make e2e`): one
+  sample of 102 us from a real Ctrl+Up through the input router, within one
+  frame; `direct_scanouts` flat at 0 and the template's `considered` =
+  rendered + skipped; the instrument is flat while idle.
+
+What landed:
+
+- **`compositor/src/instrument.rs`** (new) — `LatencyInstrument` (earliest
+  input per presented frame, 250 ms stale guard, bounded recent ring,
+  `within_one_frame`, `summary`) and `ScanoutCounter` (template:
+  `read(&RenderStats)`, `advanced_since`, `engaged_since`, `report`); 5 unit
+  tests.
+- **`compositor/src/state.rs`** — `RenderStats.latency`; `dump_stats` appends
+  `latency_us_last`/`latency_us_max`/`latency_samples`/`latency_dropped` to
+  the render-stats line (after `client_wakeups`) and emits `latency stats` +
+  `scanout stats`.
+- **`compositor/src/input.rs`** — every input (except device hotplug) calls
+  `note_input` before routing.
+- **`compositor/src/render.rs`**, **`compositor/src/backend/drm.rs`** — the
+  presenting frame calls `note_present` (nested/headless/DRM).
+- **`compositor/src/input/synthetic.rs`** — `query latency`, `query scanout`.
+- **`compositor/tests/latency_trace.rs`** (new); `Makefile` e2e list +
+  `latency-trace` target; **`scripts/latency-trace.sh`** +
+  **`scripts/latency-probe.py`**.
+- **Docs** — ADR `0010-latency-and-scanout-instruments.md`;
+  `docs/design/02-compositor.md` "Input-to-photon latency and direct scanout
+  (T-03.1b)"; `docs/captures/README.md`.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `cargo test -p dragonfruit-compositor` — 182 bin unit + all suites green
+  (latency_trace 1/1, idle_trace 1/1, window_conformance 22/22).
+- `make e2e`; `make clippy`; `make fmt-check` — green.
+- `LATENCY_SAMPLES=50 bash scripts/latency-trace.sh` — needs a host Wayland
+  session and the built Qt/CMake tree (not CI).
+
+Gotchas for later tasks:
+
+- The render-stats line is **positional, append-only** (ADR 0009); the latency
+  fields are appended after `client_wakeups`. Never reorder or rename.
+- Latency is **input router → presented frame**, not display scanout/vblank.
+  Nested is winit `submit`, DRM is `queue_frame` (still unexercised), headless
+  is a synthetic present.
+- A stale input (>250 ms before a frame) increments `latency_dropped`, not a
+  sample; a rising drop count means inputs are not producing damage.
+- The DRM call site in `backend/drm.rs` is wired but untested (no hardware);
+  T-03.2/T-03.4 confirm the number and the `direct_scanouts` engagement under
+  a fullscreen client.
+
 ## Follow-ups
 
 - Add the QML import-dir define (`DF_QML_IMPORT_DIR`) to the first-party apps'
@@ -1020,9 +1080,13 @@ Gotchas for later tasks:
   `after_workspace_change` should mirror `active_window`/`Unfocused` when it
   drops focus (same Smithay unset gap as close); (c) T-04 composes
   scale/clip/blur onto the same `MotionFrame`.
-- T-03.1b: **append** the input-to-photon latency and direct-scanout fields to
-  the `render stats` line (after `client_wakeups`) and add the scanout
-  template; do not reorder existing fields (ADR 0009).
+- T-03.1b (done in T15): the latency fields are appended after
+  `client_wakeups` and the `ScanoutCounter` template landed (ADR 0010);
+  do not reorder existing fields.
+- T-03.4: fill the DRM half of the template on hardware — record the
+  on-hardware input-to-photon latency (the instrument is backend-agnostic)
+  and prove `direct_scanouts` engages for an unobstructed fullscreen client;
+  state that the measurement stops at `queue_frame`, not vblank.
 - T-03.2/T-03.4: hook `DrmCompositor`'s frame-callback delivery so
   `client_wakeups` is exact on DRM instead of the `count_output_windows`
   upper bound; record the DRM 60 s trace alongside the nested one.
