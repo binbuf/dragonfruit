@@ -16,6 +16,7 @@
 - **T08 — T-02.1a Animation clock and frame discipline**: **State: done.** One shared compositor animation clock exists; the overview's; **`compositor/src/animation.rs`** (new) — `FRAME_INTERVAL` (16 ms),
 - **T09 — T-02.1b Window appear transition**: **State: done.** A newly mapped window scales/fades in from its Dock tile on; **`compositor/src/window/appear.rs`** (new) — `AppearTransition`
 - **T10 — T-02.2 Minimize and restore motion**: **State: done.** Minimize shrinks a window into its Dock entry's tile and; **`compositor/src/window/motion.rs`** (renamed from `appear.rs`) —
+- **T11 — T-02.3 Zoom and fullscreen transitions**: **State: done.** Zoom/unzoom and fullscreen/unfullscreen animate between the; **`compositor/src/window/motion.rs`** — `WindowMotionKind::{Zoom,
 - **Follow-ups**: Add the QML import-dir define (`DF_QML_IMPORT_DIR`) to the first-party apps'; T-16: publish `_NET_FRAME_EXTENTS` for Tier-2 X11 windows so clients can
 <!-- symphony:digest:end -->
 
@@ -723,6 +724,65 @@ Gotchas for later tasks:
   change state mid-motion unless the state machine says so); reuse
   `MotionFrame` and the same clock.
 
+## T11 — T-02.3 Zoom and fullscreen transitions
+
+**State: done.** Zoom/unzoom and fullscreen/unfullscreen animate between the
+old and new geometries on the shared clock; the state change is immediate
+(the window stays mapped and input-correct) and the motion is render-only, so
+a re-entrant request retargets from the current interpolated rect without
+waiting. Reduced motion collapses each to one step.
+
+What landed:
+
+- **`compositor/src/window/motion.rs`** — `WindowMotionKind::{Zoom,
+  Fullscreen}`; `WindowMotionKind::fades()` (false for zoom/fullscreen);
+  `frame()` pins alpha at `1.0` for them; `MotionFrame::scale_for(size)` maps
+  a surface of the given size onto the interpolated `rect`; 4 new unit tests
+  (10 total).
+- **`compositor/src/state.rs`** — `begin_window_motion_from(window, kind,
+  fallback_origin, geometry)` (the explicit-origin variant; a live motion
+  retargets from its current frame). `zoom_window`/`unzoom_window`/
+  `fullscreen_window`/`unfullscreen_window` capture the geometry being left,
+  apply the state change immediately, then start a `Zoom`/`Fullscreen` motion;
+  `*_window_by_id` wrappers for the harness/shell seam.
+- **`compositor/src/render.rs`** — `push_motion_elements` scales client
+  surfaces by `frame.scale_for(window.geometry().size)` (the live buffer
+  size); the target-relative `frame.scale` stays for the SSD titlebar.
+- **Synthetic hooks** — `zoom|unzoom|fullscreen|unfullscreen <window-id>`;
+  `query motion` kinds now include `zoom`/`fullscreen`.
+- **Tests** — `window_conformance.rs`: `zoom_and_unzoom_...`,
+  `fullscreen_and_unfullscreen_...`, `zoom_retargets_mid_flight_without_waiting`,
+  `reduced_motion_zoom_and_fullscreen_take_a_single_frame` (20/20).
+  `SyntheticInput::query_batch` sends `cmd\nquery motion` in one datagram so
+  the just-started motion is observed before the clock's first tick.
+- **Docs** — ADR `0006-zoom-fullscreen-geometry-motion.md`;
+  `docs/design/02-compositor.md` "Window lifecycle motion".
+
+Commands that work (repo root; `make` sets the toolchain env; the direct
+cargo path needs `PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig`
+and `RUSTFLAGS="-L $HOME/.local/df-devroot/lib64"`):
+
+- `cargo test -p dragonfruit-compositor` — 174 bin unit + all suites green.
+- `cargo clippy --workspace --all-targets -- -D warnings`;
+  `cargo fmt --all -- --check` — clean.
+- `make e2e` — green; `make soak SOAK_CYCLES=3` — 3 clean cycles.
+
+Gotchas for later tasks:
+
+- Zoom/fullscreen must stay render-only: never move window state or the model
+  geometry into the tween; the window is at its destination geometry from the
+  first frame (focus/input/configure depend on it).
+- Client surfaces use `MotionFrame::scale_for(current_size)`, not
+  `frame.scale`. T-04's clip/blur pass must compose on the former; the
+  titlebar/other chrome uses `frame.scale`.
+- A fullscreen entry hides the SSD titlebar immediately (the state is
+  Fullscreen); only content geometry animates. Unfullscreen re-shows it at
+  once and shrinks it with the content.
+- Keep new transitions on `begin_window_motion_from`; do not register a second
+  clock driver (`window_motion_driver` already guards this).
+- `reapply_insets` (a runtime decoration-tier change on a zoomed window) still
+  jumps; only explicit zoom/fullscreen transitions animate today.
+
 ## Follow-ups
 
 - Add the QML import-dir define (`DF_QML_IMPORT_DIR`) to the first-party apps'
@@ -734,6 +794,10 @@ Gotchas for later tasks:
   `DfState::reapply_insets`; today only a decoration-tier change reflows.
 - T-04: draw the window-menu labels/icons and the material pass (replaces
   `WindowMenu::render_elements` only; keep the geometry/routing).
+- T-04: compose clip/blur on `MotionFrame::scale_for(current_size)` for client
+  surfaces (not `frame.scale`, which is target-relative and chrome-only).
+- T-04 (or later): animate `DfState::reapply_insets` geometry changes with the
+  same `WindowMotion`; a decoration-tier flip on a zoomed window still jumps.
 - T-14: reuse `WindowMenu`/`WindowMenuCommand` for decoration themes; add the
   current-Space check glyph to the Move to Space submenu.
 - T-01.6b (done in T07): the nested window-menu/walkthrough capture landed as

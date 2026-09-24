@@ -72,10 +72,11 @@ where
 /// This is the per-window replacement for the window half of
 /// `smithay::desktop::space::render_output`: it walks the [`Space`] in the
 /// same front-to-back order and resolves the same locations/scale, but wraps
-/// a window that is mid-appear/restore in a `Rescale`+`Relocate` pair and
-/// fades it through the surface-tree alpha, so the window scales/fades from
-/// its origin. A window with no in-flight motion produces byte-identical
-/// elements to the space path.
+/// a window that is mid-appear/restore/zoom/fullscreen in a
+/// `Rescale`+`Relocate` pair and fades it through the surface-tree alpha when
+/// the motion has a fade, so the window scales/fades from its origin. A window
+/// with no in-flight motion produces byte-identical elements to the space
+/// path.
 ///
 /// A **minimizing** window is unmapped from the `Space` (input-inert) but its
 /// surface is held as a ghost until the motion completes; those are rendered
@@ -177,6 +178,14 @@ fn push_motion_elements<R, E>(
 {
     // Fade through the surface-tree alpha, then scale about the window's
     // physical target origin and translate to the interpolated rect.
+    //
+    // The scale is relative to the surface's *current* size rather than the
+    // motion target: appear/minimize draw a buffer already at the target size
+    // (so the two are equal), while a zoom/fullscreen resizes the client
+    // mid-flight and each committed buffer must map onto the interpolated
+    // rect for the geometry to stay continuous.
+    let surface_size = window.geometry().size;
+    let surface_scale = frame.scale_for(surface_size);
     let fade = window.render_elements::<WaylandSurfaceRenderElement<R>>(
         renderer,
         location_phys,
@@ -184,7 +193,7 @@ fn push_motion_elements<R, E>(
         frame.alpha,
     );
     for element in fade {
-        let scaled = RescaleRenderElement::from_element(element, location_phys, frame.scale);
+        let scaled = RescaleRenderElement::from_element(element, location_phys, surface_scale);
         let relocated = RelocateRenderElement::from_element(
             scaled,
             frame.offset.to_physical_precise_round(scale),

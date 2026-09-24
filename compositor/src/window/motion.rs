@@ -1,23 +1,29 @@
 // SPDX-License-Identifier: MIT
-//! The window lifecycle motion (T-02.1b appear; T-02.2 minimize/restore).
+//! The window lifecycle motion (T-02.1b appear; T-02.2 minimize/restore;
+//! T-02.3 zoom/fullscreen).
 //!
 //! A window scales and fades between an *origin* rectangle and its final
-//! geometry. The origin is the owning Dock entry's tile geometry when the
-//! shell supplied one over the private protocol
+//! geometry. For the launch motions the origin is the owning Dock entry's
+//! tile geometry when the shell supplied one over the private protocol
 //! (`df_toplevel_manager.set_launch_origin`), and a centered, slightly shrunk
 //! copy of the target otherwise — the headless/no-shell degradation the T-02
-//! design requires.
+//! design requires. For zoom/fullscreen the origin is the geometry the window
+//! occupied *before* the state change.
 //!
-//! Three motions share this one type:
+//! Five motions share this one type:
 //!
 //! * **appear** — a newly mapped window grows/fades in from the origin;
 //! * **restore** — a minimized window grows back out of the origin;
-//! * **minimize** — a visible window shrinks/fades into the origin.
+//! * **minimize** — a visible window shrinks/fades into the origin;
+//! * **zoom** — a floating window grows into / out of the usable area;
+//! * **fullscreen** — a window grows into / out of the fullscreen geometry.
 //!
 //! Appear and restore are the same interpolation (origin → target, alpha
-//! `0 → 1`); minimize is its reverse (target → origin, alpha `1 → 0`). Only
-//! the direction differs, so one [`MotionFrame`] carries the render transform
-//! for all three and the render layer needs no second effect path.
+//! `0 → 1`); minimize is its reverse (target → origin, alpha `1 → 0`).
+//! Zoom and fullscreen interpolate geometry with **alpha fixed at 1.0**: the
+//! window is visible at both ends, so there is nothing to fade. One
+//! [`MotionFrame`] carries the render transform for all five and the render
+//! layer needs no second effect path.
 //!
 //! The transition is pure timing plus geometry: it lives in the window model
 //! ([`WindowModel`](super::WindowModel)) and is stepped by the shared
@@ -31,7 +37,7 @@
 //! `dock.minimizedAnimation=none` is exactly the reduced-motion behavior
 //! (the states still change; only the motion collapses).
 
-use smithay::utils::{Logical, Point, Rectangle, Scale};
+use smithay::utils::{Logical, Point, Rectangle, Scale, Size};
 
 use crate::animation::Tween;
 use crate::design_tokens::{motion, Motion};
@@ -51,6 +57,10 @@ pub enum WindowMotionKind {
     Minimize,
     /// A minimized window fades/scales back out of the origin.
     Restore,
+    /// A floating window grows into (or shrinks out of) its zoomed geometry.
+    Zoom,
+    /// A window grows into (or shrinks out of) its fullscreen geometry.
+    Fullscreen,
 }
 
 impl WindowMotionKind {
@@ -60,6 +70,8 @@ impl WindowMotionKind {
             WindowMotionKind::Appear => "appear",
             WindowMotionKind::Minimize => "minimize",
             WindowMotionKind::Restore => "restore",
+            WindowMotionKind::Zoom => "zoom",
+            WindowMotionKind::Fullscreen => "fullscreen",
         }
     }
 
@@ -68,13 +80,24 @@ impl WindowMotionKind {
         matches!(self, WindowMotionKind::Minimize)
     }
 
+    /// Whether the motion fades the window at either end.
+    ///
+    /// Appear/restore fade in and minimize fades out; zoom/fullscreen are
+    /// visible at both ends, so they interpolate geometry with alpha `1.0`.
+    pub const fn fades(self) -> bool {
+        !matches!(self, WindowMotionKind::Zoom | WindowMotionKind::Fullscreen)
+    }
+
     /// The design-system motion token this kind is timed with. Minimize
-    /// shrinks out on the close curve; appear/restore grow in on the open
-    /// curve.
+    /// shrinks out on the close curve; every other motion grows/retargets on
+    /// the open curve.
     const fn token(self) -> Motion {
         match self {
             WindowMotionKind::Minimize => motion::WINDOW_CLOSE,
-            WindowMotionKind::Appear | WindowMotionKind::Restore => motion::WINDOW_OPEN,
+            WindowMotionKind::Appear
+            | WindowMotionKind::Restore
+            | WindowMotionKind::Zoom
+            | WindowMotionKind::Fullscreen => motion::WINDOW_OPEN,
         }
     }
 }
@@ -109,12 +132,30 @@ pub struct WindowMotion {
 pub struct MotionFrame {
     /// The interpolated rectangle at this frame.
     pub rect: Rectangle<i32, Logical>,
-    /// Non-uniform scale relative to the target.
+    /// Non-uniform scale relative to the target (the reference rectangle for
+    /// chrome, whose natural size is always the target).
     pub scale: Scale<f64>,
     /// Translation from the target's top-left, in logical pixels.
     pub offset: Point<i32, Logical>,
     /// Opacity in `0.0..=1.0` (the premultiplied fade).
     pub alpha: f32,
+}
+
+impl MotionFrame {
+    /// The non-uniform scale that maps a surface of `size` onto this frame's
+    /// interpolated [`Self::rect`].
+    ///
+    /// Appear/restore/minimize draw a surface already committed at the
+    /// motion's target size, so this equals [`Self::scale`]. A zoom or
+    /// fullscreen transition resizes the client mid-flight, so each committed
+    /// buffer is scaled to the interpolated rect instead; the geometry stays
+    /// continuous even though the surface's intrinsic size changes under it.
+    pub fn scale_for(&self, size: Size<i32, Logical>) -> Scale<f64> {
+        Scale::from((
+            f64::from(self.rect.size.w) / f64::from(size.w.max(1)),
+            f64::from(self.rect.size.h) / f64::from(size.h.max(1)),
+        ))
+    }
 }
 
 impl WindowMotion {
@@ -184,8 +225,11 @@ impl WindowMotion {
         let t = self.progress(now_ms);
         let (start, end, alpha) = if self.kind.is_reversing() {
             (self.target, self.origin, 1.0 - t)
-        } else {
+        } else if self.kind.fades() {
             (self.origin, self.target, t)
+        } else {
+            // Zoom/fullscreen are visible at both ends: geometry only.
+            (self.origin, self.target, 1.0)
         };
         let lerp =
             |a: i32, b: i32| (f64::from(a) + (f64::from(b) - f64::from(a)) * t).round() as i32;
@@ -337,5 +381,103 @@ mod tests {
         let frame = transition.frame(1000);
         assert_eq!(frame.rect, tile);
         assert_eq!(frame.alpha, 0.0);
+    }
+
+    #[test]
+    fn zoom_interpolates_geometries_without_fading() {
+        let floating = rect(100, 120, 200, 150);
+        let zoomed = rect(0, 0, 1280, 680);
+        let transition = WindowMotion::new(WindowMotionKind::Zoom, floating, zoomed, 0, false);
+
+        // At t=0 the window is still at its floating geometry, fully opaque.
+        // The target-relative scale (used by the compositor-drawn chrome)
+        // starts at the origin/target ratio and grows to 1.0.
+        let start = transition.frame(0);
+        assert_eq!(start.rect, floating);
+        assert_eq!(start.alpha, 1.0, "a zoom never fades");
+        let expected_start = Scale::from((
+            f64::from(floating.size.w) / f64::from(zoomed.size.w),
+            f64::from(floating.size.h) / f64::from(zoomed.size.h),
+        ));
+        assert_eq!(start.scale, expected_start);
+        assert_eq!(
+            start.offset,
+            Point::from((floating.loc.x - zoomed.loc.x, floating.loc.y - zoomed.loc.y))
+        );
+
+        // At the end it is exactly the zoomed geometry.
+        let end_ms = motion::WINDOW_OPEN.duration_ms as u64;
+        let end = transition.frame(end_ms);
+        assert_eq!(end.rect, zoomed);
+        assert_eq!(end.alpha, 1.0);
+        assert_eq!(end.scale, Scale::from((1.0, 1.0)));
+        assert_eq!(end.offset, Point::from((0, 0)));
+        assert!(transition.is_done(end_ms));
+
+        // Mid-flight the rect is strictly between the two (the translate and
+        // scale the renderer draws), still opaque.
+        let mid = transition.frame(end_ms / 2);
+        assert!(mid.rect.size.w > floating.size.w && mid.rect.size.w < zoomed.size.w);
+        assert_eq!(mid.alpha, 1.0);
+        assert!(mid.scale.x > 0.0 && mid.scale.x < 1.0);
+    }
+
+    #[test]
+    fn zoom_unzoom_runs_target_to_origin() {
+        // An unzoom is a zoom whose origin is the zoomed geometry.
+        let floating = rect(100, 120, 200, 150);
+        let zoomed = rect(0, 0, 1280, 680);
+        let transition = WindowMotion::new(WindowMotionKind::Zoom, zoomed, floating, 0, false);
+
+        let start = transition.frame(0);
+        assert_eq!(start.rect, zoomed);
+        assert_eq!(start.alpha, 1.0);
+        let end_ms = motion::WINDOW_OPEN.duration_ms as u64;
+        assert_eq!(transition.frame(end_ms).rect, floating);
+        let mid = transition.frame(end_ms / 2);
+        assert!(mid.rect.size.w < zoomed.size.w && mid.rect.size.w > floating.size.w);
+    }
+
+    #[test]
+    fn fullscreen_motion_is_geometry_only_and_reduced_motion_is_one_frame() {
+        let floating = rect(100, 120, 200, 150);
+        let fullscreen = rect(0, 0, 1280, 720);
+        let transition =
+            WindowMotion::new(WindowMotionKind::Fullscreen, floating, fullscreen, 0, false);
+        assert_eq!(transition.frame(0).alpha, 1.0);
+        let end_ms = motion::WINDOW_OPEN.duration_ms as u64;
+        assert_eq!(transition.frame(end_ms).rect, fullscreen);
+
+        let reduced = WindowMotion::new(
+            WindowMotionKind::Fullscreen,
+            floating,
+            fullscreen,
+            1000,
+            true,
+        );
+        assert!(reduced.is_done(1000));
+        assert_eq!(reduced.frame(1000).rect, fullscreen);
+        assert_eq!(reduced.frame(1000).alpha, 1.0);
+    }
+
+    #[test]
+    fn surface_scale_maps_each_buffer_size_onto_the_interpolated_rect() {
+        let floating = rect(100, 120, 200, 150);
+        let zoomed = rect(0, 0, 1280, 680);
+        let transition = WindowMotion::new(WindowMotionKind::Zoom, floating, zoomed, 0, false);
+        let end_ms = motion::WINDOW_OPEN.duration_ms as u64;
+        let mid = transition.frame(end_ms / 2);
+
+        // A surface already at the target size uses the target-relative scale.
+        assert_eq!(mid.scale_for(zoomed.size), mid.scale);
+        // A surface still at the old (floating) size is scaled down so that it
+        // exactly fills the interpolated rect, even though the target is
+        // bigger.
+        let scaled = mid.scale_for(floating.size);
+        let rendered_w = (f64::from(floating.size.w) * scaled.x).round() as i32;
+        assert_eq!(rendered_w, mid.rect.size.w);
+        // A degenerate size never divides by zero.
+        let tiny = mid.scale_for(Size::from((0, 0)));
+        assert!(tiny.x.is_finite() && tiny.y.is_finite());
     }
 }
