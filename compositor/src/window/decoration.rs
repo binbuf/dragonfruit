@@ -33,6 +33,7 @@ use crate::design_tokens::{
     component::{titlebar, traffic_lights},
     semantic,
 };
+use crate::window::appear::AppearFrame;
 use crate::window::{DecorationTier, WindowId, WindowState};
 
 /// The logical height of the SSD titlebar, from the design tokens.
@@ -429,6 +430,10 @@ impl TitlebarElement {
     /// physical coordinates, ordered front-to-back (glyphs → lights →
     /// background) as Smithay's damage tracker requires.
     ///
+    /// `appear` carries the window's in-flight appear frame (T-02.1b): the
+    /// titlebar is drawn with the same scale/fade as the client surface, so
+    /// the decoration does not detach from a window that is still scaling in.
+    ///
     /// The lights are rasterized as circles (stacks of solid strips); the
     /// chrome itself is still a flat square fill. T-04 replaces both with the
     /// material pass (translucency, blur, rounding) while keeping the geometry
@@ -437,6 +442,7 @@ impl TitlebarElement {
         &self,
         scale: Scale<f64>,
         output_origin: Point<i32, Logical>,
+        appear: Option<AppearFrame>,
     ) -> Vec<SolidColorRenderElement> {
         let mut elements = Vec::new();
         let origin = output_origin;
@@ -447,8 +453,36 @@ impl TitlebarElement {
                 rect.size,
             )
         };
+        // Track the scale/fade of the appear transform on the titlebar rects
+        // (the rects are already relative to the window's target geometry).
+        let target = self.content;
+        let transform = |rect: Rectangle<i32, Logical>,
+                         color: Color32F|
+         -> (Rectangle<i32, Logical>, Color32F) {
+            match appear {
+                Some(frame) => {
+                    let rel = rect.loc - target.loc;
+                    let scaled_loc = frame.rect.loc
+                        + Point::from((
+                            (f64::from(rel.x) * frame.scale.x).round() as i32,
+                            (f64::from(rel.y) * frame.scale.y).round() as i32,
+                        ));
+                    let scaled_size = (f64::from(rect.size.w) * frame.scale.x).round() as i32;
+                    let scaled_size_h = (f64::from(rect.size.h) * frame.scale.y).round() as i32;
+                    (
+                        Rectangle::new(
+                            scaled_loc,
+                            (scaled_size.max(1), scaled_size_h.max(1)).into(),
+                        ),
+                        color * frame.alpha,
+                    )
+                }
+                None => (rect, color),
+            }
+        };
 
         let mut push = |rect: Rectangle<i32, Logical>, color: Color32F| {
+            let (rect, color) = transform(rect, color);
             elements.push(SolidColorRenderElement::new(
                 Id::new(),
                 to_physical(local(rect)),
@@ -819,7 +853,7 @@ mod tests {
         let mut titlebar = ssd(rect(0, 40, 200, 150));
         titlebar.hovered = false;
         titlebar.focused = true;
-        let elements = titlebar.render_elements(1.0.into(), Point::from((0, 0)));
+        let elements = titlebar.render_elements(1.0.into(), Point::from((0, 0)), None);
         // 1 background + the light strips, no glyphs while not hovered.
         assert_eq!(elements.len(), 1 + light_strip_count(&titlebar));
     }
@@ -853,10 +887,11 @@ mod tests {
         let unhovered = {
             let mut t = titlebar.clone();
             t.hovered = false;
-            t.render_elements(1.0.into(), Point::from((0, 0))).len()
+            t.render_elements(1.0.into(), Point::from((0, 0)), None)
+                .len()
         };
         let hovered = titlebar
-            .render_elements(1.0.into(), Point::from((0, 0)))
+            .render_elements(1.0.into(), Point::from((0, 0)), None)
             .len();
         assert!(hovered > unhovered, "hover must reveal glyph elements");
     }
@@ -897,7 +932,7 @@ mod tests {
             })
             .sum();
         let total = titlebar
-            .render_elements(1.0.into(), Point::from((0, 0)))
+            .render_elements(1.0.into(), Point::from((0, 0)), None)
             .len();
         assert_eq!(total, 1 + light_strip_count(&titlebar) + glyphs);
     }
@@ -905,8 +940,8 @@ mod tests {
     #[test]
     fn render_elements_are_offset_by_the_output_origin() {
         let titlebar = ssd(rect(100, 200, 200, 150));
-        let local = titlebar.render_elements(1.0.into(), Point::from((0, 0)));
-        let shifted = titlebar.render_elements(1.0.into(), Point::from((100, 200)));
+        let local = titlebar.render_elements(1.0.into(), Point::from((0, 0)), None);
+        let shifted = titlebar.render_elements(1.0.into(), Point::from((100, 200)), None);
         // The background is the last (backmost) element in front-to-back order.
         let local_bg = local.last().expect("background").geometry(1.0.into()).loc;
         let shifted_bg = shifted.last().expect("background").geometry(1.0.into()).loc;
@@ -917,7 +952,7 @@ mod tests {
     #[test]
     fn render_elements_are_front_to_back_with_the_opaque_background_last() {
         let titlebar = ssd(rect(0, 40, 400, 300));
-        let elements = titlebar.render_elements(1.0.into(), Point::from((0, 0)));
+        let elements = titlebar.render_elements(1.0.into(), Point::from((0, 0)), None);
         let background = elements.last().expect("background");
         assert_eq!(
             background.geometry(1.0.into()).size,

@@ -14,6 +14,7 @@
 - **T06 — T-01.6a `make demo` harness**: **State: done.** One `make demo` target builds the tree and runs the T-01 loop; **`Makefile`** — `demo: build` → `cargo run -p dragonfruit-dev -- dev --demo
 - **T07 — T-01.6b Loop integration walkthrough and capture**: **State: done.** The live nested walkthrough of the T-01 loop is scripted and; **`scripts/capture-demo.sh`** (new) + **`scripts/capture-demo-driver.py`**
 - **T08 — T-02.1a Animation clock and frame discipline**: **State: done.** One shared compositor animation clock exists; the overview's; **`compositor/src/animation.rs`** (new) — `FRAME_INTERVAL` (16 ms),
+- **T09 — T-02.1b Window appear transition**: **State: done.** A newly mapped window scales/fades in from its Dock tile on; **`compositor/src/window/appear.rs`** (new) — `AppearTransition`
 - **Follow-ups**: Add the QML import-dir define (`DF_QML_IMPORT_DIR`) to the first-party apps'; T-16: publish `_NET_FRAME_EXTENTS` for Tier-2 X11 windows so clients can
 <!-- symphony:digest:end -->
 
@@ -570,6 +571,78 @@ Gotchas for later tasks:
   register an `Animation<DfState>`; the Dock tile-origin hand-off stays
   additive/optional (centered origin headless).
 
+## T09 — T-02.1b Window appear transition
+
+**State: done.** A newly mapped window scales/fades in from its Dock tile on
+the shared clock; with no shell it degrades to a centered origin; reduced
+motion takes one step through the same commit path.
+
+What landed:
+
+- **`compositor/src/window/appear.rs`** (new) — `AppearTransition`
+  (`new`, `centered_origin`, `progress`, `is_done`, `frame`), `AppearFrame`
+  (`rect`, `scale`, `offset`, `alpha`), `APPEAR_MIN_SCALE = 0.8`; 4 unit
+  tests. A transition carries `frames` and `completed` so the reduced-motion
+  assertion is `frames == 1`.
+- **`compositor/src/window/mod.rs`** — `WindowEntry.appear`;
+  `WindowModel::{set_appear, appear, appear_frame, step_appearances,
+  appearances}`.
+- **`compositor/src/state.rs`** — `pending_appear_origins` (bounded 64,
+  keyed by `app_id`), `set_launch_origin`, private `begin_window_appear`
+  (called from `map_pending_windows`), `window_appear_frame`,
+  `step_window_appearances`. Model geometry and the `Space` location stay
+  the final geometry — the appear is render-only, so input/layout never move.
+- **`compositor/src/render.rs`** — `window_render_elements` replaces the
+  window half of `space::render_output` (same order/locations); an appearing
+  window's surface elements are wrapped in `RescaleRenderElement` +
+  `RelocateRenderElement` and faded through the surface-tree alpha.
+  `titlebar_render_elements` passes the frame to
+  `TitlebarElement::render_elements`, which scales/fades its rects.
+- **`compositor/src/backend/nested.rs`, `backend/drm.rs`** — new `Appear`
+  render-element variant; both render the manual list through their damage
+  tracker (`window_render_elements`), so `space::render_output` is no longer
+  used for windows.
+- **Protocol** — `df_toplevel_manager.set_launch_origin(app_id, x, y, w, h)`
+  (`since=4`, manager 3→4); compositor dispatch + `MANAGER_INTERFACE_VERSION
+  = 4`; `ShellProtocol::setLaunchOrigin` and shell bind at
+  `min(version, 4)`.
+- **Synthetic hooks** — `query appear`, `set reduced-motion on|off`,
+  `set launch-origin <app-id> <x> <y> <w> <h>`.
+- **Tests** — `window_conformance.rs`:
+  `window_appear_plays_from_the_dock_tile_origin_and_commits_the_target`,
+  `reduced_motion_appear_takes_a_single_frame`;
+  `shell_protocol_conformance.rs` manager-version assertion → 4.
+- **Docs** — ADR `0004-window-appear-origin-and-transform.md`;
+  `docs/design/02-compositor.md` "Window appear (T-02.1b)";
+  `docs/private-protocols.md`.
+
+Commands that work (from the repo root; `make` sets the toolchain env):
+
+- `cargo test -p dragonfruit-compositor` — 168 bin unit + all suites green
+  (window_conformance 14/14 incl. the 2 new appear tests;
+  shell_protocol_conformance 32/32).
+- `cargo clippy --workspace --all-targets -- -D warnings`;
+  `cargo fmt --all -- --check`; `make cmake-build` (shell rebuilds with the
+  v4 protocol) — clean.
+- `make e2e` — green; the `--headless` demo logs `animations_started=1
+  animations_completed=1 animation_frames_stepped=10` for the launched
+  window's appear. `make soak SOAK_CYCLES=3` — clean.
+
+Gotchas for later tasks:
+
+- The Dock does **not** call `setLaunchOrigin` yet: the Dock tile rect is not
+  threaded from QML to `ShellController::launchDockAppWithFiles`, and
+  `desktopId` → compositor `app_id` mapping is T-23's resolver. Real launches
+  currently use the centered fallback. Wire it with T-02.2, which needs the
+  same tile lookup.
+- `window_appear_frame` returns `None` once completed; the transform is
+  identity. T-02.2/T-02.4/T-04 should reuse `AppearFrame` and
+  `window_render_elements` rather than add a second effect path.
+- Backends no longer call `space::render_output`; if `space`-owned layers are
+  ever introduced, `window_render_elements` must grow that handling.
+- The appear keys on `app_id`; a window whose `app_id` arrives after mapping
+  gets the centered origin.
+
 ## Follow-ups
 
 - Add the QML import-dir define (`DF_QML_IMPORT_DIR`) to the first-party apps'
@@ -590,3 +663,10 @@ Gotchas for later tasks:
   only today.
 - Per-window scene-element refactor (T-04) still owns the stacked-titlebar /
   menu interleaving limitation.
+- T-02.2/T-10: thread the Dock entry's tile rectangle from QML through
+  `ShellController::launchDockAppWithFiles` to
+  `ShellProtocol::setLaunchOrigin` (needs the T-23 `desktopId`→`app_id`
+  resolver); until then window appear uses the centered fallback.
+- T-02/T-04: reuse `window_render_elements`/`AppearFrame` for minimize,
+  restore, close-ghost, and the material scale/clip/blur instead of adding a
+  parallel effect path.

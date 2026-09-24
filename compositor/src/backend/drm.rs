@@ -34,6 +34,7 @@ use smithay::backend::renderer::element::memory::{
 };
 use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
+use smithay::backend::renderer::element::utils::{RelocateRenderElement, RescaleRenderElement};
 use smithay::backend::renderer::element::{AsRenderElements, Kind};
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::renderer::multigpu::gbm::GbmGlesBackend;
@@ -43,7 +44,6 @@ use smithay::backend::session::libseat::LibSeatSession;
 use smithay::backend::session::{Event as SessionEvent, Session};
 use smithay::backend::udev::{all_gpus, primary_gpu, UdevBackend, UdevEvent};
 use smithay::backend::SwapBuffersError;
-use smithay::desktop::space::space_render_elements;
 use smithay::desktop::space::SpaceRenderElements;
 use smithay::desktop::utils::OutputPresentationFeedback;
 use smithay::desktop::Window;
@@ -88,6 +88,9 @@ render_elements! {
     Chrome=WaylandSurfaceRenderElement<R>,
     // SSD titlebars (T-01.1): flat solid fills, above the window space.
     Decoration=SolidColorRenderElement,
+    // A window mid-appear: scaled about its target and translated from the
+    // Dock tile origin (T-02.1b).
+    Appear=RelocateRenderElement<RescaleRenderElement<WaylandSurfaceRenderElement<R>>>,
 }
 
 render_elements! {
@@ -980,16 +983,14 @@ fn render_surface(
     }
 
     // Scene elements: surface trees of mapped windows (live buffers only —
-    // effects are compositor render passes, never screenshots).
+    // effects are compositor render passes, never screenshots). The appear
+    // transform is applied per window (T-02.1b).
     {
-        let space_elements = space_render_elements::<_, Window, _>(
-            &mut renderer,
-            [&state.space],
-            &surface.output,
-            1.0,
-        )
-        .unwrap_or_default();
-        custom_elements.extend(space_elements.into_iter().map(DrmOutputElements::from));
+        let window_elements = crate::render::window_render_elements::<
+            UdevRenderer<'_>,
+            DrmOutputElements<UdevRenderer<'_>, WaylandSurfaceRenderElement<UdevRenderer<'_>>>,
+        >(&mut renderer, state, &surface.output, scale);
+        custom_elements.extend(window_elements);
     }
 
     // Chrome surfaces (menu bar, overlays) composite above the window space

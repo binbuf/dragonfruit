@@ -24,7 +24,7 @@
 -->
 <protocol name="dragonfruit_toplevel">
 
-  <interface name="df_toplevel_manager" version="3">
+  <interface name="df_toplevel_manager" version="4">
     <description summary="window/workspace/output control for trusted clients">
       The manager is per-client. On bind the compositor replays the current
       scene: it announces every output, workspace, and toplevel, then emits
@@ -168,6 +168,24 @@
         applying the same commit rule (T-11 FR-9). Additive in v3.
       </description>
       <arg name="enabled" type="uint"/>
+    </request>
+
+    <!-- Appended after `set_reduced_motion` so the scanner's `since` stays
+         non-decreasing and every pre-existing message keeps its opcode. -->
+    <request name="set_launch_origin" since="4">
+      <description summary="set the Dock tile a launching app's window appears from">
+        The shell sends the Dock entry's tile rectangle (logical global
+        pixels) when it launches an app, so the compositor's window-appear
+        transition scales and fades from the tile (T-02.1b). Keyed by
+        `app_id` and consumed by the first window of that app; when the shell
+        never sends one (headless, or a non-Dock launch) the compositor falls
+        back to a centered origin. Additive in v4.
+      </description>
+      <arg name="app_id" type="string"/>
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
     </request>
 
     <enum name="hot_corner">

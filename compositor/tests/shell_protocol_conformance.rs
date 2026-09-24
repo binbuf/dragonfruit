@@ -3041,8 +3041,8 @@ fn reduced_motion_request_single_steps_the_overview() {
     );
     let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
     assert_eq!(
-        manager_version, 3,
-        "the manager must advertise the v3 request"
+        manager_version, 4,
+        "the manager must advertise the additive requests through v4"
     );
     let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
     wait_for(

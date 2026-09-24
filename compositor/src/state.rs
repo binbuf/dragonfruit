@@ -84,7 +84,7 @@ use smithay::wayland::xdg_activation::{
     XdgActivationToken, XdgActivationTokenData, XdgActivationHandler, XdgActivationState,
 };
 use smithay::xwayland::XWaylandClientData;
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant};
 
 use crate::animation::{Animation, AnimationClock, Tween, TweenAnimation};
@@ -102,11 +102,11 @@ use crate::window::grab::{MoveGrab, ResizeGrab};
 use crate::window::popup::constrained_popup_geometry;
 use crate::window::resize::SizeConstraints;
 use crate::window::{
-    cascaded_geometry, centered_on, fullscreen_reveal_rect, ColorScheme, DecorationTier,
-    DoubleClickTracker, MenuActivation, MenuKey, MenuKeyOutcome, ReservedZones, ShellWindowEvent,
-    TitlebarDoubleClick, TitlebarElement, TrafficLightKind, WindowDispatch, WindowEvent,
-    WindowEventKind, WindowId, WindowInsets, WindowMenu, WindowMenuCommand, WindowModel,
-    WindowState, CASCADE_STEP,
+    cascaded_geometry, centered_on, fullscreen_reveal_rect, AppearFrame, AppearTransition,
+    ColorScheme, DecorationTier, DoubleClickTracker, MenuActivation, MenuKey, MenuKeyOutcome,
+    ReservedZones, ShellWindowEvent, TitlebarDoubleClick, TitlebarElement, TrafficLightKind,
+    WindowDispatch, WindowEvent, WindowEventKind, WindowId, WindowInsets, WindowMenu,
+    WindowMenuCommand, WindowModel, WindowState, CASCADE_STEP,
 };
 use crate::workspace::WorkspaceModel;
 use crate::xwayland::XwaylandState;
@@ -365,6 +365,11 @@ pub struct DfState {
     /// The shared animation clock: frame interval, reduced-motion policy,
     /// the running-animation set, and the frame counters (T-02.1a).
     pub animation_clock: AnimationClock<DfState>,
+    /// Dock tile geometries the shell handed off for an app that is about to
+    /// map a window (`df_toplevel_manager.set_launch_origin`, T-02.1b). Keyed
+    /// by `app_id`; consumed by the first window of that app, otherwise the
+    /// appear falls back to a centered origin.
+    pub pending_appear_origins: HashMap<String, Rectangle<i32, Logical>>,
 
     // --- private shell protocols (T-07) -------------------------------------
     /// Handshake/trust, chrome surfaces, and the window/workspace/output
@@ -487,6 +492,7 @@ impl DfState {
             hot_corner_timer: None,
             animation_timer: None,
             animation_clock: AnimationClock::new(),
+            pending_appear_origins: HashMap::new(),
             shell,
             stats: RenderStats::new(),
         }
@@ -579,6 +585,9 @@ impl DfState {
                 self.windows
                     .set_decorations(&window, toplevel_decoration_tier(toplevel));
             }
+            // Start the appear transition from the Dock tile the shell handed
+            // off for this app (T-02.1b), or a centered origin.
+            self.begin_window_appear(&window, geometry);
             if let Some(parent) = parent {
                 self.windows.set_parent(&window, &parent);
             }
@@ -1649,6 +1658,66 @@ impl DfState {
             duration_ms,
             [0.0, 0.0, 1.0, 1.0],
         )));
+    }
+
+    // --- window appear transition (T-02.1b) ---------------------------------
+
+    /// Record the Dock tile geometry an app's next window should appear from.
+    ///
+    /// The shell sends this over `df_toplevel_manager.set_launch_origin` when
+    /// the Dock launches an app; it is keyed by `app_id` and consumed by the
+    /// first window of that app. The list is bounded so a launch that never
+    /// maps cannot grow it without bound.
+    pub fn set_launch_origin(&mut self, app_id: &str, origin: Rectangle<i32, Logical>) {
+        const MAX_PENDING: usize = 64;
+        if self.pending_appear_origins.len() >= MAX_PENDING {
+            if let Some(key) = self.pending_appear_origins.keys().next().cloned() {
+                self.pending_appear_origins.remove(&key);
+            }
+        }
+        self.pending_appear_origins
+            .insert(app_id.to_string(), origin);
+    }
+
+    /// Start `window`'s appear transition and arm the shared clock.
+    fn begin_window_appear(&mut self, window: &Window, target: Rectangle<i32, Logical>) {
+        let app_id = self.windows.app_id(window).map(str::to_string);
+        let origin = app_id
+            .as_deref()
+            .and_then(|app| self.pending_appear_origins.remove(app))
+            .unwrap_or_else(|| AppearTransition::centered_origin(target));
+        let reduced = self.animation_clock.reduced_motion();
+        let now = self.now_msec();
+        self.windows
+            .set_appear(window, AppearTransition::new(origin, target, now, reduced));
+        self.start_animation(|state: &mut DfState, now: u64| state.step_window_appearances(now));
+    }
+
+    /// `window`'s live appear render frame, or `None` when the window is not
+    /// appearing (or has completed) (T-02.1b).
+    pub fn window_appear_frame(&self, window: &Window, now_ms: u64) -> Option<AppearFrame> {
+        self.windows.appear_frame(window, now_ms)
+    }
+
+    /// Advance every appear transition one clock frame. Commits the target
+    /// geometry when a transition completes and returns whether any remain
+    /// live (the clock's liveness predicate).
+    pub fn step_window_appearances(&mut self, now_ms: u64) -> bool {
+        let (done, active) = self.windows.step_appearances(now_ms);
+        for window in done {
+            // The render transform is gone once completed; make sure the
+            // scene is at the final geometry (it already is, but this is the
+            // one commit point for the transition).
+            if let Some(geometry) = self.windows.geometry(&window) {
+                if self.window_on_active_space(&window) {
+                    self.space.map_element(window, geometry.loc, false);
+                }
+            }
+        }
+        if active {
+            self.needs_redraw = true;
+        }
+        active
     }
 
     /// Print the render-path counters (FR-2/FR-5 observability).

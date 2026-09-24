@@ -104,6 +104,21 @@ transition reads it when it builds its tween and takes one step through the
 same commit path, never a second "instant" path. See
 [ADR 0003](adr/0003-shared-animation-clock.md).
 
+#### Window appear (T-02.1b)
+
+A newly mapped window scales and fades in from an *origin* rectangle to its
+final geometry on that clock. The origin is the owning Dock entry's tile,
+supplied by the shell over the private protocol
+(`df_toplevel_manager.set_launch_origin`, additive in v4); when the shell
+never sends one — headless, or a non-Dock launch — the compositor degrades to
+a centered origin (the final rect shrunk about its center). The transition
+lives in the window model (`compositor/src/window/appear.rs`) and the render
+layer wraps the window's surface elements (and its SSD titlebar) in a
+scale/relocate pair with a surface alpha fade, so the model geometry stays the
+final one and input never moves. T-04 reuses this per-window transform for
+scale/clip/blur; T-02.2 reuses the origin hand-off for minimize. See
+[ADR 0004](adr/0004-window-appear-origin-and-transform.md).
+
 ## Window model
 
 - **States.** A window is floating, minimized, zoomed, or fullscreen, with

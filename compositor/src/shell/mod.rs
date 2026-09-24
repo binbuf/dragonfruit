@@ -44,10 +44,11 @@ use trust::{Refusal, TrustModel, TrustedRole};
 /// The version of every private interface this compositor implements.
 const INTERFACE_VERSION: u32 = 1;
 
-/// `df_toplevel_manager` is version 3 since `set_reduced_motion` was added
-/// (T-11 U-1); `release_keyboard_focus` was the v2 addition (T-10). The
-/// other interfaces stay at [`INTERFACE_VERSION`].
-const MANAGER_INTERFACE_VERSION: u32 = 3;
+/// `df_toplevel_manager` is version 4 since `set_launch_origin` was added
+/// (T-02.1b); `set_reduced_motion` was the v3 addition (T-11) and
+/// `release_keyboard_focus` the v2 (T-10). The other interfaces stay at
+/// [`INTERFACE_VERSION`].
+const MANAGER_INTERFACE_VERSION: u32 = 4;
 
 /// Error code posted when an untrusted client binds a private global.
 const ERROR_ACCESS_DENIED: u32 = 1;
@@ -1659,6 +1660,21 @@ impl Dispatch<df_toplevel_manager::DfToplevelManager, ()> for DfState {
                 // overview machine; every transition then takes the single
                 // step while keeping the same commit rule (FR-9).
                 state.set_reduced_motion(enabled != 0);
+            }
+            df_toplevel_manager::Request::SetLaunchOrigin {
+                app_id,
+                x,
+                y,
+                width,
+                height,
+            } => {
+                // T-02.1b: the Dock's tile geometry for a launching app. The
+                // appear transition consumes it on the app's first window;
+                // absent, the compositor uses a centered origin.
+                state.set_launch_origin(
+                    &app_id,
+                    Rectangle::new((x, y).into(), (width.max(1), height.max(1)).into()),
+                );
             }
             df_toplevel_manager::Request::Destroy => {}
         }

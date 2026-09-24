@@ -173,7 +173,7 @@ void ShellProtocol::bindTrustedGlobals()
     if (m_managerName) {
         m_manager = static_cast<df_toplevel_manager *>(
             wl_registry_bind(m_registry, m_managerName, &df_toplevel_manager_interface,
-                             std::min(m_managerVersion, 3u)));
+                             std::min(m_managerVersion, 4u)));
         static const df_toplevel_manager_listener managerListener = {
             onManagerOutput,
             onManagerWorkspace,
@@ -778,6 +778,19 @@ void ShellProtocol::setReducedMotion(bool enabled)
     // compositor's transitions take the single-step path. Additive in v3.
     if (m_manager)
         df_toplevel_manager_set_reduced_motion(m_manager, enabled ? 1u : 0u);
+    if (m_display)
+        wl_display_flush(m_display);
+}
+
+void ShellProtocol::setLaunchOrigin(const QString &appId, int x, int y, int width, int height)
+{
+    // T-02.1b: hand the Dock entry's tile rectangle to the compositor so a
+    // launching app's window appears from it. Additive in v4; the compositor
+    // falls back to a centered origin when it never arrives.
+    if (m_manager && m_managerVersion >= 4) {
+        const QByteArray app = appId.toUtf8();
+        df_toplevel_manager_set_launch_origin(m_manager, app.constData(), x, y, width, height);
+    }
     if (m_display)
         wl_display_flush(m_display);
 }

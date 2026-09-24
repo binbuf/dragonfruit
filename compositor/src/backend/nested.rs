@@ -16,10 +16,10 @@ use smithay::backend::egl::EGLDevice;
 use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
+use smithay::backend::renderer::element::utils::{RelocateRenderElement, RescaleRenderElement};
 use smithay::backend::renderer::glow::GlowRenderer;
 use smithay::backend::renderer::{ImportAll, ImportDma, ImportMem, ImportMemWl};
 use smithay::backend::winit::{self, WinitEvent, WinitGraphicsBackend};
-use smithay::desktop::space::render_output;
 use smithay::output::{Mode, PhysicalProperties, Subpixel};
 use smithay::reexports::wayland_protocols::wp::presentation_time::server::wp_presentation_feedback;
 use smithay::render_elements;
@@ -36,6 +36,9 @@ render_elements! {
     pub NestedOutputElements<R> where R: ImportAll + ImportMem + ImportMemWl;
     Chrome=WaylandSurfaceRenderElement<R>,
     Decoration=SolidColorRenderElement,
+    // A window mid-appear: scaled about its target and translated from the
+    // Dock tile origin (T-02.1b).
+    Appear=RelocateRenderElement<RescaleRenderElement<WaylandSurfaceRenderElement<R>>>,
 }
 
 pub fn run(socket_name: &str) -> Result<(), String> {
@@ -207,15 +210,16 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                     .into_iter()
                     .map(NestedOutputElements::Decoration),
             );
-            render_output(
-                &output,
+            // Window surfaces composite below the chrome/titlebar custom
+            // elements; the appear transform is applied per window (T-02.1b).
+            custom_elements.extend(crate::render::window_render_elements(
+                renderer, state, &output, scale,
+            ));
+            data.damage_tracker.render_output(
                 renderer,
                 &mut framebuffer,
-                1.0,
                 age,
-                [&state.space],
                 &custom_elements,
-                &mut data.damage_tracker,
                 state.wallpaper_color_for(&output),
             )
         }
