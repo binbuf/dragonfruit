@@ -18,6 +18,11 @@ t02-lifecycle-motion-reduced.mp4
 ...
 ```
 
+T-01's stills are produced by `scripts/capture-demo.sh`, which drives the live
+nested session over the synthetic-input harness: `t01-loop-v0.png` (the whole
+loop), `-wayland`, `-x11`, `-titlebar`, `-dock`, `-dock-minimized`, `-menu`,
+`-zoomed`, `-minimized`, `-restored`, `-closed`, plus `t01-loop-v0.mp4`.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

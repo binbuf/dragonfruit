@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-//! Synthetic input harness for the headless backend (T-03).
+//! Synthetic input harness for the headless and nested backends (T-03).
 //!
 //! The headless backend has no seat devices, so protocol-level tests that
 //! need input (T-03 shortcuts/gestures/hot corners, T-04 move/resize, the
@@ -7,7 +7,9 @@
 //! real [`InputBackend`] implementation whose events are parsed from a
 //! small line protocol delivered over a `UnixDatagram` socket; the socket
 //! is bound only when `DRAGONFRUIT_SYNTHETIC_INPUT` names a path and only
-//! on the headless backend, so it is test plumbing, not a session feature.
+//! on the headless or nested backend, so it is test plumbing, not a session
+//! feature. On nested it additionally lets the T-01 capture script drive the
+//! live walkthrough (Dock clicks, traffic lights, titlebar menu).
 //!
 //! Events are **libinput-equivalent**: key codes are raw evdev codes
 //! (the backend adds the xkb +8 offset, exactly like libinput/winit),
@@ -964,7 +966,7 @@ fn window_menu_report(state: &DfState) -> String {
 
 /// Bind the synthetic-input socket and insert its event source.
 ///
-/// Only the headless backend calls this, and only when
+/// Only the headless and nested backends call this, and only when
 /// [`ENV_SYNTHETIC_INPUT`] is set; the socket is removed by the caller at
 /// teardown.
 pub fn install(state: &mut DfState, path: &Path) -> Result<(), String> {

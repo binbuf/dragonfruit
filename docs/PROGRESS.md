@@ -12,6 +12,7 @@
 - **T04 — T-01.4 Window menu**: **State: done.** A right/Control-click on the SSD titlebar opens a; **`compositor/src/window/menu.rs`** — `WindowMenu`, `WindowMenuRow`,
 - **T05 — T-01.5 Decoration tier policy and X11 correctness**: **State: done.** The three decoration classes are honored and the X11; **`compositor/src/state.rs`** — new `DfState::set_decoration_tier(window,
 - **T06 — T-01.6a `make demo` harness**: **State: done.** One `make demo` target builds the tree and runs the T-01 loop; **`Makefile`** — `demo: build` → `cargo run -p dragonfruit-dev -- dev --demo
+- **T07 — T-01.6b Loop integration walkthrough and capture**: **State: done.** The live nested walkthrough of the T-01 loop is scripted and; **`scripts/capture-demo.sh`** (new) + **`scripts/capture-demo-driver.py`**
 - **Follow-ups**: Add the QML import-dir define (`DF_QML_IMPORT_DIR`) to the first-party apps'; T-16: publish `_NET_FRAME_EXTENTS` for Tier-2 X11 windows so clients can
 <!-- symphony:digest:end -->
 
@@ -443,6 +444,66 @@ Gotchas for later tasks:
   still directs the human to the Dock. The Dock/menu-bar integration capture is
   T-01.6b.
 
+## T07 — T-01.6b Loop integration walkthrough and capture
+
+**State: done.** The live nested walkthrough of the T-01 loop is scripted and
+captured; the Dock-entry transitions over the shell protocol are asserted
+headlessly.
+
+What landed:
+
+- **`scripts/capture-demo.sh`** (new) + **`scripts/capture-demo-driver.py`**
+  (new) — launch `make demo` nested with the synthetic-input harness bound,
+  drive focus → window menu → zoom → minimize → restore-from-Dock → close
+  through the real input router, screenshot each step with Spectacle, and
+  assemble `docs/captures/t01-loop-v0.mp4`. Not in `make e2e` (needs a host
+  session + Spectacle + ffmpeg + Pillow).
+- **`docs/captures/t01-loop-v0.*`** — `t01-loop-v0.png` (whole loop), plus
+  `-wayland`, `-x11`, `-titlebar`, `-dock`, `-dock-minimized`, `-menu`,
+  `-zoomed`, `-minimized`, `-restored`, `-closed`, and the `.mp4` (~312 KB
+  total).
+- **`compositor/src/backend/nested.rs`** — the nested backend now installs
+  `crate::input::synthetic::install` when `DRAGONFRUIT_SYNTHETIC_INPUT` is
+  set, mirroring headless. Test plumbing; unset in a real session.
+- **`compositor/tests/shell_protocol_conformance.rs`** — new
+  `dock_entry_lifecycle_focus_running_minimize_restore_close`: name
+  (title/app id) → running → focus → minimize → restore → close events
+  (31 → 32 tests).
+- **Docs** — `docs/design/11-session-and-dev-workflow.md` "Capturing the
+  walkthrough"; `docs/captures/README.md` names the stills. No ADR (the
+  synthetic-input harness is existing test plumbing; extending it to nested
+  is not an architecture decision).
+
+Commands that work (from the repo root):
+
+- `bash scripts/capture-demo.sh` → stills + `docs/captures/t01-loop-v0.mp4`;
+  observed states: focus/menu/zoom/minimize/restore/close all took; the
+  window's Dock entry resolved after close.
+- `make e2e`, `cargo test --workspace` (shell_protocol_conformance 32 tests),
+  `make soak SOAK_CYCLES=3`, `make lint`,
+  `cargo clippy --workspace --all-targets -- -D warnings`,
+  `cargo fmt --all -- --check` — all green.
+
+Gotchas for later tasks:
+
+- The synthetic-input socket is a `UnixDatagram`; replies (to `query
+  decorations` / `query window-menu`) go back to the sender's bound path, so
+  a driver must `bind()` its own path and drain `end\n`.
+- The nested output is 1920x1200 and the host window lands at a fixed
+  position; `capture-demo-driver.py` finds it by the Space-0 wallpaper color
+  `(33,13,41)` and crops from there. Re-check that color if the default
+  wallpaper changes.
+- The `dock entry` restore in the live capture is found by diffing the Dock
+  band before/after minimize and clicking the changed blob; it is layout-
+  dependent but resolved deterministically.
+- The capture guest is a *nested* window on the host; a host KWin context
+  menu can occasionally appear if the host pointer sits on the nested window
+  decoration. The step stills crop to the nested output, so it is not in the
+  committed stills.
+- This slice has no motion (T-02), so the clip is the ordered states, not
+  continuous animation. The CSD live still is absent (no CSD client in the
+  demo); the matrix is covered by `window_conformance`.
+
 ## Follow-ups
 
 - Add the QML import-dir define (`DF_QML_IMPORT_DIR`) to the first-party apps'
@@ -456,7 +517,10 @@ Gotchas for later tasks:
   `WindowMenu::render_elements` only; keep the geometry/routing).
 - T-14: reuse `WindowMenu`/`WindowMenuCommand` for decoration themes; add the
   current-Space check glyph to the Move to Space submenu.
-- T-01.6b: the nested walkthrough/capture for the window menu is batched with
-  the loop capture (no capture artifact in this unit).
+- T-01.6b (done in T07): the nested window-menu/walkthrough capture landed as
+  `scripts/capture-demo.sh` + `docs/captures/t01-loop-v0.*`.
+- Capture a live CSD still when a CSD client is available; the demo only
+  launches an SSD Wayland app and an X11 app, so the CSD matrix is headless
+  only today.
 - Per-window scene-element refactor (T-04) still owns the stacked-titlebar /
   menu interleaving limitation.
