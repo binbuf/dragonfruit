@@ -34,6 +34,7 @@
 //! query decorations
 //! query window-menu
 //! set titlebar-double-click zoom|minimize|none
+//! animate-dummy <duration-ms>
 //! ```
 //!
 //! `query decorations` is a read-only introspection aid for the SSD
@@ -50,6 +51,11 @@
 //! `set titlebar-double-click` sets the session's `dock.titlebarDoubleClick`
 //! behavior (T-01.3) so the conformance test can prove the configured
 //! action, not only the default `zoom`.
+//!
+//! `animate-dummy <ms>` starts a scene-free animation on the shared clock
+//! (T-02.1a/T-03.1a) so a headless test can assert the frame discipline:
+//! exactly one compositor frame per animation frame, and a flat counter once
+//! it settles.
 
 use std::os::unix::net::UnixDatagram;
 use std::path::{Path, PathBuf};
@@ -619,6 +625,11 @@ pub enum SyntheticCommand {
     QueryWindowMenu,
     /// Set `dock.titlebarDoubleClick` for the session (T-01.3 test plumbing).
     SetTitlebarDoubleClick(TitlebarDoubleClick),
+    /// Start a scene-free animation on the shared clock (T-02.1a test
+    /// plumbing; the frame-discipline calibration animation).
+    AnimateDummy {
+        duration_ms: u64,
+    },
 }
 
 fn parse_state(token: &str) -> Result<KeyState, String> {
@@ -717,6 +728,13 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
             slot: parse_u32(parts.next().ok_or("touch-up requires a slot")?)?,
         },
         "touch-frame" => SyntheticCommand::TouchFrame,
+        "animate-dummy" => SyntheticCommand::AnimateDummy {
+            duration_ms: parts
+                .next()
+                .ok_or("animate-dummy requires a duration in ms")?
+                .parse()
+                .map_err(|_| "animate-dummy duration must be a non-negative integer".to_string())?,
+        },
         "query" => match parts.next() {
             Some("decorations") => SyntheticCommand::QueryDecorations,
             Some("window-menu") => SyntheticCommand::QueryWindowMenu,
@@ -828,6 +846,10 @@ impl SyntheticCommand {
             SyntheticCommand::SetTitlebarDoubleClick(_) => {
                 unreachable!("set titlebar-double-click is handled by apply_datagram")
             }
+            // A clock command, not an input event.
+            SyntheticCommand::AnimateDummy { .. } => {
+                unreachable!("animate-dummy is handled by apply_datagram")
+            }
         }
     }
 }
@@ -872,6 +894,12 @@ fn apply_datagram_reply(
             }
             Ok(SyntheticCommand::SetTitlebarDoubleClick(mode)) => {
                 state.set_titlebar_double_click(mode);
+                applied += 1;
+            }
+            Ok(SyntheticCommand::AnimateDummy { duration_ms }) => {
+                // The clock arms its own timer; no redraw is requested here,
+                // so the first rendered frame is the first animation frame.
+                state.start_dummy_animation(duration_ms);
                 applied += 1;
             }
             Ok(command) => {
@@ -1067,6 +1095,10 @@ mod tests {
         assert_eq!(
             parse_command("touch-frame").unwrap(),
             SyntheticCommand::TouchFrame
+        );
+        assert_eq!(
+            parse_command("animate-dummy 160").unwrap(),
+            SyntheticCommand::AnimateDummy { duration_ms: 160 }
         );
     }
 

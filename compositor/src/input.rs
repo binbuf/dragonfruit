@@ -52,7 +52,7 @@ pub use shortcuts::{
     AppAccelerator, GrabArbiter, GrabKind, Shortcut, ShortcutEngine, ShortcutOutcome,
 };
 
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use smithay::backend::input::{
     self as backend_input, AbsolutePositionEvent, ButtonState, Device as DeviceTrait, Event,
@@ -755,44 +755,55 @@ fn poll_hot_corner(state: &mut DfState) {
     }
 }
 
-/// Arm the overview animation clock while a discrete trigger's transition is
-/// in flight (T-11). One reusable ~16 ms timer mirrors the Dock's clock; the
-/// callback advances the shared progress pipeline and re-arms until the curve
-/// reaches 1.0, so a keyboard/hot-corner switch translates exactly like a
-/// gesture.
-pub(crate) fn schedule_overview_timer(state: &mut DfState) {
-    if state.overview_timer.is_some() || !state.overview.is_discrete() {
+/// Arm the shared animation clock while any compositor transition is in
+/// flight (T-02.1a). One reusable ~16 ms timer advances the overview's
+/// discrete progress and every registered animation exactly one frame, then
+/// re-arms until nothing is live. When nothing animates the timer is not
+/// armed at all — zero damage, zero client wakeups (FR-2).
+pub(crate) fn schedule_animation_timer(state: &mut DfState) {
+    if state.animation_timer.is_some() || !state.animations_active() {
         return;
     }
-    const FRAME: Duration = Duration::from_millis(16);
-    match state
-        .loop_handle
-        .insert_source(Timer::from_duration(FRAME), |_, _, state| {
-            state.overview_timer = None;
-            poll_overview_animation(state);
+    match state.loop_handle.insert_source(
+        Timer::from_duration(crate::animation::FRAME_INTERVAL),
+        |_, _, state| {
+            state.animation_timer = None;
+            poll_animations(state);
             TimeoutAction::Drop
-        }) {
-        Ok(token) => state.overview_timer = Some(token),
-        Err(err) => eprintln!("dragonfruit-compositor: failed to arm overview timer: {err}"),
+        },
+    ) {
+        Ok(token) => state.animation_timer = Some(token),
+        Err(err) => eprintln!("dragonfruit-compositor: failed to arm animation timer: {err}"),
     }
 }
 
-/// Advance the in-flight discrete overview transition one frame; commit and
-/// stop when the curve completes, otherwise re-arm.
-fn poll_overview_animation(state: &mut DfState) {
+/// Advance every in-flight animation one frame and render exactly one
+/// compositor frame for it.
+///
+/// The overview's discrete transition (keyboard/hot-corner/shell) shares the
+/// pipeline a gesture drives and is advanced here; registered animations
+/// (T-02.1b onward) are advanced through [`DfState::step_animations`]. One
+/// tick always requests exactly one redraw, and the timer re-arms only while
+/// something is still live.
+fn poll_animations(state: &mut DfState) {
     let now = state.now_msec();
-    let outcome = state.overview.advance_discrete(now);
-    for event in outcome.events {
-        state.input_dispatch.progress(event);
+    if state.overview.is_discrete() {
+        let outcome = state.overview.advance_discrete(now);
+        for event in outcome.events {
+            state.input_dispatch.progress(event);
+        }
+        // Translate the live surfaces with the same progress a gesture
+        // produces, then apply a crossed threshold.
+        state.apply_overview_scene();
+        if let Some(commit) = outcome.commit {
+            state.apply_overview_commit(commit);
+        }
     }
-    // Translate the live surfaces with the same progress a gesture produces.
-    state.apply_overview_scene();
-    if let Some(commit) = outcome.commit {
-        state.apply_overview_commit(commit);
-    } else if state.overview.is_discrete() {
-        schedule_overview_timer(state);
-    }
+    state.step_animations(now);
     state.needs_redraw = true;
+    if state.animations_active() {
+        schedule_animation_timer(state);
+    }
 }
 
 /// libinput reports device-normalized coordinates for touch; winit reports

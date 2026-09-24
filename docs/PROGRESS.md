@@ -13,6 +13,7 @@
 - **T05 — T-01.5 Decoration tier policy and X11 correctness**: **State: done.** The three decoration classes are honored and the X11; **`compositor/src/state.rs`** — new `DfState::set_decoration_tier(window,
 - **T06 — T-01.6a `make demo` harness**: **State: done.** One `make demo` target builds the tree and runs the T-01 loop; **`Makefile`** — `demo: build` → `cargo run -p dragonfruit-dev -- dev --demo
 - **T07 — T-01.6b Loop integration walkthrough and capture**: **State: done.** The live nested walkthrough of the T-01 loop is scripted and; **`scripts/capture-demo.sh`** (new) + **`scripts/capture-demo-driver.py`**
+- **T08 — T-02.1a Animation clock and frame discipline**: **State: done.** One shared compositor animation clock exists; the overview's; **`compositor/src/animation.rs`** (new) — `FRAME_INTERVAL` (16 ms),
 - **Follow-ups**: Add the QML import-dir define (`DF_QML_IMPORT_DIR`) to the first-party apps'; T-16: publish `_NET_FRAME_EXTENTS` for Tier-2 X11 windows so clients can
 <!-- symphony:digest:end -->
 
@@ -503,6 +504,71 @@ Gotchas for later tasks:
 - This slice has no motion (T-02), so the clip is the ordered states, not
   continuous animation. The CSD live still is absent (no CSD client in the
   demo); the matrix is covered by `window_conformance`.
+
+## T08 — T-02.1a Animation clock and frame discipline
+
+**State: done.** One shared compositor animation clock exists; the overview's
+discrete slide and registered lifecycle animations run on it, one compositor
+frame per animation frame, zero damage when idle.
+
+What landed:
+
+- **`compositor/src/animation.rs`** (new) — `FRAME_INTERVAL` (16 ms),
+  `ease()` cubic-bezier solver, `Tween` (`new`, `from_motion(start, Motion,
+  reduced_motion)`, `raw_progress`, `progress`, `is_done`, `finish_ms`),
+  `Animation<S>` trait (blanket impl for `FnMut(&mut S, u64) -> bool`),
+  `TweenAnimation`, and `AnimationClock<S>` (running set, reduced-motion
+  flag, `frames_stepped`/`animations_started`/`animations_completed`).
+  6 unit tests.
+- **`compositor/src/state.rs`** — `animation_clock: AnimationClock<DfState>`
+  and a single reusable `animation_timer` replace `overview_timer`;
+  `animations_active()`, `start_animation()`, `step_animations()`,
+  test-only `start_dummy_animation()`; `set_reduced_motion` now writes both
+  the overview machine and the clock; `dump_stats` appends
+  `animation_frames_stepped=` to the render-stats line and emits an
+  `animation stats` line.
+- **`compositor/src/input.rs`** — `schedule_animation_timer` arms the one
+  calloop timer only while `animations_active()`; `poll_animations` advances
+  the overview discrete pipeline and every registered animation once, applies
+  `apply_overview_scene`, applies a commit, requests exactly one redraw, and
+  re-arms. `schedule_overview_timer`/`poll_overview_animation` are gone.
+- **`compositor/src/input/synthetic.rs`** — `animate-dummy <ms>` starts a
+  scene-free `TweenAnimation` (test plumbing).
+- **Tests** — `compositor/tests/animation_clock.rs` (new): 200 ms dummy →
+  `frames_rendered` delta == `animation_frames_stepped` delta (observed +13
+  = +13), both flat after it settles; zero-duration → one step.
+  `idle_trace.rs`/`shell_idle_trace.rs` also assert the animation counter is
+  flat. `Makefile` `e2e` runs `--test animation_clock`.
+- **Docs** — ADR `0003-shared-animation-clock.md`;
+  `docs/design/02-compositor.md` "Animation clock".
+
+Commands that work (from the repo root; `make` sets the toolchain env):
+
+- `cargo test -p dragonfruit-compositor` — 164 bin unit + all suites green
+  (animation_clock 2/2, shell_protocol_conformance 32/32, idle_trace,
+  shell_idle_trace).
+- `cargo clippy --workspace --all-targets -- -D warnings`;
+  `cargo fmt --all -- --check` — clean.
+- `make e2e` — green (includes the new suite).
+
+Gotchas for later tasks:
+
+- Use `DfState::start_animation` to begin a transition and
+  `DfState::animations_active` as the only liveness predicate; never arm a
+  second timer or add a discrete instant path.
+- The clock is stepped via `DfState::step_animations`: it swaps the clock out
+  so an animation may mutate state. Avoid starting an animation from inside
+  another's `advance` (it is absorbed, but keeping the rule avoids relying on
+  it).
+- `Tween::from_motion(..., reduced_motion)` is the reduced-motion hook; the
+  token `reduced_duration_ms` values are all 0 today, so the transition
+  completes on its first step.
+- `frames_rendered` and `animation_frames_stepped` are on the same
+  `SIGUSR1`/exit render-stats line; the added token does not break the
+  existing three-field parse.
+- T-02.1b: store the per-window appear tween in window/scene state and
+  register an `Animation<DfState>`; the Dock tile-origin hand-off stays
+  additive/optional (centered origin headless).
 
 ## Follow-ups
 

@@ -84,6 +84,7 @@ e2e: build
 	    --test shell_protocol_conformance \
 	    --test shell_idle_trace \
 	    --test idle_trace \
+	    --test animation_clock \
 	    --test protocol_surface
 	$(MAKE) demo DEMO_ARGS=--headless
 

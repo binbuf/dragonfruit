@@ -87,6 +87,7 @@ use smithay::xwayland::XWaylandClientData;
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
+use crate::animation::{Animation, AnimationClock, Tween, TweenAnimation};
 use crate::identity::AppResolver;
 use crate::input::constraint::{constraint_geometry, PointerConstraintGrab};
 use crate::input::dispatch::InputDispatch;
@@ -356,10 +357,14 @@ pub struct DfState {
     pub grab_arbiter: GrabArbiter<ClientId>,
     /// Pending hot-corner dwell timer, if armed.
     pub hot_corner_timer: Option<RegistrationToken>,
-    /// Pending overview animation-clock timer, if a discrete trigger's
-    /// transition is in flight (T-11). One reusable timer; the callback
-    /// re-arms it until the curve reaches 1.0.
-    pub overview_timer: Option<RegistrationToken>,
+    /// Pending animation-clock timer, if any animation is in flight
+    /// (T-02.1a). One reusable timer shared by the overview slide and every
+    /// lifecycle transition; the callback advances one frame, renders once,
+    /// and re-arms while [`Self::animations_active`] is true.
+    pub animation_timer: Option<RegistrationToken>,
+    /// The shared animation clock: frame interval, reduced-motion policy,
+    /// the running-animation set, and the frame counters (T-02.1a).
+    pub animation_clock: AnimationClock<DfState>,
 
     // --- private shell protocols (T-07) -------------------------------------
     /// Handshake/trust, chrome surfaces, and the window/workspace/output
@@ -480,7 +485,8 @@ impl DfState {
             input_dispatch: InputDispatch::new(),
             grab_arbiter: GrabArbiter::new(),
             hot_corner_timer: None,
-            overview_timer: None,
+            animation_timer: None,
+            animation_clock: AnimationClock::new(),
             shell,
             stats: RenderStats::new(),
         }
@@ -1595,6 +1601,56 @@ impl DfState {
         Duration::from(self.clock.now()).as_millis() as u64
     }
 
+    // --- shared animation clock (T-02.1a) -----------------------------------
+
+    /// Whether any compositor animation is running. The frame clock is armed
+    /// exactly while this is true, so an idle desktop runs no timer and
+    /// produces no damage (FR-2).
+    pub fn animations_active(&self) -> bool {
+        self.overview.is_discrete() || self.animation_clock.is_active()
+    }
+
+    /// Start a clock-driven animation and arm the frame clock.
+    ///
+    /// Every lifecycle transition (window appear/minimize/zoom/close, the
+    /// overview slide) registers here, so there is one frame clock and one
+    /// "one frame per animation frame" path.
+    pub fn start_animation(&mut self, animation: impl Animation<DfState> + 'static) {
+        self.animation_clock.start(animation);
+        crate::input::schedule_animation_timer(self);
+    }
+
+    /// Advance the clock's registered animations one frame, returning whether
+    /// any remain live.
+    ///
+    /// The clock is swapped out for the call so an animation's `advance` may
+    /// mutate the compositor state; any animation started mid-step is
+    /// absorbed back into the live clock.
+    pub fn step_animations(&mut self, now: u64) -> bool {
+        let mut clock = std::mem::take(&mut self.animation_clock);
+        let active = clock.step(self, now);
+        clock.absorb(&mut self.animation_clock);
+        self.animation_clock = clock;
+        active
+    }
+
+    /// Start the scene-free calibration animation the synthetic harness
+    /// drives (`animate-dummy <ms>`). Test plumbing; a session never calls it.
+    /// Reduced motion collapses it to a single step, as every transition must.
+    pub fn start_dummy_animation(&mut self, duration_ms: u64) {
+        let now = self.now_msec();
+        let duration_ms = if self.animation_clock.reduced_motion() {
+            0
+        } else {
+            duration_ms
+        };
+        self.start_animation(TweenAnimation::new(Tween::new(
+            now,
+            duration_ms,
+            [0.0, 0.0, 1.0, 1.0],
+        )));
+    }
+
     /// Print the render-path counters (FR-2/FR-5 observability).
     ///
     /// Emitted on SIGUSR1 and on clean exit so the idle-trace (FR-2) and
@@ -1602,10 +1658,25 @@ impl DfState {
     pub fn dump_stats(&self, label: &str) {
         println!(
             "dragonfruit-compositor: render stats ({label}): \
-             frames_rendered={} frames_skipped_no_damage={} direct_scanouts={}",
+             frames_rendered={} frames_skipped_no_damage={} direct_scanouts={} \
+             animation_frames_stepped={}",
             self.stats.frames_rendered,
             self.stats.frames_skipped_no_damage,
-            self.stats.direct_scanouts
+            self.stats.direct_scanouts,
+            self.animation_clock.frames_stepped(),
+        );
+        // Animation-clock counters (T-02.1a): `frames_stepped` is the number
+        // of animation frames the clock advanced; while an animation is live
+        // it must equal the render-path frame delta, and while idle it must
+        // stay flat.
+        println!(
+            "dragonfruit-compositor: animation stats ({label}): \
+             frames_stepped={} animations_started={} animations_completed={} \
+             reduced_motion={}",
+            self.animation_clock.frames_stepped(),
+            self.animation_clock.animations_started(),
+            self.animation_clock.animations_completed(),
+            self.animation_clock.reduced_motion(),
         );
         // Frame-time trace (T-11 U-2 / FR-8): the summary is always emitted;
         // the full per-frame trace is opt-in so the exit log stays readable.
@@ -1662,7 +1733,7 @@ impl DfState {
                     // The transition is animated on the compositor clock
                     // (T-11): the timer advances the same pipeline a gesture
                     // would, so keyboard/hot-corner switches slide.
-                    crate::input::schedule_overview_timer(self);
+                    crate::input::schedule_animation_timer(self);
                 }
             }
         } else {
@@ -1727,7 +1798,7 @@ impl DfState {
         if let Some(commit) = outcome.commit {
             self.apply_overview_commit(commit);
         } else if self.overview.is_discrete() {
-            crate::input::schedule_overview_timer(self);
+            crate::input::schedule_animation_timer(self);
         }
         self.needs_redraw = true;
     }
@@ -1743,6 +1814,7 @@ impl DfState {
     /// and the same commit rule, just as a single step.
     pub fn set_reduced_motion(&mut self, reduced: bool) {
         self.overview.set_reduced_motion(reduced);
+        self.animation_clock.set_reduced_motion(reduced);
     }
 
     /// Offset the live window surfaces for an in-flight overview/workspace
