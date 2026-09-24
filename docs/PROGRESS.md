@@ -27,7 +27,8 @@
 - **T19 — T-04.3 Reusable scene-transform pass**: **State: done.** One reusable scene transform exists (scale/translate + optional; **`compositor/src/window/pass.rs`** (new) — `FramePass`: the single shared
 - **T20 — T-04.4a Material degrade tiers and instrumentation**: **State: done.** One ordered material-quality ladder (`Full` → `Reduced` →; **`compositor/src/window/degrade.rs`** (new) — `DegradeTier` (`Full`
 - **T21 — T-04.4b Light/dark, reduced motion, and sign-off package**: **State: done.** One live `ColorScheme` on `DfState` now drives every; **`compositor/src/window/decoration.rs`** — `ColorScheme::name`/`parse`
-- **Follow-ups**: T-04.4b (done in T21): the live scheme is on `DfState` (ADR 0016) and; T-04.3 (done in T19): the reusable `SceneTransform`/`SceneTransformPass`
+- **T22 — T-05.1a Live-surface transform into the grid**: **State: done.** Mission Control now transforms the **live** window surfaces; **`compositor/src/overview/grid.rs`** (new) — `grid_layout` (candidates
+- **Follow-ups**: T-05.1a (done in T22): the live-surface grid landed as a render-time; T-04.4b (done in T21): the live scheme is on `DfState` (ADR 0016) and
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -1442,8 +1443,88 @@ Gotchas for later tasks:
 - Captures are nested-only; CI (`make e2e`) never renders, so the scheme
   conformance test uses `query material` + lifecycle geometry instead of pixels.
 
+## T22 — T-05.1a Live-surface transform into the grid
+
+**State: done.** Mission Control now transforms the **live** window surfaces
+into the documented grid through the reusable T-04 `SceneTransform`/`MotionFrame`
+— never a thumbnail. The transform is render-time only: committed geometry,
+focus, and Space assignment are unchanged (hit-testing ownership is T-05.2).
+ADR 0017 is the contract.
+
+What landed:
+
+- **`compositor/src/overview/grid.rs`** (new) — `grid_layout` (candidates
+  ordered by active Space → strip → recency; near-square columns starting at
+  `ceil(sqrt(n))` and adjusted between `floor`/`ceil(sqrt(n))` toward the
+  output aspect; **one uniform scale** so the largest window fits its cell
+  minus `GRID_MARGIN` (= `component.overview.stripMargin`); centered;
+  non-overlapping), `GridCandidate`/`GridPlacement`/`GridLayout`,
+  `GridPlacement::frame(progress)` (the `MotionFrame` lerp from committed
+  `source` to grid `target`, alpha 1.0), and `MIN_GRID_SCALE` (exposed for the
+  future pager, not enforced). 7 unit tests.
+- **`compositor/src/state.rs`** — `overview_grid_progress` (`None` closed;
+  `p` while opening, `1-p` while closing, `1.0` settled), `grid_candidates`
+  (visible, non-closing, non-fullscreen active-Space windows, recency order),
+  `overview_grid_layout(output) -> Option<(f64, GridLayout)>`,
+  `overview_grid_frame(window)`, and `window_render_frame(window, now)`
+  (grid frame while shown, else lifecycle motion).
+- **`compositor/src/render.rs`** — `window_render_elements`,
+  `window_shadow_render_elements`, and `titlebar_render_elements` all use
+  `state.window_render_frame`, so the client surface, SSD titlebar, and shadow
+  carry the same grid mapping (the T-04.3 one-transform invariant).
+- **`compositor/src/window/mod.rs`** — `WindowModel::window_by_id` (project the
+  recency-ordered grid membership back onto live `Window` handles).
+- **`compositor/src/input/synthetic.rs`** — `query grid` (wire format line
+  added): `grid none`, else `grid progress=<t>` + one `grid output …` and one
+  `grid window <id> <source> <target> <cell>` line per placed live surface,
+  then `end`. The `target` is the **interpolated** frame at the current
+  progress (equals the cell target once settled).
+- **`compositor/tests/window_conformance.rs`** — new
+  `overview_grid_transforms_live_surfaces_into_the_grid`: no grid before the
+  overview; 3 live surfaces; mid-gesture the transform interpolates; settled
+  one uniform scale, centered non-overlapping cells from each committed
+  200x150 rect, all inside the output; the surfaces stay mapped; a second
+  toggle reverses to no grid. (`parse_grid`/`wait_for_grid` helpers.)
+- **Docs** — ADR `0017-overview-grid-render-transform.md`; `02-compositor.md`
+  "Mission Control live-surface grid (T-05.1a)".
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `cargo test -p dragonfruit-compositor` — **231** bin unit tests + all suites
+  green (`window_conformance` now 25/25). Direct cargo needs
+  `PKG_CONFIG_PATH=~/.local/df-devroot/lib64/pkgconfig` and
+  `RUSTFLAGS=-L ~/.local/df-devroot/lib64`.
+- The grid is headless-asserted via `query grid`; no nested capture was added
+  (T-05.1b/T-05.6 own the visual capture and frame budget).
+
+Gotchas for later tasks:
+
+- **Reuse the one transform**: `window_render_frame` is the seam. Do not add a
+  second grid/transform; route T-05.2 hit-testing through
+  `DfState::overview_grid_layout` (transformed on-screen rects) and T-05.3 drag
+  through the same `GridPlacement`.
+- `overview_grid_progress` returns the *effective* grid progress (closing is
+  reversed), so callers do not special-case direction. It is `None` once
+  settled-closed; a settled-open overview is `Some(1.0)`.
+- `grid_candidates` currently includes **only the active Space**; neighbor-Space
+  reveal needs the renderer to draw surfaces that are unmapped from the
+  `Space` and is a later T-05 slice. `GridCandidate::space_index` already
+  models it.
+- Paging at `MIN_GRID_SCALE` and per-output chrome insets are **not** wired;
+  the grid uses the full output geometry and shrinks freely.
+- The renderer is flat solid-color, so the grid is geometry-asserted, not
+  pixel-asserted; `query grid` is the deterministic seam.
+
 ## Follow-ups
 
+- T-05.1a (done in T22): the live-surface grid landed as a render-time
+  transform (ADR 0017). Remaining: (a) T-05.1b keeps a committing client
+  ("video") playing at the scaled target and composes the degrade tier;
+  (b) neighbor-Space reveal — draw the adjacent Spaces' surfaces (unmapped
+  from `Space`) as extra `GridCandidate`s; (c) T-05.2 transfers hit-testing
+  using `overview_grid_layout` rects; (d) T-05.3 drag reuses `GridPlacement`;
+  (e) per-output chrome insets for the grid area; (f) paging at
+  `MIN_GRID_SCALE`.
 - T-04.4b (done in T21): the live scheme is on `DfState` (ADR 0016) and
   `window/degrade.rs` already scales the scheme-resolved spec. Remaining: (a)
   T-08 must mirror `appearance.colorScheme` into `set_color_scheme` (today only

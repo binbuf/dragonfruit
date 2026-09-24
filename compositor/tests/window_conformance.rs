@@ -3614,3 +3614,209 @@ fn material_schemes_select_and_reduced_motion_stays_single_frame() {
         "teardown leak: synthetic-input socket survived"
     );
 }
+
+/// One parsed `grid window` line from `query grid` (T-05.1a): the window id,
+/// the committed source rect, the interpolated render target, and the cell.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct GridWindowReport {
+    window: u64,
+    source: (i32, i32, i32, i32),
+    target: (i32, i32, i32, i32),
+    cell: (i32, i32, i32, i32),
+}
+
+/// The parsed `query grid` reply (T-05.1a).
+#[derive(Debug, Clone, PartialEq)]
+struct GridReport {
+    active: bool,
+    progress: f64,
+    windows: Vec<GridWindowReport>,
+}
+
+/// Parse a `query grid` report (T-05.1a). `grid none` means the overview is
+/// closed; otherwise the first line carries `progress=` and each `grid window`
+/// line is one live surface.
+fn parse_grid(report: &str) -> GridReport {
+    let mut parsed = GridReport {
+        active: false,
+        progress: 0.0,
+        windows: Vec::new(),
+    };
+    for line in report.lines() {
+        let mut parts = line.split_whitespace();
+        if parts.next() != Some("grid") {
+            continue;
+        }
+        match parts.next() {
+            Some("none") => parsed.active = false,
+            Some(token) if token.starts_with("progress=") => {
+                parsed.active = true;
+                parsed.progress = token["progress=".len()..].parse().unwrap_or(0.0);
+            }
+            Some("output") => {}
+            Some("window") => {
+                let Some(window) = parts.next().and_then(|value| value.parse::<u64>().ok()) else {
+                    continue;
+                };
+                let values: Vec<i32> = parts
+                    .filter_map(|value| value.parse::<i32>().ok())
+                    .collect();
+                if values.len() != 12 {
+                    continue;
+                }
+                parsed.windows.push(GridWindowReport {
+                    window,
+                    source: (values[0], values[1], values[2], values[3]),
+                    target: (values[4], values[5], values[6], values[7]),
+                    cell: (values[8], values[9], values[10], values[11]),
+                });
+            }
+            _ => {}
+        }
+    }
+    parsed
+}
+
+/// Poll `query grid` until `pred` holds (T-05.1a).
+#[track_caller]
+fn wait_for_grid(
+    input: &SyntheticInput,
+    timeout: Duration,
+    mut pred: impl FnMut(&GridReport) -> bool,
+) -> GridReport {
+    let deadline = Instant::now() + timeout;
+    loop {
+        let report = parse_grid(&input.query("query grid"));
+        if pred(&report) {
+            return report;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "grid never reached the expected state: {report:?}"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// T-05.1a acceptance: with Mission Control open, the **live** window surfaces
+/// are transformed into the documented grid — one uniform scale, centered in
+/// non-overlapping cells, each mapped from its committed geometry. The
+/// transform interpolates on the shared overview progress and reverses when
+/// the overview closes; the client windows stay mapped throughout (never a
+/// thumbnail).
+#[test]
+fn overview_grid_transforms_live_surfaces_into_the_grid() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path =
+        PathBuf::from(&runtime_dir).join(format!("dragonfruit-grid-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-grid",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (_conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    // Closed: no grid.
+    assert!(
+        !parse_grid(&input.query("query grid")).active,
+        "there must be no grid before Mission Control opens"
+    );
+
+    let mut mapped = Vec::new();
+    for app in [
+        "org.dragonfruit.GridA",
+        "org.dragonfruit.GridB",
+        "org.dragonfruit.GridC",
+    ] {
+        let (surface, _xdg_surface, toplevel, file) =
+            map_toplevel_with_app_id(&mut state, &mut queue, app);
+        mapped.push((surface, toplevel, file));
+    }
+    let decorations = parse_decorations(&input.query("query decorations"));
+    assert_eq!(decorations.len(), 3, "three live surfaces: {decorations:?}");
+
+    // Open Mission Control and catch it mid-transition: the transform is the
+    // interpolated rect, not yet the grid cell.
+    input.send("swipe-begin 4");
+    input.send("swipe-update 0 -100");
+    let mid = wait_for_grid(&input, Duration::from_secs(5), |grid| {
+        grid.active && grid.progress > 0.0 && grid.progress < 1.0 && grid.windows.len() == 3
+    });
+    for window in &mid.windows {
+        assert_ne!(
+            window.target, window.source,
+            "mid-transition the transform interpolates: {window:?}"
+        );
+    }
+    input.send("swipe-update 0 -100");
+    input.send("swipe-end");
+
+    // Settled: three live surfaces placed in the grid at progress 1.
+    let grid = wait_for_grid(&input, Duration::from_secs(5), |grid| {
+        grid.active && (grid.progress - 1.0).abs() < 1e-6 && grid.windows.len() == 3
+    });
+    let sources: Vec<_> = grid.windows.iter().map(|window| window.source).collect();
+    let targets: Vec<_> = grid.windows.iter().map(|window| window.target).collect();
+    let cells: Vec<_> = grid.windows.iter().map(|window| window.cell).collect();
+
+    // Every placement maps the window's committed geometry.
+    for source in &sources {
+        assert_eq!(
+            (source.2, source.3),
+            (WINDOW_W, WINDOW_H),
+            "the source is the live committed rect: {source:?}"
+        );
+    }
+    // One uniform scale: every target has the same size.
+    for target in &targets {
+        assert_eq!(
+            (target.2, target.3),
+            (targets[0].2, targets[0].3),
+            "all windows share one grid scale: {targets:?}"
+        );
+    }
+    // Cells never overlap (no occlusion by construction).
+    for (index, a) in cells.iter().enumerate() {
+        for b in cells.iter().skip(index + 1) {
+            let overlaps = a.0 < b.0 + b.2 && b.0 < a.0 + a.2 && a.1 < b.1 + b.3 && b.1 < a.1 + a.3;
+            assert!(!overlaps, "grid cells must not overlap: {a:?} / {b:?}");
+        }
+    }
+    // Each target is centered in its cell and inside the output (integer
+    // division can leave at most a one-pixel offset).
+    for (target, cell) in targets.iter().zip(&cells) {
+        let center_dx = (target.0 + target.2 / 2) - (cell.0 + cell.2 / 2);
+        let center_dy = (target.1 + target.3 / 2) - (cell.1 + cell.3 / 2);
+        assert!(center_dx.abs() <= 1 && center_dy.abs() <= 1);
+        assert!(
+            target.0 >= 0
+                && target.1 >= 0
+                && target.0 + target.2 <= OUTPUT_W
+                && target.1 + target.3 <= OUTPUT_H,
+            "the grid target stays on the output: {target:?}"
+        );
+    }
+    // The windows are still the three live client surfaces, not thumbnails.
+    assert_eq!(
+        parse_decorations(&input.query("query decorations")).len(),
+        3,
+        "the live surfaces stay mapped in the grid"
+    );
+
+    // Closing reverses: a second toggle returns to the normal scene.
+    input.send("swipe-begin 4");
+    input.send("swipe-update 0 -100");
+    input.send("swipe-update 0 -100");
+    input.send("swipe-end");
+    wait_for_grid(&input, Duration::from_secs(5), |grid| !grid.active);
+
+    for (surface, toplevel, _file) in mapped {
+        surface.destroy();
+        toplevel.destroy();
+    }
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}

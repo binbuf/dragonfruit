@@ -358,6 +358,33 @@ appear at the light scheme and a reduced-motion minimize at dark, asserting the
 same committed geometry, and `scripts/check-gallery-snapshots.py` covers the
 design-system reference for light, dark, and dark+reduced.
 
+### Mission Control live-surface grid (T-05.1a)
+
+Mission Control lays the **real** window surfaces out as a grid, never a
+cascade and never a thumbnail. The layout is pure geometry in
+`compositor/src/overview/grid.rs`: `grid_layout` orders the candidates by
+active-Space-then-strip, most-recently-used first, picks the near-square column
+count (`ceil(sqrt(n))`, adjusted between `floor`/`ceil(sqrt(n))` toward the
+output's aspect ratio), assigns one **uniform scale** so the largest window
+fits its cell minus the token margin, and centers every window in its cell.
+Membership excludes minimized windows (bottom strip) and fullscreen windows
+(dedicated Space card); cells never overlap by construction.
+
+The compositor draws each placement through the T-04 reusable transform — the
+grader is `DfState::overview_grid_frame`, which builds a `MotionFrame` whose
+rect lerps from the window's committed geometry to its grid target by the
+overview progress (`0` normal, `1` grid). `window_render_frame` returns that
+frame while the grid is shown and the lifecycle motion otherwise, so the
+client surface, the SSD titlebar, and the shadow all carry the same mapping
+and the transition is continuous and reversible. The committed geometry, focus,
+and Space assignment are untouched; input ownership transfer is T-05.2.
+`query grid` reports the progress and one line per placed live surface, and the
+headless conformance test asserts the geometry. See
+[ADR 0017](adr/0017-overview-grid-render-transform.md).
+
+Neighbour-Space reveal (transforming the adjacent Spaces' surfaces, which are
+unmapped from the `Space`) and per-output chrome insets are later T-05 slices.
+
 ## Window model
 
 - **States.** A window is floating, minimized, zoomed, or fullscreen, with

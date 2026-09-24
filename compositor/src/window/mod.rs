@@ -234,6 +234,15 @@ impl WindowModel {
         self.entries.get(window).map(|entry| entry.id)
     }
 
+    /// The Smithay window handle for a stable id, if it is still tracked.
+    /// Needed to project the grid's membership (ordered by recency) back onto
+    /// the live surfaces (T-05.1a).
+    pub fn window_by_id(&self, id: WindowId) -> Option<Window> {
+        self.entries
+            .iter()
+            .find_map(|(window, entry)| (entry.id == id).then(|| window.clone()))
+    }
+
     /// The state machine for `window`.
     pub fn machine(&self, window: &Window) -> Option<&WindowStateMachine> {
         self.entries.get(window).map(|entry| &entry.machine)

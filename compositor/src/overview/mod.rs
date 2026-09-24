@@ -24,6 +24,8 @@
 
 #![allow(dead_code)] // Forward-looking API consumed by T-12/T-14/T-16.
 
+pub mod grid;
+
 use crate::input::action::{InputAction, TriggerKind};
 use crate::input::gestures::{ProgressConfig, ProgressEvent, ProgressPipeline};
 use crate::window::WindowId;
