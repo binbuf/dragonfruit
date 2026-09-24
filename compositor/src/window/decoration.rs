@@ -33,6 +33,7 @@ use crate::design_tokens::{
     component::{titlebar, traffic_lights},
     semantic,
 };
+use crate::window::corner::CornerMask;
 use crate::window::motion::MotionFrame;
 use crate::window::{DecorationTier, WindowId, WindowState};
 
@@ -447,9 +448,9 @@ impl TitlebarElement {
     /// scaling in, restoring, or minimizing.
     ///
     /// The lights are rasterized as circles (stacks of solid strips); the
-    /// chrome itself is still a flat square fill. T-04 replaces both with the
-    /// material pass (translucency, blur, rounding) while keeping the geometry
-    /// above.
+    /// chrome is a flat token fill with the top corners clipped to the
+    /// token-derived radius (T-04.1b). T-04.2 adds the material blur on the
+    /// same geometry.
     pub fn render_elements(
         &self,
         scale: Scale<f64>,
@@ -483,7 +484,15 @@ impl TitlebarElement {
 
         // Build back-to-front (background → lights → glyphs); reverse at the
         // end for Smithay's front-to-back element order.
-        push(self.titlebar, color_from_rgba(self.scheme.chrome()));
+        //
+        // The chrome fill is clipped to the token radius on its top corners
+        // (T-04.1b): the same decomposition the QML `TitleBar` produces with a
+        // full-radius rectangle plus a square bottom patch, so the compositor
+        // SSD and the first-party titlebar cannot drift (FR-3). The bottom
+        // edge stays square and joins the content below.
+        for span in CornerMask::titlebar().spans(self.titlebar) {
+            push(span, color_from_rgba(self.scheme.chrome()));
+        }
 
         let reveal = self.revealed();
         for button in &self.buttons {
@@ -868,14 +877,23 @@ mod tests {
             .sum()
     }
 
+    /// The number of solid spans the rounded chrome fill contributes.
+    fn titlebar_fill_count(titlebar: &TitlebarElement) -> usize {
+        CornerMask::titlebar().spans(titlebar.titlebar).len()
+    }
+
     #[test]
     fn idle_titlebar_draws_fill_and_lights_but_no_glyphs() {
         let mut titlebar = ssd(rect(0, 40, 200, 150));
         titlebar.hovered = false;
         titlebar.focused = true;
         let elements = titlebar.render_elements(1.0.into(), Point::from((0, 0)), None);
-        // 1 background + the light strips, no glyphs while not hovered.
-        assert_eq!(elements.len(), 1 + light_strip_count(&titlebar));
+        // The rounded fill spans + the light strips, no glyphs while not
+        // hovered.
+        assert_eq!(
+            elements.len(),
+            titlebar_fill_count(&titlebar) + light_strip_count(&titlebar)
+        );
     }
 
     #[test]
@@ -954,7 +972,10 @@ mod tests {
         let total = titlebar
             .render_elements(1.0.into(), Point::from((0, 0)), None)
             .len();
-        assert_eq!(total, 1 + light_strip_count(&titlebar) + glyphs);
+        assert_eq!(
+            total,
+            titlebar_fill_count(&titlebar) + light_strip_count(&titlebar) + glyphs
+        );
     }
 
     #[test]
@@ -962,28 +983,43 @@ mod tests {
         let titlebar = ssd(rect(100, 200, 200, 150));
         let local = titlebar.render_elements(1.0.into(), Point::from((0, 0)), None);
         let shifted = titlebar.render_elements(1.0.into(), Point::from((100, 200)), None);
-        // The background is the last (backmost) element in front-to-back order.
+        // The fill is the backmost group; its last element is the top rounded
+        // row, inset by the token radius. It moves with the output origin.
         let local_bg = local.last().expect("background").geometry(1.0.into()).loc;
         let shifted_bg = shifted.last().expect("background").geometry(1.0.into()).loc;
-        assert_eq!(local_bg, (100, 160).into());
-        assert_eq!(shifted_bg, (0, -40).into());
+        let inset =
+            CornerMask::titlebar().spans(titlebar.titlebar)[0].loc.x - titlebar.titlebar.loc.x;
+        assert_eq!(local_bg, (100 + inset, 160).into());
+        assert_eq!(shifted_bg, (inset, -40).into());
     }
 
     #[test]
-    fn render_elements_are_front_to_back_with_the_opaque_background_last() {
+    fn render_elements_are_front_to_back_with_the_opaque_fill_last() {
         let titlebar = ssd(rect(0, 40, 400, 300));
         let elements = titlebar.render_elements(1.0.into(), Point::from((0, 0)), None);
-        let background = elements.last().expect("background");
-        assert_eq!(
-            background.geometry(1.0.into()).size,
-            (400, TITLEBAR_HEIGHT).into()
-        );
-        // The lights come first (front) so the opaque titlebar fill, which is
-        // last (back), cannot cull them: an opaque element hides everything
-        // that follows it in Smithay's front-to-back list.
+        let fill = titlebar_fill_count(&titlebar);
+        assert!(fill > 1, "the chrome fill must be a rounded decomposition");
+
+        // The backmost `fill` elements are the chrome, and their union is the
+        // whole titlebar rect (the shape is clipped, not shrunk).
+        let fill_elements = &elements[elements.len() - fill..];
+        let union = fill_elements
+            .iter()
+            .map(|element| element.geometry(1.0.into()))
+            .reduce(|a, b| a.merge(b))
+            .expect("fill");
+        assert_eq!(union, titlebar.titlebar.to_physical_precise_round(1.0));
+        // The top edge is inset on both sides (rounded).
+        let top = fill_elements.last().unwrap().geometry(1.0.into());
+        assert_eq!(top.loc.y, titlebar.titlebar.loc.y);
+        assert!(top.size.w < titlebar.titlebar.size.w);
+
+        // The lights come first (front) so the opaque fill, which is last
+        // (back), cannot cull them: an opaque element hides everything that
+        // follows it in Smithay's front-to-back list.
         let cluster = titlebar.cluster_rect();
         let diameter = traffic_lights::DIAMETER as i32;
-        for light in &elements[..elements.len() - 1] {
+        for light in &elements[..elements.len() - fill] {
             let geo = light.geometry(1.0.into());
             assert_eq!(geo.size.h, 1, "a light strip is one logical pixel tall");
             assert!(geo.size.w <= diameter);

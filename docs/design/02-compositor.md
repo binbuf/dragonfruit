@@ -214,6 +214,31 @@ their window. Rounded corners and a real backdrop blur land in T-04.1b/T-04.2
 on this same geometry; the shadow then becomes one layer of the material pass.
 See [ADR 0011](adr/0011-elevation-shadow-tokens.md).
 
+### Rounded-corner clipping (T-04.1b)
+
+The compositor's flat renderer has no vector rasterizer, so a rounded corner is
+a **token-derived span decomposition**, not a shader:
+`compositor/src/window/corner.rs` turns a `CornerMask` (a radius plus which
+corners round) into non-overlapping horizontal spans. The radii come only from
+the generated tokens — `WINDOW_RADIUS` = `component.window.radius`,
+`TITLEBAR_RADIUS` = `component.titlebar.cornerRadius` — so the compositor and
+the first-party QML `AppWindow`/`TitleBar` round from one source (FR-2/FR-3).
+
+The compositor rounds the surfaces **it draws**: the SSD titlebar fill clips
+its top corners (the bottom edge stays square, joining the content below —
+exactly the QML `TitleBar`'s full-radius rectangle plus square bottom patch),
+and every shadow layer rounds to `window.radius + blur * spread`, the same
+formula as `Shadow.qml`'s per-layer `radius`. `ShadowLayer` carries the radius;
+`ShadowSpec.radius` is the window token.
+
+A third-party client surface's own pixels are **not** split per window here:
+Smithay owns those elements and keys them for presentation feedback, so
+per-window cropping would duplicate ids and risk the frame-callback and
+direct-scanout paths. The reusable scene-transform pass (T-04.3) owns the
+`clip` of live surfaces and consumes the same mask; T-04.2 blurs inside it.
+First-party QML windows already round themselves. See
+[ADR 0012](adr/0012-rounded-corner-mask.md).
+
 ## Window model
 
 - **States.** A window is floating, minimized, zoomed, or fullscreen, with
