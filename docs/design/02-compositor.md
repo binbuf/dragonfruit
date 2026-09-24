@@ -502,6 +502,40 @@ trigger restores. `query reveal` reports the progress and one `reveal window`
 line per live surface (source rect, interpolated target, alpha), the headless
 seam the conformance test asserts.
 
+### Gesture frame budget and capture (T-05.6)
+
+The overview gesture (Mission Control, a progress-driven Space slide, Desktop
+Reveal) is the material track's named frame-budget risk: blur and scale over
+many live surfaces on an iGPU. The T-03 idle/latency instruments measure the
+whole session; `instrument::GestureBudgetTrace` narrows the same render-duration
+data to the frames rendered **while an overview transition is live**, so the
+full gesture can be judged against one 60 Hz frame without the idle session
+polluting the numbers.
+
+`DfState::observe_rendered_frame` is the one timing seam the session loop calls
+per rendered frame: it records the global trace, feeds the T-04.4a degrade
+controller, and — while `overview.is_active()`, `overview_active`, or
+`desktop_revealed` — records the gesture trace; otherwise it finishes the trace
+and keeps its counters for the next query. The trace keeps **render duration**
+(over-budget frames) and **presented interval** (dropped presentations, past
+`1.5 ×` the budget) distinct: a slow-but-caught-up frame is not a dropped
+presentation and a jittery cadence is not a slow frame. `held` is the honest
+verdict — at least one frame and neither kind of miss — and `query gesture` /
+the `gesture budget` stats line report it, plus the live T-04.4a `tier` the
+grid composes at, so a run can show the budget held *because* the material
+degraded. The default budget is `animation::FRAME_INTERVAL` (16 ms), the same
+knob the degrade controller selects against.
+
+The nested capture is `scripts/capture-overview.sh` +
+`scripts/capture-overview-driver.py`; the stills and per-gesture `query gesture`
+samples (plus each session's exit `gesture budget`/`degrade stats`) land in
+`docs/captures/t05-mission-control-live*` and
+`docs/captures/t05-gesture-budget-nested.txt`. On the development iGPU the
+nested gesture records an honest shortfall (`held=0`, a dropped presentation
+and an over-budget frame under load) and the T-04 ladder downgrades to the
+`reduced` tier; the shortfall is recorded, not hidden. `make e2e` and
+`make soak` remain green.
+
 ## Window model
 
 - **States.** A window is floating, minimized, zoomed, or fullscreen, with

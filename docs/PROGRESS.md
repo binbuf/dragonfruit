@@ -33,6 +33,7 @@
 - **T25 — T-05.3 Drag a live representation between Spaces**: **State: done.** Pressing on a live Mission Control representation and dragging; **`compositor/src/overview/grid.rs`** — `GridDrag { window, start, current }`
 - **T26 — T-05.4 Image wallpaper and per-Space slide**: **State: done.** A Space's wallpaper can be an image (`source` + `fit`) decoded; **`compositor/src/wallpaper.rs`** (new) — `sample_wallpaper` (pure
 - **T27 — T-05.5 Desktop Reveal**: **State: done.** Ctrl+Down routes `DesktopReveal` through the one overview; **`compositor/src/overview/reveal.rs`** (new) — `escape_rect` (the off-screen
+- **T28 — T-05.6 Overview frame budget and capture**: **State: done.** The overview gesture now has its own **gesture-scoped** 60 Hz; **`compositor/src/instrument.rs`** — `GestureBudgetTrace`: render-duration
 - **Follow-ups**: T-05.1a (done in T22): the live-surface grid landed as a render-time; T-04.4b (done in T21): the live scheme is on `DfState` (ADR 0016) and
 <!-- symphony:digest:end -->
 
@@ -1827,6 +1828,84 @@ Gotchas for later tasks:
 - Nested capture of the live reveal + gesture frame trace is **T-05.6** (this
   session verified headlessly via `query reveal`).
 
+## T28 — T-05.6 Overview frame budget and capture
+
+**State: done.** The overview gesture now has its own **gesture-scoped** 60 Hz
+frame-budget instrument, fed from the same per-rendered-frame seam as the T-03
+trace and the T-04.4a degrade controller. The nested capture is scripted and
+committed, and the honest shortfall on the dev iGPU is recorded (the T-04
+ladder downgrades the grid material under pressure). `make e2e` and `make soak`
+are green.
+
+What landed (partial work from attempt 3 was already in `06bbd94`; this session
+verified, completed and documented it):
+
+- **`compositor/src/instrument.rs`** — `GestureBudgetTrace`: render-duration
+  (over-budget) and presented-interval (dropped, `> 1.5×budget`) kept distinct;
+  `held()` is the honest verdict; default budget `animation::FRAME_INTERVAL`
+  (16 ms). 2 unit tests.
+- **`compositor/src/state.rs`** — `DfState::gesture_trace`;
+  `observe_rendered_frame(duration)` is the one per-frame seam (global trace +
+  `degrade.observe` + gesture record/finish); `overview_frame_budget_active()`.
+  `dump_stats` appends a `gesture budget` line.
+- **`compositor/src/session.rs`** — the render loop now calls
+  `state.observe_rendered_frame(frame_duration)` instead of the two separate
+  calls.
+- **`compositor/src/input/synthetic.rs`** — new `query gesture`
+  (`gesture tracing=… frames=… over_budget=… dropped=… max_frame_us=…
+  max_interval_ms=… budget_us=… held=… tier=<full|reduced|minimal>`) + parser
+  test.
+- **`compositor/tests/window_conformance.rs`** — new
+  `overview_gesture_frame_budget_is_traced_and_reports_the_degrade_tier`
+  (31/31 conformance green): idle is an empty trace; a full Ctrl+Up open/close
+  produces a live trace, a sub-frame verdict, and reports the live tier as it
+  is pinned minimal then full.
+- **`scripts/capture-overview.sh`** + **`scripts/capture-overview-driver.py`**
+  (new) — drive the nested overview (4-finger open, Ctrl+Down reveal, 3-finger
+  Space swipe, reduced-motion run), screenshot with Spectacle, assemble an
+  mp4 per mode, and write `query gesture` samples + session exit stats.
+- **`docs/captures/`** — `t05-mission-control-live.{png,mp4}`,
+  `-reveal.png`, `-slide.png`, `-slide-settled.png`, the `-reduced*` set, and
+  `t05-gesture-budget-nested.txt`.
+- **Docs** — `02-compositor.md` "Gesture frame budget and capture (T-05.6)";
+  ADR `0020-gesture-frame-budget-trace.md`.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `make e2e` — green (all compositor integration suites + headless demo).
+- `make soak` — **100 clean cycles, zero strays**.
+- `cargo test -p dragonfruit-compositor` — 254 bin unit tests + every
+  integration suite green (`window_conformance` 31/31).
+- `bash scripts/capture-overview.sh` — needs a host Wayland session, spectacle,
+  ffmpeg and Python Pillow; not part of `make e2e`. At 4K the host screenshot is
+  3840x2160 and the nested window is a 1920x1200 region; `detect_rect` finds it
+  from the wallpaper clear color and crops.
+- `cargo clippy -p dragonfruit-compositor --all-targets -- -D warnings` clean;
+  `cargo fmt -p dragonfruit-compositor -- --check` clean.
+
+Gotchas for later tasks:
+
+- **One per-frame seam**: `DfState::observe_rendered_frame`. Do not feed the
+  gesture trace or `degrade.observe` directly from a backend. A new overview
+  transition must be covered by `overview_frame_budget_active` or it silently
+  drops out of the trace (ADR 0020).
+- The gesture trace auto-begins on the first recorded active frame and
+  auto-finishes when the gesture settles; counters are retained after `finish`
+  for the next `query gesture`.
+- **Nested gesture shortfall is real**: e.g. `mission-control` →
+  `over_budget=1 dropped=2 max_frame_us=18273 held=0`, settling at
+  `tier=reduced`. That is the accepted "shortfall recorded" outcome, not a bug.
+- **Known nested pointer gap**: the shell overview chrome is an offscreen
+  scene-graph surface that owns pointer focus but does not forward it to QML, so
+  a synthetic pointer neither begins the compositor's `overview_begin_drag`
+  (bypassed by `chrome_under`) nor fires the QML card handlers. Pointer
+  selection/drag stay headlessly verified; the nested path needs the shell
+  overview input region/forwarding wired (T-05.2/T-05.3 polish or T-11). The
+  capture therefore shows the scene *transforms*, not a pointer drag.
+- The reduced-motion settled overview is pixel-identical to the normal settled
+  overview (as expected); the difference is in the transition/clip, not the
+  settled state.
+
 ## Follow-ups
 
 - T-05.1a (done in T22): the live-surface grid landed as a render-time
@@ -1922,3 +2001,16 @@ Gotchas for later tasks:
   `DfState::wallpaper_cache` (add `clear()`/per-path invalidation when
   settingsd/T-16 drives wallpaper changes); (b) nested capture of the live
   slide is T-05.6; (c) per-output wallpaper animation polish is T-16.
+- T-05.6 (done in T28): gesture frame budget (ADR 0020) + nested captures land.
+  Remaining: (a) the nested shell overview chrome does not forward pointer to
+  QML, so live-window click selection / drag-between-Spaces in the *shell*
+  session is unverified beyond the headless conformance tests — wire the
+  overview layer's input region/forwarding (T-05.2/T-05.3 polish or T-11), then
+  re-drive a pointer drag in `scripts/capture-overview-driver.py`; (b) the
+  shell's QML window cards are a centered `Flow` that does not align with the
+  compositor's `GridPlacement` live surfaces — align them (or route the card
+  tap/drag through `overview_begin_drag`) so pressing the visible live surface
+  works; (c) DRM gesture trace beyond the T-03 smoke is T-16 (the instrument is
+  backend-agnostic); (d) the nested gesture is over budget on the dev iGPU, so
+  a later perf pass (real texture blur, fewer shadow layers under `Reduced`) is
+  the mitigation path.

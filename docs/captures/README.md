@@ -51,6 +51,17 @@ input-to-photon latency samples plus an honest pass/fail against one 60 Hz
 frame. Also a text artifact — the direct-scanout counter is the `scanout stats`
 line in the same trace, and T-03.4 fills the DRM half on hardware.
 
+T-05.6's Mission Control capture is produced by `scripts/capture-overview.sh`:
+it runs the nested demo twice (normally and with `accessibility.reduceMotion`),
+drives the overview open, Desktop Reveal, and a per-Space wallpaper slide over
+the synthetic-input harness, and writes `t05-mission-control-live*.png` plus a
+short `.mp4` per mode. `t05-gesture-budget-nested.txt` is the accompanying
+text artifact: one `query gesture` sample per gesture (the T-05.6
+gesture-scoped frame budget, judged against one 60 Hz frame) plus each
+session's exit `gesture budget`/`degrade stats` lines. On the development iGPU
+the nested gesture records an honest shortfall (`held=0`) and the T-04 material
+ladder downgrades to `reduced`; the number is recorded, not hidden.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

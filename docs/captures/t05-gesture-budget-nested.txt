@@ -1,0 +1,33 @@
+# T-05.6 gesture frame-budget trace (nested backend).
+# Each line is one `query gesture` sample taken after the named gesture.
+# budget_us=16000 is one 60 Hz frame; held=0 records a shortfall rather
+# than hiding it. tier is the live T-04.4a material degrade tier.
+
+# t05-mission-control-live: one `query gesture` sample per gesture (nested backend).
+# budget_us=16000 is one 60 Hz frame; held=0 records a shortfall rather
+# than hiding it. tier is the live T-04.4a material degrade tier.
+# Frame timing is host- and load-dependent: the honest verdict is what
+# the instrumentation reports, not a threshold this script asserts.
+
+gesture[mission-control] tracing=1 frames=7 over_budget=1 dropped=2 max_frame_us=18273 max_interval_ms=31 budget_us=16000 held=0 tier=reduced
+gesture[desktop-reveal] tracing=1 frames=17 over_budget=0 dropped=0 max_frame_us=10341 max_interval_ms=19 budget_us=16000 held=1 tier=reduced
+gesture[space-slide] tracing=0 frames=2 over_budget=0 dropped=1 max_frame_us=8076 max_interval_ms=31 budget_us=16000 held=0 tier=reduced
+
+# t05-mission-control-live-reduced: one `query gesture` sample per gesture (nested backend).
+# budget_us=16000 is one 60 Hz frame; held=0 records a shortfall rather
+# than hiding it. tier is the live T-04.4a material degrade tier.
+# Frame timing is host- and load-dependent: the honest verdict is what
+# the instrumentation reports, not a threshold this script asserts.
+
+gesture[mission-control] tracing=1 frames=7 over_budget=1 dropped=2 max_frame_us=17124 max_interval_ms=30 budget_us=16000 held=0 tier=reduced
+gesture[desktop-reveal] tracing=1 frames=1 over_budget=0 dropped=0 max_frame_us=4540 max_interval_ms=0 budget_us=16000 held=1 tier=reduced
+gesture[space-slide] tracing=0 frames=2 over_budget=0 dropped=1 max_frame_us=8445 max_interval_ms=30 budget_us=16000 held=0 tier=reduced
+
+# t05-mission-control-live session exit:
+dragonfruit-compositor: degrade stats (exit): tier=reduced forced=0 budget_us=16000 samples=96 over_budget=14 downgrades=1 upgrades=0 tiers=full:21,reduced:75,minimal:0
+dragonfruit-compositor: gesture budget (exit): tracing=0 frames=2 over_budget=0 dropped=1 max_frame_us=8076 max_interval_ms=31 budget_us=16000 held=0
+
+# t05-mission-control-live-reduced session exit:
+dragonfruit-compositor: degrade stats (exit): tier=reduced forced=0 budget_us=16000 samples=39 over_budget=13 downgrades=1 upgrades=0 tiers=full:23,reduced:16,minimal:0
+dragonfruit-compositor: gesture budget (exit): tracing=0 frames=2 over_budget=0 dropped=1 max_frame_us=8445 max_interval_ms=30 budget_us=16000 held=0
+
