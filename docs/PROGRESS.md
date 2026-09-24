@@ -26,7 +26,8 @@
 - **T18 — T-04.2 Backdrop blur pass**: **State: done.** The chrome material pass exists and is token-driven, applied; **`compositor/src/window/backdrop.rs`** (new) — `MaterialRole`
 - **T19 — T-04.3 Reusable scene-transform pass**: **State: done.** One reusable scene transform exists (scale/translate + optional; **`compositor/src/window/pass.rs`** (new) — `FramePass`: the single shared
 - **T20 — T-04.4a Material degrade tiers and instrumentation**: **State: done.** One ordered material-quality ladder (`Full` → `Reduced` →; **`compositor/src/window/degrade.rs`** (new) — `DegradeTier` (`Full`
-- **Follow-ups**: T-04.3 (done in T19): the reusable `SceneTransform`/`SceneTransformPass`; T-04.2 follow-up: replace the flat-tone backdrop with a **real
+- **T21 — T-04.4b Light/dark, reduced motion, and sign-off package**: **State: done.** One live `ColorScheme` on `DfState` now drives every; **`compositor/src/window/decoration.rs`** — `ColorScheme::name`/`parse`
+- **Follow-ups**: T-04.4b (done in T21): the live scheme is on `DfState` (ADR 0016) and; T-04.3 (done in T19): the reusable `SceneTransform`/`SceneTransformPass`
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -1374,8 +1375,84 @@ Gotchas for later tasks:
   guards or the lifecycle mapping; keep it that way (T-02 correctness at every
   tier).
 
+## T21 — T-04.4b Light/dark, reduced motion, and sign-off package
+
+**State: done.** One live `ColorScheme` on `DfState` now drives every
+compositor-drawn material (SSD titlebar, window menu, chrome backdrop, window
+shadow); both schemes and reduced motion are exercised headless and captured
+nested against the gallery goldens. ADR 0016 is the contract.
+
+What landed:
+
+- **`compositor/src/window/decoration.rs`** — `ColorScheme::name`/`parse`
+  (`light`/`dark`), the settings spelling T-08 will mirror. 1 unit test.
+- **`compositor/src/state.rs`** — `DfState.color_scheme` (default dark);
+  `set_color_scheme` (marks the output dirty); `titlebar_element` /
+  `titlebar_element_for_motion` stamp it onto the element; `open_window_menu`
+  passes it; `dump_stats` emits `scheme stats (label): scheme=…`.
+- **`compositor/src/render.rs`** — `chrome_backdrop_render_elements` and
+  `window_shadow_render_elements` read `state.color_scheme` (was
+  `ColorScheme::default()`); `ColorScheme` import removed there.
+- **`compositor/src/input/synthetic.rs`** — `query material` (scheme plus the
+  resolved chrome/elevated/border/accent tones) and
+  `set color-scheme light|dark`; wire-format docs and parse tests.
+- **`compositor/tests/window_conformance.rs`** — new
+  `material_schemes_select_and_reduced_motion_stays_single_frame`: dark default,
+  light token round-trip, a full appear at light, and a reduced-motion minimize
+  at dark with the same committed geometry.
+- **Docs** — ADR `0016-live-color-scheme-owner.md`; `02-compositor.md`
+  "Light/dark and reduced motion (T-04.4b)".
+- **Captures** — `scripts/capture-materials.sh` (new) + `--scheme/--tier/
+  --materials-only` in `scripts/capture-demo-driver.py`; artifacts in
+  `docs/captures/t04-materials*` (dark, light, dark+reduced, and a
+  pre-material baseline). Review sheets:
+  `t04-materials-gallery-side-by-side.png` (compositor SSD titlebar beside
+  `ssd_light`/`ssd_dark`) and `t04-materials-before-after*.png` (degrade
+  `minimal` blur-off vs full).
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `cargo test -p dragonfruit-compositor` — 224 bin unit tests + all suites
+  green (`window_conformance` now 24/24). Direct cargo needs
+  `PKG_CONFIG_PATH=~/.local/df-devroot/lib64/pkgconfig` and
+  `RUSTFLAGS=-L ~/.local/df-devroot/lib64`.
+- `./scripts/check-gallery-snapshots.py --strict` — 66/66 snapshots green
+  (light, dark, dark+reduced are already in the gallery gate's `SCHEMES`).
+- `bash scripts/capture-materials.sh` — needs the host Wayland session
+  (`WAYLAND_DISPLAY`), `spectacle`, `ffmpeg`, Pillow; ran green and wrote the
+  `docs/captures/t04-materials*` set.
+
+Gotchas for later tasks:
+
+- **T-08 owns the live scheme**: mirror `appearance.colorScheme` into
+  `DfState::set_color_scheme`. Do not add a second scheme field or a second
+  token source. `ColorScheme::name`/`parse` are the wire spelling.
+- **The nested desktop background is scheme-dependent** (it is light under
+  `light`, dark under `dark`). `scripts/capture-demo-driver.py` therefore
+  detects the nested window under dark first, then applies the requested
+  scheme; `WALL`/`WALL_TOL` and the row-run detector in `detect_rect` are
+  tuned to that. If the background token changes, update `WALL`.
+- Shell-rendered chrome (Dock/menu-bar QML) does **not** follow the
+  compositor scheme — the shell is not notified. Only compositor-drawn
+  materials (SSD titlebar, window menu, backdrop, shadow) switch, which is why
+  `t04-materials-*-dock.png` is identical across schemes while the titlebar
+  crop differs.
+- `query material` reports the resolved tones but no wallpaper; the compositor
+  `scheme stats` line is the human-readable mirror.
+- Captures are nested-only; CI (`make e2e`) never renders, so the scheme
+  conformance test uses `query material` + lifecycle geometry instead of pixels.
+
 ## Follow-ups
 
+- T-04.4b (done in T21): the live scheme is on `DfState` (ADR 0016) and
+  `window/degrade.rs` already scales the scheme-resolved spec. Remaining: (a)
+  T-08 must mirror `appearance.colorScheme` into `set_color_scheme` (today only
+  the synthetic `set color-scheme` and the dark default drive it); (b) the
+  QML shell chrome (Dock/menu bar) does not follow the compositor scheme, so a
+  real light session will show light compositor SSD and dark QML chrome until
+  T-08/T-17 wire one scheme to both sides; (c) a *real* texture-sampling blur
+  (T-04.2 follow-up) would make the before/after capture visibly sharper than
+  the current feather-stack proxy.
 - T-04.3 (done in T19): the reusable `SceneTransform`/`SceneTransformPass`
   landed and the lifecycle motion renders through it. Remaining: (a) fold the
   T-04.2 chrome backdrop **element generation** into the pass (the `FramePass`

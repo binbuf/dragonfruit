@@ -127,7 +127,7 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 - [x] T18 — T-04.2 Backdrop blur pass → [tasks/018-t-04.2-backdrop-blur-pass.md](tasks/018-t-04.2-backdrop-blur-pass.md)
 - [x] T19 — T-04.3 Reusable scene-transform pass → [tasks/019-t-04.3-reusable-scene-transform-pass.md](tasks/019-t-04.3-reusable-scene-transform-pass.md)
 - [x] T20 — T-04.4a Material degrade tiers and instrumentation → [tasks/020-t-04.4a-material-degrade-tiers.md](tasks/020-t-04.4a-material-degrade-tiers.md)
-- [ ] T21 — T-04.4b Light/dark, reduced motion, and sign-off package → [tasks/021-t-04.4b-material-schemes-and-sign-off-package.md](tasks/021-t-04.4b-material-schemes-and-sign-off-package.md)
+- [x] T21 — T-04.4b Light/dark, reduced motion, and sign-off package → [tasks/021-t-04.4b-material-schemes-and-sign-off-package.md](tasks/021-t-04.4b-material-schemes-and-sign-off-package.md)
 
 ## Phase 5 — T-05 Loop v3: Mission Control live
 
@@ -478,11 +478,11 @@ This plan restarts at T-01, so a legacy "T-13" and a new "T-13" are different
 tickets; use this table to translate.
 
 <!-- symphony:status -->
-**Pipeline status** — updated 2026-09-24T16:59:43Z · 20/168 done
+**Pipeline status** — updated 2026-09-24T17:18:02Z · 21/168 done
 
-- Completed: T01, T02, T03, T04, T05, T06, T07, T08, T09, T10, T11, T12, T13, T14, T15, T16, T17, T18, T19, T20
+- Completed: T01, T02, T03, T04, T05, T06, T07, T08, T09, T10, T11, T12, T13, T14, T15, T16, T17, T18, T19, T20, T21
 - Blocked: none
 - Failed: none
-- Remaining: T21, T22, T23, T24, T25, T26, T27, T28, T29, T30, T31, T32, T33, T34, T35, T36, T37, T38, T39, T40, T41, T42, T43, T44, T45, T46, T47, T48, T49, T50, T51, T52, T53, T54, T55, T56, T57, T58, T59, T60, T61, T62, T63, T64, T65, T66, T67, T68, T69, T70, T71, T72, T73, T74, T75, T76, T77, T78, T79, T80, T81, T82, T83, T84, T85, T86, T87, T88, T89, T90, T91, T92, T93, T94, T95, T96, T97, T98, T99, T100, T101, T102, T103, T104, T105, T106, T107, T108, T109, T110, T111, T112, T113, T114, T115, T116, T117, T118, T119, T120, T121, T122, T123, T124, T125, T126, T127, T128, T129, T130, T131, T132, T133, T134, T135, T136, T137, T138, T139, T140, T141, T142, T143, T144, T145, T146, T147, T148, T149, T150, T151, T152, T153, T154, T155, T156, T157, T158, T159, T160, T161, T162, T163, T164, T165, T166, T167, T168
-- Last finished: T20 — done · Material degrade tiers landed (window/degrade.rs, render/session/state wiring, synthetic hooks, ADR 0015); headless tests and make e2e/lint green.
+- Remaining: T22, T23, T24, T25, T26, T27, T28, T29, T30, T31, T32, T33, T34, T35, T36, T37, T38, T39, T40, T41, T42, T43, T44, T45, T46, T47, T48, T49, T50, T51, T52, T53, T54, T55, T56, T57, T58, T59, T60, T61, T62, T63, T64, T65, T66, T67, T68, T69, T70, T71, T72, T73, T74, T75, T76, T77, T78, T79, T80, T81, T82, T83, T84, T85, T86, T87, T88, T89, T90, T91, T92, T93, T94, T95, T96, T97, T98, T99, T100, T101, T102, T103, T104, T105, T106, T107, T108, T109, T110, T111, T112, T113, T114, T115, T116, T117, T118, T119, T120, T121, T122, T123, T124, T125, T126, T127, T128, T129, T130, T131, T132, T133, T134, T135, T136, T137, T138, T139, T140, T141, T142, T143, T144, T145, T146, T147, T148, T149, T150, T151, T152, T153, T154, T155, T156, T157, T158, T159, T160, T161, T162, T163, T164, T165, T166, T167, T168
+- Last finished: T21 — done · Live ColorScheme drives all compositor materials; both schemes + reduced motion tested headless and captured nested (t04-materials* incl. gallery side-by-side and before/after); ADR 0016 added; e2e/lint/gallery all green.
 <!-- /symphony:status -->

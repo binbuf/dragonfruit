@@ -784,6 +784,37 @@ fn parse_degrade(report: &str) -> DegradeReport {
     }
 }
 
+/// The `query material` reply (T-04.4b): the live scheme and resolved tones.
+struct MaterialReport {
+    scheme: String,
+    chrome: String,
+    elevated: String,
+    border: String,
+    accent: String,
+}
+
+/// Parse the `material` line of a `query material` reply (ignoring `end`).
+fn parse_material(report: &str) -> MaterialReport {
+    let line = report
+        .lines()
+        .find(|line| line.starts_with("material "))
+        .unwrap_or_else(|| panic!("no material line in {report:?}"));
+    let field = |name: &str| -> String {
+        line.split_whitespace()
+            .skip(1)
+            .find_map(|token| token.strip_prefix(name)?.strip_prefix('='))
+            .unwrap_or_else(|| panic!("missing {name} in {line:?}"))
+            .to_string()
+    };
+    MaterialReport {
+        scheme: field("scheme"),
+        chrome: field("chrome"),
+        elevated: field("elevated"),
+        border: field("border"),
+        accent: field("accent"),
+    }
+}
+
 /// Traffic-light geometry from `component.trafficLights` tokens, used to aim
 /// the synthetic pointer at each control (T-01.2).
 const LIGHT_DIAMETER: i32 = 12;
@@ -3478,6 +3509,103 @@ fn material_degrade_tiers_select_and_transitions_stay_correct() {
     );
 
     let _ = conn;
+    surface.destroy();
+    toplevel.destroy();
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}
+
+/// T-04.4b acceptance: the live light/dark scheme is selectable and reported
+/// over the synthetic harness, both schemes resolve to their own token tones,
+/// and the reduced-motion policy composes with either scheme — a reduced
+/// appear/minimize still collapses to a single clock frame and commits the
+/// same geometry. This is the headless half of the track sign-off: the render
+/// path is exercised without a GPU, so both schemes cannot silently regress.
+#[test]
+fn material_schemes_select_and_reduced_motion_stays_single_frame() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path =
+        PathBuf::from(&runtime_dir).join(format!("dragonfruit-scheme-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-scheme",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (_conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    // The default scheme reads over arbitrary client pixels: dark, with the
+    // dark token tones resolved for every compositor material.
+    let dark = parse_material(&input.query("query material"));
+    assert_eq!(dark.scheme, "dark");
+    assert_eq!(dark.chrome, "2d2534ff");
+    assert_eq!(dark.elevated, "2d2534ff");
+    assert_eq!(dark.accent, "e15c98ff");
+
+    // Light selects the light token set.
+    input.send("set color-scheme light");
+    let light = parse_material(&input.query("query material"));
+    assert_eq!(light.scheme, "light");
+    assert_eq!(light.chrome, "ffffffff");
+    assert_eq!(light.elevated, "ffffffff");
+    assert_eq!(light.border, "ded6e5ff");
+    assert_eq!(light.accent, "b32a66ff");
+    assert_ne!(
+        light.chrome, dark.chrome,
+        "light and dark chrome must not resolve to the same tone"
+    );
+    assert_ne!(light.border, dark.border);
+
+    // A full (non-reduced) lifecycle motion still animates and commits the
+    // supplied origin while the light scheme is live.
+    let app_id = "org.dragonfruit.Scheme";
+    input.send(&format!("set launch-origin {app_id} 70 80 48 48"));
+    let (surface, _xdg_surface, toplevel, _file) =
+        map_toplevel_with_app_id(&mut state, &mut queue, app_id);
+    let motions = wait_for_motion(&input, |motions| {
+        motions.iter().any(|m| m.kind == "appear" && m.completed)
+    });
+    let appear = motions
+        .iter()
+        .find(|m| m.kind == "appear")
+        .expect("an appear record");
+    assert_eq!(appear.origin, (70, 80, 48, 48));
+    assert_eq!(appear.target.2, WINDOW_W);
+    assert!(
+        appear.frames >= 3,
+        "a full appear at the light scheme must animate, got {} frames: {appear:?}",
+        appear.frames
+    );
+
+    // Reduced motion composes with the scheme: the minimize collapses to one
+    // frame and commits the same restore geometry.
+    input.send("set reduced-motion on");
+    input.send("set color-scheme dark");
+    input.send(&format!("minimize {}", appear.window));
+    let motions = wait_for_motion(&input, |motions| {
+        motions.iter().any(|m| m.kind == "minimize" && m.completed)
+    });
+    let minimize = motions
+        .iter()
+        .find(|m| m.kind == "minimize")
+        .expect("a minimize record");
+    assert_eq!(
+        minimize.frames, 1,
+        "reduced motion must collapse the minimize to one frame: {minimize:?}"
+    );
+    assert_eq!(
+        minimize.target, appear.target,
+        "the reduced minimize keeps the restore geometry: {minimize:?}"
+    );
+
+    // The scheme round-trips independently of the motion policy.
+    assert_eq!(
+        parse_material(&input.query("query material")).scheme,
+        "dark"
+    );
+
     surface.destroy();
     toplevel.destroy();
     proc.shutdown();

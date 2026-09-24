@@ -27,8 +27,7 @@ use smithay::wayland::fractional_scale::with_fractional_scale;
 
 use crate::state::DfState;
 use crate::window::{
-    backdrop_elements, shadow_elements, ColorScheme, MaterialRole, SceneTransform, ShadowLevel,
-    WindowState,
+    backdrop_elements, shadow_elements, MaterialRole, SceneTransform, ShadowLevel, WindowState,
 };
 
 /// Build render elements for the shell's chrome surfaces (menu bar, Dock,
@@ -105,7 +104,9 @@ pub fn chrome_backdrop_render_elements(
     if surfaces.is_empty() {
         return Vec::new();
     }
-    let scheme = ColorScheme::default();
+    // The live scheme (T-04.4b) selects the per-scheme material tokens; the
+    // pass renders in whatever light/dark the session currently is.
+    let scheme = state.color_scheme;
     // Resolve the token material per surface and map it through the current
     // degrade tier (T-04.4a). `None` means "blur off" (the `Minimal` tier), so
     // the pass draws nothing and owns no damage: forcing the tier visibly
@@ -350,7 +351,7 @@ pub fn window_shadow_render_elements(
     let spec = state
         .degrade
         .tier()
-        .shadow(ShadowLevel::High.spec(ColorScheme::default()));
+        .shadow(ShadowLevel::High.spec(state.color_scheme));
     let mut elements = Vec::new();
     for window in state.space.elements() {
         if !state.space.outputs_for_element(window).contains(output) {

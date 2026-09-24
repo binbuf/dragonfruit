@@ -34,6 +34,16 @@ It is a text artifact, not a recording: the numbers on the `SIGUSR1`
 render-stats line are the budget evidence (T-03.2/T-03.4 add the DRM run and
 the latency capture).
 
+T-04.4b's material sign-off is produced by `scripts/capture-materials.sh`: it
+runs the nested walkthrough in dark, light, and dark+reduced-motion, plus a
+pre-material baseline (degrade tier `minimal`, blur off), writes
+`t04-materials*.png`/`.mp4`, and composes two review sheets —
+`t04-materials-gallery-side-by-side.png` (the compositor SSD titlebar beside
+the design-system `ssd_light`/`ssd_dark` goldens) and
+`t04-materials-before-after*.png`. The design-system gallery goldens themselves
+are the art-direction reference and are gated by
+`scripts/check-gallery-snapshots.py --strict`.
+
 T-03.1b's capture is `t03-latency-nested.txt`, produced by
 `scripts/latency-trace.sh` (`make latency-trace`): it runs the nested demo,
 injects real input over the synthetic-input harness and records the

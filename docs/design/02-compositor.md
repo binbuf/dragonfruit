@@ -332,6 +332,32 @@ idle trace stays flat. The state is reported on a `degrade stats` render-stats
 line and by `query degrade`. See
 [ADR 0015](adr/0015-material-degrade-tiers.md).
 
+### Light/dark and reduced motion (T-04.4b)
+
+Every compositor-drawn material resolves its tones from the **live color
+scheme** on `DfState` (`ColorScheme::{Light, Dark}`): the SSD titlebar and
+traffic lights (`window/decoration.rs`), the window menu (`window/menu.rs`),
+the chrome backdrop (`render::chrome_backdrop_render_elements`), and the window
+shadow (`render::window_shadow_render_elements`). The scheme is compositor
+state, not a render-argument: `DfState::set_color_scheme` flips it and requests
+a redraw, `titlebar_element`/`titlebar_element_for_motion` and
+`open_window_menu` stamp it onto the element they build, and the two material
+passes read `state.color_scheme`. The default is dark (it reads over arbitrary
+client pixels); the settings owner (T-08) mirrors `appearance.colorScheme`
+here. The scheme is reported on a `scheme stats` render-stats line and by
+`query material` (scheme plus the resolved chrome/elevated/border/accent
+tones), so a headless conformance test proves both schemes render without a
+GPU. See [ADR 0016](adr/0016-live-color-scheme-owner.md).
+
+Reduced motion (`accessibility.reduceMotion`) is already the shared
+`AnimationClock`/`OverviewMachine` policy (T-02/T-11): a transition still runs
+the one machine and the same commit rule, collapsed to a single clock step. It
+composes with either scheme — the material pass resolves the same tokens and
+the lifecycle mapping is unchanged. The headless conformance test drives a full
+appear at the light scheme and a reduced-motion minimize at dark, asserting the
+same committed geometry, and `scripts/check-gallery-snapshots.py` covers the
+design-system reference for light, dark, and dark+reduced.
+
 ## Window model
 
 - **States.** A window is floating, minimized, zoomed, or fullscreen, with
