@@ -579,10 +579,11 @@ fn parse_decorations(report: &str) -> Vec<DecorationReport> {
         .collect()
 }
 
-/// One parsed `query appear` line (T-02.1b).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct AppearReport {
+/// One parsed `query motion` line (T-02.1b/T-02.2).
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct MotionReport {
     window: u64,
+    kind: String,
     active: bool,
     completed: bool,
     frames: u64,
@@ -590,19 +591,20 @@ struct AppearReport {
     target: (i32, i32, i32, i32),
 }
 
-/// Parse the `appear` lines of a report (ignoring the trailing `end`).
-fn parse_appear(report: &str) -> Vec<AppearReport> {
+/// Parse the `motion` lines of a report (ignoring the trailing `end`).
+fn parse_motion(report: &str) -> Vec<MotionReport> {
     report
         .lines()
         .filter_map(|line| {
             let mut parts = line.split_whitespace();
-            if parts.next()? != "appear" {
+            if parts.next()? != "motion" {
                 return None;
             }
             let n = |parts: &mut std::str::SplitWhitespace| -> Option<i32> {
                 parts.next()?.parse().ok()
             };
             let window = parts.next()?.parse().ok()?;
+            let kind = parts.next()?.to_string();
             let active = parts.next()? == "1";
             let completed = parts.next()? == "1";
             let frames = parts.next()?.parse().ok()?;
@@ -618,8 +620,9 @@ fn parse_appear(report: &str) -> Vec<AppearReport> {
                 n(&mut parts)?,
                 n(&mut parts)?,
             );
-            Some(AppearReport {
+            Some(MotionReport {
                 window,
+                kind,
                 active,
                 completed,
                 frames,
@@ -1254,6 +1257,26 @@ fn wait_for_window(
         assert!(
             Instant::now() < deadline,
             "timed out waiting for window {window} state"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// Query `query motion` until the report satisfies `predicate`, retrying
+/// while the clock catches up.
+fn wait_for_motion(
+    input: &SyntheticInput,
+    mut predicate: impl FnMut(&[MotionReport]) -> bool,
+) -> Vec<MotionReport> {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let motions = parse_motion(&input.query("query motion"));
+        if predicate(&motions) {
+            return motions;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "timed out waiting for motion report; last={motions:?}"
         );
         std::thread::sleep(Duration::from_millis(20));
     }
@@ -2095,20 +2118,21 @@ fn window_appear_plays_from_the_dock_tile_origin_and_commits_the_target() {
     // commit, so the origin cannot race the appearance.
     let app_id = "org.dragonfruit.Appear";
     input.send(&format!("set launch-origin {app_id} 100 120 48 48"));
-    let _ = input.query("query appear");
+    let _ = input.query("query motion");
 
     let (surface, _xdg_surface, toplevel, _file) =
         map_toplevel_with_app_id(&mut state, &mut queue, app_id);
 
     // Let the appear run to completion.
     std::thread::sleep(Duration::from_millis(500));
-    let appear = parse_appear(&input.query("query appear"));
+    let appear = parse_motion(&input.query("query motion"));
     assert_eq!(
         appear.len(),
         1,
-        "one window must carry an appear record: {appear:?}"
+        "one window must carry a motion record: {appear:?}"
     );
-    let a = appear[0];
+    let a = &appear[0];
+    assert_eq!(a.kind, "appear", "the mapping motion is an appear: {a:?}");
     assert_eq!(
         a.origin,
         (100, 120, 48, 48),
@@ -2164,19 +2188,20 @@ fn reduced_motion_appear_takes_a_single_frame() {
     let app_id = "org.dragonfruit.AppearReduced";
     input.send("set reduced-motion on");
     input.send(&format!("set launch-origin {app_id} 50 60 48 48"));
-    let _ = input.query("query appear");
+    let _ = input.query("query motion");
 
     let (surface, _xdg_surface, toplevel, _file) =
         map_toplevel_with_app_id(&mut state, &mut queue, app_id);
 
     std::thread::sleep(Duration::from_millis(300));
-    let appear = parse_appear(&input.query("query appear"));
+    let appear = parse_motion(&input.query("query motion"));
     assert_eq!(
         appear.len(),
         1,
-        "one window must carry an appear record: {appear:?}"
+        "one window must carry a motion record: {appear:?}"
     );
-    let a = appear[0];
+    let a = &appear[0];
+    assert_eq!(a.kind, "appear");
     assert_eq!(
         a.origin,
         (50, 60, 48, 48),
@@ -2194,6 +2219,199 @@ fn reduced_motion_appear_takes_a_single_frame() {
         .find(|d| d.window == a.window)
         .expect("window tracked");
     assert_eq!(d.content, a.target);
+
+    surface.destroy();
+    toplevel.destroy();
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}
+
+/// T-02.2 acceptance: minimize shrinks a window into its Dock tile and
+/// restore grows it back out, the states and outbox events update
+/// immediately, and the sequence resolves with no orphaned ghost and nothing
+/// left live on the clock.
+#[test]
+fn minimize_and_restore_play_through_the_dock_tile_and_resolve_cleanly() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path =
+        PathBuf::from(&runtime_dir).join(format!("dragonfruit-minimize-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-minimize",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    // Hand the compositor the Dock tile before the app maps, then wait the
+    // appear out so the restore target is a known floating geometry.
+    let app_id = "org.dragonfruit.Minimize";
+    input.send(&format!("set launch-origin {app_id} 100 120 48 48"));
+    let _ = input.query("query motion");
+
+    let (surface, _xdg_surface, toplevel, _file) =
+        map_toplevel_with_app_id(&mut state, &mut queue, app_id);
+
+    let motions = wait_for_motion(&input, |motions| {
+        motions.iter().any(|m| m.kind == "appear" && m.completed)
+    });
+    let appear = motions
+        .iter()
+        .find(|m| m.kind == "appear")
+        .expect("an appear record");
+    let window = appear.window;
+    let floating = appear.target;
+    assert_eq!(appear.origin, (100, 120, 48, 48));
+
+    // --- minimize: state/outbox update at once, geometry is preserved -----
+    input.send(&format!("minimize {window}"));
+    let minimized = wait_for_window(&mut state, &mut queue, &input, window, |report| {
+        report.state == WindowStateReport::Minimized
+    });
+    assert_eq!(
+        minimized.content, floating,
+        "minimize must keep the restore geometry: {minimized:?}"
+    );
+    let events = input.query("query events");
+    assert!(
+        events.contains(&format!("event state-changed {window} minimized")),
+        "the minimize state change must be in the outbox: {events:?}"
+    );
+
+    // --- the minimize ghost completes and no orphan remains --------------
+    let motions = wait_for_motion(&input, |motions| {
+        motions.iter().any(|m| m.kind == "minimize" && m.completed)
+    });
+    let minimize = motions
+        .iter()
+        .find(|m| m.kind == "minimize")
+        .expect("a minimize record");
+    assert_eq!(minimize.target, floating);
+    assert_eq!(minimize.origin, (100, 120, 48, 48));
+    assert!(
+        minimize.frames >= 3,
+        "a full minimize must step multiple frames, got {}: {minimize:?}",
+        minimize.frames
+    );
+    let decorations = parse_decorations(&input.query("query decorations"));
+    assert!(
+        decorations
+            .iter()
+            .any(|d| d.window == window && d.state == WindowStateReport::Minimized),
+        "no orphan: the minimized window must still be tracked: {decorations:?}"
+    );
+
+    // --- restore: grows back out of the tile to the original geometry -----
+    input.send(&format!("restore {window}"));
+    let restored = wait_for_window(&mut state, &mut queue, &input, window, |report| {
+        report.state == WindowStateReport::Floating
+    });
+    assert_eq!(
+        restored.content, floating,
+        "restore must return to the original geometry: {restored:?}"
+    );
+    let events = input.query("query events");
+    assert!(
+        events.contains(&format!("event state-changed {window} floating")),
+        "the restore state change must be in the outbox: {events:?}"
+    );
+
+    let motions = wait_for_motion(&input, |motions| {
+        motions.iter().any(|m| m.kind == "restore" && m.completed)
+    });
+    let restore = motions
+        .iter()
+        .find(|m| m.kind == "restore")
+        .expect("a restore record");
+    assert_eq!(restore.target, floating);
+    assert_eq!(restore.origin, (100, 120, 48, 48));
+    assert!(
+        motions.iter().all(|m| m.completed),
+        "nothing may be left live on the clock: {motions:?}"
+    );
+
+    // The window is still tracked at its final geometry, so the sequence left
+    // no orphan and no stale entry.
+    let decorations = parse_decorations(&input.query("query decorations"));
+    let final_report = decorations
+        .iter()
+        .find(|d| d.window == window)
+        .expect("the restored window is tracked");
+    assert_eq!(final_report.content, floating);
+    assert_eq!(final_report.state, WindowStateReport::Floating);
+
+    let _ = conn;
+    surface.destroy();
+    toplevel.destroy();
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}
+
+/// T-02.2 reduced-motion acceptance: minimize and restore each take a single
+/// clock step through the same commit path, and the state changes stay
+/// legible (minimized, then floating at the original geometry).
+#[test]
+fn reduced_motion_minimize_and_restore_take_a_single_frame() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir).join(format!(
+        "dragonfruit-minimize-reduced-{}",
+        std::process::id()
+    ));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-minimize-reduced",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (_conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let app_id = "org.dragonfruit.MinimizeReduced";
+    input.send("set reduced-motion on");
+    input.send(&format!("set launch-origin {app_id} 30 40 48 48"));
+    let _ = input.query("query motion");
+
+    let (surface, _xdg_surface, toplevel, _file) =
+        map_toplevel_with_app_id(&mut state, &mut queue, app_id);
+
+    let motions = wait_for_motion(&input, |motions| {
+        motions.iter().any(|m| m.kind == "appear" && m.completed)
+    });
+    let appear = motions.iter().find(|m| m.kind == "appear").unwrap();
+    let window = appear.window;
+    let floating = appear.target;
+    assert_eq!(appear.frames, 1, "reduced-motion appear is one frame");
+
+    // Minimize: one step, state minimized.
+    input.send(&format!("minimize {window}"));
+    wait_for_window(&mut state, &mut queue, &input, window, |report| {
+        report.state == WindowStateReport::Minimized
+    });
+    let motions = wait_for_motion(&input, |motions| {
+        motions.iter().any(|m| m.kind == "minimize" && m.completed)
+    });
+    let minimize = motions.iter().find(|m| m.kind == "minimize").unwrap();
+    assert_eq!(minimize.frames, 1, "reduced minimize is one frame");
+    assert_eq!(minimize.origin, (30, 40, 48, 48));
+
+    // Restore: one step, floating at the original geometry.
+    input.send(&format!("restore {window}"));
+    let restored = wait_for_window(&mut state, &mut queue, &input, window, |report| {
+        report.state == WindowStateReport::Floating
+    });
+    assert_eq!(restored.content, floating);
+    let motions = wait_for_motion(&input, |motions| {
+        motions.iter().any(|m| m.kind == "restore" && m.completed)
+    });
+    let restore = motions.iter().find(|m| m.kind == "restore").unwrap();
+    assert_eq!(restore.frames, 1, "reduced restore is one frame");
+    assert!(
+        motions.iter().all(|m| m.completed),
+        "nothing may be left live: {motions:?}"
+    );
 
     surface.destroy();
     toplevel.destroy();

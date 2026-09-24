@@ -102,11 +102,11 @@ use crate::window::grab::{MoveGrab, ResizeGrab};
 use crate::window::popup::constrained_popup_geometry;
 use crate::window::resize::SizeConstraints;
 use crate::window::{
-    cascaded_geometry, centered_on, fullscreen_reveal_rect, AppearFrame, AppearTransition,
-    ColorScheme, DecorationTier, DoubleClickTracker, MenuActivation, MenuKey, MenuKeyOutcome,
-    ReservedZones, ShellWindowEvent, TitlebarDoubleClick, TitlebarElement, TrafficLightKind,
-    WindowDispatch, WindowEvent, WindowEventKind, WindowId, WindowInsets, WindowMenu,
-    WindowMenuCommand, WindowModel, WindowState, CASCADE_STEP,
+    cascaded_geometry, centered_on, fullscreen_reveal_rect, ColorScheme, DecorationTier,
+    DoubleClickTracker, MenuActivation, MenuKey, MenuKeyOutcome, MotionFrame, ReservedZones,
+    ShellWindowEvent, TitlebarDoubleClick, TitlebarElement, TrafficLightKind, WindowDispatch,
+    WindowEvent, WindowEventKind, WindowId, WindowInsets, WindowMenu, WindowMenuCommand,
+    WindowModel, WindowMotion, WindowMotionKind, WindowState, CASCADE_STEP,
 };
 use crate::workspace::WorkspaceModel;
 use crate::xwayland::XwaylandState;
@@ -365,11 +365,16 @@ pub struct DfState {
     /// The shared animation clock: frame interval, reduced-motion policy,
     /// the running-animation set, and the frame counters (T-02.1a).
     pub animation_clock: AnimationClock<DfState>,
-    /// Dock tile geometries the shell handed off for an app that is about to
-    /// map a window (`df_toplevel_manager.set_launch_origin`, T-02.1b). Keyed
-    /// by `app_id`; consumed by the first window of that app, otherwise the
-    /// appear falls back to a centered origin.
-    pub pending_appear_origins: HashMap<String, Rectangle<i32, Logical>>,
+    /// True while a single window-lifecycle motion driver is registered with
+    /// the clock (T-02.2). The driver steps *every* window motion once per
+    /// frame; without this guard, one registered closure per motion would
+    /// step the whole set once per closure per frame.
+    pub window_motion_driver: bool,
+    /// Dock tile geometries the shell handed off for an app
+    /// (`df_toplevel_manager.set_launch_origin`, T-02.1b). Keyed by `app_id`;
+    /// the launching window appears from it and minimize/restore scale into
+    /// and out of it. Absent, the motion falls back to a centered origin.
+    pub dock_tiles: HashMap<String, Rectangle<i32, Logical>>,
 
     // --- private shell protocols (T-07) -------------------------------------
     /// Handshake/trust, chrome surfaces, and the window/workspace/output
@@ -492,7 +497,8 @@ impl DfState {
             hot_corner_timer: None,
             animation_timer: None,
             animation_clock: AnimationClock::new(),
-            pending_appear_origins: HashMap::new(),
+            window_motion_driver: false,
+            dock_tiles: HashMap::new(),
             shell,
             stats: RenderStats::new(),
         }
@@ -1363,6 +1369,10 @@ impl DfState {
     }
 
     /// Minimize a window and its transients (FR-6).
+    ///
+    /// The window leaves the layout immediately (input-inert, state
+    /// broadcast) and its surface is held as a ghost that shrinks and fades
+    /// into the app's Dock tile on the shared clock (T-02.2).
     pub fn minimize_window(&mut self, window: &Window) {
         for target in self.windows.transient_tree(window) {
             let Some(transition) =
@@ -1371,16 +1381,21 @@ impl DfState {
             else {
                 continue;
             };
-            if transition.changed {
-                self.space.unmap_elem(&target);
-                self.broadcast_state(&target);
+            if !transition.changed {
+                continue;
             }
+            let geometry = self.windows.geometry(&target).unwrap_or_default();
+            self.space.unmap_elem(&target);
+            self.begin_window_motion(&target, WindowMotionKind::Minimize, geometry);
+            self.broadcast_state(&target);
         }
         self.needs_redraw = true;
     }
 
     /// Restore a minimized window and its transients (FR-6).
-    #[allow(dead_code)] // Shell/Dock restore lands with T-07/T-10.
+    ///
+    /// The window re-enters the layout immediately and grows/fades back out
+    /// of the app's Dock tile on the shared clock (T-02.2).
     pub fn restore_window(&mut self, window: &Window) {
         for target in self.windows.transient_tree(window) {
             let Some(transition) =
@@ -1389,21 +1404,47 @@ impl DfState {
             else {
                 continue;
             };
-            if transition.changed {
-                let geometry = self.windows.geometry(&target).unwrap_or_default();
-                // Only the requested window takes activation; transients
-                // are raised with it without stealing focus from it. A
-                // window whose Space is not active stays unmapped until its
-                // Space is shown again (FR-6).
-                let activate = &target == window;
-                if self.window_on_active_space(&target) {
-                    self.space
-                        .map_element(target.clone(), geometry.loc, activate);
-                }
-                self.broadcast_state(&target);
+            if !transition.changed {
+                continue;
             }
+            let geometry = self.windows.geometry(&target).unwrap_or_default();
+            // Only the requested window takes activation; transients
+            // are raised with it without stealing focus from it. A
+            // window whose Space is not active stays unmapped until its
+            // Space is shown again (FR-6).
+            let activate = &target == window;
+            if self.window_on_active_space(&target) {
+                self.space
+                    .map_element(target.clone(), geometry.loc, activate);
+            }
+            self.begin_window_motion(&target, WindowMotionKind::Restore, geometry);
+            self.broadcast_state(&target);
         }
         self.needs_redraw = true;
+    }
+
+    /// Minimize the window with compositor id `id` (synthetic-input / shell
+    /// seam). Returns whether a window was found.
+    pub fn minimize_window_by_id(&mut self, id: WindowId) -> bool {
+        match self.window_by_id(id) {
+            Some(window) => {
+                self.minimize_window(&window);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Restore the minimized window with compositor id `id` (synthetic-input /
+    /// shell seam). Returns whether a window was found.
+    pub fn restore_window_by_id(&mut self, id: WindowId) -> bool {
+        match self.window_by_id(id) {
+            Some(window) => {
+                self.restore_window(&window);
+                true
+            }
+            None => false,
+        }
     }
 
     /// Apply a window-menu primitive (SSD titlebar menu T-13, protocol T-07).
@@ -1660,62 +1701,130 @@ impl DfState {
         )));
     }
 
-    // --- window appear transition (T-02.1b) ---------------------------------
+    // --- window lifecycle motion (T-02.1b appear; T-02.2 minimize/restore) --
 
-    /// Record the Dock tile geometry an app's next window should appear from.
+    /// Record the Dock tile geometry an app's window appears from and
+    /// minimizes into.
     ///
     /// The shell sends this over `df_toplevel_manager.set_launch_origin` when
-    /// the Dock launches an app; it is keyed by `app_id` and consumed by the
-    /// first window of that app. The list is bounded so a launch that never
-    /// maps cannot grow it without bound.
+    /// the Dock launches an app; it is keyed by `app_id` and remembered for
+    /// the app's lifecycle motions (the launching window appears from it, and
+    /// minimize/restore scale into and out of it). The list is bounded so a
+    /// launch that never maps cannot grow it without bound.
     pub fn set_launch_origin(&mut self, app_id: &str, origin: Rectangle<i32, Logical>) {
         const MAX_PENDING: usize = 64;
-        if self.pending_appear_origins.len() >= MAX_PENDING {
-            if let Some(key) = self.pending_appear_origins.keys().next().cloned() {
-                self.pending_appear_origins.remove(&key);
+        if self.dock_tiles.len() >= MAX_PENDING && !self.dock_tiles.contains_key(app_id) {
+            if let Some(key) = self.dock_tiles.keys().next().cloned() {
+                self.dock_tiles.remove(&key);
             }
         }
-        self.pending_appear_origins
-            .insert(app_id.to_string(), origin);
+        self.dock_tiles.insert(app_id.to_string(), origin);
+    }
+
+    /// The origin a window's lifecycle motion starts from (appear/restore) or
+    /// ends at (minimize): the app's Dock tile, or a centered fallback when
+    /// the shell never supplied one.
+    pub fn motion_origin_for(
+        &self,
+        window: &Window,
+        geometry: Rectangle<i32, Logical>,
+    ) -> Rectangle<i32, Logical> {
+        self.windows
+            .app_id(window)
+            .and_then(|app| self.dock_tiles.get(app))
+            .copied()
+            .unwrap_or_else(|| WindowMotion::centered_origin(geometry))
     }
 
     /// Start `window`'s appear transition and arm the shared clock.
     fn begin_window_appear(&mut self, window: &Window, target: Rectangle<i32, Logical>) {
-        let app_id = self.windows.app_id(window).map(str::to_string);
-        let origin = app_id
-            .as_deref()
-            .and_then(|app| self.pending_appear_origins.remove(app))
-            .unwrap_or_else(|| AppearTransition::centered_origin(target));
-        let reduced = self.animation_clock.reduced_motion();
+        self.begin_window_motion(window, WindowMotionKind::Appear, target);
+    }
+
+    /// Begin a lifecycle motion for `window` and arm the shared clock.
+    ///
+    /// One driver closure steps *every* window motion once per clock frame;
+    /// [`Self::window_motion_driver`] keeps a new motion from registering a
+    /// second driver, which would step the whole set once per driver.
+    fn begin_window_motion(
+        &mut self,
+        window: &Window,
+        kind: WindowMotionKind,
+        geometry: Rectangle<i32, Logical>,
+    ) -> bool {
         let now = self.now_msec();
-        self.windows
-            .set_appear(window, AppearTransition::new(origin, target, now, reduced));
-        self.start_animation(|state: &mut DfState, now: u64| state.step_window_appearances(now));
+        // Retarget without waiting: a new transition mid-flight starts from
+        // the window's *current* interpolated rect rather than jumping back to
+        // the tile. A settled window starts from its Dock-tile origin (or the
+        // centered fallback).
+        let origin = match self.windows.motion_frame(window, now) {
+            Some(frame) => frame.rect,
+            None => self.motion_origin_for(window, geometry),
+        };
+        let reduced = self.animation_clock.reduced_motion();
+        if !self.windows.set_motion(
+            window,
+            WindowMotion::new(kind, origin, geometry, now, reduced),
+        ) {
+            return false;
+        }
+        if !self.window_motion_driver {
+            self.window_motion_driver = true;
+            self.start_animation(|state: &mut DfState, now: u64| state.step_window_motions(now));
+        }
+        true
     }
 
-    /// `window`'s live appear render frame, or `None` when the window is not
-    /// appearing (or has completed) (T-02.1b).
-    pub fn window_appear_frame(&self, window: &Window, now_ms: u64) -> Option<AppearFrame> {
-        self.windows.appear_frame(window, now_ms)
+    /// `window`'s live lifecycle render frame, or `None` when the window has
+    /// no motion (or has completed) (T-02.1b/T-02.2).
+    pub fn window_motion_frame(&self, window: &Window, now_ms: u64) -> Option<MotionFrame> {
+        self.windows.motion_frame(window, now_ms)
     }
 
-    /// Advance every appear transition one clock frame. Commits the target
-    /// geometry when a transition completes and returns whether any remain
-    /// live (the clock's liveness predicate).
-    pub fn step_window_appearances(&mut self, now_ms: u64) -> bool {
-        let (done, active) = self.windows.step_appearances(now_ms);
+    /// The SSD titlebar element for a window mid-minimize.
+    ///
+    /// A minimizing window is already in the `Minimized` state (so it is
+    /// input-inert and out of the layout), but its ghost still carries the
+    /// pre-minimize titlebar; this lays that out as if floating so the
+    /// decoration shrinks with the content.
+    pub fn titlebar_element_for_motion(&self, window: &Window) -> Option<TitlebarElement> {
+        let id = self.windows.id(window)?;
+        let geometry = self.windows.geometry(window)?;
+        let tier = self.windows.decorations(window);
+        let focused = self.active_window.as_ref() == Some(window);
+        TitlebarElement::for_window(id, geometry, tier, WindowState::Floating, focused, false)
+    }
+
+    /// Advance every lifecycle motion one clock frame. Commits a visible
+    /// target when a transition completes and returns whether any motion
+    /// remains live (the clock's liveness predicate).
+    pub fn step_window_motions(&mut self, now_ms: u64) -> bool {
+        let (done, mut active) = self.windows.step_motions(now_ms);
         for window in done {
-            // The render transform is gone once completed; make sure the
-            // scene is at the final geometry (it already is, but this is the
-            // one commit point for the transition).
-            if let Some(geometry) = self.windows.geometry(&window) {
-                if self.window_on_active_space(&window) {
-                    self.space.map_element(window, geometry.loc, false);
+            // An appear/restore commits back to its final geometry (it was
+            // already mapped there); a minimize stays unmapped, so only a
+            // visible window is re-asserted.
+            if self
+                .windows
+                .state(&window)
+                .is_some_and(|state| state.is_visible())
+            {
+                if let Some(geometry) = self.windows.geometry(&window) {
+                    if self.window_on_active_space(&window) {
+                        self.space.map_element(window, geometry.loc, false);
+                    }
                 }
             }
         }
+        // A motion started during this step keeps the driver alive even
+        // though the pre-step set looked settled.
+        if self.windows.active_motions().next().is_some() {
+            active = true;
+        }
         if active {
             self.needs_redraw = true;
+        } else {
+            self.window_motion_driver = false;
         }
         active
     }

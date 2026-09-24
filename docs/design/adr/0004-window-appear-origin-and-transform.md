@@ -21,8 +21,9 @@ fork the render path.
   (`since=4`, manager interface bumped to 4). It is keyed by `app_id` and
   consumed by that app's first mapped window. Absent, the compositor derives
   a **centered origin**: the final rectangle shrunk about its own center
-  (`AppearTransition::centered_origin`).
-- The transition is window-model state (`compositor/src/window/appear.rs`):
+  (`WindowMotion::centered_origin`, generalized for minimize/restore in
+  [ADR 0005](0005-minimize-restore-motion-and-ghost.md)).
+- The transition is window-model state (`compositor/src/window/motion.rs`):
   an origin/target pair plus the shared clock's `Tween`. The model geometry
   and the `Space` location stay the **final** geometry, so input, layout, and
   the shell's view never move.

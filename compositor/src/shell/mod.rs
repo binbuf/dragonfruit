@@ -1009,11 +1009,18 @@ impl DfState {
     }
 
     fn broadcast_window_events(&mut self) {
+        // With no trusted manager there is no consumer; leave the bounded
+        // outbox pending rather than draining it into the void. A late-bound
+        // shell replays the scene and `announce_one_toplevel` is idempotent,
+        // and a headless test can observe what the shell would have learned.
+        let sessions = self.manager_sessions();
+        if sessions.is_empty() {
+            return;
+        }
         let events = self.window_dispatch.drain();
         if events.is_empty() {
             return;
         }
-        let sessions = self.manager_sessions();
         let mut focus_changed = false;
         for event in events {
             match event.kind {
@@ -1668,9 +1675,10 @@ impl Dispatch<df_toplevel_manager::DfToplevelManager, ()> for DfState {
                 width,
                 height,
             } => {
-                // T-02.1b: the Dock's tile geometry for a launching app. The
-                // appear transition consumes it on the app's first window;
-                // absent, the compositor uses a centered origin.
+                // T-02.1b/T-02.2: the Dock's tile geometry for an app's
+                // windows. The launching window appears from it and minimize/
+                // restore scale into and out of it; absent, the compositor
+                // uses a centered origin.
                 state.set_launch_origin(
                     &app_id,
                     Rectangle::new((x, y).into(), (width.max(1), height.max(1)).into()),

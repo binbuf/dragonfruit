@@ -67,15 +67,19 @@ where
 }
 
 /// Build the client-surface render elements for the windows composited on
-/// `output`, applying each window's appear transform (T-02.1b).
+/// `output`, applying each window's lifecycle motion (T-02.1b/T-02.2).
 ///
 /// This is the per-window replacement for the window half of
 /// `smithay::desktop::space::render_output`: it walks the [`Space`] in the
 /// same front-to-back order and resolves the same locations/scale, but wraps
-/// a window that is mid-appear in a `Rescale`+`Relocate` pair and fades it
-/// through the surface-tree alpha, so the window scales/fades from its appear
-/// origin. A window with no in-flight appear produces byte-identical
+/// a window that is mid-appear/restore in a `Rescale`+`Relocate` pair and
+/// fades it through the surface-tree alpha, so the window scales/fades from
+/// its origin. A window with no in-flight motion produces byte-identical
 /// elements to the space path.
+///
+/// A **minimizing** window is unmapped from the `Space` (input-inert) but its
+/// surface is held as a ghost until the motion completes; those are rendered
+/// from the window model after the space walk with the same transform.
 ///
 /// [`Space`]: smithay::desktop::Space
 pub fn window_render_elements<R, E>(
@@ -115,41 +119,87 @@ where
         }
         let location = render_location - output_geometry.loc;
         let location_phys = location.to_physical_precise_round(scale);
-        match state.window_appear_frame(window, now) {
+        match state.window_motion_frame(window, now) {
             Some(frame) => {
-                // Fade through the surface-tree alpha, then scale about the
-                // window's physical target origin and translate to the
-                // interpolated rect.
-                let fade = window.render_elements::<WaylandSurfaceRenderElement<R>>(
-                    renderer,
-                    location_phys,
-                    scale,
-                    frame.alpha,
-                );
-                for element in fade {
-                    let scaled =
-                        RescaleRenderElement::from_element(element, location_phys, frame.scale);
-                    let relocated = RelocateRenderElement::from_element(
-                        scaled,
-                        frame.offset.to_physical_precise_round(scale),
-                        Relocate::Relative,
-                    );
-                    elements.push(relocated.into());
-                }
+                push_motion_elements(renderer, &mut elements, window, location_phys, scale, frame);
             }
             None => {
                 elements.extend(window.render_elements::<E>(renderer, location_phys, scale, 1.0));
             }
         }
     }
+    // Minimizing ghosts: unmapped from `Space` but still drawn until the
+    // motion completes.
+    for (window, motion) in state.windows.active_motions() {
+        if motion.kind != crate::window::WindowMotionKind::Minimize {
+            continue;
+        }
+        if state.space.element_location(window).is_some() {
+            continue;
+        }
+        // A window on an inactive Space is not visible at all, ghost included.
+        if !state.window_on_active_space(window) {
+            continue;
+        }
+        let Some(location) = state.windows.geometry(window) else {
+            continue;
+        };
+        let render_location = location.loc - window.geometry().loc;
+        let mut bbox = window.bbox_with_popups();
+        bbox.loc += render_location;
+        if !output_geometry.overlaps(bbox) {
+            continue;
+        }
+        let location = render_location - output_geometry.loc;
+        let location_phys = location.to_physical_precise_round(scale);
+        if let Some(frame) = state.window_motion_frame(window, now) {
+            push_motion_elements(renderer, &mut elements, window, location_phys, scale, frame);
+        }
+    }
     elements
+}
+
+/// Push one window's surface elements wrapped in `Rescale`+`Relocate` with
+/// the motion frame's scale/fade. Shared by the `Space` walk and the
+/// minimizing-ghost walk.
+fn push_motion_elements<R, E>(
+    renderer: &mut R,
+    elements: &mut Vec<E>,
+    window: &smithay::desktop::Window,
+    location_phys: smithay::utils::Point<i32, smithay::utils::Physical>,
+    scale: Scale<f64>,
+    frame: crate::window::MotionFrame,
+) where
+    R: Renderer + ImportAll,
+    R::TextureId: Clone + 'static,
+    E: From<WaylandSurfaceRenderElement<R>>
+        + From<RelocateRenderElement<RescaleRenderElement<WaylandSurfaceRenderElement<R>>>>,
+{
+    // Fade through the surface-tree alpha, then scale about the window's
+    // physical target origin and translate to the interpolated rect.
+    let fade = window.render_elements::<WaylandSurfaceRenderElement<R>>(
+        renderer,
+        location_phys,
+        scale,
+        frame.alpha,
+    );
+    for element in fade {
+        let scaled = RescaleRenderElement::from_element(element, location_phys, frame.scale);
+        let relocated = RelocateRenderElement::from_element(
+            scaled,
+            frame.offset.to_physical_precise_round(scale),
+            Relocate::Relative,
+        );
+        elements.push(relocated.into());
+    }
 }
 
 /// Build the solid-fill SSD titlebar elements for the windows composited on
 /// `output` (T-01.1). These are custom elements, so they composite *above*
 /// the window [`Space`](smithay::desktop::Space) — the titlebar sits above
-/// its own client surface. An appearing window's titlebar carries the same
-/// scale/fade as its content (T-02.1b).
+/// its own client surface. A window mid-motion carries the same scale/fade as
+/// its content (T-02.1b/T-02.2), including a minimizing ghost whose window is
+/// already unmapped.
 pub fn titlebar_render_elements(
     state: &DfState,
     output: &Output,
@@ -168,7 +218,35 @@ pub fn titlebar_render_elements(
             elements.extend(titlebar.render_elements(
                 scale,
                 output_geometry.loc,
-                state.window_appear_frame(window, now),
+                state.window_motion_frame(window, now),
+            ));
+        }
+    }
+    // Titlebars for minimizing ghosts (unmapped from `Space` but still drawn).
+    for (window, motion) in state.windows.active_motions() {
+        if motion.kind != crate::window::WindowMotionKind::Minimize {
+            continue;
+        }
+        if state.space.element_location(window).is_some() {
+            continue;
+        }
+        // A ghost on an inactive Space is not visible.
+        if !state.window_on_active_space(window) {
+            continue;
+        }
+        // A ghost is not in `Space`, so the per-output ownership test is the
+        // model geometry's overlap with this output.
+        let Some(geometry) = state.windows.geometry(window) else {
+            continue;
+        };
+        if !output_geometry.overlaps(geometry) {
+            continue;
+        }
+        if let Some(titlebar) = state.titlebar_element_for_motion(window) {
+            elements.extend(titlebar.render_elements(
+                scale,
+                output_geometry.loc,
+                state.window_motion_frame(window, now),
             ));
         }
     }
