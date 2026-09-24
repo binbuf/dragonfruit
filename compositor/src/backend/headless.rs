@@ -65,7 +65,8 @@ pub fn run(socket_name: &str) -> Result<(), String> {
                     // so a client's `wl_surface.frame` callbacks are delivered
                     // in CI (FR-2: a playing video keeps playing). No pixels
                     // are rendered or presented.
-                    if let Some(output) = state.space.outputs().next().cloned() {
+                    let output = state.space.outputs().next().cloned();
+                    if let Some(output) = output {
                         let now = state.clock.now();
                         crate::render::post_repaint_headless(state, &output, now.into());
                     }

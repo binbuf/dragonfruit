@@ -158,6 +158,13 @@ pub struct RenderStats {
     /// Frames pushed through the direct-scanout path instead of GL
     /// compositing (DRM backend only).
     pub direct_scanouts: u64,
+    /// Frame-callback batches handed to mapped clients after a presented
+    /// frame (one per live window per presented frame — the direct
+    /// "client wakeups" measure for the idle budget, FR-2). It stays at
+    /// zero while the desktop is idle and advances only when frames are
+    /// actually presented, so a flat counter proves the compositor woke no
+    /// client (T-03.1a).
+    pub client_wakeups: u64,
     /// Bounded ring of recent frame samples, newest last.
     samples: VecDeque<FrameSample>,
     frame_time_us_total: u64,
@@ -2087,11 +2094,12 @@ impl DfState {
         println!(
             "dragonfruit-compositor: render stats ({label}): \
              frames_rendered={} frames_skipped_no_damage={} direct_scanouts={} \
-             animation_frames_stepped={}",
+             animation_frames_stepped={} client_wakeups={}",
             self.stats.frames_rendered,
             self.stats.frames_skipped_no_damage,
             self.stats.direct_scanouts,
             self.animation_clock.frames_stepped(),
+            self.stats.client_wakeups,
         );
         // Animation-clock counters (T-02.1a): `frames_stepped` is the number
         // of animation frames the clock advanced; while an animation is live

@@ -28,6 +28,12 @@ which runs the same nested walkthrough twice (once normally, once with
 `accessibility.reduceMotion`) and writes `t02-lifecycle-motion*.png` plus
 `t02-lifecycle-motion.mp4` and `t02-lifecycle-motion-reduced.mp4`.
 
+T-03.1a's capture is the raw 60 s idle/animation frame trace,
+`t03-idle-trace.txt`, produced by `scripts/idle-trace.sh` (`make idle-trace`).
+It is a text artifact, not a recording: the numbers on the `SIGUSR1`
+render-stats line are the budget evidence (T-03.2/T-03.4 add the DRM run and
+the latency capture).
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

@@ -1,0 +1,16 @@
+cargo build --workspace
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.09s
+DF_IDLE_TRACE_SECS=60 cargo test -p dragonfruit-compositor \
+    --test idle_trace -- --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.08s
+     Running tests/idle_trace.rs (target/debug/deps/idle_trace-31eda57d64399fcf)
+
+running 1 test
+test idle_steady_state_renders_zero_frames has been running for over 60 seconds
+idle trace (60.0 s window): frames_rendered=1 (flat, +0), animation_frames_stepped=0 (flat, +0), direct_scanouts=0 (flat, +0), client_wakeups=0 (flat, +0), frames_skipped_no_damage 8 -> 9
+animation frame budget: rendered +20, animation_frames_stepped +20 (one compositor frame per animation frame), client_wakeups +0
+after the animation settled: frames_rendered=21, animation_frames_stepped=20, client_wakeups=0 (all flat)
+test idle_steady_state_renders_zero_frames ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 63.25s
+

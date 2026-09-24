@@ -19,6 +19,7 @@
 - **T11 — T-02.3 Zoom and fullscreen transitions**: **State: done.** Zoom/unzoom and fullscreen/unfullscreen animate between the; **`compositor/src/window/motion.rs`** — `WindowMotionKind::{Zoom,
 - **T12 — T-02.4a Close ghost**: **State: done.** A closing window shrinks/fades out into its app's Dock tile; **`compositor/src/window/motion.rs`** — `WindowMotionKind::Close` (reverse
 - **T13 — T-02.4b Close interruptibility and idle trace**: **State: done.** A live close ghost reverses mid-flight without waiting: a; **`compositor/src/state.rs`** — `close_window` clears keyboard focus when it
+- **T14 — T-03.1a Nested idle trace and animation frame budget**: **State: done.** The idle/animation frame trace is now a real instrument (a; **60.0 s idle window**: `frames_rendered=1` (flat, +0),
 - **Follow-ups**: Add the QML import-dir define (`DF_QML_IMPORT_DIR`) to the first-party apps'; T-16: publish `_NET_FRAME_EXTENTS` for Tier-2 X11 windows so clients can
 <!-- symphony:digest:end -->
 
@@ -917,6 +918,72 @@ Gotchas for later tasks:
 - The T-02 capture is assembled from **settled stills** (no scriptable Wayland
   screen recorder in this environment); live motion is T-03.1a's frame trace.
 
+## T14 — T-03.1a Nested idle trace and animation frame budget
+
+**State: done.** The idle/animation frame trace is now a real instrument (a
+direct `client_wakeups` counter, not an inference from the render count) and
+the 60 s acceptance window is flat. Raw numbers from `bash
+scripts/idle-trace.sh` (headless backend, `DF_IDLE_TRACE_SECS=60`; the raw log
+is committed as `docs/captures/t03-idle-trace.txt`):
+
+- **60.0 s idle window**: `frames_rendered=1` (flat, +0),
+  `animation_frames_stepped=0` (flat, +0), `direct_scanouts=0` (flat, +0),
+  `client_wakeups=0` (flat, +0); `frames_skipped_no_damage` 8 → 9 (one per
+  `SIGUSR1`, expected).
+- **animation frame budget**: `frames_rendered +20`,
+  `animation_frames_stepped +20` (a 320 ms dummy animation at 16 ms/frame) —
+  exactly one compositor frame per animation frame; `client_wakeups +0` (no
+  window attached, so no callback batch).
+- **after settle**: `frames_rendered=21`, `animation_frames_stepped=20`,
+  `client_wakeups=0` — all flat.
+- **Verdict: pass** for zero idle damage / zero client wakeups and
+  one-frame-per-animation-frame. This is the headless trace the task's test
+  plan names; the live nested/DRM runs are T-03.2/T-03.4.
+
+What landed:
+
+- **`compositor/src/state.rs`** — `RenderStats::client_wakeups`; the
+  `dump_stats` render-stats line appends `client_wakeups=` (append-only
+  positional contract, ADR 0009).
+- **`compositor/src/render.rs`** — `post_repaint` / `post_repaint_headless`
+  count one frame-callback batch per live window; new `count_output_windows`
+  helper (the DRM frame callbacks are queued by `DrmCompositor` itself).
+- **`compositor/src/backend/headless.rs`** — `post_repaint_headless` takes
+  `&mut DfState` now (the counter lives on `state.stats`).
+- **`compositor/src/backend/drm.rs`** — increments `client_wakeups` via
+  `count_output_windows`, so the budget is measurable on the DRM rail.
+- **`compositor/tests/idle_trace.rs`** — extended with the synthetic-input
+  socket and a `DF_IDLE_TRACE_SECS` window (default 10 s in-suite): asserts
+  `frames_rendered`/`animation_frames_stepped`/`direct_scanouts`/`client_wakeups`
+  flat, drives `animate-dummy 320` and asserts `rendered == stepped`, then
+  asserts flat after settle. Prints the raw line.
+- **`Makefile`** — `idle-trace` target (`IDLE_TRACE_SECS ?= 60`);
+  **`scripts/idle-trace.sh`** runs it and records
+  `docs/captures/t03-idle-trace.txt`.
+- **Docs** — ADR `0009-idle-trace-instrumentation.md`;
+  `docs/design/02-compositor.md` "Idle and animation frame trace (T-03.1a)";
+  `docs/captures/README.md`.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `make idle-trace` — 60 s trace green (raw log above); `IDLE_TRACE_SECS=10`
+  for a quick run.
+- `make cargo-test`; `make clippy`; `make fmt-check`; `make e2e` — green.
+
+Gotchas for later tasks:
+
+- The render-stats line is a **positional, append-only** contract (ADR 0009).
+  T-03.1b appends latency/scanout fields; never reorder or rename existing
+  ones — tests and the capture log parse them positionally.
+- `client_wakeups` counts frame-callback **batches offered to mapped
+  windows**, not delivered `wl_callback.done` events; it is an upper bound and
+  is `0` with no window attached. On DRM it is the
+  `count_output_windows` bound until the `DrmCompositor` callback path is
+  hooked (T-03.2).
+- `post_repaint_headless` takes `&mut DfState` now; do not revert it to `&`.
+- The in-suite idle window is 10 s for speed; the 60 s acceptance is
+  `make idle-trace` / `scripts/idle-trace.sh`.
+
 ## Follow-ups
 
 - Add the QML import-dir define (`DF_QML_IMPORT_DIR`) to the first-party apps'
@@ -953,3 +1020,9 @@ Gotchas for later tasks:
   `after_workspace_change` should mirror `active_window`/`Unfocused` when it
   drops focus (same Smithay unset gap as close); (c) T-04 composes
   scale/clip/blur onto the same `MotionFrame`.
+- T-03.1b: **append** the input-to-photon latency and direct-scanout fields to
+  the `render stats` line (after `client_wakeups`) and add the scanout
+  template; do not reorder existing fields (ADR 0009).
+- T-03.2/T-03.4: hook `DrmCompositor`'s frame-callback delivery so
+  `client_wakeups` is exact on DRM instead of the `count_output_windows`
+  upper bound; record the DRM 60 s trace alongside the nested one.
