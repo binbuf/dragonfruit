@@ -316,7 +316,30 @@ unsafe extern "C" {
 // --- client helpers --------------------------------------------------------
 
 fn connect(socket_path: &Path) -> (Connection, EventQueue<ShellClient>, ShellClient) {
-    let stream = std::os::unix::net::UnixStream::connect(socket_path).expect("connect failed");
+    // `CompositorProcess::start` returns as soon as the socket *node* exists,
+    // but a stale node left by a killed run (or a window between the node
+    // appearing and the listener accepting) can make a single connect race to
+    // ECONNREFUSED (T-09 verify flake). Retry briefly so a startup race can
+    // never fail the suite.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let stream = loop {
+        match std::os::unix::net::UnixStream::connect(socket_path) {
+            Ok(stream) => break stream,
+            Err(err)
+                if matches!(
+                    err.kind(),
+                    std::io::ErrorKind::ConnectionRefused | std::io::ErrorKind::NotFound
+                ) =>
+            {
+                assert!(
+                    Instant::now() < deadline,
+                    "connect failed after retrying for 10s: {err}"
+                );
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Err(err) => panic!("connect failed: {err}"),
+        }
+    };
     let conn = Connection::from_socket(stream).expect("connection failed");
     let mut queue = conn.new_event_queue();
     let qh = queue.handle();
