@@ -1986,6 +1986,157 @@ fn dock_click_tree_activation_conformance() {
     proc.shutdown();
 }
 
+/// T-01.6b acceptance: the Dock/menu-bar integration transitions the shell
+/// projects from the private protocol, driven end to end over the shell
+/// protocol — the headless half of the T-01 demo walkthrough
+/// (`scripts/capture-demo.sh` is the live half).
+///
+/// One window walks the whole loop: it is announced with its name (title +
+/// app id, the Dock/menu-bar label source), it is a running entry, focusing
+/// it updates the menu bar, minimizing it produces the minimized entry,
+/// `activate_app` (the Dock click) restores the running entry, and closing it
+/// retires the handle.
+#[test]
+fn dock_entry_lifecycle_focus_running_minimize_restore_close() {
+    const APP: &str = "org.dragonfruit.LifecycleApp";
+    let token = "5c".repeat(32);
+    let proc = CompositorProcess::start("dragonfruit-conformance-dock-lifecycle", &[token]);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (name, version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, name, version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+    let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
+    let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.workspaces.len() >= 3 && state.done_count > 0,
+    );
+
+    // --- a mapped window carries the Dock/menu-bar name -------------------
+    let (surface, xdg_surface, toplevel, _file) =
+        map_toplevel(&mut state, &mut queue, "Lifecycle", APP);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.toplevels.is_empty(),
+    );
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .toplevel_titles
+                .iter()
+                .any(|title| title.as_deref() == Some("Lifecycle"))
+                && state
+                    .toplevel_app_ids
+                    .iter()
+                    .any(|app| app.as_deref() == Some(APP))
+        },
+    );
+    let handle = state.toplevels[0].clone();
+
+    // --- running entry: present and not minimized -------------------------
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .toplevel_states
+                .iter()
+                .all(|flags| flags & df_toplevel::State::Minimized.bits() == 0)
+        },
+    );
+
+    // --- focus: the menu bar names the focused window ---------------------
+    state.focused.clear();
+    manager.activate_app(APP.to_string());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.focused.iter().flatten().any(|f| f == &handle),
+    );
+
+    // --- minimize: the minimized entry appears ----------------------------
+    state.toplevel_states.clear();
+    handle.minimize();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .toplevel_states
+                .iter()
+                .any(|flags| flags & df_toplevel::State::Minimized.bits() != 0)
+        },
+    );
+
+    // --- restore from the Dock: running entry again -----------------------
+    // Focus is already proven above; here the Dock click must clear the
+    // minimized state (the running entry reappears).
+    state.toplevel_states.clear();
+    manager.activate_app(APP.to_string());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .toplevel_states
+                .iter()
+                .any(|flags| flags & df_toplevel::State::Minimized.bits() == 0)
+        },
+    );
+
+    // --- close: the Dock entry resolves -----------------------------------
+    state.toplevel_close_requests = 0;
+    state.toplevel_closed = 0;
+    handle.close();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.toplevel_close_requests >= 1,
+    );
+    toplevel.destroy();
+    surface.destroy();
+    xdg_surface.destroy();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.toplevel_closed >= 1,
+    );
+
+    manager.destroy();
+    let _ = conn.flush();
+    proc.shutdown();
+}
+
 /// Map a toplevel and return its proxies plus the backing file (which must
 /// outlive the first flush).
 #[allow(clippy::type_complexity)]

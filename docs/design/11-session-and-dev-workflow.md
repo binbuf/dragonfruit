@@ -67,6 +67,19 @@ missing; a Wayland-only session is a normal state.
 `DF_DEMO_QT_APP`, `DF_DEMO_X11_APP`, and `DF_QML_IMPORT_PATH` override the
 app/QML paths the harness discovers under `build/`.
 
+### Capturing the walkthrough
+
+`scripts/capture-demo.sh` performs the checklist against the live nested
+session instead of a human. It launches `make demo` with the compositor's
+synthetic-input harness bound (`DRAGONFRUIT_SYNTHETIC_INPUT`, installed on
+the nested backend as well as headless — test plumbing only, never set in a
+real session), drives focus, the window menu, zoom, minimize,
+restore-from-Dock, and close through the same `process_input_event` router a
+real device uses, and screenshots each step with Spectacle. The stills and a
+short walkthrough clip land in `docs/captures/`. It needs a host Wayland
+session, Spectacle, ffmpeg, and Pillow, so it is deliberately not part of
+`make e2e`.
+
 ## Real-hardware testing is a separate login session
 
 For DRM/KMS, multi-monitor, suspend/resume, GPU-vendor behavior, VRR, and

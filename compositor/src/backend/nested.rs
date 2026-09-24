@@ -41,6 +41,15 @@ render_elements! {
 pub fn run(socket_name: &str) -> Result<(), String> {
     println!("dragonfruit-compositor: starting (backend=nested, lockstep-ipc=v{LOCKSTEP_VERSION})");
 
+    // T-03 synthetic-input harness: opt-in, test-only plumbing, exactly as
+    // the headless backend installs it. On nested it exists so a capture
+    // script can drive the live walkthrough (Dock clicks, traffic lights,
+    // titlebar menu) and screenshot the result — CI never sets this. The
+    // socket path is a full path so the caller controls naming/cleanup.
+    let synthetic_path = std::env::var_os(crate::input::synthetic::ENV_SYNTHETIC_INPUT)
+        .map(std::path::PathBuf::from);
+    let install_path = synthetic_path.clone();
+
     let (mut backend, winit_loop) = winit::init::<GlowRenderer>().map_err(|e| {
         format!("failed to open a nested window (is there a Wayland session?): {e}")
     })?;
@@ -52,7 +61,7 @@ pub fn run(socket_name: &str) -> Result<(), String> {
     let shared_init = shared.clone();
     let shared_render = shared.clone();
 
-    run_session(
+    let result = run_session(
         socket_name,
         BackendHooks {
             init: Box::new(move |state| {
@@ -74,6 +83,9 @@ pub fn run(socket_name: &str) -> Result<(), String> {
                     1.0,
                 );
                 add_seat_capabilities(state);
+                if let Some(path) = &install_path {
+                    crate::input::synthetic::install(state, path)?;
+                }
 
                 // shm buffer formats we can import.
                 state
@@ -152,7 +164,13 @@ pub fn run(socket_name: &str) -> Result<(), String> {
                 }
             }),
         },
-    )
+    );
+    // The synthetic socket node is session state, not a leak; remove it even
+    // when `run_session` returns an error.
+    if let Some(path) = &synthetic_path {
+        let _ = std::fs::remove_file(path);
+    }
+    result
 }
 
 struct NestedData {
