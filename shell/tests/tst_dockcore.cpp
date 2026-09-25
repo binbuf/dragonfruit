@@ -9,12 +9,17 @@
 #include "downloadsmonitor.h"
 #include "filestarget.h"
 #include "framecommitgate.h"
+#include "launchfailure.h"
+#include "notificationclient.h"
 #include "settingsclient.h"
 #include "trashbridge.h"
 
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
@@ -1118,6 +1123,72 @@ private slots:
         QCOMPARE(gate.sceneFrames(), quint64(0));
         QCOMPARE(gate.committedFrames(), quint64(0));
         QVERIFY(gate.frameRendered());
+    }
+
+    // -- launch-failure notification + action round-trip (T-11.1b) --------
+
+    void aLaunchFailureRaisesANotificationWithTheAppAndReason()
+    {
+        MockNotificationClient client(nullptr, /*seedFixture=*/false);
+        QSignalSpy banners(&client, &NotificationClient::bannersChanged);
+        QSignalSpy notified(&client, &NotificationClient::notified);
+
+        raiseDockLaunchFailure(&client, QStringLiteral("Files"),
+                               QStringLiteral("QProcess::startDetached failed"));
+
+        QCOMPARE(notified.count(), 1);
+        QCOMPARE(notified.takeFirst().at(0).toUInt(), 1u);
+        QCOMPARE(banners.count(), 1);
+        const QJsonArray view =
+            QJsonDocument::fromJson(banners.takeFirst().at(0).toByteArray()).array();
+        QCOMPARE(view.size(), 1);
+        const QJsonObject banner = view.first().toObject();
+        QCOMPARE(banner.value(QStringLiteral("appName")).toString(), QStringLiteral("Dock"));
+        QCOMPARE(banner.value(QStringLiteral("summary")).toString(),
+                 QStringLiteral("Could not launch Files"));
+        QCOMPARE(banner.value(QStringLiteral("body")).toString(),
+                 QStringLiteral("QProcess::startDetached failed"));
+        QVERIFY(banner.value(QStringLiteral("actions")).toArray().isEmpty());
+    }
+
+    void aLaunchFailureFallsBackToAGenericAppName()
+    {
+        MockNotificationClient client(nullptr, false);
+        QSignalSpy banners(&client, &NotificationClient::bannersChanged);
+        raiseDockLaunchFailure(&client, QString(), QString());
+        const QJsonArray view =
+            QJsonDocument::fromJson(banners.takeFirst().at(0).toByteArray()).array();
+        QCOMPARE(view.first().toObject().value(QStringLiteral("summary")).toString(),
+                 QStringLiteral("Could not launch app"));
+        QCOMPARE(view.first().toObject().value(QStringLiteral("body")).toString(),
+                 QStringLiteral("The app did not start."));
+    }
+
+    void aMockNotifyCarriesItsActionsAndInvokeDismisses()
+    {
+        MockNotificationClient client(nullptr, false);
+        QSignalSpy banners(&client, &NotificationClient::bannersChanged);
+        client.notify(QStringLiteral("Mail"), QStringLiteral("New message"),
+                      QStringLiteral("From Ada"), QStringLiteral("critical"),
+                      { QStringLiteral("reply") }, { QStringLiteral("Reply") });
+        const QJsonArray view =
+            QJsonDocument::fromJson(banners.takeFirst().at(0).toByteArray()).array();
+        const QJsonObject banner = view.first().toObject();
+        QCOMPARE(banner.value(QStringLiteral("urgency")).toString(),
+                 QStringLiteral("critical"));
+        const QJsonArray actions = banner.value(QStringLiteral("actions")).toArray();
+        QCOMPARE(actions.size(), 1);
+        QCOMPARE(actions.first().toObject().value(QStringLiteral("key")).toString(),
+                 QStringLiteral("reply"));
+        QCOMPARE(actions.first().toObject().value(QStringLiteral("label")).toString(),
+                 QStringLiteral("Reply"));
+
+        // Invoking the action removes the banner; the history records the
+        // dismissal (the live service also emits ActionInvoked to the app).
+        client.invoke(1, QStringLiteral("reply"));
+        const QJsonArray cleared =
+            QJsonDocument::fromJson(banners.takeFirst().at(0).toByteArray()).array();
+        QVERIFY(cleared.isEmpty());
     }
 };
 

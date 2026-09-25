@@ -21,6 +21,9 @@ Item {
         Component { id: bannerComponent; NotificationBanner { } }
         Component { id: centerComponent; NotificationCenter { } }
 
+        SignalSpy { id: actionSpy; signalName: "actionInvoked" }
+        SignalSpy { id: activatedSpy; signalName: "activated" }
+
         function make(component, props) {
             var obj = createTemporaryObject(component, stage, props || {});
             waitForRendering(stage);
@@ -45,6 +48,38 @@ Item {
             verify(!findChild(banner, "appName").visible);
             verify(findChild(banner, "summary").visible);
             verify(!findChild(banner, "body").visible);
+        }
+
+        function test_the_banner_renders_an_action_row_and_invokes_it() {
+            var banner = make(bannerComponent, {
+                appName: "Mail",
+                summary: "New message",
+                body: "From Ada",
+                actions: [
+                    { key: "reply", label: "Reply" },
+                    { key: "archive", label: "Archive" }
+                ]
+            });
+            // The card grows for the action row.
+            compare(banner.cardHeight, 132);
+            verify(findChild(banner, "actionsRow").visible);
+
+            var reply = findChild(banner, "action_reply");
+            verify(reply);
+            actionSpy.target = banner;
+            actionSpy.clear();
+            mouseClick(reply, reply.width / 2, reply.height / 2);
+            compare(actionSpy.count, 1);
+            compare(actionSpy.signalArguments[0][0], "reply");
+        }
+
+        function test_the_banner_body_click_activates() {
+            var banner = make(bannerComponent, { summary: "New message", body: "From Ada" });
+            compare(banner.cardHeight, 96);
+            activatedSpy.target = banner;
+            activatedSpy.clear();
+            mouseClick(banner, 200, 40);
+            compare(activatedSpy.count, 1);
         }
 
         function test_the_center_renders_every_history_entry() {

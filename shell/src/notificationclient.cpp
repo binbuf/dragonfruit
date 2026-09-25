@@ -140,36 +140,92 @@ void DbusNotificationClient::setDoNotDisturb(bool enabled)
 #endif
 }
 
+void DbusNotificationClient::notify(const QString &appName, const QString &summary,
+                                    const QString &body, const QString &urgency,
+                                    const QStringList &actionKeys,
+                                    const QStringList &actionLabels)
+{
+#if defined(QT_DBUS_LIB)
+    // Raise the notification as an app would, through the standard
+    // freedesktop interface at the same path.
+    QDBusInterface iface(kService, kPath, kService, QDBusConnection::sessionBus());
+    if (!iface.isValid()) {
+        m_available = false;
+        emit availableChanged(false);
+        return;
+    }
+    QStringList flatActions;
+    for (int i = 0; i < actionKeys.size(); ++i) {
+        flatActions << actionKeys.at(i)
+                    << (i < actionLabels.size() ? actionLabels.at(i) : actionKeys.at(i));
+    }
+    QVariantMap hints;
+    if (urgency == QLatin1String("critical"))
+        hints.insert(QStringLiteral("urgency"), QVariant::fromValue(2u));
+    else if (urgency == QLatin1String("low"))
+        hints.insert(QStringLiteral("urgency"), QVariant::fromValue(0u));
+    QDBusPendingCallWatcher *watcher = new QDBusPendingCallWatcher(
+        iface.asyncCall(QStringLiteral("Notify"), appName, 0u, QString(), summary, body,
+                        flatActions, hints, -1),
+        this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, watcher]() {
+        const QDBusPendingReply<quint32> reply = *watcher;
+        if (reply.isValid())
+            emit notified(reply.value());
+        else
+            qWarning() << "dragonfruit-shell: notification Notify failed:"
+                       << watcher->reply().errorMessage();
+        watcher->deleteLater();
+    });
+#else
+    Q_UNUSED(appName);
+    Q_UNUSED(summary);
+    Q_UNUSED(body);
+    Q_UNUSED(urgency);
+    Q_UNUSED(actionKeys);
+    Q_UNUSED(actionLabels);
+#endif
+}
+
+void DbusNotificationClient::invoke(quint32 id, const QString &actionKey)
+{
+#if defined(QT_DBUS_LIB)
+    // The service emits `ActionInvoked` to the originating app and dismisses
+    // the banner; `Changed` then re-reads the views.
+    QDBusInterface iface(m_service, m_path, m_interface, QDBusConnection::sessionBus());
+    if (iface.isValid())
+        iface.asyncCall(QStringLiteral("Invoke"), id, actionKey);
+#else
+    Q_UNUSED(id);
+    Q_UNUSED(actionKey);
+#endif
+}
+
 // --- MockNotificationClient ------------------------------------------------
 
-MockNotificationClient::MockNotificationClient(QObject *parent)
+MockNotificationClient::MockNotificationClient(QObject *parent, bool seedFixture)
     : NotificationClient(parent)
+{
+    m_expiry.setSingleShot(true);
+    connect(&m_expiry, &QTimer::timeout, this, [this]() { expire(m_bannerId); });
+    if (seedFixture)
+        seedBanner();
+    else
+        m_bannerJson = QByteArrayLiteral("[]");
+}
+
+void MockNotificationClient::seedBanner()
 {
     // One representative banner with a long deadline so a capture is
     // deterministic; it still expires through the same path the live service
     // uses.
-    const qint64 now = QDateTime::currentMSecsSinceEpoch();
-    const quint32 id = m_nextId++;
-    m_bannerId = id;
-    m_bannerJson = QJsonDocument(QJsonArray{ QJsonObject{
-                        { QStringLiteral("id"), static_cast<double>(id) },
-                        { QStringLiteral("appName"), QStringLiteral("Mail") },
-                        { QStringLiteral("appIcon"), QString() },
-                        { QStringLiteral("summary"), QStringLiteral("New message") },
-                        { QStringLiteral("body"),
-                          QStringLiteral("Ada Lovelace — Notes on the Analytical Engine") },
-                        { QStringLiteral("urgency"), QStringLiteral("normal") },
-                        { QStringLiteral("createdAt"), static_cast<double>(now) },
-                        { QStringLiteral("deadline"), static_cast<double>(now + 60000) },
-                        { QStringLiteral("actions"), QJsonArray{} },
-                    } })
-                        .toJson(QJsonDocument::Compact);
-    publish();
-
-    m_expiry.setSingleShot(true);
+    notify(QStringLiteral("Mail"), QStringLiteral("New message"),
+           QStringLiteral("Ada Lovelace — Notes on the Analytical Engine"),
+           QStringLiteral("normal"), {}, {});
+    m_expiry.stop();
     m_expiry.setInterval(60000);
-    connect(&m_expiry, &QTimer::timeout, this, [this]() { expire(m_bannerId); });
-    m_expiry.start();
+    if (m_bannerId != 0)
+        m_expiry.start();
 }
 
 void MockNotificationClient::refresh()
@@ -178,34 +234,71 @@ void MockNotificationClient::refresh()
     emit historyChanged(m_historyJson);
 }
 
+void MockNotificationClient::notify(const QString &appName, const QString &summary,
+                                    const QString &body, const QString &urgency,
+                                    const QStringList &actionKeys,
+                                    const QStringList &actionLabels)
+{
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    const quint32 id = m_nextId++;
+    QJsonArray actions;
+    for (int i = 0; i < actionKeys.size(); ++i) {
+        actions.append(QJsonObject{
+            { QStringLiteral("key"), actionKeys.at(i) },
+            { QStringLiteral("label"),
+              i < actionLabels.size() ? actionLabels.at(i) : actionKeys.at(i) } });
+    }
+    const QJsonObject banner{
+        { QStringLiteral("id"), static_cast<double>(id) },
+        { QStringLiteral("appName"), appName },
+        { QStringLiteral("appIcon"), QString() },
+        { QStringLiteral("summary"), summary },
+        { QStringLiteral("body"), body },
+        { QStringLiteral("urgency"),
+          urgency.isEmpty() ? QStringLiteral("normal") : urgency },
+        { QStringLiteral("createdAt"), static_cast<double>(now) },
+        { QStringLiteral("deadline"), static_cast<double>(now + 5000) },
+        { QStringLiteral("actions"), actions },
+    };
+    m_bannerId = id;
+    m_bannerJson = QJsonDocument(QJsonArray{ banner }).toJson(QJsonDocument::Compact);
+
+    // The history records the open entry immediately, exactly like the
+    // service (reason/closedAt null until it leaves the queue).
+    QJsonObject entry = banner;
+    entry.insert(QStringLiteral("closedAt"), QJsonValue::Null);
+    entry.insert(QStringLiteral("reason"), QJsonValue::Null);
+    QJsonArray history = QJsonDocument::fromJson(m_historyJson).array();
+    history.prepend(entry);
+    m_historyJson = QJsonDocument(history).toJson(QJsonDocument::Compact);
+
+    m_expiry.stop();
+    m_expiry.setInterval(5000);
+    m_expiry.start();
+    refresh();
+    emit notified(id);
+}
+
 void MockNotificationClient::remove(quint32 id, const QString &reason)
 {
     if (id != m_bannerId)
         return;
-    // Re-encode the banner as a closed history entry (reason set).
-    QJsonArray banners = QJsonDocument::fromJson(m_bannerJson).array();
-    if (banners.isEmpty())
-        return;
-    QJsonObject entry = banners.first().toObject();
-    entry[QStringLiteral("closedAt")] = static_cast<double>(QDateTime::currentMSecsSinceEpoch());
-    entry[QStringLiteral("reason")] = reason;
     QJsonArray history = QJsonDocument::fromJson(m_historyJson).array();
-    history.prepend(entry);
+    for (int i = 0; i < history.size(); ++i) {
+        QJsonObject entry = history.at(i).toObject();
+        if (static_cast<quint32>(entry.value(QStringLiteral("id")).toDouble()) != id)
+            continue;
+        entry.insert(QStringLiteral("closedAt"),
+                     static_cast<double>(QDateTime::currentMSecsSinceEpoch()));
+        entry.insert(QStringLiteral("reason"), reason);
+        history.replace(i, entry);
+        break;
+    }
     m_historyJson = QJsonDocument(history).toJson(QJsonDocument::Compact);
-    m_bannerJson = QJsonDocument(QJsonArray{}).toJson(QJsonDocument::Compact);
+    m_bannerJson = QByteArrayLiteral("[]");
     m_bannerId = 0;
     m_expiry.stop();
     refresh();
-}
-
-void MockNotificationClient::publish()
-{
-    const QJsonArray banners = QJsonDocument::fromJson(m_bannerJson).array();
-    QJsonArray history = QJsonDocument::fromJson(m_historyJson).array();
-    if (history.isEmpty() && !banners.isEmpty()) {
-        history.prepend(banners.first().toObject());
-        m_historyJson = QJsonDocument(history).toJson(QJsonDocument::Compact);
-    }
 }
 
 void MockNotificationClient::dismiss(quint32 id)
@@ -216,6 +309,15 @@ void MockNotificationClient::dismiss(quint32 id)
 void MockNotificationClient::expire(quint32 id)
 {
     remove(id, QStringLiteral("expired"));
+}
+
+void MockNotificationClient::invoke(quint32 id, const QString &actionKey)
+{
+    Q_UNUSED(actionKey);
+    // The live service emits `ActionInvoked` to the originating app and then
+    // dismisses the banner; the mock has no app, so only the dismissal is
+    // observable here.
+    remove(id, QStringLiteral("dismissed"));
 }
 
 void MockNotificationClient::setDoNotDisturb(bool)

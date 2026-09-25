@@ -470,6 +470,21 @@ bool ShellProtocol::hideBanner()
     return true;
 }
 
+bool ShellProtocol::setBannerInputRegion(int width, int height)
+{
+    if (!m_bannerSurface || !m_compositor)
+        return false;
+    wl_region *region = wl_compositor_create_region(m_compositor);
+    if (!region)
+        return false;
+    if (width > 0 && height > 0)
+        wl_region_add(region, 0, 0, width, height);
+    // Applied with the next buffer commit (`commitBannerImage`).
+    wl_surface_set_input_region(m_bannerSurface, region);
+    wl_region_destroy(region);
+    return true;
+}
+
 void ShellProtocol::activateWorkspace(int index)
 {
     if (!m_display)
@@ -1090,6 +1105,7 @@ void ShellProtocol::teardown()
     m_overviewSurface = nullptr;
     m_overviewMapped = false;
     m_pointerOnOverview = false;
+    m_pointerOnBanner = false;
     m_keyboardOnOverview = false;
     m_switcherLayer = nullptr;
     m_switcherSurface = nullptr;
@@ -1476,6 +1492,7 @@ void ShellProtocol::onPointerEnter(void *data, wl_pointer *, uint32_t, wl_surfac
     self->m_pointerOnDockPopup =
         self->m_dockPopupSurface && surface == self->m_dockPopupSurface;
     self->m_pointerOnDock = self->m_dockSurface && surface == self->m_dockSurface;
+    self->m_pointerOnBanner = self->m_bannerSurface && surface == self->m_bannerSurface;
     self->m_pointerOnOverview =
         self->m_overviewSurface && surface == self->m_overviewSurface;
     self->m_pointerX = wl_fixed_to_double(x) + (self->m_pointerOnPopup ? self->m_popupX : 0);
@@ -1484,6 +1501,12 @@ void ShellProtocol::onPointerEnter(void *data, wl_pointer *, uint32_t, wl_surfac
         self->m_pointerX = wl_fixed_to_double(x);
         self->m_pointerY = wl_fixed_to_double(y);
         emit self->overviewPointerMoved(self->m_pointerX, self->m_pointerY);
+        return;
+    }
+    if (self->m_pointerOnBanner) {
+        self->m_pointerX = wl_fixed_to_double(x);
+        self->m_pointerY = wl_fixed_to_double(y);
+        emit self->bannerPointerMoved(self->m_pointerX, self->m_pointerY);
         return;
     }
     if (self->m_pointerOnDockPopup) {
@@ -1505,14 +1528,18 @@ void ShellProtocol::onPointerLeave(void *data, wl_pointer *, uint32_t, wl_surfac
 {
     auto *self = static_cast<ShellProtocol *>(data);
     const bool wasOverview = self->m_pointerOnOverview;
+    const bool wasBanner = self->m_pointerOnBanner;
     const bool wasDockPopup = self->m_pointerOnDockPopup;
     const bool wasDock = self->m_pointerOnDock;
     self->m_pointerOnPopup = false;
     self->m_pointerOnDockPopup = false;
     self->m_pointerOnDock = false;
+    self->m_pointerOnBanner = false;
     self->m_pointerOnOverview = false;
     if (wasOverview)
         emit self->overviewPointerLeft();
+    else if (wasBanner)
+        emit self->bannerPointerLeft();
     else if (wasDockPopup)
         emit self->dockPopupPointerLeft();
     else if (wasDock)
@@ -1531,6 +1558,12 @@ void ShellProtocol::onPointerMotion(void *data, wl_pointer *, uint32_t, wl_fixed
         self->m_pointerX = wl_fixed_to_double(x);
         self->m_pointerY = wl_fixed_to_double(y);
         emit self->overviewPointerMoved(self->m_pointerX, self->m_pointerY);
+        return;
+    }
+    if (self->m_pointerOnBanner) {
+        self->m_pointerX = wl_fixed_to_double(x);
+        self->m_pointerY = wl_fixed_to_double(y);
+        emit self->bannerPointerMoved(self->m_pointerX, self->m_pointerY);
         return;
     }
     if (self->m_pointerOnDockPopup) {
@@ -1555,6 +1588,11 @@ void ShellProtocol::onPointerButton(void *data, wl_pointer *, uint32_t, uint32_t
     if (self->m_pointerOnOverview) {
         emit self->overviewPointerButton(self->m_pointerX, self->m_pointerY, button,
                                          state == WL_POINTER_BUTTON_STATE_PRESSED);
+        return;
+    }
+    if (self->m_pointerOnBanner) {
+        emit self->bannerPointerButton(self->m_pointerX, self->m_pointerY, button,
+                                       state == WL_POINTER_BUTTON_STATE_PRESSED);
         return;
     }
     if (self->m_pointerOnDockPopup) {

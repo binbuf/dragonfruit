@@ -20,8 +20,10 @@
 //! until the earliest deadline and is woken when a new one arrives, so an
 //! idle service does no work.
 //!
-//! Actions are recorded on the model but not advertised in the capabilities
-//! and not round-tripped to the app; that is T-11.1b.
+//! Actions are advertised in the capabilities and round-tripped: the shell
+//! calls `Invoke(id, action_key)` when a banner action is clicked, and the
+//! service emits the freedesktop `ActionInvoked(id, action_key)` to the app
+//! that sent the `Notify`, then dismisses the banner (T-11.1b).
 
 use std::collections::HashMap;
 use std::sync::{Arc, Condvar, Mutex};
@@ -44,9 +46,10 @@ pub const SHELL_INTERFACE: &str = "org.dragonfruit.Notifications1";
 /// The freedesktop interface name.
 pub const FREEDESKTOP_INTERFACE: &str = "org.freedesktop.Notifications";
 
-/// What the server implements today. `actions` is deliberately absent until
-/// T-11.1b wires the round-trip.
-const CAPABILITIES: &[&str] = &["body", "body-markup", "icon-static"];
+/// What the server implements today. `actions` is advertised because the
+/// shell round-trips action invocation back to the originating app
+/// (T-11.1b).
+const CAPABILITIES: &[&str] = &["body", "body-markup", "icon-static", "actions"];
 
 /// The wake handle for the expiry thread: a flag plus a condvar so a new
 /// notification with an earlier deadline re-arms the sleep immediately.
@@ -185,8 +188,9 @@ impl FreedesktopNotifications {
         reason: u32,
     ) -> zbus::Result<()>;
 
-    /// An action was invoked. Reserved for T-11.1b; declared now so the
-    /// interface is stable.
+    /// An action was invoked by the user. The shell calls
+    /// `org.dragonfruit.Notifications1.Invoke`, which emits this signal back
+    /// to the app that sent the `Notify` (T-11.1b).
     #[zbus(signal)]
     async fn action_invoked(
         emitter: &SignalEmitter<'_>,
@@ -256,6 +260,26 @@ impl ShellNotifications {
         self.close_with(id, CloseReason::Expired, &emitter).await
     }
 
+    /// The user invoked an action on an active banner: emit the freedesktop
+    /// `ActionInvoked(id, action_key)` to the originating app, then dismiss
+    /// the banner (reason 2), emitting `NotificationClosed` and `Changed`.
+    /// Returns whether `id` named an active banner. The shell passes the
+    /// literal `"default"` key when the user clicks the banner body and the
+    /// app registered a default action.
+    async fn invoke(
+        &self,
+        id: u32,
+        action_key: &str,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+    ) -> bool {
+        if lock(&self.queue).banner(id).is_none() {
+            return false;
+        }
+        emit_action_invoked(&emitter, id, action_key).await;
+        self.close_with(id, CloseReason::Dismissed, &emitter).await;
+        true
+    }
+
     /// Whether Do Not Disturb suppresses banners.
     fn do_not_disturb(&self) -> bool {
         lock(&self.queue).do_not_disturb()
@@ -302,6 +326,11 @@ async fn emit_shell_changed(emitter: &SignalEmitter<'_>) {
 /// Emit the freedesktop `NotificationClosed` signal at the served path.
 async fn emit_closed(emitter: &SignalEmitter<'_>, id: u32, reason: CloseReason) {
     let _ = FreedesktopNotifications::notification_closed(emitter, id, reason.as_u32()).await;
+}
+
+/// Emit the freedesktop `ActionInvoked` signal at the served path.
+async fn emit_action_invoked(emitter: &SignalEmitter<'_>, id: u32, action_key: &str) {
+    let _ = FreedesktopNotifications::action_invoked(emitter, id, action_key).await;
 }
 
 /// Serve both interfaces on the session bus until the process is asked to

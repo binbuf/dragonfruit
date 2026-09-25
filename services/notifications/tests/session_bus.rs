@@ -132,6 +132,27 @@ fn notify(
     body: &str,
     expire_timeout: i32,
 ) -> u32 {
+    notify_with_actions(
+        client,
+        app_name,
+        replaces_id,
+        summary,
+        body,
+        Vec::new(),
+        expire_timeout,
+    )
+}
+
+/// A `Notify` with a flattened `actions` array (`key, label, ...`).
+fn notify_with_actions(
+    client: &Connection,
+    app_name: &str,
+    replaces_id: u32,
+    summary: &str,
+    body: &str,
+    actions: Vec<String>,
+    expire_timeout: i32,
+) -> u32 {
     let hints = HashMap::<String, OwnedValue>::new();
     freedesktop_call(
         client,
@@ -142,7 +163,7 @@ fn notify(
             "",
             summary,
             body,
-            Vec::<String>::new(),
+            actions,
             hints,
             expire_timeout,
         ),
@@ -186,7 +207,7 @@ fn a_notify_round_trips_and_updates_the_banner_and_history_models() {
     // The server answers the informational calls.
     let capabilities: Vec<String> = freedesktop_call(&client, "GetCapabilities", ()).unwrap();
     assert!(capabilities.contains(&"body".to_owned()));
-    assert!(!capabilities.contains(&"actions".to_owned()));
+    assert!(capabilities.contains(&"actions".to_owned()));
     let (name, vendor, version, spec): (String, String, String, String) =
         freedesktop_call(&client, "GetServerInformation", ()).unwrap();
     assert_eq!(
@@ -258,6 +279,69 @@ fn close_notification_emits_closed_and_clears_the_banner_but_keeps_history() {
     let history = json_array(&shell_call::<String>(&client, "History", ()).unwrap());
     assert_eq!(history[0]["reason"], "closed");
     assert!(history[0]["closedAt"].as_u64().is_some());
+}
+
+#[test]
+fn invoking_an_action_round_trips_action_invoked_and_dismisses() {
+    let bus = PrivateBus::start();
+    let (_service, _queue) = serve(&bus);
+    let client = bus.connect();
+
+    let id = notify_with_actions(
+        &client,
+        "Mail",
+        0,
+        "New message",
+        "From Ada",
+        vec![
+            "archive".to_owned(),
+            "Archive".to_owned(),
+            "reply".to_owned(),
+            "Reply".to_owned(),
+        ],
+        0,
+    );
+
+    // The banner view carries the actions for the shell to render.
+    let banners = json_array(&shell_call::<String>(&client, "Banners", ()).unwrap());
+    let actions = banners[0]["actions"].as_array().unwrap();
+    assert_eq!(actions.len(), 2);
+    assert_eq!(actions[0]["key"], "archive");
+    assert_eq!(actions[0]["label"], "Archive");
+    assert_eq!(actions[1]["key"], "reply");
+
+    let rule = MatchRule::builder()
+        .msg_type(MessageType::Signal)
+        .sender(DBUS_NAME)
+        .expect("valid sender")
+        .interface(FREEDESKTOP_INTERFACE)
+        .expect("valid interface")
+        .member("ActionInvoked")
+        .expect("valid member")
+        .build();
+    let mut signals = MessageIterator::for_match_rule(rule, &client, Some(8))
+        .expect("subscribe to ActionInvoked");
+
+    assert!(shell_call::<bool>(&client, "Invoke", (id, "archive")).unwrap());
+
+    let message = signals
+        .next()
+        .transpose()
+        .expect("the bus is readable")
+        .expect("an ActionInvoked signal arrives");
+    let (invoked_id, key): (u32, String) = message.body().deserialize().unwrap();
+    assert_eq!((invoked_id, key.as_str()), (id, "archive"));
+
+    // Invoking dismisses the banner but keeps the history reason.
+    let banners = json_array(&shell_call::<String>(&client, "Banners", ()).unwrap());
+    assert!(banners.as_array().unwrap().is_empty());
+    let history = json_array(&shell_call::<String>(&client, "History", ()).unwrap());
+    assert_eq!(history[0]["id"], id);
+    assert_eq!(history[0]["reason"], "dismissed");
+
+    // An already-closed or unknown id cannot be invoked.
+    assert!(!shell_call::<bool>(&client, "Invoke", (id, "reply")).unwrap());
+    assert!(!shell_call::<bool>(&client, "Invoke", (999u32, "x")).unwrap());
 }
 
 #[test]

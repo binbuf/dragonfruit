@@ -51,6 +51,8 @@ add_library(dragonfruit-shell-dockcore STATIC
     downloadsmonitor.cpp
     filestarget.cpp
     framecommitgate.h
+    launchfailure.cpp
+    notificationclient.cpp
     notificationmodel.cpp
     systemstatusmodel.cpp
     trashbridge.cpp
@@ -97,7 +99,6 @@ qt_add_executable(dragonfruit-shell
     main.cpp
     shellcontroller.cpp
     shellprotocol.cpp
-    notificationclient.cpp
     systemstatusclient.cpp
     themebinding.cpp
 )

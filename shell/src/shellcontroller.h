@@ -135,6 +135,13 @@ private slots:
     void onNotificationBanners(const QByteArray &json);
     void onNotificationHistory(const QByteArray &json);
     void onBannerConfigured(int width, int height, quint32 serial);
+    // Banner interaction (T-11.1b): an action button, a body click, and the
+    // banner surface's pointer stream.
+    void onBannerActionInvoked(const QString &actionKey);
+    void onBannerActivated();
+    void onBannerPointerMoved(qreal x, qreal y);
+    void onBannerPointerButton(qreal x, qreal y, quint32 button, bool pressed);
+    void onBannerPointerLeft();
     void onDockLaunchTick();
     void onDockAttention(const QString &appId);
     void onDockAnimationTick();
@@ -167,6 +174,9 @@ private:
     // newest active banner's content, and unmap it when the queue empties.
     void showCurrentBanner();
     void hideCurrentBanner();
+    // Apply the banner surface's clickable region from the active banner's
+    // card height (T-11.1b).
+    void applyBannerInputRegion();
     void renderBanner();
     void scheduleBannerRender();
     // Rebuild the Dock's ordered entries (pinned + running) and hand them to
@@ -302,6 +312,10 @@ private:
     int m_bannerHeight = 0;
     bool m_bannerPending = false;
     bool m_bannerRenderPending = false;
+    // The active banner's service id and the pointer buttons held over the
+    // banner surface (T-11.1b).
+    quint32 m_bannerId = 0;
+    Qt::MouseButtons m_bannerButtons = Qt::NoButton;
     FrameCommitGate m_bannerFrameGate;
     bool m_bannerSceneGraphCommitLogged = false;
     QSocketNotifier *m_notifier = nullptr;

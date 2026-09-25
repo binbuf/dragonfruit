@@ -34,6 +34,7 @@
 #include "dockmodel.h"
 #include "downloadsmonitor.h"
 #include "filestarget.h"
+#include "launchfailure.h"
 #include "notificationclient.h"
 #include "notificationmodel.h"
 #include "shellprotocol.h"
@@ -49,7 +50,11 @@ constexpr qint64 kLaunchTimeoutMs = 8000;
 // The notification banner card (T-11.1a): a fixed card size and its gap below
 // the menu bar. One banner shows at a time; the rest stay in the history.
 constexpr int kBannerWidth = 380;
-constexpr int kBannerHeight = 96;
+// The surface is tall enough for a banner with an action row; a banner with
+// no actions draws only the top card and leaves the rest transparent.
+constexpr int kBannerSurfaceHeight = 132;
+constexpr int kBannerCardHeight = 96;
+constexpr int kBannerCardActionsHeight = 132;
 constexpr int kBannerTopGap = 8;
 
 QVariantMap statusItem(const QString &id, const QString &icon, const QString &label,
@@ -630,10 +635,19 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         return false;
     }
     m_bannerItem->setParentItem(m_bannerWindow->contentItem());
+    connect(bannerObject, SIGNAL(actionInvoked(QString)), this,
+            SLOT(onBannerActionInvoked(QString)));
+    connect(bannerObject, SIGNAL(activated()), this, SLOT(onBannerActivated()));
     connect(m_bannerWindow, &QQuickWindow::afterRendering, this,
             &ShellController::renderBanner);
     connect(m_protocol, &ShellProtocol::bannerConfigured, this,
             &ShellController::onBannerConfigured);
+    connect(m_protocol, &ShellProtocol::bannerPointerMoved, this,
+            &ShellController::onBannerPointerMoved);
+    connect(m_protocol, &ShellProtocol::bannerPointerButton, this,
+            &ShellController::onBannerPointerButton);
+    connect(m_protocol, &ShellProtocol::bannerPointerLeft, this,
+            &ShellController::onBannerPointerLeft);
     m_notificationClient->refresh();
 
     if (!m_protocol->createMenuBarSurface(barHeight, barHeight))
@@ -662,8 +676,19 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         return false;
     // The notification banner is a top-right `overlay` surface, unmapped until
     // a banner is active (T-11.1a).
-    if (!m_protocol->createBannerSurface(kBannerWidth, kBannerHeight, barHeight + kBannerTopGap))
+    if (!m_protocol->createBannerSurface(kBannerWidth, kBannerSurfaceHeight,
+                                         barHeight + kBannerTopGap))
         return false;
+
+    // Capture/demo seam (T-11.1b): raise the Dock's launch-failure
+    // notification once the chrome is up, so the live check can exercise the
+    // real failure path deterministically. Never set in a normal session.
+    if (qEnvironmentVariableIsSet("DF_DOCK_FAIL_FIXTURE")) {
+        QTimer::singleShot(1500, this, [this]() {
+            failDockLaunch(QStringLiteral("org.dragonfruit.Files.desktop"),
+                           QStringLiteral("The app did not start."));
+        });
+    }
 
     // Launch timeout: a launch that produces no window within the bounded
     // window returns to not-running and raises a one-shot notice (T-10
@@ -1834,6 +1859,9 @@ void ShellController::failDockLaunch(const QString &desktopId, const QString &re
     qWarning() << "shell: Dock launch failed for" << desktopId << ":" << reason;
     m_launchStates.insert(desktopId, QStringLiteral("failed"));
     m_launchDeadlines.remove(desktopId);
+    // The failed mark is transient; the durable record is the notification
+    // (T-11.1b replaces T-10's badge-only notice).
+    raiseDockLaunchFailure(m_notificationClient, m_index.byId(desktopId).name, reason);
     rebuildDockEntries();
     scheduleLaunchStateClear(desktopId);
 }
@@ -1862,6 +1890,8 @@ void ShellController::onDockLaunchTick()
                 m_launchStates.insert(desktopId, QStringLiteral("failed"));
                 qWarning() << "shell: Dock launch timed out for" << desktopId
                            << "(no window mapped)";
+                raiseDockLaunchFailure(m_notificationClient, m_index.byId(desktopId).name,
+                                       QStringLiteral("The app did not open in time."));
                 scheduleLaunchStateClear(desktopId);
             }
         } else {
@@ -2218,22 +2248,46 @@ void ShellController::showCurrentBanner()
         hideCurrentBanner();
         return;
     }
+    const QVariantList actions = banner.value(QStringLiteral("actions")).toList();
+    m_bannerId = banner.value(QStringLiteral("id")).toUInt();
     m_bannerItem->setProperty("appName", banner.value(QStringLiteral("appName")));
     m_bannerItem->setProperty("summary", banner.value(QStringLiteral("summary")));
     m_bannerItem->setProperty("body", banner.value(QStringLiteral("body")));
     m_bannerItem->setProperty("urgency", banner.value(QStringLiteral("urgency")));
-    m_bannerItem->setProperty("hasActions",
-                              !banner.value(QStringLiteral("actions")).toList().isEmpty());
+    m_bannerItem->setProperty("actions", actions);
+    // The card is taller when it carries action buttons; only the card is
+    // clickable, so the transparent strip below a no-action banner passes
+    // clicks through (T-11.1b).
+    applyBannerInputRegion();
     m_bannerPending = true;
     if (m_bannerWidth > 0 && m_bannerHeight > 0)
         renderBanner();
 }
 
+void ShellController::applyBannerInputRegion()
+{
+    if (!m_protocol)
+        return;
+    // Before the surface is created the call is a no-op and the region is
+    // re-applied from `onBannerConfigured` once it exists.
+    if (!m_notificationModel || !m_notificationModel->hasBanner()) {
+        m_protocol->setBannerInputRegion(0, 0);
+        return;
+    }
+    const QVariantList actions =
+        m_notificationModel->banner().value(QStringLiteral("actions")).toList();
+    const int cardHeight = actions.isEmpty() ? kBannerCardHeight : kBannerCardActionsHeight;
+    m_protocol->setBannerInputRegion(kBannerWidth, cardHeight);
+}
+
 void ShellController::hideCurrentBanner()
 {
     m_bannerPending = false;
-    if (m_protocol)
+    m_bannerId = 0;
+    if (m_protocol) {
+        m_protocol->setBannerInputRegion(0, 0);
         m_protocol->hideBanner();
+    }
 }
 
 void ShellController::onBannerConfigured(int width, int height, quint32)
@@ -2241,7 +2295,7 @@ void ShellController::onBannerConfigured(int width, int height, quint32)
     // The compositor sends a pre-layout configure at the full output size
     // before applying the layer surface's anchor/size; skip it (the same rule
     // as the menu bar and Dock).
-    if (width != kBannerWidth || height != kBannerHeight) {
+    if (width != kBannerWidth || height != kBannerSurfaceHeight) {
         fprintf(stderr, "dragonfruit-shell: ignoring pre-layout notification configure %dx%d\n",
                 width, height);
         return;
@@ -2249,8 +2303,77 @@ void ShellController::onBannerConfigured(int width, int height, quint32)
     m_bannerWidth = width;
     m_bannerHeight = height;
     fprintf(stderr, "dragonfruit-shell: notification banner configured %dx%d\n", width, height);
+    // The surface exists now; apply the card-sized input region for the
+    // banner that may already be pending.
+    applyBannerInputRegion();
     if (m_bannerPending)
         renderBanner();
+}
+
+void ShellController::onBannerActionInvoked(const QString &actionKey)
+{
+    if (!m_notificationClient || m_bannerId == 0)
+        return;
+    qInfo() << "shell: notification action" << actionKey << "on" << m_bannerId;
+    m_notificationClient->invoke(m_bannerId, actionKey);
+}
+
+void ShellController::onBannerActivated()
+{
+    // A click on the banner body fires the app's "default" action when it
+    // registered one; otherwise the banner is dismissed (there is nothing to
+    // open).
+    if (m_notificationModel) {
+        const QVariantList actions =
+            m_notificationModel->banner().value(QStringLiteral("actions")).toList();
+        for (const QVariant &action : actions) {
+            if (action.toMap().value(QStringLiteral("key")).toString()
+                == QLatin1String("default")) {
+                onBannerActionInvoked(QStringLiteral("default"));
+                return;
+            }
+        }
+    }
+    if (m_notificationClient && m_bannerId != 0)
+        m_notificationClient->dismiss(m_bannerId);
+}
+
+void ShellController::onBannerPointerMoved(qreal x, qreal y)
+{
+    if (!m_bannerWindow)
+        return;
+    const QPointF p(x, y);
+    QMouseEvent event(QEvent::MouseMove, p, p, Qt::NoButton, m_bannerButtons, Qt::NoModifier);
+    QCoreApplication::sendEvent(m_bannerWindow, &event);
+    scheduleBannerRender();
+}
+
+void ShellController::onBannerPointerButton(qreal x, qreal y, quint32 button, bool pressed)
+{
+    if (!m_bannerWindow)
+        return;
+    Qt::MouseButton qtButton = Qt::NoButton;
+    if (button == 0x110)
+        qtButton = Qt::LeftButton;
+    if (pressed)
+        m_bannerButtons |= qtButton;
+    else
+        m_bannerButtons &= ~qtButton;
+    const QPointF p(x, y);
+    QMouseEvent event(pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease, p, p,
+                      qtButton, m_bannerButtons, Qt::NoModifier);
+    QCoreApplication::sendEvent(m_bannerWindow, &event);
+    scheduleBannerRender();
+}
+
+void ShellController::onBannerPointerLeft()
+{
+    if (!m_bannerWindow)
+        return;
+    QMouseEvent event(QEvent::MouseMove, QPointF(-1, -1), QPointF(-1, -1), Qt::NoButton,
+                      m_bannerButtons, Qt::NoModifier);
+    QCoreApplication::sendEvent(m_bannerWindow, &event);
+    scheduleBannerRender();
 }
 
 void ShellController::scheduleBannerRender()
