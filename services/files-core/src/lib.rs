@@ -16,12 +16,24 @@
 //!   original name bytes, kind, size, modification time, and symlink target.
 //! * [`DirectoryModel`] — the accumulated listing. Entries are appended in
 //!   arrival order; every node gets one id and the id→node index stays
-//!   consistent.
+//!   consistent. A separate sorted projection is maintained incrementally as
+//!   batches arrive ([`DirectoryModel::ordered`]).
+//! * [`SortSpec`]/[`SortKey`]/[`SortDirection`] — the one collation: natural
+//!   (`file2` before `file10`), folders-first, stable.
 //! * [`DirectorySource`] / [`DirectoryReader`] — the platform seam. The
 //!   listing runs on a worker thread, so no I/O ever touches the UI thread.
 //! * [`StdFsSource`] — the **sanctioned fallback** used where GIO/GVfs is
 //!   not available; it is explicitly marked for replacement
-//!   ([adr/0042]).
+//!   ([adr/0042], [adr/0043]).
+//!
+//! # Sorting is incremental and stable
+//!
+//! [`DirectoryModel::set_sort`] changes the order and re-sorts what is already
+//! loaded without touching node ids or the arrival-order slice, so selection
+//! survives. Each batch is merged into the sorted projection in O(n), so a
+//! view can paint sorted from the first batch onward; equal keys keep arrival
+//! order ([`SortSpec::compare`] returns [`std::cmp::Ordering::Equal`] for
+//! genuinely equal keys).
 //!
 //! # Streaming, not blocking
 //!
@@ -43,19 +55,21 @@
 //!         model.apply(event);
 //!     }
 //! }
-//! # let _ = model.nodes();
+//! # for node in model.ordered().take(3) { let _ = node.display_name(); }
 //! ```
 //!
 //! # Platform backend
 //!
 //! GIO/GVfs is the intended backend (`GFileMonitor`, `trash://`, the UDisks
 //! volume monitor — [09-files.md]). Its headers are not part of the pinned
-//! toolchain here, so T-10.1a exercises the [`StdFsSource`] fallback through
-//! the same seam a GIO reader will implement; T-10.1b finalizes the
-//! GIO-vs-fallback decision and the sort order on top of this model.
+//! toolchain here (`pkg-config --exists gio-2.0` fails), so T-10.1b keeps
+//! [`StdFsSource`] as the shipping backend behind the unchanged
+//! [`DirectorySource`] seam, explicitly marked for replacement. A GIO reader
+//! slots in without a model change ([adr/0043]).
 //!
 //! [09-files.md]: ../../../docs/design/09-files.md
 //! [adr/0042]: ../../../docs/design/adr/0042-files-core-streaming-listing-and-fallback.md
+//! [adr/0043]: ../../../docs/design/adr/0043-files-core-fallback-is-the-shipping-backend.md
 
 mod fallback;
 mod listing;
@@ -63,6 +77,7 @@ mod location;
 mod mock;
 mod model;
 mod node;
+pub mod sort;
 mod source;
 
 pub use fallback::{StdFsSource, SANCTIONED_FALLBACK_MARKER};
@@ -71,4 +86,5 @@ pub use location::{Location, LocationError};
 pub use mock::MockSource;
 pub use model::{DirectoryModel, ListingState};
 pub use node::{Node, NodeId, NodeKind};
+pub use sort::{SortDirection, SortKey, SortSpec};
 pub use source::{DirectoryReader, DirectorySource, SourceError};

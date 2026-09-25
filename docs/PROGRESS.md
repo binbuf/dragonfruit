@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(21 earlier sections omitted)_
+_(22 earlier sections omitted)_
 
-- **T19 — T-04.3 Reusable scene-transform pass**: **State: done.** One reusable scene transform exists (scale/translate + optional; **`compositor/src/window/pass.rs`** (new) — `FramePass`: the single shared
 - **T20 — T-04.4a Material degrade tiers and instrumentation**: **State: done.** One ordered material-quality ladder (`Full` → `Reduced` →; **`compositor/src/window/degrade.rs`** (new) — `DegradeTier` (`Full`
 - **T21 — T-04.4b Light/dark, reduced motion, and sign-off package**: **State: done.** One live `ColorScheme` on `DfState` now drives every; **`compositor/src/window/decoration.rs`** — `ColorScheme::name`/`parse`
 - **T22 — T-05.1a Live-surface transform into the grid**: **State: done.** Mission Control now transforms the **live** window surfaces; **`compositor/src/overview/grid.rs`** (new) — `grid_layout` (candidates
@@ -44,6 +43,7 @@ _(21 earlier sections omitted)_
 - **T54 — T-09.6a Settings menu-model publication**: **State: done.** The Settings app publishes its native menu model and the; **`apps/settings/SettingsMenu.qml`** (new; QML singleton) — single source of
 - **T55 — T-09.6b Settings absence matrix and wave captures**: **State: done.** The T-09 Settings wave is signed off: the absent-provider; **`docs/design/08-settings.md`** — new "The absent-provider matrix (T-09.6b)"
 - **T56 — T-10.1a files-core streaming listing and model**: **State: done.** `files-core` now exists as a headless Rust library and a; **`services/files-core/`** (new crate `dragonfruit-files-core`, workspace
+- **T57 — T-10.1b files-core sorting and platform fallback**: **State: done.** `files-core` now sorts its streamed model and the; **`services/files-core/src/sort.rs`** (new module) — `SortKey`
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3427,6 +3427,12 @@ Gotchas for later tasks:
   event bridge — it must call `PowerAdapter::refresh()` on a UPower
   `PropertiesChanged`/device signal, never poll; (c) power profiles
   (`power-profiles-daemon`) and any writes are T-15.
+- **T-10.1b follow-ups.** (a) files-core name collation is natural/numeric but
+  **not locale-aware**; the design's one-collation rule and the cross-locale
+  matrix (legacy FR-5) need a collation implementation in a later task.
+  (b) A symlink's folders-first/sort kind is its own `Symlink` kind, not its
+  target's kind (the design says a broken symlink "sorts by its target's
+  kind"); that needs a follow-stat at list time in the source.
 
 ## T49 — T-09.1b Settings live-apply plumbing
 
@@ -3990,3 +3996,72 @@ Gotchas for later tasks:
 - **No sort order is applied** — nodes are in arrival order; T-10.1b sorts.
 - Adding a key/`Node` field: raw name bytes are load-bearing; keep `OsString`
   and percent-encoding, never a lossy string.
+
+## T57 — T-10.1b files-core sorting and platform fallback
+
+**State: done.** `files-core` now sorts its streamed model and the
+GIO-vs-fallback decision is final: GIO headers are absent from the pinned
+toolchain, so `StdFsSource` stays the shipping backend, explicitly marked for
+replacement. T-10.2a adds operations on top of this model.
+
+What landed:
+
+- **`services/files-core/src/sort.rs`** (new module) — `SortKey`
+  (Name/Kind/Size/Modified), `SortDirection` (Ascending/Descending), and
+  `SortSpec` (key + direction + `folders_first`). `natural_cmp` is
+  dependency-free natural/numeric (`file2` < `file10`), case-insensitive with
+  a case-sensitive tie-break. `SortKey`/`SortDirection` have
+  `as_str`/`parse` ("modified" also accepts "date"). Re-exported from
+  `lib.rs`.
+- **`services/files-core/src/model.rs`** — `DirectoryModel` keeps arrival
+  order in `nodes()` and maintains a separate sorted projection:
+  `ordered()`, `ordered_indices()`, `ordered_node(rank)`,
+  `ordered_position_of(id)` (O(n) scan), `sort_spec()`, `set_sort(spec)`.
+  Each `apply` batch is stable-sorted and merged into the projection in O(n)
+  (`merge_sorted`); `set_sort` stable-sorts in place. Equal keys keep arrival
+  order; node ids are never reassigned, so selection survives a re-sort.
+  `check_consistent()` now also asserts the projection is a permutation and is
+  stable-sorted. Default spec: name, ascending, folders first.
+- **`services/files-core/src/fallback.rs`** — `SANCTIONED_FALLBACK_MARKER`
+  reworded to name GIO/GVfs, the `DirectorySource` seam, and ADR 0043. Still
+  resolves only `file://`, else `UnsupportedScheme`.
+- **Tests** — `cargo test -p dragonfruit-files-core`: 39 pass (27 unit + 5
+  `tests/sorting.rs` + 6 `tests/streaming.rs` + 1 doctest). New
+  `tests/sorting.rs`: real temp tree natural order with folders first, a
+  600-file stream whose projection is sorted after *every* batch, re-sort
+  preserving ids, folders-first toggle + descending not reversing it, and the
+  fallback's kinds/scheme refusal/marker.
+- **Docs** — ADR
+  [0043](design/adr/0043-files-core-fallback-is-the-shipping-backend.md);
+  `docs/design/09-files.md` status paragraph and collation bullet updated;
+  crate `Cargo.toml` description/comment.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `cargo test -p dragonfruit-files-core` — 39 pass.
+- `make lint` — 31/31 ctest plus all checks green.
+- `make e2e` — exit 0.
+
+Live capture (`/tmp/opencode/t57-capture.sh`; still
+`/tmp/opencode/t57-desktop.png`, 1920x1200): nested demo on the host session.
+Raw vision observation: menu bar, Dock, and the Settings window render with no
+artifacts; the only reported oddity was the pre-existing X11 demo window's
+title clipped at its right edge. files-core has no surface of its own, so this
+only confirms the session still renders. Vision is a supporting check.
+
+Gotchas for later tasks:
+
+- **Sorting is model state, not view state.** Call `set_sort`; consume
+  `ordered()`/`ordered_indices()`. Do not sort in the bridge/QML or a second
+  collation will appear.
+- **`nodes()` is arrival order; `ordered()` is the sort.** Ids are assigned
+  in arrival order and never change on re-sort.
+- **`folders_first` is applied before the key and is not reversed by
+  descending.**
+- **Size/modified `None` sorts last ascending** (directories carry no size).
+- **GIO is still absent** (`pkg-config --exists gio-2.0` fails). Trash/Recents/
+  volumes return `UnsupportedScheme`; T-10.3a must add a GIO reader or
+  explicitly degrade. The replacement point is the `DirectorySource` seam plus
+  the marker.
+- **Locale-aware collation is not done** (see Follow-ups): the design's
+  locale-aware numeric rule is currently natural/numeric only.
