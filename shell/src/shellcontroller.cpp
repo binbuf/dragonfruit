@@ -29,6 +29,7 @@
 
 #include <cstdio>
 
+#include "controlcenterpolicy.h"
 #include "desktopentry.h"
 #include "dockdrops.h"
 #include "dockmodel.h"
@@ -61,8 +62,10 @@ constexpr int kBannerTopGap = 8;
 // The Control Center panel (T-11.3a): a fixed panel surface anchored to the
 // top-right corner below the menu bar. The panel fills the surface, so its
 // input region is the whole thing.
+// T-11.3b grows the panel to fit five tiles (Wi-Fi, Focus, Sound, Display,
+// Dark Mode); the surface is fixed and the panel fills it.
 constexpr int kControlCenterWidth = 360;
-constexpr int kControlCenterHeight = 420;
+constexpr int kControlCenterHeight = 520;
 constexpr int kControlCenterTopGap = 8;
 
 QVariantMap statusItem(const QString &id, const QString &icon, const QString &label,
@@ -291,6 +294,12 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     if (QStyleHints *hints = QGuiApplication::styleHints()) {
         connect(hints, &QStyleHints::colorSchemeChanged, this,
                 &ShellController::applyCompositorPolicy);
+        // `auto` also changes the Control Center's effective dark state (the
+        // Dark Mode tile), so refresh an open panel too.
+        connect(hints, &QStyleHints::colorSchemeChanged, this, [this]() {
+            if (m_controlCenterOpen)
+                applyControlCenterData();
+        });
     }
     m_dockConfig = dockConfigFromValues(m_settingsClient->values());
     if (!m_settingsClient->isAvailable()) {
@@ -702,6 +711,14 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onWifiToggleRequested(bool)));
     connect(controlCenterObject, SIGNAL(wifiSettingsRequested()), this,
             SLOT(onWifiSettingsRequested()));
+    connect(controlCenterObject, SIGNAL(focusToggleRequested(bool)), this,
+            SLOT(onFocusToggleRequested(bool)));
+    connect(controlCenterObject, SIGNAL(focusSettingsRequested()), this,
+            SLOT(onFocusSettingsRequested()));
+    connect(controlCenterObject, SIGNAL(darkModeToggleRequested(bool)), this,
+            SLOT(onDarkModeToggleRequested(bool)));
+    connect(controlCenterObject, SIGNAL(appearanceSettingsRequested()), this,
+            SLOT(onAppearanceSettingsRequested()));
     connect(m_controlCenterWindow, &QQuickWindow::afterRendering, this,
             &ShellController::renderControlCenter);
     connect(m_protocol, &ShellProtocol::controlCenterConfigured, this,
@@ -1075,9 +1092,21 @@ void ShellController::applyControlCenterData()
     const double brightness = m_settingsClient
         ? displaySettingsFromValues(m_settingsClient->values()).brightness
         : 1.0;
+    // The Focus/DND policy is owned by the notification service; the model
+    // holds the latest decoded view (T-11.2b).
+    const QVariantMap focus = m_notificationModel ? m_notificationModel->focusPolicy()
+                                                  : QVariantMap();
+    // The panel shows the effective scheme: `auto` follows the host, exactly
+    // as ThemeBinding resolves it for the design-system Theme (T-08.2b).
+    const QString scheme = m_settingsClient
+        ? m_settingsClient->values().value(QStringLiteral("appearance.colorScheme")).toString()
+        : QStringLiteral("auto");
+    const bool dark = ThemeBinding::darkForScheme(scheme, ThemeBinding::hostDark());
     m_controlCenterItem->setProperty("wifi", wifi);
     m_controlCenterItem->setProperty("audio", audio);
     m_controlCenterItem->setProperty("brightness", brightness);
+    m_controlCenterItem->setProperty("focusPolicy", focus);
+    m_controlCenterItem->setProperty("dark", dark);
     // Wi-Fi radio writes are not exposed by the bridge host yet (T-15); the
     // toggle reflects state and is inert until then.
     m_controlCenterItem->setProperty("wifiWritable", false);
@@ -1169,6 +1198,41 @@ void ShellController::onWifiSettingsRequested()
     // Launching Settings on the matching pane is T-16; the entry point is
     // wired and logs until then.
     qInfo() << "shell: Wi-Fi Settings requested (T-16)";
+}
+
+void ShellController::onFocusToggleRequested(bool enabled)
+{
+    // The notification service owns the policy (T-11.2a); the panel writes the
+    // mode through the same seam as the menu-bar reflection. The service
+    // echoes `Changed`, which re-reads `FocusPolicy()` and updates the tile.
+    if (!m_notificationClient)
+        return;
+    m_notificationClient->setFocusMode(focusModeForToggle(enabled));
+}
+
+void ShellController::onFocusSettingsRequested()
+{
+    // Launching Settings on the Focus pane is T-16; the entry point is wired
+    // and logs until then.
+    qInfo() << "shell: Focus Settings requested (T-16)";
+}
+
+void ShellController::onDarkModeToggleRequested(bool dark)
+{
+    if (!m_settingsClient)
+        return;
+    // settingsd is the single owner (T-08); ThemeBinding consumes the same
+    // client and flips the design-system Theme. The toggle writes an absolute
+    // scheme, never `auto`.
+    m_settingsClient->set(QStringLiteral("appearance.colorScheme"),
+                          colorSchemeForDarkToggle(dark));
+}
+
+void ShellController::onAppearanceSettingsRequested()
+{
+    // Launching Settings on the Appearance pane is T-16; the entry point is
+    // wired and logs until then.
+    qInfo() << "shell: Appearance Settings requested (T-16)";
 }
 
 void ShellController::renderControlCenter()
@@ -2533,6 +2597,10 @@ void ShellController::onNotificationFocusPolicy(const QByteArray &json)
         return;
     m_notificationModel->applyFocusPolicyJson(json);
     applyStatusItems();
+    // A live Focus/DND change reaches an open Control Center too (the tile
+    // reflects the mode and the suppression count).
+    if (m_controlCenterOpen)
+        applyControlCenterData();
 }
 
 void ShellController::showCurrentBanner()

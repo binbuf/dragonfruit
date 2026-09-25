@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(38 earlier sections omitted)_
+_(39 earlier sections omitted)_
 
-- **T36 — T-07.3 Audio adapter (PipeWire/WirePlumber)**: **State: done.** The audio adapter landed in a new concrete-adapter crate; no; **`services/audio/`** (new crate `dragonfruit-audio`, workspace member; deps:
 - **T37 — T-07.4 Power adapter (UPower)**: **State: done.** The read-only power adapter landed in a new concrete-adapter; **`services/power/`** (new crate `dragonfruit-power`, workspace member; deps:
 - **T38 — T-07.5a Wi-Fi and volume status menus**: **State: done.** Wi-Fi list/join and volume slider/mute render in; **`services/system-status/`** (new crate `dragonfruit-system-status`,
 - **T39 — T-07.5b Battery menu, placeholder removal, keyboard a11y**: **State: done.** The battery item is live over the bridge host, `--placeholders`; **`services/system-status`** — `StatusHost<N, A, P>` gained a `PowerAdapter`;
@@ -45,6 +44,7 @@ _(38 earlier sections omitted)_
 - **T72 — T-11.2a DND/Focus policy**: **State: done.** The notification service now owns a three-mode Focus/DND; **`services/notifications/src/policy.rs`** (new) — `FocusMode` (`off` /
 - **T73 — T-11.2b DND/Focus menu-bar reflection and Dock failure path**: **State: done.** The menu bar reflects the notification service's Focus/DND; **`shell/src/notificationclient.{h,cpp}`** — the seam gains
 - **T74 — T-11.3a Control Center panel and core tiles**: **State: done.** The Control Center panel opens (menu-bar item or; **`shell/control-center/ControlCenter.qml`** (rewritten) — the panel scene
+- **T75 — T-11.3b Focus/DND, dark mode, and Control Center a11y**: **State: done.** The Control Center panel has five tiles now: Wi-Fi, Focus,; **`shell/control-center/ControlCenter.qml`** — Focus and Dark Mode tiles, a
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -5531,3 +5531,74 @@ Gotchas for later tasks:
 - **Add `since`-versioned protocol members at the END** of the interface
   (after events/enums), as `df_toplevel_manager` already does, or
   wayland-scanner warns "since version not increasing".
+
+## T75 — T-11.3b Focus/DND, dark mode, and Control Center a11y
+
+**State: done.** The Control Center panel has five tiles now: Wi-Fi, Focus,
+Sound, Display, Dark Mode. Focus/DND and dark mode apply live; accessible
+roles are on every tile and link. Contract frozen in ADR
+[0061](design/adr/0061-control-center-toggles-and-a11y.md).
+
+What landed:
+
+- **`shell/control-center/ControlCenter.qml`** — Focus and Dark Mode tiles, a
+  `TextLink` component for the trailing `… Settings…` links, five-tile `tiles`
+  model, and the new signals `focusToggleRequested(bool)` /
+  `focusSettingsRequested()` / `darkModeToggleRequested(bool)` /
+  `appearanceSettingsRequested()`. New properties `focusPolicy` (the
+  notification-service view; the property is not named `focus` because
+  `QQuickItem.focus` already exists) and `dark` (effective scheme). External
+  switch state is applied through `Binding` elements, not `checked:`
+  bindings.
+- **`shell/src/controlcenterpolicy.{h,cpp}`** (new, in dockcore) —
+  `focusModeForToggle` (`dnd`/`off`) and `colorSchemeForDarkToggle`
+  (`dark`/`light`).
+- **`shell/src/shellcontroller.{h,cpp}`** — `applyControlCenterData` pushes
+  `focusPolicy` and the effective `dark` (via
+  `ThemeBinding::darkForScheme`); four new slots write `setFocusMode(...)` to
+  the notification client and `appearance.colorScheme` to settingsd;
+  `onNotificationFocusPolicy` refreshes an open panel. Panel surface is now
+  `kControlCenterHeight = 520` (was 420).
+- **`design-system/components/Toggle.qml`** — optional `accessibleName`
+  (falls back to `text`).
+- **`design-system/components/Icon.qml`** — new `focus` crescent glyph.
+- **Tests** — `tst_controlcenter.qml` 18/18; `tst_dockcore` mapping tests.
+  `make qml-test` 36/36; `make lint` and `make e2e` exit 0.
+- **Docs** — ADR 0061; `04-shell.md` T-11.3b status; `settings-keys.md`
+  `appearance.colorScheme` note.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `make qml-test` — 36/36; `make lint` exit 0; `make e2e` exit 0.
+- `LD_LIBRARY_PATH=$HOME/.local/df-toolchain/usr/lib64 ctest --test-dir build
+  -R tst_controlcenter` — 18/18.
+
+Live capture: `scripts/capture-control-center-focus-dark.sh` +
+`...-driver.py` (run with `DF_STATUS_FIXTURE=1 DF_NOTIFY_FIXTURE=1
+DF_FOCUS_FIXTURE=dnd`) writes `docs/captures/t11-control-center.png` (five
+tiles, Focus `Do Not Disturb`), `t11-control-center-focus-dark.png` (Focus
+clicked off), `t11-control-center-dark-toggle.png` (Dark Mode on, whole panel
+dark), and `t11-control-center-context.png`. Vision confirmed all five tiles
+and both live flips; no clipping or artifacts.
+
+Gotchas for later tasks:
+
+- **Focus tile is Do Not Disturb only.** On=`dnd`, off=`off`; the middle
+  `focus` mode is not selectable from the tile but still lights it (and the
+  menu-bar crescent) when set elsewhere. Mode/count always come from
+  `FocusPolicy()`.
+- **Dark Mode writes absolute `dark`/`light`, never `auto`.** It goes through
+  `SettingsClient::set`; `ThemeBinding` consumes the `changed` echo and flips
+  the Theme. The tile shows the effective `auto`-resolved state.
+- **The Focus/Appearance settings links log only** (Settings-on-a-pane is
+  T-16), like the Wi-Fi link.
+- **`shadowing`: do not name a panel property `focus`.** Use `focusPolicy`;
+  `focus` collides with `Item.focus` ("Property value set multiple times").
+- **The notification fixture seeds a banner at the panel's top-right corner.**
+  The capture driver dismisses it (click the banner body) before opening the
+  panel, or the banner occludes the Wi-Fi tile.
+- **`Toggle` writes its own `checked`**; bind external state with a `Binding`
+  element (the Settings panes' pattern), not `checked:`.
+- **The panel is 360×520**; the capture driver's switch centres
+  (panel-relative 320,131 and 320,419) come from the QML layout and must be
+  updated if the tile order/heights change.

@@ -2,6 +2,7 @@
 // Dock core unit tests (T-10): the interim `.desktop` resolver/launcher, the
 // `dock.pinned` persistence, and the pure pinned+running entry merge. Runs
 // headless with no compositor, Wayland, or QML.
+#include "controlcenterpolicy.h"
 #include "desktopentry.h"
 #include "dockdrops.h"
 #include "dockmodel.h"
@@ -1264,6 +1265,40 @@ private slots:
                      .value(QStringLiteral("mode"))
                      .toString(),
                  QStringLiteral("off"));
+    }
+
+    void theControlCenterFocusToggleMapsToTheServiceMode()
+    {
+        // On is Do Not Disturb; off clears the policy. The toggle never
+        // selects the middle `focus` mode.
+        QCOMPARE(focusModeForToggle(true), QStringLiteral("dnd"));
+        QCOMPARE(focusModeForToggle(false), QStringLiteral("off"));
+
+        // The mapped mode is accepted by the service's own vocabulary (the
+        // notification client rejects anything else).
+        MockNotificationClient client(nullptr, /*seedFixture=*/false);
+        QSignalSpy policy(&client, &NotificationClient::focusPolicyChanged);
+        client.setFocusMode(focusModeForToggle(true));
+        QCOMPARE(policy.count(), 1);
+        QCOMPARE(QJsonDocument::fromJson(policy.takeFirst().at(0).toByteArray())
+                     .object()
+                     .value(QStringLiteral("mode"))
+                     .toString(),
+                 QStringLiteral("dnd"));
+        client.setFocusMode(focusModeForToggle(false));
+        QCOMPARE(policy.count(), 1);
+        QCOMPARE(QJsonDocument::fromJson(policy.takeFirst().at(0).toByteArray())
+                     .object()
+                     .value(QStringLiteral("mode"))
+                     .toString(),
+                 QStringLiteral("off"));
+    }
+
+    void theControlCenterDarkToggleMapsToAnAbsoluteScheme()
+    {
+        // On writes `dark`, off writes `light`; the toggle never writes `auto`.
+        QCOMPARE(colorSchemeForDarkToggle(true), QStringLiteral("dark"));
+        QCOMPARE(colorSchemeForDarkToggle(false), QStringLiteral("light"));
     }
 };
 

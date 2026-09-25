@@ -10,6 +10,9 @@ Item {
     property bool checked: false
     property string text: ""
     property string description: ""
+    // Optional screen-reader name when the visible label lives elsewhere (the
+    // Control Center tiles draw their own title next to the switch, T-11.3b).
+    property string accessibleName: ""
     property alias hovered: toggleHover.hovered
 
     signal toggled(bool checked)
@@ -111,7 +114,7 @@ Item {
     }
 
     Accessible.role: Accessible.Switch
-    Accessible.name: root.text
+    Accessible.name: root.accessibleName.length > 0 ? root.accessibleName : root.text
     Accessible.description: root.description
     Accessible.checkable: true
     Accessible.checked: root.checked

@@ -4,13 +4,14 @@ import QtTest
 import Dragonfruit
 import Dragonfruit.ControlCenter
 
-// Control Center panel tests (T-11.3a): the normalized tile model, live tile
-// gestures (volume/brightness), the read-only Wi-Fi degradation, and
-// Escape dismissal. Runs headless on the offscreen platform.
+// Control Center panel tests (T-11.3a/T-11.3b): the normalized tile model,
+// live tile gestures (volume/brightness/Focus/dark mode), the read-only Wi-Fi
+// degradation, accessible roles, and Escape dismissal. Runs headless on the
+// offscreen platform.
 Item {
     id: stage
     width: 480
-    height: 520
+    height: 640
 
     TestCase {
         id: testCase
@@ -21,6 +22,8 @@ Item {
         SignalSpy { id: volumeSpy; signalName: "volumeSetRequested" }
         SignalSpy { id: brightnessSpy; signalName: "brightnessSetRequested" }
         SignalSpy { id: muteSpy; signalName: "muteToggleRequested" }
+        SignalSpy { id: focusSpy; signalName: "focusToggleRequested" }
+        SignalSpy { id: darkSpy; signalName: "darkModeToggleRequested" }
         SignalSpy { id: closedSpy; signalName: "closed" }
 
         function wifiModel(state, radioEnabled, label) {
@@ -45,27 +48,46 @@ Item {
             };
         }
 
+        function focusModel(mode, batchedCount) {
+            return {
+                mode: mode,
+                allowList: [],
+                batchedCount: batchedCount !== undefined ? batchedCount : 0
+            };
+        }
+
         function make(props) {
             var panel = createTemporaryObject(panelComponent, stage, props || {});
+            // The shell sizes the panel to its surface; do the same here so
+            // pointer coordinates land on the controls.
+            panel.width = 360;
+            panel.height = 520;
             waitForRendering(stage);
             return panel;
         }
 
-        function test_tiles_expose_wifi_volume_and_brightness() {
+        function test_tiles_expose_all_five_controls() {
             var panel = make({
                 wifi: wifiModel("available", true, "home"),
                 audio: audioModel("available", 0.6, false),
-                brightness: 0.8
+                brightness: 0.8,
+                focusPolicy: focusModel("off"),
+                dark: true
             });
-            compare(panel.tiles.length, 3);
+            compare(panel.tiles.length, 5);
             compare(panel.tiles[0].id, "wifi");
             compare(panel.tiles[0].kind, "toggle");
             compare(panel.tiles[0].checked, true);
-            compare(panel.tiles[1].id, "volume");
-            compare(panel.tiles[1].kind, "slider");
-            compare(Math.abs(panel.tiles[1].value - 0.6) < 0.0001, true);
-            compare(panel.tiles[2].id, "brightness");
-            compare(Math.abs(panel.tiles[2].value - 0.8) < 0.0001, true);
+            compare(panel.tiles[1].id, "focus");
+            compare(panel.tiles[1].kind, "toggle");
+            compare(panel.tiles[2].id, "volume");
+            compare(panel.tiles[2].kind, "slider");
+            compare(Math.abs(panel.tiles[2].value - 0.6) < 0.0001, true);
+            compare(panel.tiles[3].id, "brightness");
+            compare(Math.abs(panel.tiles[3].value - 0.8) < 0.0001, true);
+            compare(panel.tiles[4].id, "dark");
+            compare(panel.tiles[4].kind, "toggle");
+            compare(panel.tiles[4].checked, true);
             compare(panel.wifiLabel, "home");
         }
 
@@ -123,6 +145,121 @@ Item {
             verify(button !== null);
             mouseClick(button, button.width / 2, button.height / 2);
             compare(muteSpy.count, 1);
+        }
+
+        function test_focus_tile_reflects_the_service_policy() {
+            var panel = make({ focusPolicy: focusModel("dnd", 3) });
+            compare(panel.focusMode, "dnd");
+            compare(panel.focusOn, true);
+            compare(panel.focusLabel, "Do Not Disturb");
+            compare(panel.tiles[1].checked, true);
+            verify(panel.focusSubtitle.indexOf("3") >= 0);
+            verify(panel.focusSubtitle.indexOf("Do Not Disturb") >= 0);
+
+            panel.focusPolicy = focusModel("focus");
+            compare(panel.focusOn, true);
+            compare(panel.focusLabel, "Focus");
+
+            // An absent policy is the safe off default.
+            panel.focusPolicy = ({});
+            compare(panel.focusMode, "off");
+            compare(panel.focusOn, false);
+        }
+
+        function test_focus_toggle_raises_the_requested_mode() {
+            var panel = make({ focusPolicy: focusModel("off") });
+            focusSpy.target = panel;
+            focusSpy.clear();
+
+            // Off -> on requests DND.
+            panel.toggleFocus();
+            compare(focusSpy.count, 1);
+            compare(focusSpy.signalArguments[0][0], true);
+
+            // On -> off clears the policy.
+            panel.focusPolicy = focusModel("dnd");
+            panel.toggleFocus();
+            compare(focusSpy.count, 2);
+            compare(focusSpy.signalArguments[1][0], false);
+        }
+
+        function test_focus_switch_toggles_through_the_control() {
+            var panel = make({ focusPolicy: focusModel("off") });
+            focusSpy.target = panel;
+            focusSpy.clear();
+            var toggle = findChild(panel, "focusToggle");
+            verify(toggle !== null);
+            mouseClick(toggle, toggle.width / 2, toggle.height / 2);
+            compare(focusSpy.count, 1);
+            compare(focusSpy.signalArguments[0][0], true);
+        }
+
+        function test_dark_switch_toggles_through_the_control() {
+            var panel = make({ dark: false });
+            darkSpy.target = panel;
+            darkSpy.clear();
+            var toggle = findChild(panel, "darkToggle");
+            verify(toggle !== null);
+            toggle.toggle();
+            compare(darkSpy.count, 1);
+            compare(darkSpy.signalArguments[0][0], true);
+        }
+
+        function test_dark_mode_tile_reflects_the_scheme() {
+            var panel = make({ dark: false });
+            compare(panel.tiles[4].checked, false);
+            compare(panel.tiles[4].subtitle, "Off");
+            panel.dark = true;
+            compare(panel.tiles[4].checked, true);
+            compare(panel.tiles[4].subtitle, "On");
+        }
+
+        function test_dark_mode_toggle_raises_the_absolute_scheme() {
+            var panel = make({ dark: false });
+            darkSpy.target = panel;
+            darkSpy.clear();
+            panel.toggleDarkMode();
+            compare(darkSpy.count, 1);
+            compare(darkSpy.signalArguments[0][0], true);
+
+            panel.dark = true;
+            panel.toggleDarkMode();
+            compare(darkSpy.count, 2);
+            compare(darkSpy.signalArguments[1][0], false);
+        }
+
+        function test_tiles_carry_accessible_roles_and_names() {
+            var panel = make({ focusPolicy: focusModel("off"), dark: false });
+            compare(panel.Accessible.role, Accessible.Pane);
+            compare(panel.Accessible.name, "Control Center");
+
+            var focusToggle = findChild(panel, "focusToggle");
+            verify(focusToggle !== null);
+            compare(focusToggle.Accessible.role, Accessible.Switch);
+            compare(focusToggle.Accessible.name, "Do Not Disturb");
+
+            var darkToggle = findChild(panel, "darkToggle");
+            verify(darkToggle !== null);
+            compare(darkToggle.Accessible.role, Accessible.Switch);
+            compare(darkToggle.Accessible.name, "Dark Mode");
+
+            var focusTile = findChild(panel, "focusTile");
+            verify(focusTile !== null);
+            compare(focusTile.Accessible.role, Accessible.Grouping);
+            compare(focusTile.Accessible.name, "Focus");
+
+            var darkTile = findChild(panel, "darkTile");
+            verify(darkTile !== null);
+            compare(darkTile.Accessible.role, Accessible.Grouping);
+            compare(darkTile.Accessible.name, "Dark Mode");
+        }
+
+        function test_text_links_are_accessible_buttons() {
+            var panel = make({ focusPolicy: focusModel("off") });
+            var link = findChild(panel, "focusSettingsLink");
+            verify(link !== null);
+            compare(link.Accessible.role, Accessible.Button);
+            compare(link.Accessible.name, "Open Focus Settings");
         }
 
         function test_escape_closes_the_panel() {

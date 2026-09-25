@@ -29,7 +29,7 @@ Item {
                                           "trash", "computer", "volume",
                                           "folder", "file", "icon-view",
                                           "list-view", "wifi", "bluetooth",
-                                          "brightness"]
+                                          "brightness", "focus"]
     readonly property bool painted: root.paintedGlyphs.indexOf(root.name) >= 0
 
     readonly property var bars: {
@@ -143,6 +143,19 @@ Item {
             }
 
             switch (root.name) {
+            case "focus": {
+                // Crescent moon: a filled disc with the upper-right bitten out
+                // (compositing to transparent so it reads on any tile fill).
+                ctx.beginPath();
+                ctx.arc(c, c, s * 0.36, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalCompositeOperation = "destination-out";
+                ctx.beginPath();
+                ctx.arc(s * 0.66, s * 0.34, s * 0.33, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalCompositeOperation = "source-over";
+                break;
+            }
             case "appearance": {
                 // A full ring with the right half filled (light/dark contrast).
                 ctx.beginPath();

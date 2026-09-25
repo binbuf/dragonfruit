@@ -36,7 +36,7 @@ freezes the v1 key set.
 | `gestures.enabled` | b | true | | settingsd | compositor/input | Master switch for trackpad gesture recognition. |
 | `gestures.spaceSwitch` | b | true | | settingsd | compositor/input | Horizontal swipe switches Spaces. |
 | `gestures.missionControl` | b | true | | settingsd | compositor/input | Vertical swipe opens Mission Control. |
-| `appearance.colorScheme` | s | `auto` | `light`/`dark`/`auto` | settingsd | compositor/window decoration, shell/design-system Theme | Light/dark scheme; auto follows the host style hint. |
+| `appearance.colorScheme` | s | `auto` | `light`/`dark`/`auto` | settingsd | compositor/window decoration, shell/design-system Theme | Light/dark scheme; auto follows the host style hint. The Control Center dark-mode tile writes `dark`/`light` only (T-11.3b). |
 | `appearance.accent` | s | `` (empty) | `#rrggbb` or empty | settingsd | shell/design-system Theme | Accent color override (`#rrggbb`); empty uses the token default. |
 | `wallpaper.source` | s | `` (empty) | | apps/settings | shell/wallpaper forwarder, compositor/workspace model | Image path for the selected wallpaper; empty keeps the solid color. |
 | `wallpaper.fit` | s | `fill` | `fill`/`fit`/`stretch`/`center` | apps/settings | shell/wallpaper forwarder, compositor/workspace model | How the wallpaper image maps onto the output. |
