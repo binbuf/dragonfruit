@@ -170,6 +170,84 @@ our desktop through another. Two graphical sessions for the same Unix user
 can collide through shared user-session services (portals, environment
 variables), so we use a **dedicated development user** for this.
 
+## The real-session dev harness
+
+`make dev`/`make demo` are nested and never touch the seat. To test the desktop
+as a **primary session** on a dev workstation — real login, DRM/KMS, udev
+input, logind, session services — T-12.6 adds a harness with two modes. Both
+are display-manager-agnostic: they **never stop, restart, or introspect the
+host compositor**, so they work the same on GNOME, KDE, Sway, or anything else.
+
+There is no live compositor handoff (see [above](#summary)): every mode crosses
+a fixed logout/login or VT boundary, and no client survives it. The rationale
+and rejected alternatives are recorded in
+[ADR 0053](adr/0053-real-session-dev-harness.md).
+
+### Mode A — second VT (no logout; the daily mode)
+
+The host desktop stays on VT1; the harness starts a real DRM session on a free
+VT for a **dedicated user**, so the two graphical sessions do not collide over
+`XDG_RUNTIME_DIR`/portals:
+
+```bash
+dragonfruit dev --real --user dfdev      # start on a second VT
+```
+
+`Ctrl+Alt+F1` returns to the host desktop exactly as it was; the host session
+is never logged out. This is the low-friction "fully test on the workstation"
+command.
+
+### Mode B — display-manager round-trip (same user; the realism mode)
+
+Close the host session, log into Dragonfruit at the display manager, test, log
+out, and return. The greeter is the restore point:
+
+```bash
+dragonfruit dev --real --round-trip      # arm the next login, then log out
+```
+
+1. **Arm.** Write `$XDG_STATE_HOME/dragonfruit/dev-session.json` (previous
+   default session, whether autologin was armed, timestamp); select the
+   Dragonfruit session for the next login; optionally arm DM autologin; then
+   ask the host session manager to log out — apps get their normal
+   unsaved-work prompts, nothing is `SIGKILL`ed.
+2. **In session.** The session exports `DRAGONFRUIT_DEV_RETURN=<previous
+   session>`. The system/Control Center menu shows **"Quit to \<previous
+   desktop\>"** only when that variable is set.
+3. **Return.** The item disarms autologin, restores the previous default
+   session, and logs out.
+4. **Crash recovery.** Compositor death ends the session by design. The state
+   file is the single source of truth, so a one-shot check on the next login —
+   clean or after a crash — restores the previous default and clears the armed
+   state. A "session-ready" beat before committing autologin prevents a crash
+   loop back into Dragonfruit.
+
+### Display-manager adapters
+
+Session preselection is per-DM and mostly user-writable. An unrecognized DM
+degrades to "the human picks it in the greeter":
+
+| DM | Preselect session | Autologin (needs root) |
+|---|---|---|
+| GDM | AccountsService `XSession` (`SetXSession`) | `/etc/gdm/custom.conf` |
+| SDDM | SDDM state file | `/etc/sddm.conf.d/` |
+| LightDM | `~/.dmrc` | `/etc/lightdm/lightdm.conf` |
+
+Autologin is optional and off by default. It is armed only for a round trip and
+force-disabled on return or recovery. Session files and units come from
+T-12.1b/T-12.2.
+
+### What "seamless" cannot mean
+
+- **No app continuity across the swap.** Wayland has no live handoff, and the
+  host DE's own session-restore is per-DE and not authoritative. The harness may
+  relaunch an explicit `.desktop` allowlist captured before logout, but never
+  resurrects unsaved document state.
+- **Never script the close.** The harness triggers the host session manager's
+  logout; it does not kill the host compositor or its clients.
+- **No per-DE stop/start.** We never `systemctl stop gdm` or kill the host DE;
+  VT switching and DM session selection already handle restoration for every DE.
+
 ## The testing ladder
 
 ```text
