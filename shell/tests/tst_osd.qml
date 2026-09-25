@@ -78,6 +78,24 @@ Item {
             var osd = make({ kind: "volume", value: 0.5 });
             compare(osd.Accessible.role, Accessible.Alert);
             compare(osd.Accessible.name, "Volume 50%");
+            compare(osd.Accessible.description,
+                    "Volume 50 percent. Press Escape to dismiss.");
+        }
+
+        function test_muted_alert_description_uses_the_muted_wording() {
+            var osd = make({ kind: "volume", value: 0.0, muted: true });
+            compare(osd.Accessible.description,
+                    "Volume is muted. Press Escape to dismiss.");
+        }
+
+        function test_escape_dismisses_the_alert() {
+            var osd = make({ kind: "brightness", value: 0.7, fade: 1.0 });
+            var dismissed = 0;
+            osd.dismissed.connect(function () { dismissed += 1; });
+            osd.forceActiveFocus();
+            waitForRendering(stage);
+            keyClick(Qt.Key_Escape);
+            compare(dismissed, 1);
         }
     }
 }

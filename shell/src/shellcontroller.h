@@ -68,6 +68,8 @@ private slots:
     // volume/brightness gestures that present it.
     void onOsdConfigured(int width, int height, quint32 serial);
     void onOsdTick();
+    // T-11.4b: the OSD view's (or an AT-SPI PressAction's) dismissal request.
+    void onOsdDismissed();
     void onBrightnessSetRequested(double level);
     void onWifiToggleRequested(bool enabled);
     void onWifiSettingsRequested();
