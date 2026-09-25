@@ -39,7 +39,8 @@
 - **T31 — T-06.2b Switcher commit, Cmd+` cycling, interruptibility**: **State: done.** T-06 is complete. Cmd+` / Cmd+Shift+` cycle windows within the; **`compositor/src/app_switcher.rs`** — `SwitcherApp` carries `windows`
 - **T32 — T-07.1a Adapter contract, states, and mock**: **State: done.** The one adapter contract and its test mock landed in a new; **`services/system-adapters/`** (new crate `dragonfruit-system-adapters`,
 - **T33 — T-07.1b Event subscription, restart re-subscribe, absence**: **State: done.** The subscription/event seam landed in the same; **`services/system-adapters/src/subscription.rs`** (new) — `ConnectionState`
-- **Follow-ups**: T-07.1a (done in T32): the adapter contract + mock landed; T-06.1/T-06.2a/T-06.2b (done in T29/T30/T31): the switcher machine (ADR
+- **T34 — T-07.2a NetworkManager read path**: **State: done.** The NetworkManager read path landed in a new concrete-adapter; **`services/networkmanager/`** (new crate `dragonfruit-networkmanager`,
+- **Follow-ups**: T-07.2a (done in T34): NetworkManager **read** path + mock/fixture landed; T-07.1a (done in T32): the adapter contract + mock landed
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -2202,8 +2203,73 @@ Gotchas for later tasks:
 - `MockAdapter::new`/`with_available` are no longer `const` (the outbox holds a
   `VecDeque`); no call site needed const.
 
+## T34 — T-07.2a NetworkManager read path
+
+**State: done.** The NetworkManager read path landed in a new concrete-adapter
+crate; no write path (T-07.2b) and no shell wiring (T-07.5) yet.
+
+What landed:
+
+- **`services/networkmanager/`** (new crate `dragonfruit-networkmanager`,
+  workspace member; deps: `dragonfruit-system-adapters`, `zbus` blocking,
+  `serde`): `src/source.rs` (raw `NetworkManagerData`/`WifiDeviceData`/
+  `AccessPointData`, `NetworkManagerSource` seam, `MockNetworkManager`),
+  `src/model.rs` (`WifiSnapshot` + `WifiState`/`Connectivity`/`Security`/
+  `AccessPoint`/`Band` decoding), `src/adapter.rs`
+  (`NetworkManagerAdapter<S>` over the shared `Adapter`/`Subscription`),
+  `src/dbus.rs` (`DbusNetworkManager`, zbus blocking proxies; no libnm).
+- **Transport seam**: `NetworkManagerSource::read` → `Ok(Some(data))`
+  present, `Ok(None)` absent, `Err(AdapterError)` present-but-failed.
+  `refresh()` is the only daemon read and drives `Subscription`: data →
+  `Subscribed`/`Changed`; absent → `Disconnected` + `Unavailable`; error →
+  `Subscribed`/`Changed` + `Error`. `MockNetworkManager::reads()` proves no
+  hidden polling.
+- **Tests** — 16 lib + 5 integration (`tests/read_path.rs`, fixture
+  `tests/fixtures/nm-office.json`); acceptance:
+  `the_fixture_renders_state_and_the_access_point_list`,
+  `an_absent_networkmanager_hides_the_item_and_never_errors`.
+- **Makefile** — `make e2e` now runs `cargo test -p dragonfruit-networkmanager`
+  after the system-adapters tests.
+- **Docs** — `07-system-integration.md` "The NetworkManager read path
+  (T-07.2a)"; ADR `0026`.
+- **Capture** — `docs/captures/t07-networkmanager.png` (nested demo; this unit
+  has no surface of its own).
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-networkmanager` — 16 lib + 5 integration green.
+- `make e2e` — exit 0 (networkmanager tests included).
+- `make clippy` and `cargo fmt --all -- --check` — clean.
+
+Gotchas for later tasks:
+
+- **Crate per adapter** (ADR 0026): T-07.2b extends
+  `dragonfruit-networkmanager`; T-07.3/T-07.4 add `services/audio` /
+  `services/power`. Do not move NM types into `dragonfruit-system-adapters`.
+- **Read only**: `DbusNetworkManager` reads; no activate/join (T-07.2b). There
+  is no background signal thread yet — the host (T-07.5) owns the bridge and
+  must call `NetworkManagerAdapter::refresh()` on `PropertiesChanged`/
+  `DeviceAdded`/`DeviceRemoved`, not poll.
+- **Absence vs failure**: no system bus or `NameHasOwner` false → `Ok(None)`
+  (hidden, never an error); a name owned but a property read failing → `Err`
+  (visible, inert).
+- **Snapshot shape**: `WifiSnapshot.access_points` is one entry per SSID
+  (strongest BSSID wins; the active flag survives a stronger neighbour),
+  sorted strongest-first; `signal_strength()` is the active AP's; `glyph()` /
+  `label()` are the menu-bar strings T-07.5 should render.
+- The live D-Bus source is compile-checked, not exercised in CI (no bus).
+- The shell still shows `--placeholders` fake Wi-Fi until T-07.5b; this task
+  wires nothing into QML.
+
 ## Follow-ups
 
+- T-07.2a (done in T34): NetworkManager **read** path + mock/fixture landed
+  (`services/networkmanager`, ADR 0026). Remaining: (a) T-07.2b adds
+  activate/join + polkit degradation to the same crate; (b) the D-Bus source
+  needs a signal subscription (`PropertiesChanged`, `DeviceAdded/Removed`) and
+  a host to call `refresh()` — no process hosts the Rust adapters for the C++
+  shell yet (decide the bridge in T-07.5); (c) the live source is
+  compile-checked only.
 - T-07.1a (done in T32): the adapter contract + mock landed
   (`services/system-adapters`, ADR 0024); T-07.1b (done in T33, ADR 0025) added
   the subscription/re-subscribe API. Remaining: (a) no process yet hosts the

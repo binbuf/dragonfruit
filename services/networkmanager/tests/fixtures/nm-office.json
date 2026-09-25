@@ -1,0 +1,49 @@
+{
+  "wireless_enabled": true,
+  "connectivity": 4,
+  "devices": [
+    {
+      "managed": true,
+      "state": 100,
+      "active_ap": "/org/freedesktop/NetworkManager/AccessPoint/1",
+      "access_points": [
+        {
+          "path": "/org/freedesktop/NetworkManager/AccessPoint/1",
+          "ssid": "dragonfruit",
+          "strength": 82,
+          "frequency_mhz": 5180,
+          "flags": 1,
+          "wpa_flags": 0,
+          "rsn_flags": 264
+        },
+        {
+          "path": "/org/freedesktop/NetworkManager/AccessPoint/2",
+          "ssid": "dragonfruit",
+          "strength": 64,
+          "frequency_mhz": 2412,
+          "flags": 1,
+          "wpa_flags": 0,
+          "rsn_flags": 264
+        },
+        {
+          "path": "/org/freedesktop/NetworkManager/AccessPoint/3",
+          "ssid": "Neighbour 5G",
+          "strength": 47,
+          "frequency_mhz": 5745,
+          "flags": 1,
+          "wpa_flags": 0,
+          "rsn_flags": 264
+        },
+        {
+          "path": "/org/freedesktop/NetworkManager/AccessPoint/4",
+          "ssid": "Cafe Open",
+          "strength": 12,
+          "frequency_mhz": 2437,
+          "flags": 0,
+          "wpa_flags": 0,
+          "rsn_flags": 0
+        }
+      ]
+    }
+  ]
+}

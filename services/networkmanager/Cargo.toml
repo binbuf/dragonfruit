@@ -1,0 +1,24 @@
+[package]
+name = "dragonfruit-networkmanager"
+description = "NetworkManager adapter: read Wi-Fi state, AP list, and signal (T-07.2a)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+# The concrete adapter owns its daemon stack. NetworkManager is reached over
+# its D-Bus API (never libnm, see docs/design/07-system-integration.md); the
+# dependency-free contract lives in `dragonfruit-system-adapters` and nothing
+# above this crate sees zbus or an NM type.
+[dependencies]
+dragonfruit-system-adapters = { path = "../system-adapters", version = "0.1.0" }
+zbus = { version = "=5.19.0", features = ["blocking-api"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "=1.0.151"
+
+[lib]
+name = "dragonfruit_networkmanager"
+path = "src/lib.rs"
