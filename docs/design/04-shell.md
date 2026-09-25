@@ -210,8 +210,18 @@ dismiss/expire, `Changed`) at the same object path; the service owns the
 queue, a bounded history, and banner expiry. The shell (`NotificationClient` +
 `NotificationModel`) renders the newest active banner into a top-right
 `notification` overlay surface and keeps the history for the notification
-center. Actions and Dock-failure replacement are T-11.1b; DND policy is
-T-11.2a. See [adr/0056](adr/0056-notification-service-surface-and-shell-banner.md).
+center. See [adr/0056](adr/0056-notification-service-surface-and-shell-banner.md).
+
+**T-11.1b status.** Actions round-trip: the service advertises the `actions`
+capability and adds `Invoke(id, action_key)` to the shell interface, which
+emits the freedesktop `ActionInvoked` to the originating app and dismisses the
+banner. The banner surface takes pointer input (a card-sized input region) and
+the card renders an inline action row; a body click fires the app's `default`
+action or dismisses. The Dock's transient launch-failure badge is replaced by
+a real `Notify` raised through the same client
+(`shell/src/launchfailure.{h,cpp}`, `ShellController::failDockLaunch`). DND
+policy is T-11.2a. See
+[adr/0057](adr/0057-notification-actions-and-dock-failure-notice.md).
 
 ## Relationship to compositor and services
 

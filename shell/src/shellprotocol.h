@@ -146,11 +146,16 @@ public:
 
     // Create the notification-banner overlay surface (T-11.1a): an `overlay`
     // layer surface anchored to the top-right corner, namespace
-    // "notification", that starts unmapped. `width`/`height` are the banner
-    // card size; `topMargin` clears the menu bar. It reserves nothing
-    // (`exclusive_zone = -1`) and never takes keyboard (banners are
-    // display-only until T-11.1b adds activation).
+    // "notification", that starts unmapped. `width`/`height` are the maximum
+    // banner surface size; `topMargin` clears the menu bar. It reserves
+    // nothing (`exclusive_zone = -1`) and never takes keyboard; the card area
+    // is made clickable with `setBannerInputRegion` (T-11.1b).
     bool createBannerSurface(int width, int height, int topMargin);
+
+    // Set the clickable input region to the top-left `width` x `height` of the
+    // banner surface (T-11.1b). A non-positive size makes the whole surface
+    // pass every click through. Applied on the next buffer commit.
+    bool setBannerInputRegion(int width, int height);
 
     // Attach `image` to the banner surface and commit. The image must be
     // ARGB32(_Premultiplied).
@@ -296,6 +301,11 @@ signals:
     void dockPopupPointerMoved(qreal x, qreal y);
     void dockPopupPointerButton(qreal x, qreal y, uint32_t button, bool pressed);
     void dockPopupPointerLeft();
+    // Notification-banner input (T-11.1b), in banner-surface coordinates. The
+    // card region is clickable; clicks off the card pass through.
+    void bannerPointerMoved(qreal x, qreal y);
+    void bannerPointerButton(qreal x, qreal y, uint32_t button, bool pressed);
+    void bannerPointerLeft();
     void keyboardFocused(bool focused);
     // The Dock surface specifically gained/lost the keyboard (T-10 section
     // 20). Distinct from `keyboardFocused` so the shell can route keys to the
@@ -559,6 +569,7 @@ private:
     wl_surface *m_bannerSurface = nullptr;
     df_layer_surface *m_bannerLayer = nullptr;
     bool m_bannerMapped = false;
+    bool m_pointerOnBanner = false;
     // True while the Dock surface holds the keyboard (T-10 section 20), so
     // key events are routed to the Dock scene.
     bool m_keyboardOnDock = false;

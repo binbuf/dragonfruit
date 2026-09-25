@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(34 earlier sections omitted)_
+_(35 earlier sections omitted)_
 
-- **T32 — T-07.1a Adapter contract, states, and mock**: **State: done.** The one adapter contract and its test mock landed in a new; **`services/system-adapters/`** (new crate `dragonfruit-system-adapters`,
 - **T33 — T-07.1b Event subscription, restart re-subscribe, absence**: **State: done.** The subscription/event seam landed in the same; **`services/system-adapters/src/subscription.rs`** (new) — `ConnectionState`
 - **T34 — T-07.2a NetworkManager read path**: **State: done.** The NetworkManager read path landed in a new concrete-adapter; **`services/networkmanager/`** (new crate `dragonfruit-networkmanager`,
 - **T35 — T-07.2b NetworkManager join and polkit degradation**: **State: done.** The write path (join/activate) and the polkit read-only; **`services/networkmanager/src/source.rs`** — the transport seam gained
@@ -45,6 +44,7 @@ _(34 earlier sections omitted)_
 - **T68 — T-10.6c Show in Files, Downloads, and .desktop identity**: **State: done.** The Files identity is installed and the Dock's two navigation; **`apps/files/org.dragonfruit.Files.desktop`** (new) — `Exec=dragonfruit-files
 - **T69 — T-10.7 Files capture and acceptance walkthrough**: **State: done.** T-10 (Files MVP) is captured at the track boundary and the; **`scripts/capture-files.sh`** (new) — `make files-capture` (new target in
 - **T70 — T-11.1a Notification service core**: **State: done.** The `org.freedesktop.Notifications` service and the shell; **`services/notifications/`** (new crate `dragonfruit-notifications`,
+- **T71 — T-11.1b Notification actions and Dock badge replacement**: **State: done.** Notification actions round-trip to the originating app, the; **`services/notifications/src/dbus.rs`** — `GetCapabilities` adds `actions`;
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -5241,3 +5241,77 @@ Gotchas for later tasks:
   D-Bus client is the default.
 - **Pre-layout configure is ignored** (`onBannerConfigured` only accepts the
   requested 380x96), the same rule as the menu bar and Dock.
+
+## T71 — T-11.1b Notification actions and Dock badge replacement
+
+**State: done.** Notification actions round-trip to the originating app, the
+banner is interactive with an inline action row, and the Dock's transient
+launch-failure badge is replaced by a real notification. See ADR
+[0057](design/adr/0057-notification-actions-and-dock-failure-notice.md).
+
+What landed:
+
+- **`services/notifications/src/dbus.rs`** — `GetCapabilities` adds `actions`;
+  `org.dragonfruit.Notifications1.Invoke(id, action_key)` emits the
+  freedesktop `ActionInvoked` to the app then dismisses the banner (reason 2).
+  `emit_action_invoked` added.
+- **`services/notifications/tests/session_bus.rs`** — capability assertion
+  now requires `actions`; new `invoking_an_action_round_trips_action_invoked_and_dismisses`.
+- **`shell/src/notificationclient.{h,cpp}`** — client seam gained
+  `notify(...)` and `invoke(...)` plus `notified(id)`; Dbus + Mock implement
+  both. `MockNotificationClient(parent, seedFixture=false)` for tests. The file
+  moved from the shell executable into `dragonfruit-shell-dockcore` so the
+  write half is unit-testable.
+- **`shell/src/launchfailure.{h,cpp}`** (new, dockcore) —
+  `raiseDockLaunchFailure(client, appName, reason)` formats
+  `Dock` / "Could not launch <app>" / `<reason>` and calls `notify`.
+  `ShellController::failDockLaunch` and the `onDockLaunchTick` timeout call it.
+- **`shell/src/shellprotocol.{h,cpp}`** — `setBannerInputRegion(w,h)`,
+  `bannerPointerMoved/Button/Left`, and banner tracking in the pointer
+  enter/leave/motion/button handlers.
+- **`shell/src/shellcontroller.{h,cpp}`** — banner pointer forwarding into the
+  offscreen scene (`m_bannerId`, `m_bannerButtons`), `actions` property,
+  dynamic input region, `onBannerActionInvoked`/`onBannerActivated` (body click
+  = `default` action or dismiss). `DF_DOCK_FAIL_FIXTURE` raises the failure
+  once at startup (capture/demo seam).
+- **`shell/notifications/NotificationBanner.qml`** — inline action-row Repeater,
+  `actionInvoked`/`activated` signals, card grows to 132 with actions.
+- **Tests** — `tst_dockcore.cpp`: launch-failure summary + fallback,
+  `notify` actions, `invoke` dismissal; `tst_notifications.qml`: action row
+  renders/invokes, body click activates. ctest 35/35.
+- **Docs** — ADR 0057; `04-shell.md` T-11.1b status.
+
+Commands that work (repo root; `make` sets the toolchain env; if cmake
+regenerates, export `LD_LIBRARY_PATH=$HOME/.local/df-toolchain/usr/lib64`):
+
+- `cargo test -p dragonfruit-notifications` — 13 unit + 9 integration pass.
+- `LD_LIBRARY_PATH=$HOME/.local/df-toolchain/usr/lib64 make cmake-build` then
+  `make qml-test` — 35/35; `make lint` green; `make e2e` exit 0.
+
+Live capture (`/tmp/opencode/t71-actions-capture.sh`,
+`/tmp/opencode/t71-seam-capture.sh`; PNGs under `/tmp/opencode/t71-*`):
+private `dbus-daemon` + `dragonfruit-notifications` + `make dev` on one bus.
+A real `Notify` with actions renders `Files` / `Copy finished` /
+`12 items copied to Documents` plus `Reply`/`Archive` buttons. With
+`DF_DOCK_FAIL_FIXTURE=1` the failure banner reads `Dock` /
+`Could not launch Files` / `The app did not start.`. Vision is a supporting
+check.
+
+Gotchas for later tasks:
+
+- **`Invoke` dismisses the banner before the app replies.** The service emits
+  `ActionInvoked` then closes with reason 2; an app that wants to keep it open
+  must re-`Notify` with `replaces_id`.
+- **A missing `Exec` is not an immediate launch failure.** `QProcess::startDetached`
+  forks before `exec`, so a nonexistent program still returns true; the Dock
+  failure surfaces through the 8 s launch-timeout path, not synchronously.
+- **`DF_DOCK_FAIL_FIXTURE`** is a capture seam (raises
+  `org.dragonfruit.Files.desktop` 1.5 s after startup); never set normally.
+- **The banner surface is 380x132 always** (card 96 or 132); only the card
+  region is clickable. `onBannerConfigured` accepts 380x132 now, not 380x96.
+- **The launch-failure banner uses the service default 5 s deadline**; a live
+  screenshot must land inside that window (the seam script polls `Banners`).
+- **`notificationclient.cpp` is now in `dragonfruit-shell-dockcore`**, not the
+  shell executable; `tst_dockcore` links it.
+- **T-11.2a** owns DND/Focus policy; the service bit and the
+  "suppress banner, keep history" rule are unchanged.
