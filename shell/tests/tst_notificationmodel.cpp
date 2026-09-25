@@ -70,6 +70,34 @@ private slots:
         QCOMPARE(entry.value(QStringLiteral("reason")).toString(), QStringLiteral("dismissed"));
         QCOMPARE(entry.value(QStringLiteral("closedAt")).toULongLong(), 1234ull);
     }
+
+    void the_focus_policy_decodes()
+    {
+        NotificationModel model;
+        model.applyFocusPolicyJson(QByteArrayLiteral(
+            "{\"mode\":\"focus\",\"allowList\":[\"Chat\"],\"batchedCount\":2}"));
+        const QVariantMap policy = model.focusPolicy();
+        QCOMPARE(policy.value(QStringLiteral("mode")).toString(), QStringLiteral("focus"));
+        QCOMPARE(policy.value(QStringLiteral("batchedCount")).toInt(), 2);
+        QCOMPARE(policy.value(QStringLiteral("allowList")).toStringList(),
+                 QStringList{ QStringLiteral("Chat") });
+    }
+
+    void a_missing_or_malformed_focus_policy_clears()
+    {
+        NotificationModel model;
+        model.applyFocusPolicyJson(QByteArrayLiteral("{\"mode\":\"dnd\",\"batchedCount\":5}"));
+        QCOMPARE(model.focusPolicy().value(QStringLiteral("mode")).toString(),
+                 QStringLiteral("dnd"));
+        // The service going away sends `{}`; a malformed payload is the same
+        // safe "no Focus item" default.
+        model.applyFocusPolicyJson(QByteArrayLiteral("{}"));
+        QVERIFY(model.focusPolicy().isEmpty());
+        model.applyFocusPolicyJson(QByteArrayLiteral("not json"));
+        QVERIFY(model.focusPolicy().isEmpty());
+        model.applyFocusPolicyJson(QByteArrayLiteral("[1,2]"));
+        QVERIFY(model.focusPolicy().isEmpty());
+    }
 };
 
 QTEST_MAIN(TestNotificationModel)

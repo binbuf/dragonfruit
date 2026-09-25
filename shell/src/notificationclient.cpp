@@ -104,6 +104,7 @@ void DbusNotificationClient::refresh()
 {
     call(QStringLiteral("Banners"), {}, &NotificationClient::bannersChanged);
     call(QStringLiteral("History"), {}, &NotificationClient::historyChanged);
+    call(QStringLiteral("FocusPolicy"), {}, &NotificationClient::focusPolicyChanged);
 }
 
 void DbusNotificationClient::dismiss(quint32 id)
@@ -201,6 +202,19 @@ void DbusNotificationClient::invoke(quint32 id, const QString &actionKey)
 #endif
 }
 
+void DbusNotificationClient::setFocusMode(const QString &mode)
+{
+#if defined(QT_DBUS_LIB)
+    // `SetFocusMode` rejects unknown names; the service emits `Changed` on a
+    // change, which re-reads `FocusPolicy()`.
+    QDBusInterface iface(m_service, m_path, m_interface, QDBusConnection::sessionBus());
+    if (iface.isValid())
+        iface.asyncCall(QStringLiteral("SetFocusMode"), mode);
+#else
+    Q_UNUSED(mode);
+#endif
+}
+
 // --- MockNotificationClient ------------------------------------------------
 
 MockNotificationClient::MockNotificationClient(QObject *parent, bool seedFixture)
@@ -232,6 +246,18 @@ void MockNotificationClient::refresh()
 {
     emit bannersChanged(m_bannerJson);
     emit historyChanged(m_historyJson);
+    emit focusPolicyChanged(policyJson());
+}
+
+QByteArray MockNotificationClient::policyJson() const
+{
+    return QJsonDocument(
+               QJsonObject{
+                   { QStringLiteral("mode"), m_focusMode },
+                   { QStringLiteral("allowList"), QJsonArray{} },
+                   { QStringLiteral("batchedCount"), m_focusBatched },
+               })
+        .toJson(QJsonDocument::Compact);
 }
 
 void MockNotificationClient::notify(const QString &appName, const QString &summary,
@@ -320,7 +346,26 @@ void MockNotificationClient::invoke(quint32 id, const QString &actionKey)
     remove(id, QStringLiteral("dismissed"));
 }
 
-void MockNotificationClient::setDoNotDisturb(bool)
+void MockNotificationClient::setFocusMode(const QString &mode)
 {
-    // The fixture always shows its one banner; DND is T-11.2a.
+    // Mirror the service's accepted names (`do-not-disturb` is its alias).
+    const QString normalized =
+        mode == QLatin1String("do-not-disturb") ? QStringLiteral("dnd") : mode;
+    if (normalized != QLatin1String("off") && normalized != QLatin1String("focus")
+        && normalized != QLatin1String("dnd"))
+        return;
+    if (normalized == m_focusMode)
+        return;
+    m_focusMode = normalized;
+    // The batch clears when the mode returns to `off`, exactly like the
+    // service (T-11.2a semantics).
+    if (m_focusMode == QLatin1String("off"))
+        m_focusBatched = 0;
+    emit focusPolicyChanged(policyJson());
+}
+
+void MockNotificationClient::setDoNotDisturb(bool enabled)
+{
+    // The T-11.1a compat surface maps the bool onto the three-way policy.
+    setFocusMode(enabled ? QStringLiteral("dnd") : QStringLiteral("off"));
 }

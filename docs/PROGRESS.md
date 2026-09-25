@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(36 earlier sections omitted)_
+_(37 earlier sections omitted)_
 
-- **T34 — T-07.2a NetworkManager read path**: **State: done.** The NetworkManager read path landed in a new concrete-adapter; **`services/networkmanager/`** (new crate `dragonfruit-networkmanager`,
 - **T35 — T-07.2b NetworkManager join and polkit degradation**: **State: done.** The write path (join/activate) and the polkit read-only; **`services/networkmanager/src/source.rs`** — the transport seam gained
 - **T36 — T-07.3 Audio adapter (PipeWire/WirePlumber)**: **State: done.** The audio adapter landed in a new concrete-adapter crate; no; **`services/audio/`** (new crate `dragonfruit-audio`, workspace member; deps:
 - **T37 — T-07.4 Power adapter (UPower)**: **State: done.** The read-only power adapter landed in a new concrete-adapter; **`services/power/`** (new crate `dragonfruit-power`, workspace member; deps:
@@ -45,6 +44,7 @@ _(36 earlier sections omitted)_
 - **T70 — T-11.1a Notification service core**: **State: done.** The `org.freedesktop.Notifications` service and the shell; **`services/notifications/`** (new crate `dragonfruit-notifications`,
 - **T71 — T-11.1b Notification actions and Dock badge replacement**: **State: done.** Notification actions round-trip to the originating app, the; **`services/notifications/src/dbus.rs`** — `GetCapabilities` adds `actions`;
 - **T72 — T-11.2a DND/Focus policy**: **State: done.** The notification service now owns a three-mode Focus/DND; **`services/notifications/src/policy.rs`** (new) — `FocusMode` (`off` /
+- **T73 — T-11.2b DND/Focus menu-bar reflection and Dock failure path**: **State: done.** The menu bar reflects the notification service's Focus/DND; **`shell/src/notificationclient.{h,cpp}`** — the seam gains
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -5374,3 +5374,64 @@ Gotchas for later tasks:
   `mode` + `batchedCount` in the bar via `Changed`.
 - **Scheduling Focus windows and per-app silencing were not built**; the
   policy value is additive if a later task needs them.
+
+## T73 — T-11.2b DND/Focus menu-bar reflection and Dock failure path
+
+**State: done.** The menu bar reflects the notification service's Focus/DND
+policy; the Dock launch-failure path is the T-11.1b real notification
+(unchanged). The reflection contract is frozen in
+[0059](design/adr/0059-menu-bar-focus-reflection.md).
+
+What landed:
+
+- **`shell/src/notificationclient.{h,cpp}`** — the seam gains
+  `setFocusMode(mode)` and `focusPolicyChanged(json)`; `refresh()` now also
+  reads `FocusPolicy()`. `DbusNotificationClient` calls
+  `FocusPolicy`/`SetFocusMode`; `MockNotificationClient` keeps the mode
+  (rejects unknown names, clears the batch on `off`) and mirrors the T-11.1a
+  `setDoNotDisturb` bool.
+- **`shell/src/notificationmodel.{h,cpp}`** — `applyFocusPolicyJson` and
+  `focusPolicy()`; a malformed/missing payload clears the policy (never stale).
+- **`shell/src/focusstatus.{h,cpp}`** (new, dockcore) —
+  `focusStatusItem(policy)` maps the policy map to the `focus` status item:
+  hidden for `off`/absent, crescent for `focus`, `selected` (accent) for
+  `dnd`; label = `batchedCount` when > 0; accessible name always carries
+  mode/count.
+- **`shell/src/shellcontroller.{h,cpp}`** — `onNotificationFocusPolicy`
+  decodes and rebuilds the status row; the `focus` item now comes from
+  `focusStatusItem` instead of a hardcoded hidden slot; the service-absent
+  path clears the policy. `DF_FOCUS_FIXTURE=<mode>` starts the
+  `DF_NOTIFY_FIXTURE` mock in that mode (capture/demo only).
+- **Tests** — `tst_notificationmodel` policy decode + safe default;
+  `tst_dockcore` `focusStatusItem` mapping + mock `setFocusMode`/compat
+  round-trip; `tst_menubar.qml` renders the three states. ctest 35/35.
+- **Docs** — ADR 0059; `04-shell.md` T-11.2b status.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `LD_LIBRARY_PATH=$HOME/.local/df-toolchain/usr/lib64 ctest --test-dir build
+  -R "tst_notificationmodel|tst_dockcore|tst_menubar"` — 3/3.
+- `make qml-test` — 35/35; `make lint` and `make e2e` green.
+
+Live capture (`/tmp/opencode/t73-capture.sh` + `/tmp/opencode/t73-driver.py`;
+PNGs `/tmp/opencode/t73-focus.png`, `t73-menubar.png`): `make demo` with
+`DF_NOTIFY_FIXTURE=1 DF_FOCUS_FIXTURE=dnd`; the nested-bar crop reads an
+accent-tinted crescent immediately left of the clock, then the Control Center
+and Mission Control marks. No clipping/artifacts. Vision is a supporting check.
+
+Gotchas for later tasks:
+
+- **The menu-bar item is read-only.** It reflects the policy; clicking it is
+  the generic `statusItemActivated("focus")` no-op. The Control Center
+  (T-11.3a) owns the active Focus controls. `selected`=DND is the frozen
+  visual convention.
+- **The shell learns the policy on `Changed`** (the client's `refresh()` reads
+  `Banners`/`History`/`FocusPolicy` together). `amend` the service only through
+  `SetFocusMode`/`SetFocusAllowList`; it emits `Changed`.
+- **`focusPolicyChanged` is NOT emitted by the mock when the mode is
+  unchanged** (and unknown names are ignored), so a toggle test must set a
+  different mode.
+- **`DF_FOCUS_FIXTURE` requires `DF_NOTIFY_FIXTURE`** — it only seeds the mock
+  client. Values are `off`/`focus`/`dnd` (alias `do-not-disturb`).
+- **No pixel assertion in the headless suites**; the accent-tinted crescent
+  was checked only by the live capture above.

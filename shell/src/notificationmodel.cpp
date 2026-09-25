@@ -40,3 +40,15 @@ void NotificationModel::applyHistoryJson(const QByteArray &json)
     m_history = parseList(json);
     emit changed();
 }
+
+void NotificationModel::applyFocusPolicyJson(const QByteArray &json)
+{
+    const QJsonDocument document = QJsonDocument::fromJson(json);
+    // The policy view is a JSON object (`mode`/`allowList`/`batchedCount`);
+    // anything else is the safe "unavailable" default.
+    if (document.isObject())
+        m_focusPolicy = document.toVariant().toMap();
+    else
+        m_focusPolicy.clear();
+    emit changed();
+}

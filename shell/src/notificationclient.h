@@ -54,11 +54,18 @@ public slots:
     // The user invoked `actionKey` on the active banner `id`; the service
     // emits `ActionInvoked` to the app that sent the notification (T-11.1b).
     virtual void invoke(quint32 id, const QString &actionKey) = 0;
+    // Set the Focus/DND mode (`off`/`focus`/`dnd`) through the service's
+    // `SetFocusMode` (T-11.2a). The service rejects unknown names; the
+    // resulting policy arrives through `focusPolicyChanged`.
+    virtual void setFocusMode(const QString &mode) = 0;
 
 signals:
     void availableChanged(bool available);
     void bannersChanged(const QByteArray &json);
     void historyChanged(const QByteArray &json);
+    // The Focus/DND policy view (T-11.2b): JSON `{mode, allowList,
+    // batchedCount}`, re-read on `Changed`.
+    void focusPolicyChanged(const QByteArray &json);
     // The id assigned to a `notify` call.
     void notified(quint32 id);
 };
@@ -82,6 +89,7 @@ public slots:
                 const QString &urgency, const QStringList &actionKeys,
                 const QStringList &actionLabels) override;
     void invoke(quint32 id, const QString &actionKey) override;
+    void setFocusMode(const QString &mode) override;
 
 private:
     using ReplySignal = void (NotificationClient::*)(const QByteArray &);
@@ -114,14 +122,18 @@ public slots:
                 const QString &urgency, const QStringList &actionKeys,
                 const QStringList &actionLabels) override;
     void invoke(quint32 id, const QString &actionKey) override;
+    void setFocusMode(const QString &mode) override;
 
 private:
     void seedBanner();
     void remove(quint32 id, const QString &reason);
+    QByteArray policyJson() const;
 
     quint32 m_nextId = 1;
     quint32 m_bannerId = 0;
     QByteArray m_bannerJson;
     QByteArray m_historyJson;
+    QString m_focusMode = QStringLiteral("off");
+    int m_focusBatched = 0;
     QTimer m_expiry;
 };
