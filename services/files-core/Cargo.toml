@@ -1,6 +1,6 @@
 [package]
 name = "dragonfruit-files-core"
-description = "Headless files-core model and streaming directory listing (T-10.1a)"
+description = "Headless files-core model, streaming listing, and sorting (T-10.1b)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,11 +9,12 @@ rust-version.workspace = true
 
 # The browsing core is a library, not a process: Files, the desktop surface,
 # and the portal FileChooser embed it through a thin bridge (see
-# docs/design/09-files.md). It owns the model and the streaming-listing
-# contract; the platform backend sits behind `DirectorySource`. GIO/GVfs
-# headers are not part of the pinned toolchain on every host, so T-10.1a
-# ships the sanctioned `StdFsSource` fallback, marked for replacement
-# (docs/design/adr/0042-*.md). No daemon or remote stack is linked.
+# docs/design/09-files.md). It owns the model, the streaming-listing
+# contract, and the sort order; the platform backend sits behind
+# `DirectorySource`. GIO/GVfs headers are not part of the pinned toolchain on
+# every host, so T-10.1b keeps the sanctioned `StdFsSource` fallback as the
+# shipping backend, marked for replacement (docs/design/adr/0043-*.md). No
+# daemon or remote stack is linked.
 #
 # `tempfile` is a dev-only dependency for the temp-tree acceptance tests.
 

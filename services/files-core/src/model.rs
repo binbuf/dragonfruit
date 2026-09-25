@@ -10,13 +10,24 @@
 //! [`crate::listing`]) and returns a [`ListingHandle`]; the consumer's event
 //! loop drains it with [`DirectoryModel::drain`] or [`DirectoryModel::apply`].
 //!
+//! # Sorting is incremental and stable
+//!
+//! [`DirectoryModel::nodes`] always stays in arrival order; a separate
+//! `order` index gives the sorted projection ([`DirectoryModel::ordered`]).
+//! Each arriving batch is merged into that index (an O(n) stable merge, not a
+//! re-sort), so the sorted view is valid after every batch. Equal keys keep
+//! arrival order, and changing the [`SortSpec`] re-sorts in place without
+//! touching node ids, so selection and drag state survive.
+//!
 //! [09-files.md]: ../../../docs/design/09-files.md
 
+use std::cmp::Ordering;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 use std::sync::Arc;
 
 use crate::listing::{self, ListingEvent, ListingEventKind, ListingHandle, DEFAULT_BATCH};
+use crate::sort::SortSpec;
 use crate::source::{DirectorySource, SourceError};
 use crate::{Location, Node, NodeId};
 
@@ -43,6 +54,8 @@ pub struct DirectoryModel {
     next_id: u64,
     batch_size: usize,
     active_cancel: Option<Arc<AtomicBool>>,
+    sort: SortSpec,
+    order: Vec<usize>,
 }
 
 impl Default for DirectoryModel {
@@ -63,6 +76,8 @@ impl DirectoryModel {
             next_id: 0,
             batch_size: DEFAULT_BATCH,
             active_cancel: None,
+            sort: SortSpec::default(),
+            order: Vec::new(),
         }
     }
 
@@ -82,12 +97,13 @@ impl DirectoryModel {
     /// The returned handle is drained by the caller's event loop.
     pub fn begin(&mut self, source: Arc<dyn DirectorySource>, location: Location) -> ListingHandle {
         if let Some(cancel) = self.active_cancel.take() {
-            cancel.store(true, Ordering::SeqCst);
+            cancel.store(true, AtomicOrdering::SeqCst);
         }
         self.generation += 1;
         self.location = Some(location.clone());
         self.nodes.clear();
         self.index.clear();
+        self.order.clear();
         self.state = ListingState::Streaming;
         self.next_id = 0;
 
@@ -107,13 +123,17 @@ impl DirectoryModel {
         }
         match event.kind {
             ListingEventKind::Batch(nodes) => {
+                let mut added = Vec::with_capacity(nodes.len());
                 for mut node in nodes {
                     self.next_id += 1;
                     let id = NodeId::from_raw(self.next_id);
                     node.set_id(id);
-                    self.index.insert(id, self.nodes.len());
+                    let position = self.nodes.len();
+                    self.index.insert(id, position);
                     self.nodes.push(node);
+                    added.push(position);
                 }
+                self.merge_sorted(&added);
                 if self.state != ListingState::Complete {
                     self.state = ListingState::Streaming;
                 }
@@ -197,6 +217,88 @@ impl DirectoryModel {
         self.index.get(&id).copied()
     }
 
+    /// The order the model sorts under. Defaults to name, ascending, folders
+    /// first.
+    pub fn sort_spec(&self) -> &SortSpec {
+        &self.sort
+    }
+
+    /// Change the order and re-sort the nodes already delivered.
+    ///
+    /// Node ids and the arrival-order slice ([`Self::nodes`]) are untouched,
+    /// so a view keeping selection by id is not invalidated. Future batches
+    /// are merged into the new order.
+    pub fn set_sort(&mut self, spec: SortSpec) {
+        if self.sort == spec {
+            return;
+        }
+        self.sort = spec;
+        let mut order: Vec<usize> = (0..self.nodes.len()).collect();
+        order.sort_by(|&a, &b| self.compare_positions(a, b));
+        self.order = order;
+    }
+
+    /// The sorted projection as positions into [`Self::nodes`], in order.
+    pub fn ordered_indices(&self) -> &[usize] {
+        &self.order
+    }
+
+    /// The nodes in sorted order. Iterates a view over the same nodes.
+    pub fn ordered(&self) -> impl Iterator<Item = &Node> {
+        self.order.iter().map(|&index| &self.nodes[index])
+    }
+
+    /// The node at sorted position `rank`, if the listing reaches that far.
+    pub fn ordered_node(&self, rank: usize) -> Option<&Node> {
+        self.order
+            .get(rank)
+            .and_then(|&index| self.nodes.get(index))
+    }
+
+    /// The sorted rank of a node id, scanning the order (O(n)). A view that
+    /// keeps a rank map should maintain it from [`Self::ordered_indices`].
+    pub fn ordered_position_of(&self, id: NodeId) -> Option<usize> {
+        let arrival = self.index_of(id)?;
+        self.order.iter().position(|&index| index == arrival)
+    }
+
+    /// Merge freshly appended positions into the sorted order. The appended
+    /// positions are in arrival order, and every one arrived after the
+    /// existing nodes, so taking the existing side on ties is exactly the
+    /// stable rule.
+    fn merge_sorted(&mut self, added: &[usize]) {
+        if added.is_empty() {
+            return;
+        }
+        let existing = std::mem::take(&mut self.order);
+        // Each batch arrives in arrival order; stable-sort the new positions
+        // so the merge below joins two sorted sequences.
+        let mut incoming = added.to_vec();
+        incoming.sort_by(|&a, &b| self.compare_positions(a, b));
+        if existing.is_empty() {
+            self.order = incoming;
+            return;
+        }
+        let mut merged = Vec::with_capacity(existing.len() + incoming.len());
+        let (mut old, mut new) = (0, 0);
+        while old < existing.len() && new < incoming.len() {
+            if self.compare_positions(existing[old], incoming[new]) == Ordering::Greater {
+                merged.push(incoming[new]);
+                new += 1;
+            } else {
+                merged.push(existing[old]);
+                old += 1;
+            }
+        }
+        merged.extend_from_slice(&existing[old..]);
+        merged.extend_from_slice(&incoming[new..]);
+        self.order = merged;
+    }
+
+    fn compare_positions(&self, a: usize, b: usize) -> Ordering {
+        self.sort.compare(&self.nodes[a], &self.nodes[b])
+    }
+
     /// The worker batch size this model was built with.
     pub fn batch_size(&self) -> usize {
         self.batch_size
@@ -230,6 +332,40 @@ impl DirectoryModel {
                 self.index.len(),
                 self.nodes.len()
             ));
+        }
+        if self.order.len() != self.nodes.len() {
+            return Err(format!(
+                "order has {} entries for {} nodes",
+                self.order.len(),
+                self.nodes.len()
+            ));
+        }
+        let mut ordered = vec![false; self.nodes.len()];
+        for &index in &self.order {
+            if index >= self.nodes.len() {
+                return Err(format!("order references node {index} out of range"));
+            }
+            if ordered[index] {
+                return Err(format!("node {index} appears twice in the order"));
+            }
+            ordered[index] = true;
+        }
+        for pair in self.order.windows(2) {
+            match self.compare_positions(pair[0], pair[1]) {
+                Ordering::Greater => {
+                    return Err(format!(
+                        "order not sorted at nodes {} and {}",
+                        pair[0], pair[1]
+                    ));
+                }
+                Ordering::Equal if pair[0] > pair[1] => {
+                    return Err(format!(
+                        "order is not stable for nodes {} and {}",
+                        pair[0], pair[1]
+                    ));
+                }
+                _ => {}
+            }
         }
         Ok(())
     }
@@ -312,5 +448,100 @@ mod tests {
         ));
         assert!(!model.is_streaming());
         assert!(model.is_empty());
+    }
+
+    fn name_of(node: &Node) -> String {
+        node.display_name().into_owned()
+    }
+
+    fn ordered_names(model: &DirectoryModel) -> Vec<String> {
+        model.ordered().map(name_of).collect()
+    }
+
+    #[test]
+    fn batches_merge_into_a_sorted_projection() {
+        let source = Arc::new(MockSource::streaming(vec![
+            vec![file("c"), file("a")],
+            vec![file("d"), file("b")],
+        ]));
+        let mut model = DirectoryModel::new();
+        let handle = model.begin(source, Location::file("/fixture"));
+
+        // After the first batch the projection is sorted on its own.
+        let first = handle.recv_timeout(Duration::from_secs(5)).expect("batch");
+        model.apply(first);
+        assert_eq!(ordered_names(&model), vec!["a", "c"]);
+        // Arrival order is preserved for the raw slice.
+        let arrival: Vec<String> = model.nodes().iter().map(name_of).collect();
+        assert_eq!(arrival, vec!["c", "a"]);
+        model.check_consistent().expect("consistent mid-stream");
+
+        let second = handle.recv_timeout(Duration::from_secs(5)).expect("batch");
+        model.apply(second);
+        assert_eq!(ordered_names(&model), vec!["a", "b", "c", "d"]);
+        assert_eq!(model.ordered_node(0).map(name_of).as_deref(), Some("a"));
+        let a_id = model.ordered_node(0).expect("first").id();
+        assert_eq!(model.ordered_position_of(a_id), Some(0));
+        assert_eq!(model.ordered_position_of(NodeId::from_raw(999)), None);
+        model.check_consistent().expect("consistent at completion");
+    }
+
+    #[test]
+    fn changing_the_sort_reroutes_existing_and_future_nodes() {
+        use crate::sort::{SortKey, SortSpec};
+        let source = Arc::new(MockSource::streaming(vec![
+            vec![file("b"), file("a")],
+            vec![file("d"), file("c")],
+        ]));
+        let mut model = DirectoryModel::new();
+        let handle = model.begin(source, Location::file("/fixture"));
+        let first = handle.recv_timeout(Duration::from_secs(5)).expect("batch");
+        model.apply(first);
+        let before: Vec<NodeId> = model.ordered().map(Node::id).collect();
+
+        let descending = SortSpec::new(SortKey::Name)
+            .with_direction(crate::sort::SortDirection::Descending)
+            .with_folders_first(false);
+        model.set_sort(descending);
+        assert_eq!(ordered_names(&model), vec!["b", "a"]);
+        let mut after: Vec<NodeId> = model.ordered().map(Node::id).collect();
+        let mut before_sorted = before;
+        before_sorted.sort();
+        after.sort();
+        assert_eq!(before_sorted, after, "sorting must not renumber nodes");
+        model.check_consistent().expect("consistent after re-sort");
+
+        let second = handle.recv_timeout(Duration::from_secs(5)).expect("batch");
+        model.apply(second);
+        assert_eq!(ordered_names(&model), vec!["d", "c", "b", "a"]);
+        model.check_consistent().expect("consistent after merge");
+    }
+
+    #[test]
+    fn equal_keys_keep_arrival_order() {
+        use crate::sort::{SortDirection, SortKey, SortSpec};
+        let source = Arc::new(MockSource::streaming(vec![
+            vec![
+                file("same").with_size(Some(7)),
+                file("same").with_size(Some(7)),
+            ],
+            vec![
+                file("same").with_size(Some(7)),
+                file("same").with_size(Some(7)),
+            ],
+        ]));
+        let mut model = DirectoryModel::new();
+        let handle = model.begin(source, Location::file("/fixture"));
+        collect(&mut model, &handle);
+        model.set_sort(
+            SortSpec::new(SortKey::Size)
+                .with_direction(SortDirection::Ascending)
+                .with_folders_first(false),
+        );
+        let ids: Vec<NodeId> = model.ordered().map(Node::id).collect();
+        let mut sorted_ids = ids.clone();
+        sorted_ids.sort();
+        assert_eq!(ids, sorted_ids, "stable sort must preserve arrival order");
+        model.check_consistent().expect("consistent");
     }
 }

@@ -58,15 +58,20 @@ Rust for the core is not a whim: our services are already Rust, GIO/UDisks
 bindings are mature (gtk-rs), and the Rust portal backend gets the core for
 free. The bridge is the only Rust-in-Qt seam in the project and stays thin.
 
-**Implementation status (T-10.1a).** The core lives in `services/files-core`
+**Implementation status (T-10.1b).** The core lives in `services/files-core`
 as `dragonfruit-files-core` (a library, no process). It ships the streaming
 model — `Location`, `Node` with raw-byte names and a stable per-session id,
-`DirectoryModel` fed by a worker thread — behind a `DirectorySource` seam.
-Because GIO/GVfs headers are not part of every host's pinned toolchain, the
-first slice exercises the sanctioned `StdFsSource` fallback, which is
-**marked for replacement** (`SANCTIONED_FALLBACK_MARKER`, targeting T-10.1b)
-rather than silently shipped; it resolves only `file://` and refuses other
-schemes. See [adr/0042](adr/0042-files-core-streaming-listing-and-fallback.md).
+`DirectoryModel` fed by a worker thread — behind a `DirectorySource` seam,
+plus sorting. `DirectoryModel` keeps arrival order and maintains a separate
+sorted projection (`ordered()`); name is natural/numeric (`file2` before
+`file10`), folders-first, stable, with kind/size/modified keys
+(`SortSpec`). Because GIO/GVfs headers are absent from the pinned toolchain
+(`pkg-config --exists gio-2.0` fails), the shipping backend remains the
+sanctioned `StdFsSource` fallback, **marked for replacement**
+(`SANCTIONED_FALLBACK_MARKER`) rather than silently shipped; it resolves only
+`file://` and refuses other schemes. Locale-aware collation is deferred. See
+[adr/0042](adr/0042-files-core-streaming-listing-and-fallback.md) and
+[adr/0043](adr/0043-files-core-fallback-is-the-shipping-backend.md).
 
 ### Model
 
@@ -87,7 +92,9 @@ schemes. See [adr/0042](adr/0042-files-core-streaming-listing-and-fallback.md).
   polling.
 - **One collation implementation** — locale-aware, numeric mode (`file2`
   sorts before `file10`) — so icon view, list view, and the chooser always
-  agree.
+  agree. Shipped now as a dependency-free natural/numeric comparison in
+  `files-core`; locale-aware collation is still to come (see
+  [adr/0043](adr/0043-files-core-fallback-is-the-shipping-backend.md)).
 
 ### State ownership
 

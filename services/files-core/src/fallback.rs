@@ -4,11 +4,13 @@
 //! GIO/GVfs is the intended platform plumbing ([09-files.md]): it gives
 //! `trash://`, `recent://`, the udisks2 volume monitor, and remote change
 //! events for free, and we must not re-implement any of it. The GIO headers
-//! are not part of this host's pinned toolchain, so T-10.1a ships this
-//! fallback behind the same [`DirectorySource`] seam. It is **marked for
-//! replacement, not silently shipped**: [`SANCTIONED_FALLBACK_MARKER`] names
-//! the task that replaces it, and T-10.1b finalizes the GIO-vs-fallback
-//! decision.
+//! are not part of this host's pinned toolchain (`pkg-config --exists
+//! gio-2.0` fails), so T-10.1b's finalized decision is to **keep this
+//! fallback as the shipping backend** behind the same [`DirectorySource`]
+//! seam. It is **marked for replacement, not silently shipped**:
+//! [`SANCTIONED_FALLBACK_MARKER`] names GIO/GVfs and the seam, and
+//! [adr/0043](../../../docs/design/adr/0043-files-core-fallback-is-the-shipping-backend.md)
+//! records the decision and the conditions for adding the real backend.
 //!
 //! The fallback reads a `file://` location with `std::fs::read_dir`. It
 //! preserves raw name bytes, follows symlinks for size/mtime while keeping the
@@ -22,11 +24,12 @@ use std::fs::ReadDir;
 use crate::source::{DirectoryReader, DirectorySource, SourceError};
 use crate::{Location, Node, NodeKind};
 
-/// Marker documenting that [`StdFsSource`] is the sanctioned fallback and the
-/// task that replaces it. A later backend (GIO/GVfs) must not leave this in
-/// place.
+/// Marker documenting that [`StdFsSource`] is the sanctioned fallback and
+/// that GIO/GVfs has not replaced it. It is deliberately worded so a build
+/// that ships without the real backend is still visibly degraded: a GIO
+/// reader lands behind the `DirectorySource` seam and removes this marker.
 pub const SANCTIONED_FALLBACK_MARKER: &str =
-    "sanctioned StdFs fallback for files-core listing; replace with GIO/GVfs (T-10.1b)";
+    "sanctioned StdFs fallback for files-core listing; GIO/GVfs backend not linked — replace behind the DirectorySource seam when GIO is pinned (ADR 0043)";
 
 /// A [`DirectorySource`] over `std::fs::read_dir`, for hosts without GIO.
 #[derive(Debug, Default, Clone, Copy)]
@@ -125,8 +128,10 @@ mod tests {
     #[test]
     fn the_fallback_is_marked_for_replacement() {
         let source = StdFsSource::new();
-        assert!(source.marker().contains("GIO/GVfs"));
-        assert!(source.marker().contains("T-10.1b"));
+        let marker = source.marker();
+        assert!(marker.contains("GIO/GVfs"), "marker: {marker}");
+        assert!(marker.contains("replace"), "marker: {marker}");
+        assert!(marker.contains("DirectorySource"), "marker: {marker}");
     }
 
     #[test]
