@@ -42,6 +42,7 @@
 //! query grid
 //! query gesture
 //! query switcher
+//! query policy
 //! query spaces
 //! set titlebar-double-click zoom|minimize|none
 //! set reduced-motion on|off
@@ -702,6 +703,10 @@ pub enum SyntheticCommand {
     /// Read-only app-switcher introspection (T-06.1): the machine's active
     /// flag, selection, and recency entries, followed by `end`.
     QuerySwitcher,
+    /// Read-only motion/input policy introspection (T-08.2c): the live color
+    /// scheme, titlebar double-click, minimized animation, keyboard repeat,
+    /// and gesture switches, followed by `end`.
+    QueryPolicy,
     /// Set `dock.titlebarDoubleClick` for the session (T-01.3 test plumbing).
     SetTitlebarDoubleClick(TitlebarDoubleClick),
     /// Set the compositor reduced-motion policy (T-02.1b test plumbing).
@@ -875,9 +880,10 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
             Some("reveal") => SyntheticCommand::QueryReveal,
             Some("gesture") => SyntheticCommand::QueryGesture,
             Some("switcher") => SyntheticCommand::QuerySwitcher,
+            Some("policy") => SyntheticCommand::QueryPolicy,
             _ => {
                 return Err(
-                    "query requires a known subject (decorations, window-menu, motion, events, latency, scanout, degrade, material, grid, spaces, wallpaper, reveal, gesture, switcher)"
+                    "query requires a known subject (decorations, window-menu, motion, events, latency, scanout, degrade, material, grid, spaces, wallpaper, reveal, gesture, switcher, policy)"
                         .into(),
                 );
             }
@@ -1126,6 +1132,9 @@ impl SyntheticCommand {
             SyntheticCommand::QuerySwitcher => {
                 unreachable!("query switcher is handled by apply_datagram")
             }
+            SyntheticCommand::QueryPolicy => {
+                unreachable!("query policy is handled by apply_datagram")
+            }
             // A settings command, not an input event.
             SyntheticCommand::SetTitlebarDoubleClick(_) => {
                 unreachable!("set titlebar-double-click is handled by apply_datagram")
@@ -1317,6 +1326,15 @@ fn apply_datagram_reply(
             Ok(SyntheticCommand::QuerySwitcher) => {
                 if let Some((socket, peer)) = &reply {
                     let report = switcher_report(state);
+                    if let Some(path) = peer.as_pathname() {
+                        let _ = socket.send_to(report.as_bytes(), path);
+                    }
+                }
+                applied += 1;
+            }
+            Ok(SyntheticCommand::QueryPolicy) => {
+                if let Some((socket, peer)) = &reply {
+                    let report = policy_report(state);
                     if let Some(path) = peer.as_pathname() {
                         let _ = socket.send_to(report.as_bytes(), path);
                     }
@@ -1831,6 +1849,31 @@ fn gesture_report(state: &DfState) -> String {
         "gesture {} tier={}\nend\n",
         state.gesture_trace.summary(),
         state.degrade.tier().name(),
+    )
+}
+
+/// The `query policy` report (T-08.2c): the live settings-driven motion/input
+/// policy.
+///
+/// `policy scheme=<light|dark> titlebar-double-click=<zoom|minimize|none>
+/// minimized-animation=<genie|scale|none> repeat-delay=<ms> repeat-rate=<Hz>
+/// gestures-enabled=<0|1> gesture-space-switch=<0|1>
+/// gesture-mission-control=<0|1>` followed by `end`. The same report is what a
+/// headless test reads after the shell's `set_motion_policy` /
+/// `set_input_policy` requests, so the one owner is observable end to end.
+fn policy_report(state: &DfState) -> String {
+    let keyboard = &state.input_settings.keyboard;
+    let gestures = &state.input_settings.gestures;
+    format!(
+        "policy scheme={} titlebar-double-click={} minimized-animation={} repeat-delay={} repeat-rate={} gestures-enabled={} gesture-space-switch={} gesture-mission-control={}\nend\n",
+        state.color_scheme.name(),
+        state.titlebar_double_click.name(),
+        state.minimized_animation().name(),
+        keyboard.repeat_delay_ms,
+        keyboard.repeat_rate_hz,
+        gestures.enabled as u32,
+        gestures.space_switch as u32,
+        gestures.mission_control as u32,
     )
 }
 

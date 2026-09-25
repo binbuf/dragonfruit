@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(9 earlier sections omitted)_
+_(10 earlier sections omitted)_
 
-- **T07 — T-01.6b Loop integration walkthrough and capture**: **State: done.** The live nested walkthrough of the T-01 loop is scripted and; **`scripts/capture-demo.sh`** (new) + **`scripts/capture-demo-driver.py`**
 - **T08 — T-02.1a Animation clock and frame discipline**: **State: done.** One shared compositor animation clock exists; the overview's; **`compositor/src/animation.rs`** (new) — `FRAME_INTERVAL` (16 ms),
 - **T09 — T-02.1b Window appear transition**: **State: done.** A newly mapped window scales/fades in from its Dock tile on; **`compositor/src/window/appear.rs`** (new) — `AppearTransition`
 - **T10 — T-02.2 Minimize and restore motion**: **State: done.** Minimize shrinks a window into its Dock entry's tile and; **`compositor/src/window/motion.rs`** (renamed from `appear.rs`) —
@@ -44,7 +43,8 @@ _(9 earlier sections omitted)_
 - **T43 — T-08.1b settingsd persistence and migrations**: **State: done.** `settingsd` now owns; **`services/settingsd/src/persist.rs`** (new) — the persisted format,
 - **T44 — T-08.2a Shell migration to settingsd**: **State: done.** The shell no longer owns Dock settings: `DockSettings`/; **`shell/src/settingsclient.{h,cpp}`** (new) — `SettingsClient` (typed key
 - **T45 — T-08.2b Design-system Theme binding**: **State: done.** The design-system `Theme` singleton's `dark`/`reducedMotion`; **`shell/src/themebinding.{h,cpp}`** (new) — `ThemeBinding` is the one
-- **Follow-ups**: **T-08.2 consumer migration (T-08.2a done in T44, T-08.2b done in T45).**; **T-07.6 signal wiring (not done).** The bridge host
+- **T46 — T-08.2c Compositor motion/input policy migration**: **State: done.** The compositor now consumes the settingsd motion/input policy;; **`protocols/dragonfruit-toplevel.xml`** — `df_toplevel_manager` is v5 with
+- **Follow-ups**: **T-08.2 consumer migration (T-08.2a done in T44, T-08.2b done in T45,; **T-07.6 signal wiring (not done).** The bridge host
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3003,19 +3003,109 @@ Gotchas for later tasks:
 - **No `docs/captures/` file.** The T-08 track owns `t08-settingsd.*` for the
   scripted flip; T45's evidence is under `/tmp/opencode/`.
 
+## T46 — T-08.2c Compositor motion/input policy migration
+
+**State: done.** The compositor now consumes the settingsd motion/input policy;
+no local settings file remains on either side. The shell is the only forwarder
+from the one `SettingsClient`; the compositor is the only applier.
+
+What landed:
+
+- **`protocols/dragonfruit-toplevel.xml`** — `df_toplevel_manager` is v5 with
+  two additive requests: `set_motion_policy(color_scheme,
+  titlebar_double_click, minimized_animation)` (strings, `allow-null`) and
+  `set_input_policy(repeat_delay_ms, repeat_rate_hz, gestures_enabled,
+  gesture_space_switch, gesture_mission_control)`. `set_reduced_motion` (v3)
+  is unchanged.
+- **`compositor/src/shell/mod.rs`** — `MANAGER_INTERFACE_VERSION = 5`; the two
+  requests dispatch to `DfState::set_motion_policy`/`set_input_policy`.
+- **`compositor/src/state.rs`** — `set_motion_policy` (color scheme, titlebar
+  double-click, minimized animation) and `set_input_policy` (clamped repeat +
+  gesture flags via `apply_input_settings`), a `minimized_animation` field, and
+  the minimize/restore collapse in `begin_window_motion_from`.
+- **`compositor/src/window/motion.rs`** — `MinimizedAnimation`
+  (`genie`/`scale`/`none`); `none` collapses the tween, `genie` renders as
+  `scale`.
+- **`compositor/src/input/gestures.rs`** — `GestureConfig` gained `enabled`,
+  `space_switch`, `mission_control` and an `admits()` gate used by
+  `update_swipe`/`update_pinch`.
+- **`compositor/src/input/synthetic.rs`** — `query policy` reports the live
+  scheme, titlebar double-click, minimized animation, repeat delay/rate and
+  gesture flags (the headless end-to-end observation).
+- **`shell/src/compositorpolicy.{h,cpp}`** (new) — the pure `CompositorPolicy`
+  view + `compositorPolicyFromValues`/`resolveCompositorColorScheme` (`auto`
+  follows the host).
+- **`shell/src/shellprotocol.{h,cpp}`** — `setMotionPolicy`/`setInputPolicy`,
+  guarded on `m_managerVersion >= 5`. **Bug caught live:** the manager was
+  bound with a hard-coded `std::min(m_managerVersion, 4u)`; it now binds
+  through `df_toplevel_manager_interface.version`, so a lockstep bump needs no
+  second cap. (The conformance suite bound the advertised version directly and
+  did not catch this; only the nested demo did.)
+- **`shell/src/shellcontroller.{h,cpp}`** — `applyCompositorPolicy()` on
+  `SettingsClient::changed`/`refreshed`, on host `colorSchemeChanged`, and once
+  after authenticate; the first apply always sends. The old `setReducedMotion`
+  call in `applyDockSettings` was removed (single forwarder).
+- **Tests** — `compositor/tests/shell_protocol_conformance.rs::motion_and_input_policy_requests_apply_live`
+  (drives v5, reads `query policy`, proves a disabled gesture family stops
+  firing and re-enabling restores it); `gestures::tests::gesture_policy_gates_each_family`;
+  `shell/tests/tst_compositorpolicy.cpp` (new).
+- **Docs** — ADR [0034](design/adr/0034-compositor-policy-via-shell-bridge.md);
+  `docs/private-protocols.md` v5 list; track doc
+  `08-settingsd-live-settings.md` T-08.2c section; `02-compositor.md` scheme
+  wording.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `cargo test -p dragonfruit-compositor --test shell_protocol_conformance` —
+  33/33 green (the pre-existing v4 assertion was updated to v5).
+- `cargo test -p dragonfruit-compositor --bin dragonfruit-compositor gesture`
+  — 12/12 green.
+- `ctest --test-dir build` — 21/21 green (incl. `tst_compositorpolicy`).
+- `make e2e` green (all suites + clean `make demo --headless`). `make lint` exit 0.
+
+Live visual check (`/tmp/opencode/t46-capture.sh`): settingsd on the session bus
+with a scratch `XDG_CONFIG_HOME` seeded `appearance.colorScheme=dark`, nested
+demo, then `gdbus … Set appearance.colorScheme "<'light'>"`. Captures
+`/tmp/opencode/t46-before-dark.png` / `t46-after-light.png`. Shell log applied
+`scheme=dark` then `scheme=light`; 265617 pixels differ. The compositor-drawn
+SSD titlebar (traffic lights) of both the Wayland settings window and the X11
+`xmessage` dialog read dark (#333-ish) → white; vision on tight before/after
+titlebar pairs reported identical traffic lights with only the background
+changing, no artifacts. Menu bar (45,37,52)→(255,255,255) and Dock
+(42,33,50)→(241,240,241) followed too.
+
+Gotchas for later tasks:
+
+- **Extending the policy:** add the key to the `SettingsClient` schema defaults,
+  `compositorpolicyFromValues`, the compositor's `set_*_policy` + a new
+  `since` protocol request, and the `query policy` report. Never add a second
+  D-Bus connection or a local file (ADR 0034).
+- **The shell's manager bind version is now `df_toplevel_manager_interface.version`.**
+  A new protocol request no longer needs a matching `std::min(..., Nu)`.
+- **`dock.minimizeIntoTileIcon` is Dock entry visibility, not a compositor
+  key** — it is not forwarded.
+- **`genie` minimize** is accepted but renders as `scale` (material-pass
+  follow-up).
+- **`workspaces.count`** still has no compositor owner; it is a workspace-model
+  key, out of T-08.2c's motion/input scope.
+- **T-08.3** owns restart/resync: `refreshed` already re-applies the policy, but
+  a `kill -9`/reappear test and the scripted `t08-settingsd.*` capture remain.
+
 ## Follow-ups
 
-- **T-08.2 consumer migration (T-08.2a done in T44, T-08.2b done in T45).**
-  T44 deleted the shell's `DockSettings`/`DockPins` and
-  `QFileSystemWatcher`; the Dock now reads/writes through the
+- **T-08.2 consumer migration (T-08.2a done in T44, T-08.2b done in T45,
+  T-08.2c done in T46).** T44 deleted the shell's `DockSettings`/`DockPins`
+  and `QFileSystemWatcher`; the Dock now reads/writes through the
   `SettingsClient` seam (ADR 0032). T45 bound `Theme.dark`/`reducedMotion` to
   `appearance.colorScheme`/`accessibility.reduceMotion` via `ThemeBinding`
-  (ADR 0033). Remaining: `appearance.accent` still has no consumer (needs a
-  design-system accent override; T-09.2), and T-08.2c must apply the
-  motion/input policy — including mirroring `appearance.colorScheme` — in the
-  compositor. Nothing starts `dragonfruit-settingsd` (the dev tool
-  deliberately does not); the shell runs from the mirrored schema defaults
-  then, which is intended.
+  (ADR 0033). T46 forwards the motion/input keys over the private
+  `df_toplevel_manager` v5 `set_motion_policy`/`set_input_policy`; the
+  compositor is the sole applier (ADR 0034). Remaining: `appearance.accent`
+  still has no consumer (needs a design-system accent override; T-09.2);
+  `workspaces.count` has no compositor owner yet (workspace-model key, not
+  motion/input); restart/resync is T-08.3. Nothing starts
+  `dragonfruit-settingsd` (the dev tool deliberately does not); the shell runs
+  from the mirrored schema defaults then, which is intended.
 
 - **T-07.6 signal wiring (not done).** The bridge host
   (`services/system-status`) reads an adapter only on startup, an explicit

@@ -83,6 +83,26 @@ set_tests_properties(tst_statusmodel PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# Compositor-policy tests (T-08.2c): the pure settingsd -> compositor
+# motion/input mapping the shell forwards over the private protocol. No bus,
+# Wayland, or QML.
+qt_add_executable(tst_compositorpolicy
+    tst_compositorpolicy.cpp
+)
+target_link_libraries(tst_compositorpolicy PRIVATE
+    Qt6::Core Qt6::Test
+    dragonfruit-shell-dockcore
+)
+
+add_test(
+    NAME tst_compositorpolicy
+    COMMAND tst_compositorpolicy
+)
+set_tests_properties(tst_compositorpolicy PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Settings-client tests (T-08.2a): the typed value store and the live
 # `org.dragonfruit.Settings1` client against a fake service on a private
 # session bus. The bus-dependent half skips when no bus is present.

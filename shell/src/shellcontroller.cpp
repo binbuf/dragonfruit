@@ -19,10 +19,12 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QGuiApplication>
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QProcess>
 #include <QStandardPaths>
+#include <QStyleHints>
 #include <QUrl>
 
 #include <cstdio>
@@ -241,6 +243,19 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // persisted pinned set is empty.
     connect(m_settingsClient, &SettingsClient::refreshed, this,
             &ShellController::seedDefaultDockPins);
+    // T-08.2c: the compositor's motion/input policy is a separate view of the
+    // same client (it is not part of DockConfig), so it is applied on every
+    // settings change and on a fresh daemon snapshot.
+    connect(m_settingsClient, &SettingsClient::changed, this,
+            &ShellController::applyCompositorPolicy);
+    connect(m_settingsClient, &SettingsClient::refreshed, this,
+            &ShellController::applyCompositorPolicy);
+    // `auto` follows the host scheme for the compositor too; ThemeBinding owns
+    // the Theme side, this keeps the forwarded scheme live.
+    if (QStyleHints *hints = QGuiApplication::styleHints()) {
+        connect(hints, &QStyleHints::colorSchemeChanged, this,
+                &ShellController::applyCompositorPolicy);
+    }
     m_dockConfig = dockConfigFromValues(m_settingsClient->values());
     if (!m_settingsClient->isAvailable()) {
         // No daemon: seed now so the first frame already shows the default
@@ -266,6 +281,9 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // assigns them.
     m_themeBinding = new ThemeBinding(m_settingsClient, m_engine, this);
     m_themeBinding->apply();
+    // T-08.2c: forward the initial motion/input policy now that the protocol
+    // is authenticated (the compositor is the sole applier).
+    applyCompositorPolicy();
     m_window = new QQuickWindow;
     m_window->setColor(Qt::transparent);
 
@@ -1252,12 +1270,9 @@ void ShellController::applyDockSettings(bool reconfigure)
                             : position == ShellProtocol::DockPosition::Right
                                     ? QStringLiteral("right")
                                     : QStringLiteral("bottom"));
-    // Reduced motion is a global animation policy. The `Theme` singleton is
-    // owned by the T-08.2b settings binding (not here); this only mirrors it
-    // into the compositor so every compositor-driven transition takes the
-    // single-step path (T-11 U-1 / FR-9).
-    if (m_protocol)
-        m_protocol->setReducedMotion(m_dockConfig.reduceMotion);
+    // The reduced-motion policy is no longer sent from here: T-08.2c routes
+    // the whole motion/input policy through `applyCompositorPolicy()` so the
+    // settingsd value has exactly one applier (the compositor).
     if (!reconfigure || !m_protocol)
         return;
     // Adopt the new edge before the layout clamp so `computeDockOverflow`
@@ -1369,6 +1384,32 @@ void ShellController::onSettingsChanged(const QString &key, const QVariant &)
     applyDockSettings(true);
     fprintf(stderr, "dragonfruit-shell: Dock settings changed (live: %s)\n",
             qPrintable(key));
+}
+
+void ShellController::applyCompositorPolicy()
+{
+    // T-08.2c: one view of the settingsd motion/input keys, forwarded to the
+    // compositor over the private protocol. The compositor is the sole
+    // applier; the shell keeps no second settings source.
+    if (!m_settingsClient || !m_protocol)
+        return;
+    const CompositorPolicy policy =
+        compositorPolicyFromValues(m_settingsClient->values(), ThemeBinding::hostDark());
+    if (m_compositorPolicySent && policy == m_compositorPolicy)
+        return;
+    m_compositorPolicy = policy;
+    m_compositorPolicySent = true;
+    m_protocol->setReducedMotion(policy.reducedMotion);
+    m_protocol->setMotionPolicy(policy.colorScheme, policy.titlebarDoubleClick,
+                                policy.minimizedAnimation);
+    m_protocol->setInputPolicy(policy.repeatDelayMs, policy.repeatRateHz,
+                               policy.gesturesEnabled, policy.gestureSpaceSwitch,
+                               policy.gestureMissionControl);
+    fprintf(stderr,
+            "dragonfruit-shell: compositor motion/input policy applied "
+            "(scheme=%s reducedMotion=%d repeat=%d/%d gestures=%d)\n",
+            qPrintable(policy.colorScheme), policy.reducedMotion ? 1 : 0,
+            policy.repeatDelayMs, policy.repeatRateHz, policy.gesturesEnabled ? 1 : 0);
 }
 
 void ShellController::onDockStateChanged(const QVariantList &entries)

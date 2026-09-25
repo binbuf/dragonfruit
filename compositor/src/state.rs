@@ -112,10 +112,10 @@ use crate::window::resize::SizeConstraints;
 use crate::window::{
     cascaded_geometry, centered_on, fullscreen_reveal_rect, BackdropPass, ColorScheme,
     DecorationTier, DegradeController, DegradeTier, DoubleClickTracker, MenuActivation, MenuKey,
-    MenuKeyOutcome, MotionFrame, ReservedZones, SceneTransformPass, ShellWindowEvent,
-    TitlebarDoubleClick, TitlebarElement, TrafficLightKind, WindowDispatch, WindowEvent,
-    WindowEventKind, WindowId, WindowInsets, WindowMenu, WindowMenuCommand, WindowModel,
-    WindowMotion, WindowMotionKind, WindowState, CASCADE_STEP,
+    MenuKeyOutcome, MinimizedAnimation, MotionFrame, ReservedZones, SceneTransformPass,
+    ShellWindowEvent, TitlebarDoubleClick, TitlebarElement, TrafficLightKind, WindowDispatch,
+    WindowEvent, WindowEventKind, WindowId, WindowInsets, WindowMenu, WindowMenuCommand,
+    WindowModel, WindowMotion, WindowMotionKind, WindowState, CASCADE_STEP,
 };
 use crate::workspace::WorkspaceModel;
 use crate::xwayland::XwaylandState;
@@ -337,6 +337,10 @@ pub struct DfState {
     /// `dock.titlebarDoubleClick` (default `zoom`); the live setting lands
     /// with T-08.
     pub titlebar_double_click: TitlebarDoubleClick,
+    /// The minimize/restore animation kind, from `dock.minimizedAnimation`
+    /// (T-08.2c). `none` collapses the lifecycle tween to one step exactly
+    /// like reduced motion.
+    pub minimized_animation: MinimizedAnimation,
     /// Double-click detection state for titlebar presses (T-01.3).
     pub titlebar_clicks: DoubleClickTracker,
     /// The open window menu, if any (T-01.4). Compositor-owned policy: the
@@ -545,6 +549,7 @@ impl DfState {
             active_window: None,
             hovered_titlebar: None,
             titlebar_double_click: TitlebarDoubleClick::default(),
+            minimized_animation: MinimizedAnimation::default(),
             titlebar_clicks: DoubleClickTracker::new(),
             window_menu: None,
             workspaces: WorkspaceModel::new(),
@@ -2131,7 +2136,13 @@ impl DfState {
             Some(frame) => frame.rect,
             None => fallback_origin,
         };
-        let reduced = self.animation_clock.reduced_motion();
+        // `dock.minimizedAnimation=none` collapses minimize/restore exactly
+        // like reduced motion: the window state still changes, only the tween
+        // is skipped (T-08.2c).
+        let collapse_minimize =
+            matches!(kind, WindowMotionKind::Minimize | WindowMotionKind::Restore)
+                && self.minimized_animation.collapses();
+        let reduced = self.animation_clock.reduced_motion() || collapse_minimize;
         if !self.windows.set_motion(
             window,
             WindowMotion::new(kind, origin, geometry, now, reduced),
@@ -2690,6 +2701,58 @@ impl DfState {
             self.color_scheme = scheme;
             self.needs_redraw = true;
         }
+    }
+
+    /// The live minimize/restore animation policy (T-08.2c).
+    pub fn minimized_animation(&self) -> MinimizedAnimation {
+        self.minimized_animation
+    }
+
+    /// Apply the settingsd motion/appearance policy forwarded by the shell
+    /// over `df_toplevel_manager.set_motion_policy` (T-08.2c). Unknown
+    /// spellings (including a `null` argument) leave the live value
+    /// untouched, so a partial/older writer cannot clear a setting. `None`
+    /// is never sent by the shell — it resolves `appearance.colorScheme`
+    /// `auto` against the host before forwarding.
+    pub fn set_motion_policy(
+        &mut self,
+        color_scheme: Option<&str>,
+        titlebar_double_click: Option<&str>,
+        minimized_animation: Option<&str>,
+    ) {
+        if let Some(scheme) = color_scheme.and_then(ColorScheme::parse) {
+            self.set_color_scheme(scheme);
+        }
+        if let Some(mode) = titlebar_double_click.and_then(TitlebarDoubleClick::parse) {
+            self.set_titlebar_double_click(mode);
+        }
+        if let Some(anim) = minimized_animation.and_then(MinimizedAnimation::parse) {
+            if self.minimized_animation != anim {
+                self.minimized_animation = anim;
+                self.needs_redraw = true;
+            }
+        }
+    }
+
+    /// Apply the settingsd input policy forwarded by the shell over
+    /// `df_toplevel_manager.set_input_policy` (T-08.2c): keyboard repeat and
+    /// the gesture family switches, applied live to the seat and recognizer.
+    /// Values are clamped to the schema's documented ranges so a bad writer
+    /// cannot wedge the input stack.
+    pub fn set_input_policy(
+        &mut self,
+        repeat_delay_ms: u32,
+        repeat_rate_hz: u32,
+        gestures_enabled: bool,
+        gesture_space_switch: bool,
+        gesture_mission_control: bool,
+    ) {
+        self.input_settings.keyboard.repeat_delay_ms = repeat_delay_ms.min(5000) as i32;
+        self.input_settings.keyboard.repeat_rate_hz = repeat_rate_hz.min(200) as i32;
+        self.input_settings.gestures.enabled = gestures_enabled;
+        self.input_settings.gestures.space_switch = gesture_space_switch;
+        self.input_settings.gestures.mission_control = gesture_mission_control;
+        self.apply_input_settings();
     }
 
     /// Offset the live window surfaces for an in-flight overview/workspace

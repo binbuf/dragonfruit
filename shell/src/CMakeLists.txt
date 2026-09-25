@@ -42,6 +42,7 @@ endif()
 # small static library so `tst_dockcore` can unit-test it without the
 # compositor or the Wayland stack. The resolver is deleted when T-23 lands.
 add_library(dragonfruit-shell-dockcore STATIC
+    compositorpolicy.cpp
     desktopentry.cpp
     dockdrops.cpp
     dockmodel.cpp

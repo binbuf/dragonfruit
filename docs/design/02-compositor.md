@@ -343,8 +343,9 @@ state, not a render-argument: `DfState::set_color_scheme` flips it and requests
 a redraw, `titlebar_element`/`titlebar_element_for_motion` and
 `open_window_menu` stamp it onto the element they build, and the two material
 passes read `state.color_scheme`. The default is dark (it reads over arbitrary
-client pixels); the settings owner (T-08) mirrors `appearance.colorScheme`
-here. The scheme is reported on a `scheme stats` render-stats line and by
+client pixels); the settings owner mirrors `appearance.colorScheme` here
+through the shell's `set_motion_policy` request (T-08.2c, ADR 0034). The scheme
+is reported on a `scheme stats` render-stats line and by
 `query material` (scheme plus the resolved chrome/elevated/border/accent
 tones), so a headless conformance test proves both schemes render without a
 GPU. See [ADR 0016](adr/0016-live-color-scheme-owner.md).

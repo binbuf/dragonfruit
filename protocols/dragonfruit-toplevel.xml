@@ -24,7 +24,7 @@
 -->
 <protocol name="dragonfruit_toplevel">
 
-  <interface name="df_toplevel_manager" version="4">
+  <interface name="df_toplevel_manager" version="5">
     <description summary="window/workspace/output control for trusted clients">
       The manager is per-client. On bind the compositor replays the current
       scene: it announces every output, workspace, and toplevel, then emits
@@ -199,6 +199,45 @@
       <arg name="index" type="uint" summary="position in recency order, 0 = most recent"/>
       <arg name="app_id" type="string"/>
     </event>
+
+    <!-- T-08.2c: the compositor's settings-driven motion policy. Appended
+         after the v4 messages so the scanner's `since` stays non-decreasing
+         and every pre-existing message keeps its opcode. The shell forwards
+         the settingsd values; the compositor parses the same spellings it
+         already accepts from the synthetic-input seam. Additive in v5. -->
+    <request name="set_motion_policy" since="5">
+      <description summary="set the compositor's motion/appearance policy">
+        The shell mirrors the settingsd motion keys here so the compositor's
+        lifecycle motion, SSD titlebar behaviour, and drawn materials follow
+        the one owner (T-08.2c). `color_scheme` is the resolved
+        `light`/`dark` spelling (`appearance.colorScheme`; the shell resolves
+        `auto` against the host), `titlebar_double_click` is
+        `zoom`/`minimize`/`none` (`dock.titlebarDoubleClick`), and
+        `minimized_animation` is `genie`/`scale`/`none`
+        (`dock.minimizedAnimation`). Unknown spellings leave the current
+        value untouched.
+      </description>
+      <arg name="color_scheme" type="string" allow-null="true"/>
+      <arg name="titlebar_double_click" type="string" allow-null="true"/>
+      <arg name="minimized_animation" type="string" allow-null="true"/>
+    </request>
+
+    <!-- Appended after `set_motion_policy` so the scanner's `since` stays
+         non-decreasing. Additive in v5. -->
+    <request name="set_input_policy" since="5">
+      <description summary="set keyboard repeat and gesture policy">
+        The shell mirrors the settingsd input keys here (T-08.2c):
+        `input.repeatDelay`/`input.repeatRate` (ms, Hz), `gestures.enabled`,
+        `gestures.spaceSwitch`, and `gestures.missionControl`. The compositor
+        applies them to the live seat and gesture recognizer immediately; no
+        local settings file exists on either side.
+      </description>
+      <arg name="repeat_delay_ms" type="uint"/>
+      <arg name="repeat_rate_hz" type="uint"/>
+      <arg name="gestures_enabled" type="uint"/>
+      <arg name="gesture_space_switch" type="uint"/>
+      <arg name="gesture_mission_control" type="uint"/>
+    </request>
 
     <enum name="hot_corner">
       <entry name="top_left" value="0"/>

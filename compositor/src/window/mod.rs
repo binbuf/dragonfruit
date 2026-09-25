@@ -45,7 +45,7 @@ pub use decoration::{
 pub use degrade::{DegradeController, DegradeTier};
 pub use events::{ShellWindowEvent, WindowDispatch, WindowEventKind};
 pub use menu::{MenuActivation, MenuKey, MenuKeyOutcome, WindowMenu};
-pub use motion::{MotionFrame, WindowMotion, WindowMotionKind};
+pub use motion::{MinimizedAnimation, MotionFrame, WindowMotion, WindowMotionKind};
 #[allow(unused_imports)]
 pub use pass::FramePass;
 #[allow(unused_imports)]

@@ -164,7 +164,7 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 - [x] T43 — T-08.1b settingsd persistence and migrations → [tasks/043-t-08.1b-settingsd-persistence-and-migrations.md](tasks/043-t-08.1b-settingsd-persistence-and-migrations.md)
 - [x] T44 — T-08.2a Shell migration to settingsd → [tasks/044-t-08.2a-shell-migration-to-settingsd.md](tasks/044-t-08.2a-shell-migration-to-settingsd.md)
 - [x] T45 — T-08.2b Design-system Theme binding → [tasks/045-t-08.2b-design-system-theme-binding.md](tasks/045-t-08.2b-design-system-theme-binding.md)
-- [ ] T46 — T-08.2c Compositor motion/input policy migration → [tasks/046-t-08.2c-compositor-policy-migration.md](tasks/046-t-08.2c-compositor-policy-migration.md)
+- [x] T46 — T-08.2c Compositor motion/input policy migration → [tasks/046-t-08.2c-compositor-policy-migration.md](tasks/046-t-08.2c-compositor-policy-migration.md)
 - [ ] T47 — T-08.3 Restart, resync, and key-schema documentation → [tasks/047-t-08.3-restart-resync-and-key-schema-documentation.md](tasks/047-t-08.3-restart-resync-and-key-schema-documentation.md)
 
 ## Phase 9 — T-09 Settings Wave 1
@@ -478,11 +478,11 @@ This plan restarts at T-01, so a legacy "T-13" and a new "T-13" are different
 tickets; use this table to translate.
 
 <!-- symphony:status -->
-**Pipeline status** — updated 2026-09-25T07:51:25Z · 45/168 done
+**Pipeline status** — updated 2026-09-25T08:14:50Z · 46/168 done
 
-- Completed: T01, T02, T03, T04, T05, T06, T07, T08, T09, T10, T11, T12, T13, T14, T15, T16, T17, T18, T19, T20, T21, T22, T23, T24, T25, T26, T27, T28, T29, T30, T31, T32, T33, T34, T35, T36, T37, T38, T39, T40, T41, T42, T43, T44, T45
+- Completed: T01, T02, T03, T04, T05, T06, T07, T08, T09, T10, T11, T12, T13, T14, T15, T16, T17, T18, T19, T20, T21, T22, T23, T24, T25, T26, T27, T28, T29, T30, T31, T32, T33, T34, T35, T36, T37, T38, T39, T40, T41, T42, T43, T44, T45, T46
 - Blocked: none
 - Failed: none
-- Remaining: T46, T47, T48, T49, T50, T51, T52, T53, T54, T55, T56, T57, T58, T59, T60, T61, T62, T63, T64, T65, T66, T67, T68, T69, T70, T71, T72, T73, T74, T75, T76, T77, T78, T79, T80, T81, T82, T83, T84, T85, T86, T87, T88, T89, T90, T91, T92, T93, T94, T95, T96, T97, T98, T99, T100, T101, T102, T103, T104, T105, T106, T107, T108, T109, T110, T111, T112, T113, T114, T115, T116, T117, T118, T119, T120, T121, T122, T123, T124, T125, T126, T127, T128, T129, T130, T131, T132, T133, T134, T135, T136, T137, T138, T139, T140, T141, T142, T143, T144, T145, T146, T147, T148, T149, T150, T151, T152, T153, T154, T155, T156, T157, T158, T159, T160, T161, T162, T163, T164, T165, T166, T167, T168
-- Last finished: T45 — done · Bound Theme.dark/reducedMotion to settingsd via new shell ThemeBinding on the existing SettingsClient; headless tst_themebinding + 20/20 ctest + live dark→light flip pass.
+- Remaining: T47, T48, T49, T50, T51, T52, T53, T54, T55, T56, T57, T58, T59, T60, T61, T62, T63, T64, T65, T66, T67, T68, T69, T70, T71, T72, T73, T74, T75, T76, T77, T78, T79, T80, T81, T82, T83, T84, T85, T86, T87, T88, T89, T90, T91, T92, T93, T94, T95, T96, T97, T98, T99, T100, T101, T102, T103, T104, T105, T106, T107, T108, T109, T110, T111, T112, T113, T114, T115, T116, T117, T118, T119, T120, T121, T122, T123, T124, T125, T126, T127, T128, T129, T130, T131, T132, T133, T134, T135, T136, T137, T138, T139, T140, T141, T142, T143, T144, T145, T146, T147, T148, T149, T150, T151, T152, T153, T154, T155, T156, T157, T158, T159, T160, T161, T162, T163, T164, T165, T166, T167, T168
+- Last finished: T46 — done · Compositor consumes settingsd motion/input policy over v5 private-protocol requests via the shell bridge (ADR 0034); tests green and live scheme flip verified on compositor SSD chrome.
 <!-- /symphony:status -->

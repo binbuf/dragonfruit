@@ -260,3 +260,37 @@ light shell over the compositor's dark chrome/backdrop is an interim state.
 asserts `Theme.dark`/`Theme.reducedMotion` and the collapsed reduced-motion
 durations, and grabs the component gallery to prove its rendered variant
 follows the scheme.
+
+## The compositor applies the motion/input policy (T-08.2c)
+
+The compositor no longer holds its own motion/input defaults. It consumes the
+settingsd-owned policy over the private `df_toplevel_manager` protocol (ADR
+[0034](../adr/0034-compositor-policy-via-shell-bridge.md)):
+
+- **`set_motion_policy`** (additive v5): the resolved `appearance.colorScheme`
+  (`light`/`dark`; the shell resolves `auto` against the host),
+  `dock.titlebarDoubleClick`, and `dock.minimizedAnimation`.
+- **`set_input_policy`** (additive v5): `input.repeatDelay`/`input.repeatRate`
+  and `gestures.enabled`/`gestures.spaceSwitch`/`gestures.missionControl`.
+- `set_reduced_motion` (v3) stays the `accessibility.reduceMotion` path.
+
+The shell is the **only forwarder** (no second D-Bus connection, no watcher, no
+timer): `ShellController::applyCompositorPolicy()` re-reads the same
+`SettingsClient` the Dock and Theme use, maps it through the pure
+`shell/src/compositorpolicy.{h,cpp}`, and sends it on `changed`/`refreshed`,
+on host `colorSchemeChanged` (for `auto`), and once after the protocol
+authenticates. The compositor is the **only applier**
+(`DfState::set_motion_policy`/`set_input_policy`); there is no local settings
+file on either side.
+
+`dock.minimizedAnimation=none` collapses the minimize/restore tween to one step
+exactly like reduced motion; `genie` is accepted but currently renders as
+`scale`. `workspaces.count` is not in this bridge — it is a workspace-model
+key, not motion/input, and is a follow-up.
+
+**Verification.** `compositor/tests/shell_protocol_conformance.rs::
+motion_and_input_policy_requests_apply_live` drives the v5 requests and reads
+the synthetic `query policy` report (scheme, titlebar double-click, minimized
+animation, repeat delay/rate, gesture flags), then proves a disabled gesture
+family stops firing and re-enabling restores it. `tst_compositorpolicy`
+covers the pure settingsd → policy mapping, including `auto`.

@@ -171,9 +171,13 @@ void ShellProtocol::bindTrustedGlobals()
                              std::min(m_shellVersion, 1u)));
     }
     if (m_managerName) {
-        m_manager = static_cast<df_toplevel_manager *>(
-            wl_registry_bind(m_registry, m_managerName, &df_toplevel_manager_interface,
-                             std::min(m_managerVersion, 4u)));
+        // Bind through the generated interface's own version, so a lockstep
+    // protocol bump never needs a second hard-coded cap here (T-08.2c caught
+    // the v4 cap rejecting the v5 request at runtime).
+    m_manager = static_cast<df_toplevel_manager *>(
+        wl_registry_bind(m_registry, m_managerName, &df_toplevel_manager_interface,
+                         std::min(m_managerVersion,
+                                  static_cast<uint32_t>(df_toplevel_manager_interface.version))));
         static const df_toplevel_manager_listener managerListener = {
             onManagerOutput,
             onManagerWorkspace,
@@ -833,6 +837,38 @@ void ShellProtocol::setReducedMotion(bool enabled)
     // compositor's transitions take the single-step path. Additive in v3.
     if (m_manager)
         df_toplevel_manager_set_reduced_motion(m_manager, enabled ? 1u : 0u);
+    if (m_display)
+        wl_display_flush(m_display);
+}
+
+void ShellProtocol::setMotionPolicy(const QString &colorScheme,
+                                    const QString &titlebarDoubleClick,
+                                    const QString &minimizedAnimation)
+{
+    // T-08.2c: the compositor's motion/appearance keys, forwarded from the one
+    // settingsd owner. Additive in v5; older compositors ignore it.
+    if (m_manager && m_managerVersion >= 5) {
+        const QByteArray scheme = colorScheme.toUtf8();
+        const QByteArray titlebar = titlebarDoubleClick.toUtf8();
+        const QByteArray minimized = minimizedAnimation.toUtf8();
+        df_toplevel_manager_set_motion_policy(m_manager, scheme.constData(), titlebar.constData(),
+                                              minimized.constData());
+    }
+    if (m_display)
+        wl_display_flush(m_display);
+}
+
+void ShellProtocol::setInputPolicy(int repeatDelayMs, int repeatRateHz, bool gesturesEnabled,
+                                   bool gestureSpaceSwitch, bool gestureMissionControl)
+{
+    // T-08.2c: keyboard repeat and gesture gating, applied live by the
+    // compositor. Additive in v5.
+    if (m_manager && m_managerVersion >= 5) {
+        df_toplevel_manager_set_input_policy(
+            m_manager, static_cast<uint32_t>(qMax(0, repeatDelayMs)),
+            static_cast<uint32_t>(qMax(0, repeatRateHz)), gesturesEnabled ? 1u : 0u,
+            gestureSpaceSwitch ? 1u : 0u, gestureMissionControl ? 1u : 0u);
+    }
     if (m_display)
         wl_display_flush(m_display);
 }
