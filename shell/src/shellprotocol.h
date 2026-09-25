@@ -183,6 +183,25 @@ public:
     // Unmap the control-center surface (attach a null buffer).
     bool hideControlCenter();
 
+    // Create the OSD overlay (T-11.4a): an `overlay` layer surface with no
+    // anchors, so the compositor centers it on the active output; it reserves
+    // nothing (`exclusive_zone = -1`), never takes keyboard, and passes every
+    // input event through. `width`/`height` are the surface size.
+    bool createOsdSurface(int width, int height);
+
+    // Attach `image` to the OSD surface and commit.
+    bool commitOsdImage(const QImage &image);
+
+    // Unmap the OSD surface (attach a null buffer).
+    bool hideOsd();
+
+    // True while a fullscreen surface owns the active Space (T-11.4a). The
+    // OSD is suppressed then: a brief volume/brightness overlay must not
+    // disturb a fullscreen presentation. This is the same projection the
+    // workspace strip uses (a fullscreen window owns a dedicated active Space),
+    // plus the focused toplevel's own fullscreen flag as a fallback.
+    bool fullscreenOverlayActive() const;
+
     // Activate a Space by its index (the workspace strip click, FR-10). The
     // compositor switches every output in lockstep.
     void activateWorkspace(int index);
@@ -302,6 +321,7 @@ signals:
     void switcherConfigured(int width, int height, uint32_t serial);
     void bannerConfigured(int width, int height, uint32_t serial);
     void controlCenterConfigured(int width, int height, uint32_t serial);
+    void osdConfigured(int width, int height, uint32_t serial);
     void surfaceClosed();
     void focusedAppChanged(const QString &appId, const QString &title);
     // xdg-activation attention for an app's toplevel (T-10 FR-4): the Dock
@@ -444,6 +464,8 @@ private:
                                   int32_t width, int32_t height);
     static void onControlCenterConfigure(void *data, df_layer_surface *layer, uint32_t serial,
                                          int32_t width, int32_t height);
+    static void onOsdConfigure(void *data, df_layer_surface *layer, uint32_t serial,
+                               int32_t width, int32_t height);
     static void onLayerClosed(void *data, df_layer_surface *layer);
     static void onSeatCapabilities(void *data, wl_seat *seat, uint32_t capabilities);
     static void onSeatName(void *data, wl_seat *seat, const char *name);
@@ -609,6 +631,11 @@ private:
     bool m_controlCenterMapped = false;
     bool m_pointerOnControlCenter = false;
     bool m_keyboardOnControlCenter = false;
+    // OSD overlay (T-11.4a): a centered `overlay` surface mapped only while a
+    // volume/brightness change is presented. It never takes input or keyboard.
+    wl_surface *m_osdSurface = nullptr;
+    df_layer_surface *m_osdLayer = nullptr;
+    bool m_osdMapped = false;
     // True while the Dock surface holds the keyboard (T-10 section 20), so
     // key events are routed to the Dock scene.
     bool m_keyboardOnDock = false;

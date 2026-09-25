@@ -409,6 +409,17 @@ pub mod component {
         pub const TITLE_SIZE: f32 = 12.0_f32;
         pub const SCRIM_OPACITY: f32 = 0.18_f32;
     }
+    pub mod osd {
+        pub const WIDTH: f32 = 180.0_f32;
+        pub const HEIGHT: f32 = 180.0_f32;
+        pub const RADIUS: f32 = 20.0_f32;
+        pub const PADDING: f32 = 16.0_f32;
+        pub const ICON_SIZE: f32 = 44.0_f32;
+        pub const GAP: f32 = 8.0_f32;
+        pub const TRACK_HEIGHT: f32 = 6.0_f32;
+        pub const TRACK_RADIUS: f32 = 999.0_f32;
+        pub const FONT_SIZE: f32 = 13.0_f32;
+    }
 }
 
 /// A named motion: full duration, cubic-bezier control points, and
@@ -488,6 +499,11 @@ pub mod motion {
         reduced_duration_ms: 0_u32,
     };
     pub const NOTIFICATION: Motion = Motion {
+        duration_ms: 160_u32,
+        curve: [0.2_f32, 0.0_f32, 0.0_f32, 1.0_f32],
+        reduced_duration_ms: 0_u32,
+    };
+    pub const OSD: Motion = Motion {
         duration_ms: 160_u32,
         curve: [0.2_f32, 0.0_f32, 0.0_f32, 1.0_f32],
         reduced_duration_ms: 0_u32,

@@ -13,6 +13,7 @@
 #include "framecommitgate.h"
 #include "launchfailure.h"
 #include "notificationclient.h"
+#include "osdmodel.h"
 #include "settingsclient.h"
 #include "trashbridge.h"
 
@@ -1299,6 +1300,98 @@ private slots:
         // On writes `dark`, off writes `light`; the toggle never writes `auto`.
         QCOMPARE(colorSchemeForDarkToggle(true), QStringLiteral("dark"));
         QCOMPARE(colorSchemeForDarkToggle(false), QStringLiteral("light"));
+    }
+
+    // -- OSD model (T-11.4a) ---------------------------------------------
+
+    void osdVolumeAndBrightnessPresentWithTheRightKind()
+    {
+        OsdModel osd;
+        QVERIFY(osd.presentVolume(0.4, false, 1000));
+        QVERIFY(osd.visible());
+        QCOMPARE(osd.kind(), OsdModel::Kind::Volume);
+        QCOMPARE(osd.kindName(), QStringLiteral("volume"));
+        QVERIFY(qAbs(osd.value() - 0.4) < 1e-9);
+        QCOMPARE(osd.muted(), false);
+        QCOMPARE(osd.deadline(), qint64(1000) + OsdModel::kDismissMs);
+
+        QVERIFY(osd.presentBrightness(0.75, 2000));
+        QCOMPARE(osd.kind(), OsdModel::Kind::Brightness);
+        QCOMPARE(osd.kindName(), QStringLiteral("brightness"));
+        QVERIFY(qAbs(osd.value() - 0.75) < 1e-9);
+
+        // Values are clamped to the unit range.
+        osd.presentBrightness(3.0, 3000);
+        QCOMPARE(osd.value(), 1.0);
+        osd.presentVolume(-2.0, false, 4000);
+        QCOMPARE(osd.value(), 0.0);
+
+        // A present with no kind is refused, never visible.
+        OsdModel fresh;
+        QVERIFY(!fresh.present(OsdModel::Kind::None, 0.5, false, 0));
+        QVERIFY(!fresh.visible());
+    }
+
+    void osdAutoDismissesAtTheDeadline()
+    {
+        OsdModel osd;
+        osd.presentVolume(0.5, false, 1000);
+        // Still visible just before the deadline.
+        QVERIFY(osd.tick(1000 + OsdModel::kDismissMs - 1));
+        QVERIFY(osd.visible());
+        // Dismissed at and after the deadline.
+        QVERIFY(!osd.tick(1000 + OsdModel::kDismissMs));
+        QVERIFY(!osd.visible());
+    }
+
+    void osdFullscreenSuppressesAndHidesImmediately()
+    {
+        OsdModel osd;
+        osd.setFullscreen(true);
+        // A change while fullscreen is refused and never shown.
+        QVERIFY(!osd.presentVolume(0.5, false, 1000));
+        QVERIFY(!osd.visible());
+
+        // Leaving fullscreen lets the next change show.
+        osd.setFullscreen(false);
+        QVERIFY(osd.presentVolume(0.5, false, 2000));
+        QVERIFY(osd.visible());
+
+        // Entering fullscreen while visible hides it at once.
+        osd.setFullscreen(true);
+        QVERIFY(!osd.visible());
+    }
+
+    void osdReducedMotionJumpsTheFade()
+    {
+        OsdModel osd;
+        osd.presentVolume(0.5, false, 1000);
+        // No reduced motion: the fade ramps in from zero, holds, ramps out.
+        QCOMPARE(osd.fade(1000, false), 0.0);
+        QVERIFY(osd.fade(1000 + OsdModel::kFadeInMs / 2, false) > 0.0);
+        QCOMPARE(osd.fade(1000 + OsdModel::kFadeInMs, false), 1.0);
+        QCOMPARE(osd.fade(1000 + OsdModel::kDismissMs, false), 0.0);
+        QVERIFY(osd.fade(1000 + OsdModel::kDismissMs - 1, false) > 0.0);
+
+        // Reduced motion is immediately and always fully visible.
+        QCOMPARE(osd.fade(1000, true), 1.0);
+        QCOMPARE(osd.fade(1000 + OsdModel::kDismissMs - 1, true), 1.0);
+
+        // A hidden OSD fades to nothing on either path.
+        osd.hide();
+        QCOMPARE(osd.fade(1000 + OsdModel::kFadeInMs, true), 0.0);
+        QCOMPARE(osd.fade(1000 + OsdModel::kFadeInMs, false), 0.0);
+    }
+
+    void osdConcurrentTriggersCoalesceToTheLast()
+    {
+        OsdModel osd;
+        osd.presentVolume(0.2, false, 1000);
+        // The brightness change re-arms the same display: one OSD, not two.
+        osd.presentBrightness(0.9, 1000);
+        QCOMPARE(osd.kind(), OsdModel::Kind::Brightness);
+        QVERIFY(qAbs(osd.value() - 0.9) < 1e-9);
+        QCOMPARE(osd.deadline(), qint64(1000) + OsdModel::kDismissMs);
     }
 };
 

@@ -68,6 +68,12 @@ constexpr int kControlCenterWidth = 360;
 constexpr int kControlCenterHeight = 520;
 constexpr int kControlCenterTopGap = 8;
 
+// The OSD overlay (T-11.4a): a centered card. The surface is slightly larger
+// than the card so its shadow is not clipped; the compositor centers an
+// unanchored `overlay` surface on the output.
+constexpr int kOsdSurfaceWidth = 220;
+constexpr int kOsdSurfaceHeight = 220;
+
 QVariantMap statusItem(const QString &id, const QString &icon, const QString &label,
                        const QString &accessibleName, bool available, qreal level = 0.8,
                        bool enabled = true)
@@ -742,6 +748,32 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             applyControlCenterData();
     });
 
+    // OSD overlay (T-11.4a): a centered offscreen scene rendered into its own
+    // `overlay` surface while a volume/brightness change is presented. It is a
+    // pure view; the controller drives it from the pure OSD model.
+    m_osdWindow = new QQuickWindow;
+    m_osdWindow->setColor(Qt::transparent);
+    QQmlComponent osdComponent(m_engine);
+    osdComponent.loadFromModule(QStringLiteral("Dragonfruit.Osd"), QStringLiteral("Osd"));
+    if (osdComponent.isError()) {
+        fprintf(stderr, "dragonfruit-shell: Osd QML error: %s\n",
+                qPrintable(osdComponent.errorString()));
+        return false;
+    }
+    QObject *osdObject = osdComponent.create();
+    m_osdItem = qobject_cast<QQuickItem *>(osdObject);
+    if (!m_osdItem) {
+        fprintf(stderr, "dragonfruit-shell: Osd QML did not produce an item\n");
+        return false;
+    }
+    m_osdItem->setParentItem(m_osdWindow->contentItem());
+    connect(m_osdWindow, &QQuickWindow::afterRendering, this, &ShellController::renderOsd);
+    connect(m_protocol, &ShellProtocol::osdConfigured, this,
+            &ShellController::onOsdConfigured);
+    m_osdTimer = new QTimer(this);
+    m_osdTimer->setInterval(16);
+    connect(m_osdTimer, &QTimer::timeout, this, &ShellController::onOsdTick);
+
     if (!m_protocol->createMenuBarSurface(barHeight, barHeight))
         return false;
     // The dropdown rides a separate `overlay` chrome surface so transient
@@ -776,6 +808,10 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     if (!m_protocol->createControlCenterSurface(kControlCenterWidth, kControlCenterHeight,
                                                 barHeight + kControlCenterTopGap))
         return false;
+    // The OSD is a centered `overlay` surface, unmapped until a volume or
+    // brightness change presents it (T-11.4a).
+    if (!m_protocol->createOsdSurface(kOsdSurfaceWidth, kOsdSurfaceHeight))
+        return false;
 
     // Capture/demo seam (T-11.1b): raise the Dock's launch-failure
     // notification once the chrome is up, so the live check can exercise the
@@ -784,6 +820,19 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         QTimer::singleShot(1500, this, [this]() {
             failDockLaunch(QStringLiteral("org.dragonfruit.Files.desktop"),
                            QStringLiteral("The app did not start."));
+        });
+    }
+
+    // Capture/demo seam (T-11.4a): present the OSD once the chrome is up so the
+    // live visual check can exercise it with no hardware key wiring. Values are
+    // `volume` (default) or `brightness`. Never set in a normal session.
+    if (qEnvironmentVariableIsSet("DF_OSD_FIXTURE")) {
+        const QString fixture = qEnvironmentVariable("DF_OSD_FIXTURE");
+        QTimer::singleShot(1500, this, [this, fixture]() {
+            if (fixture == QLatin1String("brightness"))
+                showOsd(OsdModel::Kind::Brightness, 0.7, false);
+            else
+                showOsd(OsdModel::Kind::Volume, 0.6, false);
         });
     }
 
@@ -938,16 +987,23 @@ void ShellController::onVolumeSetRequested(double volume)
 {
     if (m_statusClient)
         m_statusClient->setVolume(volume);
+    // A volume change presents the OSD on the active output (T-11.4a).
+    const bool muted = m_statusModel
+                           ? m_statusModel->audio().value(QStringLiteral("muted")).toBool()
+                           : false;
+    showOsd(OsdModel::Kind::Volume, volume, muted);
 }
 
 void ShellController::onMuteToggleRequested()
 {
     if (!m_statusClient)
         return;
-    const bool muted = m_statusModel
-                           ? m_statusModel->audio().value(QStringLiteral("muted")).toBool()
-                           : false;
+    const QVariantMap audio = m_statusModel ? m_statusModel->audio() : QVariantMap();
+    const bool muted = audio.value(QStringLiteral("muted")).toBool();
+    const double volume = audio.value(QStringLiteral("volume")).toDouble();
     m_statusClient->setMute(!muted);
+    // Muting is a volume change: show the OSD with the resulting state.
+    showOsd(OsdModel::Kind::Volume, volume, !muted);
 }
 
 void ShellController::onWifiState(const QByteArray &json)
@@ -1180,9 +1236,12 @@ void ShellController::onBrightnessSetRequested(double level)
 {
     if (!m_settingsClient)
         return;
+    const double clamped = qBound(0.0, level, 1.0);
     // settingsd is the single owner (T-08); the `changed` connection forwards
-    // the new value to the compositor via `applyDisplayPolicy`.
-    m_settingsClient->set(QStringLiteral("display.brightness"), qBound(0.0, level, 1.0));
+    // the new value to the compositor via `applyDisplayPolicy`. The OSD
+    // presents the change on the active output (T-11.4a).
+    m_settingsClient->set(QStringLiteral("display.brightness"), clamped);
+    showOsd(OsdModel::Kind::Brightness, clamped, false);
 }
 
 void ShellController::onWifiToggleRequested(bool)
@@ -1272,6 +1331,106 @@ void ShellController::scheduleControlCenterRender()
         m_controlCenterRenderPending = false;
         renderControlCenter();
     });
+}
+
+// --- OSD overlay (T-11.4a) --------------------------------------------------
+
+void ShellController::showOsd(OsdModel::Kind kind, double value, bool muted)
+{
+    if (!m_osdItem || !m_osdWindow || !m_protocol)
+        return;
+    // A fullscreen surface owns the output: suppress the brief overlay so it
+    // never disturbs a presentation. The model keeps the suppression policy so
+    // it is testable without the protocol.
+    m_osd.setFullscreen(m_protocol->fullscreenOverlayActive());
+    m_osd.present(kind, value, muted, QDateTime::currentMSecsSinceEpoch());
+    if (!m_osd.visible()) {
+        hideOsd();
+        return;
+    }
+    applyOsdData();
+    m_osdActive = true;
+    if (m_osdWidth > 0 && m_osdHeight > 0)
+        renderOsd();
+    if (m_osdTimer && !m_osdTimer->isActive())
+        m_osdTimer->start();
+}
+
+void ShellController::applyOsdData()
+{
+    if (!m_osdItem)
+        return;
+    m_osdItem->setProperty("kind", m_osd.kindName());
+    m_osdItem->setProperty("value", m_osd.value());
+    m_osdItem->setProperty("muted", m_osd.muted());
+    m_osdItem->setProperty("fade", m_osd.fade(QDateTime::currentMSecsSinceEpoch(),
+                                              m_compositorPolicy.reducedMotion));
+}
+
+void ShellController::hideOsd()
+{
+    m_osdActive = false;
+    if (m_osdTimer)
+        m_osdTimer->stop();
+    if (m_protocol)
+        m_protocol->hideOsd();
+}
+
+void ShellController::onOsdTick()
+{
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (!m_osd.tick(now)) {
+        hideOsd();
+        return;
+    }
+    m_osdItem->setProperty("fade", m_osd.fade(now, m_compositorPolicy.reducedMotion));
+    renderOsd();
+}
+
+void ShellController::onOsdConfigured(int width, int height, quint32)
+{
+    // The compositor sends a pre-layout configure at the full output size
+    // before applying the layer surface's requested size; skip it (the same
+    // rule as the menu bar, banner, and panel).
+    if (width != kOsdSurfaceWidth || height != kOsdSurfaceHeight) {
+        fprintf(stderr, "dragonfruit-shell: ignoring pre-layout OSD configure %dx%d\n", width,
+                height);
+        return;
+    }
+    m_osdWidth = width;
+    m_osdHeight = height;
+    fprintf(stderr, "dragonfruit-shell: OSD configured %dx%d\n", width, height);
+    if (m_osdActive && !m_osdMapped)
+        renderOsd();
+}
+
+void ShellController::renderOsd()
+{
+    if (!m_osdActive || !m_osdWindow || !m_osdItem)
+        return;
+    if (m_osdWidth <= 0 || m_osdHeight <= 0)
+        return;
+    // The scene graph just rendered; skip the re-entrant frame our own
+    // `grabWindow` readback produces (the Dock/banner FR-14 pattern).
+    if (!m_osdFrameGate.frameRendered())
+        return;
+    if (!m_osdSceneGraphCommitLogged) {
+        m_osdSceneGraphCommitLogged = true;
+        qInfo() << "shell: OSD scene-graph commit path active";
+    }
+    m_osdItem->setWidth(m_osdWidth);
+    m_osdItem->setHeight(m_osdHeight);
+    if (m_osdWindow->width() != m_osdWidth || m_osdWindow->height() != m_osdHeight)
+        m_osdWindow->resize(m_osdWidth, m_osdHeight);
+    if (!m_osdWindow->isVisible())
+        m_osdWindow->show();
+    m_osdFrameGate.beginCommit();
+    const QImage image = m_osdWindow->grabWindow();
+    m_osdFrameGate.endCommit();
+    if (!image.isNull() && m_protocol) {
+        m_protocol->commitOsdImage(image);
+        m_osdMapped = true;
+    }
 }
 
 void ShellController::onMissionControlRequested()

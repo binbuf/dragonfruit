@@ -268,6 +268,20 @@ names, operable text links), and the panel keeps the `ON_DEMAND` + deferred
 dismissal rules of ADR 0060. The Focus and Appearance `… Settings…` links log
 only until T-16. See [adr/0061](adr/0061-control-center-toggles-and-a11y.md).
 
+**T-11.4a status.** The OSD exists: a volume or brightness change (the Control
+Center sliders, the menu-bar volume menu, or mute) presents a brief centered
+card on the active output — the design-system glyph, a level track, and the
+percentage — then fades and dismisses. The shell renders it into a centered,
+unanchored `overlay` surface (`namespace "osd"`), and the pure
+`shell/src/osdmodel.{h,cpp}` owns the visibility window, the coalescing of
+concurrent triggers, the fade, and the fullscreen suppression; the shell drives
+it with a 16 ms timer while visible only, so an idle desktop still wakes no one.
+Reduced motion collapses the fade to an immediate 1.0. A fullscreen surface that
+owns the active Space suppresses the OSD entirely. The card consumes the new
+`component.osd` / `motion.osd` tokens. `DF_OSD_FIXTURE=volume|brightness` is the
+capture-only presentation seam; the AT-SPI/keyboard pass and the committed
+captures are T-11.4b. See [adr/0062](adr/0062-osd-overlay.md).
+
 ## Relationship to compositor and services
 
 - Compositor state (windows, workspaces, outputs) arrives via private
