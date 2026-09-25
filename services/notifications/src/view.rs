@@ -10,6 +10,7 @@
 use serde_json::{json, Value};
 
 use crate::model::{Notification, Queue};
+use crate::policy::FocusPolicy;
 
 /// The banner list, oldest first.
 pub fn banners_json(queue: &Queue) -> String {
@@ -33,11 +34,23 @@ pub fn history_json(queue: &Queue) -> String {
                 "createdAt": entry.created_at_ms,
                 "closedAt": entry.closed_at_ms,
                 "reason": entry.reason.map(|reason| reason.name()),
+                "suppressed": entry.suppressed,
                 "actions": actions_value(&entry.actions),
             })
         })
         .collect();
     serde_json::to_string(&Value::Array(history)).unwrap_or_else(|_| "[]".to_owned())
+}
+
+/// The Focus/DND policy state, frozen for the menu bar, the Control Center,
+/// and Settings (T-11.2a).
+pub fn focus_policy_json(policy: &FocusPolicy) -> String {
+    json!({
+        "mode": policy.mode().name(),
+        "allowList": policy.allow_list(),
+        "batchedCount": policy.batched_count(),
+    })
+    .to_string()
 }
 
 fn banner_value(notification: &Notification) -> Value {
@@ -107,6 +120,38 @@ mod tests {
         );
         let value: Value = serde_json::from_str(&banners_json(&queue)).unwrap();
         assert!(value[0]["deadline"].is_null());
+    }
+
+    #[test]
+    fn the_focus_policy_encodes_the_shell_contract() {
+        let mut policy = FocusPolicy::new();
+        assert_eq!(
+            serde_json::from_str::<Value>(&focus_policy_json(&policy)).unwrap(),
+            serde_json::json!({ "mode": "off", "allowList": [], "batchedCount": 0 })
+        );
+
+        policy.set_mode(crate::policy::FocusMode::Focus);
+        policy.set_allow_list(vec!["Chat".to_owned()]);
+        policy.note_batched(4);
+        let value: Value = serde_json::from_str(&focus_policy_json(&policy)).unwrap();
+        assert_eq!(value["mode"], "focus");
+        assert_eq!(value["allowList"][0], "Chat");
+        assert_eq!(value["batchedCount"], 1);
+    }
+
+    #[test]
+    fn a_suppressed_history_entry_encodes_the_flag() {
+        let mut queue = Queue::new();
+        queue.set_focus_mode(crate::policy::FocusMode::Dnd);
+        queue.notify(
+            NotifyRequest {
+                summary: "quiet".to_owned(),
+                ..NotifyRequest::default()
+            },
+            1000,
+        );
+        let value: Value = serde_json::from_str(&history_json(&queue)).unwrap();
+        assert_eq!(value[0]["suppressed"], true);
     }
 
     #[test]

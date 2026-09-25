@@ -10,9 +10,11 @@
 //!   `NotificationClosed`, `ActionInvoked`). Keeping the standard name and
 //!   path is what makes every existing Linux app's notifications work.
 //! * `org.dragonfruit.Notifications1` — the shell-facing interface
-//!   (`Banners`, `History`, `Dismiss`, `Expire`, `DoNotDisturb`,
-//!   `SetDoNotDisturb`, `Changed`). The Qt shell reads the flat JSON views
-//!   from here; it never scrapes the freedesktop interface.
+//!   (`Banners`, `History`, `Dismiss`, `Expire`, `FocusPolicy`,
+//!   `SetFocusMode`, `SetFocusAllowList`, `DoNotDisturb`,
+//!   `SetDoNotDisturb`, `Changed`; the last two are the T-11.1a DND
+//!   compat pair). The Qt shell reads the flat JSON views from here; it
+//!   never scrapes the freedesktop interface.
 //!
 //! Both interfaces share one [`Queue`] behind a mutex, so a `Notify` on the
 //! standard interface is exactly the banner the shell reads. A background
@@ -35,6 +37,7 @@ use zbus::object_server::SignalEmitter;
 use zbus::zvariant::OwnedValue;
 
 use crate::model::{now_ms, Action, CloseReason, NotifyRequest, Queue, Urgency};
+use crate::policy::FocusMode;
 use crate::view;
 
 /// The standard freedesktop well-known name on the user session bus.
@@ -280,12 +283,49 @@ impl ShellNotifications {
         true
     }
 
-    /// Whether Do Not Disturb suppresses banners.
+    /// The Focus/DND policy state as JSON: `mode`
+    /// (`off`/`focus`/`dnd`), `allowList`, and the `batchedCount` of
+    /// notifications suppressed since the mode last returned to `off`
+    /// (T-11.2a).
+    fn focus_policy(&self) -> String {
+        view::focus_policy_json(lock(&self.queue).focus_policy())
+    }
+
+    /// Set the Focus/DND mode. Unknown mode names are rejected and the
+    /// previous mode is kept. Returns whether the mode was accepted.
+    async fn set_focus_mode(
+        &self,
+        mode: &str,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+    ) -> bool {
+        let Some(mode) = FocusMode::parse(mode) else {
+            return false;
+        };
+        lock(&self.queue).set_focus_mode(mode);
+        emit_shell_changed(&emitter).await;
+        true
+    }
+
+    /// Replace the per-app Focus allow list (the explicit per-app override
+    /// honored in both `focus` and `dnd`).
+    async fn set_focus_allow_list(
+        &self,
+        apps: Vec<String>,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+    ) {
+        lock(&self.queue).set_focus_allow_list(apps);
+        emit_shell_changed(&emitter).await;
+    }
+
+    /// Whether Do Not Disturb (mode `dnd`) is on. The T-11.1a compat
+    /// accessor.
     fn do_not_disturb(&self) -> bool {
         lock(&self.queue).do_not_disturb()
     }
 
-    /// Set Do Not Disturb (history still records; T-11.2a owns the policy).
+    /// Set Do Not Disturb as an on/off switch (`true` = `dnd`, `false` =
+    /// `off`). The T-11.1a compat method; `SetFocusMode` is the richer
+    /// T-11.2a surface.
     async fn set_do_not_disturb(
         &self,
         enabled: bool,

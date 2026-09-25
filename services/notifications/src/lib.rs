@@ -14,14 +14,17 @@
 //! # What lives here
 //!
 //! * [`model`] — the queue, the notification value, the bounded history, and
-//!   the Do Not Disturb state bit. No D-Bus and no JSON, so it is unit-tested
+//!   the Focus/DND policy state. No D-Bus and no JSON, so it is unit-tested
 //!   directly.
+//! * [`policy`] — the Focus/DND mode, the per-app allow list, and the
+//!   admission rule (T-11.2a).
 //! * [`view`] — the flat JSON views the shell decodes.
 //! * [`dbus`] — the two interfaces, the shared queue, and the event-driven
 //!   expiry thread.
 
 pub mod dbus;
 pub mod model;
+pub mod policy;
 pub mod view;
 
 pub use dbus::{
@@ -32,7 +35,8 @@ pub use model::{
     now_ms, Action, CloseReason, HistoryEntry, Notification, NotifyRequest, Queue, Urgency,
     DEFAULT_TIMEOUT_MS, HISTORY_CAPACITY,
 };
-pub use view::{banners_json, history_json};
+pub use policy::{FocusMode, FocusPolicy};
+pub use view::{banners_json, focus_policy_json, history_json};
 
 #[cfg(test)]
 mod tests {
