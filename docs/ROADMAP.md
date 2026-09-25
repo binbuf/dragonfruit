@@ -183,7 +183,7 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 - [x] T56 — T-10.1a files-core streaming listing and model → [tasks/056-t-10.1a-files-core-streaming-listing.md](tasks/056-t-10.1a-files-core-streaming-listing.md)
 - [x] T57 — T-10.1b files-core sorting and platform fallback → [tasks/057-t-10.1b-files-core-sorting-and-platform.md](tasks/057-t-10.1b-files-core-sorting-and-platform.md)
 - [x] T58 — T-10.2a files-core operations → [tasks/058-t-10.2a-files-core-operations.md](tasks/058-t-10.2a-files-core-operations.md)
-- [ ] T59 — T-10.2b Optimistic semantics and state preservation → [tasks/059-t-10.2b-optimistic-semantics.md](tasks/059-t-10.2b-optimistic-semantics.md)
+- [x] T59 — T-10.2b Optimistic semantics and state preservation → [tasks/059-t-10.2b-optimistic-semantics.md](tasks/059-t-10.2b-optimistic-semantics.md)
 - [ ] T60 — T-10.3a files-core trash → [tasks/060-t-10.3a-files-core-trash.md](tasks/060-t-10.3a-files-core-trash.md)
 - [ ] T61 — T-10.3b files-core folder watcher → [tasks/061-t-10.3b-files-core-folder-watcher.md](tasks/061-t-10.3b-files-core-folder-watcher.md)
 - [ ] T62 — T-10.4a Files window, toolbar, and sidebar → [tasks/062-t-10.4a-files-window-toolbar-sidebar.md](tasks/062-t-10.4a-files-window-toolbar-sidebar.md)
@@ -478,11 +478,11 @@ This plan restarts at T-01, so a legacy "T-13" and a new "T-13" are different
 tickets; use this table to translate.
 
 <!-- symphony:status -->
-**Pipeline status** — updated 2026-09-25T11:58:56Z · 58/168 done
+**Pipeline status** — updated 2026-09-25T12:05:52Z · 59/168 done
 
-- Completed: T01, T02, T03, T04, T05, T06, T07, T08, T09, T10, T11, T12, T13, T14, T15, T16, T17, T18, T19, T20, T21, T22, T23, T24, T25, T26, T27, T28, T29, T30, T31, T32, T33, T34, T35, T36, T37, T38, T39, T40, T41, T42, T43, T44, T45, T46, T47, T48, T49, T50, T51, T52, T53, T54, T55, T56, T57, T58
+- Completed: T01, T02, T03, T04, T05, T06, T07, T08, T09, T10, T11, T12, T13, T14, T15, T16, T17, T18, T19, T20, T21, T22, T23, T24, T25, T26, T27, T28, T29, T30, T31, T32, T33, T34, T35, T36, T37, T38, T39, T40, T41, T42, T43, T44, T45, T46, T47, T48, T49, T50, T51, T52, T53, T54, T55, T56, T57, T58, T59
 - Blocked: none
 - Failed: none
-- Remaining: T59, T60, T61, T62, T63, T64, T65, T66, T67, T68, T69, T70, T71, T72, T73, T74, T75, T76, T77, T78, T79, T80, T81, T82, T83, T84, T85, T86, T87, T88, T89, T90, T91, T92, T93, T94, T95, T96, T97, T98, T99, T100, T101, T102, T103, T104, T105, T106, T107, T108, T109, T110, T111, T112, T113, T114, T115, T116, T117, T118, T119, T120, T121, T122, T123, T124, T125, T126, T127, T128, T129, T130, T131, T132, T133, T134, T135, T136, T137, T138, T139, T140, T141, T142, T143, T144, T145, T146, T147, T148, T149, T150, T151, T152, T153, T154, T155, T156, T157, T158, T159, T160, T161, T162, T163, T164, T165, T166, T167, T168
-- Last finished: T58 — done · files-core operations seam (rename/new folder/move/copy/delete) landed with 17-case temp-tree matrix; tests, lint, e2e green.
+- Remaining: T60, T61, T62, T63, T64, T65, T66, T67, T68, T69, T70, T71, T72, T73, T74, T75, T76, T77, T78, T79, T80, T81, T82, T83, T84, T85, T86, T87, T88, T89, T90, T91, T92, T93, T94, T95, T96, T97, T98, T99, T100, T101, T102, T103, T104, T105, T106, T107, T108, T109, T110, T111, T112, T113, T114, T115, T116, T117, T118, T119, T120, T121, T122, T123, T124, T125, T126, T127, T128, T129, T130, T131, T132, T133, T134, T135, T136, T137, T138, T139, T140, T141, T142, T143, T144, T145, T146, T147, T148, T149, T150, T151, T152, T153, T154, T155, T156, T157, T158, T159, T160, T161, T162, T163, T164, T165, T166, T167, T168
+- Last finished: T59 — done · files-core OptimisticModel applies rename/new-folder/delete optimistically with confirm/revert reconciliation, preserving stable ids, sort, and selection; 86 tests pass, make lint/e2e green, ADR 0045 + docs + live capture landed.
 <!-- /symphony:status -->

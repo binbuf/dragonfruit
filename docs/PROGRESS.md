@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(22 earlier sections omitted)_
+_(23 earlier sections omitted)_
 
-- **T20 — T-04.4a Material degrade tiers and instrumentation**: **State: done.** One ordered material-quality ladder (`Full` → `Reduced` →; **`compositor/src/window/degrade.rs`** (new) — `DegradeTier` (`Full`
 - **T21 — T-04.4b Light/dark, reduced motion, and sign-off package**: **State: done.** One live `ColorScheme` on `DfState` now drives every; **`compositor/src/window/decoration.rs`** — `ColorScheme::name`/`parse`
 - **T22 — T-05.1a Live-surface transform into the grid**: **State: done.** Mission Control now transforms the **live** window surfaces; **`compositor/src/overview/grid.rs`** (new) — `grid_layout` (candidates
 - **T23 — T-05.1b Live video at scale and degrade**: **State: done.** A committing "video" client keeps advancing at the reduced; **`compositor/src/overview/grid.rs`** — `GridMaterial { tier, shadow, blur }`
@@ -45,6 +44,7 @@ _(22 earlier sections omitted)_
 - **T56 — T-10.1a files-core streaming listing and model**: **State: done.** `files-core` now exists as a headless Rust library and a; **`services/files-core/`** (new crate `dragonfruit-files-core`, workspace
 - **T57 — T-10.1b files-core sorting and platform fallback**: **State: done.** `files-core` now sorts its streamed model and the; **`services/files-core/src/sort.rs`** (new module) — `SortKey`
 - **T58 — T-10.2a files-core operations**: **State: done.** `files-core` gained the one operations seam: rename, new; **`services/files-core/src/ops.rs`** (new module):
+- **T59 — T-10.2b Optimistic semantics and state preservation**: **State: done.** `files-core` now applies rename / new-folder / delete to the; **`services/files-core/src/optimistic.rs`** (new) — `OptimisticModel`
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -4145,3 +4145,86 @@ Gotchas for later tasks:
 - **`Location::child` of a foreign root** now keeps the scheme (`trash:///a`);
   if you touch scheme handling, keep `strip_suffix('/')`, not
   `trim_end_matches('/')`.
+
+## T59 — T-10.2b Optimistic semantics and state preservation
+
+**State: done.** `files-core` now applies rename / new-folder / delete to the
+model optimistically (visible before any confirmation) and reconciles via
+confirm/revert, preserving node ids, the sort spec, and selection. T-10.3a
+(trash) reuses the optimistic delete path; T-10.3b's watcher will drive
+reconciliation.
+
+What landed:
+
+- **`services/files-core/src/optimistic.rs`** (new) — `OptimisticModel`
+  wraps a `DirectoryModel` + `Selection`:
+  - `begin_rename`, `begin_new_folder`, `begin_delete` mutate the model
+    synchronously and return an `OpId`; the change is painted on the next
+    frame with no worker/await.
+  - `confirm(op)` retires the pending record and keeps the painted result;
+    `revert(op)` restores the captured node, arrival position, and selection
+    membership/position.
+  - `rename_via` / `new_folder_via` / `delete_via` run the real `FileOps`
+    call and confirm on `Ok` / revert on `Err` in one synchronous call
+    (off-UI-thread, like `FileOps`). A successful create/rename is retargeted
+    to the `Location` the real op returned.
+  - `begin` / `apply` / `drain` forward to the underlying model; `set_sort`
+    and `sort_spec` pass through. `new_folder` generates the name from the
+    model's own rows with the shared `generated_name`.
+- **`services/files-core/src/selection.rs`** (new) — `Selection`, an
+  insertion-ordered set of `NodeId` with O(1) membership: `select`/`deselect`/
+  `toggle`/`insert_at`/`position_of`/`replace_all`/`retain`/`prune`/`clear`.
+  `select` ignores `NodeId::UNSET`.
+- **`services/files-core/src/model.rs`** — new mutation API used by the
+  optimistic layer: `insert_node`, `restore_node`, `remove_node`,
+  `replace_node`, `rename_node` (updates name+URI), all re-sorting the
+  projection via a private `rebuild_order` (stable `sort_by`). Ids are never
+  renumbered; `next_id` only grows.
+- **`services/files-core/src/node.rs`** — crate-private `set_name`/`set_uri`.
+- **Tests** — `cargo test -p dragonfruit-files-core`: 86 pass (44 unit + 17
+  operations + **11 new `tests/optimistic.rs`** + 5 sorting + 6 streaming + 3
+  doctests). New cases: optimistic rename visible then confirm and revert,
+  new-folder folders-first + reverts + generated numbering, selection survives
+  delete/revert/re-sort, and `*_via` against a real temp tree (rename confirm,
+  conflict revert, delete confirm, missing-delete revert, two new folders,
+  `trash://` unsupported revert).
+- **Docs** — ADR
+  [0045](design/adr/0045-files-core-optimistic-layer.md);
+  `docs/design/09-files.md` T-10.2b status paragraph; crate `Cargo.toml`
+  description.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `cargo test -p dragonfruit-files-core` — 86 pass.
+- `make lint` — 31/31 ctest plus all checks green.
+- `make e2e` — exit 0.
+
+Live capture (`/tmp/opencode/t59-capture.sh`; still
+`/tmp/opencode/t59-desktop.png`, 1920x1200): nested demo on the host session.
+Raw vision observation: Settings window (sidebar Appearance/Desktop & Dock/
+Displays/Wallpaper, accent swatches), menu bar, and Dock render fully; the
+only reported oddity is the pre-existing X11 demo window whose title/content
+is clipped at its edge (same as T57/T58, unrelated to files-core). files-core
+has no surface of its own, so this only confirms the session still renders.
+Vision is a supporting check.
+
+Gotchas for later tasks:
+
+- **`OptimisticModel` is the one optimistic path.** Call `begin_*` and then
+  `confirm`/`revert` (or the `*_via` helpers). Do not call `std::fs` or
+  `DirectoryModel` mutations directly from the bridge/QML.
+- **Node ids are never renumbered** by any optimistic edit, so selection is
+  keyed by id and survives rename/new-folder/re-sort. Only a confirmed delete
+  drops an id; revert re-selects it at its old position.
+- **`next_id` only grows.** A removed id can be restored with `restore_node`;
+  a fresh insert never reuses it.
+- **Reverting several pending removals** should be done in reverse order for
+  exact arrival positions; the list is clamped and safe otherwise.
+- **`begin_new_folder` names from model rows only**, not the filesystem; the
+  real op may pick a different free name, and `*_via` retargets the row to the
+  returned `Location` before confirming.
+- **Trash is still absent** (`trash://` → `UnsupportedScheme`); T-10.3a
+  reuses `begin_delete`. `delete` (and the optimistic delete) is permanent.
+- **The watcher is not wired.** Today `confirm`/`revert` are driven by the
+  operation result; T-10.3b must guarantee each pending op is resolved exactly
+  once.
