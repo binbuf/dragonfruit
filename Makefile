@@ -35,7 +35,7 @@ endif
 .DEFAULT_GOAL := help
 .PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test \
         visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev demo soak e2e \
-        idle-trace latency-trace check-desktop-names check-no-capture-grab check-design-tokens clean
+        idle-trace menubar-idle-trace latency-trace check-desktop-names check-no-capture-grab check-design-tokens clean
 
 help:
 	@echo "Dragonfruit build targets:"
@@ -104,6 +104,14 @@ e2e: build
 idle-trace: cargo-build
 	DF_IDLE_TRACE_SECS=$(IDLE_TRACE_SECS) $(CARGO) test -p dragonfruit-compositor \
 	    --test idle_trace -- --nocapture
+
+# T-07.6b: the menu-bar idle trace — the mapped menubar chrome surface sits
+# idle with the live status items, and must contribute zero frames and zero
+# client wakeups (FR-6). `scripts/capture-live-menubar.sh` records the raw
+# output to docs/captures/t07-shell-idle-trace.txt.
+menubar-idle-trace: cargo-build
+	$(CARGO) test -p dragonfruit-compositor \
+	    --test shell_idle_trace -- --nocapture
 
 # T-03.1b: the nested input-to-photon latency capture. Needs a host Wayland
 # session and the built toolchain tree (`make build`); records the raw samples

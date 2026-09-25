@@ -1,15 +1,20 @@
 // SPDX-License-Identifier: MIT
-//! T-09 acceptance: the menu bar contributes zero wakeups to the idle
-//! desktop budget (FR-6).
+//! T-09 acceptance / T-07.6b re-assert: the menu bar contributes zero
+//! wakeups to the idle desktop budget (FR-6).
 //!
 //! The T-02 idle trace (`idle_trace.rs`) asserts the steady state with no
 //! clients attached. This suite attaches a **chrome surface** — a client
 //! that authenticates through `df_core`, creates the menu-bar
 //! `df_layer_surface`, commits one frame, and then sits completely idle —
-//! and asserts the compositor renders no further frames. That is the
-//! compositor-side half of the budget; the shell-side half is that the real
-//! menu bar has no polling loop (its clock is a single minute-aligned
-//! one-shot timer, `shell/menubar/MenuBarClock.qml`).
+//! and asserts the compositor renders no further frames and wakes no client.
+//! That is the compositor-side half of the budget; the shell-side half is that
+//! the real menu bar has no polling loop (its clock is a single minute-aligned
+//! one-shot timer, `shell/menubar/MenuBarClock.qml`) and that the live status
+//! items are event-driven — the bridge host reads a daemon only on startup, an
+//! explicit `Refresh()`, or after an action (asserted in
+//! `services/system-status/tests/host.rs`). T-07.6b re-runs this trace with the
+//! status items live, so the mapped menubar chrome must contribute no frames
+//! and no `client_wakeups`.
 //!
 //! The client here is a raw `wayland-client` stand-in, not the Qt shell, so
 //! the test is deterministic and runs before the Qt build in CI. The real
@@ -163,6 +168,9 @@ struct RenderStats {
     frames_skipped_no_damage: u64,
     direct_scanouts: u64,
     animation_frames_stepped: u64,
+    /// Frame-callback batches handed to mapped windows (T-07.6b): the idle
+    /// menu bar must not wake a client.
+    client_wakeups: u64,
 }
 
 fn parse_stats(line: &str) -> Option<RenderStats> {
@@ -184,11 +192,17 @@ fn parse_stats(line: &str) -> Option<RenderStats> {
         .strip_prefix("animation_frames_stepped=")?
         .parse()
         .ok()?;
+    let client_wakeups = parts
+        .next()?
+        .strip_prefix("client_wakeups=")?
+        .parse()
+        .ok()?;
     Some(RenderStats {
         frames_rendered,
         frames_skipped_no_damage,
         direct_scanouts,
         animation_frames_stepped,
+        client_wakeups,
     })
 }
 
@@ -497,13 +511,18 @@ fn idle_menu_bar_contributes_zero_wakeups() {
         second.animation_frames_stepped, first.animation_frames_stepped,
         "the animation clock ticked while idle: {first:?} -> {second:?}",
     );
+    assert_eq!(
+        second.client_wakeups, first.client_wakeups,
+        "the live menu bar woke a client while idle: {first:?} -> {second:?}",
+    );
 
     eprintln!(
         "shell idle trace: frames_rendered={} (flat with the menu bar mapped), \
-         animation_frames_stepped={} (flat), \
+         animation_frames_stepped={} (flat), client_wakeups={} (flat), \
          frames_skipped_no_damage {} -> {}",
         second.frames_rendered,
         second.animation_frames_stepped,
+        second.client_wakeups,
         first.frames_skipped_no_damage,
         second.frames_skipped_no_damage,
     );
