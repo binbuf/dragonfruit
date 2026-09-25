@@ -15,12 +15,21 @@ IDLE_TRACE_SECS ?= 60
 DF_TOOLCHAIN ?= $(HOME)/.local/df-toolchain/usr
 DF_DEVROOT ?= $(HOME)/.local/df-devroot/lib64
 
+# The Qt toolchain's cmake and Qt runtime are dynamically linked against
+# its own lib64 (libRHash, libQt6*, ...), so that directory must be on the
+# loader path whenever the toolchain is used. This is independent of which
+# cmake is first on PATH: a build.ninja configured with the toolchain cmake
+# still calls it for autogen even when another cmake shadows it on PATH
+# (see README "Toolchains").
+ifneq ($(wildcard $(DF_TOOLCHAIN)/lib64),)
+export LD_LIBRARY_PATH := $(DF_TOOLCHAIN)/lib64$(if $(LD_LIBRARY_PATH),:$(LD_LIBRARY_PATH))
+endif
+
 # Discover cmake/ninja from the local Qt toolchain prefix when they are
-# not on PATH (see README "Toolchains").
+# not on PATH.
 ifeq ($(shell command -v $(CMAKE) >/dev/null 2>&1 || command -v $(CTEST) >/dev/null 2>&1 || echo missing),missing)
 ifneq ($(wildcard $(DF_TOOLCHAIN)/bin/cmake),)
 export PATH := $(DF_TOOLCHAIN)/bin:$(PATH)
-export LD_LIBRARY_PATH := $(DF_TOOLCHAIN)/lib64$(if $(LD_LIBRARY_PATH),:$(LD_LIBRARY_PATH))
 endif
 endif
 
