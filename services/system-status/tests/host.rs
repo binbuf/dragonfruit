@@ -140,6 +140,129 @@ fn an_absent_daemon_hides_both_items_and_never_errors() {
     assert_eq!(host.set_mute(true)["outcome"], "absent");
 }
 
+/// The three menu items' `state` strings, in bar order: Wi-Fi, volume,
+/// battery. `available` means the slot is live; `unavailable` means the
+/// daemon is masked and the slot hides; `error` means visible but inert.
+fn bar_state(host: &StatusHost<MockNetworkManager, MockAudio, MockPower>) -> [String; 3] {
+    let state_of =
+        |view: &serde_json::Value| view["state"].as_str().unwrap_or("missing").to_owned();
+    [
+        state_of(&host.wifi_view()),
+        state_of(&host.audio_view()),
+        state_of(&host.battery_view()),
+    ]
+}
+
+/// T-07.6a: the absent-daemon masking matrix. Mask one daemon at a time and
+/// the other two items must stay live; mask all three and every item hides
+/// without an error and the explicit actions still answer (absence, never a
+/// panic). `kill()`/`refresh` is the headless stand-in for `systemctl stop`
+/// plus the daemon's `Disconnected` event.
+#[test]
+fn the_absent_daemon_masking_matrix_hides_only_the_masked_item() {
+    let mut host = StatusHost::new(
+        MockNetworkManager::present(wifi_data()),
+        MockAudio::present(audio_data(0.5, false)),
+        MockPower::present(battery_data(82.0, 1)),
+    );
+    host.refresh();
+
+    let live = [
+        "available".to_owned(),
+        "available".to_owned(),
+        "available".to_owned(),
+    ];
+    assert_eq!(bar_state(&host), live);
+
+    // Mask Wi-Fi: only the Wi-Fi item hides.
+    host.wifi_mut().source_mut().kill();
+    host.refresh_wifi();
+    assert_eq!(
+        bar_state(&host),
+        [
+            "unavailable".to_owned(),
+            "available".to_owned(),
+            "available".to_owned()
+        ]
+    );
+    host.wifi_mut().source_mut().restart();
+    host.refresh_wifi();
+
+    // Mask audio: only the volume item hides.
+    host.audio_mut().source_mut().kill();
+    host.refresh_audio();
+    assert_eq!(
+        bar_state(&host),
+        [
+            "available".to_owned(),
+            "unavailable".to_owned(),
+            "available".to_owned()
+        ]
+    );
+    host.audio_mut().source_mut().restart();
+    host.refresh_audio();
+
+    // Mask power: only the battery item hides.
+    host.battery_mut().source_mut().kill();
+    host.refresh_battery();
+    assert_eq!(
+        bar_state(&host),
+        [
+            "available".to_owned(),
+            "available".to_owned(),
+            "unavailable".to_owned()
+        ]
+    );
+    host.battery_mut().source_mut().restart();
+    host.refresh_battery();
+    assert_eq!(bar_state(&host), live);
+
+    // Mask all three at once: every item hides, nothing reports `error`, and
+    // the session-level actions still answer instead of panicking.
+    host.wifi_mut().source_mut().kill();
+    host.audio_mut().source_mut().kill();
+    host.battery_mut().source_mut().kill();
+    host.refresh();
+    assert_eq!(
+        bar_state(&host),
+        [
+            "unavailable".to_owned(),
+            "unavailable".to_owned(),
+            "unavailable".to_owned()
+        ]
+    );
+    assert_eq!(host.join("home", None)["outcome"], "absent");
+    assert_eq!(host.set_volume(0.5)["outcome"], "absent");
+    assert_eq!(host.set_mute(true)["outcome"], "absent");
+}
+
+/// The masking matrix is about absence, not failure: a daemon that is present
+/// but unreadable stays visible and inert (`error`), so masking one item never
+/// leaks an `error` into a neighbour's view.
+#[test]
+fn masking_one_daemon_never_turns_a_neighbour_into_an_error() {
+    let mut host = StatusHost::new(
+        MockNetworkManager::failing("NetworkManager: timeout"),
+        MockAudio::present(audio_data(0.5, false)),
+        MockPower::present(battery_data(82.0, 1)),
+    );
+    host.refresh();
+
+    assert_eq!(
+        bar_state(&host),
+        [
+            "error".to_owned(),
+            "available".to_owned(),
+            "available".to_owned()
+        ]
+    );
+    assert_eq!(host.wifi_view()["error"], "NetworkManager: timeout");
+
+    // The audio and battery slots are untouched by the Wi-Fi error.
+    assert_eq!(host.audio_view()["state"], "available");
+    assert_eq!(host.battery_view()["state"], "available");
+}
+
 #[test]
 fn the_battery_menu_model_is_read_only_and_never_writes() {
     let mut host = StatusHost::new(

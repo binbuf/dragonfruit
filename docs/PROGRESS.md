@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(3 earlier sections omitted)_
+_(4 earlier sections omitted)_
 
-- **T01 — T-01.1 Titlebar render element**: **State: done.** The SSD titlebar element exists, is sized from the generated; **`compositor/src/window/decoration.rs`** — `TitlebarElement`,
 - **T02 — T-01.2 Traffic-light actions**: **State: done.** Close/minimize/zoom are clickable through the titlebar; **`compositor/src/window/decoration.rs`** — `TitlebarElement::cluster_rect()`
 - **T03 — T-01.3 Titlebar drag, double-click, fullscreen reveal**: **State: done.** A floating window's titlebar drags to move (existing; **`compositor/src/window/decoration.rs`** — `TitlebarDoubleClick`
 - **T04 — T-01.4 Window menu**: **State: done.** A right/Control-click on the SSD titlebar opens a; **`compositor/src/window/menu.rs`** — `WindowMenu`, `WindowMenuRow`,
@@ -44,6 +43,7 @@ _(3 earlier sections omitted)_
 - **T37 — T-07.4 Power adapter (UPower)**: **State: done.** The read-only power adapter landed in a new concrete-adapter; **`services/power/`** (new crate `dragonfruit-power`, workspace member; deps:
 - **T38 — T-07.5a Wi-Fi and volume status menus**: **State: done.** Wi-Fi list/join and volume slider/mute render in; **`services/system-status/`** (new crate `dragonfruit-system-status`,
 - **T39 — T-07.5b Battery menu, placeholder removal, keyboard a11y**: **State: done.** The battery item is live over the bridge host, `--placeholders`; **`services/system-status`** — `StatusHost<N, A, P>` gained a `PowerAdapter`;
+- **T40 — T-07.6a Absent-daemon masking matrix**: **State: done.** The absent-daemon masking matrix is asserted headlessly at; **`services/system-status/tests/host.rs`** —
 - **Follow-ups**: T-07.5b (done in T39): battery menu + `--placeholders` removal + keyboard; T-07.2a (done in T34): NetworkManager **read** path + mock/fixture landed
 <!-- symphony:digest:end -->
 
@@ -2639,6 +2639,56 @@ Gotchas for later tasks:
 - **Glyph**: charging picks `battery-charging` from `charging` in the
   controller; the battery fill is `level` (0..=1), the label is `percent`
   0–100.
+
+## T40 — T-07.6a Absent-daemon masking matrix
+
+**State: done.** The absent-daemon masking matrix is asserted headlessly at
+all three seams; no production behavior changed. Capture and the idle trace
+stay with T-07.6b.
+
+What landed:
+
+- **`services/system-status/tests/host.rs`** —
+  `the_absent_daemon_masking_matrix_hides_only_the_masked_item` (kill + refresh
+  each of Wi-Fi/audio/power in turn, then all three; neighbours stay
+  `available`, no slot ever `error`, join/set_volume/set_mute report `absent`)
+  and `masking_one_daemon_never_turns_a_neighbour_into_an_error` (present but
+  unreadable → `error`, neighbours untouched). Added `bar_state()` helper.
+- **`shell/tests/tst_statusmodel.cpp`** —
+  `theAbsentDaemonMaskingMatrixHidesOnlyTheMaskedItem` and
+  `anUnreachedBridgeHostLeavesEveryItemHidden` (fresh model / malformed payload
+  → hidden, never a visible error). 14 → 16 cases.
+- **`shell/tests/tst_menubar.qml`** —
+  `test_absent_daemon_matrix_hides_and_refuses_each_item` (masked slot hidden
+  and `openStatusMenu` refuses; every other slot still opens). 38 → 39 cases.
+- **`docs/design/07-system-integration.md`** — new section "The absent-daemon
+  masking matrix (T-07.6a)" with the matrix table, the negative-space cases,
+  and the test locations. No ADR (proves ADR 0024/0025/0029, adds no decision).
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `cargo test -p dragonfruit-system-status` — 11 lib + 8 host green.
+- `make qml-test` — 18/18 (`tst_menubar` 39, `tst_statusmodel` 16).
+- `make e2e` exit 0; `make lint` exit 0.
+
+Live visual check: `/tmp/opencode/t076a-capture.sh` launched the nested demo
+with `DRAGONFRUIT_SYNTHETIC_INPUT` set and **no** `DF_STATUS_FIXTURE` and no
+bridge host (the honest absent state), captured
+`/tmp/opencode/t076a-full.png`. Vision verdict: menu bar shows only the clock +
+dot-grid (Control Center) + squares (Mission Control) — no Wi-Fi/volume/battery
+items — desktop, Dock, and both demo windows render correctly. No capture
+committed (T-07.6b owns `docs/captures/t07-*`).
+
+Gotchas for later tasks:
+
+- **This task changed no runtime behavior.** If the matrix fails later, the
+  regression is in the adapter/host/model decode, not here.
+- The absent state in the live nested demo is just "no bridge host + no
+  fixture": all three live slots hide. T-07.6b's absent-daemon still is that
+  same run.
+- Real `systemctl stop` masking needs a VM and is recorded as manual in the
+  design doc; CI uses the mock `kill()`/`refresh` path only.
+- No `docs/captures/` file may be added by this task.
 
 ## Follow-ups
 

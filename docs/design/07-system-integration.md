@@ -219,6 +219,55 @@ an action reply. Wiring the daemons' own change signals (NetworkManager,
 one event is T-07.6, and the item degradation stays where it already lives —
 `Unavailable` hides the item, `Error` shows it visible and inert.
 
+## The absent-daemon masking matrix (T-07.6a)
+
+Masking (or `systemctl stop`ping) a daemon is a supported session state, not an
+incident. The matrix below is the contract the status bar must satisfy; the
+same three-state projection is implemented once in each adapter and asserted at
+every seam. "Hides" means the slot is not drawn and has no popover; "inert"
+means drawn but not actionable.
+
+| Masked | Wi-Fi item | Volume item | Battery item | Session |
+|---|---|---|---|---|
+| none | live | live | live | normal |
+| NetworkManager | **hides** | live | live | unaffected |
+| WirePlumber/PipeWire | live | **hides** | live | unaffected |
+| UPower | live | live | **hides** | unaffected |
+| all three | **hides** | **hides** | **hides** | unaffected; actions report `absent` |
+| (no bridge host) | **hides** | **hides** | **hides** | unaffected |
+
+Two motion-adjacent cases stay distinct from absence and are part of the
+matrix's negative space: a daemon that is *present but unreadable* projects
+`Error`, so its item is visible but inert and never leaks an `error` into a
+neighbour's view; a machine that runs UPower but has **no present battery**
+reports `available` with `present: false` and the consumer hides the battery
+item by that second rule (see [The power path](#the-power-path-t-074)).
+
+The headless half of the matrix is the CI gate. Each adapter's mock source
+(`MockNetworkManager`/`MockAudio`/`MockPower`) has `kill()`/`restart()` to
+simulate the daemon's `Disconnected`/re-subscribe lifecycle, and the three
+seams are asserted:
+
+- **Bridge host** (`services/system-status/tests/host.rs`):
+  `the_absent_daemon_masking_matrix_hides_only_the_masked_item` masks each
+  daemon in turn and then all three, and asserts the neighbour items stay
+  `available`, no slot reports `error`, and `join`/`set_volume`/`set_mute`
+  answer `absent`. `masking_one_daemon_never_turns_a_neighbour_into_an_error`
+  covers the present-but-unreadable case.
+- **Shell decode model** (`shell/tests/tst_statusmodel.cpp`):
+  `theAbsentDaemonMaskingMatrixHidesOnlyTheMaskedItem` applies the host's JSON
+  views and checks only the masked item's `visible`/`enabled` flip;
+  `anUnreachedBridgeHostLeavesEveryItemHidden` covers the no-host default.
+- **Menu bar** (`shell/tests/tst_menubar.qml`):
+  `test_absent_daemon_matrix_hides_and_refuses_each_item` checks the masked slot
+  is hidden and refuses to open while every other slot still opens its popover.
+
+The real-daemon half — actually stopping the three daemons in a VM and watching
+the bar — is a manual/VM check (the design's "real masking in a VM when
+available"); no VM is available in CI, so it is recorded here rather than
+automated. The host itself is a separate process, so "no bridge host" is the
+same hidden-everything state on a live session.
+
 ## D-Bus conventions
 
 Our services own names under `org.dragonfruit.*` on the **user session bus**
