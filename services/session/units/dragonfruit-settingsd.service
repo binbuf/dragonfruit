@@ -1,0 +1,20 @@
+[Unit]
+Description=Dragonfruit settings daemon
+Documentation=https://github.com/dragonfruit-desktop/dragonfruit
+After=dragonfruit-compositor.service
+PartOf=dragonfruit-session.target
+
+[Service]
+Type=simple
+# Stage 1: settingsd starts once the compositor's private socket exists.
+ExecStartPre=/usr/bin/dragonfruit-session --wait-socket dragonfruit-wayland --timeout 10
+ExecStart=/usr/bin/dragonfruit-settingsd
+Restart=on-failure
+RestartSec=1
+Environment=XDG_CURRENT_DESKTOP=dragonfruit
+Environment=XDG_SESSION_TYPE=wayland
+Environment=WAYLAND_DISPLAY=dragonfruit-wayland
+PassEnvironment=DISPLAY DRAGONFRUIT_LAUNCH_TOKEN
+
+[Install]
+WantedBy=dragonfruit-session.target

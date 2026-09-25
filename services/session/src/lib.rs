@@ -9,17 +9,21 @@
 //! * [`plan`] — [`ServiceSpec`], [`RestartPolicy`], and the [`SessionPlan`]
 //!   that describes the default session (compositor first, everything else in
 //!   parallel once its socket exists, the portal last).
+//! * [`env`] — [`SessionEnvironment`], the `XDG_*`/Wayland/token contract
+//!   attached to every child (T-12.1b).
 //! * [`supervisor`] — [`Supervisor`], which spawns the services stage by
 //!   stage, reaps exited children, and restarts them per policy.
 //!
 //! The compositor is the anchor: its exit ends the session and stops
-//! everything else; it is never restarted. T-12.1b wires the environment,
-//! the systemd user units, and the second-VT workflow onto this seam; T-12.2
-//! adds the display-manager entry and logout teardown.
+//! everything else; it is never restarted. T-12.1b ships the environment, the
+//! systemd user units, and the second-VT workflow; T-12.2 adds the
+//! display-manager entry and logout teardown.
 
+pub mod env;
 pub mod plan;
 pub mod supervisor;
 
+pub use env::{generate_launch_token, SessionEnvironment};
 pub use plan::{PlanError, RestartPolicy, ServiceSpec, SessionPlan};
 pub use supervisor::{ExitOutcome, ServiceState, SessionState, Supervisor, SupervisorEvent};
 

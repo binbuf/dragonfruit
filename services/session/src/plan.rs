@@ -14,6 +14,8 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
 
+use crate::env::SessionEnvironment;
+
 /// What to do when a supervised service exits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RestartPolicy {
@@ -74,6 +76,11 @@ pub struct ServiceSpec {
     /// The compositor sets it; T-12.1b signals it when the private socket
     /// exists.
     pub gate: bool,
+    /// A trusted private-protocol process: the session environment gives it
+    /// the one-time `DRAGONFRUIT_LAUNCH_TOKEN`. The compositor is the issuer
+    /// that pre-mints the token; the shell is the client that presents it
+    /// (T-12.1b).
+    pub trusted: bool,
 }
 
 impl ServiceSpec {
@@ -89,6 +96,7 @@ impl ServiceSpec {
             stage: 0,
             ends_session: false,
             gate: false,
+            trusted: false,
         }
     }
 
@@ -123,6 +131,13 @@ impl ServiceSpec {
     /// Require this service to be ready before the next stage starts.
     pub fn gate(mut self, gate: bool) -> Self {
         self.gate = gate;
+        self
+    }
+
+    /// Mark this service as a trusted private-protocol process; the session
+    /// environment hands it the one-time launch token (T-12.1b).
+    pub fn trusted(mut self, trusted: bool) -> Self {
+        self.trusted = trusted;
         self
     }
 
@@ -165,16 +180,44 @@ impl SessionPlan {
                 .stage(0)
                 .policy(RestartPolicy::Never)
                 .ends_session(true)
-                .gate(true),
+                .gate(true)
+                .trusted(true),
             ServiceSpec::new("shell", "dragonfruit-shell")
                 .stage(1)
-                .policy(RestartPolicy::Always),
+                .policy(RestartPolicy::Always)
+                .trusted(true),
             ServiceSpec::new("settingsd", "dragonfruit-settingsd").stage(1),
             ServiceSpec::new("menu-broker", "dragonfruit-menu-broker").stage(1),
             ServiceSpec::new("app-index", "dragonfruit-app-index").stage(1),
             ServiceSpec::new("notifications", "dragonfruit-notifications").stage(1),
             ServiceSpec::new("portal", "xdg-desktop-portal-dragonfruit").stage(2),
         ])
+    }
+
+    /// The default composition with [`SessionEnvironment`] attached to every
+    /// service: the base environment everywhere, and the one-time launch
+    /// token on the trusted processes. This is what a real session starts.
+    pub fn default_session_for(env: &SessionEnvironment) -> SessionPlan {
+        SessionPlan::default_session().with_environment(env)
+    }
+
+    /// Attach `env` to every service, returning a new plan. Trusted services
+    /// get the token; every service gets the public base environment.
+    pub fn with_environment(&self, env: &SessionEnvironment) -> SessionPlan {
+        let services = self
+            .services
+            .iter()
+            .map(|spec| {
+                let mut spec = spec.clone();
+                spec.env = if spec.trusted {
+                    env.trusted()
+                } else {
+                    env.base()
+                };
+                spec
+            })
+            .collect();
+        SessionPlan::new(services)
     }
 
     /// The distinct stages, ascending.
@@ -291,6 +334,44 @@ mod tests {
                 .map(|s| s.name.as_str())
                 .collect::<Vec<_>>(),
             vec!["portal"]
+        );
+    }
+
+    #[test]
+    fn with_environment_attaches_the_token_only_to_trusted_services() {
+        use crate::env::{self, SessionEnvironment};
+
+        let environment = SessionEnvironment::default_socket().with_launch_token("tok");
+        let plan = SessionPlan::default_session_for(&environment);
+        plan.validate()
+            .expect("environment does not break the plan");
+
+        for spec in &plan.services {
+            assert!(
+                spec.env
+                    .iter()
+                    .any(|(key, value)| key == env::WAYLAND_DISPLAY
+                        && value == environment.socket_name()),
+                "{} carries WAYLAND_DISPLAY",
+                spec.name
+            );
+            let has_token = spec.env.iter().any(|(key, _)| key == env::LAUNCH_TOKEN);
+            assert_eq!(has_token, spec.trusted, "{}", spec.name);
+        }
+
+        let compositor = plan
+            .services
+            .iter()
+            .find(|spec| spec.name == "compositor")
+            .unwrap();
+        let shell = plan
+            .services
+            .iter()
+            .find(|spec| spec.name == "shell")
+            .unwrap();
+        assert!(
+            compositor.trusted && shell.trusted,
+            "the compositor issues the token and the shell presents it"
         );
     }
 

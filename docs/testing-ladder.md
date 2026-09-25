@@ -60,15 +60,29 @@ environment). Therefore this rung uses a dedicated development user:
 ```bash
 sudo useradd -m dfdev                       # once
 sudo passwd dfdev                           # set a password
-# Log into a second VT as dfdev (Ctrl+Alt+F3), then:
-dbus-run-session -- target/debug/dragonfruit-compositor --backend nested
+# Switch to a free VT from the host desktop (Ctrl+Alt+F3), log in as
+# dfdev, then start the session from its shell:
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+eval "$(dragonfruit-session --print-env --socket-name dragonfruit-wayland)"
+systemctl --user import-environment \
+    XDG_CURRENT_DESKTOP XDG_SESSION_TYPE WAYLAND_DISPLAY \
+    DRAGONFRUIT_LAUNCH_TOKEN
+systemctl --user start dragonfruit-session.target
 ```
 
-Until the DRM backend and session units land (T-02, T-24), run the
-compositor nested inside the dedicated user's own session — the point
-of this rung is **service isolation**, not DRM. Once T-02 lands,
-replace the last line with the real DRM backend and, from T-24 on,
-with `dragonfruit-session.target` under systemd.
+`dragonfruit-session --print-env` exports the session environment
+(`XDG_CURRENT_DESKTOP`, `XDG_SESSION_TYPE`, `WAYLAND_DISPLAY`, and a fresh
+`DRAGONFRUIT_LAUNCH_TOKEN` for the compositor and shell); the systemd user
+units in `services/session/units/` start the compositor, shell, services, and
+portal. Returning is `Ctrl+Alt+F1`; the host session is never closed.
+
+On a machine without the units installed (or on a non-systemd host), run the
+compositor directly inside the dedicated user's own session — the point of
+this rung is **service isolation**:
+
+```bash
+dbus-run-session -- target/debug/dragonfruit-compositor --backend nested
+```
 
 Once T-12.2 and the hardware rail have landed, T-12.6c automates this rung
 (`dragonfruit dev --real --user dfdev`, no host logout) and T-12.6b automates
