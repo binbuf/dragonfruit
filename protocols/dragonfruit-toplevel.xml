@@ -189,6 +189,17 @@
       <arg name="height" type="int"/>
     </request>
 
+    <!-- One entry per app follows an `app_switcher` event, in recency order,
+         before the batch `done`; the shell renders one card per entry and
+         never re-derives recency (T-06.2a). Declared last so its `since`
+         stays non-decreasing for the scanner and every pre-existing message
+         keeps its opcode (append-only). -->
+    <event name="app_switcher_entry" since="4">
+      <description summary="one app in the switcher's recency snapshot"/>
+      <arg name="index" type="uint" summary="position in recency order, 0 = most recent"/>
+      <arg name="app_id" type="string"/>
+    </event>
+
     <enum name="hot_corner">
       <entry name="top_left" value="0"/>
       <entry name="top_right" value="1"/>

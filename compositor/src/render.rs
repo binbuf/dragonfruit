@@ -445,7 +445,10 @@ pub fn window_shadow_render_elements(
     // scheme tone, so windows stay legible at every tier. While Mission
     // Control is open the grid material (T-05.1b) is the single source, so the
     // tier the overview composes with is exactly the one `query grid` reports.
-    let spec = match state.overview_grid_material() {
+    let spec = match state
+        .overview_grid_material()
+        .or_else(|| state.switcher_material())
+    {
         Some(material) => material.shadow,
         None => state
             .degrade

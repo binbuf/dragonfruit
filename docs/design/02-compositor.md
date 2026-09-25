@@ -569,6 +569,35 @@ prove a commit changed focus and a cancel did not. The private-protocol
 cycling never focuses, only a commit does. The overlay itself, its live
 previews, and the within-app Cmd+` window cycle are T-06.2.
 
+### App-switcher live previews (T-06.2a)
+
+The overlay shows the **real** window surfaces of the recency entries, never
+thumbnails. While `AppSwitcher` is active, `DfState::switcher_frame` maps each
+entry window's committed geometry through the same T-04 scene transform the
+Mission Control grid uses: one `GridCandidate` per entry (the app's
+most-recent window) laid out by `grid_layout` over the output minus the shell's
+card strip (`overview::switcher::preview_area`, from the shared
+`component.overview` tokens), with the T-04.3 `MotionFrame` at full progress.
+A visible window that is **not** an entry (e.g. a second window of an app) is
+drawn with `alpha = 0` while the overlay owns the scene, so nothing floats over
+it. `window_render_frame` prefers the switcher frame over the grid/reveal/
+lifecycle frames, so the surface, SSD titlebar, and shadow share one mapping;
+the shadow material is the switcher's `GridMaterial` (the active T-04.4a tier
+and scheme), so a preview degrades exactly like a grid window.
+
+The shell renders only the chrome: a fourth offscreen QML scene on a
+full-output `app-switcher` `overlay` layer surface (`shell/switcher/
+AppSwitcher.qml`) draws the scrim, one centered card per app in recency order,
+the selection highlight, the accessible `app_id`/name fallback, and the
+reduced-motion variant. The recency order is **not** re-derived in the shell:
+the compositor emits one additive `df_toplevel_manager.app_switcher_entry`
+event per app between the `app_switcher` event and the batch `done`, and the
+shell projects that batch. `query switcher` reports one `switcher preview
+<window> <x> <y> <w> <h> selected=<0|1>` line per live preview, the headless
+seam the conformance test asserts. See
+[ADR 0022](adr/0022-app-switcher-overlay-and-previews.md). Commit, Cmd+`
+cycling, and interruptibility are T-06.2b.
+
 ## Window model
 
 - **States.** A window is floating, minimized, zoomed, or fullscreen, with

@@ -145,6 +145,8 @@ struct TestClient {
     /// `wl_callback.frame` callbacks delivered to this client (T-11 U-3).
     frame_callbacks: usize,
     app_switchers: Vec<(u32, Option<String>, i32)>,
+    /// The recency cards the shell overlay draws (T-06.2a): `(index, app_id)`.
+    app_switcher_entries: Vec<(u32, String)>,
     input_actions: Vec<(String, String, u32)>,
     progress_events: usize,
     app_accelerators: Vec<(String, String, String, u32)>,
@@ -330,6 +332,9 @@ impl Dispatch<df_toplevel_manager::DfToplevelManager, ()> for TestClient {
                 app_id,
                 direction,
             } => state.app_switchers.push((active, app_id, direction)),
+            df_toplevel_manager::Event::AppSwitcherEntry { index, app_id } => {
+                state.app_switcher_entries.push((index, app_id))
+            }
             df_toplevel_manager::Event::Done => state.done_count += 1,
         }
     }
@@ -2508,6 +2513,7 @@ fn event_coverage_conformance() {
 
     // --- app switcher (FR-2) ---------------------------------------------
     state.app_switchers.clear();
+    state.app_switcher_entries.clear();
     manager.cycle_app_switcher(1);
     wait_for(
         &conn,
@@ -2516,6 +2522,13 @@ fn event_coverage_conformance() {
         Duration::from_secs(5),
         |state| state.app_switchers.iter().any(|(active, ..)| *active == 1),
     );
+    // T-06.2a: the active projection hands the shell the recency cards in
+    // order (index 0 = most recent), before the batch `done`.
+    assert!(
+        !state.app_switcher_entries.is_empty(),
+        "an active switcher broadcasts its recency entries"
+    );
+    assert_eq!(state.app_switcher_entries[0].0, 0);
 
     // --- close/unmap -----------------------------------------------------
     state.toplevel_closed = 0;

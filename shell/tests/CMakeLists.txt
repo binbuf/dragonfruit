@@ -83,3 +83,24 @@ set_tests_properties(tst_overview PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+# App-switcher overlay tests (T-06.2a): one card per app in recency order, the
+# selection highlight, accessible names, and the reduced-motion variant.
+qt_add_executable(tst_switcher
+    tst_switcher.cpp
+)
+target_link_libraries(tst_switcher PRIVATE
+    Qt6::QuickTest
+    dragonfruit-design-systemplugin
+    dragonfruit-shell-switcherplugin
+)
+qt_import_qml_plugins(tst_switcher)
+
+add_test(
+    NAME tst_switcher
+    COMMAND tst_switcher -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_switcher.qml
+)
+set_tests_properties(tst_switcher PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)

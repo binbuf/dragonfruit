@@ -4801,11 +4801,26 @@ struct SwitcherReport {
     selected: Option<usize>,
     entries: Vec<SwitcherEntryReport>,
     focus: i64,
+    previews: Vec<SwitcherPreviewReport>,
 }
 
-/// Parse a `query switcher` report (T-06.1). The state line is
+/// One parsed `switcher preview` line from `query switcher` (T-06.2a): the
+/// live preview's window and its T-04 target rectangle, plus whether it is the
+/// selected entry.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SwitcherPreviewReport {
+    window: u64,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+    selected: bool,
+}
+
+/// Parse a `query switcher` report (T-06.1/T-06.2a). The state line is
 /// `switcher active=.. app=.. direction=.. selected=.. count=.. focus=..`,
-/// followed by `switcher app <i> <app_id> <window>` entry lines.
+/// followed by `switcher app <i> <app_id> <window>` entry lines and
+/// `switcher preview <window> <x> <y> <w> <h> selected=<0|1>` preview lines.
 fn parse_switcher(report: &str) -> SwitcherReport {
     let mut parsed = SwitcherReport {
         active: false,
@@ -4814,6 +4829,7 @@ fn parse_switcher(report: &str) -> SwitcherReport {
         selected: None,
         entries: Vec::new(),
         focus: -1,
+        previews: Vec::new(),
     };
     for line in report.lines() {
         let mut parts = line.split_whitespace();
@@ -4836,6 +4852,30 @@ fn parse_switcher(report: &str) -> SwitcherReport {
                     app_id,
                     window,
                 });
+            }
+            Some("preview") => {
+                let window = parts.next().and_then(|value| value.parse::<i64>().ok());
+                let x = parts.next().and_then(|value| value.parse::<i32>().ok());
+                let y = parts.next().and_then(|value| value.parse::<i32>().ok());
+                let width = parts.next().and_then(|value| value.parse::<i32>().ok());
+                let height = parts.next().and_then(|value| value.parse::<i32>().ok());
+                let selected = parts
+                    .next()
+                    .and_then(|value| value.strip_prefix("selected="))
+                    .map(|value| value == "1")
+                    .unwrap_or(false);
+                if let (Some(window), Some(x), Some(y), Some(width), Some(height)) =
+                    (window, x, y, width, height)
+                {
+                    parsed.previews.push(SwitcherPreviewReport {
+                        window: window as u64,
+                        x,
+                        y,
+                        width,
+                        height,
+                        selected,
+                    });
+                }
             }
             Some(state_token) => {
                 let fields: std::collections::HashMap<&str, &str> = std::iter::once(state_token)
@@ -4935,6 +4975,28 @@ fn app_switcher_opens_cycles_commits_once_and_escape_cancels() {
     assert_eq!(opened.app.as_deref(), Some("org.dragonfruit.SwB"));
     assert_eq!(opened.selected, Some(0));
     let window_a = opened.entries[1].window;
+
+    // T-06.2a: the overlay opens with one live preview per app in recency
+    // order, each scaled into the preview area (never a thumbnail), and the
+    // selected entry is marked.
+    assert_eq!(opened.previews.len(), 2, "one live preview per app");
+    assert_eq!(opened.previews[0].window, opened.entries[0].window);
+    assert_eq!(opened.previews[1].window, opened.entries[1].window);
+    assert!(
+        opened.previews[0].selected,
+        "the selected entry's preview is marked"
+    );
+    assert!(!opened.previews[1].selected);
+    for preview in &opened.previews {
+        assert!(
+            preview.width > 0 && preview.height > 0,
+            "a preview has a real target rect: {preview:?}"
+        );
+    }
+    assert_ne!(
+        opened.previews[0].window, opened.previews[1].window,
+        "each app gets its own live surface"
+    );
     input.send("key 15 up");
 
     // Tab steps forward (0 -> 1) then wraps (1 -> 0).

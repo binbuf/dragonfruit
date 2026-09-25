@@ -1871,6 +1871,14 @@ fn switcher_report(state: &DfState) -> String {
             index, entry.app_id, entry.window.0,
         ));
     }
+    // The live-preview target rects (T-06.2a): the exact T-04 transform the
+    // renderer draws, one line per entry with a live surface.
+    for (window, target, selected) in state.switcher_preview_placements() {
+        out.push_str(&format!(
+            "switcher preview {} {} {} {} {} selected={}\n",
+            window.0, target.loc.x, target.loc.y, target.size.w, target.size.h, selected as u32,
+        ));
+    }
     out.push_str("end\n");
     out
 }

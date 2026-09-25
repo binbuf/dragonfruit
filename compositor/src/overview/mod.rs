@@ -26,6 +26,7 @@
 
 pub mod grid;
 pub mod reveal;
+pub mod switcher;
 
 use crate::input::action::{InputAction, TriggerKind};
 use crate::input::gestures::{ProgressConfig, ProgressEvent, ProgressPipeline};

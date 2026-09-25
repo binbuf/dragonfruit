@@ -131,6 +131,19 @@ public:
     // Unmap the overview surface (attach a null buffer).
     bool hideOverview();
 
+    // Create the app-switcher overlay surface (T-06.2a): a full-output
+    // `overlay` layer surface, namespace "app-switcher", that starts unmapped.
+    // It draws only the centered app cards, scrim, and selection highlight;
+    // the compositor renders the live preview surfaces underneath. It never
+    // takes keyboard (the compositor owns the Cmd-Tab chord).
+    bool createSwitcherSurface();
+
+    // Attach `image` to the switcher surface and commit.
+    bool commitSwitcherImage(const QImage &image);
+
+    // Unmap the switcher surface (attach a null buffer).
+    bool hideSwitcher();
+
     // Activate a Space by its index (the workspace strip click, FR-10). The
     // compositor switches every output in lockstep.
     void activateWorkspace(int index);
@@ -217,6 +230,7 @@ signals:
     void dockConfigured(int width, int height, uint32_t serial);
     void dockPopupConfigured(int width, int height, uint32_t serial);
     void overviewConfigured(int width, int height, uint32_t serial);
+    void switcherConfigured(int width, int height, uint32_t serial);
     void surfaceClosed();
     void focusedAppChanged(const QString &appId, const QString &title);
     // xdg-activation attention for an app's toplevel (T-10 FR-4): the Dock
@@ -251,6 +265,12 @@ signals:
     void overviewChanged(bool active);
     void overviewProgress(qreal progress, const QString &action);
     void overviewDataChanged();
+    // App-switcher overlay state (T-06.2a): the compositor-owned machine's
+    // projection. `entries` is one map per app in recency order (keys
+    // `appId`, `window`), `selectedAppId` is the current selection (`""` when
+    // closed), and `direction` is +1/-1/0. The shell only renders it.
+    void appSwitcherChanged(bool active, const QVariantList &entries,
+                            const QString &selectedAppId, int direction);
     // Input on the overview surface, in surface-local (output) coordinates.
     void overviewPointerMoved(qreal x, qreal y);
     void overviewPointerButton(qreal x, qreal y, uint32_t button, bool pressed);
@@ -326,6 +346,8 @@ private:
                                      int32_t width, int32_t height);
     static void onOverviewConfigure(void *data, df_layer_surface *layer, uint32_t serial,
                                     int32_t width, int32_t height);
+    static void onSwitcherConfigure(void *data, df_layer_surface *layer, uint32_t serial,
+                                    int32_t width, int32_t height);
     static void onLayerClosed(void *data, df_layer_surface *layer);
     static void onSeatCapabilities(void *data, wl_seat *seat, uint32_t capabilities);
     static void onSeatName(void *data, wl_seat *seat, const char *name);
@@ -379,6 +401,8 @@ private:
                                   df_toplevel *selected);
     static void onManagerAppSwitcher(void *data, df_toplevel_manager *manager, uint32_t active,
                                      const char *appId, int32_t direction);
+    static void onManagerAppSwitcherEntry(void *data, df_toplevel_manager *manager,
+                                          uint32_t index, const char *appId);
     static void onManagerInputAction(void *data, df_toplevel_manager *manager, const char *action,
                                      const char *source, uint32_t serial);
     static void onManagerProgress(void *data, df_toplevel_manager *manager, const char *action,
@@ -463,6 +487,18 @@ private:
     bool m_pointerOnOverview = false;
     bool m_overviewActive = false;
     qreal m_overviewProgress = 0.0;
+    // App-switcher overlay (T-06.2a): a full-output `overlay` surface mapped
+    // only while the switcher is open. The compositor emits the recency entry
+    // batch between `app_switcher` and `done`, so the shell accumulates it and
+    // emits one `appSwitcherChanged` per completed batch.
+    wl_surface *m_switcherSurface = nullptr;
+    df_layer_surface *m_switcherLayer = nullptr;
+    bool m_switcherMapped = false;
+    bool m_switcherActive = false;
+    QString m_switcherSelectedApp;
+    int m_switcherDirection = 0;
+    bool m_switcherPending = false;
+    QVariantList m_switcherEntries;
     // True while the Dock surface holds the keyboard (T-10 section 20), so
     // key events are routed to the Dock scene.
     bool m_keyboardOnDock = false;

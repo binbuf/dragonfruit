@@ -6,6 +6,7 @@
 add_subdirectory(menubar)
 add_subdirectory(dock)
 add_subdirectory(overview)
+add_subdirectory(switcher)
 add_subdirectory(control-center)
 add_subdirectory(notifications)
 add_subdirectory(screenshot)

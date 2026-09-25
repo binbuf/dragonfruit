@@ -203,6 +203,7 @@ ShellController::ShellController(QObject *parent)
 
 ShellController::~ShellController()
 {
+    delete m_switcherWindow;
     delete m_overviewWindow;
     delete m_dockWindow;
     delete m_window;
@@ -471,6 +472,33 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             &ShellController::onOverviewKeyboardFocused);
     refreshOverviewData();
 
+    // App-switcher overlay (T-06.2a): a fourth offscreen scene. It draws only
+    // the centered app cards and scrim; the compositor renders the live
+    // preview surfaces underneath from the same recency projection.
+    m_switcherWindow = new QQuickWindow;
+    m_switcherWindow->setColor(Qt::transparent);
+    QQmlComponent switcherComponent(m_engine);
+    switcherComponent.loadFromModule(QStringLiteral("Dragonfruit.Switcher"),
+                                     QStringLiteral("AppSwitcher"));
+    if (switcherComponent.isError()) {
+        fprintf(stderr, "dragonfruit-shell: AppSwitcher QML error: %s\n",
+                qPrintable(switcherComponent.errorString()));
+        return false;
+    }
+    QObject *switcherObject = switcherComponent.create();
+    m_switcherItem = qobject_cast<QQuickItem *>(switcherObject);
+    if (!m_switcherItem) {
+        fprintf(stderr, "dragonfruit-shell: AppSwitcher QML did not produce an item\n");
+        return false;
+    }
+    m_switcherItem->setParentItem(m_switcherWindow->contentItem());
+    connect(m_switcherWindow, &QQuickWindow::afterRendering, this,
+            &ShellController::renderSwitcher);
+    connect(m_protocol, &ShellProtocol::switcherConfigured, this,
+            &ShellController::onSwitcherConfigured);
+    connect(m_protocol, &ShellProtocol::appSwitcherChanged, this,
+            &ShellController::onAppSwitcherChanged);
+
     if (!m_protocol->createMenuBarSurface(barHeight, barHeight))
         return false;
     // The dropdown rides a separate `overlay` chrome surface so transient
@@ -490,6 +518,10 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // The Mission Control overview chrome is a full-output `overlay` surface,
     // unmapped until the overview opens (T-11 Slice B).
     if (!m_protocol->createOverviewSurface())
+        return false;
+    // The app-switcher overlay is a full-output `overlay` surface, unmapped
+    // until the compositor opens the switcher (T-06.2a).
+    if (!m_protocol->createSwitcherSurface())
         return false;
 
     // Launch timeout: a launch that produces no window within the bounded
@@ -1789,6 +1821,89 @@ void ShellController::renderOverview()
     m_overviewFrameGate.endCommit();
     if (!image.isNull() && m_protocol)
         m_protocol->commitOverviewImage(image);
+}
+
+// --- app-switcher overlay (T-06.2a) -----------------------------------------
+
+void ShellController::onSwitcherConfigured(int width, int height, quint32)
+{
+    if (width <= 0 || height <= 0)
+        return;
+    m_switcherWidth = width;
+    m_switcherHeight = height;
+    fprintf(stderr, "dragonfruit-shell: app-switcher configured %dx%d\n", width, height);
+    if (m_switcherActive)
+        renderSwitcher();
+}
+
+void ShellController::onAppSwitcherChanged(bool active, const QVariantList &entries,
+                                           const QString &selectedAppId, int direction)
+{
+    m_switcherActive = active;
+    if (!m_switcherItem)
+        return;
+    // The compositor owns the recency order and the selection; the shell only
+    // renders the projection. `selectedIndex` is resolved by matching the
+    // selected app id, so the shell never sorts or re-derives recency.
+    int selectedIndex = -1;
+    for (int i = 0; i < entries.size(); ++i) {
+        const QVariantMap entry = entries.at(i).toMap();
+        if (!selectedAppId.isEmpty()
+            && entry.value(QStringLiteral("appId")).toString() == selectedAppId) {
+            selectedIndex = i;
+            break;
+        }
+    }
+    m_switcherItem->setProperty("active", active);
+    m_switcherItem->setProperty("entries", entries);
+    m_switcherItem->setProperty("selectedIndex", selectedIndex);
+    m_switcherItem->setProperty("direction", direction);
+    if (active) {
+        renderSwitcher();
+    } else if (m_protocol) {
+        // The compositor closed the switcher (commit or cancel): unmap the
+        // overlay so it stops compositing over the restored scene.
+        m_protocol->hideSwitcher();
+    }
+}
+
+void ShellController::scheduleSwitcherRender()
+{
+    if (m_switcherRenderPending)
+        return;
+    m_switcherRenderPending = true;
+    QTimer::singleShot(0, this, [this]() {
+        m_switcherRenderPending = false;
+        renderSwitcher();
+    });
+}
+
+void ShellController::renderSwitcher()
+{
+    if (!m_switcherActive || !m_switcherWindow || !m_switcherItem)
+        return;
+    if (m_switcherWidth <= 0 || m_switcherHeight <= 0)
+        return;
+    // The scene graph just rendered; skip the re-entrant frame our own
+    // `grabWindow` readback produces (FR-14 pattern shared with the Dock).
+    if (!m_switcherFrameGate.frameRendered())
+        return;
+    if (!m_switcherSceneGraphCommitLogged) {
+        m_switcherSceneGraphCommitLogged = true;
+        qInfo() << "shell: app-switcher scene-graph commit path active";
+    }
+    m_switcherItem->setWidth(m_switcherWidth);
+    m_switcherItem->setHeight(m_switcherHeight);
+    if (m_switcherWindow->width() != m_switcherWidth
+        || m_switcherWindow->height() != m_switcherHeight)
+        m_switcherWindow->resize(m_switcherWidth, m_switcherHeight);
+    if (!m_switcherWindow->isVisible())
+        m_switcherWindow->show();
+    m_switcherFrameGate.beginCommit();
+    const QImage image = m_switcherWindow->grabWindow();
+    m_switcherFrameGate.endCommit();
+    if (!image.isNull() && m_protocol)
+        m_protocol->commitSwitcherImage(image);
 }
 
 void ShellController::onDockEntryMenuAction(const QString &action, const QVariant &payload)
