@@ -1,15 +1,28 @@
 [package]
 name = "dragonfruit-session"
-description = "Dragonfruit session service (stub; real service is T-24)"
+description = "Dragonfruit session manager: launch order and restart policy (T-12.1a)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
+# The session manager owns the composition described in
+# docs/design/11-session-and-dev-workflow.md: the compositor starts first and
+# ends the session when it exits; every other service is restarted in place
+# per its policy. T-12.1a owns the launch order and the restart policy; the
+# session environment, systemd units, and the second-VT workflow are T-12.1b.
+#
+# `libc` is the same pinned crate the dev tool uses for SIGINT/SIGTERM, which
+# the `--exec` supervisor loop needs to tear down its children on a signal.
+[dependencies]
+df-ipc.workspace = true
+libc.workspace = true
+
+[lib]
+name = "dragonfruit_session"
+path = "src/lib.rs"
+
 [[bin]]
 name = "dragonfruit-session"
 path = "src/main.rs"
-
-[dependencies]
-df-ipc.workspace = true
