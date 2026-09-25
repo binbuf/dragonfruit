@@ -204,6 +204,41 @@ The compositor pre-mints the `DRAGONFRUIT_LAUNCH_TOKEN` it finds in its own
 environment (rather than a random one) and writes the shell's hand-off file,
 so the token the shell presents is the one the session chose.
 
+### The display-manager session entry (T-12.2)
+
+The display manager lists the session from a Wayland descriptor,
+`services/session/dragonfruit.desktop`
+(`Name=Dragonfruit`, `DesktopNames=dragonfruit`), installed under
+`share/wayland-sessions/` — so Dragonfruit appears next to the host DE in GDM,
+SDDM, LightDM, or any spec-compliant greeter. Its `Exec` is the entry script
+`dragonfruit-session-entry`:
+
+```text
+DM greeter → dragonfruit-session-entry
+  1. eval "$(dragonfruit-session --print-env …)"   # base env + fresh token
+  2. systemctl --user import-environment XDG_CURRENT_DESKTOP XDG_SESSION_TYPE \
+         WAYLAND_DISPLAY DISPLAY DRAGONFRUIT_LAUNCH_TOKEN
+  3. systemctl --user start dragonfruit-session.target
+  4. wait for dragonfruit-compositor.service to leave the active state
+  5. systemctl --user stop dragonfruit-session.target; reset-failed
+  6. rm "$XDG_RUNTIME_DIR/<socket>"{,.lock,.x11-display,.launch-token}
+```
+
+The compositor is the anchor: when it exits (a clean logout or a crash), the
+entry stops the target, clears its failed state, and removes the runtime
+hand-off files, so the next login starts clean and the greeter returns. Every
+step touches only our own user units and paths; the host desktop and its
+display manager are never stopped, restarted, or reconfigured.
+
+**Logout tears down process groups.** Each supervised service is spawned as
+the leader of its own process group, and shutdown signals the whole group
+(`SIGTERM`, then `SIGKILL` after a short grace), so a shell or service wrapper
+cannot leak grandchildren past the session. The session binary installs the
+descriptor, script, and the systemd user units under one prefix with
+`dragonfruit-session --install-session DIR` (`entry::install_into`); packaging
+(T-32) passes its build root. The contract is frozen in
+[ADR 0066](adr/0066-display-manager-session-entry.md).
+
 ## logind integration
 
 - `LockSession` / `UnlockSession` requests drive our lock screen; idle

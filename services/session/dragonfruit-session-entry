@@ -1,0 +1,63 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+#
+# Dragonfruit display-manager session entry (T-12.2).
+#
+# This is the `Exec` of share/wayland-sessions/dragonfruit.desktop. It is the
+# one owner of session startup and logout teardown:
+#
+#   1. export the T-12.1b session environment (base + a fresh launch token)
+#      and import it into the systemd user manager;
+#   2. start dragonfruit-session.target, whose units are the production
+#      supervisor;
+#   3. block until the compositor anchor exits (a crash ends the session by
+#      design, and the display manager returns);
+#   4. stop the target, clear any failed units, and remove the session's
+#      private runtime hand-off files, so the next login starts clean.
+#
+# It only ever talks to *our* user units: the host DE, its compositor, and the
+# display manager are never touched.
+#
+# Overridable for tests and non-standard layouts:
+#   DF_SESSION_BIN     the dragonfruit-session binary (default /usr/bin/...)
+#   DF_SESSION_SOCKET  the private socket name (default dragonfruit-wayland)
+#   DF_SESSION_TARGET  the user target to start/stop
+#   DF_SYSTEMCTL       the systemctl to use (default systemctl)
+set -eu
+
+session_bin="${DF_SESSION_BIN:-/usr/bin/dragonfruit-session}"
+socket="${DF_SESSION_SOCKET:-dragonfruit-wayland}"
+target="${DF_SESSION_TARGET:-dragonfruit-session.target}"
+systemctl="${DF_SYSTEMCTL:-systemctl}"
+
+# 1. The session environment. `--print-env` prints KEY=VALUE lines for the
+#    base variables plus a fresh DRAGONFRUIT_LAUNCH_TOKEN; `eval` puts them in
+#    this shell, then the user manager carries them to every unit.
+eval "$("$session_bin" --print-env --socket-name "$socket")"
+"$systemctl" --user import-environment \
+    XDG_CURRENT_DESKTOP XDG_SESSION_TYPE WAYLAND_DISPLAY \
+    DISPLAY DRAGONFRUIT_LAUNCH_TOKEN
+
+# 2. Start the target (the units are the supervisor).
+"$systemctl" --user start "$target"
+
+# 3. Wait for the anchor. The compositor is the session's anchor: when it
+#    exits, the session is over and the display manager returns.
+while "$systemctl" --user is-active --quiet dragonfruit-compositor.service; do
+    sleep 0.5
+done
+
+# 4. Logout teardown. Stopping the target stops every unit through each
+#    unit's PartOf=; `reset-failed` clears the anchor's failed state so the
+#    next login starts from scratch. The compositor removes its own hand-off
+#    files on a clean exit; this is the safety net after a crash.
+"$systemctl" --user stop "$target" || true
+"$systemctl" --user reset-failed "$target" || true
+
+if [ -n "${XDG_RUNTIME_DIR:-}" ]; then
+    rm -f \
+        "$XDG_RUNTIME_DIR/$socket" \
+        "$XDG_RUNTIME_DIR/$socket.lock" \
+        "$XDG_RUNTIME_DIR/$socket.x11-display" \
+        "$XDG_RUNTIME_DIR/$socket.launch-token"
+fi

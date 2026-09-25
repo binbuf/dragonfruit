@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=Dragonfruit
+Comment=The Dragonfruit desktop session
+Exec=/usr/bin/dragonfruit-session-entry
+Type=Application
+DesktopNames=dragonfruit

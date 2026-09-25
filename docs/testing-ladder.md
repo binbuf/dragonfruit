@@ -76,6 +76,12 @@ systemctl --user start dragonfruit-session.target
 units in `services/session/units/` start the compositor, shell, services, and
 portal. Returning is `Ctrl+Alt+F1`; the host session is never closed.
 
+On a machine with the session package installed, the display manager already
+lists Dragonfruit (`share/wayland-sessions/dragonfruit.desktop`, whose `Exec`
+is the `dragonfruit-session-entry` script). From a source tree, install the
+entry, script, and user units into place with
+`sudo dragonfruit-session --install-session /usr` (T-12.2).
+
 On a machine without the units installed (or on a non-systemd host), run the
 compositor directly inside the dedicated user's own session — the point of
 this rung is **service isolation**:

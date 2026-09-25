@@ -11,14 +11,18 @@
 //!   parallel once its socket exists, the portal last).
 //! * [`env`] — [`SessionEnvironment`], the `XDG_*`/Wayland/token contract
 //!   attached to every child (T-12.1b).
+//! * [`entry`] — the display-manager session `.desktop` entry, the entry
+//!   script, and their install layout (T-12.2).
 //! * [`supervisor`] — [`Supervisor`], which spawns the services stage by
-//!   stage, reaps exited children, and restarts them per policy.
+//!   stage, reaps exited children, restarts them per policy, and tears down
+//!   whole process groups at logout (T-12.2).
 //!
 //! The compositor is the anchor: its exit ends the session and stops
 //! everything else; it is never restarted. T-12.1b ships the environment, the
 //! systemd user units, and the second-VT workflow; T-12.2 adds the
-//! display-manager entry and logout teardown.
+//! display-manager entry and the logout teardown.
 
+pub mod entry;
 pub mod env;
 pub mod plan;
 pub mod supervisor;

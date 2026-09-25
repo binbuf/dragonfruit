@@ -10,12 +10,66 @@
 //!
 //! The supervisor is deliberately synchronous and runtime-free so the kill
 //! test can drive it a tick at a time.
+//!
+//! Each service is spawned as the leader of its own process group (T-12.2),
+//! so logout ([`Supervisor::shutdown`]) can tear down a service's whole tree:
+//! `SIGTERM` to the group for a clean exit, then `SIGKILL` if it is still
+//! alive. Killing only the direct child would leak the grandchildren a shell
+//! or service wrapper starts.
 
 use std::collections::HashMap;
 use std::io;
 use std::process::{Child, Command, ExitStatus, Stdio};
+use std::time::{Duration, Instant};
 
 use crate::plan::{RestartPolicy, ServiceSpec, SessionPlan};
+
+/// How long a child gets to exit after `SIGTERM` before the group is
+/// `SIGKILL`ed.
+const TERM_GRACE: Duration = Duration::from_millis(500);
+/// The poll interval while waiting out [`TERM_GRACE`].
+const TERM_POLL: Duration = Duration::from_millis(10);
+
+/// Send `signal` to the process group led by `pid`. Every managed child is a
+/// process-group leader ([`Command::process_group`](std::os::unix::process::CommandExt::process_group)),
+/// so a negative pid reaches the service and everything it started.
+fn signal_group(pid: u32, signal: libc::c_int) {
+    // A negative pid targets the whole process group.
+    unsafe {
+        libc::kill(-(pid as libc::pid_t), signal);
+    }
+}
+
+/// Stop one child and its whole process group: `SIGTERM` for a clean exit,
+/// then `SIGKILL` after [`TERM_GRACE`], and a final group `SIGKILL` so
+/// grandchildren cannot outlive their leader. Returns once the direct child
+/// has been reaped.
+fn terminate(child: &mut Child) {
+    let pid = child.id();
+    signal_group(pid, libc::SIGTERM);
+    let deadline = Instant::now() + TERM_GRACE;
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) => {
+                if Instant::now() >= deadline {
+                    signal_group(pid, libc::SIGKILL);
+                    let _ = child.wait();
+                    break;
+                }
+                std::thread::sleep(TERM_POLL);
+            }
+            Err(_) => {
+                signal_group(pid, libc::SIGKILL);
+                let _ = child.wait();
+                break;
+            }
+        }
+    }
+    // The leader may have exited before a grandchild; make sure the group is
+    // gone even so.
+    signal_group(pid, libc::SIGKILL);
+}
 
 /// How a child left this world.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -274,14 +328,17 @@ impl Supervisor {
         }
     }
 
-    /// Send `SIGKILL` to a managed service without applying its policy — the
-    /// kill seam the headless restart test uses, and what a would-be
-    /// `coredump` handler would call. The next [`Supervisor::tick`] reaps the
-    /// death and decides whether to restart.
+    /// Send `SIGKILL` to a managed service's process group without applying
+    /// its policy — the kill seam the headless restart test uses, and what a
+    /// would-be `coredump` handler would call. The next [`Supervisor::tick`]
+    /// reaps the death and decides whether to restart.
     pub fn kill(&mut self, name: &str) -> bool {
         match self.index.get(name) {
             Some(&position) => match self.slots[position].child.as_mut() {
-                Some(child) => child.kill().is_ok(),
+                Some(child) => {
+                    signal_group(child.id(), libc::SIGKILL);
+                    true
+                }
                 None => false,
             },
             None => false,
@@ -339,13 +396,21 @@ impl Supervisor {
     /// Spawn slot `position` and record it. Returns the new pid.
     fn spawn_child(&mut self, position: usize) -> io::Result<u32> {
         let spec = &self.slots[position].spec;
-        let child = Command::new(&spec.program)
+        let mut command = Command::new(&spec.program);
+        command
             .args(&spec.args)
             .envs(spec.env.iter().map(|(key, value)| (key, value)))
             .stdin(Stdio::null())
             .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .spawn()?;
+            .stderr(Stdio::inherit());
+        // Each service leads its own process group, so logout teardown can
+        // reach the grandchildren a wrapper starts (T-12.2).
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            command.process_group(0);
+        }
+        let child = command.spawn()?;
         let pid = child.id();
         let slot = &mut self.slots[position];
         slot.child = Some(child);
@@ -470,8 +535,7 @@ impl Supervisor {
     fn end_session(&mut self) {
         for slot in &mut self.slots {
             if let Some(mut child) = slot.child.take() {
-                let _ = child.kill();
-                let _ = child.wait();
+                terminate(&mut child);
             }
             slot.pid = None;
             slot.ready = false;
@@ -487,8 +551,7 @@ impl Drop for Supervisor {
     fn drop(&mut self) {
         for slot in &mut self.slots {
             if let Some(mut child) = slot.child.take() {
-                let _ = child.kill();
-                let _ = child.wait();
+                terminate(&mut child);
             }
         }
     }
