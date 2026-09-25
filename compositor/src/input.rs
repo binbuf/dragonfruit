@@ -164,6 +164,17 @@ where
     B::TabletToolTipEvent: backend_input::TabletToolTipEvent<B>,
     B::TabletToolButtonEvent: backend_input::TabletToolButtonEvent<B>,
 {
+    // Fail-secure locking (T-12.3a): while the session is locked no user
+    // input reaches any client, and no compositor shortcut fires. Device
+    // hotplug is session plumbing, not user input, so it still routes.
+    if state.lock.is_locked()
+        && !matches!(
+            &event,
+            InputEvent::DeviceAdded { .. } | InputEvent::DeviceRemoved { .. }
+        )
+    {
+        return;
+    }
     // T-03.1b input-to-photon latency: stamp the input before routing it so
     // the next presented frame can be credited with the round trip. Device
     // hotplug is not user input and must not start a sample.

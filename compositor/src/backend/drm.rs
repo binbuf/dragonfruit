@@ -953,6 +953,12 @@ fn render_surface(
     let mut custom_elements: Vec<
         DrmOutputElements<UdevRenderer<'_>, WaylandSurfaceRenderElement<UdevRenderer<'_>>>,
     > = Vec::new();
+    // A locked session composites only the lock surface: prepended so it sits
+    // above the cursor, the window space, and all chrome (T-12.3a).
+    custom_elements.extend(crate::lock::lock_render_elements::<
+        _,
+        DrmOutputElements<UdevRenderer<'_>, WaylandSurfaceRenderElement<UdevRenderer<'_>>>,
+    >(&mut renderer, state, &surface.output, scale));
     let pointer_location = state
         .seat
         .get_pointer()

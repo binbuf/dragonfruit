@@ -99,6 +99,7 @@ use crate::input::settings::InputSettings;
 use crate::input::shortcuts::{GrabArbiter, GrabKind, ShortcutEngine};
 use crate::input::{InputAction, TriggerKind};
 use crate::instrument::{GestureBudgetTrace, LatencyInstrument};
+use crate::lock::LockModel;
 use crate::overview::grid::{
     grid_layout, strip_space_at, GridCandidate, GridDrag, GridLayout, GridMaterial,
 };
@@ -307,6 +308,9 @@ pub struct DfState {
     pub security_context_state: SecurityContextState,
     pub xdg_activation_state: XdgActivationState,
     pub session_lock_state: SessionLockManagerState,
+    /// Fail-secure lock state (T-12.3a): the one flag every input and render
+    /// path consults. Set by `ext-session-lock-v1`, cleared only by unlock.
+    pub lock: LockModel,
     pub text_input_state: TextInputManagerState,
     pub input_method_state: InputMethodManagerState,
     pub tablet_manager_state: TabletManagerState,
@@ -544,6 +548,7 @@ impl DfState {
             security_context_state,
             xdg_activation_state,
             session_lock_state,
+            lock: LockModel::new(),
             text_input_state,
             input_method_state,
             tablet_manager_state,
@@ -3913,6 +3918,10 @@ impl XdgActivationHandler for DfState {
         _token_data: XdgActivationTokenData,
         surface: WlSurface,
     ) {
+        // While locked no client may raise or focus anything (T-12.3a).
+        if self.lock.is_locked() {
+            return;
+        }
         // `xdg-activation` carries the launcher's (or an app's) request to
         // raise a window: it is both the launch signal the Dock bounces on
         // and the standard way a newly launched app claims keyboard focus.
@@ -3998,23 +4007,63 @@ impl SessionLockHandler for DfState {
     }
 
     fn lock(&mut self, confirmation: SessionLocker) {
-        // Fail-secure locking: the lock UI owns the session once confirmed.
-        // The interactive lock screen arrives with T-26; until then we
-        // confirm immediately so the fail-secure path is exercised.
+        // Fail-secure: enter the locked state *before* confirming, so no
+        // frame is ever presented unlocked once a lock is requested, and
+        // clear client focus so no key can reach a client.
+        let focused = self.active_window.clone();
+        self.lock.lock(focused);
+        if let Some(keyboard) = self.seat.get_keyboard() {
+            keyboard.set_focus(self, None, SERIAL_COUNTER.next_serial());
+        }
+        self.hovered_titlebar = None;
+        self.needs_redraw = true;
+        println!("dragonfruit-compositor: session locked (fail-secure)");
+        // The lock client is now free to map its lock surfaces. Smithay keeps
+        // the surfaces this session-lock object created, and `new_surface`
+        // configures each one to its output.
         confirmation.lock();
     }
 
     fn new_surface(
         &mut self,
-        _surface: smithay::wayland::session_lock::LockSurface,
-        _output: smithay::reexports::wayland_server::protocol::wl_output::WlOutput,
+        surface: smithay::wayland::session_lock::LockSurface,
+        output: smithay::reexports::wayland_server::protocol::wl_output::WlOutput,
     ) {
-        // Lock-surface rendering is T-26; the surface is tracked by
-        // smithay's session-lock state until then.
+        // A lock surface covers exactly one output; configure it to that
+        // output's logical size so it fills the screen.
+        let Some(output) = smithay::output::Output::from_resource(&output) else {
+            return;
+        };
+        if let Some(size) = crate::lock::lock_surface_size(self, &output) {
+            surface.with_pending_state(|state| {
+                state.size = Some(size);
+            });
+        }
+        surface.send_configure();
+        self.lock.insert_surface(output.name(), surface);
+        self.needs_redraw = true;
+        let outputs: Vec<String> = self.space.outputs().map(|output| output.name()).collect();
+        if self.lock.covers(&outputs) {
+            println!(
+                "dragonfruit-compositor: session lock covers {} output(s)",
+                self.lock.surface_count()
+            );
+        }
     }
 
     fn unlock(&mut self) {
-        // T-26 owns the interactive unlock flow.
+        let restore = self.lock.unlock();
+        println!("dragonfruit-compositor: session unlocked");
+        // Return the keyboard to where it was before the lock. Input was
+        // dropped while locked, so a dead window leaves focus cleared.
+        if let Some(window) = restore {
+            if let Some(surface) = window.wl_surface().map(|surface| surface.into_owned()) {
+                if let Some(keyboard) = self.seat.get_keyboard() {
+                    keyboard.set_focus(self, Some(surface), SERIAL_COUNTER.next_serial());
+                }
+            }
+        }
+        self.needs_redraw = true;
     }
 }
 

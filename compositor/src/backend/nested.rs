@@ -200,11 +200,17 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
     let render_result = match data.backend.bind() {
         Ok((renderer, mut framebuffer)) => {
             let scale = smithay::utils::Scale::from(output.current_scale().fractional_scale());
+            // A locked session composites only the lock surface: it is
+            // prepended so it sits above every window and chrome surface
+            // (T-12.3a).
+            let mut custom_elements: Vec<NestedOutputElements<GlowRenderer>> =
+                crate::lock::lock_render_elements(renderer, state, &output, scale);
             // Chrome surfaces (menu bar, overlays) composite above the
             // window space (T-09); SSD titlebars composite above their own
             // client surface (T-01.1).
-            let mut custom_elements: Vec<NestedOutputElements<GlowRenderer>> =
-                crate::render::chrome_render_elements(renderer, state, &output, scale);
+            custom_elements.extend(crate::render::chrome_render_elements(
+                renderer, state, &output, scale,
+            ));
             // Backdrop blur under the chrome (T-04.2): appended after the
             // chrome surfaces so it composites below them and in front of the
             // windows it stands in for.

@@ -304,6 +304,10 @@ impl DfState {
 
     /// Focus and raise a window by compositor id (shell-driven activation).
     pub fn activate_window_id(&mut self, id: WindowId) {
+        // While locked, activation must not move focus to a client (T-12.3a).
+        if self.lock.is_locked() {
+            return;
+        }
         let Some(window) = self.window_by_id(id) else {
             return;
         };
@@ -888,6 +892,9 @@ impl DfState {
         let sessions = self.manager_sessions();
         let outputs = self.session_outputs();
         let live: Vec<String> = outputs.iter().map(|(name, _)| name.clone()).collect();
+        // A lock surface for an output that just disappeared is stale
+        // (T-12.3a); dropping it keeps `covers` honest across hotplug.
+        self.lock.retain_live(&live);
         for (client, manager) in &sessions {
             let stale: Vec<String> = self
                 .shell

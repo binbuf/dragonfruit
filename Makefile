@@ -103,7 +103,8 @@ e2e: build
 	    --test idle_trace \
 	    --test latency_trace \
 	    --test animation_clock \
-	    --test protocol_surface
+	    --test protocol_surface \
+	    --test session_lock_conformance
 	$(CARGO) test -p dragonfruit-system-adapters
 	$(CARGO) test -p dragonfruit-networkmanager
 	$(CARGO) test -p dragonfruit-audio
