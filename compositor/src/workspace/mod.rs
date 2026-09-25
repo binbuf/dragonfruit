@@ -386,6 +386,32 @@ impl WorkspaceModel {
         true
     }
 
+    /// Replace only the image `source`/`fit` of the Space at `index`,
+    /// **keeping its solid fallback color** (T-09.3). This is the
+    /// `df_workspace.set_wallpaper` semantics: a `None` source returns the
+    /// Space to its solid color without the client needing to know that color.
+    /// Returns true when the wallpaper changed.
+    pub fn set_wallpaper_image(
+        &mut self,
+        output: &str,
+        index: usize,
+        source: Option<String>,
+        fit: WallpaperFit,
+    ) -> bool {
+        let Some(output) = self.output_mut(output) else {
+            return false;
+        };
+        let Some(space) = output.spaces.get_mut(index) else {
+            return false;
+        };
+        if space.wallpaper.source == source && space.wallpaper.fit == fit {
+            return false;
+        }
+        space.wallpaper.source = source;
+        space.wallpaper.fit = fit;
+        true
+    }
+
     /// Advance the active Space on **every** output in lockstep (FR-2).
     ///
     /// Returns true if anything changed. Switches clamp at the ends; the
@@ -910,5 +936,37 @@ mod tests {
         let second = model.wallpaper_at("DP-1", 1).unwrap().clone();
         assert_ne!(first.color, second.color);
         assert_eq!(model.active_wallpaper("DP-1").unwrap().color, first.color);
+    }
+
+    #[test]
+    fn setting_a_wallpaper_image_keeps_the_solid_fallback() {
+        let mut model = model_with_two_outputs();
+        let solid = model.wallpaper_at("DP-1", 0).unwrap().color;
+
+        // An image keeps the Space's solid color behind it (letterboxing).
+        assert!(model.set_wallpaper_image(
+            "DP-1",
+            0,
+            Some("/tmp/dragonfruit.png".to_string()),
+            WallpaperFit::Fit,
+        ));
+        let with_image = model.wallpaper_at("DP-1", 0).unwrap();
+        assert_eq!(with_image.source.as_deref(), Some("/tmp/dragonfruit.png"));
+        assert_eq!(with_image.fit, WallpaperFit::Fit);
+        assert_eq!(with_image.color, solid);
+
+        // The same values are a no-op (no spurious redraw/event).
+        assert!(!model.set_wallpaper_image(
+            "DP-1",
+            0,
+            Some("/tmp/dragonfruit.png".to_string()),
+            WallpaperFit::Fit,
+        ));
+
+        // A NULL source returns the Space to its solid color.
+        assert!(model.set_wallpaper_image("DP-1", 0, None, WallpaperFit::Fill));
+        let cleared = model.wallpaper_at("DP-1", 0).unwrap();
+        assert_eq!(cleared.source, None);
+        assert_eq!(cleared.color, solid);
     }
 }

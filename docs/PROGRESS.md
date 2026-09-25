@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(14 earlier sections omitted)_
+_(15 earlier sections omitted)_
 
-- **T12 — T-02.4a Close ghost**: **State: done.** A closing window shrinks/fades out into its app's Dock tile; **`compositor/src/window/motion.rs`** — `WindowMotionKind::Close` (reverse
 - **T13 — T-02.4b Close interruptibility and idle trace**: **State: done.** A live close ghost reverses mid-flight without waiting: a; **`compositor/src/state.rs`** — `close_window` clears keyboard focus when it
 - **T14 — T-03.1a Nested idle trace and animation frame budget**: **State: done.** The idle/animation frame trace is now a real instrument (a; **60.0 s idle window**: `frames_rendered=1` (flat, +0),
 - **T15 — T-03.1b Latency instrument and direct-scanout template**: **State: done.** The input-to-photon latency instrument is real and the; **nested latency**: n=50, min=3501 us, median=13878 us, p95=15223 us,
@@ -42,9 +41,10 @@ _(14 earlier sections omitted)_
 - **T46 — T-08.2c Compositor motion/input policy migration**: **State: done.** The compositor now consumes the settingsd motion/input policy;; **`protocols/dragonfruit-toplevel.xml`** — `df_toplevel_manager` is v5 with
 - **T47 — T-08.3 Restart, resync, and key-schema documentation**: **State: done.** `settingsd` is restartable with no lost write and the shell; **`docs/settings-keys.md`** (new) — the human-facing key table (type,
 - **T48 — T-09.1a Settings app shell**: **State: done.** The `apps/settings` stub is now a real shell: frameless; **`apps/settings/`** is a reusable QML module `Dragonfruit.Settings` (static
-- **Follow-ups**: **T-09 Settings Wave 1 (T-09.1a done in T48).** The shell, sidebar, local; **T-08.2 consumer migration (T-08.2a done in T44, T-08.2b done in T45,
+- **Follow-ups**: **T-09.3 follow-ups.** (a) `apps/settings/AppearancePane.qml` (T50) places; **T-09 Settings Wave 1 (T-09.1a done in T48).** The shell, sidebar, local
 - **T49 — T-09.1b Settings live-apply plumbing**: **State: done.** The Settings app is a real settingsd consumer: a QML `Settings`; **`libs/settings-client/`** (new; `libs/CMakeLists.txt`) — the former
 - **T50 — T-09.2 Appearance pane**: **State: done.** The Appearance pane is real and live: a Light/Dark/Auto; **`apps/settings/AppearancePane.qml`** (new) — `SettingsGroup`/`SettingsRow`
+- **T51 — T-09.3 Wallpaper pane**: **State: done.** The Wallpaper pane is real and live: our own gradient; **Schema (since 2)** — `wallpaper.source` (s, empty = solid),
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3227,6 +3227,14 @@ Gotchas for later tasks:
 
 ## Follow-ups
 
+- **T-09.3 follow-ups.** (a) `apps/settings/AppearancePane.qml` (T50) places
+  its controls as plain children of `SettingsRow`; `SettingsRow` has no
+  `default` property, so they go to `Item.data` and can overlap the label.
+  Wrap each in `controlData:` (the gallery form T-09.3 uses). (b) Wallpaper
+  per-Space distinct persistence is last-selection-only; a stable Space
+  identity exposed to settingsd (T-16) is needed to persist a map. (c) The
+  `WallpaperCache` is not cleared when a source path is reused with new bytes
+  (T-05.4 note); a replaced file at the same path still shows the old raster.
 - **T-09 Settings Wave 1 (T-09.1a done in T48).** The shell, sidebar, local
   search, history, header card, and the four Wave-1 sidebar rows landed in
   `apps/settings` (`Dragonfruit.Settings` module, ADR 0035). Remaining:
@@ -3562,3 +3570,86 @@ Gotchas for later tasks:
   Accessibility T-15.14). Add them only with real keys — no-half-panes.
 - Settings app still follows the host style hint only when the three bindings
   are absent; with the shell loaded it follows settingsd.
+
+## T51 — T-09.3 Wallpaper pane
+
+**State: done.** The Wallpaper pane is real and live: our own gradient
+collections plus a portal "Add Photo…", a "Show on all Spaces" toggle, and a
+fit control, all bound to settingsd; the shell forwards the selection to the
+compositor's per-Space T-05 model. Selecting a wallpaper changes the Space
+and the compositor background within one beat, and it persists in settingsd.
+
+What landed:
+
+- **Schema (since 2)** — `wallpaper.source` (s, empty = solid),
+  `wallpaper.fit` (s enum fill/fit/stretch/center), `wallpaper.showOnAllSpaces`
+  (b, default true). `services/settingsd/src/schema.rs` gained a `Wallpaper`
+  key group and `SCHEMA_VERSION` is now `2`; the migration is additive and the
+  v1 frozen-key test still passes. Mirrored in
+  `libs/settings-client/settingsclient.cpp` and `docs/settings-keys.md`.
+- **Shell forwarder** — `shell/src/wallpaperpolicy.{h,cpp}` is the pure
+  `WallpaperSettings` mapping (`CompositorPolicy` analogue, unit-tested by
+  `shell/tests/tst_wallpaperpolicy.cpp`). `ShellProtocol::setWallpaper` sends
+  `df_workspace.set_wallpaper` to every Space, or only the active one when
+  `showOnAllSpaces` is false; it remembers the selection and re-applies on
+  `df_toplevel_manager.done` so a policy that predates the Space list is not
+  lost. `ShellController::applyWallpaperPolicy` runs on settingsd
+  `changed`/`refreshed` and once at startup.
+- **Compositor** — `df_workspace.set_wallpaper` now changes only the image
+  `source`/`fit` (`WorkspaceModel::set_wallpaper_image`), keeping the Space's
+  solid `color`, so a NULL source returns the Space to its default color. New
+  unit test in `compositor/src/workspace/mod.rs`.
+- **`apps/settings/WallpaperPane.qml`** (new) — hero preview (the exact file
+  the compositor decodes), current name, "Show on all Spaces" toggle, fit
+  `SegmentedControl`, two original gradient collections, and "Add Photo…".
+  `SettingsBridge` renders six original gradient PNGs to
+  `$XDG_DATA_HOME/dragonfruit/dragonfruit-settings/wallpapers/` and exposes
+  `Settings.wallpaperPresets`; the portal FileChooser call and URI→path
+  conversion live there (`wallpaperChooserAvailable` gates the button).
+  `Settings.startPane` (`DF_SETTINGS_START_PANE`) opens a pane at startup for
+  captures. Registered in `SettingsShell.paneComponent`; `wallpaper` was
+  already `shipped: true`.
+- **Tests** — `apps/settings/tests/tst_settings_wallpaper.{cpp,qml}` (7 cases,
+  `DF_SETTINGS_FIXTURE=1`): presets load; tile select / all-Spaces / fit apply
+  live; an external `Settings.set` converges; the photo path applies; the row
+  controls are right-aligned.
+- **Docs** — ADR [0038](design/adr/0038-wallpaper-pane-settingsd-and-shell-forwarder.md);
+  track 09 "Wallpaper pane (T-09.3)"; `02-compositor.md` set_wallpaper
+  semantics; `docs/settings-keys.md` rows + consumer map.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `ctest --test-dir build -R "tst_settings_wallpaper|tst_wallpaperpolicy" --output-on-failure`
+  — 7 + 5 cases pass.
+- `make qml-test` — 26/26; `make lint` green; `make e2e` exit 0.
+- Live capture (`/tmp/opencode/t51-capture.sh`): real `dragonfruit-settingsd`
+  on the session bus, nested demo with `DF_SETTINGS_START_PANE=wallpaper`, then
+  `wallpaper.source` set to a preset mid-session. Raw observation: the
+  compositor background pixel was `(33, 13, 41)` before and `(37, 97, 100)`
+  after; vision on the window crop read sidebar rows Appearance/Desktop &
+  Dock/Displays/Wallpaper, header "Wallpaper", "Current wallpaper", "Meadow",
+  "Show on all Spaces" (toggle right, label fully visible), Fill/Fit/Stretch/
+  Center, "Dragonfruit", no clipping.
+
+Gotchas for later tasks:
+
+- **`SettingsRow` has NO `default` property.** A control placed as a plain
+  child goes to `Item.data` (direct child at x0) and overlaps the label. The
+  correct usage is `controlData: Control { ... }` (the gallery pattern); ids
+  inside `controlData:` work. `AppearancePane.qml` (T50) still uses the
+  plain-child form — a latent left-overlap bug worth the same one-line fix
+  (not done here: out of T51 scope).
+- **Add a wallpaper key in three places**: `schema.rs`, the mirrored
+  `settingsSchemaDefaults()`, `docs/settings-keys.md` (the doc test enforces
+  the table). Bump `SCHEMA_VERSION` and set `since`.
+- **`df_workspace.set_wallpaper` keeps the Space color**; the wire `color`
+  arg is retained for the lockstep contract but unused. Per-Space distinct
+  persistence is still last-selection-only (one source/fit pair); a stable
+  Space identity exposed to settingsd is the T-16 follow-up.
+- **Built-in wallpaper files are stable paths** under
+  `QStandardPaths::AppDataLocation` (`.../dragonfruit-settings/wallpapers/`);
+  settingsd persists the absolute path, and the app regenerates the same files
+  if missing. An app that is never launched leaves the compositor with the
+  solid fallback.
+- `DF_SETTINGS_START_PANE=<id>` opens a shipped pane for captures/tests; an
+  unknown id is ignored.

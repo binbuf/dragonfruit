@@ -103,6 +103,26 @@ set_tests_properties(tst_compositorpolicy PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# Wallpaper-policy tests (T-09.3): the pure settingsd -> compositor wallpaper
+# mapping the shell forwards as `df_workspace.set_wallpaper`. No bus, Wayland,
+# or QML.
+qt_add_executable(tst_wallpaperpolicy
+    tst_wallpaperpolicy.cpp
+)
+target_link_libraries(tst_wallpaperpolicy PRIVATE
+    Qt6::Core Qt6::Test
+    dragonfruit-shell-dockcore
+)
+
+add_test(
+    NAME tst_wallpaperpolicy
+    COMMAND tst_wallpaperpolicy
+)
+set_tests_properties(tst_wallpaperpolicy PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Settings-client tests (T-08.2a): the typed value store and the live
 # `org.dragonfruit.Settings1` client against a fake service on a private
 # session bus. The bus-dependent half skips when no bus is present.

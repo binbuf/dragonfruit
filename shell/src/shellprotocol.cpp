@@ -873,6 +873,35 @@ void ShellProtocol::setInputPolicy(int repeatDelayMs, int repeatRateHz, bool ges
         wl_display_flush(m_display);
 }
 
+void ShellProtocol::setWallpaper(const QString &source, uint32_t fit, bool showOnAllSpaces)
+{
+    // T-09.3: remember the selection and push it to the announced Spaces. When
+    // no Space is known yet, `onManagerDone` applies it after the replay.
+    m_wallpaperKnown = true;
+    m_wallpaperSource = source;
+    m_wallpaperFit = fit;
+    m_wallpaperShowOnAllSpaces = showOnAllSpaces;
+    applyWallpaper();
+}
+
+void ShellProtocol::applyWallpaper()
+{
+    if (!m_display || !m_wallpaperKnown)
+        return;
+    // `source` empty is legal (the protocol keeps the Space's solid color), so
+    // a null pointer is sent rather than an empty string.
+    const QByteArray source = m_wallpaperSource.toUtf8();
+    const char *rawSource = m_wallpaperSource.isEmpty() ? nullptr : source.constData();
+    for (auto it = m_workspaces.constBegin(); it != m_workspaces.constEnd(); ++it) {
+        if (!m_wallpaperShowOnAllSpaces && it.key() != m_activeWorkspace)
+            continue;
+        // The color argument is retained by the compositor; the schema owns
+        // only source/fit, so 0 leaves the Space's existing fallback.
+        df_workspace_set_wallpaper(it.key(), rawSource, m_wallpaperFit, 0u);
+    }
+    wl_display_flush(m_display);
+}
+
 void ShellProtocol::setLaunchOrigin(const QString &appId, int x, int y, int width, int height)
 {
     // T-02.1b: hand the Dock entry's tile rectangle to the compositor so a
@@ -1640,6 +1669,9 @@ void ShellProtocol::onManagerAppAccelerator(void *, df_toplevel_manager *, const
 void ShellProtocol::onManagerDone(void *data, df_toplevel_manager *)
 {
     auto *self = static_cast<ShellProtocol *>(data);
+    // The replay is complete: the Space list is now known, so a wallpaper
+    // selection that arrived before it can be forwarded (T-09.3).
+    self->applyWallpaper();
     if (!self->m_switcherPending)
         return;
     self->m_switcherPending = false;

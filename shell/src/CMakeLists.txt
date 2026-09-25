@@ -51,6 +51,7 @@ add_library(dragonfruit-shell-dockcore STATIC
     framecommitgate.h
     systemstatusmodel.cpp
     trashmonitor.cpp
+    wallpaperpolicy.cpp
 )
 # The settingsd client is shared with the Settings app (T-09.1b); it lives in
 # its own library so both processes link the same implementation (ADR 0036).

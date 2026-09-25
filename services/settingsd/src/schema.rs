@@ -19,7 +19,7 @@ use crate::value::{SettingsError, Value};
 
 /// The current schema revision. Bump only when a key is added or a default
 /// changes; renames and removals are forbidden within the `1` series.
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 
 /// The D-Bus type of a settings value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,17 +63,19 @@ pub enum KeyGroup {
     Workspaces,
     Gestures,
     Appearance,
+    Wallpaper,
     Animation,
     Input,
 }
 
 impl KeyGroup {
     /// Every group, in schema order.
-    pub const ALL: [KeyGroup; 6] = [
+    pub const ALL: [KeyGroup; 7] = [
         KeyGroup::Dock,
         KeyGroup::Workspaces,
         KeyGroup::Gestures,
         KeyGroup::Appearance,
+        KeyGroup::Wallpaper,
         KeyGroup::Animation,
         KeyGroup::Input,
     ];
@@ -85,6 +87,7 @@ impl KeyGroup {
             KeyGroup::Workspaces => "workspaces",
             KeyGroup::Gestures => "gestures",
             KeyGroup::Appearance => "appearance",
+            KeyGroup::Wallpaper => "wallpaper",
             KeyGroup::Animation => "animation",
             KeyGroup::Input => "input",
         }
@@ -411,6 +414,46 @@ pub const KEYS: &[KeySpec] = &[
         consumer: "shell/design-system Theme",
         since: 1,
         summary: "Accent color override ('#rrggbb'); empty uses the token default.",
+    },
+    // ── Wallpaper ───────────────────────────────────────────────────────
+    KeySpec {
+        key: "wallpaper.source",
+        group: KeyGroup::Wallpaper,
+        kind: KeyType::Text,
+        default: KeyDefault::Text(""),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/wallpaper forwarder, compositor/workspace model",
+        since: 2,
+        summary: "Image path for the selected wallpaper; empty keeps the solid color.",
+    },
+    KeySpec {
+        key: "wallpaper.fit",
+        group: KeyGroup::Wallpaper,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("fill"),
+        allowed: &["fill", "fit", "stretch", "center"],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/wallpaper forwarder, compositor/workspace model",
+        since: 2,
+        summary: "How the wallpaper image maps onto the output.",
+    },
+    KeySpec {
+        key: "wallpaper.showOnAllSpaces",
+        group: KeyGroup::Wallpaper,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(true),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/wallpaper forwarder, compositor/workspace model",
+        since: 2,
+        summary: "Apply the selection to every Space, or only the active one.",
     },
     // ── Animation policy ────────────────────────────────────────────────
     KeySpec {

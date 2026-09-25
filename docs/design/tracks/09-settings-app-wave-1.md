@@ -152,6 +152,32 @@ headless against the `DF_SETTINGS_FIXTURE` mock and asserts each control
 changes both the settings key and the app-local `Theme` on the same
 event-loop turn.
 
+## Wallpaper pane (T-09.3)
+
+`apps/settings/WallpaperPane.qml` is the second real pane body. It ships:
+
+- **Current wallpaper** — a hero preview (the exact image the compositor
+  decodes), the name, the **Show on all Spaces** toggle
+  (`wallpaper.showOnAllSpaces`), and a **Fit** segmented control
+  (fill/fit/stretch/center, `wallpaper.fit`).
+- **Built-in collections** — our own gradients (`Dragonfruit`, `Landscape`),
+  rendered once to stable PNGs by `SettingsBridge` and exposed as
+  `Settings.wallpaperPresets`; picking a tile writes `wallpaper.source`.
+- **Your Photos** — **Add Photo…** through the xdg-desktop-portal
+  FileChooser, disabled cleanly when the portal is absent.
+
+The app never touches the compositor: the keys persist in settingsd and the
+shell forwards them per Space as `df_workspace.set_wallpaper` (the
+`CompositorPolicy` pattern). The compositor keeps each Space's solid color
+when only the image changes, so a NULL source returns the Space to its
+default (ADR [0038](../adr/0038-wallpaper-pane-settingsd-and-shell-forwarder.md)).
+
+**Verification.** `apps/settings/tests/tst_settings_wallpaper.qml` runs
+headless against the `DF_SETTINGS_FIXTURE` mock: the six presets load, each
+tile selection, the all-Spaces toggle, and the fit control apply live to the
+key, and an external `Settings.set` converges into the preview and selection;
+`shell/tests/tst_wallpaperpolicy.cpp` unit-tests the pure key → wire mapping.
+
 ## Acceptance
 
 - [ ] The demo runs and the captures are committed.

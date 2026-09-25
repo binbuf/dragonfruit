@@ -189,14 +189,6 @@ pub struct OutputUserData {
 
 // --- helpers ---------------------------------------------------------------
 
-fn argb_to_rgba(color: u32) -> [f32; 4] {
-    let a = ((color >> 24) & 0xff) as f32 / 255.0;
-    let r = ((color >> 16) & 0xff) as f32 / 255.0;
-    let g = ((color >> 8) & 0xff) as f32 / 255.0;
-    let b = (color & 0xff) as f32 / 255.0;
-    [r, g, b, a.max(1.0 / 255.0)]
-}
-
 fn rgba_to_argb(color: [f32; 4]) -> u32 {
     let channel = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u32;
     (channel(color[3]) << 24)
@@ -1846,16 +1838,22 @@ impl Dispatch<df_workspace::DfWorkspace, WorkspaceUserData> for DfState {
                     state.after_workspace_change();
                 }
             }
-            df_workspace::Request::SetWallpaper { source, fit, color } => {
+            df_workspace::Request::SetWallpaper {
+                source,
+                fit,
+                color: _,
+            } => {
                 if let Some(output) = state.workspaces.space_output(data.id).map(str::to_string) {
-                    let wallpaper = Wallpaper {
-                        color: argb_to_rgba(color),
-                        source,
-                        fit: wallpaper_fit_from_wire(
-                            fit.into_result().map(|value| value as u32).unwrap_or(0),
-                        ),
-                    };
-                    if state.workspaces.set_wallpaper(&output, index, wallpaper) {
+                    // T-09.3: only the image `source`/`fit` change; the Space
+                    // keeps its solid fallback color, so a NULL source returns
+                    // it to that color and an image letterboxes over it.
+                    let fit = wallpaper_fit_from_wire(
+                        fit.into_result().map(|value| value as u32).unwrap_or(0),
+                    );
+                    if state
+                        .workspaces
+                        .set_wallpaper_image(&output, index, source, fit)
+                    {
                         state.needs_redraw = true;
                         state.sync_workspaces();
                     }
