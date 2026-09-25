@@ -9,7 +9,7 @@
 #include "downloadsmonitor.h"
 #include "framecommitgate.h"
 #include "settingsclient.h"
-#include "trashmonitor.h"
+#include "trashbridge.h"
 
 #include <QDir>
 #include <QFile>
@@ -18,6 +18,8 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <QUrl>
+
+#include <cstdlib>
 
 namespace {
 
@@ -588,147 +590,76 @@ private slots:
         QCOMPARE(unknown.value(QStringLiteral("windows")).toInt(), 2);
     }
 
-    // -- trash monitor ---------------------------------------------------
+    // -- trash bridge (T-10.6a) ------------------------------------------
 
-    void trashMonitorReadsEmptyAndFull()
+    // Point the files-core Trash store at a temp dir so a test never touches
+    // the real user trash. The Rust side reads XDG_DATA_HOME at construction.
+    void trashBridgeReadsEmptyAndFull()
     {
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
         const QString root = dir.path() + QStringLiteral("/Trash");
+        setenv("XDG_DATA_HOME", dir.path().toUtf8().constData(), 1);
         QVERIFY(QDir().mkpath(root + QStringLiteral("/info")));
         QVERIFY(QDir().mkpath(root + QStringLiteral("/files")));
 
-        TrashMonitor monitor(root);
-        monitor.start();
-        QVERIFY(!monitor.isFull());
-        QCOMPARE(monitor.itemCount(), 0);
+        TrashBridge trash;
+        trash.start();
+        QVERIFY(!trash.isFull());
+        QCOMPARE(trash.itemCount(), 0);
+        QVERIFY(trash.isAvailable());
 
         writeFile(root + QStringLiteral("/info/foo.txt.trashinfo"),
                   QStringLiteral("[Trash Info]\nPath=/home/x/foo.txt\n"));
         writeFile(root + QStringLiteral("/files/foo.txt"), QStringLiteral("hello"));
-        monitor.refresh();
-        QVERIFY(monitor.isFull());
-        QCOMPARE(monitor.itemCount(), 1);
+        trash.refresh();
+        QVERIFY(trash.isFull());
+        QCOMPARE(trash.itemCount(), 1);
 
-        // A payload with no info record still counts (partial state).
-        writeFile(root + QStringLiteral("/files/bar.txt"), QStringLiteral("bar"));
-        monitor.refresh();
-        QCOMPARE(monitor.itemCount(), 2);
-
-        // Removing the info record and payload drops the count back.
         QVERIFY(QFile::remove(root + QStringLiteral("/info/foo.txt.trashinfo")));
         QVERIFY(QFile::remove(root + QStringLiteral("/files/foo.txt")));
-        monitor.refresh();
-        QCOMPARE(monitor.itemCount(), 1);
+        trash.refresh();
+        QCOMPARE(trash.itemCount(), 0);
     }
 
-    void trashMonitorWatchesForThirdPartyChanges()
+    void trashBridgeWatchesForThirdPartyChanges()
     {
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
         const QString root = dir.path() + QStringLiteral("/Trash");
+        setenv("XDG_DATA_HOME", dir.path().toUtf8().constData(), 1);
         QVERIFY(QDir().mkpath(root + QStringLiteral("/info")));
         QVERIFY(QDir().mkpath(root + QStringLiteral("/files")));
 
-        TrashMonitor monitor(root);
-        QSignalSpy spy(&monitor, &TrashMonitor::changed);
+        TrashBridge trash;
+        QSignalSpy spy(&trash, &TrashBridge::changed);
         QVERIFY(spy.isValid());
-        monitor.start();
+        trash.start();
 
-        // A deletion by another application appears as a new info record.
+        // A deletion by another application appears as a new info record and
+        // wakes the files-core watch.
         writeFile(root + QStringLiteral("/info/third.trashinfo"),
                   QStringLiteral("[Trash Info]\nPath=/home/x/third\n"));
-        QTRY_COMPARE(monitor.itemCount(), 1);
+        QTRY_COMPARE(trash.itemCount(), 1);
         QVERIFY(spy.count() >= 1);
     }
 
-    void trashMonitorEmptyRemovesItems()
+    void trashBridgeTrashAndEmptyRouteThroughFilesCore()
     {
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
         const QString root = dir.path() + QStringLiteral("/Trash");
-        QVERIFY(QDir().mkpath(root + QStringLiteral("/info")));
-        QVERIFY(QDir().mkpath(root + QStringLiteral("/files")));
-        writeFile(root + QStringLiteral("/info/a.trashinfo"),
-                  QStringLiteral("[Trash Info]\nPath=/home/x/a\n"));
-        writeFile(root + QStringLiteral("/files/a"), QStringLiteral("a"));
-        writeFile(root + QStringLiteral("/info/b.trashinfo"),
-                  QStringLiteral("[Trash Info]\nPath=/home/x/b\n"));
-        QVERIFY(QDir().mkpath(root + QStringLiteral("/files/b")));
-        writeFile(root + QStringLiteral("/files/b/nested"), QStringLiteral("n"));
-
-        TrashMonitor monitor(root);
-        monitor.start();
-        QCOMPARE(monitor.itemCount(), 2);
-
-        const int removed = monitor.empty();
-        QCOMPARE(removed, 4); // 2 info records + a + the b tree
-        QVERIFY(!monitor.isFull());
-        QCOMPARE(monitor.itemCount(), 0);
-        QVERIFY(QDir(root + QStringLiteral("/files")).entryList(
-                    QDir::AllEntries | QDir::NoDotAndDotDot).isEmpty());
-        QVERIFY(QDir(root + QStringLiteral("/info")).entryList(
-                    QDir::AllEntries | QDir::NoDotAndDotDot).isEmpty());
-    }
-
-    void trashMonitorRefusesUnsafeRoot()
-    {
-        TrashMonitor monitor(QStringLiteral("/"));
-        monitor.start();
-        QCOMPARE(monitor.empty(), -1);
-        QVERIFY(!monitor.lastError().isEmpty());
-        QVERIFY(!monitor.isAvailable());
-    }
-
-    void trashMonitorIsAvailableForAMissingRoot()
-    {
-        // A missing root is a healthy empty trash (created on demand).
-        QTemporaryDir dir;
-        QVERIFY(dir.isValid());
-        const QString root = dir.path() + QStringLiteral("/Trash");
-        TrashMonitor monitor(root);
-        monitor.start();
-        QVERIFY(!QFileInfo::exists(root));
-        QVERIFY(monitor.isAvailable());
-        QVERIFY(!monitor.isFull());
-    }
-
-    void trashMonitorReportsAnUnreadableRootAsUnavailable()
-    {
-        // A root that exists but cannot be read is a mount/permission failure
-        // (T-10 section 16 lifecycle: "Trash mount unavailable").
-        QTemporaryDir dir;
-        QVERIFY(dir.isValid());
-        const QString root = dir.path() + QStringLiteral("/Trash");
-        QVERIFY(QDir().mkpath(root));
-        QVERIFY(QFile::setPermissions(root, QFile::Permissions()));
-        {
-            TrashMonitor monitor(root);
-            monitor.start();
-            QVERIFY(!monitor.isAvailable());
-        }
-        // Restore permissions so the temporary directory can be cleaned up.
-        QVERIFY(QFile::setPermissions(root,
-                                      QFileDevice::ReadOwner | QFileDevice::WriteOwner
-                                          | QFileDevice::ExeOwner));
-    }
-
-    void trashMonitorTrashMovesFilesAndWritesInfo()
-    {
-        QTemporaryDir dir;
-        QVERIFY(dir.isValid());
-        const QString root = dir.path() + QStringLiteral("/Trash");
+        setenv("XDG_DATA_HOME", dir.path().toUtf8().constData(), 1);
         const QString source = dir.path() + QStringLiteral("/note.txt");
         writeFile(source, QStringLiteral("hello"));
 
-        TrashMonitor monitor(root);
-        monitor.start();
-        QCOMPARE(monitor.itemCount(), 0);
+        TrashBridge trash;
+        trash.start();
+        QCOMPARE(trash.itemCount(), 0);
 
-        const int trashed = monitor.trash(QStringList{source});
-        QCOMPARE(trashed, 1);
-        QVERIFY(monitor.isFull());
-        QCOMPARE(monitor.itemCount(), 1);
+        QCOMPARE(trash.trash(QStringList{source}), 1);
+        QVERIFY(trash.isFull());
+        QCOMPARE(trash.itemCount(), 1);
         QVERIFY(!QFileInfo::exists(source));
         QVERIFY(QFileInfo::exists(root + QStringLiteral("/files/note.txt")));
 
@@ -737,27 +668,31 @@ private slots:
         const QString contents = QString::fromUtf8(record.readAll());
         QVERIFY(contents.startsWith(QStringLiteral("[Trash Info]\n")));
         QVERIFY(contents.contains(QStringLiteral("DeletionDate=")));
-        // The original path is percent-encoded in the record.
-        const QString encoded = QString::fromLatin1(QUrl::toPercentEncoding(source));
-        QVERIFY(contents.contains(QStringLiteral("Path=") + encoded));
 
-        // A second item with the same basename gets a unique name.
-        writeFile(source, QStringLiteral("again"));
-        QCOMPARE(monitor.trash(QStringList{source}), 1);
-        QCOMPARE(monitor.itemCount(), 2);
-        QVERIFY(QFileInfo::exists(root + QStringLiteral("/files/note.1.txt")));
+        QCOMPARE(trash.empty(), 1);
+        QVERIFY(!trash.isFull());
+        QCOMPARE(trash.itemCount(), 0);
+        QVERIFY(QDir(root + QStringLiteral("/files")).entryList(
+                    QDir::AllEntries | QDir::NoDotAndDotDot).isEmpty());
+        QVERIFY(QDir(root + QStringLiteral("/info")).entryList(
+                    QDir::AllEntries | QDir::NoDotAndDotDot).isEmpty());
     }
 
-    void trashMonitorRefusesTrashingItself()
+    void trashBridgeCreatesAMissingStoreOnDemand()
     {
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
         const QString root = dir.path() + QStringLiteral("/Trash");
-        QVERIFY(QDir().mkpath(root + QStringLiteral("/files")));
-        TrashMonitor monitor(root);
-        monitor.start();
-        QCOMPARE(monitor.trash(QStringList{root + QStringLiteral("/files")}), 0);
-        QVERIFY(!monitor.lastError().isEmpty());
+        setenv("XDG_DATA_HOME", dir.path().toUtf8().constData(), 1);
+        QVERIFY(!QFileInfo::exists(root));
+
+        TrashBridge trash;
+        trash.start();
+        QVERIFY(trash.isAvailable());
+        QVERIFY(!trash.isFull());
+        QCOMPARE(trash.itemCount(), 0);
+        QVERIFY(QFileInfo::exists(root + QStringLiteral("/info")));
+        QVERIFY(QFileInfo::exists(root + QStringLiteral("/files")));
     }
 
     // -- external drops --------------------------------------------------

@@ -51,14 +51,17 @@ add_library(dragonfruit-shell-dockcore STATIC
     downloadsmonitor.cpp
     framecommitgate.h
     systemstatusmodel.cpp
-    trashmonitor.cpp
+    trashbridge.cpp
     wallpaperpolicy.cpp
 )
 # The settingsd client is shared with the Settings app (T-09.1b); it lives in
 # its own library so both processes link the same implementation (ADR 0036).
+# `dragonfruit-files-core` is the Rust staticlib: the Dock's Trash state comes
+# from files-core's one freedesktop Trash store (T-10.6a).
 target_link_libraries(dragonfruit-shell-dockcore PUBLIC
     Qt6::Core Qt6::DBus
     dragonfruit-settings-client
+    dragonfruit-files-core
 )
 target_include_directories(dragonfruit-shell-dockcore PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 

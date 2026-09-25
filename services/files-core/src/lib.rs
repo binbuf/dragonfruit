@@ -77,6 +77,15 @@
 //!   optimistic wrapper confirms or reverts a matching pending edit first, so
 //!   each pending op is resolved at most once.
 //!
+//! # What T-10.6a owns
+//!
+//! * [`TrashSource`] — a [`DirectorySource`] over `trash://`, so Files lists
+//!   the Trash through the same streaming model as any other location.
+//! * [`TrashMonitor`] — the Dock's live Trash reading: count, reachability, and
+//!   change notifications on the T-10.3b [`FolderWatcher`], over the same
+//!   [`FreedesktopTrash`] store Files uses. Exposed to the shell through the
+//!   C ABI ([`ffi`]).
+//!
 //! # Sorting is incremental and stable
 //!
 //! [`DirectoryModel::set_sort`] changes the order and re-sorts what is already
@@ -136,6 +145,7 @@ mod selection;
 pub mod sort;
 mod source;
 mod trash;
+mod trash_source;
 mod watch;
 
 pub use fallback::{StdFsSource, SANCTIONED_FALLBACK_MARKER};
@@ -153,6 +163,7 @@ pub use trash::{
     default_home_trash, format_deletion_date, parse_trash_info, FreedesktopTrash, TrashOps,
     TrashedItem, SANCTIONED_TRASH_FALLBACK_MARKER,
 };
+pub use trash_source::{TrashMonitor, TrashSource, TrashState};
 #[cfg(target_os = "linux")]
 pub use watch::InotifyWatcher;
 pub use watch::{
