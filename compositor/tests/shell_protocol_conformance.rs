@@ -117,6 +117,7 @@ struct TestClient {
     output_geometries: Vec<(i32, i32, i32, i32)>,
     output_modes: Vec<(u32, u32, u32)>,
     output_transforms: Vec<u32>,
+    output_brightness: Vec<f64>,
     workspace_names: Vec<String>,
     workspace_indexes: Vec<u32>,
     workspace_activated_flags: Vec<u32>,
@@ -388,6 +389,7 @@ impl Dispatch<df_output::DfOutput, ()> for TestClient {
                     .output_reserved_by_id
                     .push((resource.id().protocol_id(), edge, thickness));
             }
+            df_output::Event::Brightness { level } => state.output_brightness.push(level),
             _ => {}
         }
     }
@@ -1250,6 +1252,26 @@ fn handshake_chrome_and_control_conformance() {
         &mut state,
         Duration::from_secs(5),
         |state| state.output_transforms.contains(&1),
+    );
+
+    // `df_output.set_brightness` applies through the same path (T-11.3a): the
+    // Control Center brightness tile is forwarded here by the shell, and the
+    // compositor reports the owned value back.
+    state.output_brightness.clear();
+    state.outputs[0].set_brightness(0.4);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            // `fixed` is 24.8 on the wire, so compare with fixed-point
+            // quantization tolerance.
+            state
+                .output_brightness
+                .iter()
+                .any(|level| (*level - 0.4).abs() < 0.01)
+        },
     );
 
     // --- Mission Control + app switcher state (FR-2) ----------------------
@@ -2620,6 +2642,9 @@ fn malformed_private_traffic_never_crashes() {
     output.set_transform(df_output::Transform::_270);
     output.set_vrr(1);
     output.set_night_light(1, 100);
+    output.set_brightness(f64::NAN);
+    output.set_brightness(-1.0);
+    output.set_brightness(9.0);
     let _ = queue.roundtrip(&mut state);
 
     // --- out-of-range reorder, then requests against a stale workspace ----

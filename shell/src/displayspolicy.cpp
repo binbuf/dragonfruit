@@ -17,6 +17,8 @@ DisplaySettings displaySettingsFromValues(const QVariantMap &values)
     settings.scale = readValue(values, QStringLiteral("display.scale"), settings.scale).toDouble();
     settings.rotation =
         readValue(values, QStringLiteral("display.rotation"), settings.rotation).toString();
+    settings.brightness =
+        readValue(values, QStringLiteral("display.brightness"), settings.brightness).toDouble();
     return settings;
 }
 

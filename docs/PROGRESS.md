@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(37 earlier sections omitted)_
+_(38 earlier sections omitted)_
 
-- **T35 — T-07.2b NetworkManager join and polkit degradation**: **State: done.** The write path (join/activate) and the polkit read-only; **`services/networkmanager/src/source.rs`** — the transport seam gained
 - **T36 — T-07.3 Audio adapter (PipeWire/WirePlumber)**: **State: done.** The audio adapter landed in a new concrete-adapter crate; no; **`services/audio/`** (new crate `dragonfruit-audio`, workspace member; deps:
 - **T37 — T-07.4 Power adapter (UPower)**: **State: done.** The read-only power adapter landed in a new concrete-adapter; **`services/power/`** (new crate `dragonfruit-power`, workspace member; deps:
 - **T38 — T-07.5a Wi-Fi and volume status menus**: **State: done.** Wi-Fi list/join and volume slider/mute render in; **`services/system-status/`** (new crate `dragonfruit-system-status`,
@@ -45,6 +44,7 @@ _(37 earlier sections omitted)_
 - **T71 — T-11.1b Notification actions and Dock badge replacement**: **State: done.** Notification actions round-trip to the originating app, the; **`services/notifications/src/dbus.rs`** — `GetCapabilities` adds `actions`;
 - **T72 — T-11.2a DND/Focus policy**: **State: done.** The notification service now owns a three-mode Focus/DND; **`services/notifications/src/policy.rs`** (new) — `FocusMode` (`off` /
 - **T73 — T-11.2b DND/Focus menu-bar reflection and Dock failure path**: **State: done.** The menu bar reflects the notification service's Focus/DND; **`shell/src/notificationclient.{h,cpp}`** — the seam gains
+- **T74 — T-11.3a Control Center panel and core tiles**: **State: done.** The Control Center panel opens (menu-bar item or; **`shell/control-center/ControlCenter.qml`** (rewritten) — the panel scene
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -5458,3 +5458,76 @@ not a T73 code defect:
   crescent left of the clock, sharp, no artifacts.
 - **Gotcha for every later task:** a bare `make <target>` must work; do not
   assume the caller exported the toolchain `LD_LIBRARY_PATH`.
+
+## T74 — T-11.3a Control Center panel and core tiles
+
+**State: done.** The Control Center panel opens (menu-bar item or
+Control-Option-C) and shows Wi-Fi / Sound / Display tiles; Sound and Display
+apply live; Escape and click-away dismiss. Contract frozen in ADR
+[0060](design/adr/0060-control-center-panel-and-brightness.md).
+
+What landed:
+
+- **`shell/control-center/ControlCenter.qml`** (rewritten) — the panel scene
+  with a normalized `tiles` model (headless test seam) and signals
+  `volumeSetRequested` / `brightnessSetRequested` / `muteToggleRequested` /
+  `wifiToggleRequested` / `wifiSettingsRequested` / `closed`. The module is
+  now `qt_add_library(... STATIC)` linked to `dragonfruit-design-systemplugin`
+  and to the shell executable.
+- **`shell/src/shellprotocol.{h,cpp}`** — top-right `control-center` overlay
+  layer surface (anchors `top|right`, `exclusive_zone -1`, keyboard
+  `ON_DEMAND`, whole-panel input region) plus pointer/keyboard classification
+  and `onOutputBrightness`.
+- **`shell/src/shellcontroller.{h,cpp}`** — the offscreen panel scene,
+  `toggle/show/hideControlCenter`, `renderControlCenter`, pointer + keyboard
+  routing, the `control-center` input action, Escape dismissal, and the tile
+  gestures. Brightness writes settingsd `display.brightness`; volume/mute
+  reuse the T-07 status client.
+- **`protocols/dragonfruit-toplevel.xml`** — `df_output` v2 adds
+  `set_brightness` + the `brightness` event, appended *after* `removed` so
+  the scanner's `since` stays non-decreasing and existing opcodes are stable.
+- **`compositor/src/shell/mod.rs`** — `DF_OUTPUT_INTERFACE_VERSION = 2`, a
+  per-output `output_brightness` map, the `SetBrightness` clamp/store arm, and
+  the readback event. **`compositor/src/input/{action,shortcuts}.rs`** — the
+  `ControlCenter` `InputAction` (`control-center`) bound to Control-Option-C.
+- **`services/settingsd/src/schema.rs`** + `docs/settings-keys.md` —
+  `display.brightness` (d, 0.0–1.0, default 1.0, since 4; `SCHEMA_VERSION`
+  4). **`libs/settings-client/settingsclient.cpp`** mirrors the default.
+- **`shell/src/displayspolicy.{h,cpp}`** — `DisplaySettings.brightness`.
+- **`design-system/components/Icon.qml`** — `wifi`, `bluetooth`, `brightness`
+  painted glyphs.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `make e2e` exit 0; `make lint` exit 0 (ctest 36/36, includes
+  `tst_controlcenter` 10/10 and `qmllint_shell-control-center`).
+- `cargo test -p dragonfruit-settingsd` — schema/doc/bus green.
+- `cargo test -p dragonfruit-compositor --test shell_protocol_conformance`
+  33/33; `--bin dragonfruit-compositor` 275/275.
+
+Live capture: `scripts/capture-control-center.sh` (`DF_STATUS_FIXTURE=1`,
+Control-Option-C) writes `docs/captures/t11-control-center.png` and
+`t11-control-center-context.png`. Vision check: Wi-Fi tile (toggle +
+`Wi-Fi Settings…`), Sound at 60% + Mute, Display brightness slider, rounded
+tiles, no artifacts.
+
+Gotchas for later tasks:
+
+- **Wi-Fi is the one non-live core tile.** The T-07 NetworkManager adapter has
+  no radio-write method, so the tile toggle reflects `radioEnabled` and is
+  inert (`wifiWritable=false`; the tile model already carries `enabled`).
+  T-15 adds the write and flips the property.
+- **Brightness is stored/clamped by the compositor but applied best-effort.**
+  Headless/nested keep the value only; DRM is a later task. `df_output` is v2
+  and the `brightness` event is `fixed` (24.8) — compare with ~1/256
+  tolerance.
+- **`shell/control-center` now depends on `dragonfruit-design-systemplugin`**
+  and is linked into `dragonfruit-shell` + `qt_import_qml_plugins`.
+- **Panel dismissal:** Escape is handled both in the QML panel and in
+  `ShellController::onKeyEvent`; click-away is `keyboardFocused(false)`
+  deferred one event-loop turn, plus `controlCenterKeyboardFocused(false)`.
+  T-11.3b must keep the deferral (bar→panel focus movement is not a dismissal).
+- **The Wi-Fi settings link logs only** — Settings-on-a-pane launch is T-16.
+- **Add `since`-versioned protocol members at the END** of the interface
+  (after events/enums), as `df_toplevel_manager` already does, or
+  wayland-scanner warns "since version not increasing".

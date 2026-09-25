@@ -16,6 +16,8 @@ struct DisplaySettings {
     double scale = 1.0;
     // One of "normal" | "90" | "180" | "270".
     QString rotation = QStringLiteral("normal");
+    // Output brightness level in [0, 1]; 1.0 is full brightness.
+    double brightness = 1.0;
 
     bool operator==(const DisplaySettings &) const = default;
 };

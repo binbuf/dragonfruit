@@ -364,12 +364,12 @@
     </enum>
   </interface>
 
-  <interface name="df_output" version="1">
+  <interface name="df_output" version="2">
     <description summary="one display">
       Follows wlr-output-management: modes, scale, transform, plus VRR and
-      night-light/color controls and reserved zones. `set_*` requests are
-      acknowledged with `done` after the backend applies them (or the
-      compositor's best-effort equivalent).
+      night-light/color controls, brightness, and reserved zones. `set_*`
+      requests are acknowledged with `done` after the backend applies them
+      (or the compositor's best-effort equivalent).
     </description>
 
     <request name="set_mode">
@@ -459,6 +459,21 @@
       <entry name="left" value="2"/>
       <entry name="right" value="3"/>
     </enum>
+
+    <!-- Declared last so the scanner's `since` stays non-decreasing and every
+         pre-existing message keeps its opcode (append-only, T-11.3a). -->
+    <request name="set_brightness" since="2">
+      <description summary="set the output's brightness level">
+        The shell mirrors `display.brightness` here; the compositor owns the
+        value and applies it best-effort. Additive in v2.
+      </description>
+      <arg name="level" type="fixed" summary="0.0..1.0; 1.0 is full brightness"/>
+    </request>
+
+    <event name="brightness" since="2">
+      <description summary="the output's current brightness level"/>
+      <arg name="level" type="fixed"/>
+    </event>
   </interface>
 
 </protocol>

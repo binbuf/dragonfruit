@@ -52,6 +52,11 @@ const INTERFACE_VERSION: u32 = 1;
 /// [`INTERFACE_VERSION`].
 const MANAGER_INTERFACE_VERSION: u32 = 5;
 
+/// `df_output` is version 2 since `set_brightness` and the `brightness` event
+/// were added (T-11.3a). The other private interfaces stay at
+/// [`INTERFACE_VERSION`].
+const DF_OUTPUT_INTERFACE_VERSION: u32 = 2;
+
 /// Error code posted when an untrusted client binds a private global.
 const ERROR_ACCESS_DENIED: u32 = 1;
 
@@ -112,6 +117,10 @@ pub struct ShellProtocolState {
     pub chrome_focus_output: Option<String>,
     /// Windows that asked for activation and have not been seen yet.
     attention: Vec<WindowId>,
+    /// Per-output brightness level in [0, 1] (T-11.3a). The compositor owns
+    /// the value; a backend applies it best-effort (headless/nested keep the
+    /// value only, DRM is a later task). Keyed by output name; absent = 1.0.
+    output_brightness: HashMap<String, f64>,
 }
 
 impl ShellProtocolState {
@@ -137,6 +146,7 @@ impl ShellProtocolState {
             reserved: crate::window::ReservedZones::default(),
             chrome_focus_output: None,
             attention: Vec::new(),
+            output_brightness: HashMap::new(),
         }
     }
 
@@ -584,7 +594,7 @@ impl DfState {
             }
             let Ok(resource) = client.create_resource::<df_output::DfOutput, _, DfState>(
                 &self.display_handle,
-                INTERFACE_VERSION,
+                DF_OUTPUT_INTERFACE_VERSION,
                 OutputUserData { name: name.clone() },
             ) else {
                 continue;
@@ -621,6 +631,16 @@ impl DfState {
         }
         resource.vrr(0);
         resource.night_light(0, 6500);
+        // The compositor owns brightness (T-11.3a); absent means full
+        // brightness. The event is v2 (`df_output`).
+        let output_name = output.name();
+        let brightness = self
+            .shell
+            .output_brightness
+            .get(&output_name)
+            .copied()
+            .unwrap_or(1.0);
+        resource.brightness(brightness);
         let zones = self.shell.reserved;
         for (edge, thickness) in [
             (Edge::Top, zones.top),
@@ -903,7 +923,7 @@ impl DfState {
                 };
                 let Ok(resource) = creator.create_resource::<df_output::DfOutput, _, DfState>(
                     &self.display_handle,
-                    INTERFACE_VERSION,
+                    DF_OUTPUT_INTERFACE_VERSION,
                     OutputUserData { name: name.clone() },
                 ) else {
                     continue;
@@ -1944,6 +1964,23 @@ impl Dispatch<df_output::DfOutput, OutputUserData> for DfState {
             df_output::Request::SetVrr { .. } | df_output::Request::SetNightLight { .. } => {
                 // VRR and night-light plumbing is a T-16 displays-pane item
                 // (see PROGRESS.md, T-02); accepted and acked here.
+            }
+            df_output::Request::SetBrightness { level } => {
+                // T-11.3a: the compositor owns the output brightness. Reject a
+                // non-finite level; clamp the rest into [0, 1] and remember it,
+                // so the `brightness` event reports the owned value. A backend
+                // applies it best-effort (headless/nested keep the value only).
+                let name = output.name();
+                if level.is_finite() {
+                    state
+                        .shell
+                        .output_brightness
+                        .insert(name, level.clamp(0.0, 1.0));
+                } else {
+                    eprintln!(
+                        "dragonfruit-compositor: ignoring invalid brightness request {level}"
+                    );
+                }
             }
             df_output::Request::Destroy => {}
         }

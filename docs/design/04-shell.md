@@ -244,6 +244,17 @@ always part of the accessible name. The existing Dock launch-failure
 notification (T-11.1b) remains the failure path. See
 [adr/0059](adr/0059-menu-bar-focus-reflection.md).
 
+**T-11.3a status.** The Control Center panel exists: the menu-bar item (or the
+Control-Option-C shortcut, routed as the compositor's `control-center` input
+action) opens a top-right `control-center` overlay surface rendered from
+`shell/control-center/ControlCenter.qml`. The panel ships three tiles —
+Wi-Fi (state + network, `Wi-Fi Settings…` link), Sound (volume slider + mute,
+through the T-07 bridge host), and Display (the brightness slider, written to
+settingsd `display.brightness` and forwarded to the compositor as
+`df_output.set_brightness`). Escape and click-away dismiss it. The Wi-Fi radio
+is read-only until T-15 adds the adapter write; Focus/DND, dark mode, and the
+a11y pass are T-11.3b. See [adr/0060](adr/0060-control-center-panel-and-brightness.md).
+
 ## Relationship to compositor and services
 
 - Compositor state (windows, workspaces, outputs) arrives via private

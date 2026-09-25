@@ -485,6 +485,85 @@ bool ShellProtocol::setBannerInputRegion(int width, int height)
     return true;
 }
 
+// --- Control Center overlay (T-11.3a) --------------------------------------
+
+bool ShellProtocol::createControlCenterSurface(int width, int height, int topMargin)
+{
+    if (m_controlCenterSurface || m_controlCenterLayer)
+        return true;
+    if (!m_shell || !m_compositor)
+        return fail(QStringLiteral("df_shell is not available"));
+
+    m_controlCenterSurface = wl_compositor_create_surface(m_compositor);
+    m_controlCenterLayer = df_shell_get_layer_surface(m_shell, m_controlCenterSurface, nullptr,
+                                                      DF_SHELL_LAYER_OVERLAY, "control-center");
+    if (!m_controlCenterLayer)
+        return fail(QStringLiteral("compositor refused the control-center layer surface"));
+    static const df_layer_surface_listener listener = { onControlCenterConfigure, onLayerClosed };
+    df_layer_surface_add_listener(m_controlCenterLayer, &listener, this);
+
+    // Top-right corner, below the menu bar; reserve nothing (the panel is
+    // transient) and take the keyboard on demand so Escape can dismiss it and
+    // a click elsewhere (which moves chrome keyboard focus away) can too.
+    df_layer_surface_set_anchor(m_controlCenterLayer, kAnchorRight | kAnchorTop);
+    df_layer_surface_set_margin(m_controlCenterLayer, topMargin, kBannerMargin, 0, 0);
+    df_layer_surface_set_size(m_controlCenterLayer, width, height);
+    df_layer_surface_set_exclusive_zone(m_controlCenterLayer, -1);
+    df_layer_surface_set_keyboard_interaction(
+        m_controlCenterLayer, DF_LAYER_SURFACE_KEYBOARD_INTERACTION_ON_DEMAND);
+    // Everything passes through until the panel's own input region is applied
+    // with its first committed buffer.
+    wl_region *region = wl_compositor_create_region(m_compositor);
+    if (region) {
+        wl_surface_set_input_region(m_controlCenterSurface, region);
+        wl_region_destroy(region);
+    }
+    wl_surface_attach(m_controlCenterSurface, nullptr, 0, 0);
+    wl_surface_commit(m_controlCenterSurface);
+    if (wl_display_flush(m_display) < 0)
+        return fail(QStringLiteral("failed to flush the control-center surface creation"));
+    return true;
+}
+
+bool ShellProtocol::setControlCenterInputRegion(int width, int height)
+{
+    if (!m_controlCenterSurface || !m_compositor)
+        return false;
+    wl_region *region = wl_compositor_create_region(m_compositor);
+    if (!region)
+        return false;
+    if (width > 0 && height > 0)
+        wl_region_add(region, 0, 0, width, height);
+    // Applied with the next buffer commit (`commitControlCenterImage`).
+    wl_surface_set_input_region(m_controlCenterSurface, region);
+    wl_region_destroy(region);
+    return true;
+}
+
+bool ShellProtocol::commitControlCenterImage(const QImage &image)
+{
+    if (!m_controlCenterSurface)
+        return false;
+    if (!commitTo(m_controlCenterSurface, image))
+        return false;
+    m_controlCenterMapped = true;
+    return true;
+}
+
+bool ShellProtocol::hideControlCenter()
+{
+    if (!m_controlCenterSurface || !m_controlCenterLayer)
+        return false;
+    if (!m_controlCenterMapped)
+        return true;
+    wl_surface_attach(m_controlCenterSurface, nullptr, 0, 0);
+    wl_surface_commit(m_controlCenterSurface);
+    m_controlCenterMapped = false;
+    if (m_display)
+        wl_display_flush(m_display);
+    return true;
+}
+
 void ShellProtocol::activateWorkspace(int index)
 {
     if (!m_display)
@@ -980,14 +1059,15 @@ void ShellProtocol::applyWallpaper()
     wl_display_flush(m_display);
 }
 
-void ShellProtocol::setDisplayPolicy(double scale, uint32_t transform)
+void ShellProtocol::setDisplayPolicy(double scale, uint32_t transform, double brightness)
 {
-    // T-09.5: remember the selection and push it to the announced outputs.
-    // When no output is known yet, `onManagerDone`/`onManagerOutput` applies it
-    // after the replay.
+    // T-09.5/T-11.3a: remember the selection and push it to the announced
+    // outputs. When no output is known yet, `onManagerDone`/`onManagerOutput`
+    // applies it after the replay.
     m_displayKnown = true;
     m_displayScale = scale;
     m_displayTransform = transform;
+    m_displayBrightness = brightness;
     applyDisplayPolicy();
 }
 
@@ -998,10 +1078,11 @@ void ShellProtocol::applyDisplayPolicy()
     // The shell is the forwarder; the compositor is the applier (ADR 0034).
     // Wave 1 has no per-display selection, so the policy reaches every output;
     // per-output targeting is a T-16 item. `wl_fixed_from_double` is the wire
-    // form of `df_output.set_scale`.
+    // form of `df_output.set_scale` / `set_brightness`.
     for (df_output *output : std::as_const(m_outputs)) {
         df_output_set_scale(output, wl_fixed_from_double(m_displayScale));
         df_output_set_transform(output, m_displayTransform);
+        df_output_set_brightness(output, wl_fixed_from_double(m_displayBrightness));
     }
     wl_display_flush(m_display);
 }
@@ -1033,6 +1114,10 @@ void ShellProtocol::teardown()
         df_layer_surface_destroy(m_switcherLayer);
     if (m_switcherSurface)
         wl_surface_destroy(m_switcherSurface);
+    if (m_controlCenterLayer)
+        df_layer_surface_destroy(m_controlCenterLayer);
+    if (m_controlCenterSurface)
+        wl_surface_destroy(m_controlCenterSurface);
     if (m_bannerLayer)
         df_layer_surface_destroy(m_bannerLayer);
     if (m_bannerSurface)
@@ -1106,7 +1191,12 @@ void ShellProtocol::teardown()
     m_overviewMapped = false;
     m_pointerOnOverview = false;
     m_pointerOnBanner = false;
+    m_pointerOnControlCenter = false;
     m_keyboardOnOverview = false;
+    m_keyboardOnControlCenter = false;
+    m_controlCenterLayer = nullptr;
+    m_controlCenterSurface = nullptr;
+    m_controlCenterMapped = false;
     m_switcherLayer = nullptr;
     m_switcherSurface = nullptr;
     m_switcherMapped = false;
@@ -1256,6 +1346,15 @@ void ShellProtocol::onLayerClosed(void *data, df_layer_surface *)
 {
     auto *self = static_cast<ShellProtocol *>(data);
     emit self->surfaceClosed();
+}
+
+void ShellProtocol::onControlCenterConfigure(void *data, df_layer_surface *, uint32_t serial,
+                                             int32_t width, int32_t height)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    if (self->m_controlCenterLayer)
+        df_layer_surface_ack_configure(self->m_controlCenterLayer, serial);
+    emit self->controlCenterConfigured(width, height, serial);
 }
 
 // --- wl_seat / wl_pointer / wl_keyboard (input bridge) ----------------------
@@ -1493,10 +1592,18 @@ void ShellProtocol::onPointerEnter(void *data, wl_pointer *, uint32_t, wl_surfac
         self->m_dockPopupSurface && surface == self->m_dockPopupSurface;
     self->m_pointerOnDock = self->m_dockSurface && surface == self->m_dockSurface;
     self->m_pointerOnBanner = self->m_bannerSurface && surface == self->m_bannerSurface;
+    self->m_pointerOnControlCenter =
+        self->m_controlCenterSurface && surface == self->m_controlCenterSurface;
     self->m_pointerOnOverview =
         self->m_overviewSurface && surface == self->m_overviewSurface;
     self->m_pointerX = wl_fixed_to_double(x) + (self->m_pointerOnPopup ? self->m_popupX : 0);
     self->m_pointerY = wl_fixed_to_double(y) + (self->m_pointerOnPopup ? self->m_popupY : 0);
+    if (self->m_pointerOnControlCenter) {
+        self->m_pointerX = wl_fixed_to_double(x);
+        self->m_pointerY = wl_fixed_to_double(y);
+        emit self->controlCenterPointerMoved(self->m_pointerX, self->m_pointerY);
+        return;
+    }
     if (self->m_pointerOnOverview) {
         self->m_pointerX = wl_fixed_to_double(x);
         self->m_pointerY = wl_fixed_to_double(y);
@@ -1529,15 +1636,19 @@ void ShellProtocol::onPointerLeave(void *data, wl_pointer *, uint32_t, wl_surfac
     auto *self = static_cast<ShellProtocol *>(data);
     const bool wasOverview = self->m_pointerOnOverview;
     const bool wasBanner = self->m_pointerOnBanner;
+    const bool wasControlCenter = self->m_pointerOnControlCenter;
     const bool wasDockPopup = self->m_pointerOnDockPopup;
     const bool wasDock = self->m_pointerOnDock;
     self->m_pointerOnPopup = false;
     self->m_pointerOnDockPopup = false;
     self->m_pointerOnDock = false;
     self->m_pointerOnBanner = false;
+    self->m_pointerOnControlCenter = false;
     self->m_pointerOnOverview = false;
     if (wasOverview)
         emit self->overviewPointerLeft();
+    else if (wasControlCenter)
+        emit self->controlCenterPointerLeft();
     else if (wasBanner)
         emit self->bannerPointerLeft();
     else if (wasDockPopup)
@@ -1554,6 +1665,12 @@ void ShellProtocol::onPointerMotion(void *data, wl_pointer *, uint32_t, wl_fixed
     auto *self = static_cast<ShellProtocol *>(data);
     self->m_pointerX = wl_fixed_to_double(x) + (self->m_pointerOnPopup ? self->m_popupX : 0);
     self->m_pointerY = wl_fixed_to_double(y) + (self->m_pointerOnPopup ? self->m_popupY : 0);
+    if (self->m_pointerOnControlCenter) {
+        self->m_pointerX = wl_fixed_to_double(x);
+        self->m_pointerY = wl_fixed_to_double(y);
+        emit self->controlCenterPointerMoved(self->m_pointerX, self->m_pointerY);
+        return;
+    }
     if (self->m_pointerOnOverview) {
         self->m_pointerX = wl_fixed_to_double(x);
         self->m_pointerY = wl_fixed_to_double(y);
@@ -1585,6 +1702,11 @@ void ShellProtocol::onPointerButton(void *data, wl_pointer *, uint32_t, uint32_t
                                     uint32_t state)
 {
     auto *self = static_cast<ShellProtocol *>(data);
+    if (self->m_pointerOnControlCenter) {
+        emit self->controlCenterPointerButton(self->m_pointerX, self->m_pointerY, button,
+                                              state == WL_POINTER_BUTTON_STATE_PRESSED);
+        return;
+    }
     if (self->m_pointerOnOverview) {
         emit self->overviewPointerButton(self->m_pointerX, self->m_pointerY, button,
                                          state == WL_POINTER_BUTTON_STATE_PRESSED);
@@ -1626,11 +1748,15 @@ void ShellProtocol::onKeyboardEnter(void *data, wl_keyboard *, uint32_t, wl_surf
     self->m_keyboardOnDock = self->m_dockSurface && surface == self->m_dockSurface;
     self->m_keyboardOnOverview =
         self->m_overviewSurface && surface == self->m_overviewSurface;
+    self->m_keyboardOnControlCenter =
+        self->m_controlCenterSurface && surface == self->m_controlCenterSurface;
     emit self->keyboardFocused(true);
     if (self->m_keyboardOnDock)
         emit self->dockKeyboardFocused(true);
     if (self->m_keyboardOnOverview)
         emit self->overviewKeyboardFocused(true);
+    if (self->m_keyboardOnControlCenter)
+        emit self->controlCenterKeyboardFocused(true);
 }
 
 void ShellProtocol::onKeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surface *surface)
@@ -1640,13 +1766,18 @@ void ShellProtocol::onKeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surf
             || (self->m_dockSurface && surface == self->m_dockSurface);
     const bool wasOverview = self->m_keyboardOnOverview
             || (self->m_overviewSurface && surface == self->m_overviewSurface);
+    const bool wasControlCenter = self->m_keyboardOnControlCenter
+            || (self->m_controlCenterSurface && surface == self->m_controlCenterSurface);
     self->m_keyboardOnDock = false;
     self->m_keyboardOnOverview = false;
+    self->m_keyboardOnControlCenter = false;
     emit self->keyboardFocused(false);
     if (wasDock)
         emit self->dockKeyboardFocused(false);
     if (wasOverview)
         emit self->overviewKeyboardFocused(false);
+    if (wasControlCenter)
+        emit self->controlCenterKeyboardFocused(false);
 }
 
 void ShellProtocol::onKeyboardKey(void *data, wl_keyboard *, uint32_t, uint32_t, uint32_t key,
@@ -1667,9 +1798,9 @@ void ShellProtocol::onManagerOutput(void *data, df_toplevel_manager *, df_output
 {
     auto *self = static_cast<ShellProtocol *>(data);
     static const df_output_listener listener = {
-        onOutputName,       onOutputGeometry, onOutputMode,       onOutputScale,
-        onOutputTransform,  onOutputVrr,      onOutputNightLight, onOutputReservedZone,
-        onOutputDone,       onOutputRemoved,
+        onOutputName,       onOutputGeometry, onOutputMode,        onOutputScale,
+        onOutputTransform,  onOutputVrr,      onOutputNightLight,  onOutputReservedZone,
+        onOutputDone,       onOutputRemoved,  onOutputBrightness,
     };
     df_output_add_listener(id, &listener, self);
     // Remember the output so a display policy can reach it (T-09.5). A policy
@@ -1952,6 +2083,7 @@ void ShellProtocol::onOutputScale(void *, df_output *, int32_t) {}
 void ShellProtocol::onOutputTransform(void *, df_output *, uint32_t) {}
 void ShellProtocol::onOutputVrr(void *, df_output *, uint32_t) {}
 void ShellProtocol::onOutputNightLight(void *, df_output *, uint32_t, uint32_t) {}
+void ShellProtocol::onOutputBrightness(void *, df_output *, wl_fixed_t) {}
 void ShellProtocol::onOutputReservedZone(void *, df_output *, uint32_t edge, uint32_t thickness)
 {
     fprintf(stderr, "dragonfruit-shell: output reserved zone edge=%u thickness=%u\n", edge,

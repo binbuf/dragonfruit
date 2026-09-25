@@ -28,7 +28,8 @@ Item {
                                           "downloads", "music", "movies",
                                           "trash", "computer", "volume",
                                           "folder", "file", "icon-view",
-                                          "list-view"]
+                                          "list-view", "wifi", "bluetooth",
+                                          "brightness"]
     readonly property bool painted: root.paintedGlyphs.indexOf(root.name) >= 0
 
     readonly property var bars: {
@@ -198,6 +199,49 @@ Item {
                 ctx.moveTo(s * 0.34, s * 0.86);
                 ctx.lineTo(s * 0.66, s * 0.86);
                 ctx.stroke();
+                break;
+            }
+            case "wifi": {
+                // Three arcs opening downward with a small dot at the origin.
+                var cy = s * 0.82;
+                var radii = [s * 0.18, s * 0.34, s * 0.50];
+                for (var r = 0; r < radii.length; ++r) {
+                    ctx.beginPath();
+                    ctx.arc(c, cy, radii[r], Math.PI * 1.15, Math.PI * 1.85);
+                    ctx.stroke();
+                }
+                ctx.beginPath();
+                ctx.arc(c, cy, root.stroke * 0.8, 0, Math.PI * 2);
+                ctx.fill();
+                break;
+            }
+            case "bluetooth": {
+                // A vertical spine with the two-triangle bowtie.
+                ctx.beginPath();
+                ctx.moveTo(c, s * 0.12);
+                ctx.lineTo(c, s * 0.88);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(c, s * 0.12);
+                ctx.lineTo(s * 0.70, s * 0.33);
+                ctx.lineTo(c, s * 0.50);
+                ctx.lineTo(s * 0.70, s * 0.67);
+                ctx.lineTo(c, s * 0.88);
+                ctx.stroke();
+                break;
+            }
+            case "brightness": {
+                // A sun: a center disc with eight rays.
+                ctx.beginPath();
+                ctx.arc(c, c, s * 0.22, 0, Math.PI * 2);
+                ctx.stroke();
+                for (var k = 0; k < 8; ++k) {
+                    var a = k * Math.PI / 4;
+                    ctx.beginPath();
+                    ctx.moveTo(c + Math.cos(a) * s * 0.32, c + Math.sin(a) * s * 0.32);
+                    ctx.lineTo(c + Math.cos(a) * s * 0.44, c + Math.sin(a) * s * 0.44);
+                    ctx.stroke();
+                }
                 break;
             }
             case "home": {

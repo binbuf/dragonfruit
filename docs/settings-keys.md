@@ -43,6 +43,7 @@ freezes the v1 key set.
 | `wallpaper.showOnAllSpaces` | b | true | | apps/settings | shell/wallpaper forwarder, compositor/workspace model | Apply the selection to every Space, or only the active one. |
 | `display.scale` | d | 1.0 | 0.5–2.0 | apps/settings | shell/display forwarder, compositor/output | Output scale / scaled-resolution factor; 1.0 is the native mode. |
 | `display.rotation` | s | `normal` | `normal`/`90`/`180`/`270` | apps/settings | shell/display forwarder, compositor/output | Output rotation as clock-wise degrees. |
+| `display.brightness` | d | 1.0 | 0.0–1.0 | shell/control-center | shell/display forwarder, compositor/output | Output brightness level; 1.0 is full brightness. |
 | `accessibility.reduceMotion` | b | false | | settingsd | shell/design-system Theme, compositor/window motion | Global animation policy: collapse motion to instant transitions. |
 | `input.repeatDelay` | x | 200 | 0–5000 ms | settingsd | compositor/input keyboard repeat | Milliseconds before a held key begins repeating. |
 | `input.repeatRate` | x | 25 | 0–200 Hz | settingsd | compositor/input keyboard repeat | Key repeat rate in keys per second; 0 disables repeat. |
@@ -57,7 +58,7 @@ freezes the v1 key set.
 | `apps/settings/design-system Theme` (`apps/settings/SettingsShell.qml` bindings, T-09.2) | `appearance.colorScheme`, `appearance.accent`, `accessibility.reduceMotion` (the app is a separate process, so it mirrors the same keys onto its own `Theme`) |
 | compositor motion/input (over `df_toplevel_manager` v5, ADR [0034](design/adr/0034-compositor-policy-via-shell-bridge.md)) | `dock.titlebarDoubleClick`, `dock.minimizedAnimation`, `gestures.*`, `accessibility.reduceMotion`, `appearance.colorScheme`, `input.repeatDelay`, `input.repeatRate` |
 | shell/wallpaper forwarder (`shell/src/wallpaperpolicy.*`, `shell/src/shellcontroller.cpp`) | `wallpaper.source`, `wallpaper.fit`, `wallpaper.showOnAllSpaces` — forwarded to the compositor as `df_workspace.set_wallpaper` |
-| shell/display forwarder (`shell/src/displayspolicy.*`, `shell/src/shellcontroller.cpp`) | `display.scale`, `display.rotation` — forwarded to the compositor as `df_output.set_scale` / `df_output.set_transform` |
+| shell/display forwarder (`shell/src/displayspolicy.*`, `shell/src/shellcontroller.cpp`) | `display.scale`, `display.rotation`, `display.brightness` — forwarded to the compositor as `df_output.set_scale` / `df_output.set_transform` / `df_output.set_brightness` |
 | compositor workspace model | `workspaces.count` (no live owner yet; follow-up) |
 
 `dock.minimizeIntoTileIcon` is Dock entry visibility, not a compositor
