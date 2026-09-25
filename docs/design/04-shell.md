@@ -234,6 +234,16 @@ keeps the T-11.1a `DoNotDisturb`/`SetDoNotDisturb` pair as a compat mapping.
 The menu-bar reflection and Control Center tiles are T-11.2b/T-11.3b. See
 [adr/0058](adr/0058-focus-dnd-policy-semantics.md).
 
+**T-11.2b status.** The menu bar reflects the policy. The shell reads
+`FocusPolicy()` through `NotificationClient` (re-read on `Changed`, coded in
+`shell/src/notificationclient.{h,cpp}`) and decodes it in `NotificationModel`;
+`shell/src/focusstatus.{h,cpp}` maps it to the `focus` status item. The item
+hides in `off`, shows the crescent in `focus`, and shows it *selected*
+(accent) in `dnd`; the suppressed batch count is the label when non-zero and
+always part of the accessible name. The existing Dock launch-failure
+notification (T-11.1b) remains the failure path. See
+[adr/0059](adr/0059-menu-bar-focus-reflection.md).
+
 ## Relationship to compositor and services
 
 - Compositor state (windows, workspaces, outputs) arrives via private

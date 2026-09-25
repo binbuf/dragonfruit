@@ -796,6 +796,40 @@ Item {
             }
         }
 
+        // -- Focus/DND reflection (T-11.2b) --------------------------------
+
+        function test_focus_status_item_reflects_policy() {
+            // The controller feeds this map from `focusStatusItem`; here we
+            // assert the bar renders the three policy states.
+            var bar = make(menuBarComponent, {
+                width: 800,
+                statusItems: [ { id: "focus", icon: "focus", accessibleName: "Focus",
+                                 available: true, enabled: true, selected: false } ]
+            });
+            var focus = bar.statusItemFor("focus");
+            compare(focus.visible, true);
+            compare(focus.selected, false);
+
+            // DND is selected and carries the suppressed batch count.
+            bar.statusItems = [ { id: "focus", icon: "focus", label: "4",
+                                  accessibleName: "Do Not Disturb (4 notifications silenced)",
+                                  available: true, enabled: true, selected: true } ];
+            waitForRendering(stage);
+            focus = bar.statusItemFor("focus");
+            compare(focus.visible, true);
+            compare(focus.selected, true);
+            compare(focus.label, "4");
+            verify(focus.accessibleName.indexOf("Do Not Disturb") === 0);
+
+            // Off hides the item and gives it no width.
+            bar.statusItems = [ { id: "focus", icon: "focus", accessibleName: "Focus",
+                                  available: false } ];
+            waitForRendering(stage);
+            focus = bar.statusItemFor("focus");
+            compare(focus.visible, false);
+            compare(focus.width, 0);
+        }
+
         // -- System menu brand mark (T-09) ----------------------------------
 
         function test_logo_renders_pixels_and_tints() {

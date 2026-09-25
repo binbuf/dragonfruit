@@ -134,6 +134,9 @@ private slots:
     void onNotificationAvailable(bool available);
     void onNotificationBanners(const QByteArray &json);
     void onNotificationHistory(const QByteArray &json);
+    // The Focus/DND policy view changed (T-11.2b): decode it and rebuild the
+    // menu-bar Focus item.
+    void onNotificationFocusPolicy(const QByteArray &json);
     void onBannerConfigured(int width, int height, quint32 serial);
     // Banner interaction (T-11.1b): an action button, a body click, and the
     // banner surface's pointer stream.

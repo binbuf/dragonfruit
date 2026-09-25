@@ -8,6 +8,7 @@
 #include "dockprojection.h"
 #include "downloadsmonitor.h"
 #include "filestarget.h"
+#include "focusstatus.h"
 #include "framecommitgate.h"
 #include "launchfailure.h"
 #include "notificationclient.h"
@@ -1189,6 +1190,80 @@ private slots:
         const QJsonArray cleared =
             QJsonDocument::fromJson(banners.takeFirst().at(0).toByteArray()).array();
         QVERIFY(cleared.isEmpty());
+    }
+
+    // -- Focus/DND menu-bar reflection (T-11.2b) --------------------------
+
+    void focusStatusItemHidesForOffAndShowsTheCrescentOtherwise()
+    {
+        const QVariantMap off = focusStatusItem(
+            QVariantMap{ { QStringLiteral("mode"), QStringLiteral("off") } });
+        QCOMPARE(off.value(QStringLiteral("id")).toString(), QStringLiteral("focus"));
+        QCOMPARE(off.value(QStringLiteral("available")).toBool(), false);
+        QCOMPARE(off.value(QStringLiteral("selected")).toBool(), false);
+
+        // An absent/unknown policy is the same hidden default.
+        QCOMPARE(focusStatusItem({}).value(QStringLiteral("available")).toBool(), false);
+
+        const QVariantMap focus = focusStatusItem(
+            QVariantMap{ { QStringLiteral("mode"), QStringLiteral("focus") } });
+        QCOMPARE(focus.value(QStringLiteral("available")).toBool(), true);
+        QCOMPARE(focus.value(QStringLiteral("selected")).toBool(), false);
+        QCOMPARE(focus.value(QStringLiteral("icon")).toString(), QStringLiteral("focus"));
+
+        const QVariantMap dnd = focusStatusItem(
+            QVariantMap{ { QStringLiteral("mode"), QStringLiteral("dnd") } });
+        QCOMPARE(dnd.value(QStringLiteral("available")).toBool(), true);
+        QCOMPARE(dnd.value(QStringLiteral("selected")).toBool(), true);
+        QCOMPARE(dnd.value(QStringLiteral("accessibleName")).toString(),
+                 QStringLiteral("Do Not Disturb"));
+    }
+
+    void theFocusStatusItemSurfacesTheSuppressedBatchCount()
+    {
+        const QVariantMap item = focusStatusItem(
+            QVariantMap{ { QStringLiteral("mode"), QStringLiteral("dnd") },
+                         { QStringLiteral("batchedCount"), 4 } });
+        QCOMPARE(item.value(QStringLiteral("label")).toString(), QStringLiteral("4"));
+        QVERIFY(item.value(QStringLiteral("accessibleName")).toString().contains(
+            QStringLiteral("4")));
+
+        const QVariantMap quiet = focusStatusItem(
+            QVariantMap{ { QStringLiteral("mode"), QStringLiteral("focus") },
+                         { QStringLiteral("batchedCount"), 0 } });
+        QCOMPARE(quiet.value(QStringLiteral("label")).toString(), QString());
+    }
+
+    void theMockClientFocusModeRoundTripsThroughThePolicySignal()
+    {
+        MockNotificationClient client(nullptr, /*seedFixture=*/false);
+        QSignalSpy policy(&client, &NotificationClient::focusPolicyChanged);
+        client.refresh();
+        QCOMPARE(policy.count(), 1);
+        QCOMPARE(QJsonDocument::fromJson(policy.takeFirst().at(0).toByteArray())
+                     .object()
+                     .value(QStringLiteral("mode"))
+                     .toString(),
+                 QStringLiteral("off"));
+
+        client.setFocusMode(QStringLiteral("dnd"));
+        QCOMPARE(policy.count(), 1);
+        const QJsonObject dnd = QJsonDocument::fromJson(policy.takeFirst().at(0).toByteArray())
+                                     .object();
+        QCOMPARE(dnd.value(QStringLiteral("mode")).toString(), QStringLiteral("dnd"));
+
+        // Unknown names are rejected and leave the mode unchanged.
+        client.setFocusMode(QStringLiteral("nonsense"));
+        QCOMPARE(policy.count(), 0);
+
+        // The T-11.1a compat bool maps onto the three-way policy.
+        client.setDoNotDisturb(false);
+        QCOMPARE(policy.count(), 1);
+        QCOMPARE(QJsonDocument::fromJson(policy.takeFirst().at(0).toByteArray())
+                     .object()
+                     .value(QStringLiteral("mode"))
+                     .toString(),
+                 QStringLiteral("off"));
     }
 };
 

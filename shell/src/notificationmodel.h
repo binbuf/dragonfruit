@@ -30,6 +30,11 @@ public:
     // T-11.1a; the older ones stay in `banners()` and the history.
     QVariantMap banner() const;
 
+    // The Focus/DND policy view (T-11.2a: `mode`, `allowList`,
+    // `batchedCount`). Empty when the service is absent or the payload was
+    // malformed, which the menu bar renders as "no Focus item".
+    QVariantMap focusPolicy() const { return m_focusPolicy; }
+
     // Decode a JSON array payload. Returns an empty list on a parse failure,
     // with `error` set when non-null.
     static QVariantList parseList(const QByteArray &json, QString *error = nullptr);
@@ -39,6 +44,10 @@ public slots:
     // clears the view (the safe "nothing to show" default).
     void applyBannersJson(const QByteArray &json);
     void applyHistoryJson(const QByteArray &json);
+    // Apply the Focus/DND policy view. A missing/empty/malformed payload
+    // clears the policy, so the menu bar hides the Focus item rather than
+    // showing stale state (T-11.2b).
+    void applyFocusPolicyJson(const QByteArray &json);
 
 signals:
     void changed();
@@ -46,4 +55,5 @@ signals:
 private:
     QVariantList m_banners;
     QVariantList m_history;
+    QVariantMap m_focusPolicy;
 };

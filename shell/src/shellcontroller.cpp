@@ -34,6 +34,7 @@
 #include "dockmodel.h"
 #include "downloadsmonitor.h"
 #include "filestarget.h"
+#include "focusstatus.h"
 #include "launchfailure.h"
 #include "notificationclient.h"
 #include "notificationmodel.h"
@@ -601,10 +602,17 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // (headless/capture only). A banner maps the top-right `notification`
     // overlay; an empty queue unmaps it.
     m_notificationModel = new NotificationModel(this);
-    if (qEnvironmentVariableIsSet("DF_NOTIFY_FIXTURE"))
+    if (qEnvironmentVariableIsSet("DF_NOTIFY_FIXTURE")) {
         m_notificationClient = new MockNotificationClient(this);
-    else
+        // Capture/demo seam (T-11.2b): start the fixture in a Focus/DND mode
+        // so the bar reflection can be captured deterministically. Never set
+        // in a normal session.
+        const QString focusFixture = qEnvironmentVariable("DF_FOCUS_FIXTURE");
+        if (!focusFixture.isEmpty())
+            m_notificationClient->setFocusMode(focusFixture);
+    } else {
         m_notificationClient = new DbusNotificationClient(this);
+    }
     connect(m_notificationModel, &NotificationModel::changed, this, [this]() {
         if (m_notificationModel->hasBanner())
             showCurrentBanner();
@@ -617,6 +625,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             &ShellController::onNotificationHistory);
     connect(m_notificationClient, &NotificationClient::availableChanged, this,
             &ShellController::onNotificationAvailable);
+    connect(m_notificationClient, &NotificationClient::focusPolicyChanged, this,
+            &ShellController::onNotificationFocusPolicy);
 
     m_bannerWindow = new QQuickWindow;
     m_bannerWindow->setColor(Qt::transparent);
@@ -649,6 +659,9 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     connect(m_protocol, &ShellProtocol::bannerPointerLeft, this,
             &ShellController::onBannerPointerLeft);
     m_notificationClient->refresh();
+    // The Focus item exists now that the notification model is wired; the
+    // first apply above ran before it.
+    applyStatusItems();
 
     if (!m_protocol->createMenuBarSurface(barHeight, barHeight))
         return false;
@@ -756,8 +769,9 @@ void ShellController::applyStatusItems()
                         wifi.value(QStringLiteral("visible")).toBool(), 0.8,
                         wifi.value(QStringLiteral("enabled")).toBool());
 
-    // Bluetooth, Focus, and Accessibility are later tasks (T-15/T-11); they
-    // stay hidden until their adapters land.
+    // Bluetooth and Accessibility are later tasks (T-15/T-11); they stay
+    // hidden until their adapters land. Focus/DND is live now (T-11.2b): the
+    // item tracks the notification service's policy, hidden in `off`.
     items << statusItem(QStringLiteral("bluetooth"), QStringLiteral("bluetooth"), QString(),
                         tr("Bluetooth"), false);
 
@@ -781,8 +795,8 @@ void ShellController::applyStatusItems()
                         battery.value(QStringLiteral("level")).toReal(),
                         battery.value(QStringLiteral("enabled")).toBool());
 
-    items << statusItem(QStringLiteral("focus"), QStringLiteral("focus"), QString(),
-                        tr("Focus"), false);
+    items << focusStatusItem(m_notificationModel ? m_notificationModel->focusPolicy()
+                                                 : QVariantMap());
     items << statusItem(QStringLiteral("accessibility"), QStringLiteral("accessibility"),
                         QString(), tr("Accessibility"), false);
     m_item->setProperty("statusItems", items);
@@ -1868,8 +1882,8 @@ void ShellController::failDockLaunch(const QString &desktopId, const QString &re
 
 void ShellController::scheduleLaunchStateClear(const QString &desktopId)
 {
-    // A one-shot notice: the failed mark is transient (T-25 owns the real
-    // notification surface).
+    // The transient Dock mark is the only "badge" left; the durable record
+    // is the notification raised in `failDockLaunch` (T-11.1b).
     QTimer::singleShot(4000, this, [this, desktopId]() {
         if (m_launchStates.value(desktopId) == QLatin1String("failed")) {
             m_launchStates.remove(desktopId);
@@ -2221,9 +2235,11 @@ void ShellController::onNotificationAvailable(bool available)
     if (available) {
         m_notificationClient->refresh();
     } else {
-        // The service went away: clear both views and unmap the banner.
+        // The service went away: clear all views and unmap the banner. The
+        // Focus item hides with the empty policy.
         m_notificationModel->applyBannersJson(QByteArrayLiteral("[]"));
         m_notificationModel->applyHistoryJson(QByteArrayLiteral("[]"));
+        m_notificationModel->applyFocusPolicyJson(QByteArrayLiteral("{}"));
     }
 }
 
@@ -2237,6 +2253,14 @@ void ShellController::onNotificationHistory(const QByteArray &json)
 {
     if (m_notificationModel)
         m_notificationModel->applyHistoryJson(json);
+}
+
+void ShellController::onNotificationFocusPolicy(const QByteArray &json)
+{
+    if (!m_notificationModel)
+        return;
+    m_notificationModel->applyFocusPolicyJson(json);
+    applyStatusItems();
 }
 
 void ShellController::showCurrentBanner()
