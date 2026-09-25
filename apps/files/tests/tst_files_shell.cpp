@@ -34,5 +34,28 @@ int main(int argc, char **argv)
     writeFile(root + QStringLiteral("/gamma.png"), QByteArray("png"));
     qputenv("DF_FILES_VIEW_FIXTURE", root.toUtf8());
 
+    // A separate tree for the T-10.4c optimistic/mutation tests, so a rename
+    // or a move to Trash never disturbs the read-only view fixture above.
+    QTemporaryDir mutations(QDir::tempPath() + QStringLiteral("/df-files-t104c-XXXXXX"));
+    if (!mutations.isValid())
+        return 2;
+    const QString mutationRoot = mutations.path();
+    QDir(mutationRoot).mkpath(QStringLiteral("Rename"));
+    QDir(mutationRoot).mkpath(QStringLiteral("Trash"));
+    QDir(mutationRoot).mkpath(QStringLiteral("New"));
+    QDir(mutationRoot).mkpath(QStringLiteral("Revert"));
+    writeFile(mutationRoot + QStringLiteral("/Rename/one.txt"), QByteArray("one"));
+    writeFile(mutationRoot + QStringLiteral("/Trash/one.txt"), QByteArray("one"));
+    writeFile(mutationRoot + QStringLiteral("/Revert/a.txt"), QByteArray("a"));
+    writeFile(mutationRoot + QStringLiteral("/Revert/b.txt"), QByteArray("b"));
+    qputenv("DF_FILES_MUTATION_FIXTURE", mutationRoot.toUtf8());
+
+    // Keep the trash backend's store inside the test temp dir, never the real
+    // user trash. The Rust worker reads this at spawn.
+    QTemporaryDir dataHome(QDir::tempPath() + QStringLiteral("/df-files-t104c-data-XXXXXX"));
+    if (!dataHome.isValid())
+        return 2;
+    qputenv("XDG_DATA_HOME", dataHome.path().toUtf8());
+
     return quick_test_main(argc, argv, "tst_files_shell", QUICK_TEST_SOURCE_DIR);
 }

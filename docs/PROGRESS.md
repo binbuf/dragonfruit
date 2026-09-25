@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(27 earlier sections omitted)_
+_(28 earlier sections omitted)_
 
-- **T25 — T-05.3 Drag a live representation between Spaces**: **State: done.** Pressing on a live Mission Control representation and dragging; **`compositor/src/overview/grid.rs`** — `GridDrag { window, start, current }`
 - **T26 — T-05.4 Image wallpaper and per-Space slide**: **State: done.** A Space's wallpaper can be an image (`source` + `fit`) decoded; **`compositor/src/wallpaper.rs`** (new) — `sample_wallpaper` (pure
 - **T27 — T-05.5 Desktop Reveal**: **State: done.** Ctrl+Down routes `DesktopReveal` through the one overview; **`compositor/src/overview/reveal.rs`** (new) — `escape_rect` (the off-screen
 - **T28 — T-05.6 Overview frame budget and capture**: **State: done.** The overview gesture now has its own **gesture-scoped** 60 Hz; **`compositor/src/instrument.rs`** — `GestureBudgetTrace`: render-duration
@@ -45,6 +44,7 @@ _(27 earlier sections omitted)_
 - **T61 — T-10.3b files-core folder watcher**: **State: done.** `files-core` now has the one change monitor: one watch per; **`services/files-core/src/watch.rs`** (new) — the watch seam and fallback:
 - **T62 — T-10.4a Files window, toolbar, and sidebar**: **State: done.** The Files window, toolbar, and sidebar are real. `apps/files`; **`apps/files/FilesBridge.{h,cpp}`** — `QML_SINGLETON`, `QML_NAMED_ELEMENT(Files)`:
 - **T63 — T-10.4b Files list and icon views**: **State: done.** The Files icon and list views render the `files-core` listing.; **`services/files-core/src/ffi.rs`** (new) — the C ABI: `df_files_begin`,
+- **T64 — T-10.4c Files context menus, multi-select, optimistic UI**: **State: done.** Context menus, multi-select, and optimistic; **`services/files-core/src/ffi.rs`** — `FfiSession` now wraps
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3250,6 +3250,20 @@ Gotchas for later tasks:
   `DF_FILES_START_VIEW` because nested synthetic pointer clicks reach the
   compositor but not a Qt client surface; a nested-client click driver is
   future capture-harness work.
+- **T-10.4c follow-ups.** (a) Rubber-band (marquee) selection in icon view is
+  not implemented; modifier clicks and Cmd+A are. (b) `Open` is enabled for
+  folders only; file opening, Open With, Get Info, Copy, Duplicate, Compress,
+  and Make Alias are deferred, so an item menu shows only Open / Rename /
+  Move to Trash. (c) A confirmed trash is not undoable (Put Back is a later
+  task); the row simply disappears. (d) The operation worker stays
+  synchronous per call; a batch is a loop of single-item optimistics, so a
+  large multi-select trashes one worker round-trip per row — fold into one
+  batch in T-10.5. (e) The inline rename editor commits on Return and cancels
+  on Escape but does not pre-select the base name sans extension (Finder
+  behaviour) or validate illegal names before the worker reports the error.
+  (f) Multi-select uses the QML `FilesShell.selectedIds` set; the Rust
+  `Selection` is unused by the app (fine for one window, revisit for the
+  portal chooser).
 - **T-09.3 follow-ups.** (a) `apps/settings/AppearancePane.qml` (T50) places
   its controls as plain children of `SettingsRow`; `SettingsRow` has no
   `default` property, so they go to `Item.data` and can overlap the label.
@@ -4629,3 +4643,108 @@ Gotchas for later tasks:
 - **Nested synthetic pointer clicks reach the compositor (titlebar, shell
   layer) but not a Qt client surface.** Use `DF_FILES_START_VIEW` for captures
   instead of clicking the toolbar.
+
+## T64 — T-10.4c Files context menus, multi-select, optimistic UI
+
+**State: done.** Context menus, multi-select, and optimistic
+rename/trash/new-folder are real. The `files-core` C ABI now carries the
+optimistic operations: the session owns an `OptimisticModel` plus one
+`files-core-ops` worker; `df_files_begin_*` paints synchronously and the
+worker's outcome is confirmed or reverted on the next poll. Selection is the
+shell's set of node ids, and the one `ContextMenu` follows the Finder rule.
+See ADR [0050](design/adr/0050-files-core-ffi-optimistic-ops.md).
+
+What landed:
+
+- **`services/files-core/src/ffi.rs`** — `FfiSession` now wraps
+  `OptimisticModel` (still a `DirectoryModel` underneath) and owns the op
+  worker. New ABI: `df_files_begin_rename(session, node_id, new_name)` →
+  op id, `df_files_begin_new_folder(session, parent_uri)`,
+  `df_files_begin_trash(session, node_id)`, `df_files_pending_ops(session)`,
+  `df_files_take_error(session)` + `df_files_string_free`. `df_files_poll`
+  drains op outcomes first (confirm via `retarget`+`confirm`, or `revert` +
+  record the message) and reports a drained outcome as a `BATCH` snapshot;
+  then it polls the listing. The session is no longer freed on completion.
+  `optimistic.rs` — `retarget` is now `pub(crate)`.
+- **`apps/files/ffi/files_core.h`** — the new functions, mirrored.
+- **`apps/files/FilesDirectoryModel.{h,cpp}`** — `Q_INVOKABLE rename(id,
+  name)`, `newFolder(parentUri)`, `trash(id)`; `pendingOps`, `lastError`
+  properties; `rowForNodeId`, `nodeIdAt`, `uriAt`, `isDirAt`, `allNodeIds`.
+  Each begin calls `repaint()` (synchronously resets from the snapshot) then
+  `ensurePolling()`. `poll()` keeps the timer while `pendingOps > 0` or the
+  listing is streaming, and **stops the timer without freeing the session**
+  once settled (this also fixes sort-after-load, which silently no-op'd
+  before because `stop()` freed the session on `DONE`). `stop()` (destroy /
+  navigation) frees the session and its worker.
+- **`apps/files/FilesShell.qml`** — `selectedIds` (multi), `anchorId`,
+  `renamingId`, `notice`; `selectNode(id, modifiers)` (Cmd toggles, Shift
+  ranges via `rangeTo`), `selectAll`, `clearSelection`, `beginRename`/
+  `commitRename`/`cancelRename`, `trashSelection`, `makeFolder`,
+  `nodeMenu`/`backgroundMenu`/`contextAction`, `openNodeMenu`/
+  `openBackgroundMenu`; keyboard Cmd+A, Shift+Cmd+N, Return (rename), Delete
+  (trash), Escape. One `ContextMenu` instance; a `Connections` shows
+  `directory.lastError` as a transient banner. Capture seams `startMenu` /
+  `startRename` / `startSelect` (from env) applied once the listing settles.
+- **`apps/files/FilesIconView.qml` / `FilesListView.qml`** — `selectedIds`
+  prop, context-menu signal (coordinates fixed: emitted in *view* coords via
+  `mapFromItem`), right-click, and an inline rename `TextInput`.
+- **`apps/files/FilesBridge.{h,cpp}`** — `mutationFixtureUri`
+  (`DF_FILES_MUTATION_FIXTURE`), `startMenu` (`DF_FILES_START_MENU` =
+  `item`|`background`), `startRename` (`DF_FILES_START_RENAME`), `startSelect`
+  (`DF_FILES_START_SELECT`).
+- **Tests** — Rust `ffi::tests`: rename commits, rename reverts on conflict
+  (with `lastError` taken once), new-folder commits and creates on disk, plus
+  the existing cases. QML: multi-select modifiers/range/Select All, item and
+  background menu models, real right-click opens the menu, capture seams,
+  optimistic rename immediate + revert, new-folder immediate, trash immediate.
+- **`apps/files/tests/tst_files_shell.cpp`** — materializes a second
+  `DF_FILES_MUTATION_FIXTURE` tree and points `XDG_DATA_HOME` at a temp dir so
+  the trash tests never touch the real user trash.
+- **Docs** — ADR 0050; `09-files.md` T-10.4c status paragraph.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `CARGO_NET_OFFLINE=true cargo test -p dragonfruit-files-core` — 128 pass
+  (60 unit incl. 6 ffi + 17 operations + 11 optimistic + 5 sorting + 6
+  streaming + 13 trash + 12 watcher + 4 doctests).
+- `make qml-test` — 32/32 ctest green; `tst_files_shell` 26 pass.
+- `make lint` — green (fmt/clippy/qmllint/tokens/desktop-name/capture-grab).
+- `make e2e` — exit 0.
+
+Live capture (`/tmp/opencode/t64-capture.sh <mode>`; modes
+`multiselect|context|background|rename`; driver `/tmp/opencode/t64-still.py`,
+fixture `/tmp/opencode/t64-fixture`, PNGs `/tmp/opencode/t64-files-*.png`).
+Raw vision observations on tight window crops: three rows highlighted
+(`Archive`, `Projects`, `budget.xlsx`); item menu reading `Open` /
+`Open in New Window` / `Rename Return` / `Move to Trash Delete`; background
+menu reading `New Folder Shift+Cmd+N` / `Select All Cmd+A`; inline editor with
+`Archive` on the first row. Vision is a supporting check.
+
+Gotchas for later tasks:
+
+- **The files-core session outlives the completed listing.** `stop()` frees
+  it (navigation/destroy); `poll()` only stops the timer. Do not reintroduce a
+  free-on-`DONE` path or sort/operations on a loaded folder break.
+- **One op worker per open location.** Navigation drops the session → drops
+  `op_tx` → the worker exits. No process, no daemon.
+- **Optimistic begin + later poll is the contract.** `rename`/`trash`/
+  `newFolder` repaint the model before returning; `pendingOps` tells the
+  facade to keep polling; `lastError` carries a snapped-back message (taken
+  once). Keep the timer alive while `pendingOps > 0`.
+- **The op worker uses the real `FreedesktopTrash`**, whose store comes from
+  `XDG_DATA_HOME`/`HOME` at worker spawn. Tests set `XDG_DATA_HOME` to a temp
+  dir; do the same for any test that trashes.
+- **Coordinate mapping:** a delegate's `mouse.x/y` is delegate-relative; map
+  with `view.mapFromItem(delegate, …)` before emitting, and the shell maps the
+  view point into the shell with `view.mapToItem(root, …)`.
+- **`ContextMenu` opens with an opacity animation.** In the nested demo an
+  idle client can leave it invisible; the capture driver sends a few
+  `motion-abs` events first to wake the frame loop. The headless test uses
+  `tryCompare(menu, "visible", true)` for the same reason.
+- **Synthetic pointer input still cannot hold a modifier or right-click a Qt
+  surface reliably.** The capture seams (`DF_FILES_START_MENU` /
+  `_START_RENAME` / `_START_SELECT`) exist for the live check; the real
+  gestures are covered headlessly.
+- **Still deferred (T-10.4c+):** rubber-band selection, file opening /
+  Open With, Get Info, Copy/Duplicate/Compress/Make Alias, the folder watcher,
+  and the search result set.

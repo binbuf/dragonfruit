@@ -2,18 +2,25 @@
 import QtQuick
 import Dragonfruit
 
-// The Files list view (T-10.4b): `Name` first, then Date Modified / Size /
-// Kind with sortable headers, over the files-core listing. Selection is the
-// node id the shell owns, so it survives the view switch. Disclosure
-// triangles, inline rename, and column resizing are T-10.4c.
+// The Files list view (T-10.4b/T-10.4c): `Name` first, then Date Modified /
+// Size / Kind with sortable headers, over the files-core listing. Selection is
+// the set of node ids the shell owns, so it survives the view switch
+// (T-10.4c multi-select); right-click opens the context menu; Return/`renamingId`
+// swaps the name for an inline editor.
 Item {
     id: root
 
     property var directory: null
     property real selectedId: 0
+    property var selectedIds: []
+    property real renamingId: 0
 
-    signal selected(real nodeId)
+    signal selected(real nodeId, int modifiers)
     signal activated(string uri, bool isDir)
+    signal contextRequested(real nodeId, string uri, bool isDir, real x, real y)
+    signal backgroundContextRequested(real x, real y)
+    signal renameSubmitted(real nodeId, string name)
+    signal renameCancelled()
 
     readonly property int rowHeight: 28
     readonly property int modifiedWidth: 170
@@ -23,6 +30,17 @@ Item {
     readonly property int nameWidth: Math.max(160, list.width
                                               - root.modifiedWidth - root.sizeWidth
                                               - root.kindWidth - 2 * root.gutter)
+
+    function isSelected(nodeId) {
+        return root.selectedIds.indexOf(nodeId) >= 0;
+    }
+
+    // Empty-space right-click under the table.
+    MouseArea {
+        anchors.fill: parent
+        acceptedButtons: Qt.RightButton
+        onClicked: (mouse) => root.backgroundContextRequested(mouse.x, mouse.y)
+    }
 
     component HeaderCell: Item {
         id: cell
@@ -152,7 +170,8 @@ Item {
                 width: list.width
                 height: root.rowHeight
 
-                readonly property bool isSelected: root.selectedId === row.nodeId
+                readonly property bool isSelected: root.isSelected(row.nodeId)
+                readonly property bool isRenaming: root.renamingId === row.nodeId
 
                 Rectangle {
                     anchors.fill: parent
@@ -184,11 +203,50 @@ Item {
                             anchors.left: rowIcon.right
                             anchors.leftMargin: Theme.primitive.spacing.sm
                             anchors.right: parent.right
+                            visible: !row.isRenaming
                             text: row.name
                             elide: Text.ElideMiddle
                             color: row.isSelected ? Theme.color.accent
                                                   : Theme.color.textPrimary
                             font.pixelSize: Theme.primitive.font.sizeSm
+                        }
+
+                        // Inline rename (T-10.4c): Return commits, Escape cancels.
+                        Rectangle {
+                            visible: row.isRenaming
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.left: rowIcon.right
+                            anchors.leftMargin: Theme.primitive.spacing.xs
+                            anchors.right: parent.right
+                            height: root.rowHeight - Theme.primitive.spacing.xs
+                            radius: Theme.primitive.radius.xs
+                            color: Theme.color.controlFill
+                            border.width: Theme.controls.window.borderWidth
+                            border.color: Theme.color.focusRing
+
+                            TextInput {
+                                id: rowEditor
+                                anchors.fill: parent
+                                anchors.leftMargin: Theme.primitive.spacing.xs
+                                anchors.rightMargin: Theme.primitive.spacing.xs
+                                verticalAlignment: TextInput.AlignVCenter
+                                clip: true
+                                selectByMouse: true
+                                color: Theme.color.textPrimary
+                                font.pixelSize: Theme.primitive.font.sizeSm
+                                text: row.name
+                                onVisibleChanged: {
+                                    if (visible) {
+                                        forceActiveFocus();
+                                        selectAll();
+                                    }
+                                }
+                                onAccepted: root.renameSubmitted(row.nodeId, text)
+                                Keys.onEscapePressed: (event) => {
+                                    root.renameCancelled();
+                                    event.accepted = true;
+                                }
+                            }
                         }
                     }
 
@@ -233,8 +291,22 @@ Item {
 
                 MouseArea {
                     anchors.fill: parent
-                    onPressed: root.selected(row.nodeId)
+                    enabled: !row.isRenaming
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
                     onDoubleClicked: root.activated(row.uri, row.isDir)
+                    onClicked: (mouse) => {
+                        if (mouse.button === Qt.RightButton) {
+                            if (!row.isSelected)
+                                root.selected(row.nodeId, 0);
+                            // Report the point in the view's coordinates, not
+                            // the row's, so the shell places the menu right.
+                            var p = root.mapFromItem(row, mouse.x, mouse.y);
+                            root.contextRequested(row.nodeId, row.uri, row.isDir,
+                                                  p.x, p.y);
+                        } else {
+                            root.selected(row.nodeId, mouse.modifiers);
+                        }
+                    }
                 }
             }
         }

@@ -68,10 +68,18 @@ FilesBridge::FilesBridge(QObject *parent)
     m_viewFixtureUri = qEnvironmentVariable("DF_FILES_VIEW_FIXTURE");
     if (!m_viewFixtureUri.isEmpty())
         m_viewFixtureUri = fileUri(m_viewFixtureUri);
+    m_mutationFixtureUri = qEnvironmentVariable("DF_FILES_MUTATION_FIXTURE");
+    if (!m_mutationFixtureUri.isEmpty())
+        m_mutationFixtureUri = fileUri(m_mutationFixtureUri);
     m_startView = qEnvironmentVariable("DF_FILES_START_VIEW");
     if (m_startView != QStringLiteral("list"))
         m_startView = m_startView == QStringLiteral("icon") ? m_startView
                                                             : QString();
+    m_startMenu = qEnvironmentVariable("DF_FILES_START_MENU");
+    if (m_startMenu != QStringLiteral("item") && m_startMenu != QStringLiteral("background"))
+        m_startMenu.clear();
+    m_startRename = qEnvironmentVariableIsSet("DF_FILES_START_RENAME");
+    m_startSelect = qEnvironmentVariableIntValue("DF_FILES_START_SELECT");
     if (m_fixture) {
         // Deterministic locations for the headless QML tests; independent of
         // the host's home directory and mounts.
