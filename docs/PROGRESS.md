@@ -40,6 +40,7 @@
 - **T32 — T-07.1a Adapter contract, states, and mock**: **State: done.** The one adapter contract and its test mock landed in a new; **`services/system-adapters/`** (new crate `dragonfruit-system-adapters`,
 - **T33 — T-07.1b Event subscription, restart re-subscribe, absence**: **State: done.** The subscription/event seam landed in the same; **`services/system-adapters/src/subscription.rs`** (new) — `ConnectionState`
 - **T34 — T-07.2a NetworkManager read path**: **State: done.** The NetworkManager read path landed in a new concrete-adapter; **`services/networkmanager/`** (new crate `dragonfruit-networkmanager`,
+- **T35 — T-07.2b NetworkManager join and polkit degradation**: **State: done.** The write path (join/activate) and the polkit read-only; **`services/networkmanager/src/source.rs`** — the transport seam gained
 - **Follow-ups**: T-07.2a (done in T34): NetworkManager **read** path + mock/fixture landed; T-07.1a (done in T32): the adapter contract + mock landed
 <!-- symphony:digest:end -->
 
@@ -2261,15 +2262,84 @@ Gotchas for later tasks:
 - The shell still shows `--placeholders` fake Wi-Fi until T-07.5b; this task
   wires nothing into QML.
 
+## T35 — T-07.2b NetworkManager join and polkit degradation
+
+**State: done.** The write path (join/activate) and the polkit read-only
+degradation landed in the same concrete-adapter crate; no shell wiring yet
+(T-07.5).
+
+What landed:
+
+- **`services/networkmanager/src/source.rs`** — the transport seam gained
+  `NetworkManagerSource::activate(&ActivateRequest) -> ActivateOutcome`
+  (`Accepted` / `Denied(note)` / `Absent` / `Failed(AdapterError)`).
+  `ActivateRequest` (ssid + optional secret + optional AP path) has a manual
+  `Debug` that redacts the secret. `MockNetworkManager` gained
+  `deny_joins(note)` / `fail_joins(message)` / `allow_joins()` and
+  `activations()`.
+- **`services/networkmanager/src/adapter.rs`** — `NetworkManagerAdapter::join`
+  maps the source outcome to `JoinResult::{Accepted, Denied{note}, Absent,
+  Failed}`. A denial sets `WifiAccess::ReadOnly{note}` (queryable via
+  `access()` / `is_read_only()` / `degradation_note()`); a later join short-
+  circuits locally (no second daemon call). A successful join does **not**
+  write a snapshot: the host refreshes on the daemon's push. `JoinRequest` also
+  redacts its secret in `Debug`.
+- **`services/networkmanager/src/dbus.rs`** —
+  `DbusNetworkManager::activate` resolves the Wi-Fi device + strongest matching
+  BSSID, calls `AddAndActivateConnection(a{sa{sv}}, o device, o specific)`, and
+  classifies a polkit refusal by error name
+  (`org.freedesktop.NetworkManager.PermissionDenied`,
+  `org.freedesktop.DBus.Error.AccessDenied`,
+  `org.freedesktop.PolicyKit1.Error.NotAuthorized`) or message. It stays
+  compile-checked only (no bus in CI).
+- **Tests** — 32 lib (join accept/deny/fail/absent, read-only persistence,
+  secret redaction, error classification, settings shape); acceptance
+  `tests/join_path.rs` (4 tests):
+  `a_join_against_a_mocked_networkmanager_is_accepted`,
+  `a_polkit_denial_leaves_a_read_only_item_with_a_recorded_note`,
+  `a_denied_join_does_not_drop_the_network_list`,
+  `an_absent_daemon_reports_absence_and_never_errors`.
+- **Docs** — `07-system-integration.md` "The NetworkManager join path and
+  polkit degradation (T-07.2b)"; ADR `0027`.
+- **Capture** — `docs/captures/t07-networkmanager-join.png` (nested demo window,
+  `spectacle -b -n -a`; this unit has no surface of its own).
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-networkmanager` — 32 lib + 4 + 5 integration green.
+- `make e2e` — exit 0.
+- `cargo clippy -p dragonfruit-networkmanager --all-targets -- -D warnings`
+  and `cargo fmt --all -- --check` — clean.
+
+Gotchas for later tasks:
+
+- **Read-only is adapter-level, not snapshot-level** (ADR 0027): the network
+  list keeps rendering; the status slot stays visible **and enabled**. Only the
+  join affordance is off. A refresh does not clear the degradation.
+- **Denied ≠ Failed ≠ Absent**: `Denied` is a polkit refusal (read-only
+  degradation); `Failed` is any other write error and leaves `WifiAccess`
+  untouched; `Absent` hides the item and marks `Unavailable`.
+- `join` while read-only returns `Denied` with the recorded note **without**
+  calling the source (`activations()` stays put). A test can assert that.
+- The recorded note is the daemon's own message, prefixed `NetworkManager: `.
+- The live `AddAndActivateConnection` path and its `a{sa{sv}}` settings builder
+  are compile-checked only; no system bus in CI. NM normalises the missing
+  id/uuid in the `connection` setting.
+- **T-07.5a**: build the Wi-Fi menu against the concrete adapter and gate the
+  join rows on `adapter.access()`; surface `degradation_note()` where useful.
+  A generic contract-level read-only concept was deliberately not added — lift
+  it into `dragonfruit-system-adapters` only if T-07.3/T-07.4 gain a gated
+  write.
+
 ## Follow-ups
 
 - T-07.2a (done in T34): NetworkManager **read** path + mock/fixture landed
-  (`services/networkmanager`, ADR 0026). Remaining: (a) T-07.2b adds
-  activate/join + polkit degradation to the same crate; (b) the D-Bus source
-  needs a signal subscription (`PropertiesChanged`, `DeviceAdded/Removed`) and
-  a host to call `refresh()` — no process hosts the Rust adapters for the C++
-  shell yet (decide the bridge in T-07.5); (c) the live source is
-  compile-checked only.
+  (`services/networkmanager`, ADR 0026). Remaining: (a) T-07.2b (done in T35,
+  ADR 0027) added activate/join + polkit read-only degradation to the same
+  crate; (b) the D-Bus source needs a signal subscription
+  (`PropertiesChanged`, `DeviceAdded/Removed`) and a host to call `refresh()` —
+  no process hosts the Rust adapters for the C++ shell yet (decide the bridge
+  in T-07.5); (c) the live source (read and write) is compile-checked only.
 - T-07.1a (done in T32): the adapter contract + mock landed
   (`services/system-adapters`, ADR 0024); T-07.1b (done in T33, ADR 0025) added
   the subscription/re-subscribe API. Remaining: (a) no process yet hosts the

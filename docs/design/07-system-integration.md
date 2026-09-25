@@ -110,6 +110,34 @@ first), marks the active network, and derives the glyph/label the menu bar
 draws. An absent daemon hides the Wi-Fi item, and a present-but-unreadable one
 shows it visible and inert, exactly like every other adapter.
 
+## The NetworkManager join path and polkit degradation (T-07.2b)
+
+The one write the adapter makes is `NetworkManagerAdapter::join`, over the same
+transport seam (`NetworkManagerSource::activate`). It is an explicit user
+action, never a poll: one `AddAndActivateConnection` call per join request, with
+the secret held only for the duration of that call. A successful join does not
+invent a snapshot — NetworkManager reports the resulting state through its
+subscription and the host re-reads the adapter, so the snapshot stays the single
+source of truth.
+
+Joining is authorized by polkit. When polkit refuses, `activate` returns the
+denial separately from a general failure (`ActivateOutcome::Denied` versus
+`Failed`), and the adapter **degrades to read-only**:
+
+- `WifiAccess::ReadWrite` (the default) allows reads and joins;
+- `WifiAccess::ReadOnly { note }` disables joins and records the daemon's
+  message. The network list stays live and the status slot stays visible and
+  enabled — read-only means reads keep working, not that the item goes inert.
+  The adapter then refuses further joins locally, so a denied user cannot make
+  the daemon re-evaluate the same request in a loop.
+
+The degradation survives a refresh: a successful read does not re-grant a write
+permission. It is adapter-level, not part of `WifiSnapshot`, because it is a
+property of the session's authorization rather than of the daemon's state (see
+[adr/0027](adr/0027-networkmanager-join-read-only-degradation.md)). Absence
+still has its usual meaning: a join while NetworkManager is absent reports
+`JoinResult::Absent` and hides the item, never an error.
+
 ## D-Bus conventions
 
 Our services own names under `org.dragonfruit.*` on the **user session bus**

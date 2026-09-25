@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 //! The NetworkManager adapter: read Wi-Fi state, the access-point list, and
-//! signal strength (T-07.2a).
+//! signal strength (T-07.2a), and join a network with polkit degradation
+//! (T-07.2b).
 //!
 //! The menu bar's Wi-Fi item does not talk to NetworkManager. It reads a
 //! [`NetworkManagerAdapter`], which holds the last state the daemon pushed and
@@ -20,9 +21,18 @@
 //! 3. The adapter drives the shared subscription lifecycle, so a NetworkManager
 //!    restart re-subscribes and re-syncs with no user-visible error.
 //!
+//! # The write path
+//!
+//! [`NetworkManagerAdapter::join`] activates a network through the same source
+//! seam. NetworkManager joins are authorized by polkit; when polkit refuses,
+//! the join comes back as [`JoinResult::Denied`] and the adapter records a
+//! [`WifiAccess::ReadOnly`] degradation (see
+//! [adr/0027](../../../docs/design/adr/0027-networkmanager-join-read-only-degradation.md)).
+//! The network list stays live — only the join affordance is disabled — and the
+//! adapter refuses further joins locally rather than asking the daemon again.
+//!
 //! Absence is a normal state: a session booted without NetworkManager renders
-//! a hidden Wi-Fi item and is otherwise unaffected. The write path (join and
-//! polkit degradation) is T-07.2b.
+//! a hidden Wi-Fi item and is otherwise unaffected.
 //!
 //! # Testing
 //!
@@ -37,9 +47,10 @@ mod dbus;
 mod model;
 mod source;
 
-pub use adapter::NetworkManagerAdapter;
+pub use adapter::{JoinRequest, JoinResult, NetworkManagerAdapter, WifiAccess};
 pub use dbus::{DbusNetworkManager, NM_SERVICE};
 pub use model::{AccessPoint, Band, Connectivity, Security, WifiSnapshot, WifiState};
 pub use source::{
-    AccessPointData, MockNetworkManager, NetworkManagerData, NetworkManagerSource, WifiDeviceData,
+    AccessPointData, ActivateOutcome, ActivateRequest, MockNetworkManager, NetworkManagerData,
+    NetworkManagerSource, WifiDeviceData,
 };

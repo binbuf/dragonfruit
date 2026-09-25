@@ -1,6 +1,6 @@
 [package]
 name = "dragonfruit-networkmanager"
-description = "NetworkManager adapter: read Wi-Fi state, AP list, and signal (T-07.2a)"
+description = "NetworkManager adapter: read Wi-Fi state/AP list/signal, join with polkit degradation (T-07.2a/b)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
