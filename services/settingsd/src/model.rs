@@ -9,9 +9,9 @@
 //! current value is a silent no-op, which is what lets consumers treat every
 //! signal as a real change.
 //!
-//! Persistence is intentionally absent here. T-08.1b owns the on-disk format,
-//! atomic writes, and startup migrations; this store is the live state they
-//! will save and restore.
+//! Persistence is intentionally absent here. [`crate::persist`] owns the
+//! on-disk format, atomic writes, and startup migrations; this store is the
+//! live state it saves and restores.
 
 use std::collections::BTreeMap;
 

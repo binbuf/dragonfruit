@@ -14,15 +14,12 @@
 //!   changes are additive-only within a release.
 //! * [`model::Settings`] — the in-memory store, with schema validation on
 //!   every write and change detection so a signal means a real change.
+//! * [`persist`] — the on-disk owner: `$XDG_CONFIG_HOME/dragonfruit/settings.json`
+//!   in the documented `{"schema":N,"keys":{…}}` shape, adopted from the
+//!   shell's interim file, written atomically, and migrated at startup.
 //! * [`dbus`] — the `org.dragonfruit.Settings1` interface (`Get`, `Set`,
 //!   `GetAll`, `ListKeys`, `SchemaVersion`, `Changed`) and the session-bus
-//!   host.
-//!
-//! # What does not live here yet
-//!
-//! Persistence, atomic writes, and startup migrations are T-08.1b. This
-//! crate never touches `$XDG_CONFIG_HOME` and the shell's interim
-//! `settings.json` is still the on-disk owner until then.
+//!   host. A configured `Set` persists before its `Changed` signal.
 //!
 //! # No polling
 //!
@@ -33,11 +30,13 @@
 
 pub mod dbus;
 pub mod model;
+pub mod persist;
 pub mod schema;
 pub mod value;
 
 pub use dbus::{Settings1, DBUS_NAME, DBUS_PATH};
 pub use model::Settings;
+pub use persist::Persistence;
 pub use schema::{KeyGroup, KeySpec, KeyType, KEYS, SCHEMA_VERSION};
 pub use value::{SettingsError, Value};
 
