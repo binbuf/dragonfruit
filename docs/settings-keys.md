@@ -46,7 +46,8 @@ freezes the v1 key set.
 
 | Consumer | Keys it reads |
 |---|---|
-| `shell/Dock` (`shell/src/settingsclient.*`, `dockmodel.cpp`) | every `dock.*` key |
+| `shell/Dock` (`libs/settings-client/settingsclient.*`, `shell/src/dockmodel.cpp`) | every `dock.*` key |
+| `apps/settings` (`apps/settings/SettingsBridge.*`, the QML `Settings` singleton) | every key (Wave-1 panes write through it; T-09.1b) |
 | `shell/design-system Theme` (`shell/src/themebinding.*`) | `appearance.colorScheme`, `appearance.accent` (read, not yet consumed), `accessibility.reduceMotion` |
 | compositor motion/input (over `df_toplevel_manager` v5, ADR [0034](design/adr/0034-compositor-policy-via-shell-bridge.md)) | `dock.titlebarDoubleClick`, `dock.minimizedAnimation`, `gestures.*`, `accessibility.reduceMotion`, `appearance.colorScheme`, `input.repeatDelay`, `input.repeatRate` |
 | compositor workspace model | `workspaces.count` (no live owner yet; follow-up) |

@@ -198,7 +198,7 @@ and asserts a `Set` lands on disk and reloads after a restart.
 
 The shell's interim `DockSettings`/`DockPins` file owners and their
 `QFileSystemWatcher` are **gone**. The Dock reads and writes every `dock.*`
-key through one `SettingsClient` (`shell/src/settingsclient.h`):
+key through one `SettingsClient`:
 
 - `DbusSettingsClient` is the live client for `org.dragonfruit.Settings1`. It
   is seeded with the schema defaults, subscribes to `Changed` (never polls),
@@ -206,6 +206,13 @@ key through one `SettingsClient` (`shell/src/settingsclient.h`):
   The local store updates first so the Dock reacts on the same event-loop
   turn; the daemon's `Changed` echo is de-duplicated by value.
 - `MockSettingsClient` is the in-process fixture for the headless tests.
+
+The client itself now lives in `libs/settings-client` (static library
+`dragonfruit-settings-client`), shared by the shell's Dock/Theme/policy
+controllers and the Settings app's QML `Settings` singleton (T-09.1b, ADR
+[0036](../adr/0036-shared-settings-client-and-qml-singleton.md)). The
+`Settings` singleton exposes the same reactive values map and `set` path to
+panes; `DF_SETTINGS_FIXTURE` selects the mock for headless QML tests.
 
 The typed Dock view is `DockConfig` + `dockConfigFromValues()` in
 `shell/src/dockmodel.cpp`; `dockIconSize()` maps `dock.size` onto the icon

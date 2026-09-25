@@ -83,6 +83,46 @@ navigation, back/forward history, and the header card; a pane unit adds its
 body, wires settingsd, and flips its catalog entry to `shipped: true`. See
 [ADR 0035](../adr/0035-settings-shell-and-pane-catalog.md).
 
+## Live-apply plumbing (T-09.1b)
+
+The app's panes never touch D-Bus. `apps/settings/SettingsBridge.{h,cpp}` is a
+C++ QML singleton registered as **`Settings`** in the `Dragonfruit.Settings`
+module, over the shared `dragonfruit-settings-client` library
+([ADR 0036](../adr/0036-shared-settings-client-and-qml-singleton.md)) — the
+same client the shell's Dock/Theme/compositor-policy controllers link:
+
+- `Settings.values` is a reactive map of every `org.dragonfruit.Settings1`
+  key; a binding such as `Settings.values["dock.size"]` re-evaluates on the
+  daemon's `Changed` signal, so there is no poll and no restart.
+- `Settings.value(key, fallback)`, `Settings.set(key, value)`, `refresh()`, and
+  `keys()` are the rest of the surface. `set` applies locally on the same
+  event-loop turn and mirrors to settingsd; the daemon's echo is
+  de-duplicated.
+- A bound control writes on interaction and re-binds to `Settings.values`, so
+  a user edit and an external edit converge:
+
+  ```qml
+  Toggle {
+      onToggled: (checked) => Settings.set("dock.autohide", checked)
+      Binding {
+          target: dockAutohide
+          property: "checked"
+          value: Settings.values["dock.autohide"] === true
+      }
+  }
+  ```
+
+- With no daemon on the bus the live client serves the schema defaults and
+  keeps writes in memory (the absent-provider state); `DF_SETTINGS_FIXTURE`
+  forces the deterministic mock for headless QML tests and captures.
+- `--placeholders` (the old shell Settings stand-in) is gone; this shell is
+  the app.
+
+**Verification.** `apps/settings/tests/tst_settings_live.cpp` binds a stock
+design-system `Toggle` to `accessibility.reduceMotion` and round-trips it
+through the fixture, a fake `org.dragonfruit.Settings1` service, and the real
+`dragonfruit-settingsd` binary over a private session bus.
+
 ## Acceptance
 
 - [ ] The demo runs and the captures are committed.

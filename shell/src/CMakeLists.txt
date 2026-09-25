@@ -49,11 +49,15 @@ add_library(dragonfruit-shell-dockcore STATIC
     dockprojection.cpp
     downloadsmonitor.cpp
     framecommitgate.h
-    settingsclient.cpp
     systemstatusmodel.cpp
     trashmonitor.cpp
 )
-target_link_libraries(dragonfruit-shell-dockcore PUBLIC Qt6::Core Qt6::DBus)
+# The settingsd client is shared with the Settings app (T-09.1b); it lives in
+# its own library so both processes link the same implementation (ADR 0036).
+target_link_libraries(dragonfruit-shell-dockcore PUBLIC
+    Qt6::Core Qt6::DBus
+    dragonfruit-settings-client
+)
 target_include_directories(dragonfruit-shell-dockcore PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 
 # The lockstep version is a single contract; read it from df-ipc rather than

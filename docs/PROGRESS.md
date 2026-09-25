@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(12 earlier sections omitted)_
+_(13 earlier sections omitted)_
 
-- **T10 — T-02.2 Minimize and restore motion**: **State: done.** Minimize shrinks a window into its Dock entry's tile and; **`compositor/src/window/motion.rs`** (renamed from `appear.rs`) —
 - **T11 — T-02.3 Zoom and fullscreen transitions**: **State: done.** Zoom/unzoom and fullscreen/unfullscreen animate between the; **`compositor/src/window/motion.rs`** — `WindowMotionKind::{Zoom,
 - **T12 — T-02.4a Close ghost**: **State: done.** A closing window shrinks/fades out into its app's Dock tile; **`compositor/src/window/motion.rs`** — `WindowMotionKind::Close` (reverse
 - **T13 — T-02.4b Close interruptibility and idle trace**: **State: done.** A live close ghost reverses mid-flight without waiting: a; **`compositor/src/state.rs`** — `close_window` clears keyboard focus when it
@@ -45,6 +44,7 @@ _(12 earlier sections omitted)_
 - **T47 — T-08.3 Restart, resync, and key-schema documentation**: **State: done.** `settingsd` is restartable with no lost write and the shell; **`docs/settings-keys.md`** (new) — the human-facing key table (type,
 - **T48 — T-09.1a Settings app shell**: **State: done.** The `apps/settings` stub is now a real shell: frameless; **`apps/settings/`** is a reusable QML module `Dragonfruit.Settings` (static
 - **Follow-ups**: **T-09 Settings Wave 1 (T-09.1a done in T48).** The shell, sidebar, local; **T-08.2 consumer migration (T-08.2a done in T44, T-08.2b done in T45,
+- **T49 — T-09.1b Settings live-apply plumbing**: **State: done.** The Settings app is a real settingsd consumer: a QML `Settings`; **`libs/settings-client/`** (new; `libs/CMakeLists.txt`) — the former
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3410,3 +3410,76 @@ Gotchas for later tasks:
   event bridge — it must call `PowerAdapter::refresh()` on a UPower
   `PropertiesChanged`/device signal, never poll; (c) power profiles
   (`power-profiles-daemon`) and any writes are T-15.
+
+## T49 — T-09.1b Settings live-apply plumbing
+
+**State: done.** The Settings app is a real settingsd consumer: a QML `Settings`
+singleton over the shared C++ client lets panes bind to keys and write them
+live, and a headless test round-trips a stock design-system `Toggle` through a
+fake service and the real `dragonfruit-settingsd`. The `--placeholders`
+Settings window was already replaced by the T-09.1a shell.
+
+What landed:
+
+- **`libs/settings-client/`** (new; `libs/CMakeLists.txt`) — the former
+  `shell/src/settingsclient.{h,cpp}` moved here verbatim and built as the
+  static library `dragonfruit-settings-client` (ADR 0036). One client, one
+  D-Bus dialect, one schema-default table for the shell and the app.
+  `dragonfruit-shell-dockcore` no longer compiles it; it links the library
+  `PUBLIC` (its include dir propagates, so `shellcontroller.h` /
+  `themebinding.cpp` / the shell tests are unchanged otherwise).
+- **`apps/settings/SettingsBridge.{h,cpp}`** (new) — a C++ QML singleton
+  registered as **`Settings`** in `Dragonfruit.Settings`. Surface:
+  `values` (reactive `QVariantMap`, NOTIFY `valuesChanged`), `available`,
+  `value(key, fallback)`, `set(key, value)`, `refresh()`, `keys()`, and a
+  per-key `changed(key, value)`. `DF_SETTINGS_FIXTURE` selects
+  `MockSettingsClient`; else `DbusSettingsClient` (defaults + in-memory writes
+  when no daemon).
+- **`apps/settings/tests/tst_settings_live.cpp`** (new) — binds a stock
+  `Toggle` to `accessibility.reduceMotion` via the two-way pattern
+  (`onToggled -> Settings.set`, `Binding -> Settings.values[...]`) and runs
+  three cases: the fixture (no bus), a fake `org.dragonfruit.Settings1` on the
+  private bus, and the **real `target/debug/dragonfruit-settingsd`** over
+  `dbus-run-session` with a scratch `XDG_CONFIG_HOME`. Each asserts the write
+  reaches the owner and an external `Changed` flips the control without a
+  restart.
+- **`apps/settings/CMakeLists.txt`** — `SOURCES SettingsBridge.*` on the
+  `Dragonfruit.Settings` QML module + link `dragonfruit-settings-client`; tests
+  CMake locates `dragonfruit-settingsd` (`target/debug|release`) and passes
+  `DF_SETTINGSD_BIN`.
+- **Docs** — ADR [0036](design/adr/0036-shared-settings-client-and-qml-singleton.md);
+  track 09 gained a "Live-apply plumbing (T-09.1b)" section with the binding
+  pattern; track 08's T-08.2a section points at the shared library.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `ctest --test-dir build -R tst_settings_live --output-on-failure` — 3 cases
+  pass (fixture, fake service, real settingsd) in ~0.17 s.
+- `make qml-test` — 23/23; `make lint` green; `make e2e` green (all Rust
+  suites + clean `make demo --headless`).
+- Live capture (`/tmp/opencode/t49-capture.sh`,
+  `/tmp/opencode/t49-settings-live.png`): nested `make demo`, Settings is the
+  Qt/Wayland client. The window renders titlebar "Settings" + traffic lights,
+  "Search" + magnifier, the four rows, the accent-selected Appearance row, and
+  the pane placeholder card; vision reported no clipping/overlap/stray
+  artifacts. No new visual surface exists this slice, so the capture is the
+  shell/app rendering check, not a live-apply demo.
+
+Gotchas for later tasks:
+
+- **Panes use the `Settings` singleton, never D-Bus.** `Settings.values[key]`
+  (bracket the dotted key) is the reactive read; `Settings.set(key, value)` is
+  the write. The shipped two-way pattern is in track 09 and
+  `tst_settings_live.cpp`; a bare `checked: Settings.values[...]` breaks on the
+  first user tap, so restore with a `Binding` element or a `Connections` slot.
+- **`DF_SETTINGS_FIXTURE` is the deterministic test/capture switch** (mirrors
+  `DF_STATUS_FIXTURE`). Without it a QML test talks to whatever is on the
+  session bus — always set it or run under `dbus-run-session`.
+- **The shared client is at `libs/settings-client`**; `shell/src/settingsclient.*`
+  no longer exists. Add a key in three places as before: `schema.rs`, the
+  mirrored `settingsSchemaDefaults()` (now in the lib), and
+  `docs/settings-keys.md`.
+- `appearance.accent` still has no consumer (design-system accent override is
+  T-09.2); `workspaces.count` still has no compositor owner.
+- The Settings app still follows the host style hint for `Theme.dark`, not the
+  compositor scheme (existing T-04.4b/T-08 follow-up, untouched).

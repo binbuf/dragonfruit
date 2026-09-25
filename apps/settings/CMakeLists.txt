@@ -9,6 +9,9 @@ qt_add_library(dragonfruit-settings-ui STATIC)
 qt_add_qml_module(dragonfruit-settings-ui
     URI Dragonfruit.Settings
     VERSION 1.0
+    SOURCES
+        SettingsBridge.cpp
+        SettingsBridge.h
     QML_FILES
         SettingsPanes.qml
         PaneHeader.qml
@@ -18,6 +21,7 @@ qt_add_qml_module(dragonfruit-settings-ui
 target_link_libraries(dragonfruit-settings-ui PUBLIC
     Qt6::Core Qt6::Gui Qt6::Quick
     dragonfruit-design-systemplugin
+    dragonfruit-settings-client
 )
 
 qt_add_executable(dragonfruit-settings
