@@ -13,6 +13,10 @@ browsing model, the view semantics, selection and keyboard muscle memory,
 drag-and-drop behavior, and the operation semantics (copy/move/trash with
 undo). **The backend is reused; the behavior is ours.**
 
+The window chrome, sidebar, and view register is the Finder reference in
+[macos-ui-inventory.md](../reference/macos-ui-inventory.md#finder-files)
+(distilled from local-only macOS screenshots that never ship).
+
 ## Architecture
 
 ### One browsing implementation, three consumers

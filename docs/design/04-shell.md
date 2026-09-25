@@ -28,6 +28,11 @@ client content: during a workspace switch, client surfaces shrink or slide
 while the chrome follows its own animation curves, which is what makes the
 transitions read as one system.
 
+Visual and interaction reference for these surfaces (menu bar, system menu,
+Dock, Control Center quick-settings sheets, Spotlight, About This System):
+[macos-ui-inventory.md](../reference/macos-ui-inventory.md) — distilled from
+local-only macOS screenshots that never ship.
+
 ## Menu bar
 
 The top menu bar hosts, from left to right:

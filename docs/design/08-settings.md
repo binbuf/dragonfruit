@@ -111,6 +111,19 @@ architecture — built entirely in our design system (see
 [10-design-system.md](10-design-system.md)), with no dependency on GNOME
 Control Center.
 
+### Reference and style
+
+The pane-by-pane reference is
+[System_Preferences.md](../reference/System_Preferences.md): Dragonfruit
+mirrors macOS System Settings **nearly verbatim** — style, information
+architecture, section order, row labels, control types, and wording —
+dropping only Apple/Mac-only concepts (Apple Account/iCloud, AppleCare,
+Continuity/AirDrop, Siri/Apple Intelligence, Screen Time, Touch ID/Apple
+Watch, App Store, Find My, FileVault). Generic terms are kept; Linux-like
+substitutions are chosen deliberately per pane. The reference screenshots
+themselves are local-only and never ship
+([14-risks.md](14-risks.md)).
+
 Sequencing note from the roadmap: we deliberately do **not** spend months
 cloning every System Settings page before the desktop itself feels good (see
 [ROADMAP.md](../ROADMAP.md)).
