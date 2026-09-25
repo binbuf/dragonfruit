@@ -227,3 +227,36 @@ fake `org.dragonfruit.Settings1` service on a private bus
 (`dbus-run-session`) and asserts the live `GetAll`/`Changed`/`Set` path; it
 skips the bus half where no bus exists. The capture
 `docs/captures/t08-settingsd.*` is the track's scripted flip.
+
+## The design-system Theme follows settingsd (T-08.2b)
+
+`shell/src/themebinding.{h,cpp}` is the one writer of the design-system
+`Theme` singleton's settings-driven appearance (ADR
+[0033](../adr/0033-theme-binding-single-writer.md)). It consumes the **same**
+`SettingsClient` as the Dock — no second bus connection, no watcher, no timer
+— and maps:
+
+- `appearance.colorScheme` (`light`/`dark`/`auto`) → `Theme.dark`;
+- `accessibility.reduceMotion` (`b`) → `Theme.reducedMotion`.
+
+`auto` follows the host and stays live: the binding listens to
+`QStyleHints::colorSchemeChanged` and re-applies while the setting is neither
+`light` nor `dark`, so replacing the singleton's own `Application.styleHints`
+binding does not freeze the host preference. The resolver is the pure
+`ThemeBinding::darkForScheme(scheme, hostDark)`. The shell no longer assigns
+`Theme` from the Dock reconfigure path.
+
+**Absent settingsd.** The client's schema defaults set
+`appearance.colorScheme` to `auto`, so `Theme` follows the host exactly as
+before the binding landed.
+
+**Not yet.** `appearance.accent` is unconsumed: `Theme.color.accent` is a
+read-only scheme token and an override needs a design-system change
+(T-09.2, the Appearance pane). The compositor keeps its own scheme owner
+(`DfState::set_color_scheme`); T-08.2c mirrors the same key into it, so a
+light shell over the compositor's dark chrome/backdrop is an interim state.
+
+**Verification.** `tst_themebinding` (shell tests) flips the mock client,
+asserts `Theme.dark`/`Theme.reducedMotion` and the collapsed reduced-motion
+durations, and grabs the component gallery to prove its rendered variant
+follows the scheme.

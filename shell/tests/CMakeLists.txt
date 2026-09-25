@@ -108,6 +108,34 @@ set_tests_properties(tst_settingsclient PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# Theme-binding tests (T-08.2b): a settingsd key change (through the same
+# SettingsClient the Dock uses) flips the design-system Theme, and the gallery
+# variant renders the new scheme. Needs a QML engine plus a real scene graph
+# (offscreen + software), so it pulls the design-system and gallery plugins and
+# compiles the shell's ThemeBinding source directly (it is not part of the
+# wayland-free dockcore).
+qt_add_executable(tst_themebinding
+    tst_themebinding.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/themebinding.cpp
+)
+target_include_directories(tst_themebinding PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+target_link_libraries(tst_themebinding PRIVATE
+    Qt6::Test Qt6::Gui Qt6::Qml Qt6::Quick
+    dragonfruit-shell-dockcore
+    dragonfruit-design-systemplugin
+    dragonfruit-galleryplugin
+)
+qt_import_qml_plugins(tst_themebinding)
+
+add_test(
+    NAME tst_themebinding
+    COMMAND tst_themebinding
+)
+set_tests_properties(tst_themebinding PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Overview chrome tests (T-11): workspace strip (incl. fullscreen Spaces),
 # minimized-window strip, selection signals, and the shared progress fade.
 qt_add_executable(tst_overview

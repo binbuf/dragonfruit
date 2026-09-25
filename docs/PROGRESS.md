@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(8 earlier sections omitted)_
+_(9 earlier sections omitted)_
 
-- **T06 — T-01.6a `make demo` harness**: **State: done.** One `make demo` target builds the tree and runs the T-01 loop; **`Makefile`** — `demo: build` → `cargo run -p dragonfruit-dev -- dev --demo
 - **T07 — T-01.6b Loop integration walkthrough and capture**: **State: done.** The live nested walkthrough of the T-01 loop is scripted and; **`scripts/capture-demo.sh`** (new) + **`scripts/capture-demo-driver.py`**
 - **T08 — T-02.1a Animation clock and frame discipline**: **State: done.** One shared compositor animation clock exists; the overview's; **`compositor/src/animation.rs`** (new) — `FRAME_INTERVAL` (16 ms),
 - **T09 — T-02.1b Window appear transition**: **State: done.** A newly mapped window scales/fades in from its Dock tile on; **`compositor/src/window/appear.rs`** (new) — `AppearTransition`
@@ -44,7 +43,8 @@ _(8 earlier sections omitted)_
 - **T42 — T-08.1a settingsd config model and D-Bus API**: **State: done.** `services/settingsd` is no longer a stub: the desktop-settings; **`services/settingsd/src/schema.rs`** (new) — `KEYS`: 20 named keys
 - **T43 — T-08.1b settingsd persistence and migrations**: **State: done.** `settingsd` now owns; **`services/settingsd/src/persist.rs`** (new) — the persisted format,
 - **T44 — T-08.2a Shell migration to settingsd**: **State: done.** The shell no longer owns Dock settings: `DockSettings`/; **`shell/src/settingsclient.{h,cpp}`** (new) — `SettingsClient` (typed key
-- **Follow-ups**: **T-08.2 consumer migration (T-08.2a done in T44).** T44 deleted the; **T-07.6 signal wiring (not done).** The bridge host
+- **T45 — T-08.2b Design-system Theme binding**: **State: done.** The design-system `Theme` singleton's `dark`/`reducedMotion`; **`shell/src/themebinding.{h,cpp}`** (new) — `ThemeBinding` is the one
+- **Follow-ups**: **T-08.2 consumer migration (T-08.2a done in T44, T-08.2b done in T45).**; **T-07.6 signal wiring (not done).** The bridge host
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -2937,16 +2937,85 @@ Gotchas for later tasks:
   `SettingsClient` (`appearance.colorScheme`, `appearance.accent`,
   `accessibility.reduceMotion`); do not add a second bus connection or timer.
 
+## T45 — T-08.2b Design-system Theme binding
+
+**State: done.** The design-system `Theme` singleton's `dark`/`reducedMotion`
+are bound to settingsd through the same `SettingsClient` the Dock uses. The
+acceptance — "Theme flips live from a settingsd change" — is green headlessly
+and visually.
+
+What landed:
+
+- **`shell/src/themebinding.{h,cpp}`** (new) — `ThemeBinding` is the one
+  writer of `Theme.dark`/`Theme.reducedMotion`. It consumes the shell's
+  `SettingsClient` (no second bus connection/watcher/timer), reacts to
+  `changed`/`refreshed`, and maps `appearance.colorScheme`
+  (`light`/`dark`/`auto`) and `accessibility.reduceMotion`. `auto` follows the
+  host `QStyleHints` color scheme and stays live via `colorSchemeChanged`; the
+  pure resolver is `ThemeBinding::darkForScheme(scheme, hostDark)`.
+- **`shell/src/shellcontroller.{h,cpp}`** — creates one `ThemeBinding` right
+  after the QML engine and calls `apply()`; the Dock reconfigure path no
+  longer writes `Theme.reducedMotion` (single writer). The compositor mirror
+  (`ShellProtocol::setReducedMotion`) stays.
+- **`shell/tests/tst_themebinding.cpp`** (new) — `MockSettingsClient` +
+  `ThemeBinding` + a real `QQmlEngine`: scheme flip asserts `Theme.dark` and
+  `Theme.color.surface`; reduced motion asserts the collapsed token duration;
+  and a `GalleryContent` pixel grab proves the gallery variant re-renders
+  (dark/light sunken background).
+- **`Cargo`/`CMake`** — `themebinding.cpp` added to `dragonfruit-shell` and to
+  the new `tst_themebinding` target (which pulls the design-system + gallery
+  plugins); env `QML2_IMPORT_PATH` for the Dragonfruit module.
+- **ADR [0033](design/adr/0033-theme-binding-single-writer.md)**; track
+  doc `08-settingsd-live-settings.md` gained a "design-system Theme follows
+  settingsd" section; the `045-…` acceptance box is ticked.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `ctest --test-dir build -R tst_themebinding --output-on-failure` — 6 passed.
+- `ctest --test-dir build` — 20/20 green (was 19).
+- `make lint` exit 0; `make demo DEMO_ARGS=--headless` exit 0 (clean teardown).
+
+Live visual check (`/tmp/opencode/t45-capture.sh`): settingsd on the session
+bus with a scratch `XDG_CONFIG_HOME`, seeded `appearance.colorScheme=dark`,
+nested demo, then `gdbus … Set appearance.colorScheme "<'light'>"`. Menu-bar
+background pixel went `(45,37,52)` (dark `chrome`) → `(255,255,255)` (light
+`chrome`); the Dock panel changed too. Captures
+`/tmp/opencode/t45-before-dark.png` / `t45-after-light.png`; vision on a tight
+menu-bar strip pair read dark top / white bottom, identical content, no
+artifacts. The compositor backdrop stayed dark (T-08.2c).
+
+Gotchas for later tasks:
+
+- **One writer.** Do not assign `Theme.dark`/`Theme.reducedMotion` anywhere in
+  shell QML/`ShellController`; `ThemeBinding` owns both. A new appearance key
+  means a branch in `ThemeBinding::apply()` plus the mirrored default in
+  `settingsSchemaDefaults()`.
+- **`appearance.accent` is unconsumed.** `Theme.color.accent` is a read-only
+  scheme token, so an override is a design-system change; T-09.2 (Appearance
+  pane) is the natural owner.
+- **Compositor still dark.** `appearance.colorScheme` reaches only the shell
+  Theme today; T-08.2c must mirror it into `DfState::set_color_scheme` (the
+  existing `setReducedMotion` protocol path is the template).
+- **`auto` and the host.** The binding replaces the singleton's
+  `Application.styleHints` binding, so host-following now depends on the
+  `QStyleHints::colorSchemeChanged` connection in `ThemeBinding`; keep it when
+  touching the class.
+- **No `docs/captures/` file.** The T-08 track owns `t08-settingsd.*` for the
+  scripted flip; T45's evidence is under `/tmp/opencode/`.
+
 ## Follow-ups
 
-- **T-08.2 consumer migration (T-08.2a done in T44).** T44 deleted the
-  shell's `DockSettings`/`DockPins` and `QFileSystemWatcher`; the Dock now
-  reads/writes through the `SettingsClient` seam (ADR 0032). Remaining:
-  T-08.2b must bind `Theme.dark`/`Theme.reducedMotion` to
-  `appearance.colorScheme`/`appearance.accent`/`accessibility.reduceMotion`,
-  and T-08.2c must apply the motion/input policy in the compositor. Nothing
-  starts `dragonfruit-settingsd` (the dev tool deliberately does not); the
-  shell runs from the mirrored schema defaults then, which is intended.
+- **T-08.2 consumer migration (T-08.2a done in T44, T-08.2b done in T45).**
+  T44 deleted the shell's `DockSettings`/`DockPins` and
+  `QFileSystemWatcher`; the Dock now reads/writes through the
+  `SettingsClient` seam (ADR 0032). T45 bound `Theme.dark`/`reducedMotion` to
+  `appearance.colorScheme`/`accessibility.reduceMotion` via `ThemeBinding`
+  (ADR 0033). Remaining: `appearance.accent` still has no consumer (needs a
+  design-system accent override; T-09.2), and T-08.2c must apply the
+  motion/input policy — including mirroring `appearance.colorScheme` — in the
+  compositor. Nothing starts `dragonfruit-settingsd` (the dev tool
+  deliberately does not); the shell runs from the mirrored schema defaults
+  then, which is intended.
 
 - **T-07.6 signal wiring (not done).** The bridge host
   (`services/system-status`) reads an adapter only on startup, an explicit

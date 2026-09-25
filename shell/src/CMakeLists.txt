@@ -86,6 +86,7 @@ qt_add_executable(dragonfruit-shell
     shellcontroller.cpp
     shellprotocol.cpp
     systemstatusclient.cpp
+    themebinding.cpp
 )
 target_sources(dragonfruit-shell PRIVATE ${DF_PROTOCOL_SOURCES})
 target_include_directories(dragonfruit-shell PRIVATE "${DF_PROTOCOL_DIR}")

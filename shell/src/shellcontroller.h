@@ -22,6 +22,7 @@
 #include "trashmonitor.h"
 
 class SystemStatusClient;
+class ThemeBinding;
 class QQmlEngine;
 class QQuickWindow;
 class QQuickItem;
@@ -264,6 +265,10 @@ private:
     // The T-08 settings daemon client: the Dock's only settings source
     // (`org.dragonfruit.Settings1`), replacing the interim file owner/watcher.
     SettingsClient *m_settingsClient = nullptr;
+    // T-08.2b: the single writer of the design-system Theme's settings-driven
+    // appearance (`appearance.colorScheme` -> dark, `accessibility.reduceMotion`
+    // -> reduced motion). Reads the same client; no second connection.
+    ThemeBinding *m_themeBinding = nullptr;
     // The typed Dock view of the client's keys, refreshed on every change.
     DockConfig m_dockConfig;
     // True while a local write is in flight, so the client's synchronous
