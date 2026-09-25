@@ -24,9 +24,11 @@ Item {
         Component { id: logoComponent; DragonfruitLogo { } }
         Component { id: wifiMenuComponent; WifiMenu { } }
         Component { id: volumeMenuComponent; VolumeMenu { } }
+        Component { id: batteryMenuComponent; BatteryMenu { } }
 
         SignalSpy { id: wifiJoinSpy; signalName: "joinRequested" }
         SignalSpy { id: wifiRefreshSpy; signalName: "refreshRequested" }
+        SignalSpy { id: batteryRefreshSpy; signalName: "refreshRequested" }
         SignalSpy { id: volumeSetSpy; signalName: "volumeSetRequested" }
         SignalSpy { id: muteSpy; signalName: "muteToggleRequested" }
         SignalSpy { id: statusSpy; signalName: "statusItemActivated" }
@@ -118,6 +120,15 @@ Item {
             };
         }
 
+        function batteryModel() {
+            return {
+                kind: "battery", state: "available", present: true,
+                glyph: "battery", label: "82% charging", percent: 82, level: 0.82,
+                charging: true, plugged: true, onBattery: false,
+                timeToEmpty: null, timeToFull: 5400
+            };
+        }
+
         // -- Layout / data injection (FR-1, FR-2) ---------------------------
 
         function test_system_and_application_menu_always_present() {
@@ -193,15 +204,18 @@ Item {
         }
 
         function test_status_item_activation() {
-            var bar = make(menuBarComponent, { statusItems: defaultStatus() });
+            // Wi-Fi, volume, and battery open a popover (T-07.5a/b); every
+            // other item still raises statusItemActivated.
+            var bar = make(menuBarComponent, {
+                statusItems: [ { id: "accessibility", icon: "accessibility",
+                                 accessibleName: "Accessibility", available: true } ]
+            });
             statusSpy.target = bar;
             statusSpy.clear();
-            // Wi-Fi and volume open a popover (T-07.5a); the always-activation
-            // items (battery here) still raise statusItemActivated.
-            var battery = bar.statusItemAt(3);
-            mouseClick(battery, battery.width / 2, battery.height / 2);
+            var item = bar.statusItemAt(0);
+            mouseClick(item, item.width / 2, item.height / 2);
             compare(statusSpy.count, 1);
-            compare(statusSpy.signalArguments[0][0], "battery");
+            compare(statusSpy.signalArguments[0][0], "accessibility");
         }
 
         function test_control_center_and_mission_control_entries() {
@@ -579,6 +593,109 @@ Item {
             compare(menu.defaultSink.description, "Built-in Speakers");
         }
 
+        // -- Battery status menu (T-07.5b) ---------------------------------
+
+        function test_battery_menu_exposes_read_only_state() {
+            var menu = make(batteryMenuComponent, { model: batteryModel() });
+            compare(menu.available, true);
+            compare(menu.present, true);
+            compare(menu.charging, true);
+            compare(menu.percent, 82);
+            compare(menu.level, 0.82);
+            compare(menu.label, "82% charging");
+            // Charging reports time to full, not time left.
+            compare(menu.remaining, "1:30");
+        }
+
+        function test_battery_menu_open_refreshes() {
+            var menu = make(batteryMenuComponent, { model: batteryModel() });
+            batteryRefreshSpy.target = menu;
+            batteryRefreshSpy.clear();
+            menu.open = true;
+            waitForRendering(stage);
+            compare(batteryRefreshSpy.count, 1);
+        }
+
+        function test_status_item_click_opens_the_battery_popover() {
+            var bar = make(menuBarComponent, {
+                width: 800,
+                statusItems: [ { id: "battery", icon: "battery",
+                                 accessibleName: "Battery", available: true } ],
+                batteryMenu: batteryModel()
+            });
+            var battery = bar.statusItemFor("battery");
+            verify(battery !== null);
+            mouseClick(battery, battery.width / 2, battery.height / 2);
+            waitForRendering(stage);
+            compare(bar.openStatusItem, "battery");
+            var menu = findChild(bar, "batteryMenu");
+            verify(menu !== null);
+            compare(menu.popup.open, true);
+            verify(bar.dropdownWidth > 0);
+            bar.closeStatusMenu();
+            waitForRendering(stage);
+            compare(bar.openStatusItem, "");
+        }
+
+        function test_a_no_battery_machine_opens_nothing() {
+            var model = batteryModel();
+            model.present = false;
+            var bar = make(menuBarComponent, {
+                width: 800,
+                statusItems: [ { id: "battery", icon: "battery",
+                                 accessibleName: "Battery", available: true } ],
+                batteryMenu: model
+            });
+            bar.openStatusMenu("battery");
+            waitForRendering(stage);
+            compare(bar.openStatusItem, "");
+        }
+
+        // -- Keyboard accessibility (T-07.5b) -------------------------------
+
+        function test_keyboard_arrows_select_status_items() {
+            var bar = make(menuBarComponent, {
+                width: 800,
+                statusItems: defaultStatus()
+            });
+            bar.forceActiveFocus();
+            waitForRendering(stage);
+            compare(bar.keyboardStatusIndex, -1);
+
+            keyClick(Qt.Key_Right);
+            waitForRendering(stage);
+            // The bluetooth slot is hidden, so the first selection is Wi-Fi.
+            compare(bar.keyboardStatusIndex, 0);
+            compare(bar.statusItemAt(0).keyboardFocus, true);
+
+            keyClick(Qt.Key_Right);
+            waitForRendering(stage);
+            // Bluetooth is skipped.
+            compare(bar.keyboardStatusIndex, 2);
+        }
+
+        function test_keyboard_return_opens_and_escape_closes_the_battery_menu() {
+            var bar = make(menuBarComponent, {
+                width: 800,
+                statusItems: [ { id: "battery", icon: "battery",
+                                 accessibleName: "Battery", available: true } ],
+                batteryMenu: batteryModel()
+            });
+            bar.forceActiveFocus();
+            waitForRendering(stage);
+            keyClick(Qt.Key_Right);
+            waitForRendering(stage);
+            compare(bar.keyboardStatusIndex, 0);
+
+            keyClick(Qt.Key_Return);
+            waitForRendering(stage);
+            compare(bar.openStatusItem, "battery");
+
+            keyClick(Qt.Key_Escape);
+            waitForRendering(stage);
+            compare(bar.openStatusItem, "");
+        }
+
         function test_status_item_click_opens_the_wifi_popover() {
             var bar = make(menuBarComponent, {
                 width: 800,
@@ -616,7 +733,7 @@ Item {
 
         function test_status_glyphs_render_pixels() {
             var names = ["wifi", "bluetooth", "volume", "volume-muted",
-                         "battery", "focus", "accessibility",
+                         "battery", "battery-charging", "focus", "accessibility",
                          "control-center", "mission-control"];
             for (var i = 0; i < names.length; ++i) {
                 var glyph = make(glyphComponent, { name: names[i], size: 24 });

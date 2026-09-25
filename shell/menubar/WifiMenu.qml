@@ -50,9 +50,14 @@ Item {
     }
     readonly property bool passwordPromptVisible: root.selectedSsid.length > 0
                                                  && !root.readOnly
+    // Keyboard selection (T-07.5b): the row Up/Down walks and Return joins.
+    property int highlightIndex: -1
 
     signal joinRequested(string ssid, string secret)
     signal refreshRequested()
+    // Raised when the popup closes for any reason (Escape, click-away), so
+    // the bar can clear its open-status state (T-07.5b keyboard a11y).
+    signal closed()
 
     function activateRow(index) {
         if (index < 0 || index >= root.rows.length)
@@ -84,6 +89,28 @@ Item {
         root.secret = "";
     }
 
+    function moveHighlight(delta) {
+        var n = root.rows.length;
+        if (n <= 0) {
+            root.highlightIndex = -1;
+            return;
+        }
+        var i = root.highlightIndex < 0 ? (delta > 0 ? -1 : 0) : root.highlightIndex;
+        for (var step = 0; step < n; ++step) {
+            i = ((i + delta) % n + n) % n;
+            if (root.rows[i].enabled) {
+                root.highlightIndex = i;
+                return;
+            }
+        }
+        root.highlightIndex = -1;
+    }
+
+    function activateHighlight() {
+        if (root.highlightIndex >= 0)
+            root.activateRow(root.highlightIndex);
+    }
+
     Popup {
         id: popup
         objectName: "wifiPopup"
@@ -96,13 +123,31 @@ Item {
         onOpened: {
             root.selectedSsid = "";
             root.secret = "";
+            root.highlightIndex = -1;
             root.refreshRequested();
             if (root.parent && root.width > 0)
                 popup.x = Math.min(popup.x,
                                    root.parent.width - popup.width
                                    - Theme.controls.menuBar.paddingH);
         }
-        onClosed: root.cancelPassword()
+        onClosed: {
+            root.cancelPassword();
+            root.highlightIndex = -1;
+            root.closed();
+        }
+
+        Keys.onUpPressed: (event) => {
+            root.moveHighlight(-1);
+            event.accepted = true;
+        }
+        Keys.onDownPressed: (event) => {
+            root.moveHighlight(1);
+            event.accepted = true;
+        }
+        Keys.onReturnPressed: (event) => {
+            root.activateHighlight();
+            event.accepted = true;
+        }
 
         Column {
             width: parent.width
@@ -175,7 +220,8 @@ Item {
                     Rectangle {
                         anchors.fill: parent
                         radius: Theme.controls.focusRing.radius
-                        color: rowHover.hovered ? Theme.color.controlHover : "transparent"
+                        color: (rowHover.hovered || root.highlightIndex === modelData.index)
+                               ? Theme.color.controlHover : "transparent"
                         antialiasing: true
                     }
 

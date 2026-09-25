@@ -10,6 +10,7 @@
 #include <QVariantList>
 #include <QVariantMap>
 #include <QTimer>
+#include <QtGlobal>
 #include <QtMath>
 
 #include <QCoreApplication>
@@ -162,7 +163,7 @@ QVariantList applicationMenu(const QString &appName)
 }
 
 // T-22 stand-in: a small app menu so the dropdown can be exercised before the
-// menu-broker lands. Only used with `--placeholders`.
+// menu-broker lands. Applied to every focused app until T-14.7 retires it.
 QVariantList demoAppMenu()
 {
     QVariantList menu;
@@ -217,10 +218,8 @@ QString ShellController::lastError() const
     return m_protocol ? m_protocol->lastError() : QStringLiteral("shell not started");
 }
 
-bool ShellController::start(const QString &socketName, const QString &tokenHex, int barHeight,
-                            bool placeholders)
+bool ShellController::start(const QString &socketName, const QString &tokenHex, int barHeight)
 {
-    m_placeholders = placeholders;
     m_barHeight = barHeight;
     m_protocol = new ShellProtocol(this);
     connect(m_protocol, &ShellProtocol::fatal, this, [](const QString &message) {
@@ -336,12 +335,12 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     connect(m_protocol, &ShellProtocol::dockExternalDropped, this,
             &ShellController::onDockExternalDropped);
 
-    // T-07.5a system-status bridge: the model decodes the host's Wi-Fi/volume
-    // views; the client is the live session-bus client, or a fixture client in
-    // the `--placeholders` demo. Wired before the first apply so the initial
-    // views reach the bar.
+    // T-07.5a/T-07.5b system-status bridge: the model decodes the host's
+    // Wi-Fi/volume/battery views; the client is the live session-bus client,
+    // or the fixture client when `DF_STATUS_FIXTURE` is set (headless/capture
+    // only). Wired before the first apply so the initial views reach the bar.
     m_statusModel = new SystemStatusModel(this);
-    if (m_placeholders)
+    if (qEnvironmentVariableIsSet("DF_STATUS_FIXTURE"))
         m_statusClient = new MockSystemStatusClient(this);
     else
         m_statusClient = new DbusSystemStatusClient(this);
@@ -351,6 +350,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             &ShellController::onWifiState);
     connect(m_statusClient, &SystemStatusClient::audioState, this,
             &ShellController::onAudioState);
+    connect(m_statusClient, &SystemStatusClient::batteryState, this,
+            &ShellController::onBatteryState);
     connect(m_statusClient, &SystemStatusClient::joinReport, this,
             &ShellController::onStatusReport);
     connect(m_statusClient, &SystemStatusClient::writeReport, this,
@@ -365,10 +366,11 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     connect(m_item, SIGNAL(statusMenuOpened()), this, SLOT(onStatusMenuOpened()));
     connect(m_item, SIGNAL(statusMenuClosed()), this, SLOT(onStatusMenuClosed()));
     applyStatusMenuData();
-    // Seed both views once; the mock answers synchronously, the host is asked
-    // asynchronously and answers with its signal.
+    // Seed all three views once; the mock answers synchronously, the host is
+    // asked asynchronously and answers with its signal.
     m_statusClient->refreshWifi();
     m_statusClient->refreshAudio();
+    m_statusClient->refreshBattery();
 
     applyStatusItems();
     // The system menu (dragonfruit mark) is fixed for the session; the Log Out
@@ -615,9 +617,11 @@ void ShellController::applyStatusItems()
     QVariantList items;
     const QVariantMap wifi = m_statusModel ? m_statusModel->wifi() : QVariantMap();
     const QVariantMap audio = m_statusModel ? m_statusModel->audio() : QVariantMap();
+    const QVariantMap battery = m_statusModel ? m_statusModel->battery() : QVariantMap();
 
-    // Wi-Fi and volume are live from the bridge host (T-07.5a); an absent
-    // daemon hides the slot, an error shows it visible but inert (FR-4).
+    // Wi-Fi, volume, and battery are live from the bridge host (T-07.5a/b);
+    // an absent daemon hides the slot, an error shows it visible but inert
+    // (FR-4). `--placeholders` is gone, so no item is faked.
     QString wifiGlyph = wifi.value(QStringLiteral("glyph")).toString();
     if (wifiGlyph.isEmpty())
         wifiGlyph = QStringLiteral("wifi");
@@ -625,10 +629,10 @@ void ShellController::applyStatusItems()
                         wifi.value(QStringLiteral("visible")).toBool(), 0.8,
                         wifi.value(QStringLiteral("enabled")).toBool());
 
-    // Bluetooth, Focus, and Accessibility are later tasks; the demo still
-    // shows the Bluetooth placeholder so the bar is not sparse (T-07.5b).
+    // Bluetooth, Focus, and Accessibility are later tasks (T-15/T-11); they
+    // stay hidden until their adapters land.
     items << statusItem(QStringLiteral("bluetooth"), QStringLiteral("bluetooth"), QString(),
-                        tr("Bluetooth"), m_placeholders);
+                        tr("Bluetooth"), false);
 
     QString audioGlyph = audio.value(QStringLiteral("glyph")).toString();
     if (audioGlyph.isEmpty())
@@ -638,10 +642,18 @@ void ShellController::applyStatusItems()
                         audio.value(QStringLiteral("volume")).toReal(),
                         audio.value(QStringLiteral("enabled")).toBool());
 
-    // The battery item is read-only and lands in T-07.5b; placeholder until
-    // then so the demo matches the design.
-    items << statusItem(QStringLiteral("battery"), QStringLiteral("battery"), QString(),
-                        tr("Battery"), m_placeholders, 0.8);
+    // The battery is read-only; the model hides it both when UPower is absent
+    // and when the machine has no present battery. Charging swaps the glyph.
+    QString batteryGlyph = battery.value(QStringLiteral("glyph")).toString();
+    if (batteryGlyph.isEmpty())
+        batteryGlyph = QStringLiteral("battery");
+    if (battery.value(QStringLiteral("charging")).toBool())
+        batteryGlyph = QStringLiteral("battery-charging");
+    items << statusItem(QStringLiteral("battery"), batteryGlyph, QString(), tr("Battery"),
+                        battery.value(QStringLiteral("visible")).toBool(),
+                        battery.value(QStringLiteral("level")).toReal(),
+                        battery.value(QStringLiteral("enabled")).toBool());
+
     items << statusItem(QStringLiteral("focus"), QStringLiteral("focus"), QString(),
                         tr("Focus"), false);
     items << statusItem(QStringLiteral("accessibility"), QStringLiteral("accessibility"),
@@ -655,6 +667,7 @@ void ShellController::applyStatusMenuData()
         return;
     m_item->setProperty("wifiMenu", m_statusModel->wifi());
     m_item->setProperty("volumeMenu", m_statusModel->audio());
+    m_item->setProperty("batteryMenu", m_statusModel->battery());
     applyStatusItems();
 }
 
@@ -683,6 +696,8 @@ void ShellController::onStatusMenuRefreshRequested(const QString &itemId)
         m_statusClient->refreshWifi();
     else if (itemId == QLatin1String("volume"))
         m_statusClient->refreshAudio();
+    else if (itemId == QLatin1String("battery"))
+        m_statusClient->refreshBattery();
 }
 
 void ShellController::onWifiJoinRequested(const QString &ssid, const QString &secret)
@@ -719,6 +734,12 @@ void ShellController::onAudioState(const QByteArray &json)
         m_statusModel->applyAudioJson(json);
 }
 
+void ShellController::onBatteryState(const QByteArray &json)
+{
+    if (m_statusModel)
+        m_statusModel->applyBatteryJson(json);
+}
+
 void ShellController::onStatusReport(const QByteArray &json)
 {
     qInfo() << "shell: system-status action:" << SystemStatusModel::outcomeOf(json);
@@ -727,6 +748,7 @@ void ShellController::onStatusReport(const QByteArray &json)
     if (m_statusClient) {
         m_statusClient->refreshWifi();
         m_statusClient->refreshAudio();
+        m_statusClient->refreshBattery();
     }
 }
 
@@ -743,10 +765,9 @@ void ShellController::applyFocusedApp()
     m_item->setProperty("appName", name);
     m_item->setProperty("applicationMenuItems", applicationMenu(name));
     // The menu-broker (T-22) resolves a real menu model here; until it lands
-    // the bar renders the fixed application menu only (FR-2 priority 3). In
-    // placeholder mode a small demo menu stands in so the dropdown (input
-    // routing + overlay surface) is exercisable in a live session.
-    m_item->setProperty("appMenuModel", m_placeholders ? demoAppMenu() : QVariantList());
+    // a small demo menu stands in so the dropdown (input routing + overlay
+    // surface) stays exercisable in a live session. T-14.7 retires it.
+    m_item->setProperty("appMenuModel", demoAppMenu());
 }
 
 void ShellController::onConfigured(int width, int height, quint32)

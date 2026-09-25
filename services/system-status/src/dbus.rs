@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 //! The session-bus surface: `org.dragonfruit.SystemStatus1`.
 //!
-//! Two interfaces live at one object path — `Wifi` and `Audio` — each with a
-//! `State()` read (the JSON view [`crate::wifi_view`]/[`crate::audio_view`]
-//! produces), an explicit `Refresh()` re-sync, and the one write the menu
-//! offers. The shell (C++/QML) owns the corresponding client; nothing on that
-//! side links an adapter ([adr/0029]).
+//! Three interfaces live at one object path — `Wifi`, `Audio`, and `Battery`
+//! — each with a `State()` read (the JSON view [`crate::wifi_view`] /
+//! [`crate::audio_view`] / [`crate::battery_view`] produces) and an explicit
+//! `Refresh()` re-sync; Wi-Fi and audio add the one write their menu offers,
+//! the battery is read-only. The shell (C++/QML) owns the corresponding
+//! client; nothing on that side links an adapter ([adr/0029]).
 //!
 //! [adr/0029]: ../../../docs/design/adr/0029-system-status-bridge-host.md
 
@@ -13,13 +14,14 @@ use std::sync::{Arc, Mutex};
 
 use dragonfruit_audio::CommandAudio;
 use dragonfruit_networkmanager::DbusNetworkManager;
+use dragonfruit_power::DbusUPower;
 use zbus::blocking::connection;
 use zbus::interface;
 
-use crate::{StatusHost, AUDIO_INTERFACE, DBUS_NAME, DBUS_PATH, WIFI_INTERFACE};
+use crate::{StatusHost, AUDIO_INTERFACE, BATTERY_INTERFACE, DBUS_NAME, DBUS_PATH, WIFI_INTERFACE};
 
-/// The live host: the two real adapter sources behind the bridge.
-pub type LiveHost = StatusHost<DbusNetworkManager, CommandAudio>;
+/// The live host: the three real adapter sources behind the bridge.
+pub type LiveHost = StatusHost<DbusNetworkManager, CommandAudio, DbusUPower>;
 
 /// The Wi-Fi half of the service.
 pub struct WifiInterface {
@@ -28,6 +30,11 @@ pub struct WifiInterface {
 
 /// The audio half of the service.
 pub struct AudioInterface {
+    host: Arc<Mutex<LiveHost>>,
+}
+
+/// The read-only battery half of the service.
+pub struct BatteryInterface {
     host: Arc<Mutex<LiveHost>>,
 }
 
@@ -86,13 +93,29 @@ impl AudioInterface {
     }
 }
 
+#[interface(name = "org.dragonfruit.SystemStatus1.Battery")]
+impl BatteryInterface {
+    /// The current battery status view as JSON (the last adapter state).
+    fn state(&self) -> String {
+        lock(&self.host).battery_state()
+    }
+
+    /// Re-read UPower once and return the new view. The shell calls this when
+    /// it opens the battery menu; the item is read-only and never writes.
+    fn refresh(&self) -> String {
+        let mut host = lock(&self.host);
+        host.refresh_battery();
+        host.battery_state()
+    }
+}
+
 /// Lock the shared host, recovering from a poisoned mutex: a D-Bus method may
 /// panic on a bad argument, and the service must keep answering.
 fn lock(host: &Arc<Mutex<LiveHost>>) -> std::sync::MutexGuard<'_, LiveHost> {
     host.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
-/// Serve the two interfaces on the session bus until the process is asked to
+/// Serve the three interfaces on the session bus until the process is asked to
 /// stop. Returns an error only when the bus or the name cannot be taken; an
 /// absent session bus exits with a message instead of blocking a session.
 pub fn run(host: LiveHost) -> zbus::Result<()> {
@@ -111,6 +134,12 @@ pub fn run(host: LiveHost) -> zbus::Result<()> {
                 host: Arc::clone(&host),
             },
         )?
+        .serve_at(
+            DBUS_PATH,
+            BatteryInterface {
+                host: Arc::clone(&host),
+            },
+        )?
         .build()?;
 
     // The blocking object server runs on its own executor; parking the main
@@ -122,6 +151,6 @@ pub fn run(host: LiveHost) -> zbus::Result<()> {
 }
 
 /// The interface names the service serves, for logs and tests.
-pub fn interface_names() -> [&'static str; 2] {
-    [WIFI_INTERFACE, AUDIO_INTERFACE]
+pub fn interface_names() -> [&'static str; 3] {
+    [WIFI_INTERFACE, AUDIO_INTERFACE, BATTERY_INTERFACE]
 }

@@ -18,6 +18,8 @@ Item {
     property string accessibleName: ""
     property bool available: true
     property bool selected: false
+    // Keyboard selection (T-07.5b): the bar's arrow keys move this ring.
+    property bool keyboardFocus: false
     property real level: 0.8
     property color tint: Theme.color.textPrimary
     property color backgroundColor: Theme.color.chrome
@@ -36,9 +38,15 @@ Item {
         width: root.width
         height: Theme.controls.menuBar.height - 2 * Theme.primitive.spacing.xs
         radius: Theme.controls.menuBar.hoverRadius
-        color: root.selected ? Theme.color.accentMuted
+        color: (root.selected || root.keyboardFocus) ? Theme.color.accentMuted
                              : (slotHover.hovered ? Theme.color.controlHover : "transparent")
         antialiasing: true
+    }
+
+    FocusRing {
+        target: slotBackground
+        shown: root.keyboardFocus
+        cornerRadius: Theme.controls.menuBar.hoverRadius
     }
 
     Row {

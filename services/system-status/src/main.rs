@@ -10,24 +10,28 @@
 //! Debug helpers:
 //!
 //! ```text
-//! dragonfruit-system-status --print-wifi   # refresh and print the JSON view
+//! dragonfruit-system-status --print-wifi     # refresh and print the JSON view
 //! dragonfruit-system-status --print-audio
+//! dragonfruit-system-status --print-battery
 //! ```
 
 use std::process::ExitCode;
 
 use dragonfruit_audio::CommandAudio;
 use dragonfruit_networkmanager::DbusNetworkManager;
+use dragonfruit_power::DbusUPower;
 use dragonfruit_system_status::dbus;
 use dragonfruit_system_status::StatusHost;
 
 fn main() -> ExitCode {
     let mut print_wifi = false;
     let mut print_audio = false;
+    let mut print_battery = false;
     for arg in std::env::args().skip(1) {
         match arg.as_str() {
             "--print-wifi" => print_wifi = true,
             "--print-audio" => print_audio = true,
+            "--print-battery" => print_battery = true,
             "-h" | "--help" => {
                 print_help();
                 return ExitCode::SUCCESS;
@@ -40,7 +44,11 @@ fn main() -> ExitCode {
         }
     }
 
-    let mut host = StatusHost::new(DbusNetworkManager::new(), CommandAudio::new());
+    let mut host = StatusHost::new(
+        DbusNetworkManager::new(),
+        CommandAudio::new(),
+        DbusUPower::new(),
+    );
 
     if print_wifi {
         host.refresh_wifi();
@@ -50,6 +58,11 @@ fn main() -> ExitCode {
     if print_audio {
         host.refresh_audio();
         println!("{}", host.audio_state());
+        return ExitCode::SUCCESS;
+    }
+    if print_battery {
+        host.refresh_battery();
+        println!("{}", host.battery_state());
         return ExitCode::SUCCESS;
     }
 
@@ -72,8 +85,9 @@ fn print_help() {
          \n\
          Serves org.dragonfruit.SystemStatus1 on the user session bus.\n\
          Options:\n\
-           --print-wifi    refresh NetworkManager and print the Wi-Fi JSON view\n\
-           --print-audio   refresh WirePlumber and print the audio JSON view\n\
-           -h, --help      show this help"
+           --print-wifi     refresh NetworkManager and print the Wi-Fi JSON view\n\
+           --print-audio    refresh WirePlumber and print the audio JSON view\n\
+           --print-battery  refresh UPower and print the battery JSON view\n\
+           -h, --help       show this help"
     );
 }

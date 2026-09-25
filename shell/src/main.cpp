@@ -42,12 +42,8 @@ int main(int argc, char *argv[])
     QCommandLineOption heightOption(QStringLiteral("menubar-height"),
                                     QStringLiteral("Menu bar height in pixels"),
                                     QStringLiteral("px"), QStringLiteral("28"));
-    QCommandLineOption placeholdersOption(
-        QStringLiteral("placeholders"),
-        QStringLiteral("Show placeholder status items until the T-20 adapters land"));
     parser.addOption(socketOption);
     parser.addOption(heightOption);
-    parser.addOption(placeholdersOption);
     parser.process(app);
 
     QString socketName = parser.value(socketOption);
@@ -72,7 +68,7 @@ int main(int argc, char *argv[])
     }
 
     ShellController controller;
-    if (!controller.start(socketName, token, barHeight, parser.isSet(placeholdersOption))) {
+    if (!controller.start(socketName, token, barHeight)) {
         fprintf(stderr, "dragonfruit-shell: start failed: %s\n",
                 qPrintable(controller.lastError()));
         return 1;

@@ -7,6 +7,7 @@ use dragonfruit_audio::{AudioData, MockAudio, SinkData};
 use dragonfruit_networkmanager::{
     AccessPointData, MockNetworkManager, NetworkManagerData, WifiDeviceData,
 };
+use dragonfruit_power::{MockPower, PowerData, PowerDeviceData, DEVICE_TYPE_BATTERY};
 use dragonfruit_system_status::StatusHost;
 
 fn wifi_data() -> NetworkManagerData {
@@ -54,11 +55,29 @@ fn audio_data(volume: f32, muted: bool) -> AudioData {
     }
 }
 
+fn battery_data(percentage: f64, state: u32) -> PowerData {
+    PowerData {
+        on_battery: state == 2,
+        devices: vec![PowerDeviceData {
+            path: "/org/freedesktop/UPower/devices/battery_BAT0".to_owned(),
+            kind: DEVICE_TYPE_BATTERY,
+            present: true,
+            power_supply: true,
+            percentage,
+            state,
+            battery_level: 4,
+            time_to_empty: 0,
+            time_to_full: 0,
+        }],
+    }
+}
+
 #[test]
 fn the_wifi_menu_model_exposes_networks_and_join() {
     let mut host = StatusHost::new(
         MockNetworkManager::present(wifi_data()),
         MockAudio::present(audio_data(0.5, false)),
+        MockPower::absent(),
     );
     host.refresh();
 
@@ -78,6 +97,7 @@ fn the_volume_menu_model_exposes_a_slider_and_mute() {
     let mut host = StatusHost::new(
         MockNetworkManager::present(wifi_data()),
         MockAudio::present(audio_data(0.5, false)),
+        MockPower::absent(),
     );
     host.refresh();
 
@@ -105,14 +125,53 @@ fn the_volume_menu_model_exposes_a_slider_and_mute() {
 
 #[test]
 fn an_absent_daemon_hides_both_items_and_never_errors() {
-    let mut host = StatusHost::new(MockNetworkManager::absent(), MockAudio::absent());
+    let mut host = StatusHost::new(
+        MockNetworkManager::absent(),
+        MockAudio::absent(),
+        MockPower::absent(),
+    );
     host.refresh();
 
     assert_eq!(host.wifi_view()["state"], "unavailable");
     assert_eq!(host.audio_view()["state"], "unavailable");
+    assert_eq!(host.battery_view()["state"], "unavailable");
     assert_eq!(host.join("home", None)["outcome"], "absent");
     assert_eq!(host.set_volume(0.5)["outcome"], "absent");
     assert_eq!(host.set_mute(true)["outcome"], "absent");
+}
+
+#[test]
+fn the_battery_menu_model_is_read_only_and_never_writes() {
+    let mut host = StatusHost::new(
+        MockNetworkManager::absent(),
+        MockAudio::absent(),
+        MockPower::present(battery_data(64.0, 2)),
+    );
+    host.refresh();
+
+    let view = host.battery_view();
+    assert_eq!(view["state"], "available");
+    assert_eq!(view["present"], true);
+    assert_eq!(view["percent"], 64);
+    assert_eq!(view["charging"], false);
+    assert_eq!(view["onBattery"], true);
+    assert_eq!(view["label"], "64%");
+    // The battery interface exposes no write action; the mock saw one read.
+    assert!(view.get("outcome").is_none());
+    assert_eq!(host.battery().source().reads(), 1);
+}
+
+#[test]
+fn a_machine_without_a_battery_keeps_the_item_available_but_not_present() {
+    let mut host = StatusHost::new(
+        MockNetworkManager::absent(),
+        MockAudio::absent(),
+        MockPower::present(PowerData::default()),
+    );
+    host.refresh();
+    let view = host.battery_view();
+    assert_eq!(view["state"], "available");
+    assert_eq!(view["present"], false);
 }
 
 #[test]
@@ -120,6 +179,7 @@ fn a_daemon_restart_resyncs_the_menu() {
     let mut host = StatusHost::new(
         MockNetworkManager::present(wifi_data()),
         MockAudio::present(audio_data(0.5, false)),
+        MockPower::absent(),
     );
     host.refresh();
 

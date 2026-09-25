@@ -617,6 +617,7 @@ version = "0.1.0"
 dependencies = [
  "dragonfruit-audio",
  "dragonfruit-networkmanager",
+ "dragonfruit-power",
  "dragonfruit-system-adapters",
  "serde_json",
  "zbus",

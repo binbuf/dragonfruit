@@ -10,11 +10,12 @@
 //! # The seam
 //!
 //! [`StatusHost`] is the whole bridge above the adapters and below D-Bus. It
-//! owns one [`NetworkManagerAdapter`] and one [`AudioAdapter`], and turns the
-//! two menu surfaces into JSON views:
+//! owns one [`NetworkManagerAdapter`], one [`AudioAdapter`], and one
+//! [`PowerAdapter`], and turns the three menu surfaces into JSON views:
 //!
 //! * [`wifi_view`] — the Wi-Fi status slot, glyph/label, and the network list.
 //! * [`audio_view`] — the volume status slot, glyph/label, and the sink list.
+//! * [`battery_view`] — the read-only battery slot, charge state, and level.
 //!
 //! The views are deliberately flat JSON so the shell side is a decoder, not a
 //! second model: the adapter already owns aggregation, defaults, and the
@@ -40,6 +41,7 @@ use dragonfruit_audio::{AudioAdapter, AudioSource, SetOutcome};
 use dragonfruit_networkmanager::{
     JoinRequest, JoinResult, NetworkManagerAdapter, NetworkManagerSource, WifiAccess,
 };
+use dragonfruit_power::{PowerAdapter, PowerSource};
 use dragonfruit_system_adapters::Adapter;
 use serde_json::{json, Value};
 
@@ -53,21 +55,25 @@ pub const DBUS_PATH: &str = "/org/dragonfruit/SystemStatus1";
 pub const WIFI_INTERFACE: &str = "org.dragonfruit.SystemStatus1.Wifi";
 /// The audio interface name under [`DBUS_NAME`].
 pub const AUDIO_INTERFACE: &str = "org.dragonfruit.SystemStatus1.Audio";
+/// The read-only battery interface name under [`DBUS_NAME`].
+pub const BATTERY_INTERFACE: &str = "org.dragonfruit.SystemStatus1.Battery";
 
-/// The host owns the two menu-bar adapters and exposes their snapshots and
+/// The host owns the three menu-bar adapters and exposes their snapshots and
 /// actions. Generic over the transport seams so CI drives it with the mocks.
 #[derive(Debug, Clone, PartialEq)]
-pub struct StatusHost<N, A> {
+pub struct StatusHost<N, A, P> {
     wifi: NetworkManagerAdapter<N>,
     audio: AudioAdapter<A>,
+    battery: PowerAdapter<P>,
 }
 
-impl<N: NetworkManagerSource, A: AudioSource> StatusHost<N, A> {
-    /// A host over the two adapter sources.
-    pub fn new(wifi: N, audio: A) -> Self {
+impl<N: NetworkManagerSource, A: AudioSource, P: PowerSource> StatusHost<N, A, P> {
+    /// A host over the three adapter sources.
+    pub fn new(wifi: N, audio: A, battery: P) -> Self {
         StatusHost {
             wifi: NetworkManagerAdapter::new(wifi),
             audio: AudioAdapter::new(audio),
+            battery: PowerAdapter::new(battery),
         }
     }
 
@@ -81,10 +87,16 @@ impl<N: NetworkManagerSource, A: AudioSource> StatusHost<N, A> {
         self.audio.refresh();
     }
 
-    /// Re-read both daemons once (the startup sync).
+    /// Re-read power once. Called on startup and when UPower signals.
+    pub fn refresh_battery(&mut self) {
+        self.battery.refresh();
+    }
+
+    /// Re-read all three daemons once (the startup sync).
     pub fn refresh(&mut self) {
         self.refresh_wifi();
         self.refresh_audio();
+        self.refresh_battery();
     }
 
     /// The Wi-Fi status view the shell renders.
@@ -97,6 +109,11 @@ impl<N: NetworkManagerSource, A: AudioSource> StatusHost<N, A> {
         audio_view(&self.audio)
     }
 
+    /// The read-only battery status view the shell renders.
+    pub fn battery_view(&self) -> Value {
+        battery_view(&self.battery)
+    }
+
     /// The Wi-Fi view as a JSON string (the D-Bus `State()` payload).
     pub fn wifi_state(&self) -> String {
         self.wifi_view().to_string()
@@ -105,6 +122,11 @@ impl<N: NetworkManagerSource, A: AudioSource> StatusHost<N, A> {
     /// The audio view as a JSON string (the D-Bus `State()` payload).
     pub fn audio_state(&self) -> String {
         self.audio_view().to_string()
+    }
+
+    /// The battery view as a JSON string (the D-Bus `State()` payload).
+    pub fn battery_state(&self) -> String {
+        self.battery_view().to_string()
     }
 
     /// Join a network. One explicit write; the report is JSON.
@@ -143,6 +165,11 @@ impl<N: NetworkManagerSource, A: AudioSource> StatusHost<N, A> {
         &self.audio
     }
 
+    /// The power adapter (read-only), for tests and introspection.
+    pub fn battery(&self) -> &PowerAdapter<P> {
+        &self.battery
+    }
+
     /// The Wi-Fi adapter, mutably (mostly for tests that drive a mock source).
     pub fn wifi_mut(&mut self) -> &mut NetworkManagerAdapter<N> {
         &mut self.wifi
@@ -152,12 +179,18 @@ impl<N: NetworkManagerSource, A: AudioSource> StatusHost<N, A> {
     pub fn audio_mut(&mut self) -> &mut AudioAdapter<A> {
         &mut self.audio
     }
+
+    /// The power adapter, mutably (mostly for tests that drive a mock source).
+    pub fn battery_mut(&mut self) -> &mut PowerAdapter<P> {
+        &mut self.battery
+    }
 }
 
 /// The `kind` discriminator every section carries, so one decode path can
 /// reject a payload from an unexpected interface.
 const KIND_WIFI: &str = "wifi";
 const KIND_AUDIO: &str = "audio";
+const KIND_BATTERY: &str = "battery";
 
 /// Build the Wi-Fi status view from an adapter.
 ///
@@ -256,6 +289,44 @@ pub fn audio_view<A: AudioSource>(adapter: &AudioAdapter<A>) -> Value {
     })
 }
 
+/// Build the read-only battery status view from an adapter.
+///
+/// The three states map straight to the contract: `unavailable` hides the
+/// item (UPower absent), `error` shows it visible and inert, `available`
+/// carries the charge state and level. A machine with UPower but no present
+/// battery is `available` with `present: false`; the consumer hides the item
+/// then too, so the two "no battery" cases stay distinct on the wire.
+pub fn battery_view<P: PowerSource>(adapter: &PowerAdapter<P>) -> Value {
+    let state = adapter.state();
+    if state.is_unavailable() {
+        return json!({ "kind": KIND_BATTERY, "state": "unavailable" });
+    }
+    if let Some(error) = state.error() {
+        return json!({
+            "kind": KIND_BATTERY,
+            "state": "error",
+            "error": error.message(),
+        });
+    }
+    let Some(snapshot) = snapshot(state) else {
+        return json!({ "kind": KIND_BATTERY, "state": "unavailable" });
+    };
+    json!({
+        "kind": KIND_BATTERY,
+        "state": "available",
+        "present": snapshot.present(),
+        "glyph": snapshot.glyph(),
+        "label": snapshot.label(),
+        "percent": snapshot.percentage_percent(),
+        "level": snapshot.level(),
+        "charging": snapshot.charging(),
+        "plugged": snapshot.plugged(),
+        "onBattery": snapshot.on_battery(),
+        "timeToEmpty": snapshot.time_to_empty(),
+        "timeToFull": snapshot.time_to_full(),
+    })
+}
+
 /// Read the snapshot out of an available state, by value-free reference.
 fn snapshot<T>(state: &dragonfruit_system_adapters::AdapterState<T>) -> Option<&T> {
     state.snapshot()
@@ -297,6 +368,7 @@ mod tests {
     use dragonfruit_networkmanager::{
         AccessPointData, MockNetworkManager, NetworkManagerData, WifiDeviceData,
     };
+    use dragonfruit_power::{MockPower, PowerData, PowerDeviceData, DEVICE_TYPE_BATTERY};
 
     fn wifi_data() -> NetworkManagerData {
         NetworkManagerData {
@@ -343,9 +415,30 @@ mod tests {
         }
     }
 
+    fn battery_data(percentage: f64, state: u32) -> PowerData {
+        PowerData {
+            on_battery: state == 2,
+            devices: vec![PowerDeviceData {
+                path: "/org/freedesktop/UPower/devices/battery_BAT0".to_owned(),
+                kind: DEVICE_TYPE_BATTERY,
+                present: true,
+                power_supply: true,
+                percentage,
+                state,
+                battery_level: 4,
+                time_to_empty: 0,
+                time_to_full: 0,
+            }],
+        }
+    }
+
     #[test]
     fn an_absent_daemon_projects_a_hidden_wifi_slot() {
-        let host = StatusHost::new(MockNetworkManager::absent(), MockAudio::absent());
+        let host = StatusHost::new(
+            MockNetworkManager::absent(),
+            MockAudio::absent(),
+            MockPower::absent(),
+        );
         let view = host.wifi_view();
         assert_eq!(view["kind"], "wifi");
         assert_eq!(view["state"], "unavailable");
@@ -356,6 +449,7 @@ mod tests {
         let mut host = StatusHost::new(
             MockNetworkManager::present(wifi_data()),
             MockAudio::present(audio_data()),
+            MockPower::absent(),
         );
         host.refresh();
         let view = host.wifi_view();
@@ -377,6 +471,7 @@ mod tests {
         let mut host = StatusHost::new(
             MockNetworkManager::absent(),
             MockAudio::present(audio_data()),
+            MockPower::absent(),
         );
         host.refresh();
         let view = host.audio_view();
@@ -396,6 +491,7 @@ mod tests {
         let mut host = StatusHost::new(
             MockNetworkManager::present(wifi_data()),
             MockAudio::absent(),
+            MockPower::absent(),
         );
         host.refresh();
         let report = host.join("cafe", Some("hunter2"));
@@ -409,6 +505,7 @@ mod tests {
         let mut host = StatusHost::new(
             MockNetworkManager::present(wifi_data()),
             MockAudio::absent(),
+            MockPower::absent(),
         );
         host.refresh();
         host.wifi_mut().source_mut().deny_joins("not authorized");
@@ -423,6 +520,7 @@ mod tests {
         let mut host = StatusHost::new(
             MockNetworkManager::absent(),
             MockAudio::present(audio_data()),
+            MockPower::absent(),
         );
         host.refresh();
         assert_eq!(host.set_volume(0.9)["outcome"], "applied");
@@ -439,8 +537,75 @@ mod tests {
 
     #[test]
     fn an_absent_daemon_write_reports_absence_and_hides() {
-        let mut host = StatusHost::new(MockNetworkManager::absent(), MockAudio::absent());
+        let mut host = StatusHost::new(
+            MockNetworkManager::absent(),
+            MockAudio::absent(),
+            MockPower::absent(),
+        );
         assert_eq!(host.set_volume(0.5)["outcome"], "absent");
         assert!(host.audio().state().is_unavailable());
+    }
+
+    #[test]
+    fn the_battery_view_carries_the_charge_state_and_level() {
+        let mut host = StatusHost::new(
+            MockNetworkManager::absent(),
+            MockAudio::absent(),
+            MockPower::present(battery_data(82.0, 1)),
+        );
+        host.refresh_battery();
+        let view = host.battery_view();
+        assert_eq!(view["kind"], "battery");
+        assert_eq!(view["state"], "available");
+        assert_eq!(view["present"], true);
+        assert_eq!(view["glyph"], "battery");
+        assert_eq!(view["label"], "82% charging");
+        assert_eq!(view["percent"], 82);
+        assert_eq!(view["charging"], true);
+        assert_eq!(view["plugged"], true);
+        assert_eq!(view["onBattery"], false);
+        let level = view["level"].as_f64().unwrap();
+        assert!((level - 0.82).abs() < 1e-6);
+        // Read-only: the view has no write action to expose.
+        assert!(view.get("outcome").is_none());
+    }
+
+    #[test]
+    fn a_present_daemon_with_no_battery_is_available_but_not_present() {
+        let mut host = StatusHost::new(
+            MockNetworkManager::absent(),
+            MockAudio::absent(),
+            MockPower::present(PowerData::default()),
+        );
+        host.refresh_battery();
+        let view = host.battery_view();
+        assert_eq!(view["state"], "available");
+        assert_eq!(view["present"], false);
+        assert_eq!(view["label"], "No battery");
+    }
+
+    #[test]
+    fn an_absent_upower_hides_the_battery_slot() {
+        let host = StatusHost::new(
+            MockNetworkManager::absent(),
+            MockAudio::absent(),
+            MockPower::absent(),
+        );
+        let view = host.battery_view();
+        assert_eq!(view["kind"], "battery");
+        assert_eq!(view["state"], "unavailable");
+    }
+
+    #[test]
+    fn a_battery_read_failure_is_visible_and_inert() {
+        let mut host = StatusHost::new(
+            MockNetworkManager::absent(),
+            MockAudio::absent(),
+            MockPower::failing("UPower: timeout"),
+        );
+        host.refresh_battery();
+        let view = host.battery_view();
+        assert_eq!(view["state"], "error");
+        assert_eq!(view["error"], "UPower: timeout");
     }
 }
