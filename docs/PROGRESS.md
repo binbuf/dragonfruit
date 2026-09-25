@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(41 earlier sections omitted)_
+_(42 earlier sections omitted)_
 
-- **T39 — T-07.5b Battery menu, placeholder removal, keyboard a11y**: **State: done.** The battery item is live over the bridge host, `--placeholders`; **`services/system-status`** — `StatusHost<N, A, P>` gained a `PowerAdapter`;
 - **T40 — T-07.6a Absent-daemon masking matrix**: **State: done.** The absent-daemon masking matrix is asserted headlessly at; **`services/system-status/tests/host.rs`** —
 - **T41 — T-07.6b Menu-bar idle trace and capture**: **State: done.** The menu-bar idle trace is flat at both seams and the T-07; **`compositor/tests/shell_idle_trace.rs`** — the bar-live idle trace now
 - **T42 — T-08.1a settingsd config model and D-Bus API**: **State: done.** `services/settingsd` is no longer a stub: the desktop-settings; **`services/settingsd/src/schema.rs`** (new) — `KEYS`: 20 named keys
@@ -45,6 +44,7 @@ _(41 earlier sections omitted)_
 - **T75 — T-11.3b Focus/DND, dark mode, and Control Center a11y**: **State: done.** The Control Center panel has five tiles now: Wi-Fi, Focus,; **`shell/control-center/ControlCenter.qml`** — Focus and Dark Mode tiles, a
 - **T76 — T-11.4a OSD overlay**: **State: done.** A volume/brightness change presents a brief centered OSD card; **`shell/src/osdmodel.{h,cpp}`** (new, dockcore) — the pure `OsdModel`:
 - **T77 — T-11.4b OSD keyboard/a11y and captures**: **State: done.** The OSD is keyboard/AT-SPI accessible and the T-11 capture; **`shell/osd/Osd.qml`** — `Accessible.role: Alert` + value-derived
+- **T78 — T-12.1a Session manager and restart policy**: **State: done.** `services/session` is a real session manager: the composition; **`services/session/src/plan.rs`** (new) — `RestartPolicy` (`always` /
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -5738,3 +5738,61 @@ Gotchas for later tasks:
   Hardware media keys are still unwired.
 - **`Icon.qml` `volume` is shared** by the OSD and the Control Center Sound
   tile; do not reintroduce the drive-slab drawing.
+
+## T78 — T-12.1a Session manager and restart policy
+
+**State: done.** `services/session` is a real session manager: the composition
+is data (`SessionPlan`/`ServiceSpec`) and a runtime-free `Supervisor` starts
+services by stage and restarts them per policy. Contract frozen in ADR
+[0064](design/adr/0064-session-manager-plan-and-restart-policy.md).
+
+What landed:
+
+- **`services/session/src/plan.rs`** (new) — `RestartPolicy` (`always` /
+  `on-failure` / `never`), `ServiceSpec` (name, program, args, env, policy,
+  stage, `ends_session`, `gate`, builders), `SessionPlan`
+  (`default_session`, `stages`, `services_in_stage`, `anchor`, `validate`),
+  `PlanError`. Default plan mirrors `11-session-and-dev-workflow.md`: stage 0
+  `compositor` (Never, anchor, gate); stage 1 `shell` (Always) + `settingsd` /
+  `menu-broker` / `app-index` / `notifications` (OnFailure); stage 2 `portal`.
+- **`services/session/src/supervisor.rs`** (new) — `Supervisor::start`,
+  `tick` (reap + policy + stage advance), `set_ready`, `kill`, `shutdown`;
+  `ExitOutcome`, `ServiceState`, `SessionState`, `SupervisorEvent`. The anchor
+  is never restarted; its exit stops survivors and ends the session.
+- **`services/session/src/main.rs`** — `--print-plan` (default) and
+  `--exec PROG [ARGS...] [--policy P]`; SIGINT/SIGTERM teardown.
+- **Tests** — `tests/restart.rs` 8 cases + 5 unit tests; `Makefile` `e2e`
+  runs `cargo test -p dragonfruit-session`.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-session` — 13/13.
+- `cargo clippy -p dragonfruit-session --all-targets -- -D warnings` and
+  `cargo fmt -p dragonfruit-session -- --check` — exit 0.
+- `cargo run -p dragonfruit-session --bin dragonfruit-session -- --print-plan`
+  prints stage 0 `compositor never … anchor` first.
+- `cargo run -p dragonfruit-session -- --exec sh -c 'exit 0' --policy always`
+  prints repeated `restarted exec (…, #N, after exit 0)`.
+
+Live visual check: no surface of its own; the nested session was launched
+(`make demo`, host Wayland) and captured at `/tmp/opencode/t78-demo.png` —
+menu bar, Dock, Settings window, and X11 demo window all render cleanly, no
+artifacts. `make demo DEMO_ARGS=--headless` (e2e) also launches the unchanged
+composition and tears down cleanly; `make e2e` and `make lint` are green. The
+nested session capture set is T-12.2 / track-boundary.
+
+Gotchas for later tasks:
+
+- **T-12.1b attaches env via `ServiceSpec::env` (empty in T-12.1a) and calls
+  `Supervisor::set_ready("compositor")`** once the private socket exists; do
+  not change stages/policies.
+- **The production supervisor is T-12.1b's systemd user units.** The
+  in-process `Supervisor` is the headless/testable contract the units must
+  agree with; the binary defaults to `--print-plan`, not run.
+- **`shutdown` SIGKILLs direct children only**; T-12.2's logout teardown
+  should extend it to process groups.
+- **A `gate` service that has already exited does not block its stage** (no
+  deadlock); the anchor is `ends_session` and must be `RestartPolicy::Never`
+  or `validate()` rejects the plan.
+- **`on-failure` treats a signal as failure** (`ExitOutcome::Signaled`), so a
+  killed service restarts; a clean `exit 0` does not.

@@ -155,6 +155,14 @@ graphical-session.target (systemd --user)
   and our portal backend — it is a public contract, chosen once (see
   [12-packaging.md](12-packaging.md)).
 
+The composition above is **data, not prose**: `services/session`'s
+`SessionPlan`/`ServiceSpec` encode the stages, the per-service restart policy,
+the compositor anchor, and the readiness gate, and `Supervisor` spawns, reaps,
+and restarts the children. T-12.1b attaches the environment and the socket
+readiness signal; T-12.2 uses the supervisor's shutdown path for logout. The
+policy semantics are frozen in
+[ADR 0064](adr/0064-session-manager-plan-and-restart-policy.md).
+
 ## logind integration
 
 - `LockSession` / `UnlockSession` requests drive our lock screen; idle
