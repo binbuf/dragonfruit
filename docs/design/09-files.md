@@ -103,6 +103,25 @@ crash consistency, and the folder watcher that will drive reconciliation
 (T-10.3b). See
 [adr/0045](adr/0045-files-core-optimistic-layer.md).
 
+**Implementation status (T-10.3a).** Trash is real. `TrashOps` (in
+`services/files-core`, a sibling of `FileOps`) is the one seam: `trash`,
+`restore`, `empty`, and `entries`. `FreedesktopTrash` is the sanctioned
+fallback — it implements the freedesktop Trash spec directly over the same
+on-disk store GVfs owns (`$XDG_DATA_HOME/Trash`, else
+`$HOME/.local/share/Trash`, with `files/` + `info/*.trashinfo`, the
+percent-encoded absolute `Path`, and per-volume `.Trash/$UID` /
+`.Trash-$UID` for other filesystems), so trash stays a single source of truth
+across applications even though GIO/GVfs is not linked. It is marked for
+replacement (`SANCTIONED_TRASH_FALLBACK_MARKER`). Put Back reads the recorded
+origin and fails cleanly when it is occupied or gone; `empty` clears the
+store; duplicate names are de-duplicated with the shared `generated_name`.
+`OptimisticModel::trash_via` reuses `begin_delete`, so Move to Trash paints
+within one frame and snaps back on failure. `delete` remains permanent.
+**Still deferred:** listing `trash://` as a `DirectorySource` (the Dock's
+Trash source, T-10.6a), the watcher (T-10.3b), undo/journal, and per-item
+progress. The recorded `DeletionDate` is UTC rather than local (display only).
+See [adr/0046](adr/0046-files-core-trash-seam-and-spec-fallback.md).
+
 ### Model
 
 - **`Location`** — URI-addressed, GFile-shaped: `file://`, `trash://`,
@@ -355,7 +374,9 @@ family libarchive supports, with per-entry errors and no partial output.
 
 - The backend is GVfs `trash://` (freedesktop Trash spec: `$XDG_DATA_HOME/Trash`
   plus per-volume `.Trash-$UID`). **We consume it, we do not re-implement it**
-  — so deletions made by other applications appear in our Trash too.
+  — so deletions made by other applications appear in our Trash too. Where
+  GIO/GVfs is not linked, the sanctioned `FreedesktopTrash` fallback speaks the
+  same spec over the same store, so the guarantee holds offline (T-10.3a).
 - **Put Back** restores from the `.trashinfo`'s original path; a missing
   origin falls back to a destination picker.
 - Trash on removable media stays on that medium (spec behavior) and is

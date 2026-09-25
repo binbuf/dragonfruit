@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(23 earlier sections omitted)_
+_(24 earlier sections omitted)_
 
-- **T21 — T-04.4b Light/dark, reduced motion, and sign-off package**: **State: done.** One live `ColorScheme` on `DfState` now drives every; **`compositor/src/window/decoration.rs`** — `ColorScheme::name`/`parse`
 - **T22 — T-05.1a Live-surface transform into the grid**: **State: done.** Mission Control now transforms the **live** window surfaces; **`compositor/src/overview/grid.rs`** (new) — `grid_layout` (candidates
 - **T23 — T-05.1b Live video at scale and degrade**: **State: done.** A committing "video" client keeps advancing at the reduced; **`compositor/src/overview/grid.rs`** — `GridMaterial { tier, shadow, blur }`
 - **T24 — T-05.2 Hit-testing and selection on live representations**: **State: done.** A left click on a live Mission Control representation; **`compositor/src/overview/grid.rs`** — `GridLayout::window_at(point,
@@ -45,6 +44,7 @@ _(23 earlier sections omitted)_
 - **T57 — T-10.1b files-core sorting and platform fallback**: **State: done.** `files-core` now sorts its streamed model and the; **`services/files-core/src/sort.rs`** (new module) — `SortKey`
 - **T58 — T-10.2a files-core operations**: **State: done.** `files-core` gained the one operations seam: rename, new; **`services/files-core/src/ops.rs`** (new module):
 - **T59 — T-10.2b Optimistic semantics and state preservation**: **State: done.** `files-core` now applies rename / new-folder / delete to the; **`services/files-core/src/optimistic.rs`** (new) — `OptimisticModel`
+- **T60 — T-10.3a files-core trash**: **State: done.** `files-core` now speaks the freedesktop Trash spec and the; **`services/files-core/src/trash.rs`** (new) — the trash engine:
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -4228,3 +4228,82 @@ Gotchas for later tasks:
 - **The watcher is not wired.** Today `confirm`/`revert` are driven by the
   operation result; T-10.3b must guarantee each pending op is resolved exactly
   once.
+
+## T60 — T-10.3a files-core trash
+
+**State: done.** `files-core` now speaks the freedesktop Trash spec and the
+trash seam exists. Because GIO/GVfs is not linked, `FreedesktopTrash` is the
+sanctioned fallback, but it is **not** a behavioral degradation: it reads and
+writes the same on-disk store GVfs owns (same layout, same `.trashinfo`
+format), so trash stays one source of truth. T-10.3b (watcher) and T-10.6a
+(Dock `trash://` source) build on the enumeration here.
+
+What landed:
+
+- **`services/files-core/src/trash.rs`** (new) — the trash engine:
+  - `TrashOps` trait — the seam (sibling of `FileOps`): `trash`, `restore`,
+    `empty`, `entries`, `home_trash`. `FileOps::delete` stays **permanent**.
+  - `FreedesktopTrash` — home trash `$XDG_DATA_HOME/Trash` else
+    `$HOME/.local/share/Trash`; `files/` + `info/*.trashinfo`; percent-encoded
+    absolute `Path`; de-duplicated names via the shared `generated_name`;
+    per-volume `.Trash/$UID` (sticky shared) or `.Trash-$UID` (`0700`) when the
+    target is on another filesystem. `new()`/`with_home_trash(path)` (tests
+    inject a temp root) and `marker()`.
+  - `TrashedItem` — stored name, original path/location, `DeletionDate`,
+    `file_path`, `info_path`. `parse_trash_info` and `format_deletion_date` are
+    public so a spec golden round-trips without a store.
+  - `SANCTIONED_TRASH_FALLBACK_MARKER` names GIO/GVfs and the `TrashOps` seam.
+- **`services/files-core/src/optimistic.rs`** — `OptimisticModel::trash_via`
+  reuses `begin_delete` exactly as ADR 0045 promised: row disappears within a
+  frame, reverts on failure.
+- **`services/files-core/src/ops.rs`** — `OperationError::MalformedTrashInfo`
+  added; `path_of`/`lexists`/`copy_entry`/`remove_entry` made `pub(crate)`.
+- **`services/files-core/src/location.rs`** — `encode_path` extracted (keeps
+  `/`), used by both `file://` URIs and the trash `Path=`; `decode_path` now
+  `pub(crate)`.
+- **Tests** — 13 new in `tests/trash.rs`: file round-trip (content + info
+  format + restore), recursive directory, duplicate de-dup, empty, empty on a
+  missing store, foreign scheme, missing source, restore-occupied,
+  restore-missing-parent, malformed info skipped, non-UTF-8 round-trip, and
+  `trash_via` confirm/revert. Plus unit tests for info parse/format and the
+  ISO 8601 formatter.
+- **Docs** — ADR
+  [0046](design/adr/0046-files-core-trash-seam-and-spec-fallback.md);
+  `docs/design/09-files.md` T-10.3a implementation paragraph and Trash bullet;
+  crate `Cargo.toml` description.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `CARGO_NET_OFFLINE=true cargo test -p dragonfruit-files-core` — 106 pass (50
+  unit + 17 operations + 11 optimistic + 5 sorting + 6 streaming + 13 trash + 4
+  doctests).
+- `make lint` — 31/31 ctest plus all checks green.
+- `make e2e` — exit 0.
+
+Live capture (`/tmp/opencode/t60-capture.sh`; still
+`/tmp/opencode/t60-desktop.png`, 1920x1200): nested demo on the host session.
+Raw vision observation: menu bar, Settings window, Dock (with the Trash item)
+render; the only artifact reported is the pre-existing X11 demo window's
+clipped title (same as T57–T59, unrelated to files-core). files-core has no
+surface of its own, so this only confirms the session still renders. Vision is
+a supporting check.
+
+Gotchas for later tasks:
+
+- **`TrashOps` is the one trash path.** `trash`/`restore`/`empty`/`entries`;
+  never call `std::fs` or `FreedesktopTrash` internals from the bridge/QML.
+- **`trash()` takes a `file://` target** and returns a `TrashedItem` (the
+  caller keeps it to offer Put Back). `restore()` takes that item back.
+- **`entries()` enumerates the home trash only.** Per-volume trashes are
+  written correctly but not aggregated; `trash://` listing is still
+  `UnsupportedScheme` (T-10.6a).
+- **`DeletionDate` is UTC**, not local (spec default is local). Display-only;
+  restore never reads it. Documented in ADR 0046.
+- **`MalformedTrashInfo`** is the new `OperationError` variant; a malformed
+  `.trashinfo` is skipped by `entries`, never fatal.
+- **MSRV trap:** `std::io::ErrorKind::CrossesDevices` is Rust 1.85, but MSRV
+  is 1.80. Reference it **only in a `match` pattern** (clippy's
+  `incompatible_msrv` flags `==`). ops.rs and trash.rs both do this.
+- **Tests inject the trash root** with
+  `FreedesktopTrash::with_home_trash(dir.join("Trash"))`; targets must be in
+  the same tempdir or the per-volume branch engages.

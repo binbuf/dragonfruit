@@ -72,6 +72,8 @@ pub enum OperationError {
     DirectoryNotEmpty(String),
     /// The supplied name is empty, is `.`/`..`, or contains a separator.
     InvalidName(String),
+    /// A `.trashinfo` file could not be parsed (T-10.3a).
+    MalformedTrashInfo(String),
     /// Any other I/O failure, with a message from the OS.
     Io(String),
 }
@@ -104,6 +106,9 @@ impl fmt::Display for OperationError {
             OperationError::NotADirectory(what) => write!(f, "not a directory: {what}"),
             OperationError::DirectoryNotEmpty(what) => write!(f, "directory not empty: {what}"),
             OperationError::InvalidName(what) => write!(f, "invalid name: {what}"),
+            OperationError::MalformedTrashInfo(what) => {
+                write!(f, "malformed trash info: {what}")
+            }
             OperationError::Io(message) => write!(f, "I/O error: {message}"),
         }
     }
@@ -192,7 +197,7 @@ impl StdFsOps {
 }
 
 /// Resolve a location to a local path, refusing non-`file://` schemes.
-fn path_of(location: &Location) -> Result<PathBuf, OperationError> {
+pub(crate) fn path_of(location: &Location) -> Result<PathBuf, OperationError> {
     if !location.is_file() {
         return Err(OperationError::UnsupportedScheme(
             location.scheme().to_owned(),
@@ -204,7 +209,7 @@ fn path_of(location: &Location) -> Result<PathBuf, OperationError> {
 }
 
 /// Whether `path` names an entry, counting a broken symlink as present.
-fn lexists(path: &Path) -> bool {
+pub(crate) fn lexists(path: &Path) -> bool {
     std::fs::symlink_metadata(path).is_ok()
 }
 
@@ -225,7 +230,7 @@ fn validate_name(name: &OsStr) -> Result<(), OperationError> {
 /// permissions restored after the children arrive (so a read-only directory
 /// can still receive them); symlinks are recreated with their raw target,
 /// never followed; regular files use `fs::copy`, which carries permissions.
-fn copy_entry(from: &Path, to: &Path) -> Result<(), OperationError> {
+pub(crate) fn copy_entry(from: &Path, to: &Path) -> Result<(), OperationError> {
     let metadata = std::fs::symlink_metadata(from)
         .map_err(|error| OperationError::from_io(&error, from.display()))?;
     let file_type = metadata.file_type();
@@ -252,7 +257,7 @@ fn copy_entry(from: &Path, to: &Path) -> Result<(), OperationError> {
 }
 
 /// Permanently remove `path`, recursing into directories.
-fn remove_entry(path: &Path) -> Result<(), OperationError> {
+pub(crate) fn remove_entry(path: &Path) -> Result<(), OperationError> {
     let metadata = std::fs::symlink_metadata(path)
         .map_err(|error| OperationError::from_io(&error, path.display()))?;
     if metadata.file_type().is_dir() {
