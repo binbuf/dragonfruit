@@ -5435,3 +5435,26 @@ Gotchas for later tasks:
   client. Values are `off`/`focus`/`dnd` (alias `do-not-disturb`).
 - **No pixel assertion in the headless suites**; the accent-tinted crescent
   was checked only by the live capture above.
+
+Continuation (attempt 2) — the "failed" verdict was a build-environment bug,
+not a T73 code defect:
+
+- **Real cause:** the harness verify ran bare `make e2e`; `make cmake-build`
+  failed at `Automatic MOC and UIC` with
+  `/home/user/.local/df-toolchain/usr/bin/cmake: error while loading shared
+  libraries: librhash.so.1`. `build/build.ninja` records the toolchain cmake
+  (`CMAKE_COMMAND=/home/user/.local/df-toolchain/usr/bin/cmake`), and ninja's
+  autogen rule calls it even though a different cmake
+  (`~/.local/bin/cmake`, uv-installed) is first on `PATH`. The Makefile only
+  exported `LD_LIBRARY_PATH=$DF_TOOLCHAIN/lib64` when cmake was *absent* from
+  `PATH`, so that loaded lib was not found.
+- **Fix (`Makefile`):** the `ifneq ($(wildcard $(DF_TOOLCHAIN)/lib64),)` block
+  now always prepends `$(DF_TOOLCHAIN)/lib64` to `LD_LIBRARY_PATH`; the
+  PATH-fallback guard only adds the toolchain `bin/` when cmake/ctest are not
+  on `PATH`. No shell/T73 source changed.
+- **Verified:** `make e2e` exit 0 (bare, no manual env); `make qml-test` 35/35;
+  `make cmake-build` exit 0. Live capture re-inspected via
+  `./.symphony/symphony vision /tmp/opencode/t73-focus.png` — accent-tinted
+  crescent left of the clock, sharp, no artifacts.
+- **Gotcha for every later task:** a bare `make <target>` must work; do not
+  assume the caller exported the toolchain `LD_LIBRARY_PATH`.

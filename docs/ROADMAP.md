@@ -201,7 +201,7 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 - [x] T70 — T-11.1a Notification service core → [tasks/070-t-11.1a-notification-service-core.md](tasks/070-t-11.1a-notification-service-core.md)
 - [x] T71 — T-11.1b Notification actions and Dock badge replacement → [tasks/071-t-11.1b-notification-actions-and-dock-badge.md](tasks/071-t-11.1b-notification-actions-and-dock-badge.md)
 - [x] T72 — T-11.2a DND/Focus policy → [tasks/072-t-11.2a-dnd-focus-policy.md](tasks/072-t-11.2a-dnd-focus-policy.md)
-- [~] T73 — T-11.2b DND/Focus menu-bar reflection and Dock failure path → [tasks/073-t-11.2b-dnd-reflection-and-dock-failure.md](tasks/073-t-11.2b-dnd-reflection-and-dock-failure.md) ⟵ failed
+- [~] T73 — T-11.2b DND/Focus menu-bar reflection and Dock failure path → [tasks/073-t-11.2b-dnd-reflection-and-dock-failure.md](tasks/073-t-11.2b-dnd-reflection-and-dock-failure.md) ⟵ running
 - [ ] T74 — T-11.3a Control Center panel and core tiles → [tasks/074-t-11.3a-control-center-panel-and-tiles.md](tasks/074-t-11.3a-control-center-panel-and-tiles.md)
 - [ ] T75 — T-11.3b Focus/DND, dark mode, and Control Center a11y → [tasks/075-t-11.3b-control-center-focus-dark-a11y.md](tasks/075-t-11.3b-control-center-focus-dark-a11y.md)
 - [ ] T76 — T-11.4a OSD overlay → [tasks/076-t-11.4a-osd-overlay.md](tasks/076-t-11.4a-osd-overlay.md)
