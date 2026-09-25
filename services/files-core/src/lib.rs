@@ -141,7 +141,7 @@ mod watch;
 pub use fallback::{StdFsSource, SANCTIONED_FALLBACK_MARKER};
 pub use listing::{ListingEvent, ListingEventKind, ListingHandle, DEFAULT_BATCH};
 pub use location::{Location, LocationError};
-pub use mock::{MockSource, MockWatcher};
+pub use mock::{MockSource, MockWatcher, SyntheticSource};
 pub use model::{DirectoryModel, ListingState};
 pub use node::{Node, NodeId, NodeKind};
 pub use ops::{generated_name, FileOps, OperationError, StdFsOps, NEW_FOLDER_BASE};

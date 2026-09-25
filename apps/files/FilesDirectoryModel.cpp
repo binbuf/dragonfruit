@@ -7,6 +7,8 @@
 #include <QFileInfo>
 #include <QLocale>
 
+#include <utility>
+
 namespace {
 
 // The polling cadence while a listing is in flight. The Rust worker does the
@@ -68,14 +70,14 @@ FilesDirectoryModel::~FilesDirectoryModel()
 
 int FilesDirectoryModel::rowCount(const QModelIndex &parent) const
 {
-    return parent.isValid() ? 0 : m_nodes.size();
+    return parent.isValid() ? 0 : int(m_nodes.size());
 }
 
 QVariant FilesDirectoryModel::data(const QModelIndex &index, int role) const
 {
-    if (index.row() < 0 || index.row() >= m_nodes.size())
+    if (index.row() < 0 || index.row() >= int(m_nodes.size()))
         return {};
-    const Node &node = m_nodes.at(index.row());
+    const Node &node = m_nodes[size_t(index.row())];
     switch (role) {
     case NodeIdRole:
         return node.id;
@@ -191,8 +193,8 @@ bool FilesDirectoryModel::trash(quint64 nodeId)
 
 int FilesDirectoryModel::rowForNodeId(quint64 nodeId) const
 {
-    for (int row = 0; row < m_nodes.size(); ++row) {
-        if (m_nodes.at(row).id == nodeId)
+    for (int row = 0; row < int(m_nodes.size()); ++row) {
+        if (m_nodes[size_t(row)].id == nodeId)
             return row;
     }
     return -1;
@@ -200,29 +202,29 @@ int FilesDirectoryModel::rowForNodeId(quint64 nodeId) const
 
 quint64 FilesDirectoryModel::nodeIdAt(int row) const
 {
-    if (row < 0 || row >= m_nodes.size())
+    if (row < 0 || row >= int(m_nodes.size()))
         return 0;
-    return m_nodes.at(row).id;
+    return m_nodes[size_t(row)].id;
 }
 
 QString FilesDirectoryModel::uriAt(int row) const
 {
-    if (row < 0 || row >= m_nodes.size())
+    if (row < 0 || row >= int(m_nodes.size()))
         return {};
-    return m_nodes.at(row).uri;
+    return m_nodes[size_t(row)].uri;
 }
 
 bool FilesDirectoryModel::isDirAt(int row) const
 {
-    if (row < 0 || row >= m_nodes.size())
+    if (row < 0 || row >= int(m_nodes.size()))
         return false;
-    return m_nodes.at(row).isDir;
+    return m_nodes[size_t(row)].isDir;
 }
 
 QVariantList FilesDirectoryModel::allNodeIds() const
 {
     QVariantList ids;
-    ids.reserve(m_nodes.size());
+    ids.reserve(int(m_nodes.size()));
     for (const Node &node : m_nodes)
         ids.append(node.id);
     return ids;
@@ -255,7 +257,18 @@ void FilesDirectoryModel::start()
         setState(QStringLiteral("idle"));
         return;
     }
-    m_session = df_files_begin(m_location.toUtf8().constData());
+    const QByteArray uri = m_location.toUtf8();
+    // The T-10.5 perf fixture: a synthetic 100k listing behind the same ABI,
+    // selected only for a `/synthetic` location so it never shadows a real
+    // folder. `DF_FILES_SYNTHETIC_COUNT`/`_BATCH` are set by the perf runner.
+    const int syntheticCount = qEnvironmentVariableIntValue("DF_FILES_SYNTHETIC_COUNT");
+    if (syntheticCount > 0 && m_location.endsWith(QStringLiteral("/synthetic"))) {
+        const int batch = qEnvironmentVariableIntValue("DF_FILES_SYNTHETIC_BATCH");
+        m_session = df_files_begin_synthetic(uri.constData(), uint32_t(syntheticCount),
+                                             uint32_t(batch));
+    } else {
+        m_session = df_files_begin(uri.constData());
+    }
     if (!m_session) {
         setState(QStringLiteral("error"), QStringLiteral("Not a browsable location"));
         return;
@@ -279,15 +292,15 @@ void FilesDirectoryModel::poll()
 {
     if (!m_session)
         return;
-    df_files_event *event = df_files_poll(m_session, 0);
-    if (!event) {
+    df_files_delta *delta = df_files_poll_delta(m_session, 0);
+    if (!delta) {
         stop();
         setState(QStringLiteral("error"), QStringLiteral("The listing session was lost"));
         return;
     }
-    switch (event->status) {
+    switch (delta->status) {
     case DF_FILES_STATUS_BATCH:
-        applySnapshot(event);
+        applyDelta(delta);
         break;
     case DF_FILES_STATUS_DONE:
         // The listing finished, but the session stays alive: an optimistic
@@ -298,14 +311,14 @@ void FilesDirectoryModel::poll()
     case DF_FILES_STATUS_ERROR:
         m_timer.stop();
         setState(QStringLiteral("error"),
-                 event->error ? QString::fromUtf8(event->error)
+                 delta->error ? QString::fromUtf8(delta->error)
                               : QStringLiteral("The folder could not be listed"));
         break;
     case DF_FILES_STATUS_TIMEOUT:
     default:
         break;
     }
-    df_files_event_free(event);
+    df_files_delta_free(delta);
 
     takeError();
     const int pending = m_session ? int(df_files_pending_ops(m_session)) : 0;
@@ -320,10 +333,10 @@ void FilesDirectoryModel::repaint()
 {
     if (!m_session)
         return;
-    df_files_event *event = df_files_snapshot(m_session);
-    if (event) {
-        applySnapshot(event);
-        df_files_event_free(event);
+    df_files_delta *delta = df_files_snapshot_delta(m_session);
+    if (delta) {
+        applyDelta(delta);
+        df_files_delta_free(delta);
     }
 }
 
@@ -353,34 +366,106 @@ void FilesDirectoryModel::takeError()
     emit lastErrorChanged();
 }
 
-void FilesDirectoryModel::applySnapshot(const df_files_event *event)
+FilesDirectoryModel::Node FilesDirectoryModel::nodeFromFfi(const df_files_node &source)
+{
+    Node node;
+    node.id = source.id;
+    node.name = source.name ? QString::fromUtf8(source.name) : QString();
+    node.uri = source.uri ? QString::fromUtf8(source.uri) : QString();
+    node.kind = source.kind;
+    node.isDir = source.kind == DF_NODE_DIRECTORY;
+    node.kindText = kindTextFor(source.kind);
+    node.icon = iconFor(source.kind, node.name);
+    node.hasSize = source.has_size != 0;
+    node.size = source.size;
+    node.sizeText = node.hasSize ? formatSize(source.size) : QString();
+    node.hasModified = source.has_modified != 0;
+    node.modifiedMs = source.modified_ms;
+    node.modifiedText =
+            node.hasModified ? formatModified(source.modified_ms) : QString();
+    node.symlinkTarget = source.symlink_target
+            ? QString::fromUtf8(source.symlink_target)
+            : QString();
+    return node;
+}
+
+void FilesDirectoryModel::applyDelta(const df_files_delta *delta)
+{
+    if (!delta)
+        return;
+    if (delta->reset != 0) {
+        applyReset(delta);
+        return;
+    }
+    applyInsertions(delta);
+}
+
+void FilesDirectoryModel::applyReset(const df_files_delta *delta)
 {
     beginResetModel();
     m_nodes.clear();
-    m_nodes.reserve(static_cast<int>(event->count));
-    for (uint32_t i = 0; i < event->count; ++i) {
-        const df_files_node &source = event->nodes[i];
-        Node node;
-        node.id = source.id;
-        node.name = source.name ? QString::fromUtf8(source.name) : QString();
-        node.uri = source.uri ? QString::fromUtf8(source.uri) : QString();
-        node.kind = source.kind;
-        node.isDir = source.kind == DF_NODE_DIRECTORY;
-        node.kindText = kindTextFor(source.kind);
-        node.icon = iconFor(source.kind, node.name);
-        node.hasSize = source.has_size != 0;
-        node.size = source.size;
-        node.sizeText = node.hasSize ? formatSize(source.size) : QString();
-        node.hasModified = source.has_modified != 0;
-        node.modifiedMs = source.modified_ms;
-        node.modifiedText =
-                node.hasModified ? formatModified(source.modified_ms) : QString();
-        node.symlinkTarget = source.symlink_target
-                ? QString::fromUtf8(source.symlink_target)
-                : QString();
-        m_nodes.append(node);
-    }
+    m_nodes.reserve(delta->total);
+    for (uint32_t i = 0; i < delta->row_count; ++i)
+        m_nodes.push_back(nodeFromFfi(delta->rows[i].node));
     endResetModel();
+    emit countChanged();
+}
+
+void FilesDirectoryModel::applyInsertions(const df_files_delta *delta)
+{
+    const int incomingCount = int(delta->row_count);
+    if (incomingCount <= 0)
+        return;
+    const int oldCount = int(m_nodes.size());
+    const int newCount = oldCount + incomingCount;
+
+    // Validate the delta: ranks strictly ascending and within the new length.
+    // The Rust merge guarantees this; if it is ever violated, fall back to a
+    // full reset rather than paint a wrong order.
+    std::vector<Node> incoming;
+    incoming.reserve(size_t(incomingCount));
+    int previousRank = -1;
+    bool valid = true;
+    for (int i = 0; i < incomingCount; ++i) {
+        const int rank = int(delta->rows[i].rank);
+        if (rank <= previousRank || rank >= newCount) {
+            valid = false;
+            break;
+        }
+        previousRank = rank;
+        incoming.push_back(nodeFromFfi(delta->rows[i].node));
+    }
+    if (!valid) {
+        if (m_session) {
+            df_files_delta *full = df_files_snapshot_delta(m_session);
+            if (full) {
+                applyReset(full);
+                df_files_delta_free(full);
+            }
+        }
+        return;
+    }
+
+    // Merge in one pass: the existing rows keep their relative order, so
+    // walking the final ranks and pulling from the old rows or the incoming
+    // ones reproduces the ordered projection exactly.
+    std::vector<Node> merged;
+    merged.reserve(size_t(newCount));
+    int oldIndex = 0;
+    int newIndex = 0;
+    for (int position = 0; position < newCount; ++position) {
+        if (newIndex < incomingCount && int(delta->rows[newIndex].rank) == position)
+            merged.push_back(std::move(incoming[size_t(newIndex++)]));
+        else
+            merged.push_back(std::move(m_nodes[size_t(oldIndex++)]));
+    }
+
+    beginInsertRows(QModelIndex(), oldCount, newCount - 1);
+    m_nodes = std::move(merged);
+    endInsertRows();
+    // The new rows shifted the existing ranks; refresh the visible delegates.
+    if (oldCount > 0)
+        emit dataChanged(index(0), index(oldCount - 1));
     emit countChanged();
 }
 
@@ -400,10 +485,10 @@ void FilesDirectoryModel::applySort()
     df_files_set_sort(m_session, m_sortKey.toUtf8().constData(),
                       m_sortAscending ? "ascending" : "descending",
                       m_foldersFirst ? 1 : 0);
-    df_files_event *event = df_files_snapshot(m_session);
-    if (event) {
-        applySnapshot(event);
-        df_files_event_free(event);
+    df_files_delta *delta = df_files_snapshot_delta(m_session);
+    if (delta) {
+        applyDelta(delta);
+        df_files_delta_free(delta);
     }
 }
 

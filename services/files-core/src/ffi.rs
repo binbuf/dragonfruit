@@ -41,6 +41,7 @@
 //! [09-files.md]: ../../../docs/design/09-files.md
 //! [adr/0049]: ../../../docs/design/adr/0049-files-core-c-abi-bridge.md
 
+use std::collections::HashSet;
 use std::ffi::{c_char, CString, OsString};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Arc;
@@ -48,8 +49,9 @@ use std::time::{Duration, UNIX_EPOCH};
 
 use crate::sort::{SortDirection, SortKey, SortSpec};
 use crate::{
-    DirectoryModel, FileOps, FreedesktopTrash, ListingHandle, ListingState, Location, Node, NodeId,
-    NodeKind, OpId, OperationError, OptimisticModel, StdFsOps, StdFsSource, TrashOps,
+    DirectoryModel, DirectorySource, FileOps, FreedesktopTrash, ListingHandle, ListingState,
+    Location, Node, NodeId, NodeKind, OpId, OperationError, OptimisticModel, StdFsOps, StdFsSource,
+    SyntheticSource, TrashOps,
 };
 
 /// Event status: a batch (a fresh ordered snapshot follows).
@@ -104,6 +106,41 @@ pub struct df_files_event {
     pub nodes: *mut df_files_node,
     /// The number of nodes in `nodes`.
     pub count: u32,
+}
+
+/// One ordered row in an incremental delta: a node and its final rank in the
+/// ordered projection.
+#[repr(C)]
+pub struct df_files_row {
+    /// The node's position in the new ordered projection.
+    pub rank: u32,
+    /// The node itself (strings owned by the delta).
+    pub node: df_files_node,
+}
+
+/// An incremental event (T-10.5, [adr/0051]).
+///
+/// `reset != 0` means "replace the whole model with `rows`, in order"; the
+/// caller clears its rows and rebuilds. `reset == 0` means "insert these `rows`
+/// at their final `rank`s" — the existing rows keep their relative order (the
+/// streaming merge only interleaves new nodes), so the receiver can apply them
+/// without a full snapshot. `total` is the model length after the event.
+///
+/// [adr/0051]: ../../../docs/design/adr/0051-files-core-incremental-delta-abi.md
+#[repr(C)]
+pub struct df_files_delta {
+    /// One of the `DF_FILES_STATUS_*` values.
+    pub status: i32,
+    /// The failure message for `ERROR`, else null.
+    pub error: *const c_char,
+    /// Non-zero: `rows` is the full ordered model, not a set of insertions.
+    pub reset: i32,
+    /// The rows (owned by this delta).
+    pub rows: *mut df_files_row,
+    /// The number of rows.
+    pub row_count: u32,
+    /// The model's ordered length after this event.
+    pub total: u32,
 }
 
 /// One real filesystem operation for the worker thread.
@@ -186,6 +223,10 @@ pub struct FfiSession {
     outcome_rx: Receiver<OpOutcome>,
     pending: u32,
     last_error: Option<String>,
+    /// The node ids the receiver has already been told about, so an
+    /// incremental poll can serialize only the newly arrived nodes (T-10.5).
+    /// Seeded by every `reset` delta; grown by every insertion delta.
+    reported: HashSet<NodeId>,
 }
 
 impl FfiSession {
@@ -215,6 +256,60 @@ impl FfiSession {
             nodes: std::ptr::null_mut(),
             count: 0,
         }))
+    }
+
+    /// A delta carrying every row in order (`reset == 1`) and re-seeding the
+    /// reported id set. Used for the first paint, a sort change, and any
+    /// model edit whose effect on the ordering is not append-only.
+    fn reset_delta(&mut self, status: i32) -> *mut df_files_delta {
+        self.reported.clear();
+        let mut rows: Vec<df_files_row> = Vec::with_capacity(self.model.model().len());
+        let mut ids: Vec<NodeId> = Vec::with_capacity(self.model.model().len());
+        for (rank, node) in self.model.model().ordered().enumerate() {
+            rows.push(df_files_row {
+                rank: rank as u32,
+                node: to_ffi_node(node),
+            });
+            ids.push(node.id());
+        }
+        for id in ids {
+            self.reported.insert(id);
+        }
+        let total = rows.len() as u32;
+        delta_from_rows(status, true, rows, total)
+    }
+
+    /// A delta carrying only the nodes the receiver has not seen, at their
+    /// final ranks. Falls back to a full reset when a previously reported node
+    /// vanished (an optimistic edit or a watcher removal), which the streaming
+    /// append path never does.
+    fn incremental_delta(&mut self) -> *mut df_files_delta {
+        let len = self.model.model().len();
+        if self.reported.len() > len {
+            return self.reset_delta(DF_FILES_STATUS_BATCH);
+        }
+        let mut rows: Vec<df_files_row> = Vec::new();
+        let mut ids: Vec<NodeId> = Vec::new();
+        let mut seen = 0usize;
+        for (rank, node) in self.model.model().ordered().enumerate() {
+            if self.reported.contains(&node.id()) {
+                seen += 1;
+            } else {
+                rows.push(df_files_row {
+                    rank: rank as u32,
+                    node: to_ffi_node(node),
+                });
+                ids.push(node.id());
+            }
+        }
+        if seen != self.reported.len() || seen + rows.len() != len {
+            return self.reset_delta(DF_FILES_STATUS_BATCH);
+        }
+        for id in ids {
+            self.reported.insert(id);
+        }
+        let total = len as u32;
+        delta_from_rows(DF_FILES_STATUS_BATCH, false, rows, total)
     }
 
     /// Fold every completed operation: confirm the painted result, or revert
@@ -298,6 +393,54 @@ fn to_ffi_node(node: &Node) -> df_files_node {
     }
 }
 
+/// Move a row vector into a heap delta. The rows and their strings are then
+/// owned by the caller and released with [`df_files_delta_free`].
+fn delta_from_rows(
+    status: i32,
+    reset: bool,
+    rows: Vec<df_files_row>,
+    total: u32,
+) -> *mut df_files_delta {
+    let row_count = rows.len() as u32;
+    let mut boxed = rows.into_boxed_slice();
+    let ptr = boxed.as_mut_ptr();
+    std::mem::forget(boxed);
+    Box::into_raw(Box::new(df_files_delta {
+        status,
+        error: std::ptr::null(),
+        reset: i32::from(reset),
+        rows: ptr,
+        row_count,
+        total,
+    }))
+}
+
+/// A delta with no rows, for `DONE`/`ERROR`/`TIMEOUT`.
+fn terminal_delta(status: i32, error: Option<String>) -> *mut df_files_delta {
+    let error = error.map(|message| {
+        CString::new(message)
+            .unwrap_or_else(|_| CString::new("error").expect("static"))
+            .into_raw()
+    });
+    Box::into_raw(Box::new(df_files_delta {
+        status,
+        error: error.unwrap_or(std::ptr::null_mut()),
+        reset: 0,
+        rows: std::ptr::null_mut(),
+        row_count: 0,
+        total: 0,
+    }))
+}
+
+/// Free the three strings a [`df_files_node`] owns.
+unsafe fn free_node_strings(node: &mut df_files_node) {
+    for field in [node.name, node.uri, node.symlink_target] {
+        if !field.is_null() {
+            drop(CString::from_raw(field as *mut c_char));
+        }
+    }
+}
+
 /// Start listing `uri` and return an opaque session, or null when the URI is
 /// not a parseable `scheme://` location. The caller owns the session and must
 /// release it with [`df_files_free`].
@@ -316,8 +459,53 @@ pub unsafe extern "C" fn df_files_begin(uri: *const c_char) -> *mut FfiSession {
     let Ok(location) = Location::parse(uri) else {
         return std::ptr::null_mut();
     };
-    let mut model = OptimisticModel::new(DirectoryModel::new());
-    let handle = model.begin(Arc::new(StdFsSource::new()), location);
+    begin_session(location, Arc::new(StdFsSource::new()), 0)
+}
+
+/// Start a session over a synthetic, disk-free listing of `count` files, in
+/// batches of `batch` (`0` uses the default). This is the T-10.5 performance
+/// fixture: the 100k scroll budget cannot be measured against a real tree
+/// without spending minutes creating inodes. The Qt facade selects it only for
+/// a `/synthetic` location when `DF_FILES_SYNTHETIC_COUNT` is set.
+///
+/// # Safety
+///
+/// `uri` must be a valid NUL-terminated C string or null.
+#[no_mangle]
+pub unsafe extern "C" fn df_files_begin_synthetic(
+    uri: *const c_char,
+    count: u32,
+    batch: u32,
+) -> *mut FfiSession {
+    if uri.is_null() {
+        return std::ptr::null_mut();
+    }
+    let Ok(uri) = std::ffi::CStr::from_ptr(uri).to_str() else {
+        return std::ptr::null_mut();
+    };
+    let Ok(location) = Location::parse(uri) else {
+        return std::ptr::null_mut();
+    };
+    begin_session(
+        location,
+        Arc::new(SyntheticSource::new(count as usize)),
+        batch as usize,
+    )
+}
+
+/// Build the session around a source and its model batch size (`0` = default).
+unsafe fn begin_session(
+    location: Location,
+    source: Arc<dyn DirectorySource>,
+    batch: usize,
+) -> *mut FfiSession {
+    let inner = if batch == 0 {
+        DirectoryModel::new()
+    } else {
+        DirectoryModel::with_batch_size(batch)
+    };
+    let mut model = OptimisticModel::new(inner);
+    let handle = model.begin(source, location);
     let (op_tx, outcome_rx) = spawn_op_worker();
     Box::into_raw(Box::new(FfiSession {
         model,
@@ -326,6 +514,7 @@ pub unsafe extern "C" fn df_files_begin(uri: *const c_char) -> *mut FfiSession {
         outcome_rx,
         pending: 0,
         last_error: None,
+        reported: HashSet::new(),
     }))
 }
 
@@ -397,6 +586,96 @@ pub unsafe extern "C" fn df_files_snapshot(session: *mut FfiSession) -> *mut df_
         return std::ptr::null_mut();
     };
     session.snapshot_event()
+}
+
+/// Block up to `timeout_ms` for the next listing event and return an
+/// **incremental** delta (T-10.5).
+///
+/// A completed operation is folded first, which always yields a reset delta
+/// (its outcome may change a node's name/uri or remove a row). A streaming
+/// batch yields only the nodes that arrived, at their final ranks, so the
+/// receiver's work per batch is proportional to the batch — not the whole
+/// listing. `DONE`/`ERROR`/`TIMEOUT` carry no rows. Returns null only for a
+/// null session. Free the result with [`df_files_delta_free`].
+///
+/// # Safety
+///
+/// `session` must be a live pointer returned by [`df_files_begin`].
+#[no_mangle]
+pub unsafe extern "C" fn df_files_poll_delta(
+    session: *mut FfiSession,
+    timeout_ms: u32,
+) -> *mut df_files_delta {
+    let Some(session) = session.as_mut() else {
+        return std::ptr::null_mut();
+    };
+    if session.drain_ops() {
+        return match session.listing_state() {
+            ListingState::Failed(error) => {
+                terminal_delta(DF_FILES_STATUS_ERROR, Some(error.to_string()))
+            }
+            _ => session.reset_delta(DF_FILES_STATUS_BATCH),
+        };
+    }
+    match session
+        .handle
+        .recv_timeout(Duration::from_millis(u64::from(timeout_ms)))
+    {
+        Some(event) => {
+            session.model.apply(event);
+            match session.listing_state() {
+                ListingState::Failed(error) => {
+                    terminal_delta(DF_FILES_STATUS_ERROR, Some(error.to_string()))
+                }
+                ListingState::Complete => terminal_delta(DF_FILES_STATUS_DONE, None),
+                _ => session.incremental_delta(),
+            }
+        }
+        None => terminal_delta(DF_FILES_STATUS_TIMEOUT, None),
+    }
+}
+
+/// Return the full ordered model as a reset delta without waiting. Used after
+/// a sort change or an optimistic begin to repaint every row. Free with
+/// [`df_files_delta_free`].
+///
+/// # Safety
+///
+/// `session` must be a live pointer returned by [`df_files_begin`].
+#[no_mangle]
+pub unsafe extern "C" fn df_files_snapshot_delta(session: *mut FfiSession) -> *mut df_files_delta {
+    let Some(session) = session.as_mut() else {
+        return std::ptr::null_mut();
+    };
+    session.reset_delta(DF_FILES_STATUS_BATCH)
+}
+
+/// Free a delta (and the row strings it owns). Null is ignored.
+///
+/// # Safety
+///
+/// `delta` must be a pointer returned by [`df_files_poll_delta`] /
+/// [`df_files_snapshot_delta`] that has not already been freed.
+#[no_mangle]
+pub unsafe extern "C" fn df_files_delta_free(delta: *mut df_files_delta) {
+    if delta.is_null() {
+        return;
+    }
+    let delta = Box::from_raw(delta);
+    if !delta.rows.is_null() {
+        let rows = std::slice::from_raw_parts_mut(delta.rows, delta.row_count as usize);
+        for row in rows {
+            free_node_strings(&mut row.node);
+        }
+        drop(Vec::from_raw_parts(
+            delta.rows,
+            delta.row_count as usize,
+            delta.row_count as usize,
+        ));
+    }
+    if !delta.error.is_null() {
+        drop(CString::from_raw(delta.error as *mut c_char));
+    }
 }
 
 /// Change the session's sort order in place. `key` is one of `name`, `kind`,
@@ -593,11 +872,7 @@ pub unsafe extern "C" fn df_files_event_free(event: *mut df_files_event) {
     if !event.nodes.is_null() {
         let nodes = std::slice::from_raw_parts_mut(event.nodes, event.count as usize);
         for node in nodes {
-            for field in [node.name, node.uri, node.symlink_target] {
-                if !field.is_null() {
-                    drop(CString::from_raw(field as *mut c_char));
-                }
-            }
+            free_node_strings(node);
         }
         drop(Vec::from_raw_parts(
             event.nodes,
@@ -804,6 +1079,75 @@ mod tests {
                 df_files_take_error(session).is_null(),
                 "error is taken once"
             );
+            df_files_free(session);
+        }
+    }
+
+    /// Drain a synthetic session with the incremental ABI, returning the ids
+    /// in delivered order and the total number of rows the poll sent. A
+    /// streaming poll must send each node exactly once (no full snapshots).
+    unsafe fn drain_incremental(session: *mut FfiSession) -> (Vec<u64>, u64, u32) {
+        let mut ids = Vec::new();
+        let mut rows_sent: u64 = 0;
+        let mut resets = 0u32;
+        loop {
+            let delta = df_files_poll_delta(session, 2_000);
+            assert!(!delta.is_null(), "poll returned null");
+            let status = (*delta).status;
+            if (*delta).reset != 0 {
+                resets += 1;
+                ids.clear();
+            }
+            rows_sent += (*delta).row_count as u64;
+            for i in 0..(*delta).row_count as usize {
+                ids.push((*delta).rows.add(i).read().node.id);
+            }
+            df_files_delta_free(delta);
+            if status == DF_FILES_STATUS_DONE {
+                break;
+            }
+            assert_ne!(status, DF_FILES_STATUS_ERROR, "listing failed");
+        }
+        (ids, rows_sent, resets)
+    }
+
+    #[test]
+    fn incremental_poll_sends_each_streamed_node_once() {
+        const COUNT: u32 = 5_000;
+        unsafe {
+            let session = df_files_begin_synthetic(c("file:///synthetic").as_ptr(), COUNT, 256);
+            assert!(!session.is_null());
+            let (ids, rows_sent, resets) = drain_incremental(session);
+            assert_eq!(ids.len(), COUNT as usize);
+            assert_eq!(
+                rows_sent,
+                u64::from(COUNT),
+                "the streaming path must not re-send earlier rows"
+            );
+            assert_eq!(resets, 0, "a plain streaming listing never resets");
+            let mut unique = ids.clone();
+            unique.sort_unstable();
+            unique.dedup();
+            assert_eq!(unique.len(), COUNT as usize, "ids are unique");
+            df_files_free(session);
+        }
+    }
+
+    #[test]
+    fn a_sort_change_delivers_a_reset_delta() {
+        unsafe {
+            let session = df_files_begin_synthetic(c("file:///synthetic").as_ptr(), 64, 0);
+            assert!(!session.is_null());
+            let (_, _, _) = drain_incremental(session);
+            assert_eq!(
+                df_files_set_sort(session, c("size").as_ptr(), c("descending").as_ptr(), 0),
+                0
+            );
+            let delta = df_files_snapshot_delta(session);
+            assert!(!delta.is_null());
+            assert_eq!((*delta).reset, 1, "a sort change repaints every row");
+            assert_eq!((*delta).row_count, 64);
+            df_files_delta_free(delta);
             df_files_free(session);
         }
     }

@@ -22,6 +22,8 @@ Item {
     signal renameSubmitted(real nodeId, string name)
     signal renameCancelled()
 
+    // The virtualizing view, exposed for the windowed-rendering check (T-10.5).
+    property alias listView: list
     readonly property int rowHeight: 28
     readonly property int modifiedWidth: 170
     readonly property int sizeWidth: 90

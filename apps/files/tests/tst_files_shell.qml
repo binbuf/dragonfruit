@@ -409,6 +409,74 @@ Item {
             compare(shell.directory.lastError, "");
         }
 
+        // -- Performance (T-10.5) -----------------------------------------------
+
+        // The 100k listing is served from the synthetic source behind the same
+        // bridge (`DF_FILES_SYNTHETIC_COUNT`, set by the runner), so this is
+        // the real windowed-rendering path with no 100k inodes on disk.
+        function test_large_list_paints_fast_and_stays_windowed() {
+            var shell = make();
+            var start = Date.now();
+            shell.browser.navigate("file:///synthetic");
+            while (shell.directory.count === 0 && Date.now() - start < 5000)
+                wait(1);
+            var firstFrame = Date.now() - start;
+            verify(firstFrame < 50,
+                   "first frame " + firstFrame + " ms (budget < 50 ms)");
+            verify(shell.directory.count > 0);
+
+            tryCompare(shell.directory, "state", "complete", 60000);
+            compare(shell.directory.count, 100000);
+
+            // The icon view is active by default. Only the visible window of
+            // delegates is instantiated, so memory stays flat with the listing.
+            waitForRendering(stage);
+            var grid = shell.iconView.gridView;
+            verify(grid !== null);
+            verify(grid.contentItem !== null);
+            var delegates = grid.contentItem.children.length;
+            console.log("T-10.5 qt: first_frame=" + firstFrame
+                        + " ms, rows=" + shell.directory.count
+                        + ", icon_delegates=" + delegates);
+            verify(delegates > 0 && delegates < 600,
+                   "icon delegates " + delegates + " for " + shell.directory.count
+                   + " rows");
+
+            // Scroll to the far end and back; the window does not grow.
+            grid.positionViewAtIndex(99999, GridView.End);
+            waitForRendering(stage);
+            delegates = grid.contentItem.children.length;
+            verify(delegates < 600, "after scrolling to the end: " + delegates);
+            grid.positionViewAtBeginning();
+            waitForRendering(stage);
+            delegates = grid.contentItem.children.length;
+            verify(delegates < 600, "after scrolling home: " + delegates);
+        }
+
+        function test_large_list_scroll_sweep() {
+            var shell = make();
+            shell.browser.navigate("file:///synthetic");
+            tryCompare(shell.directory, "state", "complete", 60000);
+            compare(shell.directory.count, 100000);
+
+            shell.viewControl.activateIndex(1); // list view
+            waitForRendering(stage);
+            var list = shell.listView.listView;
+            verify(list !== null);
+
+            var start = Date.now();
+            for (var step = 0; step < 100; ++step) {
+                list.positionViewAtIndex(step * 997, ListView.Beginning);
+                waitForRendering(stage);
+            }
+            var elapsed = Date.now() - start;
+            var delegates = list.contentItem.children.length;
+            console.log("T-10.5 qt scroll: 100 list jumps=" + elapsed
+                        + " ms, list_delegates=" + delegates);
+            verify(delegates < 200, "list delegates " + delegates);
+            verify(elapsed < 10000, "100 scroll jumps took " + elapsed + " ms");
+        }
+
         // -- Search -------------------------------------------------------------
 
         function test_search_field_is_wired() {

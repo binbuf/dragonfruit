@@ -9,11 +9,11 @@
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, UNIX_EPOCH};
 
 use crate::source::{DirectoryReader, DirectorySource, SourceError};
 use crate::watch::{FolderWatcher, WatchEventKind, WatchReader};
-use crate::{Location, Node};
+use crate::{Location, Node, NodeKind};
 
 /// A fake source that replays a scripted sequence of batches.
 pub struct MockSource {
@@ -67,6 +67,63 @@ struct MockReader {
 impl DirectoryReader for MockReader {
     fn next_batch(&mut self, _max: usize) -> Result<Option<Vec<Node>>, SourceError> {
         Ok(self.batches.pop_front())
+    }
+}
+
+/// A deterministic, disk-free [`DirectorySource`] that fabricates `count`
+/// synthetic files, for the T-10.5 performance budgets.
+///
+/// The 100k-item scroll budget cannot be measured against a real tree without
+/// spending minutes creating 100k inodes, so this streams plausible entries
+/// (natural-sorting `file-0000000.txt` names, sizes, and mtimes) from memory.
+/// It is a fixture, not a shipping backend: production listings go through
+/// `StdFsSource`/GIO.
+pub struct SyntheticSource {
+    count: usize,
+}
+
+impl SyntheticSource {
+    /// A source that yields exactly `count` synthetic regular files.
+    pub fn new(count: usize) -> Self {
+        Self { count }
+    }
+}
+
+impl DirectorySource for SyntheticSource {
+    fn open(&self, _location: &Location) -> Result<Box<dyn DirectoryReader>, SourceError> {
+        Ok(Box::new(SyntheticReader {
+            produced: 0,
+            count: self.count,
+        }))
+    }
+}
+
+struct SyntheticReader {
+    produced: usize,
+    count: usize,
+}
+
+impl DirectoryReader for SyntheticReader {
+    fn next_batch(&mut self, max: usize) -> Result<Option<Vec<Node>>, SourceError> {
+        if self.produced >= self.count {
+            return Ok(None);
+        }
+        let take = max.max(1).min(self.count - self.produced);
+        let mut batch = Vec::with_capacity(take);
+        for _ in 0..take {
+            let index = self.produced;
+            self.produced += 1;
+            let name = format!("file-{index:07}.txt");
+            let node = Node::new(
+                name.clone(),
+                format!("file:///synthetic/{name}"),
+                NodeKind::File,
+            )
+            .with_size(Some(index as u64 * 7 + 1))
+            .with_modified(Some(UNIX_EPOCH + Duration::from_secs(index as u64)));
+            batch.push(node);
+        }
+        Ok(Some(batch))
     }
 }
 

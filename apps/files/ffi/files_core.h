@@ -49,9 +49,33 @@ typedef struct df_files_event {
     uint32_t count;
 } df_files_event;
 
+// One ordered row in an incremental delta (T-10.5): a node and its final rank
+// in the ordered projection.
+typedef struct df_files_row {
+    uint32_t rank;
+    df_files_node node;
+} df_files_row;
+
+// An incremental event (T-10.5). `reset != 0` replaces the whole model with
+// `rows`, in order; otherwise `rows` are insertions at their final ranks and
+// the existing rows keep their relative order. `total` is the model length
+// after the event. All memory is owned by the delta.
+typedef struct df_files_delta {
+    int32_t status;  // DF_FILES_STATUS_*
+    const char *error;
+    int32_t reset;
+    df_files_row *rows;
+    uint32_t row_count;
+    uint32_t total;
+} df_files_delta;
+
 // Start listing `uri`. Returns an opaque session, or null for a URI that is
 // not a parseable `scheme://` location. Free with df_files_free.
 void *df_files_begin(const char *uri);
+
+// Start a session over `count` synthetic files (T-10.5 perf fixture), in
+// batches of `batch` (0 = default). Free with df_files_free.
+void *df_files_begin_synthetic(const char *uri, uint32_t count, uint32_t batch);
 
 // Retire a session and cancel its listing worker. Null is ignored.
 void df_files_free(void *session);
@@ -64,6 +88,19 @@ df_files_event *df_files_poll(void *session, uint32_t timeout_ms);
 // Return the current ordered snapshot without waiting (used after a sort
 // change). Free with df_files_event_free.
 df_files_event *df_files_snapshot(void *session);
+
+// Block up to `timeout_ms` for the next listing event, as an incremental
+// delta: streaming batches carry only the nodes that arrived, at their final
+// ranks. A completed operation is folded first and always resets. Free with
+// df_files_delta_free. Returns null only for a null session.
+df_files_delta *df_files_poll_delta(void *session, uint32_t timeout_ms);
+
+// Return the full ordered model as a reset delta without waiting (used after a
+// sort change or an optimistic begin). Free with df_files_delta_free.
+df_files_delta *df_files_snapshot_delta(void *session);
+
+// Free a delta (and the row strings it owns). Null is ignored.
+void df_files_delta_free(df_files_delta *delta);
 
 // Set the sort order in place. Returns 0 on success, -1 on a null session or
 // an unknown key/direction.
