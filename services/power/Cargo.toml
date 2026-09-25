@@ -1,0 +1,24 @@
+[package]
+name = "dragonfruit-power"
+description = "UPower power adapter: battery presence, level, and charging state (T-07.4)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+# The concrete adapter owns its daemon stack. UPower is reached over its
+# D-Bus API on the system bus (see docs/design/07-system-integration.md); the
+# dependency-free contract lives in `dragonfruit-system-adapters` and nothing
+# above this crate sees zbus or a UPower type.
+[dependencies]
+dragonfruit-system-adapters = { path = "../system-adapters", version = "0.1.0" }
+zbus = { version = "=5.19.0", features = ["blocking-api"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "=1.0.151"
+
+[lib]
+name = "dragonfruit_power"
+path = "src/lib.rs"

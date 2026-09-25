@@ -11,6 +11,7 @@ members = [
     "services/system-adapters",
     "services/networkmanager",
     "services/audio",
+    "services/power",
     "tools/dragonfruit-dev",
 ]
 

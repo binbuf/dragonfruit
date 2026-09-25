@@ -159,6 +159,32 @@ user actions over the same seam and do not invent a snapshot; the daemon pushes
 the result and the host re-reads, so the snapshot stays the single source of
 truth. Routing and device switching are deferred to T-15.
 
+## The power path (T-07.4)
+
+The power adapter, `dragonfruit-power` (`services/power`), gives the menu bar
+the system battery's presence, charge level, and charging state. UPower already
+exposes these over its D-Bus API on the **system bus** (`org.freedesktop.UPower`:
+`OnBattery` plus `EnumerateDevices` and each device's
+`org.freedesktop.UPower.Device` properties), so the live source is a `zbus`
+client — no extra dependency beyond what NetworkManager already brings into its
+own crate ([adr/0026](adr/0026-concrete-adapters-in-their-own-crates.md)).
+
+The read path is the same three-state seam as the other adapters:
+`PowerSource::read` returns the raw device enumeration (`Ok(Some)`), absence
+(`Ok(None)`), or a read failure (`Err`). A bus where UPower does not own its
+name is absence — hidden, never an error. `PowerSnapshot::from_data` picks the
+first present battery, maps `UPowerDeviceState` to `ChargeState` and
+`UPowerBatteryLevel` to `BatteryLevel`, and clamps the percentage to 0–100.
+There is **no write**: the battery item is read-only (power profiles via
+`power-profiles-daemon` are deferred to T-15).
+
+Being read-only, the item is hidden in two different ways. UPower itself being
+absent is the adapter's `AdapterState::Unavailable`. A machine that runs UPower
+but has no present battery (a desktop, a VM) still answers `Available`, with
+`PowerSnapshot::present()` false — the consumer hides the item then. A battery
+that is present but whose `IsPresent` is false is treated the same as no
+battery. Nothing blocks session startup when either is missing.
+
 ## D-Bus conventions
 
 Our services own names under `org.dragonfruit.*` on the **user session bus**
