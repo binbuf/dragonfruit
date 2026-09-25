@@ -110,9 +110,29 @@ impl Location {
         if let Some(path) = self.to_file_path() {
             return Location::file(path.join(name));
         }
-        let base = self.uri.trim_end_matches('/');
+        let base = self.uri.strip_suffix('/').unwrap_or(&self.uri);
         Location {
             uri: format!("{base}/{}", percent_encode(&os_bytes(name))),
+        }
+    }
+
+    /// The containing location, or `None` at a filesystem root or for an
+    /// authority-only URI such as `trash://`.
+    ///
+    /// For `file://` the path is walked; other schemes are treated as URI
+    /// segments, so operations on foreign schemes can still name a parent.
+    pub fn parent(&self) -> Option<Location> {
+        if let Some(path) = self.to_file_path() {
+            return path.parent().map(Location::file);
+        }
+        let prefix_end = self.uri.find("://").map(|index| index + 3)?;
+        let trimmed = self.uri.strip_suffix('/').unwrap_or(&self.uri);
+        if trimmed.len() <= prefix_end {
+            return None;
+        }
+        match trimmed.rfind('/') {
+            Some(index) if index >= prefix_end => Location::parse(&trimmed[..index]).ok(),
+            _ => None,
         }
     }
 
@@ -253,6 +273,34 @@ mod tests {
     fn root_child_is_absolute() {
         let child = Location::file("/").child(OsStr::new("etc"));
         assert_eq!(child.to_file_path(), Some(PathBuf::from("/etc")));
+    }
+
+    #[test]
+    fn child_of_a_foreign_root_keeps_the_scheme_prefix() {
+        let root = Location::parse("trash:///").expect("parses");
+        let child = root.child(OsStr::new("a b"));
+        assert_eq!(child.uri(), "trash:///a%20b");
+        assert_eq!(child.scheme(), "trash");
+    }
+
+    #[test]
+    fn parent_walks_a_file_path_to_its_parent() {
+        let location = Location::file("/tmp/a b/c");
+        assert_eq!(
+            location.parent().and_then(|p| p.to_file_path()),
+            Some(PathBuf::from("/tmp/a b"))
+        );
+        assert_eq!(Location::file("/").parent(), None);
+    }
+
+    #[test]
+    fn parent_of_a_foreign_scheme_is_a_uri_prefix() {
+        let location = Location::parse("trash:///foo").expect("parses");
+        assert_eq!(
+            location.parent().map(|p| p.uri().to_owned()),
+            Some("trash://".to_owned())
+        );
+        assert_eq!(Location::parse("trash:///").expect("parses").parent(), None);
     }
 
     #[test]

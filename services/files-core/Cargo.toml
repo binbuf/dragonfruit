@@ -1,6 +1,6 @@
 [package]
 name = "dragonfruit-files-core"
-description = "Headless files-core model, streaming listing, and sorting (T-10.1b)"
+description = "Headless files-core model, streaming listing, sorting, and operations (T-10.2a)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

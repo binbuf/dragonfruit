@@ -26,6 +26,14 @@
 //!   not available; it is explicitly marked for replacement
 //!   ([adr/0042], [adr/0043]).
 //!
+//! # What T-10.2a owns
+//!
+//! * [`FileOps`] — the one operations engine seam: rename, new folder, move,
+//!   copy, and permanent delete. [`StdFsOps`] is its sanctioned fallback,
+//!   the same `std::fs` degradation as listing. [`generated_name`] is the one
+//!   next-available-name helper (`untitled folder`, `untitled folder 2`, …).
+//!   Optimistic semantics, undo, conflicts, and trash are later tasks.
+//!
 //! # Sorting is incremental and stable
 //!
 //! [`DirectoryModel::set_sort`] changes the order and re-sorts what is already
@@ -77,6 +85,7 @@ mod location;
 mod mock;
 mod model;
 mod node;
+mod ops;
 pub mod sort;
 mod source;
 
@@ -86,5 +95,6 @@ pub use location::{Location, LocationError};
 pub use mock::MockSource;
 pub use model::{DirectoryModel, ListingState};
 pub use node::{Node, NodeId, NodeKind};
+pub use ops::{generated_name, FileOps, OperationError, StdFsOps, NEW_FOLDER_BASE};
 pub use sort::{SortDirection, SortKey, SortSpec};
 pub use source::{DirectoryReader, DirectorySource, SourceError};

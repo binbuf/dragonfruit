@@ -73,6 +73,20 @@ sanctioned `StdFsSource` fallback, **marked for replacement**
 [adr/0042](adr/0042-files-core-streaming-listing-and-fallback.md) and
 [adr/0043](adr/0043-files-core-fallback-is-the-shipping-backend.md).
 
+**Implementation status (T-10.2a).** The operations seam exists: `FileOps`
+(`rename`, `create_dir`, `copy`, `move_to`, `delete`, and `exists`) in
+`services/files-core`, with `StdFsOps` as the sanctioned `std::fs` fallback —
+the same degradation as listing, resolving only `file://`. `new_folder`
+generates `untitled folder`, `untitled folder 2`, … through the one
+`generated_name` helper; copy is recursive and recreates symlinks without
+following them; a cross-device move copies fully then deletes the source;
+`delete` is permanent and recursive. Failures are typed
+(`OperationError`: `AlreadyExists`, `NotFound`, `NotADirectory`,
+`InvalidName`, `UnsupportedScheme`, …). **Still deferred:** optimistic
+rendering and reconciliation, undo, progress, conflict policy, the journal,
+and `trash://` (T-10.2b, T-10.3a). See
+[adr/0044](adr/0044-files-core-operations-seam.md).
+
 ### Model
 
 - **`Location`** — URI-addressed, GFile-shaped: `file://`, `trash://`,
