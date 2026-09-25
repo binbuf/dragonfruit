@@ -191,6 +191,13 @@ public:
     void setInputPolicy(int repeatDelayMs, int repeatRateHz, bool gesturesEnabled,
                         bool gestureSpaceSwitch, bool gestureMissionControl);
 
+    // Forward the settingsd wallpaper selection to the compositor (T-09.3,
+    // `df_workspace.set_wallpaper`): `source` empty keeps the Space's solid
+    // color; `fit` is the already-mapped `df_workspace.wallpaper_fit` value;
+    // `showOnAllSpaces` selects all Spaces or only the active one. The request
+    // is remembered and re-sent once the manager has announced its Spaces.
+    void setWallpaper(const QString &source, uint32_t fit, bool showOnAllSpaces);
+
     // Hand the Dock entry's tile rectangle (logical global pixels) to the
     // compositor so the launching app's window appears from it (T-02.1b,
     // `df_toplevel_manager.set_launch_origin`, additive in v4).
@@ -342,6 +349,10 @@ private:
     df_toplevel *toplevelForId(quintptr windowId) const;
     // Attach `image` to `surface` as a fresh shm buffer and commit it.
     bool commitTo(wl_surface *surface, const QImage &image);
+    // Send the remembered wallpaper selection to every targeted Space. Safe to
+    // call before any Space is known (it is then a no-op; `onManagerDone`
+    // retries).
+    void applyWallpaper();
 
     // Wayland listener trampolines.
     static void onRegistryGlobal(void *data, wl_registry *registry, uint32_t name,
@@ -567,5 +578,13 @@ private:
     // "Assign to This Desktop" moves an app's windows here.
     df_workspace *m_activeWorkspace = nullptr;
     df_toplevel *m_focused = nullptr;
+    // The last settingsd wallpaper selection, forwarded to `df_workspace`
+    // once Spaces are known (T-09.3). `m_wallpaperKnown` is false before the
+    // first policy arrives; `m_wallpaperSource` may legitimately be empty
+    // (solid color).
+    bool m_wallpaperKnown = false;
+    QString m_wallpaperSource;
+    uint32_t m_wallpaperFit = 0;
+    bool m_wallpaperShowOnAllSpaces = true;
     QSet<wl_buffer *> m_buffers;
 };

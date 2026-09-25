@@ -95,7 +95,7 @@ void SettingsClient::setAvailable(bool available)
 
 QVariantMap settingsSchemaDefaults()
 {
-    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 1). Values are
+    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 2). Values are
     // typed exactly as the schema declares: d, x, b, s, as.
     QVariantMap values;
     values.insert(QStringLiteral("dock.size"), 0.5);
@@ -115,6 +115,9 @@ QVariantMap settingsSchemaDefaults()
     values.insert(QStringLiteral("gestures.missionControl"), true);
     values.insert(QStringLiteral("appearance.colorScheme"), QStringLiteral("auto"));
     values.insert(QStringLiteral("appearance.accent"), QString());
+    values.insert(QStringLiteral("wallpaper.source"), QString());
+    values.insert(QStringLiteral("wallpaper.fit"), QStringLiteral("fill"));
+    values.insert(QStringLiteral("wallpaper.showOnAllSpaces"), true);
     values.insert(QStringLiteral("accessibility.reduceMotion"), false);
     values.insert(QStringLiteral("input.repeatDelay"), qlonglong(200));
     values.insert(QStringLiteral("input.repeatRate"), qlonglong(25));

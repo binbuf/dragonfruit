@@ -250,6 +250,12 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             &ShellController::applyCompositorPolicy);
     connect(m_settingsClient, &SettingsClient::refreshed, this,
             &ShellController::applyCompositorPolicy);
+    // T-09.3: the wallpaper selection is a separate view of the same client;
+    // forward it to the compositor on every change and fresh snapshot.
+    connect(m_settingsClient, &SettingsClient::changed, this,
+            &ShellController::applyWallpaperPolicy);
+    connect(m_settingsClient, &SettingsClient::refreshed, this,
+            &ShellController::applyWallpaperPolicy);
     // `auto` follows the host scheme for the compositor too; ThemeBinding owns
     // the Theme side, this keeps the forwarded scheme live.
     if (QStyleHints *hints = QGuiApplication::styleHints()) {
@@ -284,6 +290,9 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // T-08.2c: forward the initial motion/input policy now that the protocol
     // is authenticated (the compositor is the sole applier).
     applyCompositorPolicy();
+    // T-09.3: forward the persisted wallpaper selection. The protocol retries
+    // once the manager has announced its Spaces.
+    applyWallpaperPolicy();
     m_window = new QQuickWindow;
     m_window->setColor(Qt::transparent);
 
@@ -1410,6 +1419,27 @@ void ShellController::applyCompositorPolicy()
             "(scheme=%s reducedMotion=%d repeat=%d/%d gestures=%d)\n",
             qPrintable(policy.colorScheme), policy.reducedMotion ? 1 : 0,
             policy.repeatDelayMs, policy.repeatRateHz, policy.gesturesEnabled ? 1 : 0);
+}
+
+void ShellController::applyWallpaperPolicy()
+{
+    // T-09.3: one view of the settingsd wallpaper keys, forwarded to the
+    // compositor as per-Space `df_workspace.set_wallpaper`. The compositor is
+    // the sole applier; the shell keeps no second settings source.
+    if (!m_settingsClient || !m_protocol)
+        return;
+    const WallpaperSettings settings =
+        wallpaperSettingsFromValues(m_settingsClient->values());
+    if (m_wallpaperSent && settings == m_wallpaperSettings)
+        return;
+    m_wallpaperSettings = settings;
+    m_wallpaperSent = true;
+    m_protocol->setWallpaper(settings.source, wallpaperFitFromName(settings.fit),
+                             settings.showOnAllSpaces);
+    fprintf(stderr,
+            "dragonfruit-shell: wallpaper applied (fit=%s allSpaces=%d source=%s)\n",
+            qPrintable(settings.fit), settings.showOnAllSpaces ? 1 : 0,
+            settings.source.isEmpty() ? "(solid)" : qPrintable(settings.source));
 }
 
 void ShellController::onDockStateChanged(const QVariantList &entries)

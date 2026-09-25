@@ -21,6 +21,7 @@
 #include "shellprotocol.h"
 #include "systemstatusmodel.h"
 #include "trashmonitor.h"
+#include "wallpaperpolicy.h"
 
 class SystemStatusClient;
 class ThemeBinding;
@@ -190,6 +191,10 @@ private:
     // `changed`/`refreshed`, on a host color-scheme change (`auto`), and once
     // after the protocol connects.
     void applyCompositorPolicy();
+    // T-09.3: re-read the settingsd wallpaper keys and forward them to the
+    // compositor (`df_workspace.set_wallpaper`). Runs on every
+    // `changed`/`refreshed` and once after the protocol connects.
+    void applyWallpaperPolicy();
     // Write one `dock.*` key through the settings client (settingsd is the
     // single owner) and refresh the typed local view.
     void writeDockSetting(const QString &key, const QVariant &value);
@@ -281,6 +286,10 @@ private:
     // The first apply must always send, even when the values happen to equal
     // the compositor's own defaults, so the one owner is authoritative.
     bool m_compositorPolicySent = false;
+    // T-09.3: the last wallpaper selection forwarded, so an unchanged settings
+    // value does not re-send the protocol requests.
+    WallpaperSettings m_wallpaperSettings;
+    bool m_wallpaperSent = false;
     // The typed Dock view of the client's keys, refreshed on every change.
     DockConfig m_dockConfig;
     // True while a local write is in flight, so the client's synchronous

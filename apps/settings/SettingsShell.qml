@@ -111,6 +111,8 @@ Item {
         switch (id) {
         case "appearance":
             return appearancePaneComponent;
+        case "wallpaper":
+            return wallpaperPaneComponent;
         default:
             return null;
         }
@@ -118,6 +120,11 @@ Item {
 
     Component.onCompleted: {
         var first = root.visiblePanes.length > 0 ? root.visiblePanes[0].id : "";
+        // `DF_SETTINGS_START_PANE` opens a specific shipped pane for captures
+        // and scripted checks; an unknown or unshipped id is ignored.
+        var requested = Settings.startPane;
+        if (requested.length > 0 && SettingsPanes.indexOf(requested) >= 0)
+            first = requested;
         if (first.length > 0) {
             root.history = [first];
             root.historyIndex = 0;
@@ -175,6 +182,11 @@ Item {
     Component {
         id: appearancePaneComponent
         AppearancePane { }
+    }
+
+    Component {
+        id: wallpaperPaneComponent
+        WallpaperPane { }
     }
 
     AppWindow {

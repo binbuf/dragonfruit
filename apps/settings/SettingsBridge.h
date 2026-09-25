@@ -26,6 +26,7 @@
 #include <QString>
 #include <QStringList>
 #include <QVariant>
+#include <QVariantList>
 #include <QVariantMap>
 #include <QtQml/qqmlregistration.h>
 
@@ -43,6 +44,18 @@ class SettingsBridge : public QObject
     // Whether the daemon currently owns the bus name. False means defaults +
     // in-memory writes (the absent-provider state panes must degrade under).
     Q_PROPERTY(bool available READ available NOTIFY availableChanged)
+    // The Wallpaper pane's built-in artwork (T-09.3): one entry per original
+    // gradient preset, each `{ id, name, collection, source, url }` where
+    // `source` is an absolute image path the compositor can decode and `url` a
+    // `file://` URL for the QML preview. Stable for the process lifetime.
+    Q_PROPERTY(QVariantList wallpaperPresets READ wallpaperPresets CONSTANT)
+    // Whether the xdg-desktop-portal FileChooser is on the session bus; the
+    // "Add Photo…" button disables when it is not (absent provider).
+    Q_PROPERTY(bool wallpaperChooserAvailable READ wallpaperChooserAvailable NOTIFY
+                   wallpaperChooserAvailableChanged)
+    // The pane the shell opens on startup. Empty uses the first shipped pane;
+    // `DF_SETTINGS_START_PANE=wallpaper` selects one for captures and tests.
+    Q_PROPERTY(QString startPane READ startPane CONSTANT)
 
 public:
     explicit SettingsBridge(QObject *parent = nullptr);
@@ -50,6 +63,9 @@ public:
 
     QVariantMap values() const;
     bool available() const;
+    QVariantList wallpaperPresets() const;
+    bool wallpaperChooserAvailable() const;
+    QString startPane() const;
 
     // Read one key (with an optional fallback for an unknown key).
     Q_INVOKABLE QVariant value(const QString &key, const QVariant &fallback = {}) const;
@@ -61,13 +77,36 @@ public:
     // Every key the schema (and the defaults table) knows.
     Q_INVOKABLE QStringList keys() const;
 
+    // Open the portal file chooser at the user's Pictures directory. A chosen
+    // image is announced through `wallpaperPhotoChosen`; a cancelled or
+    // unavailable chooser emits nothing (the pane stays on the current image).
+    Q_INVOKABLE void chooseWallpaperPhoto();
+
+    // `file:///path/to/a.png` / `file://host/path` -> a local path. Pure, so
+    // the URI contract is unit-testable.
+    static QString localPathFromUri(const QString &uri);
+
 signals:
     void valuesChanged();
     void availableChanged(bool available);
     // One key really changed (local write or daemon signal). `values` also
     // changes; listen to this only when a key's identity matters.
     void changed(const QString &key, const QVariant &value);
+    void wallpaperChooserAvailableChanged();
+    // The chosen photo's local path, ready for `wallpaper.source`.
+    void wallpaperPhotoChosen(const QString &path);
+
+private:
+    void buildWallpaperPresets();
+    void connectPortalWatcher();
+    void setChooserAvailable(bool available);
+
+private slots:
+    void onPortalResponse(uint response, const QVariantMap &results);
 
 private:
     SettingsClient *m_client = nullptr;
+    QVariantList m_presets;
+    bool m_chooserAvailable = false;
+    QString m_requestPath;
 };
