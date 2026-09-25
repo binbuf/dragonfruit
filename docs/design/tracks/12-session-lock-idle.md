@@ -1,6 +1,6 @@
 # T-12 — Session Lifecycle, Lock Screen, and Idle
 
-> **Track, not a single slice.** This file is the design reference. It is executed as 10 one-session tasks: [T-12.1a](../../tasks/078-t-12.1a-session-manager-and-restart-policy.md) · [T-12.1b](../../tasks/079-t-12.1b-session-environment-and-units.md) · [T-12.2](../../tasks/080-t-12.2-display-manager-entry-and-logout-teardown.md) · [T-12.3a](../../tasks/081-t-12.3a-lock-protocol-and-ui.md) · [T-12.3b](../../tasks/082-t-12.3b-lock-pam-authentication.md) · [T-12.3c](../../tasks/083-t-12.3c-lock-input-capture-and-kill-resistance.md) · [T-12.4a](../../tasks/084-t-12.4a-idle-timers.md) · [T-12.4b](../../tasks/085-t-12.4b-idle-inhibitors-and-wake.md) · [T-12.5a](../../tasks/086-t-12.5a-suspend-resume-cycle.md) · [T-12.5b](../../tasks/087-t-12.5b-session-policy-keys-and-kill-matrix.md). Strict order and prerequisites live in [ROADMAP.md](../../ROADMAP.md).
+> **Track, not a single slice.** This file is the design reference. It is executed as 13 one-session tasks: [T-12.1a](../../tasks/078-t-12.1a-session-manager-and-restart-policy.md) · [T-12.1b](../../tasks/079-t-12.1b-session-environment-and-units.md) · [T-12.2](../../tasks/080-t-12.2-display-manager-entry-and-logout-teardown.md) · [T-12.3a](../../tasks/081-t-12.3a-lock-protocol-and-ui.md) · [T-12.3b](../../tasks/082-t-12.3b-lock-pam-authentication.md) · [T-12.3c](../../tasks/083-t-12.3c-lock-input-capture-and-kill-resistance.md) · [T-12.4a](../../tasks/084-t-12.4a-idle-timers.md) · [T-12.4b](../../tasks/085-t-12.4b-idle-inhibitors-and-wake.md) · [T-12.5a](../../tasks/086-t-12.5a-suspend-resume-cycle.md) · [T-12.5b](../../tasks/087-t-12.5b-session-policy-keys-and-kill-matrix.md) · [T-12.6a](../../tasks/169-t-12.6a-display-manager-session-selection.md) · [T-12.6b](../../tasks/170-t-12.6b-real-session-round-trip.md) · [T-12.6c](../../tasks/171-t-12.6c-second-vt-dev-harness.md). T-12.6a–c are appended (169–171) because they are exercised on the hardware rail (T-159…T-161); strict order and prerequisites live in [ROADMAP.md](../../ROADMAP.md).
 
 | | |
 |---|---|
@@ -62,6 +62,12 @@ exists.
 5. **Suspend/resume** (one cycle; the 100-cycle soak is T-16) with clean
    recovery of outputs, input, and clients.
 6. **Policy keys** in settingsd: lock delay, idle delays, suspend behavior.
+7. **Dev-session harness** (T-12.6): a DM-agnostic way to run the *real*
+   session on a dev workstation — a no-logout second-VT mode for a dedicated
+   user, and a same-user display-manager round-trip with a "Quit to \<previous
+   desktop\>" return. It never stops or hand-waves the host compositor
+   ([11-session-and-dev-workflow.md](../11-session-and-dev-workflow.md#the-real-session-dev-harness) ·
+   [ADR 0053](../adr/0053-real-session-dev-harness.md)).
 
 ### Out / explicitly deferred
 
@@ -79,6 +85,9 @@ exists.
 - [ ] One suspend/resume cycle recovers cleanly.
 - [ ] Logout teardown is clean; the host DE/display manager is unaffected.
 - [ ] The session entry appears next to the host DE in the display manager.
+- [ ] The dev-session harness runs the real session on a second VT without
+      logging the host out, and the DM round-trip restores the previous default
+      session after both a clean return and a simulated crash.
 - [ ] `make soak` and the nested demos stay green.
 
 ## Test plan
@@ -101,3 +110,4 @@ exists.
 - T-13 validates portals in this session.
 - T-16 runs the suspend/multi-monitor soak here.
 - T-17's DRM gate uses this session.
+- T-12.6's harness is the low-friction entry to all three.

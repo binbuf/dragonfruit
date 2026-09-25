@@ -58,11 +58,12 @@ legacy numbers and do not match this plan.
 
 ## How this plan runs
 
-- 168 one-session tasks; execution order is [ROADMAP.md](ROADMAP.md). Task ids
-  `T01`–`T168` are positional; the stable design ids `T-01.1a` etc. are in each
+- 171 one-session tasks; execution order is [ROADMAP.md](ROADMAP.md). Task ids
+  `T01`–`T171` are positional; the stable design ids `T-01.1a` etc. are in each
   task file title and in [design/tracks/](design/tracks/).
-- 158 nested/human tasks run first; the 10 `[hw]` tasks are Phase 18 (hardware
-  rail) and need a seat, spare GPU or clean VM.
+- 161 nested/human tasks run first; the 10 `[hw]` tasks are Phase 18 (hardware
+  rail) and need a seat, spare GPU or clean VM. T169–T171 (T-12.6, the
+  real-session dev harness) are Phase 19 and are validated on that rail.
 - Independent verify after every task: `make e2e`. Full gate: `make check`
   (lint + test + 100-cycle soak).
 - Design references live in [design/](design/) and [design/tracks/](design/tracks/);

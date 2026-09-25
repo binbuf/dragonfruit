@@ -80,7 +80,7 @@ every task un-completable.
 | [T-09](design/tracks/09-settings-app-wave-1.md) | Settings Wave 1 | 8 | Appearance, Wallpaper, Desktop & Dock, Displays-basic |
 | [T-10](design/tracks/10-files-mvp.md) | Files MVP | 14 | browse, open, rename, trash; Dock↔Files Trash |
 | [T-11](design/tracks/11-control-center-notifications.md) | Control Center + notifications | 8 | panel, banners, OSD |
-| [T-12](design/tracks/12-session-lock-idle.md) | Session + lock + idle | 10 | real login session, lock, idle, suspend [hw] |
+| [T-12](design/tracks/12-session-lock-idle.md) | Session + lock + idle | 13 | real login session, lock, idle, suspend [hw], dev-session harness |
 | [T-13](design/tracks/13-portals-capture-clipboard.md) | Portals + capture + clipboard | 12 | Flatpak browser walkthrough |
 | [T-14](design/tracks/14-global-menu-app-index-compat.md) | Global menu + app index + compat | 11 | real menus, tray, DBusMenu, XDnD, zoo |
 | [T-15](design/tracks/15-system-services-breadth.md) | System services + Settings Waves 2–3 | 31 | Bluetooth, storage, printers, users, … |
@@ -89,7 +89,7 @@ every task un-completable.
 
 ## Work units (strict order)
 
-The 168 one-session tasks below are the executable sequence. symphony walks them in
+The 171 one-session tasks below are the executable sequence. symphony walks them in
 file order, runs each in a fresh session, verifies with `make e2e` and commits.
 The 10 `[hw]` tasks (DRM/logind, driver matrix, suspend soak, clean-VM packaging)
 are collected into the final Hardware rail phase so the nested pipeline runs to
@@ -317,6 +317,16 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 - [ ] T166 — T-16.11 Packaged-build performance re-measure → [tasks/166-t-16.11-packaged-build-performance-re-measure.md](tasks/166-t-16.11-packaged-build-performance-re-measure.md)
 - [ ] T167 — T-17.2 DRM full-loop verification → [tasks/167-t-17.2-drm-full-loop-verification.md](tasks/167-t-17.2-drm-full-loop-verification.md)
 - [ ] T168 — T-17.4 Performance budget verification → [tasks/168-t-17.4-performance-budget-verification.md](tasks/168-t-17.4-performance-budget-verification.md)
+
+## Phase 19 — T-12.6 real-session dev harness (appended)
+
+> Appended at 169–171 so they run after the hardware rail (T-159…T-161), which
+> they need to validate. Design: [11-session-and-dev-workflow.md](design/11-session-and-dev-workflow.md#the-real-session-dev-harness) ·
+> [ADR 0053](design/adr/0053-real-session-dev-harness.md).
+
+- [ ] T169 — T-12.6a Display-manager session selection and optional autologin → [tasks/169-t-12.6a-display-manager-session-selection.md](tasks/169-t-12.6a-display-manager-session-selection.md)
+- [ ] T170 — T-12.6b Real-session round-trip and "Quit to <previous desktop>" → [tasks/170-t-12.6b-real-session-round-trip.md](tasks/170-t-12.6b-real-session-round-trip.md)
+- [ ] T171 — T-12.6c Second-VT dev harness and runbook → [tasks/171-t-12.6c-second-vt-dev-harness.md](tasks/171-t-12.6c-second-vt-dev-harness.md)
 
 ## Delivery order (unchanged in intent)
 

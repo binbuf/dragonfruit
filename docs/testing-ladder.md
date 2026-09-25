@@ -70,6 +70,12 @@ of this rung is **service isolation**, not DRM. Once T-02 lands,
 replace the last line with the real DRM backend and, from T-24 on,
 with `dragonfruit-session.target` under systemd.
 
+Once T-12.2 and the hardware rail have landed, T-12.6c automates this rung
+(`dragonfruit dev --real --user dfdev`, no host logout) and T-12.6b automates
+the same-user display-manager round-trip
+([design](design/11-session-and-dev-workflow.md#the-real-session-dev-harness) ·
+[ADR 0053](design/adr/0053-real-session-dev-harness.md)).
+
 ## Rung 3 — VM
 
 Intentionally crash things: compositor, lock screen, portal service,
