@@ -1,0 +1,27 @@
+[Unit]
+Description=Dragonfruit xdg-desktop-portal backend
+Documentation=https://github.com/dragonfruit-desktop/dragonfruit
+# Stage 2: the portal backend registers with xdg-desktop-portal last, once
+# the compositor and the stage-1 services are up.
+After=dragonfruit-compositor.service
+After=dragonfruit-shell.service
+After=dragonfruit-settingsd.service
+After=dragonfruit-menu-broker.service
+After=dragonfruit-app-index.service
+After=dragonfruit-notifications.service
+After=xdg-desktop-portal.service
+PartOf=dragonfruit-session.target
+
+[Service]
+Type=simple
+ExecStartPre=/usr/bin/dragonfruit-session --wait-socket dragonfruit-wayland --timeout 10
+ExecStart=/usr/bin/xdg-desktop-portal-dragonfruit
+Restart=on-failure
+RestartSec=1
+Environment=XDG_CURRENT_DESKTOP=dragonfruit
+Environment=XDG_SESSION_TYPE=wayland
+Environment=WAYLAND_DISPLAY=dragonfruit-wayland
+PassEnvironment=DISPLAY DRAGONFRUIT_LAUNCH_TOKEN
+
+[Install]
+WantedBy=dragonfruit-session.target

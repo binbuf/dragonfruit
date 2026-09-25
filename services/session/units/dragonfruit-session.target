@@ -1,0 +1,19 @@
+[Unit]
+Description=Dragonfruit desktop session
+Documentation=https://github.com/dragonfruit-desktop/dragonfruit
+# The session composition is data in services/session (SessionPlan): the
+# compositor is the anchor and starts first; the shell and services start in
+# parallel once its private socket exists; the portal registers last. The
+# target pulls every unit so `systemctl --user start dragonfruit-session.target`
+# starts the whole session.
+Requires=dragonfruit-compositor.service
+Wants=dragonfruit-shell.service
+Wants=dragonfruit-settingsd.service
+Wants=dragonfruit-menu-broker.service
+Wants=dragonfruit-app-index.service
+Wants=dragonfruit-notifications.service
+Wants=dragonfruit-portal.service
+After=dragonfruit-compositor.service
+
+[Install]
+WantedBy=graphical-session.target

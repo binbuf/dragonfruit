@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(42 earlier sections omitted)_
+_(43 earlier sections omitted)_
 
-- **T40 — T-07.6a Absent-daemon masking matrix**: **State: done.** The absent-daemon masking matrix is asserted headlessly at; **`services/system-status/tests/host.rs`** —
 - **T41 — T-07.6b Menu-bar idle trace and capture**: **State: done.** The menu-bar idle trace is flat at both seams and the T-07; **`compositor/tests/shell_idle_trace.rs`** — the bar-live idle trace now
 - **T42 — T-08.1a settingsd config model and D-Bus API**: **State: done.** `services/settingsd` is no longer a stub: the desktop-settings; **`services/settingsd/src/schema.rs`** (new) — `KEYS`: 20 named keys
 - **T43 — T-08.1b settingsd persistence and migrations**: **State: done.** `settingsd` now owns; **`services/settingsd/src/persist.rs`** (new) — the persisted format,
@@ -14,7 +13,7 @@ _(42 earlier sections omitted)_
 - **T46 — T-08.2c Compositor motion/input policy migration**: **State: done.** The compositor now consumes the settingsd motion/input policy;; **`protocols/dragonfruit-toplevel.xml`** — `df_toplevel_manager` is v5 with
 - **T47 — T-08.3 Restart, resync, and key-schema documentation**: **State: done.** `settingsd` is restartable with no lost write and the shell; **`docs/settings-keys.md`** (new) — the human-facing key table (type,
 - **T48 — T-09.1a Settings app shell**: **State: done.** The `apps/settings` stub is now a real shell: frameless; **`apps/settings/`** is a reusable QML module `Dragonfruit.Settings` (static
-- **Follow-ups**: **T-10.4a follow-ups.** (a) The files-core bridge is deliberately not; **T-10.4b follow-ups.** (a) `FilesDirectoryModel` resets from a **full
+- **Follow-ups**: **T-12.1b follow-ups.** (a) The shipped units are not yet installed by a; **T-10.4a follow-ups.** (a) The files-core bridge is deliberately not
 - **T49 — T-09.1b Settings live-apply plumbing**: **State: done.** The Settings app is a real settingsd consumer: a QML `Settings`; **`libs/settings-client/`** (new; `libs/CMakeLists.txt`) — the former
 - **T50 — T-09.2 Appearance pane**: **State: done.** The Appearance pane is real and live: a Light/Dark/Auto; **`apps/settings/AppearancePane.qml`** (new) — `SettingsGroup`/`SettingsRow`
 - **T51 — T-09.3 Wallpaper pane**: **State: done.** The Wallpaper pane is real and live: our own gradient; **Schema (since 2)** — `wallpaper.source` (s, empty = solid),
@@ -45,6 +44,7 @@ _(42 earlier sections omitted)_
 - **T76 — T-11.4a OSD overlay**: **State: done.** A volume/brightness change presents a brief centered OSD card; **`shell/src/osdmodel.{h,cpp}`** (new, dockcore) — the pure `OsdModel`:
 - **T77 — T-11.4b OSD keyboard/a11y and captures**: **State: done.** The OSD is keyboard/AT-SPI accessible and the T-11 capture; **`shell/osd/Osd.qml`** — `Accessible.role: Alert` + value-derived
 - **T78 — T-12.1a Session manager and restart policy**: **State: done.** `services/session` is a real session manager: the composition; **`services/session/src/plan.rs`** (new) — `RestartPolicy` (`always` /
+- **T79 — T-12.1b Session environment, systemd units, second-VT**: **State: done.** The session environment is data and reaches every child; the; **`services/session/src/env.rs`** (new) — `SessionEnvironment` (`new`,
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3228,6 +3228,16 @@ Gotchas for later tasks:
 
 ## Follow-ups
 
+- **T-12.1b follow-ups.** (a) The shipped units are not yet installed by a
+  package; T-12.2/packaging must place `services/session/units/*` under
+  `~/.config/systemd/user/` (or `/usr/lib/systemd/user/`) and add the
+  `.desktop` session entry that runs `--print-env` + `import-environment` +
+  `systemctl --user start dragonfruit-session.target`. (b) The compositor is
+  `Type=simple`; a systemd `Type=notify` (`sd_notify` after the private socket
+  exists) would make the gate native instead of the `--wait-socket`
+  `ExecStartPre`. (c) `--wait-socket` tests file existence, not a connect;
+  revisit with T-12.2's logout teardown. (d) `Supervisor::shutdown` still
+  SIGKILLs only direct children; T-12.2 extends it to process groups.
 - **T-10.4a follow-ups.** (a) The files-core bridge is deliberately not
   introduced (ADR 0048); T-10.4b adds it and attaches the listing to
   `FilesBrowser.currentUri`. (b) The trailing view-options dropdown, sort
@@ -5796,3 +5806,74 @@ Gotchas for later tasks:
   or `validate()` rejects the plan.
 - **`on-failure` treats a signal as failure** (`ExitOutcome::Signaled`), so a
   killed service restarts; a clean `exit 0` does not.
+
+## T79 — T-12.1b Session environment, systemd units, second-VT
+
+**State: done.** The session environment is data and reaches every child; the
+systemd user units in `services/session/units/` are the production supervisor,
+one per `ServiceSpec`, gated on the compositor's socket; the dedicated-user
+second-VT workflow is documented. Contract frozen in ADR
+[0065](design/adr/0065-session-environment-and-units.md).
+
+What landed:
+
+- **`services/session/src/env.rs`** (new) — `SessionEnvironment` (`new`,
+  `default_socket`, `with_x11_display`, `with_launch_token`,
+  `with_generated_token`, `base`, `trusted`, `base_value`,
+  `x11_display_from_handoff`), `generate_launch_token`, and the variable-name
+  constants. Base = `XDG_CURRENT_DESKTOP=dragonfruit`,
+  `XDG_SESSION_TYPE=wayland`, `WAYLAND_DISPLAY=<socket>`, `DISPLAY=<:N>` when
+  Xwayland is up; trusted = base + `DRAGONFRUIT_LAUNCH_TOKEN`.
+- **`services/session/src/plan.rs`** — `ServiceSpec` gained `trusted` (true for
+  compositor + shell); `SessionPlan::with_environment` /
+  `default_session_for` attach the environment. Stages/policies unchanged.
+- **`services/session/units/`** (new) — `dragonfruit-session.target` plus the
+  seven service units. Compositor `Restart=no` (`--backend drm`), shell
+  `Restart=always`, others `Restart=on-failure`. Every non-compositor unit has
+  `ExecStartPre=/usr/bin/dragonfruit-session --wait-socket dragonfruit-wayland`,
+  `Environment=` for the three static variables, and
+  `PassEnvironment=DISPLAY DRAGONFRUIT_LAUNCH_TOKEN`.
+- **`services/session/src/main.rs`** — `--print-env [--socket-name NAME]
+  [--x11-display DISPLAY]` and `--wait-socket NAME [--timeout SECS]`.
+- **Tests** — `tests/environment.rs` 6 cases (trusted child sees all five
+  variables; untrusted child sees no token; `--wait-socket` success/timeout;
+  `--print-env` contract + 64-hex token) and `tests/units.rs` 6 cases (unit
+  set, target pulls the composition, anchor `Restart=no`, per-service
+  policies, environment/gate on every service, dependency closure).
+- **Docs** — `11-session-and-dev-workflow.md` (environment contract + shipped
+  units + units-based second-VT), `testing-ladder.md` rung 2, ADR 0065.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-session` — 30/30.
+- `cargo clippy -p dragonfruit-session --all-targets -- -D warnings` and
+  `cargo fmt -p dragonfruit-session -- --check` — exit 0.
+- `make lint` — exit 0 (`qml-test` 38/38); `make e2e` — exit 0.
+- `cargo run -p dragonfruit-session -- --print-env` — five `KEY=VALUE` lines,
+  64-hex token.
+
+Live check: `./target/debug/dragonfruit dev --demo --nested --socket-name
+t79-demo`, captured at `/tmp/opencode/t79-demo.png`; vision confirms the nested
+Dragonfruit window renders its menu bar, Dock, Settings, and the X11 demo
+window with no clipping/artifacts. The task adds no surface of its own.
+
+Gotchas for later tasks:
+
+- **T-12.2 owns the `.desktop` session entry and unit installation.** The
+  entry runs `eval "$(dragonfruit-session --print-env --socket-name
+  dragonfruit-wayland)"`, imports `XDG_CURRENT_DESKTOP XDG_SESSION_TYPE
+  WAYLAND_DISPLAY DISPLAY DRAGONFRUIT_LAUNCH_TOKEN`, then
+  `systemctl --user start dragonfruit-session.target`.
+- **The fixed production socket is `dragonfruit-wayland`**
+  (`env::DEFAULT_SOCKET_NAME`); the units and `WAYLAND_DISPLAY` must stay in
+  lockstep. The nested dev tool keeps `dragonfruit-dev-<pid>`.
+- **The launch token is minted once by `--print-env` and passed through the
+  user manager** (`PassEnvironment=`). The compositor pre-mints it
+  (`shell::provision` already reads `DRAGONFRUIT_LAUNCH_TOKEN`) and writes
+  `<socket>.launch-token`; the shell reads it from the environment. Never log
+  the value.
+- **The compositor is `Type=simple`.** The readiness gate is the
+  `--wait-socket` `ExecStartPre`, not systemd `Type=notify`. A native
+  `sd_notify` would remove the helper (follow-up).
+- **`--wait-socket` tests file existence, not a connect** — it can pass on a
+  stale socket path; teardown correctness is the compositor's job.

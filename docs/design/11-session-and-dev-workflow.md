@@ -150,10 +150,14 @@ graphical-session.target (systemd --user)
   semantics); no crash path unlocks a locked session.
 - **Session environment** exported at startup: `XDG_CURRENT_DESKTOP=dragonfruit`,
   `XDG_SESSION_TYPE=wayland`, `WAYLAND_DISPLAY` pointing at the session
-  socket. The desktop name is what toolkits, `portals.conf`, and
+  socket, `DISPLAY` when Xwayland is up, and — for the compositor and shell
+  only — `DRAGONFRUIT_LAUNCH_TOKEN`, the one-time private-protocol token. The
+  desktop name is what toolkits, `portals.conf`, and
   `XDG_CURRENT_DESKTOP`-sensitive libraries use to find DE-specific behavior
   and our portal backend — it is a public contract, chosen once (see
-  [12-packaging.md](12-packaging.md)).
+  [12-packaging.md](12-packaging.md)). The variable names and the token
+  ownership are frozen in
+  [ADR 0065](adr/0065-session-environment-and-units.md).
 
 The composition above is **data, not prose**: `services/session`'s
 `SessionPlan`/`ServiceSpec` encode the stages, the per-service restart policy,
@@ -162,6 +166,43 @@ and restarts the children. T-12.1b attaches the environment and the socket
 readiness signal; T-12.2 uses the supervisor's shutdown path for logout. The
 policy semantics are frozen in
 [ADR 0064](adr/0064-session-manager-plan-and-restart-policy.md).
+
+### The shipped systemd user units (T-12.1b)
+
+The production supervisor is the systemd user units in
+`services/session/units/`, one per `ServiceSpec` in the default plan, tied
+together by `dragonfruit-session.target`:
+
+```text
+dragonfruit-session.target                 # WantedBy=graphical-session.target
+  ├── dragonfruit-compositor.service       # --backend drm, Restart=no (anchor)
+  ├── dragonfruit-shell.service            # Restart=always
+  ├── dragonfruit-settingsd.service        # Restart=on-failure
+  ├── dragonfruit-menu-broker.service
+  ├── dragonfruit-app-index.service
+  ├── dragonfruit-notifications.service
+  └── dragonfruit-portal.service
+```
+
+Each service waits for the compositor's private socket with
+`ExecStartPre=/usr/bin/dragonfruit-session --wait-socket dragonfruit-wayland`
+— the unit-level form of the supervisor's `set_ready("compositor")` gate — and
+passes the dynamic session variables
+(`PassEnvironment=DISPLAY DRAGONFRUIT_LAUNCH_TOKEN`) to the child. The session
+entry (T-12.2) imports the environment, including a fresh token, before
+starting the target:
+
+```bash
+eval "$(dragonfruit-session --print-env --socket-name dragonfruit-wayland)"
+systemctl --user import-environment \
+    XDG_CURRENT_DESKTOP XDG_SESSION_TYPE WAYLAND_DISPLAY \
+    DISPLAY DRAGONFRUIT_LAUNCH_TOKEN
+systemctl --user start dragonfruit-session.target
+```
+
+The compositor pre-mints the `DRAGONFRUIT_LAUNCH_TOKEN` it finds in its own
+environment (rather than a random one) and writes the shell's hand-off file,
+so the token the shell presents is the one the session chose.
 
 ## logind integration
 
@@ -173,10 +214,34 @@ policy semantics are frozen in
 
 ## Second VT, with isolation
 
-Another good workflow is leaving GNOME on one virtual terminal and entering
-our desktop through another. Two graphical sessions for the same Unix user
-can collide through shared user-session services (portals, environment
+Another good workflow is leaving the host desktop on one virtual terminal and
+entering our desktop through another. Two graphical sessions for the same Unix
+user can collide through shared user-session services (portals, environment
 variables), so we use a **dedicated development user** for this.
+
+T-12.1b documents the manual, units-based workflow; T-12.6c automates it as
+`dragonfruit dev --real`:
+
+```bash
+sudo useradd -m dfdev                       # once
+sudo passwd dfdev                           # set a password
+# From the host desktop, find a free VT (for example, VT1 is the host):
+sudo chvt 3                                 # or Ctrl+Alt+F3
+# Log in as dfdev on that VT (a text login is fine), then from its shell:
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+eval "$(dragonfruit-session --print-env --socket-name dragonfruit-wayland)"
+systemctl --user import-environment \
+    XDG_CURRENT_DESKTOP XDG_SESSION_TYPE WAYLAND_DISPLAY \
+    DRAGONFRUIT_LAUNCH_TOKEN
+systemctl --user start dragonfruit-session.target
+```
+
+`Ctrl+Alt+F1` returns to the host desktop exactly as it was; the host session
+is never logged out and the two sessions never share `XDG_RUNTIME_DIR`.
+`dragonfruit-session --wait-socket dragonfruit-wayland` is the readiness probe
+when a script needs to know the session is up. A dedicated user is required,
+not optional: `dragonfruit dev --real` refuses to run for a user that already
+holds a seat session (T-12.6c).
 
 ## The real-session dev harness
 

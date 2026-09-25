@@ -1,0 +1,29 @@
+[Unit]
+Description=Dragonfruit Wayland compositor
+Documentation=https://github.com/dragonfruit-desktop/dragonfruit
+# The compositor owns the seat and is the session anchor: its exit ends the
+# session and the display manager returns. It is never restarted
+# (RestartPolicy::Never in services/session/src/plan.rs).
+Before=dragonfruit-shell.service
+Before=dragonfruit-settingsd.service
+Before=dragonfruit-menu-broker.service
+Before=dragonfruit-app-index.service
+Before=dragonfruit-notifications.service
+Before=dragonfruit-portal.service
+PartOf=dragonfruit-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/dragonfruit-compositor --backend drm --socket-name dragonfruit-wayland
+Restart=no
+# The session environment (T-12.1b). The session entry imports the dynamic
+# values (DISPLAY, DRAGONFRUIT_LAUNCH_TOKEN) into the user manager before
+# starting the target; the compositor pre-mints the launch token it finds
+# here so it can hand the same one to the shell.
+Environment=XDG_CURRENT_DESKTOP=dragonfruit
+Environment=XDG_SESSION_TYPE=wayland
+Environment=WAYLAND_DISPLAY=dragonfruit-wayland
+PassEnvironment=DISPLAY DRAGONFRUIT_LAUNCH_TOKEN
+
+[Install]
+WantedBy=dragonfruit-session.target
