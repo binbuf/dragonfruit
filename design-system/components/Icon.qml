@@ -27,7 +27,8 @@ Item {
                                           "displays", "home", "documents",
                                           "downloads", "music", "movies",
                                           "trash", "computer", "volume",
-                                          "folder", "icon-view", "list-view"]
+                                          "folder", "file", "icon-view",
+                                          "list-view"]
     readonly property bool painted: root.paintedGlyphs.indexOf(root.name) >= 0
 
     readonly property var bars: {
@@ -352,6 +353,23 @@ Item {
                 ctx.lineTo(s * 0.86, s * 0.82);
                 ctx.lineTo(s * 0.14, s * 0.82);
                 ctx.closePath();
+                ctx.stroke();
+                break;
+            }
+            case "file": {
+                // A page with a folded corner (a generic document).
+                ctx.beginPath();
+                ctx.moveTo(s * 0.24, s * 0.14);
+                ctx.lineTo(s * 0.58, s * 0.14);
+                ctx.lineTo(s * 0.76, s * 0.32);
+                ctx.lineTo(s * 0.76, s * 0.86);
+                ctx.lineTo(s * 0.24, s * 0.86);
+                ctx.closePath();
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(s * 0.58, s * 0.14);
+                ctx.lineTo(s * 0.58, s * 0.32);
+                ctx.lineTo(s * 0.76, s * 0.32);
                 ctx.stroke();
                 break;
             }

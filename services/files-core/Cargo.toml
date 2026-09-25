@@ -34,3 +34,7 @@ tempfile = "=3.27.0"
 [lib]
 name = "dragonfruit_files_core"
 path = "src/lib.rs"
+# A static library is the crate; the `staticlib` artifact is the C ABI the Qt
+# model facade links against (T-10.4b, ADR 0049). Building both keeps the
+# Rust tests and the Qt bridge on one implementation.
+crate-type = ["lib", "staticlib"]

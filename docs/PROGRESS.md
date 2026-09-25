@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(26 earlier sections omitted)_
+_(27 earlier sections omitted)_
 
-- **T24 — T-05.2 Hit-testing and selection on live representations**: **State: done.** A left click on a live Mission Control representation; **`compositor/src/overview/grid.rs`** — `GridLayout::window_at(point,
 - **T25 — T-05.3 Drag a live representation between Spaces**: **State: done.** Pressing on a live Mission Control representation and dragging; **`compositor/src/overview/grid.rs`** — `GridDrag { window, start, current }`
 - **T26 — T-05.4 Image wallpaper and per-Space slide**: **State: done.** A Space's wallpaper can be an image (`source` + `fit`) decoded; **`compositor/src/wallpaper.rs`** (new) — `sample_wallpaper` (pure
 - **T27 — T-05.5 Desktop Reveal**: **State: done.** Ctrl+Down routes `DesktopReveal` through the one overview; **`compositor/src/overview/reveal.rs`** (new) — `escape_rect` (the off-screen
@@ -30,7 +29,7 @@ _(26 earlier sections omitted)_
 - **T46 — T-08.2c Compositor motion/input policy migration**: **State: done.** The compositor now consumes the settingsd motion/input policy;; **`protocols/dragonfruit-toplevel.xml`** — `df_toplevel_manager` is v5 with
 - **T47 — T-08.3 Restart, resync, and key-schema documentation**: **State: done.** `settingsd` is restartable with no lost write and the shell; **`docs/settings-keys.md`** (new) — the human-facing key table (type,
 - **T48 — T-09.1a Settings app shell**: **State: done.** The `apps/settings` stub is now a real shell: frameless; **`apps/settings/`** is a reusable QML module `Dragonfruit.Settings` (static
-- **Follow-ups**: **T-10.4a follow-ups.** (a) The files-core bridge is deliberately not; **T-09.3 follow-ups.** (a) `apps/settings/AppearancePane.qml` (T50) places
+- **Follow-ups**: **T-10.4a follow-ups.** (a) The files-core bridge is deliberately not; **T-10.4b follow-ups.** (a) `FilesDirectoryModel` resets from a **full
 - **T49 — T-09.1b Settings live-apply plumbing**: **State: done.** The Settings app is a real settingsd consumer: a QML `Settings`; **`libs/settings-client/`** (new; `libs/CMakeLists.txt`) — the former
 - **T50 — T-09.2 Appearance pane**: **State: done.** The Appearance pane is real and live: a Light/Dark/Auto; **`apps/settings/AppearancePane.qml`** (new) — `SettingsGroup`/`SettingsRow`
 - **T51 — T-09.3 Wallpaper pane**: **State: done.** The Wallpaper pane is real and live: our own gradient; **Schema (since 2)** — `wallpaper.source` (s, empty = solid),
@@ -45,6 +44,7 @@ _(26 earlier sections omitted)_
 - **T60 — T-10.3a files-core trash**: **State: done.** `files-core` now speaks the freedesktop Trash spec and the; **`services/files-core/src/trash.rs`** (new) — the trash engine:
 - **T61 — T-10.3b files-core folder watcher**: **State: done.** `files-core` now has the one change monitor: one watch per; **`services/files-core/src/watch.rs`** (new) — the watch seam and fallback:
 - **T62 — T-10.4a Files window, toolbar, and sidebar**: **State: done.** The Files window, toolbar, and sidebar are real. `apps/files`; **`apps/files/FilesBridge.{h,cpp}`** — `QML_SINGLETON`, `QML_NAMED_ELEMENT(Files)`:
+- **T63 — T-10.4b Files list and icon views**: **State: done.** The Files icon and list views render the `files-core` listing.; **`services/files-core/src/ffi.rs`** (new) — the C ABI: `df_files_begin`,
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3240,6 +3240,16 @@ Gotchas for later tasks:
   a later binding task (the shell and Settings sync through `ThemeBinding`).
   (g) The Favorites `Recents` row is omitted because `recent://` needs the GVfs
   backend; add it with the volume monitor (T-10.6).
+- **T-10.4b follow-ups.** (a) `FilesDirectoryModel` resets from a **full
+  ordered snapshot** on every poll; correct but O(n²) over a large directory —
+  T-10.5 must switch the C ABI to incremental/windowed delivery (ADR 0049).
+  (b) The folder watcher is not wired, so external changes do not repaint.
+  (c) The search field still has no result set. (d) Per-location sort
+  persistence and the trailing view-options dropdown are not done (sort is
+  global for the session). (e) The live visual check used
+  `DF_FILES_START_VIEW` because nested synthetic pointer clicks reach the
+  compositor but not a Qt client surface; a nested-client click driver is
+  future capture-harness work.
 - **T-09.3 follow-ups.** (a) `apps/settings/AppearancePane.qml` (T50) places
   its controls as plain children of `SettingsRow`; `SettingsRow` has no
   `default` property, so they go to `Item.data` and can overlap the label.
@@ -4526,3 +4536,96 @@ Gotchas for later tasks:
   rectangle.
 - **`QStorageInfo` volumes are block devices only**; network/GVfs volumes and
   eject wait for the volume monitor (track item 5 / T-10.6).
+
+## T63 — T-10.4b Files list and icon views
+
+**State: done.** The Files icon and list views render the `files-core` listing.
+The bridge ADR 0048 deferred is a **hand-written C ABI** in `files-core`
+(crate-type `lib` + `staticlib`) behind a thin `QAbstractListModel` facade,
+`FilesDirectoryModel`; there is no cxx-qt (offline toolchain, no dependency).
+Selection is the stable node id and lives in `FilesShell`, so switching views
+cannot lose it. See ADR
+[0049](design/adr/0049-files-core-c-abi-bridge.md).
+
+What landed:
+
+- **`services/files-core/src/ffi.rs`** (new) — the C ABI: `df_files_begin`,
+  `df_files_poll` (blocks for one event and returns the current ordered
+  snapshot), `df_files_snapshot`, `df_files_set_sort`, `df_files_event_free`,
+  `df_files_free`. `Cargo.toml`: `crate-type = ["lib", "staticlib"]`;
+  `lib.rs`: `pub mod ffi`. Status/kind constants and `#[repr(C)]` structs are
+  mirrored in `apps/files/ffi/files_core.h`.
+- **`apps/files/FilesDirectoryModel.{h,cpp}`** (new) — `QML_ELEMENT`
+  `QAbstractListModel`: `location`, `count`, `state`
+  (`idle`/`streaming`/`complete`/`error`), `errorMessage`, `sortKey`,
+  `sortAscending`, `foldersFirst`, `Q_INVOKABLE sortBy`. A 16 ms `QTimer`
+  polls `df_files_poll(session, 0)` on the Qt thread and resets from the
+  snapshot; the timer stops on complete/error, so idle = no polling. Roles:
+  `nodeId`, `name`, `uri`, `isDir`, `kind`, `kindText`, `icon`, `size`,
+  `hasSize`, `sizeText`, `modified`, `hasModified`, `modifiedText`,
+  `symlinkTarget`. Size/date formatting is in C++ (`QLocale`), the icon is
+  chosen from kind + suffix.
+- **`apps/files/FilesIconView.qml`** (new) — `GridView` of tiles: glyph over a
+  two-line label, accent-tinted selection, hover; emits `selected(nodeId)` /
+  `activated(uri, isDir)`.
+- **`apps/files/FilesListView.qml`** (new) — `ListView` with a fixed header and
+  sortable `Name` / `Date Modified` / `Size` / `Kind` cells; header click calls
+  `directory.sortBy`; full-row selection.
+- **`apps/files/FilesShell.qml`** — `contentArea` holds `FilesDirectoryModel`
+  and both views (only the active one visible); `selectedId` + `selectNode` /
+  `activateNode`; double-click opens a folder. The `emptyState` now also shows
+  the listing error.
+- **`apps/files/FilesBridge.{h,cpp}`** — `viewFixtureUri`
+  (`DF_FILES_VIEW_FIXTURE`) and `startView` (`DF_FILES_START_VIEW`).
+- **`design-system/components/Icon.qml`** — a generic `file` glyph.
+- **`apps/files/CMakeLists.txt`** — `cargo build -p dragonfruit-files-core`
+  custom target, imported staticlib with `pthread;dl;m`, linked into the QML
+  module. A standalone `make cmake-build` now also builds the Rust staticlib.
+- **Tests** — `apps/files/tests/tst_files_shell.qml` (4 new cases) and a
+  custom `main` in `tst_files_shell.cpp` that materializes a fixture directory
+  and exports `DF_FILES_VIEW_FIXTURE`.
+- **Docs** — ADR 0049; `09-files.md` T-10.4b status paragraph.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `CARGO_NET_OFFLINE=true cargo test -p dragonfruit-files-core` — 125 pass (57
+  unit incl. 3 ffi + 17 operations + 11 optimistic + 5 sorting + 6 streaming +
+  13 trash + 12 watcher + 4 doctests).
+- `make qml-test` — 32/32 ctest green; `tst_files_shell` 18 pass.
+- `make lint` — green (fmt/clippy/qmllint/tokens/desktop-name).
+- `make e2e` — exit 0.
+
+Live capture: `/tmp/opencode/t63-files-icon.png` and
+`/tmp/opencode/t63-files-list.png` (1920x1200), nested demo with
+`DF_DEMO_QT_APP=build/apps/files/dragonfruit-files`,
+`DF_FILES_START_URI=file:///tmp/opencode/t63-files-fixture`, and
+`DF_FILES_START_VIEW=icon|list` (scripts `/tmp/opencode/t63-still.sh`,
+`t63-still.py`). Raw vision observation on tight crops: grid of glyph tiles
+with labels (`Archive`, `Photos`, `Projects`, `budget.xlsx`, `Notes.txt`,
+`photo.png`, `Report.txt`); list with `Name`/`Date Modified`/`Size`/`Kind`
+headers, a sort indicator on `Name`, and sizes (`8.00 KiB`, `6 bytes`) and
+dates (`9/25/26`). Vision is a supporting check.
+
+Gotchas for later tasks:
+
+- **`FilesDirectoryModel` is the one listing seam.** QML never reads the
+  filesystem; extend the facade (and the C ABI) for operations, never add
+  `QFile`/`std::fs` in the app.
+- **Whole-snapshot per poll.** `df_files_poll` returns the model's full ordered
+  list, and the facade resets on every batch. T-10.5 owns replacing it with
+  incremental/windowed delivery; the QML roles are the stable contract.
+- **One collation.** Sorting is `files-core`'s `SortSpec` via
+  `df_files_set_sort`; do not re-sort in C++/QML.
+- **Node ids are per-listing** (they restart at 1 on each `begin`).
+  `FilesShell` clears `selectedId` on navigation for that reason.
+- **The timer stops on complete/error**; an idle window does not poll. A
+  `TIMEOUT` event keeps it running.
+- **The folder watcher is not wired.** External changes do not repaint until a
+  later task drains `WatchHandle`.
+- **`DF_FILES_VIEW_FIXTURE` / `DF_FILES_START_VIEW` / `DF_FILES_START_URI` are
+  read at singleton construction** — set before launch.
+- **The CMake Rust target always runs cargo.** It is a no-op once built;
+  `target/debug/libdragonfruit_files_core.a` is the linked artifact.
+- **Nested synthetic pointer clicks reach the compositor (titlebar, shell
+  layer) but not a Qt client surface.** Use `DF_FILES_START_VIEW` for captures
+  instead of clicking the toolbar.

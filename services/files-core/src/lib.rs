@@ -124,6 +124,7 @@
 //! [adr/0046]: ../../../docs/design/adr/0046-files-core-trash-seam-and-spec-fallback.md
 
 mod fallback;
+pub mod ffi;
 mod listing;
 mod location;
 mod mock;

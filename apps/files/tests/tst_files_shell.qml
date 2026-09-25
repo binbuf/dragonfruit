@@ -179,6 +179,69 @@ Item {
             compare(shell.viewControl.currentIndex, 1);
         }
 
+        // -- Views over the files-core listing (T-10.4b) -------------------------
+
+        function test_icon_view_renders_the_listing() {
+            var shell = make();
+            verify(Files.viewFixtureUri.length > 0);
+            shell.browser.navigate(Files.viewFixtureUri);
+            tryCompare(shell.directory, "count", 5);
+            compare(shell.directory.state, "complete");
+            compare(shell.browser.currentView, "icon");
+            compare(shell.iconView.visible, true);
+            compare(shell.listView.visible, false);
+        }
+
+        function test_view_toggle_swaps_the_delegate() {
+            var shell = make();
+            shell.browser.navigate(Files.viewFixtureUri);
+            tryCompare(shell.directory, "count", 5);
+            compare(shell.iconView.visible, true);
+
+            shell.viewControl.activateIndex(1);
+            waitForRendering(stage);
+            compare(shell.browser.currentView, "list");
+            compare(shell.listView.visible, true);
+            compare(shell.iconView.visible, false);
+
+            shell.viewControl.activateIndex(0);
+            waitForRendering(stage);
+            compare(shell.browser.currentView, "icon");
+            compare(shell.iconView.visible, true);
+            compare(shell.listView.visible, false);
+        }
+
+        function test_selection_survives_the_view_switch() {
+            var shell = make();
+            shell.browser.navigate(Files.viewFixtureUri);
+            tryCompare(shell.directory, "count", 5);
+            waitForRendering(stage);
+
+            // Click the first tile; the views only report the id and the shell
+            // remembers it.
+            mouseClick(shell.iconView, 60, 60);
+            waitForRendering(stage);
+            verify(shell.selectedId > 0);
+            var chosen = shell.selectedId;
+            compare(shell.iconView.selectedId, chosen);
+
+            shell.viewControl.activateIndex(1);
+            waitForRendering(stage);
+            compare(shell.selectedId, chosen);
+            compare(shell.listView.selectedId, chosen);
+            compare(shell.iconView.selectedId, chosen);
+        }
+
+        function test_list_view_shows_the_columns() {
+            var shell = make();
+            shell.browser.navigate(Files.viewFixtureUri);
+            tryCompare(shell.directory, "count", 5);
+            // The rows carry the list-view columns (name + metadata).
+            var index = shell.directory.index(0, 0);
+            verify(shell.directory.data(index, 257).toString().length > 0); // nodeId
+            verify(shell.directory.data(index, 258).toString().length > 0); // name
+        }
+
         // -- Search -------------------------------------------------------------
 
         function test_search_field_is_wired() {

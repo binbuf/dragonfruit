@@ -161,6 +161,25 @@ T-10.4b's decision; this slice keeps the browsing model in QML so the listing
 attaches to `FilesBrowser.currentUri` without a UI rewrite. See
 [adr/0048](adr/0048-files-app-shell-location-provider.md).
 
+**Implementation status (T-10.4b).** The list and icon views are real and
+render the `files-core` listing. Because the project has no cxx-qt and the
+pinned toolchain is offline, the bridge is a **hand-written C ABI**
+(`services/files-core/src/ffi.rs`, crate-type `lib` + `staticlib`) behind a
+thin `QAbstractListModel` facade, `FilesDirectoryModel` (ADR
+[0049](adr/0049-files-core-c-abi-bridge.md)). The facade polls the Rust
+worker's ready events from a timer on the Qt thread and mirrors the model's
+ordered snapshot; sorting, natural collation, and stable node ids stay in
+Rust. `FilesIconView` is the centered grid (glyph over a two-line label) and
+`FilesListView` is the four-column table (`Name`, `Date Modified`, `Size`,
+`Kind`) with sortable headers; the toolbar's segmented control is still the
+one switch, and the choice persists per location through
+`FilesBrowser.viewFor`/`setView`. Selection is the stable node id, owned by
+`FilesShell` rather than either view, so the view switch cannot lose it.
+**Still deferred:** incremental/windowed delivery (T-10.5; the facade
+currently resets from a full snapshot per batch), the folder watcher, file
+opening, context menus, multi-select, rubber-band selection, column resizing,
+inline rename, and the search result set (T-10.4c+).
+
 ### Model
 
 - **`Location`** — URI-addressed, GFile-shaped: `file://`, `trash://`,
