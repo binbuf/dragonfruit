@@ -31,7 +31,7 @@ NESTED_W, NESTED_H = 1920, 1200
 WALL = (41, 36, 52)
 WALL_TOL = 8
 
-KEY_LEFTMETA, KEY_TAB, KEY_ESC = 125, 15, 1
+KEY_LEFTMETA, KEY_TAB, KEY_ESC, KEY_GRAVE = 125, 15, 1, 41
 
 
 def log(message):
@@ -210,7 +210,22 @@ def run(args):
     cap.still(still, f"{prefix}-cycled.png")
     synth.send(f"key {KEY_TAB} up")
 
-    # --- 3. release Cmd: commit and close ---------------------------------
+    # --- 3. cycle windows within the selected app (Cmd+`, T-06.2b) --------
+    # The compositor owns the chord and the one machine; the live preview
+    # follows the window cursor. With a single window for the app this is a
+    # no-op, but the stills still capture the chord's settled frame.
+    synth.send(f"key {KEY_GRAVE} down")
+    synth.send(f"key {KEY_GRAVE} up")
+    time.sleep(0.4)
+    window_cycled = synth.switcher()
+    log(
+        "switcher window-cycled selected="
+        f"{window_cycled.get('selected')} window={window_cycled.get('window')}"
+    )
+    still = cap.full("switcher-window-cycled")
+    cap.still(still, f"{prefix}-window-cycled.png")
+
+    # --- 4. release Cmd: commit and close ---------------------------------
     synth.send(f"key {KEY_LEFTMETA} up")
     wait_for(lambda: not synth.switcher()["active"])
     time.sleep(0.3)

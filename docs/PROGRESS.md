@@ -36,7 +36,8 @@
 - **T28 — T-05.6 Overview frame budget and capture**: **State: done.** The overview gesture now has its own **gesture-scoped** 60 Hz; **`compositor/src/instrument.rs`** — `GestureBudgetTrace`: render-duration
 - **T29 — T-06.1 App-switcher state machine**: **State: done.** The compositor now owns a real Cmd-Tab app switcher: open on; **`compositor/src/app_switcher.rs`** (new) — `AppSwitcher` pure machine
 - **T30 — T-06.2a Switcher overlay and live previews**: **State: done.** The Cmd-Tab overlay is live: the compositor scales the; **Protocol** — `df_toplevel_manager.app_switcher_entry(index, app_id)` since 4,
-- **Follow-ups**: T-06.1/T-06.2a (done in T29/T30): the compositor switcher machine (ADR 0021); T-05.1a (done in T22): the live-surface grid landed as a render-time
+- **T31 — T-06.2b Switcher commit, Cmd+` cycling, interruptibility**: **State: done.** T-06 is complete. Cmd+` / Cmd+Shift+` cycle windows within the; **`compositor/src/app_switcher.rs`** — `SwitcherApp` carries `windows`
+- **Follow-ups**: T-06.1/T-06.2a/T-06.2b (done in T29/T30/T31): the switcher machine (ADR; T-05.1a (done in T22): the live-surface grid landed as a render-time
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -2033,19 +2034,85 @@ Gotchas for later tasks:
 - The live check was programmatic (this model cannot view images); a human
   should eyeball `docs/captures/t06-app-switcher.png`.
 
+## T31 — T-06.2b Switcher commit, Cmd+` cycling, interruptibility
+
+**State: done.** T-06 is complete. Cmd+` / Cmd+Shift+` cycle windows within the
+selected app on the *same* `AppSwitcher` machine (no second binding path,
+ADR 0023); Command release commits the cursor-selected window through the same
+activation path as the Dock's `activate_app`; a pointer press on a live preview
+commits that app and a press off every preview cancels; Escape is unchanged.
+The live preview follows the window cursor, so Cmd+` swaps the surface.
+
+What landed:
+
+- **`compositor/src/app_switcher.rs`** — `SwitcherApp` carries `windows`
+  (most-recent first) + `window`; `AppSwitcher` gained `window_cursor`,
+  `step_window` (wraps; resets on an app step), `open_focused`, `select_window`,
+  `window_direction`; `commit` returns the cursor-selected window. 6 new unit
+  tests (13 total).
+- **`compositor/src/input/action.rs`** — `InputAction::AppSwitcherWindow`
+  (`"app-switcher-window"`).
+- **`compositor/src/input/shortcuts.rs`** — Cmd+` and Cmd+Shift+` bind to it
+  (keysym `KEY_grave`), resolved by the one shortcut engine; unit test.
+- **`compositor/src/input.rs`** — the keyboard arm routes `AppSwitcherWindow`
+  to the machine; a left press while the switcher is active is intercepted
+  *before* chrome routing (`switcher_window_at` hit -> `app_switcher_commit_window`,
+  miss -> `app_switcher_cancel`).
+- **`compositor/src/state.rs`** — `app_switcher_entries` groups all windows per
+  app; `most_recent_window_of_app` + `activate_app` (shared); `app_switcher_window_key`;
+  `app_switcher_commit` (app default via `activate_app`, cycled window via
+  `activate_window_id`); `app_switcher_commit_window`; `switcher_window_at`;
+  `switcher_candidates`/`switcher_frame` preview the cursor window.
+- **`compositor/src/shell/mod.rs`** — the `activate_app` request calls the
+  shared `DfState::activate_app`.
+- **`compositor/src/input/synthetic.rs`** — `query switcher` adds `window=` and
+  `window-direction=` to the state line and a window count to each `switcher app`
+  line (all additive; existing readers ignore them).
+- **`compositor/tests/window_conformance.rs`** — new
+  `app_switcher_cycles_windows_and_pointer_commits` (34/34 green). The parser
+  gained `selected_window`/`window_direction`.
+- **Captures** — `scripts/capture-switcher-driver.py` adds the Cmd+` step;
+  regenerated `docs/captures/t06-app-switcher{,-reduced}{,-cycled,-window-cycled}.png`.
+- **Docs** — `02-compositor.md` "App-switcher commit, Cmd+` cycling, and
+  interruptibility (T-06.2b)"; `04-shell.md`; ADR `0023`.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `cargo test -p dragonfruit-compositor` — **273** bin unit tests + every suite
+  green (`window_conformance` 34/34, `shell_protocol_conformance` 32/32). Direct
+  cargo needs `PKG_CONFIG_PATH=~/.local/df-devroot/lib64/pkgconfig`,
+  `RUSTFLAGS="-L ~/.local/df-devroot/lib64"`, `XDG_RUNTIME_DIR`.
+- `make e2e` green; `make soak` 100 clean; `make lint` clean; ctest 17/17.
+- `bash scripts/capture-switcher.sh` — host Wayland + spectacle + Pillow; not in
+  `make e2e`.
+
+Gotchas for later tasks:
+
+- **One machine**: Cmd+` drives `DfState::app_switcher` via
+  `app_switcher_window_key`; the shell must never add a binding or re-derive.
+- Cmd+` with the switcher closed seeds on the *focused* app (`open_focused`,
+  no skip) and opens the overlay; the app highlight never moves on a window
+  cycle.
+- Only the selected entry's cursor window previews; the app's other windows are
+  `alpha = 0` while the overlay owns the scene.
+- Pointer commit is compositor-side (the shell overlay is an offscreen image
+  with no pointer handling); `switcher_window_at` hit-tests the preview rects.
+- The entry protocol event still has **no window handle** and did not need one.
+- This model cannot view images; a Pillow check confirms the stills are
+  non-blank, have the scrim band and the card highlight (`#fbe1ec`); a human
+  should eyeball `docs/captures/t06-app-switcher-window-cycled.png`.
+
 ## Follow-ups
 
-- T-06.1/T-06.2a (done in T29/T30): the compositor switcher machine (ADR 0021)
-  and the shell overlay + live previews (ADR 0022) landed. Remaining: (a)
-  T-06.2b adds Cmd+` within-app window cycling, commit capture, and
-  interruptibility, extending `AppSwitcher` rather than adding a second
-  binding path; the entry event carries only `index`/`app_id`, so append the
-  window handle additively if T-06.2b needs it; (b) the switcher snapshots the
-  app list at open, so a window closing mid-hold is not reaped until the next
-  open — widen if the overlay needs live membership; (c) the shell card row is
-  a non-wrapping `Row`, so many apps need paging/wrapping; (d) the preview grid
-  and the shell cards agree on the strip height but not per-card geometry —
-  align them (labels under each preview) as polish.
+- T-06.1/T-06.2a/T-06.2b (done in T29/T30/T31): the switcher machine (ADR
+  0021), overlay + live previews (ADR 0022), and commit/Cmd+`/pointer (ADR
+  0023) landed. Remaining: (a) the switcher snapshots the app list at open, so a
+  window closing mid-hold is not reaped until the next open — widen if the
+  overlay needs live membership; (b) the shell card row is a non-wrapping
+  `Row`, so many apps need paging/wrapping; (c) the preview grid and the shell
+  cards agree on the strip height but not per-card geometry — align them
+  (labels under each preview) as polish; (d) only one live surface per app
+  previews (the cursor window); per-window cards are later polish.
 - T-05.1a (done in T22): the live-surface grid landed as a render-time
   transform (ADR 0017). Remaining: (a) T-05.1b (done in T23) keeps a committing
   client ("video") playing at the scaled target and composes the degrade tier

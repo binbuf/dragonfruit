@@ -550,24 +550,27 @@ a live compositor.
   selection steps one app away from the focused app (so a release actually
   switches), wrapping when there is a single app. Cmd+Shift+Tab opens backward.
   Entries are one per app in `WindowModel::recency` order, each carrying the
-  app's most recent window.
+  app's windows most-recent first.
 - **Cycle.** A repeat Tab steps forward; Shift+Tab, Left, and Up step backward;
   Right and Down step forward. The switcher consumes its own keys (and their
   releases) while open, so a held Tab does not cycle: repeats are routed by the
   shortcut engine, and auto-repeat of an intercepted key is ignored.
 - **Commit.** Releasing Command commits exactly once — `AppSwitcher::commit`
   clears the active state before returning the selection — and activates the
-  selected app's most recent window through the one
-  `DfState::activate_window_id` path (cross-Space, restore-if-minimized,
-  focus).
+  selected window through the one activation path (cross-Space,
+  restore-if-minimized, focus). The app-level default goes through
+  `DfState::activate_app` (the same resolver the Dock's `activate_app` request
+  uses); a Cmd+`-cycled window is activated by id through the same
+  `activate_window_id`.
 - **Cancel.** Escape clears the switcher with no focus change.
 
 `query switcher` is the headless introspection (active, selected app/index,
-direction, recency entries, and the active window), so a protocol test can
-prove a commit changed focus and a cancel did not. The private-protocol
-`cycle_app_switcher` request drives the *same* machine with the shell trigger;
-cycling never focuses, only a commit does. The overlay itself, its live
-previews, and the within-app Cmd+` window cycle are T-06.2.
+direction, recency entries, the selected window id, and the active window), so
+a protocol test can prove a commit changed focus and a cancel did not. The
+private-protocol `cycle_app_switcher` request drives the *same* machine with
+the shell trigger; cycling never focuses, only a commit does. The overlay
+itself and its live previews are T-06.2a; commit, the within-app Cmd+` cycle,
+and pointer interruptibility are T-06.2b.
 
 ### App-switcher live previews (T-06.2a)
 
@@ -595,8 +598,31 @@ event per app between the `app_switcher` event and the batch `done`, and the
 shell projects that batch. `query switcher` reports one `switcher preview
 <window> <x> <y> <w> <h> selected=<0|1>` line per live preview, the headless
 seam the conformance test asserts. See
-[ADR 0022](adr/0022-app-switcher-overlay-and-previews.md). Commit, Cmd+`
-cycling, and interruptibility are T-06.2b.
+[ADR 0022](adr/0022-app-switcher-overlay-and-previews.md).
+
+### App-switcher commit, Cmd+` cycling, and interruptibility (T-06.2b)
+
+The overlay is fully interactive while Command is held. Three additions
+complete the track:
+
+- **Within-app window cycling.** Cmd+` / Cmd+Shift+` resolve through the *same*
+  shortcut engine to `InputAction::AppSwitcherWindow` and drive the same
+  `AppSwitcher` machine — never a second binding path. The machine keeps a
+  window cursor per selected app; `step_window` wraps through
+  `entries[selected].windows`. When the switcher is closed the chord seeds the
+  snapshot **on** the focused app (`open_focused`) and takes one step, so a
+  bare Cmd+` switches to the frontmost app's next window; the app selection,
+  and so the overlay highlight, never moves. The selected entry's live preview
+  follows the cursor (`switcher_candidates` uses the cursor-selected window).
+- **Pointer commit.** A left press while the switcher is up is intercepted
+  before chrome routing in `compositor/src/input.rs`:
+  `DfState::switcher_window_at` hit-tests the live preview rects, a press on a
+  preview selects that entry and commits (`app_switcher_commit_window`), and a
+  press off every preview cancels with no focus change. The shell's card strip
+  is a pure projection and needs no pointer forwarding for this.
+- **Interruptibility.** Commit is idempotent (the machine clears `active`
+  first), a Command release is the only commit trigger, and Cmd+` or a pointer
+  press can retarget the selection at any time while held.
 
 ## Window model
 

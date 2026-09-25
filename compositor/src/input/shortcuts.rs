@@ -302,6 +302,14 @@ pub fn default_system_bindings() -> Vec<Shortcut> {
             keysyms::KEY_Tab,
             InputAction::AppSwitcher,
         ),
+        // Cmd+` cycles windows within the selected app (T-06.2b); Shift
+        // reverses. Same machine, same engine — not a second binding path.
+        Shortcut::new(command, keysyms::KEY_grave, InputAction::AppSwitcherWindow),
+        Shortcut::new(
+            command.union(shift),
+            keysyms::KEY_grave,
+            InputAction::AppSwitcherWindow,
+        ),
         Shortcut::new(
             command.union(shift),
             keysyms::KEY_3,
@@ -391,6 +399,21 @@ mod tests {
         assert_eq!(
             engine.resolve(&mods(false, false, true, false), keysyms::KEY_3),
             Some(ShortcutOutcome::System(InputAction::WorkspaceActivate(2)))
+        );
+    }
+
+    #[test]
+    fn cmd_backtick_resolves_to_within_app_window_cycling() {
+        // Cmd+` / Cmd+Shift+` route through the one shortcut engine to the
+        // same switcher machine (T-06.2b).
+        let engine = ShortcutEngine::default();
+        assert_eq!(
+            engine.resolve(&mods(true, false, false, false), keysyms::KEY_grave),
+            Some(ShortcutOutcome::System(InputAction::AppSwitcherWindow))
+        );
+        assert_eq!(
+            engine.resolve(&mods(true, false, false, true), keysyms::KEY_grave),
+            Some(ShortcutOutcome::System(InputAction::AppSwitcherWindow))
         );
     }
 

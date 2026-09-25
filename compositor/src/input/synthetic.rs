@@ -1837,10 +1837,13 @@ fn gesture_report(state: &DfState) -> String {
 /// The `query switcher` report (T-06.1): the app-switcher state machine.
 ///
 /// `switcher active=<0|1> app=<app_id|-> direction=<d> selected=<i> count=<n>
-/// focus=<window|-1>` followed by one `switcher app <i> <app_id> <window>`
-/// line per recency entry, then `end`. `selected` is `-1` when closed, and
-/// `focus` is the active window id (`-1` when none), so a headless test can
-/// prove a commit changed focus and a cancel did not.
+/// focus=<window|-1> window=<window|-1> window-direction=<d>` followed by one
+/// `switcher app <i> <app_id> <window> <windows>` line per recency entry, then
+/// `end`. `selected`/`window` are `-1` when closed; `window` is the
+/// cursor-selected window a commit activates (T-06.2b), so a headless test can
+/// prove Cmd+` moved it. `focus` is the active window id (`-1` when none), so a
+/// test can prove a commit changed focus and a cancel did not. `<windows>` is
+/// the entry's window count (the `*_` fields are ignored by the v1 reader).
 fn switcher_report(state: &DfState) -> String {
     let switcher = &state.app_switcher;
     let app = switcher.selected_app().unwrap_or("-");
@@ -1850,6 +1853,11 @@ fn switcher_report(state: &DfState) -> String {
         .unwrap_or(-1);
     let direction = switcher.direction();
     let count = switcher.entries().len();
+    let window = switcher
+        .selected_window()
+        .map(|id| id.0 as i64)
+        .unwrap_or(-1);
+    let window_direction = switcher.window_direction();
     let focus = state
         .active_window
         .as_ref()
@@ -1857,18 +1865,23 @@ fn switcher_report(state: &DfState) -> String {
         .map(|id| id.0 as i64)
         .unwrap_or(-1);
     let mut out = format!(
-        "switcher active={} app={} direction={} selected={} count={} focus={}\n",
+        "switcher active={} app={} direction={} selected={} count={} focus={} window={} window-direction={}\n",
         switcher.is_active() as u32,
         app,
         direction,
         selected,
         count,
         focus,
+        window,
+        window_direction,
     );
     for (index, entry) in switcher.entries().iter().enumerate() {
         out.push_str(&format!(
-            "switcher app {} {} {}\n",
-            index, entry.app_id, entry.window.0,
+            "switcher app {} {} {} {}\n",
+            index,
+            entry.app_id,
+            entry.window.0,
+            entry.windows.len(),
         ));
     }
     // The live-preview target rects (T-06.2a): the exact T-04 transform the

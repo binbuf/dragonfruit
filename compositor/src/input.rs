@@ -251,6 +251,23 @@ where
                             data.app_switcher_key(step, TriggerKind::Keyboard, serial.into());
                             FilterResult::Intercept(())
                         }
+                        // Cmd+` cycles windows within the selected app
+                        // (T-06.2b): the same one machine, driven through the
+                        // same shortcut engine (ADR 0021).
+                        Some(ShortcutOutcome::System(InputAction::AppSwitcherWindow)) => {
+                            data.shortcuts.note_press(sym);
+                            let step = if mods.shift {
+                                SwitchStep::Backward
+                            } else {
+                                SwitchStep::Forward
+                            };
+                            data.app_switcher_window_key(
+                                step,
+                                TriggerKind::Keyboard,
+                                serial.into(),
+                            );
+                            FilterResult::Intercept(())
+                        }
                         Some(ShortcutOutcome::System(action)) => {
                             data.shortcuts.note_press(sym);
                             data.dispatch_input_action(
@@ -395,6 +412,22 @@ where
             // on left-click only (T-10 section 13).
             if button_event.state == ButtonState::Pressed {
                 let location = pointer.current_location();
+                // The app-switcher overlay owns pointer input while it is up
+                // (T-06.2b): a left press on a live preview selects and
+                // commits that app (its windows included); a press off every
+                // preview cancels with no focus change. The same machine
+                // handles it, so pointer and keyboard can never diverge.
+                let is_left = button_event.button == 0x110; /* BTN_LEFT */
+                if is_left && state.app_switcher.is_active() {
+                    match state.switcher_window_at(location) {
+                        Some(id) => {
+                            state.app_switcher_commit_window(id);
+                        }
+                        None => state.app_switcher_cancel(),
+                    }
+                    state.notify_activity();
+                    return;
+                }
                 // An open window menu owns pointer input (T-01.4): a press
                 // inside activates a row and is consumed; a press outside
                 // dismisses it and falls through to normal routing.

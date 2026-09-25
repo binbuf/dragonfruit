@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MIT
 #
-# T-06.2a app-switcher live capture.
+# T-06.2a/T-06.2b app-switcher live capture.
 #
 # Runs the nested demo twice — once normally, once with
 # `accessibility.reduceMotion` on — opens the compositor-owned Cmd-Tab switcher
 # over the synthetic-input harness with scripts/capture-switcher-driver.py,
-# cycles the selection, and screenshots the overlay with Spectacle. The
-# compositor renders the live preview surfaces through the T-04 scene
-# transform; the shell draws the centered app cards.
+# cycles the app selection and the within-app window cursor (Cmd+`), and
+# screenshots the overlay with Spectacle. The compositor renders the live
+# preview surfaces through the T-04 scene transform; the shell draws the
+# centered app cards.
 #
 # The stills land in docs/captures/ as t06-app-switcher[-reduced]*.
 #

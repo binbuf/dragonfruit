@@ -2447,11 +2447,45 @@ impl DfState {
                 .app_id(&window)
                 .map(str::to_string)
                 .unwrap_or_else(|| "<unknown>".to_string());
-            if !entries.iter().any(|entry| entry.app_id == app) {
-                entries.push(SwitcherApp::new(app, *id));
+            match entries.iter_mut().find(|entry| entry.app_id == app) {
+                // A later (older) window of a known app extends its window
+                // list; recency order keeps the most recent first.
+                Some(entry) => {
+                    if !entry.windows.contains(id) {
+                        entry.windows.push(*id);
+                    }
+                }
+                None => entries.push(SwitcherApp::with_windows(app, vec![*id])),
             }
         }
         entries
+    }
+
+    /// The most recent window of `app_id` in [`WindowModel::recency`] order.
+    /// The one resolver the Dock's `activate_app` request and the switcher
+    /// use; `None` when the app has no window.
+    pub fn most_recent_window_of_app(&self, app_id: &str) -> Option<WindowId> {
+        self.windows
+            .recency()
+            .iter()
+            .find(|id| {
+                self.window_by_id(**id)
+                    .and_then(|window| self.windows.app_id(&window).map(str::to_string))
+                    .is_some_and(|app| app == app_id)
+            })
+            .copied()
+    }
+
+    /// Activate an app through the one activation path: its most recent
+    /// window is focused and raised, switching Space and restoring it if
+    /// minimized. Returns whether the app had a window; the Dock's
+    /// `activate_app` request and the app-switcher commit both land here.
+    pub fn activate_app(&mut self, app_id: &str) -> bool {
+        let Some(id) = self.most_recent_window_of_app(app_id) else {
+            return false;
+        };
+        self.activate_window_id(id);
+        true
     }
 
     /// The focused app's id — the app the switcher's first selection steps
@@ -2483,6 +2517,31 @@ impl DfState {
         self.needs_redraw = true;
     }
 
+    /// Open or cycle the selected app's windows from a compositor key trigger
+    /// (Cmd+` / Cmd+Shift+`, T-06.2b).
+    ///
+    /// When the switcher is already open this is a pure within-app window
+    /// cycle. When it is closed it seeds the snapshot on the *focused* app
+    /// (not one app away) and takes one step, so a bare Cmd+` switches to the
+    /// next window of the frontmost app; a Command release then commits the
+    /// selected window through the same path as Cmd+Tab. The app selection —
+    /// and so the overlay highlight — never moves here.
+    pub fn app_switcher_window_key(&mut self, step: SwitchStep, source: TriggerKind, serial: u32) {
+        self.input_dispatch
+            .action(InputAction::AppSwitcherWindow, source, serial);
+        if self.app_switcher.is_active() {
+            self.app_switcher.step_window(step);
+        } else {
+            let entries = self.app_switcher_entries();
+            let focused = self.focused_app_id();
+            if self.app_switcher.open_focused(entries, focused.as_deref()) {
+                self.app_switcher.step_window(step);
+            }
+        }
+        self.broadcast_app_switcher();
+        self.needs_redraw = true;
+    }
+
     /// The switcher's Command modifier state changed.
     ///
     /// The switcher commits when Command is released, exactly once:
@@ -2494,16 +2553,36 @@ impl DfState {
         }
     }
 
-    /// Commit the app switcher: activate the selected app's most recent window
-    /// through the one [`Self::activate_window_id`] path (cross-Space,
-    /// restore-if-minimized, focus), then broadcast the closed projection.
+    /// Commit the app switcher: activate the selected window through the one
+    /// activation path (cross-Space, restore-if-minimized, focus), then
+    /// broadcast the closed projection.
+    ///
+    /// The machine's `window` is its cursor-selected window, which is the
+    /// app's most recent unless Cmd+` cycled (T-06.2b). For the app-level
+    /// default this is exactly the Dock's [`Self::activate_app`]; a cycled
+    /// window is activated by id through the same [`Self::activate_window_id`].
     pub fn app_switcher_commit(&mut self) {
         let Some(entry) = self.app_switcher.commit() else {
             return;
         };
-        self.activate_window_id(entry.window);
+        if self.most_recent_window_of_app(&entry.app_id) == Some(entry.window) {
+            self.activate_app(&entry.app_id);
+        } else {
+            self.activate_window_id(entry.window);
+        }
         self.broadcast_app_switcher();
         self.needs_redraw = true;
+    }
+
+    /// Commit the app switcher on the app that owns `window` (T-06.2b): a
+    /// pointer press on a live preview selects that app and commits it
+    /// immediately. Returns whether any live entry matched.
+    pub fn app_switcher_commit_window(&mut self, window: WindowId) -> bool {
+        if !self.app_switcher.select_window(window) {
+            return false;
+        }
+        self.app_switcher_commit();
+        true
     }
 
     /// Cancel the app switcher with no focus change (Escape).
@@ -2967,15 +3046,24 @@ impl DfState {
     /// a placement; a minimized entry still gets a shell card but no live
     /// surface.
     fn switcher_candidates(&self) -> Vec<GridCandidate> {
+        let selected = self.app_switcher.selected_index();
         self.app_switcher
             .entries()
             .iter()
             .enumerate()
             .filter_map(|(rank, entry)| {
-                let window = self.windows.window_by_id(entry.window)?;
+                // The selected entry previews its cursor-selected window, so
+                // Cmd+` (T-06.2b) swaps the live surface; every other entry
+                // previews its most recent window.
+                let window_id = if Some(rank) == selected {
+                    self.app_switcher.selected_window().unwrap_or(entry.window)
+                } else {
+                    entry.window
+                };
+                let window = self.windows.window_by_id(window_id)?;
                 let geometry = self.windows.geometry(&window)?;
                 Some(GridCandidate {
-                    window: entry.window,
+                    window: window_id,
                     space_index: 0,
                     rank,
                     geometry,
@@ -3021,6 +3109,20 @@ impl DfState {
             .collect()
     }
 
+    /// The switcher entry window under `point` (T-06.2b): hit-tests the *live*
+    /// preview rects the renderer draws (`switcher_preview_placements`), so a
+    /// pointer press lands on the surface the user sees. `None` when the
+    /// switcher is closed or no preview contains the point.
+    pub fn switcher_window_at(&self, point: Point<f64, Logical>) -> Option<WindowId> {
+        if !self.app_switcher.is_active() {
+            return None;
+        }
+        self.switcher_preview_placements()
+            .into_iter()
+            .find(|(_, rect, _)| rect.to_f64().contains(point))
+            .map(|(window, _, _)| window)
+    }
+
     /// The render frame for `window` while the Cmd-Tab switcher is up
     /// (T-06.2a): a recency entry's **live** surface scaled into the centered
     /// preview grid through the T-04 transform, or `alpha = 0` for any other
@@ -3030,21 +3132,6 @@ impl DfState {
         self.app_switcher.selected_index()?;
         let id = self.windows.id(window)?;
         let geometry = self.windows.geometry(window)?;
-        if !self
-            .app_switcher
-            .entries()
-            .iter()
-            .any(|entry| entry.window == id)
-        {
-            // Not a switcher entry (e.g. a second window of an app): the
-            // overlay owns the scene, so hide it rather than let it float.
-            return Some(MotionFrame {
-                rect: geometry,
-                scale: smithay::utils::Scale::from((1.0, 1.0)),
-                offset: (0, 0).into(),
-                alpha: 0.0,
-            });
-        }
         let output = self
             .space
             .outputs_for_element(window)
@@ -3052,8 +3139,20 @@ impl DfState {
             .next()
             .or_else(|| self.space.outputs().next().cloned())?;
         let area = self.space.output_geometry(&output)?;
+        // The previewed window (the selected entry's cursor window) gets its
+        // T-04 placement; every other window — a non-selected entry, or the
+        // selected app's other window while Cmd+` cycled away — is hidden with
+        // `alpha = 0` so the desktop never floats over the overlay.
         let layout = grid_layout(preview_area(area), &self.switcher_candidates());
-        Some(layout.placement(id)?.frame(1.0))
+        Some(match layout.placement(id) {
+            Some(placement) => placement.frame(1.0),
+            None => MotionFrame {
+                rect: geometry,
+                scale: smithay::utils::Scale::from((1.0, 1.0)),
+                offset: (0, 0).into(),
+                alpha: 0.0,
+            },
+        })
     }
 
     /// The render frame a window is drawn with: the Mission Control grid
