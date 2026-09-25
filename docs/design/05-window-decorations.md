@@ -27,13 +27,18 @@ applications place controls on the left.
 
 ## Negotiation
 
-Decoration mode follows `xdg-decoration`:
+Decoration mode follows `xdg-decoration` the way the protocol defines it:
 
-- A client that requests server-side decoration gets our compositor-drawn
+- The compositor advertises server-side decoration as its preference when a
+  client creates a `zxdg_toplevel_decoration_v1` object.
+- A client that negotiates server-side decoration gets our compositor-drawn
   titlebar (Tier 2).
-- A client that never sends a decoration request gets the compositor default,
-  which is **SSD** — cooperative-by-default, CSD only when the client asks.
-- Expected third-party outcomes: Qt apps typically request SSD (very good);
+- A client that never creates a decoration object, or explicitly requests
+  client-side decoration, keeps its own decoration. This covers first-party
+  Tier-1 apps (frameless Qt windows that draw the design-system `TitleBar`)
+  as well as third-party CSD clients, so the compositor never draws a second
+  titlebar over them.
+- Expected third-party outcomes: Qt apps typically negotiate SSD (very good);
   GTK apps draw their own headerbars (Tier 3, steerable left via GTK
   settings we document and configure); Electron/Chromium and most SDL games
   are CSD (Tier 3).
@@ -81,9 +86,10 @@ corners, left-side close/minimize/zoom lights, and hover/disabled *drawing*.
 The titlebar reserves its height as a top inset (`component.titlebar.height`,
 40 logical px) above the client area, so a zoomed client is configured one
 titlebar shorter through the single `configure_window_size` path; fullscreen
-hides the titlebar and reserves nothing. A client that requests CSD via
-`xdg-decoration` (or an X11 client marked undecorated) is never given a
-compositor titlebar — the tier-3 dignity rule.
+hides the titlebar and reserves nothing. A client that negotiates client-side
+decoration via `xdg-decoration` (or never creates a decoration object, or an
+X11 client marked undecorated) is never given a compositor titlebar — the
+tier-3 dignity rule.
 
 Explicitly deferred: real materials (blur/shadow/rounded corners, T-04),
 drag-to-move and double-click zoom on the titlebar (T-01.3), the window

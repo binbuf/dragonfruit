@@ -60,6 +60,9 @@ Item {
     implicitWidth: 480
     implicitHeight: content.implicitHeight
 
+    // Fill the detail pane slot (see AppearancePane).
+    width: parent ? parent.width : implicitWidth
+
     function scaleIndex() {
         for (var i = 0; i < root.resolutionOptions.length; ++i) {
             if (Math.abs(root.resolutionOptions[i].value - root.scaleValue) < 0.001)
@@ -156,7 +159,6 @@ Item {
 
                 controlData: Select {
                     id: rotationSelect
-                    width: 180
                     accessibleName: qsTr("Display rotation")
                     model: root.rotationOptions
                     onActivated: (index) => Settings.set(

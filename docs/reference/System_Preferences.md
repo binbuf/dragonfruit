@@ -27,8 +27,11 @@ From the General, Desktop & Dock, and Sound captures.
   selected sidebar row is a solid blue fill with white text.
 - **Sidebar rows**: icon + label, no trailing chevrons in most captures, no
   section headers (one capture shows a separator after the account row).
-- **Header card**: pane icon, pane title, and a short description line
-  (`General`, `Accessibility`, `Notifications`).
+- **Header card**: pane icon, pane title, and a short description line —
+  present on `General`, `Accessibility`, `Notifications`, and `Privacy &
+  Security`, absent on the settings-list panes (`Desktop & Dock`, `Displays`,
+  `Wallpaper`), which open directly at their first group. `Appearance` is
+  uncaptured and follows the settings-list shape.
 - **Grouped inset sections**: rounded light-gray cards with subtle separators
   and generous padding; `Privacy & Security` is the one flat list.
 - **Row controls**: toggle rows, popup rows (value + down chevron), slider rows

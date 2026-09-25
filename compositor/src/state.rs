@@ -42,6 +42,7 @@ use smithay::utils::{
 use smithay::wayland::buffer::BufferHandler;
 use smithay::wayland::compositor::{
     get_parent, with_states, CompositorClientState, CompositorHandler, CompositorState,
+    SurfaceAttributes,
 };
 use smithay::wayland::content_type::ContentTypeState;
 use smithay::wayland::cursor_shape::CursorShapeManagerState;
@@ -254,12 +255,22 @@ impl RenderStats {
 /// The protocol-state fields exist to keep their globals alive and as the
 /// handler accessors (smithay's delegate pattern); many are not read
 /// directly by T-02 but are consumed by later tickets.
+/// How long after input the compositor holds a frame cadence so a client that
+/// is waiting on its frame callback can paint the response. Long enough to
+/// cover a pane switch's first frame, short enough that an untouched desktop
+/// falls back to the fully idle, damage-driven loop.
+const FRAME_CADENCE_AFTER_INPUT: Duration = Duration::from_millis(500);
+
 #[allow(dead_code)]
 pub struct DfState {
     pub running: bool,
     /// Set when something asked for a new frame; cleared by the render
     /// pass. Damage-driven rendering starts here (FR-2).
     pub needs_redraw: bool,
+    /// After input, hold a short frame cadence so a client waiting on its
+    /// frame callback can paint the response even though the compositor is
+    /// otherwise idle (see [`DfState::frame_cadence_active`]).
+    frame_cadence_until: Option<Instant>,
     pub display_handle: DisplayHandle,
     pub loop_handle: LoopHandle<'static, DfState>,
     pub loop_signal: LoopSignal,
@@ -505,6 +516,7 @@ impl DfState {
         DfState {
             running: true,
             needs_redraw: true,
+            frame_cadence_until: None,
             display_handle: display_handle.clone(),
             loop_handle,
             loop_signal,
@@ -662,9 +674,10 @@ impl DfState {
             if let Some(toplevel) = window.toplevel() {
                 self.windows.set_app_id(&window, toplevel_app_id(toplevel));
                 self.windows.set_title(&window, toplevel_title(toplevel));
-                // Decoration tier from `xdg-decoration`: the compositor
-                // default is SSD, a client that asked for CSD keeps its own
-                // decoration and gets no compositor titlebar (T-01.1).
+                // Decoration tier from `xdg-decoration`: only a client that
+                // negotiated server-side decoration gets our titlebar; a
+                // client that requested CSD (or created no decoration object)
+                // keeps its own (T-01.1).
                 self.windows
                     .set_decorations(&window, toplevel_decoration_tier(toplevel));
             }
@@ -1021,6 +1034,32 @@ impl DfState {
                 element
             },
         )
+    }
+
+    /// Whether any mapped surface has an outstanding `wl_callback.frame`
+    /// request.
+    ///
+    /// The compositor is damage-driven and normally replies to a client's
+    /// `frame` request from the render that presents the client's buffer. A
+    /// client that requests a callback after that render (Qt Wayland does this
+    /// for every update) would otherwise wait for the next compositor frame,
+    /// and if the compositor is idle there is no next frame: the client cannot
+    /// commit, so the compositor cannot render. The session loop uses this to
+    /// keep a frame cadence alive just long enough for such a client to paint
+    /// (see `session.rs`). With no pending callbacks it stays fully idle.
+    pub fn has_pending_frame_callbacks(&self) -> bool {
+        self.space.elements().any(|window| {
+            let mut wants_frame = false;
+            window.with_surfaces(|_surface, data| {
+                let mut attributes = data.cached_state.get::<SurfaceAttributes>();
+                if !attributes.current().frame_callbacks.is_empty()
+                    || !attributes.pending().frame_callbacks.is_empty()
+                {
+                    wants_frame = true;
+                }
+            });
+            wants_frame
+        })
     }
 
     /// Recompute which titlebar (if any) the pointer is hovering, returning
@@ -2003,6 +2042,19 @@ impl DfState {
     /// Update idle notification activity state after seat/input activity.
     pub fn notify_activity(&mut self) {
         self.idle_notifier_state.notify_activity(&self.seat);
+        // Input implies a client may soon want to repaint; give it a frame
+        // cadence window to receive its pending frame callback (see
+        // `frame_cadence_active`).
+        self.frame_cadence_until = Some(Instant::now() + FRAME_CADENCE_AFTER_INPUT);
+    }
+
+    /// Whether the post-input frame cadence window is open. Combined with
+    /// [`Self::has_pending_frame_callbacks`], it lets the session loop tick
+    /// briefly after input instead of blocking, without waking an untouched
+    /// desktop.
+    pub fn frame_cadence_active(&self) -> bool {
+        self.frame_cadence_until
+            .is_some_and(|until| Instant::now() < until)
     }
 
     /// A monotonic timestamp in milliseconds for the input pipelines.
@@ -3284,13 +3336,24 @@ fn toplevel_title(surface: &ToplevelSurface) -> Option<String> {
     })
 }
 
-/// The decoration tier a toplevel asks for (T-01.1). The compositor default
-/// is server-side; only an explicit CSD request keeps the client's own
-/// decoration, and then the compositor must never draw a titlebar over it.
+/// The decoration tier a toplevel asks for (T-01.1).
+///
+/// The tier follows `xdg-decoration` the way the protocol defines it: a
+/// client negotiates server-side decoration by creating a
+/// `zxdg_toplevel_decoration_v1` object, at which point the compositor
+/// advertises its preference (`ServerSide`, see [`DfState::new_decoration`]).
+/// A toplevel with no decoration mode has either explicitly asked for
+/// client-side decoration or never created the object — in both cases it did
+/// not negotiate server-side decoration, so per the protocol it keeps its own
+/// decoration and the compositor must not draw a titlebar over it.
+///
+/// This is what keeps first-party Tier-1 apps (Qt frameless windows such as
+/// Settings/Files, which draw their own design-system `TitleBar`) from being
+/// double-decorated by the SSD renderer.
 fn toplevel_decoration_tier(toplevel: &ToplevelSurface) -> DecorationTier {
     match toplevel.with_pending_state(|state| state.decoration_mode) {
-        Some(DecorationMode::ClientSide) => DecorationTier::ClientSide,
-        _ => DecorationTier::ServerSide,
+        Some(DecorationMode::ServerSide) => DecorationTier::ServerSide,
+        _ => DecorationTier::ClientSide,
     }
 }
 
@@ -3333,6 +3396,7 @@ impl CompositorHandler for DfState {
             .cloned();
         if let Some(window) = window {
             window.on_commit();
+            crate::trace::log("commit", "");
         }
 
         // Map the toplevel once its root tree has a buffer; T-04 owns

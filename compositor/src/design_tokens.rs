@@ -280,7 +280,7 @@ pub mod component {
         pub const RADIUS: f32 = 6.0_f32;
     }
     pub mod sidebar {
-        pub const WIDTH: f32 = 220.0_f32;
+        pub const WIDTH: f32 = 192.0_f32;
         pub const ROW_HEIGHT: f32 = 28.0_f32;
         pub const ROW_RADIUS: f32 = 6.0_f32;
         pub const SECTION_GAP: f32 = 16.0_f32;
@@ -329,7 +329,7 @@ pub mod component {
         pub const HEIGHT: f32 = 28.0_f32;
         pub const RADIUS: f32 = 10.0_f32;
         pub const PADDING_H: f32 = 12.0_f32;
-        pub const MIN_WIDTH: f32 = 140.0_f32;
+        pub const MIN_WIDTH: f32 = 80.0_f32;
         pub const CHEVRON_SIZE: f32 = 12.0_f32;
         pub const CHEVRON_GAP: f32 = 8.0_f32;
     }

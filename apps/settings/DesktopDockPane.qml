@@ -62,6 +62,9 @@ Item {
     implicitWidth: 480
     implicitHeight: content.implicitHeight
 
+    // Fill the detail pane slot (see AppearancePane).
+    width: parent ? parent.width : implicitWidth
+
     // Index of `value` in an option list; unknown values fall to `fallback`.
     function optionIndex(options, value, fallback) {
         for (var i = 0; i < options.length; ++i) {
@@ -130,7 +133,6 @@ Item {
                 label: qsTr("Dock position on screen")
                 controlData: Select {
                     id: positionSelect
-                    width: 180
                     accessibleName: qsTr("Dock position on screen")
                     model: root.positionOptions
                     onActivated: (index) => Settings.set("dock.position",
@@ -143,7 +145,6 @@ Item {
                 label: qsTr("Minimized window animation")
                 controlData: Select {
                     id: minimizedAnimationSelect
-                    width: 180
                     accessibleName: qsTr("Minimized window animation")
                     model: root.minimizedAnimationOptions
                     onActivated: (index) => Settings.set(
@@ -157,7 +158,6 @@ Item {
                 label: qsTr("Window title bar double-click action")
                 controlData: Select {
                     id: titlebarSelect
-                    width: 180
                     accessibleName: qsTr("Window title bar double-click action")
                     model: root.titlebarDoubleClickOptions
                     onActivated: (index) => Settings.set(

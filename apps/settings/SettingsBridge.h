@@ -56,6 +56,9 @@ class SettingsBridge : public QObject
     // The pane the shell opens on startup. Empty uses the first shipped pane;
     // `DF_SETTINGS_START_PANE=wallpaper` selects one for captures and tests.
     Q_PROPERTY(QString startPane READ startPane CONSTANT)
+    // Temporary diagnostic: whether `DF_SETTINGS_TRACE` is set, so QML can
+    // emit `DFTRACE` lines for the pane-switch timing trace.
+    Q_PROPERTY(bool trace READ trace CONSTANT)
 
 public:
     explicit SettingsBridge(QObject *parent = nullptr);
@@ -66,6 +69,7 @@ public:
     QVariantList wallpaperPresets() const;
     bool wallpaperChooserAvailable() const;
     QString startPane() const;
+    bool trace() const;
 
     // Read one key (with an optional fallback for an unknown key).
     Q_INVOKABLE QVariant value(const QString &key, const QVariant &fallback = {}) const;
@@ -74,6 +78,10 @@ public:
     Q_INVOKABLE void set(const QString &key, const QVariant &value);
     // Re-read the daemon snapshot (`GetAll`); a no-op when no daemon is up.
     Q_INVOKABLE void refresh();
+    // Temporary diagnostics: emit one `DFTRACE <message> t=<epoch-ms>` line to
+    // stderr when `DF_SETTINGS_TRACE` is set. `fprintf` (not `console.log`) so
+    // it survives the app's Qt logging rules and lands in the demo log.
+    Q_INVOKABLE void traceLog(const QString &message) const;
     // Every key the schema (and the defaults table) knows.
     Q_INVOKABLE QStringList keys() const;
 

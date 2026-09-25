@@ -280,13 +280,22 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                 wp_presentation_feedback::Kind::Vsync,
             );
             render::post_repaint(state, &output, now.into(), &render_result.states);
+            crate::trace::log("present", "nested");
         }
         None => {
-            // No damage, no render, no client wakeups (FR-2).
+            // No damage, no render, no client wakeups (FR-2) — except that a
+            // woken compositor must still reply to a client that is waiting on
+            // its frame callback (an input-driven frame usually has no damage
+            // yet; the client's repaint is what produces it). An idle
+            // compositor is never woken, so this adds nothing to the idle
+            // budget.
             state.stats.frames_skipped_no_damage += 1;
             if let Err(err) = data.backend.submit(None) {
                 return Err(format!("nested submit failed: {err}"));
             }
+            let now = state.clock.now();
+            render::send_frame_callbacks(state, &output, now.into(), &render_result.states);
+            crate::trace::log("wake-clients", "nested");
         }
     }
     Ok(())

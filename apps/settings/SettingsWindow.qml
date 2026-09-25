@@ -9,9 +9,13 @@ import Dragonfruit
 Window {
     id: win
 
-    width: 900
-    height: 620
-    minimumWidth: 720
+    // The macOS reference capture (Desktop & Dock, Accessibility, ...) is
+    // ~620x627 in design-system token units, with the sidebar ~31% of the
+    // width. macOS only resizes System Settings vertically, so the width is
+    // effectively fixed; see docs/reference/settings-layout-measurements.md.
+    width: 640
+    height: 640
+    minimumWidth: 560
     minimumHeight: 480
     visible: true
     title: qsTr("Settings")

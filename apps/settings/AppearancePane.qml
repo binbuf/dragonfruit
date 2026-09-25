@@ -50,6 +50,11 @@ Item {
     implicitWidth: 480
     implicitHeight: content.implicitHeight
 
+    // Fill the detail pane slot: the shell's Loader is the content width, so
+    // the card tracks it instead of keeping the 480 design width and clipping
+    // its right-hand controls. A standalone instance keeps the implicit width.
+    width: parent ? parent.width : implicitWidth
+
     // Index of the active scheme in the reference order; unknown/auto falls to
     // the Auto segment.
     function schemeIndex() {
@@ -76,6 +81,7 @@ Item {
 
             SettingsRow {
                 id: schemeRow
+                width: parent.width
                 label: qsTr("Appearance")
                 showSeparator: false
 
@@ -94,6 +100,7 @@ Item {
 
             SettingsRow {
                 id: accentRow
+                width: parent.width
                 label: qsTr("Accent color")
                 showSeparator: false
 
@@ -232,8 +239,8 @@ Item {
 
         readonly property bool selected: root.currentAccent === swatch.modelData.value
 
-        width: 24
-        height: 24
+        width: 20
+        height: 20
         activeFocusOnTab: true
 
         function choose() {
@@ -242,8 +249,8 @@ Item {
 
         Rectangle {
             anchors.centerIn: parent
-            width: 20
-            height: 20
+            width: 16
+            height: 16
             radius: width / 2
             color: swatch.modelData.value === "" ? Theme.color.accent : swatch.modelData.value
             border.width: Theme.controls.window.borderWidth

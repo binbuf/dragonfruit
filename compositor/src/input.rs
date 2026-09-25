@@ -540,6 +540,12 @@ where
                 state.notify_activity();
             }
 
+            // A button press/release changes client content, but the client may be
+            // waiting on its frame callback to repaint: schedule a compositor frame so
+            // the nested backend can flush the callback even before the new buffer
+            // arrives (otherwise a click that changes nothing compositor-side stalls the
+            // client until the compositor happens to render again).
+            state.needs_redraw = true;
             pointer.button(state, &button_event);
             pointer.frame(state);
             state.notify_activity();

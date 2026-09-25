@@ -47,6 +47,24 @@ Item {
             compare(SettingsPanes.shippedPanes.length, 4);
         }
 
+        function test_header_card_is_only_where_the_reference_has_one() {
+            // The Wave-1 captures (Desktop & Dock, Displays, Wallpaper) have
+            // no header card; Appearance is uncaptured but follows the same
+            // settings-list shape. Only these panes have one.
+            compare(SettingsPanes.hasHeader(SettingsPanes.paneById("appearance")), false);
+            compare(SettingsPanes.hasHeader(SettingsPanes.paneById("desktop-dock")), false);
+            compare(SettingsPanes.hasHeader(SettingsPanes.paneById("displays")), false);
+            compare(SettingsPanes.hasHeader(SettingsPanes.paneById("wallpaper")), false);
+            compare(SettingsPanes.hasHeader(SettingsPanes.paneById("general")), true);
+            compare(SettingsPanes.hasHeader(SettingsPanes.paneById("accessibility")), true);
+            compare(SettingsPanes.hasHeader(SettingsPanes.paneById("notifications")), true);
+            compare(SettingsPanes.hasHeader(SettingsPanes.paneById("privacy")), true);
+
+            var shell = make();
+            verify(!shell.header.visible,
+                   "the Appearance pane must not draw a header card");
+        }
+
         // -- Shell opens --------------------------------------------------------
 
         function test_shell_opens_with_sidebar_and_search() {
@@ -56,6 +74,10 @@ Item {
             verify(shell.searchField !== null);
             verify(shell.sidebar !== null);
             verify(shell.titleBar !== null);
+            compare(shell.titleBar.width, shell.width,
+                    "the titlebar must span the window so the whole bar drags");
+            compare(shell.sidebarPane.width, Theme.controls.sidebar.width,
+                    "the sidebar uses the design-system width token");
             compare(shell.header.pane.id, "appearance");
             // At the start of history both history affordances are dimmed.
             verify(!shell.backButton.enabled);

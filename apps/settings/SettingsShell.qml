@@ -27,6 +27,7 @@ Item {
 
     property alias searchField: searchField
     property alias sidebar: sidebar
+    property alias sidebarPane: sidebarPane
     property alias titleBar: titleBar
     property alias appWindow: appWindow
     property alias header: header
@@ -62,6 +63,14 @@ Item {
     implicitWidth: 900
     implicitHeight: 600
 
+    // Temporary pane-switch timing trace: run the app with
+    // `DF_SETTINGS_TRACE=1` and correlate these `DFTRACE` lines with the
+    // compositor's (`DRAGONFRUIT_FRAME_TRACE=1`).
+    function trace(message) {
+        if (Settings.trace)
+            Settings.traceLog(message);
+    }
+
     function visibleIndexOf(id) {
         for (var i = 0; i < root.visiblePanes.length; ++i) {
             if (root.visiblePanes[i].id === id)
@@ -75,6 +84,7 @@ Item {
     function selectPane(id) {
         if (!id || id === root.currentPaneId)
             return;
+        root.trace("selectPane " + id);
         var next = root.history.slice(0, root.historyIndex + 1);
         next.push(id);
         root.history = next;
@@ -231,7 +241,7 @@ Item {
             // Sidebar: a muted source list with local pane search on top.
             Rectangle {
                 id: sidebarPane
-                width: 240
+                width: Theme.controls.sidebar.width
                 height: parent.height
                 color: Theme.color.surfaceMuted
 
@@ -320,6 +330,10 @@ Item {
                             PaneHeader {
                                 id: header
                                 width: parent.width
+                                // Only panes whose macOS capture has a header
+                                // card show one; the settings-list panes open
+                                // at their first group.
+                                visible: SettingsPanes.hasHeader(root.currentPane)
                                 pane: root.currentPane
                             }
 
@@ -327,6 +341,7 @@ Item {
                                 id: paneBody
                                 width: parent.width
                                 sourceComponent: root.paneComponent(root.currentPaneId)
+                                onLoaded: root.trace("paneLoaded " + root.currentPaneId)
                             }
 
                             SettingsGroup {

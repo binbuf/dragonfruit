@@ -78,6 +78,8 @@ Item {
             compare(shell.browser.currentUri, Files.homeUri);
             compare(shell.locationTitle, "tester");
             compare(shell.titleBar.title, "tester");
+            compare(shell.titleBar.width, shell.width,
+                    "the titlebar must span the window so the whole bar drags");
             verify(shell.sidebar !== null);
             verify(shell.toolbar !== null);
             verify(shell.searchField !== null);

@@ -139,5 +139,27 @@ Item {
             verify(pane.schemeControl.width > 0);
             verify(pane.accentRepeater.count === 6);
         }
+
+        // T-09.2 follow-up: at the default window size the detail pane is only
+        // ~400 px wide, so the rows must fill it and every control must stay
+        // inside its row instead of overflowing the card (the text-clipping bug
+        // the narrower reference-matched window exposed).
+        function test_controls_fit_the_default_window() {
+            var shell = createTemporaryObject(shellComponent, stage,
+                                              { width: 640, height: 640 });
+            waitForRendering(stage);
+            var pane = paneOf(shell);
+            var rows = [pane.schemeRow, pane.accentRow];
+            for (var i = 0; i < rows.length; ++i) {
+                var row = rows[i];
+                var control = row.control;
+                verify(control.x + control.width <= row.width,
+                       "control must fit inside its row: right="
+                       + (control.x + control.width) + " row=" + row.width);
+                verify(row.x + row.width <= shell.width,
+                       "row must fit inside the window: right="
+                       + (row.x + row.width) + " window=" + shell.width);
+            }
+        }
     }
 }

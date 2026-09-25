@@ -80,6 +80,30 @@ short walkthrough clip land in `docs/captures/`. It needs a host Wayland
 session, Spectacle, ffmpeg, and Pillow, so it is deliberately not part of
 `make e2e`.
 
+### Tracing a pane switch
+
+To find where a Settings pane switch spends its time, run the nested demo with
+two diagnostic env vars:
+
+```sh
+DRAGONFRUIT_FRAME_TRACE=1 DF_SETTINGS_TRACE=1 make demo
+```
+
+Both sides then emit wall-clock `DFTRACE <event> ... t=<epoch-ms>` lines that
+correlate across the process boundary:
+
+- `selectPane <id>` / `paneLoaded <id>` — the app's `SettingsShell` enters and
+  finishes the switch (QML work).
+- `appframe` — each frame the app presents (`QQuickWindow::afterRendering`).
+- `commit` — the compositor receives a window buffer commit.
+- `present headless|nested` — the compositor presented a frame and sent client
+  frame callbacks.
+
+If `selectPane`→`paneLoaded` is fast but the next `present` is late, the delay
+is in the compositor's frame path; if the app frames are late, it is in the
+client. This is temporary diagnostic plumbing (compositor `src/trace.rs`,
+`SettingsBridge::trace`), gated so an unset env var costs nothing.
+
 ## Real-hardware testing is a separate login session
 
 For DRM/KMS, multi-monitor, suspend/resume, GPU-vendor behavior, VRR, and
