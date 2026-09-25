@@ -45,11 +45,12 @@ use trust::{Refusal, TrustModel, TrustedRole};
 /// The version of every private interface this compositor implements.
 const INTERFACE_VERSION: u32 = 1;
 
-/// `df_toplevel_manager` is version 4 since `set_launch_origin` was added
-/// (T-02.1b); `set_reduced_motion` was the v3 addition (T-11) and
+/// `df_toplevel_manager` is version 5 since `set_motion_policy` and
+/// `set_input_policy` were added (T-08.2c); `set_launch_origin` was the v4
+/// addition (T-02.1b), `set_reduced_motion` the v3 (T-11), and
 /// `release_keyboard_focus` the v2 (T-10). The other interfaces stay at
 /// [`INTERFACE_VERSION`].
-const MANAGER_INTERFACE_VERSION: u32 = 4;
+const MANAGER_INTERFACE_VERSION: u32 = 5;
 
 /// Error code posted when an untrusted client binds a private global.
 const ERROR_ACCESS_DENIED: u32 = 1;
@@ -1706,6 +1707,35 @@ impl Dispatch<df_toplevel_manager::DfToplevelManager, ()> for DfState {
                 state.set_launch_origin(
                     &app_id,
                     Rectangle::new((x, y).into(), (width.max(1), height.max(1)).into()),
+                );
+            }
+            df_toplevel_manager::Request::SetMotionPolicy {
+                color_scheme,
+                titlebar_double_click,
+                minimized_animation,
+            } => {
+                // T-08.2c: the shell forwards the settingsd motion/appearance
+                // keys; the compositor is the only applier.
+                state.set_motion_policy(
+                    color_scheme.as_deref(),
+                    titlebar_double_click.as_deref(),
+                    minimized_animation.as_deref(),
+                );
+            }
+            df_toplevel_manager::Request::SetInputPolicy {
+                repeat_delay_ms,
+                repeat_rate_hz,
+                gestures_enabled,
+                gesture_space_switch,
+                gesture_mission_control,
+            } => {
+                // T-08.2c: keyboard repeat and gesture gating, applied live.
+                state.set_input_policy(
+                    repeat_delay_ms,
+                    repeat_rate_hz,
+                    gestures_enabled != 0,
+                    gesture_space_switch != 0,
+                    gesture_mission_control != 0,
                 );
             }
             df_toplevel_manager::Request::Destroy => {}

@@ -124,12 +124,18 @@ is acked with `done` after the scene applies it (FR-3).
 - **Manager requests** include the cross-cutting controls: workspace
   create/remove/reorder/activate, `enter`/`exit_mission_control`,
   `select_overview_toplevel`, `activate_app`, `cycle_app_switcher`,
-  `release_keyboard_focus` (v2), `set_reduced_motion` (v3), and
-  `set_launch_origin` (v4). The last hands the Dock entry's tile rectangle to
-  the compositor so a launching app's window appears from it and minimize/
-  restore scale into and out of it (T-02.1b/T-02.2); it is keyed by `app_id`
-  and remembered for the app's windows, and the compositor falls back to a
-  centered origin when it is never sent.
+  `release_keyboard_focus` (v2), `set_reduced_motion` (v3),
+  `set_launch_origin` (v4), and `set_motion_policy`/`set_input_policy` (v5).
+  `set_launch_origin` hands the Dock entry's tile rectangle to the compositor
+  so a launching app's window appears from it and minimize/restore scale into
+  and out of it (T-02.1b/T-02.2); it is keyed by `app_id` and remembered for
+  the app's windows, and the compositor falls back to a centered origin when
+  it is never sent. `set_motion_policy` forwards the resolved
+  `appearance.colorScheme`, `dock.titlebarDoubleClick`, and
+  `dock.minimizedAnimation`; `set_input_policy` forwards
+  `input.repeatDelay`/`input.repeatRate` and the `gestures.*` switches
+  (T-08.2c). The shell is the forwarder from the one settingsd owner; the
+  compositor is the applier (ADR 0034).
 - **Manager events** carry the cross-cutting broadcasts: `workspace_activated`,
   `focused`, `attention` (xdg-activation / demands-attention → Dock bounce),
   `hot_corner` (the same event whether triggered by pointer, gesture, or

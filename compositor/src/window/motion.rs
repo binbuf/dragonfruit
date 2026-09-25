@@ -49,6 +49,46 @@ use crate::design_tokens::{motion, Motion};
 /// the center".
 pub const APPEAR_MIN_SCALE: f64 = 0.8;
 
+/// The minimize/restore animation kind from `dock.minimizedAnimation`
+/// (T-08.2c). `Scale` is the compositor's implementation; `Genie` is accepted
+/// from settings but currently renders as `Scale` (the genie warping is a
+/// material-pass follow-up), and `None` collapses the motion to a single step
+/// exactly like reduced motion while the window state still changes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MinimizedAnimation {
+    Genie,
+    #[default]
+    Scale,
+    None,
+}
+
+impl MinimizedAnimation {
+    /// Parse the settings spelling (`genie` | `scale` | `none`).
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "genie" => Some(MinimizedAnimation::Genie),
+            "scale" => Some(MinimizedAnimation::Scale),
+            "none" => Some(MinimizedAnimation::None),
+            _ => None,
+        }
+    }
+
+    /// The canonical settings spelling.
+    pub const fn name(self) -> &'static str {
+        match self {
+            MinimizedAnimation::Genie => "genie",
+            MinimizedAnimation::Scale => "scale",
+            MinimizedAnimation::None => "none",
+        }
+    }
+
+    /// Whether this kind collapses the minimize/restore tween to one step
+    /// (the window transitions immediately; only the motion is skipped).
+    pub const fn collapses(self) -> bool {
+        matches!(self, MinimizedAnimation::None)
+    }
+}
+
 /// Which lifecycle motion a [`WindowMotion`] is playing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WindowMotionKind {

@@ -12,6 +12,7 @@
 #include <QVariant>
 #include <QVariantList>
 
+#include "compositorpolicy.h"
 #include "desktopentry.h"
 #include "dockmodel.h"
 #include "downloadsmonitor.h"
@@ -184,6 +185,11 @@ private:
     // Push the `dock.*` settings onto the Dock QML and, when the geometry
     // changed, reconfigure the chrome surface (T-10 section 19).
     void applyDockSettings(bool reconfigure);
+    // T-08.2c: re-read the settingsd motion/input keys and forward them to the
+    // compositor over the private protocol (the single applier). Runs on every
+    // `changed`/`refreshed`, on a host color-scheme change (`auto`), and once
+    // after the protocol connects.
+    void applyCompositorPolicy();
     // Write one `dock.*` key through the settings client (settingsd is the
     // single owner) and refresh the typed local view.
     void writeDockSetting(const QString &key, const QVariant &value);
@@ -269,6 +275,12 @@ private:
     // appearance (`appearance.colorScheme` -> dark, `accessibility.reduceMotion`
     // -> reduced motion). Reads the same client; no second connection.
     ThemeBinding *m_themeBinding = nullptr;
+    // T-08.2c: the last policy forwarded to the compositor, so an unchanged
+    // settings value does not re-send the protocol requests.
+    CompositorPolicy m_compositorPolicy;
+    // The first apply must always send, even when the values happen to equal
+    // the compositor's own defaults, so the one owner is authoritative.
+    bool m_compositorPolicySent = false;
     // The typed Dock view of the client's keys, refreshed on every change.
     DockConfig m_dockConfig;
     // True while a local write is in flight, so the client's synchronous

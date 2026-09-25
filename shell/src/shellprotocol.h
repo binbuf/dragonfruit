@@ -178,6 +178,19 @@ public:
     // so every compositor-driven transition takes the single-step path.
     void setReducedMotion(bool enabled);
 
+    // Mirror the settingsd motion/appearance policy into the compositor
+    // (T-08.2c, `df_toplevel_manager.set_motion_policy`, additive in v5):
+    // `colorScheme` is already resolved (light|dark), `titlebarDoubleClick` is
+    // zoom|minimize|none, `minimizedAnimation` is genie|scale|none.
+    void setMotionPolicy(const QString &colorScheme, const QString &titlebarDoubleClick,
+                         const QString &minimizedAnimation);
+
+    // Mirror the settingsd input policy into the compositor (T-08.2c,
+    // `df_toplevel_manager.set_input_policy`, additive in v5): keyboard repeat
+    // plus the gesture family switches.
+    void setInputPolicy(int repeatDelayMs, int repeatRateHz, bool gesturesEnabled,
+                        bool gestureSpaceSwitch, bool gestureMissionControl);
+
     // Hand the Dock entry's tile rectangle (logical global pixels) to the
     // compositor so the launching app's window appears from it (T-02.1b,
     // `df_toplevel_manager.set_launch_origin`, additive in v4).

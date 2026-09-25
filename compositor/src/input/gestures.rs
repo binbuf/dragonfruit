@@ -30,6 +30,15 @@ pub struct GestureConfig {
     pub axis_deadzone: f64,
     /// Dominance ratio used to lock the axis once movement is clear.
     pub axis_lock_ratio: f64,
+    /// The master gesture switch (`gestures.enabled`, T-08.2c). When off no
+    /// swipe/pinch is claimed, though updates still reset cleanly on end.
+    pub enabled: bool,
+    /// Whether horizontal swipes may switch Spaces
+    /// (`gestures.spaceSwitch`, T-08.2c).
+    pub space_switch: bool,
+    /// Whether vertical swipes/pinches may open Mission Control / reveal
+    /// (`gestures.missionControl`, T-08.2c).
+    pub mission_control: bool,
 }
 
 impl Default for GestureConfig {
@@ -39,6 +48,25 @@ impl Default for GestureConfig {
             pinch_threshold: 0.6,
             axis_deadzone: 10.0,
             axis_lock_ratio: 1.0,
+            enabled: true,
+            space_switch: true,
+            mission_control: true,
+        }
+    }
+}
+
+impl GestureConfig {
+    /// Whether the policy admits `action`. The master switch gates
+    /// everything; otherwise Space switches and Mission Control/Desktop
+    /// Reveal are gated per family (T-08.2c).
+    pub const fn admits(self, action: InputAction) -> bool {
+        if !self.enabled {
+            return false;
+        }
+        match action {
+            InputAction::WorkspaceNext | InputAction::WorkspacePrev => self.space_switch,
+            InputAction::MissionControl | InputAction::DesktopReveal => self.mission_control,
+            _ => true,
         }
     }
 }
@@ -421,6 +449,13 @@ impl GestureRecognizer {
             _ => return None,
         };
 
+        // T-08.2c: `gestures.enabled`/`gestures.spaceSwitch`/
+        // `gestures.missionControl` gate the recognized action before it is
+        // ever fed into the shared progress pipeline.
+        if !config.admits(action) {
+            return None;
+        }
+
         Some(GestureUpdate {
             kind: active.kind,
             action,
@@ -444,6 +479,9 @@ impl GestureRecognizer {
         } else {
             (InputAction::DesktopReveal, -delta)
         };
+        if !config.admits(action) {
+            return None;
+        }
         Some(GestureUpdate {
             kind: active.kind,
             action,
@@ -582,5 +620,39 @@ mod tests {
         pipeline.set_progress(0.1, 200);
         assert!(!pipeline.end(20, false).unwrap().committed);
         assert!(pipeline.end(0, true).is_none());
+    }
+
+    #[test]
+    fn gesture_policy_gates_each_family() {
+        // The master switch disables every claim.
+        let mut recognizer = GestureRecognizer::new(GestureConfig {
+            enabled: false,
+            ..Default::default()
+        });
+        recognizer.begin_swipe(3, 0);
+        assert!(recognizer.update_swipe((-50.0, 5.0).into(), 10).is_none());
+        recognizer.cancel();
+
+        // Space switches off, Mission Control still on.
+        let mut recognizer = GestureRecognizer::new(GestureConfig {
+            space_switch: false,
+            ..Default::default()
+        });
+        recognizer.begin_swipe(3, 0);
+        assert!(recognizer.update_swipe((-50.0, 5.0).into(), 10).is_none());
+        recognizer.cancel();
+        recognizer.begin_swipe(4, 0);
+        assert!(recognizer.update_swipe((2.0, -60.0).into(), 10).is_some());
+
+        // Mission Control off, Space switches still on.
+        let mut recognizer = GestureRecognizer::new(GestureConfig {
+            mission_control: false,
+            ..Default::default()
+        });
+        recognizer.begin_swipe(4, 0);
+        assert!(recognizer.update_swipe((2.0, -60.0).into(), 10).is_none());
+        recognizer.cancel();
+        recognizer.begin_swipe(3, 0);
+        assert!(recognizer.update_swipe((-50.0, 5.0).into(), 10).is_some());
     }
 }

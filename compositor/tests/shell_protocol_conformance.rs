@@ -2674,18 +2674,27 @@ fn malformed_private_traffic_never_crashes() {
 }
 
 /// Sends synthetic-input commands to the compositor's T-03 harness socket
-/// (see `compositor/src/input/synthetic.rs` for the wire format).
+/// (see `compositor/src/input/synthetic.rs` for the wire format). The reply
+/// socket is bound so `query` commands can read the compositor's answer.
 struct SyntheticInput {
     socket: std::os::unix::net::UnixDatagram,
     path: PathBuf,
+    reply_path: PathBuf,
 }
 
 impl SyntheticInput {
     fn connect(path: &Path) -> Self {
-        let socket = std::os::unix::net::UnixDatagram::unbound().expect("unbound datagram");
+        let reply_path = path.with_extension("reply");
+        let _ = std::fs::remove_file(&reply_path);
+        let socket = std::os::unix::net::UnixDatagram::bind(&reply_path)
+            .expect("failed to bind synthetic reply socket");
+        socket
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .expect("set reply timeout");
         Self {
             socket,
             path: path.to_path_buf(),
+            reply_path,
         }
     }
 
@@ -2694,6 +2703,24 @@ impl SyntheticInput {
         self.socket
             .send_to(command.as_bytes(), &self.path)
             .unwrap_or_else(|err| panic!("failed to send synthetic {command:?}: {err}"));
+    }
+
+    /// Send a query and read the compositor's datagram reply.
+    #[track_caller]
+    fn query(&self, command: &str) -> String {
+        self.send(command);
+        let mut buf = [0u8; 16 * 1024];
+        let len = self
+            .socket
+            .recv(&mut buf)
+            .unwrap_or_else(|err| panic!("no reply to {command:?}: {err}"));
+        String::from_utf8_lossy(&buf[..len]).into_owned()
+    }
+}
+
+impl Drop for SyntheticInput {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.reply_path);
     }
 }
 
@@ -3077,8 +3104,8 @@ fn reduced_motion_request_single_steps_the_overview() {
     );
     let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
     assert_eq!(
-        manager_version, 4,
-        "the manager must advertise the additive requests through v4"
+        manager_version, 5,
+        "the manager must advertise the additive requests through v5"
     );
     let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
     wait_for(
@@ -3120,6 +3147,158 @@ fn reduced_motion_request_single_steps_the_overview() {
         &mut state,
         Duration::from_secs(5),
         |state| state.overviews.iter().any(|(active, _)| *active == 0),
+    );
+
+    manager.destroy();
+    let _ = conn.flush();
+    proc.shutdown();
+}
+
+/// T-08.2c: the shell forwards the settingsd motion/input policy over the
+/// additive v5 `set_motion_policy`/`set_input_policy` requests. The
+/// compositor is the sole applier: a settingsd change alters the live
+/// motion policy and the input repeat/gesture policy, and a disabled gesture
+/// family stops firing immediately. The synthetic `query policy` report is
+/// the end-to-end observation of the one owner.
+#[test]
+fn motion_and_input_policy_requests_apply_live() {
+    let token = "b7".repeat(32);
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir)
+        .join(format!("dragonfruit-synth-policy-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-policy",
+        std::slice::from_ref(&token),
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (name, version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, name, version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+    let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
+    assert_eq!(
+        manager_version, 5,
+        "the manager must advertise the additive requests through v5"
+    );
+    let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.outputs.is_empty() && state.workspaces.len() >= 3 && state.done_count > 0,
+    );
+
+    // A settingsd snapshot: light, minimize-on-double-click, no minimize
+    // animation, slow repeat, Mission Control gestures off.
+    manager.set_motion_policy(
+        Some("light".to_string()),
+        Some("minimize".to_string()),
+        Some("none".to_string()),
+    );
+    manager.set_input_policy(350, 40, 1, 1, 0);
+    let _ = conn.flush();
+
+    // The protocol and the synthetic harness are two transports on the same
+    // loop; poll the query until the request is applied.
+    let mut report = String::new();
+    for _ in 0..100 {
+        report = input.query("query policy");
+        if report.contains("scheme=light") && report.contains("repeat-delay=350") {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(
+        report.contains("scheme=light"),
+        "policy not applied: {report:?}"
+    );
+    assert!(
+        report.contains("titlebar-double-click=minimize"),
+        "policy not applied: {report:?}"
+    );
+    assert!(
+        report.contains("minimized-animation=none"),
+        "policy not applied: {report:?}"
+    );
+    assert!(
+        report.contains("repeat-delay=350"),
+        "policy not applied: {report:?}"
+    );
+    assert!(
+        report.contains("repeat-rate=40"),
+        "policy not applied: {report:?}"
+    );
+    assert!(
+        report.contains("gestures-enabled=1"),
+        "policy not applied: {report:?}"
+    );
+    assert!(
+        report.contains("gesture-space-switch=1"),
+        "policy not applied: {report:?}"
+    );
+    assert!(
+        report.contains("gesture-mission-control=0"),
+        "policy not applied: {report:?}"
+    );
+
+    // Mission Control gestures are gated off, so a four-finger vertical swipe
+    // no longer reaches the outbox.
+    state.input_actions.clear();
+    input.send("swipe-begin 4");
+    input.send("swipe-update 0 -100");
+    input.send("swipe-update 0 -100");
+    input.send("swipe-end");
+    std::thread::sleep(Duration::from_millis(150));
+    queue.dispatch_pending(&mut state).expect("dispatch");
+    assert!(
+        !state
+            .input_actions
+            .iter()
+            .any(|(action, source, _)| action == "mission-control" && source == "gesture"),
+        "a disabled gesture family must not fire: {:?}",
+        state.input_actions
+    );
+
+    // Re-enabling it through the same request restores the gesture live.
+    manager.set_input_policy(350, 40, 1, 1, 1);
+    let _ = conn.flush();
+    for _ in 0..100 {
+        report = input.query("query policy");
+        if report.contains("gesture-mission-control=1") {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(
+        report.contains("gesture-mission-control=1"),
+        "policy not re-applied: {report:?}"
+    );
+    state.input_actions.clear();
+    input.send("swipe-begin 4");
+    input.send("swipe-update 0 -100");
+    input.send("swipe-update 0 -100");
+    input.send("swipe-end");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .input_actions
+                .iter()
+                .any(|(action, source, _)| action == "mission-control" && source == "gesture")
+        },
     );
 
     manager.destroy();
