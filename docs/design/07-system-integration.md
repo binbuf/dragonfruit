@@ -85,6 +85,31 @@ is never a startup blocker. `MockAdapter` simulates the lifecycle with
 `kill()`/`restart()`, which is how the headless suite asserts re-subscribe and
 absence with no bus.
 
+## The NetworkManager read path (T-07.2a)
+
+The first concrete adapter is `dragonfruit-networkmanager`
+(`services/networkmanager`): Wi-Fi state, the access-point list, and signal
+strength read over NetworkManager's **D-Bus API** on the system bus — never
+through a `libnm` link. The concrete adapters each live in their own crate
+behind the dependency-free contract
+([adr/0026](adr/0026-concrete-adapters-in-their-own-crates.md)), so the
+contract stays free of any D-Bus stack.
+
+One `NetworkManagerSource::read` is the whole transport seam. It returns
+either the raw device/AP enumeration, `None` when NetworkManager is absent, or
+an error when it is present but unreadable — the three answers map straight to
+`Available`/`Unavailable`/`Error`. `DbusNetworkManager` is the live source;
+`MockNetworkManager` serves a fixture in tests, so CI needs no bus and no
+daemon. `NetworkManagerAdapter::refresh` is the one place the adapter touches
+the daemon and it is called when NetworkManager signals a change, so nothing
+above the adapter polls.
+
+The typed `WifiSnapshot` decodes the raw read: it collapses the device list to
+one aggregate Wi-Fi state, dedupes the BSSIDs to one entry per SSID (strongest
+first), marks the active network, and derives the glyph/label the menu bar
+draws. An absent daemon hides the Wi-Fi item, and a present-but-unreadable one
+shows it visible and inert, exactly like every other adapter.
+
 ## D-Bus conventions
 
 Our services own names under `org.dragonfruit.*` on the **user session bus**

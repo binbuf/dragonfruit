@@ -9,6 +9,7 @@ members = [
     "services/app-index",
     "services/session",
     "services/system-adapters",
+    "services/networkmanager",
     "tools/dragonfruit-dev",
 ]
 

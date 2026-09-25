@@ -91,6 +91,7 @@ e2e: build
 	    --test animation_clock \
 	    --test protocol_surface
 	$(CARGO) test -p dragonfruit-system-adapters
+	$(CARGO) test -p dragonfruit-networkmanager
 	$(MAKE) demo DEMO_ARGS=--headless
 
 # T-03.1a: the idle/animation frame budget trace. `make e2e` runs the same
