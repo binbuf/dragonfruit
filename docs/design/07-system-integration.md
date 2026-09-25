@@ -185,6 +185,33 @@ but has no present battery (a desktop, a VM) still answers `Available`, with
 that is present but whose `IsPresent` is false is treated the same as no
 battery. Nothing blocks session startup when either is missing.
 
+## The status bridge host (T-07.5a)
+
+The adapters are Rust crates; the menu bar is C++/QML. T-07.5a bridges them in
+a dedicated session-bus host, `dragonfruit-system-status`
+(`services/system-status`), rather than linking an adapter into the shell
+([adr/0029](adr/0029-system-status-bridge-host.md)). The host owns the
+NetworkManager and audio adapters and serves
+`org.dragonfruit.SystemStatus1` at `/org/dragonfruit/SystemStatus1`:
+
+- `org.dragonfruit.SystemStatus1.Wifi` — `State()`/`Refresh()` (the decoded
+  Wi-Fi view as JSON, with the network list and the polkit read-only
+  degradation) and `Join(ssid, secret)`.
+- `org.dragonfruit.SystemStatus1.Audio` — `State()`/`Refresh()` and
+  `SetVolume(volume)`, `SetMute(muted)`, `ToggleMute()`.
+
+The host core (`StatusHost`) is adapter-only and CI-tested with the mocks; the
+D-Bus layer is a thin mechanical wrapper. The shell decodes the JSON in one
+model (`shell/src/systemstatusmodel.*`) and draws the design-system popovers
+(`WifiMenu.qml`, `VolumeMenu.qml`); a fixture client backs `--placeholders`.
+
+The bridge keeps the adapter contract's no-poll rule: the host reads an
+adapter on startup, on the shell's explicit `Refresh()` (menu open), and after
+an action reply. Wiring the daemons' own change signals (NetworkManager,
+`pw-mon`, UPower `PropertiesChanged`) into the host so a view updates within
+one event is T-07.6, and the item degradation stays where it already lives —
+`Unavailable` hides the item, `Error` shows it visible and inert.
+
 ## D-Bus conventions
 
 Our services own names under `org.dragonfruit.*` on the **user session bus**

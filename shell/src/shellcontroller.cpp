@@ -33,6 +33,7 @@
 #include "dockpins.h"
 #include "downloadsmonitor.h"
 #include "shellprotocol.h"
+#include "systemstatusclient.h"
 
 namespace {
 
@@ -41,7 +42,8 @@ namespace {
 constexpr qint64 kLaunchTimeoutMs = 8000;
 
 QVariantMap statusItem(const QString &id, const QString &icon, const QString &label,
-                       const QString &accessibleName, bool available, qreal level = 0.8)
+                       const QString &accessibleName, bool available, qreal level = 0.8,
+                       bool enabled = true)
 {
     QVariantMap item;
     item.insert(QStringLiteral("id"), id);
@@ -49,6 +51,7 @@ QVariantMap statusItem(const QString &id, const QString &icon, const QString &la
     item.insert(QStringLiteral("label"), label);
     item.insert(QStringLiteral("accessibleName"), accessibleName);
     item.insert(QStringLiteral("available"), available);
+    item.insert(QStringLiteral("enabled"), enabled);
     item.insert(QStringLiteral("level"), level);
     return item;
 }
@@ -333,6 +336,40 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     connect(m_protocol, &ShellProtocol::dockExternalDropped, this,
             &ShellController::onDockExternalDropped);
 
+    // T-07.5a system-status bridge: the model decodes the host's Wi-Fi/volume
+    // views; the client is the live session-bus client, or a fixture client in
+    // the `--placeholders` demo. Wired before the first apply so the initial
+    // views reach the bar.
+    m_statusModel = new SystemStatusModel(this);
+    if (m_placeholders)
+        m_statusClient = new MockSystemStatusClient(this);
+    else
+        m_statusClient = new DbusSystemStatusClient(this);
+    connect(m_statusModel, &SystemStatusModel::changed, this,
+            &ShellController::applyStatusMenuData);
+    connect(m_statusClient, &SystemStatusClient::wifiState, this,
+            &ShellController::onWifiState);
+    connect(m_statusClient, &SystemStatusClient::audioState, this,
+            &ShellController::onAudioState);
+    connect(m_statusClient, &SystemStatusClient::joinReport, this,
+            &ShellController::onStatusReport);
+    connect(m_statusClient, &SystemStatusClient::writeReport, this,
+            &ShellController::onStatusReport);
+    connect(m_item, SIGNAL(wifiJoinRequested(QString,QString)), this,
+            SLOT(onWifiJoinRequested(QString,QString)));
+    connect(m_item, SIGNAL(volumeSetRequested(double)), this,
+            SLOT(onVolumeSetRequested(double)));
+    connect(m_item, SIGNAL(muteToggleRequested()), this, SLOT(onMuteToggleRequested()));
+    connect(m_item, SIGNAL(statusMenuRefreshRequested(QString)), this,
+            SLOT(onStatusMenuRefreshRequested(QString)));
+    connect(m_item, SIGNAL(statusMenuOpened()), this, SLOT(onStatusMenuOpened()));
+    connect(m_item, SIGNAL(statusMenuClosed()), this, SLOT(onStatusMenuClosed()));
+    applyStatusMenuData();
+    // Seed both views once; the mock answers synchronously, the host is asked
+    // asynchronously and answers with its signal.
+    m_statusClient->refreshWifi();
+    m_statusClient->refreshAudio();
+
     applyStatusItems();
     // The system menu (dragonfruit mark) is fixed for the session; the Log Out
     // item is personalized with the account name.
@@ -576,36 +613,121 @@ void ShellController::settleInitialState()
 void ShellController::applyStatusItems()
 {
     QVariantList items;
-    if (m_placeholders) {
-        // Demo placeholders until the T-20 adapters land (ticket risk note).
-        items << statusItem(QStringLiteral("wifi"), QStringLiteral("wifi"), QString(),
-                            tr("Wi-Fi"), true);
-        items << statusItem(QStringLiteral("bluetooth"), QStringLiteral("bluetooth"), QString(),
-                            tr("Bluetooth"), true);
-        items << statusItem(QStringLiteral("volume"), QStringLiteral("volume"), QString(),
-                            tr("Volume"), true);
-        items << statusItem(QStringLiteral("battery"), QStringLiteral("battery"), QString(),
-                            tr("Battery"), true, 0.8);
-        items << statusItem(QStringLiteral("focus"), QStringLiteral("focus"), QString(),
-                            tr("Focus"), false);
-        items << statusItem(QStringLiteral("accessibility"), QStringLiteral("accessibility"),
-                            QString(), tr("Accessibility"), false);
-    } else {
-        // No adapters attached: every item degrades to hidden (FR-4).
-        items << statusItem(QStringLiteral("wifi"), QStringLiteral("wifi"), QString(),
-                            tr("Wi-Fi"), false);
-        items << statusItem(QStringLiteral("bluetooth"), QStringLiteral("bluetooth"), QString(),
-                            tr("Bluetooth"), false);
-        items << statusItem(QStringLiteral("volume"), QStringLiteral("volume"), QString(),
-                            tr("Volume"), false);
-        items << statusItem(QStringLiteral("battery"), QStringLiteral("battery"), QString(),
-                            tr("Battery"), false);
-        items << statusItem(QStringLiteral("focus"), QStringLiteral("focus"), QString(),
-                            tr("Focus"), false);
-        items << statusItem(QStringLiteral("accessibility"), QStringLiteral("accessibility"),
-                            QString(), tr("Accessibility"), false);
-    }
+    const QVariantMap wifi = m_statusModel ? m_statusModel->wifi() : QVariantMap();
+    const QVariantMap audio = m_statusModel ? m_statusModel->audio() : QVariantMap();
+
+    // Wi-Fi and volume are live from the bridge host (T-07.5a); an absent
+    // daemon hides the slot, an error shows it visible but inert (FR-4).
+    QString wifiGlyph = wifi.value(QStringLiteral("glyph")).toString();
+    if (wifiGlyph.isEmpty())
+        wifiGlyph = QStringLiteral("wifi");
+    items << statusItem(QStringLiteral("wifi"), wifiGlyph, QString(), tr("Wi-Fi"),
+                        wifi.value(QStringLiteral("visible")).toBool(), 0.8,
+                        wifi.value(QStringLiteral("enabled")).toBool());
+
+    // Bluetooth, Focus, and Accessibility are later tasks; the demo still
+    // shows the Bluetooth placeholder so the bar is not sparse (T-07.5b).
+    items << statusItem(QStringLiteral("bluetooth"), QStringLiteral("bluetooth"), QString(),
+                        tr("Bluetooth"), m_placeholders);
+
+    QString audioGlyph = audio.value(QStringLiteral("glyph")).toString();
+    if (audioGlyph.isEmpty())
+        audioGlyph = QStringLiteral("volume");
+    items << statusItem(QStringLiteral("volume"), audioGlyph, QString(), tr("Volume"),
+                        audio.value(QStringLiteral("visible")).toBool(),
+                        audio.value(QStringLiteral("volume")).toReal(),
+                        audio.value(QStringLiteral("enabled")).toBool());
+
+    // The battery item is read-only and lands in T-07.5b; placeholder until
+    // then so the demo matches the design.
+    items << statusItem(QStringLiteral("battery"), QStringLiteral("battery"), QString(),
+                        tr("Battery"), m_placeholders, 0.8);
+    items << statusItem(QStringLiteral("focus"), QStringLiteral("focus"), QString(),
+                        tr("Focus"), false);
+    items << statusItem(QStringLiteral("accessibility"), QStringLiteral("accessibility"),
+                        QString(), tr("Accessibility"), false);
     m_item->setProperty("statusItems", items);
+}
+
+void ShellController::applyStatusMenuData()
+{
+    if (!m_item || !m_statusModel)
+        return;
+    m_item->setProperty("wifiMenu", m_statusModel->wifi());
+    m_item->setProperty("volumeMenu", m_statusModel->audio());
+    applyStatusItems();
+}
+
+void ShellController::onStatusMenuOpened()
+{
+    m_menuOpen = true;
+    updatePopupGeometry();
+}
+
+void ShellController::onStatusMenuClosed()
+{
+    m_menuOpen = false;
+    // Let the close animation (popupClose = 100 ms) play before unmapping the
+    // overlay surface, matching the app-menu dismissal.
+    QTimer::singleShot(140, this, [this]() {
+        if (!m_menuOpen)
+            updatePopupGeometry();
+    });
+}
+
+void ShellController::onStatusMenuRefreshRequested(const QString &itemId)
+{
+    if (!m_statusClient)
+        return;
+    if (itemId == QLatin1String("wifi"))
+        m_statusClient->refreshWifi();
+    else if (itemId == QLatin1String("volume"))
+        m_statusClient->refreshAudio();
+}
+
+void ShellController::onWifiJoinRequested(const QString &ssid, const QString &secret)
+{
+    if (m_statusClient)
+        m_statusClient->join(ssid, secret);
+}
+
+void ShellController::onVolumeSetRequested(double volume)
+{
+    if (m_statusClient)
+        m_statusClient->setVolume(volume);
+}
+
+void ShellController::onMuteToggleRequested()
+{
+    if (!m_statusClient)
+        return;
+    const bool muted = m_statusModel
+                           ? m_statusModel->audio().value(QStringLiteral("muted")).toBool()
+                           : false;
+    m_statusClient->setMute(!muted);
+}
+
+void ShellController::onWifiState(const QByteArray &json)
+{
+    if (m_statusModel)
+        m_statusModel->applyWifiJson(json);
+}
+
+void ShellController::onAudioState(const QByteArray &json)
+{
+    if (m_statusModel)
+        m_statusModel->applyAudioJson(json);
+}
+
+void ShellController::onStatusReport(const QByteArray &json)
+{
+    qInfo() << "shell: system-status action:" << SystemStatusModel::outcomeOf(json);
+    // The action reply is not the new state: re-read the host, whose adapter
+    // state is the single source of truth.
+    if (m_statusClient) {
+        m_statusClient->refreshWifi();
+        m_statusClient->refreshAudio();
+    }
 }
 
 void ShellController::applyFocusedApp()

@@ -31,6 +31,12 @@ Rectangle {
     property var appMenuModel: []
     // [{ id, icon, label, accessibleName, available, enabled, selected, tint }]
     property var statusItems: []
+    // The bridge host's decoded status views (T-07.5a); empty until the shell
+    // applies them, which hides the corresponding item.
+    property var wifiMenu: ({})
+    property var volumeMenu: ({})
+    // Which status popover is open: "" | "wifi" | "volume".
+    property string openStatusItem: ""
     property bool showDate: false
     property bool showSeconds: false
     // The compositor reports when the shell/menu surface holds focus; when
@@ -61,6 +67,15 @@ Rectangle {
     // this rectangle, so the transient menu composites above fullscreen
     // windows while the bar keeps its own `top` surface and reserved zone.
     readonly property var _dropdownRect: {
+        if (openStatusItem !== "") {
+            var statusPopup = openStatusItem === "wifi" ? wifiMenuPopup : volumeMenuPopup;
+            if (statusPopup && statusPopup.popup.open) {
+                var statusOrigin = statusPopup.mapToItem(menuBar, statusPopup.popup.x,
+                                                         statusPopup.popup.y);
+                return { x: statusOrigin.x, y: statusOrigin.y,
+                         w: statusPopup.popup.width, h: statusPopup.popup.height };
+            }
+        }
         if (openMenuIndex < 0)
             return { x: 0, y: 0, w: 0, h: 0 };
         var item = menuRepeater.itemAt(openMenuIndex);
@@ -87,6 +102,14 @@ Rectangle {
     signal appMenuOpened(int menuIndex)
     signal appMenuClosed()
     signal statusItemActivated(string itemId)
+    // Wi-Fi and volume popovers (T-07.5a). The bar raises the user's action;
+    // the shell controller forwards it to the bridge host.
+    signal wifiJoinRequested(string ssid, string secret)
+    signal volumeSetRequested(double volume)
+    signal muteToggleRequested()
+    signal statusMenuRefreshRequested(string itemId)
+    signal statusMenuOpened()
+    signal statusMenuClosed()
     signal controlCenterRequested()
     signal missionControlRequested()
     signal clockActivated()
@@ -145,6 +168,45 @@ Rectangle {
         return statusRepeater.itemAt(index);
     }
 
+    // The live status-item delegate for `id` ("wifi"/"volume"), or null before
+    // the Repeater has produced it. Used to anchor the popovers.
+    function statusItemFor(id) {
+        for (var i = 0; i < statusRepeater.count; ++i) {
+            var item = statusRepeater.itemAt(i);
+            if (item && item.itemId === id)
+                return item;
+        }
+        return null;
+    }
+
+    // Open the popover for a status item. A hidden item (daemon absent) has
+    // nothing to open, matching the graceful-degradation rule.
+    function openStatusMenu(id) {
+        if (id !== "wifi" && id !== "volume")
+            return;
+        var data = id === "wifi" ? wifiMenu : volumeMenu;
+        if (!data || data.state === "unavailable")
+            return;
+        closeMenus();
+        closeStatusMenu();
+        openStatusItem = id;
+        if (id === "wifi")
+            wifiMenuPopup.open = true;
+        else
+            volumeMenuPopup.open = true;
+        statusMenuRefreshRequested(id);
+        statusMenuOpened();
+    }
+
+    function closeStatusMenu() {
+        if (openStatusItem === "" && !wifiMenuPopup.open && !volumeMenuPopup.open)
+            return;
+        openStatusItem = "";
+        wifiMenuPopup.open = false;
+        volumeMenuPopup.open = false;
+        statusMenuClosed();
+    }
+
     // Delayed-hover drag-through: while a menu is open, hovering a sibling
     // top-level title switches to it after a short delay (FR-3).
     function scheduleMenuSwitch(index) {
@@ -173,8 +235,10 @@ Rectangle {
     }
 
     onShellFocusedChanged: {
-        if (!shellFocused)
+        if (!shellFocused) {
             closeMenus();
+            closeStatusMenu();
+        }
     }
 
     Timer {
@@ -194,15 +258,23 @@ Rectangle {
     TapHandler {
         onTapped: (eventPoint) => {
             const p = eventPoint.position;
+            // Ignore taps on the app-menu row and the status row: those items
+            // own their tap (open/toggle), and without this guard the click-
+            // away handler would close the surface it just opened.
             if (p.x >= appMenuRow.x && p.x <= appMenuRow.x + appMenuRow.width
                     && p.y >= appMenuRow.y && p.y <= appMenuRow.y + appMenuRow.height)
                 return;
+            if (p.x >= statusRow.x && p.x <= statusRow.x + statusRow.width
+                    && p.y >= statusRow.y && p.y <= statusRow.y + statusRow.height)
+                return;
             menuBar.closeMenus();
+            menuBar.closeStatusMenu();
         }
     }
 
     Keys.onEscapePressed: (event) => {
         menuBar.closeMenus();
+        menuBar.closeStatusMenu();
         event.accepted = true;
     }
 
@@ -287,7 +359,12 @@ Rectangle {
                 backgroundColor: menuBar.color
 
                 onActivated: (id) => {
+                    if (id === "wifi" || id === "volume") {
+                        menuBar.openStatusMenu(id);
+                        return;
+                    }
                     menuBar.closeMenus();
+                    menuBar.closeStatusMenu();
                     menuBar.statusItemActivated(id);
                 }
             }
@@ -307,6 +384,7 @@ Rectangle {
             backgroundColor: menuBar.color
             onActivated: {
                 menuBar.closeMenus();
+                menuBar.closeStatusMenu();
                 menuBar.controlCenterRequested();
             }
         }
@@ -318,8 +396,31 @@ Rectangle {
             backgroundColor: menuBar.color
             onActivated: {
                 menuBar.closeMenus();
+                menuBar.closeStatusMenu();
                 menuBar.missionControlRequested();
             }
         }
+    }
+
+    // The Wi-Fi and volume popovers (T-07.5a). They live in the bar scene,
+    // anchored to their status item; the shell commits the union rectangle to
+    // the `overlay` popup surface (see `_dropdownRect`).
+    WifiMenu {
+        id: wifiMenuPopup
+        objectName: "wifiMenu"
+        model: menuBar.wifiMenu
+        anchorItem: menuBar.statusItemFor("wifi")
+        onJoinRequested: (ssid, secret) => menuBar.wifiJoinRequested(ssid, secret)
+        onRefreshRequested: menuBar.statusMenuRefreshRequested("wifi")
+    }
+
+    VolumeMenu {
+        id: volumeMenuPopup
+        objectName: "volumeMenu"
+        model: menuBar.volumeMenu
+        anchorItem: menuBar.statusItemFor("volume")
+        onVolumeSetRequested: (volume) => menuBar.volumeSetRequested(volume)
+        onMuteToggleRequested: menuBar.muteToggleRequested()
+        onRefreshRequested: menuBar.statusMenuRefreshRequested("volume")
     }
 }
