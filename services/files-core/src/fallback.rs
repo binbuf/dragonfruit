@@ -97,22 +97,36 @@ impl DirectoryReader for StdFsReader {
 /// degrades to [`NodeKind::Other`] and metadata errors simply leave the size
 /// and dates unset, so one odd entry does not abort the listing.
 fn node_for(parent: &Location, entry: std::fs::DirEntry) -> Node {
-    let name = entry.file_name();
+    node_for_path(parent, entry.file_name(), &entry.path())
+}
+
+/// Build a node for one named entry at `path` under `parent`.
+///
+/// Shared by the listing fallback and the T-10.3b watcher, which needs to
+/// materialize the single entry a kernel event named without re-listing the
+/// directory. Like the listing, it reads metadata with `symlink_metadata` (no
+/// follow) so a symlink stays a symlink; a metadata failure leaves the size and
+/// dates unset rather than failing.
+pub(crate) fn node_for_path(
+    parent: &Location,
+    name: std::ffi::OsString,
+    path: &std::path::Path,
+) -> Node {
     let uri = parent.child(&name).uri().to_owned();
-    let kind = match entry.file_type() {
-        Ok(file_type) if file_type.is_dir() => NodeKind::Directory,
-        Ok(file_type) if file_type.is_file() => NodeKind::File,
-        Ok(file_type) if file_type.is_symlink() => NodeKind::Symlink,
+    let kind = match std::fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_dir() => NodeKind::Directory,
+        Ok(metadata) if metadata.file_type().is_file() => NodeKind::File,
+        Ok(metadata) if metadata.file_type().is_symlink() => NodeKind::Symlink,
         _ => NodeKind::Other,
     };
 
     let mut node = Node::new(name, uri, kind);
     if kind == NodeKind::Symlink {
-        if let Ok(target) = std::fs::read_link(entry.path()) {
+        if let Ok(target) = std::fs::read_link(path) {
             node = node.with_symlink_target(Some(target.to_string_lossy().into_owned()));
         }
     }
-    if let Ok(metadata) = entry.metadata() {
+    if let Ok(metadata) = std::fs::symlink_metadata(path) {
         if kind == NodeKind::File {
             node = node.with_size(Some(metadata.len()));
         }

@@ -1,6 +1,6 @@
 [package]
 name = "dragonfruit-files-core"
-description = "Headless files-core model, streaming listing, sorting, optimistic operations, selection, and freedesktop-spec trash (T-10.3a)"
+description = "Headless files-core model, streaming listing, sorting, optimistic operations, selection, freedesktop-spec trash (T-10.3a), and folder watcher (T-10.3b)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -19,6 +19,14 @@ rust-version.workspace = true
 # `tempfile` is a dev-only dependency for the temp-tree acceptance tests.
 
 [dependencies]
+
+# The folder watcher's sanctioned fallback (T-10.3b) speaks inotify directly,
+# the local mechanism GIO's `GFileMonitor` wraps. GIO/GVfs headers are not part
+# of the pinned toolchain, so `InotifyWatcher` is the shipping backend, marked
+# for replacement behind the `FolderWatcher` seam (docs/design/adr/0047-*.md).
+# Linux-only: the watch seam itself compiles anywhere.
+[target.'cfg(target_os = "linux")'.dependencies]
+libc.workspace = true
 
 [dev-dependencies]
 tempfile = "=3.27.0"

@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(24 earlier sections omitted)_
+_(25 earlier sections omitted)_
 
-- **T22 — T-05.1a Live-surface transform into the grid**: **State: done.** Mission Control now transforms the **live** window surfaces; **`compositor/src/overview/grid.rs`** (new) — `grid_layout` (candidates
 - **T23 — T-05.1b Live video at scale and degrade**: **State: done.** A committing "video" client keeps advancing at the reduced; **`compositor/src/overview/grid.rs`** — `GridMaterial { tier, shadow, blur }`
 - **T24 — T-05.2 Hit-testing and selection on live representations**: **State: done.** A left click on a live Mission Control representation; **`compositor/src/overview/grid.rs`** — `GridLayout::window_at(point,
 - **T25 — T-05.3 Drag a live representation between Spaces**: **State: done.** Pressing on a live Mission Control representation and dragging; **`compositor/src/overview/grid.rs`** — `GridDrag { window, start, current }`
@@ -45,6 +44,7 @@ _(24 earlier sections omitted)_
 - **T58 — T-10.2a files-core operations**: **State: done.** `files-core` gained the one operations seam: rename, new; **`services/files-core/src/ops.rs`** (new module):
 - **T59 — T-10.2b Optimistic semantics and state preservation**: **State: done.** `files-core` now applies rename / new-folder / delete to the; **`services/files-core/src/optimistic.rs`** (new) — `OptimisticModel`
 - **T60 — T-10.3a files-core trash**: **State: done.** `files-core` now speaks the freedesktop Trash spec and the; **`services/files-core/src/trash.rs`** (new) — the trash engine:
+- **T61 — T-10.3b files-core folder watcher**: **State: done.** `files-core` now has the one change monitor: one watch per; **`services/files-core/src/watch.rs`** (new) — the watch seam and fallback:
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3434,6 +3434,17 @@ Gotchas for later tasks:
   (b) A symlink's folders-first/sort kind is its own `Symlink` kind, not its
   target's kind (the design says a broken symlink "sorts by its target's
   kind"); that needs a follow-stat at list time in the source.
+- **T-10.3b follow-ups.** (a) The watcher is non-recursive and watches one
+  directory (correct for "one monitor per visible directory"), but a **self
+  delete/move of the watched folder** (`IN_DELETE_SELF`/`IN_MOVE_SELF`) is not
+  surfaced — the watcher just goes quiet; a later task should turn it into an
+  error state (the model already has `ListingState::Failed`). (b) A GIO/GVfs
+  `GFileMonitor` backend is still owed behind `FolderWatcher` (removes
+  `SANCTIONED_WATCHER_FALLBACK_MARKER`, ADR 0047) and will carry remote
+  `GVfs` change events. (c) Optimistic reconciliation by the watcher is
+  wired, but there is no timeout policy: a pending op whose filesystem change
+  never arrives stays pending forever (the `*_via` path resolves
+  synchronously, so today this only matters for an async T-10.4 bridge).
 
 ## T49 — T-09.1b Settings live-apply plumbing
 
@@ -4307,3 +4318,108 @@ Gotchas for later tasks:
 - **Tests inject the trash root** with
   `FreedesktopTrash::with_home_trash(dir.join("Trash"))`; targets must be in
   the same tempdir or the per-volume branch engages.
+
+## T61 — T-10.3b files-core folder watcher
+
+**State: done.** `files-core` now has the one change monitor: one watch per
+visible directory, event-driven (no polling), folding external changes into the
+model incrementally — never by re-listing. Because GIO/GVfs is not linked,
+`InotifyWatcher` is the sanctioned fallback (speaking Linux inotify, the local
+mechanism `GFileMonitor` wraps) and is **marked for replacement**. The watcher
+also reconciles pending optimistic edits: a matching event confirms, a
+contradicting one reverts. T-10.4 renders the model; T-10.4b/c need no
+re-listing path.
+
+What landed:
+
+- **`services/files-core/src/watch.rs`** (new) — the watch seam and fallback:
+  - `FolderWatcher` / `WatchReader` — the seam (sibling of `DirectorySource`):
+    `FolderWatcher::watch(&Location)` opens the folder on the caller's thread
+    (foreign scheme / missing folder is an immediate `Err`), returning a reader
+    whose `next_batch(timeout)` blocks for changes. A named
+    `files-core-watcher` worker forwards `WatchEvent`s over an `mpsc` channel;
+    `WatchHandle` has `try_recv`/`recv_timeout`/`recv`/`cancel`, and drop
+    cancels. `WATCH_POLL_INTERVAL` (200 ms) is the cancellation poll, not a
+    directory poll.
+  - `WatchEventKind` — `Created(Node)`, `Modified(Node)`, `Removed { uri }`,
+    `Renamed { from_uri, to }`; `WatchEvent` tags the generation. Events are
+    incremental: creates/modifies carry the one freshly stat'd `Node`.
+  - `InotifyWatcher` (Linux) — `inotify_init1` + `inotify_add_watch` over
+    `libc`, non-recursive, watches create/delete/moved/modify/attrib and pairs
+    `IN_MOVED_FROM`/`IN_MOVED_TO` by cookie into a `Renamed`; an unmatched
+    move-from flushes as a `Removed`. It stats only the named entry (via the
+    shared `fallback::node_for_path`), so no directory is re-listed.
+  - `SANCTIONED_WATCHER_FALLBACK_MARKER` names GIO/GVfs and the seam.
+- **`services/files-core/src/fallback.rs`** — extracted
+  `pub(crate) node_for_path(parent, name, path)` (symlink-aware, no follow) and
+  reused it for both the listing and the watcher.
+- **`services/files-core/src/model.rs`** — `DirectoryModel::begin_watch`
+  (shares the listing generation; cancels any previous watch; `begin` also
+  cancels the active watch), `apply_watch`, `drain_watch`, and
+  `node_id_for_uri`. `apply_watch` folds one event: creates/modifies dedupe by
+  URI and refresh, removals drop the row, a rename keeps the existing node id
+  (selection survives). Stale generations are ignored.
+- **`services/files-core/src/optimistic.rs`** — `OptimisticModel::begin_watch`,
+  `apply_watch`, `drain_watch`. `apply_watch` decides each pending op against
+  the event (`pending_outcome`): matching target confirms, a vanished create
+  or a returning removed item reverts, then the event folds. `confirm`/`revert`
+  are idempotent-safe, so a resolved `*_via` op is never resolved twice.
+- **`services/files-core/src/mock.rs`** — `MockWatcher` fixture (scripted event
+  batches then blocks) and `MockSource::opens()` so a test can prove no
+  re-listing. (Adding `opens` is additive; existing tests unaffected.)
+- **Tests** — `services/files-core/tests/watcher.rs` (12 cases): scripted
+  create+delete folds with no re-list; scripted rename keeps the node id;
+  modify refreshes instead of duplicating; stale generation ignored; optimistic
+  create confirm/revert, optimistic delete confirm/revert; failing watcher open
+  reports `UnsupportedScheme`; and real-inotify cases (external create+delete
+  update the model, external rename keeps the id, `new_folder_via` stays
+  confirmed with a live watch). Plus unit tests in `watch.rs` for the marker,
+  mask classification, foreign scheme, and missing folder.
+- **Docs** — ADR
+  [0047](design/adr/0047-files-core-folder-watcher-seam.md);
+  `docs/design/09-files.md` T-10.3b implementation paragraph + change-monitor
+  bullet; crate `Cargo.toml` description and a Linux-only `libc` dependency.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `CARGO_NET_OFFLINE=true cargo test -p dragonfruit-files-core` — 122 pass (54
+  unit + 17 operations + 11 optimistic + 5 sorting + 6 streaming + 13 trash +
+  **12 watcher** + 4 doctests).
+- `CARGO_NET_OFFLINE=true cargo clippy -p dragonfruit-files-core
+  --all-targets -- -D warnings` — clean.
+- `make lint` — 31/31 ctest plus all checks green.
+- `make e2e` — exit 0.
+
+Live capture (`/tmp/opencode/t61-capture.sh`; `/tmp/opencode/t61-desktop.png`,
+1920x1200): nested demo on the host session. Raw vision observation: menu bar,
+Settings window (sidebar + Appearance controls + accent swatches), X11 demo
+window, and the Dock (K/F/X/D app icons, Downloads folder, Trash) all render;
+artifacts reported are the pre-existing X11 demo window clipped at the right
+edge and the Dock "Downlo…" label truncation (same as T57–T60, unrelated to
+files-core). files-core has no surface of its own, so this only confirms the
+session still renders. Vision is a supporting check.
+
+Gotchas for later tasks:
+
+- **`FolderWatcher` is the one watch path.** Call `begin_watch` after
+  `begin` (it shares the listing generation), then drain with
+  `DirectoryModel::drain_watch` / `OptimisticModel::drain_watch` in the event
+  loop. Never poll `read_dir` or `std::fs` from the bridge/QML.
+- **A watch belongs to the current generation.** `begin` cancels the active
+  watch and stale `WatchEvent`s are ignored; drop `WatchHandle` to cancel too.
+  The worker notices cancellation at the next 200 ms poll.
+- **Events are incremental.** Do not expect a `Renamed` when inotify splits a
+  move across reads: you may get `Removed` then `Created`, which is correct but
+  gives a new node id. Within one read the rename keeps the id.
+- **`apply_watch` dedupes by URI** (`node_id_for_uri`, a linear scan). A
+  watcher event for an unlisted entry inserts it. Watch events are rare, so no
+  second index is maintained.
+- **Optimistic + watcher:** `OptimisticModel::apply_watch` confirms a matching
+  pending edit or reverts a contradicting one, then folds. Reverting a pending
+  remove restores the row, and the same event then refreshes it — order matters
+  and is handled internally; do not call `confirm`/`revert` around a drain.
+- **`libc` is Linux-only here** (`[target.'cfg(target_os = "linux")']`);
+  `InotifyWatcher` is exported only on Linux. The seam and `MockWatcher`
+  compile anywhere.
+- **A self delete/move of the watched folder is silent** (see T-10.3b
+  follow-ups). Re-watch on navigation; an error state is a later task.

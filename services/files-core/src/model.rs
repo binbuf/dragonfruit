@@ -30,6 +30,7 @@ use std::sync::Arc;
 use crate::listing::{self, ListingEvent, ListingEventKind, ListingHandle, DEFAULT_BATCH};
 use crate::sort::SortSpec;
 use crate::source::{DirectorySource, SourceError};
+use crate::watch::{self, FolderWatcher, WatchEvent, WatchEventKind, WatchHandle};
 use crate::{Location, Node, NodeId};
 
 /// Where a listing is in its lifecycle.
@@ -55,6 +56,7 @@ pub struct DirectoryModel {
     next_id: u64,
     batch_size: usize,
     active_cancel: Option<Arc<AtomicBool>>,
+    active_watch: Option<Arc<AtomicBool>>,
     sort: SortSpec,
     order: Vec<usize>,
 }
@@ -77,6 +79,7 @@ impl DirectoryModel {
             next_id: 0,
             batch_size: DEFAULT_BATCH,
             active_cancel: None,
+            active_watch: None,
             sort: SortSpec::default(),
             order: Vec::new(),
         }
@@ -98,6 +101,9 @@ impl DirectoryModel {
     /// The returned handle is drained by the caller's event loop.
     pub fn begin(&mut self, source: Arc<dyn DirectorySource>, location: Location) -> ListingHandle {
         if let Some(cancel) = self.active_cancel.take() {
+            cancel.store(true, AtomicOrdering::SeqCst);
+        }
+        if let Some(cancel) = self.active_watch.take() {
             cancel.store(true, AtomicOrdering::SeqCst);
         }
         self.generation += 1;
@@ -158,6 +164,91 @@ impl DirectoryModel {
             }
         }
         applied
+    }
+
+    /// Begin watching the current location for external changes (T-10.3b).
+    ///
+    /// Call this after [`Self::begin`] has listed the location: the watch
+    /// shares the listing's generation, so a later [`Self::begin`] retires the
+    /// watch and its stale events are ignored. Any previous watch is cancelled.
+    /// A foreign scheme or a missing folder is returned as an error rather than
+    /// failing in the background.
+    pub fn begin_watch(
+        &mut self,
+        watcher: Arc<dyn FolderWatcher>,
+        location: &Location,
+    ) -> Result<WatchHandle, SourceError> {
+        if let Some(cancel) = self.active_watch.take() {
+            cancel.store(true, AtomicOrdering::SeqCst);
+        }
+        let handle = watch::begin(watcher, location, self.generation)?;
+        self.active_watch = Some(handle.cancel_flag());
+        Ok(handle)
+    }
+
+    /// Fold one external change into the model incrementally.
+    ///
+    /// Returns `false` and changes nothing for an event from a retired
+    /// generation, or a removal that names no listed node. A `Created` for an
+    /// entry already present refreshes it rather than duplicating it; a
+    /// `Renamed` keeps the existing node's id, so selection and drag state
+    /// survive. No listing is ever restarted.
+    pub fn apply_watch(&mut self, event: WatchEvent) -> bool {
+        if event.generation != self.generation {
+            return false;
+        }
+        match event.kind {
+            WatchEventKind::Created(node) => match self.node_id_for_uri(node.uri()) {
+                Some(id) => self.replace_node(id, node),
+                None => {
+                    self.insert_node(node);
+                    true
+                }
+            },
+            WatchEventKind::Modified(node) => match self.node_id_for_uri(node.uri()) {
+                Some(id) => self.replace_node(id, node),
+                // A modify for an entry we never listed: list it rather than
+                // drop the change.
+                None => {
+                    self.insert_node(node);
+                    true
+                }
+            },
+            WatchEventKind::Removed { uri } => match self.node_id_for_uri(&uri) {
+                Some(id) => self.remove_node(id).is_some(),
+                None => false,
+            },
+            WatchEventKind::Renamed { from_uri, to } => match self.node_id_for_uri(&from_uri) {
+                Some(id) => self.replace_node(id, to),
+                None => {
+                    self.insert_node(to);
+                    true
+                }
+            },
+        }
+    }
+
+    /// Apply every ready watch event. Returns how many were applied.
+    pub fn drain_watch(&mut self, handle: &WatchHandle) -> usize {
+        let mut applied = 0;
+        while let Some(event) = handle.try_recv() {
+            if self.apply_watch(event) {
+                applied += 1;
+            }
+        }
+        applied
+    }
+
+    /// The id of the listed node whose URI is `uri`, if any.
+    ///
+    /// A URI is unique within one directory, so this is the watcher's identity
+    /// key. Linear in the listing; watch events are infrequent, so no second
+    /// index is maintained.
+    pub fn node_id_for_uri(&self, uri: &str) -> Option<NodeId> {
+        self.nodes
+            .iter()
+            .find(|node| node.uri() == uri)
+            .map(Node::id)
     }
 
     /// The listing generation; the handle and its events share it.
