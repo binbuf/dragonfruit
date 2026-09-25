@@ -37,7 +37,8 @@
 - **T29 — T-06.1 App-switcher state machine**: **State: done.** The compositor now owns a real Cmd-Tab app switcher: open on; **`compositor/src/app_switcher.rs`** (new) — `AppSwitcher` pure machine
 - **T30 — T-06.2a Switcher overlay and live previews**: **State: done.** The Cmd-Tab overlay is live: the compositor scales the; **Protocol** — `df_toplevel_manager.app_switcher_entry(index, app_id)` since 4,
 - **T31 — T-06.2b Switcher commit, Cmd+` cycling, interruptibility**: **State: done.** T-06 is complete. Cmd+` / Cmd+Shift+` cycle windows within the; **`compositor/src/app_switcher.rs`** — `SwitcherApp` carries `windows`
-- **Follow-ups**: T-06.1/T-06.2a/T-06.2b (done in T29/T30/T31): the switcher machine (ADR; T-05.1a (done in T22): the live-surface grid landed as a render-time
+- **T32 — T-07.1a Adapter contract, states, and mock**: **State: done.** The one adapter contract and its test mock landed in a new; **`services/system-adapters/`** (new crate `dragonfruit-system-adapters`,
+- **Follow-ups**: T-07.1a (done in T32): the adapter contract + mock landed; T-06.1/T-06.2a/T-06.2b (done in T29/T30/T31): the switcher machine (ADR
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -2102,8 +2103,57 @@ Gotchas for later tasks:
   non-blank, have the scrim band and the card highlight (`#fbe1ec`); a human
   should eyeball `docs/captures/t06-app-switcher-window-cycled.png`.
 
+## T32 — T-07.1a Adapter contract, states, and mock
+
+**State: done.** The one adapter contract and its test mock landed in a new
+dependency-free library crate; no concrete adapter or subscription yet (those
+are T-07.1b–T-07.4).
+
+What landed:
+
+- **`services/system-adapters/`** (new crate `dragonfruit-system-adapters`,
+  workspace member, no deps): `src/lib.rs` (`Adapter`, `StatusSource`,
+  `status_slots`), `src/state.rs` (`AdapterState<T>` =
+  Available/Unavailable/Error, `AdapterError`, `AdapterId`, `StatusSlot`, the
+  `slot()` projection), `src/mock.rs` (`MockAdapter`).
+- **`Makefile`** — `make e2e` now runs
+  `cargo test -p dragonfruit-system-adapters` before `make demo`.
+- **Tests** — 8 lib + 2 integration (`tests/status_states.rs`), exercising all
+  three states and the consumer slot projection.
+- **Docs** — `docs/design/07-system-integration.md` "The adapter contract
+  (T-07.1a)"; ADR `0024`.
+- **Capture** — `docs/captures/t07-adapter-contract.png` (nested demo; this
+  unit has no surface of its own).
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `cargo test -p dragonfruit-system-adapters` — 10 tests green.
+- `make e2e` — exit 0; the adapters tests run before the scripted demo.
+- `cargo fmt --all -- --check` and
+  `cargo clippy -p dragonfruit-system-adapters --all-targets -- -D warnings`
+  clean.
+
+Gotchas for later tasks:
+
+- **One contract, one projection**: implement `Adapter` (snapshot type, id,
+  `state()`); consumers use `AdapterState::slot`/`status_slots` rather than
+  re-deriving hidden/inert/live themselves.
+- `AdapterId` constants already match the shell `StatusItem` ids (`wifi`,
+  `bluetooth`, `volume`, `battery`); add new ids here, not in the shell.
+- **No poll seam** on purpose. T-07.1b owns the subscription/event API; keep
+  `AdapterState` the stable base and do not add a `tick()`.
+- The crate has **no dependencies** so a native/D-Bus adapter can depend on it
+  without leaking its stack; concrete adapters own their daemon deps.
+- No process hosts the Rust adapters for the (C++) shell yet; the `StatusSlot`
+  projection is the seam T-07.1b/T-07.2/T-07.5 must bridge.
+
 ## Follow-ups
 
+- T-07.1a (done in T32): the adapter contract + mock landed
+  (`services/system-adapters`, ADR 0024). Remaining: (a) T-07.1b adds the
+  subscription/re-subscribe API; (b) no process yet hosts the Rust adapters
+  for the C++ shell — decide the bridge (D-Bus service vs. embedded) in
+  T-07.2/T-07.5; (c) `--placeholders` stays until T-07.5b.
 - T-06.1/T-06.2a/T-06.2b (done in T29/T30/T31): the switcher machine (ADR
   0021), overlay + live previews (ADR 0022), and commit/Cmd+`/pointer (ADR
   0023) landed. Remaining: (a) the switcher snapshots the app list at open, so a
