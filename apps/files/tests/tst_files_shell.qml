@@ -54,6 +54,40 @@ Item {
             verify(!Files.isBrowsable("https://example.com"));
         }
 
+        // T-10.6c: the Dock hands Files an app executable or a Downloads file;
+// the platform seam resolves a file to its parent folder plus a reveal.
+        function test_open_target_reveals_a_file_in_its_parent() {
+            var fileUri = Files.viewFixtureUri + "/alpha.txt";
+            var target = Files.resolveOpenTarget(fileUri);
+            compare(target.location, Files.viewFixtureUri);
+            compare(target.revealUri, fileUri);
+
+            var folder = Files.resolveOpenTarget(Files.viewFixtureUri);
+            compare(folder.location, Files.viewFixtureUri);
+            compare(folder.revealUri, "");
+
+            var trash = Files.resolveOpenTarget("trash://");
+            compare(trash.location, "trash://");
+            compare(trash.revealUri, "");
+        }
+
+        // T-10.6c: opening a file's folder selects that file once the listing
+        // settles, so "Show in Files" (and a Downloads row) lands on the row.
+        function test_reveal_selects_the_matching_row() {
+            var fileUri = Files.viewFixtureUri + "/alpha.txt";
+            var shell = make({ startUri: Files.viewFixtureUri, revealUri: fileUri });
+            tryCompare(shell.directory, "state", "complete");
+            var ids = shell.directory.allNodeIds();
+            var found = 0;
+            for (var i = 0; i < ids.length; ++i) {
+                if (shell.directory.uriAt(i) === fileUri)
+                    found = ids[i];
+            }
+            verify(found > 0);
+            tryCompare(shell, "selectedIds", [found]);
+            compare(shell.selectedId, found);
+        }
+
         function test_breadcrumb_runs_from_computer_to_location() {
             var crumbs = Files.breadcrumb(Files.favorites[1].uri); // Documents
             compare(crumbs.length, 3);

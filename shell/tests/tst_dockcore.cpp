@@ -7,6 +7,7 @@
 #include "dockmodel.h"
 #include "dockprojection.h"
 #include "downloadsmonitor.h"
+#include "filestarget.h"
 #include "framecommitgate.h"
 #include "settingsclient.h"
 #include "trashbridge.h"
@@ -229,6 +230,67 @@ private slots:
         QCOMPARE(DesktopEntryIndex::buildLaunchCommand(entry),
                  (QStringList{QStringLiteral("my app"), QStringLiteral("--label"),
                               QStringLiteral("100%"), QStringLiteral("App")}));
+    }
+
+    // -- reveal target (T-10.6c) -----------------------------------------
+
+    void revealExecutableResolvesAnAbsoluteProgram()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString program = dir.path() + QStringLiteral("/df-files");
+        {
+            QFile handle(program);
+            QVERIFY(handle.open(QIODevice::WriteOnly));
+            handle.write("#!/bin/sh\n");
+        }
+        QVERIFY(QFile::setPermissions(
+            program, QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                         | QFileDevice::ExeOwner));
+
+        DesktopEntry entry;
+        entry.id = QStringLiteral("app.desktop");
+        entry.name = QStringLiteral("App");
+        entry.exec = program;
+        entry.valid = true;
+        QCOMPARE(revealExecutable(entry),
+                 QFileInfo(program).absoluteFilePath());
+    }
+
+    void revealExecutableFindsAProgramOnPath()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString program = dir.path() + QStringLiteral("/df-tool");
+        {
+            QFile handle(program);
+            QVERIFY(handle.open(QIODevice::WriteOnly));
+            handle.write("#!/bin/sh\n");
+        }
+        QVERIFY(QFile::setPermissions(
+            program, QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                         | QFileDevice::ExeOwner));
+
+        const QByteArray previous = qgetenv("PATH");
+        qputenv("PATH", dir.path().toUtf8() + ':' + previous);
+        DesktopEntry entry;
+        entry.id = QStringLiteral("tool.desktop");
+        entry.name = QStringLiteral("Tool");
+        entry.exec = QStringLiteral("df-tool --flag");
+        entry.valid = true;
+        const QString revealed = revealExecutable(entry);
+        qputenv("PATH", previous);
+        QCOMPARE(revealed, QFileInfo(program).absoluteFilePath());
+    }
+
+    void revealExecutableIsEmptyWhenItCannotResolve()
+    {
+        DesktopEntry entry;
+        entry.id = QStringLiteral("ghost.desktop");
+        entry.name = QStringLiteral("Ghost");
+        entry.exec = QStringLiteral("df-definitely-not-on-path");
+        entry.valid = true;
+        QVERIFY(revealExecutable(entry).isEmpty());
     }
 
     // -- default pins and the typed settings view (T-08.2a) --------------

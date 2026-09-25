@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 #include "FilesBridge.h"
 
+#include "FilesArguments.h"
+
 #include <QDir>
 #include <QFileInfo>
 #include <QStandardPaths>
@@ -65,6 +67,25 @@ FilesBridge::FilesBridge(QObject *parent)
 {
     m_fixture = qEnvironmentVariableIsSet("DF_FILES_FIXTURE");
     m_startUri = qEnvironmentVariable("DF_FILES_START_URI");
+    m_revealUri = qEnvironmentVariable("DF_FILES_START_REVEAL");
+    if (!m_revealUri.isEmpty() && QUrl(m_revealUri).scheme().isEmpty())
+        m_revealUri = fileUri(m_revealUri);
+    // A start argument that names a file opens its parent and reveals it
+    // (T-10.6c), whether that argument came from the Dock's positional path or
+    // from `DF_FILES_START_URI` directly.
+    if (!m_startUri.isEmpty()) {
+        const FilesOpenTarget target = filesOpenTarget(m_startUri);
+        m_startUri = target.location;
+        if (m_revealUri.isEmpty())
+            m_revealUri = target.revealUri;
+    }
+    if (!m_revealUri.isEmpty()) {
+        const QUrl revealUrl(m_revealUri);
+        if (m_startUri.isEmpty() && revealUrl.scheme() == QStringLiteral("file")) {
+            const QString path = QDir::cleanPath(revealUrl.toLocalFile());
+            m_startUri = fileUri(QFileInfo(path).absolutePath());
+        }
+    }
     m_viewFixtureUri = qEnvironmentVariable("DF_FILES_VIEW_FIXTURE");
     if (!m_viewFixtureUri.isEmpty())
         m_viewFixtureUri = fileUri(m_viewFixtureUri);
@@ -231,4 +252,13 @@ bool FilesBridge::isBrowsable(const QString &uri) const
     const QUrl url(uri);
     return url.scheme() == QStringLiteral("file")
             || url.scheme() == QStringLiteral("trash");
+}
+
+QVariantMap FilesBridge::resolveOpenTarget(const QString &argument) const
+{
+    const FilesOpenTarget target = filesOpenTarget(argument);
+    QVariantMap out;
+    out.insert(QStringLiteral("location"), target.location);
+    out.insert(QStringLiteral("revealUri"), target.revealUri);
+    return out;
 }
