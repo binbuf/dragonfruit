@@ -112,18 +112,20 @@ Control (see [03-workspaces.md](03-workspaces.md)); the switcher stays
 app-first.
 
 The compositor-side state machine (T-06.1) lives in `app_switcher.rs`: Cmd+Tab
-opens/closes, Tab and the arrows cycle, Command release commits the selected
-app through the existing `activate_window_id` path (cross-Space,
-restore-if-minimized), and Escape cancels with no focus change. It broadcasts
-the `df_toplevel_manager.app_switcher` event plus one `app_switcher_entry`
-event per app in recency order. The shell consumes that projection to draw the
-centered `app-switcher` `overlay` chrome surface (`shell/switcher/
-AppSwitcher.qml`, T-06.2a): a scrim, one card per app in recency order with the
-selection highlighted and an accessible `app_id`/name fallback, and the
-reduced-motion variant. The compositor renders the **live** window surfaces
-through the T-04 scene transform underneath — never thumbnails. The shell does
-not re-derive recency, cycle, or commit; commit, Cmd+` cycling, and
-interruptibility are T-06.2b.
+opens/closes, Tab and the arrows cycle apps, Cmd+` (Cmd+Shift+`) cycles windows
+within the selected app, Command release commits the selected window through
+the existing activation path (cross-Space, restore-if-minimized, and the same
+`activate_app` resolver the Dock uses), and Escape cancels with no focus
+change. It broadcasts the `df_toplevel_manager.app_switcher` event plus one
+`app_switcher_entry` event per app in recency order. The shell consumes that
+projection to draw the centered `app-switcher` `overlay` chrome surface
+(`shell/switcher/AppSwitcher.qml`, T-06.2a): a scrim, one card per app in
+recency order with the selection highlighted and an accessible `app_id`/name
+fallback, and the reduced-motion variant. The compositor renders the **live**
+window surfaces through the T-04 scene transform underneath — never thumbnails
+— and follows the window cursor, so Cmd+` swaps the preview. The shell does not
+re-derive recency, cycle, or commit; pointer presses on the live previews are
+hit-tested by the compositor and commit or cancel the overlay (T-06.2b).
 
 ## Hot corners
 

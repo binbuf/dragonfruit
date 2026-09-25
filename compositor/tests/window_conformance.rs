@@ -4801,6 +4801,9 @@ struct SwitcherReport {
     selected: Option<usize>,
     entries: Vec<SwitcherEntryReport>,
     focus: i64,
+    /// The cursor-selected window a commit activates (T-06.2b); `None` closed.
+    selected_window: Option<u64>,
+    window_direction: i32,
     previews: Vec<SwitcherPreviewReport>,
 }
 
@@ -4829,6 +4832,8 @@ fn parse_switcher(report: &str) -> SwitcherReport {
         selected: None,
         entries: Vec::new(),
         focus: -1,
+        selected_window: None,
+        window_direction: 0,
         previews: Vec::new(),
     };
     for line in report.lines() {
@@ -4894,6 +4899,15 @@ fn parse_switcher(report: &str) -> SwitcherReport {
                                 .and_then(|index| (index >= 0).then_some(index as usize));
                         }
                         "focus" => parsed.focus = value.parse().unwrap_or(-1),
+                        "window" => {
+                            parsed.selected_window = value
+                                .parse::<i64>()
+                                .ok()
+                                .and_then(|window| (window >= 0).then_some(window as u64));
+                        }
+                        "window-direction" => {
+                            parsed.window_direction = value.parse().unwrap_or(0);
+                        }
                         _ => {}
                     }
                 }
@@ -5073,6 +5087,159 @@ fn app_switcher_opens_cycles_commits_once_and_escape_cancels() {
     input.send("key 125 up");
 
     for (surface, toplevel, _file) in mapped {
+        surface.destroy();
+        toplevel.destroy();
+    }
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}
+
+/// T-06.2b acceptance: Cmd+` cycles windows within the selected app on the one
+/// machine (ADR 0021), Command release commits the cursor-selected window, a
+/// pointer press on a live preview commits the app under it, and Escape leaves
+/// focus untouched. The within-app cursor also drives which live surface the
+/// preview draws, so the overlay follows the cycle.
+#[test]
+fn app_switcher_cycles_windows_and_pointer_commits() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir)
+        .join(format!("dragonfruit-switcher-win-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-switcher-win",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    // Two windows of one app; the second mapped (window 1) is the most recent.
+    let mut mapped = Vec::new();
+    for _ in 0..2 {
+        mapped.push(map_toplevel_with_app_id(
+            &mut state,
+            &mut queue,
+            "org.dragonfruit.Multi",
+        ));
+    }
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |_| parse_decorations(&input.query("query decorations")).len() == 2,
+    );
+
+    // Cmd+Tab opens on the single app; with no focus the cursor is on its
+    // most-recent window (the higher id, mapped second).
+    input.send("key 125 down\nkey 15 down");
+    let opened = wait_for_switcher(&input, Duration::from_secs(5), |report| {
+        report.active && report.entries.len() == 1
+    });
+    assert_eq!(opened.entries[0].app_id, "org.dragonfruit.Multi");
+    let most_recent = opened.entries[0].window;
+    assert_eq!(opened.selected_window, Some(most_recent));
+    assert_eq!(
+        opened.selected,
+        Some(0),
+        "the app highlight stays on the app"
+    );
+    input.send("key 15 up");
+
+    // Cmd+` cycles the window cursor to the app's other window; the live
+    // preview follows it and no second app is added.
+    input.send("key 41 down\nkey 41 up");
+    let cycled = wait_for_switcher(&input, Duration::from_secs(5), |report| {
+        report.active && report.selected_window.is_some_and(|w| w != most_recent)
+    });
+    let other = cycled.selected_window.expect("a cycled window");
+    assert_eq!(
+        cycled.entries.len(),
+        1,
+        "within-app cycling never adds apps"
+    );
+    assert_eq!(cycled.app.as_deref(), Some("org.dragonfruit.Multi"));
+    assert_eq!(cycled.window_direction, 1);
+    assert_eq!(cycled.previews.len(), 1);
+    assert_eq!(
+        cycled.previews[0].window, other,
+        "the live preview follows the window cursor"
+    );
+
+    // Cmd+Shift+` reverses to the most recent window.
+    input.send("key 42 down\nkey 41 down\nkey 41 up\nkey 42 up");
+    let reversed = wait_for_switcher(&input, Duration::from_secs(5), |report| {
+        report.active && report.selected_window == Some(most_recent)
+    });
+    assert_eq!(reversed.window_direction, -1);
+
+    // Forward again, then release Command: the cursor-selected window commits.
+    input.send("key 41 down\nkey 41 up");
+    wait_for_switcher(&input, Duration::from_secs(5), |report| {
+        report.selected_window == Some(other)
+    });
+    input.send("key 125 up");
+    let committed = wait_for_switcher(&input, Duration::from_secs(5), |report| !report.active);
+    assert_eq!(
+        committed.focus, other as i64,
+        "the release activated the window Cmd+` selected"
+    );
+
+    // A second app mapped afterwards makes a two-app overlay; a pointer press
+    // on its live preview commits that app through the same one machine.
+    let (other_surface, other_xdg_surface, other_toplevel, other_file) =
+        map_toplevel_with_app_id(&mut state, &mut queue, "org.dragonfruit.Other");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |_| parse_decorations(&input.query("query decorations")).len() == 3,
+    );
+    input.send("key 125 down\nkey 15 down");
+    let two_apps = wait_for_switcher(&input, Duration::from_secs(5), |report| {
+        report.active && report.entries.len() == 2
+    });
+    input.send("key 15 up");
+    let other_app_window = two_apps
+        .entries
+        .iter()
+        .find(|entry| entry.app_id == "org.dragonfruit.Other")
+        .expect("the second app is an entry")
+        .window;
+    let preview = two_apps
+        .previews
+        .iter()
+        .find(|preview| preview.window == other_app_window)
+        .expect("the second app has a live preview");
+    motion_to(
+        &input,
+        preview.x + preview.width / 2,
+        preview.y + preview.height / 2,
+    );
+    click(&input);
+    let pointer_committed =
+        wait_for_switcher(&input, Duration::from_secs(5), |report| !report.active);
+    assert_eq!(
+        pointer_committed.focus, other_app_window as i64,
+        "a pointer press on a live preview commits that app"
+    );
+
+    // Escape cancels with no focus change.
+    input.send("key 125 down\nkey 15 down");
+    wait_for_switcher(&input, Duration::from_secs(5), |report| report.active);
+    input.send("key 15 up");
+    input.send("key 1 down\nkey 1 up");
+    let cancelled = wait_for_switcher(&input, Duration::from_secs(5), |report| !report.active);
+    assert_eq!(
+        cancelled.focus, other_app_window as i64,
+        "Escape changed focus"
+    );
+    input.send("key 125 up");
+
+    mapped.push((other_surface, other_xdg_surface, other_toplevel, other_file));
+    for (surface, _xdg_surface, toplevel, _file) in mapped {
         surface.destroy();
         toplevel.destroy();
     }

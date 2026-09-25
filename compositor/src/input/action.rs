@@ -28,6 +28,8 @@ pub enum InputAction {
     MissionControl,
     /// Open the Cmd-Tab app switcher.
     AppSwitcher,
+    /// Cycle windows within the switcher's selected app (Cmd+`, T-06.2b).
+    AppSwitcherWindow,
     /// Take a screenshot (portal capture path).
     Screenshot,
     /// Open the notification center.
@@ -66,6 +68,7 @@ impl InputAction {
             InputAction::WorkspaceActivate(_) => "workspace-activate",
             InputAction::MissionControl => "mission-control",
             InputAction::AppSwitcher => "app-switcher",
+            InputAction::AppSwitcherWindow => "app-switcher-window",
             InputAction::Screenshot => "screenshot",
             InputAction::NotificationCenter => "notification-center",
             InputAction::DesktopReveal => "desktop-reveal",

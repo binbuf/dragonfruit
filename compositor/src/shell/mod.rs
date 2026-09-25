@@ -1669,9 +1669,9 @@ impl Dispatch<df_toplevel_manager::DfToplevelManager, ()> for DfState {
                 }
             }
             df_toplevel_manager::Request::ActivateApp { app_id } => {
-                if let Some(id) = state.most_recent_window_of_app(&app_id) {
-                    state.activate_window_id(id);
-                }
+                // The Dock's "most recent window of an app" path; the
+                // app-switcher commit shares the same `activate_app`.
+                state.activate_app(&app_id);
             }
             df_toplevel_manager::Request::CycleAppSwitcher { direction } => {
                 state.cycle_app_switcher(direction);
@@ -1731,18 +1731,6 @@ impl DfState {
             .space_ids(output)
             .iter()
             .position(|candidate| *candidate == space)
-    }
-
-    fn most_recent_window_of_app(&self, app_id: &str) -> Option<WindowId> {
-        self.windows
-            .recency()
-            .iter()
-            .find(|id| {
-                self.window_by_id(**id)
-                    .and_then(|window| self.windows.app_id(&window).map(str::to_string))
-                    .is_some_and(|app| app == app_id)
-            })
-            .copied()
     }
 
     /// The shell's `cycle_app_switcher` request drives the *same*
