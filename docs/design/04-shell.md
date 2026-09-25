@@ -219,9 +219,20 @@ banner. The banner surface takes pointer input (a card-sized input region) and
 the card renders an inline action row; a body click fires the app's `default`
 action or dismisses. The Dock's transient launch-failure badge is replaced by
 a real `Notify` raised through the same client
-(`shell/src/launchfailure.{h,cpp}`, `ShellController::failDockLaunch`). DND
-policy is T-11.2a. See
+(`shell/src/launchfailure.{h,cpp}`, `ShellController::failDockLaunch`). See
 [adr/0057](adr/0057-notification-actions-and-dock-failure-notice.md).
+
+**T-11.2a status.** The service owns the Focus/DND policy:
+`services/notifications/src/policy.rs` defines `off` / `focus` / `dnd` and
+the per-app allow list, and the queue asks it whether a `Notify` banners.
+`focus` admits allow-listed apps and `critical` urgency; `dnd` admits only
+allow-listed apps; everything suppressed is still recorded in the history
+with `suppressed: true` and counted in the policy's batch (cleared on return
+to `off`). The shell-facing interface adds `FocusPolicy()` (JSON `mode`,
+`allowList`, `batchedCount`), `SetFocusMode`, and `SetFocusAllowList`, and
+keeps the T-11.1a `DoNotDisturb`/`SetDoNotDisturb` pair as a compat mapping.
+The menu-bar reflection and Control Center tiles are T-11.2b/T-11.3b. See
+[adr/0058](adr/0058-focus-dnd-policy-semantics.md).
 
 ## Relationship to compositor and services
 

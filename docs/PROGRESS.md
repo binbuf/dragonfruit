@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(35 earlier sections omitted)_
+_(36 earlier sections omitted)_
 
-- **T33 — T-07.1b Event subscription, restart re-subscribe, absence**: **State: done.** The subscription/event seam landed in the same; **`services/system-adapters/src/subscription.rs`** (new) — `ConnectionState`
 - **T34 — T-07.2a NetworkManager read path**: **State: done.** The NetworkManager read path landed in a new concrete-adapter; **`services/networkmanager/`** (new crate `dragonfruit-networkmanager`,
 - **T35 — T-07.2b NetworkManager join and polkit degradation**: **State: done.** The write path (join/activate) and the polkit read-only; **`services/networkmanager/src/source.rs`** — the transport seam gained
 - **T36 — T-07.3 Audio adapter (PipeWire/WirePlumber)**: **State: done.** The audio adapter landed in a new concrete-adapter crate; no; **`services/audio/`** (new crate `dragonfruit-audio`, workspace member; deps:
@@ -45,6 +44,7 @@ _(35 earlier sections omitted)_
 - **T69 — T-10.7 Files capture and acceptance walkthrough**: **State: done.** T-10 (Files MVP) is captured at the track boundary and the; **`scripts/capture-files.sh`** (new) — `make files-capture` (new target in
 - **T70 — T-11.1a Notification service core**: **State: done.** The `org.freedesktop.Notifications` service and the shell; **`services/notifications/`** (new crate `dragonfruit-notifications`,
 - **T71 — T-11.1b Notification actions and Dock badge replacement**: **State: done.** Notification actions round-trip to the originating app, the; **`services/notifications/src/dbus.rs`** — `GetCapabilities` adds `actions`;
+- **T72 — T-11.2a DND/Focus policy**: **State: done.** The notification service now owns a three-mode Focus/DND; **`services/notifications/src/policy.rs`** (new) — `FocusMode` (`off` /
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -5315,3 +5315,62 @@ Gotchas for later tasks:
   shell executable; `tst_dockcore` links it.
 - **T-11.2a** owns DND/Focus policy; the service bit and the
   "suppress banner, keep history" rule are unchanged.
+
+## T72 — T-11.2a DND/Focus policy
+
+**State: done.** The notification service now owns a three-mode Focus/DND
+policy and the admission rule; semantics are frozen in ADR
+[0058](design/adr/0058-focus-dnd-policy-semantics.md). The DND bool is gone.
+
+What landed:
+
+- **`services/notifications/src/policy.rs`** (new) — `FocusMode` (`off` /
+  `focus` / `dnd`) and `FocusPolicy` (`admits`, `set_allow_list`,
+  `note_batched`, `batched_count`); 6 unit tests.
+- **`services/notifications/src/model.rs`** — `Queue` holds one `FocusPolicy`
+  (replacing `do_not_disturb: bool`); `HistoryEntry.suppressed`;
+  `focus_policy`/`focus_mode`/`set_focus_mode`/`set_focus_allow_list`, plus
+  compat `do_not_disturb`/`set_do_not_disturb` (`true`=`dnd`, `false`=`off`).
+- **`services/notifications/src/view.rs`** — `history_json` gains
+  `suppressed`; new `focus_policy_json` (`mode`, `allowList`, `batchedCount`).
+- **`services/notifications/src/dbus.rs`** — `org.dragonfruit.Notifications1`
+  adds `FocusPolicy()`, `SetFocusMode(name) -> bool` (unknown rejected,
+  previous mode kept), `SetFocusAllowList(apps)`; both setters emit `Changed`.
+  The T-11.1a `DoNotDisturb`/`SetDoNotDisturb` pair is kept as a compat
+  mapping.
+- **`services/notifications/src/main.rs`** — `--print-capabilities` now
+  matches `CAPABILITIES` (added the missing `actions`).
+- **Tests** — `cargo test -p dragonfruit-notifications`: 24 unit + 12
+  integration (3 new session-bus tests) pass.
+- **Docs** — ADR 0058; `04-shell.md` T-11.2a status.
+
+The rules (frozen): `off` banners everything; `focus` banners allow-listed
+apps and `critical` urgency; `dnd` banners allow-listed apps only (silences
+`critical` too). A suppressed notification is recorded in history with
+`suppressed: true` and counted in the batch, which clears when the mode
+returns to `off`. No synthetic summary banner is ever emitted.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `cargo test -p dragonfruit-notifications` — 24 unit + 12 integration pass.
+- `cargo clippy -p dragonfruit-notifications --all-targets -- -D warnings`,
+  `cargo fmt -p dragonfruit-notifications -- --check` — green.
+
+Gotchas for later tasks:
+
+- **Mode names on the wire are `off`/`focus`/`dnd`** (`do-not-disturb` is
+  accepted as an alias); `SetFocusMode` returns `false` for anything else and
+  leaves the mode unchanged.
+- **`History()` entries now carry a `suppressed` boolean** — additive for the
+  shell decoder in `apps/`/`shell/`.
+- **The batch is cleared only by returning to `off`**, not by switching
+  between `focus` and `dnd`; `FocusPolicy().batchedCount` is the current
+  suppression session.
+- **`SetDoNotDisturb(false)` forces `off`** (and clears the batch); it is the
+  T-11.1a compat surface, not a way to get back to `focus`.
+- **No shell source changed in T-11.2a.** The shell's existing
+  `setDoNotDisturb` still works through the compat method. T-11.2b must add a
+  `FocusPolicy()` reader to `shell/src/notificationclient.{h,cpp}` and reflect
+  `mode` + `batchedCount` in the bar via `Changed`.
+- **Scheduling Focus windows and per-app silencing were not built**; the
+  policy value is additive if a later task needs them.

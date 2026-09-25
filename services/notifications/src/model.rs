@@ -12,11 +12,14 @@
 //! [`crate::dbus`] is a thin adapter over it.
 //!
 //! Focus/DND is *owned* here (the single source of truth for Control Center,
-//! the menu bar, and Settings) but its policy state machine is T-11.2a; this
-//! task ships the state bit and the "suppress the banner, keep the history"
-//! rule so the later policy task has one place to grow.
+//! the menu bar, and Settings): the [`Queue`] holds one [`FocusPolicy`]
+//! (T-11.2a) and asks it whether a `Notify` becomes a banner. A suppressed
+//! notification is still recorded in the history, flagged `suppressed`, and
+//! counted in the policy's current batch.
 
 use std::time::{SystemTime, UNIX_EPOCH};
+
+use crate::policy::{FocusMode, FocusPolicy};
 
 /// The expiration timeout a `Notify` call may request (`expire_timeout`).
 pub const DEFAULT_TIMEOUT_MS: i32 = 5000;
@@ -194,6 +197,9 @@ pub struct HistoryEntry {
     /// `None` while the notification is still open in the banner queue.
     pub closed_at_ms: Option<u64>,
     pub reason: Option<CloseReason>,
+    /// Whether the Focus/DND policy suppressed this notification's banner
+    /// (T-11.2a). Suppressed entries are the batch the shell can summarize.
+    pub suppressed: bool,
 }
 
 impl From<&Notification> for HistoryEntry {
@@ -209,6 +215,7 @@ impl From<&Notification> for HistoryEntry {
             created_at_ms: notification.created_at_ms,
             closed_at_ms: None,
             reason: None,
+            suppressed: false,
         }
     }
 }
@@ -221,7 +228,7 @@ pub struct Queue {
     history: Vec<HistoryEntry>,
     capacity: usize,
     default_timeout_ms: i32,
-    do_not_disturb: bool,
+    policy: FocusPolicy,
 }
 
 impl Default for Queue {
@@ -239,7 +246,7 @@ impl Queue {
             history: Vec::new(),
             capacity: HISTORY_CAPACITY,
             default_timeout_ms: DEFAULT_TIMEOUT_MS,
-            do_not_disturb: false,
+            policy: FocusPolicy::new(),
         }
     }
 
@@ -254,7 +261,8 @@ impl Queue {
     /// Record a `Notify` and return its id. `replaces_id` reuses an existing
     /// id when the notification is still known; otherwise a fresh id is
     /// allocated. The notification is always recorded in the history; it
-    /// becomes an active banner unless Do Not Disturb is on.
+    /// becomes an active banner only when the Focus/DND policy admits it
+    /// (otherwise it is flagged `suppressed` and batched).
     pub fn notify(&mut self, request: NotifyRequest, now_ms: u64) -> u32 {
         let replacing = request.replaces_id != 0
             && (self.active.iter().any(|n| n.id == request.replaces_id)
@@ -282,9 +290,16 @@ impl Queue {
             expire_timeout_ms: request.expire_timeout_ms,
             created_at_ms: now_ms,
         };
-        self.push_history(HistoryEntry::from(&notification));
-        if !self.do_not_disturb {
+        let admitted = self
+            .policy
+            .admits(&notification.app_name, notification.urgency);
+        let mut entry = HistoryEntry::from(&notification);
+        entry.suppressed = !admitted;
+        self.push_history(entry);
+        if admitted {
             self.active.push(notification);
+        } else {
+            self.policy.note_batched(id);
         }
         id
     }
@@ -343,16 +358,43 @@ impl Queue {
         self.history.iter().rev().collect()
     }
 
-    /// Whether Do Not Disturb suppresses banners (history still records).
-    pub fn do_not_disturb(&self) -> bool {
-        self.do_not_disturb
+    /// The Focus/DND policy state (T-11.2a). The single source of truth the
+    /// shell and Settings read.
+    pub fn focus_policy(&self) -> &FocusPolicy {
+        &self.policy
     }
 
-    /// Set Do Not Disturb. Enabling it leaves already-bannered notifications
-    /// alone; new ones are recorded without a banner (the T-11.2a policy
-    /// builds on this rule).
+    /// The current Focus/DND mode.
+    pub fn focus_mode(&self) -> FocusMode {
+        self.policy.mode()
+    }
+
+    /// Set the Focus/DND mode.
+    pub fn set_focus_mode(&mut self, mode: FocusMode) {
+        self.policy.set_mode(mode);
+    }
+
+    /// Replace the per-app Focus allow list.
+    pub fn set_focus_allow_list(&mut self, apps: impl IntoIterator<Item = String>) {
+        self.policy.set_allow_list(apps);
+    }
+
+    /// Whether Do Not Disturb (mode `dnd`) is on. Kept as the compat accessor
+    /// for the T-11.1a `DoNotDisturb` surface.
+    pub fn do_not_disturb(&self) -> bool {
+        self.policy.mode() == FocusMode::Dnd
+    }
+
+    /// Set Do Not Disturb as an on/off switch: `true` selects the `dnd` mode
+    /// and `false` returns to `off`. Enabling it leaves already-bannered
+    /// notifications alone; new ones follow the policy. Kept for the T-11.1a
+    /// `SetDoNotDisturb` surface.
     pub fn set_do_not_disturb(&mut self, enabled: bool) {
-        self.do_not_disturb = enabled;
+        self.set_focus_mode(if enabled {
+            FocusMode::Dnd
+        } else {
+            FocusMode::Off
+        });
     }
 
     /// The service default timeout for a `< 0` request.
@@ -475,6 +517,73 @@ mod tests {
         assert_eq!(queue.history().len(), 1);
         assert_eq!(queue.entry(id).unwrap().summary, "quiet");
         assert!(queue.close(id, CloseReason::Dismissed, 1100).is_none());
+    }
+
+    #[test]
+    fn focus_batches_suppressed_banners_and_keeps_the_history() {
+        let mut queue = Queue::new();
+        queue.set_focus_mode(FocusMode::Focus);
+        let quiet = queue.notify(request("quiet", -1), 1000);
+        let alert = queue.notify(
+            NotifyRequest {
+                summary: "alert".to_owned(),
+                urgency: Urgency::Critical,
+                expire_timeout_ms: 0,
+                ..NotifyRequest::default()
+            },
+            1001,
+        );
+
+        // The critical alert banners; the normal one is batched.
+        let banners = queue.banners();
+        assert_eq!(banners.len(), 1);
+        assert_eq!(banners[0].id, alert);
+        assert!(queue.banner(quiet).is_none());
+
+        // The batched notification is still in the history, flagged.
+        assert!(queue.entry(quiet).unwrap().suppressed);
+        assert!(!queue.entry(alert).unwrap().suppressed);
+        assert_eq!(queue.focus_policy().batched(), &[quiet]);
+
+        // Returning to off clears the batch but not the history.
+        queue.set_focus_mode(FocusMode::Off);
+        assert_eq!(queue.focus_policy().batched_count(), 0);
+        assert_eq!(queue.history().len(), 2);
+    }
+
+    #[test]
+    fn the_focus_allow_list_lets_an_app_banner_under_dnd() {
+        let mut queue = Queue::new();
+        queue.set_do_not_disturb(true);
+        queue.set_focus_allow_list(vec!["Pager".to_owned(), "pager".to_owned()]);
+
+        let paged = queue.notify(
+            NotifyRequest {
+                app_name: "pager".to_owned(),
+                summary: "on-call".to_owned(),
+                ..NotifyRequest::default()
+            },
+            1000,
+        );
+        let mail = queue.notify(request("quiet", -1), 1001);
+        assert_eq!(queue.banners().len(), 1);
+        assert_eq!(queue.banners()[0].id, paged);
+        assert!(queue.banner(mail).is_none());
+        assert_eq!(queue.focus_policy().allow_list(), &["Pager".to_owned()]);
+    }
+
+    #[test]
+    fn a_suppressed_notification_batched_under_focus_can_be_replaced() {
+        let mut queue = Queue::new();
+        queue.set_focus_mode(FocusMode::Focus);
+        let first = queue.notify(request("connecting", 0), 1000);
+        let mut replace = request("connected", 0);
+        replace.replaces_id = first;
+        let replaced = queue.notify(replace, 1001);
+        // A replacement keeps the id and remains batched once, not twice.
+        assert_eq!(replaced, first);
+        assert_eq!(queue.focus_policy().batched(), &[first]);
+        assert_eq!(queue.history().len(), 1);
     }
 
     #[test]

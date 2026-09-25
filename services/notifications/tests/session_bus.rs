@@ -176,6 +176,39 @@ fn json_array(payload: &str) -> serde_json::Value {
     serde_json::from_str(payload).expect("the shell view is valid JSON")
 }
 
+/// A `Notify` carrying one urgency hint (0 low, 1 normal, 2 critical).
+fn notify_urgent(
+    client: &Connection,
+    app_name: &str,
+    summary: &str,
+    urgency: u8,
+    expire_timeout: i32,
+) -> u32 {
+    let mut hints = HashMap::<String, OwnedValue>::new();
+    hints.insert("urgency".to_owned(), OwnedValue::from(urgency));
+    freedesktop_call(
+        client,
+        "Notify",
+        (
+            app_name,
+            0u32,
+            "",
+            summary,
+            "",
+            Vec::<String>::new(),
+            hints,
+            expire_timeout,
+        ),
+    )
+    .expect("Notify succeeds")
+}
+
+/// Read and parse the shell-facing `FocusPolicy` JSON.
+fn focus_policy(client: &Connection) -> serde_json::Value {
+    serde_json::from_str(&shell_call::<String>(client, "FocusPolicy", ()).unwrap())
+        .expect("the focus policy view is valid JSON")
+}
+
 #[test]
 fn a_notify_round_trips_and_updates_the_banner_and_history_models() {
     let bus = PrivateBus::start();
@@ -426,6 +459,97 @@ fn do_not_disturb_suppresses_the_banner_over_the_bus() {
     assert!(banners.as_array().unwrap().is_empty());
     let history = json_array(&shell_call::<String>(&client, "History", ()).unwrap());
     assert_eq!(history[0]["id"], id);
+}
+
+#[test]
+fn focus_mode_suppresses_batches_and_lets_critical_and_allowed_apps_through() {
+    let bus = PrivateBus::start();
+    let (_service, _queue) = serve(&bus);
+    let client = bus.connect();
+
+    assert!(shell_call::<bool>(&client, "SetFocusMode", ("focus",)).unwrap());
+    assert_eq!(focus_policy(&client)["mode"], "focus");
+
+    // A normal notification from a non-allowed app is batched: no banner,
+    // history flagged, batch counted.
+    let quiet = notify(&client, "Mail", 0, "quiet", "", 0);
+    let banners = json_array(&shell_call::<String>(&client, "Banners", ()).unwrap());
+    assert!(banners.as_array().unwrap().is_empty());
+    let history = json_array(&shell_call::<String>(&client, "History", ()).unwrap());
+    assert_eq!(history[0]["id"], quiet);
+    assert_eq!(history[0]["suppressed"], true);
+    assert_eq!(focus_policy(&client)["batchedCount"], 1);
+
+    // A critical alert breaks through Focus.
+    let alert = notify_urgent(&client, "Mail", "alert", 2, 0);
+    let banners = json_array(&shell_call::<String>(&client, "Banners", ()).unwrap());
+    assert_eq!(banners.as_array().unwrap().len(), 1);
+    assert_eq!(banners[0]["id"], alert);
+    assert_eq!(focus_policy(&client)["batchedCount"], 1);
+
+    // The per-app allow list lets an app through under Focus too.
+    shell_call::<()>(&client, "SetFocusAllowList", (vec!["Chat".to_owned()],)).unwrap();
+    let allowed = notify(&client, "Chat", 0, "ping", "", 0);
+    let banners = json_array(&shell_call::<String>(&client, "Banners", ()).unwrap());
+    assert!(banners
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|banner| banner["id"] == allowed));
+    assert_eq!(focus_policy(&client)["allowList"][0], "Chat");
+
+    // Returning to `off` clears the batch and banners normally again.
+    shell_call::<bool>(&client, "SetFocusMode", ("off",)).unwrap();
+    assert_eq!(focus_policy(&client)["mode"], "off");
+    assert_eq!(focus_policy(&client)["batchedCount"], 0);
+    notify(&client, "Files", 0, "copied", "", 0);
+    let banners = json_array(&shell_call::<String>(&client, "Banners", ()).unwrap());
+    assert!(banners
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|banner| banner["summary"] == "copied"));
+}
+
+#[test]
+fn dnd_silences_critical_but_honors_the_per_app_override() {
+    let bus = PrivateBus::start();
+    let (_service, _queue) = serve(&bus);
+    let client = bus.connect();
+
+    shell_call::<bool>(&client, "SetFocusMode", ("dnd",)).unwrap();
+    let critical = notify_urgent(&client, "Mail", "critical", 2, 0);
+    let banners = json_array(&shell_call::<String>(&client, "Banners", ()).unwrap());
+    assert!(banners.as_array().unwrap().is_empty());
+    let history = json_array(&shell_call::<String>(&client, "History", ()).unwrap());
+    assert_eq!(history[0]["id"], critical);
+    assert_eq!(history[0]["suppressed"], true);
+
+    // The explicit per-app override is honored in DND.
+    shell_call::<()>(&client, "SetFocusAllowList", (vec!["Pager".to_owned()],)).unwrap();
+    let paged = notify_urgent(&client, "pager", "on-call", 2, 0);
+    let banners = json_array(&shell_call::<String>(&client, "Banners", ()).unwrap());
+    assert_eq!(banners.as_array().unwrap().len(), 1);
+    assert_eq!(banners[0]["id"], paged);
+    assert_eq!(focus_policy(&client)["batchedCount"], 1);
+}
+
+#[test]
+fn an_unknown_focus_mode_is_rejected_and_the_compat_dnd_pair_maps() {
+    let bus = PrivateBus::start();
+    let (_service, _queue) = serve(&bus);
+    let client = bus.connect();
+
+    assert!(!shell_call::<bool>(&client, "SetFocusMode", ("vacation",)).unwrap());
+    assert_eq!(focus_policy(&client)["mode"], "off");
+
+    // T-11.1a `SetDoNotDisturb` still works and is the `dnd` mode.
+    shell_call::<()>(&client, "SetDoNotDisturb", (true,)).unwrap();
+    assert!(shell_call::<bool>(&client, "DoNotDisturb", ()).unwrap());
+    assert_eq!(focus_policy(&client)["mode"], "dnd");
+    shell_call::<()>(&client, "SetDoNotDisturb", (false,)).unwrap();
+    assert!(!shell_call::<bool>(&client, "DoNotDisturb", ()).unwrap());
+    assert_eq!(focus_policy(&client)["mode"], "off");
 }
 
 #[test]

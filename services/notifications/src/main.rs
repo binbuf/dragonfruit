@@ -21,7 +21,7 @@ fn main() -> ExitCode {
     match std::env::args().nth(1).as_deref() {
         None => {}
         Some("--print-capabilities") => {
-            println!("body\nbody-markup\nicon-static");
+            println!("body\nbody-markup\nicon-static\nactions");
             return ExitCode::SUCCESS;
         }
         Some("--server-information") => {
