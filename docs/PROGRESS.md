@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(25 earlier sections omitted)_
+_(26 earlier sections omitted)_
 
-- **T23 — T-05.1b Live video at scale and degrade**: **State: done.** A committing "video" client keeps advancing at the reduced; **`compositor/src/overview/grid.rs`** — `GridMaterial { tier, shadow, blur }`
 - **T24 — T-05.2 Hit-testing and selection on live representations**: **State: done.** A left click on a live Mission Control representation; **`compositor/src/overview/grid.rs`** — `GridLayout::window_at(point,
 - **T25 — T-05.3 Drag a live representation between Spaces**: **State: done.** Pressing on a live Mission Control representation and dragging; **`compositor/src/overview/grid.rs`** — `GridDrag { window, start, current }`
 - **T26 — T-05.4 Image wallpaper and per-Space slide**: **State: done.** A Space's wallpaper can be an image (`source` + `fit`) decoded; **`compositor/src/wallpaper.rs`** (new) — `sample_wallpaper` (pure
@@ -31,7 +30,7 @@ _(25 earlier sections omitted)_
 - **T46 — T-08.2c Compositor motion/input policy migration**: **State: done.** The compositor now consumes the settingsd motion/input policy;; **`protocols/dragonfruit-toplevel.xml`** — `df_toplevel_manager` is v5 with
 - **T47 — T-08.3 Restart, resync, and key-schema documentation**: **State: done.** `settingsd` is restartable with no lost write and the shell; **`docs/settings-keys.md`** (new) — the human-facing key table (type,
 - **T48 — T-09.1a Settings app shell**: **State: done.** The `apps/settings` stub is now a real shell: frameless; **`apps/settings/`** is a reusable QML module `Dragonfruit.Settings` (static
-- **Follow-ups**: **T-09.3 follow-ups.** (a) `apps/settings/AppearancePane.qml` (T50) places; **T-09.4 follow-ups.** (a) `design-system/Select.qml`'s menu is a plain
+- **Follow-ups**: **T-10.4a follow-ups.** (a) The files-core bridge is deliberately not; **T-09.3 follow-ups.** (a) `apps/settings/AppearancePane.qml` (T50) places
 - **T49 — T-09.1b Settings live-apply plumbing**: **State: done.** The Settings app is a real settingsd consumer: a QML `Settings`; **`libs/settings-client/`** (new; `libs/CMakeLists.txt`) — the former
 - **T50 — T-09.2 Appearance pane**: **State: done.** The Appearance pane is real and live: a Light/Dark/Auto; **`apps/settings/AppearancePane.qml`** (new) — `SettingsGroup`/`SettingsRow`
 - **T51 — T-09.3 Wallpaper pane**: **State: done.** The Wallpaper pane is real and live: our own gradient; **Schema (since 2)** — `wallpaper.source` (s, empty = solid),
@@ -45,6 +44,7 @@ _(25 earlier sections omitted)_
 - **T59 — T-10.2b Optimistic semantics and state preservation**: **State: done.** `files-core` now applies rename / new-folder / delete to the; **`services/files-core/src/optimistic.rs`** (new) — `OptimisticModel`
 - **T60 — T-10.3a files-core trash**: **State: done.** `files-core` now speaks the freedesktop Trash spec and the; **`services/files-core/src/trash.rs`** (new) — the trash engine:
 - **T61 — T-10.3b files-core folder watcher**: **State: done.** `files-core` now has the one change monitor: one watch per; **`services/files-core/src/watch.rs`** (new) — the watch seam and fallback:
+- **T62 — T-10.4a Files window, toolbar, and sidebar**: **State: done.** The Files window, toolbar, and sidebar are real. `apps/files`; **`apps/files/FilesBridge.{h,cpp}`** — `QML_SINGLETON`, `QML_NAMED_ELEMENT(Files)`:
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3227,6 +3227,19 @@ Gotchas for later tasks:
 
 ## Follow-ups
 
+- **T-10.4a follow-ups.** (a) The files-core bridge is deliberately not
+  introduced (ADR 0048); T-10.4b adds it and attaches the listing to
+  `FilesBrowser.currentUri`. (b) The trailing view-options dropdown, sort
+  controls, and selection are deferred with the views (T-10.4b). (c) The local
+  search field updates `FilesShell.searchText` but there is no result set until
+  the listing exists; scope it with the views. (d) Sidebar volumes are a
+  `QStorageInfo` block-device read; network/GVfs volumes, mount-on-demand, and
+  eject wait for the volume monitor (track item 5 / T-10.6). (e) Sidebar
+  favorites drag-reorder and Add to Sidebar are not implemented. (f) The Files
+  app does not consume settingsd yet, so its `Theme` is the build default until
+  a later binding task (the shell and Settings sync through `ThemeBinding`).
+  (g) The Favorites `Recents` row is omitted because `recent://` needs the GVfs
+  backend; add it with the volume monitor (T-10.6).
 - **T-09.3 follow-ups.** (a) `apps/settings/AppearancePane.qml` (T50) places
   its controls as plain children of `SettingsRow`; `SettingsRow` has no
   `default` property, so they go to `Item.data` and can overlap the label.
@@ -4423,3 +4436,93 @@ Gotchas for later tasks:
   compile anywhere.
 - **A self delete/move of the watched folder is silent** (see T-10.3b
   follow-ups). Re-watch on navigation; an error state is a later task.
+
+## T62 — T-10.4a Files window, toolbar, and sidebar
+
+**State: done.** The Files window, toolbar, and sidebar are real. `apps/files`
+is now a reusable QML module `Dragonfruit.Files` (a thin executable only loads
+the window), mirroring Settings. The browsing model is QML (`FilesBrowser`);
+the platform locations are a Qt singleton (`Files` / `FilesBridge`); the
+directory listing and the views are explicitly T-10.4b's, attached to
+`FilesBrowser.currentUri`. See ADR
+[0048](design/adr/0048-files-app-shell-location-provider.md).
+
+What landed:
+
+- **`apps/files/FilesBridge.{h,cpp}`** — `QML_SINGLETON`, `QML_NAMED_ELEMENT(Files)`:
+  `favorites` (real XDG dirs via `QStandardPaths`; Desktop/Documents/Downloads/
+  Pictures/Music/Videos, only directories that exist; Home is a Location, and
+  Recents is omitted pending `recent://`/GVfs), `volumes`
+  (`QStorageInfo::mountedVolumes()`, root/system mounts
+  excluded, `/dev/` devices only), `homeUri`/`computerUri`/`trashUri`,
+  `userName`, `startUri`, `breadcrumb(uri)`, `displayName(uri)`,
+  `isBrowsable(uri)`. `DF_FILES_FIXTURE=1` selects fixed paths
+  (`/home/tester/...`, one `Data` volume); `DF_FILES_START_URI` opens a
+  specific location.
+- **`apps/files/FilesBrowser.qml`** — current URI, per-window history
+  (`navigate` truncates the redo tail; `reset` seeds without a step), and
+  per-URI view state (`viewFor`/`setView`, default `"icon"`).
+- **`apps/files/FilesShell.qml`** — `AppWindow` + `TitleBar` (centered location
+  title) + `Toolbar` (back/forward, icon/list `SegmentedControl` kept in step
+  via a `Binding`, right-aligned `SearchField`) + `Sidebar` (Favorites = the
+  user folders; Locations = Home, Computer, volumes, `Trash` last) + footer
+  `PathBar`. Design-system components only.
+  Keyboard: sidebar Up/Down/Home/End/Return, Alt+Left/Right and
+  Cmd+[ / Cmd+] history, Ctrl+F search.
+- **`apps/files/PathBar.qml`** — breadcrumb of ghost `Button`s + chevron
+  `Icon`s; segments are history anchors.
+- **`apps/files/FilesWindow.qml`** — frameless first-party window (traffic
+  lights forward close/minimize/zoom/move, like SettingsWindow).
+- **`design-system/components/Icon.qml`** — new canvas glyphs `home`,
+  `documents`, `downloads`, `music`, `movies`, `trash`, `computer`, `volume`,
+  `folder`, `icon-view`, `list-view` (Pictures reuses `wallpaper`, Desktop
+  reuses `displays`).
+- **`design-system/components/SegmentedControl.qml`** — an entry may carry
+  `icon`; the segment draws the glyph (Accessible.name stays the label).
+  Existing string/object usages are unchanged.
+- **`design-system/components/Sidebar.qml` + `SourceList.qml`** — selection is
+  an instant second fill layer; only hover animates. A freshly opened window
+  previously painted a half-faded selection when the client was idle and no
+  frames were delivered (seen in the live capture).
+- **Tests** — `apps/files/tests/` (new; `tst_files_shell.cpp` + 14 QML cases).
+- **Docs** — ADR 0048; `docs/design/09-files.md` T-10.4a status paragraph.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `make qml-test` — 32/32 ctest green; `tst_files_shell` 14 pass.
+- `make visual-test` — 72 gallery snapshots pass.
+- `make lint` — fmt/clippy/qmllint/tokens/desktop-name gates green.
+- `make e2e` — exit 0.
+
+Live capture (`/tmp/opencode/t62-capture.sh`; `/tmp/opencode/t62-files-home.png`
+and `t62-files-documents.png`, 1920x1200) with
+`DF_DEMO_QT_APP=build/apps/files/dragonfruit-files`. Raw vision observation on a
+tight window crop: toolbar chevrons + two-segment view switch + `Search` field;
+sidebar `FAVORITES` (Desktop/Documents/Downloads/Pictures/Music/Videos) and
+`LOCATIONS` (user/Computer/Trash, Trash last); footer `Computer > user`;
+selected `user` row highlighted with white glyph/text. Raw pixel observation: sidebar
+background `(248,246,250)`, selected row `(179,42,102)` exact accent (1363 px).
+Vision is a supporting check.
+
+Gotchas for later tasks:
+
+- **`Files` is a location provider, not the filesystem backend.** It never
+  lists or mutates; do not call `std::fs` from the app. The listing is the
+  T-10.4b bridge into `files-core`.
+- **`FilesBrowser` owns navigation/history/view state only.** T-10.4b attaches
+  the listing to `currentUri` and must not reimplement history or view
+  persistence. `viewState` is keyed by URI, matching `09-files.md#views`.
+- **Fixture envs are read once at singleton construction.** `DF_FILES_FIXTURE`
+  and `DF_FILES_START_URI` must be set before the process starts (the CMake
+  test ENVIRONMENT does).
+- **Sidebar entries drop custom item fields.** `Sidebar.entries` keeps only
+  label/icon/badge and adds `section`/`itemIndex`; `FilesShell.uriForEntry()`
+  maps back through `sidebarSections`. Keep that mapping when adding rows.
+- **The content area is a placeholder.** `FilesShell.contentArea` holds
+  `emptyState`; replace it with the list/icon views. The trailing view-options
+  dropdown, sort controls, and search results are deferred to T-10.4b.
+- **Selection must not depend on a hover animation.** The Sidebar/SourceList
+  two-layer fill is deliberate; do not collapse it back to one animated
+  rectangle.
+- **`QStorageInfo` volumes are block devices only**; network/GVfs volumes and
+  eject wait for the volume monitor (track item 5 / T-10.6).

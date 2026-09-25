@@ -21,9 +21,13 @@ Item {
 
     readonly property real stroke: Math.max(1.4, size * 0.14)
 
-    // Pane glyphs painted on the Canvas below. The shell/sidebar vocabulary.
+    // Pane and Files glyphs painted on the Canvas below. The shell/sidebar
+    // and first-party-app vocabulary.
     readonly property var paintedGlyphs: ["appearance", "wallpaper", "dock",
-                                          "displays"]
+                                          "displays", "home", "documents",
+                                          "downloads", "music", "movies",
+                                          "trash", "computer", "volume",
+                                          "folder", "icon-view", "list-view"]
     readonly property bool painted: root.paintedGlyphs.indexOf(root.name) >= 0
 
     readonly property var bars: {
@@ -193,6 +197,189 @@ Item {
                 ctx.moveTo(s * 0.34, s * 0.86);
                 ctx.lineTo(s * 0.66, s * 0.86);
                 ctx.stroke();
+                break;
+            }
+            case "home": {
+                // A house: pitched roof over a body with a door.
+                ctx.beginPath();
+                ctx.moveTo(s * 0.50, s * 0.14);
+                ctx.lineTo(s * 0.13, s * 0.46);
+                ctx.lineTo(s * 0.22, s * 0.46);
+                ctx.lineTo(s * 0.22, s * 0.85);
+                ctx.lineTo(s * 0.42, s * 0.85);
+                ctx.lineTo(s * 0.42, s * 0.62);
+                ctx.lineTo(s * 0.58, s * 0.62);
+                ctx.lineTo(s * 0.58, s * 0.85);
+                ctx.lineTo(s * 0.78, s * 0.85);
+                ctx.lineTo(s * 0.78, s * 0.46);
+                ctx.lineTo(s * 0.87, s * 0.46);
+                ctx.closePath();
+                ctx.stroke();
+                break;
+            }
+            case "documents": {
+                // A page with a folded corner and three text rules.
+                ctx.beginPath();
+                ctx.moveTo(s * 0.26, s * 0.14);
+                ctx.lineTo(s * 0.60, s * 0.14);
+                ctx.lineTo(s * 0.76, s * 0.30);
+                ctx.lineTo(s * 0.76, s * 0.86);
+                ctx.lineTo(s * 0.26, s * 0.86);
+                ctx.closePath();
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(s * 0.60, s * 0.14);
+                ctx.lineTo(s * 0.60, s * 0.30);
+                ctx.lineTo(s * 0.76, s * 0.30);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(s * 0.36, s * 0.50);
+                ctx.lineTo(s * 0.66, s * 0.50);
+                ctx.moveTo(s * 0.36, s * 0.62);
+                ctx.lineTo(s * 0.66, s * 0.62);
+                ctx.moveTo(s * 0.36, s * 0.74);
+                ctx.lineTo(s * 0.56, s * 0.74);
+                ctx.stroke();
+                break;
+            }
+            case "downloads": {
+                // A tray with a downward arrow.
+                ctx.beginPath();
+                ctx.moveTo(s * 0.18, s * 0.62);
+                ctx.lineTo(s * 0.18, s * 0.84);
+                ctx.lineTo(s * 0.82, s * 0.84);
+                ctx.lineTo(s * 0.82, s * 0.62);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(c, s * 0.16);
+                ctx.lineTo(c, s * 0.60);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(s * 0.35, s * 0.45);
+                ctx.lineTo(c, s * 0.60);
+                ctx.lineTo(s * 0.65, s * 0.45);
+                ctx.stroke();
+                break;
+            }
+            case "music": {
+                // A beamed eighth note.
+                ctx.beginPath();
+                ctx.moveTo(s * 0.64, s * 0.16);
+                ctx.lineTo(s * 0.64, s * 0.66);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(s * 0.64, s * 0.16);
+                ctx.lineTo(s * 0.84, s * 0.24);
+                ctx.lineTo(s * 0.84, s * 0.38);
+                ctx.lineTo(s * 0.64, s * 0.30);
+                ctx.closePath();
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(s * 0.50, s * 0.70, s * 0.13, 0, Math.PI * 2);
+                ctx.fill();
+                break;
+            }
+            case "movies": {
+                // A screen with a play triangle.
+                roundedRect(s * 0.13, s * 0.24, s * 0.74, s * 0.52, s * 0.12);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(s * 0.44, s * 0.36);
+                ctx.lineTo(s * 0.44, s * 0.64);
+                ctx.lineTo(s * 0.66, s * 0.50);
+                ctx.closePath();
+                ctx.fill();
+                break;
+            }
+            case "trash": {
+                // A waste bin: lid, handle, tapered body, two slats.
+                ctx.beginPath();
+                ctx.moveTo(s * 0.15, s * 0.28);
+                ctx.lineTo(s * 0.85, s * 0.28);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(s * 0.38, s * 0.28);
+                ctx.lineTo(s * 0.38, s * 0.17);
+                ctx.lineTo(s * 0.62, s * 0.17);
+                ctx.lineTo(s * 0.62, s * 0.28);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(s * 0.24, s * 0.28);
+                ctx.lineTo(s * 0.30, s * 0.87);
+                ctx.lineTo(s * 0.70, s * 0.87);
+                ctx.lineTo(s * 0.76, s * 0.28);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(s * 0.42, s * 0.40);
+                ctx.lineTo(s * 0.44, s * 0.76);
+                ctx.moveTo(s * 0.58, s * 0.40);
+                ctx.lineTo(s * 0.56, s * 0.76);
+                ctx.stroke();
+                break;
+            }
+            case "computer": {
+                // A display on a stand (the Computer location).
+                roundedRect(s * 0.12, s * 0.20, s * 0.76, s * 0.50, s * 0.10);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(c, s * 0.70);
+                ctx.lineTo(c, s * 0.83);
+                ctx.moveTo(s * 0.34, s * 0.86);
+                ctx.lineTo(s * 0.66, s * 0.86);
+                ctx.stroke();
+                break;
+            }
+            case "volume": {
+                // A drive slab with a level indicator and a small light.
+                roundedRect(s * 0.12, s * 0.32, s * 0.76, s * 0.36, s * 0.10);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(s * 0.22, s * 0.50);
+                ctx.lineTo(s * 0.50, s * 0.50);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(s * 0.71, s * 0.50, s * 0.04, 0, Math.PI * 2);
+                ctx.fill();
+                break;
+            }
+            case "folder": {
+                // A folder: a back tab and a front body.
+                ctx.beginPath();
+                ctx.moveTo(s * 0.14, s * 0.30);
+                ctx.lineTo(s * 0.42, s * 0.30);
+                ctx.lineTo(s * 0.50, s * 0.40);
+                ctx.lineTo(s * 0.86, s * 0.40);
+                ctx.lineTo(s * 0.86, s * 0.82);
+                ctx.lineTo(s * 0.14, s * 0.82);
+                ctx.closePath();
+                ctx.stroke();
+                break;
+            }
+            case "icon-view": {
+                // A 2x2 grid of rounded tiles (the toolbar view switch).
+                var tileSize = s * 0.28;
+                var tileGap = s * 0.12;
+                var gridOrigin = s * 0.16;
+                for (var gx = 0; gx < 2; ++gx) {
+                    for (var gy = 0; gy < 2; ++gy) {
+                        roundedRect(gridOrigin + gx * (tileSize + tileGap),
+                                    gridOrigin + gy * (tileSize + tileGap),
+                                    tileSize, tileSize, s * 0.05);
+                        ctx.fill();
+                    }
+                }
+                break;
+            }
+            case "list-view": {
+                // Three stacked rows (the toolbar view switch).
+                var rowHeight = s * 0.13;
+                var rowGap = s * 0.10;
+                var rowOrigin = s * 0.17;
+                for (var lr = 0; lr < 3; ++lr) {
+                    roundedRect(s * 0.14, rowOrigin + lr * (rowHeight + rowGap),
+                                s * 0.72, rowHeight, rowHeight / 2);
+                    ctx.fill();
+                }
                 break;
             }
             }

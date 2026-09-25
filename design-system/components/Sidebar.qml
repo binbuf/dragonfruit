@@ -173,12 +173,16 @@ FocusScope {
             elide: Text.ElideRight
         }
 
+        // Hover fill (animated). The selection fill is a second, instant
+        // layer: a freshly opened window must not paint a half-faded
+        // selection highlight (the hover animation can stall while the client
+        // is idle and no frames are delivered).
         Rectangle {
             visible: !row.isHeader
             anchors.fill: parent
             radius: Theme.controls.sidebar.rowRadius
-            color: row.selected ? Theme.color.accent
-                                : (row.hovered ? Theme.color.controlHover : "transparent")
+            color: row.hovered && !row.selected ? Theme.color.controlHover
+                                                : "transparent"
             antialiasing: true
 
             Behavior on color {
@@ -188,6 +192,14 @@ FocusScope {
                     easing.bezierCurve: Theme.motion.hover.curve
                 }
             }
+        }
+
+        Rectangle {
+            visible: !row.isHeader
+            anchors.fill: parent
+            radius: Theme.controls.sidebar.rowRadius
+            color: row.selected ? Theme.color.accent : "transparent"
+            antialiasing: true
         }
 
         Icon {

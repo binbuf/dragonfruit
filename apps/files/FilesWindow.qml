@@ -2,12 +2,30 @@
 import QtQuick
 import Dragonfruit
 
-// Files window placeholder — T-18 builds the real application on the
-// files-core model; every surface consumes design-system components only.
+// The Files top-level window (T-10.4a). It is a first-party Tier-1 app, so it
+// draws its own titlebar (FilesShell's design-system TitleBar) on a frameless
+// window surface; the compositor does not add SSD on top. The shell reports
+// window-control intent and this file maps it to `Window` state.
 Window {
-    width: 900
-    height: 600
+    id: win
+
+    width: 980
+    height: 640
+    minimumWidth: 720
+    minimumHeight: 480
     visible: true
     title: qsTr("Dragonfruit Files")
-    color: Theme.color.surface
+    color: "transparent"
+    flags: Qt.Window | Qt.FramelessWindowHint
+
+    FilesShell {
+        id: shell
+        anchors.fill: parent
+
+        onCloseRequested: win.close()
+        onMinimizeRequested: win.showMinimized()
+        onZoomRequested: win.visibility === Window.Maximized
+                         ? win.showNormal() : win.showMaximized()
+        onMoveRequested: (x, y) => win.startSystemMove()
+    }
 }

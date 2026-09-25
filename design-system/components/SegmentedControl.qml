@@ -20,9 +20,10 @@ Item {
         for (var i = 0; i < root.model.length; ++i) {
             var m = root.model[i];
             if (typeof m === "string")
-                out.push({ label: m, enabled: true });
+                out.push({ label: m, icon: "", enabled: true });
             else
-                out.push({ label: m.label || "", enabled: m.enabled !== false });
+                out.push({ label: m.label || "", icon: m.icon || "",
+                           enabled: m.enabled !== false });
         }
         return out;
     }
@@ -120,9 +121,12 @@ Item {
 
         readonly property bool current: root.currentIndex === segment.index
         readonly property bool hovered: segmentHover.hovered
+        readonly property bool hasIcon: segment.modelData.icon.length > 0
 
         width: Math.max(Theme.controls.segmentedControl.segmentMinWidth,
-                        label.implicitWidth + 2 * Theme.primitive.spacing.md)
+                        (segment.hasIcon
+                         ? Theme.controls.button.iconSize
+                         : label.implicitWidth) + 2 * Theme.primitive.spacing.md)
         height: root.height - 2 * Theme.controls.segmentedControl.padding
         activeFocusOnTab: true
         opacity: segment.modelData.enabled ? 1.0 : 0.4
@@ -133,12 +137,22 @@ Item {
 
         Text {
             id: label
+            visible: !segment.hasIcon
             anchors.centerIn: parent
             text: segment.modelData.label
             color: segment.current ? Theme.color.textPrimary : Theme.color.textSecondary
             font.pixelSize: Theme.controls.segmentedControl.fontSize
             font.weight: segment.current ? Theme.controls.button.fontWeight
                                          : Theme.primitive.font.weightRegular
+        }
+
+        Icon {
+            id: glyph
+            visible: segment.hasIcon
+            anchors.centerIn: parent
+            name: segment.modelData.icon
+            size: Theme.controls.button.iconSize
+            color: segment.current ? Theme.color.textPrimary : Theme.color.textSecondary
         }
 
         HoverHandler {
