@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(17 earlier sections omitted)_
+_(18 earlier sections omitted)_
 
-- **T15 — T-03.1b Latency instrument and direct-scanout template**: **State: done.** The input-to-photon latency instrument is real and the; **nested latency**: n=50, min=3501 us, median=13878 us, p95=15223 us,
 - **T16 — T-04.1a Real shadows**: **State: done.** Elevation-token shadows exist on both sides of the process; **Tokens** — new `component.elevation.{low,med,high,overlay}` in
 - **T17 — T-04.1b Rounded-corner clipping**: **State: done.** Rounded corners are a token-derived geometry mask on the; **`compositor/src/window/corner.rs`** (new) — `CornerMask`
 - **T18 — T-04.2 Backdrop blur pass**: **State: done.** The chrome material pass exists and is token-driven, applied; **`compositor/src/window/backdrop.rs`** (new) — `MaterialRole`
@@ -45,6 +44,7 @@ _(17 earlier sections omitted)_
 - **T51 — T-09.3 Wallpaper pane**: **State: done.** The Wallpaper pane is real and live: our own gradient; **Schema (since 2)** — `wallpaper.source` (s, empty = solid),
 - **T52 — T-09.4 Desktop & Dock pane**: **State: done.** The Desktop & Dock pane is real and live: the `Dock` group; **`apps/settings/DesktopDockPane.qml`** (new) — `SettingsGroup` "Dock" with
 - **T53 — T-09.5 Displays-basic pane**: **State: done.** The Displays-basic pane is real and live: the `Built-in; **Schema (since 3)** — `display.scale` (d, 0.5–2.0, default 1.0),
+- **T54 — T-09.6a Settings menu-model publication**: **State: done.** The Settings app publishes its native menu model and the; **`apps/settings/SettingsMenu.qml`** (new; QML singleton) — single source of
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3804,3 +3804,65 @@ Gotchas for later tasks:
 - **The schema doc test enforces `docs/settings-keys.md`**: adding a key means
   `schema.rs` + the client mirror + the doc table; bump `SCHEMA_VERSION` and
   set `since`.
+
+## T54 — T-09.6a Settings menu-model publication
+
+**State: done.** The Settings app publishes its native menu model and the
+shell's `MenuBar` consumes it unchanged. The cross-process transport
+(focus → app → model) is the menu-broker's job (T-14.2a) and is deliberately
+not built here — the task's "fixed app menu is enough until then."
+
+What landed:
+
+- **`apps/settings/SettingsMenu.qml`** (new; QML singleton) — single source of
+  Settings' menus in the design-system normalized entry shape: fixed
+  `applicationMenuItems` (About/Settings/Hide/Hide Others/Show All/Quit) and
+  `menus` (File/Close Window; Edit/undo-redo-cut-copy-paste-select-all +
+  separator; View/Enter Full Screen + a `Settings Pane` submenu over the four
+  shipped panes; Window/Minimize/Zoom/Bring All to Front; Help/Settings Help).
+  Each row carries an `action` string. `publishedModel` is the JSON-serializable
+  wrapper; `actionFor(menuIndex,itemIndex)` follows the `MenuBarMenu`
+  `triggered` contract; `activate(action,item)` emits `activated`.
+- **`SettingsShell.qml`** exposes `menuModel: SettingsMenu.publishedModel`.
+  **`SettingsWindow.qml`** wires `SettingsMenu.activated` to the window verbs
+  (close/minimize/zoom/fullscreen) and `pane.*` jumps; `edit.*` are the standard
+  editing verbs the broker routes to the focused text input (T-14.2b).
+- **Consumption** — the shell's `MenuBar` takes the model as
+  `applicationMenuItems` + `appMenuModel` with no translation. ADR
+  [0041](design/adr/0041-native-menu-model-publication-shape.md) fixes the
+  payload shape and the consumption surface, and leaves the channel to T-14.2a.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `ctest --test-dir build -R tst_settings_menu --output-on-failure` — 1/1
+  passed; direct run reports `Totals: 10 passed, 0 failed, 0 skipped`.
+- `make lint` green (30/30 ctest incl. `qmllint_app-settings`); `make e2e`
+  exit 0.
+- Live capture (`/tmp/opencode/t54-capture.sh`; stills `t54-desktop.png`,
+  `t54-window.png`, `t54-menubar.png`): nested demo with Settings open on
+  Appearance. Raw observation: the bar renders brand mark + application menu +
+  File/Edit/View and the clock/status icons; the Settings window renders the
+  sidebar, header, Light/Dark/Auto segmented control, and accent swatches with
+  no clipping. Vision on the window crop read the same rows and controls. The
+  published Settings menus (File/Edit/View/Window/Help) do **not** appear in the
+  bar — expected until T-14.2a.
+
+Gotchas for later tasks:
+
+- **The published model is the design-system entry shape** (`MenuBarMenu`'s
+  `menuModel` input), not a shell-private shape. Rows carry `action` strings;
+  no callbacks. Do not add a second model shape.
+- **Transport is T-14.2a.** The app owns no well-known bus name (settingsd owns
+  `org.dragonfruit.Settings1`); focus → bus-name resolution and dispatch belong
+  to the menu-broker. `tst_settings_menu.qml` links
+  `dragonfruit-shell-menubarplugin` to prove the round-trip headlessly, so the
+  settings test target now depends on the shell menubar target.
+- **Action dispatch is duplicated by design**: `SettingsMenu.activated` drives
+  the app locally, and the broker will route the same action back. `edit.*` is
+  not wired in-app (the focused text input handles the standard keys today).
+- **`SettingsMenu` is a singleton**: add a new menu row by editing only this
+  file; `SettingsShell.menuModel` and the global menu pick it up together.
+- **Pre-existing tree fix**: T53 left `compositor/tests/shell_protocol_conformance.rs`
+  unformatted and tripping `clippy::manual_contains` (new in rust 1.98), which
+  made `make fmt-check`/`make lint` red before this task. Fixed to
+  `state.output_transforms.contains(&1)` so the gate is green.

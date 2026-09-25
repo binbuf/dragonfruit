@@ -121,6 +121,11 @@ assets and branding.
 - Compositor-drawn server-side decorations reuse the same visual tokens as
   first-party `TitleBar`s (see [05-window-decorations.md](05-window-decorations.md)).
 - The `MenuBarMenu` component is the first-party path into the menu-broker
-  (see [06-global-menu.md](06-global-menu.md)).
+  (see [06-global-menu.md](06-global-menu.md)). Its normalized, JSON-serializable
+  entry shape (`menuModel`) is the native publication contract: an app declares
+  its menus once in that shape, and the shell's `MenuBar` consumes
+  `applicationMenuItems` + `appMenuModel` unchanged (ADR
+  [0041](adr/0041-native-menu-model-publication-shape.md)). Settings' single
+  source is `apps/settings/SettingsMenu.qml`.
 - Settings and Files are built entirely from these components (see
   [08-settings.md](08-settings.md), [09-files.md](09-files.md)).

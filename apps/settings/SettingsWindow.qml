@@ -28,4 +28,35 @@ Window {
                          ? win.showNormal() : win.showMaximized()
         onMoveRequested: (x, y) => win.startSystemMove()
     }
+
+    // The published menu model's actions (T-09.6a). The menu bar is in the
+    // shell process, so this is the app-side end of the dispatch seam: when
+    // the broker routes an activated action back (T-14.2b), the app performs
+    // the window-level verbs and the pane jumps. The `edit.*` verbs are the
+    // standard text-editing actions applied to the focused text input.
+    Connections {
+        target: SettingsMenu
+        function onActivated(action, item) {
+            switch (action) {
+            case "close":
+                win.close();
+                break;
+            case "minimize":
+                win.showMinimized();
+                break;
+            case "zoom":
+                win.visibility === Window.Maximized
+                        ? win.showNormal() : win.showMaximized();
+                break;
+            case "fullscreen":
+                win.visibility === Window.FullScreen
+                        ? win.showNormal() : win.showFullScreen();
+                break;
+            default:
+                if (action.indexOf("pane.") === 0)
+                    shell.selectPane(action.substring(5));
+                break;
+            }
+        }
+    }
 }

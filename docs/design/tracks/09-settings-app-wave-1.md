@@ -237,6 +237,30 @@ wired controls, each slider/select/toggle applies live to its key, an external
 right-aligned; `design-system/tests/tst_design_system.qml` covers the new
 components' keyboard, roles, and token colors.
 
+## Menu model (T-09.6a)
+
+`apps/settings/SettingsMenu.qml` is the app's published native menu model — the
+artifact the menu-broker (T-14.2a) consumes. It is a QML singleton holding the
+fixed application menu (`applicationMenuItems`) and the app's own top-level
+menus (`menus`: File/Close Window, Edit/standard verbs, View/Enter Full Screen
++ a `Settings Pane` submenu, Window/Minimize/Zoom/Bring All to Front,
+Help/Settings Help) in the design system's normalized, JSON-serializable entry
+shape, with an `action` string per row and a `publishedModel` wrapper.
+
+The shell's `MenuBar` is the consumption surface (`applicationMenuItems` +
+`appMenuModel`); the published model is fixed — no live enable/disable — until
+the broker resolves the focused app's model over the native channel, matching
+the task's "fixed app menu is enough until then." `SettingsWindow` wires the
+same `activated(action)` seam to the app's window verbs and pane jumps, so an
+action routed back by the broker acts locally. See ADR
+[0041](../adr/0041-native-menu-model-publication-shape.md).
+
+**Verification.** `apps/settings/tests/tst_settings_menu.qml` (10 cases) asserts
+the model shape, JSON-serializability, the `actionFor`/`activate` dispatch, and
+the headless round-trip: the exact `publishedModel` injected into a real shell
+`MenuBar` renders File…Help at indices 2..6 and routes an activated row's
+`action`.
+
 ## Acceptance
 
 - [ ] The demo runs and the captures are committed.

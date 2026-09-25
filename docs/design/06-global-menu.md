@@ -107,6 +107,14 @@ toolkit.
   and resolves which menu model (if any) to display.
 - First-party apps publish declarative menu models through the design
   system's `MenuBarMenu` component (see
-  [10-design-system.md](10-design-system.md)).
+  [10-design-system.md](10-design-system.md)). The published form is the
+  component's normalized, JSON-serializable entry shape, with an `action`
+  string per row; the shell's `MenuBar` consumes it as
+  `applicationMenuItems` + `appMenuModel` (ADR
+  [0041](adr/0041-native-menu-model-publication-shape.md)).
+- Settings publishes its model from `apps/settings/SettingsMenu.qml` (T-09.6a):
+  the app's `App` / `File` / `Edit` / `View` / `Window` / `Help` menus. Until
+  T-14.2a resolves the focused app's model over the native channel, the shell
+  keeps the fixed application menu.
 - DBusMenu bridges map third-party models into the same menu-broker
   representation.
