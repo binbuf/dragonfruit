@@ -50,6 +50,7 @@ add_library(dragonfruit-shell-dockcore STATIC
     dockprojection.cpp
     downloadsmonitor.cpp
     framecommitgate.h
+    systemstatusmodel.cpp
     trashmonitor.cpp
 )
 target_link_libraries(dragonfruit-shell-dockcore PUBLIC Qt6::Core)
@@ -85,6 +86,7 @@ qt_add_executable(dragonfruit-shell
     main.cpp
     shellcontroller.cpp
     shellprotocol.cpp
+    systemstatusclient.cpp
 )
 target_sources(dragonfruit-shell PRIVATE ${DF_PROTOCOL_SOURCES})
 target_include_directories(dragonfruit-shell PRIVATE "${DF_PROTOCOL_DIR}")
@@ -92,7 +94,7 @@ target_compile_definitions(dragonfruit-shell PRIVATE
     DF_LOCKSTEP_VERSION=${DF_LOCKSTEP_VERSION}
     DF_QML_IMPORT_DIR="${CMAKE_BINARY_DIR}/qml")
 target_link_libraries(dragonfruit-shell PRIVATE
-    Qt6::Core Qt6::Gui Qt6::Quick
+    Qt6::Core Qt6::Gui Qt6::Quick Qt6::DBus
     dragonfruit-shell-dockcore
     dragonfruit-design-systemplugin
     dragonfruit-shell-menubarplugin

@@ -612,6 +612,17 @@ name = "dragonfruit-system-adapters"
 version = "0.1.0"
 
 [[package]]
+name = "dragonfruit-system-status"
+version = "0.1.0"
+dependencies = [
+ "dragonfruit-audio",
+ "dragonfruit-networkmanager",
+ "dragonfruit-system-adapters",
+ "serde_json",
+ "zbus",
+]
+
+[[package]]
 name = "drm"
 version = "0.14.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

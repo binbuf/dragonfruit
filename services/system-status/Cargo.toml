@@ -1,0 +1,27 @@
+[package]
+name = "dragonfruit-system-status"
+description = "Session-bus host that bridges the T-07 system adapters to the shell menu bar (T-07.5a)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+# The host owns the bridge, not the daemon stacks: it depends on the concrete
+# adapter crates and sees only their typed snapshots. It serves the shell over
+# the user session bus (`org.dragonfruit.SystemStatus1`), so the C++ menu bar
+# never links a Rust adapter (see docs/design/adr/0029-*.md).
+[dependencies]
+dragonfruit-system-adapters = { path = "../system-adapters", version = "0.1.0" }
+dragonfruit-networkmanager = { path = "../networkmanager", version = "0.1.0" }
+dragonfruit-audio = { path = "../audio", version = "0.1.0" }
+zbus = { version = "=5.19.0", features = ["blocking-api"] }
+serde_json = "=1.0.151"
+
+[lib]
+name = "dragonfruit_system_status"
+path = "src/lib.rs"
+
+[[bin]]
+name = "dragonfruit-system-status"
+path = "src/main.rs"

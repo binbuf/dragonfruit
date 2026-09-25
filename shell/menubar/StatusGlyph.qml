@@ -70,10 +70,19 @@ Item {
             ctx.fillStyle = root.color;
 
             switch (root.name) {
-            case "wifi": {
+            case "wifi":
+            case "wifi-secure":
+            case "wifi-off":
+            case "wifi-disabled":
+            case "wifi-connecting":
+            case "wifi-error": {
                 // Three thin arcs opening downward with a small filled dot at
-                // the origin (the macOS silhouette).
+                // the origin (the macOS silhouette). The adapter's variants
+                // share the silhouette: a disabled/off radio dims it and an
+                // error adds a small cross so the state is still legible.
                 var cy = s * 0.80;
+                var dim = root.name === "wifi-off" || root.name === "wifi-disabled";
+                ctx.globalAlpha = dim ? 0.4 : 1.0;
                 var radii = [s * 0.20, s * 0.36, s * 0.52];
                 for (var i = 0; i < radii.length; ++i) {
                     ctx.beginPath();
@@ -83,6 +92,15 @@ Item {
                 ctx.beginPath();
                 ctx.arc(c, cy, root.stroke * 0.85, 0, Math.PI * 2);
                 ctx.fill();
+                ctx.globalAlpha = 1.0;
+                if (root.name === "wifi-error") {
+                    ctx.beginPath();
+                    ctx.moveTo(s * 0.70, s * 0.18);
+                    ctx.lineTo(s * 0.88, s * 0.36);
+                    ctx.moveTo(s * 0.88, s * 0.18);
+                    ctx.lineTo(s * 0.70, s * 0.36);
+                    ctx.stroke();
+                }
                 break;
             }
             case "bluetooth": {

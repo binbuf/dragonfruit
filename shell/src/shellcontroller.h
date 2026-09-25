@@ -19,8 +19,10 @@
 #include "downloadsmonitor.h"
 #include "framecommitgate.h"
 #include "shellprotocol.h"
+#include "systemstatusmodel.h"
 #include "trashmonitor.h"
 
+class SystemStatusClient;
 class QQmlEngine;
 class QQuickWindow;
 class QQuickItem;
@@ -50,6 +52,17 @@ private slots:
     void onControlCenterRequested();
     void onMissionControlRequested();
     void onStatusItemActivated(const QString &itemId);
+    // Wi-Fi and volume popovers (T-07.5a): the bar's gestures become bridge
+    // host calls, and the host's views become the model's state.
+    void onStatusMenuOpened();
+    void onStatusMenuClosed();
+    void onStatusMenuRefreshRequested(const QString &itemId);
+    void onWifiJoinRequested(const QString &ssid, const QString &secret);
+    void onVolumeSetRequested(double volume);
+    void onMuteToggleRequested();
+    void onWifiState(const QByteArray &json);
+    void onAudioState(const QByteArray &json);
+    void onStatusReport(const QByteArray &json);
     void onClockTick();
     void onAppMenuOpened(int index);
     void onAppMenuClosed();
@@ -119,6 +132,9 @@ private slots:
 
 private:
     void applyStatusItems();
+    // Push the model's decoded Wi-Fi/volume views onto the bar's popovers and
+    // rebuild the status slots from them.
+    void applyStatusMenuData();
     void applyFocusedApp();
     void render();
     void renderDock();
@@ -205,6 +221,10 @@ private:
     void updatePopupGeometry();
 
     ShellProtocol *m_protocol = nullptr;
+    // The T-07.5a bridge: the decoded status model and its host client (the
+    // live D-Bus client, or the fixture client in `--placeholders` mode).
+    SystemStatusModel *m_statusModel = nullptr;
+    SystemStatusClient *m_statusClient = nullptr;
     QQmlEngine *m_engine = nullptr;
     QQuickWindow *m_window = nullptr;
     QQuickItem *m_item = nullptr;

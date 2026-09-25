@@ -63,6 +63,26 @@ set_tests_properties(tst_dockcore PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# System-status model tests (T-07.5a): the bridge host's JSON views decode to
+# the Wi-Fi/volume menu models and each gesture raises its request signal. No
+# Wayland, QML, or D-Bus.
+qt_add_executable(tst_statusmodel
+    tst_statusmodel.cpp
+)
+target_link_libraries(tst_statusmodel PRIVATE
+    Qt6::Core Qt6::Test
+    dragonfruit-shell-dockcore
+)
+
+add_test(
+    NAME tst_statusmodel
+    COMMAND tst_statusmodel
+)
+set_tests_properties(tst_statusmodel PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Overview chrome tests (T-11): workspace strip (incl. fullscreen Spaces),
 # minimized-window strip, selection signals, and the shared progress fade.
 qt_add_executable(tst_overview

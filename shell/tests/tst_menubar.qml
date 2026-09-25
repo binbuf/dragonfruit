@@ -22,7 +22,13 @@ Item {
         Component { id: clockComponent; MenuBarClock { } }
         Component { id: glyphComponent; StatusGlyph { } }
         Component { id: logoComponent; DragonfruitLogo { } }
+        Component { id: wifiMenuComponent; WifiMenu { } }
+        Component { id: volumeMenuComponent; VolumeMenu { } }
 
+        SignalSpy { id: wifiJoinSpy; signalName: "joinRequested" }
+        SignalSpy { id: wifiRefreshSpy; signalName: "refreshRequested" }
+        SignalSpy { id: volumeSetSpy; signalName: "volumeSetRequested" }
+        SignalSpy { id: muteSpy; signalName: "muteToggleRequested" }
         SignalSpy { id: statusSpy; signalName: "statusItemActivated" }
         SignalSpy { id: ccSpy; signalName: "controlCenterRequested" }
         SignalSpy { id: mcSpy; signalName: "missionControlRequested" }
@@ -85,6 +91,31 @@ Item {
                 { id: "volume", icon: "volume", accessibleName: "Volume", available: true },
                 { id: "battery", icon: "battery", accessibleName: "Battery", available: true }
             ];
+        }
+
+        // The bridge host's decoded views (services/system-status).
+        function wifiModel() {
+            return {
+                kind: "wifi", state: "available", glyph: "wifi-secure",
+                label: "home \u00b7 82%", readOnly: false,
+                networks: [
+                    { ssid: "home", strength: 82, security: "WPA2", secured: true,
+                      active: true, band: "5 GHz" },
+                    { ssid: "cafe", strength: 40, security: "Open", secured: false,
+                      active: false, band: "2.4 GHz" }
+                ]
+            };
+        }
+
+        function audioModel(muted, volume) {
+            return {
+                kind: "audio", state: "available",
+                glyph: (muted || volume === 0) ? "volume-muted" : "volume",
+                volume: volume, percent: Math.round(volume * 100), muted: muted,
+                sinks: [ { id: 7, name: "speakers", description: "Built-in Speakers",
+                           volume: volume, percent: Math.round(volume * 100),
+                           muted: muted, default: true } ]
+            };
         }
 
         // -- Layout / data injection (FR-1, FR-2) ---------------------------
@@ -165,10 +196,12 @@ Item {
             var bar = make(menuBarComponent, { statusItems: defaultStatus() });
             statusSpy.target = bar;
             statusSpy.clear();
-            var wifi = bar.statusItemAt(0);
-            mouseClick(wifi, wifi.width / 2, wifi.height / 2);
+            // Wi-Fi and volume open a popover (T-07.5a); the always-activation
+            // items (battery here) still raise statusItemActivated.
+            var battery = bar.statusItemAt(3);
+            mouseClick(battery, battery.width / 2, battery.height / 2);
             compare(statusSpy.count, 1);
-            compare(statusSpy.signalArguments[0][0], "wifi");
+            compare(statusSpy.signalArguments[0][0], "battery");
         }
 
         function test_control_center_and_mission_control_entries() {
@@ -450,6 +483,120 @@ Item {
             compare(triggeredSpy.count, 1);
             compare(triggeredSpy.signalArguments[0][0], 0);
             compare(triggeredSpy.signalArguments[0][2].action, "sleep");
+        }
+
+        // -- Wi-Fi and volume status menus (T-07.5a) ------------------------
+
+        function test_wifi_menu_model_exposes_join_rows() {
+            var menu = make(wifiMenuComponent, { model: wifiModel() });
+            compare(menu.rows.length, 2);
+            compare(menu.rows[0].ssid, "home");
+            compare(menu.rows[0].action, "join");
+            compare(menu.rows[0].enabled, true);
+            compare(menu.rows[0].secured, true);
+            compare(menu.rows[0].strength, 82);
+            compare(menu.rows[1].ssid, "cafe");
+            compare(menu.rows[1].secured, false);
+            compare(menu.headerLabel, "home \u00b7 82%");
+        }
+
+        function test_wifi_menu_open_network_joins_immediately() {
+            var menu = make(wifiMenuComponent, { model: wifiModel() });
+            wifiJoinSpy.target = menu;
+            wifiJoinSpy.clear();
+            menu.activateRow(1); // cafe is open
+            compare(wifiJoinSpy.count, 1);
+            compare(wifiJoinSpy.signalArguments[0][0], "cafe");
+            compare(wifiJoinSpy.signalArguments[0][1], "");
+        }
+
+        function test_wifi_menu_secured_network_collects_a_secret() {
+            var menu = make(wifiMenuComponent, { model: wifiModel() });
+            wifiJoinSpy.target = menu;
+            wifiJoinSpy.clear();
+            menu.activateRow(0); // home is secured: prompt first
+            compare(wifiJoinSpy.count, 0);
+            compare(menu.selectedSsid, "home");
+            compare(menu.passwordPromptVisible, true);
+            menu.secret = "hunter2";
+            menu.joinSelected();
+            compare(wifiJoinSpy.count, 1);
+            compare(wifiJoinSpy.signalArguments[0][0], "home");
+            compare(wifiJoinSpy.signalArguments[0][1], "hunter2");
+        }
+
+        function test_wifi_menu_read_only_disables_join() {
+            var model = wifiModel();
+            model.readOnly = true;
+            var menu = make(wifiMenuComponent, { model: model });
+            compare(menu.rows[0].enabled, false);
+            wifiJoinSpy.target = menu;
+            wifiJoinSpy.clear();
+            menu.activateRow(0);
+            compare(wifiJoinSpy.count, 0);
+        }
+
+        function test_wifi_menu_popover_refreshes_on_open() {
+            var menu = make(wifiMenuComponent, { model: wifiModel() });
+            wifiRefreshSpy.target = menu;
+            wifiRefreshSpy.clear();
+            menu.open = true;
+            waitForRendering(stage);
+            compare(wifiRefreshSpy.count, 1);
+        }
+
+        function test_volume_menu_exposes_the_slider() {
+            var menu = make(volumeMenuComponent, { model: audioModel(false, 0.6) });
+            compare(menu.value, 0.6);
+            compare(menu.percent, 60);
+            compare(menu.muted, false);
+            compare(menu.sinkLabel, "Built-in Speakers");
+        }
+
+        function test_volume_menu_set_fraction_applies() {
+            var menu = make(volumeMenuComponent, { model: audioModel(false, 0.6) });
+            volumeSetSpy.target = menu;
+            volumeSetSpy.clear();
+            menu.setFraction(0.8);
+            compare(volumeSetSpy.count, 1);
+            verify(Math.abs(volumeSetSpy.signalArguments[0][0] - 0.8) < 0.0001);
+            // The slider clamps to the unit range.
+            menu.setFraction(1.5);
+            compare(menu.value, 1.0);
+        }
+
+        function test_volume_menu_mute_toggles() {
+            var menu = make(volumeMenuComponent, { model: audioModel(false, 0.6) });
+            muteSpy.target = menu;
+            muteSpy.clear();
+            menu.toggleMute();
+            compare(muteSpy.count, 1);
+        }
+
+        function test_volume_menu_reflects_muted_state() {
+            var menu = make(volumeMenuComponent, { model: audioModel(true, 0.6) });
+            compare(menu.muted, true);
+            compare(menu.defaultSink.description, "Built-in Speakers");
+        }
+
+        function test_status_item_click_opens_the_wifi_popover() {
+            var bar = make(menuBarComponent, {
+                width: 800,
+                statusItems: defaultStatus(),
+                wifiMenu: wifiModel()
+            });
+            var wifi = bar.statusItemFor("wifi");
+            mouseClick(wifi, wifi.width / 2, wifi.height / 2);
+            waitForRendering(stage);
+            compare(bar.openStatusItem, "wifi");
+            var menu = findChild(bar, "wifiMenu");
+            verify(menu !== null);
+            compare(menu.popup.open, true);
+            verify(bar.dropdownWidth > 0);
+            bar.closeStatusMenu();
+            waitForRendering(stage);
+            compare(bar.openStatusItem, "");
+            compare(menu.popup.open, false);
         }
 
         // -- Clock (FR-5) ---------------------------------------------------

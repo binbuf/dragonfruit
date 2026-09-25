@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(1 earlier section omitted)_
+_(2 earlier sections omitted)_
 
-- **Environment / toolchain**: Qt/CMake toolchain at `~/.local/df-toolchain/usr` (Qt 6.11, CMake 4.3,; Host is Fedora 44 with a KDE Wayland session (`wayland-0`); the nested backend
 - **Landed foundation**: Compositor core (nested/DRM/headless, calloop, damage-driven rendering), input
 - **T01 — T-01.1 Titlebar render element**: **State: done.** The SSD titlebar element exists, is sized from the generated; **`compositor/src/window/decoration.rs`** — `TitlebarElement`,
 - **T02 — T-01.2 Traffic-light actions**: **State: done.** Close/minimize/zoom are clickable through the titlebar; **`compositor/src/window/decoration.rs`** — `TitlebarElement::cluster_rect()`
@@ -44,6 +43,7 @@ _(1 earlier section omitted)_
 - **T35 — T-07.2b NetworkManager join and polkit degradation**: **State: done.** The write path (join/activate) and the polkit read-only; **`services/networkmanager/src/source.rs`** — the transport seam gained
 - **T36 — T-07.3 Audio adapter (PipeWire/WirePlumber)**: **State: done.** The audio adapter landed in a new concrete-adapter crate; no; **`services/audio/`** (new crate `dragonfruit-audio`, workspace member; deps:
 - **T37 — T-07.4 Power adapter (UPower)**: **State: done.** The read-only power adapter landed in a new concrete-adapter; **`services/power/`** (new crate `dragonfruit-power`, workspace member; deps:
+- **T38 — T-07.5a Wi-Fi and volume status menus**: **State: done.** Wi-Fi list/join and volume slider/mute render in; **`services/system-status/`** (new crate `dragonfruit-system-status`,
 - **Follow-ups**: T-07.2a (done in T34): NetworkManager **read** path + mock/fixture landed; T-07.1a (done in T32): the adapter contract + mock landed
 <!-- symphony:digest:end -->
 
@@ -2481,6 +2481,77 @@ Gotchas for later tasks:
 - **UPower on this host has no battery** (line power only), so the live smoke
   test reads `Ok(Some)` with `present() == false`; the fixture covers the
   battery path.
+
+## T38 — T-07.5a Wi-Fi and volume status menus
+
+**State: done.** Wi-Fi list/join and volume slider/mute render in
+design-system popovers, served by a new session-bus bridge host over the
+T-07.2/T-07.3 adapters.
+
+What landed:
+
+- **`services/system-status/`** (new crate `dragonfruit-system-status`,
+  workspace member; deps: the three adapter crates + `serde_json` + `zbus`):
+  `src/lib.rs` (`StatusHost<N, A>` adapter-only core, `wifi_view`/`audio_view`
+  JSON, `join`/`set_volume`/`set_mute`/`toggle_mute` reports,
+  `DBUS_NAME`/`DBUS_PATH`/interface consts), `src/dbus.rs` (blocking zbus
+  service `org.dragonfruit.SystemStatus1` at `/org/dragonfruit/SystemStatus1`,
+  interfaces `…Wifi`/`…Audio`), `src/main.rs` (`--print-wifi`/`--print-audio`
+  smoke modes). `tests/host.rs` (4) + 7 lib tests.
+- **Shell side**: `shell/src/systemstatusmodel.{h,cpp}` (dockcore lib, JSON →
+  QVariantMap menu model, request signals), `shell/src/systemstatusclient.{h,cpp}`
+  (`DbusSystemStatusClient` + `MockSystemStatusClient`),
+  `shell/menubar/WifiMenu.qml` + `VolumeMenu.qml`, and `MenuBar.qml` popover
+  wiring + `ShellController` bridge + `StatusGlyph.qml` `wifi-*` variants.
+  `shell/tests/tst_statusmodel.cpp` (new, 9 cases) and 10 new cases in
+  `tst_menubar.qml`.
+- **Makefile** — `make e2e` now runs `cargo test -p dragonfruit-system-status`.
+- **Docs** — `07-system-integration.md` "The status bridge host (T-07.5a)";
+  ADR `0029`.
+- **Capture** — `scripts/capture-status-menus.sh` +
+  `capture-status-menus-driver.py`; `docs/captures/t07.5a-wifi.png` /
+  `t07.5a-volume.png`. Vision check: Wi-Fi popover lists
+  home/dragonfruit-guest/NeighbourNet with signal bars; Sound popover shows a
+  60% slider, "Built-in Speakers", Mute.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-system-status` — 7 lib + 4 integration green.
+- `make qml-test` — includes `tst_statusmodel` (9) and the new `tst_menubar`
+  cases; `make e2e` exit 0; `cargo fmt --all -- --check` clean.
+- Smoke: `cargo run -q -p dragonfruit-system-status -- --print-wifi` (and
+  `--print-audio`) prints the live JSON view.
+
+Gotchas for later tasks:
+
+- **The bridge host is a distinct process.** Nothing launches
+  `dragonfruit-system-status` yet; the shell constructs
+  `DbusSystemStatusClient` whenever `--placeholders` is off. T-07.5b removes
+  the flag, so it must also start the host (session bus) or the items hide.
+- **`--placeholders` now drives `MockSystemStatusClient`** (the demo data).
+  Keep that fixture client when the flag goes; the headless tests and the
+  capture script depend on it.
+- **Popover geometry**: status popovers reuse the existing menu `overlay`
+  popup surface. `MenuBar._dropdownRect` returns the open status popover's
+  rect; `ShellController::onStatusMenuOpened/Closed` set `m_menuOpen`. A new
+  status popover must set `openStatusItem` (only "wifi"/"volume" are wired).
+- **Tap handling**: the bar's click-away `TapHandler` must ignore taps inside
+  `statusRow` (as it does for `appMenuRow`), otherwise the tap that opens a
+  status popover closes it in the same event. Keep that guard for battery.
+- **Glyphs**: `StatusGlyph.qml` now handles `wifi-off`/`wifi-disabled`
+  (dimmed), `wifi-secure`, `wifi-connecting`, and `wifi-error` (small cross)
+  in addition to `wifi`; volume uses `volume`/`volume-muted`.
+- **No daemon-signal refresh yet**: the host re-reads on startup, on the
+  shell's explicit `Refresh()` (menu open), and after an action reply. The
+  daemon subscriptions (NM signals / `pw-mon` / UPower `PropertiesChanged`)
+  are T-07.6 and must not become a poll loop.
+- **`SystemStatusModel::parseView` rejects a mismatched `kind`**, so the two
+  interfaces cannot cross-pollute; `visible`/`enabled` are derived from
+  `state` (`unavailable` hides, `available` enables, `error` is visible/inert).
+- **Status item measured centers** (placeholder demo, 1920-wide output,
+  right-anchored): wifi x≈1615, bluetooth≈1644, volume≈1673, battery≈1702,
+  y=14. The capture driver hard-codes wifi/volume from-right (305/247 px); if
+  T-07.5b adds/removes visible placeholder slots, re-measure.
 
 ## Follow-ups
 
