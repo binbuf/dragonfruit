@@ -30,6 +30,8 @@ FocusScope {
     readonly property int tileIconSize: 48
     readonly property int cellWidth: 116
     readonly property int cellHeight: 104
+    // The virtualizing view, exposed for the windowed-rendering check (T-10.5).
+    property alias gridView: grid
 
     function isSelected(nodeId) {
         return root.selectedIds.indexOf(nodeId) >= 0;

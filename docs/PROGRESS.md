@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(28 earlier sections omitted)_
+_(29 earlier sections omitted)_
 
-- **T26 — T-05.4 Image wallpaper and per-Space slide**: **State: done.** A Space's wallpaper can be an image (`source` + `fit`) decoded; **`compositor/src/wallpaper.rs`** (new) — `sample_wallpaper` (pure
 - **T27 — T-05.5 Desktop Reveal**: **State: done.** Ctrl+Down routes `DesktopReveal` through the one overview; **`compositor/src/overview/reveal.rs`** (new) — `escape_rect` (the off-screen
 - **T28 — T-05.6 Overview frame budget and capture**: **State: done.** The overview gesture now has its own **gesture-scoped** 60 Hz; **`compositor/src/instrument.rs`** — `GestureBudgetTrace`: render-duration
 - **T29 — T-06.1 App-switcher state machine**: **State: done.** The compositor now owns a real Cmd-Tab app switcher: open on; **`compositor/src/app_switcher.rs`** (new) — `AppSwitcher` pure machine
@@ -45,6 +44,7 @@ _(28 earlier sections omitted)_
 - **T62 — T-10.4a Files window, toolbar, and sidebar**: **State: done.** The Files window, toolbar, and sidebar are real. `apps/files`; **`apps/files/FilesBridge.{h,cpp}`** — `QML_SINGLETON`, `QML_NAMED_ELEMENT(Files)`:
 - **T63 — T-10.4b Files list and icon views**: **State: done.** The Files icon and list views render the `files-core` listing.; **`services/files-core/src/ffi.rs`** (new) — the C ABI: `df_files_begin`,
 - **T64 — T-10.4c Files context menus, multi-select, optimistic UI**: **State: done.** Context menus, multi-select, and optimistic; **`services/files-core/src/ffi.rs`** — `FfiSession` now wraps
+- **T65 — T-10.5 Files performance budgets**: **State: done.** Files meets both budgets with incremental/windowed delivery.; **`services/files-core/src/ffi.rs`** — `df_files_row` / `df_files_delta`,
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -4748,3 +4748,100 @@ Gotchas for later tasks:
 - **Still deferred (T-10.4c+):** rubber-band selection, file opening /
   Open With, Get Info, Copy/Duplicate/Compress/Make Alias, the folder watcher,
   and the search result set.
+
+## T65 — T-10.5 Files performance budgets
+
+**State: done.** Files meets both budgets with incremental/windowed delivery.
+The C ABI no longer re-sends the whole listing per batch: `df_files_poll_delta`
+returns only the newly arrived nodes (at their final ranks), and
+`df_files_snapshot_delta` returns a full reset for the first paint / sort /
+optimistic edits. The Qt facade merges insertions into its display order in one
+O(n+k) pass and emits `beginInsertRows` + `dataChanged` instead of resetting
+the view. See ADR [0051](design/adr/0051-files-core-incremental-delta-abi.md).
+
+What landed:
+
+- **`services/files-core/src/ffi.rs`** — `df_files_row` / `df_files_delta`,
+  `df_files_poll_delta`, `df_files_snapshot_delta`, `df_files_delta_free`,
+  `df_files_begin_synthetic`. `FfiSession` keeps a `reported` `HashSet<NodeId>`
+  so a streamed node is serialized exactly once; a vanished reported id falls
+  back to a reset. The old `df_files_poll`/`df_files_snapshot` snapshot
+  functions remain for the Rust unit tests (they do not touch `reported`).
+- **`services/files-core/src/mock.rs`** — `SyntheticSource`: a disk-free
+  `DirectorySource` fabricating `file-0000000.txt…` with sizes/mtimes, batches
+  driven by `next_batch(max)`. Exported from `lib.rs`.
+- **`services/files-core/src/listing.rs`** — the worker doubles its batch each
+  event up to `MAX_BATCH = 8192`, keeping the first batch at `DEFAULT_BATCH`
+  (first frame unchanged) while cutting a 100k merge from ~390 to ~20 passes.
+  `a_large_directory_streams_incrementally` still sees a first batch ≤ 64.
+- **`apps/files/ffi/files_core.h`** — the delta structs/functions mirrored.
+- **`apps/files/FilesDirectoryModel.{h,cpp}`** — `m_nodes` is now
+  `std::vector<Node>`; `applyDelta`/`applyReset`/`applyInsertions`/`nodeFromFfi`.
+  `poll`/`repaint`/`applySort` use the delta functions. `start()` calls
+  `df_files_begin_synthetic` for a location ending in `/synthetic` when
+  `DF_FILES_SYNTHETIC_COUNT > 0`; `DF_FILES_SYNTHETIC_BATCH` sets the batch.
+- **`apps/files/FilesIconView.qml` / `FilesListView.qml`** — `gridView` /
+  `listView` aliases so the windowed-delegate check can read the viewport.
+- **Tests** — `services/files-core/tests/performance.rs` (4 tests: warm 1k
+  first frame, real-fallback 1k, 100k delivered-once, 100k viewport sweep);
+  `ffi::tests::incremental_poll_sends_each_streamed_node_once` and
+  `a_sort_change_delivers_a_reset_delta`; QML
+  `test_large_list_paints_fast_and_stays_windowed` and
+  `test_large_list_scroll_sweep` (runner sets `DF_FILES_SYNTHETIC_COUNT=100000`,
+  batch 512).
+- **Docs** — ADR 0051; `09-files.md` T-10.5 status paragraph; raw numbers in
+  `docs/captures/t10-files-perf.txt`.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `CARGO_NET_OFFLINE=true cargo test -p dragonfruit-files-core` — 134 pass
+  (62 unit incl. 8 ffi + 17 operations + 11 optimistic + 5 sorting + 6
+  streaming + 13 trash + 12 watcher + 4 doctests + 4 performance).
+- `CARGO_NET_OFFLINE=true cargo test -p dragonfruit-files-core --test
+  performance -- --nocapture --test-threads=1` — prints the budgets.
+- `make qml-test` — 32/32 ctest green; `tst_files_shell` 28 pass.
+- `make lint` green; `make e2e` exit 0.
+
+Raw numbers (debug tree; full text in `docs/captures/t10-files-perf.txt`):
+
+- warm 1k first frame 0.57 ms (budget < 50 ms); real 1k 1.80 ms.
+- 100k stream: 100000 rows delivered exactly once in ~1.06 s.
+- 100k scroll: 40-row viewport read 2.2 µs (budget < 16.6 ms / frame).
+- Qt (offscreen/software): 100k first frame 21 ms; icon delegates 70 (48/49
+  after scrolling to end/home); list delegates 24; 100 list jumps 999 ms.
+
+Live capture (`/tmp/opencode/t65-capture.sh top|scroll`;
+`/tmp/opencode/t65-still.py`; PNGs `/tmp/opencode/t65-files-100k-*.png`).
+Launch env: `DF_DEMO_QT_APP=build/apps/files/dragonfruit-files`,
+`DF_FILES_START_URI=file:///synthetic`, `DF_FILES_START_VIEW=list`,
+`DF_FILES_SYNTHETIC_COUNT=100000`, `DF_FILES_SYNTHETIC_BATCH=512`. Raw vision
+observation on the window: title `synthetic`; sidebar FAVORITES/LOCATIONS;
+list headers `Name` (sort arrow) / `Date Modified` / `Size` / `Kind`; rows
+`file-0000000.txt` … `file-0000016.txt`; breadcrumb `Computer > synthetic`.
+Vision is a supporting check.
+
+Gotchas for later tasks:
+
+- **The incremental delta contract is "existing rows never reorder".** If a
+  delta is not strictly-ascending ranks, or `reported.len() > model.len()`, the
+  Rust side or the facade resets. Optimistic begin/confirm/revert and any
+  watcher removal must go through `df_files_snapshot_delta` (reset), not the
+  insertion path.
+- **Old-outside, new-inside:** the Rust `reported` set is only updated by the
+  delta functions. Do not mix `df_files_poll` and `df_files_poll_delta` on one
+  session in production code (tests may use the snapshot functions on their own
+  sessions).
+- **`df_files_poll_delta` folds ops first.** A pending operation outcome always
+  yields a reset delta; keep draining until `df_files_pending_ops == 0`.
+- **The Qt model declares insertions appended** (`beginInsertRows(oldCount,
+  newCount-1)`) then `dataChanged(0, oldCount-1)`. It is correct because
+  delegates are index-based and re-query `data`; do not switch to a per-rank
+  insert without re-checking the layoutChanged/scroll behavior.
+- **The synthetic source is test-only**, gated to `/synthetic`; production
+  listings still go through `StdFsSource` (GIO headers absent, ADR 0043).
+- **Batches grow: first 256, then double to 8192.** A test that asserts a
+  specific non-first batch size will break; assert bounds instead.
+- **Synthetic mtimes start at the Unix epoch**, so the list shows `12/31/69`.
+  Cosmetic only.
+- **Still deferred (T-10.6a+):** the Dock Trash source, wiring the folder
+  watcher to the facade (via the delta path), and network-mounted performance.

@@ -26,6 +26,15 @@ use crate::{Location, Node};
 /// The default number of entries a worker forwards per event.
 pub const DEFAULT_BATCH: usize = 256;
 
+/// The largest batch a worker forwards per event once a listing is large.
+///
+/// The model merges each batch into its sorted projection in O(n), so a fixed
+/// small batch makes a 100k listing O(n²/batch) comparisons. Growing the batch
+/// geometrically after the first frame keeps the first paint immediate (the
+/// first batch is still `DEFAULT_BATCH`) while cutting the merge count for a
+/// large directory by an order of magnitude (T-10.5).
+pub const MAX_BATCH: usize = 8_192;
+
 /// One message from a listing worker.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ListingEvent {
@@ -151,6 +160,7 @@ pub(crate) fn begin(
                 return;
             }
             let mut reader = reader;
+            let mut batch = batch;
             loop {
                 if worker_cancel.load(Ordering::SeqCst) {
                     break;
@@ -160,6 +170,9 @@ pub(crate) fn begin(
                         if sender.send(ListingEvent::batch(generation, nodes)).is_err() {
                             break;
                         }
+                        // Keep the first frame prompt, then read larger chunks
+                        // so a big directory merges in far fewer passes.
+                        batch = batch.saturating_mul(2).min(MAX_BATCH);
                     }
                     Ok(None) => {
                         let _ = sender.send(ListingEvent::done(generation));

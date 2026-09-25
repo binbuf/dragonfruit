@@ -22,8 +22,9 @@
 #include <QAbstractListModel>
 #include <QString>
 #include <QTimer>
-#include <QVector>
 #include <QtQml/qqmlregistration.h>
+
+#include <vector>
 
 class FilesDirectoryModel : public QAbstractListModel
 {
@@ -82,7 +83,7 @@ public:
     QString location() const { return m_location; }
     void setLocation(const QString &uri);
 
-    int count() const { return m_nodes.size(); }
+    int count() const { return int(m_nodes.size()); }
     QString state() const { return m_state; }
     QString errorMessage() const { return m_errorMessage; }
     QString sortKey() const { return m_sortKey; }
@@ -146,7 +147,12 @@ private:
 
     void start();
     void stop();
-    void applySnapshot(const struct df_files_event *event);
+    // Apply one incremental delta: a reset rebuilds the whole model, an
+    // insertion delta merges only the new rows (T-10.5).
+    void applyDelta(const struct df_files_delta *delta);
+    void applyReset(const struct df_files_delta *delta);
+    void applyInsertions(const struct df_files_delta *delta);
+    static Node nodeFromFfi(const struct df_files_node &source);
     void setState(const QString &state, const QString &error = QString());
     void applySort();
     // Repaint from the session's current snapshot without waiting.
@@ -163,7 +169,10 @@ private:
 
     void *m_session = nullptr;
     QTimer m_timer;
-    QVector<Node> m_nodes;
+    // The rows in the model's ordered projection (T-10.5). An insertion delta
+    // merges the new nodes into this vector in one pass; `data()` reads it
+    // directly, so the view's delegate virtualization keeps memory flat.
+    std::vector<Node> m_nodes;
     QString m_location;
     QString m_state = QStringLiteral("idle");
     QString m_errorMessage;

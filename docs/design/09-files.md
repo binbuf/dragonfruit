@@ -175,10 +175,10 @@ Rust. `FilesIconView` is the centered grid (glyph over a two-line label) and
 one switch, and the choice persists per location through
 `FilesBrowser.viewFor`/`setView`. Selection is the stable node id, owned by
 `FilesShell` rather than either view, so the view switch cannot lose it.
-**Still deferred:** incremental/windowed delivery (T-10.5; the facade
-currently resets from a full snapshot per batch), the folder watcher, file
-opening, context menus, multi-select, rubber-band selection, column resizing,
-inline rename, and the search result set (T-10.4c+).
+**Still deferred (at the time):** incremental/windowed delivery (shipped in
+T-10.5), the folder watcher, file opening, context menus, multi-select,
+rubber-band selection, column resizing, inline rename, and the search result
+set (T-10.4c+).
 
 **Implementation status (T-10.4c).** Context menus, multi-select, and the
 optimistic operations are real. Selection is the shell's set of stable node
@@ -199,6 +199,22 @@ and operations work on a loaded folder; the session and its one worker are
 retired on navigation. **Still deferred:** rubber-band selection, Open With,
 Get Info, Copy/Duplicate/Compress/Make Alias, file opening, the folder watcher,
 and the search result set (T-10.4c+/T-10.5).
+
+**Implementation status (T-10.5).** The performance budgets are met with
+windowed delivery. The C ABI no longer re-sends the whole listing per batch: a
+new incremental delta surface (`df_files_poll_delta` / `df_files_snapshot_delta`)
+sends only the nodes that arrived, at their final ranks, and the Qt facade
+merges them into its display order in one O(n+k) pass without resetting the
+view (ADR [0051](adr/0051-files-core-incremental-delta-abi.md)). The listing
+worker grows its batch geometrically after the first frame, so a 100k listing
+merges in a handful of passes. `SyntheticSource` / `df_files_begin_synthetic`
+provide a disk-free 100k fixture gated to a `/synthetic` location. Headless
+budgets (`services/files-core/tests/performance.rs`, the `test_large_list_*`
+QML cases): warm 1k open first frame ~0.5 ms (budget < 50 ms); 100k stream
+delivers each node once in ~1.0 s and a 40-row viewport read costs ~2 µs
+(budget < 16.6 ms); the QML icon/list views instantiate a bounded delegate
+window at 100k rows. Raw numbers are recorded in
+[`docs/captures/t10-files-perf.txt`](../captures/t10-files-perf.txt).
 
 ### Model
 

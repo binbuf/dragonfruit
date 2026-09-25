@@ -57,5 +57,11 @@ int main(int argc, char **argv)
         return 2;
     qputenv("XDG_DATA_HOME", dataHome.path().toUtf8());
 
+    // The T-10.5 windowed-rendering check lists a synthetic 100k directory
+    // through the same bridge. The Rust side fabricates the entries; only a
+    // `/synthetic` location is gated to it, so the fixtures above stay real.
+    qputenv("DF_FILES_SYNTHETIC_COUNT", "100000");
+    qputenv("DF_FILES_SYNTHETIC_BATCH", "512");
+
     return quick_test_main(argc, argv, "tst_files_shell", QUICK_TEST_SOURCE_DIR);
 }

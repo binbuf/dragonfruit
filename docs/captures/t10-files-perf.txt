@@ -1,0 +1,58 @@
+# T-10.5 — Files performance budgets (raw numbers)
+
+Recorded 2026-09-25 on the dev host (debug builds: Cargo `dev` profile and the
+CMake/Qt debug tree). The T-10.5 budgets are in
+docs/design/09-files.md#performance-budgets.
+
+## Listing / streaming benchmarks — `services/files-core`
+
+Command:
+
+    CARGO_NET_OFFLINE=true cargo test -p dragonfruit-files-core \
+        --test performance -- --nocapture --test-threads=1
+
+Raw output:
+
+    T-10.5 warm 1k open: first_frame=0.57 ms (budget < 50 ms), first_batch_rows=256
+    T-10.5 real 1k open: first_frame=1.80 ms
+    T-10.5 100k stream: rows_delivered=100000 (windowed, not 100000x snapshots), elapsed=1057.2 ms, batch=512
+    T-10.5 100k scroll: viewport=40 rows, sweeps=250, per_viewport=2.2 us (budget < 16666 us), total=0.54 ms, names_seen=160000
+
+Reading:
+
+    warm 1k open to first frame   0.57 ms   budget < 50 ms      PASS
+    real-fallback 1k open         1.80 ms   budget < 50 ms      PASS
+    100k rows delivered          100000     each node once      PASS
+    viewport read (40 rows)       2.2 us    budget < 16666 us   PASS
+
+The 100k stream sends each node exactly once; the pre-T-10.5 whole-snapshot
+path re-serialized ~100000 rows per batch (the assertion
+`incremental_poll_sends_each_streamed_node_once` pins this).
+
+## Windowed-rendering / scroll trace — Qt (offscreen, software scene graph)
+
+Command:
+
+    ctest --test-dir build -R tst_files_shell -V
+
+QML cases `test_large_list_paints_fast_and_stays_windowed` and
+`test_large_list_scroll_sweep` list a synthetic 100k directory through the same
+C ABI and read the instantiated delegate count from the virtualizing views:
+
+    first frame                    21 ms       budget < 50 ms   PASS
+    rows                           100000
+    icon-view delegates            70 (end 48, home 49)  for 100000 rows
+    list-view delegates            24
+    100 list jumps                 999 ms      (~10 ms per jump, debug/offscreen)
+    retained rows                  100000      (no per-scroll growth)
+
+The icon/list views instantiate 24–70 delegates for 100000 rows, so the
+painted window is bounded by the viewport, not the listing: memory does not
+grow as the list is scrolled.
+
+## Notes
+
+- Debug build: the numbers are the dev-loop budget, not a release measurement.
+- `DF_FILES_SYNTHETIC_COUNT`/`DF_FILES_SYNTHETIC_BATCH` select the disk-free
+  synthetic 100k source, gated to a `/synthetic` location.
+- Network-mounted performance is explicitly out of scope (T-10.5 deferred).
