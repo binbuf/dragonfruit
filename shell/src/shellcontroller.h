@@ -14,6 +14,7 @@
 
 #include "compositorpolicy.h"
 #include "desktopentry.h"
+#include "displayspolicy.h"
 #include "dockmodel.h"
 #include "downloadsmonitor.h"
 #include "framecommitgate.h"
@@ -195,6 +196,10 @@ private:
     // compositor (`df_workspace.set_wallpaper`). Runs on every
     // `changed`/`refreshed` and once after the protocol connects.
     void applyWallpaperPolicy();
+    // T-09.5: re-read the settingsd display keys and forward them to the
+    // compositor (`df_output.set_scale` / `df_output.set_transform`). Runs on
+    // every `changed`/`refreshed` and once after the protocol connects.
+    void applyDisplayPolicy();
     // Write one `dock.*` key through the settings client (settingsd is the
     // single owner) and refresh the typed local view.
     void writeDockSetting(const QString &key, const QVariant &value);
@@ -290,6 +295,10 @@ private:
     // value does not re-send the protocol requests.
     WallpaperSettings m_wallpaperSettings;
     bool m_wallpaperSent = false;
+    // T-09.5: the last display selection forwarded, so an unchanged settings
+    // value does not re-send the protocol requests.
+    DisplaySettings m_displaySettings;
+    bool m_displaySent = false;
     // The typed Dock view of the client's keys, refreshed on every change.
     DockConfig m_dockConfig;
     // True while a local write is in flight, so the client's synchronous

@@ -902,6 +902,32 @@ void ShellProtocol::applyWallpaper()
     wl_display_flush(m_display);
 }
 
+void ShellProtocol::setDisplayPolicy(double scale, uint32_t transform)
+{
+    // T-09.5: remember the selection and push it to the announced outputs.
+    // When no output is known yet, `onManagerDone`/`onManagerOutput` applies it
+    // after the replay.
+    m_displayKnown = true;
+    m_displayScale = scale;
+    m_displayTransform = transform;
+    applyDisplayPolicy();
+}
+
+void ShellProtocol::applyDisplayPolicy()
+{
+    if (!m_display || !m_displayKnown || m_outputs.isEmpty())
+        return;
+    // The shell is the forwarder; the compositor is the applier (ADR 0034).
+    // Wave 1 has no per-display selection, so the policy reaches every output;
+    // per-output targeting is a T-16 item. `wl_fixed_from_double` is the wire
+    // form of `df_output.set_scale`.
+    for (df_output *output : std::as_const(m_outputs)) {
+        df_output_set_scale(output, wl_fixed_from_double(m_displayScale));
+        df_output_set_transform(output, m_displayTransform);
+    }
+    wl_display_flush(m_display);
+}
+
 void ShellProtocol::setLaunchOrigin(const QString &appId, int x, int y, int width, int height)
 {
     // T-02.1b: hand the Dock entry's tile rectangle to the compositor so a
@@ -1004,6 +1030,9 @@ void ShellProtocol::teardown()
     m_switcherActive = false;
     m_switcherPending = false;
     m_switcherEntries.clear();
+    // The manager destroy above freed every df_output; drop our handles.
+    m_outputs.clear();
+    m_displayKnown = false;
     m_manager = nullptr;
     m_shell = nullptr;
     m_core = nullptr;
@@ -1529,6 +1558,11 @@ void ShellProtocol::onManagerOutput(void *data, df_toplevel_manager *, df_output
         onOutputDone,       onOutputRemoved,
     };
     df_output_add_listener(id, &listener, self);
+    // Remember the output so a display policy can reach it (T-09.5). A policy
+    // that arrived before the replay is applied now.
+    self->m_outputs.append(id);
+    if (self->m_displayKnown)
+        self->applyDisplayPolicy();
 }
 
 void ShellProtocol::onManagerWorkspace(void *data, df_toplevel_manager *, df_workspace *id)
@@ -1670,8 +1704,10 @@ void ShellProtocol::onManagerDone(void *data, df_toplevel_manager *)
 {
     auto *self = static_cast<ShellProtocol *>(data);
     // The replay is complete: the Space list is now known, so a wallpaper
-    // selection that arrived before it can be forwarded (T-09.3).
+    // selection that arrived before it can be forwarded (T-09.3). The output
+    // list is known too, so a display selection can be applied (T-09.5).
     self->applyWallpaper();
+    self->applyDisplayPolicy();
     if (!self->m_switcherPending)
         return;
     self->m_switcherPending = false;
@@ -1808,7 +1844,11 @@ void ShellProtocol::onOutputReservedZone(void *, df_output *, uint32_t edge, uin
             thickness);
 }
 void ShellProtocol::onOutputDone(void *, df_output *) {}
-void ShellProtocol::onOutputRemoved(void *, df_output *) {}
+void ShellProtocol::onOutputRemoved(void *data, df_output *output)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    self->m_outputs.removeAll(output);
+}
 void ShellProtocol::onWorkspaceName(void *data, df_workspace *workspace, const char *name)
 {
     auto *self = static_cast<ShellProtocol *>(data);

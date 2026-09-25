@@ -19,7 +19,7 @@ use crate::value::{SettingsError, Value};
 
 /// The current schema revision. Bump only when a key is added or a default
 /// changes; renames and removals are forbidden within the `1` series.
-pub const SCHEMA_VERSION: u32 = 2;
+pub const SCHEMA_VERSION: u32 = 3;
 
 /// The D-Bus type of a settings value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,18 +64,20 @@ pub enum KeyGroup {
     Gestures,
     Appearance,
     Wallpaper,
+    Displays,
     Animation,
     Input,
 }
 
 impl KeyGroup {
     /// Every group, in schema order.
-    pub const ALL: [KeyGroup; 7] = [
+    pub const ALL: [KeyGroup; 8] = [
         KeyGroup::Dock,
         KeyGroup::Workspaces,
         KeyGroup::Gestures,
         KeyGroup::Appearance,
         KeyGroup::Wallpaper,
+        KeyGroup::Displays,
         KeyGroup::Animation,
         KeyGroup::Input,
     ];
@@ -88,6 +90,7 @@ impl KeyGroup {
             KeyGroup::Gestures => "gestures",
             KeyGroup::Appearance => "appearance",
             KeyGroup::Wallpaper => "wallpaper",
+            KeyGroup::Displays => "displays",
             KeyGroup::Animation => "animation",
             KeyGroup::Input => "input",
         }
@@ -454,6 +457,33 @@ pub const KEYS: &[KeySpec] = &[
         consumer: "shell/wallpaper forwarder, compositor/workspace model",
         since: 2,
         summary: "Apply the selection to every Space, or only the active one.",
+    },
+    // ── Displays ────────────────────────────────────────────────────────
+    KeySpec {
+        key: "display.scale",
+        group: KeyGroup::Displays,
+        kind: KeyType::Number,
+        default: KeyDefault::Number(1.0),
+        allowed: &[],
+        min: Some(0.5),
+        max: Some(2.0),
+        owner: "apps/settings",
+        consumer: "shell/display forwarder, compositor/output",
+        since: 3,
+        summary: "Output scale / scaled-resolution factor; 1.0 is the native mode.",
+    },
+    KeySpec {
+        key: "display.rotation",
+        group: KeyGroup::Displays,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("normal"),
+        allowed: &["normal", "90", "180", "270"],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/display forwarder, compositor/output",
+        since: 3,
+        summary: "Output rotation as clock-wise degrees.",
     },
     // ── Animation policy ────────────────────────────────────────────────
     KeySpec {

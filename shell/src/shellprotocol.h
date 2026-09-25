@@ -198,6 +198,14 @@ public:
     // is remembered and re-sent once the manager has announced its Spaces.
     void setWallpaper(const QString &source, uint32_t fit, bool showOnAllSpaces);
 
+    // Forward the settingsd display selection to the compositor (T-09.5,
+    // `df_output.set_scale` / `df_output.set_transform`): `scale` is the
+    // scaled-resolution factor (`display.scale`), `transform` the
+    // already-mapped `df_output.transform` value (`display.rotation`). The
+    // selection is remembered and applied once the manager has announced its
+    // outputs, so a policy that predates the output list is not lost.
+    void setDisplayPolicy(double scale, uint32_t transform);
+
     // Hand the Dock entry's tile rectangle (logical global pixels) to the
     // compositor so the launching app's window appears from it (T-02.1b,
     // `df_toplevel_manager.set_launch_origin`, additive in v4).
@@ -353,6 +361,11 @@ private:
     // call before any Space is known (it is then a no-op; `onManagerDone`
     // retries).
     void applyWallpaper();
+
+    // Send the remembered display selection to every announced output. Safe to
+    // call before any output is known (it is then a no-op; `onManagerOutput`
+    // retries).
+    void applyDisplayPolicy();
 
     // Wayland listener trampolines.
     static void onRegistryGlobal(void *data, wl_registry *registry, uint32_t name,
@@ -586,5 +599,11 @@ private:
     QString m_wallpaperSource;
     uint32_t m_wallpaperFit = 0;
     bool m_wallpaperShowOnAllSpaces = true;
+    // Announced outputs, in announcement order (T-09.5); the primary output is
+    // first. `m_displayKnown` is false before the first policy arrives.
+    QList<df_output *> m_outputs;
+    bool m_displayKnown = false;
+    double m_displayScale = 1.0;
+    uint32_t m_displayTransform = 0;
     QSet<wl_buffer *> m_buffers;
 };

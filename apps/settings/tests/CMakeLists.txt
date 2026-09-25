@@ -92,6 +92,29 @@ set_tests_properties(tst_settings_desktop_dock PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# Displays-pane tests (T-09.5): the resolution tiles and rotation select apply
+# live to their `display.*` key and an external change converges. The
+# `DF_SETTINGS_FIXTURE` mock keeps the cases off the host bus.
+qt_add_executable(tst_settings_displays
+    tst_settings_displays.cpp
+)
+target_link_libraries(tst_settings_displays PRIVATE
+    Qt6::QuickTest
+    dragonfruit-design-systemplugin
+    dragonfruit-settings-uiplugin
+)
+qt_import_qml_plugins(tst_settings_displays)
+
+add_test(
+    NAME tst_settings_displays
+    COMMAND tst_settings_displays
+        -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_settings_displays.qml
+)
+set_tests_properties(tst_settings_displays PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;DF_SETTINGS_FIXTURE=1;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Settings live-apply tests (T-09.1b): a representative control is bound to a
 # settingsd key through the QML `Settings` singleton and round-trips it. The
 # bus-backed cases run under a private session bus; the real-daemon case uses

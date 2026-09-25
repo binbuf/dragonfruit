@@ -44,6 +44,7 @@ endif()
 add_library(dragonfruit-shell-dockcore STATIC
     compositorpolicy.cpp
     desktopentry.cpp
+    displayspolicy.cpp
     dockdrops.cpp
     dockmodel.cpp
     dockprojection.cpp

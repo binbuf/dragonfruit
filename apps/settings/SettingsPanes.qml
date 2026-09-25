@@ -37,7 +37,7 @@ QtObject {
           description: qsTr("Change the Dock's size, position, magnification, and behaviors."),
           shipped: true },
         { id: "displays", title: qsTr("Displays"), icon: "displays",
-          description: qsTr("Set resolution, scaling, and brightness for each display."),
+          description: qsTr("Set the resolution, scaling, and rotation for each display."),
           shipped: true },
         { id: "menu-bar", title: qsTr("Menu Bar"), icon: "general",
           description: "", shipped: false },

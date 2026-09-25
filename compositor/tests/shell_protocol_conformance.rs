@@ -1240,6 +1240,18 @@ fn handshake_chrome_and_control_conformance() {
         },
     );
 
+    // `df_output.set_transform` applies through the same path (T-09.5): the
+    // Displays pane's rotation control is forwarded here by the shell.
+    state.output_transforms.clear();
+    state.outputs[0].set_transform(df_output::Transform::_90);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.output_transforms.iter().any(|transform| *transform == 1),
+    );
+
     // --- Mission Control + app switcher state (FR-2) ----------------------
     state.overviews.clear();
     manager.enter_mission_control();

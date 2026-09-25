@@ -18,6 +18,7 @@ qt_add_qml_module(dragonfruit-settings-ui
         AppearancePane.qml
         WallpaperPane.qml
         DesktopDockPane.qml
+        DisplaysPane.qml
         SettingsShell.qml
         SettingsWindow.qml
 )
@@ -42,6 +43,7 @@ df_qml_lint(app-settings
     AppearancePane.qml
     WallpaperPane.qml
     DesktopDockPane.qml
+    DisplaysPane.qml
     SettingsShell.qml
     SettingsWindow.qml
 )
