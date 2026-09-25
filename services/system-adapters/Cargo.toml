@@ -1,0 +1,18 @@
+[package]
+name = "dragonfruit-system-adapters"
+description = "Thin, mockable adapters over the host system services (T-07)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+# The contract is dependency-free on purpose: every concrete adapter
+# (NetworkManager, PipeWire/WirePlumber, UPower) depends on it, so it must
+# not drag in any daemon-specific or D-Bus stack. Concrete adapters bring
+# their own dependencies behind the `Adapter` trait.
+[dependencies]
+
+[lib]
+name = "dragonfruit_system_adapters"
+path = "src/lib.rs"

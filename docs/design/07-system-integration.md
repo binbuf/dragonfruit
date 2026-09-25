@@ -40,6 +40,26 @@ equivalent) API intended exactly for custom desktop frontends.
    exposes an explicit "unavailable" state; panes hide or disable accordingly,
    and nothing blocks session startup on one daemon.
 
+## The adapter contract (T-07.1a)
+
+The one contract every adapter implements lives in the dependency-free
+`services/system-adapters` crate (`dragonfruit-system-adapters`); concrete
+adapters depend on it and keep their daemon stack behind it
+([adr/0024](adr/0024-system-adapter-contract.md)). An adapter exposes the last
+state pushed by its daemon as one of three `AdapterState`s:
+
+- `Available(snapshot)` — the daemon answered; the typed snapshot is the live
+  data.
+- `Unavailable` — the daemon is absent. A normal state, never an error, and
+  never a startup blocker (principle 4).
+- `Error(message)` — the daemon is present but could not be read.
+
+Consumers render the **slot** the state projects: `Unavailable` hides the
+status item, `Error` shows it visible but inert with the message, `Available`
+shows it live. `MockAdapter` drives all three with no daemon on the bus.
+Consumers read the already-pushed state — there is no poll loop above an
+adapter; event subscription and re-subscribe on restart are T-07.1b.
+
 ## D-Bus conventions
 
 Our services own names under `org.dragonfruit.*` on the **user session bus**
