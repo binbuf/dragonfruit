@@ -4,6 +4,7 @@
 # design-system gallery/module split. The executable only loads the window.
 
 set_source_files_properties(SettingsPanes.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+set_source_files_properties(SettingsMenu.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
 qt_add_library(dragonfruit-settings-ui STATIC)
 qt_add_qml_module(dragonfruit-settings-ui
@@ -14,6 +15,7 @@ qt_add_qml_module(dragonfruit-settings-ui
         SettingsBridge.h
     QML_FILES
         SettingsPanes.qml
+        SettingsMenu.qml
         PaneHeader.qml
         AppearancePane.qml
         WallpaperPane.qml
@@ -39,6 +41,7 @@ qt_import_qml_plugins(dragonfruit-settings)
 
 df_qml_lint(app-settings
     SettingsPanes.qml
+    SettingsMenu.qml
     PaneHeader.qml
     AppearancePane.qml
     WallpaperPane.qml

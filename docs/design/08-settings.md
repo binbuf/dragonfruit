@@ -85,6 +85,18 @@ observe changes over `org.dragonfruit.Settings1` signals rather than polling,
 so the compositor, shell, and apps react to a single source of truth. Schema
 changes are additive within a release; migrations run at `settingsd` startup.
 
+## Menu model
+
+The app publishes its native menu model for the global menu (T-09.6a,
+[06-global-menu.md](06-global-menu.md)). `apps/settings/SettingsMenu.qml` is the
+single declarative source — the fixed application menu plus the app's `File`,
+`Edit`, `View`, `Window`, and `Help` menus, in the design system's normalized,
+JSON-serializable entry shape; each row carries an `action` string. The same
+singleton feeds an in-window local menu presentation, so global and local menus
+cannot diverge. The shell's `MenuBar` consumes the published model unchanged
+(ADR [0041](adr/0041-native-menu-model-publication-shape.md)); the
+menu-broker (T-14.2a) owns the cross-process transport and dispatch.
+
 ## Distro provider interface
 
 Settings should say "check for updates," not "execute a `dnf5` command." The

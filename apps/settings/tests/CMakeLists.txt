@@ -115,6 +115,30 @@ set_tests_properties(tst_settings_displays PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# Settings menu-model publication tests (T-09.6a): the app's published menu
+# model is asserted in shape and injected into the shell's `MenuBar` (the
+# `Dragonfruit.MenuBar` module is linked so the round-trip is real). Headless
+# offscreen + software scene graph; no bus and no daemon.
+qt_add_executable(tst_settings_menu
+    tst_settings_menu.cpp
+)
+target_link_libraries(tst_settings_menu PRIVATE
+    Qt6::QuickTest
+    dragonfruit-design-systemplugin
+    dragonfruit-settings-uiplugin
+    dragonfruit-shell-menubarplugin
+)
+qt_import_qml_plugins(tst_settings_menu)
+
+add_test(
+    NAME tst_settings_menu
+    COMMAND tst_settings_menu -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_settings_menu.qml
+)
+set_tests_properties(tst_settings_menu PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Settings live-apply tests (T-09.1b): a representative control is bound to a
 # settingsd key through the QML `Settings` singleton and round-trips it. The
 # bus-backed cases run under a private session bus; the real-daemon case uses

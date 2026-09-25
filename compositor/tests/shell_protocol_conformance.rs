@@ -1249,7 +1249,7 @@ fn handshake_chrome_and_control_conformance() {
         &mut queue,
         &mut state,
         Duration::from_secs(5),
-        |state| state.output_transforms.iter().any(|transform| *transform == 1),
+        |state| state.output_transforms.contains(&1),
     );
 
     // --- Mission Control + app switcher state (FR-2) ----------------------

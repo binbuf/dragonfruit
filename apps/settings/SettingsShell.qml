@@ -51,6 +51,10 @@ Item {
 
     readonly property var visiblePanes: SettingsPanes.filter(root.searchText)
     readonly property var currentPane: SettingsPanes.paneById(root.currentPaneId)
+    // The app's published native menu model (T-09.6a). The global menu bar
+    // consumes this; it is exposed here so the app can present the same model
+    // in-window and so tests can assert the publication.
+    readonly property var menuModel: SettingsMenu.publishedModel
     readonly property bool canGoBack: root.historyIndex > 0
     readonly property bool canGoForward: root.historyIndex >= 0
                                        && root.historyIndex < root.history.length - 1
