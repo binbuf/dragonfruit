@@ -25,9 +25,13 @@
 //! # No polling above the adapter
 //!
 //! Consumers read [`Adapter::state`], which returns the already-pushed
-//! snapshot; only the adapter itself talks to its daemon. Event subscription
-//! and re-subscribe on service restart are deliberately T-07.1b, so this
-//! contract exposes no `poll`/`subscribe` seam yet.
+//! snapshot; only the adapter itself talks to its daemon. The push path is the
+//! event subscription (T-07.1b): an adapter records the lifecycle transitions
+//! its daemon reports in a [`Subscription`] and exposes them as
+//! [`AdapterEvent`]s through [`Adapter::drain_events`]. A consumer reacts to
+//! an event by re-reading the state; it never polls the daemon, and absent
+//! daemons are a normal hidden state rather than an error or a startup
+//! blocker.
 //!
 //! # Consumers render the right slot
 //!
@@ -41,9 +45,11 @@
 
 mod mock;
 mod state;
+mod subscription;
 
 pub use mock::MockAdapter;
 pub use state::{AdapterError, AdapterId, AdapterState, StatusSlot};
+pub use subscription::{AdapterEvent, ConnectionState, SubscribeError, Subscription};
 
 /// One system-service adapter.
 ///
@@ -59,6 +65,17 @@ pub trait Adapter {
     /// The last state pushed by the daemon. Never a blocking query of the
     /// daemon and never a poll loop above the adapter.
     fn state(&self) -> &AdapterState<Self::Snapshot>;
+
+    /// The subscription lifecycle of this adapter's daemon. [`ConnectionState::Absent`]
+    /// means the daemon is not running, in which case the state is
+    /// `Unavailable` and the slot hides.
+    fn connection(&self) -> ConnectionState;
+
+    /// Take the daemon events pushed since the last call, in order.
+    ///
+    /// The host's event loop drives this; the menu bar never calls it and
+    /// never polls the daemon. After any event, re-read [`Adapter::state`].
+    fn drain_events(&mut self) -> Vec<AdapterEvent>;
 }
 
 /// Type-erased view of an adapter as a menu-bar status source, so a consumer
