@@ -41,7 +41,9 @@ Item {
 
     // Test surface (used by tst_settings_appearance.qml).
     property alias schemeControl: schemeControl
+    property alias schemeRow: schemeRow
     property alias accentRepeater: accentRepeater
+    property alias accentRow: accentRow
     property alias accentPopup: accentPopup
     property alias accentInput: accentInput
 
@@ -73,10 +75,11 @@ Item {
             title: qsTr("Appearance")
 
             SettingsRow {
+                id: schemeRow
                 label: qsTr("Appearance")
                 showSeparator: false
 
-                SegmentedControl {
+                controlData: SegmentedControl {
                     id: schemeControl
                     model: root.schemeOptions.map(function(option) { return option.label; })
                     onActivated: (index) => Settings.set("appearance.colorScheme",
@@ -90,10 +93,11 @@ Item {
             title: qsTr("Accent color")
 
             SettingsRow {
+                id: accentRow
                 label: qsTr("Accent color")
                 showSeparator: false
 
-                Row {
+                controlData: Row {
                     spacing: Theme.primitive.spacing.sm
 
                     Repeater {

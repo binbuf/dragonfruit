@@ -119,5 +119,25 @@ Item {
             Settings.set("accessibility.reduceMotion", false);
             compare(Theme.reducedMotion, false);
         }
+
+        // Both rows place their control in the `controlData` slot, so it sits
+        // at the right and cannot overlap the label (the T-09.3 follow-up (a)
+        // regression).
+        function test_row_controls_are_right_aligned() {
+            var shell = make();
+            var pane = paneOf(shell);
+            verify(pane.schemeRow.control.x + pane.schemeRow.control.width
+                       > pane.schemeRow.width * 0.8,
+                   "the scheme control must sit at the right, right edge="
+                   + (pane.schemeRow.control.x + pane.schemeRow.control.width)
+                   + " row.width=" + pane.schemeRow.width);
+            verify(pane.accentRow.control.x + pane.accentRow.control.width
+                       > pane.accentRow.width * 0.8,
+                   "the accent control must sit at the right, right edge="
+                   + (pane.accentRow.control.x + pane.accentRow.control.width)
+                   + " row.width=" + pane.accentRow.width);
+            verify(pane.schemeControl.width > 0);
+            verify(pane.accentRepeater.count === 6);
+        }
     }
 }
