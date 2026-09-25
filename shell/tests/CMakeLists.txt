@@ -299,3 +299,24 @@ set_tests_properties(tst_controlcenter PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+# OSD overlay tests (T-11.4a): the volume/brightness card renders the glyph,
+# level track, muted state, and accessible name the shell drives it with.
+qt_add_executable(tst_osd
+    tst_osd.cpp
+)
+target_link_libraries(tst_osd PRIVATE
+    Qt6::QuickTest
+    dragonfruit-design-systemplugin
+    dragonfruit-shell-osdplugin
+)
+qt_import_qml_plugins(tst_osd)
+
+add_test(
+    NAME tst_osd
+    COMMAND tst_osd -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_osd.qml
+)
+set_tests_properties(tst_osd PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)

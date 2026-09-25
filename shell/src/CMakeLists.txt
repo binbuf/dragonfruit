@@ -56,6 +56,7 @@ add_library(dragonfruit-shell-dockcore STATIC
     launchfailure.cpp
     notificationclient.cpp
     notificationmodel.cpp
+    osdmodel.cpp
     systemstatusmodel.cpp
     trashbridge.cpp
     wallpaperpolicy.cpp
@@ -119,6 +120,7 @@ target_link_libraries(dragonfruit-shell PRIVATE
     dragonfruit-shell-switcherplugin
     dragonfruit-shell-notificationsplugin
     dragonfruit-shell-control-centerplugin
+    dragonfruit-shell-osdplugin
 )
 if(TARGET PkgConfig::WAYLAND_CLIENT)
     target_link_libraries(dragonfruit-shell PRIVATE PkgConfig::WAYLAND_CLIENT)

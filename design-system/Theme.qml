@@ -425,6 +425,17 @@ QtObject {
             readonly property int titleSize: 12
             readonly property real scrimOpacity: 0.18
         }
+        readonly property var osd: QtObject {
+            readonly property int width: 180
+            readonly property int height: 180
+            readonly property int radius: 20
+            readonly property int padding: 16
+            readonly property int iconSize: 44
+            readonly property int gap: 8
+            readonly property int trackHeight: 6
+            readonly property int trackRadius: 999
+            readonly property int fontSize: 13
+        }
     }
 
     readonly property var motion: QtObject {
@@ -494,6 +505,11 @@ QtObject {
             readonly property var curve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0]
         }
         readonly property QtObject notification: QtObject {
+            readonly property int fullDuration: 160
+            readonly property int duration: tokens.reducedMotion ? 0 : 160
+            readonly property var curve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0]
+        }
+        readonly property QtObject osd: QtObject {
             readonly property int fullDuration: 160
             readonly property int duration: tokens.reducedMotion ? 0 : 160
             readonly property var curve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0]

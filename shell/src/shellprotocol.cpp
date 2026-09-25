@@ -564,6 +564,82 @@ bool ShellProtocol::hideControlCenter()
     return true;
 }
 
+// --- OSD overlay (T-11.4a) --------------------------------------------------
+
+bool ShellProtocol::createOsdSurface(int width, int height)
+{
+    if (m_osdSurface || m_osdLayer)
+        return true;
+    if (!m_shell || !m_compositor)
+        return fail(QStringLiteral("df_shell is not available"));
+
+    m_osdSurface = wl_compositor_create_surface(m_compositor);
+    m_osdLayer = df_shell_get_layer_surface(m_shell, m_osdSurface, nullptr,
+                                            DF_SHELL_LAYER_OVERLAY, "osd");
+    if (!m_osdLayer)
+        return fail(QStringLiteral("compositor refused the OSD layer surface"));
+    static const df_layer_surface_listener listener = { onOsdConfigure, onLayerClosed };
+    df_layer_surface_add_listener(m_osdLayer, &listener, this);
+
+    // No anchors: the compositor centers the surface on the output. Reserve
+    // nothing, never take keyboard, and pass every input event through (the
+    // OSD is non-interactive).
+    df_layer_surface_set_size(m_osdLayer, width, height);
+    df_layer_surface_set_exclusive_zone(m_osdLayer, -1);
+    df_layer_surface_set_keyboard_interaction(m_osdLayer,
+                                              DF_LAYER_SURFACE_KEYBOARD_INTERACTION_NONE);
+    wl_region *region = wl_compositor_create_region(m_compositor);
+    if (region) {
+        wl_surface_set_input_region(m_osdSurface, region);
+        wl_region_destroy(region);
+    }
+    wl_surface_attach(m_osdSurface, nullptr, 0, 0);
+    wl_surface_commit(m_osdSurface);
+    if (wl_display_flush(m_display) < 0)
+        return fail(QStringLiteral("failed to flush the OSD surface creation"));
+    return true;
+}
+
+bool ShellProtocol::commitOsdImage(const QImage &image)
+{
+    if (!m_osdSurface)
+        return false;
+    if (!commitTo(m_osdSurface, image))
+        return false;
+    m_osdMapped = true;
+    return true;
+}
+
+bool ShellProtocol::hideOsd()
+{
+    if (!m_osdSurface || !m_osdLayer)
+        return false;
+    if (!m_osdMapped)
+        return true;
+    wl_surface_attach(m_osdSurface, nullptr, 0, 0);
+    wl_surface_commit(m_osdSurface);
+    m_osdMapped = false;
+    if (m_display)
+        wl_display_flush(m_display);
+    return true;
+}
+
+bool ShellProtocol::fullscreenOverlayActive() const
+{
+    // A fullscreen window owns a dedicated Space while it exists, and the
+    // compositor activates that Space on the owning output; the per-index
+    // projection therefore reports an active Space marked fullscreen.
+    for (auto it = m_workspaces.constBegin(); it != m_workspaces.constEnd(); ++it) {
+        if (it.value().active && it.value().fullscreen)
+            return true;
+    }
+    // Fallback: the focused toplevel's own state bit (fullscreen = 0x4) when
+    // the Space projection has not caught up.
+    if (m_focused && (m_toplevels.value(m_focused).state & 0x4u) != 0)
+        return true;
+    return false;
+}
+
 void ShellProtocol::activateWorkspace(int index)
 {
     if (!m_display)
@@ -1118,6 +1194,10 @@ void ShellProtocol::teardown()
         df_layer_surface_destroy(m_controlCenterLayer);
     if (m_controlCenterSurface)
         wl_surface_destroy(m_controlCenterSurface);
+    if (m_osdLayer)
+        df_layer_surface_destroy(m_osdLayer);
+    if (m_osdSurface)
+        wl_surface_destroy(m_osdSurface);
     if (m_bannerLayer)
         df_layer_surface_destroy(m_bannerLayer);
     if (m_bannerSurface)
@@ -1355,6 +1435,15 @@ void ShellProtocol::onControlCenterConfigure(void *data, df_layer_surface *, uin
     if (self->m_controlCenterLayer)
         df_layer_surface_ack_configure(self->m_controlCenterLayer, serial);
     emit self->controlCenterConfigured(width, height, serial);
+}
+
+void ShellProtocol::onOsdConfigure(void *data, df_layer_surface *, uint32_t serial,
+                                   int32_t width, int32_t height)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    if (self->m_osdLayer)
+        df_layer_surface_ack_configure(self->m_osdLayer, serial);
+    emit self->osdConfigured(width, height, serial);
 }
 
 // --- wl_seat / wl_pointer / wl_keyboard (input bridge) ----------------------

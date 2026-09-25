@@ -204,7 +204,7 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 - [x] T73 — T-11.2b DND/Focus menu-bar reflection and Dock failure path → [tasks/073-t-11.2b-dnd-reflection-and-dock-failure.md](tasks/073-t-11.2b-dnd-reflection-and-dock-failure.md)
 - [x] T74 — T-11.3a Control Center panel and core tiles → [tasks/074-t-11.3a-control-center-panel-and-tiles.md](tasks/074-t-11.3a-control-center-panel-and-tiles.md)
 - [x] T75 — T-11.3b Focus/DND, dark mode, and Control Center a11y → [tasks/075-t-11.3b-control-center-focus-dark-a11y.md](tasks/075-t-11.3b-control-center-focus-dark-a11y.md)
-- [ ] T76 — T-11.4a OSD overlay → [tasks/076-t-11.4a-osd-overlay.md](tasks/076-t-11.4a-osd-overlay.md)
+- [x] T76 — T-11.4a OSD overlay → [tasks/076-t-11.4a-osd-overlay.md](tasks/076-t-11.4a-osd-overlay.md)
 - [ ] T77 — T-11.4b OSD keyboard/a11y and captures → [tasks/077-t-11.4b-osd-a11y-and-captures.md](tasks/077-t-11.4b-osd-a11y-and-captures.md)
 
 ## Phase 12 — T-12 Session + lock + idle
@@ -508,11 +508,11 @@ This plan restarts at T-01, so a legacy "T-13" and a new "T-13" are different
 tickets; use this table to translate.
 
 <!-- symphony:status -->
-**Pipeline status** — updated 2026-09-25T22:46:21Z · 75/175 done
+**Pipeline status** — updated 2026-09-25T23:01:59Z · 76/175 done
 
-- Completed: T01, T02, T03, T04, T05, T06, T07, T08, T09, T10, T11, T12, T13, T14, T15, T16, T17, T18, T19, T20, T21, T22, T23, T24, T25, T26, T27, T28, T29, T30, T31, T32, T33, T34, T35, T36, T37, T38, T39, T40, T41, T42, T43, T44, T45, T46, T47, T48, T49, T50, T51, T52, T53, T54, T55, T56, T57, T58, T59, T60, T61, T62, T63, T64, T65, T66, T67, T68, T69, T70, T71, T72, T73, T74, T75
+- Completed: T01, T02, T03, T04, T05, T06, T07, T08, T09, T10, T11, T12, T13, T14, T15, T16, T17, T18, T19, T20, T21, T22, T23, T24, T25, T26, T27, T28, T29, T30, T31, T32, T33, T34, T35, T36, T37, T38, T39, T40, T41, T42, T43, T44, T45, T46, T47, T48, T49, T50, T51, T52, T53, T54, T55, T56, T57, T58, T59, T60, T61, T62, T63, T64, T65, T66, T67, T68, T69, T70, T71, T72, T73, T74, T75, T76
 - Blocked: none
 - Failed: none
-- Remaining: T76, T77, T78, T79, T80, T81, T82, T83, T84, T85, T86, T87, T88, T89, T90, T91, T92, T93, T94, T95, T96, T97, T98, T99, T100, T101, T102, T103, T104, T105, T106, T107, T108, T109, T110, T111, T112, T113, T114, T115, T116, T117, T118, T119, T120, T121, T122, T123, T124, T125, T126, T127, T128, T129, T130, T131, T132, T133, T134, T135, T136, T137, T138, T139, T140, T141, T172, T173, T174, T175, T142, T143, T144, T145, T146, T147, T148, T149, T150, T151, T152, T153, T154, T155, T156, T157, T158, T159, T160, T161, T162, T163, T164, T165, T166, T167, T168, T169, T170, T171
-- Last finished: T75 — done · Control Center Focus/DND and dark-mode tiles added with live apply, accessible roles, headless + live tests green, captures committed
+- Remaining: T77, T78, T79, T80, T81, T82, T83, T84, T85, T86, T87, T88, T89, T90, T91, T92, T93, T94, T95, T96, T97, T98, T99, T100, T101, T102, T103, T104, T105, T106, T107, T108, T109, T110, T111, T112, T113, T114, T115, T116, T117, T118, T119, T120, T121, T122, T123, T124, T125, T126, T127, T128, T129, T130, T131, T132, T133, T134, T135, T136, T137, T138, T139, T140, T141, T172, T173, T174, T175, T142, T143, T144, T145, T146, T147, T148, T149, T150, T151, T152, T153, T154, T155, T156, T157, T158, T159, T160, T161, T162, T163, T164, T165, T166, T167, T168, T169, T170, T171
+- Last finished: T76 — done · Volume/brightness OSD overlay landed (centered shell surface + pure reduced-motion/fullscreen model), tests and lint/e2e green, live capture verified.
 <!-- /symphony:status -->

@@ -20,6 +20,7 @@
 #include "framecommitgate.h"
 #include "notificationclient.h"
 #include "notificationmodel.h"
+#include "osdmodel.h"
 #include "settingsclient.h"
 #include "shellprotocol.h"
 #include "systemstatusmodel.h"
@@ -63,6 +64,10 @@ private slots:
     void onControlCenterPointerButton(qreal x, qreal y, quint32 button, bool pressed);
     void onControlCenterPointerLeft();
     void onControlCenterKeyboardFocused(bool focused);
+    // T-11.4a: the OSD overlay surface, its auto-dismiss tick, and the
+    // volume/brightness gestures that present it.
+    void onOsdConfigured(int width, int height, quint32 serial);
+    void onOsdTick();
     void onBrightnessSetRequested(double level);
     void onWifiToggleRequested(bool enabled);
     void onWifiSettingsRequested();
@@ -210,6 +215,13 @@ private:
     void applyControlCenterData();
     void renderControlCenter();
     void scheduleControlCenterRender();
+    // OSD overlay (T-11.4a): present a volume/brightness change on the active
+    // output (suppressed while a fullscreen surface owns it), drive its fade
+    // from the model each frame, and unmap it when the model dismisses.
+    void showOsd(OsdModel::Kind kind, double value, bool muted);
+    void applyOsdData();
+    void hideOsd();
+    void renderOsd();
     // Rebuild the Dock's ordered entries (pinned + running) and hand them to
     // the QML scene.
     void rebuildDockEntries();
@@ -362,6 +374,20 @@ private:
     bool m_controlCenterKeyboardFocused = false;
     FrameCommitGate m_controlCenterFrameGate;
     bool m_controlCenterSceneGraphCommitLogged = false;
+    // OSD overlay (T-11.4a): a centered offscreen scene rendered into its own
+    // `overlay` surface while a volume/brightness change is presented. The
+    // pure model owns the visible/deadline/fade state; a 16 ms timer drives
+    // the fade and the auto-dismiss (there is no idle cost once it is hidden).
+    OsdModel m_osd;
+    QQuickWindow *m_osdWindow = nullptr;
+    QQuickItem *m_osdItem = nullptr;
+    int m_osdWidth = 0;
+    int m_osdHeight = 0;
+    bool m_osdActive = false;
+    bool m_osdMapped = false;
+    FrameCommitGate m_osdFrameGate;
+    bool m_osdSceneGraphCommitLogged = false;
+    QTimer *m_osdTimer = nullptr;
     QSocketNotifier *m_notifier = nullptr;
     QTimer *m_launchTimer = nullptr;
     QTimer *m_dockAnimTimer = nullptr;

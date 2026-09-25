@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(39 earlier sections omitted)_
+_(40 earlier sections omitted)_
 
-- **T37 — T-07.4 Power adapter (UPower)**: **State: done.** The read-only power adapter landed in a new concrete-adapter; **`services/power/`** (new crate `dragonfruit-power`, workspace member; deps:
 - **T38 — T-07.5a Wi-Fi and volume status menus**: **State: done.** Wi-Fi list/join and volume slider/mute render in; **`services/system-status/`** (new crate `dragonfruit-system-status`,
 - **T39 — T-07.5b Battery menu, placeholder removal, keyboard a11y**: **State: done.** The battery item is live over the bridge host, `--placeholders`; **`services/system-status`** — `StatusHost<N, A, P>` gained a `PowerAdapter`;
 - **T40 — T-07.6a Absent-daemon masking matrix**: **State: done.** The absent-daemon masking matrix is asserted headlessly at; **`services/system-status/tests/host.rs`** —
@@ -45,6 +44,7 @@ _(39 earlier sections omitted)_
 - **T73 — T-11.2b DND/Focus menu-bar reflection and Dock failure path**: **State: done.** The menu bar reflects the notification service's Focus/DND; **`shell/src/notificationclient.{h,cpp}`** — the seam gains
 - **T74 — T-11.3a Control Center panel and core tiles**: **State: done.** The Control Center panel opens (menu-bar item or; **`shell/control-center/ControlCenter.qml`** (rewritten) — the panel scene
 - **T75 — T-11.3b Focus/DND, dark mode, and Control Center a11y**: **State: done.** The Control Center panel has five tiles now: Wi-Fi, Focus,; **`shell/control-center/ControlCenter.qml`** — Focus and Dark Mode tiles, a
+- **T76 — T-11.4a OSD overlay**: **State: done.** A volume/brightness change presents a brief centered OSD card; **`shell/src/osdmodel.{h,cpp}`** (new, dockcore) — the pure `OsdModel`:
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -5602,3 +5602,78 @@ Gotchas for later tasks:
 - **The panel is 360×520**; the capture driver's switch centres
   (panel-relative 320,131 and 320,419) come from the QML layout and must be
   updated if the tile order/heights change.
+
+## T76 — T-11.4a OSD overlay
+
+**State: done.** A volume/brightness change presents a brief centered OSD card
+on the active output, fades, and dismisses; a fullscreen surface suppresses it
+and reduced motion collapses the fade to an immediate 1.0. Contract frozen in
+ADR [0062](design/adr/0062-osd-overlay.md).
+
+What landed:
+
+- **`shell/src/osdmodel.{h,cpp}`** (new, dockcore) — the pure `OsdModel`:
+  `present` (last change wins, so concurrent volume+brightness coalesce),
+  `tick` auto-dismiss at `kDismissMs = 1400`, `hide`, `setFullscreen`
+  (suppresses and hides at once), and `fade(now, reducedMotion)` (1.0 for
+  reduced motion; ramp-in 120 ms / ramp-out 220 ms otherwise). No QObject, no
+  timer.
+- **`shell/osd/Osd.qml`** (new module `Dragonfruit.Osd`) — a pure view driven
+  by `kind`/`value`/`muted`/`fade`: the design-system glyph, a level track
+  (accent fill, empty when muted), and the percentage/`Muted` label, plus an
+  `Accessible.Alert` name.
+- **`shell/src/shellprotocol.{h,cpp}`** — the centered `overlay` surface
+  (`namespace "osd"`, 220×220, no anchors, `exclusive_zone -1`, keyboard NONE,
+  empty input region), `commitOsdImage`/`hideOsd`, the `osdConfigured` signal,
+  and `fullscreenOverlayActive()` (active Space marked fullscreen, with the
+  focused toplevel's fullscreen bit as a fallback).
+- **`shell/src/shellcontroller.{h,cpp}`** — the offscreen OSD scene, the
+  `showOsd`/`renderOsd`/`hideOsd` path, a 16 ms timer that runs only while the
+  OSD is visible, and the triggers: `onVolumeSetRequested`,
+  `onMuteToggleRequested`, `onBrightnessSetRequested`. `DF_OSD_FIXTURE`
+  (`volume`/`brightness`) presents one OSD after startup for the live check.
+- **`design-system/tokens/tokens.json`** — `component.osd` (180×180 card,
+  radius/padding/iconSize/gap/trackHeight/trackRadius/fontSize) and `motion.osd`;
+  `Theme.qml` and `compositor/src/design_tokens.rs` regenerated.
+- **Tests** — `tst_dockcore`: five `OsdModel` tests (kind/value/clamp,
+  deadline, fullscreen, reduced-motion fade, coalescing). `tst_osd` (new QML
+  test): glyph, level track, muted, fade→opacity, accessible role. `make
+  qml-test` 38/38; `make lint` and `make e2e` exit 0.
+- **Docs** — ADR 0062; `04-shell.md` T-11.4a status.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `make qml-test` — 38/38; `make lint` exit 0; `make e2e` exit 0.
+- `LD_LIBRARY_PATH=$HOME/.local/df-toolchain/usr/lib64 ctest --test-dir build
+  -R "tst_dockcore|tst_osd"` — 2/2.
+
+Live check (`/tmp/opencode/t76-osd-live.sh` + `t76-osd-driver.py`): `make demo`
+with `DF_STATUS_FIXTURE=1`, open Control Center (Control-Option-C), drag the
+Sound slider → `/tmp/opencode/t76-osd.png` (and `t76-osd-context.png`). Vision:
+a centered rounded card with the speaker glyph, an accent level bar at 100%,
+and the percentage, sharp, no clipping or artifacts. The still is intentionally
+not committed — the capture set is T-11.4b.
+
+Gotchas for later tasks:
+
+- **The OSD is suppressed while a fullscreen Space is active.** That includes
+  the Control Center shortcut over a fullscreen window; volume/brightness are
+  not treated as critical warnings.
+- **`fullscreenOverlayActive()` is derived from the workspace projection**
+  (active && fullscreen), with the focused toplevel's `state & 0x4` as a
+  fallback. If a future task changes when the fullscreen Space is marked
+  active, revisit it.
+- **The OSD surface is unanchored and centered by the compositor**; it targets
+  the chrome-focus output (per-output overlay rule) and falls back to every
+  output before any chrome focus. Multi-output "active output" pinning is a
+  later enhancement.
+- **Only the shell's own gestures trigger the OSD** (Control Center sliders,
+  menu-bar volume menu, mute). There is no compositor media-key input action
+  yet; route one into `ShellController::showOsd` later. External volume pushes
+  (`onAudioState`) deliberately do not present the OSD to avoid double-showing
+  after our own write.
+- **`DF_OSD_FIXTURE` requires the shell to start with it; values are
+  `volume` (default) and `brightness`.** It fires once, 1500 ms after startup.
+- **The OSD card color is `surfaceElevated`.** In a live capture the level bar
+  is the only reliable accent marker; the demo app behind it can share the card
+  color, so detect the accent bar, not the card fill.
