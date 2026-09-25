@@ -194,6 +194,54 @@ Item {
             verify(wifi.width > 0);
         }
 
+        // T-07.6a: mask one daemon at a time. That slot hides and its popover
+        // refuses to open; every other slot stays live and opens. This mirrors
+        // the controller's output (visible from the model, menu state from the
+        // same view) without a host on the bus.
+        function test_absent_daemon_matrix_hides_and_refuses_each_item() {
+            var ids = ["wifi", "volume", "battery"];
+            var presentModels = { wifi: wifiModel(), volume: audioModel(false, 0.6),
+                                  battery: batteryModel() };
+            var maskedModels = {
+                wifi: { kind: "wifi", state: "unavailable" },
+                volume: { kind: "audio", state: "unavailable" },
+                battery: { kind: "battery", state: "unavailable" }
+            };
+
+            for (var i = 0; i < ids.length; ++i) {
+                var items = [];
+                for (var j = 0; j < ids.length; ++j) {
+                    items.push({ id: ids[j], icon: ids[j],
+                                 accessibleName: ids[j], available: j !== i });
+                }
+                var bar = make(menuBarComponent, {
+                    width: 800,
+                    statusItems: items,
+                    wifiMenu: i === 0 ? maskedModels.wifi : presentModels.wifi,
+                    volumeMenu: i === 1 ? maskedModels.volume : presentModels.volume,
+                    batteryMenu: i === 2 ? maskedModels.battery : presentModels.battery
+                });
+
+                // The masked slot is hidden and has nothing to open.
+                compare(bar.statusItemFor(ids[i]).visible, false);
+                bar.openStatusMenu(ids[i]);
+                waitForRendering(stage);
+                compare(bar.openStatusItem, "");
+
+                // Every other slot is still live and opens its popover.
+                for (var k = 0; k < ids.length; ++k) {
+                    if (k === i)
+                        continue;
+                    compare(bar.statusItemFor(ids[k]).visible, true);
+                    bar.openStatusMenu(ids[k]);
+                    waitForRendering(stage);
+                    compare(bar.openStatusItem, ids[k]);
+                    bar.closeStatusMenu();
+                    waitForRendering(stage);
+                }
+            }
+        }
+
         function test_disabled_status_item_stays_visible_but_dimmed() {
             var bar = make(menuBarComponent, {
                 statusItems: [ { id: "wifi", icon: "wifi", available: true, enabled: false } ]

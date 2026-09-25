@@ -25,6 +25,9 @@ private slots:
 
     void batteryDecodesAndHidesWhenNotPresent();
     void batteryRefreshRaisesTheRequest();
+
+    void theAbsentDaemonMaskingMatrixHidesOnlyTheMaskedItem();
+    void anUnreachedBridgeHostLeavesEveryItemHidden();
 };
 
 static QByteArray availableWifi()
@@ -203,6 +206,91 @@ void TestStatusModel::batteryRefreshRaisesTheRequest()
     QSignalSpy spy(&model, &SystemStatusModel::refreshBatteryRequested);
     model.requestRefreshBattery();
     QCOMPARE(spy.count(), 1);
+}
+
+// T-07.6a: the absent-daemon masking matrix at the decode seam. Masking one
+// daemon must hide only its own item; the other two stay live. Mask all three
+// and every item hides without an error.
+void TestStatusModel::theAbsentDaemonMaskingMatrixHidesOnlyTheMaskedItem()
+{
+    SystemStatusModel model;
+    const QByteArray wifi = availableWifi();
+    const QByteArray audio =
+        R"({"kind":"audio","state":"available","glyph":"volume","volume":0.5,"percent":50,"muted":false})";
+    const QByteArray battery =
+        R"({"kind":"battery","state":"available","present":true,"percent":82,"level":0.82,"charging":true,"label":"82% charging"})";
+    const QByteArray maskedWifi = R"({"kind":"wifi","state":"unavailable"})";
+    const QByteArray maskedAudio = R"({"kind":"audio","state":"unavailable"})";
+    const QByteArray maskedBattery = R"({"kind":"battery","state":"unavailable"})";
+
+    model.applyWifiJson(wifi);
+    model.applyAudioJson(audio);
+    model.applyBatteryJson(battery);
+    QVERIFY(model.wifiVisible());
+    QVERIFY(model.audioVisible());
+    QVERIFY(model.batteryVisible());
+
+    // Mask Wi-Fi alone: the volume and battery slots stay live.
+    model.applyWifiJson(maskedWifi);
+    QCOMPARE(model.wifiVisible(), false);
+    QCOMPARE(model.audioVisible(), true);
+    QCOMPARE(model.batteryVisible(), true);
+    QCOMPARE(model.wifi().value(QStringLiteral("enabled")).toBool(), false);
+    model.applyWifiJson(wifi);
+
+    // Mask audio alone: the Wi-Fi and battery slots stay live.
+    model.applyAudioJson(maskedAudio);
+    QCOMPARE(model.wifiVisible(), true);
+    QCOMPARE(model.audioVisible(), false);
+    QCOMPARE(model.batteryVisible(), true);
+    model.applyAudioJson(audio);
+
+    // Mask power alone: the Wi-Fi and volume slots stay live.
+    model.applyBatteryJson(maskedBattery);
+    QCOMPARE(model.wifiVisible(), true);
+    QCOMPARE(model.audioVisible(), true);
+    QCOMPARE(model.batteryVisible(), false);
+    model.applyBatteryJson(battery);
+
+    // Mask all three: every item hides, and none of them errors.
+    model.applyWifiJson(maskedWifi);
+    model.applyAudioJson(maskedAudio);
+    model.applyBatteryJson(maskedBattery);
+    QCOMPARE(model.wifiVisible(), false);
+    QCOMPARE(model.audioVisible(), false);
+    QCOMPARE(model.batteryVisible(), false);
+    QCOMPARE(model.wifi().value(QStringLiteral("state")).toString(),
+             QStringLiteral("unavailable"));
+    QCOMPARE(model.audio().value(QStringLiteral("state")).toString(),
+             QStringLiteral("unavailable"));
+    QCOMPARE(model.battery().value(QStringLiteral("state")).toString(),
+             QStringLiteral("unavailable"));
+    QVERIFY(!model.wifi().contains(QStringLiteral("error")));
+    QVERIFY(!model.audio().contains(QStringLiteral("error")));
+    QVERIFY(!model.battery().contains(QStringLiteral("error")));
+}
+
+// When the bridge host is not on the bus (or never answers), the model has no
+// views at all: every item is hidden and the session carries on. A malformed
+// or empty payload must not clear a slot into a visible error state.
+void TestStatusModel::anUnreachedBridgeHostLeavesEveryItemHidden()
+{
+    SystemStatusModel model;
+    QCOMPARE(model.wifiVisible(), false);
+    QCOMPARE(model.audioVisible(), false);
+    QCOMPARE(model.batteryVisible(), false);
+
+    // An empty or malformed payload is ignored: the item stays hidden and the
+    // view stays empty rather than becoming a visible "error".
+    model.applyWifiJson(QByteArray());
+    model.applyAudioJson(QByteArray("not json"));
+    model.applyBatteryJson(QByteArray("{}"));
+    QCOMPARE(model.wifiVisible(), false);
+    QCOMPARE(model.audioVisible(), false);
+    QCOMPARE(model.batteryVisible(), false);
+    QVERIFY(model.wifi().isEmpty());
+    QVERIFY(model.audio().isEmpty());
+    QVERIFY(model.battery().isEmpty());
 }
 
 QTEST_MAIN(TestStatusModel)
