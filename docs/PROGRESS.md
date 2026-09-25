@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(4 earlier sections omitted)_
+_(5 earlier sections omitted)_
 
-- **T02 — T-01.2 Traffic-light actions**: **State: done.** Close/minimize/zoom are clickable through the titlebar; **`compositor/src/window/decoration.rs`** — `TitlebarElement::cluster_rect()`
 - **T03 — T-01.3 Titlebar drag, double-click, fullscreen reveal**: **State: done.** A floating window's titlebar drags to move (existing; **`compositor/src/window/decoration.rs`** — `TitlebarDoubleClick`
 - **T04 — T-01.4 Window menu**: **State: done.** A right/Control-click on the SSD titlebar opens a; **`compositor/src/window/menu.rs`** — `WindowMenu`, `WindowMenuRow`,
 - **T05 — T-01.5 Decoration tier policy and X11 correctness**: **State: done.** The three decoration classes are honored and the X11; **`compositor/src/state.rs`** — new `DfState::set_decoration_tier(window,
@@ -44,7 +43,8 @@ _(4 earlier sections omitted)_
 - **T38 — T-07.5a Wi-Fi and volume status menus**: **State: done.** Wi-Fi list/join and volume slider/mute render in; **`services/system-status/`** (new crate `dragonfruit-system-status`,
 - **T39 — T-07.5b Battery menu, placeholder removal, keyboard a11y**: **State: done.** The battery item is live over the bridge host, `--placeholders`; **`services/system-status`** — `StatusHost<N, A, P>` gained a `PowerAdapter`;
 - **T40 — T-07.6a Absent-daemon masking matrix**: **State: done.** The absent-daemon masking matrix is asserted headlessly at; **`services/system-status/tests/host.rs`** —
-- **Follow-ups**: T-07.5b (done in T39): battery menu + `--placeholders` removal + keyboard; T-07.2a (done in T34): NetworkManager **read** path + mock/fixture landed
+- **T41 — T-07.6b Menu-bar idle trace and capture**: **State: done.** The menu-bar idle trace is flat at both seams and the T-07; **`compositor/tests/shell_idle_trace.rs`** — the bar-live idle trace now
+- **Follow-ups**: **T-07.6 signal wiring (not done).** The bridge host; T-07.5b (done in T39): battery menu + `--placeholders` removal + keyboard
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -2690,8 +2690,65 @@ Gotchas for later tasks:
   design doc; CI uses the mock `kill()`/`refresh` path only.
 - No `docs/captures/` file may be added by this task.
 
+## T41 — T-07.6b Menu-bar idle trace and capture
+
+**State: done.** The menu-bar idle trace is flat at both seams and the T-07
+track captures are committed. No runtime behavior changed.
+
+What landed:
+
+- **`compositor/tests/shell_idle_trace.rs`** — the bar-live idle trace now
+  parses and asserts `client_wakeups` flat too (was frames / direct-scanout /
+  animation only). Result: `frames_rendered=3`, `client_wakeups=0` (both flat).
+- **`Makefile`** — new `menubar-idle-trace` target runs that test; raw output
+  is `docs/captures/t07-shell-idle-trace.txt`.
+- **`services/system-status/tests/host.rs`** — new
+  `the_live_status_items_never_poll_the_daemons`: startup sync = exactly one
+  read per daemon, 50 view renderings add zero reads, one `refresh()` adds
+  exactly one. A poll loop above an adapter would move these counters.
+- **`scripts/capture-live-menubar.sh`** (new) — regenerates
+  `docs/captures/t07-live-menubar.png` (Wi-Fi + volume + battery live over the
+  `DF_STATUS_FIXTURE=1` bridge fixture) and
+  `docs/captures/t07-live-menubar-absent.png` (no fixture/host; all live items
+  hidden), plus the idle-trace log. Both stills are 1920x1200 nested-output
+  crops.
+- **`docs/design/07-system-integration.md`** — new section "The menu-bar idle
+  trace (T-07.6b)"; no ADR (proves ADR 0009/0029, adds no decision).
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `cargo test -p dragonfruit-system-status` — 11 lib + 9 host green.
+- `make menubar-idle-trace` — 1 green, `client_wakeups=0` flat.
+- `make e2e` exit 0; `make lint` exit 0.
+- Capture: `bash scripts/capture-live-menubar.sh`.
+
+Gotchas for later tasks:
+
+- **Host signal wiring is still absent.** `StatusHost` reads on startup, an
+  explicit `Refresh()`, and after an action; it does **not** yet subscribe to
+  NetworkManager / `pw-mon` / UPower `PropertiesChanged`. The design doc
+  (07-system-integration.md) still calls that wiring "T-07.6"; it did not land
+  in T-07.6a/b and remains a real follow-up (see Follow-ups). The idle trace
+  passes precisely because nothing polls.
+- The capture script trims the host window decoration by cropping to the
+  bottom-centred 1920x1200 output (the nested output size, same hard-coding as
+  the other capture drivers). It best-effort raises the nested window with a
+  KWin D-Bus script before `spectacle -a` so a host window cannot crop the bar
+  out; on a non-KWin host the window must already be in front.
+- The idle-trace files are `docs/captures/t07-shell-idle-trace.txt` (bar-live)
+  and the T-03 `t03-idle-trace.txt` (no clients). Do not overwrite the latter.
+
 ## Follow-ups
 
+- **T-07.6 signal wiring (not done).** The bridge host
+  (`services/system-status`) reads an adapter only on startup, an explicit
+  `Refresh()` (menu open), and after an action; it never subscribes to
+  NetworkManager / WirePlumber (`pw-mon`) / UPower `PropertiesChanged`. So a
+  daemon change is not reflected until the user opens the menu (or acts). The
+  design doc calls this wiring "T-07.6" but it did not land in T-07.6a/b; it
+  is the remaining piece of the track's "within one event" acceptance. The
+  idle-trace guarantee (T41) deliberately relies on the absence of polling, so
+  any wiring must be event-driven, not a timer.
 - T-07.5b (done in T39): battery menu + `--placeholders` removal + keyboard
   a11y landed. Remaining: (a) no process starts `dragonfruit-system-status`
   yet — the dev tool deliberately does not; the session/systemd unit (or a

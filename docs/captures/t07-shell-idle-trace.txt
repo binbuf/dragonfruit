@@ -1,0 +1,13 @@
+cargo build --workspace
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.15s
+cargo test -p dragonfruit-compositor \
+    --test shell_idle_trace -- --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.09s
+     Running tests/shell_idle_trace.rs (target/debug/deps/shell_idle_trace-4401efca2c288a53)
+
+running 1 test
+shell idle trace: frames_rendered=3 (flat with the menu bar mapped), animation_frames_stepped=0 (flat), client_wakeups=0 (flat), frames_skipped_no_damage 11 -> 12
+test idle_menu_bar_contributes_zero_wakeups ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.29s
+

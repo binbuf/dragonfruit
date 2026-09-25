@@ -297,6 +297,44 @@ fn a_machine_without_a_battery_keeps_the_item_available_but_not_present() {
     assert_eq!(view["present"], false);
 }
 
+/// T-07.6b: the live status menu contributes zero wakeups. The host reads a
+/// daemon only on the startup sync, an explicit `Refresh()` (menu open), or
+/// after an action; there is no poll loop and no timer. Serving the three
+/// views — what every `State()` on the bus does — is a pure read of the
+/// already-pushed adapter state, so an idle bar produces no daemon traffic. A
+/// regression that introduced a background poll would move these read
+/// counters without a matching `refresh`.
+#[test]
+fn the_live_status_items_never_poll_the_daemons() {
+    let mut host = StatusHost::new(
+        MockNetworkManager::present(wifi_data()),
+        MockAudio::present(audio_data(0.5, false)),
+        MockPower::present(battery_data(82.0, 1)),
+    );
+    // The startup sync reads each daemon exactly once.
+    host.refresh();
+    assert_eq!(host.wifi().source().reads(), 1);
+    assert_eq!(host.audio().source().reads(), 1);
+    assert_eq!(host.battery().source().reads(), 1);
+
+    // Rendering the live views many times touches no daemon.
+    for _ in 0..50 {
+        assert_eq!(host.wifi_view()["state"], "available");
+        assert_eq!(host.audio_view()["state"], "available");
+        assert_eq!(host.battery_view()["state"], "available");
+    }
+    assert_eq!(host.wifi().source().reads(), 1);
+    assert_eq!(host.audio().source().reads(), 1);
+    assert_eq!(host.battery().source().reads(), 1);
+
+    // One explicit resync maps to exactly one new read per daemon; only an
+    // event (or a user action) may advance these.
+    host.refresh();
+    assert_eq!(host.wifi().source().reads(), 2);
+    assert_eq!(host.audio().source().reads(), 2);
+    assert_eq!(host.battery().source().reads(), 2);
+}
+
 #[test]
 fn a_daemon_restart_resyncs_the_menu() {
     let mut host = StatusHost::new(

@@ -268,6 +268,32 @@ available"); no VM is available in CI, so it is recorded here rather than
 automated. The host itself is a separate process, so "no bridge host" is the
 same hidden-everything state on a live session.
 
+## The menu-bar idle trace (T-07.6b)
+
+A live menu bar must still cost nothing when the desktop is idle (FR-6). The
+no-poll rule is proven at both seams, not asserted:
+
+- **Compositor** — `compositor/tests/shell_idle_trace.rs` maps the menu-bar
+  `df_layer_surface` (the live bar chrome), commits one frame, then sits idle;
+  the compositor must render no further frames and wake no client
+  (`client_wakeups` flat). `make menubar-idle-trace` runs it and
+  `scripts/capture-live-menubar.sh` records the raw counters to
+  `docs/captures/t07-shell-idle-trace.txt`.
+- **Bridge host** — `services/system-status/tests/host.rs`
+  (`the_live_status_items_never_poll_the_daemons`) shows the host touches a
+  daemon only on the startup sync, an explicit `Refresh()`, or after an action:
+  serving the views many times leaves the mock read counters unchanged, and one
+  `refresh()` moves each by exactly one. A background poll would fail the
+  test.
+
+The shell side adds no timer: `SystemStatusClient` is event-driven (the shell
+asks for a resync only when a menu opens or after an action, and the host's
+`run` parks its main thread instead of polling). The T-07 slice captures are
+`docs/captures/t07-live-menubar.png` (Wi-Fi, volume, and battery live over the
+bridge fixture) and `docs/captures/t07-live-menubar-absent.png` (no fixture and
+no host: every live item hidden); `scripts/capture-live-menubar.sh` regenerates
+both.
+
 ## D-Bus conventions
 
 Our services own names under `org.dragonfruit.*` on the **user session bus**
