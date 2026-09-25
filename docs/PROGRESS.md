@@ -5170,3 +5170,74 @@ Gotchas for later tasks:
   files-core folder watcher → facade delta wiring, network-mounted perf, and
   the T-10.6c note that the demo does not yet put the Files `.desktop` on
   `XDG_DATA_DIRS` (T-18 owns the running-instance `Files1` path).
+
+## T70 — T-11.1a Notification service core
+
+**State: done.** The `org.freedesktop.Notifications` service and the shell
+banner + history landed. A client `Notify` shows a banner in the nested
+session and is recorded. See ADR
+[0056](design/adr/0056-notification-service-surface-and-shell-banner.md).
+
+What landed:
+
+- **`services/notifications/`** (new crate `dragonfruit-notifications`,
+  workspace member; `df-ipc`, `serde_json=1.0.151`, `zbus=5.19.0`) — the
+  service: `model.rs` (queue, bounded history, `replaces_id`, DND bit, lazy
+  `expire_due`), `view.rs` (flat JSON), `dbus.rs` (both interfaces at
+  `/org/freedesktop/Notifications`), `main.rs`; 13 unit tests.
+- **`tests/session_bus.rs`** — 8 integration tests on a private
+  `dbus-daemon` (Notify round-trip + model, `Changed`, `CloseNotification`,
+  dismiss/expire, `replaces_id`, service expiry, DND).
+- **`shell/src/notificationmodel.{h,cpp}`** (dockcore) — the decode seam;
+  `banner()` is the newest active banner.
+- **`shell/src/notificationclient.{h,cpp}`** — `DbusNotificationClient` +
+  `MockNotificationClient` (`DF_NOTIFY_FIXTURE`).
+- **`shell/src/shellprotocol.{h,cpp}`** — top-right `notification` overlay
+  surface (exclusive `-1`, no keyboard, empty input region).
+- **`shell/src/shellcontroller.{h,cpp}`** — a fifth QML scene
+  (`NotificationBanner`), client/model wiring, map/unmap; ignores the
+  full-output pre-layout configure.
+- **`shell/notifications/`** — `NotificationBanner.qml` and a real
+  `NotificationCenter.qml` (history list, unmapped).
+- **Tests** — `tst_notificationmodel` (5), `tst_notifications` QML (4);
+  ctest 35/35.
+- **Docs** — ADR 0056; `04-shell.md` T-11.1a status.
+
+Commands that work (repo root; `make` sets the toolchain env; if cmake
+regenerates, export `LD_LIBRARY_PATH=$HOME/.local/df-toolchain/usr/lib64`):
+
+- `cargo test -p dragonfruit-notifications` — 13 unit + 8 integration pass.
+- `make qml-test` — 35/35; `make lint` green; `make e2e` exit 0.
+
+Live visual check (real path, `/tmp/opencode/t70-real-capture.sh`): private
+`dbus-daemon` + `dragonfruit-notifications` + `make dev` on the same bus, a
+real `gdbus ... Notify "Files" ... "Copy finished"`. Raw observations: the
+shell-facing `Banners` read returned the notification (`id:1`); the captured
+card `/tmp/opencode/t70-real-card.png` reads `Files`, `Copy finished`,
+`12 items copied to Documents` on a white card with a magenta stripe, no
+clipping/artifacts. Fixture: `/tmp/opencode/t70-dev-capture.sh` +
+`/tmp/opencode/t70-banner-clean.png` reads `Mail`, `New message`,
+`Ada Lovelace — Notes on the Analytical Engine`. Vision is a supporting check.
+
+Gotchas for later tasks:
+
+- **Both interfaces live at `/org/freedesktop/Notifications`.** The shell
+  reads `org.dragonfruit.Notifications1` there; the service must own the
+  freedesktop name. If a host desktop daemon already owns it the service exits
+  and the shell renders no banner (the dev harness does not start the
+  service; `make e2e` covers the absent path).
+- **Actions are recorded but not advertised or emitted.** `ActionInvoked` is
+  declared only; `GetCapabilities` omits `actions`. T-11.1b wires it.
+- **One banner at a time** (`NotificationModel::banner()` = newest); older
+  active banners stay in `banners()`/history. Stacking/activation are T-11.1b.
+- **The banner surface is display-only** (empty input region, no keyboard) so
+  clicks pass through; T-11.1b adds an input region for activation.
+- **Expiry is service-owned and event-driven** (background thread to the
+  earliest deadline, emits `NotificationClosed(1)` + `Changed`); the shell
+  keeps no timer.
+- **The dev capture reads white** because the shell's Theme follows the host
+  `styleHints.colorScheme` when settingsd is absent.
+- **`DF_NOTIFY_FIXTURE=1`** seeds one 60 s banner for demo/capture; the live
+  D-Bus client is the default.
+- **Pre-layout configure is ignored** (`onBannerConfigured` only accepts the
+  requested 380x96), the same rule as the menu bar and Dock.
