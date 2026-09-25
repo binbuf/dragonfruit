@@ -29,5 +29,8 @@ Decisions the implementer must follow (names, signatures, constraints).
 - [ ] Docs touched: …
 - [ ] Hand-off below filled in
 
+## Live visual check (required)
+- [ ] `make demo` nested; capture the changed surface and inspect the image: all UI/UX present and as intended, no stray artifacts; capture path recorded in the Hand-off
+
 ## Hand-off
 _(filled in by the implementing session: what landed, what deviated and why, what the next task must know)_
