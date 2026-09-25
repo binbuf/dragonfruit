@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(18 earlier sections omitted)_
+_(19 earlier sections omitted)_
 
-- **T16 — T-04.1a Real shadows**: **State: done.** Elevation-token shadows exist on both sides of the process; **Tokens** — new `component.elevation.{low,med,high,overlay}` in
 - **T17 — T-04.1b Rounded-corner clipping**: **State: done.** Rounded corners are a token-derived geometry mask on the; **`compositor/src/window/corner.rs`** (new) — `CornerMask`
 - **T18 — T-04.2 Backdrop blur pass**: **State: done.** The chrome material pass exists and is token-driven, applied; **`compositor/src/window/backdrop.rs`** (new) — `MaterialRole`
 - **T19 — T-04.3 Reusable scene-transform pass**: **State: done.** One reusable scene transform exists (scale/translate + optional; **`compositor/src/window/pass.rs`** (new) — `FramePass`: the single shared
@@ -45,6 +44,7 @@ _(18 earlier sections omitted)_
 - **T52 — T-09.4 Desktop & Dock pane**: **State: done.** The Desktop & Dock pane is real and live: the `Dock` group; **`apps/settings/DesktopDockPane.qml`** (new) — `SettingsGroup` "Dock" with
 - **T53 — T-09.5 Displays-basic pane**: **State: done.** The Displays-basic pane is real and live: the `Built-in; **Schema (since 3)** — `display.scale` (d, 0.5–2.0, default 1.0),
 - **T54 — T-09.6a Settings menu-model publication**: **State: done.** The Settings app publishes its native menu model and the; **`apps/settings/SettingsMenu.qml`** (new; QML singleton) — single source of
+- **T55 — T-09.6b Settings absence matrix and wave captures**: **State: done.** The T-09 Settings wave is signed off: the absent-provider; **`docs/design/08-settings.md`** — new "The absent-provider matrix (T-09.6b)"
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3866,3 +3866,66 @@ Gotchas for later tasks:
   unformatted and tripping `clippy::manual_contains` (new in rust 1.98), which
   made `make fmt-check`/`make lint` red before this task. Fixed to
   `state.output_transforms.contains(&1)` so the gate is green.
+
+## T55 — T-09.6b Settings absence matrix and wave captures
+
+**State: done.** The T-09 Settings wave is signed off: the absent-provider
+matrix is documented and asserted headlessly, the wave captures are committed,
+and the required live check's one real finding (the Appearance pane's
+overlapping controls) is fixed.
+
+What landed:
+
+- **`docs/design/08-settings.md`** — new "The absent-provider matrix (T-09.6b)"
+  section: the no-half-panes rule, the per-pane provider-absence table
+  (settingsd and the xdg-desktop-portal FileChooser are the only observable
+  providers), and the test/capture locations. No ADR: this documents the
+  contract ADR 0035 already set.
+- **`apps/settings/tests/tst_settings_absence.{cpp,qml}`** (new; 9 cases) —
+  run under `dbus-run-session` with no settingsd, no portal, and no
+  `DF_SETTINGS_FIXTURE`, so `Settings.available` and
+  `Settings.wallpaperChooserAvailable` are both false. Asserts the four
+  shipped panes stay live and write in memory, the no-half-panes catalog/body
+  pairing, and the Wallpaper portal row is the only disabled control
+  ("No file chooser is available.").
+- **`apps/settings/AppearancePane.qml`** — fixed the documented T-09.3
+  follow-up (a): the scheme `SegmentedControl` and accent `Row` are now
+  `controlData:` (they were plain `SettingsRow` children and overlapped the
+  labels). Added `schemeRow`/`accentRow` aliases and a right-alignment
+  regression case in `tst_settings_appearance.qml`; `WallpaperPane.photoRow`
+  alias added for the absence test.
+- **Captures** — `scripts/capture-settings-wave-1.sh` (new; `make
+  settings-wave-1-capture`) writes `docs/captures/t09-settings-wave-1.{png,
+  light,dark,reduced}.png`, `t09-settings-wave-1-<pane>.png` for appearance/
+  wallpaper/desktop-dock/displays, and `t09-settings-wave-1.mp4`; documented in
+  `docs/captures/README.md`.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `ctest --test-dir build -R "tst_settings_appearance|tst_settings_absence"`
+  — 7 + 9 cases pass.
+- `make lint` — 31/31 ctest, all checks green. `make e2e` — exit 0.
+- `make settings-wave-1-capture` — host Wayland session + scratch settingsd;
+  finished in ~4 min, all stills 1920x1200.
+
+Vision raw observations (detail-pane crops of the committed stills): the
+Appearance pane reads "Appearance" + Light/Dark/Auto (Light selected) and
+"Accent color" with six swatches + "Custom…" right-aligned and not overlapping
+the label after the fix; Wallpaper shows "Solid color" preview, Dragonfruit/
+Landscape collections, Fit, and Add Photo…; Desktop & Dock lists the ten rows;
+Displays shows the Built-in Display preview, Rotation, and five resolution
+tiles with Default selected.
+
+Gotchas for later tasks:
+
+- **Absence tests must run under `dbus-run-session`** (the CMake target does);
+  otherwise the host settingsd/portal make the absence assertions pass
+  vacuously. Same shape as `tst_settings_live`.
+- **No "settings unavailable" banner** is correct: panes use schema defaults.
+  T-15.16's breadth matrix should document the same.
+- **`make settings-wave-1-capture`** uses the `# df-allow-desktop-name` KWin
+  scripting raise and the synthetic-input nudge, copied from
+  `scripts/capture-settingsd.sh` / the T-05 harness; it is not part of
+  `make e2e`.
+- The per-pane stills show the window maximized with the scroll fold near the
+  last row (same as T-52's note); a pane that scrolls is not a capture defect.

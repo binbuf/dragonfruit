@@ -178,3 +178,38 @@ set_tests_properties(tst_settings_live PROPERTIES
     ENVIRONMENT "${_settings_live_env}"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+# Absent-provider matrix tests (T-09.6b): with no settingsd and no
+# xdg-desktop-portal, every shipped pane still renders and every control stays
+# functional on the schema defaults, and only a pane with a real body is
+# advertised (the no-half-panes rule). `dbus-run-session` gives a private bus
+# with neither provider; `DF_SETTINGS_FIXTURE` is deliberately **not** set, so
+# the `Settings` singleton is the live `DbusSettingsClient` and reports
+# `available == false`.
+qt_add_executable(tst_settings_absence
+    tst_settings_absence.cpp
+)
+target_link_libraries(tst_settings_absence PRIVATE
+    Qt6::QuickTest
+    dragonfruit-design-systemplugin
+    dragonfruit-settings-uiplugin
+)
+qt_import_qml_plugins(tst_settings_absence)
+
+if(DBUS_RUN_SESSION)
+    add_test(
+        NAME tst_settings_absence
+        COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:tst_settings_absence>
+            -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_settings_absence.qml
+    )
+else()
+    add_test(
+        NAME tst_settings_absence
+        COMMAND tst_settings_absence
+            -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_settings_absence.qml
+    )
+endif()
+set_tests_properties(tst_settings_absence PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)

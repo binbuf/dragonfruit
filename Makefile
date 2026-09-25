@@ -35,7 +35,7 @@ endif
 .DEFAULT_GOAL := help
 .PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test \
         visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev demo soak e2e \
-        idle-trace menubar-idle-trace latency-trace settingsd-capture check-desktop-names check-no-capture-grab check-design-tokens clean
+        idle-trace menubar-idle-trace latency-trace settingsd-capture settings-wave-1-capture check-desktop-names check-no-capture-grab check-design-tokens clean
 
 help:
 	@echo "Dragonfruit build targets:"
@@ -45,6 +45,7 @@ help:
 	@echo "  make idle-trace — T-03.1a 60 s idle/animation frame budget trace"
 	@echo "  make latency-trace — T-03.1b nested input-to-photon latency capture"
 	@echo "  make settingsd-capture — T-08.3 settingsd flip + restart capture"
+	@echo "  make settings-wave-1-capture — T-09.6b Settings wave stills (light/dark/reduced + panes)"
 	@echo "  make demo     — T-01 loop demo (nested; headless/scripted in CI)"
 	@echo "  make lint     — fmt --check, clippy, qmllint, token freshness, desktop-name gate"
 	@echo "  make check    — lint + test + teardown soak gate"
@@ -127,6 +128,13 @@ latency-trace: cargo-build
 # capture-settingsd.sh` also `kill -9`s and restarts settingsd.
 settingsd-capture: build
 	bash scripts/capture-settingsd.sh
+
+# T-09.6b: the Settings Wave-1 track capture. Needs a host Wayland session,
+# `spectacle`, `ffmpeg`, Pillow, and the built tree; starts a scratch settingsd,
+# opens each shipped pane in the nested demo, and writes the light/dark/
+# reduced-motion and per-pane stills under docs/captures/t09-settings-wave-1.*.
+settings-wave-1-capture: build
+	bash scripts/capture-settings-wave-1.sh
 
 qml-test:
 	@[ -f $(BUILD_DIR)/build.ninja ] || $(CMAKE) -S . -B $(BUILD_DIR) -G Ninja

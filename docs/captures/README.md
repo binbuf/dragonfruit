@@ -71,6 +71,18 @@ is the D-Bus flip transcript plus the persisted file; the stills
 lost), and the shell re-syncing to a value written to the durable file while
 settingsd was down; `t08-settingsd.mp4` is the short clip.
 
+T-09.6b's Settings Wave-1 sign-off capture is produced by
+`scripts/capture-settings-wave-1.sh` (`make settings-wave-1-capture`): a scratch
+settingsd on the session bus and the nested demo with the Settings window
+zoomed, once per shipped pane. It writes `t09-settings-wave-1-light.png` and
+`-dark.png` (the Appearance pane's scheme flipped live), `-reduced.png`
+(`accessibility.reduceMotion` on), one `t09-settings-wave-1-<pane>.png` per
+shipped pane (appearance, wallpaper, desktop-dock, displays), the
+representative `t09-settings-wave-1.png`, and `t09-settings-wave-1.mp4`. The
+absent-provider stills are intentionally not in this set: absence is asserted
+headlessly by `apps/settings/tests/tst_settings_absence.qml` and documented in
+[../design/08-settings.md](../design/08-settings.md).
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

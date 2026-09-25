@@ -97,6 +97,55 @@ cannot diverge. The shell's `MenuBar` consumes the published model unchanged
 (ADR [0041](adr/0041-native-menu-model-publication-shape.md)); the
 menu-broker (T-14.2a) owns the cross-process transport and dispatch.
 
+## The absent-provider matrix (T-09.6b)
+
+Every pane must degrade cleanly when the service behind it is missing, and no
+pane is advertised before its content works. The **no-half-panes rule** is
+enforced structurally: `apps/settings/SettingsPanes.qml` carries one ordered
+catalog whose entries have a `shipped` flag, the sidebar and local search list
+only `SettingsPanes.shippedPanes`, and `SettingsShell.paneComponent(id)`
+returns the pane body only for shipped ids. A catalog row with no body can
+therefore never appear — the two halves (row and body) land together.
+
+Wave 1's four panes talk to settingsd (all of them) and to the
+xdg-desktop-portal FileChooser (Wallpaper's "Add Photo…" only); the shell is the
+forwarder for the compositor-backed Wallpaper and Displays keys. The app never
+touches D-Bus or the compositor directly, so its observable absent-provider
+states are those two:
+
+| Absent provider | Appearance | Wallpaper | Desktop & Dock | Displays | Session |
+|---|---|---|---|---|---|
+| xdg-desktop-portal FileChooser | unaffected | "Add Photo…" **disabled**, row says "No file chooser is available."; tiles/toggle/fit still live | unaffected | unaffected | unaffected |
+| settingsd (`org.dragonfruit.Settings1`) | live on schema defaults; writes in memory | same; preview = default solid color | same; no shell applier present, so no visible Dock change but no error | same; shell stores the policy and applies it when an output is announced | unaffected; `Settings.available == false` |
+| both | live on defaults | all settingsd controls live, portal row disabled | live on defaults | live on defaults | unaffected |
+
+There is deliberately no error/empty state for a missing settingsd: the daemon
+is our own, the schema defaults are the documented contract
+([ADR 0030](adr/0030-settingsd-schema-and-dbus-surface.md)), and a pane that
+showed a "settings unavailable" banner would be a half-pane. When the daemon
+appears, `GetAll` makes its persisted state authoritative; a write made while it
+was down is applied in memory and mirrored when it returns.
+
+The headless half of the matrix is the CI gate:
+
+- **`apps/settings/tests/tst_settings_absence.qml`** runs under a private
+  `dbus-run-session` with **no** settingsd and **no** portal and no
+  `DF_SETTINGS_FIXTURE` (so the `Settings` singleton is the live
+  `DbusSettingsClient`). It asserts both providers are absent, that every
+  shipped pane has a body and every unshipped id does not, and that all four
+  panes stay live and write in memory. The Wallpaper case asserts the portal
+  row is the only disabled control and carries the explanatory description.
+- **`apps/settings/tests/tst_settings_shell.qml`** asserts the catalog subset
+  (four shipped panes) and the sidebar/search list.
+
+The live capture is
+`docs/captures/t09-settings-wave-1.{png,light,dark,reduced.png,mp4}` (plus the
+four per-pane stills), produced by `scripts/capture-settings-wave-1.sh`
+(`make settings-wave-1-capture`): a scratch settingsd on the session bus, the
+nested demo with the Settings window zoomed, and `appearance.colorScheme` /
+`accessibility.reduceMotion` flipped live for the dark/light and
+reduced-motion stills.
+
 ## Distro provider interface
 
 Settings should say "check for updates," not "execute a `dnf5` command." The

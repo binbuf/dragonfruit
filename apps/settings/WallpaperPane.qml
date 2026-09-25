@@ -68,6 +68,7 @@ Item {
     property alias showOnAllToggle: showOnAllToggle
     property alias showOnAllRow: showOnAllRow
     property alias fitControl: fitControl
+    property alias photoRow: photoRow
     property alias photoButton: photoButton
     property alias photoNotice: photoNotice
 
