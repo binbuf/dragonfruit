@@ -35,7 +35,7 @@ endif
 .DEFAULT_GOAL := help
 .PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test \
         visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev demo soak e2e \
-        idle-trace menubar-idle-trace latency-trace check-desktop-names check-no-capture-grab check-design-tokens clean
+        idle-trace menubar-idle-trace latency-trace settingsd-capture check-desktop-names check-no-capture-grab check-design-tokens clean
 
 help:
 	@echo "Dragonfruit build targets:"
@@ -44,6 +44,7 @@ help:
 	@echo "  make e2e      — T-01…T-07 Foundation vertical-slice + conformance suites"
 	@echo "  make idle-trace — T-03.1a 60 s idle/animation frame budget trace"
 	@echo "  make latency-trace — T-03.1b nested input-to-photon latency capture"
+	@echo "  make settingsd-capture — T-08.3 settingsd flip + restart capture"
 	@echo "  make demo     — T-01 loop demo (nested; headless/scripted in CI)"
 	@echo "  make lint     — fmt --check, clippy, qmllint, token freshness, desktop-name gate"
 	@echo "  make check    — lint + test + teardown soak gate"
@@ -119,6 +120,13 @@ menubar-idle-trace: cargo-build
 # to docs/captures/t03-latency-nested.txt. `scripts/latency-trace.sh` wraps it.
 latency-trace: cargo-build
 	bash scripts/latency-trace.sh
+
+# T-08.3: the settingsd flip + restart/resync track capture. Needs a host
+# Wayland session, `spectacle`, `ffmpeg`, and Pillow; records the stills,
+# transcript and clip under docs/captures/t08-settingsd.*. `scripts/
+# capture-settingsd.sh` also `kill -9`s and restarts settingsd.
+settingsd-capture: build
+	bash scripts/capture-settingsd.sh
 
 qml-test:
 	@[ -f $(BUILD_DIR)/build.ninja ] || $(CMAKE) -S . -B $(BUILD_DIR) -G Ninja

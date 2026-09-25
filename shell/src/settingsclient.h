@@ -23,6 +23,8 @@
 #include <QVariant>
 #include <QVariantMap>
 
+class QDBusServiceWatcher;
+
 class SettingsClient : public QObject
 {
     Q_OBJECT
@@ -95,6 +97,10 @@ private:
     QString m_service;
     QString m_path;
     QString m_interface;
+    // Watches the well-known name across daemon restarts. The bus
+    // interface's own serviceRegistered/serviceUnregistered signals only
+    // cover unique names, so this is required for restart resync (T-08.3).
+    QDBusServiceWatcher *m_watcher = nullptr;
 };
 
 // A fixture-backed client: the schema defaults, with writes visible

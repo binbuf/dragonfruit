@@ -6,6 +6,7 @@
 #include <QDBusInterface>
 #include <QDBusPendingCallWatcher>
 #include <QDBusPendingReply>
+#include <QDBusServiceWatcher>
 
 namespace {
 
@@ -128,13 +129,20 @@ DbusSettingsClient::DbusSettingsClient(QObject *parent)
     , m_path(kPath)
     , m_interface(kInterface)
 {
-    QDBusConnection bus = QDBusConnection::sessionBus();
-    if (QDBusConnectionInterface *iface = bus.interface()) {
-        connect(iface, &QDBusConnectionInterface::serviceRegistered, this,
-                &DbusSettingsClient::onServiceRegistered);
-        connect(iface, &QDBusConnectionInterface::serviceUnregistered, this,
-                &DbusSettingsClient::onServiceUnregistered);
-    }
+    // Watch the well-known name itself. `QDBusConnectionInterface`'s
+    // serviceRegistered/serviceUnregistered only fire for a connection's
+    // unique name, so a settingsd owned by another process never triggered
+    // them: the shell resynced once via the constructor's GetAll and then
+    // never after a restart (T-08.3 found this live). A QDBusServiceWatcher
+    // follows the well-known name across owners.
+    m_watcher = new QDBusServiceWatcher(m_service, QDBusConnection::sessionBus(),
+                                        QDBusServiceWatcher::WatchForRegistration
+                                            | QDBusServiceWatcher::WatchForUnregistration,
+                                        this);
+    connect(m_watcher, &QDBusServiceWatcher::serviceRegistered, this,
+            &DbusSettingsClient::onServiceRegistered);
+    connect(m_watcher, &QDBusServiceWatcher::serviceUnregistered, this,
+            &DbusSettingsClient::onServiceUnregistered);
     subscribeToChanges();
     setAvailable(isAvailable());
     if (m_available)

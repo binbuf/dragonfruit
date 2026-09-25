@@ -62,3 +62,10 @@ needs the same seam for `appearance.*`/`accessibility.reduceMotion`).
 - The client holds last-known values across a daemon restart (`availableChanged
   false`), so nothing is visually lost; T-08.3 owns the full kill/restart
   resync story and the "change made while down" semantics.
+- T-08.3 implements the name-appearance resync with a `QDBusServiceWatcher` on
+  the well-known `org.dragonfruit.Settings1` name. This is not interchangeable
+  with `QDBusConnectionInterface`'s `serviceRegistered`/`serviceUnregistered`:
+  those signals only cover a connection's own unique name, so a settingsd
+  owned by another process reappeared without the client noticing (it resynced
+  once from the constructor's `GetAll` and then never again). Keep the
+  watcher; a caller must not replace it with the interface signals.
