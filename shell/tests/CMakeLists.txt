@@ -237,3 +237,44 @@ set_tests_properties(tst_switcher PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+# Notification-model tests (T-11.1a): the service's `Banners()`/`History()`
+# JSON decodes to the shell's banner and history views. No bus, Wayland, or
+# QML.
+qt_add_executable(tst_notificationmodel
+    tst_notificationmodel.cpp
+)
+target_link_libraries(tst_notificationmodel PRIVATE
+    Qt6::Core Qt6::Test
+    dragonfruit-shell-dockcore
+)
+
+add_test(
+    NAME tst_notificationmodel
+    COMMAND tst_notificationmodel
+)
+set_tests_properties(tst_notificationmodel PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+# Notification chrome tests (T-11.1a): the banner card and the notification
+# center render the decoded service views.
+qt_add_executable(tst_notifications
+    tst_notifications.cpp
+)
+target_link_libraries(tst_notifications PRIVATE
+    Qt6::QuickTest
+    dragonfruit-design-systemplugin
+    dragonfruit-shell-notificationsplugin
+)
+qt_import_qml_plugins(tst_notifications)
+
+add_test(
+    NAME tst_notifications
+    COMMAND tst_notifications -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_notifications.qml
+)
+set_tests_properties(tst_notifications PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
