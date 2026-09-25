@@ -14,6 +14,13 @@ One or two sentences: what exists at the end of the session that did not exist b
 ## Context (read first)
 - `path/to/file.ts:123` — why this file matters
 - `<design>/<doc>.md` — the design this task implements
+- `docs/reference/<doc>.md` — the distilled UI/UX reference this task mirrors, when it has one
+
+## Reference UI/UX (macOS screenshots)   <!-- optional: UI tasks with a captured reference -->
+The near-verbatim target: observed section order, exact row labels, control
+types, and how each maps to our settings keys / adapters / services. Note the
+Apple-only rows to adapt or omit. Local captures live in
+`docs/reference/macos/` and never ship.
 
 ## Scope
 - [ ] Concrete, verifiable item
