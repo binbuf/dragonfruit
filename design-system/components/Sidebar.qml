@@ -21,13 +21,17 @@ FocusScope {
         var index = 0;
         for (var s = 0; s < root.sections.length; ++s) {
             var section = root.sections[s] || {};
-            out.push({
-                index: index++,
-                type: "header",
-                label: section.title || "",
-                icon: "",
-                badge: ""
-            });
+            // Untitled sections are a flat list with no header row (the
+            // Settings pane list); titled sections keep their header.
+            if ((section.title || "").length > 0) {
+                out.push({
+                    index: index++,
+                    type: "header",
+                    label: section.title || "",
+                    icon: "",
+                    badge: ""
+                });
+            }
             var items = section.items || [];
             for (var i = 0; i < items.length; ++i) {
                 var item = items[i] || {};

@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(11 earlier sections omitted)_
+_(12 earlier sections omitted)_
 
-- **T09 — T-02.1b Window appear transition**: **State: done.** A newly mapped window scales/fades in from its Dock tile on; **`compositor/src/window/appear.rs`** (new) — `AppearTransition`
 - **T10 — T-02.2 Minimize and restore motion**: **State: done.** Minimize shrinks a window into its Dock entry's tile and; **`compositor/src/window/motion.rs`** (renamed from `appear.rs`) —
 - **T11 — T-02.3 Zoom and fullscreen transitions**: **State: done.** Zoom/unzoom and fullscreen/unfullscreen animate between the; **`compositor/src/window/motion.rs`** — `WindowMotionKind::{Zoom,
 - **T12 — T-02.4a Close ghost**: **State: done.** A closing window shrinks/fades out into its app's Dock tile; **`compositor/src/window/motion.rs`** — `WindowMotionKind::Close` (reverse
@@ -44,7 +43,8 @@ _(11 earlier sections omitted)_
 - **T45 — T-08.2b Design-system Theme binding**: **State: done.** The design-system `Theme` singleton's `dark`/`reducedMotion`; **`shell/src/themebinding.{h,cpp}`** (new) — `ThemeBinding` is the one
 - **T46 — T-08.2c Compositor motion/input policy migration**: **State: done.** The compositor now consumes the settingsd motion/input policy;; **`protocols/dragonfruit-toplevel.xml`** — `df_toplevel_manager` is v5 with
 - **T47 — T-08.3 Restart, resync, and key-schema documentation**: **State: done.** `settingsd` is restartable with no lost write and the shell; **`docs/settings-keys.md`** (new) — the human-facing key table (type,
-- **Follow-ups**: **T-08.2 consumer migration (T-08.2a done in T44, T-08.2b done in T45,; **T-07.6 signal wiring (not done).** The bridge host
+- **T48 — T-09.1a Settings app shell**: **State: done.** The `apps/settings` stub is now a real shell: frameless; **`apps/settings/`** is a reusable QML module `Dragonfruit.Settings` (static
+- **Follow-ups**: **T-09 Settings Wave 1 (T-09.1a done in T48).** The shell, sidebar, local; **T-08.2 consumer migration (T-08.2a done in T44, T-08.2b done in T45,
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3159,8 +3159,81 @@ Gotchas for later tasks:
 - **Do not rename/remove a v1 key**; the frozen manifest and the doc test both
   guard the documented v1 set.
 
+## T48 — T-09.1a Settings app shell
+
+**State: done.** The `apps/settings` stub is now a real shell: frameless
+Tier-1 window with design-system titlebar/traffic lights, sidebar + local pane
+search, back/forward history, and a pane header card. The four Wave-1 pane
+rows are advertised; their bodies land in T-09.2…T-09.5.
+
+What landed:
+
+- **`apps/settings/`** is a reusable QML module `Dragonfruit.Settings` (static
+  lib `dragonfruit-settings-ui` + plugin) and the thin `dragonfruit-settings`
+  executable — the gallery/module split, so the app and the QML test render the
+  same surfaces.
+- **`apps/settings/SettingsPanes.qml`** (new, singleton) — the ordered catalog
+  from `docs/reference/System_Preferences.md`:
+  `{ id, title, icon, description, shipped }`; `shippedPanes`/`filter(query)`.
+  Wave-1 `shipped` ids (reference order): `appearance`, `desktop-dock`,
+  `displays`, `wallpaper`.
+- **`apps/settings/SettingsShell.qml`** (new) — `AppWindow` + `TitleBar`,
+  `Sidebar` + `SearchField`, `Toolbar` back/forward, history
+  (`selectPane`/`back`/`forward`, `canGoBack`/`canGoForward`), `PaneHeader`,
+  and a placeholder note per unfilled pane. Alt+Left/Right history, Ctrl+F
+  search focus.
+- **`apps/settings/PaneHeader.qml`**, **`SettingsWindow.qml`** (new) — header
+  card; frameless window mapping shell intent to `Window` state
+  (`startSystemMove` for drag).
+- **Design system** — `Icon.qml`: `chevron-left` + Canvas pane glyphs
+  (`appearance`, `wallpaper`, `dock`, `displays`); `Button.qml`:
+  `accessibleName`; `Sidebar.qml`: untitled sections render no header row.
+- **Tests** — `apps/settings/tests/tst_settings_shell.{cpp,qml}` (new, 11
+  cases): opens, search filter, keyboard nav + Enter, history, AT-SPI roles,
+  close forwarding, selected-row accent pixel check.
+- **Docs** — ADR [0035](design/adr/0035-settings-shell-and-pane-catalog.md);
+  track doc shell section; task hand-off.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `ctest --test-dir build -R tst_settings_shell --output-on-failure` — 11/11.
+- `ctest --test-dir build` — 22/22 (no regression; the design-system suite
+  still passes after the `Icon`/`Button`/`Sidebar` additions).
+- `make lint` green; `make e2e` green (all Rust suites + clean
+  `make demo --headless`).
+- Live capture (`/tmp/opencode/t48-capture.sh`): nested demo with
+  `dragonfruit-settings` as the Qt/Wayland client. The selected row is accent
+  #b32a66 (5162 accent px in the sidebar); vision on a tight crop reported
+  titlebar "Settings", "Search" + magnifier, the four rows, magenta selected
+  row, header card, and no artifacts.
+
+Gotchas for later tasks:
+
+- **Add a pane by flipping its `SettingsPanes` entry to `shipped: true`**,
+  writing its body in `apps/settings/`, and (if new) adding its `Icon` glyph.
+  Never add a row before the pane works — that is the no-half-panes gate
+  (ADR 0035).
+- **The sidebar's selection highlight animates over `motion.hover` (100 ms).**
+  Pixel-sampling tests must `wait()` it out (see
+  `test_selected_sidebar_row_is_accent_tinted`).
+- **The shell is a module, not an executable body**: reuse `SettingsShell` in
+  tests; `SettingsWindow` only maps window-control intent.
+- `SettingsPanes.catalog` holds the full reference IA; only `shippedPanes`
+  render. Search is local over shipped panes (id/title/description,
+  case-insensitive).
+- The app's `Theme.dark` follows the host style hint, not the compositor
+  scheme (existing T-04.4b/T-08 follow-up), so a nested light window can sit on
+  a dark compositor default.
+
 ## Follow-ups
 
+- **T-09 Settings Wave 1 (T-09.1a done in T48).** The shell, sidebar, local
+  search, history, header card, and the four Wave-1 sidebar rows landed in
+  `apps/settings` (`Dragonfruit.Settings` module, ADR 0035). Remaining:
+  T-09.1b live-apply plumbing; T-09.2–T-09.5 fill the Appearance, Wallpaper,
+  Desktop & Dock, and Displays pane bodies and flip each `SettingsPanes` entry
+  to `shipped: true`; T-09.6a publishes the app menu model; T-09.6b records the
+  absence matrix and wave captures.
 - **T-08.2 consumer migration (T-08.2a done in T44, T-08.2b done in T45,
   T-08.2c done in T46).** T44 deleted the shell's `DockSettings`/`DockPins`
   and `QFileSystemWatcher`; the Dock now reads/writes through the

@@ -71,6 +71,18 @@ desktop *yours*. It also proves the no-half-panes rule and the design-system
 - Global menu integration toggle (T-14).
 - Displays advanced (color management, night light, VRR) (T-15/T-16).
 
+## Shell implementation (T-09.1a)
+
+`apps/settings` is the reusable `Dragonfruit.Settings` QML module plus a thin
+executable. One ordered catalog singleton, `SettingsPanes`, holds every
+reference pane as `{ id, title, icon, description, shipped }`; the sidebar and
+local search list only the `shipped` subset, so a row can never appear before
+its pane works (the no-half-panes rule). The shell owns the frameless Tier-1
+window's design-system `TitleBar`/traffic lights, the `Sidebar` + `SearchField`
+navigation, back/forward history, and the header card; a pane unit adds its
+body, wires settingsd, and flips its catalog entry to `shipped: true`. See
+[ADR 0035](../adr/0035-settings-shell-and-pane-catalog.md).
+
 ## Acceptance
 
 - [ ] The demo runs and the captures are committed.
