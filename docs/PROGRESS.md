@@ -41,6 +41,7 @@
 - **T33 — T-07.1b Event subscription, restart re-subscribe, absence**: **State: done.** The subscription/event seam landed in the same; **`services/system-adapters/src/subscription.rs`** (new) — `ConnectionState`
 - **T34 — T-07.2a NetworkManager read path**: **State: done.** The NetworkManager read path landed in a new concrete-adapter; **`services/networkmanager/`** (new crate `dragonfruit-networkmanager`,
 - **T35 — T-07.2b NetworkManager join and polkit degradation**: **State: done.** The write path (join/activate) and the polkit read-only; **`services/networkmanager/src/source.rs`** — the transport seam gained
+- **T36 — T-07.3 Audio adapter (PipeWire/WirePlumber)**: **State: done.** The audio adapter landed in a new concrete-adapter crate; no; **`services/audio/`** (new crate `dragonfruit-audio`, workspace member; deps:
 - **Follow-ups**: T-07.2a (done in T34): NetworkManager **read** path + mock/fixture landed; T-07.1a (done in T32): the adapter contract + mock landed
 <!-- symphony:digest:end -->
 
@@ -2331,6 +2332,71 @@ Gotchas for later tasks:
   it into `dragonfruit-system-adapters` only if T-07.3/T-07.4 gain a gated
   write.
 
+## T36 — T-07.3 Audio adapter (PipeWire/WirePlumber)
+
+**State: done.** The audio adapter landed in a new concrete-adapter crate; no
+shell wiring yet (T-07.5 renders the slider).
+
+What landed:
+
+- **`services/audio/`** (new crate `dragonfruit-audio`, workspace member; deps:
+  `dragonfruit-system-adapters` + `serde_json`; no zbus, no libpipewire):
+  `src/source.rs` (raw `AudioData`/`SinkData`, `AudioSource` trait, `SetOutcome`,
+  `MockAudio`), `src/pw_dump.rs` (`AudioData::from_pw_dump`, `CommandAudio`,
+  `PW_DUMP_BIN`/`WPCTL_BIN`/`DEFAULT_SINK_TARGET`), `src/model.rs`
+  (`AudioSnapshot` + `Sink`), `src/adapter.rs` (`AudioAdapter<S>`).
+- **Transport seam**: `AudioSource::read` → `Ok(Some(data))` present,
+  `Ok(None)` absent, `Err(AdapterError)` present-but-failed. `refresh()` is the
+  only daemon read and drives the shared `Subscription`. Writes are
+  `set_volume(f32)` / `set_mute(bool)` → `SetOutcome::{Applied, Absent,
+  Failed}`; a write does **not** invent a snapshot (the daemon push + host
+  refresh is the single source of truth, as in T-07.2b).
+- **Live path** (ADR 0028): there is no stable D-Bus volume API and no
+  `libpipewire` dev headers in the pinned toolchain, so `CommandAudio` runs
+  WirePlumber's tools: `pw-dump` (JSON) for the read, `wpctl set-volume`/
+  `set-mute @DEFAULT_AUDIO_SINK@` for the writes. The `pw-dump` schema is
+  pinned in `from_pw_dump`, which un-cubes WirePlumber's stored channel volume
+  (`linear = cbrt(stored)`) to the 0..=1 value the menu shows.
+- **Tests** — 27 lib + `tests/read_path.rs` (6) + `tests/volume_path.rs` (6),
+  fixture `tests/fixtures/pw-dump-office.json` (captured from the real
+  `pw-dump`, plus one synthesized second sink). Acceptance:
+  `a_volume_change_reflects_within_one_event`,
+  `a_mute_change_reflects_within_one_event`, `toggle_mute_reflects_within_one_event`.
+  `the_live_wireplumber_reads_when_a_session_is_present` exercises the real CLI
+  path and skips (absence) on CI.
+- **Makefile** — `make e2e` now runs `cargo test -p dragonfruit-audio` after
+  the networkmanager tests.
+- **Docs** — `07-system-integration.md` "The audio path (T-07.3)"; ADR `0028`.
+- **Capture** — `docs/captures/t07-audio.png` (nested demo, `spectacle -b -n -f`;
+  this unit has no surface of its own). Vision check: menu bar + Dock + windows
+  render, no stray artifacts.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-audio` — 27 lib + 6 + 6 integration green.
+- `make e2e` — exit 0 (audio tests included).
+- `cargo clippy -p dragonfruit-audio --all-targets -- -D warnings` and
+  `cargo fmt --all -- --check` — clean.
+
+Gotchas for later tasks:
+
+- **CLI source, not a native link** (ADR 0028): the live read/write shells out
+  to `pw-dump`/`wpctl`. The adapter/model/shell see only `AudioSnapshot`. If
+  T-15 adds libpipewire to the toolchain, drop a native source in behind the
+  same `AudioSource` trait.
+- **Volume is linear 0..=1** in `AudioSnapshot` (`volume()`/`level()`), with
+  `volume_percent()` for the slider label. WirePlumber stores volume cubed;
+  `from_pw_dump` does the `cbrt`. Do not re-cube in the shell.
+- **Default sink is resolved by `node.name`**, falling back to the first sink
+  when WirePlumber names none; the default sorts first in `sinks`.
+- **Glyph names** are the shell's (`StatusGlyph.qml`): `volume` / `volume-muted`
+  (`glyph()` returns `volume-muted` when muted or volume is 0).
+- **Absence**: a `pw-dump` that cannot run or exits non-zero (no PipeWire core)
+  → `Unavailable` (hidden); malformed JSON → `Error` (visible, inert).
+- **T-07.5** owns the event bridge: it must call `AudioAdapter::refresh()` on a
+  WirePlumber change (`pw-mon` / `pactl subscribe`), not poll. Writes target the
+  default sink only; per-sink writes and routing are T-15.
+
 ## Follow-ups
 
 - T-07.2a (done in T34): NetworkManager **read** path + mock/fixture landed
@@ -2463,3 +2529,11 @@ Gotchas for later tasks:
   backend-agnostic); (d) the nested gesture is over budget on the dev iGPU, so
   a later perf pass (real texture blur, fewer shadow layers under `Reduced`) is
   the mitigation path.
+- T-07.3 (done in T36): audio adapter landed (`services/audio`, ADR 0028).
+  Remaining: (a) T-07.5 owns the event bridge — it must call
+  `AudioAdapter::refresh()` on a WirePlumber change (`pw-mon`/`pactl subscribe`)
+  and render the slider from `AudioSnapshot`; (b) the live source is the
+  WirePlumber CLI (`pw-dump`/`wpctl`), not a native link — T-15 can swap a
+  `libpipewire` client in behind `AudioSource`; (c) writes target the default
+  sink only (per-sink/routing is T-15); (d) the absent-daemon matrix across all
+  three adapters is T-07.6a.

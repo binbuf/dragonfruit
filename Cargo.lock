@@ -531,6 +531,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "dragonfruit-audio"
+version = "0.1.0"
+dependencies = [
+ "dragonfruit-system-adapters",
+ "serde_json",
+]
+
+[[package]]
 name = "dragonfruit-compositor"
 version = "0.1.0"
 dependencies = [

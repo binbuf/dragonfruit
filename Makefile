@@ -92,6 +92,7 @@ e2e: build
 	    --test protocol_surface
 	$(CARGO) test -p dragonfruit-system-adapters
 	$(CARGO) test -p dragonfruit-networkmanager
+	$(CARGO) test -p dragonfruit-audio
 	$(MAKE) demo DEMO_ARGS=--headless
 
 # T-03.1a: the idle/animation frame budget trace. `make e2e` runs the same
