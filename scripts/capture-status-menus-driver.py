@@ -26,11 +26,13 @@ BTN_LEFT = 0x110
 
 # Pixels from the output's right edge to the centre of each status item; the
 # bar's centre row is at y = 14 (output pixels). Measured from the live shell
-# (the placeholder demo shows Wi-Fi + Bluetooth + volume + battery + clock +
-# Control Center + Mission Control): Wi-Fi centre x = 1615 px and volume
-# x = 1673 px on a 1920-wide output.
-WIFI_FROM_RIGHT = 305
+# with `DF_STATUS_FIXTURE=1` (Wi-Fi + volume + battery + clock + Control
+# Center + Mission Control; Bluetooth is hidden until its adapter lands):
+# Wi-Fi centre x = 1644 px, volume x = 1673 px, battery x = 1702 px on a
+# 1920-wide output.
+WIFI_FROM_RIGHT = 276
 VOLUME_FROM_RIGHT = 247
+BATTERY_FROM_RIGHT = 218
 BAR_Y = 14
 
 
@@ -90,6 +92,7 @@ def main():
 
     wifi_x = NESTED_W - WIFI_FROM_RIGHT
     volume_x = NESTED_W - VOLUME_FROM_RIGHT
+    battery_x = NESTED_W - BATTERY_FROM_RIGHT
 
     log(f"clicking Wi-Fi status item at ({wifi_x}, {BAR_Y})")
     synth.click(wifi_x, BAR_Y)
@@ -104,6 +107,13 @@ def main():
     volume_shot = os.path.join(args.outdir, "t07.5a-volume.png")
     shot(volume_shot)
     log(f"saved {volume_shot}")
+
+    log(f"clicking battery status item at ({battery_x}, {BAR_Y})")
+    synth.click(battery_x, BAR_Y)
+    time.sleep(0.8)
+    battery_shot = os.path.join(args.outdir, "t07.5b-battery.png")
+    shot(battery_shot)
+    log(f"saved {battery_shot}")
     return 0
 
 

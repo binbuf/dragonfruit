@@ -148,12 +148,31 @@ Item {
                 }
                 break;
             }
-            case "battery": {
+            case "battery":
+            case "battery-charging": {
                 // Outline cell + nub + a rounded level fill (macOS battery).
+                // The charging variant adds a bolt inside the cell.
                 roundedRect(ctx, s * 0.08, s * 0.30, s * 0.66, s * 0.40, s * 0.12);
                 ctx.stroke();
                 roundedRect(ctx, s * 0.78, s * 0.42, s * 0.09, s * 0.16, s * 0.035);
                 ctx.fill();
+                if (root.name === "battery-charging") {
+                    // A filled bolt, clear of the fill so it stays legible.
+                    ctx.save();
+                    ctx.fillStyle = root.color;
+                    ctx.beginPath();
+                    ctx.moveTo(s * 0.30, s * 0.30);
+                    ctx.lineTo(s * 0.52, s * 0.30);
+                    ctx.lineTo(s * 0.40, s * 0.48);
+                    ctx.lineTo(s * 0.54, s * 0.48);
+                    ctx.lineTo(s * 0.28, s * 0.72);
+                    ctx.lineTo(s * 0.36, s * 0.53);
+                    ctx.lineTo(s * 0.22, s * 0.53);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.restore();
+                    break;
+                }
                 var fillW = s * 0.60 * Math.max(0, Math.min(1, root.level));
                 if (fillW > s * 0.02) {
                     roundedRect(ctx, s * 0.11, s * 0.33, fillW, s * 0.34, s * 0.09);

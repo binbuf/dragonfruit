@@ -22,6 +22,9 @@ private slots:
     void outcomeOfReadsTheHostReport();
 
     void theWifiMenuModelExposesOneJoinRowPerNetwork();
+
+    void batteryDecodesAndHidesWhenNotPresent();
+    void batteryRefreshRaisesTheRequest();
 };
 
 static QByteArray availableWifi()
@@ -164,6 +167,42 @@ void TestStatusModel::theWifiMenuModelExposesOneJoinRowPerNetwork()
         QVERIFY(network.contains(QStringLiteral("strength")));
         QVERIFY(network.contains(QStringLiteral("secured")));
     }
+}
+
+// The battery (T-07.5b) is read-only; it decodes like the other views and
+// hides on the second hidden case (`present: false`) as well as absence.
+void TestStatusModel::batteryDecodesAndHidesWhenNotPresent()
+{
+    const QVariantMap view = SystemStatusModel::parseView(
+        R"({"kind":"battery","state":"available","present":true,"percent":82,
+            "level":0.82,"charging":true,"label":"82% charging"})",
+        QStringLiteral("battery"));
+    QCOMPARE(view.value(QStringLiteral("state")).toString(), QStringLiteral("available"));
+    QCOMPARE(view.value(QStringLiteral("visible")).toBool(), true);
+    QCOMPARE(view.value(QStringLiteral("percent")).toInt(), 82);
+    QCOMPARE(view.value(QStringLiteral("charging")).toBool(), true);
+    QCOMPARE(view.value(QStringLiteral("label")).toString(), QStringLiteral("82% charging"));
+
+    // UPower present but no battery: available, yet the item hides.
+    const QVariantMap absent = SystemStatusModel::parseView(
+        R"({"kind":"battery","state":"available","present":false,"label":"No battery"})",
+        QStringLiteral("battery"));
+    QCOMPARE(absent.value(QStringLiteral("visible")).toBool(), false);
+
+    // A fixture client's view round-trips through the instance API too.
+    SystemStatusModel model;
+    model.applyBatteryJson(
+        R"({"kind":"battery","state":"available","present":true,"percent":50})");
+    QVERIFY(model.batteryVisible());
+    QCOMPARE(model.battery().value(QStringLiteral("percent")).toInt(), 50);
+}
+
+void TestStatusModel::batteryRefreshRaisesTheRequest()
+{
+    SystemStatusModel model;
+    QSignalSpy spy(&model, &SystemStatusModel::refreshBatteryRequested);
+    model.requestRefreshBattery();
+    QCOMPARE(spy.count(), 1);
 }
 
 QTEST_MAIN(TestStatusModel)

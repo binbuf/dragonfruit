@@ -10,6 +10,7 @@ qt_add_qml_module(dragonfruit-shell-menubar
         MenuBarClock.qml
         WifiMenu.qml
         VolumeMenu.qml
+        BatteryMenu.qml
 )
 target_link_libraries(dragonfruit-shell-menubar PUBLIC
     Qt6::Core Qt6::Gui Qt6::Quick
@@ -23,4 +24,5 @@ df_qml_lint(shell-menubar
     MenuBarClock.qml
     WifiMenu.qml
     VolumeMenu.qml
+    BatteryMenu.qml
 )

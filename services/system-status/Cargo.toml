@@ -15,6 +15,7 @@ rust-version.workspace = true
 dragonfruit-system-adapters = { path = "../system-adapters", version = "0.1.0" }
 dragonfruit-networkmanager = { path = "../networkmanager", version = "0.1.0" }
 dragonfruit-audio = { path = "../audio", version = "0.1.0" }
+dragonfruit-power = { path = "../power", version = "0.1.0" }
 zbus = { version = "=5.19.0", features = ["blocking-api"] }
 serde_json = "=1.0.151"
 

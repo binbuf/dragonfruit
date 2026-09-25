@@ -31,12 +31,17 @@ Rectangle {
     property var appMenuModel: []
     // [{ id, icon, label, accessibleName, available, enabled, selected, tint }]
     property var statusItems: []
-    // The bridge host's decoded status views (T-07.5a); empty until the shell
-    // applies them, which hides the corresponding item.
+    // The bridge host's decoded status views (T-07.5a/T-07.5b); empty until
+    // the shell applies them, which hides the corresponding item.
     property var wifiMenu: ({})
     property var volumeMenu: ({})
-    // Which status popover is open: "" | "wifi" | "volume".
+    property var batteryMenu: ({})
+    // Which status popover is open: "" | "wifi" | "volume" | "battery".
     property string openStatusItem: ""
+    // Keyboard navigation (T-07.5b): the status slot the arrow keys select.
+    // -1 means no slot is selected.
+    property int keyboardStatusIndex: -1
+    readonly property bool statusMenuOpen: openStatusItem !== ""
     property bool showDate: false
     property bool showSeconds: false
     // The compositor reports when the shell/menu surface holds focus; when
@@ -68,7 +73,9 @@ Rectangle {
     // windows while the bar keeps its own `top` surface and reserved zone.
     readonly property var _dropdownRect: {
         if (openStatusItem !== "") {
-            var statusPopup = openStatusItem === "wifi" ? wifiMenuPopup : volumeMenuPopup;
+            var statusPopup = openStatusItem === "wifi" ? wifiMenuPopup
+                            : (openStatusItem === "volume" ? volumeMenuPopup
+                            : (openStatusItem === "battery" ? batteryMenuPopup : null));
             if (statusPopup && statusPopup.popup.open) {
                 var statusOrigin = statusPopup.mapToItem(menuBar, statusPopup.popup.x,
                                                          statusPopup.popup.y);
@@ -179,32 +186,83 @@ Rectangle {
         return null;
     }
 
-    // Open the popover for a status item. A hidden item (daemon absent) has
-    // nothing to open, matching the graceful-degradation rule.
+    // Open the popover for a status item. A hidden item (daemon absent, or a
+    // machine with no battery) has nothing to open, matching the graceful-
+    // degradation rule.
     function openStatusMenu(id) {
-        if (id !== "wifi" && id !== "volume")
+        if (id !== "wifi" && id !== "volume" && id !== "battery")
             return;
-        var data = id === "wifi" ? wifiMenu : volumeMenu;
+        var data = id === "wifi" ? wifiMenu
+                 : (id === "volume" ? volumeMenu : batteryMenu);
         if (!data || data.state === "unavailable")
+            return;
+        if (id === "battery" && data.present === false)
             return;
         closeMenus();
         closeStatusMenu();
         openStatusItem = id;
         if (id === "wifi")
             wifiMenuPopup.open = true;
-        else
+        else if (id === "volume")
             volumeMenuPopup.open = true;
+        else
+            batteryMenuPopup.open = true;
         statusMenuRefreshRequested(id);
         statusMenuOpened();
     }
 
     function closeStatusMenu() {
-        if (openStatusItem === "" && !wifiMenuPopup.open && !volumeMenuPopup.open)
+        // `openStatusItem` is the single owner of "a status popover is open".
+        // Guarding on it (not on the popups) makes the re-entrant call from a
+        // popup's own `closed` signal a no-op instead of double-emitting.
+        if (openStatusItem === "")
             return;
         openStatusItem = "";
         wifiMenuPopup.open = false;
         volumeMenuPopup.open = false;
+        batteryMenuPopup.open = false;
         statusMenuClosed();
+        keyboardStatusIndex = -1;
+        // Return keyboard focus to the bar so the arrow keys keep driving the
+        // status row after a popover closes.
+        forceActiveFocus();
+    }
+
+    // --- Keyboard navigation (T-07.5b) ------------------------------------
+    // The bar keeps focus; Left/Right move a ring across the focusable status
+    // slots and Return/Space opens the selected slot's popover (or activates
+    // it). Escape closes. This is the keyboard path to every status menu.
+    function moveStatusFocus(delta) {
+        var n = statusRepeater.count;
+        if (n <= 0) {
+            keyboardStatusIndex = -1;
+            return;
+        }
+        var i = keyboardStatusIndex < 0 ? (delta > 0 ? -1 : 0) : keyboardStatusIndex;
+        for (var step = 0; step < n; ++step) {
+            i = ((i + delta) % n + n) % n;
+            var item = statusRepeater.itemAt(i);
+            if (item && item.available) {
+                keyboardStatusIndex = i;
+                return;
+            }
+        }
+        keyboardStatusIndex = -1;
+    }
+
+    function activateKeyboardStatus() {
+        if (keyboardStatusIndex < 0)
+            return;
+        var item = statusRepeater.itemAt(keyboardStatusIndex);
+        if (!item)
+            return;
+        if (item.itemId === "wifi" || item.itemId === "volume" || item.itemId === "battery") {
+            openStatusMenu(item.itemId);
+        } else {
+            closeMenus();
+            closeStatusMenu();
+            statusItemActivated(item.itemId);
+        }
     }
 
     // Delayed-hover drag-through: while a menu is open, hovering a sibling
@@ -278,6 +336,37 @@ Rectangle {
         event.accepted = true;
     }
 
+    // Keyboard navigation across the status row (T-07.5b). Left/Right move
+    // the selection ring; Return/Space opens the selected item's menu (or
+    // raises its action). A popup that holds focus handles its own keys.
+    Keys.onLeftPressed: (event) => {
+        if (!menuBar.statusMenuOpen) {
+            menuBar.moveStatusFocus(-1);
+            event.accepted = true;
+        }
+    }
+
+    Keys.onRightPressed: (event) => {
+        if (!menuBar.statusMenuOpen) {
+            menuBar.moveStatusFocus(1);
+            event.accepted = true;
+        }
+    }
+
+    Keys.onReturnPressed: (event) => {
+        if (!menuBar.statusMenuOpen) {
+            menuBar.activateKeyboardStatus();
+            event.accepted = true;
+        }
+    }
+
+    Keys.onSpacePressed: (event) => {
+        if (!menuBar.statusMenuOpen) {
+            menuBar.activateKeyboardStatus();
+            event.accepted = true;
+        }
+    }
+
     Row {
         id: appMenuRow
         objectName: "appMenuRow"
@@ -346,7 +435,9 @@ Rectangle {
 
             delegate: StatusItem {
                 required property var modelData
+                required property int index
 
+                keyboardFocus: menuBar.keyboardStatusIndex === index
                 itemId: modelData.id !== undefined ? modelData.id : ""
                 icon: modelData.icon !== undefined ? modelData.icon : ""
                 label: modelData.label !== undefined ? modelData.label : ""
@@ -359,7 +450,7 @@ Rectangle {
                 backgroundColor: menuBar.color
 
                 onActivated: (id) => {
-                    if (id === "wifi" || id === "volume") {
+                    if (id === "wifi" || id === "volume" || id === "battery") {
                         menuBar.openStatusMenu(id);
                         return;
                     }
@@ -412,6 +503,7 @@ Rectangle {
         anchorItem: menuBar.statusItemFor("wifi")
         onJoinRequested: (ssid, secret) => menuBar.wifiJoinRequested(ssid, secret)
         onRefreshRequested: menuBar.statusMenuRefreshRequested("wifi")
+        onClosed: menuBar.closeStatusMenu()
     }
 
     VolumeMenu {
@@ -422,5 +514,15 @@ Rectangle {
         onVolumeSetRequested: (volume) => menuBar.volumeSetRequested(volume)
         onMuteToggleRequested: menuBar.muteToggleRequested()
         onRefreshRequested: menuBar.statusMenuRefreshRequested("volume")
+        onClosed: menuBar.closeStatusMenu()
+    }
+
+    BatteryMenu {
+        id: batteryMenuPopup
+        objectName: "batteryMenu"
+        model: menuBar.batteryMenu
+        anchorItem: menuBar.statusItemFor("battery")
+        onRefreshRequested: menuBar.statusMenuRefreshRequested("battery")
+        onClosed: menuBar.closeStatusMenu()
     }
 }

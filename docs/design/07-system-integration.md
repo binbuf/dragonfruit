@@ -191,7 +191,7 @@ The adapters are Rust crates; the menu bar is C++/QML. T-07.5a bridges them in
 a dedicated session-bus host, `dragonfruit-system-status`
 (`services/system-status`), rather than linking an adapter into the shell
 ([adr/0029](adr/0029-system-status-bridge-host.md)). The host owns the
-NetworkManager and audio adapters and serves
+NetworkManager, audio, and power adapters and serves
 `org.dragonfruit.SystemStatus1` at `/org/dragonfruit/SystemStatus1`:
 
 - `org.dragonfruit.SystemStatus1.Wifi` — `State()`/`Refresh()` (the decoded
@@ -199,11 +199,18 @@ NetworkManager and audio adapters and serves
   degradation) and `Join(ssid, secret)`.
 - `org.dragonfruit.SystemStatus1.Audio` — `State()`/`Refresh()` and
   `SetVolume(volume)`, `SetMute(muted)`, `ToggleMute()`.
+- `org.dragonfruit.SystemStatus1.Battery` — `State()`/`Refresh()` only (the
+  read-only battery view; no write).
 
 The host core (`StatusHost`) is adapter-only and CI-tested with the mocks; the
 D-Bus layer is a thin mechanical wrapper. The shell decodes the JSON in one
 model (`shell/src/systemstatusmodel.*`) and draws the design-system popovers
-(`WifiMenu.qml`, `VolumeMenu.qml`); a fixture client backs `--placeholders`.
+(`WifiMenu.qml`, `VolumeMenu.qml`, `BatteryMenu.qml`). `--placeholders` is
+gone; `DF_STATUS_FIXTURE=1` selects the fixture client for headless use and
+the capture script, and every live item otherwise degrades to hidden when its
+daemon is absent. The host itself is started by the session (a systemd user
+unit at packaging time); the dev tool does not start it, so a live dev session
+shows only the items whose daemons the host can reach once it is running.
 
 The bridge keeps the adapter contract's no-poll rule: the host reads an
 adapter on startup, on the shell's explicit `Refresh()` (menu open), and after

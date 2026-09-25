@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(2 earlier sections omitted)_
+_(3 earlier sections omitted)_
 
-- **Landed foundation**: Compositor core (nested/DRM/headless, calloop, damage-driven rendering), input
 - **T01 — T-01.1 Titlebar render element**: **State: done.** The SSD titlebar element exists, is sized from the generated; **`compositor/src/window/decoration.rs`** — `TitlebarElement`,
 - **T02 — T-01.2 Traffic-light actions**: **State: done.** Close/minimize/zoom are clickable through the titlebar; **`compositor/src/window/decoration.rs`** — `TitlebarElement::cluster_rect()`
 - **T03 — T-01.3 Titlebar drag, double-click, fullscreen reveal**: **State: done.** A floating window's titlebar drags to move (existing; **`compositor/src/window/decoration.rs`** — `TitlebarDoubleClick`
@@ -44,7 +43,8 @@ _(2 earlier sections omitted)_
 - **T36 — T-07.3 Audio adapter (PipeWire/WirePlumber)**: **State: done.** The audio adapter landed in a new concrete-adapter crate; no; **`services/audio/`** (new crate `dragonfruit-audio`, workspace member; deps:
 - **T37 — T-07.4 Power adapter (UPower)**: **State: done.** The read-only power adapter landed in a new concrete-adapter; **`services/power/`** (new crate `dragonfruit-power`, workspace member; deps:
 - **T38 — T-07.5a Wi-Fi and volume status menus**: **State: done.** Wi-Fi list/join and volume slider/mute render in; **`services/system-status/`** (new crate `dragonfruit-system-status`,
-- **Follow-ups**: T-07.2a (done in T34): NetworkManager **read** path + mock/fixture landed; T-07.1a (done in T32): the adapter contract + mock landed
+- **T39 — T-07.5b Battery menu, placeholder removal, keyboard a11y**: **State: done.** The battery item is live over the bridge host, `--placeholders`; **`services/system-status`** — `StatusHost<N, A, P>` gained a `PowerAdapter`;
+- **Follow-ups**: T-07.5b (done in T39): battery menu + `--placeholders` removal + keyboard; T-07.2a (done in T34): NetworkManager **read** path + mock/fixture landed
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -2553,8 +2553,101 @@ Gotchas for later tasks:
   y=14. The capture driver hard-codes wifi/volume from-right (305/247 px); if
   T-07.5b adds/removes visible placeholder slots, re-measure.
 
+## T39 — T-07.5b Battery menu, placeholder removal, keyboard a11y
+
+**State: done.** The battery item is live over the bridge host, `--placeholders`
+is gone, and the status row has a keyboard path; the demo app menu is kept for
+T-14.
+
+What landed:
+
+- **`services/system-status`** — `StatusHost<N, A, P>` gained a `PowerAdapter`;
+  `new(wifi, audio, battery)`, `refresh_battery()`, `battery_view()` /
+  `battery_state()`, `battery()`/`battery_mut()`. New const
+  `BATTERY_INTERFACE = "org.dragonfruit.SystemStatus1.Battery"`, served by a
+  `BatteryInterface` with `State()`/`Refresh()` only (read-only, no write).
+  `dbus::LiveHost` is now `StatusHost<DbusNetworkManager, CommandAudio,
+  DbusUPower>`; `interface_names()` returns 3. `main.rs` adds `--print-battery`.
+  `battery_view` JSON: `{kind:"battery", state, present, glyph, label, percent,
+  level, charging, plugged, onBattery, timeToEmpty, timeToFull}`; `present` is
+  `false` on a machine with UPower but no battery.
+- **Shell model/client** — `SystemStatusModel` gained `battery()`,
+  `batteryVisible()`, `applyBattery[Json]`, `requestRefreshBattery()`. Its
+  `normalize` hides the battery on the second hidden case (`present:false`).
+  `SystemStatusClient` gained `refreshBattery()` + `batteryState`; the D-Bus
+  client calls `…Battery.State()`, the fixture client emits an 82%-charging
+  view.
+- **Shell QML** — new `shell/menubar/BatteryMenu.qml` (design-system `Popup`,
+  read-only: percentage, charge label, time to full/empty; raises
+  `refreshRequested`/`closed`). `MenuBar.qml` wires the `batteryMenu` model,
+  the third popover, `_dropdownRect`, and the click-away guard; `StatusItem`
+  gained a `keyboardFocus` `FocusRing`; `StatusGlyph` gained `battery-charging`
+  (a bolt). The shell controller hides the Bluetooth/Focus/Accessibility
+  placeholders (their adapters are later), keeps `demoAppMenu()` always, and
+  wires `onBatteryState`.
+- **Keyboard a11y** — the bar root keeps focus; Left/Right move
+  `keyboardStatusIndex` across available status slots (hidden slots skipped),
+  Return/Space opens the selected slot's popover (or raises
+  `statusItemActivated`), Escape closes. `WifiMenu` adds Up/Down highlight +
+  Return, `VolumeMenu` adds arrow-key volume steps + Return mute,
+  `BatteryMenu` is read-only. Each menu exposes `closed()` so the bar clears
+  `openStatusItem` when a popup closes via Escape.
+- **`--placeholders` removed** — gone from `shell/src/main.cpp`,
+  `ShellController::start`, and `tools/dragonfruit-dev`'s `launch_shell`. The
+  fixture client is now selected by `DF_STATUS_FIXTURE=1` (headless/capture
+  only). The demo app menu is no longer gated on the flag.
+- **Tests** — `cargo test -p dragonfruit-system-status`: 11 lib + 6 integration
+  (battery view, present-but-no-battery, absent UPower, read failure). Qt:
+  `tst_statusmodel` (battery decode/hide + refresh request) and
+  `tst_menubar.qml` (battery popover, no-battery opens nothing, arrow
+  selection, Return-opens/Escape-closes, `battery-charging` pixel test).
+- **Capture** — `scripts/capture-status-menus.sh` now exports
+  `DF_STATUS_FIXTURE=1` and captures `docs/captures/t07.5b-battery.png`
+  (wifi/volume still `t07.5a-*`). Vision check: popover shows "82% charging",
+  a bolt glyph, "1:30 until full", read-only, no artifacts.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-system-status` — 11 lib + 6 integration green.
+- `make e2e` — exit 0 (system-status included; scripted demo still clean).
+- `make qml-test` — 18/18, including `tst_menubar`, `tst_statusmodel`,
+  `qmllint_shell-menubar`.
+- Capture: `bash scripts/capture-status-menus.sh`.
+
+Gotchas for later tasks:
+
+- **Visibility needs the bridge host running.** Nothing launches
+  `dragonfruit-system-status` yet; the dev tool does **not** start it. A live
+  dev session has every live item hidden (the honest absent-daemon state).
+  Start the host (or set `DF_STATUS_FIXTURE=1`) to see wi-fi/volume/battery.
+  T-07.6a validates absence; packaging/session ownership starts the host.
+- **`DF_STATUS_FIXTURE`** selects `MockSystemStatusClient`; it is the only
+  remaining fixture switch after `--placeholders`. Keep it for headless and
+  the capture script; it is read once at `ShellController::start`.
+- **Battery hides on two conditions**: `state != available` (UPower absent /
+  error handling) and `present == false` (no cell). The model owns both; the
+  QML only reads `visible`.
+- **Measured status centers** (fixture demo, 1920-wide): wifi 1644, volume
+  1673, battery 1702, y=14; from-right 276/247/218 (Bluetooth hidden). The
+  capture driver hard-codes these.
+- **Read-only**: the Battery interface has no write; do not add `Set*` here
+  (power profiles are T-15).
+- **Keyboard**: the bar root must hold active focus for arrows; opening a
+  popover moves focus into the `Popup`, which handles its own keys. `closeStatusMenu`
+  now guards on `openStatusItem` (not the popup `open` flags) to avoid a
+  double `statusMenuClosed` when a popup's own `closed` signal re-enters.
+- **Glyph**: charging picks `battery-charging` from `charging` in the
+  controller; the battery fill is `level` (0..=1), the label is `percent`
+  0–100.
+
 ## Follow-ups
 
+- T-07.5b (done in T39): battery menu + `--placeholders` removal + keyboard
+  a11y landed. Remaining: (a) no process starts `dragonfruit-system-status`
+  yet — the dev tool deliberately does not; the session/systemd unit (or a
+  `dragonfruit dev` flag) must, or live items hide; (b) T-07.6 wires the
+  daemon signals (`PropertiesChanged`/`pw-mon`) and validates absence, then
+  T-07.6b records the track capture.
 - T-07.2a (done in T34): NetworkManager **read** path + mock/fixture landed
   (`services/networkmanager`, ADR 0026). Remaining: (a) T-07.2b (done in T35,
   ADR 0027) added activate/join + polkit read-only degradation to the same

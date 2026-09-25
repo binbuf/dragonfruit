@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Shell process controller (T-09): owns the QML menu bar, renders it into
 // the compositor's chrome surface, and maps compositor broadcasts onto the
-// bar's data properties. System-service status items are placeholders until
-// the T-20 adapters land.
+// bar's data properties. System-service status items come from the T-07
+// session-bus bridge host (services/system-status).
 #pragma once
 
 #include <QObject>
@@ -39,10 +39,11 @@ public:
     ~ShellController() override;
 
     // Connect, authenticate, create the menu-bar surface, and load the QML.
-    // `placeholders` shows the demo status items (T-20 not yet landed); when
-    // false every status item degrades to hidden, the "daemon absent" state.
-    bool start(const QString &socketName, const QString &tokenHex, int barHeight,
-               bool placeholders);
+    // Status items come from the live bridge host; when the host (or a
+    // daemon) is absent every item degrades to hidden, the "daemon absent"
+    // state. The `DF_STATUS_FIXTURE` environment variable selects the
+    // fixture client for headless/capture use only.
+    bool start(const QString &socketName, const QString &tokenHex, int barHeight);
 
     QString lastError() const;
 
@@ -62,6 +63,7 @@ private slots:
     void onMuteToggleRequested();
     void onWifiState(const QByteArray &json);
     void onAudioState(const QByteArray &json);
+    void onBatteryState(const QByteArray &json);
     void onStatusReport(const QByteArray &json);
     void onClockTick();
     void onAppMenuOpened(int index);
@@ -221,8 +223,8 @@ private:
     void updatePopupGeometry();
 
     ShellProtocol *m_protocol = nullptr;
-    // The T-07.5a bridge: the decoded status model and its host client (the
-    // live D-Bus client, or the fixture client in `--placeholders` mode).
+    // The T-07.5a/T-07.5b bridge: the decoded status model and its host client
+    // (the live D-Bus client, or the fixture client under `DF_STATUS_FIXTURE`).
     SystemStatusModel *m_statusModel = nullptr;
     SystemStatusClient *m_statusClient = nullptr;
     QQmlEngine *m_engine = nullptr;
@@ -351,5 +353,4 @@ private:
     Qt::MouseButtons m_buttons = Qt::NoButton;
     QString m_appId;
     QString m_appTitle;
-    bool m_placeholders = false;
 };

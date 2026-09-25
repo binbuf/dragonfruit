@@ -507,7 +507,6 @@ fn launch_shell(guard: &mut ChildGuard, socket_name: &str, runtime_dir: &Path) -
         socket_name.to_string(),
         "--menubar-height".to_string(),
         "28".to_string(),
-        "--placeholders".to_string(),
     ];
     let envs = [
         ("WAYLAND_DISPLAY", socket_name.to_string()),

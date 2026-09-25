@@ -10,6 +10,7 @@ namespace {
 
 const QString kKindWifi = QStringLiteral("wifi");
 const QString kKindAudio = QStringLiteral("audio");
+const QString kKindBattery = QStringLiteral("battery");
 
 } // namespace
 
@@ -26,6 +27,11 @@ bool SystemStatusModel::wifiVisible() const
 bool SystemStatusModel::audioVisible() const
 {
     return m_audio.value(QStringLiteral("visible")).toBool();
+}
+
+bool SystemStatusModel::batteryVisible() const
+{
+    return m_battery.value(QStringLiteral("visible")).toBool();
 }
 
 QVariantMap SystemStatusModel::parseView(const QByteArray &json, const QString &kind, QString *error)
@@ -59,7 +65,13 @@ QVariantMap SystemStatusModel::normalize(const QVariantMap &view, const QString 
     QVariantMap normalized = view;
     const QString state = view.value(QStringLiteral("state")).toString();
     const bool available = state == QLatin1String("available");
-    const bool hidden = state.isEmpty() || state == QLatin1String("unavailable");
+    bool hidden = state.isEmpty() || state == QLatin1String("unavailable");
+    // The battery has a second hidden case: UPower is present but the machine
+    // has no present battery (a desktop, a VM). The host reports it as
+    // `available` with `present: false`; hide the item then too.
+    if (kind == kKindBattery && view.contains(QStringLiteral("present"))
+            && !view.value(QStringLiteral("present")).toBool())
+        hidden = true;
     normalized.insert(QStringLiteral("kind"), kind);
     normalized.insert(QStringLiteral("state"),
                       state.isEmpty() ? QStringLiteral("unavailable") : state);
@@ -80,6 +92,12 @@ void SystemStatusModel::applyAudio(const QVariantMap &view)
     emit changed();
 }
 
+void SystemStatusModel::applyBattery(const QVariantMap &view)
+{
+    m_battery = normalize(view, kKindBattery);
+    emit changed();
+}
+
 void SystemStatusModel::applyWifiJson(const QByteArray &json)
 {
     QString error;
@@ -96,6 +114,15 @@ void SystemStatusModel::applyAudioJson(const QByteArray &json)
     if (!error.isEmpty())
         return;
     applyAudio(view);
+}
+
+void SystemStatusModel::applyBatteryJson(const QByteArray &json)
+{
+    QString error;
+    const QVariantMap view = parseView(json, kKindBattery, &error);
+    if (!error.isEmpty())
+        return;
+    applyBattery(view);
 }
 
 void SystemStatusModel::requestJoin(const QString &ssid, const QString &secret)
@@ -123,4 +150,9 @@ void SystemStatusModel::requestRefreshWifi()
 void SystemStatusModel::requestRefreshAudio()
 {
     emit refreshAudioRequested();
+}
+
+void SystemStatusModel::requestRefreshBattery()
+{
+    emit refreshBatteryRequested();
 }

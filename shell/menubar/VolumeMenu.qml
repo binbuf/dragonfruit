@@ -35,6 +35,9 @@ Item {
     signal volumeSetRequested(double volume)
     signal muteToggleRequested()
     signal refreshRequested()
+    // Raised when the popup closes for any reason, for the bar's state
+    // (T-07.5b keyboard a11y).
+    signal closed()
 
     onModelChanged: {
         if (model.volume !== undefined)
@@ -51,6 +54,12 @@ Item {
 
     function toggleMute() {
         root.muteToggleRequested();
+    }
+
+    // Adjust by a keyboard step and apply it (T-07.5b).
+    function step(delta) {
+        root.value = Math.max(0.0, Math.min(1.0, root.value + delta));
+        root.commit();
     }
 
     function commit() {
@@ -74,6 +83,28 @@ Item {
                 popup.x = Math.min(popup.x,
                                    root.parent.width - popup.width
                                    - Theme.controls.menuBar.paddingH);
+        }
+        onClosed: root.closed()
+
+        Keys.onUpPressed: (event) => {
+            root.step(0.05);
+            event.accepted = true;
+        }
+        Keys.onRightPressed: (event) => {
+            root.step(0.05);
+            event.accepted = true;
+        }
+        Keys.onDownPressed: (event) => {
+            root.step(-0.05);
+            event.accepted = true;
+        }
+        Keys.onLeftPressed: (event) => {
+            root.step(-0.05);
+            event.accepted = true;
+        }
+        Keys.onReturnPressed: (event) => {
+            root.toggleMute();
+            event.accepted = true;
         }
 
         Column {

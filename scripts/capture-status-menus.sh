@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MIT
 #
-# T-07.5a Wi-Fi and volume status-menu capture.
+# T-07.5a/T-07.5b Wi-Fi, volume, and battery status-menu capture.
 #
 # Launches the nested demo with the compositor's synthetic-input harness,
-# clicks the Wi-Fi and volume status items, and screenshots each popover with
-# Spectacle into docs/captures/. Not part of `make e2e`: CI has no host
-# session and no screenshot tool.
+# clicks the Wi-Fi, volume, and battery status items, and screenshots each
+# popover with Spectacle into docs/captures/. `--placeholders` is gone, so the
+# script sets `DF_STATUS_FIXTURE=1` to serve the bridge host's fixture views
+# (a present 82% battery among them; the CI/this host has no battery). Not
+# part of `make e2e`: CI has no host session and no screenshot tool.
 #
 # Requires: a host Wayland session, `spectacle`, and the built tree
 # (`make build`).
@@ -39,7 +41,8 @@ command -v spectacle >/dev/null 2>&1 || {
 rm -f "$SYNTH"
 LOG="$SCRATCH/demo.log"
 echo "capture-status-menus: starting the nested demo (socket $SOCKET)"
-DRAGONFRUIT_SYNTHETIC_INPUT="$SYNTH" setsid make demo DEMO_ARGS="--socket-name $SOCKET" \
+DF_STATUS_FIXTURE=1 DRAGONFRUIT_SYNTHETIC_INPUT="$SYNTH" \
+    setsid make demo DEMO_ARGS="--socket-name $SOCKET" \
     >"$LOG" 2>&1 &
 DEMO_PGID=$!
 
@@ -54,4 +57,4 @@ fi
 python3 scripts/capture-status-menus-driver.py \
     --synth "$SYNTH" --outdir "$OUTDIR" --settle "$SETTLE"
 
-echo "capture-status-menus: done (${OUTDIR}/t07.5a-wifi.png, ${OUTDIR}/t07.5a-volume.png)"
+echo "capture-status-menus: done (${OUTDIR}/t07.5a-wifi.png, ${OUTDIR}/t07.5a-volume.png, ${OUTDIR}/t07.5b-battery.png)"

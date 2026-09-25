@@ -19,6 +19,7 @@ const QString kService = QStringLiteral("org.dragonfruit.SystemStatus1");
 const QString kPath = QStringLiteral("/org/dragonfruit/SystemStatus1");
 const QString kWifiInterface = QStringLiteral("org.dragonfruit.SystemStatus1.Wifi");
 const QString kAudioInterface = QStringLiteral("org.dragonfruit.SystemStatus1.Audio");
+const QString kBatteryInterface = QStringLiteral("org.dragonfruit.SystemStatus1.Battery");
 
 // Serialize a QJsonObject to the compact byte form the host uses.
 QByteArray compact(const QJsonObject &object)
@@ -110,6 +111,11 @@ void DbusSystemStatusClient::refreshAudio()
     call(kAudioInterface, QStringLiteral("State"), {}, &SystemStatusClient::audioState);
 }
 
+void DbusSystemStatusClient::refreshBattery()
+{
+    call(kBatteryInterface, QStringLiteral("State"), {}, &SystemStatusClient::batteryState);
+}
+
 void DbusSystemStatusClient::join(const QString &ssid, const QString &secret)
 {
     call(kWifiInterface, QStringLiteral("Join"), {ssid, secret},
@@ -135,6 +141,7 @@ MockSystemStatusClient::MockSystemStatusClient(QObject *parent)
 {
     refreshWifi();
     refreshAudio();
+    refreshBattery();
 }
 
 void MockSystemStatusClient::refreshWifi()
@@ -212,6 +219,26 @@ void MockSystemStatusClient::refreshAudio()
                       m_volume, m_muted, false));
     view.insert(QStringLiteral("sinks"), sinks);
     emit audioState(compact(view));
+}
+
+void MockSystemStatusClient::refreshBattery()
+{
+    // A present, 82%-charged battery on line power: enough to render every
+    // part of the read-only popover (level fill, label, charge state).
+    QJsonObject view;
+    view.insert(QStringLiteral("kind"), QStringLiteral("battery"));
+    view.insert(QStringLiteral("state"), QStringLiteral("available"));
+    view.insert(QStringLiteral("present"), true);
+    view.insert(QStringLiteral("glyph"), QStringLiteral("battery"));
+    view.insert(QStringLiteral("label"), QStringLiteral("82% charging"));
+    view.insert(QStringLiteral("percent"), 82);
+    view.insert(QStringLiteral("level"), 0.82);
+    view.insert(QStringLiteral("charging"), true);
+    view.insert(QStringLiteral("plugged"), true);
+    view.insert(QStringLiteral("onBattery"), false);
+    view.insert(QStringLiteral("timeToEmpty"), QJsonValue::Null);
+    view.insert(QStringLiteral("timeToFull"), 5400);
+    emit batteryState(compact(view));
 }
 
 void MockSystemStatusClient::join(const QString &ssid, const QString &)

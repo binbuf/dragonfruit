@@ -21,15 +21,18 @@ class SystemStatusModel : public QObject
 public:
     explicit SystemStatusModel(QObject *parent = nullptr);
 
-    // The decoded Wi-Fi / audio views, shaped exactly as the QML consumes
-    // them. An unknown kind or a malformed payload clears the view (the safe
-    // "absent" default: the item hides).
+    // The decoded Wi-Fi / audio / battery views, shaped exactly as the QML
+    // consumes them. An unknown kind or a malformed payload clears the view
+    // (the safe "absent" default: the item hides).
     QVariantMap wifi() const { return m_wifi; }
     QVariantMap audio() const { return m_audio; }
+    QVariantMap battery() const { return m_battery; }
 
-    // Whether the item is drawn at all (`state != "unavailable"`).
+    // Whether the item is drawn at all (`state != "unavailable"`; the battery
+    // also hides when the machine has no present battery).
     bool wifiVisible() const;
     bool audioVisible() const;
+    bool batteryVisible() const;
 
     // Decode a host `State()` payload (JSON object). Returns the normalized
     // map; an empty map on a parse failure, with `error` set when non-null.
@@ -42,20 +45,23 @@ public:
 
 public slots:
     // Apply a decoded view from the host. A payload whose `kind` does not
-    // match is ignored, so the two menus cannot cross-pollute.
+    // match is ignored, so the three menus cannot cross-pollute.
     void applyWifi(const QVariantMap &view);
     void applyAudio(const QVariantMap &view);
+    void applyBattery(const QVariantMap &view);
     void applyWifiJson(const QByteArray &json);
     void applyAudioJson(const QByteArray &json);
+    void applyBatteryJson(const QByteArray &json);
 
     // User gestures from the popovers; the controller forwards each to the
     // bridge host. They do not mutate the view (the host re-read is the only
-    // source of truth).
+    // source of truth). The battery is read-only: refresh only.
     void requestJoin(const QString &ssid, const QString &secret);
     void requestVolume(double volume);
     void requestMute(bool muted);
     void requestRefreshWifi();
     void requestRefreshAudio();
+    void requestRefreshBattery();
 
 signals:
     void changed();
@@ -64,9 +70,11 @@ signals:
     void muteRequested(bool muted);
     void refreshWifiRequested();
     void refreshAudioRequested();
+    void refreshBatteryRequested();
 
 private:
     static QVariantMap normalize(const QVariantMap &view, const QString &kind);
     QVariantMap m_wifi;
     QVariantMap m_audio;
+    QVariantMap m_battery;
 };
