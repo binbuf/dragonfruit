@@ -45,5 +45,6 @@ function(df_qml_lint target)
 endfunction()
 
 add_subdirectory(design-system)
+add_subdirectory(libs)
 add_subdirectory(shell)
 add_subdirectory(apps)

@@ -1,11 +1,17 @@
 // SPDX-License-Identifier: MIT
-// Shell-side client for the T-08 settings daemon
+// Shared client for the T-08 settings daemon
 // (`org.dragonfruit.Settings1`, services/settingsd).
 //
-// The abstract seam keeps the Dock controller free of D-Bus: the live
+// This is not a shell-private header: the shell's Dock/Theme/compositor-policy
+// controllers and the Settings app's QML `Settings` singleton (T-09.1b) both
+// link this library (ADR 0036), so there is one D-Bus dialect and one
+// schema-default table across the desktop.
+//
+// The abstract seam keeps the consumers free of D-Bus: the live
 // `DbusSettingsClient` talks to the daemon and subscribes to its `Changed`
 // signal (never polling); `MockSettingsClient` serves the schema defaults plus
-// in-process writes for headless unit tests and the isolated-client test.
+// in-process writes for headless unit tests, the isolated-client test, and
+// `DF_SETTINGS_FIXTURE` on the Settings app.
 //
 // Both are seeded with the schema defaults (mirrored from
 // services/settingsd/src/schema.rs) so the shell has a complete, working Dock
