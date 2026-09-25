@@ -5,6 +5,7 @@ members = [
     "portal",
     "protocols/df-ipc",
     "services/menu-broker",
+    "services/notifications",
     "services/settingsd",
     "services/files-core",
     "services/app-index",
