@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(32 earlier sections omitted)_
+_(33 earlier sections omitted)_
 
-- **T30 — T-06.2a Switcher overlay and live previews**: **State: done.** The Cmd-Tab overlay is live: the compositor scales the; **Protocol** — `df_toplevel_manager.app_switcher_entry(index, app_id)` since 4,
 - **T31 — T-06.2b Switcher commit, Cmd+` cycling, interruptibility**: **State: done.** T-06 is complete. Cmd+` / Cmd+Shift+` cycle windows within the; **`compositor/src/app_switcher.rs`** — `SwitcherApp` carries `windows`
 - **T32 — T-07.1a Adapter contract, states, and mock**: **State: done.** The one adapter contract and its test mock landed in a new; **`services/system-adapters/`** (new crate `dragonfruit-system-adapters`,
 - **T33 — T-07.1b Event subscription, restart re-subscribe, absence**: **State: done.** The subscription/event seam landed in the same; **`services/system-adapters/src/subscription.rs`** (new) — `ConnectionState`
@@ -45,6 +44,7 @@ _(32 earlier sections omitted)_
 - **T66 — T-10.6a Dock trash source**: **State: done.** The Dock's Trash state comes from `files-core` over the one; **`services/files-core/src/trash_source.rs`** (new) — `TrashSource`
 - **T67 — T-10.6b Drop-to-trash, Empty Trash, trash://**: **State: done.** The Dock's drop and Empty Trash already routed through; **`services/files-core/src/optimistic.rs`** — `PendingKind::Empty` +
 - **T68 — T-10.6c Show in Files, Downloads, and .desktop identity**: **State: done.** The Files identity is installed and the Dock's two navigation; **`apps/files/org.dragonfruit.Files.desktop`** (new) — `Exec=dragonfruit-files
+- **T69 — T-10.7 Files capture and acceptance walkthrough**: **State: done.** T-10 (Files MVP) is captured at the track boundary and the; **`scripts/capture-files.sh`** (new) — `make files-capture` (new target in
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -5095,3 +5095,78 @@ Gotchas for later tasks:
   is therefore a reveal-into-Files until T-18.
 - **Terminal apps have no reveal target**: `buildLaunchCommand` wraps them in an
   emulator, so `revealExecutable` returns empty for `Terminal=true`.
+
+## T69 — T-10.7 Files capture and acceptance walkthrough
+
+**State: done.** T-10 (Files MVP) is captured at the track boundary and the
+whole gate is green. The capture is committed under `docs/captures/t10-files.*`
+and the large-directory scroll trace is
+`docs/captures/t10-files-scroll-trace.txt`.
+
+What landed:
+
+- **`scripts/capture-files.sh`** (new) — `make files-capture` (new target in
+  the Makefile). Runs the normal nested demo (`make demo`, `DF_DEMO_QT_APP` →
+  `build/apps/files/dragonfruit-files`) once per scene over a scratch fixture
+  tree and a scratch freedesktop trash store, and writes the stills + clip.
+  `ONLY=name1,name2` re-runs a subset; `KEEP_SCRATCH=1` keeps the temp tree.
+- **`scripts/capture-files-driver.py`** (new) — raises the nested Dragonfruit
+  window via the KWin scripting D-Bus (`# df-allow-desktop-name`), nudges the
+  frame loop over the synthetic-input harness, screenshots the active window
+  with `spectacle -b -n -a`, trims to 1920x1200, and optionally crops the Dock
+  band.
+- **`docs/captures/`** — `t10-files-list.png` (representative `t10-files.png`),
+  `-icon.png`, `-context-menu.png`, `-multiselect.png`, `-rename.png`,
+  `-trash-empty.png`, `-dock-trash.png`, `-reveal.png`, `-large-directory.png`,
+  `-large-directory-scrolled.png`, `t10-files.mp4` (mpeg4, 1280 wide),
+  `t10-files-scroll-trace.txt`.
+- **Docs** — `docs/captures/README.md` T-10.7 paragraph;
+  `docs/design/09-files.md` T-10.7 status note. No ADR (no new decision).
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `make e2e` — exit 0.
+- `make soak` — `soak passed — 100 clean cycles, zero strays`.
+- `make lint` — green; 33/33 ctest (incl. `tst_files_shell`).
+- `make files-capture` — regenerates the slice capture (host Wayland,
+  `spectacle`, `ffmpeg`, `gdbus`, Pillow; not part of e2e).
+
+Raw numbers in `t10-files-scroll-trace.txt`: warm 1k first frame 0.73 ms
+(budget < 50); 100k stream 100000 rows once in ~1.09 s; 40-row viewport read
+2.2 µs (budget < 16.6 ms); QML 100k first frame 22 ms, 70 icon / 24 list
+delegates, 100 list jumps ~983 ms.
+
+Live capture: raw under `/tmp/opencode/t69/`. Vision on tight crops:
+list view (sidebar, toolbar, `Name`/`Date Modified`/`Size`/`Kind`, `Documents`
+fixture rows), icon view (8 items), item context menu, `Empty Trash?` dialog
+(Cancel / Empty Trash) over a dimmed `Trash` listing, `notes.txt` selected in
+its parent after reveal, Dock strip with K/F/X/D tiles + blue Downloads folder
++ red-stroked Trash. No clipping/blur/artifacts inside the window. Vision is a
+supporting check.
+
+Gotchas for later tasks:
+
+- **`make files-capture` deliberately does not override `HOME`** (only
+  `XDG_CONFIG_HOME`/`XDG_CACHE_HOME`/`XDG_DATA_HOME` are scratch). Changing
+  `HOME` breaks the build: the Makefile derives `PKG_CONFIG_PATH` from
+  `$(HOME)/.local/df-devroot`, and cargo would rebuild into a fresh
+  `$HOME/.cargo`.
+- **Capture seams used per scene:** `DF_FILES_START_MENU=item`,
+  `DF_FILES_START_SELECT=3`, `DF_FILES_START_RENAME=1`,
+  `DF_FILES_START_EMPTY_TRASH=1` (needs `DF_FILES_START_URI=trash://` and a
+  non-empty scratch trash), and `DF_FILES_START_URI=<file>` for reveal.
+- **Active-window capture can race the KWin raise**: a still may catch the
+  host window instead of the nested one (it came out 1685x1163 once). Re-run
+  `ONLY=<scene> bash scripts/capture-files.sh` to retake.
+- **The "scrolled" 100k still is nearly identical to the top still** — the
+  nested synthetic pointer axis cannot scroll a Qt client surface (known
+  T-10.4 limitation). The QML `test_large_list_scroll_sweep` is the real
+  scroll evidence.
+- **Unrelated working-tree changes are present** from another session:
+  `docs/design/02-compositor.md`, `docs/design/08-settings.md`,
+  `docs/licensing.md`, `docs/design/adr/0055-*`, `docs/design/tracks/18-*`,
+  `docs/tasks/172..175-*`. Left untouched.
+- **What remains for T-10:** none in this task; the deferred items are the
+  files-core folder watcher → facade delta wiring, network-mounted perf, and
+  the T-10.6c note that the demo does not yet put the Files `.desktop` on
+  `XDG_DATA_DIRS` (T-18 owns the running-instance `Files1` path).

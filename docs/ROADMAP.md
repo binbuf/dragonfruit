@@ -16,7 +16,7 @@ settings, apps). The result was "done" tickets that could not be experienced
 end to end, and a first honest product review that sat behind a twelve-ticket
 dependency fan-in.
 
-The remaining work is cut into **tracks** (the 17 named slices, kept as design
+The remaining work is cut into **tracks** (the 18 named slices, kept as design
 references) and executed as a strict, single-session **work-unit** sequence in
 [tasks/](tasks/). Every unit ends with its headless tests green and a capture
 artifact committed; human sign-off is batched at the track boundary. Each unit
@@ -58,7 +58,7 @@ at the track boundary rather than per unit.
 
 ## The tracks
 
-The 17 named slices are now **tracks**: design references, not single sessions.
+The 18 named slices are now **tracks**: design references, not single sessions.
 Every track is decomposed into one-session **work units** in [tasks/](tasks/),
 listed in strict execution order below. A unit ends with its headless test green
 in `make e2e`, `make check`/`make soak` unchanged, and a capture artifact
@@ -86,10 +86,11 @@ every task un-completable.
 | [T-15](design/tracks/15-system-services-breadth.md) | System services + Settings Waves 2–3 | 31 | Bluetooth, storage, printers, users, … |
 | [T-16](design/tracks/16-platform-polish-packaging.md) | Platform polish + packaging | 15 | multi-monitor, scaling, soak, a11y, i18n, packages [hw] |
 | [T-17](design/tracks/17-premium-gate.md) | The premium experience gate | 9 | the full loop on nested + DRM, at the visual floor |
+| [T-18](design/tracks/18-wallpaper-content-provider.md) | Wallpaper content provider | 4 | first run fills Featured from Wikimedia; default Nature; offline → gradient |
 
 ## Work units (strict order)
 
-The 171 one-session tasks below are the executable sequence. symphony walks them in
+The 175 one-session tasks below are the executable sequence. symphony walks them in
 file order, runs each in a fresh session, verifies with `make e2e` and commits.
 The 10 `[hw]` tasks (DRM/logind, driver matrix, suspend soak, clean-VM packaging)
 are collected into the final Hardware rail phase so the nested pipeline runs to
@@ -193,7 +194,7 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 - [x] T66 — T-10.6a Dock trash source → [tasks/066-t-10.6a-dock-trash-source.md](tasks/066-t-10.6a-dock-trash-source.md)
 - [x] T67 — T-10.6b Drop-to-trash, Empty Trash, trash:// → [tasks/067-t-10.6b-dock-drop-to-trash-and-empty.md](tasks/067-t-10.6b-dock-drop-to-trash-and-empty.md)
 - [x] T68 — T-10.6c Show in Files, Downloads, and .desktop identity → [tasks/068-t-10.6c-files-navigation-and-desktop-identity.md](tasks/068-t-10.6c-files-navigation-and-desktop-identity.md)
-- [ ] T69 — T-10.7 Files capture and acceptance walkthrough → [tasks/069-t-10.7-files-capture-and-acceptance-walkthrough.md](tasks/069-t-10.7-files-capture-and-acceptance-walkthrough.md)
+- [x] T69 — T-10.7 Files capture and acceptance walkthrough → [tasks/069-t-10.7-files-capture-and-acceptance-walkthrough.md](tasks/069-t-10.7-files-capture-and-acceptance-walkthrough.md)
 
 ## Phase 11 — T-11 Control Center + notifications
 
@@ -282,6 +283,20 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 - [ ] T140 — T-15.15b Network advanced (VPN) pane and tile → [tasks/140-t-15.15b-network-advanced-vpn-pane-and-tile.md](tasks/140-t-15.15b-network-advanced-vpn-pane-and-tile.md)
 - [ ] T141 — T-15.16 Absent-daemon matrix and breadth capture → [tasks/141-t-15.16-absent-daemon-matrix-and-breadth-capture.md](tasks/141-t-15.16-absent-daemon-matrix-and-breadth-capture.md)
 
+## Phase 15.5 — T-18 Wallpaper content provider (Wikimedia Featured Pictures)
+
+> **Deliberately non-sequential ids.** This track is inserted after the T-15
+> breadth phase and before T-16 so the fetched first-run default is covered by
+> T-16's a11y/i18n sweep and validated by the T-17 visual floor; execution
+> follows file order, so T172–T175 run at this position despite the higher
+> numbers. Design: [18-wallpaper-content-provider.md](design/tracks/18-wallpaper-content-provider.md) ·
+> ADR [0055](design/adr/0055-online-wallpaper-content-provider.md).
+
+- [ ] T172 — T-18.1a Wallpaper provider service → [tasks/172-t-18.1a-wallpaper-provider-service.md](tasks/172-t-18.1a-wallpaper-provider-service.md)
+- [ ] T173 — T-18.1b Provider settings and default source → [tasks/173-t-18.1b-provider-settings-and-default-source.md](tasks/173-t-18.1b-provider-settings-and-default-source.md)
+- [ ] T174 — T-18.2 Wallpaper pane collections, skeleton, and attribution → [tasks/174-t-18.2-wallpaper-pane-collections-and-skeleton.md](tasks/174-t-18.2-wallpaper-pane-collections-and-skeleton.md)
+- [ ] T175 — T-18.3 Provider licensing, absence matrix, and capture → [tasks/175-t-18.3-provider-licensing-and-capture.md](tasks/175-t-18.3-provider-licensing-and-capture.md)
+
 ## Phase 16 — T-16 Platform polish + packaging
 
 - [ ] T142 — T-16.1a Per-output chrome sizing and reserved zones → [tasks/142-t-16.1a-per-output-chrome-sizing.md](tasks/142-t-16.1a-per-output-chrome-sizing.md)
@@ -337,7 +352,8 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 4. **Finish the loop** — T-05, T-06.
 5. **Make the chrome live** — T-07 … T-11.
 6. **Make it a desktop** — T-12 … T-16.
-7. **Gate the premium experience** — T-17.
+7. **Fill the desktop** — T-18 (the fetched first-run background, before the gate).
+8. **Gate the premium experience** — T-17.
 
 ## Why this order
 
@@ -352,6 +368,9 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 - **No hardware on the nested critical path.** The old plan had T-12 depend on
   T-03 and therefore T-13…T-17 all sit behind a seat that this host does not
   have. T-12 now develops nested-first; only the DRM capture is on the rail.
+- **The shipped default before the gate.** T-18 fills the first-run wallpaper
+  before T-16's accessibility/i18n sweep and T-17's visual floor, so the gate
+  validates the real desktop rather than a gradient stand-in.
 
 ## Cross-cutting rules (carried from the legacy plan)
 
@@ -478,6 +497,7 @@ Targets on baseline Intel/AMD hardware, measured inside the dev loop:
 | T-15 | T-20 (remaining adapters), T-16 (Waves 2–3) |
 | T-16 | T-31, T-32, T-14 (hot-corner/desktop config) |
 | T-17 | T-34, the Phase-2/3 exit criteria |
+| T-18 | — (new work; the deferred online-wallpaper-content idea) |
 
 Legacy tickets not listed above are either part of the inherited foundation or
 in the post-gate backlog above.
@@ -488,11 +508,11 @@ This plan restarts at T-01, so a legacy "T-13" and a new "T-13" are different
 tickets; use this table to translate.
 
 <!-- symphony:status -->
-**Pipeline status** — updated 2026-09-25T18:47:40Z · 68/171 done
+**Pipeline status** — updated 2026-09-25T19:21:18Z · 69/171 done
 
-- Completed: T01, T02, T03, T04, T05, T06, T07, T08, T09, T10, T11, T12, T13, T14, T15, T16, T17, T18, T19, T20, T21, T22, T23, T24, T25, T26, T27, T28, T29, T30, T31, T32, T33, T34, T35, T36, T37, T38, T39, T40, T41, T42, T43, T44, T45, T46, T47, T48, T49, T50, T51, T52, T53, T54, T55, T56, T57, T58, T59, T60, T61, T62, T63, T64, T65, T66, T67, T68
+- Completed: T01, T02, T03, T04, T05, T06, T07, T08, T09, T10, T11, T12, T13, T14, T15, T16, T17, T18, T19, T20, T21, T22, T23, T24, T25, T26, T27, T28, T29, T30, T31, T32, T33, T34, T35, T36, T37, T38, T39, T40, T41, T42, T43, T44, T45, T46, T47, T48, T49, T50, T51, T52, T53, T54, T55, T56, T57, T58, T59, T60, T61, T62, T63, T64, T65, T66, T67, T68, T69
 - Blocked: none
 - Failed: none
-- Remaining: T69, T70, T71, T72, T73, T74, T75, T76, T77, T78, T79, T80, T81, T82, T83, T84, T85, T86, T87, T88, T89, T90, T91, T92, T93, T94, T95, T96, T97, T98, T99, T100, T101, T102, T103, T104, T105, T106, T107, T108, T109, T110, T111, T112, T113, T114, T115, T116, T117, T118, T119, T120, T121, T122, T123, T124, T125, T126, T127, T128, T129, T130, T131, T132, T133, T134, T135, T136, T137, T138, T139, T140, T141, T142, T143, T144, T145, T146, T147, T148, T149, T150, T151, T152, T153, T154, T155, T156, T157, T158, T159, T160, T161, T162, T163, T164, T165, T166, T167, T168, T169, T170, T171
-- Last finished: T68 — done · Files identity installed (org.dragonfruit.Files.desktop + org.dragonfruit.Files1), Show in Files/Downloads reveal through Files, tests+lint+e2e green, live reveal captured.
+- Remaining: T70, T71, T72, T73, T74, T75, T76, T77, T78, T79, T80, T81, T82, T83, T84, T85, T86, T87, T88, T89, T90, T91, T92, T93, T94, T95, T96, T97, T98, T99, T100, T101, T102, T103, T104, T105, T106, T107, T108, T109, T110, T111, T112, T113, T114, T115, T116, T117, T118, T119, T120, T121, T122, T123, T124, T125, T126, T127, T128, T129, T130, T131, T132, T133, T134, T135, T136, T137, T138, T139, T140, T141, T142, T143, T144, T145, T146, T147, T148, T149, T150, T151, T152, T153, T154, T155, T156, T157, T158, T159, T160, T161, T162, T163, T164, T165, T166, T167, T168, T169, T170, T171
+- Last finished: T69 — done · Committed the T-10 Files slice capture and scroll trace; make e2e, soak, and lint all green.
 <!-- /symphony:status -->

@@ -35,7 +35,8 @@ endif
 .DEFAULT_GOAL := help
 .PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test \
         visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev demo soak e2e \
-        idle-trace menubar-idle-trace latency-trace settingsd-capture settings-wave-1-capture check-desktop-names check-no-capture-grab check-design-tokens clean
+        idle-trace menubar-idle-trace latency-trace settingsd-capture settings-wave-1-capture \
+        files-capture check-desktop-names check-no-capture-grab check-design-tokens clean
 
 help:
 	@echo "Dragonfruit build targets:"
@@ -46,6 +47,7 @@ help:
 	@echo "  make latency-trace — T-03.1b nested input-to-photon latency capture"
 	@echo "  make settingsd-capture — T-08.3 settingsd flip + restart capture"
 	@echo "  make settings-wave-1-capture — T-09.6b Settings wave stills (light/dark/reduced + panes)"
+	@echo "  make files-capture — T-10.7 Files slice stills + large-directory scroll trace"
 	@echo "  make demo     — T-01 loop demo (nested; headless/scripted in CI)"
 	@echo "  make lint     — fmt --check, clippy, qmllint, token freshness, desktop-name gate"
 	@echo "  make check    — lint + test + teardown soak gate"
@@ -136,6 +138,13 @@ settingsd-capture: build
 # reduced-motion and per-pane stills under docs/captures/t09-settings-wave-1.*.
 settings-wave-1-capture: build
 	bash scripts/capture-settings-wave-1.sh
+
+# T-10.7: the Files slice capture. Needs a host Wayland session, `spectacle`,
+# `ffmpeg`, `gdbus`, Pillow and the built tree; drives the nested demo over the
+# synthetic-input harness and writes the stills, clip and large-directory
+# scroll trace under docs/captures/t10-files.*.
+files-capture: build
+	bash scripts/capture-files.sh
 
 qml-test:
 	@[ -f $(BUILD_DIR)/build.ninja ] || $(CMAKE) -S . -B $(BUILD_DIR) -G Ninja

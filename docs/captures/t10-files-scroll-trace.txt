@@ -1,0 +1,33 @@
+# T-10.7 — large-directory scroll trace (raw numbers)
+
+Recorded 2026-09-25T19:12:18Z on the dev host (debug builds).
+Budgets: docs/design/09-files.md#performance-budgets.
+
+## files-core streaming benchmark
+
+    CARGO_NET_OFFLINE=true cargo test -p dragonfruit-files-core \
+        --test performance -- --nocapture --test-threads=1
+
+test a_100k_scroll_viewport_fits_one_frame ... T-10.5 100k scroll: viewport=40 rows, sweeps=250, per_viewport=1.8 us (budget < 16666 us), total=0.46 ms, names_seen=160000
+test a_100k_stream_delivers_each_node_once ... T-10.5 100k stream: rows_delivered=100000 (windowed, not 100000x snapshots), elapsed=949.5 ms, batch=512
+test a_warm_1k_folder_paints_below_50ms ... T-10.5 warm 1k open: first_frame=0.58 ms (budget < 50 ms), first_batch_rows=256
+test the_real_fallback_still_streams_a_warm_folder ... T-10.5 real 1k open: first_frame=1.77 ms
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.90s
+
+## QML windowed-rendering / scroll sweep (100k synthetic rows)
+
+    QML2_IMPORT_PATH=build/qml QT_QPA_PLATFORM=offscreen \
+        QT_QUICK_BACKEND=software DF_FILES_FIXTURE=1 \
+        build/apps/files/tests/tst_files_shell \
+        -input apps/files/tests/tst_files_shell.qml -v2
+
+INFO   : tst_files_shell::FilesShell::test_large_list_paints_fast_and_stays_windowed() QVERIFY(first frame 22 ms (budget < 50 ms))
+INFO   : tst_files_shell::FilesShell::test_large_list_paints_fast_and_stays_windowed() QVERIFY(icon delegates 70 for 100000 rows)
+PASS   : tst_files_shell::FilesShell::test_large_list_paints_fast_and_stays_windowed()
+INFO   : tst_files_shell::FilesShell::test_large_list_scroll_sweep() QVERIFY(list delegates 24)
+INFO   : tst_files_shell::FilesShell::test_large_list_scroll_sweep() QVERIFY(100 scroll jumps took 911 ms)
+PASS   : tst_files_shell::FilesShell::test_large_list_scroll_sweep()
+Totals: 31 passed, 0 failed, 0 skipped, 0 blacklisted, 15777ms
+
+Full ctest:  ctest --test-dir build -R tst_files_shell --output-on-failure
+100% tests passed out of 1

@@ -83,6 +83,20 @@ absent-provider stills are intentionally not in this set: absence is asserted
 headlessly by `apps/settings/tests/tst_settings_absence.qml` and documented in
 [../design/08-settings.md](../design/08-settings.md).
 
+T-10.7's Files slice capture is produced by `scripts/capture-files.sh`
+(`make files-capture`): the nested demo runs with `DF_DEMO_QT_APP` pointing at
+Files over a scratch fixture tree and a scratch trash store, and it writes
+`t10-files-list.png` (the representative `t10-files.png`), `t10-files-icon.png`,
+`t10-files-context-menu.png`, `t10-files-multiselect.png`, `t10-files-rename.png`,
+`t10-files-trash-empty.png`, `t10-files-dock-trash.png` (the Dock badge),
+`t10-files-reveal.png`, and the 100k synthetic listing top and scrolled
+(`t10-files-large-directory*.png`), plus `t10-files.mp4`. The app's capture
+seams (`DF_FILES_START_MENU` / `_SELECT` / `_RENAME` / `_EMPTY_TRASH`) stand in
+for pointer states the nested synthetic harness cannot hold. The
+large-directory scroll trace is `t10-files-scroll-trace.txt` (raw files-core
+streaming benchmark and the QML windowed-rendering sweep); the T-10.5 budget
+record remains `t10-files-perf.txt`.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

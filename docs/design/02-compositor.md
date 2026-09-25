@@ -485,7 +485,11 @@ The `df_workspace.set_wallpaper` request (T-09.3) changes only the image
 `source`/`fit` (`WorkspaceModel::set_wallpaper_image`) and keeps the Space's
 solid `color`, so a NULL source returns the Space to its default color and the
 shell never has to know that per-Space color. The Settings Wallpaper pane owns
-the selection via settingsd keys; the shell forwards it (ADR 0038).
+the selection via settingsd keys; the shell forwards it (ADR 0038). The
+`source` is a local path in every case; since T-18 the shell may resolve it
+from the fetched Wikimedia provider (a user choice in `wallpaper.source` wins
+over the provider default), and this compositor path is otherwise unchanged
+(ADR 0055).
 
 ### Desktop Reveal (T-05.5)
 
