@@ -256,6 +256,12 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             &ShellController::applyWallpaperPolicy);
     connect(m_settingsClient, &SettingsClient::refreshed, this,
             &ShellController::applyWallpaperPolicy);
+    // T-09.5: the display selection is another view of the same client;
+    // forward it to the compositor on every change and fresh snapshot.
+    connect(m_settingsClient, &SettingsClient::changed, this,
+            &ShellController::applyDisplayPolicy);
+    connect(m_settingsClient, &SettingsClient::refreshed, this,
+            &ShellController::applyDisplayPolicy);
     // `auto` follows the host scheme for the compositor too; ThemeBinding owns
     // the Theme side, this keeps the forwarded scheme live.
     if (QStyleHints *hints = QGuiApplication::styleHints()) {
@@ -293,6 +299,9 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // T-09.3: forward the persisted wallpaper selection. The protocol retries
     // once the manager has announced its Spaces.
     applyWallpaperPolicy();
+    // T-09.5: forward the persisted display selection. The protocol retries
+    // once the manager has announced its outputs.
+    applyDisplayPolicy();
     m_window = new QQuickWindow;
     m_window->setColor(Qt::transparent);
 
@@ -1440,6 +1449,24 @@ void ShellController::applyWallpaperPolicy()
             "dragonfruit-shell: wallpaper applied (fit=%s allSpaces=%d source=%s)\n",
             qPrintable(settings.fit), settings.showOnAllSpaces ? 1 : 0,
             settings.source.isEmpty() ? "(solid)" : qPrintable(settings.source));
+}
+
+void ShellController::applyDisplayPolicy()
+{
+    // T-09.5: one view of the settingsd display keys, forwarded to the
+    // compositor as `df_output.set_scale` / `df_output.set_transform`. The
+    // compositor is the sole applier; the shell keeps no second settings
+    // source. The protocol retries once the manager has announced its outputs.
+    if (!m_settingsClient || !m_protocol)
+        return;
+    const DisplaySettings settings = displaySettingsFromValues(m_settingsClient->values());
+    if (m_displaySent && settings == m_displaySettings)
+        return;
+    m_displaySettings = settings;
+    m_displaySent = true;
+    m_protocol->setDisplayPolicy(settings.scale, outputTransformFromName(settings.rotation));
+    fprintf(stderr, "dragonfruit-shell: display applied (scale=%.3f rotation=%s)\n",
+            settings.scale, qPrintable(settings.rotation));
 }
 
 void ShellController::onDockStateChanged(const QVariantList &entries)

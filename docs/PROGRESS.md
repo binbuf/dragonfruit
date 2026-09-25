@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(16 earlier sections omitted)_
+_(17 earlier sections omitted)_
 
-- **T14 — T-03.1a Nested idle trace and animation frame budget**: **State: done.** The idle/animation frame trace is now a real instrument (a; **60.0 s idle window**: `frames_rendered=1` (flat, +0),
 - **T15 — T-03.1b Latency instrument and direct-scanout template**: **State: done.** The input-to-photon latency instrument is real and the; **nested latency**: n=50, min=3501 us, median=13878 us, p95=15223 us,
 - **T16 — T-04.1a Real shadows**: **State: done.** Elevation-token shadows exist on both sides of the process; **Tokens** — new `component.elevation.{low,med,high,overlay}` in
 - **T17 — T-04.1b Rounded-corner clipping**: **State: done.** Rounded corners are a token-derived geometry mask on the; **`compositor/src/window/corner.rs`** (new) — `CornerMask`
@@ -45,6 +44,7 @@ _(16 earlier sections omitted)_
 - **T50 — T-09.2 Appearance pane**: **State: done.** The Appearance pane is real and live: a Light/Dark/Auto; **`apps/settings/AppearancePane.qml`** (new) — `SettingsGroup`/`SettingsRow`
 - **T51 — T-09.3 Wallpaper pane**: **State: done.** The Wallpaper pane is real and live: our own gradient; **Schema (since 2)** — `wallpaper.source` (s, empty = solid),
 - **T52 — T-09.4 Desktop & Dock pane**: **State: done.** The Desktop & Dock pane is real and live: the `Dock` group; **`apps/settings/DesktopDockPane.qml`** (new) — `SettingsGroup` "Dock" with
+- **T53 — T-09.5 Displays-basic pane**: **State: done.** The Displays-basic pane is real and live: the `Built-in; **Schema (since 3)** — `display.scale` (d, 0.5–2.0, default 1.0),
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3730,3 +3730,77 @@ Gotchas for later tasks:
   library components, so later panes use them.
 - The appearance pane's `controlData:` bug (T-09.3 follow-up (a)) is still
   open; T-09.4 uses `controlData:` everywhere.
+
+## T53 — T-09.5 Displays-basic pane
+
+**State: done.** The Displays-basic pane is real and live: the `Built-in
+Display` preview, the five scaled-resolution tiles, and a rotation `Select`,
+all bound to settingsd. The shell forwards `display.scale`/`display.rotation`
+to the compositor's private output API (`df_output.set_scale` /
+`df_output.set_transform`); the selection persists in settingsd (schema 3).
+
+What landed:
+
+- **Schema (since 3)** — `display.scale` (d, 0.5–2.0, default 1.0),
+  `display.rotation` (s enum normal/90/180/270, default normal). New
+  `KeyGroup::Displays`; `SCHEMA_VERSION` is now 3. Mirrored in
+  `libs/settings-client/settingsclient.cpp` and `docs/settings-keys.md`.
+- **Shell forwarder** — `shell/src/displayspolicy.{h,cpp}` is the pure
+  `DisplaySettings` mapping (unit-tested by `shell/tests/tst_displayspolicy.cpp`).
+  `ShellProtocol::setDisplayPolicy` stores the policy and remembers the
+  announced `df_output` handles (`m_outputs`), applying it in `onManagerDone` /
+  `onManagerOutput` so a policy that predates the output list is not lost.
+  `ShellController::applyDisplayPolicy` runs on settingsd `changed`/`refreshed`
+  and once at startup.
+- **`apps/settings/DisplaysPane.qml`** (new) — `SettingsGroup` "Built-in
+  Display" (our own preview artwork), "Rotation" (`Select`), and "Resolution"
+  (five tiles `Larger Text`/`Large`/`Default`/`More Space`/`Most Space` over
+  `display.scale`, plus the reference footer). Rotation is deliberately above
+  Resolution so its `Select` popup stays above the pane `ScrollView` fold.
+  Registered in `SettingsShell.paneComponent("displays")`.
+- **Tests** — `apps/settings/tests/tst_settings_displays.{cpp,qml}` (4 cases,
+  `DF_SETTINGS_FIXTURE=1`): wiring, every tile applies live, rotation applies
+  live, right-alignment. `shell/tests/tst_displayspolicy.cpp` (5 cases).
+  `compositor/tests/shell_protocol_conformance.rs` gained a `set_transform`
+  round-trip assertion next to the existing `set_scale` one.
+- **Docs** — ADR
+  [0040](design/adr/0040-displays-config-via-settingsd-and-shell-forwarder.md);
+  track 09 "Displays pane (T-09.5)"; `docs/settings-keys.md`.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `ctest --test-dir build -R "tst_settings_displays|tst_displayspolicy"`
+  — 4 + 5 cases pass.
+- `cargo test -p dragonfruit-compositor --test shell_protocol_conformance
+  handshake_chrome_and_control_conformance` — passes.
+- `make qml-test` 30/30; `make lint` green; `make e2e` exit 0.
+- Live capture (`/tmp/opencode/t53-final.sh`, stills
+  `/tmp/opencode/t53f-{before,scale,rotated}.png`): real
+  `dragonfruit-settingsd` on the session bus, nested demo with
+  `DF_SETTINGS_START_PANE=displays`, window zoomed. Raw observation: the
+  pane shows the preview, five tiles with `Default` selected, and Rotation
+  `Standard`; no clipping. The shell logged `display applied (scale=1.000
+  rotation=normal)` then `scale=1.250` then `rotation=90` as the daemon keys
+  changed.
+
+Gotchas for later tasks:
+
+- **The nested backend does not faithfully re-render an output scale/transform
+  change.** Its damage tracker is fixed at the host window size with
+  `Transform::Flipped180`, so changing `output.current_scale()`/transform
+  either leaves the frame unchanged (no repaint) or misrenders the desktop.
+  The shell→compositor path is real and asserted by the conformance test; a
+  DRM output applies it. Nested scaling is a T-16 item.
+- **Displays config is settingsd-persisted**, not owned by the compositor
+  (ADR 0040): the shell is the forwarder and the compositor the applier, the
+  same shape as wallpaper (T-09.3) and motion/input (T-08.2c). A display
+  change is applied to every announced output; per-display targeting is T-16.
+- **`df_output.set_mode` is unused.** The pane's `Resolution` rows are the
+  compositor's scaled-resolution model (`display.scale`), matching the
+  reference UI. Exposing a real supported-mode list needs a `df_output` modes
+  event (T-16).
+- **Omitted rows are deliberate** (no-half-panes): Brightness, auto-brightness,
+  True Tone, Preset, Refresh rate, Night Shift, Advanced, `Arrange…`.
+- **The schema doc test enforces `docs/settings-keys.md`**: adding a key means
+  `schema.rs` + the client mirror + the doc table; bump `SCHEMA_VERSION` and
+  set `since`.

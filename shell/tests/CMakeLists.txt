@@ -123,6 +123,26 @@ set_tests_properties(tst_wallpaperpolicy PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# Display-policy tests (T-09.5): the pure settingsd -> compositor output
+# mapping the shell forwards as `df_output.set_scale` / `set_transform`. No
+# bus, Wayland, or QML.
+qt_add_executable(tst_displayspolicy
+    tst_displayspolicy.cpp
+)
+target_link_libraries(tst_displayspolicy PRIVATE
+    Qt6::Core Qt6::Test
+    dragonfruit-shell-dockcore
+)
+
+add_test(
+    NAME tst_displayspolicy
+    COMMAND tst_displayspolicy
+)
+set_tests_properties(tst_displayspolicy PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Settings-client tests (T-08.2a): the typed value store and the live
 # `org.dragonfruit.Settings1` client against a fake service on a private
 # session bus. The bus-dependent half skips when no bus is present.

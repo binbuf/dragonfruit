@@ -208,6 +208,28 @@ keeps them off the pane (the provider lands with T-15.5).
 [0039](../adr/0039-slider-and-select-design-system-components.md)); each has a
 gallery page and per-component tests.
 
+## Displays pane (T-09.5)
+
+`apps/settings/DisplaysPane.qml` is the fourth real pane body. It ships the
+basic output controls Wave 1 routes to the compositor output API:
+
+- **Built-in Display** — our own display illustration and name.
+- **Resolution** — five scaled-resolution tiles (`Larger Text`…`Default`…
+  `More Space`) over `display.scale`, with the reference footer "Using a
+  scaled resolution may affect performance.".
+- **Rotation** — a `Select` row (Standard/90°/180°/270°) over
+  `display.rotation`.
+
+The app writes the keys through the `Settings` singleton (the T-09.1b
+pattern); the shell is the forwarder and the compositor the applier. Wave 1
+has no per-display selection or mode enumeration, so `display.scale` maps to
+`df_output.set_scale` (the reference's scaled-resolution model) and
+`display.rotation` to `df_output.set_transform`, applied to every announced
+output. Brightness, True Tone, Preset, Refresh rate, Night Shift, Advanced and
+`Arrange…` have no provider yet and are omitted (the no-half-panes rule);
+per-display targeting and a real mode list are T-16. See ADR
+[0040](../adr/0040-displays-config-via-settingsd-and-shell-forwarder.md).
+
 **Verification.** `apps/settings/tests/tst_settings_desktop_dock.qml` runs
 headless against the `DF_SETTINGS_FIXTURE` mock: the pane opens with all ten
 wired controls, each slider/select/toggle applies live to its key, an external
