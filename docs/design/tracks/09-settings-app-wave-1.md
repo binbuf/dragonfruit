@@ -178,6 +178,43 @@ tile selection, the all-Spaces toggle, and the fit control apply live to the
 key, and an external `Settings.set` converges into the preview and selection;
 `shell/tests/tst_wallpaperpolicy.cpp` unit-tests the pure key → wire mapping.
 
+## Desktop & Dock pane (T-09.4)
+
+`apps/settings/DesktopDockPane.qml` is the third real pane body. It ships the
+`Dock` group for every `dock.*` key from T-08:
+
+- **Size** and **Magnification** — `Slider` rows (captions `Small`/`Large` and
+  `Off`/`Small`/`Large`) over `dock.size` and `dock.magnification`.
+- **Dock position on screen**, **Minimized window animation**, and **Window
+  title bar double-click action** — `Select` rows over `dock.position`,
+  `dock.minimizedAnimation`, `dock.titlebarDoubleClick`.
+- **Minimize windows into application icon**, **Automatically hide and show
+  the Dock**, **Animate opening applications**, **Show indicators for open
+  applications**, and **Show suggested and recent apps in Dock** — `Toggle`
+  rows.
+
+Every control uses the T-09.1b write-on-interaction / bind-to-`Settings.values`
+pattern. There is no new applier: `ShellController::applyDockSettings` already
+reacts to a settingsd `Changed` and re-lays-out the Dock, so the pane only
+writes keys (the shell side was landed by T-08.2a). `dock.pinned` has no
+reference row (macOS reorders by drag) and is absent.
+
+The reference pane's **Desktop & Stage Manager** group is omitted: `Show
+items` / `Click wallpaper to show desktop` map to Desktop Reveal and hot
+corners, which have no settings schema key yet, so the no-half-panes rule
+keeps them off the pane (the provider lands with T-15.5).
+
+`Slider` and `Select` are new design-system components (ADR
+[0039](../adr/0039-slider-and-select-design-system-components.md)); each has a
+gallery page and per-component tests.
+
+**Verification.** `apps/settings/tests/tst_settings_desktop_dock.qml` runs
+headless against the `DF_SETTINGS_FIXTURE` mock: the pane opens with all ten
+wired controls, each slider/select/toggle applies live to its key, an external
+`Settings.set` converges back into the control, and every row's control is
+right-aligned; `design-system/tests/tst_design_system.qml` covers the new
+components' keyboard, roles, and token colors.
+
 ## Acceptance
 
 - [ ] The demo runs and the captures are committed.

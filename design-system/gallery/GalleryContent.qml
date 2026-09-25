@@ -15,7 +15,7 @@ Item {
                                   "Sidebar", "Toolbar", "SplitView", "Settings",
                                   "Segmented", "ContextMenu", "SearchField",
                                   "SourceList", "Dialog", "Sheet", "Popover",
-                                  "ScrollView", "Icons"]
+                                  "ScrollView", "Slider", "Select", "Icons"]
     property string scheme: "dark"
     property bool reducedMotion: false
 
@@ -60,6 +60,8 @@ Item {
             case 18: return sheetPageComponent;
             case 19: return popoverPageComponent;
             case 20: return scrollViewPageComponent;
+            case 21: return sliderPageComponent;
+            case 22: return selectPageComponent;
             default: return iconsPageComponent;
             }        }
     }
@@ -85,6 +87,8 @@ Item {
     Component { id: sheetPageComponent; SheetPage { } }
     Component { id: popoverPageComponent; PopoverPage { } }
     Component { id: scrollViewPageComponent; ScrollViewPage { } }
+    Component { id: sliderPageComponent; SliderPage { } }
+    Component { id: selectPageComponent; SelectPage { } }
     Component { id: iconsPageComponent; IconsPage { } }
 
     component Page: Column {
@@ -744,6 +748,61 @@ Item {
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+
+    component SliderPage: Page {
+        Section {
+            heading: qsTr("Captioned + plain")
+            Column {
+                spacing: Theme.primitive.spacing.lg
+                Slider {
+                    width: 260
+                    value: 0.25
+                    minLabel: qsTr("Small")
+                    maxLabel: qsTr("Large")
+                    accessibleName: qsTr("Dock size")
+                }
+                Slider {
+                    width: 260
+                    value: 0.55
+                    minLabel: qsTr("Off")
+                    midLabel: qsTr("Small")
+                    maxLabel: qsTr("Large")
+                    accessibleName: qsTr("Magnification")
+                }
+                Slider { width: 260; value: 0.8 }
+                Slider { width: 260; value: 0.4; enabled: false }
+            }
+        }
+    }
+
+    component SelectPage: Page {
+        Section {
+            heading: qsTr("Value popup")
+            Column {
+                spacing: Theme.primitive.spacing.md
+                Select {
+                    width: 200
+                    accessibleName: qsTr("Dock position")
+                    model: [{ value: "bottom", label: qsTr("Bottom") },
+                            { value: "left", label: qsTr("Left") },
+                            { value: "right", label: qsTr("Right") }]
+                    currentIndex: 0
+                }
+                Select {
+                    width: 200
+                    accessibleName: qsTr("Minimized window animation")
+                    model: [qsTr("Genie Effect"), qsTr("Scale Effect"), qsTr("None")]
+                    currentIndex: 1
+                }
+                Select {
+                    width: 200
+                    accessibleName: qsTr("Disabled")
+                    model: [qsTr("One"), qsTr("Two")]
+                    enabled: false
                 }
             }
         }

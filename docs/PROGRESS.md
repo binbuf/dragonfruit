@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(15 earlier sections omitted)_
+_(16 earlier sections omitted)_
 
-- **T13 — T-02.4b Close interruptibility and idle trace**: **State: done.** A live close ghost reverses mid-flight without waiting: a; **`compositor/src/state.rs`** — `close_window` clears keyboard focus when it
 - **T14 — T-03.1a Nested idle trace and animation frame budget**: **State: done.** The idle/animation frame trace is now a real instrument (a; **60.0 s idle window**: `frames_rendered=1` (flat, +0),
 - **T15 — T-03.1b Latency instrument and direct-scanout template**: **State: done.** The input-to-photon latency instrument is real and the; **nested latency**: n=50, min=3501 us, median=13878 us, p95=15223 us,
 - **T16 — T-04.1a Real shadows**: **State: done.** Elevation-token shadows exist on both sides of the process; **Tokens** — new `component.elevation.{low,med,high,overlay}` in
@@ -41,10 +40,11 @@ _(15 earlier sections omitted)_
 - **T46 — T-08.2c Compositor motion/input policy migration**: **State: done.** The compositor now consumes the settingsd motion/input policy;; **`protocols/dragonfruit-toplevel.xml`** — `df_toplevel_manager` is v5 with
 - **T47 — T-08.3 Restart, resync, and key-schema documentation**: **State: done.** `settingsd` is restartable with no lost write and the shell; **`docs/settings-keys.md`** (new) — the human-facing key table (type,
 - **T48 — T-09.1a Settings app shell**: **State: done.** The `apps/settings` stub is now a real shell: frameless; **`apps/settings/`** is a reusable QML module `Dragonfruit.Settings` (static
-- **Follow-ups**: **T-09.3 follow-ups.** (a) `apps/settings/AppearancePane.qml` (T50) places; **T-09 Settings Wave 1 (T-09.1a done in T48).** The shell, sidebar, local
+- **Follow-ups**: **T-09.3 follow-ups.** (a) `apps/settings/AppearancePane.qml` (T50) places; **T-09.4 follow-ups.** (a) `design-system/Select.qml`'s menu is a plain
 - **T49 — T-09.1b Settings live-apply plumbing**: **State: done.** The Settings app is a real settingsd consumer: a QML `Settings`; **`libs/settings-client/`** (new; `libs/CMakeLists.txt`) — the former
 - **T50 — T-09.2 Appearance pane**: **State: done.** The Appearance pane is real and live: a Light/Dark/Auto; **`apps/settings/AppearancePane.qml`** (new) — `SettingsGroup`/`SettingsRow`
 - **T51 — T-09.3 Wallpaper pane**: **State: done.** The Wallpaper pane is real and live: our own gradient; **Schema (since 2)** — `wallpaper.source` (s, empty = solid),
+- **T52 — T-09.4 Desktop & Dock pane**: **State: done.** The Desktop & Dock pane is real and live: the `Dock` group; **`apps/settings/DesktopDockPane.qml`** (new) — `SettingsGroup` "Dock" with
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3235,6 +3235,16 @@ Gotchas for later tasks:
   identity exposed to settingsd (T-16) is needed to persist a map. (c) The
   `WallpaperCache` is not cleared when a source path is reused with new bytes
   (T-05.4 note); a replaced file at the same path still shows the old raster.
+- **T-09.4 follow-ups.** (a) `design-system/Select.qml`'s menu is a plain
+  `Item` child of the `Select` and is clipped by the pane's `ScrollView`
+  (`clip: true`); popup rows must stay in the initial viewport until a
+  window-level overlay hosts them (the existing design-system `Popup` has the
+  same limitation). (b) The Desktop & Dock pane's reference "Desktop & Stage
+  Manager" group is omitted — `Show items` / `Click wallpaper to show desktop`
+  need Desktop Reveal / hot-corner keys, which land with T-15.5. (c) Gallery
+  goldens were not regenerated (matches T-50/T-51): `make gallery-snapshot`
+  rewrites all 72 because of host font differences; `make visual-test`
+  (non-strict) only checks the freshly generated set.
 - **T-09 Settings Wave 1 (T-09.1a done in T48).** The shell, sidebar, local
   search, history, header card, and the four Wave-1 sidebar rows landed in
   `apps/settings` (`Dragonfruit.Settings` module, ADR 0035). Remaining:
@@ -3653,3 +3663,70 @@ Gotchas for later tasks:
   solid fallback.
 - `DF_SETTINGS_START_PANE=<id>` opens a shipped pane for captures/tests; an
   unknown id is ignored.
+
+## T52 — T-09.4 Desktop & Dock pane
+
+**State: done.** The Desktop & Dock pane is real and live: the `Dock` group
+ships all ten `dock.*` control rows through the `Settings` singleton, and the
+shell updates the Dock from the settingsd `Changed` on the next beat (its
+existing T-08.2a applier). Two new design-system components, `Slider` and
+`Select`, carry the slider and popup rows (ADR 0039).
+
+What landed:
+
+- **`apps/settings/DesktopDockPane.qml`** (new) — `SettingsGroup` "Dock" with
+  `Slider` (Size `Small`/`Large`; Magnification `Off`/`Small`/`Large`),
+  `Select` (position / minimized animation / titlebar double-click), and
+  five `Toggle` rows. Two-way T-09.1b pattern throughout. Registered in
+  `SettingsShell.paneComponent("desktop-dock")`; the catalog row was already
+  `shipped: true`.
+- **`design-system/components/Slider.qml`** (new) — `[from,to]` value,
+  drag/tap/arrow/Home/End, optional `minLabel`/`midLabel`/`maxLabel`, `moved`
+  + `committed` signals, `FocusRing`, AT-SPI `Slider`. Tokens
+  `component.slider` (`trackHeight`, `knob`, `height`, `minWidth`, `captionGap`,
+  `step`).
+- **`design-system/components/Select.qml`** (new) — current label + chevron
+  opening a `ContextMenu`; `activated(index)`/`selected(value)`, AT-SPI
+  `ComboBox`. Tokens `component.select`. Both registered in the module +
+  `df_qml_lint`, with gallery pages `Slider`/`Select`.
+- **Tests** — `apps/settings/tests/tst_settings_desktop_dock.{cpp,qml}` (10
+  cases, `DF_SETTINGS_FIXTURE=1`): wiring, every control applies live, external
+  convergence, right-alignment. `design-system/tests/tst_design_system.qml`
+  gained 5 Slider/Select cases (39→40 pass).
+- **Docs** — ADR
+  [0039](design/adr/0039-slider-and-select-design-system-components.md);
+  track 09 "Desktop & Dock pane (T-09.4)"; `10-design-system.md` component list.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `ctest --test-dir build -R "tst_settings_desktop_dock|tst_design_system"`
+  — both pass.
+- `make qml-test` 27/27; `make lint` green; `make visual-test` — 72 snapshots;
+  `make e2e` exit 0.
+- Live capture (`/tmp/opencode/t52-capture.sh`, stills
+  `/tmp/opencode/t52-{before,scrolled,after}.png`): real
+  `dragonfruit-settingsd` on the session bus, nested demo with
+  `DF_SETTINGS_START_PANE=desktop-dock`, then `dock.size`/`dock.magnification`/
+  `dock.showIndicators` changed mid-session. Raw observation: the pane's slider
+  knobs moved from ~0.5 to near "Large" in step with the daemon. Vision on the
+  maximized window read all ten rows and the header "Desktop & Dock" with no
+  clipping/overlap. The 900x620 window cuts the last row off until the window
+  is zoomed (double-click titlebar), so the zoomed still is the complete one.
+
+Gotchas for later tasks:
+
+- **`Select`'s menu is clipped by a pane `ScrollView`** (same as the
+  design-system `Popup`): keep popup rows above the fold or add a window-level
+  overlay. The three Desktop & Dock popups sit near the top.
+- **A `Slider` writes per drag step via `moved`.** Bind `value` with a
+  `Binding` element (T-09.1b), not a bare property binding, and write the key
+  in `onMoved`. No local preview channel exists, so a drag emits a settingsd
+  write per step; the shell's divider-preview is the precedent if damping is
+  needed.
+- **No new applier.** `ShellController::applyDockSettings` already reacts to
+  `dock.*` `Changed`; the pane only writes keys. `dock.pinned` has no row.
+- **Desktop & Stage Manager rows are omitted** pending T-15.5 keys (the
+  no-half-panes rule); `10-design-system.md` now lists Slider/Select as
+  library components, so later panes use them.
+- The appearance pane's `controlData:` bug (T-09.3 follow-up (a)) is still
+  open; T-09.4 uses `controlData:` everywhere.

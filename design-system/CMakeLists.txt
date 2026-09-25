@@ -35,6 +35,8 @@ qt_add_qml_module(dragonfruit-design-system
         components/SettingsRow.qml
         components/SettingsGroup.qml
         components/SegmentedControl.qml
+        components/Slider.qml
+        components/Select.qml
         components/ContextMenu.qml
         components/SearchField.qml
         components/SourceList.qml
@@ -64,6 +66,8 @@ df_qml_lint(design-system
     components/SettingsRow.qml
     components/SettingsGroup.qml
     components/SegmentedControl.qml
+    components/Slider.qml
+    components/Select.qml
     components/ContextMenu.qml
     components/SearchField.qml
     components/SourceList.qml

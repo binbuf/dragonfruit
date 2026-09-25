@@ -25,6 +25,8 @@ SettingsRow
 SettingsGroup
 Toggle
 SegmentedControl
+Slider
+Select
 Popup
 ContextMenu
 MenuBarMenu

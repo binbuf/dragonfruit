@@ -31,7 +31,8 @@ GOLDEN_DIR = REPO / "design-system" / "gallery" / "snapshots"
 PAGES = [
     "tokens", "window", "titlebar", "trafficlights", "toggle", "popup", "menu", "ssd",
     "buttons", "sidebar", "toolbar", "splitview", "settings", "segmented", "contextmenu",
-    "searchfield", "sourcelist", "dialog", "sheet", "popover", "scrollview", "icons",
+    "searchfield", "sourcelist", "dialog", "sheet", "popover", "scrollview", "slider",
+    "select", "icons",
 ]
 SCHEMES = [("light", False), ("dark", False), ("dark", True)]
 
