@@ -118,9 +118,26 @@ store; duplicate names are de-duplicated with the shared `generated_name`.
 `OptimisticModel::trash_via` reuses `begin_delete`, so Move to Trash paints
 within one frame and snaps back on failure. `delete` remains permanent.
 **Still deferred:** listing `trash://` as a `DirectorySource` (the Dock's
-Trash source, T-10.6a), the watcher (T-10.3b), undo/journal, and per-item
-progress. The recorded `DeletionDate` is UTC rather than local (display only).
-See [adr/0046](adr/0046-files-core-trash-seam-and-spec-fallback.md).
+Trash source, T-10.6a), undo/journal, and per-item progress. The recorded
+`DeletionDate` is UTC rather than local (display only). See
+[adr/0046](adr/0046-files-core-trash-seam-and-spec-fallback.md).
+
+**Implementation status (T-10.3b).** The folder watcher is real. `FolderWatcher`
+(in `services/files-core`, a sibling of `DirectorySource`) is the one seam: one
+watch per visible directory, event-driven, and `WatchReader::next_batch` blocks
+for changes on a worker thread, so an idle window does zero polling. Events are
+incremental and never a re-listing — `Created`/`Modified` carry the one freshly
+stat'd `Node`, `Removed` names the vanished URI, and `Renamed` pairs
+`IN_MOVED_FROM`/`IN_MOVED_TO` by cookie. `DirectoryModel::apply_watch` folds
+each event (deduping creates by URI and keeping the node id across a rename, so
+selection survives); `OptimisticModel::apply_watch` first confirms a matching
+pending edit or reverts a contradicting one, then folds, so each pending op is
+resolved at most once. `InotifyWatcher` is the sanctioned fallback speaking
+Linux inotify — the local mechanism GIO's `GFileMonitor` wraps — directly over
+`libc`, and is marked for replacement (`SANCTIONED_WATCHER_FALLBACK_MARKER`).
+`MockWatcher` is the headless fixture. **Still deferred:** a recursive/remote
+watch, surfacing a self delete/move of the watched folder, and undo/journal.
+See [adr/0047](adr/0047-files-core-folder-watcher-seam.md).
 
 ### Model
 
@@ -138,7 +155,8 @@ See [adr/0046](adr/0046-files-core-trash-seam-and-spec-fallback.md).
   onward and fills in as the backend iterates. No I/O on the UI thread, ever.
 - **One change monitor per visible directory** (GFileMonitor/inotify locally,
   GVfs change events remotely), fanned out to views. Idle windows do zero
-  polling.
+  polling. Shipped as the `FolderWatcher` seam with the `InotifyWatcher`
+  fallback, marked for replacement (T-10.3b).
 - **One collation implementation** — locale-aware, numeric mode (`file2`
   sorts before `file10`) — so icon view, list view, and the chooser always
   agree. Shipped now as a dependency-free natural/numeric comparison in

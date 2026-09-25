@@ -69,8 +69,9 @@ use std::ffi::{OsStr, OsString};
 use std::sync::Arc;
 
 use crate::{
-    generated_name, DirectoryModel, FileOps, ListingEvent, ListingHandle, Location, Node, NodeId,
-    NodeKind, OperationError, Selection, TrashOps, NEW_FOLDER_BASE,
+    generated_name, DirectoryModel, FileOps, FolderWatcher, ListingEvent, ListingHandle, Location,
+    Node, NodeId, NodeKind, OperationError, Selection, SourceError, TrashOps, WatchEvent,
+    WatchEventKind, WatchHandle, NEW_FOLDER_BASE,
 };
 
 /// A token for one in-flight optimistic operation.
@@ -178,6 +179,95 @@ impl OptimisticModel {
     /// Apply every ready event, as `DirectoryModel::drain`.
     pub fn drain(&mut self, handle: &ListingHandle) -> usize {
         self.model.drain(handle)
+    }
+
+    /// Begin watching the current location, as `DirectoryModel::begin_watch`.
+    pub fn begin_watch(
+        &mut self,
+        watcher: Arc<dyn FolderWatcher>,
+        location: &Location,
+    ) -> Result<WatchHandle, SourceError> {
+        self.model.begin_watch(watcher, location)
+    }
+
+    /// Fold one external change into the model, reconciling pending optimistic
+    /// edits first (T-10.3b).
+    ///
+    /// A watch event that matches a pending edit's target state **confirms** it
+    /// (the filesystem agreed); an event that contradicts it **reverts** it (the
+    /// item vanished before confirmation, or came back after one). Either way
+    /// the change is then folded into the model incrementally, so a watcher
+    /// resolves each pending op at most once and never re-lists.
+    pub fn apply_watch(&mut self, event: WatchEvent) -> bool {
+        let decisions = self.pending_decisions(&event);
+        for (op, confirm) in decisions {
+            if confirm {
+                self.confirm(op);
+            } else {
+                self.revert(op);
+            }
+        }
+        self.model.apply_watch(event)
+    }
+
+    /// Apply every ready watch event, as `DirectoryModel::drain_watch`. Returns
+    /// how many events changed the model.
+    pub fn drain_watch(&mut self, handle: &WatchHandle) -> usize {
+        let mut applied = 0;
+        while let Some(event) = handle.try_recv() {
+            if self.apply_watch(event) {
+                applied += 1;
+            }
+        }
+        applied
+    }
+
+    /// Decide whether `event` resolves `pending`: `Some(true)` to confirm,
+    /// `Some(false)` to revert, `None` to leave it pending.
+    fn pending_outcome(&self, pending: &PendingOp, event: &WatchEvent) -> Option<bool> {
+        match &pending.kind {
+            PendingKind::Create { node } | PendingKind::Rename { node, .. } => {
+                // The current model row carries the edit's target URI (a rename
+                // already moved it; a create is the generated name).
+                let target = self.model.node(*node)?.uri();
+                match &event.kind {
+                    WatchEventKind::Created(node) | WatchEventKind::Modified(node) => {
+                        (node.uri() == target).then_some(true)
+                    }
+                    WatchEventKind::Renamed { to, .. } => (to.uri() == target).then_some(true),
+                    // A create/rename target that was removed before the
+                    // operation confirmed: snap a create back. A rename that
+                    // succeeded and was then deleted confirms, and the removal
+                    // is folded afterwards.
+                    WatchEventKind::Removed { uri } => match pending.kind {
+                        PendingKind::Create { .. } if uri == target => Some(false),
+                        _ => None,
+                    },
+                }
+            }
+            PendingKind::Remove { node, .. } => {
+                let target = node.uri();
+                match &event.kind {
+                    WatchEventKind::Removed { uri } => (uri == target).then_some(true),
+                    WatchEventKind::Created(node) | WatchEventKind::Modified(node) => {
+                        (node.uri() == target).then_some(false)
+                    }
+                    WatchEventKind::Renamed { from_uri, .. } => {
+                        (from_uri == target).then_some(false)
+                    }
+                }
+            }
+        }
+    }
+
+    fn pending_decisions(&self, event: &WatchEvent) -> Vec<(OpId, bool)> {
+        self.pending
+            .iter()
+            .filter_map(|pending| {
+                self.pending_outcome(pending, event)
+                    .map(|ok| (pending.id, ok))
+            })
+            .collect()
     }
 
     /// How many optimistic edits are awaiting confirmation or revert.

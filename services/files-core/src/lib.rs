@@ -59,6 +59,24 @@
 //!   Put Back. [`parse_trash_info`]/[`format_deletion_date`] are public so a
 //!   spec golden can round-trip without touching a real store.
 //!
+//! # What T-10.3b owns
+//!
+//! * [`FolderWatcher`] / [`WatchReader`] — the change-monitor seam, a sibling of
+//!   [`DirectorySource`]: one watch per visible directory, event-driven, never a
+//!   directory poll. [`FolderWatcher::watch`] opens the folder on the caller's
+//!   thread (so a foreign scheme or missing folder is an immediate error) and a
+//!   worker forwards [`WatchEvent`]s.
+//! * [`InotifyWatcher`] — the sanctioned fallback (Linux), speaking the local
+//!   inotify mechanism GIO's `GFileMonitor` wraps directly over `libc`; it
+//!   stats only the one entry an event named, so a change is folded in without
+//!   re-listing. Marked for replacement
+//!   ([`SANCTIONED_WATCHER_FALLBACK_MARKER`], ADR 0047).
+//! * [`DirectoryModel::apply_watch`] / [`OptimisticModel::apply_watch`] — fold
+//!   an event into the model incrementally: creates dedupe by URI, removals
+//!   drop the row, and a rename keeps the node's id so selection survives. The
+//!   optimistic wrapper confirms or reverts a matching pending edit first, so
+//!   each pending op is resolved at most once.
+//!
 //! # Sorting is incremental and stable
 //!
 //! [`DirectoryModel::set_sort`] changes the order and re-sorts what is already
@@ -117,11 +135,12 @@ mod selection;
 pub mod sort;
 mod source;
 mod trash;
+mod watch;
 
 pub use fallback::{StdFsSource, SANCTIONED_FALLBACK_MARKER};
 pub use listing::{ListingEvent, ListingEventKind, ListingHandle, DEFAULT_BATCH};
 pub use location::{Location, LocationError};
-pub use mock::MockSource;
+pub use mock::{MockSource, MockWatcher};
 pub use model::{DirectoryModel, ListingState};
 pub use node::{Node, NodeId, NodeKind};
 pub use ops::{generated_name, FileOps, OperationError, StdFsOps, NEW_FOLDER_BASE};
@@ -132,4 +151,10 @@ pub use source::{DirectoryReader, DirectorySource, SourceError};
 pub use trash::{
     default_home_trash, format_deletion_date, parse_trash_info, FreedesktopTrash, TrashOps,
     TrashedItem, SANCTIONED_TRASH_FALLBACK_MARKER,
+};
+#[cfg(target_os = "linux")]
+pub use watch::InotifyWatcher;
+pub use watch::{
+    FolderWatcher, WatchEvent, WatchEventKind, WatchHandle, WatchReader,
+    SANCTIONED_WATCHER_FALLBACK_MARKER, WATCH_POLL_INTERVAL,
 };
