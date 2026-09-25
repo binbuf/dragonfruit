@@ -148,7 +148,7 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 ## Phase 7 — T-07 Menu bar goes live
 
 - [x] T32 — T-07.1a Adapter contract, states, and mock → [tasks/032-t-07.1a-adapter-contract-and-mock.md](tasks/032-t-07.1a-adapter-contract-and-mock.md)
-- [ ] T33 — T-07.1b Event subscription, restart re-subscribe, absence → [tasks/033-t-07.1b-subscription-restart-and-absence.md](tasks/033-t-07.1b-subscription-restart-and-absence.md)
+- [x] T33 — T-07.1b Event subscription, restart re-subscribe, absence → [tasks/033-t-07.1b-subscription-restart-and-absence.md](tasks/033-t-07.1b-subscription-restart-and-absence.md)
 - [ ] T34 — T-07.2a NetworkManager read path → [tasks/034-t-07.2a-networkmanager-read-path.md](tasks/034-t-07.2a-networkmanager-read-path.md)
 - [ ] T35 — T-07.2b NetworkManager join and polkit degradation → [tasks/035-t-07.2b-networkmanager-join-and-polkit.md](tasks/035-t-07.2b-networkmanager-join-and-polkit.md)
 - [ ] T36 — T-07.3 Audio adapter (PipeWire/WirePlumber) → [tasks/036-t-07.3-audio-adapter-pipewire-wireplumber.md](tasks/036-t-07.3-audio-adapter-pipewire-wireplumber.md)
@@ -478,11 +478,11 @@ This plan restarts at T-01, so a legacy "T-13" and a new "T-13" are different
 tickets; use this table to translate.
 
 <!-- symphony:status -->
-**Pipeline status** — updated 2026-09-25T00:44:30Z · 32/168 done
+**Pipeline status** — updated 2026-09-25T00:55:02Z · 33/168 done
 
-- Completed: T01, T02, T03, T04, T05, T06, T07, T08, T09, T10, T11, T12, T13, T14, T15, T16, T17, T18, T19, T20, T21, T22, T23, T24, T25, T26, T27, T28, T29, T30, T31, T32
+- Completed: T01, T02, T03, T04, T05, T06, T07, T08, T09, T10, T11, T12, T13, T14, T15, T16, T17, T18, T19, T20, T21, T22, T23, T24, T25, T26, T27, T28, T29, T30, T31, T32, T33
 - Blocked: none
 - Failed: none
-- Remaining: T33, T34, T35, T36, T37, T38, T39, T40, T41, T42, T43, T44, T45, T46, T47, T48, T49, T50, T51, T52, T53, T54, T55, T56, T57, T58, T59, T60, T61, T62, T63, T64, T65, T66, T67, T68, T69, T70, T71, T72, T73, T74, T75, T76, T77, T78, T79, T80, T81, T82, T83, T84, T85, T86, T87, T88, T89, T90, T91, T92, T93, T94, T95, T96, T97, T98, T99, T100, T101, T102, T103, T104, T105, T106, T107, T108, T109, T110, T111, T112, T113, T114, T115, T116, T117, T118, T119, T120, T121, T122, T123, T124, T125, T126, T127, T128, T129, T130, T131, T132, T133, T134, T135, T136, T137, T138, T139, T140, T141, T142, T143, T144, T145, T146, T147, T148, T149, T150, T151, T152, T153, T154, T155, T156, T157, T158, T159, T160, T161, T162, T163, T164, T165, T166, T167, T168
-- Last finished: T32 — done · Added the dependency-free adapter contract (available/unavailable/error), status-slot projection, and mock in services/system-adapters with 10 green tests; wired into make e2e (exit 0), ADR 0024 + docs + demo capture landed.
+- Remaining: T34, T35, T36, T37, T38, T39, T40, T41, T42, T43, T44, T45, T46, T47, T48, T49, T50, T51, T52, T53, T54, T55, T56, T57, T58, T59, T60, T61, T62, T63, T64, T65, T66, T67, T68, T69, T70, T71, T72, T73, T74, T75, T76, T77, T78, T79, T80, T81, T82, T83, T84, T85, T86, T87, T88, T89, T90, T91, T92, T93, T94, T95, T96, T97, T98, T99, T100, T101, T102, T103, T104, T105, T106, T107, T108, T109, T110, T111, T112, T113, T114, T115, T116, T117, T118, T119, T120, T121, T122, T123, T124, T125, T126, T127, T128, T129, T130, T131, T132, T133, T134, T135, T136, T137, T138, T139, T140, T141, T142, T143, T144, T145, T146, T147, T148, T149, T150, T151, T152, T153, T154, T155, T156, T157, T158, T159, T160, T161, T162, T163, T164, T165, T166, T167, T168
+- Last finished: T33 — done · Subscription/event API with restart re-subscribe and absence landed in dragonfruit-system-adapters; 22 tests + make e2e green, captured nested demo.
 <!-- /symphony:status -->

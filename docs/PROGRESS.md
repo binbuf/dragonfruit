@@ -38,6 +38,7 @@
 - **T30 — T-06.2a Switcher overlay and live previews**: **State: done.** The Cmd-Tab overlay is live: the compositor scales the; **Protocol** — `df_toplevel_manager.app_switcher_entry(index, app_id)` since 4,
 - **T31 — T-06.2b Switcher commit, Cmd+` cycling, interruptibility**: **State: done.** T-06 is complete. Cmd+` / Cmd+Shift+` cycle windows within the; **`compositor/src/app_switcher.rs`** — `SwitcherApp` carries `windows`
 - **T32 — T-07.1a Adapter contract, states, and mock**: **State: done.** The one adapter contract and its test mock landed in a new; **`services/system-adapters/`** (new crate `dragonfruit-system-adapters`,
+- **T33 — T-07.1b Event subscription, restart re-subscribe, absence**: **State: done.** The subscription/event seam landed in the same; **`services/system-adapters/src/subscription.rs`** (new) — `ConnectionState`
 - **Follow-ups**: T-07.1a (done in T32): the adapter contract + mock landed; T-06.1/T-06.2a/T-06.2b (done in T29/T30/T31): the switcher machine (ADR
 <!-- symphony:digest:end -->
 
@@ -2147,13 +2148,70 @@ Gotchas for later tasks:
 - No process hosts the Rust adapters for the (C++) shell yet; the `StatusSlot`
   projection is the seam T-07.1b/T-07.2/T-07.5 must bridge.
 
+## T33 — T-07.1b Event subscription, restart re-subscribe, absence
+
+**State: done.** The subscription/event seam landed in the same
+dependency-free crate; no concrete adapter yet (T-07.2 is next).
+
+What landed:
+
+- **`services/system-adapters/src/subscription.rs`** (new) — `ConnectionState`
+  (`Absent`/`Subscribed`), `AdapterEvent` (`Subscribed { resubscribe }`,
+  `Disconnected`, `Changed`), `SubscribeError` (`Absent` vs `Failed`, with
+  `to_state()`), `Subscription` (lifecycle + bounded event outbox,
+  `subscribed()`/`absent()`/`changed()`/`record_subscribe()`).
+- **`src/lib.rs`** — `Adapter` gained `connection()` and
+  `drain_events(&mut self) -> Vec<AdapterEvent>`; exports extended.
+  `AdapterState` and the `slot()` projection are unchanged.
+- **`src/mock.rs`** — `MockAdapter` simulates its daemon: `kill()` (absence →
+  `Unavailable`, slot hidden), `restart()` (re-subscribe + re-sync to the last
+  snapshot), plus `connection()`, `subscriptions()`, `events()`.
+- **`tests/subscription.rs`** (new) — 4 headless tests: kill hides the slot
+  (not an error), restart re-subscribes & re-syncs; absent-at-startup is
+  hidden; repeated restarts keep counting; a data push is an event not a poll.
+- **Docs** — `07-system-integration.md` "Event subscription and restart
+  re-subscribe (T-07.1b)"; ADR `0025`.
+- **Capture** — `docs/captures/t07-subscription-restart.png` (nested demo; this
+  unit has no surface of its own).
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-system-adapters` — 16 lib + 2 + 4 integration
+  tests green.
+- `make e2e` — exit 0.
+- `cargo fmt --all -- --check` and
+  `cargo clippy -p dragonfruit-system-adapters --all-targets -- -D warnings`
+  clean.
+
+Gotchas for later tasks:
+
+- **One lifecycle**: a concrete adapter owns a `Subscription` and calls
+  `subscribed()`/`absent()`/`changed()` (or `record_subscribe`). Do not add a
+  second resubscribe counter; the host drains `AdapterEvent`s via
+  `drain_events`.
+- **Events carry no snapshot** (ADR 0025): after any event, re-read
+  `Adapter::state`. The event stream and state cannot disagree.
+- **`Absent` ≠ error**: `SubscribeError::Absent` → `Unavailable` (hidden),
+  `Failed` → `Error` (visible inert); neither blocks startup. A restart is
+  `absent()` then `subscribed()` → `Disconnected` then
+  `Subscribed { resubscribe: true }`, subscribe count 2.
+- Redundant lifecycle calls are no-ops, so a busy loop cannot inflate counts.
+- `MockAdapter::restart()` with no prior snapshot leaves the adapter
+  subscribed but `Unavailable` (present daemon, no data yet) — the slot hides
+  until the first push. Intentional; tests rely on it.
+- `MockAdapter::new`/`with_available` are no longer `const` (the outbox holds a
+  `VecDeque`); no call site needed const.
+
 ## Follow-ups
 
 - T-07.1a (done in T32): the adapter contract + mock landed
-  (`services/system-adapters`, ADR 0024). Remaining: (a) T-07.1b adds the
-  subscription/re-subscribe API; (b) no process yet hosts the Rust adapters
-  for the C++ shell — decide the bridge (D-Bus service vs. embedded) in
-  T-07.2/T-07.5; (c) `--placeholders` stays until T-07.5b.
+  (`services/system-adapters`, ADR 0024); T-07.1b (done in T33, ADR 0025) added
+  the subscription/re-subscribe API. Remaining: (a) no process yet hosts the
+  Rust adapters for the C++ shell — decide the bridge (D-Bus service vs.
+  embedded) in T-07.2/T-07.5; (b) `--placeholders` stays until T-07.5b; (c)
+  T-07.2–T-07.4 must classify connect failures as `Absent` vs `Failed` and
+  implement `connection()`/`drain_events()`; (d) T-07.5 drains `AdapterEvent`s
+  and must not add a poll loop.
 - T-06.1/T-06.2a/T-06.2b (done in T29/T30/T31): the switcher machine (ADR
   0021), overlay + live previews (ADR 0022), and commit/Cmd+`/pointer (ADR
   0023) landed. Remaining: (a) the switcher snapshots the app list at open, so a

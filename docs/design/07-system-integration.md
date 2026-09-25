@@ -58,7 +58,32 @@ Consumers render the **slot** the state projects: `Unavailable` hides the
 status item, `Error` shows it visible but inert with the message, `Available`
 shows it live. `MockAdapter` drives all three with no daemon on the bus.
 Consumers read the already-pushed state — there is no poll loop above an
-adapter; event subscription and re-subscribe on restart are T-07.1b.
+adapter.
+
+## Event subscription and restart re-subscribe (T-07.1b)
+
+The daemon pushes; the adapter never polls it and nothing above the adapter
+polls. Every adapter records its daemon subscription in one `Subscription`
+(`services/system-adapters/src/subscription.rs`) and exposes the transitions as
+`AdapterEvent`s through `Adapter::drain_events`:
+
+- `Subscribed { resubscribe: false }` — the first subscription.
+- `Disconnected` — the daemon went away; the adapter state becomes
+  `Unavailable` and the slot hides.
+- `Subscribed { resubscribe: true }` — the adapter re-subscribed after the
+  daemon had gone away (a restart); the adapter re-syncs.
+- `Changed` — the daemon pushed data; re-read `Adapter::state`.
+
+A consumer reacts to an event by re-reading the state; it never queries the
+daemon. Events carry no snapshot so the stream and the adapter state cannot
+disagree.
+
+The absence/error split is part of the contract: `SubscribeError::Absent` maps
+to `Unavailable` (hidden, not an error) while `SubscribeError::Failed` maps to
+`Error` (visible, inert). Neither aborts session startup, so a missing daemon
+is never a startup blocker. `MockAdapter` simulates the lifecycle with
+`kill()`/`restart()`, which is how the headless suite asserts re-subscribe and
+absence with no bus.
 
 ## D-Bus conventions
 
