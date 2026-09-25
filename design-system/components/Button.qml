@@ -11,6 +11,9 @@ Item {
 
     property string text: ""
     property string icon: ""
+    // Optional screen-reader name when the visible content is a bare glyph
+    // (e.g. the Settings back/forward chevrons).
+    property string accessibleName: ""
     // primary | secondary | danger | ghost
     property string variant: "secondary"
     property alias hovered: hoverHandler.hovered
@@ -112,7 +115,8 @@ Item {
     }
 
     Accessible.role: Accessible.Button
-    Accessible.name: root.text.length > 0 ? root.text : root.icon
+    Accessible.name: root.accessibleName.length > 0 ? root.accessibleName
+                    : (root.text.length > 0 ? root.text : root.icon)
     Accessible.focusable: true
     Accessible.onPressAction: root.activate()
 }
