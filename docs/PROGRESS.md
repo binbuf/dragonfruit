@@ -3,10 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(19 earlier sections omitted)_
+_(21 earlier sections omitted)_
 
-- **T17 — T-04.1b Rounded-corner clipping**: **State: done.** Rounded corners are a token-derived geometry mask on the; **`compositor/src/window/corner.rs`** (new) — `CornerMask`
-- **T18 — T-04.2 Backdrop blur pass**: **State: done.** The chrome material pass exists and is token-driven, applied; **`compositor/src/window/backdrop.rs`** (new) — `MaterialRole`
 - **T19 — T-04.3 Reusable scene-transform pass**: **State: done.** One reusable scene transform exists (scale/translate + optional; **`compositor/src/window/pass.rs`** (new) — `FramePass`: the single shared
 - **T20 — T-04.4a Material degrade tiers and instrumentation**: **State: done.** One ordered material-quality ladder (`Full` → `Reduced` →; **`compositor/src/window/degrade.rs`** (new) — `DegradeTier` (`Full`
 - **T21 — T-04.4b Light/dark, reduced motion, and sign-off package**: **State: done.** One live `ColorScheme` on `DfState` now drives every; **`compositor/src/window/decoration.rs`** — `ColorScheme::name`/`parse`
@@ -45,6 +43,7 @@ _(19 earlier sections omitted)_
 - **T53 — T-09.5 Displays-basic pane**: **State: done.** The Displays-basic pane is real and live: the `Built-in; **Schema (since 3)** — `display.scale` (d, 0.5–2.0, default 1.0),
 - **T54 — T-09.6a Settings menu-model publication**: **State: done.** The Settings app publishes its native menu model and the; **`apps/settings/SettingsMenu.qml`** (new; QML singleton) — single source of
 - **T55 — T-09.6b Settings absence matrix and wave captures**: **State: done.** The T-09 Settings wave is signed off: the absent-provider; **`docs/design/08-settings.md`** — new "The absent-provider matrix (T-09.6b)"
+- **T56 — T-10.1a files-core streaming listing and model**: **State: done.** `files-core` now exists as a headless Rust library and a; **`services/files-core/`** (new crate `dragonfruit-files-core`, workspace
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3929,3 +3928,65 @@ Gotchas for later tasks:
   `make e2e`.
 - The per-pane stills show the window maximized with the scroll fold near the
   last row (same as T-52's note); a pane that scrolls is not a capture defect.
+
+## T56 — T-10.1a files-core streaming listing and model
+
+**State: done.** `files-core` now exists as a headless Rust library and a
+directory streams incrementally into its model on a worker thread. T-10.1b
+adds sorting and finalizes GIO-vs-fallback; T-10.2 adds operations.
+
+What landed:
+
+- **`services/files-core/`** (new crate `dragonfruit-files-core`, workspace
+  member; no deps, `tempfile` dev-only):
+  - `src/location.rs` — `Location` (URI-addressed; `file://` resolves,
+    foreign schemes carried). Raw-byte-safe percent-encode/decode so spaces
+    and invalid-UTF-8 names round-trip.
+  - `src/node.rs` — `Node` (name `OsString`, `NodeId` stable per session,
+    `NodeKind`, size, modified, symlink target) + lossy `display_name()`.
+  - `src/source.rs` — `DirectorySource`/`DirectoryReader` seam + `SourceError`.
+  - `src/fallback.rs` — `StdFsSource`, the sanctioned `std::fs` fallback,
+    marked by `SANCTIONED_FALLBACK_MARKER` ("replace with GIO/GVfs (T-10.1b)");
+    resolves only `file://`, else `UnsupportedScheme`.
+  - `src/listing.rs` — worker thread + `ListingHandle` + `ListingEvent`
+    (`DEFAULT_BATCH = 256`).
+  - `src/model.rs` — `DirectoryModel` (`begin`/`apply`/`drain`), generation-
+    keyed so stale listings are ignored; `check_consistent()` asserts the
+    id→index invariant.
+  - `src/mock.rs` — `MockSource` for headless tests.
+- **Tests** — `cargo test -p dragonfruit-files-core`: 15 unit + 6 integration
+  (`tests/streaming.rs`) + 1 doctest = 22 pass. The 4k-file temp tree streams
+  a first batch `<` total and reaches `Complete` with all 4000 nodes and a
+  consistent index; `MockSource` proves arrival order; non-UTF-8 name test.
+- **Gate** — `Makefile` `e2e` now runs `cargo test -p dragonfruit-files-core`.
+  `make lint` 31/31, `make e2e` exit 0.
+- **Docs** — ADR
+  [0042](design/adr/0042-files-core-streaming-listing-and-fallback.md);
+  `docs/design/01-architecture.md` services tree; a T-10.1a status paragraph
+  in `docs/design/09-files.md`.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `cargo test -p dragonfruit-files-core` — 22 pass.
+- `make lint` green; `make e2e` exit 0.
+
+Live capture (`/tmp/opencode/t56-capture.sh`; still `/tmp/opencode/t56-desktop.png`,
+1920x1200): nested demo on the host session. Raw vision observation: menu bar
++ dock render, wallpaper is the solid default, no clipping/artifacts. Vision is
+a supporting check; the crate has no surface of its own.
+
+Gotchas for later tasks:
+
+- **`files-core` is at `services/files-core`** (`dragonfruit-files-core`), a
+  library — do not add a binary or a daemon.
+- **The model is generation-keyed**: always use the `ListingHandle` returned
+  by `begin`; `apply` silently ignores retired generations. `begin` cancels
+  the previous worker and clears the model.
+- **IDs are assigned by `DirectoryModel::apply`**, not the source; a source
+  emits `Node` with `NodeId::UNSET`. Rename survival is T-10.3b's watcher job.
+- **GIO is absent on this host** (`pkg-config --exists gio-2.0` fails);
+  `StdFsSource` is the only backend. T-10.1b decides GIO vs. hardened
+  fallback behind the unchanged `DirectorySource` seam.
+- **No sort order is applied** — nodes are in arrival order; T-10.1b sorts.
+- Adding a key/`Node` field: raw name bytes are load-bearing; keep `OsString`
+  and percent-encoding, never a lossy string.
