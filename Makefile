@@ -45,7 +45,7 @@ endif
 .PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test \
         visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev demo soak e2e \
         idle-trace menubar-idle-trace latency-trace settingsd-capture settings-wave-1-capture \
-        files-capture check-desktop-names check-no-capture-grab check-design-tokens clean
+        files-capture osd-dnd-capture check-desktop-names check-no-capture-grab check-design-tokens clean
 
 help:
 	@echo "Dragonfruit build targets:"
@@ -57,6 +57,7 @@ help:
 	@echo "  make settingsd-capture — T-08.3 settingsd flip + restart capture"
 	@echo "  make settings-wave-1-capture — T-09.6b Settings wave stills (light/dark/reduced + panes)"
 	@echo "  make files-capture — T-10.7 Files slice stills + large-directory scroll trace"
+	@echo "  make osd-dnd-capture — T-11.4b OSD card + menu-bar DND still"
 	@echo "  make demo     — T-01 loop demo (nested; headless/scripted in CI)"
 	@echo "  make lint     — fmt --check, clippy, qmllint, token freshness, desktop-name gate"
 	@echo "  make check    — lint + test + teardown soak gate"
@@ -154,6 +155,13 @@ settings-wave-1-capture: build
 # scroll trace under docs/captures/t10-files.*.
 files-capture: build
 	bash scripts/capture-files.sh
+
+# T-11.4b: the OSD + DND stills. Needs a host Wayland session, `spectacle`,
+# Pillow and the built tree; runs the nested demo with the status/notification
+# fixtures and drives a real Control Center volume drag under docs/captures/
+# t11-osd.* and t11-dnd.png.
+osd-dnd-capture: build
+	bash scripts/capture-osd-dnd.sh
 
 qml-test:
 	@[ -f $(BUILD_DIR)/build.ninja ] || $(CMAKE) -S . -B $(BUILD_DIR) -G Ninja

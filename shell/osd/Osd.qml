@@ -21,6 +21,10 @@ Item {
     // Presentation opacity [0, 1] from the OSD model.
     property real fade: 0.0
 
+    // T-11.4b: an AT-SPI/assistive client (or a keyboard Escape) can dismiss
+    // the transient alert early. The shell forwards this to `OsdModel::hide`.
+    signal dismissed()
+
     readonly property bool isBrightness: root.kind === "brightness"
     readonly property string iconName: root.isBrightness ? "brightness" : "volume"
     readonly property string accessibleName: {
@@ -29,11 +33,32 @@ Item {
             return qsTr("%1 muted").arg(label);
         return qsTr("%1 %2%").arg(label).arg(Math.round(root.value * 100));
     }
+    // The alert's second AT-SPI line: the state plus how to clear it. The
+    // surface never takes keyboard focus, so the shell both announces this and
+    // routes Escape to dismissal (T-11.4b).
+    readonly property string accessibleDescription: {
+        if (root.muted)
+            return qsTr("Volume is muted. Press Escape to dismiss.");
+        return root.isBrightness
+                ? qsTr("Brightness %1 percent. Press Escape to dismiss.").arg(Math.round(root.value * 100))
+                : qsTr("Volume %1 percent. Press Escape to dismiss.").arg(Math.round(root.value * 100));
+    }
 
     opacity: root.fade
 
     Accessible.role: Accessible.Alert
     Accessible.name: root.accessibleName
+    Accessible.description: root.accessibleDescription
+    // Exposed to AT-SPI as an invokable alert; the view never steals keyboard
+    // focus (its window is unfocused), so `activeFocus` stays false in a real
+    // session. `Accessible.onPressAction` lets a screen reader clear it.
+    Accessible.focusable: true
+    Accessible.onPressAction: root.dismissed()
+
+    Keys.onEscapePressed: (event) => {
+        root.dismissed();
+        event.accepted = true;
+    }
 
     Shadow {
         anchors.fill: card

@@ -97,6 +97,16 @@ large-directory scroll trace is `t10-files-scroll-trace.txt` (raw files-core
 streaming benchmark and the QML windowed-rendering sweep); the T-10.5 budget
 record remains `t10-files-perf.txt`.
 
+T-11.4b's OSD/DND sign-off is produced by `scripts/capture-osd-dnd.sh`
+(`make osd-dnd-capture`): the nested demo runs with `DF_STATUS_FIXTURE=1
+DF_NOTIFY_FIXTURE=1 DF_FOCUS_FIXTURE=dnd`, the driver crops the accent-tinted
+Focus crescent left of the clock to `t11-dnd.png`, then opens the Control
+Center through the real Control-Option-C shortcut and drags the Sound volume
+slider (a real gesture) to present the OSD, writing `t11-osd.png` and the whole
+nested window as `t11-osd-context.png`. The T-11.3a/b Control Center stills
+(`t11-control-center*.png`) remain part of the set. The capture driver's
+synthetic-input seam is the same harness as T-01/T-10.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

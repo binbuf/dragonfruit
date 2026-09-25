@@ -282,6 +282,19 @@ owns the active Space suppresses the OSD entirely. The card consumes the new
 capture-only presentation seam; the AT-SPI/keyboard pass and the committed
 captures are T-11.4b. See [adr/0062](adr/0062-osd-overlay.md).
 
+**T-11.4b status.** The OSD is keyboard/AT-SPI accessible and the T-11 capture
+set is committed. The alert carries an `Accessible.Alert` name and description
+("Volume 60 percent. Press Escape to dismiss.") and an `Accessible.onPressAction`
+that clears it; because the surface never takes keyboard focus, `Escape` is
+handled at the shell level (`ShellController::onKeyEvent` hides a visible OSD
+without stealing focus) and the view's `dismissed()` signal routes to the same
+`hideOsd()` path as the auto-dismiss. The T-11.4a capture exposed the
+design-system `volume` glyph as a battery read-alike; it is now a speaker. The
+committed stills are `docs/captures/t11-control-center.*`,
+`docs/captures/t11-osd.png` (+ `-context`), and `docs/captures/t11-dnd.png`
+(the menu-bar DND crescent), produced by `scripts/capture-osd-dnd.sh`
+(`make osd-dnd-capture`). See [adr/0063](adr/0063-osd-keyboard-atspi.md).
+
 ## Relationship to compositor and services
 
 - Compositor state (windows, workspaces, outputs) arrives via private

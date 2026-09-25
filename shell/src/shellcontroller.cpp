@@ -770,6 +770,9 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     connect(m_osdWindow, &QQuickWindow::afterRendering, this, &ShellController::renderOsd);
     connect(m_protocol, &ShellProtocol::osdConfigured, this,
             &ShellController::onOsdConfigured);
+    // T-11.4b: an AT-SPI press action (or the view's own Escape handler) clears
+    // the transient alert through the same hide path as the auto-dismiss tick.
+    connect(osdObject, SIGNAL(dismissed()), this, SLOT(onOsdDismissed()));
     m_osdTimer = new QTimer(this);
     m_osdTimer->setInterval(16);
     connect(m_osdTimer, &QTimer::timeout, this, &ShellController::onOsdTick);
@@ -1387,6 +1390,15 @@ void ShellController::onOsdTick()
     renderOsd();
 }
 
+void ShellController::onOsdDismissed()
+{
+    // T-11.4b: a keyboard/AT-SPI dismissal, routed through the model's `hide`
+    // so it shares the auto-dismiss path (and stops the visible-only timer).
+    if (m_osd.visible())
+        m_osd.hide();
+    hideOsd();
+}
+
 void ShellController::onOsdConfigured(int width, int height, quint32)
 {
     // The compositor sends a pre-layout configure at the full output size
@@ -1631,6 +1643,14 @@ void ShellController::onKeyEvent(quint32 key, bool pressed)
     const Qt::Key qtKey = qtKeyFromEvdev(key);
     if (qtKey == Qt::Key_unknown)
         return;
+    // T-11.4b: Escape dismisses a visible OSD. The OSD surface never takes
+    // keyboard focus, so its dismissal is owned here, at the shell level: it
+    // lets a keyboard user clear the alert without stealing focus from the
+    // active window. A visible OSD clears first; the panel check follows.
+    if (pressed && qtKey == Qt::Key_Escape && m_osdActive) {
+        hideOsd();
+        return;
+    }
     // T-11.3a: Escape dismisses an open Control Center panel no matter which
     // chrome surface currently holds the keyboard.
     if (pressed && qtKey == Qt::Key_Escape && m_controlCenterOpen) {

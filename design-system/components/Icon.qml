@@ -388,16 +388,24 @@ Item {
                 break;
             }
             case "volume": {
-                // A drive slab with a level indicator and a small light.
-                roundedRect(s * 0.12, s * 0.32, s * 0.76, s * 0.36, s * 0.10);
-                ctx.stroke();
+                // A speaker body + cone with two level waves (the OSD/Control
+                // Center Sound glyph). The T-11.4a capture exposed the old
+                // "drive slab" drawing as a battery read-alike (T-11.4b).
                 ctx.beginPath();
-                ctx.moveTo(s * 0.22, s * 0.50);
-                ctx.lineTo(s * 0.50, s * 0.50);
-                ctx.stroke();
-                ctx.beginPath();
-                ctx.arc(s * 0.71, s * 0.50, s * 0.04, 0, Math.PI * 2);
+                ctx.moveTo(s * 0.13, s * 0.38);
+                ctx.lineTo(s * 0.30, s * 0.38);
+                ctx.lineTo(s * 0.48, s * 0.20);
+                ctx.lineTo(s * 0.48, s * 0.80);
+                ctx.lineTo(s * 0.30, s * 0.62);
+                ctx.lineTo(s * 0.13, s * 0.62);
+                ctx.closePath();
                 ctx.fill();
+                ctx.beginPath();
+                ctx.arc(s * 0.54, s * 0.50, s * 0.17, -Math.PI * 0.38, Math.PI * 0.38);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(s * 0.54, s * 0.50, s * 0.32, -Math.PI * 0.34, Math.PI * 0.34);
+                ctx.stroke();
                 break;
             }
             case "folder": {

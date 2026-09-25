@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(40 earlier sections omitted)_
+_(41 earlier sections omitted)_
 
-- **T38 — T-07.5a Wi-Fi and volume status menus**: **State: done.** Wi-Fi list/join and volume slider/mute render in; **`services/system-status/`** (new crate `dragonfruit-system-status`,
 - **T39 — T-07.5b Battery menu, placeholder removal, keyboard a11y**: **State: done.** The battery item is live over the bridge host, `--placeholders`; **`services/system-status`** — `StatusHost<N, A, P>` gained a `PowerAdapter`;
 - **T40 — T-07.6a Absent-daemon masking matrix**: **State: done.** The absent-daemon masking matrix is asserted headlessly at; **`services/system-status/tests/host.rs`** —
 - **T41 — T-07.6b Menu-bar idle trace and capture**: **State: done.** The menu-bar idle trace is flat at both seams and the T-07; **`compositor/tests/shell_idle_trace.rs`** — the bar-live idle trace now
@@ -45,6 +44,7 @@ _(40 earlier sections omitted)_
 - **T74 — T-11.3a Control Center panel and core tiles**: **State: done.** The Control Center panel opens (menu-bar item or; **`shell/control-center/ControlCenter.qml`** (rewritten) — the panel scene
 - **T75 — T-11.3b Focus/DND, dark mode, and Control Center a11y**: **State: done.** The Control Center panel has five tiles now: Wi-Fi, Focus,; **`shell/control-center/ControlCenter.qml`** — Focus and Dark Mode tiles, a
 - **T76 — T-11.4a OSD overlay**: **State: done.** A volume/brightness change presents a brief centered OSD card; **`shell/src/osdmodel.{h,cpp}`** (new, dockcore) — the pure `OsdModel`:
+- **T77 — T-11.4b OSD keyboard/a11y and captures**: **State: done.** The OSD is keyboard/AT-SPI accessible and the T-11 capture; **`shell/osd/Osd.qml`** — `Accessible.role: Alert` + value-derived
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3483,6 +3483,13 @@ Gotchas for later tasks:
   wired, but there is no timeout policy: a pending op whose filesystem change
   never arrives stays pending forever (the `*_via` path resolves
   synchronously, so today this only matters for an async T-10.4 bridge).
+- **T-11.4b follow-ups.** (a) Hardware volume/brightness media keys are still
+  not wired to the OSD (no compositor input action); route them into
+  `ShellController::showOsd`. (b) The live cross-process AT-SPI tree dump and
+  keyboard-only walkthrough are T-16.6a; T-11.4b only asserts the per-item
+  roles and the Escape dismissal. (c) `MockNotificationClient` does not model
+  DND banner suppression, so the DND capture dismisses the seeded banner by
+  pointer; the real suppression is the Rust policy.
 
 ## T49 — T-09.1b Settings live-apply plumbing
 
@@ -5677,3 +5684,57 @@ Gotchas for later tasks:
 - **The OSD card color is `surfaceElevated`.** In a live capture the level bar
   is the only reliable accent marker; the demo app behind it can share the card
   color, so detect the accent bar, not the card fill.
+
+## T77 — T-11.4b OSD keyboard/a11y and captures
+
+**State: done.** The OSD is keyboard/AT-SPI accessible and the T-11 capture
+set is committed. Contract frozen in ADR
+[0063](design/adr/0063-osd-keyboard-atspi.md).
+
+What landed:
+
+- **`shell/osd/Osd.qml`** — `Accessible.role: Alert` + value-derived
+  `Accessible.name` (unchanged) plus `Accessible.description` ("Volume 60
+  percent. Press Escape to dismiss." / "Volume is muted. Press Escape to
+  dismiss."), `Accessible.focusable`, `Accessible.onPressAction`, a
+  `dismissed()` signal, and `Keys.onEscapePressed`.
+- **`shell/src/shellcontroller.cpp`** — `onKeyEvent` hides a visible OSD on
+  Escape before the Control Center check (the OSD window is never focused);
+  the OSD object's `dismissed()` connects to `hideOsd()`.
+- **`design-system/components/Icon.qml`** — `volume` is now a speaker
+  (body + cone + two waves); the T-11.4a `volume` case drew a drive slab that
+  the capture read as a battery. Shared by the OSD and the Control Center
+  Sound tile; the gallery icon snapshot renders other glyphs, so it is
+  unaffected.
+- **Tests** — `tst_osd.qml` 7 cases (role/name/description, muted wording,
+  Escape -> `dismissed`). `make qml-test` 38/38; `make lint` and `make e2e`
+  exit 0. `ctest -R tst_osd` 9/9.
+- **Captures** — `scripts/capture-osd-dnd.sh` + `scripts/capture-osd-dnd-driver.py`
+  (new; `make osd-dnd-capture`) write `docs/captures/t11-osd.png`,
+  `t11-osd-context.png`, `t11-dnd.png`; re-ran
+  `scripts/capture-control-center-focus-dark.sh` to refresh
+  `t11-control-center*.png` with the speaker glyph.
+- **Docs** — ADR 0063; `04-shell.md` T-11.4b status; `docs/captures/README.md`.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `make qml-test` — 38/38; `make lint` exit 0; `make e2e` exit 0.
+- `LD_LIBRARY_PATH=$HOME/.local/df-toolchain/usr/lib64 ctest --test-dir build
+  -R tst_osd` — 9/9.
+- `make osd-dnd-capture` — writes the three new stills (host Wayland +
+  `spectacle` + Pillow).
+
+Capture verdict (vision): `t11-osd.png` — centered card, speaker glyph, accent
+bar, `100%`, sharp; `t11-osd-context.png` — card centered over the Settings
+window, Control Center open, DND crescent in the bar; `t11-dnd.png` — accent
+crescent immediately left of the clock. No clipping/artifacts.
+
+Gotchas for later tasks:
+
+- **The fixture mock seeds a banner even in DND.** The capture driver clicks it
+  away before the OSD drag; the real service's suppression is the Rust policy.
+- **The OSD never takes focus; Escape is shell-level.** A live screen-reader
+  announcement depends on the AT-SPI tree, whose dump/walkthrough is T-16.6a.
+  Hardware media keys are still unwired.
+- **`Icon.qml` `volume` is shared** by the OSD and the Control Center Sound
+  tile; do not reintroduce the drive-slab drawing.
