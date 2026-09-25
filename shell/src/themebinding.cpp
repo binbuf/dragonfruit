@@ -51,8 +51,9 @@ bool ThemeBinding::hostDark()
 
 void ThemeBinding::onSettingsChanged(const QString &key, const QVariant &)
 {
-    // Only the two theme keys matter here; the Dock handles the rest.
+    // Only the theme keys matter here; the Dock handles the rest.
     if (key == QLatin1String("appearance.colorScheme")
+        || key == QLatin1String("appearance.accent")
         || key == QLatin1String("accessibility.reduceMotion")) {
         apply();
     }
@@ -72,9 +73,12 @@ void ThemeBinding::apply()
                                               QStringLiteral("auto"));
     const bool dark = darkForScheme(scheme, hostDark());
     const bool reduced = m_settings->boolean(QStringLiteral("accessibility.reduceMotion"), false);
+    const QString accent = m_settings->string(QStringLiteral("appearance.accent"), QString());
 
     if (m_theme->property("dark").toBool() != dark)
         m_theme->setProperty("dark", dark);
     if (m_theme->property("reducedMotion").toBool() != reduced)
         m_theme->setProperty("reducedMotion", reduced);
+    if (m_theme->property("accentOverride").toString() != accent)
+        m_theme->setProperty("accentOverride", accent);
 }

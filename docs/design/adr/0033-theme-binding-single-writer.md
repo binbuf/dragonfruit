@@ -42,8 +42,11 @@ breaks the host binding); a second `ThemeBinding` in every first-party app
 - A settingsd `appearance.colorScheme` change flips the shell chrome within
   one event-loop turn; `tst_themebinding` asserts it headlessly, including a
   real gallery-variant pixel change.
-- `appearance.accent` is still unconsumed: `Theme.color.accent` is a
-  read-only scheme token, so an override needs a design-system change. T-09.2
-  (the Appearance pane) is the natural place; it is left as a follow-up here.
+- `appearance.accent` was unconsumed when this ADR was written:
+  `Theme.color.accent` is a read-only scheme token, so an override needs a
+  design-system change. T-09.2 added the generated `Theme.accentOverride` and
+  the writer in `ThemeBinding` (ADR
+  [0037](0037-accent-override-and-app-local-theme-sync.md)), which also gives
+  apps a local mirror since this writer is shell-process-only.
 - T-08.2c must mirror `appearance.colorScheme` into the compositor; until
   then a light shell can sit over the compositor's dark chrome/backdrop.

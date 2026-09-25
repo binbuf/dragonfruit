@@ -246,6 +246,9 @@ skips the bus half where no bus exists. The capture
 - `appearance.colorScheme` (`light`/`dark`/`auto`) → `Theme.dark`;
 - `accessibility.reduceMotion` (`b`) → `Theme.reducedMotion`.
 
+T-09.2 added `appearance.accent` → `Theme.accentOverride` to the same writer
+(ADR [0037](../adr/0037-accent-override-and-app-local-theme-sync.md)).
+
 `auto` follows the host and stays live: the binding listens to
 `QStyleHints::colorSchemeChanged` and re-applies while the setting is neither
 `light` nor `dark`, so replacing the singleton's own `Application.styleHints`
@@ -257,9 +260,11 @@ binding does not freeze the host preference. The resolver is the pure
 `appearance.colorScheme` to `auto`, so `Theme` follows the host exactly as
 before the binding landed.
 
-**Not yet.** `appearance.accent` is unconsumed: `Theme.color.accent` is a
-read-only scheme token and an override needs a design-system change
-(T-09.2, the Appearance pane). The compositor keeps its own scheme owner
+**Accent (done in T-09.2).** `appearance.accent` is consumed through the
+generated `Theme.accentOverride` (ADR
+[0037](../adr/0037-accent-override-and-app-local-theme-sync.md)); the shell
+writes it, and the Settings app mirrors the key onto its own `Theme`. The
+compositor keeps its own scheme owner
 (`DfState::set_color_scheme`); T-08.2c mirrors the same key into it, so a
 light shell over the compositor's dark chrome/backdrop is an interim state.
 

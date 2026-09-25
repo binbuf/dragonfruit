@@ -32,6 +32,16 @@ Item {
     property alias header: header
     property alias backButton: backButton
     property alias forwardButton: forwardButton
+    property alias paneBody: paneBody
+
+    // The app-local theme owner (T-09.2). The shell's `ThemeBinding` lives in
+    // the shell process; the Settings app is a separate process, so these
+    // bindings mirror the same settings keys onto this engine's `Theme`
+    // singleton. A change in the Appearance pane restyles the app immediately,
+    // and an external settingsd change reaches it through `Settings.values`.
+    // `auto` tracks the host style hint live.
+    readonly property string colorScheme: Settings.values["appearance.colorScheme"] || "auto"
+    readonly property bool hostDark: Application.styleHints.colorScheme === Qt.Dark
 
     signal closeRequested()
     signal minimizeRequested()
@@ -95,6 +105,17 @@ Item {
         searchField.forceActiveFocus();
     }
 
+    // The pane-body registry: a pane appears here once its content has landed.
+    // T-09.3…T-09.5 add their components alongside "appearance".
+    function paneComponent(id) {
+        switch (id) {
+        case "appearance":
+            return appearancePaneComponent;
+        default:
+            return null;
+        }
+    }
+
     Component.onCompleted: {
         var first = root.visiblePanes.length > 0 ? root.visiblePanes[0].id : "";
         if (first.length > 0) {
@@ -132,6 +153,28 @@ Item {
             }
             break;
         }
+    }
+
+    Binding {
+        target: Theme
+        property: "dark"
+        value: root.colorScheme === "dark" ? true
+             : root.colorScheme === "light" ? false : root.hostDark
+    }
+    Binding {
+        target: Theme
+        property: "accentOverride"
+        value: Settings.values["appearance.accent"] || ""
+    }
+    Binding {
+        target: Theme
+        property: "reducedMotion"
+        value: Settings.values["accessibility.reduceMotion"] === true
+    }
+
+    Component {
+        id: appearancePaneComponent
+        AppearancePane { }
     }
 
     AppWindow {
@@ -250,9 +293,16 @@ Item {
                                 pane: root.currentPane
                             }
 
+                            Loader {
+                                id: paneBody
+                                width: parent.width
+                                sourceComponent: root.paneComponent(root.currentPaneId)
+                            }
+
                             SettingsGroup {
                                 width: parent.width
                                 reserveBottomMargin: false
+                                visible: paneBody.status !== Loader.Ready
 
                                 Text {
                                     width: parent.width

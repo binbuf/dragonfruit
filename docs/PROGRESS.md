@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(13 earlier sections omitted)_
+_(14 earlier sections omitted)_
 
-- **T11 — T-02.3 Zoom and fullscreen transitions**: **State: done.** Zoom/unzoom and fullscreen/unfullscreen animate between the; **`compositor/src/window/motion.rs`** — `WindowMotionKind::{Zoom,
 - **T12 — T-02.4a Close ghost**: **State: done.** A closing window shrinks/fades out into its app's Dock tile; **`compositor/src/window/motion.rs`** — `WindowMotionKind::Close` (reverse
 - **T13 — T-02.4b Close interruptibility and idle trace**: **State: done.** A live close ghost reverses mid-flight without waiting: a; **`compositor/src/state.rs`** — `close_window` clears keyboard focus when it
 - **T14 — T-03.1a Nested idle trace and animation frame budget**: **State: done.** The idle/animation frame trace is now a real instrument (a; **60.0 s idle window**: `frames_rendered=1` (flat, +0),
@@ -45,6 +44,7 @@ _(13 earlier sections omitted)_
 - **T48 — T-09.1a Settings app shell**: **State: done.** The `apps/settings` stub is now a real shell: frameless; **`apps/settings/`** is a reusable QML module `Dragonfruit.Settings` (static
 - **Follow-ups**: **T-09 Settings Wave 1 (T-09.1a done in T48).** The shell, sidebar, local; **T-08.2 consumer migration (T-08.2a done in T44, T-08.2b done in T45,
 - **T49 — T-09.1b Settings live-apply plumbing**: **State: done.** The Settings app is a real settingsd consumer: a QML `Settings`; **`libs/settings-client/`** (new; `libs/CMakeLists.txt`) — the former
+- **T50 — T-09.2 Appearance pane**: **State: done.** The Appearance pane is real and live: a Light/Dark/Auto; **`apps/settings/AppearancePane.qml`** (new) — `SettingsGroup`/`SettingsRow`
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3243,9 +3243,9 @@ Gotchas for later tasks:
   `df_toplevel_manager` v5 `set_motion_policy`/`set_input_policy`; the
   compositor is the sole applier (ADR 0034). T-08.3 (done in T47) made the
   shell re-sync on a settingsd restart (QDBusServiceWatcher) and documented the
-  key schema. Remaining: `appearance.accent`
-  still has no consumer (needs a design-system accent override; T-09.2);
-  `workspaces.count` has no compositor owner yet (workspace-model key, not
+  key schema. Remaining: `appearance.accent` was consumed in T-09.2
+  (`Theme.accentOverride`, ADR 0037); `workspaces.count` has no compositor
+  owner yet (workspace-model key, not
   motion/input). Nothing starts
   `dragonfruit-settingsd` (the dev tool deliberately does not); the shell runs
   from the mirrored schema defaults then, which is intended.
@@ -3479,7 +3479,86 @@ Gotchas for later tasks:
   no longer exists. Add a key in three places as before: `schema.rs`, the
   mirrored `settingsSchemaDefaults()` (now in the lib), and
   `docs/settings-keys.md`.
-- `appearance.accent` still has no consumer (design-system accent override is
-  T-09.2); `workspaces.count` still has no compositor owner.
-- The Settings app still follows the host style hint for `Theme.dark`, not the
-  compositor scheme (existing T-04.4b/T-08 follow-up, untouched).
+- `appearance.accent` is consumed as of T-09.2 (`Theme.accentOverride`,
+  ADR 0037); `workspaces.count` still has no compositor owner.
+- The Settings app now mirrors `appearance.colorScheme`/`appearance.accent`/
+  `accessibility.reduceMotion` onto its own `Theme` (T-09.2), so it follows
+  settingsd, not the host style hint (the earlier T-04.4b/T-08 gap is closed
+  for this app; other first-party apps still follow the host until they add
+  the same bindings).
+
+## T50 — T-09.2 Appearance pane
+
+**State: done.** The Appearance pane is real and live: a Light/Dark/Auto
+segmented control bound to `appearance.colorScheme` and an accent swatch row +
+custom hex picker bound to `appearance.accent`, all through the `Settings`
+singleton. The accent is now consumed across the desktop — the design-system
+`Theme` gained a writable `accentOverride`, written by the shell's
+`ThemeBinding` and mirrored onto the Settings app's own `Theme`.
+
+What landed:
+
+- **`apps/settings/AppearancePane.qml`** (new) — `SettingsGroup`/`SettingsRow`
+  with a `SegmentedControl` (Light/Dark/Auto) and an accent swatch row
+  (`Repeater` of circular swatches; Default = token accent) plus a `Custom…`
+  `Popup` with a `#rrggbb` `TextInput` and live preview. Every control uses the
+  two-way pattern: `onActivated`/`onTapped` -> `Settings.set(key, value)`, and
+  a `Binding` back to `Settings.values[...]` (the scheme selector) or a
+  `selected` binding (the swatches).
+- **`apps/settings/SettingsShell.qml`** — a `paneComponent(id)` registry and a
+  `Loader` (`paneBody`) render the body; the placeholder shows only when no
+  body is registered. Three `Binding`s mirror `appearance.colorScheme`,
+  `appearance.accent`, and `accessibility.reduceMotion` onto the app-local
+  `Theme` (the shell's `ThemeBinding` is another process). Exposes
+  `paneBody` for tests.
+- **`design-system/Theme.qml`** (generated) — `property string accentOverride`
+  (empty = token accent) plus `hasAccentOverride`/`accentOverrideColor`; the
+  accent family (`accent`, `accentHover`, `accentMuted`, `accentContent`) of
+  both schemes is emitted as bindings over it. `scripts/gen-tokens.py` owns the
+  emission; `compositor/src/design_tokens.rs` is unchanged.
+- **`shell/src/themebinding.{h,cpp}`** — `appearance.accent` -> 
+  `Theme.accentOverride`, reacted to on `changed`; `tst_themebinding.cpp`
+  gained `accentOverrideFlipsTheme`.
+- **Tests** — `apps/settings/tests/tst_settings_appearance.{cpp,qml}` (new, 5
+  cases, `DF_SETTINGS_FIXTURE=1`): pane loads with the wired controls; scheme
+  selection flips the key and `Theme.dark`; each swatch sets the key and
+  `Theme.accentOverride`; the custom hex picker applies/validates; reduced
+  motion mirrors onto `Theme.reducedMotion`.
+- **Docs** — ADR [0037](design/adr/0037-accent-override-and-app-local-theme-sync.md);
+  track 09 "Appearance pane (T-09.2)"; `docs/settings-keys.md` consumer map.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `ctest --test-dir build -R tst_settings_appearance --output-on-failure` —
+  5/5 (fixture, ~0.12 s).
+- `make qml-test` — 24/24; `make lint` green; `make check-tokens` current;
+  `make visual-test` — 66 gallery snapshots unchanged; `make e2e` exit 0.
+- Live captures: `/tmp/opencode/t50-capture.sh` (nested demo, Appearance pane)
+  and `/tmp/opencode/t50-accent-capture.sh` (real `settingsd` on the session
+  bus, accent flipped to `#4a7dff` mid-session). Raw observation: the Dock
+  running-app indicator pixel was `#b32a66` before and `#4a7dff` after, and the
+  Settings window's accent region changed with it — shell + app applied the
+  accent live. On a tight crop of the pane, vision reported titlebar
+  "Settings", sidebar with Appearance selected, header, Light/Dark/Auto, six
+  swatches + `Custom…`, and no clipping/artifacts.
+
+Gotchas for later tasks:
+
+- **Register a pane body in `SettingsShell.paneComponent(id)`**, add the QML
+  file to `apps/settings/CMakeLists.txt` (`QML_FILES` + `df_qml_lint`), and
+  leave/put its catalog `shipped` true. The placeholder shows when the registry
+  returns `null`.
+- **The app must mirror Theme itself.** `ThemeBinding` runs in the shell
+  process; a first-party app's `Theme` is per-process. Copy the three
+  `Binding`s in `SettingsShell.qml` (or a shared helper) into any new app that
+  renders settings controls (ADR 0037).
+- **`Theme.accentOverride` is the accent knob** (string `#rrggbb`, empty =
+  token). Deriving `accentHover`/`accentMuted`/`accentContent` is done in the
+  generator; do not set `Theme.color.accent` anywhere (it is read-only).
+- **Pane tests set `DF_SETTINGS_FIXTURE=1` and reset keys in `init()`** — the
+  mock store is process-global, so state leaks between cases otherwise.
+- **Omitted reference rows are deliberate** (Highlight color, Sidebar icon
+  size, wallpaper tinting, scroll bars: provider T-15.x; reduced motion stays
+  Accessibility T-15.14). Add them only with real keys — no-half-panes.
+- Settings app still follows the host style hint only when the three bindings
+  are absent; with the shell loaded it follows settingsd.

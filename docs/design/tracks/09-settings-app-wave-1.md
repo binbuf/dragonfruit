@@ -123,6 +123,35 @@ design-system `Toggle` to `accessibility.reduceMotion` and round-trips it
 through the fixture, a fake `org.dragonfruit.Settings1` service, and the real
 `dragonfruit-settingsd` binary over a private session bus.
 
+## Appearance pane (T-09.2)
+
+`apps/settings/AppearancePane.qml` is the first real pane body. It ships the
+two controls the schema owns:
+
+- **Appearance** — a `SegmentedControl` (Light / Dark / Auto) bound to
+  `appearance.colorScheme`.
+- **Accent color** — a swatch row (Default plus our palette) and a `Custom…`
+  popup accepting any `#rrggbb`, bound to `appearance.accent`.
+
+Both use the T-09.1b write-on-interaction / bind-to-`Settings.values` pattern;
+`SettingsShell.paneBody` loads the body when its pane id is registered (the
+`paneComponent(id)` registry). The pane deliberately omits the reference
+pane's Highlight color, Sidebar icon size, wallpaper tinting, and scroll-bar
+rows: they have no provider yet (T-15.x), and the no-half-panes rule says a
+row appears only when its control works. Reduced motion stays the
+Accessibility item (T-15.14).
+
+The design-system `Theme` gained a writable `accentOverride` (ADR
+[0037](../adr/0037-accent-override-and-app-local-theme-sync.md)); the shell's
+`ThemeBinding` writes it, and the app mirrors the same keys onto its own
+`Theme` with `Binding`s in `SettingsShell.qml`, since the shell's writer is in
+another process.
+
+**Verification.** `apps/settings/tests/tst_settings_appearance.qml` runs
+headless against the `DF_SETTINGS_FIXTURE` mock and asserts each control
+changes both the settings key and the app-local `Theme` on the same
+event-loop turn.
+
 ## Acceptance
 
 - [ ] The demo runs and the captures are committed.

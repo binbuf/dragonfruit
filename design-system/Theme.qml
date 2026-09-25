@@ -107,10 +107,10 @@ QtObject {
             readonly property color textPrimary: "#1d1723"
             readonly property color textSecondary: "#5b4e66"
             readonly property color textTertiary: "#786a84"
-            readonly property color accent: "#b32a66"
-            readonly property color accentHover: "#cf3a7c"
-            readonly property color accentMuted: "#fbe1ec"
-            readonly property color accentContent: "#ffffff"
+            readonly property color accent: tokens.hasAccentOverride ? tokens.accentOverrideColor : "#b32a66"
+            readonly property color accentHover: tokens.hasAccentOverride ? Qt.lighter(tokens.accentOverrideColor, 1.15) : "#cf3a7c"
+            readonly property color accentMuted: tokens.hasAccentOverride ? Qt.tint("#f8f6fa", Qt.rgba(tokens.accentOverrideColor.r, tokens.accentOverrideColor.g, tokens.accentOverrideColor.b, 0.14)) : "#fbe1ec"
+            readonly property color accentContent: tokens.hasAccentOverride ? (tokens.accentOverrideColor.r * 0.299 + tokens.accentOverrideColor.g * 0.587 + tokens.accentOverrideColor.b * 0.114 > 0.5 ? "#130f17" : "#ffffff") : "#ffffff"
             readonly property color border: "#ded6e5"
             readonly property color separator: "#efeaf3"
             readonly property color controlFill: "#efeaf3"
@@ -147,10 +147,10 @@ QtObject {
             readonly property color textPrimary: "#f8f6fa"
             readonly property color textSecondary: "#c3b8cc"
             readonly property color textTertiary: "#9c8fa8"
-            readonly property color accent: "#e15c98"
-            readonly property color accentHover: "#ee93bc"
-            readonly property color accentMuted: "#591a39"
-            readonly property color accentContent: "#130f17"
+            readonly property color accent: tokens.hasAccentOverride ? tokens.accentOverrideColor : "#e15c98"
+            readonly property color accentHover: tokens.hasAccentOverride ? Qt.lighter(tokens.accentOverrideColor, 1.15) : "#ee93bc"
+            readonly property color accentMuted: tokens.hasAccentOverride ? Qt.tint("#2d2534", Qt.rgba(tokens.accentOverrideColor.r, tokens.accentOverrideColor.g, tokens.accentOverrideColor.b, 0.28)) : "#591a39"
+            readonly property color accentContent: tokens.hasAccentOverride ? (tokens.accentOverrideColor.r * 0.299 + tokens.accentOverrideColor.g * 0.587 + tokens.accentOverrideColor.b * 0.114 > 0.5 ? "#130f17" : "#ffffff") : "#130f17"
             readonly property color border: "#44394d"
             readonly property color separator: "#2d2534"
             readonly property color controlFill: "#2d2534"
@@ -185,6 +185,14 @@ QtObject {
     // Reduced motion is a first-class token (FR-5): every animation has
     // a variant that removes translation/scale but keeps state legible.
     property bool reducedMotion: false
+    // Accent override (T-09.2, `appearance.accent`): empty means the
+    // active scheme's token accent. The shell's ThemeBinding and the
+    // Settings app's local Theme bindings write it; the accent-family
+    // scheme colors above consult it, so every accent consumer follows
+    // without a per-component override.
+    property string accentOverride: ""
+    readonly property bool hasAccentOverride: tokens.accentOverride !== ""
+    readonly property color accentOverrideColor: tokens.hasAccentOverride ? tokens.accentOverride : "transparent"
     readonly property var color: tokens.dark ? tokens.darkScheme.color : tokens.lightScheme.color
     readonly property var material: tokens.dark ? tokens.darkScheme.material : tokens.lightScheme.material
 

@@ -22,6 +22,29 @@ set_tests_properties(tst_settings_shell PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# Appearance-pane tests (T-09.2): every control applies live to the settings
+# key and the app-local Theme. `DF_SETTINGS_FIXTURE` forces the deterministic
+# in-process mock, so the cases never touch the host session bus.
+qt_add_executable(tst_settings_appearance
+    tst_settings_appearance.cpp
+)
+target_link_libraries(tst_settings_appearance PRIVATE
+    Qt6::QuickTest
+    dragonfruit-design-systemplugin
+    dragonfruit-settings-uiplugin
+)
+qt_import_qml_plugins(tst_settings_appearance)
+
+add_test(
+    NAME tst_settings_appearance
+    COMMAND tst_settings_appearance
+        -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_settings_appearance.qml
+)
+set_tests_properties(tst_settings_appearance PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;DF_SETTINGS_FIXTURE=1;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Settings live-apply tests (T-09.1b): a representative control is bound to a
 # settingsd key through the QML `Settings` singleton and round-trips it. The
 # bus-backed cases run under a private session bus; the real-daemon case uses
