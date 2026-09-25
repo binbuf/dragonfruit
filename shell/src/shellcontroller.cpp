@@ -2238,10 +2238,17 @@ void ShellController::hideCurrentBanner()
 
 void ShellController::onBannerConfigured(int width, int height, quint32)
 {
-    if (width <= 0 || height <= 0)
+    // The compositor sends a pre-layout configure at the full output size
+    // before applying the layer surface's anchor/size; skip it (the same rule
+    // as the menu bar and Dock).
+    if (width != kBannerWidth || height != kBannerHeight) {
+        fprintf(stderr, "dragonfruit-shell: ignoring pre-layout notification configure %dx%d\n",
+                width, height);
         return;
+    }
     m_bannerWidth = width;
     m_bannerHeight = height;
+    fprintf(stderr, "dragonfruit-shell: notification banner configured %dx%d\n", width, height);
     if (m_bannerPending)
         renderBanner();
 }
