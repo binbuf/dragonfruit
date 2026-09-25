@@ -37,7 +37,7 @@ sudo dnf install dragonfruit-desktop
 | `dragonfruit-settingsd` | `settingsd`, `menu-broker`, `app-index` (split later if warranted) |
 | `dragonfruit-settings`, `dragonfruit-files` | First-party applications, design system assets |
 | `dragonfruit-portal` | `xdg-desktop-portal-dragonfruit` + `portals.conf` for our desktop name |
-| `dragonfruit-session` | Wayland-session desktop file, systemd user units and target |
+| `dragonfruit-session` | `dragonfruit-session` binary, `share/wayland-sessions/dragonfruit.desktop`, `bin/dragonfruit-session-entry`, systemd user units and target (installed with `dragonfruit-session --install-session "$RPM_BUILD_ROOT/usr"`) |
 | `dragonfruit-desktop` | Meta-package requiring the above |
 
 ### Parallel-install rules

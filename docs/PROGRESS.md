@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(43 earlier sections omitted)_
+_(44 earlier sections omitted)_
 
-- **T41 — T-07.6b Menu-bar idle trace and capture**: **State: done.** The menu-bar idle trace is flat at both seams and the T-07; **`compositor/tests/shell_idle_trace.rs`** — the bar-live idle trace now
 - **T42 — T-08.1a settingsd config model and D-Bus API**: **State: done.** `services/settingsd` is no longer a stub: the desktop-settings; **`services/settingsd/src/schema.rs`** (new) — `KEYS`: 20 named keys
 - **T43 — T-08.1b settingsd persistence and migrations**: **State: done.** `settingsd` now owns; **`services/settingsd/src/persist.rs`** (new) — the persisted format,
 - **T44 — T-08.2a Shell migration to settingsd**: **State: done.** The shell no longer owns Dock settings: `DockSettings`/; **`shell/src/settingsclient.{h,cpp}`** (new) — `SettingsClient` (typed key
@@ -45,6 +44,7 @@ _(43 earlier sections omitted)_
 - **T77 — T-11.4b OSD keyboard/a11y and captures**: **State: done.** The OSD is keyboard/AT-SPI accessible and the T-11 capture; **`shell/osd/Osd.qml`** — `Accessible.role: Alert` + value-derived
 - **T78 — T-12.1a Session manager and restart policy**: **State: done.** `services/session` is a real session manager: the composition; **`services/session/src/plan.rs`** (new) — `RestartPolicy` (`always` /
 - **T79 — T-12.1b Session environment, systemd units, second-VT**: **State: done.** The session environment is data and reaches every child; the; **`services/session/src/env.rs`** (new) — `SessionEnvironment` (`new`,
+- **T80 — T-12.2 Display-manager entry and logout teardown**: **State: done.** The session now has a display-manager `.desktop` entry, an; **`services/session/dragonfruit.desktop`** (new) — Wayland session
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -5877,3 +5877,70 @@ Gotchas for later tasks:
   `sd_notify` would remove the helper (follow-up).
 - **`--wait-socket` tests file existence, not a connect** — it can pass on a
   stale socket path; teardown correctness is the compositor's job.
+
+## T80 — T-12.2 Display-manager entry and logout teardown
+
+**State: done.** The session now has a display-manager `.desktop` entry, an
+entry script that owns startup and logout teardown, and a supervisor that
+tears down whole process groups. Contract frozen in ADR
+[0066](design/adr/0066-display-manager-session-entry.md).
+
+What landed:
+
+- **`services/session/dragonfruit.desktop`** (new) — Wayland session
+  descriptor: `Name=Dragonfruit`, `DesktopNames=dragonfruit`,
+  `Type=Application`, `Exec=/usr/bin/dragonfruit-session-entry`. Install target
+  `share/wayland-sessions/`.
+- **`services/session/dragonfruit-session-entry`** (new, 0755) — startup +
+  logout owner: `--print-env` → `systemctl --user import-environment` (5 vars)
+  → `start dragonfruit-session.target` → wait for
+  `dragonfruit-compositor.service` inactive → `stop` + `reset-failed` target →
+  remove `$XDG_RUNTIME_DIR/<socket>{,.lock,.x11-display,.launch-token}`.
+- **`services/session/src/entry.rs`** (new) — contract constants,
+  `include_str!`-embedded `DESKTOP_ENTRY`/`ENTRY_SCRIPT`/`UNIT_FILES`, and
+  `install_into(prefix)` writing `bin/`, `share/wayland-sessions/`,
+  `lib/systemd/user/` (entry at 0755).
+- **`services/session/src/main.rs`** — `--install-session DIR` prints the 10
+  written paths.
+- **`services/session/src/supervisor.rs`** — services spawn as process-group
+  leaders (`Command::process_group(0)`); `shutdown`, anchor-exit, `Drop`, and
+  `kill` signal the group (`SIGTERM`, then `SIGKILL` after 500 ms).
+- **Tests** — `tests/session_entry.rs` 4 (embedded/shipped drift guard, desktop
+  contract, install layout + exec bit, real entry-script run against fake
+  `systemctl`/`dragonfruit-session`); `tests/logout.rs` 3 (shutdown,
+  anchor-exit, `kill` each reap a wrapper's `sleep` grandchild).
+- **Docs** — ADR 0066; `11-session-and-dev-workflow.md` entry + teardown
+  section; `12-packaging.md` package contents; `testing-ladder.md` rung 2.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-session` — 40/40 (13 unit + 27 integration).
+- `cargo clippy -p dragonfruit-session --all-targets -- -D warnings`; `cargo
+  fmt -p dragonfruit-session -- --check` — exit 0.
+- `cargo run -p dragonfruit-session -- --install-session /tmp/prefix` —
+  writes the entry, desktop file, and 8 units.
+- `make lint` — exit 0 (`qml-test` 38/38); `make e2e` — exit 0.
+
+Live check: `./target/debug/dragonfruit dev --demo --nested --socket-name
+t80-demo`, captured at `/tmp/opencode/t80-demo.png`; vision confirms the nested
+window renders its menu bar, Dock, Settings, and X11 demo window with no
+clipping/artifacts; the dev tool reported a clean teardown. The task adds no
+surface of its own.
+
+Gotchas for later tasks:
+
+- **The entry script is the only startup/logout owner.** T-12.6a selects
+  `dragonfruit.desktop` by name (`entry::SESSION_FILE`); T-12.6b/c reuse the
+  runtime hand-off cleanup list (`<socket>{,.lock,.x11-display,.launch-token}`).
+- **T-32 packaging installs with `dragonfruit-session --install-session
+  "$RPM_BUILD_ROOT/usr"`** (or `entry::install_into`); it does not hand-copy
+  `services/session/units/`.
+- **`entry.rs` embeds the units at compile time**, so a unit edit that skips
+  the installer is caught by `tests/session_entry.rs`'s drift guard.
+- **Teardown waits up to 500 ms per service** on `SIGTERM` before `SIGKILL`;
+  a service that ignores `SIGTERM` costs that grace at logout.
+- **The `.desktop` `Exec` is the absolute `/usr/bin/dragonfruit-session-entry`.**
+  A non-standard prefix needs the entry edited or a symlink; T-12.6's harness
+  should use the installed path.
+- **`process_group(0)` is Unix-only** (`#[cfg(unix)]`); the crate already
+  assumes Unix throughout.

@@ -8,6 +8,7 @@
 //! dragonfruit-session --print-plan            # the default composition, in order
 //! dragonfruit-session --print-env             # the session environment to import
 //! dragonfruit-session --wait-socket NAME      # block until the compositor's socket exists
+//! dragonfruit-session --install-session DIR   # install the DM entry + user units
 //! dragonfruit-session --exec PROG [ARGS...] [--policy always|on-failure|never]
 //! ```
 //!
@@ -18,11 +19,12 @@
 //! (T-12.1b): the session entry imports the environment, and each service
 //! waits for the private socket before starting.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+use dragonfruit_session::entry;
 use dragonfruit_session::env::{self, SessionEnvironment};
 use dragonfruit_session::plan::{RestartPolicy, ServiceSpec, SessionPlan};
 use dragonfruit_session::supervisor::{ServiceState, SessionState, Supervisor};
@@ -52,6 +54,7 @@ fn main() -> ExitCode {
         }
         Some("--print-env") => print_env(&args[1..]),
         Some("--wait-socket") => wait_socket(&args[1..]),
+        Some("--install-session") => install_session(&args[1..]),
         Some("-h") | Some("--help") => {
             print_help();
             ExitCode::SUCCESS
@@ -196,6 +199,36 @@ fn wait_socket(args: &[String]) -> ExitCode {
     }
 }
 
+/// Install the display-manager session entry, its script, and the systemd
+/// user units under `DIR` (T-12.2). Printing every written path makes the
+/// packaging step auditable. `DIR` is the full install prefix, e.g. a
+/// package's `$RPM_BUILD_ROOT/usr`.
+fn install_session(args: &[String]) -> ExitCode {
+    let Some(prefix) = args.first() else {
+        eprintln!("dragonfruit-session: --install-session needs a prefix directory");
+        return ExitCode::from(2);
+    };
+    if args.len() > 1 {
+        eprintln!(
+            "dragonfruit-session: unexpected --install-session argument {:?}",
+            args[1]
+        );
+        return ExitCode::from(2);
+    }
+    match entry::install_into(Path::new(prefix)) {
+        Ok(paths) => {
+            for path in paths {
+                println!("{}", path.display());
+            }
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("dragonfruit-session: cannot install into {prefix:?}: {error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
 /// Resolve a socket `name` to a path: an absolute path stands alone; a bare
 /// name lives under `$XDG_RUNTIME_DIR`, which must be set.
 fn socket_path(name: &str) -> Option<PathBuf> {
@@ -284,6 +317,9 @@ fn print_help() {
                           for the systemd user manager to import\n\
            --wait-socket NAME [--timeout SECS]\n\
                           block until the compositor's private socket exists\n\
+           --install-session DIR\n\
+                          install the DM session entry, its script, and the\n\
+                          systemd user units under DIR (T-12.2)\n\
            --exec PROG [ARGS...] [--policy always|on-failure|never]\n\
                           supervise one process until it exits or is signalled\n\
            -h, --help     show this help"
