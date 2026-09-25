@@ -66,6 +66,14 @@ private slots:
     void onBrightnessSetRequested(double level);
     void onWifiToggleRequested(bool enabled);
     void onWifiSettingsRequested();
+    // T-11.3b: the Focus/DND and dark-mode tiles. Focus writes the
+    // notification service's mode; dark mode writes settingsd's
+    // `appearance.colorScheme` (ThemeBinding applies it live). The two
+    // Settings links are entry points only until T-16.
+    void onFocusToggleRequested(bool enabled);
+    void onFocusSettingsRequested();
+    void onDarkModeToggleRequested(bool dark);
+    void onAppearanceSettingsRequested();
     void onMissionControlRequested();
     void onStatusItemActivated(const QString &itemId);
     // Wi-Fi and volume popovers (T-07.5a): the bar's gestures become bridge

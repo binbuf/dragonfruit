@@ -21,7 +21,7 @@ WALL_TOL = 6
 WALL_ROW_MIN = 100
 BAR_HEIGHT = 28
 PANEL_W = 360
-PANEL_H = 420
+PANEL_H = 520
 PANEL_TOP = BAR_HEIGHT + 8  # the panel's top margin below the menu bar
 
 KEY_LEFTCTRL, KEY_LEFTALT, KEY_C = 29, 56, 46
