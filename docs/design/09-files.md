@@ -226,9 +226,26 @@ directory poll). Both consume the one `FreedesktopTrash` store, so a deletion
 by any application appears in the Dock and Files at once. The shell reads and
 mutates it through a small C ABI (`df_files_trash_monitor_*`, ADR
 [0052](adr/0052-dock-trash-state-from-files-core.md)) wrapped by `TrashBridge`;
-the shell links the `files-core` staticlib as Files does. **Still deferred:**
-the Drop-to-trash / Empty Trash UX rework and `trash://` navigation (T-10.6b),
-and Show in Files / Downloads / `.desktop` identity (T-10.6c).
+the shell links the `files-core` staticlib as Files does.
+
+**Implementation status (T-10.6b).** Drop-to-trash and Empty Trash both route
+through `files-core`, and the Dock's Trash click opens Files at `trash://`.
+Dropping files on the Dock's Trash entry calls
+`files-core`'s `FreedesktopTrash` through `TrashBridge::trash`; Empty Trash
+does the same through `TrashBridge::empty`, so the Dock badge and the store
+move together. Files opens the location the Dock passes: `main.cpp` maps the
+positional argument (`dragonfruit-files trash://`) onto the existing
+`DF_FILES_START_URI` seam (`FilesArguments.h`), which is how the launch works
+before the `org.dragonfruit.Files1` activation target lands. Inside the Trash,
+Files offers Empty Trash (background menu, `Shift+Cmd+Delete`) as a
+confirmation dialog; accepting calls the new `df_files_begin_empty_trash`
+optimistic operation on the `trash://` listing, which clears every row within a
+frame and snaps them back if the real empty fails, so the model and the store
+never disagree.
+
+**Still deferred:** Show in Files / Downloads / `.desktop` identity (T-10.6c),
+and wiring the files-core folder watcher to the Files facade via the delta
+path.
 
 ### Model
 

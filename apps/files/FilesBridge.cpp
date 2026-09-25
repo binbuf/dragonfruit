@@ -80,6 +80,7 @@ FilesBridge::FilesBridge(QObject *parent)
         m_startMenu.clear();
     m_startRename = qEnvironmentVariableIsSet("DF_FILES_START_RENAME");
     m_startSelect = qEnvironmentVariableIntValue("DF_FILES_START_SELECT");
+    m_startEmptyTrash = qEnvironmentVariableIsSet("DF_FILES_START_EMPTY_TRASH");
     if (m_fixture) {
         // Deterministic locations for the headless QML tests; independent of
         // the host's home directory and mounts.

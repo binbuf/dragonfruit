@@ -62,6 +62,9 @@ class FilesBridge : public QObject
     // `DF_FILES_START_SELECT=N` selects the first N rows once the listing
     // settles (multi-select capture).
     Q_PROPERTY(int startSelect READ startSelect CONSTANT)
+    // `DF_FILES_START_EMPTY_TRASH=1` opens the Empty Trash confirmation once a
+    // non-empty Trash listing settles (T-10.6b capture seam).
+    Q_PROPERTY(bool startEmptyTrash READ startEmptyTrash CONSTANT)
     // The view a fresh window opens in, from `DF_FILES_START_VIEW` (`list`
     // or `icon`); empty means the shell default. A capture seam, sibling of
     // `DF_FILES_START_URI`.
@@ -84,6 +87,7 @@ public:
     QString startMenu() const { return m_startMenu; }
     bool startRename() const { return m_startRename; }
     int startSelect() const { return m_startSelect; }
+    bool startEmptyTrash() const { return m_startEmptyTrash; }
 
     // The path bar breadcrumb as `{ label, uri }` from the machine down to the
     // location. `file://` paths are segmented; the home directory collapses
@@ -110,6 +114,7 @@ private:
     QString m_startMenu;
     bool m_startRename = false;
     int m_startSelect = 0;
+    bool m_startEmptyTrash = false;
     QVariantList m_favorites;
     QVariantList m_volumes;
 };

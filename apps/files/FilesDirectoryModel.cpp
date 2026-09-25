@@ -191,6 +191,19 @@ bool FilesDirectoryModel::trash(quint64 nodeId)
     return true;
 }
 
+bool FilesDirectoryModel::emptyTrash()
+{
+    if (!m_session)
+        return false;
+    const quint64 op = df_files_begin_empty_trash(m_session);
+    if (op == 0)
+        return false;
+    repaint();
+    setPendingOps(int(df_files_pending_ops(m_session)));
+    ensurePolling();
+    return true;
+}
+
 int FilesDirectoryModel::rowForNodeId(quint64 nodeId) const
 {
     for (int row = 0; row < int(m_nodes.size()); ++row) {

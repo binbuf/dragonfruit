@@ -98,6 +98,17 @@ enum PendingKind {
         position: usize,
         selection_index: Option<usize>,
     },
+    /// Every listed node was removed (Empty Trash); revert restores them in
+    /// their captured arrival positions.
+    Empty { removed: Vec<RemovedNode> },
+}
+
+/// One node captured by a bulk removal, with everything a revert needs to put
+/// it back exactly where it was.
+struct RemovedNode {
+    node: Node,
+    position: usize,
+    selection_index: Option<usize>,
 }
 
 /// One pending optimistic edit.
@@ -257,6 +268,9 @@ impl OptimisticModel {
                     }
                 }
             }
+            // An Empty Trash resolves through the operation worker's outcome,
+            // never a per-node watch event.
+            PendingKind::Empty { .. } => None,
         }
     }
 
@@ -336,6 +350,36 @@ impl OptimisticModel {
         }))
     }
 
+    /// Remove every listed node now (Empty Trash), returning the pending
+    /// [`OpId`].
+    ///
+    /// The whole Trash clears within a frame and snaps back item-for-item if
+    /// the real empty fails. This is deliberately not a batch of
+    /// [`Self::begin_delete`] pending records: one operation drives one op
+    /// worker request, so the pending count and the outcome fold stay paired.
+    pub fn begin_empty_trash(&mut self) -> OpId {
+        let captured: Vec<RemovedNode> = self
+            .model
+            .nodes()
+            .iter()
+            .enumerate()
+            .map(|(position, node)| {
+                let selection_index = self.selection.position_of(node.id());
+                self.selection.deselect(node.id());
+                RemovedNode {
+                    node: node.clone(),
+                    position,
+                    selection_index,
+                }
+            })
+            .collect();
+        let ids: Vec<NodeId> = self.model.nodes().iter().map(Node::id).collect();
+        for id in ids {
+            self.model.remove_node(id);
+        }
+        self.push(PendingKind::Empty { removed: captured })
+    }
+
     /// Retire a pending edit whose real operation succeeded: the model already
     /// shows the result, so nothing is restored. Returns `false` if `op` was
     /// not pending.
@@ -376,6 +420,19 @@ impl OptimisticModel {
                 if self.model.restore_node(node, id, position) {
                     if let Some(index) = selection_index {
                         self.selection.insert_at(index, id);
+                    }
+                }
+            }
+            PendingKind::Empty { removed } => {
+                // Restore in ascending arrival position so each insert lands
+                // ahead of the ones after it, reconstructing the original row
+                // order exactly.
+                for entry in removed {
+                    let id = entry.node.id();
+                    if self.model.restore_node(entry.node, id, entry.position) {
+                        if let Some(index) = entry.selection_index {
+                            self.selection.insert_at(index, id);
+                        }
                     }
                 }
             }
@@ -491,6 +548,23 @@ impl OptimisticModel {
         }
     }
 
+    /// Empty the whole Trash optimistically and run the real
+    /// [`TrashOps::empty`] through `trash`, confirming on success and reverting
+    /// every row on error (T-10.6b).
+    pub fn empty_trash_via(&mut self, trash: &dyn TrashOps) -> Result<OpId, OperationError> {
+        let op = self.begin_empty_trash();
+        match trash.empty() {
+            Ok(_) => {
+                self.confirm(op);
+                Ok(op)
+            }
+            Err(error) => {
+                self.revert(op);
+                Err(error)
+            }
+        }
+    }
+
     fn mint(&mut self) -> OpId {
         self.next_op += 1;
         OpId(self.next_op)
@@ -519,7 +593,7 @@ impl OptimisticModel {
         };
         let node_id = match pending.kind {
             PendingKind::Create { node } | PendingKind::Rename { node, .. } => node,
-            PendingKind::Remove { .. } => return,
+            PendingKind::Remove { .. } | PendingKind::Empty { .. } => return,
         };
         let Some(mut node) = self.model.node(node_id).cloned() else {
             return;
@@ -610,6 +684,40 @@ mod tests {
             Some("z".to_owned())
         );
         assert!(!optimistic.confirm(op), "confirm is idempotent-safe");
+    }
+
+    #[test]
+    fn empty_trash_clears_every_row_and_reverts_them_in_order() {
+        let mut optimistic = loaded(&["a", "b", "c"]);
+        let op = optimistic.begin_empty_trash();
+        assert!(optimistic.model().is_empty());
+        assert!(optimistic.is_pending(op));
+        optimistic
+            .model()
+            .check_consistent()
+            .expect("consistent after empty");
+
+        assert!(optimistic.revert(op));
+        let names: Vec<String> = optimistic
+            .model()
+            .nodes()
+            .iter()
+            .map(|node| node.display_name().into_owned())
+            .collect();
+        assert_eq!(names, vec!["a", "b", "c"]);
+        optimistic
+            .model()
+            .check_consistent()
+            .expect("consistent after revert");
+    }
+
+    #[test]
+    fn confirm_empty_trash_keeps_the_cleared_model() {
+        let mut optimistic = loaded(&["a", "b"]);
+        let op = optimistic.begin_empty_trash();
+        assert!(optimistic.confirm(op));
+        assert!(optimistic.model().is_empty());
+        assert_eq!(optimistic.pending_len(), 0);
     }
 
     #[test]

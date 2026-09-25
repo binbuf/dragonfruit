@@ -409,6 +409,54 @@ Item {
             compare(shell.directory.lastError, "");
         }
 
+        // -- Trash location and Empty Trash (T-10.6b) ---------------------------
+
+        function test_trash_location_lists_and_empty_clears_the_model() {
+            var shell = make();
+
+            // Put two real files into the (temp) home Trash through files-core.
+            shell.browser.navigate(Files.mutationFixtureUri + "/Empty");
+            tryCompare(shell.directory, "state", "complete");
+            tryCompare(shell.directory, "count", 2);
+            var ids = shell.directory.allNodeIds();
+            verify(shell.directory.trash(ids[0]));
+            verify(shell.directory.trash(ids[1]));
+            tryCompare(shell.directory, "pendingOps", 0);
+            compare(shell.directory.lastError, "");
+
+            // Clicking Trash opens the same store Files lists (trash://).
+            shell.browser.navigate(Files.trashUri);
+            tryCompare(shell.directory, "state", "complete");
+            verify(shell.directory.count >= 2);
+            compare(shell.locationTitle, "Trash");
+            compare(shell.pathBar.model[0].label, "Trash");
+
+            // The Trash background menu owns Empty Trash, confirmation first.
+            shell.openBackgroundMenu(20, 20);
+            var labels = shell.contextMenu.model.map(function(e) { return e.label; });
+            verify(labels.indexOf("Empty Trash") >= 0);
+            shell.contextMenu.hide();
+
+            var before = shell.directory.count;
+            verify(before > 0);
+
+            // The live-capture seam opens the same confirmation.
+            shell.startEmptyTrash = true;
+            shell.captureApplied = false;
+            shell.applyCaptureSeam();
+            compare(shell.emptyTrashDialog.open, true);
+            shell.emptyTrashDialog.reject();
+
+            shell.confirmEmptyTrash();
+            compare(shell.emptyTrashDialog.open, true);
+            shell.emptyTrashDialog.accept();
+            compare(shell.directory.count, 0); // cleared within the same call
+
+            tryCompare(shell.directory, "pendingOps", 0);
+            compare(shell.directory.lastError, "");
+            compare(shell.directory.count, 0);
+        }
+
         // -- Performance (T-10.5) -----------------------------------------------
 
         // The 100k listing is served from the synthetic source behind the same

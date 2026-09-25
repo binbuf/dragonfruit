@@ -104,6 +104,9 @@ public:
     Q_INVOKABLE bool newFolder(const QString &parentUri = QString());
     // Optimistically move `nodeId` to Trash.
     Q_INVOKABLE bool trash(quint64 nodeId);
+    // Optimistically clear the whole Trash (`trash://` listings only). The
+    // rows disappear before this returns, then confirm or snap back.
+    Q_INVOKABLE bool emptyTrash();
     // The row currently painting `nodeId`, or -1. The shell uses it to
     // translate an anchor + a clicked id into a contiguous range.
     Q_INVOKABLE int rowForNodeId(quint64 nodeId) const;
