@@ -17,6 +17,67 @@ QString withoutDesktopSuffix(QString id)
 
 } // namespace
 
+DockConfig dockConfigFromValues(const QVariantMap &values)
+{
+    DockConfig config;
+    const auto read = [&values](const char *key, const QVariant &fallback) {
+        const auto it = values.constFind(QLatin1String(key));
+        return it == values.constEnd() ? fallback : it.value();
+    };
+    config.size = read("dock.size", 0.5).toDouble();
+    config.magnification = read("dock.magnification", 0.5).toDouble();
+    config.position = read("dock.position", QStringLiteral("bottom")).toString();
+    config.autohide = read("dock.autohide", false).toBool();
+    config.animateOpening = read("dock.animateOpening", true).toBool();
+    config.showIndicators = read("dock.showIndicators", true).toBool();
+    config.minimizeIntoTileIcon = read("dock.minimizeIntoTileIcon", false).toBool();
+    config.minimizedAnimation =
+        read("dock.minimizedAnimation", QStringLiteral("scale")).toString();
+    config.titlebarDoubleClick =
+        read("dock.titlebarDoubleClick", QStringLiteral("zoom")).toString();
+    config.showRecentApps = read("dock.showRecentApps", false).toBool();
+    config.reduceMotion = read("accessibility.reduceMotion", false).toBool();
+    config.pinned = read("dock.pinned", QStringList()).toStringList();
+    return config;
+}
+
+int dockIconSize(double size, int iconMin, int iconMax)
+{
+    return qRound(iconMin + qBound(0.0, size, 1.0) * (iconMax - iconMin));
+}
+
+QStringList resolveDefaultDockPins(const DesktopEntryIndex &index)
+{
+    QStringList resolved;
+    auto add = [&resolved](const QString &id) {
+        if (!id.isEmpty() && !resolved.contains(id))
+            resolved.append(id);
+    };
+
+    // Our own first-party apps, by id (the only legal desktop name).
+    const DesktopEntry files = index.byId(QStringLiteral("org.dragonfruit.Files.desktop"));
+    if (files.valid)
+        add(files.id);
+    const DesktopEntry settings = index.byId(QStringLiteral("org.dragonfruit.Settings.desktop"));
+    if (settings.valid)
+        add(settings.id);
+
+    // Terminal and browser are chosen by the freedesktop registered category
+    // so no distribution-specific desktop id is hardcoded (T-01 FR-3).
+    auto firstWithCategory = [&index](const QString &category) -> QString {
+        for (const DesktopEntry &entry : index.entries()) {
+            if (entry.noDisplay)
+                continue;
+            if (entry.categories.contains(category, Qt::CaseInsensitive))
+                return entry.id;
+        }
+        return QString();
+    };
+    add(firstWithCategory(QStringLiteral("TerminalEmulator")));
+    add(firstWithCategory(QStringLiteral("WebBrowser")));
+    return resolved;
+}
+
 QString displayNameForIdentity(const QString &identity)
 {
     if (identity.isEmpty())

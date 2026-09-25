@@ -44,16 +44,15 @@ endif()
 add_library(dragonfruit-shell-dockcore STATIC
     desktopentry.cpp
     dockdrops.cpp
-    dockpins.cpp
-    docksettings.cpp
     dockmodel.cpp
     dockprojection.cpp
     downloadsmonitor.cpp
     framecommitgate.h
+    settingsclient.cpp
     systemstatusmodel.cpp
     trashmonitor.cpp
 )
-target_link_libraries(dragonfruit-shell-dockcore PUBLIC Qt6::Core)
+target_link_libraries(dragonfruit-shell-dockcore PUBLIC Qt6::Core Qt6::DBus)
 target_include_directories(dragonfruit-shell-dockcore PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 
 # The lockstep version is a single contract; read it from df-ipc rather than

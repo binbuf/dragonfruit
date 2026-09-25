@@ -19,7 +19,6 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
-#include <QFileSystemWatcher>
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QProcess>
@@ -31,7 +30,6 @@
 #include "desktopentry.h"
 #include "dockdrops.h"
 #include "dockmodel.h"
-#include "dockpins.h"
 #include "downloadsmonitor.h"
 #include "shellprotocol.h"
 #include "systemstatusclient.h"
@@ -226,29 +224,28 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         qWarning() << "shell:" << message;
     });
 
-    // Interim app-index (T-23) and pinned-set persistence (T-15). The index
-    // is scanned once at startup; a real app-index will push install/uninstall
-    // events instead. Defaults are seeded only when no settings file exists,
-    // so an intentionally emptied pin set is respected.
+    // Interim app-index (T-23). The index is scanned once at startup; a real
+    // app-index will push install/uninstall events instead.
     m_index.scan();
-    if (!m_pins.load())
-        qWarning() << "shell: Dock pins:" << m_pins.lastError();
-    if (!m_pins.fileExists()) {
-        m_pins.setIds(DockPins::resolveDefaultPins(m_index));
-        if (!m_pins.save())
-            qWarning() << "shell: cannot seed Dock pins:" << m_pins.lastError();
+    // T-08.2a: settingsd is the single Dock-settings owner. The client is the
+    // live `org.dragonfruit.Settings1` client; it is seeded with the schema
+    // defaults so the Dock works when the daemon is absent (the dev tool does
+    // not start settingsd), and a GetAll resyncs once it appears. There is no
+    // file owner and no `QFileSystemWatcher`: `Changed` signals are the only
+    // notification.
+    m_settingsClient = new DbusSettingsClient(this);
+    connect(m_settingsClient, &SettingsClient::changed, this,
+            &ShellController::onSettingsChanged);
+    // A daemon snapshot (or the initial mock refresh) re-seeds defaults if the
+    // persisted pinned set is empty.
+    connect(m_settingsClient, &SettingsClient::refreshed, this,
+            &ShellController::seedDefaultDockPins);
+    m_dockConfig = dockConfigFromValues(m_settingsClient->values());
+    if (!m_settingsClient->isAvailable()) {
+        // No daemon: seed now so the first frame already shows the default
+        // pins; when the daemon later appears, its `dock.pinned` wins.
+        seedDefaultDockPins();
     }
-    // Interim `dock.*` settings model (T-10 section 19). The file watch is
-    // the stand-in for settingsd's change signals (T-15); when T-15 lands it
-    // replaces `onSettingsFileChanged` with a D-Bus subscription.
-    if (!m_settings.load())
-        qWarning() << "shell: Dock settings:" << m_settings.lastError();
-    m_settingsWatcher = new QFileSystemWatcher(this);
-    const QString settingsPath = DockSettings::defaultFilePath();
-    if (QFile::exists(settingsPath))
-        m_settingsWatcher->addPath(settingsPath);
-    connect(m_settingsWatcher, &QFileSystemWatcher::fileChanged, this,
-            &ShellController::onSettingsFileChanged);
 
     if (!m_protocol->connectToCompositor(socketName))
         return false;
@@ -804,7 +801,7 @@ void ShellController::onFocusedAppChanged(const QString &appId, const QString &t
         m_recentAppIds.prepend(appId);
         while (m_recentAppIds.size() > 12)
             m_recentAppIds.removeLast();
-        if (m_settings.showRecentApps())
+        if (m_dockConfig.showRecentApps)
             rebuildDockEntries();
     }
     applyFocusedApp();
@@ -1118,9 +1115,10 @@ void ShellController::onDockExternalDropRequested(const QString &targetId,
         const QString id = m_externalDesktopId;
         if (id.isEmpty()) {
             qWarning() << "shell: Dock external app drop had no desktop id";
-        } else if (!m_pins.contains(id)) {
-            m_pins.add(id);
-            m_pins.save();
+        } else if (!m_dockConfig.pinned.contains(id)) {
+            QStringList ids = m_dockConfig.pinned;
+            ids.append(id);
+            writeDockSetting(QStringLiteral("dock.pinned"), ids);
             rebuildDockEntries();
             qInfo() << "shell: Dock pinned" << id << "from an external drop";
         }
@@ -1165,8 +1163,7 @@ void ShellController::onInputAction(const QString &action, const QString &)
     if (action == QLatin1String("toggle-dock")) {
         // Super+Option+D toggles `dock.autohide` (T-10 sections 15/20). The
         // auto-hide change flips the reserved zone, so reconfigure.
-        m_settings.setAutohide(!m_settings.autohide());
-        saveDockSettings();
+        writeDockSetting(QStringLiteral("dock.autohide"), !m_dockConfig.autohide);
         applyDockSettings(true);
     } else if (action == QLatin1String("focus-dock")) {
         // The compositor has already focused the Dock surface; reveal it if
@@ -1204,7 +1201,7 @@ void ShellController::onDockConfigured(int width, int height, quint32)
 
 ShellProtocol::DockPosition ShellController::dockPosition() const
 {
-    const QString position = m_settings.position();
+    const QString position = m_dockConfig.position;
     if (position == QLatin1String("left"))
         return ShellProtocol::DockPosition::Left;
     if (position == QLatin1String("right"))
@@ -1216,9 +1213,9 @@ int ShellController::iconSizeForSize(double size) const
 {
     if (!m_dockItem)
         return 48;
-    const double low = m_dockItem->property("iconSizeMin").toReal();
-    const double high = m_dockItem->property("iconSizeMax").toReal();
-    return qRound(low + qBound(0.0, size, 1.0) * (high - low));
+    const int low = qRound(m_dockItem->property("iconSizeMin").toReal());
+    const int high = qRound(m_dockItem->property("iconSizeMax").toReal());
+    return dockIconSize(size, low, high);
 }
 
 // Push the `dock.*` settings onto the Dock QML. `reconfigure` is false at
@@ -1228,17 +1225,17 @@ void ShellController::applyDockSettings(bool reconfigure)
 {
     if (!m_dockItem)
         return;
-    m_dockItem->setProperty("iconSize", iconSizeForSize(m_settings.size()));
-    m_dockItem->setProperty("magnification", m_settings.magnification());
-    m_dockItem->setProperty("autoHide", m_settings.autohide());
+    m_dockItem->setProperty("iconSize", iconSizeForSize(m_dockConfig.size));
+    m_dockItem->setProperty("magnification", m_dockConfig.magnification);
+    m_dockItem->setProperty("autoHide", m_dockConfig.autohide);
     // Enabling auto-hide starts hidden; disabling it always reveals. The
     // QML owns the reveal/hide state machine (T-10 section 15).
     QMetaObject::invokeMethod(m_dockItem,
-                              m_settings.autohide() ? "hide" : "reveal");
-    m_dockItem->setProperty("showIndicators", m_settings.showIndicators());
-    m_dockItem->setProperty("minimizeIntoTileIcon", m_settings.minimizeIntoTileIcon());
-    m_dockItem->setProperty("animateOpening", m_settings.animateOpening());
-    m_dockItem->setProperty("showRecentApps", m_settings.showRecentApps());
+                              m_dockConfig.autohide ? "hide" : "reveal");
+    m_dockItem->setProperty("showIndicators", m_dockConfig.showIndicators);
+    m_dockItem->setProperty("minimizeIntoTileIcon", m_dockConfig.minimizeIntoTileIcon);
+    m_dockItem->setProperty("animateOpening", m_dockConfig.animateOpening);
+    m_dockItem->setProperty("showRecentApps", m_dockConfig.showRecentApps);
     // The position is applied to the surface anchor (T-10 section 5); the
     // QML layout mirrors for a vertical Dock.
     const ShellProtocol::DockPosition position = dockPosition();
@@ -1254,11 +1251,11 @@ void ShellController::applyDockSettings(bool reconfigure)
     if (m_engine) {
         if (QObject *theme = m_engine->singletonInstance<QObject *>(
                 QStringLiteral("Dragonfruit"), QStringLiteral("Theme"))) {
-            theme->setProperty("reducedMotion", m_settings.reduceMotion());
+            theme->setProperty("reducedMotion", m_dockConfig.reduceMotion);
         }
     }
     if (m_protocol)
-        m_protocol->setReducedMotion(m_settings.reduceMotion());
+        m_protocol->setReducedMotion(m_dockConfig.reduceMotion);
     if (!reconfigure || !m_protocol)
         return;
     // Adopt the new edge before the layout clamp so `computeDockOverflow`
@@ -1287,34 +1284,59 @@ void ShellController::applyDockSettings(bool reconfigure)
     // reserves nothing).
     m_dockBarThickness = qRound(m_dockItem->property("barThickness").toReal());
     m_dockThickness = m_dockBarThickness + qCeil(m_dockItem->property("magnifyBand").toReal());
-    const int exclusive = m_settings.autohide() ? 0 : m_dockBarThickness;
+    const int exclusive = m_dockConfig.autohide ? 0 : m_dockBarThickness;
     if (!m_protocol->configureDockSurface(position, m_dockThickness, exclusive))
         qWarning() << "shell: cannot reconfigure the Dock surface:"
                    << m_protocol->lastError();
     renderDock();
 }
 
-void ShellController::saveDockSettings()
+// T-08.2a: write one Dock key through settingsd (the single owner) and refresh
+// the typed local view. The synchronous `changed` echo is suppressed so the
+// caller can pick the right apply path (geometry reconfigure vs the size-only
+// divider path); a daemon-originated change arrives outside this guard.
+void ShellController::writeDockSetting(const QString &key, const QVariant &value)
 {
-    if (!m_settings.save())
-        qWarning() << "shell: cannot save Dock settings:" << m_settings.lastError();
+    if (!m_settingsClient)
+        return;
+    m_localSettingsWrite = true;
+    m_settingsClient->set(key, value);
+    m_localSettingsWrite = false;
+    m_dockConfig = dockConfigFromValues(m_settingsClient->values());
 }
 
-// The divider resize handle (T-10 section 5): a live preview re-lays-out the
-// Dock without persisting, and the release commits (saves) it. Neither path
-// rebuilds the entries: the Repeater model must stay stable while the QML
-// delegate's DragHandler holds the pointer.
+// Seed the installed default pinned set once per session when `dock.pinned` is
+// empty (the schema default). This is the shell's only "first run" decision;
+// settingsd owns the value from then on.
+void ShellController::seedDefaultDockPins()
+{
+    if (m_defaultPinsSeeded)
+        return;
+    m_defaultPinsSeeded = true;
+    if (!m_dockConfig.pinned.isEmpty())
+        return;
+    const QStringList defaults = resolveDefaultDockPins(m_index);
+    if (defaults.isEmpty())
+        return;
+    writeDockSetting(QStringLiteral("dock.pinned"), defaults);
+    rebuildDockEntries();
+}
+
+// The divider resize handle (T-10 section 5): the live preview re-lays-out the
+// Dock from an in-memory value only (no settingsd write per pointer move), and
+// the release commits the value through settingsd. Neither path rebuilds the
+// entries: the Repeater model must stay stable while the QML delegate's
+// DragHandler holds the pointer.
 void ShellController::onDockSizePreview(qreal fraction)
 {
-    m_settings.setSize(fraction);
+    m_dockConfig.size = qBound(0.0, fraction, 1.0);
     applyDockSizeOnly();
 }
 
 void ShellController::onDockSizeChanged(qreal fraction)
 {
-    m_settings.setSize(fraction);
+    writeDockSetting(QStringLiteral("dock.size"), fraction);
     applyDockSizeOnly();
-    saveDockSettings();
 }
 
 void ShellController::applyDockSizeOnly()
@@ -1325,35 +1347,26 @@ void ShellController::applyDockSizeOnly()
     // keeps the effective icon size at what fits the output, without touching
     // the entries (the QML delegate holds the pointer; section 5.1).
     applyDockOverflowResult(computeDockOverflow(), false);
-    const int exclusive = m_settings.autohide() ? 0 : m_dockBarThickness;
+    const int exclusive = m_dockConfig.autohide ? 0 : m_dockBarThickness;
     if (!m_protocol->configureDockSurface(m_dockPosition, m_dockThickness, exclusive))
         qWarning() << "shell: cannot resize the Dock surface:" << m_protocol->lastError();
     renderDock();
 }
 
-void ShellController::onSettingsFileChanged()
+void ShellController::onSettingsChanged(const QString &key, const QVariant &)
 {
-    // QSaveFile replaces the file, which drops the watch; re-add it. The
-    // file may briefly not exist, so retry on the next event-loop turn.
-    const QString path = DockSettings::defaultFilePath();
-    QTimer::singleShot(0, this, [this, path]() {
-        if (m_settingsWatcher && QFile::exists(path)
-                && !m_settingsWatcher->files().contains(path))
-            m_settingsWatcher->addPath(path);
-    });
-
-    DockSettings fresh;
-    if (!fresh.load()) {
-        qWarning() << "shell: Dock settings:" << fresh.lastError();
+    // The synchronous echo of a local optimistic write is handled by the
+    // caller (which knows whether the surface must reconfigure or only
+    // re-lay-out). A daemon-originated `Changed` is applied here.
+    if (m_localSettingsWrite || !m_settingsClient)
         return;
-    }
-    // Ignore the notification for our own write (settingsd will be the
-    // single writer at T-15, so this guard disappears then).
-    if (fresh.equals(m_settings))
+    const DockConfig updated = dockConfigFromValues(m_settingsClient->values());
+    if (updated == m_dockConfig)
         return;
-    m_settings = fresh;
+    m_dockConfig = updated;
     applyDockSettings(true);
-    fprintf(stderr, "dragonfruit-shell: Dock settings reloaded (live)\n");
+    fprintf(stderr, "dragonfruit-shell: Dock settings changed (live: %s)\n",
+            qPrintable(key));
 }
 
 void ShellController::onDockStateChanged(const QVariantList &entries)
@@ -1382,8 +1395,8 @@ void ShellController::rebuildDockEntries()
     if (!m_dockItem)
         return;
     m_dockAllEntries = withBounce(buildDockEntries(
-        m_pins.ids(), m_index, m_runningEntries, m_launchStates,
-        m_settings.showRecentApps() ? m_recentAppIds : QStringList()));
+        m_dockConfig.pinned, m_index, m_runningEntries, m_launchStates,
+        m_dockConfig.showRecentApps ? m_recentAppIds : QStringList()));
     // A full rebuild always re-publishes the entries (bounce phases changed);
     // the clamp only decides which ones survive and at what icon size.
     applyDockOverflowResult(computeDockOverflow(), true, true);
@@ -1406,9 +1419,9 @@ DockOverflowResult ShellController::computeDockOverflow() const
     const int available = m_dockPosition == ShellProtocol::DockPosition::Bottom
             ? m_dockWidth
             : m_dockHeight;
-    return applyDockOverflow(m_dockAllEntries, available, iconSizeForSize(m_settings.size()),
+    return applyDockOverflow(m_dockAllEntries, available, iconSizeForSize(m_dockConfig.size),
                              iconMin, iconMax, gap, dividerWidth, 2,
-                             !m_settings.minimizeIntoTileIcon());
+                             !m_dockConfig.minimizeIntoTileIcon);
 }
 
 void ShellController::applyDockOverflowResult(const DockOverflowResult &overflow,
@@ -2060,12 +2073,20 @@ void ShellController::onDockEntryMenuAction(const QString &action, const QVarian
         m_protocol->enterMissionControl();
     } else if (action == QLatin1String("keep_in_dock")) {
         const QString id = map.value(QStringLiteral("desktopId")).toString();
-        if (!id.isEmpty() && m_pins.add(id) && m_pins.save())
+        if (!id.isEmpty() && !m_dockConfig.pinned.contains(id)) {
+            QStringList ids = m_dockConfig.pinned;
+            ids.append(id);
+            writeDockSetting(QStringLiteral("dock.pinned"), ids);
             rebuildDockEntries();
+        }
     } else if (action == QLatin1String("remove_from_dock")) {
         const QString id = map.value(QStringLiteral("desktopId")).toString();
-        if (!id.isEmpty() && m_pins.remove(id) && m_pins.save())
+        if (!id.isEmpty() && m_dockConfig.pinned.contains(id)) {
+            QStringList ids = m_dockConfig.pinned;
+            ids.removeAll(id);
+            writeDockSetting(QStringLiteral("dock.pinned"), ids);
             rebuildDockEntries();
+        }
     } else if (action == QLatin1String("quit")) {
         m_protocol->closeApp(map.value(QStringLiteral("appId")).toString());
     } else if (action == QLatin1String("open")) {
@@ -2096,21 +2117,19 @@ void ShellController::onDockEntryMenuAction(const QString &action, const QVarian
                            map.value(QStringLiteral("appId")).toString());
     } else if (action == QLatin1String("toggle_magnification")) {
         // The divider menu toggle (T-10 section 13/19); no surface change.
-        m_settings.setMagnification(m_settings.magnification() > 0 ? 0.0 : 0.5);
-        saveDockSettings();
+        writeDockSetting(QStringLiteral("dock.magnification"),
+                         m_dockConfig.magnification > 0 ? 0.0 : 0.5);
         applyDockSettings(false);
     } else if (action == QLatin1String("toggle_autohide")) {
         // Auto-hide flips the reserved zone, so the surface must reconfigure.
-        m_settings.setAutohide(!m_settings.autohide());
-        saveDockSettings();
+        writeDockSetting(QStringLiteral("dock.autohide"), !m_dockConfig.autohide);
         applyDockSettings(true);
     } else if (action == QLatin1String("set_position")) {
         // The divider's "Position on Screen" submenu (T-10 section 5). The
         // surface is re-anchored live; the QML layout mirrors vertically.
         const QString position = map.value(QStringLiteral("position")).toString();
-        if (!position.isEmpty() && position != m_settings.position()) {
-            m_settings.setPosition(position);
-            saveDockSettings();
+        if (!position.isEmpty() && position != m_dockConfig.position) {
+            writeDockSetting(QStringLiteral("dock.position"), position);
             applyDockSettings(true);
         }
     } else if (action == QLatin1String("open_dock_settings")) {
@@ -2150,9 +2169,7 @@ void ShellController::onDockPinnedOrderChanged(const QVariant &desktopIds)
         if (!id.isEmpty() && !ids.contains(id))
             ids.append(id);
     }
-    m_pins.setIds(ids);
-    if (!m_pins.save())
-        qWarning() << "shell: cannot save Dock pins:" << m_pins.lastError();
+    writeDockSetting(QStringLiteral("dock.pinned"), ids);
     rebuildDockEntries();
 }
 

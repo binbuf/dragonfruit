@@ -14,10 +14,9 @@
 
 #include "desktopentry.h"
 #include "dockmodel.h"
-#include "dockpins.h"
-#include "docksettings.h"
 #include "downloadsmonitor.h"
 #include "framecommitgate.h"
+#include "settingsclient.h"
 #include "shellprotocol.h"
 #include "systemstatusmodel.h"
 #include "trashmonitor.h"
@@ -27,7 +26,6 @@ class QQmlEngine;
 class QQuickWindow;
 class QQuickItem;
 class QSocketNotifier;
-class QFileSystemWatcher;
 class QTimer;
 
 class ShellController : public QObject
@@ -129,8 +127,10 @@ private slots:
     void onDockLaunchTick();
     void onDockAttention(const QString &appId);
     void onDockAnimationTick();
-    void onSettingsFileChanged();
     void onTrashChanged();
+    // A settingsd key changed (local optimistic write echo or daemon signal):
+    // re-read the Dock view and re-lay-out.
+    void onSettingsChanged(const QString &key, const QVariant &value);
 
 private:
     void applyStatusItems();
@@ -183,8 +183,11 @@ private:
     // Push the `dock.*` settings onto the Dock QML and, when the geometry
     // changed, reconfigure the chrome surface (T-10 section 19).
     void applyDockSettings(bool reconfigure);
-    // Persist `dock.*` (interim; settingsd owns this at T-15).
-    void saveDockSettings();
+    // Write one `dock.*` key through the settings client (settingsd is the
+    // single owner) and refresh the typed local view.
+    void writeDockSetting(const QString &key, const QVariant &value);
+    // Seed the installed default pinned set once, when `dock.pinned` is empty.
+    void seedDefaultDockPins();
     // Apply an already-set `dock.size` to the Dock QML and reconfigure the
     // surface without rebuilding entries (the divider drag must not reset the
     // QML delegate that holds the pointer; T-10 section 5).
@@ -258,7 +261,16 @@ private:
     QSocketNotifier *m_notifier = nullptr;
     QTimer *m_launchTimer = nullptr;
     QTimer *m_dockAnimTimer = nullptr;
-    QFileSystemWatcher *m_settingsWatcher = nullptr;
+    // The T-08 settings daemon client: the Dock's only settings source
+    // (`org.dragonfruit.Settings1`), replacing the interim file owner/watcher.
+    SettingsClient *m_settingsClient = nullptr;
+    // The typed Dock view of the client's keys, refreshed on every change.
+    DockConfig m_dockConfig;
+    // True while a local write is in flight, so the client's synchronous
+    // `changed` echo does not double-apply (the caller applies explicitly).
+    bool m_localSettingsWrite = false;
+    // One-shot: the installed default pin set is seeded once per session.
+    bool m_defaultPinsSeeded = false;
     // Interim home-trash state for the Dock's Trash entry (section 16). The
     // GIO/GVfs backend replaces it when the dev headers are available.
     TrashMonitor *m_trash = nullptr;
@@ -269,10 +281,8 @@ private:
     // T-10 section 17); fed by focus changes, capped and de-duplicated.
     QStringList m_recentAppIds;
 
-    // Interim app-index stand-in (T-23) and Dock pin persistence (T-15).
+    // Interim app-index stand-in (T-23) for the Dock.
     DesktopEntryIndex m_index;
-    DockPins m_pins;
-    DockSettings m_settings;
     // The shell's running-window projection, kept so the pinned set can be
     // merged on every change.
     QVariantList m_runningEntries;
