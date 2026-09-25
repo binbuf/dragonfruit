@@ -48,6 +48,20 @@ class FilesBridge : public QObject
     // A real directory the headless tests point the views at, from
     // `DF_FILES_VIEW_FIXTURE`; empty unless the test runner set it.
     Q_PROPERTY(QString viewFixtureUri READ viewFixtureUri CONSTANT)
+    // A writable tree for the T-10.4c optimistic-operation tests, from
+    // `DF_FILES_MUTATION_FIXTURE`; empty unless the test runner set it.
+    Q_PROPERTY(QString mutationFixtureUri READ mutationFixtureUri CONSTANT)
+    // `DF_FILES_START_MENU`: `item` or `background` opens that context menu
+    // once the listing settles. A capture seam, sibling of `DF_FILES_START_VIEW`
+    // (nested synthetic pointer events cannot hold a modifier or right-click a
+    // Qt client surface reliably).
+    Q_PROPERTY(QString startMenu READ startMenu CONSTANT)
+    // `DF_FILES_START_RENAME=1` enters inline rename on the first row once the
+    // listing settles.
+    Q_PROPERTY(bool startRename READ startRename CONSTANT)
+    // `DF_FILES_START_SELECT=N` selects the first N rows once the listing
+    // settles (multi-select capture).
+    Q_PROPERTY(int startSelect READ startSelect CONSTANT)
     // The view a fresh window opens in, from `DF_FILES_START_VIEW` (`list`
     // or `icon`); empty means the shell default. A capture seam, sibling of
     // `DF_FILES_START_URI`.
@@ -65,7 +79,11 @@ public:
     bool fixture() const { return m_fixture; }
     QString startUri() const { return m_startUri; }
     QString viewFixtureUri() const { return m_viewFixtureUri; }
+    QString mutationFixtureUri() const { return m_mutationFixtureUri; }
     QString startView() const { return m_startView; }
+    QString startMenu() const { return m_startMenu; }
+    bool startRename() const { return m_startRename; }
+    int startSelect() const { return m_startSelect; }
 
     // The path bar breadcrumb as `{ label, uri }` from the machine down to the
     // location. `file://` paths are segmented; the home directory collapses
@@ -87,7 +105,11 @@ private:
     QString m_userName;
     QString m_startUri;
     QString m_viewFixtureUri;
+    QString m_mutationFixtureUri;
     QString m_startView;
+    QString m_startMenu;
+    bool m_startRename = false;
+    int m_startSelect = 0;
     QVariantList m_favorites;
     QVariantList m_volumes;
 };

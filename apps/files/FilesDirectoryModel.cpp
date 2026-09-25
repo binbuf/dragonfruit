@@ -144,6 +144,90 @@ void FilesDirectoryModel::reload()
     start();
 }
 
+bool FilesDirectoryModel::rename(quint64 nodeId, const QString &newName)
+{
+    if (!m_session || newName.isEmpty())
+        return false;
+    const quint64 op = df_files_begin_rename(m_session, nodeId,
+                                             newName.toUtf8().constData());
+    if (op == 0)
+        return false;
+    // Paint the optimistic edit now, whatever the timer is doing.
+    repaint();
+    setPendingOps(int(df_files_pending_ops(m_session)));
+    ensurePolling();
+    return true;
+}
+
+bool FilesDirectoryModel::newFolder(const QString &parentUri)
+{
+    if (!m_session)
+        return false;
+    const QString parent = parentUri.isEmpty() ? m_location : parentUri;
+    if (parent.isEmpty())
+        return false;
+    const quint64 op = df_files_begin_new_folder(m_session,
+                                                 parent.toUtf8().constData());
+    if (op == 0)
+        return false;
+    repaint();
+    setPendingOps(int(df_files_pending_ops(m_session)));
+    ensurePolling();
+    return true;
+}
+
+bool FilesDirectoryModel::trash(quint64 nodeId)
+{
+    if (!m_session)
+        return false;
+    const quint64 op = df_files_begin_trash(m_session, nodeId);
+    if (op == 0)
+        return false;
+    repaint();
+    setPendingOps(int(df_files_pending_ops(m_session)));
+    ensurePolling();
+    return true;
+}
+
+int FilesDirectoryModel::rowForNodeId(quint64 nodeId) const
+{
+    for (int row = 0; row < m_nodes.size(); ++row) {
+        if (m_nodes.at(row).id == nodeId)
+            return row;
+    }
+    return -1;
+}
+
+quint64 FilesDirectoryModel::nodeIdAt(int row) const
+{
+    if (row < 0 || row >= m_nodes.size())
+        return 0;
+    return m_nodes.at(row).id;
+}
+
+QString FilesDirectoryModel::uriAt(int row) const
+{
+    if (row < 0 || row >= m_nodes.size())
+        return {};
+    return m_nodes.at(row).uri;
+}
+
+bool FilesDirectoryModel::isDirAt(int row) const
+{
+    if (row < 0 || row >= m_nodes.size())
+        return false;
+    return m_nodes.at(row).isDir;
+}
+
+QVariantList FilesDirectoryModel::allNodeIds() const
+{
+    QVariantList ids;
+    ids.reserve(m_nodes.size());
+    for (const Node &node : m_nodes)
+        ids.append(node.id);
+    return ids;
+}
+
 void FilesDirectoryModel::sortBy(const QString &key)
 {
     if (key != QStringLiteral("name") && key != QStringLiteral("kind")
@@ -188,6 +272,7 @@ void FilesDirectoryModel::stop()
         df_files_free(m_session);
         m_session = nullptr;
     }
+    setPendingOps(0);
 }
 
 void FilesDirectoryModel::poll()
@@ -205,11 +290,13 @@ void FilesDirectoryModel::poll()
         applySnapshot(event);
         break;
     case DF_FILES_STATUS_DONE:
-        stop();
+        // The listing finished, but the session stays alive: an optimistic
+        // operation may still be in flight, and sorting/operating on a loaded
+        // folder must keep working. Polling just stops until there is work.
         setState(QStringLiteral("complete"));
         break;
     case DF_FILES_STATUS_ERROR:
-        stop();
+        m_timer.stop();
         setState(QStringLiteral("error"),
                  event->error ? QString::fromUtf8(event->error)
                               : QStringLiteral("The folder could not be listed"));
@@ -219,6 +306,51 @@ void FilesDirectoryModel::poll()
         break;
     }
     df_files_event_free(event);
+
+    takeError();
+    const int pending = m_session ? int(df_files_pending_ops(m_session)) : 0;
+    setPendingOps(pending);
+    // Stop the timer (never free the session) once the listing is settled and
+    // no operation is pending, so an idle window does zero polling.
+    if (pending == 0 && m_state != QStringLiteral("streaming"))
+        m_timer.stop();
+}
+
+void FilesDirectoryModel::repaint()
+{
+    if (!m_session)
+        return;
+    df_files_event *event = df_files_snapshot(m_session);
+    if (event) {
+        applySnapshot(event);
+        df_files_event_free(event);
+    }
+}
+
+void FilesDirectoryModel::ensurePolling()
+{
+    if (m_session && !m_timer.isActive())
+        m_timer.start();
+}
+
+void FilesDirectoryModel::setPendingOps(int pending)
+{
+    if (m_pendingOps == pending)
+        return;
+    m_pendingOps = pending;
+    emit pendingOpsChanged();
+}
+
+void FilesDirectoryModel::takeError()
+{
+    if (!m_session)
+        return;
+    char *message = df_files_take_error(m_session);
+    if (!message)
+        return;
+    m_lastError = QString::fromUtf8(message);
+    df_files_string_free(message);
+    emit lastErrorChanged();
 }
 
 void FilesDirectoryModel::applySnapshot(const df_files_event *event)

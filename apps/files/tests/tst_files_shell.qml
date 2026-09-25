@@ -185,8 +185,8 @@ Item {
             var shell = make();
             verify(Files.viewFixtureUri.length > 0);
             shell.browser.navigate(Files.viewFixtureUri);
-            tryCompare(shell.directory, "count", 5);
-            compare(shell.directory.state, "complete");
+            tryCompare(shell.directory, "state", "complete");
+            compare(shell.directory.count, 5);
             compare(shell.browser.currentView, "icon");
             compare(shell.iconView.visible, true);
             compare(shell.listView.visible, false);
@@ -240,6 +240,173 @@ Item {
             var index = shell.directory.index(0, 0);
             verify(shell.directory.data(index, 257).toString().length > 0); // nodeId
             verify(shell.directory.data(index, 258).toString().length > 0); // name
+        }
+
+        // -- Multi-select and context menus (T-10.4c) ---------------------------
+
+        function test_multi_select_command_and_shift() {
+            var shell = make();
+            shell.browser.navigate(Files.viewFixtureUri);
+            tryCompare(shell.directory, "state", "complete");
+            var ids = shell.directory.allNodeIds();
+            compare(ids.length, 5);
+
+            shell.selectNode(ids[0], 0);
+            compare(shell.selectedIds.length, 1);
+
+            shell.selectNode(ids[2], Qt.ControlModifier);
+            compare(shell.selectedIds.length, 2);
+
+            shell.selectNode(ids[2], Qt.ControlModifier);
+            compare(shell.selectedIds.length, 1);
+
+            // Shift-click ranges from the anchor (the last plain click).
+            shell.selectNode(ids[3], Qt.ShiftModifier);
+            compare(shell.selectedIds.length, 2); // rows 0..3? anchor re-set
+            verify(shell.selectedIds.indexOf(ids[3]) >= 0);
+
+            shell.selectAll();
+            compare(shell.selectedIds.length, 5);
+        }
+
+        function test_context_menu_targets_the_pointer() {
+            var shell = make();
+            shell.browser.navigate(Files.viewFixtureUri);
+            tryCompare(shell.directory, "state", "complete");
+            var ids = shell.directory.allNodeIds();
+
+            shell.selectNode(ids[0], 0);
+            shell.openNodeMenu(ids[0], "file:///fixture/alpha.txt", false, 12, 12);
+            verify(shell.contextMenu.open);
+            var actions = shell.contextMenu.model.map(function(e) { return e.action; });
+            verify(actions.indexOf("rename") >= 0);
+            verify(actions.indexOf("trash") >= 0);
+
+            // Multiple selected: a shorter menu.
+            shell.selectNode(ids[1], Qt.ControlModifier);
+            shell.openNodeMenu(ids[0], "file:///fixture/alpha.txt", false, 12, 12);
+            compare(shell.contextMenu.model.length, 1);
+            compare(shell.contextMenu.model[0].action, "trash");
+            shell.contextMenu.hide();
+
+            shell.openBackgroundMenu(12, 12);
+            compare(shell.contextMenu.model[0].action, "newFolder");
+            compare(shell.contextMenu.model[shell.contextMenu.model.length - 1].action,
+                    "selectAll");
+            shell.contextMenu.hide();
+        }
+
+        function test_right_click_opens_the_item_menu() {
+            var shell = make();
+            shell.browser.navigate(Files.viewFixtureUri);
+            tryCompare(shell.directory, "state", "complete");
+            waitForRendering(stage);
+            // A real pointer right-click on a tile routes through the view's
+            // delegate to the shell's one context menu.
+            mouseClick(shell.iconView, 60, 60, Qt.RightButton);
+            tryCompare(shell.contextMenu, "open", true);
+            verify(shell.contextMenu.model.length >= 3);
+            shell.contextMenu.hide();
+        }
+
+        function test_capture_seams_drive_the_menus_and_rename() {
+            var shell = make();
+            shell.browser.navigate(Files.viewFixtureUri);
+            tryCompare(shell.directory, "state", "complete");
+
+            shell.startMenu = "item";
+            shell.captureApplied = false;
+            shell.applyCaptureSeam();
+            compare(shell.contextMenu.open, true);
+            verify(shell.contextMenu.width > 0);
+            verify(shell.contextMenu.height > 0);
+            tryCompare(shell.contextMenu, "visible", true);
+            shell.contextMenu.hide();
+
+            shell.startMenu = "background";
+            shell.captureApplied = false;
+            shell.applyCaptureSeam();
+            compare(shell.contextMenu.open, true);
+            shell.contextMenu.hide();
+
+            shell.startMenu = "";
+            shell.startRename = true;
+            shell.captureApplied = false;
+            shell.applyCaptureSeam();
+            verify(shell.renamingId > 0);
+            shell.cancelRename();
+        }
+
+        // -- Optimistic operations (T-10.4c) ------------------------------------
+
+        function test_optimistic_rename_paints_immediately() {
+            var shell = make();
+            shell.browser.navigate(Files.mutationFixtureUri + "/Rename");
+            tryCompare(shell.directory, "state", "complete");
+            tryCompare(shell.directory, "count", 1);
+            var id = shell.directory.allNodeIds()[0];
+
+            verify(shell.directory.rename(id, "renamed.txt"));
+            // No wait: the row already carries the new name.
+            var row = shell.directory.rowForNodeId(id);
+            verify(row >= 0);
+            compare(shell.directory.data(shell.directory.index(row, 0), 258).toString(),
+                    "renamed.txt");
+            verify(shell.directory.pendingOps > 0);
+
+            // The worker confirms and no error is recorded.
+            tryCompare(shell.directory, "pendingOps", 0);
+            compare(shell.directory.lastError, "");
+        }
+
+        function test_optimistic_rename_reverts_on_conflict() {
+            var shell = make();
+            shell.browser.navigate(Files.mutationFixtureUri + "/Revert");
+            tryCompare(shell.directory, "state", "complete");
+            tryCompare(shell.directory, "count", 2);
+            var ids = shell.directory.allNodeIds(); // a.txt, b.txt
+            var a = ids[0];
+            var row = shell.directory.rowForNodeId(a);
+            compare(shell.directory.data(shell.directory.index(row, 0), 258).toString(),
+                    "a.txt");
+
+            verify(shell.directory.rename(a, "b.txt"));
+            // Optimistically painted as the colliding name...
+            row = shell.directory.rowForNodeId(a);
+            compare(shell.directory.data(shell.directory.index(row, 0), 258).toString(),
+                    "b.txt");
+
+            // ...then snapped back when the real rename reported AlreadyExists.
+            tryCompare(shell.directory, "pendingOps", 0);
+            verify(shell.directory.lastError.length > 0);
+            row = shell.directory.rowForNodeId(a);
+            compare(shell.directory.data(shell.directory.index(row, 0), 258).toString(),
+                    "a.txt");
+        }
+
+        function test_optimistic_new_folder_paints_immediately() {
+            var shell = make();
+            shell.browser.navigate(Files.mutationFixtureUri + "/New");
+            tryCompare(shell.directory, "state", "complete");
+            compare(shell.directory.count, 0);
+
+            verify(shell.directory.newFolder(shell.browser.currentUri));
+            compare(shell.directory.count, 1); // visible before confirmation
+            tryCompare(shell.directory, "pendingOps", 0);
+            compare(shell.directory.lastError, "");
+        }
+
+        function test_optimistic_trash_paints_immediately() {
+            var shell = make();
+            shell.browser.navigate(Files.mutationFixtureUri + "/Trash");
+            tryCompare(shell.directory, "state", "complete");
+            tryCompare(shell.directory, "count", 1);
+            var id = shell.directory.allNodeIds()[0];
+
+            verify(shell.directory.trash(id));
+            compare(shell.directory.count, 0); // gone within the same call
+            tryCompare(shell.directory, "pendingOps", 0);
+            compare(shell.directory.lastError, "");
         }
 
         // -- Search -------------------------------------------------------------

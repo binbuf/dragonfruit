@@ -513,7 +513,7 @@ impl OptimisticModel {
     /// Align a pending create/rename with the location the real operation
     /// reported, so an optimistic name that differed from the filesystem's
     /// choice is corrected before confirmation.
-    fn retarget(&mut self, op: OpId, location: &Location) {
+    pub(crate) fn retarget(&mut self, op: OpId, location: &Location) {
         let Some(pending) = self.pending.iter().find(|pending| pending.id == op) else {
             return;
         };

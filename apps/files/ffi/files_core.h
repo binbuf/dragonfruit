@@ -70,6 +70,32 @@ df_files_event *df_files_snapshot(void *session);
 int32_t df_files_set_sort(void *session, const char *key, const char *direction,
                           int32_t folders_first);
 
+// Optimistically rename `node_id` to `new_name` and queue the real rename on
+// the operations worker. Returns the operation id, or 0 when the node is
+// unknown or `new_name` is null. The model is already repainted when this
+// returns; the outcome is folded by the next df_files_poll.
+uint64_t df_files_begin_rename(void *session, uint64_t node_id, const char *new_name);
+
+// Optimistically insert the next `untitled folder` under `parent_uri` and
+// queue the real creation. Returns the operation id, or 0 for a null session
+// or an unparseable parent.
+uint64_t df_files_begin_new_folder(void *session, const char *parent_uri);
+
+// Optimistically remove `node_id` (Move to Trash) and queue the real trash
+// operation. Returns the operation id, or 0 when the node is unknown.
+uint64_t df_files_begin_trash(void *session, uint64_t node_id);
+
+// How many operations are still awaiting their worker outcome. The facade
+// keeps polling while this is non-zero.
+uint32_t df_files_pending_ops(const void *session);
+
+// Take the most recent operation failure message (caller frees with
+// df_files_string_free) and clear it. Null when there is none.
+char *df_files_take_error(void *session);
+
+// Free a string returned by df_files_take_error. Null is ignored.
+void df_files_string_free(char *value);
+
 // Free an event (and the strings/nodes it owns). Null is ignored.
 void df_files_event_free(df_files_event *event);
 

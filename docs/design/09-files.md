@@ -180,6 +180,26 @@ currently resets from a full snapshot per batch), the folder watcher, file
 opening, context menus, multi-select, rubber-band selection, column resizing,
 inline rename, and the search result set (T-10.4c+).
 
+**Implementation status (T-10.4c).** Context menus, multi-select, and the
+optimistic operations are real. Selection is the shell's set of stable node
+ids: plain click replaces it, Cmd-click toggles, Shift-click ranges (anchored
+on the last plain click), Cmd+A selects all, Escape clears — and both views
+render from the same set, so the view switch cannot lose it. The Finder rule
+governs the one `ContextMenu`: a single item gets Open / Rename / Move to
+Trash, a multi-selection gets Move to Trash, and the background gets New
+Folder / Select All. Rename is **inline** in both views (Return opens the
+editor, Escape cancels); Move to Trash and New Folder run from the menu and the
+keyboard (Delete, Shift+Cmd+N). Every mutation crosses the C ABI as an
+optimistic begin + a worker outcome (ADR
+[0050](adr/0050-files-core-ffi-optimistic-ops.md)): the row changes within the
+same QML call and confirms or snaps back with an inline notice from
+`FilesDirectoryModel.lastError`. `FilesDirectoryModel` now keeps its
+`files-core` session after the listing completes (only polling stops), so sort
+and operations work on a loaded folder; the session and its one worker are
+retired on navigation. **Still deferred:** rubber-band selection, Open With,
+Get Info, Copy/Duplicate/Compress/Make Alias, file opening, the folder watcher,
+and the search result set (T-10.4c+/T-10.5).
+
 ### Model
 
 - **`Location`** — URI-addressed, GFile-shaped: `file://`, `trash://`,
