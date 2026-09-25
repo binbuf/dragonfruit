@@ -259,6 +259,18 @@ scrolls to that item once the listing settles. A directory or `trash://`
 argument browses itself. See ADR
 [0054](adr/0054-files-identity-and-reveal-argument.md).
 
+**Implementation status (T-10.7).** The T-10 slice is captured at the track
+boundary. `scripts/capture-files.sh` (`make files-capture`) runs the nested
+demo with Files over a scratch fixture tree and a scratch freedesktop trash
+store, driving the stills that need pointer state through the app's capture
+seams, and commits the stills and clip under
+[`docs/captures/t10-files.*`](../captures/README.md). The large-directory
+scroll trace is
+[`docs/captures/t10-files-scroll-trace.txt`](../captures/t10-files-scroll-trace.txt)
+(raw files-core streaming and QML windowed-rendering numbers); the T-10.5
+budget record stays in
+[`docs/captures/t10-files-perf.txt`](../captures/t10-files-perf.txt).
+
 **Still deferred:** wiring the files-core folder watcher to the Files facade
 via the delta path.
 

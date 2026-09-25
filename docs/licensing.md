@@ -62,6 +62,24 @@ deliberate project-level decision — it changes distribution terms and
 cost. Until then: Qt via the system/distro open-source packages only.
 Record any such decision here if it is ever made.
 
+## Fetched third-party content (wallpaper)
+
+The first-run wallpaper set is **fetched at runtime from Wikimedia Commons**,
+not bundled in the package (ADR [0055](design/adr/0055-online-wallpaper-content-provider.md)).
+This is separate from the "original assets only" rule, which forbids
+reproducing Apple's artwork: Commons Featured Pictures are third-party works
+under their own licenses (public domain, CC BY, CC BY-SA, and FAL have all
+appeared in the six categories we use). Consequences:
+
+- No fetched image is ever shipped in a package artifact; the cache is user
+  data under `$XDG_CACHE_HOME/dragonfruit/`.
+- Attribution (`Artist` + license name/link + file page) is displayed for the
+  current wallpaper and the tiles, and is not optional.
+- Share-alike (CC BY-SA) and FAL images are never represented as original
+  Dragonfruit work.
+- The only new dependency is a permissively-licensed HTTP client; the
+  "no GPL/AGPL dependency" rule still applies.
+
 ## Trademarks
 
 The MIT license grants copyright permissions only; it does not grant
