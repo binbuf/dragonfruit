@@ -122,6 +122,11 @@ uint64_t df_files_begin_new_folder(void *session, const char *parent_uri);
 // operation. Returns the operation id, or 0 when the node is unknown.
 uint64_t df_files_begin_trash(void *session, uint64_t node_id);
 
+// Optimistically clear a `trash://` listing (Empty Trash) and queue the real
+// empty. Returns the operation id, or 0 when the session is not listing the
+// Trash or the listing is already empty.
+uint64_t df_files_begin_empty_trash(void *session);
+
 // How many operations are still awaiting their worker outcome. The facade
 // keeps polling while this is non-zero.
 uint32_t df_files_pending_ops(const void *session);

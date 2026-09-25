@@ -22,3 +22,20 @@ set_tests_properties(tst_files_shell PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;DF_FILES_FIXTURE=1;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+# The Files command-line parser (T-10.6b): the header-only helper main.cpp
+# uses to map the Dock's `trash://` argument onto the start-URI seam.
+qt_add_executable(tst_files_arguments
+    tst_files_arguments.cpp
+)
+target_include_directories(tst_files_arguments PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
+target_link_libraries(tst_files_arguments PRIVATE Qt6::Core Qt6::Test)
+
+add_test(
+    NAME tst_files_arguments
+    COMMAND tst_files_arguments
+)
+set_tests_properties(tst_files_arguments PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)

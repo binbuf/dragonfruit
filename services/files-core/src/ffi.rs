@@ -22,11 +22,11 @@
 //!   one in [`crate::sort`]. T-10.5 replaces the whole-snapshot delivery with
 //!   an incremental/windowed one; see [adr/0049].
 //! * [`df_files_begin_rename`] / [`df_files_begin_new_folder`] /
-//!   [`df_files_begin_trash`] apply the edit to the in-memory model
-//!   **synchronously** (so the next frame paints it) and enqueue the real
-//!   [`crate::FileOps`]/[`crate::TrashOps`] call to a worker thread. The
-//!   worker's outcome is confirmed or reverted on the next poll, so no I/O
-//!   ever runs on the UI thread.
+//!   [`df_files_begin_trash`] / [`df_files_begin_empty_trash`] apply the edit
+//!   to the in-memory model **synchronously** (so the next frame paints it)
+//!   and enqueue the real [`crate::FileOps`]/[`crate::TrashOps`] call to a
+//!   worker thread. The worker's outcome is confirmed or reverted on the next
+//!   poll, so no I/O ever runs on the UI thread.
 //! * [`df_files_pending_ops`] tells the facade whether it must keep polling
 //!   (there is an outcome still to fold), and [`df_files_take_error`] surfaces
 //!   the last snapped-back failure for an inline notice.
@@ -158,6 +158,9 @@ enum OpRequest {
         op: OpId,
         location: Location,
     },
+    EmptyTrash {
+        op: OpId,
+    },
 }
 
 /// The worker's outcome for one [`OpRequest`].
@@ -171,6 +174,10 @@ enum OpOutcome {
         result: Result<Location, OperationError>,
     },
     Trash {
+        op: OpId,
+        result: Result<(), OperationError>,
+    },
+    EmptyTrash {
         op: OpId,
         result: Result<(), OperationError>,
     },
@@ -204,6 +211,10 @@ fn spawn_op_worker() -> (Sender<OpRequest>, Receiver<OpOutcome>) {
                     OpRequest::Trash { op, location } => OpOutcome::Trash {
                         op,
                         result: trash.trash(&location).map(|_| ()),
+                    },
+                    OpRequest::EmptyTrash { op } => OpOutcome::EmptyTrash {
+                        op,
+                        result: trash.empty().map(|_| ()),
                     },
                 };
                 if outcome_tx.send(outcome).is_err() {
@@ -342,6 +353,15 @@ impl FfiSession {
                     }
                 },
                 OpOutcome::Trash { op, result } => match result {
+                    Ok(()) => {
+                        self.model.confirm(op);
+                    }
+                    Err(error) => {
+                        self.model.revert(op);
+                        self.last_error = Some(error.to_string());
+                    }
+                },
+                OpOutcome::EmptyTrash { op, result } => match result {
                     Ok(()) => {
                         self.model.confirm(op);
                     }
@@ -809,6 +829,34 @@ pub unsafe extern "C" fn df_files_begin_trash(session: *mut FfiSession, node_id:
         return 0;
     };
     let _ = session.op_tx.send(OpRequest::Trash { op, location });
+    session.pending += 1;
+    op.get()
+}
+
+/// Optimistically clear a `trash://` session (Empty Trash) and queue the real
+/// empty on the operations worker. Returns the operation id; `0` when the
+/// session is not listing the Trash or the listing is already empty. The rows
+/// disappear immediately and snap back if the empty fails.
+///
+/// # Safety
+///
+/// `session` must be a live pointer returned by [`df_files_begin`].
+#[no_mangle]
+pub unsafe extern "C" fn df_files_begin_empty_trash(session: *mut FfiSession) -> u64 {
+    let Some(session) = session.as_mut() else {
+        return 0;
+    };
+    let is_trash = session
+        .model
+        .model()
+        .location()
+        .map(|location| location.scheme() == "trash")
+        .unwrap_or(false);
+    if !is_trash || session.model.is_empty() {
+        return 0;
+    }
+    let op = session.model.begin_empty_trash();
+    let _ = session.op_tx.send(OpRequest::EmptyTrash { op });
     session.pending += 1;
     op.get()
 }
@@ -1374,6 +1422,28 @@ mod tests {
             df_files_event_free(final_event);
             assert_eq!(df_files_pending_ops(session), 0);
             assert!(dir.path().join("untitled folder").is_dir());
+            df_files_free(session);
+        }
+    }
+
+    #[test]
+    fn empty_trash_abi_rejects_a_non_trash_session() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("alpha.txt"), b"alpha").expect("write");
+        let uri = Location::file(dir.path()).uri().to_owned();
+        unsafe {
+            let session = df_files_begin(c(&uri).as_ptr());
+            assert!(!session.is_null());
+            drain_listing(session);
+            assert_eq!(
+                df_files_begin_empty_trash(session),
+                0,
+                "Empty Trash is only valid on a trash:// listing"
+            );
+            assert_eq!(df_files_pending_ops(session), 0);
+            let snapshot = df_files_snapshot(session);
+            assert_eq!(names(snapshot).len(), 1, "the row is untouched");
+            df_files_event_free(snapshot);
             df_files_free(session);
         }
     }

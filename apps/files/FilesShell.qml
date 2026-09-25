@@ -47,6 +47,7 @@ Item {
     property string startMenu: Files.startMenu
     property bool startRename: Files.startRename
     property int startSelect: Files.startSelect
+    property bool startEmptyTrash: Files.startEmptyTrash
     property bool captureApplied: false
 
     property alias browser: browser
@@ -64,6 +65,7 @@ Item {
     property alias iconView: iconView
     property alias listView: listView
     property alias contextMenu: contextMenu
+    property alias emptyTrashDialog: emptyTrashDialog
 
     signal closeRequested()
     signal minimizeRequested()
@@ -74,6 +76,8 @@ Item {
     readonly property string locationTitle: Files.displayName(browser.currentUri)
     readonly property var breadcrumb: Files.breadcrumb(browser.currentUri)
     readonly property bool hasSearch: root.searchText.length > 0
+    // Whether the window is at the Trash location, which owns Empty Trash.
+    readonly property bool inTrash: browser.currentUri === Files.trashUri
     // Cmd is Super/Mod4 system-wide, but Qt desktop tests and muscle memory
     // both use Control; accept either as "command".
     readonly property int commandMask: Qt.ControlModifier | Qt.MetaModifier
@@ -226,6 +230,22 @@ Item {
         directory.newFolder(browser.currentUri);
     }
 
+    // Empty Trash (T-10.6b): always a confirmation, per 09-files.md#trash. The
+    // action itself routes through files-core, so the Dock and Files share the
+    // one result.
+    function confirmEmptyTrash() {
+        if (!root.inTrash || directory.count === 0)
+            return;
+        emptyTrashDialog.show();
+    }
+
+    function emptyTrashNow() {
+        if (root.inTrash) {
+            directory.emptyTrash();
+            root.clearSelection();
+        }
+    }
+
     // The Finder rule: the menu depends on what is under the pointer.
     function nodeMenu(node) {
         if (root.selectedIds.length > 1) {
@@ -250,6 +270,15 @@ Item {
     }
 
     function backgroundMenu() {
+        if (root.inTrash) {
+            return [
+                { label: qsTr("Empty Trash"), shortcut: qsTr("Shift+Cmd+Delete"),
+                  action: "emptyTrash", enabled: directory.count > 0 },
+                { type: "separator" },
+                { label: qsTr("Select All"), shortcut: qsTr("Cmd+A"),
+                  action: "selectAll" }
+            ];
+        }
         return [
             { label: qsTr("New Folder"), shortcut: qsTr("Shift+Cmd+N"),
               action: "newFolder" },
@@ -290,6 +319,9 @@ Item {
         case "selectAll":
             root.selectAll();
             break;
+        case "emptyTrash":
+            root.confirmEmptyTrash();
+            break;
         }
     }
 
@@ -318,6 +350,8 @@ Item {
                               24, 140);
         } else if (root.startMenu === "background") {
             root.openBackgroundMenu(320, 220);
+        } else if (root.startEmptyTrash) {
+            root.confirmEmptyTrash();
         }
     }
 
@@ -390,7 +424,10 @@ Item {
             break;
         case Qt.Key_Delete:
         case Qt.Key_Backspace:
-            if (root.selectedIds.length > 0) {
+            if (command && (event.modifiers & Qt.ShiftModifier) && root.inTrash) {
+                root.confirmEmptyTrash();
+                event.accepted = true;
+            } else if (root.selectedIds.length > 0) {
                 root.trashSelection();
                 event.accepted = true;
             }
@@ -693,6 +730,32 @@ Item {
         target: viewControl
         property: "currentIndex"
         value: browser.currentView === "list" ? 1 : 0
+    }
+
+    // Empty Trash is a confirmation, never a one-click destructive action
+    // (09-files.md#trash). Accepting routes through `directory.emptyTrash`.
+    Dialog {
+        id: emptyTrashDialog
+        title: qsTr("Empty Trash?")
+        message: qsTr("The items in the Trash will be deleted immediately. "
+                      + "This cannot be undone.")
+        onAccepted: root.emptyTrashNow()
+
+        buttonsData: Row {
+            spacing: Theme.controls.dialog.buttonGap
+            Button {
+                id: emptyTrashCancel
+                text: qsTr("Cancel")
+                variant: "ghost"
+                onClicked: emptyTrashDialog.reject()
+            }
+            Button {
+                id: emptyTrashConfirm
+                text: qsTr("Empty Trash")
+                variant: "primary"
+                onClicked: emptyTrashDialog.accept()
+            }
+        }
     }
 
     Accessible.role: Accessible.Pane

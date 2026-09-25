@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(30 earlier sections omitted)_
+_(31 earlier sections omitted)_
 
-- **T28 — T-05.6 Overview frame budget and capture**: **State: done.** The overview gesture now has its own **gesture-scoped** 60 Hz; **`compositor/src/instrument.rs`** — `GestureBudgetTrace`: render-duration
 - **T29 — T-06.1 App-switcher state machine**: **State: done.** The compositor now owns a real Cmd-Tab app switcher: open on; **`compositor/src/app_switcher.rs`** (new) — `AppSwitcher` pure machine
 - **T30 — T-06.2a Switcher overlay and live previews**: **State: done.** The Cmd-Tab overlay is live: the compositor scales the; **Protocol** — `df_toplevel_manager.app_switcher_entry(index, app_id)` since 4,
 - **T31 — T-06.2b Switcher commit, Cmd+` cycling, interruptibility**: **State: done.** T-06 is complete. Cmd+` / Cmd+Shift+` cycle windows within the; **`compositor/src/app_switcher.rs`** — `SwitcherApp` carries `windows`
@@ -45,6 +44,7 @@ _(30 earlier sections omitted)_
 - **T64 — T-10.4c Files context menus, multi-select, optimistic UI**: **State: done.** Context menus, multi-select, and optimistic; **`services/files-core/src/ffi.rs`** — `FfiSession` now wraps
 - **T65 — T-10.5 Files performance budgets**: **State: done.** Files meets both budgets with incremental/windowed delivery.; **`services/files-core/src/ffi.rs`** — `df_files_row` / `df_files_delta`,
 - **T66 — T-10.6a Dock trash source**: **State: done.** The Dock's Trash state comes from `files-core` over the one; **`services/files-core/src/trash_source.rs`** (new) — `TrashSource`
+- **T67 — T-10.6b Drop-to-trash, Empty Trash, trash://**: **State: done.** The Dock's drop and Empty Trash already routed through; **`services/files-core/src/optimistic.rs`** — `PendingKind::Empty` +
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -4922,3 +4922,89 @@ Gotchas for later tasks:
   T-10.6c (Show in Files / Downloads / `.desktop` identity), wiring the folder
   watcher to the Files facade via the delta path, and network-mounted
   performance.
+
+## T67 — T-10.6b Drop-to-trash, Empty Trash, trash://
+
+**State: done.** The Dock's drop and Empty Trash already routed through
+`files-core` since T-10.6a; this task added Files' own Empty Trash and the
+`trash://` open path. Files opens the location the Dock passes, the Trash
+lists through the shared store, and Empty Trash is a confirmation that calls
+`files-core` and clears the listing's model.
+
+What landed:
+
+- **`services/files-core/src/optimistic.rs`** — `PendingKind::Empty` +
+  `RemovedNode`; `OptimisticModel::begin_empty_trash()` removes every listed
+  node in one edit and `revert` restores them in ascending arrival position;
+  `empty_trash_via(&dyn TrashOps)`. Two unit tests:
+  `empty_trash_clears_every_row_and_reverts_them_in_order`,
+  `confirm_empty_trash_keeps_the_cleared_model`.
+- **`services/files-core/src/ffi.rs`** — `OpRequest::EmptyTrash` /
+  `OpOutcome::EmptyTrash` on the one op worker (calls `TrashOps::empty`);
+  `df_files_begin_empty_trash(session)` returns 0 unless the session's
+  `Location::scheme() == "trash"` and the model is non-empty. Test
+  `empty_trash_abi_rejects_a_non_trash_session`.
+- **`apps/files/ffi/files_core.h`** — `df_files_begin_empty_trash` mirrored.
+- **`apps/files/FilesDirectoryModel.{h,cpp}`** — `Q_INVOKABLE bool
+  emptyTrash()` (same optimistic contract as `trash`: repaint + keep polling).
+- **`apps/files/FilesShell.qml`** — `inTrash` (`currentUri === Files.trashUri`),
+  `confirmEmptyTrash()`/`emptyTrashNow()`, a design-system `Dialog` (title
+  "Empty Trash?", message, Cancel + primary Empty Trash), an Empty Trash entry
+  in the Trash background menu, and `Shift+Cmd+Delete`. Capture seam
+  `DF_FILES_START_EMPTY_TRASH` opens the dialog once a non-empty Trash listing
+  settles. `startEmptyTrash` is exposed on `Files` (`DF_FILES_START_EMPTY_TRASH`).
+- **`apps/files/FilesArguments.h`** (new, header-only) — `filesLocationArgument`
+  accepts the first URI-with-scheme or absolute path, skipping Qt options.
+- **`apps/files/main.cpp`** — maps that argument onto `DF_FILES_START_URI`
+  when the env var is unset, so the Dock's `openTrashInFiles`
+  (`dragonfruit-files trash://`) opens the Trash.
+- **`apps/files/tests/tst_files_shell.cpp`** — adds an `Empty/` mutation
+  fixture (x.txt, y.txt) and keeps pointing `XDG_DATA_HOME` at a temp dir.
+- **Tests** — Rust totals: 73 unit (was 70) + integration suites, all pass.
+  QML: `tst_files_shell`
+  `test_trash_location_lists_and_empty_clears_the_model` (trashes real files,
+  opens `trash://`, checks the menu + confirmation, empties, asserts the model
+  clears); `apps/files/tests/tst_files_arguments.cpp` (new C++ test target).
+- **Docs** — `09-files.md` T-10.6b status paragraph. No ADR: the ABI addition
+  extends ADR 0050/0051 and the CLI contract is recorded in `09-files.md`.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `CARGO_NET_OFFLINE=true cargo test -p dragonfruit-files-core` — 73 unit +
+  integration, all pass.
+- `make qml-test` — 33/33 ctest green (new `tst_files_arguments`).
+- `make lint` green; `make e2e` exit 0.
+
+Live capture (`/tmp/opencode/t67-capture.sh`; still `/tmp/opencode/t67-still.py`;
+PNGs `/tmp/opencode/t67-files-empty-trash.png`, `-window.png`, `t67-card.png`).
+Launch env: `XDG_DATA_HOME=<temp trash with report.pdf + notes.txt>`,
+`DF_DEMO_QT_APP=build/apps/files/dragonfruit-files`,
+`DF_FILES_START_URI=trash://`, `DF_FILES_START_EMPTY_TRASH=1`. Raw vision on
+the tight card crop: title `Empty Trash?`; message `The items in the Trash will
+be deleted immediately. This cannot be undone.`; buttons `Cancel` and
+`Empty Trash`; the background Trash list (dimmed by the scrim) shows
+`notes.txt` and `report.pdf`; window title `Trash`. Vision is a supporting
+check.
+
+Gotchas for later tasks:
+
+- **Empty Trash is one optimistic op, not N deletes.** `PendingKind::Empty`
+  carries every removed node and restores them in ascending position order;
+  do not model it as a batch of `begin_delete` (the pending count / outcome
+  fold would drift).
+- **`df_files_begin_empty_trash` is gated on `trash://`** and a non-empty
+  model; other locations return 0. The files-core worker's `FreedesktopTrash`
+  reads `XDG_DATA_HOME`/`HOME` at worker spawn, so any test that empties must
+  point `XDG_DATA_HOME` at a temp dir (the QML runner does).
+- **Files accepts a positional location argument.** `main.cpp` only maps it
+  when `DF_FILES_START_URI` is empty; the capture harness still wins.
+- **`org.dragonfruit.Files.desktop` / `Files1` are not installed yet.**
+  `openTrashInFiles` resolves the `.desktop` through the interim index and
+  calls `buildLaunchCommand(files, {"trash://"})`; on a host without the
+  identity it logs and returns. T-10.6c installs it.
+- **Files does not watch the Trash.** A third-party delete (or the Dock's Empty
+  Trash) is not pushed into an open Trash listing; re-open/reload to see it.
+  Wiring the T-10.3b watcher to the facade via the delta path is still open.
+- **Capture seam:** `DF_FILES_START_EMPTY_TRASH=1` only opens when the listing
+  reaches `complete` with `count > 0`; `DF_FILES_START_URI=trash://` is
+  required.
