@@ -1,0 +1,46 @@
+# T-08.3 settingsd flip + restart capture
+# session bus: org.dragonfruit.Settings1 at /org/dragonfruit/Settings1 (scratch XDG_CONFIG_HOME=/tmp/dragonfruit-t08-capture.lRAafM/xdg)
+$ org.dragonfruit.Settings1.Set appearance.colorScheme <'dark'>
+()
+$ org.dragonfruit.Settings1.Set dock.size <0.5>
+()
+$ org.dragonfruit.Settings1.Set appearance.colorScheme <'light'>
+()
+$ org.dragonfruit.Settings1.Set dock.size <0.75>
+()
+# kill -9 settingsd; the shell keeps its last-known values
+# while down: appearance.colorScheme=dark, dock.size=0.35 written to disk
+$ org.dragonfruit.Settings1.Get appearance.colorScheme
+(<'dark'>,)
+$ org.dragonfruit.Settings1.Get dock.size
+(<0.34999999999999998>,)
+
+# persisted /tmp/dragonfruit-t08-capture.lRAafM/xdg/dragonfruit/settings.json after the restart
+{
+  "keys": {
+    "accessibility.reduceMotion": false,
+    "appearance.accent": "",
+    "appearance.colorScheme": "dark",
+    "dock.animateOpening": true,
+    "dock.autohide": false,
+    "dock.magnification": 0.5,
+    "dock.minimizeIntoTileIcon": false,
+    "dock.minimizedAnimation": "scale",
+    "dock.pinned": [
+      "org.kde.konsole.desktop",
+      "org.mozilla.firefox.desktop"
+    ],
+    "dock.position": "bottom",
+    "dock.showIndicators": true,
+    "dock.showRecentApps": false,
+    "dock.size": 0.35,
+    "dock.titlebarDoubleClick": "zoom",
+    "gestures.enabled": true,
+    "gestures.missionControl": true,
+    "gestures.spaceSwitch": true,
+    "input.repeatDelay": 200,
+    "input.repeatRate": 25,
+    "workspaces.count": 3
+  },
+  "schema": 1
+}

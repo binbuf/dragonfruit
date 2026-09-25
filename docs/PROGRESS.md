@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(10 earlier sections omitted)_
+_(11 earlier sections omitted)_
 
-- **T08 — T-02.1a Animation clock and frame discipline**: **State: done.** One shared compositor animation clock exists; the overview's; **`compositor/src/animation.rs`** (new) — `FRAME_INTERVAL` (16 ms),
 - **T09 — T-02.1b Window appear transition**: **State: done.** A newly mapped window scales/fades in from its Dock tile on; **`compositor/src/window/appear.rs`** (new) — `AppearTransition`
 - **T10 — T-02.2 Minimize and restore motion**: **State: done.** Minimize shrinks a window into its Dock entry's tile and; **`compositor/src/window/motion.rs`** (renamed from `appear.rs`) —
 - **T11 — T-02.3 Zoom and fullscreen transitions**: **State: done.** Zoom/unzoom and fullscreen/unfullscreen animate between the; **`compositor/src/window/motion.rs`** — `WindowMotionKind::{Zoom,
@@ -44,6 +43,7 @@ _(10 earlier sections omitted)_
 - **T44 — T-08.2a Shell migration to settingsd**: **State: done.** The shell no longer owns Dock settings: `DockSettings`/; **`shell/src/settingsclient.{h,cpp}`** (new) — `SettingsClient` (typed key
 - **T45 — T-08.2b Design-system Theme binding**: **State: done.** The design-system `Theme` singleton's `dark`/`reducedMotion`; **`shell/src/themebinding.{h,cpp}`** (new) — `ThemeBinding` is the one
 - **T46 — T-08.2c Compositor motion/input policy migration**: **State: done.** The compositor now consumes the settingsd motion/input policy;; **`protocols/dragonfruit-toplevel.xml`** — `df_toplevel_manager` is v5 with
+- **T47 — T-08.3 Restart, resync, and key-schema documentation**: **State: done.** `settingsd` is restartable with no lost write and the shell; **`docs/settings-keys.md`** (new) — the human-facing key table (type,
 - **Follow-ups**: **T-08.2 consumer migration (T-08.2a done in T44, T-08.2b done in T45,; **T-07.6 signal wiring (not done).** The bridge host
 <!-- symphony:digest:end -->
 
@@ -3091,6 +3091,74 @@ Gotchas for later tasks:
 - **T-08.3** owns restart/resync: `refreshed` already re-applies the policy, but
   a `kill -9`/reappear test and the scripted `t08-settingsd.*` capture remain.
 
+## T47 — T-08.3 Restart, resync, and key-schema documentation
+
+**State: done.** `settingsd` is restartable with no lost write and the shell
+re-syncs on reappearance; every key's owner/consumer is documented in-repo and
+guarded by a test; the scripted `t08-settingsd.*` capture is committed.
+
+What landed:
+
+- **`docs/settings-keys.md`** (new) — the human-facing key table (type,
+  default, constraints, owner, consumer, summary), a consumer map, and the
+  restart/resync contract. `services/settingsd/tests/schema_doc.rs` (new)
+  parses the table and fails on any drift from `services/settingsd/src/schema.rs`
+  (key/type/default/owner/consumer).
+- **`services/settingsd/tests/restart.rs`** (new) — spawns the real
+  `dragonfruit-settingsd` binary (`env!("CARGO_BIN_EXE_dragonfruit-settingsd")`)
+  on a private `dbus-daemon`, sets two keys, `kill -9`s it, asserts the
+  well-known name is released, writes a value straight to the durable file
+  while it is down, restarts it, and asserts `GetAll` returns both pre-kill
+  writes plus the while-down change.
+- **`shell/src/settingsclient.{h,cpp}`** — **real bug fixed.** The live client
+  now watches `org.dragonfruit.Settings1` with a `QDBusServiceWatcher` instead
+  of `QDBusConnectionInterface::serviceRegistered`/`serviceUnregistered`.
+  Those interface signals only fire for a connection's **unique** name, so the
+  shell never re-synced after a real restart of an external settingsd (it
+  resynced once via the constructor's [`GetAll`] and then never). ADR 0032
+  gained a consequence bullet.
+- **`shell/tests/tst_settingsclient.cpp`** — the restart/resync case now serves
+  the fake daemon from a **separate bus connection** (`QDBusConnection::
+  connectToBus`), making it remote exactly like a real process; it fails
+  without the watcher.
+- **`scripts/capture-settingsd.sh`** (new) + `make settingsd-capture` —
+  produces `docs/captures/t08-settingsd.{png,mp4,txt}` and
+  `-before-dark/-after-light/-down/-restart.png`.
+- **Docs** — track doc `08-settingsd-live-settings.md` gained a T-08.3 section;
+  `docs/captures/README.md` describes the capture; ADR 0032 notes the watcher.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `cargo test -p dragonfruit-settingsd` — 26 unit + 1 restart + 1 schema_doc +
+  4 session_bus green.
+- `ctest --test-dir build -R tst_settingsclient --output-on-failure` — green.
+- `make lint` — all 21 ctest tests green incl. `tst_settingsclient`; clippy,
+  fmt, token/design/desktop-name gates green.
+- `make e2e` green (all Rust suites + clean `make demo --headless`).
+
+Live capture (`bash scripts/capture-settingsd.sh`): settingsd on the session
+bus with a scratch `XDG_CONFIG_HOME`, nested demo, seed dark/0.5, flip
+`appearance.colorScheme=light` + `dock.size=0.75`, `kill -9`, write dark/0.35
+to the file while down, restart. Raw pixels: menu bar `(45,37,52)` (before) →
+`(255,255,255)` (after flip) → unchanged after kill → `(45,37,52)` on restart
+(the while-down value); Dock region differs between the 0.75 and 0.35 frames.
+`t08-settingsd.txt` is the D-Bus transcript + persisted file. Vision on tight
+menubar/dock crops reported no artifacts; the raw pixel values are the
+load-bearing evidence (a stacked-sheet vision pass got the strip order's colors
+wrong).
+
+Gotchas for later tasks:
+
+- **Use `QDBusServiceWatcher`, not `QDBusConnectionInterface` signals, for the
+  well-known name.** The latter cover unique names only.
+- **Adding a key:** `schema::KEYS` (+ bump `SCHEMA_VERSION`, set `since`),
+  the mirrored `settingsSchemaDefaults()` in `shell/src/settingsclient.cpp`,
+  and `docs/settings-keys.md` — the new doc test enforces the doc.
+- **`tst_settingsclient`'s restart case is in-process** (separate connection,
+  not a separate process); the separate-process half is the Rust `restart.rs`.
+- **Do not rename/remove a v1 key**; the frozen manifest and the doc test both
+  guard the documented v1 set.
+
 ## Follow-ups
 
 - **T-08.2 consumer migration (T-08.2a done in T44, T-08.2b done in T45,
@@ -3100,10 +3168,12 @@ Gotchas for later tasks:
   `appearance.colorScheme`/`accessibility.reduceMotion` via `ThemeBinding`
   (ADR 0033). T46 forwards the motion/input keys over the private
   `df_toplevel_manager` v5 `set_motion_policy`/`set_input_policy`; the
-  compositor is the sole applier (ADR 0034). Remaining: `appearance.accent`
+  compositor is the sole applier (ADR 0034). T-08.3 (done in T47) made the
+  shell re-sync on a settingsd restart (QDBusServiceWatcher) and documented the
+  key schema. Remaining: `appearance.accent`
   still has no consumer (needs a design-system accent override; T-09.2);
   `workspaces.count` has no compositor owner yet (workspace-model key, not
-  motion/input); restart/resync is T-08.3. Nothing starts
+  motion/input). Nothing starts
   `dragonfruit-settingsd` (the dev tool deliberately does not); the shell runs
   from the mirrored schema defaults then, which is intended.
 

@@ -62,6 +62,15 @@ session's exit `gesture budget`/`degrade stats` lines. On the development iGPU
 the nested gesture records an honest shortfall (`held=0`) and the T-04 material
 ladder downgrades to `reduced`; the number is recorded, not hidden.
 
+T-08.3's settingsd restart/resync capture is produced by
+`scripts/capture-settingsd.sh` (`make settingsd-capture`): `t08-settingsd.txt`
+is the D-Bus flip transcript plus the persisted file; the stills
+`t08-settingsd-before-dark.png`, `-after-light.png`, `-down.png`,
+`-restart.png` (and the representative `t08-settingsd.png`) record the live
+`appearance.colorScheme`/`dock.size` flip, the `kill -9` (nothing visually
+lost), and the shell re-syncing to a value written to the durable file while
+settingsd was down; `t08-settingsd.mp4` is the short clip.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

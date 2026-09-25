@@ -294,3 +294,48 @@ the synthetic `query policy` report (scheme, titlebar double-click, minimized
 animation, repeat delay/rate, gesture flags), then proves a disabled gesture
 family stops firing and re-enabling restores it. `tst_compositorpolicy`
 covers the pure settingsd → policy mapping, including `auto`.
+
+## Restart, resync, and the key schema (T-08.3)
+
+`settingsd` is independently restartable and no write is lost. The guarantee is
+enforced end-to-end, not just in code:
+
+- **Persist-before-signal.** `Set` writes the durable file before it emits
+  `Changed` (T-08.1b, ADR [0031](../adr/0031-settingsd-persistence-format-and-atomic-writes.md)),
+  so a `Set` that returned is already on disk. `cargo test -p
+  dragonfruit-settingsd --test restart` runs the **real binary** over a private
+  session bus: it sets two keys, `SIGKILL`s the daemon, asserts the
+  well-known name was released, changes a value straight in the durable file
+  while the daemon is down, restarts it, and asserts `GetAll` returns the two
+  pre-kill writes plus the while-down change.
+- **The shell re-syncs on reappearance.** `DbusSettingsClient` watches the
+  well-known name with a `QDBusServiceWatcher`; when the daemon disappears it
+  keeps its last-known values (`availableChanged false`, nothing visibly lost),
+  and when the name reappears it calls `GetAll` and applies the snapshot. A
+  write attempted while the daemon is down is local and in-memory only, so the
+  resync reconciles it away: an unpersisted change is not silently kept.
+
+**Bug found live (T-08.3).** The client originally used
+`QDBusConnectionInterface::serviceRegistered`/`serviceUnregistered`. Those
+signals only fire for a connection's **unique** name, not a well-known name
+owned by another process, so the shell resynced once from the constructor's
+`GetAll` and then never after a real settingsd restart. The
+`QDBusServiceWatcher` fix is the reason the nested capture's restart frame
+actually returns to the while-down state. `tst_settingsclient`'s restart case
+now serves the fake daemon from a **separate bus connection** so it exercises
+the remote path (a same-connection fake passed even before the fix).
+
+**Key schema in-repo.** `docs/settings-keys.md` is the human-facing table: every
+key's type, default, constraints, owner, consumer, and a consumer map. It is
+kept in lockstep with `services/settingsd/src/schema.rs` by
+`services/settingsd/tests/schema_doc.rs`, so adding a key (or editing an
+owner/consumer) in code without updating the doc fails the build.
+
+**Capture.** `scripts/capture-settingsd.sh` (`make settingsd-capture`) records
+`docs/captures/t08-settingsd.*`: seed dark, launch the nested demo, flip
+`appearance.colorScheme` + `dock.size` live, `kill -9` settingsd (nothing
+visually lost), write dark + a smaller Dock to the durable file while it is
+down, restart, and capture the shell re-syncing to that state. The raw pixels
+are the evidence: the menu bar reads `(255,255,255)` after the light flip, is
+unchanged after the kill, and returns to `(45,37,52)` on restart; the Dock
+region changes between the `dock.size` 0.75 and 0.35 frames.

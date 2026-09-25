@@ -154,6 +154,69 @@ private slots:
         bus.unregisterObject(kPath);
         bus.unregisterService(kService);
     }
+
+    void dbusClientResyncsWhenTheServiceRestarts()
+    {
+        // T-08.3: kill/restart resync. The client subscribes to the
+        // well-known name; when the daemon disappears it keeps its last-known
+        // values (nothing is visibly lost), and when the name reappears it
+        // re-reads the daemon's snapshot (`GetAll`). A write attempted while
+        // the daemon was down is in-memory only, so the re-sync reconciles it
+        // away instead of silently keeping an unpersisted change.
+        QDBusConnection bus = QDBusConnection::sessionBus();
+        if (!bus.isConnected())
+            QSKIP("no session bus available (run under dbus-run-session)");
+
+        // The fake daemon lives on a *separate* connection to the same bus,
+        // which makes it remote from the client's `sessionBus()` exactly like
+        // a real settingsd process. This matters: `QDBusConnectionInterface`'s
+        // serviceRegistered/serviceUnregistered only fire for unique names, so
+        // a client built on those signals resynced only for an in-process
+        // service and silently stopped for a real restart. T-08.3 fixed that
+        // with a `QDBusServiceWatcher`; this test guards the fix.
+        const QString kServiceConnection = QStringLiteral("dragonfruit_test_settingsd");
+        QDBusConnection serviceBus =
+            QDBusConnection::connectToBus(QDBusConnection::SessionBus, kServiceConnection);
+        QVERIFY(serviceBus.isConnected());
+
+        FakeSettingsService service;
+        QVERIFY(serviceBus.registerService(kService));
+        QVERIFY(serviceBus.registerObject(kPath, &service,
+                                          QDBusConnection::ExportAllSlots
+                                              | QDBusConnection::ExportAllSignals
+                                              | QDBusConnection::ExportAllProperties));
+
+        DbusSettingsClient client;
+        QVERIFY(client.isAvailable());
+        QTRY_COMPARE(client.real(QStringLiteral("dock.size"), -1.0), 0.5);
+
+        // A write through the client reaches the durable owner.
+        client.set(QStringLiteral("dock.autohide"), true);
+        QTRY_VERIFY(service.value(QStringLiteral("dock.autohide")).toBool());
+
+        // kill -9: the name goes away; the desktop keeps the last-known state.
+        QVERIFY(serviceBus.unregisterService(kService));
+        QTRY_VERIFY(!client.isAvailable());
+        QCOMPARE(client.boolean(QStringLiteral("dock.autohide"), false), true);
+
+        // A change made while the daemon is down cannot be persisted; it is
+        // only the optimistic in-memory value.
+        client.set(QStringLiteral("dock.size"), 0.9);
+        QCOMPARE(client.real(QStringLiteral("dock.size"), -1.0), 0.9);
+
+        // The daemon restarts under the same name; its snapshot is authoritative.
+        QSignalSpy refreshed(&client, &SettingsClient::refreshed);
+        QVERIFY(serviceBus.registerService(kService));
+        QTRY_VERIFY(refreshed.count() >= 1);
+        QTRY_VERIFY(client.isAvailable());
+        // The while-down write is reconciled away; the persisted write survives.
+        QTRY_COMPARE(client.real(QStringLiteral("dock.size"), -1.0), 0.5);
+        QCOMPARE(client.boolean(QStringLiteral("dock.autohide"), false), true);
+
+        serviceBus.unregisterObject(kPath);
+        serviceBus.unregisterService(kService);
+        QDBusConnection::disconnectFromBus(kServiceConnection);
+    }
 };
 
 QTEST_GUILESS_MAIN(TestSettingsClient)
