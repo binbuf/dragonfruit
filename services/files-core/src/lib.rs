@@ -47,6 +47,18 @@
 //!   survive rename, new folder, and re-sort; only a confirmed delete drops
 //!   an id, and a revert puts it back.
 //!
+//! # What T-10.3a owns
+//!
+//! * [`TrashOps`] — the trash seam sibling to [`FileOps`]: `trash`, `restore`,
+//!   `empty`, and `entries`. It moves items through the freedesktop Trash spec
+//!   store rather than deleting them, so a deletion by any application lands
+//!   in the one place Files and the Dock read.
+//! * [`FreedesktopTrash`] — the sanctioned fallback implementing the spec in
+//!   pure Rust (GIO/GVfs is not linked; ADR [0046]): `$XDG_DATA_HOME/Trash`,
+//!   `.trashinfo` files, per-volume `.Trash-$UID` for other filesystems, and
+//!   Put Back. [`parse_trash_info`]/[`format_deletion_date`] are public so a
+//!   spec golden can round-trip without touching a real store.
+//!
 //! # Sorting is incremental and stable
 //!
 //! [`DirectoryModel::set_sort`] changes the order and re-sorts what is already
@@ -91,6 +103,7 @@
 //! [09-files.md]: ../../../docs/design/09-files.md
 //! [adr/0042]: ../../../docs/design/adr/0042-files-core-streaming-listing-and-fallback.md
 //! [adr/0043]: ../../../docs/design/adr/0043-files-core-fallback-is-the-shipping-backend.md
+//! [adr/0046]: ../../../docs/design/adr/0046-files-core-trash-seam-and-spec-fallback.md
 
 mod fallback;
 mod listing;
@@ -103,6 +116,7 @@ mod optimistic;
 mod selection;
 pub mod sort;
 mod source;
+mod trash;
 
 pub use fallback::{StdFsSource, SANCTIONED_FALLBACK_MARKER};
 pub use listing::{ListingEvent, ListingEventKind, ListingHandle, DEFAULT_BATCH};
@@ -115,3 +129,7 @@ pub use optimistic::{OpId, OptimisticModel};
 pub use selection::Selection;
 pub use sort::{SortDirection, SortKey, SortSpec};
 pub use source::{DirectoryReader, DirectorySource, SourceError};
+pub use trash::{
+    default_home_trash, format_deletion_date, parse_trash_info, FreedesktopTrash, TrashOps,
+    TrashedItem, SANCTIONED_TRASH_FALLBACK_MARKER,
+};

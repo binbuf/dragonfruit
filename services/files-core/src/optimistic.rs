@@ -41,8 +41,8 @@
 //! The change monitor/folder watcher (T-10.3b) will drive `confirm`/`revert`
 //! automatically; today the operation result does. Trash (`trash://`) is
 //! T-10.3a; [`OptimisticModel::begin_delete`] is the permanent-delete path the
-//! trash path will reuse. Undo/redo, progress, conflict policy, and the
-//! journal are later still.
+//! trash path will reuse, and [`OptimisticModel::trash_via`] is that reuse.
+//! Undo/redo, progress, conflict policy, and the journal are later still.
 //!
 //! ```no_run
 //! use std::ffi::OsStr;
@@ -70,7 +70,7 @@ use std::sync::Arc;
 
 use crate::{
     generated_name, DirectoryModel, FileOps, ListingEvent, ListingHandle, Location, Node, NodeId,
-    NodeKind, OperationError, Selection, NEW_FOLDER_BASE,
+    NodeKind, OperationError, Selection, TrashOps, NEW_FOLDER_BASE,
 };
 
 /// A token for one in-flight optimistic operation.
@@ -366,6 +366,31 @@ impl OptimisticModel {
             .ok_or_else(|| OperationError::NotFound(id.to_string()))?;
         match ops.delete(&location) {
             Ok(()) => {
+                self.confirm(op);
+                Ok(op)
+            }
+            Err(error) => {
+                self.revert(op);
+                Err(error)
+            }
+        }
+    }
+
+    /// Move `id` to Trash optimistically and run the real [`TrashOps::trash`]
+    /// through `trash`, confirming on success and reverting on error
+    /// (T-10.3a).
+    ///
+    /// Reuses [`OptimisticModel::begin_delete`] exactly as ADR 0045 records —
+    /// the row disappears within a frame, and snaps back if the trashing
+    /// fails. The returned [`TrashedItem`](crate::TrashedItem) is dropped here;
+    /// a view uses it to offer Put Back.
+    pub fn trash_via(&mut self, trash: &dyn TrashOps, id: NodeId) -> Result<OpId, OperationError> {
+        let location = self.location_of(id)?;
+        let op = self
+            .begin_delete(id)
+            .ok_or_else(|| OperationError::NotFound(id.to_string()))?;
+        match trash.trash(&location) {
+            Ok(_) => {
                 self.confirm(op);
                 Ok(op)
             }

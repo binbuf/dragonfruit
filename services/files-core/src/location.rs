@@ -154,9 +154,18 @@ impl fmt::Display for Location {
 
 /// `file://` + a percent-encoded absolute path, keeping `/` separators.
 fn encode_file_uri(path: &Path) -> String {
-    let bytes = os_bytes(path.as_os_str());
-    let mut out = String::with_capacity("file://".len() + bytes.len());
+    let mut out = String::with_capacity("file://".len() + path.as_os_str().len());
     out.push_str("file://");
+    out.push_str(&encode_path(path));
+    out
+}
+
+/// Percent-encode a path's raw bytes, keeping `/` separators literal. This is
+/// the freedesktop Trash spec's `Path=` encoding (T-10.3a) as well as the
+/// `file://` URI path encoding.
+pub(crate) fn encode_path(path: &Path) -> String {
+    let bytes = os_bytes(path.as_os_str());
+    let mut out = String::with_capacity(bytes.len());
     for byte in bytes {
         if byte == b'/' {
             out.push('/');
@@ -169,7 +178,7 @@ fn encode_file_uri(path: &Path) -> String {
     out
 }
 
-fn decode_path(rest: &str) -> PathBuf {
+pub(crate) fn decode_path(rest: &str) -> PathBuf {
     let bytes = rest.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut index = 0;
