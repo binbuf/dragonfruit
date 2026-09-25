@@ -101,3 +101,50 @@ everywhere.
 - T-09 binds Wave-1 panes to this API.
 - T-10 binds Files preferences to their own store, not settingsd.
 - T-15 adds the host-services provider.
+
+## The key schema and D-Bus surface (T-08.1a)
+
+T-08.1a landed the desktop-settings model and the `org.dragonfruit.Settings1`
+surface in `services/settingsd` (ADR
+[0030](../adr/0030-settingsd-schema-and-dbus-surface.md)); persistence is
+T-08.1b. The schema lives in code as `schema::KEYS` — one declaration per key
+with its D-Bus type, default, range/enumeration, and owner/consumer pair — and
+`SchemaVersion` (`u`) reports `SCHEMA_VERSION`. Renames and removals are
+forbidden within the `1` series; a frozen v1 manifest test enforces it.
+
+Values are typed D-Bus variants (`b`, `d`, `x`, `s`, `as`), not JSON strings.
+The interface at `/org/dragonfruit/Settings1` is `Get(key) -> v`,
+`Set(key, value)`, `GetAll() -> a{sv}` (one-call resync), `ListKeys() -> as`,
+plus the `SchemaVersion` property and one `Changed(key, value)` signal emitted
+only on a real change. Rejections carry `org.dragonfruit.Settings1.Error`
+names (`UnknownKey`, `TypeMismatch`, `OutOfRange`, `NotAllowed`). Consumers
+never poll: there is no timer and no read loop.
+
+| Key | Type | Default | Owner → consumer |
+|---|---|---|---|
+| `dock.size` | d (0..1) | 0.5 | shell/Dock |
+| `dock.magnification` | d (0..1) | 0.5 | shell/Dock |
+| `dock.position` | s (bottom/left/right) | bottom | shell/Dock |
+| `dock.autohide` | b | false | shell/Dock |
+| `dock.animateOpening` | b | true | shell/Dock |
+| `dock.showIndicators` | b | true | shell/Dock |
+| `dock.minimizeIntoTileIcon` | b | false | shell/Dock → compositor motion |
+| `dock.minimizedAnimation` | s (genie/scale/none) | scale | shell/Dock → compositor motion |
+| `dock.titlebarDoubleClick` | s (zoom/minimize/none) | zoom | settingsd → compositor SSD |
+| `dock.showRecentApps` | b | false | shell/Dock |
+| `dock.pinned` | as | [] (seeds defaults) | shell/Dock |
+| `workspaces.count` | x (1..16) | 3 | settingsd → compositor workspace model, shell |
+| `gestures.enabled` | b | true | settingsd → compositor/input |
+| `gestures.spaceSwitch` | b | true | settingsd → compositor/input |
+| `gestures.missionControl` | b | true | settingsd → compositor/input |
+| `appearance.colorScheme` | s (light/dark/auto) | auto | settingsd → compositor + shell Theme |
+| `appearance.accent` | s (`#rrggbb`, empty = default) | "" | settingsd → shell Theme |
+| `accessibility.reduceMotion` | b | false | settingsd → shell Theme, compositor motion |
+| `input.repeatDelay` | x (0..5000 ms) | 200 | settingsd → compositor/input |
+| `input.repeatRate` | x (0..200 Hz) | 25 | settingsd → compositor/input |
+
+The key names and defaults match the shell's interim
+`$XDG_CONFIG_HOME/dragonfruit/settings.json` (`dock.*`,
+`accessibility.reduceMotion`), so T-08.1b adopts that file without migration.
+The integration test in `services/settingsd/tests/session_bus.rs` drives the
+interface over a private session bus; `make e2e` runs it.

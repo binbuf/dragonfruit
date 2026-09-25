@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(5 earlier sections omitted)_
+_(6 earlier sections omitted)_
 
-- **T03 — T-01.3 Titlebar drag, double-click, fullscreen reveal**: **State: done.** A floating window's titlebar drags to move (existing; **`compositor/src/window/decoration.rs`** — `TitlebarDoubleClick`
 - **T04 — T-01.4 Window menu**: **State: done.** A right/Control-click on the SSD titlebar opens a; **`compositor/src/window/menu.rs`** — `WindowMenu`, `WindowMenuRow`,
 - **T05 — T-01.5 Decoration tier policy and X11 correctness**: **State: done.** The three decoration classes are honored and the X11; **`compositor/src/state.rs`** — new `DfState::set_decoration_tier(window,
 - **T06 — T-01.6a `make demo` harness**: **State: done.** One `make demo` target builds the tree and runs the T-01 loop; **`Makefile`** — `demo: build` → `cargo run -p dragonfruit-dev -- dev --demo
@@ -44,7 +43,8 @@ _(5 earlier sections omitted)_
 - **T39 — T-07.5b Battery menu, placeholder removal, keyboard a11y**: **State: done.** The battery item is live over the bridge host, `--placeholders`; **`services/system-status`** — `StatusHost<N, A, P>` gained a `PowerAdapter`;
 - **T40 — T-07.6a Absent-daemon masking matrix**: **State: done.** The absent-daemon masking matrix is asserted headlessly at; **`services/system-status/tests/host.rs`** —
 - **T41 — T-07.6b Menu-bar idle trace and capture**: **State: done.** The menu-bar idle trace is flat at both seams and the T-07; **`compositor/tests/shell_idle_trace.rs`** — the bar-live idle trace now
-- **Follow-ups**: **T-07.6 signal wiring (not done).** The bridge host; T-07.5b (done in T39): battery menu + `--placeholders` removal + keyboard
+- **T42 — T-08.1a settingsd config model and D-Bus API**: **State: done.** `services/settingsd` is no longer a stub: the desktop-settings; **`services/settingsd/src/schema.rs`** (new) — `KEYS`: 20 named keys
+- **Follow-ups**: **T-08.1b persistence + T-08.2 consumer migration.** T42 landed only the; **T-07.6 signal wiring (not done).** The bridge host
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -2738,7 +2738,82 @@ Gotchas for later tasks:
 - The idle-trace files are `docs/captures/t07-shell-idle-trace.txt` (bar-live)
   and the T-03 `t03-idle-trace.txt` (no clients). Do not overwrite the latter.
 
+## T42 — T-08.1a settingsd config model and D-Bus API
+
+**State: done.** `services/settingsd` is no longer a stub: the desktop-settings
+model and the `org.dragonfruit.Settings1` surface land. Persistence is
+deliberately T-08.1b.
+
+What landed:
+
+- **`services/settingsd/src/schema.rs`** (new) — `KEYS`: 20 named keys
+  (11 Dock, 1 workspaces, 3 gestures, 2 appearance, 1 animation, 2 input), each
+  with its D-Bus type, default, range/enum, and owner/consumer pair;
+  `SCHEMA_VERSION = 1`; `spec()`/`key_names()`; a frozen v1 key-manifest test.
+- **`src/value.rs`** (new) — `Value` (`b`/`d`/`x`/`s`/`as`) with
+  `to_owned_value`/`from_owned_value`; `SettingsError`.
+- **`src/model.rs`** (new) — `Settings` store: validate-on-write, change
+  detection (repeat writes are silent no-ops), `snapshot()`/`reset()`.
+- **`src/dbus.rs`** (new) — `Settings1` object at
+  `/org/dragonfruit/Settings1`: `Get(key)->v`, `Set(key,v)`, `GetAll()->a{sv}`,
+  `ListKeys()->as`, the `SchemaVersion` property, and `Changed(key,value)`
+  (emitted only on a real change). Rejections are typed under
+  `org.dragonfruit.Settings1.Error.{UnknownKey,TypeMismatch,OutOfRange,
+  NotAllowed}`. `dbus::run()` parks on the session bus (no poll loop).
+- **`src/lib.rs` / `src/main.rs`** — lib+bin; `--print-keys` / `--print-schema`
+  debug flags; the old stub test moved into the lib.
+- **`Cargo.toml`** — lib target `dragonfruit_settingsd`; dep `zbus`
+  (blocking-api), dev-dep `serde`.
+- **`tests/session_bus.rs`** (new) — 3 integration tests that stand up a
+  private `dbus-daemon`, serve the interface, and drive it from a second
+  connection: every key round-trips Get/Set/Changed; GetAll/ListKeys/
+  SchemaVersion; typed rejections leave the store untouched.
+- **`Makefile`** — `make e2e` now also runs `cargo test -p
+  dragonfruit-settingsd`.
+- **`docs/design/tracks/08-settingsd-live-settings.md`** — new "The key schema
+  and D-Bus surface (T-08.1a)" section with the full key table.
+- **`docs/design/adr/0030-settingsd-schema-and-dbus-surface.md`** (new).
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `cargo test -p dragonfruit-settingsd` — 16 lib + 3 session-bus green.
+- `make e2e` exit 0; `make lint` exit 0.
+
+Live visual check: `/tmp/opencode/t42-capture.sh` launched the nested demo
+(no fixture), raised the window via a best-effort KWin D-Bus script, captured
+the active window and trimmed it to the 1920x1200 nested output:
+`/tmp/opencode/t42-nested.png`. Vision read: top bar present, two app windows
+(a large settings window and a small X11 demo window), bottom Dock with five
+icons, solid dark background, "no rendering glitches". No `docs/captures/`
+file added — the track owns `t08-settingsd.*`.
+
+Gotchas for later tasks:
+
+- **No persistence.** Values are in-memory only; a settingsd restart resets to
+  schema defaults. T-08.1b writes `$XDG_CONFIG_HOME/dragonfruit/settings.json`
+  in the same `{"schema":N,"keys":{…}}` shape; the key names/defaults already
+  match the shell's interim file, so it adopts without migration.
+- **No consumer is migrated.** The shell still owns `DockSettings`/`DockPins`
+  and their `QFileSystemWatcher`; the compositor still uses its own defaults.
+  T-08.2a must delete those shell classes in the same change it wires the
+  daemon, or there will be two writers.
+- **Values are typed D-Bus variants, not JSON strings** (ADR 0030). `dock.pinned`
+  defaults to `[]`; the shell still seeds installed-app defaults.
+- `appearance.accent` is free text (`""` = design-system token default); it is
+  not hex-validated yet.
+- Adding a key is safe; renaming or removing one fails the frozen v1 manifest
+  test in `schema.rs`.
+
 ## Follow-ups
+
+- **T-08.1b persistence + T-08.2 consumer migration.** T42 landed only the
+  model + D-Bus API. T-08.1b must persist/atomic-write/migrate the key shape
+  above; T-08.2a must delete the shell's `DockSettings`/`DockPins` file owners
+  and `QFileSystemWatcher` when it binds the daemon, T-08.2b must bind
+  `Theme.dark`/`Theme.reducedMotion`, and T-08.2c must apply the motion/input
+  policy in the compositor. Until then the shell's interim
+  `$XDG_CONFIG_HOME/dragonfruit/settings.json` remains the on-disk truth, and
+  nothing starts `dragonfruit-settingsd` (the dev tool deliberately does not).
 
 - **T-07.6 signal wiring (not done).** The bridge host
   (`services/system-status`) reads an adapter only on startup, an explicit

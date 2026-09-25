@@ -1,15 +1,30 @@
 [package]
 name = "dragonfruit-settingsd"
-description = "Dragonfruit settings daemon (stub; real service is T-15)"
+description = "Dragonfruit desktop-settings daemon: the config model and org.dragonfruit.Settings1 API (T-08.1a)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
+# The desktop-settings provider: our own named, schema-documented keys served
+# over `org.dragonfruit.Settings1` on the user session bus, with change
+# signals so consumers never poll. Persistence lands in T-08.1b; this crate
+# currently owns the in-memory model and the D-Bus surface only.
+#
+# zbus is the same pinned D-Bus stack the other services use; `zvariant` is
+# re-exported through `zbus::zvariant`, so there is no separate dependency.
+[dependencies]
+df-ipc.workspace = true
+zbus = { version = "=5.19.0", features = ["blocking-api"] }
+
+[dev-dependencies]
+serde = "=1.0.229"
+
+[lib]
+name = "dragonfruit_settingsd"
+path = "src/lib.rs"
+
 [[bin]]
 name = "dragonfruit-settingsd"
 path = "src/main.rs"
-
-[dependencies]
-df-ipc.workspace = true
