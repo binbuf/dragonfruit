@@ -93,6 +93,7 @@ e2e: build
 	$(CARGO) test -p dragonfruit-system-adapters
 	$(CARGO) test -p dragonfruit-networkmanager
 	$(CARGO) test -p dragonfruit-audio
+	$(CARGO) test -p dragonfruit-power
 	$(MAKE) demo DEMO_ARGS=--headless
 
 # T-03.1a: the idle/animation frame budget trace. `make e2e` runs the same

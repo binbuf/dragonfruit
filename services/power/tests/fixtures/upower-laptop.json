@@ -1,0 +1,27 @@
+{
+  "on_battery": false,
+  "devices": [
+    {
+      "path": "/org/freedesktop/UPower/devices/line_power_AC",
+      "kind": 1,
+      "present": true,
+      "power_supply": true,
+      "percentage": 0.0,
+      "state": 0,
+      "battery_level": 0,
+      "time_to_empty": 0,
+      "time_to_full": 0
+    },
+    {
+      "path": "/org/freedesktop/UPower/devices/battery_BAT0",
+      "kind": 2,
+      "present": true,
+      "power_supply": true,
+      "percentage": 82.0,
+      "state": 1,
+      "battery_level": 4,
+      "time_to_empty": 0,
+      "time_to_full": 5400
+    }
+  ]
+}

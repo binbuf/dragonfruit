@@ -3,7 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-- **How this plan runs**: 168 one-session tasks; execution order is [ROADMAP.md](ROADMAP.md). Task ids; 158 nested/human tasks run first; the 10 `[hw]` tasks are Phase 18 (hardware
+_(1 earlier section omitted)_
+
 - **Environment / toolchain**: Qt/CMake toolchain at `~/.local/df-toolchain/usr` (Qt 6.11, CMake 4.3,; Host is Fedora 44 with a KDE Wayland session (`wayland-0`); the nested backend
 - **Landed foundation**: Compositor core (nested/DRM/headless, calloop, damage-driven rendering), input
 - **T01 — T-01.1 Titlebar render element**: **State: done.** The SSD titlebar element exists, is sized from the generated; **`compositor/src/window/decoration.rs`** — `TitlebarElement`,
@@ -42,6 +43,7 @@
 - **T34 — T-07.2a NetworkManager read path**: **State: done.** The NetworkManager read path landed in a new concrete-adapter; **`services/networkmanager/`** (new crate `dragonfruit-networkmanager`,
 - **T35 — T-07.2b NetworkManager join and polkit degradation**: **State: done.** The write path (join/activate) and the polkit read-only; **`services/networkmanager/src/source.rs`** — the transport seam gained
 - **T36 — T-07.3 Audio adapter (PipeWire/WirePlumber)**: **State: done.** The audio adapter landed in a new concrete-adapter crate; no; **`services/audio/`** (new crate `dragonfruit-audio`, workspace member; deps:
+- **T37 — T-07.4 Power adapter (UPower)**: **State: done.** The read-only power adapter landed in a new concrete-adapter; **`services/power/`** (new crate `dragonfruit-power`, workspace member; deps:
 - **Follow-ups**: T-07.2a (done in T34): NetworkManager **read** path + mock/fixture landed; T-07.1a (done in T32): the adapter contract + mock landed
 <!-- symphony:digest:end -->
 
@@ -2397,6 +2399,89 @@ Gotchas for later tasks:
   WirePlumber change (`pw-mon` / `pactl subscribe`), not poll. Writes target the
   default sink only; per-sink writes and routing are T-15.
 
+## T37 — T-07.4 Power adapter (UPower)
+
+**State: done.** The read-only power adapter landed in a new concrete-adapter
+crate; no shell wiring yet (T-07.5 renders the battery item).
+
+What landed:
+
+- **`services/power/`** (new crate `dragonfruit-power`, workspace member; deps:
+  `dragonfruit-system-adapters` + `zbus` (blocking-api) + `serde`; dev
+  `serde_json`): `src/source.rs` (raw `PowerData`/`PowerDeviceData`,
+  `PowerSource` trait, `MockPower`, `DEVICE_TYPE_BATTERY`), `src/model.rs`
+  (`ChargeState` / `BatteryLevel` / `Battery` / `PowerSnapshot`),
+  `src/upower.rs` (`DbusUPower`, `UPOWER_SERVICE`), `src/adapter.rs`
+  (`PowerAdapter<S>`).
+- **Transport seam**: `PowerSource::read` → `Ok(Some(data))` present,
+  `Ok(None)` absent, `Err(AdapterError)` present-but-failed. `refresh()` is the
+  only daemon read and drives the shared `Subscription`. **There is no write**:
+  the battery item is read-only (power profiles deferred to T-15).
+- **Live path**: UPower over the **system bus** via `zbus`
+  (`org.freedesktop.UPower`): `OnBattery` + `EnumerateDevices`, then each
+  device's `org.freedesktop.UPower.Device` properties (`Type`, `IsPresent`,
+  `PowerSupply`, `Percentage`, `State`, `BatteryLevel`, `TimeToEmpty`,
+  `TimeToFull`). `NameHasOwner` distinguishes absence from a present-but-broken
+  daemon. No new dependency class — zbus is already in
+  `dragonfruit-networkmanager` (ADR 0026 named `services/power`).
+- **Presence semantics**: the model reports the first device with
+  `kind == 2 (Battery)` and `IsPresent`; if none, `PowerSnapshot::present()` is
+  false. The **adapter** stays `Available` when UPower answers with no battery
+  (a desktop/VM); the consumer hides the item on `!present()`. UPower absent is
+  `AdapterState::Unavailable` (hidden). Both paths never error.
+- **Model** — `ChargeState::{Unknown,Charging,Discharging,Empty,FullyCharged,
+  PendingCharge,PendingDischarge}` (`is_charging`/`is_plugged`/`is_discharging`),
+  `BatteryLevel`, `Battery` (percentage clamped 0–100, `percent()`, `fill()`),
+  `PowerSnapshot` (`present`, `percentage_percent`, `level` = 0..=1,
+  `charging`, `plugged`, `on_battery`, `time_to_empty`, `time_to_full`). Glyph
+  is `"battery"` (the existing `StatusGlyph.qml` case); charging is carried by
+  `charging()` + the label, not a distinct glyph.
+- **Tests** — 22 lib + `tests/read_path.rs` (7), fixture
+  `tests/fixtures/upower-laptop.json` (line power + one 82% charging battery).
+  Acceptance includes `the_fixture_renders_the_battery_level_and_charge_state`,
+  `an_absent_upower_hides_the_item_and_never_errors`,
+  `a_present_daemon_with_no_battery_has_no_item_to_show`,
+  `a_daemon_restart_resubscribes_and_resyncs`. `the_live_upower_reads_when_a_session_is_present`
+  exercises the real D-Bus path (this host has UPower with line power only) and
+  skips on CI.
+- **Makefile** — `make e2e` now runs `cargo test -p dragonfruit-power` after the
+  audio tests.
+- **Docs** — `07-system-integration.md` "The power path (T-07.4)".
+- **Capture** — `docs/captures/t07-power.png` (nested demo, `spectacle -b -n -f`;
+  this unit has no surface of its own). Vision check: menu bar + Dock + windows
+  + desktop render, no stray artifacts.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-power` — 22 lib + 7 integration green.
+- `make e2e` — exit 0 (power tests included).
+- `cargo clippy -p dragonfruit-power --all-targets -- -D warnings` and
+  `cargo fmt --all -- --check` — clean.
+
+Gotchas for later tasks:
+
+- **Read-only, no write half.** `PowerAdapter` has only `refresh()` and
+  `snapshot()`. Power profiles (`power-profiles-daemon`) and control are T-15;
+  do not add a `set_*` here without a task.
+- **Two hides, one item**: UPower absent → `AdapterState::Unavailable`
+  (`slot.visible == false`); UPower present but no battery → `Available` with
+  `snapshot.present() == false`. T-07.5b must check BOTH before drawing the
+  item, otherwise desktops/VMs show "No battery".
+- **Glyph**: `PowerSnapshot::glyph()` returns `"battery"` only. The charging
+  bolt is not yet in `StatusGlyph.qml`; T-07.5b either adds a `battery-charging`
+  case + changes `glyph()` or uses `charging()`/`label()`.
+- **`level()` is 0..=1** for the `StatusGlyph` fill; `percentage_percent()` is
+  the 0–100 label. Do not pass the 0–100 value as `level`.
+- **`Percentage` is 0–100** (double) in UPower, unlike PipeWire's 0..=1. The
+  model clamps; do not re-scale in the shell.
+- **T-07.5** owns the event bridge: call `PowerAdapter::refresh()` on a UPower
+  `PropertiesChanged`/`DeviceAdded`/`DeviceRemoved` signal (or `NameOwnerChanged`
+  for restart), never a poll. The live source is compile-checked + exercised on
+  a host with UPower, not in CI.
+- **UPower on this host has no battery** (line power only), so the live smoke
+  test reads `Ok(Some)` with `present() == false`; the fixture covers the
+  battery path.
+
 ## Follow-ups
 
 - T-07.2a (done in T34): NetworkManager **read** path + mock/fixture landed
@@ -2537,3 +2622,10 @@ Gotchas for later tasks:
   `libpipewire` client in behind `AudioSource`; (c) writes target the default
   sink only (per-sink/routing is T-15); (d) the absent-daemon matrix across all
   three adapters is T-07.6a.
+- T-07.4 (done in T37): power adapter landed (`services/power`). Remaining:
+  (a) T-07.5b renders the read-only battery item — it must hide it both when
+  `AdapterState::Unavailable` and when `PowerSnapshot::present()` is false, and
+  optionally add a charging bolt to `StatusGlyph.qml`; (b) T-07.5 owns the
+  event bridge — it must call `PowerAdapter::refresh()` on a UPower
+  `PropertiesChanged`/device signal, never poll; (c) power profiles
+  (`power-profiles-daemon`) and any writes are T-15.
