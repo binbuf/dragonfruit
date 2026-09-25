@@ -58,6 +58,16 @@ Rust for the core is not a whim: our services are already Rust, GIO/UDisks
 bindings are mature (gtk-rs), and the Rust portal backend gets the core for
 free. The bridge is the only Rust-in-Qt seam in the project and stays thin.
 
+**Implementation status (T-10.1a).** The core lives in `services/files-core`
+as `dragonfruit-files-core` (a library, no process). It ships the streaming
+model — `Location`, `Node` with raw-byte names and a stable per-session id,
+`DirectoryModel` fed by a worker thread — behind a `DirectorySource` seam.
+Because GIO/GVfs headers are not part of every host's pinned toolchain, the
+first slice exercises the sanctioned `StdFsSource` fallback, which is
+**marked for replacement** (`SANCTIONED_FALLBACK_MARKER`, targeting T-10.1b)
+rather than silently shipped; it resolves only `file://` and refuses other
+schemes. See [adr/0042](adr/0042-files-core-streaming-listing-and-fallback.md).
+
 ### Model
 
 - **`Location`** — URI-addressed, GFile-shaped: `file://`, `trash://`,

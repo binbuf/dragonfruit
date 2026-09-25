@@ -172,6 +172,7 @@ desktop/
 │   ├── settingsd/
 │   ├── menu-broker/
 │   ├── app-index/
+│   ├── files-core/          # Rust browsing/ops library (not a process)
 │   └── session/
 ├── apps/
 │   ├── settings/

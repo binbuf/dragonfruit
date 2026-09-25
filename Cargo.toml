@@ -6,6 +6,7 @@ members = [
     "protocols/df-ipc",
     "services/menu-broker",
     "services/settingsd",
+    "services/files-core",
     "services/app-index",
     "services/session",
     "services/system-adapters",
