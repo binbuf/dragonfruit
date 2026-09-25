@@ -7,10 +7,12 @@ import Dragonfruit
 // (back/forward, the view switch, local search), and the footer path bar.
 //
 // The browsing model is `FilesBrowser`; the locations and breadcrumb come
-// from the `Files` platform singleton. Everything visual is a design-system
-// component — this file owns only the information architecture and the
-// navigation state. The list/icon views over the directory model land in
-// T-10.4b, so the detail area holds the location's empty state until then.
+// from the `Files` platform singleton, and the directory listing from
+// `FilesDirectoryModel` (the files-core bridge, T-10.4b). Everything visual is
+// a design-system component — this file owns only the information architecture
+// and the navigation/selection state. The icon and list views both render the
+// one model; switching between them cannot lose the selection because the
+// selected node id lives here, not in either view.
 //
 // Keyboard: the sidebar owns Up/Down/Home/End/Return; Alt+Left/Alt+Right step
 // history; Ctrl+F focuses search; Escape clears it.
@@ -21,6 +23,9 @@ Item {
     // Guards the sidebar selection sync so setting `currentIndex`
     // programmatically is not mistaken for a user navigation.
     property bool syncing: false
+    // The selected item's stable files-core node id. Held here so it outlives
+    // either view; both views bind to it, the toolbars toggle only the layout.
+    property real selectedId: 0
 
     property alias browser: browser
     property alias sidebar: sidebar
@@ -33,6 +38,20 @@ Item {
     property alias viewControl: viewControl
     property alias pathBar: pathBar
     property alias emptyState: emptyState
+    property alias directory: directory
+    property alias iconView: iconView
+    property alias listView: listView
+
+    // Selection and opening the two views share. Opening a folder navigates;
+    // opening a file is T-10.4c's.
+    function selectNode(nodeId) {
+        root.selectedId = nodeId;
+    }
+
+    function activateNode(uri, isDir) {
+        if (isDir && uri)
+            browser.navigate(uri);
+    }
 
     signal closeRequested()
     signal minimizeRequested()
@@ -151,8 +170,15 @@ Item {
 
     FilesBrowser {
         id: browser
-        defaultView: "icon"
-        onCurrentUriChanged: root.syncSelection()
+        // `DF_FILES_START_VIEW` lets the capture harness open in either view;
+        // the toolbar switch still owns the live choice.
+        defaultView: Files.startView.length > 0 ? Files.startView : "icon"
+        onCurrentUriChanged: {
+            // Node ids are per-listing; a selection from another folder is
+            // meaningless here.
+            root.selectedId = 0;
+            root.syncSelection();
+        }
         onNavigated: root.syncSelection()
     }
 
@@ -255,23 +281,55 @@ Item {
                         }
                     }
 
-                    // The location content. The directory listing and its
-                    // list/icon views are T-10.4b; until then this is the
-                    // designed empty/search state.
+                    // The location content: the files-core listing rendered
+                    // by the icon or list view (T-10.4b). Both views stay
+                    // instantiated and share `root.selectedId`, so the view
+                    // switch cannot lose the selection. The empty/error state
+                    // sits above them once the listing settles.
                     Item {
                         id: contentArea
                         width: parent.width
                         height: Math.max(0, parent.height - toolbar.height - pathBar.height)
+
+                        FilesDirectoryModel {
+                            id: directory
+                            location: browser.currentUri
+                        }
+
+                        FilesIconView {
+                            id: iconView
+                            anchors.fill: parent
+                            visible: browser.currentView !== "list"
+                            directory: directory
+                            selectedId: root.selectedId
+                            onSelected: (nodeId) => root.selectNode(nodeId)
+                            onActivated: (uri, isDir) => root.activateNode(uri, isDir)
+                        }
+
+                        FilesListView {
+                            id: listView
+                            anchors.fill: parent
+                            visible: browser.currentView === "list"
+                            directory: directory
+                            selectedId: root.selectedId
+                            onSelected: (nodeId) => root.selectNode(nodeId)
+                            onActivated: (uri, isDir) => root.activateNode(uri, isDir)
+                        }
 
                         Column {
                             id: emptyState
                             anchors.centerIn: parent
                             width: Math.min(parent.width - 2 * Theme.primitive.spacing.xl, 360)
                             spacing: Theme.primitive.spacing.sm
+                            visible: root.hasSearch
+                                     || (directory.count === 0
+                                         && directory.state !== "streaming")
 
                             Icon {
                                 anchors.horizontalCenter: parent.horizontalCenter
-                                name: root.hasSearch ? "search" : "folder"
+                                name: root.hasSearch ? "search"
+                                                     : (directory.state === "error"
+                                                        ? "folder" : "folder")
                                 size: Theme.primitive.spacing.xxl
                                 color: Theme.color.textTertiary
                             }
@@ -282,7 +340,9 @@ Item {
                                 text: root.hasSearch
                                       ? qsTr("Search \u201c%1\u201d in %2")
                                             .arg(root.searchText).arg(root.locationTitle)
-                                      : root.locationTitle
+                                      : (directory.state === "error"
+                                         ? qsTr("Can\u2019t open %1").arg(root.locationTitle)
+                                         : root.locationTitle)
                                 color: Theme.color.textPrimary
                                 font.pixelSize: Theme.primitive.font.sizeLg
                                 font.weight: Theme.primitive.font.weightMedium
@@ -293,8 +353,10 @@ Item {
                                 width: parent.width
                                 horizontalAlignment: Text.AlignHCenter
                                 text: root.hasSearch
-                                      ? qsTr("Results will appear here.")
-                                      : qsTr("This folder\u2019s items will appear here.")
+                                      ? qsTr("Search results are coming later.")
+                                      : (directory.state === "error"
+                                         ? directory.errorMessage
+                                         : qsTr("This folder is empty."))
                                 color: Theme.color.textSecondary
                                 font.pixelSize: Theme.primitive.font.sizeSm
                                 wrapMode: Text.WordWrap

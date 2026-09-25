@@ -45,6 +45,13 @@ class FilesBridge : public QObject
     // The location a window opens on: `DF_FILES_START_URI` when set, else
     // empty (the shell falls back to Home).
     Q_PROPERTY(QString startUri READ startUri CONSTANT)
+    // A real directory the headless tests point the views at, from
+    // `DF_FILES_VIEW_FIXTURE`; empty unless the test runner set it.
+    Q_PROPERTY(QString viewFixtureUri READ viewFixtureUri CONSTANT)
+    // The view a fresh window opens in, from `DF_FILES_START_VIEW` (`list`
+    // or `icon`); empty means the shell default. A capture seam, sibling of
+    // `DF_FILES_START_URI`.
+    Q_PROPERTY(QString startView READ startView CONSTANT)
 
 public:
     explicit FilesBridge(QObject *parent = nullptr);
@@ -57,6 +64,8 @@ public:
     QVariantList volumes() const { return m_volumes; }
     bool fixture() const { return m_fixture; }
     QString startUri() const { return m_startUri; }
+    QString viewFixtureUri() const { return m_viewFixtureUri; }
+    QString startView() const { return m_startView; }
 
     // The path bar breadcrumb as `{ label, uri }` from the machine down to the
     // location. `file://` paths are segmented; the home directory collapses
@@ -77,6 +86,8 @@ private:
     QString m_homePath;
     QString m_userName;
     QString m_startUri;
+    QString m_viewFixtureUri;
+    QString m_startView;
     QVariantList m_favorites;
     QVariantList m_volumes;
 };
