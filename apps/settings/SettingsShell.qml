@@ -113,6 +113,8 @@ Item {
             return appearancePaneComponent;
         case "wallpaper":
             return wallpaperPaneComponent;
+        case "desktop-dock":
+            return desktopDockPaneComponent;
         default:
             return null;
         }
@@ -187,6 +189,11 @@ Item {
     Component {
         id: wallpaperPaneComponent
         WallpaperPane { }
+    }
+
+    Component {
+        id: desktopDockPaneComponent
+        DesktopDockPane { }
     }
 
     AppWindow {

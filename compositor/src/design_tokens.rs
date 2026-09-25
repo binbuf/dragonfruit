@@ -317,6 +317,22 @@ pub mod component {
         pub const SEGMENT_MIN_WIDTH: f32 = 64.0_f32;
         pub const FONT_SIZE: f32 = 13.0_f32;
     }
+    pub mod slider {
+        pub const HEIGHT: f32 = 24.0_f32;
+        pub const TRACK_HEIGHT: f32 = 4.0_f32;
+        pub const KNOB: f32 = 16.0_f32;
+        pub const MIN_WIDTH: f32 = 160.0_f32;
+        pub const CAPTION_GAP: f32 = 2.0_f32;
+        pub const STEP: f32 = 0.05_f32;
+    }
+    pub mod select {
+        pub const HEIGHT: f32 = 28.0_f32;
+        pub const RADIUS: f32 = 10.0_f32;
+        pub const PADDING_H: f32 = 12.0_f32;
+        pub const MIN_WIDTH: f32 = 140.0_f32;
+        pub const CHEVRON_SIZE: f32 = 12.0_f32;
+        pub const CHEVRON_GAP: f32 = 8.0_f32;
+    }
     pub mod search_field {
         pub const HEIGHT: f32 = 28.0_f32;
         pub const RADIUS: f32 = 999.0_f32;

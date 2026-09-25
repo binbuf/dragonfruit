@@ -35,6 +35,8 @@ TestCase {
     Component { id: settingsRowComponent; SettingsRow { } }
     Component { id: settingsGroupComponent; SettingsGroup { } }
     Component { id: segmentedComponent; SegmentedControl { } }
+    Component { id: sliderComponent; Slider { width: 200 } }
+    Component { id: selectComponent; Select { width: 200 } }
     Component { id: contextMenuComponent; ContextMenu { } }
     Component { id: searchFieldComponent; SearchField { } }
     Component { id: sourceListComponent; SourceList { } }
@@ -58,6 +60,9 @@ TestCase {
     SignalSpy { id: popupClosedSpy; signalName: "closed" }
     SignalSpy { id: buttonSpy; signalName: "clicked" }
     SignalSpy { id: segmentedSpy; signalName: "activated" }
+    SignalSpy { id: sliderMovedSpy; signalName: "moved" }
+    SignalSpy { id: sliderCommittedSpy; signalName: "committed" }
+    SignalSpy { id: selectActivatedSpy; signalName: "activated" }
     SignalSpy { id: sidebarSpy; signalName: "activated" }
     SignalSpy { id: sourceListSpy; signalName: "activated" }
     SignalSpy { id: acceptedSpy; signalName: "accepted" }
@@ -323,6 +328,85 @@ TestCase {
         keyClick(Qt.Key_Return);
         compare(segmentedSpy.count, 1);
         compare(segmentedSpy.signalArguments[0][0], 1);
+    }
+
+    // -- Slider (T-09.4) -----------------------------------------------------
+
+    function test_slider_keyboard_and_role() {
+        var s = make(sliderComponent, { value: 0.5, accessibleName: "Dock size" });
+        compare(s.Accessible.role, Accessible.Slider);
+        compare(s.Accessible.name, "Dock size");
+        sliderMovedSpy.target = s;
+        sliderMovedSpy.clear();
+        sliderCommittedSpy.target = s;
+        sliderCommittedSpy.clear();
+
+        s.forceActiveFocus();
+        waitForRendering(stage);
+        keyClick(Qt.Key_Right);
+        verify(Math.abs(s.value - (0.5 + Theme.controls.slider.step)) < 0.0001,
+               "Right must increase the value by the token step");
+        compare(sliderMovedSpy.count, 1);
+        compare(sliderCommittedSpy.count, 1);
+
+        keyClick(Qt.Key_Home);
+        compare(s.value, 0);
+        keyClick(Qt.Key_End);
+        compare(s.value, 1);
+    }
+
+    function test_slider_captions_and_visual_track() {
+        var s = make(sliderComponent, {
+            value: 1.0, minLabel: "Small", maxLabel: "Large"
+        });
+        verify(s.hasCaptions);
+        verify(s.implicitHeight > Theme.controls.slider.height,
+               "captioned sliders reserve room below the track");
+        var img = grabImage(s);
+        var cy = Math.round(Theme.controls.slider.height / 2);
+        compare(img.red(4, cy), channel(Theme.color.accent.r));
+        compare(img.green(4, cy), channel(Theme.color.accent.g));
+        compare(img.blue(4, cy), channel(Theme.color.accent.b));
+    }
+
+    // -- Select (T-09.4) -----------------------------------------------------
+
+    function test_select_keyboard_and_role() {
+        var sel = make(selectComponent, {
+            accessibleName: "Dock position",
+            model: ["Bottom", "Left", "Right"],
+            currentIndex: 0
+        });
+        compare(sel.Accessible.role, Accessible.ComboBox);
+        compare(sel.Accessible.name, "Dock position");
+        compare(sel.currentLabel, "Bottom");
+        selectActivatedSpy.target = sel;
+        selectActivatedSpy.clear();
+
+        sel.forceActiveFocus();
+        waitForRendering(stage);
+        keyClick(Qt.Key_Down);
+        verify(sel.menu.open, "Down must open the value popup");
+        keyClick(Qt.Key_Down);
+        keyClick(Qt.Key_Return);
+        compare(sel.currentIndex, 1);
+        compare(sel.currentLabel, "Left");
+        compare(selectActivatedSpy.count, 1);
+        compare(selectActivatedSpy.signalArguments[0][0], 1);
+        compare(sel.menu.open, false);
+    }
+
+    function test_select_activate_emits_value() {
+        var sel = make(selectComponent, {
+            model: [{ value: "bottom", label: "Bottom" },
+                    { value: "left", label: "Left" }],
+            currentIndex: 0
+        });
+        selectActivatedSpy.target = sel;
+        selectActivatedSpy.clear();
+        sel.activateIndex(1);
+        compare(sel.currentValue, "left");
+        compare(selectActivatedSpy.count, 1);
     }
 
     // -- ContextMenu (FR-1, FR-4) ------------------------------------------

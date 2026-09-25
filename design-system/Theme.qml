@@ -333,6 +333,22 @@ QtObject {
             readonly property int segmentMinWidth: 64
             readonly property int fontSize: 13
         }
+        readonly property var slider: QtObject {
+            readonly property int height: 24
+            readonly property int trackHeight: 4
+            readonly property int knob: 16
+            readonly property int minWidth: 160
+            readonly property int captionGap: 2
+            readonly property real step: 0.05
+        }
+        readonly property var select: QtObject {
+            readonly property int height: 28
+            readonly property int radius: 10
+            readonly property int paddingH: 12
+            readonly property int minWidth: 140
+            readonly property int chevronSize: 12
+            readonly property int chevronGap: 8
+        }
         readonly property var searchField: QtObject {
             readonly property int height: 28
             readonly property int radius: 999

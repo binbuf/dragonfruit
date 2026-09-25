@@ -69,6 +69,29 @@ set_tests_properties(tst_settings_wallpaper PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# Desktop & Dock-pane tests (T-09.4): every `dock.*` control applies live to its
+# settings key and an external change converges. `DF_SETTINGS_FIXTURE` forces
+# the deterministic in-process mock, so the cases never touch the host bus.
+qt_add_executable(tst_settings_desktop_dock
+    tst_settings_desktop_dock.cpp
+)
+target_link_libraries(tst_settings_desktop_dock PRIVATE
+    Qt6::QuickTest
+    dragonfruit-design-systemplugin
+    dragonfruit-settings-uiplugin
+)
+qt_import_qml_plugins(tst_settings_desktop_dock)
+
+add_test(
+    NAME tst_settings_desktop_dock
+    COMMAND tst_settings_desktop_dock
+        -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_settings_desktop_dock.qml
+)
+set_tests_properties(tst_settings_desktop_dock PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;DF_SETTINGS_FIXTURE=1;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Settings live-apply tests (T-09.1b): a representative control is bound to a
 # settingsd key through the QML `Settings` singleton and round-trips it. The
 # bus-backed cases run under a private session bus; the real-daemon case uses
