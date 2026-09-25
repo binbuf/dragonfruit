@@ -4,8 +4,9 @@
 //! One interface, one object path. Methods are typed against the schema:
 //!
 //! * `Get(key) -> v` — the current value as a D-Bus variant.
-//! * `Set(key, value: v)` — validate against the schema, store, and emit
-//!   `Changed(key, value)` **only when the value actually changed**.
+//! * `Set(key, value: v)` — validate against the schema, store, persist
+//!   (when the object has a [`Persistence`]), and emit `Changed(key, value)`
+//!   **only when the value actually changed**.
 //! * `GetAll() -> a{sv}` — a resync snapshot for a client that (re)appeared.
 //! * `ListKeys() -> as` — the schema's key names, in stable order.
 //! * `SchemaVersion` property (`u`) — the persisted-schema revision.
@@ -24,6 +25,7 @@ use zbus::object_server::SignalEmitter;
 use zbus::zvariant::OwnedValue;
 
 use crate::model::Settings;
+use crate::persist::Persistence;
 use crate::schema::SCHEMA_VERSION;
 use crate::value::{SettingsError, Value};
 
@@ -63,6 +65,9 @@ impl From<SettingsError> for Settings1Error {
 #[derive(Clone)]
 pub struct Settings1 {
     settings: Arc<Mutex<Settings>>,
+    /// The on-disk writer. `None` for an in-memory object (tests, a session
+    /// with no config directory); `Some` when `Set` must persist.
+    persistence: Option<Arc<Persistence>>,
 }
 
 impl Settings1 {
@@ -70,18 +75,35 @@ impl Settings1 {
     pub fn new(settings: Settings) -> Self {
         Settings1 {
             settings: Arc::new(Mutex::new(settings)),
+            persistence: None,
         }
     }
 
     /// A new object sharing an existing store (for tests and future clients
     /// in the same process).
     pub fn from_shared(settings: Arc<Mutex<Settings>>) -> Self {
-        Settings1 { settings }
+        Settings1 {
+            settings,
+            persistence: None,
+        }
+    }
+
+    /// A new object that persists every real change through `persistence`.
+    pub fn with_persistence(settings: Settings, persistence: Persistence) -> Self {
+        Settings1 {
+            settings: Arc::new(Mutex::new(settings)),
+            persistence: Some(Arc::new(persistence)),
+        }
     }
 
     /// The shared store behind this object.
     pub fn store(&self) -> &Arc<Mutex<Settings>> {
         &self.settings
+    }
+
+    /// The on-disk writer, when this object was created with one.
+    pub fn persistence(&self) -> Option<&Arc<Persistence>> {
+        self.persistence.as_ref()
     }
 }
 
@@ -114,6 +136,19 @@ impl Settings1 {
             settings.set(key, value).map_err(Settings1Error::from)?
         };
         if let Some(new_value) = changed {
+            // Persist before signalling: a consumer that reacts to `Changed`
+            // can rely on the durable file already holding the new value. A
+            // disk failure must not take the live daemon down, so it is
+            // reported and the in-memory value stays authoritative.
+            if let Some(persistence) = &self.persistence {
+                let snapshot = lock(&self.settings).clone();
+                if let Err(error) = persistence.save(&snapshot) {
+                    eprintln!(
+                        "dragonfruit-settingsd: cannot persist settings to {}: {error}",
+                        persistence.path().display()
+                    );
+                }
+            }
             Settings1::changed(&emitter, key, new_value.to_owned_value()).await?;
         }
         Ok(())
@@ -158,12 +193,18 @@ fn lock(settings: &Arc<Mutex<Settings>>) -> std::sync::MutexGuard<'_, Settings> 
 }
 
 /// Serve the interface on the session bus until the process is asked to stop.
-/// Returns an error only when the bus or the name cannot be taken; a session
-/// without a bus is not this daemon's problem to block on.
-pub fn run(settings: Settings) -> zbus::Result<()> {
+/// `persistence` is `Some` when a config path was resolved; every real `Set`
+/// is then written to disk before its signal. Returns an error only when the
+/// bus or the name cannot be taken; a session without a bus is not this
+/// daemon's problem to block on.
+pub fn run(settings: Settings, persistence: Option<Persistence>) -> zbus::Result<()> {
+    let object = match persistence {
+        Some(persistence) => Settings1::with_persistence(settings, persistence),
+        None => Settings1::new(settings),
+    };
     let connection = connection::Builder::session()?
         .name(DBUS_NAME)?
-        .serve_at(DBUS_PATH, Settings1::new(settings))?
+        .serve_at(DBUS_PATH, object)?
         .build()?;
 
     // The blocking object server runs on its own executor; parking the main

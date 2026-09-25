@@ -9,13 +9,18 @@ rust-version.workspace = true
 
 # The desktop-settings provider: our own named, schema-documented keys served
 # over `org.dragonfruit.Settings1` on the user session bus, with change
-# signals so consumers never poll. Persistence lands in T-08.1b; this crate
-# currently owns the in-memory model and the D-Bus surface only.
+# signals so consumers never poll. T-08.1b added the on-disk owner: the same
+# `{"schema":N,"keys":{…}}` file the shell's interim `DockSettings`/`DockPins`
+# already write, with atomic writes and startup migrations.
 #
 # zbus is the same pinned D-Bus stack the other services use; `zvariant` is
 # re-exported through `zbus::zvariant`, so there is no separate dependency.
+# `serde_json` is the persisted format (the repo's other service crates use
+# the same pinned version); it is a runtime dependency because the daemon
+# reads and writes the file.
 [dependencies]
 df-ipc.workspace = true
+serde_json = "=1.0.151"
 zbus = { version = "=5.19.0", features = ["blocking-api"] }
 
 [dev-dependencies]

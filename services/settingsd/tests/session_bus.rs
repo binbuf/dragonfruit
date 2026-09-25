@@ -11,11 +11,13 @@
 
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
+use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
 use std::time::Duration;
 
 use dragonfruit_settingsd::dbus::{Settings1, DBUS_NAME, DBUS_PATH};
+use dragonfruit_settingsd::persist;
 use dragonfruit_settingsd::schema::{KeySpec, KeyType, KEYS, SCHEMA_VERSION};
 use dragonfruit_settingsd::value::Value;
 use dragonfruit_settingsd::Settings;
@@ -65,17 +67,50 @@ impl Drop for PrivateBus {
     }
 }
 
-/// Serve the settings interface on `bus` and return the holding connection
+/// Serve a settings object on `bus` and return the holding connection
 /// (dropping it unregisters the name).
-fn serve(bus: &PrivateBus) -> Connection {
+fn serve_object(bus: &PrivateBus, object: Settings1) -> Connection {
     zbus::blocking::connection::Builder::address(bus.address.as_str())
         .expect("valid bus address")
         .name(DBUS_NAME)
         .expect("valid well-known name")
-        .serve_at(DBUS_PATH, Settings1::new(Settings::new()))
+        .serve_at(DBUS_PATH, object)
         .expect("serve the settings interface")
         .build()
         .expect("build the service connection")
+}
+
+/// Serve a fresh in-memory settings object on `bus`.
+fn serve(bus: &PrivateBus) -> Connection {
+    serve_object(bus, Settings1::new(Settings::new()))
+}
+
+/// A scratch directory removed on drop.
+struct Scratch(PathBuf);
+
+impl Scratch {
+    fn new() -> Self {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "dragonfruit-settingsd-bus-{}-{nonce}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&path).unwrap();
+        Scratch(path)
+    }
+
+    fn file(&self) -> PathBuf {
+        self.0.join("dragonfruit").join("settings.json")
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
 }
 
 /// Call a method and deserialize its reply body.
@@ -297,4 +332,57 @@ fn invalid_writes_are_typed_errors_and_leave_the_store_unchanged() {
     );
 
     drop(service);
+}
+
+#[test]
+fn a_set_over_the_bus_is_persisted_and_reloaded_by_a_restart() {
+    let scratch = Scratch::new();
+    let path = scratch.file();
+
+    // First daemon instance: load (no file yet) and serve with persistence.
+    let loaded = persist::load(&path).expect("a missing file loads defaults");
+    let bus = PrivateBus::start();
+    let service = serve_object(
+        &bus,
+        Settings1::with_persistence(loaded.settings, loaded.persistence),
+    );
+    let client = bus.connect();
+
+    set(&client, "dock.autohide", &Value::Bool(true)).expect("Set persists");
+    set(
+        &client,
+        "appearance.colorScheme",
+        &Value::Text("dark".into()),
+    )
+    .expect("Set persists");
+    set(
+        &client,
+        "dock.pinned",
+        &Value::TextList(vec!["a.desktop".into()]),
+    )
+    .expect("Set persists");
+
+    // The file is on disk in the documented shape before `Set` returns.
+    assert!(path.exists(), "a real Set writes the settings file");
+    let text = std::fs::read_to_string(&path).unwrap();
+    let json: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(json["schema"], serde_json::Value::from(SCHEMA_VERSION));
+    assert_eq!(json["keys"]["dock.autohide"], serde_json::Value::Bool(true));
+
+    // Simulate a restart: a fresh object over the same file sees the writes.
+    drop(service);
+    let restarted = persist::load(&path).expect("the written file reloads");
+    assert_eq!(
+        *restarted.settings.get("dock.autohide").unwrap(),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        *restarted.settings.get("appearance.colorScheme").unwrap(),
+        Value::Text("dark".into())
+    );
+    assert_eq!(
+        *restarted.settings.get("dock.pinned").unwrap(),
+        Value::TextList(vec!["a.desktop".into()])
+    );
+    assert!(!restarted.migrated, "a written file is already current");
 }

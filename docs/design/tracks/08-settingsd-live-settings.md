@@ -148,3 +148,48 @@ The key names and defaults match the shell's interim
 `accessibility.reduceMotion`), so T-08.1b adopts that file without migration.
 The integration test in `services/settingsd/tests/session_bus.rs` drives the
 interface over a private session bus; `make e2e` runs it.
+
+## Persistence, atomic writes, and migrations (T-08.1b)
+
+`services/settingsd/src/persist.rs` owns the on-disk state (ADR
+[0031](../adr/0031-settingsd-persistence-format-and-atomic-writes.md)).
+Desktop settings live in `$XDG_CONFIG_HOME/dragonfruit/settings.json`, with
+`$HOME/.config/dragonfruit/settings.json` as the fallback, in the shell's
+existing shape:
+
+```json
+{
+  "schema": 1,
+  "keys": {
+    "dock.size": 0.5,
+    "dock.autohide": false,
+    "dock.pinned": ["a.desktop", "b.desktop"]
+  }
+}
+```
+
+`schema` is `SCHEMA_VERSION`; each entry under `keys` is JSON whose shape
+follows the key's declared type (bool, number, string, or string array). A
+file with no `schema` field is revision 0 and is migrated at startup: the
+revision is stamped and every key the older file predates is filled with its
+default (a key's `since` revision drives this). The upgraded file is written
+back once. A value that no longer validates falls back to its default rather
+than rejecting the file; a malformed or unreadable file is reported and the
+daemon runs from defaults.
+
+Saves are **atomic**: the document is staged in a hidden sibling of the target
+(`.settings.json.<pid>.<n>.tmp`), flushed with `sync_all`, then `rename(2)`d
+over `settings.json`. A process that dies between staging and the rename
+leaves the previous file intact and the stale temporary file inert. Root
+fields other than `schema`/`keys` and key names outside the schema are
+preserved verbatim across a save, so settingsd does not clobber the interim
+shell writer until T-08.2a removes it.
+
+A `Set` that really changes a value persists **before** its `Changed` signal,
+so a consumer reacting to the signal can rely on the durable file already
+holding the new value. `dragonfruit-settingsd --config-path` prints the
+resolved path. Tests: `persist.rs` unit tests cover the round-trip, the
+staged-write failure leaving the prior file intact, the revision-0 migration
+fixture, unknown-entry preservation, and invalid-value fallback; the
+`session_bus.rs` integration test serves the daemon with a persistence path
+and asserts a `Set` lands on disk and reloads after a restart.
