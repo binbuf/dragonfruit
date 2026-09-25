@@ -59,6 +59,27 @@ private slots:
         QCOMPARE(colorSurface(), QStringLiteral("#ffffff"));
     }
 
+    // `appearance.accent` overrides the active scheme's accent family live;
+    // empty restores the token accent.
+    void accentOverrideFlipsTheme()
+    {
+        MockSettingsClient client;
+        ThemeBinding binding(&client, &m_engine);
+        client.set(QStringLiteral("appearance.colorScheme"), QStringLiteral("light"));
+        binding.apply();
+
+        QCOMPARE(m_theme->property("accentOverride").toString(), QString());
+        QCOMPARE(colorAccent(), QStringLiteral("#b32a66"));
+
+        client.set(QStringLiteral("appearance.accent"), QStringLiteral("#4a7dff"));
+        QCOMPARE(m_theme->property("accentOverride").toString(),
+                 QStringLiteral("#4a7dff"));
+        QCOMPARE(colorAccent(), QStringLiteral("#4a7dff"));
+
+        client.set(QStringLiteral("appearance.accent"), QString());
+        QCOMPARE(colorAccent(), QStringLiteral("#b32a66"));
+    }
+
     void reduceMotionFlipsTheme()
     {
         MockSettingsClient client;
@@ -133,6 +154,12 @@ private:
     {
         QObject *colors = m_theme->property("color").value<QObject *>();
         return colors ? colors->property("surface").value<QColor>().name() : QString();
+    }
+
+    QString colorAccent() const
+    {
+        QObject *colors = m_theme->property("color").value<QObject *>();
+        return colors ? colors->property("accent").value<QColor>().name() : QString();
     }
 
     QQmlEngine m_engine;

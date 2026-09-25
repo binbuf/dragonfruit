@@ -48,15 +48,18 @@ freezes the v1 key set.
 |---|---|
 | `shell/Dock` (`libs/settings-client/settingsclient.*`, `shell/src/dockmodel.cpp`) | every `dock.*` key |
 | `apps/settings` (`apps/settings/SettingsBridge.*`, the QML `Settings` singleton) | every key (Wave-1 panes write through it; T-09.1b) |
-| `shell/design-system Theme` (`shell/src/themebinding.*`) | `appearance.colorScheme`, `appearance.accent` (read, not yet consumed), `accessibility.reduceMotion` |
+| `shell/design-system Theme` (`shell/src/themebinding.*`) | `appearance.colorScheme`, `appearance.accent`, `accessibility.reduceMotion` |
+| `apps/settings/design-system Theme` (`apps/settings/SettingsShell.qml` bindings, T-09.2) | `appearance.colorScheme`, `appearance.accent`, `accessibility.reduceMotion` (the app is a separate process, so it mirrors the same keys onto its own `Theme`) |
 | compositor motion/input (over `df_toplevel_manager` v5, ADR [0034](design/adr/0034-compositor-policy-via-shell-bridge.md)) | `dock.titlebarDoubleClick`, `dock.minimizedAnimation`, `gestures.*`, `accessibility.reduceMotion`, `appearance.colorScheme`, `input.repeatDelay`, `input.repeatRate` |
 | compositor workspace model | `workspaces.count` (no live owner yet; follow-up) |
 
 `dock.minimizeIntoTileIcon` is Dock entry visibility, not a compositor
 key — it is not forwarded over the private protocol. `appearance.accent`
-is declared and persisted but not yet consumed: `Theme.color.accent` is a
-read-only scheme token, so honoring the override is a design-system change
-owned by the Appearance pane (T-09.2).
+is consumed since T-09.2: the design-system `Theme` gained a writable
+`accentOverride` (generated from `design-system/tokens/tokens.json`) and the
+shell's `ThemeBinding` and the Settings app's local bindings write it, so
+every `Theme.color.accent*` consumer follows live (ADR
+[0037](design/adr/0037-accent-override-and-app-local-theme-sync.md)).
 
 ## Restart and resync
 

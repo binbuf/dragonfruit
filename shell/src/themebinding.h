@@ -8,6 +8,7 @@
 // singleton:
 //
 //   appearance.colorScheme     "light" | "dark" | "auto"  -> Theme.dark
+//   appearance.accent          "#rrggbb" | ""             -> Theme.accentOverride
 //   accessibility.reduceMotion boolean                    -> Theme.reducedMotion
 //
 // It reacts to `SettingsClient::changed` and `refreshed` only (no timer, no

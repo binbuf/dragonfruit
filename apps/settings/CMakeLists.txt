@@ -15,6 +15,7 @@ qt_add_qml_module(dragonfruit-settings-ui
     QML_FILES
         SettingsPanes.qml
         PaneHeader.qml
+        AppearancePane.qml
         SettingsShell.qml
         SettingsWindow.qml
 )
@@ -36,6 +37,7 @@ qt_import_qml_plugins(dragonfruit-settings)
 df_qml_lint(app-settings
     SettingsPanes.qml
     PaneHeader.qml
+    AppearancePane.qml
     SettingsShell.qml
     SettingsWindow.qml
 )

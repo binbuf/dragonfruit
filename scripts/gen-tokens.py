@@ -100,14 +100,45 @@ def qml_object(body: list[str], indent: int) -> list[str]:
     return lines
 
 
-def emit_qml_group(name: str, node: dict, root: dict, indent: int, kind: str) -> list[str]:
+# The accent family is overridable at runtime (T-09.2, `appearance.accent`).
+# Every other semantic color stays a token literal; only these four consult
+# the single top-level `accentOverride`, deriving hover/muted/on-content from
+# it so a custom accent cannot leave a stale magenta hover or label.
+ACCENT_OVERRIDE_KEYS = {"accent", "accentHover", "accentMuted", "accentContent"}
+
+
+def accent_qml(key: str, value, scheme: str, muted_surface: str) -> str:
+    """The QML binding for one accent-family scheme color."""
+    fallback = qml_literal(value)
+    if key == "accent":
+        return f"tokens.hasAccentOverride ? tokens.accentOverrideColor : {fallback}"
+    if key == "accentHover":
+        return f"tokens.hasAccentOverride ? Qt.lighter(tokens.accentOverrideColor, 1.15) : {fallback}"
+    if key == "accentMuted":
+        # A low-alpha accent wash over the scheme's muted surface.
+        return (f"tokens.hasAccentOverride ? Qt.tint({muted_surface}, "
+                f"Qt.rgba(tokens.accentOverrideColor.r, tokens.accentOverrideColor.g, "
+                f"tokens.accentOverrideColor.b, {0.28 if scheme == 'dark' else 0.14})) "
+                f": {fallback}")
+    # accentContent: pick a legible on-accent by luminance (0.5 threshold), so
+    # a light custom accent gets dark text and a dark accent gets white.
+    return ("tokens.hasAccentOverride ? (tokens.accentOverrideColor.r * 0.299 "
+            "+ tokens.accentOverrideColor.g * 0.587 + tokens.accentOverrideColor.b * 0.114 > 0.5 "
+            f'? "#130f17" : "#ffffff") : {fallback}')
+
+
+def emit_qml_group(name: str, node: dict, root: dict, indent: int, kind: str,
+                   scheme: str | None = None,
+                   muted_surface: str = "transparent") -> list[str]:
     """Emit ``readonly property QtObject <name>: QtObject { ... }``."""
     pad = " " * indent
     lines = [f"{pad}readonly property var {name}: QtObject {{"]
     for key, raw in node.items():
         value = resolve(raw, root)
         if isinstance(value, dict):
-            lines.extend(emit_qml_group(key, value, root, indent + 4, kind))
+            lines.extend(emit_qml_group(key, value, root, indent + 4, kind,
+                                        scheme=scheme,
+                                        muted_surface=muted_surface))
         else:
             if isinstance(value, list):
                 prop = "var"
@@ -119,7 +150,12 @@ def emit_qml_group(name: str, node: dict, root: dict, indent: int, kind: str) ->
                 prop = "int"
             else:
                 prop = "real"
-            lines.append(" " * (indent + 4) + f"readonly property {prop} {key}: {qml_literal(value)}")
+            if scheme is not None and key in ACCENT_OVERRIDE_KEYS:
+                lines.append(" " * (indent + 4)
+                             + f"readonly property {prop} {key}: "
+                             + accent_qml(key, value, scheme, muted_surface))
+            else:
+                lines.append(" " * (indent + 4) + f"readonly property {prop} {key}: {qml_literal(value)}")
     lines.append(pad + "}")
     return lines
 
@@ -142,8 +178,10 @@ def gen_qml(data: dict) -> str:
 
     for scheme in ("light", "dark"):
         node = data["semantic"][scheme]
+        muted = resolve(node["color"]["surfaceMuted"], root)
         lines.extend(
-            emit_qml_group(f"{scheme}Scheme", node, root, 4, "semantic")
+            emit_qml_group(f"{scheme}Scheme", node, root, 4, "semantic",
+                           scheme=scheme, muted_surface=qml_literal(muted))
         )
     lines.append("")
 
@@ -156,6 +194,14 @@ def gen_qml(data: dict) -> str:
             "    // Reduced motion is a first-class token (FR-5): every animation has",
             "    // a variant that removes translation/scale but keeps state legible.",
             "    property bool reducedMotion: false",
+            "    // Accent override (T-09.2, `appearance.accent`): empty means the",
+            "    // active scheme's token accent. The shell's ThemeBinding and the",
+            "    // Settings app's local Theme bindings write it; the accent-family",
+            "    // scheme colors above consult it, so every accent consumer follows",
+            "    // without a per-component override.",
+            "    property string accentOverride: \"\"",
+            "    readonly property bool hasAccentOverride: tokens.accentOverride !== \"\"",
+            "    readonly property color accentOverrideColor: tokens.hasAccentOverride ? tokens.accentOverride : \"transparent\"",
             "    readonly property var color: tokens.dark ? tokens.darkScheme.color : tokens.lightScheme.color",
             "    readonly property var material: tokens.dark ? tokens.darkScheme.material : tokens.lightScheme.material",
             "",

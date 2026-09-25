@@ -45,8 +45,9 @@ needs a QML-facing surface, because panes are QML and must not touch D-Bus.
 - New consumers (settings panes, Files, and later first-party apps) link
   `dragonfruit-settings-client` rather than re-implementing the protocol.
 - The `Settings` singleton is the Settings app's one settings surface; a pane
-  never opens its own bus connection. `appearance.accent` still has no
-  design-system consumer (T-09.2).
+  never opens its own bus connection. `appearance.accent` gained its
+  design-system consumer in T-09.2 (ADR
+  [0037](0037-accent-override-and-app-local-theme-sync.md)).
 - The QML singleton name `Settings` is scoped to `Dragonfruit.Settings`; a file
   that also imports a module exporting `Settings` (e.g. `QtCore`) must qualify
   it.
