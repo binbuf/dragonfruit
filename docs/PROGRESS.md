@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(33 earlier sections omitted)_
+_(34 earlier sections omitted)_
 
-- **T31 — T-06.2b Switcher commit, Cmd+` cycling, interruptibility**: **State: done.** T-06 is complete. Cmd+` / Cmd+Shift+` cycle windows within the; **`compositor/src/app_switcher.rs`** — `SwitcherApp` carries `windows`
 - **T32 — T-07.1a Adapter contract, states, and mock**: **State: done.** The one adapter contract and its test mock landed in a new; **`services/system-adapters/`** (new crate `dragonfruit-system-adapters`,
 - **T33 — T-07.1b Event subscription, restart re-subscribe, absence**: **State: done.** The subscription/event seam landed in the same; **`services/system-adapters/src/subscription.rs`** (new) — `ConnectionState`
 - **T34 — T-07.2a NetworkManager read path**: **State: done.** The NetworkManager read path landed in a new concrete-adapter; **`services/networkmanager/`** (new crate `dragonfruit-networkmanager`,
@@ -45,6 +44,7 @@ _(33 earlier sections omitted)_
 - **T67 — T-10.6b Drop-to-trash, Empty Trash, trash://**: **State: done.** The Dock's drop and Empty Trash already routed through; **`services/files-core/src/optimistic.rs`** — `PendingKind::Empty` +
 - **T68 — T-10.6c Show in Files, Downloads, and .desktop identity**: **State: done.** The Files identity is installed and the Dock's two navigation; **`apps/files/org.dragonfruit.Files.desktop`** (new) — `Exec=dragonfruit-files
 - **T69 — T-10.7 Files capture and acceptance walkthrough**: **State: done.** T-10 (Files MVP) is captured at the track boundary and the; **`scripts/capture-files.sh`** (new) — `make files-capture` (new target in
+- **T70 — T-11.1a Notification service core**: **State: done.** The `org.freedesktop.Notifications` service and the shell; **`services/notifications/`** (new crate `dragonfruit-notifications`,
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
