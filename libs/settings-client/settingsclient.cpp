@@ -95,7 +95,7 @@ void SettingsClient::setAvailable(bool available)
 
 QVariantMap settingsSchemaDefaults()
 {
-    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 3). Values are
+    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 4). Values are
     // typed exactly as the schema declares: d, x, b, s, as.
     QVariantMap values;
     values.insert(QStringLiteral("dock.size"), 0.5);
@@ -120,6 +120,7 @@ QVariantMap settingsSchemaDefaults()
     values.insert(QStringLiteral("wallpaper.showOnAllSpaces"), true);
     values.insert(QStringLiteral("display.scale"), 1.0);
     values.insert(QStringLiteral("display.rotation"), QStringLiteral("normal"));
+    values.insert(QStringLiteral("display.brightness"), 1.0);
     values.insert(QStringLiteral("accessibility.reduceMotion"), false);
     values.insert(QStringLiteral("input.repeatDelay"), qlonglong(200));
     values.insert(QStringLiteral("input.repeatRate"), qlonglong(25));

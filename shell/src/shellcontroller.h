@@ -55,6 +55,17 @@ private slots:
     void onConfigured(int width, int height, quint32 serial);
     void onFocusedAppChanged(const QString &appId, const QString &title);
     void onControlCenterRequested();
+    // Control Center panel (T-11.3a): the overlay surface, pointer/keyboard
+    // stream, and the tile gestures.
+    void onControlCenterClosed();
+    void onControlCenterConfigured(int width, int height, quint32 serial);
+    void onControlCenterPointerMoved(qreal x, qreal y);
+    void onControlCenterPointerButton(qreal x, qreal y, quint32 button, bool pressed);
+    void onControlCenterPointerLeft();
+    void onControlCenterKeyboardFocused(bool focused);
+    void onBrightnessSetRequested(double level);
+    void onWifiToggleRequested(bool enabled);
+    void onWifiSettingsRequested();
     void onMissionControlRequested();
     void onStatusItemActivated(const QString &itemId);
     // Wi-Fi and volume popovers (T-07.5a): the bar's gestures become bridge
@@ -182,6 +193,15 @@ private:
     void applyBannerInputRegion();
     void renderBanner();
     void scheduleBannerRender();
+    // Control Center panel (T-11.3a): seed the panel's tile state, map/unmap
+    // the top-right overlay surface, and commit its frames from the scene
+    // graph (the banner/Dock FR-14 path).
+    void toggleControlCenter();
+    void showControlCenter();
+    void hideControlCenter();
+    void applyControlCenterData();
+    void renderControlCenter();
+    void scheduleControlCenterRender();
     // Rebuild the Dock's ordered entries (pinned + running) and hand them to
     // the QML scene.
     void rebuildDockEntries();
@@ -321,6 +341,19 @@ private:
     Qt::MouseButtons m_bannerButtons = Qt::NoButton;
     FrameCommitGate m_bannerFrameGate;
     bool m_bannerSceneGraphCommitLogged = false;
+    // Control Center panel (T-11.3a): a top-right overlay scene, unmapped
+    // until the panel opens.
+    QQuickWindow *m_controlCenterWindow = nullptr;
+    QQuickItem *m_controlCenterItem = nullptr;
+    int m_controlCenterWidth = 0;
+    int m_controlCenterHeight = 0;
+    bool m_controlCenterOpen = false;
+    bool m_controlCenterPending = false;
+    bool m_controlCenterRenderPending = false;
+    Qt::MouseButtons m_controlCenterButtons = Qt::NoButton;
+    bool m_controlCenterKeyboardFocused = false;
+    FrameCommitGate m_controlCenterFrameGate;
+    bool m_controlCenterSceneGraphCommitLogged = false;
     QSocketNotifier *m_notifier = nullptr;
     QTimer *m_launchTimer = nullptr;
     QTimer *m_dockAnimTimer = nullptr;

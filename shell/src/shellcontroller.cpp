@@ -58,6 +58,13 @@ constexpr int kBannerCardHeight = 96;
 constexpr int kBannerCardActionsHeight = 132;
 constexpr int kBannerTopGap = 8;
 
+// The Control Center panel (T-11.3a): a fixed panel surface anchored to the
+// top-right corner below the menu bar. The panel fills the surface, so its
+// input region is the whole thing.
+constexpr int kControlCenterWidth = 360;
+constexpr int kControlCenterHeight = 420;
+constexpr int kControlCenterTopGap = 8;
+
 QVariantMap statusItem(const QString &id, const QString &icon, const QString &label,
                        const QString &accessibleName, bool available, qreal level = 0.8,
                        bool enabled = true)
@@ -223,6 +230,7 @@ ShellController::ShellController(QObject *parent)
 
 ShellController::~ShellController()
 {
+    delete m_controlCenterWindow;
     delete m_bannerWindow;
     delete m_switcherWindow;
     delete m_overviewWindow;
@@ -663,6 +671,60 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // first apply above ran before it.
     applyStatusItems();
 
+    // Control Center panel (T-11.3a): a top-right offscreen scene rendered
+    // into its own overlay surface. It is a pure view; the taps/gestures it
+    // raises are forwarded to the bridge host or written to settingsd here.
+    m_controlCenterWindow = new QQuickWindow;
+    m_controlCenterWindow->setColor(Qt::transparent);
+    QQmlComponent controlCenterComponent(m_engine);
+    controlCenterComponent.loadFromModule(QStringLiteral("Dragonfruit.ControlCenter"),
+                                          QStringLiteral("ControlCenter"));
+    if (controlCenterComponent.isError()) {
+        fprintf(stderr, "dragonfruit-shell: ControlCenter QML error: %s\n",
+                qPrintable(controlCenterComponent.errorString()));
+        return false;
+    }
+    QObject *controlCenterObject = controlCenterComponent.create();
+    m_controlCenterItem = qobject_cast<QQuickItem *>(controlCenterObject);
+    if (!m_controlCenterItem) {
+        fprintf(stderr, "dragonfruit-shell: ControlCenter QML did not produce an item\n");
+        return false;
+    }
+    m_controlCenterItem->setParentItem(m_controlCenterWindow->contentItem());
+    connect(controlCenterObject, SIGNAL(closed()), this, SLOT(onControlCenterClosed()));
+    connect(controlCenterObject, SIGNAL(volumeSetRequested(double)), this,
+            SLOT(onVolumeSetRequested(double)));
+    connect(controlCenterObject, SIGNAL(muteToggleRequested()), this,
+            SLOT(onMuteToggleRequested()));
+    connect(controlCenterObject, SIGNAL(brightnessSetRequested(double)), this,
+            SLOT(onBrightnessSetRequested(double)));
+    connect(controlCenterObject, SIGNAL(wifiToggleRequested(bool)), this,
+            SLOT(onWifiToggleRequested(bool)));
+    connect(controlCenterObject, SIGNAL(wifiSettingsRequested()), this,
+            SLOT(onWifiSettingsRequested()));
+    connect(m_controlCenterWindow, &QQuickWindow::afterRendering, this,
+            &ShellController::renderControlCenter);
+    connect(m_protocol, &ShellProtocol::controlCenterConfigured, this,
+            &ShellController::onControlCenterConfigured);
+    connect(m_protocol, &ShellProtocol::controlCenterPointerMoved, this,
+            &ShellController::onControlCenterPointerMoved);
+    connect(m_protocol, &ShellProtocol::controlCenterPointerButton, this,
+            &ShellController::onControlCenterPointerButton);
+    connect(m_protocol, &ShellProtocol::controlCenterPointerLeft, this,
+            &ShellController::onControlCenterPointerLeft);
+    connect(m_protocol, &ShellProtocol::controlCenterKeyboardFocused, this,
+            &ShellController::onControlCenterKeyboardFocused);
+    // Keep the panel in sync with settingsd while it is open (brightness) and
+    // with the bridge host (Wi-Fi/volume) through `applyStatusMenuData`.
+    connect(m_settingsClient, &SettingsClient::changed, this, [this]() {
+        if (m_controlCenterOpen)
+            applyControlCenterData();
+    });
+    connect(m_settingsClient, &SettingsClient::refreshed, this, [this]() {
+        if (m_controlCenterOpen)
+            applyControlCenterData();
+    });
+
     if (!m_protocol->createMenuBarSurface(barHeight, barHeight))
         return false;
     // The dropdown rides a separate `overlay` chrome surface so transient
@@ -691,6 +753,11 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // a banner is active (T-11.1a).
     if (!m_protocol->createBannerSurface(kBannerWidth, kBannerSurfaceHeight,
                                          barHeight + kBannerTopGap))
+        return false;
+    // The Control Center panel is a top-right `overlay` surface, unmapped until
+    // the menu-bar item (or its shortcut) opens it (T-11.3a).
+    if (!m_protocol->createControlCenterSurface(kControlCenterWidth, kControlCenterHeight,
+                                                barHeight + kControlCenterTopGap))
         return false;
 
     // Capture/demo seam (T-11.1b): raise the Dock's launch-failure
@@ -810,6 +877,9 @@ void ShellController::applyStatusMenuData()
     m_item->setProperty("volumeMenu", m_statusModel->audio());
     m_item->setProperty("batteryMenu", m_statusModel->battery());
     applyStatusItems();
+    // A live Wi-Fi/volume change reaches an open Control Center too.
+    if (m_controlCenterOpen)
+        applyControlCenterData();
 }
 
 void ShellController::onStatusMenuOpened()
@@ -954,8 +1024,190 @@ void ShellController::onFocusedAppChanged(const QString &appId, const QString &t
 
 void ShellController::onControlCenterRequested()
 {
-    // The Control Center panel is T-21; the entry point is wired.
-    qInfo() << "shell: Control Center requested (T-21)";
+    toggleControlCenter();
+}
+
+void ShellController::toggleControlCenter()
+{
+    if (m_controlCenterOpen)
+        hideControlCenter();
+    else
+        showControlCenter();
+}
+
+void ShellController::showControlCenter()
+{
+    if (!m_controlCenterItem)
+        return;
+    m_controlCenterOpen = true;
+    m_controlCenterPending = true;
+    applyControlCenterData();
+    if (m_controlCenterWidth > 0 && m_controlCenterHeight > 0)
+        renderControlCenter();
+    // Take active focus so Escape is delivered to the panel and a later focus
+    // loss (a click on a window) reads as dismissal.
+    m_controlCenterItem->forceActiveFocus();
+    if (m_protocol)
+        m_protocol->setControlCenterInputRegion(m_controlCenterWidth, m_controlCenterHeight);
+}
+
+void ShellController::hideControlCenter()
+{
+    m_controlCenterOpen = false;
+    m_controlCenterPending = false;
+    if (m_protocol) {
+        m_protocol->setControlCenterInputRegion(0, 0);
+        m_protocol->hideControlCenter();
+    }
+}
+
+void ShellController::onControlCenterClosed()
+{
+    hideControlCenter();
+}
+
+void ShellController::applyControlCenterData()
+{
+    if (!m_controlCenterItem)
+        return;
+    const QVariantMap wifi = m_statusModel ? m_statusModel->wifi() : QVariantMap();
+    const QVariantMap audio = m_statusModel ? m_statusModel->audio() : QVariantMap();
+    const double brightness = m_settingsClient
+        ? displaySettingsFromValues(m_settingsClient->values()).brightness
+        : 1.0;
+    m_controlCenterItem->setProperty("wifi", wifi);
+    m_controlCenterItem->setProperty("audio", audio);
+    m_controlCenterItem->setProperty("brightness", brightness);
+    // Wi-Fi radio writes are not exposed by the bridge host yet (T-15); the
+    // toggle reflects state and is inert until then.
+    m_controlCenterItem->setProperty("wifiWritable", false);
+}
+
+void ShellController::onControlCenterConfigured(int width, int height, quint32)
+{
+    // The compositor's pre-layout configure is the full output; skip it (the
+    // same rule as the banner and Dock).
+    if (width != kControlCenterWidth || height != kControlCenterHeight)
+        return;
+    m_controlCenterWidth = width;
+    m_controlCenterHeight = height;
+    // The surface exists now; apply the panel-sized input region for a pending
+    // open and render the first frame.
+    if (m_protocol)
+        m_protocol->setControlCenterInputRegion(m_controlCenterWidth, m_controlCenterHeight);
+    if (m_controlCenterPending)
+        renderControlCenter();
+}
+
+void ShellController::onControlCenterPointerMoved(qreal x, qreal y)
+{
+    if (!m_controlCenterWindow)
+        return;
+    const QPointF p(x, y);
+    QMouseEvent event(QEvent::MouseMove, p, p, Qt::NoButton, m_controlCenterButtons,
+                      Qt::NoModifier);
+    QCoreApplication::sendEvent(m_controlCenterWindow, &event);
+    scheduleControlCenterRender();
+}
+
+void ShellController::onControlCenterPointerButton(qreal x, qreal y, quint32 button, bool pressed)
+{
+    if (!m_controlCenterWindow)
+        return;
+    Qt::MouseButton qtButton = Qt::NoButton;
+    if (button == 0x110)
+        qtButton = Qt::LeftButton;
+    if (pressed)
+        m_controlCenterButtons |= qtButton;
+    else
+        m_controlCenterButtons &= ~qtButton;
+    const QPointF p(x, y);
+    QMouseEvent event(pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease, p, p,
+                      qtButton, m_controlCenterButtons, Qt::NoModifier);
+    QCoreApplication::sendEvent(m_controlCenterWindow, &event);
+    scheduleControlCenterRender();
+}
+
+void ShellController::onControlCenterPointerLeft()
+{
+    if (!m_controlCenterWindow)
+        return;
+    QMouseEvent event(QEvent::MouseMove, QPointF(-1, -1), QPointF(-1, -1), Qt::NoButton,
+                      m_controlCenterButtons, Qt::NoModifier);
+    QCoreApplication::sendEvent(m_controlCenterWindow, &event);
+    scheduleControlCenterRender();
+}
+
+void ShellController::onControlCenterKeyboardFocused(bool focused)
+{
+    m_controlCenterKeyboardFocused = focused;
+    // Losing the keyboard is the click-away dismissal: a click on a window or
+    // the desktop moves chrome keyboard focus away from the panel.
+    if (!focused && m_controlCenterOpen)
+        hideControlCenter();
+}
+
+void ShellController::onBrightnessSetRequested(double level)
+{
+    if (!m_settingsClient)
+        return;
+    // settingsd is the single owner (T-08); the `changed` connection forwards
+    // the new value to the compositor via `applyDisplayPolicy`.
+    m_settingsClient->set(QStringLiteral("display.brightness"), qBound(0.0, level, 1.0));
+}
+
+void ShellController::onWifiToggleRequested(bool)
+{
+    // The T-07 NetworkManager adapter exposes join but not a radio write; the
+    // tile is inert until T-15 adds it. The bridge host's refresh is the only
+    // source of truth, so no local state is kept.
+    qInfo() << "shell: Wi-Fi radio toggle requested (write path is T-15)";
+}
+
+void ShellController::onWifiSettingsRequested()
+{
+    // Launching Settings on the matching pane is T-16; the entry point is
+    // wired and logs until then.
+    qInfo() << "shell: Wi-Fi Settings requested (T-16)";
+}
+
+void ShellController::renderControlCenter()
+{
+    if (!m_controlCenterPending || !m_controlCenterWindow || !m_controlCenterItem)
+        return;
+    if (m_controlCenterWidth <= 0 || m_controlCenterHeight <= 0)
+        return;
+    // The scene graph just rendered; skip the re-entrant frame our own
+    // `grabWindow` readback produces (the Dock/banner FR-14 pattern).
+    if (!m_controlCenterFrameGate.frameRendered())
+        return;
+    if (!m_controlCenterSceneGraphCommitLogged) {
+        m_controlCenterSceneGraphCommitLogged = true;
+        qInfo() << "shell: Control Center scene-graph commit path active";
+    }
+    m_controlCenterItem->setWidth(m_controlCenterWidth);
+    m_controlCenterItem->setHeight(m_controlCenterHeight);
+    if (m_controlCenterWindow->width() != m_controlCenterWidth
+        || m_controlCenterWindow->height() != m_controlCenterHeight)
+        m_controlCenterWindow->resize(m_controlCenterWidth, m_controlCenterHeight);
+    if (!m_controlCenterWindow->isVisible())
+        m_controlCenterWindow->show();
+    m_controlCenterFrameGate.beginCommit();
+    const QImage image = m_controlCenterWindow->grabWindow();
+    m_controlCenterFrameGate.endCommit();
+    if (!image.isNull() && m_protocol)
+        m_protocol->commitControlCenterImage(image);
+}
+
+void ShellController::scheduleControlCenterRender()
+{
+    if (m_controlCenterRenderPending)
+        return;
+    m_controlCenterRenderPending = true;
+    QTimer::singleShot(0, this, [this]() {
+        m_controlCenterRenderPending = false;
+        renderControlCenter();
+    });
 }
 
 void ShellController::onMissionControlRequested()
@@ -1137,6 +1389,16 @@ void ShellController::onKeyboardFocused(bool focused)
     // popover (T-10 section 13).
     if (!focused && m_dockItem)
         QMetaObject::invokeMethod(m_dockItem, "closePopovers");
+    // The Control Center panel is dismissed by a click-away. Focus may move
+    // from the bar to the panel in the same dispatch (a click on a tile), so
+    // defer the check one event-loop turn: if the panel then holds keyboard,
+    // this was not a dismissal.
+    if (!focused && m_controlCenterOpen) {
+        QTimer::singleShot(0, this, [this]() {
+            if (m_controlCenterOpen && !m_controlCenterKeyboardFocused)
+                hideControlCenter();
+        });
+    }
 }
 
 void ShellController::onKeyEvent(quint32 key, bool pressed)
@@ -1146,6 +1408,12 @@ void ShellController::onKeyEvent(quint32 key, bool pressed)
     const Qt::Key qtKey = qtKeyFromEvdev(key);
     if (qtKey == Qt::Key_unknown)
         return;
+    // T-11.3a: Escape dismisses an open Control Center panel no matter which
+    // chrome surface currently holds the keyboard.
+    if (pressed && qtKey == Qt::Key_Escape && m_controlCenterOpen) {
+        hideControlCenter();
+        return;
+    }
     QKeyEvent event(pressed ? QEvent::KeyPress : QEvent::KeyRelease, qtKey, Qt::NoModifier);
     // An open Dock popover or Dock keyboard focus owns the keys (navigation,
     // Escape; T-10 sections 13/20); otherwise the menu bar does.
@@ -1314,6 +1582,9 @@ void ShellController::onInputAction(const QString &action, const QString &)
         // hidden so the focus ring is visible.
         if (m_dockItem)
             QMetaObject::invokeMethod(m_dockItem, "reveal");
+    } else if (action == QLatin1String("control-center")) {
+        // T-11.3a: the Control Center keyboard shortcut toggles the panel.
+        toggleControlCenter();
     }
 }
 
@@ -1564,9 +1835,10 @@ void ShellController::applyDisplayPolicy()
         return;
     m_displaySettings = settings;
     m_displaySent = true;
-    m_protocol->setDisplayPolicy(settings.scale, outputTransformFromName(settings.rotation));
-    fprintf(stderr, "dragonfruit-shell: display applied (scale=%.3f rotation=%s)\n",
-            settings.scale, qPrintable(settings.rotation));
+    m_protocol->setDisplayPolicy(settings.scale, outputTransformFromName(settings.rotation),
+                                 settings.brightness);
+    fprintf(stderr, "dragonfruit-shell: display applied (scale=%.3f rotation=%s brightness=%.3f)\n",
+            settings.scale, qPrintable(settings.rotation), settings.brightness);
 }
 
 void ShellController::onDockStateChanged(const QVariantList &entries)

@@ -278,3 +278,24 @@ set_tests_properties(tst_notifications PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+# Control Center panel tests (T-11.3a): the tile model and the Wi-Fi/volume/
+# brightness gestures render and raise the right requests.
+qt_add_executable(tst_controlcenter
+    tst_controlcenter.cpp
+)
+target_link_libraries(tst_controlcenter PRIVATE
+    Qt6::QuickTest
+    dragonfruit-design-systemplugin
+    dragonfruit-shell-control-centerplugin
+)
+qt_import_qml_plugins(tst_controlcenter)
+
+add_test(
+    NAME tst_controlcenter
+    COMMAND tst_controlcenter -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_controlcenter.qml
+)
+set_tests_properties(tst_controlcenter PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)

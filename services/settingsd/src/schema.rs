@@ -19,7 +19,7 @@ use crate::value::{SettingsError, Value};
 
 /// The current schema revision. Bump only when a key is added or a default
 /// changes; renames and removals are forbidden within the `1` series.
-pub const SCHEMA_VERSION: u32 = 3;
+pub const SCHEMA_VERSION: u32 = 4;
 
 /// The D-Bus type of a settings value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -484,6 +484,19 @@ pub const KEYS: &[KeySpec] = &[
         consumer: "shell/display forwarder, compositor/output",
         since: 3,
         summary: "Output rotation as clock-wise degrees.",
+    },
+    KeySpec {
+        key: "display.brightness",
+        group: KeyGroup::Displays,
+        kind: KeyType::Number,
+        default: KeyDefault::Number(1.0),
+        allowed: &[],
+        min: Some(0.0),
+        max: Some(1.0),
+        owner: "shell/control-center",
+        consumer: "shell/display forwarder, compositor/output",
+        since: 4,
+        summary: "Output brightness level; 1.0 is full brightness.",
     },
     // ── Animation policy ────────────────────────────────────────────────
     KeySpec {

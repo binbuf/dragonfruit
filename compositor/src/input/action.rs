@@ -45,6 +45,9 @@ pub enum InputAction {
     /// Toggle the Dock's auto-hide (T-10 section 15). The shell owns the
     /// setting; the compositor only routes the action.
     ToggleDock,
+    /// Toggle the Control Center panel (T-11.3a). The shell owns the panel;
+    /// the compositor only routes the action.
+    ControlCenter,
 }
 
 impl InputAction {
@@ -75,6 +78,7 @@ impl InputAction {
             InputAction::LockScreen => "lock-screen",
             InputAction::FocusDock => "focus-dock",
             InputAction::ToggleDock => "toggle-dock",
+            InputAction::ControlCenter => "control-center",
         }
     }
 }

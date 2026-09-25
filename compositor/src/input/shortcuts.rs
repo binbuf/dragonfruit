@@ -340,6 +340,14 @@ pub fn default_system_bindings() -> Vec<Shortcut> {
             keysyms::KEY_D,
             InputAction::ToggleDock,
         ),
+        // T-11.3a: open the Control Center panel. macOS has no default chord;
+        // Control-Option-C is our desktop's binding (the Settings Keyboard pane
+        // rebinds it in T-16).
+        Shortcut::new(
+            control.union(RoleMods::OPTION),
+            keysyms::KEY_C,
+            InputAction::ControlCenter,
+        ),
     ];
     for (i, key) in [
         keysyms::KEY_1,

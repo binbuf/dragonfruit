@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // T-09.5: the pure mapping from the settingsd display keys onto what the
-// shell forwards over `df_output.set_scale` / `df_output.set_transform`. No
-// bus, Wayland, or QML.
+// shell forwards over `df_output.set_scale` / `df_output.set_transform`
+// (`set_brightness` added in T-11.3a). No bus, Wayland, or QML.
 #include <QtTest>
 
 #include "displayspolicy.h"
@@ -23,6 +23,7 @@ void TestDisplaysPolicy::defaultsMatchTheSchema()
     const DisplaySettings settings = displaySettingsFromValues({});
     QCOMPARE(settings.scale, 1.0);
     QCOMPARE(settings.rotation, QStringLiteral("normal"));
+    QCOMPARE(settings.brightness, 1.0);
 }
 
 void TestDisplaysPolicy::everyKeyMapsThrough()
@@ -30,10 +31,12 @@ void TestDisplaysPolicy::everyKeyMapsThrough()
     QVariantMap values;
     values.insert(QStringLiteral("display.scale"), 1.25);
     values.insert(QStringLiteral("display.rotation"), QStringLiteral("270"));
+    values.insert(QStringLiteral("display.brightness"), 0.35);
 
     const DisplaySettings settings = displaySettingsFromValues(values);
     QCOMPARE(settings.scale, 1.25);
     QCOMPARE(settings.rotation, QStringLiteral("270"));
+    QCOMPARE(settings.brightness, 0.35);
 }
 
 void TestDisplaysPolicy::rotationNamesMapToTheWireEnum()

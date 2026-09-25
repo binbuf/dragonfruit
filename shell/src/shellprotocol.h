@@ -164,6 +164,25 @@ public:
     // Unmap the banner surface (attach a null buffer).
     bool hideBanner();
 
+    // Create the Control Center panel overlay (T-11.3a): an `overlay` layer
+    // surface anchored to the top-right corner, namespace "control-center",
+    // mapped only while the panel is open. It reserves nothing
+    // (`exclusive_zone = -1`) and takes the keyboard on demand so Escape and
+    // click-away dismissal work. `width`/`height` are the panel surface size;
+    // `topMargin` clears the menu bar.
+    bool createControlCenterSurface(int width, int height, int topMargin);
+
+    // Set the panel's clickable input region to the full `width` x `height`
+    // top-left rect (a non-positive size passes everything through). Applied
+    // with the next buffer commit.
+    bool setControlCenterInputRegion(int width, int height);
+
+    // Attach `image` to the control-center surface and commit.
+    bool commitControlCenterImage(const QImage &image);
+
+    // Unmap the control-center surface (attach a null buffer).
+    bool hideControlCenter();
+
     // Activate a Space by its index (the workspace strip click, FR-10). The
     // compositor switches every output in lockstep.
     void activateWorkspace(int index);
@@ -219,12 +238,14 @@ public:
     void setWallpaper(const QString &source, uint32_t fit, bool showOnAllSpaces);
 
     // Forward the settingsd display selection to the compositor (T-09.5,
-    // `df_output.set_scale` / `df_output.set_transform`): `scale` is the
-    // scaled-resolution factor (`display.scale`), `transform` the
-    // already-mapped `df_output.transform` value (`display.rotation`). The
-    // selection is remembered and applied once the manager has announced its
-    // outputs, so a policy that predates the output list is not lost.
-    void setDisplayPolicy(double scale, uint32_t transform);
+    // `df_output.set_scale` / `df_output.set_transform`; `set_brightness`
+    // added in T-11.3a): `scale` is the scaled-resolution factor
+    // (`display.scale`), `transform` the already-mapped `df_output.transform`
+    // value (`display.rotation`), and `brightness` the `display.brightness`
+    // level in [0, 1]. The selection is remembered and applied once the
+    // manager has announced its outputs, so a policy that predates the output
+    // list is not lost.
+    void setDisplayPolicy(double scale, uint32_t transform, double brightness);
 
     // Hand the Dock entry's tile rectangle (logical global pixels) to the
     // compositor so the launching app's window appears from it (T-02.1b,
@@ -280,6 +301,7 @@ signals:
     void overviewConfigured(int width, int height, uint32_t serial);
     void switcherConfigured(int width, int height, uint32_t serial);
     void bannerConfigured(int width, int height, uint32_t serial);
+    void controlCenterConfigured(int width, int height, uint32_t serial);
     void surfaceClosed();
     void focusedAppChanged(const QString &appId, const QString &title);
     // xdg-activation attention for an app's toplevel (T-10 FR-4): the Dock
@@ -306,6 +328,10 @@ signals:
     void bannerPointerMoved(qreal x, qreal y);
     void bannerPointerButton(qreal x, qreal y, uint32_t button, bool pressed);
     void bannerPointerLeft();
+    // Control Center panel input (T-11.3a), in panel-surface coordinates.
+    void controlCenterPointerMoved(qreal x, qreal y);
+    void controlCenterPointerButton(qreal x, qreal y, uint32_t button, bool pressed);
+    void controlCenterPointerLeft();
     void keyboardFocused(bool focused);
     // The Dock surface specifically gained/lost the keyboard (T-10 section
     // 20). Distinct from `keyboardFocused` so the shell can route keys to the
@@ -331,6 +357,9 @@ signals:
     void overviewPointerLeft();
     // The overview surface specifically holds the keyboard (Escape dismiss).
     void overviewKeyboardFocused(bool focused);
+    // The Control Center panel specifically holds the keyboard (T-11.3a);
+    // losing it is the click-away dismissal.
+    void controlCenterKeyboardFocused(bool focused);
     // External drag-and-drop onto the Dock (T-10 section 12). The shell binds
     // the seat's data device, so a drag from another client (Files, a
     // launcher) is delivered here. Coordinates are Dock-surface-local; the
@@ -413,6 +442,8 @@ private:
                                     int32_t width, int32_t height);
     static void onBannerConfigure(void *data, df_layer_surface *layer, uint32_t serial,
                                   int32_t width, int32_t height);
+    static void onControlCenterConfigure(void *data, df_layer_surface *layer, uint32_t serial,
+                                         int32_t width, int32_t height);
     static void onLayerClosed(void *data, df_layer_surface *layer);
     static void onSeatCapabilities(void *data, wl_seat *seat, uint32_t capabilities);
     static void onSeatName(void *data, wl_seat *seat, const char *name);
@@ -499,6 +530,7 @@ private:
     static void onOutputVrr(void *data, df_output *output, uint32_t enabled);
     static void onOutputNightLight(void *data, df_output *output, uint32_t enabled,
                                    uint32_t temperature);
+    static void onOutputBrightness(void *data, df_output *output, wl_fixed_t level);
     static void onOutputReservedZone(void *data, df_output *output, uint32_t edge,
                                      uint32_t thickness);
     static void onOutputDone(void *data, df_output *output);
@@ -570,6 +602,13 @@ private:
     df_layer_surface *m_bannerLayer = nullptr;
     bool m_bannerMapped = false;
     bool m_pointerOnBanner = false;
+    // Control Center panel overlay (T-11.3a): a top-right `overlay` surface
+    // mapped only while the panel is open.
+    wl_surface *m_controlCenterSurface = nullptr;
+    df_layer_surface *m_controlCenterLayer = nullptr;
+    bool m_controlCenterMapped = false;
+    bool m_pointerOnControlCenter = false;
+    bool m_keyboardOnControlCenter = false;
     // True while the Dock surface holds the keyboard (T-10 section 20), so
     // key events are routed to the Dock scene.
     bool m_keyboardOnDock = false;
@@ -639,5 +678,8 @@ private:
     bool m_displayKnown = false;
     double m_displayScale = 1.0;
     uint32_t m_displayTransform = 0;
+    // The last brightness forwarded (T-11.3a), re-sent with the scale/transform
+    // once outputs are announced.
+    double m_displayBrightness = 1.0;
     QSet<wl_buffer *> m_buffers;
 };

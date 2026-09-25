@@ -117,6 +117,7 @@ target_link_libraries(dragonfruit-shell PRIVATE
     dragonfruit-shell-overviewplugin
     dragonfruit-shell-switcherplugin
     dragonfruit-shell-notificationsplugin
+    dragonfruit-shell-control-centerplugin
 )
 if(TARGET PkgConfig::WAYLAND_CLIENT)
     target_link_libraries(dragonfruit-shell PRIVATE PkgConfig::WAYLAND_CLIENT)
