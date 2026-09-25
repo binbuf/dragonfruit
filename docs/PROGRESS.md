@@ -44,6 +44,7 @@ _(22 earlier sections omitted)_
 - **T55 — T-09.6b Settings absence matrix and wave captures**: **State: done.** The T-09 Settings wave is signed off: the absent-provider; **`docs/design/08-settings.md`** — new "The absent-provider matrix (T-09.6b)"
 - **T56 — T-10.1a files-core streaming listing and model**: **State: done.** `files-core` now exists as a headless Rust library and a; **`services/files-core/`** (new crate `dragonfruit-files-core`, workspace
 - **T57 — T-10.1b files-core sorting and platform fallback**: **State: done.** `files-core` now sorts its streamed model and the; **`services/files-core/src/sort.rs`** (new module) — `SortKey`
+- **T58 — T-10.2a files-core operations**: **State: done.** `files-core` gained the one operations seam: rename, new; **`services/files-core/src/ops.rs`** (new module):
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -4065,3 +4066,82 @@ Gotchas for later tasks:
   the marker.
 - **Locale-aware collation is not done** (see Follow-ups): the design's
   locale-aware numeric rule is currently natural/numeric only.
+
+## T58 — T-10.2a files-core operations
+
+**State: done.** `files-core` gained the one operations seam: rename, new
+folder, move, copy, and permanent delete against a real temp tree, with typed
+errors. Optimistic semantics, conflict policy, undo, progress, the journal,
+and `trash://` are later tasks.
+
+What landed:
+
+- **`services/files-core/src/ops.rs`** (new module):
+  - `FileOps` — the seam: `rename`, `create_dir`, `copy`, `move_to`,
+    `delete`, `exists`, and a provided `new_folder`. `Send + Sync + 'static`;
+    synchronous, to be driven off the UI thread.
+  - `StdFsOps` — the sanctioned `std::fs` backend (same degradation as
+    listing, ADR 0043); resolves only `file://`, else `UnsupportedScheme`.
+    Copy is recursive and recreates symlinks with their raw target (never
+    follows); cross-device move is copy-then-delete; delete is permanent and
+    recursive.
+  - `generated_name(base, exists)` — the one next-available-name helper
+    (`untitled folder`, `untitled folder 2`, …) shared by new-folder later
+    with duplicate/paste/compress; preserves base raw bytes. `NEW_FOLDER_BASE`.
+  - `OperationError` — `UnsupportedScheme`, `NotFound`, `PermissionDenied`,
+    `AlreadyExists`, `NotADirectory`, `DirectoryNotEmpty`, `InvalidName`,
+    `Io`, with `from_io(error, context)`.
+- **`services/files-core/src/location.rs`** — added `Location::parent()`
+  (file paths and foreign-scheme URI prefixes). Fixed `Location::child` for an
+  authority-only foreign root: `trash:///` used `trim_end_matches('/')`, which
+  collapsed it to `trash:` and made `scheme()` panic; now strips at most one
+  trailing slash.
+- **Tests** — `services/files-core/tests/operations.rs` (new; 17 cases): the
+  full operation matrix against temp dirs, including recursive dir copy,
+  symlink recreation, non-UTF-8 name preservation, directory-into-itself
+  refusal, conflicts, missing targets, broken-symlink `exists`, and all
+  operations refusing `trash://`. Plus unit tests for `generated_name`, name
+  validation, `from_io`, and `Location::parent`.
+- **Docs** — ADR
+  [0044](design/adr/0044-files-core-operations-seam.md); a T-10.2a
+  implementation-status paragraph in `docs/design/09-files.md`; crate
+  description in `Cargo.toml`.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `cargo test -p dragonfruit-files-core` — 66 pass (36 unit + 17 operations +
+  5 sorting + 6 streaming + 2 doctests).
+- `make lint` — 31/31 ctest plus all checks green.
+- `make e2e` — exit 0.
+
+Live capture (`/tmp/opencode/t58-capture.sh`; still
+`/tmp/opencode/t58-desktop.png`, 1920x1200): nested demo on the host session.
+Raw vision observation: no clipping, blurring, or missing elements; the
+Settings window, X11 demo window, and Dock/taskbar render. files-core has no
+surface of its own, so this only confirms the session still renders. Vision is
+a supporting check.
+
+Gotchas for later tasks:
+
+- **Use `make`, or `CARGO_NET_OFFLINE=true`.** A bare `cargo test` (and
+  `cargo test -p dragonfruit-files-core`) blocked for minutes here with no
+  output before the tests even started; the offline flag makes it instant
+  once built. The `make` targets are unaffected.
+- **`FileOps` is the one mutation path.** T-10.2b wraps it for optimistic
+  rendering/reconciliation; never call `std::fs` from the bridge/QML and never
+  bypass the seam.
+- **Destination exists = `OperationError::AlreadyExists`.** Conflict policy
+  (Keep Both / Stop / Replace / Merge) is not implemented; a primitive never
+  guesses.
+- **`delete` is permanent.** Trash is T-10.3a; `trash://` still returns
+  `UnsupportedScheme`. `delete` on a directory is recursive
+  (`remove_dir_all`).
+- **Cross-device `move_to` is copy-then-delete, not journaled.** A SIGKILL in
+  between leaves a duplicate (safe direction); temp-then-rename, partial-copy
+  journaling, and orphan cleanup are still owed (design crash suite).
+- **Generated names preserve raw bytes** via `OsString::push`; if you add
+  duplicate/paste, pass the item's `Node::name()` to `generated_name` — do not
+  lossy-decode.
+- **`Location::child` of a foreign root** now keeps the scheme (`trash:///a`);
+  if you touch scheme handling, keep `strip_suffix('/')`, not
+  `trim_end_matches('/')`.
