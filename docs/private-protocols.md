@@ -133,8 +133,9 @@ is acked with `done` after the scene applies it (FR-3).
 - **Manager events** carry the cross-cutting broadcasts: `workspace_activated`,
   `focused`, `attention` (xdg-activation / demands-attention → Dock bounce),
   `hot_corner` (the same event whether triggered by pointer, gesture, or
-  keyboard), `overview_changed` (Mission Control), `app_switcher`,
-  `input_action`, `progress`, and `app_accelerator`.
+  keyboard), `overview_changed` (Mission Control), `app_switcher` (v4) with one
+  `app_switcher_entry` (v4) per app in recency order (the shell overlay's cards,
+  T-06.2a), `input_action`, `progress`, and `app_accelerator`.
 
 ### Scene-consistent ordering (FR-2)
 

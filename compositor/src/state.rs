@@ -102,6 +102,7 @@ use crate::overview::grid::{
     grid_layout, strip_space_at, GridCandidate, GridDrag, GridLayout, GridMaterial,
 };
 use crate::overview::reveal::reveal_frame;
+use crate::overview::switcher::preview_area;
 use crate::overview::{InputOwner, OverviewKind, OverviewMachine, TransitionCommit};
 use crate::shell::ShellProtocolState;
 use crate::wallpaper::{slide_offset, slide_slots, WallpaperCache, WallpaperSlot};
@@ -2960,13 +2961,109 @@ impl DfState {
         ))
     }
 
+    /// The switcher's live-preview candidates (T-06.2a): one per app entry in
+    /// recency order (`rank` = entry index), carrying the entry window's
+    /// committed geometry. Only entries whose window is currently mapped have
+    /// a placement; a minimized entry still gets a shell card but no live
+    /// surface.
+    fn switcher_candidates(&self) -> Vec<GridCandidate> {
+        self.app_switcher
+            .entries()
+            .iter()
+            .enumerate()
+            .filter_map(|(rank, entry)| {
+                let window = self.windows.window_by_id(entry.window)?;
+                let geometry = self.windows.geometry(&window)?;
+                Some(GridCandidate {
+                    window: entry.window,
+                    space_index: 0,
+                    rank,
+                    geometry,
+                })
+            })
+            .collect()
+    }
+
+    /// The material the switcher's live previews compose with while the
+    /// overlay is up (T-06.2a): the active T-04.4a degrade tier and scheme,
+    /// exactly like the Mission Control grid. `None` when the switcher is
+    /// closed.
+    pub fn switcher_material(&self) -> Option<GridMaterial> {
+        self.app_switcher
+            .is_active()
+            .then(|| GridMaterial::resolve(self.degrade.tier(), self.color_scheme))
+    }
+
+    /// The switcher's live-preview placements on the primary output, in recency
+    /// order: `(window, target_rect, selected)`. Empty when the switcher is
+    /// closed. This is the headless introspection seam (`query switcher`) for
+    /// the T-06.2a live previews; the renderer resolves the same `grid_layout`
+    /// through `switcher_frame`.
+    pub fn switcher_preview_placements(&self) -> Vec<(WindowId, Rectangle<i32, Logical>, bool)> {
+        if !self.app_switcher.is_active() {
+            return Vec::new();
+        }
+        let (_, Some(area)) = self.primary_output() else {
+            return Vec::new();
+        };
+        let selected = self.app_switcher.selected_window();
+        let layout = grid_layout(preview_area(area), &self.switcher_candidates());
+        layout
+            .placements
+            .iter()
+            .map(|placement| {
+                (
+                    placement.window,
+                    placement.target,
+                    selected == Some(placement.window),
+                )
+            })
+            .collect()
+    }
+
+    /// The render frame for `window` while the Cmd-Tab switcher is up
+    /// (T-06.2a): a recency entry's **live** surface scaled into the centered
+    /// preview grid through the T-04 transform, or `alpha = 0` for any other
+    /// window so the desktop does not float over the overlay. `None` when the
+    /// switcher is closed, so the normal lifecycle path stays in charge.
+    pub fn switcher_frame(&self, window: &Window) -> Option<MotionFrame> {
+        self.app_switcher.selected_index()?;
+        let id = self.windows.id(window)?;
+        let geometry = self.windows.geometry(window)?;
+        if !self
+            .app_switcher
+            .entries()
+            .iter()
+            .any(|entry| entry.window == id)
+        {
+            // Not a switcher entry (e.g. a second window of an app): the
+            // overlay owns the scene, so hide it rather than let it float.
+            return Some(MotionFrame {
+                rect: geometry,
+                scale: smithay::utils::Scale::from((1.0, 1.0)),
+                offset: (0, 0).into(),
+                alpha: 0.0,
+            });
+        }
+        let output = self
+            .space
+            .outputs_for_element(window)
+            .into_iter()
+            .next()
+            .or_else(|| self.space.outputs().next().cloned())?;
+        let area = self.space.output_geometry(&output)?;
+        let layout = grid_layout(preview_area(area), &self.switcher_candidates());
+        Some(layout.placement(id)?.frame(1.0))
+    }
+
     /// The render frame a window is drawn with: the Mission Control grid
     /// placement while the overview is open, the Desktop Reveal translation
     /// while the desktop is revealed, else its lifecycle motion. One accessor
     /// so the surface, SSD titlebar, and shadow always share the same mapping
     /// (T-04.3's "one transform").
     pub fn window_render_frame(&self, window: &Window, now_ms: u64) -> Option<MotionFrame> {
-        self.overview_grid_frame(window)
+        self.switcher_frame(window)
+            .or_else(|| self.overview_grid_frame(window))
             .or_else(|| self.desktop_reveal_frame(window))
             .or_else(|| self.window_motion_frame(window, now_ms))
     }

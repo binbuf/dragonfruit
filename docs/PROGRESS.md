@@ -35,7 +35,8 @@
 - **T27 — T-05.5 Desktop Reveal**: **State: done.** Ctrl+Down routes `DesktopReveal` through the one overview; **`compositor/src/overview/reveal.rs`** (new) — `escape_rect` (the off-screen
 - **T28 — T-05.6 Overview frame budget and capture**: **State: done.** The overview gesture now has its own **gesture-scoped** 60 Hz; **`compositor/src/instrument.rs`** — `GestureBudgetTrace`: render-duration
 - **T29 — T-06.1 App-switcher state machine**: **State: done.** The compositor now owns a real Cmd-Tab app switcher: open on; **`compositor/src/app_switcher.rs`** (new) — `AppSwitcher` pure machine
-- **Follow-ups**: T-06.1 (done in T29): the compositor switcher machine landed (ADR 0021).; T-05.1a (done in T22): the live-surface grid landed as a render-time
+- **T30 — T-06.2a Switcher overlay and live previews**: **State: done.** The Cmd-Tab overlay is live: the compositor scales the; **Protocol** — `df_toplevel_manager.app_switcher_entry(index, app_id)` since 4,
+- **Follow-ups**: T-06.1/T-06.2a (done in T29/T30): the compositor switcher machine (ADR 0021); T-05.1a (done in T22): the live-surface grid landed as a render-time
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -1968,17 +1969,83 @@ Gotchas for later tasks:
 - Within-app Cmd+` cycling stays T-06.2b and must extend this machine, not add
   a second binding path.
 
+## T30 — T-06.2a Switcher overlay and live previews
+
+**State: done.** The Cmd-Tab overlay is live: the compositor scales the
+**real** window surfaces of the recency entries through the existing T-04 grid
+transform, and the shell draws the centered cards, scrim, selection highlight,
+accessible names, and reduced-motion variant on a full-output `app-switcher`
+overlay. The shell never re-derives recency — the compositor streams one
+`app_switcher_entry` per app in a new additive event. Commit, Cmd+` cycling,
+and interruptibility remain T-06.2b.
+
+What landed:
+
+- **Protocol** — `df_toplevel_manager.app_switcher_entry(index, app_id)` since 4,
+  emitted between `app_switcher` and the batch `done`. Additive: appended last
+  so `since` stays non-decreasing and pre-existing opcodes are unchanged.
+- **`compositor/src/overview/switcher.rs`** (new) — `preview_area` / `CARD_STRIP`
+  (from `component.overview` tokens); 2 unit tests.
+- **`compositor/src/state.rs`** — `switcher_candidates`, `switcher_material`,
+  `switcher_frame` (entry windows via `grid_layout` over `preview_area`; other
+  visible windows `alpha = 0`), `switcher_preview_placements`; `window_render_frame`
+  prefers the switcher frame.
+- **`compositor/src/shell/mod.rs`** — emits the entry batch before `done`.
+- **`compositor/src/render.rs`** — shadow material falls back to `switcher_material()`.
+- **`compositor/src/input/synthetic.rs`** — `query switcher` appends
+  `switcher preview <window> <x> <y> <w> <h> selected=<0|1>` lines.
+- **`shell/src/shellprotocol.{h,cpp}`** — `createSwitcherSurface` /
+  `commitSwitcherImage` / `hideSwitcher`, `switcherConfigured`,
+  `appSwitcherChanged(active, entries, selectedAppId, direction)`; the entry
+  batch accumulates until `onManagerDone`.
+- **`shell/src/shellcontroller.{h,cpp}`** — fourth offscreen scene
+  (`Dragonfruit.Switcher`), `onAppSwitcherChanged` resolves `selectedIndex` by
+  matching the selected app id, `renderSwitcher`.
+- **`shell/switcher/AppSwitcher.qml`** + CMake module; **`shell/tests/tst_switcher.*`**
+  (8 QML cases).
+- **Tests** — `window_conformance` parses/asserts the preview rects (32/32);
+  `shell_protocol_conformance` records/asserts the entry batch (32/32).
+- **`scripts/capture-switcher.{sh,driver.py}`** + `docs/captures/t06-app-switcher*.png`.
+- **Docs** — `02-compositor.md` "App-switcher live previews (T-06.2a)";
+  `04-shell.md`; ADR `0022-app-switcher-overlay-and-previews.md`.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `cargo test -p dragonfruit-compositor` — **266** bin unit tests + all suites
+  green. Needs `PKG_CONFIG_PATH=~/.local/df-devroot/lib64/pkgconfig`,
+  `RUSTFLAGS="-L ~/.local/df-devroot/lib64"`, `XDG_RUNTIME_DIR`.
+- `make e2e` green; `make soak` 100 clean; `make lint` clean; ctest 17/17
+  (incl. `tst_switcher`).
+- `bash scripts/capture-switcher.sh` — host Wayland + spectacle + Pillow; not
+  in `make e2e`.
+
+Gotchas for later tasks:
+
+- **One recency source**: render `AppSwitcher`'s `app_switcher` +
+  `app_switcher_entry` projection; never sort in the shell.
+- The entry event has **no window handle**; T-06.2b must append it additively
+  to address windows.
+- Non-entry visible windows are hidden with `alpha = 0` while the switcher is
+  active; there is no open/close transition (instant), and reduced motion is
+  the same settled frame.
+- The compositor preview grid and the shell card row share the strip height
+  (tokens) but not per-card geometry; alignment/per-card labels are polish.
+- The live check was programmatic (this model cannot view images); a human
+  should eyeball `docs/captures/t06-app-switcher.png`.
+
 ## Follow-ups
 
-- T-06.1 (done in T29): the compositor switcher machine landed (ADR 0021).
-  Remaining: (a) T-06.2a consumes `df_toplevel_manager.app_switcher` in
-  `shell/src/shellprotocol.cpp` (today `onManagerAppSwitcher` is a no-op) and
-  renders the centered overlay with live previews; (b) T-06.2b adds Cmd+`
-  within-app window cycling, extending `AppSwitcher` rather than adding a
-  second binding path; (c) the switcher snapshots the app list at open, so a
-  window closing mid-hold is not reaped until the next open — widen if the
-  overlay needs live membership; (d) nested capture of the switcher overlay is
-  T-06.2.
+- T-06.1/T-06.2a (done in T29/T30): the compositor switcher machine (ADR 0021)
+  and the shell overlay + live previews (ADR 0022) landed. Remaining: (a)
+  T-06.2b adds Cmd+` within-app window cycling, commit capture, and
+  interruptibility, extending `AppSwitcher` rather than adding a second
+  binding path; the entry event carries only `index`/`app_id`, so append the
+  window handle additively if T-06.2b needs it; (b) the switcher snapshots the
+  app list at open, so a window closing mid-hold is not reaped until the next
+  open — widen if the overlay needs live membership; (c) the shell card row is
+  a non-wrapping `Row`, so many apps need paging/wrapping; (d) the preview grid
+  and the shell cards agree on the strip height but not per-card geometry —
+  align them (labels under each preview) as polish.
 - T-05.1a (done in T22): the live-surface grid landed as a render-time
   transform (ADR 0017). Remaining: (a) T-05.1b (done in T23) keeps a committing
   client ("video") playing at the scaled target and composes the degrade tier

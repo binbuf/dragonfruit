@@ -188,6 +188,7 @@ void ShellProtocol::bindTrustedGlobals()
             onManagerProgress,
             onManagerAppAccelerator,
             onManagerDone,
+            onManagerAppSwitcherEntry,
         };
         df_toplevel_manager_add_listener(m_manager, &managerListener, this);
     }
@@ -343,6 +344,60 @@ bool ShellProtocol::hideOverview()
     wl_surface_attach(m_overviewSurface, nullptr, 0, 0);
     wl_surface_commit(m_overviewSurface);
     m_overviewMapped = false;
+    if (m_display)
+        wl_display_flush(m_display);
+    return true;
+}
+
+bool ShellProtocol::createSwitcherSurface()
+{
+    if (m_switcherSurface || m_switcherLayer)
+        return true;
+    if (!m_shell || !m_compositor)
+        return fail(QStringLiteral("df_shell is not available"));
+
+    m_switcherSurface = wl_compositor_create_surface(m_compositor);
+    m_switcherLayer = df_shell_get_layer_surface(m_shell, m_switcherSurface, nullptr,
+                                                 DF_SHELL_LAYER_OVERLAY, "app-switcher");
+    if (!m_switcherLayer)
+        return fail(QStringLiteral("compositor refused the app-switcher layer surface"));
+    static const df_layer_surface_listener listener = { onSwitcherConfigure, onLayerClosed };
+    df_layer_surface_add_listener(m_switcherLayer, &listener, this);
+
+    // Full output, no reserved zone, no keyboard: the compositor owns the
+    // Cmd-Tab chord, so the overlay is a pure projection. It is mapped only
+    // while the switcher is open, so it never blocks the normal scene.
+    df_layer_surface_set_anchor(m_switcherLayer,
+                                kAnchorTop | kAnchorBottom | kAnchorLeft | kAnchorRight);
+    df_layer_surface_set_exclusive_zone(m_switcherLayer, -1);
+    df_layer_surface_set_keyboard_interaction(
+        m_switcherLayer, DF_LAYER_SURFACE_KEYBOARD_INTERACTION_NONE);
+    wl_surface_attach(m_switcherSurface, nullptr, 0, 0);
+    wl_surface_commit(m_switcherSurface);
+    if (wl_display_flush(m_display) < 0)
+        return fail(QStringLiteral("failed to flush the app-switcher surface creation"));
+    return true;
+}
+
+bool ShellProtocol::commitSwitcherImage(const QImage &image)
+{
+    if (!m_switcherSurface)
+        return false;
+    if (!commitTo(m_switcherSurface, image))
+        return false;
+    m_switcherMapped = true;
+    return true;
+}
+
+bool ShellProtocol::hideSwitcher()
+{
+    if (!m_switcherSurface || !m_switcherLayer)
+        return false;
+    if (!m_switcherMapped)
+        return true;
+    wl_surface_attach(m_switcherSurface, nullptr, 0, 0);
+    wl_surface_commit(m_switcherSurface);
+    m_switcherMapped = false;
     if (m_display)
         wl_display_flush(m_display);
     return true;
@@ -805,6 +860,10 @@ void ShellProtocol::teardown()
     for (wl_buffer *buffer : std::as_const(m_buffers))
         wl_buffer_destroy(buffer);
     m_buffers.clear();
+    if (m_switcherLayer)
+        df_layer_surface_destroy(m_switcherLayer);
+    if (m_switcherSurface)
+        wl_surface_destroy(m_switcherSurface);
     if (m_overviewLayer)
         df_layer_surface_destroy(m_overviewLayer);
     if (m_overviewSurface)
@@ -874,6 +933,12 @@ void ShellProtocol::teardown()
     m_overviewMapped = false;
     m_pointerOnOverview = false;
     m_keyboardOnOverview = false;
+    m_switcherLayer = nullptr;
+    m_switcherSurface = nullptr;
+    m_switcherMapped = false;
+    m_switcherActive = false;
+    m_switcherPending = false;
+    m_switcherEntries.clear();
     m_manager = nullptr;
     m_shell = nullptr;
     m_core = nullptr;
@@ -990,6 +1055,15 @@ void ShellProtocol::onOverviewConfigure(void *data, df_layer_surface *, uint32_t
     if (self->m_overviewLayer)
         df_layer_surface_ack_configure(self->m_overviewLayer, serial);
     emit self->overviewConfigured(width, height, serial);
+}
+
+void ShellProtocol::onSwitcherConfigure(void *data, df_layer_surface *, uint32_t serial,
+                                        int32_t width, int32_t height)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    if (self->m_switcherLayer)
+        df_layer_surface_ack_configure(self->m_switcherLayer, serial);
+    emit self->switcherConfigured(width, height, serial);
 }
 
 void ShellProtocol::onLayerClosed(void *data, df_layer_surface *)
@@ -1474,9 +1548,30 @@ void ShellProtocol::onManagerOverview(void *data, df_toplevel_manager *, uint32_
     emit self->overviewDataChanged();
 }
 
-void ShellProtocol::onManagerAppSwitcher(void *, df_toplevel_manager *, uint32_t, const char *,
-                                         int32_t)
+void ShellProtocol::onManagerAppSwitcher(void *data, df_toplevel_manager *, uint32_t active,
+                                         const char *appId, int32_t direction)
 {
+    auto *self = static_cast<ShellProtocol *>(data);
+    // The compositor-owned machine is the source of truth (T-06.1); the shell
+    // only renders the projection. The recency cards follow before the batch
+    // `done`, so hold them and emit one signal per completed batch.
+    self->m_switcherActive = active != 0;
+    self->m_switcherSelectedApp = QString::fromUtf8(appId ? appId : "");
+    self->m_switcherDirection = direction;
+    self->m_switcherPending = true;
+    if (self->m_switcherActive)
+        self->m_switcherEntries.clear();
+}
+
+void ShellProtocol::onManagerAppSwitcherEntry(void *data, df_toplevel_manager *, uint32_t index,
+                                              const char *appId)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    self->m_switcherPending = true;
+    QVariantMap entry;
+    entry.insert(QStringLiteral("index"), static_cast<int>(index));
+    entry.insert(QStringLiteral("appId"), QString::fromUtf8(appId ? appId : ""));
+    self->m_switcherEntries.append(entry);
 }
 
 void ShellProtocol::onManagerInputAction(void *data, df_toplevel_manager *, const char *action,
@@ -1506,8 +1601,14 @@ void ShellProtocol::onManagerAppAccelerator(void *, df_toplevel_manager *, const
 {
 }
 
-void ShellProtocol::onManagerDone(void *, df_toplevel_manager *)
+void ShellProtocol::onManagerDone(void *data, df_toplevel_manager *)
 {
+    auto *self = static_cast<ShellProtocol *>(data);
+    if (!self->m_switcherPending)
+        return;
+    self->m_switcherPending = false;
+    emit self->appSwitcherChanged(self->m_switcherActive, self->m_switcherEntries,
+                                  self->m_switcherSelectedApp, self->m_switcherDirection);
 }
 
 // --- df_toplevel ------------------------------------------------------------

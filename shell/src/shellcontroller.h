@@ -107,6 +107,10 @@ private slots:
     void onOverviewPointerButton(qreal x, qreal y, quint32 button, bool pressed);
     void onOverviewPointerLeft();
     void onOverviewKeyboardFocused(bool focused);
+    // App-switcher overlay (T-06.2a).
+    void onSwitcherConfigured(int width, int height, quint32 serial);
+    void onAppSwitcherChanged(bool active, const QVariantList &entries,
+                              const QString &selectedAppId, int direction);
     void onDockLaunchTick();
     void onDockAttention(const QString &appId);
     void onDockAnimationTick();
@@ -124,6 +128,12 @@ private:
     void refreshOverviewData();
     void renderOverview();
     void scheduleOverviewRender();
+    // App-switcher overlay (T-06.2a): a fourth offscreen scene, unmapped until
+    // the compositor opens the switcher; it draws the centered app cards, the
+    // selection highlight, and the scrim while the compositor renders the live
+    // preview surfaces underneath.
+    void renderSwitcher();
+    void scheduleSwitcherRender();
     // Rebuild the Dock's ordered entries (pinned + running) and hand them to
     // the QML scene.
     void rebuildDockEntries();
@@ -212,6 +222,17 @@ private:
     Qt::MouseButtons m_overviewButtons = Qt::NoButton;
     FrameCommitGate m_overviewFrameGate;
     bool m_overviewSceneGraphCommitLogged = false;
+    // App-switcher overlay (T-06.2a): a fourth offscreen scene rendered into
+    // the full-output `app-switcher` overlay while the compositor's machine is
+    // open.
+    QQuickWindow *m_switcherWindow = nullptr;
+    QQuickItem *m_switcherItem = nullptr;
+    int m_switcherWidth = 0;
+    int m_switcherHeight = 0;
+    bool m_switcherActive = false;
+    bool m_switcherRenderPending = false;
+    FrameCommitGate m_switcherFrameGate;
+    bool m_switcherSceneGraphCommitLogged = false;
     QSocketNotifier *m_notifier = nullptr;
     QTimer *m_launchTimer = nullptr;
     QTimer *m_dockAnimTimer = nullptr;

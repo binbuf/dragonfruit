@@ -1272,12 +1272,24 @@ impl DfState {
         let active = self.app_switcher.is_active();
         let app_id = self.app_switcher.selected_app().map(str::to_string);
         let direction = self.app_switcher.direction();
+        let entries: Vec<(u32, String)> = self
+            .app_switcher
+            .entries()
+            .iter()
+            .enumerate()
+            .map(|(index, entry)| (index as u32, entry.app_id.clone()))
+            .collect();
         for (_, manager) in &sessions {
             manager.app_switcher(
                 active as u32,
                 protocol_string_opt(app_id.clone()),
                 direction,
             );
+            // The recency snapshot the overlay draws, one card per app, in
+            // order, before the batch `done` (T-06.2a, additive in v4).
+            for (index, entry_app_id) in &entries {
+                manager.app_switcher_entry(*index, entry_app_id.clone());
+            }
             manager.done();
         }
     }
