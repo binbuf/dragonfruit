@@ -203,6 +203,16 @@ the modern-desktop pattern of separate notifications, OSD, and idle services.
 Focus/DND state lives with the notification service so Control Center and the
 menu bar share one source of truth.
 
+**T-11.1a status.** `services/notifications` (`dragonfruit-notifications`)
+serves the standard `org.freedesktop.Notifications` to apps and a
+shell-facing `org.dragonfruit.Notifications1` (banners/history JSON,
+dismiss/expire, `Changed`) at the same object path; the service owns the
+queue, a bounded history, and banner expiry. The shell (`NotificationClient` +
+`NotificationModel`) renders the newest active banner into a top-right
+`notification` overlay surface and keeps the history for the notification
+center. Actions and Dock-failure replacement are T-11.1b; DND policy is
+T-11.2a. See [adr/0056](adr/0056-notification-service-surface-and-shell-banner.md).
+
 ## Relationship to compositor and services
 
 - Compositor state (windows, workspaces, outputs) arrives via private
