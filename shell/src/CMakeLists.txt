@@ -49,6 +49,7 @@ add_library(dragonfruit-shell-dockcore STATIC
     dockmodel.cpp
     dockprojection.cpp
     downloadsmonitor.cpp
+    filestarget.cpp
     framecommitgate.h
     systemstatusmodel.cpp
     trashbridge.cpp

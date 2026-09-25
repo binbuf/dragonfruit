@@ -177,12 +177,15 @@ private:
     void scheduleLaunchStateClear(const QString &desktopId);
     // Coalesce a Dock render onto the next event-loop turn.
     void scheduleDockRender();
-    // Open the Trash in Files (`org.dragonfruit.Files1` / the Files .desktop;
-    // T-18 owns the app). The entry point is wired now.
+    // Launch Files at `argument` through the Files `.desktop` (T-10.6c). The
+    // argument is the `trash://` URI for the Trash click, an absolute path for
+    // Show in Files / a Downloads row, or a `file://` URI. Files resolves a
+    // file to its parent folder and reveals it (`filesOpenTarget`).
+    void launchFiles(const QString &argument);
+    // Open the Trash in Files (`trash://`; T-10.6a).
     void openTrashInFiles();
     // Reveal an app's executable in Files (the Dock "Show in Files" /
-    // Command-click action, T-10 section 13). T-18 owns Files; the entry
-    // point is wired now.
+    // Command-click action, T-10 section 13).
     void showDockAppInFiles(const QString &desktopId, const QString &appId);
     // Push the `dock.*` settings onto the Dock QML and, when the geometry
     // changed, reconfigure the chrome surface (T-10 section 19).

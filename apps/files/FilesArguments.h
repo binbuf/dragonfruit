@@ -8,6 +8,7 @@
 // test can exercise it without pulling in the QML plugin.
 #pragma once
 
+#include <QFileInfo>
 #include <QString>
 #include <QStringList>
 #include <QUrl>
@@ -30,4 +31,45 @@ inline QString filesLocationArgument(const QStringList &arguments)
             return argument;
     }
     return QString();
+}
+
+// What a Files invocation should open: `location` is the directory to browse,
+// `revealUri` the item inside it to select first (empty for none). T-10.6c:
+// the Dock passes an app's executable or a Downloads-stack file, so a `file://`
+// path that names a file opens its parent folder and reveals the file; a
+// directory browses itself; a non-file scheme (`trash://`) browses itself.
+struct FilesOpenTarget {
+    QString location;
+    QString revealUri;
+};
+
+inline FilesOpenTarget filesOpenTarget(const QString &argument)
+{
+    FilesOpenTarget target;
+    if (argument.isEmpty())
+        return target;
+
+    const QUrl url(argument);
+    const bool local = url.scheme() == QStringLiteral("file") || !url.isValid()
+                       || url.scheme().isEmpty();
+    if (local) {
+        const QString path = url.scheme() == QStringLiteral("file")
+                                 ? url.toLocalFile()
+                                 : argument;
+        const QFileInfo info(path);
+        if (info.isDir()) {
+            target.location = QUrl::fromLocalFile(info.absoluteFilePath()).toString();
+        } else if (info.isFile()) {
+            target.location = QUrl::fromLocalFile(info.absolutePath()).toString();
+            target.revealUri = QUrl::fromLocalFile(info.absoluteFilePath()).toString();
+        } else {
+            // A path that does not exist: browse it as given so the shell can
+            // show its own error state rather than silently opening Home.
+            target.location = argument;
+        }
+        return target;
+    }
+
+    target.location = argument;
+    return target;
 }

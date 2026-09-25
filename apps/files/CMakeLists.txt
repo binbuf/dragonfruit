@@ -35,10 +35,19 @@ qt_add_executable(dragonfruit-files
     main.cpp
 )
 target_link_libraries(dragonfruit-files PRIVATE
-    Qt6::Core Qt6::Gui Qt6::Quick
+    Qt6::Core Qt6::Gui Qt6::Quick Qt6::DBus
     dragonfruit-files-uiplugin
 )
 qt_import_qml_plugins(dragonfruit-files)
+
+# The app identity (T-10.6c): install the `.desktop` entry so the Dock's
+# default pins resolve and the folder MIME type routes to Files, and the
+# D-Bus activation service for `org.dragonfruit.Files1`.
+include(GNUInstallDirs)
+install(FILES org.dragonfruit.Files.desktop
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+install(FILES org.dragonfruit.Files1.service
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/dbus-1/services)
 
 df_qml_lint(app-files
     FilesBrowser.qml

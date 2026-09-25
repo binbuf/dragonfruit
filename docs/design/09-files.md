@@ -243,9 +243,24 @@ optimistic operation on the `trash://` listing, which clears every row within a
 frame and snaps them back if the real empty fails, so the model and the store
 never disagree.
 
-**Still deferred:** Show in Files / Downloads / `.desktop` identity (T-10.6c),
-and wiring the files-core folder watcher to the Files facade via the delta
-path.
+**Implementation status (T-10.6c).** The app identity and both Dock navigation
+paths are live. `apps/files/org.dragonfruit.Files.desktop`
+(`Exec=dragonfruit-files %U`, `DBusActivatable=true`) makes the default Dock
+pins resolve and registers Files as the `inode/directory` handler;
+`apps/files/org.dragonfruit.Files1.service` plus the app owning the
+`org.dragonfruit.Files1` name provide the D-Bus activation identity. "Show in
+Files" resolves the app's executable (`revealExecutable`,
+`shell/src/filestarget.cpp`; a bare program name is resolved on `PATH`) and
+launches Files with the absolute path; a Downloads-stack row does the same with
+the downloaded file. Files resolves a file-valued argument to its parent folder
+plus the item to reveal (`filesOpenTarget`, `apps/files/FilesArguments.h`,
+mirrored as `Files.revealUri` / `DF_FILES_START_REVEAL`), and selects and
+scrolls to that item once the listing settles. A directory or `trash://`
+argument browses itself. See ADR
+[0054](adr/0054-files-identity-and-reveal-argument.md).
+
+**Still deferred:** wiring the files-core folder watcher to the Files facade
+via the delta path.
 
 ### Model
 

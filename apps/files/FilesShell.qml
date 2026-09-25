@@ -49,6 +49,14 @@ Item {
     property int startSelect: Files.startSelect
     property bool startEmptyTrash: Files.startEmptyTrash
     property bool captureApplied: false
+    // The item to reveal once the location's listing settles (T-10.6c): the
+    // Dock's Show in Files passes an executable, a Downloads row a file, and
+    // `Files.revealUri` carries the item its parent folder holds. Both this
+    // and `startUri` are overridable so the headless test can drive the
+    // reveal without a second process.
+    property string startUri: Files.startUri
+    property string revealUri: Files.revealUri
+    property bool revealApplied: false
 
     property alias browser: browser
     property alias sidebar: sidebar
@@ -355,12 +363,36 @@ Item {
         }
     }
 
+    // Select the reveal target once its folder's listing has settled, so the
+    // Dock's Show in Files / a Downloads-stack open lands on the exact row
+    // (T-10.6c). Scrolls to it so an off-screen reveal is still visible.
+    function applyReveal() {
+        if (root.revealApplied || root.revealUri.length === 0 || !directory)
+            return;
+        if (directory.state !== "complete" || directory.count === 0)
+            return;
+        root.revealApplied = true;
+        var ids = directory.allNodeIds();
+        for (var i = 0; i < ids.length; ++i) {
+            if (directory.uriAt(i) === root.revealUri) {
+                root.selectedIds = [ids[i]];
+                root.selectedId = ids[i];
+                root.anchorId = ids[i];
+                if (browser.currentView === "list")
+                    listView.scrollToNode(ids[i]);
+                else
+                    iconView.scrollToNode(ids[i]);
+                break;
+            }
+        }
+    }
+
     Component.onCompleted: {
         var start = Files.homeUri;
         // `DF_FILES_START_URI` opens a specific location for captures and
         // scripted checks; an unusable URI falls back to Home.
-        if (Files.startUri.length > 0 && Files.isBrowsable(Files.startUri))
-            start = Files.startUri;
+        if (root.startUri.length > 0 && Files.isBrowsable(root.startUri))
+            start = root.startUri;
         browser.reset(start);
         root.syncSelection();
     }
@@ -714,8 +746,14 @@ Item {
                 noticeTimer.restart();
             }
         }
-        function onStateChanged() { root.applyCaptureSeam(); }
-        function onCountChanged() { root.applyCaptureSeam(); }
+        function onStateChanged() {
+            root.applyCaptureSeam();
+            root.applyReveal();
+        }
+        function onCountChanged() {
+            root.applyCaptureSeam();
+            root.applyReveal();
+        }
     }
 
     Timer {

@@ -42,9 +42,13 @@ class FilesBridge : public QObject
     Q_PROPERTY(QVariantList volumes READ volumes CONSTANT)
     // True when `DF_FILES_FIXTURE` selected the deterministic location set.
     Q_PROPERTY(bool fixture READ fixture CONSTANT)
-    // The location a window opens on: `DF_FILES_START_URI` when set, else
-    // empty (the shell falls back to Home).
+    // The directory a window opens on: `DF_FILES_START_URI` when set, else
+    // empty (the shell falls back to Home). When the start argument names a
+    // file, this is its parent folder and `revealUri` is the file (T-10.6c).
     Q_PROPERTY(QString startUri READ startUri CONSTANT)
+    // The item inside `startUri` to select once the listing settles, from
+    // `DF_FILES_START_REVEAL` or a file-valued start argument; empty for none.
+    Q_PROPERTY(QString revealUri READ revealUri CONSTANT)
     // A real directory the headless tests point the views at, from
     // `DF_FILES_VIEW_FIXTURE`; empty unless the test runner set it.
     Q_PROPERTY(QString viewFixtureUri READ viewFixtureUri CONSTANT)
@@ -81,6 +85,7 @@ public:
     QVariantList volumes() const { return m_volumes; }
     bool fixture() const { return m_fixture; }
     QString startUri() const { return m_startUri; }
+    QString revealUri() const { return m_revealUri; }
     QString viewFixtureUri() const { return m_viewFixtureUri; }
     QString mutationFixtureUri() const { return m_mutationFixtureUri; }
     QString startView() const { return m_startView; }
@@ -99,6 +104,11 @@ public:
     // True for a `file://` path or the `trash://` scheme (the two locations
     // this seam can open; other schemes are not advertised).
     Q_INVOKABLE bool isBrowsable(const QString &uri) const;
+    // Resolve a Files argument into the directory to browse and the item to
+    // reveal (T-10.6c), as `{ location, revealUri }`. The Dock passes an app's
+    // executable or a Downloads-stack file here; the QML tests exercise it
+    // without a second process.
+    Q_INVOKABLE QVariantMap resolveOpenTarget(const QString &argument) const;
 
 private:
     void buildLocations();
@@ -108,6 +118,7 @@ private:
     QString m_homePath;
     QString m_userName;
     QString m_startUri;
+    QString m_revealUri;
     QString m_viewFixtureUri;
     QString m_mutationFixtureUri;
     QString m_startView;

@@ -37,6 +37,13 @@ Item {
         return root.selectedIds.indexOf(nodeId) >= 0;
     }
 
+    // Keep a programmatic selection (the T-10.6c reveal) on screen.
+    function scrollToNode(nodeId) {
+        var row = root.directory ? root.directory.rowForNodeId(nodeId) : -1;
+        if (row >= 0)
+            list.positionViewAtIndex(row, ListView.Center);
+    }
+
     // Empty-space right-click under the table.
     MouseArea {
         anchors.fill: parent

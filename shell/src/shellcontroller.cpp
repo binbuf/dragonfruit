@@ -33,6 +33,7 @@
 #include "dockdrops.h"
 #include "dockmodel.h"
 #include "downloadsmonitor.h"
+#include "filestarget.h"
 #include "shellprotocol.h"
 #include "systemstatusclient.h"
 #include "themebinding.h"
@@ -1686,29 +1687,34 @@ void ShellController::onDockEntryActivated(const QVariant &entry)
     launchDockApp(desktopId);
 }
 
-void ShellController::openTrashInFiles()
+void ShellController::launchFiles(const QString &argument)
 {
-    // Files is T-18; resolve it through the interim index and launch/activate
-    // it at the `trash://` URI. The design's `org.dragonfruit.Files1` service
-    // name is the activation target once T-18 lands.
+    // Resolve Files through the interim index and launch it at `argument`
+    // (T-10.6c). The design's `org.dragonfruit.Files1` service name is the
+    // D-Bus activation target; the installed `.desktop` carries its `%U`
+    // argument seam until the running-instance API (T-18) lands.
     DesktopEntry files = m_index.byId(QStringLiteral("org.dragonfruit.Files.desktop"));
     if (!files.valid)
         files = m_index.resolve(QStringLiteral("org.dragonfruit.Files"));
     if (!DesktopEntryIndex::isLaunchable(files)) {
-        qWarning() << "shell: Dock Trash requested but Files is not installed (T-18)";
+        qWarning() << "shell: Files is not installed (T-10.6c):" << argument;
         return;
     }
-    const QStringList argv =
-        DesktopEntryIndex::buildLaunchCommand(files, {QStringLiteral("trash://")});
+    const QStringList argv = DesktopEntryIndex::buildLaunchCommand(files, {argument});
     if (argv.isEmpty()) {
-        qWarning() << "shell: Files .desktop has no usable Exec for trash://";
+        qWarning() << "shell: Files .desktop has no usable Exec for" << argument;
         return;
     }
     qint64 pid = 0;
     if (!QProcess::startDetached(argv.first(), argv.mid(1), QDir::homePath(), &pid))
-        qWarning() << "shell: cannot open Trash in Files:" << argv.first();
+        qWarning() << "shell: cannot open Files at" << argument << ":" << argv.first();
     else
-        qInfo() << "shell: Dock opened Trash in Files (pid" << pid << ")";
+        qInfo() << "shell: opened Files at" << argument << "(pid" << pid << ")";
+}
+
+void ShellController::openTrashInFiles()
+{
+    launchFiles(QStringLiteral("trash://"));
 }
 
 void ShellController::showDockAppInFiles(const QString &desktopId, const QString &appId)
@@ -1722,31 +1728,13 @@ void ShellController::showDockAppInFiles(const QString &desktopId, const QString
         qWarning() << "shell: Show in Files: cannot resolve app" << desktopId << appId;
         return;
     }
-    const QStringList appArgv = DesktopEntryIndex::buildLaunchCommand(app);
-    if (appArgv.isEmpty())
-        return;
-    const QString target = appArgv.first();
-    // Files is T-18; the design's `org.dragonfruit.Files1` service name is the
-    // activation target once it lands. Until then launch the Files .desktop
-    // with the executable path, the same interim pattern as the Trash.
-    DesktopEntry files = m_index.byId(QStringLiteral("org.dragonfruit.Files.desktop"));
-    if (!files.valid)
-        files = m_index.resolve(QStringLiteral("org.dragonfruit.Files"));
-    if (!DesktopEntryIndex::isLaunchable(files)) {
-        qWarning() << "shell: Show in Files requested but Files is not installed (T-18):"
-                   << target;
+    const QString target = revealExecutable(app);
+    if (target.isEmpty()) {
+        qWarning() << "shell: Show in Files: no executable to reveal for" << app.id;
         return;
     }
-    const QStringList argv = DesktopEntryIndex::buildLaunchCommand(files, {target});
-    if (argv.isEmpty()) {
-        qWarning() << "shell: Files .desktop has no usable Exec for" << target;
-        return;
-    }
-    qint64 pid = 0;
-    if (!QProcess::startDetached(argv.first(), argv.mid(1), QDir::homePath(), &pid))
-        qWarning() << "shell: cannot show" << target << "in Files:" << argv.first();
-    else
-        qInfo() << "shell: Dock revealed" << app.name << "in Files (pid" << pid << ")";
+    launchFiles(target);
+    qInfo() << "shell: revealing" << app.name << "at" << target;
 }
 
 void ShellController::launchDockApp(const QString &desktopId)
@@ -2318,12 +2306,15 @@ void ShellController::onDockDownloadActivated(const QString &path)
 {
     if (path.isEmpty())
         return;
-    // Files is T-18; until it owns "open file", defer to the desktop's
-    // registered handler through the standard xdg-open path.
-    if (!QDesktopServices::openUrl(QUrl::fromLocalFile(path)))
-        qWarning() << "shell: no handler for" << path;
-    else
-        qInfo() << "shell: Dock opened download" << path;
+    // Downloads-stack rows open through Files (T-10.6c): Files opens the
+    // containing folder and reveals the item, so the Dock and the file
+    // manager agree on where the download lives.
+    const QFileInfo info(path);
+    if (!info.exists()) {
+        qWarning() << "shell: downloaded file is gone:" << path;
+        return;
+    }
+    launchFiles(info.absoluteFilePath());
 }
 
 void ShellController::onDockDownloadsFolderRequested()

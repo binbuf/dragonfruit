@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(31 earlier sections omitted)_
+_(32 earlier sections omitted)_
 
-- **T29 — T-06.1 App-switcher state machine**: **State: done.** The compositor now owns a real Cmd-Tab app switcher: open on; **`compositor/src/app_switcher.rs`** (new) — `AppSwitcher` pure machine
 - **T30 — T-06.2a Switcher overlay and live previews**: **State: done.** The Cmd-Tab overlay is live: the compositor scales the; **Protocol** — `df_toplevel_manager.app_switcher_entry(index, app_id)` since 4,
 - **T31 — T-06.2b Switcher commit, Cmd+` cycling, interruptibility**: **State: done.** T-06 is complete. Cmd+` / Cmd+Shift+` cycle windows within the; **`compositor/src/app_switcher.rs`** — `SwitcherApp` carries `windows`
 - **T32 — T-07.1a Adapter contract, states, and mock**: **State: done.** The one adapter contract and its test mock landed in a new; **`services/system-adapters/`** (new crate `dragonfruit-system-adapters`,
@@ -45,6 +44,7 @@ _(31 earlier sections omitted)_
 - **T65 — T-10.5 Files performance budgets**: **State: done.** Files meets both budgets with incremental/windowed delivery.; **`services/files-core/src/ffi.rs`** — `df_files_row` / `df_files_delta`,
 - **T66 — T-10.6a Dock trash source**: **State: done.** The Dock's Trash state comes from `files-core` over the one; **`services/files-core/src/trash_source.rs`** (new) — `TrashSource`
 - **T67 — T-10.6b Drop-to-trash, Empty Trash, trash://**: **State: done.** The Dock's drop and Empty Trash already routed through; **`services/files-core/src/optimistic.rs`** — `PendingKind::Empty` +
+- **T68 — T-10.6c Show in Files, Downloads, and .desktop identity**: **State: done.** The Files identity is installed and the Dock's two navigation; **`apps/files/org.dragonfruit.Files.desktop`** (new) — `Exec=dragonfruit-files
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -5009,3 +5009,89 @@ Gotchas for later tasks:
 - **Capture seam:** `DF_FILES_START_EMPTY_TRASH=1` only opens when the listing
   reaches `complete` with `count > 0`; `DF_FILES_START_URI=trash://` is
   required.
+
+## T68 — T-10.6c Show in Files, Downloads, and .desktop identity
+
+**State: done.** The Files identity is installed and the Dock's two navigation
+paths route through Files: Show in Files reveals an app's executable, a
+Downloads-stack row opens the file's folder with the file selected. Files
+resolves a file-valued argument to its parent plus a reveal target; a directory
+or `trash://` browses itself. See ADR
+[0054](design/adr/0054-files-identity-and-reveal-argument.md).
+
+What landed:
+
+- **`apps/files/org.dragonfruit.Files.desktop`** (new) — `Exec=dragonfruit-files
+  %U`, `DBusActivatable=true`, `MimeType=inode/directory;`,
+  `StartupWMClass=dragonfruit-files`.
+- **`apps/files/org.dragonfruit.Files1.service`** (new) — D-Bus activation
+  `Name=org.dragonfruit.Files1`, `Exec=/usr/bin/dragonfruit-files`.
+- **`apps/files/CMakeLists.txt`** — `install(FILES …)` to
+  `${CMAKE_INSTALL_DATADIR}/applications` and `/dbus-1/services`; the app links
+  `Qt6::DBus`.
+- **`apps/files/main.cpp`** — owns `org.dragonfruit.Files1` on the session bus
+  (`registerService`; a second instance only warns).
+- **`apps/files/FilesArguments.h`** — `FilesOpenTarget` + inline
+  `filesOpenTarget(argument)`: an existing file → `{parent, file://file}`, a
+  directory / other scheme → `{itself, ""}`.
+- **`apps/files/FilesBridge.{h,cpp}`** — `revealUri` property
+  (`DF_FILES_START_REVEAL`, or derived from a file-valued `DF_FILES_START_URI`);
+  invokable `resolveOpenTarget(argument)`.
+- **`apps/files/FilesShell.qml`** — overridable `startUri`/`revealUri`, and
+  `applyReveal()` selects + scrolls to the matching row once the listing is
+  `complete`. Exposed `scrollToNode` on both `FilesListView.qml` and
+  `FilesIconView.qml`.
+- **`shell/src/filestarget.{h,cpp}`** (new, in `dragonfruit-shell-dockcore`) —
+  `revealExecutable(entry)`: first token of the launch command, absolute as-is
+  or `QStandardPaths::findExecutable`; empty for a terminal wrapper/miss.
+- **`shell/src/shellcontroller.{h,cpp}`** — `launchFiles(argument)` is the one
+  Files launch path (Trash, reveal, Downloads). `showDockAppInFiles` uses
+  `revealExecutable`; `onDockDownloadActivated` launches Files at the file
+  instead of `QDesktopServices::openUrl`.
+- **Tests** — `shell/tests/tst_dockcore.cpp`: 3 `revealExecutable` cases;
+  `apps/files/tests/tst_files_arguments.cpp`: 4 `filesOpenTarget` cases;
+  `apps/files/tests/tst_files_shell.qml`: `test_open_target_reveals_a_file_in_
+  its_parent`, `test_reveal_selects_the_matching_row`.
+- **Docs** — ADR 0054; `09-files.md` T-10.6c status paragraph.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `CARGO_NET_OFFLINE=true cargo test -p dragonfruit-files-core` — all pass.
+- `make qml-test` — 33/33 ctest green. If cmake regenerates, export
+  `LD_LIBRARY_PATH=$HOME/.local/df-toolchain/usr/lib64` (its cmake needs
+  `librhash.so.1`).
+- `make e2e` exit 0; `make lint` pieces (fmt, clippy, tokens, design tokens,
+  no-capture-grab, check-desktop-names) green.
+
+Live capture (`/tmp/opencode/t68-capture.sh`; still `/tmp/opencode/t68-still.py`;
+PNG `/tmp/opencode/t68-files-reveal-window.png`). Launch env:
+`DF_DEMO_QT_APP=build/apps/files/dragonfruit-files`,
+`DF_FILES_START_URI=<fixture>/notes.txt`, `DF_FILES_START_VIEW=list`. Raw
+vision on the crop: breadcrumb `Computer > tmp > dragonfruit-t68-capture.… >
+reveal`; rows `Photos`, `archive.tar.gz`, `notes.txt`, `report.pdf`; the
+`notes.txt` row is highlighted. That argument is exactly what
+`ShellController::launchFiles` passes. Vision is a supporting check.
+
+Gotchas for later tasks:
+
+- **The reveal contract is "a file argument reveals".** `filesOpenTarget` only
+  treats an *existing* file as reveal; a missing path browses as given so the
+  app shows its own error. A directory browse has `revealUri` empty. Non-ASCII
+  names rely on Files and files-core encoding the same `file://` URI.
+- **`revealUri` is compared as the exact URI** (`directory.uriAt(i) ===
+  root.revealUri`) in `FilesShell.applyReveal`. It runs once
+  (`revealApplied`); a reload of the same folder does not re-select.
+- **`FilesShell.startUri`/`revealUri` are overridable properties** (defaulting
+  to the `Files` singleton) so headless tests can drive reveal without env.
+- **The identity is shipped and installable, but the demo does not yet put it
+  on `XDG_DATA_DIRS`.** `launchFiles` still resolves
+  `org.dragonfruit.Files.desktop` through the interim index and logs/returns
+  when absent; installing the CMake files or pointing `XDG_DATA_DIRS` at
+  `apps/files` makes the Dock paths live. Running-instance `OpenPaths`/
+  `RevealItems` over `org.dragonfruit.Files1` and `DBusActivatable` honoring are
+  still T-18.
+- **Downloads rows reveal, they do not open with the registered handler.**
+  Files has no open-with yet; the demo's "open a file from the Downloads stack"
+  is therefore a reveal-into-Files until T-18.
+- **Terminal apps have no reveal target**: `buildLaunchCommand` wraps them in an
+  emulator, so `revealExecutable` returns empty for `Terminal=true`.
