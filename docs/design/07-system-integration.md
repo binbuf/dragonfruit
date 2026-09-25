@@ -138,6 +138,27 @@ property of the session's authorization rather than of the daemon's state (see
 still has its usual meaning: a join while NetworkManager is absent reports
 `JoinResult::Absent` and hides the item, never an error.
 
+## The audio path (T-07.3)
+
+The audio adapter, `dragonfruit-audio` (`services/audio`), gives the menu bar
+the default sink's volume and mute plus the per-sink list. PipeWire/WirePlumber
+expose no stable D-Bus volume interface, so the live source talks to WirePlumber
+through the tools it ships: `pw-dump` for the graph read (JSON) and `wpctl` for
+the volume/mute write. The JSON/CLI churn is pinned in one place —
+`AudioData::from_pw_dump`, tested against a captured fixture — and the adapter,
+model, and shell see only the typed `AudioSnapshot`
+([adr/0028](adr/0028-audio-adapter-over-wireplumber-cli.md)). WirePlumber stores
+channel volume on a cubic curve; the parser un-cubes it to the linear 0..=1
+value the status item and slider render.
+
+The read path is the same three-state seam as NetworkManager: `AudioSource::read`
+returns the raw graph (`Ok(Some)`), absence (`Ok(None)`), or a read failure
+(`Err`). `pw-dump` that cannot run or cannot reach a PipeWire core is absence —
+hidden, never an error. The two writes (`set_volume`/`set_mute`) are explicit
+user actions over the same seam and do not invent a snapshot; the daemon pushes
+the result and the host re-reads, so the snapshot stays the single source of
+truth. Routing and device switching are deferred to T-15.
+
 ## D-Bus conventions
 
 Our services own names under `org.dragonfruit.*` on the **user session bus**
