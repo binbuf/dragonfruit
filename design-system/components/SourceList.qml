@@ -194,11 +194,14 @@ FocusScope {
         width: parent ? parent.width : 0
         height: root.rowHeight
 
+        // Hover fill (animated) and an instant selection fill on top; selection
+        // must be fully painted even when the client is idle and no frames are
+        // delivered (see the same pattern in Sidebar).
         Rectangle {
             anchors.fill: parent
             radius: Theme.controls.sourceList.rowRadius
-            color: row.selected ? Theme.color.accent
-                                : (row.hovered ? Theme.color.controlHover : "transparent")
+            color: row.hovered && !row.selected ? Theme.color.controlHover
+                                                : "transparent"
             antialiasing: true
 
             Behavior on color {
@@ -208,6 +211,13 @@ FocusScope {
                     easing.bezierCurve: Theme.motion.hover.curve
                 }
             }
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            radius: Theme.controls.sourceList.rowRadius
+            color: row.selected ? Theme.color.accent : "transparent"
+            antialiasing: true
         }
 
         Icon {

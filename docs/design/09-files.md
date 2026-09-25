@@ -139,6 +139,28 @@ Linux inotify — the local mechanism GIO's `GFileMonitor` wraps — directly ov
 watch, surfacing a self delete/move of the watched folder, and undo/journal.
 See [adr/0047](adr/0047-files-core-folder-watcher-seam.md).
 
+**Implementation status (T-10.4a).** The Files window, toolbar, and sidebar are
+real. `apps/files` is now a reusable QML module (`Dragonfruit.Files`) plus a
+thin executable, mirroring Settings: `FilesShell` composes the design-system
+`AppWindow`/`TitleBar`/`Toolbar`/`Sidebar`/`SegmentedControl`/`SearchField`
+with a footer `PathBar`, and a new `FilesBrowser` owns the current location,
+the per-window back/forward history, and the per-location view state (the
+schema is URI-keyed so the later views persist without a format change). The
+platform seam is the `Files` singleton (`FilesBridge`): it resolves the real
+XDG Favorites (Home, Desktop, Documents, Downloads, Pictures, Music, Videos —
+only directories that exist), the mounted block volumes (`QStorageInfo`; the
+root and system mounts are excluded, network/GVfs volumes wait for the volume
+monitor), the Computer and Trash locations, and the path-bar breadcrumb. The
+toolbar carries the back/forward chevrons (forward dimmed at the end of
+history), the icon/list view switch (the MVP two; Column/Gallery are later),
+and the local search field. **Still deferred:** the directory listing and the
+list/icon views (T-10.4b), the trailing view-options dropdown (view-specific,
+so it lands with the views), the search result set, sidebar drag-reorder,
+Add to Sidebar, and volume eject. The files-core bridge is deliberately
+T-10.4b's decision; this slice keeps the browsing model in QML so the listing
+attaches to `FilesBrowser.currentUri` without a UI rewrite. See
+[adr/0048](adr/0048-files-app-shell-location-provider.md).
+
 ### Model
 
 - **`Location`** — URI-addressed, GFile-shaped: `file://`, `trash://`,
