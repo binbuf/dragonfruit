@@ -34,6 +34,19 @@
 //!   next-available-name helper (`untitled folder`, `untitled folder 2`, …).
 //!   Optimistic semantics, undo, conflicts, and trash are later tasks.
 //!
+//! # What T-10.2b owns
+//!
+//! * [`OptimisticModel`] — a [`DirectoryModel`] plus [`Selection`] that
+//!   applies rename / new-folder / delete to the model **synchronously** (so
+//!   the next frame paints them) and keeps a pending record. Each edit is
+//!   [`OptimisticModel::confirm`]ed when the real [`FileOps`] call succeeds or
+//!   [`OptimisticModel::revert`]ed when it fails, restoring the captured node
+//!   and selection. The `*_via` methods run both halves in one call.
+//! * [`Selection`] — an insertion-ordered set of [`NodeId`]s. Ids are never
+//!   renumbered by an optimistic edit, so the selection and the sort both
+//!   survive rename, new folder, and re-sort; only a confirmed delete drops
+//!   an id, and a revert puts it back.
+//!
 //! # Sorting is incremental and stable
 //!
 //! [`DirectoryModel::set_sort`] changes the order and re-sorts what is already
@@ -86,6 +99,8 @@ mod mock;
 mod model;
 mod node;
 mod ops;
+mod optimistic;
+mod selection;
 pub mod sort;
 mod source;
 
@@ -96,5 +111,7 @@ pub use mock::MockSource;
 pub use model::{DirectoryModel, ListingState};
 pub use node::{Node, NodeId, NodeKind};
 pub use ops::{generated_name, FileOps, OperationError, StdFsOps, NEW_FOLDER_BASE};
+pub use optimistic::{OpId, OptimisticModel};
+pub use selection::Selection;
 pub use sort::{SortDirection, SortKey, SortSpec};
 pub use source::{DirectoryReader, DirectorySource, SourceError};

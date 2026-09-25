@@ -23,6 +23,7 @@
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::ffi::{OsStr, OsString};
 use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 use std::sync::Arc;
 
@@ -262,6 +263,104 @@ impl DirectoryModel {
         self.order.iter().position(|&index| index == arrival)
     }
 
+    /// Append `node` with a freshly assigned id and return that id.
+    ///
+    /// This is how the optimistic layer renders a new item (New Folder,
+    /// Duplicate, Paste) before the filesystem has listed it. The node joins
+    /// the sorted projection under the current [`SortSpec`] immediately, so a
+    /// view paints it on the next frame. The id counter only ever grows, so a
+    /// later [`Self::restore_node`] of a removed id can never collide.
+    pub fn insert_node(&mut self, mut node: Node) -> NodeId {
+        self.next_id += 1;
+        let id = NodeId::from_raw(self.next_id);
+        node.set_id(id);
+        let position = self.nodes.len();
+        self.index.insert(id, position);
+        self.nodes.push(node);
+        self.rebuild_order();
+        id
+    }
+
+    /// Re-insert a previously removed `node` under its original `id` at
+    /// arrival `position` (clamped). Used to revert an optimistic delete.
+    ///
+    /// Returns `false` if `id` is [`NodeId::UNSET`] or already present, so a
+    /// stale revert can never duplicate a row. Restoring does not touch the
+    /// id counter.
+    pub fn restore_node(&mut self, mut node: Node, id: NodeId, position: usize) -> bool {
+        if !id.is_set() || self.index.contains_key(&id) {
+            return false;
+        }
+        let position = position.min(self.nodes.len());
+        node.set_id(id);
+        self.nodes.insert(position, node);
+        for index in self.index.values_mut() {
+            if *index >= position {
+                *index += 1;
+            }
+        }
+        self.index.insert(id, position);
+        self.rebuild_order();
+        true
+    }
+
+    /// Remove the node `id`, returning it and its arrival position.
+    ///
+    /// This is how the optimistic layer hides an item (Move to Trash, Delete
+    /// Immediately) before the filesystem confirms it. The id becomes free
+    /// for [`Self::restore_node`]; ids are never renumbered.
+    pub fn remove_node(&mut self, id: NodeId) -> Option<(Node, usize)> {
+        let position = self.index.remove(&id)?;
+        let node = self.nodes.remove(position);
+        for index in self.index.values_mut() {
+            if *index > position {
+                *index -= 1;
+            }
+        }
+        self.rebuild_order();
+        Some((node, position))
+    }
+
+    /// Replace the node `id` wholesale, keeping its id, and re-sort.
+    ///
+    /// Used to revert an optimistic rename (restore the captured node) or to
+    /// retarget an optimistic creation once the real location is known.
+    pub fn replace_node(&mut self, id: NodeId, mut node: Node) -> bool {
+        let Some(&position) = self.index.get(&id) else {
+            return false;
+        };
+        node.set_id(id);
+        self.nodes[position] = node;
+        self.rebuild_order();
+        true
+    }
+
+    /// Rename the node `id` in place, updating its URI and re-sorting.
+    ///
+    /// The id is deliberately unchanged, so a selection keyed by id survives
+    /// the rename ([09-files.md]). Returns `false` for an unknown id.
+    pub fn rename_node(&mut self, id: NodeId, new_name: impl Into<OsString>) -> bool {
+        let Some(&position) = self.index.get(&id) else {
+            return false;
+        };
+        let new_name = new_name.into();
+        let uri = renamed_uri(self.nodes[position].uri(), &new_name);
+        let node = &mut self.nodes[position];
+        node.set_name(new_name);
+        node.set_uri(uri);
+        self.rebuild_order();
+        true
+    }
+
+    /// Recompute the sorted projection from scratch. Optimistic edits are
+    /// infrequent, so a clean rebuild is safer than patching `order` in place;
+    /// `sort_by` is stable, preserving the arrival-order tie-break.
+    fn rebuild_order(&mut self) {
+        let mut order: Vec<usize> = (0..self.nodes.len()).collect();
+        order.sort_by(|&a, &b| self.compare_positions(a, b));
+        self.order = order;
+    }
+
     /// Merge freshly appended positions into the sorted order. The appended
     /// positions are in arrival order, and every one arrived after the
     /// existing nodes, so taking the existing side on ties is exactly the
@@ -369,6 +468,17 @@ impl DirectoryModel {
         }
         Ok(())
     }
+}
+
+/// The URI a node takes after a rename: the old URI's parent plus the new
+/// name. Falls back to the old URI when it cannot be decomposed, so a foreign
+/// or malformed URI is carried rather than dropped.
+fn renamed_uri(old_uri: &str, new_name: &OsStr) -> String {
+    Location::parse(old_uri)
+        .ok()
+        .and_then(|location| location.parent())
+        .map(|parent| parent.child(new_name).uri().to_owned())
+        .unwrap_or_else(|| old_uri.to_owned())
 }
 
 #[cfg(test)]

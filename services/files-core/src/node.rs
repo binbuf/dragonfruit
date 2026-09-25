@@ -101,6 +101,17 @@ impl Node {
         self.id = id;
     }
 
+    /// Replace the name bytes. The optimistic layer uses this to render a
+    /// rename before the filesystem confirms it; the model re-sorts after.
+    pub(crate) fn set_name(&mut self, name: OsString) {
+        self.name = name;
+    }
+
+    /// Replace the URI that accompanies a rename or a confirmed creation.
+    pub(crate) fn set_uri(&mut self, uri: String) {
+        self.uri = uri;
+    }
+
     /// Builder: attach a byte size (files only, by convention).
     pub fn with_size(mut self, size: Option<u64>) -> Self {
         self.size = size;

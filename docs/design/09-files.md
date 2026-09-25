@@ -82,10 +82,26 @@ generates `untitled folder`, `untitled folder 2`, … through the one
 following them; a cross-device move copies fully then deletes the source;
 `delete` is permanent and recursive. Failures are typed
 (`OperationError`: `AlreadyExists`, `NotFound`, `NotADirectory`,
-`InvalidName`, `UnsupportedScheme`, …). **Still deferred:** optimistic
-rendering and reconciliation, undo, progress, conflict policy, the journal,
-and `trash://` (T-10.2b, T-10.3a). See
+`InvalidName`, `UnsupportedScheme`, …). **Still deferred:** undo, progress,
+conflict policy, the journal, and `trash://` (`trash://` is T-10.3a). See
 [adr/0044](adr/0044-files-core-operations-seam.md).
+
+**Implementation status (T-10.2b).** Operations are now optimistic and
+state-preserving. `OptimisticModel` (in `services/files-core`) wraps a
+`DirectoryModel` and an insertion-ordered `Selection`; `begin_rename`,
+`begin_new_folder`, and `begin_delete` edit the model synchronously — so the
+change is visible before any confirmation — and return an `OpId`.
+`confirm(op)` retires a pending edit and leaves the painted result;
+`revert(op)` restores the captured node, arrival position, and selection, so
+a failed operation snaps back. The `rename_via`/`new_folder_via`/
+`delete_via` methods run the real `FileOps` call and reconcile in one
+synchronous step. **Node ids are stable across every edit**, so the selection
+and the `SortSpec` survive rename, new folder, and re-sort; a confirmed
+delete drops only the deleted id. Trash reuses the optimistic delete path
+(T-10.3a). Still deferred: undo/redo, progress, conflict policy, the journal,
+crash consistency, and the folder watcher that will drive reconciliation
+(T-10.3b). See
+[adr/0045](adr/0045-files-core-optimistic-layer.md).
 
 ### Model
 
