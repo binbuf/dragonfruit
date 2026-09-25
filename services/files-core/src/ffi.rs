@@ -44,14 +44,14 @@
 use std::collections::HashSet;
 use std::ffi::{c_char, CString, OsString};
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, UNIX_EPOCH};
 
 use crate::sort::{SortDirection, SortKey, SortSpec};
 use crate::{
     DirectoryModel, DirectorySource, FileOps, FreedesktopTrash, ListingHandle, ListingState,
     Location, Node, NodeId, NodeKind, OpId, OperationError, OptimisticModel, StdFsOps, StdFsSource,
-    SyntheticSource, TrashOps,
+    SyntheticSource, TrashMonitor, TrashOps, TrashSource, TrashState,
 };
 
 /// Event status: a batch (a fresh ordered snapshot follows).
@@ -442,8 +442,9 @@ unsafe fn free_node_strings(node: &mut df_files_node) {
 }
 
 /// Start listing `uri` and return an opaque session, or null when the URI is
-/// not a parseable `scheme://` location. The caller owns the session and must
-/// release it with [`df_files_free`].
+/// not a parseable `scheme://` location. The `trash://` scheme is served by
+/// [`TrashSource`] (T-10.6a); every other scheme goes to [`StdFsSource`]. The
+/// caller owns the session and must release it with [`df_files_free`].
 ///
 /// # Safety
 ///
@@ -459,7 +460,12 @@ pub unsafe extern "C" fn df_files_begin(uri: *const c_char) -> *mut FfiSession {
     let Ok(location) = Location::parse(uri) else {
         return std::ptr::null_mut();
     };
-    begin_session(location, Arc::new(StdFsSource::new()), 0)
+    let source: Arc<dyn DirectorySource> = if location.scheme() == "trash" {
+        Arc::new(TrashSource::new())
+    } else {
+        Arc::new(StdFsSource::new())
+    };
+    begin_session(location, source, 0)
 }
 
 /// Start a session over a synthetic, disk-free listing of `count` files, in
@@ -895,6 +901,202 @@ unsafe fn read_str(ptr: *const c_char) -> Option<String> {
         .map(str::to_owned)
 }
 
+/// One Trash reading (T-10.6a).
+#[repr(C)]
+pub struct df_files_trash_state {
+    /// Items in the home trash store, or 0 when unavailable.
+    pub count: i32,
+    /// Non-zero when the store is reachable.
+    pub available: i32,
+}
+
+/// The opaque Trash monitor the shell's Dock badge reads (T-10.6a).
+///
+/// It owns a [`TrashMonitor`] over the environment's home trash. The C++ side
+/// blocks on [`df_files_trash_monitor_wait`] from a worker thread and reads
+/// [`df_files_trash_monitor_state`] on the UI thread; every method takes a
+/// shared reference and the monitor is internally synchronized, so those calls
+/// may overlap safely.
+pub struct FfiTrashMonitor {
+    monitor: TrashMonitor,
+    last_error: Mutex<Option<String>>,
+}
+
+/// Create a started Trash monitor over the home trash; free it with
+/// [`df_files_trash_monitor_free`].
+#[no_mangle]
+pub extern "C" fn df_files_trash_monitor_new() -> *mut FfiTrashMonitor {
+    let monitor = TrashMonitor::new();
+    monitor.start();
+    Box::into_raw(Box::new(FfiTrashMonitor {
+        monitor,
+        last_error: Mutex::new(None),
+    }))
+}
+
+/// Retire a Trash monitor, cancelling its watch. Null is ignored.
+///
+/// # Safety
+///
+/// `monitor` must be a pointer returned by [`df_files_trash_monitor_new`] that
+/// has not already been freed.
+#[no_mangle]
+pub unsafe extern "C" fn df_files_trash_monitor_free(monitor: *mut FfiTrashMonitor) {
+    if !monitor.is_null() {
+        drop(Box::from_raw(monitor));
+    }
+}
+
+/// The monitor's current reading without blocking or re-scanning. Null yields
+/// an unavailable, empty reading.
+///
+/// # Safety
+///
+/// `monitor` must be a live pointer returned by [`df_files_trash_monitor_new`]
+/// or null.
+#[no_mangle]
+pub unsafe extern "C" fn df_files_trash_monitor_state(
+    monitor: *const FfiTrashMonitor,
+) -> df_files_trash_state {
+    match monitor.as_ref() {
+        Some(monitor) => {
+            let state: TrashState = monitor.monitor.state();
+            df_files_trash_state {
+                count: state.count as i32,
+                available: i32::from(state.available),
+            }
+        }
+        None => df_files_trash_state {
+            count: 0,
+            available: 0,
+        },
+    }
+}
+
+/// Block up to `timeout_ms` for a change to the Trash and re-scan. Returns 1
+/// when a change was observed (the state is refreshed), 0 on timeout, and -1
+/// for a null monitor.
+///
+/// # Safety
+///
+/// `monitor` must be a live pointer returned by [`df_files_trash_monitor_new`]
+/// or null.
+#[no_mangle]
+pub unsafe extern "C" fn df_files_trash_monitor_wait(
+    monitor: *const FfiTrashMonitor,
+    timeout_ms: u32,
+) -> i32 {
+    match monitor.as_ref() {
+        Some(monitor) => i32::from(
+            monitor
+                .monitor
+                .wait(Duration::from_millis(u64::from(timeout_ms))),
+        ),
+        None => -1,
+    }
+}
+
+/// Re-scan the store now. Returns 1 when the reading changed, 0 when it did
+/// not, and -1 for a null monitor.
+///
+/// # Safety
+///
+/// `monitor` must be a live pointer returned by [`df_files_trash_monitor_new`]
+/// or null.
+#[no_mangle]
+pub unsafe extern "C" fn df_files_trash_monitor_refresh(monitor: *const FfiTrashMonitor) -> i32 {
+    match monitor.as_ref() {
+        Some(monitor) => i32::from(monitor.monitor.refresh()),
+        None => -1,
+    }
+}
+
+/// Move the `file://` item at `uri` into the home trash. Returns 1 on success,
+/// 0 on failure (recorded for [`df_files_trash_monitor_take_error`]), and -1
+/// for a null monitor or an unparseable URI.
+///
+/// # Safety
+///
+/// `monitor` must be a live pointer returned by [`df_files_trash_monitor_new`]
+/// or null; `uri` must be a valid NUL-terminated C string or null.
+#[no_mangle]
+pub unsafe extern "C" fn df_files_trash_monitor_trash(
+    monitor: *const FfiTrashMonitor,
+    uri: *const c_char,
+) -> i32 {
+    let Some(monitor) = monitor.as_ref() else {
+        return -1;
+    };
+    let Some(uri) = read_str(uri) else {
+        return -1;
+    };
+    let Ok(location) = Location::parse(&uri) else {
+        return -1;
+    };
+    match monitor.monitor.trash(&location) {
+        Ok(_) => 1,
+        Err(error) => {
+            *monitor
+                .last_error
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner()) = Some(error.to_string());
+            0
+        }
+    }
+}
+
+/// Remove every item from the home trash. Returns the number removed (0 for an
+/// already-empty store), or -1 on failure (recorded for
+/// [`df_files_trash_monitor_take_error`]) or a null monitor.
+///
+/// # Safety
+///
+/// `monitor` must be a live pointer returned by [`df_files_trash_monitor_new`]
+/// or null.
+#[no_mangle]
+pub unsafe extern "C" fn df_files_trash_monitor_empty(monitor: *const FfiTrashMonitor) -> i32 {
+    let Some(monitor) = monitor.as_ref() else {
+        return -1;
+    };
+    match monitor.monitor.empty() {
+        Ok(removed) => removed as i32,
+        Err(error) => {
+            *monitor
+                .last_error
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner()) = Some(error.to_string());
+            -1
+        }
+    }
+}
+
+/// Take the most recent Trash operation failure (a NUL-terminated UTF-8 string
+/// owned by the caller, or null when there is none) and clear it.
+///
+/// # Safety
+///
+/// `monitor` must be a live pointer returned by [`df_files_trash_monitor_new`]
+/// or null.
+#[no_mangle]
+pub unsafe extern "C" fn df_files_trash_monitor_take_error(
+    monitor: *const FfiTrashMonitor,
+) -> *mut c_char {
+    let Some(monitor) = monitor.as_ref() else {
+        return std::ptr::null_mut();
+    };
+    monitor
+        .last_error
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner())
+        .take()
+        .map(|message| {
+            CString::new(message)
+                .unwrap_or_else(|_| CString::new("error").expect("static"))
+                .into_raw()
+        })
+        .unwrap_or(std::ptr::null_mut())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1173,6 +1375,44 @@ mod tests {
             assert_eq!(df_files_pending_ops(session), 0);
             assert!(dir.path().join("untitled folder").is_dir());
             df_files_free(session);
+        }
+    }
+
+    #[test]
+    fn trash_monitor_abi_reads_trashes_and_empties() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let home = dir.path().join("Trash");
+        let monitor = TrashMonitor::with_home_trash(&home);
+        monitor.start();
+        let raw = Box::into_raw(Box::new(FfiTrashMonitor {
+            monitor,
+            last_error: Mutex::new(None),
+        }));
+        unsafe {
+            let state = df_files_trash_monitor_state(raw);
+            assert_eq!(state.count, 0, "a fresh store is empty");
+            assert_ne!(state.available, 0, "a writable store is available");
+
+            // A files-core trash operation updates the reading.
+            let source = dir.path().join("note.txt");
+            std::fs::write(&source, b"hi").expect("source");
+            let uri = Location::file(&source).uri().to_owned();
+            assert_eq!(df_files_trash_monitor_trash(raw, c(&uri).as_ptr()), 1);
+            assert_eq!(df_files_trash_monitor_state(raw).count, 1);
+            assert!(!source.exists());
+
+            assert_eq!(df_files_trash_monitor_empty(raw), 1);
+            assert_eq!(df_files_trash_monitor_state(raw).count, 0);
+            assert!(
+                df_files_trash_monitor_take_error(raw).is_null(),
+                "a clean op records no error"
+            );
+
+            // A bounded wait never fails on a live monitor; queued events from
+            // our own operations above may still be drained, so only the sign
+            // is asserted here (the wake path is covered in `trash_source`).
+            assert!(df_files_trash_monitor_wait(raw, 50) >= 0);
+            df_files_trash_monitor_free(raw);
         }
     }
 }

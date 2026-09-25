@@ -5,24 +5,8 @@
 
 # The files-core bridge (T-10.4b, ADR 0049): the Rust crate is built as a
 # static library exposing a small C ABI (`ffi/files_core.h`), which
-# `FilesDirectoryModel` links. Cargo is invoked from CMake so a standalone
-# `make cmake-build` also produces it; the target always runs cargo, which is
-# a no-op once the crate is up to date.
-find_program(DF_CARGO_EXECUTABLE cargo REQUIRED)
-set(DF_FILES_CORE_STATICLIB
-    "${CMAKE_SOURCE_DIR}/target/debug/libdragonfruit_files_core.a")
-add_custom_target(dragonfruit-files-core-ffi
-    COMMAND ${DF_CARGO_EXECUTABLE} build -p dragonfruit-files-core
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    COMMENT "Building dragonfruit-files-core staticlib (T-10.4b bridge)"
-    VERBATIM
-)
-add_library(dragonfruit-files-core STATIC IMPORTED GLOBAL)
-set_target_properties(dragonfruit-files-core PROPERTIES
-    IMPORTED_LOCATION "${DF_FILES_CORE_STATICLIB}"
-    INTERFACE_LINK_LIBRARIES "pthread;dl;m"
-)
-add_dependencies(dragonfruit-files-core dragonfruit-files-core-ffi)
+# `FilesDirectoryModel` links. The imported target is defined once at the top
+# level so the shell's Dock Trash bridge (T-10.6a) shares it.
 
 qt_add_library(dragonfruit-files-ui STATIC)
 qt_add_qml_module(dragonfruit-files-ui

@@ -475,10 +475,11 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // fade/scale, drag gaps) reaches the compositor without a sampling timer.
     connect(m_dockWindow, &QQuickWindow::afterRendering, this,
             &ShellController::onDockAfterRendering);
-    // The Trash entry's state comes from the home-trash watch (section 16);
-    // deletions by any application update the full/count state.
-    m_trash = new TrashMonitor(TrashMonitor::defaultRoot(), this);
-    connect(m_trash, &TrashMonitor::changed, this, &ShellController::onTrashChanged);
+    // The Trash entry's state comes from files-core/GVfs (section 16); a
+    // deletion by any application updates the full/count state, and the shell
+    // and Files share the one Trash store (T-10.6a).
+    m_trash = new TrashBridge(this);
+    connect(m_trash, &TrashBridge::changed, this, &ShellController::onTrashChanged);
     m_trash->start();
     m_dockItem->setProperty("trashFull", m_trash->isFull());
     m_dockItem->setProperty("trashCount", m_trash->itemCount());

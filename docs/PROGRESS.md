@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(29 earlier sections omitted)_
+_(30 earlier sections omitted)_
 
-- **T27 — T-05.5 Desktop Reveal**: **State: done.** Ctrl+Down routes `DesktopReveal` through the one overview; **`compositor/src/overview/reveal.rs`** (new) — `escape_rect` (the off-screen
 - **T28 — T-05.6 Overview frame budget and capture**: **State: done.** The overview gesture now has its own **gesture-scoped** 60 Hz; **`compositor/src/instrument.rs`** — `GestureBudgetTrace`: render-duration
 - **T29 — T-06.1 App-switcher state machine**: **State: done.** The compositor now owns a real Cmd-Tab app switcher: open on; **`compositor/src/app_switcher.rs`** (new) — `AppSwitcher` pure machine
 - **T30 — T-06.2a Switcher overlay and live previews**: **State: done.** The Cmd-Tab overlay is live: the compositor scales the; **Protocol** — `df_toplevel_manager.app_switcher_entry(index, app_id)` since 4,
@@ -45,6 +44,7 @@ _(29 earlier sections omitted)_
 - **T63 — T-10.4b Files list and icon views**: **State: done.** The Files icon and list views render the `files-core` listing.; **`services/files-core/src/ffi.rs`** (new) — the C ABI: `df_files_begin`,
 - **T64 — T-10.4c Files context menus, multi-select, optimistic UI**: **State: done.** Context menus, multi-select, and optimistic; **`services/files-core/src/ffi.rs`** — `FfiSession` now wraps
 - **T65 — T-10.5 Files performance budgets**: **State: done.** Files meets both budgets with incremental/windowed delivery.; **`services/files-core/src/ffi.rs`** — `df_files_row` / `df_files_delta`,
+- **T66 — T-10.6a Dock trash source**: **State: done.** The Dock's Trash state comes from `files-core` over the one; **`services/files-core/src/trash_source.rs`** (new) — `TrashSource`
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -4845,3 +4845,80 @@ Gotchas for later tasks:
   Cosmetic only.
 - **Still deferred (T-10.6a+):** the Dock Trash source, wiring the folder
   watcher to the facade (via the delta path), and network-mounted performance.
+
+## T66 — T-10.6a Dock trash source
+
+**State: done.** The Dock's Trash state comes from `files-core` over the one
+freedesktop store, and the shell's interim home-trash watcher is deleted. The
+shell links the `files-core` staticlib (the same artifact Files links) and reads
+it through a small trash-only C ABI. See ADR
+[0052](design/adr/0052-dock-trash-state-from-files-core.md).
+
+What landed:
+
+- **`services/files-core/src/trash_source.rs`** (new) — `TrashSource`
+  (`DirectorySource` over `trash://`; items are `Node`s at `trash:///<name>`),
+  `TrashMonitor` (count + `available`; change events on the T-10.3b
+  `FolderWatcher` over the store's `info/`), and `TrashState`. Exported from
+  `lib.rs`.
+- **`services/files-core/src/ffi.rs`** — `df_files_trash_state` and
+  `df_files_trash_monitor_{new,free,state,wait,refresh,trash,empty,take_error}`.
+  `df_files_begin` now dispatches `trash://` to `TrashSource` (every other
+  scheme stays `StdFsSource`). New Rust test
+  `trash_monitor_abi_reads_trashes_and_empties`.
+- **`shell/src/files_core_trash.h`** (new) — the mirrored trash ABI (kept
+  separate from `apps/files/ffi/files_core.h` so the shell does not depend on
+  the listing/model ABI).
+- **`shell/src/trashbridge.{h,cpp}`** (new) — `TrashBridge` (same public shape
+  as the old `TrashMonitor`: `start/stop/refresh/isFull/itemCount/
+  isAvailable/lastError/trash/empty/changed`). A worker thread blocks on
+  `df_files_trash_monitor_wait` and posts `changed()` to the UI thread.
+- **Deleted** `shell/src/trashmonitor.{h,cpp}`; shellcontroller now owns a
+  `TrashBridge`. Drop/Empty still work because they went through the same
+  method names and are now routed through files-core.
+- **CMake** — the `dragonfruit-files-core` imported staticlib + its cargo
+  custom target moved to the top-level `CMakeLists.txt`, linked by
+  `apps/files` and `dragonfruit-shell-dockcore`.
+- **Tests** — `tst_dockcore`: four `trashBridge*` tests (they `setenv`
+  `XDG_DATA_HOME` to a temp dir before constructing the bridge): read
+  empty/full, third-party watch wake, trash+empty through files-core, and
+  creating a missing store on demand.
+- **Docs** — ADR 0052; `09-files.md` T-10.3a note + T-10.6a status paragraph.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `CARGO_NET_OFFLINE=true cargo test -p dragonfruit-files-core` — 142 pass
+  (70 unit incl. 7 trash_source + 9 ffi, plus integration suites).
+- `make qml-test` — 32/32 ctest green; `tst_dockcore` 46 pass.
+- `make lint` green; `make e2e` exit 0.
+
+Live capture: `/tmp/opencode/t66-capture.sh` (driver `t66-still.py`; PNGs
+`/tmp/opencode/t66-dock.png`, `t66-dock-strip.png`, `t66-dock-tight.png`).
+Launch: `DF_DEMO_QT_APP=build/apps/files/dragonfruit-files`,
+`DF_FILES_START_URI=file:///tmp`, default socket. Raw vision on the tight Dock
+crop: tiles `K` `F` `X` `D`, a blue Downloads folder labeled `Downloa…`, and a
+red-stroked trash can with no count badge (the `trashFull` accent; the real
+home trash held 24 items). Vision is a supporting check.
+
+Gotchas for later tasks:
+
+- **`TrashBridge` is the shell's only Trash seam.** It wraps
+  `df_files_trash_monitor_*`; QML never sees the ABI. The method names match the
+  deleted `TrashMonitor`, so `shellcontroller.cpp` call sites are unchanged.
+- **The shell now links the `files-core` staticlib.** `make cmake-build` builds
+  it via the top-level `dragonfruit-files-core-ffi` target; the artifact is
+  `target/debug/libdragonfruit_files_core.a`. Both Files and the shell share
+  the one imported target.
+- **`TrashMonitor` reports a missing store as available** and creates
+  `files/`+`info/`; only a store whose dirs cannot be created reads
+  unavailable. The old "unreadable existing root" test was dropped (the new
+  source follows the freedesktop "create on demand" contract).
+- **The monitor watches only the home trash.** A delete on another volume
+  lands in that volume's `.Trash-$UID` and does not move the badge.
+- **`TrashSource` is now reachable by `df_files_begin("trash://…")`** so Files
+  can list the Trash; Put Back / Delete Immediately over those nodes is
+  T-10.6b/c.
+- **Still deferred:** T-10.6b (Drop/Empty UX + `trash://` navigation),
+  T-10.6c (Show in Files / Downloads / `.desktop` identity), wiring the folder
+  watcher to the Files facade via the delta path, and network-mounted
+  performance.

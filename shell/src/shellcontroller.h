@@ -21,7 +21,7 @@
 #include "settingsclient.h"
 #include "shellprotocol.h"
 #include "systemstatusmodel.h"
-#include "trashmonitor.h"
+#include "trashbridge.h"
 #include "wallpaperpolicy.h"
 
 class SystemStatusClient;
@@ -306,9 +306,10 @@ private:
     bool m_localSettingsWrite = false;
     // One-shot: the installed default pin set is seeded once per session.
     bool m_defaultPinsSeeded = false;
-    // Interim home-trash state for the Dock's Trash entry (section 16). The
-    // GIO/GVfs backend replaces it when the dev headers are available.
-    TrashMonitor *m_trash = nullptr;
+    // The Dock's Trash state, read from files-core's one freedesktop Trash
+    // store (T-10.6a). It replaced the interim home-trash watcher, so the shell
+    // and Files share a single source of truth.
+    TrashBridge *m_trash = nullptr;
     // Downloads-stack state for the Dock (section 17). Files-core (T-17)
     // replaces this watch with its folder monitor.
     DownloadsMonitor *m_downloads = nullptr;

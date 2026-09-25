@@ -117,8 +117,7 @@ origin and fails cleanly when it is occupied or gone; `empty` clears the
 store; duplicate names are de-duplicated with the shared `generated_name`.
 `OptimisticModel::trash_via` reuses `begin_delete`, so Move to Trash paints
 within one frame and snaps back on failure. `delete` remains permanent.
-**Still deferred:** listing `trash://` as a `DirectorySource` (the Dock's
-Trash source, T-10.6a), undo/journal, and per-item progress. The recorded
+**Still deferred:** undo/journal and per-item progress. The recorded
 `DeletionDate` is UTC rather than local (display only). See
 [adr/0046](adr/0046-files-core-trash-seam-and-spec-fallback.md).
 
@@ -215,6 +214,21 @@ delivers each node once in ~1.0 s and a 40-row viewport read costs ~2 µs
 (budget < 16.6 ms); the QML icon/list views instantiate a bounded delegate
 window at 100k rows. Raw numbers are recorded in
 [`docs/captures/t10-files-perf.txt`](../captures/t10-files-perf.txt).
+
+**Implementation status (T-10.6a).** The Dock's Trash state comes from
+`files-core`, over the same freedesktop store Files writes, and the interim
+shell-side home-trash watcher is deleted. `TrashSource` (in
+`services/files-core`) is a `DirectorySource` over the `trash://` scheme, so
+the Files window lists the Trash through the streaming model; `TrashMonitor` is
+the Dock's read path — a count, a reachability flag, and change notifications
+driven by the T-10.3b `FolderWatcher` on the store's `info/` directory (no
+directory poll). Both consume the one `FreedesktopTrash` store, so a deletion
+by any application appears in the Dock and Files at once. The shell reads and
+mutates it through a small C ABI (`df_files_trash_monitor_*`, ADR
+[0052](adr/0052-dock-trash-state-from-files-core.md)) wrapped by `TrashBridge`;
+the shell links the `files-core` staticlib as Files does. **Still deferred:**
+the Drop-to-trash / Empty Trash UX rework and `trash://` navigation (T-10.6b),
+and Show in Files / Downloads / `.desktop` identity (T-10.6c).
 
 ### Model
 

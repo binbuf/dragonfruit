@@ -17,6 +17,26 @@ qt_standard_project_setup()
 
 enable_testing()
 
+# The files-core bridge (T-10.4b, ADR 0049; T-10.6a): the Rust crate is built
+# as a static library exposing a small C ABI (`staticlib`). The Files app and
+# the shell's Dock Trash bridge both link it, so the imported target and its
+# one cargo invocation are defined here rather than in either consumer.
+find_program(DF_CARGO_EXECUTABLE cargo REQUIRED)
+set(DF_FILES_CORE_STATICLIB
+    "${CMAKE_SOURCE_DIR}/target/debug/libdragonfruit_files_core.a")
+add_custom_target(dragonfruit-files-core-ffi
+    COMMAND ${DF_CARGO_EXECUTABLE} build -p dragonfruit-files-core
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Building dragonfruit-files-core staticlib (T-10.4b bridge)"
+    VERBATIM
+)
+add_library(dragonfruit-files-core STATIC IMPORTED GLOBAL)
+set_target_properties(dragonfruit-files-core PROPERTIES
+    IMPORTED_LOCATION "${DF_FILES_CORE_STATICLIB}"
+    INTERFACE_LINK_LIBRARIES "pthread;dl;m"
+)
+add_dependencies(dragonfruit-files-core dragonfruit-files-core-ffi)
+
 # One shared QML import root for every module (Dragonfruit, Dragonfruit.*).
 # This is what lets a plain, runtime-compiled QML file (the tests) resolve
 # `import Dragonfruit` from the filesystem instead of only through the
