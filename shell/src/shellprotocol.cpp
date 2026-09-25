@@ -46,6 +46,9 @@ constexpr uint32_t kAnchorBottom = 2;
 constexpr uint32_t kAnchorLeft = 4;
 constexpr uint32_t kAnchorRight = 8;
 
+// The banner card's inset from the output's right edge (T-11.1a).
+constexpr int kBannerMargin = 8;
+
 // The Dock's surface anchor for a position (T-10 section 5). A bottom Dock
 // stretches the full width; a vertical Dock stretches the full height and
 // sits on the left or right edge.
@@ -402,6 +405,66 @@ bool ShellProtocol::hideSwitcher()
     wl_surface_attach(m_switcherSurface, nullptr, 0, 0);
     wl_surface_commit(m_switcherSurface);
     m_switcherMapped = false;
+    if (m_display)
+        wl_display_flush(m_display);
+    return true;
+}
+
+bool ShellProtocol::createBannerSurface(int width, int height, int topMargin)
+{
+    if (m_bannerSurface || m_bannerLayer)
+        return true;
+    if (!m_shell || !m_compositor)
+        return fail(QStringLiteral("df_shell is not available"));
+
+    m_bannerSurface = wl_compositor_create_surface(m_compositor);
+    m_bannerLayer = df_shell_get_layer_surface(m_shell, m_bannerSurface, nullptr,
+                                               DF_SHELL_LAYER_OVERLAY, "notification");
+    if (!m_bannerLayer)
+        return fail(QStringLiteral("compositor refused the notification layer surface"));
+    static const df_layer_surface_listener listener = { onBannerConfigure, onLayerClosed };
+    df_layer_surface_add_listener(m_bannerLayer, &listener, this);
+
+    // Top-right corner, below the menu bar; reserve nothing (a banner is
+    // transient) and never take keyboard. Clicks pass through until T-11.1b
+    // adds banner activation.
+    df_layer_surface_set_anchor(m_bannerLayer, kAnchorRight | kAnchorTop);
+    df_layer_surface_set_margin(m_bannerLayer, topMargin, kBannerMargin, 0, 0);
+    df_layer_surface_set_size(m_bannerLayer, width, height);
+    df_layer_surface_set_exclusive_zone(m_bannerLayer, -1);
+    df_layer_surface_set_keyboard_interaction(m_bannerLayer,
+                                              DF_LAYER_SURFACE_KEYBOARD_INTERACTION_NONE);
+    wl_region *region = wl_compositor_create_region(m_compositor);
+    if (region) {
+        wl_surface_set_input_region(m_bannerSurface, region);
+        wl_region_destroy(region);
+    }
+    wl_surface_attach(m_bannerSurface, nullptr, 0, 0);
+    wl_surface_commit(m_bannerSurface);
+    if (wl_display_flush(m_display) < 0)
+        return fail(QStringLiteral("failed to flush the notification surface creation"));
+    return true;
+}
+
+bool ShellProtocol::commitBannerImage(const QImage &image)
+{
+    if (!m_bannerSurface)
+        return false;
+    if (!commitTo(m_bannerSurface, image))
+        return false;
+    m_bannerMapped = true;
+    return true;
+}
+
+bool ShellProtocol::hideBanner()
+{
+    if (!m_bannerSurface || !m_bannerLayer)
+        return false;
+    if (!m_bannerMapped)
+        return true;
+    wl_surface_attach(m_bannerSurface, nullptr, 0, 0);
+    wl_surface_commit(m_bannerSurface);
+    m_bannerMapped = false;
     if (m_display)
         wl_display_flush(m_display);
     return true;
@@ -955,6 +1018,10 @@ void ShellProtocol::teardown()
         df_layer_surface_destroy(m_switcherLayer);
     if (m_switcherSurface)
         wl_surface_destroy(m_switcherSurface);
+    if (m_bannerLayer)
+        df_layer_surface_destroy(m_bannerLayer);
+    if (m_bannerSurface)
+        wl_surface_destroy(m_bannerSurface);
     if (m_overviewLayer)
         df_layer_surface_destroy(m_overviewLayer);
     if (m_overviewSurface)
@@ -1158,6 +1225,15 @@ void ShellProtocol::onSwitcherConfigure(void *data, df_layer_surface *, uint32_t
     if (self->m_switcherLayer)
         df_layer_surface_ack_configure(self->m_switcherLayer, serial);
     emit self->switcherConfigured(width, height, serial);
+}
+
+void ShellProtocol::onBannerConfigure(void *data, df_layer_surface *, uint32_t serial,
+                                      int32_t width, int32_t height)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    if (self->m_bannerLayer)
+        df_layer_surface_ack_configure(self->m_bannerLayer, serial);
+    emit self->bannerConfigured(width, height, serial);
 }
 
 void ShellProtocol::onLayerClosed(void *data, df_layer_surface *)

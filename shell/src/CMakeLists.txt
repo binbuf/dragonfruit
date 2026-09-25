@@ -51,6 +51,7 @@ add_library(dragonfruit-shell-dockcore STATIC
     downloadsmonitor.cpp
     filestarget.cpp
     framecommitgate.h
+    notificationmodel.cpp
     systemstatusmodel.cpp
     trashbridge.cpp
     wallpaperpolicy.cpp
@@ -96,6 +97,7 @@ qt_add_executable(dragonfruit-shell
     main.cpp
     shellcontroller.cpp
     shellprotocol.cpp
+    notificationclient.cpp
     systemstatusclient.cpp
     themebinding.cpp
 )
@@ -112,6 +114,7 @@ target_link_libraries(dragonfruit-shell PRIVATE
     dragonfruit-shell-dockplugin
     dragonfruit-shell-overviewplugin
     dragonfruit-shell-switcherplugin
+    dragonfruit-shell-notificationsplugin
 )
 if(TARGET PkgConfig::WAYLAND_CLIENT)
     target_link_libraries(dragonfruit-shell PRIVATE PkgConfig::WAYLAND_CLIENT)

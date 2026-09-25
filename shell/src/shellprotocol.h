@@ -144,6 +144,21 @@ public:
     // Unmap the switcher surface (attach a null buffer).
     bool hideSwitcher();
 
+    // Create the notification-banner overlay surface (T-11.1a): an `overlay`
+    // layer surface anchored to the top-right corner, namespace
+    // "notification", that starts unmapped. `width`/`height` are the banner
+    // card size; `topMargin` clears the menu bar. It reserves nothing
+    // (`exclusive_zone = -1`) and never takes keyboard (banners are
+    // display-only until T-11.1b adds activation).
+    bool createBannerSurface(int width, int height, int topMargin);
+
+    // Attach `image` to the banner surface and commit. The image must be
+    // ARGB32(_Premultiplied).
+    bool commitBannerImage(const QImage &image);
+
+    // Unmap the banner surface (attach a null buffer).
+    bool hideBanner();
+
     // Activate a Space by its index (the workspace strip click, FR-10). The
     // compositor switches every output in lockstep.
     void activateWorkspace(int index);
@@ -259,6 +274,7 @@ signals:
     void dockPopupConfigured(int width, int height, uint32_t serial);
     void overviewConfigured(int width, int height, uint32_t serial);
     void switcherConfigured(int width, int height, uint32_t serial);
+    void bannerConfigured(int width, int height, uint32_t serial);
     void surfaceClosed();
     void focusedAppChanged(const QString &appId, const QString &title);
     // xdg-activation attention for an app's toplevel (T-10 FR-4): the Dock
@@ -385,6 +401,8 @@ private:
                                     int32_t width, int32_t height);
     static void onSwitcherConfigure(void *data, df_layer_surface *layer, uint32_t serial,
                                     int32_t width, int32_t height);
+    static void onBannerConfigure(void *data, df_layer_surface *layer, uint32_t serial,
+                                  int32_t width, int32_t height);
     static void onLayerClosed(void *data, df_layer_surface *layer);
     static void onSeatCapabilities(void *data, wl_seat *seat, uint32_t capabilities);
     static void onSeatName(void *data, wl_seat *seat, const char *name);
@@ -536,6 +554,11 @@ private:
     int m_switcherDirection = 0;
     bool m_switcherPending = false;
     QVariantList m_switcherEntries;
+    // Notification-banner overlay (T-11.1a): a top-right `overlay` surface
+    // mapped only while a banner is on screen.
+    wl_surface *m_bannerSurface = nullptr;
+    df_layer_surface *m_bannerLayer = nullptr;
+    bool m_bannerMapped = false;
     // True while the Dock surface holds the keyboard (T-10 section 20), so
     // key events are routed to the Dock scene.
     bool m_keyboardOnDock = false;

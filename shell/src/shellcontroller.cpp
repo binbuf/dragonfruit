@@ -34,6 +34,8 @@
 #include "dockmodel.h"
 #include "downloadsmonitor.h"
 #include "filestarget.h"
+#include "notificationclient.h"
+#include "notificationmodel.h"
 #include "shellprotocol.h"
 #include "systemstatusclient.h"
 #include "themebinding.h"
@@ -43,6 +45,12 @@ namespace {
 // How long a launch may take to map its first window before the Dock treats
 // it as failed (T-10 section 8.5). Interim until app-index owns activation.
 constexpr qint64 kLaunchTimeoutMs = 8000;
+
+// The notification banner card (T-11.1a): a fixed card size and its gap below
+// the menu bar. One banner shows at a time; the rest stay in the history.
+constexpr int kBannerWidth = 380;
+constexpr int kBannerHeight = 96;
+constexpr int kBannerTopGap = 8;
 
 QVariantMap statusItem(const QString &id, const QString &icon, const QString &label,
                        const QString &accessibleName, bool available, qreal level = 0.8,
@@ -209,6 +217,7 @@ ShellController::ShellController(QObject *parent)
 
 ShellController::~ShellController()
 {
+    delete m_bannerWindow;
     delete m_switcherWindow;
     delete m_overviewWindow;
     delete m_dockWindow;
@@ -581,6 +590,52 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     connect(m_protocol, &ShellProtocol::appSwitcherChanged, this,
             &ShellController::onAppSwitcherChanged);
 
+    // Notification banners and history (T-11.1a): the model decodes the
+    // service's `Banners()`/`History()` views; the client is the live
+    // session-bus client, or the fixture under `DF_NOTIFY_FIXTURE`
+    // (headless/capture only). A banner maps the top-right `notification`
+    // overlay; an empty queue unmaps it.
+    m_notificationModel = new NotificationModel(this);
+    if (qEnvironmentVariableIsSet("DF_NOTIFY_FIXTURE"))
+        m_notificationClient = new MockNotificationClient(this);
+    else
+        m_notificationClient = new DbusNotificationClient(this);
+    connect(m_notificationModel, &NotificationModel::changed, this, [this]() {
+        if (m_notificationModel->hasBanner())
+            showCurrentBanner();
+        else
+            hideCurrentBanner();
+    });
+    connect(m_notificationClient, &NotificationClient::bannersChanged, this,
+            &ShellController::onNotificationBanners);
+    connect(m_notificationClient, &NotificationClient::historyChanged, this,
+            &ShellController::onNotificationHistory);
+    connect(m_notificationClient, &NotificationClient::availableChanged, this,
+            &ShellController::onNotificationAvailable);
+
+    m_bannerWindow = new QQuickWindow;
+    m_bannerWindow->setColor(Qt::transparent);
+    QQmlComponent bannerComponent(m_engine);
+    bannerComponent.loadFromModule(QStringLiteral("Dragonfruit.Notifications"),
+                                   QStringLiteral("NotificationBanner"));
+    if (bannerComponent.isError()) {
+        fprintf(stderr, "dragonfruit-shell: NotificationBanner QML error: %s\n",
+                qPrintable(bannerComponent.errorString()));
+        return false;
+    }
+    QObject *bannerObject = bannerComponent.create();
+    m_bannerItem = qobject_cast<QQuickItem *>(bannerObject);
+    if (!m_bannerItem) {
+        fprintf(stderr, "dragonfruit-shell: NotificationBanner QML did not produce an item\n");
+        return false;
+    }
+    m_bannerItem->setParentItem(m_bannerWindow->contentItem());
+    connect(m_bannerWindow, &QQuickWindow::afterRendering, this,
+            &ShellController::renderBanner);
+    connect(m_protocol, &ShellProtocol::bannerConfigured, this,
+            &ShellController::onBannerConfigured);
+    m_notificationClient->refresh();
+
     if (!m_protocol->createMenuBarSurface(barHeight, barHeight))
         return false;
     // The dropdown rides a separate `overlay` chrome surface so transient
@@ -604,6 +659,10 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // The app-switcher overlay is a full-output `overlay` surface, unmapped
     // until the compositor opens the switcher (T-06.2a).
     if (!m_protocol->createSwitcherSurface())
+        return false;
+    // The notification banner is a top-right `overlay` surface, unmapped until
+    // a banner is active (T-11.1a).
+    if (!m_protocol->createBannerSurface(kBannerWidth, kBannerHeight, barHeight + kBannerTopGap))
         return false;
 
     // Launch timeout: a launch that produces no window within the bounded
@@ -2121,6 +2180,109 @@ void ShellController::scheduleSwitcherRender()
         m_switcherRenderPending = false;
         renderSwitcher();
     });
+}
+
+// --- Notification banners and history (T-11.1a) ----------------------------
+
+void ShellController::onNotificationAvailable(bool available)
+{
+    if (!m_notificationModel)
+        return;
+    if (available) {
+        m_notificationClient->refresh();
+    } else {
+        // The service went away: clear both views and unmap the banner.
+        m_notificationModel->applyBannersJson(QByteArrayLiteral("[]"));
+        m_notificationModel->applyHistoryJson(QByteArrayLiteral("[]"));
+    }
+}
+
+void ShellController::onNotificationBanners(const QByteArray &json)
+{
+    if (m_notificationModel)
+        m_notificationModel->applyBannersJson(json);
+}
+
+void ShellController::onNotificationHistory(const QByteArray &json)
+{
+    if (m_notificationModel)
+        m_notificationModel->applyHistoryJson(json);
+}
+
+void ShellController::showCurrentBanner()
+{
+    if (!m_bannerItem || !m_notificationModel)
+        return;
+    const QVariantMap banner = m_notificationModel->banner();
+    if (banner.isEmpty()) {
+        hideCurrentBanner();
+        return;
+    }
+    m_bannerItem->setProperty("appName", banner.value(QStringLiteral("appName")));
+    m_bannerItem->setProperty("summary", banner.value(QStringLiteral("summary")));
+    m_bannerItem->setProperty("body", banner.value(QStringLiteral("body")));
+    m_bannerItem->setProperty("urgency", banner.value(QStringLiteral("urgency")));
+    m_bannerItem->setProperty("hasActions",
+                              !banner.value(QStringLiteral("actions")).toList().isEmpty());
+    m_bannerPending = true;
+    if (m_bannerWidth > 0 && m_bannerHeight > 0)
+        renderBanner();
+}
+
+void ShellController::hideCurrentBanner()
+{
+    m_bannerPending = false;
+    if (m_protocol)
+        m_protocol->hideBanner();
+}
+
+void ShellController::onBannerConfigured(int width, int height, quint32)
+{
+    if (width <= 0 || height <= 0)
+        return;
+    m_bannerWidth = width;
+    m_bannerHeight = height;
+    if (m_bannerPending)
+        renderBanner();
+}
+
+void ShellController::scheduleBannerRender()
+{
+    if (m_bannerRenderPending)
+        return;
+    m_bannerRenderPending = true;
+    QTimer::singleShot(0, this, [this]() {
+        m_bannerRenderPending = false;
+        renderBanner();
+    });
+}
+
+void ShellController::renderBanner()
+{
+    if (!m_bannerPending || !m_bannerWindow || !m_bannerItem)
+        return;
+    if (m_bannerWidth <= 0 || m_bannerHeight <= 0)
+        return;
+    // The scene graph just rendered; skip the re-entrant frame our own
+    // `grabWindow` readback produces (the Dock/switcher FR-14 pattern).
+    if (!m_bannerFrameGate.frameRendered())
+        return;
+    if (!m_bannerSceneGraphCommitLogged) {
+        m_bannerSceneGraphCommitLogged = true;
+        qInfo() << "shell: notification banner scene-graph commit path active";
+    }
+    m_bannerItem->setWidth(m_bannerWidth);
+    m_bannerItem->setHeight(m_bannerHeight);
+    if (m_bannerWindow->width() != m_bannerWidth
+        || m_bannerWindow->height() != m_bannerHeight)
+        m_bannerWindow->resize(m_bannerWidth, m_bannerHeight);
+    if (!m_bannerWindow->isVisible())
+        m_bannerWindow->show();
+    m_bannerFrameGate.beginCommit();
+    const QImage image = m_bannerWindow->grabWindow();
+    m_bannerFrameGate.endCommit();
+    if (!image.isNull() && m_protocol)
+        m_protocol->commitBannerImage(image);
 }
 
 void ShellController::renderSwitcher()

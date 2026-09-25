@@ -18,6 +18,8 @@
 #include "dockmodel.h"
 #include "downloadsmonitor.h"
 #include "framecommitgate.h"
+#include "notificationclient.h"
+#include "notificationmodel.h"
 #include "settingsclient.h"
 #include "shellprotocol.h"
 #include "systemstatusmodel.h"
@@ -128,6 +130,11 @@ private slots:
     void onSwitcherConfigured(int width, int height, quint32 serial);
     void onAppSwitcherChanged(bool active, const QVariantList &entries,
                               const QString &selectedAppId, int direction);
+    // Notification banners and history (T-11.1a).
+    void onNotificationAvailable(bool available);
+    void onNotificationBanners(const QByteArray &json);
+    void onNotificationHistory(const QByteArray &json);
+    void onBannerConfigured(int width, int height, quint32 serial);
     void onDockLaunchTick();
     void onDockAttention(const QString &appId);
     void onDockAnimationTick();
@@ -156,6 +163,12 @@ private:
     // preview surfaces underneath.
     void renderSwitcher();
     void scheduleSwitcherRender();
+    // Notification banner (T-11.1a): map the top-right overlay with the
+    // newest active banner's content, and unmap it when the queue empties.
+    void showCurrentBanner();
+    void hideCurrentBanner();
+    void renderBanner();
+    void scheduleBannerRender();
     // Rebuild the Dock's ordered entries (pinned + running) and hand them to
     // the QML scene.
     void rebuildDockEntries();
@@ -278,6 +291,19 @@ private:
     bool m_switcherRenderPending = false;
     FrameCommitGate m_switcherFrameGate;
     bool m_switcherSceneGraphCommitLogged = false;
+    // Notification banner (T-11.1a): a fifth offscreen scene rendered into the
+    // top-right `notification` overlay while a banner is active. The model is
+    // the service's decoded `Banners()`/`History()` views.
+    NotificationModel *m_notificationModel = nullptr;
+    NotificationClient *m_notificationClient = nullptr;
+    QQuickWindow *m_bannerWindow = nullptr;
+    QQuickItem *m_bannerItem = nullptr;
+    int m_bannerWidth = 0;
+    int m_bannerHeight = 0;
+    bool m_bannerPending = false;
+    bool m_bannerRenderPending = false;
+    FrameCommitGate m_bannerFrameGate;
+    bool m_bannerSceneGraphCommitLogged = false;
     QSocketNotifier *m_notifier = nullptr;
     QTimer *m_launchTimer = nullptr;
     QTimer *m_dockAnimTimer = nullptr;
