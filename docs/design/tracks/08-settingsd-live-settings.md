@@ -193,3 +193,37 @@ staged-write failure leaving the prior file intact, the revision-0 migration
 fixture, unknown-entry preservation, and invalid-value fallback; the
 `session_bus.rs` integration test serves the daemon with a persistence path
 and asserts a `Set` lands on disk and reloads after a restart.
+
+## The shell consumes settingsd (T-08.2a)
+
+The shell's interim `DockSettings`/`DockPins` file owners and their
+`QFileSystemWatcher` are **gone**. The Dock reads and writes every `dock.*`
+key through one `SettingsClient` (`shell/src/settingsclient.h`):
+
+- `DbusSettingsClient` is the live client for `org.dragonfruit.Settings1`. It
+  is seeded with the schema defaults, subscribes to `Changed` (never polls),
+  resyncs with `GetAll` when the name appears, and mirrors a write with `Set`.
+  The local store updates first so the Dock reacts on the same event-loop
+  turn; the daemon's `Changed` echo is de-duplicated by value.
+- `MockSettingsClient` is the in-process fixture for the headless tests.
+
+The typed Dock view is `DockConfig` + `dockConfigFromValues()` in
+`shell/src/dockmodel.cpp`; `dockIconSize()` maps `dock.size` onto the icon
+token range and `resolveDefaultDockPins()` (moved out of the deleted
+`DockPins`) supplies the first-run pin set.
+
+**Absent daemon.** The demo/dev tool deliberately does not start settingsd;
+the shell then runs entirely from the schema defaults plus in-memory writes,
+so the Dock still lays out and resizes. When the daemon appears its
+`GetAll` snapshot becomes authoritative. `dock.pinned` is seeded with the
+installed defaults once per session when it is empty (the schema default);
+there is no file-existence check to consult anymore, so an intentionally
+emptied pin set is re-seeded on the next launch (a known corner; T-08.3 can
+carry a "seeded" marker if it matters).
+
+**Verification.** `tst_dockcore` covers the typed view, the icon-size map,
+the default pins, and the overflow re-layout. `tst_settingsclient` drives a
+fake `org.dragonfruit.Settings1` service on a private bus
+(`dbus-run-session`) and asserts the live `GetAll`/`Changed`/`Set` path; it
+skips the bus half where no bus exists. The capture
+`docs/captures/t08-settingsd.*` is the track's scripted flip.

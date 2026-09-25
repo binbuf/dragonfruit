@@ -8,8 +8,44 @@
 #include <QString>
 #include <QStringList>
 #include <QVariantList>
+#include <QVariantMap>
 
 class DesktopEntryIndex;
+
+// The Dock's slice of the settings schema (T-08.2a). The values are read from
+// the `org.dragonfruit.Settings1` client; this struct is the typed view the
+// controller and the layout use. The defaults mirror the schema and are the
+// same ones the client seeds when settingsd is absent.
+struct DockConfig {
+    double size = 0.5;
+    double magnification = 0.5;
+    QString position = QStringLiteral("bottom");
+    bool autohide = false;
+    bool animateOpening = true;
+    bool showIndicators = true;
+    bool minimizeIntoTileIcon = false;
+    QString minimizedAnimation = QStringLiteral("scale");
+    QString titlebarDoubleClick = QStringLiteral("zoom");
+    bool showRecentApps = false;
+    bool reduceMotion = false;
+    QStringList pinned;
+
+    bool operator==(const DockConfig &) const = default;
+};
+
+// Read the Dock keys out of a settings value map (missing keys fall back to
+// the schema defaults). Pure and unit-testable.
+DockConfig dockConfigFromValues(const QVariantMap &values);
+
+// Map `dock.size` (0..1) onto the icon-size token range. Pure: the QML token
+// bounds are passed in by the caller.
+int dockIconSize(double size, int iconMin, int iconMax);
+
+// The default pinned set (T-10 section 19): Files, Settings, Terminal,
+// Browser, resolved against the installed `.desktop` corpus by trying a small
+// candidate list per slot and taking the first that resolves. Unresolved slots
+// are skipped so the Dock never opens with broken default tiles.
+QStringList resolveDefaultDockPins(const DesktopEntryIndex &index);
 
 // Build the Dock's ordered entries. `running` is the shell projection
 // (kind "temporary" with `windows`, plus per-window "minimized" entries).

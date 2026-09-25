@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(7 earlier sections omitted)_
+_(8 earlier sections omitted)_
 
-- **T05 — T-01.5 Decoration tier policy and X11 correctness**: **State: done.** The three decoration classes are honored and the X11; **`compositor/src/state.rs`** — new `DfState::set_decoration_tier(window,
 - **T06 — T-01.6a `make demo` harness**: **State: done.** One `make demo` target builds the tree and runs the T-01 loop; **`Makefile`** — `demo: build` → `cargo run -p dragonfruit-dev -- dev --demo
 - **T07 — T-01.6b Loop integration walkthrough and capture**: **State: done.** The live nested walkthrough of the T-01 loop is scripted and; **`scripts/capture-demo.sh`** (new) + **`scripts/capture-demo-driver.py`**
 - **T08 — T-02.1a Animation clock and frame discipline**: **State: done.** One shared compositor animation clock exists; the overview's; **`compositor/src/animation.rs`** (new) — `FRAME_INTERVAL` (16 ms),
@@ -44,7 +43,8 @@ _(7 earlier sections omitted)_
 - **T41 — T-07.6b Menu-bar idle trace and capture**: **State: done.** The menu-bar idle trace is flat at both seams and the T-07; **`compositor/tests/shell_idle_trace.rs`** — the bar-live idle trace now
 - **T42 — T-08.1a settingsd config model and D-Bus API**: **State: done.** `services/settingsd` is no longer a stub: the desktop-settings; **`services/settingsd/src/schema.rs`** (new) — `KEYS`: 20 named keys
 - **T43 — T-08.1b settingsd persistence and migrations**: **State: done.** `settingsd` now owns; **`services/settingsd/src/persist.rs`** (new) — the persisted format,
-- **Follow-ups**: **T-08.2 consumer migration.** T42 landed the model + D-Bus API and T43 the; **T-07.6 signal wiring (not done).** The bridge host
+- **T44 — T-08.2a Shell migration to settingsd**: **State: done.** The shell no longer owns Dock settings: `DockSettings`/; **`shell/src/settingsclient.{h,cpp}`** (new) — `SettingsClient` (typed key
+- **Follow-ups**: **T-08.2 consumer migration (T-08.2a done in T44).** T44 deleted the; **T-07.6 signal wiring (not done).** The bridge host
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -2865,17 +2865,88 @@ Gotchas for later tasks:
   five-icon Dock, dark background; no artifacts). No `docs/captures/` file was
   added — the T-08 track owns `t08-settingsd.*` for the scripted flip.
 
+## T44 — T-08.2a Shell migration to settingsd
+
+**State: done.** The shell no longer owns Dock settings: `DockSettings`/
+`DockPins` and their `QFileSystemWatcher` are deleted; every `dock.*` key is
+read/written through `settingsd`.
+
+What landed:
+
+- **`shell/src/settingsclient.{h,cpp}`** (new) — `SettingsClient` (typed key
+  store over `QVariantMap`, signals `changed`/`availableChanged`/`refreshed`),
+  `DbusSettingsClient` (live `org.dragonfruit.Settings1`: `GetAll` resync,
+  `Changed` subscription, `Set` mirror, service add/remove tracking),
+  `MockSettingsClient` (tests), and `settingsSchemaDefaults()` mirroring all
+  20 v1 keys with their D-Bus types. No polling anywhere.
+- **`shell/src/dockmodel.{h,cpp}`** — new `DockConfig`, `dockConfigFromValues`,
+  `dockIconSize`, and `resolveDefaultDockPins` (moved from the deleted
+  `DockPins`).
+- **`shell/src/shellcontroller.{h,cpp}`** — `m_settings`/`m_pins`/watcher
+  replaced by `m_settingsClient` + `m_dockConfig`; `writeDockSetting()` is the
+  one write path (optimistic local apply, daemon `Set` mirror, echo
+  de-duplicated by `m_localSettingsWrite`); `onSettingsChanged()` applies a
+  daemon-originated change; `seedDefaultDockPins()` seeds the installed pins
+  once when `dock.pinned` is empty. `applyDockSettings`/`dockPosition`/
+  `computeDockOverflow` read the typed view.
+- **`shell/tests/tst_dockcore.cpp`** — file-persistence tests removed; new
+  typed-view / icon-size / default-pin / re-layout tests.
+- **`shell/tests/tst_settingsclient.cpp`** (new) — mock store + a fake
+  `org.dragonfruit.Settings1` service on a private bus
+  (`dbus-run-session`); asserts `GetAll`, `Changed`, `Set` and the
+  de-duplication; skips the bus half if no bus.
+- **`Cargo`/`CMake`** — `dockpins.cpp`/`docksettings.cpp` removed from
+  `dragonfruit-shell-dockcore`, `settingsclient.cpp` added; dockcore links
+  `Qt6::DBus`.
+- **ADR [0032](design/adr/0032-shell-settings-client.md)**; track doc
+  `08-settingsd-live-settings.md` gained a "shell consumes settingsd" section.
+
+Commands that work (repo root; `make` sets the toolchain env):
+
+- `ctest --test-dir build` — 19/19 green (incl. `tst_dockcore` 49+1 and the
+  new `tst_settingsclient` under `dbus-run-session`).
+- `make lint` exit 0.
+
+Live visual check (`/tmp/opencode/t44-capture.sh`): started the built
+`dragonfruit-settingsd` on the session bus with a scratch `XDG_CONFIG_HOME`,
+launched the nested demo, captured at `dock.size=0.5`
+(`/tmp/opencode/t44-before.png`) then `gdbus … Set dock.size "<0.9>"`
+(`/tmp/opencode/t44-nested.png`). Evidence: shell log
+`Dock settings changed (live: dock.size)`; settingsd persisted `dock.size:
+0.9` and the seeded `dock.pinned`; the light Dock panel measured 335x65 ->
+413x78 px. Dock crop `/tmp/opencode/t44-after-dock.png`; vision read a
+centered rounded Dock with six icons (pinned Konsole/Firefox, running apps,
+Downloads, Trash). No `docs/captures/` file — the T-08 track owns
+`t08-settingsd.*`.
+
+Gotchas for later tasks:
+
+- **Absent daemon is graceful.** The dev/demo tool still does not start
+  settingsd; the shell then runs from the mirrored schema defaults + in-memory
+  writes. The demo Dock seeds and resizes without a daemon.
+- **`dock.pinned` re-seeds on empty.** There is no "file existed" check via
+  D-Bus, so an intentionally emptied pin set comes back next launch. T-08.3
+  can add a marker if that matters.
+- **New schema key => update `settingsSchemaDefaults()`** (and
+  `dockConfigFromValues` if the Dock consumes it). Renames still fail the
+  frozen v1 manifest test in `settingsd`.
+- **Daemon `Changed` for `dock.size` takes the full reconfigure path**, not
+  the size-only divider path; a live settings-app drag would rebuild entries
+  until made smarter.
+- **T-08.2b**: bind `Theme.dark`/`Theme.reducedMotion` on the same
+  `SettingsClient` (`appearance.colorScheme`, `appearance.accent`,
+  `accessibility.reduceMotion`); do not add a second bus connection or timer.
+
 ## Follow-ups
 
-- **T-08.2 consumer migration.** T42 landed the model + D-Bus API and T43 the
-  persistence/atomic-write/migration; T-08.2a must delete the shell's
-  `DockSettings`/`DockPins` file owners and `QFileSystemWatcher` when it binds
-  the daemon, T-08.2b must bind `Theme.dark`/`Theme.reducedMotion`, and
-  T-08.2c must apply the motion/input policy in the compositor. Until T-08.2a
-  lands, the shell and settingsd can both write
-  `$XDG_CONFIG_HOME/dragonfruit/settings.json`; settingsd preserves unknown
-  entries, but consumers still are not migrated. Nothing starts
-  `dragonfruit-settingsd` (the dev tool deliberately does not).
+- **T-08.2 consumer migration (T-08.2a done in T44).** T44 deleted the
+  shell's `DockSettings`/`DockPins` and `QFileSystemWatcher`; the Dock now
+  reads/writes through the `SettingsClient` seam (ADR 0032). Remaining:
+  T-08.2b must bind `Theme.dark`/`Theme.reducedMotion` to
+  `appearance.colorScheme`/`appearance.accent`/`accessibility.reduceMotion`,
+  and T-08.2c must apply the motion/input policy in the compositor. Nothing
+  starts `dragonfruit-settingsd` (the dev tool deliberately does not); the
+  shell runs from the mirrored schema defaults then, which is intended.
 
 - **T-07.6 signal wiring (not done).** The bridge host
   (`services/system-status`) reads an adapter only on startup, an explicit

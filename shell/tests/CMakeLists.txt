@@ -83,6 +83,31 @@ set_tests_properties(tst_statusmodel PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# Settings-client tests (T-08.2a): the typed value store and the live
+# `org.dragonfruit.Settings1` client against a fake service on a private
+# session bus. The bus-dependent half skips when no bus is present.
+qt_add_executable(tst_settingsclient
+    tst_settingsclient.cpp
+)
+target_link_libraries(tst_settingsclient PRIVATE
+    Qt6::Core Qt6::Test Qt6::DBus
+    dragonfruit-shell-dockcore
+)
+
+find_program(DBUS_RUN_SESSION dbus-run-session)
+if(DBUS_RUN_SESSION)
+    add_test(
+        NAME tst_settingsclient
+        COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:tst_settingsclient>
+    )
+else()
+    add_test(NAME tst_settingsclient COMMAND tst_settingsclient)
+endif()
+set_tests_properties(tst_settingsclient PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Overview chrome tests (T-11): workspace strip (incl. fullscreen Spaces),
 # minimized-window strip, selection signals, and the shared progress fade.
 qt_add_executable(tst_overview

@@ -5,11 +5,10 @@
 #include "desktopentry.h"
 #include "dockdrops.h"
 #include "dockmodel.h"
-#include "dockpins.h"
 #include "dockprojection.h"
-#include "docksettings.h"
 #include "downloadsmonitor.h"
 #include "framecommitgate.h"
+#include "settingsclient.h"
 #include "trashmonitor.h"
 
 #include <QDir>
@@ -230,56 +229,7 @@ private slots:
                               QStringLiteral("100%"), QStringLiteral("App")}));
     }
 
-    // -- dock.pinned persistence ----------------------------------------
-
-    void pinsRoundTripAndPreserveUnknownKeys()
-    {
-        QTemporaryDir dir;
-        QVERIFY(dir.isValid());
-        const QString path = dir.path() + QStringLiteral("/dragonfruit/settings.json");
-
-        DockPins pins(path);
-        QVERIFY(!pins.fileExists());
-        QVERIFY(pins.load());
-        QVERIFY(pins.isEmpty());
-        pins.setIds({QStringLiteral("a.desktop"), QStringLiteral("b.desktop")});
-        QVERIFY(pins.save());
-
-        DockPins reloaded(path);
-        QVERIFY(reloaded.fileExists());
-        QVERIFY(reloaded.load());
-        QCOMPARE(reloaded.ids(),
-                 (QStringList{QStringLiteral("a.desktop"), QStringLiteral("b.desktop")}));
-
-        // An unrelated key written by another owner survives a Dock write.
-        writeFile(path, QStringLiteral("{\n"
-                                       "  \"schema\": 1,\n"
-                                       "  \"future\": true,\n"
-                                       "  \"keys\": { \"dock.pinned\": [\"a.desktop\"] }\n"
-                                       "}\n"));
-
-        DockPins third(path);
-        QVERIFY(third.load());
-        QVERIFY(third.add(QStringLiteral("c.desktop")));
-        QVERIFY(third.save());
-        QFile check(path);
-        QVERIFY(check.open(QIODevice::ReadOnly | QIODevice::Text));
-        const QByteArray written = check.readAll();
-        QVERIFY(written.contains("\"future\": true"));
-        QVERIFY(written.contains("c.desktop"));
-    }
-
-    void pinsMoveAndRemove()
-    {
-        DockPins pins(QStringLiteral("/nonexistent/settings.json"));
-        pins.setIds({QStringLiteral("a"), QStringLiteral("b"), QStringLiteral("c")});
-        QVERIFY(pins.move(0, 2));
-        QCOMPARE(pins.ids(), (QStringList{QStringLiteral("b"), QStringLiteral("c"),
-                                          QStringLiteral("a")}));
-        QVERIFY(!pins.move(5, 0));
-        QVERIFY(pins.remove(QStringLiteral("c")));
-        QVERIFY(!pins.remove(QStringLiteral("c")));
-    }
+    // -- default pins and the typed settings view (T-08.2a) --------------
 
     void defaultPinsPickFirstPartyAndRegisteredCategories()
     {
@@ -303,118 +253,74 @@ private slots:
 
         DesktopEntryIndex index;
         index.scan({apps});
-        QCOMPARE(DockPins::resolveDefaultPins(index),
+        QCOMPARE(resolveDefaultDockPins(index),
                  (QStringList{QStringLiteral("org.dragonfruit.Files.desktop"),
                               QStringLiteral("org.dragonfruit.Settings.desktop"),
                               QStringLiteral("term.desktop"),
                               QStringLiteral("browse.desktop")}));
     }
 
-    // -- dock.* settings (T-10 section 19) -------------------------------
-
-    void settingsDefaultsWhenFileMissing()
+    void dockConfigReadsTheSchemaDefaults()
     {
-        DockSettings settings(QStringLiteral("/nonexistent/settings.json"));
-        QVERIFY(settings.load());
-        QCOMPARE(settings.size(), 0.5);
-        QCOMPARE(settings.magnification(), 0.5);
-        QCOMPARE(settings.position(), QStringLiteral("bottom"));
-        QCOMPARE(settings.autohide(), false);
-        QCOMPARE(settings.animateOpening(), true);
-        QCOMPARE(settings.showIndicators(), true);
-        QCOMPARE(settings.minimizeIntoTileIcon(), false);
-        QCOMPARE(settings.minimizedAnimation(), QStringLiteral("scale"));
-        QCOMPARE(settings.titlebarDoubleClick(), QStringLiteral("zoom"));
-        QCOMPARE(settings.showRecentApps(), false);
-        QCOMPARE(settings.reduceMotion(), false);
+        const DockConfig config = dockConfigFromValues(settingsSchemaDefaults());
+        QCOMPARE(config.size, 0.5);
+        QCOMPARE(config.magnification, 0.5);
+        QCOMPARE(config.position, QStringLiteral("bottom"));
+        QCOMPARE(config.autohide, false);
+        QCOMPARE(config.animateOpening, true);
+        QCOMPARE(config.showIndicators, true);
+        QCOMPARE(config.minimizeIntoTileIcon, false);
+        QCOMPARE(config.minimizedAnimation, QStringLiteral("scale"));
+        QCOMPARE(config.titlebarDoubleClick, QStringLiteral("zoom"));
+        QCOMPARE(config.showRecentApps, false);
+        QCOMPARE(config.reduceMotion, false);
+        QCOMPARE(config.pinned, QStringList());
     }
 
-    void settingsRoundTripAndValidate()
+    void dockConfigReadsOverridesAndFallsBackOnMissingKeys()
     {
-        QTemporaryDir dir;
-        QVERIFY(dir.isValid());
-        const QString path = dir.path() + QStringLiteral("/dragonfruit/settings.json");
-
-        DockSettings settings(path);
-        settings.setSize(2.0);          // clamps to 1.0
-        settings.setMagnification(-1.0); // clamps to 0.0
-        settings.setPosition(QStringLiteral("sideways")); // -> bottom
-        settings.setAutohide(true);
-        settings.setAnimateOpening(false);
-        settings.setShowIndicators(false);
-        settings.setMinimizeIntoTileIcon(true);
-        settings.setMinimizedAnimation(QStringLiteral("warp")); // -> scale
-        settings.setTitlebarDoubleClick(QStringLiteral("fill")); // -> zoom
-        settings.setShowRecentApps(true);
-        settings.setReduceMotion(true);
-        QVERIFY(settings.save());
-
-        DockSettings reloaded(path);
-        QVERIFY(reloaded.load());
-        QCOMPARE(reloaded.size(), 1.0);
-        QCOMPARE(reloaded.magnification(), 0.0);
-        QCOMPARE(reloaded.position(), QStringLiteral("bottom"));
-        QCOMPARE(reloaded.autohide(), true);
-        QCOMPARE(reloaded.animateOpening(), false);
-        QCOMPARE(reloaded.showIndicators(), false);
-        QCOMPARE(reloaded.minimizeIntoTileIcon(), true);
-        QCOMPARE(reloaded.minimizedAnimation(), QStringLiteral("scale"));
-        QCOMPARE(reloaded.titlebarDoubleClick(), QStringLiteral("zoom"));
-        QCOMPARE(reloaded.showRecentApps(), true);
-        QCOMPARE(reloaded.reduceMotion(), true);
-
-        // A malformed file keeps the defaults and reports why.
-        writeFile(path, QStringLiteral("{ not json"));
-        DockSettings broken(path);
-        QVERIFY(!broken.load());
-        QVERIFY(!broken.lastError().isEmpty());
-        QCOMPARE(broken.size(), 0.5);
+        QVariantMap values;
+        values.insert(QStringLiteral("dock.size"), 0.9);
+        values.insert(QStringLiteral("dock.autohide"), true);
+        values.insert(QStringLiteral("dock.position"), QStringLiteral("left"));
+        values.insert(QStringLiteral("accessibility.reduceMotion"), true);
+        const DockConfig config = dockConfigFromValues(values);
+        QCOMPARE(config.size, 0.9);
+        QCOMPARE(config.autohide, true);
+        QCOMPARE(config.position, QStringLiteral("left"));
+        QCOMPARE(config.reduceMotion, true);
+        // Keys absent from the map keep the schema default.
+        QCOMPARE(config.magnification, 0.5);
+        QCOMPARE(config.showRecentApps, false);
     }
 
-    void settingsAndPinsShareTheFileWithoutClobbering()
+    void dockIconSizeMapsTheRange()
     {
-        QTemporaryDir dir;
-        QVERIFY(dir.isValid());
-        const QString path = dir.path() + QStringLiteral("/dragonfruit/settings.json");
-
-        // The settings write lands first, then a pin write; both survive.
-        DockSettings settings(path);
-        settings.setMagnification(0.8);
-        QVERIFY(settings.save());
-        DockPins pins(path);
-        QVERIFY(pins.load());
-        QVERIFY(pins.add(QStringLiteral("a.desktop")));
-        QVERIFY(pins.save());
-
-        DockSettings reloadedSettings(path);
-        QVERIFY(reloadedSettings.load());
-        QCOMPARE(reloadedSettings.magnification(), 0.8);
-        DockPins reloadedPins(path);
-        QVERIFY(reloadedPins.load());
-        QCOMPARE(reloadedPins.ids(), QStringList{QStringLiteral("a.desktop")});
-
-        // And the reverse order.
-        DockSettings second(path);
-        QVERIFY(second.load());
-        second.setAutohide(true);
-        QVERIFY(second.save());
-        DockPins third(path);
-        QVERIFY(third.load());
-        QVERIFY(third.add(QStringLiteral("b.desktop")));
-        QVERIFY(third.save());
-        DockSettings finalSettings(path);
-        QVERIFY(finalSettings.load());
-        QCOMPARE(finalSettings.autohide(), true);
-        QCOMPARE(finalSettings.magnification(), 0.8);
+        QCOMPARE(dockIconSize(0.0, 32, 64), 32);
+        QCOMPARE(dockIconSize(1.0, 32, 64), 64);
+        QCOMPARE(dockIconSize(0.5, 32, 64), 48);
+        // Out-of-range input is clamped to the token range.
+        QCOMPARE(dockIconSize(-1.0, 32, 64), 32);
+        QCOMPARE(dockIconSize(2.0, 32, 64), 64);
     }
 
-    void settingsEqualsDetectsAChange()
+    void settingsChangeReLaysOutTheDock()
     {
-        DockSettings a(QStringLiteral("/nonexistent/settings.json"));
-        DockSettings b(QStringLiteral("/nonexistent/settings.json"));
-        QVERIFY(a.equals(b));
-        b.setAutohide(true);
-        QVERIFY(!a.equals(b));
+        // The headless half of the T-08.2a acceptance: a `dock.size` change
+        // re-lays-out the Dock. At a fixed output length the small setting
+        // keeps the minimum icon and fits every entry; the large one clamps
+        // the icon up to the largest that fits.
+        const QVariantList entries = makeOverflowEntries(4, 3, 2, 0);
+        const DockOverflowResult smallFit =
+            applyDockOverflow(entries, 500, dockIconSize(0.0, 32, 64), 32, 64, 6, 1);
+        const DockOverflowResult largeFit =
+            applyDockOverflow(entries, 500, dockIconSize(1.0, 32, 64), 32, 64, 6, 1);
+        QCOMPARE(smallFit.iconSize, 32);
+        QVERIFY(largeFit.iconSize > smallFit.iconSize);
+        QVERIFY(largeFit.iconSize <= 64);
+        QVERIFY(!smallFit.clamped);
+        // Both keep every pinned entry; the layout (not the entry set) changed.
+        QCOMPARE(countKind(largeFit.entries, QStringLiteral("pinned")), 4);
     }
 
     // -- entry merge -----------------------------------------------------
