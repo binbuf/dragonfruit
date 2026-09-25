@@ -33,6 +33,7 @@
 #include "downloadsmonitor.h"
 #include "shellprotocol.h"
 #include "systemstatusclient.h"
+#include "themebinding.h"
 
 namespace {
 
@@ -258,6 +259,13 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // import them from the build tree like the gallery does.
     m_engine->addImportPath(QStringLiteral(DF_QML_IMPORT_DIR));
 #endif
+    // T-08.2b: the design-system Theme is bound to settingsd through the same
+    // client as the Dock (one bus connection). The binding owns `Theme.dark`
+    // (`appearance.colorScheme`) and `Theme.reducedMotion`
+    // (`accessibility.reduceMotion`) for the whole process, so no QML side
+    // assigns them.
+    m_themeBinding = new ThemeBinding(m_settingsClient, m_engine, this);
+    m_themeBinding->apply();
     m_window = new QQuickWindow;
     m_window->setColor(Qt::transparent);
 
@@ -1244,16 +1252,10 @@ void ShellController::applyDockSettings(bool reconfigure)
                             : position == ShellProtocol::DockPosition::Right
                                     ? QStringLiteral("right")
                                     : QStringLiteral("bottom"));
-    // Reduced motion is a global animation policy: bind it onto the
-    // design-system singleton so the whole shell reacts (T-10 section 20),
-    // and mirror it into the compositor so every compositor-driven
-    // transition takes the single-step path (T-11 U-1 / FR-9).
-    if (m_engine) {
-        if (QObject *theme = m_engine->singletonInstance<QObject *>(
-                QStringLiteral("Dragonfruit"), QStringLiteral("Theme"))) {
-            theme->setProperty("reducedMotion", m_dockConfig.reduceMotion);
-        }
-    }
+    // Reduced motion is a global animation policy. The `Theme` singleton is
+    // owned by the T-08.2b settings binding (not here); this only mirrors it
+    // into the compositor so every compositor-driven transition takes the
+    // single-step path (T-11 U-1 / FR-9).
     if (m_protocol)
         m_protocol->setReducedMotion(m_dockConfig.reduceMotion);
     if (!reconfigure || !m_protocol)
