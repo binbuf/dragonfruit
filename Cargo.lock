@@ -605,6 +605,8 @@ name = "dragonfruit-settingsd"
 version = "0.1.0"
 dependencies = [
  "df-ipc",
+ "serde",
+ "zbus",
 ]
 
 [[package]]
