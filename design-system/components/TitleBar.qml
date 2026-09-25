@@ -24,6 +24,13 @@ Item {
     implicitWidth: 360
     implicitHeight: Theme.controls.titlebar.height
 
+    // A titlebar spans its window: when it is parented into a chrome slot
+    // (e.g. `AppWindow.titleBarData`, whose slot is the window width) it fills
+    // the parent width, so the drag area, centered title, and traffic-light
+    // cluster cover the whole top strip. A standalone instance keeps its
+    // implicit width; an explicit `width` still overrides this.
+    width: parent ? parent.width : implicitWidth
+
     // Top corners follow the window radius; the bottom edge is square so the
     // titlebar reads as one sheet with the content below. The two rectangles
     // are composited inside one item so the shared opacity does not stack.

@@ -5,7 +5,11 @@ import QtQuick
 //
 // One ordered list mirroring the macOS System Settings information
 // architecture exactly (see docs/reference/System_Preferences.md): id, title,
-// the design-system `Icon` glyph name, and the header-card description.
+// and the design-system `Icon` glyph name. A pane also carries a header-card
+// description, but only panes whose macOS capture shows a header card render
+// it (`headerPanes`); the Wave-1 settings-list panes start directly at their
+// first group (Desktop & Dock, Displays, Wallpaper captures; Appearance is
+// uncaptured and follows the same pattern).
 //
 // `shipped` is the no-half-panes gate: the sidebar lists a pane only when its
 // content has landed and every control on it is functional. T-09.1a ships the
@@ -16,6 +20,17 @@ pragma Singleton
 
 QtObject {
     id: root
+
+    // Panes whose macOS reference has a header card (large icon/title plus a
+    // description). From the captures: General, Accessibility, Notifications,
+    // and Privacy & Security. Everything else opens at its first group.
+    readonly property var headerPanes: [
+        "general", "accessibility", "notifications", "privacy"
+    ]
+
+    function hasHeader(pane) {
+        return pane !== null && root.headerPanes.indexOf(pane.id) >= 0;
+    }
 
     readonly property var catalog: [
         { id: "wifi", title: qsTr("Wi-Fi"), icon: "wifi",
@@ -31,21 +46,17 @@ QtObject {
         { id: "accessibility", title: qsTr("Accessibility"), icon: "accessibility",
           description: "", shipped: false },
         { id: "appearance", title: qsTr("Appearance"), icon: "appearance",
-          description: qsTr("Choose the desktop's light or dark appearance and its accent color."),
-          shipped: true },
+          description: "", shipped: true },
         { id: "desktop-dock", title: qsTr("Desktop & Dock"), icon: "dock",
-          description: qsTr("Change the Dock's size, position, magnification, and behaviors."),
-          shipped: true },
+          description: "", shipped: true },
         { id: "displays", title: qsTr("Displays"), icon: "displays",
-          description: qsTr("Set the resolution, scaling, and rotation for each display."),
-          shipped: true },
+          description: "", shipped: true },
         { id: "menu-bar", title: qsTr("Menu Bar"), icon: "general",
           description: "", shipped: false },
         { id: "spotlight", title: qsTr("Spotlight"), icon: "search",
           description: "", shipped: false },
         { id: "wallpaper", title: qsTr("Wallpaper"), icon: "wallpaper",
-          description: qsTr("Choose the picture shown behind your windows on each Space."),
-          shipped: true },
+          description: "", shipped: true },
         { id: "notifications", title: qsTr("Notifications"), icon: "general",
           description: "", shipped: false },
         { id: "sound", title: qsTr("Sound"), icon: "general",

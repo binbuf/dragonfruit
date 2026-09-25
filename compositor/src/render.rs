@@ -640,6 +640,7 @@ pub fn post_repaint_headless(state: &mut DfState, output: &Output, time: Duratio
     // This is a presented frame (headless's stand-in for the photon): credit
     // any pending input with its input-to-photon round trip (T-03.1b).
     state.stats.latency.note_present(Instant::now());
+    crate::trace::log("present", "headless");
 }
 
 /// Count the live windows composited on `output` — the frames a real backend
@@ -651,6 +652,39 @@ pub fn count_output_windows(state: &DfState, output: &Output) -> u64 {
         .elements()
         .filter(|window| state.space.outputs_for_element(window).contains(output))
         .count() as u64
+}
+
+/// Send frame callbacks for the live windows of `output` without presenting a
+/// new frame.
+///
+/// The compositor is damage-driven and normally sends a window's `frame`
+/// callback from [`post_repaint`] after it presents. A client that has a
+/// pending update and is waiting on that callback (Qt Wayland, for one) can
+/// otherwise stall for as long as the compositor stays idle: the compositor
+/// has nothing to present, so it sends no callback, so the client never
+/// commits, so the compositor has nothing to present. Waking the clients on an
+/// input-driven frame (see the nested backend's no-damage branch) breaks that
+/// cycle without changing the idle budget: an idle compositor is not woken, so
+/// it still sends nothing.
+pub fn send_frame_callbacks(
+    state: &mut DfState,
+    output: &Output,
+    time: Duration,
+    _states: &RenderElementStates,
+) {
+    let mut wakeups = 0u64;
+    for window in state.space.elements() {
+        if state.space.outputs_for_element(window).contains(output) {
+            window.send_frame(
+                output,
+                time,
+                Some(Duration::ZERO),
+                surface_primary_scanout_output,
+            );
+            wakeups += 1;
+        }
+    }
+    state.stats.client_wakeups += wakeups;
 }
 
 /// After a successful frame: send frame callbacks (throttled) and update

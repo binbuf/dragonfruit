@@ -944,9 +944,52 @@ fn shm_buffer(
     (buffer, file)
 }
 
-/// Build and map a toplevel, returning its proxies.
+/// Build and map a toplevel that negotiates server-side decoration via
+/// `xdg-decoration` (the conformance baseline: a decorated Tier-2 window),
+/// returning its proxies.
 #[allow(clippy::type_complexity)]
 fn map_toplevel(
+    state: &mut TestClient,
+    queue: &mut EventQueue<TestClient>,
+) -> (
+    wl_surface::WlSurface,
+    xdg_surface::XdgSurface,
+    xdg_toplevel::XdgToplevel,
+    std::fs::File,
+) {
+    let qh = queue.handle();
+    let compositor = state.compositor.clone().unwrap();
+    let wm_base = state.xdg_wm_base.clone().unwrap();
+    let manager = state
+        .decoration_manager
+        .clone()
+        .expect("zxdg_decoration_manager_v1 not advertised");
+
+    let surface = compositor.create_surface(&qh, ());
+    let xdg_surface = wm_base.get_xdg_surface(&surface, &qh, ());
+    let toplevel = xdg_surface.get_toplevel(&qh, ());
+    toplevel.set_title("Conformance".into());
+    // Negotiate server-side decoration: with no request a client is Tier 3
+    // (keeps its own decoration), so the decorated baseline asks explicitly.
+    let _decoration = manager.get_toplevel_decoration(&toplevel, &qh, ());
+    _decoration.set_mode(zxdg_toplevel_decoration_v1::Mode::ServerSide);
+    // First commit with no buffer triggers the initial configure.
+    surface.commit();
+    queue.roundtrip(state).expect("initial configure");
+
+    // Acknowledge the initial configure happened in the handler, then map.
+    let (buffer, file) = shm_buffer(state, &qh, WINDOW_W, WINDOW_H);
+    surface.attach(Some(&buffer), 0, 0);
+    surface.commit();
+    queue.roundtrip(state).expect("map commit");
+
+    (surface, xdg_surface, toplevel, file)
+}
+
+/// Build and map a toplevel with **no** `xdg-decoration` request: the
+/// unnegotiated default, which keeps its own decoration (Tier 3).
+#[allow(clippy::type_complexity)]
+fn map_toplevel_unnegotiated(
     state: &mut TestClient,
     queue: &mut EventQueue<TestClient>,
 ) -> (
@@ -962,12 +1005,11 @@ fn map_toplevel(
     let surface = compositor.create_surface(&qh, ());
     let xdg_surface = wm_base.get_xdg_surface(&surface, &qh, ());
     let toplevel = xdg_surface.get_toplevel(&qh, ());
-    toplevel.set_title("Conformance".into());
-    // First commit with no buffer triggers the initial configure.
+    toplevel.set_title("Unnegotiated".into());
+    // No decoration object: no server-side decoration is negotiated.
     surface.commit();
     queue.roundtrip(state).expect("initial configure");
 
-    // Acknowledge the initial configure happened in the handler, then map.
     let (buffer, file) = shm_buffer(state, &qh, WINDOW_W, WINDOW_H);
     surface.attach(Some(&buffer), 0, 0);
     surface.commit();
@@ -977,7 +1019,9 @@ fn map_toplevel(
 }
 
 /// Build and map a toplevel advertising `app_id` before its first commit, so
-/// the compositor can match a launch-origin hint to it (T-02.1b).
+/// the compositor can match a launch-origin hint to it (T-02.1b). Negotiates
+/// server-side decoration like [`map_toplevel`], so the motion/overview
+/// conformance baseline is a decorated window.
 #[allow(clippy::type_complexity)]
 fn map_toplevel_with_app_id(
     state: &mut TestClient,
@@ -992,12 +1036,18 @@ fn map_toplevel_with_app_id(
     let qh = queue.handle();
     let compositor = state.compositor.clone().unwrap();
     let wm_base = state.xdg_wm_base.clone().unwrap();
+    let manager = state
+        .decoration_manager
+        .clone()
+        .expect("zxdg_decoration_manager_v1 not advertised");
 
     let surface = compositor.create_surface(&qh, ());
     let xdg_surface = wm_base.get_xdg_surface(&surface, &qh, ());
     let toplevel = xdg_surface.get_toplevel(&qh, ());
     toplevel.set_app_id(app_id.into());
     toplevel.set_title("Appear".into());
+    let _decoration = manager.get_toplevel_decoration(&toplevel, &qh, ());
+    _decoration.set_mode(zxdg_toplevel_decoration_v1::Mode::ServerSide);
     // First commit with no buffer triggers the initial configure.
     surface.commit();
     queue.roundtrip(state).expect("initial configure");
@@ -1099,7 +1149,7 @@ fn ssd_toplevel_carries_a_titlebar_and_csd_does_not() {
     let input = SyntheticInput::connect(&synthetic_path);
     let (conn, mut queue, mut state) = connect(&proc.socket_path);
 
-    // No `xdg-decoration` request: the compositor default is SSD.
+    // An explicit server-side request (map_toplevel negotiates SSD).
     let (surface, xdg_surface, toplevel, file) = map_toplevel(&mut state, &mut queue);
     let report = wait_for_report(&mut state, &mut queue, &input, |reports| {
         reports.iter().any(|report| report.server_side)
@@ -1224,10 +1274,11 @@ fn map_toplevel_with_decoration(
     (surface, xdg_surface, toplevel, decoration, file)
 }
 
-/// T-01.5 acceptance: the decoration-tier matrix renders side by side — the
-/// compositor default and an explicit server-side request each get exactly
-/// one of our titlebars, and an explicit client-side request keeps its own
-/// (no double decoration).
+/// T-01.5 acceptance: the decoration-tier matrix renders side by side — an
+/// explicit server-side request gets exactly one of our titlebars, while an
+/// unnegotiated client (no decoration object) and an explicit client-side
+/// request each keep their own decoration and get none (no double
+/// decoration).
 #[test]
 fn decoration_tier_matrix_default_explicit_ssd_and_csd_side_by_side() {
     let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
@@ -1242,9 +1293,10 @@ fn decoration_tier_matrix_default_explicit_ssd_and_csd_side_by_side() {
     let input = SyntheticInput::connect(&synthetic_path);
     let (conn, mut queue, mut state) = connect(&proc.socket_path);
 
-    // Default: no `xdg-decoration` request, compositor default SSD.
-    let (d_surface, d_xdg, d_toplevel, d_file) = map_toplevel(&mut state, &mut queue);
-    // Explicit server-side (Qt-style).
+    // Default: no `xdg-decoration` object, so no server-side decoration is
+    // negotiated and the client keeps its own (Tier 3).
+    let (d_surface, d_xdg, d_toplevel, d_file) = map_toplevel_unnegotiated(&mut state, &mut queue);
+    // Explicit server-side (Qt-style): gets our titlebar.
     let (s_surface, s_xdg, s_toplevel, s_decoration, s_file) = map_toplevel_with_decoration(
         &mut state,
         &mut queue,
@@ -1261,24 +1313,33 @@ fn decoration_tier_matrix_default_explicit_ssd_and_csd_side_by_side() {
     assert_eq!(reports.len(), 3, "three tracked windows: {reports:?}");
     assert_eq!(
         reports.iter().filter(|report| report.server_side).count(),
-        2,
-        "the default and explicit-SSD windows carry one titlebar each: {reports:?}"
+        1,
+        "only the explicit-SSD window carries a titlebar: {reports:?}"
     );
 
-    let csd = reports
+    let csd: Vec<_> = reports
         .iter()
-        .find(|report| !report.server_side)
-        .expect("the CSD window must be tracked");
+        .filter(|report| !report.server_side)
+        .collect();
     assert_eq!(
-        csd.titlebar,
-        (0, 0, 0, 0),
-        "a CSD client must keep its own decoration, not get a compositor titlebar"
+        csd.len(),
+        2,
+        "the unnegotiated and explicit-CSD windows both keep their own \
+         decoration: {reports:?}"
     );
-    assert_eq!(
-        (csd.content.2, csd.content.3),
-        (WINDOW_W, WINDOW_H),
-        "the CSD client keeps its full content size"
-    );
+    for csd in &csd {
+        assert_eq!(
+            csd.titlebar,
+            (0, 0, 0, 0),
+            "a CSD/unnegotiated client must keep its own decoration, not get a \
+             compositor titlebar"
+        );
+        assert_eq!(
+            (csd.content.2, csd.content.3),
+            (WINDOW_W, WINDOW_H),
+            "the client keeps its full content size"
+        );
+    }
 
     for ssd in reports.iter().filter(|report| report.server_side) {
         assert_eq!(ssd.titlebar.3, TITLEBAR_HEIGHT, "token titlebar height");
@@ -1301,6 +1362,49 @@ fn decoration_tier_matrix_default_explicit_ssd_and_csd_side_by_side() {
     drop(c_file);
     drop(s_file);
     drop(d_file);
+    drop(conn);
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic socket survived"
+    );
+}
+
+/// T-01.1 regression: a toplevel that never creates an `xdg-decoration`
+/// object is Tier 3 — it keeps its own decoration and the compositor draws no
+/// titlebar. This is the Qt-frameless first-party case (Settings/Files),
+/// which used to be double-decorated by the SSD renderer.
+#[test]
+fn unnegotiated_toplevel_defaults_to_self_decoration() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir).join(format!(
+        "dragonfruit-unnegotiated-synth-{}",
+        std::process::id()
+    ));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-unnegotiated",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (surface, xdg_surface, toplevel, file) = map_toplevel_unnegotiated(&mut state, &mut queue);
+    let report = wait_for_report(&mut state, &mut queue, &input, |reports| {
+        !reports.is_empty()
+    });
+    assert_eq!(report.len(), 1, "one tracked window: {report:?}");
+    let window = report[0];
+    assert!(
+        !window.server_side,
+        "a toplevel that negotiated no server-side decoration is client-side: {window:?}"
+    );
+    assert_eq!(window.titlebar, (0, 0, 0, 0));
+    assert_eq!((window.content.2, window.content.3), (WINDOW_W, WINDOW_H));
+
+    toplevel.destroy();
+    xdg_surface.destroy();
+    surface.destroy();
+    drop(file);
     drop(conn);
     proc.shutdown();
     assert!(

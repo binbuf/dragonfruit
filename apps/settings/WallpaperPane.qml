@@ -75,6 +75,9 @@ Item {
     implicitWidth: 480
     implicitHeight: content.implicitHeight
 
+    // Fill the detail pane slot (see AppearancePane).
+    width: parent ? parent.width : implicitWidth
+
     function presetsIn(collection) {
         return root.presets.filter(function(preset) {
             return preset.collection === collection;

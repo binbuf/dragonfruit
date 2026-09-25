@@ -24,6 +24,14 @@ TestCase {
     Component { id: toggleComponent; Toggle { } }
     Component { id: lightsComponent; TrafficLights { } }
     Component { id: titleBarComponent; TitleBar { } }
+    Component {
+        id: titleBarInSlotComponent
+        Item {
+            width: 640
+            height: Theme.controls.titlebar.height
+            TitleBar { }
+        }
+    }
     Component { id: ssdComponent; SsdTitlebarReference { } }
     Component { id: shadowComponent; Shadow { width: 120; height: 80 } }
     Component { id: popupComponent; Popup { } }
@@ -216,6 +224,14 @@ TestCase {
         zoomSpy.clear();
         mouseDoubleClickSequence(bar, 160, 20);
         compare(zoomSpy.count, 1);
+    }
+
+    function test_titlebar_fills_its_chrome_slot() {
+        var slot = make(titleBarInSlotComponent, {});
+        var bar = slot.children[0];
+        compare(bar.width, slot.width,
+                "a parented TitleBar must span its chrome slot (the window width)");
+        compare(bar.trafficLights.x, Theme.controls.trafficLights.inset);
     }
 
     // -- FR-3: app TitleBar vs compositor SSD reference ---------------------

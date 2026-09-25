@@ -108,9 +108,11 @@ impl ReservedZones {
 ///
 /// X11 windows have no Wayland CSD and land in Tier 2 (compositor-drawn
 /// SSD) unless their `_MOTIF_WM_HINTS` explicitly ask to be undecorated.
-/// Wayland clients follow `xdg-decoration`, whose compositor default is
-/// also SSD. T-13 owns actually rendering the titlebar; this is the
-/// per-window tier the renderer consults.
+/// Wayland clients follow `xdg-decoration`: a client that negotiates
+/// server-side decoration gets the compositor titlebar; one that asks for
+/// client-side decoration, or never creates a decoration object, keeps its
+/// own. T-13 owns actually rendering the titlebar; this is the per-window
+/// tier the renderer consults.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DecorationTier {
     /// The compositor draws the titlebar (Tier 2).

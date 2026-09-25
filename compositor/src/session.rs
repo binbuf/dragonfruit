@@ -124,8 +124,19 @@ pub fn run_session(socket_name: &str, hooks: BackendHooks) -> Result<(), String>
     while state.running {
         // Fully fd-driven: winit (nested), udev/libinput/DRM event fds,
         // client sockets, and signals all wake the loop; nothing polls.
+        //
+        // One exception: for a short window after input, tick at ~60 Hz while a
+        // mapped window has an outstanding frame callback, so that window is
+        // not starved by an otherwise idle compositor (see
+        // `DfState::frame_cadence_active`). Outside that window the loop is a
+        // pure block, so a genuinely idle session still produces no frames.
+        let ticking = state.frame_cadence_active() && state.has_pending_frame_callbacks();
+        if ticking {
+            state.needs_redraw = true;
+        }
+        let timeout = ticking.then(|| std::time::Duration::from_millis(16));
         event_loop
-            .dispatch(None, &mut state)
+            .dispatch(timeout, &mut state)
             .map_err(|e| format!("event loop error: {e}"))?;
 
         // A dead Xwayland is respawned outside its own event-source borrow

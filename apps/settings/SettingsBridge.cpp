@@ -4,6 +4,7 @@
 #include "settingsclient.h"
 
 #include <QColor>
+#include <QDateTime>
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
 #include <QDBusMessage>
@@ -12,6 +13,7 @@
 #include <QDBusPendingReply>
 #include <QDBusVariant>
 #include <QDir>
+#include <cstdio>
 #include <QFileInfo>
 #include <QImage>
 #include <QLinearGradient>
@@ -112,6 +114,11 @@ QString SettingsBridge::startPane() const
     return qEnvironmentVariable("DF_SETTINGS_START_PANE");
 }
 
+bool SettingsBridge::trace() const
+{
+    return qEnvironmentVariableIsSet("DF_SETTINGS_TRACE");
+}
+
 QVariant SettingsBridge::value(const QString &key, const QVariant &fallback) const
 {
     return m_client->value(key, fallback);
@@ -125,6 +132,14 @@ void SettingsBridge::set(const QString &key, const QVariant &value)
 void SettingsBridge::refresh()
 {
     m_client->refresh();
+}
+
+void SettingsBridge::traceLog(const QString &message) const
+{
+    if (!trace())
+        return;
+    std::fprintf(stderr, "DFTRACE %s t=%lld\n", qPrintable(message),
+                 static_cast<long long>(QDateTime::currentMSecsSinceEpoch()));
 }
 
 QStringList SettingsBridge::keys() const

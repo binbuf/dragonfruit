@@ -296,7 +296,7 @@ QtObject {
             readonly property int radius: 6
         }
         readonly property var sidebar: QtObject {
-            readonly property int width: 220
+            readonly property int width: 192
             readonly property int rowHeight: 28
             readonly property int rowRadius: 6
             readonly property int sectionGap: 16
@@ -345,7 +345,7 @@ QtObject {
             readonly property int height: 28
             readonly property int radius: 10
             readonly property int paddingH: 12
-            readonly property int minWidth: 140
+            readonly property int minWidth: 80
             readonly property int chevronSize: 12
             readonly property int chevronGap: 8
         }

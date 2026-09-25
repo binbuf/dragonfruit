@@ -2,10 +2,14 @@
 import QtQuick
 import Dragonfruit
 
-// The Settings detail-pane header card (T-09.1a): the pane's large icon, its
-// title, and the one-line description, exactly as the macOS reference shows.
-// It is shell chrome — pane bodies are supplied by T-09.2…T-09.5 — so it takes
-// the catalog entry and never derives anything itself.
+// The Settings detail-pane header card (T-09.1a): the pane's icon, its
+// title, and its one-line description. Only panes whose macOS reference has a
+// header card render it (see `SettingsPanes.headerPanes`); the macOS
+// treatments vary by pane (a left-aligned row for Accessibility, a centered
+// hero for General, an icon tile), so this is the shared left-aligned shape
+// and the shell hides it where the reference has none. It is shell chrome —
+// pane bodies are supplied by T-09.2…T-09.5 — so it takes the catalog entry
+// and never derives anything itself.
 Item {
     id: root
 
