@@ -198,7 +198,7 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 
 ## Phase 11 — T-11 Control Center + notifications
 
-- [ ] T70 — T-11.1a Notification service core → [tasks/070-t-11.1a-notification-service-core.md](tasks/070-t-11.1a-notification-service-core.md)
+- [~] T70 — T-11.1a Notification service core → [tasks/070-t-11.1a-notification-service-core.md](tasks/070-t-11.1a-notification-service-core.md) ⟵ running
 - [ ] T71 — T-11.1b Notification actions and Dock badge replacement → [tasks/071-t-11.1b-notification-actions-and-dock-badge.md](tasks/071-t-11.1b-notification-actions-and-dock-badge.md)
 - [ ] T72 — T-11.2a DND/Focus policy → [tasks/072-t-11.2a-dnd-focus-policy.md](tasks/072-t-11.2a-dnd-focus-policy.md)
 - [ ] T73 — T-11.2b DND/Focus menu-bar reflection and Dock failure path → [tasks/073-t-11.2b-dnd-reflection-and-dock-failure.md](tasks/073-t-11.2b-dnd-reflection-and-dock-failure.md)

@@ -1,0 +1,33 @@
+[package]
+name = "dragonfruit-notifications"
+description = "Dragonfruit notification service: org.freedesktop.Notifications with banners and history (T-11.1a)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+# The notification service owns the queue and history
+# (docs/design/01-architecture.md, "Notification queue, Focus/DND state").
+# It serves the standard `org.freedesktop.Notifications` interface to apps and
+# a small shell-facing `org.dragonfruit.Notifications1` interface (banners,
+# history, dismiss) to the Qt shell, so existing Linux applications work and
+# our chrome never scrapes another desktop's service.
+#
+# zbus is the same pinned D-Bus stack the other services use; `serde_json` is
+# the shell payload format, matching the other service crates.
+[dependencies]
+df-ipc.workspace = true
+serde_json = "=1.0.151"
+zbus = { version = "=5.19.0", features = ["blocking-api"] }
+
+[dev-dependencies]
+serde = "=1.0.229"
+
+[lib]
+name = "dragonfruit_notifications"
+path = "src/lib.rs"
+
+[[bin]]
+name = "dragonfruit-notifications"
+path = "src/main.rs"
