@@ -292,10 +292,28 @@ length to the lock scene, which draws a bullet mask; the password itself goes
 straight to the PAM helper's stdin. The decision is frozen in
 [ADR 0069](adr/0069-locked-input-capture-and-kill-resistance.md).
 
+### Idle timers (T-12.4a)
+
+The idle chain is **dim → blank → lock → suspend**, each stage a delay from
+the last user activity. The chain is state in `dragonfruit-session`, not the
+compositor: `services/session/src/idle.rs` holds `IdlePolicy` (one optional
+delay per stage) and `IdleTimers`, a pure clock-injected state machine, so a
+headless test drives every stage with a fake clock and no real time passes
+(ADR [0070](adr/0070-idle-timer-engine-and-policy.md)). The compositor keeps
+serving the `ext-idle-notify` and `idle-inhibit` protocols; an idle service
+binds them, feeds activity into the engine, and asks the compositor to
+dim/blank/lock over the private protocol. Policy keys are `idle.dim`,
+`idle.blank`, `idle.lock`, `idle.suspend` in whole seconds (`0` disables a
+stage); `IdlePolicy::from_keys` is the seam settingsd uses. Inhibitors and wake
+restore are T-12.4b; the suspend/resume cycle is T-12.5a; the settingsd keys
+are T-12.5b.
+
 ## logind integration
 
 - `LockSession` / `UnlockSession` requests drive our lock screen; idle
-  locking uses `ext-idle-notify` thresholds owned by the compositor.
+  locking uses the `dragonfruit-session` idle chain
+  ([above](#idle-timers-t-12-4a)) on top of the compositor's `ext-idle-notify`
+  activity source.
 - `PrepareForSleep` / `PrepareForShutdown` hooks freeze animations, flush
   persisted state, and quiesce rendering before suspend; resume re-inits
   outputs and resumes render loops.

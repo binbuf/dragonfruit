@@ -11,6 +11,8 @@
 //!   parallel once its socket exists, the portal last).
 //! * [`env`] — [`SessionEnvironment`], the `XDG_*`/Wayland/token contract
 //!   attached to every child (T-12.1b).
+//! * [`idle`] — [`IdlePolicy`] and [`IdleTimers`], the dim/blank/lock/suspend
+//!   idle chain driven from policy keys (T-12.4a).
 //! * [`entry`] — the display-manager session `.desktop` entry, the entry
 //!   script, and their install layout (T-12.2).
 //! * [`supervisor`] — [`Supervisor`], which spawns the services stage by
@@ -24,10 +26,12 @@
 
 pub mod entry;
 pub mod env;
+pub mod idle;
 pub mod plan;
 pub mod supervisor;
 
 pub use env::{generate_launch_token, SessionEnvironment};
+pub use idle::{IdlePolicy, IdleStage, IdleTimers};
 pub use plan::{PlanError, RestartPolicy, ServiceSpec, SessionPlan};
 pub use supervisor::{ExitOutcome, ServiceState, SessionState, Supervisor, SupervisorEvent};
 
