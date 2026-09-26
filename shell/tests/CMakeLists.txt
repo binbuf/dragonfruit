@@ -426,3 +426,49 @@ set_tests_properties(tst_chooserui PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+# Screenshot selection bridge tests (T-13.3a): the pure request lifecycle (the
+# mode, the selection hand-off, cancellation) and the live `ScreenshotBridge`
+# returning a capture to a fake `org.dragonfruit.Portal1` presenter on the
+# private session bus. No QML, Wayland, or compositor.
+qt_add_executable(tst_screenshot
+    tst_screenshot.cpp
+)
+target_link_libraries(tst_screenshot PRIVATE
+    Qt6::Core Qt6::Test Qt6::DBus
+    dragonfruit-shell-dockcore
+)
+
+if(DBUS_RUN_SESSION)
+    add_test(
+        NAME tst_screenshot
+        COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:tst_screenshot>
+    )
+else()
+    add_test(NAME tst_screenshot COMMAND tst_screenshot)
+endif()
+set_tests_properties(tst_screenshot PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+# Screenshot selection overlay view tests (T-13.3a): the fullscreen, region,
+# and window selection modes, the minimum-region guard, and Escape dismissal.
+qt_add_executable(tst_screenshotui
+    tst_screenshotui.cpp
+)
+target_link_libraries(tst_screenshotui PRIVATE
+    Qt6::QuickTest
+    dragonfruit-design-systemplugin
+    dragonfruit-shell-screenshotplugin
+)
+qt_import_qml_plugins(tst_screenshotui)
+
+add_test(
+    NAME tst_screenshotui
+    COMMAND tst_screenshotui -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_screenshotui.qml
+)
+set_tests_properties(tst_screenshotui PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)

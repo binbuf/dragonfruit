@@ -836,6 +836,54 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     connect(m_protocol, &ShellProtocol::chooserKeyEvent, this,
             &ShellController::onChooserKeyEvent);
 
+    // Screenshot selection overlay (T-13.3a): a full-output offscreen scene
+    // rendered into its own `screenshot` overlay surface while a capture is in
+    // progress. The bridge is the D-Bus presenter half; the QML is a pure
+    // view. The same overlay serves the portal's `Screenshot` requests and the
+    // desktop's own Cmd+Shift+3/4 shortcut.
+    m_screenshot = new ScreenshotBridge(this);
+    m_screenshot->connectService();
+    connect(m_screenshot, &ScreenshotBridge::started, this, &ShellController::onScreenshotStarted);
+    connect(m_screenshot, &ScreenshotBridge::finished, this, &ShellController::onScreenshotFinished);
+    connect(m_screenshot, &ScreenshotBridge::changed, this, &ShellController::onScreenshotChanged);
+    connect(m_screenshot, &ScreenshotBridge::captureRequested, this,
+            &ShellController::onScreenshotCaptureRequested);
+
+    m_screenshotWindow = new QQuickWindow;
+    m_screenshotWindow->setColor(Qt::transparent);
+    QQmlComponent screenshotComponent(m_engine);
+    screenshotComponent.loadFromModule(QStringLiteral("Dragonfruit.Screenshot"),
+                                       QStringLiteral("SelectionOverlay"));
+    if (screenshotComponent.isError()) {
+        fprintf(stderr, "dragonfruit-shell: SelectionOverlay QML error: %s\n",
+                qPrintable(screenshotComponent.errorString()));
+        return false;
+    }
+    QObject *screenshotObject = screenshotComponent.create();
+    m_screenshotItem = qobject_cast<QQuickItem *>(screenshotObject);
+    if (!m_screenshotItem) {
+        fprintf(stderr, "dragonfruit-shell: SelectionOverlay QML did not produce an item\n");
+        return false;
+    }
+    m_screenshotItem->setParentItem(m_screenshotWindow->contentItem());
+    connect(screenshotObject, SIGNAL(accepted(int, int, int, int)), m_screenshot,
+            SLOT(accept(int, int, int, int)));
+    connect(screenshotObject, SIGNAL(cancelled()), m_screenshot, SLOT(cancel()));
+    connect(m_screenshotWindow, &QQuickWindow::afterRendering, this,
+            &ShellController::renderScreenshot);
+    connect(m_protocol, &ShellProtocol::screenshotConfigured, this,
+            &ShellController::onScreenshotConfigured);
+    connect(m_protocol, &ShellProtocol::screenshotPointerMoved, this,
+            &ShellController::onScreenshotPointerMoved);
+    connect(m_protocol, &ShellProtocol::screenshotPointerButton, this,
+            &ShellController::onScreenshotPointerButton);
+    connect(m_protocol, &ShellProtocol::screenshotPointerLeft, this,
+            &ShellController::onScreenshotPointerLeft);
+    connect(m_protocol, &ShellProtocol::screenshotKeyboardFocused, this,
+            &ShellController::onScreenshotKeyboardFocused);
+    connect(m_protocol, &ShellProtocol::screenshotKeyEvent, this,
+            &ShellController::onScreenshotKeyEvent);
+
     // Session lock (T-12.3a): a full-output offscreen scene rendered into one
     // `ext-session-lock-v1` surface per output. Authentication and input
     // capture are T-12.3b/T-12.3c; this is the fail-secure presentation.
@@ -934,6 +982,10 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // portal request arrives (T-13.2b).
     if (!m_protocol->createChooserSurface(kChooserWidth, kChooserHeight))
         return false;
+    // The screenshot selection overlay is a full-output `overlay` surface,
+    // unmapped until a capture starts (T-13.3a).
+    if (!m_protocol->createScreenshotSurface())
+        return false;
 
     // Capture/demo seam (T-11.1b): raise the Dock's launch-failure
     // notification once the chrome is up, so the live check can exercise the
@@ -964,6 +1016,15 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // home); the request uses an open panel. Never set in a normal session.
     if (qEnvironmentVariableIsSet("DF_CHOOSER_FIXTURE")) {
         QTimer::singleShot(1500, this, &ShellController::startChooserFixture);
+    }
+
+    // Capture/demo seam (T-13.3a): present the screenshot selection overlay
+    // once the chrome is up so the live visual check can capture it with no
+    // portal caller or hardware shortcut. `DF_SCREENSHOT_FIXTURE` is
+    // `fullscreen`/`region`/`window` (empty/`1` = region). Never set in a
+    // normal session.
+    if (qEnvironmentVariableIsSet("DF_SCREENSHOT_FIXTURE")) {
+        QTimer::singleShot(1500, this, &ShellController::startScreenshotFixture);
     }
 
     // Capture/demo seam (T-12.3a): lock the session once the chrome is up so
@@ -1827,6 +1888,202 @@ void ShellController::onChooserCancelled()
         m_chooser->cancel();
 }
 
+// --- screenshot selection overlay (T-13.3a) ---------------------------------
+
+void ShellController::startScreenshot(const QString &mode)
+{
+    if (!m_screenshot)
+        return;
+    m_screenshot->beginLocal(mode);
+}
+
+void ShellController::startScreenshotFixture()
+{
+    const QString value = qEnvironmentVariable("DF_SCREENSHOT_FIXTURE");
+    QString mode = value;
+    if (mode.isEmpty() || mode == QLatin1String("1"))
+        mode = QStringLiteral("region");
+    startScreenshot(mode);
+}
+
+void ShellController::onScreenshotStarted()
+{
+    showScreenshot();
+}
+
+void ShellController::onScreenshotFinished(bool completed)
+{
+    Q_UNUSED(completed);
+    hideScreenshot();
+}
+
+void ShellController::onScreenshotChanged()
+{
+    if (!m_screenshotActive)
+        return;
+    applyScreenshotData();
+    scheduleScreenshotRender();
+}
+
+void ShellController::onScreenshotCaptureRequested(const QString &mode, int x, int y, int width,
+                                                   int height)
+{
+    // The selection is real; turning it into a saved image and returning the
+    // URI is T-13.3b (save/copy). Until then the request stays with the
+    // presenter seam (`ScreenshotBridge::complete`).
+    fprintf(stderr,
+            "dragonfruit-shell: screenshot selection mode=%s rect=%d,%d %dx%d "
+            "(capture owns save/copy in T-13.3b)\n",
+            qPrintable(mode), x, y, width, height);
+}
+
+void ShellController::showScreenshot()
+{
+    if (!m_screenshotItem)
+        return;
+    m_screenshotActive = true;
+    m_screenshotPending = true;
+    applyScreenshotData();
+    if (m_screenshotWidth > 0 && m_screenshotHeight > 0)
+        renderScreenshot();
+    // Take active focus so Escape/Return reach the overlay.
+    m_screenshotItem->forceActiveFocus();
+    if (m_protocol)
+        m_protocol->setScreenshotInputRegion(m_screenshotWidth, m_screenshotHeight);
+}
+
+void ShellController::hideScreenshot()
+{
+    m_screenshotActive = false;
+    m_screenshotPending = false;
+    m_screenshotButtons = Qt::NoButton;
+    if (m_protocol) {
+        m_protocol->setScreenshotInputRegion(0, 0);
+        m_protocol->hideScreenshot();
+    }
+}
+
+void ShellController::applyScreenshotData()
+{
+    if (!m_screenshotItem || !m_screenshot)
+        return;
+    m_screenshotItem->setProperty("mode", m_screenshot->mode());
+}
+
+void ShellController::renderScreenshot()
+{
+    if (!m_screenshotActive || !m_screenshotPending || !m_screenshotWindow
+        || !m_screenshotItem)
+        return;
+    if (m_screenshotWidth <= 0 || m_screenshotHeight <= 0)
+        return;
+    // The scene graph just rendered; skip the re-entrant frame our own
+    // `grabWindow` readback produces (the Dock/banner FR-14 pattern).
+    if (!m_screenshotFrameGate.frameRendered())
+        return;
+    if (!m_screenshotSceneGraphCommitLogged) {
+        m_screenshotSceneGraphCommitLogged = true;
+        qInfo() << "shell: Screenshot scene-graph commit path active";
+    }
+    m_screenshotItem->setWidth(m_screenshotWidth);
+    m_screenshotItem->setHeight(m_screenshotHeight);
+    if (m_screenshotWindow->width() != m_screenshotWidth
+        || m_screenshotWindow->height() != m_screenshotHeight)
+        m_screenshotWindow->resize(m_screenshotWidth, m_screenshotHeight);
+    if (!m_screenshotWindow->isVisible())
+        m_screenshotWindow->show();
+    m_screenshotFrameGate.beginCommit();
+    const QImage image = m_screenshotWindow->grabWindow();
+    m_screenshotFrameGate.endCommit();
+    if (!image.isNull() && m_protocol)
+        m_protocol->commitScreenshotImage(image);
+}
+
+void ShellController::scheduleScreenshotRender()
+{
+    if (m_screenshotRenderPending)
+        return;
+    m_screenshotRenderPending = true;
+    QTimer::singleShot(0, this, [this]() {
+        m_screenshotRenderPending = false;
+        renderScreenshot();
+    });
+}
+
+void ShellController::onScreenshotConfigured(int width, int height, quint32)
+{
+    // A full-output overlay is configured to the output size; a transient
+    // pre-layout configure may arrive first and is ignored until it is
+    // non-degenerate.
+    if (width <= 0 || height <= 0)
+        return;
+    m_screenshotWidth = width;
+    m_screenshotHeight = height;
+    if (m_protocol)
+        m_protocol->setScreenshotInputRegion(m_screenshotWidth, m_screenshotHeight);
+    if (m_screenshotPending)
+        renderScreenshot();
+}
+
+void ShellController::onScreenshotPointerMoved(qreal x, qreal y)
+{
+    if (!m_screenshotWindow)
+        return;
+    const QPointF p(x, y);
+    QMouseEvent event(QEvent::MouseMove, p, p, Qt::NoButton, m_screenshotButtons,
+                      Qt::NoModifier);
+    QCoreApplication::sendEvent(m_screenshotWindow, &event);
+    scheduleScreenshotRender();
+}
+
+void ShellController::onScreenshotPointerButton(qreal x, qreal y, quint32 button, bool pressed)
+{
+    if (!m_screenshotWindow)
+        return;
+    Qt::MouseButton qtButton = Qt::NoButton;
+    if (button == 0x110)
+        qtButton = Qt::LeftButton;
+    if (pressed)
+        m_screenshotButtons |= qtButton;
+    else
+        m_screenshotButtons &= ~qtButton;
+    const QPointF p(x, y);
+    QMouseEvent event(pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease, p, p,
+                      qtButton, m_screenshotButtons, Qt::NoModifier);
+    QCoreApplication::sendEvent(m_screenshotWindow, &event);
+    scheduleScreenshotRender();
+}
+
+void ShellController::onScreenshotPointerLeft()
+{
+    if (!m_screenshotWindow)
+        return;
+    QMouseEvent event(QEvent::MouseMove, QPointF(-1, -1), QPointF(-1, -1), Qt::NoButton,
+                      m_screenshotButtons, Qt::NoModifier);
+    QCoreApplication::sendEvent(m_screenshotWindow, &event);
+    scheduleScreenshotRender();
+}
+
+void ShellController::onScreenshotKeyboardFocused(bool focused)
+{
+    // Losing the keyboard is the click-away dismissal: cancelling leaves the
+    // desktop untouched.
+    if (!focused && m_screenshotActive && m_screenshot)
+        m_screenshot->cancel();
+}
+
+void ShellController::onScreenshotKeyEvent(quint32 key, bool pressed)
+{
+    if (!m_screenshotWindow || !m_screenshotActive)
+        return;
+    const Qt::Key qtKey = qtKeyFromEvdev(key);
+    if (qtKey == Qt::Key_unknown)
+        return;
+    QKeyEvent event(pressed ? QEvent::KeyPress : QEvent::KeyRelease, qtKey, Qt::NoModifier);
+    QCoreApplication::sendEvent(m_screenshotWindow, &event);
+    scheduleScreenshotRender();
+}
+
 // --- session lock (T-12.3a protocol/UI, T-12.3b authentication) -------------
 
 void ShellController::onSessionLocked()
@@ -2407,6 +2664,12 @@ void ShellController::onInputAction(const QString &action, const QString &)
         // T-12.3b).
         if (m_protocol)
             m_protocol->lockSession();
+    } else if (action == QLatin1String("screenshot")) {
+        // T-13.3a: Cmd+Shift+3 captures the whole output.
+        startScreenshot(QStringLiteral("fullscreen"));
+    } else if (action == QLatin1String("screenshot-region")) {
+        // T-13.3a: Cmd+Shift+4 opens the region selection.
+        startScreenshot(QStringLiteral("region"));
     }
 }
 

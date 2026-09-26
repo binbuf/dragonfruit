@@ -703,6 +703,77 @@ bool ShellProtocol::hideChooser()
     return true;
 }
 
+// --- screenshot selection overlay (T-13.3a) ---------------------------------
+
+bool ShellProtocol::createScreenshotSurface()
+{
+    if (m_screenshotSurface || m_screenshotLayer)
+        return true;
+    if (!m_shell || !m_compositor)
+        return fail(QStringLiteral("df_shell is not available"));
+
+    m_screenshotSurface = wl_compositor_create_surface(m_compositor);
+    m_screenshotLayer = df_shell_get_layer_surface(m_shell, m_screenshotSurface, nullptr,
+                                                   DF_SHELL_LAYER_OVERLAY, "screenshot");
+    if (!m_screenshotLayer)
+        return fail(QStringLiteral("compositor refused the screenshot layer surface"));
+    static const df_layer_surface_listener listener = { onScreenshotConfigure, onLayerClosed };
+    df_layer_surface_add_listener(m_screenshotLayer, &listener, this);
+
+    // Cover the whole output: the selection is drawn over the live desktop.
+    // Reserve nothing (the overlay is transient) and take the keyboard on
+    // demand so Escape cancels and Return accepts.
+    df_layer_surface_set_anchor(m_screenshotLayer,
+                                kAnchorTop | kAnchorBottom | kAnchorLeft | kAnchorRight);
+    df_layer_surface_set_exclusive_zone(m_screenshotLayer, -1);
+    df_layer_surface_set_keyboard_interaction(
+        m_screenshotLayer, DF_LAYER_SURFACE_KEYBOARD_INTERACTION_ON_DEMAND);
+    wl_surface_attach(m_screenshotSurface, nullptr, 0, 0);
+    wl_surface_commit(m_screenshotSurface);
+    if (wl_display_flush(m_display) < 0)
+        return fail(QStringLiteral("failed to flush the screenshot surface creation"));
+    return true;
+}
+
+bool ShellProtocol::setScreenshotInputRegion(int width, int height)
+{
+    if (!m_screenshotSurface || !m_compositor)
+        return false;
+    wl_region *region = wl_compositor_create_region(m_compositor);
+    if (!region)
+        return false;
+    if (width > 0 && height > 0)
+        wl_region_add(region, 0, 0, width, height);
+    // Applied with the next buffer commit (`commitScreenshotImage`).
+    wl_surface_set_input_region(m_screenshotSurface, region);
+    wl_region_destroy(region);
+    return true;
+}
+
+bool ShellProtocol::commitScreenshotImage(const QImage &image)
+{
+    if (!m_screenshotSurface)
+        return false;
+    if (!commitTo(m_screenshotSurface, image))
+        return false;
+    m_screenshotMapped = true;
+    return true;
+}
+
+bool ShellProtocol::hideScreenshot()
+{
+    if (!m_screenshotSurface || !m_screenshotLayer)
+        return false;
+    if (!m_screenshotMapped)
+        return true;
+    wl_surface_attach(m_screenshotSurface, nullptr, 0, 0);
+    wl_surface_commit(m_screenshotSurface);
+    m_screenshotMapped = false;
+    if (m_display)
+        wl_display_flush(m_display);
+    return true;
+}
+
 // --- session lock (T-12.3a) -------------------------------------------------
 
 void ShellProtocol::createLockSurfaces()
@@ -1388,6 +1459,10 @@ void ShellProtocol::teardown()
         df_layer_surface_destroy(m_chooserLayer);
     if (m_chooserSurface)
         wl_surface_destroy(m_chooserSurface);
+    if (m_screenshotLayer)
+        df_layer_surface_destroy(m_screenshotLayer);
+    if (m_screenshotSurface)
+        wl_surface_destroy(m_screenshotSurface);
     if (m_bannerLayer)
         df_layer_surface_destroy(m_bannerLayer);
     if (m_bannerSurface)
@@ -1463,9 +1538,14 @@ void ShellProtocol::teardown()
     m_pointerOnBanner = false;
     m_pointerOnControlCenter = false;
     m_pointerOnChooser = false;
+    m_pointerOnScreenshot = false;
     m_keyboardOnOverview = false;
     m_keyboardOnControlCenter = false;
     m_keyboardOnChooser = false;
+    m_keyboardOnScreenshot = false;
+    m_screenshotLayer = nullptr;
+    m_screenshotSurface = nullptr;
+    m_screenshotMapped = false;
     m_controlCenterLayer = nullptr;
     m_controlCenterSurface = nullptr;
     m_controlCenterMapped = false;
@@ -1658,6 +1738,15 @@ void ShellProtocol::onChooserConfigure(void *data, df_layer_surface *, uint32_t 
     if (self->m_chooserLayer)
         df_layer_surface_ack_configure(self->m_chooserLayer, serial);
     emit self->chooserConfigured(width, height, serial);
+}
+
+void ShellProtocol::onScreenshotConfigure(void *data, df_layer_surface *, uint32_t serial,
+                                          int32_t width, int32_t height)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    if (self->m_screenshotLayer)
+        df_layer_surface_ack_configure(self->m_screenshotLayer, serial);
+    emit self->screenshotConfigured(width, height, serial);
 }
 
 // --- ext_session_lock_v1 (T-12.3a) -----------------------------------------
@@ -1933,12 +2022,20 @@ void ShellProtocol::onPointerEnter(void *data, wl_pointer *, uint32_t, wl_surfac
         self->m_overviewSurface && surface == self->m_overviewSurface;
     self->m_pointerOnChooser =
         self->m_chooserSurface && surface == self->m_chooserSurface;
+    self->m_pointerOnScreenshot =
+        self->m_screenshotSurface && surface == self->m_screenshotSurface;
     self->m_pointerX = wl_fixed_to_double(x) + (self->m_pointerOnPopup ? self->m_popupX : 0);
     self->m_pointerY = wl_fixed_to_double(y) + (self->m_pointerOnPopup ? self->m_popupY : 0);
     if (self->m_pointerOnChooser) {
         self->m_pointerX = wl_fixed_to_double(x);
         self->m_pointerY = wl_fixed_to_double(y);
         emit self->chooserPointerMoved(self->m_pointerX, self->m_pointerY);
+        return;
+    }
+    if (self->m_pointerOnScreenshot) {
+        self->m_pointerX = wl_fixed_to_double(x);
+        self->m_pointerY = wl_fixed_to_double(y);
+        emit self->screenshotPointerMoved(self->m_pointerX, self->m_pointerY);
         return;
     }
     if (self->m_pointerOnControlCenter) {
@@ -1981,6 +2078,7 @@ void ShellProtocol::onPointerLeave(void *data, wl_pointer *, uint32_t, wl_surfac
     const bool wasBanner = self->m_pointerOnBanner;
     const bool wasControlCenter = self->m_pointerOnControlCenter;
     const bool wasChooser = self->m_pointerOnChooser;
+    const bool wasScreenshot = self->m_pointerOnScreenshot;
     const bool wasDockPopup = self->m_pointerOnDockPopup;
     const bool wasDock = self->m_pointerOnDock;
     self->m_pointerOnPopup = false;
@@ -1990,8 +2088,11 @@ void ShellProtocol::onPointerLeave(void *data, wl_pointer *, uint32_t, wl_surfac
     self->m_pointerOnControlCenter = false;
     self->m_pointerOnOverview = false;
     self->m_pointerOnChooser = false;
+    self->m_pointerOnScreenshot = false;
     if (wasChooser)
         emit self->chooserPointerLeft();
+    else if (wasScreenshot)
+        emit self->screenshotPointerLeft();
     else if (wasOverview)
         emit self->overviewPointerLeft();
     else if (wasControlCenter)
@@ -2016,6 +2117,12 @@ void ShellProtocol::onPointerMotion(void *data, wl_pointer *, uint32_t, wl_fixed
         self->m_pointerX = wl_fixed_to_double(x);
         self->m_pointerY = wl_fixed_to_double(y);
         emit self->chooserPointerMoved(self->m_pointerX, self->m_pointerY);
+        return;
+    }
+    if (self->m_pointerOnScreenshot) {
+        self->m_pointerX = wl_fixed_to_double(x);
+        self->m_pointerY = wl_fixed_to_double(y);
+        emit self->screenshotPointerMoved(self->m_pointerX, self->m_pointerY);
         return;
     }
     if (self->m_pointerOnControlCenter) {
@@ -2058,6 +2165,11 @@ void ShellProtocol::onPointerButton(void *data, wl_pointer *, uint32_t, uint32_t
     if (self->m_pointerOnChooser) {
         emit self->chooserPointerButton(self->m_pointerX, self->m_pointerY, button,
                                         state == WL_POINTER_BUTTON_STATE_PRESSED);
+        return;
+    }
+    if (self->m_pointerOnScreenshot) {
+        emit self->screenshotPointerButton(self->m_pointerX, self->m_pointerY, button,
+                                           state == WL_POINTER_BUTTON_STATE_PRESSED);
         return;
     }
     if (self->m_pointerOnControlCenter) {
@@ -2110,6 +2222,8 @@ void ShellProtocol::onKeyboardEnter(void *data, wl_keyboard *, uint32_t, wl_surf
         self->m_controlCenterSurface && surface == self->m_controlCenterSurface;
     self->m_keyboardOnChooser =
         self->m_chooserSurface && surface == self->m_chooserSurface;
+    self->m_keyboardOnScreenshot =
+        self->m_screenshotSurface && surface == self->m_screenshotSurface;
     self->m_keyboardOnLock = self->isLockSurface(surface);
     emit self->keyboardFocused(true);
     if (self->m_keyboardOnDock)
@@ -2120,6 +2234,8 @@ void ShellProtocol::onKeyboardEnter(void *data, wl_keyboard *, uint32_t, wl_surf
         emit self->controlCenterKeyboardFocused(true);
     if (self->m_keyboardOnChooser)
         emit self->chooserKeyboardFocused(true);
+    if (self->m_keyboardOnScreenshot)
+        emit self->screenshotKeyboardFocused(true);
 }
 
 void ShellProtocol::onKeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surface *surface)
@@ -2133,10 +2249,13 @@ void ShellProtocol::onKeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surf
             || (self->m_controlCenterSurface && surface == self->m_controlCenterSurface);
     const bool wasChooser = self->m_keyboardOnChooser
             || (self->m_chooserSurface && surface == self->m_chooserSurface);
+    const bool wasScreenshot = self->m_keyboardOnScreenshot
+            || (self->m_screenshotSurface && surface == self->m_screenshotSurface);
     self->m_keyboardOnDock = false;
     self->m_keyboardOnOverview = false;
     self->m_keyboardOnControlCenter = false;
     self->m_keyboardOnChooser = false;
+    self->m_keyboardOnScreenshot = false;
     self->m_keyboardOnLock = false;
     emit self->keyboardFocused(false);
     if (wasDock)
@@ -2147,6 +2266,8 @@ void ShellProtocol::onKeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surf
         emit self->controlCenterKeyboardFocused(false);
     if (wasChooser)
         emit self->chooserKeyboardFocused(false);
+    if (wasScreenshot)
+        emit self->screenshotKeyboardFocused(false);
 }
 
 void ShellProtocol::onKeyboardKey(void *data, wl_keyboard *, uint32_t, uint32_t, uint32_t key,
@@ -2162,6 +2283,10 @@ void ShellProtocol::onKeyboardKey(void *data, wl_keyboard *, uint32_t, uint32_t,
     }
     if (self->m_keyboardOnChooser) {
         emit self->chooserKeyEvent(key, state == WL_KEYBOARD_KEY_STATE_PRESSED);
+        return;
+    }
+    if (self->m_keyboardOnScreenshot) {
+        emit self->screenshotKeyEvent(key, state == WL_KEYBOARD_KEY_STATE_PRESSED);
         return;
     }
     emit self->keyEvent(key, state == WL_KEYBOARD_KEY_STATE_PRESSED);

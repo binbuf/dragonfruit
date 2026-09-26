@@ -21,9 +21,12 @@
 //! * [`chooser`] — the FileChooser's pure model (T-13.2a): the options/result
 //!   vardicts, the request registry and its one-shot completion, and the
 //!   files-core listing the picker drives.
+//! * [`screenshot`] — the Screenshot's pure model (T-13.3a): the capture
+//!   mode, the request registry and its one-shot completion, and the URI
+//!   normalization the presenter's capture result uses.
 //!
 //! Settings and GlobalShortcuts landed in T-13.1b; FileChooser in T-13.2a;
-//! Screenshot and ScreenCast follow in T-13.3a…T-13.4a. The registration
+//! Screenshot in T-13.3a and ScreenCast in T-13.4a. The registration
 //! contract is frozen in
 //! [ADR 0074](../../docs/design/adr/0074-portal-backend-registration-and-frontend-degradation.md)
 //! the Settings/GlobalShortcuts projection in
@@ -36,6 +39,7 @@ pub mod data;
 pub mod dbus;
 pub mod interfaces;
 pub mod model;
+pub mod screenshot;
 pub mod settings;
 pub mod shortcuts;
 
@@ -49,10 +53,16 @@ pub use data::{
     PORTALS_CONF, PORTALS_CONF_DIR, PORTALS_CONF_NAME, PORTALS_DIR, PORTAL_FILE, PORTAL_FILE_NAME,
 };
 pub use dbus::{initialize, probe_frontend, serve, Backend};
-pub use interfaces::{FileChooserPortal, GlobalShortcuts, SettingsPortal, ShortcutSessionObject};
+pub use interfaces::{
+    FileChooserPortal, GlobalShortcuts, ScreenshotPortal, SettingsPortal, ShortcutSessionObject,
+};
 pub use model::{
     BackendStatus, FrontendPresence, FrontendTracker, BACKEND_INTERFACES, BACKEND_NAME, DBUS_NAME,
     DBUS_PATH, FRONTEND_NAME, STATUS_INTERFACE,
+};
+pub use screenshot::{
+    CaptureMode, ScreenshotError, ScreenshotOptions, ScreenshotRegistry, ScreenshotRequest,
+    ScreenshotResponse, SCREENSHOT_INTERFACE, SCREENSHOT_VERSION,
 };
 
 #[cfg(test)]

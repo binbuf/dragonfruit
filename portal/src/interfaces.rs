@@ -23,6 +23,9 @@ use zbus::zvariant::{ObjectPath, OwnedValue};
 use crate::chooser::{
     self, ChooserKind, ChooserRequest, ChooserResponse, SharedChooser, FILE_CHOOSER_VERSION,
 };
+use crate::screenshot::{
+    self, ScreenshotRequest, ScreenshotResponse, SharedScreenshot, SCREENSHOT_VERSION,
+};
 use crate::settings::{self, SettingsStore, SETTINGS_VERSION};
 use crate::shortcuts::{
     lock as lock_registry, PortalShortcut, SessionError, SharedRegistry, CLOSED_BY_USER,
@@ -34,6 +37,9 @@ pub const SETTINGS_INTERFACE: &str = "org.freedesktop.impl.portal.Settings";
 
 /// The standard FileChooser backend interface name.
 pub const FILE_CHOOSER_INTERFACE: &str = crate::chooser::FILE_CHOOSER_INTERFACE;
+
+/// The standard Screenshot backend interface name.
+pub const SCREENSHOT_INTERFACE: &str = crate::screenshot::SCREENSHOT_INTERFACE;
 
 /// The backend's read-only Settings object.
 #[derive(Clone)]
@@ -223,6 +229,94 @@ impl FileChooserPortal {
     #[zbus(property(emits_changed_signal = "const"))]
     fn version(&self) -> u32 {
         FILE_CHOOSER_VERSION
+    }
+}
+
+/// The backend's Screenshot object (T-13.3a).
+///
+/// Like the FileChooser, the standard `Screenshot` method does not return
+/// until a presenter has produced a capture: it registers a request in
+/// [`crate::screenshot::ScreenshotRegistry`] and awaits the one-shot
+/// completion. The presenter is the shell's selection overlay; the actual
+/// capture is provided by the presenter and normalized in the pure
+/// [`crate::screenshot`] module. T-13.3b wires save/copy.
+#[derive(Clone)]
+pub struct ScreenshotPortal {
+    screenshot: SharedScreenshot,
+}
+
+impl ScreenshotPortal {
+    /// A Screenshot object over a live request registry.
+    pub fn new(screenshot: SharedScreenshot) -> Self {
+        ScreenshotPortal { screenshot }
+    }
+
+    /// The registry behind this object.
+    pub fn registry(&self) -> &SharedScreenshot {
+        &self.screenshot
+    }
+
+    /// Register one request, tell the presenter it is waiting, and await the
+    /// captured URI.
+    async fn request(
+        &self,
+        request: ScreenshotRequest,
+        emitter: SignalEmitter<'_>,
+    ) -> Result<(u32, HashMap<String, OwnedValue>), zbus::fdo::Error> {
+        let completion = {
+            let mut registry = screenshot::lock(&self.screenshot);
+            registry
+                .begin(request.clone())
+                .map_err(|error| zbus::fdo::Error::Failed(error.to_string()))?
+        };
+
+        // The diagnostic `ScreenshotOpened` signal is how the presenter (the
+        // selection overlay) sees a waiting request.
+        emitter
+            .connection()
+            .emit_signal(
+                None::<&str>,
+                crate::model::DBUS_PATH,
+                crate::model::STATUS_INTERFACE,
+                "ScreenshotOpened",
+                &(
+                    request.handle.as_str(),
+                    request.mode.as_str(),
+                    request.app_id.as_str(),
+                    request.parent_window.as_str(),
+                    request.raw_options.clone(),
+                ),
+            )
+            .await?;
+
+        let response = completion
+            .await
+            .unwrap_or_else(ScreenshotResponse::cancelled);
+        Ok((response.response, response.results))
+    }
+}
+
+#[interface(name = "org.freedesktop.impl.portal.Screenshot")]
+impl ScreenshotPortal {
+    /// Present a single-frame capture. The presenter chooses the selection
+    /// from the request's `mode` (or interactively) and returns the captured
+    /// `file://` URI in `results`.
+    async fn screenshot(
+        &self,
+        handle: ObjectPath<'_>,
+        app_id: &str,
+        parent_window: &str,
+        options: HashMap<String, OwnedValue>,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+    ) -> Result<(u32, HashMap<String, OwnedValue>), zbus::fdo::Error> {
+        let request = ScreenshotRequest::new(handle.as_str(), app_id, parent_window, &options);
+        self.request(request, emitter).await
+    }
+
+    /// The backend's Screenshot interface version.
+    #[zbus(property(emits_changed_signal = "const"))]
+    fn version(&self) -> u32 {
+        SCREENSHOT_VERSION
     }
 }
 
@@ -447,6 +541,31 @@ mod tests {
             "org.freedesktop.impl.portal.FileChooser"
         );
         assert_eq!(FILE_CHOOSER_VERSION, 3);
+    }
+
+    #[test]
+    fn the_screenshot_object_names_the_standard_interface_and_version() {
+        assert_eq!(
+            SCREENSHOT_INTERFACE,
+            "org.freedesktop.impl.portal.Screenshot"
+        );
+        assert_eq!(SCREENSHOT_VERSION, 2);
+    }
+
+    #[test]
+    fn a_screenshot_object_shares_its_registry() {
+        let shared = crate::screenshot::registry();
+        let portal = ScreenshotPortal::new(shared.clone());
+        let request = crate::screenshot::ScreenshotRequest::new(
+            "/req/1",
+            "org.example.App",
+            "",
+            &HashMap::new(),
+        );
+        crate::screenshot::lock(&shared)
+            .begin(request)
+            .expect("begin");
+        assert_eq!(crate::screenshot::lock(portal.registry()).len(), 1);
     }
 
     #[test]

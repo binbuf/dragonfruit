@@ -318,7 +318,7 @@ pub fn default_system_bindings() -> Vec<Shortcut> {
         Shortcut::new(
             command.union(shift),
             keysyms::KEY_4,
-            InputAction::Screenshot,
+            InputAction::ScreenshotRegion,
         ),
         Shortcut::new(
             command.union(control),
@@ -407,6 +407,16 @@ mod tests {
         assert_eq!(
             engine.resolve(&mods(false, false, true, false), keysyms::KEY_3),
             Some(ShortcutOutcome::System(InputAction::WorkspaceActivate(2)))
+        );
+        // Cmd+Shift+3 captures the whole output; Cmd+Shift+4 selects a region
+        // (T-13.3a). Both are the same portal capture path.
+        assert_eq!(
+            engine.resolve(&mods(true, false, false, true), keysyms::KEY_3),
+            Some(ShortcutOutcome::System(InputAction::Screenshot))
+        );
+        assert_eq!(
+            engine.resolve(&mods(true, false, false, true), keysyms::KEY_4),
+            Some(ShortcutOutcome::System(InputAction::ScreenshotRegion))
         );
     }
 
