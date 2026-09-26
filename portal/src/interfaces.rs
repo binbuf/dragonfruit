@@ -335,7 +335,8 @@ impl ScreenshotPortal {
 /// [`crate::screencast::ScreenCastRegistry`] and awaits it (the shell's source
 /// picker completes it through the diagnostic surface), and `Start` returns
 /// the chosen source as a stream. The source handle is the whole T-13.4a
-/// result; T-13.4b attaches the PipeWire node.
+/// result; T-13.4b negotiates the mode (live PipeWire, or the named stills
+/// fallback) in [`crate::stream`].
 #[derive(Clone)]
 pub struct ScreenCastPortal {
     screencast: SharedScreenCast,
@@ -451,8 +452,9 @@ impl ScreenCastPortal {
     }
 
     /// Start the session. With the picker resolved by `SelectSources`, this
-    /// returns the chosen sources as streams (T-13.4b attaches the PipeWire
-    /// node); a session with no chosen source is an error response.
+    /// returns the chosen sources as streams, each negotiated by the stream
+    /// transport (a live PipeWire node, or the named stills fallback; T-13.4b).
+    /// A session with no chosen source is an error response.
     async fn start(
         &self,
         _handle: ObjectPath<'_>,
@@ -461,7 +463,7 @@ impl ScreenCastPortal {
         _parent_window: &str,
         _options: HashMap<String, OwnedValue>,
     ) -> Result<(u32, HashMap<String, OwnedValue>), zbus::fdo::Error> {
-        let registry = screencast::lock(&self.screencast);
+        let mut registry = screencast::lock(&self.screencast);
         match registry.start(session_handle.as_str()) {
             Ok(response) => Ok((response.response, response.results)),
             Err(_) => Ok((screencast::RESPONSE_OTHER, HashMap::new())),

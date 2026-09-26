@@ -13,8 +13,11 @@
 // itself is pure QML (`ScreenCastPicker.qml`); this class owns the state the
 // view binds to.
 //
-// Streaming is T-13.4b: this class returns the chosen source handle(s) and the
-// portal answers `Start` with the streams; the D-Bus contract does not change.
+// Streaming is T-13.4b: the portal negotiates each chosen source into a live
+// PipeWire node or the named stills fallback. This class reads the backend's
+// diagnostic mode (`ScreenCastStreamMode`) so the picker can name the fallback
+// before the user chooses; a missing producer is a normal, spoken state, never
+// a silent one.
 #pragma once
 
 #include <QList>
@@ -22,6 +25,8 @@
 #include <QObject>
 #include <QString>
 #include <QVariantList>
+
+class QDBusPendingCallWatcher;
 
 // One source selection on the wire: the presenter's opaque handle plus the
 // source type bit (1 monitor, 2 window). Registered with the D-Bus metatype
@@ -60,6 +65,11 @@ class ScreenCastBridge : public QObject
     Q_PROPERTY(QVariantList sources READ sources NOTIFY changed)
     Q_PROPERTY(int selectedCount READ selectedCount NOTIFY changed)
     Q_PROPERTY(QString error READ error NOTIFY changed)
+    // The backend's negotiated stream mode (`pipewire` / `stills`). Defaults to
+    // `stills` so a missing producer is never mistaken for a live stream.
+    Q_PROPERTY(QString streamMode READ streamMode NOTIFY changed)
+    // A human note naming the stills fallback; empty when streaming is live.
+    Q_PROPERTY(QString streamNote READ streamNote NOTIFY changed)
 
 public:
     explicit ScreenCastBridge(QObject *parent = nullptr);
@@ -80,6 +90,8 @@ public:
     QVariantList sources() const { return m_sources; }
     int selectedCount() const;
     QString error() const { return m_error; }
+    QString streamMode() const { return m_streamMode; }
+    QString streamNote() const;
 
 public slots:
     // Present one portal request. `types` is the source-type bitmask (1
@@ -110,6 +122,8 @@ private slots:
     void onScreenCastOpened(const QString &handle, const QString &sessionHandle,
                             const QString &appId, uint types, bool multiple,
                             const QVariantMap &options);
+    // The async reply to the diagnostic `ScreenCastStreamMode` call.
+    void onStreamModeReply(QDBusPendingCallWatcher *watcher);
 
 private:
     // Clear every per-request field.
@@ -118,6 +132,11 @@ private:
     QList<ScreenCastSelection> selections() const;
     // Re-evaluate the portal service presence.
     void checkService();
+    // Read the backend's diagnostic stream mode (`ScreenCastStreamMode`); a
+    // missing method or service leaves the stills default in place.
+    void refreshStreamMode();
+    // Store a stream mode and announce a change.
+    void setStreamMode(const QString &mode);
 
     bool m_active = false;
     QString m_handle;
@@ -128,6 +147,7 @@ private:
     uint m_cursorMode = 1;
     QVariantList m_sources;
     QString m_error;
+    QString m_streamMode = QStringLiteral("stills");
     bool m_serviceAvailable = false;
     bool m_connected = false;
 };

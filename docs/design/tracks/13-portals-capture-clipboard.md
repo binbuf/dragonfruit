@@ -91,7 +91,12 @@ the same "host stack, our presentation" principle and land together.
 - **Portal breadth** can sprawl; ship the desktop's needs and keep the
   interface additive.
 - **PipeWire screencast** is the hardest piece; timebox and fall back to
-  stills-only if needed, recording the gap.
+  stills-only if needed, recording the gap. T-13.4b shipped the *named* stills
+  fallback: no in-process producer exists, so every stream reports
+  `df_stream_mode = stills` with a `df_fallback` reason and the picker says so.
+  A real producer only has to implement `portal::stream::StreamTransport`; the
+  session, picker, and diagnostic surfaces do not change. See
+  [ADR 0081](../adr/0081-screencast-stream-negotiation-and-stills-fallback.md).
 - **Clipboard ownership** must stay with the existing data-device bridge; do
   not add a second owner.
 

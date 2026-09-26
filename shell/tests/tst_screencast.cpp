@@ -53,6 +53,9 @@ public slots:
 
     QVariantList PendingScreenCasts() const { return {}; }
 
+    // The T-13.4b diagnostic: this fake has a live producer.
+    QString ScreenCastStreamMode() const { return QStringLiteral("pipewire"); }
+
 signals:
     void ScreenCastOpened(const QString &handle, const QString &sessionHandle,
                           const QString &appId, uint types, bool multiple,
@@ -196,6 +199,15 @@ private slots:
         QVERIFY(!bridge.active());
     }
 
+    void withoutAPortalTheStillsFallbackIsNamed()
+    {
+        // No service and no producer: the bridge must not pretend streaming is
+        // live. The fallback is named in the picker note (T-13.4b).
+        ScreenCastBridge bridge;
+        QCOMPARE(bridge.streamMode(), QStringLiteral("stills"));
+        QVERIFY(!bridge.streamNote().isEmpty());
+    }
+
     void theSelectionRoundTripsToThePortalPresenter()
     {
         QDBusConnection bus = QDBusConnection::sessionBus();
@@ -216,6 +228,9 @@ private slots:
         ScreenCastBridge bridge;
         bridge.connectService();
         QTRY_VERIFY(bridge.serviceAvailable());
+        // The backend reports a live producer, so the fallback note is empty.
+        QTRY_COMPARE(bridge.streamMode(), QStringLiteral("pipewire"));
+        QVERIFY(bridge.streamNote().isEmpty());
 
         QVariantMap options;
         portal.emitOpened(QStringLiteral("/org/freedesktop/portal/desktop/request/1"),

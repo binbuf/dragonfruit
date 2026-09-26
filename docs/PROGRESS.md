@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(59 earlier sections omitted)_
+_(60 earlier sections omitted)_
 
-- **T56 — T-10.1a files-core streaming listing and model**: **State: done.** `files-core` now exists as a headless Rust library and a; **`services/files-core/`** (new crate `dragonfruit-files-core`, workspace
 - **T57 — T-10.1b files-core sorting and platform fallback**: **State: done.** `files-core` now sorts its streamed model and the; **`services/files-core/src/sort.rs`** (new module) — `SortKey`
 - **T58 — T-10.2a files-core operations**: **State: done.** `files-core` gained the one operations seam: rename, new; **`services/files-core/src/ops.rs`** (new module):
 - **T59 — T-10.2b Optimistic semantics and state preservation**: **State: done.** `files-core` now applies rename / new-folder / delete to the; **`services/files-core/src/optimistic.rs`** (new) — `OptimisticModel`
@@ -45,6 +44,7 @@ _(59 earlier sections omitted)_
 - **T92 — T-13.3a Screenshot portal and selection UI**: **State: done.** The backend serves `org.freedesktop.impl.portal.Screenshot`; **`portal/src/screenshot.rs`** (new) — the pure model: `CaptureMode`
 - **T93 — T-13.3b Screenshot save/copy and portal-only gate**: **State: done.** A capture is now actually produced, saved, and copied. The; **`protocols/dragonfruit-toplevel.xml`** — `df_toplevel_manager` v6 adds
 - **T94 — T-13.4a ScreenCast portal and source picker**: **State: done.** The backend serves `org.freedesktop.impl.portal.ScreenCast`; **`portal/src/screencast.rs`** (new) — the pure model: `SourceType`
+- **T95 — T-13.4b ScreenCast stream and stills fallback**: **State: done.** The ScreenCast stream now goes through one transport seam, and; **`portal/src/stream.rs`** (new) — `StreamMode` (`pipewire`/`stills`),
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -7095,3 +7095,59 @@ Gotchas for later tasks:
 - T-13.4b (PipeWire stream/fallback) and T-13.7 (real `xdg-desktop-portal`
   routing/Flatpak walkthrough) are the follow-ons; the `shell/screenshot`
   module is the shared home for the portal pickers.
+
+## T95 — T-13.4b ScreenCast stream and stills fallback
+
+**State: done.** The ScreenCast stream now goes through one transport seam, and
+this build ships the *named* stills fallback (no in-process PipeWire producer).
+A standard client cannot yet receive live frames; the gap is explicit on the
+wire, on the diagnostic, and in the picker. Contract frozen in ADR
+[0081](design/adr/0081-screencast-stream-negotiation-and-stills-fallback.md).
+
+What landed:
+
+- **`portal/src/stream.rs`** (new) — `StreamMode` (`pipewire`/`stills`),
+  `FallbackReason` (`pipewire-producer-unavailable`/`source-unavailable`),
+  `StreamSource`, `NegotiatedStream`, the one `StreamTransport` trait,
+  `StillsTransport`, `StreamNegotiator`, and `stream_properties`. Properties
+  `df_stream_mode` / `df_fallback` are Dragonfruit extensions.
+- **`portal/src/screencast.rs`** — `ScreenCastStream` carries `mode`/`fallback`;
+  `from_wire` defaults a missing mode to `stills`; `ScreenCastRegistry` holds a
+  `StreamNegotiator`, tracks live node ids per session, releases them on
+  `close_session`, and exposes `with_transport`/`stream_mode`.
+- **`portal/src/dbus.rs`** — diagnostic method `ScreenCastStreamMode` (spoken
+  before a source is chosen). `Start` negotiates.
+- **`shell/src/screencastbridge.{h,cpp}`** — `streamMode`/`streamNote`; reads the
+  diagnostic asynchronously (missing service/method leaves `stills`).
+  `shell/screenshot/ScreenCastPicker.qml` shows `streamNote`; `shellcontroller`
+  forwards it.
+- **Tests** — 5 `stream.rs` units, `screencast.rs` live-node/release units,
+  `portal/tests/screencast.rs` wire+diagnostic assertions, `tst_screencast.cpp`,
+  `tst_screencastui.qml`.
+
+Commands that work (repo root):
+
+- `cargo test -p xdg-desktop-portal-dragonfruit` — 4 `screencast` + others pass.
+- `ctest --test-dir build --output-on-failure` — 50/50.
+- `make lint` — exit 0; `make e2e` — exit 0.
+- Build note: `export PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig:$PKG_CONFIG_PATH`
+  and `RUSTFLAGS="-L $HOME/.local/df-devroot/lib64"` (or just `make`).
+
+Live check: `DF_SCREENCAST_FIXTURE=1 make demo DEMO_ARGS="--socket-name
+dragonfruit-t95b"` + `spectacle` (`/tmp/opencode/t95/capture2.sh`), still
+`/tmp/opencode/t95/screencast2.png`. Vision: the picker shows the exact note
+"Live streaming is not available in this build — the app will receive still
+images.", the Screens/Windows list, Cancel/Share; no binding loops; desktop
+renders normally.
+
+Gotchas for later tasks:
+
+- **No live producer is built.** This is the timeboxed, named fallback the
+  track design allows. A real producer only implements
+  `portal::stream::StreamTransport`; session, picker, and diagnostic surfaces do
+  not change. `node_id` stays `0` in fallback.
+- **`df_stream_mode`/`df_fallback` are Dragonfruit extensions**; the standard
+  frontend ignores them. Geometry/cursor metadata can be added by a producer
+  without a backend version bump.
+- T-13.5 (clipboard) and T-13.7 (real frontend routing/Flatpak) are the
+  follow-ons; T-13.7's browser walkthrough will exercise this fallback.

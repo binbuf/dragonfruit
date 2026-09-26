@@ -14,12 +14,12 @@
 //! awaits; the shell's picker resolves it through the diagnostic
 //! `CompleteScreenCast`/`CancelScreenCast` seam.
 //!
-//! ## Streaming is T-13.4b
+//! ## Streaming is [`crate::stream`]
 //!
-//! This module stops at the *source handle*: [`ScreenCastStream`] carries the
-//! chosen id and its source type, and the D-Bus object returns it with a
-//! placeholder node id (`0`). T-13.4b creates the real PipeWire node and fills
-//! the stream geometry. The picker and the session lifecycle do not change.
+//! [`ScreenCastStream`] carries the chosen id, its source type, and the
+//! negotiated [`StreamMode`]: a live PipeWire node when a transport creates
+//! one, or the named stills fallback otherwise. The picker and the session
+//! lifecycle do not change with the transport.
 //!
 //! ## What is advertised
 //!
@@ -39,6 +39,8 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::task::{Context, Poll, Waker};
 
 use zbus::zvariant::{Array, OwnedValue, Str, Structure, Type, Value};
+
+use crate::stream::{FallbackReason, StreamMode, StreamNegotiator, StreamSource, StreamTransport};
 
 /// The standard ScreenCast backend interface.
 pub const SCREENCAST_INTERFACE: &str = "org.freedesktop.impl.portal.ScreenCast";
@@ -233,16 +235,21 @@ impl ScreenCastSelection {
 }
 
 /// One stream the `Start` result carries. T-13.4a returns the chosen source
-/// handle; T-13.4b fills `node_id` with the real PipeWire node.
+/// handle; T-13.4b negotiates the mode (live PipeWire, or the named stills
+/// fallback) through [`crate::stream`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScreenCastStream {
-    /// The PipeWire node id. `0` until T-13.4b creates the stream.
+    /// The PipeWire node id. `0` in the stills fallback.
     pub node_id: u32,
     /// The chosen source's opaque handle (a Dragonfruit extension property,
     /// the carry the shell/T-13.4b needs to address the source).
     pub source_id: String,
     /// The kind of the shared source.
     pub source_type: SourceType,
+    /// How the source is delivered.
+    pub mode: StreamMode,
+    /// The named reason for the stills fallback, when one was used.
+    pub fallback: Option<FallbackReason>,
 }
 
 impl ScreenCastStream {
@@ -257,10 +264,13 @@ impl ScreenCastStream {
             "source_type".to_owned(),
             OwnedValue::from(self.source_type.bit()),
         );
+        properties.extend(crate::stream::stream_properties(self.mode, self.fallback));
         (self.node_id, properties)
     }
 
-    /// Decode a wire tuple back into a stream (used by the response tests).
+    /// Decode a wire tuple back into a stream (used by the response tests). A
+    /// missing mode defaults to the stills fallback, so an old peer can never
+    /// look like a live stream it did not negotiate.
     pub fn from_wire(node_id: u32, properties: &HashMap<String, OwnedValue>) -> Option<Self> {
         let source_id = properties
             .get("id")
@@ -270,10 +280,27 @@ impl ScreenCastStream {
             .get("source_type")
             .and_then(|value| value.try_clone().ok())
             .and_then(|value| u32::try_from(value).ok())?;
+        let mode = properties
+            .get(crate::stream::STREAM_MODE_PROPERTY)
+            .and_then(|value| value.try_clone().ok())
+            .and_then(|value| String::try_from(value).ok())
+            .and_then(|label| StreamMode::parse(&label))
+            .unwrap_or(StreamMode::Stills);
+        let fallback = properties
+            .get(crate::stream::STREAM_FALLBACK_PROPERTY)
+            .and_then(|value| value.try_clone().ok())
+            .and_then(|value| String::try_from(value).ok())
+            .and_then(|label| match label.as_str() {
+                "pipewire-producer-unavailable" => Some(FallbackReason::ProducerUnavailable),
+                "source-unavailable" => Some(FallbackReason::SourceUnavailable),
+                _ => None,
+            });
         Some(ScreenCastStream {
             node_id,
             source_id,
             source_type: SourceType::parse(bit)?,
+            mode,
+            fallback,
         })
     }
 }
@@ -367,14 +394,26 @@ pub struct ScreenCastSession {
 }
 
 impl ScreenCastSession {
-    /// The streams this session's `Start` should return.
-    pub fn streams(&self) -> Vec<ScreenCastStream> {
+    /// The streams this session's `Start` should return, negotiated through
+    /// `negotiator`. A transport failure becomes the named stills fallback.
+    pub fn streams(&mut self, negotiator: &mut StreamNegotiator) -> Vec<ScreenCastStream> {
+        let cursor_mode = self.options.cursor_mode;
         self.selections
             .iter()
-            .map(|selection| ScreenCastStream {
-                node_id: 0,
-                source_id: selection.id.clone(),
-                source_type: selection.source_type,
+            .map(|selection| {
+                let source = StreamSource {
+                    id: selection.id.clone(),
+                    source_type: selection.source_type,
+                    cursor_mode,
+                };
+                let negotiated = negotiator.negotiate(&source);
+                ScreenCastStream {
+                    node_id: negotiated.node_id,
+                    source_id: selection.id.clone(),
+                    source_type: selection.source_type,
+                    mode: negotiated.mode,
+                    fallback: negotiated.fallback,
+                }
             })
             .collect()
     }
@@ -494,12 +533,29 @@ struct PendingScreenCast {
 pub struct ScreenCastRegistry {
     sessions: BTreeMap<String, ScreenCastSession>,
     pending: BTreeMap<String, PendingScreenCast>,
+    negotiator: StreamNegotiator,
+    /// The live PipeWire nodes a session created through `Start`, so they can
+    /// be released when the session closes.
+    nodes: BTreeMap<String, Vec<u32>>,
 }
 
 impl ScreenCastRegistry {
-    /// An empty registry.
+    /// An empty registry over the shipped stills-only transport.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// An empty registry over `transport`, for the live path and tests.
+    pub fn with_transport(transport: Box<dyn StreamTransport>) -> Self {
+        ScreenCastRegistry {
+            negotiator: StreamNegotiator::new(transport),
+            ..Self::default()
+        }
+    }
+
+    /// How this registry's transport delivers a source (`pipewire` / `stills`).
+    pub fn stream_mode(&self) -> StreamMode {
+        self.negotiator.mode()
     }
 
     /// Register a session at `handle` for `app_id`. A duplicate path is
@@ -597,22 +653,36 @@ impl ScreenCastRegistry {
         Some(response)
     }
 
-    /// Build the `Start` response for a session's chosen sources.
-    pub fn start(&self, session_handle: &str) -> Result<ScreenCastResponse, ScreenCastError> {
+    /// Build the `Start` response for a session's chosen sources, negotiating
+    /// each stream through the transport. Live nodes are remembered so
+    /// [`ScreenCastRegistry::close_session`] can release them.
+    pub fn start(&mut self, session_handle: &str) -> Result<ScreenCastResponse, ScreenCastError> {
         let session = self
             .sessions
-            .get(session_handle)
+            .get_mut(session_handle)
             .ok_or_else(|| ScreenCastError::UnknownSession(session_handle.to_owned()))?;
         if session.selections.is_empty() {
             return Err(ScreenCastError::NoSelection(session_handle.to_owned()));
         }
-        Ok(ScreenCastResponse::started(&session.streams()))
+        let streams = session.streams(&mut self.negotiator);
+        let nodes: Vec<u32> = streams
+            .iter()
+            .filter(|stream| stream.mode == StreamMode::PipeWire)
+            .map(|stream| stream.node_id)
+            .collect();
+        self.nodes.insert(session_handle.to_owned(), nodes);
+        Ok(ScreenCastResponse::started(&streams))
     }
 
-    /// Drop a session and any picker request that referenced it, returning
-    /// whether the session existed.
+    /// Drop a session and any picker request that referenced it, releasing any
+    /// live nodes the session created. Returns whether the session existed.
     pub fn close_session(&mut self, handle: &str) -> bool {
         let existed = self.sessions.remove(handle).is_some();
+        if let Some(nodes) = self.nodes.remove(handle) {
+            for node in nodes {
+                self.negotiator.destroy(node);
+            }
+        }
         self.pending
             .retain(|_, pending| pending.request.session_handle != handle);
         existed
@@ -770,8 +840,68 @@ mod tests {
         assert_eq!(streams.len(), 2);
         assert_eq!(streams[0].source_id, "monitor:DP-1");
         assert_eq!(streams[0].source_type, SourceType::Monitor);
+        // The shipped transport names the stills fallback: node id 0 and a
+        // reason, never a silent success.
         assert_eq!(streams[0].node_id, 0);
+        assert_eq!(streams[0].mode, StreamMode::Stills);
+        assert_eq!(
+            streams[0].fallback,
+            Some(FallbackReason::ProducerUnavailable)
+        );
         assert_eq!(streams[1].source_id, "window:7");
+        assert_eq!(registry.stream_mode(), StreamMode::Stills);
+    }
+
+    /// A transport that creates deterministic node ids and records releases.
+    struct RecordingTransport {
+        next_node: u32,
+        destroyed: Arc<Mutex<Vec<u32>>>,
+    }
+
+    impl StreamTransport for RecordingTransport {
+        fn mode(&self) -> StreamMode {
+            StreamMode::PipeWire
+        }
+
+        fn create(&mut self, _source: &StreamSource) -> Result<u32, FallbackReason> {
+            let node = self.next_node;
+            self.next_node += 1;
+            Ok(node)
+        }
+
+        fn destroy(&mut self, node_id: u32) {
+            self.destroyed.lock().unwrap().push(node_id);
+        }
+    }
+
+    #[test]
+    fn a_live_transport_fills_the_node_and_releases_it_on_close() {
+        let destroyed = Arc::new(Mutex::new(Vec::new()));
+        let mut registry = ScreenCastRegistry::with_transport(Box::new(RecordingTransport {
+            next_node: 100,
+            destroyed: destroyed.clone(),
+        }));
+        assert_eq!(registry.stream_mode(), StreamMode::PipeWire);
+
+        registry.create_session("app", "/s").unwrap();
+        let request = ScreenCastRequest::new("/r", "/s", "app", &HashMap::new());
+        registry.begin_select(request).expect("begin_select");
+        registry
+            .complete("/r", vec![ScreenCastSelection::monitor("monitor:DP-1")])
+            .expect("complete");
+
+        let streams = registry.start("/s").expect("start").streams();
+        assert_eq!(streams.len(), 1);
+        assert_eq!(streams[0].node_id, 100, "the live node id reaches the wire");
+        assert_eq!(streams[0].mode, StreamMode::PipeWire);
+        assert_eq!(streams[0].fallback, None);
+
+        assert!(registry.close_session("/s"));
+        assert_eq!(
+            *destroyed.lock().unwrap(),
+            vec![100],
+            "the node is released"
+        );
     }
 
     #[test]

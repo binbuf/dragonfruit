@@ -22,6 +22,10 @@ Item {
     property string appId: ""
     // A short message under the list (no selection, a failed request).
     property string errorText: ""
+    // The stills-fallback note from the bridge; empty when streaming is live.
+    // The portal negotiates the mode, and naming it here keeps the fallback
+    // from being silent (T-13.4b).
+    property string streamNote: ""
 
     readonly property int selectedCount: {
         var count = 0;
@@ -111,6 +115,26 @@ Item {
                 color: Theme.color.textSecondary
                 font.pixelSize: Theme.primitive.font.sizeSm
                 wrapMode: Text.WordWrap
+            }
+
+            // The stills-fallback note. The wrapper collapses to zero when the
+            // note is empty; the Text's height is driven by its (fixed) width,
+            // so the wrapper can follow it without a binding loop.
+            Item {
+                id: streamNoteBox
+                width: parent.width
+                height: streamNoteText.visible ? streamNoteText.implicitHeight : 0
+
+                Text {
+                    id: streamNoteText
+                    objectName: "screencastStreamNote"
+                    width: parent.width
+                    visible: root.streamNote.length > 0
+                    text: root.streamNote
+                    color: Theme.color.textTertiary
+                    font.pixelSize: Theme.primitive.font.sizeSm
+                    wrapMode: Text.WordWrap
+                }
             }
 
             // The source list, grouped by kind (sections need the model sorted
