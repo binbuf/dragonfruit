@@ -10,7 +10,7 @@ It is an open-source sans-serif designed for user interfaces.
 | Upstream | [github.com/rsms/inter](https://github.com/rsms/inter) |
 | Version | 4.001 (`git-66647c0bb`, variable `opsz` + `wght`) |
 | Source | Google Fonts variable build, 2025-09-10 |
-| License | SIL OFL 1.1 — [../../LICENSES/OFL-1.1.txt](../../LICENSES/OFL-1.1.txt) |
+| License | SIL OFL 1.1 — [../../../LICENSES/OFL-1.1.txt](../../../LICENSES/OFL-1.1.txt) |
 
 | File | Use |
 |---|---|
