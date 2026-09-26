@@ -60,6 +60,7 @@ add_library(dragonfruit-shell-dockcore STATIC
     notificationclient.cpp
     notificationmodel.cpp
     osdmodel.cpp
+    screenshotbridge.cpp
     systemstatusmodel.cpp
     trashbridge.cpp
     wallpaperpolicy.cpp

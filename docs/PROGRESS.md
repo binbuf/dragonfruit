@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(56 earlier sections omitted)_
+_(57 earlier sections omitted)_
 
-- **T53 — T-09.5 Displays-basic pane**: **State: done.** The Displays-basic pane is real and live: the `Built-in; **Schema (since 3)** — `display.scale` (d, 0.5–2.0, default 1.0),
 - **T54 — T-09.6a Settings menu-model publication**: **State: done.** The Settings app publishes its native menu model and the; **`apps/settings/SettingsMenu.qml`** (new; QML singleton) — single source of
 - **T55 — T-09.6b Settings absence matrix and wave captures**: **State: done.** The T-09 Settings wave is signed off: the absent-provider; **`docs/design/08-settings.md`** — new "The absent-provider matrix (T-09.6b)"
 - **T56 — T-10.1a files-core streaming listing and model**: **State: done.** `files-core` now exists as a headless Rust library and a; **`services/files-core/`** (new crate `dragonfruit-files-core`, workspace
@@ -45,6 +44,7 @@ _(56 earlier sections omitted)_
 - **T89 — T-13.1b Settings and GlobalShortcuts portals**: **State: done.** The backend now serves the first two standard interfaces at; **`portal/src/settings.rs`** (new) — the pure projection:
 - **T90 — T-13.2a FileChooser portal**: **State: done.** The backend now serves the standard FileChooser interface; **`portal/src/chooser.rs`** (new) — the pure model: `ChooserKind`
 - **T91 — T-13.2b FileChooser picker UI**: **State: done.** The FileChooser portal now has its dialog: a design-system; **`shell/screenshot/FileChooser.qml`** (new) — the pure view: title, an Up
+- **T92 — T-13.3a Screenshot portal and selection UI**: **State: done.** The backend serves `org.freedesktop.impl.portal.Screenshot`; **`portal/src/screenshot.rs`** (new) — the pure model: `CaptureMode`
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -6815,3 +6815,104 @@ Gotchas for later tasks:
   Open/Save/Choose from `kind`.
 - T-13.7 owns the real `xdg-desktop-portal` routing and Flatpak walkthrough;
   T-13.3a/T-13.4a reuse the same `shell/screenshot` overlay module.
+
+## T92 — T-13.3a Screenshot portal and selection UI
+
+**State: done.** The backend serves `org.freedesktop.impl.portal.Screenshot`
+(version 2) beside the other three interfaces, and the shell has the
+region/window/fullscreen selection overlay, driven both by portal requests and
+by the Cmd+Shift+3/4 shortcut. Contract frozen in ADR
+[0078](design/adr/0078-screenshot-portal-and-selection-overlay.md).
+
+What landed:
+
+- **`portal/src/screenshot.rs`** (new) — the pure model: `CaptureMode`
+  (`Fullscreen`/`Region`/`Window`, `as_str`/`parse`/`default_for`),
+  `ScreenshotOptions` (`modal`, `interactive`, the `mode` extension),
+  `ScreenshotRequest` (resolves its mode; `success(uri)` normalizes through
+  files-core and refuses a foreign scheme), `ScreenshotResponse`
+  (`success`/`cancelled`/`other`, `uri()`), `ScreenshotError`, the one-shot
+  `ScreenshotCompletion`/`ScreenshotCompleter`, `ScreenshotRegistry`
+  (`begin`/`request`/`handles`/`len`/`is_empty`/`complete`/`cancel`), and the
+  `SharedScreenshot`/`registry`/`lock` plumbing.
+- **`portal/src/interfaces.rs`** — `SCREENSHOT_INTERFACE` and the
+  `ScreenshotPortal` zbus object (`Screenshot`, `Version`); the request
+  registers, emits the diagnostic `ScreenshotOpened`, and awaits.
+- **`portal/src/dbus.rs`** — `Backend` gained the shared `screenshot`
+  registry (`with_services` now takes it, `screenshot()` accessor);
+  `initialize` serves `ScreenshotPortal`; diagnostic `PendingScreenshots`,
+  `CompleteScreenshot(handle, uri)`, `CancelScreenshot(handle)`, signal
+  `ScreenshotOpened(handle, mode, app_id, parent_window, options)`.
+- **Identity / data** — `model::BACKEND_INTERFACES` and
+  `portal/data/dragonfruit.portal` now list
+  `org.freedesktop.impl.portal.Screenshot` (data test keeps lockstep).
+- **`shell/screenshot/SelectionOverlay.qml`** (new; the old
+  `ScreenshotOverlay.qml` placeholder is deleted) — the pure view: a
+  full-output scrim, a mode badge, a region drag with live `w × h`, a window
+  crosshair, Escape cancel and Return accept. Emits `accepted(x,y,w,h)` /
+  `cancelled()`; no D-Bus.
+- **`shell/src/screenshotbridge.{h,cpp}`** (new, dockcore) —
+  `ScreenshotBridge`: watches `ScreenshotOpened`, opens the overlay in the
+  request's mode, emits `captureRequested(mode,x,y,w,h)`, and answers the
+  portal with `CompleteScreenshot`/`CancelScreenshot`. `begin` (live),
+  `beginLocal` (the shortcut), `accept`, `complete`, `cancel`. A missing portal
+  is a normal state.
+- **`shell/src/shellprotocol.{h,cpp}`** — a full-output `screenshot` overlay
+  layer surface (annotated all four edges, `exclusive_zone = -1`, `ON_DEMAND`
+  keyboard) plus pointer/keyboard routing signals and `teardown`. No
+  compositor change.
+- **`shell/src/shellcontroller.{h,cpp}`** — owns the bridge and the offscreen
+  QML scene, maps/unmaps the surface on `started`/`finished`, routes pointer,
+  keyboard (Escape cancels via the bridge), and presents a fixture under
+  `DF_SCREENSHOT_FIXTURE=<mode>` (empty/`1` = region). `onInputAction` handles
+  `screenshot` (fullscreen) and `screenshot-region`.
+- **`compositor/src/input/action.rs` / `shortcuts.rs`** — split
+  `InputAction::Screenshot` (`screenshot`, Cmd+Shift+3) from the new
+  `InputAction::ScreenshotRegion` (`screenshot-region`, Cmd+Shift+4); both
+  already flowed through the one engine.
+- **Tests** — `portal/tests/screenshot.rs` (new, 4 integration on a private
+  bus: the interface introspects; *each mode* registers, the presenter sees
+  the mode, `CompleteScreenshot` returns the normalized URI; cancel answers 1;
+  a foreign URI answers 2), unit tests in `screenshot.rs`/`interfaces.rs`,
+  `session_bus.rs` expects the fourth interface, `portals.rs` introspects it;
+  `shell/tests/tst_screenshot.cpp` (bridge lifecycle + a fake
+  `org.dragonfruit.Portal1`) and `tst_screenshotui.{cpp,qml}` (the view).
+
+Commands that work (repo root):
+
+- `cargo test -p xdg-desktop-portal-dragonfruit` — 4 `screenshot` + 5
+  `filechooser` + 3 `portals` + 4 `session_bus` + unit.
+- `cargo test -p dragonfruit-compositor --bin dragonfruit-compositor input::`
+  — 31 pass.
+- `ctest --test-dir build --output-on-failure` — 47/47 (`tst_screenshot` needs
+  `dbus-run-session`; skips the live half without a bus).
+- Build note: the compositor needs the dev sysroot —
+  `export PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig:$PKG_CONFIG_PATH`
+  and `RUSTFLAGS="-L $HOME/.local/df-devroot/lib64"` (or just `make`).
+- `make lint`, `make e2e`, `make check-no-capture-grab` — exit 0.
+
+Live check (vision-inspected): `DF_SCREENSHOT_FIXTURE=region make demo
+DEMO_ARGS="--socket-name dragonfruit-t92-region"`, full-screen still
+`/tmp/opencode/t92/region.png` — dimmed overlay, centered "Screenshot · Region"
+badge with "Drag to select · Esc to cancel", no clipping. Fullscreen/window
+stills at `/tmp/opencode/t92/{fullscreen,window}.png` show the matching badges
+and the full-output accent border.
+
+Gotchas for later tasks:
+
+- **The capture bytes are T-13.3b.** The shell emits `captureRequested` and
+  leaves a portal request with the presenter seam; T-13.3b turns the rectangle
+  into a saved image and calls `ScreenshotBridge::complete(uri)`. No portal
+  change is needed. The desktop shortcut (`beginLocal`) closes the overlay on
+  selection.
+- **The `mode` option is a Dragonfruit extension.** A standard frontend never
+  sends it: absent, a non-interactive request is fullscreen and an interactive
+  one is region. The diagnostic `ScreenshotOpened` carries the resolved mode.
+- **Window selection has no window geometry.** The shell is not given window
+  rects, so a window click emits the pointer position with a 1×1 box; the
+  capture seam (T-13.3b) must resolve the window under that point.
+- **The screenshot surface is full-output and created at startup, unmapped
+  until a request.** Absence of the portal or a presenter is a silent,
+  supported state.
+- T-13.4a (ScreenCast picker) reuses the same `shell/screenshot` module and
+  overlay pattern; T-13.7 owns the real frontend routing/Flatpak walkthrough.

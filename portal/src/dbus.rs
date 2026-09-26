@@ -28,12 +28,14 @@ use zbus::zvariant::{ObjectPath, OwnedValue};
 
 use crate::chooser::{self, SharedChooser};
 use crate::interfaces::{
-    FileChooserPortal, GlobalShortcuts, SettingsPortal, FILE_CHOOSER_INTERFACE, SETTINGS_INTERFACE,
+    FileChooserPortal, GlobalShortcuts, ScreenshotPortal, SettingsPortal, FILE_CHOOSER_INTERFACE,
+    SCREENSHOT_INTERFACE, SETTINGS_INTERFACE,
 };
 use crate::model::{
     BackendStatus, FrontendPresence, FrontendTracker, BACKEND_INTERFACES, BACKEND_NAME, DBUS_NAME,
     DBUS_PATH, FRONTEND_NAME, STATUS_INTERFACE,
 };
+use crate::screenshot::{self, SharedScreenshot};
 use crate::shortcuts::{self, SharedRegistry, GLOBAL_SHORTCUTS_INTERFACE};
 
 /// The `org.dragonfruit.Portal1` object. It shares the standard portal path
@@ -43,42 +45,49 @@ pub struct Backend {
     frontend: FrontendTracker,
     shortcuts: SharedRegistry,
     chooser: SharedChooser,
+    screenshot: SharedScreenshot,
 }
 
 impl Backend {
-    /// A diagnostic object over `frontend`, with its own empty session and
-    /// chooser registries.
+    /// A diagnostic object over `frontend`, with its own empty session,
+    /// chooser, and screenshot registries.
     pub fn new(frontend: FrontendTracker) -> Self {
         Backend {
             frontend,
             shortcuts: shortcuts::registry(),
             chooser: chooser::registry(),
+            screenshot: screenshot::registry(),
         }
     }
 
     /// A diagnostic object sharing `shortcuts` with the served
     /// GlobalShortcuts interface (the activation bridge), with its own empty
-    /// chooser registry.
+    /// chooser and screenshot registries.
     pub fn with_shortcuts(frontend: FrontendTracker, shortcuts: SharedRegistry) -> Self {
         Backend {
             frontend,
             shortcuts,
             chooser: chooser::registry(),
+            screenshot: screenshot::registry(),
         }
     }
 
     /// A diagnostic object sharing every served registry. The FileChooser's
     /// success path drives [`Backend::complete_file_chooser`] through
-    /// `chooser`; tests and `initialize` use this constructor.
+    /// `chooser`, and the Screenshot's drives
+    /// [`Backend::complete_screenshot`] through `screenshot`; tests and
+    /// `initialize` use this constructor.
     pub fn with_services(
         frontend: FrontendTracker,
         shortcuts: SharedRegistry,
         chooser: SharedChooser,
+        screenshot: SharedScreenshot,
     ) -> Self {
         Backend {
             frontend,
             shortcuts,
             chooser,
+            screenshot,
         }
     }
 
@@ -95,6 +104,11 @@ impl Backend {
     /// The request registry shared with the FileChooser interface.
     pub fn chooser(&self) -> &SharedChooser {
         &self.chooser
+    }
+
+    /// The request registry shared with the Screenshot interface.
+    pub fn screenshot(&self) -> &SharedScreenshot {
+        &self.screenshot
     }
 
     /// The backend's current status.
@@ -232,6 +246,35 @@ impl Backend {
         Ok(chooser::lock(&self.chooser).cancel(handle).is_some())
     }
 
+    /// The `(handle, mode)` pairs of the Screenshot requests waiting for a
+    /// presenter. Diagnostic only: the portal frontend never calls it.
+    fn pending_screenshots(&self) -> Vec<(String, String)> {
+        screenshot::lock(&self.screenshot)
+            .handles()
+            .into_iter()
+            .map(|(handle, mode)| (handle, mode.as_str().to_owned()))
+            .collect()
+    }
+
+    /// Complete a waiting Screenshot request with the presenter's captured
+    /// URI. The URI is normalized to a canonical `file://` URI through
+    /// files-core; a foreign scheme yields an error response. Returns whether
+    /// a request was waiting at `handle`.
+    ///
+    /// This is the T-13.3a presenter seam: the shell's selection overlay calls
+    /// it, and the test client uses it to drive the blocking round trip.
+    fn complete_screenshot(&self, handle: &str, uri: &str) -> Result<bool, zbus::fdo::Error> {
+        Ok(screenshot::lock(&self.screenshot)
+            .complete(handle, uri)
+            .is_some())
+    }
+
+    /// Resolve a waiting Screenshot request as cancelled. Returns whether a
+    /// request was waiting at `handle`.
+    fn cancel_screenshot(&self, handle: &str) -> Result<bool, zbus::fdo::Error> {
+        Ok(screenshot::lock(&self.screenshot).cancel(handle).is_some())
+    }
+
     /// List a local directory through files-core for the picker. Each row is
     /// `(name, uri, is-directory, size)`. Diagnostic only.
     fn list_directory(
@@ -266,6 +309,18 @@ impl Backend {
         app_id: &str,
         parent_window: &str,
         title: &str,
+        options: std::collections::HashMap<String, OwnedValue>,
+    ) -> zbus::Result<()>;
+
+    /// A Screenshot request is waiting for a presenter. Diagnostic only; the
+    /// standard interface emits no such signal.
+    #[zbus(signal)]
+    async fn screenshot_opened(
+        emitter: &SignalEmitter<'_>,
+        handle: &str,
+        mode: &str,
+        app_id: &str,
+        parent_window: &str,
         options: std::collections::HashMap<String, OwnedValue>,
     ) -> zbus::Result<()>;
 }
@@ -355,7 +410,13 @@ pub fn initialize(connection: &connection::Connection) -> Backend {
     frontend.set(probe_frontend(connection));
     let registry = shortcuts::registry();
     let chooser = chooser::registry();
-    let backend = Backend::with_services(frontend.clone(), registry.clone(), chooser.clone());
+    let screenshot = screenshot::registry();
+    let backend = Backend::with_services(
+        frontend.clone(),
+        registry.clone(),
+        chooser.clone(),
+        screenshot.clone(),
+    );
 
     if let Err(error) = connection.object_server().at(DBUS_PATH, backend.clone()) {
         eprintln!("xdg-desktop-portal-dragonfruit: cannot serve {STATUS_INTERFACE} at {DBUS_PATH}: {error}");
@@ -386,6 +447,15 @@ pub fn initialize(connection: &connection::Connection) -> Backend {
     {
         eprintln!(
             "xdg-desktop-portal-dragonfruit: cannot serve {FILE_CHOOSER_INTERFACE} at \
+             {DBUS_PATH}: {error}"
+        );
+    }
+    if let Err(error) = connection
+        .object_server()
+        .at(DBUS_PATH, ScreenshotPortal::new(screenshot))
+    {
+        eprintln!(
+            "xdg-desktop-portal-dragonfruit: cannot serve {SCREENSHOT_INTERFACE} at \
              {DBUS_PATH}: {error}"
         );
     }

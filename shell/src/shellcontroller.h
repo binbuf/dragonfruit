@@ -16,6 +16,7 @@
 
 #include "compositorpolicy.h"
 #include "chooserbridge.h"
+#include "screenshotbridge.h"
 #include "desktopentry.h"
 #include "displayspolicy.h"
 #include "dockmodel.h"
@@ -92,6 +93,18 @@ private slots:
     void onChooserStarted();
     void onChooserFinished(bool completed);
     void onChooserChanged();
+    // Screenshot selection overlay (T-13.3a): the surface configure, its
+    // pointer and keyboard routing, and the bridge lifecycle.
+    void onScreenshotConfigured(int width, int height, quint32 serial);
+    void onScreenshotPointerMoved(qreal x, qreal y);
+    void onScreenshotPointerButton(qreal x, qreal y, quint32 button, bool pressed);
+    void onScreenshotPointerLeft();
+    void onScreenshotKeyboardFocused(bool focused);
+    void onScreenshotKeyEvent(quint32 key, bool pressed);
+    void onScreenshotStarted();
+    void onScreenshotFinished(bool completed);
+    void onScreenshotChanged();
+    void onScreenshotCaptureRequested(const QString &mode, int x, int y, int width, int height);
     // Session lock (T-12.3a): the compositor confirmed the lock, one lock
     // surface was configured to a full-output size, and the lock object
     // finished.
@@ -273,6 +286,16 @@ private:
     // The capture/demo seam (`DF_CHOOSER_FIXTURE`): present a request pointed
     // at a real folder so the picker can be captured without a portal caller.
     void startChooserFixture();
+    // Screenshot selection overlay (T-13.3a): map the full-output overlay,
+    // drive the view from the bridge, and render it.
+    void showScreenshot();
+    void hideScreenshot();
+    void applyScreenshotData();
+    void renderScreenshot();
+    void scheduleScreenshotRender();
+    void startScreenshotFixture();
+    // The desktop shortcut path: open the overlay in `mode`.
+    void startScreenshot(const QString &mode);
     // Session lock (T-12.3a): present the lock scene once the compositor
     // confirms, paint each configured lock surface at its full-output size,
     // and refresh the clock while locked.
@@ -465,6 +488,20 @@ private:
     Qt::MouseButtons m_chooserButtons = Qt::NoButton;
     FrameCommitGate m_chooserFrameGate;
     bool m_chooserSceneGraphCommitLogged = false;
+    // Screenshot selection overlay (T-13.3a): a full-output scene rendered
+    // into the `screenshot` overlay surface while a capture is in progress.
+    // The bridge owns the request and the D-Bus presenter calls.
+    ScreenshotBridge *m_screenshot = nullptr;
+    QQuickWindow *m_screenshotWindow = nullptr;
+    QQuickItem *m_screenshotItem = nullptr;
+    int m_screenshotWidth = 0;
+    int m_screenshotHeight = 0;
+    bool m_screenshotActive = false;
+    bool m_screenshotPending = false;
+    bool m_screenshotRenderPending = false;
+    Qt::MouseButtons m_screenshotButtons = Qt::NoButton;
+    FrameCommitGate m_screenshotFrameGate;
+    bool m_screenshotSceneGraphCommitLogged = false;
     // Session lock (T-12.3a): an offscreen lock scene rendered into one
     // `ext-session-lock-v1` surface per output. The map holds each surface's
     // configured size; the QML is a pure view. `m_lockTimer` refreshes the

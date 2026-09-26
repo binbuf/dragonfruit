@@ -438,3 +438,39 @@ The presenter T-13.2a deferred is a shell overlay surface (ADR
   round-trip against a fake `org.dragonfruit.Portal1`) and `tst_chooserui`
   (the view) are the headless proof; `portal/tests/filechooser.rs` still proves
   the backend half. T-13.7 adds the real frontend routing check.
+
+### Screenshot portal and selection UI (T-13.3a)
+
+`org.freedesktop.impl.portal.Screenshot` (version 2) is the fourth concrete
+interface and the second interactive one. Contract frozen in ADR
+[0078](adr/0078-screenshot-portal-and-selection-overlay.md).
+
+- **The registry is the seam.** `portal::screenshot` owns the live requests and
+  the one-shot completion; the synchronous `Screenshot` method registers and
+  awaits, the diagnostic `org.dragonfruit.Portal1` carries the presenter half
+  (`ScreenshotOpened`, `CompleteScreenshot`/`CancelScreenshot`/
+  `PendingScreenshots`). The captured URI is normalized through files-core to a
+  canonical `file://` URI, as the chooser's selection is.
+- **The mode is a Dragonfruit option extension.** A `mode` string option
+  (`fullscreen`/`region`/`window`) lets the desktop shortcut and the headless
+  tests request a selection; a standard frontend that omits it is `fullscreen`
+  (or `region` when `interactive`). The desktop's Cmd+Shift+3/4 shortcut drives
+  the same overlay without a portal request (`beginLocal`).
+- **The selection UI is a shell overlay.** `Dragonfruit.Screenshot`/
+  `SelectionOverlay.qml` is a pure view — full-output scrim, a mode badge, a
+  region drag with live pixel dimensions, a window crosshair, Escape cancel and
+  Return accept. `ScreenshotBridge` (`shell/src/screenshotbridge.{h,cpp}`,
+  dockcore) is the presenter: it opens the overlay in the request's mode,
+  emits the chosen rectangle on the capture seam, and answers the portal.
+  `ShellController`/`ShellProtocol` add the full-output `screenshot` overlay
+  surface. `DF_SCREENSHOT_FIXTURE=<mode>` presents it for the live visual check
+  with no portal or hardware.
+- **Save/copy is T-13.3b.** The shell hands the selection to
+  `captureRequested`; turning it into a saved image and calling
+  `ScreenshotBridge::complete(uri)` is the next task, which also keeps the
+  compositor-side capture portal-only.
+- `portal/tests/screenshot.rs` drives the blocking round trip for each mode
+  with a test client as the presenter; `tst_screenshot` (bridge: mode,
+  selection hand-off, cancel, and a round-trip against a fake
+  `org.dragonfruit.Portal1`) and `tst_screenshotui` (the view) are the shell
+  proof. T-13.7 adds the real frontend routing check.

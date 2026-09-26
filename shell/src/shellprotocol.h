@@ -216,6 +216,23 @@ public:
     // Unmap the chooser surface (attach a null buffer).
     bool hideChooser();
 
+    // Create the screenshot selection overlay (T-13.3a): a full-output
+    // `overlay` layer surface, namespace "screenshot", unmapped until a
+    // capture starts. It reserves nothing (`exclusive_zone = -1`) and takes
+    // the keyboard on demand so Escape cancels and Return accepts.
+    bool createScreenshotSurface();
+
+    // Set the overlay's clickable region to the full `width` x `height`
+    // top-left rect (a non-positive size passes everything through). Applied
+    // with the next buffer commit.
+    bool setScreenshotInputRegion(int width, int height);
+
+    // Attach `image` to the screenshot surface and commit.
+    bool commitScreenshotImage(const QImage &image);
+
+    // Unmap the screenshot surface (attach a null buffer).
+    bool hideScreenshot();
+
     // --- session lock (T-12.3a) -------------------------------------------------
     //
     // Request the `ext-session-lock-v1` lock and create a lock surface on every
@@ -370,6 +387,13 @@ signals:
     void chooserPointerLeft();
     void chooserKeyboardFocused(bool focused);
     void chooserKeyEvent(uint32_t key, bool pressed);
+    // Screenshot selection overlay (T-13.3a).
+    void screenshotConfigured(int width, int height, uint32_t serial);
+    void screenshotPointerMoved(qreal x, qreal y);
+    void screenshotPointerButton(qreal x, qreal y, uint32_t button, bool pressed);
+    void screenshotPointerLeft();
+    void screenshotKeyboardFocused(bool focused);
+    void screenshotKeyEvent(uint32_t key, bool pressed);
     // Session lock (T-12.3a): the compositor confirmed the lock, the lock
     // object finished on its own (`finished`), and one lock surface was
     // configured to a full-output size. `lockSurfaceId` is opaque and echoes
@@ -533,6 +557,8 @@ private:
                                int32_t width, int32_t height);
     static void onChooserConfigure(void *data, df_layer_surface *layer, uint32_t serial,
                                    int32_t width, int32_t height);
+    static void onScreenshotConfigure(void *data, df_layer_surface *layer, uint32_t serial,
+                                      int32_t width, int32_t height);
     // Session-lock listeners (T-12.3a).
     static void onSessionLockLocked(void *data, ext_session_lock_v1 *lock);
     static void onSessionLockFinished(void *data, ext_session_lock_v1 *lock);
@@ -716,6 +742,14 @@ private:
     bool m_chooserMapped = false;
     bool m_pointerOnChooser = false;
     bool m_keyboardOnChooser = false;
+    // Screenshot selection overlay (T-13.3a): a full-output `overlay` surface
+    // mapped only while a capture is in progress. It takes the keyboard on
+    // demand.
+    wl_surface *m_screenshotSurface = nullptr;
+    df_layer_surface *m_screenshotLayer = nullptr;
+    bool m_screenshotMapped = false;
+    bool m_pointerOnScreenshot = false;
+    bool m_keyboardOnScreenshot = false;
     // Session lock (T-12.3a): the manager, the lock object, the outputs a lock
     // surface has been (or will be) created on, and one lock surface per
     // output. `m_lockSurfaces` is keyed by the lock-surface object so the

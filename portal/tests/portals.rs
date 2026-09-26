@@ -15,7 +15,9 @@ use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use xdg_desktop_portal_dragonfruit::interfaces::{FILE_CHOOSER_INTERFACE, SETTINGS_INTERFACE};
+use xdg_desktop_portal_dragonfruit::interfaces::{
+    FILE_CHOOSER_INTERFACE, SCREENSHOT_INTERFACE, SETTINGS_INTERFACE,
+};
 use xdg_desktop_portal_dragonfruit::model::{DBUS_NAME, DBUS_PATH, STATUS_INTERFACE};
 use xdg_desktop_portal_dragonfruit::shortcuts::GLOBAL_SHORTCUTS_INTERFACE;
 use zbus::blocking::{Connection, MessageIterator};
@@ -239,6 +241,7 @@ fn the_standard_interfaces_are_served_at_the_standard_path() {
     assert!(introspection.contains(SETTINGS_INTERFACE));
     assert!(introspection.contains(GLOBAL_SHORTCUTS_INTERFACE));
     assert!(introspection.contains(FILE_CHOOSER_INTERFACE));
+    assert!(introspection.contains(SCREENSHOT_INTERFACE));
 }
 
 #[test]

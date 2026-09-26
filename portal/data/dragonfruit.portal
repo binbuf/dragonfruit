@@ -8,5 +8,5 @@
 ; FileChooser, and the capture interfaces follow.
 [portal]
 DBusName=org.freedesktop.impl.portal.desktop.dragonfruit
-Interfaces=org.freedesktop.impl.portal.Settings;org.freedesktop.impl.portal.GlobalShortcuts;org.freedesktop.impl.portal.FileChooser;
+Interfaces=org.freedesktop.impl.portal.Settings;org.freedesktop.impl.portal.GlobalShortcuts;org.freedesktop.impl.portal.FileChooser;org.freedesktop.impl.portal.Screenshot;
 UseIn=dragonfruit

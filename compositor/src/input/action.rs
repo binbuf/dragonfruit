@@ -30,8 +30,10 @@ pub enum InputAction {
     AppSwitcher,
     /// Cycle windows within the switcher's selected app (Cmd+`, T-06.2b).
     AppSwitcherWindow,
-    /// Take a screenshot (portal capture path).
+    /// Take a full-output screenshot (portal capture path; Cmd+Shift+3).
     Screenshot,
+    /// Take a region screenshot (portal capture path; Cmd+Shift+4).
+    ScreenshotRegion,
     /// Open the notification center.
     NotificationCenter,
     /// Reveal the desktop background.
@@ -73,6 +75,7 @@ impl InputAction {
             InputAction::AppSwitcher => "app-switcher",
             InputAction::AppSwitcherWindow => "app-switcher-window",
             InputAction::Screenshot => "screenshot",
+            InputAction::ScreenshotRegion => "screenshot-region",
             InputAction::NotificationCenter => "notification-center",
             InputAction::DesktopReveal => "desktop-reveal",
             InputAction::LockScreen => "lock-screen",
