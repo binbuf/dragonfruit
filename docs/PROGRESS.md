@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(57 earlier sections omitted)_
+_(58 earlier sections omitted)_
 
-- **T54 — T-09.6a Settings menu-model publication**: **State: done.** The Settings app publishes its native menu model and the; **`apps/settings/SettingsMenu.qml`** (new; QML singleton) — single source of
 - **T55 — T-09.6b Settings absence matrix and wave captures**: **State: done.** The T-09 Settings wave is signed off: the absent-provider; **`docs/design/08-settings.md`** — new "The absent-provider matrix (T-09.6b)"
 - **T56 — T-10.1a files-core streaming listing and model**: **State: done.** `files-core` now exists as a headless Rust library and a; **`services/files-core/`** (new crate `dragonfruit-files-core`, workspace
 - **T57 — T-10.1b files-core sorting and platform fallback**: **State: done.** `files-core` now sorts its streamed model and the; **`services/files-core/src/sort.rs`** (new module) — `SortKey`
@@ -45,6 +44,7 @@ _(57 earlier sections omitted)_
 - **T90 — T-13.2a FileChooser portal**: **State: done.** The backend now serves the standard FileChooser interface; **`portal/src/chooser.rs`** (new) — the pure model: `ChooserKind`
 - **T91 — T-13.2b FileChooser picker UI**: **State: done.** The FileChooser portal now has its dialog: a design-system; **`shell/screenshot/FileChooser.qml`** (new) — the pure view: title, an Up
 - **T92 — T-13.3a Screenshot portal and selection UI**: **State: done.** The backend serves `org.freedesktop.impl.portal.Screenshot`; **`portal/src/screenshot.rs`** (new) — the pure model: `CaptureMode`
+- **T93 — T-13.3b Screenshot save/copy and portal-only gate**: **State: done.** A capture is now actually produced, saved, and copied. The; **`protocols/dragonfruit-toplevel.xml`** — `df_toplevel_manager` v6 adds
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3228,6 +3228,14 @@ Gotchas for later tasks:
 
 ## Follow-ups
 
+- **T-13.3b follow-ups.** (a) The compositor still-shot capture is implemented
+  on the nested (GL) backend only; headless and DRM explicitly reply
+  `screenshot_failed`. The T-13.4b PipeWire screencast path, or a later pass,
+  should serve the real-DRM session. (b) The capture crop treats coordinates as
+  output-local pixels at scale 1 with a Normal transform; fractional-scale and
+  rotated outputs need the transform-aware crop. (c) The shell's copy uses
+  `QGuiApplication`'s clipboard, not the compositor's data device; T-13.5 owns
+  the real Wayland round-trip and can reuse `ScreenshotWriter::copy`.
 - **T-12.4a follow-ups.** (a) The idle engine (ADR 0070) has no production
   caller yet: no idle service binds the compositor's `ext-idle-notify` global,
   and the compositor has no dim/blank path, so T-12.4b/T-12.5a must wire the
@@ -6916,3 +6924,79 @@ Gotchas for later tasks:
   supported state.
 - T-13.4a (ScreenCast picker) reuses the same `shell/screenshot` module and
   overlay pattern; T-13.7 owns the real frontend routing/Flatpak walkthrough.
+
+## T93 — T-13.3b Screenshot save/copy and portal-only gate
+
+**State: done.** A capture is now actually produced, saved, and copied. The
+compositor renders the still itself on the private protocol (`df_toplevel_manager`
+v6) and the shell writes it into `Pictures/Screenshots` and puts it on the
+clipboard. No client-facing grab path exists; `make check-no-capture-grab` is
+green. Contract frozen in ADR
+[0079](design/adr/0079-screenshot-capture-delivery-and-save-copy.md).
+
+What landed:
+
+- **`protocols/dragonfruit-toplevel.xml`** — `df_toplevel_manager` v6 adds
+  `capture_screenshot(x, y, width, height, mode, path)` and the
+  `screenshot_saved(path)` / `screenshot_failed(reason)` events.
+  `MANAGER_INTERFACE_VERSION` in `compositor/src/shell/mod.rs` is 6.
+- **`compositor/src/state.rs`** — `PendingCapture`; `DfState::request_capture`
+  (zero size = full output, `mode` `window` resolves the topmost window under
+  the point) and `take_capture`.
+- **`compositor/src/shell/mod.rs`** — the request arm and
+  `broadcast_screenshot_saved`/`broadcast_screenshot_failed`.
+- **`compositor/src/backend/nested.rs`** — `capture_frame` renders the frame's
+  already-built element list into a `GlesTexture` (`create_buffer`/`bind`),
+  reads it back (`copy_framebuffer`/`map_texture`), crops, and `resolve_capture`
+  writes PNG to the shell's path. It runs **before** the window render so the
+  winit EGL surface is restored for the submit. `headless.rs`/`drm.rs` reply
+  `screenshot_failed` explicitly.
+- **`shell/src/screenshotwriter.{h,cpp}`** (new, dockcore) — `save` (PNG into
+  `DF_SCREENSHOT_DIR` or `<Pictures>/Screenshots`), `copy` (image + saved
+  `file://` URI via `QGuiApplication`'s clipboard), `deliver`.
+- **`shell/src/shellprotocol.{h,cpp}`** — `captureScreenshot(...)` and the
+  `screenshotSaved`/`screenshotFailed` signals (listener order updated for the
+  new events).
+- **`shell/src/shellcontroller.{h,cpp}`** — `onScreenshotCaptureRequested`
+  unmaps the overlay, writes a temp path, and requests capture;
+  `onScreenshotSaved` loads the temp PNG, saves/copies, removes the temp, and
+  completes a waiting portal request with the saved URI. `onScreenshotFailed`
+  cancels a waiting request.
+- **Dependency** — `dragonfruit-shell-dockcore` now links `Qt6::Gui` (clipboard).
+- **Tests** — `shell/tests/tst_screenshotwriter.cpp` (save writes a PNG, copy
+  sets the clipboard incl. the file URI, unique names); a new
+  `screenshot_capture_requests_are_answered_portal_only` in
+  `compositor/tests/shell_protocol_conformance.rs` (headless answers
+  `screenshot_failed`); two existing assertions bumped from manager v5 to v6.
+
+Commands that work (repo root):
+
+- `make e2e` — exit 0. `make lint` — exit 0.
+- `./scripts/check-no-capture-grab.sh` — exit 0.
+- `ctest --test-dir build --output-on-failure` — 48/48.
+- `cargo test -p dragonfruit-compositor --test shell_protocol_conformance
+  screenshot_capture` — passes.
+- Build note (unchanged): `export PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig:$PKG_CONFIG_PATH`
+  and `RUSTFLAGS="-L $HOME/.local/df-devroot/lib64"` (or just `make`).
+
+Live check (vision-inspected): `DF_SCREENSHOT_FIXTURE=fullscreen
+DF_SCREENSHOT_DIR=/tmp/opencode/t93/shots make demo DEMO_ARGS="--socket-name
+dragonfruit-t93"`, then a synthetic click accepted the overlay. The compositor
+wrote a temp PNG, the shell saved
+`Screenshot_2026-09-26_02-13-48.png` (66515 bytes) and logged
+`screenshot saved … (copy=yes)`. Vision: upright, menu bar, Dock (five icons),
+dark wallpaper, the Settings "Appearance" window and the X11 demo window all
+present, no scrim/overlay and no black regions.
+
+Gotchas for later tasks:
+
+- **Nested only.** DRM/headless reply `screenshot_failed`; the shell treats
+  that as a cancel. T-13.4b's PipeWire path should serve real DRM.
+- **Coordinates are output-local pixels at scale 1** with a Normal transform.
+- **The shell passes a temp path; the final save is `ScreenshotWriter`'s.**
+  The compositor's reply path is the one the shell gave it.
+- **The `mode` string is a Dragonfruit extension** on the capture request; the
+  portal backend is unchanged from T-13.3a.
+- **Copy is Qt's clipboard**, not the Wayland data device yet (T-13.5).
+- T-13.4a (ScreenCast picker) reuses the `shell/screenshot` module and this
+  capture seam for its stills fallback.

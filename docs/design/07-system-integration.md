@@ -465,12 +465,23 @@ interface and the second interactive one. Contract frozen in ADR
   `ShellController`/`ShellProtocol` add the full-output `screenshot` overlay
   surface. `DF_SCREENSHOT_FIXTURE=<mode>` presents it for the live visual check
   with no portal or hardware.
-- **Save/copy is T-13.3b.** The shell hands the selection to
-  `captureRequested`; turning it into a saved image and calling
-  `ScreenshotBridge::complete(uri)` is the next task, which also keeps the
-  compositor-side capture portal-only.
+- **Capture delivery and save/copy (T-13.3b).** The shell never reads the
+  framebuffer itself: it asks the compositor over the private protocol
+  (`df_toplevel_manager.capture_screenshot`, v6) and the compositor renders a
+  second, offscreen pass of the frame's elements and writes a PNG to a path the
+  shell supplies. `screenshot_saved`/`screenshot_failed` answer the request.
+  The request is only reachable by the authenticated shell (the portal
+  presenter), so no client-facing grab protocol exists and the
+  `check-no-capture-grab` gate stays green. `ScreenshotWriter` (dockcore) then
+  saves the image into `Pictures/Screenshots` and copies it (and the saved
+  `file://` URI) to the clipboard; a waiting portal request is completed with
+  the saved URI. The nested backend implements the render; DRM and headless
+  answer `screenshot_failed`. Contract in ADR
+  [0079](adr/0079-screenshot-capture-delivery-and-save-copy.md).
 - `portal/tests/screenshot.rs` drives the blocking round trip for each mode
   with a test client as the presenter; `tst_screenshot` (bridge: mode,
   selection hand-off, cancel, and a round-trip against a fake
-  `org.dragonfruit.Portal1`) and `tst_screenshotui` (the view) are the shell
-  proof. T-13.7 adds the real frontend routing check.
+  `org.dragonfruit.Portal1`), `tst_screenshotui` (the view), and
+  `tst_screenshotwriter` (save + clipboard) are the shell proof;
+  `shell_protocol_conformance` proves the capture request is answered on the
+  private protocol. T-13.7 adds the real frontend routing check.

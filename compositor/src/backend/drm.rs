@@ -957,6 +957,14 @@ fn render_surface(
     // applied at most once for it this frame.
     state.begin_render_frame();
 
+    // T-13.3b: capture is implemented on the nested (GL) backend only; the
+    // DRM rail is untested hardware, so fail a requested capture explicitly
+    // rather than leaving the shell's presenter waiting.
+    if state.pending_capture.is_some() {
+        let _ = state.take_capture();
+        state.broadcast_screenshot_failed("the DRM backend does not implement capture yet");
+    }
+
     // The pointer: rendered with Kind::Cursor so DrmCompositor can assign
     // a hardware cursor plane; cursor motion never waits on effects or
     // damage (02-compositor.md).

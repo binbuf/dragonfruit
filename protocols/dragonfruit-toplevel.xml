@@ -24,7 +24,7 @@
 -->
 <protocol name="dragonfruit_toplevel">
 
-  <interface name="df_toplevel_manager" version="5">
+  <interface name="df_toplevel_manager" version="6">
     <description summary="window/workspace/output control for trusted clients">
       The manager is per-client. On bind the compositor replays the current
       scene: it announces every output, workspace, and toplevel, then emits
@@ -238,6 +238,52 @@
       <arg name="gesture_space_switch" type="uint"/>
       <arg name="gesture_mission_control" type="uint"/>
     </request>
+
+    <!-- T-13.3b: single-frame capture for the portal presenter. Appended
+         after `set_input_policy` so the scanner's `since` stays
+         non-decreasing and every pre-existing message keeps its opcode. The
+         rectangle is in output-local physical pixels; a zero width/height
+         means `fullscreen`. The compositor renders a capture pass excluding
+         the requesting shell's own screenshot overlay and writes a PNG to
+         `path`. Capture is a privilege of the authenticated shell: the
+         portal presenter path is the only capture path (T-02 FR-8). Additive
+         in v6. -->
+    <request name="capture_screenshot" since="6">
+      <description summary="render and save a single-frame capture">
+        The trusted shell asks the compositor for a screenshot of the active
+        output, cropped to `x`,`y`,`width`,`height`, and writes it to a PNG
+        at `path`. The compositor resolves the frame itself (no arbitrary
+        grab protocol) and replies with `screenshot_saved` or
+        `screenshot_failed`.
+      </description>
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
+      <arg name="mode" type="string" summary="fullscreen | region | window"/>
+      <arg name="path" type="string"/>
+    </request>
+
+    <!-- T-13.3b: the capture result, appended last so the scanner's `since`
+         stays non-decreasing and every pre-existing message keeps its opcode
+         (append-only). -->
+    <event name="screenshot_saved" since="6">
+      <description summary="a requested capture was rendered and written">
+        Sent in reply to `capture_screenshot`; `path` is the file the
+        compositor wrote the capture to. The path is the one the trusted
+        shell supplied, never a new location. Additive in v6.
+      </description>
+      <arg name="path" type="string"/>
+    </event>
+
+    <event name="screenshot_failed" since="6">
+      <description summary="a requested capture could not be produced">
+        Sent in reply to `capture_screenshot` when the backend has no render
+        target (headless), the selection is empty, or the frame could not be
+        read back. `reason` is for logs only. Additive in v6.
+      </description>
+      <arg name="reason" type="string"/>
+    </event>
 
     <enum name="hot_corner">
       <entry name="top_left" value="0"/>

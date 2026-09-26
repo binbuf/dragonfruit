@@ -197,6 +197,15 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
     };
 
     let age = data.backend.buffer_age().unwrap_or(0);
+    // T-13.3b: a capture requested by the trusted shell is produced from a
+    // second, offscreen render pass of the same element list (so the live
+    // frame is untouched) and resolved after this frame is submitted.
+    let capture_requested = state.pending_capture.is_some();
+    let capture_rect = state
+        .pending_capture
+        .as_ref()
+        .and_then(|capture| capture.rect);
+    let mut captured: Option<Result<(image::RgbaImage, String), String>> = None;
     let render_result = match data.backend.bind() {
         Ok((renderer, mut framebuffer)) => {
             let scale = smithay::utils::Scale::from(output.current_scale().fractional_scale());
@@ -248,6 +257,21 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                     .into_iter()
                     .map(NestedOutputElements::Wallpaper),
             );
+            // T-13.3b: produce a requested capture first, into an offscreen
+            // texture. Doing it before the window render lets the render pass
+            // below restore the winit EGL surface (the offscreen bind makes
+            // the context current without a surface), so the submit after
+            // this frame still has a valid draw surface.
+            if capture_requested {
+                captured = Some(capture_frame(
+                    renderer,
+                    &custom_elements,
+                    state,
+                    &output,
+                    scale,
+                    capture_rect,
+                ));
+            }
             data.damage_tracker.render_output(
                 renderer,
                 &mut framebuffer,
@@ -261,13 +285,23 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
 
     let render_result = match render_result {
         Ok(result) => result,
-        Err(err) => return Err(format!("nested render failed: {err:?}")),
+        Err(err) => {
+            // Answer a pending capture even though the live frame failed, so
+            // the shell's portal presenter never hangs.
+            if let Some(result) = captured.take() {
+                resolve_capture(state, result);
+            }
+            return Err(format!("nested render failed: {err:?}"));
+        }
     };
 
     match render_result.damage {
         Some(damage) => {
             // Partial-submit with the tracked damage region.
             if let Err(err) = data.backend.submit(Some(damage)) {
+                if let Some(result) = captured.take() {
+                    resolve_capture(state, result);
+                }
                 return Err(format!("nested submit failed: {err}"));
             }
             state.stats.frames_rendered += 1;
@@ -297,6 +331,9 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
             // budget.
             state.stats.frames_skipped_no_damage += 1;
             if let Err(err) = data.backend.submit(None) {
+                if let Some(result) = captured.take() {
+                    resolve_capture(state, result);
+                }
                 return Err(format!("nested submit failed: {err}"));
             }
             let now = state.clock.now();
@@ -304,5 +341,99 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
             crate::trace::log("wake-clients", "nested");
         }
     }
+    if let Some(result) = captured {
+        resolve_capture(state, result);
+    }
     Ok(())
+}
+
+/// Render `elements` (the same list the live frame drew) into an offscreen
+/// RGBA texture and read it back, cropped to `rect` (or the whole output).
+/// Returns the image and the path-independent PNG payload; `render_frame`
+/// writes it and replies to the shell.
+fn capture_frame<E>(
+    renderer: &mut GlowRenderer,
+    elements: &[E],
+    state: &crate::state::DfState,
+    output: &smithay::output::Output,
+    scale: smithay::utils::Scale<f64>,
+    rect: Option<smithay::utils::Rectangle<i32, smithay::utils::Physical>>,
+) -> Result<(image::RgbaImage, String), String>
+where
+    E: smithay::backend::renderer::element::RenderElement<GlowRenderer>,
+{
+    use smithay::backend::allocator::Fourcc;
+    use smithay::backend::renderer::gles::GlesTexture;
+    use smithay::backend::renderer::{Bind, ExportMem, Offscreen};
+    use smithay::utils::{Buffer as BufferCoord, Transform};
+
+    let size = output
+        .current_mode()
+        .map(|mode| mode.size)
+        .ok_or_else(|| "output has no mode".to_owned())?;
+    let buffer_size = smithay::utils::Size::<i32, BufferCoord>::from((size.w, size.h));
+    let mut texture: GlesTexture = renderer
+        .create_buffer(Fourcc::Abgr8888, buffer_size)
+        .map_err(|err| format!("offscreen buffer failed: {err}"))?;
+    let clear = state.wallpaper_color_for(output);
+    let mut tracker = smithay::backend::renderer::damage::OutputDamageTracker::new(
+        size,
+        scale,
+        Transform::Normal,
+    );
+    let mut target = renderer
+        .bind(&mut texture)
+        .map_err(|err| format!("offscreen bind failed: {err}"))?;
+    tracker
+        .render_output(renderer, &mut target, 0, elements, clear)
+        .map_err(|err| format!("capture render failed: {err:?}"))?;
+    let mapping = renderer
+        .copy_framebuffer(
+            &target,
+            smithay::utils::Rectangle::from_size(buffer_size),
+            Fourcc::Abgr8888,
+        )
+        .map_err(|err| format!("capture read failed: {err}"))?;
+    let data = renderer
+        .map_texture(&mapping)
+        .map_err(|err| format!("capture map failed: {err}"))?
+        .to_vec();
+    let full = image::RgbaImage::from_raw(size.w as u32, size.h as u32, data)
+        .ok_or_else(|| "capture dimensions invalid".to_owned())?;
+    let image = match rect {
+        None => full,
+        Some(rect) => {
+            let x = rect.loc.x.clamp(0, size.w);
+            let y = rect.loc.y.clamp(0, size.h);
+            let width = rect.size.w.clamp(1, size.w - x) as u32;
+            let height = rect.size.h.clamp(1, size.h - y) as u32;
+            image::imageops::crop_imm(&full, x as u32, y as u32, width, height).to_image()
+        }
+    };
+    Ok((image, output.name()))
+}
+
+/// Write a produced capture to the path the shell supplied and reply, or
+/// reply with the failure reason (T-13.3b).
+fn resolve_capture(
+    state: &mut crate::state::DfState,
+    result: Result<(image::RgbaImage, String), String>,
+) {
+    let Some(pending) = state.take_capture() else {
+        return;
+    };
+    match result {
+        Ok((image, _output)) => {
+            match image.save_with_format(&pending.path, image::ImageFormat::Png) {
+                Ok(()) => {
+                    let path = pending.path.to_string_lossy().into_owned();
+                    state.broadcast_screenshot_saved(&path);
+                }
+                Err(err) => {
+                    state.broadcast_screenshot_failed(&format!("write failed: {err}"));
+                }
+            }
+        }
+        Err(reason) => state.broadcast_screenshot_failed(&reason),
+    }
 }

@@ -198,6 +198,8 @@ void ShellProtocol::bindTrustedGlobals()
             onManagerAppAccelerator,
             onManagerDone,
             onManagerAppSwitcherEntry,
+            onManagerScreenshotSaved,
+            onManagerScreenshotFailed,
         };
         df_toplevel_manager_add_listener(m_manager, &managerListener, this);
     }
@@ -769,6 +771,20 @@ bool ShellProtocol::hideScreenshot()
     wl_surface_attach(m_screenshotSurface, nullptr, 0, 0);
     wl_surface_commit(m_screenshotSurface);
     m_screenshotMapped = false;
+    if (m_display)
+        wl_display_flush(m_display);
+    return true;
+}
+
+bool ShellProtocol::captureScreenshot(const QString &path, int x, int y, int width, int height,
+                                      const QString &mode)
+{
+    if (!m_manager || path.isEmpty())
+        return false;
+    const QByteArray pathUtf8 = path.toUtf8();
+    const QByteArray modeUtf8 = mode.toUtf8();
+    df_toplevel_manager_capture_screenshot(m_manager, x, y, width, height, modeUtf8.constData(),
+                                           pathUtf8.constData());
     if (m_display)
         wl_display_flush(m_display);
     return true;
@@ -2451,6 +2467,19 @@ void ShellProtocol::onManagerProgress(void *data, df_toplevel_manager *, const c
 void ShellProtocol::onManagerAppAccelerator(void *, df_toplevel_manager *, const char *,
                                             const char *, const char *, uint32_t)
 {
+}
+
+void ShellProtocol::onManagerScreenshotSaved(void *data, df_toplevel_manager *, const char *path)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    emit self->screenshotSaved(QString::fromUtf8(path ? path : ""));
+}
+
+void ShellProtocol::onManagerScreenshotFailed(void *data, df_toplevel_manager *,
+                                              const char *reason)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    emit self->screenshotFailed(QString::fromUtf8(reason ? reason : ""));
 }
 
 void ShellProtocol::onManagerDone(void *data, df_toplevel_manager *)

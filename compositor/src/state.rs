@@ -37,7 +37,7 @@ use smithay::reexports::wayland_server::backend::{ClientData, ClientId, Disconne
 use smithay::reexports::wayland_server::protocol::{wl_buffer, wl_seat, wl_surface::WlSurface};
 use smithay::reexports::wayland_server::{Client, DisplayHandle, Resource as _};
 use smithay::utils::{
-    Clock, IsAlive, Logical, Monotonic, Point, Rectangle, Serial, Size, SERIAL_COUNTER,
+    Clock, IsAlive, Logical, Monotonic, Physical, Point, Rectangle, Serial, Size, SERIAL_COUNTER,
 };
 use smithay::wayland::buffer::BufferHandler;
 use smithay::wayland::compositor::{
@@ -86,6 +86,7 @@ use smithay::wayland::xdg_activation::{
 };
 use smithay::xwayland::XWaylandClientData;
 use std::collections::{HashMap, VecDeque};
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use crate::animation::{Animation, AnimationClock, Tween, TweenAnimation};
@@ -267,6 +268,18 @@ impl RenderStats {
 /// falls back to the fully idle, damage-driven loop.
 const FRAME_CADENCE_AFTER_INPUT: Duration = Duration::from_millis(500);
 
+/// One pending single-frame capture requested by the trusted shell
+/// (T-13.3b). The rectangle is in output-local physical pixels; `None` means
+/// the full output. The compositor renders a capture pass, then writes a PNG
+/// to `path` and replies to the requesting shell.
+#[derive(Debug, Clone)]
+pub struct PendingCapture {
+    /// The crop rectangle, or `None` for the whole output.
+    pub rect: Option<Rectangle<i32, Physical>>,
+    /// Where the compositor writes the PNG.
+    pub path: PathBuf,
+}
+
 #[allow(dead_code)]
 pub struct DfState {
     pub running: bool,
@@ -435,6 +448,11 @@ pub struct DfState {
     /// the launching window appears from it and minimize/restore scale into
     /// and out of it. Absent, the motion falls back to a centered origin.
     pub dock_tiles: HashMap<String, Rectangle<i32, Logical>>,
+    /// A single-frame capture the trusted shell asked for over the private
+    /// protocol (T-13.3b). The next rendered frame produces it and the result
+    /// is written to the requested path. Capture is portal-presenter-only:
+    /// this seam is reachable only by the authenticated shell.
+    pub pending_capture: Option<PendingCapture>,
 
     // --- private shell protocols (T-07) -------------------------------------
     /// Handshake/trust, chrome surfaces, and the window/workspace/output
@@ -596,6 +614,7 @@ impl DfState {
             animation_clock: AnimationClock::new(),
             window_motion_driver: false,
             dock_tiles: HashMap::new(),
+            pending_capture: None,
             shell,
             material_pass: BackdropPass::new(),
             scene_pass: SceneTransformPass::new(),
@@ -2339,6 +2358,52 @@ impl DfState {
         self.render_serial = self.render_serial.wrapping_add(1);
         self.material_pass.begin_frame(self.render_serial);
         self.scene_pass.begin_frame(self.render_serial);
+    }
+
+    /// Register a single-frame capture requested by the trusted shell
+    /// (T-13.3b). `mode` is `fullscreen`/`region`/`window`; a zero/negative
+    /// rectangle means the whole output, and `window` resolves the topmost
+    /// window under `(x, y)`. The next rendered frame produces the capture
+    /// and writes it to `path`.
+    pub fn request_capture(
+        &mut self,
+        x: i32,
+        y: i32,
+        width: i32,
+        height: i32,
+        mode: &str,
+        path: String,
+    ) {
+        let rect = match mode {
+            "window" => self.window_capture_rect(x, y),
+            _ if width <= 0 || height <= 0 => None,
+            _ => Some(Rectangle::new((x, y).into(), (width, height).into())),
+        };
+        self.pending_capture = Some(PendingCapture {
+            rect,
+            path: PathBuf::from(path),
+        });
+        self.needs_redraw = true;
+    }
+
+    /// The topmost window's rectangle at an output-local point, for a
+    /// `window`-mode capture. The point and the returned rectangle are in
+    /// output-local pixels (scale 1 in the nested/live path). `None` falls
+    /// back to a full-output capture.
+    fn window_capture_rect(&self, x: i32, y: i32) -> Option<Rectangle<i32, Physical>> {
+        let point = Point::from((x as f64, y as f64));
+        let (window, _) = self.space.element_under(point)?;
+        let geometry = self.space.element_geometry(window)?;
+        Some(Rectangle::new(
+            (geometry.loc.x, geometry.loc.y).into(),
+            (geometry.size.w, geometry.size.h).into(),
+        ))
+    }
+
+    /// Take the pending capture, if any. Called by the render pass once it has
+    /// produced (or failed to produce) the frame.
+    pub fn take_capture(&mut self) -> Option<PendingCapture> {
+        self.pending_capture.take()
     }
 
     /// Pin the material degrade tier (T-04.4a) and request a redraw so the
