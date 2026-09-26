@@ -32,12 +32,13 @@ pub const FRONTEND_NAME: &str = "org.freedesktop.portal.Desktop";
 pub const STATUS_INTERFACE: &str = "org.dragonfruit.Portal1";
 
 /// The backend interfaces advertised in `dragonfruit.portal`. Settings and
-/// GlobalShortcuts landed in T-13.1b; FileChooser follows in T-13.2a,
-/// Screenshot in T-13.3a, and ScreenCast in T-13.4a. The data-file test keeps
-/// the descriptor and this list in lockstep.
+/// GlobalShortcuts landed in T-13.1b; FileChooser in T-13.2a; Screenshot in
+/// T-13.3a, and ScreenCast in T-13.4a. The data-file test keeps the
+/// descriptor and this list in lockstep.
 pub const BACKEND_INTERFACES: &[&str] = &[
     "org.freedesktop.impl.portal.Settings",
     "org.freedesktop.impl.portal.GlobalShortcuts",
+    "org.freedesktop.impl.portal.FileChooser",
 ];
 
 /// Whether the `xdg-desktop-portal` frontend is on the session bus.

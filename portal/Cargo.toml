@@ -25,6 +25,11 @@ path = "src/main.rs"
 # zbus is the same pinned D-Bus stack the other service crates use.
 [dependencies]
 df-ipc.workspace = true
+# The FileChooser portal browses with the one browsing core (T-13.2a,
+# 09-files.md): `Location` normalizes the presenter's selection into the
+# portal's `file://` URIs and `DirectoryModel`/`StdFsSource` is the listing
+# seam the picker UI drives. A library link, never a process.
+dragonfruit-files-core = { path = "../services/files-core", version = "0.1.0" }
 zbus = { version = "=5.19.0", features = ["blocking-api"] }
 
 [dev-dependencies]

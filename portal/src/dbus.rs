@@ -26,7 +26,10 @@ use zbus::interface;
 use zbus::object_server::SignalEmitter;
 use zbus::zvariant::{ObjectPath, OwnedValue};
 
-use crate::interfaces::{GlobalShortcuts, SettingsPortal, SETTINGS_INTERFACE};
+use crate::chooser::{self, SharedChooser};
+use crate::interfaces::{
+    FileChooserPortal, GlobalShortcuts, SettingsPortal, FILE_CHOOSER_INTERFACE, SETTINGS_INTERFACE,
+};
 use crate::model::{
     BackendStatus, FrontendPresence, FrontendTracker, BACKEND_INTERFACES, BACKEND_NAME, DBUS_NAME,
     DBUS_PATH, FRONTEND_NAME, STATUS_INTERFACE,
@@ -39,24 +42,43 @@ use crate::shortcuts::{self, SharedRegistry, GLOBAL_SHORTCUTS_INTERFACE};
 pub struct Backend {
     frontend: FrontendTracker,
     shortcuts: SharedRegistry,
+    chooser: SharedChooser,
 }
 
 impl Backend {
-    /// A diagnostic object over `frontend`, with its own empty session
-    /// registry.
+    /// A diagnostic object over `frontend`, with its own empty session and
+    /// chooser registries.
     pub fn new(frontend: FrontendTracker) -> Self {
         Backend {
             frontend,
             shortcuts: shortcuts::registry(),
+            chooser: chooser::registry(),
         }
     }
 
     /// A diagnostic object sharing `shortcuts` with the served
-    /// GlobalShortcuts interface (the activation bridge).
+    /// GlobalShortcuts interface (the activation bridge), with its own empty
+    /// chooser registry.
     pub fn with_shortcuts(frontend: FrontendTracker, shortcuts: SharedRegistry) -> Self {
         Backend {
             frontend,
             shortcuts,
+            chooser: chooser::registry(),
+        }
+    }
+
+    /// A diagnostic object sharing every served registry. The FileChooser's
+    /// success path drives [`Backend::complete_file_chooser`] through
+    /// `chooser`; tests and `initialize` use this constructor.
+    pub fn with_services(
+        frontend: FrontendTracker,
+        shortcuts: SharedRegistry,
+        chooser: SharedChooser,
+    ) -> Self {
+        Backend {
+            frontend,
+            shortcuts,
+            chooser,
         }
     }
 
@@ -68,6 +90,11 @@ impl Backend {
     /// The session registry shared with the GlobalShortcuts interface.
     pub fn shortcuts(&self) -> &SharedRegistry {
         &self.shortcuts
+    }
+
+    /// The request registry shared with the FileChooser interface.
+    pub fn chooser(&self) -> &SharedChooser {
+        &self.chooser
     }
 
     /// The backend's current status.
@@ -171,6 +198,76 @@ impl Backend {
         )
         .await
     }
+
+    /// The `(handle, kind)` pairs of the FileChooser requests waiting for a
+    /// presenter. Diagnostic only: the portal frontend never calls it.
+    fn pending_file_choosers(&self) -> Vec<(String, String)> {
+        chooser::lock(&self.chooser)
+            .handles()
+            .into_iter()
+            .map(|(handle, kind)| (handle, kind.as_str().to_owned()))
+            .collect()
+    }
+
+    /// Complete a waiting FileChooser request with a presenter's selection.
+    /// Each selection is normalized to a canonical `file://` URI through
+    /// files-core; a foreign scheme is discarded. Returns whether a request
+    /// was waiting at `handle`.
+    ///
+    /// This is the T-13.2a presenter seam: the test client calls it, and the
+    /// T-13.2b picker calls it once the user chooses.
+    fn complete_file_chooser(
+        &self,
+        handle: &str,
+        selections: Vec<String>,
+    ) -> Result<bool, zbus::fdo::Error> {
+        Ok(chooser::lock(&self.chooser)
+            .complete(handle, &selections)
+            .is_some())
+    }
+
+    /// Resolve a waiting FileChooser request as cancelled. Returns whether a
+    /// request was waiting at `handle`.
+    fn cancel_file_chooser(&self, handle: &str) -> Result<bool, zbus::fdo::Error> {
+        Ok(chooser::lock(&self.chooser).cancel(handle).is_some())
+    }
+
+    /// List a local directory through files-core for the picker. Each row is
+    /// `(name, uri, is-directory, size)`. Diagnostic only.
+    fn list_directory(
+        &self,
+        uri: &str,
+    ) -> Result<Vec<(String, String, bool, u64)>, zbus::fdo::Error> {
+        crate::chooser::list_directory(uri)
+            .map(|listing| {
+                listing
+                    .entries
+                    .into_iter()
+                    .map(|entry| {
+                        (
+                            entry.name,
+                            entry.uri,
+                            entry.directory,
+                            entry.size.unwrap_or(0),
+                        )
+                    })
+                    .collect()
+            })
+            .map_err(|error| zbus::fdo::Error::Failed(error.to_string()))
+    }
+
+    /// A FileChooser request is waiting for a presenter. Diagnostic only; the
+    /// standard interface emits no such signal.
+    #[zbus(signal)]
+    async fn file_chooser_opened(
+        emitter: &SignalEmitter<'_>,
+        handle: &str,
+        kind: &str,
+        app_id: &str,
+        parent_window: &str,
+        title: &str,
+        options: std::collections::HashMap<String, OwnedValue>,
+    ) -> zbus::Result<()>;
 }
 
 impl Backend {
@@ -257,7 +354,8 @@ pub fn initialize(connection: &connection::Connection) -> Backend {
     let frontend = FrontendTracker::new();
     frontend.set(probe_frontend(connection));
     let registry = shortcuts::registry();
-    let backend = Backend::with_shortcuts(frontend.clone(), registry.clone());
+    let chooser = chooser::registry();
+    let backend = Backend::with_services(frontend.clone(), registry.clone(), chooser.clone());
 
     if let Err(error) = connection.object_server().at(DBUS_PATH, backend.clone()) {
         eprintln!("xdg-desktop-portal-dragonfruit: cannot serve {STATUS_INTERFACE} at {DBUS_PATH}: {error}");
@@ -279,6 +377,15 @@ pub fn initialize(connection: &connection::Connection) -> Backend {
     {
         eprintln!(
             "xdg-desktop-portal-dragonfruit: cannot serve {GLOBAL_SHORTCUTS_INTERFACE} at \
+             {DBUS_PATH}: {error}"
+        );
+    }
+    if let Err(error) = connection
+        .object_server()
+        .at(DBUS_PATH, FileChooserPortal::new(chooser))
+    {
+        eprintln!(
+            "xdg-desktop-portal-dragonfruit: cannot serve {FILE_CHOOSER_INTERFACE} at \
              {DBUS_PATH}: {error}"
         );
     }
