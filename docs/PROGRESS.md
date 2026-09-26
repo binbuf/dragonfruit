@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(53 earlier sections omitted)_
+_(54 earlier sections omitted)_
 
-- **T50 — T-09.2 Appearance pane**: **State: done.** The Appearance pane is real and live: a Light/Dark/Auto; **`apps/settings/AppearancePane.qml`** (new) — `SettingsGroup`/`SettingsRow`
 - **T51 — T-09.3 Wallpaper pane**: **State: done.** The Wallpaper pane is real and live: our own gradient; **Schema (since 2)** — `wallpaper.source` (s, empty = solid),
 - **T52 — T-09.4 Desktop & Dock pane**: **State: done.** The Desktop & Dock pane is real and live: the `Dock` group; **`apps/settings/DesktopDockPane.qml`** (new) — `SettingsGroup` "Dock" with
 - **T53 — T-09.5 Displays-basic pane**: **State: done.** The Displays-basic pane is real and live: the `Built-in; **Schema (since 3)** — `display.scale` (d, 0.5–2.0, default 1.0),
@@ -45,6 +44,7 @@ _(53 earlier sections omitted)_
 - **T86 — T-12.5a Suspend/resume cycle**: **State: done.** One suspend/resume round trip recovers outputs, input, and; **`services/session/src/suspend.rs`** (new) — `SuspendState`
 - **T87 — T-12.5b Session policy keys, kill matrix, capture**: **State: done.** The session policy keys are registered in settingsd, the; **`services/settingsd/src/schema.rs`** — schema v5, new `Session` key group:
 - **T88 — T-13.1a Portal backend and session service**: **State: done.** `portal/` is now a real session-bus portal backend plus its; **`portal/src/`** (new `[lib]` + existing binary) — `model` (pure:
+- **T89 — T-13.1b Settings and GlobalShortcuts portals**: **State: done.** The backend now serves the first two standard interfaces at; **`portal/src/settings.rs`** (new) — the pure projection:
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -6584,3 +6584,85 @@ Gotchas for later tasks:
 - **`org.dragonfruit.Portal1` is diagnostic only** — the portal frontend
   never calls it; `df_ipc::is_valid_dbus_name` applies to it but not to the
   standard `org.freedesktop.impl.portal.*` interfaces.
+
+## T89 — T-13.1b Settings and GlobalShortcuts portals
+
+**State: done.** The backend now serves the first two standard interfaces at
+`/org/freedesktop/portal/desktop`, advertises them in `dragonfruit.portal` /
+`model::BACKEND_INTERFACES`, and answers real D-Bus clients. Contract frozen in
+ADR [0075](design/adr/0075-settings-and-globalshortcuts-portals.md).
+
+What landed:
+
+- **`portal/src/settings.rs`** (new) — the pure projection:
+  `SettingsSnapshot` (namespace → key → `OwnedValue`, `new`,
+  `from_entries`, `read`, `read_all`, `namespaces`, `desktop_key`, `diff`,
+  `refresh_appearance`), `SettingsStore` (`store`, `lock`), `fetch`, `sync`,
+  `spawn_settings_sync` (+ name watch + `Changed` loop). Namespaces
+  `org.freedesktop.appearance` (`color-scheme` from
+  `appearance.colorScheme`: auto=0/dark=1/light=2; `contrast`=0;
+  `accent-color` `a(ddd)` only when `appearance.accent` is `#rrggbb`) and
+  `org.dragonfruit.desktop` (every settingsd key, read-only).
+- **`portal/src/shortcuts.rs`** (new) — `PortalShortcut`,
+  `ShortcutSession`, `SessionError` (`Duplicate`/`Unknown`),
+  `ShortcutRegistry` (`create`, `bind`, `list`, `close`, `session`,
+  `contains`, `has_shortcut`, `len`, `is_empty`), `SharedRegistry`
+  (`registry`, `lock`). Constants `GLOBAL_SHORTCUTS_INTERFACE`,
+  `SESSION_INTERFACE`, versions, response/close codes.
+- **`portal/src/interfaces.rs`** (new) — the zbus objects `SettingsPortal`
+  (`Read`, `ReadAll`, `Version`, `SettingChanged`) and `GlobalShortcuts`
+  (`CreateSession`, `BindShortcuts`, `ListShortcuts`, `Version`,
+  `Activated`/`Deactivated`/`ShortcutsChanged`) plus
+  `ShortcutSessionObject` (`Close`, `Closed`). `SETTINGS_INTERFACE`.
+- **`portal/src/dbus.rs`** — `initialize` serves `SettingsPortal` and
+  `GlobalShortcuts` at `DBUS_PATH` and spawns the settings sync;
+  `Backend` gained the shared `shortcuts` registry, `with_shortcuts`,
+  `shortcuts()`, and the diagnostic `ActivateShortcut`/`DeactivateShortcut`
+  which emit the standard signals.
+- **`portal/src/model.rs` / `portal/data/dragonfruit.portal`** —
+  `BACKEND_INTERFACES` is now
+  `["org.freedesktop.impl.portal.Settings", "org.freedesktop.impl.portal.GlobalShortcuts"]`;
+  the descriptor `Interfaces=` matches (data test enforces).
+- **Tests** — `portal/tests/portals.rs` (new, 3 integration on a private
+  bus: standard interfaces introspect; Settings answers appearance/desktop
+  reads, follows a real settingsd `Set` live and emits `SettingChanged`;
+  GlobalShortcuts create/bind/list/close with `ShortcutsChanged`,
+  `Activated`, and `Closed`). Unit tests added in `settings`/`shortcuts`/
+  `interfaces`; `session_bus.rs` now expects the two advertised interfaces.
+  Dev-dependency `dragonfruit-settingsd` (test-only) serves a real settingsd
+  object beside the backend.
+- **Docs** — ADR 0075; `07-system-integration.md` "Settings and
+  GlobalShortcuts (T-13.1b)".
+
+Commands that work (repo root):
+
+- `cargo test -p xdg-desktop-portal-dragonfruit` — 23 unit + 4 `session_bus`
+  + 3 `portals`.
+- `cargo clippy -p xdg-desktop-portal-dragonfruit --all-targets -- -D
+  warnings`, `cargo fmt -p xdg-desktop-portal-dragonfruit -- --check` — exit 0.
+- `make lint`, `make e2e` — exit 0.
+
+Live check: nested demo over the synthetic socket rendered the desktop,
+menu bar, Dock, the Settings Appearance pane, and the X11 demo window with no
+artifacts (capture `/tmp/opencode/t89/t89-desktop.png`, vision-checked). This
+task adds no surface, so the check is a regression pass.
+
+Gotchas for later tasks:
+
+- **The compositor is not wired to GlobalShortcuts.** Nothing feeds bound
+  shortcuts into `ShortcutEngine`; the diagnostic `ActivateShortcut` /
+  `DeactivateShortcut` on `org.dragonfruit.Portal1` is the only emitter of
+  `Activated`/`Deactivated`. T-13.7 (or the shell bridge) drives it from the
+  engine.
+- **The Settings portal never owns a value.** It reads settingsd over
+  `org.dragonfruit.Settings1` (`GetAll` + `Changed` + name watch) and answers
+  with the appearance defaults when settingsd is absent. Do not add a second
+  writer.
+- **`BACKEND_INTERFACES` / `dragonfruit.portal` are additive.** T-13.2a must
+  append `org.freedesktop.impl.portal.FileChooser` to both (the data test
+  keeps them in lockstep).
+- **The portal→settingsd mapping is string-keyed** (`appearance.colorScheme`,
+  `appearance.accent`); `org.dragonfruit.desktop` forwards key names verbatim.
+- A missing Settings key/namespace is
+  `org.freedesktop.DBus.Error.InvalidArgs`; a duplicate session path or an
+  unknown session is `org.freedesktop.DBus.Error.Failed`.

@@ -22,17 +22,23 @@
 //! The first concrete portal interfaces land in T-13.1b (Settings,
 //! GlobalShortcuts); FileChooser, Screenshot, and ScreenCast follow in
 //! T-13.2a…T-13.4a. The registration contract is frozen in
-//! [ADR 0074](../../docs/design/adr/0074-portal-backend-registration-and-frontend-degradation.md).
+//! [ADR 0074](../../docs/design/adr/0074-portal-backend-registration-and-frontend-degradation.md)
+//! and the Settings/GlobalShortcuts projection in
+//! [ADR 0075](../../docs/design/adr/0075-settings-and-globalshortcuts-portals.md).
 
 pub mod data;
 pub mod dbus;
+pub mod interfaces;
 pub mod model;
+pub mod settings;
+pub mod shortcuts;
 
 pub use data::{
     install_into, preferred_backends, ACTIVATION_FILE, ACTIVATION_FILE_NAME, DBUS_SERVICES_DIR,
     PORTALS_CONF, PORTALS_CONF_DIR, PORTALS_CONF_NAME, PORTALS_DIR, PORTAL_FILE, PORTAL_FILE_NAME,
 };
 pub use dbus::{initialize, probe_frontend, serve, Backend};
+pub use interfaces::{GlobalShortcuts, SettingsPortal, ShortcutSessionObject};
 pub use model::{
     BackendStatus, FrontendPresence, FrontendTracker, BACKEND_INTERFACES, BACKEND_NAME, DBUS_NAME,
     DBUS_PATH, FRONTEND_NAME, STATUS_INTERFACE,

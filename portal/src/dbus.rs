@@ -24,28 +24,50 @@
 use zbus::blocking::connection;
 use zbus::interface;
 use zbus::object_server::SignalEmitter;
+use zbus::zvariant::{ObjectPath, OwnedValue};
 
+use crate::interfaces::{GlobalShortcuts, SettingsPortal, SETTINGS_INTERFACE};
 use crate::model::{
     BackendStatus, FrontendPresence, FrontendTracker, BACKEND_INTERFACES, BACKEND_NAME, DBUS_NAME,
     DBUS_PATH, FRONTEND_NAME, STATUS_INTERFACE,
 };
+use crate::shortcuts::{self, SharedRegistry, GLOBAL_SHORTCUTS_INTERFACE};
 
 /// The `org.dragonfruit.Portal1` object. It shares the standard portal path
-/// with the future `org.freedesktop.impl.portal.*` interfaces.
+/// with the concrete `org.freedesktop.impl.portal.*` interfaces.
 #[derive(Clone)]
 pub struct Backend {
     frontend: FrontendTracker,
+    shortcuts: SharedRegistry,
 }
 
 impl Backend {
-    /// A diagnostic object over `frontend`.
+    /// A diagnostic object over `frontend`, with its own empty session
+    /// registry.
     pub fn new(frontend: FrontendTracker) -> Self {
-        Backend { frontend }
+        Backend {
+            frontend,
+            shortcuts: shortcuts::registry(),
+        }
+    }
+
+    /// A diagnostic object sharing `shortcuts` with the served
+    /// GlobalShortcuts interface (the activation bridge).
+    pub fn with_shortcuts(frontend: FrontendTracker, shortcuts: SharedRegistry) -> Self {
+        Backend {
+            frontend,
+            shortcuts,
+        }
     }
 
     /// The frontend tracker behind this object.
     pub fn frontend_tracker(&self) -> &FrontendTracker {
         &self.frontend
+    }
+
+    /// The session registry shared with the GlobalShortcuts interface.
+    pub fn shortcuts(&self) -> &SharedRegistry {
+        &self.shortcuts
     }
 
     /// The backend's current status.
@@ -76,8 +98,7 @@ impl Backend {
         env!("CARGO_PKG_VERSION").to_owned()
     }
 
-    /// The advertised `org.freedesktop.impl.portal.*` interfaces (empty until
-    /// T-13.1b).
+    /// The advertised `org.freedesktop.impl.portal.*` interfaces.
     fn interfaces(&self) -> Vec<String> {
         BACKEND_INTERFACES
             .iter()
@@ -112,6 +133,81 @@ impl Backend {
         present: bool,
         owner: &str,
     ) -> zbus::Result<()>;
+
+    /// Diagnostic activation bridge (T-13.1b): raise the standard
+    /// GlobalShortcuts `Activated` signal for a session/shortcut that the
+    /// portal knows. Returns whether it was delivered.
+    ///
+    /// This is not part of the portal contract: the compositor's shortcut
+    /// engine is the one arbiter, and a later task feeds it each bound
+    /// shortcut and calls back here (the same in-process registry) when it
+    /// fires. Tests and the diagnostic surface use this method directly.
+    async fn activate_shortcut(
+        &self,
+        session_handle: &str,
+        shortcut_id: &str,
+        timestamp: u64,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+    ) -> Result<bool, zbus::fdo::Error> {
+        self.emit_shortcut_signal(emitter, "Activated", session_handle, shortcut_id, timestamp)
+            .await
+    }
+
+    /// The release half of [`Backend::activate_shortcut`], raising
+    /// `Deactivated`.
+    async fn deactivate_shortcut(
+        &self,
+        session_handle: &str,
+        shortcut_id: &str,
+        timestamp: u64,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+    ) -> Result<bool, zbus::fdo::Error> {
+        self.emit_shortcut_signal(
+            emitter,
+            "Deactivated",
+            session_handle,
+            shortcut_id,
+            timestamp,
+        )
+        .await
+    }
+}
+
+impl Backend {
+    /// Emit one of the GlobalShortcuts activation signals when the registry
+    /// knows the session and shortcut. The signal is emitted on the standard
+    /// interface even though the method lives on the diagnostic one.
+    async fn emit_shortcut_signal(
+        &self,
+        emitter: SignalEmitter<'_>,
+        member: &str,
+        session_handle: &str,
+        shortcut_id: &str,
+        timestamp: u64,
+    ) -> Result<bool, zbus::fdo::Error> {
+        if !shortcuts::lock(&self.shortcuts).has_shortcut(session_handle, shortcut_id) {
+            return Ok(false);
+        }
+        let Ok(path) = ObjectPath::try_from(session_handle) else {
+            return Ok(false);
+        };
+        emitter
+            .connection()
+            .emit_signal(
+                None::<&str>,
+                DBUS_PATH,
+                GLOBAL_SHORTCUTS_INTERFACE,
+                member,
+                &(
+                    path,
+                    shortcut_id,
+                    timestamp,
+                    std::collections::HashMap::<String, OwnedValue>::new(),
+                ),
+            )
+            .await?;
+        Ok(true)
+    }
 }
 
 /// Ask the bus whether `name` currently has an owner. A bus error is not a
@@ -152,20 +248,43 @@ pub fn probe_frontend(connection: &connection::Connection) -> FrontendPresence {
     }
 }
 
-/// Serve [`STATUS_INTERFACE`] at [`DBUS_PATH`], record the current frontend
-/// presence, and start the live watch. Call this after the connection owns
-/// [`DBUS_NAME`]. The connection must outlive the returned tracker; the watch
-/// thread holds its own clone.
+/// Serve the diagnostic [`STATUS_INTERFACE`] plus the concrete T-13.1b portal
+/// interfaces (`Settings`, `GlobalShortcuts`) at [`DBUS_PATH`], then start the
+/// live frontend and settings watches. Call this after the connection owns
+/// [`DBUS_NAME`]. The connection must outlive the returned object; the watch
+/// threads hold their own clones.
 pub fn initialize(connection: &connection::Connection) -> Backend {
     let frontend = FrontendTracker::new();
     frontend.set(probe_frontend(connection));
-    let backend = Backend::new(frontend.clone());
+    let registry = shortcuts::registry();
+    let backend = Backend::with_shortcuts(frontend.clone(), registry.clone());
 
     if let Err(error) = connection.object_server().at(DBUS_PATH, backend.clone()) {
         eprintln!("xdg-desktop-portal-dragonfruit: cannot serve {STATUS_INTERFACE} at {DBUS_PATH}: {error}");
     }
 
+    let store = crate::settings::store();
+    if let Err(error) = connection
+        .object_server()
+        .at(DBUS_PATH, SettingsPortal::new(store.clone()))
+    {
+        eprintln!(
+            "xdg-desktop-portal-dragonfruit: cannot serve {SETTINGS_INTERFACE} at {DBUS_PATH}: \
+             {error}"
+        );
+    }
+    if let Err(error) = connection
+        .object_server()
+        .at(DBUS_PATH, GlobalShortcuts::new(registry))
+    {
+        eprintln!(
+            "xdg-desktop-portal-dragonfruit: cannot serve {GLOBAL_SHORTCUTS_INTERFACE} at \
+             {DBUS_PATH}: {error}"
+        );
+    }
+
     spawn_frontend_watch(connection.clone(), frontend);
+    crate::settings::spawn_settings_sync(connection.clone(), store);
     backend
 }
 

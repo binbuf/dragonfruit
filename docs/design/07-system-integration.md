@@ -355,3 +355,29 @@ contract is frozen in
 [adr/0074](adr/0074-portal-backend-registration-and-frontend-degradation.md);
 `portal/tests/session_bus.rs` proves the registration and both paths on a
 private bus.
+
+### Settings and GlobalShortcuts (T-13.1b)
+
+The first concrete interfaces are read-through projections of services that
+already own their state. Both are served at the standard path and listed in
+`dragonfruit.portal`; the contract is frozen in
+[adr/0075](adr/0075-settings-and-globalshortcuts-portals.md).
+
+- **`org.freedesktop.impl.portal.Settings` (version 2)** projects `settingsd`
+  onto two namespaces and never owns a value: `org.freedesktop.appearance`
+  (`color-scheme` derived from `appearance.colorScheme`, `contrast`, and
+  `accent-color` when `appearance.accent` is a concrete `#rrggbb`) and
+  `org.dragonfruit.desktop` (every settingsd key, read-only). One `GetAll`
+  resync at startup plus a resync on each `Changed` and on a settingsd name
+  (re)appearance keeps it live; a session with no settingsd still answers with
+  the honest appearance defaults.
+- **`org.freedesktop.impl.portal.GlobalShortcuts` (version 1)** owns the
+  session bookkeeping — create/bind/list/close one session object per caller
+  path, and the `Activated`/`Deactivated`/`ShortcutsChanged` signals. It never
+  installs a grab: the compositor's `ShortcutEngine` remains the one arbiter,
+  and the diagnostic `ActivateShortcut` on `org.dragonfruit.Portal1` is the
+  bridge a later task drives from that engine.
+- `portal/tests/portals.rs` drives both interfaces over a private bus with a
+  real settingsd object beside them; the value/namespace/session logic lives
+  in the pure `portal::settings` and `portal::shortcuts` modules and is
+  unit-tested without a bus.
