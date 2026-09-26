@@ -34,8 +34,15 @@ Rectangle {
     // apps keep their own local menu presentation; the fixed system and
     // application menus stay.
     property bool globalMenuEnabled: true
-    // [{ id, icon, label, accessibleName, available, enabled, selected, tint }]
+    // [{ id, icon, iconSource, label, accessibleName, available, enabled,
+    //    selected, tint }]; third-party StatusNotifier items join this same
+    //    row with `id: "tray:<name>"` and an `iconSource`, so they get
+    //    identical sizing/hover treatment (T-14.3).
     property var statusItems: []
+    // The open tray item's DBusMenu rows (T-14.3), a design-system menu model.
+    property var trayMenu: []
+    property string trayMenuService: ""
+    property bool trayMenuOpen: false
     // The bridge host's decoded status views (T-07.5a/T-07.5b); empty until
     // the shell applies them, which hides the corresponding item.
     property var wifiMenu: ({})
@@ -92,6 +99,11 @@ Rectangle {
                          w: statusPopup.popup.width, h: statusPopup.popup.height };
             }
         }
+        if (trayMenuOpen && trayContextMenu.open) {
+            var trayRect = trayContextMenu.contentRect;
+            var trayOrigin = trayContextMenu.mapToItem(menuBar, trayRect.x, trayRect.y);
+            return { x: trayOrigin.x, y: trayOrigin.y, w: trayRect.w, h: trayRect.h };
+        }
         if (openMenuIndex < 0)
             return { x: 0, y: 0, w: 0, h: 0 };
         var item = menuRepeater.itemAt(openMenuIndex);
@@ -118,6 +130,10 @@ Rectangle {
     signal appMenuOpened(int menuIndex)
     signal appMenuClosed()
     signal statusItemActivated(string itemId)
+    // A row of an open StatusNotifier tray menu was chosen; the shell forwards
+    // it to the owning item's DBusMenu (T-14.3).
+    signal trayMenuTriggered(string service, int id)
+    signal trayMenuClosed()
     // Wi-Fi and volume popovers (T-07.5a). The bar raises the user's action;
     // the shell controller forwards it to the bridge host.
     signal wifiJoinRequested(string ssid, string secret)
@@ -152,6 +168,7 @@ Rectangle {
     }
 
     function closeMenus() {
+        closeTrayMenu();
         var index = openMenuIndex;
         openMenuIndex = -1;
         hoverMenuIndex = -1;
@@ -193,6 +210,36 @@ Rectangle {
                 return item;
         }
         return null;
+    }
+
+    // The live tray StatusItem for a registered name ("tray:<name>"), or null.
+    function trayItemFor(service) {
+        return statusItemFor("tray:" + service);
+    }
+
+    // Open a tray item's DBusMenu beneath its slot, right-aligned so it stays
+    // inside the bar when the slot is near the right edge. The shell sets
+    // `trayMenu` before calling this.
+    function openTrayMenu(service) {
+        if (!service || service.length === 0)
+            return;
+        trayMenuService = service;
+        closeMenus();
+        closeStatusMenu();
+        trayMenuOpen = true;
+        var slot = trayItemFor(service);
+        var menuWidth = Math.max(trayContextMenu.width, Theme.controls.contextMenu.minWidth);
+        var anchorX = slot ? slot.mapToItem(menuBar, slot.width, 0).x : menuBar.width;
+        var left = Math.max(0, Math.min(menuBar.width - menuWidth, anchorX - menuWidth));
+        trayContextMenu.showAt(left, menuBar.height);
+    }
+
+    function closeTrayMenu() {
+        if (!trayMenuOpen)
+            return;
+        trayMenuOpen = false;
+        trayContextMenu.hide();
+        trayMenuClosed();
     }
 
     // Open the popover for a status item. A hidden item (daemon absent, or a
@@ -305,6 +352,7 @@ Rectangle {
         if (!shellFocused) {
             closeMenus();
             closeStatusMenu();
+            closeTrayMenu();
         }
     }
 
@@ -336,12 +384,14 @@ Rectangle {
                 return;
             menuBar.closeMenus();
             menuBar.closeStatusMenu();
+            menuBar.closeTrayMenu();
         }
     }
 
     Keys.onEscapePressed: (event) => {
         menuBar.closeMenus();
         menuBar.closeStatusMenu();
+        menuBar.closeTrayMenu();
         event.accepted = true;
     }
 
@@ -449,6 +499,7 @@ Rectangle {
                 keyboardFocus: menuBar.keyboardStatusIndex === index
                 itemId: modelData.id !== undefined ? modelData.id : ""
                 icon: modelData.icon !== undefined ? modelData.icon : ""
+                iconSource: modelData.iconSource !== undefined ? modelData.iconSource : ""
                 label: modelData.label !== undefined ? modelData.label : ""
                 accessibleName: modelData.accessibleName !== undefined ? modelData.accessibleName : ""
                 available: modelData.available !== false
@@ -533,5 +584,21 @@ Rectangle {
         anchorItem: menuBar.statusItemFor("battery")
         onRefreshRequested: menuBar.statusMenuRefreshRequested("battery")
         onClosed: menuBar.closeStatusMenu()
+    }
+
+    // A StatusNotifier tray item's DBusMenu (T-14.3). It reuses the
+    // design-system ContextMenu, so tray menus and the Dock's context menus
+    // cannot diverge; the shell commits its `contentRect` as the overlay
+    // popup rectangle (see `_dropdownRect`).
+    ContextMenu {
+        id: trayContextMenu
+        objectName: "trayContextMenu"
+        model: menuBar.trayMenu
+        accessibleName: qsTr("Tray menu")
+        onTriggered: (index, item) => {
+            var id = (item && item.id !== undefined) ? item.id : -1;
+            menuBar.trayMenuTriggered(menuBar.trayMenuService, id);
+        }
+        onClosed: menuBar.closeTrayMenu()
     }
 }

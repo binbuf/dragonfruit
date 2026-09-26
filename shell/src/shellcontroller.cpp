@@ -494,6 +494,19 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     m_statusClient->refreshAudio();
     m_statusClient->refreshBattery();
 
+    // T-14.3: StatusNotifier tray items. app-index owns the watcher; the shell
+    // reads its live item view and re-reads on a short timer (a tray app can
+    // appear or leave at any time and there is no private-protocol tray
+    // event). The whole path is a no-op when app-index is absent.
+    connect(m_item, SIGNAL(trayMenuTriggered(QString,int)), this,
+            SLOT(onTrayMenuTriggered(QString,int)));
+    connect(m_item, SIGNAL(trayMenuClosed()), this, SLOT(onTrayMenuClosed()));
+    refreshTrayItems();
+    m_trayTimer = new QTimer(this);
+    m_trayTimer->setInterval(2000);
+    connect(m_trayTimer, &QTimer::timeout, this, &ShellController::refreshTrayItems);
+    m_trayTimer->start();
+
     applyStatusItems();
     // The system menu (dragonfruit mark) is fixed for the session; the Log Out
     // item is personalized with the account name.
@@ -1318,6 +1331,28 @@ void ShellController::applyStatusItems()
                                                  : QVariantMap());
     items << statusItem(QStringLiteral("accessibility"), QStringLiteral("accessibility"),
                         QString(), tr("Accessibility"), false);
+
+    // Third-party StatusNotifier/AppIndicator items (T-14.3). They join the
+    // same status row as the first-party items, so sizing/hover/dark-light
+    // treatment is identical; the themed icon is a file the service resolved.
+    for (const TrayItem &tray : m_trayItems) {
+        QVariantMap item;
+        item.insert(QStringLiteral("id"), QStringLiteral("tray:") + tray.name);
+        item.insert(QStringLiteral("icon"), QStringLiteral("application"));
+        item.insert(QStringLiteral("iconSource"),
+                    tray.iconPath.isEmpty() ? QUrl()
+                                            : QUrl::fromLocalFile(tray.iconPath));
+        item.insert(QStringLiteral("label"), QString());
+        item.insert(QStringLiteral("accessibleName"),
+                    !tray.title.isEmpty() ? tray.title
+                                          : (!tray.id.isEmpty() ? tray.id : tray.name));
+        item.insert(QStringLiteral("available"), true);
+        item.insert(QStringLiteral("enabled"), true);
+        item.insert(QStringLiteral("level"), 0.8);
+        item.insert(QStringLiteral("selected"), tray.needsAttention);
+        items << item;
+    }
+
     m_item->setProperty("statusItems", items);
 }
 
@@ -1332,6 +1367,72 @@ void ShellController::applyStatusMenuData()
     // A live Wi-Fi/volume change reaches an open Control Center too.
     if (m_controlCenterOpen)
         applyControlCenterData();
+}
+
+void ShellController::refreshTrayItems()
+{
+    if (!m_trayClient.available()) {
+        if (!m_trayItems.isEmpty()) {
+            m_trayItems.clear();
+            if (m_item)
+                applyStatusItems();
+        }
+        return;
+    }
+    const QList<TrayItem> items = m_trayClient.items();
+    bool changed = items.size() != m_trayItems.size();
+    if (!changed) {
+        for (int i = 0; i < items.size(); ++i) {
+            const TrayItem &next = items.at(i);
+            const TrayItem &prev = m_trayItems.at(i);
+            if (next.name != prev.name || next.title != prev.title
+                || next.iconPath != prev.iconPath || next.needsAttention != prev.needsAttention) {
+                changed = true;
+                break;
+            }
+        }
+    }
+    if (!changed)
+        return;
+    m_trayItems = items;
+    if (m_item)
+        applyStatusItems();
+}
+
+void ShellController::openTrayMenu(const QString &name)
+{
+    if (!m_item)
+        return;
+    // The menu rows come from the item's DBusMenu (fetched and projected by
+    // app-index). The QML owns the popup geometry and reports the trigger.
+    m_item->setProperty("trayMenu", m_trayClient.menu(name));
+    QMetaObject::invokeMethod(m_item, "openTrayMenu", Q_ARG(QVariant, name));
+    m_menuOpen = true;
+    updatePopupGeometry();
+    // The tray menu's size is content-derived (the other popups have a fixed
+    // preferred width), so its QML layout settles a frame or two after it
+    // opens. Re-commit the overlay rectangle once the layout is real, or the
+    // surface would stay at its first (near-empty) size.
+    QTimer::singleShot(0, this, &ShellController::updatePopupGeometry);
+    QTimer::singleShot(60, this, &ShellController::updatePopupGeometry);
+    QTimer::singleShot(160, this, &ShellController::updatePopupGeometry);
+}
+
+void ShellController::onTrayMenuTriggered(const QString &service, int id)
+{
+    if (id >= 0)
+        m_trayClient.menuEvent(service, id);
+    m_menuOpen = false;
+    updatePopupGeometry();
+}
+
+void ShellController::onTrayMenuClosed()
+{
+    m_menuOpen = false;
+    QTimer::singleShot(140, this, [this]() {
+        if (!m_menuOpen)
+            updatePopupGeometry();
+    });
 }
 
 void ShellController::onStatusMenuOpened()
@@ -3119,6 +3220,12 @@ void ShellController::onMissionControlRequested()
 
 void ShellController::onStatusItemActivated(const QString &itemId)
 {
+    // A tray item opens its owner's DBusMenu (T-14.3); every other status
+    // slot is a first-party popup or an inert placeholder.
+    if (itemId.startsWith(QLatin1String("tray:"))) {
+        openTrayMenu(itemId.mid(5));
+        return;
+    }
     // Status-item popups consume the T-20 adapters; until then this is a
     // no-op beyond the bar's own dismissal.
     qInfo() << "shell: status item activated:" << itemId;

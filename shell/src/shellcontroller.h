@@ -33,6 +33,7 @@
 #include "settingsclient.h"
 #include "shellprotocol.h"
 #include "systemstatusmodel.h"
+#include "trayclient.h"
 #include "trashbridge.h"
 #include "wallpaperpolicy.h"
 
@@ -181,6 +182,10 @@ private slots:
     void onAppearanceSettingsRequested();
     void onMissionControlRequested();
     void onStatusItemActivated(const QString &itemId);
+    // StatusNotifier/AppIndicator tray (T-14.3): a row of the open tray menu
+    // was chosen, and the menu dismissed.
+    void onTrayMenuTriggered(const QString &service, int id);
+    void onTrayMenuClosed();
     // Wi-Fi and volume popovers (T-07.5a): the bar's gestures become bridge
     // host calls, and the host's views become the model's state.
     void onStatusMenuOpened();
@@ -279,6 +284,11 @@ private slots:
 
 private:
     void applyStatusItems();
+    // Re-read the live StatusNotifier items from app-index and rebuild the
+    // status row (T-14.3). A no-op when the service is absent.
+    void refreshTrayItems();
+    // Ask app-index for one item's DBusMenu and open it beneath its bar slot.
+    void openTrayMenu(const QString &name);
     // Push the model's decoded Wi-Fi/volume views onto the bar's popovers and
     // rebuild the status slots from them.
     void applyStatusMenuData();
@@ -696,6 +706,13 @@ private:
 
     // Interim app-index stand-in (T-23) for the Dock.
     DesktopEntryIndex m_index;
+    // StatusNotifier/AppIndicator tray (T-14.3): the app-index client, the
+    // last item list, and the short refresh timer that keeps the bar live
+    // (there is no compositor-side tray event; the watcher's own signals are
+    // not routed through the private protocol).
+    TrayClient m_trayClient;
+    QList<TrayItem> m_trayItems;
+    QTimer *m_trayTimer = nullptr;
     // The shell's running-window projection, kept so the pinned set can be
     // merged on every change.
     QVariantList m_runningEntries;

@@ -155,3 +155,20 @@ shell sets `MenuBar.globalMenuEnabled` false: the focused app's exported menus
 are suppressed and first-party apps keep their local menus, while the fixed
 system and application menus stay. Contract frozen in ADR
 [0096](adr/0096-focus-scoped-accelerators-and-global-menu-toggle.md).
+
+## Implementation note (T-14.3)
+
+StatusNotifierItem/AppIndicator tray items are live. `dragonfruit-app-index`
+serves `org.kde.StatusNotifierWatcher`, normalizes the registrations into a tray
+registry (`services/app-index/src/tray.rs`), and exposes the items and their
+DBusMenus to the shell over `org.dragonfruit.AppIndex1`
+(`TrayItems`/`TrayMenu`/`TrayMenuEvent`/`TrayActivate`). Each item is resolved
+fresh from its owning process; an owner that disconnects is pruned via
+`NameOwnerChanged`. The DBusMenu `GetLayout` tree is projected to the
+design-system menu row shape, so the shell renders a tray item's menu with the
+same `ContextMenu` component as every other menu, and a click is forwarded as
+the DBusMenu `Event(id, "clicked")`. The shell joins third-party items to the
+one status row (`tray:<name>` plus a file-backed `iconSource`), never a separate
+tray strip. Live `NewIcon`/attention signals are not subscribed yet (the shell
+re-reads on a short timer); icon animation polish is deferred. Contract frozen
+in ADR [0097](adr/0097-statusnotifier-tray-host-and-dbusmenu-projection.md).

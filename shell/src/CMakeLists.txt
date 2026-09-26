@@ -69,6 +69,7 @@ add_library(dragonfruit-shell-dockcore STATIC
     screenshotbridge.cpp
     screenshotwriter.cpp
     systemstatusmodel.cpp
+    trayclient.cpp
     trashbridge.cpp
     wallpaperpolicy.cpp
 )
