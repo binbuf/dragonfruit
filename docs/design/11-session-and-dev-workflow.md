@@ -304,9 +304,19 @@ serving the `ext-idle-notify` and `idle-inhibit` protocols; an idle service
 binds them, feeds activity into the engine, and asks the compositor to
 dim/blank/lock over the private protocol. Policy keys are `idle.dim`,
 `idle.blank`, `idle.lock`, `idle.suspend` in whole seconds (`0` disables a
-stage); `IdlePolicy::from_keys` is the seam settingsd uses. Inhibitors and wake
-restore are T-12.4b; the suspend/resume cycle is T-12.5a; the settingsd keys
-are T-12.5b.
+stage); `IdlePolicy::from_keys` is the seam settingsd uses.
+
+`IdleController` (T-12.4b) wraps that engine with inhibitors and wake restore
+(ADR [0071](adr/0071-idle-inhibitors-and-wake-restore.md)). An inhibitor is an
+opaque handle in an `IdleInhibitors` registry: while any handle is held the
+controller's `poll` is a no-op and `next_deadline` is `None`, so the chain
+cannot advance. A wake — a recorded `activity` or a fresh inhibitor, which
+forces the chain back to the top — returns `IdleEvent::Restore(stage)` naming
+the stage the caller must undo; waking from `Lock` reports `Restore(Lock)` but
+never unlocks, because the lock UI owns unlocking. Releasing an inhibitor does
+not move the chain or reset the inactivity clock, so a chain held past its
+deadline catches up on the next poll. The suspend/resume cycle is T-12.5a; the
+settingsd keys are T-12.5b.
 
 ## logind integration
 
