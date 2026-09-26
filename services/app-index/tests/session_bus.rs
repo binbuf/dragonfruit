@@ -12,10 +12,18 @@ use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 
-use dragonfruit_app_index::dbus::{AppIndex1, DBUS_NAME, DBUS_PATH, INTERFACE};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+
+use dragonfruit_app_index::dbus::{
+    AppIndex1, StatusNotifierWatcher, DBUS_NAME, DBUS_PATH, INTERFACE, WATCHER_INTERFACE,
+    WATCHER_NAME, WATCHER_PATH,
+};
 use dragonfruit_app_index::icons::IconTheme;
 use dragonfruit_app_index::index::AppIndex;
+use dragonfruit_app_index::tray::ITEM_PATH;
 use zbus::blocking::Connection;
+use zbus::zvariant::{ObjectPath, OwnedValue, Value};
 
 /// A private session bus that lives exactly as long as the test.
 struct PrivateBus {
@@ -142,6 +150,157 @@ fn serve_parts(bus: &PrivateBus, fixture: &Fixture) -> (Connection, AppIndex1) {
         .build()
         .expect("build the service connection");
     (service, object)
+}
+
+/// Serve the fixture index plus the StatusNotifierWatcher as the daemon does.
+fn serve_tray(bus: &PrivateBus, fixture: &Fixture) -> (Connection, AppIndex1) {
+    let index = AppIndex::from_dirs([fixture.apps()]);
+    let theme = IconTheme::from_roots([fixture.icons()], ["hicolor".to_owned()], Vec::new());
+    let object = AppIndex1::from_index(index, theme);
+    let watcher = StatusNotifierWatcher::over(object.tray().clone());
+    let service = zbus::blocking::connection::Builder::address(bus.address.as_str())
+        .expect("valid bus address")
+        .name(DBUS_NAME)
+        .expect("valid well-known name")
+        .serve_at(DBUS_PATH, object.clone())
+        .expect("serve the app index interface")
+        .serve_at(WATCHER_PATH, watcher)
+        .expect("serve the tray watcher")
+        .build()
+        .expect("build the service connection");
+    service
+        .request_name(WATCHER_NAME)
+        .expect("own the StatusNotifierWatcher name");
+    (service, object)
+}
+
+/// A mock StatusNotifierItem a tray app would serve.
+struct MockItem;
+
+#[zbus::interface(name = "org.kde.StatusNotifierItem")]
+impl MockItem {
+    #[zbus(property)]
+    fn id(&self) -> String {
+        "mock-item".to_owned()
+    }
+
+    #[zbus(property)]
+    fn title(&self) -> String {
+        "Mock Tray".to_owned()
+    }
+
+    #[zbus(property)]
+    fn status(&self) -> String {
+        "Active".to_owned()
+    }
+
+    #[zbus(property)]
+    fn icon_name(&self) -> String {
+        "firefox".to_owned()
+    }
+
+    #[zbus(property)]
+    fn item_is_menu(&self) -> bool {
+        true
+    }
+
+    #[zbus(property)]
+    fn menu(&self) -> ObjectPath<'static> {
+        ObjectPath::try_from("/MenuBar").expect("valid path")
+    }
+
+    fn activate(&self, _x: i32, _y: i32) {}
+
+    fn secondary_activate(&self, _x: i32, _y: i32) {}
+
+    fn context_menu(&self, _x: i32, _y: i32) {}
+}
+
+/// The menu-event log a mock tray app records.
+type EventLog = Arc<Mutex<Vec<(i32, String)>>>;
+
+/// A mock `com.canonical.dbusmenu` object the item's `Menu` points at.
+struct MockMenu {
+    events: EventLog,
+}
+
+#[zbus::interface(name = "com.canonical.dbusmenu")]
+impl MockMenu {
+    fn about_to_show(&self, _id: i32) -> bool {
+        true
+    }
+
+    fn get_layout(&self, _parent: i32, _depth: i32, _names: Vec<String>) -> (u32, OwnedValue) {
+        (1, mock_menu_layout())
+    }
+
+    fn event(&self, id: i32, event_id: String, _data: OwnedValue, _timestamp: u32) -> bool {
+        self.events.lock().unwrap().push((id, event_id));
+        true
+    }
+}
+
+/// The layout a mock menu returns: a clickable row plus a separator.
+fn mock_menu_layout() -> OwnedValue {
+    let mut row = HashMap::new();
+    row.insert(
+        "label".to_owned(),
+        OwnedValue::try_from(Value::from("Show Window")).unwrap(),
+    );
+    row.insert(
+        "enabled".to_owned(),
+        OwnedValue::try_from(Value::from(true)).unwrap(),
+    );
+    let row = OwnedValue::try_from(Value::from((1i32, row, Vec::<OwnedValue>::new()))).unwrap();
+
+    let mut separator = HashMap::new();
+    separator.insert(
+        "type".to_owned(),
+        OwnedValue::try_from(Value::from("separator")).unwrap(),
+    );
+    let separator =
+        OwnedValue::try_from(Value::from((2i32, separator, Vec::<OwnedValue>::new()))).unwrap();
+
+    OwnedValue::try_from(Value::from((
+        0i32,
+        HashMap::<String, OwnedValue>::new(),
+        vec![row, separator],
+    )))
+    .unwrap()
+}
+
+/// Stand up a mock tray app on `bus`, serve its item and menu under `name`,
+/// and register it with the watcher. Returns the mock connection and the
+/// recorded menu-event log.
+fn mock_tray(bus: &PrivateBus, name: &str) -> (Connection, EventLog) {
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let menu = MockMenu {
+        events: events.clone(),
+    };
+    let app = zbus::blocking::connection::Builder::address(bus.address.as_str())
+        .expect("valid bus address")
+        .name(name)
+        .expect("valid well-known name")
+        .serve_at(ITEM_PATH, MockItem)
+        .expect("serve the mock item")
+        .serve_at("/MenuBar", menu)
+        .expect("serve the mock menu")
+        .build()
+        .expect("build the mock app connection");
+    let registered: bool = app
+        .call_method(
+            Some(WATCHER_NAME),
+            WATCHER_PATH,
+            Some(WATCHER_INTERFACE),
+            "RegisterStatusNotifierItem",
+            &(name,),
+        )
+        .expect("call RegisterStatusNotifierItem")
+        .body()
+        .deserialize()
+        .expect("registration reply");
+    assert!(registered);
+    (app, events)
 }
 
 fn call<T: serde::de::DeserializeOwned + zbus::zvariant::Type>(
@@ -537,4 +696,111 @@ fn an_unresolved_window_is_registered_by_its_raw_identity() {
     let (_, resolved, unresolved): (u32, u64, u64) = call(&client, "Stats", ()).unwrap();
     assert_eq!(resolved, 0);
     assert_eq!(unresolved, 0);
+}
+
+// T-14.3: a mock tray app registers with the watcher and its item's themed
+// icon, menu layout, and menu events round-trip through app-index.
+#[test]
+fn a_mock_tray_item_registers_and_its_menu_round_trips() {
+    let bus = PrivateBus::start();
+    let fixture = Fixture::new("tray");
+    fixture.seed();
+    let _service = serve_tray(&bus, &fixture);
+    let client = bus.connect();
+
+    // No items yet.
+    assert_eq!(
+        json(&call::<String>(&client, "TrayNames", ()).unwrap()),
+        json("[]")
+    );
+
+    let (_app, events) = mock_tray(&bus, "org.example.MockTray");
+
+    // The registration reached the registry and the item resolves fresh.
+    let names = json(&call::<String>(&client, "TrayNames", ()).unwrap());
+    assert_eq!(names[0], "org.example.MockTray");
+
+    let items = json(&call::<String>(&client, "TrayItems", ()).unwrap());
+    assert_eq!(items.as_array().unwrap().len(), 1);
+    let item = &items[0];
+    assert_eq!(item["name"], "org.example.MockTray");
+    assert_eq!(item["title"], "Mock Tray");
+    assert_eq!(item["iconName"], "firefox");
+    assert_eq!(item["itemIsMenu"], true);
+    assert_eq!(item["menuPath"], "/MenuBar");
+    assert!(
+        item["iconPath"]
+            .as_str()
+            .unwrap()
+            .ends_with("hicolor/48x48/apps/firefox.png"),
+        "iconPath was {}",
+        item["iconPath"]
+    );
+
+    // The item's DBusMenu projects to the design-system row shape.
+    let menu = json(&call::<String>(&client, "TrayMenu", ("org.example.MockTray",)).unwrap());
+    assert_eq!(menu.as_array().unwrap().len(), 2);
+    assert_eq!(menu[0]["label"], "Show Window");
+    assert_eq!(menu[0]["type"], "item");
+    assert_eq!(menu[0]["id"], 1);
+    assert_eq!(menu[1]["type"], "separator");
+
+    // Clicking a row is forwarded to the tray app as `clicked`.
+    assert!(call::<bool>(&client, "TrayMenuEvent", ("org.example.MockTray", 1i32)).unwrap());
+    assert_eq!(*events.lock().unwrap(), vec![(1, "clicked".to_owned())]);
+
+    // An unknown item/menu is an empty result, not an error.
+    assert_eq!(
+        json(&call::<String>(&client, "TrayMenu", ("org.example.Absent",)).unwrap()),
+        json("[]")
+    );
+    assert!(!call::<bool>(&client, "TrayMenuEvent", ("org.example.Absent", 1i32)).unwrap());
+    assert!(!call::<bool>(&client, "TrayActivate", ("org.example.Absent", "activate")).unwrap());
+}
+
+// T-14.3: a path-only registration is namespaced by the caller.
+#[test]
+fn a_path_registration_is_namespaced_by_the_sender() {
+    let bus = PrivateBus::start();
+    let fixture = Fixture::new("tray-path");
+    fixture.seed();
+    let _service = serve_tray(&bus, &fixture);
+    let client = bus.connect();
+
+    // A path registration uses the caller's unique name plus the path.
+    let app = zbus::blocking::connection::Builder::address(bus.address.as_str())
+        .unwrap()
+        .serve_at("/SelfItem", MockItem)
+        .unwrap()
+        .serve_at(
+            "/MenuBar",
+            MockMenu {
+                events: Arc::new(Mutex::new(Vec::new())),
+            },
+        )
+        .unwrap()
+        .build()
+        .unwrap();
+    let registered: bool = app
+        .call_method(
+            Some(WATCHER_NAME),
+            WATCHER_PATH,
+            Some(WATCHER_INTERFACE),
+            "RegisterStatusNotifierItem",
+            &("/SelfItem",),
+        )
+        .unwrap()
+        .body()
+        .deserialize()
+        .unwrap();
+    assert!(registered);
+
+    let names = json(&call::<String>(&client, "TrayNames", ()).unwrap());
+    let name = names[0].as_str().unwrap();
+    assert!(
+        name.starts_with(':') && name.ends_with(":/SelfItem"),
+        "{name}"
+    );
+    let items = json(&call::<String>(&client, "TrayItems", ()).unwrap());
+    assert_eq!(items[0]["path"], "/SelfItem");
 }

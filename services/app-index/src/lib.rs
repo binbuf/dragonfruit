@@ -21,13 +21,18 @@
 //! * [`watch`] — the inotify directory monitor that keeps the index live.
 //! * [`subscription`] — the pure subscriber table and coalescing windows that
 //!   turn a burst of changes into one signal per consumer (T-14.1c).
-//! * [`dbus`] — the `org.dragonfruit.AppIndex1` interface and its `run`.
+//! * [`tray`] — the pure StatusNotifier/AppIndicator registry and DBusMenu
+//!   projection (T-14.3): registration normalization and the design-system
+//!   menu shape the shell renders.
+//! * [`dbus`] — the `org.dragonfruit.AppIndex1` interface and its `run`, plus
+//!   the `org.kde.StatusNotifierWatcher` that feeds the tray registry.
 
 pub mod dbus;
 pub mod icons;
 pub mod index;
 pub mod registry;
 pub mod subscription;
+pub mod tray;
 pub mod view;
 pub mod watch;
 
@@ -38,6 +43,7 @@ pub use index::{
 };
 pub use registry::{ActivityEvent, ActivityKind, LaunchRegistry, RunningApp};
 pub use subscription::{ChangeKind, ChangeNotice, Interests, Subscriptions, COALESCE_WINDOW_MS};
+pub use tray::{MenuNode, MenuNodeType, Registration, TrayRegistry};
 pub use view::{record_json, records_json, DEFAULT_ICON_SIZE};
 
 #[cfg(test)]

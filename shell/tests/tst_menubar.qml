@@ -37,6 +37,7 @@ Item {
         SignalSpy { id: openedSpy; signalName: "appMenuOpened" }
         SignalSpy { id: closedSpy; signalName: "appMenuClosed" }
         SignalSpy { id: triggeredSpy; signalName: "appMenuTriggered" }
+        SignalSpy { id: traySpy; signalName: "trayMenuTriggered" }
 
         function make(component, props) {
             var obj = createTemporaryObject(component, stage, props || {});
@@ -913,6 +914,51 @@ Item {
             app.activate(3);
             compare(triggeredSpy.count, 1);
             compare(triggeredSpy.signalArguments[0][2].action, "hide-others");
+        }
+
+        // -- StatusNotifier tray items (T-14.3) -----------------------------
+
+        // A third-party tray item renders in the same status row as the
+        // first-party items, and clicking it opens its DBusMenu; a chosen row
+        // raises the trigger with the item's registered name and DBusMenu id.
+        function test_tray_item_renders_and_opens_its_menu() {
+            var bar = make(menuBarComponent, {
+                statusItems: [
+                    { id: "tray:org.example.Mock", icon: "application",
+                      iconSource: "/tmp/df-tray-mock.png",
+                      accessibleName: "Mock Tray", available: true }
+                ]
+            });
+            var slot = bar.statusItemFor("tray:org.example.Mock");
+            verify(slot !== null);
+            compare(slot.visible, true);
+            compare(slot.accessibleName, "Mock Tray");
+
+            // The shell sets `trayMenu` from app-index, then opens it.
+            bar.trayMenu = [
+                { id: 1, type: "item", label: "Show Window", enabled: true },
+                { id: 9, type: "separator", label: "" },
+                { id: 5, type: "submenu", label: "Tools", enabled: true,
+                  submenu: [ { id: 6, type: "item", label: "Preferences" } ] }
+            ];
+            traySpy.target = bar;
+            traySpy.clear();
+            bar.openTrayMenu("org.example.Mock");
+            verify(bar.trayMenuOpen);
+            var menu = findChild(bar, "trayContextMenu");
+            verify(menu !== null);
+            verify(menu.open);
+            compare(menu.model.length, 3);
+
+            menu.activate(0);
+            compare(traySpy.count, 1);
+            compare(traySpy.signalArguments[0][0], "org.example.Mock");
+            compare(traySpy.signalArguments[0][1], 1);
+
+            // Escape/close collapses the tray menu.
+            bar.closeTrayMenu();
+            verify(!bar.trayMenuOpen);
+            verify(!menu.open);
         }
     }
 }

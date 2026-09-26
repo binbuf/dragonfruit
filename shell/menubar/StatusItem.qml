@@ -14,6 +14,10 @@ Item {
 
     property string itemId: ""
     property string icon: ""
+    // A file-backed icon (a StatusNotifier tray item's themed icon); when set
+    // it is rendered instead of the named `icon` glyph, so third-party items
+    // get the same slot treatment as first-party ones (T-14.3).
+    property url iconSource: ""
     property string label: ""
     property string accessibleName: ""
     property bool available: true
@@ -56,12 +60,23 @@ Item {
 
         StatusGlyph {
             id: glyph
-            visible: root.icon.length > 0
+            visible: root.icon.length > 0 && root.iconSource.toString().length === 0
             name: root.icon
             color: root.selected ? Theme.color.accent : root.tint
             backgroundColor: root.backgroundColor
             size: Theme.controls.menuBar.iconSize
             level: root.level
+            anchors.verticalCenter: parent.verticalCenter
+        }
+
+        Image {
+            id: iconImage
+            visible: root.iconSource.toString().length > 0
+            source: root.iconSource
+            sourceSize.width: Theme.controls.menuBar.iconSize
+            sourceSize.height: Theme.controls.menuBar.iconSize
+            fillMode: Image.PreserveAspectFit
+            smooth: true
             anchors.verticalCenter: parent.verticalCenter
         }
 
