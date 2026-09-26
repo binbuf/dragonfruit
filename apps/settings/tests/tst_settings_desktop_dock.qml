@@ -34,6 +34,7 @@ Item {
             Settings.set("dock.animateOpening", true);
             Settings.set("dock.showIndicators", true);
             Settings.set("dock.showRecentApps", false);
+            Settings.set("menu.global", true);
         }
 
         function make() {
@@ -170,6 +171,22 @@ Item {
             compare(pane.animateOpeningToggle.checked, false);
             compare(pane.showIndicatorsToggle.checked, false);
             compare(pane.showRecentAppsToggle.checked, true);
+        }
+
+        function test_global_menu_toggle_applies_and_converges() {
+            var shell = make();
+            var pane = paneOf(shell);
+
+            compare(pane.menuGroup.title, "Menu Bar");
+            compare(pane.globalMenuToggle.checked, true);
+
+            pane.globalMenuToggle.toggle();
+            compare(Settings.values["menu.global"], false);
+            compare(pane.globalMenuToggle.checked, false);
+
+            // An external settingsd change flows back into the control.
+            Settings.set("menu.global", true);
+            compare(pane.globalMenuToggle.checked, true);
         }
 
         function test_external_change_converges_for_toggles() {

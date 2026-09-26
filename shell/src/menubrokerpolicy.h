@@ -39,3 +39,27 @@ QVariantList fixedApplicationMenu(const QString &appName, const AppMenuLiveState
 // label. Used when the shell consumes a broker-resolved published menu.
 QVariantList applyAppMenuLiveState(const QVariantList &published,
                                    const AppMenuLiveState &state);
+
+// A publishable application accelerator (T-14.2b): the opaque action the owner
+// handles and the chord that triggers it. The chord keeps the published
+// spelling (`Super+H`, `Ctrl+Super+F`), which the compositor's keymap parser
+// accepts.
+struct MenuAccelerator {
+    QString action;
+    QString chord;
+};
+
+// Flatten a menu row list into accelerators, recursing through submenus. Rows
+// without both a `shortcut` and an `action` do not register. Mirrors the
+// broker's `accelerators::extract` so the two can never disagree about which
+// rows are actionable. Pure and unit-tested (tst_dockcore).
+QList<MenuAccelerator> menuAccelerators(const QVariantList &rows);
+
+// The full table for the focused app: the fixed application menu first, then
+// the app's own top-level menus.
+QList<MenuAccelerator> publishedAccelerators(const QVariantList &applicationMenuItems,
+                                             const QVariantList &appMenuModel);
+
+// Serialize accelerators into the `df_toplevel_manager.set_app_accelerators`
+// wire form: one `action<TAB>chord` per line, empty for no accelerators.
+QString acceleratorWireTable(const QList<MenuAccelerator> &accelerators);

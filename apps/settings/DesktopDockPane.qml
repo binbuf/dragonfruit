@@ -58,6 +58,8 @@ Item {
     property alias showIndicatorsToggle: showIndicatorsToggle
     property alias showRecentAppsToggle: showRecentAppsToggle
     property alias dockGroup: dockGroup
+    property alias globalMenuToggle: globalMenuToggle
+    property alias menuGroup: menuGroup
 
     implicitWidth: 480
     implicitHeight: content.implicitHeight
@@ -217,6 +219,26 @@ Item {
                 }
             }
         }
+
+        // T-14.2b: the global application-menu toggle. On macOS this lives
+        // under "Menu Bar"; the dedicated pane is T-15.9b, so the one control
+        // ships here in its own group until then.
+        SettingsGroup {
+            id: menuGroup
+            width: parent.width
+            title: qsTr("Menu Bar")
+
+            SettingsRow {
+                width: parent.width
+                label: qsTr("Show application menus in the menu bar")
+                showSeparator: false
+                controlData: Toggle {
+                    id: globalMenuToggle
+                    text: ""
+                    onToggled: (checked) => Settings.set("menu.global", checked)
+                }
+            }
+        }
     }
 
     // Two-way bindings: the controls write on interaction; these keep them in
@@ -271,5 +293,10 @@ Item {
         target: showRecentAppsToggle
         property: "checked"
         value: Settings.values["dock.showRecentApps"] === true
+    }
+    Binding {
+        target: globalMenuToggle
+        property: "checked"
+        value: Settings.values["menu.global"] !== false
     }
 }

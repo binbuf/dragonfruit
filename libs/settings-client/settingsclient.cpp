@@ -95,7 +95,7 @@ void SettingsClient::setAvailable(bool available)
 
 QVariantMap settingsSchemaDefaults()
 {
-    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 5). Values are
+    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 6). Values are
     // typed exactly as the schema declares: d, x, b, s, as.
     QVariantMap values;
     values.insert(QStringLiteral("dock.size"), 0.5);
@@ -128,6 +128,7 @@ QVariantMap settingsSchemaDefaults()
     values.insert(QStringLiteral("idle.blank"), qlonglong(300));
     values.insert(QStringLiteral("idle.lock"), qlonglong(600));
     values.insert(QStringLiteral("idle.suspend"), qlonglong(0));
+    values.insert(QStringLiteral("menu.global"), true);
     return values;
 }
 

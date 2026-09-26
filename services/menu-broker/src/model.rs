@@ -38,6 +38,8 @@ use std::collections::BTreeMap;
 
 use serde_json::{json, Value};
 
+use crate::accelerators::{self, Accelerator, AcceleratorTable, Chord, Dispatch};
+
 /// The tier an app's menu resolved through.
 pub const TIER_NATIVE: &str = "native";
 /// DBusMenu/AppMenu (bridge lands in T-14.4).
@@ -376,6 +378,7 @@ pub fn fixed_application_menu(
 pub struct Broker {
     publishers: BTreeMap<String, PublishedModel>,
     visibility: Visibility,
+    accelerators: AcceleratorTable,
     revision: u64,
 }
 
@@ -391,6 +394,7 @@ impl Broker {
         Broker {
             publishers: BTreeMap::new(),
             visibility: Visibility::new(),
+            accelerators: AcceleratorTable::new(),
             revision: 0,
         }
     }
@@ -421,16 +425,20 @@ impl Broker {
             return false;
         };
         let changed = self.publishers.get(app_id) != Some(&model);
+        let table = accelerators::extract(&model);
         self.publishers.insert(app_id.to_owned(), model);
+        self.accelerators.register(app_id, table);
         if changed {
             self.revision += 1;
         }
         changed
     }
 
-    /// Remove an app's published model. Returns whether one was present.
+    /// Remove an app's published model and its accelerators. Returns whether
+    /// one was present.
     pub fn withdraw(&mut self, app_id: &str) -> bool {
         let removed = self.publishers.remove(app_id).is_some();
+        self.accelerators.clear(app_id);
         if removed {
             self.revision += 1;
         }
@@ -440,10 +448,51 @@ impl Broker {
     /// Set the focused app. Returns whether the state changed.
     pub fn set_focused(&mut self, app_id: &str) -> bool {
         let changed = self.visibility.set_focused(app_id);
+        self.accelerators.set_focused(app_id);
         if changed {
             self.revision += 1;
         }
         changed
+    }
+
+    /// Replace the reserved system chords (a JSON array of chord strings). The
+    /// shell declares them so the broker never dispatches a chord the
+    /// compositor owns. Malformed entries are skipped. Returns `false` only
+    /// when the payload is not an array.
+    pub fn set_system_accelerators(&mut self, payload: &str) -> bool {
+        let Ok(value) = serde_json::from_str::<Value>(payload) else {
+            return false;
+        };
+        let Some(array) = value.as_array() else {
+            return false;
+        };
+        let chords: Vec<Chord> = array
+            .iter()
+            .filter_map(Value::as_str)
+            .filter_map(Chord::parse)
+            .collect();
+        if self.accelerators.set_system(chords) {
+            self.revision += 1;
+        }
+        true
+    }
+
+    /// One app's registered accelerators, in publication order.
+    pub fn accelerators_for(&self, app_id: &str) -> &[Accelerator] {
+        self.accelerators.for_app(app_id)
+    }
+
+    /// The focused app's registered accelerators (empty with no focus).
+    pub fn focused_accelerators(&self) -> &[Accelerator] {
+        self.accelerators.focused_accelerators()
+    }
+
+    /// Resolve a chord spec against the focused app, system chords first.
+    pub fn resolve_accelerator(&self, spec: &str) -> Dispatch {
+        match Chord::parse(spec) {
+            Some(chord) => self.accelerators.resolve(&chord),
+            None => Dispatch::None,
+        }
     }
 
     /// Replace the app window-state list from a JSON array. Returns false on a
@@ -510,12 +559,21 @@ impl Broker {
         } else {
             Tier::None
         };
+        // T-14.2b: the focus-scoped accelerator table the shell registers with
+        // the compositor while this window is focused.
+        let accelerators: Vec<Value> = self
+            .accelerators
+            .for_app(app_id)
+            .iter()
+            .map(Accelerator::to_json)
+            .collect();
         json!({
             "appId": app_id,
             "appName": app_name,
             "tier": tier.as_str(),
             "applicationMenuItems": application_menu_items,
             "menus": menus,
+            "accelerators": accelerators,
         })
     }
 
@@ -541,6 +599,7 @@ impl Broker {
                 self.visibility.hide_verbs()
             ),
             "menus": [],
+            "accelerators": [],
         })
     }
 }
@@ -762,6 +821,64 @@ mod tests {
         // The good model is intact.
         assert_eq!(broker.resolve("a")["appName"], "Settings");
         assert!(!broker.publish("", settings_fixture()));
+    }
+
+    #[test]
+    fn a_published_model_registers_its_accelerators_in_the_resolve_view() {
+        let mut broker = Broker::new();
+        broker.publish("org.dragonfruit.Settings", settings_fixture());
+        broker.set_focused("org.dragonfruit.Settings");
+        let resolved = broker.resolve("org.dragonfruit.Settings");
+        let accelerators = resolved["accelerators"].as_array().unwrap();
+        let pairs: Vec<(&str, &str)> = accelerators
+            .iter()
+            .map(|a| (a["action"].as_str().unwrap(), a["chord"].as_str().unwrap()))
+            .collect();
+        assert_eq!(
+            pairs,
+            [
+                ("settings", "Super+,"),
+                ("hide", "Super+H"),
+                ("hide-others", "Super+Alt+H"),
+                ("quit", "Super+Q"),
+            ]
+        );
+    }
+
+    #[test]
+    fn dispatch_is_focus_scoped_and_system_wins() {
+        let mut broker = Broker::new();
+        broker.publish("org.dragonfruit.Settings", settings_fixture());
+        broker.publish("other", settings_fixture());
+        broker.set_focused("org.dragonfruit.Settings");
+        assert!(matches!(
+            broker.resolve_accelerator("Super+Q"),
+            Dispatch::Application { ref app_id, ref action }
+                if app_id == "org.dragonfruit.Settings" && action == "quit"
+        ));
+        assert!(broker.set_system_accelerators(r#"["Super+Q"]"#));
+        assert_eq!(broker.resolve_accelerator("Super+Q"), Dispatch::System);
+        broker.set_focused("other");
+        assert!(matches!(
+            broker.resolve_accelerator("Super+Q"),
+            Dispatch::System
+        ));
+        broker.set_system_accelerators("[]");
+        assert!(matches!(
+            broker.resolve_accelerator("Super+,"),
+            Dispatch::Application { ref app_id, .. } if app_id == "other"
+        ));
+        assert_eq!(broker.resolve_accelerator("Super+Nope"), Dispatch::None);
+    }
+
+    #[test]
+    fn withdrawing_an_app_clears_its_accelerators() {
+        let mut broker = Broker::new();
+        broker.publish("a", settings_fixture());
+        broker.set_focused("a");
+        assert!(!broker.focused_accelerators().is_empty());
+        broker.withdraw("a");
+        assert!(broker.focused_accelerators().is_empty());
     }
 
     #[test]

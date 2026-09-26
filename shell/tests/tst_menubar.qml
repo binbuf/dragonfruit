@@ -168,6 +168,28 @@ Item {
             compare(bar.appMenuAt(4), null);
         }
 
+        function test_global_menu_toggle_hides_app_menus() {
+            var fixed = fixedMenus();
+            var bar = make(menuBarComponent, {
+                appName: "Safari",
+                appMenuModel: sampleModel(),
+                systemMenuItems: fixed.systemMenuItems,
+                applicationMenuItems: fixed.applicationMenuItems,
+                globalMenuEnabled: false
+            });
+            // T-14.2b: off suppresses the exported menus only; the fixed system
+            // and application menus stay, so the empty desktop still reads.
+            compare(bar.appMenuAt(0).showLogo, true);
+            compare(bar.appMenuAt(1).title, "Safari");
+            compare(bar.appMenuAt(2), null);
+
+            // Turning the toggle back on restores the app's own menus.
+            bar.globalMenuEnabled = true;
+            compare(bar.appMenuAt(2).title, "File");
+            compare(bar.appMenuAt(3).title, "Edit");
+            compare(bar.appMenuAt(4), null);
+        }
+
         function test_menus_and_status_are_on_opposite_sides() {
             var bar = make(menuBarComponent, {
                 width: 800,

@@ -95,9 +95,13 @@ const SETTINGS_FIXTURE: &str = r#"{
         { "label": "Quit Settings", "shortcut": "Super+Q", "action": "quit" }
     ],
     "menus": [
-        { "title": "File", "items": [ { "label": "Close Window", "action": "close" } ] },
-        { "title": "Edit", "items": [ { "label": "Undo", "action": "edit.undo" } ] },
-        { "title": "View", "items": [ { "label": "Enter Full Screen", "action": "fullscreen" } ] },
+        { "title": "File", "items": [
+            { "label": "Close Window", "shortcut": "Super+W", "action": "close" } ] },
+        { "title": "Edit", "items": [
+            { "label": "Undo", "shortcut": "Super+Z", "action": "edit.undo" },
+            { "label": "Redo", "shortcut": "Super+Shift+Z", "action": "edit.redo" } ] },
+        { "title": "View", "items": [
+            { "label": "Enter Full Screen", "shortcut": "Ctrl+Super+F", "action": "fullscreen" } ] },
         { "title": "Window", "items": [ { "label": "Minimize", "action": "minimize" } ] },
         { "title": "Help", "items": [ { "label": "Settings Help", "action": "help" } ] }
     ]
@@ -192,6 +196,55 @@ fn the_empty_desktop_resolves_to_the_files_fixed_menu() {
     let app_menu = resolved["applicationMenuItems"].as_array().unwrap();
     assert_eq!(app_menu[7]["label"], "Quit Files");
     assert!(resolved["menus"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn registrations_are_focus_scoped_and_dispatch_over_the_bus() {
+    let bus = PrivateBus::start();
+    let _service = serve(&bus);
+    let client = bus.connect();
+
+    call::<bool>(
+        &client,
+        "Publish",
+        ("org.dragonfruit.Settings", SETTINGS_FIXTURE),
+    )
+    .unwrap();
+    call::<bool>(&client, "Publish", ("org.example.Other", SETTINGS_FIXTURE)).unwrap();
+    call::<bool>(&client, "SetFocusedApp", ("org.dragonfruit.Settings",)).unwrap();
+
+    // The focused app's accelerators are exposed for the shell to register.
+    let accelerators = json(&call::<String>(&client, "FocusedAccelerators", ()).unwrap());
+    let pairs: Vec<(&str, &str)> = accelerators
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|a| (a["action"].as_str().unwrap(), a["chord"].as_str().unwrap()))
+        .collect();
+    assert!(pairs.contains(&("hide", "Super+H")));
+    assert!(pairs.contains(&("edit.undo", "Super+Z")));
+    assert!(pairs.contains(&("fullscreen", "Super+Control+F")));
+
+    // Dispatch routes to the focused app.
+    let dispatched = json(&call::<String>(&client, "Dispatch", ("Super+Q",)).unwrap());
+    assert_eq!(dispatched["kind"], "application");
+    assert_eq!(dispatched["appId"], "org.dragonfruit.Settings");
+    assert_eq!(dispatched["action"], "quit");
+
+    // Focus the other app: the same chord now resolves to its action.
+    call::<bool>(&client, "SetFocusedApp", ("org.example.Other",)).unwrap();
+    let dispatched = json(&call::<String>(&client, "Dispatch", ("Super+Q",)).unwrap());
+    assert_eq!(dispatched["appId"], "org.example.Other");
+
+    // A reserved system chord never dispatches to an app.
+    assert!(call::<bool>(&client, "SetSystemAccelerators", (r#"["Super+Q"]"#,)).unwrap());
+    let dispatched = json(&call::<String>(&client, "Dispatch", ("Super+Q",)).unwrap());
+    assert_eq!(dispatched["kind"], "system");
+
+    // No focus: nothing to dispatch (a non-reserved chord).
+    call::<bool>(&client, "SetFocusedApp", ("",)).unwrap();
+    let dispatched = json(&call::<String>(&client, "Dispatch", ("Super+W",)).unwrap());
+    assert_eq!(dispatched["kind"], "none");
 }
 
 #[test]

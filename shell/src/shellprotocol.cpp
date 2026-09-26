@@ -1624,6 +1624,20 @@ void ShellProtocol::setLaunchOrigin(const QString &appId, int x, int y, int widt
         wl_display_flush(m_display);
 }
 
+void ShellProtocol::setAppAccelerators(const QString &appId, const QString &accelerators)
+{
+    // T-14.2b: mirror the menu-broker's focus-scoped accelerator table. The
+    // compositor only matches an app's table while it is focused and its system
+    // shortcuts still win. Additive in v7; older compositors ignore it.
+    if (m_manager && m_managerVersion >= 7) {
+        const QByteArray app = appId.toUtf8();
+        const QByteArray table = accelerators.toUtf8();
+        df_toplevel_manager_set_app_accelerators(m_manager, app.constData(), table.constData());
+    }
+    if (m_display)
+        wl_display_flush(m_display);
+}
+
 int ShellProtocol::displayFd() const
 {
     return m_display ? wl_display_get_fd(m_display) : -1;
@@ -2995,9 +3009,16 @@ void ShellProtocol::onManagerProgress(void *data, df_toplevel_manager *, const c
                                 QString::fromUtf8(action ? action : ""));
 }
 
-void ShellProtocol::onManagerAppAccelerator(void *, df_toplevel_manager *, const char *,
-                                            const char *, const char *, uint32_t)
+void ShellProtocol::onManagerAppAccelerator(void *data, df_toplevel_manager *, const char *appId,
+                                            const char *action, const char *source, uint32_t serial)
 {
+    auto *self = static_cast<ShellProtocol *>(data);
+    // T-14.2b: the compositor matched a focus-scoped application accelerator
+    // and hands it back; the owning app executes `action`. The shell is the
+    // router, not the executor.
+    emit self->appAccelerator(QString::fromUtf8(appId ? appId : ""),
+                              QString::fromUtf8(action ? action : ""),
+                              QString::fromUtf8(source ? source : ""), serial);
 }
 
 void ShellProtocol::onManagerScreenshotSaved(void *data, df_toplevel_manager *, const char *path)

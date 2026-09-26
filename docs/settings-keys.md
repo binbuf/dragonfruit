@@ -51,6 +51,7 @@ freezes the v1 key set.
 | `idle.blank` | x | 300 | 0–86400 s | apps/settings | session/idle engine | Seconds of inactivity before the screen blanks; 0 disables the stage. |
 | `idle.lock` | x | 600 | 0–86400 s | apps/settings | session/idle engine | Seconds of inactivity before the session locks; 0 disables the stage. |
 | `idle.suspend` | x | 0 | 0–86400 s | apps/settings | session/idle engine, session/suspend | Seconds of inactivity before the session suspends; 0 disables the stage. |
+| `menu.global` | b | true | | apps/settings | shell/MenuBar, services/menu-broker | Show the focused app's menus in the global menu bar; off restores local app menus. |
 
 ## Consumer map
 
@@ -65,6 +66,7 @@ freezes the v1 key set.
 | shell/display forwarder (`shell/src/displayspolicy.*`, `shell/src/shellcontroller.cpp`) | `display.scale`, `display.rotation`, `display.brightness` — forwarded to the compositor as `df_output.set_scale` / `df_output.set_transform` / `df_output.set_brightness` |
 | compositor workspace model | `workspaces.count` (no live owner yet; follow-up) |
 | `session/idle engine` (`services/session/src/idle.rs`, ADR [0070](design/adr/0070-idle-timer-engine-and-policy.md)) | `idle.dim`, `idle.blank`, `idle.lock`, `idle.suspend` via `IdlePolicy::from_keys` (the production reader is the future idle service; T-12.5b registers the keys and freezes the contract) |
+| `shell/MenuBar` (`shell/src/shellcontroller.cpp`, the `menu.global` toggle, T-14.2b) | `menu.global` — off suppresses the focused app's exported menus in the bar |
 
 `dock.minimizeIntoTileIcon` is Dock entry visibility, not a compositor
 key — it is not forwarded over the private protocol. `appearance.accent`

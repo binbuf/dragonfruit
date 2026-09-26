@@ -136,3 +136,22 @@ verbatim except for those three rows. The shell mirrors this rule in
 `shell/src/menubrokerpolicy` so the demo bar is live while the service is
 absent; the broker remains the model's owner. Actual hide/hide-others/show-all
 window operations are still to come.
+
+## Implementation note (T-14.2b)
+
+Accelerators are focus-scoped and dispatched. The broker parses each published
+row's `shortcut`/`action` into a per-app table
+(`services/menu-broker/src/accelerators.rs`), resolves only the focused app's
+chords, and always lets a reserved system chord win. `Resolve` carries the
+table; `Dispatch` resolves a chord, and `SetSystemAccelerators` declares the
+reserved set. The shell mirrors the focused app's table to the compositor over
+`df_toplevel_manager.set_app_accelerators` (protocol v7, one `action<TAB>chord`
+per line); the compositor's existing shortcut engine matches it and returns the
+existing `app_accelerator` event, which the shell routes through the same
+action seam as a menu click. The broker never installs a grab.
+
+The **toggle** is `menu.global` (settingsd schema v6, default on). When off the
+shell sets `MenuBar.globalMenuEnabled` false: the focused app's exported menus
+are suppressed and first-party apps keep their local menus, while the fixed
+system and application menus stay. Contract frozen in ADR
+[0096](adr/0096-focus-scoped-accelerators-and-global-menu-toggle.md).
