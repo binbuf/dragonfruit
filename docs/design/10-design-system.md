@@ -99,6 +99,11 @@ rules:
 - Gesture-driven transitions are **progress-based and interruptible**; a
   discrete "instant" code path is a bug (see
   [03-workspaces.md](03-workspaces.md)).
+- Dock magnification smooths the pointer with `motion.dock-magnify` (the curve
+  carries the slight overshoot) and recomputes geometry every frame from the
+  smoothed position, so it stays progress-based and interruptible. The
+  plate/margin values it feeds are dock spacing tokens, never literals. See
+  [ADR 0088](adr/0088-dock-plate-geometry-and-live-panel-rect.md).
 
 ## Quality gates
 

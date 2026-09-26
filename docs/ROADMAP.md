@@ -82,7 +82,7 @@ every task un-completable.
 | [T-11](design/tracks/11-control-center-notifications.md) | Control Center + notifications | 8 | panel, banners, OSD |
 | [T-12](design/tracks/12-session-lock-idle.md) | Session + lock + idle | 13 | real login session, lock, idle, suspend [hw], dev-session harness |
 | [T-13](design/tracks/13-portals-capture-clipboard.md) | Portals + capture + clipboard | 12 | Flatpak browser walkthrough |
-| [T-14](design/tracks/14-global-menu-app-index-compat.md) | Global menu + app index + compat | 11 | real menus, tray, DBusMenu, XDnD, zoo |
+| [T-14](design/tracks/14-global-menu-app-index-compat.md) | Global menu + app index + compat | 17 | real menus, tray, DBusMenu, XDnD, zoo; Dock feel + app management |
 | [T-15](design/tracks/15-system-services-breadth.md) | System services + Settings Waves 2–3 | 31 | Bluetooth, storage, printers, users, … |
 | [T-16](design/tracks/16-platform-polish-packaging.md) | Platform polish + packaging | 15 | multi-monitor, scaling, soak, a11y, i18n, packages [hw] |
 | [T-17](design/tracks/17-premium-gate.md) | The premium experience gate | 9 | the full loop on nested + DRM, at the visual floor |
@@ -90,7 +90,7 @@ every task un-completable.
 
 ## Work units (strict order)
 
-The 175 one-session tasks below are the executable sequence. symphony walks them in
+The 181 one-session tasks below are the executable sequence. symphony walks them in
 file order, runs each in a fresh session, verifies with `make e2e` and commits.
 The 10 `[hw]` tasks (DRM/logind, driver matrix, suspend soak, clean-VM packaging)
 are collected into the final Hardware rail phase so the nested pipeline runs to
@@ -239,7 +239,7 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 
 - [x] T100 — T-14.1a app-index identity resolution and icons → [tasks/100-t-14.1a-app-index-identity-and-icons.md](tasks/100-t-14.1a-app-index-identity-and-icons.md)
 - [x] T101 — T-14.1b app-index events, launch registry, recency → [tasks/101-t-14.1b-app-index-events-and-recency.md](tasks/101-t-14.1b-app-index-events-and-recency.md)
-- [ ] T102 — T-14.1c app-index subscription API → [tasks/102-t-14.1c-app-index-subscription.md](tasks/102-t-14.1c-app-index-subscription.md)
+- [~] T102 — T-14.1c app-index subscription API → [tasks/102-t-14.1c-app-index-subscription.md](tasks/102-t-14.1c-app-index-subscription.md) ⟵ running
 - [ ] T103 — T-14.2a menu-broker export model and fixed menu → [tasks/103-t-14.2a-menu-broker-export-and-fixed-menu.md](tasks/103-t-14.2a-menu-broker-export-and-fixed-menu.md)
 - [ ] T104 — T-14.2b menu-broker accelerators and toggle → [tasks/104-t-14.2b-menu-broker-accelerators-and-toggle.md](tasks/104-t-14.2b-menu-broker-accelerators-and-toggle.md)
 - [ ] T105 — T-14.3 StatusNotifier/AppIndicator tray → [tasks/105-t-14.3-statusnotifier-appindicator-tray.md](tasks/105-t-14.3-statusnotifier-appindicator-tray.md)
@@ -248,6 +248,27 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 - [ ] T108 — T-14.6a Strange-app zoo run and matrix → [tasks/108-t-14.6a-strange-app-zoo-run.md](tasks/108-t-14.6a-strange-app-zoo-run.md)
 - [ ] T109 — T-14.6b Strange-app zoo fixes → [tasks/109-t-14.6b-strange-app-zoo-fixes.md](tasks/109-t-14.6b-strange-app-zoo-fixes.md)
 - [ ] T110 — T-14.7 Retire interim paths → [tasks/110-t-14.7-retire-interim-paths.md](tasks/110-t-14.7-retire-interim-paths.md)
+
+## Phase 14.5 — Dock experience addendum (T-14.7a–f)
+
+> **Inserted after T-14.7 and before T-15.** Six units cut from the 2026-09
+> Dock review: plate geometry/spacing, magnification growth, motion frame
+> discipline, Trash artwork, an app-index-backed Add Application picker, and
+> external-drop identity. They run in file order immediately after T110; the
+> `a`–`f` suffixes keep the existing task numbering (and the pipeline's saved
+> state) intact. Design reference:
+> [legacy/10-dock.md](tasks/legacy/10-dock.md) ·
+> [04-shell.md](design/04-shell.md) ·
+> [10-design-system.md](design/10-design-system.md) ·
+> ADRs [0088](design/adr/0088-dock-plate-geometry-and-live-panel-rect.md) /
+> [0089](design/adr/0089-dock-app-management-picker-and-drops.md).
+
+- [ ] T110a — T-14.7a Dock plate geometry and spacing → [tasks/110a-t-14.7a-dock-plate-geometry-and-spacing.md](tasks/110a-t-14.7a-dock-plate-geometry-and-spacing.md)
+- [ ] T110b — T-14.7b Magnified plate growth and backdrop panel → [tasks/110b-t-14.7b-dock-magnified-plate-and-backdrop.md](tasks/110b-t-14.7b-dock-magnified-plate-and-backdrop.md)
+- [ ] T110c — T-14.7c Dock motion smoothness and frame discipline → [tasks/110c-t-14.7c-dock-motion-smoothness-and-frame-discipline.md](tasks/110c-t-14.7c-dock-motion-smoothness-and-frame-discipline.md)
+- [ ] T110d — T-14.7d Trash entry artwork → [tasks/110d-t-14.7d-trash-entry-artwork.md](tasks/110d-t-14.7d-trash-entry-artwork.md)
+- [ ] T110e — T-14.7e Add Application picker → [tasks/110e-t-14.7e-add-application-picker.md](tasks/110e-t-14.7e-add-application-picker.md)
+- [ ] T110f — T-14.7f Dock drag-and-drop identity and feedback → [tasks/110f-t-14.7f-dock-drag-and-drop-identity.md](tasks/110f-t-14.7f-dock-drag-and-drop-identity.md)
 
 ## Phase 15 — T-15 System services + Settings Waves 2–3
 
