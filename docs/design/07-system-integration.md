@@ -322,3 +322,36 @@ same `files-core` library — one browsing implementation, one set of semantics
 (see [09-files.md](09-files.md)). This becomes especially important for
 browsers, Electron programs, Flatpak applications, conferencing programs,
 and screen capture.
+
+### The backend service and its registration (T-13.1a)
+
+The backend is a real session-bus service (`portal/`): it owns the standard
+name `org.freedesktop.impl.portal.desktop.dragonfruit` and serves
+`/org/freedesktop/portal/desktop`, the names the portal spec's `.portal`
+descriptor uses. `xdg-desktop-portal` finds it through three installed files,
+embedded in the crate and written by `portal::data::install_into` at
+packaging time:
+
+- `dragonfruit.portal` (`{DATADIR}/xdg-desktop-portal/portals/`) — the
+  backend's D-Bus name and its `Interfaces=` list, kept in lockstep with
+  `model::BACKEND_INTERFACES`. T-13.1a ships it empty; Settings and
+  GlobalShortcuts arrive in T-13.1b and the capture interfaces follow.
+- `dragonfruit-portals.conf` (`{DATADIR}/xdg-desktop-portal/`) — the
+  `[preferred]` selection `default=dragonfruit;gtk`, read when
+  `XDG_CURRENT_DESKTOP` contains `dragonfruit`, so the generic backend covers
+  the interfaces we have not implemented yet.
+- `org.freedesktop.impl.portal.desktop.dragonfruit.service`
+  (`{DATADIR}/dbus-1/services/`) — D-Bus activation, so the frontend can
+  start the backend on demand.
+
+**The frontend's absence is a normal state.** The backend registers and
+serves whether or not `xdg-desktop-portal` is running; it only observes the
+frontend's well-known name — one probe at startup, then a live watch of
+`org.freedesktop.DBus.NameOwnerChanged` — and exposes that on the
+`org.dragonfruit.Portal1` diagnostic interface at the standard path
+(`Frontend()`, `FrontendPresent()`, `FrontendOwner()`, the `FrontendChanged`
+signal). An absent or unknown frontend never blocks session startup. The
+contract is frozen in
+[adr/0074](adr/0074-portal-backend-registration-and-frontend-degradation.md);
+`portal/tests/session_bus.rs` proves the registration and both paths on a
+private bus.

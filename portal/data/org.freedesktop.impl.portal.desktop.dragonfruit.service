@@ -1,0 +1,7 @@
+# D-Bus activation file for the Dragonfruit portal backend (T-13.1a).
+#
+# Installed under {DATADIR}/dbus-1/services/ so the xdg-desktop-portal
+# frontend (or the session bus) can start the backend on demand by name.
+[D-BUS Service]
+Name=org.freedesktop.impl.portal.desktop.dragonfruit
+Exec=/usr/bin/xdg-desktop-portal-dragonfruit
