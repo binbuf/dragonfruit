@@ -2,7 +2,7 @@
 
 ## Status
 
-accepted
+accepted — amended by [0094](0094-bundled-default-wallpaper-and-lazy-cache.md)
 
 ## Context
 
@@ -47,6 +47,9 @@ fetch instead of bundling.
   `Category:Featured pictures of nature` under timestamp-desc, downloaded at
   3840 px, when the user has not chosen a wallpaper. "Top naturescape" is this
   rule, not a heuristic — it is reproducible in a headless test from a fixture.
+  *(Amended by [0094](0094-bundled-default-wallpaper-and-lazy-cache.md): this is
+  now the Featured row's default and the fallback, not the out-of-box
+  background.)*
 - **User choice wins.** `wallpaper.source` keeps its meaning (a user-chosen
   path, owned by `apps/settings`). The provider publishes a separate resolved
   default under new additive keys (`wallpaper.provider*`, owned by
@@ -62,6 +65,14 @@ fetch instead of bundling.
 - **Placeholder while fetching.** Before the first catalogue arrives, Featured
   tiles render as grey slow-animated-gradient (shimmer) rectangles with a
   reduced-motion static variant and an accessible name.
+
+> **Amended by [0094](0094-bundled-default-wallpaper-and-lazy-cache.md).** The
+> out-of-box background is the shipped original
+> `assets/graphics/wallpapers/Default.jpg`; "fetch, never bundle" applies to
+> fetched/third-party images only. The deterministic Nature entry above becomes
+> the Featured row's default and the fallback when the shipped asset is
+> unavailable. The provider cache warms lazily on launch and eagerly via
+> `Preload` when the Wallpapers pane is open.
 
 ## Consequences
 

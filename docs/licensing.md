@@ -23,6 +23,7 @@ restrictions to track.
 | `shell/` (menu bar, Dock, Control Center, notifications, screenshot) | MIT |
 | `apps/` (Settings, Files) | MIT |
 | `assets/fonts/Inter/` (system font, embedded via `libs/system-font/`) | SIL OFL 1.1 |
+| `assets/graphics/wallpapers/Default.jpg` (shipped default wallpaper) | MIT (original project asset) |
 
 Rationale: MIT is permissive, maximises third-party adoption and
 interoperability, and keeps Dragonfruit consumable by any project —
@@ -71,21 +72,29 @@ Record any such decision here if it is ever made.
 
 ## Fetched third-party content (wallpaper)
 
-The first-run wallpaper set is **fetched at runtime from Wikimedia Commons**,
-not bundled in the package (ADR [0055](design/adr/0055-online-wallpaper-content-provider.md)).
-This is separate from the "original assets only" rule, which forbids
-reproducing Apple's artwork: Commons Featured Pictures are third-party works
-under their own licenses (public domain, CC BY, CC BY-SA, and FAL have all
-appeared in the six categories we use). Consequences:
+Two different things share this surface (ADRs
+[0055](design/adr/0055-online-wallpaper-content-provider.md) /
+[0094](design/adr/0094-bundled-default-wallpaper-and-lazy-cache.md)):
 
-- No fetched image is ever shipped in a package artifact; the cache is user
-  data under `$XDG_CACHE_HOME/dragonfruit/`.
-- Attribution (`Artist` + license name/link + file page) is displayed for the
-  current wallpaper and the tiles, and is not optional.
-- Share-alike (CC BY-SA) and FAL images are never represented as original
-  Dragonfruit work.
-- The only new dependency is a permissively-licensed HTTP client; the
-  "no GPL/AGPL dependency" rule still applies.
+- The **shipped default wallpaper**
+  (`assets/graphics/wallpapers/Default.jpg`) is our own original project asset.
+  It **is** bundled and installed to the share path; it is listed in the asset
+  table above and covered by `NOTICE` like the rest of the tree.
+- The **Featured pictures** are fetched at runtime from Wikimedia Commons and
+  are **not** bundled in the package. This is separate from the "original
+  assets only" rule, which forbids reproducing Apple's artwork: Commons
+  Featured Pictures are third-party works under their own licenses (public
+  domain, CC BY, CC BY-SA, and FAL have all appeared in the six categories we
+  use). Consequences:
+
+  - No fetched image is ever shipped in a package artifact; the cache is user
+    data under `$XDG_CACHE_HOME/dragonfruit/`.
+  - Attribution (`Artist` + license name/link + file page) is displayed for the
+    current fetched wallpaper and the tiles, and is not optional.
+  - Share-alike (CC BY-SA) and FAL images are never represented as original
+    Dragonfruit work.
+  - The only new dependency is a permissively-licensed HTTP client; the
+    "no GPL/AGPL dependency" rule still applies.
 
 ## Trademarks
 
