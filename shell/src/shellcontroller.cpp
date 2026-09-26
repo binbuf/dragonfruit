@@ -40,6 +40,7 @@
 #include "focusstatus.h"
 #include "launchfailure.h"
 #include "lockinput.h"
+#include "menubrokerpolicy.h"
 #include "notificationclient.h"
 #include "notificationmodel.h"
 #include "shellprotocol.h"
@@ -205,30 +206,6 @@ QVariantList systemMenu(const QString &userName)
                       QStringLiteral("lock-screen"));
     menu << menuEntry(QStringLiteral("Log Out %1\u2026").arg(userName),
                       QStringLiteral("Super+Shift+Q"), QStringLiteral("log-out"));
-    return menu;
-}
-
-// The fixed application menu, always right of the system menu and always
-// present (the focused app's name, or Files on the empty desktop). On macOS
-// the application itself owns these items; here the shell synthesizes the
-// standard set until the menu-broker (T-22) resolves them per app. The app's
-// exported top-level menus (File/Edit/View/…) follow this menu.
-QVariantList applicationMenu(const QString &appName)
-{
-    QVariantList menu;
-    menu << menuEntry(QStringLiteral("About %1").arg(appName), QString(),
-                      QStringLiteral("about"));
-    menu << menuEntry(QStringLiteral("Settings\u2026"), QStringLiteral("Super+,"),
-                      QStringLiteral("settings"));
-    menu << menuSeparator();
-    menu << menuEntry(QStringLiteral("Hide %1").arg(appName), QStringLiteral("Super+H"),
-                      QStringLiteral("hide"));
-    menu << menuEntry(QStringLiteral("Hide Others"), QStringLiteral("Super+Alt+H"),
-                      QStringLiteral("hide-others"));
-    menu << menuEntry(QStringLiteral("Show All"), QString(), QStringLiteral("show-all"));
-    menu << menuSeparator();
-    menu << menuEntry(QStringLiteral("Quit %1").arg(appName), QStringLiteral("Super+Q"),
-                      QStringLiteral("quit"));
     return menu;
 }
 
@@ -1429,6 +1406,8 @@ void ShellController::onStatusReport(const QByteArray &json)
 
 void ShellController::applyFocusedApp()
 {
+    if (!m_item)
+        return;
     // The application menu is always present. With no focused window the
     // desktop is Files (the macOS "Finder owns the desktop" model, see
     // design/09-files.md), so the default application menu is Files.
@@ -1438,7 +1417,13 @@ void ShellController::applyFocusedApp()
     if (name.isEmpty())
         name = QStringLiteral("Files");
     m_item->setProperty("appName", name);
-    m_item->setProperty("applicationMenuItems", applicationMenu(name));
+    // The fixed application menu's Hide/Hide Others/Show All verbs carry live
+    // state derived from the running-window projection (T-14.2a). The
+    // menu-broker owns this rule; the shell mirrors it so the demo bar is live
+    // even when the service is absent, and consumes the broker's resolved
+    // model once the native publication channel is wired.
+    const AppMenuLiveState live = appMenuLiveState(m_appId, m_runningEntries);
+    m_item->setProperty("applicationMenuItems", fixedApplicationMenu(name, live));
     // The menu-broker (T-22) resolves a real menu model here; until it lands
     // a small demo menu stands in so the dropdown (input routing + overlay
     // surface) stays exercisable in a live session. T-14.7 retires it.
@@ -3755,6 +3740,9 @@ void ShellController::applyDisplayPolicy()
 void ShellController::onDockStateChanged(const QVariantList &entries)
 {
     m_runningEntries = entries;
+    // The fixed application menu's Hide/Hide Others/Show All reflect the live
+    // window state, so a minimize/restore/open/close re-publishes it (T-14.2a).
+    applyFocusedApp();
     // A window appeared: a pending launch for that app has succeeded, so its
     // transient launching/failed state clears (T-10 section 8.4).
     for (const QVariant &value : entries) {

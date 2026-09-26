@@ -12,6 +12,7 @@
 #include "focusstatus.h"
 #include "framecommitgate.h"
 #include "launchfailure.h"
+#include "menubrokerpolicy.h"
 #include "notificationclient.h"
 #include "osdmodel.h"
 #include "settingsclient.h"
@@ -1558,6 +1559,103 @@ private slots:
         QCOMPARE(osd.kind(), OsdModel::Kind::Brightness);
         QVERIFY(qAbs(osd.value() - 0.9) < 1e-9);
         QCOMPARE(osd.deadline(), qint64(1000) + OsdModel::kDismissMs);
+    }
+
+    // -- Menu-broker fixed application menu (T-14.2a) -------------------
+
+    // An app-level running entry, the shape `buildDockProjection` emits.
+    static QVariantMap runningApp(const QString &appId, bool allMinimized)
+    {
+        return QVariantMap{
+            { QStringLiteral("kind"), QStringLiteral("temporary") },
+            { QStringLiteral("appId"), appId },
+            { QStringLiteral("running"), true },
+            { QStringLiteral("windows"), 1 },
+            { QStringLiteral("minimized"), allMinimized },
+        };
+    }
+
+    void theFixedApplicationMenuCarriesTheStandardRows()
+    {
+        const QVariantList menu = fixedApplicationMenu(
+            QStringLiteral("Settings"),
+            AppMenuLiveState{ false, false, false });
+        QCOMPARE(menu.size(), 8);
+        QCOMPARE(menu[0].toMap().value(QStringLiteral("label")).toString(),
+                 QStringLiteral("About Settings"));
+        QCOMPARE(menu[2].toMap().value(QStringLiteral("type")).toString(),
+                 QStringLiteral("separator"));
+        QCOMPARE(menu[3].toMap().value(QStringLiteral("label")).toString(),
+                 QStringLiteral("Hide Settings"));
+        QCOMPARE(menu[3].toMap().value(QStringLiteral("shortcut")).toString(),
+                 QStringLiteral("Super+H"));
+        QCOMPARE(menu[7].toMap().value(QStringLiteral("label")).toString(),
+                 QStringLiteral("Quit Settings"));
+        // A disabled verb is published explicitly so the bar dims it.
+        QCOMPARE(menu[3].toMap().value(QStringLiteral("enabled")).toBool(), false);
+        QCOMPARE(menu[0].toMap().value(QStringLiteral("enabled")).toBool(), true);
+    }
+
+    void theHideVerbsFollowTheLiveWindowProjection()
+    {
+        // Two visible apps, focused on the first: Hide + Hide Others.
+        QVariantList entries{ runningApp(QStringLiteral("a"), false),
+                              runningApp(QStringLiteral("b"), false) };
+        AppMenuLiveState state =
+            appMenuLiveState(QStringLiteral("a"), entries);
+        QCOMPARE(state.hide, true);
+        QCOMPARE(state.hideOthers, true);
+        QCOMPARE(state.showAll, false);
+
+        // Hide everything: only Show All stays meaningful.
+        entries = { runningApp(QStringLiteral("a"), true),
+                    runningApp(QStringLiteral("b"), true) };
+        state = appMenuLiveState(QStringLiteral("a"), entries);
+        QCOMPARE(state.hide, false);
+        QCOMPARE(state.hideOthers, false);
+        QCOMPARE(state.showAll, true);
+
+        // Per-window minimized entries must not double-count the app state.
+        QVariantList withWindows{
+            runningApp(QStringLiteral("a"), false),
+            QVariantMap{ { QStringLiteral("kind"), QStringLiteral("minimized") },
+                         { QStringLiteral("appId"), QStringLiteral("a") },
+                         { QStringLiteral("minimized"), true } },
+        };
+        state = appMenuLiveState(QStringLiteral("a"), withWindows);
+        QCOMPARE(state.hide, true);
+        QCOMPARE(state.showAll, false);
+
+        // The empty desktop has nothing focused to hide.
+        state = appMenuLiveState(QString(), entries);
+        QCOMPARE(state.hide, false);
+        QCOMPARE(state.hideOthers, false);
+        QCOMPARE(state.showAll, true);
+    }
+
+    void applyingLiveStateRewritesOnlyTheHideRows()
+    {
+        const QVariantList published{
+            QVariantMap{ { QStringLiteral("label"), QStringLiteral("About X") },
+                         { QStringLiteral("action"), QStringLiteral("about") } },
+            QVariantMap{ { QStringLiteral("label"), QStringLiteral("Hide X") },
+                         { QStringLiteral("action"), QStringLiteral("hide") } },
+            QVariantMap{ { QStringLiteral("label"), QStringLiteral("Hide Others") },
+                         { QStringLiteral("action"), QStringLiteral("hide-others") } },
+            QVariantMap{ { QStringLiteral("label"), QStringLiteral("Show All") },
+                         { QStringLiteral("action"), QStringLiteral("show-all") },
+                         { QStringLiteral("checked"), true } },
+        };
+        const QVariantList menu =
+            applyAppMenuLiveState(published, AppMenuLiveState{ true, false, true });
+        QCOMPARE(menu.size(), 4);
+        // About keeps its declaration untouched (no enabled flag).
+        QCOMPARE(menu[0].toMap().contains(QStringLiteral("enabled")), false);
+        QCOMPARE(menu[1].toMap().value(QStringLiteral("enabled")).toBool(), true);
+        QCOMPARE(menu[2].toMap().value(QStringLiteral("enabled")).toBool(), false);
+        QCOMPARE(menu[3].toMap().value(QStringLiteral("enabled")).toBool(), true);
+        // An unrelated field survives the rewrite.
+        QCOMPARE(menu[3].toMap().value(QStringLiteral("checked")).toBool(), true);
     }
 };
 
