@@ -3228,6 +3228,16 @@ Gotchas for later tasks:
 
 ## Follow-ups
 
+- **T-12.3a follow-ups.** (a) `ext_session_lock_manager_v1` has an open client
+  filter (`|_| true` in `DfState::new`); restrict it to the trusted shell during
+  T-12.3c hardening. (b) While locked the compositor drops *all* input, so the
+  lock surface is not yet reachable; T-12.3c specifies capture and routes
+  keyboard/pointer to the lock surface. (c) The shell's lock object is left
+  alive on shell shutdown while locked so a crash keeps the session locked;
+  T-12.3b should ensure the PAM success path calls `unlock_and_destroy` before
+  any shell restart. (d) The lock UI shows a fixed `$USER` and a static clock;
+  T-12.3b replaces the inert password field with PAM and T-12.4 adds idle
+  auto-lock.
 - **T-12.1b follow-ups.** (a) The shipped units are not yet installed by a
   package; T-12.2/packaging must place `services/session/units/*` under
   `~/.config/systemd/user/` (or `/usr/lib/systemd/user/`) and add the
@@ -5944,3 +5954,88 @@ Gotchas for later tasks:
   should use the installed path.
 - **`process_group(0)` is Unix-only** (`#[cfg(unix)]`); the crate already
   assumes Unix throughout.
+
+## T81 — T-12.3a Lock protocol and lock UI
+
+**State: done.** `ext-session-lock-v1` is enforced end to end and the shell is
+the first-party lock UI. The compositor owns the fail-secure state and drops
+client input while locked; the shell binds the standard protocol and paints a
+`Dragonfruit.Lock` scene into one lock surface per output. Contract frozen in
+ADR [0067](design/adr/0067-session-lock-protocol-and-ui.md).
+
+What landed:
+
+- **`compositor/src/lock.rs`** (new) — `LockModel`: the one `locked` flag (with
+  the pre-lock focused window for restore), `surfaces: HashMap<output,
+  LockSurface>`, `lock/unlock/insert_surface/surface/retain_live/
+  surface_count/covers`, `covered_by`, `lock_render_elements` (renders the live
+  lock surface at the output origin), `lock_surface_size`. `LockSurface` has an
+  inherent `alive()`, not `IsAlive`; `alive` on `Window` needs the `IsAlive`
+  trait in scope.
+- **`compositor/src/state.rs`** — `DfState.lock: LockModel`; `SessionLockHandler`
+  enters the lock and clears keyboard focus *before* confirming, configures each
+  lock surface to `lock_surface_size`, logs coverage, restores focus on unlock.
+  `delegate_session_lock!` unchanged.
+- **`compositor/src/input.rs`** — `process_input_event` returns before routing
+  any user input (device add/remove still flows) while locked.
+  `compositor/src/shell/mod.rs` — `activate_window_id` refuses while locked and
+  `sync_outputs` calls `lock.retain_live`; `state.rs` `request_activation`
+  refuses while locked.
+- **`compositor/src/backend/nested.rs` / `drm.rs`** — `lock_render_elements`
+  prepended to the front-to-back custom-element list (above cursor/windows/
+  chrome); headless renders nothing.
+- **`shell/src/shellprotocol.{h,cpp}`** — binds
+  `ext_session_lock_manager_v1` + `wl_output`; `lockSession()` creates a lock
+  surface per output, `commitLockImage(id, image)` paints one, `unlockSession()`
+  calls `unlock_and_destroy`; signals `sessionLocked` / `sessionFinished` /
+  `lockSurfaceConfigured`; `isSessionLocked()` (the signal is `sessionLocked()`
+  — do not name a method the same). Lock surface id is the opaque
+  `ext_session_lock_surface_v1*` as `quintptr`.
+- **`shell/src/shellcontroller.{h,cpp}`** — offscreen `Dragonfruit.Lock` scene,
+  `showLockScreen/applyLockData/renderLockSurface`, `lock-screen` input action
+  handler, `DF_LOCK_FIXTURE` / `DF_LOCK_UNLOCK_MS` capture seams.
+- **`shell/lock/LockScreen.qml`** (new) + `shell/lock/CMakeLists.txt`; module
+  linked as `dragonfruit-shell-lockplugin`.
+- **`protocols/wayland-protocols/ext-session-lock-v1.xml`** (new, vendored MIT);
+  `shell/src/CMakeLists.txt` runs `wayland-scanner` over it and adds the C to the
+  shell target.
+- **Tests** — `compositor/tests/session_lock_conformance.rs` (compositor
+  headless: `locked` event, full-output configure per output, clean unlock +
+  re-lock); `shell/tests/tst_lock.{cpp,qml}` (lock view + a11y). `Makefile`
+  `e2e` runs `session_lock_conformance`.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-compositor --test session_lock_conformance` — 1/1.
+- `cargo test -p dragonfruit-compositor --bin dragonfruit-compositor` — 279/279
+  (includes `lock::tests`).
+- `cargo clippy -p dragonfruit-compositor --all-targets -- -D warnings`; `cargo
+  fmt -p dragonfruit-compositor -- --check` — exit 0.
+- `make lint` — exit 0 (`qml-test` 40/40, includes `tst_lock` and
+  `qmllint_shell-lock`); `make e2e` — exit 0.
+
+Live check: `DF_LOCK_FIXTURE=3000 ./target/debug/dragonfruit dev --demo --nested
+--socket-name t81-lock`, captured at `/tmp/opencode/t81-lock.png`; vision
+confirms the lock screen covers the nested output — large clock, date, avatar
+(initial of `$USER`), name, rounded password field ("Press Enter to unlock"),
+drawn lock glyph — no artifacts, no menu bar/Dock visible.
+
+Gotchas for later tasks:
+
+- **All user input is dropped while locked.** The lock surface is not yet
+  reachable; T-12.3c routes input to it. Do not assume the shell can
+  click/type on the lock screen yet.
+- **Unlock is protocol-only.** The shell exposes `ShellProtocol::unlockSession`
+  (`ext_session_lock_v1.unlock_and_destroy`); T-12.3b calls it from PAM success.
+  There is no user-facing unlock.
+- **The manager filter is open** (`SessionLockManagerState::new(..., |_| true)`,
+  TODO(T-26) in `state.rs`). T-12.3c restricts it to the trusted shell.
+- **The shell's lock object is left alive while locked** (destroy is a protocol
+  error while locked); a shell crash therefore keeps the session locked. The
+  compositor crash path ends the session.
+- **Signals and methods cannot share a name** in `ShellProtocol` (moc/Qt
+  overload resolution): the getter is `isSessionLocked()`, the signal
+  `sessionLocked()`.
+- **`DF_LOCK_FIXTURE` / `DF_LOCK_UNLOCK_MS` are capture-only** and never set in
+  a real session; the real trigger is Cmd+Ctrl+Q → `InputAction::LockScreen` →
+  `df_toplevel_manager.input_action`.
