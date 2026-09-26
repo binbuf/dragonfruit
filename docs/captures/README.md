@@ -107,6 +107,17 @@ nested window as `t11-osd-context.png`. The T-11.3a/b Control Center stills
 (`t11-control-center*.png`) remain part of the set. The capture driver's
 synthetic-input seam is the same harness as T-01/T-10.
 
+T-12.5b's session sign-off is produced by `scripts/capture-session.sh`
+(`make session-capture`): the nested demo runs with the synthetic-input harness
+bound and the driver locks the session with the real Cmd+Ctrl+Q chord, writing
+`t12-session.png` (the desktop), `t12-session-lock.png` (the first-party lock
+UI), and `t12-session.mp4`. Two transcripts accompany them:
+`t12-session.txt` (the compositor's `query lock`/`query session` before and
+while locked — `locked=1 surfaces=1 lock-focus=1`) and
+`t12-session-kill-matrix.txt` (the `dragonfruit-session` kill matrix). The real
+greeter/login and DRM logout ends of the T-12 demo are T-12.6, so this nested
+capture proves the session + lock surface, not the greeter round trip.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

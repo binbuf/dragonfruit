@@ -167,6 +167,14 @@ files-capture: build
 osd-dnd-capture: build
 	bash scripts/capture-osd-dnd.sh
 
+# T-12.5b: the T-12 session track capture. Needs a host Wayland session,
+# `spectacle`, `ffmpeg`, Pillow and the built tree; locks the nested session
+# with the real Cmd+Ctrl+Q shortcut and writes the desktop/lock stills, a
+# short clip and the `query lock`/`query session` transcript under
+# docs/captures/t12-session.*.
+session-capture: build
+	bash scripts/capture-session.sh
+
 qml-test:
 	@[ -f $(BUILD_DIR)/build.ninja ] || $(CMAKE) -S . -B $(BUILD_DIR) -G Ninja
 	$(CMAKE) --build $(BUILD_DIR) >/dev/null

@@ -1,0 +1,18 @@
+T-12 session capture transcript (T-12.5b)
+nested demo, synthetic input harness
+
+# unlocked query lock
+lock locked=0 surfaces=0 lock-focus=0
+end
+
+# unlocked query session
+session suspended=0 cycles=0 outputs=1 windows=2
+end
+
+# locked query lock
+lock locked=1 surfaces=1 lock-focus=1
+end
+
+# locked query session
+session suspended=0 cycles=0 outputs=1 windows=2
+end

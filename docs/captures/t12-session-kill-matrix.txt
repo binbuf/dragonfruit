@@ -1,0 +1,14 @@
+T-12 kill matrix (T-12.5b) — dragonfruit-session kill_matrix
+
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running tests/kill_matrix.rs (target/debug/deps/kill_matrix-1fcf448e86fdd668)
+
+running 5 tests
+test the_kill_matrix_plan_matches_the_shipped_restart_policies ... ok
+test killing_the_compositor_ends_the_session_and_stops_everything_else ... ok
+test killing_the_notification_service_restarts_it_and_keeps_the_session ... ok
+test killing_settingsd_restarts_it_and_keeps_the_session ... ok
+test killing_the_shell_lock_ui_restarts_it_and_keeps_the_session ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+

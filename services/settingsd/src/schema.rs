@@ -19,7 +19,7 @@ use crate::value::{SettingsError, Value};
 
 /// The current schema revision. Bump only when a key is added or a default
 /// changes; renames and removals are forbidden within the `1` series.
-pub const SCHEMA_VERSION: u32 = 4;
+pub const SCHEMA_VERSION: u32 = 5;
 
 /// The D-Bus type of a settings value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -67,11 +67,12 @@ pub enum KeyGroup {
     Displays,
     Animation,
     Input,
+    Session,
 }
 
 impl KeyGroup {
     /// Every group, in schema order.
-    pub const ALL: [KeyGroup; 8] = [
+    pub const ALL: [KeyGroup; 9] = [
         KeyGroup::Dock,
         KeyGroup::Workspaces,
         KeyGroup::Gestures,
@@ -80,6 +81,7 @@ impl KeyGroup {
         KeyGroup::Displays,
         KeyGroup::Animation,
         KeyGroup::Input,
+        KeyGroup::Session,
     ];
 
     /// The group name used in docs and tests.
@@ -93,6 +95,7 @@ impl KeyGroup {
             KeyGroup::Displays => "displays",
             KeyGroup::Animation => "animation",
             KeyGroup::Input => "input",
+            KeyGroup::Session => "session",
         }
     }
 }
@@ -539,6 +542,59 @@ pub const KEYS: &[KeySpec] = &[
         since: 1,
         summary: "Key repeat rate in keys per second; 0 disables repeat.",
     },
+    // ── Session (lock / idle / suspend policy, T-12.5b) ─────────────────
+    KeySpec {
+        key: "idle.dim",
+        group: KeyGroup::Session,
+        kind: KeyType::Integer,
+        default: KeyDefault::Integer(150),
+        allowed: &[],
+        min: Some(0.0),
+        max: Some(86_400.0),
+        owner: "apps/settings",
+        consumer: "session/idle engine",
+        since: 5,
+        summary: "Seconds of inactivity before the screen dims; 0 disables the stage.",
+    },
+    KeySpec {
+        key: "idle.blank",
+        group: KeyGroup::Session,
+        kind: KeyType::Integer,
+        default: KeyDefault::Integer(300),
+        allowed: &[],
+        min: Some(0.0),
+        max: Some(86_400.0),
+        owner: "apps/settings",
+        consumer: "session/idle engine",
+        since: 5,
+        summary: "Seconds of inactivity before the screen blanks; 0 disables the stage.",
+    },
+    KeySpec {
+        key: "idle.lock",
+        group: KeyGroup::Session,
+        kind: KeyType::Integer,
+        default: KeyDefault::Integer(600),
+        allowed: &[],
+        min: Some(0.0),
+        max: Some(86_400.0),
+        owner: "apps/settings",
+        consumer: "session/idle engine",
+        since: 5,
+        summary: "Seconds of inactivity before the session locks; 0 disables the stage.",
+    },
+    KeySpec {
+        key: "idle.suspend",
+        group: KeyGroup::Session,
+        kind: KeyType::Integer,
+        default: KeyDefault::Integer(0),
+        allowed: &[],
+        min: Some(0.0),
+        max: Some(86_400.0),
+        owner: "apps/settings",
+        consumer: "session/idle engine, session/suspend",
+        since: 5,
+        summary: "Seconds of inactivity before the session suspends; 0 disables the stage.",
+    },
 ];
 
 /// Look up a key's declaration.
@@ -626,6 +682,32 @@ mod tests {
         let count = spec("workspaces.count").unwrap();
         assert!(count.validate(&Value::Integer(0)).is_err());
         assert!(count.validate(&Value::Integer(4)).is_ok());
+    }
+
+    /// The session policy keys are the exact four ADR 0070 freezes, as whole
+    /// seconds; `0` disables a stage, and the defaults match the idle engine's
+    /// `IdlePolicy::new()` (dim 150, blank 300, lock 600, no suspend).
+    #[test]
+    fn the_session_policy_keys_follow_adr_0070() {
+        for (key, default) in [
+            ("idle.dim", 150),
+            ("idle.blank", 300),
+            ("idle.lock", 600),
+            ("idle.suspend", 0),
+        ] {
+            let spec = spec(key).unwrap_or_else(|| panic!("{key} is declared"));
+            assert_eq!(spec.kind, KeyType::Integer, "{key}");
+            assert_eq!(spec.default, KeyDefault::Integer(default), "{key}");
+            assert_eq!(spec.min, Some(0.0), "{key}");
+            assert_eq!(spec.max, Some(86_400.0), "{key}");
+            // The `IdlePolicy::from_keys` spellings: whole seconds, 0 is off.
+            assert!(spec.validate(&Value::Integer(0)).is_ok(), "{key} off");
+            assert!(spec.validate(&Value::Integer(86_400)).is_ok(), "{key} max");
+            assert!(
+                spec.validate(&Value::Integer(-1)).is_err(),
+                "{key} negative"
+            );
+        }
     }
 
     /// A frozen manifest of the v1 key set. Adding a key is allowed (extend

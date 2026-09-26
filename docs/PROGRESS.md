@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(51 earlier sections omitted)_
+_(52 earlier sections omitted)_
 
-- **Follow-ups**: **T-12.4a follow-ups.** (a) The idle engine (ADR 0070) has no production; **T-12.3c follow-ups.** (a) The shell types passwords from a fixed US/ASCII
 - **T49 — T-09.1b Settings live-apply plumbing**: **State: done.** The Settings app is a real settingsd consumer: a QML `Settings`; **`libs/settings-client/`** (new; `libs/CMakeLists.txt`) — the former
 - **T50 — T-09.2 Appearance pane**: **State: done.** The Appearance pane is real and live: a Light/Dark/Auto; **`apps/settings/AppearancePane.qml`** (new) — `SettingsGroup`/`SettingsRow`
 - **T51 — T-09.3 Wallpaper pane**: **State: done.** The Wallpaper pane is real and live: our own gradient; **Schema (since 2)** — `wallpaper.source` (s, empty = solid),
@@ -45,6 +44,7 @@ _(51 earlier sections omitted)_
 - **T84 — T-12.4a Idle timers**: **State: done.** The dim → blank → lock → suspend chain is a pure,; **`services/session/src/idle.rs`** (new) — `IdleStage`
 - **T85 — T-12.4b Idle inhibitors and wake restore**: **State: done.** `dragonfruit-session` now wraps the T-12.4a idle engine with; **`services/session/src/idle.rs`** — `IdleController` (owns `IdleTimers` +
 - **T86 — T-12.5a Suspend/resume cycle**: **State: done.** One suspend/resume round trip recovers outputs, input, and; **`services/session/src/suspend.rs`** (new) — `SuspendState`
+- **T87 — T-12.5b Session policy keys, kill matrix, capture**: **State: done.** The session policy keys are registered in settingsd, the; **`services/settingsd/src/schema.rs`** — schema v5, new `Session` key group:
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -6457,3 +6457,69 @@ Gotchas for later tasks:
 - **`query latency` gained a `received=` field before `within_one_frame_60hz`**
   (ADR 0009 append-only ordering is respected for the `dump_stats` line, not
   this query report).
+
+## T87 — T-12.5b Session policy keys, kill matrix, capture
+
+**State: done.** The session policy keys are registered in settingsd, the
+kill matrix is a headless suite, and the T-12 track capture is committed.
+Contract frozen in ADR
+[0073](design/adr/0073-session-policy-keys-and-kill-matrix.md).
+
+What landed:
+
+- **`services/settingsd/src/schema.rs`** — schema v5, new `Session` key group:
+  `idle.dim` (150), `idle.blank` (300), `idle.lock` (600), `idle.suspend`
+  (0), all `KeyType::Integer` (`x`) whole seconds, range 0–86400, `0`
+  disables. Exactly the names/spellings ADR 0070 freezes. Owner
+  `apps/settings`, consumer `session/idle engine`.
+- **`docs/settings-keys.md`** — four rows + `session/idle engine` consumer
+  map entry (gated by `tests/schema_doc.rs`).
+- **`libs/settings-client/settingsclient.cpp`** — `settingsSchemaDefaults()`
+  mirrors v5 (settingsd-absent path).
+- **`services/session/tests/session_policy.rs`** (new, 5 tests) — the keys
+  drive the chain headlessly: defaults reproduce `IdlePolicy::new()`; a
+  snapshot walks dim/blank/lock/suspend on a fake clock and round-trips
+  `SuspendController`; `0` disables one stage; a live key change moves the
+  chain; a held inhibitor freezes it.
+- **`services/session/tests/kill_matrix.rs`** (new, 5 tests) — shell/lock UI
+  restarts (`always`); settingsd and notifications restart (`on-failure`);
+  compositor death ends the session and stops the rest, never restarted. The
+  fail-secure "never unlocked" half stays with the compositor
+  (`session_lock_conformance.rs`, already in `make e2e`).
+- **Capture** — `scripts/capture-session.sh` + `capture-session-driver.py` +
+  `make session-capture` write `docs/captures/t12-session.png`,
+  `t12-session-lock.png`, `t12-session.mp4`, `t12-session.txt`,
+  `t12-session-kill-matrix.txt`.
+- **Docs** — ADR 0073; `11-session-and-dev-workflow.md` "Session policy keys
+  and the kill matrix (T-12.5b)"; `docs/captures/README.md`.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-settingsd` — 27 unit + restart/schema_doc/bus.
+- `cargo test -p dragonfruit-session` — 37 unit + `kill_matrix` 5 +
+  `session_policy` 5 (plus existing).
+- `cargo clippy -p dragonfruit-settingsd -p dragonfruit-session
+  --all-targets -- -D warnings`, `cargo fmt ... -- --check` — exit 0.
+- `make e2e`, `make lint` — exit 0.
+- `make session-capture` — writes the artifacts above.
+
+Live check: nested demo with the synthetic harness; `query lock` went
+`locked=0 surfaces=0 lock-focus=0` → `locked=1 surfaces=1 lock-focus=1` after
+the real Cmd+Ctrl+Q chord; `query session` stayed `suspended=0 outputs=1
+windows=2`. Vision confirms the desktop still (menu bar, Settings Appearance
+pane, X11 demo window, Dock) and the lock card (clock, date, avatar, password
+field), no artifacts. Stills are 1920x1200 crops at (960,467).
+
+Gotchas for later tasks:
+
+- **No production idle service yet.** The keys are registered and
+  `IdlePolicy::from_keys` is proven, but nothing binds `ext-idle-notify` or
+  calls `set_policy` at runtime; the real consumer is T-12.6/portals.
+- **Idle keys are `x` int64 whole seconds, 0–86400**, `0` disables. Convert
+  with `to_string()` into `IdlePolicy::from_keys`; "Never" is `0`, not the
+  `never` parser leniency.
+- **`SCHEMA_VERSION` is now 5**; older settings files migrate by filling the
+  four defaults.
+- The lock UI death/lock invariant is the compositor's
+  (`session_lock_conformance.rs`); the session kill matrix asserts supervision
+  only. T-16.8a/T-17.5a add the VM/DRM no-live-under-lock drills.
