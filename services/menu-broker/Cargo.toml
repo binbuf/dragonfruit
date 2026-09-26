@@ -1,15 +1,31 @@
 [package]
 name = "dragonfruit-menu-broker"
-description = "Dragonfruit global-menu broker (stub; real service is T-22)"
+description = "Dragonfruit global-menu broker: org.dragonfruit.MenuBroker1 (T-14.2a)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
+# menu-broker resolves the focused app's global menu and owns the fixed
+# application menu's live Hide/Hide Others/Show All state. It publishes from
+# first-party apps over `org.dragonfruit.MenuBroker1` (the design-system entry
+# shape, ADR 0041) and reads the shell's live window state.
+#
+# zbus is the same pinned D-Bus stack the other services use; `serde_json` is
+# the flat payload format, matching the sibling services.
+[dependencies]
+df-ipc.workspace = true
+serde_json = "=1.0.151"
+zbus = { version = "=5.19.0", features = ["blocking-api"] }
+
+[dev-dependencies]
+serde = "=1.0.229"
+
+[lib]
+name = "dragonfruit_menu_broker"
+path = "src/lib.rs"
+
 [[bin]]
 name = "dragonfruit-menu-broker"
 path = "src/main.rs"
-
-[dependencies]
-df-ipc.workspace = true

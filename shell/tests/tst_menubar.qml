@@ -851,5 +851,46 @@ Item {
                    "the dragonfruit mark should follow the design-system color");
             logo.destroy();
         }
+
+        // -- Fixed application menu live state (T-14.2a) -------------------
+
+        // The menu-broker fixes the application menu's Hide/Hide Others/Show
+        // All enabled state from the live window projection. Here the model
+        // the controller publishes is injected directly: the bar renders a
+        // disabled verb dimmed and refuses to dispatch it.
+        function test_fixed_application_menu_reflects_live_hide_state() {
+            var fixed = fixedMenus();
+            fixed.applicationMenuItems = [
+                { label: "About Test", action: "about" },
+                { type: "separator" },
+                { label: "Hide Test", shortcut: "Super+H", action: "hide", enabled: false },
+                { label: "Hide Others", shortcut: "Super+Alt+H",
+                  action: "hide-others", enabled: true },
+                { label: "Show All", action: "show-all", enabled: false },
+                { type: "separator" },
+                { label: "Quit Test", action: "quit" }
+            ];
+            var bar = make(menuBarComponent, {
+                appName: "Test",
+                systemMenuItems: fixed.systemMenuItems,
+                applicationMenuItems: fixed.applicationMenuItems
+            });
+            triggeredSpy.target = bar;
+            triggeredSpy.clear();
+
+            var app = bar.appMenuAt(1);
+            compare(app.model.length, 7);
+            compare(app.model[2].label, "Hide Test");
+            compare(app.model[2].enabled, false);
+            compare(app.model[3].enabled, true);
+            compare(app.model[4].enabled, false);
+
+            // A disabled row is inert; an enabled one dispatches.
+            app.activate(2);
+            compare(triggeredSpy.count, 0);
+            app.activate(3);
+            compare(triggeredSpy.count, 1);
+            compare(triggeredSpy.signalArguments[0][2].action, "hide-others");
+        }
     }
 }
