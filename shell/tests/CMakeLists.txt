@@ -539,3 +539,23 @@ set_tests_properties(tst_screencastui PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+# Clipboard-history store tests (T-13.5b): classification, dedup, caps,
+# pinning, secret-hint refusal, clear-on-lock, search, restore, and
+# best-effort persistence. No Wayland, D-Bus, or QML.
+qt_add_executable(tst_clipboardhistory
+    tst_clipboardhistory.cpp
+)
+target_link_libraries(tst_clipboardhistory PRIVATE
+    Qt6::Core Qt6::Gui Qt6::Test
+    dragonfruit-shell-dockcore
+)
+
+add_test(
+    NAME tst_clipboardhistory
+    COMMAND tst_clipboardhistory
+)
+set_tests_properties(tst_clipboardhistory PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)

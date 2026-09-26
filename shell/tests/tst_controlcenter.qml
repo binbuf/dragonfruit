@@ -25,6 +25,9 @@ Item {
         SignalSpy { id: focusSpy; signalName: "focusToggleRequested" }
         SignalSpy { id: darkSpy; signalName: "darkModeToggleRequested" }
         SignalSpy { id: closedSpy; signalName: "closed" }
+        SignalSpy { id: clipboardCopySpy; signalName: "clipboardCopyRequested" }
+        SignalSpy { id: clipboardPinSpy; signalName: "clipboardPinToggled" }
+        SignalSpy { id: clipboardClearSpy; signalName: "clipboardClearRequested" }
 
         function wifiModel(state, radioEnabled, label) {
             return {
@@ -277,6 +280,54 @@ Item {
             compare(panel.wifiAvailable, false);
             compare(panel.wifiLabel, "Unavailable");
             compare(panel.tiles[0].enabled, false);
+        }
+
+        function test_clipboard_rows_render_and_raise_requests() {
+            var panel = make({
+                clipboardEntries: [
+                    { kind: "text", preview: "first item", pinned: true, index: 0 },
+                    { kind: "files", preview: "a.txt, b.txt", pinned: false, index: 1 }
+                ]
+            });
+            // The clipboard section is below the tiles; size the panel to the
+            // shell's fixed surface so pointer coordinates land on it.
+            panel.height = 900;
+            waitForRendering(stage);
+            compare(panel.clipboardShown, 2);
+
+            var preview = findChild(panel, "clipboardRowPreview");
+            verify(preview !== null);
+            clipboardCopySpy.target = panel;
+            clipboardCopySpy.clear();
+            mouseClick(preview, preview.width / 2, preview.height / 2);
+            compare(clipboardCopySpy.count, 1);
+            compare(clipboardCopySpy.signalArguments[0][0], 0);
+
+            var pin = findChild(panel, "clipboardRowPin");
+            verify(pin !== null);
+            clipboardPinSpy.target = panel;
+            clipboardPinSpy.clear();
+            mouseClick(pin, pin.width / 2, pin.height / 2);
+            compare(clipboardPinSpy.count, 1);
+            compare(clipboardPinSpy.signalArguments[0][0], 0);
+            compare(clipboardPinSpy.signalArguments[0][1], false);
+
+            var clear = findChild(panel, "clipboardClearLink");
+            verify(clear !== null);
+            clipboardClearSpy.target = panel;
+            clipboardClearSpy.clear();
+            mouseClick(clear, clear.width / 2, clear.height / 2);
+            compare(clipboardClearSpy.count, 1);
+        }
+
+        function test_clipboard_empty_state() {
+            var panel = make({ clipboardEntries: [] });
+            var empty = findChild(panel, "clipboardEmpty");
+            verify(empty !== null);
+            compare(empty.visible, true);
+            var clear = findChild(panel, "clipboardClearLink");
+            verify(clear !== null);
+            compare(clear.visible, false);
         }
     }
 }

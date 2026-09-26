@@ -64,9 +64,10 @@ constexpr int kBannerTopGap = 8;
 // top-right corner below the menu bar. The panel fills the surface, so its
 // input region is the whole thing.
 // T-11.3b grows the panel to fit five tiles (Wi-Fi, Focus, Sound, Display,
-// Dark Mode); the surface is fixed and the panel fills it.
+// Dark Mode); T-13.5b adds the clipboard-history section below them. The
+// surface is fixed and the panel fills it.
 constexpr int kControlCenterWidth = 360;
-constexpr int kControlCenterHeight = 520;
+constexpr int kControlCenterHeight = 780;
 constexpr int kControlCenterTopGap = 8;
 
 // The OSD overlay (T-11.4a): a centered card. The surface is slightly larger
@@ -246,6 +247,12 @@ QVariantList demoAppMenu()
 ShellController::ShellController(QObject *parent)
     : QObject(parent)
 {
+    // The clipboard history exists before the protocol so its best-effort
+    // persistence is read once at startup (T-13.5b).
+    m_clipboard = new ClipboardHistory(this);
+    connect(m_clipboard, &ClipboardHistory::changed, this,
+            &ShellController::onClipboardHistoryChanged);
+    loadClipboardHistory();
 }
 
 ShellController::~ShellController()
@@ -270,6 +277,10 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     connect(m_protocol, &ShellProtocol::fatal, this, [](const QString &message) {
         qWarning() << "shell:" << message;
     });
+    // The observed clipboard selection feeds the history store; the store
+    // never writes the selection except when the user picks an entry (T-13.5b).
+    connect(m_protocol, &ShellProtocol::clipboardObserved, this,
+            &ShellController::onClipboardObserved);
 
     // Interim app-index (T-23). The index is scanned once at startup; a real
     // app-index will push install/uninstall events instead.
@@ -737,6 +748,14 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onDarkModeToggleRequested(bool)));
     connect(controlCenterObject, SIGNAL(appearanceSettingsRequested()), this,
             SLOT(onAppearanceSettingsRequested()));
+    // Clipboard history (T-13.5b): the panel's list is a pure view of the
+    // store; copying/pinning/clearing come back here.
+    connect(controlCenterObject, SIGNAL(clipboardCopyRequested(int)), this,
+            SLOT(onClipboardCopyRequested(int)));
+    connect(controlCenterObject, SIGNAL(clipboardPinToggled(int, bool)), this,
+            SLOT(onClipboardPinToggled(int, bool)));
+    connect(controlCenterObject, SIGNAL(clipboardClearRequested()), this,
+            SLOT(onClipboardClearRequested()));
     connect(m_controlCenterWindow, &QQuickWindow::afterRendering, this,
             &ShellController::renderControlCenter);
     connect(m_protocol, &ShellProtocol::controlCenterConfigured, this,
@@ -1445,6 +1464,10 @@ void ShellController::applyControlCenterData()
     m_controlCenterItem->setProperty("brightness", brightness);
     m_controlCenterItem->setProperty("focusPolicy", focus);
     m_controlCenterItem->setProperty("dark", dark);
+    // The clipboard history list (T-13.5b); the panel gates it on
+    // `clipboardAvailable`.
+    m_controlCenterItem->setProperty("clipboardEntries",
+                                     m_clipboard ? m_clipboard->entries() : QVariantList());
     // Wi-Fi radio writes are not exposed by the bridge host yet (T-15); the
     // toggle reflects state and is inert until then.
     m_controlCenterItem->setProperty("wifiWritable", false);
@@ -2461,7 +2484,86 @@ void ShellController::onScreenCastKeyEvent(quint32 key, bool pressed)
 
 void ShellController::onSessionLocked()
 {
+    // A lock clears the clipboard history by default; pinned entries survive
+    // (T-13.5b, ADR 0082).
+    if (m_clipboard && m_clipboard->clearOnLock())
+        m_clipboard->clearUnpinned();
     showLockScreen();
+}
+
+// --- clipboard history (T-13.5b) -------------------------------------------
+
+QString ShellController::clipboardHistoryPath() const
+{
+    const QString base = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    if (base.isEmpty())
+        return QString();
+    return base + QStringLiteral("/clipboard-history.json");
+}
+
+void ShellController::loadClipboardHistory()
+{
+    const QString path = clipboardHistoryPath();
+    if (path.isEmpty())
+        return;
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly))
+        return;
+    m_clipboard->fromJson(file.readAll());
+}
+
+void ShellController::saveClipboardHistory()
+{
+    const QString path = clipboardHistoryPath();
+    if (path.isEmpty() || !m_clipboard)
+        return;
+    QDir().mkpath(QFileInfo(path).absolutePath());
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+        return;
+    file.write(m_clipboard->toJson());
+}
+
+void ShellController::onClipboardObserved(const QStringList &mimes,
+                                          const QMap<QString, QByteArray> &payloads)
+{
+    if (!m_clipboard)
+        return;
+    const bool stored = m_clipboard->observe(mimes, payloads);
+    fprintf(stderr, "dragonfruit-shell: clipboard selection observed (%d mime(s), %s)\n",
+            int(payloads.size()), stored ? "stored" : "skipped");
+}
+
+void ShellController::onClipboardHistoryChanged()
+{
+    saveClipboardHistory();
+    if (m_controlCenterOpen)
+        applyControlCenterData();
+}
+
+void ShellController::onClipboardCopyRequested(int index)
+{
+    if (!m_clipboard || !m_protocol)
+        return;
+    QStringList mimes;
+    QMap<QString, QByteArray> payloads;
+    if (!m_clipboard->restore(index, &mimes, &payloads))
+        return;
+    // Re-serve the observed entry through the data-control device; this is the
+    // only time the shell takes selection ownership (ADR 0082).
+    m_protocol->offerClipboard(mimes, payloads);
+}
+
+void ShellController::onClipboardPinToggled(int index, bool pinned)
+{
+    if (m_clipboard)
+        m_clipboard->setPinned(index, pinned);
+}
+
+void ShellController::onClipboardClearRequested()
+{
+    if (m_clipboard)
+        m_clipboard->clear();
 }
 
 void ShellController::onSessionFinished()

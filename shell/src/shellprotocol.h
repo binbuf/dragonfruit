@@ -11,6 +11,7 @@
 #include <QHash>
 #include <QImage>
 #include <QList>
+#include <QMap>
 #include <QObject>
 #include <QRect>
 #include <QSet>
@@ -34,6 +35,10 @@ struct df_workspace;
 struct ext_session_lock_manager_v1;
 struct ext_session_lock_v1;
 struct ext_session_lock_surface_v1;
+struct zwlr_data_control_manager_v1;
+struct zwlr_data_control_device_v1;
+struct zwlr_data_control_offer_v1;
+struct zwlr_data_control_source_v1;
 
 class QSocketNotifier;
 
@@ -264,6 +269,12 @@ public:
     // path: there is no client-facing grab protocol.
     bool captureScreenshot(const QString &path, int x, int y, int width, int height,
                            const QString &mode);
+
+    // Forward a stored clipboard entry to the compositor (T-13.5b). The shell
+    // becomes the selection owner temporarily by offering `payloads` under
+    // `mimes` through `wlr-data-control`; this is the one place the history
+    // "re-serves", and only when the user picks an entry (ADR 0082).
+    bool offerClipboard(const QStringList &mimes, const QMap<QString, QByteArray> &payloads);
 
     // --- session lock (T-12.3a) -------------------------------------------------
     //
@@ -523,6 +534,11 @@ signals:
     // A compositor input action broadcast (`df_toplevel_manager.input_action`,
     // T-07). The Dock uses `focus-dock` and `toggle-dock` (T-10 section 20).
     void inputAction(const QString &action, const QString &source);
+    // A clipboard selection was observed over `wlr-data-control` (T-13.5b).
+    // `mimes` is the full offered set and `payloads` are the supported ones
+    // the shell read. The history store consumes this; the shell never
+    // becomes the selection owner unless it explicitly forwards an entry.
+    void clipboardObserved(const QStringList &mimes, const QMap<QString, QByteArray> &payloads);
 
 private:
     struct ToplevelInfo {
@@ -650,6 +666,26 @@ private:
     // Read the drop payload from the pipe once the source has written it.
     void onDndReadable();
     void resetExternalDrag();
+
+    // wlr-data-control clipboard observation (T-13.5b). The manager device
+    // needs no keyboard focus, so a background copier is visible (ADR 0082).
+    void maybeCreateDataControlDevice();
+    static void onDataControlOffer(void *data, zwlr_data_control_device_v1 *device,
+                                   zwlr_data_control_offer_v1 *offer);
+    static void onDataControlSelection(void *data, zwlr_data_control_device_v1 *device,
+                                       zwlr_data_control_offer_v1 *offer);
+    static void onDataControlFinished(void *data, zwlr_data_control_device_v1 *device);
+    static void onDataControlPrimarySelection(void *data, zwlr_data_control_device_v1 *device,
+                                              zwlr_data_control_offer_v1 *offer);
+    static void onDataControlOfferMime(void *data, zwlr_data_control_offer_v1 *offer,
+                                       const char *mimeType);
+    static void onDataControlSourceSend(void *data, zwlr_data_control_source_v1 *source,
+                                        const char *mimeType, int32_t fd);
+    static void onDataControlSourceCancelled(void *data, zwlr_data_control_source_v1 *source);
+    // Drain one pending clipboard read; emits `clipboardObserved` when the
+    // whole selection has been read.
+    void onClipboardReadable(int fd);
+    void cancelClipboardRead();
     static void onManagerToplevel(void *data, df_toplevel_manager *manager, df_toplevel *id);
     static void onManagerFocused(void *data, df_toplevel_manager *manager, df_toplevel *id);
     static void onManagerOutput(void *data, df_toplevel_manager *manager, df_output *id);
@@ -853,6 +889,22 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
     int m_dndReadFd = -1;
     QSocketNotifier *m_dndReadNotifier = nullptr;
     QByteArray m_dndData;
+
+    // Clipboard history observation (T-13.5b): the wlr-data-control manager
+    // device, the current offer and its MIME types, the in-flight reads, and
+    // the source used to forward a stored entry back to the compositor.
+    zwlr_data_control_manager_v1 *m_dataControlManager = nullptr;
+    zwlr_data_control_device_v1 *m_dataControlDevice = nullptr;
+    zwlr_data_control_offer_v1 *m_dataControlOffer = nullptr;
+    QStringList m_clipboardMimes;
+    // fd -> pending payload and the notifier that drains it.
+    QHash<int, QString> m_clipboardFdMime;
+    QHash<int, QByteArray> m_clipboardPayloads;
+    QHash<QSocketNotifier *, int> m_clipboardNotifierFd;
+    // The completed selection, emitted once every read reaches EOF.
+    QMap<QString, QByteArray> m_clipboardReadPayloads;
+    zwlr_data_control_source_v1 *m_clipboardSource = nullptr;
+    QMap<QString, QByteArray> m_clipboardSourcePayloads;
 
     uint32_t m_coreName = 0;
     uint32_t m_coreVersion = 0;

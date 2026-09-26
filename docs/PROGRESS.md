@@ -3,10 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(61 earlier sections omitted)_
+_(63 earlier sections omitted)_
 
-- **T58 — T-10.2a files-core operations**: **State: done.** `files-core` gained the one operations seam: rename, new; **`services/files-core/src/ops.rs`** (new module):
-- **T59 — T-10.2b Optimistic semantics and state preservation**: **State: done.** `files-core` now applies rename / new-folder / delete to the; **`services/files-core/src/optimistic.rs`** (new) — `OptimisticModel`
 - **T60 — T-10.3a files-core trash**: **State: done.** `files-core` now speaks the freedesktop Trash spec and the; **`services/files-core/src/trash.rs`** (new) — the trash engine:
 - **T61 — T-10.3b files-core folder watcher**: **State: done.** `files-core` now has the one change monitor: one watch per; **`services/files-core/src/watch.rs`** (new) — the watch seam and fallback:
 - **T62 — T-10.4a Files window, toolbar, and sidebar**: **State: done.** The Files window, toolbar, and sidebar are real. `apps/files`; **`apps/files/FilesBridge.{h,cpp}`** — `QML_SINGLETON`, `QML_NAMED_ELEMENT(Files)`:
@@ -45,6 +43,7 @@ _(61 earlier sections omitted)_
 - **T94 — T-13.4a ScreenCast portal and source picker**: **State: done.** The backend serves `org.freedesktop.impl.portal.ScreenCast`; **`portal/src/screencast.rs`** (new) — the pure model: `SourceType`
 - **T95 — T-13.4b ScreenCast stream and stills fallback**: **State: done.** The ScreenCast stream now goes through one transport seam, and; **`portal/src/stream.rs`** (new) — `StreamMode` (`pipewire`/`stills`),
 - **T96 — T-13.5a Clipboard text/image/uri-list round-trips**: **State: done.** The clipboard round-trip matrix is proven on the headless; **`compositor/tests/shell_protocol_conformance.rs`** — new
+- **T97 — T-13.5b Clipboard history (if specified)**: **State: done.** The design calls for history (ADR 0082's accepted consequences; **`shell/src/clipboardhistory.{h,cpp}`** (new, dockcore) — `ClipboardHistory`:
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3228,6 +3227,16 @@ Gotchas for later tasks:
 
 ## Follow-ups
 
+- **T-13.5b follow-ups.** (a) The Control Center clipboard section shows the
+  five most recent entries only; a dedicated popover with image thumbnails,
+  entry removal, search, and the pinned/clear-all controls from legacy T-29 is
+  a presentation follow-up that needs no store or protocol change. (b) There is
+  no headless test of the C++ `wlr-data-control` client (it needs a live
+  compositor); `tst_clipboardhistory` covers the store and the Control Center
+  tests cover the view. A Rust data-control conformance client would close that
+  gap. (c) Copying an entry re-serves it but does not move it to the top of the
+  history until the compositor's own selection echo is observed; harmless but
+  worth normalizing.
 - **T-13.3b follow-ups.** (a) The compositor still-shot capture is implemented
   on the nested (GL) backend only; headless and DRM explicitly reply
   `screenshot_failed`. The T-13.4b PipeWire screencast path, or a later pass,
@@ -7206,3 +7215,62 @@ Gotchas for later tasks:
   Wayland data device when the shell is a Wayland client.
 - T-13.5b adds clipboard history if the design calls for it (legacy T-29 says
   yes); T-13.6 is the polkit agent.
+
+## T97 — T-13.5b Clipboard history (if specified)
+
+**State: done.** The design calls for history (ADR 0082's accepted consequences
+name T-13.5b's history with clear-on-lock and size caps; legacy T-29 specifies
+it), so it is implemented, not declined. The shell observes the selection over
+the vendored `wlr-data-control` client protocol, feeds a pure bounded store,
+renders it in the Control Center, and forwards a chosen entry. Contract frozen
+in ADR [0083](design/adr/0083-clipboard-history-store-and-observer.md).
+
+What landed:
+
+- **`shell/src/clipboardhistory.{h,cpp}`** (new, dockcore) — `ClipboardHistory`:
+  classifies `text`/`image`/`files`/`other`, dedups by content hash, caps at
+  50 entries / 1 MiB each / 8 MiB total (evicting oldest unpinned), refuses the
+  common password-manager secret hints, clears unpinned on lock (pinned
+  survive), searches, and round-trips best-effort JSON.
+- **`protocols/wayland-protocols/wlr-data-control-unstable-v1.xml`** (new,
+  vendored MIT) + client-binding generation in `shell/src/CMakeLists.txt`.
+- **`shell/src/shellprotocol.{h,cpp}`** — binds
+  `zwlr_data_control_manager_v1`, gets a seat device, reads the supported MIME
+  payloads on `selection`, emits `clipboardObserved`, and re-serves an entry
+  with `offerClipboard` (source + `set_selection`). Idle observation never
+  replaces the selection (ADR 0082).
+- **`shell/src/shellcontroller.{h,cpp}`** — owns/persists the store
+  (`~/.local/share/dragonfruit/dragonfruit-shell/clipboard-history.json`),
+  clears unpinned on lock, feeds the panel, handles copy/pin/clear.
+- **`shell/control-center/ControlCenter.qml`** — a Clipboard section (5 entries
+  max) with previews, Pin/Unpin, and Clear; the five-tile model is unchanged.
+  The panel grew 520 → 780 px.
+- **Tests** — `shell/tests/tst_clipboardhistory.cpp` (13 cases) + 2 Control
+  Center QML cases.
+
+Commands that work (repo root):
+
+- `ctest --test-dir build --output-on-failure` — 51/51.
+- `make lint` — exit 0; `make e2e` — exit 0.
+- Build note (unchanged): `export PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig:$PKG_CONFIG_PATH`
+  and `RUSTFLAGS="-L $HOME/.local/df-devroot/lib64"` (or just `make`).
+
+Live check: `DF_STATUS_FIXTURE=1 make demo DEMO_ARGS="--socket-name
+dragonfruit-t97-capture"`; opened the Control Center via the real
+Control-Option-C shortcut over `DRAGONFRUIT_SYNTHETIC_INPUT`; captured with
+`spectacle -b -n -a`. A seeded history file exercised the load path. Vision
+(`/tmp/opencode/t97/panel-wide.png`): five tiles above a Clipboard section with
+the pinned text entry ("Unpin"), the uri-list entry "shot.png, notes.txt"
+("Pin"), the text entry "hello from the clipboard observer" ("Pin"), and a
+fully visible "Clear Clipboard" link; no clipping.
+
+Gotchas for later tasks:
+
+- **The store owns nothing while idle.** `offerClipboard` is called only when
+  the user copies an entry; that is the one ownership hand-off.
+- **Primary selection is ignored** (its offer is destroyed); only the clipboard
+  is stored.
+- **Control Center is 780 px tall now**; a taller section should scroll rather
+  than grow the surface without bound.
+- The C++ data-control client has no headless test (needs a live compositor);
+  the store and view are covered. A Rust conformance client would close that.

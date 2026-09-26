@@ -526,12 +526,13 @@ stream is deferred to T-13.4b; this slice returns the chosen *source handle*.
   against a fake `org.dragonfruit.Portal1`) and `tst_screencastui` (the view)
   are the shell proof. T-13.7 adds the real frontend routing check.
 
-## Clipboard (T-13.5a)
+## Clipboard (T-13.5a/T-13.5b)
 
 The clipboard is not a portal: it is the compositor's standard `wl_data_device`
 selection, delegated to Smithay, with `wlr-data-control` as the manager
 surface. Contract in
-[ADR 0082](adr/0082-clipboard-data-device-bridge-ownership.md).
+[ADR 0082](adr/0082-clipboard-data-device-bridge-ownership.md) and
+[ADR 0083](adr/0083-clipboard-history-store-and-observer.md).
 
 - **One owner.** Ordinary clients set and read the clipboard through
   `wl_data_device`; the selection source is offered to the focused client's
@@ -540,8 +541,8 @@ surface. Contract in
   selection, so copy/paste works across the boundary.
 - **`wlr-data-control` is the manager half.** The global is advertised with an
   open filter; a manager sees and sets the selection without focus. The shell's
-  clipboard history (T-13.5b) is an observer over this surface and must forward
-  the source it observes rather than become a second owner.
+  clipboard history (T-13.5b) is an observer over this surface and forwards the
+  source it observes rather than becoming a second owner.
 - **MIME is opaque.** Text (`text/plain;charset=utf-8`), images (`image/png`),
   and file lists (`text/uri-list`) cross the offer pipe byte-for-byte; the
   bridge does not decode or re-encode. The shell's screenshot copy (T-13.3b)
@@ -550,3 +551,14 @@ surface. Contract in
 - `clipboard_round_trips_text_image_and_uri_list` in
   `compositor/tests/shell_protocol_conformance.rs` drives two independent
   clients through the whole matrix on the headless backend.
+- **History (T-13.5b).** The shell binds the vendored
+  `wlr-data-control-unstable-v1` client protocol, reads the offered
+  `text/uri-list` / `image/*` / `text/plain*` payloads, and feeds the pure
+  `ClipboardHistory` store (dockcore). The store classifies, deduplicates,
+  caps (50 entries / 1 MiB each / 8 MiB total), honours pinned entries, refuses
+  the common password-manager secret hints, clears the unpinned entries on lock
+  (pinned survive), and serializes to a best-effort JSON file under the app's
+  data directory. The Control Center's clipboard section renders the store and
+  raises copy / pin / clear requests; copying an entry re-serves it through the
+  data-control device — the one time the shell takes selection ownership.
+  `tst_clipboardhistory` and the Control Center tests are the headless proof.

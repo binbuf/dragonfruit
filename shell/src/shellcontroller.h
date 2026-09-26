@@ -16,6 +16,7 @@
 
 #include "compositorpolicy.h"
 #include "chooserbridge.h"
+#include "clipboardhistory.h"
 #include "screencastbridge.h"
 #include "screenshotbridge.h"
 #include "screenshotwriter.h"
@@ -111,6 +112,15 @@ private slots:
     // saves and copies it, then answers any waiting portal request.
     void onScreenshotSaved(const QString &path);
     void onScreenshotFailed(const QString &reason);
+    // Clipboard history (T-13.5b): record an observed selection, persist the
+    // store, clear the unpinned entries on lock, and forward a chosen entry
+    // back to the compositor. The history clears on lock by default.
+    void onClipboardObserved(const QStringList &mimes,
+                             const QMap<QString, QByteArray> &payloads);
+    void onClipboardHistoryChanged();
+    void onClipboardCopyRequested(int index);
+    void onClipboardPinToggled(int index, bool pinned);
+    void onClipboardClearRequested();
     // ScreenCast source picker (T-13.4a): the surface configure, its pointer
     // and keyboard routing, the bridge lifecycle, and the view's interactions.
     void onScreenCastConfigured(int width, int height, quint32 serial);
@@ -288,6 +298,12 @@ private:
     void applyControlCenterData();
     void renderControlCenter();
     void scheduleControlCenterRender();
+    // Clipboard history (T-13.5b): the store's persistence file, loaded once
+    // and re-written on every change (best effort; a missing/unwritable file
+    // is not an error).
+    QString clipboardHistoryPath() const;
+    void loadClipboardHistory();
+    void saveClipboardHistory();
     // OSD overlay (T-11.4a): present a volume/brightness change on the active
     // output (suppressed while a fullscreen surface owns it), drive its fade
     // from the model each frame, and unmap it when the model dismisses.
@@ -525,6 +541,10 @@ private:
     ScreenshotBridge *m_screenshot = nullptr;
     // T-13.3b: save/copy of the compositor-produced capture.
     ScreenshotWriter *m_screenshotWriter = nullptr;
+    // T-13.5b: the observed clipboard history (observer over
+    // `wlr-data-control`, never a second owner). Persisted best-effort and
+    // cleared on lock.
+    ClipboardHistory *m_clipboard = nullptr;
     // The compositor's temporary capture file while a capture is in flight.
     QString m_capturePath;
     QQuickWindow *m_screenshotWindow = nullptr;
