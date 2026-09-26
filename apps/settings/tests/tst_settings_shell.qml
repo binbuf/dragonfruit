@@ -21,6 +21,7 @@ Item {
         Component { id: shellComponent; SettingsShell { } }
 
         SignalSpy { id: closeSpy; signalName: "closeRequested" }
+        SignalSpy { id: resizeSpy; signalName: "resizeRequested" }
 
         function make(props) {
             var merged = { width: stage.width, height: stage.height };
@@ -196,6 +197,29 @@ Item {
             var lights = shell.titleBar.trafficLights;
             mouseClick(lights, d / 2, d / 2);
             compare(closeSpy.count, 1);
+        }
+
+        // -- Window-edge resize intent ------------------------------------------
+
+        function test_vertical_edges_report_resize_intent() {
+            var shell = make();
+            resizeSpy.target = shell;
+            resizeSpy.clear();
+            verify(shell.resizeEdges.thickness > 0);
+
+            // The top grip reports the top edge; the bottom grip the bottom
+            // edge. There are no left/right grips: the width is fixed.
+            mouseClick(shell, shell.width / 2, 1);
+            compare(resizeSpy.count, 1);
+            compare(resizeSpy.signalArguments[0][0], Qt.TopEdge);
+
+            mouseClick(shell, shell.width / 2, shell.height - 1);
+            compare(resizeSpy.count, 2);
+            compare(resizeSpy.signalArguments[1][0], Qt.BottomEdge);
+
+            // A press in the middle of the content is not a resize.
+            mouseClick(shell, shell.width / 2, shell.height / 2);
+            compare(resizeSpy.count, 2);
         }
     }
 }

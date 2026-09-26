@@ -11,12 +11,15 @@ Window {
 
     // The macOS reference capture (Desktop & Dock, Accessibility, ...) is
     // ~620x627 in design-system token units, with the sidebar ~31% of the
-    // width. macOS only resizes System Settings vertically, so the width is
-    // effectively fixed; see docs/reference/settings-layout-measurements.md.
-    width: 640
+    // width. macOS resizes System Settings vertically only and never lets it
+    // shrink below the size it opens at, so the width is fixed at the default
+    // and the minimum height is the default height; see
+    // docs/reference/settings-layout-measurements.md.
+    width: 800
     height: 640
-    minimumWidth: 560
-    minimumHeight: 480
+    minimumWidth: 800
+    maximumWidth: 800
+    minimumHeight: 640
     visible: true
     title: qsTr("Settings")
     color: "transparent"
@@ -31,6 +34,11 @@ Window {
         onZoomRequested: win.visibility === Window.Maximized
                          ? win.showNormal() : win.showMaximized()
         onMoveRequested: (x, y) => win.startSystemMove()
+        // The shell owns the edge hit regions; the window asks the compositor
+        // for the interactive resize (`xdg_toplevel.resize`), which honors the
+        // min/max-size hints above: the height can grow but never drops below
+        // the default, and the width stays fixed.
+        onResizeRequested: (edges) => win.startSystemResize(edges)
     }
 
     // The published menu model's actions (T-09.6a). The menu bar is in the
