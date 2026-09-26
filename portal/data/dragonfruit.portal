@@ -4,9 +4,9 @@
 ; frontend reads it to discover the backend's D-Bus name and the interfaces it
 ; implements. The `Interfaces=` list must equal `model::BACKEND_INTERFACES`
 ; (kept in lockstep by a test). T-13.1a shipped the service and its
-; registration empty; T-13.1b adds Settings and GlobalShortcuts, and the
-; capture interfaces follow.
+; registration empty; T-13.1b adds Settings and GlobalShortcuts, T-13.2a
+; FileChooser, and the capture interfaces follow.
 [portal]
 DBusName=org.freedesktop.impl.portal.desktop.dragonfruit
-Interfaces=org.freedesktop.impl.portal.Settings;org.freedesktop.impl.portal.GlobalShortcuts;
+Interfaces=org.freedesktop.impl.portal.Settings;org.freedesktop.impl.portal.GlobalShortcuts;org.freedesktop.impl.portal.FileChooser;
 UseIn=dragonfruit

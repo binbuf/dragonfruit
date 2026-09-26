@@ -20,6 +20,9 @@ use zbus::interface;
 use zbus::object_server::{ObjectServer, SignalEmitter};
 use zbus::zvariant::{ObjectPath, OwnedValue};
 
+use crate::chooser::{
+    self, ChooserKind, ChooserRequest, ChooserResponse, SharedChooser, FILE_CHOOSER_VERSION,
+};
 use crate::settings::{self, SettingsStore, SETTINGS_VERSION};
 use crate::shortcuts::{
     lock as lock_registry, PortalShortcut, SessionError, SharedRegistry, CLOSED_BY_USER,
@@ -28,6 +31,9 @@ use crate::shortcuts::{
 
 /// The standard Settings backend interface name.
 pub const SETTINGS_INTERFACE: &str = "org.freedesktop.impl.portal.Settings";
+
+/// The standard FileChooser backend interface name.
+pub const FILE_CHOOSER_INTERFACE: &str = crate::chooser::FILE_CHOOSER_INTERFACE;
 
 /// The backend's read-only Settings object.
 #[derive(Clone)]
@@ -83,6 +89,141 @@ impl SettingsPortal {
         key: &str,
         value: OwnedValue,
     ) -> zbus::Result<()>;
+}
+
+/// The backend's FileChooser object (T-13.2a).
+///
+/// The standard interface's methods do not return until a presenter has
+/// chosen: each call registers a request in [`crate::chooser::ChooserRegistry`]
+/// and awaits the one-shot completion. T-13.2a ships the portal and the
+/// presenter seam; the design-system picker that completes a request is
+/// T-13.2b. The URI/options logic and the listing live in the pure
+/// [`crate::chooser`] module.
+#[derive(Clone)]
+pub struct FileChooserPortal {
+    chooser: SharedChooser,
+}
+
+impl FileChooserPortal {
+    /// A FileChooser object over a live request registry.
+    pub fn new(chooser: SharedChooser) -> Self {
+        FileChooserPortal { chooser }
+    }
+
+    /// The registry behind this object.
+    pub fn registry(&self) -> &SharedChooser {
+        &self.chooser
+    }
+
+    /// Register one request, tell the presenter it is waiting, and await the
+    /// chosen response.
+    async fn request(
+        &self,
+        request: ChooserRequest,
+        emitter: SignalEmitter<'_>,
+    ) -> Result<(u32, HashMap<String, OwnedValue>), zbus::fdo::Error> {
+        let completion = {
+            let mut registry = chooser::lock(&self.chooser);
+            registry
+                .begin(request.clone())
+                .map_err(|error| zbus::fdo::Error::Failed(error.to_string()))?
+        };
+
+        // The diagnostic `FileChooserOpened` signal is how a presenter sees a
+        // waiting request; the standard interface's caller never sees it.
+        emitter
+            .connection()
+            .emit_signal(
+                None::<&str>,
+                crate::model::DBUS_PATH,
+                crate::model::STATUS_INTERFACE,
+                "FileChooserOpened",
+                &(
+                    request.handle.as_str(),
+                    request.kind.as_str(),
+                    request.app_id.as_str(),
+                    request.parent_window.as_str(),
+                    request.title.as_str(),
+                    request.raw_options.clone(),
+                ),
+            )
+            .await?;
+
+        let response = completion.await.unwrap_or_else(ChooserResponse::cancelled);
+        Ok((response.response, response.results))
+    }
+}
+
+#[interface(name = "org.freedesktop.impl.portal.FileChooser")]
+impl FileChooserPortal {
+    /// Present a chooser to open one or more files (or folders).
+    async fn open_file(
+        &self,
+        handle: ObjectPath<'_>,
+        app_id: &str,
+        parent_window: &str,
+        title: &str,
+        options: HashMap<String, OwnedValue>,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+    ) -> Result<(u32, HashMap<String, OwnedValue>), zbus::fdo::Error> {
+        let request = ChooserRequest::new(
+            ChooserKind::OpenFile,
+            handle.as_str(),
+            app_id,
+            parent_window,
+            title,
+            &options,
+        );
+        self.request(request, emitter).await
+    }
+
+    /// Present a chooser to pick a save location for one file.
+    async fn save_file(
+        &self,
+        handle: ObjectPath<'_>,
+        app_id: &str,
+        parent_window: &str,
+        title: &str,
+        options: HashMap<String, OwnedValue>,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+    ) -> Result<(u32, HashMap<String, OwnedValue>), zbus::fdo::Error> {
+        let request = ChooserRequest::new(
+            ChooserKind::SaveFile,
+            handle.as_str(),
+            app_id,
+            parent_window,
+            title,
+            &options,
+        );
+        self.request(request, emitter).await
+    }
+
+    /// Present a chooser to pick a folder for several named files.
+    async fn save_files(
+        &self,
+        handle: ObjectPath<'_>,
+        app_id: &str,
+        parent_window: &str,
+        title: &str,
+        options: HashMap<String, OwnedValue>,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+    ) -> Result<(u32, HashMap<String, OwnedValue>), zbus::fdo::Error> {
+        let request = ChooserRequest::new(
+            ChooserKind::SaveFiles,
+            handle.as_str(),
+            app_id,
+            parent_window,
+            title,
+            &options,
+        );
+        self.request(request, emitter).await
+    }
+
+    /// The backend's FileChooser interface version.
+    #[zbus(property(emits_changed_signal = "const"))]
+    fn version(&self) -> u32 {
+        FILE_CHOOSER_VERSION
+    }
 }
 
 /// The backend's GlobalShortcuts object.
@@ -297,6 +438,31 @@ mod tests {
             crate::shortcuts::SESSION_INTERFACE,
             "org.freedesktop.impl.portal.Session"
         );
+    }
+
+    #[test]
+    fn the_file_chooser_object_names_the_standard_interface_and_version() {
+        assert_eq!(
+            FILE_CHOOSER_INTERFACE,
+            "org.freedesktop.impl.portal.FileChooser"
+        );
+        assert_eq!(FILE_CHOOSER_VERSION, 3);
+    }
+
+    #[test]
+    fn a_file_chooser_object_shares_its_registry() {
+        let shared = crate::chooser::registry();
+        let portal = FileChooserPortal::new(shared.clone());
+        let request = crate::chooser::ChooserRequest::new(
+            crate::chooser::ChooserKind::OpenFile,
+            "/req/1",
+            "org.example.App",
+            "",
+            "Open",
+            &HashMap::new(),
+        );
+        crate::chooser::lock(&shared).begin(request).expect("begin");
+        assert_eq!(crate::chooser::lock(portal.registry()).len(), 1);
     }
 
     #[test]

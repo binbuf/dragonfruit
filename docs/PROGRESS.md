@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(54 earlier sections omitted)_
+_(55 earlier sections omitted)_
 
-- **T51 — T-09.3 Wallpaper pane**: **State: done.** The Wallpaper pane is real and live: our own gradient; **Schema (since 2)** — `wallpaper.source` (s, empty = solid),
 - **T52 — T-09.4 Desktop & Dock pane**: **State: done.** The Desktop & Dock pane is real and live: the `Dock` group; **`apps/settings/DesktopDockPane.qml`** (new) — `SettingsGroup` "Dock" with
 - **T53 — T-09.5 Displays-basic pane**: **State: done.** The Displays-basic pane is real and live: the `Built-in; **Schema (since 3)** — `display.scale` (d, 0.5–2.0, default 1.0),
 - **T54 — T-09.6a Settings menu-model publication**: **State: done.** The Settings app publishes its native menu model and the; **`apps/settings/SettingsMenu.qml`** (new; QML singleton) — single source of
@@ -45,6 +44,7 @@ _(54 earlier sections omitted)_
 - **T87 — T-12.5b Session policy keys, kill matrix, capture**: **State: done.** The session policy keys are registered in settingsd, the; **`services/settingsd/src/schema.rs`** — schema v5, new `Session` key group:
 - **T88 — T-13.1a Portal backend and session service**: **State: done.** `portal/` is now a real session-bus portal backend plus its; **`portal/src/`** (new `[lib]` + existing binary) — `model` (pure:
 - **T89 — T-13.1b Settings and GlobalShortcuts portals**: **State: done.** The backend now serves the first two standard interfaces at; **`portal/src/settings.rs`** (new) — the pure projection:
+- **T90 — T-13.2a FileChooser portal**: **State: done.** The backend now serves the standard FileChooser interface; **`portal/src/chooser.rs`** (new) — the pure model: `ChooserKind`
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -6666,3 +6666,77 @@ Gotchas for later tasks:
 - A missing Settings key/namespace is
   `org.freedesktop.DBus.Error.InvalidArgs`; a duplicate session path or an
   unknown session is `org.freedesktop.DBus.Error.Failed`.
+
+## T90 — T-13.2a FileChooser portal
+
+**State: done.** The backend now serves the standard FileChooser interface
+(version 3) at `/org/freedesktop/portal/desktop`, advertises it in
+`dragonfruit.portal` / `model::BACKEND_INTERFACES`, and a D-Bus test client
+drives OpenFile/SaveFile to a normalized path. Browsing and URI normalization
+go through files-core. Contract frozen in ADR
+[0076](design/adr/0076-filechooser-portal-and-presenter-seam.md).
+
+What landed:
+
+- **`portal/src/chooser.rs`** (new) — the pure model: `ChooserKind`
+  (`OpenFile`/`SaveFile`/`SaveFiles`), `ChooserOptions` (decodes `multiple`,
+  `directory`, `modal`, `accept_label`, `current_name`, `current_folder`,
+  `current_file`, `files`; the `ay`/`aay` arrays are null-terminated),
+  `ChooserRequest` (also keeps `raw_options`), `ChooserResponse`
+  (`success`/`cancelled`/`other`, `uris()`), `normalize_uri` (files-core
+  `Location`), `ChooserRegistry` (`begin`/`complete`/`cancel`/`handles`/
+  `request`; duplicate handle refused), the one-shot `ChooserCompletion`/
+  `ChooserCompleter` future, and `list_directory`/`DirectoryListing`/
+  `ChooserEntry` over `DirectoryModel` + `StdFsSource`.
+- **`portal/src/interfaces.rs`** — `FileChooserPortal` +
+  `FILE_CHOOSER_INTERFACE`; `OpenFile`/`SaveFile`/`SaveFiles` register, emit
+  `FileChooserOpened`, and await; `Version` = 3.
+- **`portal/src/dbus.rs`** — `Backend` shares the `chooser` registry
+  (`with_services`, `chooser()`); `initialize` serves `FileChooserPortal`.
+  Presenter half on `org.dragonfruit.Portal1`: `PendingFileChoosers() ->
+  a(ss)`, `CompleteFileChooser(handle, uris) -> b`, `CancelFileChooser(handle)
+  -> b`, `ListDirectory(uri) -> a(ssbu)`, signal
+  `FileChooserOpened(handle, kind, app_id, parent_window, title, options)`.
+- **Dependency** — `portal` links `dragonfruit-files-core` (library, never a
+  process) for `Location` and listing; `portal/Cargo.toml` gained the path
+  dep.
+- **Identity / data** — `BACKEND_INTERFACES` and `dragonfruit.portal` now
+  list `org.freedesktop.impl.portal.FileChooser` (data test keeps lockstep).
+- **Tests** — `portal/tests/filechooser.rs` (new, 5 integration on a private
+  bus; the client acts as the presenter). Unit tests in `chooser.rs` and
+  `interfaces.rs`; `session_bus.rs` expects the third interface;
+  `portals.rs` introspects it.
+
+Commands that work (repo root):
+
+- `cargo test -p xdg-desktop-portal-dragonfruit` — 35 unit + 5
+  `filechooser` + 4 `session_bus` + 3 `portals`.
+- `cargo clippy -p xdg-desktop-portal-dragonfruit --all-targets -- -D
+  warnings`, `cargo fmt -p xdg-desktop-portal-dragonfruit -- --check` — exit 0.
+- `make e2e` (exit 0) and `make lint` (exit 0), re-run after the change.
+
+Live check: nested demo over the synthetic socket
+(`DRAGONFRUIT_SYNTHETIC_INPUT=$XDG_RUNTIME_DIR/dragonfruit-t90-capture.synth
+make demo DEMO_ARGS="--socket-name dragonfruit-t90-capture"`) rendered the
+desktop; full-screen still `/tmp/opencode/t90/t90-desktop.png`, vision-checked
+— menu bar, Dock band, Settings Appearance pane, and the X11 demo window all
+present, no black regions/clipping/tearing. This task adds no surface, so this
+is a regression pass.
+
+Gotchas for later tasks:
+
+- **T-13.2b owns the picker.** No dialog exists yet: a request stays pending
+  until a presenter calls `CompleteFileChooser`/`CancelFileChooser`. The shell
+  picker should watch `FileChooserOpened`, browse with `ListDirectory` (or its
+  own files-core bridge), and complete with local paths or `file://` URIs —
+  `normalize_uri` accepts either and discards foreign schemes.
+- **`uris` is the only success payload** (plus `writable=false` for open).
+  Filters/choices are not interpreted in T-13.2a; the raw options reach the
+  presenter through `FileChooserOpened` / `ChooserRequest::raw_options`.
+- **`ListDirectory` is diagnostic and blocks** while files-core lists; it is
+  the seam, not the final transport.
+- The impl-portal method is **synchronous** (blocks until the presenter
+  answers); the one-shot completion future is the async seam. The `handle` is
+  an object path on the wire — a test client must send an `ObjectPath`, not a
+  `String`.
+- T-13.2b adds the picker UI; T-13.7 adds the real frontend routing check.

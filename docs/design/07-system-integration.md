@@ -381,3 +381,34 @@ already own their state. Both are served at the standard path and listed in
   real settingsd object beside them; the value/namespace/session logic lives
   in the pure `portal::settings` and `portal::shortcuts` modules and is
   unit-tested without a bus.
+
+### FileChooser (T-13.2a)
+
+`org.freedesktop.impl.portal.FileChooser` is the third concrete interface and
+the first *interactive* one: the standard method does not return until a
+presenter has chosen, so the backend registers the request and awaits a
+one-shot completion (ADR [0076](adr/0076-filechooser-portal-and-presenter-seam.md)).
+
+- **Browsing is files-core's, unchanged.** `portal::chooser` normalizes every
+  presenter selection through `dragonfruit-files-core::Location` into a
+  canonical `file://` URI and discards anything that cannot be normalized, as
+  the portal spec requires. The diagnostic `ListDirectory` lists through the
+  same `DirectoryModel`/`StdFsSource` and collation Files uses — the portal
+  links the core as a library, never a process.
+- **The presenter seam is the registry.** `portal::chooser::ChooserRegistry`
+  owns the live requests; `OpenFile`/`SaveFile`/`SaveFiles` (version 3)
+  register one and await. The diagnostic `org.dragonfruit.Portal1` carries a
+  presenter's half: `FileChooserOpened` when a request waits, and
+  `CompleteFileChooser`/`CancelFileChooser`/`PendingFileChoosers`. T-13.2a
+  ships no dialog; the test client is the presenter, and the T-13.2b picker
+  takes the same calls.
+- **Absence is not a state here.** There is no external owner to be absent:
+  the chooser either has a presenter (a request completes) or the completion
+  never arrives. The settings app's "No file chooser is available." row keys
+  off the *frontend* (`org.freedesktop.portal.Desktop`), not this backend, and
+  is unchanged.
+- `portal/tests/filechooser.rs` drives a real D-Bus client acting as the
+  presenter: OpenFile/SaveFile return the normalized path, a cancelled request
+  answers code 1, and `ListDirectory` proves the files-core link. The
+  options/result and registry logic live in `portal::chooser` and are
+  unit-tested without a bus.
