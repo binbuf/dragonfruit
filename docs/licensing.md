@@ -22,7 +22,7 @@ restrictions to track.
 | `design-system/` (QML module `Dragonfruit`) | MIT |
 | `shell/` (menu bar, Dock, Control Center, notifications, screenshot) | MIT |
 | `apps/` (Settings, Files) | MIT |
-| `fonts/Inter/` (system font, embedded via `libs/system-font/`) | SIL OFL 1.1 |
+| `assets/fonts/Inter/` (system font, embedded via `libs/system-font/`) | SIL OFL 1.1 |
 
 Rationale: MIT is permissive, maximises third-party adoption and
 interoperability, and keeps Dragonfruit consumable by any project —

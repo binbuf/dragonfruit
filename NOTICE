@@ -20,7 +20,7 @@ for Dragonfruit alters the terms of these components.
 
 | Component | License |
 |---|---|
-| [Inter](https://github.com/rsms/inter) 4.001 (`fonts/Inter/`, embedded in first-party binaries via `libs/system-font/`) | SIL OFL 1.1 |
+| [Inter](https://github.com/rsms/inter) 4.001 (`assets/fonts/Inter/`, embedded in first-party binaries via `libs/system-font/`) | SIL OFL 1.1 |
 
 ## System libraries (used via the Linux stack)
 

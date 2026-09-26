@@ -4,17 +4,17 @@
 # shell, Settings, Files, and the gallery cannot disagree about the desktop's
 # type the way they would if each entry point registered fonts itself.
 #
-# The TTFs are tracked project assets under fonts/Inter (see README there) and
-# are compiled in as Qt resources: no system install is required to develop or
-# test, and packaging can install the same faces system-wide later for
-# third-party apps.
+# The TTFs are tracked project assets under assets/fonts/Inter (see the README
+# there) and are compiled in as Qt resources: no system install is required to
+# develop or test, and packaging can install the same faces system-wide later
+# for third-party apps.
 
-set(_inter_dir "${CMAKE_SOURCE_DIR}/fonts/Inter")
+set(_inter_dir "${CMAKE_SOURCE_DIR}/assets/fonts/Inter")
 set(_inter_roman "${_inter_dir}/Inter-VariableFont_opsz,wght.ttf")
 set(_inter_italic "${_inter_dir}/Inter-Italic-VariableFont_opsz,wght.ttf")
 if(NOT EXISTS "${_inter_roman}" OR NOT EXISTS "${_inter_italic}")
     message(FATAL_ERROR
-        "dragonfruit-system-font: fonts/Inter is missing (expected "
+        "dragonfruit-system-font: assets/fonts/Inter is missing (expected "
         "${_inter_roman} and ${_inter_italic})")
 endif()
 
