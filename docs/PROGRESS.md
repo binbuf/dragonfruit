@@ -3,12 +3,11 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(48 earlier sections omitted)_
+_(49 earlier sections omitted)_
 
-- **T46 — T-08.2c Compositor motion/input policy migration**: **State: done.** The compositor now consumes the settingsd motion/input policy;; **`protocols/dragonfruit-toplevel.xml`** — `df_toplevel_manager` is v5 with
 - **T47 — T-08.3 Restart, resync, and key-schema documentation**: **State: done.** `settingsd` is restartable with no lost write and the shell; **`docs/settings-keys.md`** (new) — the human-facing key table (type,
 - **T48 — T-09.1a Settings app shell**: **State: done.** The `apps/settings` stub is now a real shell: frameless; **`apps/settings/`** is a reusable QML module `Dragonfruit.Settings` (static
-- **Follow-ups**: **T-12.3c follow-ups.** (a) The shell types passwords from a fixed US/ASCII; **T-12.3b follow-ups.** (a) Input capture is still T-12.3c: the lock surface
+- **Follow-ups**: **T-12.4a follow-ups.** (a) The idle engine (ADR 0070) has no production; **T-12.3c follow-ups.** (a) The shell types passwords from a fixed US/ASCII
 - **T49 — T-09.1b Settings live-apply plumbing**: **State: done.** The Settings app is a real settingsd consumer: a QML `Settings`; **`libs/settings-client/`** (new; `libs/CMakeLists.txt`) — the former
 - **T50 — T-09.2 Appearance pane**: **State: done.** The Appearance pane is real and live: a Light/Dark/Auto; **`apps/settings/AppearancePane.qml`** (new) — `SettingsGroup`/`SettingsRow`
 - **T51 — T-09.3 Wallpaper pane**: **State: done.** The Wallpaper pane is real and live: our own gradient; **Schema (since 2)** — `wallpaper.source` (s, empty = solid),
@@ -45,6 +44,7 @@ _(48 earlier sections omitted)_
 - **T82 — T-12.3b Lock PAM authentication**: **State: done.** Unlock is now real PAM authentication through a small helper;; **`services/lock-auth/`** (new crate `dragonfruit-lock-auth`) —
 - **System font — Inter (post-T82, before T83)**: **State: done (first-party half).** The desktop's type is now Inter 4.001; **`fonts/Inter/`** (now tracked; T82's `/fonts/` .gitignore entry is gone) —
 - **T83 — T-12.3c Lock input capture and kill-resistance**: **State: done.** The locked session now captures input in the lock UI instead; **`compositor/src/lock.rs`** — `LockModel::input_surface()` (first live lock
+- **T84 — T-12.4a Idle timers**: **State: done.** The dim → blank → lock → suspend chain is a pure,; **`services/session/src/idle.rs`** (new) — `IdleStage`
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3228,6 +3228,13 @@ Gotchas for later tasks:
 
 ## Follow-ups
 
+- **T-12.4a follow-ups.** (a) The idle engine (ADR 0070) has no production
+  caller yet: no idle service binds the compositor's `ext-idle-notify` global,
+  and the compositor has no dim/blank path, so T-12.4b/T-12.5a must wire the
+  engine to a real activity source and action sink. (b) The `idle.*` policy
+  keys exist only as the `IdlePolicy::from_keys` contract; T-12.5b must
+  register them in settingsd (schema `since` bump) and keep
+  `docs/settings-keys.md` in lockstep.
 - **T-12.3c follow-ups.** (a) The shell types passwords from a fixed US/ASCII
   evdev table (`shell/src/lockinput.cpp`) because it is not an xkb client; a
   later task that installs an xkb state in the shell should replace it. (b)
@@ -6266,3 +6273,56 @@ Gotchas for later tasks:
   recorded under `## Follow-ups`.
 - **The shell's lock scene is a pure view**: it never holds the password; the
   buffer lives in `ShellController` and goes straight to the PAM helper stdin.
+
+## T84 — T-12.4a Idle timers
+
+**State: done.** The dim → blank → lock → suspend chain is a pure,
+clock-injected engine in `dragonfruit-session`, driven from `idle.*` policy
+keys. Contract frozen in ADR
+[0070](design/adr/0070-idle-timer-engine-and-policy.md).
+
+What landed:
+
+- **`services/session/src/idle.rs`** (new) — `IdleStage`
+  (`Active`/`Dim`/`Blank`/`Lock`/`Suspend`, ordered, `as_str`, `is_idle`,
+  `next`); `IdlePolicy` (`new` defaults dim 150 s / blank 300 s / lock 600 s /
+  no suspend, `disabled`, `delay`, `set_delay`, `with_delay`, `normalized`,
+  `from_keys`); `KEY_DIM`/`KEY_BLANK`/`KEY_LOCK`/`KEY_SUSPEND`,
+  `DEFAULT_*`; `IdleTimers` (`new`, `policy`, `stage`, `last_activity`,
+  `idle_for`, `activity`, `stage_at`, `poll`, `next_deadline`, `set_policy`).
+- **`services/session/src/lib.rs`** — exports `idle`, re-exports
+  `IdlePolicy`/`IdleStage`/`IdleTimers`.
+- **Tests** — `idle::tests` 10 unit (each stage at its delay, late-tick jump,
+  activity reset/wake, disabled stages, disabled policy, out-of-order clamping,
+  `next_deadline`, live policy change, `from_keys`, key/name round-trip);
+  `services/session/tests/idle.rs` 3 integration (fake clock drives every
+  stage; wake resets; a zero key disables its stage).
+- **Docs** — ADR 0070; `11-session-and-dev-workflow.md` new "Idle timers
+  (T-12.4a)" subsection and the logind bullet.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-session` — 23 unit + 3 integration.
+- `cargo clippy -p dragonfruit-session --all-targets -- -D warnings`,
+  `cargo fmt -p dragonfruit-session -- --check` — exit 0.
+- `make e2e` — passed; `make lint` — 43/43 QML tests, exit 0.
+
+Live check: `make demo DEMO_ARGS="--socket-name t84-idle"` (nested), captured
+`/tmp/opencode/t84-idle.png`; vision confirms the nested desktop renders
+(menu bar `dragonfruit-settings File Edit View`, Dock tiles, Settings and the
+X11 demo window) with no artifacts, and the dev tool reported a clean teardown.
+
+Gotchas for later tasks:
+
+- **No production consumer yet.** Nothing calls `IdleTimers`; the compositor
+  still has no dim/blank path and no idle service binds `ext-idle-notify`.
+  T-12.4b is the first consumer (a held inhibitor simply skips `poll`; wake
+  calls `activity`).
+- **Key names are fixed by ADR 0070**: `idle.dim`, `idle.blank`, `idle.lock`,
+  `idle.suspend`, whole seconds, `0`/negative/`never` disables. T-12.5b must
+  register exactly these in settingsd and call `IdlePolicy::from_keys`.
+- **`normalized()` clamps enabled delays into chain order** (a stage can never
+  fire before an earlier enabled stage); disabled stages are skipped.
+- The engine is in `dragonfruit-session`, not the compositor (ADR 0070); the
+  compositor keeps serving `ext-idle-notify`/`idle-inhibit` for the future
+  idle service.
