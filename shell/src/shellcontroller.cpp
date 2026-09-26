@@ -75,6 +75,11 @@ constexpr int kControlCenterTopGap = 8;
 constexpr int kOsdSurfaceWidth = 220;
 constexpr int kOsdSurfaceHeight = 220;
 
+// The FileChooser picker (T-13.2b): a centered modal dialog rendered into a
+// dedicated `file-chooser` overlay surface while a portal request waits.
+constexpr int kChooserWidth = 640;
+constexpr int kChooserHeight = 440;
+
 QVariantMap statusItem(const QString &id, const QString &icon, const QString &label,
                        const QString &accessibleName, bool available, qreal level = 0.8,
                        bool enabled = true)
@@ -779,6 +784,58 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     m_osdTimer->setInterval(16);
     connect(m_osdTimer, &QTimer::timeout, this, &ShellController::onOsdTick);
 
+    // FileChooser picker (T-13.2b): a centered offscreen scene rendered into
+    // its own `file-chooser` overlay surface while a portal request waits for
+    // a presenter. The bridge is the D-Bus half; the QML is a pure view.
+    m_chooser = new ChooserBridge(this);
+    m_chooser->connectService();
+    connect(m_chooser, &ChooserBridge::started, this, &ShellController::onChooserStarted);
+    connect(m_chooser, &ChooserBridge::finished, this, &ShellController::onChooserFinished);
+    connect(m_chooser, &ChooserBridge::changed, this, &ShellController::onChooserChanged);
+
+    m_chooserWindow = new QQuickWindow;
+    m_chooserWindow->setColor(Qt::transparent);
+    QQmlComponent chooserComponent(m_engine);
+    chooserComponent.loadFromModule(QStringLiteral("Dragonfruit.Screenshot"),
+                                    QStringLiteral("FileChooser"));
+    if (chooserComponent.isError()) {
+        fprintf(stderr, "dragonfruit-shell: FileChooser QML error: %s\n",
+                qPrintable(chooserComponent.errorString()));
+        return false;
+    }
+    QObject *chooserObject = chooserComponent.create();
+    m_chooserItem = qobject_cast<QQuickItem *>(chooserObject);
+    if (!m_chooserItem) {
+        fprintf(stderr, "dragonfruit-shell: FileChooser QML did not produce an item\n");
+        return false;
+    }
+    m_chooserItem->setParentItem(m_chooserWindow->contentItem());
+    connect(chooserObject, SIGNAL(selectionChanged(int)), this,
+            SLOT(onChooserSelectionChanged(int)));
+    connect(chooserObject, SIGNAL(entryActivated(int)), this,
+            SLOT(onChooserEntryActivated(int)));
+    connect(chooserObject, SIGNAL(browseRequested(QString)), this,
+            SLOT(onChooserBrowseRequested(QString)));
+    connect(chooserObject, SIGNAL(upRequested()), this, SLOT(onChooserUpRequested()));
+    connect(chooserObject, SIGNAL(nameEdited(QString)), this,
+            SLOT(onChooserNameEdited(QString)));
+    connect(chooserObject, SIGNAL(accepted()), this, SLOT(onChooserAccepted()));
+    connect(chooserObject, SIGNAL(cancelled()), this, SLOT(onChooserCancelled()));
+    connect(m_chooserWindow, &QQuickWindow::afterRendering, this,
+            &ShellController::renderChooser);
+    connect(m_protocol, &ShellProtocol::chooserConfigured, this,
+            &ShellController::onChooserConfigured);
+    connect(m_protocol, &ShellProtocol::chooserPointerMoved, this,
+            &ShellController::onChooserPointerMoved);
+    connect(m_protocol, &ShellProtocol::chooserPointerButton, this,
+            &ShellController::onChooserPointerButton);
+    connect(m_protocol, &ShellProtocol::chooserPointerLeft, this,
+            &ShellController::onChooserPointerLeft);
+    connect(m_protocol, &ShellProtocol::chooserKeyboardFocused, this,
+            &ShellController::onChooserKeyboardFocused);
+    connect(m_protocol, &ShellProtocol::chooserKeyEvent, this,
+            &ShellController::onChooserKeyEvent);
+
     // Session lock (T-12.3a): a full-output offscreen scene rendered into one
     // `ext-session-lock-v1` surface per output. Authentication and input
     // capture are T-12.3b/T-12.3c; this is the fail-secure presentation.
@@ -873,6 +930,10 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // brightness change presents it (T-11.4a).
     if (!m_protocol->createOsdSurface(kOsdSurfaceWidth, kOsdSurfaceHeight))
         return false;
+    // The FileChooser picker is a centered `overlay` surface, unmapped until a
+    // portal request arrives (T-13.2b).
+    if (!m_protocol->createChooserSurface(kChooserWidth, kChooserHeight))
+        return false;
 
     // Capture/demo seam (T-11.1b): raise the Dock's launch-failure
     // notification once the chrome is up, so the live check can exercise the
@@ -895,6 +956,14 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             else
                 showOsd(OsdModel::Kind::Volume, 0.6, false);
         });
+    }
+
+    // Capture/demo seam (T-13.2b): present the FileChooser picker once the
+    // chrome is up so the live visual check can capture it with no portal
+    // caller. `DF_CHOOSER_FIXTURE` is the folder to browse (empty/`1` =
+    // home); the request uses an open panel. Never set in a normal session.
+    if (qEnvironmentVariableIsSet("DF_CHOOSER_FIXTURE")) {
+        QTimer::singleShot(1500, this, &ShellController::startChooserFixture);
     }
 
     // Capture/demo seam (T-12.3a): lock the session once the chrome is up so
@@ -1521,6 +1590,241 @@ void ShellController::renderOsd()
         m_protocol->commitOsdImage(image);
         m_osdMapped = true;
     }
+}
+
+// --- FileChooser picker (T-13.2b) -------------------------------------------
+
+void ShellController::startChooserFixture()
+{
+    if (!m_chooser)
+        return;
+    const QString value = qEnvironmentVariable("DF_CHOOSER_FIXTURE");
+    QString folder = value;
+    if (folder.isEmpty() || folder == QLatin1String("1"))
+        folder = QDir::homePath();
+    m_chooser->begin(QStringLiteral("/org/freedesktop/portal/desktop/request/fixture"),
+                     QStringLiteral("open"), tr("Open File"), QString(), false, false,
+                     QUrl::fromLocalFile(folder).toString());
+}
+
+void ShellController::onChooserStarted()
+{
+    showChooser();
+}
+
+void ShellController::onChooserFinished(bool completed)
+{
+    Q_UNUSED(completed);
+    hideChooser();
+}
+
+void ShellController::onChooserChanged()
+{
+    if (!m_chooserActive)
+        return;
+    applyChooserData();
+    scheduleChooserRender();
+}
+
+void ShellController::showChooser()
+{
+    if (!m_chooserItem)
+        return;
+    m_chooserActive = true;
+    m_chooserPending = true;
+    applyChooserData();
+    if (m_chooserWidth > 0 && m_chooserHeight > 0)
+        renderChooser();
+    // Take active focus so Escape/Return reach the dialog.
+    m_chooserItem->forceActiveFocus();
+    if (m_protocol)
+        m_protocol->setChooserInputRegion(m_chooserWidth, m_chooserHeight);
+}
+
+void ShellController::hideChooser()
+{
+    m_chooserActive = false;
+    m_chooserPending = false;
+    m_chooserButtons = Qt::NoButton;
+    if (m_protocol) {
+        m_protocol->setChooserInputRegion(0, 0);
+        m_protocol->hideChooser();
+    }
+}
+
+void ShellController::applyChooserData()
+{
+    if (!m_chooserItem || !m_chooser)
+        return;
+    m_chooserItem->setProperty("title", m_chooser->title());
+    m_chooserItem->setProperty("kind", m_chooser->kind());
+    m_chooserItem->setProperty("acceptLabel", m_chooser->acceptLabel());
+    m_chooserItem->setProperty("currentUri", m_chooser->currentUri());
+    m_chooserItem->setProperty("currentLabel", m_chooser->currentLabel());
+    m_chooserItem->setProperty("entries", m_chooser->entries());
+    m_chooserItem->setProperty("selectedIndex", m_chooser->selectedIndex());
+    m_chooserItem->setProperty("saveName", m_chooser->saveName());
+    m_chooserItem->setProperty("directoryMode", m_chooser->directoryMode());
+    m_chooserItem->setProperty("multiple", m_chooser->multiple());
+    m_chooserItem->setProperty("errorText", m_chooser->error());
+}
+
+void ShellController::renderChooser()
+{
+    if (!m_chooserActive || !m_chooserPending || !m_chooserWindow || !m_chooserItem)
+        return;
+    if (m_chooserWidth <= 0 || m_chooserHeight <= 0)
+        return;
+    // The scene graph just rendered; skip the re-entrant frame our own
+    // `grabWindow` readback produces (the Dock/banner FR-14 pattern).
+    if (!m_chooserFrameGate.frameRendered())
+        return;
+    if (!m_chooserSceneGraphCommitLogged) {
+        m_chooserSceneGraphCommitLogged = true;
+        qInfo() << "shell: FileChooser scene-graph commit path active";
+    }
+    m_chooserItem->setWidth(m_chooserWidth);
+    m_chooserItem->setHeight(m_chooserHeight);
+    if (m_chooserWindow->width() != m_chooserWidth
+        || m_chooserWindow->height() != m_chooserHeight)
+        m_chooserWindow->resize(m_chooserWidth, m_chooserHeight);
+    if (!m_chooserWindow->isVisible())
+        m_chooserWindow->show();
+    m_chooserFrameGate.beginCommit();
+    const QImage image = m_chooserWindow->grabWindow();
+    m_chooserFrameGate.endCommit();
+    if (!image.isNull() && m_protocol)
+        m_protocol->commitChooserImage(image);
+}
+
+void ShellController::scheduleChooserRender()
+{
+    if (m_chooserRenderPending)
+        return;
+    m_chooserRenderPending = true;
+    QTimer::singleShot(0, this, [this]() {
+        m_chooserRenderPending = false;
+        renderChooser();
+    });
+}
+
+void ShellController::onChooserConfigured(int width, int height, quint32)
+{
+    // The compositor sends a pre-layout configure at the full output size
+    // before applying the layer surface's requested size; skip it (the same
+    // rule as the menu bar, banner, panel, and OSD).
+    if (width != kChooserWidth || height != kChooserHeight) {
+        fprintf(stderr, "dragonfruit-shell: ignoring pre-layout chooser configure %dx%d\n", width,
+                height);
+        return;
+    }
+    m_chooserWidth = width;
+    m_chooserHeight = height;
+    if (m_protocol)
+        m_protocol->setChooserInputRegion(m_chooserWidth, m_chooserHeight);
+    if (m_chooserPending)
+        renderChooser();
+}
+
+void ShellController::onChooserPointerMoved(qreal x, qreal y)
+{
+    if (!m_chooserWindow)
+        return;
+    const QPointF p(x, y);
+    QMouseEvent event(QEvent::MouseMove, p, p, Qt::NoButton, m_chooserButtons, Qt::NoModifier);
+    QCoreApplication::sendEvent(m_chooserWindow, &event);
+    scheduleChooserRender();
+}
+
+void ShellController::onChooserPointerButton(qreal x, qreal y, quint32 button, bool pressed)
+{
+    if (!m_chooserWindow)
+        return;
+    Qt::MouseButton qtButton = Qt::NoButton;
+    if (button == 0x110)
+        qtButton = Qt::LeftButton;
+    if (pressed)
+        m_chooserButtons |= qtButton;
+    else
+        m_chooserButtons &= ~qtButton;
+    const QPointF p(x, y);
+    QMouseEvent event(pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease, p, p,
+                      qtButton, m_chooserButtons, Qt::NoModifier);
+    QCoreApplication::sendEvent(m_chooserWindow, &event);
+    scheduleChooserRender();
+}
+
+void ShellController::onChooserPointerLeft()
+{
+    if (!m_chooserWindow)
+        return;
+    QMouseEvent event(QEvent::MouseMove, QPointF(-1, -1), QPointF(-1, -1), Qt::NoButton,
+                      m_chooserButtons, Qt::NoModifier);
+    QCoreApplication::sendEvent(m_chooserWindow, &event);
+    scheduleChooserRender();
+}
+
+void ShellController::onChooserKeyboardFocused(bool focused)
+{
+    // Losing the keyboard is the click-away dismissal: a click on a window or
+    // the desktop moves chrome keyboard focus away from the dialog. Cancelling
+    // tells the portal the caller got no selection.
+    if (!focused && m_chooserActive && m_chooser)
+        m_chooser->cancel();
+}
+
+void ShellController::onChooserKeyEvent(quint32 key, bool pressed)
+{
+    if (!m_chooserWindow || !m_chooserActive)
+        return;
+    const Qt::Key qtKey = qtKeyFromEvdev(key);
+    if (qtKey == Qt::Key_unknown)
+        return;
+    QKeyEvent event(pressed ? QEvent::KeyPress : QEvent::KeyRelease, qtKey, Qt::NoModifier);
+    QCoreApplication::sendEvent(m_chooserWindow, &event);
+    scheduleChooserRender();
+}
+
+void ShellController::onChooserSelectionChanged(int index)
+{
+    if (m_chooser)
+        m_chooser->select(index);
+}
+
+void ShellController::onChooserEntryActivated(int index)
+{
+    if (m_chooser)
+        m_chooser->activate(index);
+}
+
+void ShellController::onChooserBrowseRequested(const QString &uri)
+{
+    if (m_chooser)
+        m_chooser->browse(uri);
+}
+
+void ShellController::onChooserUpRequested()
+{
+    if (m_chooser)
+        m_chooser->goUp();
+}
+
+void ShellController::onChooserNameEdited(const QString &name)
+{
+    if (m_chooser)
+        m_chooser->setSaveName(name);
+}
+
+void ShellController::onChooserAccepted()
+{
+    if (m_chooser)
+        m_chooser->accept();
+}
+
+void ShellController::onChooserCancelled()
+{
+    if (m_chooser)
+        m_chooser->cancel();
 }
 
 // --- session lock (T-12.3a protocol/UI, T-12.3b authentication) -------------

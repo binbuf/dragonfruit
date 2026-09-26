@@ -15,6 +15,7 @@
 #include <QVariantList>
 
 #include "compositorpolicy.h"
+#include "chooserbridge.h"
 #include "desktopentry.h"
 #include "displayspolicy.h"
 #include "dockmodel.h"
@@ -73,6 +74,24 @@ private slots:
     void onOsdTick();
     // T-11.4b: the OSD view's (or an AT-SPI PressAction's) dismissal request.
     void onOsdDismissed();
+    // FileChooser picker (T-13.2b): the surface configure, its pointer and
+    // keyboard stream, the view's interactions, and the bridge's lifecycle.
+    void onChooserConfigured(int width, int height, quint32 serial);
+    void onChooserPointerMoved(qreal x, qreal y);
+    void onChooserPointerButton(qreal x, qreal y, quint32 button, bool pressed);
+    void onChooserPointerLeft();
+    void onChooserKeyboardFocused(bool focused);
+    void onChooserKeyEvent(quint32 key, bool pressed);
+    void onChooserSelectionChanged(int index);
+    void onChooserEntryActivated(int index);
+    void onChooserBrowseRequested(const QString &uri);
+    void onChooserUpRequested();
+    void onChooserNameEdited(const QString &name);
+    void onChooserAccepted();
+    void onChooserCancelled();
+    void onChooserStarted();
+    void onChooserFinished(bool completed);
+    void onChooserChanged();
     // Session lock (T-12.3a): the compositor confirmed the lock, one lock
     // surface was configured to a full-output size, and the lock object
     // finished.
@@ -243,6 +262,17 @@ private:
     void applyOsdData();
     void hideOsd();
     void renderOsd();
+    // FileChooser picker (T-13.2b): map the centered dialog surface, drive the
+    // view from the bridge, commit its frames, and unmap it when the request
+    // resolves.
+    void showChooser();
+    void hideChooser();
+    void applyChooserData();
+    void renderChooser();
+    void scheduleChooserRender();
+    // The capture/demo seam (`DF_CHOOSER_FIXTURE`): present a request pointed
+    // at a real folder so the picker can be captured without a portal caller.
+    void startChooserFixture();
     // Session lock (T-12.3a): present the lock scene once the compositor
     // confirms, paint each configured lock surface at its full-output size,
     // and refresh the clock while locked.
@@ -421,6 +451,20 @@ private:
     FrameCommitGate m_osdFrameGate;
     bool m_osdSceneGraphCommitLogged = false;
     QTimer *m_osdTimer = nullptr;
+    // FileChooser picker (T-13.2b): a centered dialog scene rendered into the
+    // `file-chooser` overlay surface while a portal request waits. The bridge
+    // owns the request and the one D-Bus call back to the portal.
+    ChooserBridge *m_chooser = nullptr;
+    QQuickWindow *m_chooserWindow = nullptr;
+    QQuickItem *m_chooserItem = nullptr;
+    int m_chooserWidth = 0;
+    int m_chooserHeight = 0;
+    bool m_chooserActive = false;
+    bool m_chooserPending = false;
+    bool m_chooserRenderPending = false;
+    Qt::MouseButtons m_chooserButtons = Qt::NoButton;
+    FrameCommitGate m_chooserFrameGate;
+    bool m_chooserSceneGraphCommitLogged = false;
     // Session lock (T-12.3a): an offscreen lock scene rendered into one
     // `ext-session-lock-v1` surface per output. The map holds each surface's
     // configured size; the QML is a pure view. `m_lockTimer` refreshes the
