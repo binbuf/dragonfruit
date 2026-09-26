@@ -41,7 +41,7 @@ packages to be meaningful.
 - The fractional-scaling policy decision (`docs/xwayland-scaling.md`).
 - The soak harness and testing ladder.
 - The design-system token gates and gallery goldens.
-- The bundled Inter system font (`fonts/Inter/`, `libs/system-font/`): the
+- The bundled Inter system font (`assets/fonts/Inter/`, `libs/system-font/`): the
   first-party half is already wired in-process; packaging adds the
   system-wide install for third-party apps.
 
@@ -64,7 +64,7 @@ packages to be meaningful.
    death behavior documented.
 8. **Packaging**: Fedora and Debian packages, session files, dependencies,
    CI packaging jobs, install/uninstall cleanly on fresh VMs. Packages
-   install the bundled Inter faces (`fonts/Inter/`) into the system font path
+   install the bundled Inter faces (`assets/fonts/Inter/`) into the system font path
    with a fontconfig alias for `sans-serif`, so third-party Qt/GTK/XWayland
    apps inherit the desktop's system font, and ship `LICENSES/OFL-1.1.txt`.
 9. **Performance**: re-run every budget on the packaged build; publish the

@@ -77,7 +77,7 @@ two sides cannot drift (see
 
 ## Typography and the system font
 
-The desktop's type is **Inter** (SIL OFL 1.1, `fonts/Inter/`), declared as
+The desktop's type is **Inter** (SIL OFL 1.1, `assets/fonts/Inter/`), declared as
 `primitive.font.family`. Every first-party process calls
 `Dragonfruit::installSystemFont()` from `libs/system-font` after
 `QGuiApplication` exists and before QML loads: the bundled variable faces are
