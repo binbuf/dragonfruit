@@ -162,6 +162,35 @@ QVariantList buildRecentEntries(const QStringList &recentIds, const QStringList 
     return out;
 }
 
+AppOpenPlan planAppOpen(const DesktopEntryIndex &index, const QVariantList &running,
+                        const QString &desktopId)
+{
+    AppOpenPlan plan;
+    DesktopEntry entry = index.byId(desktopId);
+    if (!entry.valid)
+        entry = index.resolve(desktopId);
+    if (!entry.valid)
+        return plan;
+    plan.resolved = true;
+    plan.desktopId = entry.id;
+
+    for (const QVariant &value : running) {
+        const QVariantMap map = value.toMap();
+        const QString appId = map.value(QStringLiteral("appId")).toString();
+        if (appId.isEmpty())
+            continue;
+        const DesktopEntry resolved = index.resolve(appId);
+        const bool same = appId == desktopId || appId == entry.id
+                          || (resolved.valid && resolved.id == entry.id);
+        if (same) {
+            plan.running = true;
+            plan.appId = appId;
+            break;
+        }
+    }
+    return plan;
+}
+
 QVariantList buildDockEntries(const QStringList &pinnedIds, const DesktopEntryIndex &index,
                               const QVariantList &running,
                               const QHash<QString, QString> &launchStates,

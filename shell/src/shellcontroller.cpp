@@ -23,6 +23,7 @@
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QProcess>
+#include <QProcessEnvironment>
 #include <QStandardPaths>
 #include <QStyleHints>
 #include <QUrl>
@@ -50,6 +51,23 @@ namespace {
 // How long a launch may take to map its first window before the Dock treats
 // it as failed (T-10 section 8.5). Interim until app-index owns activation.
 constexpr qint64 kLaunchTimeoutMs = 8000;
+
+// Launch an app detached from the shell. The shell forces the offscreen QPA
+// for its own chrome (`main.cpp`), so the app-launch environment scrubs it
+// (see `appLaunchEnvironment`) or a Qt client would render offscreen and never
+// map a window.
+bool launchDetachedFromShell(const QStringList &argv, qint64 *pid)
+{
+    if (argv.isEmpty())
+        return false;
+    QProcess process;
+    process.setProcessEnvironment(
+        appLaunchEnvironment(QProcessEnvironment::systemEnvironment()));
+    process.setProgram(argv.first());
+    process.setArguments(argv.mid(1));
+    process.setWorkingDirectory(QDir::homePath());
+    return process.startDetached(pid);
+}
 
 // The notification banner card (T-11.1a): a fixed card size and its gap below
 // the menu bar. One banner shows at a time; the rest stay in the history.
@@ -166,9 +184,11 @@ QVariantMap menuSubmenu(const QString &label, const QVariantList &items)
 }
 
 // The fixed system menu (the dragonfruit mark), always leftmost. The actions
-// are session/system operations: Settings (T-16), App Store (no equivalent
-// yet), Sleep/Restart/Shut Down/Log Out (logind, T-24), Lock Screen (T-26).
-// Until those land they are dispatched as logged stubs (see T-09 hand-off).
+// are session/system operations: System Settings opens the first-party
+// Settings app (T-09); Lock Screen is wired (T-12.3a); App Store has no
+// equivalent (disabled); About This System needs the General > About pane
+// (T-15.10); Sleep/Restart/Shut Down/Log Out await the real-session work
+// (T-12.6/T-16.4). Unlanded items dispatch as logged stubs.
 QVariantList systemMenu(const QString &userName)
 {
     QVariantList menu;
@@ -2902,6 +2922,15 @@ void ShellController::onLockSurfaceConfigured(quintptr lockSurfaceId, int width,
         renderLockSurface(lockSurfaceId);
 }
 
+void ShellController::lockScreen()
+{
+    // T-12.3a: one entry point for the Cmd+Ctrl+Q shortcut and the system
+    // menu's Lock Screen; the shell owns the lock UI and drives
+    // `ext-session-lock-v1`.
+    if (m_protocol)
+        m_protocol->lockSession();
+}
+
 void ShellController::showLockScreen()
 {
     if (!m_lockItem || !m_lockWindow || !m_protocol)
@@ -3115,23 +3144,27 @@ void ShellController::onAppMenuTriggered(int menuIndex, int itemIndex, const QVa
         if (!m_appId.isEmpty())
             m_protocol->closeApp(m_appId);
     } else if (action == QLatin1String("settings")) {
-        // T-16 owns the Settings app; the entry point is wired.
-        qInfo() << "shell: Settings requested (T-16)";
+        // The system menu's "System Settings…" and the application menu's
+        // "Settings…" open the first-party Settings app (T-09); if it is
+        // already running its window is focused instead of a second launch.
+        openApp(QStringLiteral("org.dragonfruit.Settings.desktop"));
     } else if (action == QLatin1String("about") || action == QLatin1String("about-system")) {
-        // The About panel is a shell dialog; T-16 owns General > About data.
-        qInfo() << "shell: About requested (T-16)";
+        // The About panel needs the General > About pane data (T-15.10);
+        // until it lands the item is a logged stub.
+        qInfo() << "shell: About requested (T-15.10)";
     } else if (action == QLatin1String("hide") || action == QLatin1String("hide-others")
                || action == QLatin1String("show-all")) {
-        // App visibility is a compositor window-state operation (T-04); the
-        // macOS Hide/Hide Others/Show All semantics are T-24 work.
-        qInfo() << "shell: app visibility action (T-04/T-24):" << action;
+        // App visibility is a compositor window-state operation; the live
+        // macOS Hide/Hide Others/Show All semantics are T-14.2a (T103).
+        qInfo() << "shell: app visibility action (T-14.2a):" << action;
     } else if (action == QLatin1String("sleep") || action == QLatin1String("restart")
                || action == QLatin1String("shut-down") || action == QLatin1String("log-out")) {
-        // logind power/session actions land with T-24.
-        qInfo() << "shell: session action requested (T-24):" << action;
+        // The logind power/session actions have no shell implementation yet;
+        // they land with the real-session work (T-12.6, T-16.4).
+        qInfo() << "shell: session action requested (T-12.6):" << action;
     } else if (action == QLatin1String("lock-screen")) {
-        // The lock screen is T-26.
-        qInfo() << "shell: lock screen requested (T-26)";
+        // Same path as the Cmd+Ctrl+Q shortcut (T-12.3a).
+        lockScreen();
     } else if (action == QLatin1String("app-store")) {
         // No app-store equivalent exists yet; the item is disabled (T-09
         // open question in design/04-shell.md).
@@ -3452,11 +3485,11 @@ void ShellController::onInputAction(const QString &action, const QString &)
         // T-11.3a: the Control Center keyboard shortcut toggles the panel.
         toggleControlCenter();
     } else if (action == QLatin1String("lock-screen")) {
-        // T-12.3a: the compositor routes Cmd+Ctrl+Q here; the shell owns the
+        // T-12.3a: the compositor routes Cmd+Ctrl+Q here; the system menu
+        // routes the same action (see onAppMenuTriggered). The shell owns the
         // lock UI and drives `ext-session-lock-v1` (authentication is
         // T-12.3b).
-        if (m_protocol)
-            m_protocol->lockSession();
+        lockScreen();
     } else if (action == QLatin1String("screenshot")) {
         // T-13.3a: Cmd+Shift+3 captures the whole output.
         startScreenshot(QStringLiteral("fullscreen"));
@@ -3954,7 +3987,7 @@ void ShellController::launchFiles(const QString &argument)
         return;
     }
     qint64 pid = 0;
-    if (!QProcess::startDetached(argv.first(), argv.mid(1), QDir::homePath(), &pid))
+    if (!launchDetachedFromShell(argv, &pid))
         qWarning() << "shell: cannot open Files at" << argument << ":" << argv.first();
     else
         qInfo() << "shell: opened Files at" << argument << "(pid" << pid << ")";
@@ -3990,6 +4023,25 @@ void ShellController::launchDockApp(const QString &desktopId)
     launchDockAppWithFiles(desktopId, QStringList());
 }
 
+void ShellController::openApp(const QString &desktopId)
+{
+    // One entry point for the fixed menus (system "System Settings…",
+    // application "Settings…", and any future first-party item): focus the
+    // running window if the app is already open, otherwise launch it through
+    // the interim `.desktop` resolver (the app-index launch API arrives in
+    // T-14.7).
+    const AppOpenPlan plan = planAppOpen(m_index, m_runningEntries, desktopId);
+    if (!plan.resolved) {
+        qWarning() << "shell: cannot open app; no usable .desktop entry:" << desktopId;
+        return;
+    }
+    if (plan.running && m_protocol) {
+        m_protocol->activateApp(plan.appId);
+        return;
+    }
+    launchDockApp(plan.desktopId);
+}
+
 void ShellController::launchDockAppWithFiles(const QString &desktopId, const QStringList &files)
 {
     const DesktopEntry entry = m_index.byId(desktopId);
@@ -4003,7 +4055,7 @@ void ShellController::launchDockAppWithFiles(const QString &desktopId, const QSt
         return;
     }
     qint64 pid = 0;
-    if (!QProcess::startDetached(argv.first(), argv.mid(1), QDir::homePath(), &pid)) {
+    if (!launchDetachedFromShell(argv, &pid)) {
         failDockLaunch(desktopId, QStringLiteral("QProcess::startDetached failed"));
         return;
     }

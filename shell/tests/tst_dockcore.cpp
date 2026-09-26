@@ -23,6 +23,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QProcessEnvironment>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
@@ -268,6 +269,41 @@ private slots:
         QCOMPARE(DesktopEntryIndex::buildLaunchCommand(entry),
                  (QStringList{QStringLiteral("my app"), QStringLiteral("--label"),
                               QStringLiteral("100%"), QStringLiteral("App")}));
+    }
+
+    // -- launched-app environment (T-09 follow-up) -----------------------
+
+    void appLaunchEnvironmentScrubsTheShellsOffscreenQpa()
+    {
+        QProcessEnvironment base = QProcessEnvironment::systemEnvironment();
+        base.insert(QStringLiteral("QT_QPA_PLATFORM"), QStringLiteral("offscreen"));
+        base.insert(QStringLiteral("DF_SENTINEL"), QStringLiteral("keep"));
+
+        const QProcessEnvironment environment = appLaunchEnvironment(base);
+        // The session is Wayland; the app must not inherit the shell's
+        // offscreen QPA (nor fall back to X11 via the inherited DISPLAY).
+        QCOMPARE(environment.value(QStringLiteral("QT_QPA_PLATFORM")),
+                 QStringLiteral("wayland"));
+        QCOMPARE(environment.value(QStringLiteral("DF_SENTINEL")), QStringLiteral("keep"));
+    }
+
+    void appLaunchEnvironmentPreservesADeliberatePlatform()
+    {
+        QProcessEnvironment base;
+        base.insert(QStringLiteral("QT_QPA_PLATFORM"), QStringLiteral("xcb"));
+        const QProcessEnvironment environment = appLaunchEnvironment(base);
+        QCOMPARE(environment.value(QStringLiteral("QT_QPA_PLATFORM")),
+                 QStringLiteral("xcb"));
+    }
+
+    void appLaunchEnvironmentToleratesNoPlatformKey()
+    {
+        QProcessEnvironment base;
+        base.insert(QStringLiteral("WAYLAND_DISPLAY"), QStringLiteral("dragonfruit-wayland"));
+        const QProcessEnvironment environment = appLaunchEnvironment(base);
+        QCOMPARE(environment.contains(QStringLiteral("QT_QPA_PLATFORM")), false);
+        QCOMPARE(environment.value(QStringLiteral("WAYLAND_DISPLAY")),
+                 QStringLiteral("dragonfruit-wayland"));
     }
 
     // -- reveal target (T-10.6c) -----------------------------------------
@@ -540,6 +576,106 @@ private slots:
         // The drag "Keep in Dock" promotion needs the resolved desktop id.
         QCOMPARE(entry.value(QStringLiteral("desktopId")).toString(),
                  QStringLiteral("org.example.Terminal.desktop"));
+    }
+
+    // -- fixed-menu app open plan (T-09 follow-up) -----------------------
+
+    void planAppOpenLaunchesWhenNotRunning()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString apps = makeAppDir(dir);
+        writeFile(apps + QStringLiteral("/org.dragonfruit.Settings.desktop"),
+                  QStringLiteral("[Desktop Entry]\nName=Settings\nExec=df-settings\n"));
+
+        DesktopEntryIndex index;
+        index.scan({apps});
+
+        const AppOpenPlan plan = planAppOpen(
+            index, {}, QStringLiteral("org.dragonfruit.Settings.desktop"));
+        QVERIFY(plan.resolved);
+        QCOMPARE(plan.running, false);
+        QVERIFY(plan.appId.isEmpty());
+        QCOMPARE(plan.desktopId, QStringLiteral("org.dragonfruit.Settings.desktop"));
+    }
+
+    void planAppOpenActivatesARunningWindow()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString apps = makeAppDir(dir);
+        writeFile(apps + QStringLiteral("/org.dragonfruit.Settings.desktop"),
+                  QStringLiteral("[Desktop Entry]\nName=Settings\nExec=df-settings\n"));
+
+        DesktopEntryIndex index;
+        index.scan({apps});
+
+        // The compositor's raw identity resolves to the Settings desktop id.
+        const QVariantList running{
+            QVariantMap{{QStringLiteral("id"), QStringLiteral("settings")},
+                        {QStringLiteral("appId"), QStringLiteral("org.dragonfruit.Settings")},
+                        {QStringLiteral("kind"), QStringLiteral("temporary")},
+                        {QStringLiteral("running"), true},
+                        {QStringLiteral("windows"), 1}},
+        };
+        const AppOpenPlan plan = planAppOpen(
+            index, running, QStringLiteral("org.dragonfruit.Settings.desktop"));
+        QVERIFY(plan.resolved);
+        QCOMPARE(plan.running, true);
+        QCOMPARE(plan.appId, QStringLiteral("org.dragonfruit.Settings"));
+        QCOMPARE(plan.desktopId, QStringLiteral("org.dragonfruit.Settings.desktop"));
+    }
+
+    void planAppOpenIgnoresAnUnrelatedRunningWindow()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString apps = makeAppDir(dir);
+        writeFile(apps + QStringLiteral("/org.dragonfruit.Settings.desktop"),
+                  QStringLiteral("[Desktop Entry]\nName=Settings\nExec=df-settings\n"));
+
+        DesktopEntryIndex index;
+        index.scan({apps});
+
+        const QVariantList running{
+            QVariantMap{{QStringLiteral("id"), QStringLiteral("firefox")},
+                        {QStringLiteral("appId"), QStringLiteral("firefox")},
+                        {QStringLiteral("kind"), QStringLiteral("temporary")},
+                        {QStringLiteral("running"), true},
+                        {QStringLiteral("windows"), 1}},
+        };
+        const AppOpenPlan plan = planAppOpen(
+            index, running, QStringLiteral("org.dragonfruit.Settings.desktop"));
+        QVERIFY(plan.resolved);
+        QCOMPARE(plan.running, false);
+    }
+
+    void planAppOpenReportsAnUnresolvedIdentity()
+    {
+        DesktopEntryIndex index; // empty corpus
+        const AppOpenPlan plan = planAppOpen(
+            index, {}, QStringLiteral("org.dragonfruit.Settings.desktop"));
+        QCOMPARE(plan.resolved, false);
+        QCOMPARE(plan.running, false);
+        QVERIFY(plan.desktopId.isEmpty());
+    }
+
+    void shippedFirstPartyDesktopEntriesAreLaunchable()
+    {
+        const QString root = QStringLiteral(DF_SOURCE_DIR);
+        const QStringList relatives{
+            QStringLiteral("apps/settings/org.dragonfruit.Settings.desktop"),
+            QStringLiteral("apps/files/org.dragonfruit.Files.desktop"),
+        };
+        for (const QString &relative : relatives) {
+            const QString path = QDir(root).filePath(relative);
+            QVERIFY2(QFileInfo::exists(path), qPrintable(path));
+            DesktopEntryIndex index;
+            index.scan({QFileInfo(path).absolutePath()});
+            const DesktopEntry entry = index.byId(QFileInfo(path).fileName());
+            QVERIFY2(entry.valid, qPrintable(relative));
+            QVERIFY2(DesktopEntryIndex::isLaunchable(entry), qPrintable(entry.exec));
+        }
     }
 
     // -- running-app projection (section 22 lifecycle matrix) ------------

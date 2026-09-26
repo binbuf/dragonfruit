@@ -53,6 +53,11 @@ target_link_libraries(tst_dockcore PRIVATE
     Qt6::Core Qt6::Test
     dragonfruit-shell-dockcore
 )
+# The shipped first-party `.desktop` entries are verified in-place against the
+# source tree (identity is a launch precondition).
+target_compile_definitions(tst_dockcore PRIVATE
+    DF_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+)
 
 add_test(
     NAME tst_dockcore
