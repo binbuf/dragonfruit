@@ -11,8 +11,11 @@
 //! The first-party lock UI is a shell Wayland client over this protocol:
 //! the shell binds `ext_session_lock_manager_v1`, requests the lock when the
 //! compositor broadcasts the `lock-screen` input action, and paints a lock
-//! surface on each output. Authentication (PAM) is T-12.3b; input capture and
-//! kill-resistance are T-12.3c.
+//! surface on each output. Authentication (PAM) is T-12.3b. T-12.3c adds
+//! input capture — while locked, keyboard input is focused on the lock
+//! surface so the lock UI can read it, and nothing reaches any client — and
+//! kill-resistance: a dead lock surface clears the input target but never the
+//! `locked` flag, and only `unlock_and_destroy` clears that.
 
 use std::collections::HashMap;
 
@@ -21,6 +24,7 @@ use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::{ImportAll, Renderer};
 use smithay::desktop::Window;
 use smithay::output::Output;
+use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{IsAlive, Logical, Scale, Size};
 use smithay::wayland::session_lock::LockSurface;
 
@@ -92,6 +96,27 @@ impl LockModel {
             .values()
             .filter(|surface| surface.alive())
             .count()
+    }
+
+    /// The surface that should receive keyboard input while locked.
+    ///
+    /// Every lock surface belongs to the one lock client and paints the same
+    /// scene, so any live surface is a valid input target. `None` means the
+    /// lock client has not mapped a surface (or it died): user input then
+    /// stays dropped, never delivered to a client. This is the kill-resistance
+    /// seam — a dead lock UI keeps the session locked with no input target.
+    pub fn input_surface(&self) -> Option<WlSurface> {
+        self.surfaces
+            .values()
+            .find(|surface| surface.alive())
+            .map(|surface| surface.wl_surface().clone())
+    }
+
+    /// Whether `surface` is one of this lock's live lock surfaces.
+    pub fn is_lock_surface(&self, surface: &WlSurface) -> bool {
+        self.surfaces
+            .values()
+            .any(|lock| lock.alive() && lock.wl_surface() == surface)
     }
 
     /// Whether every output has a live lock surface. An empty output list is
@@ -184,5 +209,27 @@ mod tests {
         assert!(!covered_by(&outputs, &["HEADLESS-1"]));
         // No outputs at all is never covered.
         assert!(!covered_by(&[], &["HEADLESS-1"]));
+    }
+
+    #[test]
+    fn losing_every_surface_does_not_unlock() {
+        // Kill-resistance (T-12.3c): dropping dead surfaces (output gone or
+        // lock client gone) never clears the fail-secure flag. Only `unlock`
+        // does.
+        let mut model = LockModel::new();
+        model.lock(None);
+        model.retain_live(&[]);
+        assert!(model.is_locked());
+        assert_eq!(model.surface_count(), 0);
+        assert!(model.input_surface().is_none());
+        // `unlock` is the one path out.
+        assert!(model.unlock().is_none());
+        assert!(!model.is_locked());
+    }
+
+    #[test]
+    fn no_live_surface_means_no_input_target() {
+        let model = LockModel::new();
+        assert!(model.input_surface().is_none());
     }
 }

@@ -243,10 +243,12 @@ descriptor, script, and the systemd user units under one prefix with
 
 Locking is fail-secure and enforced in the compositor over
 `ext-session-lock-v1`: `SessionLockHandler::lock` enters the locked state and
-clears client keyboard focus *before* it confirms, `process_input_event` drops
-every user input while locked, and `xdg-activation`/window activation refuse
-focus. A compositor crash ends the session; a shell crash leaves the session
-locked because only `ext_session_lock_v1.unlock_and_destroy` clears it.
+clears client keyboard focus *before* it confirms, `process_input_event` keeps
+every user input away from clients while locked (keyboard goes to the lock
+surface, everything else is dropped; T-12.3c), and `xdg-activation`/window
+activation refuse focus. A compositor crash ends the session; a shell crash
+leaves the session locked because only `ext_session_lock_v1.unlock_and_destroy`
+clears it.
 
 The lock UI is the **shell**, not the compositor: Cmd+Ctrl+Q resolves to
 `InputAction::LockScreen`, the compositor broadcasts it over the private
@@ -276,6 +278,19 @@ session locked. The PAM service is `dragonfruit`, falling back to `login`; the
 throwaway `permit`/`deny` service. Input capture (typing on the lock surface)
 is T-12.3c; the decision is frozen in
 [ADR 0068](adr/0068-lock-pam-helper.md).
+
+Input capture (T-12.3c) focuses the seat keyboard on the lock surface, so the
+lock UI — and nothing else — reads key events while locked; pointer, touch, and
+gestures stay dropped. If the lock surface dies, `LockModel::input_surface`
+returns nothing and input is dropped rather than falling back to a client:
+losing surfaces never clears the `locked` flag, so killing the lock UI keeps the
+session locked. The `ext_session_lock_manager_v1` global is also gated on the
+T-07 launch-token handshake, so only the trusted shell can request a lock or
+call `unlock_and_destroy`. The shell maps the captured keys through a small
+US/ASCII evdev table (`shell/src/lockinput.cpp`) and exposes only the password
+length to the lock scene, which draws a bullet mask; the password itself goes
+straight to the PAM helper's stdin. The decision is frozen in
+[ADR 0069](adr/0069-locked-input-capture-and-kill-resistance.md).
 
 ## logind integration
 

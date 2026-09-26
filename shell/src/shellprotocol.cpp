@@ -656,6 +656,17 @@ void ShellProtocol::createLockSurfaces()
     }
 }
 
+bool ShellProtocol::isLockSurface(wl_surface *surface) const
+{
+    if (!surface)
+        return false;
+    for (auto it = m_lockSurfaces.constBegin(); it != m_lockSurfaces.constEnd(); ++it) {
+        if (it.value().surface == surface)
+            return true;
+    }
+    return false;
+}
+
 bool ShellProtocol::lockSession()
 {
     if (m_sessionLock)
@@ -692,6 +703,7 @@ void ShellProtocol::unlockSession()
     }
     m_lockSurfaces.clear();
     m_sessionLocked = false;
+    m_keyboardOnLock = false;
     if (m_display)
         wl_display_flush(m_display);
 }
@@ -1281,6 +1293,7 @@ void ShellProtocol::teardown()
     m_lockSurfaces.clear();
     m_lockOutputs.clear();
     m_sessionLocked = false;
+    m_keyboardOnLock = false;
     m_lockManager = nullptr;
     if (m_switcherLayer)
         df_layer_surface_destroy(m_switcherLayer);
@@ -1980,6 +1993,7 @@ void ShellProtocol::onKeyboardEnter(void *data, wl_keyboard *, uint32_t, wl_surf
         self->m_overviewSurface && surface == self->m_overviewSurface;
     self->m_keyboardOnControlCenter =
         self->m_controlCenterSurface && surface == self->m_controlCenterSurface;
+    self->m_keyboardOnLock = self->isLockSurface(surface);
     emit self->keyboardFocused(true);
     if (self->m_keyboardOnDock)
         emit self->dockKeyboardFocused(true);
@@ -2001,6 +2015,7 @@ void ShellProtocol::onKeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surf
     self->m_keyboardOnDock = false;
     self->m_keyboardOnOverview = false;
     self->m_keyboardOnControlCenter = false;
+    self->m_keyboardOnLock = false;
     emit self->keyboardFocused(false);
     if (wasDock)
         emit self->dockKeyboardFocused(false);
@@ -2014,12 +2029,22 @@ void ShellProtocol::onKeyboardKey(void *data, wl_keyboard *, uint32_t, uint32_t,
                                   uint32_t state)
 {
     auto *self = static_cast<ShellProtocol *>(data);
+    // While locked, keys are the lock UI's password input and are never
+    // routed to the chrome scenes (T-12.3c).
+    if (self->m_keyboardOnLock) {
+        emit self->lockKeyEvent(key, state == WL_KEYBOARD_KEY_STATE_PRESSED,
+                                self->m_keyboardShift);
+        return;
+    }
     emit self->keyEvent(key, state == WL_KEYBOARD_KEY_STATE_PRESSED);
 }
 
-void ShellProtocol::onKeyboardModifiers(void *, wl_keyboard *, uint32_t, uint32_t, uint32_t,
-                                        uint32_t, uint32_t)
+void ShellProtocol::onKeyboardModifiers(void *data, wl_keyboard *, uint32_t, uint32_t depressed,
+                                        uint32_t, uint32_t, uint32_t)
 {
+    auto *self = static_cast<ShellProtocol *>(data);
+    // WL_KEYBOARD_MODIFIER_MASK_SHIFT is bit 0.
+    self->m_keyboardShift = (depressed & 0x1u) != 0;
 }
 
 // --- df_toplevel_manager ----------------------------------------------------

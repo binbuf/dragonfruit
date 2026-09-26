@@ -37,6 +37,7 @@
 #include "filestarget.h"
 #include "focusstatus.h"
 #include "launchfailure.h"
+#include "lockinput.h"
 #include "notificationclient.h"
 #include "notificationmodel.h"
 #include "shellprotocol.h"
@@ -384,6 +385,7 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     connect(m_protocol, &ShellProtocol::keyboardFocused, this,
             &ShellController::onKeyboardFocused);
     connect(m_protocol, &ShellProtocol::keyEvent, this, &ShellController::onKeyEvent);
+    connect(m_protocol, &ShellProtocol::lockKeyEvent, this, &ShellController::onLockKeyEvent);
     connect(m_protocol, &ShellProtocol::dockConfigured, this,
             &ShellController::onDockConfigured);
     connect(m_protocol, &ShellProtocol::dockStateChanged, this,
@@ -1551,10 +1553,12 @@ void ShellController::showLockScreen()
     if (!m_lockItem || !m_lockWindow || !m_protocol)
         return;
     m_lockActive = true;
+    m_lockPassword.clear();
     applyLockData();
     m_lockItem->setProperty("authEnabled", true);
     m_lockItem->setProperty("authBusy", false);
     m_lockItem->setProperty("message", QString());
+    m_lockItem->setProperty("passwordLength", 0);
     const QString user = lockUserName();
     if (!user.isEmpty())
         m_lockItem->setProperty("userName", user);
@@ -1610,6 +1614,9 @@ void ShellController::teardownLockScreen()
     if (m_lockAuth)
         m_lockAuth->cancel();
     m_lockActive = false;
+    m_lockPassword.clear();
+    if (m_lockItem)
+        m_lockItem->setProperty("passwordLength", 0);
     if (m_lockTimer)
         m_lockTimer->stop();
     m_lockSurfaceSizes.clear();
@@ -1643,9 +1650,11 @@ void ShellController::submitLockPassword(const QString &password)
 
 void ShellController::onLockAuthSucceeded()
 {
+    m_lockPassword.clear();
     if (m_lockItem) {
         m_lockItem->setProperty("authBusy", false);
         m_lockItem->setProperty("message", QString());
+        m_lockItem->setProperty("passwordLength", 0);
     }
     repaintLockSurfaces();
     // PAM accepted the password: release the fail-secure lock. The compositor
@@ -1658,10 +1667,50 @@ void ShellController::onLockAuthSucceeded()
 
 void ShellController::onLockAuthFailed(const QString &message)
 {
+    m_lockPassword.clear();
     if (m_lockItem) {
         m_lockItem->setProperty("authBusy", false);
         m_lockItem->setProperty("message", message);
+        m_lockItem->setProperty("passwordLength", 0);
     }
+    repaintLockSurfaces();
+}
+
+void ShellController::onLockKeyEvent(quint32 key, bool pressed, bool shift)
+{
+    if (!m_lockActive || !m_lockItem || !pressed)
+        return;
+    // A PAM attempt in flight owns the field: keys are ignored until it
+    // returns, so a password cannot be edited mid-authentication.
+    if (m_lockItem->property("authBusy").toBool())
+        return;
+
+    const dragonfruit::LockKey mapped = dragonfruit::lockKeyFromEvdev(key, shift);
+    switch (mapped.kind) {
+    case dragonfruit::LockKeyKind::Escape:
+        m_lockPassword.clear();
+        break;
+    case dragonfruit::LockKeyKind::Backspace:
+        m_lockPassword.chop(1);
+        break;
+    case dragonfruit::LockKeyKind::Return: {
+        if (m_lockPassword.isEmpty())
+            return;
+        const QString password = m_lockPassword;
+        m_lockPassword.clear();
+        m_lockItem->setProperty("passwordLength", 0);
+        // `submitLockPassword` clears the field, flips `authBusy`, and
+        // repaints; the buffer is already gone from here.
+        submitLockPassword(password);
+        return;
+    }
+    case dragonfruit::LockKeyKind::Character:
+        m_lockPassword.append(mapped.character);
+        break;
+    case dragonfruit::LockKeyKind::Ignore:
+        return;
+    }
+    m_lockItem->setProperty("passwordLength", m_lockPassword.size());
     repaintLockSurfaces();
 }
 

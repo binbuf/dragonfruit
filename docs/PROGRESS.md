@@ -3,14 +3,12 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(46 earlier sections omitted)_
+_(48 earlier sections omitted)_
 
-- **T44 — T-08.2a Shell migration to settingsd**: **State: done.** The shell no longer owns Dock settings: `DockSettings`/; **`shell/src/settingsclient.{h,cpp}`** (new) — `SettingsClient` (typed key
-- **T45 — T-08.2b Design-system Theme binding**: **State: done.** The design-system `Theme` singleton's `dark`/`reducedMotion`; **`shell/src/themebinding.{h,cpp}`** (new) — `ThemeBinding` is the one
 - **T46 — T-08.2c Compositor motion/input policy migration**: **State: done.** The compositor now consumes the settingsd motion/input policy;; **`protocols/dragonfruit-toplevel.xml`** — `df_toplevel_manager` is v5 with
 - **T47 — T-08.3 Restart, resync, and key-schema documentation**: **State: done.** `settingsd` is restartable with no lost write and the shell; **`docs/settings-keys.md`** (new) — the human-facing key table (type,
 - **T48 — T-09.1a Settings app shell**: **State: done.** The `apps/settings` stub is now a real shell: frameless; **`apps/settings/`** is a reusable QML module `Dragonfruit.Settings` (static
-- **Follow-ups**: **T-12.3b follow-ups.** (a) Input capture is still T-12.3c: the lock surface; **T-12.3a follow-ups.** (a) `ext_session_lock_manager_v1` has an open client
+- **Follow-ups**: **T-12.3c follow-ups.** (a) The shell types passwords from a fixed US/ASCII; **T-12.3b follow-ups.** (a) Input capture is still T-12.3c: the lock surface
 - **T49 — T-09.1b Settings live-apply plumbing**: **State: done.** The Settings app is a real settingsd consumer: a QML `Settings`; **`libs/settings-client/`** (new; `libs/CMakeLists.txt`) — the former
 - **T50 — T-09.2 Appearance pane**: **State: done.** The Appearance pane is real and live: a Light/Dark/Auto; **`apps/settings/AppearancePane.qml`** (new) — `SettingsGroup`/`SettingsRow`
 - **T51 — T-09.3 Wallpaper pane**: **State: done.** The Wallpaper pane is real and live: our own gradient; **Schema (since 2)** — `wallpaper.source` (s, empty = solid),
@@ -45,6 +43,8 @@ _(46 earlier sections omitted)_
 - **T80 — T-12.2 Display-manager entry and logout teardown**: **State: done.** The session now has a display-manager `.desktop` entry, an; **`services/session/dragonfruit.desktop`** (new) — Wayland session
 - **T81 — T-12.3a Lock protocol and lock UI**: **State: done.** `ext-session-lock-v1` is enforced end to end and the shell is; **`compositor/src/lock.rs`** (new) — `LockModel`: the one `locked` flag (with
 - **T82 — T-12.3b Lock PAM authentication**: **State: done.** Unlock is now real PAM authentication through a small helper;; **`services/lock-auth/`** (new crate `dragonfruit-lock-auth`) —
+- **System font — Inter (post-T82, before T83)**: **State: done (first-party half).** The desktop's type is now Inter 4.001; **`fonts/Inter/`** (now tracked; T82's `/fonts/` .gitignore entry is gone) —
+- **T83 — T-12.3c Lock input capture and kill-resistance**: **State: done.** The locked session now captures input in the lock UI instead; **`compositor/src/lock.rs`** — `LockModel::input_surface()` (first live lock
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3228,6 +3228,16 @@ Gotchas for later tasks:
 
 ## Follow-ups
 
+- **T-12.3c follow-ups.** (a) The shell types passwords from a fixed US/ASCII
+  evdev table (`shell/src/lockinput.cpp`) because it is not an xkb client; a
+  later task that installs an xkb state in the shell should replace it. (b)
+  Killing the shell while locked keeps the session locked but Smithay's
+  `SessionLockManagerState.locked_outputs` is not cleared, so a restarted shell
+  cannot create a new lock surface for the same outputs without a compositor
+  restart; the restart/kill matrix (T-12.5b) should decide whether to clear
+  `locked_outputs` on lock-client disconnect while `LockModel.locked` stays set.
+  (c) The input-capture integration test drives the lock client only; a
+  second non-lock client asserting zero keyboard events would harden it.
 - **T-12.3b follow-ups.** (a) Input capture is still T-12.3c: the lock surface
   is not reachable, and `ShellController::submitLockPassword(password)` is the
   slot T-12.3c must call once it routes keys to the lock UI. (b) Packaging must
@@ -6189,3 +6199,70 @@ Gotchas for later tasks:
 - **Goldens no longer follow the host's installed font** — all 72 use the
   bundled Inter faces. Host hinting/rasterization can still differ, so the
   default gate stays non-strict; a strict cross-host diff is not promised.
+
+## T83 — T-12.3c Lock input capture and kill-resistance
+
+**State: done.** The locked session now captures input in the lock UI instead
+of dropping all of it, and it stays locked if the lock UI dies. Contract frozen
+in ADR [0069](design/adr/0069-locked-input-capture-and-kill-resistance.md).
+
+What landed:
+
+- **`compositor/src/lock.rs`** — `LockModel::input_surface()` (first live lock
+  surface) and `is_lock_surface()`; `retain_live` still never clears `locked`.
+- **`compositor/src/input.rs`** — while locked, `route_locked_keyboard` focuses
+  the lock surface and forwards keys to it with no shortcut filter; pointer,
+  touch, and gestures stay dropped. With no live lock surface, even keys are
+  dropped.
+- **`compositor/src/state.rs`** — `SessionLockHandler::new_surface` focuses the
+  lock surface; `unlock` always resets focus. `lock` refuses untrusted clients:
+  it checks the T-07 launch-token trust model and drops the `SessionLocker`
+  (`finished`, no lock) for anyone but the shell.
+- **`compositor/src/input/synthetic.rs`** — `query lock` reports
+  `lock locked=<0|1> surfaces=<n> lock-focus=<0|1>`; read-only.
+- **`shell/src/shellprotocol.{h,cpp}`** — `lockKeyEvent(uint32_t key, bool
+  pressed, bool shift)`; `onKeyboardEnter`/`Leave` set `m_keyboardOnLock` via
+  `isLockSurface`, `onKeyboardKey` routes lock keys away from the chrome, and
+  `onKeyboardModifiers` tracks Shift.
+- **`shell/src/shellcontroller.{h,cpp}`** — `onLockKeyEvent` fills a private
+  `m_lockPassword` (Escape clears, Backspace chops, Return submits through the
+  existing `submitLockPassword`, characters append); only `passwordLength` is
+  exposed to the scene. Password cleared on show/teardown/failure/success.
+- **`shell/src/lockinput.{h,cpp}`** (new, dockcore) — pure US/ASCII
+  `lockKeyFromEvdev(key, shift)`.
+- **`shell/lock/LockScreen.qml`** — `passwordLength` + a bullet mask
+  (`lockPasswordMask`) that replaces the placeholder while typing.
+- **Tests** — `compositor/tests/session_lock_conformance.rs` 3/3 (output
+  coverage; untrusted client cannot lock; locked keys reach the lock surface and
+  `query lock` still reports `locked=1` after the lock client's socket is
+  closed); `lock::tests` 4/4; `shell/tests/tst_lockinput.cpp` 4/4;
+  `tst_lock.qml` mask test.
+- **Docs** — ADR 0069; `11-session-and-dev-workflow.md` lock section.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-compositor --test session_lock_conformance` — 3/3.
+- `cargo test -p dragonfruit-compositor --bin dragonfruit-compositor` — 279/279.
+- `make qml-test` — 43/43 (adds `tst_lockinput`).
+- `make e2e`, `make lint` — exit 0.
+
+Live check: `DF_LOCK_FIXTURE=3000 DRAGONFRUIT_SYNTHETIC_INPUT=/tmp/opencode/
+t83-synth.sock ./target/debug/dragonfruit dev --demo --nested --socket-name
+t83-lock`, with `key 30/48/46` (a/b/c) injected through the synthetic harness,
+captured `/tmp/opencode/t83-lock.png`; vision confirms the nested lock window is
+opaque with the clock/date/avatar/user/lock glyph and exactly three password
+bullets (no placeholder), then the dev tool reported a clean teardown.
+
+Gotchas for later tasks:
+
+- **Input capture route is keyboard-only.** Pointer/touch/gesture are swallowed,
+  not delivered to the lock surface; the lock UI is keyboard-driven.
+- **Untrusted lock requests are refused** in `SessionLockHandler::lock`, but the
+  `ext_session_lock_manager_v1` global is still *advertised* to everyone (the
+  Smithay global filter is `|_| true`); the request gate, not the global, is the
+  boundary. Moving to the `can_view` filter needs the trust check at global-bind
+  time.
+- **The US/ASCII mapping and the no-dead-lock-UI-recovery limitation** are
+  recorded under `## Follow-ups`.
+- **The shell's lock scene is a pure view**: it never holds the password; the
+  buffer lives in `ShellController` and goes straight to the PAM helper stdin.

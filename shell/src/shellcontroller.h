@@ -86,6 +86,9 @@ private slots:
     void submitLockPassword(const QString &password);
     void onLockAuthSucceeded();
     void onLockAuthFailed(const QString &message);
+    // T-12.3c: a key captured by the lock surface. Typed characters append to
+    // the password buffer, Backspace deletes, Return submits, Escape clears.
+    void onLockKeyEvent(quint32 key, bool pressed, bool shift);
     void onBrightnessSetRequested(double level);
     void onWifiToggleRequested(bool enabled);
     void onWifiSettingsRequested();
@@ -433,6 +436,10 @@ private:
     // T-12.3b: the PAM helper boundary. Owned here; the lock screen feeds it
     // the password once input capture lands (T-12.3c).
     LockAuthenticator *m_lockAuth = nullptr;
+    // T-12.3c: the password buffer the lock surface's captured keys fill. It
+    // never leaves this object except into the helper's stdin; only its
+    // length is exposed to the lock scene (`passwordLength`).
+    QString m_lockPassword;
     QSocketNotifier *m_notifier = nullptr;
     QTimer *m_launchTimer = nullptr;
     QTimer *m_dockAnimTimer = nullptr;

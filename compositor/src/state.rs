@@ -4007,6 +4007,19 @@ impl SessionLockHandler for DfState {
     }
 
     fn lock(&mut self, confirmation: SessionLocker) {
+        // T-12.3c: only the trusted session shell may own the session lock.
+        // Dropping the confirmation sends `finished` and creates no lock, so
+        // an untrusted client can neither install a fake lock UI nor call
+        // `unlock_and_destroy` to release the real one.
+        if !confirmation
+            .ext_session_lock()
+            .client()
+            .is_some_and(|client| self.shell.is_trusted(&client.id()))
+        {
+            println!("dragonfruit-compositor: refused an untrusted session lock");
+            drop(confirmation);
+            return;
+        }
         // Fail-secure: enter the locked state *before* confirming, so no
         // frame is ever presented unlocked once a lock is requested, and
         // clear client focus so no key can reach a client.
@@ -4040,6 +4053,12 @@ impl SessionLockHandler for DfState {
             });
         }
         surface.send_configure();
+        // T-12.3c: the lock surface is the only keyboard focus target while
+        // locked, so the lock UI reads every key and no client can.
+        if let Some(keyboard) = self.seat.get_keyboard() {
+            let focus = surface.wl_surface().clone();
+            keyboard.set_focus(self, Some(focus), SERIAL_COUNTER.next_serial());
+        }
         self.lock.insert_surface(output.name(), surface);
         self.needs_redraw = true;
         let outputs: Vec<String> = self.space.outputs().map(|output| output.name()).collect();
@@ -4055,13 +4074,13 @@ impl SessionLockHandler for DfState {
         let restore = self.lock.unlock();
         println!("dragonfruit-compositor: session unlocked");
         // Return the keyboard to where it was before the lock. Input was
-        // dropped while locked, so a dead window leaves focus cleared.
-        if let Some(window) = restore {
-            if let Some(surface) = window.wl_surface().map(|surface| surface.into_owned()) {
-                if let Some(keyboard) = self.seat.get_keyboard() {
-                    keyboard.set_focus(self, Some(surface), SERIAL_COUNTER.next_serial());
-                }
-            }
+        // focused on the lock surface while locked, so clear it first; a dead
+        // window leaves focus cleared.
+        let focus = restore
+            .as_ref()
+            .and_then(|window| window.wl_surface().map(|surface| surface.into_owned()));
+        if let Some(keyboard) = self.seat.get_keyboard() {
+            keyboard.set_focus(self, focus, SERIAL_COUNTER.next_serial());
         }
         self.needs_redraw = true;
     }

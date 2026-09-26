@@ -57,6 +57,25 @@ Item {
                     "Authenticating…");
         }
 
+        function test_password_mask_reflects_captured_keys() {
+            var lock = make({ authEnabled: true, passwordLength: 0 });
+            var placeholder = findChild(lock, "lockPasswordPlaceholder");
+            var mask = findChild(lock, "lockPasswordMask");
+            verify(placeholder.visible);
+            verify(!mask.visible);
+
+            // Captured keys are drawn as bullets, never echoed as text.
+            lock.passwordLength = 3;
+            verify(!placeholder.visible);
+            verify(mask.visible);
+            compare(mask.text, "\u2022\u2022\u2022");
+
+            // Backspacing to empty restores the placeholder.
+            lock.passwordLength = 0;
+            verify(placeholder.visible);
+            verify(!mask.visible);
+        }
+
         function test_message_is_shown_only_when_set() {
             var lock = make({ message: "" });
             verify(!findChild(lock, "lockMessage").visible);
