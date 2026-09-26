@@ -118,3 +118,21 @@ toolkit.
   keeps the fixed application menu.
 - DBusMenu bridges map third-party models into the same menu-broker
   representation.
+
+## Implementation note (T-14.2a)
+
+The broker is real: `services/menu-broker` serves
+`org.dragonfruit.MenuBroker1`. First-party apps publish their ADR-0041 model
+with `Publish(appId, model)`; the shell pushes the focus and window state with
+`SetFocusedApp`/`SetWindowStates` and reads `Resolve`/`ResolveFocused` (or
+`Policy` for the fixed menu alone). The channel is D-Bus, chosen for the
+restartable-service model (ADR [0095](adr/0095-menu-broker-resolution-and-fixed-menu.md)).
+
+The fixed **application menu**'s Hide/Hide Others/Show All verbs carry live
+state derived from the window list: Hide needs the focused app to have a
+visible window, Hide Others needs another visible app, and Show All needs at
+least one fully-hidden app. A publisher's own `applicationMenuItems` is used
+verbatim except for those three rows. The shell mirrors this rule in
+`shell/src/menubrokerpolicy` so the demo bar is live while the service is
+absent; the broker remains the model's owner. Actual hide/hide-others/show-all
+window operations are still to come.

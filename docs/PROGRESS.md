@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(68 earlier sections omitted)_
+_(69 earlier sections omitted)_
 
-- **T65 — T-10.5 Files performance budgets**: **State: done.** Files meets both budgets with incremental/windowed delivery.; **`services/files-core/src/ffi.rs`** — `df_files_row` / `df_files_delta`,
 - **T66 — T-10.6a Dock trash source**: **State: done.** The Dock's Trash state comes from `files-core` over the one; **`services/files-core/src/trash_source.rs`** (new) — `TrashSource`
 - **T67 — T-10.6b Drop-to-trash, Empty Trash, trash://**: **State: done.** The Dock's drop and Empty Trash already routed through; **`services/files-core/src/optimistic.rs`** — `PendingKind::Empty` +
 - **T68 — T-10.6c Show in Files, Downloads, and .desktop identity**: **State: done.** The Files identity is installed and the Dock's two navigation; **`apps/files/org.dragonfruit.Files.desktop`** (new) — `Exec=dragonfruit-files
@@ -44,6 +43,7 @@ _(68 earlier sections omitted)_
 - **T100 — T-14.1a app-index identity resolution and icons**: **State: done.** `org.dragonfruit.AppIndex1` is real: identity resolution for; `services/app-index/src/index.rs` — pure `AppIndex` (scan, `resolve`,
 - **T101 — T-14.1b app-index events, launch registry, recency**: **State: done.** `org.dragonfruit.AppIndex1` is now live: the index re-scans; `services/app-index/src/index.rs` — `IndexEvent`/`IndexEventKind`; `AppIndex`
 - **T102 — T-14.1c app-index subscription API**: **State: done.** `org.dragonfruit.AppIndex1` now has a subscription surface:; `services/app-index/src/subscription.rs` (new) — pure `ChangeKind`
+- **T103 — T-14.2a menu-broker export model and fixed menu**: **State: done.** `services/menu-broker` is a real service and the fixed; `services/menu-broker/src/model.rs` (new) — pure `Broker`: `PublishedModel`
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3227,6 +3227,15 @@ Gotchas for later tasks:
 
 ## Follow-ups
 
+- **T-14.2a follow-ups.** (a) The shell does not consume
+  `org.dragonfruit.MenuBroker1` yet: it computes the fixed application menu's
+  live state locally (`shell/src/menubrokerpolicy`) and still uses the interim
+  `demoAppMenu()` for the exporting app's menus. T-14.2b should push
+  `SetWindowStates`/`SetFocusedApp` and read `Resolve`, and Settings should
+  call `Publish` with its `SettingsMenu.publishedModel` over the native
+  channel. (b) Hide/Hide Others/Show All dispatch their `action` but only log;
+  actually hiding an app's windows needs a new compositor window-state request.
+  (c) The `DbusMenu` tier is defined but unpopulated (T-14.4).
 - **T-14.1c follow-ups.** (a) The service subscription API is live but the shell
   does not consume it: `shell/src/appindexclient.{h,cpp}` has no `Subscribe` and
   `ShellController::start` still loads the index once at startup. Wire the shell
@@ -7621,3 +7630,61 @@ Gotchas for later tasks:
   `bus.connect()` listener will not receive them.
 - **The shell does not subscribe yet** and the window-activity forwarder is
   still unwired (T-14.1b follow-up). Shell-side wiring remains for a later task.
+
+## T103 — T-14.2a menu-broker export model and fixed menu
+
+**State: done.** `services/menu-broker` is a real service and the fixed
+application menu's Hide/Hide Others/Show All carry live state. Contract frozen
+in ADR [0095](design/adr/0095-menu-broker-resolution-and-fixed-menu.md).
+
+Real paths:
+
+- `services/menu-broker/src/model.rs` (new) — pure `Broker`: `PublishedModel`
+  parse (ADR-0041 shape), `Visibility`/`WindowState`/`HideVerbs`, the
+  synthesized fixed menu, the published-menu rewrite, and
+  `resolve`/`resolve_focused`/`fixed_menu`. `default_app_name` capitalizes the
+  last reverse-DNS segment; empty is `Files`.
+- `services/menu-broker/src/dbus.rs` (new) — `org.dragonfruit.MenuBroker1` at
+  `/org/dragonfruit/MenuBroker1`: `Publish`/`Withdraw`, `SetFocusedApp`/
+  `SetWindowStates`, `Resolve`/`ResolveFocused`/`Policy`,
+  `PublisherCount`/`Revision`, signal `Changed(reason, appId)`.
+- `services/menu-broker/src/{lib,main}.rs`, `Cargo.toml` — lib+bin; debug flags
+  `--fixed <appId>` / `--resolve <appId>`.
+- `services/menu-broker/tests/session_bus.rs` (new) — private `dbus-daemon`.
+- `shell/src/menubrokerpolicy.{h,cpp}` (new) — the shell's pure live-state
+  fallback over `dockStateChanged` entries.
+- `shell/src/shellcontroller.cpp` — `applyFocusedApp` publishes the live fixed
+  menu, `onDockStateChanged` re-publishes; the static `applicationMenu` helper
+  is deleted.
+- `shell/tests/tst_dockcore.cpp`, `shell/tests/tst_menubar.qml` — live-state
+  policy and rendering cases.
+- `docs/design/adr/0095-*.md` (new), `docs/design/06-global-menu.md` updated.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-menu-broker` — 13 unit + 4 session-bus cases.
+- `cargo test --workspace`; `cargo clippy --workspace --all-targets -- -D
+  warnings`; `cargo fmt --all -- --check` — all green.
+- `ctest --test-dir build --output-on-failure` — 53/53; `make e2e` — exit 0.
+
+Gotchas for later tasks:
+
+- **The shell does not talk to the service yet.** `ShellController` computes the
+  live flags locally (`menubrokerpolicy`); the broker's D-Bus surface is only
+  covered by its private-bus tests. T-14.2b should push `SetWindowStates` +
+  `SetFocusedApp` and read `Resolve`, and wire Settings' `publishedModel` to
+  `Publish`.
+- **The `resolved` JSON shape is** `{appId, appName, tier, applicationMenuItems,
+  menus}`; `tier` is `native`/`dbusmenu`/`none`. The fixed application menu is
+  the same design-system entry shape, with `enabled` always present on the hide
+  rows.
+- **`SetWindowStates` takes** `[{appId, windows, minimized}]` where `minimized`
+  is true only when **all** the app's windows are minimized (the Dock
+  projection's reading). Malformed rows are skipped, not fatal.
+- **Actions still log.** Hide/Hide Others/Show All reflect live enabled state
+  but do not yet minimize windows; that needs a compositor window-state request.
+- Live check: `make demo` + a synthetic click at the app-menu title (x≈64,
+  y≈14) captured `/tmp/opencode/t103-menu-open.png` (idle bar:
+  `/tmp/opencode/t103-bar-idle.png`). `Show All` renders dimmed while `Hide
+  dragonfruit-settings`/`Hide Others` are bright (two apps running). Not
+  committed to `docs/captures` (that is the track-boundary artifact).

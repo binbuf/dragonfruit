@@ -591,6 +591,9 @@ name = "dragonfruit-menu-broker"
 version = "0.1.0"
 dependencies = [
  "df-ipc",
+ "serde",
+ "serde_json",
+ "zbus",
 ]
 
 [[package]]
