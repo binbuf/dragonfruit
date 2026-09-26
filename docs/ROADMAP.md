@@ -86,7 +86,7 @@ every task un-completable.
 | [T-15](design/tracks/15-system-services-breadth.md) | System services + Settings Waves 2–3 | 31 | Bluetooth, storage, printers, users, … |
 | [T-16](design/tracks/16-platform-polish-packaging.md) | Platform polish + packaging | 15 | multi-monitor, scaling, soak, a11y, i18n, packages [hw] |
 | [T-17](design/tracks/17-premium-gate.md) | The premium experience gate | 9 | the full loop on nested + DRM, at the visual floor |
-| [T-18](design/tracks/18-wallpaper-content-provider.md) | Wallpaper content provider | 4 | first run fills Featured from Wikimedia; default Nature; offline → gradient |
+| [T-18](design/tracks/18-wallpaper-content-provider.md) | Wallpaper content provider | 4 | shipped original default; Featured fills from Wikimedia when the pane is open; offline keeps the shipped default |
 
 ## Work units (strict order)
 
@@ -281,6 +281,25 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 - [ ] T110j — T-14.7j Dock Tahoe visual language: floating glass, squircles, states → [tasks/110j-t-14.7j-dock-tahoe-visual-language.md](tasks/110j-t-14.7j-dock-tahoe-visual-language.md)
 - [ ] T110k — T-14.7k Dock folder pins: any folder as a stack → [tasks/110k-t-14.7k-dock-folder-pins.md](tasks/110k-t-14.7k-dock-folder-pins.md)
 
+## Phase 14.6 — T-18 Wallpaper content provider (shipped default + Wikimedia Featured)
+
+> **Moved forward from the old Phase 15.5** so it runs immediately after the Dock
+> experience addendum (T-14.7a–k) and before the T-15 breadth phase. The
+> desktop background is the first thing a user sees, and the theme's shipped
+> original default plus the provider's lazy cache want to settle before T-15 and
+> T-16 build on the desktop. The deliberately non-sequential ids (T172–T175) are
+> kept so the pipeline's saved state and existing task files stay valid;
+> `symphony` executes in roadmap order, so these run here despite the higher
+> numbers. Design:
+> [18-wallpaper-content-provider.md](design/tracks/18-wallpaper-content-provider.md) ·
+> ADRs [0055](design/adr/0055-online-wallpaper-content-provider.md) /
+> [0094](design/adr/0094-bundled-default-wallpaper-and-lazy-cache.md).
+
+- [ ] T172 — T-18.1a Wallpaper provider service and shipped default → [tasks/172-t-18.1a-wallpaper-provider-service.md](tasks/172-t-18.1a-wallpaper-provider-service.md)
+- [ ] T173 — T-18.1b Provider settings, wallpaper API wiring, and effective source → [tasks/173-t-18.1b-provider-settings-and-default-source.md](tasks/173-t-18.1b-provider-settings-and-default-source.md)
+- [ ] T174 — T-18.2 Wallpaper pane collections, skeleton, and attribution → [tasks/174-t-18.2-wallpaper-pane-collections-and-skeleton.md](tasks/174-t-18.2-wallpaper-pane-collections-and-skeleton.md)
+- [ ] T175 — T-18.3 Provider licensing, absence matrix, and capture → [tasks/175-t-18.3-provider-licensing-and-capture.md](tasks/175-t-18.3-provider-licensing-and-capture.md)
+
 ## Phase 15 — T-15 System services + Settings Waves 2–3
 
 - [ ] T111 — T-15.1a Bluetooth adapter → [tasks/111-t-15.1a-bluetooth-adapter.md](tasks/111-t-15.1a-bluetooth-adapter.md)
@@ -314,20 +333,6 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 - [ ] T139 — T-15.15a Network advanced (VPN) adapter → [tasks/139-t-15.15a-network-advanced-vpn-adapter.md](tasks/139-t-15.15a-network-advanced-vpn-adapter.md)
 - [ ] T140 — T-15.15b Network advanced (VPN) pane and tile → [tasks/140-t-15.15b-network-advanced-vpn-pane-and-tile.md](tasks/140-t-15.15b-network-advanced-vpn-pane-and-tile.md)
 - [ ] T141 — T-15.16 Absent-daemon matrix and breadth capture → [tasks/141-t-15.16-absent-daemon-matrix-and-breadth-capture.md](tasks/141-t-15.16-absent-daemon-matrix-and-breadth-capture.md)
-
-## Phase 15.5 — T-18 Wallpaper content provider (Wikimedia Featured Pictures)
-
-> **Deliberately non-sequential ids.** This track is inserted after the T-15
-> breadth phase and before T-16 so the fetched first-run default is covered by
-> T-16's a11y/i18n sweep and validated by the T-17 visual floor; execution
-> follows file order, so T172–T175 run at this position despite the higher
-> numbers. Design: [18-wallpaper-content-provider.md](design/tracks/18-wallpaper-content-provider.md) ·
-> ADR [0055](design/adr/0055-online-wallpaper-content-provider.md).
-
-- [ ] T172 — T-18.1a Wallpaper provider service → [tasks/172-t-18.1a-wallpaper-provider-service.md](tasks/172-t-18.1a-wallpaper-provider-service.md)
-- [ ] T173 — T-18.1b Provider settings and default source → [tasks/173-t-18.1b-provider-settings-and-default-source.md](tasks/173-t-18.1b-provider-settings-and-default-source.md)
-- [ ] T174 — T-18.2 Wallpaper pane collections, skeleton, and attribution → [tasks/174-t-18.2-wallpaper-pane-collections-and-skeleton.md](tasks/174-t-18.2-wallpaper-pane-collections-and-skeleton.md)
-- [ ] T175 — T-18.3 Provider licensing, absence matrix, and capture → [tasks/175-t-18.3-provider-licensing-and-capture.md](tasks/175-t-18.3-provider-licensing-and-capture.md)
 
 ## Phase 16 — T-16 Platform polish + packaging
 
@@ -383,9 +388,12 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 3. **Make it look right** — T-04.
 4. **Finish the loop** — T-05, T-06.
 5. **Make the chrome live** — T-07 … T-11.
-6. **Make it a desktop** — T-12 … T-16.
-7. **Fill the desktop** — T-18 (the fetched first-run background, before the gate).
-8. **Gate the premium experience** — T-17.
+6. **Make it a desktop** — T-12 … T-14, including the Dock experience addendum
+   (T-14.7a–k).
+7. **Ship the first-run background** — T-18 (the bundled original default plus
+   the lazily fetched Featured pictures), immediately after the Dock addendum.
+8. **Broaden the desktop** — T-15 … T-16.
+9. **Gate the premium experience** — T-17.
 
 ## Why this order
 
@@ -400,9 +408,13 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 - **No hardware on the nested critical path.** The old plan had T-12 depend on
   T-03 and therefore T-13…T-17 all sit behind a seat that this host does not
   have. T-12 now develops nested-first; only the DRM capture is on the rail.
-- **The shipped default before the gate.** T-18 fills the first-run wallpaper
-  before T-16's accessibility/i18n sweep and T-17's visual floor, so the gate
-  validates the real desktop rather than a gradient stand-in.
+- **The shipped default before the gate, right after the Dock.** T-18 now runs
+  immediately after the Dock experience addendum and before T-15/T-16, so the
+  bundled original default (`assets/graphics/wallpapers/Default.jpg`) and the
+  provider's lazy background cache are in place for T-16's accessibility/i18n
+  sweep and T-17's visual floor. The desktop never waits on the network; the
+  first-run default is a shipped asset, and the Wikimedia fetch only fills the
+  Featured row (see [ADR 0094](design/adr/0094-bundled-default-wallpaper-and-lazy-cache.md)).
 
 ## Cross-cutting rules (carried from the legacy plan)
 

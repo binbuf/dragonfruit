@@ -1,32 +1,37 @@
-# T-18 — Wallpaper content provider (Wikimedia Featured Pictures)
+# T-18 — Wallpaper content provider (shipped default + Wikimedia Featured Pictures)
 
 > **Track, not a single slice.** This file is the design reference. It is
 > executed as 4 one-session tasks: [T-18.1a](../../tasks/172-t-18.1a-wallpaper-provider-service.md)
 > · [T-18.1b](../../tasks/173-t-18.1b-provider-settings-and-default-source.md)
 > · [T-18.2](../../tasks/174-t-18.2-wallpaper-pane-collections-and-skeleton.md)
 > · [T-18.3](../../tasks/175-t-18.3-provider-licensing-and-capture.md).
-> Strict order and prerequisites live in [ROADMAP.md](../../ROADMAP.md).
+> Strict order and prerequisites live in [ROADMAP.md](../../ROADMAP.md); this
+> track runs immediately after the Dock experience addendum (T-14.7a–k).
 
 | | |
 |---|---|
 | **Slice** | 18 of 18 — live wallpaper content |
-| **Area** | `services/wallpaperd/` · `services/settingsd/` (keys) · `shell/` (wallpaper forwarder) · `apps/settings/` (Wallpaper pane) · `design-system/` (skeleton) |
-| **Depends on** | T-09 (Wallpaper pane, settings keys, shell forwarder) · T-13 (portal chooser for the Custom row; degrades until it lands) |
-| **Blocks** | T-17 (the shipped default background is part of the visual floor) |
-| **Design detail** | ADR [0055](../adr/0055-online-wallpaper-content-provider.md) · [08-settings.md](../08-settings.md) · [02-compositor.md](../02-compositor.md) · [licensing.md](../../licensing.md) |
+| **Area** | `services/wallpaperd/` · `services/settingsd/` (keys) · `shell/` (wallpaper forwarder) · `apps/settings/` (Wallpaper pane) · `design-system/` (skeleton) · `assets/graphics/wallpapers/` (shipped default) |
+| **Depends on** | T-09 (Wallpaper pane, settings keys, shell forwarder) · T-13 (portal chooser for the Custom row) |
+| **Blocks** | T-16 (a11y/i18n sweep) · T-17 (the shipped default background is part of the visual floor) |
+| **Design detail** | ADRs [0055](../adr/0055-online-wallpaper-content-provider.md) / [0094](../adr/0094-bundled-default-wallpaper-and-lazy-cache.md) · [08-settings.md](../08-settings.md) · [02-compositor.md](../02-compositor.md) · [licensing.md](../../licensing.md) |
 
 ## Demo
 
 ```
-first run, no wallpaper configured yet
-→ open Wallpaper: the Featured rows are grey slow-shimmer placeholders
+first run, empty cache, no network
+→ the desktop is already the shipped original default
+   (assets/graphics/wallpapers/Default.jpg) — no wait, no fetch
+→ open Wallpaper: the pane requests an eager Preload; Featured rows show grey
+   slow-shimmer placeholders
 → within seconds the tiles fill with Wikimedia Commons Featured Pictures
-  across six Dragonfruit categories
-→ the out-of-box wallpaper is the top Nature photo; attribution is visible
+   across six Dragonfruit categories; attribution is visible
 → pick another tile; the Space changes live and persists
-→ unplug / block the network: cached images still work; a cold cache keeps the
-  solid-color fallback and the pane says the pictures will arrive later
-→ the Built-in and Custom rows behave exactly as before
+→ unplug / block the network: the cached/shipped image still works; a cold
+   cache keeps the shipped default and the pane says the pictures will arrive
+   later
+→ the Built-in row offers the shipped default plus the original gradients; the
+   Custom row behaves exactly as before
 ```
 
 Capture: `docs/captures/t18-wallpaper.*`.
@@ -34,15 +39,19 @@ Capture: `docs/captures/t18-wallpaper.*`.
 ## Why now
 
 The desktop background is the first thing a user sees, so the *shipped default*
-is part of the T-17 visual floor. This track lands after the Wallpaper pane
-(T-09.3, done) and before T-16's accessibility/i18n sweep, so the gate validates
-the real first-run experience and the attribution/skeleton copy is translated
-and accessible rather than retrofitted.
+is part of the T-17 visual floor. The track was moved forward to run
+immediately after the Dock experience addendum (T-14.7a–k) and before the T-15
+breadth phase, so the first-run background and its API/cache wiring settle
+before T-15 and T-16 build on the desktop, and T-16's accessibility/i18n sweep
+and T-17's visual floor validate the real first-run experience rather than a
+gradient stand-in.
 
-It is **not** an Apple-artwork track: nothing is bundled, nothing is copied from
-macOS. Images are fetched at runtime from Wikimedia Commons under their own
-licenses, never shipped in the package (ADR [0055](../adr/0055-online-wallpaper-content-provider.md)
-and [licensing.md](../../licensing.md)).
+It is **not** an Apple-artwork track: the shipped default is our own original
+asset and nothing is copied from macOS. The Featured pictures are fetched at
+runtime from Wikimedia Commons under their own licenses and are never shipped in
+the package (ADR [0055](../adr/0055-online-wallpaper-content-provider.md) /
+[0094](../adr/0094-bundled-default-wallpaper-and-lazy-cache.md) and
+[licensing.md](../../licensing.md)).
 
 ## Inherited and reused
 
@@ -59,19 +68,26 @@ and [licensing.md](../../licensing.md)).
 
 ### In
 
-1. **Provider service** (`services/wallpaperd`): query the six Wikimedia
+1. **Shipped default**: install and resolve the original
+   `assets/graphics/wallpapers/Default.jpg` as the out-of-box, cold-cache, and
+   offline background (ADR 0094).
+2. **Provider service** (`services/wallpaperd`): query the six Wikimedia
    Commons featured-picture categories, filter to bitmap files, download
    3840-px thumbnails, cache them and their attribution metadata locally,
    fetch on first run and re-check roughly weekly, degrade cleanly offline,
    expose the catalogue over D-Bus.
-2. **Deterministic default**: the top Nature photo becomes the out-of-box
-   wallpaper when the user has not chosen one.
-3. **Settings + shell wiring**: additive keys and an effective-source rule that
-   keeps a user choice authoritative over the fetched default.
-4. **Wallpaper pane content**: Featured / Built-in / Custom rows, the
-   downloading skeleton, attribution display, and empty/offline/error states.
-5. **Licensing and acceptance**: the fetched-content policy, the absent-network
-   matrix, i18n/a11y hand-off, the capture, and the track sign-off.
+3. **Cache policy**: warm lazily in the background on session launch (off the
+   compositor/shell frame path) and eagerly via `Preload` when the Wallpapers
+   pane is open.
+4. **Settings + shell wiring**: additive keys and an effective-source
+   precedence — user choice, then the shipped default, then the fetched
+   fallback — exposed to System Settings through `SettingsBridge`.
+5. **Wallpaper pane content**: Featured / Built-in / Custom rows (Built-in
+   includes the shipped default), the downloading skeleton, attribution
+   display, and empty/offline/error states.
+6. **Licensing and acceptance**: the shipped-vs-fetched policy, the
+   absent-network/preload matrix, i18n/a11y hand-off, the capture, and the
+   track sign-off.
 
 ### Out / explicitly deferred
 
@@ -79,27 +95,36 @@ and [licensing.md](../../licensing.md)).
 - Video/dynamic/live wallpapers (post-gate).
 - Additional content providers beyond Wikimedia (the provider interface is left
   open so one can be added later).
-- Bundling any image in the package — never (ADR 0055).
+- Bundling any *fetched/third-party* image in the package — never (ADR 0055).
+  The original shipped default is intended and licensed (ADR 0094).
 
 ## Acceptance
 
-- [ ] First run with an empty cache populates Featured from Wikimedia and sets
-      the default to the top Nature photo.
+- [ ] The out-of-box, cold-cache, and offline background is the shipped original
+      default, with no network dependency at first run.
+- [ ] The provider warms lazily on launch and eagerly when the Wallpapers pane
+      is opened; neither path blocks the session.
+- [ ] First run with an empty cache populates Featured from Wikimedia; the
+      deterministic top Nature photo is the Featured default/fallback.
 - [ ] The pane shows shimmer placeholders while fetching; reduced motion makes
       them static.
 - [ ] Cached wallpapers work with the network absent; a cold cache keeps the
-      solid-color fallback and does not block the session.
+      shipped default and does not block the session.
 - [ ] Attribution (artist + license, linked) is visible for every fetched image.
-- [ ] A user-chosen wallpaper always wins over the fetched default and persists.
+- [ ] A user-chosen wallpaper always wins over the shipped and fetched defaults
+      and persists.
 - [ ] The demo runs and the capture is committed; `make e2e`/`make check` stay
       green.
 
 ## Test plan
 
 - Headless: fixture the Commons JSON and assert the query builder, filtering,
-  dedup, URL normalization, cache layout, default selection, and offline path.
+  dedup, URL normalization, cache layout, Featured-default selection, the
+  offline path, shipped-default resolution/precedence, and lazy-vs-`Preload`
+  behavior.
 - QML: pane states (fetching/ready/offline/error), selection, a11y names,
-  reduced-motion skeleton; gallery golden for the skeleton component.
+  reduced-motion skeleton, the shipped default tile, and the `Preload` on pane
+  open; gallery golden for the skeleton component.
 - Absent-daemon matrix: no network, no `settingsd`, no portal.
 - Nested capture of the real first-run fill and an offline pane.
 
@@ -107,12 +132,15 @@ and [licensing.md](../../licensing.md)).
 
 - **Commons response shape or licensing can change.** Pin the parser behind a
   fixture and keep the category map in one constant.
-- **Network at first run is not guaranteed.** Absence is a normal state: keep
-  the cache, keep the gradient fallback, never block the desktop.
+- **Network at first run is not guaranteed.** Absence is a normal state: the
+  shipped default renders immediately, the cache persists, and the desktop never
+  blocks.
 - **License diversity** (public domain, CC BY, CC BY-SA, FAL). Attribution is
-  mandatory and share-alike content must not be presented as our own.
+  mandatory and share-alike content must not be presented as our own. The
+  shipped default is the only bundled image and is our own.
 - **Download volume.** Cap per-category count, concurrency, and cache size; the
-  compositor must never fetch on the frame path.
+  compositor must never fetch on the frame path, and the lazy launch warm must
+  not compete with bring-up.
 
 ## Hand-off
 
