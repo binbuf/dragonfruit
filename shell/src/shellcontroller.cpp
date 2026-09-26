@@ -86,6 +86,11 @@ constexpr int kChooserHeight = 440;
 constexpr int kScreenCastWidth = 560;
 constexpr int kScreenCastHeight = 460;
 
+// The polkit authentication dialog (T-13.6): a centered dialog rendered into a
+// dedicated `polkit` overlay surface while a privileged request waits.
+constexpr int kPolkitWidth = 480;
+constexpr int kPolkitHeight = 420;
+
 QVariantMap statusItem(const QString &id, const QString &icon, const QString &label,
                        const QString &accessibleName, bool available, qreal level = 0.8,
                        bool enabled = true)
@@ -962,6 +967,53 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     connect(m_protocol, &ShellProtocol::screencastKeyEvent, this,
             &ShellController::onScreenCastKeyEvent);
 
+    // polkit authentication dialog (T-13.6): a centered offscreen scene
+    // rendered into its own `polkit` overlay surface while a privileged request
+    // waits. The agent owns the D-Bus agent object and the host helper
+    // conversation; the dialog is a pure view driven by the agent's properties.
+    m_polkit = new PolkitAgent(this);
+    connect(m_polkit, &PolkitAgent::started, this, &ShellController::onPolkitStarted);
+    connect(m_polkit, &PolkitAgent::finished, this, &ShellController::onPolkitFinished);
+    connect(m_polkit, &PolkitAgent::changed, this, &ShellController::onPolkitChanged);
+
+    m_polkitWindow = new QQuickWindow;
+    m_polkitWindow->setColor(Qt::transparent);
+    QQmlComponent polkitComponent(m_engine);
+    polkitComponent.loadFromModule(QStringLiteral("Dragonfruit.Screenshot"),
+                                   QStringLiteral("PolkitDialog"));
+    if (polkitComponent.isError()) {
+        fprintf(stderr, "dragonfruit-shell: PolkitDialog QML error: %s\n",
+                qPrintable(polkitComponent.errorString()));
+        return false;
+    }
+    QObject *polkitObject = polkitComponent.create();
+    m_polkitItem = qobject_cast<QQuickItem *>(polkitObject);
+    if (!m_polkitItem) {
+        fprintf(stderr, "dragonfruit-shell: PolkitDialog QML did not produce an item\n");
+        return false;
+    }
+    m_polkitItem->setParentItem(m_polkitWindow->contentItem());
+    connect(polkitObject, SIGNAL(submitted()), this, SLOT(onPolkitSubmitted()));
+    connect(polkitObject, SIGNAL(cancelled()), this, SLOT(onPolkitCancelled()));
+    connect(m_polkitWindow, &QQuickWindow::afterRendering, this,
+            &ShellController::renderPolkit);
+    connect(m_protocol, &ShellProtocol::polkitConfigured, this,
+            &ShellController::onPolkitConfigured);
+    connect(m_protocol, &ShellProtocol::polkitPointerMoved, this,
+            &ShellController::onPolkitPointerMoved);
+    connect(m_protocol, &ShellProtocol::polkitPointerButton, this,
+            &ShellController::onPolkitPointerButton);
+    connect(m_protocol, &ShellProtocol::polkitPointerLeft, this,
+            &ShellController::onPolkitPointerLeft);
+    connect(m_protocol, &ShellProtocol::polkitKeyboardFocused, this,
+            &ShellController::onPolkitKeyboardFocused);
+    connect(m_protocol, &ShellProtocol::polkitKeyEvent, this,
+            &ShellController::onPolkitKeyEvent);
+    // Register with the host polkit authority. A missing authority or an
+    // existing session agent is a normal degraded state: the dialog simply
+    // never opens on its own.
+    m_polkit->start();
+
     // Session lock (T-12.3a): a full-output offscreen scene rendered into one
     // `ext-session-lock-v1` surface per output. Authentication and input
     // capture are T-12.3b/T-12.3c; this is the fail-secure presentation.
@@ -1068,6 +1120,10 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // until a portal request arrives (T-13.4a).
     if (!m_protocol->createScreenCastSurface(kScreenCastWidth, kScreenCastHeight))
         return false;
+    // The polkit authentication dialog is a centered `overlay` surface,
+    // unmapped until a privileged request is presented (T-13.6).
+    if (!m_protocol->createPolkitSurface(kPolkitWidth, kPolkitHeight))
+        return false;
 
     // Capture/demo seam (T-11.1b): raise the Dock's launch-failure
     // notification once the chrome is up, so the live check can exercise the
@@ -1115,6 +1171,13 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // both); never set in a normal session.
     if (qEnvironmentVariableIsSet("DF_SCREENCAST_FIXTURE")) {
         QTimer::singleShot(1500, this, &ShellController::startScreenCastFixture);
+    }
+
+    // Capture/demo seam (T-13.6): present the polkit authentication dialog
+    // once the chrome is up so the live visual check can capture it with no
+    // real privileged request. Never set in a normal session.
+    if (qEnvironmentVariableIsSet("DF_POLKIT_FIXTURE")) {
+        QTimer::singleShot(1500, this, &ShellController::startPolkitFixture);
     }
 
     // Capture/demo seam (T-12.3a): lock the session once the chrome is up so
@@ -2478,6 +2541,254 @@ void ShellController::onScreenCastKeyEvent(quint32 key, bool pressed)
     QKeyEvent event(pressed ? QEvent::KeyPress : QEvent::KeyRelease, qtKey, Qt::NoModifier);
     QCoreApplication::sendEvent(m_screencastWindow, &event);
     scheduleScreenCastRender();
+}
+
+// --- polkit authentication dialog (T-13.6) ----------------------------------
+
+void ShellController::startPolkitFixture()
+{
+    if (!m_polkit)
+        return;
+    const QString value = qEnvironmentVariable("DF_POLKIT_FIXTURE");
+    QString message = value;
+    if (message.isEmpty() || message == QLatin1String("1")) {
+        message = tr("Authentication is required to manage system services or other units.");
+    }
+    QVariantList details;
+    details.append(QVariantMap{ { QStringLiteral("key"), QStringLiteral("polkit.subject-pid") },
+                                { QStringLiteral("value"),
+                                  QString::number(QCoreApplication::applicationPid()) } });
+    details.append(QVariantMap{ { QStringLiteral("key"), QStringLiteral("polkit.caller-pid") },
+                                { QStringLiteral("value"),
+                                  QString::number(QCoreApplication::applicationPid()) } });
+    m_polkit->presentLocal(QStringLiteral("org.freedesktop.systemd1.manage-units"), message,
+                           qEnvironmentVariable("USER", QStringLiteral("user")), details);
+}
+
+void ShellController::onPolkitStarted()
+{
+    showPolkit();
+}
+
+void ShellController::onPolkitFinished(bool success)
+{
+    Q_UNUSED(success);
+    hidePolkit();
+}
+
+void ShellController::onPolkitChanged()
+{
+    if (!m_polkitActive)
+        return;
+    applyPolkitData();
+    schedulePolkitRender();
+}
+
+void ShellController::onPolkitSubmitted()
+{
+    if (!m_polkit || m_polkitResponse.isEmpty())
+        return;
+    const QString response = m_polkitResponse;
+    m_polkitResponse.clear();
+    if (m_polkitItem) {
+        m_polkitItem->setProperty("responseText", QString());
+        m_polkitItem->setProperty("responseLength", 0);
+    }
+    m_polkit->respond(response);
+    schedulePolkitRender();
+}
+
+void ShellController::onPolkitCancelled()
+{
+    if (m_polkit)
+        m_polkit->cancel();
+}
+
+void ShellController::showPolkit()
+{
+    if (!m_polkitItem)
+        return;
+    m_polkitActive = true;
+    m_polkitPending = true;
+    m_polkitResponse.clear();
+    applyPolkitData();
+    if (m_polkitWidth > 0 && m_polkitHeight > 0)
+        renderPolkit();
+    // Take active focus so Escape and the password keys reach the dialog.
+    m_polkitItem->forceActiveFocus();
+    if (m_protocol)
+        m_protocol->setPolkitInputRegion(m_polkitWidth, m_polkitHeight);
+}
+
+void ShellController::hidePolkit()
+{
+    m_polkitActive = false;
+    m_polkitPending = false;
+    m_polkitButtons = Qt::NoButton;
+    m_polkitResponse.clear();
+    if (m_polkitItem) {
+        m_polkitItem->setProperty("responseText", QString());
+        m_polkitItem->setProperty("responseLength", 0);
+    }
+    if (m_protocol) {
+        m_protocol->setPolkitInputRegion(0, 0);
+        m_protocol->hidePolkit();
+    }
+}
+
+void ShellController::applyPolkitData()
+{
+    if (!m_polkitItem || !m_polkit)
+        return;
+    m_polkitItem->setProperty("message", m_polkit->message());
+    m_polkitItem->setProperty("actionId", m_polkit->actionId());
+    m_polkitItem->setProperty("identityLabel", m_polkit->identityLabel());
+    m_polkitItem->setProperty("details", m_polkit->details());
+    m_polkitItem->setProperty("prompt", m_polkit->prompt());
+    m_polkitItem->setProperty("promptEcho", m_polkit->promptEcho());
+    m_polkitItem->setProperty("info", m_polkit->info());
+    m_polkitItem->setProperty("errorText", m_polkit->errorText());
+    m_polkitItem->setProperty("busy", m_polkit->isBusy());
+    m_polkitItem->setProperty("responseText", m_polkitResponse);
+    m_polkitItem->setProperty("responseLength", m_polkitResponse.size());
+}
+
+void ShellController::renderPolkit()
+{
+    if (!m_polkitActive || !m_polkitPending || !m_polkitWindow || !m_polkitItem)
+        return;
+    if (m_polkitWidth <= 0 || m_polkitHeight <= 0)
+        return;
+    // The scene graph just rendered; skip the re-entrant frame our own
+    // `grabWindow` readback produces (the Dock/banner FR-14 pattern).
+    if (!m_polkitFrameGate.frameRendered())
+        return;
+    if (!m_polkitSceneGraphCommitLogged) {
+        m_polkitSceneGraphCommitLogged = true;
+        qInfo() << "shell: polkit dialog scene-graph commit path active";
+    }
+    m_polkitItem->setWidth(m_polkitWidth);
+    m_polkitItem->setHeight(m_polkitHeight);
+    if (m_polkitWindow->width() != m_polkitWidth
+        || m_polkitWindow->height() != m_polkitHeight)
+        m_polkitWindow->resize(m_polkitWidth, m_polkitHeight);
+    if (!m_polkitWindow->isVisible())
+        m_polkitWindow->show();
+    m_polkitFrameGate.beginCommit();
+    const QImage image = m_polkitWindow->grabWindow();
+    m_polkitFrameGate.endCommit();
+    if (!image.isNull() && m_protocol)
+        m_protocol->commitPolkitImage(image);
+}
+
+void ShellController::schedulePolkitRender()
+{
+    if (m_polkitRenderPending)
+        return;
+    m_polkitRenderPending = true;
+    QTimer::singleShot(0, this, [this]() {
+        m_polkitRenderPending = false;
+        renderPolkit();
+    });
+}
+
+void ShellController::onPolkitConfigured(int width, int height, quint32)
+{
+    // The compositor sends a pre-layout configure at the full output size
+    // before applying the layer surface's requested size; skip it (the same
+    // rule as the menu bar, banner, panel, chooser, screencast, and OSD).
+    if (width != kPolkitWidth || height != kPolkitHeight) {
+        fprintf(stderr, "dragonfruit-shell: ignoring pre-layout polkit configure %dx%d\n",
+                width, height);
+        return;
+    }
+    m_polkitWidth = width;
+    m_polkitHeight = height;
+    if (m_protocol)
+        m_protocol->setPolkitInputRegion(m_polkitWidth, m_polkitHeight);
+    if (m_polkitPending)
+        renderPolkit();
+}
+
+void ShellController::onPolkitPointerMoved(qreal x, qreal y)
+{
+    if (!m_polkitWindow)
+        return;
+    const QPointF p(x, y);
+    QMouseEvent event(QEvent::MouseMove, p, p, Qt::NoButton, m_polkitButtons, Qt::NoModifier);
+    QCoreApplication::sendEvent(m_polkitWindow, &event);
+    schedulePolkitRender();
+}
+
+void ShellController::onPolkitPointerButton(qreal x, qreal y, quint32 button, bool pressed)
+{
+    if (!m_polkitWindow)
+        return;
+    Qt::MouseButton qtButton = Qt::NoButton;
+    if (button == 0x110)
+        qtButton = Qt::LeftButton;
+    if (pressed)
+        m_polkitButtons |= qtButton;
+    else
+        m_polkitButtons &= ~qtButton;
+    const QPointF p(x, y);
+    QMouseEvent event(pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease, p, p,
+                      qtButton, m_polkitButtons, Qt::NoModifier);
+    QCoreApplication::sendEvent(m_polkitWindow, &event);
+    schedulePolkitRender();
+}
+
+void ShellController::onPolkitPointerLeft()
+{
+    if (!m_polkitWindow)
+        return;
+    QMouseEvent event(QEvent::MouseMove, QPointF(-1, -1), QPointF(-1, -1), Qt::NoButton,
+                      m_polkitButtons, Qt::NoModifier);
+    QCoreApplication::sendEvent(m_polkitWindow, &event);
+    schedulePolkitRender();
+}
+
+void ShellController::onPolkitKeyboardFocused(bool focused)
+{
+    // Losing the keyboard is the click-away dismissal: declining is the
+    // fail-closed answer, so a privileged request never sits unattended.
+    if (!focused && m_polkitActive && m_polkit)
+        m_polkit->cancel();
+}
+
+void ShellController::onPolkitKeyEvent(quint32 key, bool pressed, bool shift)
+{
+    if (!m_polkitActive || !m_polkitItem || !pressed)
+        return;
+    // A PAM attempt in flight owns the field: keys are ignored until it
+    // returns, so a password cannot be edited mid-authentication.
+    if (m_polkitItem->property("busy").toBool())
+        return;
+
+    const dragonfruit::LockKey mapped = dragonfruit::lockKeyFromEvdev(key, shift);
+    switch (mapped.kind) {
+    case dragonfruit::LockKeyKind::Escape:
+        if (m_polkit)
+            m_polkit->cancel();
+        return;
+    case dragonfruit::LockKeyKind::Backspace:
+        m_polkitResponse.chop(1);
+        break;
+    case dragonfruit::LockKeyKind::Return: {
+        if (m_polkitResponse.isEmpty())
+            return;
+        onPolkitSubmitted();
+        return;
+    }
+    case dragonfruit::LockKeyKind::Character:
+        m_polkitResponse.append(mapped.character);
+        break;
+    case dragonfruit::LockKeyKind::Ignore:
+        return;
+    }
+    m_polkitItem->setProperty("responseText", m_polkitResponse);
+    m_polkitItem->setProperty("responseLength", m_polkitResponse.size());
+    schedulePolkitRender();
 }
 
 // --- session lock (T-12.3a protocol/UI, T-12.3b authentication) -------------

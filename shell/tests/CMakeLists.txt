@@ -559,3 +559,50 @@ set_tests_properties(tst_clipboardhistory PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+# polkit agent tests (T-13.6): the helper conversation against fake helper
+# scripts, the D-Bus agent against a fake authority on the private session bus,
+# and — when the host actually runs polkit — a real `pkcheck` request. Run
+# under `dbus-run-session` so the fake-authority half has a private bus; the
+# real-polkit half uses the system bus and skips when it is absent.
+qt_add_executable(tst_polkitagent
+    tst_polkitagent.cpp
+)
+target_link_libraries(tst_polkitagent PRIVATE
+    Qt6::Core Qt6::Test Qt6::DBus Qt6::Network
+    dragonfruit-shell-dockcore
+)
+
+if(DBUS_RUN_SESSION)
+    add_test(
+        NAME tst_polkitagent
+        COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:tst_polkitagent>
+    )
+else()
+    add_test(NAME tst_polkitagent COMMAND tst_polkitagent)
+endif()
+set_tests_properties(tst_polkitagent PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+# polkit authentication dialog view tests (T-13.6): the message, identity,
+# prompt, masked response, details expander, accept enablement, and Escape.
+qt_add_executable(tst_polkitui
+    tst_polkitui.cpp
+)
+target_link_libraries(tst_polkitui PRIVATE
+    Qt6::QuickTest
+    dragonfruit-design-systemplugin
+    dragonfruit-shell-screenshotplugin
+)
+qt_import_qml_plugins(tst_polkitui)
+
+add_test(
+    NAME tst_polkitui
+    COMMAND tst_polkitui -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_polkitui.qml
+)
+set_tests_properties(tst_polkitui PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)

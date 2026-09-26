@@ -29,6 +29,7 @@
 #include "notificationclient.h"
 #include "notificationmodel.h"
 #include "osdmodel.h"
+#include "polkitagent.h"
 #include "settingsclient.h"
 #include "shellprotocol.h"
 #include "systemstatusmodel.h"
@@ -135,6 +136,19 @@ private slots:
     void onScreenCastSourceToggled(const QString &id);
     void onScreenCastAccepted();
     void onScreenCastCancelled();
+    // polkit authentication dialog (T-13.6): the surface configure, its
+    // pointer/keyboard routing, the agent lifecycle, and the view's actions.
+    void onPolkitConfigured(int width, int height, quint32 serial);
+    void onPolkitPointerMoved(qreal x, qreal y);
+    void onPolkitPointerButton(qreal x, qreal y, quint32 button, bool pressed);
+    void onPolkitPointerLeft();
+    void onPolkitKeyboardFocused(bool focused);
+    void onPolkitKeyEvent(quint32 key, bool pressed, bool shift);
+    void onPolkitStarted();
+    void onPolkitFinished(bool success);
+    void onPolkitChanged();
+    void onPolkitSubmitted();
+    void onPolkitCancelled();
     // Session lock (T-12.3a): the compositor confirmed the lock, one lock
     // surface was configured to a full-output size, and the lock object
     // finished.
@@ -343,6 +357,17 @@ private:
     // The capture/demo seam (`DF_SCREENCAST_FIXTURE`): present a request with a
     // synthetic source list so the picker can be captured without a portal.
     void startScreenCastFixture();
+    // polkit authentication dialog (T-13.6): map the centered dialog surface,
+    // drive the view from the agent, commit its frames, and unmap it when the
+    // request resolves.
+    void showPolkit();
+    void hidePolkit();
+    void applyPolkitData();
+    void renderPolkit();
+    void schedulePolkitRender();
+    // The capture/demo seam (`DF_POLKIT_FIXTURE`): present a synthetic
+    // privileged request so the dialog can be captured without polkit.
+    void startPolkitFixture();
     // Session lock (T-12.3a): present the lock scene once the compositor
     // confirms, paint each configured lock surface at its full-output size,
     // and refresh the clock while locked.
@@ -571,6 +596,22 @@ private:
     Qt::MouseButtons m_screencastButtons = Qt::NoButton;
     FrameCommitGate m_screencastFrameGate;
     bool m_screencastSceneGraphCommitLogged = false;
+    // polkit authentication dialog (T-13.6): a centered dialog scene rendered
+    // into the `polkit` overlay surface while a privileged request waits. The
+    // agent owns the D-Bus agent object and the host helper conversation; the
+    // controller owns the response buffer (the lock-screen key path).
+    PolkitAgent *m_polkit = nullptr;
+    QQuickWindow *m_polkitWindow = nullptr;
+    QQuickItem *m_polkitItem = nullptr;
+    int m_polkitWidth = 0;
+    int m_polkitHeight = 0;
+    bool m_polkitActive = false;
+    bool m_polkitPending = false;
+    bool m_polkitRenderPending = false;
+    Qt::MouseButtons m_polkitButtons = Qt::NoButton;
+    FrameCommitGate m_polkitFrameGate;
+    bool m_polkitSceneGraphCommitLogged = false;
+    QString m_polkitResponse;
     // Session lock (T-12.3a): an offscreen lock scene rendered into one
     // `ext-session-lock-v1` surface per output. The map holds each surface's
     // configured size; the QML is a pure view. `m_lockTimer` refreshes the
