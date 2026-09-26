@@ -35,6 +35,7 @@ qt_add_executable(dragonfruit-settings
 )
 target_link_libraries(dragonfruit-settings PRIVATE
     Qt6::Core Qt6::Gui Qt6::Quick
+    dragonfruit-system-font
     dragonfruit-settings-uiplugin
 )
 qt_import_qml_plugins(dragonfruit-settings)

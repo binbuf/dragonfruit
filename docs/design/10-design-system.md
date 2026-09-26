@@ -42,7 +42,7 @@ ScrollView
 ## Token architecture
 
 ```text
-primitive tokens    radius, color, elevation, spacing, type scale, duration
+primitive tokens    radius, color, elevation, spacing, type family and scale, duration
         │
 semantic tokens    color-scheme roles (surface, elevated, accent, "on" colors),
         │           material roles (translucency, blur amounts)
@@ -69,6 +69,24 @@ materials (T-04.2): the QML `Theme.material` group tints the shell chrome and
 the compositor's backdrop pass reads the same values, per color scheme, so the
 two sides cannot drift (see
 [ADR 0013](adr/0013-backdrop-blur-pass.md)).
+
+## Typography and the system font
+
+The desktop's type is **Inter** (SIL OFL 1.1, `fonts/Inter/`), declared as
+`primitive.font.family`. Every first-party process calls
+`Dragonfruit::installSystemFont()` from `libs/system-font` after
+`QGuiApplication` exists and before QML loads: the bundled variable faces are
+registered from Qt resources and the family becomes the application default,
+so QML `Text` and stock controls inherit it exactly as AppKit text inherits
+SF Pro. Components keep owning size and weight through the type-scale tokens
+and never name a family.
+
+Development is self-contained: the faces are compiled into the first-party
+binaries, so the shell, apps, and the gallery goldens render identically on
+any host instead of following the host's default font. Packaging will
+additionally install the faces system-wide (fontconfig) so third-party
+Qt/GTK/XWayland apps inherit Inter too; that half is deliberately not wired
+up yet.
 
 ## Motion
 

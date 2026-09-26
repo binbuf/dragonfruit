@@ -22,6 +22,7 @@ restrictions to track.
 | `design-system/` (QML module `Dragonfruit`) | MIT |
 | `shell/` (menu bar, Dock, Control Center, notifications, screenshot) | MIT |
 | `apps/` (Settings, Files) | MIT |
+| `fonts/Inter/` (system font, embedded via `libs/system-font/`) | SIL OFL 1.1 |
 
 Rationale: MIT is permissive, maximises third-party adoption and
 interoperability, and keeps Dragonfruit consumable by any project —
@@ -52,6 +53,12 @@ constraints between components. Two rules still matter:
 - **System libraries** (libdrm, libinput, libseat, xkbcommon, wayland,
   systemd, NetworkManager, PipeWire, …) keep their own licenses; see
   [NOTICE](../NOTICE).
+- **Fonts.** Inter is bundled under the SIL OFL 1.1 (see
+  [../LICENSES/OFL-1.1.txt](../LICENSES/OFL-1.1.txt)); it has no Reserved
+  Font Name. OFL condition 2 requires the copyright notice and license text
+  to accompany every copy of the Font Software, so any binary distribution
+  (packages, images) must include `LICENSES/OFL-1.1.txt` or the equivalent
+  notice — a packaging acceptance item for T-16.9/T-16.10.
 
 ## Qt commercial decision trigger
 

@@ -69,6 +69,7 @@ QtObject {
             readonly property int xxxl: 48
         }
         readonly property var font: QtObject {
+            readonly property string family: "Inter"
             readonly property int sizeXs: 10
             readonly property int sizeSm: 12
             readonly property int sizeMd: 13

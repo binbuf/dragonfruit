@@ -8,11 +8,14 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 
+#include "systemfont.h"
+
 int main(int argc, char *argv[])
 {
     QGuiApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("dragonfruit-files"));
     app.setOrganizationName(QStringLiteral("dragonfruit"));
+    Dragonfruit::installSystemFont();
 
     // The app identity's D-Bus activation name (T-10.6c). `org.dragonfruit.Files1`
     // is the target other components use to open/reveal paths in the running

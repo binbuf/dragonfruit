@@ -69,6 +69,7 @@ pub mod primitive {
         pub const XXXL: f32 = 48.0_f32;
     }
     pub mod font {
+        pub const FAMILY: &str = "Inter";
         pub const SIZE_XS: f32 = 10.0_f32;
         pub const SIZE_SM: f32 = 12.0_f32;
         pub const SIZE_MD: f32 = 13.0_f32;

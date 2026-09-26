@@ -13,6 +13,8 @@
 #include <QVariant>
 #include <cstdio>
 
+#include "systemfont.h"
+
 int main(int argc, char *argv[])
 {
     // Keep headless snapshot failures visible: Qt's default handler is quiet
@@ -24,6 +26,8 @@ int main(int argc, char *argv[])
     QGuiApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("dragonfruit-gallery"));
     app.setOrganizationName(QStringLiteral("dragonfruit"));
+    // The art-direction reference must render in the desktop's type.
+    Dragonfruit::installSystemFont();
 
     const QString snapshotDir = QString::fromLocal8Bit(qgetenv("DRAGONFRUIT_GALLERY_SNAPSHOT"));
 

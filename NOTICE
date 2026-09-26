@@ -16,6 +16,12 @@ for Dragonfruit alters the terms of these components.
 | `libc` | MIT OR Apache-2.0 |
 | [Qt](https://www.qt.io/) 6.11 (`Core`, `Gui`, `Quick`, `QuickTest`) | LGPL-3.0-or-later (used under the open-source terms) |
 
+## Bundled assets
+
+| Component | License |
+|---|---|
+| [Inter](https://github.com/rsms/inter) 4.001 (`fonts/Inter/`, embedded in first-party binaries via `libs/system-font/`) | SIL OFL 1.1 |
+
 ## System libraries (used via the Linux stack)
 
 | Component | License |
