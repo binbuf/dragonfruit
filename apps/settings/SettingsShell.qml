@@ -34,6 +34,7 @@ Item {
     property alias backButton: backButton
     property alias forwardButton: forwardButton
     property alias paneBody: paneBody
+    property alias resizeEdges: resizeEdges
 
     // The app-local theme owner (T-09.2). The shell's `ThemeBinding` lives in
     // the shell process; the Settings app is a separate process, so these
@@ -49,6 +50,10 @@ Item {
     signal zoomRequested()
     signal moveRequested(real x, real y)
     signal menuRequested(real x, real y)
+    // A window-edge press. `edges` is a `Qt.Edges` flag (TopEdge/BottomEdge);
+    // the host window forwards it to `startSystemResize`. Only the vertical
+    // edges are reported: the Settings width is fixed by design.
+    signal resizeRequested(int edges)
 
     readonly property var visiblePanes: SettingsPanes.filter(root.searchText)
     readonly property var currentPane: SettingsPanes.paneById(root.currentPaneId)
@@ -363,6 +368,35 @@ Item {
                     }
                 }
             }
+        }
+    }
+
+    // Vertical window-edge grips. The window is frameless with client-side
+    // decorations, so the app owns the edge input: a press on the top or
+    // bottom edge reports `resizeRequested` with the matching `Qt.Edges` flag.
+    // There are no left/right grips — the host window fixes the width.
+    Item {
+        id: resizeEdges
+        anchors.fill: parent
+        z: 1000
+
+        readonly property int thickness: 6
+
+        MouseArea {
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            height: resizeEdges.thickness
+            cursorShape: Qt.SizeVerCursor
+            onPressed: root.resizeRequested(Qt.TopEdge)
+        }
+        MouseArea {
+            anchors.bottom: parent.bottom
+            anchors.left: parent.left
+            anchors.right: parent.right
+            height: resizeEdges.thickness
+            cursorShape: Qt.SizeVerCursor
+            onPressed: root.resizeRequested(Qt.BottomEdge)
         }
     }
 

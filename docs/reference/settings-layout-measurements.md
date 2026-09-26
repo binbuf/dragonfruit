@@ -31,7 +31,7 @@ That is the evidence the rest of the numbers below are read at the same scale.
 
 | Metric | Reference (units) | Our token | Status |
 |---|---|---|---|
-| Window | ~620 × 627 | `900 × 620` | **fixed** → `640 × 640` |
+| Window | ~620 × 627 | `900 × 620` | **fixed** → `800 × 640` |
 | Sidebar width | ~191 (31% of window) | `220` token, `240` hardcoded | **fixed** → `192` |
 | Toolbar height | ~52 | `52` | already matches |
 | Sidebar row height | ~27.4 | `28` | already matches |
@@ -44,19 +44,22 @@ That is the evidence the rest of the numbers below are read at the same scale.
 
 ## Applied changes
 
-- `apps/settings/SettingsWindow.qml`: default `640 × 640`, minimum
-  `560 × 480`. The reference window is ~620 wide and macOS only resizes System
-  Settings vertically, so the width is effectively the fixed default.
+- `apps/settings/SettingsWindow.qml`: default `800 × 640`, with the width fixed
+  (`minimumWidth`/`maximumWidth` = 800) and `minimumHeight` = 640. macOS only
+  resizes System Settings vertically, growing the height but never shrinking
+  below the size it opens at. Top/bottom edge grips forward to
+  `startSystemResize` (the frameless window owns its own edge input); there are
+  no left/right grips.
 - `design-system/Theme.qml` (via `tokens.json`): `controls.sidebar.width`
   `220 → 192`; `controls.select.minWidth` `140 → 80` so popup controls size to
   their value like macOS instead of hogging the row.
 - `apps/settings/SettingsShell.qml`: the sidebar pane uses
-  `Theme.controls.sidebar.width` instead of a hardcoded `240`, so the sidebar
-  is ~30% of the default window width as in the reference.
+  `Theme.controls.sidebar.width` instead of a hardcoded `240`, keeping the
+  reference's fixed source-list width.
 - `apps/settings/{Appearance,DesktopDock,Displays,Wallpaper}Pane.qml`: the pane
   root fills the detail-pane slot (`width: parent ? parent.width :
   implicitWidth`), and `AppearancePane`'s rows set `width: parent.width`. The
-  detail pane is ~400 px at the default window, so the old 480 implicit width
+  detail pane is ~600 px at the default window, so the old 480 implicit width
   pushed the row controls past the card and clipped them.
 - `apps/settings/AppearancePane.qml`: accent swatches `24 → 20` so the swatch
   row plus `Custom…` fits beside its label.
