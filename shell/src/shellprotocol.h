@@ -31,6 +31,9 @@ struct df_toplevel_manager;
 struct df_toplevel;
 struct df_output;
 struct df_workspace;
+struct ext_session_lock_manager_v1;
+struct ext_session_lock_v1;
+struct ext_session_lock_surface_v1;
 
 class QSocketNotifier;
 
@@ -195,6 +198,26 @@ public:
     // Unmap the OSD surface (attach a null buffer).
     bool hideOsd();
 
+    // --- session lock (T-12.3a) -------------------------------------------------
+    //
+    // Request the `ext-session-lock-v1` lock and create a lock surface on every
+    // known output. The compositor confirms with `sessionLocked()`; each
+    // surface then receives a `lockSurfaceConfigured` for its full-output size.
+    // Authentication is T-12.3b; this is the fail-secure presentation path.
+    bool lockSession();
+
+    // Unlock and destroy the lock. The compositor clears the lock and restores
+    // the desktop; the lock surfaces are destroyed.
+    void unlockSession();
+
+    // True between the compositor's `locked` event and `unlockSession`.
+    bool isSessionLocked() const { return m_sessionLocked; }
+
+    // Attach `image` to the lock surface identified by `lockSurfaceId` (the
+    // opaque id from `lockSurfaceConfigured`) and commit it. The image must be
+    // ARGB32(_Premultiplied) and match the configured size.
+    bool commitLockImage(quintptr lockSurfaceId, const QImage &image);
+
     // True while a fullscreen surface owns the active Space (T-11.4a). The
     // OSD is suppressed then: a brief volume/brightness overlay must not
     // disturb a fullscreen presentation. This is the same projection the
@@ -322,6 +345,13 @@ signals:
     void bannerConfigured(int width, int height, uint32_t serial);
     void controlCenterConfigured(int width, int height, uint32_t serial);
     void osdConfigured(int width, int height, uint32_t serial);
+    // Session lock (T-12.3a): the compositor confirmed the lock, the lock
+    // object finished on its own (`finished`), and one lock surface was
+    // configured to a full-output size. `lockSurfaceId` is opaque and echoes
+    // back into `commitLockImage`.
+    void sessionLocked();
+    void sessionFinished();
+    void lockSurfaceConfigured(quintptr lockSurfaceId, int width, int height, uint32_t serial);
     void surfaceClosed();
     void focusedAppChanged(const QString &appId, const QString &title);
     // xdg-activation attention for an app's toplevel (T-10 FR-4): the Dock
@@ -426,6 +456,9 @@ private:
     bool fail(const QString &message);
     // Bind the seat's data device once both the manager and the seat exist.
     void maybeCreateDataDevice();
+    // Create a lock surface on each known output that does not have one. Safe
+    // to call before the lock exists (it is then a no-op).
+    void createLockSurfaces();
     // Rebuild the Dock's running-app projection and emit `dockStateChanged`.
     void emitDockState();
     // Resolve a window handle back to its `df_toplevel` (null when gone).
@@ -466,6 +499,11 @@ private:
                                          int32_t width, int32_t height);
     static void onOsdConfigure(void *data, df_layer_surface *layer, uint32_t serial,
                                int32_t width, int32_t height);
+    // Session-lock listeners (T-12.3a).
+    static void onSessionLockLocked(void *data, ext_session_lock_v1 *lock);
+    static void onSessionLockFinished(void *data, ext_session_lock_v1 *lock);
+    static void onLockSurfaceConfigure(void *data, ext_session_lock_surface_v1 *surface,
+                                       uint32_t serial, uint32_t width, uint32_t height);
     static void onLayerClosed(void *data, df_layer_surface *layer);
     static void onSeatCapabilities(void *data, wl_seat *seat, uint32_t capabilities);
     static void onSeatName(void *data, wl_seat *seat, const char *name);
@@ -636,6 +674,21 @@ private:
     wl_surface *m_osdSurface = nullptr;
     df_layer_surface *m_osdLayer = nullptr;
     bool m_osdMapped = false;
+    // Session lock (T-12.3a): the manager, the lock object, the outputs a lock
+    // surface has been (or will be) created on, and one lock surface per
+    // output. `m_lockSurfaces` is keyed by the lock-surface object so the
+    // configure trampoline can find its backing `wl_surface`.
+    ext_session_lock_manager_v1 *m_lockManager = nullptr;
+    ext_session_lock_v1 *m_sessionLock = nullptr;
+    bool m_sessionLocked = false;
+    struct LockSurfaceInfo {
+        wl_output *output = nullptr;
+        wl_surface *surface = nullptr;
+        int width = 0;
+        int height = 0;
+    };
+    QList<wl_output *> m_lockOutputs;
+    QHash<ext_session_lock_surface_v1 *, LockSurfaceInfo> m_lockSurfaces;
     // True while the Dock surface holds the keyboard (T-10 section 20), so
     // key events are routed to the Dock scene.
     bool m_keyboardOnDock = false;

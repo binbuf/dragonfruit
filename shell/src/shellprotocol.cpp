@@ -34,6 +34,8 @@
 #include "dragonfruit-shell-client-protocol.h"
 #undef namespace
 #include "dragonfruit-toplevel-client-protocol.h"
+// The vendored standard protocol (MIT); the shell is the first-party lock UI.
+#include "ext-session-lock-v1-client-protocol.h"
 
 #ifndef DF_LOCKSTEP_VERSION
 #define DF_LOCKSTEP_VERSION 1
@@ -624,6 +626,85 @@ bool ShellProtocol::hideOsd()
     return true;
 }
 
+// --- session lock (T-12.3a) -------------------------------------------------
+
+void ShellProtocol::createLockSurfaces()
+{
+    if (!m_sessionLock || !m_compositor)
+        return;
+    for (wl_output *output : std::as_const(m_lockOutputs)) {
+        bool alreadyCovered = false;
+        for (auto it = m_lockSurfaces.constBegin(); it != m_lockSurfaces.constEnd(); ++it) {
+            if (it.value().output == output) {
+                alreadyCovered = true;
+                break;
+            }
+        }
+        if (alreadyCovered)
+            continue;
+        wl_surface *surface = wl_compositor_create_surface(m_compositor);
+        if (!surface)
+            continue;
+        ext_session_lock_surface_v1 *lockSurface =
+            ext_session_lock_v1_get_lock_surface(m_sessionLock, surface, output);
+        static const ext_session_lock_surface_v1_listener listener = { onLockSurfaceConfigure };
+        ext_session_lock_surface_v1_add_listener(lockSurface, &listener, this);
+        LockSurfaceInfo info;
+        info.output = output;
+        info.surface = surface;
+        m_lockSurfaces.insert(lockSurface, info);
+    }
+}
+
+bool ShellProtocol::lockSession()
+{
+    if (m_sessionLock)
+        return true;
+    if (!m_lockManager)
+        return fail(QStringLiteral("ext_session_lock_manager_v1 is not advertised"));
+    if (!m_compositor)
+        return fail(QStringLiteral("wl_compositor is not available"));
+
+    m_sessionLock = ext_session_lock_manager_v1_lock(m_lockManager);
+    if (!m_sessionLock)
+        return fail(QStringLiteral("compositor refused the session lock"));
+    static const ext_session_lock_v1_listener listener = { onSessionLockLocked,
+                                                            onSessionLockFinished };
+    ext_session_lock_v1_add_listener(m_sessionLock, &listener, this);
+
+    // Cover every output the registry has announced so far. An output that
+    // appears later gets its lock surface from the registry handler.
+    createLockSurfaces();
+    if (m_display)
+        wl_display_flush(m_display);
+    return true;
+}
+
+void ShellProtocol::unlockSession()
+{
+    if (m_sessionLock) {
+        ext_session_lock_v1_unlock_and_destroy(m_sessionLock);
+        m_sessionLock = nullptr;
+    }
+    for (auto it = m_lockSurfaces.begin(); it != m_lockSurfaces.end(); ++it) {
+        if (it.value().surface)
+            wl_surface_destroy(it.value().surface);
+    }
+    m_lockSurfaces.clear();
+    m_sessionLocked = false;
+    if (m_display)
+        wl_display_flush(m_display);
+}
+
+bool ShellProtocol::commitLockImage(quintptr lockSurfaceId, const QImage &image)
+{
+    auto *lockSurface = reinterpret_cast<ext_session_lock_surface_v1 *>(lockSurfaceId);
+    auto it = m_lockSurfaces.find(lockSurface);
+    if (it == m_lockSurfaces.end() || !it.value().surface)
+        return false;
+    return commitTo(it.value().surface, image);
+}
+
 bool ShellProtocol::fullscreenOverlayActive() const
 {
     // A fullscreen window owns a dedicated Space while it exists, and the
@@ -1186,6 +1267,21 @@ void ShellProtocol::teardown()
     for (wl_buffer *buffer : std::as_const(m_buffers))
         wl_buffer_destroy(buffer);
     m_buffers.clear();
+    // Session lock (T-12.3a): destroy the lock object only when it is not
+    // locked. A locked lock object cannot be destroyed (protocol error), and
+    // leaving it alive lets the connection drop keep the compositor locked —
+    // the fail-secure path.
+    if (m_sessionLock && !m_sessionLocked)
+        ext_session_lock_v1_destroy(m_sessionLock);
+    m_sessionLock = nullptr;
+    for (auto it = m_lockSurfaces.begin(); it != m_lockSurfaces.end(); ++it) {
+        if (it.value().surface)
+            wl_surface_destroy(it.value().surface);
+    }
+    m_lockSurfaces.clear();
+    m_lockOutputs.clear();
+    m_sessionLocked = false;
+    m_lockManager = nullptr;
     if (m_switcherLayer)
         df_layer_surface_destroy(m_switcherLayer);
     if (m_switcherSurface)
@@ -1332,6 +1428,19 @@ void ShellProtocol::onRegistryGlobal(void *data, wl_registry *registry, uint32_t
             wl_registry_bind(registry, name, &wl_data_device_manager_interface,
                              std::min(version, 3u)));
         self->maybeCreateDataDevice();
+    } else if (iface == QLatin1String("wl_output")) {
+        auto *output = static_cast<wl_output *>(
+            wl_registry_bind(registry, name, &wl_output_interface, std::min(version, 4u)));
+        if (output) {
+            self->m_lockOutputs.append(output);
+            // A lock requested before the output was announced still covers
+            // it (T-12.3a).
+            if (self->m_sessionLock)
+                self->createLockSurfaces();
+        }
+    } else if (iface == QLatin1String("ext_session_lock_manager_v1")) {
+        self->m_lockManager = static_cast<ext_session_lock_manager_v1 *>(
+            wl_registry_bind(registry, name, &ext_session_lock_manager_v1_interface, 1u));
     }
 }
 
@@ -1444,6 +1553,38 @@ void ShellProtocol::onOsdConfigure(void *data, df_layer_surface *, uint32_t seri
     if (self->m_osdLayer)
         df_layer_surface_ack_configure(self->m_osdLayer, serial);
     emit self->osdConfigured(width, height, serial);
+}
+
+// --- ext_session_lock_v1 (T-12.3a) -----------------------------------------
+
+void ShellProtocol::onSessionLockLocked(void *data, ext_session_lock_v1 *)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    self->m_sessionLocked = true;
+    emit self->sessionLocked();
+}
+
+void ShellProtocol::onSessionLockFinished(void *data, ext_session_lock_v1 *)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    self->m_sessionLocked = false;
+    emit self->sessionFinished();
+}
+
+void ShellProtocol::onLockSurfaceConfigure(void *data, ext_session_lock_surface_v1 *surface,
+                                           uint32_t serial, uint32_t width, uint32_t height)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    // Ack before the buffer commit; the compositor rejects a commit that
+    // precedes the first ack.
+    ext_session_lock_surface_v1_ack_configure(surface, serial);
+    auto it = self->m_lockSurfaces.find(surface);
+    if (it != self->m_lockSurfaces.end()) {
+        it.value().width = static_cast<int>(width);
+        it.value().height = static_cast<int>(height);
+    }
+    emit self->lockSurfaceConfigured(reinterpret_cast<quintptr>(surface), static_cast<int>(width),
+                                     static_cast<int>(height), serial);
 }
 
 // --- wl_seat / wl_pointer / wl_keyboard (input bridge) ----------------------

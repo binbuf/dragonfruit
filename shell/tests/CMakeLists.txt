@@ -320,3 +320,24 @@ set_tests_properties(tst_osd PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+# Lock-screen tests (T-12.3a): the first-party lock view renders the account,
+# clock, lock glyph, password placeholder, and locked-session accessibility.
+qt_add_executable(tst_lock
+    tst_lock.cpp
+)
+target_link_libraries(tst_lock PRIVATE
+    Qt6::QuickTest
+    dragonfruit-design-systemplugin
+    dragonfruit-shell-lockplugin
+)
+qt_import_qml_plugins(tst_lock)
+
+add_test(
+    NAME tst_lock
+    COMMAND tst_lock -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_lock.qml
+)
+set_tests_properties(tst_lock PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)

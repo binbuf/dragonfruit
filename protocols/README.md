@@ -10,6 +10,13 @@ shared versioning crate (`df-ipc`) that every Dragonfruit process embeds.
 | [`dragonfruit-core.xml`](dragonfruit-core.xml) | `df_core` | lockstep handshake and launch-token trust model |
 | [`dragonfruit-shell.xml`](dragonfruit-shell.xml) | `df_shell`, `df_layer_surface` | anchored, layered chrome surfaces and reserved zones |
 | [`dragonfruit-toplevel.xml`](dragonfruit-toplevel.xml) | `df_toplevel_manager`, `df_toplevel`, `df_workspace`, `df_output` | window/workspace/output enumeration, events, and control |
+| [`wayland-protocols/ext-session-lock-v1.xml`](wayland-protocols/ext-session-lock-v1.xml) | `ext_session_lock_manager_v1` and friends | vendored standard protocol; the shell is the first-party lock UI (T-12.3a) |
+
+The one non-private XML is the upstream `ext-session-lock-v1` protocol,
+vendored (MIT) so the shell can be the first-party lock UI without a
+`wayland-protocols` build dependency. The compositor serves it through
+Smithay; the shell binds it with `wayland-scanner` client bindings generated
+by the CMake build.
 
 The full reference — semantics, the refusal matrix, deviations from the
 `wlr-*` precedents, and how the Rust and Qt bindings are generated — is in
