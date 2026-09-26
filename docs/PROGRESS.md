@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(52 earlier sections omitted)_
+_(53 earlier sections omitted)_
 
-- **T49 — T-09.1b Settings live-apply plumbing**: **State: done.** The Settings app is a real settingsd consumer: a QML `Settings`; **`libs/settings-client/`** (new; `libs/CMakeLists.txt`) — the former
 - **T50 — T-09.2 Appearance pane**: **State: done.** The Appearance pane is real and live: a Light/Dark/Auto; **`apps/settings/AppearancePane.qml`** (new) — `SettingsGroup`/`SettingsRow`
 - **T51 — T-09.3 Wallpaper pane**: **State: done.** The Wallpaper pane is real and live: our own gradient; **Schema (since 2)** — `wallpaper.source` (s, empty = solid),
 - **T52 — T-09.4 Desktop & Dock pane**: **State: done.** The Desktop & Dock pane is real and live: the `Dock` group; **`apps/settings/DesktopDockPane.qml`** (new) — `SettingsGroup` "Dock" with
@@ -45,6 +44,7 @@ _(52 earlier sections omitted)_
 - **T85 — T-12.4b Idle inhibitors and wake restore**: **State: done.** `dragonfruit-session` now wraps the T-12.4a idle engine with; **`services/session/src/idle.rs`** — `IdleController` (owns `IdleTimers` +
 - **T86 — T-12.5a Suspend/resume cycle**: **State: done.** One suspend/resume round trip recovers outputs, input, and; **`services/session/src/suspend.rs`** (new) — `SuspendState`
 - **T87 — T-12.5b Session policy keys, kill matrix, capture**: **State: done.** The session policy keys are registered in settingsd, the; **`services/settingsd/src/schema.rs`** — schema v5, new `Session` key group:
+- **T88 — T-13.1a Portal backend and session service**: **State: done.** `portal/` is now a real session-bus portal backend plus its; **`portal/src/`** (new `[lib]` + existing binary) — `model` (pure:
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -6523,3 +6523,64 @@ Gotchas for later tasks:
 - The lock UI death/lock invariant is the compositor's
   (`session_lock_conformance.rs`); the session kill matrix asserts supervision
   only. T-16.8a/T-17.5a add the VM/DRM no-live-under-lock drills.
+
+## T88 — T-13.1a Portal backend and session service
+
+**State: done.** `portal/` is now a real session-bus portal backend plus its
+registration, and the frontend-absent path is proven headlessly. Contract
+frozen in ADR
+[0074](design/adr/0074-portal-backend-registration-and-frontend-degradation.md).
+
+What landed:
+
+- **`portal/src/`** (new `[lib]` + existing binary) — `model` (pure:
+  `BackendStatus`, `FrontendPresence` `Unknown`/`Absent`/`Present{owner}`,
+  `FrontendTracker`, `BACKEND_INTERFACES`), `data` (the three discoverability
+  files + parsers + `install_into`), `dbus` (`serve(address)`/`run()`,
+  `probe_frontend`, `name_has_owner`/`name_owner`, the `NameOwnerChanged`
+  watch).
+- **Identity** — owns `org.freedesktop.impl.portal.desktop.dragonfruit`,
+  serves `/org/freedesktop/portal/desktop`; backend name in portals.conf is
+  `dragonfruit`. Diagnostic interface `org.dragonfruit.Portal1` at the same
+  path reports identity, interfaces, and frontend presence
+  (`BackendName`/`DbusName`/`ObjectPath`/`Version`/`Interfaces`/`Frontend`/
+  `FrontendPresent`/`FrontendOwner`, signal `FrontendChanged`).
+- **`portal/data/`** (new) — `dragonfruit.portal` (empty `Interfaces=`
+  until T-13.1b), `dragonfruit-portals.conf` (`[preferred] default=
+  dragonfruit;gtk`), `org.freedesktop.impl.portal.desktop.dragonfruit.service`
+  (D-Bus activation). Installed under `share/...` by `install_into(prefix)`.
+- **Degradation** — the `xdg-desktop-portal` frontend is only *observed*:
+  one `NameHasOwner` probe at startup plus a live `NameOwnerChanged` watch.
+  Absent/unknown never blocks startup; the backend keeps serving.
+- **Binary flags** — `--print-interfaces`, `--print-identity`,
+  `--check-frontend` (exit 0 even with no bus), `--install-data PREFIX`.
+- **Tests** — 11 unit (model/data/dbus) + `portal/tests/session_bus.rs` 4
+  integration on a private `dbus-daemon`: name registration + introspection,
+  absent frontend, present frontend at startup, live appear/disappear via the
+  `FrontendChanged` signal. Added to `make e2e`.
+- **Docs** — ADR 0074; `07-system-integration.md` "The backend service and
+  its registration (T-13.1a)".
+
+Commands that work (repo root):
+
+- `cargo test -p xdg-desktop-portal-dragonfruit` — 11 unit + 4 `session_bus`.
+- `cargo clippy -p xdg-desktop-portal-dragonfruit --all-targets -- -D warnings`,
+  `cargo fmt -p xdg-desktop-portal-dragonfruit -- --check` — exit 0.
+- `make e2e`, `make lint` — exit 0.
+
+Live check: nested demo (`make demo`) renders the desktop with no artifacts;
+T-13.1a adds no surface, so this is a regression check.
+
+Gotchas for later tasks:
+
+- **`BACKEND_INTERFACES` is `[]` and `dragonfruit.portal` has an empty
+  `Interfaces=`.** T-13.1b (Settings, GlobalShortcuts) and later tasks append
+  their standard `org.freedesktop.impl.portal.*` names to both; the data
+  test asserts the descriptor equals the model.
+- **The backend name/path/data-file identities are frozen**; only the
+  interface list is additive.
+- **Production data-file install is packaging's job (T-16)**; nothing in the
+  session yet calls `install_into`.
+- **`org.dragonfruit.Portal1` is diagnostic only** — the portal frontend
+  never calls it; `df_ipc::is_valid_dbus_name` applies to it but not to the
+  standard `org.freedesktop.impl.portal.*` interfaces.

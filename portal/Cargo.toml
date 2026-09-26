@@ -1,15 +1,31 @@
 [package]
 name = "xdg-desktop-portal-dragonfruit"
-description = "Dragonfruit xdg-desktop-portal backend (stub; real backend is T-27)"
+description = "Dragonfruit xdg-desktop-portal backend: the session-bus service and its registration (T-13.1a)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
+[lib]
+name = "xdg_desktop_portal_dragonfruit"
+path = "src/lib.rs"
+
 [[bin]]
 name = "xdg-desktop-portal-dragonfruit"
 path = "src/main.rs"
 
+# The portal backend is a session-bus service, discovered by the
+# `xdg-desktop-portal` frontend from the `dragonfruit.portal` descriptor and
+# `dragonfruit-portals.conf` shipped in `portal/data/` (T-13.1a). It owns the
+# standard backend name `org.freedesktop.impl.portal.desktop.dragonfruit` at
+# `/org/freedesktop/portal/desktop`; the concrete portal interfaces are added
+# additively by T-13.1b…T-13.7.
+#
+# zbus is the same pinned D-Bus stack the other service crates use.
 [dependencies]
 df-ipc.workspace = true
+zbus = { version = "=5.19.0", features = ["blocking-api"] }
+
+[dev-dependencies]
+serde = "=1.0.229"
