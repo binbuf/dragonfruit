@@ -599,3 +599,41 @@ root and no credential is verified by us.
   registration, the fixture, and — when the host runs polkit — a **real
   `pkcheck` request** that raises the agent. `tst_polkitui` covers the view.
   T-13.7 exercises it through a real Flatpak/browser walkthrough.
+
+## Flatpak validation (T-13.7)
+
+The portal set is proven against a real Flatpak caller, not only the
+private-bus test presenter. `scripts/capture-portals.sh` starts a private
+session bus, installs the three discoverability files, runs the backend,
+`settingsd`, and the **real** `xdg-desktop-portal` frontend, then executes a
+driver *inside* `flatpak run org.mozilla.firefox`. Every call therefore
+crosses the sandbox D-Bus proxy and the frontend before it reaches the
+backend. The artifacts are `docs/captures/t13-portals.txt` (the round-trips)
+and `docs/captures/t13-portals.png` (the shell's FileChooser picker raised by
+the Flatpak request). The live still runs with the private bus exported into
+`make demo`, so the shell is the presenter just as in a real session; the
+shell needs `settingsd` on that bus to finish startup.
+
+Running against the real frontend found two wire-contract bugs the
+private-bus tests could not (they call the backend directly and parse its own
+files):
+
+- **Comments in the data files are `#`, not `;`.** `.portal`/`*-portals.conf`
+  are GLib key files.
+- **The implementation `version` property is lower-case.** The standard
+  spells `AvailableSourceTypes`/`AvailableCursorModes` in Pascal case but
+  `version` in lower case. Exporting `Version` made the frontend read 0 and
+  silently disable cursor-mode binding (which then rejected `SelectSources`
+  with `cursor_mode`), the Screenshot `uri` result, and persistence.
+
+Both are frozen in [adr/0085](adr/0085-real-frontend-portal-compatibility.md)
+and pinned by
+`the_standard_interfaces_expose_the_lowercase_version_property`
+(`portal/tests/portals.rs`). With them fixed the frontend reports ScreenCast
+version 3, `AvailableCursorModes` 3, and Screenshot version 2.
+
+Clipboard has no portal (ADR 0082): a Flatpak app's clipboard is the Wayland
+data device through the sandbox proxy, covered by the T-13.5a compositor
+conformance rather than this walkthrough. The ScreenCast stream still reports
+the named stills fallback (`df_stream_mode=stills`); a live PipeWire producer
+extends `portal::stream::StreamTransport` without changing this path.

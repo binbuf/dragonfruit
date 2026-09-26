@@ -198,11 +198,11 @@ fn the_screenshot_interface_is_served_at_the_standard_path() {
             DBUS_PATH,
             Some("org.freedesktop.DBus.Properties"),
             "Get",
-            &(SCREENSHOT_INTERFACE, "Version"),
+            &(SCREENSHOT_INTERFACE, "version"),
         )
-        .expect("read Version");
+        .expect("read version");
     let value: OwnedValue = reply.body().deserialize().expect("property body decodes");
-    assert_eq!(u32::try_from(value).expect("Version is a u32"), 2);
+    assert_eq!(u32::try_from(value).expect("version is a u32"), 2);
 
     let introspection: String = {
         let reply = client

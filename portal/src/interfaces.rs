@@ -20,9 +20,7 @@ use zbus::interface;
 use zbus::object_server::{ObjectServer, SignalEmitter};
 use zbus::zvariant::{ObjectPath, OwnedValue};
 
-use crate::chooser::{
-    self, ChooserKind, ChooserRequest, ChooserResponse, SharedChooser, FILE_CHOOSER_VERSION,
-};
+use crate::chooser::{self, ChooserKind, ChooserRequest, ChooserResponse, SharedChooser};
 use crate::screencast::{
     self, ScreenCastRequest, ScreenCastResponse, SharedScreenCast, AVAILABLE_CURSOR_MODES,
     AVAILABLE_SOURCE_TYPES, SCREENCAST_VERSION,
@@ -89,7 +87,11 @@ impl SettingsPortal {
     }
 
     /// The backend's Settings interface version.
-    #[zbus(property(emits_changed_signal = "const"))]
+    ///
+    /// The standard impl interface spells this property `version` (lower
+    /// case); the real `xdg-desktop-portal` frontend reads exactly that
+    /// name, so it must not be the zbus default `Version` (T-13.7).
+    #[zbus(property(emits_changed_signal = "const"), name = "version")]
     fn version(&self) -> u32 {
         SETTINGS_VERSION
     }
@@ -231,12 +233,6 @@ impl FileChooserPortal {
         );
         self.request(request, emitter).await
     }
-
-    /// The backend's FileChooser interface version.
-    #[zbus(property(emits_changed_signal = "const"))]
-    fn version(&self) -> u32 {
-        FILE_CHOOSER_VERSION
-    }
 }
 
 /// The backend's Screenshot object (T-13.3a).
@@ -321,7 +317,11 @@ impl ScreenshotPortal {
     }
 
     /// The backend's Screenshot interface version.
-    #[zbus(property(emits_changed_signal = "const"))]
+    ///
+    /// The standard impl interface spells this property `version` (lower
+    /// case); the frontend reads it to decide whether the `uri` result of a
+    /// capture is exposed (T-13.7).
+    #[zbus(property(emits_changed_signal = "const"), name = "version")]
     fn version(&self) -> u32 {
         SCREENSHOT_VERSION
     }
@@ -471,7 +471,11 @@ impl ScreenCastPortal {
     }
 
     /// The backend's ScreenCast interface version.
-    #[zbus(property(emits_changed_signal = "const"))]
+    ///
+    /// The standard impl interface spells this property `version` (lower
+    /// case); the frontend reads it to decide which of `source_type`,
+    /// cursor-mode binding, and persistence it exposes (T-13.7).
+    #[zbus(property(emits_changed_signal = "const"), name = "version")]
     fn version(&self) -> u32 {
         SCREENCAST_VERSION
     }
@@ -643,7 +647,10 @@ impl GlobalShortcuts {
     }
 
     /// The backend's GlobalShortcuts interface version.
-    #[zbus(property(emits_changed_signal = "const"))]
+    ///
+    /// The standard impl interface spells this property `version` (lower
+    /// case); the real frontend reads exactly that name (T-13.7).
+    #[zbus(property(emits_changed_signal = "const"), name = "version")]
     fn version(&self) -> u32 {
         GLOBAL_SHORTCUTS_VERSION
     }
@@ -751,7 +758,7 @@ mod tests {
             FILE_CHOOSER_INTERFACE,
             "org.freedesktop.impl.portal.FileChooser"
         );
-        assert_eq!(FILE_CHOOSER_VERSION, 3);
+        assert_eq!(crate::chooser::FILE_CHOOSER_VERSION, 3);
     }
 
     #[test]

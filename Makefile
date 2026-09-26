@@ -45,7 +45,7 @@ endif
 .PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test \
         visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev demo soak e2e \
         idle-trace menubar-idle-trace latency-trace settingsd-capture settings-wave-1-capture \
-        files-capture osd-dnd-capture check-desktop-names check-no-capture-grab check-design-tokens clean
+        files-capture osd-dnd-capture portals-capture check-desktop-names check-no-capture-grab check-design-tokens clean
 
 help:
 	@echo "Dragonfruit build targets:"
@@ -58,6 +58,7 @@ help:
 	@echo "  make settings-wave-1-capture — T-09.6b Settings wave stills (light/dark/reduced + panes)"
 	@echo "  make files-capture — T-10.7 Files slice stills + large-directory scroll trace"
 	@echo "  make osd-dnd-capture — T-11.4b OSD card + menu-bar DND still"
+	@echo "  make portals-capture — T-13.7 Flatpak portal round-trips + picker still"
 	@echo "  make demo     — T-01 loop demo (nested; headless/scripted in CI)"
 	@echo "  make lint     — fmt --check, clippy, qmllint, token freshness, desktop-name gate"
 	@echo "  make check    — lint + test + teardown soak gate"
@@ -167,6 +168,13 @@ files-capture: build
 # t11-osd.* and t11-dnd.png.
 osd-dnd-capture: build
 	bash scripts/capture-osd-dnd.sh
+
+# T-13.7: the portal track capture. Needs a host Wayland session, `flatpak`
+# with a browser, python3+PyGObject, `spectacle`, Pillow and the built tree;
+# runs the real frontend + backend on a private bus and a Flatpak client, then
+# writes docs/captures/t13-portals.txt and t13-portals.png.
+portals-capture: build
+	bash scripts/capture-portals.sh
 
 # T-12.5b: the T-12 session track capture. Needs a host Wayland session,
 # `spectacle`, `ffmpeg`, Pillow and the built tree; locks the nested session

@@ -173,19 +173,16 @@ fn wait_for<T>(timeout: Duration, mut check: impl FnMut() -> Option<T>) -> T {
     }
 }
 
-/// Read a `u` property from the FileChooser interface.
-fn version(client: &Connection) -> u32 {
-    let reply = client
-        .call_method(
-            Some(DBUS_NAME),
-            DBUS_PATH,
-            Some("org.freedesktop.DBus.Properties"),
-            "Get",
-            &(FILE_CHOOSER_INTERFACE, "Version"),
-        )
-        .expect("read Version");
-    let value: OwnedValue = reply.body().deserialize().expect("property body decodes");
-    u32::try_from(value).expect("Version is a u32")
+/// Read a property from the FileChooser interface, as the real frontend would.
+fn read_property(client: &Connection, property: &str) -> Result<OwnedValue, zbus::Error> {
+    let reply = client.call_method(
+        Some(DBUS_NAME),
+        DBUS_PATH,
+        Some("org.freedesktop.DBus.Properties"),
+        "Get",
+        &(FILE_CHOOSER_INTERFACE, property),
+    )?;
+    reply.body().deserialize()
 }
 
 #[test]
@@ -194,7 +191,10 @@ fn the_file_chooser_interface_is_served_at_the_standard_path() {
     let (_service, _backend) = bus.serve();
     let client = bus.connect();
 
-    assert_eq!(version(&client), 3);
+    // The standard impl FileChooser interface carries no version property; a
+    // stray `Version` would be a wire-contract drift (T-13.7).
+    assert!(read_property(&client, "version").is_err());
+    assert!(read_property(&client, "Version").is_err());
     let introspection: String = {
         let reply = client
             .call_method(

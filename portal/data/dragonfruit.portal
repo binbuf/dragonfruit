@@ -1,11 +1,14 @@
-; Dragonfruit portal backend descriptor (T-13.1a).
-;
-; Installed under {DATADIR}/xdg-desktop-portal/portals/; the xdg-desktop-portal
-; frontend reads it to discover the backend's D-Bus name and the interfaces it
-; implements. The `Interfaces=` list must equal `model::BACKEND_INTERFACES`
-; (kept in lockstep by a test). T-13.1a shipped the service and its
-; registration empty; T-13.1b adds Settings and GlobalShortcuts, T-13.2a
-; FileChooser, T-13.3a Screenshot, and T-13.4a ScreenCast.
+# Dragonfruit portal backend descriptor (T-13.1a).
+#
+# Installed under {DATADIR}/xdg-desktop-portal/portals/; the xdg-desktop-portal
+# frontend reads it to discover the backend's D-Bus name and the interfaces it
+# implements. The `Interfaces=` list must equal `model::BACKEND_INTERFACES`
+# (kept in lockstep by a test). T-13.1a shipped the service and its
+# registration empty; T-13.1b adds Settings and GlobalShortcuts, T-13.2a
+# FileChooser, T-13.3a Screenshot, and T-13.4a ScreenCast.
+#
+# Comments use `#`: the real frontend parses this as a GLib key file, which
+# treats `;` as an invalid line (T-13.7 fixed this; see ADR 0085).
 [portal]
 DBusName=org.freedesktop.impl.portal.desktop.dragonfruit
 Interfaces=org.freedesktop.impl.portal.Settings;org.freedesktop.impl.portal.GlobalShortcuts;org.freedesktop.impl.portal.FileChooser;org.freedesktop.impl.portal.Screenshot;org.freedesktop.impl.portal.ScreenCast;

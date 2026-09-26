@@ -282,7 +282,7 @@ fn the_screencast_interface_is_served_at_the_standard_path() {
     let (_service, _backend) = bus.serve();
     let client = bus.connect();
 
-    assert_eq!(version_property(&client, "Version"), 3);
+    assert_eq!(version_property(&client, "version"), 3);
     assert_eq!(
         version_property(&client, "AvailableSourceTypes"),
         1 | 2,
