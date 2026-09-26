@@ -124,16 +124,24 @@ impl Drop for Fixture {
 
 /// Serve the fixture index on `bus` exactly as the daemon does.
 fn serve(bus: &PrivateBus, fixture: &Fixture) -> Connection {
+    serve_parts(bus, fixture).0
+}
+
+/// Serve the fixture index and return the live object too, so a test can start
+/// the coalescer thread the daemon runs.
+fn serve_parts(bus: &PrivateBus, fixture: &Fixture) -> (Connection, AppIndex1) {
     let index = AppIndex::from_dirs([fixture.apps()]);
     let theme = IconTheme::from_roots([fixture.icons()], ["hicolor".to_owned()], Vec::new());
-    zbus::blocking::connection::Builder::address(bus.address.as_str())
+    let object = AppIndex1::from_index(index, theme);
+    let service = zbus::blocking::connection::Builder::address(bus.address.as_str())
         .expect("valid bus address")
         .name(DBUS_NAME)
         .expect("valid well-known name")
-        .serve_at(DBUS_PATH, AppIndex1::from_index(index, theme))
+        .serve_at(DBUS_PATH, object.clone())
         .expect("serve the app index interface")
         .build()
-        .expect("build the service connection")
+        .expect("build the service connection");
+    (service, object)
 }
 
 fn call<T: serde::de::DeserializeOwned + zbus::zvariant::Type>(
@@ -397,6 +405,106 @@ fn window_activity_tracks_running_and_recency() {
         kinds,
         vec!["app_running", "app_running", "focused", "app_exited"]
     );
+}
+
+/// Listen for directed `Changed` signals on `client`, forwarding the payloads
+/// over a channel so a test can bound its wait.
+fn listen(client: &Connection) -> std::sync::mpsc::Receiver<String> {
+    let (tx, rx) = std::sync::mpsc::channel::<String>();
+    let listener = client.clone();
+    std::thread::spawn(move || {
+        let proxy = zbus::blocking::Proxy::new(&listener, DBUS_NAME, DBUS_PATH, INTERFACE)
+            .expect("signal proxy");
+        let mut signals = proxy.receive_signal("Changed").expect("listen for Changed");
+        for message in signals.by_ref() {
+            let (interests,): (String,) = message.body().deserialize().unwrap_or_default();
+            if tx.send(interests).is_err() {
+                break;
+            }
+        }
+    });
+    rx
+}
+
+/// Mutate the index/registry in a way that notes all three change kinds.
+fn burst(fixture: &Fixture, client: &Connection) {
+    fixture.write_app(
+        "org.example.Burst.desktop",
+        "[Desktop Entry]\nType=Application\nName=Burst\nStartupWMClass=burst\nExec=burst\n",
+    );
+    let _ = call::<String>(client, "Refresh", ()).unwrap();
+    let _ = call::<String>(client, "WindowOpened", ("", "Navigator", "Firefox")).unwrap();
+    let _ = call::<String>(client, "WindowOpened", ("org.dragonfruit.Files", "", "")).unwrap();
+    let _ = call::<bool>(client, "NoteActivity", ("org.dragonfruit.Files", "", "")).unwrap();
+}
+
+// T-14.1c: a subscriber hears one coalesced signal per burst of changes, and
+// no consumer has to poll. `Flush` closes the window deterministically.
+#[test]
+fn a_subscriber_receives_one_coalesced_signal_per_burst() {
+    let bus = PrivateBus::start();
+    let fixture = Fixture::new("subscribe");
+    fixture.seed();
+    let _service = serve(&bus, &fixture);
+    let client = bus.connect();
+    let rx = listen(&client);
+
+    // Subscribe: the service echoes the canonical interest set.
+    let echoed = call::<String>(&client, "Subscribe", ("all",)).unwrap();
+    assert_eq!(echoed, "identity,recency,icons");
+    assert_eq!(call::<u32>(&client, "SubscriberCount", ()).unwrap(), 1);
+
+    burst(&fixture, &client);
+
+    // Exactly one coalesced notice for the burst, carrying the union of the
+    // changed kinds.
+    assert_eq!(call::<u32>(&client, "Flush", ()).unwrap(), 1);
+    let first = rx
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .expect("a coalesced Changed signal arrives");
+    assert_eq!(first, "identity,recency,icons");
+    // Nothing further is pending.
+    assert_eq!(call::<u32>(&client, "Flush", ()).unwrap(), 0);
+    assert!(
+        rx.recv_timeout(std::time::Duration::from_millis(300))
+            .is_err(),
+        "a single coalesced signal per burst"
+    );
+
+    // Unsubscribing stops delivery.
+    assert!(call::<bool>(&client, "Unsubscribe", ()).unwrap());
+    assert_eq!(call::<u32>(&client, "SubscriberCount", ()).unwrap(), 0);
+    let _ = call::<String>(&client, "WindowOpened", ("", "", "Steam")).unwrap();
+    assert_eq!(call::<u32>(&client, "Flush", ()).unwrap(), 0);
+    assert!(
+        rx.recv_timeout(std::time::Duration::from_millis(300))
+            .is_err(),
+        "no signals after Unsubscribe"
+    );
+}
+
+// T-14.1c: the production coalescer thread delivers without a manual flush.
+#[test]
+fn the_coalescer_thread_delivers_without_a_flush() {
+    let bus = PrivateBus::start();
+    let fixture = Fixture::new("coalesce-thread");
+    fixture.seed();
+    let (service, object) = serve_parts(&bus, &fixture);
+    dragonfruit_app_index::dbus::spawn_coalescer(service.clone(), object);
+    let client = bus.connect();
+    let rx = listen(&client);
+
+    assert_eq!(
+        call::<String>(&client, "Subscribe", ("recency",)).unwrap(),
+        "recency"
+    );
+    let _ = call::<String>(&client, "WindowOpened", ("org.dragonfruit.Files", "", "")).unwrap();
+
+    // No flush: the thread wakes to the coalescing deadline and delivers.
+    let payload = rx
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .expect("the coalescer thread delivers the signal");
+    assert_eq!(payload, "recency");
 }
 
 // T-14.1b: an unresolved window still gets a stable raw-key registry entry.

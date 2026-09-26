@@ -21,19 +21,23 @@
 //!   the recency order; `Running`/`Recent` read them back, and
 //!   `ActivityEvents` drains the log.
 //!
-//! The subscription API (coalesced signals to consumers) is T-14.1c; the
-//! signals below are emitted additively now so that task only has to add the
-//! subscription bookkeeping.
+//! T-14.1c adds the subscription surface: `Subscribe`/`Unsubscribe` register a
+//! consumer (by its unique bus name) for the change categories it cares about,
+//! and a coalescer thread delivers one directed `Changed` signal per burst
+//! (`subscription`). Consumers stop re-querying; no polling remains.
 
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
+use std::time::Duration;
 
 use zbus::blocking::connection;
 use zbus::interface;
+use zbus::message::Header;
 use zbus::object_server::SignalEmitter;
 
 use crate::icons::IconTheme;
 use crate::index::AppIndex;
-use crate::registry::LaunchRegistry;
+use crate::registry::{self, LaunchRegistry};
+use crate::subscription::{ChangeKind, ChangeNotice, Interests, Subscriptions};
 use crate::view;
 use crate::watch;
 
@@ -44,13 +48,33 @@ pub const DBUS_PATH: &str = "/org/dragonfruit/AppIndex1";
 /// The interface name.
 pub const INTERFACE: &str = "org.dragonfruit.AppIndex1";
 
+/// The wake handle for the coalescer thread: a flag plus a condvar so a new
+/// change re-arms the sleep immediately instead of waiting out the old window.
+pub type Wake = Arc<(Mutex<bool>, Condvar)>;
+
+/// A fresh wake handle.
+pub fn new_wake() -> Wake {
+    Arc::new((Mutex::new(false), Condvar::new()))
+}
+
+/// Wake the coalescer thread so it recomputes its sleep.
+pub fn wake_subscriptions(wake: &Wake) {
+    let (flag, condvar) = &**wake;
+    if let Ok(mut woken) = flag.lock() {
+        *woken = true;
+        condvar.notify_all();
+    }
+}
+
 /// The served object: one shared index and launch registry behind mutexes,
-/// plus the icon theme.
+/// plus the icon theme and the coalesced-subscription table.
 #[derive(Clone)]
 pub struct AppIndex1 {
     index: Arc<Mutex<AppIndex>>,
     registry: Arc<Mutex<LaunchRegistry>>,
     theme: IconTheme,
+    subscriptions: Arc<Mutex<Subscriptions>>,
+    wake: Wake,
 }
 
 impl AppIndex1 {
@@ -71,6 +95,8 @@ impl AppIndex1 {
             index: Arc::new(Mutex::new(index)),
             registry: Arc::new(Mutex::new(registry)),
             theme,
+            subscriptions: Arc::new(Mutex::new(Subscriptions::new())),
+            wake: new_wake(),
         }
     }
 
@@ -87,6 +113,23 @@ impl AppIndex1 {
     /// The icon theme in use.
     pub fn theme(&self) -> &IconTheme {
         &self.theme
+    }
+
+    /// The shared coalesced-subscription table.
+    pub fn subscriptions(&self) -> &Arc<Mutex<Subscriptions>> {
+        &self.subscriptions
+    }
+
+    /// Note a change for the coalescer and wake it. Called by every mutation
+    /// path; consumers receive at most one `Changed` per coalescing window.
+    pub fn note_change(&self, kind: ChangeKind) {
+        self.note_change_at(kind, registry::now_ms());
+    }
+
+    /// Note a change at an explicit clock reading (deterministic tests).
+    pub fn note_change_at(&self, kind: ChangeKind, now_ms: u64) {
+        lock_subs(&self.subscriptions).note(kind, now_ms);
+        wake_subscriptions(&self.wake);
     }
 
     /// The registry key, display name, and icon for a window identity. A
@@ -141,6 +184,15 @@ fn lock_registry(
     registry: &Arc<Mutex<LaunchRegistry>>,
 ) -> std::sync::MutexGuard<'_, LaunchRegistry> {
     registry
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// Lock the shared subscription table, recovering from a poisoned mutex.
+fn lock_subs(
+    subscriptions: &Arc<Mutex<Subscriptions>>,
+) -> std::sync::MutexGuard<'_, Subscriptions> {
+    subscriptions
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
@@ -230,6 +282,12 @@ impl AppIndex1 {
             )
             .await;
         }
+        if !events.is_empty() {
+            // An install/uninstall/update changes both the identity corpus and
+            // the set of icons that resolve, so both kinds are noted.
+            self.note_change(ChangeKind::Identity);
+            self.note_change(ChangeKind::Icons);
+        }
         view::index_events_json(&events)
     }
 
@@ -257,6 +315,7 @@ impl AppIndex1 {
         }
         let event = lock_registry(&self.registry).app_running(&key, &name, &icon);
         let _ = Self::app_running(&emitter, &event.key, event.windows).await;
+        self.note_change(ChangeKind::Recency);
         let value = lock_registry(&self.registry)
             .app(&key)
             .map(|app| view::running_app_value(app, &self.theme))
@@ -281,6 +340,7 @@ impl AppIndex1 {
         match event {
             Some(event) => {
                 let _ = Self::app_exited(&emitter, &event.key, event.windows).await;
+                self.note_change(ChangeKind::Recency);
                 true
             }
             None => false,
@@ -296,6 +356,7 @@ impl AppIndex1 {
         }
         let was_running = lock_registry(&self.registry).is_running(&key);
         lock_registry(&self.registry).note_activity(&key);
+        self.note_change(ChangeKind::Recency);
         was_running
     }
 
@@ -319,6 +380,43 @@ impl AppIndex1 {
         view::activity_events_json(&events)
     }
 
+    /// Register the caller for coalesced change signals. `interests` is a
+    /// comma-separated set of `identity`, `recency`, and `icons`, or `all`
+    /// (empty means all). Returns the canonical interest string; the caller's
+    /// unique bus name is the destination of its `Changed` signals, so a
+    /// reconnecting consumer re-subscribes simply by calling this again.
+    fn subscribe(&self, interests: &str, #[zbus(header)] header: Header<'_>) -> String {
+        let Some(sender) = header.sender() else {
+            return String::new();
+        };
+        let interests = Interests::parse(interests);
+        lock_subs(&self.subscriptions).subscribe(sender.as_str(), interests);
+        interests.as_str()
+    }
+
+    /// Drop the caller's subscription (and any undelivered notice). Returns
+    /// `true` when a subscription was removed.
+    fn unsubscribe(&self, #[zbus(header)] header: Header<'_>) -> bool {
+        match header.sender() {
+            Some(sender) => lock_subs(&self.subscriptions).unsubscribe(sender.as_str()),
+            None => false,
+        }
+    }
+
+    /// Deliver every pending coalesced notice now instead of at the end of the
+    /// window. Returns the number of subscribers notified. Consumers normally
+    /// never call this; it is the deterministic hook for tests and an escape
+    /// hatch for a consumer that must not wait out the window.
+    async fn flush(&self, #[zbus(signal_emitter)] emitter: SignalEmitter<'_>) -> u32 {
+        let notices = lock_subs(&self.subscriptions).flush();
+        emit_notices(&emitter, &notices).await
+    }
+
+    /// The number of registered subscribers (diagnostics).
+    fn subscriber_count(&self) -> u32 {
+        lock_subs(&self.subscriptions).subscribers() as u32
+    }
+
     /// An app appeared on screen (`app_running`).
     #[zbus(signal)]
     async fn app_running(emitter: &SignalEmitter<'_>, key: &str, windows: u32) -> zbus::Result<()>;
@@ -337,6 +435,29 @@ impl AppIndex1 {
         desktop_id: &str,
         name: &str,
     ) -> zbus::Result<()>;
+
+    /// A coalesced change for a subscriber; `interests` is the canonical
+    /// comma-separated set of kinds that changed. Delivered only to the
+    /// subscribers that asked for at least one of them.
+    #[zbus(signal)]
+    async fn changed(emitter: &SignalEmitter<'_>, interests: &str) -> zbus::Result<()>;
+}
+
+/// Emit one directed `Changed` signal per notice, returning the count.
+async fn emit_notices(emitter: &SignalEmitter<'_>, notices: &[ChangeNotice]) -> u32 {
+    let connection = emitter.connection();
+    for notice in notices {
+        let _ = connection
+            .emit_signal(
+                Some(notice.destination.as_str()),
+                DBUS_PATH,
+                INTERFACE,
+                "Changed",
+                &(notice.interests_str()),
+            )
+            .await;
+    }
+    notices.len() as u32
 }
 
 /// Serve `org.dragonfruit.AppIndex1` on the session bus until the process is
@@ -349,7 +470,8 @@ pub fn run() -> zbus::Result<()> {
         .serve_at(DBUS_PATH, object.clone())?
         .build()?;
 
-    spawn_watcher(connection.clone(), object);
+    spawn_watcher(connection.clone(), object.clone());
+    spawn_coalescer(connection.clone(), object);
 
     // The blocking object server runs on its own executor; parking the main
     // thread keeps the process (and the name) alive without a poll loop.
@@ -360,18 +482,19 @@ pub fn run() -> zbus::Result<()> {
 }
 
 /// Start the inotify watcher on the index's own `applications` directories.
-/// Each monitor event re-scans and diffs the index and emits `IndexChanged`
-/// for every install/uninstall/update, so the corpus stays live with no
-/// polling.
+/// Each monitor event re-scans and diffs the index, emits `IndexChanged` for
+/// every install/uninstall/update, and notes the change for subscribers, so
+/// the corpus stays live with no polling.
 fn spawn_watcher(connection: connection::Connection, object: AppIndex1) {
     let dirs = lock(&object.index).dirs().to_vec();
     let index = object.index.clone();
+    let subscriptions = object.clone();
     let _ = std::thread::Builder::new()
         .name("dragonfruit-app-index-watch".to_owned())
         .spawn(move || {
             let _ = watch::watch_dirs(dirs, move || {
                 let events = lock(&index).refresh();
-                for event in events {
+                for event in &events {
                     let _ = connection.emit_signal(
                         None::<&str>,
                         DBUS_PATH,
@@ -384,8 +507,63 @@ fn spawn_watcher(connection: connection::Connection, object: AppIndex1) {
                         ),
                     );
                 }
+                if !events.is_empty() {
+                    subscriptions.note_change(ChangeKind::Identity);
+                    subscriptions.note_change(ChangeKind::Icons);
+                }
             });
         });
+}
+
+/// Start the coalescer thread. It sleeps until [`Subscriptions::next_deadline_ms`]
+/// and then delivers one directed `Changed` signal per subscriber; an idle
+/// service is asleep, and a new change re-arms the sleep via the wake handle.
+pub fn spawn_coalescer(connection: connection::Connection, object: AppIndex1) {
+    let subscriptions = object.subscriptions.clone();
+    let wake = object.wake.clone();
+    let _ = std::thread::Builder::new()
+        .name("dragonfruit-app-index-coalesce".to_owned())
+        .spawn(move || coalescer_loop(connection, subscriptions, wake));
+}
+
+fn coalescer_loop(
+    connection: connection::Connection,
+    subscriptions: Arc<Mutex<Subscriptions>>,
+    wake: Wake,
+) {
+    loop {
+        let now = registry::now_ms();
+        let notices = lock_subs(&subscriptions).due(now);
+        for notice in notices {
+            let _ = connection.emit_signal(
+                Some(notice.destination.as_str()),
+                DBUS_PATH,
+                INTERFACE,
+                "Changed",
+                &(notice.interests_str()),
+            );
+        }
+
+        let wait = match lock_subs(&subscriptions).next_deadline_ms() {
+            Some(deadline) => {
+                Duration::from_millis(deadline.saturating_sub(registry::now_ms()).max(1))
+            }
+            None => Duration::from_secs(3600),
+        };
+
+        let (flag, condvar) = &*wake;
+        let mut woken = flag.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        if *woken {
+            *woken = false;
+            continue;
+        }
+        let (mut woken, _) = condvar
+            .wait_timeout(woken, wait)
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if *woken {
+            *woken = false;
+        }
+    }
 }
 
 #[cfg(test)]

@@ -19,14 +19,15 @@
 //!   into a file path.
 //! * [`view`] — the flat JSON shapes the shell decodes.
 //! * [`watch`] — the inotify directory monitor that keeps the index live.
+//! * [`subscription`] — the pure subscriber table and coalescing windows that
+//!   turn a burst of changes into one signal per consumer (T-14.1c).
 //! * [`dbus`] — the `org.dragonfruit.AppIndex1` interface and its `run`.
-//!
-//! The subscription API (coalesced change signals) is T-14.1c.
 
 pub mod dbus;
 pub mod icons;
 pub mod index;
 pub mod registry;
+pub mod subscription;
 pub mod view;
 pub mod watch;
 
@@ -36,6 +37,7 @@ pub use index::{
     desktop_dirs, AppIndex, AppRecord, IdentitySource, IndexEvent, IndexEventKind, ResolvedApp,
 };
 pub use registry::{ActivityEvent, ActivityKind, LaunchRegistry, RunningApp};
+pub use subscription::{ChangeKind, ChangeNotice, Interests, Subscriptions, COALESCE_WINDOW_MS};
 pub use view::{record_json, records_json, DEFAULT_ICON_SIZE};
 
 #[cfg(test)]

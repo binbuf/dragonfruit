@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(67 earlier sections omitted)_
+_(68 earlier sections omitted)_
 
-- **T64 — T-10.4c Files context menus, multi-select, optimistic UI**: **State: done.** Context menus, multi-select, and optimistic; **`services/files-core/src/ffi.rs`** — `FfiSession` now wraps
 - **T65 — T-10.5 Files performance budgets**: **State: done.** Files meets both budgets with incremental/windowed delivery.; **`services/files-core/src/ffi.rs`** — `df_files_row` / `df_files_delta`,
 - **T66 — T-10.6a Dock trash source**: **State: done.** The Dock's Trash state comes from `files-core` over the one; **`services/files-core/src/trash_source.rs`** (new) — `TrashSource`
 - **T67 — T-10.6b Drop-to-trash, Empty Trash, trash://**: **State: done.** The Dock's drop and Empty Trash already routed through; **`services/files-core/src/optimistic.rs`** — `PendingKind::Empty` +
@@ -44,6 +43,7 @@ _(67 earlier sections omitted)_
 - **T99 — T-13.7 Flatpak validation and capture**: **State: done** (one honest deviation: no Flatpak↔native clipboard still; see; **`scripts/capture-portals.sh`** (new; `make portals-capture`) — private
 - **T100 — T-14.1a app-index identity resolution and icons**: **State: done.** `org.dragonfruit.AppIndex1` is real: identity resolution for; `services/app-index/src/index.rs` — pure `AppIndex` (scan, `resolve`,
 - **T101 — T-14.1b app-index events, launch registry, recency**: **State: done.** `org.dragonfruit.AppIndex1` is now live: the index re-scans; `services/app-index/src/index.rs` — `IndexEvent`/`IndexEventKind`; `AppIndex`
+- **T102 — T-14.1c app-index subscription API**: **State: done.** `org.dragonfruit.AppIndex1` now has a subscription surface:; `services/app-index/src/subscription.rs` (new) — pure `ChangeKind`
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3227,6 +3227,15 @@ Gotchas for later tasks:
 
 ## Follow-ups
 
+- **T-14.1c follow-ups.** (a) The service subscription API is live but the shell
+  does not consume it: `shell/src/appindexclient.{h,cpp}` has no `Subscribe` and
+  `ShellController::start` still loads the index once at startup. Wire the shell
+  to call `Subscribe("all")` on the session bus and reload
+  `DesktopEntryIndex` on the directed `Changed` signal so installs/uninstalls
+  reach the Dock without a restart (and drop the startup `Enumerate`). (b) The
+  `identity,recency,icons` kinds are noted by the service mutation paths only;
+  a consumer that subscribes must still call `Running`/`Recent`/`Enumerate`
+  itself — the signal carries kinds, not a snapshot (by design).
 - **T-14.1b follow-ups.** (a) The shell does not yet forward window activity:
   the service exposes `WindowOpened`/`WindowClosed`/`NoteActivity` but nothing
   calls them live, so the Dock's running projection still comes from the
@@ -7555,3 +7564,60 @@ Gotchas for later tasks:
   remains (see Follow-ups).
 - T-14.1c: the signals (`AppRunning`, `AppExited`, `IndexChanged`) are already
   emitted; it only needs the subscription bookkeeping and coalescing.
+
+## T102 — T-14.1c app-index subscription API
+
+**State: done.** `org.dragonfruit.AppIndex1` now has a subscription surface:
+`Subscribe`/`Unsubscribe` register a consumer by its unique bus name for the
+`identity`/`recency`/`icons` categories, and a coalescer thread delivers **one
+directed `Changed` signal per 100 ms burst** instead of a signal per change.
+Consumers no longer need to re-query or poll. Contract frozen in ADR
+[0088](design/adr/0088-app-index-subscription-coalescing.md).
+
+Real paths:
+
+- `services/app-index/src/subscription.rs` (new) — pure `ChangeKind`
+  (`Identity`/`Recency`/`Icons`), `Interests` (bitmask, `parse`/`as_str`/
+  `includes`/`union`/`intersection`), `ChangeNotice` (destination + union of
+  kinds), `Subscriptions` (`subscribe`/`unsubscribe`/`note`/`due`/
+  `next_deadline_ms`/`flush`), `COALESCE_WINDOW_MS` 100.
+- `services/app-index/src/dbus.rs` — `AppIndex1` carries
+  `Arc<Mutex<Subscriptions>>` + a `Wake`; methods `Subscribe(interests) ->
+  String`, `Unsubscribe() -> bool`, `Flush() -> u32`, `SubscriberCount() ->
+  u32`, signal `Changed(interests)`; `note_change`/`note_change_at`;
+  `spawn_coalescer` (condvar-woken, sleeps until the deadline, no polling).
+- `services/app-index/src/lib.rs` — exports the new module and types.
+- `services/app-index/tests/session_bus.rs` — new headless tests
+  `a_subscriber_receives_one_coalesced_signal_per_burst` (subscribe → install +
+  two window opens + focus → `Flush` delivers exactly one `Changed` carrying
+  `identity,recency,icons`; none after `Unsubscribe`) and
+  `the_coalescer_thread_delivers_without_a_flush` (the production thread wakes
+  to the deadline and delivers).
+- `docs/design/02-compositor.md` "Application identity" updated.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-app-index` — 35 unit + 10 session-bus cases.
+- `cargo clippy -p dragonfruit-app-index --all-targets -- -D warnings` — exit 0;
+  `cargo fmt -p dragonfruit-app-index -- --check` — exit 0.
+- Build note (unchanged): `export
+  PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig:$PKG_CONFIG_PATH` and
+  `RUSTFLAGS="-L $HOME/.local/df-devroot/lib64"` (or just `make`).
+
+Gotchas for later tasks:
+
+- **Coalescing is a throttle, not a debounce.** The window opens at the first
+  change and is *not* extended by later changes, so a continuous stream still
+  delivers at ~10 Hz. The union of kinds is per subscriber; `interests` on the
+  wire is the canonical subset string (`identity,icons`, etc.).
+- **A change kind is consumed by `note` entries in `dbus.rs`, not by the pure
+  model.** `Refresh` and the inotify watcher note `Identity` + `Icons`; window
+  open/close/focus note `Recency`. If you add a new mutation path, call
+  `AppIndex1::note_change` or subscribers never hear it.
+- **An empty/unknown interest spec means `all`**, so a consumer asking for a
+  category that does not exist yet goes silent rather than silent-by-default.
+- **Signals are directed to the subscriber's unique name.** A consumer must
+  emit `Subscribe` from the same connection it listens on; a separate
+  `bus.connect()` listener will not receive them.
+- **The shell does not subscribe yet** and the window-activity forwarder is
+  still unwired (T-14.1b follow-up). Shell-side wiring remains for a later task.
