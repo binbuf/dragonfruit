@@ -263,6 +263,15 @@ rather than being punched out (FR-3). The backdrop elements are appended
 behind its chrome and in front of the scene it stands in for; no chrome mapped
 means no backdrop and no extra damage.
 
+A chrome client may declare the **live panel rect** it is drawing (the Dock's
+plate grows and springs with magnification). An additive
+`df_layer_surface.set_panel_rect` request overrides the derived panel for that
+surface: the compositor intersects the declared rect with the surface geometry
+and frosts exactly that rect. Without the request the panel stays the input
+region bounding box ∩ the reserved strip, so the menu bar and popovers are
+unchanged. See
+[ADR 0088](adr/0088-dock-plate-geometry-and-live-panel-rect.md).
+
 `BackdropPass` gates the pass: the backend opens a rendered frame once
 (`DfState::begin_render_frame`) and each output applies the backdrop at most
 once. A repeated `(frame, output)` request is counted as `skipped` and draws
@@ -738,9 +747,15 @@ The index is **live**: `app-index` watches its `applications` directories
 corpus into install/uninstall/update events (T-14.1b). It also owns the
 **launch registry** and **recency**: the shell forwards a window's appearance,
 disappearance, and focus, and the service tracks which apps are running and a
-most-recent-first usage order, keyed by resolved desktop id. The subscription
-API that removes the shell's startup re-query is T-14.1c (ADR
+most-recent-first usage order, keyed by resolved desktop id (ADR
 [0087](adr/0087-app-index-events-launch-registry-recency.md)).
+
+The index is also **subscribable** (T-14.1c, ADR
+[0088](adr/0088-app-index-subscription-coalescing.md)): a consumer calls
+`Subscribe(identity|recency|icons|all)` and receives one directed `Changed`
+signal per coalesced burst instead of re-querying; the bookkeeping is by the
+caller's unique bus name and the coalescing window is 100 ms. There is no
+polling anywhere.
 
 ## Keymap conventions
 

@@ -99,6 +99,35 @@ The difficult part is not drawing the Dock; it is getting all the lifecycle
 details and edge cases polished — launch failures, app exit while animating,
 windows opening on other workspaces, and apps with inconsistent identifiers.
 
+### Dock plate and materials
+
+The Dock is a **floating plate**: `controls.dock.edgeMargin` keeps it off its
+anchored screen edge, and the dock spacing tokens give the artwork cross-axis
+and along-axis padding. The reserved zone is the resting plate plus that
+margin; auto-hide reserves nothing. The plate is **cosmetic**: under
+magnification it grows to wrap the magnified row in both axes, inside the
+pre-reserved magnify band, while the reserved zone stays at the resting
+thickness so windows never re-lay-out when the pointer sweeps the Dock. The
+pointer is smoothed with `motion.dock-magnify` (the slight overshoot comes
+from the token curve); reduced motion tracks the pointer directly. The
+compositor's frosted backdrop follows the live plate rect that the shell
+declares on each commit, so the material always sits under the artwork. See
+[ADR 0088](adr/0088-dock-plate-geometry-and-live-panel-rect.md) and the
+T-14.7a/T-14.7b units.
+
+### Adding and removing apps
+
+The Dock manages its own contents: the divider menu opens an **Add
+Application** picker (an overlay popover) fed by app-index, listing installed
+applications with their themed icon and name, a search filter, and a
+pin/unpin toggle. External drags show the dragged app's real identity in the
+open gap and pin it on drop; files dropped on an entry open with that app, on
+the Trash move to trash, and on the Downloads stack move into it. `dock.pinned`
+is the only persisted state and settingsd the only writer. The picker is not a
+launcher — Launchpad and the Spotlight-equivalent search remain post-gate. See
+[ADR 0089](adr/0089-dock-app-management-picker-and-drops.md) and the
+T-14.7e/T-14.7f units.
+
 ## App switcher
 
 The Cmd-Tab-style app switcher is **compositor-driven and shell-rendered**:
