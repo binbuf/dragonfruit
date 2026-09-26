@@ -11,6 +11,7 @@
 //! * window/workspace/output enumeration, events, and request round-trips
 //!   with `done` acks — FR-2/FR-3.
 
+use std::collections::HashMap;
 use std::os::fd::AsFd;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -163,6 +164,10 @@ struct TestClient {
     data_source: Option<wl_data_source::WlDataSource>,
     /// The bytes the source writes when the target requests `text/uri-list`.
     source_payload: Option<String>,
+    /// Per-mime payloads the source writes when a clipboard target requests a
+    /// mime type (T-13.5a). Distinct from `source_payload`, which the drag
+    /// test uses for its single `text/uri-list` payload.
+    source_payloads: HashMap<String, Vec<u8>>,
     data_source_sent: usize,
     data_source_cancelled: usize,
     data_source_drop_performed: usize,
@@ -179,6 +184,11 @@ struct TestClient {
     dnd_action_events: usize,
     /// Read end of the pipe the target asked the source to fill.
     dnd_read_fd: Option<std::os::fd::RawFd>,
+    /// Clipboard selection (T-13.5a): the offer the compositor pushed to a
+    /// focused client's `wl_data_device`, and the mimes it advertised. This is
+    /// distinct from the drag offer above (`Selection` vs `DataOffer`).
+    clipboard_offer: Option<wl_data_offer::WlDataOffer>,
+    clipboard_mimes: Vec<String>,
     /// The serial of the most recent pointer button press (the drag needs it).
     pointer_button_serial: Option<u32>,
     /// Per-output reserved zones, keyed by the `df_output` protocol id, so a
@@ -524,13 +534,14 @@ impl Dispatch<wl_data_device::WlDataDevice, ()> for TestClient {
                     state.dnd_read_fd = Some(fds[0]);
                 }
             }
-            wl_data_device::Event::Selection { .. } => {}
+            wl_data_device::Event::Selection { id } => state.clipboard_offer = id,
             _ => {}
         }
     }
 
     wayland_client::event_created_child!(TestClient, wl_data_device::WlDataDevice, [
         wl_data_device::EVT_DATA_OFFER_OPCODE => (wl_data_offer::WlDataOffer, ()),
+        wl_data_device::EVT_SELECTION_OPCODE => (wl_data_offer::WlDataOffer, ()),
     ]);
 }
 
@@ -544,7 +555,10 @@ impl Dispatch<wl_data_offer::WlDataOffer, ()> for TestClient {
         _: &QueueHandle<Self>,
     ) {
         match event {
-            wl_data_offer::Event::Offer { mime_type } => state.dnd_mimes.push(mime_type),
+            wl_data_offer::Event::Offer { mime_type } => {
+                state.dnd_mimes.push(mime_type.clone());
+                state.clipboard_mimes.push(mime_type);
+            }
             wl_data_offer::Event::Action { .. } => state.dnd_action_events += 1,
             _ => {}
         }
@@ -562,10 +576,13 @@ impl Dispatch<wl_data_source::WlDataSource, ()> for TestClient {
     ) {
         match event {
             wl_data_source::Event::Send { mime_type, fd } => {
-                if let Some(payload) = state.source_payload.clone() {
+                use std::io::Write;
+                let mut file = std::fs::File::from(fd);
+                if let Some(payload) = state.source_payloads.get(&mime_type).cloned() {
+                    file.write_all(&payload).expect("write clipboard payload");
+                    state.data_source_sent += 1;
+                } else if let Some(payload) = state.source_payload.clone() {
                     if mime_type == "text/uri-list" {
-                        use std::io::Write;
-                        let mut file = std::fs::File::from(fd);
                         file.write_all(payload.as_bytes())
                             .expect("write drag payload");
                         state.data_source_sent += 1;
@@ -4175,6 +4192,40 @@ fn read_pipe_to_string(fd: std::os::fd::RawFd, timeout: Duration) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
+/// Read every byte from `fd` until EOF or the timeout expires. Unlike
+/// [`read_pipe_to_string`], this preserves binary payloads (image data).
+fn read_pipe_to_bytes(fd: std::os::fd::RawFd, timeout: Duration) -> Vec<u8> {
+    use std::io::Read;
+    use std::os::fd::FromRawFd;
+    let mut file = unsafe { std::fs::File::from_raw_fd(fd) };
+    let deadline = Instant::now() + timeout;
+    let mut out = Vec::new();
+    let mut buf = [0u8; 4096];
+    loop {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            break;
+        }
+        let mut pollfd = libc::pollfd {
+            fd,
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        let millis = remaining.as_millis().min(i32::MAX as u128) as i32;
+        let ready = unsafe { libc::poll(&mut pollfd, 1, millis) };
+        assert!(ready >= 0, "poll failed");
+        if ready == 0 {
+            break;
+        }
+        let n = file.read(&mut buf).expect("read clipboard payload");
+        if n == 0 {
+            break;
+        }
+        out.extend_from_slice(&buf[..n]);
+    }
+    out
+}
+
 /// T-10 FR-9 (external drops) — the end-to-end drag walkthrough the hand-off
 /// asked for. A *separate* client starts a Wayland drag carrying a
 /// `text/uri-list`; the compositor routes the drag to a trusted chrome
@@ -4409,6 +4460,189 @@ fn client_drag_and_drop_reaches_a_chrome_surface() {
         !synthetic_path.exists(),
         "teardown leak: synthetic-input socket survived"
     );
+}
+
+/// T-13.5a — the clipboard round-trip matrix through the compositor's
+/// `wl_data_device` bridge. Two independent clients: the source copies each
+/// MIME type (text, image, and a `text/uri-list` file list) while it holds
+/// keyboard focus, then the target takes focus and reads every payload back
+/// over the offer pipe. The compositor is Smithay's `delegate_data_device`,
+/// so this is the proof that ordinary clients (and the shell's future
+/// clipboard manager) share one selection without a second owner.
+#[test]
+fn clipboard_round_trips_text_image_and_uri_list() {
+    let proc = CompositorProcess::start("dragonfruit-conformance-clipboard", &[]);
+
+    // --- target: an ordinary client whose window will take focus ---------
+    let (tgt_conn, mut tgt_queue, mut tgt) = connect(&proc.socket_path);
+    wait_for(
+        &tgt_conn,
+        &mut tgt_queue,
+        &mut tgt,
+        Duration::from_secs(5),
+        |s| {
+            s.compositor.is_some()
+                && s.xdg_wm_base.is_some()
+                && s.pointer.is_some()
+                && s.keyboard.is_some()
+                && s.data_device_manager.is_some()
+                && s.activation.is_some()
+        },
+    );
+    let (tgt_surface, _tgt_xdg, _tgt_toplevel, _tgt_file) = map_toplevel(
+        &mut tgt,
+        &mut tgt_queue,
+        "Clipboard Target",
+        "org.dragonfruit.ClipTarget",
+    );
+    let tgt_qh = tgt_queue.handle();
+    let tgt_dd = tgt.data_device_manager.clone().unwrap().get_data_device(
+        &tgt.seat.clone().unwrap(),
+        &tgt_qh,
+        (),
+    );
+    tgt.data_device = Some(tgt_dd.clone());
+    tgt_queue
+        .roundtrip(&mut tgt)
+        .expect("target data device roundtrip");
+
+    // --- source: a second client that owns the selection -----------------
+    let (src_conn, mut src_queue, mut src) = connect(&proc.socket_path);
+    wait_for(
+        &src_conn,
+        &mut src_queue,
+        &mut src,
+        Duration::from_secs(5),
+        |s| {
+            s.compositor.is_some()
+                && s.xdg_wm_base.is_some()
+                && s.pointer.is_some()
+                && s.keyboard.is_some()
+                && s.data_device_manager.is_some()
+                && s.activation.is_some()
+        },
+    );
+    let (src_surface, _src_xdg, _src_toplevel, _src_file) = map_toplevel(
+        &mut src,
+        &mut src_queue,
+        "Clipboard Source",
+        "org.dragonfruit.ClipSource",
+    );
+    let src_qh = src_queue.handle();
+    let src_dd = src.data_device_manager.clone().unwrap().get_data_device(
+        &src.seat.clone().unwrap(),
+        &src_qh,
+        (),
+    );
+    src.data_device = Some(src_dd.clone());
+
+    const TEXT_MIME: &str = "text/plain;charset=utf-8";
+    const IMAGE_MIME: &str = "image/png";
+    const URI_MIME: &str = "text/uri-list";
+    let text = "dragonfruit clipboard — ünïcödé ✅".as_bytes().to_vec();
+    // Byte-exact payload carrying the PNG signature; the bridge is
+    // MIME-agnostic, so the test does not need a decodable image.
+    let image = {
+        let mut bytes = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
+        bytes.extend((0u8..=255).cycle().take(4096));
+        bytes
+    };
+    let uri = "file:///tmp/dragonfruit-one.png\r\nfile:///tmp/dragonfruit-two.png\r\n"
+        .as_bytes()
+        .to_vec();
+
+    // Focus the source so it may own the selection — Smithay denies
+    // `set_selection` from a client without keyboard focus.
+    xdg_activate(&src_conn, &mut src_queue, &mut src, &src_surface);
+    wait_for(
+        &src_conn,
+        &mut src_queue,
+        &mut src,
+        Duration::from_secs(5),
+        |s| s.keyboard_enters > 0,
+    );
+
+    src.source_payloads
+        .insert(TEXT_MIME.to_string(), text.clone());
+    src.source_payloads
+        .insert(IMAGE_MIME.to_string(), image.clone());
+    src.source_payloads
+        .insert(URI_MIME.to_string(), uri.clone());
+
+    let src_source = src
+        .data_device_manager
+        .clone()
+        .unwrap()
+        .create_data_source(&src_qh, ());
+    src_source.offer(TEXT_MIME.to_string());
+    src_source.offer(IMAGE_MIME.to_string());
+    src_source.offer(URI_MIME.to_string());
+    src.data_source = Some(src_source.clone());
+    src_dd.set_selection(Some(&src_source), 0);
+    // The roundtrip proves the compositor processed `set_selection` before
+    // the target takes focus; otherwise the request would be denied.
+    src_queue
+        .roundtrip(&mut src)
+        .expect("set_selection roundtrip");
+
+    // --- target takes focus and receives the selection offer -------------
+    xdg_activate(&tgt_conn, &mut tgt_queue, &mut tgt, &tgt_surface);
+    wait_for(
+        &tgt_conn,
+        &mut tgt_queue,
+        &mut tgt,
+        Duration::from_secs(5),
+        |s| s.keyboard_enters > 0 && s.clipboard_offer.is_some(),
+    );
+    for mime in [TEXT_MIME, IMAGE_MIME, URI_MIME] {
+        assert!(
+            tgt.clipboard_mimes.iter().any(|m| m == mime),
+            "the selection offer must advertise {mime}: {:?}",
+            tgt.clipboard_mimes
+        );
+    }
+
+    // --- read every payload back through the bridge ----------------------
+    let expected: [(&str, &[u8]); 3] = [
+        (TEXT_MIME, text.as_slice()),
+        (IMAGE_MIME, image.as_slice()),
+        (URI_MIME, uri.as_slice()),
+    ];
+    for (mime, want) in expected {
+        let offer = tgt.clipboard_offer.clone().expect("selection offer");
+        let mut fds = [0i32; 2];
+        let rc = unsafe { libc::pipe(fds.as_mut_ptr()) };
+        assert_eq!(rc, 0, "pipe() failed");
+        {
+            use std::os::fd::FromRawFd;
+            // `receive` borrows the write end; dropping it after the call
+            // leaves the source as the only writer so the read side sees EOF.
+            let write = unsafe { std::os::fd::OwnedFd::from_raw_fd(fds[1]) };
+            offer.receive(mime.to_string(), write.as_fd());
+        }
+        tgt_conn.flush().expect("flush receive");
+        let sent_before = src.data_source_sent;
+        wait_for(
+            &src_conn,
+            &mut src_queue,
+            &mut src,
+            Duration::from_secs(5),
+            |s| s.data_source_sent > sent_before,
+        );
+        let got = read_pipe_to_bytes(fds[0], Duration::from_secs(5));
+        assert_eq!(
+            got.as_slice(),
+            want,
+            "the {mime} payload must round-trip byte-for-byte"
+        );
+    }
+
+    drop(tgt_dd);
+    drop(src_dd);
+    drop(src_source);
+    let _ = tgt_conn.flush();
+    let _ = src_conn.flush();
+    proc.shutdown();
 }
 
 /// Authenticate a trusted shell client and create its menu-bar chrome

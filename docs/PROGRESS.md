@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(60 earlier sections omitted)_
+_(61 earlier sections omitted)_
 
-- **T57 — T-10.1b files-core sorting and platform fallback**: **State: done.** `files-core` now sorts its streamed model and the; **`services/files-core/src/sort.rs`** (new module) — `SortKey`
 - **T58 — T-10.2a files-core operations**: **State: done.** `files-core` gained the one operations seam: rename, new; **`services/files-core/src/ops.rs`** (new module):
 - **T59 — T-10.2b Optimistic semantics and state preservation**: **State: done.** `files-core` now applies rename / new-folder / delete to the; **`services/files-core/src/optimistic.rs`** (new) — `OptimisticModel`
 - **T60 — T-10.3a files-core trash**: **State: done.** `files-core` now speaks the freedesktop Trash spec and the; **`services/files-core/src/trash.rs`** (new) — the trash engine:
@@ -45,6 +44,7 @@ _(60 earlier sections omitted)_
 - **T93 — T-13.3b Screenshot save/copy and portal-only gate**: **State: done.** A capture is now actually produced, saved, and copied. The; **`protocols/dragonfruit-toplevel.xml`** — `df_toplevel_manager` v6 adds
 - **T94 — T-13.4a ScreenCast portal and source picker**: **State: done.** The backend serves `org.freedesktop.impl.portal.ScreenCast`; **`portal/src/screencast.rs`** (new) — the pure model: `SourceType`
 - **T95 — T-13.4b ScreenCast stream and stills fallback**: **State: done.** The ScreenCast stream now goes through one transport seam, and; **`portal/src/stream.rs`** (new) — `StreamMode` (`pipewire`/`stills`),
+- **T96 — T-13.5a Clipboard text/image/uri-list round-trips**: **State: done.** The clipboard round-trip matrix is proven on the headless; **`compositor/tests/shell_protocol_conformance.rs`** — new
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -7151,3 +7151,58 @@ Gotchas for later tasks:
   without a backend version bump.
 - T-13.5 (clipboard) and T-13.7 (real frontend routing/Flatpak) are the
   follow-ons; T-13.7's browser walkthrough will exercise this fallback.
+
+## T96 — T-13.5a Clipboard text/image/uri-list round-trips
+
+**State: done.** The clipboard round-trip matrix is proven on the headless
+compositor through the existing data-device bridge, and the ownership contract
+is frozen. No compositor behaviour changed: Smithay's `delegate_data_device`
+already carries every MIME type. Contract in ADR
+[0082](design/adr/0082-clipboard-data-device-bridge-ownership.md).
+
+What landed:
+
+- **`compositor/tests/shell_protocol_conformance.rs`** — new
+  `clipboard_round_trips_text_image_and_uri_list`: two independent Wayland
+  clients, the source focused via `xdg-activation` sets a `wl_data_source`
+  offering `text/plain;charset=utf-8`, `image/png`, and `text/uri-list`; the
+  target takes focus, receives the offer, and reads every payload back
+  byte-for-byte. The `TestClient` harness gained
+  `source_payloads: HashMap<String, Vec<u8>>`, `clipboard_offer`,
+  `clipboard_mimes`, the `wl_data_device.selection` child registration, and
+  `read_pipe_to_bytes`.
+- **`docs/design/07-system-integration.md`** — a "Clipboard (T-13.5a)" section.
+- **ADR 0082** — `wl_data_device` is the one owner; `wlr-data-control` is the
+  manager half; a history manager must forward, not replace, the source.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-compositor --test shell_protocol_conformance
+  clipboard_round_trips_text_image_and_uri_list` — passes.
+- `cargo test -p dragonfruit-compositor --test shell_protocol_conformance` —
+  35/35.
+- `make lint` — exit 0 (fmt, clippy, qmllint, gates; ctest 50/50).
+- `make e2e` — exit 0.
+- Build note (unchanged): `export PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig:$PKG_CONFIG_PATH`
+  and `RUSTFLAGS="-L $HOME/.local/df-devroot/lib64"` (or just `make`).
+
+Live check (no surface of its own): `make demo DEMO_ARGS="--socket-name
+dragonfruit-t96"`, raised via the KWin scripting D-Bus (as
+`scripts/capture-live-menubar.sh` does), then `spectacle -b -n -a`, trimmed to
+1920x1200 → `/tmp/opencode/t96/desktop.png`. Vision: menu bar
+(`dragonfruit-settings` + File/Edit/View, clock), Dock, dark wallpaper,
+Settings "Appearance", the X11 demo window; no black regions or clipping.
+
+Gotchas for later tasks:
+
+- **`wl_data_device` selection is focus-gated.** Smithay denies `set_selection`
+  from an unfocused client and only offers the selection to the focused
+  client's data device. Tests must activate/focus both sides; a background
+  copier must use `wlr-data-control`.
+- **`wlr-data-control` is the manager path** (advertised, open filter, no
+  focus). T-13.5b's history observes and forwards through it; it must not
+  become a second owner.
+- The shell's screenshot copy (T-13.3b) uses Qt's clipboard, which is the same
+  Wayland data device when the shell is a Wayland client.
+- T-13.5b adds clipboard history if the design calls for it (legacy T-29 says
+  yes); T-13.6 is the polkit agent.
