@@ -214,8 +214,11 @@ fn wait_for<T>(timeout: Duration, mut check: impl FnMut() -> Option<T>) -> T {
     }
 }
 
-/// The `streams` result decoded into `(node_id, id, source_type)` triples.
-fn streams_of(results: &HashMap<String, OwnedValue>) -> Vec<(u32, String, u32)> {
+/// The `streams` result decoded into
+/// `(node_id, id, source_type, stream_mode, fallback)` tuples.
+fn streams_of(
+    results: &HashMap<String, OwnedValue>,
+) -> Vec<(u32, String, u32, String, Option<String>)> {
     let wire = results
         .get("streams")
         .and_then(|value| value.try_clone().ok())
@@ -223,17 +226,21 @@ fn streams_of(results: &HashMap<String, OwnedValue>) -> Vec<(u32, String, u32)> 
         .unwrap_or_default();
     wire.into_iter()
         .map(|(node_id, properties)| {
-            let id = properties
-                .get("id")
-                .and_then(|value| value.try_clone().ok())
-                .and_then(|value| String::try_from(value).ok())
-                .unwrap_or_default();
+            let string_of = |key: &str| {
+                properties
+                    .get(key)
+                    .and_then(|value| value.try_clone().ok())
+                    .and_then(|value| String::try_from(value).ok())
+            };
+            let id = string_of("id").unwrap_or_default();
             let source_type = properties
                 .get("source_type")
                 .and_then(|value| value.try_clone().ok())
                 .and_then(|value| u32::try_from(value).ok())
                 .unwrap_or_default();
-            (node_id, id, source_type)
+            let mode = string_of("df_stream_mode").unwrap_or_default();
+            let fallback = string_of("df_fallback");
+            (node_id, id, source_type, mode, fallback)
         })
         .collect()
 }
@@ -266,7 +273,7 @@ fn start_first_stream(client: &Connection, session_handle: &str) -> Option<(Stri
     streams_of(&results)
         .into_iter()
         .next()
-        .map(|(_, id, source_type)| (id, source_type))
+        .map(|(_, id, source_type, _, _)| (id, source_type))
 }
 
 #[test]
@@ -398,8 +405,36 @@ fn a_client_request_opens_the_picker_and_returns_a_chosen_source() {
     assert_eq!(response, 0);
     let streams = streams_of(&results);
     assert_eq!(streams.len(), 2);
-    assert_eq!(streams[0], (0, "monitor:DP-1".to_owned(), 1));
-    assert_eq!(streams[1], (0, "window:7".to_owned(), 2));
+    // T-13.4b: this build has no in-process PipeWire producer, so every stream
+    // is the *named* stills fallback — node id 0 plus an explicit mode and
+    // reason, never a silent placeholder.
+    assert_eq!(
+        streams[0],
+        (
+            0,
+            "monitor:DP-1".to_owned(),
+            1,
+            "stills".to_owned(),
+            Some("pipewire-producer-unavailable".to_owned()),
+        )
+    );
+    assert_eq!(
+        streams[1],
+        (
+            0,
+            "window:7".to_owned(),
+            2,
+            "stills".to_owned(),
+            Some("pipewire-producer-unavailable".to_owned()),
+        )
+    );
+
+    // The same mode is readable before a source is chosen, so the picker can
+    // say the fallback out loud.
+    assert_eq!(
+        diagnostic::<String>(&client, "ScreenCastStreamMode", ()),
+        "stills"
+    );
 }
 
 #[test]

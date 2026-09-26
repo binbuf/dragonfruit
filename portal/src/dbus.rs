@@ -293,6 +293,17 @@ impl Backend {
         screencast::lock(&self.screencast).handles()
     }
 
+    /// How the ScreenCast transport delivers a source: `pipewire` when a live
+    /// producer is available, `stills` when only the named fallback is. The
+    /// shell reads it so the picker can say the fallback out loud before a
+    /// source is chosen. Diagnostic only; the portal frontend never calls it.
+    fn screen_cast_stream_mode(&self) -> String {
+        screencast::lock(&self.screencast)
+            .stream_mode()
+            .as_str()
+            .to_owned()
+    }
+
     /// Complete a waiting ScreenCast picker request with the presenter's
     /// chosen sources, each `(source handle, source type bit)`. Returns
     /// whether a request was waiting at `handle`.

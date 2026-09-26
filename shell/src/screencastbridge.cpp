@@ -9,6 +9,8 @@
 #include <QDBusConnectionInterface>
 #include <QDBusInterface>
 #include <QDBusMetaType>
+#include <QDBusPendingCallWatcher>
+#include <QDBusPendingReply>
 #endif
 
 #if defined(QT_DBUS_LIB)
@@ -71,6 +73,13 @@ int ScreenCastBridge::selectedCount() const
     return count;
 }
 
+QString ScreenCastBridge::streamNote() const
+{
+    if (m_streamMode == QLatin1String("pipewire"))
+        return QString();
+    return tr("Live streaming is not available in this build — the app will receive still images.");
+}
+
 void ScreenCastBridge::connectService()
 {
 #if defined(QT_DBUS_LIB)
@@ -101,6 +110,50 @@ void ScreenCastBridge::checkService()
 #else
     m_serviceAvailable = false;
 #endif
+    refreshStreamMode();
+}
+
+void ScreenCastBridge::refreshStreamMode()
+{
+    // The backend advertises whether it has a live producer. A missing service
+    // or method is not an error: the stills fallback stays named. The call is
+    // asynchronous so it can never stall the shell's event loop (and it can
+    // reach a presenter served by this same process, as the tests do).
+    if (!m_serviceAvailable) {
+        setStreamMode(QStringLiteral("stills"));
+        return;
+    }
+#if defined(QT_DBUS_LIB)
+    QDBusInterface iface(kService, kPath, kInterface, QDBusConnection::sessionBus());
+    if (!iface.isValid()) {
+        setStreamMode(QStringLiteral("stills"));
+        return;
+    }
+    QDBusPendingCall pending = iface.asyncCall(QStringLiteral("ScreenCastStreamMode"));
+    auto *watcher = new QDBusPendingCallWatcher(pending, this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            &ScreenCastBridge::onStreamModeReply);
+#endif
+}
+
+void ScreenCastBridge::onStreamModeReply(QDBusPendingCallWatcher *watcher)
+{
+#if defined(QT_DBUS_LIB)
+    watcher->deleteLater();
+    const QDBusPendingReply<QString> reply = *watcher;
+    if (reply.isValid() && !reply.value().isEmpty())
+        setStreamMode(reply.value());
+#else
+    Q_UNUSED(watcher);
+#endif
+}
+
+void ScreenCastBridge::setStreamMode(const QString &mode)
+{
+    if (mode == m_streamMode)
+        return;
+    m_streamMode = mode;
+    emit changed();
 }
 
 void ScreenCastBridge::onScreenCastOpened(const QString &handle, const QString &sessionHandle,

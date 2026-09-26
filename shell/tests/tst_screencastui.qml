@@ -93,5 +93,19 @@ Item {
             keyClick(Qt.Key_Escape);
             tryCompare(cancelledSpy, "count", 1);
         }
+
+        function test_the_stills_fallback_is_named_not_silent() {
+            var picker = make({ sources: makeSources(),
+                                streamNote: "Live streaming is not available in this build." });
+            var note = findChild(picker, "screencastStreamNote");
+            verify(note !== null, "fallback note exists");
+            verify(note.visible, "the fallback is named, not silent");
+            compare(note.text, "Live streaming is not available in this build.");
+
+            var silent = make({ sources: makeSources() });
+            var hidden = findChild(silent, "screencastStreamNote");
+            verify(hidden !== null, "note element is always present");
+            verify(!hidden.visible, "no note when streaming is live");
+        }
     }
 }

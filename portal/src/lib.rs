@@ -24,9 +24,13 @@
 //! * [`screenshot`] — the Screenshot's pure model (T-13.3a): the capture
 //!   mode, the request registry and its one-shot completion, and the URI
 //!   normalization the presenter's capture result uses.
+//! * [`stream`] — the ScreenCast stream transport (T-13.4b): the negotiation
+//!   seam that turns a chosen source into a live PipeWire node or names the
+//!   stills-only fallback.
 //!
 //! Settings and GlobalShortcuts landed in T-13.1b; FileChooser in T-13.2a;
-//! Screenshot in T-13.3a and ScreenCast in T-13.4a. The registration
+//! Screenshot in T-13.3a, ScreenCast in T-13.4a, and the stream negotiation in
+//! T-13.4b. The registration
 //! contract is frozen in
 //! [ADR 0074](../../docs/design/adr/0074-portal-backend-registration-and-frontend-degradation.md)
 //! the Settings/GlobalShortcuts projection in
@@ -43,6 +47,7 @@ pub mod screencast;
 pub mod screenshot;
 pub mod settings;
 pub mod shortcuts;
+pub mod stream;
 
 pub use chooser::{
     list_directory, normalize_uri, ChooserEntry, ChooserKind, ChooserOptions, ChooserRegistry,
@@ -70,6 +75,10 @@ pub use screencast::{
 pub use screenshot::{
     CaptureMode, ScreenshotError, ScreenshotOptions, ScreenshotRegistry, ScreenshotRequest,
     ScreenshotResponse, SCREENSHOT_INTERFACE, SCREENSHOT_VERSION,
+};
+pub use stream::{
+    FallbackReason, NegotiatedStream, StillsTransport, StreamMode, StreamNegotiator, StreamSource,
+    StreamTransport, STREAM_FALLBACK_PROPERTY, STREAM_MODE_PROPERTY,
 };
 
 #[cfg(test)]

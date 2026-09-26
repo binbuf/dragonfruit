@@ -2334,6 +2334,9 @@ void ShellController::applyScreenCastData()
     m_screencastItem->setProperty("multiple", m_screencast->multiple());
     m_screencastItem->setProperty("appId", m_screencast->appId());
     m_screencastItem->setProperty("errorText", m_screencast->error());
+    // The portal's negotiated stream mode: the stills fallback is named in the
+    // picker rather than discovered only when no frames arrive (T-13.4b).
+    m_screencastItem->setProperty("streamNote", m_screencast->streamNote());
 }
 
 void ShellController::renderScreenCast()
