@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: MIT
 import QtQuick
+import QtQuick.VectorImage
 import Dragonfruit
 
 // Dock entry artwork (T-10). Two shapes:
-//   * an app tile — a rounded, deterministically coloured square carrying the
-//     application's initial. Real themed icons arrive with app-index (T-23);
-//     until then this is an original placeholder, never a bitmap asset.
+//   * an app tile — a real themed icon resolved by app-index (T-14.1a) when
+//     one is available, otherwise a rounded, deterministically coloured square
+//     carrying the application's initial (an original placeholder, never a
+//     bitmap asset).
 //   * the Trash — our own geometry (lid, handle, bin) with an empty/full
 //     state. No Apple artwork is copied (14-risks.md).
 Item {
@@ -15,11 +17,25 @@ Item {
     property string kind: "app"
     property string name: ""
     property string appId: ""
+    // The themed icon file from `org.dragonfruit.AppIndex1`; empty when the
+    // service is absent or no theme provides the name, in which case the
+    // initial tile is drawn.
+    property string iconPath: ""
     property bool trashFull: false
     property real size: Theme.controls.dock.iconSize
 
     implicitWidth: size
     implicitHeight: size
+
+    readonly property bool hasThemedIconHint:
+        kind === "app" && iconPath.length > 0
+    // Set when a raster icon fails to load, so the initial tile shows instead.
+    property bool iconFailed: false
+    readonly property bool hasThemedIcon: hasThemedIconHint && !iconFailed
+    // Most Linux icon themes ship app icons as SVG; Qt's raster `Image` needs
+    // the (optional) svg imageformat plugin, while `QtQuick.VectorImage`
+    // renders SVG directly. Split on the extension so both work.
+    readonly property bool isSvgIcon: iconPath.toLowerCase().endsWith(".svg")
 
     readonly property color tileColor: {
         var palette = [
@@ -42,7 +58,7 @@ Item {
 
     // -- App tile --------------------------------------------------------
     Rectangle {
-        visible: root.kind === "app"
+        visible: root.kind === "app" && !root.hasThemedIcon
         anchors.fill: parent
         radius: root.size * 0.24
         color: root.tileColor
@@ -56,6 +72,32 @@ Item {
             font.pixelSize: Math.round(root.size * 0.44)
             font.weight: Theme.primitive.font.weightSemibold
         }
+    }
+
+    // -- Themed app icon (T-14.1a) --------------------------------------
+    // The real icon app-index resolved from the active theme. Raster icons use
+    // `Image`; SVG icons use `VectorImage` (no svg imageformat plugin needed).
+    // A load failure falls back to the initial tile.
+    Image {
+        id: rasterIcon
+        visible: root.hasThemedIcon && !root.isSvgIcon
+        anchors.fill: parent
+        source: visible ? "file://" + root.iconPath : ""
+        sourceSize: Qt.size(Math.round(root.size), Math.round(root.size))
+        fillMode: Image.PreserveAspectFit
+        smooth: true
+        onStatusChanged: {
+            if (status === Image.Error)
+                root.iconFailed = true
+        }
+    }
+
+    VectorImage {
+        id: vectorIcon
+        visible: root.hasThemedIcon && root.isSvgIcon
+        anchors.fill: parent
+        source: visible ? "file://" + root.iconPath : ""
+        fillMode: VectorImage.PreserveAspectFit
     }
 
     // -- Downloads stack -------------------------------------------------

@@ -246,15 +246,13 @@ impl DfState {
             .cloned()
     }
 
-    /// Resolve an X11 `WM_CLASS` to an application id. Falls back to the raw
-    /// class so Dock/switcher grouping works even without a desktop entry;
-    /// every miss is recorded for the T-23 heuristics.
+    /// Publish the raw X11 identity for a window. The `WM_CLASS` class is
+    /// preferred (falling back to the instance); `app-index` resolves it to a
+    /// `.desktop` entry, so the compositor owns no desktop database (T-14.1a,
+    /// ADR 0086). The raw class still lets the compositor group windows.
     fn resolve_x11_identity(&mut self, instance: &str, class: &str) -> Option<String> {
         let instance = x11_string(instance);
         let class = x11_string(class);
-        if let Some(identity) = self.app_resolver.resolve_wm_class(&instance, &class) {
-            return Some(identity.desktop_id);
-        }
         let fallback = if !class.is_empty() { class } else { instance };
         (!fallback.is_empty()).then_some(fallback)
     }

@@ -22,6 +22,7 @@ struct DesktopEntry {
     QString id; // e.g. "org.dragonfruit.Files.desktop"
     QString name;
     QString icon;
+    QString iconPath; // themed icon file, from app-index (T-14.1a)
     QString exec;
     QString startupWmClass;
     QStringList categories;
@@ -29,6 +30,8 @@ struct DesktopEntry {
     bool noDisplay = false;
     bool valid = false;
 };
+
+class AppIndexClient;
 
 class DesktopEntryIndex
 {
@@ -40,6 +43,16 @@ public:
     // id do not override the first one (desktop-file spec precedence).
     void scan(const QStringList &applicationDirs = defaultApplicationDirs());
     static QStringList defaultApplicationDirs();
+
+    // Populate from `org.dragonfruit.AppIndex1` (T-14.1a): the service is the
+    // single owner of identity and themed icons. Clears any previous content
+    // and inserts every enumerated record. Callers fall back to `scan()` only
+    // when the service is absent (deleted in T-14.7).
+    void loadFromAppIndex(const AppIndexClient &client);
+
+    // Insert a set of records (from app-index) into the lookup tables. Pure;
+    // exposed so the loader is unit-tested without a live bus.
+    void loadFromRecords(const QList<DesktopEntry> &entries);
 
     // Resolve a compositor `app_id` / Xwayland `WM_CLASS` to an installed
     // entry. Matches, in order: the exact desktop id (with or without the

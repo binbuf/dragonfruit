@@ -720,16 +720,18 @@ screen-scraped:
 
 ## Application identity
 
-Wayland's `xdg_toplevel` gives applications an `app_id`, useful for mapping
-windows back to `.desktop` applications. In practice the app resolver must
-maintain fallbacks:
-
-- `xdg_toplevel` `app_id` (primary, Wayland clients)
-- Xwayland `WM_CLASS` (X11 clients)
-- Heuristics for applications with inconsistent identifiers
-
-The `app-index` service resolves application identity (icon, name, `.desktop`
-entry, launch semantics) and is shared by the Dock, app switcher, and shell.
+Wayland's `xdg_toplevel` gives applications an `app_id`, and Xwayland windows
+carry a `WM_CLASS`; both are the raw identifiers a window exposes. The
+compositor owns the *window* and publishes that raw identity (the Wayland
+`app_id`, or the X11 `WM_CLASS` class) over the private protocol; it does not
+scan `.desktop` files (T-14.1a, ADR
+[0086](adr/0086-app-index-identity-ownership.md)). The `app-index` service owns
+resolution — `app_id` / `WM_CLASS` → `.desktop` entry, name, themed icon, and
+launch semantics — with heuristics for inconsistent identifiers and the miss
+set as the heuristic input. It is shared by the Dock, app switcher, and shell
+over `org.dragonfruit.AppIndex1`; the shell is the sole forwarder, so the
+compositor needs no D-Bus client (ADR
+[0034](adr/0034-compositor-policy-via-shell-bridge.md)).
 
 ## Keymap conventions
 

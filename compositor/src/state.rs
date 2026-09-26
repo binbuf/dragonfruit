@@ -91,7 +91,6 @@ use std::time::{Duration, Instant};
 
 use crate::animation::{Animation, AnimationClock, Tween, TweenAnimation};
 use crate::app_switcher::{AppSwitcher, SwitchStep, SwitcherApp};
-use crate::identity::AppResolver;
 use crate::input::constraint::{constraint_geometry, PointerConstraintGrab};
 use crate::input::dispatch::InputDispatch;
 use crate::input::gestures::GestureRecognizer;
@@ -395,9 +394,11 @@ pub struct DfState {
     /// the wallpaper's solid `color`.
     pub wallpaper_cache: WallpaperCache,
 
-    // --- application identity (T-06 interim; T-23 owns app-index) -----------
-    /// WM_CLASS -> `.desktop` resolver for X11 (and the seam T-23 replaces).
-    pub app_resolver: AppResolver,
+    // --- application identity (T-14.1a) -------------------------------------
+    // The compositor no longer resolves `.desktop` identity. It publishes the
+    // raw window identity (Wayland `app_id`, or the X11 `WM_CLASS` class) over
+    // the private protocol; `org.dragonfruit.AppIndex1` owns resolution,
+    // themed icons, and the miss set (ADR 0086).
 
     // --- Xwayland (T-06) ----------------------------------------------------
     /// The Xwayland server, X11 window manager, and `DISPLAY` state.
@@ -598,7 +599,6 @@ impl DfState {
             window_menu: None,
             workspaces: WorkspaceModel::new(),
             wallpaper_cache: WallpaperCache::new(),
-            app_resolver: AppResolver::load(),
             xwayland: XwaylandState::default(),
             shortcuts,
             gestures,
@@ -2552,16 +2552,9 @@ impl DfState {
                 );
             }
         }
-        // Identity resolution rate (T-06 acceptance): the misses are the
-        // input T-23's app-index heuristics consume.
-        let misses: Vec<&str> = self.app_resolver.misses().collect();
-        println!(
-            "dragonfruit-compositor: identity stats ({label}): apps={} resolved={} \
-             unresolved={} misses={misses:?}",
-            self.app_resolver.len(),
-            self.app_resolver.resolved_count(),
-            self.app_resolver.unresolved_count(),
-        );
+        // Application identity resolution moved to `app-index` (T-14.1a): the
+        // compositor publishes raw window identity and the service records the
+        // miss set (ADR 0086).
         if let Some(display) = &self.xwayland.display {
             println!(
                 "dragonfruit-compositor: xwayland stats ({label}): display={display} \

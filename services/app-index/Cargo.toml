@@ -1,15 +1,31 @@
 [package]
 name = "dragonfruit-app-index"
-description = "Dragonfruit application index (stub; real service is T-23)"
+description = "Dragonfruit application identity index: org.dragonfruit.AppIndex1 (T-14.1a)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
+# app-index is the single owner of application identity
+# (docs/design/01-architecture.md): it resolves an `xdg_toplevel.app_id` or an
+# Xwayland `WM_CLASS` to a `.desktop` entry (name, themed icon, launch
+# semantics) and serves `org.dragonfruit.AppIndex1` on the user session bus.
+#
+# zbus is the same pinned D-Bus stack the other services use; `serde_json` is
+# the flat payload format the shell decodes, matching the sibling services.
+[dependencies]
+df-ipc.workspace = true
+serde_json = "=1.0.151"
+zbus = { version = "=5.19.0", features = ["blocking-api"] }
+
+[dev-dependencies]
+serde = "=1.0.229"
+
+[lib]
+name = "dragonfruit_app_index"
+path = "src/lib.rs"
+
 [[bin]]
 name = "dragonfruit-app-index"
 path = "src/main.rs"
-
-[dependencies]
-df-ipc.workspace = true
