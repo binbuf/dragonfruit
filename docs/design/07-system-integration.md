@@ -525,3 +525,28 @@ stream is deferred to T-13.4b; this slice returns the chosen *source handle*.
   single/multi selection, the chosen-source hand-off, cancel, and a round-trip
   against a fake `org.dragonfruit.Portal1`) and `tst_screencastui` (the view)
   are the shell proof. T-13.7 adds the real frontend routing check.
+
+## Clipboard (T-13.5a)
+
+The clipboard is not a portal: it is the compositor's standard `wl_data_device`
+selection, delegated to Smithay, with `wlr-data-control` as the manager
+surface. Contract in
+[ADR 0082](adr/0082-clipboard-data-device-bridge-ownership.md).
+
+- **One owner.** Ordinary clients set and read the clipboard through
+  `wl_data_device`; the selection source is offered to the focused client's
+  data device, and `set_selection` from a client without keyboard focus is
+  denied. The Xwayland bridge (T-06) maps X11 selections onto the same
+  selection, so copy/paste works across the boundary.
+- **`wlr-data-control` is the manager half.** The global is advertised with an
+  open filter; a manager sees and sets the selection without focus. The shell's
+  clipboard history (T-13.5b) is an observer over this surface and must forward
+  the source it observes rather than become a second owner.
+- **MIME is opaque.** Text (`text/plain;charset=utf-8`), images (`image/png`),
+  and file lists (`text/uri-list`) cross the offer pipe byte-for-byte; the
+  bridge does not decode or re-encode. The shell's screenshot copy (T-13.3b)
+  already offers image plus `file://` URI through Qt's clipboard, which is the
+  same data device.
+- `clipboard_round_trips_text_image_and_uri_list` in
+  `compositor/tests/shell_protocol_conformance.rs` drives two independent
+  clients through the whole matrix on the headless backend.
