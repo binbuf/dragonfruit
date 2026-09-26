@@ -23,6 +23,10 @@ use zbus::zvariant::{ObjectPath, OwnedValue};
 use crate::chooser::{
     self, ChooserKind, ChooserRequest, ChooserResponse, SharedChooser, FILE_CHOOSER_VERSION,
 };
+use crate::screencast::{
+    self, ScreenCastRequest, ScreenCastResponse, SharedScreenCast, AVAILABLE_CURSOR_MODES,
+    AVAILABLE_SOURCE_TYPES, SCREENCAST_VERSION,
+};
 use crate::screenshot::{
     self, ScreenshotRequest, ScreenshotResponse, SharedScreenshot, SCREENSHOT_VERSION,
 };
@@ -40,6 +44,9 @@ pub const FILE_CHOOSER_INTERFACE: &str = crate::chooser::FILE_CHOOSER_INTERFACE;
 
 /// The standard Screenshot backend interface name.
 pub const SCREENSHOT_INTERFACE: &str = crate::screenshot::SCREENSHOT_INTERFACE;
+
+/// The standard ScreenCast backend interface name.
+pub const SCREENCAST_INTERFACE: &str = crate::screencast::SCREENCAST_INTERFACE;
 
 /// The backend's read-only Settings object.
 #[derive(Clone)]
@@ -320,6 +327,208 @@ impl ScreenshotPortal {
     }
 }
 
+/// The backend's ScreenCast object (T-13.4a).
+///
+/// The interface is a three-step session: `CreateSession` serves a standard
+/// `org.freedesktop.impl.portal.Session` object at the caller's path,
+/// `SelectSources` registers a picker request in
+/// [`crate::screencast::ScreenCastRegistry`] and awaits it (the shell's source
+/// picker completes it through the diagnostic surface), and `Start` returns
+/// the chosen source as a stream. The source handle is the whole T-13.4a
+/// result; T-13.4b attaches the PipeWire node.
+#[derive(Clone)]
+pub struct ScreenCastPortal {
+    screencast: SharedScreenCast,
+}
+
+impl ScreenCastPortal {
+    /// A ScreenCast object over a live session/picker registry.
+    pub fn new(screencast: SharedScreenCast) -> Self {
+        ScreenCastPortal { screencast }
+    }
+
+    /// The registry behind this object.
+    pub fn registry(&self) -> &SharedScreenCast {
+        &self.screencast
+    }
+
+    /// Map a caller-supplied session handle to an object path.
+    fn session_path(handle: &str) -> Result<ObjectPath<'_>, zbus::fdo::Error> {
+        ObjectPath::try_from(handle)
+            .map_err(|_| zbus::fdo::Error::InvalidArgs(format!("session handle {handle:?}")))
+    }
+
+    /// Register one picker request, tell the presenter it is waiting, and
+    /// await the chosen sources.
+    async fn select(
+        &self,
+        request: ScreenCastRequest,
+        emitter: SignalEmitter<'_>,
+    ) -> Result<(u32, HashMap<String, OwnedValue>), zbus::fdo::Error> {
+        let completion = {
+            let mut registry = screencast::lock(&self.screencast);
+            registry
+                .begin_select(request.clone())
+                .map_err(|error| zbus::fdo::Error::Failed(error.to_string()))?
+        };
+
+        // The diagnostic `ScreenCastOpened` signal is how the shell's source
+        // picker sees a waiting request.
+        emitter
+            .connection()
+            .emit_signal(
+                None::<&str>,
+                crate::model::DBUS_PATH,
+                crate::model::STATUS_INTERFACE,
+                "ScreenCastOpened",
+                &(
+                    request.handle.as_str(),
+                    request.session_handle.as_str(),
+                    request.app_id.as_str(),
+                    request.options.types,
+                    request.options.multiple,
+                    request.raw_options.clone(),
+                ),
+            )
+            .await?;
+
+        let response = completion
+            .await
+            .unwrap_or_else(ScreenCastResponse::cancelled);
+        Ok((response.response, response.results))
+    }
+}
+
+#[interface(name = "org.freedesktop.impl.portal.ScreenCast")]
+impl ScreenCastPortal {
+    /// Create a screen cast session at `session_handle`.
+    async fn create_session(
+        &self,
+        _handle: ObjectPath<'_>,
+        session_handle: ObjectPath<'_>,
+        app_id: &str,
+        _options: HashMap<String, OwnedValue>,
+        #[zbus(object_server)] server: &ObjectServer,
+    ) -> Result<(u32, HashMap<String, OwnedValue>), zbus::fdo::Error> {
+        let path = Self::session_path(session_handle.as_str())?;
+        {
+            let mut registry = screencast::lock(&self.screencast);
+            registry
+                .create_session(app_id, session_handle.as_str())
+                .map_err(|error| zbus::fdo::Error::Failed(error.to_string()))?;
+        }
+
+        let object = ScreenCastSessionObject::new(
+            session_handle.as_str().to_owned(),
+            self.screencast.clone(),
+        );
+        server
+            .at(path, object)
+            .await
+            .map_err(|error| zbus::fdo::Error::Failed(error.to_string()))?;
+
+        let mut results = HashMap::new();
+        results.insert(
+            "session_handle".to_owned(),
+            OwnedValue::from(Self::session_path(session_handle.as_str())?),
+        );
+        Ok((RESPONSE_SUCCESS, results))
+    }
+
+    /// Configure what the session should record. The source picker opens here
+    /// and its result selects the sources the later `Start` returns.
+    async fn select_sources(
+        &self,
+        handle: ObjectPath<'_>,
+        session_handle: ObjectPath<'_>,
+        app_id: &str,
+        options: HashMap<String, OwnedValue>,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+    ) -> Result<(u32, HashMap<String, OwnedValue>), zbus::fdo::Error> {
+        let request =
+            ScreenCastRequest::new(handle.as_str(), session_handle.as_str(), app_id, &options);
+        self.select(request, emitter).await
+    }
+
+    /// Start the session. With the picker resolved by `SelectSources`, this
+    /// returns the chosen sources as streams (T-13.4b attaches the PipeWire
+    /// node); a session with no chosen source is an error response.
+    async fn start(
+        &self,
+        _handle: ObjectPath<'_>,
+        session_handle: ObjectPath<'_>,
+        _app_id: &str,
+        _parent_window: &str,
+        _options: HashMap<String, OwnedValue>,
+    ) -> Result<(u32, HashMap<String, OwnedValue>), zbus::fdo::Error> {
+        let registry = screencast::lock(&self.screencast);
+        match registry.start(session_handle.as_str()) {
+            Ok(response) => Ok((response.response, response.results)),
+            Err(_) => Ok((screencast::RESPONSE_OTHER, HashMap::new())),
+        }
+    }
+
+    /// The backend's ScreenCast interface version.
+    #[zbus(property(emits_changed_signal = "const"))]
+    fn version(&self) -> u32 {
+        SCREENCAST_VERSION
+    }
+
+    /// A bitmask of the source types this backend can offer.
+    #[zbus(property(emits_changed_signal = "const"))]
+    fn available_source_types(&self) -> u32 {
+        AVAILABLE_SOURCE_TYPES
+    }
+
+    /// A bitmask of the cursor modes this backend can offer.
+    #[zbus(property(emits_changed_signal = "const"))]
+    fn available_cursor_modes(&self) -> u32 {
+        AVAILABLE_CURSOR_MODES
+    }
+}
+
+/// One screen cast session, served at the caller's session path. It implements
+/// the standard `org.freedesktop.impl.portal.Session` close contract.
+#[derive(Clone)]
+pub struct ScreenCastSessionObject {
+    handle: String,
+    screencast: SharedScreenCast,
+}
+
+impl ScreenCastSessionObject {
+    /// A session object at `handle`, sharing `screencast`.
+    pub fn new(handle: String, screencast: SharedScreenCast) -> Self {
+        ScreenCastSessionObject { handle, screencast }
+    }
+
+    /// The session path this object is served at.
+    pub fn handle(&self) -> &str {
+        &self.handle
+    }
+}
+
+#[interface(name = "org.freedesktop.impl.portal.Session")]
+impl ScreenCastSessionObject {
+    /// Close the session: drop it (and any pending picker) and remove the
+    /// object.
+    async fn close(
+        &self,
+        #[zbus(object_server)] server: &ObjectServer,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+    ) -> Result<(), zbus::fdo::Error> {
+        screencast::lock(&self.screencast).close_session(&self.handle);
+        ScreenCastSessionObject::closed(&emitter, CLOSED_BY_USER).await?;
+        server
+            .remove::<ScreenCastSessionObject, _>(self.handle.as_str())
+            .await?;
+        Ok(())
+    }
+
+    /// The session closed. `reason` follows the portal's close codes.
+    #[zbus(signal)]
+    async fn closed(emitter: &SignalEmitter<'_>, reason: u32) -> zbus::Result<()>;
+}
+
 /// The backend's GlobalShortcuts object.
 #[derive(Clone)]
 pub struct GlobalShortcuts {
@@ -566,6 +775,49 @@ mod tests {
             .begin(request)
             .expect("begin");
         assert_eq!(crate::screenshot::lock(portal.registry()).len(), 1);
+    }
+
+    #[test]
+    fn the_screencast_object_names_the_standard_interface_and_version() {
+        assert_eq!(
+            SCREENCAST_INTERFACE,
+            "org.freedesktop.impl.portal.ScreenCast"
+        );
+        assert_eq!(SCREENCAST_VERSION, 3);
+        assert_eq!(
+            AVAILABLE_SOURCE_TYPES,
+            crate::screencast::SOURCE_MONITOR | crate::screencast::SOURCE_WINDOW
+        );
+        assert_eq!(
+            AVAILABLE_CURSOR_MODES,
+            crate::screencast::CURSOR_HIDDEN | crate::screencast::CURSOR_EMBEDDED
+        );
+    }
+
+    #[test]
+    fn a_screencast_object_shares_its_registry() {
+        let shared = crate::screencast::registry();
+        let portal = ScreenCastPortal::new(shared.clone());
+        crate::screencast::lock(&shared)
+            .create_session("org.example.App", "/session/1")
+            .expect("create");
+        assert_eq!(crate::screencast::lock(portal.registry()).len(), 1);
+
+        // A selection resolves a request without a bus (the same model the
+        // session object drives).
+        let request = crate::screencast::ScreenCastRequest::new(
+            "/req/1",
+            "/session/1",
+            "org.example.App",
+            &HashMap::new(),
+        );
+        crate::screencast::lock(&shared)
+            .begin_select(request)
+            .expect("begin_select");
+        let selection = crate::screencast::ScreenCastSelection::monitor("monitor:1");
+        crate::screencast::lock(portal.registry())
+            .complete("/req/1", vec![selection])
+            .expect("complete");
     }
 
     #[test]

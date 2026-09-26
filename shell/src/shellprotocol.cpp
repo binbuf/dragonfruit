@@ -776,6 +776,83 @@ bool ShellProtocol::hideScreenshot()
     return true;
 }
 
+// --- ScreenCast source picker overlay (T-13.4a) -----------------------------
+
+bool ShellProtocol::createScreenCastSurface(int width, int height)
+{
+    if (m_screencastSurface || m_screencastLayer)
+        return true;
+    if (!m_shell || !m_compositor)
+        return fail(QStringLiteral("df_shell is not available"));
+
+    m_screencastSurface = wl_compositor_create_surface(m_compositor);
+    m_screencastLayer = df_shell_get_layer_surface(m_shell, m_screencastSurface, nullptr,
+                                                   DF_SHELL_LAYER_OVERLAY, "screencast");
+    if (!m_screencastLayer)
+        return fail(QStringLiteral("compositor refused the screencast layer surface"));
+    static const df_layer_surface_listener listener = { onScreenCastConfigure, onLayerClosed };
+    df_layer_surface_add_listener(m_screencastLayer, &listener, this);
+
+    // No anchors: the compositor centers the picker on the output. Reserve
+    // nothing; take the keyboard on demand so Escape cancels, Return accepts,
+    // and a click elsewhere (which moves chrome keyboard focus away) dismisses.
+    df_layer_surface_set_size(m_screencastLayer, width, height);
+    df_layer_surface_set_exclusive_zone(m_screencastLayer, -1);
+    df_layer_surface_set_keyboard_interaction(
+        m_screencastLayer, DF_LAYER_SURFACE_KEYBOARD_INTERACTION_ON_DEMAND);
+    // Everything passes through until the picker's own input region is applied
+    // with its first committed buffer.
+    wl_region *region = wl_compositor_create_region(m_compositor);
+    if (region) {
+        wl_surface_set_input_region(m_screencastSurface, region);
+        wl_region_destroy(region);
+    }
+    wl_surface_attach(m_screencastSurface, nullptr, 0, 0);
+    wl_surface_commit(m_screencastSurface);
+    if (wl_display_flush(m_display) < 0)
+        return fail(QStringLiteral("failed to flush the screencast surface creation"));
+    return true;
+}
+
+bool ShellProtocol::setScreenCastInputRegion(int width, int height)
+{
+    if (!m_screencastSurface || !m_compositor)
+        return false;
+    wl_region *region = wl_compositor_create_region(m_compositor);
+    if (!region)
+        return false;
+    if (width > 0 && height > 0)
+        wl_region_add(region, 0, 0, width, height);
+    // Applied with the next buffer commit (`commitScreenCastImage`).
+    wl_surface_set_input_region(m_screencastSurface, region);
+    wl_region_destroy(region);
+    return true;
+}
+
+bool ShellProtocol::commitScreenCastImage(const QImage &image)
+{
+    if (!m_screencastSurface)
+        return false;
+    if (!commitTo(m_screencastSurface, image))
+        return false;
+    m_screencastMapped = true;
+    return true;
+}
+
+bool ShellProtocol::hideScreenCast()
+{
+    if (!m_screencastSurface || !m_screencastLayer)
+        return false;
+    if (!m_screencastMapped)
+        return true;
+    wl_surface_attach(m_screencastSurface, nullptr, 0, 0);
+    wl_surface_commit(m_screencastSurface);
+    m_screencastMapped = false;
+    if (m_display)
+        wl_display_flush(m_display);
+    return true;
+}
+
 bool ShellProtocol::captureScreenshot(const QString &path, int x, int y, int width, int height,
                                       const QString &mode)
 {
@@ -984,6 +1061,43 @@ QVariantList ShellProtocol::overviewWindows() const
         map.insert(QStringLiteral("workspaceIndex"), ws.index);
         map.insert(QStringLiteral("workspaceName"), ws.name);
         map.insert(QStringLiteral("focused"), toplevel == m_focused);
+        result.append(map);
+    }
+    return result;
+}
+
+QVariantList ShellProtocol::screencastSources() const
+{
+    // Monitors first, then windows: the picker's section delegate keys off the
+    // source order. The shell never invents sources; the compositor's output
+    // and toplevel projections are the one source of truth (T-13.4a).
+    QVariantList result;
+    int monitorIndex = 0;
+    for (df_output *output : m_outputs) {
+        const OutputInfo info = m_outputInfo.value(output);
+        const QString name = info.name.isEmpty()
+                ? tr("Monitor %1").arg(++monitorIndex)
+                : info.name;
+        const QString id = QStringLiteral("monitor:") + name;
+        QVariantMap map;
+        map.insert(QStringLiteral("id"), id);
+        map.insert(QStringLiteral("kind"), QStringLiteral("monitor"));
+        map.insert(QStringLiteral("label"), name);
+        map.insert(QStringLiteral("detail"),
+                   info.width > 0
+                       ? QStringLiteral("%1 × %2").arg(info.width).arg(info.height)
+                       : QString());
+        result.append(map);
+    }
+    for (df_toplevel *toplevel : m_toplevelOrder) {
+        const ToplevelInfo &info = m_toplevels.value(toplevel);
+        QVariantMap map;
+        map.insert(QStringLiteral("id"),
+                   QStringLiteral("window:") + QString::number(info.windowId));
+        map.insert(QStringLiteral("kind"), QStringLiteral("window"));
+        map.insert(QStringLiteral("label"),
+                   info.title.isEmpty() ? info.appId : info.title);
+        map.insert(QStringLiteral("detail"), info.appId);
         result.append(map);
     }
     return result;
@@ -1555,13 +1669,18 @@ void ShellProtocol::teardown()
     m_pointerOnControlCenter = false;
     m_pointerOnChooser = false;
     m_pointerOnScreenshot = false;
+    m_pointerOnScreenCast = false;
     m_keyboardOnOverview = false;
     m_keyboardOnControlCenter = false;
     m_keyboardOnChooser = false;
     m_keyboardOnScreenshot = false;
+    m_keyboardOnScreenCast = false;
     m_screenshotLayer = nullptr;
     m_screenshotSurface = nullptr;
     m_screenshotMapped = false;
+    m_screencastLayer = nullptr;
+    m_screencastSurface = nullptr;
+    m_screencastMapped = false;
     m_controlCenterLayer = nullptr;
     m_controlCenterSurface = nullptr;
     m_controlCenterMapped = false;
@@ -1573,6 +1692,7 @@ void ShellProtocol::teardown()
     m_switcherEntries.clear();
     // The manager destroy above freed every df_output; drop our handles.
     m_outputs.clear();
+    m_outputInfo.clear();
     m_displayKnown = false;
     m_manager = nullptr;
     m_shell = nullptr;
@@ -1763,6 +1883,15 @@ void ShellProtocol::onScreenshotConfigure(void *data, df_layer_surface *, uint32
     if (self->m_screenshotLayer)
         df_layer_surface_ack_configure(self->m_screenshotLayer, serial);
     emit self->screenshotConfigured(width, height, serial);
+}
+
+void ShellProtocol::onScreenCastConfigure(void *data, df_layer_surface *, uint32_t serial,
+                                          int32_t width, int32_t height)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    if (self->m_screencastLayer)
+        df_layer_surface_ack_configure(self->m_screencastLayer, serial);
+    emit self->screencastConfigured(width, height, serial);
 }
 
 // --- ext_session_lock_v1 (T-12.3a) -----------------------------------------
@@ -2040,6 +2169,8 @@ void ShellProtocol::onPointerEnter(void *data, wl_pointer *, uint32_t, wl_surfac
         self->m_chooserSurface && surface == self->m_chooserSurface;
     self->m_pointerOnScreenshot =
         self->m_screenshotSurface && surface == self->m_screenshotSurface;
+    self->m_pointerOnScreenCast =
+        self->m_screencastSurface && surface == self->m_screencastSurface;
     self->m_pointerX = wl_fixed_to_double(x) + (self->m_pointerOnPopup ? self->m_popupX : 0);
     self->m_pointerY = wl_fixed_to_double(y) + (self->m_pointerOnPopup ? self->m_popupY : 0);
     if (self->m_pointerOnChooser) {
@@ -2052,6 +2183,12 @@ void ShellProtocol::onPointerEnter(void *data, wl_pointer *, uint32_t, wl_surfac
         self->m_pointerX = wl_fixed_to_double(x);
         self->m_pointerY = wl_fixed_to_double(y);
         emit self->screenshotPointerMoved(self->m_pointerX, self->m_pointerY);
+        return;
+    }
+    if (self->m_pointerOnScreenCast) {
+        self->m_pointerX = wl_fixed_to_double(x);
+        self->m_pointerY = wl_fixed_to_double(y);
+        emit self->screencastPointerMoved(self->m_pointerX, self->m_pointerY);
         return;
     }
     if (self->m_pointerOnControlCenter) {
@@ -2095,6 +2232,7 @@ void ShellProtocol::onPointerLeave(void *data, wl_pointer *, uint32_t, wl_surfac
     const bool wasControlCenter = self->m_pointerOnControlCenter;
     const bool wasChooser = self->m_pointerOnChooser;
     const bool wasScreenshot = self->m_pointerOnScreenshot;
+    const bool wasScreenCast = self->m_pointerOnScreenCast;
     const bool wasDockPopup = self->m_pointerOnDockPopup;
     const bool wasDock = self->m_pointerOnDock;
     self->m_pointerOnPopup = false;
@@ -2105,10 +2243,13 @@ void ShellProtocol::onPointerLeave(void *data, wl_pointer *, uint32_t, wl_surfac
     self->m_pointerOnOverview = false;
     self->m_pointerOnChooser = false;
     self->m_pointerOnScreenshot = false;
+    self->m_pointerOnScreenCast = false;
     if (wasChooser)
         emit self->chooserPointerLeft();
     else if (wasScreenshot)
         emit self->screenshotPointerLeft();
+    else if (wasScreenCast)
+        emit self->screencastPointerLeft();
     else if (wasOverview)
         emit self->overviewPointerLeft();
     else if (wasControlCenter)
@@ -2139,6 +2280,12 @@ void ShellProtocol::onPointerMotion(void *data, wl_pointer *, uint32_t, wl_fixed
         self->m_pointerX = wl_fixed_to_double(x);
         self->m_pointerY = wl_fixed_to_double(y);
         emit self->screenshotPointerMoved(self->m_pointerX, self->m_pointerY);
+        return;
+    }
+    if (self->m_pointerOnScreenCast) {
+        self->m_pointerX = wl_fixed_to_double(x);
+        self->m_pointerY = wl_fixed_to_double(y);
+        emit self->screencastPointerMoved(self->m_pointerX, self->m_pointerY);
         return;
     }
     if (self->m_pointerOnControlCenter) {
@@ -2185,6 +2332,11 @@ void ShellProtocol::onPointerButton(void *data, wl_pointer *, uint32_t, uint32_t
     }
     if (self->m_pointerOnScreenshot) {
         emit self->screenshotPointerButton(self->m_pointerX, self->m_pointerY, button,
+                                           state == WL_POINTER_BUTTON_STATE_PRESSED);
+        return;
+    }
+    if (self->m_pointerOnScreenCast) {
+        emit self->screencastPointerButton(self->m_pointerX, self->m_pointerY, button,
                                            state == WL_POINTER_BUTTON_STATE_PRESSED);
         return;
     }
@@ -2240,6 +2392,8 @@ void ShellProtocol::onKeyboardEnter(void *data, wl_keyboard *, uint32_t, wl_surf
         self->m_chooserSurface && surface == self->m_chooserSurface;
     self->m_keyboardOnScreenshot =
         self->m_screenshotSurface && surface == self->m_screenshotSurface;
+    self->m_keyboardOnScreenCast =
+        self->m_screencastSurface && surface == self->m_screencastSurface;
     self->m_keyboardOnLock = self->isLockSurface(surface);
     emit self->keyboardFocused(true);
     if (self->m_keyboardOnDock)
@@ -2252,6 +2406,8 @@ void ShellProtocol::onKeyboardEnter(void *data, wl_keyboard *, uint32_t, wl_surf
         emit self->chooserKeyboardFocused(true);
     if (self->m_keyboardOnScreenshot)
         emit self->screenshotKeyboardFocused(true);
+    if (self->m_keyboardOnScreenCast)
+        emit self->screencastKeyboardFocused(true);
 }
 
 void ShellProtocol::onKeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surface *surface)
@@ -2267,11 +2423,14 @@ void ShellProtocol::onKeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surf
             || (self->m_chooserSurface && surface == self->m_chooserSurface);
     const bool wasScreenshot = self->m_keyboardOnScreenshot
             || (self->m_screenshotSurface && surface == self->m_screenshotSurface);
+    const bool wasScreenCast = self->m_keyboardOnScreenCast
+            || (self->m_screencastSurface && surface == self->m_screencastSurface);
     self->m_keyboardOnDock = false;
     self->m_keyboardOnOverview = false;
     self->m_keyboardOnControlCenter = false;
     self->m_keyboardOnChooser = false;
     self->m_keyboardOnScreenshot = false;
+    self->m_keyboardOnScreenCast = false;
     self->m_keyboardOnLock = false;
     emit self->keyboardFocused(false);
     if (wasDock)
@@ -2284,6 +2443,8 @@ void ShellProtocol::onKeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surf
         emit self->chooserKeyboardFocused(false);
     if (wasScreenshot)
         emit self->screenshotKeyboardFocused(false);
+    if (wasScreenCast)
+        emit self->screencastKeyboardFocused(false);
 }
 
 void ShellProtocol::onKeyboardKey(void *data, wl_keyboard *, uint32_t, uint32_t, uint32_t key,
@@ -2303,6 +2464,10 @@ void ShellProtocol::onKeyboardKey(void *data, wl_keyboard *, uint32_t, uint32_t,
     }
     if (self->m_keyboardOnScreenshot) {
         emit self->screenshotKeyEvent(key, state == WL_KEYBOARD_KEY_STATE_PRESSED);
+        return;
+    }
+    if (self->m_keyboardOnScreenCast) {
+        emit self->screencastKeyEvent(key, state == WL_KEYBOARD_KEY_STATE_PRESSED);
         return;
     }
     emit self->keyEvent(key, state == WL_KEYBOARD_KEY_STATE_PRESSED);
@@ -2613,9 +2778,24 @@ void ShellProtocol::onBufferRelease(void *data, wl_buffer *buffer)
 
 // --- df_output / df_workspace (unused properties) ---------------------------
 
-void ShellProtocol::onOutputName(void *, df_output *, const char *) {}
+void ShellProtocol::onOutputName(void *data, df_output *output, const char *name)
+{
+    // Remember the connector/name so the ScreenCast picker can label monitors
+    // (T-13.4a).
+    auto *self = static_cast<ShellProtocol *>(data);
+    self->m_outputInfo[output].name = QString::fromUtf8(name ? name : "");
+}
 void ShellProtocol::onOutputGeometry(void *, df_output *, int32_t, int32_t, int32_t, int32_t) {}
-void ShellProtocol::onOutputMode(void *, df_output *, uint32_t, uint32_t, uint32_t, uint32_t) {}
+void ShellProtocol::onOutputMode(void *data, df_output *output, uint32_t, uint32_t width,
+                                 uint32_t height, uint32_t)
+{
+    // The last mode announced is the output's current size for the ScreenCast
+    // picker (T-13.4a).
+    auto *self = static_cast<ShellProtocol *>(data);
+    OutputInfo &info = self->m_outputInfo[output];
+    info.width = static_cast<int>(width);
+    info.height = static_cast<int>(height);
+}
 void ShellProtocol::onOutputScale(void *, df_output *, int32_t) {}
 void ShellProtocol::onOutputTransform(void *, df_output *, uint32_t) {}
 void ShellProtocol::onOutputVrr(void *, df_output *, uint32_t) {}
@@ -2631,6 +2811,7 @@ void ShellProtocol::onOutputRemoved(void *data, df_output *output)
 {
     auto *self = static_cast<ShellProtocol *>(data);
     self->m_outputs.removeAll(output);
+    self->m_outputInfo.remove(output);
 }
 void ShellProtocol::onWorkspaceName(void *data, df_workspace *workspace, const char *name)
 {

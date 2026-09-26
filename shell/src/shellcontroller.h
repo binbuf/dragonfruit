@@ -16,6 +16,7 @@
 
 #include "compositorpolicy.h"
 #include "chooserbridge.h"
+#include "screencastbridge.h"
 #include "screenshotbridge.h"
 #include "screenshotwriter.h"
 #include "desktopentry.h"
@@ -110,6 +111,20 @@ private slots:
     // saves and copies it, then answers any waiting portal request.
     void onScreenshotSaved(const QString &path);
     void onScreenshotFailed(const QString &reason);
+    // ScreenCast source picker (T-13.4a): the surface configure, its pointer
+    // and keyboard routing, the bridge lifecycle, and the view's interactions.
+    void onScreenCastConfigured(int width, int height, quint32 serial);
+    void onScreenCastPointerMoved(qreal x, qreal y);
+    void onScreenCastPointerButton(qreal x, qreal y, quint32 button, bool pressed);
+    void onScreenCastPointerLeft();
+    void onScreenCastKeyboardFocused(bool focused);
+    void onScreenCastKeyEvent(quint32 key, bool pressed);
+    void onScreenCastStarted();
+    void onScreenCastFinished(bool completed);
+    void onScreenCastChanged();
+    void onScreenCastSourceToggled(const QString &id);
+    void onScreenCastAccepted();
+    void onScreenCastCancelled();
     // Session lock (T-12.3a): the compositor confirmed the lock, one lock
     // surface was configured to a full-output size, and the lock object
     // finished.
@@ -301,6 +316,17 @@ private:
     void startScreenshotFixture();
     // The desktop shortcut path: open the overlay in `mode`.
     void startScreenshot(const QString &mode);
+    // ScreenCast source picker (T-13.4a): map the centered picker surface,
+    // feed it the compositor's monitor/window projection, commit its frames,
+    // and unmap it when the request resolves.
+    void showScreenCast();
+    void hideScreenCast();
+    void applyScreenCastData();
+    void renderScreenCast();
+    void scheduleScreenCastRender();
+    // The capture/demo seam (`DF_SCREENCAST_FIXTURE`): present a request with a
+    // synthetic source list so the picker can be captured without a portal.
+    void startScreenCastFixture();
     // Session lock (T-12.3a): present the lock scene once the compositor
     // confirms, paint each configured lock surface at its full-output size,
     // and refresh the clock while locked.
@@ -511,6 +537,20 @@ private:
     Qt::MouseButtons m_screenshotButtons = Qt::NoButton;
     FrameCommitGate m_screenshotFrameGate;
     bool m_screenshotSceneGraphCommitLogged = false;
+    // ScreenCast source picker (T-13.4a): a centered dialog scene rendered
+    // into the `screencast` overlay surface while a portal request waits. The
+    // bridge owns the request and the D-Bus presenter call.
+    ScreenCastBridge *m_screencast = nullptr;
+    QQuickWindow *m_screencastWindow = nullptr;
+    QQuickItem *m_screencastItem = nullptr;
+    int m_screencastWidth = 0;
+    int m_screencastHeight = 0;
+    bool m_screencastActive = false;
+    bool m_screencastPending = false;
+    bool m_screencastRenderPending = false;
+    Qt::MouseButtons m_screencastButtons = Qt::NoButton;
+    FrameCommitGate m_screencastFrameGate;
+    bool m_screencastSceneGraphCommitLogged = false;
     // Session lock (T-12.3a): an offscreen lock scene rendered into one
     // `ext-session-lock-v1` surface per output. The map holds each surface's
     // configured size; the QML is a pure view. `m_lockTimer` refreshes the

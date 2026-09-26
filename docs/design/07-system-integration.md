@@ -485,3 +485,43 @@ interface and the second interactive one. Contract frozen in ADR
   `tst_screenshotwriter` (save + clipboard) are the shell proof;
   `shell_protocol_conformance` proves the capture request is answered on the
   private protocol. T-13.7 adds the real frontend routing check.
+
+### ScreenCast portal and source picker (T-13.4a)
+
+`org.freedesktop.impl.portal.ScreenCast` (version 3) is the fifth concrete
+interface and the third interactive one. Contract frozen in ADR
+[0080](adr/0080-screencast-portal-and-source-picker.md). The live PipeWire
+stream is deferred to T-13.4b; this slice returns the chosen *source handle*.
+
+- **The session lifecycle is the pure model.** `portal::screencast` owns a
+  `ScreenCastRegistry` of sessions and picker requests: `CreateSession`
+  registers a session served at the caller's path by a standard
+  `org.freedesktop.impl.portal.Session` object, `SelectSources` registers a
+  picker request and awaits its one-shot completion, and `Start` returns the
+  chosen sources as `streams` (`a(ua{sv})`). Version 3 is advertised so the
+  `source_type` stream property is present; persistence (`persist_mode` /
+  `restore_data`, v4) is deliberately absent, and virtual monitors (`4`) are
+  not advertised.
+- **The presenter seam is the diagnostic interface.** `ScreenCastOpened`
+  carries the picker model (handle, session, app id, `types` bitmask,
+  `multiple`, and the raw options, including `cursor_mode`), and
+  `CompleteScreenCast(handle, a(su))` / `CancelScreenCast(handle)` /
+  `PendingScreenCasts` are the presenter's half. The node id in each stream is
+  a placeholder (`0`) with a Dragonfruit `id` property carrying the source
+  handle until T-13.4b attaches the real PipeWire node.
+- **The source picker is a shell overlay.** `Dragonfruit.Screenshot`/
+  `ScreenCastPicker.qml` is a pure view — a centred card with Screens/Windows
+  sections, per-row selection (checkbox when `multiple`, radio otherwise), a
+  hint, and Cancel/Share. `ScreenCastBridge` (`shell/src/screencastbridge.{h,cpp}`,
+  dockcore) watches `ScreenCastOpened`, publishes the request and the source
+  list, and answers the portal; a missing portal is a supported state. The
+  available sources come from the compositor's monitor/window projection
+  (`ShellProtocol::screencastSources`), filtered by the request's `types` — the
+  shell does not invent sources. `ShellController`/`ShellProtocol` add the
+  centred `screencast` overlay surface; `DF_SCREENCAST_FIXTURE=<1|monitors|windows>`
+  presents it for the live visual check with no portal.
+- `portal/tests/screencast.rs` drives the whole session over a private bus with
+  a test client as the presenter; `tst_screencast` (bridge: options,
+  single/multi selection, the chosen-source hand-off, cancel, and a round-trip
+  against a fake `org.dragonfruit.Portal1`) and `tst_screencastui` (the view)
+  are the shell proof. T-13.7 adds the real frontend routing check.

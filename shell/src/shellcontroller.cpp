@@ -80,6 +80,11 @@ constexpr int kOsdSurfaceHeight = 220;
 constexpr int kChooserWidth = 640;
 constexpr int kChooserHeight = 440;
 
+// The ScreenCast source picker (T-13.4a): a centered dialog rendered into a
+// dedicated `screencast` overlay surface while a portal request waits.
+constexpr int kScreenCastWidth = 560;
+constexpr int kScreenCastHeight = 460;
+
 QVariantMap statusItem(const QString &id, const QString &icon, const QString &label,
                        const QString &accessibleName, bool available, qreal level = 0.8,
                        bool enabled = true)
@@ -889,6 +894,55 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     connect(m_protocol, &ShellProtocol::screenshotFailed, this,
             &ShellController::onScreenshotFailed);
 
+    // ScreenCast source picker (T-13.4a): a centered offscreen scene rendered
+    // into its own `screencast` overlay surface while a portal request waits.
+    // The bridge owns the request and the D-Bus presenter call; the source
+    // list comes from the compositor projection when the request starts.
+    m_screencast = new ScreenCastBridge(this);
+    m_screencast->connectService();
+    connect(m_screencast, &ScreenCastBridge::started, this,
+            &ShellController::onScreenCastStarted);
+    connect(m_screencast, &ScreenCastBridge::finished, this,
+            &ShellController::onScreenCastFinished);
+    connect(m_screencast, &ScreenCastBridge::changed, this,
+            &ShellController::onScreenCastChanged);
+
+    m_screencastWindow = new QQuickWindow;
+    m_screencastWindow->setColor(Qt::transparent);
+    QQmlComponent screencastComponent(m_engine);
+    screencastComponent.loadFromModule(QStringLiteral("Dragonfruit.Screenshot"),
+                                       QStringLiteral("ScreenCastPicker"));
+    if (screencastComponent.isError()) {
+        fprintf(stderr, "dragonfruit-shell: ScreenCastPicker QML error: %s\n",
+                qPrintable(screencastComponent.errorString()));
+        return false;
+    }
+    QObject *screencastObject = screencastComponent.create();
+    m_screencastItem = qobject_cast<QQuickItem *>(screencastObject);
+    if (!m_screencastItem) {
+        fprintf(stderr, "dragonfruit-shell: ScreenCastPicker QML did not produce an item\n");
+        return false;
+    }
+    m_screencastItem->setParentItem(m_screencastWindow->contentItem());
+    connect(screencastObject, SIGNAL(sourceToggled(QString)), this,
+            SLOT(onScreenCastSourceToggled(QString)));
+    connect(screencastObject, SIGNAL(accepted()), this, SLOT(onScreenCastAccepted()));
+    connect(screencastObject, SIGNAL(cancelled()), this, SLOT(onScreenCastCancelled()));
+    connect(m_screencastWindow, &QQuickWindow::afterRendering, this,
+            &ShellController::renderScreenCast);
+    connect(m_protocol, &ShellProtocol::screencastConfigured, this,
+            &ShellController::onScreenCastConfigured);
+    connect(m_protocol, &ShellProtocol::screencastPointerMoved, this,
+            &ShellController::onScreenCastPointerMoved);
+    connect(m_protocol, &ShellProtocol::screencastPointerButton, this,
+            &ShellController::onScreenCastPointerButton);
+    connect(m_protocol, &ShellProtocol::screencastPointerLeft, this,
+            &ShellController::onScreenCastPointerLeft);
+    connect(m_protocol, &ShellProtocol::screencastKeyboardFocused, this,
+            &ShellController::onScreenCastKeyboardFocused);
+    connect(m_protocol, &ShellProtocol::screencastKeyEvent, this,
+            &ShellController::onScreenCastKeyEvent);
+
     // Session lock (T-12.3a): a full-output offscreen scene rendered into one
     // `ext-session-lock-v1` surface per output. Authentication and input
     // capture are T-12.3b/T-12.3c; this is the fail-secure presentation.
@@ -991,6 +1045,10 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // unmapped until a capture starts (T-13.3a).
     if (!m_protocol->createScreenshotSurface())
         return false;
+    // The ScreenCast source picker is a centered `overlay` surface, unmapped
+    // until a portal request arrives (T-13.4a).
+    if (!m_protocol->createScreenCastSurface(kScreenCastWidth, kScreenCastHeight))
+        return false;
 
     // Capture/demo seam (T-11.1b): raise the Dock's launch-failure
     // notification once the chrome is up, so the live check can exercise the
@@ -1030,6 +1088,14 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // normal session.
     if (qEnvironmentVariableIsSet("DF_SCREENSHOT_FIXTURE")) {
         QTimer::singleShot(1500, this, &ShellController::startScreenshotFixture);
+    }
+
+    // Capture/demo seam (T-13.4a): present the ScreenCast source picker once
+    // the chrome is up so the live visual check can capture it with no portal
+    // caller. `DF_SCREENCAST_FIXTURE` is `monitors`/`windows`/`1` (empty/`1` =
+    // both); never set in a normal session.
+    if (qEnvironmentVariableIsSet("DF_SCREENCAST_FIXTURE")) {
+        QTimer::singleShot(1500, this, &ShellController::startScreenCastFixture);
     }
 
     // Capture/demo seam (T-12.3a): lock the session once the chrome is up so
@@ -2130,6 +2196,262 @@ void ShellController::onScreenshotKeyEvent(quint32 key, bool pressed)
     QKeyEvent event(pressed ? QEvent::KeyPress : QEvent::KeyRelease, qtKey, Qt::NoModifier);
     QCoreApplication::sendEvent(m_screenshotWindow, &event);
     scheduleScreenshotRender();
+}
+
+// --- ScreenCast source picker (T-13.4a) -------------------------------------
+
+void ShellController::startScreenCastFixture()
+{
+    if (!m_screencast)
+        return;
+    const QString value = qEnvironmentVariable("DF_SCREENCAST_FIXTURE");
+    const bool monitors = value.isEmpty() || value == QLatin1String("1")
+            || value == QLatin1String("both") || value == QLatin1String("monitors");
+    const bool windows = value.isEmpty() || value == QLatin1String("1")
+            || value == QLatin1String("both") || value == QLatin1String("windows");
+    uint types = 0;
+    if (monitors)
+        types |= 1;
+    if (windows)
+        types |= 2;
+    m_screencast->begin(QStringLiteral("/org/freedesktop/portal/desktop/request/fixture"),
+                        QStringLiteral("/org/freedesktop/portal/desktop/session/fixture"),
+                        QStringLiteral("org.example.App"), types, windows, 1);
+
+    // A deterministic source list so the capture is stable regardless of the
+    // live session's windows (the fixture is capture-only).
+    QVariantList sources;
+    if (monitors) {
+        sources.append(QVariantMap{
+            {QStringLiteral("id"), QStringLiteral("monitor:DP-1")},
+            {QStringLiteral("kind"), QStringLiteral("monitor")},
+            {QStringLiteral("label"), tr("Built-in Display")},
+            {QStringLiteral("detail"), QStringLiteral("1920 × 1080")},
+        });
+    }
+    if (windows) {
+        sources.append(QVariantMap{
+            {QStringLiteral("id"), QStringLiteral("window:42")},
+            {QStringLiteral("kind"), QStringLiteral("window")},
+            {QStringLiteral("label"), tr("Settings")},
+            {QStringLiteral("detail"), QStringLiteral("org.dragonfruit.Settings")},
+        });
+        sources.append(QVariantMap{
+            {QStringLiteral("id"), QStringLiteral("window:43")},
+            {QStringLiteral("kind"), QStringLiteral("window")},
+            {QStringLiteral("label"), tr("Files")},
+            {QStringLiteral("detail"), QStringLiteral("org.dragonfruit.Files")},
+        });
+    }
+    m_screencast->setSources(sources);
+}
+
+void ShellController::onScreenCastStarted()
+{
+    if (!m_screencast)
+        return;
+    // Feed the picker the compositor's monitor/window projection, filtered by
+    // the request's source-type bitmask. The fixture overwrites this with a
+    // deterministic list immediately after `begin` returns.
+    if (m_screencast->active() && m_protocol) {
+        const uint types = m_screencast->types();
+        QVariantList filtered;
+        for (const QVariant &entry : m_protocol->screencastSources()) {
+            const QVariantMap source = entry.toMap();
+            const bool monitor =
+                source.value(QStringLiteral("kind")).toString() == QLatin1String("monitor");
+            if ((monitor && (types & 1u)) || (!monitor && (types & 2u)))
+                filtered.append(source);
+        }
+        m_screencast->setSources(filtered);
+    }
+    showScreenCast();
+}
+
+void ShellController::onScreenCastFinished(bool completed)
+{
+    Q_UNUSED(completed);
+    hideScreenCast();
+}
+
+void ShellController::onScreenCastChanged()
+{
+    if (!m_screencastActive)
+        return;
+    applyScreenCastData();
+    scheduleScreenCastRender();
+}
+
+void ShellController::onScreenCastSourceToggled(const QString &id)
+{
+    if (m_screencast)
+        m_screencast->select(id);
+}
+
+void ShellController::onScreenCastAccepted()
+{
+    if (m_screencast)
+        m_screencast->accept();
+}
+
+void ShellController::onScreenCastCancelled()
+{
+    if (m_screencast)
+        m_screencast->cancel();
+}
+
+void ShellController::showScreenCast()
+{
+    if (!m_screencastItem)
+        return;
+    m_screencastActive = true;
+    m_screencastPending = true;
+    applyScreenCastData();
+    if (m_screencastWidth > 0 && m_screencastHeight > 0)
+        renderScreenCast();
+    // Take active focus so Escape/Return reach the picker.
+    m_screencastItem->forceActiveFocus();
+    if (m_protocol)
+        m_protocol->setScreenCastInputRegion(m_screencastWidth, m_screencastHeight);
+}
+
+void ShellController::hideScreenCast()
+{
+    m_screencastActive = false;
+    m_screencastPending = false;
+    m_screencastButtons = Qt::NoButton;
+    if (m_protocol) {
+        m_protocol->setScreenCastInputRegion(0, 0);
+        m_protocol->hideScreenCast();
+    }
+}
+
+void ShellController::applyScreenCastData()
+{
+    if (!m_screencastItem || !m_screencast)
+        return;
+    m_screencastItem->setProperty("sources", m_screencast->sources());
+    m_screencastItem->setProperty("multiple", m_screencast->multiple());
+    m_screencastItem->setProperty("appId", m_screencast->appId());
+    m_screencastItem->setProperty("errorText", m_screencast->error());
+}
+
+void ShellController::renderScreenCast()
+{
+    if (!m_screencastActive || !m_screencastPending || !m_screencastWindow
+        || !m_screencastItem)
+        return;
+    if (m_screencastWidth <= 0 || m_screencastHeight <= 0)
+        return;
+    // The scene graph just rendered; skip the re-entrant frame our own
+    // `grabWindow` readback produces (the Dock/banner FR-14 pattern).
+    if (!m_screencastFrameGate.frameRendered())
+        return;
+    if (!m_screencastSceneGraphCommitLogged) {
+        m_screencastSceneGraphCommitLogged = true;
+        qInfo() << "shell: ScreenCast scene-graph commit path active";
+    }
+    m_screencastItem->setWidth(m_screencastWidth);
+    m_screencastItem->setHeight(m_screencastHeight);
+    if (m_screencastWindow->width() != m_screencastWidth
+        || m_screencastWindow->height() != m_screencastHeight)
+        m_screencastWindow->resize(m_screencastWidth, m_screencastHeight);
+    if (!m_screencastWindow->isVisible())
+        m_screencastWindow->show();
+    m_screencastFrameGate.beginCommit();
+    const QImage image = m_screencastWindow->grabWindow();
+    m_screencastFrameGate.endCommit();
+    if (!image.isNull() && m_protocol)
+        m_protocol->commitScreenCastImage(image);
+}
+
+void ShellController::scheduleScreenCastRender()
+{
+    if (m_screencastRenderPending)
+        return;
+    m_screencastRenderPending = true;
+    QTimer::singleShot(0, this, [this]() {
+        m_screencastRenderPending = false;
+        renderScreenCast();
+    });
+}
+
+void ShellController::onScreenCastConfigured(int width, int height, quint32)
+{
+    // The compositor sends a pre-layout configure at the full output size
+    // before applying the layer surface's requested size; skip it (the same
+    // rule as the menu bar, banner, panel, chooser, and OSD).
+    if (width != kScreenCastWidth || height != kScreenCastHeight) {
+        fprintf(stderr, "dragonfruit-shell: ignoring pre-layout screencast configure %dx%d\n",
+                width, height);
+        return;
+    }
+    m_screencastWidth = width;
+    m_screencastHeight = height;
+    if (m_protocol)
+        m_protocol->setScreenCastInputRegion(m_screencastWidth, m_screencastHeight);
+    if (m_screencastPending)
+        renderScreenCast();
+}
+
+void ShellController::onScreenCastPointerMoved(qreal x, qreal y)
+{
+    if (!m_screencastWindow)
+        return;
+    const QPointF p(x, y);
+    QMouseEvent event(QEvent::MouseMove, p, p, Qt::NoButton, m_screencastButtons,
+                      Qt::NoModifier);
+    QCoreApplication::sendEvent(m_screencastWindow, &event);
+    scheduleScreenCastRender();
+}
+
+void ShellController::onScreenCastPointerButton(qreal x, qreal y, quint32 button, bool pressed)
+{
+    if (!m_screencastWindow)
+        return;
+    Qt::MouseButton qtButton = Qt::NoButton;
+    if (button == 0x110)
+        qtButton = Qt::LeftButton;
+    if (pressed)
+        m_screencastButtons |= qtButton;
+    else
+        m_screencastButtons &= ~qtButton;
+    const QPointF p(x, y);
+    QMouseEvent event(pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease, p, p,
+                      qtButton, m_screencastButtons, Qt::NoModifier);
+    QCoreApplication::sendEvent(m_screencastWindow, &event);
+    scheduleScreenCastRender();
+}
+
+void ShellController::onScreenCastPointerLeft()
+{
+    if (!m_screencastWindow)
+        return;
+    QMouseEvent event(QEvent::MouseMove, QPointF(-1, -1), QPointF(-1, -1), Qt::NoButton,
+                      m_screencastButtons, Qt::NoModifier);
+    QCoreApplication::sendEvent(m_screencastWindow, &event);
+    scheduleScreenCastRender();
+}
+
+void ShellController::onScreenCastKeyboardFocused(bool focused)
+{
+    // Losing the keyboard is the click-away dismissal: a click on a window or
+    // the desktop moves chrome keyboard focus away from the picker. Cancelling
+    // tells the portal the caller got no selection.
+    if (!focused && m_screencastActive && m_screencast)
+        m_screencast->cancel();
+}
+
+void ShellController::onScreenCastKeyEvent(quint32 key, bool pressed)
+{
+    if (!m_screencastWindow || !m_screencastActive)
+        return;
+    const Qt::Key qtKey = qtKeyFromEvdev(key);
+    if (qtKey == Qt::Key_unknown)
+        return;
+    QKeyEvent event(pressed ? QEvent::KeyPress : QEvent::KeyRelease, qtKey, Qt::NoModifier);
+    QCoreApplication::sendEvent(m_screencastWindow, &event);
+    scheduleScreenCastRender();
 }
 
 // --- session lock (T-12.3a protocol/UI, T-12.3b authentication) -------------

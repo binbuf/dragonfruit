@@ -156,6 +156,7 @@ fn the_backend_registers_its_standard_name_on_a_private_bus() {
             "org.freedesktop.impl.portal.GlobalShortcuts".to_owned(),
             "org.freedesktop.impl.portal.FileChooser".to_owned(),
             "org.freedesktop.impl.portal.Screenshot".to_owned(),
+            "org.freedesktop.impl.portal.ScreenCast".to_owned(),
         ]
     );
 

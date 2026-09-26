@@ -5,8 +5,8 @@
 ; implements. The `Interfaces=` list must equal `model::BACKEND_INTERFACES`
 ; (kept in lockstep by a test). T-13.1a shipped the service and its
 ; registration empty; T-13.1b adds Settings and GlobalShortcuts, T-13.2a
-; FileChooser, and the capture interfaces follow.
+; FileChooser, T-13.3a Screenshot, and T-13.4a ScreenCast.
 [portal]
 DBusName=org.freedesktop.impl.portal.desktop.dragonfruit
-Interfaces=org.freedesktop.impl.portal.Settings;org.freedesktop.impl.portal.GlobalShortcuts;org.freedesktop.impl.portal.FileChooser;org.freedesktop.impl.portal.Screenshot;
+Interfaces=org.freedesktop.impl.portal.Settings;org.freedesktop.impl.portal.GlobalShortcuts;org.freedesktop.impl.portal.FileChooser;org.freedesktop.impl.portal.Screenshot;org.freedesktop.impl.portal.ScreenCast;
 UseIn=dragonfruit

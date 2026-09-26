@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(58 earlier sections omitted)_
+_(59 earlier sections omitted)_
 
-- **T55 — T-09.6b Settings absence matrix and wave captures**: **State: done.** The T-09 Settings wave is signed off: the absent-provider; **`docs/design/08-settings.md`** — new "The absent-provider matrix (T-09.6b)"
 - **T56 — T-10.1a files-core streaming listing and model**: **State: done.** `files-core` now exists as a headless Rust library and a; **`services/files-core/`** (new crate `dragonfruit-files-core`, workspace
 - **T57 — T-10.1b files-core sorting and platform fallback**: **State: done.** `files-core` now sorts its streamed model and the; **`services/files-core/src/sort.rs`** (new module) — `SortKey`
 - **T58 — T-10.2a files-core operations**: **State: done.** `files-core` gained the one operations seam: rename, new; **`services/files-core/src/ops.rs`** (new module):
@@ -45,6 +44,7 @@ _(58 earlier sections omitted)_
 - **T91 — T-13.2b FileChooser picker UI**: **State: done.** The FileChooser portal now has its dialog: a design-system; **`shell/screenshot/FileChooser.qml`** (new) — the pure view: title, an Up
 - **T92 — T-13.3a Screenshot portal and selection UI**: **State: done.** The backend serves `org.freedesktop.impl.portal.Screenshot`; **`portal/src/screenshot.rs`** (new) — the pure model: `CaptureMode`
 - **T93 — T-13.3b Screenshot save/copy and portal-only gate**: **State: done.** A capture is now actually produced, saved, and copied. The; **`protocols/dragonfruit-toplevel.xml`** — `df_toplevel_manager` v6 adds
+- **T94 — T-13.4a ScreenCast portal and source picker**: **State: done.** The backend serves `org.freedesktop.impl.portal.ScreenCast`; **`portal/src/screencast.rs`** (new) — the pure model: `SourceType`
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -7000,3 +7000,98 @@ Gotchas for later tasks:
 - **Copy is Qt's clipboard**, not the Wayland data device yet (T-13.5).
 - T-13.4a (ScreenCast picker) reuses the `shell/screenshot` module and this
   capture seam for its stills fallback.
+
+## T94 — T-13.4a ScreenCast portal and source picker
+
+**State: done.** The backend serves `org.freedesktop.impl.portal.ScreenCast`
+(version 3): `CreateSession` serves a standard Session object, `SelectSources`
+opens the source picker and awaits a one-shot completion, and `Start` returns
+the chosen sources as `streams`. The shell has the monitor/window picker,
+driven by portal requests. The PipeWire stream is T-13.4b. Contract frozen in
+ADR [0080](design/adr/0080-screencast-portal-and-source-picker.md).
+
+What landed:
+
+- **`portal/src/screencast.rs`** (new) — the pure model: `SourceType`
+  (`Monitor`/`Window`/`Virtual`, `bit`/`parse`/`as_str`), `ScreenCastOptions`
+  (`types`, `multiple`, `cursor_mode` with spec defaults), `ScreenCastRequest`,
+  `ScreenCastSelection`, `ScreenCastStream` (`to_wire`/`from_wire`),
+  `ScreenCastResponse` (`started` builds the `a(ua{sv})` array explicitly),
+  `ScreenCastSession`, `ScreenCastError`, the one-shot
+  `ScreenCastCompletion`/`ScreenCastCompleter`, and `ScreenCastRegistry`
+  (`create_session`/`begin_select`/`complete`/`cancel`/`start`/
+  `close_session`/`handles`). `AVAILABLE_SOURCE_TYPES = 3`,
+  `AVAILABLE_CURSOR_MODES = 3`.
+- **`portal/src/interfaces.rs`** — `ScreenCastPortal` (`CreateSession`,
+  `SelectSources`, `Start`, `Version`, `AvailableSourceTypes`,
+  `AvailableCursorModes`) and `ScreenCastSessionObject` (the standard Session
+  `Close`). `SelectSources` emits the diagnostic `ScreenCastOpened` and awaits.
+- **`portal/src/dbus.rs`** — the shared screencast registry (new
+  `with_services` argument), diagnostic `PendingScreenCasts`,
+  `CompleteScreenCast(handle, a(su))`, `CancelScreenCast(handle)`, signal
+  `ScreenCastOpened(handle, session_handle, app_id, types, multiple, options)`.
+  (`cursor_mode` rides in the raw options to keep the signal under clippy's
+  7-arg limit.)
+- **`portal/data/dragonfruit.portal`** + `model::BACKEND_INTERFACES` list
+  `org.freedesktop.impl.portal.ScreenCast` (lockstep test green).
+- **`shell/src/screencastbridge.{h,cpp}`** (new, dockcore) —
+  `ScreenCastBridge`: watches `ScreenCastOpened`, `begin`/`setSources`/
+  `select`/`accept`/`cancel`; answers the portal with `CompleteScreenCast`
+  (`a(su)`, via a registered `ScreenCastSelection` metatype) /
+  `CancelScreenCast`. A missing portal is a normal state.
+- **`shell/screenshot/ScreenCastPicker.qml`** (new) — the pure view:
+  "Share your screen", the app subtitle, `ListView` with `section.property`
+  (Screens/Windows), per-row icon/label/detail and a checkbox (multiple) or
+  radio (single) indicator, the hint, and Cancel/Share.
+- **`shell/src/shellprotocol.{h,cpp}`** — the centred `screencast` overlay
+  layer surface, its configure/pointer/keyboard signals, and
+  `screencastSources()` (monitors from announced outputs with name/size;
+  windows from the toplevel projection).
+- **`shell/src/shellcontroller.{h,cpp}`** — owns the bridge and offscreen QML
+  scene, filters `screencastSources()` by the request's `types`, maps/unmaps
+  the surface, routes pointer/keyboard, and presents a deterministic fixture
+  under `DF_SCREENCAST_FIXTURE` (`1`/`both`/`monitors`/`windows`).
+- **Tests** — `portal/tests/screencast.rs` (4 integration on a private bus:
+  interface + properties introspect; a full CreateSession→SelectSources(open
+  the picker)→CompleteScreenCast→Start round trip returns both source handles;
+  cancel answers 1 and a follow-up selection works; an empty selection answers
+  2). `shell/tests/tst_screencast.cpp` (bridge lifecycle + a fake
+  `org.dragonfruit.Portal1`) and `tst_screencastui.{cpp,qml}` (the view).
+
+Commands that work (repo root):
+
+- `cargo test -p xdg-desktop-portal-dragonfruit` — 52 lib + 4 `screencast` +
+  others, all pass.
+- `ctest --test-dir build --output-on-failure` — 50/50, including
+  `tst_screencast` (needs `dbus-run-session`) and `tst_screencastui`.
+- `make lint` — exit 0 (fmt, clippy, qmllint, token/desktop-name gates).
+- `make e2e` — exit 0.
+- Build note (unchanged): `export PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig:$PKG_CONFIG_PATH`
+  and `RUSTFLAGS="-L $HOME/.local/df-devroot/lib64"` (or just `make`).
+
+Live check (vision-inspected): `DF_SCREENCAST_FIXTURE=1 make demo
+DEMO_ARGS="--socket-name dragonfruit-t94"`, full-screen still
+`/tmp/opencode/t94/screencast.png` (spectacle). Vision: centred "Share your
+screen" card with the "org.example.App wants to record…" subtitle, "Screens"
+(Built-in Display 1920 × 1080) and "Windows" (Settings, Files) sections with
+empty selection boxes, "Choose one or more sources", and Cancel / Share; on top
+of the X11 demo window, no clipping. Log confirms `ScreenCast scene-graph
+commit path active`.
+
+Gotchas for later tasks:
+
+- **The stream is a handle, not bytes.** `Start` returns `node_id = 0` and a
+  Dragonfruit `id` property with the chosen source handle; T-13.4b replaces the
+  node id and adds geometry/cursor. No session, picker, or diagnostic change is
+  needed.
+- **The backend advertises version 3.** Persistence (`persist_mode` /
+  `restore_data`, v4) and virtual monitors are not advertised; bump the version
+  with the restore-data format when streaming supports them.
+- **Source ids are `monitor:<name>` and `window:<toplevel-windowId>`** (the
+  shell's spelling); the type bit (`1` monitor, `2` window) travels with each
+  selection and becomes the stream's `source_type`.
+- **The picker surface is created at startup, unmapped until a request.**
+  Absence of the portal or a presenter is a silent, supported state.
+- T-13.4b (PipeWire stream/fallback) and T-13.7 (real `xdg-desktop-portal`
+  routing/Flatpak walkthrough) are the follow-ons; the `shell/screenshot`
+  module is the shared home for the portal pickers.

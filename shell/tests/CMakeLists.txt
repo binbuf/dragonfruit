@@ -492,3 +492,50 @@ set_tests_properties(tst_screenshotwriter PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+# ScreenCast source picker bridge tests (T-13.4a): the pure request lifecycle
+# (options, single/multi selection, the chosen-source hand-off, cancellation)
+# and the live `ScreenCastBridge` returning the selection to a fake
+# `org.dragonfruit.Portal1` presenter on the private session bus. No QML,
+# Wayland, or compositor.
+qt_add_executable(tst_screencast
+    tst_screencast.cpp
+)
+target_link_libraries(tst_screencast PRIVATE
+    Qt6::Core Qt6::Test Qt6::DBus
+    dragonfruit-shell-dockcore
+)
+
+if(DBUS_RUN_SESSION)
+    add_test(
+        NAME tst_screencast
+        COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:tst_screencast>
+    )
+else()
+    add_test(NAME tst_screencast COMMAND tst_screencast)
+endif()
+set_tests_properties(tst_screencast PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+# ScreenCast source picker view tests (T-13.4a): the monitor/window sections,
+# row selection, the Share button, and Escape cancellation.
+qt_add_executable(tst_screencastui
+    tst_screencastui.cpp
+)
+target_link_libraries(tst_screencastui PRIVATE
+    Qt6::QuickTest
+    dragonfruit-design-systemplugin
+    dragonfruit-shell-screenshotplugin
+)
+qt_import_qml_plugins(tst_screencastui)
+
+add_test(
+    NAME tst_screencastui
+    COMMAND tst_screencastui -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_screencastui.qml
+)
+set_tests_properties(tst_screencastui PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
