@@ -383,6 +383,9 @@ fn init(state: &mut crate::state::DfState, shared: SharedData) -> Result<(), Str
             .loop_handle
             .insert_source(notifier, move |event, _, state| match event {
                 SessionEvent::PauseSession => {
+                    // A VT switch-away and a sleep both quiesce the session
+                    // (T-12.5a): no frames, no user input, clients untouched.
+                    state.suspend_session();
                     let mut guard = shared.borrow_mut();
                     let Some(data) = guard.as_mut() else { return };
                     if let Some(libinput) = data.libinput.as_mut() {
@@ -394,6 +397,8 @@ fn init(state: &mut crate::state::DfState, shared: SharedData) -> Result<(), Str
                     }
                 }
                 SessionEvent::ActivateSession => {
+                    // Wake: repaint every output and route input again.
+                    state.resume_session();
                     let mut guard = shared.borrow_mut();
                     let Some(data) = guard.as_mut() else { return };
                     if let Some(libinput) = data.libinput.as_mut() {
@@ -922,6 +927,11 @@ fn render_surface(
     node: DrmNode,
     crtc: crtc::Handle,
 ) {
+    // A suspended session (T-12.5a) draws nothing; the output surfaces and
+    // clients are kept, so wake is a repaint rather than a re-init.
+    if state.suspend.is_suspended() {
+        return;
+    }
     let mut guard = shared.borrow_mut();
     let Some(data) = guard.as_mut() else { return };
 

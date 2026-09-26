@@ -107,6 +107,7 @@ use crate::overview::reveal::reveal_frame;
 use crate::overview::switcher::preview_area;
 use crate::overview::{InputOwner, OverviewKind, OverviewMachine, TransitionCommit};
 use crate::shell::ShellProtocolState;
+use crate::suspend::SuspendModel;
 use crate::wallpaper::{slide_offset, slide_slots, WallpaperCache, WallpaperSlot};
 use crate::window::grab::{MoveGrab, ResizeGrab};
 use crate::window::popup::constrained_popup_geometry;
@@ -180,6 +181,10 @@ pub struct RenderStats {
     /// routing, sampled by the presenting backend. A flat, zero-sample
     /// instrument while idle proves no input was mis-credited.
     pub latency: LatencyInstrument,
+    /// User input events that reached the input router (T-12.5a): device
+    /// hotplug is excluded, and a suspended or locked session drops input
+    /// before this counter, so a flat count proves input was dropped.
+    pub input_events: u64,
     /// Bounded ring of recent frame samples, newest last.
     samples: VecDeque<FrameSample>,
     frame_time_us_total: u64,
@@ -311,6 +316,9 @@ pub struct DfState {
     /// Fail-secure lock state (T-12.3a): the one flag every input and render
     /// path consults. Set by `ext-session-lock-v1`, cleared only by unlock.
     pub lock: LockModel,
+    /// Suspend/resume state (T-12.5a): the one flag every render and input
+    /// path consults while the machine sleeps, plus the completed-cycle count.
+    pub suspend: SuspendModel,
     pub text_input_state: TextInputManagerState,
     pub input_method_state: InputMethodManagerState,
     pub tablet_manager_state: TabletManagerState,
@@ -549,6 +557,7 @@ impl DfState {
             xdg_activation_state,
             session_lock_state,
             lock: LockModel::new(),
+            suspend: SuspendModel::new(),
             text_input_state,
             input_method_state,
             tablet_manager_state,
@@ -2060,6 +2069,44 @@ impl DfState {
     pub fn frame_cadence_active(&self) -> bool {
         self.frame_cadence_until
             .is_some_and(|until| Instant::now() < until)
+    }
+
+    // --- suspend/resume (T-12.5a) -------------------------------------------
+
+    /// Quiesce the session before the machine sleeps.
+    ///
+    /// The scene, the clients, and every output survive untouched: only the
+    /// frame loop stops. Any in-flight animation timer is disarmed so no
+    /// frame is produced while asleep, the post-input cadence window is
+    /// closed, and a pending redraw is dropped. Returns `false` when already
+    /// suspended (a duplicate `PrepareForSleep` is idempotent).
+    pub fn suspend_session(&mut self) -> bool {
+        if !self.suspend.suspend() {
+            return false;
+        }
+        self.frame_cadence_until = None;
+        self.needs_redraw = false;
+        if let Some(token) = self.animation_timer.take() {
+            self.loop_handle.remove(token);
+        }
+        true
+    }
+
+    /// Re-init the session after wake.
+    ///
+    /// Every output repaints, which sends each live client its pending frame
+    /// callback and re-opens the normal damage loop; the post-input cadence
+    /// and any still-live animation are re-armed. The clients and the scene
+    /// were never torn down, so recovery needs no restart. Returns `false`
+    /// when already awake (a duplicate resume hook is idempotent).
+    pub fn resume_session(&mut self) -> bool {
+        if !self.suspend.resume() {
+            return false;
+        }
+        self.needs_redraw = true;
+        self.notify_activity();
+        crate::input::schedule_animation_timer(self);
+        true
     }
 
     /// A monotonic timestamp in milliseconds for the input pipelines.
