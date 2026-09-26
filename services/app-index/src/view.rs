@@ -8,7 +8,8 @@
 use serde_json::{json, Value};
 
 use crate::icons::IconTheme;
-use crate::index::{AppIndex, AppRecord, IdentitySource};
+use crate::index::{AppIndex, AppRecord, IdentitySource, IndexEvent};
+use crate::registry::{ActivityEvent, LaunchRegistry, RunningApp};
 
 /// The size at which records carry a resolved `iconPath` by default. The Dock
 /// and menu bar scale from here.
@@ -68,6 +69,114 @@ pub fn misses_json(index: &AppIndex) -> String {
         .map(|miss| Value::String(miss.to_owned()))
         .collect();
     Value::Array(misses).to_string()
+}
+
+/// One running app as a JSON object, carrying the resolved icon path.
+pub fn running_app_value(app: &RunningApp, theme: &IconTheme) -> Value {
+    let icon_path = if app.icon.is_empty() {
+        String::new()
+    } else {
+        theme
+            .lookup(&app.icon, DEFAULT_ICON_SIZE)
+            .map(|path| path.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    };
+    json!({
+        "key": app.key,
+        "desktopId": app.key,
+        "name": app.name,
+        "icon": app.icon,
+        "iconPath": icon_path,
+        "windows": app.windows,
+        "running": true,
+        "resolved": app.is_resolved(),
+        "sinceMs": app.since_ms,
+        "activeMs": app.active_ms,
+    })
+}
+
+/// The running apps as a JSON array, ordered by key.
+pub fn running_json(registry: &LaunchRegistry, theme: &IconTheme) -> String {
+    let apps: Vec<Value> = registry
+        .running()
+        .map(|app| running_app_value(app, theme))
+        .collect();
+    Value::Array(apps).to_string()
+}
+
+/// The recency order as a JSON array of record objects, most recent first, at
+/// most `limit` (`0` means the registry's own capacity). A key that resolves
+/// becomes a full record; an unresolved key becomes a minimal object so a
+/// consumer can still render the raw identity.
+pub fn recent_json(
+    index: &AppIndex,
+    registry: &LaunchRegistry,
+    limit: usize,
+    theme: &IconTheme,
+) -> String {
+    let limit = if limit == 0 {
+        crate::registry::RECENT_CAPACITY
+    } else {
+        limit
+    };
+    let entries: Vec<Value> = registry
+        .recent(limit)
+        .into_iter()
+        .map(|key| {
+            let running = registry.is_running(key);
+            match index.lookup(key) {
+                Some(resolved) => {
+                    let mut value = record_value(&resolved.record, None, theme);
+                    value["running"] = Value::Bool(running);
+                    value["key"] = Value::String(key.to_owned());
+                    value
+                }
+                None => json!({
+                    "valid": false,
+                    "key": key,
+                    "desktopId": key,
+                    "name": key,
+                    "icon": "",
+                    "iconPath": "",
+                    "running": running,
+                }),
+            }
+        })
+        .collect();
+    Value::Array(entries).to_string()
+}
+
+/// The install/uninstall/update events as a JSON array of objects, oldest
+/// first.
+pub fn index_events_json(events: &[IndexEvent]) -> String {
+    let values: Vec<Value> = events
+        .iter()
+        .map(|event| {
+            json!({
+                "kind": event.kind.as_str(),
+                "desktopId": event.desktop_id,
+                "name": event.name,
+            })
+        })
+        .collect();
+    Value::Array(values).to_string()
+}
+
+/// The `app_running`/`app_exited`/`focused` events as a JSON array of objects,
+/// oldest first.
+pub fn activity_events_json(events: &[ActivityEvent]) -> String {
+    let values: Vec<Value> = events
+        .iter()
+        .map(|event| {
+            json!({
+                "kind": event.kind.as_str(),
+                "key": event.key,
+                "windows": event.windows,
+                "atMs": event.at_ms,
+            })
+        })
+        .collect();
+    Value::Array(values).to_string()
 }
 
 #[cfg(test)]

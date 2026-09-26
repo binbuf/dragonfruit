@@ -16,6 +16,7 @@ rust-version.workspace = true
 # the flat payload format the shell decodes, matching the sibling services.
 [dependencies]
 df-ipc.workspace = true
+libc.workspace = true
 serde_json = "=1.0.151"
 zbus = { version = "=5.19.0", features = ["blocking-api"] }
 

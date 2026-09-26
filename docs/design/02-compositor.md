@@ -733,6 +733,15 @@ over `org.dragonfruit.AppIndex1`; the shell is the sole forwarder, so the
 compositor needs no D-Bus client (ADR
 [0034](adr/0034-compositor-policy-via-shell-bridge.md)).
 
+The index is **live**: `app-index` watches its `applications` directories
+(inotify, event-driven, no idle polling) and re-scans on change, diffing the
+corpus into install/uninstall/update events (T-14.1b). It also owns the
+**launch registry** and **recency**: the shell forwards a window's appearance,
+disappearance, and focus, and the service tracks which apps are running and a
+most-recent-first usage order, keyed by resolved desktop id. The subscription
+API that removes the shell's startup re-query is T-14.1c (ADR
+[0087](adr/0087-app-index-events-launch-registry-recency.md)).
+
 ## Keymap conventions
 
 The macOS-Cmd role maps to **Super/Mod4**; Option maps to **Alt**. The

@@ -90,6 +90,10 @@ impl Fixture {
         std::fs::write(self.apps().join(name), body).unwrap();
     }
 
+    fn remove_app(&self, name: &str) {
+        std::fs::remove_file(self.apps().join(name)).unwrap();
+    }
+
     fn write_icon(&self, relative: &str) {
         let path = self.icons().join(relative);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -262,4 +266,167 @@ fn assert_path_is_within(path: &str, root: &Path) {
         Path::new(path).starts_with(root),
         "{path} not under {root:?}"
     );
+}
+
+// T-14.1b: a fixture install/update/uninstall reaches the index through
+// `Refresh`, and the diff is returned as the index events.
+#[test]
+fn refresh_reports_install_update_and_uninstall_and_updates_the_index() {
+    let bus = PrivateBus::start();
+    let fixture = Fixture::new("refresh");
+    fixture.seed();
+    let _service = serve(&bus, &fixture);
+    let client = bus.connect();
+
+    // A stable corpus has no events.
+    assert_eq!(
+        json(&call::<String>(&client, "Refresh", ()).unwrap()),
+        json("[]")
+    );
+
+    // Install: a new desktop id appears.
+    fixture.write_app(
+        "org.example.New.desktop",
+        "[Desktop Entry]\nType=Application\nName=New\nStartupWMClass=org.example.New\n\
+         Exec=new-app\n",
+    );
+    let events = json(&call::<String>(&client, "Refresh", ()).unwrap());
+    assert_eq!(events[0]["kind"], "installed");
+    assert_eq!(events[0]["desktopId"], "org.example.New.desktop");
+    assert_eq!(events[0]["name"], "New");
+
+    // The new record is immediately enumerable.
+    let records = json(&call::<String>(&client, "Enumerate", ()).unwrap());
+    assert!(records
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|record| record["desktopId"] == "org.example.New.desktop"));
+
+    // Update: an existing entry's record changes.
+    fixture.write_app(
+        "firefox.desktop",
+        "[Desktop Entry]\nType=Application\nName=Firefox Nightly\nIcon=firefox\n\
+         StartupWMClass=firefox\nExec=firefox %u\n",
+    );
+    let events = json(&call::<String>(&client, "Refresh", ()).unwrap());
+    assert_eq!(events[0]["kind"], "updated");
+    assert_eq!(events[0]["desktopId"], "firefox.desktop");
+    assert_eq!(events[0]["name"], "Firefox Nightly");
+
+    // Uninstall: a desktop id disappears.
+    fixture.remove_app("org.example.New.desktop");
+    let events = json(&call::<String>(&client, "Refresh", ()).unwrap());
+    assert_eq!(events[0]["kind"], "uninstalled");
+    assert_eq!(events[0]["desktopId"], "org.example.New.desktop");
+
+    // The retained log drains once, oldest first.
+    let drained = json(&call::<String>(&client, "IndexEvents", ()).unwrap());
+    assert_eq!(drained.as_array().unwrap().len(), 3);
+    assert_eq!(drained[0]["kind"], "installed");
+    assert_eq!(drained[2]["kind"], "uninstalled");
+    assert_eq!(
+        json(&call::<String>(&client, "IndexEvents", ()).unwrap()),
+        json("[]")
+    );
+}
+
+// T-14.1b: window activity drives the running set and the recency order.
+#[test]
+fn window_activity_tracks_running_and_recency() {
+    let bus = PrivateBus::start();
+    let fixture = Fixture::new("activity");
+    fixture.seed();
+    let _service = serve(&bus, &fixture);
+    let client = bus.connect();
+
+    // A resolved Wayland app appears.
+    let files =
+        json(&call::<String>(&client, "WindowOpened", ("org.dragonfruit.Files", "", "")).unwrap());
+    assert_eq!(files["desktopId"], "org.dragonfruit.Files.desktop");
+    assert_eq!(files["windows"], 1);
+    assert_eq!(files["running"], true);
+
+    // An X11 app resolves through StartupWMClass.
+    let firefox =
+        json(&call::<String>(&client, "WindowOpened", ("", "Navigator", "Firefox")).unwrap());
+    assert_eq!(firefox["desktopId"], "firefox.desktop");
+
+    let running = json(&call::<String>(&client, "Running", ()).unwrap());
+    assert_eq!(running.as_array().unwrap().len(), 2);
+
+    // Recency is most recent first.
+    let recent = json(&call::<String>(&client, "Recent", (0i32,)).unwrap());
+    assert_eq!(recent[0]["desktopId"], "firefox.desktop");
+    assert_eq!(recent[1]["desktopId"], "org.dragonfruit.Files.desktop");
+    assert!(recent[0]["iconPath"]
+        .as_str()
+        .unwrap()
+        .ends_with("hicolor/48x48/apps/firefox.png"));
+
+    // A focus change reorders without changing the running set.
+    assert!(call::<bool>(&client, "NoteActivity", ("org.dragonfruit.Files", "", "")).unwrap());
+    let recent = json(&call::<String>(&client, "Recent", (0i32,)).unwrap());
+    assert_eq!(recent[0]["desktopId"], "org.dragonfruit.Files.desktop");
+    assert_eq!(recent[0]["running"], true);
+
+    // Closing the last firefox window leaves the running set but keeps it in
+    // recency.
+    assert!(call::<bool>(&client, "WindowClosed", ("", "Navigator", "Firefox")).unwrap());
+    let running = json(&call::<String>(&client, "Running", ()).unwrap());
+    assert_eq!(running.as_array().unwrap().len(), 1);
+    assert_eq!(running[0]["desktopId"], "org.dragonfruit.Files.desktop");
+    let recent = json(&call::<String>(&client, "Recent", (0i32,)).unwrap());
+    assert_eq!(recent.as_array().unwrap().len(), 2);
+    assert_eq!(recent[0]["desktopId"], "org.dragonfruit.Files.desktop");
+    assert_eq!(recent[1]["desktopId"], "firefox.desktop");
+    assert_eq!(recent[1]["running"], false);
+
+    // Closing an app that was not running is a no-op.
+    assert!(!call::<bool>(&client, "WindowClosed", ("", "Navigator", "Firefox")).unwrap());
+
+    // The activity log records the sequence.
+    let events = json(&call::<String>(&client, "ActivityEvents", ()).unwrap());
+    let kinds: Vec<&str> = events
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|event| event["kind"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        kinds,
+        vec!["app_running", "app_running", "focused", "app_exited"]
+    );
+}
+
+// T-14.1b: an unresolved window still gets a stable raw-key registry entry.
+#[test]
+fn an_unresolved_window_is_registered_by_its_raw_identity() {
+    let bus = PrivateBus::start();
+    let fixture = Fixture::new("raw");
+    fixture.seed();
+    let _service = serve(&bus, &fixture);
+    let client = bus.connect();
+
+    let opened = json(
+        &call::<String>(
+            &client,
+            "WindowOpened",
+            ("", "sun-awt-X11-XFramePeer", "Java"),
+        )
+        .unwrap(),
+    );
+    assert_eq!(opened["key"], "java");
+    assert_eq!(opened["desktopId"], "java");
+    assert_eq!(opened["resolved"], false);
+    assert_eq!(opened["windows"], 1);
+
+    let running = json(&call::<String>(&client, "Running", ()).unwrap());
+    assert_eq!(running[0]["key"], "java");
+    assert_eq!(running[0]["resolved"], false);
+
+    // The identity still did not pollute the resolution audit.
+    let (_, resolved, unresolved): (u32, u64, u64) = call(&client, "Stats", ()).unwrap();
+    assert_eq!(resolved, 0);
+    assert_eq!(unresolved, 0);
 }
