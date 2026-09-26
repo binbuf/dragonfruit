@@ -64,7 +64,9 @@ function(df_qml_lint target)
     )
 endfunction()
 
-add_subdirectory(design-system)
+# Shared libraries come first: the design-system gallery app links the system
+# font, and the shell/apps link it through their own targets.
 add_subdirectory(libs)
+add_subdirectory(design-system)
 add_subdirectory(shell)
 add_subdirectory(apps)

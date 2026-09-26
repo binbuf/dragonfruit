@@ -6122,3 +6122,70 @@ Gotchas for later tasks:
   locked — never a false unlock.
 - **Only the PAM auth+account phases run**; the session phase (keyring,
   systemd, selinux) does not run for a lock unlock.
+
+## System font — Inter (post-T82, before T83)
+
+**State: done (first-party half).** The desktop's type is now Inter 4.001
+(SIL OFL 1.1), bundled under `fonts/Inter/` and declared as the
+`primitive.font.family` token, replacing the host Qt/fontconfig default every
+first-party surface silently inherited. No roadmap unit covered the swap, so
+it landed out-of-band between T82 and T83; the remaining units and the T-17
+visual floor therefore bake in the final font instead of needing a later
+re-capture sweep.
+
+What landed:
+
+- **`fonts/Inter/`** (now tracked; T82's `/fonts/` .gitignore entry is gone) —
+  the roman and italic `opsz,wght` variable faces plus a README with
+  provenance.
+- **`libs/system-font/`** (new static library) — `Dragonfruit::installSystemFont()`
+  registers both faces from Qt resources (`Q_INIT_RESOURCE`, needed because a
+  static library's resource object is not linked unless referenced) and swaps
+  only the family on `QGuiApplication::font()`; idempotent, and it warns and
+  keeps the host default when a face is missing.
+- **Entry points** — `shell/src/main.cpp`, `apps/settings/main.cpp`,
+  `apps/files/main.cpp`, and `design-system/gallery/main.cpp` call it after
+  `QGuiApplication` exists and before QML loads. The gallery matters because
+  it renders the art-direction goldens.
+- **`design-system/tokens/tokens.json`** — `primitive.font.family: "Inter"`;
+  `Theme.qml` and `compositor/src/design_tokens.rs` regenerated (the
+  compositor draws no text; the Rust constant is for later SSD work).
+- **Tests** — `libs/system-font/tests/tst_systemfont.cpp` 7/7: the family
+  registers, the app default is Inter, weight/italic variants resolve without
+  falling back, the QML `Application.font` is Inter, and repeat calls are
+  no-ops.
+- **Docs** — `10-design-system.md` typography section; `NOTICE` and
+  `licensing.md` OFL entries; packaging-track scope note.
+
+Commands that work (repo root):
+
+- `make qml-test` — 42/42 (adds `tst_systemfont`).
+- `make visual-test` and `./scripts/check-gallery-snapshots.py --strict` —
+  72/72; `make gallery-snapshot` regenerated all 72 goldens, including the six
+  `slider_*`/`select_*` goldens that had been missing since T-50/T-51.
+
+Live check: `DF_STATUS_FIXTURE=1 make demo DEMO_ARGS="--socket-name
+dragonfruit-font-check"`, captured `/tmp/opencode/font-check.png`; vision
+confirms the menu bar, Settings window, and Dock render in Inter with no
+clipping, and the dev tool reported a clean teardown.
+
+Gotchas for later tasks:
+
+- **Third-party apps do not get Inter yet.** Only first-party Qt processes
+  install it in-process. GTK/Flatpak/XWayland apps still follow the host
+  fontconfig; T-16.9/T-16.10 must install `fonts/Inter/` system-wide with a
+  `sans-serif` alias (noted in the T-16 track) and ship
+  `LICENSES/OFL-1.1.txt` for OFL condition 2.
+- **QML component tests intentionally use the host font.** They are designed
+  to be font-rasterization-independent; only the gallery app (and its
+  goldens) installs Inter. A test that needs the desktop font can link
+  `dragonfruit-system-font` and call `installSystemFont()`.
+- **The family name lives in two places** by construction:
+  `primitive.font.family` (QML/Rust tokens) and `kFontFamily` in
+  `libs/system-font/systemfont.cpp`. Change both together.
+- **New first-party processes must opt in**: link `dragonfruit-system-font`
+  and call `installSystemFont()` in `main` before QML loads. The screenshot
+  UI, when T-13.3a gives it a process of its own, is the first such case.
+- **Goldens no longer follow the host's installed font** — all 72 use the
+  bundled Inter faces. Host hinting/rasterization can still differ, so the
+  default gate stays non-strict; a strict cross-host diff is not promised.

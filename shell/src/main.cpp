@@ -16,6 +16,7 @@
 #include <cstdio>
 
 #include "shellcontroller.h"
+#include "systemfont.h"
 
 int main(int argc, char *argv[])
 {
@@ -32,6 +33,9 @@ int main(int argc, char *argv[])
     QGuiApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("dragonfruit-shell"));
     app.setOrganizationName(QStringLiteral("dragonfruit"));
+
+    // The desktop's type, before any QML surface is created.
+    Dragonfruit::installSystemFont();
 
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral("Dragonfruit shell"));

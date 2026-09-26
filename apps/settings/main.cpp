@@ -6,11 +6,14 @@
 #include <QQuickWindow>
 #include <cstdio>
 
+#include "systemfont.h"
+
 int main(int argc, char *argv[])
 {
     QGuiApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("dragonfruit-settings"));
     app.setOrganizationName(QStringLiteral("dragonfruit"));
+    Dragonfruit::installSystemFont();
 
     QQmlApplicationEngine engine;
     QObject::connect(

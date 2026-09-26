@@ -27,6 +27,7 @@ qt_add_qml_module(dragonfruit-gallery-app
 )
 target_link_libraries(dragonfruit-gallery-app PRIVATE
     Qt6::Core Qt6::Gui Qt6::Quick
+    dragonfruit-system-font
     dragonfruit-design-systemplugin
     dragonfruit-galleryplugin
 )
