@@ -198,6 +198,24 @@ public:
     // Unmap the OSD surface (attach a null buffer).
     bool hideOsd();
 
+    // Create the FileChooser picker overlay (T-13.2b): a centered `overlay`
+    // layer surface, namespace "file-chooser", unmapped until a portal request
+    // arrives. It reserves nothing (`exclusive_zone = -1`) and takes the
+    // keyboard on demand so Escape and click-away dismissal work. `width`/
+    // `height` are the dialog surface size.
+    bool createChooserSurface(int width, int height);
+
+    // Set the dialog's clickable input region to the full `width` x `height`
+    // top-left rect (a non-positive size passes everything through). Applied
+    // with the next buffer commit.
+    bool setChooserInputRegion(int width, int height);
+
+    // Attach `image` to the chooser surface and commit.
+    bool commitChooserImage(const QImage &image);
+
+    // Unmap the chooser surface (attach a null buffer).
+    bool hideChooser();
+
     // --- session lock (T-12.3a) -------------------------------------------------
     //
     // Request the `ext-session-lock-v1` lock and create a lock surface on every
@@ -345,6 +363,13 @@ signals:
     void bannerConfigured(int width, int height, uint32_t serial);
     void controlCenterConfigured(int width, int height, uint32_t serial);
     void osdConfigured(int width, int height, uint32_t serial);
+    // FileChooser picker overlay (T-13.2b).
+    void chooserConfigured(int width, int height, uint32_t serial);
+    void chooserPointerMoved(qreal x, qreal y);
+    void chooserPointerButton(qreal x, qreal y, uint32_t button, bool pressed);
+    void chooserPointerLeft();
+    void chooserKeyboardFocused(bool focused);
+    void chooserKeyEvent(uint32_t key, bool pressed);
     // Session lock (T-12.3a): the compositor confirmed the lock, the lock
     // object finished on its own (`finished`), and one lock surface was
     // configured to a full-output size. `lockSurfaceId` is opaque and echoes
@@ -506,6 +531,8 @@ private:
                                          int32_t width, int32_t height);
     static void onOsdConfigure(void *data, df_layer_surface *layer, uint32_t serial,
                                int32_t width, int32_t height);
+    static void onChooserConfigure(void *data, df_layer_surface *layer, uint32_t serial,
+                                   int32_t width, int32_t height);
     // Session-lock listeners (T-12.3a).
     static void onSessionLockLocked(void *data, ext_session_lock_v1 *lock);
     static void onSessionLockFinished(void *data, ext_session_lock_v1 *lock);
@@ -681,6 +708,14 @@ private:
     wl_surface *m_osdSurface = nullptr;
     df_layer_surface *m_osdLayer = nullptr;
     bool m_osdMapped = false;
+    // FileChooser picker overlay (T-13.2b): a centered `overlay` surface
+    // mapped only while a portal request waits for a presenter. It takes the
+    // keyboard on demand.
+    wl_surface *m_chooserSurface = nullptr;
+    df_layer_surface *m_chooserLayer = nullptr;
+    bool m_chooserMapped = false;
+    bool m_pointerOnChooser = false;
+    bool m_keyboardOnChooser = false;
     // Session lock (T-12.3a): the manager, the lock object, the outputs a lock
     // surface has been (or will be) created on, and one lock surface per
     // output. `m_lockSurfaces` is keyed by the lock-surface object so the

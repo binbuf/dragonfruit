@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(55 earlier sections omitted)_
+_(56 earlier sections omitted)_
 
-- **T52 — T-09.4 Desktop & Dock pane**: **State: done.** The Desktop & Dock pane is real and live: the `Dock` group; **`apps/settings/DesktopDockPane.qml`** (new) — `SettingsGroup` "Dock" with
 - **T53 — T-09.5 Displays-basic pane**: **State: done.** The Displays-basic pane is real and live: the `Built-in; **Schema (since 3)** — `display.scale` (d, 0.5–2.0, default 1.0),
 - **T54 — T-09.6a Settings menu-model publication**: **State: done.** The Settings app publishes its native menu model and the; **`apps/settings/SettingsMenu.qml`** (new; QML singleton) — single source of
 - **T55 — T-09.6b Settings absence matrix and wave captures**: **State: done.** The T-09 Settings wave is signed off: the absent-provider; **`docs/design/08-settings.md`** — new "The absent-provider matrix (T-09.6b)"
@@ -45,6 +44,7 @@ _(55 earlier sections omitted)_
 - **T88 — T-13.1a Portal backend and session service**: **State: done.** `portal/` is now a real session-bus portal backend plus its; **`portal/src/`** (new `[lib]` + existing binary) — `model` (pure:
 - **T89 — T-13.1b Settings and GlobalShortcuts portals**: **State: done.** The backend now serves the first two standard interfaces at; **`portal/src/settings.rs`** (new) — the pure projection:
 - **T90 — T-13.2a FileChooser portal**: **State: done.** The backend now serves the standard FileChooser interface; **`portal/src/chooser.rs`** (new) — the pure model: `ChooserKind`
+- **T91 — T-13.2b FileChooser picker UI**: **State: done.** The FileChooser portal now has its dialog: a design-system; **`shell/screenshot/FileChooser.qml`** (new) — the pure view: title, an Up
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -6740,3 +6740,78 @@ Gotchas for later tasks:
   an object path on the wire — a test client must send an `ObjectPath`, not a
   `String`.
 - T-13.2b adds the picker UI; T-13.7 adds the real frontend routing check.
+
+## T91 — T-13.2b FileChooser picker UI
+
+**State: done.** The FileChooser portal now has its dialog: a design-system
+picker rendered by the shell into a centred `file-chooser` overlay surface,
+fed by a presenter bridge that watches `FileChooserOpened` and returns the
+selection over `CompleteFileChooser`. Browsing is files-core, in-process.
+Contract frozen in ADR
+[0077](design/adr/0077-filechooser-picker-seat.md).
+
+What landed:
+
+- **`shell/screenshot/FileChooser.qml`** (new) — the pure view: title, an Up
+  control and folder breadcrumb, the entry list (folders-first, natural order
+  from files-core), a SaveFile name field, a status line, and Cancel plus the
+  caller's `accept_label`. Emits `selectionChanged`/`entryActivated`/
+  `browseRequested`/`upRequested`/`nameEdited`/`accepted`/`cancelled`; no D-Bus.
+- **`shell/src/chooserbridge.{h,cpp}`** (new, dockcore) — `ChooserBridge`:
+  subscribes to `org.dragonfruit.Portal1.FileChooserOpened`, decodes the
+  request's options (`current_folder`/`current_file`, `multiple`, `directory`,
+  `accept_label`), lists folders through files-core, and answers with
+  `CompleteFileChooser`/`CancelFileChooser`. A missing portal is a normal
+  state. `begin()` is shared by the live signal and the fixture.
+- **`shell/src/files_core_list.h`** (new) — the listing slice of the
+  files-core C ABI, mirroring `files_core_trash.h`; keeps the shell's two
+  translations units in lockstep with `ffi.rs`.
+- **`shell/src/shellprotocol.{h,cpp}`** — `createChooserSurface`/
+  `commitChooserImage`/`hideChooser`/`setChooserInputRegion` (overlay layer,
+  namespace `file-chooser`, unanchored = centred, `ON_DEMAND` keyboard) and
+  pointer/keyboard routing signals. No compositor change: layer namespaces are
+  generic. `teardown()` destroys `m_chooserLayer`/`m_chooserSurface` like every
+  sibling overlay (fixed in a later session; the first pass leaked them to the
+  display disconnect).
+- **`shell/src/shellcontroller.{h,cpp}`** — owns the bridge and the offscreen
+  QML scene, maps/unmaps the surface on `started`/`finished`, routes pointer,
+  keyboard (Escape cancels, Return accepts) and the view's signals, and
+  presents a fixture under `DF_CHOOSER_FIXTURE` (a folder to browse; empty/`1`
+  = home).
+- **Tests** — `shell/tests/tst_chooser.cpp` (listing, folders-first selection,
+  SaveFile join, go-up, cancel, directory mode, and a real round-trip against a
+  fake `org.dragonfruit.Portal1` on the private bus) and
+  `shell/tests/tst_chooserui.{cpp,qml}` (the view).
+
+Commands that work (repo root):
+
+- `ctest --test-dir build --output-on-failure` — 45/45 pass, including
+  `tst_chooser` (needs `dbus-run-session`; skips the live half without a bus)
+  and `tst_chooserui`.
+- `make lint`, `make e2e` re-run after the change.
+
+Live check (re-run and image-inspected in a later session):
+`DF_CHOOSER_FIXTURE=/tmp/opencode/t91 make demo DEMO_ARGS="--socket-name
+dragonfruit-t91-capture"` mapped the picker over the desktop; full-screen still
+`/tmp/opencode/t91-chooser.png` captured with `spectacle -b -n -f` and analysed
+with `.symphony/symphony vision` — centred 640×440 card titled "Open File",
+breadcrumb `/tmp/opencode/t91`, folders-first rows `alpha`, `beta`, then
+`notes.md`/`report.pdf`/`zeta.txt` with sizes, and `Cancel`/`Open` footer
+buttons, no clipping or overlap. Log confirms `FileChooser scene-graph commit
+path active`.
+
+Gotchas for later tasks:
+
+- **`ChooserBridge` lists in-process through files-core, not the portal's
+  diagnostic `ListDirectory`.** That is deliberate: the fixture renders a real
+  listing with no portal. `ListDirectory` remains the backend's own seam for
+  `portal/tests/filechooser.rs`.
+- **The portal normalizes the final selection.** The bridge sends the entry's
+  canonical `file://` URI (or a SaveFile local path); anything files-core
+  cannot address locally is the portal's to discard.
+- **The surface is created at startup but unmapped until a request.** Absence
+  of the portal or a presenter is a silent, supported state.
+- **`accept_label` is honoured verbatim** when non-empty, else falls back to
+  Open/Save/Choose from `kind`.
+- T-13.7 owns the real `xdg-desktop-portal` routing and Flatpak walkthrough;
+  T-13.3a/T-13.4a reuse the same `shell/screenshot` overlay module.

@@ -412,3 +412,29 @@ one-shot completion (ADR [0076](adr/0076-filechooser-portal-and-presenter-seam.m
   answers code 1, and `ListDirectory` proves the files-core link. The
   options/result and registry logic live in `portal::chooser` and are
   unit-tested without a bus.
+
+### The picker UI (T-13.2b)
+
+The presenter T-13.2a deferred is a shell overlay surface (ADR
+[0077](adr/0077-filechooser-picker-seat.md)):
+
+- **The view is `Dragonfruit.Screenshot`/`FileChooser.qml`** — a pure
+  design-system dialog (title from the request, an Up control and folder
+  breadcrumb, the entry list with folders first, a SaveFile name field, and
+  Cancel plus the caller's `accept_label`). It owns no D-Bus.
+- **`ChooserBridge` (`shell/src/chooserbridge.{h,cpp}`, dockcore)** is the
+  presenter: it watches `FileChooserOpened`, publishes the request and rows to
+  the view, and answers with `CompleteFileChooser`/`CancelFileChooser`. A
+  missing portal is a supported state — the picker simply never opens.
+- **Browsing is still files-core's.** The bridge lists through the C ABI
+  (`df_files_begin`/`df_files_poll`, the `files_core_list.h` slice) in-process,
+  the one implementation Files and `ListDirectory` use. The portal normalizes
+  the final selection as before.
+- **`ShellController`/`ShellProtocol`** add the centred `file-chooser` overlay
+  surface (on-demand keyboard, card-sized input region) and render into it
+  while a request waits. `DF_CHOOSER_FIXTURE=<folder>` presents it for the
+  live visual check with no portal.
+- `tst_chooser` (bridge: listing, selection, save, go-up, cancel, and a
+  round-trip against a fake `org.dragonfruit.Portal1`) and `tst_chooserui`
+  (the view) are the headless proof; `portal/tests/filechooser.rs` still proves
+  the backend half. T-13.7 adds the real frontend routing check.

@@ -380,3 +380,49 @@ set_tests_properties(tst_lockinput PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+# FileChooser picker bridge tests (T-13.2b): the pure request model lists
+# through files-core, selection/navigation/SaveFile-name logic, and the live
+# `ChooserBridge` returning a selection to a fake `org.dragonfruit.Portal1`
+# presenter on the private session bus. No QML, Wayland, or compositor.
+qt_add_executable(tst_chooser
+    tst_chooser.cpp
+)
+target_link_libraries(tst_chooser PRIVATE
+    Qt6::Core Qt6::Test Qt6::DBus
+    dragonfruit-shell-dockcore
+)
+
+if(DBUS_RUN_SESSION)
+    add_test(
+        NAME tst_chooser
+        COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:tst_chooser>
+    )
+else()
+    add_test(NAME tst_chooser COMMAND tst_chooser)
+endif()
+set_tests_properties(tst_chooser PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+# FileChooser picker view tests (T-13.2b): the entry rows, selection, folder
+# activation, SaveFile name field, accept enablement, and Escape dismissal.
+qt_add_executable(tst_chooserui
+    tst_chooserui.cpp
+)
+target_link_libraries(tst_chooserui PRIVATE
+    Qt6::QuickTest
+    dragonfruit-design-systemplugin
+    dragonfruit-shell-screenshotplugin
+)
+qt_import_qml_plugins(tst_chooserui)
+
+add_test(
+    NAME tst_chooserui
+    COMMAND tst_chooserui -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_chooserui.qml
+)
+set_tests_properties(tst_chooserui PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)

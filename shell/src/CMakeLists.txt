@@ -42,6 +42,7 @@ endif()
 # small static library so `tst_dockcore` can unit-test it without the
 # compositor or the Wayland stack. The resolver is deleted when T-23 lands.
 add_library(dragonfruit-shell-dockcore STATIC
+    chooserbridge.cpp
     compositorpolicy.cpp
     controlcenterpolicy.cpp
     desktopentry.cpp
@@ -141,6 +142,7 @@ target_link_libraries(dragonfruit-shell PRIVATE
     dragonfruit-shell-control-centerplugin
     dragonfruit-shell-osdplugin
     dragonfruit-shell-lockplugin
+    dragonfruit-shell-screenshotplugin
 )
 if(TARGET PkgConfig::WAYLAND_CLIENT)
     target_link_libraries(dragonfruit-shell PRIVATE PkgConfig::WAYLAND_CLIENT)

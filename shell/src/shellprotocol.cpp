@@ -626,6 +626,83 @@ bool ShellProtocol::hideOsd()
     return true;
 }
 
+// --- FileChooser picker overlay (T-13.2b) ----------------------------------
+
+bool ShellProtocol::createChooserSurface(int width, int height)
+{
+    if (m_chooserSurface || m_chooserLayer)
+        return true;
+    if (!m_shell || !m_compositor)
+        return fail(QStringLiteral("df_shell is not available"));
+
+    m_chooserSurface = wl_compositor_create_surface(m_compositor);
+    m_chooserLayer = df_shell_get_layer_surface(m_shell, m_chooserSurface, nullptr,
+                                                DF_SHELL_LAYER_OVERLAY, "file-chooser");
+    if (!m_chooserLayer)
+        return fail(QStringLiteral("compositor refused the file-chooser layer surface"));
+    static const df_layer_surface_listener listener = { onChooserConfigure, onLayerClosed };
+    df_layer_surface_add_listener(m_chooserLayer, &listener, this);
+
+    // No anchors: the compositor centers the dialog on the output. Reserve
+    // nothing; take the keyboard on demand so Escape rejects and a click
+    // elsewhere (which moves chrome keyboard focus away) dismisses it.
+    df_layer_surface_set_size(m_chooserLayer, width, height);
+    df_layer_surface_set_exclusive_zone(m_chooserLayer, -1);
+    df_layer_surface_set_keyboard_interaction(m_chooserLayer,
+                                              DF_LAYER_SURFACE_KEYBOARD_INTERACTION_ON_DEMAND);
+    // Everything passes through until the dialog's own input region is applied
+    // with its first committed buffer.
+    wl_region *region = wl_compositor_create_region(m_compositor);
+    if (region) {
+        wl_surface_set_input_region(m_chooserSurface, region);
+        wl_region_destroy(region);
+    }
+    wl_surface_attach(m_chooserSurface, nullptr, 0, 0);
+    wl_surface_commit(m_chooserSurface);
+    if (wl_display_flush(m_display) < 0)
+        return fail(QStringLiteral("failed to flush the file-chooser surface creation"));
+    return true;
+}
+
+bool ShellProtocol::setChooserInputRegion(int width, int height)
+{
+    if (!m_chooserSurface || !m_compositor)
+        return false;
+    wl_region *region = wl_compositor_create_region(m_compositor);
+    if (!region)
+        return false;
+    if (width > 0 && height > 0)
+        wl_region_add(region, 0, 0, width, height);
+    // Applied with the next buffer commit (`commitChooserImage`).
+    wl_surface_set_input_region(m_chooserSurface, region);
+    wl_region_destroy(region);
+    return true;
+}
+
+bool ShellProtocol::commitChooserImage(const QImage &image)
+{
+    if (!m_chooserSurface)
+        return false;
+    if (!commitTo(m_chooserSurface, image))
+        return false;
+    m_chooserMapped = true;
+    return true;
+}
+
+bool ShellProtocol::hideChooser()
+{
+    if (!m_chooserSurface || !m_chooserLayer)
+        return false;
+    if (!m_chooserMapped)
+        return true;
+    wl_surface_attach(m_chooserSurface, nullptr, 0, 0);
+    wl_surface_commit(m_chooserSurface);
+    m_chooserMapped = false;
+    if (m_display)
+        wl_display_flush(m_display);
+    return true;
+}
+
 // --- session lock (T-12.3a) -------------------------------------------------
 
 void ShellProtocol::createLockSurfaces()
@@ -1307,6 +1384,10 @@ void ShellProtocol::teardown()
         df_layer_surface_destroy(m_osdLayer);
     if (m_osdSurface)
         wl_surface_destroy(m_osdSurface);
+    if (m_chooserLayer)
+        df_layer_surface_destroy(m_chooserLayer);
+    if (m_chooserSurface)
+        wl_surface_destroy(m_chooserSurface);
     if (m_bannerLayer)
         df_layer_surface_destroy(m_bannerLayer);
     if (m_bannerSurface)
@@ -1381,8 +1462,10 @@ void ShellProtocol::teardown()
     m_pointerOnOverview = false;
     m_pointerOnBanner = false;
     m_pointerOnControlCenter = false;
+    m_pointerOnChooser = false;
     m_keyboardOnOverview = false;
     m_keyboardOnControlCenter = false;
+    m_keyboardOnChooser = false;
     m_controlCenterLayer = nullptr;
     m_controlCenterSurface = nullptr;
     m_controlCenterMapped = false;
@@ -1566,6 +1649,15 @@ void ShellProtocol::onOsdConfigure(void *data, df_layer_surface *, uint32_t seri
     if (self->m_osdLayer)
         df_layer_surface_ack_configure(self->m_osdLayer, serial);
     emit self->osdConfigured(width, height, serial);
+}
+
+void ShellProtocol::onChooserConfigure(void *data, df_layer_surface *, uint32_t serial,
+                                       int32_t width, int32_t height)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    if (self->m_chooserLayer)
+        df_layer_surface_ack_configure(self->m_chooserLayer, serial);
+    emit self->chooserConfigured(width, height, serial);
 }
 
 // --- ext_session_lock_v1 (T-12.3a) -----------------------------------------
@@ -1839,8 +1931,16 @@ void ShellProtocol::onPointerEnter(void *data, wl_pointer *, uint32_t, wl_surfac
         self->m_controlCenterSurface && surface == self->m_controlCenterSurface;
     self->m_pointerOnOverview =
         self->m_overviewSurface && surface == self->m_overviewSurface;
+    self->m_pointerOnChooser =
+        self->m_chooserSurface && surface == self->m_chooserSurface;
     self->m_pointerX = wl_fixed_to_double(x) + (self->m_pointerOnPopup ? self->m_popupX : 0);
     self->m_pointerY = wl_fixed_to_double(y) + (self->m_pointerOnPopup ? self->m_popupY : 0);
+    if (self->m_pointerOnChooser) {
+        self->m_pointerX = wl_fixed_to_double(x);
+        self->m_pointerY = wl_fixed_to_double(y);
+        emit self->chooserPointerMoved(self->m_pointerX, self->m_pointerY);
+        return;
+    }
     if (self->m_pointerOnControlCenter) {
         self->m_pointerX = wl_fixed_to_double(x);
         self->m_pointerY = wl_fixed_to_double(y);
@@ -1880,6 +1980,7 @@ void ShellProtocol::onPointerLeave(void *data, wl_pointer *, uint32_t, wl_surfac
     const bool wasOverview = self->m_pointerOnOverview;
     const bool wasBanner = self->m_pointerOnBanner;
     const bool wasControlCenter = self->m_pointerOnControlCenter;
+    const bool wasChooser = self->m_pointerOnChooser;
     const bool wasDockPopup = self->m_pointerOnDockPopup;
     const bool wasDock = self->m_pointerOnDock;
     self->m_pointerOnPopup = false;
@@ -1888,7 +1989,10 @@ void ShellProtocol::onPointerLeave(void *data, wl_pointer *, uint32_t, wl_surfac
     self->m_pointerOnBanner = false;
     self->m_pointerOnControlCenter = false;
     self->m_pointerOnOverview = false;
-    if (wasOverview)
+    self->m_pointerOnChooser = false;
+    if (wasChooser)
+        emit self->chooserPointerLeft();
+    else if (wasOverview)
         emit self->overviewPointerLeft();
     else if (wasControlCenter)
         emit self->controlCenterPointerLeft();
@@ -1908,6 +2012,12 @@ void ShellProtocol::onPointerMotion(void *data, wl_pointer *, uint32_t, wl_fixed
     auto *self = static_cast<ShellProtocol *>(data);
     self->m_pointerX = wl_fixed_to_double(x) + (self->m_pointerOnPopup ? self->m_popupX : 0);
     self->m_pointerY = wl_fixed_to_double(y) + (self->m_pointerOnPopup ? self->m_popupY : 0);
+    if (self->m_pointerOnChooser) {
+        self->m_pointerX = wl_fixed_to_double(x);
+        self->m_pointerY = wl_fixed_to_double(y);
+        emit self->chooserPointerMoved(self->m_pointerX, self->m_pointerY);
+        return;
+    }
     if (self->m_pointerOnControlCenter) {
         self->m_pointerX = wl_fixed_to_double(x);
         self->m_pointerY = wl_fixed_to_double(y);
@@ -1945,6 +2055,11 @@ void ShellProtocol::onPointerButton(void *data, wl_pointer *, uint32_t, uint32_t
                                     uint32_t state)
 {
     auto *self = static_cast<ShellProtocol *>(data);
+    if (self->m_pointerOnChooser) {
+        emit self->chooserPointerButton(self->m_pointerX, self->m_pointerY, button,
+                                        state == WL_POINTER_BUTTON_STATE_PRESSED);
+        return;
+    }
     if (self->m_pointerOnControlCenter) {
         emit self->controlCenterPointerButton(self->m_pointerX, self->m_pointerY, button,
                                               state == WL_POINTER_BUTTON_STATE_PRESSED);
@@ -1993,6 +2108,8 @@ void ShellProtocol::onKeyboardEnter(void *data, wl_keyboard *, uint32_t, wl_surf
         self->m_overviewSurface && surface == self->m_overviewSurface;
     self->m_keyboardOnControlCenter =
         self->m_controlCenterSurface && surface == self->m_controlCenterSurface;
+    self->m_keyboardOnChooser =
+        self->m_chooserSurface && surface == self->m_chooserSurface;
     self->m_keyboardOnLock = self->isLockSurface(surface);
     emit self->keyboardFocused(true);
     if (self->m_keyboardOnDock)
@@ -2001,6 +2118,8 @@ void ShellProtocol::onKeyboardEnter(void *data, wl_keyboard *, uint32_t, wl_surf
         emit self->overviewKeyboardFocused(true);
     if (self->m_keyboardOnControlCenter)
         emit self->controlCenterKeyboardFocused(true);
+    if (self->m_keyboardOnChooser)
+        emit self->chooserKeyboardFocused(true);
 }
 
 void ShellProtocol::onKeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surface *surface)
@@ -2012,9 +2131,12 @@ void ShellProtocol::onKeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surf
             || (self->m_overviewSurface && surface == self->m_overviewSurface);
     const bool wasControlCenter = self->m_keyboardOnControlCenter
             || (self->m_controlCenterSurface && surface == self->m_controlCenterSurface);
+    const bool wasChooser = self->m_keyboardOnChooser
+            || (self->m_chooserSurface && surface == self->m_chooserSurface);
     self->m_keyboardOnDock = false;
     self->m_keyboardOnOverview = false;
     self->m_keyboardOnControlCenter = false;
+    self->m_keyboardOnChooser = false;
     self->m_keyboardOnLock = false;
     emit self->keyboardFocused(false);
     if (wasDock)
@@ -2023,6 +2145,8 @@ void ShellProtocol::onKeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surf
         emit self->overviewKeyboardFocused(false);
     if (wasControlCenter)
         emit self->controlCenterKeyboardFocused(false);
+    if (wasChooser)
+        emit self->chooserKeyboardFocused(false);
 }
 
 void ShellProtocol::onKeyboardKey(void *data, wl_keyboard *, uint32_t, uint32_t, uint32_t key,
@@ -2034,6 +2158,10 @@ void ShellProtocol::onKeyboardKey(void *data, wl_keyboard *, uint32_t, uint32_t,
     if (self->m_keyboardOnLock) {
         emit self->lockKeyEvent(key, state == WL_KEYBOARD_KEY_STATE_PRESSED,
                                 self->m_keyboardShift);
+        return;
+    }
+    if (self->m_keyboardOnChooser) {
+        emit self->chooserKeyEvent(key, state == WL_KEYBOARD_KEY_STATE_PRESSED);
         return;
     }
     emit self->keyEvent(key, state == WL_KEYBOARD_KEY_STATE_PRESSED);
