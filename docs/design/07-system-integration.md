@@ -562,3 +562,40 @@ surface. Contract in
   raises copy / pin / clear requests; copying an entry re-serves it through the
   data-control device — the one time the shell takes selection ownership.
   `tst_clipboardhistory` and the Control Center tests are the headless proof.
+
+## polkit authentication agent (T-13.6)
+
+Privileged operations are authorized by polkit; the shell hosts the
+authentication agent so their prompts use one design-system dialog instead of a
+toolkit default. The presentation is ours; the stack is the host's
+([adr/0084](adr/0084-polkit-authentication-agent.md)). Nothing of ours runs as
+root and no credential is verified by us.
+
+- **The agent is a real polkit agent.** `PolkitAgent`
+  (`shell/src/polkitagent.*`, dockcore) exports
+  `org.freedesktop.PolicyKit1.AuthenticationAgent` at a Dragonfruit path on the
+  **system bus** and registers it with `org.freedesktop.PolicyKit1` as the
+  shell's session agent (a process subject when there is no session id, and an
+  explicit seam for a dev/test session). Registration is asynchronous: an
+  absent authority, or another agent already serving the subject, is a normal
+  degraded state — the desktop keeps working and the dialog simply never opens.
+- **The host helper owns PAM.** `PolkitHelperSession`
+  (`shell/src/polkitsession.*`) spawns the distribution's
+  `polkit-agent-helper-1` (or connects to `/run/polkit/agent-helper.socket` on
+  setuid-free polkit hosts), writes the authority's cookie, relays the PAM
+  `PAM_PROMPT_*`/`PAM_TEXT_INFO`/`PAM_ERROR_MSG` lines, and forwards the typed
+  answer. The helper reports `SUCCESS`/`FAILURE` to the authority itself, so the
+  shell never calls `AuthenticationAgentResponse` and never sees a credential
+  decision. The response buffer is keyed by `ShellController` (the compositor
+  delivers raw key codes, not text) and cleared as it is written.
+- **The prompt is a shell overlay.** `Dragonfruit.Screenshot`/
+  `PolkitDialog.qml` is a pure view — title, action message, identity,
+  masked password field, an expandable details list, and Cancel/Authenticate —
+  rendered into a centered `polkit` layer surface. `DF_POLKIT_FIXTURE` presents
+  a synthetic request for the live capture. Cancel, Escape, lost keyboard, or a
+  helper failure all resolve the request as failure: the agent is fail-closed.
+- `tst_polkitagent` proves the helper conversation against fake helper scripts,
+  the D-Bus agent against a fake authority on a private bus, a refused
+  registration, the fixture, and — when the host runs polkit — a **real
+  `pkcheck` request** that raises the agent. `tst_polkitui` covers the view.
+  T-13.7 exercises it through a real Flatpak/browser walkthrough.

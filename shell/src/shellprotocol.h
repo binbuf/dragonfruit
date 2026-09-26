@@ -256,6 +256,24 @@ public:
     // Unmap the screencast surface (attach a null buffer).
     bool hideScreenCast();
 
+    // Create the polkit authentication dialog overlay (T-13.6): a centered
+    // `overlay` layer surface, namespace "polkit", unmapped until a privileged
+    // request is presented. It reserves nothing (`exclusive_zone = -1`) and
+    // takes the keyboard on demand so Escape declines and the password keys
+    // reach the agent. `width`/`height` are the dialog surface size.
+    bool createPolkitSurface(int width, int height);
+
+    // Set the dialog's clickable input region to the full `width` x `height`
+    // top-left rect (a non-positive size passes everything through). Applied
+    // with the next buffer commit.
+    bool setPolkitInputRegion(int width, int height);
+
+    // Attach `image` to the polkit surface and commit.
+    bool commitPolkitImage(const QImage &image);
+
+    // Unmap the polkit surface (attach a null buffer).
+    bool hidePolkit();
+
     // The ScreenCast source projection (T-13.4a): one entry per offered source
     // (`id`, `kind` (`monitor`/`window`), `label`, `detail`). Monitors come
     // first so the picker's sections order correctly. The shell's one source of
@@ -444,6 +462,14 @@ signals:
     void screencastPointerLeft();
     void screencastKeyboardFocused(bool focused);
     void screencastKeyEvent(uint32_t key, bool pressed);
+    // polkit authentication dialog overlay (T-13.6). The key event carries the
+    // live Shift state so the password field can map shifted keys.
+    void polkitConfigured(int width, int height, uint32_t serial);
+    void polkitPointerMoved(qreal x, qreal y);
+    void polkitPointerButton(qreal x, qreal y, uint32_t button, bool pressed);
+    void polkitPointerLeft();
+    void polkitKeyboardFocused(bool focused);
+    void polkitKeyEvent(uint32_t key, bool pressed, bool shift);
     // Single-frame capture result (T-13.3b): the compositor rendered the
     // selection and wrote a PNG (`screenshotSaved`), or could not
     // (`screenshotFailed`, reason for logs).
@@ -621,6 +647,8 @@ private:
                                       int32_t width, int32_t height);
     static void onScreenCastConfigure(void *data, df_layer_surface *layer, uint32_t serial,
                                       int32_t width, int32_t height);
+    static void onPolkitConfigure(void *data, df_layer_surface *layer, uint32_t serial,
+                                  int32_t width, int32_t height);
     // Session-lock listeners (T-12.3a).
     static void onSessionLockLocked(void *data, ext_session_lock_v1 *lock);
     static void onSessionLockFinished(void *data, ext_session_lock_v1 *lock);
@@ -842,6 +870,13 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
     bool m_screencastMapped = false;
     bool m_pointerOnScreenCast = false;
     bool m_keyboardOnScreenCast = false;
+    // polkit authentication dialog overlay (T-13.6): a centered `overlay`
+    // surface mapped only while a privileged request is presented.
+    wl_surface *m_polkitSurface = nullptr;
+    df_layer_surface *m_polkitLayer = nullptr;
+    bool m_polkitMapped = false;
+    bool m_pointerOnPolkit = false;
+    bool m_keyboardOnPolkit = false;
     // Session lock (T-12.3a): the manager, the lock object, the outputs a lock
     // surface has been (or will be) created on, and one lock surface per
     // output. `m_lockSurfaces` is keyed by the lock-surface object so the

@@ -61,6 +61,8 @@ add_library(dragonfruit-shell-dockcore STATIC
     notificationclient.cpp
     notificationmodel.cpp
     osdmodel.cpp
+    polkitagent.cpp
+    polkitsession.cpp
     screencastbridge.cpp
     screenshotbridge.cpp
     screenshotwriter.cpp
@@ -73,7 +75,7 @@ add_library(dragonfruit-shell-dockcore STATIC
 # `dragonfruit-files-core` is the Rust staticlib: the Dock's Trash state comes
 # from files-core's one freedesktop Trash store (T-10.6a).
 target_link_libraries(dragonfruit-shell-dockcore PUBLIC
-    Qt6::Core Qt6::Gui Qt6::DBus
+    Qt6::Core Qt6::Gui Qt6::DBus Qt6::Network
     dragonfruit-settings-client
     dragonfruit-files-core
 )

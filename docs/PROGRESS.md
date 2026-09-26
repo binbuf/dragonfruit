@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(63 earlier sections omitted)_
+_(64 earlier sections omitted)_
 
-- **T60 — T-10.3a files-core trash**: **State: done.** `files-core` now speaks the freedesktop Trash spec and the; **`services/files-core/src/trash.rs`** (new) — the trash engine:
 - **T61 — T-10.3b files-core folder watcher**: **State: done.** `files-core` now has the one change monitor: one watch per; **`services/files-core/src/watch.rs`** (new) — the watch seam and fallback:
 - **T62 — T-10.4a Files window, toolbar, and sidebar**: **State: done.** The Files window, toolbar, and sidebar are real. `apps/files`; **`apps/files/FilesBridge.{h,cpp}`** — `QML_SINGLETON`, `QML_NAMED_ELEMENT(Files)`:
 - **T63 — T-10.4b Files list and icon views**: **State: done.** The Files icon and list views render the `files-core` listing.; **`services/files-core/src/ffi.rs`** (new) — the C ABI: `df_files_begin`,
@@ -44,6 +43,7 @@ _(63 earlier sections omitted)_
 - **T95 — T-13.4b ScreenCast stream and stills fallback**: **State: done.** The ScreenCast stream now goes through one transport seam, and; **`portal/src/stream.rs`** (new) — `StreamMode` (`pipewire`/`stills`),
 - **T96 — T-13.5a Clipboard text/image/uri-list round-trips**: **State: done.** The clipboard round-trip matrix is proven on the headless; **`compositor/tests/shell_protocol_conformance.rs`** — new
 - **T97 — T-13.5b Clipboard history (if specified)**: **State: done.** The design calls for history (ADR 0082's accepted consequences; **`shell/src/clipboardhistory.{h,cpp}`** (new, dockcore) — `ClipboardHistory`:
+- **T98 — T-13.6 polkit authentication agent**: **State: done.** A privileged polkit request now raises a Dragonfruit; **`shell/src/polkitagent.{h,cpp}`** (dockcore) — `PolkitAgent` exports
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -7274,3 +7274,77 @@ Gotchas for later tasks:
   than grow the surface without bound.
 - The C++ data-control client has no headless test (needs a live compositor);
   the store and view are covered. A Rust conformance client would close that.
+
+## T98 — T-13.6 polkit authentication agent
+
+**State: done.** A privileged polkit request now raises a Dragonfruit
+design-system dialog. The shell hosts a real polkit authentication agent; the
+host's `polkit-agent-helper-1` still owns the PAM conversation and reports to
+the authority, so we never verify a credential or escalate privilege. Contract
+frozen in ADR [0084](design/adr/0084-polkit-authentication-agent.md).
+
+What landed:
+
+- **`shell/src/polkitagent.{h,cpp}`** (dockcore) — `PolkitAgent` exports
+  `org.freedesktop.PolicyKit1.AuthenticationAgent` as a `QDBusVirtualObject` at
+  `/org/dragonfruit/PolicyKit1/AuthenticationAgent` on the **system bus** and
+  registers with `org.freedesktop.PolicyKit1` as the shell's session agent
+  (`unix-session` from `XDG_SESSION_ID`; process-subject overrides
+  `DF_POLKIT_SUBJECT_SESSION` / `DF_POLKIT_SUBJECT_PID` and setters). It parses
+  the `(sa{sv})` identities by hand (the attr is `uid`, not `name`), resolves
+  the username with `getpwuid`, queues concurrent requests, and registers
+  **asynchronously** so a missing/slow authority never blocks startup. Absent
+  authority or an existing agent for the subject is a normal degraded state.
+- **`shell/src/polkitsession.{h,cpp}`** (dockcore) — `PolkitHelperSession`: the
+  host helper boundary. Spawns `polkit-agent-helper-1 <user>` (override
+  `DF_POLKIT_HELPER`; also `QLocalSocket` to `/run/polkit/agent-helper.socket`
+  on polkit 127+ hosts), writes the cookie on stdin, relays the escaped PAM
+  lines, and forwards the response. The helper, not the agent, calls
+  `AuthenticationAgentResponse`.
+- **`shell/screenshot/PolkitDialog.qml`** — pure view: title, identity, action
+  message, masked field, expandable details, Cancel/Authenticate.
+- **`shell/src/shellprotocol.{h,cpp}`** — a centered `polkit` overlay surface
+  (namespace `polkit`, on-demand keyboard, pointer + shift-aware key routing).
+- **`shell/src/shellcontroller.{h,cpp}`** — maps the dialog, owns the response
+  buffer (`dragonfruit::lockKeyFromEvdev`, same as the lock screen), submits on
+  Return, cancels on Escape/lost keyboard, and presents `DF_POLKIT_FIXTURE`.
+- **Tests** — `tst_polkitagent.cpp` (11 cases incl. a **real `pkcheck` request**
+  against the host polkitd) and `tst_polkitui.qml` (8 cases). `shell/src`
+  dockcore now links `Qt6::Network` (for `QLocalSocket`).
+
+Commands that work (repo root):
+
+- `ctest --test-dir build --output-on-failure` — 53/53.
+- `make lint` — exit 0; `make e2e` — exit 0 (the polkit surface is created and
+  configured in the scripted demo).
+- Run the agent test directly:
+  `dbus-run-session -- build/shell/tests/tst_polkitagent` (the fake-authority
+  half needs the private session bus; the real-polkit half uses the system bus
+  and skips when absent).
+- Build note (unchanged): `export PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig:$PKG_CONFIG_PATH`
+  and `RUSTFLAGS="-L $HOME/.local/df-devroot/lib64"` (or just `make`).
+
+Live check: `DF_POLKIT_FIXTURE=1 make demo DEMO_ARGS="--socket-name
+dragonfruit-t98"`, captured with `spectacle -b -n -f` →
+`/tmp/opencode/t98/polkit.png`. Vision: the centered dialog shows
+"Authentication Required", identity "user", "Authentication is required to
+manage system services or other units.", the "Enter your password" field,
+"Show details", Cancel/Authenticate; the menu bar and Dock render normally; 0
+binding loops.
+
+Gotchas for later tasks:
+
+- **A dev host's own agent (here the KDE agent) owns the session subject.**
+  Dragonfruit's session registration is refused and logs a registration error —
+  the intended degradation; the desktop keeps working. The real-request test
+  and a dev session avoid it by registering for a process subject
+  (`DF_POLKIT_SUBJECT_PID`); in a Dragonfruit session the session agent
+  registers cleanly.
+- **The helper is the only credential path.** Never call
+  `AuthenticationAgentResponse` from the shell and never add a second privilege
+  scheme; a future auth method (T-15) extends `PolkitHelperSession`.
+- The password field reuses the lock screen's fixed US/ASCII evdev mapping
+  (T-12.3c); a non-US layout is the same known limitation.
+- `DF_POLKIT_FIXTURE` resolves locally (`presentLocal`) with no helper.
+- Registering the agent object on the system bus requires no root; the agent
+  path is fixed and one per process.
