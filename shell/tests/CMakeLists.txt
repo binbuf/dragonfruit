@@ -341,3 +341,23 @@ set_tests_properties(tst_lock PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+# Lock-auth seam tests (T-12.3b): the shell side of the PAM helper process
+# boundary against a fake helper script — success, rejected, unavailable, the
+# one-at-a-time guard, and helper resolution. No PAM, Wayland, or QML.
+qt_add_executable(tst_lockauth
+    tst_lockauth.cpp
+)
+target_link_libraries(tst_lockauth PRIVATE
+    Qt6::Core Qt6::Test
+    dragonfruit-shell-dockcore
+)
+
+add_test(
+    NAME tst_lockauth
+    COMMAND tst_lockauth
+)
+set_tests_properties(tst_lockauth PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)

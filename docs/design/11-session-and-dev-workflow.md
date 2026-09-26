@@ -263,6 +263,20 @@ kill-resistance is T-12.3c; the decision is frozen in
 `make e2e`'s `session_lock_conformance` locks a headless session, asserts the
 `locked` event and a full-output configure on every output, and unlocks cleanly.
 
+Authentication (T-12.3b) is a **small helper**, never a credential store. The
+shell spawns `dragonfruit-pam-helper` (crate `services/lock-auth`) once per
+attempt, writes the password to its standard input, and reads back only the
+exit status (`0` authenticated, `1` rejected, `2` unavailable). The helper
+loads the host's libpam at runtime (`dlopen`), runs only `pam_authenticate`
+and `pam_acct_mgmt`, and keeps nothing. The shell calls
+`ext_session_lock_v1.unlock_and_destroy` only on success; a rejected password
+sets the lock card's message, and any unavailable/error state leaves the
+session locked. The PAM service is `dragonfruit`, falling back to `login`; the
+`--confdir` seam lets the headless suite run the real libpam against a
+throwaway `permit`/`deny` service. Input capture (typing on the lock surface)
+is T-12.3c; the decision is frozen in
+[ADR 0068](adr/0068-lock-pam-helper.md).
+
 ## logind integration
 
 - `LockSession` / `UnlockSession` requests drive our lock screen; idle

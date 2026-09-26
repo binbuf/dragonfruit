@@ -575,6 +575,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "dragonfruit-lock-auth"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "tempfile",
+]
+
+[[package]]
 name = "dragonfruit-menu-broker"
 version = "0.1.0"
 dependencies = [

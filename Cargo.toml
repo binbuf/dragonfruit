@@ -8,6 +8,7 @@ members = [
     "services/notifications",
     "services/settingsd",
     "services/files-core",
+    "services/lock-auth",
     "services/app-index",
     "services/session",
     "services/system-adapters",

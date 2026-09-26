@@ -22,6 +22,9 @@ screenshot.png
 # Temporary opencode task-10 harness (local only)
 /harness/
 
+# Local font cache fetched by the dev/vision tooling (not a project asset)
+/fonts/
+
 # Local art-direction reference screenshots (not original project assets;
 # must never ship — see docs/design/14-risks.md).
 /docs/reference/macos/
