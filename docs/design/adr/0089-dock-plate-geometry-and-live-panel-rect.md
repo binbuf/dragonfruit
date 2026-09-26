@@ -1,4 +1,4 @@
-# 0088 — Dock plate geometry, magnification growth, and the live panel rect
+# 0089 — Dock plate geometry, magnification growth, and the live panel rect
 
 ## Status
 

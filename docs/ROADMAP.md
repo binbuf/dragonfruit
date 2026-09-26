@@ -260,8 +260,8 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 > [legacy/10-dock.md](tasks/legacy/10-dock.md) ·
 > [04-shell.md](design/04-shell.md) ·
 > [10-design-system.md](design/10-design-system.md) ·
-> ADRs [0088](design/adr/0088-dock-plate-geometry-and-live-panel-rect.md) /
-> [0089](design/adr/0089-dock-app-management-picker-and-drops.md).
+> ADRs [0089](design/adr/0089-dock-plate-geometry-and-live-panel-rect.md) /
+> [0090](design/adr/0090-dock-app-management-picker-and-drops.md).
 
 - [ ] T110a — T-14.7a Dock plate geometry and spacing → [tasks/110a-t-14.7a-dock-plate-geometry-and-spacing.md](tasks/110a-t-14.7a-dock-plate-geometry-and-spacing.md)
 - [ ] T110b — T-14.7b Magnified plate growth and backdrop panel → [tasks/110b-t-14.7b-dock-magnified-plate-and-backdrop.md](tasks/110b-t-14.7b-dock-magnified-plate-and-backdrop.md)

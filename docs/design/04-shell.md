@@ -112,7 +112,7 @@ pointer is smoothed with `motion.dock-magnify` (the slight overshoot comes
 from the token curve); reduced motion tracks the pointer directly. The
 compositor's frosted backdrop follows the live plate rect that the shell
 declares on each commit, so the material always sits under the artwork. See
-[ADR 0088](adr/0088-dock-plate-geometry-and-live-panel-rect.md) and the
+[ADR 0089](adr/0089-dock-plate-geometry-and-live-panel-rect.md) and the
 T-14.7a/T-14.7b units.
 
 ### Adding and removing apps
@@ -125,7 +125,7 @@ open gap and pin it on drop; files dropped on an entry open with that app, on
 the Trash move to trash, and on the Downloads stack move into it. `dock.pinned`
 is the only persisted state and settingsd the only writer. The picker is not a
 launcher — Launchpad and the Spotlight-equivalent search remain post-gate. See
-[ADR 0089](adr/0089-dock-app-management-picker-and-drops.md) and the
+[ADR 0090](adr/0090-dock-app-management-picker-and-drops.md) and the
 T-14.7e/T-14.7f units.
 
 ## App switcher
