@@ -39,6 +39,7 @@ pub mod data;
 pub mod dbus;
 pub mod interfaces;
 pub mod model;
+pub mod screencast;
 pub mod screenshot;
 pub mod settings;
 pub mod shortcuts;
@@ -54,11 +55,17 @@ pub use data::{
 };
 pub use dbus::{initialize, probe_frontend, serve, Backend};
 pub use interfaces::{
-    FileChooserPortal, GlobalShortcuts, ScreenshotPortal, SettingsPortal, ShortcutSessionObject,
+    FileChooserPortal, GlobalShortcuts, ScreenCastPortal, ScreenCastSessionObject,
+    ScreenshotPortal, SettingsPortal, ShortcutSessionObject,
 };
 pub use model::{
     BackendStatus, FrontendPresence, FrontendTracker, BACKEND_INTERFACES, BACKEND_NAME, DBUS_NAME,
     DBUS_PATH, FRONTEND_NAME, STATUS_INTERFACE,
+};
+pub use screencast::{
+    ScreenCastError, ScreenCastOptions, ScreenCastRegistry, ScreenCastRequest, ScreenCastResponse,
+    ScreenCastSelection, ScreenCastSession, ScreenCastStream, SourceType, SCREENCAST_INTERFACE,
+    SCREENCAST_VERSION,
 };
 pub use screenshot::{
     CaptureMode, ScreenshotError, ScreenshotOptions, ScreenshotRegistry, ScreenshotRequest,

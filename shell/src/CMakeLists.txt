@@ -60,6 +60,7 @@ add_library(dragonfruit-shell-dockcore STATIC
     notificationclient.cpp
     notificationmodel.cpp
     osdmodel.cpp
+    screencastbridge.cpp
     screenshotbridge.cpp
     screenshotwriter.cpp
     systemstatusmodel.cpp
