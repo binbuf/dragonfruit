@@ -1657,6 +1657,64 @@ private slots:
         // An unrelated field survives the rewrite.
         QCOMPARE(menu[3].toMap().value(QStringLiteral("checked")).toBool(), true);
     }
+
+    // -- Menu-broker accelerators (T-14.2b) ------------------------------
+
+    void acceleratorsFlattenFixedAndOwnMenusThroughSubmenus()
+    {
+        const QVariantList applicationMenu{
+            QVariantMap{ { QStringLiteral("label"), QStringLiteral("Settings") },
+                         { QStringLiteral("shortcut"), QStringLiteral("Super+,") },
+                         { QStringLiteral("action"), QStringLiteral("settings") } },
+            QVariantMap{ { QStringLiteral("type"), QStringLiteral("separator") } },
+            QVariantMap{ { QStringLiteral("label"), QStringLiteral("Quit") },
+                         { QStringLiteral("shortcut"), QStringLiteral("Super+Q") },
+                         { QStringLiteral("action"), QStringLiteral("quit") } },
+        };
+        const QVariantList appMenu{
+            QVariantMap{
+                { QStringLiteral("title"), QStringLiteral("Edit") },
+                { QStringLiteral("items"),
+                  QVariantList{
+                      QVariantMap{ { QStringLiteral("label"), QStringLiteral("Undo") },
+                                   { QStringLiteral("shortcut"), QStringLiteral("Super+Z") },
+                                   { QStringLiteral("action"), QStringLiteral("edit.undo") } },
+                      // A shortcut without an action does not register.
+                      QVariantMap{ { QStringLiteral("label"), QStringLiteral("Redo") },
+                                   { QStringLiteral("shortcut"), QStringLiteral("Super+Shift+Z") } },
+                  } } },
+            QVariantMap{
+                { QStringLiteral("title"), QStringLiteral("View") },
+                { QStringLiteral("items"),
+                  QVariantList{
+                      QVariantMap{ { QStringLiteral("label"), QStringLiteral("Sort") },
+                                   { QStringLiteral("type"), QStringLiteral("submenu") },
+                                   { QStringLiteral("submenu"),
+                                     QVariantList{ QVariantMap{
+                                         { QStringLiteral("label"), QStringLiteral("Name") },
+                                         { QStringLiteral("shortcut"), QStringLiteral("Ctrl+N") },
+                                         { QStringLiteral("action"),
+                                           QStringLiteral("sort.name") } } } } },
+                  } } },
+        };
+
+        const QList<MenuAccelerator> accelerators =
+            publishedAccelerators(applicationMenu, appMenu);
+        QCOMPARE(accelerators.size(), 4);
+        QCOMPARE(accelerators[0].action, QStringLiteral("settings"));
+        QCOMPARE(accelerators[0].chord, QStringLiteral("Super+,"));
+        QCOMPARE(accelerators[2].action, QStringLiteral("edit.undo"));
+        // The nested submenu action is not dropped.
+        QCOMPARE(accelerators[3].action, QStringLiteral("sort.name"));
+        QCOMPARE(accelerators[3].chord, QStringLiteral("Ctrl+N"));
+
+        // The wire form is one `action<TAB>chord` per line, the shape
+        // `df_toplevel_manager.set_app_accelerators` expects.
+        QCOMPARE(acceleratorWireTable(accelerators),
+                 QStringLiteral("settings\tSuper+,\nquit\tSuper+Q\n"
+                                "edit.undo\tSuper+Z\nsort.name\tCtrl+N"));
+        QCOMPARE(acceleratorWireTable({}), QString());
+    }
 };
 
 QTEST_GUILESS_MAIN(TestDockCore)

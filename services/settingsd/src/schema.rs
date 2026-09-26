@@ -19,7 +19,7 @@ use crate::value::{SettingsError, Value};
 
 /// The current schema revision. Bump only when a key is added or a default
 /// changes; renames and removals are forbidden within the `1` series.
-pub const SCHEMA_VERSION: u32 = 5;
+pub const SCHEMA_VERSION: u32 = 6;
 
 /// The D-Bus type of a settings value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -68,11 +68,12 @@ pub enum KeyGroup {
     Animation,
     Input,
     Session,
+    Menu,
 }
 
 impl KeyGroup {
     /// Every group, in schema order.
-    pub const ALL: [KeyGroup; 9] = [
+    pub const ALL: [KeyGroup; 10] = [
         KeyGroup::Dock,
         KeyGroup::Workspaces,
         KeyGroup::Gestures,
@@ -82,6 +83,7 @@ impl KeyGroup {
         KeyGroup::Animation,
         KeyGroup::Input,
         KeyGroup::Session,
+        KeyGroup::Menu,
     ];
 
     /// The group name used in docs and tests.
@@ -96,6 +98,7 @@ impl KeyGroup {
             KeyGroup::Animation => "animation",
             KeyGroup::Input => "input",
             KeyGroup::Session => "session",
+            KeyGroup::Menu => "menu",
         }
     }
 }
@@ -595,6 +598,21 @@ pub const KEYS: &[KeySpec] = &[
         since: 5,
         summary: "Seconds of inactivity before the session suspends; 0 disables the stage.",
     },
+    // ── Menu bar (T-14.2b) ──────────────────────────────────────────────
+    KeySpec {
+        key: "menu.global",
+        group: KeyGroup::Menu,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(true),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/MenuBar, services/menu-broker",
+        since: 6,
+        summary:
+            "Show the focused app's menus in the global menu bar; off restores local app menus.",
+    },
 ];
 
 /// Look up a key's declaration.
@@ -708,6 +726,19 @@ mod tests {
                 "{key} negative"
             );
         }
+    }
+
+    /// The global application-menu toggle (T-14.2b): a boolean, default on, in
+    /// its own `menu` group.
+    #[test]
+    fn the_global_menu_toggle_is_a_declared_bool() {
+        let spec = spec("menu.global").expect("menu.global is declared");
+        assert_eq!(spec.group, KeyGroup::Menu);
+        assert_eq!(spec.kind, KeyType::Bool);
+        assert_eq!(spec.default, KeyDefault::Bool(true));
+        assert_eq!(spec.since, 6);
+        assert!(spec.validate(&Value::Bool(false)).is_ok());
+        assert!(spec.validate(&Value::Text("on".into())).is_err());
     }
 
     /// A frozen manifest of the v1 key set. Adding a key is allowed (extend

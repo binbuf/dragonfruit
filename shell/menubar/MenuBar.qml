@@ -29,6 +29,11 @@ Rectangle {
     // The focused application's exported top-level menus.
     // [{ title: "File", items: [ {label, shortcut, type, enabled, action} ] }]
     property var appMenuModel: []
+    // T-14.2b: the global application-menu toggle (`menu.global`). When off,
+    // the focused app's exported menus are not shown globally so first-party
+    // apps keep their own local menu presentation; the fixed system and
+    // application menus stay.
+    property bool globalMenuEnabled: true
     // [{ id, icon, label, accessibleName, available, enabled, selected, tint }]
     property var statusItems: []
     // The bridge host's decoded status views (T-07.5a/T-07.5b); empty until
@@ -56,6 +61,10 @@ Rectangle {
     readonly property var topLevelMenus: {
         var out = [{ kind: "system", title: qsTr("System"), items: systemMenuItems },
                    { kind: "app", title: appName, items: applicationMenuItems }];
+        // The global-menu toggle (T-14.2b) suppresses the app's exported menus
+        // only; the fixed system and application menus are always present.
+        if (!globalMenuEnabled)
+            return out;
         for (var i = 0; i < appMenuModel.length; ++i) {
             var m = appMenuModel[i] || {};
             out.push({ kind: "menu", title: m.title || "", items: m.items || [] });

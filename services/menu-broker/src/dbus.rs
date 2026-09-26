@@ -30,6 +30,7 @@ use zbus::blocking::connection;
 use zbus::interface;
 use zbus::object_server::SignalEmitter;
 
+use crate::accelerators::Dispatch;
 use crate::model::Broker;
 
 /// The well-known name on the user session bus.
@@ -148,6 +149,59 @@ impl MenuBroker1 {
     /// The fixed application menu alone, with live hide-verb state.
     fn policy(&self, app_id: &str) -> String {
         lock(&self.broker).fixed_menu(app_id).to_string()
+    }
+
+    /// One app's registered accelerators, as a JSON array of
+    /// `{action, chord}` (T-14.2b). Empty for an unpublished app.
+    fn accelerators(&self, app_id: &str) -> String {
+        let broker = lock(&self.broker);
+        let rows: Vec<serde_json::Value> = broker
+            .accelerators_for(app_id)
+            .iter()
+            .map(crate::accelerators::Accelerator::to_json)
+            .collect();
+        serde_json::Value::Array(rows).to_string()
+    }
+
+    /// The focused app's accelerators, as a JSON array of `{action, chord}`.
+    fn focused_accelerators(&self) -> String {
+        let broker = lock(&self.broker);
+        let rows: Vec<serde_json::Value> = broker
+            .focused_accelerators()
+            .iter()
+            .map(crate::accelerators::Accelerator::to_json)
+            .collect();
+        serde_json::Value::Array(rows).to_string()
+    }
+
+    /// Resolve a chord spec (`"Super+Q"`) against the focused app, with the
+    /// reserved system chords winning. Returns `{"kind":"application",
+    /// "appId":…, "action":…}`, `{"kind":"system"}`, or `{"kind":"none"}`.
+    fn dispatch(&self, spec: &str) -> String {
+        let dispatch = lock(&self.broker).resolve_accelerator(spec);
+        match dispatch {
+            Dispatch::System => serde_json::json!({ "kind": "system" }),
+            Dispatch::Application { app_id, action } => {
+                serde_json::json!({ "kind": "application", "appId": app_id, "action": action })
+            }
+            Dispatch::None => serde_json::json!({ "kind": "none" }),
+        }
+        .to_string()
+    }
+
+    /// Declare the reserved system chords (`["Ctrl+Right", …]`); the broker
+    /// never dispatches one. Returns `false` only when the payload is not a
+    /// JSON array.
+    async fn set_system_accelerators(
+        &self,
+        chords: &str,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+    ) -> bool {
+        let accepted = lock(&self.broker).set_system_accelerators(chords);
+        if accepted {
+            let _ = Self::changed(&emitter, "system-accelerators", "").await;
+        }
+        accepted
     }
 
     /// How many apps have published a model.

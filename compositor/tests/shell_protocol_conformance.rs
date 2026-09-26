@@ -3168,8 +3168,8 @@ fn reduced_motion_request_single_steps_the_overview() {
     );
     let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
     assert_eq!(
-        manager_version, 6,
-        "the manager must advertise the additive requests through v6"
+        manager_version, 7,
+        "the manager must advertise the additive requests through v7"
     );
     let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
     wait_for(
@@ -3250,8 +3250,8 @@ fn motion_and_input_policy_requests_apply_live() {
     );
     let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
     assert_eq!(
-        manager_version, 6,
-        "the manager must advertise the additive requests through v6"
+        manager_version, 7,
+        "the manager must advertise the additive requests through v7"
     );
     let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
     wait_for(

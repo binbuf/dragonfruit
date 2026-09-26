@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(69 earlier sections omitted)_
+_(70 earlier sections omitted)_
 
-- **T66 — T-10.6a Dock trash source**: **State: done.** The Dock's Trash state comes from `files-core` over the one; **`services/files-core/src/trash_source.rs`** (new) — `TrashSource`
 - **T67 — T-10.6b Drop-to-trash, Empty Trash, trash://**: **State: done.** The Dock's drop and Empty Trash already routed through; **`services/files-core/src/optimistic.rs`** — `PendingKind::Empty` +
 - **T68 — T-10.6c Show in Files, Downloads, and .desktop identity**: **State: done.** The Files identity is installed and the Dock's two navigation; **`apps/files/org.dragonfruit.Files.desktop`** (new) — `Exec=dragonfruit-files
 - **T69 — T-10.7 Files capture and acceptance walkthrough**: **State: done.** T-10 (Files MVP) is captured at the track boundary and the; **`scripts/capture-files.sh`** (new) — `make files-capture` (new target in
@@ -44,6 +43,7 @@ _(69 earlier sections omitted)_
 - **T101 — T-14.1b app-index events, launch registry, recency**: **State: done.** `org.dragonfruit.AppIndex1` is now live: the index re-scans; `services/app-index/src/index.rs` — `IndexEvent`/`IndexEventKind`; `AppIndex`
 - **T102 — T-14.1c app-index subscription API**: **State: done.** `org.dragonfruit.AppIndex1` now has a subscription surface:; `services/app-index/src/subscription.rs` (new) — pure `ChangeKind`
 - **T103 — T-14.2a menu-broker export model and fixed menu**: **State: done.** `services/menu-broker` is a real service and the fixed; `services/menu-broker/src/model.rs` (new) — pure `Broker`: `PublishedModel`
+- **T104 — T-14.2b menu-broker accelerators and toggle**: **State: done.** The menu-broker now parses and dispatches focus-scoped; `services/menu-broker/src/accelerators.rs` (new) — pure `Mods`/`Chord`
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3227,6 +3227,17 @@ Gotchas for later tasks:
 
 ## Follow-ups
 
+- **T-14.2b follow-ups.** (a) The shell still computes its accelerator table
+  from the menu it renders (`fixedApplicationMenu` + `demoAppMenu`); it does not
+  read the broker's `Resolve`/`FocusedAccelerators` over D-Bus, and Settings
+  still does not call `Publish` (the T-14.2a transport follow-up). (b) An
+  accelerator action that is not a shell-owned verb (e.g. `edit.undo`) is
+  routed to `ShellController::dispatchAppAction` but only logs; the app-facing
+  action channel is still to come, so the compositor→shell half of dispatch is
+  real and tested while the shell→app half is not. (c) The accelerator table is
+  registered per focused app in `applyFocusedApp`; when focus leaves a
+  published app its table stays registered in the compositor until the next
+  registration (harmless — only the focused app matches).
 - **T-14.2a follow-ups.** (a) The shell does not consume
   `org.dragonfruit.MenuBroker1` yet: it computes the fixed application menu's
   live state locally (`shell/src/menubrokerpolicy`) and still uses the interim
@@ -7688,3 +7699,94 @@ Gotchas for later tasks:
   `/tmp/opencode/t103-bar-idle.png`). `Show All` renders dimmed while `Hide
   dragonfruit-settings`/`Hide Others` are bright (two apps running). Not
   committed to `docs/captures` (that is the track-boundary artifact).
+
+## T104 — T-14.2b menu-broker accelerators and toggle
+
+**State: done.** The menu-broker now parses and dispatches focus-scoped
+accelerators, the compositor admits them over a new additive protocol request,
+and `menu.global` is the Settings-owned global-menu toggle. Contract frozen in
+ADR [0096](design/adr/0096-focus-scoped-accelerators-and-global-menu-toggle.md).
+
+Real paths:
+
+- `services/menu-broker/src/accelerators.rs` (new) — pure `Mods`/`Chord`
+  (parse + canonical `Super+Shift+H`), `Accelerator` (+`to_json`), `extract`
+  (walks `applicationMenuItems` + `menus`, recursively through `submenu`; a row
+  needs both `shortcut` and `action`), and the focus-scoped `AcceleratorTable`
+  (`register`/`clear`/`set_focused`/`resolve`; `Dispatch::System` wins over
+  `Application`/`None`).
+- `services/menu-broker/src/model.rs` — `Broker` owns an `AcceleratorTable`;
+  publish/withdraw update it, `set_focused` scopes it; `resolve()` carries an
+  `accelerators` array; new `set_system_accelerators`, `accelerators_for`,
+  `focused_accelerators`, `resolve_accelerator`.
+- `services/menu-broker/src/dbus.rs` — additive methods `Accelerators(appId)`,
+  `FocusedAccelerators()`, `Dispatch(spec)` (returns
+  `{"kind":"application"|"system"|"none",…}`), `SetSystemAccelerators(json)`.
+- `services/menu-broker/tests/session_bus.rs` — new private-bus case
+  `registrations_are_focus_scoped_and_dispatch_over_the_bus`.
+- `protocols/dragonfruit-toplevel.xml` — `df_toplevel_manager` v7 adds
+  `set_app_accelerators(app_id, accelerators)` (one `action<TAB>chord` per
+  line, empty clears).
+- `compositor/src/input/shortcuts.rs` — `ShortcutEngine::set_app_accelerators`
+  and the pure `parse_accelerator_table` (skips malformed lines; uses
+  `keymap::parse_binding`).
+- `compositor/src/state.rs` — `DfState::set_app_accelerators`.
+- `compositor/src/shell/mod.rs` — `MANAGER_INTERFACE_VERSION = 7` and the
+  request handler.
+- `shell/src/menubrokerpolicy.{h,cpp}` — pure `MenuAccelerator`,
+  `menuAccelerators`, `publishedAccelerators`, `acceleratorWireTable`.
+- `shell/src/shellprotocol.{h,cpp}` — `setAppAccelerators` and the
+  `appAccelerator(appId, action, source, serial)` signal (the previously inert
+  `app_accelerator` event is now forwarded).
+- `shell/src/shellcontroller.cpp` — `applyFocusedApp` registers the focused
+  app's table; `onAppAccelerator` routes a matched chord through the new
+  `dispatchAppAction` (shared with the menu-click path); `applyMenuBarPolicy`
+  reads `menu.global`; the demo menu rows gained `action` strings.
+- `shell/menubar/MenuBar.qml` — `globalMenuEnabled` suppresses only the app's
+  exported menus.
+- `services/settingsd/src/schema.rs` — schema v6, `KeyGroup::Menu`,
+  `menu.global` (bool, default true); `libs/settings-client/settingsclient.cpp`
+  seeds it; `docs/settings-keys.md` documented.
+- `apps/settings/DesktopDockPane.qml` — a "Menu Bar" group with the
+  `globalMenuToggle` (the dedicated pane is T-15.9b).
+- Tests: `shell/tests/tst_dockcore.cpp` (accelerator flattening/wire form),
+  `shell/tests/tst_menubar.qml` (toggle hides/shows exported menus),
+  `apps/settings/tests/tst_settings_desktop_dock.qml` (toggle applies and
+  converges).
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-menu-broker` — 25 unit + 5 session-bus cases.
+- `cargo test --workspace`; `cargo clippy --workspace --all-targets -- -D
+  warnings`; `cargo fmt --all -- --check` — all green.
+- `ctest --test-dir build --output-on-failure` — 53/53; `make e2e` — exit 0.
+- Build note (unchanged): `export
+  PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig:$PKG_CONFIG_PATH` and
+  `RUSTFLAGS="-L $HOME/.local/df-devroot/lib64"` (or just `make`).
+
+Gotchas for later tasks:
+
+- **The broker never installs a grab.** It maps chord→action; the compositor's
+  `ShortcutEngine` matches and emits `app_accelerator`; the shell routes it via
+  `dispatchAppAction`. System shortcuts still win in the engine, and the broker
+  can be told the reserved set with `SetSystemAccelerators`.
+- **Chords are canonicalized in the broker** (`Super`/`Alt`/`Control`/`Shift`,
+  command first) but the key token keeps its published case: the compositor's
+  `parse_binding`/`keysym_from_name` is case-sensitive for letters, so do not
+  lowercase keys.
+- **A row registers only with both `shortcut` and `action`**; submenus are
+  walked, separators skipped.
+- **The accelerator table is per app and replaced atomically** on re-publish;
+  `withdraw` clears it. `Dispatch` returns `system` even with no focus (a
+  reserved chord needs no app).
+- **The shell sends the table for `m_appId` on every `applyFocusedApp`;** the
+  desktop (empty app id) clears it. This is the shell's own menu, not the
+  broker's `Resolve` (transport still pending — see Follow-ups).
+- `df_toplevel_manager` is now **v7**; the two conformance version assertions
+  were bumped. The request is appended after the v6 messages so opcodes are
+  stable.
+- Live check: `make demo` + a synthetic click captured
+  `/tmp/opencode/t104b-idle.png` (bar with app menu title + File/Edit/View) and
+  with `menu.global=false` (settingsd + gdbus) `/tmp/opencode/t104c-off.png`
+  (app menu title only, no File/Edit/View). Not committed to `docs/captures`
+  (track-boundary artifact).

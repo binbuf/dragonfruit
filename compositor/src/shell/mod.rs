@@ -45,13 +45,14 @@ use trust::{Refusal, TrustModel, TrustedRole};
 /// The version of every private interface this compositor implements.
 const INTERFACE_VERSION: u32 = 1;
 
-/// `df_toplevel_manager` is version 6 since `capture_screenshot` and the
-/// `screenshot_saved`/`screenshot_failed` events were added (T-13.3b);
+/// `df_toplevel_manager` is version 7 since `set_app_accelerators` was added
+/// (T-14.2b); `capture_screenshot` and the `screenshot_saved`/
+/// `screenshot_failed` events were the v6 additions (T-13.3b),
 /// `set_motion_policy`/`set_input_policy` were the v5 additions (T-08.2c),
 /// `set_launch_origin` v4 (T-02.1b), `set_reduced_motion` v3 (T-11), and
 /// `release_keyboard_focus` v2 (T-10). The other interfaces stay at
 /// [`INTERFACE_VERSION`].
-const MANAGER_INTERFACE_VERSION: u32 = 6;
+const MANAGER_INTERFACE_VERSION: u32 = 7;
 
 /// `df_output` is version 2 since `set_brightness` and the `brightness` event
 /// were added (T-11.3a). The other private interfaces stay at
@@ -1773,6 +1774,16 @@ impl Dispatch<df_toplevel_manager::DfToplevelManager, ()> for DfState {
                     gesture_space_switch != 0,
                     gesture_mission_control != 0,
                 );
+            }
+            df_toplevel_manager::Request::SetAppAccelerators {
+                app_id,
+                accelerators,
+            } => {
+                // T-14.2b: the shell mirrors the menu-broker's focus-scoped
+                // accelerator table for the focused app. The engine admits
+                // them; only that app's focused chord can match and system
+                // shortcuts still win.
+                state.set_app_accelerators(&app_id, &accelerators);
             }
             df_toplevel_manager::Request::CaptureScreenshot {
                 x,

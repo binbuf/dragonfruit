@@ -24,7 +24,7 @@
 -->
 <protocol name="dragonfruit_toplevel">
 
-  <interface name="df_toplevel_manager" version="6">
+  <interface name="df_toplevel_manager" version="7">
     <description summary="window/workspace/output control for trusted clients">
       The manager is per-client. On bind the compositor replays the current
       scene: it announces every output, workspace, and toplevel, then emits
@@ -284,6 +284,24 @@
       </description>
       <arg name="reason" type="string"/>
     </event>
+
+    <!-- T-14.2b: the focused app's accelerator table from the menu-broker.
+         Appended after the v6 messages so the scanner's `since` stays
+         non-decreasing and every pre-existing message keeps its opcode
+         (append-only). Additive in v7. -->
+    <request name="set_app_accelerators" since="7">
+      <description summary="replace the focused app's accelerator table">
+        The shell mirrors the menu-broker's focus-scoped accelerator table
+        here: one `action` per line, a tab, then the chord
+        (`"quit\tSuper+Q"`). The compositor matches these only while
+        `app_id` is focused and always lets its system shortcuts win; a
+        matched chord is delivered back to the shell with `app_accelerator`.
+        An empty table clears the app's accelerators. Malformed lines are
+        skipped.
+      </description>
+      <arg name="app_id" type="string"/>
+      <arg name="accelerators" type="string"/>
+    </request>
 
     <enum name="hot_corner">
       <entry name="top_left" value="0"/>

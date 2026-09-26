@@ -2845,6 +2845,19 @@ impl DfState {
         self.overview.input_owner()
     }
 
+    /// Replace one app's application-accelerator table (T-14.2b). The shell
+    /// mirrors the menu-broker's focus-scoped table here over
+    /// `df_toplevel_manager.set_app_accelerators`; the compositor only matches
+    /// these while `app_id` is focused and its system shortcuts always win. A
+    /// matched chord is queued back to the shell as `app_accelerator`. Returns
+    /// how many accelerators were admitted.
+    pub fn set_app_accelerators(&mut self, app_id: &str, table: &str) -> usize {
+        let accelerators = crate::input::shortcuts::parse_accelerator_table(app_id, table);
+        let count = accelerators.len();
+        self.shortcuts.set_app_accelerators(app_id, accelerators);
+        count
+    }
+
     /// Set the reduced-motion policy for every compositor-driven transition
     /// (T-11 U-1 / FR-9). The shell mirrors `accessibility.reduceMotion` here
     /// over the private protocol; each transition still runs the one machine

@@ -390,6 +390,14 @@ public:
     // `df_toplevel_manager.set_launch_origin`, additive in v4).
     void setLaunchOrigin(const QString &appId, int x, int y, int width, int height);
 
+    // Mirror the menu-broker's focus-scoped accelerator table for `appId`
+    // (T-14.2b, `df_toplevel_manager.set_app_accelerators`, additive in v7).
+    // `accelerators` is the wire table: one `action<TAB>chord` per line, empty
+    // clears the app. The compositor matches them only while the app is
+    // focused and its system shortcuts always win; a match comes back as
+    // `appAccelerator`.
+    void setAppAccelerators(const QString &appId, const QString &accelerators);
+
     // App-level activation for a Dock click (T-10): the compositor picks the
     // app's most recent window, switches to its Space, and restores it.
     void activateApp(const QString &appId);
@@ -484,6 +492,12 @@ signals:
     void lockSurfaceConfigured(quintptr lockSurfaceId, int width, int height, uint32_t serial);
     void surfaceClosed();
     void focusedAppChanged(const QString &appId, const QString &title);
+    // A matched application accelerator for the focused app (T-14.2b): the
+    // compositor resolved the chord, the owner executes `action`. The source
+    // is "keyboard" (the only trigger today) and the serial pairs it with the
+    // Wayland event.
+    void appAccelerator(const QString &appId, const QString &action, const QString &source,
+                        uint32_t serial);
     // xdg-activation attention for an app's toplevel (T-10 FR-4): the Dock
     // bounces the owning entry and stops on click or focus.
     void attentionRequested(const QString &appId);

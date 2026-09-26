@@ -64,6 +64,9 @@ public:
 private slots:
     void onConfigured(int width, int height, quint32 serial);
     void onFocusedAppChanged(const QString &appId, const QString &title);
+    // T-14.2b: a focus-scoped application accelerator the compositor matched.
+    void onAppAccelerator(const QString &appId, const QString &action, const QString &source,
+                          quint32 serial);
     void onControlCenterRequested();
     // Control Center panel (T-11.3a): the overlay surface, pointer/keyboard
     // stream, and the tile gestures.
@@ -280,6 +283,10 @@ private:
     // rebuild the status slots from them.
     void applyStatusMenuData();
     void applyFocusedApp();
+    // The one dispatch seam for a resolved application-menu action: the popup
+    // click and a compositor-delivered accelerator both route here (T-14.2b).
+    void dispatchAppAction(const QString &action, int menuIndex = -1, int itemIndex = -1,
+                           const QVariantMap &map = {});
     void render();
     void renderDock();
     // Mission Control overview chrome (T-11 Slice B): re-read the workspace /
@@ -427,6 +434,9 @@ private:
     // `changed`/`refreshed`, on a host color-scheme change (`auto`), and once
     // after the protocol connects.
     void applyCompositorPolicy();
+    // T-14.2b: re-read `menu.global` (the global application-menu toggle) and
+    // push it to the bar. Runs on every `changed`/`refreshed`.
+    void applyMenuBarPolicy();
     // T-09.3: re-read the settingsd wallpaper keys and forward them to the
     // compositor (`df_workspace.set_wallpaper`). Runs on every
     // `changed`/`refreshed` and once after the protocol connects.
@@ -655,6 +665,9 @@ private:
     // The first apply must always send, even when the values happen to equal
     // the compositor's own defaults, so the one owner is authoritative.
     bool m_compositorPolicySent = false;
+    // T-14.2b: the live global application-menu toggle (`menu.global`), the
+    // property the bar reads to hide/show the focused app's exported menus.
+    bool m_globalMenuEnabled = true;
     // T-09.3: the last wallpaper selection forwarded, so an unchanged settings
     // value does not re-send the protocol requests.
     WallpaperSettings m_wallpaperSettings;
