@@ -2821,6 +2821,7 @@ name = "xdg-desktop-portal-dragonfruit"
 version = "0.1.0"
 dependencies = [
  "df-ipc",
+ "dragonfruit-settingsd",
  "serde",
  "zbus",
 ]

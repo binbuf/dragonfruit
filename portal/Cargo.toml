@@ -29,3 +29,8 @@ zbus = { version = "=5.19.0", features = ["blocking-api"] }
 
 [dev-dependencies]
 serde = "=1.0.229"
+# T-13.1b: the Settings portal integration test serves a real settingsd
+# object on a private bus and checks the projection against it. This is a
+# dev-only link; the shipped backend reads settingsd over D-Bus, never as a
+# library.
+dragonfruit-settingsd = { path = "../services/settingsd", version = "0.1.0" }

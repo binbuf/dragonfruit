@@ -149,7 +149,13 @@ fn the_backend_registers_its_standard_name_on_a_private_bus() {
     assert_eq!(call::<String>(&client, "BackendName"), "dragonfruit");
     assert_eq!(call::<String>(&client, "DbusName"), DBUS_NAME);
     assert_eq!(call::<String>(&client, "ObjectPath"), DBUS_PATH);
-    assert!(call::<Vec<String>>(&client, "Interfaces").is_empty());
+    assert_eq!(
+        call::<Vec<String>>(&client, "Interfaces"),
+        vec![
+            "org.freedesktop.impl.portal.Settings".to_owned(),
+            "org.freedesktop.impl.portal.GlobalShortcuts".to_owned(),
+        ]
+    );
 
     // The standard path exists and serves the diagnostic interface, so the
     // object path a portal frontend will call is live from this task on.
