@@ -17,10 +17,15 @@
 //! is pure and clock-injected, so a headless test drives it with a fake clock
 //! and no real time passes.
 //!
-//! Inhibitors (a client holding the screen awake) and wake restore are
-//! **not** here: they are T-12.4b, which wraps this engine. The engine itself
-//! only spends time; a caller with an inhibitor simply declines to call
-//! [`IdleTimers::poll`].
+//! [`IdleController`] wraps the engine with the two things T-12.4a left out:
+//! **idle inhibitors** and **wake restore**. An inhibitor is an opaque
+//! [`InhibitorId`] in an [`IdleInhibitors`] registry; while any inhibitor is
+//! held the controller's [`IdleController::poll`] is a no-op, so the chain
+//! cannot advance. A wake — either a recorded [`IdleController::activity`] or
+//! a fresh inhibitor (which forces the chain back to the top, per
+//! [`IdleStage::Active`]) — returns an [`IdleEvent::Restore`] naming the stage
+//! the caller must undo. The engine stays pure; inhibitors are a caller-side
+//! decision ([ADR 0070](../../docs/design/adr/0070-idle-timer-engine-and-policy.md)).
 //!
 //! The decision to keep the engine in `dragonfruit-session` — rather than the
 //! compositor — is frozen in
@@ -377,6 +382,256 @@ impl IdleTimers {
         self.policy = policy.normalized();
         self.poll(now)
     }
+
+    /// Replace the policy without re-evaluating the current stage.
+    ///
+    /// [`IdleTimers::set_policy`] advances immediately when a shortened delay
+    /// is already due; an inhibited [`IdleController`] must not, so it stores
+    /// the new policy here and lets a later [`IdleController::poll`] catch up.
+    pub fn replace_policy(&mut self, policy: IdlePolicy) {
+        self.policy = policy.normalized();
+    }
+}
+
+/// A handle for one held idle inhibitor.
+///
+/// Handles are minted by [`IdleInhibitors::acquire`] in increasing order, so a
+/// released handle is never re-minted within the same registry and a double
+/// release is a safe no-op. A handle is only meaningful to the registry that
+/// minted it (see [ADR 0071](../../docs/design/adr/0071-idle-inhibitors-and-wake-restore.md));
+/// the idle service recreates the controller across restarts rather than
+/// carrying a handle over.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct InhibitorId(u64);
+
+impl InhibitorId {
+    /// The raw value, for logs and tests.
+    pub const fn get(self) -> u64 {
+        self.0
+    }
+}
+
+/// The set of currently held idle inhibitors.
+///
+/// The registry is deliberately surface-agnostic: the future idle service
+/// translates the compositor's `idle-inhibit` surfaces into one handle each,
+/// and the controller only cares whether the set is empty. A dead holder is a
+/// release the service never sent, so callers must release on teardown.
+#[derive(Debug, Clone, Default)]
+pub struct IdleInhibitors {
+    next: u64,
+    held: std::collections::BTreeSet<InhibitorId>,
+}
+
+impl IdleInhibitors {
+    /// An empty registry.
+    pub fn new() -> Self {
+        IdleInhibitors::default()
+    }
+
+    /// Mint a new inhibitor handle and add it to the set.
+    pub fn acquire(&mut self) -> InhibitorId {
+        let id = InhibitorId(self.next);
+        self.next += 1;
+        self.held.insert(id);
+        id
+    }
+
+    /// Drop `id`; returns whether it was held.
+    pub fn release(&mut self, id: InhibitorId) -> bool {
+        self.held.remove(&id)
+    }
+
+    /// Whether at least one inhibitor is held.
+    pub fn is_inhibited(&self) -> bool {
+        !self.held.is_empty()
+    }
+
+    /// How many inhibitors are held.
+    pub fn count(&self) -> usize {
+        self.held.len()
+    }
+
+    /// Whether `id` is currently held.
+    pub fn contains(&self, id: InhibitorId) -> bool {
+        self.held.contains(&id)
+    }
+
+    /// Drop every inhibitor, returning how many were held.
+    pub fn clear(&mut self) -> usize {
+        let held = self.held.len();
+        self.held.clear();
+        held
+    }
+
+    /// The held handles, in mint order.
+    pub fn iter(&self) -> impl Iterator<Item = InhibitorId> + '_ {
+        self.held.iter().copied()
+    }
+}
+
+/// An observable change to the idle chain.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IdleEvent {
+    /// The chain advanced to `stage`; the caller applies the stage's screen
+    /// state (dim, blank, lock, or suspend).
+    Enter(IdleStage),
+    /// Activity (or a new inhibitor) forced the chain back to active from
+    /// `stage`; the caller restores the prior screen state.
+    Restore(IdleStage),
+}
+
+impl IdleEvent {
+    /// The stage the event names (the one entered or the one restored from).
+    pub const fn stage(self) -> IdleStage {
+        match self {
+            IdleEvent::Enter(stage) | IdleEvent::Restore(stage) => stage,
+        }
+    }
+}
+
+/// The idle chain plus its inhibitors and wake restore (T-12.4b).
+///
+/// [`IdleController`] owns an [`IdleTimers`] and an [`IdleInhibitors`], and
+/// turns both into [`IdleEvent`]s:
+///
+/// * While any inhibitor is held, [`poll`](IdleController::poll) does nothing,
+///   so the chain is frozen and the deadline is not scheduled
+///   ([`next_deadline`](IdleController::next_deadline) returns `None`).
+/// * A wake — [`activity`](IdleController::activity) or a fresh inhibitor —
+///   resets the chain to [`IdleStage::Active`] and reports a
+///   [`IdleEvent::Restore`] with the stage that was left, so the caller knows
+///   what display state to undo. Waking from [`IdleStage::Lock`] still reports
+///   `Restore(Lock)`; whether that unlocks is a security decision the caller
+///   makes (the lock UI, not the idle chain, owns unlocking).
+/// * Releasing an inhibitor does not move the chain or reset the inactivity
+///   clock; the next [`poll`](IdleController::poll) catches up to the stage
+///   that is already due, which is what an inhibitor held over a deadline
+///   should do.
+#[derive(Debug, Clone)]
+pub struct IdleController {
+    timers: IdleTimers,
+    inhibitors: IdleInhibitors,
+}
+
+impl IdleController {
+    /// Start the chain active at `now`, with no inhibitors.
+    pub fn new(policy: IdlePolicy, now: Duration) -> Self {
+        IdleController {
+            timers: IdleTimers::new(policy, now),
+            inhibitors: IdleInhibitors::new(),
+        }
+    }
+
+    /// The wrapped engine.
+    pub fn timers(&self) -> &IdleTimers {
+        &self.timers
+    }
+
+    /// The engine's normalized policy.
+    pub fn policy(&self) -> IdlePolicy {
+        self.timers.policy()
+    }
+
+    /// The current stage.
+    pub fn stage(&self) -> IdleStage {
+        self.timers.stage()
+    }
+
+    /// When activity was last recorded.
+    pub fn last_activity(&self) -> Duration {
+        self.timers.last_activity()
+    }
+
+    /// How long ago activity was last recorded at `now` (saturating).
+    pub fn idle_for(&self, now: Duration) -> Duration {
+        self.timers.idle_for(now)
+    }
+
+    /// The inhibitor registry.
+    pub fn inhibitors(&self) -> &IdleInhibitors {
+        &self.inhibitors
+    }
+
+    /// Whether at least one inhibitor is held (the chain is frozen).
+    pub fn is_inhibited(&self) -> bool {
+        self.inhibitors.is_inhibited()
+    }
+
+    /// How many inhibitors are held.
+    pub fn inhibitor_count(&self) -> usize {
+        self.inhibitors.count()
+    }
+
+    /// Hold a new inhibitor, forcing the chain back to [`IdleStage::Active`].
+    ///
+    /// Returns the handle and an [`IdleEvent::Restore`] when the chain had
+    /// left active; the event is `None` when it was already active.
+    pub fn acquire_inhibitor(&mut self, now: Duration) -> (InhibitorId, Option<IdleEvent>) {
+        let id = self.inhibitors.acquire();
+        (id, self.wake(now))
+    }
+
+    /// Release the inhibitor `id`; returns whether it was held.
+    pub fn release_inhibitor(&mut self, id: InhibitorId) -> bool {
+        self.inhibitors.release(id)
+    }
+
+    /// Drop every held inhibitor, returning how many were held.
+    ///
+    /// This is the teardown path: when the idle service restarts, no old
+    /// handle can survive, so the new registry starts empty.
+    pub fn clear_inhibitors(&mut self) -> usize {
+        self.inhibitors.clear()
+    }
+
+    /// Record user activity, waking the chain.
+    ///
+    /// Returns [`IdleEvent::Restore`] if the chain had left active, else
+    /// `None`.
+    pub fn activity(&mut self, now: Duration) -> Option<IdleEvent> {
+        self.wake(now)
+    }
+
+    /// Advance to the stage due at `now`, unless an inhibitor is held.
+    pub fn poll(&mut self, now: Duration) -> Option<IdleEvent> {
+        if self.is_inhibited() {
+            return None;
+        }
+        self.timers.poll(now).map(IdleEvent::Enter)
+    }
+
+    /// The instant the next enabled stage fires, if any.
+    ///
+    /// `None` when the chain is inhibited, because no stage can fire while an
+    /// inhibitor is held.
+    pub fn next_deadline(&self) -> Option<Duration> {
+        if self.is_inhibited() {
+            None
+        } else {
+            self.timers.next_deadline()
+        }
+    }
+
+    /// Replace the policy live. While inhibited the new policy is stored but
+    /// the chain is not advanced; the next [`poll`](IdleController::poll)
+    /// catches up.
+    pub fn set_policy(&mut self, policy: IdlePolicy, now: Duration) -> Option<IdleEvent> {
+        if self.is_inhibited() {
+            self.timers.replace_policy(policy);
+            None
+        } else {
+            self.timers.set_policy(policy, now).map(IdleEvent::Enter)
+        }
+    }
+
+    /// Reset the chain to active, reporting the stage that was left.
+    fn wake(&mut self, now: Duration) -> Option<IdleEvent> {
+        let before = self.timers.stage();
+        self.timers
+            .activity(now)
+            .map(|_| IdleEvent::Restore(before))
+    }
 }
 
 #[cfg(test)]
@@ -522,6 +777,110 @@ mod tests {
         assert_eq!(policy.delay(IdleStage::Blank), None);
         assert_eq!(policy.delay(IdleStage::Lock), None);
         assert_eq!(policy.delay(IdleStage::Suspend), Some(seconds(1800)));
+    }
+
+    #[test]
+    fn an_inhibitor_blocks_the_chain_until_released() {
+        let mut controller = IdleController::new(chain_policy(), seconds(0));
+        let (id, event) = controller.acquire_inhibitor(seconds(0));
+        assert_eq!(event, None, "already active");
+        assert!(controller.is_inhibited());
+        assert_eq!(controller.inhibitor_count(), 1);
+        assert_eq!(controller.next_deadline(), None, "inhibited: no deadline");
+
+        // The whole chain would be due, but the inhibitor freezes it.
+        assert_eq!(controller.poll(seconds(1000)), None);
+        assert_eq!(controller.stage(), IdleStage::Active);
+
+        assert!(controller.release_inhibitor(id));
+        assert!(!controller.is_inhibited());
+        assert_eq!(controller.next_deadline(), Some(seconds(5)));
+        assert_eq!(
+            controller.poll(seconds(1000)),
+            Some(IdleEvent::Enter(IdleStage::Suspend)),
+            "the overdue chain catches up once released"
+        );
+    }
+
+    #[test]
+    fn activity_wakes_and_names_the_stage_to_restore() {
+        let mut controller = IdleController::new(chain_policy(), seconds(0));
+        assert_eq!(
+            controller.poll(seconds(12)),
+            Some(IdleEvent::Enter(IdleStage::Blank))
+        );
+        assert_eq!(
+            controller.activity(seconds(12)),
+            Some(IdleEvent::Restore(IdleStage::Blank))
+        );
+        assert_eq!(controller.stage(), IdleStage::Active);
+        assert_eq!(controller.idle_for(seconds(12)), Duration::ZERO);
+        // Already active: activity restarts the clock but reports no restore.
+        assert_eq!(controller.activity(seconds(13)), None);
+    }
+
+    #[test]
+    fn a_new_inhibitor_wakes_an_idle_chain() {
+        let mut controller = IdleController::new(chain_policy(), seconds(0));
+        assert_eq!(
+            controller.poll(seconds(7)),
+            Some(IdleEvent::Enter(IdleStage::Dim))
+        );
+        let (_id, event) = controller.acquire_inhibitor(seconds(7));
+        assert_eq!(event, Some(IdleEvent::Restore(IdleStage::Dim)));
+        assert_eq!(controller.stage(), IdleStage::Active);
+    }
+
+    #[test]
+    fn releasing_one_of_many_inhibitors_keeps_the_chain_frozen() {
+        let mut controller = IdleController::new(chain_policy(), seconds(0));
+        let (first, _) = controller.acquire_inhibitor(seconds(0));
+        let (second, _) = controller.acquire_inhibitor(seconds(0));
+        assert_eq!(controller.inhibitor_count(), 2);
+
+        assert!(controller.release_inhibitor(first));
+        assert!(
+            controller.is_inhibited(),
+            "the second inhibitor still holds"
+        );
+        assert_eq!(controller.poll(seconds(1000)), None);
+
+        assert!(
+            !controller.release_inhibitor(first),
+            "double release is a no-op"
+        );
+        assert!(controller.release_inhibitor(second));
+        assert!(!controller.is_inhibited());
+    }
+
+    #[test]
+    fn a_stale_handle_never_releases_a_held_inhibitor() {
+        let mut controller = IdleController::new(chain_policy(), seconds(0));
+        let (stale, _) = controller.acquire_inhibitor(seconds(0));
+        assert!(controller.release_inhibitor(stale));
+        let (held, _) = controller.acquire_inhibitor(seconds(0));
+        assert!(!controller.release_inhibitor(stale), "already released");
+        assert!(controller.is_inhibited());
+        assert!(controller.inhibitors().contains(held));
+    }
+
+    #[test]
+    fn a_policy_change_while_inhibited_does_not_advance() {
+        let mut controller = IdleController::new(chain_policy(), seconds(0));
+        let (_id, _) = controller.acquire_inhibitor(seconds(0));
+        // A delay shorter than elapsed time would normally fire immediately.
+        let faster = chain_policy_faster();
+        assert_eq!(controller.set_policy(faster, seconds(100)), None);
+        assert_eq!(controller.stage(), IdleStage::Active);
+        assert_eq!(
+            controller.policy().delay(IdleStage::Dim),
+            Some(seconds(1)),
+            "the new policy is stored for the next poll"
+        );
+    }
+
+    fn chain_policy_faster() -> IdlePolicy {
+        chain_policy().with_delay(IdleStage::Dim, Some(seconds(1)))
     }
 
     #[test]

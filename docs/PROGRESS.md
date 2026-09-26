@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(49 earlier sections omitted)_
+_(50 earlier sections omitted)_
 
-- **T47 — T-08.3 Restart, resync, and key-schema documentation**: **State: done.** `settingsd` is restartable with no lost write and the shell; **`docs/settings-keys.md`** (new) — the human-facing key table (type,
 - **T48 — T-09.1a Settings app shell**: **State: done.** The `apps/settings` stub is now a real shell: frameless; **`apps/settings/`** is a reusable QML module `Dragonfruit.Settings` (static
 - **Follow-ups**: **T-12.4a follow-ups.** (a) The idle engine (ADR 0070) has no production; **T-12.3c follow-ups.** (a) The shell types passwords from a fixed US/ASCII
 - **T49 — T-09.1b Settings live-apply plumbing**: **State: done.** The Settings app is a real settingsd consumer: a QML `Settings`; **`libs/settings-client/`** (new; `libs/CMakeLists.txt`) — the former
@@ -45,6 +44,7 @@ _(49 earlier sections omitted)_
 - **System font — Inter (post-T82, before T83)**: **State: done (first-party half).** The desktop's type is now Inter 4.001; **`fonts/Inter/`** (now tracked; T82's `/fonts/` .gitignore entry is gone) —
 - **T83 — T-12.3c Lock input capture and kill-resistance**: **State: done.** The locked session now captures input in the lock UI instead; **`compositor/src/lock.rs`** — `LockModel::input_surface()` (first live lock
 - **T84 — T-12.4a Idle timers**: **State: done.** The dim → blank → lock → suspend chain is a pure,; **`services/session/src/idle.rs`** (new) — `IdleStage`
+- **T85 — T-12.4b Idle inhibitors and wake restore**: **State: done.** `dragonfruit-session` now wraps the T-12.4a idle engine with; **`services/session/src/idle.rs`** — `IdleController` (owns `IdleTimers` +
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -6326,3 +6326,54 @@ Gotchas for later tasks:
 - The engine is in `dragonfruit-session`, not the compositor (ADR 0070); the
   compositor keeps serving `ext-idle-notify`/`idle-inhibit` for the future
   idle service.
+
+## T85 — T-12.4b Idle inhibitors and wake restore
+
+**State: done.** `dragonfruit-session` now wraps the T-12.4a idle engine with
+inhibitors and wake restore. Contract frozen in ADR
+[0071](design/adr/0071-idle-inhibitors-and-wake-restore.md).
+
+What landed:
+
+- **`services/session/src/idle.rs`** — `IdleController` (owns `IdleTimers` +
+  `IdleInhibitors`, returns `IdleEvent`), `IdleInhibitors` (`new`, `acquire`,
+  `release`, `is_inhibited`, `count`, `contains`, `clear`, `iter`),
+  `InhibitorId`, `IdleEvent` (`Enter(stage)` / `Restore(stage)`, `stage`).
+  Controller: `new`, `timers`, `policy`, `stage`, `last_activity`, `idle_for`,
+  `inhibitors`, `is_inhibited`, `inhibitor_count`, `acquire_inhibitor`,
+  `release_inhibitor`, `clear_inhibitors`, `activity`, `poll`, `next_deadline`,
+  `set_policy`. Added `IdleTimers::replace_policy` (store without evaluating).
+- **Semantics** — while any inhibitor is held, `poll` is a no-op and
+  `next_deadline()` is `None`; acquiring an inhibitor forces the chain to
+  `Active` and reports `Restore(prior)`; `activity` wakes and reports
+  `Restore(prior)`; releasing an inhibitor does not move the chain or reset the
+  clock, so an overdue chain catches up on the next poll; waking from `Lock`
+  reports `Restore(Lock)` but never unlocks.
+- **`services/session/src/lib.rs`** — re-exports `IdleController`, `IdleEvent`,
+  `IdleInhibitors`, `InhibitorId`.
+- **Tests** — `idle::tests` 6 new unit; new
+  `services/session/tests/idle_inhibitors.rs` 4 integration.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-session` — 29 unit + 4 `idle_inhibitors` (plus
+  the existing suites).
+- `cargo clippy -p dragonfruit-session --all-targets -- -D warnings`,
+  `cargo fmt -p dragonfruit-session -- --check` — exit 0.
+- `make e2e`, `make lint` — exit 0.
+
+Live check: `make demo DEMO_ARGS="--socket-name t85-idle"` (nested), captured
+`/tmp/opencode/t85-idle.png`; desktop renders with no artifacts, clean
+teardown. No UI changed, so this is a regression check.
+
+Gotchas for later tasks:
+
+- **No production consumer yet.** Nothing constructs `IdleController`; no idle
+  service binds `ext-idle-notify`. T-12.5a drives suspend from
+  `Enter(Suspend)` and resume/restore from `Restore(Suspend)`; T-12.5b calls
+  `set_policy(IdlePolicy::from_keys(...))`.
+- **`InhibitorId` is registry-scoped**; across an idle-service restart create a
+  new controller or `clear_inhibitors` instead of reusing a handle.
+- **`Restore(Lock)` is not an unlock** — the lock UI/PAM path owns unlocking.
+- The compositor's `idle-inhibit` state is protocol-level; the idle service is
+  the adapter that maps surfaces to `InhibitorId` handles.

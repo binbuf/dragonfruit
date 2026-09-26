@@ -216,7 +216,7 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 - [x] T82 — T-12.3b Lock PAM authentication → [tasks/082-t-12.3b-lock-pam-authentication.md](tasks/082-t-12.3b-lock-pam-authentication.md)
 - [x] T83 — T-12.3c Lock input capture and kill-resistance → [tasks/083-t-12.3c-lock-input-capture-and-kill-resistance.md](tasks/083-t-12.3c-lock-input-capture-and-kill-resistance.md)
 - [x] T84 — T-12.4a Idle timers → [tasks/084-t-12.4a-idle-timers.md](tasks/084-t-12.4a-idle-timers.md)
-- [ ] T85 — T-12.4b Idle inhibitors and wake restore → [tasks/085-t-12.4b-idle-inhibitors-and-wake.md](tasks/085-t-12.4b-idle-inhibitors-and-wake.md)
+- [x] T85 — T-12.4b Idle inhibitors and wake restore → [tasks/085-t-12.4b-idle-inhibitors-and-wake.md](tasks/085-t-12.4b-idle-inhibitors-and-wake.md)
 - [ ] T86 — T-12.5a Suspend/resume cycle → [tasks/086-t-12.5a-suspend-resume-cycle.md](tasks/086-t-12.5a-suspend-resume-cycle.md)
 - [ ] T87 — T-12.5b Session policy keys, kill matrix, capture → [tasks/087-t-12.5b-session-policy-keys-and-kill-matrix.md](tasks/087-t-12.5b-session-policy-keys-and-kill-matrix.md)
 
@@ -508,11 +508,11 @@ This plan restarts at T-01, so a legacy "T-13" and a new "T-13" are different
 tickets; use this table to translate.
 
 <!-- symphony:status -->
-**Pipeline status** — updated 2026-09-26T05:30:36Z · 84/175 done
+**Pipeline status** — updated 2026-09-26T05:48:58Z · 85/175 done
 
-- Completed: T01, T02, T03, T04, T05, T06, T07, T08, T09, T10, T11, T12, T13, T14, T15, T16, T17, T18, T19, T20, T21, T22, T23, T24, T25, T26, T27, T28, T29, T30, T31, T32, T33, T34, T35, T36, T37, T38, T39, T40, T41, T42, T43, T44, T45, T46, T47, T48, T49, T50, T51, T52, T53, T54, T55, T56, T57, T58, T59, T60, T61, T62, T63, T64, T65, T66, T67, T68, T69, T70, T71, T72, T73, T74, T75, T76, T77, T78, T79, T80, T81, T82, T83, T84
+- Completed: T01, T02, T03, T04, T05, T06, T07, T08, T09, T10, T11, T12, T13, T14, T15, T16, T17, T18, T19, T20, T21, T22, T23, T24, T25, T26, T27, T28, T29, T30, T31, T32, T33, T34, T35, T36, T37, T38, T39, T40, T41, T42, T43, T44, T45, T46, T47, T48, T49, T50, T51, T52, T53, T54, T55, T56, T57, T58, T59, T60, T61, T62, T63, T64, T65, T66, T67, T68, T69, T70, T71, T72, T73, T74, T75, T76, T77, T78, T79, T80, T81, T82, T83, T84, T85
 - Blocked: none
 - Failed: none
-- Remaining: T85, T86, T87, T88, T89, T90, T91, T92, T93, T94, T95, T96, T97, T98, T99, T100, T101, T102, T103, T104, T105, T106, T107, T108, T109, T110, T111, T112, T113, T114, T115, T116, T117, T118, T119, T120, T121, T122, T123, T124, T125, T126, T127, T128, T129, T130, T131, T132, T133, T134, T135, T136, T137, T138, T139, T140, T141, T172, T173, T174, T175, T142, T143, T144, T145, T146, T147, T148, T149, T150, T151, T152, T153, T154, T155, T156, T157, T158, T159, T160, T161, T162, T163, T164, T165, T166, T167, T168, T169, T170, T171
-- Last finished: T84 — done · Idle timer engine (dim/blank/lock/suspend) + policy keys landed in dragonfruit-session (ADR 0070); fake-clock tests, make e2e and make lint green, nested demo captured.
+- Remaining: T86, T87, T88, T89, T90, T91, T92, T93, T94, T95, T96, T97, T98, T99, T100, T101, T102, T103, T104, T105, T106, T107, T108, T109, T110, T111, T112, T113, T114, T115, T116, T117, T118, T119, T120, T121, T122, T123, T124, T125, T126, T127, T128, T129, T130, T131, T132, T133, T134, T135, T136, T137, T138, T139, T140, T141, T172, T173, T174, T175, T142, T143, T144, T145, T146, T147, T148, T149, T150, T151, T152, T153, T154, T155, T156, T157, T158, T159, T160, T161, T162, T163, T164, T165, T166, T167, T168, T169, T170, T171
+- Last finished: T85 — done · Idle inhibitors and wake restore land in dragonfruit-session as IdleController/IdleInhibitors/IdleEvent (ADR 0071); 29 unit + 4 integration tests, e2e/lint green, nested demo captured clean.
 <!-- /symphony:status -->
