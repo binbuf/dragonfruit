@@ -82,7 +82,7 @@ every task un-completable.
 | [T-11](design/tracks/11-control-center-notifications.md) | Control Center + notifications | 8 | panel, banners, OSD |
 | [T-12](design/tracks/12-session-lock-idle.md) | Session + lock + idle | 13 | real login session, lock, idle, suspend [hw], dev-session harness |
 | [T-13](design/tracks/13-portals-capture-clipboard.md) | Portals + capture + clipboard | 12 | Flatpak browser walkthrough |
-| [T-14](design/tracks/14-global-menu-app-index-compat.md) | Global menu + app index + compat | 17 | real menus, tray, DBusMenu, XDnD, zoo; Dock feel + app management |
+| [T-14](design/tracks/14-global-menu-app-index-compat.md) | Global menu + app index + compat | 22 | real menus, tray, DBusMenu, XDnD, zoo; Dock feel + app management |
 | [T-15](design/tracks/15-system-services-breadth.md) | System services + Settings Waves 2–3 | 31 | Bluetooth, storage, printers, users, … |
 | [T-16](design/tracks/16-platform-polish-packaging.md) | Platform polish + packaging | 15 | multi-monitor, scaling, soak, a11y, i18n, packages [hw] |
 | [T-17](design/tracks/17-premium-gate.md) | The premium experience gate | 9 | the full loop on nested + DRM, at the visual floor |
@@ -90,7 +90,7 @@ every task un-completable.
 
 ## Work units (strict order)
 
-The 181 one-session tasks below are the executable sequence. symphony walks them in
+The 186 one-session tasks below are the executable sequence. symphony walks them in
 file order, runs each in a fresh session, verifies with `make e2e` and commits.
 The 10 `[hw]` tasks (DRM/logind, driver matrix, suspend soak, clean-VM packaging)
 are collected into the final Hardware rail phase so the nested pipeline runs to
@@ -249,19 +249,25 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 - [ ] T109 — T-14.6b Strange-app zoo fixes → [tasks/109-t-14.6b-strange-app-zoo-fixes.md](tasks/109-t-14.6b-strange-app-zoo-fixes.md)
 - [ ] T110 — T-14.7 Retire interim paths → [tasks/110-t-14.7-retire-interim-paths.md](tasks/110-t-14.7-retire-interim-paths.md)
 
-## Phase 14.5 — Dock experience addendum (T-14.7a–f)
+## Phase 14.5 — Dock experience addendum (T-14.7a–k)
 
-> **Inserted after T-14.7 and before T-15.** Six units cut from the 2026-09
+> **Inserted after T-14.7 and before T-15.** Eleven units cut from the 2026-09
 > Dock review: plate geometry/spacing, magnification growth, motion frame
-> discipline, Trash artwork, an app-index-backed Add Application picker, and
-> external-drop identity. They run in file order immediately after T110; the
-> `a`–`f` suffixes keep the existing task numbering (and the pipeline's saved
-> state) intact. Design reference:
+> discipline, Trash artwork, an app-index-backed Add Application picker,
+> external-drop identity, activation/launch correctness, folder stacks and
+> their labels, hover name labels, the macOS Tahoe floating-glass visual
+> language, and arbitrary folder pins. They run in file order immediately after
+> T110; the `a`–`k` suffixes keep the existing task numbering (and the
+> pipeline's saved state) intact. The Tahoe Dock is the visual/interaction
+> reference (local captures only; original assets). Design reference:
 > [legacy/10-dock.md](tasks/legacy/10-dock.md) ·
 > [04-shell.md](design/04-shell.md) ·
 > [10-design-system.md](design/10-design-system.md) ·
 > ADRs [0089](design/adr/0089-dock-plate-geometry-and-live-panel-rect.md) /
-> [0090](design/adr/0090-dock-app-management-picker-and-drops.md).
+> [0090](design/adr/0090-dock-app-management-picker-and-drops.md) /
+> [0091](design/adr/0091-dock-tahoe-floating-glass-language.md) /
+> [0092](design/adr/0092-dock-folder-stacks-and-folder-pins.md) /
+> [0093](design/adr/0093-tooltip-joins-the-design-system.md).
 
 - [ ] T110a — T-14.7a Dock plate geometry and spacing → [tasks/110a-t-14.7a-dock-plate-geometry-and-spacing.md](tasks/110a-t-14.7a-dock-plate-geometry-and-spacing.md)
 - [ ] T110b — T-14.7b Magnified plate growth and backdrop panel → [tasks/110b-t-14.7b-dock-magnified-plate-and-backdrop.md](tasks/110b-t-14.7b-dock-magnified-plate-and-backdrop.md)
@@ -269,6 +275,11 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 - [ ] T110d — T-14.7d Trash entry artwork → [tasks/110d-t-14.7d-trash-entry-artwork.md](tasks/110d-t-14.7d-trash-entry-artwork.md)
 - [ ] T110e — T-14.7e Add Application picker → [tasks/110e-t-14.7e-add-application-picker.md](tasks/110e-t-14.7e-add-application-picker.md)
 - [ ] T110f — T-14.7f Dock drag-and-drop identity and feedback → [tasks/110f-t-14.7f-dock-drag-and-drop-identity.md](tasks/110f-t-14.7f-dock-drag-and-drop-identity.md)
+- [ ] T110g — T-14.7g Dock activation and launch correctness → [tasks/110g-t-14.7g-dock-activation-and-launch-correctness.md](tasks/110g-t-14.7g-dock-activation-and-launch-correctness.md)
+- [ ] T110h — T-14.7h Dock folder stacks: presentation and clicks → [tasks/110h-t-14.7h-dock-folder-stacks-presentation-and-clicks.md](tasks/110h-t-14.7h-dock-folder-stacks-presentation-and-clicks.md)
+- [ ] T110i — T-14.7i Dock hover name labels (Tooltip) → [tasks/110i-t-14.7i-dock-hover-name-labels.md](tasks/110i-t-14.7i-dock-hover-name-labels.md)
+- [ ] T110j — T-14.7j Dock Tahoe visual language: floating glass, squircles, states → [tasks/110j-t-14.7j-dock-tahoe-visual-language.md](tasks/110j-t-14.7j-dock-tahoe-visual-language.md)
+- [ ] T110k — T-14.7k Dock folder pins: any folder as a stack → [tasks/110k-t-14.7k-dock-folder-pins.md](tasks/110k-t-14.7k-dock-folder-pins.md)
 
 ## Phase 15 — T-15 System services + Settings Waves 2–3
 

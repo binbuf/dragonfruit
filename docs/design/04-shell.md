@@ -58,6 +58,17 @@ two. The menu-broker is expected to take over synthesizing the application
 menu from app metadata (T-22) so the items can reflect per-app state, while
 the system menu stays with the session.
 
+**System-menu action wiring (T-09 follow-up).** System Settings opens the
+first-party Settings app through the same `.desktop` launch path as the Dock
+(the installed `org.dragonfruit.Settings.desktop`); if Settings is already
+running its window is focused instead of a second launch. Lock Screen routes to
+the same `ext-session-lock-v1` path as the Cmd+Ctrl+Q shortcut. About This
+System awaits the General > About pane (T-15.10); Sleep / Restart / Shut Down /
+Log Out await the real-session logind work (T-12.6/T-16.4); App Store ships
+disabled (no equivalent). Launched apps inherit the session environment with
+the shell's own `QT_QPA_PLATFORM=offscreen` replaced by the session's Wayland
+platform, so a Qt client maps on the real session platform.
+
 Status items consume the system-service adapters described in
 [07-system-integration.md](07-system-integration.md).
 
@@ -103,17 +114,24 @@ windows opening on other workspaces, and apps with inconsistent identifiers.
 
 The Dock is a **floating plate**: `controls.dock.edgeMargin` keeps it off its
 anchored screen edge, and the dock spacing tokens give the artwork cross-axis
-and along-axis padding. The reserved zone is the resting plate plus that
-margin; auto-hide reserves nothing. The plate is **cosmetic**: under
-magnification it grows to wrap the magnified row in both axes, inside the
-pre-reserved magnify band, while the reserved zone stays at the resting
-thickness so windows never re-lay-out when the pointer sweeps the Dock. The
-pointer is smoothed with `motion.dock-magnify` (the slight overshoot comes
+and along-axis padding. The visual language follows the macOS Tahoe Dock
+reference (local captures under `docs/reference/macos/`, never shipped): a
+rimmed translucent glass plate, rounded-square icon tiles at a consistent
+inset, and coherent hover/press/running states — reproduced with our own
+geometry and tokens, never Apple assets (ADR
+[0091](adr/0091-dock-tahoe-floating-glass-language.md)). The reserved zone is
+the resting plate plus that margin; auto-hide reserves nothing. The plate is
+**cosmetic**: under magnification it grows to wrap the magnified row in both
+axes, inside the pre-reserved magnify band, while the reserved zone stays at the
+resting thickness so windows never re-lay-out when the pointer sweeps the Dock.
+The pointer is smoothed with `motion.dock-magnify` (the slight overshoot comes
 from the token curve); reduced motion tracks the pointer directly. The
 compositor's frosted backdrop follows the live plate rect that the shell
-declares on each commit, so the material always sits under the artwork. See
+declares on each commit, so the material always sits under the artwork. A
+hovered entry reveals its name (and state) in a `Tooltip` capsule above the
+icon (T-14.7i). See
 [ADR 0089](adr/0089-dock-plate-geometry-and-live-panel-rect.md) and the
-T-14.7a/T-14.7b units.
+T-14.7a/T-14.7b/T-14.7j units.
 
 ### Adding and removing apps
 
@@ -127,6 +145,29 @@ is the only persisted state and settingsd the only writer. The picker is not a
 launcher — Launchpad and the Spotlight-equivalent search remain post-gate. See
 [ADR 0090](adr/0090-dock-app-management-picker-and-drops.md) and the
 T-14.7e/T-14.7f units.
+
+### Dock folders and stacks
+
+A folder entry is a **stack**, never an app launch: clicking it shows its
+contents in the Dock popover (the macOS list equivalent; fan/grid layouts are
+future polish), the popover and context menu open the folder in Files, and a
+double-click opens the folder in Files directly. Any folder dragged onto the
+Dock is pinned as a stack, persisted as a path list in `dock.pinnedFolders`
+(settingsd-owned) and listed read-only through `files-core`; the Downloads
+stack is the default member of the same widget. A missing path degrades to a
+dimmed entry with a notice. The folder's name is never drawn inside the
+artwork — it comes from the hover `Tooltip` and the popover header. See
+[ADR 0092](adr/0092-dock-folder-stacks-and-folder-pins.md) and the
+T-14.7h/T-14.7k units.
+
+### Activation and launch
+
+Every click resolves through the documented click tree (pinned not running →
+launch; running → focus, switching Space and restoring if minimized; multiple
+windows → chooser; a stack → its contents; Trash → Files). A launch must never
+silently no-op: the shell provides launched clients the session's display
+environment, and a missing identity or a vanished window surfaces a notice
+rather than a dead click. See T-14.7g.
 
 ## App switcher
 

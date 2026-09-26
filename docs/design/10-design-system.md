@@ -36,8 +36,13 @@ Icon
 Dialog
 Sheet
 Popover
+Tooltip
 ScrollView
 ```
+
+`Tooltip` (T-14.7i) is the passive hover label: pointer-anchored,
+non-focusable, token-driven, and used first by the Dock name labels (ADR
+[0093](adr/0093-tooltip-joins-the-design-system.md)).
 
 ## Token architecture
 
