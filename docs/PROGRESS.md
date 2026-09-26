@@ -3,16 +3,15 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(44 earlier sections omitted)_
+_(45 earlier sections omitted)_
 
-- **T42 — T-08.1a settingsd config model and D-Bus API**: **State: done.** `services/settingsd` is no longer a stub: the desktop-settings; **`services/settingsd/src/schema.rs`** (new) — `KEYS`: 20 named keys
 - **T43 — T-08.1b settingsd persistence and migrations**: **State: done.** `settingsd` now owns; **`services/settingsd/src/persist.rs`** (new) — the persisted format,
 - **T44 — T-08.2a Shell migration to settingsd**: **State: done.** The shell no longer owns Dock settings: `DockSettings`/; **`shell/src/settingsclient.{h,cpp}`** (new) — `SettingsClient` (typed key
 - **T45 — T-08.2b Design-system Theme binding**: **State: done.** The design-system `Theme` singleton's `dark`/`reducedMotion`; **`shell/src/themebinding.{h,cpp}`** (new) — `ThemeBinding` is the one
 - **T46 — T-08.2c Compositor motion/input policy migration**: **State: done.** The compositor now consumes the settingsd motion/input policy;; **`protocols/dragonfruit-toplevel.xml`** — `df_toplevel_manager` is v5 with
 - **T47 — T-08.3 Restart, resync, and key-schema documentation**: **State: done.** `settingsd` is restartable with no lost write and the shell; **`docs/settings-keys.md`** (new) — the human-facing key table (type,
 - **T48 — T-09.1a Settings app shell**: **State: done.** The `apps/settings` stub is now a real shell: frameless; **`apps/settings/`** is a reusable QML module `Dragonfruit.Settings` (static
-- **Follow-ups**: **T-12.1b follow-ups.** (a) The shipped units are not yet installed by a; **T-10.4a follow-ups.** (a) The files-core bridge is deliberately not
+- **Follow-ups**: **T-12.3a follow-ups.** (a) `ext_session_lock_manager_v1` has an open client; **T-12.1b follow-ups.** (a) The shipped units are not yet installed by a
 - **T49 — T-09.1b Settings live-apply plumbing**: **State: done.** The Settings app is a real settingsd consumer: a QML `Settings`; **`libs/settings-client/`** (new; `libs/CMakeLists.txt`) — the former
 - **T50 — T-09.2 Appearance pane**: **State: done.** The Appearance pane is real and live: a Light/Dark/Auto; **`apps/settings/AppearancePane.qml`** (new) — `SettingsGroup`/`SettingsRow`
 - **T51 — T-09.3 Wallpaper pane**: **State: done.** The Wallpaper pane is real and live: our own gradient; **Schema (since 2)** — `wallpaper.source` (s, empty = solid),
@@ -45,6 +44,7 @@ _(44 earlier sections omitted)_
 - **T78 — T-12.1a Session manager and restart policy**: **State: done.** `services/session` is a real session manager: the composition; **`services/session/src/plan.rs`** (new) — `RestartPolicy` (`always` /
 - **T79 — T-12.1b Session environment, systemd units, second-VT**: **State: done.** The session environment is data and reaches every child; the; **`services/session/src/env.rs`** (new) — `SessionEnvironment` (`new`,
 - **T80 — T-12.2 Display-manager entry and logout teardown**: **State: done.** The session now has a display-manager `.desktop` entry, an; **`services/session/dragonfruit.desktop`** (new) — Wayland session
+- **T81 — T-12.3a Lock protocol and lock UI**: **State: done.** `ext-session-lock-v1` is enforced end to end and the shell is; **`compositor/src/lock.rs`** (new) — `LockModel`: the one `locked` flag (with
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
