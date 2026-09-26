@@ -361,3 +361,22 @@ set_tests_properties(tst_lockauth PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+# Lock-input tests (T-12.3c): the pure evdev -> lock-key mapping the shell
+# feeds its password buffer from. No Wayland, QML, or compositor.
+qt_add_executable(tst_lockinput
+    tst_lockinput.cpp
+)
+target_link_libraries(tst_lockinput PRIVATE
+    Qt6::Core Qt6::Test
+    dragonfruit-shell-dockcore
+)
+
+add_test(
+    NAME tst_lockinput
+    COMMAND tst_lockinput
+)
+set_tests_properties(tst_lockinput PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)

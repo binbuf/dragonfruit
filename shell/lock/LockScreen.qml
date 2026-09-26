@@ -22,6 +22,16 @@ Item {
     property bool authBusy: false
     // A short status line under the field (wrong password, PAM unavailable).
     property string message: ""
+    // How many characters the captured password has (T-12.3c). The buffer
+    // itself stays in the shell controller; the scene only draws the mask.
+    property int passwordLength: 0
+
+    function passwordMask() {
+        var mask = "";
+        for (var i = 0; i < root.passwordLength; ++i)
+            mask += "\u2022";
+        return mask;
+    }
 
     Accessible.role: Accessible.Pane
     Accessible.name: qsTr("Lock screen")
@@ -144,10 +154,24 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.left: parent.left
                     anchors.leftMargin: Theme.primitive.spacing.md
+                    visible: root.passwordLength === 0
                     text: root.authBusy ? qsTr("Authenticating…")
                                         : (root.authEnabled ? qsTr("Enter Password")
                                                             : qsTr("Press Enter to unlock"))
                     color: Theme.color.textTertiary
+                    font.pixelSize: Theme.primitive.font.sizeMd
+                }
+
+                // The masked password (T-12.3c): captured keys are shown as
+                // bullets, never as text and never echoed.
+                Text {
+                    objectName: "lockPasswordMask"
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.left: parent.left
+                    anchors.leftMargin: Theme.primitive.spacing.md
+                    visible: root.passwordLength > 0
+                    text: root.passwordMask()
+                    color: Theme.color.textPrimary
                     font.pixelSize: Theme.primitive.font.sizeMd
                 }
             }

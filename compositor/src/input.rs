@@ -164,16 +164,22 @@ where
     B::TabletToolTipEvent: backend_input::TabletToolTipEvent<B>,
     B::TabletToolButtonEvent: backend_input::TabletToolButtonEvent<B>,
 {
-    // Fail-secure locking (T-12.3a): while the session is locked no user
-    // input reaches any client, and no compositor shortcut fires. Device
-    // hotplug is session plumbing, not user input, so it still routes.
-    if state.lock.is_locked()
-        && !matches!(
-            &event,
-            InputEvent::DeviceAdded { .. } | InputEvent::DeviceRemoved { .. }
-        )
-    {
-        return;
+    // Fail-secure locking (T-12.3a/T-12.3c): while the session is locked no
+    // user input reaches any client. Keyboard input is instead focused on the
+    // lock surface — the shell's first-party lock UI — so the user can type a
+    // password; pointer, touch, and gestures are dropped. With no live lock
+    // surface even the keyboard is dropped, so killing the lock UI keeps the
+    // session locked and inputless. Device hotplug is session plumbing, not
+    // user input, so it still routes.
+    if state.lock.is_locked() {
+        match &event {
+            InputEvent::DeviceAdded { .. } | InputEvent::DeviceRemoved { .. } => {}
+            InputEvent::Keyboard { event } => {
+                route_locked_keyboard::<B>(state, event);
+                return;
+            }
+            _ => return,
+        }
     }
     // T-03.1b input-to-photon latency: stamp the input before routing it so
     // the next presented frame can be credited with the round trip. Device
@@ -753,6 +759,39 @@ where
         }
         _ => {}
     }
+}
+
+/// Route a key event to the lock surface while locked (T-12.3c).
+///
+/// The lock surface is the only keyboard focus target while locked, and no
+/// compositor shortcut filter runs here, so a binding can never fire from
+/// under the lock UI. When the lock UI has no live surface the event is
+/// dropped — the session stays locked and inputless rather than falling back
+/// to a client.
+fn route_locked_keyboard<B: InputBackend>(state: &mut DfState, event: &B::KeyboardKeyEvent)
+where
+    B::KeyboardKeyEvent: backend_input::KeyboardKeyEvent<B>,
+{
+    let Some(surface) = state.lock.input_surface() else {
+        return;
+    };
+    let Some(keyboard) = state.seat.get_keyboard() else {
+        return;
+    };
+    if keyboard.current_focus().as_ref() != Some(&surface) {
+        keyboard.set_focus(state, Some(surface), SERIAL_COUNTER.next_serial());
+    }
+    let serial = SERIAL_COUNTER.next_serial();
+    // The lock UI is a trusted client; `Forward` hands the key to it. The
+    // filter never inspects the symbol, so no compositor binding resolves.
+    let _: Option<()> = keyboard.input(
+        state,
+        event.key_code(),
+        event.state(),
+        serial,
+        event.time_msec(),
+        |_, _, _| FilterResult::Forward,
+    );
 }
 
 /// Register (idempotently) a tablet device with the seat.

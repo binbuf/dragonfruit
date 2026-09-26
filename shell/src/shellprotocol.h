@@ -388,6 +388,11 @@ signals:
     // Dock while the bar still tracks its own focus.
     void dockKeyboardFocused(bool focused);
     void keyEvent(uint32_t key, bool pressed);
+    // A key delivered to the lock surface while the session is locked
+    // (T-12.3c). Distinct from `keyEvent` so lock input never reaches the
+    // menu bar or Dock scenes. `shift` is the live Shift state from
+    // `wl_keyboard.modifiers`.
+    void lockKeyEvent(uint32_t key, bool pressed, bool shift);
     // Mission Control overview (T-11): the compositor's single overview state
     // machine entered/left, and one progress-pipeline sample for the in-flight
     // transition. `overviewDataChanged` means the workspace/minimized-window
@@ -459,6 +464,8 @@ private:
     // Create a lock surface on each known output that does not have one. Safe
     // to call before the lock exists (it is then a no-op).
     void createLockSurfaces();
+    // Whether `surface` is one of the live lock surfaces (T-12.3c).
+    bool isLockSurface(wl_surface *surface) const;
     // Rebuild the Dock's running-app projection and emit `dockStateChanged`.
     void emitDockState();
     // Resolve a window handle back to its `df_toplevel` (null when gone).
@@ -692,6 +699,11 @@ private:
     // True while the Dock surface holds the keyboard (T-10 section 20), so
     // key events are routed to the Dock scene.
     bool m_keyboardOnDock = false;
+    // True while a lock surface holds the keyboard (T-12.3c), so key events
+    // are routed to the lock scene and never to the chrome.
+    bool m_keyboardOnLock = false;
+    // Live Shift state from `wl_keyboard.modifiers`, for lock-screen text.
+    bool m_keyboardShift = false;
     // True while the overview surface holds the keyboard (T-11): Escape
     // dismisses the overview.
     bool m_keyboardOnOverview = false;

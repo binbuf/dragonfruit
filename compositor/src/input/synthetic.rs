@@ -43,6 +43,7 @@
 //! query gesture
 //! query switcher
 //! query policy
+//! query lock
 //! query spaces
 //! set titlebar-double-click zoom|minimize|none
 //! set reduced-motion on|off
@@ -707,6 +708,10 @@ pub enum SyntheticCommand {
     /// scheme, titlebar double-click, minimized animation, keyboard repeat,
     /// and gesture switches, followed by `end`.
     QueryPolicy,
+    /// Read-only session-lock introspection (T-12.3c): the fail-secure
+    /// `locked` flag, the live lock-surface count, and whether a client
+    /// currently holds keyboard focus, followed by `end`. Never unlocks.
+    QueryLock,
     /// Set `dock.titlebarDoubleClick` for the session (T-01.3 test plumbing).
     SetTitlebarDoubleClick(TitlebarDoubleClick),
     /// Set the compositor reduced-motion policy (T-02.1b test plumbing).
@@ -881,9 +886,10 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
             Some("gesture") => SyntheticCommand::QueryGesture,
             Some("switcher") => SyntheticCommand::QuerySwitcher,
             Some("policy") => SyntheticCommand::QueryPolicy,
+            Some("lock") => SyntheticCommand::QueryLock,
             _ => {
                 return Err(
-                    "query requires a known subject (decorations, window-menu, motion, events, latency, scanout, degrade, material, grid, spaces, wallpaper, reveal, gesture, switcher, policy)"
+                    "query requires a known subject (decorations, window-menu, motion, events, latency, scanout, degrade, material, grid, spaces, wallpaper, reveal, gesture, switcher, policy, lock)"
                         .into(),
                 );
             }
@@ -1135,6 +1141,9 @@ impl SyntheticCommand {
             SyntheticCommand::QueryPolicy => {
                 unreachable!("query policy is handled by apply_datagram")
             }
+            SyntheticCommand::QueryLock => {
+                unreachable!("query lock is handled by apply_datagram")
+            }
             // A settings command, not an input event.
             SyntheticCommand::SetTitlebarDoubleClick(_) => {
                 unreachable!("set titlebar-double-click is handled by apply_datagram")
@@ -1335,6 +1344,15 @@ fn apply_datagram_reply(
             Ok(SyntheticCommand::QueryPolicy) => {
                 if let Some((socket, peer)) = &reply {
                     let report = policy_report(state);
+                    if let Some(path) = peer.as_pathname() {
+                        let _ = socket.send_to(report.as_bytes(), path);
+                    }
+                }
+                applied += 1;
+            }
+            Ok(SyntheticCommand::QueryLock) => {
+                if let Some((socket, peer)) = &reply {
+                    let report = lock_report(state);
                     if let Some(path) = peer.as_pathname() {
                         let _ = socket.send_to(report.as_bytes(), path);
                     }
@@ -1874,6 +1892,28 @@ fn policy_report(state: &DfState) -> String {
         gestures.enabled as u32,
         gestures.space_switch as u32,
         gestures.mission_control as u32,
+    )
+}
+
+/// The `query lock` report (T-12.3c): the fail-secure session-lock state.
+///
+/// `lock locked=<0|1> surfaces=<n> lock-focus=<0|1>` followed by `end`.
+/// `surfaces` is the number of live lock surfaces (zero after the lock UI
+/// dies) and `lock-focus` is whether the seat keyboard is focused on a live
+/// lock surface (the input-capture target). The report is read-only and never
+/// changes the lock, so a headless test can prove that killing the lock UI
+/// leaves `locked=1`.
+fn lock_report(state: &DfState) -> String {
+    let on_lock = state
+        .seat
+        .get_keyboard()
+        .and_then(|keyboard| keyboard.current_focus())
+        .is_some_and(|surface| state.lock.is_lock_surface(&surface));
+    format!(
+        "lock locked={} surfaces={} lock-focus={}\nend\n",
+        state.lock.is_locked() as u32,
+        state.lock.surface_count(),
+        on_lock as u32,
     )
 }
 
