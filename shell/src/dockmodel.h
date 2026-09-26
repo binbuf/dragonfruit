@@ -64,6 +64,21 @@ QVariantList buildDockEntries(const QStringList &pinnedIds, const DesktopEntryIn
 // reverse-DNS segment, with any `.desktop` suffix removed.
 QString displayNameForIdentity(const QString &identity);
 
+// How the shell should open an app identified by `desktopId`: activate a
+// running window when one matches, otherwise launch the `.desktop` entry. The
+// caller owns the side effects (`ShellProtocol::activateApp` /
+// `launchDockApp`); this is the pure decision the fixed menus and the Dock
+// share. `desktopId` may be a full desktop id or a compositor identity that
+// `index.resolve` maps to one. Pure and unit-tested (tst_dockcore).
+struct AppOpenPlan {
+    bool resolved = false; // the identity resolves in the corpus
+    bool running = false;  // a projected running window matches it
+    QString appId;         // compositor app id to activate (when running)
+    QString desktopId;     // resolved desktop id to launch (when not running)
+};
+AppOpenPlan planAppOpen(const DesktopEntryIndex &index, const QVariantList &running,
+                        const QString &desktopId);
+
 // Recent/suggested apps (T-10 section 17): up to `limit` entries for the
 // recency-ordered `recentIds` that are not pinned and not already running.
 // Gated by `dock.showRecentApps` at the shell; this only builds the entries.

@@ -9,7 +9,7 @@
 //! asserts no socket leaked. That is the "scripted half" of the track demo
 //! (docs/design/tracks/01-loop-v0-window-controls.md).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// How long the scripted half lets the shell and clients map before it
 /// checks that they are alive. Long enough for a cold Qt/Xwayland start on
@@ -39,6 +39,46 @@ pub fn qt_app() -> Option<PathBuf> {
 /// normal state).
 pub fn x11_app() -> Option<PathBuf> {
     env_app("DF_DEMO_X11_APP").or_else(|| which("xmessage"))
+}
+
+/// The built first-party app directories, as absolute paths. The shell
+/// launches installed apps through their `.desktop` `Exec` (e.g.
+/// `dragonfruit-settings`) with the child's working directory set to the home
+/// directory, so relative entries would not resolve; in the dev tree nothing is
+/// installed, and the demo exposes these on the shell's `PATH` to make a
+/// shell-launched first-party app start. Empty when not built.
+pub fn built_app_dirs() -> Vec<PathBuf> {
+    ["build/apps/settings", "build/apps/files"]
+        .iter()
+        .map(PathBuf::from)
+        .filter(|path| path.is_dir())
+        .filter_map(|path| std::fs::canonicalize(path).ok())
+        .collect()
+}
+
+/// Copy the first-party `.desktop` entries into `<dest_share>/applications` so
+/// the shell's app corpus resolves them in the dev tree (nothing is installed).
+/// A production install places them under the XDG data dirs instead. Returns
+/// true when at least one entry was staged. Best-effort.
+pub fn stage_first_party_desktop_entries(dest_share: &Path) -> bool {
+    let applications = dest_share.join("applications");
+    if std::fs::create_dir_all(&applications).is_err() {
+        return false;
+    }
+    let mut staged = false;
+    for source in [
+        "apps/settings/org.dragonfruit.Settings.desktop",
+        "apps/files/org.dragonfruit.Files.desktop",
+    ] {
+        let source = PathBuf::from(source);
+        let Some(name) = source.file_name() else {
+            continue;
+        };
+        if source.is_file() && std::fs::copy(&source, applications.join(name)).is_ok() {
+            staged = true;
+        }
+    }
+    staged
 }
 
 /// The Qt QML import root the first-party apps need. The shell bakes this in
@@ -115,6 +155,13 @@ pub fn checklist(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn built_app_dirs_are_directories() {
+        for dir in built_app_dirs() {
+            assert!(dir.is_dir(), "{dir:?} should be a directory");
+        }
+    }
 
     #[test]
     fn checklist_names_every_scripted_step_and_menu_command() {

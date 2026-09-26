@@ -522,6 +522,39 @@ fn launch_shell(guard: &mut ChildGuard, socket_name: &str, runtime_dir: &Path) -
     if let Some(helper) = pam_helper_path() {
         envs.push(("DF_PAM_HELPER", helper.to_string_lossy().into_owned()));
     }
+    // The shell launches apps through their `.desktop` Exec (e.g.
+    // `dragonfruit-settings`). The dev tree installs nothing, so expose the
+    // built app directories and the build's QML modules to the shell so a
+    // launched first-party app can start. A production install provides both.
+    let app_dirs = demo::built_app_dirs();
+    if !app_dirs.is_empty() {
+        let mut parts = app_dirs;
+        parts.extend(std::env::split_paths(
+            &std::env::var_os("PATH").unwrap_or_default(),
+        ));
+        if let Ok(path) = std::env::join_paths(parts) {
+            envs.push(("PATH", path.to_string_lossy().into_owned()));
+        }
+    }
+    envs.push((
+        "QML_IMPORT_PATH",
+        std::fs::canonicalize(demo::qml_import_path())
+            .unwrap_or_else(|_| demo::qml_import_path())
+            .to_string_lossy()
+            .into_owned(),
+    ));
+    // The shell resolves installed apps from its XDG application corpus; stage
+    // the first-party `.desktop` entries on a scratch data dir for the dev
+    // tree (production installs them under the XDG data dirs).
+    let share = runtime_dir.join("df-dev-share");
+    if demo::stage_first_party_desktop_entries(&share) {
+        let existing = std::env::var_os("XDG_DATA_DIRS")
+            .unwrap_or_else(|| std::ffi::OsString::from("/usr/local/share:/usr/share"));
+        envs.push((
+            "XDG_DATA_DIRS",
+            format!("{}:{}", share.to_string_lossy(), existing.to_string_lossy()),
+        ));
+    }
     launch_program(guard, "shell", &shell, &args, &envs)
 }
 

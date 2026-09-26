@@ -40,6 +40,13 @@ target_link_libraries(dragonfruit-settings PRIVATE
 )
 qt_import_qml_plugins(dragonfruit-settings)
 
+# The app identity (T-09 follow-up): install the `.desktop` entry so the Dock's
+# default pins resolve and the shell can launch Settings from the system menu /
+# Dock through the same `.desktop` path as Files.
+include(GNUInstallDirs)
+install(FILES org.dragonfruit.Settings.desktop
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+
 df_qml_lint(app-settings
     SettingsPanes.qml
     SettingsMenu.qml

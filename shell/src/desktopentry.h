@@ -13,6 +13,7 @@
 
 #include <QHash>
 #include <QList>
+#include <QProcessEnvironment>
 #include <QString>
 #include <QStringList>
 
@@ -86,3 +87,11 @@ private:
     QHash<QString, QString> m_byWmClass; // lowercased WM_CLASS -> id
     QList<DesktopEntry> m_entries;
 };
+
+// The environment a launched app inherits. The shell forces the offscreen QPA
+// for its own chrome (`main.cpp`), so that value must not reach a launched Qt
+// app or it would render offscreen and never map a window. When
+// `QT_QPA_PLATFORM` is the shell's `offscreen` value it is replaced with the
+// session's `wayland` platform; any other value (a deliberate session setting)
+// is preserved. Pure and unit-tested.
+QProcessEnvironment appLaunchEnvironment(const QProcessEnvironment &base);
