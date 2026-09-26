@@ -81,16 +81,21 @@ explicit — no pane is "a wrapper around a GNOME dialog":
 
 The Wallpaper pane presents three source rows: **Featured** (Wikimedia
 Commons Featured Pictures, fetched by `services/wallpaperd`), **Built-in**
-(original gradients), and **Custom** (the portal chooser). Nothing is bundled:
-the provider downloads at first run and re-checks roughly weekly, caching the
-images and their attribution metadata under `$XDG_CACHE_HOME/dragonfruit/`.
-The out-of-box wallpaper is the deterministic top Nature photo; a user choice
-in `wallpaper.source` always wins over the fetched default
-(`wallpaper.providerSource`). While the first catalogue is still downloading,
-Featured renders as reduced-motion-aware skeleton tiles. The provider, key
-ownership, offline behavior, and licensing are fixed by ADR
-[0055](adr/0055-online-wallpaper-content-provider.md); the pane UI, states, and
-attribution are T-18.2.
+(the shipped original default `assets/graphics/wallpapers/Default.jpg` plus the
+original gradients), and **Custom** (the portal chooser). The out-of-box
+background is the shipped original default, so first run and a cold cache never
+depend on the network. The provider downloads Featured at first run and
+re-checks roughly weekly, caching the images and their attribution metadata
+under `$XDG_CACHE_HOME/dragonfruit/`; it warms lazily on launch and eagerly when
+the pane is opened. The effective source is `wallpaper.source` (a user choice)
+when non-empty, otherwise the shipped `wallpaper.builtinDefault`, otherwise the
+fetched `wallpaper.providerSource`. While the first catalogue is still
+downloading, Featured renders as reduced-motion-aware skeleton tiles. The
+provider, key ownership, effective-source precedence, cache policy, offline
+behavior, and licensing are fixed by ADRs
+[0055](adr/0055-online-wallpaper-content-provider.md) /
+[0094](adr/0094-bundled-default-wallpaper-and-lazy-cache.md); the pane UI,
+states, and attribution are T-18.2.
 
 ## Persistence and change notification
 
