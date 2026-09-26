@@ -380,6 +380,9 @@ private:
     void teardownLockScreen();
     // The account the lock card authenticates as.
     QString lockUserName() const;
+    // Lock the session now (T-12.3a): the Cmd+Ctrl+Q shortcut and the system
+    // menu's Lock Screen both route here; the shell owns the lock UI.
+    void lockScreen();
     // Rebuild the Dock's ordered entries (pinned + running) and hand them to
     // the QML scene.
     void rebuildDockEntries();
@@ -396,6 +399,11 @@ private:
     // Launch an app with file arguments (a file dropped on an app icon, T-10
     // section 12); the files are substituted for the Exec file field codes.
     void launchDockAppWithFiles(const QString &desktopId, const QStringList &files);
+    // Open an app by desktop id (the fixed menus' entry point): activate a
+    // running window when one matches, otherwise launch its `.desktop` entry.
+    // The interim resolver is the launcher until the app-index launch API
+    // lands (T-14.7).
+    void openApp(const QString &desktopId);
     void failDockLaunch(const QString &desktopId, const QString &reason);
     // Clear a transient "failed" launch state after the notice has shown.
     void scheduleLaunchStateClear(const QString &desktopId);

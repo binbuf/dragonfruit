@@ -341,3 +341,16 @@ DesktopEntry DesktopEntryIndex::parse(const QString &id, const QString &contents
         entry.name = id.endsWith(QLatin1String(".desktop")) ? id.chopped(8) : id;
     return entry;
 }
+
+QProcessEnvironment appLaunchEnvironment(const QProcessEnvironment &base)
+{
+    QProcessEnvironment environment = base;
+    if (environment.value(QStringLiteral("QT_QPA_PLATFORM"))
+        == QLatin1String("offscreen")) {
+        // The shell forced the offscreen QPA for its own chrome; a launched Qt
+        // app must use the session's Wayland platform (not inherit offscreen,
+        // and not fall back to X11 because the shell also carries DISPLAY).
+        environment.insert(QStringLiteral("QT_QPA_PLATFORM"), QStringLiteral("wayland"));
+    }
+    return environment;
+}
