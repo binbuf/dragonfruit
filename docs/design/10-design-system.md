@@ -103,7 +103,7 @@ rules:
   carries the slight overshoot) and recomputes geometry every frame from the
   smoothed position, so it stays progress-based and interruptible. The
   plate/margin values it feeds are dock spacing tokens, never literals. See
-  [ADR 0088](adr/0088-dock-plate-geometry-and-live-panel-rect.md).
+  [ADR 0089](adr/0089-dock-plate-geometry-and-live-panel-rect.md).
 
 ## Quality gates
 

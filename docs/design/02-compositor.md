@@ -270,7 +270,7 @@ surface: the compositor intersects the declared rect with the surface geometry
 and frosts exactly that rect. Without the request the panel stays the input
 region bounding box ∩ the reserved strip, so the menu bar and popovers are
 unchanged. See
-[ADR 0088](adr/0088-dock-plate-geometry-and-live-panel-rect.md).
+[ADR 0089](adr/0089-dock-plate-geometry-and-live-panel-rect.md).
 
 `BackdropPass` gates the pass: the backend opens a rendered frame once
 (`DfState::begin_render_frame`) and each output applies the backdrop at most
