@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(50 earlier sections omitted)_
+_(51 earlier sections omitted)_
 
-- **T48 — T-09.1a Settings app shell**: **State: done.** The `apps/settings` stub is now a real shell: frameless; **`apps/settings/`** is a reusable QML module `Dragonfruit.Settings` (static
 - **Follow-ups**: **T-12.4a follow-ups.** (a) The idle engine (ADR 0070) has no production; **T-12.3c follow-ups.** (a) The shell types passwords from a fixed US/ASCII
 - **T49 — T-09.1b Settings live-apply plumbing**: **State: done.** The Settings app is a real settingsd consumer: a QML `Settings`; **`libs/settings-client/`** (new; `libs/CMakeLists.txt`) — the former
 - **T50 — T-09.2 Appearance pane**: **State: done.** The Appearance pane is real and live: a Light/Dark/Auto; **`apps/settings/AppearancePane.qml`** (new) — `SettingsGroup`/`SettingsRow`
@@ -45,6 +44,7 @@ _(50 earlier sections omitted)_
 - **T83 — T-12.3c Lock input capture and kill-resistance**: **State: done.** The locked session now captures input in the lock UI instead; **`compositor/src/lock.rs`** — `LockModel::input_surface()` (first live lock
 - **T84 — T-12.4a Idle timers**: **State: done.** The dim → blank → lock → suspend chain is a pure,; **`services/session/src/idle.rs`** (new) — `IdleStage`
 - **T85 — T-12.4b Idle inhibitors and wake restore**: **State: done.** `dragonfruit-session` now wraps the T-12.4a idle engine with; **`services/session/src/idle.rs`** — `IdleController` (owns `IdleTimers` +
+- **T86 — T-12.5a Suspend/resume cycle**: **State: done.** One suspend/resume round trip recovers outputs, input, and; **`services/session/src/suspend.rs`** (new) — `SuspendState`
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -6377,3 +6377,83 @@ Gotchas for later tasks:
 - **`Restore(Lock)` is not an unlock** — the lock UI/PAM path owns unlocking.
 - The compositor's `idle-inhibit` state is protocol-level; the idle service is
   the adapter that maps surfaces to `InhibitorId` handles.
+
+## T86 — T-12.5a Suspend/resume cycle
+
+**State: done.** One suspend/resume round trip recovers outputs, input, and
+clients without a restart. Contract frozen in ADR
+[0072](design/adr/0072-suspend-resume-cycle.md).
+
+What landed:
+
+- **`services/session/src/suspend.rs`** (new) — `SuspendState`
+  (`Awake`/`Requested`/`Asleep`), `SuspendRequest` (`Suspend`/`Cancel`),
+  `SuspendBackend` trait, `SuspendCycle` (`new`, `state`, `is_awake`,
+  `is_requested`, `is_asleep`, `cycles`, `request`, `prepare_for_sleep`,
+  `activity`), `SuspendController<B>` (`new`, `cycle`, `state`, `is_awake`,
+  `is_asleep`, `cycles`, `backend`, `last_error`, `on_idle_event`,
+  `prepare_for_sleep`, `activity`), and `MockSuspend`. `on_idle_event` maps
+  `Enter(Suspend)` → request and `Restore(Suspend)` → cancel; every other
+  stage is ignored. `prepare_for_sleep(true)` also accepts `Awake` (external
+  lid/power suspend); waking counts one cycle.
+- **`compositor/src/suspend.rs`** (new) — pure `SuspendModel`
+  (`is_suspended`, `cycles`, `suspend`, `resume`, idempotent).
+- **`compositor/src/state.rs`** — `DfState.suspend`; `suspend_session`
+  (disarm animation timer, close cadence, drop redraw) and `resume_session`
+  (repaint every output, `notify_activity`, re-arm animations).
+- **`compositor/src/input.rs`** — user input is dropped while suspended
+  (device hotplug still routes); `RenderStats.input_events` counts input that
+  reached the router, exposed as `received=` in `query latency`.
+- **`compositor/src/session.rs` / `backend/drm.rs`** — the shared render hook
+  and DRM `render_surface` skip frames while suspended; DRM
+  `PauseSession`/`ActivateSession` drive the model on a VT switch.
+- **`compositor/src/input/synthetic.rs`** — `suspend`, `resume`, and
+  `query session` (`session suspended=<0|1> cycles=<n> outputs=<n>
+  windows=<n>`).
+- **Tests** — `suspend::tests` 8 unit + `services/session/tests/suspend.rs` 3
+  integration (a real `sleep` child survives the cycle with zero restarts);
+  new `compositor/tests/suspend_resume_conformance.rs` 1 integration (mapped
+  client, dropped-then-restored input, pending frame callback delivered on
+  resume, two cycles). Added to `make e2e`.
+- **Docs** — ADR 0072; `11-session-and-dev-workflow.md` "Suspend/resume
+  (T-12.5a)" subsection and the logind bullet.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-session` — 29 unit + 3 `suspend` (plus existing).
+- `cargo test -p dragonfruit-compositor --bin dragonfruit-compositor` —
+  280/280.
+- `cargo test -p dragonfruit-compositor --test suspend_resume_conformance` —
+  1/1.
+- `cargo clippy -p dragonfruit-compositor --all-targets -- -D warnings`,
+  `cargo clippy -p dragonfruit-session --all-targets -- -D warnings`,
+  `cargo fmt -p ... -- --check` — exit 0.
+- `make e2e`, `make lint` — exit 0.
+
+Live check: nested demo driven over the synthetic socket
+(`/run/user/1000/t86-suspend-live.synth`): `query session` went
+`suspended=0 cycles=0` → `suspended=1 cycles=0` → `suspended=0 cycles=1` →
+`cycles=2`, always `outputs=1 windows=1`; captures
+`/tmp/opencode/t86/t86-suspend-{awake,suspended,resumed}.png` (3840x2160),
+byte-identical across the cycle (suspend freezes frames, resume restores the
+same scene — the intended no-visual-change outcome), and the dev tool
+reported a clean teardown. The vision tool was rate-limited (HTTP 429), so the
+stills were checked with PIL (not black, ~46k distinct colors, same
+distribution as the known-good `t84/t85-idle.png`).
+
+Gotchas for later tasks:
+
+- **The concrete logind backend is not wired.** `SuspendBackend` has only the
+  CI `MockSuspend`; no session process constructs `SuspendController` yet. The
+  real logind `Manager.Suspend` client and `PrepareForSleep` forwarding to the
+  compositor are the T-12.6/hardware step. Until then `suspend`/`resume` are
+  driven by the synthetic harness (and DRM VT pause/activate).
+- **Suspending is not locking.** A suspend while locked stays locked; the
+  lock UI/PAM path still owns unlocking (the controller never touches
+  `LockModel`).
+- **`resume_session` is the only repaint source.** A real sleep wake must call
+  it (or the DRM `ActivateSession` path) or the screen stays on its last
+  frame; the compositor does not poll for sleep.
+- **`query latency` gained a `received=` field before `within_one_frame_60hz`**
+  (ADR 0009 append-only ordering is respected for the `dump_stats` line, not
+  this query report).

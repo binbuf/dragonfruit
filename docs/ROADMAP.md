@@ -217,7 +217,7 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 - [x] T83 — T-12.3c Lock input capture and kill-resistance → [tasks/083-t-12.3c-lock-input-capture-and-kill-resistance.md](tasks/083-t-12.3c-lock-input-capture-and-kill-resistance.md)
 - [x] T84 — T-12.4a Idle timers → [tasks/084-t-12.4a-idle-timers.md](tasks/084-t-12.4a-idle-timers.md)
 - [x] T85 — T-12.4b Idle inhibitors and wake restore → [tasks/085-t-12.4b-idle-inhibitors-and-wake.md](tasks/085-t-12.4b-idle-inhibitors-and-wake.md)
-- [ ] T86 — T-12.5a Suspend/resume cycle → [tasks/086-t-12.5a-suspend-resume-cycle.md](tasks/086-t-12.5a-suspend-resume-cycle.md)
+- [~] T86 — T-12.5a Suspend/resume cycle → [tasks/086-t-12.5a-suspend-resume-cycle.md](tasks/086-t-12.5a-suspend-resume-cycle.md) ⟵ running
 - [ ] T87 — T-12.5b Session policy keys, kill matrix, capture → [tasks/087-t-12.5b-session-policy-keys-and-kill-matrix.md](tasks/087-t-12.5b-session-policy-keys-and-kill-matrix.md)
 
 ## Phase 13 — T-13 Portals + capture + clipboard

@@ -44,6 +44,7 @@
 //! query switcher
 //! query policy
 //! query lock
+//! query session
 //! query spaces
 //! set titlebar-double-click zoom|minimize|none
 //! set reduced-motion on|off
@@ -53,6 +54,7 @@
 //! set color-scheme light|dark
 //! minimize <window-id>
 //! restore <window-id>
+//! suspend | resume
 //! close <window-id>
 //! zoom <window-id> | unzoom <window-id>
 //! fullscreen <window-id> | unfullscreen <window-id>
@@ -712,6 +714,16 @@ pub enum SyntheticCommand {
     /// `locked` flag, the live lock-surface count, and whether a client
     /// currently holds keyboard focus, followed by `end`. Never unlocks.
     QueryLock,
+    /// Quiesce the session for a simulated suspend (T-12.5a test plumbing):
+    /// stop frames and input without tearing down outputs or clients.
+    SuspendSession,
+    /// Re-init the session after a simulated resume (T-12.5a test plumbing):
+    /// repaint every output and route input again.
+    ResumeSession,
+    /// Read-only session power introspection (T-12.5a): the suspend flag, the
+    /// completed-cycle count, the live output count, and the mapped window
+    /// count, followed by `end`.
+    QuerySession,
     /// Set `dock.titlebarDoubleClick` for the session (T-01.3 test plumbing).
     SetTitlebarDoubleClick(TitlebarDoubleClick),
     /// Set the compositor reduced-motion policy (T-02.1b test plumbing).
@@ -887,13 +899,16 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
             Some("switcher") => SyntheticCommand::QuerySwitcher,
             Some("policy") => SyntheticCommand::QueryPolicy,
             Some("lock") => SyntheticCommand::QueryLock,
+            Some("session") => SyntheticCommand::QuerySession,
             _ => {
                 return Err(
-                    "query requires a known subject (decorations, window-menu, motion, events, latency, scanout, degrade, material, grid, spaces, wallpaper, reveal, gesture, switcher, policy, lock)"
+                    "query requires a known subject (decorations, window-menu, motion, events, latency, scanout, degrade, material, grid, spaces, wallpaper, reveal, gesture, switcher, policy, lock, session)"
                         .into(),
                 );
             }
         },
+        "suspend" => SyntheticCommand::SuspendSession,
+        "resume" => SyntheticCommand::ResumeSession,
         "minimize" => SyntheticCommand::MinimizeWindow(WindowId(
             parts
                 .next()
@@ -1144,6 +1159,16 @@ impl SyntheticCommand {
             SyntheticCommand::QueryLock => {
                 unreachable!("query lock is handled by apply_datagram")
             }
+            // A session-power command, not an input event.
+            SyntheticCommand::SuspendSession => {
+                unreachable!("suspend is handled by apply_datagram")
+            }
+            SyntheticCommand::ResumeSession => {
+                unreachable!("resume is handled by apply_datagram")
+            }
+            SyntheticCommand::QuerySession => {
+                unreachable!("query session is handled by apply_datagram")
+            }
             // A settings command, not an input event.
             SyntheticCommand::SetTitlebarDoubleClick(_) => {
                 unreachable!("set titlebar-double-click is handled by apply_datagram")
@@ -1353,6 +1378,23 @@ fn apply_datagram_reply(
             Ok(SyntheticCommand::QueryLock) => {
                 if let Some((socket, peer)) = &reply {
                     let report = lock_report(state);
+                    if let Some(path) = peer.as_pathname() {
+                        let _ = socket.send_to(report.as_bytes(), path);
+                    }
+                }
+                applied += 1;
+            }
+            Ok(SyntheticCommand::SuspendSession) => {
+                state.suspend_session();
+                applied += 1;
+            }
+            Ok(SyntheticCommand::ResumeSession) => {
+                state.resume_session();
+                applied += 1;
+            }
+            Ok(SyntheticCommand::QuerySession) => {
+                if let Some((socket, peer)) = &reply {
+                    let report = session_report(state);
                     if let Some(path) = peer.as_pathname() {
                         let _ = socket.send_to(report.as_bytes(), path);
                     }
@@ -1584,16 +1626,19 @@ fn window_events_report(state: &DfState) -> String {
 
 /// The `query latency` report (T-03.1b).
 ///
-/// `latency last_us=<n> max_us=<n> samples=<n> dropped=<n>
-/// within_one_frame_60hz=<0|1>` followed by `end`.
+/// `latency last_us=<n> max_us=<n> samples=<n> dropped=<n> received=<n>
+/// within_one_frame_60hz=<0|1>` followed by `end`. `received` is the count of
+/// user input events that reached the router (T-12.5a); it is appended after
+/// the T-03.1b fields (ADR 0009 append-only).
 fn latency_report(state: &DfState) -> String {
     let latency = &state.stats.latency;
     format!(
-        "latency last_us={} max_us={} samples={} dropped={} within_one_frame_60hz={}\nend\n",
+        "latency last_us={} max_us={} samples={} dropped={} received={} within_one_frame_60hz={}\nend\n",
         latency.last_us(),
         latency.max_us(),
         latency.samples(),
         latency.dropped(),
+        state.stats.input_events,
         latency.within_one_frame(60) as u32,
     )
 }
@@ -1914,6 +1959,23 @@ fn lock_report(state: &DfState) -> String {
         state.lock.is_locked() as u32,
         state.lock.surface_count(),
         on_lock as u32,
+    )
+}
+
+/// The `query session` report (T-12.5a): the compositor's suspend/resume
+/// state, for the headless suspend cycle test.
+///
+/// `session suspended=<0|1> cycles=<n> outputs=<n> windows=<n>` followed by
+/// `end`. `outputs` and `windows` are the live scene counts, so a test can
+/// prove a suspend/resume cycle neither dropped an output nor disconnected a
+/// client window.
+fn session_report(state: &DfState) -> String {
+    format!(
+        "session suspended={} cycles={} outputs={} windows={}\nend\n",
+        state.suspend.is_suspended() as u32,
+        state.suspend.cycles(),
+        state.space.outputs().count(),
+        state.space.elements().count(),
     )
 }
 

@@ -150,7 +150,12 @@ pub fn run_session(socket_name: &str, hooks: BackendHooks) -> Result<(), String>
         // since the last one, so `dump_stats` can prove the gesture budget.
         let frame_start = std::time::Instant::now();
         let frames_before = state.stats.frames_rendered;
-        (render)(&mut state)?;
+        // A suspended session (T-12.5a) produces no frames until it wakes:
+        // the clients, the scene, and the outputs are untouched, so recovery
+        // is a repaint, not a restart.
+        if !state.suspend.is_suspended() {
+            (render)(&mut state)?;
+        }
         if state.stats.frames_rendered != frames_before {
             let frame_duration = frame_start.elapsed();
             // T-03.1a/T-03.1b/T-04.4a/T-05.6: one entry point feeds the frame

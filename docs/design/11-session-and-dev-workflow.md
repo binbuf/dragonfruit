@@ -318,6 +318,22 @@ not move the chain or reset the inactivity clock, so a chain held past its
 deadline catches up on the next poll. The suspend/resume cycle is T-12.5a; the
 settingsd keys are T-12.5b.
 
+### Suspend/resume (T-12.5a)
+
+One suspend/resume round trip recovers outputs, input, and clients without a
+restart. The request side is a pure `SuspendCycle` in
+`services/session/src/suspend.rs` (`Awake` → `Requested` → `Asleep`), driven
+from `IdleEvent::Enter(Suspend)` / `Restore(Suspend)` and logind's
+`PrepareForSleep`; `SuspendController` binds it to a `SuspendBackend`, the one
+seam that talks to logind (a recording mock in CI). The recovery side is a
+`SuspendModel` in the compositor: `suspend_session` disarms animations and
+drops pending frames, `resume_session` repaints every output and re-arms the
+loop, and user input is dropped while suspended. Clients, outputs, and the
+scene are never torn down, so the wake is a repaint. `query session` reports
+`suspended` and the completed-cycle count; the headless synthetic harness
+drives `suspend`/`resume`. The decision is frozen in
+[ADR 0072](adr/0072-suspend-resume-cycle.md).
+
 ## logind integration
 
 - `LockSession` / `UnlockSession` requests drive our lock screen; idle
@@ -326,7 +342,10 @@ settingsd keys are T-12.5b.
   activity source.
 - `PrepareForSleep` / `PrepareForShutdown` hooks freeze animations, flush
   persisted state, and quiesce rendering before suspend; resume re-inits
-  outputs and resumes render loops.
+  outputs and resumes render loops. T-12.5a implements the round trip as the
+  compositor `SuspendModel` plus the session `SuspendController`
+  ([above](#suspendresume-t-125a)); the concrete logind backend and the
+  `PrepareForSleep` forwarding land with the real-session work.
 
 ## Second VT, with isolation
 

@@ -26,6 +26,7 @@ mod session;
 mod shell;
 mod shell_protocol;
 mod state;
+mod suspend;
 mod trace;
 mod wallpaper;
 mod window;

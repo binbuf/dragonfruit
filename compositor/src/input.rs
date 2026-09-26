@@ -181,6 +181,16 @@ where
             _ => return,
         }
     }
+    // Suspend (T-12.5a): a sleeping session drops user input until it wakes;
+    // no client sees a keystroke or pointer motion while quiesced. Device
+    // hotplug is session plumbing, not user input, so it still routes (a
+    // wake re-scans devices).
+    if state.suspend.is_suspended() {
+        match &event {
+            InputEvent::DeviceAdded { .. } | InputEvent::DeviceRemoved { .. } => {}
+            _ => return,
+        }
+    }
     // T-03.1b input-to-photon latency: stamp the input before routing it so
     // the next presented frame can be credited with the round trip. Device
     // hotplug is not user input and must not start a sample.
@@ -188,6 +198,7 @@ where
         &event,
         InputEvent::DeviceAdded { .. } | InputEvent::DeviceRemoved { .. }
     ) {
+        state.stats.input_events += 1;
         state.stats.latency.note_input(Instant::now());
     }
     match event {
@@ -941,6 +952,11 @@ fn poll_hot_corner(state: &mut DfState) {
 /// re-arms until nothing is live. When nothing animates the timer is not
 /// armed at all — zero damage, zero client wakeups (FR-2).
 pub(crate) fn schedule_animation_timer(state: &mut DfState) {
+    if state.suspend.is_suspended() {
+        // A suspended session produces no frames; `resume_session` re-arms
+        // this if anything is still live.
+        return;
+    }
     if state.animation_timer.is_some() || !state.animations_active() {
         return;
     }

@@ -14,6 +14,9 @@
 //! * [`idle`] — [`IdlePolicy`], [`IdleTimers`], and [`IdleController`], the
 //!   dim/blank/lock/suspend idle chain driven from policy keys, with idle
 //!   inhibitors and wake restore (T-12.4a/T-12.4b).
+//! * [`suspend`] — [`SuspendCycle`]/[`SuspendController`], the one
+//!   suspend/resume round trip driven from `Enter(Suspend)` and logind's
+//!   `PrepareForSleep` (T-12.5a).
 //! * [`entry`] — the display-manager session `.desktop` entry, the entry
 //!   script, and their install layout (T-12.2).
 //! * [`supervisor`] — [`Supervisor`], which spawns the services stage by
@@ -30,6 +33,7 @@ pub mod env;
 pub mod idle;
 pub mod plan;
 pub mod supervisor;
+pub mod suspend;
 
 pub use env::{generate_launch_token, SessionEnvironment};
 pub use idle::{
@@ -37,6 +41,9 @@ pub use idle::{
 };
 pub use plan::{PlanError, RestartPolicy, ServiceSpec, SessionPlan};
 pub use supervisor::{ExitOutcome, ServiceState, SessionState, Supervisor, SupervisorEvent};
+pub use suspend::{
+    MockSuspend, SuspendBackend, SuspendController, SuspendCycle, SuspendRequest, SuspendState,
+};
 
 /// Planned well-known name on the user session bus
 /// (docs/ipc-versioning.md).
