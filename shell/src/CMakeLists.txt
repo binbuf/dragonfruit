@@ -43,6 +43,7 @@ endif()
 # compositor or the Wayland stack. The resolver is deleted when T-23 lands.
 add_library(dragonfruit-shell-dockcore STATIC
     chooserbridge.cpp
+    clipboardhistory.cpp
     compositorpolicy.cpp
     controlcenterpolicy.cpp
     desktopentry.cpp
@@ -119,6 +120,24 @@ add_custom_command(
     COMMENT "wayland-scanner ext-session-lock-v1"
     VERBATIM)
 list(APPEND DF_PROTOCOL_SOURCES "${_lock_source}")
+
+# The standard wlr-data-control-unstable-v1 XML is vendored (MIT) so the
+# shell's clipboard history can observe and forward the selection without
+# becoming a second owner (T-13.5b, ADR 0082/0083).
+set(_data_control_xml
+    "${CMAKE_SOURCE_DIR}/protocols/wayland-protocols/wlr-data-control-unstable-v1.xml")
+set(_data_control_header
+    "${DF_PROTOCOL_DIR}/wlr-data-control-unstable-v1-client-protocol.h")
+set(_data_control_source "${DF_PROTOCOL_DIR}/wlr-data-control-unstable-v1-protocol.c")
+add_custom_command(
+    OUTPUT "${_data_control_header}" "${_data_control_source}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${DF_PROTOCOL_DIR}"
+    COMMAND "${WAYLAND_SCANNER}" client-header "${_data_control_xml}" "${_data_control_header}"
+    COMMAND "${WAYLAND_SCANNER}" private-code "${_data_control_xml}" "${_data_control_source}"
+    DEPENDS "${_data_control_xml}"
+    COMMENT "wayland-scanner wlr-data-control-unstable-v1"
+    VERBATIM)
+list(APPEND DF_PROTOCOL_SOURCES "${_data_control_source}")
 
 qt_add_executable(dragonfruit-shell
     main.cpp

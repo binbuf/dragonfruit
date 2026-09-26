@@ -70,6 +70,16 @@ Item {
         return root.focusLabel;
     }
 
+    // Clipboard history (T-13.5b): the most recent observed selections, pushed
+    // by `ShellController` from the pure `ClipboardHistory` store. The panel
+    // keeps its tile model unchanged and renders this as a separate section.
+    property var clipboardEntries: []
+    readonly property int clipboardShown: Math.min(root.clipboardEntries.length, 5)
+
+    signal clipboardCopyRequested(int index)
+    signal clipboardPinToggled(int index, bool pinned)
+    signal clipboardClearRequested()
+
     // The normalized tile model, in panel order. A headless test asserts this
     // without instantiating the controls below.
     readonly property var tiles: [
@@ -181,6 +191,7 @@ Item {
 
         Column {
             id: content
+            objectName: "controlCenterContent"
             anchors.fill: parent
             anchors.margins: Theme.primitive.spacing.md
             spacing: Theme.primitive.spacing.sm
@@ -546,6 +557,106 @@ Item {
                         text: qsTr("Appearance Settings\u2026")
                         accessibleName: qsTr("Open Appearance Settings")
                         onActivated: root.appearanceSettingsRequested()
+                    }
+                }
+            }
+
+            // ── Clipboard history ────────────────────────────────────────
+            Rectangle {
+                id: clipboardTile
+                objectName: "clipboardTile"
+                width: parent.width
+                implicitHeight: clipboardColumn.implicitHeight
+                                + 2 * Theme.controls.settingsGroup.padding
+                radius: Theme.primitive.radius.md
+                color: Theme.color.surfaceSunken
+                Accessible.role: Accessible.Grouping
+                Accessible.name: qsTr("Clipboard")
+
+                Column {
+                    id: clipboardColumn
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: Theme.controls.settingsGroup.padding
+                    spacing: Theme.primitive.spacing.xs
+
+                    Text {
+                        objectName: "clipboardTitle"
+                        text: qsTr("Clipboard")
+                        color: Theme.color.textPrimary
+                        font.pixelSize: Theme.controls.button.fontSize
+                        font.weight: Theme.primitive.font.weightMedium
+                    }
+
+                    Text {
+                        objectName: "clipboardEmpty"
+                        width: parent.width
+                        visible: root.clipboardEntries.length === 0
+                        text: qsTr("No recent items")
+                        color: Theme.color.textSecondary
+                        font.pixelSize: Theme.primitive.font.sizeSm
+                    }
+
+                    Repeater {
+                        model: root.clipboardShown
+                        delegate: Rectangle {
+                            id: clipboardRow
+                            required property int index
+                            readonly property var entry: root.clipboardEntries[index]
+                            width: parent.width
+                            height: 26
+                            radius: Theme.primitive.radius.sm
+                            color: rowHover.hovered ? Theme.color.surfaceElevated
+                                                    : "transparent"
+
+                            HoverHandler { id: rowHover }
+
+                            Text {
+                                objectName: "clipboardRowPreview"
+                                anchors.left: parent.left
+                                anchors.leftMargin: Theme.primitive.spacing.xs
+                                anchors.right: pinAction.left
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: clipboardRow.entry.preview
+                                color: Theme.color.textPrimary
+                                font.pixelSize: Theme.primitive.font.sizeSm
+                                elide: Text.ElideRight
+                                Accessible.role: Accessible.Button
+                                Accessible.name: qsTr("Copy %1").arg(clipboardRow.entry.preview)
+                                TapHandler {
+                                    onTapped: root.clipboardCopyRequested(clipboardRow.entry.index)
+                                }
+                            }
+
+                            Text {
+                                id: pinAction
+                                objectName: "clipboardRowPin"
+                                anchors.right: parent.right
+                                anchors.rightMargin: Theme.primitive.spacing.xs
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: clipboardRow.entry.pinned ? qsTr("Unpin") : qsTr("Pin")
+                                color: clipboardRow.entry.pinned ? Theme.color.accent
+                                                                 : Theme.color.textSecondary
+                                font.pixelSize: Theme.primitive.font.sizeSm
+                                Accessible.role: Accessible.Button
+                                Accessible.name: clipboardRow.entry.pinned
+                                    ? qsTr("Unpin %1").arg(clipboardRow.entry.preview)
+                                    : qsTr("Pin %1").arg(clipboardRow.entry.preview)
+                                TapHandler {
+                                    onTapped: root.clipboardPinToggled(
+                                        clipboardRow.entry.index, !clipboardRow.entry.pinned)
+                                }
+                            }
+                        }
+                    }
+
+                    TextLink {
+                        objectName: "clipboardClearLink"
+                        text: qsTr("Clear Clipboard")
+                        accessibleName: qsTr("Clear Clipboard")
+                        visible: root.clipboardEntries.length > 0
+                        onActivated: root.clipboardClearRequested()
                     }
                 }
             }

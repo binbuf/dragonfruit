@@ -36,6 +36,9 @@
 #include "dragonfruit-toplevel-client-protocol.h"
 // The vendored standard protocol (MIT); the shell is the first-party lock UI.
 #include "ext-session-lock-v1-client-protocol.h"
+// The vendored standard protocol (MIT); the shell's clipboard history
+// observes and forwards the selection through it (T-13.5b, ADR 0082).
+#include "wlr-data-control-unstable-v1-client-protocol.h"
 
 #ifndef DF_LOCKSTEP_VERSION
 #define DF_LOCKSTEP_VERSION 1
@@ -1627,6 +1630,15 @@ void ShellProtocol::teardown()
         wl_data_device_destroy(m_dataDevice);
     if (m_dataDeviceManager)
         wl_data_device_manager_destroy(m_dataDeviceManager);
+    cancelClipboardRead();
+    if (m_clipboardSource)
+        zwlr_data_control_source_v1_destroy(m_clipboardSource);
+    if (m_dataControlOffer)
+        zwlr_data_control_offer_v1_destroy(m_dataControlOffer);
+    if (m_dataControlDevice)
+        zwlr_data_control_device_v1_destroy(m_dataControlDevice);
+    if (m_dataControlManager)
+        zwlr_data_control_manager_v1_destroy(m_dataControlManager);
     if (m_pointer)
         wl_pointer_destroy(m_pointer);
     if (m_keyboard)
@@ -1740,6 +1752,11 @@ void ShellProtocol::onRegistryGlobal(void *data, wl_registry *registry, uint32_t
             wl_registry_bind(registry, name, &wl_data_device_manager_interface,
                              std::min(version, 3u)));
         self->maybeCreateDataDevice();
+    } else if (iface == QLatin1String("zwlr_data_control_manager_v1")) {
+        self->m_dataControlManager = static_cast<zwlr_data_control_manager_v1 *>(
+            wl_registry_bind(registry, name, &zwlr_data_control_manager_v1_interface,
+                             std::min(version, 2u)));
+        self->maybeCreateDataControlDevice();
     } else if (iface == QLatin1String("wl_output")) {
         auto *output = static_cast<wl_output *>(
             wl_registry_bind(registry, name, &wl_output_interface, std::min(version, 4u)));
@@ -1934,6 +1951,7 @@ void ShellProtocol::onSeatCapabilities(void *data, wl_seat *seat, uint32_t capab
     // The data device needs the seat, not a capability; bind it once both the
     // seat and the manager global are known (T-10 external drops).
     self->maybeCreateDataDevice();
+    self->maybeCreateDataControlDevice();
     if ((capabilities & WL_SEAT_CAPABILITY_POINTER) && !self->m_pointer) {
         self->m_pointer = wl_seat_get_pointer(seat);
         static const wl_pointer_listener pointerListener = {
@@ -2150,6 +2168,229 @@ void ShellProtocol::resetExternalDrag()
     m_dndMimeTypes.clear();
     m_dndMime.clear();
     m_dndData.clear();
+}
+
+// --- wlr-data-control clipboard observation (T-13.5b) -----------------------
+
+namespace {
+
+// The MIME types the history store can classify and keep. Everything else in
+// the offer is ignored; the selection itself is untouched, so this filter
+// never changes what a paste sees (ADR 0082).
+bool shellKeepsClipboardMime(const QString &mime)
+{
+    return mime == QLatin1String("text/uri-list")
+        || mime.startsWith(QLatin1String("image/"))
+        || mime == QLatin1String("text/plain;charset=utf-8")
+        || mime == QLatin1String("text/plain")
+        || mime == QLatin1String("UTF8_STRING")
+        || mime == QLatin1String("TEXT");
+}
+
+} // namespace
+
+void ShellProtocol::maybeCreateDataControlDevice()
+{
+    if (!m_dataControlManager || !m_seat || m_dataControlDevice)
+        return;
+    m_dataControlDevice =
+        zwlr_data_control_manager_v1_get_data_device(m_dataControlManager, m_seat);
+    static const zwlr_data_control_device_v1_listener listener = {
+        onDataControlOffer,
+        onDataControlSelection,
+        onDataControlFinished,
+        onDataControlPrimarySelection,
+    };
+    zwlr_data_control_device_v1_add_listener(m_dataControlDevice, &listener, this);
+}
+
+void ShellProtocol::onDataControlOffer(void *data, zwlr_data_control_device_v1 *,
+                                       zwlr_data_control_offer_v1 *offer)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    if (self->m_dataControlOffer && self->m_dataControlOffer != offer)
+        zwlr_data_control_offer_v1_destroy(self->m_dataControlOffer);
+    self->m_dataControlOffer = offer;
+    self->m_clipboardMimes.clear();
+    static const zwlr_data_control_offer_v1_listener offerListener = {
+        onDataControlOfferMime,
+    };
+    zwlr_data_control_offer_v1_add_listener(offer, &offerListener, self);
+}
+
+void ShellProtocol::onDataControlOfferMime(void *data, zwlr_data_control_offer_v1 *,
+                                           const char *mimeType)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    if (mimeType)
+        self->m_clipboardMimes.append(QString::fromLatin1(mimeType));
+}
+
+void ShellProtocol::onDataControlSelection(void *data, zwlr_data_control_device_v1 *,
+                                           zwlr_data_control_offer_v1 *offer)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    // A new selection supersedes any read still in flight.
+    self->cancelClipboardRead();
+    if (!offer) {
+        if (self->m_dataControlOffer) {
+            zwlr_data_control_offer_v1_destroy(self->m_dataControlOffer);
+            self->m_dataControlOffer = nullptr;
+        }
+        self->m_clipboardMimes.clear();
+        return;
+    }
+
+    QStringList readable;
+    for (const QString &mime : self->m_clipboardMimes) {
+        if (shellKeepsClipboardMime(mime) && !readable.contains(mime))
+            readable.append(mime);
+    }
+    if (readable.isEmpty())
+        return;
+
+    self->m_clipboardReadPayloads.clear();
+    for (const QString &mime : readable) {
+        int fds[2];
+        if (pipe2(fds, O_CLOEXEC) != 0)
+            continue;
+        fcntl(fds[0], F_SETFL, O_NONBLOCK);
+        zwlr_data_control_offer_v1_receive(offer, mime.toUtf8().constData(), fds[1]);
+        ::close(fds[1]);
+
+        self->m_clipboardFdMime.insert(fds[0], mime);
+        self->m_clipboardPayloads.insert(fds[0], QByteArray());
+        auto *notifier = new QSocketNotifier(fds[0], QSocketNotifier::Read, self);
+        self->m_clipboardNotifierFd.insert(notifier, fds[0]);
+        QObject::connect(notifier, &QSocketNotifier::activated, self,
+                         [self, fd = fds[0]]() { self->onClipboardReadable(fd); });
+    }
+}
+
+void ShellProtocol::onDataControlFinished(void *data, zwlr_data_control_device_v1 *device)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    self->cancelClipboardRead();
+    if (self->m_dataControlOffer) {
+        zwlr_data_control_offer_v1_destroy(self->m_dataControlOffer);
+        self->m_dataControlOffer = nullptr;
+    }
+    self->m_clipboardMimes.clear();
+    if (self->m_dataControlDevice == device)
+        self->m_dataControlDevice = nullptr;
+    zwlr_data_control_device_v1_destroy(device);
+}
+
+void ShellProtocol::onDataControlPrimarySelection(void *, zwlr_data_control_device_v1 *,
+                                                  zwlr_data_control_offer_v1 *offer)
+{
+    // Primary selection is deliberately not part of the history (T-13.5b
+    // stores the clipboard only); release the offer so it does not leak.
+    if (offer)
+        zwlr_data_control_offer_v1_destroy(offer);
+}
+
+void ShellProtocol::onClipboardReadable(int fd)
+{
+    if (!m_clipboardFdMime.contains(fd)) {
+        ::close(fd);
+        return;
+    }
+    char buffer[8192];
+    const ssize_t n = ::read(fd, buffer, sizeof(buffer));
+    if (n > 0) {
+        m_clipboardPayloads[fd].append(buffer, static_cast<int>(n));
+        return;
+    }
+    // EOF (0) or an error: this MIME's payload is complete.
+    const QString mime = m_clipboardFdMime.take(fd);
+    const QByteArray payload = m_clipboardPayloads.take(fd);
+    if (!mime.isEmpty())
+        m_clipboardReadPayloads.insert(mime, payload);
+    ::close(fd);
+    for (auto it = m_clipboardNotifierFd.begin(); it != m_clipboardNotifierFd.end(); ++it) {
+        if (it.value() == fd) {
+            it.key()->setEnabled(false);
+            it.key()->deleteLater();
+            m_clipboardNotifierFd.erase(it);
+            break;
+        }
+    }
+    if (m_clipboardNotifierFd.isEmpty() && !m_clipboardReadPayloads.isEmpty()) {
+        const QMap<QString, QByteArray> payloads = m_clipboardReadPayloads;
+        m_clipboardReadPayloads.clear();
+        const QStringList mimes = m_clipboardMimes;
+        emit clipboardObserved(mimes, payloads);
+    }
+}
+
+void ShellProtocol::cancelClipboardRead()
+{
+    for (auto it = m_clipboardNotifierFd.begin(); it != m_clipboardNotifierFd.end(); ++it) {
+        it.key()->setEnabled(false);
+        it.key()->deleteLater();
+        ::close(it.value());
+    }
+    m_clipboardNotifierFd.clear();
+    m_clipboardFdMime.clear();
+    m_clipboardPayloads.clear();
+    m_clipboardReadPayloads.clear();
+}
+
+void ShellProtocol::onDataControlSourceSend(void *data, zwlr_data_control_source_v1 *,
+                                            const char *mimeType, int32_t fd)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    const QByteArray payload =
+        self->m_clipboardSourcePayloads.value(QString::fromUtf8(mimeType));
+    ssize_t written = 0;
+    while (written < payload.size()) {
+        const ssize_t n = ::write(fd, payload.constData() + written, payload.size() - written);
+        if (n <= 0)
+            break;
+        written += n;
+    }
+    ::close(fd);
+}
+
+void ShellProtocol::onDataControlSourceCancelled(void *data, zwlr_data_control_source_v1 *source)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    if (self->m_clipboardSource == source)
+        self->m_clipboardSource = nullptr;
+    zwlr_data_control_source_v1_destroy(source);
+    self->m_clipboardSourcePayloads.clear();
+}
+
+bool ShellProtocol::offerClipboard(const QStringList &mimes,
+                                   const QMap<QString, QByteArray> &payloads)
+{
+    if (!m_dataControlManager || !m_dataControlDevice)
+        return false;
+
+    m_clipboardSourcePayloads.clear();
+    for (const QString &mime : mimes) {
+        if (payloads.contains(mime))
+            m_clipboardSourcePayloads.insert(mime, payloads.value(mime));
+    }
+    if (m_clipboardSourcePayloads.isEmpty())
+        return false;
+
+    if (m_clipboardSource) {
+        zwlr_data_control_source_v1_destroy(m_clipboardSource);
+        m_clipboardSource = nullptr;
+    }
+    m_clipboardSource = zwlr_data_control_manager_v1_create_data_source(m_dataControlManager);
+    static const zwlr_data_control_source_v1_listener sourceListener = {
+        onDataControlSourceSend,
+        onDataControlSourceCancelled,
+    };
+    zwlr_data_control_source_v1_add_listener(m_clipboardSource, &sourceListener, this);
+    for (const QString &mime : m_clipboardSourcePayloads.keys())
+        zwlr_data_control_source_v1_offer(m_clipboardSource, mime.toUtf8().constData());
+    zwlr_data_control_device_v1_set_selection(m_dataControlDevice, m_clipboardSource);
+    wl_display_flush(m_display);
+    return true;
 }
 
 void ShellProtocol::onPointerEnter(void *data, wl_pointer *, uint32_t, wl_surface *surface,
