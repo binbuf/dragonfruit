@@ -135,11 +135,27 @@ fn version(client: &Connection, interface: &str) -> u32 {
             DBUS_PATH,
             Some("org.freedesktop.DBus.Properties"),
             "Get",
-            &(interface, "Version"),
+            &(interface, "version"),
         )
-        .expect("read Version");
+        .expect("read version");
     let value: OwnedValue = reply.body().deserialize().expect("property body decodes");
-    u32::try_from(value).expect("Version is a u32")
+    u32::try_from(value).expect("version is a u32")
+}
+
+/// Read any property, returning the D-Bus error for an absent one.
+fn read_property(
+    client: &Connection,
+    interface: &str,
+    property: &str,
+) -> Result<OwnedValue, zbus::Error> {
+    let reply = client.call_method(
+        Some(DBUS_NAME),
+        DBUS_PATH,
+        Some("org.freedesktop.DBus.Properties"),
+        "Get",
+        &(interface, property),
+    )?;
+    reply.body().deserialize()
 }
 
 /// Set a settingsd key through the real owner.
@@ -243,6 +259,37 @@ fn the_standard_interfaces_are_served_at_the_standard_path() {
     assert!(introspection.contains(FILE_CHOOSER_INTERFACE));
     assert!(introspection.contains(SCREENSHOT_INTERFACE));
     assert!(introspection.contains(SCREENCAST_INTERFACE));
+}
+
+/// T-13.7: the real `xdg-desktop-portal` frontend reads each implementation
+/// interface's version from the *lower-case* `version` property (the standard
+/// spells `AvailableSourceTypes`/`AvailableCursorModes` in Pascal case but
+/// `version` lower case). Exporting the zbus default `Version` silently made
+/// the frontend see version 0, which disabled cursor modes, the Screenshot
+/// `uri` result, and persistence. Pin the wire name here so it cannot regress.
+#[test]
+fn the_standard_interfaces_expose_the_lowercase_version_property() {
+    let bus = PrivateBus::start();
+    let (_service, _backend) = bus.serve();
+    let client = bus.connect();
+
+    for (interface, expected) in [
+        (SETTINGS_INTERFACE, 2u32),
+        (SCREENSHOT_INTERFACE, 2),
+        (SCREENCAST_INTERFACE, 3),
+        (GLOBAL_SHORTCUTS_INTERFACE, 1),
+    ] {
+        assert_eq!(
+            version(&client, interface),
+            expected,
+            "{interface} advertises the standard version"
+        );
+        // The non-standard Pascal-case spelling must not be what we serve.
+        assert!(
+            read_property(&client, interface, "Version").is_err(),
+            "{interface} must not export `Version` (the frontend reads `version`)"
+        );
+    }
 }
 
 #[test]

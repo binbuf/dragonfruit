@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(64 earlier sections omitted)_
+_(65 earlier sections omitted)_
 
-- **T61 — T-10.3b files-core folder watcher**: **State: done.** `files-core` now has the one change monitor: one watch per; **`services/files-core/src/watch.rs`** (new) — the watch seam and fallback:
 - **T62 — T-10.4a Files window, toolbar, and sidebar**: **State: done.** The Files window, toolbar, and sidebar are real. `apps/files`; **`apps/files/FilesBridge.{h,cpp}`** — `QML_SINGLETON`, `QML_NAMED_ELEMENT(Files)`:
 - **T63 — T-10.4b Files list and icon views**: **State: done.** The Files icon and list views render the `files-core` listing.; **`services/files-core/src/ffi.rs`** (new) — the C ABI: `df_files_begin`,
 - **T64 — T-10.4c Files context menus, multi-select, optimistic UI**: **State: done.** Context menus, multi-select, and optimistic; **`services/files-core/src/ffi.rs`** — `FfiSession` now wraps
@@ -44,6 +43,7 @@ _(64 earlier sections omitted)_
 - **T96 — T-13.5a Clipboard text/image/uri-list round-trips**: **State: done.** The clipboard round-trip matrix is proven on the headless; **`compositor/tests/shell_protocol_conformance.rs`** — new
 - **T97 — T-13.5b Clipboard history (if specified)**: **State: done.** The design calls for history (ADR 0082's accepted consequences; **`shell/src/clipboardhistory.{h,cpp}`** (new, dockcore) — `ClipboardHistory`:
 - **T98 — T-13.6 polkit authentication agent**: **State: done.** A privileged polkit request now raises a Dragonfruit; **`shell/src/polkitagent.{h,cpp}`** (dockcore) — `PolkitAgent` exports
+- **T99 — T-13.7 Flatpak validation and capture**: **State: done** (one honest deviation: no Flatpak↔native clipboard still; see; **`scripts/capture-portals.sh`** (new; `make portals-capture`) — private
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3227,6 +3227,13 @@ Gotchas for later tasks:
 
 ## Follow-ups
 
+- **T-13.7 follow-ups.** (a) Clipboard has no portal (ADR 0082); the Flatpak
+  capture proves FileChooser/Screenshot/ScreenCast but not a Flatpak↔native
+  clipboard round-trip in the nested session (T-13.5a covers the compositor
+  data device with native clients). A Flatpak-vs-native clipboard still would
+  need a small Wayland clipboard client in the sandbox. (b) A live PipeWire
+  ScreenCast producer is still the named stills fallback; that is T-13.4b's
+  documented gap, not new here.
 - **T-13.5b follow-ups.** (a) The Control Center clipboard section shows the
   five most recent entries only; a dedicated popover with image thumbnails,
   entry removal, search, and the pinned/clear-all controls from legacy T-29 is
@@ -7348,3 +7355,80 @@ Gotchas for later tasks:
 - `DF_POLKIT_FIXTURE` resolves locally (`presentLocal`) with no helper.
 - Registering the agent object on the system bus requires no root; the agent
   path is fixed and one per process.
+
+## T99 — T-13.7 Flatpak validation and capture
+
+**State: done** (one honest deviation: no Flatpak↔native clipboard still; see
+below). A real Flatpak browser (`org.mozilla.firefox`) file-chooses,
+screenshots, and screen-shares through the **real** `xdg-desktop-portal`
+frontend into the Dragonfruit backend, and the shell picker it raises is
+committed as a capture. Running against the real frontend found and fixed two
+wire-contract bugs the private-bus tests could not. Contract frozen in ADR
+[0085](design/adr/0085-real-frontend-portal-compatibility.md).
+
+What landed:
+
+- **`scripts/capture-portals.sh`** (new; `make portals-capture`) — private
+  session bus + real frontend + backend + `settingsd` + notifications; a host
+  presenter (the shell's role) and a driver executed *inside* `flatpak run
+  org.mozilla.firefox`. Writes `docs/captures/t13-portals.txt` (round-trips)
+  and `t13-portals.png` (the picker raised by the Flatpak FileChooser, the
+  private bus exported into `make demo` so the shell is the presenter). Not in
+  `make e2e`.
+- **`scripts/flatpak-portal-driver.py`** (new) — `presenter` / `client` /
+  `trigger` roles; one file for host and sandbox.
+- **`docs/captures/t13-portals.txt`** — FileChooser `uris` exported into the
+  sandbox document portal, Screenshot `uri`, ScreenCast `streams`
+  (`df_stream_mode=stills`, `df_fallback=pipewire-producer-unavailable`), and
+  the frontend-reported ScreenCast/Screenshot versions (3 / 2).
+- **`docs/captures/t13-portals.png`** — 1920×1200 active-window still; vision:
+  menu bar + Dock render; centered picker titled "Open a file from the Flatpak
+  browser", breadcrumb `/home/user`, folders-first rows, Cancel/Open.
+- **Real-frontend fixes:**
+  1. `portal/data/dragonfruit.portal` and `dragonfruit-portals.conf` used `;`
+     comments; GLib key files need `#` (these edits were already uncommitted in
+     the tree; now validated by the frontend loading them).
+  2. Impl interfaces exported `Version` (zbus default); the standard is
+     lower-case `version`. The frontend read 0 and disabled ScreenCast cursor
+     modes (so `SelectSources` with `cursor_mode` was rejected), the Screenshot
+     `uri` result, and persistence. Fixed with
+     `#[zbus(property, name = "version")]` on Settings/Screenshot/ScreenCast/
+     GlobalShortcuts; FileChooser's non-standard `Version` removed. Pinned by
+     `the_standard_interfaces_expose_the_lowercase_version_property`
+     (`portal/tests/portals.rs`) and `filechooser.rs` (asserts absence).
+- **Docs** — ADR 0085 and a "Flatpak validation (T-13.7)" section in
+  `07-system-integration.md`.
+
+Commands that work (repo root):
+
+- `cargo test -p xdg-desktop-portal-dragonfruit` — 58 lib + 5 filechooser + 4
+  screenshot + 4 screencast + 4 portals + 4 session_bus, all pass.
+- `cargo clippy -p xdg-desktop-portal-dragonfruit --all-targets -- -D
+  warnings` — exit 0; `cargo fmt -p ... -- --check` — exit 0;
+  `./scripts/check-no-capture-grab.sh` — green.
+- `bash scripts/capture-portals.sh` (or `make portals-capture`) — exit 0;
+  `CLIENT: RESULT: PASS`.
+- Build note (unchanged): `export
+  PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig:$PKG_CONFIG_PATH` and
+  `RUSTFLAGS="-L $HOME/.local/df-devroot/lib64"` (or just `make`).
+
+Deviation: clipboard. There is no clipboard portal by design (ADR 0082); a
+Flatpak app's clipboard is the Wayland data device through the sandbox proxy.
+T-13.5a proves the device with native clients; a nested Flatpak↔native
+clipboard still is recorded as a follow-up above. Everything else the task
+names passed.
+
+Gotchas for later tasks:
+
+- **The private portal bus must also run `settingsd`**, or the shell stops
+  before mapping its chrome (no menu bar/Dock) even though it authenticates
+  with the compositor.
+- **`version`, not `Version`.** New impl portal `version` properties must name
+  the wire property `version`; the discoverability files must use `#` comments.
+- **Run `spectacle` on the host bus** (`DBUS_SESSION_BUS_ADDRESS=unix:path=$XDG_RUNTIME_DIR/bus`),
+  never the private bus.
+- The ScreenCast path is still the named stills fallback; a live producer only
+  extends `portal::stream::StreamTransport`.
+- The flatpak client uses `--filesystem=<repo>/scripts` and needs distinct
+  `handle_token`s per request (same token + same sender = same request path,
+  which aliased the client's response map).

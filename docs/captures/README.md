@@ -118,6 +118,18 @@ while locked — `locked=1 surfaces=1 lock-focus=1`) and
 greeter/login and DRM logout ends of the T-12 demo are T-12.6, so this nested
 capture proves the session + lock surface, not the greeter round trip.
 
+T-13.7's portal sign-off is produced by `scripts/capture-portals.sh`
+(`make portals-capture`): a private session bus runs the real
+`xdg-desktop-portal` frontend with the Dragonfruit backend and a driver
+executed *inside* `flatpak run org.mozilla.firefox`. `t13-portals.txt` is the
+automated round-trip transcript (FileChooser open, Screenshot, and the
+ScreenCast CreateSession/SelectSources/Start flow, plus the frontend-reported
+interface versions), and `t13-portals.png` is the nested desktop with the
+shell's FileChooser picker raised by that same Flatpak browser. Clipboard has
+no portal (ADR 0082); its compositor-level round-trips are the T-13.5a
+conformance. Needs a host seat, Flatpak, spectacle, and Pillow; not in
+`make e2e`.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

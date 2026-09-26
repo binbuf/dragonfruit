@@ -1,0 +1,34 @@
+T-13.7 Flatpak portal walkthrough
+app: org.mozilla.firefox
+backend: org.freedesktop.impl.portal.desktop.dragonfruit
+date: 2026-09-26T18:40:10Z
+
+== real frontend reads the standard interface versions ==
+org.freedesktop.portal.ScreenCast.version = (<uint32 3>,)
+org.freedesktop.portal.Screenshot.version = (<uint32 2>,)
+org.freedesktop.portal.ScreenCast.AvailableCursorModes = (<uint32 3>,)
+
+== host presenter + Flatpak client ==
+CLIENT: FileChooser.OpenFile
+CLIENT: Response path=/org/freedesktop/portal/desktop/request/1_16/t99fc response=0
+  uris = ['file:///run/user/1000/doc/qNNWoEEQVjoLnK8FaEjOGg/picked.txt']
+CLIENT: Screenshot.Screenshot
+CLIENT: Response path=/org/freedesktop/portal/desktop/request/1_16/t99shot response=0
+  uri = file:///run/user/1000/doc/ZMJiZwVoHFuCeLtmFL7EgA/shot.png
+CLIENT: ScreenCast.CreateSession
+CLIENT: Response path=/org/freedesktop/portal/desktop/request/1_16/t99c response=0
+  session = /org/freedesktop/portal/desktop/session/1_16/t99s
+CLIENT: ScreenCast.SelectSources
+CLIENT: Response path=/org/freedesktop/portal/desktop/request/1_16/t99sel response=0
+CLIENT: ScreenCast.Start
+CLIENT: Response path=/org/freedesktop/portal/desktop/request/1_16/t99caststart response=0
+  streams = [(0, {'df_fallback': 'pipewire-producer-unavailable', 'df_stream_mode': 'stills', 'id': 't99-monitor', 'source_type': 1})]
+CLIENT: RESULT: PASS
+
+-- presenter --
+PRESENTER: FileChooserOpened handle=/org/freedesktop/portal/desktop/request/1_16/t99fc
+PRESENTER: completed FileChooserOpened -> (True,)
+PRESENTER: ScreenshotOpened handle=/org/freedesktop/portal/desktop/request/1_16/t99shot
+PRESENTER: completed ScreenshotOpened -> (True,)
+PRESENTER: ScreenCastOpened handle=/org/freedesktop/portal/desktop/request/1_16/t99sel
+PRESENTER: completed ScreenCastOpened -> (True,)
