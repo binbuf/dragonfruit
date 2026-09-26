@@ -218,23 +218,31 @@ QVariantList demoAppMenu()
     QVariantMap file;
     file.insert(QStringLiteral("title"), QStringLiteral("File"));
     file.insert(QStringLiteral("items"),
-                QVariantList{menuEntry(QStringLiteral("New Window"), QStringLiteral("Ctrl+N")),
-                             menuEntry(QStringLiteral("Open..."), QStringLiteral("Ctrl+O")),
-                             menuEntry(QStringLiteral("Close"), QStringLiteral("Ctrl+W"))});
+                QVariantList{menuEntry(QStringLiteral("New Window"), QStringLiteral("Ctrl+N"),
+                                       QStringLiteral("file.new")),
+                             menuEntry(QStringLiteral("Open..."), QStringLiteral("Ctrl+O"),
+                                       QStringLiteral("file.open")),
+                             menuEntry(QStringLiteral("Close"), QStringLiteral("Ctrl+W"),
+                                       QStringLiteral("close"))});
     menu << file;
 
     QVariantMap edit;
     edit.insert(QStringLiteral("title"), QStringLiteral("Edit"));
     edit.insert(QStringLiteral("items"),
-                QVariantList{menuEntry(QStringLiteral("Undo"), QStringLiteral("Ctrl+Z")),
-                             menuEntry(QStringLiteral("Redo"), QStringLiteral("Ctrl+Shift+Z"))});
+                QVariantList{menuEntry(QStringLiteral("Undo"), QStringLiteral("Ctrl+Z"),
+                                       QStringLiteral("edit.undo")),
+                             menuEntry(QStringLiteral("Redo"), QStringLiteral("Ctrl+Shift+Z"),
+                                       QStringLiteral("edit.redo"))});
     menu << edit;
 
     QVariantMap view;
     view.insert(QStringLiteral("title"), QStringLiteral("View"));
     view.insert(QStringLiteral("items"),
-                QVariantList{menuEntry(QStringLiteral("Zoom")),
-                             menuEntry(QStringLiteral("Enter Full Screen"), QStringLiteral("Ctrl+Ctrl+F")),
+                QVariantList{menuEntry(QStringLiteral("Zoom"), QString(),
+                                       QStringLiteral("zoom")),
+                             menuEntry(QStringLiteral("Enter Full Screen"),
+                                       QStringLiteral("Ctrl+Super+F"),
+                                       QStringLiteral("fullscreen")),
                              menuSeparator(),
                              menuSubmenu(QStringLiteral("Sort By"),
                                          QVariantList{menuEntry(QStringLiteral("Name"), QString(), QStringLiteral("sort-name")),
@@ -409,6 +417,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     connect(m_protocol, &ShellProtocol::configured, this, &ShellController::onConfigured);
     connect(m_protocol, &ShellProtocol::focusedAppChanged, this,
             &ShellController::onFocusedAppChanged);
+    connect(m_protocol, &ShellProtocol::appAccelerator, this,
+            &ShellController::onAppAccelerator);
     connect(m_protocol, &ShellProtocol::pointerMoved, this, &ShellController::onPointerMoved);
     connect(m_protocol, &ShellProtocol::pointerButton, this, &ShellController::onPointerButton);
     connect(m_protocol, &ShellProtocol::pointerLeft, this, &ShellController::onPointerLeft);
@@ -492,6 +502,14 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         userName = QStringLiteral("user");
     m_item->setProperty("systemMenuItems", systemMenu(userName));
     applyFocusedApp();
+    // T-14.2b: the global application-menu toggle from Settings. It is a
+    // standalone key (not part of DockConfig), so it gets its own live view of
+    // the same client and re-publishes the bar when it flips.
+    connect(m_settingsClient, &SettingsClient::changed, this,
+            &ShellController::applyMenuBarPolicy);
+    connect(m_settingsClient, &SettingsClient::refreshed, this,
+            &ShellController::applyMenuBarPolicy);
+    applyMenuBarPolicy();
 
     // The Dock is a second offscreen QML scene and its own `top` chrome
     // surface (T-10). It is created before the surfaces so the shell can read
@@ -1423,11 +1441,23 @@ void ShellController::applyFocusedApp()
     // even when the service is absent, and consumes the broker's resolved
     // model once the native publication channel is wired.
     const AppMenuLiveState live = appMenuLiveState(m_appId, m_runningEntries);
-    m_item->setProperty("applicationMenuItems", fixedApplicationMenu(name, live));
+    const QVariantList applicationMenu = fixedApplicationMenu(name, live);
+    m_item->setProperty("applicationMenuItems", applicationMenu);
     // The menu-broker (T-22) resolves a real menu model here; until it lands
     // a small demo menu stands in so the dropdown (input routing + overlay
     // surface) stays exercisable in a live session. T-14.7 retires it.
-    m_item->setProperty("appMenuModel", demoAppMenu());
+    const QVariantList appMenu = demoAppMenu();
+    m_item->setProperty("appMenuModel", appMenu);
+    // T-14.2b: register the focused app's accelerators with the compositor,
+    // focus-scoped. The table carries the fixed menu's Shell-owned actions and
+    // the app menu's actions; the compositor only matches them while this app
+    // is focused, and its system shortcuts always win. The desktop (no focus)
+    // clears the table.
+    if (m_protocol) {
+        const QList<MenuAccelerator> accelerators =
+            publishedAccelerators(applicationMenu, appMenu);
+        m_protocol->setAppAccelerators(m_appId, acceleratorWireTable(accelerators));
+    }
 }
 
 void ShellController::onConfigured(int width, int height, quint32)
@@ -3122,7 +3152,13 @@ void ShellController::onAppMenuTriggered(int menuIndex, int itemIndex, const QVa
 {
     const QVariantMap map = item.toMap();
     const QString action = map.value(QStringLiteral("action")).toString();
+    dispatchAppAction(action, menuIndex, itemIndex, map);
+    scheduleRender();
+}
 
+void ShellController::dispatchAppAction(const QString &action, int menuIndex, int itemIndex,
+                                        const QVariantMap &map)
+{
     if (action == QLatin1String("quit")) {
         // The application menu's Quit closes the focused app; on the desktop
         // (Files menu) there is no app to close yet.
@@ -3155,10 +3191,24 @@ void ShellController::onAppMenuTriggered(int menuIndex, int itemIndex, const QVa
         // open question in design/04-shell.md).
         qInfo() << "shell: App Store requested (no equivalent yet)";
     } else {
-        // T-22 dispatches the resolved action; the placeholder logs so the
-        // demo has feedback and the bar repaints after the popup closes.
+        // T-14 dispatches the resolved action back to the owning app; until
+        // that channel exists the placeholder logs so the demo has feedback.
         qInfo() << "shell: app menu item activated:" << menuIndex << itemIndex << map;
     }
+}
+
+void ShellController::onAppAccelerator(const QString &appId, const QString &action,
+                                       const QString &source, quint32 serial)
+{
+    // T-14.2b: the compositor matched a focus-scoped accelerator and hands the
+    // owning action back. The shell routes it through the same dispatch seam
+    // the menu rows use, so a keyboard shortcut and a click cannot diverge.
+    // Ignore a delivery for an app that is no longer focused (a stale match).
+    if (appId != m_appId)
+        return;
+    qInfo() << "shell: app accelerator" << action << "for" << appId
+            << "via" << source << "serial" << serial;
+    dispatchAppAction(action, -1, -1, {});
     scheduleRender();
 }
 
@@ -3695,6 +3745,28 @@ void ShellController::applyCompositorPolicy()
             "(scheme=%s reducedMotion=%d repeat=%d/%d gestures=%d)\n",
             qPrintable(policy.colorScheme), policy.reducedMotion ? 1 : 0,
             policy.repeatDelayMs, policy.repeatRateHz, policy.gesturesEnabled ? 1 : 0);
+}
+
+void ShellController::applyMenuBarPolicy()
+{
+    // T-14.2b: `menu.global` is the global application-menu toggle. When it is
+    // off the bar stops showing the focused app's exported menus, so first-party
+    // apps present their own local menus (the never-break-apps rule). The fixed
+    // system and application menus stay.
+    if (!m_settingsClient || !m_item)
+        return;
+    const bool enabled = m_settingsClient->values()
+                             .value(QStringLiteral("menu.global"), true)
+                             .toBool();
+    if (m_globalMenuEnabled == enabled)
+        return;
+    m_globalMenuEnabled = enabled;
+    m_item->setProperty("globalMenuEnabled", enabled);
+    // Re-publish the focused menu so the bar reflects the toggle immediately.
+    applyFocusedApp();
+    render();
+    fprintf(stderr, "dragonfruit-shell: global application menu %s\n",
+            enabled ? "enabled" : "disabled");
 }
 
 void ShellController::applyWallpaperPolicy()

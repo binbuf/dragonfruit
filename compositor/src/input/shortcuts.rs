@@ -22,7 +22,7 @@ use smithay::input::keyboard::xkb::keysyms;
 use smithay::input::keyboard::ModifiersState;
 
 use super::action::InputAction;
-use super::keymap::{role_held, KeysymValue, ModifierRole, RoleMods};
+use super::keymap::{parse_binding, role_held, KeysymValue, ModifierRole, RoleMods};
 
 /// A compositor-owned system shortcut binding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -223,6 +223,16 @@ impl ShortcutEngine {
         self.app.retain(|existing| existing.app_id != app_id);
     }
 
+    /// Replace one application's whole accelerator table (menu-broker,
+    /// T-14.2b). One atomic step: a re-publish can never leave a stale binding
+    /// behind.
+    pub fn set_app_accelerators(&mut self, app_id: &str, accelerators: Vec<AppAccelerator>) {
+        self.clear_app_accelerators(app_id);
+        for accelerator in accelerators {
+            self.register_app_accelerator(accelerator);
+        }
+    }
+
     /// Resolve a keystroke against system shortcuts first, then the
     /// focused application's accelerators.
     pub fn resolve(&self, mods: &ModifiersState, key: KeysymValue) -> Option<ShortcutOutcome> {
@@ -378,6 +388,37 @@ pub fn mod_held(role: ModifierRole, mods: &ModifiersState) -> bool {
     role_held(role, mods)
 }
 
+/// Parse the menu-broker's accelerator table for `app_id`: one
+/// `action<TAB>chord` per line (T-14.2b). Lines missing the tab, an action, or
+/// a chord the keymap recognizes are skipped, so one malformed exporter line
+/// never poisons the table. A blank table yields no accelerators.
+///
+/// The chords are the broker's canonical spelling (`Super+Q`,
+/// `Super+Control+F`); [`parse_binding`] accepts the same role names the
+/// compositor's keymap uses.
+pub fn parse_accelerator_table(app_id: &str, table: &str) -> Vec<AppAccelerator> {
+    if app_id.is_empty() {
+        return Vec::new();
+    }
+    table
+        .lines()
+        .filter_map(|line| {
+            let (action, chord) = line.split_once('\t')?;
+            let action = action.trim();
+            if action.is_empty() {
+                return None;
+            }
+            let (mods, key) = parse_binding(chord.trim())?;
+            Some(AppAccelerator {
+                app_id: app_id.to_owned(),
+                mods,
+                key,
+                accelerator_id: action.to_owned(),
+            })
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -520,6 +561,52 @@ mod tests {
             engine.resolve(&mods(true, false, false, false), keysyms::KEY_Q),
             None
         );
+    }
+
+    #[test]
+    fn a_broker_accelerator_table_parses_and_dispatches_focus_scoped() {
+        let table = "quit\tSuper+Q\nhide\tSuper+H\nbroken\nfullscreen\tSuper+Control+F\n";
+        let accelerators = parse_accelerator_table("org.dragonfruit.Settings", table);
+        assert_eq!(accelerators.len(), 3);
+        assert_eq!(accelerators[0].accelerator_id, "quit");
+        assert_eq!(accelerators[0].mods, RoleMods::COMMAND);
+        assert_eq!(accelerators[0].key, keysyms::KEY_Q);
+        assert_eq!(accelerators[2].accelerator_id, "fullscreen");
+        assert_eq!(
+            accelerators[2].mods,
+            RoleMods::COMMAND.union(RoleMods::CONTROL)
+        );
+
+        let mut engine = ShortcutEngine::default();
+        engine.set_focused_app(Some("org.dragonfruit.Settings".into()));
+        engine.set_app_accelerators("org.dragonfruit.Settings", accelerators);
+        assert_eq!(engine.app_accelerator_count(), 3);
+        assert_eq!(
+            engine.resolve(&mods(true, false, false, false), keysyms::KEY_Q),
+            Some(ShortcutOutcome::Application {
+                app_id: "org.dragonfruit.Settings".into(),
+                accelerator_id: "quit".into(),
+            })
+        );
+        // Another app focused: the table does not match.
+        engine.set_focused_app(Some("other".into()));
+        assert_eq!(
+            engine.resolve(&mods(true, false, false, false), keysyms::KEY_Q),
+            None
+        );
+        // Replacing the table drops the old entries.
+        engine.set_focused_app(Some("org.dragonfruit.Settings".into()));
+        engine.set_app_accelerators("org.dragonfruit.Settings", Vec::new());
+        assert_eq!(engine.app_accelerator_count(), 0);
+    }
+
+    #[test]
+    fn malformed_accelerator_rows_are_skipped() {
+        assert!(parse_accelerator_table("", "quit\tSuper+Q").is_empty());
+        assert!(parse_accelerator_table("app", "").is_empty());
+        assert_eq!(parse_accelerator_table("app", "nope").len(), 0);
+        assert_eq!(parse_accelerator_table("app", "\tSuper+Q").len(), 0);
+        assert_eq!(parse_accelerator_table("app", "quit\tHyper+Q").len(), 0);
     }
 
     #[test]

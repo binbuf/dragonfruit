@@ -2,6 +2,7 @@
 #include "menubrokerpolicy.h"
 
 #include <QCoreApplication>
+#include <QList>
 #include <QVariantMap>
 
 namespace {
@@ -106,4 +107,57 @@ QVariantList applyAppMenuLiveState(const QVariantList &published, const AppMenuL
         menu << row;
     }
     return menu;
+}
+
+namespace {
+
+void appendAccelerators(const QVariantList &rows, QList<MenuAccelerator> &out)
+{
+    for (const QVariant &value : rows) {
+        const QVariantMap row = value.toMap();
+        if (row.value(QStringLiteral("type")).toString() == QLatin1String("separator"))
+            continue;
+        const QString shortcut = row.value(QStringLiteral("shortcut")).toString();
+        const QString action = row.value(QStringLiteral("action")).toString();
+        if (!shortcut.isEmpty() && !action.isEmpty())
+            out.append({action, shortcut});
+        // A submenu carries accelerators too; recurse so a nested action is
+        // never dropped.
+        const QVariantList submenu = row.value(QStringLiteral("submenu")).toList();
+        if (!submenu.isEmpty())
+            appendAccelerators(submenu, out);
+    }
+}
+
+} // namespace
+
+QList<MenuAccelerator> menuAccelerators(const QVariantList &rows)
+{
+    QList<MenuAccelerator> out;
+    appendAccelerators(rows, out);
+    return out;
+}
+
+QList<MenuAccelerator> publishedAccelerators(const QVariantList &applicationMenuItems,
+                                             const QVariantList &appMenuModel)
+{
+    QList<MenuAccelerator> out = menuAccelerators(applicationMenuItems);
+    for (const QVariant &value : appMenuModel) {
+        const QVariantMap menu = value.toMap();
+        out += menuAccelerators(menu.value(QStringLiteral("items")).toList());
+    }
+    return out;
+}
+
+QString acceleratorWireTable(const QList<MenuAccelerator> &accelerators)
+{
+    QString table;
+    for (const MenuAccelerator &accelerator : accelerators) {
+        if (accelerator.action.isEmpty() || accelerator.chord.isEmpty())
+            continue;
+        if (!table.isEmpty())
+            table += QLatin1Char('\n');
+        table += accelerator.action + QLatin1Char('\t') + accelerator.chord;
+    }
+    return table;
 }
