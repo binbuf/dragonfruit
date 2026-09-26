@@ -508,7 +508,7 @@ fn launch_shell(guard: &mut ChildGuard, socket_name: &str, runtime_dir: &Path) -
         "--menubar-height".to_string(),
         "28".to_string(),
     ];
-    let envs = [
+    let mut envs = vec![
         ("WAYLAND_DISPLAY", socket_name.to_string()),
         ("XDG_CURRENT_DESKTOP", DESKTOP_NAME.to_string()),
         ("DRAGONFRUIT_LAUNCH_TOKEN", token),
@@ -516,7 +516,28 @@ fn launch_shell(guard: &mut ChildGuard, socket_name: &str, runtime_dir: &Path) -
         // offscreen into the chrome surface.
         ("QT_QPA_PLATFORM", "offscreen".to_string()),
     ];
+    // The lock screen authenticates through the small PAM helper (T-12.3b).
+    // It is a sibling of the dev tool in the cargo target directory; without
+    // it the shell falls back to searching `PATH`.
+    if let Some(helper) = pam_helper_path() {
+        envs.push(("DF_PAM_HELPER", helper.to_string_lossy().into_owned()));
+    }
     launch_program(guard, "shell", &shell, &args, &envs)
+}
+
+/// Path to `dragonfruit-pam-helper`: `DF_PAM_HELPER` if set, otherwise a
+/// sibling of this binary (both are built by the cargo workspace). `None`
+/// when neither exists, in which case the shell resolves it on `PATH`.
+fn pam_helper_path() -> Option<PathBuf> {
+    if let Some(path) = std::env::var_os("DF_PAM_HELPER") {
+        let path = PathBuf::from(path);
+        if path.is_file() {
+            return Some(path);
+        }
+    }
+    let exe = std::env::current_exe().ok()?;
+    let sibling = exe.parent()?.join("dragonfruit-pam-helper");
+    sibling.is_file().then_some(sibling)
 }
 
 /// Tear every child down, verify no socket or process leaked, and return

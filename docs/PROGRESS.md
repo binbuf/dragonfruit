@@ -3,15 +3,14 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(45 earlier sections omitted)_
+_(46 earlier sections omitted)_
 
-- **T43 — T-08.1b settingsd persistence and migrations**: **State: done.** `settingsd` now owns; **`services/settingsd/src/persist.rs`** (new) — the persisted format,
 - **T44 — T-08.2a Shell migration to settingsd**: **State: done.** The shell no longer owns Dock settings: `DockSettings`/; **`shell/src/settingsclient.{h,cpp}`** (new) — `SettingsClient` (typed key
 - **T45 — T-08.2b Design-system Theme binding**: **State: done.** The design-system `Theme` singleton's `dark`/`reducedMotion`; **`shell/src/themebinding.{h,cpp}`** (new) — `ThemeBinding` is the one
 - **T46 — T-08.2c Compositor motion/input policy migration**: **State: done.** The compositor now consumes the settingsd motion/input policy;; **`protocols/dragonfruit-toplevel.xml`** — `df_toplevel_manager` is v5 with
 - **T47 — T-08.3 Restart, resync, and key-schema documentation**: **State: done.** `settingsd` is restartable with no lost write and the shell; **`docs/settings-keys.md`** (new) — the human-facing key table (type,
 - **T48 — T-09.1a Settings app shell**: **State: done.** The `apps/settings` stub is now a real shell: frameless; **`apps/settings/`** is a reusable QML module `Dragonfruit.Settings` (static
-- **Follow-ups**: **T-12.3a follow-ups.** (a) `ext_session_lock_manager_v1` has an open client; **T-12.1b follow-ups.** (a) The shipped units are not yet installed by a
+- **Follow-ups**: **T-12.3b follow-ups.** (a) Input capture is still T-12.3c: the lock surface; **T-12.3a follow-ups.** (a) `ext_session_lock_manager_v1` has an open client
 - **T49 — T-09.1b Settings live-apply plumbing**: **State: done.** The Settings app is a real settingsd consumer: a QML `Settings`; **`libs/settings-client/`** (new; `libs/CMakeLists.txt`) — the former
 - **T50 — T-09.2 Appearance pane**: **State: done.** The Appearance pane is real and live: a Light/Dark/Auto; **`apps/settings/AppearancePane.qml`** (new) — `SettingsGroup`/`SettingsRow`
 - **T51 — T-09.3 Wallpaper pane**: **State: done.** The Wallpaper pane is real and live: our own gradient; **Schema (since 2)** — `wallpaper.source` (s, empty = solid),
@@ -45,6 +44,7 @@ _(45 earlier sections omitted)_
 - **T79 — T-12.1b Session environment, systemd units, second-VT**: **State: done.** The session environment is data and reaches every child; the; **`services/session/src/env.rs`** (new) — `SessionEnvironment` (`new`,
 - **T80 — T-12.2 Display-manager entry and logout teardown**: **State: done.** The session now has a display-manager `.desktop` entry, an; **`services/session/dragonfruit.desktop`** (new) — Wayland session
 - **T81 — T-12.3a Lock protocol and lock UI**: **State: done.** `ext-session-lock-v1` is enforced end to end and the shell is; **`compositor/src/lock.rs`** (new) — `LockModel`: the one `locked` flag (with
+- **T82 — T-12.3b Lock PAM authentication**: **State: done.** Unlock is now real PAM authentication through a small helper;; **`services/lock-auth/`** (new crate `dragonfruit-lock-auth`) —
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3228,6 +3228,13 @@ Gotchas for later tasks:
 
 ## Follow-ups
 
+- **T-12.3b follow-ups.** (a) Input capture is still T-12.3c: the lock surface
+  is not reachable, and `ShellController::submitLockPassword(password)` is the
+  slot T-12.3c must call once it routes keys to the lock UI. (b) Packaging must
+  install `dragonfruit-pam-helper` on `PATH` and may install
+  `/etc/pam.d/dragonfruit`; without the service file the helper falls back to
+  `login`. (c) The helper runs only the PAM auth+account phases, so session
+  modules (keyring/systemd/selinux) do not run during unlock — intentional.
 - **T-12.3a follow-ups.** (a) `ext_session_lock_manager_v1` has an open client
   filter (`|_| true` in `DfState::new`); restrict it to the trusted shell during
   T-12.3c hardening. (b) While locked the compositor drops *all* input, so the
@@ -6039,3 +6046,79 @@ Gotchas for later tasks:
 - **`DF_LOCK_FIXTURE` / `DF_LOCK_UNLOCK_MS` are capture-only** and never set in
   a real session; the real trigger is Cmd+Ctrl+Q → `InputAction::LockScreen` →
   `df_toplevel_manager.input_action`.
+
+## T82 — T-12.3b Lock PAM authentication
+
+**State: done.** Unlock is now real PAM authentication through a small helper;
+the shell keeps no credential store and reads back only the helper's exit
+status. Contract frozen in ADR
+[0068](design/adr/0068-lock-pam-helper.md).
+
+What landed:
+
+- **`services/lock-auth/`** (new crate `dragonfruit-lock-auth`) —
+  `PamAuthenticator` (`new`, `with_service`, `with_confdir`, `service`,
+  `confdir`), the `Authenticator` trait, and `AuthResult`
+  (`Success`/`Denied`/`Error`, `exit_code`, `from_exit_code`). libpam is
+  `dlopen`ed (`libpam.so.0` → `libpam.so`) and only
+  `pam_start_confdir`/`pam_authenticate`/`pam_acct_mgmt`/`pam_end` are called;
+  the PAM ABI is declared locally, so no `pam-devel` is needed. Default service
+  `dragonfruit`, fallback `login`; `--confdir` is the `pam_start_confdir` test
+  seam.
+- **`services/lock-auth/src/main.rs`** — `dragonfruit-pam-helper --user USER
+  [--service S] [--confdir DIR]`: password on stdin (one line; terminal echo
+  suppressed), exit `0` authenticated / `1` rejected / `2` unavailable. Never
+  prints, logs, or writes the password.
+- **`shell/src/lockauth.{h,cpp}`** (new, in the Wayland-free dockcore) —
+  `LockAuthenticator`: `resolveHelperPath` (`DF_PAM_HELPER` → `PATH` →
+  shell-sibling / `target/{debug,release}`), async `QProcess`,
+  `authenticate(user, password)` (clears its own copy), `succeeded()` /
+  `failed(message)`, `cancel()`, one run at a time.
+- **`shell/src/shellcontroller.{h,cpp}`** — creates `m_lockAuth` (service from
+  `DF_PAM_SERVICE`); `showLockScreen` sets `authEnabled=true`; new slot
+  `submitLockPassword` (T-12.3c calls it), `onLockAuthSucceeded` (calls
+  `ShellProtocol::unlockSession` then tears down the lock scene),
+  `onLockAuthFailed`, `repaintLockSurfaces`, `teardownLockScreen`,
+  `lockUserName`.
+- **`tools/dragonfruit-dev/src/main.rs`** — `pam_helper_path()` and
+  `DF_PAM_HELPER` passed to the shell.
+- **Tests** — `services/lock-auth/tests/helper.rs` 7 (permit success, deny
+  rejection, `login` fallback, missing-service error, missing `--user`,
+  no-leak/no-disk-write, library seam); `src/lib.rs` 4 unit (exit codes,
+  status classification, defaults, conversation returns the exact password
+  including spaces); `shell/tests/tst_lockauth.cpp` 6 (`DF_PAM_HELPER`
+  override, success/denied/unavailable mapping, busy guard, missing helper).
+- **Docs** — ADR 0068; `11-session-and-dev-workflow.md` auth paragraph;
+  `testing-ladder.md` rung 1 bullet.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-lock-auth` — 11/11 (4 unit + 7 integration).
+- `cargo clippy -p dragonfruit-lock-auth --all-targets -- -D warnings` and
+  `cargo fmt -p dragonfruit-lock-auth -- --check` — exit 0.
+- `make qml-test` — 41/41 (adds `tst_lockauth`).
+- `make e2e` — passed (adds `cargo test -p dragonfruit-lock-auth`).
+- `make clippy` — exit 0.
+
+Live check: `DF_LOCK_FIXTURE=3000 ./target/debug/dragonfruit dev --demo
+--nested --socket-name t82-lock`, captured `/tmp/opencode/t82-lock.png`; vision
+confirms the lock scene (clock 17:25, date, magenta avatar "U", username
+`user`, password field placeholder "Enter Password", lock glyph, no menu
+bar/Dock, no artifacts) and the dev tool reported a clean teardown.
+
+Gotchas for later tasks:
+
+- **Input capture is still T-12.3c.** The lock surface is not reachable;
+  `ShellController::submitLockPassword(password)` is the slot T-12.3c must call
+  once it routes keys to the lock UI. The lock scene has no `TextInput` yet.
+- **PAM service selection**: helper default `dragonfruit`, falling back to
+  `login` when the service is absent. `DF_PAM_SERVICE` (shell) / `--service`
+  (helper) override. Packaging installs `dragonfruit-pam-helper` on `PATH` and
+  may install `/etc/pam.d/dragonfruit`.
+- **`--confdir` is the only test seam** (`pam_start_confdir`); the headless
+  suite never touches `/etc/pam.d` and needs no root.
+- **The helper path is `DF_PAM_HELPER` first**; the dev tool sets it to the
+  cargo sibling. A missing helper (or libpam) is exit `2` and keeps the session
+  locked — never a false unlock.
+- **Only the PAM auth+account phases run**; the session phase (keyring,
+  systemd, selinux) does not run for a lock unlock.

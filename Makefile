@@ -112,6 +112,7 @@ e2e: build
 	$(CARGO) test -p dragonfruit-system-status
 	$(CARGO) test -p dragonfruit-settingsd
 	$(CARGO) test -p dragonfruit-files-core
+	$(CARGO) test -p dragonfruit-lock-auth
 	$(CARGO) test -p dragonfruit-session
 	$(MAKE) demo DEMO_ARGS=--headless
 

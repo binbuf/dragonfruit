@@ -49,6 +49,11 @@ Extras:
   scripted).
 - `dragonfruit dev --soak [N]` — same gate on the headless backend
   (this is what CI runs; no display required).
+- `cargo test -p dragonfruit-lock-auth` — the lock PAM helper against a
+  throwaway `permit`/`deny` service via `pam_start_confdir`: no `/etc/pam.d`,
+  no root, the real libpam and the real helper binary. The shell's side of the
+  helper process boundary (the `0`/`1`/`2` exit contract) is `tst_lockauth`,
+  which drives it with a fake helper script.
 
 ## Rung 2 — dedicated-user real session (second VT)
 

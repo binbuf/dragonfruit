@@ -1,0 +1,33 @@
+[package]
+name = "dragonfruit-lock-auth"
+description = "Session-lock PAM authentication seam and the small `dragonfruit-pam-helper` (T-12.3b)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+# Lock authentication never rolls its own credential store: the shell asks a
+# tiny helper (`dragonfruit-pam-helper`) to verify one password through the
+# host's PAM stack, and the helper reports only success/denied/error over its
+# exit status. The library half is a thin, testable seam over libpam; the
+# binary half is the process boundary. libpam is loaded with `dlopen` at
+# runtime (`libpam.so.0`), exactly as the platform ships it, so the build
+# never depends on the `pam-devel` headers (the CI host has the runtime only).
+#
+# `libc` is the same pinned crate the rest of the workspace uses; it supplies
+# `dlopen`/`dlsym`, the conversation callback's `calloc`/`strdup`, and the C
+# integer types.
+[dependencies]
+libc.workspace = true
+
+[dev-dependencies]
+tempfile = "=3.27.0"
+
+[lib]
+name = "dragonfruit_lock_auth"
+path = "src/lib.rs"
+
+[[bin]]
+name = "dragonfruit-pam-helper"
+path = "src/main.rs"

@@ -54,6 +54,7 @@ add_library(dragonfruit-shell-dockcore STATIC
     focusstatus.cpp
     framecommitgate.h
     launchfailure.cpp
+    lockauth.cpp
     notificationclient.cpp
     notificationmodel.cpp
     osdmodel.cpp

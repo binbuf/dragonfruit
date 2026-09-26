@@ -824,6 +824,14 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         for (quintptr id : ids)
             renderLockSurface(id);
     });
+    // Authentication (T-12.3b): the shell's half of the PAM helper boundary.
+    // `DF_PAM_SERVICE` selects the PAM service; empty keeps the helper's
+    // default. The helper binary is resolved by LockAuthenticator.
+    m_lockAuth = new LockAuthenticator(this);
+    m_lockAuth->setService(QString::fromLocal8Bit(qgetenv("DF_PAM_SERVICE")));
+    connect(m_lockAuth, &LockAuthenticator::succeeded, this,
+            &ShellController::onLockAuthSucceeded);
+    connect(m_lockAuth, &LockAuthenticator::failed, this, &ShellController::onLockAuthFailed);
 
     if (!m_protocol->createMenuBarSurface(barHeight, barHeight))
         return false;
@@ -1513,7 +1521,7 @@ void ShellController::renderOsd()
     }
 }
 
-// --- session lock (T-12.3a) -------------------------------------------------
+// --- session lock (T-12.3a protocol/UI, T-12.3b authentication) -------------
 
 void ShellController::onSessionLocked()
 {
@@ -1523,11 +1531,7 @@ void ShellController::onSessionLocked()
 void ShellController::onSessionFinished()
 {
     // The compositor dropped the lock on its own (it should not while locked).
-    m_lockActive = false;
-    if (m_lockTimer)
-        m_lockTimer->stop();
-    m_lockSurfaceSizes.clear();
-    m_lockCommitted.clear();
+    teardownLockScreen();
 }
 
 void ShellController::onLockSurfaceConfigured(quintptr lockSurfaceId, int width, int height,
@@ -1548,8 +1552,10 @@ void ShellController::showLockScreen()
         return;
     m_lockActive = true;
     applyLockData();
-    m_lockItem->setProperty("authEnabled", false);
-    const QString user = qEnvironmentVariable("USER");
+    m_lockItem->setProperty("authEnabled", true);
+    m_lockItem->setProperty("authBusy", false);
+    m_lockItem->setProperty("message", QString());
+    const QString user = lockUserName();
     if (!user.isEmpty())
         m_lockItem->setProperty("userName", user);
     if (m_lockTimer && !m_lockTimer->isActive())
@@ -1588,6 +1594,75 @@ void ShellController::renderLockSurface(quintptr lockSurfaceId)
     m_lockFrameGate.endCommit();
     if (!image.isNull() && m_protocol->commitLockImage(lockSurfaceId, image))
         m_lockCommitted.insert(lockSurfaceId);
+}
+
+void ShellController::repaintLockSurfaces()
+{
+    if (!m_lockActive)
+        return;
+    const auto ids = m_lockSurfaceSizes.keys();
+    for (quintptr id : ids)
+        renderLockSurface(id);
+}
+
+void ShellController::teardownLockScreen()
+{
+    if (m_lockAuth)
+        m_lockAuth->cancel();
+    m_lockActive = false;
+    if (m_lockTimer)
+        m_lockTimer->stop();
+    m_lockSurfaceSizes.clear();
+    m_lockCommitted.clear();
+}
+
+QString ShellController::lockUserName() const
+{
+    const QString user = qEnvironmentVariable("USER");
+    if (!user.isEmpty())
+        return user;
+    return qEnvironmentVariable("LOGNAME");
+}
+
+void ShellController::submitLockPassword(const QString &password)
+{
+    if (!m_lockActive || !m_lockAuth || !m_protocol || !m_protocol->isSessionLocked())
+        return;
+    const QString user = lockUserName();
+    if (user.isEmpty())
+        return;
+    if (m_lockItem) {
+        m_lockItem->setProperty("authEnabled", true);
+        m_lockItem->setProperty("authBusy", true);
+        m_lockItem->setProperty("message", QString());
+    }
+    repaintLockSurfaces();
+    if (!m_lockAuth->authenticate(user, password))
+        onLockAuthFailed(QStringLiteral("Authentication unavailable"));
+}
+
+void ShellController::onLockAuthSucceeded()
+{
+    if (m_lockItem) {
+        m_lockItem->setProperty("authBusy", false);
+        m_lockItem->setProperty("message", QString());
+    }
+    repaintLockSurfaces();
+    // PAM accepted the password: release the fail-secure lock. The compositor
+    // clears its state and destroys the lock surfaces; the shell resets its
+    // scene. No credential is retained anywhere.
+    if (m_protocol && m_protocol->isSessionLocked())
+        m_protocol->unlockSession();
+    teardownLockScreen();
+}
+
+void ShellController::onLockAuthFailed(const QString &message)
+{
+    if (m_lockItem) {
+        m_lockItem->setProperty("authBusy", false);
+        m_lockItem->setProperty("message", message);
+    }
+    repaintLockSurfaces();
 }
 
 void ShellController::onMissionControlRequested()

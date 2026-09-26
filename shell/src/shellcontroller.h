@@ -20,6 +20,7 @@
 #include "dockmodel.h"
 #include "downloadsmonitor.h"
 #include "framecommitgate.h"
+#include "lockauth.h"
 #include "notificationclient.h"
 #include "notificationmodel.h"
 #include "osdmodel.h"
@@ -78,6 +79,13 @@ private slots:
     void onSessionLocked();
     void onSessionFinished();
     void onLockSurfaceConfigured(quintptr lockSurfaceId, int width, int height, quint32 serial);
+    // T-12.3b: submit the typed password to the PAM helper. Input capture
+    // (T-12.3c) is what will call this; the method is the whole shell half of
+    // the authentication path. Success unlocks; failure sets the lock card's
+    // message.
+    void submitLockPassword(const QString &password);
+    void onLockAuthSucceeded();
+    void onLockAuthFailed(const QString &message);
     void onBrightnessSetRequested(double level);
     void onWifiToggleRequested(bool enabled);
     void onWifiSettingsRequested();
@@ -238,6 +246,12 @@ private:
     void showLockScreen();
     void applyLockData();
     void renderLockSurface(quintptr lockSurfaceId);
+    // T-12.3b: repaint every configured lock surface after an auth-state
+    // change, and reset the lock scene state after a successful unlock.
+    void repaintLockSurfaces();
+    void teardownLockScreen();
+    // The account the lock card authenticates as.
+    QString lockUserName() const;
     // Rebuild the Dock's ordered entries (pinned + running) and hand them to
     // the QML scene.
     void rebuildDockEntries();
@@ -416,6 +430,9 @@ private:
     QTimer *m_lockTimer = nullptr;
     FrameCommitGate m_lockFrameGate;
     bool m_lockSceneGraphCommitLogged = false;
+    // T-12.3b: the PAM helper boundary. Owned here; the lock screen feeds it
+    // the password once input capture lands (T-12.3c).
+    LockAuthenticator *m_lockAuth = nullptr;
     QSocketNotifier *m_notifier = nullptr;
     QTimer *m_launchTimer = nullptr;
     QTimer *m_dockAnimTimer = nullptr;
