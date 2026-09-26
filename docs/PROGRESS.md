@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(65 earlier sections omitted)_
+_(66 earlier sections omitted)_
 
-- **T62 — T-10.4a Files window, toolbar, and sidebar**: **State: done.** The Files window, toolbar, and sidebar are real. `apps/files`; **`apps/files/FilesBridge.{h,cpp}`** — `QML_SINGLETON`, `QML_NAMED_ELEMENT(Files)`:
 - **T63 — T-10.4b Files list and icon views**: **State: done.** The Files icon and list views render the `files-core` listing.; **`services/files-core/src/ffi.rs`** (new) — the C ABI: `df_files_begin`,
 - **T64 — T-10.4c Files context menus, multi-select, optimistic UI**: **State: done.** Context menus, multi-select, and optimistic; **`services/files-core/src/ffi.rs`** — `FfiSession` now wraps
 - **T65 — T-10.5 Files performance budgets**: **State: done.** Files meets both budgets with incremental/windowed delivery.; **`services/files-core/src/ffi.rs`** — `df_files_row` / `df_files_delta`,
@@ -44,6 +43,7 @@ _(65 earlier sections omitted)_
 - **T97 — T-13.5b Clipboard history (if specified)**: **State: done.** The design calls for history (ADR 0082's accepted consequences; **`shell/src/clipboardhistory.{h,cpp}`** (new, dockcore) — `ClipboardHistory`:
 - **T98 — T-13.6 polkit authentication agent**: **State: done.** A privileged polkit request now raises a Dragonfruit; **`shell/src/polkitagent.{h,cpp}`** (dockcore) — `PolkitAgent` exports
 - **T99 — T-13.7 Flatpak validation and capture**: **State: done** (one honest deviation: no Flatpak↔native clipboard still; see; **`scripts/capture-portals.sh`** (new; `make portals-capture`) — private
+- **T100 — T-14.1a app-index identity resolution and icons**: **State: done.** `org.dragonfruit.AppIndex1` is real: identity resolution for; `services/app-index/src/index.rs` — pure `AppIndex` (scan, `resolve`,
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3227,6 +3227,15 @@ Gotchas for later tasks:
 
 ## Follow-ups
 
+- **T-14.1a follow-ups.** (a) `Enumerate` resolves and serializes every entry
+  on each call; the icon resolver now memoizes and caches directory listings
+  (cold ~0.2s, was ~8s), but T-14.1c's subscription should let the shell stop
+  calling `Enumerate` at all. (b) The shell keeps its local `.desktop` scan
+  (`DesktopEntryIndex::scan`) as an absent-service fallback; T-14.7 deletes it
+  once the app-index launch API lands. (c) The in-repo `org.dragonfruit.*`
+  desktop files are not installed, so on a host session the Dock's first-party
+  pins resolve from the system's Terminal/Browser categories; packaging
+  (T-16) installs them.
 - **T-13.7 follow-ups.** (a) Clipboard has no portal (ADR 0082); the Flatpak
   capture proves FileChooser/Screenshot/ScreenCast but not a Flatpak↔native
   clipboard round-trip in the nested session (T-13.5a covers the compositor
@@ -7432,3 +7441,55 @@ Gotchas for later tasks:
 - The flatpak client uses `--filesystem=<repo>/scripts` and needs distinct
   `handle_token`s per request (same token + same sender = same request path,
   which aliased the client's response map).
+
+## T100 — T-14.1a app-index identity resolution and icons
+
+**State: done.** `org.dragonfruit.AppIndex1` is real: identity resolution for
+Wayland `app_id` and X11 `WM_CLASS`, themed icon resolution to files, and a
+flat-JSON session-bus surface. The compositor's interim `.desktop` resolver is
+deleted (it now publishes raw identity) and the Dock loads its identity corpus
+from the service and renders themed icons. Contract frozen in ADR
+[0086](design/adr/0086-app-index-identity-ownership.md).
+
+Real paths:
+
+- `services/app-index/src/index.rs` — pure `AppIndex` (scan, `resolve`,
+  `resolve_window`, `lookup`, `records`, `misses`, counts) and `AppRecord`.
+- `services/app-index/src/icons.rs` — `IconTheme` freedesktop lookup, with a
+  memoized `lookup` and cached size-dir/listing caches.
+- `services/app-index/src/dbus.rs` — `org.dragonfruit.AppIndex1` at
+  `/org/dragonfruit/AppIndex1`; `slice/main.rs` serves it with debug flags.
+- `services/app-index/tests/session_bus.rs` — private `dbus-daemon` fixtures.
+- `compositor/src/identity.rs` — **deleted**; `compositor/src/xwayland.rs`
+  `resolve_x11_identity` returns the raw `WM_CLASS` class.
+- `shell/src/appindexclient.{h,cpp}` — the shell's client; `DesktopEntry` grew
+  `iconPath`; `shell/src/desktopentry.{h,cpp}` `loadFromRecords` /
+  `loadFromAppIndex`; `shell/src/dockmodel.cpp` carries `iconPath`; `shell/dock/
+  DockGlyph.qml` renders it.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-app-index` — 18 unit + 5 session-bus cases.
+- `cargo test --workspace`; `cargo clippy --workspace --all-targets -- -D
+  warnings`; `cargo fmt --all -- --check` — all green.
+- `ctest --test-dir build --output-on-failure` — 53/53 (adds a `tst_dockcore`
+  `iconPath` case and a `tst_dock.qml` themed-icon case).
+- Build note (unchanged): `export
+  PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig:$PKG_CONFIG_PATH` and
+  `RUSTFLAGS="-L $HOME/.local/df-devroot/lib64"` (or just `make`).
+
+Gotchas for later tasks:
+
+- **`Enumerate` was ~8s cold** resolving icons for all 265 entries; caching in
+  `IconTheme` brought it to ~0.2s. The shell's blocking client timeout is
+  `AppIndexClient::kCallTimeoutMs` (2000); keep the cache or raise it.
+- **No svg imageformat plugin in the toolchain.** The Dock renders `.svg`
+  icon paths through `QtQuick.VectorImage` and raster through `Image`.
+- **The shell fallback local scan remains** for an absent service; T-14.7
+  deletes it. Launch command building still uses the shell's `Exec` expansion.
+- **The compositor no longer records the miss set**; app-index does. T-14.1b's
+  events/launch registry/recency and T-14.1c's subscription extend this
+  additively.
+- A live check needs `dragonfruit-app-index` running on the session bus
+  (`target/debug/dragonfruit-app-index &`) before `make demo`; otherwise the
+  Dock falls back to initial tiles.

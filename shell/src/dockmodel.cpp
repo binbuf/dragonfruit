@@ -151,6 +151,7 @@ QVariantList buildRecentEntries(const QStringList &recentIds, const QStringList 
         merged.insert(QStringLiteral("desktopId"), entry.id);
         merged.insert(QStringLiteral("name"), entry.name);
         merged.insert(QStringLiteral("icon"), entry.icon);
+        merged.insert(QStringLiteral("iconPath"), entry.iconPath);
         merged.insert(QStringLiteral("kind"), QStringLiteral("recent"));
         merged.insert(QStringLiteral("pinned"), false);
         merged.insert(QStringLiteral("missing"), false);
@@ -217,6 +218,7 @@ QVariantList buildDockEntries(const QStringList &pinnedIds, const DesktopEntryIn
         merged.insert(QStringLiteral("name"),
                       entry.valid ? entry.name : displayNameForIdentity(pinId));
         merged.insert(QStringLiteral("icon"), entry.icon);
+        merged.insert(QStringLiteral("iconPath"), entry.iconPath);
         merged.insert(QStringLiteral("kind"), QStringLiteral("pinned"));
         merged.insert(QStringLiteral("pinned"), true);
         merged.insert(QStringLiteral("missing"), !entry.valid);
@@ -246,6 +248,7 @@ QVariantList buildDockEntries(const QStringList &pinnedIds, const DesktopEntryIn
         if (resolved.valid) {
             entry.insert(QStringLiteral("desktopId"), resolved.id);
             entry.insert(QStringLiteral("icon"), resolved.icon);
+            entry.insert(QStringLiteral("iconPath"), resolved.iconPath);
             if (entry.value(QStringLiteral("name")).toString().isEmpty())
                 entry.insert(QStringLiteral("name"), resolved.name);
         }

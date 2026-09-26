@@ -46,6 +46,9 @@ Item {
     readonly property bool attention: entry.attention === true
     readonly property string name: entry.name !== undefined ? entry.name : ""
     readonly property string appId: entry.appId !== undefined ? entry.appId : ""
+    // Themed icon file resolved by app-index (T-14.1a); empty until the
+    // service is running or when no theme provides the name.
+    readonly property string iconPath: entry.iconPath !== undefined ? entry.iconPath : ""
     readonly property bool trashFull: entry.trashFull === true
     // The Trash backend is unreachable (T-10 section 16 lifecycle): dim the
     // entry and say so, but never block the session.
@@ -239,6 +242,7 @@ Item {
         kind: root.isTrash ? "trash" : root.isStack ? "stack" : "app"
         name: root.name
         appId: root.appId
+        iconPath: root.iconPath
         trashFull: root.trashFull
         size: root.iconSize
         x: root.artworkX

@@ -1913,5 +1913,24 @@ Item {
             verify(img2.width > 0);
             trash.destroy();
         }
+
+        // T-14.1a: the Dock renders the themed icon app-index resolved when a
+        // path is present, and falls back to the initial tile otherwise.
+        function test_glyph_prefers_a_themed_icon_path() {
+            var plain = make(glyphComponent, {
+                kind: "app", name: "Files", appId: "org.dragonfruit.Files", size: 48
+            });
+            compare(plain.iconPath, "");
+            verify(!plain.hasThemedIconHint);
+            plain.destroy();
+
+            var themed = make(glyphComponent, {
+                kind: "app", name: "Files",
+                iconPath: "/usr/share/icons/hicolor/48x48/apps/files.png", size: 48
+            });
+            compare(themed.iconPath, "/usr/share/icons/hicolor/48x48/apps/files.png");
+            verify(themed.hasThemedIconHint);
+            themed.destroy();
+        }
     }
 }

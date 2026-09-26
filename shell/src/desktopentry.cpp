@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 #include "desktopentry.h"
 
+#include "appindexclient.h"
+
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -180,6 +182,22 @@ void DesktopEntryIndex::scan(const QStringList &applicationDirs)
             if (entry.valid)
                 insert(entry);
         }
+    }
+}
+
+void DesktopEntryIndex::loadFromAppIndex(const AppIndexClient &client)
+{
+    loadFromRecords(client.enumerate());
+}
+
+void DesktopEntryIndex::loadFromRecords(const QList<DesktopEntry> &entries)
+{
+    m_byId.clear();
+    m_byWmClass.clear();
+    m_entries.clear();
+    for (const DesktopEntry &entry : entries) {
+        if (entry.valid && !m_byId.contains(entry.id))
+            insert(entry);
     }
 }
 

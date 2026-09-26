@@ -116,6 +116,7 @@ e2e: build
 	$(CARGO) test -p dragonfruit-files-core
 	$(CARGO) test -p dragonfruit-lock-auth
 	$(CARGO) test -p dragonfruit-session
+	$(CARGO) test -p dragonfruit-app-index
 	$(CARGO) test -p xdg-desktop-portal-dragonfruit
 	$(MAKE) demo DEMO_ARGS=--headless
 

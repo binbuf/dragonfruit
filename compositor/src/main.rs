@@ -16,7 +16,6 @@ mod animation;
 mod app_switcher;
 mod backend;
 mod design_tokens;
-mod identity;
 mod input;
 mod instrument;
 mod lock;

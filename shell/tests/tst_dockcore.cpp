@@ -199,6 +199,36 @@ private slots:
         QCOMPARE(index.byId(QStringLiteral("dup.desktop")).name, QStringLiteral("User"));
     }
 
+    // T-14.1a: the Dock's identity corpus now comes from app-index, which
+    // resolves the themed icon to a file path the Dock can render.
+    void appIndexRecordsCarryThemedIconPaths()
+    {
+        DesktopEntry files;
+        files.id = QStringLiteral("org.dragonfruit.Files.desktop");
+        files.name = QStringLiteral("Files");
+        files.icon = QStringLiteral("system-file-manager");
+        files.iconPath =
+            QStringLiteral("/usr/share/icons/hicolor/scalable/apps/system-file-manager.svg");
+        files.exec = QStringLiteral("dragonfruit-files %U");
+        files.valid = true;
+
+        DesktopEntryIndex index;
+        index.loadFromRecords({files});
+        QCOMPARE(index.byId(QStringLiteral("org.dragonfruit.Files.desktop")).iconPath,
+                 files.iconPath);
+        QCOMPARE(index.resolve(QStringLiteral("org.dragonfruit.Files")).iconPath,
+                 files.iconPath);
+        // A record with no themed path is still valid; the Dock draws the
+        // initial tile.
+        DesktopEntry plain;
+        plain.id = QStringLiteral("plain.desktop");
+        plain.name = QStringLiteral("Plain");
+        plain.valid = true;
+        index.loadFromRecords({plain});
+        QVERIFY(index.byId(QStringLiteral("plain.desktop")).valid);
+        QVERIFY(index.byId(QStringLiteral("plain.desktop")).iconPath.isEmpty());
+    }
+
     // -- launch command --------------------------------------------------
 
     void buildLaunchCommandExpandsFileCodes()

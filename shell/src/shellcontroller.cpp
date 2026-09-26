@@ -29,6 +29,7 @@
 
 #include <cstdio>
 
+#include "appindexclient.h"
 #include "controlcenterpolicy.h"
 #include "desktopentry.h"
 #include "dockdrops.h"
@@ -287,9 +288,15 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     connect(m_protocol, &ShellProtocol::clipboardObserved, this,
             &ShellController::onClipboardObserved);
 
-    // Interim app-index (T-23). The index is scanned once at startup; a real
-    // app-index will push install/uninstall events instead.
-    m_index.scan();
+    // Application identity (T-14.1a): `org.dragonfruit.AppIndex1` owns the
+    // `.desktop` corpus, themed icons, and resolution. When the service is
+    // absent the legacy local scan is the fallback (deleted in T-14.7). The
+    // service is restartable; a real subscription arrives in T-14.1c.
+    AppIndexClient appIndex;
+    if (appIndex.available())
+        m_index.loadFromAppIndex(appIndex);
+    else
+        m_index.scan();
     // T-08.2a: settingsd is the single Dock-settings owner. The client is the
     // live `org.dragonfruit.Settings1` client; it is seeded with the schema
     // defaults so the Dock works when the daemon is absent (the dev tool does
