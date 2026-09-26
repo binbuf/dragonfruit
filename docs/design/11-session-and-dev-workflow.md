@@ -340,6 +340,38 @@ drives `suspend`/`resume`. The decision is frozen in
   locking uses the `dragonfruit-session` idle chain
   ([above](#idle-timers-t-12-4a)) on top of the compositor's `ext-idle-notify`
   activity source.
+
+### Session policy keys and the kill matrix (T-12.5b)
+
+The four idle keys are registered in `dragonfruit-settingsd` (schema v5, the
+new `session` group) as `x` whole seconds with `0` disabling a stage:
+`idle.dim` 150, `idle.blank` 300, `idle.lock` 600, `idle.suspend` 0. They are
+exactly the names and parser ADR [0070](adr/0070-idle-timer-engine-and-policy.md)
+freezes; a consumer converts each `Value::Integer` to a string and calls
+`IdlePolicy::from_keys`. The daemon is the one owner of the values; the
+Settings Lock Screen pane (T-15.8b) will write them. There is no production
+idle service yet, so the headless proof that the keys drive lock/idle/suspend
+is `services/session/tests/session_policy.rs` (a fake clock walks the whole
+chain from the settings snapshot, including a live key change and a held
+inhibitor).
+
+The **kill matrix** is deliberately split by owner. The compositor owns the
+fail-secure lock invariant — no crash unlocks — and
+`compositor/tests/session_lock_conformance.rs` closes the lock UI's socket and
+asserts `locked=1`. The session manager owns supervision and
+`services/session/tests/kill_matrix.rs` asserts the documented outcomes:
+
+| Killed | Outcome |
+|---|---|
+| shell / lock UI | restarts (`always`); the session keeps running |
+| settingsd | restarts (`on-failure`); the session keeps running |
+| notification service | restarts (`on-failure`); the session keeps running |
+| compositor | the session ends; every other service is stopped; never restarted |
+
+The T-12 track capture is `docs/captures/t12-session.*` (nested desktop, the
+real lock UI after Cmd+Ctrl+Q, a short clip, the `query lock`/`query session`
+transcript, and the kill-matrix output), produced by `make session-capture`.
+The real greeter/login and DRM logout ends of the demo are T-12.6.
 - `PrepareForSleep` / `PrepareForShutdown` hooks freeze animations, flush
   persisted state, and quiesce rendering before suspend; resume re-inits
   outputs and resumes render loops. T-12.5a implements the round trip as the
