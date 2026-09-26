@@ -7,6 +7,8 @@
 
 #include <QObject>
 #include <QHash>
+#include <QSet>
+#include <QSize>
 #include <QString>
 #include <QStringList>
 #include <QVariant>
@@ -70,6 +72,12 @@ private slots:
     void onOsdTick();
     // T-11.4b: the OSD view's (or an AT-SPI PressAction's) dismissal request.
     void onOsdDismissed();
+    // Session lock (T-12.3a): the compositor confirmed the lock, one lock
+    // surface was configured to a full-output size, and the lock object
+    // finished.
+    void onSessionLocked();
+    void onSessionFinished();
+    void onLockSurfaceConfigured(quintptr lockSurfaceId, int width, int height, quint32 serial);
     void onBrightnessSetRequested(double level);
     void onWifiToggleRequested(bool enabled);
     void onWifiSettingsRequested();
@@ -224,6 +232,12 @@ private:
     void applyOsdData();
     void hideOsd();
     void renderOsd();
+    // Session lock (T-12.3a): present the lock scene once the compositor
+    // confirms, paint each configured lock surface at its full-output size,
+    // and refresh the clock while locked.
+    void showLockScreen();
+    void applyLockData();
+    void renderLockSurface(quintptr lockSurfaceId);
     // Rebuild the Dock's ordered entries (pinned + running) and hand them to
     // the QML scene.
     void rebuildDockEntries();
@@ -390,6 +404,18 @@ private:
     FrameCommitGate m_osdFrameGate;
     bool m_osdSceneGraphCommitLogged = false;
     QTimer *m_osdTimer = nullptr;
+    // Session lock (T-12.3a): an offscreen lock scene rendered into one
+    // `ext-session-lock-v1` surface per output. The map holds each surface's
+    // configured size; the QML is a pure view. `m_lockTimer` refreshes the
+    // clock while locked and is stopped on unlock.
+    QQuickWindow *m_lockWindow = nullptr;
+    QQuickItem *m_lockItem = nullptr;
+    bool m_lockActive = false;
+    QHash<quintptr, QSize> m_lockSurfaceSizes;
+    QSet<quintptr> m_lockCommitted;
+    QTimer *m_lockTimer = nullptr;
+    FrameCommitGate m_lockFrameGate;
+    bool m_lockSceneGraphCommitLogged = false;
     QSocketNotifier *m_notifier = nullptr;
     QTimer *m_launchTimer = nullptr;
     QTimer *m_dockAnimTimer = nullptr;

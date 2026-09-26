@@ -777,6 +777,54 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     m_osdTimer->setInterval(16);
     connect(m_osdTimer, &QTimer::timeout, this, &ShellController::onOsdTick);
 
+    // Session lock (T-12.3a): a full-output offscreen scene rendered into one
+    // `ext-session-lock-v1` surface per output. Authentication and input
+    // capture are T-12.3b/T-12.3c; this is the fail-secure presentation.
+    m_lockWindow = new QQuickWindow;
+    m_lockWindow->setColor(Qt::transparent);
+    QQmlComponent lockComponent(m_engine);
+    lockComponent.loadFromModule(QStringLiteral("Dragonfruit.Lock"), QStringLiteral("LockScreen"));
+    if (lockComponent.isError()) {
+        fprintf(stderr, "dragonfruit-shell: LockScreen QML error: %s\n",
+                qPrintable(lockComponent.errorString()));
+        return false;
+    }
+    QObject *lockObject = lockComponent.create();
+    m_lockItem = qobject_cast<QQuickItem *>(lockObject);
+    if (!m_lockItem) {
+        fprintf(stderr, "dragonfruit-shell: LockScreen QML did not produce an item\n");
+        return false;
+    }
+    m_lockItem->setParentItem(m_lockWindow->contentItem());
+    connect(m_lockWindow, &QQuickWindow::afterRendering, this, [this]() {
+        // Repaint every configured lock surface from the scene-graph frame.
+        if (!m_lockFrameGate.frameRendered())
+            return;
+        if (!m_lockSceneGraphCommitLogged) {
+            m_lockSceneGraphCommitLogged = true;
+            qInfo() << "shell: lock scene-graph commit path active";
+        }
+        const auto ids = m_lockSurfaceSizes.keys();
+        for (quintptr id : ids)
+            renderLockSurface(id);
+    });
+    connect(m_protocol, &ShellProtocol::sessionLocked, this, &ShellController::onSessionLocked);
+    connect(m_protocol, &ShellProtocol::sessionFinished, this, &ShellController::onSessionFinished);
+    connect(m_protocol, &ShellProtocol::lockSurfaceConfigured, this,
+            &ShellController::onLockSurfaceConfigured);
+    // Refresh the clock while locked; stopped on unlock so the lock scene is
+    // frame-quiet once settled (FR-2).
+    m_lockTimer = new QTimer(this);
+    m_lockTimer->setInterval(1000);
+    connect(m_lockTimer, &QTimer::timeout, this, [this]() {
+        if (!m_lockActive)
+            return;
+        applyLockData();
+        const auto ids = m_lockSurfaceSizes.keys();
+        for (quintptr id : ids)
+            renderLockSurface(id);
+    });
+
     if (!m_protocol->createMenuBarSurface(barHeight, barHeight))
         return false;
     // The dropdown rides a separate `overlay` chrome surface so transient
@@ -837,6 +885,26 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             else
                 showOsd(OsdModel::Kind::Volume, 0.6, false);
         });
+    }
+
+    // Capture/demo seam (T-12.3a): lock the session once the chrome is up so
+    // the live visual check can capture the lock screen with no hardware key
+    // wiring. `DF_LOCK_FIXTURE` is the lock delay in ms (or `1` for the
+    // default); `DF_LOCK_UNLOCK_MS` optionally unlocks after that delay so a
+    // scripted run ends on a usable desktop. Never set in a normal session.
+    if (qEnvironmentVariableIsSet("DF_LOCK_FIXTURE")) {
+        const int lockDelay = qMax(1, qEnvironmentVariableIntValue("DF_LOCK_FIXTURE"));
+        const int unlockDelay = qEnvironmentVariableIntValue("DF_LOCK_UNLOCK_MS");
+        QTimer::singleShot(lockDelay, this, [this]() {
+            if (m_protocol)
+                m_protocol->lockSession();
+        });
+        if (unlockDelay > 0) {
+            QTimer::singleShot(unlockDelay, this, [this]() {
+                if (m_protocol && m_protocol->isSessionLocked())
+                    m_protocol->unlockSession();
+            });
+        }
     }
 
     // Launch timeout: a launch that produces no window within the bounded
@@ -1445,6 +1513,83 @@ void ShellController::renderOsd()
     }
 }
 
+// --- session lock (T-12.3a) -------------------------------------------------
+
+void ShellController::onSessionLocked()
+{
+    showLockScreen();
+}
+
+void ShellController::onSessionFinished()
+{
+    // The compositor dropped the lock on its own (it should not while locked).
+    m_lockActive = false;
+    if (m_lockTimer)
+        m_lockTimer->stop();
+    m_lockSurfaceSizes.clear();
+    m_lockCommitted.clear();
+}
+
+void ShellController::onLockSurfaceConfigured(quintptr lockSurfaceId, int width, int height,
+                                              quint32)
+{
+    if (width <= 0 || height <= 0)
+        return;
+    m_lockSurfaceSizes.insert(lockSurfaceId, QSize(width, height));
+    // Render now if the lock is already confirmed; otherwise `showLockScreen`
+    // paints every surface the moment it is.
+    if (m_lockActive)
+        renderLockSurface(lockSurfaceId);
+}
+
+void ShellController::showLockScreen()
+{
+    if (!m_lockItem || !m_lockWindow || !m_protocol)
+        return;
+    m_lockActive = true;
+    applyLockData();
+    m_lockItem->setProperty("authEnabled", false);
+    const QString user = qEnvironmentVariable("USER");
+    if (!user.isEmpty())
+        m_lockItem->setProperty("userName", user);
+    if (m_lockTimer && !m_lockTimer->isActive())
+        m_lockTimer->start();
+    const auto ids = m_lockSurfaceSizes.keys();
+    for (quintptr id : ids)
+        renderLockSurface(id);
+}
+
+void ShellController::applyLockData()
+{
+    if (!m_lockItem)
+        return;
+    const QDateTime now = QDateTime::currentDateTime();
+    m_lockItem->setProperty("timeText", now.toString(QStringLiteral("HH:mm")));
+    m_lockItem->setProperty("dateText", now.toString(QStringLiteral("dddd d MMMM")));
+}
+
+void ShellController::renderLockSurface(quintptr lockSurfaceId)
+{
+    if (!m_lockWindow || !m_lockItem || !m_protocol)
+        return;
+    const auto it = m_lockSurfaceSizes.constFind(lockSurfaceId);
+    if (it == m_lockSurfaceSizes.constEnd() || it.value().isEmpty())
+        return;
+    const QSize size = it.value();
+    m_lockItem->setWidth(size.width());
+    m_lockItem->setHeight(size.height());
+    if (m_lockWindow->width() != size.width() || m_lockWindow->height() != size.height())
+        m_lockWindow->resize(size);
+    if (!m_lockWindow->isVisible())
+        m_lockWindow->show();
+    // Skip the re-entrant frame the readback itself renders (FR-14).
+    m_lockFrameGate.beginCommit();
+    const QImage image = m_lockWindow->grabWindow();
+    m_lockFrameGate.endCommit();
+    if (!image.isNull() && m_protocol->commitLockImage(lockSurfaceId, image))
+        m_lockCommitted.insert(lockSurfaceId);
+}
+
 void ShellController::onMissionControlRequested()
 {
     m_protocol->enterMissionControl();
@@ -1828,6 +1973,12 @@ void ShellController::onInputAction(const QString &action, const QString &)
     } else if (action == QLatin1String("control-center")) {
         // T-11.3a: the Control Center keyboard shortcut toggles the panel.
         toggleControlCenter();
+    } else if (action == QLatin1String("lock-screen")) {
+        // T-12.3a: the compositor routes Cmd+Ctrl+Q here; the shell owns the
+        // lock UI and drives `ext-session-lock-v1` (authentication is
+        // T-12.3b).
+        if (m_protocol)
+            m_protocol->lockSession();
     }
 }
 

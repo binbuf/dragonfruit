@@ -98,6 +98,22 @@ foreach(proto dragonfruit-core dragonfruit-shell dragonfruit-toplevel)
     list(APPEND DF_PROTOCOL_SOURCES "${_source}")
 endforeach()
 
+# The standard ext-session-lock-v1 XML is vendored (MIT) so the shell can be
+# the first-party lock UI without depending on a system wayland-protocols
+# package (T-12.3a, ADR 0067).
+set(_lock_xml "${CMAKE_SOURCE_DIR}/protocols/wayland-protocols/ext-session-lock-v1.xml")
+set(_lock_header "${DF_PROTOCOL_DIR}/ext-session-lock-v1-client-protocol.h")
+set(_lock_source "${DF_PROTOCOL_DIR}/ext-session-lock-v1-protocol.c")
+add_custom_command(
+    OUTPUT "${_lock_header}" "${_lock_source}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${DF_PROTOCOL_DIR}"
+    COMMAND "${WAYLAND_SCANNER}" client-header "${_lock_xml}" "${_lock_header}"
+    COMMAND "${WAYLAND_SCANNER}" private-code "${_lock_xml}" "${_lock_source}"
+    DEPENDS "${_lock_xml}"
+    COMMENT "wayland-scanner ext-session-lock-v1"
+    VERBATIM)
+list(APPEND DF_PROTOCOL_SOURCES "${_lock_source}")
+
 qt_add_executable(dragonfruit-shell
     main.cpp
     shellcontroller.cpp
@@ -121,6 +137,7 @@ target_link_libraries(dragonfruit-shell PRIVATE
     dragonfruit-shell-notificationsplugin
     dragonfruit-shell-control-centerplugin
     dragonfruit-shell-osdplugin
+    dragonfruit-shell-lockplugin
 )
 if(TARGET PkgConfig::WAYLAND_CLIENT)
     target_link_libraries(dragonfruit-shell PRIVATE PkgConfig::WAYLAND_CLIENT)
