@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
-//! `dragonfruit-app-index` — the T-14.1a application identity service.
+//! `dragonfruit-app-index` — the T-14.1a/T-14.1b application identity service.
 //!
-//! Serves `org.dragonfruit.AppIndex1` (identity resolution and themed icons)
-//! on the user session bus. A session without a bus is reported and exited,
-//! never blocking a session.
+//! Serves `org.dragonfruit.AppIndex1` (identity resolution, themed icons,
+//! install/update events, the launch registry, and recency) on the user
+//! session bus. A session without a bus is reported and exited, never blocking
+//! a session.
 //!
 //! Debug helpers:
 //!
@@ -12,6 +13,7 @@
 //! dragonfruit-app-index --resolve-window <class>    # one record object
 //! dragonfruit-app-index --enumerate                 # every record, JSON array
 //! dragonfruit-app-index --misses                    # the miss set
+//! dragonfruit-app-index --refresh                   # rescan + index events
 //! dragonfruit-app-index --icon <name> [size]        # themed icon path
 //! ```
 
@@ -75,6 +77,12 @@ fn main() -> ExitCode {
             println!("{}", view::misses_json(&index));
             ExitCode::SUCCESS
         }
+        Some("--refresh") => {
+            let mut index = AppIndex::load();
+            let events = index.refresh();
+            println!("{}", view::index_events_json(&events));
+            ExitCode::SUCCESS
+        }
         Some("--icon") => {
             let Some(name) = args.get(1) else {
                 return usage("--icon needs an icon name");
@@ -126,13 +134,15 @@ fn print_help() {
     println!(
         "dragonfruit-app-index — T-14.1a application identity service\n\
          \n\
-         Serves org.dragonfruit.AppIndex1 (identity resolution, themed icons)\n\
-         on the user session bus.\n\
+         Serves org.dragonfruit.AppIndex1 (identity resolution, themed icons,\n\
+         install/update events, launch registry, recency) on the user session\n\
+         bus.\n\
          Options:\n\
            --resolve <identity>        resolve a Wayland app_id / desktop id\n\
            --resolve-window <class>    resolve an X11 WM_CLASS\n\
            --enumerate                 print every installed record\n\
            --misses                    print the identity miss set\n\
+           --refresh                   rescan and print install/uninstall/update events\n\
            --icon <name> [size]        print a themed icon path\n\
            -h, --help                  show this help"
     );

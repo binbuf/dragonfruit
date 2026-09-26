@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(66 earlier sections omitted)_
+_(67 earlier sections omitted)_
 
-- **T63 — T-10.4b Files list and icon views**: **State: done.** The Files icon and list views render the `files-core` listing.; **`services/files-core/src/ffi.rs`** (new) — the C ABI: `df_files_begin`,
 - **T64 — T-10.4c Files context menus, multi-select, optimistic UI**: **State: done.** Context menus, multi-select, and optimistic; **`services/files-core/src/ffi.rs`** — `FfiSession` now wraps
 - **T65 — T-10.5 Files performance budgets**: **State: done.** Files meets both budgets with incremental/windowed delivery.; **`services/files-core/src/ffi.rs`** — `df_files_row` / `df_files_delta`,
 - **T66 — T-10.6a Dock trash source**: **State: done.** The Dock's Trash state comes from `files-core` over the one; **`services/files-core/src/trash_source.rs`** (new) — `TrashSource`
@@ -44,6 +43,7 @@ _(66 earlier sections omitted)_
 - **T98 — T-13.6 polkit authentication agent**: **State: done.** A privileged polkit request now raises a Dragonfruit; **`shell/src/polkitagent.{h,cpp}`** (dockcore) — `PolkitAgent` exports
 - **T99 — T-13.7 Flatpak validation and capture**: **State: done** (one honest deviation: no Flatpak↔native clipboard still; see; **`scripts/capture-portals.sh`** (new; `make portals-capture`) — private
 - **T100 — T-14.1a app-index identity resolution and icons**: **State: done.** `org.dragonfruit.AppIndex1` is real: identity resolution for; `services/app-index/src/index.rs` — pure `AppIndex` (scan, `resolve`,
+- **T101 — T-14.1b app-index events, launch registry, recency**: **State: done.** `org.dragonfruit.AppIndex1` is now live: the index re-scans; `services/app-index/src/index.rs` — `IndexEvent`/`IndexEventKind`; `AppIndex`
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3227,6 +3227,13 @@ Gotchas for later tasks:
 
 ## Follow-ups
 
+- **T-14.1b follow-ups.** (a) The shell does not yet forward window activity:
+  the service exposes `WindowOpened`/`WindowClosed`/`NoteActivity` but nothing
+  calls them live, so the Dock's running projection still comes from the
+  compositor; wire the forwarder when a consumer needs the registry. (b) Recency
+  is in-memory per session; persistence across restarts is future work. (c) The
+  inotify watcher is Linux-only (non-Linux is a no-op), matching the shipping
+  target.
 - **T-14.1a follow-ups.** (a) `Enumerate` resolves and serializes every entry
   on each call; the icon resolver now memoizes and caches directory listings
   (cold ~0.2s, was ~8s), but T-14.1c's subscription should let the shell stop
@@ -7493,3 +7500,58 @@ Gotchas for later tasks:
 - A live check needs `dragonfruit-app-index` running on the session bus
   (`target/debug/dragonfruit-app-index &`) before `make demo`; otherwise the
   Dock falls back to initial tiles.
+
+## T101 — T-14.1b app-index events, launch registry, recency
+
+**State: done.** `org.dragonfruit.AppIndex1` is now live: the index re-scans
+and diffs into install/uninstall/update events (driven by a recursive inotify
+watcher, no idle polling), and the service owns a launch registry and a
+most-recent-first recency order fed by window activity. Contract frozen in ADR
+[0087](design/adr/0087-app-index-events-launch-registry-recency.md).
+
+Real paths:
+
+- `services/app-index/src/index.rs` — `IndexEvent`/`IndexEventKind`; `AppIndex`
+  remembers its dirs, `refresh()` diffs (installed/updated/uninstalled),
+  `events()`/`drain_events()`, `revision()`; `resolve_activity()` resolves a
+  window without touching the counters/miss set.
+- `services/app-index/src/registry.rs` (new) — pure `LaunchRegistry`,
+  `RunningApp`, `ActivityKind`/`ActivityEvent`, recency ring (`RECENT_CAPACITY`
+  32), ordered by insertion so same-ms events order correctly.
+- `services/app-index/src/watch.rs` (new) — `DirectoryWatcher` (recursive
+  inotify, `DEBOUNCE_MS` 150, watches established in `new()`), `watch_dirs`.
+- `services/app-index/src/dbus.rs` — additive methods `WindowOpened`,
+  `WindowClosed`, `NoteActivity`, `Running`, `Recent`, `Refresh`,
+  `IndexEvents`, `ActivityEvents`; signals `AppRunning`, `AppExited`,
+  `IndexChanged`. `run()` starts the watcher and emits `IndexChanged` per diff.
+- `services/app-index/src/{view,lib,main}.rs` — JSON views
+  (`running_json`/`recent_json`/`index_events_json`/`activity_events_json`);
+  `--refresh` flag.
+- `services/app-index/Cargo.toml` — adds `libc` (inotify).
+- `docs/design/02-compositor.md` "Application identity" updated.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-app-index` — 26 unit + 8 session-bus cases.
+- `cargo test --workspace`; `cargo clippy --workspace --all-targets -- -D
+  warnings`; `cargo fmt --all -- --check` — all green.
+- `ctest --test-dir build --output-on-failure` — 53/53; `make e2e` — exit 0.
+- Build note (unchanged): `export
+  PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig:$PKG_CONFIG_PATH` and
+  `RUSTFLAGS="-L $HOME/.local/df-devroot/lib64"` (or just `make`).
+
+Gotchas for later tasks:
+
+- **The index refresh never touches the resolution audit.** Window activity
+  uses `resolve_activity` (no miss, no counter); the shell's `Resolve` calls
+  remain the only source of `Stats`/`Misses`.
+- **Recency is insertion-ordered, not timestamped.** Do not re-sort by `activeMs`
+  (two events can share a millisecond).
+- **The watcher adds watches synchronously in `DirectoryWatcher::new`**; keep
+  that if you refactor, or a write can race the first `add_watch` and be
+  missed. Use `DirectoryWatcher` directly for a test that needs determinism.
+- **The shell does not call the registry yet.** `WindowOpened`/`WindowClosed`/
+  `NoteActivity` are exercised by the private-bus tests; wiring the forwarder
+  remains (see Follow-ups).
+- T-14.1c: the signals (`AppRunning`, `AppExited`, `IndexChanged`) are already
+  emitted; it only needs the subscription bookkeeping and coalescing.

@@ -26,9 +26,54 @@
 //! (`org.dragonfruit.AppIndex1.Misses`) and consulted here so a miss that was
 //! already seen is re-tested with the tolerant normalized comparison before it
 //! is reported again.
+//!
+//! # Install / uninstall / update events (T-14.1b)
+//!
+//! The index remembers the directories it was built from, so [`AppIndex::refresh`]
+//! can re-scan them and diff against the current corpus. A new desktop id is an
+//! install, a disappeared id an uninstall, and a changed record an update; the
+//! diff is returned as [`IndexEvent`]s and retained (bounded) for
+//! [`AppIndex::events`]/[`AppIndex::drain_events`]. The service watches the
+//! directories with inotify and calls `refresh` on a monitor event, so an idle
+//! service does no work ([watch](crate::watch)).
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::path::{Path, PathBuf};
+
+/// The maximum number of [`IndexEvent`]s retained for `Events`.
+pub const EVENT_CAPACITY: usize = 256;
+
+/// What happened to one `.desktop` entry between two scans.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IndexEventKind {
+    /// A desktop id that was not installed before.
+    Installed,
+    /// An installed desktop id whose record changed.
+    Updated,
+    /// A desktop id that is no longer present.
+    Uninstalled,
+}
+
+impl IndexEventKind {
+    /// The wire spelling served over the bus.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            IndexEventKind::Installed => "installed",
+            IndexEventKind::Updated => "updated",
+            IndexEventKind::Uninstalled => "uninstalled",
+        }
+    }
+}
+
+/// One install/uninstall/update observed between two scans.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IndexEvent {
+    pub kind: IndexEventKind,
+    /// The desktop file id, e.g. `org.mozilla.firefox.desktop`.
+    pub desktop_id: String,
+    /// The display name at the time of the scan (empty for an uninstall).
+    pub name: String,
+}
 
 /// How an identity resolved — the audit trail for the heuristic table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -109,8 +154,16 @@ struct AppEntry {
 #[derive(Debug, Default)]
 pub struct AppIndex {
     entries: Vec<AppEntry>,
+    /// The `applications` directories this index was built from, in
+    /// precedence order. Kept so `refresh` can re-scan exactly the same set.
+    dirs: Vec<PathBuf>,
     /// Identity strings no rule matched (the heuristic input).
     misses: BTreeSet<String>,
+    /// Install/uninstall/update observations, oldest first, bounded by
+    /// [`EVENT_CAPACITY`].
+    events: VecDeque<IndexEvent>,
+    /// Bumped once per non-empty refresh; consumers use it to detect change.
+    revision: u64,
     resolved: u64,
     unresolved: u64,
 }
@@ -125,18 +178,75 @@ impl AppIndex {
     /// Directories that do not exist are skipped; the first directory that
     /// provides a given desktop id wins (desktop-entry spec precedence).
     pub fn from_dirs(dirs: impl IntoIterator<Item = PathBuf>) -> Self {
-        let mut entries = Vec::new();
-        let mut seen = BTreeSet::new();
-        for dir in dirs {
-            scan_dir(&dir, &dir, &mut entries, &mut seen);
-        }
-        entries.sort_by(|a, b| a.record.desktop_id.cmp(&b.record.desktop_id));
+        let dirs: Vec<PathBuf> = dirs.into_iter().collect();
+        let entries = scan(&dirs);
         AppIndex {
             entries,
+            dirs,
             misses: BTreeSet::new(),
+            events: VecDeque::new(),
+            revision: 0,
             resolved: 0,
             unresolved: 0,
         }
+    }
+
+    /// Re-scan the directories this index was built from and diff against the
+    /// current corpus, updating the entries in place. Returns the
+    /// install/uninstall/update events, ordered by desktop id; the events are
+    /// also retained for [`AppIndex::events`]/[`AppIndex::drain_events`]. The
+    /// resolution counters and the miss set are untouched: a refresh is
+    /// maintenance, not a query.
+    pub fn refresh(&mut self) -> Vec<IndexEvent> {
+        let wanted = scan(&self.dirs);
+        let previous: BTreeMap<&str, &AppEntry> = self
+            .entries
+            .iter()
+            .map(|entry| (entry.record.desktop_id.as_str(), entry))
+            .collect();
+        let present: BTreeSet<&str> = wanted
+            .iter()
+            .map(|entry| entry.record.desktop_id.as_str())
+            .collect();
+
+        let mut events = Vec::new();
+        for entry in &wanted {
+            match previous.get(entry.record.desktop_id.as_str()) {
+                None => events.push(IndexEvent {
+                    kind: IndexEventKind::Installed,
+                    desktop_id: entry.record.desktop_id.clone(),
+                    name: entry.record.name.clone(),
+                }),
+                Some(existing) if existing.record != entry.record => events.push(IndexEvent {
+                    kind: IndexEventKind::Updated,
+                    desktop_id: entry.record.desktop_id.clone(),
+                    name: entry.record.name.clone(),
+                }),
+                Some(_) => {}
+            }
+        }
+        for entry in &self.entries {
+            if !present.contains(entry.record.desktop_id.as_str()) {
+                events.push(IndexEvent {
+                    kind: IndexEventKind::Uninstalled,
+                    desktop_id: entry.record.desktop_id.clone(),
+                    name: entry.record.name.clone(),
+                });
+            }
+        }
+
+        if !events.is_empty() {
+            events.sort_by(|a, b| a.desktop_id.cmp(&b.desktop_id));
+            self.revision += 1;
+            for event in &events {
+                self.events.push_back(event.clone());
+            }
+            while self.events.len() > EVENT_CAPACITY {
+                self.events.pop_front();
+            }
+        }
+        self.entries = wanted;
+        events
     }
 
     /// Resolve a Wayland `app_id` (or an already-resolved desktop id).
@@ -169,6 +279,52 @@ impl AppIndex {
                 record: entry.record.clone(),
                 source: IdentitySource::AppId,
             })
+    }
+
+    /// Resolve a window identity without recording a miss or touching the
+    /// resolution counters. The launch registry uses this: window activity is
+    /// not a query, and a busy session must not inflate the audit counts.
+    pub fn resolve_activity(
+        &self,
+        app_id: &str,
+        instance: &str,
+        class: &str,
+    ) -> Option<ResolvedApp> {
+        let app_id = normalize(app_id);
+        let instance = normalize(instance);
+        let class = normalize(class);
+        let wm_candidates: Vec<&str> = [class.as_str(), instance.as_str()]
+            .into_iter()
+            .filter(|value| !value.is_empty())
+            .collect();
+        if app_id.is_empty() && wm_candidates.is_empty() {
+            return None;
+        }
+        self.find_entry(&app_id, &wm_candidates)
+            .map(|(position, source)| ResolvedApp {
+                record: self.entries[position].record.clone(),
+                source,
+            })
+    }
+
+    /// The `applications` directories this index was built from.
+    pub fn dirs(&self) -> &[PathBuf] {
+        &self.dirs
+    }
+
+    /// A counter bumped once per non-empty [`AppIndex::refresh`].
+    pub fn revision(&self) -> u64 {
+        self.revision
+    }
+
+    /// The retained install/uninstall/update events, oldest first.
+    pub fn events(&self) -> impl Iterator<Item = &IndexEvent> {
+        self.events.iter()
+    }
+
+    /// Take and clear the retained index events.
+    pub fn drain_events(&mut self) -> Vec<IndexEvent> {
+        self.events.drain(..).collect()
     }
 
     /// Every installed record, ordered by desktop id.
@@ -378,6 +534,19 @@ fn executable_of(exec: &str) -> Option<String> {
         .map(|name| name.to_string_lossy().into_owned())?;
     let base = base.to_ascii_lowercase();
     (!base.is_empty()).then_some(base)
+}
+
+/// Scan every directory in `dirs` into one ordered entry list. Directories
+/// that do not exist are skipped; the first directory that provides a given
+/// desktop id wins (desktop-entry spec precedence).
+fn scan(dirs: &[PathBuf]) -> Vec<AppEntry> {
+    let mut entries = Vec::new();
+    let mut seen = BTreeSet::new();
+    for dir in dirs {
+        scan_dir(dir, dir, &mut entries, &mut seen);
+    }
+    entries.sort_by(|a, b| a.record.desktop_id.cmp(&b.record.desktop_id));
+    entries
 }
 
 /// Recursively scan `dir` for `.desktop` entries; `root` is the top of the
@@ -709,6 +878,88 @@ mod tests {
         assert!(index.resolve("").is_none());
         assert!(index.resolve_window("", "", "").is_none());
         assert_eq!(index.unresolved_count(), 0);
+
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_refresh_reports_install_update_and_uninstall() {
+        let dir = temp_dir("refresh");
+        write_desktop(
+            &dir,
+            "keep.desktop",
+            "[Desktop Entry]\nType=Application\nName=Keep\nStartupWMClass=keep\n",
+        );
+        write_desktop(
+            &dir,
+            "gone.desktop",
+            "[Desktop Entry]\nType=Application\nName=Gone\nStartupWMClass=gone\n",
+        );
+        let mut index = AppIndex::from_dirs([dir.clone()]);
+        assert_eq!(index.revision(), 0);
+
+        // A no-op refresh produces no events and no revision bump.
+        assert!(index.refresh().is_empty());
+        assert_eq!(index.revision(), 0);
+
+        // Install: a new desktop id.
+        write_desktop(
+            &dir,
+            "new.desktop",
+            "[Desktop Entry]\nType=Application\nName=New\nStartupWMClass=new\n",
+        );
+        let events = index.refresh();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].kind, IndexEventKind::Installed);
+        assert_eq!(events[0].desktop_id, "new.desktop");
+        assert_eq!(events[0].name, "New");
+        assert_eq!(index.revision(), 1);
+        assert!(index.lookup("new.desktop").is_some());
+
+        // Update: an existing desktop id whose record changed.
+        write_desktop(
+            &dir,
+            "keep.desktop",
+            "[Desktop Entry]\nType=Application\nName=Kept\nStartupWMClass=keep\n",
+        );
+        let events = index.refresh();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].kind, IndexEventKind::Updated);
+        assert_eq!(events[0].name, "Kept");
+        assert_eq!(index.lookup("keep.desktop").unwrap().record.name, "Kept");
+
+        // Uninstall: a desktop id that disappeared.
+        fs::remove_file(dir.join("gone.desktop")).unwrap();
+        let events = index.refresh();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].kind, IndexEventKind::Uninstalled);
+        assert_eq!(events[0].desktop_id, "gone.desktop");
+        assert!(index.lookup("gone.desktop").is_none());
+
+        // The events are retained, oldest first, and can be drained.
+        assert_eq!(index.events().count(), 3);
+        let drained = index.drain_events();
+        assert_eq!(drained.len(), 3);
+        assert!(index.events().next().is_none());
+
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn resolve_activity_does_not_touch_the_audit_counters() {
+        let dir = temp_dir("activity");
+        write_desktop(
+            &dir,
+            "known.desktop",
+            "[Desktop Entry]\nType=Application\nName=Known\nStartupWMClass=known\n",
+        );
+        let index = AppIndex::from_dirs([dir.clone()]);
+        let resolved = index.resolve_activity("", "", "Known").unwrap();
+        assert_eq!(resolved.record.desktop_id, "known.desktop");
+        assert!(index.resolve_activity("", "java", "Java").is_none());
+        assert_eq!(index.resolved_count(), 0);
+        assert_eq!(index.unresolved_count(), 0);
+        assert_eq!(index.misses().count(), 0);
 
         fs::remove_dir_all(&dir).ok();
     }
