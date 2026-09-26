@@ -239,6 +239,30 @@ descriptor, script, and the systemd user units under one prefix with
 (T-32) passes its build root. The contract is frozen in
 [ADR 0066](adr/0066-display-manager-session-entry.md).
 
+### The lock screen (T-12.3a)
+
+Locking is fail-secure and enforced in the compositor over
+`ext-session-lock-v1`: `SessionLockHandler::lock` enters the locked state and
+clears client keyboard focus *before* it confirms, `process_input_event` drops
+every user input while locked, and `xdg-activation`/window activation refuse
+focus. A compositor crash ends the session; a shell crash leaves the session
+locked because only `ext_session_lock_v1.unlock_and_destroy` clears it.
+
+The lock UI is the **shell**, not the compositor: Cmd+Ctrl+Q resolves to
+`InputAction::LockScreen`, the compositor broadcasts it over the private
+protocol, and the shell requests the lock and paints a `Dragonfruit.Lock` QML
+scene into one lock surface per output. The upstream
+`ext-session-lock-v1` XML is vendored (MIT) under `protocols/wayland-protocols/`
+and compiled into the shell with the same `wayland-scanner` step as the private
+protocols. The compositor composites the lock surfaces above the cursor,
+windows, and chrome, and configures each to its output's exact size, so the UI
+covers every output. Authentication (PAM) is T-12.3b and input capture /
+kill-resistance is T-12.3c; the decision is frozen in
+[ADR 0067](adr/0067-session-lock-protocol-and-ui.md).
+
+`make e2e`'s `session_lock_conformance` locks a headless session, asserts the
+`locked` event and a full-output configure on every output, and unlocks cleanly.
+
 ## logind integration
 
 - `LockSession` / `UnlockSession` requests drive our lock screen; idle
