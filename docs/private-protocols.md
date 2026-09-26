@@ -125,7 +125,15 @@ is acked with `done` after the scene applies it (FR-3).
   create/remove/reorder/activate, `enter`/`exit_mission_control`,
   `select_overview_toplevel`, `activate_app`, `cycle_app_switcher`,
   `release_keyboard_focus` (v2), `set_reduced_motion` (v3),
-  `set_launch_origin` (v4), and `set_motion_policy`/`set_input_policy` (v5).
+  `set_launch_origin` (v4), and `set_motion_policy`/`set_input_policy` (v5),
+  and `capture_screenshot` (v6). The capture request is the portal presenter's
+  still-frame path (T-13.3b): the trusted shell supplies a rectangle, a
+  `fullscreen`/`region`/`window` mode, and a path; the compositor renders an
+  offscreen pass of the frame and writes a PNG there, answering
+  `screenshot_saved`/`screenshot_failed`. It is the only capture path, and no
+  client-facing grab protocol exists
+  ([02-compositor.md](../docs/design/02-compositor.md), ADR
+  [0079](design/adr/0079-screenshot-capture-delivery-and-save-copy.md)).
   `set_launch_origin` hands the Dock entry's tile rectangle to the compositor
   so a launching app's window appears from it and minimize/restore scale into
   and out of it (T-02.1b/T-02.2); it is keyed by `app_id` and remembered for

@@ -151,6 +151,10 @@ struct TestClient {
     input_actions: Vec<(String, String, u32)>,
     progress_events: usize,
     app_accelerators: Vec<(String, String, String, u32)>,
+    /// Capture replies (T-13.3b): the path a capture was written to, and the
+    /// reason a capture could not be produced.
+    screenshot_saved: Vec<String>,
+    screenshot_failed: Vec<String>,
     // Drag-and-drop (T-10 external drops). The same harness acts as the
     // drag source (offers a payload) and as the target (a trusted chrome
     // surface that receives the offer).
@@ -335,6 +339,12 @@ impl Dispatch<df_toplevel_manager::DfToplevelManager, ()> for TestClient {
             } => state.app_switchers.push((active, app_id, direction)),
             df_toplevel_manager::Event::AppSwitcherEntry { index, app_id } => {
                 state.app_switcher_entries.push((index, app_id))
+            }
+            df_toplevel_manager::Event::ScreenshotSaved { path } => {
+                state.screenshot_saved.push(path)
+            }
+            df_toplevel_manager::Event::ScreenshotFailed { reason } => {
+                state.screenshot_failed.push(reason)
             }
             df_toplevel_manager::Event::Done => state.done_count += 1,
         }
@@ -3141,8 +3151,8 @@ fn reduced_motion_request_single_steps_the_overview() {
     );
     let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
     assert_eq!(
-        manager_version, 5,
-        "the manager must advertise the additive requests through v5"
+        manager_version, 6,
+        "the manager must advertise the additive requests through v6"
     );
     let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
     wait_for(
@@ -3223,8 +3233,8 @@ fn motion_and_input_policy_requests_apply_live() {
     );
     let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
     assert_eq!(
-        manager_version, 5,
-        "the manager must advertise the additive requests through v5"
+        manager_version, 6,
+        "the manager must advertise the additive requests through v6"
     );
     let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
     wait_for(
@@ -5832,4 +5842,71 @@ fn focus_dock_shortcut_hands_the_keyboard_to_the_dock() {
         !synthetic_path.exists(),
         "teardown leak: synthetic-input socket survived"
     );
+}
+
+/// T-13.3b: a capture request from the trusted shell is answered on the
+/// private protocol. The headless backend has no render target, so the
+/// compositor must reply `screenshot_failed` (never leave the shell's portal
+/// presenter waiting) and must never write a `screenshot_saved` for it.
+#[test]
+fn screenshot_capture_requests_are_answered_portal_only() {
+    let token = "ee".repeat(32);
+    let proc = CompositorProcess::start(
+        "dragonfruit-conformance-capture",
+        std::slice::from_ref(&token),
+    );
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (core_name, core_version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, core_name, core_version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+
+    let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
+    assert!(
+        manager_version >= 6,
+        "capture_screenshot is a v6 addition (got v{manager_version})"
+    );
+    let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
+    let _ = conn.flush();
+
+    let path = std::env::temp_dir().join(format!(
+        "dragonfruit-conformance-capture-{}.png",
+        std::process::id()
+    ));
+    manager.capture_screenshot(
+        4,
+        5,
+        300,
+        200,
+        "region".to_string(),
+        path.to_string_lossy().into_owned(),
+    );
+    let _ = conn.flush();
+
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.screenshot_failed.is_empty() || !state.screenshot_saved.is_empty(),
+    );
+    assert!(
+        state.screenshot_saved.is_empty(),
+        "the headless backend cannot render a capture"
+    );
+    assert_eq!(state.screenshot_failed.len(), 1);
+    assert!(!state.screenshot_failed[0].is_empty());
+
+    let _ = std::fs::remove_file(&path);
+    drop(manager);
+    drop(core);
+    let _ = conn.flush();
+    proc.shutdown();
 }

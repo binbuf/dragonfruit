@@ -17,6 +17,7 @@
 #include "compositorpolicy.h"
 #include "chooserbridge.h"
 #include "screenshotbridge.h"
+#include "screenshotwriter.h"
 #include "desktopentry.h"
 #include "displayspolicy.h"
 #include "dockmodel.h"
@@ -105,6 +106,10 @@ private slots:
     void onScreenshotFinished(bool completed);
     void onScreenshotChanged();
     void onScreenshotCaptureRequested(const QString &mode, int x, int y, int width, int height);
+    // T-13.3b: the compositor wrote the capture (or could not). The shell
+    // saves and copies it, then answers any waiting portal request.
+    void onScreenshotSaved(const QString &path);
+    void onScreenshotFailed(const QString &reason);
     // Session lock (T-12.3a): the compositor confirmed the lock, one lock
     // surface was configured to a full-output size, and the lock object
     // finished.
@@ -492,6 +497,10 @@ private:
     // into the `screenshot` overlay surface while a capture is in progress.
     // The bridge owns the request and the D-Bus presenter calls.
     ScreenshotBridge *m_screenshot = nullptr;
+    // T-13.3b: save/copy of the compositor-produced capture.
+    ScreenshotWriter *m_screenshotWriter = nullptr;
+    // The compositor's temporary capture file while a capture is in flight.
+    QString m_capturePath;
     QQuickWindow *m_screenshotWindow = nullptr;
     QQuickItem *m_screenshotItem = nullptr;
     int m_screenshotWidth = 0;

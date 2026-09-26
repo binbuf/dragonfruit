@@ -472,3 +472,23 @@ set_tests_properties(tst_screenshotui PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+# Screenshot save/copy tests (T-13.3b): the writer saves a PNG and puts the
+# image (and the saved file's URI) on the clipboard. Needs a QGuiApplication
+# for the clipboard; no Wayland, compositor, portal, or QML.
+qt_add_executable(tst_screenshotwriter
+    tst_screenshotwriter.cpp
+)
+target_link_libraries(tst_screenshotwriter PRIVATE
+    Qt6::Gui Qt6::Test
+    dragonfruit-shell-dockcore
+)
+
+add_test(
+    NAME tst_screenshotwriter
+    COMMAND tst_screenshotwriter
+)
+set_tests_properties(tst_screenshotwriter PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)

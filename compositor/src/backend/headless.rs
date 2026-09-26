@@ -61,6 +61,15 @@ pub fn run(socket_name: &str) -> Result<(), String> {
                 // on this backend without a display.
                 if state.needs_redraw {
                     state.stats.frames_rendered += 1;
+                    // T-13.3b: the headless backend has no render target, so a
+                    // requested capture cannot be produced. Fail it explicitly
+                    // rather than leaving the shell's presenter waiting.
+                    if state.pending_capture.is_some() {
+                        let _ = state.take_capture();
+                        state.broadcast_screenshot_failed(
+                            "the headless backend has no render target",
+                        );
+                    }
                     // T-11 U-3: drive the same frame path a real backend does,
                     // so a client's `wl_surface.frame` callbacks are delivered
                     // in CI (FR-2: a playing video keeps playing). No pixels

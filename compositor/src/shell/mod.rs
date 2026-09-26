@@ -45,12 +45,13 @@ use trust::{Refusal, TrustModel, TrustedRole};
 /// The version of every private interface this compositor implements.
 const INTERFACE_VERSION: u32 = 1;
 
-/// `df_toplevel_manager` is version 5 since `set_motion_policy` and
-/// `set_input_policy` were added (T-08.2c); `set_launch_origin` was the v4
-/// addition (T-02.1b), `set_reduced_motion` the v3 (T-11), and
-/// `release_keyboard_focus` the v2 (T-10). The other interfaces stay at
+/// `df_toplevel_manager` is version 6 since `capture_screenshot` and the
+/// `screenshot_saved`/`screenshot_failed` events were added (T-13.3b);
+/// `set_motion_policy`/`set_input_policy` were the v5 additions (T-08.2c),
+/// `set_launch_origin` v4 (T-02.1b), `set_reduced_motion` v3 (T-11), and
+/// `release_keyboard_focus` v2 (T-10). The other interfaces stay at
 /// [`INTERFACE_VERSION`].
-const MANAGER_INTERFACE_VERSION: u32 = 5;
+const MANAGER_INTERFACE_VERSION: u32 = 6;
 
 /// `df_output` is version 2 since `set_brightness` and the `brightness` event
 /// were added (T-11.3a). The other private interfaces stay at
@@ -571,6 +572,22 @@ impl DfState {
             .iter()
             .filter_map(|(client, session)| session.manager.clone().map(|m| (client.clone(), m)))
             .collect()
+    }
+
+    /// Reply to the trusted shell that a capture was rendered and written
+    /// (T-13.3b). The path is the one the shell supplied.
+    pub fn broadcast_screenshot_saved(&mut self, path: &str) {
+        for (_, manager) in self.manager_sessions() {
+            manager.screenshot_saved(path.to_owned());
+        }
+    }
+
+    /// Reply to the trusted shell that a requested capture could not be
+    /// produced (T-13.3b). `reason` is for logs only.
+    pub fn broadcast_screenshot_failed(&mut self, reason: &str) {
+        for (_, manager) in self.manager_sessions() {
+            manager.screenshot_failed(reason.to_owned());
+        }
     }
 
     fn session_outputs(&self) -> Vec<(String, Output)> {
@@ -1756,6 +1773,18 @@ impl Dispatch<df_toplevel_manager::DfToplevelManager, ()> for DfState {
                     gesture_space_switch != 0,
                     gesture_mission_control != 0,
                 );
+            }
+            df_toplevel_manager::Request::CaptureScreenshot {
+                x,
+                y,
+                width,
+                height,
+                mode,
+                path,
+            } => {
+                // T-13.3b: the trusted shell asks the compositor to render the
+                // frame itself (portal-presenter-only capture) and write a PNG.
+                state.request_capture(x, y, width, height, &mode, path);
             }
             df_toplevel_manager::Request::Destroy => {}
         }

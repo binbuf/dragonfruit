@@ -233,6 +233,14 @@ public:
     // Unmap the screenshot surface (attach a null buffer).
     bool hideScreenshot();
 
+    // Ask the compositor to render the active output and write a PNG to
+    // `path` (T-13.3b). `mode` is `fullscreen`/`region`/`window`; the
+    // rectangle is output-local pixels. The compositor replies with
+    // `screenshotSaved`/`screenshotFailed`. Capture is the portal presenter's
+    // path: there is no client-facing grab protocol.
+    bool captureScreenshot(const QString &path, int x, int y, int width, int height,
+                           const QString &mode);
+
     // --- session lock (T-12.3a) -------------------------------------------------
     //
     // Request the `ext-session-lock-v1` lock and create a lock surface on every
@@ -394,6 +402,11 @@ signals:
     void screenshotPointerLeft();
     void screenshotKeyboardFocused(bool focused);
     void screenshotKeyEvent(uint32_t key, bool pressed);
+    // Single-frame capture result (T-13.3b): the compositor rendered the
+    // selection and wrote a PNG (`screenshotSaved`), or could not
+    // (`screenshotFailed`, reason for logs).
+    void screenshotSaved(const QString &path);
+    void screenshotFailed(const QString &reason);
     // Session lock (T-12.3a): the compositor confirmed the lock, the lock
     // object finished on its own (`finished`), and one lock surface was
     // configured to a full-output size. `lockSurfaceId` is opaque and echoes
@@ -624,9 +637,12 @@ private:
     static void onManagerProgress(void *data, df_toplevel_manager *manager, const char *action,
                                   int32_t progress, int32_t rawProgress, int32_t velocity,
                                   uint32_t phase, uint32_t committed, uint32_t cancelled);
-    static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
-                                        const char *appId, const char *acceleratorId,
+static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
+                                        const char *app_id, const char *accelerator_id,
                                         const char *source, uint32_t serial);
+    static void onManagerScreenshotSaved(void *data, df_toplevel_manager *manager, const char *path);
+    static void onManagerScreenshotFailed(void *data, df_toplevel_manager *manager,
+                                          const char *reason);
     static void onManagerDone(void *data, df_toplevel_manager *manager);
     static void onToplevelTitle(void *data, df_toplevel *toplevel, const char *title);
     static void onToplevelAppId(void *data, df_toplevel *toplevel, const char *appId);

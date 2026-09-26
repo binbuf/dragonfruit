@@ -848,6 +848,7 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     connect(m_screenshot, &ScreenshotBridge::changed, this, &ShellController::onScreenshotChanged);
     connect(m_screenshot, &ScreenshotBridge::captureRequested, this,
             &ShellController::onScreenshotCaptureRequested);
+    m_screenshotWriter = new ScreenshotWriter(this);
 
     m_screenshotWindow = new QQuickWindow;
     m_screenshotWindow->setColor(Qt::transparent);
@@ -883,6 +884,10 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             &ShellController::onScreenshotKeyboardFocused);
     connect(m_protocol, &ShellProtocol::screenshotKeyEvent, this,
             &ShellController::onScreenshotKeyEvent);
+    connect(m_protocol, &ShellProtocol::screenshotSaved, this,
+            &ShellController::onScreenshotSaved);
+    connect(m_protocol, &ShellProtocol::screenshotFailed, this,
+            &ShellController::onScreenshotFailed);
 
     // Session lock (T-12.3a): a full-output offscreen scene rendered into one
     // `ext-session-lock-v1` surface per output. Authentication and input
@@ -1928,13 +1933,56 @@ void ShellController::onScreenshotChanged()
 void ShellController::onScreenshotCaptureRequested(const QString &mode, int x, int y, int width,
                                                    int height)
 {
-    // The selection is real; turning it into a saved image and returning the
-    // URI is T-13.3b (save/copy). Until then the request stays with the
-    // presenter seam (`ScreenshotBridge::complete`).
-    fprintf(stderr,
-            "dragonfruit-shell: screenshot selection mode=%s rect=%d,%d %dx%d "
-            "(capture owns save/copy in T-13.3b)\n",
-            qPrintable(mode), x, y, width, height);
+    // The selection is real: ask the compositor to render the frame itself
+    // (portal-presenter-only capture; T-13.3b) into a temporary PNG. The
+    // overlay is unmapped first so it is not part of the capture.
+    hideScreenshot();
+    if (!m_protocol) {
+        onScreenshotFailed(tr("The compositor capture path is unavailable."));
+        return;
+    }
+    m_capturePath = QDir::tempPath() + QStringLiteral("/dragonfruit-screenshot-")
+                    + QString::number(QCoreApplication::applicationPid()) + QLatin1Char('-')
+                    + QString::number(QDateTime::currentMSecsSinceEpoch())
+                    + QStringLiteral(".png");
+    if (!m_protocol->captureScreenshot(m_capturePath, x, y, width, height, mode))
+        onScreenshotFailed(tr("The compositor capture path is unavailable."));
+}
+
+void ShellController::onScreenshotSaved(const QString &path)
+{
+    const QImage image(path);
+    if (image.isNull()) {
+        onScreenshotFailed(tr("The captured image could not be read."));
+        return;
+    }
+    // Save into Pictures/Screenshots and copy to the clipboard (T-13.3b).
+    const ScreenshotWriter::Result result = m_screenshotWriter->deliver(image);
+    if (!path.isEmpty())
+        QFile::remove(path);
+    m_capturePath.clear();
+    if (!result.saved) {
+        onScreenshotFailed(tr("The captured image could not be saved."));
+        return;
+    }
+    // A portal request is answered with the saved file URI; the desktop
+    // shortcut has no request (its bridge already finished).
+    if (m_screenshot && m_screenshot->active())
+        m_screenshot->complete(QUrl::fromLocalFile(result.path).toString());
+    fprintf(stderr, "dragonfruit-shell: screenshot saved %s (copy=%s)\n",
+            qPrintable(result.path), result.copied ? "yes" : "no");
+}
+
+void ShellController::onScreenshotFailed(const QString &reason)
+{
+    if (!reason.isEmpty())
+        qWarning("dragonfruit-shell: screenshot failed: %s", qPrintable(reason));
+    if (!m_capturePath.isEmpty()) {
+        QFile::remove(m_capturePath);
+        m_capturePath.clear();
+    }
+    if (m_screenshot && m_screenshot->active())
+        m_screenshot->cancel();
 }
 
 void ShellController::showScreenshot()
