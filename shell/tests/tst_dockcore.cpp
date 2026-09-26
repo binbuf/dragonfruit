@@ -16,6 +16,7 @@
 #include "notificationclient.h"
 #include "osdmodel.h"
 #include "settingsclient.h"
+#include "trayclient.h"
 #include "trashbridge.h"
 
 #include <QDir>
@@ -1714,6 +1715,60 @@ private slots:
                  QStringLiteral("settings\tSuper+,\nquit\tSuper+Q\n"
                                 "edit.undo\tSuper+Z\nsort.name\tCtrl+N"));
         QCOMPARE(acceleratorWireTable({}), QString());
+    }
+
+    // T-14.3: the tray item and DBusMenu views decode from the service's flat
+    // JSON, and a malformed payload never produces a phantom item.
+    void tray_items_and_menus_decode_from_the_service_view()
+    {
+        const QString itemsJson = QStringLiteral(R"([
+            { "name": "org.kde.StatusNotifierItem-1-1", "id": "telegram",
+              "title": "Telegram", "iconName": "telegram", "iconPath": "/tmp/telegram.png",
+              "menuPath": "/MenuBar", "itemIsMenu": true, "needsAttention": true,
+              "hasPixmap": false },
+            { "name": ":1.9:/SelfItem", "id": "self", "title": "", "iconName": "",
+              "iconPath": "", "menuPath": "", "itemIsMenu": false,
+              "needsAttention": false, "hasPixmap": true }
+        ])");
+        const QList<TrayItem> items = TrayClient::parseItems(itemsJson);
+        QCOMPARE(items.size(), 2);
+        QCOMPARE(items[0].name, QStringLiteral("org.kde.StatusNotifierItem-1-1"));
+        QCOMPARE(items[0].title, QStringLiteral("Telegram"));
+        QCOMPARE(items[0].iconPath, QStringLiteral("/tmp/telegram.png"));
+        QCOMPARE(items[0].itemIsMenu, true);
+        QCOMPARE(items[0].needsAttention, true);
+        QCOMPARE(items[1].name, QStringLiteral(":1.9:/SelfItem"));
+        QCOMPARE(items[1].hasPixmap, true);
+
+        // A missing/empty name is not an item; a malformed payload is empty.
+        QCOMPARE(TrayClient::parseItems(QStringLiteral("[ { \"id\": \"x\" } ]")).size(), 0);
+        QCOMPARE(TrayClient::parseItems(QStringLiteral("{ not json")).size(), 0);
+        QCOMPARE(TrayClient::parseItems(QString()).size(), 0);
+
+        // The menu view is the design-system row shape, nested `submenu`
+        // intact, and the click id survives the round trip.
+        const QString menuJson = QStringLiteral(R"([
+            { "id": 1, "type": "item", "label": "Show Window", "enabled": true },
+            { "id": 5, "type": "submenu", "label": "Tools", "enabled": true,
+              "submenu": [ { "id": 6, "type": "item", "label": "Preferences",
+                             "checked": true, "checkable": true } ] },
+            { "id": 9, "type": "separator", "label": "" }
+        ])");
+        const QVariantList menu = TrayClient::parseMenu(menuJson);
+        QCOMPARE(menu.size(), 3);
+        const QVariantMap first = menu.at(0).toMap();
+        QCOMPARE(first.value(QStringLiteral("id")).toInt(), 1);
+        QCOMPARE(first.value(QStringLiteral("label")).toString(), QStringLiteral("Show Window"));
+        const QVariantMap submenu = menu.at(1).toMap();
+        QCOMPARE(submenu.value(QStringLiteral("type")).toString(), QStringLiteral("submenu"));
+        const QVariantList children =
+            submenu.value(QStringLiteral("submenu")).toList();
+        QCOMPARE(children.size(), 1);
+        QCOMPARE(children.at(0).toMap().value(QStringLiteral("id")).toInt(), 6);
+        QCOMPARE(children.at(0).toMap().value(QStringLiteral("checked")).toBool(), true);
+
+        QCOMPARE(TrayClient::parseMenu(QStringLiteral("[]")).size(), 0);
+        QCOMPARE(TrayClient::parseMenu(QStringLiteral("not json")).size(), 0);
     }
 };
 

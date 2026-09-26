@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(70 earlier sections omitted)_
+_(71 earlier sections omitted)_
 
-- **T67 — T-10.6b Drop-to-trash, Empty Trash, trash://**: **State: done.** The Dock's drop and Empty Trash already routed through; **`services/files-core/src/optimistic.rs`** — `PendingKind::Empty` +
 - **T68 — T-10.6c Show in Files, Downloads, and .desktop identity**: **State: done.** The Files identity is installed and the Dock's two navigation; **`apps/files/org.dragonfruit.Files.desktop`** (new) — `Exec=dragonfruit-files
 - **T69 — T-10.7 Files capture and acceptance walkthrough**: **State: done.** T-10 (Files MVP) is captured at the track boundary and the; **`scripts/capture-files.sh`** (new) — `make files-capture` (new target in
 - **T70 — T-11.1a Notification service core**: **State: done.** The `org.freedesktop.Notifications` service and the shell; **`services/notifications/`** (new crate `dragonfruit-notifications`,
@@ -44,6 +43,7 @@ _(70 earlier sections omitted)_
 - **T102 — T-14.1c app-index subscription API**: **State: done.** `org.dragonfruit.AppIndex1` now has a subscription surface:; `services/app-index/src/subscription.rs` (new) — pure `ChangeKind`
 - **T103 — T-14.2a menu-broker export model and fixed menu**: **State: done.** `services/menu-broker` is a real service and the fixed; `services/menu-broker/src/model.rs` (new) — pure `Broker`: `PublishedModel`
 - **T104 — T-14.2b menu-broker accelerators and toggle**: **State: done.** The menu-broker now parses and dispatches focus-scoped; `services/menu-broker/src/accelerators.rs` (new) — pure `Mods`/`Chord`
+- **T105 — T-14.3 StatusNotifier/AppIndicator tray**: **State: done.** StatusNotifier/AppIndicator tray items render in the menu; `services/app-index/src/tray.rs` (new) — pure `Registration`
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3227,6 +3227,15 @@ Gotchas for later tasks:
 
 ## Follow-ups
 
+- **T-14.3 follow-ups.** (a) Live SNI `NewIcon`/`NewToolTip`/`NewStatus` signals
+  are not subscribed: the shell re-reads `TrayItems` on a 2 s timer, so icon
+  updates and attention animation lag or are missed. (b) A pixmap-only item
+  (`IconPixmap`, no `IconName`) falls back to the `application` glyph, and the
+  item's `IconThemePath` is not consulted; resolve both when a real app needs
+  them. (c) Left-click always opens the DBusMenu; a primary `Activate`
+  (and middle-click/scroll) path is not wired. (d) `dragonfruit-app-index` is
+  not auto-started by `dragonfruit dev`/`make demo`, so the live tray needs the
+  service started by hand (the same gap as settingsd/menu-broker).
 - **T-14.2b follow-ups.** (a) The shell still computes its accelerator table
   from the menu it renders (`fixedApplicationMenu` + `demoAppMenu`); it does not
   read the broker's `Resolve`/`FocusedAccelerators` over D-Bus, and Settings
@@ -7790,3 +7799,85 @@ Gotchas for later tasks:
   with `menu.global=false` (settingsd + gdbus) `/tmp/opencode/t104c-off.png`
   (app menu title only, no File/Edit/View). Not committed to `docs/captures`
   (track-boundary artifact).
+
+## T105 — T-14.3 StatusNotifier/AppIndicator tray
+
+**State: done.** StatusNotifier/AppIndicator tray items render in the menu
+bar and their DBusMenu works end to end. `dragonfruit-app-index` is now also
+the tray host: it serves `org.kde.StatusNotifierWatcher`, keeps a pure
+registration/DBusMenu model, and exposes it to the shell over
+`org.dragonfruit.AppIndex1`. Contract frozen in ADR
+[0097](design/adr/0097-statusnotifier-tray-host-and-dbusmenu-projection.md).
+
+Real paths:
+
+- `services/app-index/src/tray.rs` (new) — pure `Registration`
+  (`parse`: bus name → `/StatusNotifierItem`; path → `sender:/path`),
+  `TrayRegistry` (`register`/`remove`/`remove_sender`/`remove_owner`), and the
+  DBusMenu projection: `MenuNode` (`to_json`), `parse_layout`
+  (`GetLayout (i,a{sv},av)` → rows), mnemonic stripping, toggle/checked state,
+  shortcut strings.
+- `services/app-index/src/dbus.rs` — `WATCHER_NAME`/`WATCHER_PATH`/
+  `WATCHER_INTERFACE`/`ITEM_INTERFACE`/`DBUSMENU_INTERFACE`; the
+  `StatusNotifierWatcher` object sharing `AppIndex1::tray()`; new `AppIndex1`
+  methods `TrayItems`/`TrayNames`/`TrayMenu`/`TrayMenuEvent`/`TrayActivate` and
+  the `TrayChanged` signal; `spawn_tray_cleaner` (NameOwnerChanged → prune);
+  `run()` takes the watcher name best-effort and still serves the watcher
+  object when another host owns it.
+- `services/app-index/src/main.rs` — `--mock-tray <icon>` debug item + menu.
+- `services/app-index/tests/session_bus.rs` — mock SNI item/menu; two cases.
+- `shell/src/trayclient.{h,cpp}` (new) — pure `parseItems`/`parseMenu` + the
+  D-Bus calls; `TrayItem`.
+- `shell/src/shellcontroller.{h,cpp}` — `m_trayClient`, `refreshTrayItems`
+  (2 s `QTimer`), `openTrayMenu`, `onTrayMenuTriggered`, `onTrayMenuClosed`;
+  tray items appended to `statusItems` as `tray:<name>` with a
+  `QUrl::fromLocalFile` `iconSource`.
+- `shell/menubar/StatusItem.qml` — `iconSource` (`Image` instead of glyph);
+  `MenuBar.qml` — `trayMenu`/`trayMenuOpen`, `openTrayMenu`/`closeTrayMenu`,
+  the design-system `ContextMenu`, and the tray branch in `_dropdownRect`.
+- `shell/tests/tst_dockcore.cpp`, `shell/tests/tst_menubar.qml` — decode and
+  interaction cases.
+- `docs/design/06-global-menu.md` "Implementation note (T-14.3)";
+  `docs/design/adr/0097-*.md` (new).
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-app-index` — 42 unit + 12 session-bus cases
+  (incl. `a_mock_tray_item_registers_and_its_menu_round_trips`).
+- `cargo test --workspace`; `cargo clippy --workspace --all-targets -- -D
+  warnings`; `cargo fmt --all -- --check` — all green.
+- `ctest --test-dir build --output-on-failure` — 53/53; `make e2e` — clean.
+- Build note (unchanged): `export
+  PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig:$PKG_CONFIG_PATH` and
+  `RUSTFLAGS="-L $HOME/.local/df-devroot/lib64"` (or just `make`).
+
+Gotchas for later tasks:
+
+- **The tray is app-index's, not the shell's.** `org.kde.StatusNotifierWatcher`
+  is taken best-effort. On a KDE host plasmashell already owns the name, so
+  app-index logs "already owned" and serves only the watcher *object*; a mock
+  or app can register by calling
+  `RegisterStatusNotifierItem` on `org.dragonfruit.AppIndex1` at
+  `/StatusNotifierWatcher`.
+- **All shell calls are flat JSON.** `TrayItems` returns
+  `[{name,destination,path,id,title,iconName,iconPath,tooltip,menuPath,
+  itemIsMenu,status,needsAttention,hasPixmap}]`; `TrayMenu` returns the
+  design-system row array (nested `submenu`); a miss is `[]`/`false`, never an
+  error. `TrayItems` prunes an item whose owner is gone.
+- **The ContextMenu's size is content-derived**, so the shell re-commits the
+  overlay popup rectangle at 0/60/160 ms after opening a tray menu; without
+  that the surface stays at its first (near-empty) size and clicks miss. If
+  you change the menu component, keep those delayed `updatePopupGeometry`
+  calls.
+- **`iconSource` must be a file URL**, not a bare path: QML resolves a plain
+  string relative to the QML file (`qrc:`). The controller wraps `iconPath`
+  with `QUrl::fromLocalFile`.
+- **T-14.4 reuses the projection**: bridge DBusMenu into the menu-broker with
+  `tray::MenuNode`/`tray::parse_layout`/`GetLayout`, not a second parser.
+- Live check: nested `make demo` with `dragonfruit-app-index` +
+  `dragonfruit-app-index --mock-tray firefox` on the session bus —
+  `/tmp/opencode/t105/traymenu4.png` shows the Firefox tray icon in the bar and
+  its open menu (`Show Window` / separator / `Tools › Preferences`); clicking
+  `Show Window` logged `mock tray menu event 1 (clicked)`. The active-window
+  capture trim is flaky on this KWin host, so treat the shell/DBus logs as the
+  hard evidence. Not committed to `docs/captures` (track-boundary artifact).
