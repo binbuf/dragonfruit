@@ -1933,6 +1933,178 @@ Item {
                    .indexOf("Plain") === 0);
         }
 
+        // -- T-14.7n chooser row discipline ---------------------------------
+
+        function manyWindows(n) {
+            var out = [];
+            for (var i = 0; i < n; ++i)
+                out.push({ windowId: String(i + 1), title: "Window " + (i + 1),
+                           focused: i === 0, workspaceName: "Space 1" });
+            return out;
+        }
+
+        function chooserRows(dock) {
+            return findChild(findChild(dock, "windowChooser"), "chooserRows");
+        }
+
+        function test_chooser_viewport_caps_the_visible_rows_at_the_token() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ multiWindow("files", "Files", manyWindows(10)) ]
+            });
+            dock.openChooser(dock.items[0]);
+            waitForRendering(stage);
+            var chooser = findChild(dock, "windowChooser");
+            compare(chooser.maxRows, Theme.controls.dock.chooser.maxRows);
+            compare(chooser.rowCount, 10);
+            compare(chooser.visibleRows, chooser.maxRows);
+            compare(chooser.scrolls, true);
+            compare(chooser.listHeight, chooser.visibleRows * chooser.rowHeight);
+            var view = chooserRows(dock);
+            verify(view !== null);
+            compare(view.height, chooser.listHeight);
+            compare(view.interactive, true);
+            // The capped popover stays inside the pre-sized headroom (ADR 0100).
+            verify(chooser.height < 320);
+            // The header is a fixed band above the viewport, never inside it.
+            var header = findChild(chooser, "chooserHeader");
+            compare(header.y, chooser.padding);
+            fuzzyCompare(view.y, header.y + header.height
+                              + Theme.controls.window.borderWidth, 0.001);
+        }
+
+        function test_chooser_short_list_has_no_scrollbar_or_gutter() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ multiWindow("files", "Files", manyWindows(2)) ]
+            });
+            dock.openChooser(dock.items[0]);
+            waitForRendering(stage);
+            var chooser = findChild(dock, "windowChooser");
+            compare(chooser.rowCount, 2);
+            compare(chooser.visibleRows, 2);
+            compare(chooser.scrolls, false);
+            compare(chooser.scrollbarGutter, 0);
+            compare(chooser.listHeight, 2 * chooser.rowHeight);
+            var view = chooserRows(dock);
+            compare(view.interactive, false);
+            compare(view.height, chooser.listHeight);
+            // The surface is exactly as tall as its content: no reserved gutter.
+            compare(chooser.height,
+                    chooser.padding + findChild(chooser, "chooserHeader").height
+                    + Theme.controls.window.borderWidth + chooser.listHeight
+                    + chooser.padding + chooser.arrowSize / 2);
+        }
+
+        function test_chooser_scrolling_reserves_a_gutter_for_the_actions() {
+            var long = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ multiWindow("files", "Files", manyWindows(10)) ]
+            });
+            long.openChooser(long.items[0]);
+            waitForRendering(stage);
+            var longChooser = findChild(long, "windowChooser");
+            compare(longChooser.scrollbarGutter,
+                    Theme.controls.dock.chooser.scrollbarWidth
+                    + Theme.controls.dock.chooser.scrollbarMargin);
+            var slot = findChild(longChooser, "chooserRowActions");
+            var view = chooserRows(long);
+            // The reserved action slot sits left of the scrollbar track.
+            verify(slot.x + slot.width
+                   <= view.width - longChooser.scrollbarGutter + 0.001);
+
+            var short = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ multiWindow("files", "Files", manyWindows(2)) ]
+            });
+            short.openChooser(short.items[0]);
+            waitForRendering(stage);
+            compare(findChild(short, "windowChooser").scrollbarGutter, 0);
+        }
+
+        function test_chooser_header_stays_pinned_while_scrolled() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ multiWindow("files", "Files", manyWindows(10)) ]
+            });
+            dock.openChooser(dock.items[0]);
+            waitForRendering(stage);
+            var chooser = findChild(dock, "windowChooser");
+            var header = findChild(chooser, "chooserHeader");
+            var view = chooserRows(dock);
+            var headerY = header.y;
+            var viewY = view.y;
+            view.flickable.contentY = 3 * chooser.rowHeight;
+            waitForRendering(stage);
+            // The rows move under the pinned header; neither the header nor the
+            // viewport band moves.
+            compare(view.flickable.contentY, 3 * chooser.rowHeight);
+            compare(header.y, headerY);
+            compare(view.y, viewY);
+        }
+
+        function test_chooser_keyboard_scrolls_the_focused_row_into_view() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ multiWindow("files", "Files", manyWindows(10)) ]
+            });
+            dock.openChooser(dock.items[0]);
+            waitForRendering(stage);
+            var chooser = findChild(dock, "windowChooser");
+            var flickable = chooserRows(dock).flickable;
+            compare(chooser.currentIndex, -1);
+            chooser.moveSelection(1);
+            compare(chooser.currentIndex, 0);
+            compare(flickable.contentY, 0);
+            // Jump to the last row: the viewport follows so the focused row is
+            // fully visible.
+            chooser.moveSelectionTo(chooser.rowCount - 1);
+            compare(chooser.currentIndex, 9);
+            verify(flickable.contentY > 0);
+            verify(flickable.contentY <= 9 * chooser.rowHeight);
+            verify(flickable.contentY + flickable.height
+                   >= 10 * chooser.rowHeight - 0.001);
+            // Home jumps back to the first row and the viewport to the top.
+            chooser.moveSelectionTo(0);
+            compare(chooser.currentIndex, 0);
+            compare(flickable.contentY, 0);
+        }
+
+        function test_chooser_keyboard_navigation_is_live() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ multiWindow("files", "Files", manyWindows(8)) ]
+            });
+            dock.openChooser(dock.items[0]);
+            waitForRendering(stage);
+            var chooser = findChild(dock, "windowChooser");
+            keyClick(Qt.Key_Down);
+            compare(chooser.currentIndex, 0);
+            keyClick(Qt.Key_End);
+            compare(chooser.currentIndex, 7);
+            keyClick(Qt.Key_Home);
+            compare(chooser.currentIndex, 0);
+            keyClick(Qt.Key_Up);
+            compare(chooser.currentIndex, -1);
+        }
+
+        function test_chooser_keyboard_enter_activates_and_escape_closes() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ multiWindow("files", "Files", manyWindows(2)) ]
+            });
+            windowSpy.target = dock;
+            windowSpy.clear();
+            dock.openChooser(dock.items[0]);
+            waitForRendering(stage);
+            var chooser = findChild(dock, "windowChooser");
+            chooser.moveSelection(1); // the first row
+            chooser.activateCurrent();
+            compare(windowSpy.count, 1);
+            compare(windowSpy.signalArguments[0][0], "1");
+            compare(dock.chooserOpen, false);
+        }
+
         function test_empty_dock_click_dismisses_popover() {
             var dock = make(dockComponent, {
                 width: 1280, height: 160,

@@ -266,6 +266,18 @@ saved individually: the "Show All Windows" header, the window rows, and the
 hovered row's stateful Minimize glyph plus the destructive red Close. Needs a
 host Wayland session, spectacle, gdbus, and Pillow; not in `make e2e`.
 
+T-14.7n's Dock window chooser row discipline sign-off is produced by
+`scripts/capture-dock-chooser-scroll.sh` (`make dock-chooser-scroll-capture`):
+the nested demo runs once per color scheme with twelve Settings windows
+(`--launch` repeated) so the app's Dock entry groups well past
+`component.dock.chooser.maxRows` (7), and the shell's
+`DF_DOCK_CHOOSER_FIXTURE=scroll` seam opens the chooser, scrolls the bounded
+viewport mid-list, and highlights a visible row. The two 2x crops are stacked
+into `t14-dock-chooser-scroll.png` (light over dark) and saved individually:
+the pinned "Show All Windows" header, the capped seven-row viewport scrolled to
+the lower rows, the scrollbar, and the hovered row's actions clear of it. Needs
+a host Wayland session, spectacle, gdbus, and Pillow; not in `make e2e`.
+
 T-14.7i's Dock hover name label sign-off is produced by
 `scripts/capture-dock-tooltip.sh` (`make dock-tooltip-capture`): the nested demo
 runs once per entry kind through the shell's `DF_DOCK_TOOLTIP_FIXTURE` seam

@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(90 earlier sections omitted)_
+_(91 earlier sections omitted)_
 
-- **T86 — T-12.5a Suspend/resume cycle**: **State: done.** One suspend/resume round trip recovers outputs, input, and; **`services/session/src/suspend.rs`** (new) — `SuspendState`
 - **T87 — T-12.5b Session policy keys, kill matrix, capture**: **State: done.** The session policy keys are registered in settingsd, the; **`services/settingsd/src/schema.rs`** — schema v5, new `Session` key group:
 - **T88 — T-13.1a Portal backend and session service**: **State: done.** `portal/` is now a real session-bus portal backend plus its; **`portal/src/`** (new `[lib]` + existing binary) — `model` (pure:
 - **T89 — T-13.1b Settings and GlobalShortcuts portals**: **State: done.** The backend now serves the first two standard interfaces at; **`portal/src/settings.rs`** (new) — the pure projection:
@@ -44,6 +43,7 @@ _(90 earlier sections omitted)_
 - **T110k — T-14.7k Dock folder pins: any folder as a stack**: **State: done.** Any folder can be pinned to the Dock as a stack: a single; `services/settingsd/src/schema.rs` — `dock.pinnedFolders` (`as`, default
 - **T110l — T-14.7l Dock launch-origin tile hand-off**: **State: done.** The Dock now hands the acted-on entry's icon tile to the; `shell/src/dockmodel.{h,cpp}` — `dockLaunchAppId(entry)` (`StartupWMClass`
 - **T110m — T-14.7m Dock window chooser: per-window actions**: **State: done.** Each window row in the Dock's chooser now carries a stateful; `shell/src/shellprotocol.{h,cpp}` — `setToplevelMinimized(windowId, bool)`
+- **T110n — T-14.7n Dock window chooser: row discipline**: **State: done.** The window chooser's row list is now bounded: at most; `design-system/tokens/tokens.json` — `component.dock.chooser`:
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -9350,5 +9350,66 @@ Gotchas for later tasks:
   T-14.7n scrollbar/badge must not steal it or the popover resizes on hover.
 - **`fixtureHoverIndex` / `DF_DOCK_CHOOSER_FIXTURE` are capture seams**, never
   session state. `row.hovered` (pointer or seam) is the single reveal source.
+- `check-desktop-names.sh` still fails on the pre-existing StatusNotifier/zoo
+  lines (unchanged here).
+
+## T110n — T-14.7n Dock window chooser: row discipline
+
+**State: done.** The window chooser's row list is now bounded: at most
+`component.dock.chooser.maxRows` (default 7) rows render, a longer list
+flick-scrolls through the design-system `ScrollView`, and the "Show All
+Windows" header + separator stay pinned above it. A short list is unchanged
+(no scrollbar, no gutter). A scrolling list reserves the scrollbar's width to
+the right of the T-14.7m action slot, so the thumb never covers
+Minimize/Close. Up/Down/Home/End/Return navigate and scroll the focused row
+into view. No new ADR: ADR 0103 already decides the bounded viewport and
+ADR 0100's pre-sized buffer still holds.
+
+Real paths:
+
+- `design-system/tokens/tokens.json` — `component.dock.chooser`:
+  `maxRows` 7, `scrollbarWidth`/`scrollbarMargin` `$ref`'d from
+  `component.scrollView`. `Theme.qml` + `compositor/src/design_tokens.rs`
+  regenerated (`./scripts/gen-tokens.py`).
+- `shell/dock/DockWindowChooser.qml` — root `Item` → `FocusScope`;
+  `maxRows`, `currentIndex`, `visibleRows`, `listHeight`, `scrolls`,
+  `scrollbarGutter`; `moveSelection`/`moveSelectionTo`/`keepSelectionVisible`/
+  `activateCurrent`; the rows `Column` is inside a `ScrollView`
+  (`objectName: "chooserRows"`, `interactive`/`scrollbarVisible: scrolls`);
+  `actionSlot.rightMargin = contextMenu.padding + scrollbarGutter`; row
+  `active` highlight and `showActions` include the keyboard highlight.
+- `shell/dock/Dock.qml` — `scrollChooserFixture()` capture seam.
+- `shell/src/shellcontroller.cpp` — `DF_DOCK_CHOOSER_FIXTURE=scroll` opens the
+  chooser then scrolls it ~300 ms later; other values keep the T-14.7m path.
+- `shell/tests/tst_dock.qml` — 7 new `test_chooser_*` cases (token cap,
+  short-list geometry, action gutter, header pinning, keyboard
+  scroll-into-view, live keys, Enter/Escape). `tst_dock` 189 → 196.
+- `scripts/capture-dock-chooser-scroll.sh` + `make
+  dock-chooser-scroll-capture`; `docs/captures/t14-dock-chooser-scroll.png`
+  (+ `-light`/`-dark`); captures README paragraph.
+- Docs: `docs/design/04-shell.md` "Dock window chooser".
+
+Commands that work (repo root):
+
+- `ctest --test-dir build --output-on-failure` — 53/53 (`tst_dock` 196).
+- `make e2e` — green (Rust workspace suites + `make demo --headless`).
+- `cargo fmt --all -- --check`; `./scripts/gen-tokens.py --check`;
+  `./scripts/check-design-tokens.sh`; `./scripts/check-no-capture-grab.sh`;
+  `./scripts/check-gallery-snapshots.py` — green.
+- Live: `make dock-chooser-scroll-capture` (host Wayland + spectacle + gdbus +
+  Pillow; 12 Settings windows via repeated `--launch`).
+
+Gotchas for later tasks:
+
+- **The chooser height is now capped, not content-sized.** Any T-14.7o badge or
+  T-14.7q overflow work must not push the viewport past `maxRows` or it will
+  grow the popover past ADR 0100's headroom.
+- **`chooserRows` is the `ScrollView`**; `chooserRows.flickable` is the
+  scroll-position seam. `currentIndex` (-1 = the pinned header) is the single
+  keyboard highlight.
+- **The gutter is conditional** (`scrollbarGutter` is 0 when short); never
+  hard-code the scrollbar width into the row right margin.
+- **`DF_DOCK_CHOOSER_FIXTURE=scroll`** is the long-list capture seam;
+  `scrollChooserFixture()` is a fixture, never session state.
 - `check-desktop-names.sh` still fails on the pre-existing StatusNotifier/zoo
   lines (unchanged here).
