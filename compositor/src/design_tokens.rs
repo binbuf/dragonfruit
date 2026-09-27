@@ -356,6 +356,12 @@ pub mod component {
             pub const GRID_GAP: f32 = 0.08_f32;
             pub const GRID_CELL: f32 = 0.16_f32;
         }
+        pub mod trash_empty {
+            pub const BUSY_DELAY: f32 = 350.0_f32;
+            pub const SPINNER_SIZE: f32 = 18.0_f32;
+            pub const SPINNER_STROKE: f32 = 2.0_f32;
+            pub const SPINNER_SPEED: f32 = 900.0_f32;
+        }
     }
     pub mod context_menu {
         pub const RADIUS: f32 = 14.0_f32;

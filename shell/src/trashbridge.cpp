@@ -22,6 +22,7 @@ TrashBridge::TrashBridge(QObject *parent)
 TrashBridge::~TrashBridge()
 {
     stop();
+    joinEmptyWorker();
     if (m_monitor) {
         df_files_trash_monitor_free(m_monitor);
         m_monitor = nullptr;
@@ -77,6 +78,68 @@ int TrashBridge::empty()
         takeError();
     applyState();
     return removed;
+}
+
+bool TrashBridge::emptyAsync()
+{
+    // One operation at a time (T-14.7r): a second Empty Trash while emptying
+    // is ignored.
+    if (m_emptyState == EmptyState::Emptying)
+        return false;
+
+    resetEmptyState();
+    m_emptyState = EmptyState::Emptying;
+    emit emptyStarted();
+
+    if (!m_monitor) {
+        // The backend is unreachable (service down). Report a failure
+        // immediately on the UI thread instead of hanging.
+        m_emptyState = EmptyState::Failed;
+        m_emptyError = QStringLiteral("no trash monitor");
+        m_error = m_emptyError;
+        emit emptyFinished(false, -1, m_emptyError);
+        return true;
+    }
+
+    joinEmptyWorker();
+    m_emptyWorker = std::thread([this]() {
+        const int removed = df_files_trash_monitor_empty(m_monitor);
+        QMetaObject::invokeMethod(
+            this, [this, removed]() { finishEmpty(removed); },
+            Qt::QueuedConnection);
+    });
+    return true;
+}
+
+void TrashBridge::resetEmptyState()
+{
+    m_emptyState = EmptyState::Idle;
+    m_emptyRemoved = 0;
+    m_emptyError.clear();
+}
+
+void TrashBridge::finishEmpty(int removed)
+{
+    if (removed >= 0) {
+        applyState();
+        m_emptyState = EmptyState::Succeeded;
+        m_emptyRemoved = removed;
+        m_emptyError.clear();
+        emit emptyFinished(true, removed, QString());
+        return;
+    }
+    takeError();
+    m_emptyState = EmptyState::Failed;
+    m_emptyRemoved = 0;
+    m_emptyError = m_error.isEmpty() ? QStringLiteral("failed to empty the trash")
+                                     : m_error;
+    emit emptyFinished(false, -1, m_emptyError);
+}
+
+void TrashBridge::joinEmptyWorker()
+{
+    if (m_emptyWorker.joinable())
+        m_emptyWorker.join();
 }
 
 int TrashBridge::trash(const QStringList &paths)

@@ -1003,6 +1003,96 @@ private slots:
         QVERIFY(QFileInfo::exists(root + QStringLiteral("/files")));
     }
 
+    // T-14.7r: the async empty runs off the UI thread, reports Emptying while
+    // in flight, then a one-shot success with the removed count and a re-read
+    // store.
+    void trashBridgeAsyncEmptyReportsTheRemovedCount()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString root = dir.path() + QStringLiteral("/Trash");
+        setenv("XDG_DATA_HOME", dir.path().toUtf8().constData(), 1);
+        QVERIFY(QDir().mkpath(root + QStringLiteral("/info")));
+        QVERIFY(QDir().mkpath(root + QStringLiteral("/files")));
+        writeFile(root + QStringLiteral("/info/a.trashinfo"),
+                  QStringLiteral("[Trash Info]\nPath=/home/x/a\n"));
+        writeFile(root + QStringLiteral("/files/a"), QStringLiteral("a"));
+        writeFile(root + QStringLiteral("/info/b.trashinfo"),
+                  QStringLiteral("[Trash Info]\nPath=/home/x/b\n"));
+        writeFile(root + QStringLiteral("/files/b"), QStringLiteral("b"));
+
+        TrashBridge trash;
+        trash.start();
+        QCOMPARE(trash.itemCount(), 2);
+
+        QSignalSpy finished(&trash, &TrashBridge::emptyFinished);
+        QVERIFY(finished.isValid());
+
+        QVERIFY(trash.emptyAsync());
+        QVERIFY(trash.isEmptying());
+        QVERIFY(trash.emptyState() == TrashBridge::EmptyState::Emptying);
+
+        QTRY_VERIFY(!trash.isEmptying());
+        QVERIFY(trash.emptyState() == TrashBridge::EmptyState::Succeeded);
+        QCOMPARE(trash.emptyRemoved(), 2);
+        QCOMPARE(finished.count(), 1);
+        QCOMPARE(finished.at(0).at(0).toBool(), true);
+        QCOMPARE(finished.at(0).at(1).toInt(), 2);
+        QVERIFY(trash.emptyError().isEmpty());
+        QVERIFY(!trash.isFull());
+        QCOMPARE(trash.itemCount(), 0);
+    }
+
+    // T-14.7r: one operation at a time. A second request while the first is
+    // still in flight (the finish is a queued call, so it has not run yet) is
+    // ignored rather than started.
+    void trashBridgeSecondEmptyWhileEmptyingIsIgnored()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString root = dir.path() + QStringLiteral("/Trash");
+        setenv("XDG_DATA_HOME", dir.path().toUtf8().constData(), 1);
+        QVERIFY(QDir().mkpath(root + QStringLiteral("/info")));
+        QVERIFY(QDir().mkpath(root + QStringLiteral("/files")));
+        writeFile(root + QStringLiteral("/info/only.trashinfo"),
+                  QStringLiteral("[Trash Info]\nPath=/home/x/only\n"));
+        writeFile(root + QStringLiteral("/files/only"), QStringLiteral("x"));
+
+        TrashBridge trash;
+        trash.start();
+        QVERIFY(trash.emptyAsync());
+        QVERIFY(trash.isEmptying());
+        QVERIFY(!trash.emptyAsync());
+        QVERIFY(trash.isEmptying());
+
+        QTRY_VERIFY(!trash.isEmptying());
+        QVERIFY(trash.emptyState() == TrashBridge::EmptyState::Succeeded);
+        QCOMPARE(trash.emptyRemoved(), 1);
+    }
+
+    // T-14.7r: the absent-backend case (service down). A bridge that never
+    // started has no monitor; emptyAsync reports a failure immediately instead
+    // of blocking or hanging.
+    void trashBridgeEmptyOnAnAbsentBackendFailsWithoutHanging()
+    {
+        TrashBridge trash;
+        QSignalSpy finished(&trash, &TrashBridge::emptyFinished);
+        QVERIFY(finished.isValid());
+
+        QVERIFY(trash.emptyAsync());
+        QVERIFY(!trash.isEmptying());
+        QVERIFY(trash.emptyState() == TrashBridge::EmptyState::Failed);
+        QCOMPARE(finished.count(), 1);
+        QCOMPARE(finished.at(0).at(0).toBool(), false);
+        QCOMPARE(finished.at(0).at(1).toInt(), -1);
+        QVERIFY(!trash.emptyError().isEmpty());
+
+        trash.resetEmptyState();
+        QVERIFY(trash.emptyState() == TrashBridge::EmptyState::Idle);
+        QVERIFY(trash.emptyRemoved() == 0);
+        QVERIFY(trash.emptyError().isEmpty());
+    }
+
     // -- external drops --------------------------------------------------
 
     void parseUriListDecodesFileUris()

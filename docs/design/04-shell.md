@@ -338,6 +338,28 @@ status badge. The fill/rim/paper colours are semantic tokens (`trashFillTop`,
 resolved per scheme from primitives; the glyph is pure QML rectangles and a
 `Shape`, so it renders Image-less at any DPI and headless.
 
+### Emptying the Trash
+
+Empty Trash is asynchronous and has visible states (T-14.7r). The context
+menu's confirmation stays the entry point; confirming closes the menu and opens
+a progress/result popover anchored to the Trash entry. The shell's
+`TrashBridge` runs the empty on a one-shot worker (the files-core monitor is
+internally synchronized and its watch worker stays free), reports `emptying`
+immediately, and emits a one-shot `emptyFinished(ok, removed, error)` back on
+the UI thread, so the shell never blocks. The Dock renders one phase at a time:
+an indeterminate ring shown only after `controls.dock.trashEmpty.busyDelay` (a
+fast empty never flickers through it), a success state with a check and the
+removed count, and a failure state with the message and a **Try Again** button
+that reruns the operation without re-opening the menu. One operation runs at a
+time per Trash entry; a failed empty leaves the store intact and the monitor's
+event-driven watch re-reports the real count — no polling and no persistent
+state. The result is announced to assistive technology and focus moves to the
+safe action (Try Again on failure, the popover otherwise); reduced motion makes
+the transitions instant while the ring/gap still distinguishes "working" from
+"done". Determinate `N of M` progress is deferred until files-core exposes an
+item-count progress seam. See
+[ADR 0106](adr/0106-async-trash-empty-seam.md).
+
 ### Adding and removing apps
 
 The Dock manages its own contents: the divider menu opens an **Add
