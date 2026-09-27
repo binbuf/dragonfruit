@@ -273,7 +273,7 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 - [x] T110b — T-14.7b Magnified plate growth and backdrop panel → [tasks/110b-t-14.7b-dock-magnified-plate-and-backdrop.md](tasks/110b-t-14.7b-dock-magnified-plate-and-backdrop.md)
 - [x] T110c — T-14.7c Dock motion smoothness and frame discipline → [tasks/110c-t-14.7c-dock-motion-smoothness-and-frame-discipline.md](tasks/110c-t-14.7c-dock-motion-smoothness-and-frame-discipline.md)
 - [x] T110d — T-14.7d Trash entry artwork → [tasks/110d-t-14.7d-trash-entry-artwork.md](tasks/110d-t-14.7d-trash-entry-artwork.md)
-- [ ] T110e — T-14.7e Add Application picker → [tasks/110e-t-14.7e-add-application-picker.md](tasks/110e-t-14.7e-add-application-picker.md)
+- [x] T110e — T-14.7e Add Application picker → [tasks/110e-t-14.7e-add-application-picker.md](tasks/110e-t-14.7e-add-application-picker.md)
 - [ ] T110f — T-14.7f Dock drag-and-drop identity and feedback → [tasks/110f-t-14.7f-dock-drag-and-drop-identity.md](tasks/110f-t-14.7f-dock-drag-and-drop-identity.md)
 - [ ] T110g — T-14.7g Dock activation and launch correctness → [tasks/110g-t-14.7g-dock-activation-and-launch-correctness.md](tasks/110g-t-14.7g-dock-activation-and-launch-correctness.md)
 - [ ] T110h — T-14.7h Dock folder stacks: presentation and clicks → [tasks/110h-t-14.7h-dock-folder-stacks-presentation-and-clicks.md](tasks/110h-t-14.7h-dock-folder-stacks-presentation-and-clicks.md)
@@ -552,11 +552,11 @@ This plan restarts at T-01, so a legacy "T-13" and a new "T-13" are different
 tickets; use this table to translate.
 
 <!-- symphony:status -->
-**Pipeline status** — updated 2026-09-27T10:56:59Z · 114/186 done
+**Pipeline status** — updated 2026-09-27T11:18:37Z · 115/186 done
 
-- Completed: T01, T02, T03, T04, T05, T06, T07, T08, T09, T10, T11, T12, T13, T14, T15, T16, T17, T18, T19, T20, T21, T22, T23, T24, T25, T26, T27, T28, T29, T30, T31, T32, T33, T34, T35, T36, T37, T38, T39, T40, T41, T42, T43, T44, T45, T46, T47, T48, T49, T50, T51, T52, T53, T54, T55, T56, T57, T58, T59, T60, T61, T62, T63, T64, T65, T66, T67, T68, T69, T70, T71, T72, T73, T74, T75, T76, T77, T78, T79, T80, T81, T82, T83, T84, T85, T86, T87, T88, T89, T90, T91, T92, T93, T94, T95, T96, T97, T98, T99, T100, T101, T102, T103, T104, T105, T106, T107, T108, T109, T110, T110a, T110b, T110c, T110d
+- Completed: T01, T02, T03, T04, T05, T06, T07, T08, T09, T10, T11, T12, T13, T14, T15, T16, T17, T18, T19, T20, T21, T22, T23, T24, T25, T26, T27, T28, T29, T30, T31, T32, T33, T34, T35, T36, T37, T38, T39, T40, T41, T42, T43, T44, T45, T46, T47, T48, T49, T50, T51, T52, T53, T54, T55, T56, T57, T58, T59, T60, T61, T62, T63, T64, T65, T66, T67, T68, T69, T70, T71, T72, T73, T74, T75, T76, T77, T78, T79, T80, T81, T82, T83, T84, T85, T86, T87, T88, T89, T90, T91, T92, T93, T94, T95, T96, T97, T98, T99, T100, T101, T102, T103, T104, T105, T106, T107, T108, T109, T110, T110a, T110b, T110c, T110d, T110e
 - Blocked: none
 - Failed: none
-- Remaining: T110e, T110f, T110g, T110h, T110i, T110j, T110k, T172, T173, T174, T175, T111, T112, T113, T114, T115, T116, T117, T118, T119, T120, T121, T122, T123, T124, T125, T126, T127, T128, T129, T130, T131, T132, T133, T134, T135, T136, T137, T138, T139, T140, T141, T142, T143, T144, T145, T146, T147, T148, T149, T150, T151, T152, T153, T154, T155, T156, T157, T158, T159, T160, T161, T162, T163, T164, T165, T166, T167, T168, T169, T170, T171
-- Last finished: T110d — done · Redesigned the Trash glyph with original geometry + new trash* semantic tokens, added tst_dock pixel/state tests, and committed six light/dark nested captures verified live.
+- Remaining: T110f, T110g, T110h, T110i, T110j, T110k, T172, T173, T174, T175, T111, T112, T113, T114, T115, T116, T117, T118, T119, T120, T121, T122, T123, T124, T125, T126, T127, T128, T129, T130, T131, T132, T133, T134, T135, T136, T137, T138, T139, T140, T141, T142, T143, T144, T145, T146, T147, T148, T149, T150, T151, T152, T153, T154, T155, T156, T157, T158, T159, T160, T161, T162, T163, T164, T165, T166, T167, T168, T169, T170, T171
+- Last finished: T110e — done · Add Application picker (pure helper + DockAppPicker.qml + controller wiring/T-14.1c subscription) landed with tests, capture, docs; ctest/qml-test/e2e green.
 <!-- /symphony:status -->

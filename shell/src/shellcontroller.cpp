@@ -15,6 +15,7 @@
 
 #include <QCoreApplication>
 #include <QDateTime>
+#include <QDBusConnection>
 #include <QDesktopServices>
 #include <QDir>
 #include <QFile>
@@ -31,6 +32,7 @@
 #include <cstdio>
 
 #include "appindexclient.h"
+#include "apppicker.h"
 #include "controlcenterpolicy.h"
 #include "desktopentry.h"
 #include "dockdrops.h"
@@ -252,8 +254,18 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // `.desktop` corpus, themed icons, and resolution. T-14.7 retired the
     // shell's local `.desktop` scan, so the service is the only source; a
     // session without it shows an empty Dock rather than a divergent corpus.
-    AppIndexClient appIndex;
-    m_index.loadFromAppIndex(appIndex);
+    // T-14.7e keeps the client alive and subscribes to the T-14.1c coalesced
+    // `Changed` signal so the Add Application picker tracks installs.
+    m_index.loadFromAppIndex(m_appIndexClient);
+    if (m_appIndexClient.available()
+        && !m_appIndexClient.subscribe(QStringLiteral("identity")).isEmpty()) {
+        m_appIndexSubscribed = true;
+        QDBusConnection::sessionBus().connect(
+            QStringLiteral("org.dragonfruit.AppIndex1"),
+            QStringLiteral("/org/dragonfruit/AppIndex1"),
+            QStringLiteral("org.dragonfruit.AppIndex1"), QStringLiteral("Changed"),
+            this, SLOT(onAppIndexChanged(QString)));
+    }
     // T-08.2a: settingsd is the single Dock-settings owner. The client is the
     // live `org.dragonfruit.Settings1` client; it is seeded with the schema
     // defaults so the Dock works when the daemon is absent (the dev tool does
@@ -507,6 +519,10 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onDockDividerContextMenu(qreal,qreal)));
     connect(m_dockItem, SIGNAL(menuActionRequested(QString,QVariant)), this,
             SLOT(onDockEntryMenuAction(QString,QVariant)));
+    connect(m_dockItem, SIGNAL(appPickerRequested()), this,
+            SLOT(onDockAppPickerRequested()));
+    connect(m_dockItem, SIGNAL(appPinToggled(QString,bool)), this,
+            SLOT(onDockAppPinToggled(QString,bool)));
     connect(m_dockItem, SIGNAL(windowActivated(QString)), this,
             SLOT(onDockWindowActivated(QString)));
     connect(m_dockItem, SIGNAL(pinnedOrderChanged(QVariant)), this,
@@ -1173,6 +1189,23 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // real privileged request. Never set in a normal session.
     if (qEnvironmentVariableIsSet("DF_POLKIT_FIXTURE")) {
         QTimer::singleShot(1500, this, &ShellController::startPolkitFixture);
+    }
+
+    // Capture/demo seam (T-14.7e): open the Add Application picker once the
+    // chrome is up so the live visual check can capture it. The value is the
+    // filter text (empty/`1` = unfiltered); the corpus is the real app-index
+    // one, so this is the production path minus a synthetic divider click.
+    // Never set in a normal session.
+    if (qEnvironmentVariableIsSet("DF_APP_PICKER_FIXTURE")) {
+        QTimer::singleShot(1500, this, [this]() {
+            if (m_dockItem)
+                QMetaObject::invokeMethod(m_dockItem, "openAppPicker");
+            const QString query = qEnvironmentVariable("DF_APP_PICKER_FIXTURE");
+            if (m_dockItem && !query.isEmpty() && query != QLatin1String("1")) {
+                QMetaObject::invokeMethod(m_dockItem, "setAppPickerQuery",
+                                          Q_ARG(QVariant, query));
+            }
+        });
     }
 
     // Capture/demo seam (T-12.3a): lock the session once the chrome is up so
@@ -3939,6 +3972,62 @@ void ShellController::rebuildDockEntries()
     applyDockOverflowResult(computeDockOverflow(), true, true);
     publishDockBouncePhases();
     scheduleDockRender();
+}
+
+// The Add Application picker's data (T-14.7e). The pure `buildAppPickerList`
+// helper owns dedupe/filter/sort/tag; the shell pushes its result as plain
+// rows. `reloadCorpus` is the one-shot re-enumerate when the picker opens and
+// no live subscription is held.
+void ShellController::refreshAppPicker(bool reloadCorpus)
+{
+    if (!m_dockItem)
+        return;
+    if (reloadCorpus && !m_appIndexSubscribed)
+        m_index.loadFromAppIndex(m_appIndexClient);
+
+    const QList<AppPickerRow> rows = buildAppPickerList(m_index.entries(), m_dockConfig.pinned);
+    QVariantList list;
+    list.reserve(rows.size());
+    for (const AppPickerRow &row : rows) {
+        list.append(QVariantMap{
+            {QStringLiteral("desktopId"), row.desktopId},
+            {QStringLiteral("name"), row.name},
+            {QStringLiteral("iconPath"), row.iconPath},
+            {QStringLiteral("pinned"), row.pinned},
+        });
+    }
+    m_dockItem->setProperty("appPickerItems", list);
+    m_dockItem->setProperty("appIndexAvailable", m_appIndexClient.available());
+    scheduleDockRender();
+}
+
+void ShellController::onDockAppPickerRequested()
+{
+    refreshAppPicker(true);
+}
+
+void ShellController::onDockAppPinToggled(const QString &desktopId, bool pinned)
+{
+    if (desktopId.isEmpty())
+        return;
+    const QStringList ids = toggleAppPickerPin(m_dockConfig.pinned, desktopId, pinned);
+    if (ids == m_dockConfig.pinned)
+        return;
+    // The single writer path: settingsd owns `dock.pinned`; the picker and the
+    // Dock both re-read it, so they cannot disagree (ADR 0090).
+    writeDockSetting(QStringLiteral("dock.pinned"), ids);
+    rebuildDockEntries();
+    refreshAppPicker(false);
+}
+
+void ShellController::onAppIndexChanged(const QString &interests)
+{
+    Q_UNUSED(interests);
+    // An install/uninstall/update (T-14.1c) can change the picker's corpus and
+    // the Dock's identity resolution; reload both.
+    m_index.loadFromAppIndex(m_appIndexClient);
+    rebuildDockEntries();
+    refreshAppPicker(false);
 }
 
 // The T-10 section 5.1 overflow clamp: given the full entry list and the

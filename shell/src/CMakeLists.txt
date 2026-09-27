@@ -43,6 +43,7 @@ endif()
 # Wayland stack. The interim `.desktop` resolver was retired in T-14.7.
 add_library(dragonfruit-shell-dockcore STATIC
     appindexclient.cpp
+    apppicker.cpp
     chooserbridge.cpp
     clipboardhistory.cpp
     compositorpolicy.cpp

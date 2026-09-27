@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(80 earlier sections omitted)_
+_(81 earlier sections omitted)_
 
-- **T77 — T-11.4b OSD keyboard/a11y and captures**: **State: done.** The OSD is keyboard/AT-SPI accessible and the T-11 capture; **`shell/osd/Osd.qml`** — `Accessible.role: Alert` + value-derived
 - **T78 — T-12.1a Session manager and restart policy**: **State: done.** `services/session` is a real session manager: the composition; **`services/session/src/plan.rs`** (new) — `RestartPolicy` (`always` /
 - **T79 — T-12.1b Session environment, systemd units, second-VT**: **State: done.** The session environment is data and reaches every child; the; **`services/session/src/env.rs`** (new) — `SessionEnvironment` (`new`,
 - **T80 — T-12.2 Display-manager entry and logout teardown**: **State: done.** The session now has a display-manager `.desktop` entry, an; **`services/session/dragonfruit.desktop`** (new) — Wayland session
@@ -45,6 +44,7 @@ _(80 earlier sections omitted)_
 - **T110b — T-14.7b Magnified plate growth and backdrop panel**: **State: done.** The Dock plate now grows to wrap the magnified row (both axes); `protocols/dragonfruit-shell.xml` — `df_shell` v2, `df_layer_surface` v2, new
 - **T110c — T-14.7c Dock motion smoothness and frame discipline**: **State: done.** Continuous Dock motion no longer rebuilds the entry model:; `shell/src/shellcontroller.cpp` — `withBounce` deleted; `rebuildDockEntries`
 - **T110d — T-14.7d Trash entry artwork**: **State: done.** The Trash glyph is now a designed, original bin at the token; `shell/dock/DockGlyph.qml` — `import QtQuick.Shapes`; the `trash` item is a
+- **T110e — T-14.7e Add Application picker**: **State: done.** The Dock's divider menu now offers **Add Application…**,; `shell/src/apppicker.{h,cpp}` (new, dockcore) — pure
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -8663,3 +8663,68 @@ Gotchas for later tasks:
   rerun. Not caused by this task.
 - `check-desktop-names.sh` still fails on the pre-existing StatusNotifier/zoo
   lines (unchanged here).
+
+## T110e — T-14.7e Add Application picker
+
+**State: done.** The Dock's divider menu now offers **Add Application…**,
+opening an anchored overlay popover fed by app-index; a row toggles
+`dock.pinned` through the single settings writer and both the Dock and picker
+update live. No new ADR — ADR 0090 already froze this model.
+
+Real paths:
+
+- `shell/src/apppicker.{h,cpp}` (new, dockcore) — pure
+  `buildAppPickerList(entries, pinnedIds, query)` (drop `noDisplay`/
+  non-launchable, dedupe by id, locale-name sort + id tiebreak, name+id
+  case-insensitive filter, tag pinned) and
+  `toggleAppPickerPin(pinnedIds, desktopId, pinned)`.
+- `shell/dock/DockAppPicker.qml` (new) — popover: title, auto-focused
+  `SearchField` (local filter mirroring the helper predicate), scrollable
+  `ScrollView` rows (`DockGlyph` 28 px, name, "Add"/"In Dock"), disabled
+  "No applications found" and "Application index unavailable" rows, keyboard
+  Up/Down/Return/Escape, list/listitem a11y.
+- `shell/dock/Dock.qml` — `appPickerItems`/`appIndexAvailable`/
+  `appPickerOpen`/`appPickerAnchor`; `appPickerRequested()`/
+  `appPinToggled(id, pinned)`; `openAppPicker()`; divider "Add Application…"
+  item intercepted in the entry menu; picker in `popoverOpen`/`popoverRect`;
+  instance mirrors the stack placement.
+- `shell/src/shellcontroller.{h,cpp}` — `AppIndexClient m_appIndexClient`;
+  subscribes to app-index's coalesced `Changed` (`identity`) and connects the
+  directed D-Bus signal; `refreshAppPicker(reloadCorpus)` pushes the helper's
+  rows; `onDockAppPickerRequested` (one-shot re-enumerate only when not
+  subscribed), `onDockAppPinToggled`, `onAppIndexChanged`.
+  `DF_APP_PICKER_FIXTURE` opens the picker for capture (never in a session).
+- `shell/src/appindexclient.{h,cpp}` — `subscribe(interests="identity")`.
+- Tests: `tst_dockcore` four `appPicker*` cases; `tst_dock.qml` nine picker
+  cases.
+- `scripts/capture-dock-app-picker.sh` + `make dock-app-picker-capture`;
+  `docs/captures/t14-dock-app-picker.png`.
+
+Commands that work (repo root):
+
+- `ctest --test-dir build -R "tst_dock$|tst_dockcore|qmllint_shell-dock"` —
+  green (`tst_dock` 142, `tst_dockcore` 80).
+- `make qml-test` — 53/53; `make e2e` — green (one rerun; pre-existing
+  lock-auth flake below).
+- `cargo fmt --all -- --check`; `./scripts/gen-tokens.py --check`;
+  `./scripts/check-design-tokens.sh`; `./scripts/check-no-capture-grab.sh`.
+- Live: `make dock-app-picker-capture`.
+
+Gotchas for later tasks:
+
+- **Filtering is in two places by design.** The pure helper's `query` is the
+  tested spec; QML `filteredItems` mirrors it so standalone `tst_dock.qml` can
+  exercise live typing. Keep them in sync.
+- **The controller pushes the full corpus** (no filtering); `appIndexAvailable`
+  is `AppIndexClient::available()`, so an available-but-empty corpus is
+  "No applications found" and an absent service is "Application index
+  unavailable".
+- **`appPicker.open` is not bound** to `dock.appPickerOpen` (same as the stack
+  popover); `onOpened`/`onClosed` sync the flag.
+- **Subscription is one-shot per shell start**; a live app-index restart is not
+  re-subscribed (open-time re-enumerate is the fallback). Follow-up if needed.
+- **Flake (pre-existing):** `dragonfruit-lock-auth`'s
+  `a_missing_user_is_a_usage_error` can fail once under `make e2e` load; passes
+  on rerun. Not caused by this task.
+- `check-desktop-names.sh` still fails on the pre-existing StatusNotifier/zoo
+  lines.

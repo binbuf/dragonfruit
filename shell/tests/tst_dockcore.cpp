@@ -3,6 +3,7 @@
 // `dock.pinned` persistence, and the pure pinned+running entry merge. The
 // interim `.desktop` resolver was retired in T-14.7 (app-index owns parsing).
 // Runs headless with no compositor, Wayland, or QML.
+#include "apppicker.h"
 #include "controlcenterpolicy.h"
 #include "desktopentry.h"
 #include "dockdrops.h"
@@ -1765,6 +1766,84 @@ private slots:
 
         QCOMPARE(TrayClient::parseMenu(QStringLiteral("[]")).size(), 0);
         QCOMPARE(TrayClient::parseMenu(QStringLiteral("not json")).size(), 0);
+    }
+
+    // -- Add Application picker (T-14.7e) --------------------------------
+
+    void appPickerDropsHiddenAndNonLaunchableAndDedupes()
+    {
+        DesktopEntry hidden = makeEntry(QStringLiteral("hidden.desktop"),
+                                        QStringLiteral("Hidden"), QStringLiteral("x"), {}, {},
+                                        false, true);
+        DesktopEntry noExec = makeEntry(QStringLiteral("noexec.desktop"),
+                                        QStringLiteral("No Exec"), QString());
+        DesktopEntry dupFirst = makeEntry(QStringLiteral("dup.desktop"),
+                                          QStringLiteral("First"), QStringLiteral("first"));
+        DesktopEntry dupSecond = makeEntry(QStringLiteral("dup.desktop"),
+                                           QStringLiteral("Second"), QStringLiteral("second"));
+        const QList<AppPickerRow> rows = buildAppPickerList(
+            {hidden, noExec, dupFirst, dupSecond}, {});
+        QCOMPARE(rows.size(), 1);
+        QCOMPARE(rows[0].desktopId, QStringLiteral("dup.desktop"));
+        QCOMPARE(rows[0].name, QStringLiteral("First"));
+    }
+
+    void appPickerSortsByNameWithIdTiebreakAndTagsPinned()
+    {
+        DesktopEntry gamma = makeEntry(QStringLiteral("g.desktop"), QStringLiteral("Gamma"),
+                                       QStringLiteral("g"));
+        DesktopEntry alpha = makeEntry(QStringLiteral("a.desktop"), QStringLiteral("Alpha"),
+                                       QStringLiteral("a"));
+        DesktopEntry sameB = makeEntry(QStringLiteral("b.desktop"), QStringLiteral("Same"),
+                                       QStringLiteral("b"));
+        DesktopEntry sameA = makeEntry(QStringLiteral("a-same.desktop"), QStringLiteral("Same"),
+                                       QStringLiteral("sa"));
+        const QList<AppPickerRow> rows = buildAppPickerList(
+            {gamma, alpha, sameB, sameA}, {QStringLiteral("g.desktop")});
+        QCOMPARE(rows.size(), 4);
+        QCOMPARE(rows[0].name, QStringLiteral("Alpha"));
+        QCOMPARE(rows[0].pinned, false);
+        QCOMPARE(rows[1].name, QStringLiteral("Gamma"));
+        QCOMPARE(rows[1].pinned, true);
+        // Name tie breaks on the desktop id, lexicographically.
+        QCOMPARE(rows[2].desktopId, QStringLiteral("a-same.desktop"));
+        QCOMPARE(rows[3].desktopId, QStringLiteral("b.desktop"));
+    }
+
+    void appPickerFiltersByQueryOverNameAndIdCaseInsensitively()
+    {
+        DesktopEntry files = makeEntry(QStringLiteral("org.dragonfruit.Files.desktop"),
+                                       QStringLiteral("Files"), QStringLiteral("df-files"));
+        DesktopEntry settings = makeEntry(QStringLiteral("org.dragonfruit.Settings.desktop"),
+                                          QStringLiteral("Settings"), QStringLiteral("df-settings"));
+        const QList<DesktopEntry> corpus = {files, settings};
+
+        QCOMPARE(buildAppPickerList(corpus, {}, QStringLiteral("set")).size(), 1);
+        QCOMPARE(buildAppPickerList(corpus, {}, QStringLiteral("SET")).size(), 1);
+        QCOMPARE(buildAppPickerList(corpus, {}, QStringLiteral("dragonfruit")).size(), 2);
+        // A query over the id, not the name.
+        QCOMPARE(buildAppPickerList(corpus, {}, QStringLiteral("files.desktop")).size(), 1);
+        QCOMPARE(buildAppPickerList(corpus, {}, QStringLiteral("  files  "))[0].desktopId,
+                 QStringLiteral("org.dragonfruit.Files.desktop"));
+        QCOMPARE(buildAppPickerList(corpus, {}, QStringLiteral("nothing")).size(), 0);
+        // Empty/whitespace query returns the whole corpus.
+        QCOMPARE(buildAppPickerList(corpus, {}).size(), 2);
+        QCOMPARE(buildAppPickerList(corpus, {}, QStringLiteral("   ")).size(), 2);
+    }
+
+    void appPickerPinToggleAddsRemovesAndNeverDuplicates()
+    {
+        const QStringList base = {QStringLiteral("a.desktop"), QStringLiteral("b.desktop")};
+        QCOMPARE(toggleAppPickerPin(base, QStringLiteral("c.desktop"), true),
+                 (QStringList{QStringLiteral("a.desktop"), QStringLiteral("b.desktop"),
+                              QStringLiteral("c.desktop")}));
+        // Re-pinning is a no-op (the canonical single-writer value).
+        QCOMPARE(toggleAppPickerPin(base, QStringLiteral("a.desktop"), true), base);
+        QCOMPARE(toggleAppPickerPin(base, QStringLiteral("a.desktop"), false),
+                 QStringList{QStringLiteral("b.desktop")});
+        // Unpinning an absent id is a no-op.
+        QCOMPARE(toggleAppPickerPin(base, QStringLiteral("z.desktop"), false), base);
+        QCOMPARE(toggleAppPickerPin(base, QString(), true), base);
     }
 };
 

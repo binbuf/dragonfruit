@@ -16,6 +16,7 @@
 
 #include "compositorpolicy.h"
 #include "chooserbridge.h"
+#include "appindexclient.h"
 #include "clipboardhistory.h"
 #include "screencastbridge.h"
 #include "screenshotbridge.h"
@@ -214,6 +215,12 @@ private slots:
     void onDockEntryContextMenu(const QVariant &entry, qreal x, qreal y);
     void onDockDividerContextMenu(qreal x, qreal y);
     void onDockEntryMenuAction(const QString &action, const QVariant &payload);
+    // The Add Application picker (T-14.7e): the divider asked for the picker
+    // (refresh the corpus and push it), and a row asked to toggle membership.
+    void onDockAppPickerRequested();
+    void onDockAppPinToggled(const QString &desktopId, bool pinned);
+    // app-index's coalesced `Changed` signal (T-14.1c): reload the corpus.
+    void onAppIndexChanged(const QString &interests);
     void onDockWindowActivated(const QString &windowId);
     void onDockPinnedOrderChanged(const QVariant &desktopIds);
     void onDockPopoverChanged();
@@ -406,6 +413,11 @@ private:
     // phases live in a separate map so a bounce never resets the Repeater
     // (T-14.7c).
     void rebuildDockEntries();
+    // Rebuild the Add Application picker rows from the in-memory corpus and
+    // the persisted pin set, and push them (plus the app-index availability
+    // flag) onto the Dock (T-14.7e). `reloadCorpus` re-enumerates first when
+    // the picker opens and no live subscription is held.
+    void refreshAppPicker(bool reloadCorpus);
     // Compute the per-entry launch/attention phases from the clocks and push
     // them into the QML `bouncePhases` map keyed by entry id. The entries
     // themselves are untouched, so the delegates survive a bounce (T-14.7c).
@@ -710,6 +722,12 @@ private:
     // The Dock's identity cache, loaded from `org.dragonfruit.AppIndex1`
     // (T-14.1a); the local `.desktop` scan was retired in T-14.7.
     DesktopEntryIndex m_index;
+    // The live app-index client (T-14.7e). The Add Application picker reads the
+    // corpus through it and, when the service is up, subscribes to its
+    // coalesced `Changed` signal so an install/uninstall while the picker is
+    // open stays fresh.
+    AppIndexClient m_appIndexClient;
+    bool m_appIndexSubscribed = false;
     // The global-menu broker (T-14.2a): the shell pushes focus/window state
     // and reads the resolved fixed + exported menus (T-14.7).
     MenuBrokerClient m_menuBroker;

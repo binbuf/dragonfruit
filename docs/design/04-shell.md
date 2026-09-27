@@ -175,13 +175,22 @@ resolved per scheme from primitives; the glyph is pure QML rectangles and a
 ### Adding and removing apps
 
 The Dock manages its own contents: the divider menu opens an **Add
-Application** picker (an overlay popover) fed by app-index, listing installed
-applications with their themed icon and name, a search filter, and a
-pin/unpin toggle. External drags show the dragged app's real identity in the
-open gap and pin it on drop; files dropped on an entry open with that app, on
-the Trash move to trash, and on the Downloads stack move into it. `dock.pinned`
-is the only persisted state and settingsd the only writer. The picker is not a
-launcher — Launchpad and the Spotlight-equivalent search remain post-gate. See
+Application** picker (an overlay popover anchored to the divider) fed by
+app-index, listing installed applications with their themed icon and name, a
+design-system `SearchField`, and a pin/unpin row state. The list is built by
+the pure `buildAppPickerList` helper (`shell/src/apppicker.{h,cpp}`): it drops
+`noDisplay` and non-launchable records, dedupes by desktop id, sorts by
+localized name with an id tiebreak, and tags pin membership; the popover
+filters that list live over name and id. app-index absence renders an explicit
+"Application index unavailable" row, never a blank panel, and the shell
+subscribes to app-index's coalesced `Changed` signal (T-14.1c) so an
+install/uninstall while the picker is open stays fresh. Selecting a row toggles
+membership through `dock.pinned` — the only persisted state, settingsd the
+only writer — so the Dock and the picker cannot disagree. External drags show
+the dragged app's real identity in the open gap and pin it on drop; files
+dropped on an entry open with that app, on the Trash move to trash, and on the
+Downloads stack move into it. The picker is not a launcher — Launchpad and the
+Spotlight-equivalent search remain post-gate. See
 [ADR 0090](adr/0090-dock-app-management-picker-and-drops.md) and the
 T-14.7e/T-14.7f units.
 

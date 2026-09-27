@@ -189,6 +189,16 @@ bin; full shows crumpled paper overflowing behind the rim plus an accent rim;
 unavailable is dimmed with the status badge. Needs a host Wayland session,
 spectacle, gdbus, and Pillow; not in `make e2e`.
 
+T-14.7e's Add Application picker sign-off is produced by
+`scripts/capture-dock-app-picker.sh` (`make dock-app-picker-capture`): a
+scratch settingsd pins one installed app through `dock.pinned` and the nested
+demo opens the picker filtered to that app via the shell's
+`DF_APP_PICKER_FIXTURE` seam (the production picker path minus a synthetic
+divider click). It writes one 2x Dock crop to `t14-dock-app-picker.png`:
+the "Add Application" popover, its search field showing the query, the
+matching rows with themed icons, and the pinned row's "In Dock" state.
+Needs a host Wayland session, spectacle, gdbus, and Pillow; not in `make e2e`.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture
