@@ -171,12 +171,12 @@ Item {
                 width: 1280, height: 160, magnification: 0,
                 entries: [ app("a", "A", true), app("b", "B", true) ]
             });
-            var baseBar = dock.barRect.w;
+            var baseBar = dock.plateRect.w;
             dock.magnification = 1.0;
             dock.pointerAlong = dock._baseline.centers[0];
             waitForRendering(stage);
-            compare(dock.barRect.w, baseBar);
-            compare(dock.barRect.h, dock.barThickness);
+            compare(dock.plateRect.w, baseBar);
+            compare(dock.plateRect.h, dock.barThickness);
         }
 
         function test_entries_snap_to_layout_after_configure() {
@@ -216,14 +216,15 @@ Item {
             });
             compare(dock.axisIsX, false);
             compare(dock.indicatorEdge, "left");
-            // Items stack on the y axis and the bar hugs the left edge.
+            // Items stack on the y axis and the plate floats `edgeMargin` off
+            // the left edge (T-14.7a).
             var layout = dock.layout;
             verify(layout[1].y > layout[0].y);
-            compare(dock.barRect.x, 0);
-            compare(dock.barRect.w, dock.barThickness);
-            // An entry starts at the bar padding on the anchored edge side.
-            fuzzyCompare(layout[0].x, dock.padding, 0.001);
-            verify(dock.barRect.x + dock.barThickness > layout[0].x);
+            compare(dock.plateRect.x, dock.edgeMargin);
+            compare(dock.plateRect.w, dock.barThickness);
+            // An entry starts at the bar padding inside the plate.
+            fuzzyCompare(layout[0].x, dock.edgeMargin + dock.padding, 0.001);
+            verify(dock.plateRect.x + dock.barThickness > layout[0].x);
         }
 
         function test_right_dock_indicator_edge() {
@@ -232,38 +233,40 @@ Item {
                 entries: [ app("a", "A", true) ]
             });
             compare(dock.indicatorEdge, "right");
-            // The bar hugs the right edge and entries pack from the right so
-            // the running indicator is against the screen edge.
-            compare(dock.barRect.x, 160 - dock.barThickness);
+            // The plate floats `edgeMargin` off the right edge and entries
+            // pack from the right so the running indicator is against the
+            // screen edge.
+            compare(dock.plateRect.x, 160 - dock.edgeMargin - dock.barThickness);
             var layout = dock.layout;
-            fuzzyCompare(layout[0].x + layout[0].w, 160 - dock.padding, 0.001);
+            fuzzyCompare(layout[0].x + layout[0].w, 160 - dock.edgeMargin - dock.padding,
+                         0.001);
         }
 
         function test_vertical_entries_stay_inside_the_surface() {
             // A vertical Dock's magnified artwork grows into the transparent
             // band on the interior side; it must never be clipped by the
-            // (thickness + band)-wide surface.
+            // (thickness + band + edge gap)-wide surface.
             var left = make(dockComponent, {
-                width: 124, height: 720, position: "left", magnification: 1.0,
+                width: 160, height: 720, position: "left", magnification: 1.0,
                 entries: [ app("a", "A", true), app("b", "B", true), app("c", "C", true) ]
             });
             left.pointerAlong = left._baseline.centers[0];
             waitForRendering(stage);
-            verify(left.barRect.x >= 0);
-            verify(left.barRect.x + left.barRect.w <= left.width);
+            verify(left.plateRect.x >= 0);
+            verify(left.plateRect.x + left.plateRect.w <= left.width);
             for (var i = 0; i < left.layout.length; ++i) {
                 verify(left.layout[i].x >= 0);
                 verify(left.layout[i].x + left.layout[i].w <= left.width + 0.001);
             }
 
             var right = make(dockComponent, {
-                width: 124, height: 720, position: "right", magnification: 1.0,
+                width: 160, height: 720, position: "right", magnification: 1.0,
                 entries: [ app("a", "A", true), app("b", "B", true), app("c", "C", true) ]
             });
             right.pointerAlong = right._baseline.centers[0];
             waitForRendering(stage);
-            verify(right.barRect.x >= 0);
-            verify(right.barRect.x + right.barRect.w <= right.width);
+            verify(right.plateRect.x >= 0);
+            verify(right.plateRect.x + right.plateRect.w <= right.width);
             for (var j = 0; j < right.layout.length; ++j) {
                 verify(right.layout[j].x >= -0.001);
                 verify(right.layout[j].x + right.layout[j].w <= right.width);
@@ -280,7 +283,7 @@ Item {
             left.hide();
             wait(Theme.motion.dockReveal.duration + 40);
             verify(left.hideX < 0);
-            verify(left.barRect.x < 0);
+            verify(left.plateRect.x < 0);
 
             var right = make(dockComponent, {
                 width: 160, height: 800, position: "right",
@@ -290,7 +293,155 @@ Item {
             right.hide();
             wait(Theme.motion.dockReveal.duration + 40);
             verify(right.hideX > 0);
-            verify(right.barRect.x > 160 - right.barThickness);
+            verify(right.plateRect.x > 160 - right.barThickness);
+        }
+
+        // -- Plate geometry (T-14.7a) ---------------------------------------
+
+        function test_plate_floats_edge_margin_from_the_screen_edge() {
+            // The plate never touches its anchored edge: the gap is exactly
+            // the `edgeMargin` token on every position.
+            var bottom = make(dockComponent, {
+                width: 1280, height: 240, position: "bottom",
+                entries: [ app("files", "Files", true) ]
+            });
+            fuzzyCompare(bottom.plateRect.y + bottom.plateRect.h,
+                         bottom.height - bottom.edgeMargin, 0.001);
+            // The transparent magnify band is the room above the plate.
+            verify(bottom.plateRect.y >= bottom.magnifyBand - 0.001);
+
+            var left = make(dockComponent, {
+                width: 240, height: 800, position: "left",
+                entries: [ app("files", "Files", true) ]
+            });
+            fuzzyCompare(left.plateRect.x, left.edgeMargin, 0.001);
+
+            var right = make(dockComponent, {
+                width: 240, height: 800, position: "right",
+                entries: [ app("files", "Files", true) ]
+            });
+            fuzzyCompare(right.plateRect.x + right.plateRect.w,
+                         right.width - right.edgeMargin, 0.001);
+        }
+
+        function test_surface_and_reserved_thickness_track_the_plate() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 240,
+                entries: [ app("files", "Files", true) ]
+            });
+            compare(dock.edgeMargin, Theme.controls.dock.edgeMargin);
+            compare(dock.paddingAlong, Theme.controls.dock.paddingAlong);
+            compare(dock.reservedThickness, dock.barThickness + dock.edgeMargin);
+            compare(dock.surfaceThickness,
+                    dock.barThickness + dock.magnifyBand + dock.edgeMargin);
+        }
+
+        function test_plate_ends_use_padding_along() {
+            var bottom = make(dockComponent, {
+                width: 1280, height: 240, position: "bottom",
+                entries: [ app("a", "A", true), app("b", "B", true) ]
+            });
+            fuzzyCompare(bottom.plateRect.x,
+                         bottom._baseline.positions[0] - bottom.paddingAlong, 0.001);
+            fuzzyCompare(bottom.plateRect.w,
+                         bottom._baseline.total + 2 * bottom.paddingAlong, 0.001);
+
+            var left = make(dockComponent, {
+                width: 240, height: 800, position: "left",
+                entries: [ app("a", "A", true), app("b", "B", true) ]
+            });
+            fuzzyCompare(left.plateRect.y,
+                         left._baseline.positions[0] - left.paddingAlong, 0.001);
+            fuzzyCompare(left.plateRect.h,
+                         left._baseline.total + 2 * left.paddingAlong, 0.001);
+        }
+
+        function test_entries_stay_inside_the_plate_at_icon_size_min_and_max() {
+            var sizes = [Theme.controls.dock.iconSizeMin, Theme.controls.dock.iconSizeMax];
+            for (var c = 0; c < sizes.length; ++c) {
+                var dock = make(dockComponent, {
+                    width: 1280, height: 300, iconSize: sizes[c], magnification: 0,
+                    entries: [ app("a", "A", true), app("b", "B", true) ]
+                });
+                var r = dock.plateRect;
+                for (var i = 0; i < dock.layout.length; ++i) {
+                    if (dock.items[i].kind === "divider")
+                        continue;
+                    var e = dock.layout[i];
+                    verify(e.x >= r.x - 0.001);
+                    verify(e.x + e.w <= r.x + r.w + 0.001);
+                    verify(e.y >= r.y - 0.001);
+                    verify(e.y + e.h <= r.y + r.h + 0.001);
+                }
+            }
+        }
+
+        function test_bounce_and_drag_stay_inside_the_surface() {
+            // The launch/attention bounce grows into the transparent magnify
+            // band and a lifted drag rises above the plate; neither may leave
+            // the layer surface on any position (T-14.7a).
+            var bouncing = { id: "a", appId: "a", name: "A", kind: "pinned",
+                             pinned: true, running: true, attention: true,
+                             bounce: 0.5 };
+            var bottom = make(dockComponent, {
+                width: 1280, height: 300,
+                iconSize: Theme.controls.dock.iconSizeMax,
+                entries: [ bouncing ]
+            });
+            for (var i = 0; i < bottom.layout.length; ++i) {
+                if (bottom.items[i].kind === "divider")
+                    continue;
+                var e = bottom.layout[i];
+                verify(e.y >= -0.001);
+                verify(e.y + e.h <= bottom.height + 0.001);
+            }
+            bottom.beginDrag(bottom.appEntries[0]);
+            verify(bottom.draggedY(bottom.itemAt(0).height) >= 0);
+            bottom.dropAt(bottom.appEntries[0], bottom._baseline.centers[0]);
+
+            var left = make(dockComponent, {
+                width: 320, height: 800, position: "left",
+                iconSize: Theme.controls.dock.iconSizeMax,
+                entries: [ bouncing ]
+            });
+            for (var j = 0; j < left.layout.length; ++j) {
+                if (left.items[j].kind === "divider")
+                    continue;
+                var f = left.layout[j];
+                verify(f.x >= -0.001);
+                verify(f.x + f.w <= left.width + 0.001);
+            }
+        }
+
+        function test_hidden_plate_fully_clears_the_surface() {
+            // The auto-hide translation reaches the surface edge: a hidden
+            // plate leaves no visible strip (T-14.7a).
+            var bottom = make(dockComponent, {
+                width: 1280, height: 240, position: "bottom",
+                autoHide: true, revealed: true,
+                entries: [ app("a", "A", true) ]
+            });
+            bottom.hide();
+            wait(Theme.motion.dockReveal.duration + 40);
+            verify(bottom.plateRect.y >= bottom.height - 0.001);
+
+            var left = make(dockComponent, {
+                width: 240, height: 800, position: "left",
+                autoHide: true, revealed: true,
+                entries: [ app("a", "A", true) ]
+            });
+            left.hide();
+            wait(Theme.motion.dockReveal.duration + 40);
+            verify(left.plateRect.x + left.plateRect.w <= 0.001);
+
+            var right = make(dockComponent, {
+                width: 240, height: 800, position: "right",
+                autoHide: true, revealed: true,
+                entries: [ app("a", "A", true) ]
+            });
+            right.hide();
+            wait(Theme.motion.dockReveal.duration + 40);
+            verify(right.plateRect.x >= right.width - 0.001);
         }
 
         // -- Auto-hide ------------------------------------------------------
@@ -306,7 +457,7 @@ Item {
             verify(dock.hideOffset >= dock.barThickness);
             // A bottom bar hides downward, off the bottom edge.
             verify(dock.hideY > 0);
-            verify(dock.barRect.y > dock.magnifyBand);
+            verify(dock.plateRect.y > dock.magnifyBand);
             dock.reveal();
             wait(Theme.motion.dockReveal.duration + 40);
             compare(dock.hideOffset, 0);
@@ -619,7 +770,7 @@ Item {
             fuzzyCompare(dock.inputRects[0].h, dock.edgeTrigger, 0.001);
             dock.reveal();
             waitForRendering(stage);
-            fuzzyCompare(dock.inputRects[0].y, dock.barRect.y, 0.001);
+            fuzzyCompare(dock.inputRects[0].y, dock.plateRect.y, 0.001);
         }
 
         function test_vertical_edge_band_hugs_the_screen_edge() {
@@ -755,7 +906,7 @@ Item {
             left.openEntryMenu(left.items[0]);
             waitForRendering(stage);
             verify(left.popoverRect.w > 0);
-            verify(left.popoverRect.x >= left.barRect.x + left.barRect.w);
+            verify(left.popoverRect.x >= left.plateRect.x + left.plateRect.w);
 
             var right = make(dockComponent, {
                 width: 124, height: 720, position: "right",
@@ -764,7 +915,7 @@ Item {
             right.openEntryMenu(right.items[0]);
             waitForRendering(stage);
             verify(right.popoverRect.w > 0);
-            verify(right.popoverRect.x + right.popoverRect.w <= right.barRect.x);
+            verify(right.popoverRect.x + right.popoverRect.w <= right.plateRect.x);
         }
 
         function test_menu_model_lists_windows_and_actions() {
@@ -1208,7 +1359,7 @@ Item {
             pinnedOrderSpy.target = dock;
             pinnedOrderSpy.clear();
             var a = dock.appEntries[0];
-            var far = dock.barRect.x - dock.iconSize - 50;
+            var far = dock.plateRect.x - dock.iconSize - 50;
             dock.beginDrag(a);
             dock.dragTo(a, far);
             compare(dock.dragOutOfDock, true);
@@ -1226,7 +1377,7 @@ Item {
             pinnedOrderSpy.clear();
             var t = dock.appEntries[1];
             dock.beginDrag(t);
-            dock.dropAt(t, dock.barRect.x - dock.iconSize - 50);
+            dock.dropAt(t, dock.plateRect.x - dock.iconSize - 50);
             compare(pinnedOrderSpy.count, 0);
         }
 
@@ -1893,7 +2044,7 @@ Item {
             compare(dock.color.a, 0);
             var img = grabImage(stage);
             var bandX = Math.floor(dock.width / 2);
-            var bandY = Math.max(0, Math.floor(dock.barRect.y) - 4);
+            var bandY = Math.max(0, Math.floor(dock.plateRect.y) - 4);
             compare(img.red(bandX, bandY), 0);
             compare(img.green(bandX, bandY), 255);
             compare(img.blue(bandX, bandY), 0);

@@ -539,8 +539,10 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // Apply `dock.*` before the surfaces exist (no reconfigure yet) so the
     // baseline bar thickness and magnified band reflect the saved size.
     applyDockSettings(false);
-    m_dockBarThickness = qRound(m_dockItem->property("barThickness").toReal());
-    m_dockThickness = m_dockBarThickness + qCeil(m_dockItem->property("magnifyBand").toReal());
+    // The surface is the floating plate + interior magnify band + edge gap;
+    // the reserved zone is the plate + edge gap (ADR 0089). Both come from
+    // Dock.qml so the plate math has one source (T-14.7a).
+    m_dockThickness = qCeil(m_dockItem->property("surfaceThickness").toReal());
     m_dockPosition = dockPosition();
     // For a bottom Dock the surface height is known up front; a vertical
     // Dock's height comes from the first configure (the output height).
@@ -1056,9 +1058,11 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // `top` surface and reserved zone (T-09).
     if (!m_protocol->createPopupSurface())
         return false;
-    // The Dock reserves its baseline bar thickness; with auto-hide on it
-    // reserves nothing (section 2).
-    const int dockExclusive = m_dockItem->property("autoHide").toBool() ? 0 : m_dockBarThickness;
+    // The Dock reserves the resting plate plus its edge margin; with
+    // auto-hide on it reserves nothing (section 2, ADR 0089).
+    const int dockExclusive = m_dockItem->property("autoHide").toBool()
+            ? 0
+            : qRound(m_dockItem->property("reservedThickness").toReal());
     if (!m_protocol->createDockSurface(m_dockPosition, m_dockThickness, dockExclusive))
         return false;
     // Dock context menus and the window chooser ride a second `overlay`
@@ -3702,9 +3706,10 @@ void ShellController::applyDockSettings(bool reconfigure)
     // The (possibly clamped) icon size set the baseline bar and the magnified
     // band; re-apply the surface extent, anchor, and reserved zone (auto-hide
     // reserves nothing).
-    m_dockBarThickness = qRound(m_dockItem->property("barThickness").toReal());
-    m_dockThickness = m_dockBarThickness + qCeil(m_dockItem->property("magnifyBand").toReal());
-    const int exclusive = m_dockConfig.autohide ? 0 : m_dockBarThickness;
+    m_dockThickness = qCeil(m_dockItem->property("surfaceThickness").toReal());
+    const int exclusive = m_dockConfig.autohide
+            ? 0
+            : qRound(m_dockItem->property("reservedThickness").toReal());
     if (!m_protocol->configureDockSurface(position, m_dockThickness, exclusive))
         qWarning() << "shell: cannot reconfigure the Dock surface:"
                    << m_protocol->lastError();
@@ -3767,7 +3772,9 @@ void ShellController::applyDockSizeOnly()
     // keeps the effective icon size at what fits the output, without touching
     // the entries (the QML delegate holds the pointer; section 5.1).
     applyDockOverflowResult(computeDockOverflow(), false);
-    const int exclusive = m_dockConfig.autohide ? 0 : m_dockBarThickness;
+    const int exclusive = m_dockConfig.autohide
+            ? 0
+            : qRound(m_dockItem->property("reservedThickness").toReal());
     if (!m_protocol->configureDockSurface(m_dockPosition, m_dockThickness, exclusive))
         qWarning() << "shell: cannot resize the Dock surface:" << m_protocol->lastError();
     renderDock();
@@ -3941,8 +3948,7 @@ void ShellController::applyDockOverflowResult(const DockOverflowResult &overflow
     if (!m_dockItem)
         return;
     m_dockItem->setProperty("iconSize", overflow.iconSize);
-    m_dockBarThickness = qRound(m_dockItem->property("barThickness").toReal());
-    m_dockThickness = m_dockBarThickness + qCeil(m_dockItem->property("magnifyBand").toReal());
+    m_dockThickness = qCeil(m_dockItem->property("surfaceThickness").toReal());
     warnDockOverflow(overflow);
     if (!allowEntries)
         return;

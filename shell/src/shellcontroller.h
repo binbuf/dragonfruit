@@ -755,14 +755,13 @@ private:
     int m_height = 0;
     int m_barHeight = 28;
     // Dock surface geometry (T-10): the surface extent perpendicular to its
-    // edge (`m_dockThickness`, the baseline bar plus the magnify band) and
-    // the configured surface size. For a bottom Dock the width comes from the
-    // configure and the height is `m_dockThickness`; a vertical Dock is the
-    // mirror image.
+    // edge (`m_dockThickness`, the floating plate plus the magnify band and
+    // the edge margin; Dock.qml owns the math) and the configured surface
+    // size. For a bottom Dock the width comes from the configure and the
+    // height is `m_dockThickness`; a vertical Dock is the mirror image.
     int m_dockWidth = 0;
     int m_dockHeight = 0;
     int m_dockThickness = 0;
-    int m_dockBarThickness = 0;
     ShellProtocol::DockPosition m_dockPosition = ShellProtocol::DockPosition::Bottom;
     bool m_dockRenderPending = false;
     Qt::MouseButtons m_dockButtons = Qt::NoButton;
