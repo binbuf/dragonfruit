@@ -140,6 +140,30 @@ The difficult part is not drawing the Dock; it is getting all the lifecycle
 details and edge cases polished — launch failures, app exit while animating,
 windows opening on other workspaces, and apps with inconsistent identifiers.
 
+### Dock window chooser
+
+An app with two or more windows opens the **window chooser** instead of
+activating: a popover anchored to the entry, a "Show All Windows" header, and
+one row per window (most-recent first, across all Spaces) with the focused
+checkmark, a minimized marker, and the Space name. Each row carries per-window
+actions revealed on row hover (T-14.7m): a stateful **Minimize / Restore** whose
+glyph and accessible name follow the window's minimized state, and a
+destructive **Close** tinted with the danger token. The buttons are icon-only
+and keyboard-inert — the chooser keeps its focus — and their footprint is
+reserved, so revealing them never resizes the popover (ADR 0100's pre-sized
+buffer still holds).
+
+The chooser owns no authoritative state: a row action is a request, never a
+mutation of `windowList`. Close maps to `df_toplevel.close` and Minimize/Restore
+to `df_toplevel.minimize` / `unminimize`; the compositor replies with the new
+state and the shell's next running-app projection replaces the rows. A closed
+window drops its row and a minimized one flips its button, while the chooser
+stays open; when the app's last window closes its entry disappears and the
+chooser dismisses. Per-window maximize/fullscreen and live thumbnails are
+deferred (ADR 0103). The live visual check is
+`docs/captures/t14-dock-chooser-actions.png` (`make
+dock-chooser-actions-capture`).
+
 ### Dock plate and materials
 
 The Dock is a **floating plate**: `controls.dock.edgeMargin` keeps it off its

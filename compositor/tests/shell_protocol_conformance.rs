@@ -1832,9 +1832,18 @@ fn toplevel_handle_requests_round_trip() {
     handle.move_to_workspace(&second);
     let _ = queue.roundtrip(&mut state);
 
-    // Close is a request to the client; the client destroys the toplevel.
+    // Close is a request to the client; the client observes xdg_toplevel.close
+    // and destroys the toplevel (T-14.7m: `df_toplevel.close` is the per-window
+    // chooser action, so it must reach the owner, not stay compositor-local).
+    state.toplevel_close_requests = 0;
     handle.close();
-    let _ = queue.roundtrip(&mut state);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.toplevel_close_requests >= 1,
+    );
     surface.destroy();
     xdg_surface.destroy();
     manager.destroy();

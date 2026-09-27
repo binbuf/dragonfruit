@@ -43,6 +43,14 @@ Item {
             ];
         case "minimize":
             return [{ x: s * 0.5, y: s * 0.5, w: s * 0.60, h: t, a: 0 }];
+        case "restore":
+            // An upward arrow: a stem with two chevron arms. The Dock window
+            // chooser's stateful Restore action (T-14.7m).
+            return [
+                { x: s * 0.5, y: s * 0.55, w: t, h: s * 0.40, a: 0 },
+                { x: s * 0.40, y: s * 0.44, w: s * 0.34, h: t, a: -45 },
+                { x: s * 0.60, y: s * 0.44, w: s * 0.34, h: t, a: 45 }
+            ];
         case "zoom":
             return [
                 { x: s * 0.5, y: s * 0.5, w: s * 0.60, h: t, a: 0 },

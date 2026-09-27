@@ -229,6 +229,11 @@ private slots:
     // app-index's coalesced `Changed` signal (T-14.1c): reload the corpus.
     void onAppIndexChanged(const QString &interests);
     void onDockWindowActivated(const QString &windowId);
+    // The window chooser's per-row actions (T-14.7m): close one window, or
+    // minimize/restore it to the state the row asked for. The chooser stays
+    // open; the next running-app projection updates its rows.
+    void onDockWindowCloseRequested(const QString &windowId);
+    void onDockWindowMinimizeRequested(const QString &windowId, bool minimized);
     void onDockPinnedOrderChanged(const QVariant &desktopIds);
     void onDockPopoverChanged();
     void onDockRevealStateChanged();

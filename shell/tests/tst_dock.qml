@@ -27,6 +27,8 @@ Item {
         SignalSpy { id: dividerMenuSpy; signalName: "dividerContextMenuRequested" }
         SignalSpy { id: menuActionSpy; signalName: "menuActionRequested" }
         SignalSpy { id: windowSpy; signalName: "windowActivated" }
+        SignalSpy { id: windowCloseSpy; signalName: "windowCloseRequested" }
+        SignalSpy { id: windowMinimizeSpy; signalName: "windowMinimizeRequested" }
         SignalSpy { id: popoverSpy; signalName: "popoverChanged" }
         SignalSpy { id: pinnedOrderSpy; signalName: "pinnedOrderChanged" }
         SignalSpy { id: releaseFocusSpy; signalName: "keyboardFocusReleaseRequested" }
@@ -1808,6 +1810,127 @@ Item {
             verify(chooser.Accessible.name.indexOf("Files") >= 0);
             var row = findChild(chooser, "chooserRows");
             verify(row !== null);
+        }
+
+        // -- T-14.7m per-window chooser actions -----------------------------
+
+        function test_chooser_close_action_emits_and_keeps_the_chooser_open() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ multiWindow("files", "Files", [
+                    { windowId: "1", title: "A", focused: true },
+                    { windowId: "2", title: "B", minimized: true }
+                ]) ]
+            });
+            windowCloseSpy.target = dock;
+            windowCloseSpy.clear();
+            dock.openChooser(dock.items[0]);
+            waitForRendering(stage);
+            var chooser = findChild(dock, "windowChooser");
+            var close = findChild(chooser, "chooserCloseAction");
+            verify(close !== null);
+            close.activated();
+            compare(windowCloseSpy.count, 1);
+            compare(windowCloseSpy.signalArguments[0][0], "1");
+            // The action asks; it never dismisses the popover.
+            compare(dock.chooserOpen, true);
+        }
+
+        function test_chooser_minimize_action_is_stateful() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ multiWindow("files", "Files", [
+                    { windowId: "1", title: "A", focused: true },
+                    { windowId: "2", title: "B", minimized: true }
+                ]) ]
+            });
+            windowMinimizeSpy.target = dock;
+            windowMinimizeSpy.clear();
+            dock.openChooser(dock.items[0]);
+            waitForRendering(stage);
+            var chooser = findChild(dock, "windowChooser");
+            var minimize = findChild(chooser, "chooserMinimizeAction");
+            compare(minimize.glyph, "minimize");
+            verify(minimize.accessibleLabel.indexOf("Minimize A") === 0);
+            minimize.activated();
+            compare(windowMinimizeSpy.count, 1);
+            compare(windowMinimizeSpy.signalArguments[0][0], "1");
+            compare(windowMinimizeSpy.signalArguments[0][1], true);
+            compare(dock.chooserOpen, true);
+            // The next projection flips the stateful label and glyph.
+            dock.entries = [ multiWindow("files", "Files", [
+                { windowId: "1", title: "A", minimized: true },
+                { windowId: "2", title: "B", minimized: true }
+            ]) ];
+            waitForRendering(stage);
+            var restored = findChild(findChild(dock, "windowChooser"),
+                                     "chooserMinimizeAction");
+            compare(restored.glyph, "restore");
+            verify(restored.accessibleLabel.indexOf("Restore A") === 0);
+            compare(dock.chooserOpen, true);
+        }
+
+        function test_chooser_close_is_destructive_and_actions_stay_off_the_tab_chain() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ multiWindow("files", "Files", [
+                    { windowId: "1", title: "A", focused: true },
+                    { windowId: "2", title: "B" }
+                ]) ]
+            });
+            dock.openChooser(dock.items[0]);
+            waitForRendering(stage);
+            var chooser = findChild(dock, "windowChooser");
+            var close = findChild(chooser, "chooserCloseAction");
+            var minimize = findChild(chooser, "chooserMinimizeAction");
+            compare(close.destructive, true);
+            compare(minimize.destructive, false);
+            // The buttons must not steal the chooser's keyboard focus.
+            compare(close.activeFocusOnTab, false);
+            compare(minimize.activeFocusOnTab, false);
+        }
+
+        function test_chooser_rows_update_on_projection_and_dismiss_on_last_close() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ multiWindow("files", "Files", [
+                    { windowId: "1", title: "A", focused: true },
+                    { windowId: "2", title: "B" }
+                ]) ]
+            });
+            dock.openChooser(dock.items[0]);
+            waitForRendering(stage);
+            var chooser = findChild(dock, "windowChooser");
+            compare(chooser.windows.length, 2);
+            // One window closed: the chooser stays open and drops the row.
+            dock.entries = [ multiWindow("files", "Files", [
+                { windowId: "1", title: "A", focused: true }
+            ]) ];
+            waitForRendering(stage);
+            compare(dock.chooserOpen, true);
+            compare(chooser.windows.length, 1);
+            // The app's last window closed: its entry is gone, so it dismisses.
+            dock.entries = [];
+            waitForRendering(stage);
+            compare(dock.chooserOpen, false);
+        }
+
+        function test_chooser_row_accessible_name_carries_state() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ multiWindow("files", "Files", [
+                    { windowId: "1", title: "Document", focused: true },
+                    { windowId: "2", title: "Report", minimized: true }
+                ]) ]
+            });
+            dock.openChooser(dock.items[0]);
+            var chooser = findChild(dock, "windowChooser");
+            verify(chooser.windowAccessibleName("Document", true, false)
+                   .indexOf("(active)") >= 0);
+            verify(chooser.windowAccessibleName("Report", false, true)
+                   .indexOf("(minimized)") >= 0);
+            verify(chooser.windowAccessibleName("Plain", false, false)
+                   .indexOf("Plain") === 0);
         }
 
         function test_empty_dock_click_dismisses_popover() {

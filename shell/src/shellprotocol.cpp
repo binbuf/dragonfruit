@@ -1434,6 +1434,23 @@ void ShellProtocol::closeToplevel(const QString &windowId)
         wl_display_flush(m_display);
 }
 
+void ShellProtocol::setToplevelMinimized(const QString &windowId, bool minimized)
+{
+    bool ok = false;
+    const quintptr id = windowId.toULongLong(&ok);
+    df_toplevel *toplevel = ok ? toplevelForId(id) : nullptr;
+    if (!toplevel)
+        return;
+    // The chooser's stateful row action (T-14.7m): `minimized` is the state
+    // the row asked for, never a toggle derived shell-side.
+    if (minimized)
+        df_toplevel_minimize(toplevel);
+    else
+        df_toplevel_unminimize(toplevel);
+    if (m_display)
+        wl_display_flush(m_display);
+}
+
 void ShellProtocol::closeApp(const QString &appId)
 {
     if (appId.isEmpty())
