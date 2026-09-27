@@ -48,6 +48,9 @@ Item {
     // A placeholder gap opened by an application-alias external drop; it is
     // layout only and never interactive.
     readonly property bool isExternal: kind === "external"
+    // A dropped folder's ghost/reflow gap (T-14.7k) draws the folder stack
+    // silhouette, exactly like a pinned folder stack.
+    readonly property bool isExternalFolder: isExternal && entry.externalFolder === true
     // The identity carried by an external drag (T-14.7f): the app-index
     // name/icon for an app alias, so the gap shows the real tile instead of a
     // generic square.
@@ -309,7 +312,7 @@ Item {
         id: glyph
         objectName: "glyph"
         visible: !root.isDivider && (!root.isExternal || root.externalHasIdentity)
-        kind: root.isTrash ? "trash" : root.isStack ? "stack" : "app"
+        kind: root.isTrash ? "trash" : (root.isStack || root.isExternalFolder) ? "stack" : "app"
         name: root.name
         appId: root.appId
         iconPath: root.iconPath
@@ -441,7 +444,9 @@ Item {
     // A folder stack uses the same tap signal as every entry; the Dock resolves
     // a single click (open popover) vs a double click (open in Files) from the
     // timing, because the entry delegate can be recreated when the stack's
-    // badge clears (T-14.7h).
+    // badge clears (T-14.7h). A user folder pin also lifts into a drag-out
+    // removal; the built-in Downloads member does not.
+    readonly property bool canRemoveStack: isStack && entry.canRemove === true
     TapHandler {
         objectName: "stackTapHandler"
         acceptedButtons: Qt.LeftButton
@@ -473,8 +478,9 @@ Item {
         id: dragHandler
         objectName: "dragHandler"
         acceptedButtons: Qt.LeftButton
-        enabled: !root.isDivider && !root.isTrash && !root.isStack && !root.isExternal
+        enabled: !root.isDivider && !root.isTrash && !root.isExternal
                  && root.kind !== "minimized"
+                 && (!root.isStack || root.canRemoveStack)
         dragThreshold: root.dragSlop
 
         onActiveChanged: {
