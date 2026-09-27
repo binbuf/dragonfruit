@@ -124,3 +124,24 @@ All six rows pass identity resolution. Every zoo app falls back to the fixed
 application menu (`tier: none`); none exports a native or DBusMenu menu, so the
 global-menu tiers are exercised by the T-14.4 bridge tests with `--mock-menu`,
 not here.
+
+## Implementation note (T-14.6b)
+
+The zoo's SDL row was the one fixable failure. The root cause was in the zoo
+sample, not the compositor: `scripts/zoo/sdl_zoo.c` never presented a frame,
+and SDL's Wayland backend does not attach its first buffer until the app draws,
+so the toplevel never mapped. The sample now presents a frame each loop and the
+zoo runs it on the nested Wayland socket (`SDL_VIDEODRIVER=wayland`,
+`SDL_APP_ID=game.zoo.sdl`); the matrix records a Wayland SDL row with SSD
+decoration.
+
+The Wayland trace also showed SDL requesting a `wl_surface.frame` callback
+before its first buffer. The compositor only answered frame callbacks for
+mapped `Space` windows, so a client that paced its first paint on that callback
+would stall. `DfState::send_pending_frame_callbacks` now answers a buffer-less
+toplevel's callbacks from the commit handler; the headless regression test is
+`sdl_style_pre_map_frame_callback_is_answered_and_then_maps` in
+`compositor/tests/window_conformance.rs`. Remaining outcomes are unchanged
+knowns: the Steam row is an X11 `WM_CLASS` stand-in, the global-menu tiers are
+exercised by the T-14.4 mocks rather than the zoo, and XDnD is the documented
+T-14.5 gap.
