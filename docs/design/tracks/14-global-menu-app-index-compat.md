@@ -167,3 +167,22 @@ Regression coverage: `tst_dockcore` (cache lookups, launch command,
 `shipped_first_party_entries_are_launchable` (the migrated in-repo entry
 check). The in-repo `org.dragonfruit.*` entries are still staged on a scratch
 `XDG_DATA_DIRS` for the dev tree.
+
+## Implementation note (T-14.7a)
+
+The Dock is now a floating plate with visible spacing on every side. The
+`controls.dock` tokens were split and retuned: cross-axis `padding` 10 (was 6),
+along-axis `paddingAlong` 14 (new), `gap` 8 (was 6), `edgeMargin` 8 (was 4).
+`Dock.qml` owns the geometry: one `plateRect` is the source for the plate
+drawing, the input region, and (T-14.7b) the declared panel rect; `barThickness`
+stays the plate's cross-axis size and `paddingAlong` insets its two ends.
+`surfaceThickness` (= plate + `magnifyBand` + `edgeMargin`) is the layer
+surface's perpendicular extent and `reservedThickness` (= plate + `edgeMargin`)
+is the exclusive zone; the shell reads both properties instead of re-deriving
+the math. A hidden auto-hide plate translates by `barThickness + edgeMargin`,
+so it fully clears the surface and leaves no strip. Regression coverage:
+`tst_dock.qml` (plate bottom = surface edge − `edgeMargin` on all positions,
+`paddingAlong` ends, entries inside the plate at `iconSizeMin`/`iconSizeMax`,
+hidden plate clears the surface) and the six stills under
+`docs/captures/t14-dock-spacing-*.png` (`scripts/capture-dock-spacing.sh`,
+`make dock-spacing-capture`).

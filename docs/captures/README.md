@@ -141,6 +141,17 @@ with the zoo mapped. Needs a host Wayland session, spectacle, Pillow, gcc with
 SDL2/X11 headers, an Electron install (`ZOO_ELECTRON_DIR`), and the Calculator
 flatpak; not in `make e2e`.
 
+T-14.7a's Dock plate geometry sign-off is produced by
+`scripts/capture-dock-spacing.sh` (`make dock-spacing-capture`): the nested
+demo runs with a scratch settingsd, and the driver flips `dock.position`
+(bottom/left/right) and `appearance.colorScheme` (light/dark) live, writing one
+crop per position/scheme to `t14-dock-spacing-{bottom,left,right}-{light,dark}.png`.
+Each crop is trimmed to the nested 1920x1200 output and then to a 190 px edge
+strip, so the floating plate, its `padding`/`paddingAlong` insets, and the
+`edgeMargin` gap to the screen edge are all visible (measured: plate 75 px,
+gap 8 px on every edge). Needs a host Wayland session, spectacle, and Pillow;
+not in `make e2e`.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

@@ -167,8 +167,14 @@ Rectangle {
     signal keyboardFocusReleaseRequested()
 
     // --- Geometry constants ---------------------------------------------
+    // `padding` is the cross-axis inset (artwork <-> plate edge on the side
+    // away from the anchored edge); `paddingAlong` is the along-axis inset at
+    // the plate's two ends (T-14.7a). `edgeMargin` floats the plate off its
+    // anchored screen edge.
     readonly property real padding: Theme.controls.dock.padding
+    readonly property real paddingAlong: Theme.controls.dock.paddingAlong
     readonly property real gap: Theme.controls.dock.gap
+    readonly property real edgeMargin: Theme.controls.dock.edgeMargin
     readonly property real dividerWidth: 1
     // Room reserved below every entry's artwork for a running indicator. It is
     // reserved for all entries, not only running ones, so running and idle
@@ -185,12 +191,19 @@ Rectangle {
     readonly property real magnifyFalloff: Theme.controls.dock.magnifyFalloff
     // How far a lifted (dragged) entry rises above the bar.
     readonly property real dragLift: 8
-    // Transparent room above/beside the bar that magnified artwork grows
+    // Transparent room above/beside the plate that magnified artwork grows
     // into. It is sized for the maximum magnification so a live
-    // `dock.magnification` change never needs to grow the scene. The
-    // reserved zone is `barThickness` only (section 2).
+    // `dock.magnification` change never needs to grow the scene.
     readonly property real magnifyBand:
         Math.ceil((Theme.controls.dock.magnifyPeakMax - 1) * iconSize) + padding
+    // The perpendicular extent of the whole layer surface: the plate, the
+    // interior magnify band, and the edge gap. The shell sizes the surface
+    // from `surfaceThickness` and reserves `reservedThickness` (the resting
+    // plate plus its edge margin), so windows and Zoom never underlap the
+    // floating plate (ADR 0089). Both are derived here, never in the shell,
+    // so the plate math has one source of truth.
+    readonly property real surfaceThickness: barThickness + magnifyBand + edgeMargin
+    readonly property real reservedThickness: barThickness + edgeMargin
     readonly property bool axisIsX: position === "bottom"
     readonly property string indicatorEdge:
         position === "bottom" ? "bottom" : (position === "left" ? "left" : "right")
@@ -201,8 +214,9 @@ Rectangle {
     readonly property real edgeTrigger: Theme.controls.dock.edgeTrigger
 
     // --- Auto-hide translation ------------------------------------------
-    // The bar is translated off its anchored edge by its own thickness plus
-    // the edge margin. `hideOffset` is the magnitude; `hideX`/`hideY` are the
+    // The plate is translated off its anchored edge by the surface thickness
+    // that lies between the plate and that edge (its own thickness plus the
+    // edge margin). `hideOffset` is the magnitude; `hideX`/`hideY` are the
     // per-axis translation for the configured position (T-10 sections 5/15).
     //
     // The slide is animated (FR-14): the scene-graph commit path delivers
@@ -210,7 +224,7 @@ Rectangle {
     // snap. Reduced motion collapses the duration to 0 in the token, which
     // makes the transition instant.
     property real hideOffset:
-        autoHide && !revealed ? barThickness + Theme.controls.dock.edgeMargin : 0
+        autoHide && !revealed ? barThickness + edgeMargin : 0
     Behavior on hideOffset {
         NumberAnimation {
             duration: Theme.motion.dockReveal.duration
@@ -713,8 +727,8 @@ Rectangle {
         if (!dragging || entry.id !== dragEntryId)
             return;
         dragPointerAlong = along;
-        var start = axisIsX ? barRect.x : barRect.y;
-        var end = axisIsX ? barRect.x + barRect.w : barRect.y + barRect.h;
+        var start = axisIsX ? plateRect.x : plateRect.y;
+        var end = axisIsX ? plateRect.x + plateRect.w : plateRect.y + plateRect.h;
         var margin = iconSize;
         dragOutside = along < start - margin || along > end + margin;
         dragOutOfDock = dragOutside && entry.kind === "pinned";
@@ -852,10 +866,10 @@ Rectangle {
     function itemIndexAtLocal(localX, localY) {
         var along = axisIsX ? localX : localY;
         var cross = axisIsX ? localY : localX;
-        var alongStart = axisIsX ? barRect.x : barRect.y;
-        var alongEnd = axisIsX ? barRect.x + barRect.w : barRect.y + barRect.h;
-        var crossStart = axisIsX ? barRect.y : barRect.x;
-        var crossEnd = axisIsX ? barRect.y + barRect.h : barRect.x + barRect.w;
+        var alongStart = axisIsX ? plateRect.x : plateRect.y;
+        var alongEnd = axisIsX ? plateRect.x + plateRect.w : plateRect.y + plateRect.h;
+        var crossStart = axisIsX ? plateRect.y : plateRect.x;
+        var crossEnd = axisIsX ? plateRect.y + plateRect.h : plateRect.x + plateRect.w;
         if (along < alongStart - iconSize || along > alongEnd + iconSize)
             return -1;
         if (cross < crossStart - magnifyBand || cross > crossEnd + magnifyBand)
@@ -991,12 +1005,12 @@ Rectangle {
         if (axisIsX)
             return dragPointerAlong - itemWidth / 2;
         if (position === "right")
-            return barRect.x + barThickness - padding - itemWidth;
-        return barRect.x + padding;
+            return plateRect.x + barThickness - padding - itemWidth;
+        return plateRect.x + padding;
     }
     function draggedY(itemHeight) {
         if (axisIsX)
-            return barRect.y + barThickness - padding - itemHeight - dragLift;
+            return plateRect.y + barThickness - padding - itemHeight - dragLift;
         return dragPointerAlong - itemHeight / 2;
     }
 
@@ -1330,7 +1344,6 @@ Rectangle {
             }
         }
 
-        var band = magnifyBand;
         var out = [];
         for (var j = 0; j < n; ++j) {
             var isDivider = list[j].kind === "divider";
@@ -1338,23 +1351,27 @@ Rectangle {
             var bounce = isDivider ? 0 : entryBounce(list[j]);
             if (axisIsX) {
                 var h = sizes[j] + extra;
+                // Cross-axis placement is relative to the floating plate, so
+                // the entries keep their `padding` inset from the plate edge
+                // on both sides (the plate already carries `hideY`).
                 out.push({
                     x: positions[j],
-                    y: band + barThickness - padding - h - bounce + hideY,
+                    y: plateRect.y + barThickness - padding - h - bounce,
                     w: isDivider ? dividerWidth : sizes[j],
                     h: isDivider ? barThickness - 2 * padding : h,
                     iconSize: sizes[j]
                 });
             } else {
                 var w = sizes[j] + extra;
-                // A vertical bar sits on the anchored edge: a left Dock packs
-                // entries from the left, a right Dock from the right so the
-                // running indicator hugs the screen edge. Bounce moves away
-                // from the edge, into the magnify band (T-10 section 14).
-                var vx = position === "right" ? width - padding - w - bounce
-                                              : padding + bounce;
+                // A vertical plate floats off the anchored edge: a left Dock
+                // packs entries from the plate's interior side, a right Dock
+                // mirrors it so the running indicator hugs the screen edge.
+                // Bounce moves away from the edge, into the magnify band
+                // (T-10 section 14). The plate already carries `hideX`.
+                var vx = position === "right" ? plateRect.x + plateRect.w - padding - w - bounce
+                                              : plateRect.x + padding + bounce;
                 out.push({
-                    x: vx + hideX,
+                    x: vx,
                     y: positions[j],
                     w: isDivider ? dividerWidth : w,
                     h: isDivider ? barThickness - 2 * padding : sizes[j],
@@ -1365,24 +1382,27 @@ Rectangle {
         return out;
     }
 
-    // The visible bar slab, sized to the *baseline* content so magnification
-    // never grows the reserved strip.
-    readonly property var barRect: {
+    // The visible floating plate, sized to the *baseline* content so
+    // magnification never grows the reserved strip. It is the single geometry
+    // source for the plate drawing, the input region, and (T-14.7b) the
+    // declared backdrop panel rect. `paddingAlong` insets the plate's ends;
+    // `edgeMargin` floats its anchored edge off the screen edge.
+    readonly property var plateRect: {
         var base = _baseline;
         if (axisIsX)
             return {
-                x: base.positions[0] - padding,
-                y: magnifyBand + hideY,
-                w: base.total + 2 * padding,
+                x: base.positions[0] - paddingAlong,
+                y: height - edgeMargin - barThickness + hideY,
+                w: base.total + 2 * paddingAlong,
                 h: barThickness
             };
-        // A vertical Dock's bar hugs its anchored edge, with the transparent
-        // magnify band on the interior side (T-10 section 2).
+        // A vertical plate floats `edgeMargin` off its anchored edge, with the
+        // transparent magnify band on the interior side (T-10 section 2).
         return {
-            x: (position === "right" ? width - barThickness : 0) + hideX,
-            y: base.positions[0] - padding,
+            x: (position === "right" ? width - edgeMargin - barThickness : edgeMargin) + hideX,
+            y: base.positions[0] - paddingAlong,
             w: barThickness,
-            h: base.total + 2 * padding
+            h: base.total + 2 * paddingAlong
         };
     }
 
@@ -1398,7 +1418,7 @@ Rectangle {
         // can move through the magnified band without leaking to a window.
         if (dragging || externalDragActive || resizing)
             return [{ x: 0, y: 0, w: width, h: height }];
-        var out = [barRect];
+        var out = [plateRect];
         var l = layout;
         for (var i = 0; i < l.length; ++i) {
             if (items[i].kind === "divider")
@@ -1414,10 +1434,10 @@ Rectangle {
     // --- Background ------------------------------------------------------
     Rectangle {
         objectName: "dockBar"
-        x: dock.barRect.x
-        y: dock.barRect.y
-        width: dock.barRect.w
-        height: dock.barRect.h
+        x: dock.plateRect.x
+        y: dock.plateRect.y
+        width: dock.plateRect.w
+        height: dock.plateRect.h
         radius: Theme.controls.dock.radius
         color: Theme.color.chrome
         opacity: Theme.material.chromeOpacity
@@ -1519,8 +1539,8 @@ Rectangle {
             // Beside the bar (not the entry), so the popover always clears the
             // bar regardless of the entry's inset.
             return dock.position === "left"
-                    ? dock.barRect.x + dock.barRect.w + 4
-                    : dock.barRect.x - width - 4;
+                    ? dock.plateRect.x + dock.plateRect.w + 4
+                    : dock.plateRect.x - width - 4;
         }
         y: {
             if (!dock.menuAnchor)
@@ -1570,8 +1590,8 @@ Rectangle {
                 return Math.max(0, Math.min(dock.width - width,
                     dock.chooserAnchor.x + (dock.chooserAnchor.width - width) / 2));
             return dock.position === "left"
-                    ? dock.barRect.x + dock.barRect.w + 4
-                    : dock.barRect.x - width - 4;
+                    ? dock.plateRect.x + dock.plateRect.w + 4
+                    : dock.plateRect.x - width - 4;
         }
         y: {
             if (!dock.chooserAnchor)
@@ -1612,8 +1632,8 @@ Rectangle {
                 return Math.max(0, Math.min(dock.width - width,
                     dock.stackAnchor.x + (dock.stackAnchor.width - width) / 2));
             return dock.position === "left"
-                    ? dock.barRect.x + dock.barRect.w + 4
-                    : dock.barRect.x - width - 4;
+                    ? dock.plateRect.x + dock.plateRect.w + 4
+                    : dock.plateRect.x - width - 4;
         }
         y: {
             if (!dock.stackAnchor)
@@ -1661,10 +1681,10 @@ Rectangle {
         z: 3000
         x: dock.axisIsX
            ? Math.max(0, Math.min(dock.width - width, dock.dragPointerAlong - width / 2))
-           : (dock.position === "right" ? dock.barRect.x - width - 8
-                                        : dock.barRect.x + dock.barThickness + 8)
+           : (dock.position === "right" ? dock.plateRect.x - width - 8
+                                        : dock.plateRect.x + dock.barThickness + 8)
         y: dock.axisIsX
-           ? Math.max(0, dock.barRect.y - height - 4)
+           ? Math.max(0, dock.plateRect.y - height - 4)
            : Math.max(0, Math.min(dock.height - height, dock.dragPointerAlong - height / 2))
     }
 

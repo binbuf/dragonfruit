@@ -268,8 +268,9 @@ QtObject {
             readonly property int iconSize: 48
             readonly property int iconSizeMin: 32
             readonly property int iconSizeMax: 64
-            readonly property int padding: 6
-            readonly property int gap: 6
+            readonly property int padding: 10
+            readonly property int paddingAlong: 14
+            readonly property int gap: 8
             readonly property int radius: 14
             readonly property int indicatorSize: 4
             readonly property int indicatorGap: 3
@@ -278,7 +279,7 @@ QtObject {
             readonly property real magnifyFalloff: 3.0
             readonly property int labelSize: 12
             readonly property int trashSize: 44
-            readonly property int edgeMargin: 4
+            readonly property int edgeMargin: 8
             readonly property int edgeTrigger: 4
             readonly property int revealDelay: 120
             readonly property int hideDelay: 350

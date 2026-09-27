@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(76 earlier sections omitted)_
+_(77 earlier sections omitted)_
 
-- **T73 — T-11.2b DND/Focus menu-bar reflection and Dock failure path**: **State: done.** The menu bar reflects the notification service's Focus/DND; **`shell/src/notificationclient.{h,cpp}`** — the seam gains
 - **T74 — T-11.3a Control Center panel and core tiles**: **State: done.** The Control Center panel opens (menu-bar item or; **`shell/control-center/ControlCenter.qml`** (rewritten) — the panel scene
 - **T75 — T-11.3b Focus/DND, dark mode, and Control Center a11y**: **State: done.** The Control Center panel has five tiles now: Wi-Fi, Focus,; **`shell/control-center/ControlCenter.qml`** — Focus and Dark Mode tiles, a
 - **T76 — T-11.4a OSD overlay**: **State: done.** A volume/brightness change presents a brief centered OSD card; **`shell/src/osdmodel.{h,cpp}`** (new, dockcore) — the pure `OsdModel`:
@@ -45,6 +44,7 @@ _(76 earlier sections omitted)_
 - **T108 — T-14.6a Strange-app zoo run and matrix**: **State: done.** The scripted zoo run and its matrix are committed. Six rows,; `scripts/zoo/zoo-run.sh` (new) — orchestrator (`make zoo-run`): private nested
 - **T109 — T-14.6b Strange-app zoo fixes**: **State: done.** The zoo surfaced one fixable failure and one compositor; `scripts/zoo/sdl_zoo.c` — the loop now calls `SDL_GetWindowSurface` +
 - **T110 — T-14.7 Retire interim paths**: **State: done.** The last two interim hacks are gone: the Dock's local; `shell/src/desktopentry.{h,cpp}` — `scan`, `parse`, `defaultApplicationDirs`
+- **T110a — T-14.7a Dock plate geometry and spacing**: **State: done.** The Dock plate now floats: token-driven cross-axis and; `design-system/tokens/tokens.json` — `controls.dock`: `padding` 10,
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3636,6 +3636,15 @@ Gotchas for later tasks:
   roles and the Escape dismissal. (c) `MockNotificationClient` does not model
   DND banner suppression, so the DND capture dismisses the seeded banner by
   pointer; the real suppression is the Rust policy.
+- **T-14.7a follow-up — the Dock divider's cross-axis placement is wrong.**
+  `Dock.qml`'s `layout` computes a divider's along-axis position with the
+  entry height (`sizes[j] = dividerWidth = 1`) but its object height is
+  `barThickness - 2 * padding`, so on a bottom Dock the divider is drawn well
+  below the plate (mostly clipped by the surface); on a left/right Dock its
+  width/height are also swapped (it draws a short vertical hairline instead of
+  a horizontal separator). This is pre-existing and outside T-14.7a's
+  spacing/plate scope; the divider artwork and orientation are T-14.7j. The
+  T-14.7a containment tests skip dividers for that reason.
 
 ## T49 — T-09.1b Settings live-apply plumbing
 
@@ -8364,3 +8373,68 @@ Gotchas for later tasks:
   best-effort service can't wedge `make demo`/`make e2e`.
 - The `tst_dockcore` fixtures no longer parse `.desktop` files; build records
   with the local `makeEntry(...)` helper. app-index owns parsing.
+
+## T110a — T-14.7a Dock plate geometry and spacing
+
+**State: done.** The Dock plate now floats: token-driven cross-axis and
+along-axis padding plus a real `edgeMargin` gap to the screen edge, with the
+surface and exclusive zone following the new geometry so windows never underlap
+and a hidden Dock leaves no strip. No ADR (ADR 0089/0091 already froze the
+model; this realizes it).
+
+Real paths:
+
+- `design-system/tokens/tokens.json` — `controls.dock`: `padding` 10,
+  `paddingAlong` 14 (new), `gap` 8, `edgeMargin` 8. `scripts/gen-tokens.py`
+  regenerated `design-system/Theme.qml` and `compositor/src/design_tokens.rs`.
+- `shell/dock/Dock.qml` — one `plateRect` replaces `barRect` and is the source
+  for the plate drawing, the input region, and T-14.7b's panel rect;
+  `paddingAlong` insets the ends; `surfaceThickness`
+  (`barThickness + magnifyBand + edgeMargin`) and `reservedThickness`
+  (`barThickness + edgeMargin`) are derived here. Entry placement is
+  plate-relative, so `padding` stays the cross-axis inset on every position.
+- `shell/src/shellcontroller.cpp` / `.h` — reads `surfaceThickness` for the
+  layer-surface extent and `reservedThickness` for the exclusive zone (all
+  three configure paths + creation); `m_dockBarThickness` deleted as dead.
+- `shell/tests/tst_dock.qml` — `barRect`→`plateRect`; new plate cases: gap =
+  `edgeMargin` on bottom/left/right, `paddingAlong` ends, entries inside the
+  plate at `iconSizeMin`/`iconSizeMax`, hidden plate fully clears the surface.
+- `scripts/capture-dock-spacing.sh` (new; `make dock-spacing-capture`) — nested
+  run + scratch settingsd, flips `dock.position`/`appearance.colorScheme`,
+  crops the 1920x1200 output to a 190 px edge strip.
+- `docs/captures/t14-dock-spacing-{bottom,left,right}-{light,dark}.png` (new) —
+  measured plate 75 px; gap 8 px on each edge (left x=8..83, right x=107..182,
+  bottom y=105..180 at 1920x1200).
+- Docs: `docs/design/04-shell.md` "Dock plate and materials" wording;
+  `docs/design/tracks/14-...md` "Implementation note (T-14.7a)";
+  `docs/captures/README.md` T-14.7a paragraph.
+
+Commands that work (repo root):
+
+- `ctest --test-dir build -R "tst_dock|tst_dockcore"` — 2/2; `make qml-test` —
+  53/53; `make e2e` — exit 0 (`Dock configured 1280x151`, reserved `thickness=83`).
+- `make clippy`; `cargo fmt --all -- --check`; `./scripts/gen-tokens.py --check`;
+  `./scripts/check-design-tokens.sh` — green.
+- Build note (unchanged): `export
+  PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig:$PKG_CONFIG_PATH` and
+  `RUSTFLAGS="-L $HOME/.local/df-devroot/lib64"` (or just `make`).
+- Live: `make dock-spacing-capture` (host Wayland + spectacle + Pillow).
+
+Gotchas for later tasks:
+
+- **`plateRect` is the contract.** T-14.7b must send it as the live
+  `set_panel_rect` baseline and grow it under magnification; do not re-derive
+  padding math in the shell or compositor.
+- **The reserved/exclusive zone is now `barThickness + edgeMargin`** (was
+  `barThickness`). At the default icon size that is 83 px; the surface is 151 px.
+  Rust `reserved_rect` needs no change — it follows the exclusive zone, and
+  `panel_bounds` already lands the panel on the plate (input region ∩ reserved
+  strip) so the edge gap is not frosted.
+- **Vertical Docks float too**: left plate x=`edgeMargin`, right plate
+  `x+ w = width - edgeMargin`; the magnify band is on the interior side.
+- **Auto-hide clears the surface**: `hideOffset = barThickness + edgeMargin`,
+  and the hidden plate's anchored edge lands exactly on the screen edge; the
+  `edgeTrigger` input sliver stays on the screen edge.
+- **`check-desktop-names.sh` fails on pre-existing StatusNotifier/zoo lines**
+  (untouched by T-14.7a); `make check`'s lint gate was already red for that
+  reason.
