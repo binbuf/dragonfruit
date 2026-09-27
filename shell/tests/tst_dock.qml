@@ -3121,6 +3121,136 @@ Item {
             compare(dock.focusedItemId, "files");
         }
 
+        // -- Keyboard reordering (T-14.7t) -----------------------------------
+
+        function test_keyboard_reorder_moves_the_focused_pinned_entry() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "A", true), app("b", "B", true),
+                           app("c", "C", true) ]
+            });
+            pinnedOrderSpy.target = dock;
+            pinnedOrderSpy.clear();
+            dock.forceActiveFocus();
+            dock.beginKeyboardNavigation();
+            compare(dock.focusedItemId, "a");
+            waitForRendering(stage);
+            keyClick(Qt.Key_Right, Qt.ControlModifier | Qt.ShiftModifier);
+            waitForRendering(stage);
+            compare(pinnedOrderSpy.count, 1);
+            compare(pinnedOrderSpy.signalArguments[0][0].join(","),
+                    "b.desktop,a.desktop,c.desktop");
+            // The moved entry keeps the focus ring so repeated presses chain.
+            compare(dock.focusedItemId, "a");
+        }
+
+        function test_keyboard_reorder_is_axis_aware() {
+            var vertical = make(dockComponent, {
+                width: 160, height: 720, position: "left",
+                entries: [ app("a", "A", true), app("b", "B", true) ]
+            });
+            pinnedOrderSpy.target = vertical;
+            pinnedOrderSpy.clear();
+            vertical.forceActiveFocus();
+            vertical.beginKeyboardNavigation();
+            waitForRendering(stage);
+            // The lateral key is not the reorder chord on a vertical Dock.
+            keyClick(Qt.Key_Right, Qt.ControlModifier | Qt.ShiftModifier);
+            waitForRendering(stage);
+            compare(pinnedOrderSpy.count, 0);
+            // The Down key is.
+            keyClick(Qt.Key_Down, Qt.ControlModifier | Qt.ShiftModifier);
+            waitForRendering(stage);
+            compare(pinnedOrderSpy.count, 1);
+            compare(pinnedOrderSpy.signalArguments[0][0].join(","),
+                    "b.desktop,a.desktop");
+        }
+
+        function test_keyboard_reorder_is_a_no_op_at_the_ends() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "A", true), app("b", "B", true),
+                           app("c", "C", true) ]
+            });
+            pinnedOrderSpy.target = dock;
+            dock.forceActiveFocus();
+            dock.beginKeyboardNavigation();
+            pinnedOrderSpy.clear();
+            // At the first slot, moving left does nothing.
+            keyClick(Qt.Key_Left, Qt.ControlModifier | Qt.ShiftModifier);
+            waitForRendering(stage);
+            compare(pinnedOrderSpy.count, 0);
+            compare(dock.focusedItemId, "a");
+            // At the last slot, moving right does nothing.
+            dock.focusedItemId = "c";
+            compare(dock.focusedItemId, "c");
+            keyClick(Qt.Key_Right, Qt.ControlModifier | Qt.ShiftModifier);
+            waitForRendering(stage);
+            compare(pinnedOrderSpy.count, 0);
+            compare(dock.focusedItemId, "c");
+        }
+
+        function test_keyboard_reorder_does_nothing_when_not_focused() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "A", true), app("b", "B", true) ]
+            });
+            pinnedOrderSpy.target = dock;
+            pinnedOrderSpy.clear();
+            // No beginKeyboardNavigation: the Dock does not own the keyboard.
+            keyClick(Qt.Key_Right, Qt.ControlModifier | Qt.ShiftModifier);
+            waitForRendering(stage);
+            compare(pinnedOrderSpy.count, 0);
+            compare(dock.focusedItemId, "");
+        }
+
+        function test_keyboard_reorder_only_touches_pinned() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "A", true), app("b", "B", true),
+                           temporary("t", "Terminal"), minimized("win1", "Doc") ]
+            });
+            pinnedOrderSpy.target = dock;
+            pinnedOrderSpy.clear();
+            dock.forceActiveFocus();
+            dock.beginKeyboardNavigation();
+            waitForRendering(stage);
+            // Focus down to the temporary running entry: the chord is inert.
+            dock.moveKeyboardFocus(1);
+            dock.moveKeyboardFocus(1);
+            compare(dock.focusedItemId, "t");
+            keyClick(Qt.Key_Right, Qt.ControlModifier | Qt.ShiftModifier);
+            waitForRendering(stage);
+            compare(pinnedOrderSpy.count, 0);
+            // Back on a pinned entry, the payload is pinned-only and complete.
+            dock.moveKeyboardFocus(-2);
+            compare(dock.focusedItemId, "a");
+            keyClick(Qt.Key_Right, Qt.ControlModifier | Qt.ShiftModifier);
+            waitForRendering(stage);
+            compare(pinnedOrderSpy.count, 1);
+            compare(pinnedOrderSpy.signalArguments[0][0].join(","),
+                    "b.desktop,a.desktop");
+        }
+
+        function test_keyboard_reorder_hint_is_axis_aware_and_pinned_only() {
+            var bottom = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "A", true), temporary("t", "Terminal") ]
+            });
+            waitForRendering(stage);
+            verify(bottom.itemAt(0).Accessible.description
+                   .indexOf("Left or Right") >= 0);
+            compare(bottom.itemAt(1).Accessible.description, "");
+
+            var vertical = make(dockComponent, {
+                width: 160, height: 720, position: "left",
+                entries: [ app("a", "A", true) ]
+            });
+            waitForRendering(stage);
+            verify(vertical.itemAt(0).Accessible.description
+                   .indexOf("Up or Down") >= 0);
+        }
+
         // -- External drops (T-10 section 12) --------------------------------
 
         function test_external_file_drag_highlights_the_target() {
