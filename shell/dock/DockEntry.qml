@@ -30,6 +30,12 @@ Item {
     // The entry is the target of an external drag (T-10 section 12): draws a
     // drop highlight around the artwork.
     property bool externalDropTarget: false
+    // Tap/drag arbitration (T-14.7g): a press that moves less than this many
+    // device-independent pixels activates; a larger move lifts the entry into
+    // a rearrangement. Both handlers share the value so a near-stationary
+    // click — magnified, or entered through the transparent band — can never
+    // fall between the two thresholds.
+    readonly property real dragSlop: 8
 
     readonly property string kind: entry.kind !== undefined ? entry.kind : "app"
     readonly property bool isDivider: kind === "divider"
@@ -376,6 +382,13 @@ Item {
     TapHandler {
         acceptedButtons: Qt.LeftButton
         enabled: !root.isExternal
+        // A click activates while the pointer stays within `dragSlop`; the
+        // DragHandler below takes over at the same threshold, so a slop-drag
+        // lifts instead (T-14.7g). Both handlers share the value so a
+        // near-stationary click — magnified, or entered through the band —
+        // cannot fall between them.
+        gesturePolicy: TapHandler.DragThreshold
+        dragThreshold: root.dragSlop
         onPressedChanged: root.pressed = pressed
         onTapped: root.activated(root.entry)
     }
@@ -392,7 +405,9 @@ Item {
 
     // Press-and-hold then move lifts the entry into a rearrangement (T-10
     // section 12). The Dock owns the reorder model; this only reports the
-    // gesture and the pointer's scene position.
+    // gesture and the pointer's scene position. It shares `dragSlop` with the
+    // left TapHandler so a stationary click always taps and only a real move
+    // lifts (T-14.7g).
     property point dragScenePos: Qt.point(0, 0)
 
     DragHandler {
@@ -401,7 +416,7 @@ Item {
         acceptedButtons: Qt.LeftButton
         enabled: !root.isDivider && !root.isTrash && !root.isStack && !root.isExternal
                  && root.kind !== "minimized"
-        dragThreshold: 8
+        dragThreshold: root.dragSlop
 
         onActiveChanged: {
             var p = centroid.scenePosition;

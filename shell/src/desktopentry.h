@@ -80,5 +80,12 @@ private:
 // app or it would render offscreen and never map a window. When
 // `QT_QPA_PLATFORM` is the shell's `offscreen` value it is replaced with the
 // session's `wayland` platform; any other value (a deliberate session setting)
-// is preserved. Pure and unit-tested.
-QProcessEnvironment appLaunchEnvironment(const QProcessEnvironment &base);
+// is preserved. `waylandDisplay` is the socket the shell connected the
+// compositor on (`--socket-name`, or the resolved `$WAYLAND_DISPLAY`); when
+// non-empty it is exported as `WAYLAND_DISPLAY` so a launched client finds the
+// display even when the shell was started with `--socket-name` and the
+// variable was never in the environment. `XDG_RUNTIME_DIR` is inherited (the
+// shell needed it to reach the socket); the helper only strips the offscreen
+// QPA. Pure and unit-tested (T-14.7g).
+QProcessEnvironment appLaunchEnvironment(const QProcessEnvironment &base,
+                                         const QString &waylandDisplay = QString());

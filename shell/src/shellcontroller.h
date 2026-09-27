@@ -212,6 +212,9 @@ private slots:
     void onDockConfigured(int width, int height, quint32 serial);
     void onDockStateChanged(const QVariantList &entries);
     void onDockEntryActivated(const QVariant &entry);
+    // The compositor's reply to `activateApp` (T-14.7g): when it found no
+    // window, launch the remembered desktop entry or raise a notice.
+    void onActivationResult(const QString &appId, bool found);
     void onDockEntryContextMenu(const QVariant &entry, qreal x, qreal y);
     void onDockDividerContextMenu(qreal x, qreal y);
     void onDockEntryMenuAction(const QString &action, const QVariant &payload);
@@ -440,6 +443,11 @@ private:
     // running window when one matches, otherwise launch it from its cached
     // app-index record.
     void openApp(const QString &desktopId);
+    // Ask the compositor to activate `appId` (the sole activation authority)
+    // and remember `desktopId` so a not-found result can fall back to a
+    // launch. An empty app id is launched directly (T-14.7g); never a dead
+    // click.
+    void activateAppOrFallback(const QString &appId, const QString &desktopId);
     void failDockLaunch(const QString &desktopId, const QString &reason);
     // Clear a transient "failed" launch state after the notice has shown.
     void scheduleLaunchStateClear(const QString &desktopId);
@@ -520,6 +528,11 @@ private:
     void updatePopupGeometry();
 
     ShellProtocol *m_protocol = nullptr;
+    // The compositor socket the shell connected on (`--socket-name`, or the
+    // resolved `$WAYLAND_DISPLAY`). Exported to every launched child as
+    // `WAYLAND_DISPLAY` so a launch cannot produce a display-less client
+    // (T-14.7g).
+    QString m_waylandDisplay;
     // The T-07.5a/T-07.5b bridge: the decoded status model and its host client
     // (the live D-Bus client, or the fixture client under `DF_STATUS_FIXTURE`).
     SystemStatusModel *m_statusModel = nullptr;
@@ -770,6 +783,10 @@ private:
     // Pinned desktop id -> launch-bounce start (ms since epoch); the bounce
     // finishes on its own even after the first window resolves the launch.
     QHash<QString, qint64> m_launchStart;
+    // Compositor app id -> the desktop id to launch if the compositor reports
+    // the activation found no window (T-14.7g). Empty value = no fallback
+    // launch, raise a notice instead.
+    QHash<QString, QString> m_pendingActivations;
     // Compositor app id -> attention-bounce start and deadline (T-10 FR-4).
     QHash<QString, qint64> m_attentionStart;
     QHash<QString, qint64> m_attentionUntil;

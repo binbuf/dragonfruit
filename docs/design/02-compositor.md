@@ -580,8 +580,9 @@ a live compositor.
   selected window through the one activation path (cross-Space,
   restore-if-minimized, focus). The app-level default goes through
   `DfState::activate_app` (the same resolver the Dock's `activate_app` request
-  uses); a Cmd+`-cycled window is activated by id through the same
-  `activate_window_id`.
+  uses; that request is answered with `activation_result(found)`, additive in
+  v8, so the shell can fall back instead of a dead click — T-14.7g); a
+  Cmd+`-cycled window is activated by id through the same `activate_window_id`.
 - **Cancel.** Escape clears the switcher with no focus change.
 
 `query switcher` is the headless introspection (active, selected app/index,

@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(82 earlier sections omitted)_
+_(83 earlier sections omitted)_
 
-- **T79 — T-12.1b Session environment, systemd units, second-VT**: **State: done.** The session environment is data and reaches every child; the; **`services/session/src/env.rs`** (new) — `SessionEnvironment` (`new`,
 - **T80 — T-12.2 Display-manager entry and logout teardown**: **State: done.** The session now has a display-manager `.desktop` entry, an; **`services/session/dragonfruit.desktop`** (new) — Wayland session
 - **T81 — T-12.3a Lock protocol and lock UI**: **State: done.** `ext-session-lock-v1` is enforced end to end and the shell is; **`compositor/src/lock.rs`** (new) — `LockModel`: the one `locked` flag (with
 - **T82 — T-12.3b Lock PAM authentication**: **State: done.** Unlock is now real PAM authentication through a small helper;; **`services/lock-auth/`** (new crate `dragonfruit-lock-auth`) —
@@ -45,6 +44,7 @@ _(82 earlier sections omitted)_
 - **T110d — T-14.7d Trash entry artwork**: **State: done.** The Trash glyph is now a designed, original bin at the token; `shell/dock/DockGlyph.qml` — `import QtQuick.Shapes`; the `trash` item is a
 - **T110e — T-14.7e Add Application picker**: **State: done.** The Dock's divider menu now offers **Add Application…**,; `shell/src/apppicker.{h,cpp}` (new, dockcore) — pure
 - **T110f — T-14.7f Dock drag-and-drop identity and feedback**: **State: done.** External drags are now read once at drag *enter*, so the Dock; `shell/src/dockdrops.{h,cpp}` — `DockDropPayloadData` +
+- **T110g — T-14.7g Dock activation and launch correctness**: **State: done.** The Dock click tree is now observable end to end: a launch; `protocols/dragonfruit-toplevel.xml` — manager version 8; new
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -8815,5 +8815,68 @@ Gotchas for later tasks:
   `beginExternalDrag`/`setExternalPayload`/`externalHoverEntry` directly.
 - **Duplicate feedback is `flashPin(desktopId)`** (a 700 ms Dock highlight);
   `dockDropActionFor` still returns `PinApp`, the controller decides duplicate.
+- `check-desktop-names.sh` still fails on the pre-existing StatusNotifier/zoo
+  lines (unchanged here).
+
+## T110g — T-14.7g Dock activation and launch correctness
+
+**State: done.** The Dock click tree is now observable end to end: a launch
+always names the compositor socket, an activation is answered, and a missing
+identity raises a notice. Protocol `df_toplevel_manager` is **v8**.
+
+Real paths:
+
+- `protocols/dragonfruit-toplevel.xml` — manager version 8; new
+  `activation_result(app_id, found)` event (append-only, `since="8"`).
+- `compositor/src/shell/mod.rs` — the `ActivateApp` request now sends
+  `resource.activation_result(app_id, state.activate_app(&app_id) as u32)`.
+- `compositor/tests/shell_protocol_conformance.rs` — `TestClient` collects
+  `activation_results`; `dock_click_tree_activation_conformance` asserts a
+  found reply for a real window and a not-found reply for `GhostApp`.
+- `shell/src/desktopentry.{h,cpp}` — `appLaunchEnvironment(base, waylandDisplay
+  = {})`: scrubs offscreen QPA and exports `WAYLAND_DISPLAY` from the shell's
+  socket; `XDG_RUNTIME_DIR` inherited.
+- `shell/src/shellprotocol.{h,cpp}` — listener `onManagerActivationResult`
+  (appended last to the manager listener) + `activationResult(appId, found)`.
+- `shell/src/shellcontroller.{h,cpp}` — `m_waylandDisplay`;
+  `activateAppOrFallback(appId, desktopId)`; `onActivationResult`; missing
+  entries raise `raiseDockNotice`; `launchDetachedFromShell` takes the socket;
+  `DF_DOCK_ACTIVATION_FIXTURE` capture seam (`launch`/`activate`/`missing`).
+- `shell/dock/DockEntry.qml` — `dragSlop` (8) shared by the left `TapHandler`
+  (`gesturePolicy: DragThreshold`) and the `DragHandler`.
+- `scripts/capture-dock-activation.sh` + `make dock-activation-capture`;
+  `docs/captures/t14-dock-activation.png`,
+  `docs/captures/t14-dock-activation-missing.png`; captures README paragraph.
+- ADR `docs/design/adr/0101-dock-activation-result-and-launch-display.md`;
+  `docs/design/04-shell.md` "Dock activation and launch";
+  `docs/design/02-compositor.md`; `docs/private-protocols.md`.
+
+Commands that work (repo root):
+
+- `ctest --test-dir build -R "tst_dock$|tst_dockcore"` — green (`tst_dock`
+  152, `tst_dockcore` 88).
+- `cargo test --workspace` — green; `make e2e` — green.
+- `cargo clippy --workspace --all-targets`; `cargo fmt --all -- --check`;
+  `./scripts/gen-tokens.py --check`; `./scripts/check-design-tokens.sh`;
+  `./scripts/check-no-capture-grab.sh` — green.
+- Live: `make dock-activation-capture`.
+
+Gotchas for later tasks:
+
+- **One activation entry point.** Use `ShellController::activateAppOrFallback`
+  for anything that activates an app, so the `activation_result` fallback
+  stays wired. `m_pendingActivations` maps app id -> desktop id (empty =
+  notice, not launch).
+- **One launch-env helper.** `appLaunchEnvironment(base, waylandDisplay)` with
+  the shell's `m_waylandDisplay`; never `systemEnvironment()` alone.
+- **Synthetic-tap limitation.** In the shell's synthetic-injection path a
+  stationary pointer tap does not land on a Dock entry that also enables a
+  `DragHandler` (app/temporary); Trash/minimized/stack tap fine. The live
+  capture therefore uses `DF_DOCK_ACTIVATION_FIXTURE`, which calls the real
+  `onDockEntryActivated` path. Follow-up: fix the synthetic tap path and
+  re-capture without the seam.
+- **`DF_DOCK_ACTIVATION_FIXTURE` is a capture seam, never a session value.**
+- Adding a manager event: append it last in the XML (append-only opcodes) and
+  append its callback last in `bindTrustedGlobals`' listener initializer.
 - `check-desktop-names.sh` still fails on the pre-existing StatusNotifier/zoo
   lines (unchanged here).

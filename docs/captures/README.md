@@ -209,6 +209,19 @@ capsule; middle: a file dragged over an app ("Open with Dragonfruit Files");
 bottom: a file dragged over the Trash ("Move to Trash"). Needs a host Wayland
 session, spectacle, gdbus, and Pillow; not in `make e2e`.
 
+T-14.7g's Dock launch/activation sign-off is produced by
+`scripts/capture-dock-activation.sh` (`make dock-activation-capture`): the
+nested demo runs once per state through the shell's
+`DF_DOCK_ACTIVATION_FIXTURE` seam (the production click tree — launch env,
+activation request, fallback — without a synthetic pointer tap). The three full
+nested stills are stacked into `t14-dock-activation.png`: before (Settings
+pinned, not running), after launch (the Settings window mapped and the running
+indicator on), and after activate (the same window focused). A fourth run pins
+an unresolved identity so `t14-dock-activation-missing.png` shows the Dock's
+not-found mark (the notice itself needs the notification service, which `make
+demo` does not start). Needs a host Wayland session, spectacle, gdbus, and
+Pillow; not in `make e2e`.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture
