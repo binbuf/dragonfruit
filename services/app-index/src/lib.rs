@@ -24,23 +24,29 @@
 //! * [`tray`] — the pure StatusNotifier/AppIndicator registry and DBusMenu
 //!   projection (T-14.3): registration normalization and the design-system
 //!   menu shape the shell renders.
+//! * [`menubridge`] — the pure DBusMenu/AppMenu global-menu bridge (T-14.4):
+//!   the window→menu registrar table and the projection into the menu-broker's
+//!   exported `menus` shape.
 //! * [`dbus`] — the `org.dragonfruit.AppIndex1` interface and its `run`, plus
-//!   the `org.kde.StatusNotifierWatcher` that feeds the tray registry.
+//!   the `org.kde.StatusNotifierWatcher` that feeds the tray registry and the
+//!   `com.canonical.AppMenu.Registrar` that feeds the global-menu bridge.
 
 pub mod dbus;
 pub mod icons;
 pub mod index;
+pub mod menubridge;
 pub mod registry;
 pub mod subscription;
 pub mod tray;
 pub mod view;
 pub mod watch;
 
-pub use dbus::{AppIndex1, DBUS_NAME, DBUS_PATH, INTERFACE};
+pub use dbus::{AppIndex1, AppMenuRegistrar, DBUS_NAME, DBUS_PATH, INTERFACE};
 pub use icons::IconTheme;
 pub use index::{
     desktop_dirs, AppIndex, AppRecord, IdentitySource, IndexEvent, IndexEventKind, ResolvedApp,
 };
+pub use menubridge::{AppMenuRegistry, MenuRegistration};
 pub use registry::{ActivityEvent, ActivityKind, LaunchRegistry, RunningApp};
 pub use subscription::{ChangeKind, ChangeNotice, Interests, Subscriptions, COALESCE_WINDOW_MS};
 pub use tray::{MenuNode, MenuNodeType, Registration, TrayRegistry};

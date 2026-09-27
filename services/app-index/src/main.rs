@@ -105,6 +105,13 @@ fn main() -> ExitCode {
             let icon = args.get(1).cloned().unwrap_or_else(|| "firefox".to_owned());
             mock_tray(&icon)
         }
+        Some("--mock-menu") => {
+            let app_id = args
+                .get(1)
+                .cloned()
+                .unwrap_or_else(|| "org.example.MockMenu".to_owned());
+            mock_menu(&app_id)
+        }
         Some("-h" | "--help") => {
             print_help();
             ExitCode::SUCCESS
@@ -271,6 +278,109 @@ fn mock_tray(icon: &str) -> ExitCode {
     }
 }
 
+/// A debug-only mock DBusMenu global-menu app (T-14.4). It owns a well-known
+/// name, serves a `com.canonical.dbusmenu` at `/MenuBar`, then registers with
+/// the running app-index AppMenu.Registrar under `app_id`, so the bridge
+/// fetches, projects, and pushes it into the menu-broker.
+struct MockGlobalMenu;
+
+#[zbus::interface(name = "com.canonical.dbusmenu")]
+impl MockGlobalMenu {
+    fn about_to_show(&self, _id: i32) -> bool {
+        true
+    }
+
+    fn get_layout(&self, _parent: i32, _depth: i32, _names: Vec<String>) -> (u32, OwnedValue) {
+        (1, mock_global_layout())
+    }
+
+    fn event(&self, id: i32, event_id: String, _data: OwnedValue, _timestamp: u32) -> bool {
+        eprintln!("dragonfruit-app-index: mock menu event {id} ({event_id})");
+        true
+    }
+}
+
+fn mock_shortcut() -> OwnedValue {
+    let sequence = vec![vec!["<Ctrl>".to_owned(), "N".to_owned()]];
+    OwnedValue::try_from(Value::from(sequence)).unwrap()
+}
+
+fn mock_global_layout() -> OwnedValue {
+    // File › New (enabled, Ctrl+N), Quit (disabled); Edit › Cut.
+    let new = mock_row(1, "New", &[("shortcut", mock_shortcut())]);
+    let quit = mock_row(2, "Quit", &[("enabled", OwnedValue::from(false))]);
+    let mut file_props: HashMap<String, OwnedValue> = HashMap::new();
+    file_props.insert(
+        "label".to_owned(),
+        OwnedValue::try_from(Value::from("_File")).unwrap(),
+    );
+    file_props.insert(
+        "children-display".to_owned(),
+        OwnedValue::try_from(Value::from("submenu")).unwrap(),
+    );
+    let file = OwnedValue::try_from(Value::from((10i32, file_props, vec![new, quit]))).unwrap();
+
+    let cut = mock_row(3, "Cut", &[]);
+    let mut edit_props: HashMap<String, OwnedValue> = HashMap::new();
+    edit_props.insert(
+        "label".to_owned(),
+        OwnedValue::try_from(Value::from("Edit")).unwrap(),
+    );
+    edit_props.insert(
+        "children-display".to_owned(),
+        OwnedValue::try_from(Value::from("submenu")).unwrap(),
+    );
+    let edit = OwnedValue::try_from(Value::from((11i32, edit_props, vec![cut]))).unwrap();
+
+    OwnedValue::try_from(Value::from((
+        0i32,
+        HashMap::<String, OwnedValue>::new(),
+        vec![file, edit],
+    )))
+    .unwrap()
+}
+
+fn mock_menu(app_id: &str) -> ExitCode {
+    let connection = match zbus::blocking::connection::Builder::session()
+        .and_then(|builder| builder.name(app_id))
+        .and_then(|builder| builder.serve_at("/MenuBar", MockGlobalMenu))
+        .and_then(|builder| builder.build())
+    {
+        Ok(connection) => connection,
+        Err(error) => {
+            eprintln!("dragonfruit-app-index: mock menu cannot serve: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    // The registrar may not have taken its name yet; retry briefly.
+    let mut registered = false;
+    for _ in 0..20 {
+        if let Ok(reply) = connection.call_method(
+            Some(crate::dbus::DBUS_NAME),
+            crate::dbus::APP_MENU_REGISTRAR_PATH,
+            Some(crate::dbus::APP_MENU_REGISTRAR_INTERFACE),
+            "RegisterWindowForApp",
+            &(
+                1u32,
+                app_id,
+                ObjectPath::try_from("/MenuBar").expect("valid path"),
+            ),
+        ) {
+            if reply.body().deserialize::<bool>().unwrap_or(false) {
+                registered = true;
+                break;
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(250));
+    }
+    eprintln!(
+        "dragonfruit-app-index: mock menu app_id={app_id} registered={registered}; Ctrl-C to stop"
+    );
+    loop {
+        std::thread::park();
+    }
+}
+
 fn serve() -> ExitCode {
     match dbus::run() {
         Ok(()) => ExitCode::SUCCESS,
@@ -304,6 +414,8 @@ fn print_help() {
            --misses                    print the identity miss set\n\
            --refresh                   rescan and print install/uninstall/update events\n\
            --icon <name> [size]        print a themed icon path\n\
+           --mock-tray [icon]          serve a debug StatusNotifierItem + DBusMenu\n\
+           --mock-menu [appId]         serve a debug global DBusMenu and register it\n\
            -h, --help                  show this help"
     );
 }

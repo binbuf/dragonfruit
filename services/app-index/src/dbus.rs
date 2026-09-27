@@ -34,11 +34,12 @@ use zbus::blocking::connection;
 use zbus::interface;
 use zbus::message::Header;
 use zbus::object_server::SignalEmitter;
-use zbus::zvariant::{OwnedValue, Value};
+use zbus::zvariant::{ObjectPath, OwnedValue, Value};
 use zbus::Connection;
 
 use crate::icons::IconTheme;
 use crate::index::AppIndex;
+use crate::menubridge::{self, AppMenuRegistry, MenuRegistration};
 use crate::registry::{self, LaunchRegistry};
 use crate::subscription::{ChangeKind, ChangeNotice, Interests, Subscriptions};
 use crate::tray::{self, Registration, TrayRegistry};
@@ -62,6 +63,14 @@ pub const WATCHER_INTERFACE: &str = "org.kde.StatusNotifierWatcher";
 pub const ITEM_INTERFACE: &str = "org.kde.StatusNotifierItem";
 /// The DBusMenu interface tray menu objects serve.
 pub const DBUSMENU_INTERFACE: &str = "com.canonical.dbusmenu";
+
+/// The `com.canonical.AppMenu.Registrar` well-known name app-index also owns
+/// (T-14.4): apps call it to map a window to a DBusMenu object.
+pub const APP_MENU_REGISTRAR_NAME: &str = menubridge::REGISTRAR_NAME;
+/// The registrar's object path.
+pub const APP_MENU_REGISTRAR_PATH: &str = menubridge::REGISTRAR_PATH;
+/// The registrar's interface name.
+pub const APP_MENU_REGISTRAR_INTERFACE: &str = menubridge::REGISTRAR_INTERFACE;
 
 /// The wake handle for the coalescer thread: a flag plus a condvar so a new
 /// change re-arms the sleep immediately instead of waiting out the old window.
@@ -93,6 +102,9 @@ pub struct AppIndex1 {
     /// The StatusNotifierWatcher's registered items (T-14.3); shared with the
     /// watcher object that owns the `org.kde.StatusNotifierWatcher` name.
     tray: Arc<Mutex<TrayRegistry>>,
+    /// The AppMenu.Registrar's window→menu table (T-14.4); shared with the
+    /// registrar object that owns the `com.canonical.AppMenu.Registrar` name.
+    menus: Arc<Mutex<AppMenuRegistry>>,
 }
 
 impl AppIndex1 {
@@ -116,12 +128,18 @@ impl AppIndex1 {
             subscriptions: Arc::new(Mutex::new(Subscriptions::new())),
             wake: new_wake(),
             tray: Arc::new(Mutex::new(TrayRegistry::new())),
+            menus: Arc::new(Mutex::new(AppMenuRegistry::new())),
         }
     }
 
     /// The shared tray registry (T-14.3).
     pub fn tray(&self) -> &Arc<Mutex<TrayRegistry>> {
         &self.tray
+    }
+
+    /// The shared AppMenu.Registrar table (T-14.4).
+    pub fn menus(&self) -> &Arc<Mutex<AppMenuRegistry>> {
+        &self.menus
     }
 
     /// The shared index.
@@ -266,6 +284,75 @@ fn lock_subs(
 /// Lock the shared tray registry, recovering from a poisoned mutex.
 fn lock_tray(tray: &Arc<Mutex<TrayRegistry>>) -> std::sync::MutexGuard<'_, TrayRegistry> {
     tray.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// Lock the shared AppMenu.Registrar table, recovering from a poisoned mutex.
+fn lock_menus(menus: &Arc<Mutex<AppMenuRegistry>>) -> std::sync::MutexGuard<'_, AppMenuRegistry> {
+    menus
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// The human name for an app key: the resolved `.desktop` name when the index
+/// knows it (no miss is recorded), else the last id segment capitalized.
+fn bridge_app_name(index: &Arc<Mutex<AppIndex>>, app_id: &str) -> String {
+    lock(index)
+        .resolve_activity(app_id, "", "")
+        .map(|resolved| resolved.record.name)
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| menubridge::fallback_app_name(app_id))
+}
+
+/// Project a registered window's DBusMenu (via `AboutToShow` + `GetLayout`) to
+/// the menu-broker's exported `menus` array. `None` when the owner cannot be
+/// reached or exports nothing usable.
+async fn fetch_bridge_menus(
+    connection: &Connection,
+    registration: &MenuRegistration,
+) -> Option<Vec<serde_json::Value>> {
+    let root = fetch_menu_layout(connection, &registration.destination, &registration.path).await?;
+    let menus = menubridge::menus_from_layout(&root);
+    if menus.is_empty() {
+        None
+    } else {
+        Some(menus)
+    }
+}
+
+/// Push one window's projection into `org.dragonfruit.MenuBroker1` with the
+/// `dbusmenu` tier. Best-effort: an absent broker is not an error (the bridge
+/// still answers local queries and will re-push on the next registration).
+async fn publish_to_broker(
+    index: &Arc<Mutex<AppIndex>>,
+    connection: &Connection,
+    registration: &MenuRegistration,
+) {
+    let Some(menus) = fetch_bridge_menus(connection, registration).await else {
+        return;
+    };
+    let model = menubridge::published_model(&bridge_app_name(index, &registration.app_id), menus);
+    let _ = connection
+        .call_method(
+            Some(menubridge::MENU_BROKER_NAME),
+            menubridge::MENU_BROKER_PATH,
+            Some(menubridge::MENU_BROKER_INTERFACE),
+            menubridge::MENU_BROKER_PUBLISH,
+            &(registration.app_id.as_str(), model.as_str()),
+        )
+        .await;
+}
+
+/// Withdraw an app's bridge-born model from the menu-broker. Best-effort.
+async fn withdraw_from_broker(connection: &Connection, app_id: &str) {
+    let _ = connection
+        .call_method(
+            Some(menubridge::MENU_BROKER_NAME),
+            menubridge::MENU_BROKER_PATH,
+            Some(menubridge::MENU_BROKER_INTERFACE),
+            "Withdraw",
+            &(app_id,),
+        )
+        .await;
 }
 
 /// Fetch every property of a StatusNotifierItem. `None` when the owning
@@ -680,6 +767,62 @@ impl AppIndex1 {
         proxy.call_method(method, &(0i32, 0i32)).await.is_ok()
     }
 
+    /// The windows registered with the AppMenu.Registrar, as a JSON array of
+    /// `{windowId, appId, owner, menuPath}` (T-14.4). Diagnostics/shell lookup.
+    fn app_menu_windows(&self) -> String {
+        let entries: Vec<serde_json::Value> = lock_menus(&self.menus)
+            .entries()
+            .into_iter()
+            .map(|registration| {
+                serde_json::json!({
+                    "windowId": registration.window_id,
+                    "appId": registration.app_id,
+                    "owner": registration.owner,
+                    "menuPath": registration.path,
+                })
+            })
+            .collect();
+        serde_json::Value::Array(entries).to_string()
+    }
+
+    /// One registered window's DBusMenu as a JSON array of the menu-broker's
+    /// `{title, items}` menus (T-14.4). Calls `AboutToShow` first so a dynamic
+    /// menu populates. An unknown window or a menu failure is `[]`.
+    async fn window_menu(
+        &self,
+        window_id: u32,
+        #[zbus(connection)] connection: &Connection,
+    ) -> String {
+        let Some(registration) = lock_menus(&self.menus).get(window_id).cloned() else {
+            return "[]".to_owned();
+        };
+        let menus = fetch_bridge_menus(connection, &registration)
+            .await
+            .unwrap_or_default();
+        serde_json::Value::Array(menus).to_string()
+    }
+
+    /// Activate one registered window's DBusMenu row by its item id (T-14.4).
+    /// Returns whether the owning process accepted the event.
+    async fn window_menu_event(
+        &self,
+        window_id: u32,
+        id: i32,
+        #[zbus(connection)] connection: &Connection,
+    ) -> bool {
+        let Some(registration) = lock_menus(&self.menus).get(window_id).cloned() else {
+            return false;
+        };
+        call_dbusmenu(
+            connection,
+            &registration.destination,
+            &registration.path,
+            "Event",
+            &(id, "clicked", Value::from(0i32), 0u32),
+        )
+        .await
+    }
+
     /// An app appeared on screen (`app_running`).
     #[zbus(signal)]
     async fn app_running(emitter: &SignalEmitter<'_>, key: &str, windows: u32) -> zbus::Result<()>;
@@ -816,6 +959,155 @@ impl StatusNotifierWatcher {
     async fn status_notifier_host_unregistered(emitter: &SignalEmitter<'_>) -> zbus::Result<()>;
 }
 
+/// The `com.canonical.AppMenu.Registrar` global-menu bridge (T-14.4). It shares
+/// the window→menu table with [`AppIndex1`] and, on each registration, projects
+/// the window's DBusMenu into `org.dragonfruit.MenuBroker1` (tier `dbusmenu`).
+/// A window unregistered or an owner that disconnects withdraws the bridge-born
+/// model again (when no other window maps to the same app).
+#[derive(Clone)]
+pub struct AppMenuRegistrar {
+    menus: Arc<Mutex<AppMenuRegistry>>,
+    index: Arc<Mutex<AppIndex>>,
+}
+
+impl Default for AppMenuRegistrar {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl AppMenuRegistrar {
+    /// A registrar over a fresh table and an empty index.
+    pub fn new() -> Self {
+        Self {
+            menus: Arc::new(Mutex::new(AppMenuRegistry::new())),
+            index: Arc::new(Mutex::new(AppIndex::load())),
+        }
+    }
+
+    /// A registrar over an existing table and index (shared with the app-index
+    /// object).
+    pub fn over(menus: Arc<Mutex<AppMenuRegistry>>, index: Arc<Mutex<AppIndex>>) -> Self {
+        AppMenuRegistrar { menus, index }
+    }
+
+    /// The shared table.
+    pub fn menus(&self) -> &Arc<Mutex<AppMenuRegistry>> {
+        &self.menus
+    }
+
+    /// Store a registration and, when it changed the set, push its projection
+    /// into the menu-broker.
+    async fn bridge(&self, registration: MenuRegistration, connection: &Connection) -> bool {
+        let changed = lock_menus(&self.menus).register(registration.clone());
+        if changed {
+            publish_to_broker(&self.index, connection, &registration).await;
+        }
+        changed
+    }
+
+    /// Remove a registration; when no other window maps to the same app, tell
+    /// the broker to withdraw the bridge-born model.
+    async fn unbridge(&self, window_id: u32, connection: &Connection) -> bool {
+        let registration = lock_menus(&self.menus).get(window_id).cloned();
+        let Some(registration) = registration else {
+            return false;
+        };
+        lock_menus(&self.menus).unregister(window_id);
+        if !lock_menus(&self.menus).has_app(&registration.app_id) {
+            withdraw_from_broker(connection, &registration.app_id).await;
+        }
+        true
+    }
+}
+
+#[interface(name = "com.canonical.AppMenu.Registrar")]
+impl AppMenuRegistrar {
+    /// Register a window's DBusMenu. `menu_path` is an object on the caller (a
+    /// bus name) or on the unique name the caller is addressed at. The caller's
+    /// bus name keys the bridge model when no app id is available.
+    async fn register_window(
+        &self,
+        window_id: u32,
+        menu_path: ObjectPath<'_>,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] connection: &Connection,
+    ) -> bool {
+        let Some(owner) = header.sender() else {
+            return false;
+        };
+        let Some(registration) = MenuRegistration::parse(
+            window_id,
+            "",
+            owner.as_str(),
+            menu_path.as_str(),
+            owner.as_str(),
+        ) else {
+            return false;
+        };
+        self.bridge(registration, connection).await
+    }
+
+    /// Register a window's DBusMenu under an explicit app identity (an additive
+    /// helper for apps that know their desktop id). An empty `app_id` behaves
+    /// like [`Self::register_window`].
+    async fn register_window_for_app(
+        &self,
+        window_id: u32,
+        app_id: &str,
+        menu_path: ObjectPath<'_>,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] connection: &Connection,
+    ) -> bool {
+        let Some(owner) = header.sender() else {
+            return false;
+        };
+        let Some(registration) = MenuRegistration::parse(
+            window_id,
+            app_id,
+            owner.as_str(),
+            menu_path.as_str(),
+            owner.as_str(),
+        ) else {
+            return false;
+        };
+        self.bridge(registration, connection).await
+    }
+
+    /// Unregister a window's menu. Returns whether one was present.
+    async fn unregister_window(
+        &self,
+        window_id: u32,
+        #[zbus(connection)] connection: &Connection,
+    ) -> bool {
+        self.unbridge(window_id, connection).await
+    }
+
+    /// The registered window ids.
+    #[zbus(property)]
+    fn registered_windows(&self) -> Vec<u32> {
+        lock_menus(&self.menus).window_ids()
+    }
+
+    /// The bus name and menu path registered for a window (the standard
+    /// registrar query). A miss is an empty name and `/`.
+    fn get_menu_for_window(&self, window_id: u32) -> (String, ObjectPath<'static>) {
+        let empty = ObjectPath::try_from("/").expect("valid path");
+        match lock_menus(&self.menus).get(window_id) {
+            Some(registration) => (
+                registration.destination.clone(),
+                ObjectPath::try_from(registration.path.clone()).unwrap_or(empty),
+            ),
+            None => (String::new(), empty),
+        }
+    }
+
+    /// Whether a window has a registered menu.
+    fn is_window_registered(&self, window_id: u32) -> bool {
+        lock_menus(&self.menus).get(window_id).is_some()
+    }
+}
+
 /// Emit `TrayChanged` on the app-index interface.
 async fn emit_tray_changed(connection: &Connection) {
     let _ = connection
@@ -846,10 +1138,12 @@ async fn emit_notices(emitter: &SignalEmitter<'_>, notices: &[ChangeNotice]) -> 
 pub fn run() -> zbus::Result<()> {
     let object = AppIndex1::new();
     let watcher = StatusNotifierWatcher::over(object.tray().clone());
+    let registrar = AppMenuRegistrar::over(object.menus().clone(), object.index().clone());
     let connection = connection::Builder::session()?
         .name(DBUS_NAME)?
         .serve_at(DBUS_PATH, object.clone())?
         .serve_at(WATCHER_PATH, watcher)?
+        .serve_at(APP_MENU_REGISTRAR_PATH, registrar)?
         .build()?;
     // app-index is also the tray host: it takes the SNI watcher name the
     // third-party tray apps register with (T-14.3). On a session where another
@@ -858,6 +1152,13 @@ pub fn run() -> zbus::Result<()> {
     // register directly against app-index.
     if let Err(error) = connection.request_name(WATCHER_NAME) {
         eprintln!("dragonfruit-app-index: {WATCHER_NAME} already owned ({error}); serving the watcher object only");
+    }
+    // app-index is also the AppMenu.Registrar host (T-14.4), taking the
+    // de-facto name the global-menu bridge registers with. As with the watcher,
+    // another shell already owning it is not fatal: the registrar object still
+    // answers at APP_MENU_REGISTRAR_PATH.
+    if let Err(error) = connection.request_name(APP_MENU_REGISTRAR_NAME) {
+        eprintln!("dragonfruit-app-index: {APP_MENU_REGISTRAR_NAME} already owned ({error}); serving the registrar object only");
     }
 
     spawn_watcher(connection.clone(), object.clone());
@@ -911,6 +1212,7 @@ fn spawn_watcher(connection: connection::Connection, object: AppIndex1) {
 /// `TrayChanged` when the set actually shrinks.
 pub fn spawn_tray_cleaner(connection: connection::Connection, object: AppIndex1) {
     let tray = object.tray().clone();
+    let menus = object.menus().clone();
     let emitter = connection.clone();
     let _ = std::thread::Builder::new()
         .name("dragonfruit-app-index-tray-cleaner".to_owned())
@@ -938,6 +1240,20 @@ pub fn spawn_tray_cleaner(connection: connection::Connection, object: AppIndex1)
                 if !lock_tray(&tray).remove_owner(&name).is_empty() {
                     let _ =
                         emitter.emit_signal(None::<&str>, DBUS_PATH, INTERFACE, "TrayChanged", &());
+                }
+                // T-14.4: drop the owner's global-menu registrations and
+                // withdraw any app whose last window just left the broker.
+                let removed = lock_menus(&menus).remove_owner(&name);
+                for registration in removed {
+                    if !lock_menus(&menus).has_app(&registration.app_id) {
+                        let _ = emitter.call_method(
+                            Some(menubridge::MENU_BROKER_NAME),
+                            menubridge::MENU_BROKER_PATH,
+                            Some(menubridge::MENU_BROKER_INTERFACE),
+                            "Withdraw",
+                            &(registration.app_id.as_str(),),
+                        );
+                    }
                 }
             }
         });

@@ -172,3 +172,23 @@ one status row (`tray:<name>` plus a file-backed `iconSource`), never a separate
 tray strip. Live `NewIcon`/attention signals are not subscribed yet (the shell
 re-reads on a short timer); icon animation polish is deferred. Contract frozen
 in ADR [0097](adr/0097-statusnotifier-tray-host-and-dbusmenu-projection.md).
+
+## Implementation note (T-14.4)
+
+The DBusMenu/AppMenu tier is live. `dragonfruit-app-index` also serves
+`com.canonical.AppMenu.Registrar` at `/com/canonical/AppMenu/Registrar` (name
+best-effort, like the tray watcher): `RegisterWindow(windowId, path)` maps a
+window to its DBusMenu object, and the additive
+`RegisterWindowForApp(windowId, appId, path)` supplies a desktop id for the
+broker key. The pure bridge (`services/app-index/src/menubridge.rs`) reuses the
+tray parser (`tray::parse_layout`) and projects the `GetLayout` root's children
+into the menu-broker's `menus` shape (`[{title, items}]`), preserving each
+row's `enabled`/`checked` and tagging clickable rows with
+`action: "dbusmenu:<id>"`. On registration app-index pushes the projection into
+the broker with the new additive `PublishDbusMenu(appId, model)`, which stores
+it at `Tier::DbusMenu`; `Withdraw` clears it again, and a disconnected owner is
+pruned via `NameOwnerChanged`. `org.dragonfruit.AppIndex1` additionally exposes
+`AppMenuWindows`/`WindowMenu`/`WindowMenuEvent` for local queries and clicks.
+The shell does not consume the bridge yet (mapping focus to a registration and
+routing `dbusmenu:<id>` back is the remaining wiring). Contract frozen in ADR
+[0098](adr/0098-dbusmenu-bridge-in-app-index.md).
