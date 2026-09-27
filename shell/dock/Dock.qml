@@ -159,6 +159,7 @@ Rectangle {
         if (dock.dragging) {
             dragSettleTimer.stop();
             dock.dragSettling = false;
+            dock.hideTooltip();
         } else {
             dock.dragSettling = true;
             dragSettleTimer.restart();
@@ -238,6 +239,78 @@ Rectangle {
     property bool appIndexAvailable: true
     property bool appPickerOpen: false
     property Item appPickerAnchor: null
+
+    // --- Hover name label (T-14.7i, ADR 0093) ---------------------------
+    // The entry the pointer is dwelling over and the delegate it anchors to.
+    // The Tooltip follows the delegate, so the label tracks a magnified entry
+    // frame by frame; the dwell timer and all suppression live here, not in
+    // the design-system component, which stays passive.
+    property var tooltipEntry: null
+    property Item tooltipAnchor: null
+    property bool tooltipOpen: false
+    readonly property int tooltipDwell: Theme.controls.tooltip.dwell
+    // "above" for a bottom Dock; the interior side for a vertical Dock so the
+    // label never crosses the screen edge.
+    readonly property string tooltipPlacement:
+        position === "bottom" ? "above" : (position === "left" ? "right" : "left")
+    readonly property string tooltipText:
+        tooltipAnchor !== null && tooltipAnchor.tooltipLabel !== undefined
+            ? tooltipAnchor.tooltipLabel : ""
+
+    Timer {
+        id: tooltipDwellTimer
+        interval: dock.tooltipDwell
+        onTriggered: dock.showTooltip()
+    }
+
+    // The pointer dwelled onto an entry: start the open timer, unless a drag,
+    // an external drag, a resize, or an open popover already owns the surface.
+    function entryHoverBegan(entry, entryItem) {
+        if (!entry || entry.kind === "divider" || entry.kind === "external")
+            return;
+        if (dragging || externalDragActive || resizing || popoverOpen)
+            return;
+        if (tooltipAnchor === entryItem && (tooltipOpen || tooltipDwellTimer.running))
+            return;
+        hideTooltip();
+        tooltipEntry = entry;
+        tooltipAnchor = entryItem;
+        tooltipDwellTimer.restart();
+    }
+
+    // The pointer left an entry. A leave from an entry that is no longer the
+    // anchor is a move to another entry and must not clear the new label.
+    function entryHoverEnded(entryItem) {
+        if (entryItem !== undefined && entryItem !== tooltipAnchor)
+            return;
+        hideTooltip();
+    }
+
+    function showTooltip() {
+        if (!tooltipAnchor || tooltipText.length === 0 || tooltipOpen)
+            return;
+        if (dragging || externalDragActive || resizing || popoverOpen)
+            return;
+        tooltipOpen = true;
+        popoverChanged();
+    }
+
+    // Close the label but keep its text and anchor until the fade finishes, so
+    // the capsule does not empty mid-animation; the Tooltip clears them when it
+    // becomes invisible.
+    function hideTooltip() {
+        tooltipDwellTimer.stop();
+        if (tooltipOpen) {
+            tooltipOpen = false;
+            popoverChanged();
+        }
+        // If the capsule never appeared (or has finished fading), release the
+        // anchor now; otherwise the Tooltip clears it when it turns invisible.
+        if (!dockTooltip.visible) {
+            tooltipAnchor = null;
+            tooltipEntry = null;
+        }
+    }
 
     signal entryActivated(var entry)
     signal entryContextMenuRequested(var entry, real globalX, real globalY)
@@ -581,6 +654,8 @@ Rectangle {
     // Magnification is suppressed while a context menu, chooser, or stack
     // popover is open (T-10 section 14).
     readonly property bool popoverOpen: menuOpen || chooserOpen || stackOpen || appPickerOpen
+    // A tooltip never shares the stage with a context menu/chooser/stack.
+    onPopoverOpenChanged: if (popoverOpen) hideTooltip()
 
     // --- Keyboard navigation (T-10 section 20) ---------------------------
     // The entries the arrow keys traverse: every entry except the divider.
@@ -677,6 +752,9 @@ Rectangle {
     function handleEntryTap(entry) {
         if (!entry)
             return;
+        // A click is never a hover: the name label goes away as the action
+        // commits (T-14.7i).
+        hideTooltip();
         if (entry.kind !== "stack") {
             activateEntry(entry);
             return;
@@ -767,6 +845,7 @@ Rectangle {
 
     function openEntryMenu(entry) {
         closePopovers();
+        hideTooltip();
         hideTimer.stop();
         var idx = indexOfItemId(entry.id);
         menuAnchor = idx >= 0 ? entryRepeater.itemAt(idx) : null;
@@ -776,6 +855,7 @@ Rectangle {
 
     function openChooser(entry) {
         closePopovers();
+        hideTooltip();
         hideTimer.stop();
         var idx = indexOfItemId(entry.id);
         chooserAnchor = idx >= 0 ? entryRepeater.itemAt(idx) : null;
@@ -788,6 +868,7 @@ Rectangle {
     // to mark the folder seen.
     function openStack() {
         closePopovers();
+        hideTooltip();
         hideTimer.stop();
         var idx = indexOfItemId(stackEntry.id);
         stackAnchor = idx >= 0 ? entryRepeater.itemAt(idx) : null;
@@ -801,6 +882,7 @@ Rectangle {
     // corpus while that refresh lands.
     function openAppPicker() {
         closePopovers();
+        hideTooltip();
         hideTimer.stop();
         var idx = indexOfItemId(dividerEntry.id);
         appPickerAnchor = idx >= 0 ? entryRepeater.itemAt(idx) : null;
@@ -1086,6 +1168,7 @@ Rectangle {
 
     function beginExternalDrag(payloadIsApp, payloadCount) {
         closePopovers();
+        hideTooltip();
         hideTimer.stop();
         revealTimer.stop();
         externalDragActive = true;
@@ -1525,7 +1608,7 @@ Rectangle {
     // rect. The shell renders it into the Dock's `overlay` surface. A menu
     // with an open submenu reports the union of both panels so the nested
     // panel is not clipped (`ContextMenu.contentRect`).
-    readonly property var popoverRect: {
+    readonly property var activePopoverRect: {
         // `open` keeps the rect valid while the popover fades in/out (the
         // shell captures the animation); `visible` covers the close tail.
         var popup = (entryMenu.open || entryMenu.visible) ? entryMenu
@@ -1541,6 +1624,40 @@ Rectangle {
         }
         var topLeft = popup.mapToItem(dock, 0, 0);
         return { x: topLeft.x, y: topLeft.y, w: popup.width, h: popup.height };
+    }
+
+    // The hover label's rectangle in Dock-scene coordinates, or an empty rect
+    // (T-14.7i). It rides the same popover/headroom path as a menu so a bottom
+    // Dock's label is committed (and never clipped) like every other overlay.
+    readonly property var tooltipRect: {
+        // `visible` covers both the open state and the close fade tail.
+        if (!dockTooltip.visible
+                || dockTooltip.width <= 0 || dockTooltip.height <= 0)
+            return { x: 0, y: 0, w: 0, h: 0 };
+        var topLeft = dockTooltip.mapToItem(dock, 0, 0);
+        return { x: topLeft.x, y: topLeft.y,
+                 w: dockTooltip.width, h: dockTooltip.height };
+    }
+
+    // The union of the open popover and the hover label; the shell commits it
+    // to the Dock's overlay surface (T-10 section 5, T-14.7i). They never show
+    // together, but the union keeps the close tail of either covered.
+    readonly property var popoverRect: {
+        var a = activePopoverRect;
+        var b = tooltipRect;
+        var aValid = a.w > 0 && a.h > 0;
+        var bValid = b.w > 0 && b.h > 0;
+        if (!aValid && !bValid)
+            return { x: 0, y: 0, w: 0, h: 0 };
+        if (!aValid)
+            return b;
+        if (!bValid)
+            return a;
+        var x0 = Math.min(a.x, b.x);
+        var y0 = Math.min(a.y, b.y);
+        var x1 = Math.max(a.x + a.w, b.x + b.w);
+        var y1 = Math.max(a.y + a.h, b.y + b.h);
+        return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
     }
 
     function scaledGap(a, b, aDivider, bDivider) {
@@ -1916,6 +2033,9 @@ Rectangle {
             onDragMoved: (entry, sx, sy) => dock.updateDrag(entry, sx, sy)
             onDragEnded: (entry, sx, sy) => dock.endDrag(entry, sx, sy)
 
+            onHoverBegan: (entryItem) => dock.entryHoverBegan(modelData, entryItem)
+            onHoverEnded: (entryItem) => dock.entryHoverEnded(entryItem)
+
             onDividerResizeBegan: (sx, sy) => dock.beginDividerResize(sx, sy)
             onDividerResizeMoved: (sx, sy) => dock.updateDividerResize(sx, sy)
             onDividerResizeEnded: () => dock.endDividerResize()
@@ -2215,6 +2335,28 @@ Rectangle {
         }
     }
 
+    // The hover name label (T-14.7i): a design-system Tooltip anchored to the
+    // hovered entry, so it follows magnification frame by frame. It is
+    // presentational only; the entry's accessible name still carries the state.
+    Tooltip {
+        id: dockTooltip
+        objectName: "dockTooltip"
+        open: dock.tooltipOpen
+        anchorItem: dock.tooltipAnchor
+        text: dock.tooltipText
+        placement: dock.tooltipPlacement
+        bounds: dock
+        // The fade finished: release the anchor so no stale delegate is held,
+        // unless a new entry is already waiting on the dwell timer (otherwise
+        // moving A -> B would clear B's anchor as A fades out).
+        onVisibleChanged: {
+            if (!visible && !dock.tooltipOpen && !tooltipDwellTimer.running) {
+                dock.tooltipAnchor = null;
+                dock.tooltipEntry = null;
+            }
+        }
+    }
+
     // A pinned entry dragged off the Dock shows a "Remove" affordance; there
     // is no poof animation (T-10 section 12).
     Text {
@@ -2259,6 +2401,7 @@ Rectangle {
             } else {
                 dock.pointerAlong = -1;
                 revealTimer.stop();
+                dock.hideTooltip();
                 // A drag that leaves the surface is a remove (pinned) or a
                 // snap-back (T-10 section 12).
                 if (dock.dragging)
@@ -2272,4 +2415,35 @@ Rectangle {
     // Test/introspection hooks.
     function itemAt(index) { return entryRepeater.itemAt(index); }
     function itemCount() { return entryRepeater.count; }
+    function tooltipItem() { return dockTooltip; }
+
+    // Capture/demo seam (T-14.7i): show the hover label for the first entry of
+    // a kind (`app`/`folder`/`trash`) without a real pointer, and place the
+    // magnification pointer on it so the capture shows the label over a
+    // magnified icon. Never set in a normal session.
+    function showTooltipFor(kind) {
+        var idx = -1;
+        for (var i = 0; i < items.length; ++i) {
+            var k = items[i].kind;
+            if (kind === "app" && (k === "pinned" || k === "temporary" || k === "recent"))
+                idx = i;
+            else if (kind === "folder" && k === "stack")
+                idx = i;
+            else if (kind === "trash" && k === "trash")
+                idx = i;
+            if (idx >= 0)
+                break;
+        }
+        if (idx < 0)
+            return;
+        var item = itemAt(idx);
+        if (!item)
+            return;
+        if (magnification > 0) {
+            pointerAlong = _baseline.centers[idx];
+            smoothPointerAlong = pointerAlong;
+        }
+        entryHoverBegan(items[idx], item);
+        showTooltip();
+    }
 }

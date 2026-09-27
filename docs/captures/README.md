@@ -233,6 +233,18 @@ Files", separator, and rows with icons/names), empty ("Empty" row), and long
 (scrollable rows plus the "N more…" summary). Needs a host Wayland session,
 spectacle, gdbus, and Pillow; not in `make e2e`.
 
+T-14.7i's Dock hover name label sign-off is produced by
+`scripts/capture-dock-tooltip.sh` (`make dock-tooltip-capture`): the nested demo
+runs once per entry kind through the shell's `DF_DOCK_TOOLTIP_FIXTURE` seam
+(the production Tooltip presentation minus a synthetic pointer hover) and
+places the magnification pointer on the target so the label sits over a
+magnified icon. The three 2x crops are stacked into `t14-dock-tooltip.png`:
+an app ("Dragonfruit Files"), the Downloads folder ("Downloads — 2 items"), and
+the Trash ("Trash — full"). The capsule is the design-system `Tooltip`: a
+rounded `surfaceElevated` surface with a hairline border, above the entry on a
+bottom Dock. Needs a host Wayland session, spectacle, gdbus, and Pillow; not in
+`make e2e`.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

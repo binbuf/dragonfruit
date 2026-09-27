@@ -15,7 +15,7 @@ Item {
                                   "Sidebar", "Toolbar", "SplitView", "Settings",
                                   "Segmented", "ContextMenu", "SearchField",
                                   "SourceList", "Dialog", "Sheet", "Popover",
-                                  "ScrollView", "Slider", "Select", "Icons"]
+                                  "ScrollView", "Slider", "Select", "Icons", "Tooltip"]
     property string scheme: "dark"
     property bool reducedMotion: false
 
@@ -62,6 +62,8 @@ Item {
             case 20: return scrollViewPageComponent;
             case 21: return sliderPageComponent;
             case 22: return selectPageComponent;
+            case 23: return iconsPageComponent;
+            case 24: return tooltipPageComponent;
             default: return iconsPageComponent;
             }        }
     }
@@ -90,6 +92,7 @@ Item {
     Component { id: sliderPageComponent; SliderPage { } }
     Component { id: selectPageComponent; SelectPage { } }
     Component { id: iconsPageComponent; IconsPage { } }
+    Component { id: tooltipPageComponent; TooltipPage { } }
 
     component Page: Column {
         spacing: Theme.primitive.spacing.lg
@@ -832,6 +835,64 @@ Item {
                             font.pixelSize: Theme.primitive.font.sizeXs
                         }
                     }
+                }
+            }
+        }
+    }
+
+    component TooltipPage: Page {
+        Section {
+            heading: qsTr("Hover name label — above")
+            Item {
+                width: 520
+                height: 200
+                Rectangle {
+                    id: tooltipAnchor
+                    anchors.left: parent.left
+                    anchors.leftMargin: 180
+                    anchors.bottom: parent.bottom
+                    width: 64
+                    height: 64
+                    radius: Theme.controls.dock.radius
+                    color: Theme.color.controlFill
+                    border.width: 1
+                    border.color: Theme.color.border
+                    Text {
+                        anchors.centerIn: parent
+                        text: qsTr("App")
+                        color: Theme.color.textSecondary
+                        font.pixelSize: Theme.primitive.font.sizeSm
+                    }
+                }
+                Tooltip {
+                    anchorItem: tooltipAnchor
+                    open: true
+                    text: qsTr("Safari — 3 windows")
+                    placement: "above"
+                }
+            }
+        }
+        Section {
+            heading: qsTr("Hover name label — below, elided")
+            Item {
+                width: 520
+                height: 140
+                Rectangle {
+                    id: tooltipAnchorBelow
+                    anchors.left: parent.left
+                    anchors.top: parent.top
+                    width: 64
+                    height: 64
+                    radius: Theme.controls.dock.radius
+                    color: Theme.color.controlFill
+                    border.width: 1
+                    border.color: Theme.color.border
+                }
+                Tooltip {
+                    anchorItem: tooltipAnchorBelow
+                    open: true
+                    text: qsTr("A very long hover label that must elide inside the token max width")
+                    placement: "below"
                 }
             }
         }

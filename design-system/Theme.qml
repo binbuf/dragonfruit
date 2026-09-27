@@ -402,6 +402,15 @@ QtObject {
             readonly property int arrowSize: 8
             readonly property int shadowBlur: 40
         }
+        readonly property var tooltip: QtObject {
+            readonly property int dwell: 600
+            readonly property int offset: 8
+            readonly property int radius: 10
+            readonly property int paddingH: 8
+            readonly property int paddingV: 4
+            readonly property int maxWidth: 260
+            readonly property int fontSize: 12
+        }
         readonly property var shadow: QtObject {
             readonly property int layers: 8
             readonly property int offsetY: 5

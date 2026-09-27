@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(84 earlier sections omitted)_
+_(85 earlier sections omitted)_
 
-- **T81 — T-12.3a Lock protocol and lock UI**: **State: done.** `ext-session-lock-v1` is enforced end to end and the shell is; **`compositor/src/lock.rs`** (new) — `LockModel`: the one `locked` flag (with
 - **T82 — T-12.3b Lock PAM authentication**: **State: done.** Unlock is now real PAM authentication through a small helper;; **`services/lock-auth/`** (new crate `dragonfruit-lock-auth`) —
 - **System font — Inter (post-T82, before T83)**: **State: done (first-party half).** The desktop's type is now Inter 4.001; **`fonts/Inter/`** (now tracked; T82's `/fonts/` .gitignore entry is gone) —
 - **T83 — T-12.3c Lock input capture and kill-resistance**: **State: done.** The locked session now captures input in the lock UI instead; **`compositor/src/lock.rs`** — `LockModel::input_surface()` (first live lock
@@ -45,6 +44,7 @@ _(84 earlier sections omitted)_
 - **T110f — T-14.7f Dock drag-and-drop identity and feedback**: **State: done.** External drags are now read once at drag *enter*, so the Dock; `shell/src/dockdrops.{h,cpp}` — `DockDropPayloadData` +
 - **T110g — T-14.7g Dock activation and launch correctness**: **State: done.** The Dock click tree is now observable end to end: a launch; `protocols/dragonfruit-toplevel.xml` — manager version 8; new
 - **T110h — T-14.7h Dock folder stacks: presentation and clicks**: **State: done.** Folder entries read like macOS: a clean folder silhouette with; `shell/dock/DockGlyph.qml` — the `stack` block is `stackArtwork`: back tab
+- **T110i — T-14.7i Dock hover name labels (Tooltip)**: **State: done.** The design system has a passive `Tooltip` and the Dock shows a; `design-system/components/Tooltip.qml` (new) — `open`, `anchorItem`,
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -8947,5 +8947,79 @@ Gotchas for later tasks:
   session values.
 - **ScrollView viewport** is capped at `maxItems`; the overflow row sits below
   it (so a 13-item folder shows 8 rows + "5 more…", and the viewport scrolls).
+- `check-desktop-names.sh` still fails on the pre-existing StatusNotifier/zoo
+  lines (unchanged here).
+
+## T110i — T-14.7i Dock hover name labels (Tooltip)
+
+**State: done.** The design system has a passive `Tooltip` and the Dock shows a
+hovered entry's name plus state in it. No new ADR — ADR 0093 froze the
+component and ADR 0092 the label source; `docs/design/04-shell.md` gains a
+"Dock hover name label" subsection.
+
+Real paths:
+
+- `design-system/components/Tooltip.qml` (new) — `open`, `anchorItem`,
+  `text`, `placement` (above/below/left/right), `dwell`, `bounds`; one elided
+  line; no focus, no keys, no pointer blocking (`focus: false`,
+  `enabled: false`, `Accessible.ignored`). Motion reuses
+  `Theme.motion.popupOpen`/`popupClose` (reduced = instant). `textElided` is a
+  test hook.
+- `design-system/tokens/tokens.json` — new `component.tooltip` group: dwell
+  600, offset 8, radius `radius.md`, paddingH `spacing.sm`, paddingV
+  `spacing.xs`, maxWidth 260, fontSize `sizeSm`; `Theme.qml` and
+  `design_tokens.rs` regenerated.
+- `design-system/gallery/GalleryContent.qml` — `TooltipPage` (above + elided
+  below) and the `"Tooltip"` page appended; `scripts/check-gallery-snapshots.py`
+  `PAGES` gains `tooltip`; goldens `tooltip_{light,dark,dark_reduced}.png`.
+- `design-system/tests/tst_design_system.qml` — 6 `test_tooltip_*` cases.
+- `shell/dock/DockEntry.qml` — `hoverBegan(entryItem)`/`hoverEnded(entryItem)`
+  on the `HoverHandler`; readonly `tooltipLabel` = name + state (windows,
+  folder count, Trash). The one label source.
+- `shell/dock/Dock.qml` — `tooltipEntry`/`tooltipAnchor`/`tooltipOpen`/
+  `tooltipDwell`/`tooltipPlacement`/`tooltipText`; `tooltipDwellTimer`;
+  `entryHoverBegan`/`entryHoverEnded`/`showTooltip`/`hideTooltip`;
+  `tooltipRect` unioned into `popoverRect`; one `Tooltip`
+  (`objectName: "dockTooltip"`, `bounds: dock`); `showTooltipFor(kind)` capture
+  seam; `tooltipItem()` test hook. Hidden on click, drag, resize, external
+  drag, pointer leave, and `popoverOpen`.
+- `shell/src/shellcontroller.cpp` — `DF_DOCK_TOOLTIP_FIXTURE` seam
+  (`app`/`folder`/`trash`).
+- `shell/tests/tst_dock.qml` — 11 `test_tooltip_*` cases (dwell/leave/click/
+  popover, state text, folder-name-is-data, follow-magnify, clamp, overlay
+  rect, reduced motion).
+- `scripts/capture-dock-tooltip.sh` + `make dock-tooltip-capture`;
+  `docs/captures/t14-dock-tooltip.png` (app / folder / Trash stacked);
+  captures README T-14.7i paragraph.
+
+Commands that work (repo root):
+
+- `ctest --test-dir build -R "tst_dock$|tst_design_system"` — green
+  (`tst_dock` 170, `tst_design_system` 47).
+- `ctest --test-dir build --output-on-failure` — 53/53.
+- `./scripts/check-gallery-snapshots.py --strict` — 75 snapshots.
+- `make e2e`; `make clippy`; `cargo fmt --all -- --check`;
+  `./scripts/gen-tokens.py --check`; `./scripts/check-design-tokens.sh`;
+  `./scripts/check-no-capture-grab.sh` — green.
+- Live: `make dock-tooltip-capture` (host Wayland + spectacle + gdbus +
+  Pillow).
+
+Gotchas for later tasks:
+
+- **The Tooltip anchor must be a sibling (same parent).** It reads
+  `anchorItem.x/y/width/height` directly, not `mapToItem`, so it re-binds and
+  follows a magnified entry; `mapToItem` alone does not track live geometry.
+- **`DockEntry.tooltipLabel` is the only label source.** App window counts,
+  the folder's `downloadsName` + item count, and the Trash state are formatted
+  there. T-14.7k must reuse it; never hardcode "Downloads".
+- **One Tooltip, Dock-owned dwell/suppression.** `entryHoverBegan` starts
+  `tooltipDwellTimer`; `hideTooltip` clears the anchor only when the capsule is
+  invisible (or never appeared), gated on `!tooltipDwellTimer.running`, so an
+  A→B hover cannot wipe B's anchor.
+- **`popoverRect` is now the union** of the open popover and `tooltipRect`.
+  Anything reading `popoverRect` gets the label too; a new overlay consumer
+  must keep the union.
+- **`DF_DOCK_TOOLTIP_FIXTURE` and `showTooltipFor` are capture seams**, never
+  session values (synthetic dwell hover does not work offscreen/headless).
 - `check-desktop-names.sh` still fails on the pre-existing StatusNotifier/zoo
   lines (unchanged here).

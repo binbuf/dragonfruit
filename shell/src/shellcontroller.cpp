@@ -1339,6 +1339,22 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         }
     }
 
+    // Capture/demo seam (T-14.7i): show the Dock's hover name label for the
+    // first entry of a kind once the chrome is up, so the live visual check can
+    // capture it without a synthetic pointer. Values: `app`/`folder`/`trash`
+    // (also `reveal`-then-hover when the Dock is hidden). Never set in a normal
+    // session.
+    if (qEnvironmentVariableIsSet("DF_DOCK_TOOLTIP_FIXTURE")) {
+        QTimer::singleShot(1500, this, [this]() {
+            if (!m_dockItem)
+                return;
+            QMetaObject::invokeMethod(m_dockItem, "reveal");
+            QMetaObject::invokeMethod(
+                m_dockItem, "showTooltipFor",
+                Q_ARG(QVariant, qEnvironmentVariable("DF_DOCK_TOOLTIP_FIXTURE")));
+        });
+    }
+
     // Capture/demo seam (T-12.3a): lock the session once the chrome is up so
     // the live visual check can capture the lock screen with no hardware key
     // wiring. `DF_LOCK_FIXTURE` is the lock delay in ms (or `1` for the
