@@ -67,13 +67,14 @@ constexpr int kDockPopoverGutter = 320;
 // for its own chrome (`main.cpp`), so the app-launch environment scrubs it
 // (see `appLaunchEnvironment`) or a Qt client would render offscreen and never
 // map a window.
-bool launchDetachedFromShell(const QStringList &argv, qint64 *pid)
+bool launchDetachedFromShell(const QStringList &argv, const QString &waylandDisplay,
+                             qint64 *pid)
 {
     if (argv.isEmpty())
         return false;
     QProcess process;
-    process.setProcessEnvironment(
-        appLaunchEnvironment(QProcessEnvironment::systemEnvironment()));
+    process.setProcessEnvironment(appLaunchEnvironment(
+        QProcessEnvironment::systemEnvironment(), waylandDisplay));
     process.setProgram(argv.first());
     process.setArguments(argv.mid(1));
     process.setWorkingDirectory(QDir::homePath());
@@ -241,6 +242,7 @@ QString ShellController::lastError() const
 bool ShellController::start(const QString &socketName, const QString &tokenHex, int barHeight)
 {
     m_barHeight = barHeight;
+    m_waylandDisplay = socketName;
     m_protocol = new ShellProtocol(this);
     connect(m_protocol, &ShellProtocol::fatal, this, [](const QString &message) {
         qWarning() << "shell:" << message;
@@ -412,6 +414,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             &ShellController::onDockKeyboardFocused);
     connect(m_protocol, &ShellProtocol::inputAction, this,
             &ShellController::onInputAction);
+    connect(m_protocol, &ShellProtocol::activationResult, this,
+            &ShellController::onActivationResult);
     connect(m_protocol, &ShellProtocol::dockExternalDragEntered, this,
             &ShellController::onDockExternalDragEntered);
     connect(m_protocol, &ShellProtocol::dockExternalDragMoved, this,
@@ -1256,6 +1260,67 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             QMetaObject::invokeMethod(m_dockItem, "externalHoverEntry",
                                       Q_ARG(QVariant, target));
         });
+    }
+
+    // Capture/demo seam (T-14.7g): run one Dock click-tree activation through
+    // the real controller path once the chrome is up, so the live visual check
+    // can capture a launch and an activation even though the synthetic pointer
+    // path cannot land a tap on an entry that also carries a DragHandler.
+    // Values: `launch` (activate the first app entry, launching it when it is
+    // stopped), `activate` (activate it again), `missing` (activate an
+    // unresolved pinned entry, which raises a notice). Never set in a normal
+    // session.
+    if (qEnvironmentVariableIsSet("DF_DOCK_ACTIVATION_FIXTURE")) {
+        const QString mode = qEnvironmentVariable("DF_DOCK_ACTIVATION_FIXTURE");
+        if (mode == QLatin1String("missing")) {
+            QTimer::singleShot(1500, this, [this]() {
+                QVariantMap entry;
+                entry.insert(QStringLiteral("kind"), QStringLiteral("pinned"));
+                entry.insert(QStringLiteral("missing"), true);
+                entry.insert(QStringLiteral("desktopId"),
+                             QStringLiteral("org.example.NotInstalled.desktop"));
+                entry.insert(QStringLiteral("name"), QStringLiteral("Not Installed"));
+                onDockEntryActivated(entry);
+            });
+        } else if (mode == QLatin1String("activate")) {
+            // Wait until the app the demo started is projected as running,
+            // then activate it (the second click in the capture).
+            auto *timer = new QTimer(this);
+            timer->setInterval(500);
+            connect(timer, &QTimer::timeout, this, [this, timer]() {
+                static int tries = 0;
+                for (const QVariant &value : std::as_const(m_dockAllEntries)) {
+                    const QVariantMap map = value.toMap();
+                    if (map.value(QStringLiteral("running")).toBool()
+                        && (map.value(QStringLiteral("kind")).toString()
+                                == QLatin1String("pinned")
+                            || map.value(QStringLiteral("kind")).toString()
+                                == QLatin1String("temporary"))) {
+                        timer->stop();
+                        timer->deleteLater();
+                        onDockEntryActivated(map);
+                        return;
+                    }
+                }
+                if (++tries > 40) {
+                    timer->stop();
+                    timer->deleteLater();
+                }
+            });
+            timer->start();
+        } else {
+            QTimer::singleShot(1500, this, [this]() {
+                for (const QVariant &value : std::as_const(m_dockAllEntries)) {
+                    const QVariantMap map = value.toMap();
+                    const QString kind = map.value(QStringLiteral("kind")).toString();
+                    if (kind == QLatin1String("pinned")
+                        || kind == QLatin1String("temporary")) {
+                        onDockEntryActivated(map);
+                        return;
+                    }
+                }
+            });
+        }
     }
 
     // Capture/demo seam (T-12.3a): lock the session once the chrome is up so
@@ -4326,22 +4391,28 @@ void ShellController::onDockEntryActivated(const QVariant &entry)
 
     // Minimized-window entries restore their owning app's most recent window.
     if (kind == QLatin1String("minimized")) {
-        const QString appId = map.value(QStringLiteral("appId")).toString();
-        if (!appId.isEmpty())
-            m_protocol->activateApp(appId);
+        activateAppOrFallback(map.value(QStringLiteral("appId")).toString(),
+                              map.value(QStringLiteral("desktopId")).toString());
         return;
     }
 
     if (map.value(QStringLiteral("running")).toBool()) {
-        const QString appId = map.value(QStringLiteral("appId")).toString();
-        if (!appId.isEmpty())
-            m_protocol->activateApp(appId);
+        activateAppOrFallback(map.value(QStringLiteral("appId")).toString(),
+                              map.value(QStringLiteral("desktopId")).toString());
         return;
     }
 
     if (map.value(QStringLiteral("missing")).toBool()) {
+        // A pinned identity the app-index cannot resolve is not silent: it is
+        // a real notice, and the tile keeps its not-found mark (T-14.7g).
+        const QString name = map.value(QStringLiteral("name")).toString().isEmpty()
+                                 ? displayNameForIdentity(
+                                       map.value(QStringLiteral("desktopId")).toString())
+                                 : map.value(QStringLiteral("name")).toString();
         qWarning() << "shell: Dock entry is not installed (app-index):"
                    << map.value(QStringLiteral("desktopId")).toString();
+        raiseDockNotice(m_notificationClient, tr("%1 is not installed").arg(name),
+                        tr("The application could not be found."));
         return;
     }
 
@@ -4352,6 +4423,49 @@ void ShellController::onDockEntryActivated(const QVariant &entry)
     if (m_launchStates.value(desktopId) == QLatin1String("launching"))
         return;
     launchDockApp(desktopId);
+}
+
+void ShellController::activateAppOrFallback(const QString &appId, const QString &desktopId)
+{
+    // The compositor is the sole activation authority; the shell only asks and
+    // (T-14.7g) reacts to the result. An empty app id has nothing to activate,
+    // so it is a launch; a non-empty one is remembered so a not-found reply
+    // can fall back to a launch or a notice instead of a dead click.
+    if (appId.isEmpty()) {
+        if (!desktopId.isEmpty()) {
+            launchDockApp(desktopId);
+        } else {
+            raiseDockNotice(m_notificationClient, tr("Cannot open application"),
+                            tr("The application could not be identified."));
+        }
+        return;
+    }
+    if (!m_protocol)
+        return;
+    m_pendingActivations.insert(appId, desktopId);
+    m_protocol->activateApp(appId);
+}
+
+void ShellController::onActivationResult(const QString &appId, bool found)
+{
+    const QString desktopId = m_pendingActivations.take(appId);
+    if (found)
+        return;
+    // The compositor found no window for the app. If the Dock knows the
+    // installed entry, launch it (the app exited between the projection and
+    // the click); otherwise make the failure visible.
+    if (!desktopId.isEmpty()) {
+        const DesktopEntry entry = m_index.byId(desktopId);
+        if (DesktopEntryIndex::isLaunchable(entry)) {
+            qInfo() << "shell: Dock activation found no window for" << appId
+                    << "- launching" << entry.id;
+            launchDockApp(entry.id);
+            return;
+        }
+    }
+    qWarning() << "shell: Dock activation found no window for" << appId;
+    raiseDockNotice(m_notificationClient, tr("Could not switch to application"),
+                    tr("It is no longer running and no launch command was found."));
 }
 
 void ShellController::launchFiles(const QString &argument)
@@ -4373,7 +4487,7 @@ void ShellController::launchFiles(const QString &argument)
         return;
     }
     qint64 pid = 0;
-    if (!launchDetachedFromShell(argv, &pid))
+    if (!launchDetachedFromShell(argv, m_waylandDisplay, &pid))
         qWarning() << "shell: cannot open Files at" << argument << ":" << argv.first();
     else
         qInfo() << "shell: opened Files at" << argument << "(pid" << pid << ")";
@@ -4421,7 +4535,7 @@ void ShellController::openApp(const QString &desktopId)
         return;
     }
     if (plan.running && m_protocol) {
-        m_protocol->activateApp(plan.appId);
+        activateAppOrFallback(plan.appId, plan.desktopId);
         return;
     }
     launchDockApp(plan.desktopId);
@@ -4440,7 +4554,7 @@ void ShellController::launchDockAppWithFiles(const QString &desktopId, const QSt
         return;
     }
     qint64 pid = 0;
-    if (!launchDetachedFromShell(argv, &pid)) {
+    if (!launchDetachedFromShell(argv, m_waylandDisplay, &pid)) {
         failDockLaunch(desktopId, QStringLiteral("QProcess::startDetached failed"));
         return;
     }

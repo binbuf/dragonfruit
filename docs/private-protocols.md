@@ -126,7 +126,8 @@ is acked with `done` after the scene applies it (FR-3).
   `select_overview_toplevel`, `activate_app`, `cycle_app_switcher`,
   `release_keyboard_focus` (v2), `set_reduced_motion` (v3),
   `set_launch_origin` (v4), and `set_motion_policy`/`set_input_policy` (v5),
-  and `capture_screenshot` (v6). The capture request is the portal presenter's
+  `capture_screenshot` (v6), and `set_app_accelerators` (v7). The capture
+  request is the portal presenter's
   still-frame path (T-13.3b): the trusted shell supplies a rectangle, a
   `fullscreen`/`region`/`window` mode, and a path; the compositor renders an
   offscreen pass of the frame and writes a PNG there, answering
@@ -149,7 +150,10 @@ is acked with `done` after the scene applies it (FR-3).
   `hot_corner` (the same event whether triggered by pointer, gesture, or
   keyboard), `overview_changed` (Mission Control), `app_switcher` (v4) with one
   `app_switcher_entry` (v4) per app in recency order (the shell overlay's cards,
-  T-06.2a), `input_action`, `progress`, and `app_accelerator`.
+  T-06.2a), `input_action`, `progress`, and `app_accelerator`. `activation_result`
+  (v8) is the compositor's reply to `activate_app`: `found` is 0 when the app had
+  no window, so the shell can launch it or raise a notice instead of a silently
+  dead click (T-14.7g).
 
 ### Scene-consistent ordering (FR-2)
 

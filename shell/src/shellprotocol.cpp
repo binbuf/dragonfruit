@@ -208,6 +208,7 @@ void ShellProtocol::bindTrustedGlobals()
             onManagerAppSwitcherEntry,
             onManagerScreenshotSaved,
             onManagerScreenshotFailed,
+            onManagerActivationResult,
         };
         df_toplevel_manager_add_listener(m_manager, &managerListener, this);
     }
@@ -3116,6 +3117,15 @@ void ShellProtocol::onManagerScreenshotFailed(void *data, df_toplevel_manager *,
 {
     auto *self = static_cast<ShellProtocol *>(data);
     emit self->screenshotFailed(QString::fromUtf8(reason ? reason : ""));
+}
+
+void ShellProtocol::onManagerActivationResult(void *data, df_toplevel_manager *,
+                                              const char *appId, uint32_t found)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    // T-14.7g: the compositor answered an `activate_app`; `found` false means
+    // there was no window to bring forward.
+    emit self->activationResult(QString::fromUtf8(appId ? appId : ""), found != 0);
 }
 
 void ShellProtocol::onManagerDone(void *data, df_toplevel_manager *)

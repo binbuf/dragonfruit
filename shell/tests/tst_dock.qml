@@ -1513,6 +1513,81 @@ Item {
             compare(activatedSpy.count, 1);
         }
 
+        // T-14.7g: a stationary click always activates, even when the entry is
+// magnified and the pointer arrived through the transparent band.
+        function test_stationary_click_activates_a_magnified_entry() {
+            mouseMove(stage, 640, stage.height - 1);
+            waitForRendering(stage);
+            var dock = make(dockComponent, {
+                width: 1280, height: 240, position: "bottom", magnification: 1.0,
+                entries: [ app("files", "Files", true), app("b", "B", true) ]
+            });
+            activatedSpy.target = dock;
+            activatedSpy.clear();
+            // The pointer sweeps the band over the first entry, growing it,
+            // then clicks the grown artwork.
+            dock.pointerAlong = dock._baseline.centers[0];
+            waitForRendering(stage);
+            verify(dock.magnifying);
+            var entry = dock.itemAt(0);
+            mouseClick(entry, entry.width / 2, entry.height / 2);
+            compare(activatedSpy.count, 1);
+            compare(activatedSpy.signalArguments[0][0].appId, "files");
+        }
+
+        // A click that jitters within the shared slop is still an activation.
+        function test_small_jitter_within_the_slop_still_activates() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "A", true) ]
+            });
+            activatedSpy.target = dock;
+            activatedSpy.clear();
+            var entry = dock.itemAt(0);
+            var x = entry.x + entry.width / 2;
+            var y = entry.y + entry.height / 2;
+            mousePress(dock, x, y);
+            mouseMove(dock, x + 4, y + 3, 40, Qt.LeftButton);
+            mouseRelease(dock, x + 4, y + 3, Qt.LeftButton);
+            compare(activatedSpy.count, 1);
+        }
+
+        // A slop drag lifts the entry into a rearrangement, not an activation.
+        function test_slop_drag_lifts_instead_of_activating() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "A", true), app("b", "B", true) ]
+            });
+            activatedSpy.target = dock;
+            activatedSpy.clear();
+            var entry = dock.itemAt(0);
+            var x = entry.x + entry.width / 2;
+            var y = entry.y + entry.height / 2;
+            mousePress(dock, x, y);
+            mouseMove(dock, x + 24, y, 40, Qt.LeftButton);
+            compare(dock.dragging, true);
+            mouseRelease(dock, x + 24, y, Qt.LeftButton);
+            compare(dock.dragging, false);
+            compare(activatedSpy.count, 0);
+        }
+
+        // The root dismiss TapHandler must never eat an entry click: with a
+        // popover open, a click on the entry still activates it (T-14.7g).
+        function test_open_popover_does_not_eat_an_entry_click() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("files", "Files", true) ]
+            });
+            dock.openEntryMenu(dock.items[0]);
+            waitForRendering(stage);
+            compare(dock.menuOpen, true);
+            activatedSpy.target = dock;
+            activatedSpy.clear();
+            var entry = dock.itemAt(0);
+            mouseClick(entry, entry.width / 2, entry.height / 2);
+            compare(activatedSpy.count, 1);
+        }
+
         function test_chooser_accessible_names_carry_window_titles() {
             var dock = make(dockComponent, {
                 width: 1280, height: 160,
