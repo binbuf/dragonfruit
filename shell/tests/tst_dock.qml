@@ -500,8 +500,11 @@ Item {
             verify(layout[1].y > layout[0].y);
             compare(dock.plateRect.x, dock.edgeMargin);
             compare(dock.plateRect.w, dock.barThickness);
-            // An entry starts at the bar padding inside the plate.
-            fuzzyCompare(layout[0].x, dock.edgeMargin + dock.padding, 0.001);
+            // The artwork keeps `padding` from the plate's interior edge; the
+            // running-indicator space is tucked into the anchored-edge padding
+            // (T-14.7u), so the entry starts `indicatorSpace` earlier.
+            fuzzyCompare(layout[0].x + dock.indicatorSpace - dock.edgeMargin,
+                         dock.padding, 0.001);
             verify(dock.plateRect.x + dock.barThickness > layout[0].x);
         }
 
@@ -516,8 +519,11 @@ Item {
             // screen edge.
             compare(dock.plateRect.x, 160 - dock.edgeMargin - dock.barThickness);
             var layout = dock.layout;
-            fuzzyCompare(layout[0].x + layout[0].w, 160 - dock.edgeMargin - dock.padding,
-                         0.001);
+            // A right Dock packs the artwork `padding` in from the plate's
+            // interior (left) edge, with the dot in the anchored-edge padding
+            // (T-14.7u).
+            fuzzyCompare(layout[0].x - (160 - dock.edgeMargin - dock.barThickness),
+                         dock.padding, 0.001);
         }
 
         function test_vertical_entries_stay_inside_the_surface() {
@@ -632,6 +638,58 @@ Item {
                          left._baseline.positions[0] - left.paddingAlong, 0.001);
             fuzzyCompare(left.plateRect.h,
                          left._baseline.total + 2 * left.paddingAlong, 0.001);
+        }
+
+        // T-14.7u: the resting plate is one icon plus two paddings; the running
+        // indicator lives inside the anchored-edge padding rather than in a band
+        // added on top of it.
+        function test_plate_thickness_and_indicator_inset_match_the_reference() {
+            compare(Theme.controls.dock.padding, 15);
+            compare(Theme.controls.dock.gap, 14);
+            compare(Theme.controls.dock.indicatorGap, 8);
+            compare(Theme.controls.dock.radius, 28);
+
+            var dock = make(dockComponent, {
+                width: 1280, height: 240, position: "bottom",
+                entries: [ app("a", "A", true) ]
+            });
+            // One icon plus two cross-axis paddings: the indicator is not
+            // additive.
+            fuzzyCompare(dock.barThickness, dock.iconSize + 2 * dock.padding, 0.001);
+            // The artwork keeps `padding` from the plate's interior (top) edge.
+            fuzzyCompare(dock.layout[0].y - dock.plateRect.y, dock.padding, 0.001);
+            // The whole entry (artwork + dot) still fits inside the plate.
+            verify(dock.layout[0].y + dock.layout[0].h
+                   <= dock.plateRect.y + dock.plateRect.h + 0.001);
+
+            var entry = dock.itemAt(0);
+            var indicator = findChild(entry, "indicator");
+            verify(indicator !== null && indicator.visible);
+            // The dot sits `indicatorGap` below the artwork, inside the bottom
+            // padding; it never overlaps the artwork.
+            fuzzyCompare(indicator.y, entry.iconSize + Theme.controls.dock.indicatorGap, 0.001);
+            verify(indicator.y >= entry.iconSize);
+        }
+
+        function test_indicator_stays_inside_the_plate_at_icon_size_extremes() {
+            var sizes = [Theme.controls.dock.iconSizeMin,
+                         Theme.controls.dock.iconSizeMax];
+            for (var c = 0; c < sizes.length; ++c) {
+                var dock = make(dockComponent, {
+                    width: 1280, height: 320, iconSize: sizes[c],
+                    magnification: 0, entries: [ app("a", "A", true) ]
+                });
+                var entry = dock.itemAt(0);
+                var indicator = findChild(entry, "indicator");
+                verify(indicator !== null && indicator.visible);
+                // The dot is always `indicatorGap` below the artwork...
+                fuzzyCompare(indicator.y, entry.iconSize + Theme.controls.dock.indicatorGap, 0.001);
+                // ...and the indicator space never exceeds the padding, so the
+                // entry (dot included) stays inside the plate.
+                verify(dock.indicatorSpace <= dock.padding);
+                verify(dock.layout[0].y + dock.layout[0].h
+                       <= dock.plateRect.y + dock.plateRect.h + 0.001);
+            }
         }
 
         // -- Glass plate and squircles (T-14.7j) ----------------------------

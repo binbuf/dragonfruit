@@ -308,12 +308,12 @@ QtObject {
             readonly property int iconSize: 48
             readonly property int iconSizeMin: 32
             readonly property int iconSizeMax: 64
-            readonly property int padding: 10
-            readonly property int paddingAlong: 14
-            readonly property int gap: 8
-            readonly property int radius: 20
+            readonly property int padding: 15
+            readonly property int paddingAlong: 16
+            readonly property int gap: 14
+            readonly property int radius: 28
             readonly property int indicatorSize: 4
-            readonly property int indicatorGap: 3
+            readonly property int indicatorGap: 8
             readonly property real magnifyPeak: 1.6
             readonly property real magnifyPeakMax: 2.2
             readonly property real magnifyFalloff: 3.0

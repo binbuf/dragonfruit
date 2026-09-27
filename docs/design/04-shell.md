@@ -272,6 +272,18 @@ icon (T-14.7i). See
 [ADR 0089](adr/0089-dock-plate-geometry-and-live-panel-rect.md) and the
 T-14.7a/T-14.7b/T-14.7j units.
 
+**Resting proportions (T-14.7u).** The resting Dock is retuned to the mature
+reference capture (`docs/reference/macos/Dock.png`, local-only): `padding` 15,
+`paddingAlong` 16, `gap` 14, and a plate radius of 28 (~0.36 × the resting
+plate thickness). `barThickness` is `iconSize + 2 * padding` on every side;
+the running indicator's `indicatorGap` + `indicatorSize` live *inside* the
+anchored-edge padding rather than in a band added to the plate, so the artwork
+keeps the same inset from both plate edges and the dot sits 8 pt below it. The
+artwork is anchored on the anchored-edge side, so under magnification it grows
+toward the screen interior while the dot stays put. `indicatorSpace` never
+exceeds `padding`, so no entry (dot included) clips the plate at
+`iconSizeMin`/`iconSizeMax`. The plate fill/rim opacity values are unchanged.
+
 The plate's material is layered (T-14.7j, ADR
 [0102](adr/0102-dock-material-role-and-qml-glass-layers.md)): the compositor
 frosts the declared panel with the Dock's own `material.dockBlur`/`dockOpacity`

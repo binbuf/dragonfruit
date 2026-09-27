@@ -173,8 +173,9 @@ if w >= NESTED_W and h >= NESTED_H:
     y0 = h - NESTED_H
     im = im.crop((x0, y0, x0 + NESTED_W, y0 + NESTED_H))
     w, h = im.size
-# The dock surface thickness (plate + magnify band + edge gap) is 151 px at
-# the default icon size; add context so the whole floating treatment reads.
+# The dock surface thickness (plate + magnify band + edge gap) is 159 px at
+# the default icon size (T-14.7u: 78 + 73 + 8); add context so the whole
+# floating treatment reads.
 strip = 190
 if position == "bottom":
     crop = (0, max(0, h - strip), w, h)
