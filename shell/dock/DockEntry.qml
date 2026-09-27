@@ -141,7 +141,7 @@ Item {
     Accessible.name: isDivider ? qsTr("Dock separator")
                      : isExternal ? (name.length > 0 ? name : qsTr("Drop here"))
                      : isTrash ? qsTr("Trash") + stateLabel
-                     : isStack ? qsTr("Downloads") + stateLabel
+                     : isStack ? (name.length > 0 ? name : qsTr("Downloads")) + stateLabel
                      : name + stateLabel
     Accessible.focusable: !isDivider && !isExternal
 
@@ -381,12 +381,28 @@ Item {
 
     TapHandler {
         acceptedButtons: Qt.LeftButton
-        enabled: !root.isExternal
+        // The generic tap handles app/temporary/minimized/trash entries. A
+        // folder stack has its own handler below (single vs double click).
+        enabled: !root.isExternal && !root.isStack
         // A click activates while the pointer stays within `dragSlop`; the
         // DragHandler below takes over at the same threshold, so a slop-drag
         // lifts instead (T-14.7g). Both handlers share the value so a
         // near-stationary click — magnified, or entered through the band —
         // cannot fall between them.
+        gesturePolicy: TapHandler.DragThreshold
+        dragThreshold: root.dragSlop
+        onPressedChanged: root.pressed = pressed
+        onTapped: root.activated(root.entry)
+    }
+
+    // A folder stack uses the same tap signal as every entry; the Dock resolves
+    // a single click (open popover) vs a double click (open in Files) from the
+    // timing, because the entry delegate can be recreated when the stack's
+    // badge clears (T-14.7h).
+    TapHandler {
+        objectName: "stackTapHandler"
+        acceptedButtons: Qt.LeftButton
+        enabled: root.isStack && !root.isExternal
         gesturePolicy: TapHandler.DragThreshold
         dragThreshold: root.dragSlop
         onPressedChanged: root.pressed = pressed

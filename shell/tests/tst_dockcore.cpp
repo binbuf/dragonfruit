@@ -1146,6 +1146,27 @@ private slots:
         QVERIFY(!monitor.lastError().isEmpty());
     }
 
+    // T-14.7h: the folder's display name is its basename, so the Dock's hover
+    // label and the stack popover header can name any folder without the
+    // artwork carrying text. A root/empty basename falls back to "Downloads".
+    void downloadsMonitorReportsItsDisplayName()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString folder = dir.path() + QStringLiteral("/My Stuff");
+        QVERIFY(QDir().mkpath(folder));
+        DownloadsMonitor named(folder);
+        QCOMPARE(named.displayName(), QStringLiteral("My Stuff"));
+
+        DownloadsMonitor root(QStringLiteral("/"));
+        QCOMPARE(root.displayName(), QStringLiteral("Downloads"));
+
+        DownloadsMonitor dflt;
+        QCOMPARE(dflt.displayName(), QFileInfo(dflt.directory()).fileName().isEmpty()
+                                        ? QStringLiteral("Downloads")
+                                        : QFileInfo(dflt.directory()).fileName());
+    }
+
     // -- recent/suggested apps (T-10 section 17) -------------------------
 
     void recentEntriesSkipPinnedRunningAndMisses()

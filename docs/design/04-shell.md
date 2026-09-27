@@ -239,12 +239,19 @@ the single decision point; the ghost and affordances are presentation only.
 A folder entry is a **stack**, never an app launch: clicking it shows its
 contents in the Dock popover (the macOS list equivalent; fan/grid layouts are
 future polish), the popover and context menu open the folder in Files, and a
-double-click opens the folder in Files directly. Any folder dragged onto the
-Dock is pinned as a stack, persisted as a path list in `dock.pinnedFolders`
-(settingsd-owned) and listed read-only through `files-core`; the Downloads
-stack is the default member of the same widget. A missing path degrades to a
-dimmed entry with a notice. The folder's name is never drawn inside the
-artwork — it comes from the hover `Tooltip` and the popover header. See
+double-click opens the folder in Files directly. The popover header carries the
+folder icon, the elided folder name, and the explicit **Open in Files** action
+(reachable by keyboard, like the rows); a folder longer than the visible-row
+budget scrolls and summarizes the remainder as "N more…", and an empty folder
+shows an empty row rather than a blank panel. The Dock renders a designed
+folder silhouette from our own geometry — a tab, a front face with a vertical
+gradient, a rim, and an inner sheen — never Apple artwork. Any folder dragged
+onto the Dock is pinned as a stack, persisted as a path list in
+`dock.pinnedFolders` (settingsd-owned) and listed read-only through
+`files-core`; the Downloads stack is the default member of the same widget. A
+missing path degrades to a dimmed entry with a notice. The folder's name is
+never drawn inside the artwork — it comes from the hover `Tooltip` and the
+popover header. See
 [ADR 0092](adr/0092-dock-folder-stacks-and-folder-pins.md) and the
 T-14.7h/T-14.7k units.
 

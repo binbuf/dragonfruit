@@ -222,6 +222,17 @@ not-found mark (the notice itself needs the notification service, which `make
 demo` does not start). Needs a host Wayland session, spectacle, gdbus, and
 Pillow; not in `make e2e`.
 
+T-14.7h's Dock folder stack sign-off is produced by
+`scripts/capture-dock-folder-stack.sh` (`make dock-folder-stack-capture`): the
+nested demo runs once per state with `XDG_DOWNLOAD_DIR` pointed at a scratch
+folder and the shell's `DF_DOCK_STACK_FIXTURE` seam opening the popover (the
+production path minus a synthetic pointer click). The four 2x crops are stacked
+into `t14-dock-folder-stack.png`: resting (the clean folder silhouette, no text
+in the artwork), open (the header with the folder icon, name and "Open in
+Files", separator, and rows with icons/names), empty ("Empty" row), and long
+(scrollable rows plus the "N more…" summary). Needs a host Wayland session,
+spectacle, gdbus, and Pillow; not in `make e2e`.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

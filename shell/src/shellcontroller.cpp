@@ -16,7 +16,6 @@
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDBusConnection>
-#include <QDesktopServices>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -1319,6 +1318,23 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
                         return;
                     }
                 }
+            });
+        }
+    }
+
+    // Capture/demo seam (T-14.7h): open the folder stack popover once the
+    // chrome is up, so the live visual check can capture the open/empty/long
+    // states without a synthetic pointer click. The listing itself comes from
+    // `XDG_DOWNLOAD_DIR`, which the capture script points at a scratch folder;
+    // values `open`/`empty`/`long` all open the stack, `resting` leaves it
+    // closed. Never set in a normal session.
+    if (qEnvironmentVariableIsSet("DF_DOCK_STACK_FIXTURE")) {
+        const QString mode = qEnvironmentVariable("DF_DOCK_STACK_FIXTURE");
+        if (mode == QLatin1String("open") || mode == QLatin1String("empty")
+            || mode == QLatin1String("long")) {
+            QTimer::singleShot(1500, this, [this]() {
+                if (m_dockItem)
+                    QMetaObject::invokeMethod(m_dockItem, "openStack");
             });
         }
     }
@@ -5332,6 +5348,7 @@ void ShellController::onDownloadsChanged()
     m_dockItem->setProperty("downloadsItems", m_downloads->items());
     m_dockItem->setProperty("downloadsCount", m_downloads->itemCount());
     m_dockItem->setProperty("downloadsBadge", m_downloads->newCount());
+    m_dockItem->setProperty("downloadsName", m_downloads->displayName());
     scheduleDockRender();
 }
 
@@ -5362,10 +5379,10 @@ void ShellController::onDockDownloadsFolderRequested()
         return;
     const QString folder = m_downloads->directory();
     QDir().mkpath(folder);
-    if (!QDesktopServices::openUrl(QUrl::fromLocalFile(folder)))
-        qWarning() << "shell: cannot open the Downloads folder:" << folder;
-    else
-        qInfo() << "shell: Dock opened the Downloads folder";
+    // A stack folder opens in Files (T-14.7h, T-10.6c): the single reveal path
+    // the Dock and the file manager share, so the folder appears where the
+    // file manager expects it.
+    launchFiles(folder);
 }
 
 void ShellController::onDockAfterRendering()

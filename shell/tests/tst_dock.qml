@@ -2573,6 +2573,199 @@ Item {
             compare(downloadsViewedSpy.count, 1);
         }
 
+        // -- T-14.7h folder stacks: presentation and clicks -----------------
+
+        function longStackItems(n) {
+            var out = [];
+            for (var i = 0; i < n; ++i)
+                out.push({ name: "item" + i + ".txt", path: "/tmp/item" + i + ".txt",
+                           isDir: false });
+            return out;
+        }
+
+        function openStackOf(dock) {
+            var idx = dock.indexOfItemId("__downloads__");
+            dock.activateEntry(dock.items[idx]);
+            var popover = findChild(dock, "stackPopover");
+            // The popover gates its own `visible` on `opacity`, so wait out the
+            // open fade before asserting on visible descendants.
+            if (popover)
+                tryVerify(function() { return popover.opacity > 0; }, 1000);
+            return popover;
+        }
+
+        function countTextDescendants(item) {
+            var n = 0;
+            for (var i = 0; i < item.children.length; ++i) {
+                var child = item.children[i];
+                if (child.text !== undefined)
+                    ++n;
+                if (child.children !== undefined)
+                    n += countTextDescendants(child);
+            }
+            return n;
+        }
+
+        function test_stack_double_click_opens_the_folder_in_files() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                downloadsItems: stackItems(), downloadsCount: 2,
+                entries: [ app("a", "A", true) ]
+            });
+            downloadsFolderSpy.target = dock;
+            downloadsFolderSpy.clear();
+            var idx = dock.indexOfItemId("__downloads__");
+            // The first tap opens the popover immediately...
+            dock.handleEntryTap(dock.items[idx]);
+            compare(dock.stackOpen, true);
+            compare(downloadsFolderSpy.count, 0);
+            // ...and a second tap inside the double-click window opens Files.
+            dock.handleEntryTap(dock.items[idx]);
+            compare(downloadsFolderSpy.count, 1);
+            compare(dock.stackOpen, false);
+        }
+
+        function test_stack_context_menu_offers_open_in_files() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                downloadsItems: stackItems(),
+                entries: [ app("a", "A", true) ]
+            });
+            var idx = dock.indexOfItemId("__downloads__");
+            dock.openEntryMenu(dock.items[idx]);
+            waitForRendering(stage);
+            var menu = findChild(dock, "entryMenu");
+            var labels = menuLabels(menu);
+            verify(labels.indexOf("Open in Files") >= 0);
+            // The action routes through the shell's stack open path.
+            menuActionSpy.target = dock;
+            menuActionSpy.clear();
+            menu.activate(labels.indexOf("Open in Files"));
+            compare(menuActionSpy.count, 1);
+            compare(menuActionSpy.signalArguments[0][0], "open_downloads_folder");
+        }
+
+        function test_stack_popover_header_names_the_folder_and_opens_it() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                downloadsItems: stackItems(), downloadsCount: 2,
+                downloadsName: "My Downloads",
+                entries: [ app("a", "A", true) ]
+            });
+            var popover = openStackOf(dock);
+            verify(popover !== null);
+            compare(popover.title, "My Downloads");
+
+            var headerText = findChild(popover, "stackHeaderText");
+            verify(headerText !== null);
+            compare(headerText.text, "My Downloads");
+            verify(findChild(popover, "stackHeaderIcon") !== null);
+            var action = findChild(popover, "stackOpenAction");
+            verify(action !== null);
+            compare(action.text, "Open in Files");
+
+            downloadsFolderSpy.target = dock;
+            downloadsFolderSpy.clear();
+            popover.activateFolder();
+            compare(downloadsFolderSpy.count, 1);
+            compare(dock.stackOpen, false);
+        }
+
+        function test_stack_popover_header_action_is_keyboard_reachable() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                downloadsItems: stackItems(),
+                entries: [ app("a", "A", true) ]
+            });
+            var popover = openStackOf(dock);
+            compare(popover.currentIndex, -1);
+            // Down moves onto the first row; Up returns to the header action.
+            popover.moveSelection(1);
+            compare(popover.currentIndex, 0);
+            popover.moveSelection(-1);
+            compare(popover.currentIndex, -1);
+            downloadsFolderSpy.target = dock;
+            downloadsFolderSpy.clear();
+            popover.activateCurrent();
+            compare(downloadsFolderSpy.count, 1);
+        }
+
+        function test_stack_popover_rows_open_the_item() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                downloadsItems: stackItems(),
+                entries: [ app("a", "A", true) ]
+            });
+            var popover = openStackOf(dock);
+            downloadSpy.target = dock;
+            downloadSpy.clear();
+            popover.activateItem(0);
+            compare(downloadSpy.count, 1);
+            compare(downloadSpy.signalArguments[0][0], "/tmp/a.txt");
+            // The row carries an icon and a name label.
+            verify(findChild(popover, "stackRowIcon") !== null);
+            verify(findChild(popover, "stackRowName") !== null);
+        }
+
+        function test_stack_popover_empty_and_overflow_rows() {
+            var empty = make(dockComponent, {
+                width: 1280, height: 160,
+                downloadsItems: [], downloadsCount: 0,
+                entries: [ app("a", "A", true) ]
+            });
+            var emptyPopover = openStackOf(empty);
+            compare(emptyPopover.isEmpty, true);
+            compare(emptyPopover.overflowCount, 0);
+            compare(emptyPopover.rowCount, 0);
+            var emptyRow = findChild(emptyPopover, "stackEmptyRow");
+            verify(emptyRow !== null);
+            compare(emptyRow.visible, true);
+            compare(findChild(emptyPopover, "stackOverflowRow").visible, false);
+
+            var long = make(dockComponent, {
+                width: 1280, height: 160,
+                downloadsItems: longStackItems(10), downloadsCount: 10,
+                entries: [ app("a", "A", true) ]
+            });
+            var longPopover = openStackOf(long);
+            compare(longPopover.overflowCount, 2);
+            verify(findChild(longPopover, "stackOverflowRow").visible);
+            compare(findChild(longPopover, "stackEmptyRow").visible, false);
+            // A long folder scrolls through the rest.
+            compare(longPopover.scrolls, true);
+            compare(findChild(longPopover, "stackRows").interactive, true);
+        }
+
+        function test_stack_glyph_has_no_text_in_artwork() {
+            var glyph = make(glyphComponent, {
+                kind: "stack", name: "Downloads", size: 48
+            });
+            var artwork = findChild(glyph, "stackArtwork");
+            verify(artwork !== null);
+            // The folder name lives in the hover label and the popover, never
+            // in the artwork (the aesthetic fix of T-14.7h).
+            compare(countTextDescendants(artwork), 0);
+            verify(findChild(glyph, "stackFolderTab") !== null);
+            verify(findChild(glyph, "stackFolderFront") !== null);
+            var img = grabImage(glyph);
+            verify(img.width > 0);
+            glyph.destroy();
+        }
+
+        function test_stack_entry_single_click_activates() {
+            var entry = make(entryComponent, {
+                iconSize: 48,
+                entry: { id: "__downloads__", name: "Downloads", kind: "stack",
+                         stackCount: 3, badge: 0 }
+            });
+            var activated = 0;
+            entry.activated.connect(function() { ++activated; });
+            // A single click on the stack reaches the Dock through the
+            // stack-specific tap handler.
+            mouseClick(entry, entry.width / 2, entry.height / 2);
+            compare(activated, 1);
+        }
+
         function test_recent_entries_render_in_the_app_region() {
             var dock = make(dockComponent, {
                 width: 1280, height: 160,

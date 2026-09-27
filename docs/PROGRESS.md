@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(83 earlier sections omitted)_
+_(84 earlier sections omitted)_
 
-- **T80 — T-12.2 Display-manager entry and logout teardown**: **State: done.** The session now has a display-manager `.desktop` entry, an; **`services/session/dragonfruit.desktop`** (new) — Wayland session
 - **T81 — T-12.3a Lock protocol and lock UI**: **State: done.** `ext-session-lock-v1` is enforced end to end and the shell is; **`compositor/src/lock.rs`** (new) — `LockModel`: the one `locked` flag (with
 - **T82 — T-12.3b Lock PAM authentication**: **State: done.** Unlock is now real PAM authentication through a small helper;; **`services/lock-auth/`** (new crate `dragonfruit-lock-auth`) —
 - **System font — Inter (post-T82, before T83)**: **State: done (first-party half).** The desktop's type is now Inter 4.001; **`fonts/Inter/`** (now tracked; T82's `/fonts/` .gitignore entry is gone) —
@@ -45,6 +44,7 @@ _(83 earlier sections omitted)_
 - **T110e — T-14.7e Add Application picker**: **State: done.** The Dock's divider menu now offers **Add Application…**,; `shell/src/apppicker.{h,cpp}` (new, dockcore) — pure
 - **T110f — T-14.7f Dock drag-and-drop identity and feedback**: **State: done.** External drags are now read once at drag *enter*, so the Dock; `shell/src/dockdrops.{h,cpp}` — `DockDropPayloadData` +
 - **T110g — T-14.7g Dock activation and launch correctness**: **State: done.** The Dock click tree is now observable end to end: a launch; `protocols/dragonfruit-toplevel.xml` — manager version 8; new
+- **T110h — T-14.7h Dock folder stacks: presentation and clicks**: **State: done.** Folder entries read like macOS: a clean folder silhouette with; `shell/dock/DockGlyph.qml` — the `stack` block is `stackArtwork`: back tab
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -8878,5 +8878,74 @@ Gotchas for later tasks:
 - **`DF_DOCK_ACTIVATION_FIXTURE` is a capture seam, never a session value.**
 - Adding a manager event: append it last in the XML (append-only opcodes) and
   append its callback last in `bindTrustedGlobals`' listener initializer.
+- `check-desktop-names.sh` still fails on the pre-existing StatusNotifier/zoo
+  lines (unchanged here).
+
+## T110h — T-14.7h Dock folder stacks: presentation and clicks
+
+**State: done.** Folder entries read like macOS: a clean folder silhouette with
+no text in the artwork, single click opens the stack popover, double-click
+opens the folder in Files, and the popover is a real presented list (header,
+separator, scrollable rows, overflow/empty). No new ADR — ADR 0092 already
+froze this model; `docs/design/04-shell.md` gains the presentation details.
+
+Real paths:
+
+- `shell/dock/DockGlyph.qml` — the `stack` block is `stackArtwork`: back tab
+  (`stackFolderTab`), gradient front face (`stackFolderFront`) with rim + inner
+  sheen (`stackFolderSheen`); no `Text`. New color tokens `folderTab`,
+  `folderFillTop`, `folderFillBottom`, `folderRim`, `folderHighlight`
+  (light+dark) in `design-system/tokens/tokens.json`; `Theme.qml` regenerated.
+- `shell/dock/DockEntry.qml` — stack-only `TapHandler` (`stackTapHandler`)
+  emits the ordinary `activated`; generic tap/DragHandler stay disabled for
+  stacks. Accessible name uses the entry name.
+- `shell/dock/Dock.qml` — `handleEntryTap(entry)` resolves single vs double
+  click with `stackDoubleClickMs` (400 ms): first tap opens the popover, a
+  second tap calls `doubleActivateEntry` (close popover +
+  `downloadsFolderRequested`). The timer lives on the Dock, not the delegate,
+  because clearing the badge can recreate the delegate between taps.
+  `downloadsName` property feeds `stackEntry.name` and the popover title; stack
+  menu label is now **Open in Files**.
+- `shell/dock/DockStackPopover.qml` — rewritten (`FocusScope`): header with
+  `Icon "folder"` + elided name + `stackOpenAction` ("Open in Files"),
+  `ScrollView` rows with `Icon "folder"/"file"` + names, `stackOverflowRow`
+  ("N more…"), `stackEmptyRow`; keyboard `currentIndex` -1 = header; separator
+  uses `Theme.color.border`.
+- `shell/src/downloadsmonitor.{h,cpp}` — `displayName()` (basename, "Downloads"
+  fallback). `shell/src/shellcontroller.cpp` — pushes `downloadsName`; folder
+  open routes through `launchFiles(folder)`; `DF_DOCK_STACK_FIXTURE`
+  (`open`/`empty`/`long`) capture seam.
+- Tests: `tst_dock.qml` single/double click, context-menu Open in Files,
+  header/action, keyboard header reach, rows, empty/overflow/scroll, no
+  text-in-artwork; `tst_dockcore.cpp` `downloadsMonitorReportsItsDisplayName`.
+- `scripts/capture-dock-folder-stack.sh` + `make dock-folder-stack-capture`;
+  `docs/captures/t14-dock-folder-stack.png` (resting/open/empty/long);
+  captures README.
+
+Commands that work (repo root):
+
+- `ctest --test-dir build -R "tst_dock$|tst_dockcore|qmllint_shell-dock"` —
+  green (`tst_dock` 160 passed, `tst_dockcore` includes the new name case).
+- `ctest --test-dir build --output-on-failure` — 53/53.
+- `make e2e` — green; `cargo fmt --all -- --check`; `./scripts/gen-tokens.py
+  --check`; `./scripts/check-design-tokens.sh`; `./scripts/check-no-capture-grab.sh`.
+- Live: `make dock-folder-stack-capture`.
+
+Gotchas for later tasks:
+
+- **One double-click source.** `Dock.handleEntryTap()` owns the
+  `stackDoubleClickMs` window (`Date.now()`); the entry delegate only emits
+  `activated`. Keep it on the Dock — the delegate can be recreated when the
+  badge clears. Synthetic `mouseDoubleClickSequence` does not reach a
+  TapHandler offscreen, so tests call `handleEntryTap` twice.
+- **Folder name is data, not a literal.** `Dock.downloadsName` /
+  `DownloadsMonitor::displayName()`; T-14.7i's hover Tooltip and any T-14.7k
+  pinned-folder entry must read the entry `name`, never hardcode "Downloads".
+- **Folder open is `launchFiles(folder)`**, not `QDesktopServices` (the one
+  reveal path).
+- **`DF_DOCK_STACK_FIXTURE` and `XDG_DOWNLOAD_DIR` are capture seams**, never
+  session values.
+- **ScrollView viewport** is capped at `maxItems`; the overflow row sits below
+  it (so a 13-item folder shows 8 rows + "5 more…", and the viewport scrolls).
 - `check-desktop-names.sh` still fails on the pre-existing StatusNotifier/zoo
   lines (unchanged here).

@@ -45,7 +45,7 @@ endif
 .PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test \
         visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev demo soak e2e \
         idle-trace menubar-idle-trace latency-trace settingsd-capture settings-wave-1-capture \
-        files-capture osd-dnd-capture portals-capture zoo-run dock-spacing-capture dock-magnify-capture dock-motion-capture dock-trash-capture dock-app-picker-capture dock-drops-capture dock-activation-capture check-desktop-names check-no-capture-grab check-design-tokens clean
+        files-capture osd-dnd-capture portals-capture zoo-run dock-spacing-capture dock-magnify-capture dock-motion-capture dock-trash-capture dock-app-picker-capture dock-drops-capture dock-activation-capture dock-folder-stack-capture check-desktop-names check-no-capture-grab check-design-tokens clean
 
 help:
 	@echo "Dragonfruit build targets:"
@@ -238,6 +238,12 @@ dock-drops-capture: build
 # session, `spectacle`, `gdbus`, Pillow and the built tree.
 dock-activation-capture: build
 	bash scripts/capture-dock-activation.sh
+
+# T-14.7h: the Dock folder stack stills (resting, open, empty, long) stacked
+# into docs/captures/t14-dock-folder-stack.png. Needs a host Wayland session,
+# `spectacle`, `gdbus`, Pillow and the built tree.
+dock-folder-stack-capture: build
+	bash scripts/capture-dock-folder-stack.sh
 
 qml-test:
 	@[ -f $(BUILD_DIR)/build.ninja ] || $(CMAKE) -S . -B $(BUILD_DIR) -G Ninja
