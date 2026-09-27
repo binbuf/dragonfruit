@@ -308,6 +308,9 @@ private slots:
     void onDockAttention(const QString &appId);
     void onDockAnimationTick();
     void onTrashChanged();
+    // The Empty Trash worker finished (T-14.7r): forward the one-shot result to
+    // the Dock's progress/result popover on the UI thread.
+    void onTrashEmptyFinished(bool ok, int removed, const QString &error);
     // A settingsd key changed (local optimistic write echo or daemon signal):
     // re-read the Dock view and re-lay-out.
     void onSettingsChanged(const QString &key, const QVariant &value);

@@ -571,6 +571,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // and Files share the one Trash store (T-10.6a).
     m_trash = new TrashBridge(this);
     connect(m_trash, &TrashBridge::changed, this, &ShellController::onTrashChanged);
+    connect(m_trash, &TrashBridge::emptyFinished, this,
+            &ShellController::onTrashEmptyFinished);
     m_trash->start();
     m_dockItem->setProperty("trashFull", m_trash->isFull());
     m_dockItem->setProperty("trashCount", m_trash->itemCount());
@@ -1477,6 +1479,28 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             QMetaObject::invokeMethod(m_dockItem, "reveal");
             QMetaObject::invokeMethod(m_dockItem, "openOverflowFixture");
             if (m_dockItem->property("overflowOpen").toBool()) {
+                timer->stop();
+                timer->deleteLater();
+            }
+        });
+        timer->start();
+    }
+
+    // Capture/demo seam (T-14.7r): open the Trash empty progress/result popover
+    // in a chosen state (`busy`, `success`, or `failed`) without running a real
+    // empty, so the live visual check captures it deterministically. Never set
+    // in a normal session.
+    if (qEnvironmentVariableIsSet("DF_DOCK_TRASH_EMPTY_FIXTURE")) {
+        const QString mode = qEnvironmentVariable("DF_DOCK_TRASH_EMPTY_FIXTURE");
+        auto *timer = new QTimer(this);
+        timer->setInterval(500);
+        connect(timer, &QTimer::timeout, this, [this, timer, mode]() {
+            if (!m_dockItem)
+                return;
+            QMetaObject::invokeMethod(m_dockItem, "reveal");
+            QMetaObject::invokeMethod(m_dockItem, "trashEmptyFixture",
+                                      Q_ARG(QVariant, mode));
+            if (m_dockItem->property("trashEmptyOpen").toBool()) {
                 timer->stop();
                 timer->deleteLater();
             }
@@ -5567,14 +5591,23 @@ void ShellController::onDockEntryMenuAction(const QString &action, const QVarian
     } else if (action == QLatin1String("open_trash")) {
         openTrashInFiles();
     } else if (action == QLatin1String("empty_trash")) {
-        // The QML confirmation already ran; perform the destructive operation
-        // (T-10 section 13/16).
-        const int removed = m_trash ? m_trash->empty() : -1;
-        if (removed < 0)
-            qWarning() << "shell: cannot empty the Trash:"
-                       << (m_trash ? m_trash->lastError() : QStringLiteral("no monitor"));
-        else
-            qInfo() << "shell: emptied" << removed << "Trash entries";
+        // The QML confirmation already ran; start the destructive operation
+        // asynchronously on the Trash bridge worker so the shell UI thread
+        // never blocks (T-14.7r). A second request while emptying, or an
+        // unreachable backend, is reported to the Dock rather than hanging.
+        if (m_trash) {
+            if (!m_trash->emptyAsync() && !m_trash->isEmptying()) {
+                // The operation could not start (no monitor). emptyAsync
+                // already emitted the failure result; nothing more to do.
+                qWarning() << "shell: cannot empty the Trash:"
+                           << m_trash->emptyError();
+            }
+        } else if (m_dockItem) {
+            QMetaObject::invokeMethod(
+                m_dockItem, "handleTrashEmptyResult",
+                Q_ARG(QVariant, false), Q_ARG(QVariant, -1),
+                Q_ARG(QVariant, QStringLiteral("no trash monitor")));
+        }
     }
     scheduleDockRender();
 }
@@ -5640,6 +5673,21 @@ void ShellController::onTrashChanged()
     m_dockItem->setProperty("trashFull", m_trash->isFull());
     m_dockItem->setProperty("trashCount", m_trash->itemCount());
     m_dockItem->setProperty("trashAvailable", m_trash->isAvailable());
+    scheduleDockRender();
+}
+
+void ShellController::onTrashEmptyFinished(bool ok, int removed, const QString &error)
+{
+    // The worker reported on the UI thread; hand the one-shot result to the
+    // Dock's progress/result popover (T-14.7r). The bridge's `changed` signal
+    // separately updates the icon/badge from the real store.
+    if (!m_dockItem)
+        return;
+    QMetaObject::invokeMethod(
+        m_dockItem, "handleTrashEmptyResult",
+        Q_ARG(QVariant, ok), Q_ARG(QVariant, removed), Q_ARG(QVariant, error));
+    if (!ok)
+        qWarning() << "shell: cannot empty the Trash:" << error;
     scheduleDockRender();
 }
 
