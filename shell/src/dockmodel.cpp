@@ -85,6 +85,7 @@ DockConfig dockConfigFromValues(const QVariantMap &values)
         read("dock.titlebarDoubleClick", QStringLiteral("zoom")).toString();
     config.showRecentApps = read("dock.showRecentApps", false).toBool();
     config.chooserOnHover = read("dock.chooserOnHover", false).toBool();
+    config.minimizeReaction = read("dock.minimizeReaction", false).toBool();
     config.reduceMotion = read("accessibility.reduceMotion", false).toBool();
     config.pinned = read("dock.pinned", QStringList()).toStringList();
     config.pinnedFolders = read("dock.pinnedFolders", QStringList()).toStringList();
@@ -151,6 +152,13 @@ double dockAttentionBouncePhase(qint64 elapsedMs)
         return 0.0;
     return static_cast<double>(elapsedMs % kAttentionBounceHopMs)
            / static_cast<double>(kAttentionBounceHopMs);
+}
+
+double dockMinimizeReactionPhase(qint64 elapsedMs)
+{
+    if (elapsedMs < 0 || elapsedMs >= kMinimizeReactionMs)
+        return -1.0;
+    return static_cast<double>(elapsedMs) / static_cast<double>(kMinimizeReactionMs);
 }
 
 QVariantList buildRecentEntries(const QStringList &recentIds, const QStringList &pinnedIds,

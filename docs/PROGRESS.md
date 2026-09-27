@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(95 earlier sections omitted)_
+_(96 earlier sections omitted)_
 
-- **T91 — T-13.2b FileChooser picker UI**: **State: done.** The FileChooser portal now has its dialog: a design-system; **`shell/screenshot/FileChooser.qml`** (new) — the pure view: title, an Up
 - **T92 — T-13.3a Screenshot portal and selection UI**: **State: done.** The backend serves `org.freedesktop.impl.portal.Screenshot`; **`portal/src/screenshot.rs`** (new) — the pure model: `CaptureMode`
 - **T93 — T-13.3b Screenshot save/copy and portal-only gate**: **State: done.** A capture is now actually produced, saved, and copied. The; **`protocols/dragonfruit-toplevel.xml`** — `df_toplevel_manager` v6 adds
 - **T94 — T-13.4a ScreenCast portal and source picker**: **State: done.** The backend serves `org.freedesktop.impl.portal.ScreenCast`; **`portal/src/screencast.rs`** (new) — the pure model: `SourceType`
@@ -44,6 +43,7 @@ _(95 earlier sections omitted)_
 - **T110p — T-14.7p Dock hover-open, retargetable chooser and stable anchor**: **State: done.** `dock.chooserOnHover` (bool, default off) opts into a; `services/settingsd/src/schema.rs` — `dock.chooserOnHover` (`since: 8`),
 - **T110q — T-14.7q Dock overflow cell and More Windows popover**: **State: done.** When the running groups do not fit even at the minimum icon,; `shell/src/dockmodel.{h,cpp}` — `applyDockOverflow` now returns a terminal
 - **T110r — T-14.7r Dock Trash empty progress and result**: **State: done.** Empty Trash is asynchronous with visible states. Confirming; `shell/src/trashbridge.{h,cpp}` — `EmptyState {Idle,Emptying,Succeeded,Failed}`;
+- **T110s — T-14.7s Dock minimize-to-icon reaction**: **State: done.** With `dock.minimizeReaction` on, a window entering `minimized`; `shell/src/dockprojection.{h,cpp}` — pure `dockMinimizedCounts(entries)` and
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -9702,5 +9702,83 @@ Gotchas for later tasks:
   (a count/callback streamed from the empty op) before the popover can show it;
   the indeterminate ring is the current fallback.
 - `DF_DOCK_TRASH_EMPTY_FIXTURE` is a capture seam, never session state.
+- `check-desktop-names.sh` still fails only on the pre-existing
+  StatusNotifier/zoo/apppicker lines (unchanged here).
+
+## T110s — T-14.7s Dock minimize-to-icon reaction
+
+**State: done.** With `dock.minimizeReaction` on, a window entering `minimized`
+gives its app entry one short acknowledgment hop — vertical (upward) on a bottom
+Dock, cross-axis toward the interior on a left/right Dock. Opt-in, default off,
+and removed under reduced motion. The pulse rides the existing `bouncePhases`
+map, so the Repeater model is never rebuilt; no new surface and no compositor
+protocol. ADR 0107 records the seam.
+
+Real paths:
+
+- `shell/src/dockprojection.{h,cpp}` — pure `dockMinimizedCounts(entries)` and
+  `dockMinimizedPulses(entries, previous)`; per-window `minimized` rows are
+  skipped so the owning app is not double-counted.
+- `shell/src/dockmodel.{h,cpp}` — `DockConfig.minimizeReaction` +
+  `dockConfigFromValues` read; `kMinimizeReactionMs = 320` and pure
+  `dockMinimizeReactionPhase(elapsed)`.
+- `shell/src/shellcontroller.{h,cpp}` — `m_dockMinimizedCounts`,
+  `m_dockMinimizedCountsSeeded`, `m_minimizeReactionStart`; new
+  `detectDockMinimizePulses()` run from `rebuildDockEntries()`;
+  `publishDockBouncePhases()` adds `minimize`/`minimizePhase`; tick expiry + the
+  timer stop condition; `applyDockSettings` sets the QML property and clears a
+  stale pulse when the key goes off; the
+  `DF_DOCK_MINIMIZE_REACTION_FIXTURE=<phase>` capture seam.
+- `shell/dock/Dock.qml` — `minimizeReaction` property, `entryMinimizePhase`/
+  `entryMinimizeActive`, and the minimize branch at the top of `entryBounce`
+  (cross-axis placement already points the hop away from the anchored edge).
+- `design-system/tokens/tokens.json` — `component.dock.minimizeReaction`
+  (`amplitudeRatio` 0.28, `duration` 320, `reducedDuration` 0);
+  `Theme.qml` + `compositor/src/design_tokens.rs` regenerated.
+- `services/settingsd/src/schema.rs` — `dock.minimizeReaction` (`since: 9`),
+  `SCHEMA_VERSION` 8 → 9; declaration test. `libs/settings-client/
+  settingsclient.cpp` seed; `docs/settings-keys.md` row.
+- `apps/settings/DesktopDockPane.qml` — toggle + `minimizeReactionToggle` alias
+  + Binding; Dock group rows 11 → 12 (both pane suites and
+  `tst_settings_absence` updated).
+- Tests: `tst_dockcore` 106 → 109 (config default/override, phase, detection,
+  coalescing, per-window-row skip); `tst_dock` 227 → 232 (off default, lift
+  once + bounds + clear, axis/direction, reduced motion, no model rebuild).
+- `scripts/capture-dock-minimize-reaction.sh` + `make
+  dock-minimize-reaction-capture`; `docs/captures/t14-dock-minimize-reaction.png`
+  (bottom-light over right-dark) + the two individual crops; captures README.
+- Docs: `docs/design/04-shell.md` "Dock minimize-to-icon reaction";
+  `docs/design/adr/0107-dock-minimize-to-icon-reaction.md`.
+
+Commands that work (repo root):
+
+- `ctest --test-dir build --output-on-failure` — 53/53 (`tst_dock` 232,
+  `tst_dockcore` 109).
+- `make e2e` — green.
+- `cargo test -p dragonfruit-settingsd`; `cargo clippy -p dragonfruit-settingsd
+  --all-targets -- -D warnings`; `cargo fmt --all -- --check`;
+  `./scripts/gen-tokens.py --check`; `./scripts/check-design-tokens.sh`;
+  `./scripts/check-no-capture-grab.sh`;
+  `./scripts/check-gallery-snapshots.py --strict` — green.
+- Live: `make dock-minimize-reaction-capture` (host Wayland + spectacle + gdbus
+  + Pillow). Composite inspected: exactly one tile offset per panel, correct
+  axis/direction, clean render.
+
+Gotchas for later tasks:
+
+- **`minimize`/`minimizePhase` are separate from `phase`/`attention`** on the
+  `bouncePhases` map; do not fold them in. Launch/attention keep their own
+  amplitude and the reaction stays independently opt-in.
+- **Detection is shell-side** (`dockMinimizedPulses` over the merged entries),
+  never QML. The first projection only seeds `m_dockMinimizedCounts`, so a Dock
+  that starts with minimized windows does not pulse. Rapid minimizes on one
+  entry restart the clock (coalesced into the last).
+- **`entryBounce` returns 0 before any branch under `Theme.reducedMotion`**, so
+  the reaction needs no separate reduced-motion gate.
+- `kMinimizeReactionMs` mirrors `component.dock.minimizeReaction.duration`; the
+  shell owns the clock, QML owns amplitude (no QML Behavior).
+- **Neighbour lateral ripple is deferred**; if added it needs its own
+  token-gated field and must not rebuild the model.
+- `DF_DOCK_MINIMIZE_REACTION_FIXTURE` is a capture seam, never session state.
 - `check-desktop-names.sh` still fails only on the pre-existing
   StatusNotifier/zoo/apppicker lines (unchanged here).

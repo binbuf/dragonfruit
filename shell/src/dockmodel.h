@@ -71,6 +71,11 @@ struct DockConfig {
     // app entry to open its chooser, and retarget along the Dock. Default off
     // keeps the macOS click contract.
     bool chooserOnHover = false;
+    // Opt-in minimize-to-icon reaction (T-14.7s): a bounded one-hop bounce on
+    // the acting app's entry when one of its windows minimizes, so the
+    // window's destination is legible at the Dock. Default off (macOS has no
+    // such reaction); disabled under reduced motion by the QML renderer.
+    bool minimizeReaction = false;
     bool reduceMotion = false;
     QStringList pinned;
     // Ordered absolute folder paths pinned to the Dock as folder stacks
@@ -179,3 +184,11 @@ constexpr qint64 kAttentionBounceHopMs = 400;
 constexpr qint64 kAttentionBounceMs = 2000;
 double dockLaunchBouncePhase(qint64 elapsedMs);
 double dockAttentionBouncePhase(qint64 elapsedMs);
+
+// T-14.7s minimize-to-icon reaction clock. One short hop (the caller maps the
+// phase with `sin(pi * phase)`): the phase is the linear progress in [0,1]
+// while the reaction is in flight and -1 once it has finished. The duration
+// mirrors `component.dock.minimizeReaction.duration` in the token source; the
+// QML owns the amplitude/easing so reduced motion can drop the translation.
+constexpr qint64 kMinimizeReactionMs = 320;
+double dockMinimizeReactionPhase(qint64 elapsedMs);

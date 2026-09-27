@@ -322,6 +322,17 @@ dark; the busy and success crops are stacked into `t14-dock-trash-empty.png`
 `t14-dock-trash-empty-{busy,success}-{light,dark}.png`. Needs a host Wayland
 session, spectacle, gdbus, and Pillow; not in `make e2e`.
 
+T-14.7s's Dock minimize-to-icon reaction sign-off is produced by
+`scripts/capture-dock-minimize-reaction.sh`
+(`make dock-minimize-reaction-capture`): the reaction is a ~320 ms one-hop
+bounce, so the shell's `DF_DOCK_MINIMIZE_REACTION_FIXTURE=0.5` seam pins the
+first running entry at the peak of the hop. The script captures a bottom Dock
+(light) and a right Dock (dark) so both the cross-axis and the direction away
+from the screen edge read; the two 2x crops are stacked into
+`t14-dock-minimize-reaction.png` and saved individually as
+`t14-dock-minimize-reaction-{bottom-light,right-dark}.png`. Needs a host Wayland
+session, spectacle, gdbus, and Pillow; not in `make e2e`.
+
 T-14.7i's Dock hover name label sign-off is produced by
 `scripts/capture-dock-tooltip.sh` (`make dock-tooltip-capture`): the nested demo
 runs once per entry kind through the shell's `DF_DOCK_TOOLTIP_FIXTURE` seam

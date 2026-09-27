@@ -35,6 +35,7 @@ Item {
             Settings.set("dock.showIndicators", true);
             Settings.set("dock.showRecentApps", false);
             Settings.set("dock.chooserOnHover", false);
+            Settings.set("dock.minimizeReaction", false);
             Settings.set("menu.global", true);
         }
 
@@ -66,7 +67,7 @@ Item {
             var pane = paneOf(shell);
 
             compare(pane.dockGroup.title, "Dock");
-            compare(pane.dockGroup.rows.children.length, 11);
+            compare(pane.dockGroup.rows.children.length, 12);
             verify(approx(pane.sizeSlider.value, 0.5));
             verify(approx(pane.magnificationSlider.value, 0.5));
             compare(pane.sizeSlider.minLabel, "Small");
@@ -81,6 +82,7 @@ Item {
             compare(pane.showIndicatorsToggle.checked, true);
             compare(pane.showRecentAppsToggle.checked, false);
             compare(pane.chooserOnHoverToggle.checked, false);
+            compare(pane.minimizeReactionToggle.checked, false);
         }
 
         function test_size_slider_applies_live() {
@@ -168,6 +170,8 @@ Item {
             compare(Settings.values["dock.showRecentApps"], true);
             pane.chooserOnHoverToggle.toggle();
             compare(Settings.values["dock.chooserOnHover"], true);
+            pane.minimizeReactionToggle.toggle();
+            compare(Settings.values["dock.minimizeReaction"], true);
 
             // Every change landed and round-trips through the binding.
             compare(pane.minimizeIntoTileToggle.checked, true);
@@ -176,6 +180,7 @@ Item {
             compare(pane.showIndicatorsToggle.checked, false);
             compare(pane.showRecentAppsToggle.checked, true);
             compare(pane.chooserOnHoverToggle.checked, true);
+            compare(pane.minimizeReactionToggle.checked, true);
         }
 
         function test_global_menu_toggle_applies_and_converges() {
@@ -204,6 +209,8 @@ Item {
             compare(pane.showIndicatorsToggle.checked, false);
             Settings.set("dock.minimizeIntoTileIcon", true);
             compare(pane.minimizeIntoTileToggle.checked, true);
+            Settings.set("dock.minimizeReaction", true);
+            compare(pane.minimizeReactionToggle.checked, true);
         }
 
         // The SettingsRow lays the label on the left and the control on the
@@ -213,7 +220,7 @@ Item {
             var shell = make();
             var pane = paneOf(shell);
             var rows = pane.dockGroup.rows.children;
-            verify(rows.length === 11, "expected eleven Dock rows, got " + rows.length);
+            verify(rows.length === 12, "expected twelve Dock rows, got " + rows.length);
             for (var i = 0; i < rows.length; ++i) {
                 var row = rows[i];
                 verify(row.control.x > row.width * 0.55,

@@ -36,6 +36,7 @@
 #include "desktopentry.h"
 #include "dockdrops.h"
 #include "dockmodel.h"
+#include "dockprojection.h"
 
 #include "filestarget.h"
 #include "focusstatus.h"
@@ -1506,6 +1507,21 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             }
         });
         timer->start();
+    }
+
+    // Capture/demo seam (T-14.7s): pin a constant minimize-reaction phase on the
+    // first running entry so the live visual check captures a mid-bounce frame
+    // deterministically. `DF_DOCK_MINIMIZE_REACTION_FIXTURE` is the phase
+    // (default 0.5, the peak). Never set in a normal session.
+    if (qEnvironmentVariableIsSet("DF_DOCK_MINIMIZE_REACTION_FIXTURE")) {
+        m_minimizeReactionFixture = true;
+        bool ok = false;
+        const double phase =
+            qEnvironmentVariable("DF_DOCK_MINIMIZE_REACTION_FIXTURE").toDouble(&ok);
+        if (ok)
+            m_minimizeReactionFixturePhase = qBound(0.0, phase, 1.0);
+        if (m_dockItem)
+            m_dockItem->setProperty("minimizeReaction", true);
     }
 
     // Capture/demo seam (T-12.3a): lock the session once the chrome is up so
@@ -4139,6 +4155,15 @@ void ShellController::applyDockSettings(bool reconfigure)
     m_dockItem->setProperty("animateOpening", m_dockConfig.animateOpening);
     m_dockItem->setProperty("showRecentApps", m_dockConfig.showRecentApps);
     m_dockItem->setProperty("chooserOnHover", m_dockConfig.chooserOnHover);
+    // The minimize reaction is opt-in; the capture seam forces the property on
+    // regardless of the persisted key (T-14.7s). Turning the key off drops any
+    // in-flight pulse so a stale hop cannot outlive the setting.
+    m_dockItem->setProperty("minimizeReaction",
+                            m_dockConfig.minimizeReaction || m_minimizeReactionFixture);
+    if (!m_dockConfig.minimizeReaction && !m_minimizeReactionFixture) {
+        m_minimizeReactionStart.clear();
+        publishDockBouncePhases();
+    }
     // The position is applied to the surface anchor (T-10 section 5); the
     // QML layout mirrors for a vertical Dock.
     const ShellProtocol::DockPosition position = dockPosition();
@@ -4414,6 +4439,10 @@ void ShellController::rebuildDockEntries()
     m_dockAllEntries = buildDockEntries(
         m_dockConfig.pinned, m_index, running, m_launchStates,
         m_dockConfig.showRecentApps ? m_recentAppIds : QStringList());
+    // A window that just minimized starts its app's one-shot reaction pulse
+    // (T-14.7s) before the entries are clamped/published. The pulse rides the
+    // phase map below, never the entry model.
+    detectDockMinimizePulses();
     // A full rebuild always re-publishes the entries; the clamp only decides
     // which ones survive and at what icon size.
     applyDockOverflowResult(computeDockOverflow(), true, true);
@@ -4542,12 +4571,30 @@ void ShellController::warnDockOverflow(const DockOverflowResult &overflow)
                << (overflow.overflowed ? "(non-droppable content still overflows)" : "");
 }
 
+void ShellController::detectDockMinimizePulses()
+{
+    const QHash<QString, int> counts = dockMinimizedCounts(m_dockAllEntries);
+    if (m_dockMinimizedCountsSeeded && m_dockConfig.minimizeReaction) {
+        const QStringList pulses =
+            dockMinimizedPulses(m_dockAllEntries, m_dockMinimizedCounts);
+        if (!pulses.isEmpty()) {
+            const qint64 now = QDateTime::currentMSecsSinceEpoch();
+            for (const QString &id : pulses)
+                m_minimizeReactionStart.insert(id, now);
+            ensureDockAnimation();
+        }
+    }
+    m_dockMinimizedCounts = counts;
+    m_dockMinimizedCountsSeeded = true;
+}
+
 void ShellController::publishDockBouncePhases()
 {
     if (!m_dockItem)
         return;
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
     QVariantMap phases;
+    bool fixtureAssigned = false;
     for (const QVariant &value : m_dockAllEntries) {
         const QVariantMap entry = value.toMap();
         const QString id = entry.value(QStringLiteral("id")).toString();
@@ -4555,6 +4602,7 @@ void ShellController::publishDockBouncePhases()
             continue;
         const QString appId = entry.value(QStringLiteral("appId")).toString();
         const QString desktopId = entry.value(QStringLiteral("desktopId")).toString();
+        const QString kind = entry.value(QStringLiteral("kind")).toString();
         double phase = -1.0;
         bool attention = false;
         if (!appId.isEmpty() && now < m_attentionUntil.value(appId)) {
@@ -4565,11 +4613,28 @@ void ShellController::publishDockBouncePhases()
         } else if (!desktopId.isEmpty() && m_launchStart.contains(desktopId)) {
             phase = dockLaunchBouncePhase(now - m_launchStart.value(desktopId));
         }
-        if (phase < 0.0 && !attention)
+        // The one-shot minimize reaction (T-14.7s) is its own field: it is
+        // opt-in and rendered separately so a launch/attention hop and a
+        // minimize pulse never fight for the same geometry. The capture seam
+        // pins a constant phase on the first running entry.
+        double minimizePhase = -1.0;
+        if (m_minimizeReactionFixture && !fixtureAssigned
+            && entry.value(QStringLiteral("running")).toBool()
+            && (kind == QLatin1String("pinned") || kind == QLatin1String("temporary"))) {
+            minimizePhase = m_minimizeReactionFixturePhase;
+            fixtureAssigned = true;
+        } else if (m_dockConfig.minimizeReaction && m_minimizeReactionStart.contains(id)) {
+            minimizePhase = dockMinimizeReactionPhase(now - m_minimizeReactionStart.value(id));
+        }
+        if (phase < 0.0 && !attention && minimizePhase < 0.0)
             continue;
         QVariantMap info;
         info.insert(QStringLiteral("phase"), phase);
         info.insert(QStringLiteral("attention"), attention);
+        if (minimizePhase >= 0.0) {
+            info.insert(QStringLiteral("minimize"), true);
+            info.insert(QStringLiteral("minimizePhase"), minimizePhase);
+        }
         phases.insert(id, info);
     }
     // The idle Dock must not churn QML bindings: only push a real change.
@@ -4638,12 +4703,19 @@ void ShellController::onDockAnimationTick()
         else
             ++it;
     }
+    for (auto it = m_minimizeReactionStart.begin(); it != m_minimizeReactionStart.end();) {
+        if (now - it.value() >= kMinimizeReactionMs)
+            it = m_minimizeReactionStart.erase(it);
+        else
+            ++it;
+    }
     // Advance only the phase map; the Repeater model is not touched, so the
     // delegates are not recreated and the hover/press state survives
     // (T-14.7c). A settled clock stops the timer entirely (zero idle wakeups).
     publishDockBouncePhases();
     scheduleDockRender();
-    if (m_attentionUntil.isEmpty() && m_launchStart.isEmpty()) {
+    if (m_attentionUntil.isEmpty() && m_launchStart.isEmpty()
+        && m_minimizeReactionStart.isEmpty()) {
         if (m_dockAnimTimer)
             m_dockAnimTimer->stop();
     }

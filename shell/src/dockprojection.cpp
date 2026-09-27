@@ -31,6 +31,59 @@ int dockWindowCount(const QVariantMap &entry)
     return entry.value(QStringLiteral("windows")).toInt();
 }
 
+namespace {
+
+// The minimized-window count for one app-region entry, or -1 when the entry is
+// not an app group (a divider/stack/trash, the overflow cell, or a per-window
+// `minimized` row): only entries carrying a `windowList` participate.
+int minimizedCountForEntry(const QVariantMap &entry)
+{
+    if (entry.value(QStringLiteral("kind")).toString() == QLatin1String("minimized"))
+        return -1;
+    const QVariant list = entry.value(QStringLiteral("windowList"));
+    if (!list.isValid() || list.isNull())
+        return -1;
+    int count = 0;
+    for (const QVariant &value : list.toList()) {
+        if (value.toMap().value(QStringLiteral("minimized")).toBool())
+            ++count;
+    }
+    return count;
+}
+
+} // namespace
+
+QHash<QString, int> dockMinimizedCounts(const QVariantList &entries)
+{
+    QHash<QString, int> counts;
+    for (const QVariant &value : entries) {
+        const QVariantMap entry = value.toMap();
+        const QString id = entry.value(QStringLiteral("id")).toString();
+        if (id.isEmpty())
+            continue;
+        const int count = minimizedCountForEntry(entry);
+        if (count >= 0)
+            counts.insert(id, count);
+    }
+    return counts;
+}
+
+QStringList dockMinimizedPulses(const QVariantList &entries,
+                                const QHash<QString, int> &previous)
+{
+    QStringList pulses;
+    for (const QVariant &value : entries) {
+        const QVariantMap entry = value.toMap();
+        const QString id = entry.value(QStringLiteral("id")).toString();
+        if (id.isEmpty())
+            continue;
+        const int count = minimizedCountForEntry(entry);
+        if (count >= 0 && count > previous.value(id, 0))
+            pulses.append(id);
+    }
+    return pulses;
+}
+
 QVariantList buildDockProjection(const QList<DockWindow> &windows)
 {
     struct AppGroup {
