@@ -241,8 +241,9 @@ install/uninstall while the picker is open stays fresh. Selecting a row toggles
 membership through `dock.pinned` — the only persisted state, settingsd the
 only writer — so the Dock and the picker cannot disagree. External drags show
 the dragged app's real identity in the open gap and pin it on drop; files
-dropped on an entry open with that app, on the Trash move to trash, and on the
-Downloads stack move into it. The picker is not a launcher — Launchpad and the
+dropped on an entry open with that app, on the Trash move to trash, and on a
+folder stack move into that folder. A single folder dropped on the app region
+pins as a stack (T-14.7k). The picker is not a launcher — Launchpad and the
 Spotlight-equivalent search remain post-gate. See
 [ADR 0090](adr/0090-dock-app-management-picker-and-drops.md) and the
 T-14.7e/T-14.7f units.
@@ -255,11 +256,13 @@ the source has not finished writing by the drop, the read is completed
 synchronously (bounded `poll`) before resolving, so a payload is never dropped
 in flight. The shell then resolves an app alias through `m_index` (desktop id →
 name + themed `iconPath`) and pushes only `name`/`iconPath`/count to QML: an
-app drag opens the gap with the real tile and name, a file drag shows the file
-count (or the single file's name). While hovering, the target entry draws a
-capsule from the pure `dockDropAffordance` helper: `Open with <app>` for an app
-entry, `Move to Trash` (or `Trash unavailable` when the backend is down),
-`Move to Downloads` for the stack, and no highlight for the divider or empty
+app drag opens the gap with the real tile and name, a folder drag opens it with
+the folder silhouette and its basename, and a file drag shows the file count
+(or the single file's name). While hovering, the target entry draws a capsule
+from the pure `dockDropAffordance` helper: `Open with <app>` for an app entry,
+`Move to Trash` (or `Trash unavailable` when the backend is down), `Move to
+<folder>` for a stack, `Pin Folder` for a folder on the app region, and no
+highlight for the divider or empty
 Dock. Dropping an alias that is already pinned pulses the existing entry
 (`flashPin`) instead of silently no-opping. Failed launches, an unavailable
 Trash, and partial Trash/Downloads moves raise the Dock's notification notice
@@ -279,7 +282,7 @@ budget scrolls and summarizes the remainder as "N more…", and an empty folder
 shows an empty row rather than a blank panel. The Dock renders a designed
 folder silhouette from our own geometry — a tab, a front face with a vertical
 gradient, a rim, and an inner sheen — never Apple artwork. Any folder dragged
-onto the Dock is pinned as a stack, persisted as a path list in
+onto the Dock is pinned as a stack, persisted as an ordered path list in
 `dock.pinnedFolders` (settingsd-owned) and listed read-only through
 `files-core`; the Downloads stack is the default member of the same widget. A
 missing path degrades to a dimmed entry with a notice. The folder's name is
@@ -287,6 +290,25 @@ never drawn inside the artwork — it comes from the hover `Tooltip` and the
 popover header. See
 [ADR 0092](adr/0092-dock-folder-stacks-and-folder-pins.md) and the
 T-14.7h/T-14.7k units.
+
+**Implementation (T-14.7k).** `FolderStacks` (`shell/src/folderstacks.{h,cpp}`)
+is the one model behind every folder stack: it holds the ordered absolute
+paths, lists each through the files-core C ABI (`files_core_list.h`: `df_files_begin`
+/`df_files_poll`, the same poll the chooser bridge uses), watches each folder
+for changes, and tracks a per-folder new-items badge cleared when the stack
+popover opens. A path that disappears stays in the set as a `missing` entry
+with an empty listing. The shell projects the Downloads member onto the Dock's
+`downloads*` properties and every `dock.pinnedFolders` path onto a `folderPins`
+list; both render through the same `kind: "stack"` entry, the same squircle
+geometry/inset tokens, and the one `DockStackPopover`. The Downloads stack is
+always first (the default member, not removable); user pins follow immediately
+before the Trash and are removed either by dragging the tile off the Dock or
+through the context menu's **Remove from Dock**, which writes
+`dock.pinnedFolders` through settingsd (the only writer). Files dropped on a
+folder stack move into that folder through the shared `moveFilesIntoFolder`
+helper (copy+remove across filesystems, name de-duplication). The pure drop
+classification in `dockdrops` is now app alias | folder | files
+(`DockDropPayload`, with `PinFolder`/`MoveToFolder` actions).
 
 ### Activation and launch
 

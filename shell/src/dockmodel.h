@@ -29,6 +29,10 @@ struct DockConfig {
     bool showRecentApps = false;
     bool reduceMotion = false;
     QStringList pinned;
+    // Ordered absolute folder paths pinned to the Dock as folder stacks
+    // (T-14.7k). Independent of `pinned` so app pins keep their exact
+    // `desktopId` semantics.
+    QStringList pinnedFolders;
 
     bool operator==(const DockConfig &) const = default;
 };

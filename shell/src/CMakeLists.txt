@@ -53,8 +53,8 @@ add_library(dragonfruit-shell-dockcore STATIC
     dockdrops.cpp
     dockmodel.cpp
     dockprojection.cpp
-    downloadsmonitor.cpp
     filestarget.cpp
+    folderstacks.cpp
     focusstatus.cpp
     framecommitgate.h
     launchfailure.cpp

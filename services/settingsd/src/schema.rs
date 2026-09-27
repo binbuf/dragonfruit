@@ -19,7 +19,7 @@ use crate::value::{SettingsError, Value};
 
 /// The current schema revision. Bump only when a key is added or a default
 /// changes; renames and removals are forbidden within the `1` series.
-pub const SCHEMA_VERSION: u32 = 6;
+pub const SCHEMA_VERSION: u32 = 7;
 
 /// The D-Bus type of a settings value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -342,6 +342,19 @@ pub const KEYS: &[KeySpec] = &[
         consumer: "shell/Dock",
         since: 1,
         summary: "Ordered desktop ids pinned to the Dock; empty seeds defaults.",
+    },
+    KeySpec {
+        key: "dock.pinnedFolders",
+        group: KeyGroup::Dock,
+        kind: KeyType::TextList,
+        default: KeyDefault::List(&[]),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "shell/Dock",
+        consumer: "shell/Dock",
+        since: 7,
+        summary: "Ordered absolute folder paths pinned to the Dock as stacks; empty seeds the Downloads default.",
     },
     // ── Workspaces ──────────────────────────────────────────────────────
     KeySpec {
@@ -739,6 +752,28 @@ mod tests {
         assert_eq!(spec.since, 6);
         assert!(spec.validate(&Value::Bool(false)).is_ok());
         assert!(spec.validate(&Value::Text("on".into())).is_err());
+    }
+
+    /// The Dock folder-pin list (T-14.7k): an ordered string list of absolute
+    /// folder paths, additive in revision 7, defaulting to empty so the shell
+    /// can seed the Downloads default on first run.
+    #[test]
+    fn the_dock_folder_pin_list_is_declared_in_revision_seven() {
+        let spec = spec("dock.pinnedFolders").expect("dock.pinnedFolders is declared");
+        assert_eq!(spec.group, KeyGroup::Dock);
+        assert_eq!(spec.kind, KeyType::TextList);
+        assert_eq!(spec.default, KeyDefault::List(&[]));
+        assert_eq!(spec.since, 7);
+        assert!(spec.since <= SCHEMA_VERSION);
+        assert!(spec
+            .validate(&Value::TextList(vec!["/home/user/Documents".into()]))
+            .is_ok());
+        assert!(spec.validate(&Value::Text("nope".into())).is_err());
+        // A single path is a valid list of one.
+        assert!(matches!(
+            spec.default.to_value(),
+            Value::TextList(items) if items.is_empty()
+        ));
     }
 
     /// A frozen manifest of the v1 key set. Adding a key is allowed (extend

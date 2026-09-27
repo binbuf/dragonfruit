@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(86 earlier sections omitted)_
+_(87 earlier sections omitted)_
 
-- **System font — Inter (post-T82, before T83)**: **State: done (first-party half).** The desktop's type is now Inter 4.001; **`fonts/Inter/`** (now tracked; T82's `/fonts/` .gitignore entry is gone) —
 - **T83 — T-12.3c Lock input capture and kill-resistance**: **State: done.** The locked session now captures input in the lock UI instead; **`compositor/src/lock.rs`** — `LockModel::input_surface()` (first live lock
 - **T84 — T-12.4a Idle timers**: **State: done.** The dim → blank → lock → suspend chain is a pure,; **`services/session/src/idle.rs`** (new) — `IdleStage`
 - **T85 — T-12.4b Idle inhibitors and wake restore**: **State: done.** `dragonfruit-session` now wraps the T-12.4a idle engine with; **`services/session/src/idle.rs`** — `IdleController` (owns `IdleTimers` +
@@ -45,6 +44,7 @@ _(86 earlier sections omitted)_
 - **T110h — T-14.7h Dock folder stacks: presentation and clicks**: **State: done.** Folder entries read like macOS: a clean folder silhouette with; `shell/dock/DockGlyph.qml` — the `stack` block is `stackArtwork`: back tab
 - **T110i — T-14.7i Dock hover name labels (Tooltip)**: **State: done.** The design system has a passive `Tooltip` and the Dock shows a; `design-system/components/Tooltip.qml` (new) — `open`, `anchorItem`,
 - **T110j — T-14.7j Dock Tahoe visual language: floating glass, squircles, states**: **State: done.** The Dock is now a layered floating glass plate with a bright; `design-system/tokens/tokens.json` — semantic colors `dockFill`, `dockRim`,
+- **T110k — T-14.7k Dock folder pins: any folder as a stack**: **State: done.** Any folder can be pinned to the Dock as a stack: a single; `services/settingsd/src/schema.rs` — `dock.pinnedFolders` (`as`, default
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -9111,3 +9111,93 @@ Gotchas for later tasks:
   placeholder `objectName`.
 - **`check-desktop-names.sh` still fails on the pre-existing
   StatusNotifier/zoo lines** (unchanged here).
+
+## T110k — T-14.7k Dock folder pins: any folder as a stack
+
+**State: done.** Any folder can be pinned to the Dock as a stack: a single
+folder dropped on the app region pins it, it lists through files-core, opens
+its popover listing, opens in Files on double-click / context menu, moves files
+into it on drop, and is removed by dragging the tile off the Dock or the context
+menu's Remove from Dock. The Downloads stack is the built-in first member of the
+same widget and one model. ADR `0104-dock-folder-pins-and-arbitrary-stack-owner.md`.
+
+Real paths:
+
+- `services/settingsd/src/schema.rs` — `dock.pinnedFolders` (`as`, default
+  empty, since 7, owner/consumer shell/Dock); `SCHEMA_VERSION` is now 7.
+  `docs/settings-keys.md` row added.
+- `shell/src/folderstacks.{h,cpp}` (new) — `FolderStacks` (ordered paths →
+  `{ path, name, items, count, badge, missing }` maps) lists each folder through
+  `files_core_list.h` (`df_files_begin`/`df_files_poll`, the chooser-bridge
+  poll), watches with `QFileSystemWatcher` for change notify only, and tracks a
+  per-folder new-items badge; `moveFilesIntoFolder` is the one move helper
+  (copy+remove across filesystems, `name.N` de-dup);
+  `folderDisplayName` is the basename/`Downloads` fallback.
+- `shell/src/downloadsmonitor.{h,cpp}` — **deleted**; the shell now lists all
+  folder stacks through `FolderStacks`. Its tests moved to `FolderStacks`.
+- `shell/src/dockdrops.{h,cpp}` — `DockDropPayload::Folder`, `uriListIsFolder`
+  (absolute + existing dir), `DockDropAction::PinFolder`/`MoveToFolder`
+  (`MoveToDownloads` renamed), folder affordances ("Pin Folder", "Move to
+  <name>").
+- `shell/src/dockmodel.{h,cpp}` — `DockConfig::pinnedFolders` read from
+  `dock.pinnedFolders`.
+- `shell/src/shellcontroller.cpp` — `refreshFolderStackData()` projects the
+  Downloads member onto `downloads*` (+ new `downloadsPath`) and the other paths
+  onto `folderPins`; `onDockFolderOpenRequested`/`onDockFolderViewed`/
+  `onDockFolderPinRemoved`; drop handling pins a folder, moves into the target
+  stack path (`folder:<path>` / `__downloads__`), and derives the folder payload
+  from the file list (`uriListIsFolder`). `DF_DOCK_FOLDER_PIN_FIXTURE`
+  (`<path>` or `<path>:open`) capture seam.
+- `shell/dock/Dock.qml` — `folderPins`/`folderEntries`/`stackEntryRef`,
+  `openStackFor(entry)` + `openStackById(id)`, per-stack popover
+  (`stackPopoverItems`/`stackPopoverTitle`), folder menu (Open in Files +
+  Remove from Dock when `canRemove`), drag-out removal (`dragIsFolderPin`),
+  external folder gap/affordance.
+- `shell/dock/DockEntry.qml` — `isExternalFolder` (stack silhouette for a
+  dropped folder), `canRemoveStack`, DragHandler enabled for removable stack
+  pins.
+- Tests: `tst_dockcore` — folder payload classification, `dockDropActionFor`/
+  `dockDropAffordance` folder rows, `FolderStacks` list/badge/missing/dedupe,
+  `moveFilesIntoFolder`, `folderDisplayName`. `tst_dock.qml` — 6
+  `test_folder_pin_*` cases.
+- `scripts/capture-dock-folder-pin.sh` + `make dock-folder-pin-capture`;
+  `docs/captures/t14-dock-folder-pin.png` (pinned / open); captures README.
+- Docs: ADR 0104, `docs/design/04-shell.md` "Dock folders and stacks" +
+  drop-affordance paragraph.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-settingsd`; `cargo fmt --all -- --check`;
+  `cargo clippy -p dragonfruit-settingsd --all-targets` — green.
+- `ctest --test-dir build --output-on-failure` — 53/53 (`tst_dock` 181,
+  `tst_dockcore` includes the new folder cases).
+- `make e2e` — green (Rust workspace suites + `make demo --headless`).
+- `./scripts/gen-tokens.py --check`; `./scripts/check-design-tokens.sh`;
+  `./scripts/check-no-capture-grab.sh` — green.
+- Live: `make dock-folder-pin-capture` (host Wayland + spectacle + gdbus +
+  Pillow).
+
+Gotchas for later tasks:
+
+- **One listing owner: `FolderStacks`.** Never add a `QDir` reader to the Dock.
+  The `QFileSystemWatcher` is a notify seam only; when files-core exposes its
+  `FolderWatcher` over the C ABI, `FolderStacks` must consume it and drop the
+  Qt watcher (ADR 0104).
+- **`dock.pinnedFolders` is separate from `dock.pinned`.** Folder pins must not
+  be folded into the app-pin list; the Downloads path is never stored in the
+  key (it is the always-present default member).
+- **Downloads is not removable in this unit.** `canRemove` is true only for
+  `dock.pinnedFolders` entries; `stackEntry` has `canRemove: false`.
+- **Folder pin ids are `folder:<absolute path>`**; the shell resolves a stack
+  drop target from the id (`__downloads__` → `downloadsDirectory()`,
+  `folder:<path>` → the path).
+- **`computeDockOverflow` still counts `fixedCount = 2`** (Downloads + Trash),
+  so a very large number of folder pins is not included in the clamp math. A
+  later task should pass the live folder-pin count.
+- **`DF_DOCK_FOLDER_PIN_FIXTURE` and `openStackById` are capture seams**, never
+  session values.
+- Live drag-from-Files was **not** exercised end to end; the capture used the
+  fixture's settingsd write, which is the production persistence path. Verify a
+  real nested drag in the human sign-off.
+- `check-desktop-names.sh` still fails on the pre-existing StatusNotifier/zoo
+  lines (unchanged here).

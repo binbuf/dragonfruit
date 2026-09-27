@@ -233,6 +233,17 @@ Files", separator, and rows with icons/names), empty ("Empty" row), and long
 (scrollable rows plus the "N more…" summary). Needs a host Wayland session,
 spectacle, gdbus, and Pillow; not in `make e2e`.
 
+T-14.7k's Dock folder pin sign-off is produced by
+`scripts/capture-dock-folder-pin.sh` (`make dock-folder-pin-capture`): the nested
+demo runs twice with `XDG_DOWNLOAD_DIR` pointed at a scratch folder and the
+shell's `DF_DOCK_FOLDER_PIN_FIXTURE` seam writing an extra absolute folder path
+through settingsd (the production drop path minus a synthetic drag). The two 2x
+crops are stacked into `t14-dock-folder-pin.png`: pinned (the user's folder tile
+in the stacks region before the Trash, next to the Downloads stack, with no
+caption) and open (that folder's popover: the header with the folder icon, the
+folder name and "Open in Files", a separator, and rows with icons/names). Needs
+a host Wayland session, spectacle, gdbus, and Pillow; not in `make e2e`.
+
 T-14.7i's Dock hover name label sign-off is produced by
 `scripts/capture-dock-tooltip.sh` (`make dock-tooltip-capture`): the nested demo
 runs once per entry kind through the shell's `DF_DOCK_TOOLTIP_FIXTURE` seam

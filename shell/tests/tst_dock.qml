@@ -36,6 +36,9 @@ Item {
         SignalSpy { id: downloadSpy; signalName: "downloadActivated" }
         SignalSpy { id: downloadsFolderSpy; signalName: "downloadsFolderRequested" }
         SignalSpy { id: downloadsViewedSpy; signalName: "downloadsViewed" }
+        SignalSpy { id: folderOpenSpy; signalName: "folderOpenRequested" }
+        SignalSpy { id: folderViewedSpy; signalName: "folderViewed" }
+        SignalSpy { id: folderRemovedSpy; signalName: "folderPinRemoved" }
         SignalSpy { id: sizePreviewSpy; signalName: "dockSizePreview" }
         SignalSpy { id: sizeChangedSpy; signalName: "dockSizeChanged" }
         SignalSpy { id: appPickerRequestedSpy; signalName: "appPickerRequested" }
@@ -2917,6 +2920,131 @@ Item {
             // stack-specific tap handler.
             mouseClick(entry, entry.width / 2, entry.height / 2);
             compare(activated, 1);
+        }
+
+        // --- T-14.7k: any folder as a stack --------------------------------
+
+        function folderPin() {
+            return { id: "folder:/home/u/Documents", path: "/home/u/Documents",
+                     name: "Documents",
+                     items: [ { name: "notes.txt", path: "/home/u/Documents/notes.txt",
+                                isDir: false },
+                              { name: "Projects", path: "/home/u/Documents/Projects",
+                                isDir: true } ],
+                     count: 2, badge: 0, missing: false };
+        }
+
+        function test_folder_pin_renders_in_the_stacks_region_before_trash() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                downloadsItems: stackItems(), downloadsCount: 2,
+                folderPins: [ folderPin() ],
+                entries: [ app("a", "A", true) ]
+            });
+            var downloadsIdx = dock.indexOfItemId("__downloads__");
+            var pinIdx = dock.indexOfItemId("folder:/home/u/Documents");
+            var trashIdx = dock.indexOfItemId("__trash__");
+            verify(downloadsIdx >= 0 && pinIdx > downloadsIdx && trashIdx > pinIdx);
+            var pin = dock.items[pinIdx];
+            compare(pin.kind, "stack");
+            compare(pin.name, "Documents");
+            compare(pin.stackCount, 2);
+            compare(pin.canRemove, true);
+            // The Downloads default member is not removable.
+            compare(dock.items[downloadsIdx].canRemove, false);
+        }
+
+        function test_folder_pin_single_click_opens_its_own_popover() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                downloadsItems: stackItems(), downloadsCount: 2,
+                folderPins: [ folderPin() ],
+                entries: [ app("a", "A", true) ]
+            });
+            folderViewedSpy.target = dock;
+            folderViewedSpy.clear();
+            var pinIdx = dock.indexOfItemId("folder:/home/u/Documents");
+            dock.activateEntry(dock.items[pinIdx]);
+            compare(dock.stackOpen, true);
+            compare(folderViewedSpy.count, 1);
+            compare(folderViewedSpy.signalArguments[0][0], "/home/u/Documents");
+            var popover = findChild(dock, "stackPopover");
+            compare(popover.title, "Documents");
+            compare(popover.items.length, 2);
+        }
+
+        function test_folder_pin_double_click_opens_the_folder_in_files() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                downloadsItems: stackItems(), downloadsCount: 2,
+                folderPins: [ folderPin() ],
+                entries: [ app("a", "A", true) ]
+            });
+            folderOpenSpy.target = dock;
+            folderOpenSpy.clear();
+            var pin = dock.items[dock.indexOfItemId("folder:/home/u/Documents")];
+            dock.handleEntryTap(pin);
+            compare(dock.stackOpen, true);
+            compare(folderOpenSpy.count, 0);
+            dock.handleEntryTap(pin);
+            compare(folderOpenSpy.count, 1);
+            compare(folderOpenSpy.signalArguments[0][0], "/home/u/Documents");
+            compare(dock.stackOpen, false);
+        }
+
+        function test_folder_pin_context_menu_offers_open_and_remove() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                downloadsItems: stackItems(), downloadsCount: 2,
+                folderPins: [ folderPin() ],
+                entries: [ app("a", "A", true) ]
+            });
+            var pin = dock.items[dock.indexOfItemId("folder:/home/u/Documents")];
+            dock.openEntryMenu(pin);
+            var hasOpen = false;
+            var hasRemove = false;
+            for (var i = 0; i < dock.menuModel.length; ++i) {
+                if (dock.menuModel[i].action === "open_stack_folder")
+                    hasOpen = true;
+                if (dock.menuModel[i].action === "remove_folder_pin")
+                    hasRemove = true;
+            }
+            verify(hasOpen);
+            verify(hasRemove);
+        }
+
+        function test_folder_pin_drag_out_removes_it() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                downloadsItems: stackItems(), downloadsCount: 2,
+                folderPins: [ folderPin() ],
+                entries: [ app("a", "A", true) ]
+            });
+            folderRemovedSpy.target = dock;
+            folderRemovedSpy.clear();
+            var pin = dock.items[dock.indexOfItemId("folder:/home/u/Documents")];
+            dock.beginDrag(pin);
+            verify(dock.dragging);
+            // A drop far off the Dock ends the pin (T-14.7k).
+            dock.dropAt(pin, -1000);
+            compare(folderRemovedSpy.count, 1);
+            compare(folderRemovedSpy.signalArguments[0][0], "/home/u/Documents");
+        }
+
+        function test_missing_folder_pin_degrades_but_renders() {
+            var missing = folderPin();
+            missing.missing = true;
+            missing.items = [];
+            missing.count = 0;
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                folderPins: [ missing ],
+                entries: [ app("a", "A", true) ]
+            });
+            var idx = dock.indexOfItemId("folder:/home/u/Documents");
+            verify(idx >= 0);
+            compare(dock.items[idx].missing, true);
+            compare(dock.items[idx].stackCount, 0);
         }
 
         function test_recent_entries_render_in_the_app_region() {

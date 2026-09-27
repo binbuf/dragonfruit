@@ -61,6 +61,14 @@ Rectangle {
     // popover header name the folder without the artwork carrying text
     // (T-14.7h); the Downloads special case just uses "Downloads".
     property string downloadsName: qsTr("Downloads")
+    // The Downloads stack's absolute path, so the default member can be told
+    // apart from a user folder pin (T-14.7k).
+    property string downloadsPath: ""
+    // The user's pinned folder stacks (T-14.7k), injected by the shell: each
+    // is `{ id, path, name, items, count, badge, missing }`. They render in
+    // the stacks region immediately before the Trash through the same widget
+    // and geometry tokens as the Downloads stack.
+    property var folderPins: []
     // The Trash menu's Empty Trash confirmation step (section 13): selecting
     // Empty Trash replaces the menu model with the confirm/cancel choice
     // before the shell performs the destructive operation.
@@ -132,6 +140,8 @@ Rectangle {
     property bool dragOutside: false
     property bool dragOutOfDock: false
     property bool dragPromote: false
+    property bool dragIsFolderPin: false
+    property string dragFolderPath: ""
     property var dragBaseCenters: []
     property var dragOriginalPinnedIds: []
 
@@ -192,6 +202,8 @@ Rectangle {
     // performs the resolved action when `externalDropRequested` fires.
     property bool externalDragActive: false
     property bool externalPayloadIsApp: false
+    // A single dropped folder (T-14.7k), pinned as a stack rather than opened.
+    property bool externalPayloadIsFolder: false
     property int externalPayloadCount: 0
     // The id of the entry under the drag pointer ("" = none).
     property string externalTargetId: ""
@@ -232,6 +244,22 @@ Rectangle {
     // The Downloads stack popover (T-10 section 17).
     property bool stackOpen: false
     property Item stackAnchor: null
+    // The stack entry whose popover is open (T-14.7k); drives the popover's
+    // items/title and tells the Downloads default from a user pin.
+    property var stackEntryRef: null
+    readonly property var stackPopoverItems: {
+        if (stackEntryRef !== null && stackEntryRef.id !== undefined
+                && stackEntryRef.id !== "__downloads__")
+            return stackEntryRef.items !== undefined ? stackEntryRef.items : [];
+        return downloadsItems;
+    }
+    readonly property string stackPopoverTitle: {
+        if (stackEntryRef !== null && stackEntryRef.id !== undefined
+                && stackEntryRef.id !== "__downloads__"
+                && stackEntryRef.name !== undefined && stackEntryRef.name.length > 0)
+            return stackEntryRef.name;
+        return downloadsName;
+    }
     // The Add Application picker (T-14.7e, ADR 0090): the app-index corpus the
     // shell builds with the pure `buildAppPickerList` helper, whether the
     // service is reachable, and the open/anchor state.
@@ -350,6 +378,11 @@ Rectangle {
     signal downloadActivated(string path)
     signal downloadsFolderRequested()
     signal downloadsViewed()
+    // A pinned folder stack (T-14.7k): a row was chosen, the folder itself was
+    // opened, the popover was viewed (clear its badge), or the pin was removed.
+    signal folderOpenRequested(string path)
+    signal folderViewed(string path)
+    signal folderPinRemoved(string path)
     // Escape asked to leave Dock keyboard navigation; the shell releases the
     // compositor keyboard focus back to the active window (T-10 section 20).
     signal keyboardFocusReleaseRequested()
@@ -521,8 +554,33 @@ Rectangle {
     // stable drop target.
     readonly property var stackEntry: ({
         id: "__downloads__", appId: "", name: dock.downloadsName, kind: "stack",
-        running: false, stackCount: dock.downloadsCount, badge: dock.downloadsBadge
+        running: false, stackCount: dock.downloadsCount, badge: dock.downloadsBadge,
+        path: dock.downloadsPath, items: dock.downloadsItems, canRemove: false,
+        missing: false
     })
+    // The user's pinned folder stacks (T-14.7k), normalized to the same entry
+    // shape as `stackEntry`. They are removable (drag out or context menu),
+    // unlike the built-in Downloads member.
+    readonly property var folderEntries: {
+        var out = [];
+        for (var i = 0; i < folderPins.length; ++i) {
+            var p = folderPins[i];
+            if (!p || p.path === undefined)
+                continue;
+            out.push({
+                id: p.id !== undefined ? p.id : ("folder:" + p.path),
+                appId: "", name: p.name !== undefined ? p.name : "",
+                kind: "stack", running: false,
+                path: p.path,
+                stackCount: p.count !== undefined ? p.count : 0,
+                badge: p.badge !== undefined ? p.badge : 0,
+                missing: p.missing === true,
+                items: p.items !== undefined ? p.items : [],
+                canRemove: true
+            });
+        }
+        return out;
+    }
     readonly property var dividerEntry: ({ id: "__divider__", kind: "divider" })
 
     // Pinned entries are the prefix of the app region (the shell emits pinned
@@ -558,12 +616,14 @@ Rectangle {
     // so it reflows safely: a placeholder entry opens a real gap at the
     // insertion index (section 12).
     readonly property bool externalGap:
-        externalDragActive && externalPayloadIsApp && externalInsertIndex >= 0
+        externalDragActive && (externalPayloadIsApp || externalPayloadIsFolder)
+        && externalInsertIndex >= 0
     readonly property var externalPlaceholderEntry: ({
         id: "__external_drop__", kind: "external",
         name: externalPayloadName,
         appId: externalPayloadIsApp ? externalPayloadName : "",
         iconPath: externalPayloadIconPath,
+        externalFolder: externalPayloadIsFolder,
         running: false
     })
     readonly property var items: {
@@ -576,6 +636,8 @@ Rectangle {
         for (var i = 0; i < minimizedEntries.length; ++i)
             out.push(minimizedEntries[i]);
         out.push(stackEntry);
+        for (var f = 0; f < folderEntries.length; ++f)
+            out.push(folderEntries[f]);
         out.push(trashEntry);
         return out;
     }
@@ -718,10 +780,10 @@ Rectangle {
         // disabled (T-10 section 16 lifecycle).
         if (entry.kind === "trash" && entry.available === false)
             return;
-        // The Downloads stack opens its folder popover, never a launch
-        // (T-10 section 17).
+        // A folder stack (the Downloads default or a pin) opens its folder
+        // popover, never a launch (T-10 section 17, T-14.7k).
         if (entry.kind === "stack") {
-            openStack();
+            openStackFor(entry);
             return;
         }
         if (entry.running === true && entry.kind !== "minimized"
@@ -740,7 +802,10 @@ Rectangle {
         if (entry.kind === "stack") {
             if (stackOpen)
                 closePopovers();
-            downloadsFolderRequested();
+            if (entry.id === stackEntry.id)
+                downloadsFolderRequested();
+            else if (entry.path !== undefined)
+                folderOpenRequested(entry.path);
         }
     }
 
@@ -863,17 +928,37 @@ Rectangle {
         windowChooser.open = true;
     }
 
-    // Open the Downloads stack popover and clear the new-items badge (T-10
-    // section 17). The shell owns the badge state; `downloadsViewed` asks it
-    // to mark the folder seen.
+    // Open the Downloads stack popover (the default member).
     function openStack() {
+        openStackFor(stackEntry);
+    }
+
+    // Capture/demo seam (T-14.7k): open the stack entry with `id` without a
+    // synthetic pointer click. Never used in a normal session.
+    function openStackById(id) {
+        var idx = indexOfItemId(id);
+        if (idx >= 0)
+            openStackFor(items[idx]);
+    }
+
+    // Open a folder stack's popover and clear its new-items badge. The shell
+    // owns the badge state; `downloadsViewed`/`folderViewed` ask it to mark the
+    // folder seen. The open entry drives the popover's items and title
+    // (T-10 section 17, T-14.7k).
+    function openStackFor(entry) {
+        if (!entry || entry.kind !== "stack")
+            return;
         closePopovers();
         hideTooltip();
         hideTimer.stop();
-        var idx = indexOfItemId(stackEntry.id);
+        stackEntryRef = entry;
+        var idx = indexOfItemId(entry.id);
         stackAnchor = idx >= 0 ? entryRepeater.itemAt(idx) : null;
         stackPopover.open = true;
-        downloadsViewed();
+        if (entry.id === stackEntry.id)
+            downloadsViewed();
+        else if (entry.path !== undefined)
+            folderViewed(entry.path);
     }
 
     // Open the Add Application picker anchored to the divider (T-14.7e). The
@@ -904,9 +989,14 @@ Rectangle {
     }
 
     function isDraggable(entry) {
-        return entry && entry.kind !== "divider" && entry.kind !== "trash"
-                && entry.kind !== "minimized" && entry.kind !== "external"
-                && entry.kind !== "stack";
+        if (!entry)
+            return false;
+        // A user folder pin is removable by dragging it out (T-14.7k); the
+        // built-in Downloads member is not.
+        if (entry.kind === "stack")
+            return entry.canRemove === true;
+        return entry.kind !== "divider" && entry.kind !== "trash"
+                && entry.kind !== "minimized" && entry.kind !== "external";
     }
 
     function currentPinnedIds() {
@@ -927,6 +1017,8 @@ Rectangle {
         dragOutside = false;
         dragOutOfDock = false;
         dragPromote = false;
+        dragIsFolderPin = false;
+        dragFolderPath = "";
         dragBaseCenters = [];
         dragOriginalPinnedIds = [];
     }
@@ -941,6 +1033,21 @@ Rectangle {
         revealTimer.stop();
         dragging = true;
         dragEntryId = entry.id;
+        // A folder pin only supports drag-out removal, not reordering
+        // (T-14.7k): there is no app-region slot to drop it into.
+        if (entry.kind === "stack") {
+            dragIsFolderPin = true;
+            dragFolderPath = entry.path !== undefined ? entry.path : "";
+            dragFromAppIndex = -1;
+            dragOriginalPinnedIds = currentPinnedIds();
+            dragTargetIndex = -1;
+            dragPointerAlong = -1;
+            dragOutside = false;
+            dragOutOfDock = false;
+            dragPromote = false;
+            dragBaseCenters = [];
+            return;
+        }
         dragFromAppIndex = appIndexOfId(entry.id);
         dragOriginalPinnedIds = currentPinnedIds();
         dragTargetIndex = entry.kind === "pinned" ? dragFromAppIndex : pinnedCount;
@@ -987,6 +1094,13 @@ Rectangle {
                           : restingPlateRect.y + restingPlateRect.h;
         var margin = iconSize;
         dragOutside = along < start - margin || along > end + margin;
+        if (dragIsFolderPin) {
+            // Dropping a folder pin off the Dock removes it (T-14.7k).
+            dragOutOfDock = dragOutside;
+            dragPromote = false;
+            dragTargetIndex = -1;
+            return;
+        }
         dragOutOfDock = dragOutside && entry.kind === "pinned";
         dragTargetIndex = computeDropIndex(along);
         dragPromote = !dragOutside && entry.kind !== "pinned"
@@ -1018,6 +1132,14 @@ Rectangle {
     }
 
     function finalizeDrag() {
+        if (dragIsFolderPin) {
+            var removed = dragOutOfDock;
+            var path = dragFolderPath;
+            resetDrag();
+            if (removed && path.length > 0)
+                folderPinRemoved(path);
+            return;
+        }
         var next = pinnedIdsAfterDrag();
         var changed = next.join("\n") !== dragOriginalPinnedIds.join("\n");
         resetDrag();
@@ -1050,6 +1172,14 @@ Rectangle {
     function dragPointerLeft() {
         if (!dragging)
             return;
+        if (dragIsFolderPin) {
+            // Leaving the surface with a folder pin removes it (T-14.7k).
+            dragOutside = true;
+            dragOutOfDock = true;
+            dragPromote = false;
+            finalizeDrag();
+            return;
+        }
         var entry = appEntries[appIndexOfId(dragEntryId)];
         dragOutside = true;
         dragOutOfDock = entry !== undefined && entry.kind === "pinned";
@@ -1173,6 +1303,7 @@ Rectangle {
         revealTimer.stop();
         externalDragActive = true;
         externalPayloadIsApp = payloadIsApp;
+        externalPayloadIsFolder = false;
         externalPayloadCount = payloadCount;
         externalPayloadName = "";
         externalPayloadIconPath = "";
@@ -1186,8 +1317,9 @@ Rectangle {
 
     // The enter-time read resolved the payload (T-14.7f): update the ghost
     // identity and the file count/name. Called by the shell once per drag.
-    function setExternalPayload(payloadIsApp, name, iconPath, count, firstName) {
+    function setExternalPayload(payloadIsApp, name, iconPath, count, firstName, folder) {
         externalPayloadIsApp = payloadIsApp;
+        externalPayloadIsFolder = folder === true;
         externalPayloadName = name !== undefined ? name : "";
         externalPayloadIconPath = iconPath !== undefined ? iconPath : "";
         externalPayloadCount = count !== undefined ? count : 0;
@@ -1216,7 +1348,7 @@ Rectangle {
             if (idx >= 0 && items[idx].kind === "stack")
                 springLoadTimer.start();
         }
-        if (externalPayloadIsApp) {
+        if (externalPayloadIsApp || externalPayloadIsFolder) {
             var insertion = externalInsertionIndex(axisIsX ? local.x : local.y);
             if (insertion !== externalInsertIndex)
                 externalInsertIndex = insertion;
@@ -1269,6 +1401,7 @@ Rectangle {
     function resetExternalDrag() {
         externalDragActive = false;
         externalPayloadIsApp = false;
+        externalPayloadIsFolder = false;
         externalPayloadCount = 0;
         externalPayloadName = "";
         externalPayloadIconPath = "";
@@ -1291,10 +1424,23 @@ Rectangle {
                 return "";
             return qsTr("Add to Dock");
         }
+        if (externalPayloadIsFolder) {
+            // A single dropped folder pins on the app region and moves into a
+            // stack or the Trash (T-14.7k).
+            if (targetKind === "divider")
+                return "";
+            if (targetKind === "stack")
+                return targetName.length > 0 ? qsTr("Move to %1").arg(targetName)
+                                             : qsTr("Move to Folder");
+            if (targetKind === "trash")
+                return trashAvailable ? qsTr("Move to Trash") : qsTr("Trash unavailable");
+            return qsTr("Pin Folder");
+        }
         if (targetKind === "trash")
             return trashAvailable ? qsTr("Move to Trash") : qsTr("Trash unavailable");
         if (targetKind === "stack")
-            return qsTr("Move to Downloads");
+            return targetName.length > 0 ? qsTr("Move to %1").arg(targetName)
+                                         : qsTr("Move to Folder");
         if (targetKind === "pinned" || targetKind === "temporary"
                 || targetKind === "recent")
             return targetName.length > 0 ? qsTr("Open with %1").arg(targetName)
@@ -1339,7 +1485,7 @@ Rectangle {
             // the drop can target a row.
             var idx = dock.indexOfItemId(dock.externalTargetId);
             if (idx >= 0 && dock.items[idx].kind === "stack")
-                dock.openStack();
+                dock.openStackFor(dock.items[idx]);
         }
     }
 
@@ -1380,7 +1526,7 @@ Rectangle {
         if (e.kind === "trash")
             return trashMenuModel();
         if (e.kind === "stack")
-            return stackMenuModel();
+            return stackMenuModel(e);
         var running = e.running === true;
         var minimized = e.kind === "minimized";
         var list = e.windowList !== undefined ? e.windowList : [];
@@ -1593,14 +1739,29 @@ Rectangle {
         return out;
     }
 
-    // The Downloads stack menu (T-10 section 17): open the folder in Files;
-    // the folder listing itself is the click popover.
-    function stackMenuModel() {
+    // A folder stack menu (T-10 section 17, T-14.7k): open the folder in Files;
+// the folder listing itself is the click popover. A user pin (not the built-in
+// Downloads member) also offers Remove from Dock, which writes the settings key.
+    function stackMenuModel(e) {
         var out = [];
-        out.push({
-            type: "item", label: qsTr("Open in Files"),
-            action: "open_downloads_folder"
-        });
+        if (e && e.id !== "__downloads__") {
+            out.push({
+                type: "item", label: qsTr("Open in Files"),
+                action: "open_stack_folder",
+                payload: { path: e.path }
+            });
+            out.push({ type: "separator" });
+            out.push({
+                type: "item", label: qsTr("Remove from Dock"),
+                action: "remove_folder_pin",
+                payload: { path: e.path }
+            });
+        } else {
+            out.push({
+                type: "item", label: qsTr("Open in Files"),
+                action: "open_downloads_folder"
+            });
+        }
         return out;
     }
 
@@ -2199,6 +2360,19 @@ Rectangle {
                 dock.openAppPicker();
                 return;
             }
+            // A pinned folder's menu is a Dock-local surface (T-14.7k): open
+            // the folder through the one reveal path, or remove the pin.
+            if (item.action === "open_stack_folder") {
+                if (item.payload && item.payload.path !== undefined)
+                    dock.folderOpenRequested(item.payload.path);
+                return;
+            }
+            if (item.action === "remove_folder_pin") {
+                if (item.payload && item.payload.path !== undefined)
+                    dock.folderPinRemoved(item.payload.path);
+                dock.closePopovers();
+                return;
+            }
             dock.menuActionRequested(item.action, item.payload);
         }
     }
@@ -2245,14 +2419,16 @@ Rectangle {
             "show_all_windows", { appId: dock.chooserEntry ? dock.chooserEntry.appId : "" })
     }
 
-    // The Downloads stack popover (T-10 section 17). It is anchored and placed
-    // exactly like the window chooser; the shell renders it into the Dock's
-    // overlay surface and performs the resolved open action.
+    // The folder stack popover (T-10 section 17, T-14.7k). It serves the
+    // Downloads default member and every pinned folder through one widget; the
+    // open entry decides the listing, title, and open action. It is anchored
+    // and placed exactly like the window chooser; the shell renders it into
+    // the Dock's overlay surface and performs the resolved open action.
     DockStackPopover {
         id: stackPopover
         objectName: "stackPopover"
-        items: dock.downloadsItems
-        title: dock.downloadsName
+        items: dock.stackPopoverItems
+        title: dock.stackPopoverTitle
         anchorItem: dock.stackAnchor
         x: {
             if (!dock.stackAnchor)
@@ -2285,7 +2461,13 @@ Rectangle {
             dock.scheduleHide();
         }
         onItemActivated: (path) => dock.downloadActivated(path)
-        onOpenFolder: () => dock.downloadsFolderRequested()
+        onOpenFolder: () => {
+            if (dock.stackEntryRef && dock.stackEntryRef.id !== dock.stackEntry.id
+                    && dock.stackEntryRef.path !== undefined)
+                dock.folderOpenRequested(dock.stackEntryRef.path);
+            else
+                dock.downloadsFolderRequested();
+        }
     }
 
     // The Add Application picker (T-14.7e, ADR 0090). It is anchored to the
