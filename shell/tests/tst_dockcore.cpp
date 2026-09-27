@@ -29,6 +29,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QProcessEnvironment>
+#include <QSet>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
@@ -1426,19 +1427,132 @@ private slots:
         QCOMPARE(countKind(one.entries, QStringLiteral("temporary")), 2);
         QCOMPARE(countKind(one.entries, QStringLiteral("recent")), 0);
 
-        // At 250 both droppable regions shrink: the recent first, then one
-        // temporary. Pinned are never dropped.
+        // At 250 the recent goes and the running groups no longer all fit, so
+        // they fold into the terminal overflow cell (T-14.7q). Pinned are
+        // never dropped, and the recent is still dropped silently.
         const DockOverflowResult two =
             applyDockOverflow(entries, 250, 48, 32, 64, 6, 1);
         QVERIFY(two.clamped);
         QVERIFY(!two.overflowed);
         QCOMPARE(two.iconSize, 32);
         QCOMPARE(two.hiddenRecent, 1);
-        QCOMPARE(two.hiddenTemporary, 1);
-        QCOMPARE(two.entries.size(), entries.size() - 2);
+        QCOMPARE(two.hiddenTemporary, 2);
+        QCOMPARE(two.overflowShown, 2);
         QCOMPARE(countKind(two.entries, QStringLiteral("pinned")), 3);
-        QCOMPARE(countKind(two.entries, QStringLiteral("temporary")), 1);
+        QCOMPARE(countKind(two.entries, QStringLiteral("temporary")), 0);
         QCOMPARE(countKind(two.entries, QStringLiteral("recent")), 0);
+        QCOMPARE(countKind(two.entries, QStringLiteral("overflow")), 1);
+    }
+
+    // -- overflow cell (T-14.7q) -----------------------------------------
+
+    // The hidden running groups a result reports, in the overflow entry.
+    QVariantList overflowGroups(const DockOverflowResult &result)
+    {
+        for (const QVariant &value : result.entries) {
+            const QVariantMap map = value.toMap();
+            if (map.value(QStringLiteral("kind")).toString() == QLatin1String("overflow"))
+                return map.value(QStringLiteral("groups")).toList();
+        }
+        return {};
+    }
+
+    void overflowCellCarriesTheHiddenRunningGroups()
+    {
+        // 3 pinned + 3 temporary, no room for all of them at the minimum: the
+        // visible set keeps pinned only and the three running groups fold into
+        // one terminal cell.
+        const QVariantList entries = makeOverflowEntries(3, 3, 0, 0);
+        const DockOverflowResult result =
+            applyDockOverflow(entries, 250, 48, 32, 64, 6, 1);
+        QVERIFY(result.clamped);
+        QVERIFY(!result.overflowed);
+        QCOMPARE(result.iconSize, 32);
+        QCOMPARE(result.hiddenTemporary, 3);
+        QCOMPARE(result.overflowShown, 3);
+        QCOMPARE(countKind(result.entries, QStringLiteral("pinned")), 3);
+        QCOMPARE(countKind(result.entries, QStringLiteral("temporary")), 0);
+        QCOMPARE(countKind(result.entries, QStringLiteral("overflow")), 1);
+
+        const QVariantList groups = overflowGroups(result);
+        QCOMPARE(groups.size(), 3);
+        // Every hidden group is reachable, each a running temporary entry
+        // marked so the Dock can re-resolve the chooser after a projection.
+        QSet<QString> ids;
+        for (const QVariant &group : groups) {
+            const QVariantMap map = group.toMap();
+            QCOMPARE(map.value(QStringLiteral("kind")).toString(),
+                     QStringLiteral("temporary"));
+            QCOMPARE(map.value(QStringLiteral("overflowGroup")).toBool(), true);
+            ids.insert(map.value(QStringLiteral("id")).toString());
+        }
+        QCOMPARE(ids.size(), 3);
+    }
+
+    void overflowCellNeverIncludesPinned()
+    {
+        // 4 pinned + 4 temporary: the pinned prefix always survives whole, and
+        // no group in the cell is a pinned entry.
+        const QVariantList entries = makeOverflowEntries(4, 4, 0, 0);
+        const DockOverflowResult result =
+            applyDockOverflow(entries, 300, 48, 32, 64, 6, 1);
+        QCOMPARE(countKind(result.entries, QStringLiteral("pinned")), 4);
+        const QVariantList groups = overflowGroups(result);
+        QVERIFY(groups.size() > 0);
+        for (const QVariant &group : groups) {
+            const QVariantMap map = group.toMap();
+            QVERIFY(map.value(QStringLiteral("kind")).toString()
+                    != QLatin1String("pinned"));
+        }
+    }
+
+    void overflowCellIsTheLastAppRegionEntry()
+    {
+        // The cell sits after the last app-region entry and before the first
+        // minimized entry (the Dock inserts the divider after it).
+        const QVariantList entries = makeOverflowEntries(2, 3, 0, 2);
+        const DockOverflowResult result =
+            applyDockOverflow(entries, 300, 48, 32, 64, 6, 1);
+        int overflowIndex = -1;
+        int minimizedIndex = -1;
+        int lastAppIndex = -1;
+        for (int i = 0; i < result.entries.size(); ++i) {
+            const QString kind =
+                result.entries.at(i).toMap().value(QStringLiteral("kind")).toString();
+            if (kind == QLatin1String("overflow"))
+                overflowIndex = i;
+            else if (kind == QLatin1String("minimized") && minimizedIndex < 0)
+                minimizedIndex = i;
+            else if (kind == QLatin1String("pinned") || kind == QLatin1String("temporary")
+                     || kind == QLatin1String("recent"))
+                lastAppIndex = i;
+        }
+        QVERIFY(overflowIndex > lastAppIndex);
+        QVERIFY(overflowIndex < minimizedIndex);
+    }
+
+    void overflowFallsBackWhenNoCellFits()
+    {
+        // 10 pinned with no droppable room: even one cell cannot fit, so the
+        // legacy error state stands (no cell, nothing silently reachable).
+        const QVariantList entries = makeOverflowEntries(10, 0, 0, 0);
+        const DockOverflowResult result =
+            applyDockOverflow(entries, 100, 48, 32, 64, 6, 1);
+        QVERIFY(result.overflowed);
+        QCOMPARE(result.overflowShown, 0);
+        QCOMPARE(countKind(result.entries, QStringLiteral("overflow")), 0);
+        QCOMPARE(countKind(result.entries, QStringLiteral("pinned")), 10);
+    }
+
+    void overflowNothingHiddenWhenEverythingFits()
+    {
+        // No clamp and no cell when the running groups fit.
+        const QVariantList entries = makeOverflowEntries(2, 2, 0, 0);
+        const DockOverflowResult result =
+            applyDockOverflow(entries, 600, 48, 32, 64, 6, 1);
+        QVERIFY(!result.clamped);
+        QCOMPARE(result.overflowShown, 0);
+        QCOMPARE(countKind(result.entries, QStringLiteral("overflow")), 0);
     }
 
     void overflowNeverDropsPinned()

@@ -3313,6 +3313,140 @@ Item {
             tryCompare(badge, "visible", false);
         }
 
+        // -- Terminal overflow cell (T-14.7q) ------------------------------
+
+        function hiddenGroup(id, name, windowCount) {
+            var list = [];
+            for (var i = 0; i < windowCount; ++i)
+                list.push({ windowId: id + "-w" + i, title: name + " " + (i + 1),
+                            focused: i === 0, workspaceName: "Space 1" });
+            return { id: id, appId: id, name: name, kind: "temporary",
+                     running: true, desktopId: id + ".desktop",
+                     windowCount: windowCount, windowList: list,
+                     overflowGroup: true };
+        }
+
+        function overflowEntry(groups) {
+            return { id: "__overflow__", kind: "overflow", name: "", appId: "",
+                     running: false, pinned: false,
+                     hiddenCount: groups.length, windowCount: groups.length,
+                     groups: groups };
+        }
+
+        function withOverflow(groups) {
+            return make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("files", "Files", true), overflowEntry(groups) ]
+            });
+        }
+
+        function test_overflow_cell_renders_grid_and_count_badge() {
+            var dock = withOverflow([ hiddenGroup("alpha", "Alpha", 1),
+                                      hiddenGroup("beta", "Beta", 3) ]);
+            var idx = dock.indexOfItemId("__overflow__");
+            verify(idx >= 0);
+            var item = dock.itemAt(idx);
+            compare(item.kind, "overflow");
+            verify(findChild(item, "overflowArtwork") !== null);
+            var badge = findChild(item, "windowBadge");
+            verify(badge !== null);
+            compare(badge.visible, true);
+            compare(findChild(item, "windowBadgeText").text, "2");
+            compare(item.Accessible.name.indexOf("2 more window groups") >= 0, true);
+            // It is not reorderable or pinnable.
+            compare(dock.isDraggable(item.entry), false);
+        }
+
+        function test_overflow_cell_is_not_last_when_there_is_a_divider() {
+            var dock = withOverflow([ hiddenGroup("alpha", "Alpha", 1) ]);
+            var idx = dock.indexOfItemId("__overflow__");
+            compare(dock.items[idx + 1].kind, "divider");
+        }
+
+        function test_overflow_cell_opens_the_more_windows_list() {
+            var dock = withOverflow([ hiddenGroup("alpha", "Alpha", 1),
+                                      hiddenGroup("beta", "Beta", 2) ]);
+            var idx = dock.indexOfItemId("__overflow__");
+            dock.activateEntry(dock.items[idx]);
+            compare(dock.overflowOpen, true);
+            verify(dock.popoverRect.w > 0);
+            var popover = findChild(dock, "overflowPopover");
+            compare(popover.rowCount, 2);
+            tryCompare(popover, "visible", true);
+            // Every hidden group is present, none lost.
+            var names = [];
+            for (var i = 0; i < popover.groups.length; ++i)
+                names.push(popover.groups[i].name);
+            verify(names.indexOf("Alpha") >= 0);
+            verify(names.indexOf("Beta") >= 0);
+        }
+
+        function test_overflow_single_window_row_activates_the_window() {
+            var dock = withOverflow([ hiddenGroup("alpha", "Alpha", 1),
+                                      hiddenGroup("beta", "Beta", 2) ]);
+            windowSpy.target = dock;
+            windowSpy.clear();
+            dock.activateEntry(dock.items[dock.indexOfItemId("__overflow__")]);
+            var popover = findChild(dock, "overflowPopover");
+            popover.groupActivated(popover.groups[0]);
+            compare(windowSpy.count, 1);
+            compare(windowSpy.signalArguments[0][0], "alpha-w0");
+            compare(dock.overflowOpen, false);
+        }
+
+        function test_overflow_multi_window_row_opens_the_chooser_on_the_cell() {
+            var dock = withOverflow([ hiddenGroup("alpha", "Alpha", 1),
+                                      hiddenGroup("beta", "Beta", 3) ]);
+            dock.activateEntry(dock.items[dock.indexOfItemId("__overflow__")]);
+            var popover = findChild(dock, "overflowPopover");
+            popover.groupActivated(popover.groups[1]);
+            compare(dock.overflowOpen, false);
+            compare(dock.chooserOpen, true);
+            compare(dock.chooserEntry.id, "beta");
+            // Anchored to the overflow cell snapshot, not a hidden delegate.
+            compare(dock.chooserAnchor.objectName, "chooserAnchorProxy");
+            var cell = dock.itemAt(dock.indexOfItemId("__overflow__"));
+            fuzzyCompare(dock.chooserAnchor.x, cell.x, 0.001);
+            var chooser = findChild(dock, "windowChooser");
+            compare(chooser.windows.length, 3);
+        }
+
+        function test_overflow_multi_window_chooser_survives_a_projection() {
+            var dock = withOverflow([ hiddenGroup("beta", "Beta", 2) ]);
+            dock.activateEntry(dock.items[dock.indexOfItemId("__overflow__")]);
+            var popover = findChild(dock, "overflowPopover");
+            popover.groupActivated(popover.groups[0]);
+            compare(dock.chooserOpen, true);
+            // A fresh projection with one window closed re-resolves the group
+            // from the new overflow entry and keeps the chooser open.
+            dock.entries = [ app("files", "Files", true),
+                             overflowEntry([ hiddenGroup("beta", "Beta", 1) ]) ];
+            waitForRendering(stage);
+            compare(dock.chooserOpen, true);
+            compare(dock.chooserEntry.id, "beta");
+            // The overflow cell gone: the chooser dismisses.
+            dock.entries = [];
+            waitForRendering(stage);
+            compare(dock.chooserOpen, false);
+        }
+
+        function test_overflow_popover_dismisses_when_the_cell_leaves() {
+            var dock = withOverflow([ hiddenGroup("alpha", "Alpha", 1) ]);
+            dock.activateEntry(dock.items[dock.indexOfItemId("__overflow__")]);
+            compare(dock.overflowOpen, true);
+            dock.entries = [ app("files", "Files", true) ];
+            waitForRendering(stage);
+            compare(dock.overflowOpen, false);
+        }
+
+        function test_overflow_empty_list_is_a_disabled_row() {
+            var dock = withOverflow([]);
+            dock.activateEntry(dock.items[dock.indexOfItemId("__overflow__")]);
+            var popover = findChild(dock, "overflowPopover");
+            compare(popover.rowCount, 0);
+            tryCompare(findChild(popover, "overflowEmptyRow"), "visible", true);
+        }
+
         function test_stack_drop_reports_downloads() {
             var dock = make(dockComponent, {
                 width: 1280, height: 160,

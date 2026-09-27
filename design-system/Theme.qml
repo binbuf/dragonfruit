@@ -366,6 +366,12 @@ QtObject {
                 readonly property int inset: 2
                 readonly property int borderWidth: 1
             }
+            readonly property var overflow: QtObject {
+                readonly property int maxRows: 7
+                readonly property real gridInset: 0.18
+                readonly property real gridGap: 0.08
+                readonly property real gridCell: 0.16
+            }
         }
         readonly property var contextMenu: QtObject {
             readonly property int radius: 14

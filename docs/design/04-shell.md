@@ -213,6 +213,36 @@ attention, and its size/typography scale with the tile from
 and is presentational only: the accessible name and the hover label already
 carry the window count, so the badge announces nothing on its own.
 
+### Dock overflow cell
+
+When the running groups do not fit on the Dock, the Dock no longer drops the
+tail silently (this supersedes legacy T-10 §5.1 for the running-groups case
+only; see ADR 0103). The pure planner (`applyDockOverflow`) first clamps
+`dock.size` so the content fits — the icon-size clamp stays the last resort —
+and, only when even the minimum icon cannot fit every entry, folds the running
+groups that do not fit into one terminal **overflow cell**: a synthetic
+`kind: "overflow"` app-region entry, the last such item before the divider,
+carrying the hidden groups' id/name/icon/window count/`windowList` in a `groups`
+list and a `hiddenCount`. Pinned entries are never in the overflow set;
+minimized and fixed entries are never dropped; suggested recents (not running
+groups) are still dropped silently when room is needed. The cell consumes one
+physical slot, so the planner always folds one extra visible group into it to
+make room; when not even one cell fits, the planner falls back to the legacy
+error state (nothing hidden is reachable) and the caller warns once per session.
+
+The cell draws a grid glyph of window tiles (`DockGlyph` `kind: "overflow"`, our
+own geometry; no text in the artwork, ADR 0092) with the hidden-group count on
+the T-14.7o badge path, and its accessible name states the count ("N more window
+groups"). Tapping it opens the **More Windows** list (`DockOverflowPopover.qml`)
+anchored to the cell: a bounded viewport (at most `component.dock.overflow.maxRows`
+rows) with one row per hidden group (icon, name, window count). Choosing a
+single-window group activates that window; choosing a multi-window group opens
+the T-14.7m window chooser anchored to the overflow cell (the chooser re-resolves
+its group from the fresh overflow entry after a projection, since a hidden group
+has no live delegate). The cell is never reorderable or pinnable. The live visual
+check is `docs/captures/t14-dock-overflow-{light,dark}.png` (`make
+dock-overflow-capture`).
+
 ### Dock plate and materials
 
 The Dock is a **floating plate**: `controls.dock.edgeMargin` keeps it off its

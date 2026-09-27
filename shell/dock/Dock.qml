@@ -37,7 +37,7 @@ Rectangle {
     // to its app's fresh entry/rows (or dismiss it when the app is gone). The
     // dependent `items` binding and the entry Repeater settle after this
     // signal, so refresh on the next event-loop turn.
-    onEntriesChanged: Qt.callLater(refreshChooserAfterProjection)
+    onEntriesChanged: Qt.callLater(refreshPopoversAfterProjection)
     property string position: "bottom"          // bottom | left | right
     property real iconSize: Theme.controls.dock.iconSize
     // The `dock.size` mapping range, read by the shell (section 19).
@@ -272,6 +272,17 @@ Rectangle {
     property bool appIndexAvailable: true
     property bool appPickerOpen: false
     property Item appPickerAnchor: null
+
+    // The terminal overflow cell's "More Windows" list (T-14.7q). The cell is
+    // a model entry (`kind: "overflow"`); the popover lists its hidden running
+    // groups and either activates a single window or opens the chooser for a
+    // grouped app, anchored to the cell.
+    property var overflowEntryRef: null
+    property bool overflowOpen: false
+    property Item overflowAnchor: null
+    readonly property var overflowGroups:
+        overflowEntryRef !== null && overflowEntryRef.groups !== undefined
+            ? overflowEntryRef.groups : []
 
     // --- Hover name label (T-14.7i, ADR 0093) ---------------------------
     // The entry the pointer is dwelling over and the delegate it anchors to.
@@ -756,7 +767,7 @@ Rectangle {
         var out = [];
         for (var i = 0; i < entries.length; ++i) {
             var k = entries[i].kind;
-            if (k === "pinned" || k === "temporary" || k === "recent")
+            if (k === "pinned" || k === "temporary" || k === "recent" || k === "overflow")
                 out.push(entries[i]);
         }
         return out;
@@ -943,7 +954,8 @@ Rectangle {
 
     // Magnification is suppressed while a context menu, chooser, or stack
     // popover is open (T-10 section 14).
-    readonly property bool popoverOpen: menuOpen || chooserOpen || stackOpen || appPickerOpen
+    readonly property bool popoverOpen:
+        menuOpen || chooserOpen || stackOpen || appPickerOpen || overflowOpen
     // A tooltip never shares the stage with a context menu/chooser/stack.
     onPopoverOpenChanged: if (popoverOpen) hideTooltip()
 
@@ -1019,6 +1031,11 @@ Rectangle {
         // popover, never a launch (T-10 section 17, T-14.7k).
         if (entry.kind === "stack") {
             openStackFor(entry);
+            return;
+        }
+        // The overflow cell opens its "More Windows" list (T-14.7q).
+        if (entry.kind === "overflow") {
+            openOverflow(entry);
             return;
         }
         // Report this entry's tile before the click resolves, so the shell can
@@ -1147,13 +1164,19 @@ Rectangle {
         windowChooser.hide();
         stackPopover.hide();
         appPicker.hide();
+        overflowPopover.hide();
         trashConfirming = false;
+        overflowEntryRef = null;
         chooserHoverTimer.stop();
         chooserCloseTimer.stop();
         chooserHoverEntry = null;
     }
 
     function openEntryMenu(entry) {
+        // The overflow cell has no app context menu; a right-click is inert
+        // (T-14.7q). Its list is the left-click affordance.
+        if (!entry || entry.kind === "overflow")
+            return;
         closePopovers();
         hideTooltip();
         hideTimer.stop();
@@ -1190,6 +1213,33 @@ Rectangle {
     function refreshChooserAfterProjection() {
         if (!chooserOpen)
             return;
+        // A chooser opened from the overflow list is bound to a hidden group,
+        // not a live delegate (T-14.7q): re-resolve it from the fresh overflow
+        // entry's groups, still anchored to the cell.
+        if (chooserEntry && chooserEntry.overflowGroup === true) {
+            var oidx = indexOfItemId("__overflow__");
+            if (oidx < 0) {
+                windowChooser.hide();
+                return;
+            }
+            var groups = items[oidx].groups !== undefined ? items[oidx].groups : [];
+            var gid = chooserEntry.id !== undefined ? chooserEntry.id : "";
+            var found = null;
+            for (var g = 0; g < groups.length; ++g) {
+                if (groups[g].id === gid) {
+                    found = groups[g];
+                    break;
+                }
+            }
+            if (!found) {
+                windowChooser.hide();
+                return;
+            }
+            chooserEntry = found;
+            chooserAnchorProxy.capture(entryRepeater.itemAt(oidx));
+            chooserAnchorProxy.reposition();
+            return;
+        }
         var id = chooserEntry && chooserEntry.id !== undefined ? chooserEntry.id : "";
         var idx = id.length > 0 ? indexOfItemId(id) : -1;
         if (idx < 0) {
@@ -1201,6 +1251,77 @@ Rectangle {
             chooserHoverEntry = items[idx];
         chooserAnchorProxy.capture(entryRepeater.itemAt(idx));
         chooserAnchorProxy.reposition();
+    }
+
+    // Keep the overflow list bound to its fresh entry, or dismiss it when the
+    // overflow cell is gone (T-14.7q).
+    function refreshOverflowAfterProjection() {
+        if (!overflowOpen)
+            return;
+        var idx = indexOfItemId("__overflow__");
+        if (idx < 0) {
+            overflowPopover.hide();
+            return;
+        }
+        overflowEntryRef = items[idx];
+        overflowAnchor = entryRepeater.itemAt(idx);
+    }
+
+    function refreshPopoversAfterProjection() {
+        refreshChooserAfterProjection();
+        refreshOverflowAfterProjection();
+    }
+
+    // Open the "More Windows" list anchored to the overflow cell (T-14.7q).
+    function openOverflow(entry) {
+        if (!entry || entry.kind !== "overflow")
+            return;
+        closePopovers();
+        hideTooltip();
+        hideTimer.stop();
+        overflowEntryRef = entry;
+        var idx = indexOfItemId(entry.id);
+        overflowAnchor = idx >= 0 ? entryRepeater.itemAt(idx) : null;
+        overflowPopover.open = true;
+    }
+
+    // A group chosen from the overflow list: a single-window group activates
+    // that window (or falls back to the app's recent window); a multi-window
+    // group opens the chooser anchored to the overflow cell (T-14.7q).
+    function activateOverflowGroup(group) {
+        if (!group)
+            return;
+        var list = group.windowList !== undefined && group.windowList !== null
+                   ? group.windowList : [];
+        if (list.length > 1) {
+            openOverflowGroupChooser(group);
+            return;
+        }
+        if (list.length === 1 && list[0].windowId !== undefined) {
+            overflowPopover.hide();
+            windowActivated(String(list[0].windowId));
+            return;
+        }
+        // No window list (a direct model caller): fall back to the app's most
+        // recent window through the normal activation path.
+        overflowPopover.hide();
+        entryActivated(group);
+    }
+
+    // Open the T-14.7m chooser for a hidden group, anchored to the overflow
+    // cell instead of the hidden group's (nonexistent) delegate.
+    function openOverflowGroupChooser(group) {
+        if (!group)
+            return;
+        closePopovers();
+        hideTooltip();
+        hideTimer.stop();
+        var idx = indexOfItemId("__overflow__");
+        chooserAnchorProxy.capture(idx >= 0 ? entryRepeater.itemAt(idx) : null);
+        chooserAnchor = chooserAnchorProxy;
+        chooserEntry = group;
+        chooserHoverOpened = false;
+        windowChooser.open = true;
     }
 
     // Open the Downloads stack popover (the default member).
@@ -1267,6 +1388,16 @@ Rectangle {
         return true;
     }
 
+    // Capture/demo seam (T-14.7q): open the overflow cell's "More Windows" list
+// once it exists, without a synthetic pointer. Never set in a normal session.
+    function openOverflowFixture() {
+        var idx = indexOfItemId("__overflow__");
+        if (idx < 0)
+            return false;
+        openOverflow(items[idx]);
+        return true;
+    }
+
     // Capture/demo seam (T-14.7k): open the stack entry with `id` without a
     // synthetic pointer click. Never used in a normal session.
     function openStackById(id) {
@@ -1330,7 +1461,8 @@ Rectangle {
         if (entry.kind === "stack")
             return entry.canRemove === true;
         return entry.kind !== "divider" && entry.kind !== "trash"
-                && entry.kind !== "minimized" && entry.kind !== "external";
+                && entry.kind !== "minimized" && entry.kind !== "external"
+                && entry.kind !== "overflow";
     }
 
     function currentPinnedIds() {
@@ -1620,7 +1752,8 @@ Rectangle {
             var k = items[i].kind;
             if (k === "external")
                 continue;
-            if (k === "divider" || k === "trash" || k === "minimized" || k === "stack")
+            if (k === "divider" || k === "trash" || k === "minimized" || k === "stack"
+                    || k === "overflow")
                 break;
             var center = axisIsX ? (l[i].x + l[i].w / 2) : (l[i].y + l[i].h / 2);
             if (localAlong < center)
@@ -2109,7 +2242,9 @@ Rectangle {
         var popup = (entryMenu.open || entryMenu.visible) ? entryMenu
                  : ((windowChooser.open || windowChooser.visible) ? windowChooser
                  : ((stackPopover.open || stackPopover.visible) ? stackPopover
-                 : ((appPicker.open || appPicker.visible) ? appPicker : null)));
+                 : ((appPicker.open || appPicker.visible) ? appPicker
+                 : ((overflowPopover.open || overflowPopover.visible) ? overflowPopover
+                 : null))));
         if (!popup || popup.width <= 0 || popup.height <= 0)
             return { x: 0, y: 0, w: 0, h: 0 };
         if (popup.contentRect !== undefined) {
@@ -2747,8 +2882,8 @@ Rectangle {
             dock.chooserOpen = false;
             // A closed chooser releases every hover-open timer and target
             // (T-14.7p); a click-opened chooser has none to release.
-            dock.chooserHoverTimer.stop();
-            dock.chooserCloseTimer.stop();
+            chooserHoverTimer.stop();
+            chooserCloseTimer.stop();
             dock.chooserHoverEntry = null;
             dock.chooserHoverOpened = false;
             dock.popoverChanged();
@@ -2854,6 +2989,48 @@ Rectangle {
             dock.scheduleHide();
         }
         onPinToggled: (desktopId, pinned) => dock.appPinToggled(desktopId, pinned)
+    }
+
+    // The "More Windows" overflow list (T-14.7q). It is anchored to the
+    // terminal overflow cell and placed exactly like the chooser/stack; the
+    // shell renders it into the Dock's overlay surface. A chosen group is
+    // resolved by the Dock (activate one window, or open the chooser).
+    DockOverflowPopover {
+        id: overflowPopover
+        objectName: "overflowPopover"
+        groups: dock.overflowGroups
+        anchorItem: dock.overflowAnchor
+        x: {
+            if (!dock.overflowAnchor)
+                return 0;
+            var px;
+            if (dock.axisIsX)
+                px = Math.max(0, Math.min(dock.width - width,
+                    dock.overflowAnchor.x + (dock.overflowAnchor.width - width) / 2));
+            else
+                px = dock.position === "left"
+                    ? dock.plateRect.x + dock.plateRect.w + 4
+                    : dock.plateRect.x - width - 4;
+            return dock.clampPopoverX(px, width);
+        }
+        y: {
+            if (!dock.overflowAnchor)
+                return 0;
+            if (dock.axisIsX)
+                return dock.clampPopoverY(dock.overflowAnchor.y - height - 4, height);
+            return Math.max(0, Math.min(dock.height - height,
+                dock.overflowAnchor.y + (dock.overflowAnchor.height - height) / 2));
+        }
+        onOpened: {
+            dock.overflowOpen = true;
+            dock.popoverChanged();
+        }
+        onClosed: {
+            dock.overflowOpen = false;
+            dock.popoverChanged();
+            dock.scheduleHide();
+        }
+        onGroupActivated: (group) => dock.activateOverflowGroup(group)
     }
 
     // Clicking empty Dock space dismisses an open popover (T-10 section 13).
