@@ -447,6 +447,13 @@ private:
     // them into the QML `bouncePhases` map keyed by entry id. The entries
     // themselves are untouched, so the delegates survive a bounce (T-14.7c).
     void publishDockBouncePhases();
+    // Compare the freshly built Dock entries against the previous per-entry
+    // minimized counts and start a one-shot minimize reaction pulse for every
+    // entry whose minimized count increased (T-14.7s). Gated by
+    // `dock.minimizeReaction`; the first projection only seeds the counts so a
+    // Dock that starts with minimized windows does not pulse. The pulse rides
+    // `bouncePhases`, so the entry model is never rebuilt.
+    void detectDockMinimizePulses();
     // Start the 16 ms Dock animation clock if it is not already running.
     void ensureDockAnimation();
     // Clear any attention bounce for `appId` (FR-4: stops on click or focus).
@@ -812,6 +819,20 @@ private:
     // The map is only re-published when it actually changes, so the idle Dock
     // makes no binding churn (T-14.7c).
     QVariantMap m_dockBouncePhases;
+    // T-14.7s minimize reaction: the last projection's per-entry minimized
+    // counts, seeded on the first build so an already-minimized Dock does not
+    // pulse, and the active pulse start (ms since epoch) per entry id. The
+    // pulse is a one-shot hop; a rapid second minimize on the same entry
+    // restarts the clock (coalesced into the last).
+    QHash<QString, int> m_dockMinimizedCounts;
+    bool m_dockMinimizedCountsSeeded = false;
+    QHash<QString, qint64> m_minimizeReactionStart;
+    // Capture-only seam (T-14.7s): `DF_DOCK_MINIMIZE_REACTION_FIXTURE=<phase>`
+    // forces a constant minimize pulse on the first running entry so the live
+    // visual check can capture a mid-bounce frame deterministically. Never set
+    // in a normal session.
+    bool m_minimizeReactionFixture = false;
+    double m_minimizeReactionFixturePhase = 0.5;
     // One warning per session for the Dock-overflow error state (section 5.1).
     bool m_dockOverflowWarned = false;
     // Capture-only seam (T-14.7q): `DF_DOCK_OVERFLOW_FIXTURE=1` injects

@@ -362,6 +362,11 @@ pub mod component {
             pub const SPINNER_STROKE: f32 = 2.0_f32;
             pub const SPINNER_SPEED: f32 = 900.0_f32;
         }
+        pub mod minimize_reaction {
+            pub const AMPLITUDE_RATIO: f32 = 0.28_f32;
+            pub const DURATION: f32 = 320.0_f32;
+            pub const REDUCED_DURATION: f32 = 0.0_f32;
+        }
     }
     pub mod context_menu {
         pub const RADIUS: f32 = 14.0_f32;

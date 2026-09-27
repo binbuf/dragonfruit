@@ -58,6 +58,7 @@ Item {
     property alias showIndicatorsToggle: showIndicatorsToggle
     property alias showRecentAppsToggle: showRecentAppsToggle
     property alias chooserOnHoverToggle: chooserOnHoverToggle
+    property alias minimizeReactionToggle: minimizeReactionToggle
     property alias dockGroup: dockGroup
     property alias globalMenuToggle: globalMenuToggle
     property alias menuGroup: menuGroup
@@ -222,11 +223,21 @@ Item {
             SettingsRow {
                 width: parent.width
                 label: qsTr("Open a window chooser by hovering")
-                showSeparator: false
                 controlData: Toggle {
                     id: chooserOnHoverToggle
                     text: ""
                     onToggled: (checked) => Settings.set("dock.chooserOnHover", checked)
+                }
+            }
+
+            SettingsRow {
+                width: parent.width
+                label: qsTr("Bounce app icons when windows minimize")
+                showSeparator: false
+                controlData: Toggle {
+                    id: minimizeReactionToggle
+                    text: ""
+                    onToggled: (checked) => Settings.set("dock.minimizeReaction", checked)
                 }
             }
         }
@@ -309,6 +320,11 @@ Item {
         target: chooserOnHoverToggle
         property: "checked"
         value: Settings.values["dock.chooserOnHover"] === true
+    }
+    Binding {
+        target: minimizeReactionToggle
+        property: "checked"
+        value: Settings.values["dock.minimizeReaction"] === true
     }
     Binding {
         target: globalMenuToggle

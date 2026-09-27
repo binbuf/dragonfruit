@@ -19,7 +19,7 @@ use crate::value::{SettingsError, Value};
 
 /// The current schema revision. Bump only when a key is added or a default
 /// changes; renames and removals are forbidden within the `1` series.
-pub const SCHEMA_VERSION: u32 = 8;
+pub const SCHEMA_VERSION: u32 = 9;
 
 /// The D-Bus type of a settings value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -368,6 +368,19 @@ pub const KEYS: &[KeySpec] = &[
         consumer: "shell/Dock",
         since: 8,
         summary: "Open a grouped app's window chooser on hover dwell, and retarget it along the Dock.",
+    },
+    KeySpec {
+        key: "dock.minimizeReaction",
+        group: KeyGroup::Dock,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(false),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "shell/Dock",
+        consumer: "shell/Dock",
+        since: 9,
+        summary: "Bounce an app's Dock tile once when one of its windows minimizes; off by default.",
     },
     // ── Workspaces ──────────────────────────────────────────────────────
     KeySpec {
@@ -798,6 +811,21 @@ mod tests {
         assert_eq!(spec.kind, KeyType::Bool);
         assert_eq!(spec.default, KeyDefault::Bool(false));
         assert_eq!(spec.since, 8);
+        assert!(spec.since <= SCHEMA_VERSION);
+        assert!(spec.validate(&Value::Bool(true)).is_ok());
+        assert!(spec.validate(&Value::Text("on".into())).is_err());
+    }
+
+    /// The minimize-to-icon reaction opt-in (T-14.7s): a boolean, default off,
+    /// so the Dock is unchanged unless the user asks for the acknowledgment,
+    /// additive in revision 9.
+    #[test]
+    fn the_dock_minimize_reaction_is_declared_in_revision_nine() {
+        let spec = spec("dock.minimizeReaction").expect("dock.minimizeReaction is declared");
+        assert_eq!(spec.group, KeyGroup::Dock);
+        assert_eq!(spec.kind, KeyType::Bool);
+        assert_eq!(spec.default, KeyDefault::Bool(false));
+        assert_eq!(spec.since, 9);
         assert!(spec.since <= SCHEMA_VERSION);
         assert!(spec.validate(&Value::Bool(true)).is_ok());
         assert!(spec.validate(&Value::Text("on".into())).is_err());

@@ -378,6 +378,11 @@ QtObject {
                 readonly property int spinnerStroke: 2
                 readonly property int spinnerSpeed: 900
             }
+            readonly property var minimizeReaction: QtObject {
+                readonly property real amplitudeRatio: 0.28
+                readonly property int duration: 320
+                readonly property int reducedDuration: 0
+            }
         }
         readonly property var contextMenu: QtObject {
             readonly property int radius: 14

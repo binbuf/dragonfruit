@@ -322,6 +322,31 @@ trace lives at `docs/captures/t14-dock-motion-trace.txt`. See
 [ADR 0100](adr/0100-dock-motion-phase-map-and-popover-buffer.md) and the
 T-14.7c unit.
 
+### Dock minimize-to-icon reaction
+
+When a window minimizes, its app entry can give a short acknowledgment bounce so
+the window's destination is legible at the Dock (T-14.7s). The reaction is
+opt-in: `dock.minimizeReaction` (bool, default off — macOS has no such reaction,
+so this is not part of the click contract) and it is removed under reduced
+motion, where the running indicator and the minimized state still update.
+
+The shell detects the event by comparing the freshly built entries against the
+previous projection's per-entry minimized-window counts (pure
+`dockMinimizedCounts`/`dockMinimizedPulses`, `shell/src/dockprojection.*`,
+unit-tested by `tst_dockcore`); the first projection only seeds the counts so a
+Dock that starts with minimized windows does not pulse. A window entering
+`minimized` starts one pulse for the owning entry; rapid minimizes on the same
+entry coalesce into the last. The pulse is published as a separate
+`minimize`/`minimizePhase` field on the same `bouncePhases` map, so the entry
+model is never rebuilt to animate (ADR [0100](adr/0100-dock-motion-phase-map-and-popover-buffer.md)).
+`Dock.qml` maps the phase with `sin(pi * phase)` — exactly one short hop — at
+`controls.dock.minimizeReaction.amplitudeRatio` of the icon size (one hop over
+`duration`, mirroring the shell's `kMinimizeReactionMs`). The hop is along the
+Dock's cross axis and always points away from the anchored edge: upward on a
+bottom Dock, toward the interior on a left/right Dock; the reaction is
+decorative and never enters the entry's accessible name, which keeps carrying
+the window count and state.
+
 ### Trash entry artwork
 
 The Trash is a designed, original object (T-14.7d), not a wireframe, and it
