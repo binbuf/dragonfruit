@@ -94,6 +94,10 @@ cargo-test:
 # The T-01.6a demo harness is part of the gate: `make demo` with a forced
 # headless backend is the scripted half (launch + teardown, assert no leaked
 # socket), the same target CI and the human walkthrough use.
+#
+# The portal integration tests call `dbus::serve` in-process and block on
+# zbus from the test thread, so they run single-threaded: parallel blocking
+# connections can starve the shared executor and wedge the gate (T107).
 e2e: build
 	$(CARGO) test -p dragonfruit-compositor \
 	    --test milestone_e2e \
@@ -118,7 +122,7 @@ e2e: build
 	$(CARGO) test -p dragonfruit-lock-auth
 	$(CARGO) test -p dragonfruit-session
 	$(CARGO) test -p dragonfruit-app-index
-	$(CARGO) test -p xdg-desktop-portal-dragonfruit
+	$(CARGO) test -p xdg-desktop-portal-dragonfruit -- --test-threads=1
 	$(MAKE) demo DEMO_ARGS=--headless
 
 # T-03.1a: the idle/animation frame budget trace. `make e2e` runs the same
