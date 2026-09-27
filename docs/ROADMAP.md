@@ -278,6 +278,18 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 > minimize-to-icon reaction, and keyboard reordering. They run after T110k, in
 > file order. Design reference: ADR
 > [0103](design/adr/0103-dock-window-management-and-entry-affordances.md).
+>
+> **Extended again 2026-09-27** by a pixel review of the mature reference
+> capture `docs/reference/macos/Dock.png` (local only; original assets, never
+> shipped). Three visual-fidelity units (u–w) reconcile the shipped Dock with
+> that capture: reference metrics (icon gaps, cross-axis/end padding, plate
+> radius, running-dot inset), region dividers (the reference's
+> pinned │ temporary/recent │ stacks+Trash split with its oversized divider
+> spacing), and true squircle masking of icon artwork (the inset-and-fit
+> deviation T-14.7j recorded). They run after T110t, in file order; the
+> resting-state metrics are measured from the capture, not invented. These are
+> local captures, so the units are clean-room: no copied code, assets, or
+> strings.
 
 - [x] T110a — T-14.7a Dock plate geometry and spacing → [tasks/110a-t-14.7a-dock-plate-geometry-and-spacing.md](tasks/110a-t-14.7a-dock-plate-geometry-and-spacing.md)
 - [x] T110b — T-14.7b Magnified plate growth and backdrop panel → [tasks/110b-t-14.7b-dock-magnified-plate-and-backdrop.md](tasks/110b-t-14.7b-dock-magnified-plate-and-backdrop.md)
@@ -299,6 +311,9 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 - [ ] T110r — T-14.7r Dock Trash empty progress and result → [tasks/110r-t-14.7r-dock-trash-empty-progress.md](tasks/110r-t-14.7r-dock-trash-empty-progress.md)
 - [ ] T110s — T-14.7s Dock minimize-to-icon reaction → [tasks/110s-t-14.7s-dock-minimize-to-icon-reaction.md](tasks/110s-t-14.7s-dock-minimize-to-icon-reaction.md)
 - [ ] T110t — T-14.7t Dock keyboard reordering → [tasks/110t-t-14.7t-dock-keyboard-reordering.md](tasks/110t-t-14.7t-dock-keyboard-reordering.md)
+- [ ] T110u — T-14.7u Dock reference metrics: spacing, plate radius, indicator inset → [tasks/110u-t-14.7u-dock-reference-metrics.md](tasks/110u-t-14.7u-dock-reference-metrics.md)
+- [ ] T110v — T-14.7v Dock region dividers: pinned | temporary/recent | stacks and Trash → [tasks/110v-t-14.7v-dock-region-dividers.md](tasks/110v-t-14.7v-dock-region-dividers.md)
+- [ ] T110w — T-14.7w Dock icon tiles: true squircle masking → [tasks/110w-t-14.7w-dock-icon-squircle-masking.md](tasks/110w-t-14.7w-dock-icon-squircle-masking.md)
 
 ## Phase 14.6 — T-18 Wallpaper content provider (shipped default + Wikimedia Featured)
 
