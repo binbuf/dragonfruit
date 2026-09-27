@@ -350,6 +350,12 @@ pub mod component {
             pub const INSET: f32 = 2.0_f32;
             pub const BORDER_WIDTH: f32 = 1.0_f32;
         }
+        pub mod overflow {
+            pub const MAX_ROWS: f32 = 7.0_f32;
+            pub const GRID_INSET: f32 = 0.18_f32;
+            pub const GRID_GAP: f32 = 0.08_f32;
+            pub const GRID_CELL: f32 = 0.16_f32;
+        }
     }
     pub mod context_menu {
         pub const RADIUS: f32 = 14.0_f32;

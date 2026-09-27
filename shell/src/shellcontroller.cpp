@@ -1460,6 +1460,30 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         timer->start();
     }
 
+    // Capture/demo seam (T-14.7q): a full-size nested output fits dozens of
+    // running groups, so the overflow cell cannot be produced by launching a
+    // realistic number of apps. `DF_DOCK_OVERFLOW_FIXTURE=1` injects synthetic
+    // running groups and caps the effective axis length so a genuine overflow
+    // — and only a genuine one — appears; the timer then opens the cell's
+    // "More Windows" list for the capture. Never set in a normal session.
+    if (qEnvironmentVariableIsSet("DF_DOCK_OVERFLOW_FIXTURE")) {
+        m_dockOverflowFixture = true;
+        m_dockOverflowFixtureWidth = 480;
+        auto *timer = new QTimer(this);
+        timer->setInterval(500);
+        connect(timer, &QTimer::timeout, this, [this, timer]() {
+            if (!m_dockItem)
+                return;
+            QMetaObject::invokeMethod(m_dockItem, "reveal");
+            QMetaObject::invokeMethod(m_dockItem, "openOverflowFixture");
+            if (m_dockItem->property("overflowOpen").toBool()) {
+                timer->stop();
+                timer->deleteLater();
+            }
+        });
+        timer->start();
+    }
+
     // Capture/demo seam (T-12.3a): lock the session once the chrome is up so
     // the live visual check can capture the lock screen with no hardware key
     // wiring. `DF_LOCK_FIXTURE` is the lock delay in ms (or `1` for the
@@ -4337,8 +4361,34 @@ void ShellController::rebuildDockEntries()
     // The entries are the stable model: they never carry a launch/attention
     // phase, so a running bounce does not reset the Repeater. The phases are
     // published separately (T-14.7c).
+    QVariantList running = m_runningEntries;
+    if (m_dockOverflowFixture) {
+        // Synthetic unpinned running groups so the overflow planner has more
+        // groups than the capped fixture width fits. Distinct names make the
+        // "More Windows" rows legible in the capture.
+        static const char *const kNames[] = {"Calendar", "Music", "Photos",
+                                             "Maps", "Weather", "Notes",
+                                             "Podcasts", "Contacts"};
+        for (int i = 0; i < 8; ++i) {
+            const QString id = QStringLiteral("overflow-fixture-%1").arg(i + 1);
+            QVariantList windows;
+            windows.append(QVariantMap{
+                {QStringLiteral("windowId"), id + QStringLiteral("-w1")},
+                {QStringLiteral("title"), QString::fromLatin1(kNames[i])},
+                {QStringLiteral("focused"), i == 0}});
+            QVariantMap group;
+            group.insert(QStringLiteral("id"), id);
+            group.insert(QStringLiteral("appId"), id);
+            group.insert(QStringLiteral("name"), QString::fromLatin1(kNames[i]));
+            group.insert(QStringLiteral("kind"), QStringLiteral("temporary"));
+            group.insert(QStringLiteral("running"), true);
+            group.insert(QStringLiteral("windows"), 1);
+            group.insert(QStringLiteral("windowList"), windows);
+            running.append(group);
+        }
+    }
     m_dockAllEntries = buildDockEntries(
-        m_dockConfig.pinned, m_index, m_runningEntries, m_launchStates,
+        m_dockConfig.pinned, m_index, running, m_launchStates,
         m_dockConfig.showRecentApps ? m_recentAppIds : QStringList());
     // A full rebuild always re-publishes the entries; the clamp only decides
     // which ones survive and at what icon size.
@@ -4419,9 +4469,13 @@ DockOverflowResult ShellController::computeDockOverflow() const
     const int dividerWidth = qRound(m_dockItem->property("dividerWidth").toReal());
     const int iconMin = qRound(m_dockItem->property("iconSizeMin").toReal());
     const int iconMax = qRound(m_dockItem->property("iconSizeMax").toReal());
-    const int available = m_dockPosition == ShellProtocol::DockPosition::Bottom
+    int available = m_dockPosition == ShellProtocol::DockPosition::Bottom
             ? m_dockWidth
             : m_dockHeight;
+    // The capture seam caps the effective axis so the overflow cell appears on
+    // a full-size nested output (T-14.7q); a normal session never sets it.
+    if (m_dockOverflowFixture && m_dockOverflowFixtureWidth > 0)
+        available = qMin(available, m_dockOverflowFixtureWidth);
     return applyDockOverflow(m_dockAllEntries, available, iconSizeForSize(m_dockConfig.size),
                              iconMin, iconMax, gap, dividerWidth, 2,
                              !m_dockConfig.minimizeIntoTileIcon);
@@ -4438,7 +4492,8 @@ void ShellController::applyDockOverflowResult(const DockOverflowResult &overflow
     if (!allowEntries)
         return;
     const bool hiddenChanged = overflow.hiddenTemporary != m_dockHiddenTemporary
-            || overflow.hiddenRecent != m_dockHiddenRecent;
+            || overflow.hiddenRecent != m_dockHiddenRecent
+            || overflow.overflowShown != m_dockOverflowShown;
     // A geometry change during a divider resize must not destroy the delegate
     // that holds the pointer, so only reset the Repeater model when the hidden
     // set actually changed (the internal-reorder lesson); a full rebuild
@@ -4447,6 +4502,7 @@ void ShellController::applyDockOverflowResult(const DockOverflowResult &overflow
         return;
     m_dockHiddenTemporary = overflow.hiddenTemporary;
     m_dockHiddenRecent = overflow.hiddenRecent;
+    m_dockOverflowShown = overflow.overflowShown;
     m_dockItem->setProperty("entries", overflow.entries);
 }
 
@@ -4456,10 +4512,10 @@ void ShellController::warnDockOverflow(const DockOverflowResult &overflow)
         return;
     m_dockOverflowWarned = true;
     qWarning() << "shell: Dock content exceeds the output; clamped the icon size to"
-               << overflow.iconSize << "px and hid"
-               << (overflow.hiddenTemporary + overflow.hiddenRecent)
-               << "temporary/recent entries"
-               << (overflow.overflowed ? "(pinned content still overflows)" : "");
+               << overflow.iconSize << "px, folded"
+               << overflow.hiddenTemporary << "running groups into the overflow cell and hid"
+               << overflow.hiddenRecent << "recent entries"
+               << (overflow.overflowed ? "(non-droppable content still overflows)" : "");
 }
 
 void ShellController::publishDockBouncePhases()

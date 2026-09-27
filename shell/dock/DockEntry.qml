@@ -43,6 +43,11 @@ Item {
     // The Downloads stack (T-10 section 17): a folder entry with a count and a
     // new-items badge; clicking opens its popover rather than launching.
     readonly property bool isStack: kind === "stack"
+    // The terminal overflow cell (T-14.7q): a synthetic entry carrying the
+    // running groups that did not fit. It is never dragged, pinned, or grouped.
+    readonly property bool isOverflow: kind === "overflow"
+    readonly property int overflowCount:
+        entry.hiddenCount !== undefined ? entry.hiddenCount : 0
     readonly property int stackCount: entry.stackCount !== undefined ? entry.stackCount : 0
     readonly property int badge: entry.badge !== undefined ? entry.badge : 0
     // The number of windows the app is running (T-14.7o). The pure projection
@@ -180,6 +185,11 @@ Item {
                                               : qsTr("%1 items").arg(stackCount);
             return stackName + qsTr(" — %1").arg(countLabel);
         }
+        if (isOverflow) {
+            var groupsLabel = overflowCount === 1 ? qsTr("1 more window group")
+                                                  : qsTr("%1 more window groups").arg(overflowCount);
+            return groupsLabel;
+        }
         var windows = entry.windowList !== undefined && entry.windowList !== null
                       ? entry.windowList.length : 0;
         if (windows > 1)
@@ -197,7 +207,8 @@ Item {
     // so there is exactly one badge per entry.
     readonly property bool showWindowBadge:
         !isDivider && !isExternal && !isTrash && !isStack && !isMinimized
-        && !showStatusBadge && badge <= 0 && windowCount >= 2
+        && !showStatusBadge && badge <= 0
+        && (isOverflow ? overflowCount >= 1 : windowCount >= 2)
     // The badge geometry/typography is token-driven and scales with the tile so
     // it stays legible at the minimum and maximum icon sizes (T-14.7o).
     readonly property real windowBadgeSize: {
@@ -206,8 +217,10 @@ Item {
                         Math.min(wb.sizeMax,
                                  Math.round(root.iconSize * wb.sizeRatio)));
     }
-    readonly property string windowBadgeLabel:
-        windowCount > 9 ? qsTr("9+") : String(windowCount)
+    readonly property string windowBadgeLabel: {
+        var count = root.isOverflow ? root.overflowCount : root.windowCount;
+        return count > 9 ? qsTr("9+") : String(count);
+    }
     // An app demanding attention tints the badge; otherwise the accent marks a
     // grouped app (the reference behavior, our own tokens).
     readonly property color windowBadgeColor:
@@ -216,6 +229,7 @@ Item {
     Accessible.role: isDivider ? Accessible.Separator : Accessible.ListItem
     Accessible.name: isDivider ? qsTr("Dock separator")
                      : isExternal ? (name.length > 0 ? name : qsTr("Drop here"))
+                     : isOverflow ? qsTr("%1 more window groups").arg(overflowCount)
                      : isTrash ? qsTr("Trash") + stateLabel
                      : isStack ? (name.length > 0 ? name : qsTr("Downloads")) + stateLabel
                      : name + stateLabel
@@ -349,7 +363,9 @@ Item {
         id: glyph
         objectName: "glyph"
         visible: !root.isDivider && (!root.isExternal || root.externalHasIdentity)
-        kind: root.isTrash ? "trash" : (root.isStack || root.isExternalFolder) ? "stack" : "app"
+        kind: root.isTrash ? "trash"
+              : root.isOverflow ? "overflow"
+              : (root.isStack || root.isExternalFolder) ? "stack" : "app"
         name: root.name
         appId: root.appId
         iconPath: root.iconPath
@@ -558,6 +574,7 @@ Item {
         objectName: "dragHandler"
         acceptedButtons: Qt.LeftButton
         enabled: !root.isDivider && !root.isTrash && !root.isExternal
+                 && !root.isOverflow
                  && root.kind !== "minimized"
                  && (!root.isStack || root.canRemoveStack)
         dragThreshold: root.dragSlop

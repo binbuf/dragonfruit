@@ -171,6 +171,47 @@ Item {
         }
     }
 
+    // -- Overflow cell ---------------------------------------------------
+    // The terminal overflow cell (T-14.7q): a grid of small window tiles on a
+    // neutral squircle, our own geometry (ADR 0092 — no text in the artwork).
+    // The hidden-group count rides the T-14.7o badge path in `DockEntry`, never
+    // this glyph.
+    Item {
+        id: overflow
+        objectName: "overflowArtwork"
+        visible: root.kind === "overflow"
+        anchors.fill: parent
+
+        readonly property real s: root.size
+        readonly property real inset: s * Theme.controls.dock.overflow.gridInset
+        readonly property real gap: s * Theme.controls.dock.overflow.gridGap
+        readonly property real cell: s * Theme.controls.dock.overflow.gridCell
+
+        Rectangle {
+            objectName: "overflowPanel"
+            anchors.fill: parent
+            radius: root.tileRadius
+            color: Theme.color.controlFill
+            border.width: 1
+            border.color: Theme.color.border
+        }
+
+        // A 3x3 grid reads as "many windows"; the centre tile is accented so
+        // the cell is legible even at the minimum icon size.
+        Repeater {
+            model: 9
+            delegate: Rectangle {
+                required property int index
+                width: overflow.cell
+                height: overflow.cell
+                radius: Math.max(1, overflow.cell * 0.24)
+                color: index === 4 ? Theme.color.accent : Theme.color.textSecondary
+                x: overflow.inset + (index % 3) * (overflow.cell + overflow.gap)
+                y: overflow.inset + Math.floor(index / 3) * (overflow.cell + overflow.gap)
+            }
+        }
+    }
+
     // -- Trash -----------------------------------------------------------
     // A designed, original bin (T-14.7d): a metallic body with a vertical
     // fill/gradient and a rim edge, a lid that overhangs the body, and a clean

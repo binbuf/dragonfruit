@@ -136,19 +136,29 @@ QVariantList buildRecentEntries(const QStringList &recentIds, const QStringList 
                                 const QVariantList &running, const DesktopEntryIndex &index,
                                 int limit = 3);
 
-// The T-10 section 5.1 overflow clamp. A Dock wider than its output is an
-// error state: `dock.size` is clamped so the content fits, overflow
-// temporary/recent entries are hidden (recents first, then temporaries;
-// pinned and minimized entries are never dropped), and a warning is logged
-// once per session by the caller. `fixedCount` is the number of permanent
-// non-app entries besides the divider (the Downloads stack and the Trash);
-// the divider is always counted. `minimizedVisible` is false when
-// `dock.minimizeIntoTileIcon` hides the minimized entries.
+// The T-10 section 5.1 overflow clamp, revisited by T-14.7q. A Dock wider
+// than its output is an error state: `dock.size` is clamped so the content
+// fits, and when even the minimum icon cannot fit everything, running groups
+// (temporary entries) that would be dropped are consolidated into one terminal
+// `overflow` entry carrying them, instead of vanishing silently (ADR 0103).
+// The overflow entry is the last app-region entry: `{ id: "__overflow__",
+// kind: "overflow", hiddenCount, windowCount, groups: [entry, ...] }`. Recents
+// (suggestions, not running groups) are still dropped silently, and pinned,
+// minimized, and fixed entries are never dropped. The icon-size clamp remains
+// the outer fallback when even one overflow cell cannot fit. `fixedCount` is
+// the number of permanent non-app entries besides the divider (the Downloads
+// stack and the Trash); the divider is always counted. `minimizedVisible` is
+// false when `dock.minimizeIntoTileIcon` hides the minimized entries.
 struct DockOverflowResult {
-    QVariantList entries; // `entries` with overflow temporary/recent removed
+    QVariantList entries; // `entries`, overflow removable entries replaced by
+                          // the terminal overflow entry when one is present
     int iconSize = 0;     // effective icon size in px (never above requested)
-    int hiddenTemporary = 0;
-    int hiddenRecent = 0;
+    int hiddenTemporary = 0; // running groups folded into the overflow entry
+    int hiddenRecent = 0;    // recents dropped silently
+    // The number of hidden groups represented by the overflow entry (0 when no
+    // cell is shown), so the caller can detect a change that the raw hidden
+    // counts miss.
+    int overflowShown = 0;
     bool clamped = false;    // the size was reduced or entries were hidden
     bool overflowed = false; // content still exceeds the axis at the minimum
 };
