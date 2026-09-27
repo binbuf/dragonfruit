@@ -239,6 +239,24 @@ pub fn panel_bounds(
     panel.unwrap_or(geometry)
 }
 
+/// Resolve the panel rect a chrome surface explicitly declared (T-14.7b).
+///
+/// `geometry` is the full output-local layer-surface rect; `explicit` is the
+/// panel in surface-local coordinates as sent by
+/// `df_layer_surface.set_panel_rect`. The rect is translated to output-local
+/// and intersected with the surface geometry, so a panel that leaves the
+/// surface (an auto-hidden Dock translated offscreen) contributes nothing.
+/// `None` when the declared rect does not intersect the surface at all.
+pub fn explicit_panel_bounds(
+    geometry: Rectangle<i32, Logical>,
+    explicit: Rectangle<i32, Logical>,
+) -> Option<Rectangle<i32, Logical>> {
+    if explicit.size.w <= 0 || explicit.size.h <= 0 {
+        return None;
+    }
+    Rectangle::new(geometry.loc + explicit.loc, explicit.size).intersection(geometry)
+}
+
 /// The bounding rectangle of a backdrop: the full chrome band (layer 0).
 pub fn backdrop_bounds(
     rect: Rectangle<i32, Logical>,
@@ -527,6 +545,38 @@ mod tests {
         let spec = MaterialRole::Chrome.spec(ColorScheme::Dark);
         assert!(backdrop_elements(rect(0, 0, 0, 10), spec, 1.0.into()).is_empty());
         assert!(backdrop_elements(rect(0, 0, 10, 0), spec, 1.0.into()).is_empty());
+    }
+
+    #[test]
+    fn explicit_panel_rect_is_honored_and_clipped_to_the_surface() {
+        // A bottom Dock surface, output-local; the plate rect arrives in
+        // surface-local coordinates (T-14.7b).
+        let dock = rect(0, 1069, 1920, 131);
+        // The resting plate: a centred bar slab near the surface bottom.
+        let bar = rect(760, 64, 400, 67);
+        assert_eq!(
+            explicit_panel_bounds(dock, bar),
+            Some(rect(760, 1133, 400, 67))
+        );
+        // A magnified plate grown upward and along is honored exactly, even
+        // though it leaves the reserved strip.
+        let grown = rect(740, 20, 440, 111);
+        assert_eq!(
+            explicit_panel_bounds(dock, grown),
+            Some(rect(740, 1089, 440, 111))
+        );
+        // A rect partly outside the surface is clipped to it.
+        let edge = rect(-50, 60, 100, 20);
+        assert_eq!(
+            explicit_panel_bounds(dock, edge),
+            Some(rect(0, 1129, 50, 20))
+        );
+        // A rect wholly outside (an auto-hidden Dock translated offscreen)
+        // contributes nothing.
+        let offscreen = rect(0, 200, 100, 100);
+        assert_eq!(explicit_panel_bounds(dock, offscreen), None);
+        // A degenerate rect is ignored.
+        assert_eq!(explicit_panel_bounds(dock, rect(10, 10, 0, 20)), None);
     }
 
     #[test]

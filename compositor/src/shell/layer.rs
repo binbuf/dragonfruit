@@ -95,6 +95,11 @@ pub struct LayerSurfaceState {
     pub namespace: String,
     /// The size last sent in `configure`, if any.
     pub configured: Option<(i32, i32)>,
+    /// The panel rect the surface explicitly declared via
+    /// `df_layer_surface.set_panel_rect`, in surface-local logical
+    /// coordinates (T-14.7b). `None` means the compositor derives the panel
+    /// from the input region and reserved strip (the menu bar, popovers).
+    pub panel_rect: Option<Rectangle<i32, Logical>>,
 }
 
 impl Default for LayerSurfaceState {
@@ -110,6 +115,7 @@ impl Default for LayerSurfaceState {
             output: None,
             namespace: String::new(),
             configured: None,
+            panel_rect: None,
         }
     }
 }

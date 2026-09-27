@@ -115,8 +115,11 @@ windows opening on other workspaces, and apps with inconsistent identifiers.
 The Dock is a **floating plate**: `controls.dock.edgeMargin` keeps it off its
 anchored screen edge, `controls.dock.padding` is the artwork's cross-axis
 (artwork ↔ plate edge) inset, and `controls.dock.paddingAlong` is the along-axis
-inset at the plate's two ends. One `plateRect` in `Dock.qml` derives the plate
-geometry, the input region, and the live panel rect; the shell reads
+inset at the plate's two ends. One live `plateRect` in `Dock.qml` derives the
+plate geometry, the input region, and the live panel rect; it is the union of
+the entry rects about the *resting* plate's fixed anchored edge (so the geometry
+never feeds back into the entry layout) and `restingPlateRect` fixes that edge.
+The shell reads
 `surfaceThickness`/`reservedThickness` from it rather than re-deriving the math. The visual language follows the macOS Tahoe Dock
 reference (local captures under `docs/reference/macos/`, never shipped): a
 rimmed translucent glass plate, rounded-square icon tiles at a consistent

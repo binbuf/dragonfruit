@@ -121,6 +121,12 @@ public:
     // bouncing icon rectangles (T-10 FR-13).
     bool setDockInputRegion(const QList<QRect> &rects);
 
+    // Declare the live panel rect the Dock actually paints, in surface-local
+    // logical coordinates (T-14.7b). The compositor's frosted backdrop follows
+    // it exactly; the Dock sends its live plate rect every commit so the
+    // material stays under the magnified artwork.
+    bool setDockPanelRect(int x, int y, int width, int height);
+
     // Attach `image` to the menu-bar surface and commit. The image must be
     // ARGB32(_Premultiplied).
     bool commitImage(const QImage &image);

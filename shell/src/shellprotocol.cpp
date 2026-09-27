@@ -174,9 +174,13 @@ void ShellProtocol::bindTrustedGlobals()
     if (m_trustedGlobalsBound)
         return;
     if (m_shellName) {
+        // Bind through the generated interface's own version, so an additive
+        // protocol bump (T-14.7b's `set_panel_rect`) never needs a second
+        // hard-coded cap here.
         m_shell = static_cast<df_shell *>(
             wl_registry_bind(m_registry, m_shellName, &df_shell_interface,
-                             std::min(m_shellVersion, 1u)));
+                             std::min(m_shellVersion,
+                                      static_cast<uint32_t>(df_shell_interface.version))));
     }
     if (m_managerName) {
         // Bind through the generated interface's own version, so a lockstep
@@ -1282,6 +1286,16 @@ bool ShellProtocol::setDockInputRegion(const QList<QRect> &rects)
     // transparent magnified band; T-10 FR-13).
     wl_surface_set_input_region(m_dockSurface, region);
     wl_region_destroy(region);
+    return true;
+}
+
+bool ShellProtocol::setDockPanelRect(int x, int y, int width, int height)
+{
+    if (!m_dockLayer)
+        return false;
+    df_layer_surface_set_panel_rect(m_dockLayer, x, y, width, height);
+    if (m_display)
+        wl_display_flush(m_display);
     return true;
 }
 

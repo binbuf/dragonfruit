@@ -166,17 +166,198 @@ Item {
             verify(Math.abs(anchorCenter - base) < 0.5);
         }
 
-        function test_bar_does_not_grow_with_magnification() {
+        function test_plate_grows_with_magnification() {
+            // Park the pointer clear of the Dock so a leftover hover
+            // position from an earlier case cannot seed `pointerAlong`.
+            mouseMove(stage, 640, stage.height - 1);
+            waitForRendering(stage);
+            // T-14.7b: the plate wraps the magnified row in both axes instead
+            // of leaving the artwork to spill out of a fixed slab.
             var dock = make(dockComponent, {
-                width: 1280, height: 160, magnification: 0,
+                width: 1280, height: 160, position: "bottom", magnification: 1.0,
+                entries: [ app("a", "A", true), app("b", "B", true), app("c", "C", true) ]
+            });
+            var baseW = dock.restingPlateRect.w;
+            var baseH = dock.restingPlateRect.h;
+            dock.pointerAlong = dock._baseline.centers[1];
+            waitForRendering(stage);
+            compare(dock.magnifying, true);
+            verify(dock.plateRect.w > baseW);
+            verify(dock.plateRect.h > baseH);
+        }
+
+        function test_plate_contains_every_entry_rect_under_magnification() {
+            // Park the pointer clear of the Dock so a leftover hover
+            // position from an earlier case cannot seed `pointerAlong`.
+            mouseMove(stage, 640, stage.height - 1);
+            waitForRendering(stage);
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, position: "bottom", magnification: 1.0,
+                entries: [ app("a", "A", true), app("b", "B", true), app("c", "C", true) ]
+            });
+            dock.pointerAlong = dock._baseline.centers[1];
+            waitForRendering(stage);
+            var r = dock.plateRect;
+            for (var i = 0; i < dock.layout.length; ++i) {
+                if (dock.items[i].kind === "divider")
+                    continue;
+                var e = dock.layout[i];
+                verify(e.x >= r.x - 0.001);
+                verify(e.x + e.w <= r.x + r.w + 0.001);
+                verify(e.y >= r.y - 0.001);
+                verify(e.y + e.h <= r.y + r.h + 0.001);
+            }
+        }
+
+        function test_plate_anchored_edge_stays_put_under_magnification() {
+            // Park the pointer clear of the Dock so a leftover hover
+            // position from an earlier case cannot seed `pointerAlong`.
+            mouseMove(stage, 640, stage.height - 1);
+            waitForRendering(stage);
+            // The anchored edge never moves while the plate grows: windows do
+            // not re-layout during a sweep (T-14.7b).
+            var bottom = make(dockComponent, {
+                width: 1280, height: 160, position: "bottom", magnification: 1.0,
                 entries: [ app("a", "A", true), app("b", "B", true) ]
             });
-            var baseBar = dock.plateRect.w;
-            dock.magnification = 1.0;
+            var bottomEdge = bottom.plateRect.y + bottom.plateRect.h;
+            bottom.pointerAlong = bottom._baseline.centers[0];
+            waitForRendering(stage);
+            fuzzyCompare(bottom.plateRect.y + bottom.plateRect.h, bottomEdge, 0.001);
+            fuzzyCompare(bottom.plateRect.y + bottom.plateRect.h,
+                         bottom.height - bottom.edgeMargin, 0.001);
+
+            var left = make(dockComponent, {
+                width: 240, height: 800, position: "left", magnification: 1.0,
+                entries: [ app("a", "A", true), app("b", "B", true) ]
+            });
+            left.pointerAlong = left._baseline.centers[0];
+            waitForRendering(stage);
+            fuzzyCompare(left.plateRect.x, left.edgeMargin, 0.001);
+
+            var right = make(dockComponent, {
+                width: 240, height: 800, position: "right", magnification: 1.0,
+                entries: [ app("a", "A", true), app("b", "B", true) ]
+            });
+            right.pointerAlong = right._baseline.centers[0];
+            waitForRendering(stage);
+            fuzzyCompare(right.plateRect.x + right.plateRect.w,
+                         right.width - right.edgeMargin, 0.001);
+        }
+
+        function test_reserved_thickness_is_constant_under_magnification() {
+            // Park the pointer clear of the Dock so a leftover hover
+            // position from an earlier case cannot seed `pointerAlong`.
+            mouseMove(stage, 640, stage.height - 1);
+            waitForRendering(stage);
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, position: "bottom", magnification: 1.0,
+                entries: [ app("a", "A", true), app("b", "B", true) ]
+            });
+            var reserved = dock.reservedThickness;
+            var surface = dock.surfaceThickness;
             dock.pointerAlong = dock._baseline.centers[0];
             waitForRendering(stage);
-            compare(dock.plateRect.w, baseBar);
-            compare(dock.plateRect.h, dock.barThickness);
+            compare(dock.reservedThickness, reserved);
+            compare(dock.reservedThickness, dock.barThickness + dock.edgeMargin);
+            compare(dock.surfaceThickness, surface);
+        }
+
+        function test_plate_returns_to_baseline_on_mouse_out() {
+            // Park the pointer clear of the Dock so a leftover hover
+            // position from an earlier case cannot seed `pointerAlong`.
+            mouseMove(stage, 640, stage.height - 1);
+            waitForRendering(stage);
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, position: "bottom", magnification: 1.0,
+                entries: [ app("a", "A", true), app("b", "B", true), app("c", "C", true) ]
+            });
+            dock.pointerAlong = dock._baseline.centers[1];
+            waitForRendering(stage);
+            verify(dock.plateRect.h > dock.restingPlateRect.h);
+            dock.pointerAlong = -1;
+            waitForRendering(stage);
+            compare(dock.magnifying, false);
+            fuzzyCompare(dock.plateRect.x, dock.restingPlateRect.x, 0.001);
+            fuzzyCompare(dock.plateRect.y, dock.restingPlateRect.y, 0.001);
+            fuzzyCompare(dock.plateRect.w, dock.restingPlateRect.w, 0.001);
+            fuzzyCompare(dock.plateRect.h, dock.restingPlateRect.h, 0.001);
+        }
+
+        function test_plate_grows_under_reduced_motion() {
+            // Park the pointer clear of the Dock so a leftover hover
+            // position from an earlier case cannot seed `pointerAlong`.
+            mouseMove(stage, 640, stage.height - 1);
+            waitForRendering(stage);
+            // Reduced motion removes the spring, not the geometry (T-14.7b).
+            Theme.reducedMotion = true;
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, position: "bottom", magnification: 1.0,
+                entries: [ app("a", "A", true), app("b", "B", true) ]
+            });
+            dock.pointerAlong = dock._baseline.centers[0];
+            waitForRendering(stage);
+            compare(dock.magnifying, true);
+            verify(dock.plateRect.h > dock.restingPlateRect.h);
+        }
+
+        function test_bounce_does_not_grow_the_plate() {
+            // Park the pointer clear of the Dock so a leftover hover
+            // position from an earlier case cannot seed `pointerAlong`.
+            mouseMove(stage, 640, stage.height - 1);
+            waitForRendering(stage);
+            // A launch/attention bounce overshoots the plate; the plate must
+            // not pump with it (T-14.7b).
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, position: "bottom",
+                entries: [ { id: "a", appId: "a", name: "A", kind: "pinned",
+                             pinned: true, running: true, attention: true,
+                             bounce: 0.5 } ]
+            });
+            compare(dock.plateRect.w, dock.restingPlateRect.w);
+            compare(dock.plateRect.h, dock.restingPlateRect.h);
+            // The bounced entry rises above the resting plate.
+            verify(dock.layout[0].y < dock.plateRect.y);
+        }
+
+        function test_magnification_pointer_is_smoothed() {
+            // Park the pointer clear of the Dock so a leftover hover
+            // position from an earlier case cannot seed `pointerAlong`.
+            mouseMove(stage, 640, stage.height - 1);
+            waitForRendering(stage);
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, position: "bottom", magnification: 1.0,
+                entries: [ app("a", "A", true), app("b", "B", true), app("c", "C", true) ]
+            });
+            // The first placement snaps: magnification was off when it arrived.
+            dock.pointerAlong = dock._baseline.centers[0];
+            waitForRendering(stage);
+            fuzzyCompare(dock.smoothPointerAlong, dock._baseline.centers[0], 0.001);
+            // A move while magnifying springs toward the new position instead
+            // of jumping to it.
+            var target = dock._baseline.centers[2];
+            dock.pointerAlong = target;
+            wait(Math.floor(Theme.motion.dockMagnify.fullDuration / 3));
+            verify(dock.smoothPointerAlong > dock._baseline.centers[0]);
+            wait(Theme.motion.dockMagnify.fullDuration + 120);
+            fuzzyCompare(dock.smoothPointerAlong, target, 0.5);
+        }
+
+        function test_magnification_pointer_snaps_under_reduced_motion() {
+            // Park the pointer clear of the Dock so a leftover hover
+            // position from an earlier case cannot seed `pointerAlong`.
+            mouseMove(stage, 640, stage.height - 1);
+            waitForRendering(stage);
+            Theme.reducedMotion = true;
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, position: "bottom", magnification: 1.0,
+                entries: [ app("a", "A", true), app("b", "B", true), app("c", "C", true) ]
+            });
+            dock.pointerAlong = dock._baseline.centers[0];
+            waitForRendering(stage);
+            dock.pointerAlong = dock._baseline.centers[2];
+            waitForRendering(stage);
+            fuzzyCompare(dock.smoothPointerAlong, dock._baseline.centers[2], 0.001);
         }
 
         function test_entries_snap_to_layout_after_configure() {
