@@ -300,6 +300,17 @@ magnification pointer parked between them. The two 2x crops are stacked into
 `t14-dock-hover-chooser.png` (light over dark) and saved individually. Needs a
 host Wayland session, spectacle, gdbus, and Pillow; not in `make e2e`.
 
+T-14.7q's Dock overflow cell and "More Windows" list sign-off is produced by
+`scripts/capture-dock-overflow.sh` (`make dock-overflow-capture`): a full-size
+nested output fits dozens of running groups, so the script sets the shell's
+`DF_DOCK_OVERFLOW_FIXTURE=1` seam, which injects synthetic running groups and
+caps the effective Dock axis so the pure planner produces a genuine overflow —
+the terminal cell then opens its list. The light and dark runs capture the Dock
+with the overflow cell (grid glyph + hidden-group count) and its open list. The
+two 2x crops are stacked into `t14-dock-overflow.png` (light over dark) and
+saved individually. Needs a host Wayland session, spectacle, gdbus, and Pillow;
+not in `make e2e`.
+
 T-14.7i's Dock hover name label sign-off is produced by
 `scripts/capture-dock-tooltip.sh` (`make dock-tooltip-capture`): the nested demo
 runs once per entry kind through the shell's `DF_DOCK_TOOLTIP_FIXTURE` seam

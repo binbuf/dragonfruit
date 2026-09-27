@@ -348,6 +348,10 @@ QVariantList buildDockEntries(const QStringList &pinnedIds, const DesktopEntryIn
     return entries;
 }
 
+static DockOverflowResult buildOverflowResult(const QVariantList &entries, int keptTemporary,
+                                              int keptRecent, bool showOverflow,
+                                              DockOverflowResult result);
+
 DockOverflowResult applyDockOverflow(const QVariantList &entries, int availableLength,
                                      int requestedIconSize, int iconMin, int iconMax,
                                      int gap, int dividerWidth, int fixedCount,
@@ -362,8 +366,8 @@ DockOverflowResult applyDockOverflow(const QVariantList &entries, int availableL
     int recent = 0;
     int minimized = 0;
     int other = 0;
-    for (const QVariant &value : entries) {
-        const QString kind = value.toMap().value(QStringLiteral("kind")).toString();
+    for (int i = 0; i < entries.size(); ++i) {
+        const QString kind = entries.at(i).toMap().value(QStringLiteral("kind")).toString();
         if (kind == QLatin1String("pinned"))
             ++pinned;
         else if (kind == QLatin1String("temporary"))
@@ -392,53 +396,128 @@ DockOverflowResult applyDockOverflow(const QVariantList &entries, int availableL
     };
 
     int icon = result.iconSize;
-    int hidden = 0;
     if (totalFor(icon, count) > availableLength) {
         // The largest icon in the token range whose whole content fits.
         const int fit = int((availableLength - dividerWidth) / (count - 1)) - gap;
         icon = qBound(iconMin, fit, result.iconSize);
-        if (totalFor(icon, count) > availableLength) {
-            // Even at the minimum the full set overflows: drop temporary/
-            // recent entries until it fits, never pinned/minimized/fixed.
-            icon = iconMin;
-            int n = count;
-            while (n > nonDroppable && totalFor(iconMin, n) > availableLength) {
-                --n;
-                ++hidden;
-            }
-        }
     }
+    // The whole content fits at the clamped size: nothing is hidden.
+    if (totalFor(icon, count) <= availableLength) {
+        result.iconSize = icon;
+        result.clamped = icon < qBound(iconMin, requestedIconSize, iconMax);
+        return result;
+    }
+
+    // Even at the minimum the full set overflows. The largest number of
+    // entries that still fits becomes the budget for the visible set; the rest
+    // of the running groups fold into one terminal overflow cell. Pinned,
+    // minimized, fixed, and the divider are never dropped, so the budget below
+    // them is the error state the caller warns about.
+    icon = iconMin;
+    int maxVisible = count;
+    while (maxVisible > 0 && totalFor(iconMin, maxVisible) > availableLength)
+        --maxVisible;
 
     result.iconSize = icon;
-    result.overflowed = totalFor(icon, count - hidden) > availableLength;
-    result.clamped = icon < qBound(iconMin, requestedIconSize, iconMax) || hidden > 0;
-    if (hidden <= 0)
-        return result;
 
-    // Recents are the least important: hide them from the end first, then the
-    // temporary running apps, so the pinned prefix is untouched.
-    result.hiddenRecent = qMin(hidden, recent);
-    result.hiddenTemporary = hidden - result.hiddenRecent;
-    QList<int> recentIndexes;
-    QList<int> temporaryIndexes;
-    for (int i = 0; i < entries.size(); ++i) {
-        const QString kind = entries.at(i).toMap().value(QStringLiteral("kind")).toString();
-        if (kind == QLatin1String("recent"))
-            recentIndexes.append(i);
-        else if (kind == QLatin1String("temporary"))
-            temporaryIndexes.append(i);
+    if (maxVisible < nonDroppable) {
+        // Not even the non-droppable content fits: fall back to the legacy
+        // clamp, hiding every droppable entry and reporting the error.
+        result.hiddenTemporary = temporary;
+        result.hiddenRecent = recent;
+        result.overflowed = true;
+        result.clamped = true;
+        return buildOverflowResult(entries, 0, 0, false, result);
     }
-    QSet<int> drop;
-    for (int i = 0; i < result.hiddenRecent; ++i)
-        drop.insert(recentIndexes.at(recentIndexes.size() - 1 - i));
-    for (int i = 0; i < result.hiddenTemporary; ++i)
-        drop.insert(temporaryIndexes.at(temporaryIndexes.size() - 1 - i));
+
+    const int capacity = maxVisible - nonDroppable;
+    // Recents are the least important: keep as many temporary running groups
+    // as fit first, then fill any remaining capacity with recents.
+    int keptTemporary = qMin(temporary, capacity);
+    int keptRecent = qMin(recent, capacity - keptTemporary);
+    int hiddenTemporary = temporary - keptTemporary;
+    int hiddenRecent = recent - keptRecent;
+
+    // A hidden running group becomes reachable through one overflow cell. The
+    // cell consumes one visible slot, so when groups are hidden and there is
+    // room for a cell, fold one more visible group in to make room. With no
+    // room left for even the cell, fall back to dropping silently (below).
+    bool showOverflow = false;
+    if (hiddenTemporary >= 1 && capacity >= 1) {
+        // `keptRecent` is necessarily 0 here (a hidden temporary means the
+        // capacity was exhausted by temporaries), so this always frees a
+        // temporary slot rather than a recent one.
+        if (keptTemporary > 0) {
+            --keptTemporary;
+            ++hiddenTemporary;
+        }
+        showOverflow = hiddenTemporary >= 1;
+    }
+
+    result.hiddenTemporary = hiddenTemporary;
+    result.hiddenRecent = hiddenRecent;
+    result.overflowShown = showOverflow ? hiddenTemporary : 0;
+    result.overflowed = false;
+    result.clamped = true;
+    return buildOverflowResult(entries, keptTemporary, keptRecent, showOverflow, result);
+}
+
+// Assemble the visible entry list from the kept temporary/recent counts: drop
+// the tail of each droppable region and, when asked, append the terminal
+// overflow entry carrying every hidden running group in original order. The
+// overflow entry is the last app-region item, immediately before the first
+// minimized entry (the divider follows it in the Dock's rendering).
+static DockOverflowResult buildOverflowResult(const QVariantList &entries, int keptTemporary,
+                                              int keptRecent, bool showOverflow,
+                                              DockOverflowResult result)
+{
     QVariantList filtered;
-    filtered.reserve(entries.size() - hidden);
-    for (int i = 0; i < entries.size(); ++i) {
-        if (!drop.contains(i))
-            filtered.append(entries.at(i));
+    QVariantList hiddenGroups;
+    int keptTemp = 0;
+    int keptRec = 0;
+    int lastAppRegion = -1;
+    for (const QVariant &value : entries) {
+        const QVariantMap map = value.toMap();
+        const QString kind = map.value(QStringLiteral("kind")).toString();
+        bool keep = true;
+        if (kind == QLatin1String("temporary")) {
+            keep = keptTemp < keptTemporary;
+            ++keptTemp;
+            if (!keep)
+                hiddenGroups.append(value);
+        } else if (kind == QLatin1String("recent")) {
+            keep = keptRec < keptRecent;
+            ++keptRec;
+        }
+        if (!keep)
+            continue;
+        filtered.append(value);
+        if (kind == QLatin1String("pinned") || kind == QLatin1String("temporary")
+                || kind == QLatin1String("recent"))
+            lastAppRegion = filtered.size() - 1;
     }
+
+    if (showOverflow && hiddenGroups.size() > 0) {
+        QVariantList groups;
+        groups.reserve(hiddenGroups.size());
+        for (const QVariant &group : hiddenGroups) {
+            QVariantMap g = group.toMap();
+            g.insert(QStringLiteral("overflowGroup"), true);
+            groups.append(g);
+        }
+        QVariantMap overflow;
+        overflow.insert(QStringLiteral("id"), QStringLiteral("__overflow__"));
+        overflow.insert(QStringLiteral("kind"), QStringLiteral("overflow"));
+        overflow.insert(QStringLiteral("name"), QString());
+        overflow.insert(QStringLiteral("appId"), QString());
+        overflow.insert(QStringLiteral("running"), false);
+        overflow.insert(QStringLiteral("pinned"), false);
+        overflow.insert(QStringLiteral("hiddenCount"), groups.size());
+        overflow.insert(QStringLiteral("windowCount"), groups.size());
+        overflow.insert(QStringLiteral("groups"), groups);
+        filtered.insert(lastAppRegion + 1, overflow);
+    }
+
     result.entries = filtered;
     return result;
 }

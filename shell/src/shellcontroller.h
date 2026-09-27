@@ -800,12 +800,23 @@ private:
     // geometry change only resets the Repeater model when it must.
     int m_dockHiddenTemporary = 0;
     int m_dockHiddenRecent = 0;
+    // How many hidden running groups the last applied layout showed in the
+    // terminal overflow cell (0 = no cell), so a change in the cell's
+    // presence resets the Repeater model even when the raw hidden counts match
+    // (T-14.7q).
+    int m_dockOverflowShown = 0;
     // The last phases map pushed to QML (`entry id -> { phase, attention }`).
     // The map is only re-published when it actually changes, so the idle Dock
     // makes no binding churn (T-14.7c).
     QVariantMap m_dockBouncePhases;
     // One warning per session for the Dock-overflow error state (section 5.1).
     bool m_dockOverflowWarned = false;
+    // Capture-only seam (T-14.7q): `DF_DOCK_OVERFLOW_FIXTURE=1` injects
+    // synthetic running groups and caps the effective axis length so the
+    // terminal overflow cell appears on a normal-size nested output, which the
+    // live visual check then opens. Never set in a normal session.
+    bool m_dockOverflowFixture = false;
+    int m_dockOverflowFixtureWidth = 0;
     // Pinned desktop id -> "launching" | "failed" (transient).
     QHash<QString, QString> m_launchStates;
     // The Dock's last-interaction tile rects, keyed by desktop id (T-14.7l).

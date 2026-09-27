@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(93 earlier sections omitted)_
+_(94 earlier sections omitted)_
 
-- **T89 — T-13.1b Settings and GlobalShortcuts portals**: **State: done.** The backend now serves the first two standard interfaces at; **`portal/src/settings.rs`** (new) — the pure projection:
 - **T90 — T-13.2a FileChooser portal**: **State: done.** The backend now serves the standard FileChooser interface; **`portal/src/chooser.rs`** (new) — the pure model: `ChooserKind`
 - **T91 — T-13.2b FileChooser picker UI**: **State: done.** The FileChooser portal now has its dialog: a design-system; **`shell/screenshot/FileChooser.qml`** (new) — the pure view: title, an Up
 - **T92 — T-13.3a Screenshot portal and selection UI**: **State: done.** The backend serves `org.freedesktop.impl.portal.Screenshot`; **`portal/src/screenshot.rs`** (new) — the pure model: `CaptureMode`
@@ -44,6 +43,7 @@ _(93 earlier sections omitted)_
 - **T110n — T-14.7n Dock window chooser: row discipline**: **State: done.** The window chooser's row list is now bounded: at most; `design-system/tokens/tokens.json` — `component.dock.chooser`:
 - **T110o — T-14.7o Dock window-count badge**: **State: done.** A grouped app now shows a count at its icon's top-right corner; `shell/src/dockprojection.{h,cpp}` — new `dockWindowCount(entry)` (prefers
 - **T110p — T-14.7p Dock hover-open, retargetable chooser and stable anchor**: **State: done.** `dock.chooserOnHover` (bool, default off) opts into a; `services/settingsd/src/schema.rs` — `dock.chooserOnHover` (`since: 8`),
+- **T110q — T-14.7q Dock overflow cell and More Windows popover**: **State: done.** When the running groups do not fit even at the minimum icon,; `shell/src/dockmodel.{h,cpp}` — `applyDockOverflow` now returns a terminal
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -9540,4 +9540,80 @@ Gotchas for later tasks:
 - **T-14.7q overflow work** must not grow the popover past ADR 0100's headroom;
   the hover path adds no surface, only a geometry proxy.
 - `check-desktop-names.sh` still fails on the pre-existing
+  StatusNotifier/zoo/apppicker lines (unchanged here).
+
+## T110q — T-14.7q Dock overflow cell and More Windows popover
+
+**State: done.** When the running groups do not fit even at the minimum icon,
+they are no longer dropped silently (this supersedes legacy T-10 §5.1 for the
+running-groups case only; ADR 0103 already records it). The pure planner folds
+them into one terminal `kind: "overflow"` app-region entry — the last item
+before the divider, never reorderable or pinnable — and the Dock renders a grid
+glyph with the hidden-group count badge and opens a "More Windows" list
+anchored to the cell. Choosing a single-window group activates its window;
+choosing a multi-window group opens the T-14.7m chooser anchored to the cell.
+The icon-size clamp remains the outer fallback when even one cell cannot fit
+(then the legacy error state stands). No new ADR.
+
+Real paths:
+
+- `shell/src/dockmodel.{h,cpp}` — `applyDockOverflow` now returns a terminal
+  overflow entry (`{ id: "__overflow__", kind: "overflow", hiddenCount,
+  windowCount, groups: [...] }`; each group carries `overflowGroup: true`);
+  `DockOverflowResult.overflowShown`. Pinned/minimized/fixed never in the
+  overflow set; recents still dropped silently. Legacy "drop the tail" is the
+  `capacity == 0` / `maxVisible < nonDroppable` fallback.
+- `shell/src/shellcontroller.{h,cpp}` — `m_dockOverflowShown` participates in
+  the Repeater-reset decision; `warnDockOverflow` wording; the
+  `DF_DOCK_OVERFLOW_FIXTURE=1` capture seam (8 synthetic groups + a 480 px
+  effective-axis cap).
+- `shell/dock/DockGlyph.qml` — `kind: "overflow"` grid-of-windows artwork.
+- `shell/dock/DockEntry.qml` — `isOverflow`, `overflowCount`,
+  `showWindowBadge`/`windowBadgeLabel` overflow branch, accessible name
+  "N more window groups", tooltip, drag-handler exclusion.
+- `shell/dock/DockOverflowPopover.qml` (new) — the bounded "More Windows" list
+  (`component.dock.overflow.maxRows`), signals `groupActivated`.
+- `shell/dock/Dock.qml` — `appEntries` includes `overflow`; `openOverflow`,
+  `activateOverflowGroup`, `openOverflowGroupChooser`,
+  `refreshOverflowAfterProjection`, `refreshPopoversAfterProjection`,
+  `openOverflowFixture`; `popoverOpen`/`activePopoverRect`/`closePopovers`
+  include the list; `isDraggable`/`openEntryMenu`/`publishEntryTile`/
+  `externalInsertionIndex` treat the cell as inert.
+- `design-system/tokens/tokens.json` — `component.dock.overflow`
+  (`maxRows`, `gridInset`, `gridGap`, `gridCell`); `Theme.qml` +
+  `compositor/src/design_tokens.rs` regenerated.
+- Tests: `tst_dockcore` — overflow cell carries the hidden groups, pinned
+  exclusion, last-app-region placement, no-cell fallback, fits-alone; the
+  existing `overflowHidesRecentsBeforeTemporaries` repurposed. `tst_dockcore`
+  98 → 103. `tst_dock.qml` — 8 `test_overflow_*` cases. `tst_dock` 212 → 220.
+- `scripts/capture-dock-overflow.sh` + `make dock-overflow-capture`;
+  `docs/captures/t14-dock-overflow-{light,dark}.png` + the composite.
+- Docs: `docs/design/04-shell.md` "Dock overflow cell"; captures README.
+
+Commands that work (repo root):
+
+- `ctest --test-dir build --output-on-failure` — 53/53 (`tst_dock` 220,
+  `tst_dockcore` 103).
+- `make e2e` — green.
+- `cargo fmt --all -- --check`; `./scripts/gen-tokens.py --check`;
+  `./scripts/check-design-tokens.sh`; `./scripts/check-no-capture-grab.sh`;
+  `./scripts/check-gallery-snapshots.py --strict` — green.
+- Live: `make dock-overflow-capture` (host Wayland + spectacle + gdbus +
+  Pillow).
+
+Gotchas for later tasks:
+
+- **`hiddenTemporary` now counts the groups in the cell**, which is one more
+  than the groups that would have been dropped, because the cell itself costs a
+  physical slot. `overflowShown` is the cell's count (0 when no cell).
+- **Do not re-derive `groups` in QML**; the pure planner owns the overflow set
+  and its order. The Dock only renders and routes.
+- **A chooser opened from the list is bound to an `overflowGroup` entry**, not a
+  live delegate: `refreshChooserAfterProjection` re-resolves it from the fresh
+  overflow entry and keeps the anchor on `chooserAnchorProxy`.
+- **The overflow entry must stay the last app-region item before the divider**;
+  `externalInsertionIndex` breaks on it so an external drop never inserts after
+  it.
+- `DF_DOCK_OVERFLOW_FIXTURE` is a capture seam, never session state.
+- `check-desktop-names.sh` still fails only on the pre-existing
   StatusNotifier/zoo/apppicker lines (unchanged here).
