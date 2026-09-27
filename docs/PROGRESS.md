@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(72 earlier sections omitted)_
+_(73 earlier sections omitted)_
 
-- **T69 — T-10.7 Files capture and acceptance walkthrough**: **State: done.** T-10 (Files MVP) is captured at the track boundary and the; **`scripts/capture-files.sh`** (new) — `make files-capture` (new target in
 - **T70 — T-11.1a Notification service core**: **State: done.** The `org.freedesktop.Notifications` service and the shell; **`services/notifications/`** (new crate `dragonfruit-notifications`,
 - **T71 — T-11.1b Notification actions and Dock badge replacement**: **State: done.** Notification actions round-trip to the originating app, the; **`services/notifications/src/dbus.rs`** — `GetCapabilities` adds `actions`;
 - **T72 — T-11.2a DND/Focus policy**: **State: done.** The notification service now owns a three-mode Focus/DND; **`services/notifications/src/policy.rs`** (new) — `FocusMode` (`off` /
@@ -45,6 +44,7 @@ _(72 earlier sections omitted)_
 - **T105 — T-14.3 StatusNotifier/AppIndicator tray**: **State: done.** StatusNotifier/AppIndicator tray items render in the menu; `services/app-index/src/tray.rs` (new) — pure `Registration`
 - **T106 — T-14.4 DBusMenu bridge**: **State: done.** A DBusMenu/AppMenu-exporting app's global menu is now bridged; `services/app-index/src/menubridge.rs` (new) — pure `MenuRegistration`
 - **T107 — T-14.5 XDnD bridge**: **State: done (protocol half + documented gap; the task explicitly allows; `compositor/src/xdnd.rs` (new) — pure XDnD:
+- **T107 — T-14.5 XDnD bridge (attempt 2 — gate repair)**: **State: done.** The attempt-1 protocol half and documented gap stand; `Makefile` — the `e2e` recipe runs
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -8082,3 +8082,51 @@ Gotchas for later tasks:
   demo window, no stray artifacts from this change (this task has no UI
   surface of its own). Not committed to `docs/captures` (track-boundary
   artifact).
+
+## T107 — T-14.5 XDnD bridge (attempt 2 — gate repair)
+
+**State: done.** The attempt-1 protocol half and documented gap stand
+unchanged. Attempt 1 was marked failed for one reason only: the harness
+`make e2e` verify timed out after 30 min.
+
+Root cause (unrelated to XDnD): `portal/tests/screencast.rs` has four tests
+that each stand up a private session bus and call
+`xdg_desktop_portal_dragonfruit::dbus::serve` **in-process**, then block on
+zbus. Run four-up (the default), the shared blocking executor can starve and a
+test thread blocks forever in a `call_method` reply — it *hangs*, it does not
+fail. Captured with `eu-stack`: `version_property` → `blocking::Connection::
+call_method`, while the backend's connection never gets polled.
+Reproduction: `target/debug/deps/screencast-*` in a loop → 1/30 hang
+(1/114 on a second run). With `--test-threads=1` → 0/80.
+
+Fix this session (Makefile-only, no product code):
+
+- `Makefile` — the `e2e` recipe runs
+  `cargo test -p xdg-desktop-portal-dragonfruit -- --test-threads=1`; the
+  portal package is the only one whose tests serve D-Bus in-process. Comment
+  above the target explains why. (Attempt 1 had already added
+  `--test xdnd_conformance` to the same recipe.)
+
+Verified this session (repo root; env from the build note below):
+
+- `make e2e` — **exit 0 in 63 s** (was a 30-min timeout); scripted headless
+  demo teardown clean, `xdnd_conformance` green in-suite.
+- `cargo test -p dragonfruit-compositor --lib` — 11/11 xdnd unit cases.
+- `cargo test -p dragonfruit-compositor --test xdnd_conformance` — 1/1.
+- `cargo clippy --workspace --all-targets -- -D warnings`; `cargo fmt --all --
+  --check` — green.
+
+Gotchas for later tasks:
+
+- **Keep `-- --test-threads=1` on the portal `e2e` line.** Without it the gate
+  does not merely fail, it wedges indefinitely; the harness's 30-min verify
+  timeout then reports the task as failed. Other in-process-D-Bus test
+  packages should get the same treatment if they ever grow parallel blocking
+  tests.
+- The XDnD gap itself is unchanged: `compositor/src/xdnd.rs` is a model, not a
+  wired bridge; T-14.6/T-17 treat cross-boundary file DnD as a known, waived
+  gap (see ADR 0099 and `docs/design/tracks/17-premium-gate.md`).
+- Live check reuse: the attempt-1 nested capture `/tmp/opencode/t107-desktop.png`
+  still shows the nested Dragonfruit window (Settings > Appearance, Dock row,
+  no stray artifacts); this session changed no UI code, so the visual verdict
+  is unchanged.
