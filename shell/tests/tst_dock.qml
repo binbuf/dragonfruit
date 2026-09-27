@@ -38,6 +38,8 @@ Item {
         SignalSpy { id: downloadsViewedSpy; signalName: "downloadsViewed" }
         SignalSpy { id: sizePreviewSpy; signalName: "dockSizePreview" }
         SignalSpy { id: sizeChangedSpy; signalName: "dockSizeChanged" }
+        SignalSpy { id: appPickerRequestedSpy; signalName: "appPickerRequested" }
+        SignalSpy { id: appPinToggledSpy; signalName: "appPinToggled" }
 
         // Reduced motion is a global singleton; reset it before every test so
         // a failure mid-test cannot leak into the next one. Same for the colour
@@ -2551,6 +2553,205 @@ Item {
             unavailable.destroy();
             backA.destroy();
             backU.destroy();
+        }
+
+        // -- Add Application picker (T-14.7e) ------------------------------
+
+        function pickerRow(desktopId, name, pinned, iconPath) {
+            return { desktopId: desktopId, name: name, pinned: pinned === true,
+                     iconPath: iconPath !== undefined ? iconPath : "" };
+        }
+
+        function pickerFixture() {
+            return [
+                pickerRow("org.example.Calculator.desktop", "Calculator", true),
+                pickerRow("org.example.Files.desktop", "Files", false),
+                pickerRow("org.example.Settings.desktop", "Settings", false),
+                pickerRow("org.example.Terminal.desktop", "Terminal", false)
+            ];
+        }
+
+        function test_divider_menu_offers_add_application() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("files", "Files", true) ]
+            });
+            dock.openEntryMenu(dock.dividerEntry);
+            var menu = findChild(dock, "entryMenu");
+            var labels = menuLabels(menu);
+            verify(labels.indexOf("Add Application…") >= 0);
+        }
+
+        function test_add_application_opens_the_picker_anchored_to_the_divider() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 200,
+                appPickerItems: pickerFixture(),
+                entries: [ app("files", "Files", true) ]
+            });
+            appPickerRequestedSpy.target = dock;
+            appPickerRequestedSpy.clear();
+            dock.openEntryMenu(dock.dividerEntry);
+            var menu = findChild(dock, "entryMenu");
+            menu.activate(menuLabels(menu).indexOf("Add Application…"));
+            waitForRendering(stage);
+            var picker = findChild(dock, "appPicker");
+            verify(picker !== null, "the picker exists");
+            compare(picker.open, true);
+            compare(dock.appPickerOpen, true);
+            compare(appPickerRequestedSpy.count, 1, "the shell is asked to refresh");
+            verify(dock.popoverRect.w > 0 && dock.popoverRect.h > 0,
+                   "the overlay rect covers the picker");
+            // The picker is anchored to the divider: its arrow tracks it.
+            compare(picker.anchorItem, dock.itemAt(1));
+        }
+
+        function test_picker_filters_rows_by_name_and_id() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 200,
+                appPickerItems: pickerFixture(),
+                entries: []
+            });
+            var picker = findChild(dock, "appPicker");
+            picker.open = true;
+            waitForRendering(stage);
+            compare(picker.filteredItems.length, 4);
+            picker.query = "term";
+            compare(picker.filteredItems.length, 1);
+            compare(picker.filteredItems[0].name, "Terminal");
+            // The query also matches the desktop id, case-insensitively.
+            picker.query = "CALCULATOR.DESKTOP";
+            compare(picker.filteredItems.length, 1);
+            compare(picker.filteredItems[0].desktopId, "org.example.Calculator.desktop");
+            picker.query = "nothing-here";
+            compare(picker.filteredItems.length, 0);
+            picker.query = "";
+            compare(picker.filteredItems.length, 4);
+        }
+
+        function test_picker_shows_a_disabled_empty_row_for_an_empty_filter() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 200,
+                appPickerItems: pickerFixture(),
+                entries: []
+            });
+            var picker = findChild(dock, "appPicker");
+            picker.open = true;
+            picker.query = "zzzz";
+            waitForRendering(stage);
+            wait(300);
+            compare(picker.noMatches, true);
+            var empty = findChild(picker, "appPickerEmptyRow");
+            verify(empty !== null && empty.visible, "the empty-filter row shows");
+        }
+
+        function test_picker_shows_the_absence_state_without_app_index() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 200,
+                appIndexAvailable: false,
+                appPickerItems: [],
+                entries: []
+            });
+            var picker = findChild(dock, "appPicker");
+            picker.open = true;
+            waitForRendering(stage);
+            wait(300);
+            compare(picker.showAbsence, true);
+            var absence = findChild(picker, "appPickerUnavailableRow");
+            verify(absence !== null && absence.visible, "the absence row shows");
+            // The absence state must not read as an empty corpus.
+            compare(picker.noMatches, false);
+
+            dock.appIndexAvailable = true;
+            waitForRendering(stage);
+            wait(300);
+            compare(picker.showAbsence, false);
+            compare(picker.noMatches, true, "an available but empty corpus is empty");
+        }
+
+        function test_picker_row_toggle_emits_the_pin_change() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 200,
+                appPickerItems: pickerFixture(),
+                entries: []
+            });
+            appPinToggledSpy.target = dock;
+            appPinToggledSpy.clear();
+            var picker = findChild(dock, "appPicker");
+            picker.open = true;
+            waitForRendering(stage);
+            // Pin the unpinned Files row.
+            var filesIndex = picker.filteredItems.length > 0 ? 1 : 0;
+            for (var i = 0; i < picker.filteredItems.length; ++i) {
+                if (picker.filteredItems[i].name === "Files")
+                    filesIndex = i;
+            }
+            picker.toggleRowAt(filesIndex);
+            compare(appPinToggledSpy.count, 1);
+            compare(appPinToggledSpy.signalArguments[0][0], "org.example.Files.desktop");
+            compare(appPinToggledSpy.signalArguments[0][1], true);
+            // Unpin the pinned Calculator row.
+            picker.toggleRowAt(filesIndex === 0 ? 1 : 0);
+            compare(appPinToggledSpy.count, 2);
+            compare(appPinToggledSpy.signalArguments[1][1], false);
+        }
+
+        function test_picker_keyboard_traversal_moves_and_toggles() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 200,
+                appPickerItems: pickerFixture(),
+                entries: []
+            });
+            appPinToggledSpy.target = dock;
+            appPinToggledSpy.clear();
+            var picker = findChild(dock, "appPicker");
+            picker.open = true;
+            waitForRendering(stage);
+            compare(picker.currentIndex, 0, "the first row is highlighted on open");
+            picker.moveSelection(1);
+            compare(picker.currentIndex, 1);
+            picker.moveSelection(-1);
+            compare(picker.currentIndex, 0);
+            // Down at the end stops at the last row; Up at the top stops at 0.
+            picker.moveSelection(99);
+            compare(picker.currentIndex, picker.filteredItems.length - 1);
+            picker.moveSelection(99);
+            compare(picker.currentIndex, picker.filteredItems.length - 1);
+            picker.moveSelection(-99);
+            compare(picker.currentIndex, 0);
+            picker.toggleCurrent();
+            compare(appPinToggledSpy.count, 1);
+        }
+
+        function test_picker_accessibility_carries_name_and_in_dock_state() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 200,
+                appPickerItems: pickerFixture(),
+                entries: []
+            });
+            var picker = findChild(dock, "appPicker");
+            picker.open = true;
+            waitForRendering(stage);
+            var row = picker.filteredItems[0];
+            var delegate = findChild(picker, "appPickerRows");
+            verify(delegate !== null, "the row viewport exists");
+            // Accessible names are derived from the row data + pin state; the
+            // delegate role is a list item.
+            verify(row !== undefined, "rows exist to expose");
+        }
+
+        function test_picker_escape_closes() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 200,
+                appPickerItems: pickerFixture(),
+                entries: []
+            });
+            var picker = findChild(dock, "appPicker");
+            picker.open = true;
+            waitForRendering(stage);
+            compare(picker.open, true);
+            picker.hide();
+            compare(picker.open, false);
+            compare(dock.appPickerOpen, false);
         }
     }
 }

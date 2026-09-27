@@ -34,6 +34,14 @@ public:
     // Every installed record, or an empty list when the service is absent.
     QList<DesktopEntry> enumerate() const;
 
+    // Register this process for app-index's coalesced `Changed` signal
+    // (T-14.1c). `interests` is a comma-separated set of `identity`,
+    // `recency`, and `icons` (empty/`all` = everything). Returns the
+    // canonical interest string, or an empty string when the service is
+    // absent. The caller owns the `Changed` signal connection on the same
+    // D-Bus connection.
+    QString subscribe(const QString &interests = QStringLiteral("identity")) const;
+
     // Resolve an icon name to a themed file path for `size` (default: the
     // service's record size). Empty when no theme provides it.
     QString iconPath(const QString &name, int size = 128) const;
