@@ -37,10 +37,10 @@ if(NOT WAYLAND_CLIENT_FOUND OR NOT WAYLAND_SCANNER)
     return()
 endif()
 
-# Pure, Wayland-free Dock core (T-10): the interim `.desktop` resolver and
-# launcher, `dock.pinned` persistence, and the entry merge model. Kept in a
-# small static library so `tst_dockcore` can unit-test it without the
-# compositor or the Wayland stack. The resolver is deleted when T-23 lands.
+# Pure, Wayland-free Dock core (T-10): the app-index entry cache and launcher,
+# `dock.pinned` persistence, and the entry merge model. Kept in a small static
+# library so `tst_dockcore` can unit-test it without the compositor or the
+# Wayland stack. The interim `.desktop` resolver was retired in T-14.7.
 add_library(dragonfruit-shell-dockcore STATIC
     appindexclient.cpp
     chooserbridge.cpp
@@ -59,6 +59,7 @@ add_library(dragonfruit-shell-dockcore STATIC
     launchfailure.cpp
     lockauth.cpp
     lockinput.cpp
+    menubrokerclient.cpp
     menubrokerpolicy.cpp
     notificationclient.cpp
     notificationmodel.cpp

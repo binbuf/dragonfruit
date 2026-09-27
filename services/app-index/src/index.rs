@@ -698,6 +698,28 @@ mod tests {
     }
 
     #[test]
+    fn shipped_first_party_entries_are_launchable() {
+        // Migrated from the shell's retired `.desktop` resolver (T-14.7):
+        // app-index is the only production parser now, so it verifies the
+        // in-repo first-party entries (identity is a launch precondition).
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../apps");
+        let index = AppIndex::from_dirs([root.join("settings"), root.join("files")]);
+        for id in [
+            "org.dragonfruit.Settings.desktop",
+            "org.dragonfruit.Files.desktop",
+        ] {
+            let resolved = index
+                .lookup(id)
+                .unwrap_or_else(|| panic!("{id} is not in the index"));
+            assert!(
+                resolved.record.is_launchable(),
+                "{id} is not launchable: {:?}",
+                resolved.record.exec
+            );
+        }
+    }
+
+    #[test]
     fn wayland_app_id_resolves_to_the_desktop_entry_and_icon() {
         let dir = temp_dir("wayland");
         write_desktop(

@@ -282,6 +282,11 @@ fn wait_for_x11_display(path: &Path, timeout: Duration) -> Option<String> {
 struct ChildGuard {
     compositor: Option<std::process::Child>,
     launched: Vec<(String, std::process::Child)>,
+    /// Best-effort session services (app-index, menu-broker). Unlike
+    /// `launched`, their early exit is not a demo failure: the shell degrades
+    /// gracefully when one is absent. They are still owned here so teardown
+    /// can never leak them into the host session.
+    services: Vec<(String, std::process::Child)>,
 }
 
 impl ChildGuard {
@@ -289,6 +294,7 @@ impl ChildGuard {
         ChildGuard {
             compositor: Some(compositor),
             launched: Vec::new(),
+            services: Vec::new(),
         }
     }
 
@@ -337,6 +343,10 @@ impl Drop for ChildGuard {
             let _ = child.wait();
         }
         for (_, mut child) in self.launched.drain(..) {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        for (_, mut child) in self.services.drain(..) {
             let _ = child.kill();
             let _ = child.wait();
         }
@@ -484,6 +494,90 @@ fn launch_program(
     }
 }
 
+/// The extra environment the dev-tree shell and app-index need so the staged
+/// first-party `.desktop` entries resolve: the built app directories on `PATH`
+/// (a launched first-party app must start) and a scratch `XDG_DATA_DIRS` with
+/// the in-repo `.desktop` entries copied in (nothing is installed). A
+/// production install provides both. Returns `(key, value)` pairs.
+fn dev_share_env(runtime_dir: &Path) -> Vec<(&'static str, String)> {
+    let mut envs = Vec::new();
+    let app_dirs = demo::built_app_dirs();
+    if !app_dirs.is_empty() {
+        let mut parts = app_dirs;
+        parts.extend(std::env::split_paths(
+            &std::env::var_os("PATH").unwrap_or_default(),
+        ));
+        if let Ok(path) = std::env::join_paths(parts) {
+            envs.push(("PATH", path.to_string_lossy().into_owned()));
+        }
+    }
+    let share = runtime_dir.join("df-dev-share");
+    if demo::stage_first_party_desktop_entries(&share) {
+        let existing = std::env::var_os("XDG_DATA_DIRS")
+            .unwrap_or_else(|| std::ffi::OsString::from("/usr/local/share:/usr/share"));
+        envs.push((
+            "XDG_DATA_DIRS",
+            format!("{}:{}", share.to_string_lossy(), existing.to_string_lossy()),
+        ));
+    }
+    envs
+}
+
+/// Path to one of the session services the shell talks to, as a sibling of the
+/// dev tool in the cargo target directory (both are built by the workspace).
+/// `None` when it is not built, in which case the shell degrades gracefully.
+fn service_path(name: &str) -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let sibling = exe.parent()?.join(name);
+    sibling.is_file().then_some(sibling)
+}
+
+/// Start the session services the live shell depends on but `make demo` does
+/// not otherwise provide: `dragonfruit-app-index` (application identity, T-14)
+/// and `dragonfruit-menu-broker` (global menu, T-14.2). Both are best-effort:
+/// missing binaries or a missing session bus are reported and skipped, and the
+/// shell falls back (an empty Dock / its own fixed application menu). A short
+/// settle lets them register their bus names before the shell's one-shot
+/// identity load.
+fn launch_services(guard: &mut ChildGuard, socket_name: &str, runtime_dir: &Path) {
+    if std::env::var_os("DBUS_SESSION_BUS_ADDRESS").is_none() {
+        eprintln!("dragonfruit dev: no session bus; skipping app-index/menu-broker");
+        return;
+    }
+    let share = dev_share_env(runtime_dir);
+    let mut base: Vec<(&str, String)> = vec![
+        ("WAYLAND_DISPLAY", socket_name.to_string()),
+        ("XDG_CURRENT_DESKTOP", DESKTOP_NAME.to_string()),
+    ];
+    for (key, value) in &share {
+        base.push((*key, value.clone()));
+    }
+    let mut launched = false;
+    for name in ["dragonfruit-app-index", "dragonfruit-menu-broker"] {
+        let Some(path) = service_path(name) else {
+            eprintln!("dragonfruit dev: {name} not built; the shell runs without it");
+            continue;
+        };
+        let mut command = Command::new(&path);
+        for (key, value) in &base {
+            command.env(*key, value);
+        }
+        match command.spawn() {
+            Ok(child) => {
+                println!("dragonfruit dev: launched {name}");
+                guard.services.push((name.to_string(), child));
+                launched = true;
+            }
+            Err(e) => eprintln!("dragonfruit dev: failed to launch {name}: {e}"),
+        }
+    }
+    if launched {
+        // The services register their names synchronously; give them a moment
+        // so the shell's startup identity load sees app-index.
+        std::thread::sleep(Duration::from_millis(500));
+    }
+}
+
 /// Launch the shell with the one-time token the compositor provisioned at
 /// startup (T-09). Returns `false` if the shell could not be launched.
 fn launch_shell(guard: &mut ChildGuard, socket_name: &str, runtime_dir: &Path) -> bool {
@@ -526,15 +620,8 @@ fn launch_shell(guard: &mut ChildGuard, socket_name: &str, runtime_dir: &Path) -
     // `dragonfruit-settings`). The dev tree installs nothing, so expose the
     // built app directories and the build's QML modules to the shell so a
     // launched first-party app can start. A production install provides both.
-    let app_dirs = demo::built_app_dirs();
-    if !app_dirs.is_empty() {
-        let mut parts = app_dirs;
-        parts.extend(std::env::split_paths(
-            &std::env::var_os("PATH").unwrap_or_default(),
-        ));
-        if let Ok(path) = std::env::join_paths(parts) {
-            envs.push(("PATH", path.to_string_lossy().into_owned()));
-        }
+    for (key, value) in dev_share_env(runtime_dir) {
+        envs.push((key, value));
     }
     envs.push((
         "QML_IMPORT_PATH",
@@ -543,18 +630,6 @@ fn launch_shell(guard: &mut ChildGuard, socket_name: &str, runtime_dir: &Path) -
             .to_string_lossy()
             .into_owned(),
     ));
-    // The shell resolves installed apps from its XDG application corpus; stage
-    // the first-party `.desktop` entries on a scratch data dir for the dev
-    // tree (production installs them under the XDG data dirs).
-    let share = runtime_dir.join("df-dev-share");
-    if demo::stage_first_party_desktop_entries(&share) {
-        let existing = std::env::var_os("XDG_DATA_DIRS")
-            .unwrap_or_else(|| std::ffi::OsString::from("/usr/local/share:/usr/share"));
-        envs.push((
-            "XDG_DATA_DIRS",
-            format!("{}:{}", share.to_string_lossy(), existing.to_string_lossy()),
-        ));
-    }
     launch_program(guard, "shell", &shell, &args, &envs)
 }
 
@@ -581,6 +656,14 @@ fn teardown_session(session: &mut Session) -> bool {
     SIGNALLED.store(false, Ordering::SeqCst);
 
     let mut dirty = false;
+    // Best-effort services first: their exit is never a failure, but they must
+    // not outlive the session.
+    for (name, mut child) in std::mem::take(&mut session.guard.services) {
+        if shutdown_child(&mut child).is_err() {
+            eprintln!("dragonfruit dev: service {name:?} refused to die");
+            dirty = true;
+        }
+    }
     for (name, mut child) in std::mem::take(&mut session.guard.launched) {
         if shutdown_child(&mut child).is_err() {
             eprintln!("dragonfruit dev: {name:?} refused to die");
@@ -663,6 +746,7 @@ fn run_dev_session(args: &DevArgs) -> ExitCode {
     };
 
     if args.shell {
+        launch_services(&mut session.guard, &args.socket_name, &runtime_dir);
         launch_shell(&mut session.guard, &args.socket_name, &runtime_dir);
     }
 
@@ -733,6 +817,10 @@ fn run_demo_session(args: &DevArgs) -> ExitCode {
 
     let mut dirty = false;
 
+    // The live Dock identity (app-index) and global menu (menu-broker) are
+    // real services now (T-14.7); start them before the shell, which loads
+    // the app corpus once at startup.
+    launch_services(&mut session.guard, &args.socket_name, &runtime_dir);
     if !launch_shell(&mut session.guard, &args.socket_name, &runtime_dir) {
         dirty = true;
     }

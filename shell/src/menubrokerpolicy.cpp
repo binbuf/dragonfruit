@@ -2,6 +2,9 @@
 #include "menubrokerpolicy.h"
 
 #include <QCoreApplication>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QList>
 #include <QVariantMap>
 
@@ -71,6 +74,29 @@ AppMenuLiveState appMenuLiveState(const QString &focusedAppId, const QVariantLis
         }
     }
     return state;
+}
+
+QString windowStatesJson(const QVariantList &entries)
+{
+    QJsonArray apps;
+    for (const QVariant &value : entries) {
+        const QVariantMap row = value.toMap();
+        // Only app-level running entries describe an app's window state; the
+        // per-window minimized entries would be mistaken for apps.
+        if (row.value(QStringLiteral("kind")).toString() != QLatin1String("temporary"))
+            continue;
+        const QString appId = row.value(QStringLiteral("appId")).toString();
+        if (appId.isEmpty())
+            continue;
+        QJsonObject app;
+        app.insert(QStringLiteral("appId"), appId);
+        app.insert(QStringLiteral("windows"),
+                   row.value(QStringLiteral("windows")).toInt());
+        app.insert(QStringLiteral("minimized"),
+                   row.value(QStringLiteral("minimized")).toBool());
+        apps.append(app);
+    }
+    return QString::fromUtf8(QJsonDocument(apps).toJson(QJsonDocument::Compact));
 }
 
 QVariantList fixedApplicationMenu(const QString &appName, const AppMenuLiveState &state)

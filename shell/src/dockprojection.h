@@ -39,5 +39,5 @@ struct DockWindow {
 QVariantList buildDockProjection(const QList<DockWindow> &windows);
 
 // Human-readable fallback name for an unresolved app id (last reverse-DNS
-// segment). The real name and icon come from app-index (T-23).
+// segment). The real name and icon come from app-index (T-14.1a).
 QString displayNameForAppId(const QString &appId);

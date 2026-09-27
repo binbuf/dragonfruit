@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
-// Dock core unit tests (T-10): the interim `.desktop` resolver/launcher, the
-// `dock.pinned` persistence, and the pure pinned+running entry merge. Runs
-// headless with no compositor, Wayland, or QML.
+// Dock core unit tests (T-10): the app-index entry cache and launcher,
+// `dock.pinned` persistence, and the pure pinned+running entry merge. The
+// interim `.desktop` resolver was retired in T-14.7 (app-index owns parsing).
+// Runs headless with no compositor, Wayland, or QML.
 #include "controlcenterpolicy.h"
 #include "desktopentry.h"
 #include "dockdrops.h"
@@ -12,6 +13,7 @@
 #include "focusstatus.h"
 #include "framecommitgate.h"
 #include "launchfailure.h"
+#include "menubrokerclient.h"
 #include "menubrokerpolicy.h"
 #include "notificationclient.h"
 #include "osdmodel.h"
@@ -106,6 +108,25 @@ DockWindow window(quintptr id, const QString &appId, const QString &title,
     w.workspaceName = workspaceName;
     return w;
 }
+
+// One cached application record. app-index is the only production `.desktop`
+// parser (T-14.1a/T-14.7); the shell tests supply the records the service
+// enumerates instead of parsing files themselves.
+DesktopEntry makeEntry(const QString &id, const QString &name, const QString &exec,
+                       const QString &startupWmClass = {}, const QStringList &categories = {},
+                       bool terminal = false, bool noDisplay = false)
+{
+    DesktopEntry entry;
+    entry.id = id;
+    entry.name = name;
+    entry.exec = exec;
+    entry.startupWmClass = startupWmClass;
+    entry.categories = categories;
+    entry.terminal = terminal;
+    entry.noDisplay = noDisplay;
+    entry.valid = true;
+    return entry;
+}
 } // namespace
 
 class TestDockCore : public QObject
@@ -113,64 +134,31 @@ class TestDockCore : public QObject
     Q_OBJECT
 
 private slots:
-    // -- .desktop parsing ------------------------------------------------
+    // -- launchability ---------------------------------------------------
 
-    void parseReadsDesktopEntryFields()
+    void launchableRejectsNoDisplay()
     {
-        const QString contents = QStringLiteral(
-            "# a comment\n"
-            "[Desktop Entry]\n"
-            "Type=Application\n"
-            "Name=Files\n"
-            "Name[de]=Dateien\n"
-            "Icon=system-file-manager\n"
-            "Exec=nautilus %U\n"
-            "StartupWMClass=org.example.Nautilus\n"
-            "Categories=System;FileManager;\n"
-            "Terminal=false\n"
-            "\n"
-            "[Desktop Action new-window]\n"
-            "Name=New Window\n");
         const DesktopEntry entry =
-            DesktopEntryIndex::parse(QStringLiteral("org.example.Nautilus.desktop"), contents);
-        QVERIFY(entry.valid);
-        QCOMPARE(entry.name, QStringLiteral("Files")); // unlocalized wins
-        QCOMPARE(entry.icon, QStringLiteral("system-file-manager"));
-        QCOMPARE(entry.exec, QStringLiteral("nautilus %U"));
-        QCOMPARE(entry.startupWmClass, QStringLiteral("org.example.Nautilus"));
-        QCOMPARE(entry.categories,
-                 (QStringList{QStringLiteral("System"), QStringLiteral("FileManager")}));
-        QCOMPARE(entry.terminal, false);
-    }
-
-    void parseIgnoresHiddenAndNoDisplay()
-    {
-        const DesktopEntry entry = DesktopEntryIndex::parse(
-            QStringLiteral("hidden.desktop"),
-            QStringLiteral("[Desktop Entry]\nName=Hidden\nExec=x\nNoDisplay=true\n"));
+            makeEntry(QStringLiteral("hidden.desktop"), QStringLiteral("Hidden"),
+                      QStringLiteral("x"), {}, {}, false, true);
         QVERIFY(entry.valid);
         QVERIFY(entry.noDisplay);
         QVERIFY(!DesktopEntryIndex::isLaunchable(entry));
     }
 
-    // -- resolution ------------------------------------------------------
+    // -- resolution (over the app-index cache) ---------------------------
 
     void resolveByIdSuffixAndWmClass()
     {
-        QTemporaryDir dir;
-        QVERIFY(dir.isValid());
-        const QString apps = makeAppDir(dir);
-        writeFile(apps + QStringLiteral("/org.dragonfruit.Files.desktop"),
-                  QStringLiteral("[Desktop Entry]\nName=Files\nExec=df-files\n"));
-        writeFile(apps + QStringLiteral("/org.example.Nautilus.desktop"),
-                  QStringLiteral("[Desktop Entry]\nName=Files\nExec=nautilus\n"
-                                 "StartupWMClass=org.example.Nautilus\n"));
-        writeFile(apps + QStringLiteral("/firefox.desktop"),
-                  QStringLiteral("[Desktop Entry]\nName=Firefox\nExec=firefox %u\n"
-                                 "StartupWMClass=firefox\n"));
-
         DesktopEntryIndex index;
-        index.scan({apps});
+        index.loadFromRecords(QList<DesktopEntry>{
+            makeEntry(QStringLiteral("org.dragonfruit.Files.desktop"), QStringLiteral("Files"),
+                      QStringLiteral("df-files")),
+            makeEntry(QStringLiteral("org.example.Nautilus.desktop"), QStringLiteral("Files"),
+                      QStringLiteral("nautilus"), QStringLiteral("org.example.Nautilus")),
+            makeEntry(QStringLiteral("firefox.desktop"), QStringLiteral("Firefox"),
+                      QStringLiteral("firefox %u"), QStringLiteral("firefox")),
+        });
 
         QCOMPARE(index.resolve(QStringLiteral("org.dragonfruit.Files")).id,
                  QStringLiteral("org.dragonfruit.Files.desktop"));
@@ -184,21 +172,17 @@ private slots:
         QVERIFY(!index.resolve(QStringLiteral("does.not.Exist")).valid);
     }
 
-    void resolveUsesFirstDirectoryForDuplicateIds()
+    void loadFromRecordsUsesFirstDuplicateId()
     {
-        QTemporaryDir dir;
-        QVERIFY(dir.isValid());
-        const QString user = dir.path() + QStringLiteral("/user");
-        const QString system = dir.path() + QStringLiteral("/system");
-        QDir().mkpath(user);
-        QDir().mkpath(system);
-        writeFile(user + QStringLiteral("/dup.desktop"),
-                  QStringLiteral("[Desktop Entry]\nName=User\nExec=user\n"));
-        writeFile(system + QStringLiteral("/dup.desktop"),
-                  QStringLiteral("[Desktop Entry]\nName=System\nExec=system\n"));
-
+        // app-index already applies desktop-file precedence when it scans; the
+        // cache must not let a later duplicate override the first record.
         DesktopEntryIndex index;
-        index.scan({user, system});
+        index.loadFromRecords(QList<DesktopEntry>{
+            makeEntry(QStringLiteral("dup.desktop"), QStringLiteral("User"),
+                      QStringLiteral("user")),
+            makeEntry(QStringLiteral("dup.desktop"), QStringLiteral("System"),
+                      QStringLiteral("system")),
+        });
         QCOMPARE(index.byId(QStringLiteral("dup.desktop")).name, QStringLiteral("User"));
     }
 
@@ -373,26 +357,23 @@ private slots:
 
     void defaultPinsPickFirstPartyAndRegisteredCategories()
     {
-        QTemporaryDir dir;
-        QVERIFY(dir.isValid());
-        const QString apps = makeAppDir(dir);
-        writeFile(apps + QStringLiteral("/org.dragonfruit.Files.desktop"),
-                  QStringLiteral("[Desktop Entry]\nName=Files\nExec=df-files\n"));
-        writeFile(apps + QStringLiteral("/org.dragonfruit.Settings.desktop"),
-                  QStringLiteral("[Desktop Entry]\nName=Settings\nExec=df-settings\n"));
-        writeFile(apps + QStringLiteral("/term.desktop"),
-                  QStringLiteral("[Desktop Entry]\nName=Term\nExec=term\n"
-                                 "Categories=System;TerminalEmulator;\n"));
-        writeFile(apps + QStringLiteral("/browse.desktop"),
-                  QStringLiteral("[Desktop Entry]\nName=Browser\nExec=browser\n"
-                                 "Categories=Network;WebBrowser;\n"));
-        // A hidden WebBrowser entry sorts first but must not be pinned.
-        writeFile(apps + QStringLiteral("/aaa-hidden.desktop"),
-                  QStringLiteral("[Desktop Entry]\nName=Hidden Browser\nExec=hidden\n"
-                                 "NoDisplay=true\nCategories=Network;WebBrowser;\n"));
-
         DesktopEntryIndex index;
-        index.scan({apps});
+        index.loadFromRecords(QList<DesktopEntry>{
+            // The hidden WebBrowser record comes first but must not be pinned.
+            makeEntry(QStringLiteral("aaa-hidden.desktop"), QStringLiteral("Hidden Browser"),
+                      QStringLiteral("hidden"), {},
+                      {QStringLiteral("Network"), QStringLiteral("WebBrowser")}, false, true),
+            makeEntry(QStringLiteral("org.dragonfruit.Files.desktop"), QStringLiteral("Files"),
+                      QStringLiteral("df-files")),
+            makeEntry(QStringLiteral("org.dragonfruit.Settings.desktop"),
+                      QStringLiteral("Settings"), QStringLiteral("df-settings")),
+            makeEntry(QStringLiteral("term.desktop"), QStringLiteral("Term"),
+                      QStringLiteral("term"),
+                      {}, {QStringLiteral("System"), QStringLiteral("TerminalEmulator")}),
+            makeEntry(QStringLiteral("browse.desktop"), QStringLiteral("Browser"),
+                      QStringLiteral("browser"),
+                      {}, {QStringLiteral("Network"), QStringLiteral("WebBrowser")}),
+        });
         QCOMPARE(resolveDefaultDockPins(index),
                  (QStringList{QStringLiteral("org.dragonfruit.Files.desktop"),
                               QStringLiteral("org.dragonfruit.Settings.desktop"),
@@ -467,18 +448,15 @@ private slots:
 
     void mergePinsAndRunning()
     {
-        QTemporaryDir dir;
-        QVERIFY(dir.isValid());
-        const QString apps = makeAppDir(dir);
-        writeFile(apps + QStringLiteral("/org.dragonfruit.Files.desktop"),
-                  QStringLiteral("[Desktop Entry]\nName=Files\nExec=df-files\n"));
-        writeFile(apps + QStringLiteral("/org.dragonfruit.Settings.desktop"),
-                  QStringLiteral("[Desktop Entry]\nName=Settings\nExec=df-settings\n"));
-        writeFile(apps + QStringLiteral("/org.mozilla.firefox.desktop"),
-                  QStringLiteral("[Desktop Entry]\nName=Firefox\nExec=firefox\n"));
-
         DesktopEntryIndex index;
-        index.scan({apps});
+        index.loadFromRecords(QList<DesktopEntry>{
+            makeEntry(QStringLiteral("org.dragonfruit.Files.desktop"), QStringLiteral("Files"),
+                      QStringLiteral("df-files")),
+            makeEntry(QStringLiteral("org.dragonfruit.Settings.desktop"),
+                      QStringLiteral("Settings"), QStringLiteral("df-settings")),
+            makeEntry(QStringLiteral("org.mozilla.firefox.desktop"), QStringLiteral("Firefox"),
+                      QStringLiteral("firefox")),
+        });
 
         const QVariantList running{
             QVariantMap{{QStringLiteral("id"), QStringLiteral("files")},
@@ -555,14 +533,11 @@ private slots:
 
     void mergeTemporaryCarriesDesktopIdForPromotion()
     {
-        QTemporaryDir dir;
-        QVERIFY(dir.isValid());
-        const QString apps = makeAppDir(dir);
-        writeFile(apps + QStringLiteral("/org.example.Terminal.desktop"),
-                  QStringLiteral("[Desktop Entry]\nName=Terminal\nExec=term\n"));
-
         DesktopEntryIndex index;
-        index.scan({apps});
+        index.loadFromRecords(QList<DesktopEntry>{
+            makeEntry(QStringLiteral("org.example.Terminal.desktop"), QStringLiteral("Terminal"),
+                      QStringLiteral("term")),
+        });
         const QVariantList running{
             QVariantMap{{QStringLiteral("id"), QStringLiteral("term")},
                         {QStringLiteral("appId"), QStringLiteral("org.example.Terminal")},
@@ -584,14 +559,11 @@ private slots:
 
     void planAppOpenLaunchesWhenNotRunning()
     {
-        QTemporaryDir dir;
-        QVERIFY(dir.isValid());
-        const QString apps = makeAppDir(dir);
-        writeFile(apps + QStringLiteral("/org.dragonfruit.Settings.desktop"),
-                  QStringLiteral("[Desktop Entry]\nName=Settings\nExec=df-settings\n"));
-
         DesktopEntryIndex index;
-        index.scan({apps});
+        index.loadFromRecords(QList<DesktopEntry>{
+            makeEntry(QStringLiteral("org.dragonfruit.Settings.desktop"),
+                      QStringLiteral("Settings"), QStringLiteral("df-settings")),
+        });
 
         const AppOpenPlan plan = planAppOpen(
             index, {}, QStringLiteral("org.dragonfruit.Settings.desktop"));
@@ -603,14 +575,11 @@ private slots:
 
     void planAppOpenActivatesARunningWindow()
     {
-        QTemporaryDir dir;
-        QVERIFY(dir.isValid());
-        const QString apps = makeAppDir(dir);
-        writeFile(apps + QStringLiteral("/org.dragonfruit.Settings.desktop"),
-                  QStringLiteral("[Desktop Entry]\nName=Settings\nExec=df-settings\n"));
-
         DesktopEntryIndex index;
-        index.scan({apps});
+        index.loadFromRecords(QList<DesktopEntry>{
+            makeEntry(QStringLiteral("org.dragonfruit.Settings.desktop"),
+                      QStringLiteral("Settings"), QStringLiteral("df-settings")),
+        });
 
         // The compositor's raw identity resolves to the Settings desktop id.
         const QVariantList running{
@@ -630,14 +599,11 @@ private slots:
 
     void planAppOpenIgnoresAnUnrelatedRunningWindow()
     {
-        QTemporaryDir dir;
-        QVERIFY(dir.isValid());
-        const QString apps = makeAppDir(dir);
-        writeFile(apps + QStringLiteral("/org.dragonfruit.Settings.desktop"),
-                  QStringLiteral("[Desktop Entry]\nName=Settings\nExec=df-settings\n"));
-
         DesktopEntryIndex index;
-        index.scan({apps});
+        index.loadFromRecords(QList<DesktopEntry>{
+            makeEntry(QStringLiteral("org.dragonfruit.Settings.desktop"),
+                      QStringLiteral("Settings"), QStringLiteral("df-settings")),
+        });
 
         const QVariantList running{
             QVariantMap{{QStringLiteral("id"), QStringLiteral("firefox")},
@@ -662,23 +628,10 @@ private slots:
         QVERIFY(plan.desktopId.isEmpty());
     }
 
-    void shippedFirstPartyDesktopEntriesAreLaunchable()
-    {
-        const QString root = QStringLiteral(DF_SOURCE_DIR);
-        const QStringList relatives{
-            QStringLiteral("apps/settings/org.dragonfruit.Settings.desktop"),
-            QStringLiteral("apps/files/org.dragonfruit.Files.desktop"),
-        };
-        for (const QString &relative : relatives) {
-            const QString path = QDir(root).filePath(relative);
-            QVERIFY2(QFileInfo::exists(path), qPrintable(path));
-            DesktopEntryIndex index;
-            index.scan({QFileInfo(path).absolutePath()});
-            const DesktopEntry entry = index.byId(QFileInfo(path).fileName());
-            QVERIFY2(entry.valid, qPrintable(relative));
-            QVERIFY2(DesktopEntryIndex::isLaunchable(entry), qPrintable(entry.exec));
-        }
-    }
+    // The shipped first-party `.desktop` entries are verified by app-index's
+    // own tests (the only production parser): see
+    // `services/app-index/src/index.rs`'s
+    // `shipped_first_party_entries_are_launchable`.
 
     // -- running-app projection (section 22 lifecycle matrix) ------------
 
@@ -1054,20 +1007,13 @@ private slots:
 
     void recentEntriesSkipPinnedRunningAndMisses()
     {
-        QTemporaryDir dir;
-        QVERIFY(dir.isValid());
-        const QString apps = makeAppDir(dir);
-        writeFile(apps + QStringLiteral("/a.desktop"),
-                  QStringLiteral("[Desktop Entry]\nName=Alpha\nExec=a\n"));
-        writeFile(apps + QStringLiteral("/b.desktop"),
-                  QStringLiteral("[Desktop Entry]\nName=Beta\nExec=b\n"));
-        writeFile(apps + QStringLiteral("/c.desktop"),
-                  QStringLiteral("[Desktop Entry]\nName=Gamma\nExec=c\n"));
-        writeFile(apps + QStringLiteral("/d.desktop"),
-                  QStringLiteral("[Desktop Entry]\nName=Delta\nExec=d\n"));
-
         DesktopEntryIndex index;
-        index.scan({apps});
+        index.loadFromRecords(QList<DesktopEntry>{
+            makeEntry(QStringLiteral("a.desktop"), QStringLiteral("Alpha"), QStringLiteral("a")),
+            makeEntry(QStringLiteral("b.desktop"), QStringLiteral("Beta"), QStringLiteral("b")),
+            makeEntry(QStringLiteral("c.desktop"), QStringLiteral("Gamma"), QStringLiteral("c")),
+            makeEntry(QStringLiteral("d.desktop"), QStringLiteral("Delta"), QStringLiteral("d")),
+        });
 
         const QVariantList running{
             QVariantMap{{QStringLiteral("id"), QStringLiteral("b")},
@@ -1099,16 +1045,13 @@ private slots:
 
     void mergeAppendsRecentsBeforeMinimized()
     {
-        QTemporaryDir dir;
-        QVERIFY(dir.isValid());
-        const QString apps = makeAppDir(dir);
-        writeFile(apps + QStringLiteral("/pin.desktop"),
-                  QStringLiteral("[Desktop Entry]\nName=Pin\nExec=pin\n"));
-        writeFile(apps + QStringLiteral("/recent.desktop"),
-                  QStringLiteral("[Desktop Entry]\nName=Recent\nExec=recent\n"));
-
         DesktopEntryIndex index;
-        index.scan({apps});
+        index.loadFromRecords(QList<DesktopEntry>{
+            makeEntry(QStringLiteral("pin.desktop"), QStringLiteral("Pin"),
+                      QStringLiteral("pin")),
+            makeEntry(QStringLiteral("recent.desktop"), QStringLiteral("Recent"),
+                      QStringLiteral("recent")),
+        });
         const QVariantList running{
             QVariantMap{{QStringLiteral("id"), QStringLiteral("win:1")},
                         {QStringLiteral("appId"), QStringLiteral("pin")},
@@ -1657,6 +1600,59 @@ private slots:
         QCOMPARE(menu[3].toMap().value(QStringLiteral("enabled")).toBool(), true);
         // An unrelated field survives the rewrite.
         QCOMPARE(menu[3].toMap().value(QStringLiteral("checked")).toBool(), true);
+    }
+
+    // T-14.7: the shell pushes this payload to SetWindowStates. Only app-level
+    // entries are apps; per-window minimized entries are skipped.
+    void windowStatesJsonCarriesOneRowPerRunningApp()
+    {
+        const QVariantList entries{
+            runningApp(QStringLiteral("org.dragonfruit.Settings"), false),
+            QVariantMap{ { QStringLiteral("kind"), QStringLiteral("minimized") },
+                         { QStringLiteral("appId"), QStringLiteral("org.dragonfruit.Settings") },
+                         { QStringLiteral("minimized"), true } },
+            runningApp(QStringLiteral("firefox"), true),
+        };
+        const QString json = windowStatesJson(entries);
+        const QJsonArray array = QJsonDocument::fromJson(json.toUtf8()).array();
+        QCOMPARE(array.size(), 2);
+        QCOMPARE(array[0].toObject().value(QStringLiteral("appId")).toString(),
+                 QStringLiteral("org.dragonfruit.Settings"));
+        QCOMPARE(array[0].toObject().value(QStringLiteral("minimized")).toBool(), false);
+        QCOMPARE(array[1].toObject().value(QStringLiteral("appId")).toString(),
+                 QStringLiteral("firefox"));
+        QCOMPARE(array[1].toObject().value(QStringLiteral("minimized")).toBool(), true);
+    }
+
+    // T-14.7: the broker's `ResolveFocused` reply decodes to the fixed menu
+    // plus the app's exported top-level menus.
+    void resolvedMenuDecodesTheBrokerReply()
+    {
+        const QByteArray json = R"({
+            "appId": "org.dragonfruit.Settings",
+            "appName": "Settings",
+            "tier": "native",
+            "applicationMenuItems": [
+                { "label": "Hide Settings", "action": "hide", "enabled": true },
+                { "label": "Quit Settings", "action": "quit" }
+            ],
+            "menus": [ { "title": "File", "items": [ { "label": "Close",
+                       "action": "close" } ] } ]
+        })";
+        const ResolvedMenu resolved = MenuBrokerClient::parseResolved(QString::fromUtf8(json));
+        QVERIFY(resolved.valid);
+        QCOMPARE(resolved.appId, QStringLiteral("org.dragonfruit.Settings"));
+        QCOMPARE(resolved.appName, QStringLiteral("Settings"));
+        QCOMPARE(resolved.tier, QStringLiteral("native"));
+        QCOMPARE(resolved.applicationMenuItems.size(), 2);
+        QCOMPARE(resolved.menus.size(), 1);
+        QCOMPARE(resolved.menus[0].toMap().value(QStringLiteral("title")).toString(),
+                 QStringLiteral("File"));
+
+        // A miss (empty reply or garbage) is invalid, never a phantom menu.
+        QVERIFY(!MenuBrokerClient::parseResolved(QString()).valid);
+        QVERIFY(!MenuBrokerClient::parseResolved(QStringLiteral("not json")).valid);
+        QVERIFY(!MenuBrokerClient::parseResolved(QStringLiteral("[1,2]")).valid);
     }
 
     // -- Menu-broker accelerators (T-14.2b) ------------------------------

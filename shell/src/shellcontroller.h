@@ -26,6 +26,7 @@
 #include "downloadsmonitor.h"
 #include "framecommitgate.h"
 #include "lockauth.h"
+#include "menubrokerclient.h"
 #include "notificationclient.h"
 #include "notificationmodel.h"
 #include "osdmodel.h"
@@ -410,16 +411,15 @@ private:
     void ensureDockAnimation();
     // Clear any attention bounce for `appId` (FR-4: stops on click or focus).
     void clearAttention(const QString &appId);
-    // Launch a pinned app through the interim `.desktop` resolver (T-23
-    // replaces this). Bounded by a launch timeout; failure raises a notice.
+    // Launch a pinned app through its app-index record's `Exec`. Bounded by a
+    // launch timeout; failure raises a notice.
     void launchDockApp(const QString &desktopId);
     // Launch an app with file arguments (a file dropped on an app icon, T-10
     // section 12); the files are substituted for the Exec file field codes.
     void launchDockAppWithFiles(const QString &desktopId, const QStringList &files);
     // Open an app by desktop id (the fixed menus' entry point): activate a
-    // running window when one matches, otherwise launch its `.desktop` entry.
-    // The interim resolver is the launcher until the app-index launch API
-    // lands (T-14.7).
+    // running window when one matches, otherwise launch it from its cached
+    // app-index record.
     void openApp(const QString &desktopId);
     void failDockLaunch(const QString &desktopId, const QString &reason);
     // Clear a transient "failed" launch state after the notice has shown.
@@ -704,8 +704,14 @@ private:
     // T-10 section 17); fed by focus changes, capped and de-duplicated.
     QStringList m_recentAppIds;
 
-    // Interim app-index stand-in (T-23) for the Dock.
+    // The Dock's identity cache, loaded from `org.dragonfruit.AppIndex1`
+    // (T-14.1a); the local `.desktop` scan was retired in T-14.7.
     DesktopEntryIndex m_index;
+    // The global-menu broker (T-14.2a): the shell pushes focus/window state
+    // and reads the resolved fixed + exported menus (T-14.7).
+    MenuBrokerClient m_menuBroker;
+    // One-shot diagnostic: the broker answered at least once this session.
+    bool m_menuBrokerLogged = false;
     // StatusNotifier/AppIndicator tray (T-14.3): the app-index client, the
     // last item list, and the short refresh timer that keeps the bar live
     // (there is no compositor-side tray event; the watcher's own signals are
