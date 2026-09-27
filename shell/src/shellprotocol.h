@@ -431,6 +431,13 @@ public:
     // app; `df_toplevel.close` is per-window).
     void closeToplevel(const QString &windowId);
 
+    // Minimize or restore one window (the window chooser's per-row action,
+    // T-14.7m): `minimized` true maps to `df_toplevel.minimize`, false to
+    // `df_toplevel.unminimize`. Both are already v1 on the toplevel handle, so
+    // no protocol change is needed; the compositor replies with a new state
+    // event the Dock projection consumes.
+    void setToplevelMinimized(const QString &windowId, bool minimized);
+
     // Close every window of `appId` (the interim `Quit` action, T-10 section
     // 13). The compositor does not expose an app-level quit.
     void closeApp(const QString &appId);

@@ -532,6 +532,10 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onDockAppPinToggled(QString,bool)));
     connect(m_dockItem, SIGNAL(windowActivated(QString)), this,
             SLOT(onDockWindowActivated(QString)));
+    connect(m_dockItem, SIGNAL(windowCloseRequested(QString)), this,
+            SLOT(onDockWindowCloseRequested(QString)));
+    connect(m_dockItem, SIGNAL(windowMinimizeRequested(QString,bool)), this,
+            SLOT(onDockWindowMinimizeRequested(QString,bool)));
     connect(m_dockItem, SIGNAL(pinnedOrderChanged(QVariant)), this,
             SLOT(onDockPinnedOrderChanged(QVariant)));
     connect(m_dockItem, SIGNAL(popoverChanged()), this, SLOT(onDockPopoverChanged()));
@@ -1402,6 +1406,27 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
                 m_dockItem, "showTooltipFor",
                 Q_ARG(QVariant, qEnvironmentVariable("DF_DOCK_TOOLTIP_FIXTURE")));
         });
+    }
+
+    // Capture/demo seam (T-14.7m): open the window chooser for the first
+    // multi-window app once it has mapped, with the first row's per-window
+    // actions revealed, so the live visual check captures them without a
+    // synthetic pointer. Retries until a grouped app exists. Never set in a
+    // normal session.
+    if (qEnvironmentVariableIsSet("DF_DOCK_CHOOSER_FIXTURE")) {
+        auto *timer = new QTimer(this);
+        timer->setInterval(500);
+        connect(timer, &QTimer::timeout, this, [this, timer]() {
+            if (!m_dockItem)
+                return;
+            QMetaObject::invokeMethod(m_dockItem, "reveal");
+            QMetaObject::invokeMethod(m_dockItem, "openChooserFixture");
+            if (m_dockItem->property("chooserOpen").toBool()) {
+                timer->stop();
+                timer->deleteLater();
+            }
+        });
+        timer->start();
     }
 
     // Capture/demo seam (T-12.3a): lock the session once the chrome is up so
@@ -5469,6 +5494,23 @@ void ShellController::onDockEntryMenuAction(const QString &action, const QVarian
 void ShellController::onDockWindowActivated(const QString &windowId)
 {
     m_protocol->selectToplevel(windowId);
+    scheduleDockRender();
+}
+
+void ShellController::onDockWindowCloseRequested(const QString &windowId)
+{
+    // One window, not the whole app (T-14.7m). The chooser stays open; when
+    // the compositor retires the window the next projection drops its row, and
+    // the Dock dismisses the chooser if that was the app's last window.
+    m_protocol->closeToplevel(windowId);
+    scheduleDockRender();
+}
+
+void ShellController::onDockWindowMinimizeRequested(const QString &windowId, bool minimized)
+{
+    // The row sent the state it wants; the compositor flips the toplevel and
+    // the projection flips the button label (T-14.7m). The chooser stays open.
+    m_protocol->setToplevelMinimized(windowId, minimized);
     scheduleDockRender();
 }
 

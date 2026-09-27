@@ -33,6 +33,11 @@ Rectangle {
     // [{ id, appId, name, kind, running, minimized, launch, attention,
     //    badge, pinned, trashFull }]
     property var entries: []
+    // A new projection arrived (T-14.7m): keep the open window chooser bound
+    // to its app's fresh entry/rows (or dismiss it when the app is gone). The
+    // dependent `items` binding and the entry Repeater settle after this
+    // signal, so refresh on the next event-loop turn.
+    onEntriesChanged: Qt.callLater(refreshChooserAfterProjection)
     property string position: "bottom"          // bottom | left | right
     property real iconSize: Theme.controls.dock.iconSize
     // The `dock.size` mapping range, read by the shell (section 19).
@@ -353,6 +358,12 @@ Rectangle {
     signal menuActionRequested(string action, var payload)
     // A specific window chosen from the window chooser (T-10 FR-5).
     signal windowActivated(string windowId)
+    // The chooser's per-window actions (T-14.7m): close one window, or
+    // minimize/restore it to `minimized`. The chooser stays open; the shell
+    // performs the compositor round-trip and the next projection refreshes
+    // the rows.
+    signal windowCloseRequested(string windowId)
+    signal windowMinimizeRequested(string windowId, bool minimized)
     // The popover opened, closed, or resized; the shell re-renders the
     // overlay surface.
     signal popoverChanged()
@@ -1004,9 +1015,44 @@ Rectangle {
         windowChooser.open = true;
     }
 
+    // The window chooser survives a projection rebuild (T-14.7m): a minimize
+    // or close never dismisses it. A full entry rebuild recreates the app
+    // delegate, so re-resolve the bound entry and its anchor by id; the rows
+    // themselves read the fresh `windowList`. When the app has no windows left
+    // its entry is gone and the chooser dismisses.
+    function refreshChooserAfterProjection() {
+        if (!chooserOpen)
+            return;
+        var id = chooserEntry && chooserEntry.id !== undefined ? chooserEntry.id : "";
+        var idx = id.length > 0 ? indexOfItemId(id) : -1;
+        if (idx < 0) {
+            windowChooser.hide();
+            return;
+        }
+        chooserEntry = items[idx];
+        chooserAnchor = entryRepeater.itemAt(idx);
+    }
+
     // Open the Downloads stack popover (the default member).
     function openStack() {
         openStackFor(stackEntry);
+    }
+
+    // Capture/demo seam (T-14.7m): open the chooser for the first running app
+    // with more than one window and force its first row's hover treatment, so
+    // the live visual check captures the per-row actions without a synthetic
+    // pointer. Never used in a normal session.
+    function openChooserFixture() {
+        for (var i = 0; i < items.length; ++i) {
+            var e = items[i];
+            if (e.running === true && e.kind !== "minimized"
+                    && e.windowList !== undefined && e.windowList.length > 1) {
+                openChooser(e);
+                windowChooser.fixtureHoverIndex = 0;
+                return true;
+            }
+        }
+        return false;
     }
 
     // Capture/demo seam (T-14.7k): open the stack entry with `id` without a
@@ -2491,6 +2537,9 @@ Rectangle {
             dock.scheduleHide();
         }
         onWindowActivated: (windowId) => dock.windowActivated(windowId)
+        onWindowCloseRequested: (windowId) => dock.windowCloseRequested(windowId)
+        onWindowMinimizeRequested: (windowId, minimized) =>
+            dock.windowMinimizeRequested(windowId, minimized)
         onShowAllWindows: () => dock.menuActionRequested(
             "show_all_windows", { appId: dock.chooserEntry ? dock.chooserEntry.appId : "" })
     }
