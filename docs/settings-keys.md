@@ -33,6 +33,7 @@ freezes the v1 key set.
 | `dock.showRecentApps` | b | false | | shell/Dock | shell/Dock | Show recent/suggested apps in the Dock. |
 | `dock.pinned` | as | `[]` | | shell/Dock | shell/Dock | Ordered desktop ids pinned to the Dock; empty seeds defaults. |
 | `dock.pinnedFolders` | as | `[]` | | shell/Dock | shell/Dock | Ordered absolute folder paths pinned to the Dock as stacks; empty seeds the Downloads default. |
+| `dock.chooserOnHover` | b | false | | shell/Dock | shell/Dock | Open a grouped app's window chooser on hover dwell, and retarget it along the Dock. |
 | `workspaces.count` | x | 3 | 1–16 | settingsd | compositor/workspace model, shell | Number of Spaces every output starts with. |
 | `gestures.enabled` | b | true | | settingsd | compositor/input | Master switch for trackpad gesture recognition. |
 | `gestures.spaceSwitch` | b | true | | settingsd | compositor/input | Horizontal swipe switches Spaces. |

@@ -45,7 +45,7 @@ endif
 .PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test \
         visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev demo soak e2e \
         idle-trace menubar-idle-trace latency-trace settingsd-capture settings-wave-1-capture \
-        files-capture osd-dnd-capture portals-capture zoo-run dock-spacing-capture dock-magnify-capture dock-motion-capture dock-trash-capture dock-app-picker-capture dock-drops-capture dock-activation-capture dock-launch-origin-capture dock-folder-stack-capture dock-tooltip-capture dock-tahoe-capture dock-folder-pin-capture dock-chooser-actions-capture dock-chooser-scroll-capture dock-window-badge-capture check-desktop-names check-no-capture-grab check-design-tokens clean
+        files-capture osd-dnd-capture portals-capture zoo-run dock-spacing-capture dock-magnify-capture dock-motion-capture dock-trash-capture dock-app-picker-capture dock-drops-capture dock-activation-capture dock-launch-origin-capture dock-folder-stack-capture dock-tooltip-capture dock-tahoe-capture dock-folder-pin-capture dock-chooser-actions-capture dock-chooser-scroll-capture dock-window-badge-capture dock-hover-chooser-capture check-desktop-names check-no-capture-grab check-design-tokens clean
 
 help:
 	@echo "Dragonfruit build targets:"
@@ -283,6 +283,13 @@ dock-chooser-scroll-capture: build
 # `spectacle`, `gdbus`, Pillow and the built tree.
 dock-window-badge-capture: build
 	bash scripts/capture-dock-window-badge.sh
+
+# T-14.7p: the Dock hover-open chooser stills (`dock.chooserOnHover` on, a
+# dwell-open popover and a retarget between two grouped entries; light over
+# dark) stacked into docs/captures/t14-dock-hover-chooser.png. Needs a host
+# Wayland session, `spectacle`, `gdbus`, Pillow and the built tree.
+dock-hover-chooser-capture: build
+	bash scripts/capture-dock-hover-chooser.sh
 
 # T-14.7j: the Dock Tahoe visual language stills (resting/hovered/magnified/
 # pressed in light and dark, plus the Minimal tier) stacked into

@@ -84,6 +84,7 @@ DockConfig dockConfigFromValues(const QVariantMap &values)
     config.titlebarDoubleClick =
         read("dock.titlebarDoubleClick", QStringLiteral("zoom")).toString();
     config.showRecentApps = read("dock.showRecentApps", false).toBool();
+    config.chooserOnHover = read("dock.chooserOnHover", false).toBool();
     config.reduceMotion = read("accessibility.reduceMotion", false).toBool();
     config.pinned = read("dock.pinned", QStringList()).toStringList();
     config.pinnedFolders = read("dock.pinnedFolders", QStringList()).toStringList();

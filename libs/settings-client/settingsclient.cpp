@@ -108,6 +108,7 @@ QVariantMap settingsSchemaDefaults()
     values.insert(QStringLiteral("dock.minimizedAnimation"), QStringLiteral("scale"));
     values.insert(QStringLiteral("dock.titlebarDoubleClick"), QStringLiteral("zoom"));
     values.insert(QStringLiteral("dock.showRecentApps"), false);
+    values.insert(QStringLiteral("dock.chooserOnHover"), false);
     values.insert(QStringLiteral("dock.pinned"), QStringList());
     values.insert(QStringLiteral("workspaces.count"), qlonglong(3));
     values.insert(QStringLiteral("gestures.enabled"), true);

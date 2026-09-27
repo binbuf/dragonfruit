@@ -435,6 +435,7 @@ private slots:
         QCOMPARE(config.minimizedAnimation, QStringLiteral("scale"));
         QCOMPARE(config.titlebarDoubleClick, QStringLiteral("zoom"));
         QCOMPARE(config.showRecentApps, false);
+        QCOMPARE(config.chooserOnHover, false);
         QCOMPARE(config.reduceMotion, false);
         QCOMPARE(config.pinned, QStringList());
     }
@@ -446,11 +447,13 @@ private slots:
         values.insert(QStringLiteral("dock.autohide"), true);
         values.insert(QStringLiteral("dock.position"), QStringLiteral("left"));
         values.insert(QStringLiteral("accessibility.reduceMotion"), true);
+        values.insert(QStringLiteral("dock.chooserOnHover"), true);
         const DockConfig config = dockConfigFromValues(values);
         QCOMPARE(config.size, 0.9);
         QCOMPARE(config.autohide, true);
         QCOMPARE(config.position, QStringLiteral("left"));
         QCOMPARE(config.reduceMotion, true);
+        QCOMPARE(config.chooserOnHover, true);
         // Keys absent from the map keep the schema default.
         QCOMPARE(config.magnification, 0.5);
         QCOMPARE(config.showRecentApps, false);

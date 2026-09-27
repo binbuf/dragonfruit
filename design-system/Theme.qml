@@ -353,6 +353,8 @@ QtObject {
                 readonly property int maxRows: 7
                 readonly property int scrollbarWidth: 8
                 readonly property int scrollbarMargin: 2
+                readonly property int hoverDwell: 280
+                readonly property int hoverCloseDelay: 260
             }
             readonly property var windowBadge: QtObject {
                 readonly property real sizeRatio: 0.34

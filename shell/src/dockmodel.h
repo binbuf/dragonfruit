@@ -67,6 +67,10 @@ struct DockConfig {
     QString minimizedAnimation = QStringLiteral("scale");
     QString titlebarDoubleClick = QStringLiteral("zoom");
     bool showRecentApps = false;
+    // Opt-in hover-open for the window chooser (T-14.7p): dwell on a grouped
+    // app entry to open its chooser, and retarget along the Dock. Default off
+    // keeps the macOS click contract.
+    bool chooserOnHover = false;
     bool reduceMotion = false;
     QStringList pinned;
     // Ordered absolute folder paths pinned to the Dock as folder stacks
