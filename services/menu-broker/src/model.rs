@@ -377,6 +377,9 @@ pub fn fixed_application_menu(
 #[derive(Debug, Clone)]
 pub struct Broker {
     publishers: BTreeMap<String, PublishedModel>,
+    /// The tier each publisher resolved through. Native by default; the
+    /// DBusMenu bridge (T-14.4) publishes through [`Broker::publish_dbusmenu`].
+    tiers: BTreeMap<String, Tier>,
     visibility: Visibility,
     accelerators: AcceleratorTable,
     revision: u64,
@@ -393,6 +396,7 @@ impl Broker {
     pub fn new() -> Self {
         Broker {
             publishers: BTreeMap::new(),
+            tiers: BTreeMap::new(),
             visibility: Visibility::new(),
             accelerators: AcceleratorTable::new(),
             revision: 0,
@@ -414,19 +418,35 @@ impl Broker {
         &self.visibility
     }
 
-    /// Register or replace an app's published model. Returns false (and
-    /// changes nothing) when the payload does not parse; a malformed exporter
-    /// must never take the broker down or clobber a good model.
+    /// Register or replace an app's natively-published model (tier `native`).
+    /// Returns false (and changes nothing) when the payload does not parse; a
+    /// malformed exporter must never take the broker down or clobber a good
+    /// model.
     pub fn publish(&mut self, app_id: &str, payload: &str) -> bool {
+        self.publish_tiered(app_id, payload, Tier::Native)
+    }
+
+    /// Register or replace a model that arrived through the DBusMenu bridge
+    /// (T-14.4). Same shape and tolerance as [`Broker::publish`], but the
+    /// resolved tier is [`Tier::DbusMenu`].
+    pub fn publish_dbusmenu(&mut self, app_id: &str, payload: &str) -> bool {
+        self.publish_tiered(app_id, payload, Tier::DbusMenu)
+    }
+
+    /// Register or replace an app's published model with an explicit tier.
+    /// Returns false (and changes nothing) when the payload does not parse.
+    pub fn publish_tiered(&mut self, app_id: &str, payload: &str, tier: Tier) -> bool {
         if app_id.is_empty() {
             return false;
         }
         let Some(model) = PublishedModel::parse(payload) else {
             return false;
         };
-        let changed = self.publishers.get(app_id) != Some(&model);
+        let changed =
+            self.publishers.get(app_id) != Some(&model) || self.tiers.get(app_id) != Some(&tier);
         let table = accelerators::extract(&model);
         self.publishers.insert(app_id.to_owned(), model);
+        self.tiers.insert(app_id.to_owned(), tier);
         self.accelerators.register(app_id, table);
         if changed {
             self.revision += 1;
@@ -434,15 +454,21 @@ impl Broker {
         changed
     }
 
-    /// Remove an app's published model and its accelerators. Returns whether
-    /// one was present.
+    /// Remove an app's published model, its tier, and its accelerators.
+    /// Returns whether one was present.
     pub fn withdraw(&mut self, app_id: &str) -> bool {
         let removed = self.publishers.remove(app_id).is_some();
+        self.tiers.remove(app_id);
         self.accelerators.clear(app_id);
         if removed {
             self.revision += 1;
         }
         removed
+    }
+
+    /// The tier an app's model resolved through, if it published one.
+    pub fn tier(&self, app_id: &str) -> Tier {
+        self.tiers.get(app_id).copied().unwrap_or(Tier::None)
     }
 
     /// Set the focused app. Returns whether the state changed.
@@ -554,11 +580,7 @@ impl Broker {
         let menus = publisher
             .map(|model| model.menus.clone())
             .unwrap_or_default();
-        let tier = if publisher.is_some() {
-            Tier::Native
-        } else {
-            Tier::None
-        };
+        let tier = self.tier(app_id);
         // T-14.2b: the focus-scoped accelerator table the shell registers with
         // the compositor while this window is focused.
         let accelerators: Vec<Value> = self
@@ -811,6 +833,38 @@ mod tests {
         assert!(broker.revision() > after_publish);
         assert!(!broker.withdraw("a"));
         assert_eq!(broker.publisher_count(), 0);
+    }
+
+    #[test]
+    fn a_dbusmenu_publication_resolves_at_the_dbusmenu_tier() {
+        let mut broker = Broker::new();
+        let model = r#"{ "appName": "Konsole",
+            "menus": [ { "title": "File", "items": [
+                { "label": "New", "enabled": true, "action": "dbusmenu:1" },
+                { "label": "Quit", "enabled": false, "action": "dbusmenu:2" } ] } ] }"#;
+        assert!(broker.publish_dbusmenu("org.example.Konsole", model));
+        assert_eq!(broker.tier("org.example.Konsole"), Tier::DbusMenu);
+        assert_eq!(broker.tier("absent"), Tier::None);
+
+        let resolved = broker.resolve("org.example.Konsole");
+        assert_eq!(resolved["tier"], TIER_DBUSMENU);
+        assert_eq!(resolved["appName"], "Konsole");
+        assert_eq!(resolved["menus"][0]["title"], "File");
+        assert_eq!(resolved["menus"][0]["items"][0]["enabled"], true);
+        assert_eq!(resolved["menus"][0]["items"][1]["enabled"], false);
+        // The fixed application menu is still synthesized.
+        assert_eq!(
+            resolved["applicationMenuItems"].as_array().unwrap().len(),
+            8
+        );
+
+        // A native publication over the same id switches the tier back.
+        assert!(broker.publish("org.example.Konsole", settings_fixture()));
+        assert_eq!(broker.resolve("org.example.Konsole")["tier"], TIER_NATIVE);
+
+        // Withdraw clears the tier too.
+        assert!(broker.withdraw("org.example.Konsole"));
+        assert_eq!(broker.tier("org.example.Konsole"), Tier::None);
     }
 
     #[test]
