@@ -3,10 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(88 earlier sections omitted)_
+_(90 earlier sections omitted)_
 
-- **T84 — T-12.4a Idle timers**: **State: done.** The dim → blank → lock → suspend chain is a pure,; **`services/session/src/idle.rs`** (new) — `IdleStage`
-- **T85 — T-12.4b Idle inhibitors and wake restore**: **State: done.** `dragonfruit-session` now wraps the T-12.4a idle engine with; **`services/session/src/idle.rs`** — `IdleController` (owns `IdleTimers` +
 - **T86 — T-12.5a Suspend/resume cycle**: **State: done.** One suspend/resume round trip recovers outputs, input, and; **`services/session/src/suspend.rs`** (new) — `SuspendState`
 - **T87 — T-12.5b Session policy keys, kill matrix, capture**: **State: done.** The session policy keys are registered in settingsd, the; **`services/settingsd/src/schema.rs`** — schema v5, new `Session` key group:
 - **T88 — T-13.1a Portal backend and session service**: **State: done.** `portal/` is now a real session-bus portal backend plus its; **`portal/src/`** (new `[lib]` + existing binary) — `model` (pure:
@@ -45,6 +43,7 @@ _(88 earlier sections omitted)_
 - **T110j — T-14.7j Dock Tahoe visual language: floating glass, squircles, states**: **State: done.** The Dock is now a layered floating glass plate with a bright; `design-system/tokens/tokens.json` — semantic colors `dockFill`, `dockRim`,
 - **T110k — T-14.7k Dock folder pins: any folder as a stack**: **State: done.** Any folder can be pinned to the Dock as a stack: a single; `services/settingsd/src/schema.rs` — `dock.pinnedFolders` (`as`, default
 - **T110l — T-14.7l Dock launch-origin tile hand-off**: **State: done.** The Dock now hands the acted-on entry's icon tile to the; `shell/src/dockmodel.{h,cpp}` — `dockLaunchAppId(entry)` (`StartupWMClass`
+- **T110m — T-14.7m Dock window chooser: per-window actions**: **State: done.** Each window row in the Dock's chooser now carries a stateful; `shell/src/shellprotocol.{h,cpp}` — `setToplevelMinimized(windowId, bool)`
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -9276,5 +9275,80 @@ Gotchas for later tasks:
   launch should do the same or the tile will be absent.
 - The compositor's own `DfState::dock_tiles` remains bounded at 64 and is
   independent of the shell cache.
+- `check-desktop-names.sh` still fails on the pre-existing StatusNotifier/zoo
+  lines (unchanged here).
+
+## T110m — T-14.7m Dock window chooser: per-window actions
+
+**State: done.** Each window row in the Dock's chooser now carries a stateful
+**Minimize / Restore** and a destructive **Close**, so a grouped app is managed
+from its popover without focusing each window. The chooser asks, never mutates:
+the compositor round-trip changes the projection and the next projection
+refreshes the rows; the chooser stays open (a close drops the row, a minimize
+flips the button) and dismisses when the app's last window closes. No new ADR:
+ADR 0103 already decides the chooser is first-class with per-window actions.
+
+Real paths:
+
+- `shell/src/shellprotocol.{h,cpp}` — `setToplevelMinimized(windowId, bool)`
+  (true → `df_toplevel.minimize`, false → `unminimize`). No protocol change.
+- `shell/src/shellcontroller.{h,cpp}` — slots
+  `onDockWindowCloseRequested(QString)` /
+  `onDockWindowMinimizeRequested(QString,bool)`, wired to the Dock signals;
+  both `scheduleDockRender()` and leave the popover open. New
+  `DF_DOCK_CHOOSER_FIXTURE` seam: a 500 ms retry that calls
+  `Dock.openChooserFixture()` until a running multi-window app exists.
+- `shell/dock/DockWindowChooser.qml` — `windowCloseRequested` /
+  `windowMinimizeRequested` signals, `minimizeWindow(index)` /`closeWindow(index)`
+  (no `hide()`), `windowAccessibleName(title,focused,minimized)`; the
+  `ChooserActionButton` inline component (icon-only, `activeFocusOnTab:false`,
+  danger tint for Close); the reserved `chooserRowActions` slot;
+  `fixtureHoverIndex`. Row background now keys off `row.hovered`.
+- `shell/dock/Dock.qml` — signals `windowCloseRequested` /
+  `windowMinimizeRequested`; `onEntriesChanged:
+  Qt.callLater(refreshChooserAfterProjection)`; `refreshChooserAfterProjection()`
+  re-resolves `chooserEntry`/`chooserAnchor` by id (dismisses on no match);
+  `openChooserFixture()`.
+- `design-system/components/Icon.qml` — new `restore` glyph (up arrow).
+- `shell/tests/tst_dock.qml` — `windowCloseSpy`/`windowMinimizeSpy` and five
+  new cases (close stays open, stateful label, destructive + not tab-focusable,
+  rows update + dismiss on last close, accessible name state).
+- `compositor/tests/shell_protocol_conformance.rs` —
+  `toplevel_handle_requests_round_trip` now asserts `df_toplevel.close` reaches
+  the client (`toplevel_close_requests`).
+- `scripts/capture-dock-chooser-actions.sh` + `make
+  dock-chooser-actions-capture`; `docs/captures/t14-dock-chooser-actions.png`
+  (light over dark) plus `-light`/`-dark`; captures README paragraph.
+- Docs: `docs/design/04-shell.md` "Dock window chooser".
+
+Commands that work (repo root):
+
+- `ctest --test-dir build --output-on-failure` — 53/53 (`tst_dock` 189).
+- `cargo test -p dragonfruit-compositor --test shell_protocol_conformance` —
+  35/35 (needs `PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig`,
+  `RUSTFLAGS=-L $HOME/.local/df-devroot/lib64`,
+  `LD_LIBRARY_PATH=$HOME/.local/df-toolchain/usr/lib64`).
+- `cargo fmt --all -- --check`; `cargo clippy -p dragonfruit-compositor
+  --all-targets -- -D warnings`; `./scripts/gen-tokens.py --check`;
+  `./scripts/check-design-tokens.sh`; `./scripts/check-no-capture-grab.sh`;
+  `./scripts/check-gallery-snapshots.py --strict` — green.
+- Live: `make dock-chooser-actions-capture` (host Wayland + spectacle + gdbus +
+  Pillow; launches a second `dragonfruit-settings` via `--launch` so the entry
+  groups).
+
+Gotchas for later tasks:
+
+- **The chooser survives a projection with `Qt.callLater`.** Rebind the entry
+  and anchor only on the next event-loop turn: inside `onEntriesChanged` the
+  derived `items` binding and the entry Repeater still hold the pre-change
+  values (a synchronous refresh silently rebinds the old entry).
+- **Actions ask; `windowList` is read-only.** `minimizeWindow`/`closeWindow`
+  emit and return — they never mutate the model or hide the popover.
+- **One wrapper, one state.** `setToplevelMinimized` sends the requested state,
+  not a shell-side toggle; `selectToplevel` (activate) still restores + focuses.
+- **The action slot is reserved** (`2 * actionButtonSize + actionGap`); a
+  T-14.7n scrollbar/badge must not steal it or the popover resizes on hover.
+- **`fixtureHoverIndex` / `DF_DOCK_CHOOSER_FIXTURE` are capture seams**, never
+  session state. `row.hovered` (pointer or seam) is the single reveal source.
 - `check-desktop-names.sh` still fails on the pre-existing StatusNotifier/zoo
   lines (unchanged here).

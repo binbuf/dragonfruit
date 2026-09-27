@@ -255,6 +255,17 @@ originates in the bottom Dock band, then annotates the settled still:
 window target, with the raw numbers in `t14-dock-launch-origin-trace.txt`. Needs
 a host Wayland session, spectacle, gdbus, and Pillow; not in `make e2e`.
 
+T-14.7m's Dock window chooser per-window actions sign-off is produced by
+`scripts/capture-dock-chooser-actions.sh` (`make dock-chooser-actions-capture`):
+the nested demo runs once per color scheme with a second Settings window
+(`--launch`) so the app's Dock entry groups, and the shell's
+`DF_DOCK_CHOOSER_FIXTURE` seam opens the chooser with the first row's actions
+revealed (the production chooser minus a synthetic pointer hover). The two 2x
+crops are stacked into `t14-dock-chooser-actions.png` (light over dark) and
+saved individually: the "Show All Windows" header, the window rows, and the
+hovered row's stateful Minimize glyph plus the destructive red Close. Needs a
+host Wayland session, spectacle, gdbus, and Pillow; not in `make e2e`.
+
 T-14.7i's Dock hover name label sign-off is produced by
 `scripts/capture-dock-tooltip.sh` (`make dock-tooltip-capture`): the nested demo
 runs once per entry kind through the shell's `DF_DOCK_TOOLTIP_FIXTURE` seam

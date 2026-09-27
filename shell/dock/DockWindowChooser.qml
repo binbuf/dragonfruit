@@ -7,21 +7,40 @@ import Dragonfruit
 // first. The first row is "Show All Windows"; each window row carries a
 // checkmark when frontmost, a minimized marker, and its Space name.
 //
+// T-14.7m adds per-window actions: a stateful **Minimize / Restore** button
+// and a destructive **Close** button, revealed on row hover. The buttons ask;
+// they never mutate `windowList`. The shell performs the compositor
+// round-trip and the next projection refreshes the rows, so a close drops its
+// row and a minimize flips the button label while the chooser stays open.
+//
 // The shell renders this into the Dock's `overlay` chrome surface. The
 // component owns presentation only: the Dock feeds it `entry` (the app entry
-// with its `windowList`) and relays `windowActivated`/`showAllWindows` to the
-// shell, which performs the compositor round-trips.
+// with its `windowList`) and relays `windowActivated`/`windowCloseRequested`/
+// `windowMinimizeRequested`/`showAllWindows` to the shell, which performs the
+// compositor round-trips.
 Item {
     id: root
 
     property var entry: null
     property Item anchorItem: null
     property bool open: false
+    // Capture/demo seam (T-14.7m): force the hover treatment onto the row at
+    // this index so the live visual check can show the revealed actions
+    // without a synthetic pointer. Never set in a normal session.
+    property int fixtureHoverIndex: -1
 
     signal windowActivated(string windowId)
+    signal windowCloseRequested(string windowId)
+    signal windowMinimizeRequested(string windowId, bool minimized)
     signal showAllWindows()
     signal opened()
     signal closed()
+
+    // The per-row action buttons (T-14.7m). A square target derived from the
+    // row height keeps them inside the row without growing the popover; the
+    // reserved slot keeps the layout stable while they are hidden.
+    readonly property real actionButtonSize: Math.round(rowHeight * 0.72)
+    readonly property real actionGap: Theme.primitive.spacing.xxs
 
     readonly property var windows:
         entry && entry.windowList !== undefined ? entry.windowList : []
@@ -41,6 +60,31 @@ Item {
     function activateShowAll() {
         root.showAllWindows();
         root.hide();
+    }
+    // The row's stateful minimize/restore action: it asks for the opposite of
+    // the window's current state and leaves the chooser open (T-14.7m).
+    function minimizeWindow(index) {
+        var row = root.windows[index];
+        if (!row || row.windowId === undefined)
+            return;
+        root.windowMinimizeRequested(row.windowId, row.minimized !== true);
+    }
+    // Close one window; the chooser stays open and its row disappears with the
+    // next projection (T-14.7m).
+    function closeWindow(index) {
+        var row = root.windows[index];
+        if (!row || row.windowId === undefined)
+            return;
+        root.windowCloseRequested(row.windowId);
+    }
+    // The row's accessible name keeps its active/minimized state (T-14.7m).
+    function windowAccessibleName(title, focused, minimized) {
+        var name = title !== undefined ? title : "";
+        if (focused === true)
+            name += " " + qsTr("(active)");
+        if (minimized === true)
+            name += " " + qsTr("(minimized)");
+        return name;
     }
 
     onOpenChanged: {
@@ -75,6 +119,62 @@ Item {
             easing.bezierCurve: root.open ? Theme.motion.popupOpen.curve
                                           : Theme.motion.popupClose.curve
         }
+    }
+
+    // An icon-only, keyboard-inert per-row action (T-14.7m). It carries an
+    // accessible name that includes the window title, never takes focus (so
+    // the chooser keeps it), and tints destructively for Close. The reference
+    // is behavior only; the geometry is our own (ADR 0103 clean-room note).
+    component ChooserActionButton: Item {
+        id: action
+
+        property string glyph: ""
+        property bool destructive: false
+        property bool revealed: false
+        property string accessibleLabel: ""
+
+        signal activated()
+
+        width: 20
+        height: 20
+        visible: revealed
+        // Never a tab stop: the chooser owns the keyboard (T-14.7m).
+        activeFocusOnTab: false
+
+        readonly property color contentColor:
+            destructive ? Theme.color.danger : Theme.color.textSecondary
+
+        Rectangle {
+            anchors.fill: parent
+            radius: Theme.controls.button.radius
+            color: action.destructive
+                   ? Qt.alpha(Theme.color.danger,
+                              (actionHover.hovered || actionTap.pressed) ? 0.22 : 0.0)
+                   : ((actionHover.hovered || actionTap.pressed)
+                      ? Theme.color.controlHover : "transparent")
+            border.width: action.activeFocus ? Theme.controls.focusRing.width : 0
+            border.color: Theme.color.focusRing
+            antialiasing: true
+
+            Behavior on color {
+                ColorAnimation {
+                    duration: Theme.motion.hover.duration
+                    easing.type: Easing.Bezier
+                    easing.bezierCurve: Theme.motion.hover.curve
+                }
+            }
+        }
+        Icon {
+            anchors.centerIn: parent
+            name: action.glyph
+            size: Math.round(action.width * 0.66)
+            color: action.contentColor
+        }
+        HoverHandler { id: actionHover }
+        TapHandler { id: actionTap; onTapped: action.activated() }
+        Accessible.role: Accessible.Button
+        Accessible.name: action.accessibleLabel
+        Accessible.onPressAction: action.activated()
     }
 
     Shadow {
@@ -173,27 +273,36 @@ Item {
                 height: root.rowHeight
                 readonly property bool focused: modelData.focused === true
                 readonly property bool minimized: modelData.minimized === true
+                // `rowHover.hovered` is the live pointer; the fixture index
+                // forces it for the capture seam.
+                readonly property bool hovered:
+                    rowHover.hovered || row.index === root.fixtureHoverIndex
+                readonly property string windowTitle:
+                    modelData.title !== undefined ? modelData.title : ""
                 readonly property string spaceName:
                     modelData.workspaceName !== undefined ? modelData.workspaceName : ""
+                // The two actions reveal together on hover (or row focus); the
+                // slot below always reserves their footprint (T-14.7m).
+                readonly property bool showActions: row.hovered || row.activeFocus
 
                 Rectangle {
                     anchors.fill: parent
                     radius: Theme.controls.focusRing.radius
-                    color: rowHover.hovered ? Theme.color.accent : "transparent"
+                    color: row.hovered ? Theme.color.accent : "transparent"
                 }
                 Icon {
                     id: check
                     visible: row.focused
                     name: "check"
                     size: Theme.controls.button.fontSize
-                    color: rowHover.hovered ? Theme.color.accentContent : Theme.color.accent
+                    color: row.hovered ? Theme.color.accentContent : Theme.color.accent
                     x: Theme.controls.contextMenu.padding
                     anchors.verticalCenter: parent.verticalCenter
                 }
                 Text {
                     id: title
-                    text: row.modelData.title !== undefined ? row.modelData.title : ""
-                    color: rowHover.hovered ? Theme.color.accentContent : Theme.color.textPrimary
+                    text: row.windowTitle
+                    color: row.hovered ? Theme.color.accentContent : Theme.color.textPrimary
                     font.pixelSize: Theme.controls.button.fontSize
                     elide: Text.ElideRight
                     anchors.left: check.visible ? check.right : parent.left
@@ -209,16 +318,57 @@ Item {
                                          : "")
                           + row.spaceName
                     visible: text.length > 0
-                    color: rowHover.hovered ? Theme.color.accentContent : Theme.color.textTertiary
+                    color: row.hovered ? Theme.color.accentContent : Theme.color.textTertiary
                     font.pixelSize: Theme.primitive.font.sizeSm
+                    anchors.right: actionSlot.left
+                    anchors.rightMargin: Theme.primitive.spacing.sm
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+                // The reserved action slot. It always occupies the same width,
+                // so revealing the buttons never resizes the popover; a click
+                // on the empty slot falls through to the row's activate tap.
+                Item {
+                    id: actionSlot
+                    objectName: "chooserRowActions"
+                    width: 2 * root.actionButtonSize + root.actionGap
+                    height: parent.height
                     anchors.right: parent.right
                     anchors.rightMargin: Theme.controls.contextMenu.padding
-                    anchors.verticalCenter: parent.verticalCenter
+
+                    ChooserActionButton {
+                        id: minimizeAction
+                        objectName: "chooserMinimizeAction"
+                        anchors.right: closeAction.left
+                        anchors.rightMargin: root.actionGap
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: root.actionButtonSize
+                        height: root.actionButtonSize
+                        glyph: row.minimized ? "restore" : "minimize"
+                        revealed: row.showActions
+                        accessibleLabel: (row.minimized ? qsTr("Restore ")
+                                                        : qsTr("Minimize "))
+                                         + row.windowTitle
+                        onActivated: root.minimizeWindow(row.index)
+                    }
+                    ChooserActionButton {
+                        id: closeAction
+                        objectName: "chooserCloseAction"
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: root.actionButtonSize
+                        height: root.actionButtonSize
+                        glyph: "close"
+                        destructive: true
+                        revealed: row.showActions
+                        accessibleLabel: qsTr("Close ") + row.windowTitle
+                        onActivated: root.closeWindow(row.index)
+                    }
                 }
                 HoverHandler { id: rowHover }
                 TapHandler { onTapped: root.activateWindow(row.index) }
                 Accessible.role: Accessible.MenuItem
-                Accessible.name: row.modelData.title !== undefined ? row.modelData.title : ""
+                Accessible.name: root.windowAccessibleName(row.windowTitle, row.focused,
+                                                           row.minimized)
                 Accessible.checkable: true
                 Accessible.checked: row.focused
                 Accessible.onPressAction: root.activateWindow(row.index)
