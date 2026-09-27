@@ -577,6 +577,12 @@ signals:
     // `.desktop` URI); otherwise `paths` are the dropped files.
     void dockExternalDropped(bool payloadIsApp, const QString &desktopId,
                              const QStringList &paths, qreal x, qreal y);
+    // The drag payload finished reading at drag *enter* (T-14.7f). The shell
+    // resolves the app identity from `desktopId` or the file count/name from
+    // `paths` and pushes it to the Dock's ghost/affordance. Emitted once per
+    // read, and re-emitted on re-enter while the same read is cached.
+    void dockExternalDragPayload(bool payloadIsApp, const QString &desktopId,
+                                 const QStringList &paths);
     // A compositor input action broadcast (`df_toplevel_manager.input_action`,
     // T-07). The Dock uses `focus-dock` and `toggle-dock` (T-10 section 20).
     void inputAction(const QString &action, const QString &source);
@@ -713,6 +719,18 @@ private:
     static void onDataOfferAction(void *data, wl_data_offer *offer, uint32_t action);
     // Read the drop payload from the pipe once the source has written it.
     void onDndReadable();
+    // Begin the single enter-time read of the drag payload (T-14.7f); a
+    // no-op once the payload is cached or a read is in flight.
+    void beginDndRead();
+    // Parse the accumulated bytes into the cached classification. Called when
+    // the notifier reaches EOF and, if the write is still in flight at drop,
+    // from the synchronous drain.
+    void finishDndRead();
+    // Complete the enter-time read before resolving a drop: drain the pipe
+    // (bounded) so a still-in-flight payload is never dropped unread.
+    bool ensureDndPayloadReady();
+    // Drop the in-flight read without touching the offer.
+    void resetDndRead();
     void resetExternalDrag();
 
     // wlr-data-control clipboard observation (T-13.5b). The manager device
@@ -944,6 +962,13 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
     int m_dndReadFd = -1;
     QSocketNotifier *m_dndReadNotifier = nullptr;
     QByteArray m_dndData;
+    // The enter-time read is the single receive for a drag (T-14.7f): once
+    // begun it is never re-requested, and once finished the parsed payload is
+    // cached here for the drop.
+    bool m_dndReadStarted = false;
+    bool m_dndDataReady = false;
+    QString m_dndDesktopId;
+    QStringList m_dndPaths;
 
     // Clipboard history observation (T-13.5b): the wlr-data-control manager
     // device, the current offer and its MIME types, the in-flight reads, and

@@ -17,3 +17,9 @@ class NotificationClient;
 // `reason`. A no-op when `client` is null.
 void raiseDockLaunchFailure(NotificationClient *client, const QString &appName,
                             const QString &reason);
+
+// Raise a Dock operation notice (T-14.7f): a failed move to Trash or
+// Downloads, or a partial multi-item failure, made user-visible through the
+// same notification path as a launch failure. A no-op when `client` is null.
+void raiseDockNotice(NotificationClient *client, const QString &summary,
+                     const QString &body);

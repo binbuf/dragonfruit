@@ -420,6 +420,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             &ShellController::onDockExternalDragLeft);
     connect(m_protocol, &ShellProtocol::dockExternalDropped, this,
             &ShellController::onDockExternalDropped);
+    connect(m_protocol, &ShellProtocol::dockExternalDragPayload, this,
+            &ShellController::onDockExternalDragPayload);
 
     // T-07.5a/T-07.5b system-status bridge: the model decodes the host's
     // Wi-Fi/volume/battery views; the client is the live session-bus client,
@@ -1205,6 +1207,54 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
                 QMetaObject::invokeMethod(m_dockItem, "setAppPickerQuery",
                                           Q_ARG(QVariant, query));
             }
+        });
+    }
+
+    // Capture/demo seam (T-14.7f): present an in-flight external drag once the
+    // chrome is up, so the live visual check can capture the identity ghost and
+    // the per-target affordances without a real drag source. Values: `app` (an
+    // app-alias ghost over the app region), `file-app` (files over an app), and
+    // `file-trash` (files over the Trash). The identity comes from the real
+    // app-index corpus; the Dock presentation is the production path. Never set
+    // in a normal session.
+    if (qEnvironmentVariableIsSet("DF_DOCK_DROP_FIXTURE")) {
+        QTimer::singleShot(1500, this, [this]() {
+            if (!m_dockItem)
+                return;
+            const QString mode = qEnvironmentVariable("DF_DOCK_DROP_FIXTURE");
+            const bool isApp = mode == QLatin1String("app");
+            const QVariantList apps = m_dockItem->property("appEntries").toList();
+            QString appDesktopId;
+            if (!apps.isEmpty())
+                appDesktopId = apps.first().toMap().value(QStringLiteral("desktopId")).toString();
+            DesktopEntry identity = m_index.byId(appDesktopId);
+            if (!identity.valid)
+                identity = m_index.resolve(appDesktopId);
+            if (!identity.valid) {
+                for (const DesktopEntry &entry : m_index.entries()) {
+                    if (entry.valid) {
+                        identity = entry;
+                        break;
+                    }
+                }
+            }
+            QMetaObject::invokeMethod(m_dockItem, "reveal");
+            QMetaObject::invokeMethod(m_dockItem, "beginExternalDrag",
+                                      Q_ARG(QVariant, isApp), Q_ARG(QVariant, 1));
+            const QString firstName =
+                isApp ? QString() : QStringLiteral("report.pdf");
+            QMetaObject::invokeMethod(
+                m_dockItem, "setExternalPayload", Q_ARG(QVariant, isApp),
+                Q_ARG(QVariant, isApp ? identity.name : QString()),
+                Q_ARG(QVariant, isApp ? identity.iconPath : QString()),
+                Q_ARG(QVariant, isApp ? 1 : 2), Q_ARG(QVariant, firstName));
+            QString target = QStringLiteral("__trash__");
+            if (mode != QLatin1String("file-trash")) {
+                if (!apps.isEmpty())
+                    target = apps.first().toMap().value(QStringLiteral("id")).toString();
+            }
+            QMetaObject::invokeMethod(m_dockItem, "externalHoverEntry",
+                                      Q_ARG(QVariant, target));
         });
     }
 
@@ -3519,11 +3569,42 @@ void ShellController::onDockExternalDragEntered(bool payloadIsApp, qreal x, qrea
         return;
     // Reveal a hidden Dock so the drop target is visible (T-10 section 15).
     QMetaObject::invokeMethod(m_dockItem, "reveal");
-    // The payload count is unknown until the drop; the Dock only needs the
-    // kind to choose the highlight or the live gap.
+    // The Dock needs the kind to choose the highlight or the live gap; the
+    // resolved identity and file count arrive separately once the enter-time
+    // payload read completes (`onDockExternalDragPayload`).
     QMetaObject::invokeMethod(m_dockItem, "beginExternalDrag", Q_ARG(QVariant, payloadIsApp),
                               Q_ARG(QVariant, 0));
     onDockExternalDragMoved(x, y);
+}
+
+void ShellController::onDockExternalDragPayload(bool payloadIsApp, const QString &desktopId,
+                                                const QStringList &paths)
+{
+    if (!m_dockItem)
+        return;
+    QString name;
+    QString iconPath;
+    int count = 0;
+    QString firstName;
+    if (payloadIsApp && !desktopId.isEmpty()) {
+        // Resolve the app alias through app-index so the ghost shows the real
+        // name and themed icon; a failure degrades to the raw identity
+        // (legacy/10-dock.md FR-7), never a crash.
+        DesktopEntry entry = m_index.byId(desktopId);
+        if (!entry.valid)
+            entry = m_index.resolve(desktopId);
+        name = entry.valid ? entry.name : desktopId;
+        iconPath = entry.valid ? entry.iconPath : QString();
+        count = 1;
+    } else {
+        count = paths.size();
+        if (!paths.isEmpty())
+            firstName = QFileInfo(paths.first()).fileName();
+    }
+    QMetaObject::invokeMethod(m_dockItem, "setExternalPayload", Q_ARG(QVariant, payloadIsApp),
+                              Q_ARG(QVariant, name), Q_ARG(QVariant, iconPath),
+                              Q_ARG(QVariant, count), Q_ARG(QVariant, firstName));
+    scheduleDockRender();
 }
 
 void ShellController::onDockExternalDragMoved(qreal x, qreal y)
@@ -3582,12 +3663,23 @@ void ShellController::onDockExternalDropRequested(const QString &targetId,
         const QString id = m_externalDesktopId;
         if (id.isEmpty()) {
             qWarning() << "shell: Dock external app drop had no desktop id";
-        } else if (!m_dockConfig.pinned.contains(id)) {
-            QStringList ids = m_dockConfig.pinned;
-            ids.append(id);
-            writeDockSetting(QStringLiteral("dock.pinned"), ids);
-            rebuildDockEntries();
-            qInfo() << "shell: Dock pinned" << id << "from an external drop";
+        } else {
+            // Duplicate detection is by identity, not raw string: a raw app
+            // alias may resolve to an already-pinned `.desktop` id.
+            DesktopEntry resolved = m_index.byId(id);
+            if (!resolved.valid)
+                resolved = m_index.resolve(id);
+            const QString resolvedId = resolved.valid ? resolved.id : QString();
+            if (dockPinnedContains(m_dockConfig.pinned, id, resolvedId)) {
+                flashDuplicatePin(resolvedId.isEmpty() ? id : resolvedId);
+                qInfo() << "shell: Dock app" << id << "is already pinned (visible no-op)";
+            } else {
+                QStringList ids = m_dockConfig.pinned;
+                ids.append(id);
+                writeDockSetting(QStringLiteral("dock.pinned"), ids);
+                rebuildDockEntries();
+                qInfo() << "shell: Dock pinned" << id << "from an external drop";
+            }
         }
         break;
     }
@@ -3598,21 +3690,47 @@ void ShellController::onDockExternalDropRequested(const QString &targetId,
             launchDockAppWithFiles(desktopId, m_externalPaths);
         break;
     case DockDropAction::TrashFiles: {
+        if (!m_trash || !m_trash->isAvailable()) {
+            raiseDockNotice(m_notificationClient, QStringLiteral("Could not move to Trash"),
+                            QStringLiteral("The Trash is not available right now."));
+            qWarning() << "shell: Dock drop on Trash while the backend is unavailable";
+            break;
+        }
         const int trashed = m_trash->trash(m_externalPaths);
+        const int failed = m_externalPaths.size() - trashed;
+        if (failed > 0) {
+            raiseDockNotice(
+                m_notificationClient, QStringLiteral("Could not move to Trash"),
+                failed == 1
+                    ? QStringLiteral("1 item could not be moved to the Trash.")
+                    : QStringLiteral("%1 items could not be moved to the Trash.").arg(failed));
+        }
         qInfo() << "shell: Dock trashed" << trashed << "of" << m_externalPaths.size()
                 << "dropped items";
         break;
     }
     case DockDropAction::MoveToDownloads: {
         const QString downloads = downloadsDirectory();
-        QDir().mkpath(downloads);
+        const bool dirOk = QDir().mkpath(downloads);
+        int moved = 0;
+        int failed = 0;
         for (const QString &path : m_externalPaths) {
             const QString destination =
                 downloads + QLatin1Char('/') + QFileInfo(path).fileName();
-            if (QFile::rename(path, destination))
+            if (dirOk && QFile::rename(path, destination)) {
+                ++moved;
                 qInfo() << "shell: Dock moved" << path << "to Downloads";
-            else
+            } else {
+                ++failed;
                 qWarning() << "shell: Dock could not move" << path << "to Downloads";
+            }
+        }
+        if (failed > 0) {
+            raiseDockNotice(
+                m_notificationClient, QStringLiteral("Could not move to Downloads"),
+                failed == 1
+                    ? QStringLiteral("1 item could not be moved to Downloads.")
+                    : QStringLiteral("%1 items could not be moved to Downloads.").arg(failed));
         }
         break;
     }
@@ -4359,6 +4477,16 @@ void ShellController::scheduleLaunchStateClear(const QString &desktopId)
             rebuildDockEntries();
         }
     });
+}
+
+void ShellController::flashDuplicatePin(const QString &desktopId)
+{
+    if (desktopId.isEmpty() || !m_dockItem)
+        return;
+    // The Dock highlights the pinned entry it already has, so a duplicate
+    // alias drop reads as a no-op rather than silence (T-14.7f).
+    QMetaObject::invokeMethod(m_dockItem, "flashPin", Q_ARG(QVariant, desktopId));
+    scheduleDockRender();
 }
 
 void ShellController::onDockLaunchTick()

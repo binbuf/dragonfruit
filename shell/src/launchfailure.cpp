@@ -15,3 +15,14 @@ void raiseDockLaunchFailure(NotificationClient *client, const QString &appName,
                                     : reason,
                    QStringLiteral("normal"), {}, {});
 }
+
+void raiseDockNotice(NotificationClient *client, const QString &summary,
+                     const QString &body)
+{
+    if (!client)
+        return;
+    client->notify(QStringLiteral("Dock"), summary,
+                   body.isEmpty() ? QStringLiteral("The operation did not complete.")
+                                  : body,
+                   QStringLiteral("normal"), {}, {});
+}
