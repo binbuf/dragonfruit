@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(85 earlier sections omitted)_
+_(86 earlier sections omitted)_
 
-- **T82 — T-12.3b Lock PAM authentication**: **State: done.** Unlock is now real PAM authentication through a small helper;; **`services/lock-auth/`** (new crate `dragonfruit-lock-auth`) —
 - **System font — Inter (post-T82, before T83)**: **State: done (first-party half).** The desktop's type is now Inter 4.001; **`fonts/Inter/`** (now tracked; T82's `/fonts/` .gitignore entry is gone) —
 - **T83 — T-12.3c Lock input capture and kill-resistance**: **State: done.** The locked session now captures input in the lock UI instead; **`compositor/src/lock.rs`** — `LockModel::input_surface()` (first live lock
 - **T84 — T-12.4a Idle timers**: **State: done.** The dim → blank → lock → suspend chain is a pure,; **`services/session/src/idle.rs`** (new) — `IdleStage`
@@ -45,6 +44,7 @@ _(85 earlier sections omitted)_
 - **T110g — T-14.7g Dock activation and launch correctness**: **State: done.** The Dock click tree is now observable end to end: a launch; `protocols/dragonfruit-toplevel.xml` — manager version 8; new
 - **T110h — T-14.7h Dock folder stacks: presentation and clicks**: **State: done.** Folder entries read like macOS: a clean folder silhouette with; `shell/dock/DockGlyph.qml` — the `stack` block is `stackArtwork`: back tab
 - **T110i — T-14.7i Dock hover name labels (Tooltip)**: **State: done.** The design system has a passive `Tooltip` and the Dock shows a; `design-system/components/Tooltip.qml` (new) — `open`, `anchorItem`,
+- **T110j — T-14.7j Dock Tahoe visual language: floating glass, squircles, states**: **State: done.** The Dock is now a layered floating glass plate with a bright; `design-system/tokens/tokens.json` — semantic colors `dockFill`, `dockRim`,
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -9023,3 +9023,91 @@ Gotchas for later tasks:
   session values (synthetic dwell hover does not work offscreen/headless).
 - `check-desktop-names.sh` still fails on the pre-existing StatusNotifier/zoo
   lines (unchanged here).
+
+## T110j — T-14.7j Dock Tahoe visual language: floating glass, squircles, states
+
+**State: done.** The Dock is now a layered floating glass plate with a bright
+interior rim, hairline border, and soft shadow; app tiles are token squircles
+with a themed-icon inset; hover/press/running states share one spec. The
+compositor gives the Dock its own material role, selected by namespace, so its
+frost is tunable independently of the menu bar. ADR
+`0102-dock-material-role-and-qml-glass-layers.md`.
+
+Real paths:
+
+- `design-system/tokens/tokens.json` — semantic colors `dockFill`, `dockRim`,
+  `dockBorder`, `dockShadow`, `dockHoverFill`, `dockDivider`, `dockIndicator`
+  (light+dark); semantic material `dockOpacity` (light 0.5 / dark 0.42) and
+  `dockBlur` (30 / 34); `component.dock.radius` is now `primitive.radius.xl`
+  (20); new nested groups `component.dock.plate` (fillOpacity 0.42, rimOpacity
+  0.7, rimHeight 1, borderWidth 1, borderOpacity 0.55, shadowBlur 20,
+  shadowOpacity 0.3, shadowOffsetY 6), `.icon` (radiusRatio 0.24, inset 0.06),
+  `.hover` (fillOpacity 0.18, radiusRatio 0.28), `.indicator` (opacity 0.9),
+  `.divider` (opacity 0.5, width 1, heightRatio 0.6). `Theme.qml` and
+  `design_tokens.rs` regenerated.
+- `compositor/src/window/backdrop.rs` — `MaterialRole::Dock`,
+  `from_layer_namespace(layer, namespace)` (`"dock"` on a persistent surface),
+  name `"dock"`, `spec()` reads `DOCK_BLUR`/`DOCK_OPACITY` and
+  `component::dock::RADIUS`; new tests `the_dock_namespace_selects_the_dock_material_role`
+  and `dock_material_degrades_with_the_shared_tiers`.
+- `compositor/src/window/decoration.rs` — `ColorScheme::dock_fill()`.
+- `compositor/src/shell/mod.rs` — `ChromeSurface` gains `pub namespace: String`
+  (filled from `LayerSurfaceState.namespace`).
+- `compositor/src/render.rs` — role now
+  `MaterialRole::from_layer_namespace(chrome.layer, &chrome.namespace)`.
+- `shell/dock/Dock.qml` — the plate is a clipped `Item` `dockPlate` with
+  children `dockBar` (fill), `dockRim` (interior highlight), `dockBorder`,
+  `dockPlateShadow` (`Shadow`). `plateX`/`plateY`/`plateW`/`plateH` give child
+  placement inside the group; the group clips so the shadow falls only toward
+  the anchored edge, never into the magnify band. The rim is orientation-aware:
+  horizontal on a bottom Dock, the interior vertical edge on left/right. All
+  values from `Theme.controls.dock.plate` / `Theme.color.dock*`.
+- `shell/dock/DockEntry.qml` — `tileRadius` (`icon.radiusRatio`) and
+  `hoverRadius` (`hover.radiusRatio`); hover wash is `dockHoverFill` at
+  `hover.fillOpacity`; placeholder/drop/duplicate/lift-shadow/focus-ring use
+  `tileRadius`; indicator is `dockIndicator` at `indicator.opacity`; divider is
+  the `divider` tokens.
+- `shell/dock/DockGlyph.qml` — `appTile` (`objectName`) at `tileRadius`;
+  `rasterIcon`/`vectorIcon` inset by `icon.inset`. The Trash stays its own bin
+  (never a squircle).
+- `shell/tests/tst_dock.qml` — `test_plate_is_a_layered_glass_not_a_flat_slab`,
+  `test_plate_glass_follows_the_color_scheme`,
+  `test_glyph_tile_is_a_token_squircle_with_inset`,
+  `test_plate_rim_is_on_the_interior_edge`,
+  `test_entry_states_use_the_squircle_and_state_tokens`.
+- `scripts/capture-dock-tahoe.sh` + `scripts/capture-dock-tahoe-driver.py`,
+  `make dock-tahoe-capture`; `docs/captures/t14-dock-tahoe-{light,dark,reduced}.png`;
+  captures README paragraph.
+- Docs: `docs/design/04-shell.md` "Dock plate and materials",
+  `docs/design/02-compositor.md`, `docs/design/10-design-system.md`.
+
+Commands that work (repo root):
+
+- `ctest --test-dir build -R "tst_dock$|tst_design_system|qmllint_shell-dock"` —
+  green (`tst_dock` 175).
+- `ctest --test-dir build --output-on-failure` — 53/53.
+- `cargo test --workspace`; `make e2e` — green.
+- `cargo clippy --workspace --all-targets`; `cargo fmt --all -- --check`;
+  `./scripts/gen-tokens.py --check`; `./scripts/check-design-tokens.sh`;
+  `./scripts/check-no-capture-grab.sh`;
+  `./scripts/check-gallery-snapshots.py --strict` — green.
+- Live: `make dock-tahoe-capture` (host Wayland + spectacle + Pillow).
+
+Gotchas for later tasks:
+
+- **Read `plateRect` for geometry, `dockPlate.plateX/plateY` for child
+  placement.** The plate group is clipped and offset differently per position;
+  `dockBar`/`dockRim`/`dockBorder`/`dockPlateShadow` live at `plateX/plateY`,
+  not `0,0` (except a bottom Dock). The bottom-Dock `plateX` is 0.
+- **The rim is orientation-aware.** Never assume a top bar; a left/right Dock
+  puts it on the interior vertical edge. Test `test_plate_rim_is_on_the_interior_edge`.
+- **No degrade-tier signal reaches QML.** The QML always draws fill/rim/border/
+  shadow; the tier only changes the compositor frost (`Reduced` scales it,
+  `Minimal` drops it). T-14.7k must not expect a QML "minimal" switch; a shell
+  tier binding is a future item (ADR 0102).
+- **Themed artwork is inset-and-fitted, not per-pixel squircle-masked.** A
+  software-renderer-safe mask needs a GPU pass, deferred with refraction;
+  placeholder/hover/focus/badges carry the squircle geometry. `appTile` is the
+  placeholder `objectName`.
+- **`check-desktop-names.sh` still fails on the pre-existing
+  StatusNotifier/zoo lines** (unchanged here).

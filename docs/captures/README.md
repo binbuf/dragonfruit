@@ -245,6 +245,17 @@ rounded `surfaceElevated` surface with a hairline border, above the entry on a
 bottom Dock. Needs a host Wayland session, spectacle, gdbus, and Pillow; not in
 `make e2e`.
 
+T-14.7j's Dock Tahoe visual language sign-off is produced by
+`scripts/capture-dock-tahoe.sh` (`make dock-tahoe-capture`): the nested demo runs
+once with the compositor's synthetic-input harness and parks the pointer off the
+Dock (resting), over the Trash (hover wash + label, no magnification), over an
+app icon (magnification + label), and holds the left button down (pressed) under
+the light and dark schemes. The four crops are stacked into
+`t14-dock-tahoe-{light,dark}.png`. A third still, `t14-dock-tahoe-reduced.png`,
+sets the compositor's `Minimal` material tier (blur off) and reduced motion, so
+the plate reads as a clean capsule with no glass claim. Needs a host Wayland
+session, spectacle, and Pillow; not in `make e2e`.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

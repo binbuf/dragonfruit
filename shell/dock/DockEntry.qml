@@ -82,6 +82,14 @@ Item {
     readonly property bool verticalIndicator:
         indicatorEdge === "left" || indicatorEdge === "right"
     readonly property real indicatorSize: Theme.controls.dock.indicatorSize
+    // The rounded-square (squircle) tile radius for the artwork slot (T-14.7j).
+    // Every state surface shares it: the placeholder, the drop/duplicate
+    // highlights, the lift shadow, and the keyboard focus ring.
+    readonly property real tileRadius:
+        iconSize * Theme.controls.dock.icon.radiusRatio
+    // The hover highlight is a slightly rounder wash behind the artwork.
+    readonly property real hoverRadius:
+        iconSize * Theme.controls.dock.hover.radiusRatio
     // Reserved for every entry (not just running ones) so the Dock keeps all
     // artwork on one baseline; the dot itself still only shows when running.
     readonly property real indicatorSpace:
@@ -180,9 +188,10 @@ Item {
         visible: root.isDivider
         x: (root.width - width) / 2
         y: root.height * 0.15
-        width: 1
-        height: root.height * 0.7
-        color: Theme.color.separator
+        width: Theme.controls.dock.divider.width
+        height: root.height * Theme.controls.dock.divider.heightRatio
+        color: Theme.color.dockDivider
+        opacity: Theme.controls.dock.divider.opacity
     }
 
     // The divider is only 1 px wide, so the drag handle is a wider invisible
@@ -224,9 +233,9 @@ Item {
         y: root.artworkY
         width: root.iconSize
         height: root.iconSize
-        radius: Theme.controls.dock.radius
-        color: Theme.color.controlFill
-        opacity: 0.6
+        radius: root.hoverRadius
+        color: Theme.color.dockHoverFill
+        opacity: Theme.controls.dock.hover.fillOpacity
     }
 
     // A placeholder gap opened by an application-alias external drop: a
@@ -239,7 +248,7 @@ Item {
         y: root.artworkY
         width: root.iconSize
         height: root.iconSize
-        radius: Theme.controls.dock.radius
+        radius: root.tileRadius
         color: Theme.color.controlFill
         opacity: root.externalHasIdentity ? 0.18 : 0.35
         border.width: 1
@@ -255,7 +264,7 @@ Item {
         y: root.artworkY
         width: root.iconSize
         height: root.iconSize
-        radius: Theme.controls.dock.radius
+        radius: root.tileRadius
         color: Theme.color.accent
         opacity: 0.25
     }
@@ -269,7 +278,7 @@ Item {
         y: root.artworkY
         width: root.iconSize
         height: root.iconSize
-        radius: Theme.controls.dock.radius
+        radius: root.tileRadius
         color: Theme.color.accent
         opacity: 0.35
     }
@@ -282,7 +291,7 @@ Item {
         y: root.artworkY
         width: root.iconSize
         height: root.iconSize
-        radius: Theme.controls.dock.radius
+        radius: root.tileRadius
         blur: Theme.controls.popover.shadowBlur
         z: -1
     }
@@ -292,7 +301,7 @@ Item {
     FocusRing {
         objectName: "keyboardFocusRing"
         target: glyph
-        cornerRadius: Theme.controls.dock.radius
+        cornerRadius: root.tileRadius
         shown: root.keyboardFocused && !root.isDivider && !root.isExternal
     }
 
@@ -390,8 +399,8 @@ Item {
         width: root.indicatorSize
         height: root.indicatorSize
         radius: root.indicatorSize / 2
-        color: Theme.color.textPrimary
-        opacity: root.attention ? 1.0 : 0.85
+        color: Theme.color.dockIndicator
+        opacity: root.attention ? 1.0 : Theme.controls.dock.indicator.opacity
         x: root.indicatorEdge === "left" ? 0
            : root.indicatorEdge === "right" ? root.width - width
            : (root.width - width) / 2

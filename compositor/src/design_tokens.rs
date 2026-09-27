@@ -141,6 +141,13 @@ pub mod semantic {
             pub const FOLDER_FILL_BOTTOM: [u8; 4] = [0x4a, 0x7d, 0xff, 0xff];
             pub const FOLDER_RIM: [u8; 4] = [0x3a, 0x66, 0xe0, 0xff];
             pub const FOLDER_HIGHLIGHT: [u8; 4] = [0xff, 0xff, 0xff, 0xff];
+            pub const DOCK_FILL: [u8; 4] = [0xff, 0xff, 0xff, 0xff];
+            pub const DOCK_RIM: [u8; 4] = [0xff, 0xff, 0xff, 0xff];
+            pub const DOCK_BORDER: [u8; 4] = [0xc3, 0xb8, 0xcc, 0xff];
+            pub const DOCK_SHADOW: [u8; 4] = [0x00, 0x00, 0x00, 0xff];
+            pub const DOCK_HOVER_FILL: [u8; 4] = [0x78, 0x6a, 0x84, 0xff];
+            pub const DOCK_DIVIDER: [u8; 4] = [0x9c, 0x8f, 0xa8, 0xff];
+            pub const DOCK_INDICATOR: [u8; 4] = [0x1d, 0x17, 0x23, 0xff];
         }
         pub mod material {
             pub const CHROME_OPACITY: f32 = 0.82_f32;
@@ -148,6 +155,8 @@ pub mod semantic {
             pub const POPUP_OPACITY: f32 = 0.96_f32;
             pub const POPUP_BLUR: f32 = 30.0_f32;
             pub const SHADOW_OPACITY: f32 = 0.18_f32;
+            pub const DOCK_OPACITY: f32 = 0.5_f32;
+            pub const DOCK_BLUR: f32 = 30.0_f32;
         }
     }
     pub mod dark {
@@ -192,6 +201,13 @@ pub mod semantic {
             pub const FOLDER_FILL_BOTTOM: [u8; 4] = [0x3a, 0x66, 0xe0, 0xff];
             pub const FOLDER_RIM: [u8; 4] = [0x5b, 0x8d, 0xff, 0xff];
             pub const FOLDER_HIGHLIGHT: [u8; 4] = [0xde, 0xd6, 0xe5, 0xff];
+            pub const DOCK_FILL: [u8; 4] = [0x2d, 0x25, 0x34, 0xff];
+            pub const DOCK_RIM: [u8; 4] = [0xde, 0xd6, 0xe5, 0xff];
+            pub const DOCK_BORDER: [u8; 4] = [0x44, 0x39, 0x4d, 0xff];
+            pub const DOCK_SHADOW: [u8; 4] = [0x00, 0x00, 0x00, 0xff];
+            pub const DOCK_HOVER_FILL: [u8; 4] = [0xc3, 0xb8, 0xcc, 0xff];
+            pub const DOCK_DIVIDER: [u8; 4] = [0x78, 0x6a, 0x84, 0xff];
+            pub const DOCK_INDICATOR: [u8; 4] = [0xf8, 0xf6, 0xfa, 0xff];
         }
         pub mod material {
             pub const CHROME_OPACITY: f32 = 0.72_f32;
@@ -199,6 +215,8 @@ pub mod semantic {
             pub const POPUP_OPACITY: f32 = 0.92_f32;
             pub const POPUP_BLUR: f32 = 32.0_f32;
             pub const SHADOW_OPACITY: f32 = 0.45_f32;
+            pub const DOCK_OPACITY: f32 = 0.42_f32;
+            pub const DOCK_BLUR: f32 = 34.0_f32;
         }
     }
 }
@@ -277,7 +295,7 @@ pub mod component {
         pub const PADDING: f32 = 10.0_f32;
         pub const PADDING_ALONG: f32 = 14.0_f32;
         pub const GAP: f32 = 8.0_f32;
-        pub const RADIUS: f32 = 14.0_f32;
+        pub const RADIUS: f32 = 20.0_f32;
         pub const INDICATOR_SIZE: f32 = 4.0_f32;
         pub const INDICATOR_GAP: f32 = 3.0_f32;
         pub const MAGNIFY_PEAK: f32 = 1.6_f32;
@@ -289,6 +307,32 @@ pub mod component {
         pub const EDGE_TRIGGER: f32 = 4.0_f32;
         pub const REVEAL_DELAY: f32 = 120.0_f32;
         pub const HIDE_DELAY: f32 = 350.0_f32;
+        pub mod plate {
+            pub const FILL_OPACITY: f32 = 0.42_f32;
+            pub const RIM_OPACITY: f32 = 0.7_f32;
+            pub const RIM_HEIGHT: f32 = 1.0_f32;
+            pub const BORDER_WIDTH: f32 = 1.0_f32;
+            pub const BORDER_OPACITY: f32 = 0.55_f32;
+            pub const SHADOW_BLUR: f32 = 20.0_f32;
+            pub const SHADOW_OPACITY: f32 = 0.3_f32;
+            pub const SHADOW_OFFSET_Y: f32 = 6.0_f32;
+        }
+        pub mod icon {
+            pub const RADIUS_RATIO: f32 = 0.24_f32;
+            pub const INSET: f32 = 0.06_f32;
+        }
+        pub mod hover {
+            pub const FILL_OPACITY: f32 = 0.18_f32;
+            pub const RADIUS_RATIO: f32 = 0.28_f32;
+        }
+        pub mod indicator {
+            pub const OPACITY: f32 = 0.9_f32;
+        }
+        pub mod divider {
+            pub const OPACITY: f32 = 0.5_f32;
+            pub const WIDTH: f32 = 1.0_f32;
+            pub const HEIGHT_RATIO: f32 = 0.6_f32;
+        }
     }
     pub mod context_menu {
         pub const RADIUS: f32 = 14.0_f32;

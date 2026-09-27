@@ -102,6 +102,9 @@ pub struct ChromeSurface {
     pub panel: Rectangle<i32, Logical>,
     /// The layer the surface requested (`df_shell.layer`).
     pub layer: u32,
+    /// The `df_layer_surface` namespace (e.g. `menubar`, `dock`). The
+    /// compositor picks the material role from it (T-14.7j).
+    pub namespace: String,
     /// Keyboard-interaction policy (`df_layer_surface.set_keyboard_interaction`).
     pub keyboard: KeyboardInteraction,
 }
@@ -462,6 +465,7 @@ impl DfState {
                     geometry,
                     panel,
                     layer: entry.state.layer,
+                    namespace: entry.state.namespace.clone(),
                     keyboard: entry.state.keyboard,
                 }
             })

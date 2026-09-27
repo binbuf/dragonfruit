@@ -69,11 +69,13 @@ across the process boundary by construction (see
 [ADR 0011](adr/0011-elevation-shadow-tokens.md)).
 
 The semantic `material` group (`chromeOpacity`/`chromeBlur`,
-`popupOpacity`/`popupBlur`, `shadowOpacity`) is the shared source for surface
-materials (T-04.2): the QML `Theme.material` group tints the shell chrome and
-the compositor's backdrop pass reads the same values, per color scheme, so the
-two sides cannot drift (see
-[ADR 0013](adr/0013-backdrop-blur-pass.md)).
+`dockOpacity`/`dockBlur`, `popupOpacity`/`popupBlur`, `shadowOpacity`) is the
+shared source for surface materials (T-04.2): the QML `Theme.material` group
+tints the shell chrome and the compositor's backdrop pass reads the same
+values, per color scheme, so the two sides cannot drift (see
+[ADR 0013](adr/0013-backdrop-blur-pass.md)). The Dock's own `dock*` tokens keep
+its frost tunable independently of the menu bar (T-14.7j, ADR
+[0102](adr/0102-dock-material-role-and-qml-glass-layers.md)).
 
 ## Typography and the system font
 
