@@ -55,13 +55,33 @@ const BLUR_PER_LAYER: f32 = 6.0;
 /// Upper bound on the derived feather layer count.
 const MAX_LAYERS: u32 = 8;
 
+/// `str` equality usable in a `const fn` (the `dock` namespace check).
+const fn str_eq(a: &str, b: &str) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut i = 0;
+    while i < a.len() {
+        if a[i] != b[i] {
+            return false;
+        }
+        i += 1;
+    }
+    true
+}
+
 /// Which material role a chrome surface plays, selecting the token group the
 /// backdrop consumes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum MaterialRole {
-    /// Persistent chrome: the menu bar and the Dock (`material.chrome*`).
+    /// Persistent chrome: the menu bar (`material.chrome*`).
     #[default]
     Chrome,
+    /// The Dock's floating glass plate (`material.dock*`). It carries its own
+    /// material tokens so its frost and tone can be tuned independently of the
+    /// menu bar (T-14.7j, ADR 0102).
+    Dock,
     /// Transient overlay chrome: menus, popovers, and (T-11) the OSD
     /// (`material.popup*`).
     Popup,
@@ -69,7 +89,8 @@ pub enum MaterialRole {
 
 impl MaterialRole {
     /// The role for a `df_shell.layer` value: `overlay` (3) and above is a
-    /// popover, everything else is persistent chrome.
+    /// popover, everything else is persistent chrome. The Dock is selected by
+    /// its namespace, not its layer.
     pub const fn from_layer(layer: u32) -> Self {
         if layer >= LAYER_OVERLAY {
             MaterialRole::Popup
@@ -78,9 +99,25 @@ impl MaterialRole {
         }
     }
 
+    /// The role for a chrome surface's layer and namespace (T-14.7j). A
+    /// persistent surface whose `df_layer_surface` namespace is `dock` is the
+    /// Dock, which owns the `dock` material group; every other persistent
+    /// surface (the menu bar) stays `Chrome` and overlays stay `Popup`.
+    pub const fn from_layer_namespace(layer: u32, namespace: &str) -> Self {
+        if layer >= LAYER_OVERLAY {
+            return MaterialRole::Popup;
+        }
+        if str_eq(namespace, "dock") {
+            MaterialRole::Dock
+        } else {
+            MaterialRole::Chrome
+        }
+    }
+
     pub const fn name(self) -> &'static str {
         match self {
             MaterialRole::Chrome => "chrome",
+            MaterialRole::Dock => "dock",
             MaterialRole::Popup => "popup",
         }
     }
@@ -99,6 +136,16 @@ impl MaterialRole {
                     semantic::dark::material::CHROME_OPACITY,
                 ),
             },
+            MaterialRole::Dock => match scheme {
+                ColorScheme::Light => (
+                    semantic::light::material::DOCK_BLUR,
+                    semantic::light::material::DOCK_OPACITY,
+                ),
+                ColorScheme::Dark => (
+                    semantic::dark::material::DOCK_BLUR,
+                    semantic::dark::material::DOCK_OPACITY,
+                ),
+            },
             MaterialRole::Popup => match scheme {
                 ColorScheme::Light => (
                     semantic::light::material::POPUP_BLUR,
@@ -111,10 +158,12 @@ impl MaterialRole {
             },
         };
         // The panel tone stands in for the scene sampled under the surface:
-        // persistent chrome uses the chrome color, popovers the elevated
-        // surface. The client surface's own alpha tints it further.
+        // persistent chrome uses the chrome color, the Dock its own fill, and
+        // popovers the elevated surface. The client surface's own alpha tints
+        // it further.
         let color = match self {
             MaterialRole::Chrome => scheme.chrome(),
+            MaterialRole::Dock => scheme.dock_fill(),
             MaterialRole::Popup => scheme.surface_elevated(),
         };
         // The radius follows the component that draws that role, so the
@@ -122,6 +171,7 @@ impl MaterialRole {
         // component tokens, never a hardcoded literal.
         let radius = match self {
             MaterialRole::Chrome => component::menu_bar::RADIUS,
+            MaterialRole::Dock => component::dock::RADIUS,
             MaterialRole::Popup => component::popup::RADIUS,
         };
         BackdropSpec {
@@ -415,6 +465,68 @@ mod tests {
         assert_eq!(MaterialRole::from_layer(4), MaterialRole::Popup);
         assert_eq!(MaterialRole::Chrome.name(), "chrome");
         assert_eq!(MaterialRole::Popup.name(), "popup");
+    }
+
+    #[test]
+    fn the_dock_namespace_selects_the_dock_material_role() {
+        // T-14.7j: the Dock is a persistent `top` surface like the menu bar,
+        // so only its namespace can distinguish it. The Dock gets its own
+        // material group so its frost/tone is tunable separately.
+        assert_eq!(
+            MaterialRole::from_layer_namespace(2, "dock"),
+            MaterialRole::Dock
+        );
+        assert_eq!(
+            MaterialRole::from_layer_namespace(2, "menubar"),
+            MaterialRole::Chrome
+        );
+        assert_eq!(
+            MaterialRole::from_layer_namespace(2, ""),
+            MaterialRole::Chrome
+        );
+        // An overlay is a popup regardless of namespace.
+        assert_eq!(
+            MaterialRole::from_layer_namespace(3, "dock"),
+            MaterialRole::Popup
+        );
+        assert_eq!(MaterialRole::Dock.name(), "dock");
+
+        let light = MaterialRole::Dock.spec(ColorScheme::Light);
+        assert_eq!(light.blur, semantic::light::material::DOCK_BLUR);
+        assert_eq!(light.blur, 30.0);
+        assert_eq!(light.opacity, semantic::light::material::DOCK_OPACITY);
+        assert_eq!(light.opacity, 0.5);
+        assert_eq!(light.radius, component::dock::RADIUS);
+        assert_eq!(light.radius, 20.0);
+        assert_eq!(light.color, ColorScheme::Light.dock_fill());
+        // 30 px blur / 6 px per layer = 5 feather layers.
+        assert_eq!(light.layers, 5);
+
+        let dark = MaterialRole::Dock.spec(ColorScheme::Dark);
+        assert_eq!(dark.blur, 34.0);
+        assert_eq!(dark.opacity, 0.42);
+        assert_eq!(dark.color, ColorScheme::Dark.dock_fill());
+        assert_eq!(dark.layers, 6);
+
+        // The Dock is not the menu-bar material: tuning one leaves the other.
+        let menubar = MaterialRole::Chrome.spec(ColorScheme::Light);
+        assert_ne!(light.blur, menubar.blur);
+        assert_ne!(light.opacity, menubar.opacity);
+    }
+
+    #[test]
+    fn dock_material_degrades_with_the_shared_tiers() {
+        use crate::window::degrade::DegradeTier;
+        let base = MaterialRole::Dock.spec(ColorScheme::Light);
+        // Reduced keeps the blur (fewer layers, smaller geometry)...
+        let reduced = DegradeTier::Reduced
+            .backdrop(base)
+            .expect("reduced keeps blur");
+        assert_eq!(reduced.blur, base.blur * 0.5);
+        assert!(reduced.layers < base.layers);
+        assert_eq!(reduced.radius, base.radius * 0.5);
+        // ...Minimal owns no backdrop at all, so the Dock claims no frost.
+        assert!(DegradeTier::Minimal.backdrop(base).is_none());
     }
 
     #[test]

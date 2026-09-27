@@ -140,6 +140,13 @@ QtObject {
             readonly property color folderFillBottom: "#4a7dff"
             readonly property color folderRim: "#3a66e0"
             readonly property color folderHighlight: "#ffffff"
+            readonly property color dockFill: "#ffffff"
+            readonly property color dockRim: "#ffffff"
+            readonly property color dockBorder: "#c3b8cc"
+            readonly property color dockShadow: "#000000"
+            readonly property color dockHoverFill: "#786a84"
+            readonly property color dockDivider: "#9c8fa8"
+            readonly property color dockIndicator: "#1d1723"
         }
         readonly property var material: QtObject {
             readonly property real chromeOpacity: 0.82
@@ -147,6 +154,8 @@ QtObject {
             readonly property real popupOpacity: 0.96
             readonly property int popupBlur: 30
             readonly property real shadowOpacity: 0.18
+            readonly property real dockOpacity: 0.5
+            readonly property int dockBlur: 30
         }
     }
     readonly property var darkScheme: QtObject {
@@ -191,6 +200,13 @@ QtObject {
             readonly property color folderFillBottom: "#3a66e0"
             readonly property color folderRim: "#5b8dff"
             readonly property color folderHighlight: "#ded6e5"
+            readonly property color dockFill: "#2d2534"
+            readonly property color dockRim: "#ded6e5"
+            readonly property color dockBorder: "#44394d"
+            readonly property color dockShadow: "#000000"
+            readonly property color dockHoverFill: "#c3b8cc"
+            readonly property color dockDivider: "#786a84"
+            readonly property color dockIndicator: "#f8f6fa"
         }
         readonly property var material: QtObject {
             readonly property real chromeOpacity: 0.72
@@ -198,6 +214,8 @@ QtObject {
             readonly property real popupOpacity: 0.92
             readonly property int popupBlur: 32
             readonly property real shadowOpacity: 0.45
+            readonly property real dockOpacity: 0.42
+            readonly property int dockBlur: 34
         }
     }
 
@@ -293,7 +311,7 @@ QtObject {
             readonly property int padding: 10
             readonly property int paddingAlong: 14
             readonly property int gap: 8
-            readonly property int radius: 14
+            readonly property int radius: 20
             readonly property int indicatorSize: 4
             readonly property int indicatorGap: 3
             readonly property real magnifyPeak: 1.6
@@ -305,6 +323,32 @@ QtObject {
             readonly property int edgeTrigger: 4
             readonly property int revealDelay: 120
             readonly property int hideDelay: 350
+            readonly property var plate: QtObject {
+                readonly property real fillOpacity: 0.42
+                readonly property real rimOpacity: 0.7
+                readonly property int rimHeight: 1
+                readonly property int borderWidth: 1
+                readonly property real borderOpacity: 0.55
+                readonly property int shadowBlur: 20
+                readonly property real shadowOpacity: 0.3
+                readonly property int shadowOffsetY: 6
+            }
+            readonly property var icon: QtObject {
+                readonly property real radiusRatio: 0.24
+                readonly property real inset: 0.06
+            }
+            readonly property var hover: QtObject {
+                readonly property real fillOpacity: 0.18
+                readonly property real radiusRatio: 0.28
+            }
+            readonly property var indicator: QtObject {
+                readonly property real opacity: 0.9
+            }
+            readonly property var divider: QtObject {
+                readonly property real opacity: 0.5
+                readonly property int width: 1
+                readonly property real heightRatio: 0.6
+            }
         }
         readonly property var contextMenu: QtObject {
             readonly property int radius: 14
