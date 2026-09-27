@@ -402,11 +402,14 @@ private:
     // menu's Lock Screen both route here; the shell owns the lock UI.
     void lockScreen();
     // Rebuild the Dock's ordered entries (pinned + running) and hand them to
-    // the QML scene.
+    // the QML scene. The entries are the *stable* model: the launch/attention
+    // phases live in a separate map so a bounce never resets the Repeater
+    // (T-14.7c).
     void rebuildDockEntries();
-    // Add the per-entry `bounce` phase (0..1) from the launch/attention
-    // clocks (T-10 section 8.1).
-    QVariantList withBounce(QVariantList entries) const;
+    // Compute the per-entry launch/attention phases from the clocks and push
+    // them into the QML `bouncePhases` map keyed by entry id. The entries
+    // themselves are untouched, so the delegates survive a bounce (T-14.7c).
+    void publishDockBouncePhases();
     // Start the 16 ms Dock animation clock if it is not already running.
     void ensureDockAnimation();
     // Clear any attention bounce for `appId` (FR-4: stops on click or focus).
@@ -729,6 +732,10 @@ private:
     // geometry change only resets the Repeater model when it must.
     int m_dockHiddenTemporary = 0;
     int m_dockHiddenRecent = 0;
+    // The last phases map pushed to QML (`entry id -> { phase, attention }`).
+    // The map is only re-published when it actually changes, so the idle Dock
+    // makes no binding churn (T-14.7c).
+    QVariantMap m_dockBouncePhases;
     // One warning per session for the Dock-overflow error state (section 5.1).
     bool m_dockOverflowWarned = false;
     // Pinned desktop id -> "launching" | "failed" (transient).

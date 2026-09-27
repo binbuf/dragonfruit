@@ -43,7 +43,6 @@ Item {
     // layout only and never interactive.
     readonly property bool isExternal: kind === "external"
     readonly property bool running: entry.running === true
-    readonly property bool attention: entry.attention === true
     readonly property string name: entry.name !== undefined ? entry.name : ""
     readonly property string appId: entry.appId !== undefined ? entry.appId : ""
     // Themed icon file resolved by app-index (T-14.1a); empty until the
@@ -57,9 +56,14 @@ Item {
     readonly property bool failed: entry.launch === "failed"
     readonly property bool missing: entry.missing === true
     // The shell-driven hop phase (0..1), -1 when the entry is not bouncing
-    // (T-10 section 8.1). The Dock owns the translation; this is only for
-    // the reduced-motion pulse.
-    readonly property real bounce: entry.bounce !== undefined ? entry.bounce : -1
+    // (T-10 section 8.1). Injected by the Dock from its `bouncePhases` map so
+    // a bounce never rebuilds the entry model (T-14.7c); an entry-embedded
+    // `bounce` still wins for direct callers.
+    property real bouncePhase: -1
+    property bool bounceAttention: false
+    readonly property bool attention: entry.attention === true || bounceAttention
+    readonly property real bounce:
+        entry.bounce !== undefined ? entry.bounce : bouncePhase
 
     readonly property bool verticalIndicator:
         indicatorEdge === "left" || indicatorEdge === "right"
