@@ -338,6 +338,16 @@ pub mod component {
             pub const SCROLLBAR_WIDTH: f32 = 8.0_f32;
             pub const SCROLLBAR_MARGIN: f32 = 2.0_f32;
         }
+        pub mod window_badge {
+            pub const SIZE_RATIO: f32 = 0.34_f32;
+            pub const SIZE_MIN: f32 = 14.0_f32;
+            pub const SIZE_MAX: f32 = 22.0_f32;
+            pub const FONT_RATIO: f32 = 0.56_f32;
+            pub const FONT_MIN: f32 = 10.0_f32;
+            pub const PADDING_H: f32 = 5.0_f32;
+            pub const INSET: f32 = 2.0_f32;
+            pub const BORDER_WIDTH: f32 = 1.0_f32;
+        }
     }
     pub mod context_menu {
         pub const RADIUS: f32 = 14.0_f32;

@@ -23,6 +23,14 @@ QString displayNameForAppId(const QString &appId)
     return dot >= 0 ? appId.mid(dot + 1) : appId;
 }
 
+int dockWindowCount(const QVariantMap &entry)
+{
+    const QVariant list = entry.value(QStringLiteral("windowList"));
+    if (list.isValid() && !list.isNull())
+        return list.toList().size();
+    return entry.value(QStringLiteral("windows")).toInt();
+}
+
 QVariantList buildDockProjection(const QList<DockWindow> &windows)
 {
     struct AppGroup {
@@ -87,6 +95,7 @@ QVariantList buildDockProjection(const QList<DockWindow> &windows)
         entry.insert(QStringLiteral("running"), true);
         entry.insert(QStringLiteral("windows"), it.value().windows.size());
         entry.insert(QStringLiteral("windowList"), it.value().windows);
+        entry.insert(QStringLiteral("windowCount"), it.value().windows.size());
         entry.insert(QStringLiteral("minimized"),
                      it.value().minimized == it.value().windows.size());
         entries.append(entry);
@@ -113,6 +122,7 @@ QVariantList buildDockProjection(const QList<DockWindow> &windows)
         entry.insert(QStringLiteral("running"), false);
         entry.insert(QStringLiteral("minimized"), true);
         entry.insert(QStringLiteral("windowList"), group.windows);
+        entry.insert(QStringLiteral("windowCount"), group.windows.size());
         entries.append(entry);
     }
 
