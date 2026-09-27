@@ -27,6 +27,10 @@ Item {
     // Keyboard navigation focus (T-10 section 20): draws the design-system
     // FocusRing around the artwork.
     property bool keyboardFocused: false
+    // The keyboard reorder chord (T-14.7t), injected axis-aware by the Dock for
+    // pinned entries only (empty for everything else). It is the accessible
+    // description's only extra text, so a screen reader names the affordance.
+    property string reorderHint: ""
     // The entry is the target of an external drag (T-10 section 12): draws a
     // drop highlight around the artwork.
     property bool externalDropTarget: false
@@ -234,6 +238,10 @@ Item {
                      : isStack ? (name.length > 0 ? name : qsTr("Downloads")) + stateLabel
                      : name + stateLabel
     Accessible.focusable: !isDivider && !isExternal
+    // The reorder chord (T-14.7t) is exposed as the description so it joins the
+    // entry's accessibility surface when it is movable (pinned); every other
+    // entry keeps an empty description.
+    Accessible.description: root.reorderHint
 
     // Divider between the app and minimized/Trash regions. It is the drag
     // handle and the Control-click target for the Dock options menu.

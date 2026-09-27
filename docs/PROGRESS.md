@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(96 earlier sections omitted)_
+_(97 earlier sections omitted)_
 
-- **T92 — T-13.3a Screenshot portal and selection UI**: **State: done.** The backend serves `org.freedesktop.impl.portal.Screenshot`; **`portal/src/screenshot.rs`** (new) — the pure model: `CaptureMode`
 - **T93 — T-13.3b Screenshot save/copy and portal-only gate**: **State: done.** A capture is now actually produced, saved, and copied. The; **`protocols/dragonfruit-toplevel.xml`** — `df_toplevel_manager` v6 adds
 - **T94 — T-13.4a ScreenCast portal and source picker**: **State: done.** The backend serves `org.freedesktop.impl.portal.ScreenCast`; **`portal/src/screencast.rs`** (new) — the pure model: `SourceType`
 - **T95 — T-13.4b ScreenCast stream and stills fallback**: **State: done.** The ScreenCast stream now goes through one transport seam, and; **`portal/src/stream.rs`** (new) — `StreamMode` (`pipewire`/`stills`),
@@ -44,6 +43,7 @@ _(96 earlier sections omitted)_
 - **T110q — T-14.7q Dock overflow cell and More Windows popover**: **State: done.** When the running groups do not fit even at the minimum icon,; `shell/src/dockmodel.{h,cpp}` — `applyDockOverflow` now returns a terminal
 - **T110r — T-14.7r Dock Trash empty progress and result**: **State: done.** Empty Trash is asynchronous with visible states. Confirming; `shell/src/trashbridge.{h,cpp}` — `EmptyState {Idle,Emptying,Succeeded,Failed}`;
 - **T110s — T-14.7s Dock minimize-to-icon reaction**: **State: done.** With `dock.minimizeReaction` on, a window entering `minimized`; `shell/src/dockprojection.{h,cpp}` — pure `dockMinimizedCounts(entries)` and
+- **T110t — T-14.7t Dock keyboard reordering**: **State: done.** The Dock's rearrangement affordance is no longer pointer-only:; `shell/src/dockmodel.{h,cpp}` — `QStringList movePinnedEntry(const QStringList
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -9780,5 +9780,77 @@ Gotchas for later tasks:
 - **Neighbour lateral ripple is deferred**; if added it needs its own
   token-gated field and must not rebuild the model.
 - `DF_DOCK_MINIMIZE_REACTION_FIXTURE` is a capture seam, never session state.
+- `check-desktop-names.sh` still fails only on the pre-existing
+  StatusNotifier/zoo/apppicker lines (unchanged here).
+
+## T110t — T-14.7t Dock keyboard reordering
+
+**State: done.** The Dock's rearrangement affordance is no longer pointer-only:
+with the Dock keyboard-focused, `Ctrl+Shift+Arrow` moves the focused pinned
+entry one slot and writes the new full order through the existing
+`pinnedOrderChanged` → settingsd single-writer path. Axis-aware (Left/Right
+bottom, Up/Down vertical), no-op at the ends, pinned region only, focus
+retained for chained presses, move announced with the new position. No new
+animation (discrete reorder; correct under reduced motion). No new ADR.
+
+Real paths:
+
+- `shell/src/dockmodel.{h,cpp}` — `QStringList movePinnedEntry(const QStringList
+  &pinnedIds, int index, int delta)`; off-region/out-of-range/zero-delta are
+  no-ops, never wraps.
+- `shell/dock/Dock.qml` — `movePinnedEntry` (QML mirror, same semantics),
+  `reorderFocusedPinned(delta)`, `reorderChordHint`, `reorderHintFor(entry)`;
+  the `Keys.onPressed` Ctrl+Shift branch ahead of the plain arrows; delegate
+  `reorderHint: dock.reorderHintFor(modelData)`.
+- `shell/dock/DockEntry.qml` — `property string reorderHint` +
+  `Accessible.description: root.reorderHint`.
+- `shell/src/shellprotocol.{h,cpp}` — `keyEvent` now carries the modifier mask;
+  `m_keyboardModifiers` caches the xkb `depressed` bits from
+  `onKeyboardModifiers`.
+- `shell/src/shellcontroller.{h,cpp}` — `onKeyEvent(key, pressed, modifiers)` +
+  `qtModifiersFromXkb`; the chrome `QKeyEvent` is built with real modifiers
+  instead of `Qt::NoModifier`.
+- Tests: `tst_dockcore` 109 → 112 (helper bounds/no-op/full list);
+  `tst_dock` 232 → 238 (six `test_keyboard_reorder_*`: move + focus,
+  axis-awareness, ends no-op, not-focused, pinned-only payload, axis-aware
+  pinned-only accessible hint).
+- `scripts/capture-dock-keyboard-reorder.sh` + `make
+  dock-keyboard-reorder-capture`; `docs/captures/t14-dock-keyboard-reorder.png`.
+- Docs: `docs/design/04-shell.md` "Dock keyboard navigation and reordering".
+
+Commands that work (repo root):
+
+- `ctest --test-dir build --output-on-failure` — 53/53 (`tst_dock` 238,
+  `tst_dockcore` 112).
+- `make e2e` — green.
+- `./scripts/gen-tokens.py --check`; `./scripts/check-design-tokens.sh`;
+  `./scripts/check-no-capture-grab.sh`;
+  `./scripts/check-gallery-snapshots.py --strict` — green.
+- Live: `make dock-keyboard-reorder-capture` (host Wayland + synthetic input +
+  spectacle + gdbus + Pillow). Verified: persisted `dock.pinned` became
+  `[Settings, Files, Konsole, Firefox]` from `[Files, Settings, …]`, and the
+  inspection sees the focus ring on the moved 2nd tile with no clipping.
+
+Gotchas for later tasks:
+
+- **The Dock QML mirror must stay in sync with `dockmodel::movePinnedEntry`.**
+  There is no C++ singleton in the `Dragonfruit.Dock` module (and
+  `tst_dock.qml` loads `Dock {}` standalone), so the pure helper is duplicated.
+  If a later task introduces a Dock QML singleton, collapse the mirror.
+- **`ShellProtocol::keyEvent` now has a third `uint32_t modifiers` argument and
+  `ShellController::onKeyEvent` takes it too.** Modifiers enter the chrome
+  exclusively through `qtModifiersFromXkb` (Shift 0x1, Ctrl 0x4, Alt 0x8,
+  Super 0x40). Any new chrome chord should read `event.modifiers` on the routed
+  `QKeyEvent`; do not add a second modifier-tracking path.
+- **The live capture needs the compositor to forward Ctrl+Shift+Arrow to the
+  Dock.** `Control+Arrow` are system shortcuts, but the shortcut engine matches
+  the modifier set exactly (`shortcut.mods == state`), so Ctrl+Shift+Arrow is
+  not intercepted and reaches the focused Dock surface. Do not add exact
+  Ctrl+Shift+Arrow system bindings without revisiting the Dock chord.
+- **`reorderFocusedPinned` only acts on `kind === "pinned"`;** temporary,
+  recent, minimized, stack, overflow, and Trash are inert even when focused.
+- **The T-14.7c optimistic no-model-reset follow-up still applies** to the
+  keyboard path too (the shell `rebuildDockEntries()` resets the Repeater); it
+  was not fixed here.
 - `check-desktop-names.sh` still fails only on the pre-existing
   StatusNotifier/zoo/apppicker lines (unchanged here).

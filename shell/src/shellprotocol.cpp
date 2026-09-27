@@ -2962,7 +2962,8 @@ void ShellProtocol::onKeyboardKey(void *data, wl_keyboard *, uint32_t, uint32_t,
         emit self->screencastKeyEvent(key, state == WL_KEYBOARD_KEY_STATE_PRESSED);
         return;
     }
-    emit self->keyEvent(key, state == WL_KEYBOARD_KEY_STATE_PRESSED);
+    emit self->keyEvent(key, state == WL_KEYBOARD_KEY_STATE_PRESSED,
+                        self->m_keyboardModifiers);
 }
 
 void ShellProtocol::onKeyboardModifiers(void *data, wl_keyboard *, uint32_t, uint32_t depressed,
@@ -2971,6 +2972,8 @@ void ShellProtocol::onKeyboardModifiers(void *data, wl_keyboard *, uint32_t, uin
     auto *self = static_cast<ShellProtocol *>(data);
     // WL_KEYBOARD_MODIFIER_MASK_SHIFT is bit 0.
     self->m_keyboardShift = (depressed & 0x1u) != 0;
+    // Keep the full mask for the chrome chords (T-14.7t).
+    self->m_keyboardModifiers = depressed;
 }
 
 // --- df_toplevel_manager ----------------------------------------------------

@@ -208,7 +208,7 @@ private slots:
     void onPointerButton(qreal x, qreal y, quint32 button, bool pressed);
     void onPointerLeft();
     void onKeyboardFocused(bool focused);
-    void onKeyEvent(quint32 key, bool pressed);
+    void onKeyEvent(quint32 key, bool pressed, quint32 modifiers);
     void onDockConfigured(int width, int height, quint32 serial);
     void onDockStateChanged(const QVariantList &entries);
     void onDockEntryActivated(const QVariant &entry);
