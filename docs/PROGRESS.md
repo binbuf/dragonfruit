@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(78 earlier sections omitted)_
+_(79 earlier sections omitted)_
 
-- **T75 — T-11.3b Focus/DND, dark mode, and Control Center a11y**: **State: done.** The Control Center panel has five tiles now: Wi-Fi, Focus,; **`shell/control-center/ControlCenter.qml`** — Focus and Dark Mode tiles, a
 - **T76 — T-11.4a OSD overlay**: **State: done.** A volume/brightness change presents a brief centered OSD card; **`shell/src/osdmodel.{h,cpp}`** (new, dockcore) — the pure `OsdModel`:
 - **T77 — T-11.4b OSD keyboard/a11y and captures**: **State: done.** The OSD is keyboard/AT-SPI accessible and the T-11 capture; **`shell/osd/Osd.qml`** — `Accessible.role: Alert` + value-derived
 - **T78 — T-12.1a Session manager and restart policy**: **State: done.** `services/session` is a real session manager: the composition; **`services/session/src/plan.rs`** (new) — `RestartPolicy` (`always` /
@@ -45,6 +44,7 @@ _(78 earlier sections omitted)_
 - **T110 — T-14.7 Retire interim paths**: **State: done.** The last two interim hacks are gone: the Dock's local; `shell/src/desktopentry.{h,cpp}` — `scan`, `parse`, `defaultApplicationDirs`
 - **T110a — T-14.7a Dock plate geometry and spacing**: **State: done.** The Dock plate now floats: token-driven cross-axis and; `design-system/tokens/tokens.json` — `controls.dock`: `padding` 10,
 - **T110b — T-14.7b Magnified plate growth and backdrop panel**: **State: done.** The Dock plate now grows to wrap the magnified row (both axes); `protocols/dragonfruit-shell.xml` — `df_shell` v2, `df_layer_surface` v2, new
+- **T110c — T-14.7c Dock motion smoothness and frame discipline**: **State: done.** Continuous Dock motion no longer rebuilds the entry model:; `shell/src/shellcontroller.cpp` — `withBounce` deleted; `rebuildDockEntries`
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3645,6 +3645,17 @@ Gotchas for later tasks:
   a horizontal separator). This is pre-existing and outside T-14.7a's
   spacing/plate scope; the divider artwork and orientation are T-14.7j. The
   T-14.7a containment tests skip dividers for that reason.
+
+- **T-14.7c follow-ups.** (a) The Dock's drag-gap *close* only springs for the
+  cancel/snap-back path; a successful reorder still resets the Repeater model
+  through the shell (`onDockPinnedOrderChanged` → `rebuildDockEntries`), so the
+  gap closes on the fresh delegates. Making the shell apply the pin order
+  optimistically (no model reset) would close that. (b) The pre-sized popover
+  buffer keeps the whole Dock window larger (`dock + 2*320` by
+  `dock + 320`), so every `grabWindow()` readback is ~4x the resting area; the
+  T-14.7c nested trace shows no degrade-tier downgrade, but a real-hardware
+  trace that shows one should move the popover into its own fixed-size
+  offscreen window (the task's documented fallback).
 
 ## T49 — T-09.1b Settings live-apply plumbing
 
@@ -8511,3 +8522,75 @@ Gotchas for later tasks:
   pointer outside the Dock before asserting geometry.
 - `check-desktop-names.sh` still fails on the pre-existing StatusNotifier/zoo
   lines (unchanged here).
+
+## T110c — T-14.7c Dock motion smoothness and frame discipline
+
+**State: done.** Continuous Dock motion no longer rebuilds the entry model:
+launch/attention phases ride a per-entry map while the `entries` list (and so
+every Repeater delegate and its hover/press state) stays put. Opening a
+popover no longer resizes the offscreen window, `dock.size` changes animate,
+and the settled Dock still contributes zero frames. ADR
+[0100](design/adr/0100-dock-motion-phase-map-and-popover-buffer.md) froze the
+contract.
+
+Real paths:
+
+- `shell/src/shellcontroller.cpp` — `withBounce` deleted; `rebuildDockEntries`
+  builds the stable entries and calls new `publishDockBouncePhases()`, which
+  pushes `entry id -> { phase, attention }` as the QML `bouncePhases` property
+  only when it changes. `onDockAnimationTick` advances the map (no model
+  rebuild) and stops the 16 ms timer when both clocks are empty;
+  `onDockLaunchTick` rebuilds only on a real launch-state change;
+  `clearAttention`/`onDockAttention` publish the map. New
+  `kDockPopoverHeadroom`/`kDockPopoverGutter` (320) pre-size `m_dockWindow` at
+  configure (window = `dock + 2*gutter` by `dock + headroom`); `renderDock`
+  uses that constant offset and no longer resizes per popover.
+- `shell/dock/Dock.qml` — new `bouncePhases`, `popoverHeadroom`,
+  `popoverGutter` properties; `entryPhase`/`entryAttention` +
+  `clampPopoverX`/`clampPopoverY`; delegate injects `bouncePhase`/
+  `bounceAttention`; root `Behavior on iconSize` gated by `laidOutOnce` (plus a
+  new `onWidthChanged/onHeightChanged` 0 ms settle timer); delegate x/y
+  Behaviors also cover `dragSettling`; all three popovers clamp to the budget;
+  stale comments refreshed.
+- `shell/dock/DockEntry.qml` — `bouncePhase`/`bounceAttention` properties;
+  `attention` and `bounce` read them (entry-embedded values still win).
+- `shell/tests/tst_dock.qml` — new `test_bounce_does_not_rebuild_the_entry_model`,
+  `test_attention_phase_rides_the_phase_map`,
+  `test_a_size_change_animates_then_settles`,
+  `test_a_size_change_snaps_under_reduced_motion`,
+  `test_popover_open_stays_inside_the_pre_sized_buffer`.
+- `scripts/capture-dock-motion.sh` + `-driver.py` (new;
+  `make dock-motion-capture`) — scratch settingsd + synthetic input; writes
+  `docs/captures/t14-dock-motion-trace.txt`, `t14-dock-motion-menu-dark.png`,
+  `t14-dock-motion-resized-dark.png`.
+- Docs: `docs/design/04-shell.md` "Dock motion and frame discipline";
+  `docs/design/adr/0100-...md`; `docs/captures/README.md` T-14.7c paragraph.
+
+Commands that work (repo root):
+
+- `ctest --test-dir build --output-on-failure` — 53/53 (`tst_dock` 129 cases).
+- `make e2e` — exit 0; `make soak SOAK_CYCLES=5` — 5 clean cycles, zero strays.
+- `make dock-motion-capture` — trace: sweep `over_budget=+0` (~66 fps),
+  popover `over_budget=+5`/63 frames, size-change `+0`, idle
+  `frames_rendered=+0 over_budget=+0`; whole run `tier=full downgrades=0`.
+- Build note (unchanged): `export
+  PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig:$PKG_CONFIG_PATH` and
+  `RUSTFLAGS="-L $HOME/.local/df-devroot/lib64"` (or just `make`).
+
+Gotchas for later tasks:
+
+- **Per-frame entry state goes through `bouncePhases`, not `entries`.** Any
+  rebuild of the entry list recreates delegates and drops hover/press state;
+  the two new tests guard this.
+- **Popover placement must clamp into `popoverHeadroom`/`popoverGutter`**
+  (shell-set; 0 = legacy unbounded). The Dock window is already that big; do
+  not compute headroom in the shell.
+- **`laidOutOnce` snaps the first configure**; everything after springs via the
+  root `Behavior on iconSize`. A real drag reorder still resets the model, so
+  only the cancel path's gap-close springs (Follow-up).
+- The pre-sized buffer is ~4x the resting readback area; the nested trace shows
+  no tier downgrade, but the separate-popover-window fallback is the documented
+  next step if a hardware trace degrades (Follow-up).
+- Running the `tst_dock` binary directly needs
+  `QML2_IMPORT_PATH=$PWD/build/qml QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software`;
+  `ctest` sets this.

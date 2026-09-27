@@ -165,6 +165,18 @@ T-14.7b sign-off). The same script brackets one timed sweep with compositor
 `frames_rendered`/`frames_skipped_no_damage` deltas). Needs a host Wayland
 session, spectacle, and Pillow; not in `make e2e`.
 
+T-14.7c's Dock motion/frame-discipline sign-off is produced by
+`scripts/capture-dock-motion.sh` (`make dock-motion-capture`): the nested demo
+runs with a scratch settingsd and the synthetic-input harness, and the driver
+brackets a magnification sweep, a context menu open/close, and a `dock.size`
+change (via `gdbus`) with compositor `SIGUSR1` dumps, writing the per-phase raw
+numbers to `t14-dock-motion-trace.txt` plus the menu and resized stills. The
+trace shows zero over-budget frames for the sweep, size change, and the
+trailing idle window (the settled Dock renders nothing), and a handful during
+the nested popover open/close with no degrade-tier downgrade. Needs a host
+Wayland session, spectacle, gdbus, Pillow, and a session bus with no settingsd
+owner; not in `make e2e`.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

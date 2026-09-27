@@ -1,0 +1,9 @@
+T-14.7c Dock motion trace
+magnification sweep, context menu open/close, dock.size 0.5 -> 0.85 -> 0.5, then idle
+sweep 1.47s: frames_rendered=+97 frames_skipped_no_damage=+0 animation_frames_stepped=+0 over_budget=+0 ~66 fps
+popover 1.62s: frames_rendered=+63 frames_skipped_no_damage=+0 animation_frames_stepped=+0 over_budget=+5 ~39 fps
+size-change 2.26s: frames_rendered=+41 frames_skipped_no_damage=+0 animation_frames_stepped=+0 over_budget=+0 ~18 fps
+idle 1.50s: frames_rendered=+0 frames_skipped_no_damage=+0 animation_frames_stepped=+0 over_budget=+0 ~0 fps
+render stats (final): dragonfruit-compositor: render stats (SIGUSR1): frames_rendered=282 frames_skipped_no_damage=0 direct_scanouts=0 animation_frames_stepped=10 client_wakeups=553 latency_us_last=18666 latency_us_max=21199 latency_samples=76 latency_dropped=0 scene_transforms=10 scene_transform_skipped=0
+degrade stats (final): dragonfruit-compositor: degrade stats (SIGUSR1): tier=full forced=0 budget_us=16000 samples=282 over_budget=6 downgrades=0 upgrades=0 tiers=full:282,reduced:0,minimal:0
+frame timing (final): dragonfruit-compositor: frame timing (SIGUSR1): samples=282 avg_us=14032 max_us=28911 max_interval_ms=7322

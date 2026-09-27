@@ -139,6 +139,23 @@ icon (T-14.7i). See
 [ADR 0089](adr/0089-dock-plate-geometry-and-live-panel-rect.md) and the
 T-14.7a/T-14.7b/T-14.7j units.
 
+### Dock motion and frame discipline
+
+Continuous Dock motion is deliberately separate from the entry model. Launch
+and attention bounce phases are pushed as an `entry id -> { phase, attention }`
+map (`bouncePhases`) every committed frame; the Repeater model is never
+reassigned for a bounce, so delegates are not recreated and hover/press state
+survives. The 16 ms tick only advances the map and stops the moment both
+clocks are empty, so the settled Dock contributes zero wakeups. Opening a
+menu/chooser/stack never resizes the offscreen window: the shell pre-sizes the
+buffer to a fixed `popoverHeadroom`/`popoverGutter` budget and `Dock.qml`
+clamps every popover into it. `dock.size`/overflow changes and the drag-gap
+close spring with `motion.dock-magnify` (reduced motion is duration 0); the
+first configure snaps and magnification stays progress-based. The T-14.7c
+trace lives at `docs/captures/t14-dock-motion-trace.txt`. See
+[ADR 0100](adr/0100-dock-motion-phase-map-and-popover-buffer.md) and the
+T-14.7c unit.
+
 ### Adding and removing apps
 
 The Dock manages its own contents: the divider menu opens an **Add

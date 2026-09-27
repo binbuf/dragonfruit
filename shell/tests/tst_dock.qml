@@ -379,6 +379,40 @@ Item {
             }
         }
 
+        // T-14.7c: a `dock.size`/overflow size change animates with the
+        // design-system spring and then settles exactly on the target.
+        function test_a_size_change_animates_then_settles() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 240, magnification: 0,
+                entries: [ app("a", "A", true), app("b", "B", true) ]
+            });
+            waitForRendering(stage);
+            var start = dock.iconSize;
+            var target = Theme.controls.dock.iconSizeMax;
+            verify(target > start);
+            dock.iconSize = target;
+            // Mid-flight the size is strictly between the endpoints.
+            wait(Math.floor(Theme.motion.dockMagnify.fullDuration / 3));
+            verify(dock.iconSize > start);
+            verify(dock.iconSize < target);
+            // It settles exactly on the target.
+            wait(Theme.motion.dockMagnify.fullDuration + 120);
+            fuzzyCompare(dock.iconSize, target, 0.5);
+        }
+
+        function test_a_size_change_snaps_under_reduced_motion() {
+            Theme.reducedMotion = true;
+            var dock = make(dockComponent, {
+                width: 1280, height: 240, magnification: 0,
+                entries: [ app("a", "A", true), app("b", "B", true) ]
+            });
+            waitForRendering(stage);
+            var target = Theme.controls.dock.iconSizeMax;
+            dock.iconSize = target;
+            waitForRendering(stage);
+            fuzzyCompare(dock.iconSize, target, 0.001);
+        }
+
         // -- Placement ------------------------------------------------------
 
         function test_bottom_dock_axis_is_horizontal() {
@@ -882,6 +916,53 @@ Item {
                              bounce: 0.5 } ]
             });
             verify(dock.itemAt(0).Accessible.name.indexOf("attention") >= 0);
+        }
+
+        // T-14.7c: a running bounce advances a phase map, not the entry model,
+        // so the Repeater delegates are never recreated and any live hover or
+        // press state survives.
+        function test_bounce_does_not_rebuild_the_entry_model() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "A", true), app("b", "B", true) ]
+            });
+            var first = dock.itemAt(0);
+            var second = dock.itemAt(1);
+            first.pressed = true;
+            var baseY = dock.layout[0].y;
+
+            // The shell pushes the phase through `bouncePhases` every frame.
+            dock.bouncePhases = { a: { phase: 0.5, attention: false } };
+            waitForRendering(stage);
+
+            // The delegates are the very same objects (no model reset), and the
+            // press state survived the bounce.
+            verify(dock.itemAt(0) === first);
+            verify(dock.itemAt(1) === second);
+            compare(first.pressed, true);
+            compare(dock.entries.length, 2);
+            // The phase is read from the map and lifts the entry geometry.
+            fuzzyCompare(dock.entryPhase(dock.items[0]), 0.5, 0.001);
+            verify(dock.layout[0].y < baseY);
+        }
+
+        function test_attention_phase_rides_the_phase_map() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "A", true) ]
+            });
+            var first = dock.itemAt(0);
+            dock.bouncePhases = { a: { phase: 0.5, attention: true } };
+            waitForRendering(stage);
+            verify(dock.itemAt(0) === first);
+            compare(dock.entryAttention(dock.items[0]), true);
+            verify(dock.entryBounce(dock.items[0])
+                   > dock.barThickness / 2 - 0.5);
+            // An empty map clears the phase without touching the model.
+            dock.bouncePhases = ({});
+            waitForRendering(stage);
+            verify(dock.itemAt(0) === first);
+            compare(dock.entryBounce(dock.items[0]), 0);
         }
 
         // T-10 section 22: an app that exits mid-bounce must resolve — the
@@ -1434,6 +1515,48 @@ Item {
             // makes room for it.
             verify(rect.y < 0);
             verify(rect.h > dock.magnifyBand);
+        }
+
+        // T-14.7c: the shell pre-sizes the offscreen buffer to a fixed popover
+        // budget and the Dock clamps every popover into it, so opening a
+        // menu/chooser/stack never needs the scene to grow.
+        function test_popover_open_stays_inside_the_pre_sized_buffer() {
+            var list = [];
+            for (var i = 0; i < 24; ++i)
+                list.push({ windowId: String(i + 1), title: "Window " + (i + 1) });
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                popoverHeadroom: 320, popoverGutter: 320,
+                entries: [ multiWindow("files", "Files", list) ]
+            });
+            // Even a menu taller than the budget opens inside it.
+            dock.openEntryMenu(dock.items[0]);
+            waitForRendering(stage);
+            var rect = dock.popoverRect;
+            verify(rect.w > 0);
+            verify(rect.y >= -dock.popoverHeadroom - 0.001);
+            verify(rect.x >= -dock.popoverGutter - 0.001);
+            verify(rect.x + rect.w <= dock.width + dock.popoverGutter + 0.001);
+            // The Dock scene itself is unchanged; only its offset inside the
+            // pre-sized buffer differs.
+            compare(dock.width, 1280);
+            compare(dock.height, 160);
+
+            // A vertical Dock clamps a wide popover into the side gutter.
+            var left = make(dockComponent, {
+                width: 124, height: 720, position: "left",
+                popoverHeadroom: 320, popoverGutter: 320,
+                entries: [ multiWindow("term", "Terminal", list) ]
+            });
+            left.openEntryMenu(left.items[0]);
+            waitForRendering(stage);
+            var leftRect = left.popoverRect;
+            verify(leftRect.w > 0);
+            verify(leftRect.x >= -left.popoverGutter - 0.001);
+            verify(leftRect.x + leftRect.w
+                   <= left.width + left.popoverGutter + 0.001);
+            compare(left.width, 124);
+            compare(left.height, 720);
         }
 
         // -- Drag rearrangement (T-10 section 12) ---------------------------
