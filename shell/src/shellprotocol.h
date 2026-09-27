@@ -396,6 +396,13 @@ public:
     // `df_toplevel_manager.set_launch_origin`, additive in v4).
     void setLaunchOrigin(const QString &appId, int x, int y, int width, int height);
 
+    // The primary output's global geometry (x, y, width, height) from
+    // `df_output.geometry`, in the compositor's logical layout space (T-14.7l).
+    // The Dock hands its tile rect to `set_launch_origin` in these coordinates,
+    // so it translates the surface-local tile by the output's origin and edge.
+    // Invalid until the first output is announced.
+    QRect primaryOutputGeometry() const;
+
     // Mirror the menu-broker's focus-scoped accelerator table for `appId`
     // (T-14.2b, `df_toplevel_manager.set_app_accelerators`, additive in v7).
     // `accelerators` is the wire table: one `action<TAB>chord` per line, empty
@@ -1034,8 +1041,15 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
     // picker can label monitors (T-13.4a).
     struct OutputInfo {
         QString name;
+        // Last mode size (physical pixels) for the ScreenCast labels.
         int width = 0;
         int height = 0;
+        // `df_output.geometry` (logical layout space) for the Dock's
+        // launch-origin translation (T-14.7l).
+        int x = 0;
+        int y = 0;
+        int geometryWidth = 0;
+        int geometryHeight = 0;
     };
     QHash<df_output *, OutputInfo> m_outputInfo;
     bool m_displayKnown = false;

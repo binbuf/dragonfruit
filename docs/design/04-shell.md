@@ -126,6 +126,16 @@ connected on as `WAYLAND_DISPLAY`; a shell started with `--socket-name` therefor
 still launches a client that maps a window. See
 [ADR 0101](adr/0101-dock-activation-result-and-launch-display.md).
 
+**The launch origin is the entry's icon (T-14.7l).** The Dock reports the
+acted-on entry's tile rectangle — one rect, in output coordinates, re-emitted
+only when a settled re-layout moves it — and the shell hands it to the
+compositor over `df_toplevel_manager.set_launch_origin` before spawning the
+child. The tile is keyed by the compositor `app_id` (`StartupWMClass`, else the
+desktop id stem); a missing rect or unresolvable key keeps the centered
+fallback. The compositor therefore plays the window's appear/minimize/restore
+from the real icon instead of the shrunken center. See
+[ADR 0105](adr/0105-dock-launch-origin-tile-handoff.md).
+
 The difficult part is not drawing the Dock; it is getting all the lifecycle
 details and edge cases polished — launch failures, app exit while animating,
 windows opening on other workspaces, and apps with inconsistent identifiers.

@@ -139,7 +139,10 @@ is acked with `done` after the scene applies it (FR-3).
   so a launching app's window appears from it and minimize/restore scale into
   and out of it (T-02.1b/T-02.2); it is keyed by `app_id` and remembered for
   the app's windows, and the compositor falls back to a centered origin when
-  it is never sent. `set_motion_policy` forwards the resolved
+  it is never sent. The shell now has a caller (T-14.7l): the Dock's
+  `entryTileRect` signal feeds a bounded `desktopId -> rect` cache, and every
+  launch path sends the rect in output coordinates before spawning the child
+  ([ADR 0105](design/adr/0105-dock-launch-origin-tile-handoff.md)). `set_motion_policy` forwards the resolved
   `appearance.colorScheme`, `dock.titlebarDoubleClick`, and
   `dock.minimizedAnimation`; `set_input_policy` forwards
   `input.repeatDelay`/`input.repeatRate` and the `gestures.*` switches

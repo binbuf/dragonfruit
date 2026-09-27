@@ -212,6 +212,10 @@ private slots:
     void onDockConfigured(int width, int height, quint32 serial);
     void onDockStateChanged(const QVariantList &entries);
     void onDockEntryActivated(const QVariant &entry);
+    // The Dock reports the acted-on entry's tile rect in output coordinates
+    // (T-14.7l); remember it bounded so the next launch can hand it to the
+    // compositor over `set_launch_origin`.
+    void onDockEntryTileRect(const QString &desktopId, qreal x, qreal y, qreal w, qreal h);
     // The compositor's reply to `activateApp` (T-14.7g): when it found no
     // window, launch the remembered desktop entry or raise a notice.
     void onActivationResult(const QString &appId, bool found);
@@ -521,6 +525,17 @@ private:
     void warnDockOverflow(const DockOverflowResult &overflow);
     // Map the `dock.position` string onto the protocol edge enum.
     ShellProtocol::DockPosition dockPosition() const;
+    // The global origin of the Dock layer surface's (0, 0), derived from the
+    // primary output geometry, the Dock edge, and the surface thickness. The
+    // Dock QML adds it to its surface-local tile so `entryTileRect` is in the
+    // compositor's coordinates (T-14.7l). Returns (0, 0) until the output is
+    // known.
+    QPoint dockSurfaceOutputOrigin() const;
+    // Hand the recorded tile for `desktopId` to the compositor, keyed by the
+    // entry's resolved compositor `app_id` (T-14.7l). A miss, an unresolvable
+    // key, or an out-of-output rect is a no-op, so the launch keeps the
+    // centered fallback.
+    void sendLaunchOrigin(const QString &desktopId);
     // Coalesce a render onto the next event-loop turn (QML visual state has
     // changed but the compositor has not been told yet).
     void scheduleRender();
@@ -788,6 +803,9 @@ private:
     bool m_dockOverflowWarned = false;
     // Pinned desktop id -> "launching" | "failed" (transient).
     QHash<QString, QString> m_launchStates;
+    // The Dock's last-interaction tile rects, keyed by desktop id (T-14.7l).
+    // Bounded; cleared when the pinned set changes.
+    DockTileRects m_dockTiles;
     // Pinned desktop id -> deadline (ms since epoch) for the launch timeout.
     QHash<QString, qint64> m_launchDeadlines;
     // Pinned desktop id -> launch-bounce start (ms since epoch); the bounce

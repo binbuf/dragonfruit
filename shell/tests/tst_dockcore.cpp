@@ -2117,6 +2117,70 @@ private slots:
         QCOMPARE(toggleAppPickerPin(base, QStringLiteral("z.desktop"), false), base);
         QCOMPARE(toggleAppPickerPin(base, QString(), true), base);
     }
+
+    // -- launch-origin tile hand-off (T-14.7l) ----------------------------
+
+    void dockLaunchAppIdPrefersStartupWmClass()
+    {
+        const DesktopEntry files = makeEntry(QStringLiteral("org.dragonfruit.Files.desktop"),
+                                             QStringLiteral("Files"), QStringLiteral("df-files"),
+                                             QStringLiteral("dragonfruit-files"));
+        QCOMPARE(dockLaunchAppId(files), QStringLiteral("dragonfruit-files"));
+    }
+
+    void dockLaunchAppIdFallsBackToTheIdStem()
+    {
+        DesktopEntry gtk = makeEntry(QStringLiteral("org.example.Nautilus.desktop"),
+                                     QStringLiteral("Files"), QStringLiteral("nautilus"));
+        QCOMPARE(dockLaunchAppId(gtk), QStringLiteral("org.example.Nautilus"));
+        // A suffixless id is its own stem.
+        DesktopEntry bare = makeEntry(QStringLiteral("xterm"), QStringLiteral("XTerm"),
+                                      QStringLiteral("xterm"));
+        QCOMPARE(dockLaunchAppId(bare), QStringLiteral("xterm"));
+        // A blank record yields no key; the launch keeps the centered fallback.
+        QVERIFY(dockLaunchAppId(DesktopEntry{}).isEmpty());
+        // Whitespace-only StartupWMClass falls through to the id.
+        DesktopEntry padded = makeEntry(QStringLiteral("a.desktop"), QStringLiteral("A"),
+                                        QStringLiteral("a"), QStringLiteral("   "));
+        QCOMPARE(dockLaunchAppId(padded), QStringLiteral("a"));
+    }
+
+    void dockTileRectsKeepTheLastRectPerIdentityAndStayBounded()
+    {
+        DockTileRects tiles;
+        QVERIFY(!tiles.rectFor(QStringLiteral("a")).isValid());
+        tiles.record(QStringLiteral("a"), QRect(1, 2, 3, 4));
+        QCOMPARE(tiles.rectFor(QStringLiteral("a")), QRect(1, 2, 3, 4));
+        // Re-recording refreshes in place, without growing the map.
+        tiles.record(QStringLiteral("a"), QRect(10, 20, 30, 40));
+        QCOMPARE(tiles.rectFor(QStringLiteral("a")), QRect(10, 20, 30, 40));
+        QCOMPARE(tiles.size(), 1);
+        // A garbage rect is ignored rather than handed to the compositor.
+        tiles.record(QStringLiteral("empty"), QRect(5, 5, 0, 10));
+        QCOMPARE(tiles.size(), 1);
+
+        for (int i = 0; i < DockTileRects::kCapacity + 5; ++i)
+            tiles.record(QStringLiteral("id%1").arg(i), QRect(i, i, 8, 8));
+        QCOMPARE(tiles.size(), DockTileRects::kCapacity);
+        // The oldest keys were evicted; the newest survive.
+        QVERIFY(!tiles.rectFor(QStringLiteral("id0")).isValid());
+        QVERIFY(tiles.rectFor(QStringLiteral("id%1").arg(DockTileRects::kCapacity + 4)).isValid());
+        tiles.clear();
+        QCOMPARE(tiles.size(), 0);
+    }
+
+    void clampDockTileRectBoundsToTheOutput()
+    {
+        const QRect output(0, 0, 1280, 800);
+        // Inside is untouched.
+        QCOMPARE(clampDockTileRect(QRect(100, 700, 48, 48), output), QRect(100, 700, 48, 48));
+        // Partly outside is cropped.
+        QCOMPARE(clampDockTileRect(QRect(1260, 780, 48, 48), output), QRect(1260, 780, 20, 20));
+        // Fully outside is dropped so the caller keeps the centered fallback.
+        QVERIFY(!clampDockTileRect(QRect(2000, 2000, 48, 48), output).isValid());
+        // An unknown output leaves the rect alone.
+        QCOMPARE(clampDockTileRect(QRect(5, 6, 7, 8), QRect()), QRect(5, 6, 7, 8));
+    }
 };
 
 QTEST_GUILESS_MAIN(TestDockCore)

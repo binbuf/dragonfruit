@@ -43,6 +43,7 @@ Item {
         SignalSpy { id: sizeChangedSpy; signalName: "dockSizeChanged" }
         SignalSpy { id: appPickerRequestedSpy; signalName: "appPickerRequested" }
         SignalSpy { id: appPinToggledSpy; signalName: "appPinToggled" }
+        SignalSpy { id: tileRectSpy; signalName: "entryTileRect" }
 
         // Reduced motion is a global singleton; reset it before every test so
         // a failure mid-test cannot leak into the next one. Same for the colour
@@ -988,6 +989,56 @@ Item {
             mouseClick(trash, trash.width / 2, trash.height / 2);
             compare(activatedSpy.count, 1);
             compare(activatedSpy.signalArguments[0][0].kind, "trash");
+        }
+
+        // -- Launch-origin tile hand-off (T-14.7l) --------------------------
+
+        function test_activation_reports_the_entry_tile_in_output_coordinates() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                outputOriginX: 0, outputOriginY: 700,
+                entries: [ app("files", "Files", true) ]
+            });
+            tileRectSpy.target = dock;
+            tileRectSpy.clear();
+            dock.activateEntry(dock.items[0]);
+            compare(tileRectSpy.count, 1);
+            var args = tileRectSpy.signalArguments[0];
+            var r = dock.layout[0];
+            compare(args[0], "files.desktop");
+            compare(args[1], r.x);
+            compare(args[2], 700 + r.y);
+            compare(args[3], r.w);
+            compare(args[4], r.h);
+        }
+
+        function test_tile_is_not_reported_for_trash_or_stacks() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, entries: []
+            });
+            tileRectSpy.target = dock;
+            tileRectSpy.clear();
+            dock.activateEntry(dock.trashEntry);
+            dock.activateEntry(dock.stackEntry);
+            compare(tileRectSpy.count, 0);
+        }
+
+        function test_settled_relayout_republishes_a_moved_tile() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, entries: [ app("files", "Files", true) ]
+            });
+            tileRectSpy.target = dock;
+            tileRectSpy.clear();
+            dock.activateEntry(dock.items[0]);
+            compare(tileRectSpy.count, 1);
+            var before = tileRectSpy.signalArguments[0];
+            // Adding a second pinned entry shifts the first tile along the axis.
+            dock.entries = [ app("files", "Files", true), app("term", "Terminal", false) ];
+            waitForRendering(stage);
+            verify(tileRectSpy.count >= 2);
+            var after = tileRectSpy.signalArguments[tileRectSpy.count - 1];
+            compare(after[0], "files.desktop");
+            verify(after[1] !== before[1] || after[3] !== before[3]);
         }
 
         function test_right_click_opens_entry_menu() {
