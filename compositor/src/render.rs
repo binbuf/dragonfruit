@@ -209,7 +209,7 @@ pub fn chrome_backdrop_render_elements(
     let specs: Vec<_> = surfaces
         .iter()
         .map(|chrome| {
-            let role = MaterialRole::from_layer(chrome.layer);
+            let role = MaterialRole::from_layer_namespace(chrome.layer, &chrome.namespace);
             state.degrade.tier().backdrop(role.spec(scheme))
         })
         .collect();

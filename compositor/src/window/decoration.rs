@@ -92,6 +92,14 @@ impl ColorScheme {
         }
     }
 
+    /// The Dock plate's backdrop tone (T-14.7j).
+    pub const fn dock_fill(self) -> [u8; 4] {
+        match self {
+            ColorScheme::Light => semantic::light::color::DOCK_FILL,
+            ColorScheme::Dark => semantic::dark::color::DOCK_FILL,
+        }
+    }
+
     /// The disabled/unfocused traffic-light fill.
     pub const fn control_active(self) -> [u8; 4] {
         match self {

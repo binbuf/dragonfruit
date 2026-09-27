@@ -246,12 +246,14 @@ drawn over a **frosted backdrop**
 (`compositor/src/window/backdrop.rs`, `render::chrome_backdrop_render_elements`)
 so it reads as a material rather than a flat rectangle. The backdrop is built
 entirely from the **generated material tokens**: `material.chromeBlur` /
-`chromeOpacity` for persistent chrome and `material.popupBlur` / `popupOpacity`
-for overlays, per `ColorScheme`, plus the component radius. `TitleBar.qml` and
-`Dock.qml` consume the same `Theme.material` group, so the two sides cannot
-drift (FR-2). A `MaterialRole` maps `df_shell.layer` to the token group; the
-panel is clipped with the same `CornerMask` geometry as the titlebar and
-shadow.
+`chromeOpacity` for the menu bar, `material.dockBlur` / `dockOpacity` for the
+Dock (T-14.7j), and `material.popupBlur` / `popupOpacity` for overlays, per
+`ColorScheme`, plus the component radius. `TitleBar.qml` and `Dock.qml`
+consume the same `Theme.material` group, so the two sides cannot
+drift (FR-2). A `MaterialRole` maps `df_shell.layer` (and, for persistent
+surfaces, the `df_layer_surface` namespace — `dock` selects the Dock's own
+role) to the token group; the panel is clipped with the same `CornerMask`
+geometry as the titlebar and shadow.
 
 The flat renderer has no texture sampler yet, so the backdrop is a **stack of
 translucent rounded feather layers** from the panel edge inward — the same

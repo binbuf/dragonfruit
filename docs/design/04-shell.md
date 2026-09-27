@@ -159,6 +159,21 @@ icon (T-14.7i). See
 [ADR 0089](adr/0089-dock-plate-geometry-and-live-panel-rect.md) and the
 T-14.7a/T-14.7b/T-14.7j units.
 
+The plate's material is layered (T-14.7j, ADR
+[0102](adr/0102-dock-material-role-and-qml-glass-layers.md)): the compositor
+frosts the declared panel with the Dock's own `material.dockBlur`/`dockOpacity`
+tokens — selected by the `dock` namespace, so it is independent of the menu
+bar's `chrome*` frost — and `Dock.qml` draws a translucent `dockFill`, a bright
+inner top-edge rim, a hairline `dockBorder`, and a soft shadow above it. Every
+value is a `controls.dock.plate` token. The plate group is clipped at its top
+edge so the shadow never bleeds into the transparent magnify band above it
+(T-10 section 2). Icon tiles are rounded squares at
+`controls.dock.icon.radiusRatio`, themed artwork is inset by
+`controls.dock.icon.inset`, and the hover wash, lift shadow, focus ring,
+running dot, and divider follow `controls.dock.hover`/`indicator`/`divider`.
+At the `Minimal` degrade tier the compositor draws no frost and the plate reads
+as a clean capsule with no highlight claim.
+
 ### Dock hover name label
 
 Pausing over an entry for `controls.tooltip.dwell` (600 ms) shows the

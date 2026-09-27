@@ -1954,17 +1954,97 @@ Rectangle {
     }
 
     // --- Background ------------------------------------------------------
-    Rectangle {
-        objectName: "dockBar"
-        x: dock.plateRect.x
+    // The floating glass plate (T-14.7j): a translucent fill, a bright inner
+    // top-edge highlight, a hairline border, and a soft shadow, layered over
+    // the compositor's live frosted backdrop (T-14.7b). Every value is a
+    // token. The group is clipped so the shadow can only fall toward the
+    // anchored screen edge, never into the transparent magnify band on the
+    // interior side (T-10 section 2). The rim is on the interior cross edge
+    // for every Dock position: the top for a bottom Dock, the interior side
+    // for a vertical one.
+    Item {
+        id: dockPlate
+        objectName: "dockPlate"
+
+        readonly property bool horizontal: dock.axisIsX
+        // The plate's origin inside this group (the group is the plate plus
+        // the edge room the shadow may use).
+        readonly property real plateX: dock.plateRect.x - x
+        readonly property real plateY: dock.plateRect.y - y
+        readonly property real plateW: dock.plateRect.w
+        readonly property real plateH: dock.plateRect.h
+        readonly property real plateRadius: Theme.controls.dock.radius
+        readonly property real rimInset: plateRadius * 0.6
+        readonly property real rimThickness: Theme.controls.dock.plate.rimHeight
+
+        x: dock.axisIsX || dock.position === "right" ? dock.plateRect.x : 0
         y: dock.plateRect.y
-        width: dock.plateRect.w
-        height: dock.plateRect.h
-        radius: Theme.controls.dock.radius
-        color: Theme.color.chrome
-        opacity: Theme.material.chromeOpacity
-        border.width: 1
-        border.color: Theme.color.border
+        width: dock.axisIsX ? dock.plateRect.w
+               : dock.position === "right" ? dock.width - dock.plateRect.x
+               : dock.plateRect.x + dock.plateRect.w
+        height: dock.axisIsX ? Math.max(0, dock.height - dock.plateRect.y)
+                             : dock.plateRect.h
+        clip: true
+
+        Shadow {
+            objectName: "dockPlateShadow"
+            x: dockPlate.plateX
+            y: dockPlate.plateY
+            width: dockPlate.plateW
+            height: dockPlate.plateH
+            radius: dockPlate.plateRadius
+            blur: Theme.controls.dock.plate.shadowBlur
+            shadowOpacity: Theme.controls.dock.plate.shadowOpacity
+            offset: Qt.point(0, Theme.controls.dock.plate.shadowOffsetY)
+        }
+
+        Rectangle {
+            objectName: "dockBar"
+            x: dockPlate.plateX
+            y: dockPlate.plateY
+            width: dockPlate.plateW
+            height: dockPlate.plateH
+            radius: dockPlate.plateRadius
+            color: Theme.color.dockFill
+            opacity: Theme.controls.dock.plate.fillOpacity
+        }
+
+        // The bright inner highlight: a short hairline inset from the rounded
+        // corners so it reads as a glass rim, not a lid.
+        Rectangle {
+            objectName: "dockRim"
+            x: dockPlate.horizontal
+               ? dockPlate.plateX + dockPlate.rimInset
+               : (dock.position === "left"
+                  ? dockPlate.plateX + dockPlate.plateW - dockPlate.rimThickness
+                  : dockPlate.plateX)
+            y: dockPlate.horizontal
+               ? dockPlate.plateY
+               : dockPlate.plateY + dockPlate.rimInset
+            width: dockPlate.horizontal
+                   ? Math.max(0, dockPlate.plateW - 2 * dockPlate.rimInset)
+                   : dockPlate.rimThickness
+            height: dockPlate.horizontal
+                    ? dockPlate.rimThickness
+                    : Math.max(0, dockPlate.plateH - 2 * dockPlate.rimInset)
+            radius: dockPlate.rimThickness / 2
+            color: Theme.color.dockRim
+            opacity: Theme.controls.dock.plate.rimOpacity
+        }
+
+        // The hairline border around the whole plate.
+        Rectangle {
+            objectName: "dockBorder"
+            x: dockPlate.plateX
+            y: dockPlate.plateY
+            width: dockPlate.plateW
+            height: dockPlate.plateH
+            radius: dockPlate.plateRadius
+            color: "transparent"
+            border.width: Theme.controls.dock.plate.borderWidth
+            border.color: Theme.color.dockBorder
+            opacity: Theme.controls.dock.plate.borderOpacity
+        }
     }
 
     // --- Entries ---------------------------------------------------------

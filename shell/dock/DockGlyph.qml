@@ -58,11 +58,20 @@ Item {
     readonly property string initial:
         name.length > 0 ? name.charAt(0).toUpperCase() : "?"
 
+    // The rounded-square (squircle) wall the placeholder tile draws at, and
+    // the margin the themed artwork is inset by so every icon sits in a
+    // consistent tile (T-14.7j). Both are tokens, never literals.
+    readonly property real tileRadius:
+        root.size * Theme.controls.dock.icon.radiusRatio
+    readonly property real iconInset:
+        root.size * Theme.controls.dock.icon.inset
+
     // -- App tile --------------------------------------------------------
     Rectangle {
+        objectName: "appTile"
         visible: root.kind === "app" && !root.hasThemedIcon
         anchors.fill: parent
-        radius: root.size * 0.24
+        radius: root.tileRadius
         color: root.tileColor
         border.width: 1
         border.color: Qt.rgba(0, 0, 0, 0.18)
@@ -82,8 +91,10 @@ Item {
     // A load failure falls back to the initial tile.
     Image {
         id: rasterIcon
+        objectName: "rasterIcon"
         visible: root.hasThemedIcon && !root.isSvgIcon
         anchors.fill: parent
+        anchors.margins: root.iconInset
         source: visible ? "file://" + root.iconPath : ""
         sourceSize: Qt.size(Math.round(root.size), Math.round(root.size))
         fillMode: Image.PreserveAspectFit
@@ -96,8 +107,10 @@ Item {
 
     VectorImage {
         id: vectorIcon
+        objectName: "vectorIcon"
         visible: root.hasThemedIcon && root.isSvgIcon
         anchors.fill: parent
+        anchors.margins: root.iconInset
         source: visible ? "file://" + root.iconPath : ""
         fillMode: VectorImage.PreserveAspectFit
     }

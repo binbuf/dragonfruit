@@ -628,6 +628,159 @@ Item {
                          left._baseline.total + 2 * left.paddingAlong, 0.001);
         }
 
+        // -- Glass plate and squircles (T-14.7j) ----------------------------
+
+        function test_plate_is_a_layered_glass_not_a_flat_slab() {
+            // The plate is four token layers: a translucent fill, a bright
+            // inner top-edge rim, a hairline border, and a soft shadow. The
+            // old surface was one flat slab (chrome at chromeOpacity).
+            var dock = make(dockComponent, {
+                width: 400, height: 240,
+                entries: [ app("a", "A", true) ]
+            });
+            var plate = findChild(dock, "dockPlate");
+            var bar = findChild(dock, "dockBar");
+            var rim = findChild(dock, "dockRim");
+            var border = findChild(dock, "dockBorder");
+            var shadow = findChild(dock, "dockPlateShadow");
+            verify(plate !== null && bar !== null && rim !== null);
+            verify(border !== null && shadow !== null);
+
+            compare(bar.radius, Theme.controls.dock.radius);
+            compare(bar.color, Theme.color.dockFill);
+            fuzzyCompare(bar.opacity, Theme.controls.dock.plate.fillOpacity, 0.0001);
+            compare(rim.color, Theme.color.dockRim);
+            compare(rim.height, Theme.controls.dock.plate.rimHeight);
+            fuzzyCompare(rim.opacity, Theme.controls.dock.plate.rimOpacity, 0.0001);
+            compare(border.border.width, Theme.controls.dock.plate.borderWidth);
+            compare(border.border.color, Theme.color.dockBorder);
+            fuzzyCompare(border.opacity, Theme.controls.dock.plate.borderOpacity, 0.0001);
+            verify(shadow.visible);
+            compare(shadow.blur, Theme.controls.dock.plate.shadowBlur);
+
+            // Pixel: the rim row reads brighter than the plate body just below
+            // it, so there is a visible highlight rather than a flat fill.
+            var img = grabImage(stage);
+            var cx = Math.round(dock.plateRect.x + dock.plateRect.w / 2);
+            var bodyY = Math.round(dock.plateRect.y + 5);
+            var bodyLuma = img.red(cx, bodyY) + img.green(cx, bodyY)
+                         + img.blue(cx, bodyY);
+            var rimLuma = 0;
+            for (var dy = 0; dy <= 2; ++dy) {
+                var y = Math.round(dock.plateRect.y) + dy;
+                rimLuma = Math.max(rimLuma, img.red(cx, y) + img.green(cx, y)
+                                              + img.blue(cx, y));
+            }
+            verify(rimLuma > bodyLuma,
+                   "the top rim must be brighter than the body");
+        }
+
+        function test_plate_glass_follows_the_color_scheme() {
+            // The plate tone is a semantic token, so it follows the scheme.
+            // Snapshot each tone as a string, because the plate binding stays
+            // live and would re-resolve when the scheme flips.
+            Theme.dark = false;
+            var light = make(dockComponent, {
+                width: 400, height: 240,
+                entries: [ app("a", "A", true) ]
+            });
+            var lightFill = String(findChild(light, "dockBar").color);
+            compare(lightFill, String(Theme.lightScheme.color.dockFill));
+
+            Theme.dark = true;
+            var dark = make(dockComponent, {
+                width: 400, height: 240,
+                entries: [ app("a", "A", true) ]
+            });
+            var darkFill = String(findChild(dark, "dockBar").color);
+            compare(darkFill, String(Theme.darkScheme.color.dockFill));
+            verify(lightFill !== darkFill, "the plate tone is scheme-aware");
+            compare(String(findChild(dark, "dockRim").color),
+                    String(Theme.darkScheme.color.dockRim));
+        }
+
+        function test_glyph_tile_is_a_token_squircle_with_inset() {
+            // The placeholder tile draws at the icon radius ratio; a themed
+            // icon is inset by the icon inset so it sits in the same tile.
+            var glyph = make(glyphComponent, {
+                kind: "app", name: "Files", appId: "org.dragonfruit.Files",
+                size: 48
+            });
+            var tile = findChild(glyph, "appTile");
+            verify(tile !== null);
+            fuzzyCompare(tile.radius,
+                         48 * Theme.controls.dock.icon.radiusRatio, 0.001);
+
+            var themed = make(glyphComponent, {
+                kind: "app", name: "Files", size: 48,
+                iconPath: "/usr/share/icons/hicolor/48x48/apps/files.png"
+            });
+            var raster = findChild(themed, "rasterIcon");
+            verify(raster !== null);
+            fuzzyCompare(raster.width,
+                         48 - 2 * 48 * Theme.controls.dock.icon.inset, 0.5);
+        }
+
+        function test_entry_states_use_the_squircle_and_state_tokens() {
+            var entry = make(entryComponent, {
+                iconSize: 48,
+                entry: { id: "a", appId: "a", name: "A", kind: "pinned",
+                         running: true }
+            });
+            var hover = findChild(entry, "hoverHighlight");
+            fuzzyCompare(hover.radius,
+                         48 * Theme.controls.dock.hover.radiusRatio, 0.001);
+            compare(hover.color, Theme.color.dockHoverFill);
+            fuzzyCompare(hover.opacity,
+                         Theme.controls.dock.hover.fillOpacity, 0.0001);
+
+            var indicator = findChild(entry, "indicator");
+            compare(indicator.color, Theme.color.dockIndicator);
+            fuzzyCompare(indicator.opacity,
+                         Theme.controls.dock.indicator.opacity, 0.0001);
+
+            var divider = make(entryComponent, {
+                entry: { id: "__divider__", kind: "divider" }
+            });
+            var line = findChild(divider, "divider");
+            compare(line.width, Theme.controls.dock.divider.width);
+            fuzzyCompare(line.height,
+                         divider.height * Theme.controls.dock.divider.heightRatio,
+                         0.001);
+            compare(line.color, Theme.color.dockDivider);
+            fuzzyCompare(line.opacity,
+                         Theme.controls.dock.divider.opacity, 0.0001);
+        }
+
+        function test_plate_rim_is_on_the_interior_edge() {
+            // The bright rim faces the screen interior on every Dock position,
+            // never the anchored edge.
+            var bottom = make(dockComponent, {
+                width: 1280, height: 240, position: "bottom",
+                entries: [ app("a", "A", true) ]
+            });
+            var bRim = findChild(bottom, "dockRim");
+            verify(bRim.width > bRim.height, "the bottom rim is horizontal");
+
+            var left = make(dockComponent, {
+                width: 240, height: 800, position: "left",
+                entries: [ app("a", "A", true) ]
+            });
+            var lRim = findChild(left, "dockRim");
+            var lPlate = findChild(left, "dockPlate");
+            verify(lRim.height > lRim.width, "the left rim is vertical");
+            fuzzyCompare(lRim.x + lRim.width, lPlate.plateX + lPlate.plateW, 1.5);
+
+            var right = make(dockComponent, {
+                width: 240, height: 800, position: "right",
+                entries: [ app("a", "A", true) ]
+            });
+            var rRim = findChild(right, "dockRim");
+            var rPlate = findChild(right, "dockPlate");
+            verify(rRim.height > rRim.width, "the right rim is vertical");
+            fuzzyCompare(rRim.x, rPlate.plateX, 1.5);
+        }
+
         function test_entries_stay_inside_the_plate_at_icon_size_min_and_max() {
             var sizes = [Theme.controls.dock.iconSizeMin, Theme.controls.dock.iconSizeMax];
             for (var c = 0; c < sizes.length; ++c) {
