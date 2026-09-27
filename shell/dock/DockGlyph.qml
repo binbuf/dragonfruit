@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 import QtQuick
+import QtQuick.Shapes
 import QtQuick.VectorImage
 import Dragonfruit
 
@@ -141,57 +142,109 @@ Item {
     }
 
     // -- Trash -----------------------------------------------------------
+    // A designed, original bin (T-14.7d): a metallic body with a vertical
+    // fill/gradient and a rim edge, a lid that overhangs the body, and a clean
+    // handle. Empty is a tidy neutral bin; full adds a crumpled-paper
+    // silhouette overflowing behind the lid plus an accent rim cue — a shape
+    // change, not just a tint, so it stays legible in grayscale. Drawn in a
+    // `trashSize`-derived box, centred in the entry's iconSize box so it scales
+    // with magnification and shares the app tiles' baseline.
     Item {
         id: trash
         visible: root.kind === "trash"
-        anchors.fill: parent
-        readonly property real s: root.size
+        anchors.centerIn: parent
+        width: root.size * Theme.controls.dock.trashSize
+               / Theme.controls.dock.iconSize
+        height: width
 
-        // Handle.
-        Rectangle {
-            width: trash.s * 0.16
-            height: trash.s * 0.06
-            radius: height / 2
-            color: Theme.color.textSecondary
-            anchors.horizontalCenter: parent.horizontalCenter
-            y: trash.s * 0.16
-        }
+        readonly property real t: width
+        // The defining edge; the accent cue is reserved for a full bin.
+        readonly property color edge:
+            root.trashFull ? Theme.color.accent : Theme.color.trashRim
 
-        // Lid.
-        Rectangle {
-            width: trash.s * 0.62
-            height: trash.s * 0.07
-            radius: height / 2
-            color: Theme.color.textSecondary
-            anchors.horizontalCenter: parent.horizontalCenter
-            y: trash.s * 0.24
-        }
+        // Crumpled paper behind the rim, visible only above the lid. A jagged
+        // silhouette so the full state reads without colour.
+        Shape {
+            visible: root.trashFull
+            width: 100
+            height: 100
+            scale: trash.t / 100
+            transformOrigin: Item.TopLeft
+            antialiasing: true
+            preferredRendererType: Shape.GeometryRenderer
 
-        // Bin body.
-        Rectangle {
-            id: body
-            width: trash.s * 0.52
-            height: trash.s * 0.52
-            radius: trash.s * 0.08
-            color: "transparent"
-            border.width: Math.max(1.5, trash.s * 0.05)
-            border.color: root.trashFull ? Theme.color.accent : Theme.color.textSecondary
-            anchors.horizontalCenter: parent.horizontalCenter
-            y: trash.s * 0.34
-
-            // Two vertical ribs.
-            Repeater {
-                model: 2
-                delegate: Rectangle {
-                    required property int index
-                    width: Math.max(1, body.width * 0.07)
-                    height: body.height * 0.5
-                    radius: width / 2
-                    color: root.trashFull ? Theme.color.accent : Theme.color.textSecondary
-                    x: body.width * (index === 0 ? 0.32 : 0.61)
-                    y: body.height * 0.25
+            ShapePath {
+                fillColor: Theme.color.trashPaper
+                strokeColor: Theme.color.trashPaperEdge
+                strokeWidth: 2.0
+                PathSvg {
+                    path: "M27 46 L24 22 L31 27 L35 13 L42 22 L47 8 "
+                        + "L53 21 L59 11 L65 23 L71 15 L77 28 L74 46 Z"
                 }
             }
+        }
+
+        // Body: rounded, subtly tapered by its gradient, rim edge.
+        Rectangle {
+            id: body
+            width: trash.t * 0.62
+            height: trash.t * 0.52
+            radius: trash.t * 0.09
+            x: (trash.t - width) / 2
+            y: trash.t * 0.34
+            border.width: Math.max(1, trash.t * 0.025)
+            border.color: trash.edge
+            gradient: Gradient {
+                GradientStop { position: 0.0; color: Theme.color.trashFillTop }
+                GradientStop { position: 1.0; color: Theme.color.trashFillBottom }
+            }
+
+            // A soft vertical sheen so the body reads as metal/glass, not fill.
+            Rectangle {
+                width: body.width * 0.20
+                height: body.height * 0.62
+                radius: width / 2
+                x: body.width * 0.16
+                y: body.height * 0.18
+                color: Theme.color.trashHighlight
+                opacity: 0.22
+            }
+        }
+
+        // Lid: overhangs the body, with its own rim and a top highlight.
+        Rectangle {
+            id: lid
+            width: trash.t * 0.76
+            height: trash.t * 0.105
+            radius: trash.t * 0.035
+            x: (trash.t - width) / 2
+            y: trash.t * 0.255
+            border.width: Math.max(1, trash.t * 0.025)
+            border.color: trash.edge
+            gradient: Gradient {
+                GradientStop { position: 0.0; color: Theme.color.trashFillTop }
+                GradientStop { position: 1.0; color: Theme.color.trashFillBottom }
+            }
+
+            Rectangle {
+                width: lid.width * 0.78
+                height: Math.max(1, lid.height * 0.18)
+                radius: height / 2
+                x: (lid.width - width) / 2
+                y: lid.height * 0.16
+                color: Theme.color.trashHighlight
+                opacity: 0.55
+            }
+        }
+
+        // Handle: a clean rounded bar above the lid.
+        Rectangle {
+            width: trash.t * 0.24
+            height: trash.t * 0.055
+            radius: height / 2
+            x: (trash.t - width) / 2
+            y: trash.t * 0.155
+            color: trash.edge
         }
     }
 }
