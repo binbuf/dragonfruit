@@ -5060,6 +5060,14 @@ void ShellController::renderDock()
                                 qCeil(rect.value(QStringLiteral("h")).toReal())));
     }
     m_protocol->setDockInputRegion(inputRects);
+    // The live plate the Dock paints, in surface-local coordinates: the
+    // compositor's frosted backdrop follows it as the plate grows around the
+    // magnified row (T-14.7b).
+    const QVariantMap plate = m_dockItem->property("plateRect").toMap();
+    m_protocol->setDockPanelRect(qFloor(plate.value(QStringLiteral("x")).toReal()),
+                                 qFloor(plate.value(QStringLiteral("y")).toReal()),
+                                 qCeil(plate.value(QStringLiteral("w")).toReal()),
+                                 qCeil(plate.value(QStringLiteral("h")).toReal()));
     if (!m_protocol->commitDockImage(
                 image.copy(leftGutter, headroom, m_dockWidth, m_dockHeight)))
         qWarning() << "shell: failed to commit the Dock:" << m_protocol->lastError();

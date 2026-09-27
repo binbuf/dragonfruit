@@ -45,6 +45,11 @@ use trust::{Refusal, TrustModel, TrustedRole};
 /// The version of every private interface this compositor implements.
 const INTERFACE_VERSION: u32 = 1;
 
+/// `df_shell` is version 2 since `df_layer_surface.set_panel_rect` was added
+/// (T-14.7b). A Wayland new_id gets its version from the parent object's
+/// version, so the factory bumps in tandem with its child interface.
+const SHELL_INTERFACE_VERSION: u32 = 2;
+
 /// `df_toplevel_manager` is version 7 since `set_app_accelerators` was added
 /// (T-14.2b); `capture_screenshot` and the `screenshot_saved`/
 /// `screenshot_failed` events were the v6 additions (T-13.3b),
@@ -132,7 +137,7 @@ impl ShellProtocolState {
         let core_global =
             display.create_global::<DfState, df_core::DfCore, ()>(INTERFACE_VERSION, ());
         let shell_global =
-            display.create_global::<DfState, df_shell::DfShell, ()>(INTERFACE_VERSION, ());
+            display.create_global::<DfState, df_shell::DfShell, ()>(SHELL_INTERFACE_VERSION, ());
         let toplevel_global = display
             .create_global::<DfState, df_toplevel_manager::DfToplevelManager, ()>(
                 MANAGER_INTERFACE_VERSION,
@@ -423,24 +428,34 @@ impl DfState {
                         .into(),
                     geometry.size,
                 );
-                // The visible panel: the reserved bar strip, narrowed by the
-                // part the client declares interactive. The Dock's input region
-                // excludes its transparent magnification band, so this keeps the
-                // backdrop off the band and off the area beside the bar.
-                let region = smithay::wayland::compositor::with_states(&entry.surface, |states| {
-                    states
-                        .cached_state
-                        .get::<smithay::wayland::compositor::SurfaceAttributes>()
-                        .current()
-                        .input_region
-                        .clone()
-                })
-                .and_then(|region| crate::input::constraint::region_bounds(&region));
-                let panel = crate::window::panel_bounds(
-                    geometry,
-                    entry.state.reserved_rect(geometry),
-                    region,
-                );
+                // The visible panel: an explicitly declared panel rect wins
+                // (the Dock's live plate under magnification, T-14.7b);
+                // otherwise the reserved bar strip narrowed by the part the
+                // client declares interactive. The Dock's input region
+                // excludes its transparent magnification band, so the fallback
+                // keeps the backdrop off the band and off the area beside the
+                // bar.
+                let panel = entry
+                    .state
+                    .panel_rect
+                    .and_then(|rect| crate::window::explicit_panel_bounds(geometry, rect))
+                    .unwrap_or_else(|| {
+                        let region =
+                            smithay::wayland::compositor::with_states(&entry.surface, |states| {
+                                states
+                                    .cached_state
+                                    .get::<smithay::wayland::compositor::SurfaceAttributes>()
+                                    .current()
+                                    .input_region
+                                    .clone()
+                            })
+                            .and_then(|region| crate::input::constraint::region_bounds(&region));
+                        crate::window::panel_bounds(
+                            geometry,
+                            entry.state.reserved_rect(geometry),
+                            region,
+                        )
+                    });
                 ChromeSurface {
                     surface: entry.surface.clone(),
                     location: geometry.loc,
@@ -1524,6 +1539,7 @@ impl Dispatch<df_layer_surface::DfLayerSurface, LayerUserData> for DfState {
     ) {
         let mut reconfigure = false;
         let mut reserve_changed = false;
+        let mut panel_changed = false;
         let mut focus_chrome: Option<WlSurface> = None;
         if let Some(entry) = state.layer_entry_mut(resource) {
             match request {
@@ -1566,6 +1582,16 @@ impl Dispatch<df_layer_surface::DfLayerSurface, LayerUserData> for DfState {
                         focus_chrome = Some(entry.surface.clone());
                     }
                 }
+                df_layer_surface::Request::SetPanelRect {
+                    x,
+                    y,
+                    width,
+                    height,
+                } => {
+                    entry.state.panel_rect =
+                        Some(Rectangle::new((x, y).into(), (width, height).into()));
+                    panel_changed = true;
+                }
                 df_layer_surface::Request::AckConfigure { .. } => {}
                 df_layer_surface::Request::Destroy => {}
             }
@@ -1578,6 +1604,9 @@ impl Dispatch<df_layer_surface::DfLayerSurface, LayerUserData> for DfState {
         }
         if reconfigure {
             state.configure_layer(resource);
+            state.needs_redraw = true;
+        }
+        if panel_changed {
             state.needs_redraw = true;
         }
     }

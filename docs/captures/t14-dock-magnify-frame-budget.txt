@@ -1,0 +1,3 @@
+sweep 2.21s: frames_rendered=+175 frames_skipped_no_damage=+0 animation_frames_stepped=+0 ~79 fps
+before: dragonfruit-compositor: render stats (SIGUSR1): frames_rendered=230 frames_skipped_no_damage=0 direct_scanouts=0 animation_frames_stepped=10 client_wakeups=451 latency_us_last=15010 latency_us_max=17922 latency_samples=6 latency_dropped=0 scene_transforms=10 scene_transform_skipped=0
+after:  dragonfruit-compositor: render stats (SIGUSR1): frames_rendered=405 frames_skipped_no_damage=0 direct_scanouts=0 animation_frames_stepped=10 client_wakeups=801 latency_us_last=14960 latency_us_max=17922 latency_samples=114 latency_dropped=0 scene_transforms=10 scene_transform_skipped=0

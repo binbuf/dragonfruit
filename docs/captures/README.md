@@ -152,6 +152,19 @@ strip, so the floating plate, its `padding`/`paddingAlong` insets, and the
 gap 8 px on every edge). Needs a host Wayland session, spectacle, and Pillow;
 not in `make e2e`.
 
+T-14.7b's Dock magnification sign-off is produced by
+`scripts/capture-dock-magnify.sh` (`make dock-magnify-capture`): the nested demo
+runs with the synthetic-input harness, the driver parks the pointer over the
+left end, centre, and right end of the Dock under the dark and light schemes,
+and writes `t14-dock-magnify-{left,center,right}-{dark,light}.png`. Because the
+plate top rises by the same peak everywhere, the three stills differ in *where*
+the tall icon sits, not in plate height; a side-by-side of the left third shows
+the leftmost icon largest when the pointer is at the left (verified during the
+T-14.7b sign-off). The same script brackets one timed sweep with compositor
+`SIGUSR1` dumps and writes `t14-dock-magnify-frame-budget.txt` (raw
+`frames_rendered`/`frames_skipped_no_damage` deltas). Needs a host Wayland
+session, spectacle, and Pillow; not in `make e2e`.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(77 earlier sections omitted)_
+_(78 earlier sections omitted)_
 
-- **T74 — T-11.3a Control Center panel and core tiles**: **State: done.** The Control Center panel opens (menu-bar item or; **`shell/control-center/ControlCenter.qml`** (rewritten) — the panel scene
 - **T75 — T-11.3b Focus/DND, dark mode, and Control Center a11y**: **State: done.** The Control Center panel has five tiles now: Wi-Fi, Focus,; **`shell/control-center/ControlCenter.qml`** — Focus and Dark Mode tiles, a
 - **T76 — T-11.4a OSD overlay**: **State: done.** A volume/brightness change presents a brief centered OSD card; **`shell/src/osdmodel.{h,cpp}`** (new, dockcore) — the pure `OsdModel`:
 - **T77 — T-11.4b OSD keyboard/a11y and captures**: **State: done.** The OSD is keyboard/AT-SPI accessible and the T-11 capture; **`shell/osd/Osd.qml`** — `Accessible.role: Alert` + value-derived
@@ -45,6 +44,7 @@ _(77 earlier sections omitted)_
 - **T109 — T-14.6b Strange-app zoo fixes**: **State: done.** The zoo surfaced one fixable failure and one compositor; `scripts/zoo/sdl_zoo.c` — the loop now calls `SDL_GetWindowSurface` +
 - **T110 — T-14.7 Retire interim paths**: **State: done.** The last two interim hacks are gone: the Dock's local; `shell/src/desktopentry.{h,cpp}` — `scan`, `parse`, `defaultApplicationDirs`
 - **T110a — T-14.7a Dock plate geometry and spacing**: **State: done.** The Dock plate now floats: token-driven cross-axis and; `design-system/tokens/tokens.json` — `controls.dock`: `padding` 10,
+- **T110b — T-14.7b Magnified plate growth and backdrop panel**: **State: done.** The Dock plate now grows to wrap the magnified row (both axes); `protocols/dragonfruit-shell.xml` — `df_shell` v2, `df_layer_surface` v2, new
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -8438,3 +8438,76 @@ Gotchas for later tasks:
 - **`check-desktop-names.sh` fails on pre-existing StatusNotifier/zoo lines**
   (untouched by T-14.7a); `make check`'s lint gate was already red for that
   reason.
+
+## T110b — T-14.7b Magnified plate growth and backdrop panel
+
+**State: done.** The Dock plate now grows to wrap the magnified row (both axes)
+inside the pre-reserved `magnifyBand`, the compositor's frost follows it exactly,
+the reserved zone is unchanged during a sweep, and the pointer is smoothed with
+`motion.dockMagnify`. No new ADR — ADR 0089 (dock plate geometry and the live
+panel rect) already froze this model; this realized it.
+
+Real paths:
+
+- `protocols/dragonfruit-shell.xml` — `df_shell` v2, `df_layer_surface` v2, new
+  additive `set_panel_rect(x, y, w, h)` (surface-local). `LOCKSTEP_VERSION` stays
+  1 (lockstep test green).
+- `compositor/src/shell/mod.rs` — `SHELL_INTERFACE_VERSION = 2` for the
+  `df_shell` global; dispatch arm `SetPanelRect` stores
+  `LayerSurfaceState.panel_rect` (new field in `shell/layer.rs`) and marks a
+  redraw; `chrome_surfaces` prefers `window::explicit_panel_bounds`, else the old
+  `panel_bounds`.
+- `compositor/src/window/backdrop.rs` — new `explicit_panel_bounds(geometry,
+  explicit)` (translate + intersect; `None` when it leaves the surface); new
+  test `explicit_panel_rect_is_honored_and_clipped_to_the_surface`. Re-exported
+  from `window/mod.rs`.
+- `shell/src/shellprotocol.{h,cpp}` — `setDockPanelRect`; binds `df_shell` at
+  `df_shell_interface.version` (no hardcoded cap).
+- `shell/src/shellcontroller.cpp` `renderDock()` — sends `plateRect` every
+  commit before `commitDockImage`.
+- `shell/dock/Dock.qml` — `restingPlateRect` (fixed anchored edge + hide
+  translation; entries position against it) and live `plateRect` (union of entry
+  rects + padding, clamped, bounce added back); `smoothPointerAlong` snaps on
+  entry/mouse-out/reduced-motion and springs otherwise; input region = live plate
+  + magnified/bouncing rects; `dockBar` draws the live plate.
+- `shell/tests/tst_dock.qml` — replaced
+  `test_bar_does_not_grow_with_magnification` with nine T-14.7b cases (plate
+  grows, contains every entry, anchored edge fixed, reserved thickness constant,
+  returns to baseline, reduced-motion, bounce excluded, smoothing, smoothing
+  snap). New cases park the pointer clear first so an earlier case's hover
+  position cannot seed `pointerAlong`.
+- `scripts/capture-dock-magnify.sh` + `-driver.py` (new;
+  `make dock-magnify-capture`) — nested sweep stills and the frame-budget probe.
+
+Commands that work (repo root):
+
+- `cargo test --workspace` — green; `cargo test -p dragonfruit-compositor
+  --bin dragonfruit-compositor window::backdrop` — 11 pass.
+- `make qml-test` — 53/53; `make e2e` — exit 0 (`Dock configured 1280x151`,
+  reserved bottom `thickness=83`); `make clippy`; `cargo fmt --all -- --check`;
+  `./scripts/gen-tokens.py --check`; `./scripts/check-design-tokens.sh` — green.
+- `make dock-magnify-capture` — six stills + `t14-dock-magnify-frame-budget.txt`
+  (`+175` frames / 2.21 s ≈ 79 fps, skipped 0).
+
+Live check: the six `docs/captures/t14-dock-magnify-*` stills; a left-third
+montage of left/center/right (pointer at left ⇒ leftmost icon largest, plate
+tallest at the left) confirms the plate and its frost track the magnified row.
+`backdrop_passes=17` in the demo log proves the explicit panel is consumed.
+
+Gotchas for later tasks:
+
+- **The plate top rises by the same peak everywhere** (one hovered icon reaches
+  the same max size), so left/center/right stills differ in *where* the tall icon
+  sits, not in plate height. Compare the hovered end, not the plate height.
+- **`restingPlateRect` is the layout anchor.** The live `plateRect` must not feed
+  back into `layout`; entry cross-axis positions reference `restingPlateRect`.
+- **Bounce is excluded from the plate** by adding `entryBounce` back out of the
+  cross-axis union. T-14.7c's bounce-phase discipline can rely on the plate not
+  pumping.
+- **`df_shell` and `df_layer_surface` are both v2.** Bumping only the child
+  would not let the client use the request: a Wayland `new_id` inherits the
+  parent's version.
+- The synthetic-input host pointer can seed `pointerAlong`; tests park the
+  pointer outside the Dock before asserting geometry.
+- `check-desktop-names.sh` still fails on the pre-existing StatusNotifier/zoo
+  lines (unchanged here).

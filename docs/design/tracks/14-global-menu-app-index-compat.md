@@ -186,3 +186,35 @@ so it fully clears the surface and leaves no strip. Regression coverage:
 hidden plate clears the surface) and the six stills under
 `docs/captures/t14-dock-spacing-*.png` (`scripts/capture-dock-spacing.sh`,
 `make dock-spacing-capture`).
+
+## Implementation note (T-14.7b)
+
+The plate now wraps the magnified row and the compositor's frost follows it.
+`Dock.qml` keeps two rects: `restingPlateRect` (the baseline plate with the
+auto-hide translation — the fixed anchored edge the entry cross-axis positions
+are laid out against) and the live `plateRect`, the union of the entry rects plus
+`padding`/`paddingAlong` clamped to the surface. Launch/attention bounce is added
+back out of the cross-axis union so a bounce never pumps the plate; the anchored
+edge is fixed (plate bottom = surface edge − `edgeMargin` for a bottom Dock, the
+anchored side for a vertical Dock) and the plate grows into the pre-reserved
+`magnifyBand`. The plate is the single source for the plate drawing, the input
+region, and the declared panel rect. The pointer geometry reads
+`smoothPointerAlong`, which snaps on entry/mouse-out and under reduced motion and
+otherwise springs between two Dock positions with `motion.dockMagnify`'s
+overshoot bezier.
+
+Protocol/data path: `df_layer_surface.set_panel_rect(x, y, w, h)` (additive,
+`df_shell`/`df_layer_surface` interface version 2; lockstep version stays 1)
+carries the live plate in surface-local coordinates. The compositor stores it on
+`LayerSurfaceState.panel_rect` and uses `explicit_panel_bounds` (translate +
+intersect with the surface geometry) as `ChromeSurface.panel`; when unset the
+existing `panel_bounds` derivation is unchanged for the menu bar and popovers.
+`renderDock()` sends the rect every commit. Regression coverage: `tst_dock.qml`
+(plate grows with magnification, contains every entry rect, anchored edge fixed,
+reserved thickness constant, returns to baseline on mouse-out, reduced-motion and
+bounce variants, pointer smoothing/snap) and
+`window::backdrop::tests::explicit_panel_rect_is_honored_and_clipped_to_the_surface`
+plus the unchanged `panel_bounds`/pass tests. Stills:
+`docs/captures/t14-dock-magnify-*.png` (`scripts/capture-dock-magnify.sh`,
+`make dock-magnify-capture`); the sweep's raw numbers are in
+`docs/captures/t14-dock-magnify-frame-budget.txt`.
