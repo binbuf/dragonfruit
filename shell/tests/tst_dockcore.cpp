@@ -940,6 +940,83 @@ private slots:
         QCOMPARE(dockDropActionFor(QStringLiteral("minimized"), Payload::Files), Action::None);
     }
 
+    // -- enter-time payload caching and drop affordances (T-14.7f) --------
+
+    void parseDockDropPayloadClassifiesAppAliasAndFiles()
+    {
+        // The app-alias mime carries the identity directly.
+        const DockDropPayloadData alias = parseDockDropPayload(
+            QStringLiteral("application/x-dragonfruit-app"),
+            QByteArrayLiteral("org.example.App\n"));
+        QVERIFY(alias.valid);
+        QCOMPARE(alias.kind, DockDropPayload::Application);
+        QCOMPARE(alias.desktopId, QStringLiteral("org.example.App"));
+        QVERIFY(alias.paths.isEmpty());
+
+        // A single `.desktop` URI list is also an app alias.
+        const DockDropPayloadData desktop = parseDockDropPayload(
+            QStringLiteral("text/uri-list"),
+            QByteArrayLiteral("file:///tmp/org.example.App.desktop\r\n"));
+        QVERIFY(desktop.valid);
+        QCOMPARE(desktop.kind, DockDropPayload::Application);
+        QCOMPARE(desktop.desktopId, QStringLiteral("org.example.App.desktop"));
+        QVERIFY(desktop.paths.isEmpty());
+
+        // Several files stay files and keep their decoded paths.
+        const DockDropPayloadData files = parseDockDropPayload(
+            QStringLiteral("text/uri-list"),
+            QByteArrayLiteral("file:///tmp/a.txt\r\nfile:///tmp/b.txt\r\n"));
+        QVERIFY(files.valid);
+        QCOMPARE(files.kind, DockDropPayload::Files);
+        QCOMPARE(files.paths, (QStringList{QStringLiteral("/tmp/a.txt"),
+                                            QStringLiteral("/tmp/b.txt")}));
+
+        // An unsupported mime is not consumed.
+        QVERIFY(!parseDockDropPayload(QStringLiteral("text/plain"),
+                                      QByteArrayLiteral("hello")).valid);
+        // The app-alias mime with an empty value resolves to nothing.
+        QVERIFY(!parseDockDropPayload(QStringLiteral("application/x-dragonfruit-app"),
+                                      QByteArrayLiteral("  \n")).valid);
+    }
+
+    void dropAffordanceMatchesTheActionPerTarget()
+    {
+        using Payload = DockDropPayload;
+        QCOMPARE(dockDropAffordance(QString(), Payload::Application, QString(), true),
+                 QStringLiteral("Add to Dock"));
+        QCOMPARE(dockDropAffordance(QStringLiteral("divider"), Payload::Application,
+                                    QString(), true),
+                 QString());
+        QCOMPARE(dockDropAffordance(QStringLiteral("trash"), Payload::Application,
+                                    QString(), true),
+                 QString());
+        QCOMPARE(dockDropAffordance(QStringLiteral("pinned"), Payload::Files,
+                                    QStringLiteral("Files"), true),
+                 QStringLiteral("Open with Files"));
+        QCOMPARE(dockDropAffordance(QStringLiteral("pinned"), Payload::Files, QString(), true),
+                 QStringLiteral("Open with"));
+        QCOMPARE(dockDropAffordance(QStringLiteral("trash"), Payload::Files, QString(), true),
+                 QStringLiteral("Move to Trash"));
+        QCOMPARE(dockDropAffordance(QStringLiteral("trash"), Payload::Files, QString(), false),
+                 QStringLiteral("Trash unavailable"));
+        QCOMPARE(dockDropAffordance(QStringLiteral("stack"), Payload::Files, QString(), true),
+                 QStringLiteral("Move to Downloads"));
+        QCOMPARE(dockDropAffordance(QStringLiteral("divider"), Payload::Files, QString(), true),
+                 QString());
+    }
+
+    void duplicatePinIsDetectedByIdOrResolvedIdentity()
+    {
+        const QStringList pinned{QStringLiteral("org.example.App.desktop"),
+                                 QStringLiteral("other.desktop")};
+        QVERIFY(dockPinnedContains(pinned, QStringLiteral("org.example.App.desktop"), QString()));
+        // A raw alias that resolves to the pinned id is still a duplicate.
+        QVERIFY(dockPinnedContains(pinned, QStringLiteral("org.example.App"),
+                                   QStringLiteral("org.example.App.desktop")));
+        QVERIFY(!dockPinnedContains(pinned, QStringLiteral("new.desktop"), QString()));
+        QVERIFY(!dockPinnedContains(pinned, QString(), QStringLiteral("org.example.App.desktop")));
+    }
+
     // -- downloads monitor (T-10 section 17) -----------------------------
 
     void downloadsMonitorListsAndBadgesNewItems()
@@ -1277,6 +1354,22 @@ private slots:
                  QStringLiteral("Could not launch app"));
         QCOMPARE(view.first().toObject().value(QStringLiteral("body")).toString(),
                  QStringLiteral("The app did not start."));
+    }
+
+    void aDockNoticeRaisesThroughTheSameNotificationPath()
+    {
+        MockNotificationClient client(nullptr, /*seedFixture=*/false);
+        QSignalSpy banners(&client, &NotificationClient::bannersChanged);
+        raiseDockNotice(&client, QStringLiteral("Could not move to Downloads"),
+                        QStringLiteral("1 of 2 items could not be moved."));
+        const QJsonArray view =
+            QJsonDocument::fromJson(banners.takeFirst().at(0).toByteArray()).array();
+        const QJsonObject banner = view.first().toObject();
+        QCOMPARE(banner.value(QStringLiteral("appName")).toString(), QStringLiteral("Dock"));
+        QCOMPARE(banner.value(QStringLiteral("summary")).toString(),
+                 QStringLiteral("Could not move to Downloads"));
+        QCOMPARE(banner.value(QStringLiteral("body")).toString(),
+                 QStringLiteral("1 of 2 items could not be moved."));
     }
 
     void aMockNotifyCarriesItsActionsAndInvokeDismisses()

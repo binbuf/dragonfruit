@@ -15,6 +15,7 @@
 #include <QSocketNotifier>
 
 #include <fcntl.h>
+#include <poll.h>
 #include <sys/mman.h>
 #include <unistd.h>
 
@@ -2106,9 +2107,11 @@ void ShellProtocol::onDataDeviceOffer(void *data, wl_data_device *, wl_data_offe
     auto *self = static_cast<ShellProtocol *>(data);
     // A new offer (a drag or a selection) supersedes the previous one. The
     // shell only consumes drags; a stale selection offer is harmless to drop.
+    // A superseding offer invalidates any in-flight enter-time read (T-14.7f).
     if (self->m_dndOffer && self->m_dndOffer != offer) {
         wl_data_offer_destroy(self->m_dndOffer);
         self->m_dndOffer = nullptr;
+        self->resetDndRead();
     }
     self->m_dndOffer = offer;
     self->m_dndMimeTypes.clear();
@@ -2141,6 +2144,7 @@ void ShellProtocol::onDataDeviceEnter(void *data, wl_data_device *, uint32_t, wl
         if (self->m_dndOffer)
             wl_data_offer_destroy(self->m_dndOffer);
         self->m_dndOffer = offer;
+        self->resetDndRead();
     }
     // Only the Dock is a drop target; a drag over the popup or another chrome
     // surface is ignored (the shell owns the payload).
@@ -2149,11 +2153,25 @@ void ShellProtocol::onDataDeviceEnter(void *data, wl_data_device *, uint32_t, wl
         return;
     }
     self->m_dndActive = true;
-    self->m_dndPayloadIsApp = self->m_dndMimeTypes.contains(
-        QStringLiteral("application/x-dragonfruit-app"));
     self->m_dndX = wl_fixed_to_double(x);
     self->m_dndY = wl_fixed_to_double(y);
+    // Read the payload now, at enter, so the hover ghost and target
+    // affordances show real identity and the drop reuses this one receive
+    // (a data offer is readable once, T-14.7f).
+    self->beginDndRead();
+    // Until the read finishes the mime set is all we know: the app-alias mime
+    // is unambiguous, while a `text/uri-list` may still turn out to be a
+    // `.desktop` alias once parsed.
+    if (!self->m_dndDataReady)
+        self->m_dndPayloadIsApp = self->m_dndMimeTypes.contains(
+            QStringLiteral("application/x-dragonfruit-app"));
     emit self->dockExternalDragEntered(self->m_dndPayloadIsApp, self->m_dndX, self->m_dndY);
+    // A re-enter of a drag whose read already completed (or a synchronous
+    // cache hit) reports the resolved payload immediately.
+    if (self->m_dndDataReady) {
+        emit self->dockExternalDragPayload(self->m_dndPayloadIsApp, self->m_dndDesktopId,
+                                           self->m_dndPaths);
+    }
 }
 
 void ShellProtocol::onDataDeviceLeave(void *data, wl_data_device *)
@@ -2183,44 +2201,60 @@ void ShellProtocol::onDataDeviceDrop(void *data, wl_data_device *)
         self->resetExternalDrag();
         return;
     }
-    QString mime;
-    if (self->m_dndMimeTypes.contains(QStringLiteral("text/uri-list")))
-        mime = QStringLiteral("text/uri-list");
-    else if (self->m_dndMimeTypes.contains(QStringLiteral("application/x-dragonfruit-app")))
-        mime = QStringLiteral("application/x-dragonfruit-app");
-    if (mime.isEmpty()) {
+    // The enter-time read is the single receive for this drag. If the source
+    // has not finished writing, complete it now so a payload still in flight
+    // is never dropped unread (T-14.7f).
+    if (!self->ensureDndPayloadReady()) {
         wl_data_offer_finish(self->m_dndOffer);
         self->resetExternalDrag();
         return;
     }
-
-    int fds[2];
-    if (pipe2(fds, O_CLOEXEC) != 0) {
-        wl_data_offer_finish(self->m_dndOffer);
-        self->resetExternalDrag();
-        return;
-    }
-    fcntl(fds[0], F_SETFL, O_NONBLOCK);
-    wl_data_offer_receive(self->m_dndOffer, mime.toUtf8().constData(), fds[1]);
+    const bool payloadIsApp = self->m_dndPayloadIsApp;
+    const QString desktopId = self->m_dndDesktopId;
+    const QStringList paths = self->m_dndPaths;
+    const qreal x = self->m_dndX;
+    const qreal y = self->m_dndY;
     wl_data_offer_finish(self->m_dndOffer);
-    ::close(fds[1]);
-
-    self->m_dndMime = mime;
-    self->m_dndData.clear();
-    self->m_dndReadFd = fds[0];
-    if (!self->m_dndReadNotifier) {
-        self->m_dndReadNotifier =
-            new QSocketNotifier(self->m_dndReadFd, QSocketNotifier::Read, self);
-        QObject::connect(self->m_dndReadNotifier, &QSocketNotifier::activated, self,
-                         &ShellProtocol::onDndReadable);
-    } else {
-        self->m_dndReadNotifier->setSocket(self->m_dndReadFd);
-        self->m_dndReadNotifier->setEnabled(true);
-    }
+    self->resetExternalDrag();
+    emit self->dockExternalDropped(payloadIsApp, desktopId, paths, x, y);
 }
 
 void ShellProtocol::onDataDeviceSelection(void *, wl_data_device *, wl_data_offer *)
 {
+}
+
+void ShellProtocol::beginDndRead()
+{
+    // One receive per drag: never re-request a mime already read or in flight.
+    if (m_dndDataReady || m_dndReadStarted || m_dndReadFd >= 0 || !m_dndOffer)
+        return;
+    QString mime;
+    if (m_dndMimeTypes.contains(QStringLiteral("text/uri-list")))
+        mime = QStringLiteral("text/uri-list");
+    else if (m_dndMimeTypes.contains(QStringLiteral("application/x-dragonfruit-app")))
+        mime = QStringLiteral("application/x-dragonfruit-app");
+    if (mime.isEmpty())
+        return;
+
+    int fds[2];
+    if (pipe2(fds, O_CLOEXEC) != 0)
+        return;
+    fcntl(fds[0], F_SETFL, O_NONBLOCK);
+    wl_data_offer_receive(m_dndOffer, mime.toUtf8().constData(), fds[1]);
+    ::close(fds[1]);
+
+    m_dndMime = mime;
+    m_dndData.clear();
+    m_dndReadStarted = true;
+    m_dndReadFd = fds[0];
+    if (!m_dndReadNotifier) {
+        m_dndReadNotifier = new QSocketNotifier(m_dndReadFd, QSocketNotifier::Read, this);
+        QObject::connect(m_dndReadNotifier, &QSocketNotifier::activated, this,
+                         &ShellProtocol::onDndReadable);
+    } else {
+        m_dndReadNotifier->setSocket(m_dndReadFd);
+        m_dndReadNotifier->setEnabled(true);
+    }
 }
 
 void ShellProtocol::onDndReadable()
@@ -2233,38 +2267,81 @@ void ShellProtocol::onDndReadable()
         m_dndData.append(buffer, static_cast<int>(n));
         return;
     }
+    if (n < 0 && (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK))
+        return;
     // EOF (0) or an error: the source has finished writing the payload.
     if (m_dndReadNotifier)
         m_dndReadNotifier->setEnabled(false);
     ::close(m_dndReadFd);
     m_dndReadFd = -1;
+    finishDndRead();
+    if (m_dndActive) {
+        emit dockExternalDragPayload(m_dndPayloadIsApp, m_dndDesktopId, m_dndPaths);
+    }
+}
 
-    const bool appMime = m_dndMime == QLatin1String("application/x-dragonfruit-app");
-    QString desktopId;
-    QStringList paths;
-    if (appMime) {
-        desktopId = QString::fromUtf8(m_dndData).trimmed();
-    } else {
-        paths = parseUriList(m_dndData);
-        if (uriListIsApplication(paths)) {
-            desktopId = desktopIdForFile(paths.first());
-            paths.clear();
+void ShellProtocol::finishDndRead()
+{
+    const DockDropPayloadData payload = parseDockDropPayload(m_dndMime, m_dndData);
+    m_dndPayloadIsApp = payload.valid && payload.kind == DockDropPayload::Application;
+    m_dndDesktopId = payload.desktopId;
+    m_dndPaths = payload.paths;
+    m_dndDataReady = payload.valid;
+    m_dndData.clear();
+}
+
+bool ShellProtocol::ensureDndPayloadReady()
+{
+    if (m_dndDataReady)
+        return true;
+    if (m_dndReadFd < 0)
+        return false;
+    char buffer[4096];
+    for (;;) {
+        const ssize_t n = ::read(m_dndReadFd, buffer, sizeof(buffer));
+        if (n > 0) {
+            m_dndData.append(buffer, static_cast<int>(n));
+            continue;
         }
+        if (n == 0)
+            break;
+        if (errno == EINTR)
+            continue;
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            // The source has not written yet (it writes then closes after
+            // servicing the receive). Wait briefly rather than drop a
+            // half-written payload.
+            struct pollfd pfd;
+            pfd.fd = m_dndReadFd;
+            pfd.events = POLLIN;
+            pfd.revents = 0;
+            if (::poll(&pfd, 1, 250) > 0)
+                continue;
+        }
+        break;
     }
-    const bool payloadIsApp = appMime || !desktopId.isEmpty();
-    const qreal x = m_dndX;
-    const qreal y = m_dndY;
+    if (m_dndReadNotifier)
+        m_dndReadNotifier->setEnabled(false);
+    ::close(m_dndReadFd);
+    m_dndReadFd = -1;
+    finishDndRead();
+    return m_dndDataReady;
+}
 
-    if (m_dndOffer) {
-        wl_data_offer_destroy(m_dndOffer);
-        m_dndOffer = nullptr;
+void ShellProtocol::resetDndRead()
+{
+    if (m_dndReadFd >= 0) {
+        ::close(m_dndReadFd);
+        m_dndReadFd = -1;
     }
-    m_dndActive = false;
-    m_dndPayloadIsApp = false;
-    m_dndMimeTypes.clear();
+    if (m_dndReadNotifier)
+        m_dndReadNotifier->setEnabled(false);
+    m_dndReadStarted = false;
+    m_dndDataReady = false;
+    m_dndDesktopId.clear();
+    m_dndPaths.clear();
     m_dndMime.clear();
     m_dndData.clear();
-    emit dockExternalDropped(payloadIsApp, desktopId, paths, x, y);
 }
 
 void ShellProtocol::resetExternalDrag()
@@ -2273,17 +2350,10 @@ void ShellProtocol::resetExternalDrag()
         wl_data_offer_destroy(m_dndOffer);
         m_dndOffer = nullptr;
     }
-    if (m_dndReadFd >= 0) {
-        ::close(m_dndReadFd);
-        m_dndReadFd = -1;
-    }
-    if (m_dndReadNotifier)
-        m_dndReadNotifier->setEnabled(false);
+    resetDndRead();
     m_dndActive = false;
     m_dndPayloadIsApp = false;
     m_dndMimeTypes.clear();
-    m_dndMime.clear();
-    m_dndData.clear();
 }
 
 // --- wlr-data-control clipboard observation (T-13.5b) -----------------------
