@@ -45,7 +45,7 @@ endif
 .PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test \
         visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev demo soak e2e \
         idle-trace menubar-idle-trace latency-trace settingsd-capture settings-wave-1-capture \
-        files-capture osd-dnd-capture portals-capture check-desktop-names check-no-capture-grab check-design-tokens clean
+        files-capture osd-dnd-capture portals-capture zoo-run check-desktop-names check-no-capture-grab check-design-tokens clean
 
 help:
 	@echo "Dragonfruit build targets:"
@@ -59,6 +59,7 @@ help:
 	@echo "  make files-capture — T-10.7 Files slice stills + large-directory scroll trace"
 	@echo "  make osd-dnd-capture — T-11.4b OSD card + menu-bar DND still"
 	@echo "  make portals-capture — T-13.7 Flatpak portal round-trips + picker still"
+	@echo "  make zoo-run — T-14.6a strange-app zoo matrix + desktop still"
 	@echo "  make demo     — T-01 loop demo (nested; headless/scripted in CI)"
 	@echo "  make lint     — fmt --check, clippy, qmllint, token freshness, desktop-name gate"
 	@echo "  make check    — lint + test + teardown soak gate"
@@ -189,6 +190,14 @@ portals-capture: build
 # docs/captures/t12-session.*.
 session-capture: build
 	bash scripts/capture-session.sh
+
+# T-14.6a: the strange-app zoo run. Needs a host Wayland session, `spectacle`,
+# python3+Pillow, gcc + SDL2/X11 dev headers, an Electron install
+# (ZOO_ELECTRON_DIR), the GNOME Calculator flatpak, and the built tree; writes
+# docs/captures/t14-zoo.png and t14-zoo-matrix.{md,json}. Missing apps are
+# recorded as "not run" rather than failing the target.
+zoo-run: build
+	bash scripts/zoo/zoo-run.sh
 
 qml-test:
 	@[ -f $(BUILD_DIR)/build.ninja ] || $(CMAKE) -S . -B $(BUILD_DIR) -G Ninja
