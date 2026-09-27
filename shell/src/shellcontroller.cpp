@@ -53,6 +53,14 @@ namespace {
 // it as failed (T-10 section 8.5). Interim until app-index owns activation.
 constexpr qint64 kLaunchTimeoutMs = 8000;
 
+// The Dock's offscreen buffer reserves a fixed popover headroom (above a
+// bottom Dock / beside a vertical one) and side gutters so opening a
+// menu/chooser/stack never resizes the render target on the open frame
+// (T-14.7c). The Dock QML clamps the popover rectangle into this budget, so
+// the values are a hard budget, not just a hint.
+constexpr int kDockPopoverHeadroom = 320;
+constexpr int kDockPopoverGutter = 320;
+
 // Launch an app detached from the shell. The shell forces the offscreen QPA
 // for its own chrome (`main.cpp`), so the app-launch environment scrubs it
 // (see `appLaunchEnvironment`) or a Qt client would render offscreen and never
@@ -487,6 +495,10 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         return false;
     }
     m_dockItem->setParentItem(m_dockWindow->contentItem());
+    // The popover budget the Dock clamps into (T-14.7c); fixed for the
+    // session so the offscreen window never grows on a popover open.
+    m_dockItem->setProperty("popoverHeadroom", kDockPopoverHeadroom);
+    m_dockItem->setProperty("popoverGutter", kDockPopoverGutter);
     connect(m_dockItem, SIGNAL(entryActivated(QVariant)), this,
             SLOT(onDockEntryActivated(QVariant)));
     connect(m_dockItem, SIGNAL(entryContextMenuRequested(QVariant,qreal,qreal)), this,
@@ -1193,9 +1205,13 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
 
     // Dock animation clock (T-10 section 8.1): 16 ms while a launch or
     // attention bounce is in flight, stopped otherwise so the idle Dock
-    // contributes zero wakeups (FR-8). The clock only advances the model; the
-    // resulting QML change renders through the scene-graph commit path
-    // (`afterRendering`, FR-14), not a render timer.
+    // contributes zero wakeups (FR-8). The tick is only a sampling wake: the
+    // phase is a pure function of the wall clock (`dockLaunchBouncePhase` /
+    // `dockAttentionBouncePhase`), so it cannot drift from the committed
+    // frames, and the tick now advances only the phase map rather than
+    // rebuilding the entry model (T-14.7c). The resulting QML change renders
+    // through the scene-graph commit path (`afterRendering`, FR-14), not a
+    // render timer.
     m_dockAnimTimer = new QTimer(this);
     m_dockAnimTimer->setInterval(16);
     connect(m_dockAnimTimer, &QTimer::timeout, this, &ShellController::onDockAnimationTick);
@@ -3912,12 +3928,16 @@ void ShellController::rebuildDockEntries()
 {
     if (!m_dockItem)
         return;
-    m_dockAllEntries = withBounce(buildDockEntries(
+    // The entries are the stable model: they never carry a launch/attention
+    // phase, so a running bounce does not reset the Repeater. The phases are
+    // published separately (T-14.7c).
+    m_dockAllEntries = buildDockEntries(
         m_dockConfig.pinned, m_index, m_runningEntries, m_launchStates,
-        m_dockConfig.showRecentApps ? m_recentAppIds : QStringList()));
-    // A full rebuild always re-publishes the entries (bounce phases changed);
-    // the clamp only decides which ones survive and at what icon size.
+        m_dockConfig.showRecentApps ? m_recentAppIds : QStringList());
+    // A full rebuild always re-publishes the entries; the clamp only decides
+    // which ones survive and at what icon size.
     applyDockOverflowResult(computeDockOverflow(), true, true);
+    publishDockBouncePhases();
     scheduleDockRender();
 }
 
@@ -3977,27 +3997,41 @@ void ShellController::warnDockOverflow(const DockOverflowResult &overflow)
                << (overflow.overflowed ? "(pinned content still overflows)" : "");
 }
 
-QVariantList ShellController::withBounce(QVariantList entries) const
+void ShellController::publishDockBouncePhases()
 {
+    if (!m_dockItem)
+        return;
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
-    for (QVariant &value : entries) {
-        QVariantMap map = value.toMap();
+    QVariantMap phases;
+    for (const QVariant &value : m_dockAllEntries) {
+        const QVariantMap entry = value.toMap();
+        const QString id = entry.value(QStringLiteral("id")).toString();
+        if (id.isEmpty())
+            continue;
+        const QString appId = entry.value(QStringLiteral("appId")).toString();
+        const QString desktopId = entry.value(QStringLiteral("desktopId")).toString();
         double phase = -1.0;
-        const QString appId = map.value(QStringLiteral("appId")).toString();
-        const QString desktopId = map.value(QStringLiteral("desktopId")).toString();
+        bool attention = false;
         if (!appId.isEmpty() && now < m_attentionUntil.value(appId)) {
             // Attention bounce wins over a launch bounce for the same entry
             // and is taller/repeating (FR-4).
-            map.insert(QStringLiteral("attention"), true);
+            attention = true;
             phase = dockAttentionBouncePhase(now - m_attentionStart.value(appId));
         } else if (!desktopId.isEmpty() && m_launchStart.contains(desktopId)) {
             phase = dockLaunchBouncePhase(now - m_launchStart.value(desktopId));
         }
-        if (phase >= 0.0)
-            map.insert(QStringLiteral("bounce"), phase);
-        value = map;
+        if (phase < 0.0 && !attention)
+            continue;
+        QVariantMap info;
+        info.insert(QStringLiteral("phase"), phase);
+        info.insert(QStringLiteral("attention"), attention);
+        phases.insert(id, info);
     }
-    return entries;
+    // The idle Dock must not churn QML bindings: only push a real change.
+    if (phases == m_dockBouncePhases)
+        return;
+    m_dockBouncePhases = phases;
+    m_dockItem->setProperty("bouncePhases", phases);
 }
 
 void ShellController::ensureDockAnimation()
@@ -4012,7 +4046,9 @@ void ShellController::clearAttention(const QString &appId)
         return;
     m_attentionUntil.remove(appId);
     m_attentionStart.remove(appId);
-    rebuildDockEntries();
+    // Only the phase map changes; the entry model (and its delegates) stays.
+    publishDockBouncePhases();
+    scheduleDockRender();
 }
 
 void ShellController::onDockAttention(const QString &appId)
@@ -4034,7 +4070,10 @@ void ShellController::onDockAttention(const QString &appId)
     m_attentionStart.insert(appId, now);
     m_attentionUntil.insert(appId, now + kAttentionBounceMs);
     ensureDockAnimation();
-    rebuildDockEntries();
+    // The attention state rides the phase map, so the entry model is untouched
+    // and any live hover/press on the entry survives the bounce (T-14.7c).
+    publishDockBouncePhases();
+    scheduleDockRender();
 }
 
 void ShellController::onDockAnimationTick()
@@ -4054,9 +4093,15 @@ void ShellController::onDockAnimationTick()
         else
             ++it;
     }
-    rebuildDockEntries();
-    if (m_attentionUntil.isEmpty() && m_launchStart.isEmpty() && m_dockAnimTimer)
-        m_dockAnimTimer->stop();
+    // Advance only the phase map; the Repeater model is not touched, so the
+    // delegates are not recreated and the hover/press state survives
+    // (T-14.7c). A settled clock stops the timer entirely (zero idle wakeups).
+    publishDockBouncePhases();
+    scheduleDockRender();
+    if (m_attentionUntil.isEmpty() && m_launchStart.isEmpty()) {
+        if (m_dockAnimTimer)
+            m_dockAnimTimer->stop();
+    }
 }
 
 void ShellController::onDockEntryActivated(const QVariant &entry)
@@ -4231,12 +4276,14 @@ void ShellController::onDockLaunchTick()
 {
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
     bool any = false;
+    bool changed = false;
     for (auto it = m_launchDeadlines.begin(); it != m_launchDeadlines.end();) {
         if (it.value() <= now) {
             const QString desktopId = it.key();
             it = m_launchDeadlines.erase(it);
             if (m_launchStates.value(desktopId) == QLatin1String("launching")) {
                 m_launchStates.insert(desktopId, QStringLiteral("failed"));
+                changed = true;
                 qWarning() << "shell: Dock launch timed out for" << desktopId
                            << "(no window mapped)";
                 raiseDockLaunchFailure(m_notificationClient, m_index.byId(desktopId).name,
@@ -4250,7 +4297,13 @@ void ShellController::onDockLaunchTick()
     }
     if (!any && m_launchTimer)
         m_launchTimer->stop();
-    rebuildDockEntries();
+    // Only a real launch-state change resets the entry model; a quiet tick
+    // during a bounce must not recreate the delegates (T-14.7c).
+    if (changed) {
+        rebuildDockEntries();
+    } else {
+        publishDockBouncePhases();
+    }
 }
 
 void ShellController::onDockEntryContextMenu(const QVariant &entry, qreal, qreal)
@@ -5024,17 +5077,16 @@ void ShellController::renderDock()
     const bool hasPopover = pw > 0 && ph > 0;
 
     // A popover above a bottom bar needs headroom; beside a vertical bar it
-    // needs a left or right gutter. Grow the offscreen window and offset the
-    // Dock item so scene (0,0) stays the surface top-left and the whole
-    // popover is inside the buffer.
-    const int headroom = hasPopover ? qMax(0, -py) : 0;
-    const int leftGutter = hasPopover ? qMax(0, -px) : 0;
-    const int rightGutter = hasPopover ? qMax(0, (px + pw) - m_dockWidth) : 0;
+    // needs a left or right gutter. The buffer is pre-sized to a fixed budget
+    // at configure time (T-14.7c) and the Dock QML clamps the popover into it,
+    // so opening a menu/chooser/stack never resizes the render target.
+    const int headroom = kDockPopoverHeadroom;
+    const int leftGutter = kDockPopoverGutter;
     m_dockItemOffsetX = leftGutter;
     m_dockItemOffsetY = headroom;
     m_dockItem->setX(leftGutter);
     m_dockItem->setY(headroom);
-    const int windowWidth = m_dockWidth + leftGutter + rightGutter;
+    const int windowWidth = m_dockWidth + 2 * leftGutter;
     const int windowHeight = m_dockHeight + headroom;
     if (m_dockWindow->width() != windowWidth || m_dockWindow->height() != windowHeight)
         m_dockWindow->resize(windowWidth, windowHeight);

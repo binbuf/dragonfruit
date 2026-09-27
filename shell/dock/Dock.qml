@@ -16,7 +16,7 @@ import Dragonfruit
 //
 // Context menus, the window chooser, drag rearrangement, launch, the Trash
 // state/menu, external drops, and the Downloads stack/recents are landed (see
-// PROGRESS.md); the scene-graph render path is a follow-up.
+// PROGRESS.md); the scene-graph render path (FR-14) commits every frame.
 Rectangle {
     id: dock
 
@@ -61,6 +61,20 @@ Rectangle {
     // Empty Trash replaces the menu model with the confirm/cancel choice
     // before the shell performs the destructive operation.
     property bool trashConfirming: false
+
+    // The fixed popover buffer budget (T-14.7c). The shell pre-sizes the
+    // offscreen render target to this and the Dock clamps every popover into
+    // it, so opening a menu/chooser/stack never resizes the window (and thus
+    // never reallocates the render target on the open frame).
+    property real popoverHeadroom: 0
+    property real popoverGutter: 0
+
+    // Per-entry launch/attention phases keyed by entry id (T-14.7c). The
+    // shell updates this map every committed frame instead of rebuilding
+    // `entries`, so the Repeater model — and every live delegate's hover and
+    // press state — survives a bounce. Each value is
+    // `{ phase: 0..1, attention: bool }`.
+    property var bouncePhases: ({})
 
     // Keyboard navigation (T-10 section 20). The shell sets
     // `keyboardFocused` when the compositor hands the Dock the keyboard
@@ -116,6 +130,46 @@ Rectangle {
     property bool dragPromote: false
     property var dragBaseCenters: []
     property var dragOriginalPinnedIds: []
+
+    // Discrete layout changes (`dock.size`, overflow, popovers) animate with
+    // the design-system spring; the very first configure snaps so the initial
+    // placement is exact and the idle shell never freezes mid-animation
+    // (T-14.7c). Magnification stays progress-based (`magnifying` disables the
+    // per-entry Behaviors).
+    property bool laidOutOnce: false
+    Behavior on iconSize {
+        enabled: dock.laidOutOnce && !dock.resizing
+        NumberAnimation {
+            duration: Theme.motion.dockMagnify.duration
+            easing.type: Easing.Bezier
+            easing.bezierCurve: Theme.motion.dockMagnify.curve
+        }
+    }
+    // A drag that ends (drop or cancel) lets the opened gap close with the
+    // same spring instead of snapping.
+    property bool dragSettling: false
+    Component.onCompleted: dock.laidOutOnce = dock.width > 0 && dock.height > 0
+    onWidthChanged: if (!dock.laidOutOnce) layoutSettleTimer.restart()
+    onHeightChanged: if (!dock.laidOutOnce) layoutSettleTimer.restart()
+    onDraggingChanged: {
+        if (dock.dragging) {
+            dragSettleTimer.stop();
+            dock.dragSettling = false;
+        } else {
+            dock.dragSettling = true;
+            dragSettleTimer.restart();
+        }
+    }
+    Timer {
+        id: layoutSettleTimer
+        interval: 0
+        onTriggered: dock.laidOutOnce = dock.width > 0 && dock.height > 0
+    }
+    Timer {
+        id: dragSettleTimer
+        interval: Theme.motion.dockMagnify.fullDuration + 40
+        onTriggered: dock.dragSettling = false
+    }
 
     // Divider resize (T-10 section 5): dragging the separator changes
     // `dock.size`, growing the icons as the handle moves away from the Dock
@@ -282,8 +336,8 @@ Rectangle {
 
     // `revealStateChanged` lets the shell re-commit the Dock and its input
     // region when the reveal/hide transition changes the translation. The
-    // transition snaps rather than animating until the scene-graph render
-    // path (FR-14) can commit every frame.
+    // slide is animated through the scene-graph commit path (FR-14), which
+    // delivers every frame.
     signal revealStateChanged()
     onRevealedChanged: revealStateChanged()
 
@@ -1310,6 +1364,49 @@ Rectangle {
         return gap * (a + b) / (2 * iconSize);
     }
 
+    // The popover placement clamps into the shell's pre-sized buffer budget
+    // (T-14.7c); a zero budget (the QML default, and every standalone test)
+    // leaves the legacy unbounded placement so a tall menu can still open
+    // above the Dock.
+    function clampPopoverX(px, w) {
+        if (popoverGutter <= 0)
+            return px;
+        return Math.max(-popoverGutter, Math.min(width + popoverGutter - w, px));
+    }
+    function clampPopoverY(py, h) {
+        if (popoverHeadroom <= 0)
+            return py;
+        // Keep the popover inside the pre-sized headroom; when the content is
+        // taller than the budget it is pinned to the top of the buffer.
+        var minY = -popoverHeadroom;
+        var maxY = height - h;
+        if (maxY < minY)
+            return minY;
+        return Math.max(minY, Math.min(maxY, py));
+    }
+
+    // The launch/attention phase for an entry. The shell publishes phases in
+    // `bouncePhases` keyed by entry id so the entry model is never rebuilt for
+    // a bounce; a phase embedded in the entry itself still wins so existing
+    // direct-model callers keep working (T-14.7c).
+    function entryPhase(entry) {
+        if (!entry)
+            return -1;
+        if (entry.bounce !== undefined && entry.bounce >= 0)
+            return entry.bounce;
+        var info = bouncePhases[entry.id];
+        return info !== undefined && info.phase !== undefined ? info.phase : -1;
+    }
+
+    function entryAttention(entry) {
+        if (!entry)
+            return false;
+        if (entry.attention === true)
+            return true;
+        var info = bouncePhases[entry.id];
+        return info !== undefined && info.attention === true;
+    }
+
     // The launch/attention bounce translation for an entry (T-10 section
     // 8.1): a sinusoidal hop whose phase the shell drives from the
     // compositor-clock launch/attention clocks. Attention is taller than a
@@ -1318,15 +1415,15 @@ Rectangle {
     function entryBounce(entry) {
         if (Theme.reducedMotion)
             return 0;
-        var phase = entry.bounce;
-        if (phase === undefined || phase < 0)
+        var phase = entryPhase(entry);
+        if (phase < 0)
             return 0;
         // `dock.animateOpening` off suppresses the launch hop; an attention
         // bounce is a notification and still plays (T-10 sections 8.1/19).
-        if (!animateOpening && entry.attention !== true)
+        if (!animateOpening && !entryAttention(entry))
             return 0;
-        var amplitude = entry.attention === true ? barThickness / 2
-                                                 : barThickness / 4;
+        var amplitude = entryAttention(entry) ? barThickness / 2
+                                              : barThickness / 4;
         return amplitude * Math.sin(Math.PI * phase);
     }
 
@@ -1582,6 +1679,11 @@ Rectangle {
                 dock.dragging && modelData.id === dock.dragEntryId
 
             entry: modelData
+            // The launch/attention phase rides the shell's `bouncePhases` map
+            // keyed by entry id; it is injected here instead of mutating the
+            // model, so a bounce does not recreate this delegate (T-14.7c).
+            bouncePhase: dock.entryPhase(modelData)
+            bounceAttention: dock.entryAttention(modelData)
             iconSize: dock.layout.length > index ? dock.layout[index].iconSize : dock.iconSize
             indicatorEdge: dock.indicatorEdge
             showIndicator: dock.showIndicators
@@ -1598,12 +1700,14 @@ Rectangle {
             y: isDragged ? dock.draggedY(height)
                : (dock.layout.length > index ? dock.layout[index].y : 0)
 
-            // The gap left by a reorder springs open only while dragging;
-            // every other layout change (initial configure, magnification,
-            // resize) snaps so the on-demand renderer never freezes the Dock
-            // mid-animation. Reduced motion (duration 0) snaps.
+            // The gap left by a reorder springs open or closed while dragging
+            // (and just after, so a cancelled drag's gap does not snap shut);
+            // every other layout change is handled by the root `iconSize`
+            // Behavior, and magnification is progress-based so it never passes
+            // through a Behavior (T-14.7c). Reduced motion (duration 0) snaps.
             Behavior on x {
-                enabled: dock.dragging && !isDragged
+                enabled: !dock.magnifying && (dock.dragging || dock.dragSettling)
+                         && !isDragged
                 NumberAnimation {
                     duration: Theme.motion.dockMagnify.duration
                     easing.type: Easing.Bezier
@@ -1611,7 +1715,8 @@ Rectangle {
                 }
             }
             Behavior on y {
-                enabled: dock.dragging && !isDragged
+                enabled: !dock.magnifying && (dock.dragging || dock.dragSettling)
+                         && !isDragged
                 NumberAnimation {
                     duration: Theme.motion.dockMagnify.duration
                     easing.type: Easing.Bezier
@@ -1652,26 +1757,28 @@ Rectangle {
         accessibleName: dock.menuEntry && dock.menuEntry.name !== undefined
                         ? dock.menuEntry.name : qsTr("Dock options")
         // Above the entry on a bottom Dock, beside it on a vertical Dock,
-        // clamped to the surface.
+        // clamped to the surface and to the pre-sized popover budget so the
+        // offscreen render target never has to grow on open (T-14.7c).
         x: {
             if (!dock.menuAnchor)
                 return 0;
+            var px;
             if (dock.axisIsX)
-                return Math.max(0, Math.min(dock.width - width,
+                px = Math.max(0, Math.min(dock.width - width,
                     dock.menuAnchor.x + (dock.menuAnchor.width - width) / 2));
-            // Beside the bar (not the entry), so the popover always clears the
-            // bar regardless of the entry's inset.
-            return dock.position === "left"
+            else
+                px = dock.position === "left"
                     ? dock.plateRect.x + dock.plateRect.w + 4
                     : dock.plateRect.x - width - 4;
+            return dock.clampPopoverX(px, width);
         }
         y: {
             if (!dock.menuAnchor)
                 return 0;
             // A bottom Dock's menu opens upward; negative y is covered by the
-            // offscreen scene's headroom (the shell grows the window).
+            // offscreen scene's pre-sized headroom (T-14.7c).
             if (dock.axisIsX)
-                return dock.menuAnchor.y - height - 4;
+                return dock.clampPopoverY(dock.menuAnchor.y - height - 4, height);
             return Math.max(0, Math.min(dock.height - height,
                 dock.menuAnchor.y + (dock.menuAnchor.height - height) / 2));
         }
@@ -1709,20 +1816,23 @@ Rectangle {
         x: {
             if (!dock.chooserAnchor)
                 return 0;
+            var px;
             if (dock.axisIsX)
-                return Math.max(0, Math.min(dock.width - width,
+                px = Math.max(0, Math.min(dock.width - width,
                     dock.chooserAnchor.x + (dock.chooserAnchor.width - width) / 2));
-            return dock.position === "left"
+            else
+                px = dock.position === "left"
                     ? dock.plateRect.x + dock.plateRect.w + 4
                     : dock.plateRect.x - width - 4;
+            return dock.clampPopoverX(px, width);
         }
         y: {
             if (!dock.chooserAnchor)
                 return 0;
             // A bottom Dock's chooser opens upward; negative y is covered by
-            // the offscreen scene's headroom.
+            // the pre-sized headroom (T-14.7c).
             if (dock.axisIsX)
-                return dock.chooserAnchor.y - height - 4;
+                return dock.clampPopoverY(dock.chooserAnchor.y - height - 4, height);
             return Math.max(0, Math.min(dock.height - height,
                 dock.chooserAnchor.y + (dock.chooserAnchor.height - height) / 2));
         }
@@ -1751,18 +1861,21 @@ Rectangle {
         x: {
             if (!dock.stackAnchor)
                 return 0;
+            var px;
             if (dock.axisIsX)
-                return Math.max(0, Math.min(dock.width - width,
+                px = Math.max(0, Math.min(dock.width - width,
                     dock.stackAnchor.x + (dock.stackAnchor.width - width) / 2));
-            return dock.position === "left"
+            else
+                px = dock.position === "left"
                     ? dock.plateRect.x + dock.plateRect.w + 4
                     : dock.plateRect.x - width - 4;
+            return dock.clampPopoverX(px, width);
         }
         y: {
             if (!dock.stackAnchor)
                 return 0;
             if (dock.axisIsX)
-                return dock.stackAnchor.y - height - 4;
+                return dock.clampPopoverY(dock.stackAnchor.y - height - 4, height);
             return Math.max(0, Math.min(dock.height - height,
                 dock.stackAnchor.y + (dock.stackAnchor.height - height) / 2));
         }
