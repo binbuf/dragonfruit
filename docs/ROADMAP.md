@@ -294,7 +294,8 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 > **Follow-up 2026-09-27** after a real `make demo` session reported the Dock
 > shaking under hover, the plate height oscillating, a top-edge corner
 > artifact, uneven tile↔plate padding, and clicks doing nothing. Three fix
-> units (x–z) land after T110w: activation tap/drag arbitration (the recorded
+> units (x–z) run immediately after T110v, ahead of T110w, because they fix
+> the reported defects: activation tap/drag arbitration (the recorded
 > T110g synthetic-tap limitation behind the dead app region), magnification
 > tracking stability (the per-sample overshoot re-target plus the
 > smoothed-pointer anchor flip), and plate rendering (the rim not following
@@ -324,10 +325,10 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 - [x] T110t — T-14.7t Dock keyboard reordering → [tasks/110t-t-14.7t-dock-keyboard-reordering.md](tasks/110t-t-14.7t-dock-keyboard-reordering.md)
 - [x] T110u — T-14.7u Dock reference metrics: spacing, plate radius, indicator inset → [tasks/110u-t-14.7u-dock-reference-metrics.md](tasks/110u-t-14.7u-dock-reference-metrics.md)
 - [x] T110v — T-14.7v Dock region dividers: pinned | temporary/recent | stacks and Trash → [tasks/110v-t-14.7v-dock-region-dividers.md](tasks/110v-t-14.7v-dock-region-dividers.md)
-- [ ] T110w — T-14.7w Dock icon tiles: true squircle masking → [tasks/110w-t-14.7w-dock-icon-squircle-masking.md](tasks/110w-t-14.7w-dock-icon-squircle-masking.md)
 - [ ] T110x — T-14.7x Dock activation: taps on entries that carry a DragHandler → [tasks/110x-t-14.7x-dock-activation-tap-arbitration.md](tasks/110x-t-14.7x-dock-activation-tap-arbitration.md)
 - [ ] T110y — T-14.7y Dock magnification tracking: stable pointer and anchor → [tasks/110y-t-14.7y-dock-magnification-tracking-stability.md](tasks/110y-t-14.7y-dock-magnification-tracking-stability.md)
 - [ ] T110z — T-14.7z Dock plate rendering: corner-following rim and frost alignment → [tasks/110z-t-14.7z-dock-plate-rendering-corner-and-frost.md](tasks/110z-t-14.7z-dock-plate-rendering-corner-and-frost.md)
+- [ ] T110w — T-14.7w Dock icon tiles: true squircle masking → [tasks/110w-t-14.7w-dock-icon-squircle-masking.md](tasks/110w-t-14.7w-dock-icon-squircle-masking.md)
 
 ## Phase 14.6 — T-18 Wallpaper content provider (shipped default + Wikimedia Featured)
 
