@@ -193,12 +193,23 @@ Rectangle {
     // Insertion index in the app region for an application-alias drop; the
     // live gap reflows the layout around a placeholder entry.
     property int externalInsertIndex: -1
+    // The resolved identity of the dragged payload (T-14.7f): an app alias's
+    // real name/icon from app-index, or the file count and first file's name.
+    // Filled by the shell once the enter-time read completes.
+    property string externalPayloadName: ""
+    property string externalPayloadIconPath: ""
+    property string externalPayloadFirstName: ""
+    // The pinned entry a duplicate app-alias drop pulsed ("" = none). It
+    // drives a brief highlight so the no-op is visible (T-14.7f).
+    property string duplicateFlashId: ""
     // A stack entry the pointer has dwelled over long enough to spring-load
     // (T-10 section 17); the Downloads stack popover opens when it fires.
     property string springLoadTargetId: ""
     // Spring-loading hover delay (ms), shared with Files (T-18). Mirrors
     // `kSpringLoadMs` in the shell's pure drop core.
     readonly property int springLoadDelay: 500
+    // How long a duplicate-pin highlight stays visible (T-14.7f).
+    readonly property int duplicateFlashMs: 700
 
     // The app entry whose context menu / window chooser is open, plus the
     // entry item each is anchored to. Only one popover is open at a time.
@@ -467,7 +478,10 @@ Rectangle {
     readonly property bool externalGap:
         externalDragActive && externalPayloadIsApp && externalInsertIndex >= 0
     readonly property var externalPlaceholderEntry: ({
-        id: "__external_drop__", kind: "external", name: "", appId: "",
+        id: "__external_drop__", kind: "external",
+        name: externalPayloadName,
+        appId: externalPayloadIsApp ? externalPayloadName : "",
+        iconPath: externalPayloadIconPath,
         running: false
     })
     readonly property var items: {
@@ -1034,11 +1048,32 @@ Rectangle {
         externalDragActive = true;
         externalPayloadIsApp = payloadIsApp;
         externalPayloadCount = payloadCount;
+        externalPayloadName = "";
+        externalPayloadIconPath = "";
+        externalPayloadFirstName = "";
         externalTargetId = "";
         externalInsertIndex = -1;
         springLoadTargetId = "";
         springLoadTimer.stop();
         externalDragChanged();
+    }
+
+    // The enter-time read resolved the payload (T-14.7f): update the ghost
+    // identity and the file count/name. Called by the shell once per drag.
+    function setExternalPayload(payloadIsApp, name, iconPath, count, firstName) {
+        externalPayloadIsApp = payloadIsApp;
+        externalPayloadName = name !== undefined ? name : "";
+        externalPayloadIconPath = iconPath !== undefined ? iconPath : "";
+        externalPayloadCount = count !== undefined ? count : 0;
+        externalPayloadFirstName = firstName !== undefined ? firstName : "";
+        externalDragChanged();
+    }
+
+    // A duplicate app-alias drop pulsed `desktopId`'s pinned entry so the
+    // no-op is visible (T-14.7f). Test/introspection hook and shell entry.
+    function flashPin(desktopId) {
+        duplicateFlashId = desktopId !== undefined ? desktopId : "";
+        duplicateFlashTimer.restart();
     }
 
     function externalDragTo(sceneX, sceneY) {
@@ -1078,6 +1113,19 @@ Rectangle {
         externalDrop(scene.x, scene.y);
     }
 
+    // Hover the entry with `entryId` during an external drag (test/capture
+    // hook); computes the entry centre and routes through `externalDragTo`.
+    function externalHoverEntry(entryId) {
+        if (!externalDragActive)
+            return;
+        var idx = indexOfItemId(entryId);
+        if (idx < 0 || idx >= layout.length)
+            return;
+        var r = layout[idx];
+        var scene = dock.mapToItem(null, r.x + r.w / 2, r.y + r.h / 2);
+        externalDragTo(scene.x, scene.y);
+    }
+
     function externalDrop(sceneX, sceneY) {
         if (!externalDragActive) {
             resetExternalDrag();
@@ -1096,11 +1144,62 @@ Rectangle {
         externalDragActive = false;
         externalPayloadIsApp = false;
         externalPayloadCount = 0;
+        externalPayloadName = "";
+        externalPayloadIconPath = "";
+        externalPayloadFirstName = "";
         externalTargetId = "";
         externalInsertIndex = -1;
         springLoadTargetId = "";
         springLoadTimer.stop();
         externalDragChanged();
+    }
+
+    // The hover affordance for the current external-drag target (T-14.7f):
+    // "Open with <app>", "Move to Trash"/"Trash unavailable", "Move to
+    // Downloads", "Add to Dock", or "" for a no-op. Mirrors the pure
+    // `dockDropAffordance` helper so the decision is testable headless.
+    function externalAffordanceFor(targetKind, targetName) {
+        if (externalPayloadIsApp) {
+            if (targetKind === "trash" || targetKind === "stack"
+                    || targetKind === "divider")
+                return "";
+            return qsTr("Add to Dock");
+        }
+        if (targetKind === "trash")
+            return trashAvailable ? qsTr("Move to Trash") : qsTr("Trash unavailable");
+        if (targetKind === "stack")
+            return qsTr("Move to Downloads");
+        if (targetKind === "pinned" || targetKind === "temporary"
+                || targetKind === "recent")
+            return targetName.length > 0 ? qsTr("Open with %1").arg(targetName)
+                                         : qsTr("Open with");
+        return "";
+    }
+
+    readonly property int externalTargetIndex:
+        externalDragActive && externalTargetId !== "" ? indexOfItemId(externalTargetId) : -1
+
+    readonly property string externalAffordance: {
+        if (!externalDragActive || externalTargetIndex < 0)
+            return "";
+        var e = items[externalTargetIndex];
+        var nm = e.name !== undefined ? e.name : "";
+        return externalAffordanceFor(e.kind, nm);
+    }
+
+    // The dragged identity shown while hovering (T-14.7f): an app alias's
+    // name, or "N items"/the single file's name. Suppressed when a concrete
+    // target affordance already names the action.
+    readonly property string externalIdentityLabel: {
+        if (!externalDragActive)
+            return "";
+        if (externalPayloadIsApp)
+            return externalPayloadName;
+        if (externalPayloadCount === 1)
+            return externalPayloadFirstName;
+        if (externalPayloadCount > 1)
+            return qsTr("%1 items").arg(externalPayloadCount);
+        return "";
     }
 
     Timer {
@@ -1116,6 +1215,14 @@ Rectangle {
             if (idx >= 0 && dock.items[idx].kind === "stack")
                 dock.openStack();
         }
+    }
+
+    // A duplicate app-alias drop highlights the already-pinned entry briefly,
+    // then the highlight returns (T-14.7f).
+    Timer {
+        id: duplicateFlashTimer
+        interval: dock.duplicateFlashMs
+        onTriggered: dock.duplicateFlashId = ""
     }
 
     // The lifted entry follows the pointer on the dock axis and stays on the
@@ -1725,6 +1832,9 @@ Rectangle {
             keyboardFocused: dock.keyboardFocused && modelData.id === dock.focusedItemId
             externalDropTarget: dock.externalDragActive
                                 && modelData.id === dock.externalTargetId
+            duplicateFlash: dock.duplicateFlashId !== ""
+                            && modelData.desktopId !== undefined
+                            && String(modelData.desktopId) === dock.duplicateFlashId
             dragging: dock.dragging
             lifted: isDragged
             z: isDragged ? 10 : 0
@@ -1987,6 +2097,76 @@ Rectangle {
                     return;
             }
             dock.closePopovers();
+        }
+    }
+
+    // The external-drag affordance capsule (T-14.7f): the action the hovered
+    // target will take ("Open with <app>", "Move to Trash", "Move to
+    // Downloads", "Add to Dock"), or the dragged identity while no concrete
+    // target is hovered (an app name, "N items", or the single file name).
+    // It floats above the target on a bottom Dock and beside it otherwise.
+    readonly property var externalAnchorRect: {
+        if (!externalDragActive)
+            return null;
+        var idx = externalTargetIndex;
+        if (idx < 0) {
+            for (var i = 0; i < items.length; ++i) {
+                if (items[i].kind === "external") {
+                    idx = i;
+                    break;
+                }
+            }
+        }
+        if (idx < 0 || idx >= layout.length)
+            return null;
+        return layout[idx];
+    }
+
+    Rectangle {
+        id: externalAffordanceCapsule
+        objectName: "externalAffordance"
+        readonly property string label:
+            dock.externalAffordance.length > 0 ? dock.externalAffordance
+                                               : dock.externalIdentityLabel
+        readonly property var anchorRect: dock.externalAnchorRect
+        visible: dock.externalDragActive && label.length > 0 && anchorRect !== null
+        width: affordanceText.implicitWidth + 16
+        height: affordanceText.implicitHeight + 8
+        radius: height / 2
+        color: Theme.color.chrome
+        border.width: 1
+        border.color: Theme.color.border
+        opacity: 0.95
+        z: 3000
+        x: {
+            if (!anchorRect)
+                return 0;
+            if (dock.axisIsX) {
+                var cx = anchorRect.x + anchorRect.w / 2;
+                return Math.max(0, Math.min(dock.width - width, cx - width / 2));
+            }
+            return dock.position === "right"
+                ? dock.plateRect.x - width - 8
+                : dock.plateRect.x + dock.plateRect.w + 8;
+        }
+        y: {
+            if (!anchorRect)
+                return 0;
+            if (dock.axisIsX) {
+                // Lift the capsule clear of the identity ghost's own name
+                // label, which sits just above the gap (T-14.7f).
+                var lift = dock.externalPayloadIsApp ? 26 : 6;
+                return Math.max(0, anchorRect.y - height - lift);
+            }
+            var cy = anchorRect.y + anchorRect.h / 2;
+            return Math.max(0, Math.min(dock.height - height, cy - height / 2));
+        }
+        Text {
+            id: affordanceText
+            anchors.centerIn: parent
+            text: externalAffordanceCapsule.label
+            color: Theme.color.textPrimary
+            font.pixelSize: Theme.controls.button.fontSize
         }
     }
 

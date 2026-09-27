@@ -42,6 +42,14 @@ Item {
     // A placeholder gap opened by an application-alias external drop; it is
     // layout only and never interactive.
     readonly property bool isExternal: kind === "external"
+    // The identity carried by an external drag (T-14.7f): the app-index
+    // name/icon for an app alias, so the gap shows the real tile instead of a
+    // generic square.
+    readonly property bool externalHasIdentity:
+        isExternal && (name.length > 0 || iconPath.length > 0)
+    // A duplicate app-alias drop pulsed the already-pinned entry (T-14.7f):
+    // a brief highlight makes the no-op visible.
+    property bool duplicateFlash: false
     readonly property bool running: entry.running === true
     readonly property string name: entry.name !== undefined ? entry.name : ""
     readonly property string appId: entry.appId !== undefined ? entry.appId : ""
@@ -125,7 +133,7 @@ Item {
 
     Accessible.role: isDivider ? Accessible.Separator : Accessible.ListItem
     Accessible.name: isDivider ? qsTr("Dock separator")
-                     : isExternal ? qsTr("Drop here")
+                     : isExternal ? (name.length > 0 ? name : qsTr("Drop here"))
                      : isTrash ? qsTr("Trash") + stateLabel
                      : isStack ? qsTr("Downloads") + stateLabel
                      : name + stateLabel
@@ -188,7 +196,8 @@ Item {
     }
 
     // A placeholder gap opened by an application-alias external drop: a
-    // translucent slot the dragged app will occupy (T-10 section 12).
+    // translucent slot the dragged app will occupy (T-10 section 12). When
+    // the identity is known (T-14.7f) it fades behind the real ghost glyph.
     Rectangle {
         objectName: "externalPlaceholder"
         visible: root.isExternal
@@ -198,7 +207,7 @@ Item {
         height: root.iconSize
         radius: Theme.controls.dock.radius
         color: Theme.color.controlFill
-        opacity: 0.35
+        opacity: root.externalHasIdentity ? 0.18 : 0.35
         border.width: 1
         border.color: Theme.color.border
     }
@@ -215,6 +224,20 @@ Item {
         radius: Theme.controls.dock.radius
         color: Theme.color.accent
         opacity: 0.25
+    }
+
+    // A duplicate app-alias drop pulses the already-pinned entry so the no-op
+    // is visible (T-14.7f).
+    Rectangle {
+        objectName: "duplicateFlash"
+        visible: root.duplicateFlash && !root.isDivider && !root.isExternal
+        x: root.artworkX
+        y: root.artworkY
+        width: root.iconSize
+        height: root.iconSize
+        radius: Theme.controls.dock.radius
+        color: Theme.color.accent
+        opacity: 0.35
     }
 
     // A lifted entry casts a shadow to read as picked up.
@@ -242,7 +265,7 @@ Item {
     DockGlyph {
         id: glyph
         objectName: "glyph"
-        visible: !root.isDivider && !root.isExternal
+        visible: !root.isDivider && (!root.isExternal || root.externalHasIdentity)
         kind: root.isTrash ? "trash" : root.isStack ? "stack" : "app"
         name: root.name
         appId: root.appId
@@ -266,6 +289,23 @@ Item {
         Behavior on opacity {
             NumberAnimation { duration: Theme.motion.focus.duration }
         }
+    }
+
+    // The dragged app's real name under the identity ghost (T-14.7f). It is
+    // presentation only and never interactive (the gap is skipped by the
+    // Dock's hit testing).
+    Text {
+        objectName: "externalGhostName"
+        visible: root.isExternal && root.name.length > 0
+        text: root.name
+        color: Theme.color.textPrimary
+        font.pixelSize: Math.max(9, Math.round(root.iconSize * 0.26))
+        width: Math.max(root.iconSize, 160)
+        x: root.artworkX + (root.iconSize - width) / 2
+        y: root.artworkY - height - 2
+        horizontalAlignment: Text.AlignHCenter
+        elide: Text.ElideRight
+        z: 1
     }
 
     // A launch failure, an unresolved pinned identity, or an unreachable

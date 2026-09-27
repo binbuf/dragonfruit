@@ -199,6 +199,16 @@ the "Add Application" popover, its search field showing the query, the
 matching rows with themed icons, and the pinned row's "In Dock" state.
 Needs a host Wayland session, spectacle, gdbus, and Pillow; not in `make e2e`.
 
+T-14.7f's Dock drop identity and feedback sign-off is produced by
+`scripts/capture-dock-drops.sh` (`make dock-drops-capture`): the nested demo
+runs once per hover state through the shell's `DF_DOCK_DROP_FIXTURE` seam (the
+production Dock presentation minus a real drag source), and the three 2x crops
+are stacked into `t14-dock-drops.png`. Top: an app-alias ghost showing
+"Dragonfruit Files" with its real themed folder tile and the "Add to Dock"
+capsule; middle: a file dragged over an app ("Open with Dragonfruit Files");
+bottom: a file dragged over the Trash ("Move to Trash"). Needs a host Wayland
+session, spectacle, gdbus, and Pillow; not in `make e2e`.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

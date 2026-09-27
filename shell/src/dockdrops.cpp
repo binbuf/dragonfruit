@@ -26,6 +26,33 @@ QStringList parseUriList(const QByteArray &data)
     return paths;
 }
 
+DockDropPayloadData parseDockDropPayload(const QString &mime, const QByteArray &data)
+{
+    DockDropPayloadData out;
+    if (mime == QLatin1String("application/x-dragonfruit-app")) {
+        const QString id = QString::fromUtf8(data).trimmed();
+        if (id.isEmpty())
+            return out;
+        out.kind = DockDropPayload::Application;
+        out.desktopId = id;
+        out.valid = true;
+        return out;
+    }
+    if (mime == QLatin1String("text/uri-list")) {
+        out.paths = parseUriList(data);
+        if (uriListIsApplication(out.paths)) {
+            out.kind = DockDropPayload::Application;
+            out.desktopId = desktopIdForFile(out.paths.first());
+            out.paths.clear();
+        } else {
+            out.kind = DockDropPayload::Files;
+        }
+        out.valid = true;
+        return out;
+    }
+    return out;
+}
+
 bool uriListIsApplication(const QStringList &paths)
 {
     return paths.size() == 1
@@ -62,6 +89,40 @@ DockDropAction dockDropActionFor(const QString &targetKind, DockDropPayload payl
         return DockDropAction::OpenWithApp;
     }
     return DockDropAction::None;
+}
+
+QString dockDropAffordance(const QString &targetKind, DockDropPayload payload,
+                           const QString &targetName, bool trashAvailable)
+{
+    if (payload == DockDropPayload::Application) {
+        // A pin never lands on Trash, a Downloads stack, or the divider.
+        if (targetKind == QLatin1String("trash") || targetKind == QLatin1String("stack")
+            || targetKind == QLatin1String("divider"))
+            return QString();
+        return QStringLiteral("Add to Dock");
+    }
+    if (targetKind == QLatin1String("trash"))
+        return trashAvailable ? QStringLiteral("Move to Trash")
+                              : QStringLiteral("Trash unavailable");
+    if (targetKind == QLatin1String("stack"))
+        return QStringLiteral("Move to Downloads");
+    if (targetKind == QLatin1String("pinned") || targetKind == QLatin1String("temporary")
+        || targetKind == QLatin1String("recent")) {
+        return targetName.isEmpty()
+            ? QStringLiteral("Open with")
+            : QStringLiteral("Open with %1").arg(targetName);
+    }
+    return QString();
+}
+
+bool dockPinnedContains(const QStringList &pinned, const QString &id,
+                        const QString &resolvedId)
+{
+    if (id.isEmpty())
+        return false;
+    if (pinned.contains(id))
+        return true;
+    return !resolvedId.isEmpty() && resolvedId != id && pinned.contains(resolvedId);
 }
 
 QString downloadsDirectory()

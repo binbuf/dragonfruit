@@ -2274,6 +2274,137 @@ Item {
             compare(dock.externalInsertIndex, -1);
         }
 
+        function test_external_app_ghost_shows_the_resolved_identity() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "A", true), app("b", "B", true) ]
+            });
+            dock.beginExternalDrag(true, 1);
+            // The shell resolves the alias once the enter-time read finishes.
+            dock.setExternalPayload(true, "Files", "/tmp/files-icon", 1, "");
+            compare(dock.externalPayloadIsApp, true);
+            compare(dock.externalPayloadName, "Files");
+
+            var slot = dock.layout[0];
+            var local = dock.mapToItem(null, slot.x - 2, slot.y + slot.h / 2);
+            dock.externalDragTo(local.x, local.y);
+            compare(dock.externalGap, true);
+            compare(dock.items[0].kind, "external");
+            compare(dock.items[0].name, "Files");
+            compare(dock.items[0].iconPath, "/tmp/files-icon");
+            // An app alias on the app region offers a pin.
+            compare(dock.externalAffordance, "Add to Dock");
+
+            waitForRendering(stage);
+            var ghost = dock.itemAt(0);
+            compare(ghost.externalHasIdentity, true);
+            compare(findChild(ghost, "externalGhostName").text, "Files");
+            verify(findChild(ghost, "glyph").visible);
+        }
+
+        function test_external_app_ghost_degrades_without_identity() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "A", true) ]
+            });
+            dock.beginExternalDrag(true, 1);
+            var slot = dock.layout[0];
+            var local = dock.mapToItem(null, slot.x - 2, slot.y + slot.h / 2);
+            dock.externalDragTo(local.x, local.y);
+            waitForRendering(stage);
+            var ghost = dock.itemAt(0);
+            // No identity resolved yet: the generic slot, no glyph crash.
+            compare(ghost.externalHasIdentity, false);
+            compare(findChild(ghost, "glyph").visible, false);
+            compare(findChild(ghost, "externalPlaceholder").visible, true);
+        }
+
+        function test_external_file_affordances_follow_the_target() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                downloadsItems: stackItems(),
+                entries: [ app("a", "A", true) ]
+            });
+            dock.beginExternalDrag(false, 1);
+            dock.setExternalPayload(false, "", "", 1, "report.pdf");
+            compare(dock.externalIdentityLabel, "report.pdf");
+
+            // Over the app entry: open with that app.
+            var slot = dock.layout[0];
+            var local = dock.mapToItem(null, slot.x + slot.w / 2, slot.y + slot.h / 2);
+            dock.externalDragTo(local.x, local.y);
+            compare(dock.externalTargetId, "a");
+            compare(dock.externalAffordance, "Open with A");
+
+            // Over Trash: move to trash, or report it unavailable.
+            var trashIdx = dock.layout.length - 1;
+            var trash = dock.layout[trashIdx];
+            var trashLocal = dock.mapToItem(null, trash.x + trash.w / 2,
+                                            trash.y + trash.h / 2);
+            dock.externalDragTo(trashLocal.x, trashLocal.y);
+            compare(dock.externalAffordance, "Move to Trash");
+            dock.trashAvailable = false;
+            compare(dock.externalAffordance, "Trash unavailable");
+            dock.trashAvailable = true;
+
+            // Over the Downloads stack: move to Downloads.
+            var stackIdx = dock.indexOfItemId("__downloads__");
+            var stack = dock.layout[stackIdx];
+            var stackLocal = dock.mapToItem(null, stack.x + stack.w / 2,
+                                            stack.y + stack.h / 2);
+            dock.externalDragTo(stackLocal.x, stackLocal.y);
+            compare(dock.externalAffordance, "Move to Downloads");
+        }
+
+        function test_external_multi_file_label_counts() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "A", true) ]
+            });
+            dock.beginExternalDrag(false, 3);
+            dock.setExternalPayload(false, "", "", 3, "");
+            compare(dock.externalIdentityLabel, "3 items");
+            var noTarget = dock.mapToItem(null, -200, -200);
+            dock.externalDragTo(noTarget.x, noTarget.y);
+            compare(dock.externalAffordance, "");
+        }
+
+        function test_external_affordance_capsule_renders() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "A", true) ]
+            });
+            var capsule = findChild(dock, "externalAffordance");
+            verify(capsule !== null);
+            compare(capsule.visible, false);
+
+            dock.beginExternalDrag(false, 1);
+            dock.setExternalPayload(false, "", "", 2, "");
+            var slot = dock.layout[0];
+            var local = dock.mapToItem(null, slot.x + slot.w / 2, slot.y + slot.h / 2);
+            dock.externalDragTo(local.x, local.y);
+            waitForRendering(stage);
+            compare(capsule.visible, true);
+            compare(capsule.label, "Open with A");
+        }
+
+        function test_duplicate_pin_flashes_then_clears() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "A", true), app("b", "B", true) ]
+            });
+            compare(dock.itemAt(0).duplicateFlash, false);
+            dock.flashPin("a.desktop");
+            compare(dock.duplicateFlashId, "a.desktop");
+            waitForRendering(stage);
+            compare(dock.itemAt(0).duplicateFlash, true);
+            compare(dock.itemAt(1).duplicateFlash, false);
+            verify(findChild(dock.itemAt(0), "duplicateFlash").visible);
+            tryVerify(function() { return dock.duplicateFlashId === ""; },
+                      dock.duplicateFlashMs + 1000);
+            compare(dock.itemAt(0).duplicateFlash, false);
+        }
+
         // -- Downloads stack + recents (T-10 section 17) --------------------
 
         function stackItems() {

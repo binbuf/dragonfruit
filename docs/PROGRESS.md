@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(81 earlier sections omitted)_
+_(82 earlier sections omitted)_
 
-- **T78 — T-12.1a Session manager and restart policy**: **State: done.** `services/session` is a real session manager: the composition; **`services/session/src/plan.rs`** (new) — `RestartPolicy` (`always` /
 - **T79 — T-12.1b Session environment, systemd units, second-VT**: **State: done.** The session environment is data and reaches every child; the; **`services/session/src/env.rs`** (new) — `SessionEnvironment` (`new`,
 - **T80 — T-12.2 Display-manager entry and logout teardown**: **State: done.** The session now has a display-manager `.desktop` entry, an; **`services/session/dragonfruit.desktop`** (new) — Wayland session
 - **T81 — T-12.3a Lock protocol and lock UI**: **State: done.** `ext-session-lock-v1` is enforced end to end and the shell is; **`compositor/src/lock.rs`** (new) — `LockModel`: the one `locked` flag (with
@@ -45,6 +44,7 @@ _(81 earlier sections omitted)_
 - **T110c — T-14.7c Dock motion smoothness and frame discipline**: **State: done.** Continuous Dock motion no longer rebuilds the entry model:; `shell/src/shellcontroller.cpp` — `withBounce` deleted; `rebuildDockEntries`
 - **T110d — T-14.7d Trash entry artwork**: **State: done.** The Trash glyph is now a designed, original bin at the token; `shell/dock/DockGlyph.qml` — `import QtQuick.Shapes`; the `trash` item is a
 - **T110e — T-14.7e Add Application picker**: **State: done.** The Dock's divider menu now offers **Add Application…**,; `shell/src/apppicker.{h,cpp}` (new, dockcore) — pure
+- **T110f — T-14.7f Dock drag-and-drop identity and feedback**: **State: done.** External drags are now read once at drag *enter*, so the Dock; `shell/src/dockdrops.{h,cpp}` — `DockDropPayloadData` +
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3228,6 +3228,18 @@ Gotchas for later tasks:
 
 ## Follow-ups
 
+- **T-14.7f drop capture follow-up.** The committed `t14-dock-drops.png` drives
+  the Dock's production presentation through the `DF_DOCK_DROP_FIXTURE` seam
+  because the harness has no reusable external drag source. A small scripted
+  DnD source client (offer `text/uri-list` + `application/x-dragonfruit-app`,
+  `start_drag`, synthetic motion) would exercise the enter-time read and the
+  real `wl_data_offer` path end-to-end for the capture; the compositor
+  conformance test already covers the target half.
+- **T-14.7f enter-mime ordering.** `ShellProtocol::beginDndRead` picks the mime
+  from the offer's advertised set at enter and reads it once. A compositor that
+  sends `enter` before the offer's `mime` events would read nothing (the drop
+  then falls back to no-op); the real compositors send offer → mimes → enter, so
+  this is only a hardening note.
 - **T-14.5 XDnD follow-up (the connection/runtime half).** T-14.5 landed the
   XDnD protocol model (`compositor/src/xdnd.rs`) and a live-Xwayland
   conformance test but not the bridge itself. Remaining: (a) a bridge X11
@@ -8728,3 +8740,80 @@ Gotchas for later tasks:
   on rerun. Not caused by this task.
 - `check-desktop-names.sh` still fails on the pre-existing StatusNotifier/zoo
   lines.
+
+## T110f — T-14.7f Dock drag-and-drop identity and feedback
+
+**State: done.** External drags are now read once at drag *enter*, so the Dock
+shows the real app identity while hovering, each target states what a drop will
+do, a duplicate alias drop pulses the existing entry, and Trash/Downloads
+failures raise a notification instead of a log line. No new ADR — ADR 0090
+already froze "drops show identity"; `docs/design/04-shell.md` gains a "Drop
+identity and feedback" paragraph.
+
+Real paths:
+
+- `shell/src/dockdrops.{h,cpp}` — `DockDropPayloadData` +
+  `parseDockDropPayload(mime, data)` (the one decoder, reused by enter and
+  drop), `dockDropAffordance(targetKind, payload, targetName, trashAvailable)`,
+  and `dockPinnedContains(pinned, id, resolvedId)`.
+- `shell/src/shellprotocol.{h,cpp}` — enter-time read: `onDataDeviceEnter`
+  calls new `beginDndRead()` (one pipe + `wl_data_offer_receive`, non-blocking
+  `QSocketNotifier`); `onDndReadable` reaches EOF → `finishDndRead()` caches the
+  parsed payload and emits new `dockExternalDragPayload(payloadIsApp, desktopId,
+  paths)`. `onDataDeviceDrop` calls `ensureDndPayloadReady()` (synchronous
+  bounded `poll` drain) and reuses the cache — no second receive. `resetDndRead`
+  + `resetExternalDrag` clear it; a superseding offer resets it.
+- `shell/src/shellcontroller.cpp` — `onDockExternalDragPayload` resolves the
+  alias through `m_index` (name + `iconPath`, degrading to the raw id) and calls
+  the new Dock `setExternalPayload`. `onDockExternalDropRequested`: duplicate
+  alias → `flashDuplicatePin` (no append); Trash unavailable / partial trash /
+  partial Downloads move → `raiseDockNotice`; multi-file stays one launch with
+  all args. New `flashDuplicatePin`; new `DF_DOCK_DROP_FIXTURE` capture seam
+  (`app`/`file-app`/`file-trash`).
+- `shell/src/launchfailure.{h,cpp}` — `raiseDockNotice(client, summary, body)`.
+- `shell/dock/Dock.qml` — `externalPayloadName/IconPath/FirstName`,
+  `duplicateFlashId` + `duplicateFlashTimer` + `flashPin`; `setExternalPayload`;
+  `externalAffordance` (mirrors the pure helper), `externalIdentityLabel`,
+  `externalAffordanceFor`; the placeholder entry carries the ghost identity; a
+  new 2x `externalAffordance` capsule; new `externalHoverEntry` test/capture
+  hook.
+- `shell/dock/DockEntry.qml` — `externalHasIdentity`, `duplicateFlash`; the
+  identity ghost draws the real `DockGlyph` plus `externalGhostName`; the
+  `duplicateFlash` highlight.
+- Tests: `tst_dockcore` — `parseDockDropPayloadClassifiesAppAliasAndFiles`,
+  `dropAffordanceMatchesTheActionPerTarget`,
+  `duplicatePinIsDetectedByIdOrResolvedIdentity`,
+  `aDockNoticeRaisesThroughTheSameNotificationPath`. `tst_dock.qml` —
+  `test_external_app_ghost_shows_the_resolved_identity`,
+  `_degrades_without_identity`, `test_external_file_affordances_follow_the_target`,
+  `test_external_multi_file_label_counts`, `test_external_affordance_capsule_renders`,
+  `test_duplicate_pin_flashes_then_clears`.
+- `scripts/capture-dock-drops.sh` + `make dock-drops-capture`;
+  `docs/captures/t14-dock-drops.png`; `docs/captures/README.md` T-14.7f
+  paragraph.
+
+Commands that work (repo root):
+
+- `ctest --test-dir build -R "tst_dock$|tst_dockcore"` — green (`tst_dock`
+  148, `tst_dockcore` 84).
+- `ctest --test-dir build --output-on-failure` — 53/53.
+- `make e2e` — green (incl. `client_drag_and_drop_reaches_a_chrome_surface`;
+  the compositor is untouched, so the target-half conformance is unchanged).
+- Live: `make dock-drops-capture` (host Wayland + spectacle + gdbus + Pillow).
+
+Gotchas for later tasks:
+
+- **The payload is read at enter and cached; the drop must not re-receive.**
+  `ensureDndPayloadReady()` is the only drop-time completion path; use
+  `parseDockDropPayload` for any new classification so enter/drop cannot drift.
+- **`beginDndRead` prefers `text/uri-list` over `application/x-dragonfruit-app`**
+  (same order the old drop path used), so a `.desktop` uri-list is classified as
+  an app alias once parsed.
+- **Identity is resolved shell-side.** QML only ever sees `name`/`iconPath`/
+  count; do not add identity lookups to QML.
+- **`DF_DOCK_DROP_FIXTURE` is a capture seam, never a session value.** It drives
+  `beginExternalDrag`/`setExternalPayload`/`externalHoverEntry` directly.
+- **Duplicate feedback is `flashPin(desktopId)`** (a 700 ms Dock highlight);
+  `dockDropActionFor` still returns `PinApp`, the controller decides duplicate.
+- `check-desktop-names.sh` still fails on the pre-existing StatusNotifier/zoo
+  lines (unchanged here).

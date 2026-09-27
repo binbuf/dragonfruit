@@ -194,6 +194,26 @@ Spotlight-equivalent search remain post-gate. See
 [ADR 0090](adr/0090-dock-app-management-picker-and-drops.md) and the
 T-14.7e/T-14.7f units.
 
+**Drop identity and feedback (T-14.7f).** An external drag is read once, at
+drag *enter* (`ShellProtocol::onDataDeviceEnter` → `beginDndRead`): the shell
+parses the `text/uri-list`/`application/x-dragonfruit-app` payload, caches the
+classification, and reuses it at drop instead of requesting the mime twice. If
+the source has not finished writing by the drop, the read is completed
+synchronously (bounded `poll`) before resolving, so a payload is never dropped
+in flight. The shell then resolves an app alias through `m_index` (desktop id →
+name + themed `iconPath`) and pushes only `name`/`iconPath`/count to QML: an
+app drag opens the gap with the real tile and name, a file drag shows the file
+count (or the single file's name). While hovering, the target entry draws a
+capsule from the pure `dockDropAffordance` helper: `Open with <app>` for an app
+entry, `Move to Trash` (or `Trash unavailable` when the backend is down),
+`Move to Downloads` for the stack, and no highlight for the divider or empty
+Dock. Dropping an alias that is already pinned pulses the existing entry
+(`flashPin`) instead of silently no-opping. Failed launches, an unavailable
+Trash, and partial Trash/Downloads moves raise the Dock's notification notice
+(`raiseDockLaunchFailure`/`raiseDockNotice`), and multi-file semantics are one
+launch with all arguments or one move/trash for every path. `dockdrops` stays
+the single decision point; the ghost and affordances are presentation only.
+
 ### Dock folders and stacks
 
 A folder entry is a **stack**, never an app launch: clicking it shows its

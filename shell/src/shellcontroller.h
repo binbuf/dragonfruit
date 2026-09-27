@@ -233,6 +233,10 @@ private slots:
     void onDockExternalDragLeft();
     void onDockExternalDropped(bool payloadIsApp, const QString &desktopId,
                                const QStringList &paths, qreal x, qreal y);
+    // The enter-time payload read finished (T-14.7f): resolve identity for the
+    // ghost/affordance and cache it for the drop.
+    void onDockExternalDragPayload(bool payloadIsApp, const QString &desktopId,
+                                   const QStringList &paths);
     void onDockExternalDropRequested(const QString &targetId, const QString &targetKind,
                                      const QString &desktopId, bool payloadIsApp);
     // The Downloads stack (T-10 section 17).
@@ -439,6 +443,9 @@ private:
     void failDockLaunch(const QString &desktopId, const QString &reason);
     // Clear a transient "failed" launch state after the notice has shown.
     void scheduleLaunchStateClear(const QString &desktopId);
+    // A duplicate app-alias drop (T-14.7f): pulse the already-pinned entry so
+    // the no-op is visible instead of silent.
+    void flashDuplicatePin(const QString &desktopId);
     // Coalesce a Dock render onto the next event-loop turn.
     void scheduleDockRender();
     // Launch Files at `argument` through the Files `.desktop` (T-10.6c). The
