@@ -4,11 +4,12 @@ import QtQuick.Shapes
 import QtQuick.VectorImage
 import Dragonfruit
 
-// Dock entry artwork (T-10). Two shapes:
+// Dock entry artwork (T-10). Three shapes:
 //   * an app tile — a real themed icon resolved by app-index (T-14.1a) when
 //     one is available, otherwise a rounded, deterministically coloured square
 //     carrying the application's initial (an original placeholder, never a
 //     bitmap asset).
+//   * a folder stack — a macOS-like folder silhouette (T-14.7h), no text.
 //   * the Trash — our own geometry (lid, handle, bin) with an empty/full
 //     state. No Apple artwork is copied (14-risks.md).
 Item {
@@ -101,43 +102,59 @@ Item {
         fillMode: VectorImage.PreserveAspectFit
     }
 
-    // -- Downloads stack -------------------------------------------------
-    // A folder glyph for the Downloads stack (T-10 section 17): a tab plus a
-    // body, drawn from our own geometry.
+    // -- Folder stack ----------------------------------------------------
+    // A macOS-like folder silhouette (T-14.7h): a back tab, a front face with
+    // a subtle vertical gradient, a rim edge, and an inner sheen — all our own
+    // geometry, sized like the app tiles. The folder name belongs to the hover
+    // label and the popover, never the artwork, so there is deliberately no
+    // `Text` here (ADR 0092).
     Item {
         id: stack
+        objectName: "stackArtwork"
         visible: root.kind === "stack"
         anchors.fill: parent
 
         readonly property real s: root.size
 
+        // The back tab, peeking above the front face on the left.
         Rectangle {
+            objectName: "stackFolderTab"
+            x: stack.s * 0.10
+            y: stack.s * 0.20
             width: stack.s * 0.42
-            height: stack.s * 0.16
-            radius: stack.s * 0.04
-            color: Theme.primitive.color.sky500
-            x: stack.s * 0.14
-            y: stack.s * 0.22
-        }
-        Rectangle {
-            width: stack.s * 0.72
-            height: stack.s * 0.46
-            radius: stack.s * 0.09
-            color: Theme.primitive.color.sky500
+            height: stack.s * 0.18
+            radius: stack.s * 0.045
+            color: Theme.color.folderTab
             border.width: 1
-            border.color: Qt.rgba(0, 0, 0, 0.18)
-            x: stack.s * 0.14
-            y: stack.s * 0.32
+            border.color: Theme.color.folderRim
         }
-        Text {
-            anchors.horizontalCenter: parent.horizontalCenter
-            y: stack.s * 0.66
-            text: root.name.length > 0 ? root.name : qsTr("Downloads")
-            color: Theme.color.textSecondary
-            font.pixelSize: Math.round(stack.s * 0.16)
-            elide: Text.ElideRight
-            width: stack.s * 0.8
-            horizontalAlignment: Text.AlignHCenter
+
+        // The front face: gradient body, rim edge, and a soft top sheen.
+        Rectangle {
+            objectName: "stackFolderFront"
+            x: stack.s * 0.08
+            y: stack.s * 0.30
+            width: stack.s * 0.84
+            height: stack.s * 0.48
+            radius: stack.s * 0.09
+            border.width: 1
+            border.color: Theme.color.folderRim
+            gradient: Gradient {
+                GradientStop { position: 0.0; color: Theme.color.folderFillTop }
+                GradientStop { position: 1.0; color: Theme.color.folderFillBottom }
+            }
+
+            Rectangle {
+                objectName: "stackFolderSheen"
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.margins: Math.max(1, stack.s * 0.05)
+                height: Math.max(1, stack.s * 0.06)
+                radius: height / 2
+                color: Theme.color.folderHighlight
+                opacity: 0.35
+            }
         }
     }
 

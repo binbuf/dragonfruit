@@ -71,6 +71,12 @@ QString DownloadsMonitor::defaultDirectory()
     return downloadsDirectory();
 }
 
+QString DownloadsMonitor::displayName() const
+{
+    const QString base = QFileInfo(m_directory).fileName();
+    return base.isEmpty() ? QStringLiteral("Downloads") : base;
+}
+
 void DownloadsMonitor::start()
 {
     if (m_watching)
