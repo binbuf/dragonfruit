@@ -1231,6 +1231,104 @@ Item {
             compare(dock.entryBounce(dock.items[0]), 0);
         }
 
+        // -- Minimize-to-icon reaction (T-14.7s) ---------------------------
+
+        // Off by default: the shell only publishes a minimize phase when the
+        // key is on, and the renderer ignores one even if injected.
+        function test_minimize_reaction_is_off_by_default() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "A", true) ]
+            });
+            compare(dock.minimizeReaction, false);
+            var baseY = dock.layout[0].y;
+            dock.bouncePhases = { a: { minimize: true, minimizePhase: 0.5 } };
+            waitForRendering(stage);
+            compare(dock.entryBounce(dock.items[0]), 0);
+            compare(dock.layout[0].y, baseY);
+        }
+
+        function test_minimize_reaction_lifts_the_entry_once() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, minimizeReaction: true,
+                entries: [ app("a", "A", true) ]
+            });
+            var baseY = dock.layout[0].y;
+            // Baseline (no phase) is already zero.
+            compare(dock.entryBounce(dock.items[0]), 0);
+            dock.bouncePhases = { a: { minimize: true, minimizePhase: 0.5 } };
+            waitForRendering(stage);
+            // A bottom Dock bounces up into the magnify band; the amplitude is
+            // the token fraction of the icon size.
+            var expected = Theme.controls.dock.minimizeReaction.amplitudeRatio
+                           * dock.iconSize;
+            verify(Math.abs(dock.entryBounce(dock.items[0]) - expected) < 0.5);
+            verify(dock.layout[0].y < baseY);
+            // The phase is bounded: the end of the hop has no translation.
+            dock.bouncePhases = { a: { minimize: true, minimizePhase: 1.0 } };
+            waitForRendering(stage);
+            compare(dock.entryBounce(dock.items[0]), 0);
+            // A cleared map removes the reaction without rebuilding the model.
+            dock.bouncePhases = ({});
+            waitForRendering(stage);
+            compare(dock.entryBounce(dock.items[0]), 0);
+        }
+
+        function test_minimize_reaction_follows_the_dock_axis_and_direction() {
+            // A left Dock bounces away from the screen edge, to the right.
+            var left = make(dockComponent, {
+                width: 160, height: 800, position: "left", minimizeReaction: true,
+                entries: [ app("a", "A", true) ]
+            });
+            var leftBaseX = left.layout[0].x;
+            var leftBaseY = left.layout[0].y;
+            left.bouncePhases = { a: { minimize: true, minimizePhase: 0.5 } };
+            waitForRendering(stage);
+            verify(left.layout[0].x > leftBaseX);
+            // The hop is on the cross axis only; y is untouched.
+            compare(left.layout[0].y, leftBaseY);
+
+            // A right Dock mirrors it: the entry moves left, away from the edge.
+            var right = make(dockComponent, {
+                width: 160, height: 800, position: "right", minimizeReaction: true,
+                entries: [ app("a", "A", true) ]
+            });
+            var rightBaseX = right.layout[0].x;
+            right.bouncePhases = { a: { minimize: true, minimizePhase: 0.5 } };
+            waitForRendering(stage);
+            verify(right.layout[0].x < rightBaseX);
+        }
+
+        function test_reduced_motion_removes_the_minimize_reaction() {
+            Theme.reducedMotion = true;
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, minimizeReaction: true,
+                entries: [ app("a", "A", true) ]
+            });
+            dock.bouncePhases = { a: { minimize: true, minimizePhase: 0.5 } };
+            waitForRendering(stage);
+            compare(dock.entryBounce(dock.items[0]), 0);
+        }
+
+        function test_minimize_reaction_does_not_rebuild_the_entry_model() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, minimizeReaction: true,
+                entries: [ app("a", "A", true), app("b", "B", true) ]
+            });
+            var first = dock.itemAt(0);
+            var second = dock.itemAt(1);
+            first.pressed = true;
+            dock.bouncePhases = { a: { minimize: true, minimizePhase: 0.5 } };
+            waitForRendering(stage);
+            verify(dock.itemAt(0) === first);
+            verify(dock.itemAt(1) === second);
+            compare(first.pressed, true);
+            compare(dock.entries.length, 2);
+            // The accessible name still carries the running state (the reaction
+            // is decorative and never enters the name).
+            verify(dock.itemAt(0).Accessible.name.indexOf("running") >= 0);
+        }
+
         // T-10 section 22: an app that exits mid-bounce must resolve — the
         // entry is removed, no stale bounce or input rect survives.
         function test_removing_a_bouncing_entry_resolves_the_animation() {

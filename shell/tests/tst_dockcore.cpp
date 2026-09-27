@@ -437,6 +437,7 @@ private slots:
         QCOMPARE(config.titlebarDoubleClick, QStringLiteral("zoom"));
         QCOMPARE(config.showRecentApps, false);
         QCOMPARE(config.chooserOnHover, false);
+        QCOMPARE(config.minimizeReaction, false);
         QCOMPARE(config.reduceMotion, false);
         QCOMPARE(config.pinned, QStringList());
     }
@@ -449,12 +450,14 @@ private slots:
         values.insert(QStringLiteral("dock.position"), QStringLiteral("left"));
         values.insert(QStringLiteral("accessibility.reduceMotion"), true);
         values.insert(QStringLiteral("dock.chooserOnHover"), true);
+        values.insert(QStringLiteral("dock.minimizeReaction"), true);
         const DockConfig config = dockConfigFromValues(values);
         QCOMPARE(config.size, 0.9);
         QCOMPARE(config.autohide, true);
         QCOMPARE(config.position, QStringLiteral("left"));
         QCOMPARE(config.reduceMotion, true);
         QCOMPARE(config.chooserOnHover, true);
+        QCOMPARE(config.minimizeReaction, true);
         // Keys absent from the map keep the schema default.
         QCOMPARE(config.magnification, 0.5);
         QCOMPARE(config.showRecentApps, false);
@@ -1717,6 +1720,68 @@ private slots:
         QCOMPARE(dockAttentionBouncePhase(kAttentionBounceHopMs), 0.0);
         QVERIFY(qAbs(dockAttentionBouncePhase(kAttentionBounceHopMs + kAttentionBounceHopMs / 2)
                      - 0.5) < 1e-9);
+    }
+
+    // -- minimize-to-icon reaction (T-14.7s) -----------------------------
+
+    void minimizeReactionPhaseIsOneHopThenDone()
+    {
+        // A single linear hop in [0,1); the caller's sin(pi*phase) makes the
+        // round trip. It ends exactly at the token-mirrored duration.
+        QCOMPARE(dockMinimizeReactionPhase(0), 0.0);
+        QVERIFY(qAbs(dockMinimizeReactionPhase(kMinimizeReactionMs / 2) - 0.5) < 1e-9);
+        QCOMPARE(dockMinimizeReactionPhase(kMinimizeReactionMs), -1.0);
+        QCOMPARE(dockMinimizeReactionPhase(kMinimizeReactionMs + 10), -1.0);
+        QCOMPARE(dockMinimizeReactionPhase(-1), -1.0);
+    }
+
+    void minimizedPulsesDetectOnePulsePerIncreaseAndCoalesce()
+    {
+        const auto entriesFor = [](int minimized) {
+            QVariantList windows;
+            for (int i = 0; i < 3; ++i)
+                windows.append(QVariantMap{{QStringLiteral("minimized"), i < minimized}});
+            QVariantList entries;
+            entries.append(QVariantMap{{QStringLiteral("id"), QStringLiteral("a")},
+                                       {QStringLiteral("kind"), QStringLiteral("pinned")},
+                                       {QStringLiteral("windowList"), windows}});
+            entries.append(QVariantMap{{QStringLiteral("id"), QStringLiteral("b")},
+                                       {QStringLiteral("kind"), QStringLiteral("temporary")},
+                                       {QStringLiteral("windowList"), QVariantList{}}});
+            return entries;
+        };
+        const QHash<QString, int> counts = dockMinimizedCounts(entriesFor(0));
+        QCOMPARE(counts.value("a"), 0);
+        QCOMPARE(counts.value("b"), 0);
+        // No increase: no pulse (the seeding build and an idle projection).
+        QVERIFY(dockMinimizedPulses(entriesFor(0), counts).isEmpty());
+        // One window minimizes: one pulse for the owning entry.
+        QCOMPARE(dockMinimizedPulses(entriesFor(1), counts), QStringList{QStringLiteral("a")});
+        // A second window while the first pulse is in flight: still one pulse,
+        // keyed to the same entry (the shell restarts its clock).
+        const QHash<QString, int> afterFirst = dockMinimizedCounts(entriesFor(1));
+        QCOMPARE(dockMinimizedPulses(entriesFor(2), afterFirst), QStringList{QStringLiteral("a")});
+        // A restore lowers the count and never pulses.
+        const QHash<QString, int> afterSecond = dockMinimizedCounts(entriesFor(2));
+        QVERIFY(dockMinimizedPulses(entriesFor(1), afterSecond).isEmpty());
+    }
+
+    void minimizedCountsSkipThePerWindowRows()
+    {
+        QVariantList entries;
+        entries.append(QVariantMap{{QStringLiteral("id"), QStringLiteral("a")},
+                                   {QStringLiteral("kind"), QStringLiteral("pinned")},
+                                   {QStringLiteral("windowList"),
+                                    QVariantList{QVariantMap{{QStringLiteral("minimized"), true}}}}});
+        // A per-window `minimized` row is skipped so the owning app is not
+        // double-counted even though it also carries a windowList.
+        entries.append(QVariantMap{{QStringLiteral("id"), QStringLiteral("win:1")},
+                                   {QStringLiteral("kind"), QStringLiteral("minimized")},
+                                   {QStringLiteral("windowList"),
+                                    QVariantList{QVariantMap{{QStringLiteral("minimized"), true}}}}});
+        const QHash<QString, int> counts = dockMinimizedCounts(entries);
+        QCOMPARE(counts.value("a"), 1);
+        QVERIFY(!counts.contains(QStringLiteral("win:1")));
     }
 
     // -- scene-graph frame gate (FR-14) ----------------------------------

@@ -49,6 +49,11 @@ Rectangle {
     property bool autoHide: false
     property bool animateOpening: true
     property bool showRecentApps: false
+    // Opt-in minimize-to-icon reaction (T-14.7s): a bounded one-hop bounce on
+    // the acting app's entry when one of its windows minimizes. Default off;
+    // the shell only publishes a `minimize` phase when the key is on, and the
+    // reduced-motion gate below removes the translation.
+    property bool minimizeReaction: false
     property bool revealed: true
     property bool trashFull: false
     property int trashCount: 0
@@ -102,7 +107,8 @@ Rectangle {
     // shell updates this map every committed frame instead of rebuilding
     // `entries`, so the Repeater model — and every live delegate's hover and
     // press state — survives a bounce. Each value is
-    // `{ phase: 0..1, attention: bool }`.
+    // `{ phase: 0..1, attention: bool }` and, for a minimize reaction,
+    // `{ minimize: true, minimizePhase: 0..1 }` (T-14.7s).
     property var bouncePhases: ({})
 
     // Keyboard navigation (T-10 section 20). The shell sets
@@ -2493,6 +2499,30 @@ Rectangle {
         return info !== undefined && info.attention === true;
     }
 
+    // The minimize-reaction phase for an entry (T-14.7s): the shell publishes
+    // it in the same `bouncePhases` map as a separate `minimize` field so a
+    // minimize pulse has its own amplitude and never rebuilds the entry model.
+    // -1 when the entry is not reacting; an entry-embedded `minimizeBounce`
+    // wins so direct-model callers keep working.
+    function entryMinimizePhase(entry) {
+        if (!entry)
+            return -1;
+        if (entry.minimizeBounce !== undefined && entry.minimizeBounce >= 0)
+            return entry.minimizeBounce;
+        var info = bouncePhases[entry.id];
+        return info !== undefined && info.minimize === true
+               && info.minimizePhase !== undefined ? info.minimizePhase : -1;
+    }
+
+    function entryMinimizeActive(entry) {
+        if (!entry)
+            return false;
+        if (entry.minimizeBounce !== undefined && entry.minimizeBounce >= 0)
+            return true;
+        var info = bouncePhases[entry.id];
+        return info !== undefined && info.minimize === true;
+    }
+
     // The launch/attention bounce translation for an entry (T-10 section
     // 8.1): a sinusoidal hop whose phase the shell drives from the
     // compositor-clock launch/attention clocks. Attention is taller than a
@@ -2501,6 +2531,15 @@ Rectangle {
     function entryBounce(entry) {
         if (Theme.reducedMotion)
             return 0;
+        // The minimize reaction (T-14.7s) is its own one-hop bounce: opt-in,
+        // amplitude from the token as a fraction of the icon size. The
+        // reduced-motion gate above already removed the translation.
+        if (minimizeReaction && entryMinimizeActive(entry)) {
+            var minimize = entryMinimizePhase(entry);
+            if (minimize >= 0)
+                return Theme.controls.dock.minimizeReaction.amplitudeRatio
+                       * iconSize * Math.sin(Math.PI * minimize);
+        }
         var phase = entryPhase(entry);
         if (phase < 0)
             return 0;

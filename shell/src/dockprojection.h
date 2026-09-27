@@ -5,6 +5,7 @@
 // Wayland, no QML, no shell state — unit-testable in isolation (tst_dockcore).
 #pragma once
 
+#include <QHash>
 #include <QList>
 #include <QString>
 #include <QVariantList>
@@ -49,3 +50,16 @@ int dockWindowCount(const QVariantMap &entry);
 // Human-readable fallback name for an unresolved app id (last reverse-DNS
 // segment). The real name and icon come from app-index (T-14.1a).
 QString displayNameForAppId(const QString &appId);
+
+// The number of minimized windows carried by each app entry, keyed by the
+// entry `id` (T-14.7s). Only entries that carry a `windowList` participate
+// (pinned/running app entries); the per-window `minimized` rows themselves are
+// skipped so the owning app is not double-counted. Pure and unit-tested.
+QHash<QString, int> dockMinimizedCounts(const QVariantList &entries);
+
+// Compare the current Dock entries against the previous per-entry minimized
+// counts and return the ids whose count increased, in entry order (a window
+// just minimized). The shell turns each into a one-shot minimize reaction
+// pulse. Pure and unit-tested (tst_dockcore).
+QStringList dockMinimizedPulses(const QVariantList &entries,
+                                const QHash<QString, int> &previous);
