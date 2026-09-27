@@ -156,6 +156,22 @@ trace lives at `docs/captures/t14-dock-motion-trace.txt`. See
 [ADR 0100](adr/0100-dock-motion-phase-map-and-popover-buffer.md) and the
 T-14.7c unit.
 
+### Trash entry artwork
+
+The Trash is a designed, original object (T-14.7d), not a wireframe, and it
+matches the app tiles' quality without copying any Apple artwork. Its glyph is
+drawn in a `controls.dock.trashSize`-derived box centred inside the entry's
+iconSize box, so it scales with magnification and keeps the app tiles' baseline.
+The anatomy is a metallic body with a subtle vertical fill/gradient and a rim
+edge, an overhanging lid, and a clean handle. Empty is a tidy neutral bin; full
+adds a crumpled-paper silhouette overflowing behind the rim plus an accent rim
+cue — a shape change as well as a colour change, so it stays legible in
+grayscale and for colour-vision differences. Unavailable keeps the dim plus the
+status badge. The fill/rim/paper colours are semantic tokens (`trashFillTop`,
+`trashFillBottom`, `trashRim`, `trashHighlight`, `trashPaper`, `trashPaperEdge`)
+resolved per scheme from primitives; the glyph is pure QML rectangles and a
+`Shape`, so it renders Image-less at any DPI and headless.
+
 ### Adding and removing apps
 
 The Dock manages its own contents: the divider menu opens an **Add

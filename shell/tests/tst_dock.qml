@@ -40,9 +40,11 @@ Item {
         SignalSpy { id: sizeChangedSpy; signalName: "dockSizeChanged" }
 
         // Reduced motion is a global singleton; reset it before every test so
-        // a failure mid-test cannot leak into the next one.
+        // a failure mid-test cannot leak into the next one. Same for the colour
+        // scheme the T-14.7d glyph tests flip.
         function init() {
             Theme.reducedMotion = false;
+            Theme.dark = false;
         }
 
         function make(component, props) {
@@ -64,6 +66,59 @@ Item {
 
         function minimized(id, name) {
             return { id: id, appId: id, name: name, kind: "minimized" };
+        }
+
+        // -- T-14.7d glyph pixel helpers ------------------------------------
+        // `grabImage` composites the item over the offscreen stage's opaque
+        // background; treat the top-left pixel as background and count the
+        // pixels that differ from it as foreground.
+        function backgroundIs(image, x, y) {
+            return Math.abs(image.red(x, y) - image.red(0, 0))
+                 + Math.abs(image.green(x, y) - image.green(0, 0))
+                 + Math.abs(image.blue(x, y) - image.blue(0, 0)) <= 24;
+        }
+
+        function countForeground(image, x0, y0, x1, y1) {
+            var n = 0;
+            for (var y = y0; y < y1; ++y)
+                for (var x = x0; x < x1; ++x)
+                    if (!backgroundIs(image, x, y))
+                        ++n;
+            return n;
+        }
+
+        function countForegroundAll(image) {
+            return countForeground(image, 0, 0, image.width, image.height);
+        }
+
+        function sumLuma(image) {
+            var total = 0;
+            for (var y = 0; y < image.height; ++y)
+                for (var x = 0; x < image.width; ++x)
+                    total += image.red(x, y) + image.green(x, y) + image.blue(x, y);
+            return total;
+        }
+
+        // The trash is drawn in a `trashSize`-derived box centred in the
+        // iconSize box (T-14.7d).
+        function trashBox(size) {
+            return size * Theme.controls.dock.trashSize
+                       / Theme.controls.dock.iconSize;
+        }
+
+        function trashInset(size) {
+            return (size - trashBox(size)) / 2;
+        }
+
+        // A band above the lid and clear of the centred handle: only a full
+        // bin's crumpled-paper silhouette reaches it.
+        function contentsBand(size) {
+            var t = trashBox(size);
+            var off = trashInset(size);
+            return {
+                x0: Math.round(off + t * 0.26), x1: Math.round(off + t * 0.34),
+                y0: Math.round(off + t * 0.14), y1: Math.round(off + t * 0.22)
+            };
         }
 
         // -- Entry regions --------------------------------------------------
@@ -2386,6 +2441,116 @@ Item {
             compare(themed.iconPath, "/usr/share/icons/hicolor/48x48/apps/files.png");
             verify(themed.hasThemedIconHint);
             themed.destroy();
+        }
+
+        // -- T-14.7d Trash entry artwork ------------------------------------
+
+        // `grabImage` does not apply the grabbed item's own opacity, and it
+        // composites over the stage; give each glyph a fixed dark backdrop so
+        // the foreground sample is scheme-independent and a DockEntry grab can
+        // still show the glyph's dimming.
+        function makeGlyphOnBackdrop(props, x) {
+            var size = props.size !== undefined ? props.size
+                                                : Theme.controls.dock.iconSize;
+            var back = createTemporaryObject(backdropComponent, stage,
+                { x: x, y: 0, width: size, height: size, color: "#101010" });
+            var glyph = createTemporaryObject(glyphComponent, stage, props);
+            glyph.x = x;
+            glyph.y = 0;
+            waitForRendering(stage);
+            return { back: back, glyph: glyph };
+        }
+
+        function test_trash_glyph_renders_pixels_at_every_dock_size() {
+            var sizes = [32, 48, 64];
+            for (var i = 0; i < sizes.length; ++i) {
+                var s = sizes[i];
+                var made = makeGlyphOnBackdrop(
+                    { kind: "trash", size: s }, i * 90);
+                var img = grabImage(made.glyph);
+                compare(img.width, s);
+                verify(countForegroundAll(img) > 0,
+                       "the trash renders pixels at " + s + "px");
+                // The artwork stays inside the centred trashSize box.
+                var off = Math.floor(trashInset(s));
+                if (off > 0) {
+                    compare(countForeground(img, 0, 0, off, s), 0,
+                            "no artwork left of the trashSize box at " + s);
+                    compare(countForeground(img, s - off, 0, s, s), 0,
+                            "no artwork right of the trashSize box at " + s);
+                }
+                made.glyph.destroy();
+                made.back.destroy();
+            }
+        }
+
+        function test_trash_empty_and_full_differ_above_the_lid() {
+            var empty = makeGlyphOnBackdrop(
+                { kind: "trash", trashFull: false, size: 48 }, 0);
+            var full = makeGlyphOnBackdrop(
+                { kind: "trash", trashFull: true, size: 48 }, 90);
+            var imgE = grabImage(empty.glyph);
+            var imgF = grabImage(full.glyph);
+            var band = contentsBand(48);
+            compare(countForeground(imgE, band.x0, band.y0, band.x1, band.y1), 0,
+                    "an empty bin has no contents above the lid");
+            verify(countForeground(imgF, band.x0, band.y0, band.x1, band.y1) > 0,
+                   "a full bin shows contents above the lid");
+            // Both states are non-null, and the full state adds pixels.
+            verify(countForegroundAll(imgE) > 0, "the empty bin renders");
+            verify(countForegroundAll(imgF) > countForegroundAll(imgE),
+                   "the full bin renders more than the empty one");
+            empty.glyph.destroy();
+            empty.back.destroy();
+            full.glyph.destroy();
+            full.back.destroy();
+        }
+
+        function test_trash_full_and_empty_render_in_both_schemes() {
+            var schemes = [false, true];
+            for (var i = 0; i < schemes.length; ++i) {
+                Theme.dark = schemes[i];
+                var empty = makeGlyphOnBackdrop(
+                    { kind: "trash", trashFull: false, size: 48 }, 0);
+                var full = makeGlyphOnBackdrop(
+                    { kind: "trash", trashFull: true, size: 48 }, 90);
+                var imgE = grabImage(empty.glyph);
+                var imgF = grabImage(full.glyph);
+                var label = schemes[i] ? "dark" : "light";
+                verify(countForegroundAll(imgE) > 0,
+                       "the empty bin renders " + label);
+                verify(countForegroundAll(imgF) > countForegroundAll(imgE),
+                       "the full bin adds contents " + label);
+                empty.glyph.destroy();
+                empty.back.destroy();
+                full.glyph.destroy();
+                full.back.destroy();
+            }
+        }
+
+        function test_trash_unavailable_renders_dimmer() {
+            // Grab the entries (not the glyphs) so the renderer applies the
+            // entry's glyph opacity.
+            var backA = createTemporaryObject(backdropComponent, stage,
+                { x: 0, y: 0, width: 48, height: 60, color: "#101010" });
+            var available = make(entryComponent,
+                                 { entry: { kind: "trash", available: true } });
+            var backU = createTemporaryObject(backdropComponent, stage,
+                { x: 90, y: 0, width: 48, height: 60, color: "#101010" });
+            var unavailable = make(entryComponent,
+                                   { entry: { kind: "trash", available: false } });
+            unavailable.x = 90;
+            waitForRendering(stage);
+            var glyphA = findChild(available, "glyph");
+            var glyphU = findChild(unavailable, "glyph");
+            verify(glyphA !== null && glyphU !== null, "both entries carry a glyph");
+            verify(glyphU.opacity < glyphA.opacity, "the unavailable glyph is dimmed");
+            verify(sumLuma(grabImage(unavailable)) < sumLuma(grabImage(available)),
+                   "the unavailable trash renders dimmer");
+            available.destroy();
+            unavailable.destroy();
+            backA.destroy();
+            backU.destroy();
         }
     }
 }
