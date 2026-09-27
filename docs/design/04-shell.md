@@ -153,6 +153,17 @@ and keyboard-inert — the chooser keeps its focus — and their footprint is
 reserved, so revealing them never resizes the popover (ADR 0100's pre-sized
 buffer still holds).
 
+The row list is **bounded** (T-14.7n): at most `component.dock.chooser.maxRows`
+(default 7) rows are visible and a longer list scrolls through the
+design-system `ScrollView` with `StopAtBounds`, so an app with many windows
+never produces an output-clipped popover. The `Show All Windows` header and its
+separator are pinned above the viewport and never scroll away. A short list is
+unchanged: no scrollbar and no reserved gutter. A scrolling list reserves the
+scrollbar's width as a gutter to the right of the per-row actions so the thumb
+never covers Minimize/Close. Up/Down move a highlighted row (starting from the
+header at -1), Home/End jump within the list, Return activates, and the viewport
+scrolls the highlighted row fully into view.
+
 The chooser owns no authoritative state: a row action is a request, never a
 mutation of `windowList`. Close maps to `df_toplevel.close` and Minimize/Restore
 to `df_toplevel.minimize` / `unminimize`; the compositor replies with the new

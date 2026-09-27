@@ -333,6 +333,11 @@ pub mod component {
             pub const WIDTH: f32 = 1.0_f32;
             pub const HEIGHT_RATIO: f32 = 0.6_f32;
         }
+        pub mod chooser {
+            pub const MAX_ROWS: f32 = 7.0_f32;
+            pub const SCROLLBAR_WIDTH: f32 = 8.0_f32;
+            pub const SCROLLBAR_MARGIN: f32 = 2.0_f32;
+        }
     }
     pub mod context_menu {
         pub const RADIUS: f32 = 14.0_f32;

@@ -1411,12 +1411,14 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // Capture/demo seam (T-14.7m): open the window chooser for the first
     // multi-window app once it has mapped, with the first row's per-window
     // actions revealed, so the live visual check captures them without a
-    // synthetic pointer. Retries until a grouped app exists. Never set in a
-    // normal session.
+    // synthetic pointer. Retries until a grouped app exists. The value `scroll`
+    // (T-14.7n) instead scrolls the bounded viewport mid-list and highlights a
+    // visible row, for the long-list capture. Never set in a normal session.
     if (qEnvironmentVariableIsSet("DF_DOCK_CHOOSER_FIXTURE")) {
+        const QString mode = qEnvironmentVariable("DF_DOCK_CHOOSER_FIXTURE");
         auto *timer = new QTimer(this);
         timer->setInterval(500);
-        connect(timer, &QTimer::timeout, this, [this, timer]() {
+        connect(timer, &QTimer::timeout, this, [this, timer, mode]() {
             if (!m_dockItem)
                 return;
             QMetaObject::invokeMethod(m_dockItem, "reveal");
@@ -1424,6 +1426,13 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             if (m_dockItem->property("chooserOpen").toBool()) {
                 timer->stop();
                 timer->deleteLater();
+                if (mode == QLatin1String("scroll")) {
+                    // Let the capped popover lay out, then scroll it.
+                    QTimer::singleShot(300, this, [this]() {
+                        if (m_dockItem)
+                            QMetaObject::invokeMethod(m_dockItem, "scrollChooserFixture");
+                    });
+                }
             }
         });
         timer->start();
