@@ -10,7 +10,7 @@
 //!
 //! ```text
 //! dragonfruit-app-index --resolve <identity>        # one record object
-//! dragonfruit-app-index --resolve-window <class>    # one record object
+//! dragonfruit-app-index --resolve-window <class> [instance]   # one record object
 //! dragonfruit-app-index --enumerate                 # every record, JSON array
 //! dragonfruit-app-index --misses                    # the miss set
 //! dragonfruit-app-index --refresh                   # rescan + index events
@@ -53,8 +53,13 @@ fn main() -> ExitCode {
             let Some(class) = args.get(1) else {
                 return usage("--resolve-window needs a WM_CLASS");
             };
+            // The optional second argument is the X11 WM_CLASS instance: the
+            // resolver consults both halves, and some apps only match on one
+            // of them (e.g. Firefox X11 is instance `Navigator`, class
+            // `org.mozilla.firefox`).
+            let instance = args.get(2).map(String::as_str).unwrap_or("");
             let mut index = AppIndex::load();
-            match index.resolve_window("", "", class) {
+            match index.resolve_window("", instance, class) {
                 Some(resolved) => {
                     println!(
                         "{}",
@@ -409,7 +414,7 @@ fn print_help() {
          bus.\n\
          Options:\n\
            --resolve <identity>        resolve a Wayland app_id / desktop id\n\
-           --resolve-window <class>    resolve an X11 WM_CLASS\n\
+           --resolve-window <class> [instance]   resolve an X11 WM_CLASS\n\
            --enumerate                 print every installed record\n\
            --misses                    print the identity miss set\n\
            --refresh                   rescan and print install/uninstall/update events\n\

@@ -101,3 +101,26 @@ this slice, third-party identity, menus, tray, and drag-and-drop are real.
 
 - T-15's panes consume the app index (defaults, search later).
 - T-17's gate uses the zoo matrix.
+
+## Implementation note (T-14.6a)
+
+The zoo run lives in `scripts/zoo/` and writes
+`docs/captures/t14-zoo-matrix.{md,json}` plus `docs/captures/t14-zoo.png`
+(`make zoo-run`). It records, per app: launch, raw identity, the app-index
+desktop-id resolution, the SSD/CSD decoration tier, and the menu-broker tier.
+Apps that cannot be installed are recorded as "not run"; two are stand-ins/
+substitutes in this environment:
+
+- **Steam** is not installable, so a raw X11 window is launched with Steam's
+  real `WM_CLASS` (`Steam`/`steam`) against a faithful `steam.desktop`
+  (`StartupWMClass=Steam`). It exercises the same tier-2 identity path.
+- **The SDL game** is a small committed SDL2 sample (`scripts/zoo/sdl_zoo.c`).
+  SDL2's Wayland backend connected but never mapped a window on the nested
+  compositor, so the run uses SDL's X11 driver via Xwayland
+  (`SDL_VIDEO_X11_WMCLASS=game.zoo.sdl`); the Wayland path is a known gap for
+  T-14.6b.
+
+All six rows pass identity resolution. Every zoo app falls back to the fixed
+application menu (`tier: none`); none exports a native or DBusMenu menu, so the
+global-menu tiers are exercised by the T-14.4 bridge tests with `--mock-menu`,
+not here.

@@ -130,6 +130,17 @@ no portal (ADR 0082); its compositor-level round-trips are the T-13.5a
 conformance. Needs a host seat, Flatpak, spectacle, and Pillow; not in
 `make e2e`.
 
+T-14.6a's strange-app zoo sign-off is produced by
+`scripts/zoo/zoo-run.sh` (`make zoo-run`): a nested session launches Firefox
+(X11), xterm, a Steam-`WM_CLASS` stand-in, GNOME Calculator (GTK4 via flatpak),
+an SDL2 sample via Xwayland, and an Electron client, then records each app's
+raw identity, `app-index` desktop-id resolution, SSD/CSD decoration tier, and
+`menu-broker` tier. `t14-zoo-matrix.md`/`.json` is the machine-readable matrix
+(one pass/fail per app per behaviour) and `t14-zoo.png` is the nested desktop
+with the zoo mapped. Needs a host Wayland session, spectacle, Pillow, gcc with
+SDL2/X11 headers, an Electron install (`ZOO_ELECTRON_DIR`), and the Calculator
+flatpak; not in `make e2e`.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

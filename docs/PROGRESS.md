@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(73 earlier sections omitted)_
+_(74 earlier sections omitted)_
 
-- **T70 — T-11.1a Notification service core**: **State: done.** The `org.freedesktop.Notifications` service and the shell; **`services/notifications/`** (new crate `dragonfruit-notifications`,
 - **T71 — T-11.1b Notification actions and Dock badge replacement**: **State: done.** Notification actions round-trip to the originating app, the; **`services/notifications/src/dbus.rs`** — `GetCapabilities` adds `actions`;
 - **T72 — T-11.2a DND/Focus policy**: **State: done.** The notification service now owns a three-mode Focus/DND; **`services/notifications/src/policy.rs`** (new) — `FocusMode` (`off` /
 - **T73 — T-11.2b DND/Focus menu-bar reflection and Dock failure path**: **State: done.** The menu bar reflects the notification service's Focus/DND; **`shell/src/notificationclient.{h,cpp}`** — the seam gains
@@ -45,6 +44,7 @@ _(73 earlier sections omitted)_
 - **T106 — T-14.4 DBusMenu bridge**: **State: done.** A DBusMenu/AppMenu-exporting app's global menu is now bridged; `services/app-index/src/menubridge.rs` (new) — pure `MenuRegistration`
 - **T107 — T-14.5 XDnD bridge**: **State: done (protocol half + documented gap; the task explicitly allows; `compositor/src/xdnd.rs` (new) — pure XDnD:
 - **T107 — T-14.5 XDnD bridge (attempt 2 — gate repair)**: **State: done.** The attempt-1 protocol half and documented gap stand; `Makefile` — the `e2e` recipe runs
+- **T108 — T-14.6a Strange-app zoo run and matrix**: **State: done.** The scripted zoo run and its matrix are committed. Six rows,; `scripts/zoo/zoo-run.sh` (new) — orchestrator (`make zoo-run`): private nested
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -8130,3 +8130,72 @@ Gotchas for later tasks:
   still shows the nested Dragonfruit window (Settings > Appearance, Dock row,
   no stray artifacts); this session changed no UI code, so the visual verdict
   is unchanged.
+
+## T108 — T-14.6a Strange-app zoo run and matrix
+
+**State: done.** The scripted zoo run and its matrix are committed. Six rows,
+all passing identity resolution: Firefox (X11), xterm, a Steam-`WM_CLASS`
+stand-in, GNOME Calculator (GTK4 via flatpak), an SDL2 sample via Xwayland, and
+an Electron client. The run records launch / raw identity / app-index desktop
+id / SSD-CSD / menu-broker tier per app. No ADR (the only contract addition is
+one read-only synthetic query).
+
+Real paths:
+
+- `scripts/zoo/zoo-run.sh` (new) — orchestrator (`make zoo-run`): private nested
+  compositor + synthetic input, Xwayland-readiness wait, app launch, driver,
+  teardown. Skips missing apps as "not run".
+- `scripts/zoo/zoo-driver.py` (new) — polls `query identity`, reads X11
+  `WM_CLASS` with `xprop`, resolves through `dragonfruit-app-index`, reads SSD
+  from `query decorations`, menu tier from `dragonfruit-menu-broker`, writes
+  `docs/captures/t14-zoo-matrix.{md,json}` and crops `docs/captures/t14-zoo.png`
+  (wallpaper-colour bbox discovery, **not** the old hardcoded colour).
+- `scripts/zoo/sdl_zoo.c`, `scripts/zoo/x11_zoo.c`, `scripts/zoo/electron/main.js`,
+  `scripts/zoo/steam.desktop` (new) — samples/stand-in entries.
+- `compositor/src/input/synthetic.rs` — new read-only `query identity`:
+  `identity <id> <app_id|-> <title>` per window (Wayland `app_id` or Xwayland
+  `WM_CLASS` class). Unit parse test added.
+- `services/app-index/src/main.rs` — `--resolve-window <class> [instance]`
+  (instance needed for Firefox X11: class `org.mozilla.firefox`,
+  instance `Navigator`).
+- `compositor/tests/xwayland_conformance.rs` — `identity_query_reports_x11_wm_class`.
+- Docs: `docs/design/02-compositor.md` "Implementation note (T-14.6a)";
+  `docs/design/tracks/14-...` "Implementation note (T-14.6a)";
+  `docs/captures/README.md` zoo paragraph.
+
+Commands that work (repo root):
+
+- `make zoo-run` — exit 0, ~2 min (needs host Wayland, spectacle, Pillow,
+  gcc+SDL2/X11, Electron at `ZOO_ELECTRON_DIR`, Calculator flatpak).
+- `cargo test -p dragonfruit-compositor --lib`; `--test xwayland_conformance`
+  (7 tests); `cargo test -p dragonfruit-app-index` — all green.
+- `cargo fmt --all -- --check`; `cargo clippy --workspace --all-targets -- -D
+  warnings`; `make e2e` — exit 0.
+- Build note (unchanged): `export
+  PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig:$PKG_CONFIG_PATH` and
+  `RUSTFLAGS="-L $HOME/.local/df-devroot/lib64"` (or just `make`).
+
+Gotchas for later tasks:
+
+- **Firefox's raw X11 identity is `WM_CLASS = "Navigator", "org.mozilla.firefox"`**
+  (the Fedora wrapper sets `MOZ_APP_REMOTINGNAME=org.mozilla.firefox`; launching
+  `/usr/lib64/firefox/firefox` directly yields class `firefox`). app-index
+  resolves either. An inherited host `WAYLAND_DISPLAY` makes Firefox probe the
+  host compositor and fail with "cannot open display"; launch it with
+  `env -u WAYLAND_DISPLAY DISPLAY=<nested> GDK_BACKEND=x11 MOZ_ENABLE_WAYLAND=0`
+  and a seeded `user.js` to skip the first-run delay.
+- **Flatpak needs `--filesystem=$XDG_RUNTIME_DIR/$SOCK`** in addition to
+  `--socket=wayland` to reach a *custom-named* nested socket; `--socket=wayland`
+  alone only exposes the host default socket.
+- **SDL2's Wayland backend does not map a window** on the nested compositor (it
+  stops after the registry roundtrip, no xdg_surface); the zoo uses SDL's X11
+  driver with `SDL_VIDEO_X11_WMCLASS`. T-14.6b should investigate.
+- **Decoration expectations**: GTK apps (Firefox, Calculator) negotiate CSD;
+  xterm/Steam stand-in/SDL X11 get SSD; Electron/Chromium negotiates SSD.
+- **Steam is a stand-in**, not the real client (raw X11 window with
+  `WM_CLASS=Steam`); the matrix says so. Steam cannot be installed here.
+- `dnf download xterm` + `rpm2cpio` extracts xterm without root; the script does
+  this automatically when xterm is absent.
+- The old `capture-demo-driver.py` `WALL=(45,35,51)` constant no longer matches
+  the shipped wallpaper (`(33,13,41)`); the zoo driver discovers the colour
+  instead. Other capture scripts using `WALL` may need the same fix.
