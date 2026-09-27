@@ -17,6 +17,53 @@ QString withoutDesktopSuffix(QString id)
 
 } // namespace
 
+QString dockLaunchAppId(const DesktopEntry &entry)
+{
+    // The compositor keys the tile by the Wayland `app_id` a client announces.
+    // `StartupWMClass` is exactly that identity when set (and matches an
+    // Xwayland WM_CLASS); otherwise the desktop id without its suffix is the
+    // best available guess. An empty id yields no key.
+    const QString wmClass = entry.startupWmClass.trimmed();
+    if (!wmClass.isEmpty())
+        return wmClass;
+    return withoutDesktopSuffix(entry.id.trimmed());
+}
+
+void DockTileRects::record(const QString &id, const QRect &rect)
+{
+    if (id.isEmpty() || rect.width() <= 0 || rect.height() <= 0)
+        return;
+    if (!m_rects.contains(id) && m_rects.size() >= kCapacity) {
+        while (!m_order.isEmpty()) {
+            const QString oldest = m_order.takeFirst();
+            if (m_rects.remove(oldest) > 0)
+                break;
+        }
+    }
+    if (!m_rects.contains(id))
+        m_order.append(id);
+    m_rects.insert(id, rect);
+}
+
+QRect DockTileRects::rectFor(const QString &id) const
+{
+    return m_rects.value(id);
+}
+
+void DockTileRects::clear()
+{
+    m_rects.clear();
+    m_order.clear();
+}
+
+QRect clampDockTileRect(const QRect &rect, const QRect &outputBounds)
+{
+    if (!outputBounds.isValid())
+        return rect;
+    const QRect clamped = rect.intersected(outputBounds);
+    return clamped.isEmpty() ? QRect() : clamped;
+}
+
 DockConfig dockConfigFromValues(const QVariantMap &values)
 {
     DockConfig config;

@@ -386,6 +386,11 @@ Rectangle {
     // Escape asked to leave Dock keyboard navigation; the shell releases the
     // compositor keyboard focus back to the active window (T-10 section 20).
     signal keyboardFocusReleaseRequested()
+    // The acted-on entry's icon tile in output coordinates (T-14.7l), so the
+    // shell can hand it to the compositor before launching and the new window
+    // appears from (and minimizes/restores into) the real icon. One rect, not
+    // a stream; re-emitted only when a settled re-layout moves it.
+    signal entryTileRect(string desktopId, real x, real y, real w, real h)
 
     // --- Geometry constants ---------------------------------------------
     // `padding` is the cross-axis inset (artwork <-> plate edge on the side
@@ -433,6 +438,72 @@ Rectangle {
     // hidden, so a pointer reaching the output edge can summon it back
     // (T-10 section 15).
     readonly property real edgeTrigger: Theme.controls.dock.edgeTrigger
+    // The compositor-space origin of this surface's (0, 0) (T-14.7l). The
+    // shell derives it from the primary output geometry and the Dock edge; the
+    // tile rect reported to the shell adds it so the rect is already in the
+    // compositor's coordinates. Zero until the output is known.
+    property real outputOriginX: 0
+    property real outputOriginY: 0
+
+    // The last entry whose tile was reported, and the rect as reported, so a
+    // settled re-layout can re-emit only when the geometry actually moved
+    // (T-14.7l).
+    property string tileEntryId: ""
+    property string tileDesktopId: ""
+    property var lastTileRect: null
+
+    function launchIdentity(entry) {
+        if (!entry)
+            return "";
+        if (entry.desktopId !== undefined && entry.desktopId !== "")
+            return String(entry.desktopId);
+        return String(entry.id);
+    }
+
+    function entryTileRectFor(entry) {
+        var idx = indexOfItemId(entry.id);
+        if (idx < 0 || idx >= layout.length)
+            return null;
+        var r = layout[idx];
+        if (r.w <= 0 || r.h <= 0)
+            return null;
+        return { x: outputOriginX + r.x, y: outputOriginY + r.y, w: r.w, h: r.h };
+    }
+
+    // Report the acted-on entry's tile (T-14.7l). The shell remembers it and
+    // hands it to the compositor at launch.
+    function publishEntryTile(entry) {
+        var rect = entryTileRectFor(entry);
+        if (!rect)
+            return;
+        tileEntryId = entry.id;
+        tileDesktopId = launchIdentity(entry);
+        lastTileRect = rect;
+        entryTileRect(tileDesktopId, rect.x, rect.y, rect.w, rect.h);
+    }
+
+    // Re-report the remembered tile when a settled layout moved it. Suppressed
+    // while magnifying (the continuous follow would be a stream); the rest
+    // state republishes once magnification ends.
+    function republishEntryTile() {
+        if (tileEntryId === "" || lastTileRect === null || magnifying || dragging)
+            return;
+        var idx = indexOfItemId(tileEntryId);
+        if (idx < 0 || idx >= layout.length)
+            return;
+        var r = layout[idx];
+        var nx = outputOriginX + r.x;
+        var ny = outputOriginY + r.y;
+        if (r.w <= 0 || r.h <= 0)
+            return;
+        if (nx === lastTileRect.x && ny === lastTileRect.y
+                && r.w === lastTileRect.w && r.h === lastTileRect.h)
+            return;
+        lastTileRect = { x: nx, y: ny, w: r.w, h: r.h };
+        entryTileRect(tileDesktopId, nx, ny, r.w, r.h);
+    }
+
+    onLayoutChanged: republishEntryTile()
 
     // --- Auto-hide translation ------------------------------------------
     // The plate is translated off its anchored edge by the surface thickness
@@ -786,6 +857,11 @@ Rectangle {
             openStackFor(entry);
             return;
         }
+        // Report this entry's tile before the click resolves, so the shell can
+        // hand it to the compositor if the action launches or restores the app
+        // (T-14.7l).
+        if (entry.kind !== "trash")
+            publishEntryTile(entry);
         if (entry.running === true && entry.kind !== "minimized"
                 && entry.windowList !== undefined && entry.windowList.length > 1) {
             openChooser(entry);

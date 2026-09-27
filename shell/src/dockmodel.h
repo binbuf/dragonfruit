@@ -5,12 +5,52 @@
 #pragma once
 
 #include <QHash>
+#include <QRect>
 #include <QString>
 #include <QStringList>
 #include <QVariantList>
 #include <QVariantMap>
 
 class DesktopEntryIndex;
+struct DesktopEntry;
+
+// The compositor-visible `app_id` a launched entry announces (T-14.7l): its
+// `StartupWMClass` when present, else the desktop id without its `.desktop`
+// suffix. This is the key `df_toplevel_manager.set_launch_origin` is stored
+// under; an empty result means no key can be resolved and the launch keeps the
+// centering fallback. Pure and unit-tested (tst_dockcore).
+QString dockLaunchAppId(const DesktopEntry &entry);
+
+// A bounded `desktopId -> tile rectangle` map for the Dock's launch-origin
+// hand-off (T-14.7l). The Dock records the acted-on entry's tile from QML; the
+// shell reads it when it launches the app so the compositor can play the
+// window motion from the real icon. Bounded so a session that never maps (or
+// pins change) cannot grow it without bound; re-recording an existing key
+// refreshes it without growing. Pure and unit-tested (tst_dockcore).
+class DockTileRects
+{
+public:
+    static constexpr int kCapacity = 32;
+
+    // Record (or refresh) `id`'s tile. When the map is full and `id` is new,
+    // the oldest recorded key is evicted. `rect` with a non-positive extent is
+    // ignored so a garbage rect can never be handed to the compositor.
+    void record(const QString &id, const QRect &rect);
+    // The last recorded tile for `id`, or an invalid rect on a miss.
+    QRect rectFor(const QString &id) const;
+    int size() const { return m_rects.size(); }
+    void clear();
+
+private:
+    QHash<QString, QRect> m_rects;
+    QStringList m_order; // recording order; oldest first
+};
+
+// Clamp a launch-origin rect to the output it describes (T-14.7l). An invalid
+// `outputBounds` leaves the rect untouched; a rect that does not intersect the
+// output returns an invalid rect so the caller keeps the centered fallback.
+// Pure and unit-tested (tst_dockcore).
+QRect clampDockTileRect(const QRect &rect, const QRect &outputBounds);
 
 // The Dock's slice of the settings schema (T-08.2a). The values are read from
 // the `org.dragonfruit.Settings1` client; this struct is the typed view the
