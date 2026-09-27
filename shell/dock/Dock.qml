@@ -296,12 +296,118 @@ Rectangle {
         onTriggered: dock.showTooltip()
     }
 
-    // The pointer dwelled onto an entry: start the open timer, unless a drag,
-    // an external drag, a resize, or an open popover already owns the surface.
+    // --- Hover-open window chooser (T-14.7p) ----------------------------
+    // When `chooserOnHover` is on, dwelling on a grouped app entry opens its
+    // window chooser; moving along the Dock retargets the same popover to the
+    // newly hovered grouped entry instead of closing and reopening. The chooser
+    // is anchored to a snapshot proxy (below), not the live delegate, so a
+    // projection rebuild never orphans it. Default off: the shipping macOS
+    // click contract is unchanged.
+    property bool chooserOnHover: false
+    readonly property int chooserHoverDwell: Theme.controls.dock.chooser.hoverDwell
+    readonly property int chooserHoverCloseDelay:
+        Theme.controls.dock.chooser.hoverCloseDelay
+    // The grouped entry the pointer is dwelling toward, and whether the open
+    // chooser was hover-opened (a click-opened chooser is never closed by a
+    // pointer leave).
+    property var chooserHoverEntry: null
+    property bool chooserHoverOpened: false
+
+    // The geometry snapshot the chooser anchors to (T-14.7p). It captures the
+    // target delegate's rect in the Dock's coordinates and outlives that
+    // delegate, so a Repeater rebuild cannot destroy the anchor. It never
+    // allocates or resizes the Dock surface: it is a geometry proxy only.
+    Item {
+        id: chooserAnchorProxy
+        objectName: "chooserAnchorProxy"
+        visible: false
+        width: 0
+        height: 0
+
+        function capture(entryItem) {
+            if (!entryItem)
+                return;
+            var topLeft = entryItem.mapToItem(dock, 0, 0);
+            chooserAnchorProxy.x = topLeft.x;
+            chooserAnchorProxy.y = topLeft.y;
+            chooserAnchorProxy.width = entryItem.width;
+            chooserAnchorProxy.height = entryItem.height;
+        }
+
+        // Re-parent the proxy to force the chooser's anchored bindings and the
+        // arrow's `mapToItem` to re-evaluate after a delegate rebuild.
+        function reposition() {
+            var previous = chooserAnchorProxy.parent;
+            chooserAnchorProxy.parent = null;
+            chooserAnchorProxy.parent = previous;
+        }
+    }
+
+    Timer {
+        id: chooserHoverTimer
+        interval: dock.chooserHoverDwell
+        onTriggered: dock.openChooserOnHover()
+    }
+    Timer {
+        id: chooserCloseTimer
+        interval: dock.chooserHoverCloseDelay
+        onTriggered: dock.closeHoverChooser()
+    }
+
+    // A grouped app entry is a hover-open target: running, not a minimized
+    // per-window row, and with more than one window. Single-window entries are
+    // explicitly out of scope (activate-on-hover is a different interaction).
+    function chooserEligible(entry) {
+        return dock.chooserOnHover && entry
+            && entry.running === true && entry.kind !== "minimized"
+            && entry.windowList !== undefined && entry.windowList.length > 1;
+    }
+
+    function stopChooserHover() {
+        chooserHoverTimer.stop();
+        chooserCloseTimer.stop();
+        chooserHoverEntry = null;
+        chooserHoverOpened = false;
+    }
+
+    // The pointer dwelled onto an entry. A grouped entry starts the chooser
+    // dwell; everything else starts the hover name label, unless a hover-opened
+    // chooser is open, in which case the pointer giving way starts its close
+    // delay. Drag, external drag, resize, keyboard navigation, and another
+    // popover all suppress the hover-open path.
     function entryHoverBegan(entry, entryItem) {
-        if (!entry || entry.kind === "divider" || entry.kind === "external")
+        if (!entry || entry.kind === "divider" || entry.kind === "external") {
+            if (chooserOpen && chooserHoverOpened)
+                chooserCloseTimer.restart();
             return;
-        if (dragging || externalDragActive || resizing || popoverOpen)
+        }
+        if (dragging || externalDragActive || resizing)
+            return;
+        // The chooser itself is the one popover a hover may retarget; any other
+        // popover owns the stage.
+        if (popoverOpen && !chooserOpen)
+            return;
+        if (keyboardFocused)
+            return;
+
+        if (chooserEligible(entry)) {
+            // One Tooltip at a time: the chooser suppresses the name label.
+            hideTooltip();
+            chooserCloseTimer.stop();
+            if (chooserOpen && chooserHoverEntry === entry)
+                return;
+            chooserHoverEntry = entry;
+            chooserHoverTimer.restart();
+            return;
+        }
+
+        // Not a chooser target: a hover-opened chooser closes after the delay,
+        // so releasing onto a single-window entry dismisses it cleanly.
+        if (chooserHoverOpened) {
+            chooserHoverEntry = null;
+            chooserCloseTimer.restart();
+        }
+        if (chooserOpen)
             return;
         if (tooltipAnchor === entryItem && (tooltipOpen || tooltipDwellTimer.running))
             return;
@@ -312,11 +418,51 @@ Rectangle {
     }
 
     // The pointer left an entry. A leave from an entry that is no longer the
-    // anchor is a move to another entry and must not clear the new label.
+    // anchor is a move to another entry and must not clear the new label. A
+    // hover-opened chooser survives the gap between entries on the close delay.
     function entryHoverEnded(entryItem) {
+        if (chooserOpen && chooserHoverOpened)
+            chooserCloseTimer.restart();
         if (entryItem !== undefined && entryItem !== tooltipAnchor)
             return;
         hideTooltip();
+    }
+
+    // The dwell fired: open the chooser on a grouped entry, or retarget the
+    // already-open popover to the newly hovered one without a close/reopen
+    // flash. A late drag/resize/keyboard/navigation cancels.
+    function openChooserOnHover() {
+        var entry = chooserHoverEntry;
+        if (!entry)
+            return;
+        if (dragging || externalDragActive || resizing || keyboardFocused)
+            return;
+        if (popoverOpen && !chooserOpen)
+            return;
+        if (chooserOpen) {
+            retargetChooser(entry);
+            chooserHoverOpened = true;
+            return;
+        }
+        openChooser(entry, true);
+    }
+
+    function closeHoverChooser() {
+        chooserHoverEntry = null;
+        if (chooserOpen && chooserHoverOpened)
+            windowChooser.hide();
+        chooserHoverOpened = false;
+    }
+
+    // Re-anchor the open chooser to `entry` without closing it (T-14.7p).
+    function retargetChooser(entry) {
+        if (!chooserOpen || !entry)
+            return;
+        var idx = indexOfItemId(entry.id);
+        chooserAnchorProxy.capture(idx >= 0 ? entryRepeater.itemAt(idx) : null);
+        chooserAnchorProxy.reposition();
+        chooserEntry = entry;
+        chooserHoverEntry = entry;
     }
 
     function showTooltip() {
@@ -813,6 +959,13 @@ Rectangle {
     }
 
     function beginKeyboardNavigation() {
+        // Keyboard navigation suppresses the hover-open chooser (T-14.7p): it
+        // owns the arrow keys, so a hover-opened popover must give way.
+        if (chooserHoverOpened) {
+            stopChooserHover();
+            if (chooserOpen)
+                windowChooser.hide();
+        }
         keyboardFocused = true;
         // A pointer-opened popover owns the arrow keys; do not put a focus
         // ring behind it.
@@ -904,8 +1057,10 @@ Rectangle {
     function handleEntryTap(entry) {
         if (!entry)
             return;
-        // A click is never a hover: the name label goes away as the action
-        // commits (T-14.7i).
+        // A click is never a hover: cancel a pending dwell so it cannot open a
+        // chooser after the click has committed (T-14.7p), and the name label
+        // goes away as the action commits (T-14.7i).
+        chooserHoverTimer.stop();
         hideTooltip();
         if (entry.kind !== "stack") {
             activateEntry(entry);
@@ -993,6 +1148,9 @@ Rectangle {
         stackPopover.hide();
         appPicker.hide();
         trashConfirming = false;
+        chooserHoverTimer.stop();
+        chooserCloseTimer.stop();
+        chooserHoverEntry = null;
     }
 
     function openEntryMenu(entry) {
@@ -1005,21 +1163,30 @@ Rectangle {
         entryMenu.open = true;
     }
 
-    function openChooser(entry) {
+    // Open the window chooser on `entry`. A click passes no second argument;
+    // the hover path passes `true` so a pointer leave may close it again
+    // (T-14.7p). The anchor is the snapshot proxy, captured from the live
+    // delegate, so a later Repeater rebuild cannot orphan the popover.
+    function openChooser(entry, fromHover) {
         closePopovers();
         hideTooltip();
         hideTimer.stop();
         var idx = indexOfItemId(entry.id);
-        chooserAnchor = idx >= 0 ? entryRepeater.itemAt(idx) : null;
+        chooserAnchorProxy.capture(idx >= 0 ? entryRepeater.itemAt(idx) : null);
+        chooserAnchor = chooserAnchorProxy;
         chooserEntry = entry;
+        chooserHoverOpened = fromHover === true;
+        if (chooserHoverOpened)
+            chooserHoverEntry = entry;
         windowChooser.open = true;
     }
 
     // The window chooser survives a projection rebuild (T-14.7m): a minimize
     // or close never dismisses it. A full entry rebuild recreates the app
-    // delegate, so re-resolve the bound entry and its anchor by id; the rows
-    // themselves read the fresh `windowList`. When the app has no windows left
-    // its entry is gone and the chooser dismisses.
+    // delegate, so re-resolve the bound entry and re-capture the snapshot
+    // anchor from the fresh delegate (T-14.7p); the rows themselves read the
+    // fresh `windowList`. When the app has no windows left its entry is gone
+    // and the chooser dismisses.
     function refreshChooserAfterProjection() {
         if (!chooserOpen)
             return;
@@ -1030,7 +1197,10 @@ Rectangle {
             return;
         }
         chooserEntry = items[idx];
-        chooserAnchor = entryRepeater.itemAt(idx);
+        if (chooserHoverEntry)
+            chooserHoverEntry = items[idx];
+        chooserAnchorProxy.capture(entryRepeater.itemAt(idx));
+        chooserAnchorProxy.reposition();
     }
 
     // Open the Downloads stack popover (the default member).
@@ -1062,6 +1232,39 @@ Rectangle {
     function scrollChooserFixture() {
         windowChooser.scrollToRow(4);
         windowChooser.fixtureHoverIndex = 6;
+    }
+
+    // Capture/demo seam (T-14.7p): open the hover chooser on the first grouped
+    // entry without a synthetic pointer, or (`mode === "retarget"`) retarget it
+    // to the second grouped entry with the magnification pointer between them.
+    // Never set in a normal session.
+    function hoverChooserFixture(mode) {
+        var grouped = [];
+        for (var i = 0; i < items.length; ++i) {
+            if (chooserEligible(items[i]))
+                grouped.push(items[i]);
+        }
+        if (grouped.length === 0)
+            return false;
+        var first = indexOfItemId(grouped[0].id);
+        if (first >= 0) {
+            entryHoverBegan(grouped[0], entryRepeater.itemAt(first));
+            openChooserOnHover();
+            windowChooser.fixtureHoverIndex = 0;
+        }
+        if (mode === "retarget" && grouped.length > 1) {
+            var second = indexOfItemId(grouped[1].id);
+            if (second >= 0) {
+                var a = entryRepeater.itemAt(first);
+                var b = entryRepeater.itemAt(second);
+                pointerAlong = (a.x + b.x + b.width) / 2;
+                smoothPointerAlong = pointerAlong;
+                chooserHoverEntry = grouped[1];
+                openChooserOnHover();
+                windowChooser.fixtureHoverIndex = 0;
+            }
+        }
+        return true;
     }
 
     // Capture/demo seam (T-14.7k): open the stack entry with `id` without a
@@ -2542,6 +2745,12 @@ Rectangle {
         }
         onClosed: {
             dock.chooserOpen = false;
+            // A closed chooser releases every hover-open timer and target
+            // (T-14.7p); a click-opened chooser has none to release.
+            dock.chooserHoverTimer.stop();
+            dock.chooserCloseTimer.stop();
+            dock.chooserHoverEntry = null;
+            dock.chooserHoverOpened = false;
             dock.popoverChanged();
             dock.scheduleHide();
         }
@@ -2798,6 +3007,8 @@ Rectangle {
                 dock.pointerAlong = -1;
                 revealTimer.stop();
                 dock.hideTooltip();
+                if (dock.chooserOpen && dock.chooserHoverOpened)
+                    chooserCloseTimer.restart();
                 // A drag that leaves the surface is a remove (pinned) or a
                 // snap-back (T-10 section 12).
                 if (dock.dragging)

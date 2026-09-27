@@ -2105,6 +2105,143 @@ Item {
             compare(dock.chooserOpen, false);
         }
 
+        // -- T-14.7p hover-open chooser, retarget, and stable anchor ---------
+
+        function hoverFixtureDock(props) {
+            var base = { width: 1280, height: 160, chooserOnHover: true };
+            for (var key in props)
+                base[key] = props[key];
+            return make(dockComponent, base);
+        }
+
+        function test_chooser_hover_is_off_by_default() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ multiWindow("files", "Files", manyWindows(2)) ]
+            });
+            compare(dock.chooserOnHover, false);
+            dock.entryHoverBegan(dock.items[0], dock.itemAt(0));
+            // The shipping click contract is unchanged: the name label appears,
+            // the chooser does not.
+            tryCompare(dock, "tooltipOpen", true);
+            compare(dock.chooserOpen, false);
+        }
+
+        function test_chooser_hover_dwell_opens_without_a_click() {
+            var dock = hoverFixtureDock({
+                entries: [ multiWindow("files", "Files", manyWindows(2)) ]
+            });
+            compare(dock.chooserOnHover, true);
+            dock.entryHoverBegan(dock.items[0], dock.itemAt(0));
+            compare(dock.chooserOpen, false, "the chooser waits for the dwell");
+            compare(dock.tooltipOpen, false, "hover-open suppresses the name label");
+            tryCompare(dock, "chooserOpen", true);
+            compare(dock.chooserHoverOpened, true);
+            var chooser = findChild(dock, "windowChooser");
+            compare(chooser.entry.id, "files");
+        }
+
+        function test_chooser_hover_closes_after_the_delay() {
+            var dock = hoverFixtureDock({
+                entries: [ multiWindow("files", "Files", manyWindows(2)) ]
+            });
+            var entry = dock.itemAt(0);
+            dock.entryHoverBegan(dock.items[0], entry);
+            tryCompare(dock, "chooserOpen", true);
+            dock.entryHoverEnded(entry);
+            compare(dock.chooserOpen, true, "the popover survives the gap");
+            tryCompare(dock, "chooserOpen", false);
+        }
+
+        function test_chooser_hover_retargets_between_grouped_entries() {
+            var dock = hoverFixtureDock({
+                entries: [ multiWindow("files", "Files", manyWindows(2)),
+                           multiWindow("music", "Music", manyWindows(3)) ]
+            });
+            var a = dock.itemAt(0);
+            var b = dock.itemAt(1);
+            dock.entryHoverBegan(dock.items[0], a);
+            tryCompare(dock, "chooserOpen", true);
+            var proxy = findChild(dock, "chooserAnchorProxy");
+            verify(proxy !== null);
+            fuzzyCompare(proxy.x, a.x, 0.5);
+            // Move A -> B: the leave restarts the close delay, the enter cancels
+            // it and dwells, then retargets the same popover.
+            dock.entryHoverEnded(a);
+            dock.entryHoverBegan(dock.items[1], b);
+            compare(dock.chooserOpen, true, "retarget does not close first");
+            tryVerify(function() {
+                return dock.chooserEntry !== null && dock.chooserEntry.id === "music";
+            });
+            compare(dock.chooserOpen, true);
+            tryVerify(function() { return Math.abs(proxy.x - b.x) < 0.5; });
+            // The retarget keeps the same popover instance and anchor.
+            compare(dock.chooserAnchor, proxy);
+        }
+
+        function test_chooser_hover_released_onto_a_single_window_entry_closes() {
+            var dock = hoverFixtureDock({
+                entries: [ multiWindow("files", "Files", manyWindows(2)),
+                           app("music", "Music", true) ]
+            });
+            dock.entryHoverBegan(dock.items[0], dock.itemAt(0));
+            tryCompare(dock, "chooserOpen", true);
+            dock.entryHoverEnded(dock.itemAt(0));
+            // Releasing onto an entry with <= 1 window dismisses cleanly.
+            dock.entryHoverBegan(dock.items[1], dock.itemAt(1));
+            tryCompare(dock, "chooserOpen", false);
+        }
+
+        function test_chooser_hover_gives_way_to_another_popover() {
+            var dock = hoverFixtureDock({
+                entries: [ multiWindow("files", "Files", manyWindows(2)) ]
+            });
+            dock.entryHoverBegan(dock.items[0], dock.itemAt(0));
+            tryCompare(dock, "chooserOpen", true);
+            dock.openEntryMenu(dock.items[0]);
+            waitForRendering(stage);
+            compare(dock.chooserOpen, false, "one popover at a time");
+            compare(dock.menuOpen, true);
+        }
+
+        function test_chooser_hover_is_suppressed_by_keyboard_navigation() {
+            var dock = hoverFixtureDock({
+                entries: [ multiWindow("files", "Files", manyWindows(2)) ]
+            });
+            dock.entryHoverBegan(dock.items[0], dock.itemAt(0));
+            tryCompare(dock, "chooserOpen", true);
+            dock.beginKeyboardNavigation();
+            waitForRendering(stage);
+            compare(dock.keyboardFocused, true);
+            compare(dock.chooserOpen, false);
+        }
+
+        function test_chooser_anchor_survives_a_delegate_rebuild() {
+            var dock = hoverFixtureDock({
+                entries: [ multiWindow("files", "Files", manyWindows(2)) ]
+            });
+            dock.entryHoverBegan(dock.items[0], dock.itemAt(0));
+            tryCompare(dock, "chooserOpen", true);
+            var proxy = findChild(dock, "chooserAnchorProxy");
+            verify(proxy !== null);
+            compare(dock.chooserAnchor, proxy,
+                    "the chooser anchors to the snapshot proxy, not the delegate");
+            verify(proxy.width > 0);
+            // The shell rebuilds `entries` on a pin change: a fresh list with a
+            // new object identity destroys and recreates the delegate.
+            dock.entries = [ multiWindow("files", "Files", manyWindows(2)) ];
+            waitForRendering(stage);
+            compare(dock.chooserOpen, true, "the popover survives the rebuild");
+            compare(dock.chooserAnchor, proxy, "the snapshot is still the anchor");
+            var item = dock.itemAt(0);
+            tryVerify(function() { return Math.abs(proxy.x - item.x) < 0.5; });
+            var chooser = findChild(dock, "windowChooser");
+            tryVerify(function() {
+                return Math.abs(chooser.x + chooser.width / 2
+                                - (proxy.x + proxy.width / 2)) < 1.0;
+            });
+        }
+
         function test_empty_dock_click_dismisses_popover() {
             var dock = make(dockComponent, {
                 width: 1280, height: 160,

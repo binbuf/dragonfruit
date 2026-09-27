@@ -117,7 +117,7 @@ Item {
         function test_desktop_dock_pane_stays_live_without_a_daemon() {
             var shell = make();
             var pane = showPane(shell, "desktop-dock");
-            compare(pane.dockGroup.rows.children.length, 10);
+            compare(pane.dockGroup.rows.children.length, 11);
             var rows = pane.dockGroup.rows.children;
             for (var i = 0; i < rows.length; ++i)
                 verify(rows[i].control.enabled, "Dock row " + i + " control must stay enabled");

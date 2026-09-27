@@ -57,6 +57,7 @@ Item {
     property alias animateOpeningToggle: animateOpeningToggle
     property alias showIndicatorsToggle: showIndicatorsToggle
     property alias showRecentAppsToggle: showRecentAppsToggle
+    property alias chooserOnHoverToggle: chooserOnHoverToggle
     property alias dockGroup: dockGroup
     property alias globalMenuToggle: globalMenuToggle
     property alias menuGroup: menuGroup
@@ -211,11 +212,21 @@ Item {
             SettingsRow {
                 width: parent.width
                 label: qsTr("Show suggested and recent apps in Dock")
-                showSeparator: false
                 controlData: Toggle {
                     id: showRecentAppsToggle
                     text: ""
                     onToggled: (checked) => Settings.set("dock.showRecentApps", checked)
+                }
+            }
+
+            SettingsRow {
+                width: parent.width
+                label: qsTr("Open a window chooser by hovering")
+                showSeparator: false
+                controlData: Toggle {
+                    id: chooserOnHoverToggle
+                    text: ""
+                    onToggled: (checked) => Settings.set("dock.chooserOnHover", checked)
                 }
             }
         }
@@ -293,6 +304,11 @@ Item {
         target: showRecentAppsToggle
         property: "checked"
         value: Settings.values["dock.showRecentApps"] === true
+    }
+    Binding {
+        target: chooserOnHoverToggle
+        property: "checked"
+        value: Settings.values["dock.chooserOnHover"] === true
     }
     Binding {
         target: globalMenuToggle
