@@ -165,6 +165,25 @@ Qt::Key qtKeyFromEvdev(quint32 key)
     }
 }
 
+// Translate the xkb `depressed` modifier mask carried by `wl_keyboard.modifiers`
+// into Qt modifiers, so the chrome scenes see modifier chords (T-14.7t, the
+// Dock's Ctrl+Shift+Arrow reorder). The mask bits are the Wayland
+// WL_KEYBOARD_MODIFIER_MASK_* values: Shift 0x1, Control 0x4, Mod1/Alt 0x8,
+// Mod4/Super 0x40.
+Qt::KeyboardModifiers qtModifiersFromXkb(quint32 mask)
+{
+    Qt::KeyboardModifiers modifiers;
+    if (mask & 0x1u)
+        modifiers |= Qt::ShiftModifier;
+    if (mask & 0x4u)
+        modifiers |= Qt::ControlModifier;
+    if (mask & 0x8u)
+        modifiers |= Qt::AltModifier;
+    if (mask & 0x40u)
+        modifiers |= Qt::MetaModifier;
+    return modifiers;
+}
+
 QVariantMap menuEntry(const QString &label, const QString &shortcut = QString(),
                       const QString &action = QString(), bool enabled = true)
 {
@@ -3764,7 +3783,7 @@ void ShellController::onKeyboardFocused(bool focused)
     }
 }
 
-void ShellController::onKeyEvent(quint32 key, bool pressed)
+void ShellController::onKeyEvent(quint32 key, bool pressed, quint32 modifiers)
 {
     if (!m_window)
         return;
@@ -3785,7 +3804,8 @@ void ShellController::onKeyEvent(quint32 key, bool pressed)
         hideControlCenter();
         return;
     }
-    QKeyEvent event(pressed ? QEvent::KeyPress : QEvent::KeyRelease, qtKey, Qt::NoModifier);
+    QKeyEvent event(pressed ? QEvent::KeyPress : QEvent::KeyRelease, qtKey,
+                    qtModifiersFromXkb(modifiers));
     // An open Dock popover or Dock keyboard focus owns the keys (navigation,
     // Escape; T-10 sections 13/20); otherwise the menu bar does.
     if (m_dockWindow && m_dockItem

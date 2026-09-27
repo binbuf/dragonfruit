@@ -1066,6 +1066,62 @@ Rectangle {
         return idx >= 0 ? items[idx] : null;
     }
 
+    // --- Keyboard reordering (T-14.7t) -----------------------------------
+    // The chord moves the focused pinned entry one slot; the axis mapping
+    // matches the Dock position (Left/Right on a bottom Dock, Up/Down on a
+    // vertical one). The move is a no-op at the pinned region's ends.
+    readonly property string reorderChordHint:
+        axisIsX
+            ? qsTr("Pinned. Control+Shift+Left or Right moves this item")
+            : qsTr("Pinned. Control+Shift+Up or Down moves this item")
+
+    // The accessible reorder hint for an entry: pinned entries can be moved,
+    // everything else (temporary, recent, minimized, stack, Trash, overflow)
+    // cannot.
+    function reorderHintFor(entry) {
+        return entry && entry.kind === "pinned" ? reorderChordHint : "";
+    }
+
+    // The pure move helper, mirroring `movePinnedEntry` in dockmodel: the id at
+    // `index` moves by `delta` within the pinned list. A move off either end is
+    // a no-op (never a wrap), and an out-of-range index or `delta` of 0 leaves
+    // the list unchanged.
+    function movePinnedEntry(ids, index, delta) {
+        if (!ids || index < 0 || index >= ids.length || delta === 0)
+            return ids;
+        var target = index + delta;
+        if (target < 0 || target >= ids.length)
+            return ids;
+        var out = ids.slice();
+        var moved = out.splice(index, 1)[0];
+        out.splice(target, 0, moved);
+        return out;
+    }
+
+    // Reorder the focused pinned entry by `delta`. Returns true when the order
+    // actually changed. The new complete pinned list goes out through the same
+    // `pinnedOrderChanged` signal the drag path uses, so there is one writer
+    // (`dock.pinned`); the moved entry keeps the focus ring (its id is stable)
+    // so repeated chord presses reorder continuously. The move is announced
+    // with the entry's 1-based position in the pinned region.
+    function reorderFocusedPinned(delta) {
+        var entry = focusedEntry();
+        if (!entry || entry.kind !== "pinned")
+            return false;
+        var ids = currentPinnedIds();
+        var index = ids.indexOf(entry.desktopId);
+        if (index < 0)
+            return false;
+        var next = movePinnedEntry(ids, index, delta);
+        if (next.join("\n") === ids.join("\n"))
+            return false;
+        var position = index + delta + 1;
+        focusedItemId = entry.id;
+        pinnedOrderChanged(next);
+        Accessible.announce(qsTr("%1 moved to position %2").arg(entry.name).arg(position));
+        return true;
+    }
+
     // The click tree (section 8) shared by pointer activation and Return.
     function activateEntry(entry) {
         if (!entry)
@@ -1166,7 +1222,21 @@ Rectangle {
     Keys.onPressed: (event) => {
         if (!keyboardFocused || popoverOpen)
             return;
-        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+        // Ctrl+Shift+Arrow reorders the focused pinned entry (T-14.7t). The
+        // key mapping is axis-aware to match the Dock position: Left/Right on
+        // a bottom Dock, Up/Down on a vertical one. Any other modifier+arrow
+        // combination falls through to the existing bindings.
+        var ctrlShift = (event.modifiers & Qt.ControlModifier) !== 0
+                        && (event.modifiers & Qt.ShiftModifier) !== 0;
+        var reorderKey = axisIsX
+                ? (event.key === Qt.Key_Left || event.key === Qt.Key_Right)
+                : (event.key === Qt.Key_Up || event.key === Qt.Key_Down);
+        if (ctrlShift && reorderKey) {
+            var reorderDelta = (event.key === Qt.Key_Left || event.key === Qt.Key_Up)
+                               ? -1 : 1;
+            reorderFocusedPinned(reorderDelta);
+            event.accepted = true;
+        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
                 || event.key === Qt.Key_Space) {
             activateEntry(focusedEntry());
             event.accepted = true;
@@ -2893,6 +2963,7 @@ Rectangle {
             indicatorEdge: dock.indicatorEdge
             showIndicator: dock.showIndicators
             keyboardFocused: dock.keyboardFocused && modelData.id === dock.focusedItemId
+            reorderHint: dock.reorderHintFor(modelData)
             externalDropTarget: dock.externalDragActive
                                 && modelData.id === dock.externalTargetId
             duplicateFlash: dock.duplicateFlashId !== ""

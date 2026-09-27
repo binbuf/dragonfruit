@@ -94,6 +94,15 @@ DockConfig dockConfigFromValues(const QVariantMap &values);
 // bounds are passed in by the caller.
 int dockIconSize(double size, int iconMin, int iconMax);
 
+// Keyboard reordering (T-14.7t): move the pinned id at `index` one slot by
+// `delta`, within the pinned region only. A move that would leave the region
+// (0..size-1) is a no-op, never a wrap, as is an out-of-range index or a
+// `delta` of 0. The returned list is the complete new `dock.pinned` value the
+// Dock emits through the existing drag signal. Pure and unit-tested
+// (tst_dockcore); the Dock's QML mirror (`movePinnedEntry`) keeps the same
+// semantics because the Dock QML module has no C++ singleton.
+QStringList movePinnedEntry(const QStringList &pinnedIds, int index, int delta);
+
 // The default pinned set (T-10 section 19): Files, Settings, Terminal,
 // Browser, resolved against the installed `.desktop` corpus by trying a small
 // candidate list per slot and taking the first that resolves. Unresolved slots

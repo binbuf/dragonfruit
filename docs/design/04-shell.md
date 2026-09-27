@@ -347,6 +347,33 @@ bottom Dock, toward the interior on a left/right Dock; the reaction is
 decorative and never enters the entry's accessible name, which keeps carrying
 the window count and state.
 
+### Dock keyboard navigation and reordering
+
+The Dock takes keyboard focus only when the compositor hands it the keyboard
+(FocusDock, or a click), draws a focus ring on the focused entry, and lets the
+arrow keys move between entries, Return activate, Escape release, and typing
+jump to a name (T-10 section 20). The focus tree includes every entry except
+the divider.
+
+Keyboard reordering (T-14.7t) joins that model so rearrangement is not
+pointer-only. With the Dock keyboard-focused, `Ctrl+Shift+Arrow` moves the
+focused **pinned** entry one slot; the key mapping is axis-aware to match the
+Dock position (`Ctrl+Shift+Left/Right` on a bottom Dock, `Ctrl+Shift+Up/Down`
+on a vertical one). A move at either end of the pinned region is a no-op, never
+a wrap, and a temporary, recent, minimized, stack, overflow, or Trash entry is
+never moved. The Dock emits the complete ordered pinned list through the same
+`pinnedOrderChanged` signal the drag path uses, so `dock.pinned` still has one
+writer (settingsd) and the reorder is persisted exactly like a drag. The moved
+entry keeps the focus ring (its entry id is stable across the rebuild) so
+repeated chord presses reorder continuously, and the move is announced with the
+entry's new position. The pure move helper lives in `shell/src/dockmodel.*`
+(`movePinnedEntry`, unit-tested by `tst_dockcore`) and `Dock.qml` mirrors it,
+because the Dock QML module has no C++ singleton; the pinned entry's accessible
+description names the chord. Reordering is a discrete layout change: it reuses
+the existing reorder settle and needs no new animation (and is therefore already
+correct under reduced motion). Reordering across regions or outputs, a keyboard
+pin/remove command, and touch reordering are deferred.
+
 ### Trash entry artwork
 
 The Trash is a designed, original object (T-14.7d), not a wireframe, and it

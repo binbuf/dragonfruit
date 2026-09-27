@@ -1784,6 +1784,49 @@ private slots:
         QVERIFY(!counts.contains(QStringLiteral("win:1")));
     }
 
+    // -- keyboard reordering (T-14.7t) -----------------------------------
+
+    void movePinnedEntryMovesOneSlotAndKeepsTheWholeList()
+    {
+        const QStringList base{QStringLiteral("a.desktop"), QStringLiteral("b.desktop"),
+                               QStringLiteral("c.desktop")};
+        // Move the first right one slot.
+        QCOMPARE(movePinnedEntry(base, 0, 1),
+                 (QStringList{QStringLiteral("b.desktop"), QStringLiteral("a.desktop"),
+                              QStringLiteral("c.desktop")}));
+        // Move the last left one slot.
+        QCOMPARE(movePinnedEntry(base, 2, -1),
+                 (QStringList{QStringLiteral("a.desktop"), QStringLiteral("c.desktop"),
+                              QStringLiteral("b.desktop")}));
+        // The moved list is always the complete set, same size.
+        QCOMPARE(movePinnedEntry(base, 1, 1).size(), base.size());
+        QVERIFY(movePinnedEntry(base, 1, 1).contains(QStringLiteral("a.desktop")));
+    }
+
+    void movePinnedEntryIsANoOpAtTheEnds()
+    {
+        const QStringList base{QStringLiteral("a.desktop"), QStringLiteral("b.desktop"),
+                               QStringLiteral("c.desktop")};
+        // The first cannot move left; the last cannot move right.
+        QCOMPARE(movePinnedEntry(base, 0, -1), base);
+        QCOMPARE(movePinnedEntry(base, 2, 1), base);
+        // A move that leaves the region by more than one slot is a no-op too
+        // (never a wrap).
+        QCOMPARE(movePinnedEntry(base, 0, -2), base);
+        QCOMPARE(movePinnedEntry(base, 1, 5), base);
+    }
+
+    void movePinnedEntryIgnoresOutOfRangeIndexAndZeroDelta()
+    {
+        const QStringList base{QStringLiteral("a.desktop"), QStringLiteral("b.desktop")};
+        QCOMPARE(movePinnedEntry(base, -1, 1), base);
+        QCOMPARE(movePinnedEntry(base, 2, -1), base);
+        QCOMPARE(movePinnedEntry(base, 0, 0), base);
+        QVERIFY(movePinnedEntry(QStringList{}, 0, 1).isEmpty());
+        QVERIFY(movePinnedEntry(QStringList{QStringLiteral("only")}, 0, 1)
+                    == QStringList{QStringLiteral("only")});
+    }
+
     // -- scene-graph frame gate (FR-14) ----------------------------------
 
     void frameGateSchedulesEachSceneGraphFrame()

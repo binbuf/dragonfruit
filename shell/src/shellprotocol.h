@@ -551,7 +551,7 @@ signals:
     // 20). Distinct from `keyboardFocused` so the shell can route keys to the
     // Dock while the bar still tracks its own focus.
     void dockKeyboardFocused(bool focused);
-    void keyEvent(uint32_t key, bool pressed);
+    void keyEvent(uint32_t key, bool pressed, uint32_t modifiers);
     // A key delivered to the lock surface while the session is locked
     // (T-12.3c). Distinct from `keyEvent` so lock input never reaches the
     // menu bar or Dock scenes. `shift` is the live Shift state from
@@ -958,6 +958,10 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
     bool m_keyboardOnLock = false;
     // Live Shift state from `wl_keyboard.modifiers`, for lock-screen text.
     bool m_keyboardShift = false;
+    // The full live modifier mask from `wl_keyboard.modifiers` (the xkb
+    // `depressed` bits), carried with `keyEvent` so the chrome can honour
+    // chords such as the Dock's Ctrl+Shift+Arrow reorder (T-14.7t).
+    uint32_t m_keyboardModifiers = 0;
     // True while the overview surface holds the keyboard (T-11): Escape
     // dismisses the overview.
     bool m_keyboardOnOverview = false;

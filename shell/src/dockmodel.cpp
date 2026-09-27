@@ -97,6 +97,20 @@ int dockIconSize(double size, int iconMin, int iconMax)
     return qRound(iconMin + qBound(0.0, size, 1.0) * (iconMax - iconMin));
 }
 
+QStringList movePinnedEntry(const QStringList &pinnedIds, int index, int delta)
+{
+    const int size = pinnedIds.size();
+    if (index < 0 || index >= size || delta == 0)
+        return pinnedIds;
+    const int target = index + delta;
+    // A move at the pinned region boundary is a no-op, not a wrap.
+    if (target < 0 || target >= size)
+        return pinnedIds;
+    QStringList out = pinnedIds;
+    out.move(index, target);
+    return out;
+}
+
 QStringList resolveDefaultDockPins(const DesktopEntryIndex &index)
 {
     QStringList resolved;
