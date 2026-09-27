@@ -43,7 +43,7 @@ set_tests_properties(tst_dock PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-# Dock core unit tests (T-10): interim `.desktop` resolver/launcher,
+# Dock core unit tests (T-10): the app-index entry cache and launcher,
 # `dock.pinned` persistence, and the pinned+running entry merge. No QML,
 # Wayland, or compositor required.
 qt_add_executable(tst_dockcore
@@ -52,11 +52,6 @@ qt_add_executable(tst_dockcore
 target_link_libraries(tst_dockcore PRIVATE
     Qt6::Core Qt6::Test
     dragonfruit-shell-dockcore
-)
-# The shipped first-party `.desktop` entries are verified in-place against the
-# source tree (identity is a launch precondition).
-target_compile_definitions(tst_dockcore PRIVATE
-    DF_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
 )
 
 add_test(

@@ -192,3 +192,22 @@ pruned via `NameOwnerChanged`. `org.dragonfruit.AppIndex1` additionally exposes
 The shell does not consume the bridge yet (mapping focus to a registration and
 routing `dbusmenu:<id>` back is the remaining wiring). Contract frozen in ADR
 [0098](adr/0098-dbusmenu-bridge-in-app-index.md).
+
+## Implementation note (T-14.7)
+
+The shell now consumes the broker over D-Bus, retiring the interim
+`demoAppMenu()` stand-in. `shell/src/menubrokerclient.{h,cpp}` pushes the
+focused app id (`SetFocusedApp`) and the running-window projection
+(`SetWindowStates`, built by `menubrokerpolicy::windowStatesJson`) and reads
+`ResolveFocused`; the reply supplies the fixed application menu (with live hide
+verbs) and the focused app's exported top-level menus, which the bar renders as
+`applicationMenuItems` + `appMenuModel`. When the service is absent the shell
+falls back to its own `fixedApplicationMenu` and no exported menus. Clicking a
+bridged `dbusmenu:<id>` row still only logs: routing it back through
+app-index's `WindowMenuEvent` is the T-14.4 follow-up.
+
+The Dock's interim local `.desktop` scan/parse was deleted the same session;
+`org.dragonfruit.AppIndex1` is now the shell's only identity source (the
+`DesktopEntryIndex` cache is populated solely from `Enumerate`). The dev/demo
+harness starts `dragonfruit-app-index` and `dragonfruit-menu-broker` so the
+nested session exercises the real services.

@@ -3,9 +3,6 @@
 
 #include "appindexclient.h"
 
-#include <QDir>
-#include <QFile>
-#include <QFileInfo>
 #include <QStandardPaths>
 
 namespace {
@@ -131,59 +128,7 @@ void expandToken(const QString &token, const DesktopEntry &entry, const QStringL
     flush();
 }
 
-QString desktopIdFromPath(const QString &path)
-{
-    return QFileInfo(path).fileName();
-}
-
 } // namespace
-
-QStringList DesktopEntryIndex::defaultApplicationDirs()
-{
-    QStringList dirs;
-    const QString dataHome = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
-    if (!dataHome.isEmpty())
-        dirs << dataHome + QStringLiteral("/applications");
-
-    const QByteArray raw = qgetenv("XDG_DATA_DIRS");
-    const QString dataDirs = raw.isEmpty() ? QStringLiteral("/usr/local/share:/usr/share")
-                                           : QString::fromLocal8Bit(raw);
-    const QStringList parts = dataDirs.split(QLatin1Char(':'), Qt::SkipEmptyParts);
-    for (const QString &part : parts)
-        dirs << part + QStringLiteral("/applications");
-
-    // Flatpak exports are not always on XDG_DATA_DIRS.
-    dirs << QStringLiteral("/var/lib/flatpak/exports/share/applications");
-    if (!dataHome.isEmpty())
-        dirs << dataHome + QStringLiteral("/flatpak/exports/share/applications");
-    return dirs;
-}
-
-void DesktopEntryIndex::scan(const QStringList &applicationDirs)
-{
-    m_byId.clear();
-    m_byWmClass.clear();
-    m_entries.clear();
-
-    for (const QString &dirPath : applicationDirs) {
-        const QDir dir(dirPath);
-        if (!dir.exists())
-            continue;
-        const QStringList files =
-            dir.entryList(QStringList{QStringLiteral("*.desktop")}, QDir::Files, QDir::Name);
-        for (const QString &file : files) {
-            const QString id = desktopIdFromPath(file);
-            if (m_byId.contains(id))
-                continue; // first directory wins
-            QFile handle(dir.filePath(file));
-            if (!handle.open(QIODevice::ReadOnly | QIODevice::Text))
-                continue;
-            const DesktopEntry entry = parse(id, QString::fromUtf8(handle.readAll()));
-            if (entry.valid)
-                insert(entry);
-        }
-    }
-}
 
 void DesktopEntryIndex::loadFromAppIndex(const AppIndexClient &client)
 {
@@ -269,10 +214,10 @@ QStringList DesktopEntryIndex::buildLaunchCommand(const DesktopEntry &entry,
     for (const QString &token : tokens)
         expandToken(token, entry, files, argv);
 
-    // Terminal applications need an emulator wrapping the command. The
-    // interim policy: honor $TERMINAL, else the distro-agnostic
-    // `x-terminal-emulator` alternative; if neither is available the command
-    // runs unwrapped. T-23's app-index owns terminal selection properly.
+    // Terminal applications need an emulator wrapping the command. app-index
+    // carries only the `Terminal` flag, so the launcher keeps this heuristic:
+    // honor $TERMINAL, else the distro-agnostic `x-terminal-emulator`
+    // alternative; if neither is available the command runs unwrapped.
     if (entry.terminal) {
         QStringList term;
         const QByteArray configured = qgetenv("TERMINAL");
@@ -288,58 +233,6 @@ QStringList DesktopEntryIndex::buildLaunchCommand(const DesktopEntry &entry,
         }
     }
     return argv;
-}
-
-DesktopEntry DesktopEntryIndex::parse(const QString &id, const QString &contents)
-{
-    DesktopEntry entry;
-    entry.id = id;
-
-    bool inDesktopEntry = false;
-    const QStringList lines = contents.split(QLatin1Char('\n'));
-    for (const QString &rawLine : lines) {
-        const QString line = rawLine.trimmed();
-        if (line.isEmpty() || line.startsWith(QLatin1Char('#')))
-            continue;
-        if (line.startsWith(QLatin1Char('[')) && line.endsWith(QLatin1Char(']'))) {
-            inDesktopEntry = (line == QLatin1String("[Desktop Entry]"));
-            continue;
-        }
-        if (!inDesktopEntry)
-            continue;
-
-        const qsizetype eq = line.indexOf(QLatin1Char('='));
-        if (eq <= 0)
-            continue;
-        const QString key = line.left(eq);
-        const QString value = line.mid(eq + 1).trimmed();
-        // Localized keys carry a `[locale]` suffix; keep the unlocalized value.
-        if (key.contains(QLatin1Char('[')))
-            continue;
-
-        if (key == QLatin1String("Name")) {
-            entry.name = value;
-        } else if (key == QLatin1String("Icon")) {
-            entry.icon = value;
-        } else if (key == QLatin1String("Exec")) {
-            entry.exec = value;
-        } else if (key == QLatin1String("StartupWMClass")) {
-            entry.startupWmClass = value;
-        } else if (key == QLatin1String("Categories")) {
-            entry.categories =
-                value.split(QLatin1Char(';'), Qt::SkipEmptyParts);
-        } else if (key == QLatin1String("Terminal")) {
-            entry.terminal = (value.compare(QLatin1String("true"), Qt::CaseInsensitive) == 0);
-        } else if (key == QLatin1String("NoDisplay") || key == QLatin1String("Hidden")) {
-            if (value.compare(QLatin1String("true"), Qt::CaseInsensitive) == 0)
-                entry.noDisplay = true;
-        }
-    }
-
-    entry.valid = true;
-    if (entry.name.isEmpty())
-        entry.name = id.endsWith(QLatin1String(".desktop")) ? id.chopped(8) : id;
-    return entry;
 }
 
 QProcessEnvironment appLaunchEnvironment(const QProcessEnvironment &base)

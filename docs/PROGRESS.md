@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(75 earlier sections omitted)_
+_(76 earlier sections omitted)_
 
-- **T72 — T-11.2a DND/Focus policy**: **State: done.** The notification service now owns a three-mode Focus/DND; **`services/notifications/src/policy.rs`** (new) — `FocusMode` (`off` /
 - **T73 — T-11.2b DND/Focus menu-bar reflection and Dock failure path**: **State: done.** The menu bar reflects the notification service's Focus/DND; **`shell/src/notificationclient.{h,cpp}`** — the seam gains
 - **T74 — T-11.3a Control Center panel and core tiles**: **State: done.** The Control Center panel opens (menu-bar item or; **`shell/control-center/ControlCenter.qml`** (rewritten) — the panel scene
 - **T75 — T-11.3b Focus/DND, dark mode, and Control Center a11y**: **State: done.** The Control Center panel has five tiles now: Wi-Fi, Focus,; **`shell/control-center/ControlCenter.qml`** — Focus and Dark Mode tiles, a
@@ -45,6 +44,7 @@ _(75 earlier sections omitted)_
 - **T107 — T-14.5 XDnD bridge (attempt 2 — gate repair)**: **State: done.** The attempt-1 protocol half and documented gap stand; `Makefile` — the `e2e` recipe runs
 - **T108 — T-14.6a Strange-app zoo run and matrix**: **State: done.** The scripted zoo run and its matrix are committed. Six rows,; `scripts/zoo/zoo-run.sh` (new) — orchestrator (`make zoo-run`): private nested
 - **T109 — T-14.6b Strange-app zoo fixes**: **State: done.** The zoo surfaced one fixable failure and one compositor; `scripts/zoo/sdl_zoo.c` — the loop now calls `SDL_GetWindowSurface` +
+- **T110 — T-14.7 Retire interim paths**: **State: done.** The last two interim hacks are gone: the Dock's local; `shell/src/desktopentry.{h,cpp}` — `scan`, `parse`, `defaultApplicationDirs`
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3269,6 +3269,17 @@ Gotchas for later tasks:
   channel. (b) Hide/Hide Others/Show All dispatch their `action` but only log;
   actually hiding an app's windows needs a new compositor window-state request.
   (c) The `DbusMenu` tier is defined but unpopulated (T-14.4).
+- **T-14.7 follow-ups (the remaining global-menu halves).** (a) The shell
+  consumes `org.dragonfruit.MenuBroker1` now (T-14.7), but a clicked bridged
+  `dbusmenu:<id>` row still only logs: route it back through app-index's
+  `WindowMenuEvent(windowId,id)` (the window→registration mapping lives in
+  app-index). (b) Settings still does not call `Publish` with its
+  `SettingsMenu.publishedModel`, so the `native` tier never lights; add a
+  publish client (the shell's `MenuBrokerClient` is in dockcore and not linked
+  by `apps/settings`, so either link it or add a small shared client). The
+  DBusMenu tier (T-14.4) is already pushed by app-index and now renders.
+  (c) `menu.global=false` suppresses exported menus in the bar but the broker
+  still resolves them; no functional gap, just a redundant resolve.
 - **T-14.1c follow-ups.** (a) The service subscription API is live but the shell
   does not consume it: `shell/src/appindexclient.{h,cpp}` has no `Subscribe` and
   `ShellController::start` still loads the index once at startup. Wire the shell
@@ -8268,3 +8279,88 @@ Gotchas for later tasks:
 - Decoration expectations are otherwise unchanged: Firefox/Calculator CSD;
   xterm/Steam stand-in/SDL/Electron SSD. Steam is still an X11 stand-in and
   cross-boundary XDnD is still the documented T-14.5 gap.
+
+## T110 — T-14.7 Retire interim paths
+
+**State: done.** The last two interim hacks are gone: the Dock's local
+`.desktop` scan/parse and the shell's `demoAppMenu()` stand-in. No ADR (the
+menu-broker transport was already the frozen design in ADR 0095).
+
+Real paths:
+
+- `shell/src/desktopentry.{h,cpp}` — `scan`, `parse`, `defaultApplicationDirs`
+  and the file-reading helpers are deleted. What remains is the app-index-fed
+  record cache (`loadFromAppIndex`/`loadFromRecords`/`resolve`/`byId`) plus the
+  launcher (`isLaunchable`/`buildLaunchCommand`/`appLaunchEnvironment`).
+- `shell/src/shellcontroller.cpp` — `start()` always
+  `m_index.loadFromAppIndex(appIndex)` (no `scan()` fallback);
+  `applyFocusedApp()` no longer builds a demo menu.
+- `shell/src/menubrokerclient.{h,cpp}` (new, dockcore) — `available`,
+  `setFocusedApp`, `setWindowStates`, `resolveFocused`, and the pure
+  `parseResolved` (`ResolvedMenu{appId,appName,tier,applicationMenuItems,menus}`).
+- `shell/src/menubrokerpolicy.{h,cpp}` — new pure `windowStatesJson(entries)`:
+  one `{appId,windows,minimized}` row per `kind == "temporary"` entry (the
+  per-window "minimized" entries are skipped).
+- `shell/src/shellcontroller.cpp` `applyFocusedApp()` — pushes
+  `SetFocusedApp`/`SetWindowStates` and reads `ResolveFocused`; renders the
+  broker's fixed menu + exported menus. Fallback when the service is absent is
+  the local `fixedApplicationMenu` with no exported menus. One-shot log:
+  `shell: global menu resolved by org.dragonfruit.MenuBroker1 tier <t> for <id>`.
+- `tools/dragonfruit-dev/src/main.rs` — `launch_services()` starts
+  `dragonfruit-app-index` and `dragonfruit-menu-broker` (best-effort; skipped
+  without `DBUS_SESSION_BUS_ADDRESS` or a missing binary) into a new
+  `ChildGuard.services` list (their early exit is not a demo failure; killed on
+  teardown). Called before `launch_shell` in `run_dev_session` and
+  `run_demo_session`; a 500 ms settle covers the shell's one-shot identity load.
+  `dev_share_env()` dedups the staged `XDG_DATA_DIRS`/`PATH` for shell and
+  services.
+- `services/app-index/src/index.rs` — new
+  `shipped_first_party_entries_are_launchable` (migrated from the deleted
+  `tst_dockcore` test): app-index, the only production parser, verifies the
+  in-repo first-party `.desktop` entries.
+- `shell/tests/tst_dockcore.cpp` — parser/scan tests replaced by record-based
+  fixtures (`makeEntry`); new `windowStatesJsonCarriesOneRowPerRunningApp` and
+  `resolvedMenuDecodesTheBrokerReply`.
+- Docs: `docs/design/06-global-menu.md` and
+  `docs/design/tracks/14-global-menu-app-index-compat.md` "Implementation note
+  (T-14.7)".
+
+Commands that work (repo root):
+
+- `make e2e` — exit 0; the demo now logs
+  `launched dragonfruit-app-index` / `launched dragonfruit-menu-broker` and
+  `global menu resolved by org.dragonfruit.MenuBroker1 tier "none" for ""`.
+- `ctest --test-dir build --output-on-failure` — 53/53.
+- `QT_QPA_PLATFORM=offscreen build/shell/tests/tst_dockcore` — 76 pass.
+- `cargo test -p dragonfruit-app-index --lib` — 49 pass;
+  `cargo test -p dragonfruit-dev` — 7 pass.
+- `cargo clippy --workspace --all-targets -- -D warnings`; `cargo fmt --all --
+  --check` — green.
+- Build note (unchanged): `export
+  PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig:$PKG_CONFIG_PATH` and
+  `RUSTFLAGS="-L $HOME/.local/df-devroot/lib64"` (or just `make`).
+
+Live check: `make demo` (nested), captured `/tmp/opencode/t110-live.png`
+(host 3840x2160; nested Dragonfruit window). The Dock renders six resolved
+tiles (Files, Settings, Terminal, Firefox, VS Code, Trash) — proof app-index is
+the live identity source — the menu bar shows the focused app's application
+menu name, and the desktop area has no stray artifacts. Verdict: intended.
+
+Gotchas for later tasks:
+
+- **app-index is now mandatory for a populated Dock.** A session without it
+  shows an empty Dock (by design); `dragonfruit dev`/`make demo` start it. If a
+  later consumer needs it in another harness, start it there too.
+- **The menu-broker is consumed, but two halves remain**: a clicked
+  `dbusmenu:<id>` row still only logs (route it back through app-index's
+  `WindowMenuEvent`), and Settings still does not `Publish` its
+  `SettingsMenu.publishedModel` (so the native tier never lights). Both are in
+  Follow-ups.
+- **The shell loads the app corpus once at startup** (no subscription yet); the
+  dev harness's 500 ms settle covers the service-start race. T-14.1c's
+  `Subscribe("all")` is the real fix.
+- **`ChildGuard` now has a `services` list** distinct from `launched`: services
+  are killed on teardown but an early exit is not a demo failure, so a
+  best-effort service can't wedge `make demo`/`make e2e`.
+- The `tst_dockcore` fixtures no longer parse `.desktop` files; build records
+  with the local `makeEntry(...)` helper. app-index owns parsing.

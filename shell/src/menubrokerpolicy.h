@@ -28,6 +28,12 @@ struct AppMenuLiveState {
 // only when all the app's windows are minimized.
 AppMenuLiveState appMenuLiveState(const QString &focusedAppId, const QVariantList &entries);
 
+// The `org.dragonfruit.MenuBroker1.SetWindowStates` payload for the Dock's
+// running projection: one row per app-level entry (`kind == "temporary"`) as
+// `{appId, windows, minimized}`. The per-window "minimized" entries are not
+// apps and are skipped, matching the broker's reading. Pure and unit-tested.
+QString windowStatesJson(const QVariantList &entries);
+
 // The standard fixed application menu (About/Settings/Hide/Hide Others/Show
 // All/Quit) with the hide verbs' live flags. This is the shell's fallback when
 // the menu-broker service is absent; the labels and actions match the broker's

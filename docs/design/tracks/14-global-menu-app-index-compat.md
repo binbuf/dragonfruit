@@ -145,3 +145,25 @@ toplevel's callbacks from the commit handler; the headless regression test is
 knowns: the Steam row is an X11 `WM_CLASS` stand-in, the global-menu tiers are
 exercised by the T-14.4 mocks rather than the zoo, and XDnD is the documented
 T-14.5 gap.
+
+## Implementation note (T-14.7)
+
+The last interim paths are gone. The Dock's local `.desktop` directory scan and
+parser were deleted (`DesktopEntryIndex::scan`/`parse`/`defaultApplicationDirs`
+and the absent-service fallback); the shell's entry cache is populated only
+from `org.dragonfruit.AppIndex1::Enumerate` (T-14.1a), so identity and themed
+icons have one owner. The shell's `demoAppMenu()` stand-in was deleted and
+replaced by a real menu-broker client (`shell/src/menubrokerclient.{h,cpp}`):
+`ShellController::applyFocusedApp` pushes `SetFocusedApp`/`SetWindowStates` and
+reads `ResolveFocused`, rendering the broker's fixed application menu plus the
+focused app's exported menus. With the service absent the shell keeps its own
+`fixedApplicationMenu` (no exported menus) as before.
+
+The dev/demo harness now starts `dragonfruit-app-index` and
+`dragonfruit-menu-broker` alongside the shell (best-effort, session-bus only),
+so the nested session exercises the real services; `make e2e` stays green.
+Regression coverage: `tst_dockcore` (cache lookups, launch command,
+`windowStatesJson`, `MenuBrokerClient::parseResolved`) and app-index's
+`shipped_first_party_entries_are_launchable` (the migrated in-repo entry
+check). The in-repo `org.dragonfruit.*` entries are still staged on a scratch
+`XDG_DATA_DIRS` for the dev tree.
