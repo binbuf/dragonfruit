@@ -770,6 +770,23 @@ X11 applications are supported through Xwayland. This is "good," not perfect:
 strange Xwayland applications are an explicit compatibility work item in the
 roadmap (see [ROADMAP.md](../ROADMAP.md)).
 
+### Implementation note (T-14.5)
+
+Cross-boundary **drag-and-drop** (XDnD) is still not live. Smithay 0.7's XWM
+implements no XDnD translation and does not expose the X connection or a
+client-message hook, so a bridge must own its own X11 connection (the wlroots
+`xwm.c` model) and drive Smithay's `start_dnd` on a drop. The protocol half
+landed in `compositor/src/xdnd.rs`: the standard XDnD atom names, the
+`Enter`/`Position`/`Status`/`Leave`/`Drop`/`Finished` client-message codec, the
+`text/uri-list` `file://` parser/formatter, and the two translation state
+machines. `compositor/tests/xdnd_conformance.rs` proves that wire format against
+a live Xwayland server (and that a `text/uri-list` drag is accepted while a
+non-file drag is refused). The remaining connection/runtime half — the bridge
+window, atom interning, `XdndSelection` transfer, and the `start_dnd` call — is
+recorded as an explicit gap; see
+[ADR 0099](adr/0099-xdnd-bridge-model-and-documented-gap.md) and the T-17 note
+in [17-premium-gate.md](tracks/17-premium-gate.md).
+
 ## Out of scope
 
 - Wi-Fi/Bluetooth/audio/power logic — these belong to NetworkManager, BlueZ,

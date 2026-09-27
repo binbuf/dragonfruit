@@ -99,6 +99,7 @@ e2e: build
 	    --test milestone_e2e \
 	    --test window_conformance \
 	    --test xwayland_conformance \
+	    --test xdnd_conformance \
 	    --test shell_protocol_conformance \
 	    --test shell_idle_trace \
 	    --test idle_trace \

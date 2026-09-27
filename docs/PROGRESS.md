@@ -44,6 +44,7 @@ _(72 earlier sections omitted)_
 - **T104 — T-14.2b menu-broker accelerators and toggle**: **State: done.** The menu-broker now parses and dispatches focus-scoped; `services/menu-broker/src/accelerators.rs` (new) — pure `Mods`/`Chord`
 - **T105 — T-14.3 StatusNotifier/AppIndicator tray**: **State: done.** StatusNotifier/AppIndicator tray items render in the menu; `services/app-index/src/tray.rs` (new) — pure `Registration`
 - **T106 — T-14.4 DBusMenu bridge**: **State: done.** A DBusMenu/AppMenu-exporting app's global menu is now bridged; `services/app-index/src/menubridge.rs` (new) — pure `MenuRegistration`
+- **T107 — T-14.5 XDnD bridge**: **State: done (protocol half + documented gap; the task explicitly allows; `compositor/src/xdnd.rs` (new) — pure XDnD:
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3227,6 +3228,18 @@ Gotchas for later tasks:
 
 ## Follow-ups
 
+- **T-14.5 XDnD follow-up (the connection/runtime half).** T-14.5 landed the
+  XDnD protocol model (`compositor/src/xdnd.rs`) and a live-Xwayland
+  conformance test but not the bridge itself. Remaining: (a) a bridge X11
+  connection to Xwayland (its own `x11rb` client; Smithay's `X11Wm` connection
+  and atoms are private), (b) a bridge window carrying `XdndAware = 5` and an
+  event loop watching `ClientMessage`/`SelectionNotify`, (c) serving
+  `XdndSelection` as `text/uri-list`, and (d) calling Smithay's `start_dnd`
+  (or feeding a server DnD grab) on an accepted `XdndDrop`. This is the
+  X11-source → Wayland-target direction; the Wayland-source → X11-target
+  direction additionally translates `ClientDndGrabHandler::started` into
+  `XdndEnter`/`Position`/`Drop` towards an Xwayland window. Recorded as a
+  known, waived gap at T-17 (ADR [0099](design/adr/0099-xdnd-bridge-model-and-documented-gap.md)).
 - **T-14.3 follow-ups.** (a) Live SNI `NewIcon`/`NewToolTip`/`NewStatus` signals
   are not subscribed: the shell re-reads `TrayItems` on a 2 s timer, so icon
   updates and attention animation lag or are missed. (b) A pixmap-only item
@@ -7993,3 +8006,79 @@ Remaining for a later session (none required for this task's acceptance):
   actions through `WindowMenuEvent`. Live re-projection on `about-to-show` /
   DBusMenu `ItemsPropertiesUpdated`/`LayoutUpdated` is deferred (a registration
   projects once).
+
+## T107 — T-14.5 XDnD bridge
+
+**State: done (protocol half + documented gap; the task explicitly allows
+documenting the gap at T-17).** Smithay 0.7's XWM implements no XDnD
+translation and exposes neither its X connection nor a client-message hook, so
+a real bridge needs its own X11 connection plus a Wayland server drag
+(`start_dnd`). This session landed and tested the protocol half and recorded
+the connection/runtime half as an explicit gap. Contract frozen in ADR
+[0099](design/adr/0099-xdnd-bridge-model-and-documented-gap.md).
+
+Real paths:
+
+- `compositor/src/xdnd.rs` (new) — pure XDnD:
+  - `ATOM_NAMES` (17 standard atoms), `XDND_VERSION = 5`,
+    `URI_LIST_MIME = "text/uri-list"`, and `XdndAtoms` (the interned-id table:
+    `names`, `as_array`, `action_atom`, `action_from_atom`,
+    `message_type_name`).
+  - `XdndAction` (`None`/`Copy`/`Move`/`Link`/`Ask`/`Private`, `atom_name`).
+  - `XdndMessage` (`Enter`/`Position`/`Status`/`Leave`/`Drop`/`Finished`) with
+    `name`/`encode(&XdndAtoms) -> Option<[u32;5]>`/`decode(name, data, atoms)`.
+    `Enter` with >3 types requires the `XdndTypeList` atom and encodes the
+    more-types bit; `pack_position`/`unpack_position` handle the 16-bit signed
+    root coordinates.
+  - The two state machines: `XdndTarget` (`enter`/`position`/`drop`/`finished`/
+    `leave`/`offers`; `IncomingDrag`/`DropRequest`/`XdndStatus`/`XdndFinished`)
+    and `XdndSource` (`enter`/`position`/`drop`/`leave`/`absorb_status`/
+    `accepted_action`).
+  - `text/uri-list`: `parse_uri_list`, `uris_to_paths`, `uri_to_path`,
+    `path_to_uri`, `format_uri_list` (RFC 2483 comments/blanks, CRLF,
+    `file://` percent-coding; remote hosts and non-`file:` schemes dropped).
+  - 11 unit tests.
+- `compositor/src/lib.rs` (new) — the compositor's library surface, exposing
+  `pub mod xdnd;` so `compositor/tests/` can drive the codec without spawning
+  the binary. The binary is unchanged (`main.rs` does not declare `xdnd`, so no
+  dead-code warnings).
+- `compositor/tests/xdnd_conformance.rs` (new) — live conformance: starts the
+  headless compositor (Xwayland), interns the atoms, sets `XdndAware = 5`,
+  round-trips `Enter`/`Position`/`Status`/`Finished` as real X ClientMessages,
+  drives `XdndTarget` (accepts a `text/uri-list` drag, refuses a non-file one).
+  Skips if `Xwayland` is absent.
+- `Makefile` — `make e2e` now runs `--test xdnd_conformance`.
+- Docs: `docs/design/02-compositor.md` "Implementation note (T-14.5)";
+  `docs/design/tracks/17-premium-gate.md` "Known compatibility gaps";
+  `docs/design/adr/0099-*.md` (new).
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-compositor --lib` — 11 xdnd unit cases.
+- `cargo test -p dragonfruit-compositor --test xdnd_conformance` — 1 case.
+- `cargo test -p dragonfruit-compositor` — 11 lib + 277 bin + 34 window + 35
+  shell-protocol + 6 xwayland + 1 xdnd + the trace suites, all green.
+- `cargo clippy --workspace --all-targets -- -D warnings`; `cargo fmt --all --
+  --check` — green.
+- Build note (unchanged): `export
+  PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig:$PKG_CONFIG_PATH` and
+  `RUSTFLAGS="-L $HOME/.local/df-devroot/lib64"` (or just `make`).
+
+Gotchas for later tasks:
+
+- **There is no live cross-boundary file DnD yet.** `compositor/src/xdnd.rs` is
+  a model, not a wired bridge; `services/app-index` and the shell do not
+  consume it. Treat it as a known, waived gap at T-14.6/T-17.
+- **XDnD wire layouts to respect**: `XdndStatus` puts the action atom in l[4];
+  `XdndFinished` puts it in l[2] (success is l[1] bit 0). `XdndEnter` l[1] is
+  `version << 24 | more-types-bit`; the positions are 16-bit signed root
+  coords. The conformance test is the regression guard.
+- **Adding the compositor library target changes nothing for existing tests**:
+  they still use `CARGO_BIN_EXE_dragonfruit-compositor`. Pure policy modules
+  can now live in the lib for direct integration testing.
+- Live check: `make demo` (nested, host Wayland) captured
+  `/tmp/opencode/t107-desktop.png` (17:22) — the nested desktop renders the
+  wallpaper ground, Dock (6 apps + trash), the Settings window, and the X11
+  demo window, no stray artifacts from this change (this task has no UI
+  surface of its own). Not committed to `docs/captures` (track-boundary
+  artifact).

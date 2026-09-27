@@ -92,6 +92,18 @@ new scope here.
 - [ ] `README` and `docs/design/11-session-and-dev-workflow.md` carry the
       exact reproduction commands.
 
+## Known compatibility gaps to verify (or waive)
+
+- **XDnD (cross-boundary file drag-and-drop).** T-14.5 landed the XDnD
+  protocol model and a live-Xwayland conformance test
+  (`compositor/src/xdnd.rs`, `compositor/tests/xdnd_conformance.rs`) but not
+  the X11 connection/runtime half, because Smithay 0.7 exposes no XDnD hook
+  (see [ADR 0099](../adr/0099-xdnd-bridge-model-and-documented-gap.md)). At
+  this gate, dragging a file across the X11/Wayland boundary is a **known,
+  waived gap** unless the connection half has landed; within one side it
+  works. Record the verdict in the sign-off report rather than silently
+  implying the feature.
+
 ## Risks
 
 - **Hardware access** for the DRM half; if unavailable, the gate is marked
