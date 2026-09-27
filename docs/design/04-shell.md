@@ -299,6 +299,22 @@ running dot, and divider follow `controls.dock.hover`/`indicator`/`divider`.
 At the `Minimal` degrade tier the compositor draws no frost and the plate reads
 as a clean capsule with no highlight claim.
 
+**Region dividers (T-14.7v).** The Dock's regions are the pinned prefix, the
+temporary/recent tail, the minimized group, and the fixed stacks/Trash tail.
+The pure `dockmodel::planDockRegions` derives them from the entry list and the
+fixed tail; `Dock.qml` places a hairline between each pair of *adjacent
+non-empty* regions, so the resting structure reads `[pinned] │
+[temporary/recent] │ [stacks + Trash]` like the reference. An empty region
+collapses away — an empty tail or an empty pinned prefix leaves no orphaned or
+doubled rule, and a Dock with no app region at all draws none.
+`component.dock.divider.gap` (22) replaces the icon `gap` on both sides of a
+rule in the resting and magnified layouts, on every position, and
+`divider.heightRatio` (0.82) makes the hairline span that fraction of the plate
+cross-axis. The pinned | tail and minimized | fixed rules are non-interactive;
+only the app | right-region divider carries the T-10 §5 drag resize handle, so
+a new boundary never adds a second handle. The overflow planner reserves every
+divider it plans. See [ADR 0109](adr/0109-dock-region-dividers.md).
+
 ### Dock hover name label
 
 Pausing over an entry for `controls.tooltip.dwell` (600 ms) shows the

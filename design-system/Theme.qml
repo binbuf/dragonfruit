@@ -347,7 +347,8 @@ QtObject {
             readonly property var divider: QtObject {
                 readonly property real opacity: 0.5
                 readonly property int width: 1
-                readonly property real heightRatio: 0.6
+                readonly property real heightRatio: 0.82
+                readonly property int gap: 22
             }
             readonly property var chooser: QtObject {
                 readonly property int maxRows: 7

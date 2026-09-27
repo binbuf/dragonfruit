@@ -150,6 +150,30 @@ QVariantList buildRecentEntries(const QStringList &recentIds, const QStringList 
                                 const QVariantList &running, const DesktopEntryIndex &index,
                                 int limit = 3);
 
+// The Dock's region structure (T-14.7v): the reference separates the app
+// region into a pinned prefix and a temporary/recent tail, and separates the
+// app region from the minimized group and the fixed stacks/Trash tail by
+// hairline rules. A divider is a projection of this structure, never an entry:
+// the shell supplies the boundaries (derived here from the entry kinds and the
+// fixed tail) and the Dock draws them. A divider is emitted between each pair
+// of *adjacent non-empty* regions, so an empty region never leaves an orphaned
+// or doubled rule.
+struct DockRegionPlan {
+    int pinned = 0;    // the pinned prefix
+    int tail = 0;      // temporary + recent + overflow running groups
+    int minimized = 0; // per-window minimized rows (0 when hidden)
+    int fixed = 0;     // the stacks + Trash tail
+    int dividerCount() const; // adjacent non-empty region pairs
+    bool appRegion() const { return pinned + tail > 0; }
+};
+
+// Derive the region plan from a full Dock entry list (no dividers; the fixed
+// tail is counted separately as `fixedCount`). `minimizedVisible` mirrors the
+// `dock.minimizeIntoTileIcon` setting: a hidden minimized region is empty, so
+// it contributes no boundary. Pure and unit-tested (tst_dockcore).
+DockRegionPlan planDockRegions(const QVariantList &entries, int fixedCount,
+                               bool minimizedVisible);
+
 // The T-10 section 5.1 overflow clamp, revisited by T-14.7q. A Dock wider
 // than its output is an error state: `dock.size` is clamped so the content
 // fits, and when even the minimum icon cannot fit everything, running groups

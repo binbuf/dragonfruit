@@ -370,6 +370,45 @@ QVariantList buildDockEntries(const QStringList &pinnedIds, const DesktopEntryIn
     return entries;
 }
 
+int DockRegionPlan::dividerCount() const
+{
+    // One rule between each adjacent pair of non-empty regions, in order
+    // (pinned | tail | minimized | fixed). Empty regions collapse away, so a
+    // pinned-only or tail-only Dock still separates cleanly from the fixed
+    // stacks/Trash tail, and a Dock with no app region at all draws nothing.
+    int count = 0;
+    bool haveRegion = false;
+    const int regions[4] = {pinned, tail, minimized, fixed};
+    for (const int region : regions) {
+        if (region <= 0)
+            continue;
+        if (haveRegion)
+            ++count;
+        haveRegion = true;
+    }
+    return count;
+}
+
+DockRegionPlan planDockRegions(const QVariantList &entries, int fixedCount,
+                               bool minimizedVisible)
+{
+    DockRegionPlan plan;
+    for (const QVariant &value : entries) {
+        const QString kind = value.toMap().value(QStringLiteral("kind")).toString();
+        if (kind == QLatin1String("pinned")) {
+            ++plan.pinned;
+        } else if (kind == QLatin1String("temporary") || kind == QLatin1String("recent")
+                   || kind == QLatin1String("overflow")) {
+            ++plan.tail;
+        } else if (kind == QLatin1String("minimized")) {
+            if (minimizedVisible)
+                ++plan.minimized;
+        }
+    }
+    plan.fixed = qMax(0, fixedCount);
+    return plan;
+}
+
 static DockOverflowResult buildOverflowResult(const QVariantList &entries, int keptTemporary,
                                               int keptRecent, bool showOverflow,
                                               DockOverflowResult result);
@@ -404,23 +443,40 @@ DockOverflowResult applyDockOverflow(const QVariantList &entries, int availableL
     if (!minimizedVisible)
         minimized = 0;
 
-    // The divider is always present; `fixedCount` is stack + trash.
-    const int nonDroppable = pinned + fixedCount + 1 + minimized + other;
+    // Every region boundary contributes a divider item (T-14.7v): the pinned |
+    // temporary/recent rule, the app | minimized rule, and the minimized |
+    // stacks/Trash rule. The fixed tail is the two fixed entries.
+    const int dividerCount =
+        planDockRegions(entries, fixedCount, minimizedVisible).dividerCount();
+
+    // The dividers plus the two fixed entries are never droppable; pinned and
+    // minimized are never dropped either.
+    const int nonDroppable = pinned + fixedCount + minimized + other + dividerCount;
     const int droppable = temporary + recent;
     const int count = nonDroppable + droppable;
     if (availableLength <= 0 || count <= 1 || result.iconSize <= 0)
         return result;
 
+    // Icons are `icon` wide and dividers `dividerWidth`; the gaps between
+    // adjacent items are `gap`. Every divider is internal (the fixed tail
+    // always follows it) so it contributes two of the gaps at most; a Dock
+    // whose regions collapse may have fewer. `n - 1` gaps are always charged.
     const auto totalFor = [&](int icon, int n) -> qint64 {
-        if (n <= 1)
-            return dividerWidth;
-        return qint64(n - 1) * (icon + gap) + dividerWidth;
+        if (n <= 0)
+            return 0;
+        if (n <= dividerCount)
+            return qint64(n) * dividerWidth;
+        return qint64(n - dividerCount) * icon + qint64(dividerCount) * dividerWidth
+               + qint64(n - 1) * gap;
     };
 
     int icon = result.iconSize;
     if (totalFor(icon, count) > availableLength) {
         // The largest icon in the token range whose whole content fits.
-        const int fit = int((availableLength - dividerWidth) / (count - 1)) - gap;
+        const int fit = dividerCount >= count
+            ? iconMin
+            : int((availableLength - qint64(dividerCount) * dividerWidth
+                   - qint64(count - 1) * gap) / (count - dividerCount));
         icon = qBound(iconMin, fit, result.iconSize);
     }
     // The whole content fits at the clamped size: nothing is hidden.
