@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(94 earlier sections omitted)_
+_(95 earlier sections omitted)_
 
-- **T90 — T-13.2a FileChooser portal**: **State: done.** The backend now serves the standard FileChooser interface; **`portal/src/chooser.rs`** (new) — the pure model: `ChooserKind`
 - **T91 — T-13.2b FileChooser picker UI**: **State: done.** The FileChooser portal now has its dialog: a design-system; **`shell/screenshot/FileChooser.qml`** (new) — the pure view: title, an Up
 - **T92 — T-13.3a Screenshot portal and selection UI**: **State: done.** The backend serves `org.freedesktop.impl.portal.Screenshot`; **`portal/src/screenshot.rs`** (new) — the pure model: `CaptureMode`
 - **T93 — T-13.3b Screenshot save/copy and portal-only gate**: **State: done.** A capture is now actually produced, saved, and copied. The; **`protocols/dragonfruit-toplevel.xml`** — `df_toplevel_manager` v6 adds
@@ -44,6 +43,7 @@ _(94 earlier sections omitted)_
 - **T110o — T-14.7o Dock window-count badge**: **State: done.** A grouped app now shows a count at its icon's top-right corner; `shell/src/dockprojection.{h,cpp}` — new `dockWindowCount(entry)` (prefers
 - **T110p — T-14.7p Dock hover-open, retargetable chooser and stable anchor**: **State: done.** `dock.chooserOnHover` (bool, default off) opts into a; `services/settingsd/src/schema.rs` — `dock.chooserOnHover` (`since: 8`),
 - **T110q — T-14.7q Dock overflow cell and More Windows popover**: **State: done.** When the running groups do not fit even at the minimum icon,; `shell/src/dockmodel.{h,cpp}` — `applyDockOverflow` now returns a terminal
+- **T110r — T-14.7r Dock Trash empty progress and result**: **State: done.** Empty Trash is asynchronous with visible states. Confirming; `shell/src/trashbridge.{h,cpp}` — `EmptyState {Idle,Emptying,Succeeded,Failed}`;
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -9615,5 +9615,92 @@ Gotchas for later tasks:
   `externalInsertionIndex` breaks on it so an external drop never inserts after
   it.
 - `DF_DOCK_OVERFLOW_FIXTURE` is a capture seam, never session state.
+- `check-desktop-names.sh` still fails only on the pre-existing
+  StatusNotifier/zoo/apppicker lines (unchanged here).
+
+## T110r — T-14.7r Dock Trash empty progress and result
+
+**State: done.** Empty Trash is asynchronous with visible states. Confirming
+Empty Trash (the context-menu confirmation stays the entry point) closes the
+menu and opens a progress/result popover anchored to the Trash entry: a delayed
+indeterminate busy ring, then a check + removed count, or the message + **Try
+Again**. The shell UI thread never blocks. No new persistent state, no polling;
+the result is a one-shot signal. ADR 0106 records the seam.
+
+Real paths:
+
+- `shell/src/trashbridge.{h,cpp}` — `EmptyState {Idle,Emptying,Succeeded,Failed}`;
+  `emptyAsync()` (one-shot worker, `false` when already emptying, immediate
+  failure when the monitor is absent); `emptyStarted`/`emptyFinished(ok,removed,
+  error)` one-shot signals; `emptyState`/`isEmptying`/`emptyRemoved`/
+  `emptyError`; `resetEmptyState()`; `joinEmptyWorker()` joins on start/stop/
+  destruct so the monitor is never freed mid-op. Synchronous `empty()` kept.
+- `shell/dock/DockTrashEmptyPopover.qml` (new) — the view: `phase`, `busyVisible`,
+  `removedCount`, `errorMessage`, `retryRequested`; the spinner
+  (`QtQuick.Shapes` `PathAngleArc`, static under reduced motion), success check,
+  failure mark + `Button` Try Again; `Accessible.announce` on every phase change;
+  focus moves to Try Again on failure. `Dock.qml` registers it.
+- `shell/dock/Dock.qml` — `trashEmptyPhase`/`trashBusyVisible`/`trashEmptyRemoved`/
+  `trashEmptyError`/`trashEmptyOpen`/`trashEmptyAnchor`; `beginTrashEmpty`,
+  `handleTrashEmptyResult`, `retryTrashEmpty`, `resetTrashEmptyState`,
+  `announceTrashEmpty`, `trashEmptyFixture`; the menu trigger calls
+  `beginTrashEmpty()` then emits `empty_trash`; `popoverOpen`/`activePopoverRect`
+  include the popover; `closePopovers()` leaves an in-flight empty alone;
+  `trashBusyDelayTimer`.
+- `shell/src/shellcontroller.{h,cpp}` — connects `TrashBridge::emptyFinished`
+  to `onTrashEmptyFinished` (forwards to `handleTrashEmptyResult` via
+  `QMetaObject::invokeMethod`); the `empty_trash` action calls `emptyAsync()`;
+  the `DF_DOCK_TRASH_EMPTY_FIXTURE=busy|success|failed` capture seam.
+- `design-system/tokens/tokens.json` — `component.dock.trashEmpty`
+  (`busyDelay` 350, `spinnerSize` 18, `spinnerStroke` 2, `spinnerSpeed` 900);
+  `Theme.qml` regenerated (`design_tokens.rs` carries no component tokens).
+- Tests: `tst_dockcore` — `trashBridgeAsyncEmptyReportsTheRemovedCount`,
+  `trashBridgeSecondEmptyWhileEmptyingIsIgnored`,
+  `trashBridgeEmptyOnAnAbsentBackendFailsWithoutHanging`; 103 → 106.
+  `tst_dock.qml` — 7 `test_empty_trash_*` cases (confirmation opens progress,
+  delayed busy, fast-success skip, check + count, failure + Try Again + focus,
+  second-request ignored, reduced-motion static ring, result-after-dismiss
+  dropped); `tst_dock` 220 → 227.
+- `scripts/capture-dock-trash-empty.sh` + `make dock-trash-empty-capture`;
+  `docs/captures/t14-dock-trash-empty.png` (busy over success composite) and
+  `t14-dock-trash-empty-{busy,success}-{light,dark}.png`; captures README.
+- Docs: `docs/design/04-shell.md` "Emptying the Trash";
+  `docs/design/adr/0106-async-trash-empty-seam.md`.
+
+Commands that work (repo root):
+
+- `ctest --test-dir build --output-on-failure` — 53/53 (`tst_dock` 227,
+  `tst_dockcore` 106).
+- `make e2e` — green.
+- `cargo fmt --all -- --check`; `./scripts/gen-tokens.py --check`;
+  `./scripts/check-design-tokens.sh`; `./scripts/check-no-capture-grab.sh`;
+  `./scripts/check-gallery-snapshots.py --strict` — green.
+- Live: `make dock-trash-empty-capture` (host Wayland + spectacle + gdbus +
+  Pillow). Composite inspected: busy = spinner + "Emptying the Trash…",
+  success = check + "3 items removed".
+
+Gotchas for later tasks:
+
+- **`handleTrashEmptyResult(ok, removed, error)` is the only shell→Dock result
+  path** (invoked by name from `onTrashEmptyFinished`). It drops the result when
+  `trashEmptyOpen` is false, so a late result after dismiss cannot resurrect the
+  popover.
+- **One operation at a time lives in the bridge** (`emptyAsync` returns false
+  while `Emptying`), not in QML; `retryTrashEmpty` also guards on the Dock's
+  phase.
+- **The busy indicator is gated by `trashBusyVisible`**, set by
+  `trashBusyDelayTimer` (`component.dock.trashEmpty.busyDelay`). A fast empty
+  clears it via `handleTrashEmptyResult` before the timer fires — do not show the
+  spinner directly from `phase`.
+- **`closePopovers()` skips `trashEmptyPopover.hide()` while emptying** so a
+  stray dismiss cannot hide an in-flight operation.
+- **The worker is a one-shot `std::thread`**, separate from the watch worker
+  (which stays blocked on `df_files_trash_monitor_wait`); `joinEmptyWorker()` is
+  called before starting a new one and in the destructor, so the monitor is
+  never freed mid-op.
+- **Deferred:** determinate `N of M` progress needs a files-core progress seam
+  (a count/callback streamed from the empty op) before the popover can show it;
+  the indeterminate ring is the current fallback.
+- `DF_DOCK_TRASH_EMPTY_FIXTURE` is a capture seam, never session state.
 - `check-desktop-names.sh` still fails only on the pre-existing
   StatusNotifier/zoo/apppicker lines (unchanged here).

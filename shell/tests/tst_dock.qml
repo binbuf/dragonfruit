@@ -1578,6 +1578,18 @@ Item {
             return labels;
         }
 
+        // Walk the Trash confirmation to the destructive action (T-14.7r):
+        // open the menu, select Empty Trash, then confirm in the swapped model.
+        function confirmEmptyTrash(dock) {
+            dock.openEntryMenu(dock.trashEntry);
+            var menu = findChild(dock, "entryMenu");
+            menu.activate(menuLabels(menu).indexOf("Empty Trash"));
+            waitForRendering(stage);
+            menu = findChild(dock, "entryMenu");
+            menu.activate(menuLabels(menu).indexOf("Empty Trash"));
+            waitForRendering(stage);
+        }
+
         function test_trash_menu_offers_open_and_empty_trash() {
             var dock = make(dockComponent, {
                 width: 1280, height: 160, entries: [], trashFull: true
@@ -1656,6 +1668,132 @@ Item {
             menu.activate(menuLabels(menu).indexOf("Open"));
             compare(menuActionSpy.count, 1);
             compare(menuActionSpy.signalArguments[0][0], "open_trash");
+        }
+
+        // -- T-14.7r Trash empty progress and result --------------------------
+
+        function test_empty_trash_confirmation_starts_async_and_opens_progress() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, entries: [], trashFull: true
+            });
+            menuActionSpy.target = dock;
+            menuActionSpy.clear();
+            confirmEmptyTrash(dock);
+            // Confirming runs the destructive action, closes the menu, and opens
+            // the progress popover anchored to the Trash entry.
+            compare(menuActionSpy.count, 1);
+            compare(menuActionSpy.signalArguments[0][0], "empty_trash");
+            compare(findChild(dock, "entryMenu").open, false);
+            compare(dock.trashEmptyPhase, "emptying");
+            compare(dock.trashEmptyOpen, true);
+            var pop = findChild(dock, "trashEmptyPopover");
+            verify(pop !== null);
+            compare(pop.open, true);
+            // The busy indicator waits out the delay: hidden at first...
+            compare(findChild(pop, "trashEmptySpinner").visible, false);
+            // ...and shown once the empty has run longer than the delay.
+            wait(Theme.controls.dock.trashEmpty.busyDelay + 80);
+            compare(findChild(pop, "trashEmptySpinner").visible, true);
+            compare(findChild(pop, "trashEmptyCheck").visible, false);
+            verify(pop.accessibleStateText.indexOf("Emptying") >= 0);
+        }
+
+        function test_empty_trash_fast_success_never_shows_the_busy_indicator() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, entries: [], trashFull: true
+            });
+            confirmEmptyTrash(dock);
+            var pop = findChild(dock, "trashEmptyPopover");
+            // The result lands before the busy delay elapses.
+            dock.handleTrashEmptyResult(true, 3, "");
+            waitForRendering(stage);
+            compare(dock.trashEmptyPhase, "succeeded");
+            compare(dock.trashBusyVisible, false);
+            compare(findChild(pop, "trashEmptySpinner").visible, false);
+        }
+
+        function test_empty_trash_success_shows_check_and_removed_count() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, entries: [], trashFull: true
+            });
+            confirmEmptyTrash(dock);
+            var pop = findChild(dock, "trashEmptyPopover");
+            dock.handleTrashEmptyResult(true, 3, "");
+            waitForRendering(stage);
+            compare(dock.trashEmptyPhase, "succeeded");
+            compare(findChild(pop, "trashEmptySpinner").visible, false);
+            compare(findChild(pop, "trashEmptyCheck").visible, true);
+            compare(findChild(pop, "trashEmptyRetry").visible, false);
+            verify(findChild(pop, "trashEmptyStatusText").text.indexOf("3") >= 0);
+            verify(pop.accessibleStateText.indexOf("3") >= 0);
+        }
+
+        function test_empty_trash_failure_offers_try_again_and_retries() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, entries: [], trashFull: true
+            });
+            confirmEmptyTrash(dock);
+            var pop = findChild(dock, "trashEmptyPopover");
+            dock.handleTrashEmptyResult(false, -1, "The Trash is read-only");
+            waitForRendering(stage);
+            compare(dock.trashEmptyPhase, "failed");
+            compare(findChild(pop, "trashEmptySpinner").visible, false);
+            compare(findChild(pop, "trashEmptyCheck").visible, false);
+            verify(findChild(pop, "trashEmptyStatusText").text.indexOf("read-only") >= 0);
+            var retry = findChild(pop, "trashEmptyRetry");
+            compare(retry.visible, true);
+            // Focus moves to the safe action.
+            compare(retry.activeFocus, true);
+            // Try Again reruns the same action, without re-opening the menu.
+            menuActionSpy.target = dock;
+            menuActionSpy.clear();
+            retry.clicked();
+            waitForRendering(stage);
+            compare(dock.trashEmptyPhase, "emptying");
+            compare(menuActionSpy.count, 1);
+            compare(menuActionSpy.signalArguments[0][0], "empty_trash");
+        }
+
+        function test_empty_trash_second_request_while_emptying_is_ignored() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, entries: [], trashFull: true
+            });
+            confirmEmptyTrash(dock);
+            menuActionSpy.target = dock;
+            menuActionSpy.clear();
+            dock.retryTrashEmpty();
+            compare(menuActionSpy.count, 0);
+            compare(dock.trashEmptyPhase, "emptying");
+        }
+
+        function test_empty_trash_reduced_motion_keeps_busy_static_but_distinct() {
+            Theme.reducedMotion = true;
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, entries: [], trashFull: true
+            });
+            confirmEmptyTrash(dock);
+            wait(Theme.controls.dock.trashEmpty.busyDelay + 80);
+            var pop = findChild(dock, "trashEmptyPopover");
+            var spinner = findChild(pop, "trashEmptySpinner");
+            compare(spinner.visible, true);
+            // No rotation under reduced motion, but the ring still reads as
+            // working against the success check.
+            compare(spinner.rotation, 0);
+            compare(findChild(pop, "trashEmptyCheck").visible, false);
+        }
+
+        function test_empty_trash_result_after_dismiss_is_dropped() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, entries: [], trashFull: true
+            });
+            confirmEmptyTrash(dock);
+            // Dismissing the popover resets the operation state; a late result
+            // cannot resurrect it.
+            findChild(dock, "trashEmptyPopover").open = false;
+            waitForRendering(stage);
+            compare(dock.trashEmptyPhase, "idle");
+            dock.handleTrashEmptyResult(true, 2, "");
+            compare(dock.trashEmptyPhase, "idle");
         }
 
         function test_trash_unavailable_is_dimmed_and_disabled() {

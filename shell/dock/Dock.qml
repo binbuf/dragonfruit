@@ -78,6 +78,18 @@ Rectangle {
     // Empty Trash replaces the menu model with the confirm/cancel choice
     // before the shell performs the destructive operation.
     property bool trashConfirming: false
+    // The Empty Trash operation's visible state (T-14.7r). The shell owns the
+    // asynchronous operation; the Dock renders one phase at a time in a
+    // dedicated popover anchored to the Trash entry. `idle` means no operation
+    // is showing. `trashBusyVisible` gates the busy indicator behind a short
+    // delay so a fast empty never flickers through it (the shell reports the
+    // one-shot result via `handleTrashEmptyResult`).
+    property string trashEmptyPhase: "idle"      // idle | emptying | succeeded | failed
+    property bool trashBusyVisible: false
+    property int trashEmptyRemoved: 0
+    property string trashEmptyError: ""
+    property bool trashEmptyOpen: false
+    property Item trashEmptyAnchor: null
 
     // The fixed popover buffer budget (T-14.7c). The shell pre-sizes the
     // offscreen render target to this and the Dock clamps every popover into
@@ -351,6 +363,34 @@ Rectangle {
             var previous = chooserAnchorProxy.parent;
             chooserAnchorProxy.parent = null;
             chooserAnchorProxy.parent = previous;
+        }
+    }
+
+    // The geometry snapshot the Trash empty popover anchors to (T-14.7r), the
+    // same outlive-a-rebuild pattern as `chooserAnchorProxy`: an empty changes
+    // the Trash state, which rebuilds its delegate, so the popover must not
+    // hold a live delegate.
+    Item {
+        id: trashEmptyAnchorProxy
+        objectName: "trashEmptyAnchorProxy"
+        visible: false
+        width: 0
+        height: 0
+
+        function capture(entryItem) {
+            if (!entryItem)
+                return;
+            var topLeft = entryItem.mapToItem(dock, 0, 0);
+            trashEmptyAnchorProxy.x = topLeft.x;
+            trashEmptyAnchorProxy.y = topLeft.y;
+            trashEmptyAnchorProxy.width = entryItem.width;
+            trashEmptyAnchorProxy.height = entryItem.height;
+        }
+
+        function reposition() {
+            var previous = trashEmptyAnchorProxy.parent;
+            trashEmptyAnchorProxy.parent = null;
+            trashEmptyAnchorProxy.parent = previous;
         }
     }
 
@@ -956,6 +996,7 @@ Rectangle {
     // popover is open (T-10 section 14).
     readonly property bool popoverOpen:
         menuOpen || chooserOpen || stackOpen || appPickerOpen || overflowOpen
+        || trashEmptyOpen
     // A tooltip never shares the stage with a context menu/chooser/stack.
     onPopoverOpenChanged: if (popoverOpen) hideTooltip()
 
@@ -1165,11 +1206,123 @@ Rectangle {
         stackPopover.hide();
         appPicker.hide();
         overflowPopover.hide();
+        // An in-flight Empty Trash owns its popover (T-14.7r): a stray
+        // dismiss must not hide the operation. A finished (or idle) one
+        // closes normally.
+        if (trashEmptyPhase !== "emptying")
+            trashEmptyPopover.hide();
         trashConfirming = false;
         overflowEntryRef = null;
         chooserHoverTimer.stop();
         chooserCloseTimer.stop();
         chooserHoverEntry = null;
+    }
+
+    // --- Trash Empty progress/result (T-14.7r) ---------------------------
+    // Entering the operation. Called from the confirmation step after the
+    // destructive action is confirmed: the menu closes and the progress
+    // popover opens at the Trash entry. The busy indicator waits out
+    // `busyDelay` so a fast empty skips it. The shell starts the actual work
+    // from the emitted `menuActionRequested("empty_trash")` that follows.
+    function beginTrashEmpty() {
+        trashConfirming = false;
+        entryMenu.hide();
+        trashEmptyPhase = "emptying";
+        trashEmptyRemoved = 0;
+        trashEmptyError = "";
+        trashBusyVisible = false;
+        var idx = indexOfItemId("__trash__");
+        trashEmptyAnchorProxy.capture(idx >= 0 ? entryRepeater.itemAt(idx) : null);
+        trashEmptyAnchor = trashEmptyAnchorProxy;
+        trashBusyDelayTimer.restart();
+        trashEmptyPopover.open = true;
+        announceTrashEmpty(qsTr("Emptying the Trash"));
+    }
+
+    // The shell's one-shot result from the TrashBridge worker. Success shows
+    // the check and the removed count; failure shows the message and the Try
+    // Again button. A result for an already-dismissed popover is dropped.
+    function handleTrashEmptyResult(ok, removed, error) {
+        if (!trashEmptyOpen) {
+            resetTrashEmptyState();
+            return;
+        }
+        trashBusyDelayTimer.stop();
+        trashBusyVisible = false;
+        if (ok) {
+            trashEmptyPhase = "succeeded";
+            trashEmptyRemoved = removed;
+            trashEmptyError = "";
+            // An empty rebuilds the Trash delegate; re-capture the snapshot
+            // anchor from the fresh one once the Repeater has settled.
+            Qt.callLater(function() {
+                if (!trashEmptyOpen)
+                    return;
+                var idx = indexOfItemId("__trash__");
+                trashEmptyAnchorProxy.capture(idx >= 0 ? entryRepeater.itemAt(idx) : null);
+                trashEmptyAnchorProxy.reposition();
+            });
+        } else {
+            trashEmptyPhase = "failed";
+            trashEmptyRemoved = 0;
+            trashEmptyError = error && error.length > 0
+                              ? error : qsTr("The Trash could not be emptied");
+        }
+    }
+
+    // Try Again from the failure state: re-run without re-opening the menu or
+    // re-confirming. One operation at a time: a second request while emptying
+    // is ignored.
+    function retryTrashEmpty() {
+        if (trashEmptyPhase === "emptying")
+            return;
+        trashEmptyPhase = "emptying";
+        trashEmptyRemoved = 0;
+        trashEmptyError = "";
+        trashBusyVisible = false;
+        trashBusyDelayTimer.restart();
+        announceTrashEmpty(qsTr("Emptying the Trash"));
+        menuActionRequested("empty_trash", ({}));
+    }
+
+    function resetTrashEmptyState() {
+        trashBusyDelayTimer.stop();
+        trashEmptyPhase = "idle";
+        trashBusyVisible = false;
+        trashEmptyRemoved = 0;
+        trashEmptyError = "";
+    }
+
+    function announceTrashEmpty(text) {
+        if (text && text.length > 0)
+            Accessible.announce(text);
+    }
+
+    // Capture/demo seam (T-14.7r): drive the Trash empty popover into a state
+    // without running a real operation. `busy`, `success`, or `failed`. Never
+    // set in a normal session.
+    function trashEmptyFixture(mode) {
+        var idx = indexOfItemId("__trash__");
+        trashEmptyAnchorProxy.capture(idx >= 0 ? entryRepeater.itemAt(idx) : null);
+        trashEmptyAnchor = trashEmptyAnchorProxy;
+        trashBusyDelayTimer.stop();
+        if (mode === "success") {
+            trashEmptyPhase = "succeeded";
+            trashEmptyRemoved = 3;
+            trashEmptyError = "";
+            trashBusyVisible = false;
+        } else if (mode === "failed") {
+            trashEmptyPhase = "failed";
+            trashEmptyRemoved = 0;
+            trashEmptyError = qsTr("The Trash could not be emptied");
+            trashBusyVisible = false;
+        } else {
+            trashEmptyPhase = "emptying";
+            trashEmptyRemoved = 0;
+            trashEmptyError = "";
+            trashBusyVisible = true;
+        }
+        trashEmptyPopover.open = true;
     }
 
     function openEntryMenu(entry) {
@@ -2244,7 +2397,8 @@ Rectangle {
                  : ((stackPopover.open || stackPopover.visible) ? stackPopover
                  : ((appPicker.open || appPicker.visible) ? appPicker
                  : ((overflowPopover.open || overflowPopover.visible) ? overflowPopover
-                 : null))));
+                 : ((trashEmptyPopover.open || trashEmptyPopover.visible) ? trashEmptyPopover
+                 : null)))));
         if (!popup || popup.width <= 0 || popup.height <= 0)
             return { x: 0, y: 0, w: 0, h: 0 };
         if (popup.contentRect !== undefined) {
@@ -2821,8 +2975,14 @@ Rectangle {
                 dock.trashConfirming = false;
                 return;
             }
-            if (item.action === "empty_trash")
-                dock.trashConfirming = false;
+            if (item.action === "empty_trash") {
+                // Confirmed: run the operation asynchronously and swap the
+                // menu for the progress/result popover (T-14.7r). The shell
+                // starts the work from the emitted action below.
+                dock.beginTrashEmpty();
+                dock.menuActionRequested(item.action, item.payload);
+                return;
+            }
             // The Add Application picker is a Dock-local surface; it opens
             // anchored to the divider without a shell round trip (T-14.7e).
             if (item.action === "add_application") {
@@ -3031,6 +3191,61 @@ Rectangle {
             dock.scheduleHide();
         }
         onGroupActivated: (group) => dock.activateOverflowGroup(group)
+    }
+
+    // The Trash Empty progress/result popover (T-14.7r). It is anchored to the
+    // Trash entry and placed exactly like the chooser/stack; the shell renders
+    // it into the Dock's overlay surface. The Dock owns the visible phase and
+    // raises Try Again; the operation itself runs in the shell's bridge.
+    DockTrashEmptyPopover {
+        id: trashEmptyPopover
+        objectName: "trashEmptyPopover"
+        phase: dock.trashEmptyPhase
+        busyVisible: dock.trashBusyVisible
+        removedCount: dock.trashEmptyRemoved
+        errorMessage: dock.trashEmptyError
+        anchorItem: dock.trashEmptyAnchor
+        x: {
+            if (!dock.trashEmptyAnchor)
+                return 0;
+            var px;
+            if (dock.axisIsX)
+                px = Math.max(0, Math.min(dock.width - width,
+                    dock.trashEmptyAnchor.x + (dock.trashEmptyAnchor.width - width) / 2));
+            else
+                px = dock.position === "left"
+                    ? dock.plateRect.x + dock.plateRect.w + 4
+                    : dock.plateRect.x - width - 4;
+            return dock.clampPopoverX(px, width);
+        }
+        y: {
+            if (!dock.trashEmptyAnchor)
+                return 0;
+            if (dock.axisIsX)
+                return dock.clampPopoverY(dock.trashEmptyAnchor.y - height - 4, height);
+            return Math.max(0, Math.min(dock.height - height,
+                dock.trashEmptyAnchor.y + (dock.trashEmptyAnchor.height - height) / 2));
+        }
+        onOpened: {
+            dock.trashEmptyOpen = true;
+            dock.popoverChanged();
+        }
+        onClosed: {
+            dock.trashEmptyOpen = false;
+            dock.resetTrashEmptyState();
+            dock.popoverChanged();
+            dock.scheduleHide();
+        }
+        onRetryRequested: () => dock.retryTrashEmpty()
+    }
+
+    // The busy indicator's short delay (T-14.7r): shown only once the empty has
+    // run longer than `busyDelay`, so a fast empty never flickers it.
+    Timer {
+        id: trashBusyDelayTimer
+        interval: Theme.controls.dock.trashEmpty.busyDelay
+        repeat: false
+        onTriggered: dock.trashBusyVisible = true
     }
 
     // Clicking empty Dock space dismisses an open popover (T-10 section 13).

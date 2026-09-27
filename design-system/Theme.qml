@@ -372,6 +372,12 @@ QtObject {
                 readonly property real gridGap: 0.08
                 readonly property real gridCell: 0.16
             }
+            readonly property var trashEmpty: QtObject {
+                readonly property int busyDelay: 350
+                readonly property int spinnerSize: 18
+                readonly property int spinnerStroke: 2
+                readonly property int spinnerSpeed: 900
+            }
         }
         readonly property var contextMenu: QtObject {
             readonly property int radius: 14

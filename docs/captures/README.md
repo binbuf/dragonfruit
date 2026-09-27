@@ -311,6 +311,17 @@ two 2x crops are stacked into `t14-dock-overflow.png` (light over dark) and
 saved individually. Needs a host Wayland session, spectacle, gdbus, and Pillow;
 not in `make e2e`.
 
+T-14.7r's Dock Empty Trash progress and result sign-off is produced by
+`scripts/capture-dock-trash-empty.sh` (`make dock-trash-empty-capture`): a real
+empty finishes too fast to catch the busy state reliably, so the script drives
+the shell's `DF_DOCK_TRASH_EMPTY_FIXTURE` seam over a populated trash — `busy`
+shows the delayed indeterminate ring with "Emptying the Trash…", `success`
+shows the check and "3 items removed". Each state is captured in light and
+dark; the busy and success crops are stacked into `t14-dock-trash-empty.png`
+(busy over success) and saved individually as
+`t14-dock-trash-empty-{busy,success}-{light,dark}.png`. Needs a host Wayland
+session, spectacle, gdbus, and Pillow; not in `make e2e`.
+
 T-14.7i's Dock hover name label sign-off is produced by
 `scripts/capture-dock-tooltip.sh` (`make dock-tooltip-capture`): the nested demo
 runs once per entry kind through the shell's `DF_DOCK_TOOLTIP_FIXTURE` seam
