@@ -1472,6 +1472,70 @@ private slots:
                  QStringLiteral("minimized"));
     }
 
+    // -- region plan (T-14.7v) --------------------------------------------
+
+    void regionPlanCountsDividersBetweenAdjacentNonEmptyRegions()
+    {
+        // pinned + temporary + fixed: the pinned | tail and tail | fixed rules.
+        DockRegionPlan plan = planDockRegions(makeOverflowEntries(2, 1, 0, 0), 2, true);
+        QCOMPARE(plan.pinned, 2);
+        QCOMPARE(plan.tail, 1);
+        QCOMPARE(plan.minimized, 0);
+        QCOMPARE(plan.fixed, 2);
+        QCOMPARE(plan.dividerCount(), 2);
+
+        // pinned + fixed only: one rule before the fixed tail.
+        plan = planDockRegions(makeOverflowEntries(3, 0, 0, 0), 2, true);
+        QCOMPARE(plan.dividerCount(), 1);
+
+        // A minimized group splits the right side into two rules.
+        plan = planDockRegions(makeOverflowEntries(1, 1, 0, 2), 2, true);
+        QCOMPARE(plan.dividerCount(), 3);
+
+        // A hidden minimized region collapses its boundary.
+        plan = planDockRegions(makeOverflowEntries(1, 1, 0, 2), 2, false);
+        QCOMPARE(plan.dividerCount(), 2);
+    }
+
+    void regionPlanSuppressesOrphanedDividers()
+    {
+        // No app region at all: only the fixed tail, no rule.
+        QCOMPARE(planDockRegions({}, 2, true).dividerCount(), 0);
+        // No fixed tail (degenerate): pinned and tail keep their internal rule.
+        QCOMPARE(planDockRegions(makeOverflowEntries(2, 1, 0, 0), 0, true).dividerCount(), 1);
+        // No pinned: the tail leads and one rule precedes the fixed tail.
+        QCOMPARE(planDockRegions(makeOverflowEntries(0, 2, 0, 0), 2, true).dividerCount(), 1);
+    }
+
+    void regionPlanTreatsRecentsAndOverflowAsTail()
+    {
+        QVariantList entries = makeOverflowEntries(1, 0, 2, 0);
+        entries.append(QVariantMap{{QStringLiteral("kind"), QStringLiteral("overflow")}});
+        const DockRegionPlan plan = planDockRegions(entries, 2, true);
+        QCOMPARE(plan.pinned, 1);
+        QCOMPARE(plan.tail, 3);
+        QCOMPARE(plan.dividerCount(), 2);
+    }
+
+    void overflowReservesEveryRegionDivider()
+    {
+        // One pinned, one running temporary, and the fixed stack/Trash: four
+        // regions with the pinned | tail and app | fixed rules = six items. At
+        // the minimum icon that is 4*32 + 2 dividers + 5*6 gaps = 160 px, so a
+        // 160 px axis fits and a 159 px axis drops the temporary.
+        const QVariantList entries = makeOverflowEntries(1, 1, 0, 0);
+        const DockOverflowResult fits =
+            applyDockOverflow(entries, 160, 32, 32, 64, 6, 1);
+        QVERIFY(!fits.clamped);
+        QCOMPARE(fits.hiddenTemporary, 0);
+
+        const DockOverflowResult tight =
+            applyDockOverflow(entries, 159, 32, 32, 64, 6, 1);
+        QVERIFY(tight.clamped);
+        QCOMPARE(tight.hiddenTemporary, 1);
+        QCOMPARE(countKind(tight.entries, QStringLiteral("pinned")), 1);
+    }
+
     // -- overflow clamp (T-10 section 5.1) --------------------------------
 
     void overflowFitsLeavesTheLayoutAlone()
