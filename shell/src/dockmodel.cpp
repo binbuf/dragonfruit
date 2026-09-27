@@ -38,6 +38,7 @@ DockConfig dockConfigFromValues(const QVariantMap &values)
     config.showRecentApps = read("dock.showRecentApps", false).toBool();
     config.reduceMotion = read("accessibility.reduceMotion", false).toBool();
     config.pinned = read("dock.pinned", QStringList()).toStringList();
+    config.pinnedFolders = read("dock.pinnedFolders", QStringList()).toStringList();
     return config;
 }
 

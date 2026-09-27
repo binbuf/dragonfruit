@@ -36,7 +36,7 @@
 #include "desktopentry.h"
 #include "dockdrops.h"
 #include "dockmodel.h"
-#include "downloadsmonitor.h"
+
 #include "filestarget.h"
 #include "focusstatus.h"
 #include "launchfailure.h"
@@ -545,6 +545,12 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onDockDownloadsFolderRequested()));
     connect(m_dockItem, SIGNAL(downloadsViewed()), this,
             SLOT(onDockDownloadsViewed()));
+    connect(m_dockItem, SIGNAL(folderOpenRequested(QString)), this,
+            SLOT(onDockFolderOpenRequested(QString)));
+    connect(m_dockItem, SIGNAL(folderViewed(QString)), this,
+            SLOT(onDockFolderViewed(QString)));
+    connect(m_dockItem, SIGNAL(folderPinRemoved(QString)), this,
+            SLOT(onDockFolderPinRemoved(QString)));
     connect(m_dockItem, SIGNAL(dockSizePreview(qreal)), this,
             SLOT(onDockSizePreview(qreal)));
     connect(m_dockItem, SIGNAL(dockSizeChanged(qreal)), this,
@@ -563,12 +569,13 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     m_dockItem->setProperty("trashFull", m_trash->isFull());
     m_dockItem->setProperty("trashCount", m_trash->itemCount());
     m_dockItem->setProperty("trashAvailable", m_trash->isAvailable());
-    // The Downloads stack (section 17): a zero-polling watch of the folder
-    // that feeds the stack popover and its new-items badge.
-    m_downloads = new DownloadsMonitor(DownloadsMonitor::defaultDirectory(), this);
-    connect(m_downloads, &DownloadsMonitor::changed, this, &ShellController::onDownloadsChanged);
-    m_downloads->start();
-    onDownloadsChanged();
+    // Folder stacks (T-14.7k): the Downloads default member plus every
+    // `dock.pinnedFolders` path, all listed through files-core and watched for
+    // the popover listings and new-items badges. The Downloads stack stays the
+    // default member; user pins are additional stacks.
+    m_folderStacks = new FolderStacks(this);
+    connect(m_folderStacks, &FolderStacks::changed, this, &ShellController::onDownloadsChanged);
+    refreshFolderStackData();
     // Apply `dock.*` before the surfaces exist (no reconfigure yet) so the
     // baseline bar thickness and magnified band reflect the saved size.
     applyDockSettings(false);
@@ -1335,6 +1342,33 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             QTimer::singleShot(1500, this, [this]() {
                 if (m_dockItem)
                     QMetaObject::invokeMethod(m_dockItem, "openStack");
+            });
+        }
+    }
+
+    // Capture/demo seam (T-14.7k): pin a folder so the live visual check can
+    // capture the pin, the open stack, and the drag-out removal without a real
+    // drag. The value is `<absolute path>` or `<absolute path>:open`; the pin
+    // is written through settingsd (the only writer) like a real drop. Never
+    // set in a normal session.
+    if (qEnvironmentVariableIsSet("DF_DOCK_FOLDER_PIN_FIXTURE")) {
+        QString spec = qEnvironmentVariable("DF_DOCK_FOLDER_PIN_FIXTURE");
+        bool openIt = false;
+        if (spec.endsWith(QLatin1String(":open"))) {
+            openIt = true;
+            spec.chop(5);
+        }
+        const QString folder = QDir::cleanPath(spec);
+        if (!folder.isEmpty()) {
+            QTimer::singleShot(1500, this, [this, folder, openIt]() {
+                QStringList next = m_dockConfig.pinnedFolders;
+                if (!next.contains(folder))
+                    next.append(folder);
+                writeDockSetting(QStringLiteral("dock.pinnedFolders"), next);
+                refreshFolderStackData();
+                if (openIt && m_dockItem)
+                    QMetaObject::invokeMethod(m_dockItem, "openStackById",
+                                              Q_ARG(QVariant, QStringLiteral("folder:") + folder));
             });
         }
     }
@@ -3669,6 +3703,7 @@ void ShellController::onDockExternalDragEntered(bool payloadIsApp, qreal x, qrea
     // The Dock needs the kind to choose the highlight or the live gap; the
     // resolved identity and file count arrive separately once the enter-time
     // payload read completes (`onDockExternalDragPayload`).
+    m_externalPayloadIsFolder = false;
     QMetaObject::invokeMethod(m_dockItem, "beginExternalDrag", Q_ARG(QVariant, payloadIsApp),
                               Q_ARG(QVariant, 0));
     onDockExternalDragMoved(x, y);
@@ -3683,6 +3718,8 @@ void ShellController::onDockExternalDragPayload(bool payloadIsApp, const QString
     QString iconPath;
     int count = 0;
     QString firstName;
+    const bool isFolder = !payloadIsApp && uriListIsFolder(paths);
+    m_externalPayloadIsFolder = isFolder;
     if (payloadIsApp && !desktopId.isEmpty()) {
         // Resolve the app alias through app-index so the ghost shows the real
         // name and themed icon; a failure degrades to the raw identity
@@ -3693,6 +3730,11 @@ void ShellController::onDockExternalDragPayload(bool payloadIsApp, const QString
         name = entry.valid ? entry.name : desktopId;
         iconPath = entry.valid ? entry.iconPath : QString();
         count = 1;
+    } else if (isFolder) {
+        // A single folder shows its own name in the drop ghost (T-14.7k).
+        name = folderDisplayName(paths.first());
+        count = 1;
+        firstName = name;
     } else {
         count = paths.size();
         if (!paths.isEmpty())
@@ -3700,7 +3742,8 @@ void ShellController::onDockExternalDragPayload(bool payloadIsApp, const QString
     }
     QMetaObject::invokeMethod(m_dockItem, "setExternalPayload", Q_ARG(QVariant, payloadIsApp),
                               Q_ARG(QVariant, name), Q_ARG(QVariant, iconPath),
-                              Q_ARG(QVariant, count), Q_ARG(QVariant, firstName));
+                              Q_ARG(QVariant, count), Q_ARG(QVariant, firstName),
+                              Q_ARG(QVariant, isFolder));
     scheduleDockRender();
 }
 
@@ -3728,6 +3771,9 @@ void ShellController::onDockExternalDropped(bool payloadIsApp, const QString &de
                                             const QStringList &paths, qreal x, qreal y)
 {
     m_externalPayloadIsApp = payloadIsApp;
+    // A single `file://` directory is a folder pin candidate (T-14.7k); the
+    // classification is filesystem-backed and independent of the app flag.
+    m_externalPayloadIsFolder = !payloadIsApp && uriListIsFolder(paths);
     m_externalDesktopId = desktopId;
     m_externalPaths = paths;
     m_externalDropX = x + m_dockItemOffsetX;
@@ -3748,14 +3794,55 @@ void ShellController::onDockExternalDropRequested(const QString &targetId,
                                                   const QString &targetKind,
                                                   const QString &desktopId, bool payloadIsApp)
 {
-    Q_UNUSED(targetId)
     Q_UNUSED(payloadIsApp)
     // Use the drop-time classification, not the QML's enter-time kind: a
-    // single `.desktop` URI is an app alias even though it arrived as files.
-    const DockDropAction action = dockDropActionFor(
-        targetKind, m_externalPayloadIsApp ? DockDropPayload::Application
-                                           : DockDropPayload::Files);
+    // single `.desktop` URI is an app alias even though it arrived as files,
+    // and a single `file://` directory is a folder pin (T-14.7k).
+    const DockDropPayload payload = m_externalPayloadIsApp ? DockDropPayload::Application
+                                    : m_externalPayloadIsFolder ? DockDropPayload::Folder
+                                                                : DockDropPayload::Files;
+    const DockDropAction action = dockDropActionFor(targetKind, payload);
+    // The folder a stack target represents: the built-in Downloads member or
+    // the path encoded in a `folder:` pin id.
+    const auto stackTargetPath = [this, &targetId]() -> QString {
+        if (targetId == QLatin1String("__downloads__"))
+            return downloadsDirectory();
+        if (targetId.startsWith(QLatin1String("folder:")))
+            return targetId.mid(7);
+        return QString();
+    };
     switch (action) {
+    case DockDropAction::PinFolder: {
+        const bool hasFolder = !m_externalPaths.isEmpty();
+        const QString folder = hasFolder ? QDir::cleanPath(m_externalPaths.first()) : QString();
+        const QString downloads = QDir::cleanPath(downloadsDirectory());
+        if (!hasFolder || folder.isEmpty()) {
+            qWarning() << "shell: Dock folder drop had no path";
+        } else if (!QFileInfo(folder).isDir()) {
+            // Only an absolute, existing directory is persisted (ADR 0092).
+            raiseDockNotice(m_notificationClient, QStringLiteral("Could not pin folder"),
+                            QStringLiteral("Only an existing folder can be pinned to the Dock."));
+        } else if (folder == downloads) {
+            qInfo() << "shell: Dock folder" << folder << "is the default Downloads stack";
+        } else {
+            QStringList next = m_dockConfig.pinnedFolders;
+            bool duplicate = false;
+            for (const QString &existing : next) {
+                if (QDir::cleanPath(existing) == folder)
+                    duplicate = true;
+            }
+            if (duplicate) {
+                qInfo() << "shell: Dock folder" << folder << "is already pinned (no-op)";
+            } else {
+                next.append(folder);
+                writeDockSetting(QStringLiteral("dock.pinnedFolders"), next);
+                refreshFolderStackData();
+                rebuildDockEntries();
+                qInfo() << "shell: Dock pinned folder" << folder << "from an external drop";
+            }
+        }
+        break;
+    }
     case DockDropAction::PinApp: {
         const QString id = m_externalDesktopId;
         if (id.isEmpty()) {
@@ -3806,28 +3893,26 @@ void ShellController::onDockExternalDropRequested(const QString &targetId,
                 << "dropped items";
         break;
     }
-    case DockDropAction::MoveToDownloads: {
-        const QString downloads = downloadsDirectory();
-        const bool dirOk = QDir().mkpath(downloads);
-        int moved = 0;
-        int failed = 0;
-        for (const QString &path : m_externalPaths) {
-            const QString destination =
-                downloads + QLatin1Char('/') + QFileInfo(path).fileName();
-            if (dirOk && QFile::rename(path, destination)) {
-                ++moved;
-                qInfo() << "shell: Dock moved" << path << "to Downloads";
-            } else {
-                ++failed;
-                qWarning() << "shell: Dock could not move" << path << "to Downloads";
-            }
+    case DockDropAction::MoveToFolder: {
+        const QString folder = stackTargetPath();
+        if (folder.isEmpty()) {
+            qWarning() << "shell: Dock file drop on an unresolved folder stack";
+            break;
         }
+        const QString name = folderDisplayName(folder);
+        QString error;
+        const int moved = moveFilesIntoFolder(folder, m_externalPaths, &error);
+        const int failed = m_externalPaths.size() - moved;
         if (failed > 0) {
             raiseDockNotice(
-                m_notificationClient, QStringLiteral("Could not move to Downloads"),
+                m_notificationClient, QStringLiteral("Could not move to %1").arg(name),
                 failed == 1
-                    ? QStringLiteral("1 item could not be moved to Downloads.")
-                    : QStringLiteral("%1 items could not be moved to Downloads.").arg(failed));
+                    ? QStringLiteral("1 item could not be moved to %1.").arg(name)
+                    : QStringLiteral("%1 items could not be moved to %2.").arg(failed).arg(name));
+            qWarning() << "shell: Dock could not move" << failed << "items into" << folder
+                       << error;
+        } else if (moved > 0) {
+            qInfo() << "shell: Dock moved" << moved << "items into" << folder;
         }
         break;
     }
@@ -3836,6 +3921,7 @@ void ShellController::onDockExternalDropRequested(const QString &targetId,
         break;
     }
     m_externalPayloadIsApp = false;
+    m_externalPayloadIsFolder = false;
     m_externalDesktopId.clear();
     m_externalPaths.clear();
 }
@@ -5357,21 +5443,101 @@ void ShellController::onTrashChanged()
     scheduleDockRender();
 }
 
+void ShellController::refreshFolderStackData()
+{
+    if (!m_folderStacks)
+        return;
+    // The Downloads default member is always first; the user's
+    // `dock.pinnedFolders` follow. The whole set is listed through the one
+    // files-core owner, never a second directory reader (ADR 0092).
+    const QString downloads = QDir::cleanPath(downloadsDirectory());
+    QStringList paths;
+    paths.append(downloads);
+    for (const QString &path : m_dockConfig.pinnedFolders) {
+        const QString clean = QDir::cleanPath(path);
+        if (!clean.isEmpty() && !paths.contains(clean))
+            paths.append(clean);
+    }
+    m_folderStacks->setFolders(paths);
+}
+
 void ShellController::onDownloadsChanged()
 {
-    if (!m_dockItem || !m_downloads)
+    if (!m_dockItem || !m_folderStacks)
         return;
-    m_dockItem->setProperty("downloadsItems", m_downloads->items());
-    m_dockItem->setProperty("downloadsCount", m_downloads->itemCount());
-    m_dockItem->setProperty("downloadsBadge", m_downloads->newCount());
-    m_dockItem->setProperty("downloadsName", m_downloads->displayName());
+    const QVariantList stacks = m_folderStacks->stacks();
+    const QString downloads = QDir::cleanPath(downloadsDirectory());
+
+    // The Downloads stack keeps its dedicated QML properties (the default
+    // member, ADR 0092); the remaining stacks are the user's folder pins.
+    QVariantList pins;
+    bool sawDownloads = false;
+    for (const QVariant &value : stacks) {
+        const QVariantMap map = value.toMap();
+        const QString path = map.value(QStringLiteral("path")).toString();
+        if (!sawDownloads && path == downloads) {
+            sawDownloads = true;
+            m_dockItem->setProperty("downloadsItems", map.value(QStringLiteral("items")));
+            m_dockItem->setProperty("downloadsCount", map.value(QStringLiteral("count")));
+            m_dockItem->setProperty("downloadsBadge", map.value(QStringLiteral("badge")));
+            m_dockItem->setProperty("downloadsName", map.value(QStringLiteral("name")));
+            m_dockItem->setProperty("downloadsPath", downloads);
+            continue;
+        }
+        QVariantMap pin = map;
+        pin.insert(QStringLiteral("id"), QStringLiteral("folder:") + path);
+        pin.insert(QStringLiteral("kind"), QStringLiteral("stack"));
+        pins.append(pin);
+    }
+    if (!sawDownloads) {
+        // The Downloads folder is unavailable; degrade with an empty listing
+        // rather than a stale one.
+        m_dockItem->setProperty("downloadsItems", QVariantList());
+        m_dockItem->setProperty("downloadsCount", 0);
+        m_dockItem->setProperty("downloadsBadge", 0);
+        m_dockItem->setProperty("downloadsName", folderDisplayName(downloads));
+        m_dockItem->setProperty("downloadsPath", downloads);
+    }
+    m_dockItem->setProperty("folderPins", pins);
     scheduleDockRender();
 }
 
 void ShellController::onDockDownloadsViewed()
 {
-    if (m_downloads)
-        m_downloads->markSeen();
+    if (m_folderStacks)
+        m_folderStacks->markSeen(downloadsDirectory());
+}
+
+void ShellController::onDockFolderOpenRequested(const QString &path)
+{
+    if (path.isEmpty())
+        return;
+    // A pinned folder opens in Files through the one reveal path (T-14.7h).
+    launchFiles(path);
+}
+
+void ShellController::onDockFolderViewed(const QString &path)
+{
+    if (m_folderStacks && !path.isEmpty())
+        m_folderStacks->markSeen(path);
+}
+
+void ShellController::onDockFolderPinRemoved(const QString &path)
+{
+    if (path.isEmpty())
+        return;
+    const QString clean = QDir::cleanPath(path);
+    QStringList next;
+    for (const QString &pinned : m_dockConfig.pinnedFolders) {
+        if (QDir::cleanPath(pinned) != clean)
+            next.append(pinned);
+    }
+    if (next == m_dockConfig.pinnedFolders)
+        return;
+    // Settingsd remains the only writer; the Dock never persists locally.
+    writeDockSetting(QStringLiteral("dock.pinnedFolders"), next);
+    refreshFolderStackData();
+    qInfo() << "shell: Dock folder pin removed" << clean;
 }
 
 void ShellController::onDockDownloadActivated(const QString &path)
@@ -5391,9 +5557,7 @@ void ShellController::onDockDownloadActivated(const QString &path)
 
 void ShellController::onDockDownloadsFolderRequested()
 {
-    if (!m_downloads)
-        return;
-    const QString folder = m_downloads->directory();
+    const QString folder = downloadsDirectory();
     QDir().mkpath(folder);
     // A stack folder opens in Files (T-14.7h, T-10.6c): the single reveal path
     // the Dock and the file manager share, so the folder appears where the

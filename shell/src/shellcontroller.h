@@ -24,7 +24,7 @@
 #include "desktopentry.h"
 #include "displayspolicy.h"
 #include "dockmodel.h"
-#include "downloadsmonitor.h"
+#include "folderstacks.h"
 #include "framecommitgate.h"
 #include "lockauth.h"
 #include "menubrokerclient.h"
@@ -247,6 +247,12 @@ private slots:
     void onDockDownloadsFolderRequested();
     void onDockDownloadsViewed();
     void onDownloadsChanged();
+    // Pinned folder stacks (T-14.7k): a row opened in a pinned folder's
+    // popover, its popover was viewed (clear the badge), or the folder pin was
+    // removed (write `dock.pinnedFolders`).
+    void onDockFolderOpenRequested(const QString &path);
+    void onDockFolderViewed(const QString &path);
+    void onDockFolderPinRemoved(const QString &path);
     // The divider resize handle writes `dock.size` (T-10 section 5).
     void onDockSizePreview(qreal fraction);
     void onDockSizeChanged(qreal fraction);
@@ -490,6 +496,10 @@ private:
     void writeDockSetting(const QString &key, const QVariant &value);
     // Seed the installed default pinned set once, when `dock.pinned` is empty.
     void seedDefaultDockPins();
+    // Project `m_folderStacks` onto the Dock QML: the Downloads stack's
+    // `downloads*` properties (the default member, unchanged) and the
+    // `folderPins` list for the user's pinned folder stacks (T-14.7k).
+    void refreshFolderStackData();
     // Apply an already-set `dock.size` to the Dock QML and reconfigure the
     // surface without rebuilding entries (the divider drag must not reset the
     // QML delegate that holds the pointer; T-10 section 5).
@@ -732,9 +742,9 @@ private:
     // store (T-10.6a). It replaced the interim home-trash watcher, so the shell
     // and Files share a single source of truth.
     TrashBridge *m_trash = nullptr;
-    // Downloads-stack state for the Dock (section 17). Files-core (T-17)
-    // replaces this watch with its folder monitor.
-    DownloadsMonitor *m_downloads = nullptr;
+    // Folder-stack state for the Dock (T-14.7k): the Downloads default member
+    // plus every `dock.pinnedFolders` path, all listed through files-core.
+    FolderStacks *m_folderStacks = nullptr;
     // Recency-ordered app ids for the suggested entries (`dock.showRecentApps`,
     // T-10 section 17); fed by focus changes, capped and de-duplicated.
     QStringList m_recentAppIds;
@@ -795,6 +805,9 @@ private:
     // `payloadIsApp` is the drop-time classification (a single `.desktop` URI
     // is an app alias even though the drag source advertised files).
     bool m_externalPayloadIsApp = false;
+    // True when the drop-time payload is a single absolute directory
+    // (T-14.7k); derived from the file list, not the app-alias flag.
+    bool m_externalPayloadIsFolder = false;
     QString m_externalDesktopId;
     QStringList m_externalPaths;
     qreal m_externalDropX = 0;

@@ -9,7 +9,7 @@
 #include "dockdrops.h"
 #include "dockmodel.h"
 #include "dockprojection.h"
-#include "downloadsmonitor.h"
+#include "folderstacks.h"
 #include "filestarget.h"
 #include "focusstatus.h"
 #include "framecommitgate.h"
@@ -1000,9 +1000,57 @@ private slots:
         QCOMPARE(dockDropActionFor(QStringLiteral("trash"), Payload::Files),
                  Action::TrashFiles);
         QCOMPARE(dockDropActionFor(QStringLiteral("stack"), Payload::Files),
-                 Action::MoveToDownloads);
+                 Action::MoveToFolder);
         QCOMPARE(dockDropActionFor(QStringLiteral("divider"), Payload::Files), Action::None);
         QCOMPARE(dockDropActionFor(QStringLiteral("minimized"), Payload::Files), Action::None);
+
+        // A single folder pins on the app region, moves into a stack, and
+        // trashes (T-14.7k).
+        QCOMPARE(dockDropActionFor(QString(), Payload::Folder), Action::PinFolder);
+        QCOMPARE(dockDropActionFor(QStringLiteral("pinned"), Payload::Folder),
+                 Action::PinFolder);
+        QCOMPARE(dockDropActionFor(QStringLiteral("temporary"), Payload::Folder),
+                 Action::PinFolder);
+        QCOMPARE(dockDropActionFor(QStringLiteral("stack"), Payload::Folder),
+                 Action::MoveToFolder);
+        QCOMPARE(dockDropActionFor(QStringLiteral("trash"), Payload::Folder),
+                 Action::TrashFiles);
+        QCOMPARE(dockDropActionFor(QStringLiteral("divider"), Payload::Folder),
+                 Action::None);
+        QCOMPARE(dockDropActionFor(QStringLiteral("minimized"), Payload::Folder),
+                 Action::None);
+    }
+
+    void uriListClassifiesASingleDirectoryAsAFolder()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString folder = dir.path() + QStringLiteral("/Documents");
+        QVERIFY(QDir().mkpath(folder));
+        writeFile(dir.path() + QStringLiteral("/readme.txt"), QStringLiteral("x"));
+
+        QVERIFY(uriListIsFolder(QStringList{folder}));
+        QVERIFY(!uriListIsFolder(QStringList{dir.path() + QStringLiteral("/readme.txt")}));
+        QVERIFY(!uriListIsFolder(QStringList{folder, folder}));
+        QVERIFY(!uriListIsFolder(QStringList{QStringLiteral("/does/not/exist")}));
+        // A relative path is never a pin candidate.
+        QVERIFY(!uriListIsFolder(QStringList{QStringLiteral("Documents")}));
+    }
+
+    void parseDockDropPayloadClassifiesASingleFolder()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString folder = dir.path() + QStringLiteral("/Documents");
+        QVERIFY(QDir().mkpath(folder));
+        const QByteArray payload =
+            QUrl::fromLocalFile(folder).toString().toUtf8() + "\r\n";
+        const DockDropPayloadData data =
+            parseDockDropPayload(QStringLiteral("text/uri-list"), payload);
+        QVERIFY(data.valid);
+        QCOMPARE(data.kind, DockDropPayload::Folder);
+        QCOMPARE(data.paths, (QStringList{folder}));
+        QVERIFY(data.desktopId.isEmpty());
     }
 
     // -- enter-time payload caching and drop affordances (T-14.7f) --------
@@ -1065,8 +1113,21 @@ private slots:
         QCOMPARE(dockDropAffordance(QStringLiteral("trash"), Payload::Files, QString(), false),
                  QStringLiteral("Trash unavailable"));
         QCOMPARE(dockDropAffordance(QStringLiteral("stack"), Payload::Files, QString(), true),
-                 QStringLiteral("Move to Downloads"));
+                 QStringLiteral("Move to Folder"));
+        QCOMPARE(dockDropAffordance(QStringLiteral("stack"), Payload::Files,
+                                    QStringLiteral("Documents"), true),
+                 QStringLiteral("Move to Documents"));
         QCOMPARE(dockDropAffordance(QStringLiteral("divider"), Payload::Files, QString(), true),
+                 QString());
+        // A single folder offers a pin on the app region (T-14.7k).
+        QCOMPARE(dockDropAffordance(QString(), Payload::Folder, QString(), true),
+                 QStringLiteral("Pin Folder"));
+        QCOMPARE(dockDropAffordance(QStringLiteral("pinned"), Payload::Folder, QString(), true),
+                 QStringLiteral("Pin Folder"));
+        QCOMPARE(dockDropAffordance(QStringLiteral("stack"), Payload::Folder,
+                                    QStringLiteral("Documents"), true),
+                 QStringLiteral("Move to Documents"));
+        QCOMPARE(dockDropAffordance(QStringLiteral("divider"), Payload::Folder, QString(), true),
                  QString());
     }
 
@@ -1082,9 +1143,9 @@ private slots:
         QVERIFY(!dockPinnedContains(pinned, QString(), QStringLiteral("org.example.App.desktop")));
     }
 
-    // -- downloads monitor (T-10 section 17) -----------------------------
+    // -- folder stacks (T-14.7k, generalizing T-10 section 17) -------------
 
-    void downloadsMonitorListsAndBadgesNewItems()
+    void folderStacksListAndBadgeNewItems()
     {
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
@@ -1092,18 +1153,23 @@ private slots:
         QVERIFY(QDir().mkpath(downloads));
         writeFile(downloads + QStringLiteral("/existing.txt"), QStringLiteral("x"));
 
-        DownloadsMonitor monitor(downloads);
-        monitor.start();
-        QCOMPARE(monitor.itemCount(), 1);
+        FolderStacks stacks;
+        stacks.setFolders(QStringList{downloads});
+        QCOMPARE(stacks.stacks().size(), 1);
+        QVariantMap stack = stacks.stacks().first().toMap();
+        QCOMPARE(stack.value(QStringLiteral("path")).toString(), downloads);
+        QCOMPARE(stack.value(QStringLiteral("name")).toString(), QStringLiteral("Downloads"));
+        QCOMPARE(stack.value(QStringLiteral("count")).toInt(), 1);
         // A pre-existing item is not a badge on login.
-        QCOMPARE(monitor.newCount(), 0);
+        QCOMPARE(stack.value(QStringLiteral("badge")).toInt(), 0);
+        QCOMPARE(stack.value(QStringLiteral("missing")).toBool(), false);
 
         writeFile(downloads + QStringLiteral("/fresh.txt"), QStringLiteral("y"));
-        QTRY_COMPARE(monitor.itemCount(), 2);
-        QTRY_COMPARE(monitor.newCount(), 1);
+        QTRY_COMPARE(stacks.stacks().first().toMap().value(QStringLiteral("count")).toInt(), 2);
+        QTRY_COMPARE(stacks.stacks().first().toMap().value(QStringLiteral("badge")).toInt(), 1);
 
-        const QVariantList items = monitor.items();
-        QCOMPARE(items.size(), 2);
+        const QVariantList items = stacks.stacks().first().toMap()
+                                       .value(QStringLiteral("items")).toList();
         bool foundFresh = false;
         for (const QVariant &value : items) {
             const QVariantMap item = value.toMap();
@@ -1113,11 +1179,40 @@ private slots:
         }
         QVERIFY(foundFresh);
 
-        monitor.markSeen();
-        QCOMPARE(monitor.newCount(), 0);
+        stacks.markSeen(downloads);
+        QCOMPARE(stacks.stacks().first().toMap().value(QStringLiteral("badge")).toInt(), 0);
     }
 
-    void downloadsMonitorMoveInMovesFiles()
+    // A path that has vanished degrades to a missing entry with an empty
+    // listing, never a crash (ADR 0092).
+    void folderStacksDegradeAMissingPath()
+    {
+        FolderStacks stacks;
+        stacks.setFolders(QStringList{QStringLiteral("/no/such/folder/here")});
+        QCOMPARE(stacks.stacks().size(), 1);
+        const QVariantMap stack = stacks.stacks().first().toMap();
+        QVERIFY(stack.value(QStringLiteral("missing")).toBool());
+        QCOMPARE(stack.value(QStringLiteral("count")).toInt(), 0);
+        QVERIFY(stack.value(QStringLiteral("items")).toList().isEmpty());
+        QCOMPARE(stacks.folders().size(), 1);
+    }
+
+    void folderStacksDeduplicateTheFolderSet()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QVERIFY(QDir().mkpath(dir.path() + QStringLiteral("/A")));
+        QVERIFY(QDir().mkpath(dir.path() + QStringLiteral("/B")));
+        FolderStacks stacks;
+        stacks.setFolders(QStringList{dir.path() + QStringLiteral("/A"),
+                                      dir.path() + QStringLiteral("/A"),
+                                      dir.path() + QStringLiteral("/B")});
+        QCOMPARE(stacks.folders().size(), 2);
+        QVERIFY(stacks.contains(dir.path() + QStringLiteral("/A")));
+        QVERIFY(!stacks.contains(dir.path() + QStringLiteral("/C")));
+    }
+
+    void moveFilesIntoFolderMovesAndRefusesUnsafeRoot()
     {
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
@@ -1125,46 +1220,44 @@ private slots:
         const QString source = dir.path() + QStringLiteral("/note.txt");
         writeFile(source, QStringLiteral("hello"));
 
-        DownloadsMonitor monitor(downloads);
-        monitor.start();
-        QCOMPARE(monitor.itemCount(), 0);
-
-        QCOMPARE(monitor.moveIn(QStringList{source}), 1);
+        QString error;
+        QCOMPARE(moveFilesIntoFolder(downloads, QStringList{source}, &error), 1);
         QVERIFY(!QFileInfo::exists(source));
         QVERIFY(QFileInfo::exists(downloads + QStringLiteral("/note.txt")));
-        QCOMPARE(monitor.itemCount(), 1);
+        QVERIFY(error.isEmpty());
 
         // Moving a file already in the folder is refused, never recursive.
-        QCOMPARE(monitor.moveIn(QStringList{downloads + QStringLiteral("/note.txt")}), 0);
-        QVERIFY(!monitor.lastError().isEmpty());
+        QCOMPARE(moveFilesIntoFolder(downloads,
+                                     QStringList{downloads + QStringLiteral("/note.txt")},
+                                     &error),
+                 0);
+        QVERIFY(!error.isEmpty());
+        QVERIFY(QFileInfo::exists(downloads + QStringLiteral("/note.txt")));
+
+        // A name collision is de-duplicated rather than overwriting.
+        writeFile(dir.path() + QStringLiteral("/note.txt"), QStringLiteral("again"));
+        QCOMPARE(moveFilesIntoFolder(downloads,
+                                     QStringList{dir.path() + QStringLiteral("/note.txt")}),
+                 1);
+        QVERIFY(QFileInfo::exists(downloads + QStringLiteral("/note.1.txt")));
+
+        QCOMPARE(moveFilesIntoFolder(QStringLiteral("/"),
+                                     QStringList{QStringLiteral("/tmp/whatever")}, &error),
+                 0);
+        QVERIFY(!error.isEmpty());
     }
 
-    void downloadsMonitorRefusesUnsafeRoot()
-    {
-        DownloadsMonitor monitor(QStringLiteral("/"));
-        QCOMPARE(monitor.moveIn(QStringList{QStringLiteral("/tmp/whatever")}), 0);
-        QVERIFY(!monitor.lastError().isEmpty());
-    }
-
-    // T-14.7h: the folder's display name is its basename, so the Dock's hover
+    // T-14.7h/k: a folder's display name is its basename, so the Dock's hover
     // label and the stack popover header can name any folder without the
     // artwork carrying text. A root/empty basename falls back to "Downloads".
-    void downloadsMonitorReportsItsDisplayName()
+    void folderDisplayNameFallsBackToDownloads()
     {
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
         const QString folder = dir.path() + QStringLiteral("/My Stuff");
         QVERIFY(QDir().mkpath(folder));
-        DownloadsMonitor named(folder);
-        QCOMPARE(named.displayName(), QStringLiteral("My Stuff"));
-
-        DownloadsMonitor root(QStringLiteral("/"));
-        QCOMPARE(root.displayName(), QStringLiteral("Downloads"));
-
-        DownloadsMonitor dflt;
-        QCOMPARE(dflt.displayName(), QFileInfo(dflt.directory()).fileName().isEmpty()
-                                        ? QStringLiteral("Downloads")
-                                        : QFileInfo(dflt.directory()).fileName());
+        QCOMPARE(folderDisplayName(folder), QStringLiteral("My Stuff"));
+        QCOMPARE(folderDisplayName(QStringLiteral("/")), QStringLiteral("Downloads"));
     }
 
     // -- recent/suggested apps (T-10 section 17) -------------------------

@@ -15,15 +15,17 @@
 enum class DockDropPayload {
     Files,       // one or more file/folder URIs
     Application, // an application alias (a `.desktop` file or app mime)
+    Folder,      // exactly one `file://` directory (T-14.7k folder pin)
 };
 
 // What a drop does, resolved from the target entry and the payload.
 enum class DockDropAction {
-    None,            // empty Dock, divider, or a nonsensical pairing
-    PinApp,          // an application alias dropped on the Dock pins it
-    OpenWithApp,     // files dropped on an app entry open with that app
-    TrashFiles,      // files dropped on the Trash move to trash
-    MoveToDownloads, // files dropped on the Downloads stack move into it
+    None,          // empty Dock, divider, or a nonsensical pairing
+    PinApp,        // an application alias dropped on the Dock pins it
+    PinFolder,     // a folder dropped on the app region pins it as a stack
+    OpenWithApp,   // files dropped on an app entry open with that app
+    TrashFiles,    // files dropped on the Trash move to trash
+    MoveToFolder,  // files dropped on a folder stack move into that folder
 };
 
 // Parse a `text/uri-list` payload (RFC 2483): one URI per line, `#` comments
@@ -52,19 +54,26 @@ DockDropPayloadData parseDockDropPayload(const QString &mime, const QByteArray &
 // file), which the Dock pins rather than opening a file with.
 bool uriListIsApplication(const QStringList &paths);
 
+// True when the URI list names exactly one local directory, which the Dock
+// pins as a folder stack rather than opening a file with (T-14.7k). The
+// check is filesystem-backed (the path must exist and be a directory).
+bool uriListIsFolder(const QStringList &paths);
+
 // The desktop id for a `.desktop` path (`/usr/share/applications/foo.desktop`
 // -> `foo.desktop`), or an empty string when the path is not a desktop file.
 QString desktopIdForFile(const QString &path);
 
 // Resolve the action for a drop on `targetKind` ("pinned" | "temporary" |
 // "recent" | "minimized" | "trash" | "stack" | "divider" | ""). An
-// application alias always pins; files follow the target (app entry, Trash,
-// or Downloads stack) and are a no-op anywhere else.
+// application alias always pins the app, a single folder pins itself as a
+// stack on the app region, and files follow the target (app entry, Trash, or
+// folder stack) and are a no-op anywhere else.
 DockDropAction dockDropActionFor(const QString &targetKind, DockDropPayload payload);
 
 // The hover affordance text for a drop on `targetKind`, or an empty string
 // when the pairing is a no-op (empty Dock, divider, a pin on Trash/stack).
-// `targetName` is the app entry's display name for the "Open with" hint;
+// `targetName` is the app entry's display name for the "Open with" hint and
+// the folder stack's name for "Move to <folder>";
 // `trashAvailable == false` reports the unavailable Trash (T-14.7f).
 QString dockDropAffordance(const QString &targetKind, DockDropPayload payload,
                            const QString &targetName, bool trashAvailable);
