@@ -73,6 +73,35 @@ Rectangle {
     // Pointer position along the dock axis in local coordinates, -1 when the
     // pointer is not over the Dock.
     property real pointerAlong: -1
+    // The pointer position the magnification geometry actually reads (T-14.7b).
+    // It tracks `pointerAlong` but is smoothed with `motion.dockMagnify` while
+    // magnifying, so a coarse pointer sampling reads as a continuous slide. It
+    // snaps (tracks raw) when magnification is off and under reduced motion.
+    property real smoothPointerAlong: pointerAlong
+    // The pointer geometry reads `smoothPointerAlong`. It snaps while the
+    // pointer enters/leaves the Dock, magnification is off, or reduced motion
+    // is on, and springs between two real Dock positions while magnifying —
+    // `motion.dockMagnify`'s bezier already carries the slight overshoot. The
+    // decision is made imperatively from the *previous* smoothed value, so
+    // there is no binding cycle between the flag and the value it gates.
+    NumberAnimation {
+        id: smoothPointerAnimation
+        target: dock
+        property: "smoothPointerAlong"
+        duration: Theme.motion.dockMagnify.duration
+        easing.type: Easing.Bezier
+        easing.bezierCurve: Theme.motion.dockMagnify.curve
+    }
+    onPointerAlongChanged: {
+        if (dock.magnifying && !Theme.reducedMotion && dock.smoothPointerAlong >= 0) {
+            smoothPointerAnimation.from = dock.smoothPointerAlong;
+            smoothPointerAnimation.to = dock.pointerAlong;
+            smoothPointerAnimation.restart();
+        } else {
+            smoothPointerAnimation.stop();
+            dock.smoothPointerAlong = dock.pointerAlong;
+        }
+    }
     property bool dragging: false
     // The dragged app entry and its tentative reorder state (T-10 section
     // 12). `dragTargetIndex` is an insertion index in the app region;
@@ -435,16 +464,19 @@ Rectangle {
         return { sizes: sizes, positions: positions, centers: centers, total: total };
     }
 
-    // Index of the icon item nearest the pointer (never the divider).
+    // Index of the icon item nearest the pointer (never the divider). The
+    // smoothed pointer is what the geometry reads; the raw `pointerAlong`
+    // gates whether the pointer is over the Dock at all (T-14.7b).
     readonly property int anchorIndex: {
         if (pointerAlong < 0 || items.length === 0)
             return -1;
+        var along = Math.max(0, smoothPointerAlong);
         var best = -1;
         var bestDistance = Number.MAX_VALUE;
         for (var i = 0; i < items.length; ++i) {
             if (items[i].kind === "divider" || items[i].kind === "external")
                 continue;
-            var d = Math.abs(_baseline.centers[i] - pointerAlong);
+            var d = Math.abs(_baseline.centers[i] - along);
             if (d < bestDistance) {
                 bestDistance = d;
                 best = i;
@@ -727,8 +759,9 @@ Rectangle {
         if (!dragging || entry.id !== dragEntryId)
             return;
         dragPointerAlong = along;
-        var start = axisIsX ? plateRect.x : plateRect.y;
-        var end = axisIsX ? plateRect.x + plateRect.w : plateRect.y + plateRect.h;
+        var start = axisIsX ? restingPlateRect.x : restingPlateRect.y;
+        var end = axisIsX ? restingPlateRect.x + restingPlateRect.w
+                          : restingPlateRect.y + restingPlateRect.h;
         var margin = iconSize;
         dragOutside = along < start - margin || along > end + margin;
         dragOutOfDock = dragOutside && entry.kind === "pinned";
@@ -866,10 +899,12 @@ Rectangle {
     function itemIndexAtLocal(localX, localY) {
         var along = axisIsX ? localX : localY;
         var cross = axisIsX ? localY : localX;
-        var alongStart = axisIsX ? plateRect.x : plateRect.y;
-        var alongEnd = axisIsX ? plateRect.x + plateRect.w : plateRect.y + plateRect.h;
-        var crossStart = axisIsX ? plateRect.y : plateRect.x;
-        var crossEnd = axisIsX ? plateRect.y + plateRect.h : plateRect.x + plateRect.w;
+        var alongStart = axisIsX ? restingPlateRect.x : restingPlateRect.y;
+        var alongEnd = axisIsX ? restingPlateRect.x + restingPlateRect.w
+                               : restingPlateRect.y + restingPlateRect.h;
+        var crossStart = axisIsX ? restingPlateRect.y : restingPlateRect.x;
+        var crossEnd = axisIsX ? restingPlateRect.y + restingPlateRect.h
+                               : restingPlateRect.x + restingPlateRect.w;
         if (along < alongStart - iconSize || along > alongEnd + iconSize)
             return -1;
         if (cross < crossStart - magnifyBand || cross > crossEnd + magnifyBand)
@@ -1005,12 +1040,12 @@ Rectangle {
         if (axisIsX)
             return dragPointerAlong - itemWidth / 2;
         if (position === "right")
-            return plateRect.x + barThickness - padding - itemWidth;
-        return plateRect.x + padding;
+            return restingPlateRect.x + barThickness - padding - itemWidth;
+        return restingPlateRect.x + padding;
     }
     function draggedY(itemHeight) {
         if (axisIsX)
-            return plateRect.y + barThickness - padding - itemHeight - dragLift;
+            return restingPlateRect.y + barThickness - padding - itemHeight - dragLift;
         return dragPointerAlong - itemHeight / 2;
     }
 
@@ -1320,10 +1355,11 @@ Rectangle {
         if (magnified) {
             var peak = iconSize * magnifyPeakFactor;
             var falloff = magnifyFalloff * iconSize;
+            var along = Math.max(0, smoothPointerAlong);
             for (var i = 0; i < n; ++i) {
                 if (list[i].kind === "divider" || list[i].kind === "external")
                     continue;
-                var d = Math.abs(base.centers[i] - pointerAlong);
+                var d = Math.abs(base.centers[i] - along);
                 var t = Math.max(0, Math.min(1, 1 - d / falloff));
                 sizes[i] = iconSize + (peak - iconSize)
                            * (1 - Math.cos(Math.PI * t)) / 2;
@@ -1356,7 +1392,7 @@ Rectangle {
                 // on both sides (the plate already carries `hideY`).
                 out.push({
                     x: positions[j],
-                    y: plateRect.y + barThickness - padding - h - bounce,
+                    y: restingPlateRect.y + barThickness - padding - h - bounce,
                     w: isDivider ? dividerWidth : sizes[j],
                     h: isDivider ? barThickness - 2 * padding : h,
                     iconSize: sizes[j]
@@ -1368,8 +1404,8 @@ Rectangle {
                 // mirrors it so the running indicator hugs the screen edge.
                 // Bounce moves away from the edge, into the magnify band
                 // (T-10 section 14). The plate already carries `hideX`.
-                var vx = position === "right" ? plateRect.x + plateRect.w - padding - w - bounce
-                                              : plateRect.x + padding + bounce;
+                var vx = position === "right" ? restingPlateRect.x + restingPlateRect.w - padding - w - bounce
+                                              : restingPlateRect.x + padding + bounce;
                 out.push({
                     x: vx,
                     y: positions[j],
@@ -1382,12 +1418,13 @@ Rectangle {
         return out;
     }
 
-    // The visible floating plate, sized to the *baseline* content so
-    // magnification never grows the reserved strip. It is the single geometry
-    // source for the plate drawing, the input region, and (T-14.7b) the
-    // declared backdrop panel rect. `paddingAlong` insets the plate's ends;
-    // `edgeMargin` floats its anchored edge off the screen edge.
-    readonly property var plateRect: {
+    // The *resting* plate: the baseline geometry with the auto-hide
+    // translation and no magnification. It fixes the anchored edge the live
+    // plate grows from and is what the entry cross-axis positions are laid out
+    // against, so the geometry never feeds back into itself. `paddingAlong`
+    // insets the plate's ends; `edgeMargin` floats its anchored edge off the
+    // screen edge (T-14.7a).
+    readonly property var restingPlateRect: {
         var base = _baseline;
         if (axisIsX)
             return {
@@ -1404,6 +1441,92 @@ Rectangle {
             w: barThickness,
             h: base.total + 2 * paddingAlong
         };
+    }
+
+    // The visible floating plate: the *live* union of the entry rects (their
+    // magnified sizes included, launch/attention bounce overshoot excluded) plus
+    // the cross and along padding. The anchored edge stays put — the plate
+    // grows into the pre-reserved magnify band — and the result is clamped to
+    // the surface. It is the single source for the plate drawing, the input
+    // region, and the declared backdrop panel rect (T-14.7b).
+    readonly property var plateRect: {
+        var l = layout;
+        var n = l.length;
+        if (n === 0)
+            return restingPlateRect;
+        var i, r, b;
+        if (axisIsX) {
+            var minX = Number.MAX_VALUE;
+            var maxX = -Number.MAX_VALUE;
+            var minTop = Number.MAX_VALUE;
+            for (i = 0; i < n; ++i) {
+                r = l[i];
+                if (r.w <= 0)
+                    continue;
+                minX = Math.min(minX, r.x);
+                maxX = Math.max(maxX, r.x + r.w);
+                // Add the bounce back so a launch/attention hop does not pump
+                // the plate (T-14.7b).
+                b = items[i].kind === "divider" ? 0 : entryBounce(items[i]);
+                minTop = Math.min(minTop, r.y + b);
+            }
+            if (minX > maxX)
+                return restingPlateRect;
+            var bottom = restingPlateRect.y + restingPlateRect.h;
+            var px = minX - paddingAlong;
+            var pw = (maxX - minX) + 2 * paddingAlong;
+            if (px < 0) {
+                pw += px;
+                px = 0;
+            }
+            if (px + pw > width)
+                pw = width - px;
+            var py = Math.max(0, minTop - padding);
+            return { x: px, y: py, w: pw, h: bottom - py };
+        }
+        // A vertical plate: the along axis is y; the anchored cross edge is
+        // fixed at the screen edge and the plate grows into the interior band.
+        var minY = Number.MAX_VALUE;
+        var maxY = -Number.MAX_VALUE;
+        for (i = 0; i < n; ++i) {
+            r = l[i];
+            if (r.h <= 0)
+                continue;
+            minY = Math.min(minY, r.y);
+            maxY = Math.max(maxY, r.y + r.h);
+        }
+        if (minY > maxY)
+            return restingPlateRect;
+        var pyv = minY - paddingAlong;
+        var ph = (maxY - minY) + 2 * paddingAlong;
+        if (pyv < 0) {
+            ph += pyv;
+            pyv = 0;
+        }
+        if (pyv + ph > height)
+            ph = height - pyv;
+        if (position === "right") {
+            var right = restingPlateRect.x + restingPlateRect.w;
+            var minLeft = Number.MAX_VALUE;
+            for (i = 0; i < n; ++i) {
+                if (l[i].h <= 0)
+                    continue;
+                b = items[i].kind === "divider" ? 0 : entryBounce(items[i]);
+                minLeft = Math.min(minLeft, l[i].x + b);
+            }
+            var rx = Math.max(0, minLeft - padding);
+            return { x: rx, y: pyv, w: right - rx, h: ph };
+        }
+        var left = restingPlateRect.x;
+        var maxRight = -Number.MAX_VALUE;
+        for (i = 0; i < n; ++i) {
+            if (l[i].h <= 0)
+                continue;
+            b = items[i].kind === "divider" ? 0 : entryBounce(items[i]);
+            maxRight = Math.max(maxRight, l[i].x + l[i].w - b);
+        }
+        var leftRight = Math.min(width, maxRight + padding);
+        return { x: left, y: pyv, w: leftRight - left, h: ph };
     }
 
     // The surface input region: the visible bar plus the currently magnified

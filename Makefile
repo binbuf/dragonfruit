@@ -45,7 +45,7 @@ endif
 .PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test \
         visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev demo soak e2e \
         idle-trace menubar-idle-trace latency-trace settingsd-capture settings-wave-1-capture \
-        files-capture osd-dnd-capture portals-capture zoo-run dock-spacing-capture check-desktop-names check-no-capture-grab check-design-tokens clean
+        files-capture osd-dnd-capture portals-capture zoo-run dock-spacing-capture dock-magnify-capture check-desktop-names check-no-capture-grab check-design-tokens clean
 
 help:
 	@echo "Dragonfruit build targets:"
@@ -205,6 +205,12 @@ zoo-run: build
 # docs/captures/t14-dock-spacing-*.png.
 dock-spacing-capture: build
 	bash scripts/capture-dock-spacing.sh
+
+# T-14.7b: the Dock magnification sweep stills (left/centre/right × dark/light)
+# and the pointer-sweep frame-budget probe. Needs a host Wayland session,
+# `spectacle`, Pillow and the built tree.
+dock-magnify-capture: build
+	bash scripts/capture-dock-magnify.sh
 
 qml-test:
 	@[ -f $(BUILD_DIR)/build.ninja ] || $(CMAKE) -S . -B $(BUILD_DIR) -G Ninja
