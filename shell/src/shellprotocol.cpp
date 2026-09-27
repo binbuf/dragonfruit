@@ -1640,6 +1640,16 @@ void ShellProtocol::setLaunchOrigin(const QString &appId, int x, int y, int widt
         wl_display_flush(m_display);
 }
 
+QRect ShellProtocol::primaryOutputGeometry() const
+{
+    if (m_outputs.isEmpty())
+        return QRect();
+    const OutputInfo info = m_outputInfo.value(m_outputs.first());
+    if (info.geometryWidth <= 0 || info.geometryHeight <= 0)
+        return QRect();
+    return QRect(info.x, info.y, info.geometryWidth, info.geometryHeight);
+}
+
 void ShellProtocol::setAppAccelerators(const QString &appId, const QString &accelerators)
 {
     // T-14.2b: mirror the menu-broker's focus-scoped accelerator table. The
@@ -3266,7 +3276,18 @@ void ShellProtocol::onOutputName(void *data, df_output *output, const char *name
     auto *self = static_cast<ShellProtocol *>(data);
     self->m_outputInfo[output].name = QString::fromUtf8(name ? name : "");
 }
-void ShellProtocol::onOutputGeometry(void *, df_output *, int32_t, int32_t, int32_t, int32_t) {}
+void ShellProtocol::onOutputGeometry(void *data, df_output *output, int32_t x, int32_t y,
+                                     int32_t width, int32_t height)
+{
+    // Remember the output's global layout rect so the Dock can translate its
+    // surface-local tile into the compositor's coordinates (T-14.7l).
+    auto *self = static_cast<ShellProtocol *>(data);
+    OutputInfo &info = self->m_outputInfo[output];
+    info.x = static_cast<int>(x);
+    info.y = static_cast<int>(y);
+    info.geometryWidth = static_cast<int>(width);
+    info.geometryHeight = static_cast<int>(height);
+}
 void ShellProtocol::onOutputMode(void *data, df_output *output, uint32_t, uint32_t width,
                                  uint32_t height, uint32_t)
 {

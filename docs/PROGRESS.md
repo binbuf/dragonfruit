@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(87 earlier sections omitted)_
+_(88 earlier sections omitted)_
 
-- **T83 — T-12.3c Lock input capture and kill-resistance**: **State: done.** The locked session now captures input in the lock UI instead; **`compositor/src/lock.rs`** — `LockModel::input_surface()` (first live lock
 - **T84 — T-12.4a Idle timers**: **State: done.** The dim → blank → lock → suspend chain is a pure,; **`services/session/src/idle.rs`** (new) — `IdleStage`
 - **T85 — T-12.4b Idle inhibitors and wake restore**: **State: done.** `dragonfruit-session` now wraps the T-12.4a idle engine with; **`services/session/src/idle.rs`** — `IdleController` (owns `IdleTimers` +
 - **T86 — T-12.5a Suspend/resume cycle**: **State: done.** One suspend/resume round trip recovers outputs, input, and; **`services/session/src/suspend.rs`** (new) — `SuspendState`
@@ -45,6 +44,7 @@ _(87 earlier sections omitted)_
 - **T110i — T-14.7i Dock hover name labels (Tooltip)**: **State: done.** The design system has a passive `Tooltip` and the Dock shows a; `design-system/components/Tooltip.qml` (new) — `open`, `anchorItem`,
 - **T110j — T-14.7j Dock Tahoe visual language: floating glass, squircles, states**: **State: done.** The Dock is now a layered floating glass plate with a bright; `design-system/tokens/tokens.json` — semantic colors `dockFill`, `dockRim`,
 - **T110k — T-14.7k Dock folder pins: any folder as a stack**: **State: done.** Any folder can be pinned to the Dock as a stack: a single; `services/settingsd/src/schema.rs` — `dock.pinnedFolders` (`as`, default
+- **T110l — T-14.7l Dock launch-origin tile hand-off**: **State: done.** The Dock now hands the acted-on entry's icon tile to the; `shell/src/dockmodel.{h,cpp}` — `dockLaunchAppId(entry)` (`StartupWMClass`
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -9199,5 +9199,82 @@ Gotchas for later tasks:
 - Live drag-from-Files was **not** exercised end to end; the capture used the
   fixture's settingsd write, which is the production persistence path. Verify a
   real nested drag in the human sign-off.
+- `check-desktop-names.sh` still fails on the pre-existing StatusNotifier/zoo
+  lines (unchanged here).
+
+## T110l — T-14.7l Dock launch-origin tile hand-off
+
+**State: done.** The Dock now hands the acted-on entry's icon tile to the
+compositor before a launch (`df_toplevel_manager.set_launch_origin`, v4), so a
+launched window's appear — and the remembered minimize/restore — originates at
+the real icon instead of the centered fallback. The protocol, compositor store,
+and motion path were already present; this unit added only the shell/QML
+plumbing. ADR `0105-dock-launch-origin-tile-handoff.md`.
+
+Real paths:
+
+- `shell/src/dockmodel.{h,cpp}` — `dockLaunchAppId(entry)` (`StartupWMClass`
+  trimmed, else the desktop id without `.desktop`); pure `DockTileRects`
+  (capacity 32, FIFO eviction, in-place refresh, ignores non-positive rects);
+  `clampDockTileRect(rect, output)`.
+- `shell/src/shellprotocol.{h,cpp}` — `df_output.geometry` is now stored
+  (`OutputInfo.x/y/geometryWidth/geometryHeight`); new
+  `primaryOutputGeometry()` returns the first announced output's logical rect,
+  invalid until one exists. `onOutputGeometry` is no longer a no-op.
+- `shell/src/shellcontroller.{h,cpp}` — `m_dockTiles` (`DockTileRects`),
+  slot `onDockEntryTileRect` (clamps to the output), `dockSurfaceOutputOrigin()`
+  (primary output + Dock edge + `m_dockThickness`), `sendLaunchOrigin(desktopId)`
+  called from `launchDockAppWithFiles` before the child is spawned. `renderDock`
+  pushes `outputOriginX/Y` onto the Dock item. `m_dockTiles.clear()` on
+  `dock.pinned` changes. The `DF_DOCK_ACTIVATION_FIXTURE` `launch`/`activate`
+  paths now invoke the Dock's QML `activateEntry` so the tile fires like a real
+  click (`missing` still calls the controller directly).
+- `shell/dock/Dock.qml` — `signal entryTileRect(desktopId,x,y,w,h)`;
+  `outputOriginX/Y`; `tileEntryId`/`tileDesktopId`/`lastTileRect`;
+  `launchIdentity`/`entryTileRectFor`/`publishEntryTile`/`republishEntryTile`;
+  `onLayoutChanged: republishEntryTile()` (suppressed while
+  magnifying/dragging); `publishEntryTile(entry)` in `activateEntry` for every
+  non-trash, non-stack entry.
+- Tests: `tst_dockcore` — `dockLaunchAppIdPrefersStartupWmClass`,
+  `dockLaunchAppIdFallsBackToTheIdStem`, `dockTileRectsKeepTheLastRectPerIdentityAndStayBounded`,
+  `clampDockTileRectBoundsToTheOutput`. `tst_dock.qml` —
+  `test_activation_reports_the_entry_tile_in_output_coordinates`,
+  `test_tile_is_not_reported_for_trash_or_stacks`,
+  `test_settled_relayout_republishes_a_moved_tile`.
+- `scripts/capture-dock-launch-origin.sh` +
+  `scripts/capture-dock-launch-origin-driver.py` +
+  `make dock-launch-origin-capture`;
+  `docs/captures/t14-dock-launch-origin.png` (annotated appear origin) and
+  `t14-dock-launch-origin-trace.txt`; captures README paragraph.
+- Docs: ADR 0105, `docs/design/04-shell.md` "Dock activation and launch"
+  paragraph, `docs/private-protocols.md` caller note.
+
+Commands that work (repo root):
+
+- `ctest --test-dir build -R "tst_dock$|tst_dockcore|qmllint_shell-dock"` —
+  green (`tst_dock` 183).
+- `ctest --test-dir build --output-on-failure` — full suite.
+- Live: `make dock-launch-origin-capture` (host Wayland + spectacle + gdbus +
+  Pillow). Recorded `appear origin=(848, 1127, 48, 55)` vs
+  `target=(560, 280, 800, 640)`: the origin is a bottom-band icon tile, not the
+  centered fallback.
+
+Gotchas for later tasks:
+
+- **One tile channel:** `Dock.qml`'s `entryTileRect` signal is the only
+  geometry publisher; the shell's `DockTileRects` is a bounded cache (32), not
+  a queue. Do not add a second publisher or a continuous stream.
+- **The rect is in output coordinates.** The shell derives the layer surface
+  origin from `ShellProtocol::primaryOutputGeometry()` + `m_dockThickness`; keep
+  `outputOriginX/Y` on the Dock item in sync if the surface geometry model
+  changes. Cross-output is deferred (one primary output; rects are clamped).
+- **Key derivation is pure and single-sourced** (`dockLaunchAppId`):
+  `StartupWMClass` first, else the desktop-id stem. An empty key or missing rect
+  is the documented centered fallback; never send a guess.
+- **`DF_DOCK_ACTIVATION_FIXTURE` now goes through QML `activateEntry`** for
+  `launch`/`activate`, so it publishes the tile. A future capture seam for a
+  launch should do the same or the tile will be absent.
+- The compositor's own `DfState::dock_tiles` remains bounded at 64 and is
+  independent of the shell cache.
 - `check-desktop-names.sh` still fails on the pre-existing StatusNotifier/zoo
   lines (unchanged here).

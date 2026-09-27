@@ -244,6 +244,17 @@ caption) and open (that folder's popover: the header with the folder icon, the
 folder name and "Open in Files", a separator, and rows with icons/names). Needs
 a host Wayland session, spectacle, gdbus, and Pillow; not in `make e2e`.
 
+T-14.7l's Dock launch-origin sign-off is produced by
+`scripts/capture-dock-launch-origin.sh` (`make dock-launch-origin-capture`): the
+nested demo runs once with Settings pinned and the shell's
+`DF_DOCK_ACTIVATION_FIXTURE=launch` seam, which now goes through the Dock's click
+tree so the entry tile is published before the launch. The script reads the
+compositor's `query motion` record and asserts the launched window's appear
+originates in the bottom Dock band, then annotates the settled still:
+`t14-dock-launch-origin.png` marks the recorded origin (the entry icon) and the
+window target, with the raw numbers in `t14-dock-launch-origin-trace.txt`. Needs
+a host Wayland session, spectacle, gdbus, and Pillow; not in `make e2e`.
+
 T-14.7i's Dock hover name label sign-off is produced by
 `scripts/capture-dock-tooltip.sh` (`make dock-tooltip-capture`): the nested demo
 runs once per entry kind through the shell's `DF_DOCK_TOOLTIP_FIXTURE` seam

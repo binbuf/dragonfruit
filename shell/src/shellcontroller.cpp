@@ -518,6 +518,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     m_dockItem->setProperty("popoverGutter", kDockPopoverGutter);
     connect(m_dockItem, SIGNAL(entryActivated(QVariant)), this,
             SLOT(onDockEntryActivated(QVariant)));
+    connect(m_dockItem, SIGNAL(entryTileRect(QString,qreal,qreal,qreal,qreal)), this,
+            SLOT(onDockEntryTileRect(QString,qreal,qreal,qreal,qreal)));
     connect(m_dockItem, SIGNAL(entryContextMenuRequested(QVariant,qreal,qreal)), this,
             SLOT(onDockEntryContextMenu(QVariant,qreal,qreal)));
     connect(m_dockItem, SIGNAL(dividerContextMenuRequested(qreal,qreal)), this,
@@ -1304,7 +1306,14 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
                                 == QLatin1String("temporary"))) {
                         timer->stop();
                         timer->deleteLater();
-                        onDockEntryActivated(map);
+                        // Route through the Dock's own click tree so the
+                        // launch-origin tile signal fires exactly as a real
+                        // click would (T-14.7l).
+                        if (m_dockItem)
+                            QMetaObject::invokeMethod(m_dockItem, "activateEntry",
+                                                      Q_ARG(QVariant, map));
+                        else
+                            onDockEntryActivated(map);
                         return;
                     }
                 }
@@ -1321,7 +1330,13 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
                     const QString kind = map.value(QStringLiteral("kind")).toString();
                     if (kind == QLatin1String("pinned")
                         || kind == QLatin1String("temporary")) {
-                        onDockEntryActivated(map);
+                        // Through the click tree, so the tile rect is published
+                        // before the shell launches (T-14.7l).
+                        if (m_dockItem)
+                            QMetaObject::invokeMethod(m_dockItem, "activateEntry",
+                                                      Q_ARG(QVariant, map));
+                        else
+                            onDockEntryActivated(map);
                         return;
                     }
                 }
@@ -4317,6 +4332,9 @@ void ShellController::onDockAppPinToggled(const QString &desktopId, bool pinned)
     // The single writer path: settingsd owns `dock.pinned`; the picker and the
     // Dock both re-read it, so they cannot disagree (ADR 0090).
     writeDockSetting(QStringLiteral("dock.pinned"), ids);
+    // The pinned set changed, so every recorded tile may describe a moved or
+    // removed entry; drop them and let the next click repopulate (T-14.7l).
+    m_dockTiles.clear();
     rebuildDockEntries();
     refreshAppPicker(false);
 }
@@ -4543,6 +4561,52 @@ void ShellController::onDockEntryActivated(const QVariant &entry)
     launchDockApp(desktopId);
 }
 
+void ShellController::onDockEntryTileRect(const QString &desktopId, qreal x, qreal y, qreal w,
+                                          qreal h)
+{
+    // The Dock owns the tile geometry; the shell only remembers the last
+    // acted-on rect and hands it to the compositor at launch (T-14.7l). Clamp
+    // to the output so a stale or off-surface rect can never be recorded.
+    if (desktopId.isEmpty() || w <= 0 || h <= 0)
+        return;
+    const QRect rect(qRound(x), qRound(y), qRound(w), qRound(h));
+    const QRect output = m_protocol ? m_protocol->primaryOutputGeometry() : QRect();
+    m_dockTiles.record(desktopId, clampDockTileRect(rect, output));
+}
+
+QPoint ShellController::dockSurfaceOutputOrigin() const
+{
+    const QRect output = m_protocol ? m_protocol->primaryOutputGeometry() : QRect();
+    if (!output.isValid())
+        return QPoint(0, 0);
+    switch (m_dockPosition) {
+    case ShellProtocol::DockPosition::Left:
+        return QPoint(output.x(), output.y());
+    case ShellProtocol::DockPosition::Right:
+        return QPoint(output.x() + output.width() - m_dockThickness, output.y());
+    case ShellProtocol::DockPosition::Bottom:
+    default:
+        return QPoint(output.x(), output.y() + output.height() - m_dockThickness);
+    }
+}
+
+void ShellController::sendLaunchOrigin(const QString &desktopId)
+{
+    if (!m_protocol || desktopId.isEmpty())
+        return;
+    const QRect tile = m_dockTiles.rectFor(desktopId);
+    if (!tile.isValid() || tile.width() <= 0 || tile.height() <= 0)
+        return;
+    const DesktopEntry entry = m_index.byId(desktopId);
+    const QString appId = dockLaunchAppId(entry);
+    if (appId.isEmpty()) {
+        // No compositor-visible key could be resolved: keep the centered
+        // fallback rather than send a guess (T-14.7l).
+        return;
+    }
+    m_protocol->setLaunchOrigin(appId, tile.x(), tile.y(), tile.width(), tile.height());
+}
+
 void ShellController::activateAppOrFallback(const QString &appId, const QString &desktopId)
 {
     // The compositor is the sole activation authority; the shell only asks and
@@ -4671,6 +4735,10 @@ void ShellController::launchDockAppWithFiles(const QString &desktopId, const QSt
         failDockLaunch(desktopId, QStringLiteral("empty launch command"));
         return;
     }
+    // Hand the acted-on entry's tile to the compositor before the child is
+    // spawned, so its first mapped window plays the appear from the real icon
+    // (T-14.7l). A missing rect or key is a no-op (centered fallback).
+    sendLaunchOrigin(desktopId);
     qint64 pid = 0;
     if (!launchDetachedFromShell(argv, m_waylandDisplay, &pid)) {
         failDockLaunch(desktopId, QStringLiteral("QProcess::startDetached failed"));
@@ -5416,6 +5484,8 @@ void ShellController::onDockPinnedOrderChanged(const QVariant &desktopIds)
             ids.append(id);
     }
     writeDockSetting(QStringLiteral("dock.pinned"), ids);
+    // The pinned set changed; drop the recorded tiles (T-14.7l).
+    m_dockTiles.clear();
     rebuildDockEntries();
 }
 
@@ -5593,6 +5663,12 @@ void ShellController::renderDock()
         return;
     m_dockItem->setWidth(m_dockWidth);
     m_dockItem->setHeight(m_dockHeight);
+    // Tell the Dock where its surface-local (0, 0) sits in the compositor's
+    // output coordinates, so the tile rect it reports for the launch-origin
+    // hand-off is already in that space (T-14.7l).
+    const QPoint origin = dockSurfaceOutputOrigin();
+    m_dockItem->setProperty("outputOriginX", origin.x());
+    m_dockItem->setProperty("outputOriginY", origin.y());
 
     // The Dock popover (context menu / window chooser) in Dock-scene
     // coordinates; empty when nothing is open. `popoverRect` keys on the
