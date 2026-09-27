@@ -249,7 +249,7 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 - [x] T109 — T-14.6b Strange-app zoo fixes → [tasks/109-t-14.6b-strange-app-zoo-fixes.md](tasks/109-t-14.6b-strange-app-zoo-fixes.md)
 - [x] T110 — T-14.7 Retire interim paths → [tasks/110-t-14.7-retire-interim-paths.md](tasks/110-t-14.7-retire-interim-paths.md)
 
-## Phase 14.5 — Dock experience addendum (T-14.7a–k)
+## Phase 14.5 — Dock experience addendum (T-14.7a–t)
 
 > **Inserted after T-14.7 and before T-15.** Eleven units cut from the 2026-09
 > Dock review: plate geometry/spacing, magnification growth, motion frame
@@ -257,7 +257,7 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 > external-drop identity, activation/launch correctness, folder stacks and
 > their labels, hover name labels, the macOS Tahoe floating-glass visual
 > language, and arbitrary folder pins. They run in file order immediately after
-> T110; the `a`–`k` suffixes keep the existing task numbering (and the
+> T110; the `a`–`t` suffixes keep the existing task numbering (and the
 > pipeline's saved state) intact. The Tahoe Dock is the visual/interaction
 > reference (local captures only; original assets). Design reference:
 > [legacy/10-dock.md](tasks/legacy/10-dock.md) ·
@@ -268,6 +268,16 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 > [0091](design/adr/0091-dock-tahoe-floating-glass-language.md) /
 > [0092](design/adr/0092-dock-folder-stacks-and-folder-pins.md) /
 > [0093](design/adr/0093-tooltip-joins-the-design-system.md).
+>
+> **Extended 2026-09-27** by a UI/UX review against a mature reference dock
+> (behavior reference only: it is GPL-3.0-or-later, so these units are
+> clean-room — no copied code, assets, or strings). Nine further behavioral
+> units (l–t): the launch-origin tile hand-off, per-window chooser actions,
+> chooser row discipline, a window-count badge, opt-in hover-open with a stable
+> popover anchor, an overflow cell, async Trash-empty progress, an opt-in
+> minimize-to-icon reaction, and keyboard reordering. They run after T110k, in
+> file order. Design reference: ADR
+> [0103](design/adr/0103-dock-window-management-and-entry-affordances.md).
 
 - [x] T110a — T-14.7a Dock plate geometry and spacing → [tasks/110a-t-14.7a-dock-plate-geometry-and-spacing.md](tasks/110a-t-14.7a-dock-plate-geometry-and-spacing.md)
 - [x] T110b — T-14.7b Magnified plate growth and backdrop panel → [tasks/110b-t-14.7b-dock-magnified-plate-and-backdrop.md](tasks/110b-t-14.7b-dock-magnified-plate-and-backdrop.md)
@@ -280,11 +290,20 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 - [x] T110i — T-14.7i Dock hover name labels (Tooltip) → [tasks/110i-t-14.7i-dock-hover-name-labels.md](tasks/110i-t-14.7i-dock-hover-name-labels.md)
 - [x] T110j — T-14.7j Dock Tahoe visual language: floating glass, squircles, states → [tasks/110j-t-14.7j-dock-tahoe-visual-language.md](tasks/110j-t-14.7j-dock-tahoe-visual-language.md)
 - [ ] T110k — T-14.7k Dock folder pins: any folder as a stack → [tasks/110k-t-14.7k-dock-folder-pins.md](tasks/110k-t-14.7k-dock-folder-pins.md)
+- [ ] T110l — T-14.7l Dock launch-origin tile hand-off → [tasks/110l-t-14.7l-dock-launch-origin-tile.md](tasks/110l-t-14.7l-dock-launch-origin-tile.md)
+- [ ] T110m — T-14.7m Dock window chooser: per-window actions → [tasks/110m-t-14.7m-dock-window-chooser-actions.md](tasks/110m-t-14.7m-dock-window-chooser-actions.md)
+- [ ] T110n — T-14.7n Dock window chooser: row discipline → [tasks/110n-t-14.7n-dock-window-chooser-row-discipline.md](tasks/110n-t-14.7n-dock-window-chooser-row-discipline.md)
+- [ ] T110o — T-14.7o Dock window-count badge → [tasks/110o-t-14.7o-dock-window-count-badge.md](tasks/110o-t-14.7o-dock-window-count-badge.md)
+- [ ] T110p — T-14.7p Dock hover-open, retargetable chooser and stable anchor → [tasks/110p-t-14.7p-dock-hover-chooser-and-stable-anchor.md](tasks/110p-t-14.7p-dock-hover-chooser-and-stable-anchor.md)
+- [ ] T110q — T-14.7q Dock overflow cell and More Windows popover → [tasks/110q-t-14.7q-dock-overflow-cell-and-more-windows.md](tasks/110q-t-14.7q-dock-overflow-cell-and-more-windows.md)
+- [ ] T110r — T-14.7r Dock Trash empty progress and result → [tasks/110r-t-14.7r-dock-trash-empty-progress.md](tasks/110r-t-14.7r-dock-trash-empty-progress.md)
+- [ ] T110s — T-14.7s Dock minimize-to-icon reaction → [tasks/110s-t-14.7s-dock-minimize-to-icon-reaction.md](tasks/110s-t-14.7s-dock-minimize-to-icon-reaction.md)
+- [ ] T110t — T-14.7t Dock keyboard reordering → [tasks/110t-t-14.7t-dock-keyboard-reordering.md](tasks/110t-t-14.7t-dock-keyboard-reordering.md)
 
 ## Phase 14.6 — T-18 Wallpaper content provider (shipped default + Wikimedia Featured)
 
 > **Moved forward from the old Phase 15.5** so it runs immediately after the Dock
-> experience addendum (T-14.7a–k) and before the T-15 breadth phase. The
+> experience addendum (T-14.7a–t) and before the T-15 breadth phase. The
 > desktop background is the first thing a user sees, and the theme's shipped
 > original default plus the provider's lazy cache want to settle before T-15 and
 > T-16 build on the desktop. The deliberately non-sequential ids (T172–T175) are
