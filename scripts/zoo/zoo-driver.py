@@ -117,11 +117,11 @@ APPS = [
     {
         "key": "sdl",
         "label": "SDL game (SDL2)",
-        "backend": "x11",
+        "backend": "wayland",
         "raw": ["game.zoo.sdl"],
         "expected_desktop": "game.zoo.sdl.desktop",
         "expected_decoration": "SSD",
-        "note": "real SDL2 game window via Xwayland; SDL's Wayland backend did not map on the nested compositor in this run",
+        "note": "real SDL2 game window on the nested Wayland socket; the sample presents frames so SDL attaches its first buffer (T-14.6b fix)",
     },
     {
         "key": "electron",

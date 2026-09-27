@@ -1095,6 +1095,28 @@ impl DfState {
         })
     }
 
+    /// Answer the `wl_surface.frame` requests of toplevels that have
+    /// committed but are not mapped yet (no buffer).
+    ///
+    /// The normal frame paths ([`crate::render::post_repaint`] and
+    /// [`crate::render::send_frame_callbacks`]) only walk `Space` members, so
+    /// a pre-map callback would otherwise go unanswered forever. SDL's
+    /// Wayland backend requests one before its first buffer; answering it
+    /// keeps a client that paces its first paint on the callback from
+    /// stalling. Called from [`CompositorHandler::commit`] once a buffer-less
+    /// toplevel commit is observed.
+    pub(crate) fn send_pending_frame_callbacks(&self) {
+        let Some(output) = self.space.outputs().next().cloned() else {
+            return;
+        };
+        let time: Duration = self.clock.now().into();
+        for window in &self.pending_windows {
+            window.send_frame(&output, time, Some(Duration::ZERO), |_, _| {
+                Some(output.clone())
+            });
+        }
+    }
+
     /// Recompute which titlebar (if any) the pointer is hovering, returning
     /// whether the reveal state changed so the caller can schedule a redraw.
     pub fn update_titlebar_hover(&mut self, location: Point<f64, Logical>) -> bool {
@@ -3534,6 +3556,20 @@ impl CompositorHandler for DfState {
             .any(|w| w.toplevel().is_some_and(|t| *t.wl_surface() == root));
         if pending {
             self.map_pending_windows();
+            // A client can request `wl_surface.frame` before it has a buffer
+            // to commit (SDL's Wayland backend does exactly this, to pace its
+            // first paint). The frame paths only walk mapped `Space`
+            // members, so a toplevel that is still pending would never hear
+            // back and a client waiting on that callback would stall before
+            // its first buffer. Answer any callback for a toplevel that is
+            // still buffer-less after the map attempt.
+            if self
+                .pending_windows
+                .iter()
+                .any(|w| w.toplevel().is_some_and(|t| *t.wl_surface() == root))
+            {
+                self.send_pending_frame_callbacks();
+            }
         }
 
         // A new client buffer means new pixels: request a render pass

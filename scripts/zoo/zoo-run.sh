@@ -224,11 +224,13 @@ if [ -x "$SCRATCH/bin/x11_zoo" ]; then
         --title Steam --instance steam --class Steam --lifetime-ms 600000
 fi
 if [ -x "$SCRATCH/bin/sdl_zoo" ]; then
-    # SDL runs through Xwayland: SDL2's Wayland backend did not map a window on
-    # the nested compositor (it stops after the registry roundtrip), while the
-    # X11 driver maps cleanly with SDL_VIDEO_X11_WMCLASS as the WM_CLASS.
-    launch sdl env DISPLAY="$XDISPLAY" SDL_VIDEODRIVER=x11 \
-        SDL_VIDEO_X11_WMCLASS=game.zoo.sdl "$SCRATCH/bin/sdl_zoo" --lifetime-ms 600000
+    # SDL runs on the nested Wayland socket. The sample presents a frame each
+    # loop (T-14.6b); SDL's Wayland backend only attaches its first buffer
+    # when the app draws, and the compositor only maps a toplevel once it has
+    # a buffer. The T-14.6a run fell back to SDL's X11 driver because the
+    # sample never drew.
+    launch sdl env WAYLAND_DISPLAY="$SOCK" SDL_VIDEODRIVER=wayland \
+        SDL_APP_ID=game.zoo.sdl "$SCRATCH/bin/sdl_zoo" --lifetime-ms 600000
 fi
 if [ -n "$ELECTRON_BIN" ]; then
     launch electron env WAYLAND_DISPLAY="$SOCK" "$ELECTRON_BIN" \

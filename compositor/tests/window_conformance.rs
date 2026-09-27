@@ -22,7 +22,8 @@ use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
 use wayland_client::protocol::{
-    wl_buffer, wl_compositor, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface,
+    wl_buffer, wl_callback, wl_compositor, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool,
+    wl_surface,
 };
 use wayland_client::{Connection, Dispatch, EventQueue, QueueHandle};
 use wayland_protocols::xdg::decoration::zv1::client::{
@@ -81,6 +82,9 @@ struct TestClient {
     popup_configures: Vec<PopupConfigure>,
     /// Number of `xdg_toplevel.close` events delivered (T-01.2 close control).
     toplevel_close_count: usize,
+    /// Number of `wl_callback.done` frame callbacks delivered (T-14.6b: a
+    /// pre-map `wl_surface.frame` must still be answered).
+    frame_callbacks: usize,
 }
 
 impl Dispatch<wl_registry::WlRegistry, ()> for TestClient {
@@ -141,6 +145,19 @@ impl Dispatch<wl_surface::WlSurface, ()> for TestClient {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
+    }
+}
+
+impl Dispatch<wl_callback::WlCallback, ()> for TestClient {
+    fn event(
+        state: &mut Self,
+        _: &wl_callback::WlCallback,
+        _: wl_callback::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        state.frame_callbacks += 1;
     }
 }
 
@@ -1058,6 +1075,75 @@ fn map_toplevel_with_app_id(
     queue.roundtrip(state).expect("map commit");
 
     (surface, xdg_surface, toplevel, file)
+}
+
+/// T-14.6b: reproduce SDL's Wayland first-paint sequence. SDL commits a
+/// buffer-less surface before it has a role, requests a `wl_surface.frame`
+/// callback *before* it has a buffer, and only then presents. The compositor
+/// must accept the pre-role commit, answer the pre-map callback (the normal
+/// frame paths only walk mapped windows), and map the toplevel once its
+/// first buffer lands.
+#[test]
+fn sdl_style_pre_map_frame_callback_is_answered_and_then_maps() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path =
+        PathBuf::from(&runtime_dir).join(format!("dragonfruit-sdl-synth-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-sdl",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+    let qh = queue.handle();
+
+    let compositor = state.compositor.clone().unwrap();
+    let wm_base = state.xdg_wm_base.clone().unwrap();
+    let manager = state
+        .decoration_manager
+        .clone()
+        .expect("zxdg_decoration_manager_v1 not advertised");
+
+    let surface = compositor.create_surface(&qh, ());
+    // SDL commits the bare surface before assigning the xdg role.
+    surface.attach(None, 0, 0);
+    surface.commit();
+
+    let xdg_surface = wm_base.get_xdg_surface(&surface, &qh, ());
+    let toplevel = xdg_surface.get_toplevel(&qh, ());
+    toplevel.set_app_id("game.zoo.sdl".into());
+    toplevel.set_title("SDL Zoo Game".into());
+    let _decoration = manager.get_toplevel_decoration(&toplevel, &qh, ());
+    _decoration.set_mode(zxdg_toplevel_decoration_v1::Mode::ServerSide);
+    surface.commit();
+    queue.roundtrip(&mut state).expect("initial configure");
+    assert!(
+        !state.toplevel_configures.is_empty(),
+        "the initial buffer-less commit must configure the toplevel"
+    );
+
+    // The toplevel is still pending (no buffer). SDL requests a frame
+    // callback here, before its first paint; the compositor must answer it.
+    surface.frame(&qh, ());
+    surface.commit();
+    wait_for(&conn, &mut queue, &mut state, Duration::from_secs(2), |s| {
+        s.frame_callbacks >= 1
+    });
+
+    // Present the first buffer: the pending toplevel maps, and the compositor
+    // tracks it under its raw `app_id`.
+    let (buffer, _file) = shm_buffer(&state, &qh, WINDOW_W, WINDOW_H);
+    surface.attach(Some(&buffer), 0, 0);
+    surface.commit();
+    queue.roundtrip(&mut state).expect("map commit");
+    let identity = input.query("query identity");
+    assert!(
+        identity.contains("game.zoo.sdl"),
+        "the SDL toplevel must be tracked after its first buffer: {identity:?}"
+    );
+
+    surface.destroy();
+    toplevel.destroy();
+    proc.shutdown();
 }
 
 #[test]
