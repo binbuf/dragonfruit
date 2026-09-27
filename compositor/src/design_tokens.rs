@@ -331,7 +331,8 @@ pub mod component {
         pub mod divider {
             pub const OPACITY: f32 = 0.5_f32;
             pub const WIDTH: f32 = 1.0_f32;
-            pub const HEIGHT_RATIO: f32 = 0.6_f32;
+            pub const HEIGHT_RATIO: f32 = 0.82_f32;
+            pub const GAP: f32 = 22.0_f32;
         }
         pub mod chooser {
             pub const MAX_ROWS: f32 = 7.0_f32;

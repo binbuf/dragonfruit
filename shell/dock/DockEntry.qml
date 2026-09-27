@@ -243,28 +243,37 @@ Item {
     // entry keeps an empty description.
     Accessible.description: root.reorderHint
 
-    // Divider between the app and minimized/Trash regions. It is the drag
-    // handle and the Control-click target for the Dock options menu.
+    // Divider between regions (T-14.7v). Every region boundary draws the same
+    // hairline; only the app | right-region divider carries the drag resize
+    // handle (T-10 section 5), so a second boundary never adds a second
+    // handle. A bottom Dock's rule is vertical (across the plate); a
+    // left/right Dock's is horizontal.
+    readonly property bool resizeHandle: entry.resizeHandle !== false
+    readonly property bool ruleIsVertical: !root.verticalIndicator
     Rectangle {
         objectName: "divider"
         visible: root.isDivider
+        width: root.ruleIsVertical
+               ? Theme.controls.dock.divider.width
+               : root.width * Theme.controls.dock.divider.heightRatio
+        height: root.ruleIsVertical
+                ? root.height * Theme.controls.dock.divider.heightRatio
+                : Theme.controls.dock.divider.width
         x: (root.width - width) / 2
-        y: root.height * 0.15
-        width: Theme.controls.dock.divider.width
-        height: root.height * Theme.controls.dock.divider.heightRatio
+        y: (root.height - height) / 2
         color: Theme.color.dockDivider
         opacity: Theme.controls.dock.divider.opacity
     }
 
     // The divider is only 1 px wide, so the drag handle is a wider invisible
     // hit target centred on it (T-10 section 5). The layout slot stays 1 px;
-    // only the pointer target grows.
+    // only the pointer target grows. Only the resize-handle divider mounts it.
     Item {
         objectName: "dividerHit"
-        visible: root.isDivider
+        visible: root.isDivider && root.resizeHandle
         anchors.centerIn: parent
-        width: Math.max(16, root.iconSize * 0.4)
-        height: root.height
+        width: root.ruleIsVertical ? Math.max(16, root.iconSize * 0.4) : root.width
+        height: root.ruleIsVertical ? root.height : Math.max(16, root.iconSize * 0.4)
 
         DragHandler {
             id: dividerDragHandler

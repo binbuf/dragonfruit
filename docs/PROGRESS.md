@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(98 earlier sections omitted)_
+_(99 earlier sections omitted)_
 
-- **T94 — T-13.4a ScreenCast portal and source picker**: **State: done.** The backend serves `org.freedesktop.impl.portal.ScreenCast`; **`portal/src/screencast.rs`** (new) — the pure model: `SourceType`
 - **T95 — T-13.4b ScreenCast stream and stills fallback**: **State: done.** The ScreenCast stream now goes through one transport seam, and; **`portal/src/stream.rs`** (new) — `StreamMode` (`pipewire`/`stills`),
 - **T96 — T-13.5a Clipboard text/image/uri-list round-trips**: **State: done.** The clipboard round-trip matrix is proven on the headless; **`compositor/tests/shell_protocol_conformance.rs`** — new
 - **T97 — T-13.5b Clipboard history (if specified)**: **State: done.** The design calls for history (ADR 0082's accepted consequences; **`shell/src/clipboardhistory.{h,cpp}`** (new, dockcore) — `ClipboardHistory`:
@@ -44,6 +43,7 @@ _(98 earlier sections omitted)_
 - **T110s — T-14.7s Dock minimize-to-icon reaction**: **State: done.** With `dock.minimizeReaction` on, a window entering `minimized`; `shell/src/dockprojection.{h,cpp}` — pure `dockMinimizedCounts(entries)` and
 - **T110t — T-14.7t Dock keyboard reordering**: **State: done.** The Dock's rearrangement affordance is no longer pointer-only:; `shell/src/dockmodel.{h,cpp}` — `QStringList movePinnedEntry(const QStringList
 - **T110u — T-14.7u Dock reference metrics: spacing, plate radius, indicator inset**: **State: done.** The resting Dock is retuned to the mature reference capture:; `design-system/tokens/tokens.json` — `component.dock`: `padding` 10 → 15,
+- **T110v — T-14.7v Dock region dividers: pinned | temporary/recent | stacks and Trash**: **State: done.** The Dock projects the reference's region structure: a rule; `shell/src/dockmodel.{h,cpp}` — `DockRegionPlan` + `planDockRegions(entries,
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -9927,5 +9927,78 @@ Gotchas for later tasks:
   the plate at the anchored edge; the new QML test pins this.
 - **The QML test's `dock.indicatorGap` does not exist** — use
   `Theme.controls.dock.indicatorGap`; the Dock only exposes `indicatorSpace`.
+- `check-desktop-names.sh` still fails only on the pre-existing
+  StatusNotifier/zoo/apppicker lines (unchanged here).
+
+## T110v — T-14.7v Dock region dividers: pinned | temporary/recent | stacks and Trash
+
+**State: done.** The Dock projects the reference's region structure: a rule
+between the pinned prefix and the temporary/recent tail, the app | right-region
+rule, and a rule between the minimized group and the fixed stacks/Trash tail.
+Each rule gets the over-sized divider gap and a near-plate-height hairline.
+Only the app | right-region rule keeps the T-10 §5 resize handle. ADR 0109
+records the projection.
+
+Real paths:
+
+- `shell/src/dockmodel.{h,cpp}` — `DockRegionPlan` + `planDockRegions(entries,
+  fixedCount, minimizedVisible)` (regions `pinned`/`tail`/`minimized`/`fixed`;
+  `dividerCount()` = adjacent non-empty pairs). `applyDockOverflow` reserves
+  `dividerCount()` dividers in `nonDroppable` and its fit formula.
+- `design-system/tokens/tokens.json` — `component.dock.divider`: `gap` 22 added,
+  `heightRatio` 0.6 → 0.82; `Theme.qml` + `compositor/src/design_tokens.rs`
+  regenerated.
+- `shell/dock/Dock.qml` — `dividerGap`; `fixedEntries`; `dividerEntry` (id
+  `__divider__`, `resizeHandle: true`), `pinnedDividerEntry`
+  (`__divider_pinned__`), `minimizedDividerEntry` (`__divider_minimized__`);
+  the region-group `items` builder; `appItemIndices`; `gapBetween(i,j)`;
+  divider-aware `_baseline` and `scaledGap`; full-plate-cross-axis divider box
+  in `layout`; `plateRect` skips dividers; `externalInsertionIndex` skips rules.
+- `shell/dock/DockEntry.qml` — `resizeHandle` (default true when absent);
+  `ruleIsVertical` (bottom = vertical rule, left/right = horizontal); centered
+  rule; `dividerHit.visible` gated on `resizeHandle`.
+- Tests: `tst_dockcore` 112 → 116 (region plan counts, orphan suppression,
+  recents/overflow as tail, divider-reserving overflow fit); `tst_dock` 240 →
+  248 (divider counts/order for two/one/zero rules, minimized-region rule,
+  oversized gap on all positions, hairline spans the plate, gap holds under
+  magnification). Updated `test_items_order_and_trash_is_last`,
+  `test_minimized_entry_menu_lists_windows_and_quit`,
+  `test_tooltip_folder_name_is_data_not_a_literal` for the inserted rules.
+- `scripts/capture-dock-dividers.sh` + `make dock-dividers-capture`;
+  `docs/captures/t14-dock-dividers-{light,dark}.png` (three-region /
+  empty-tail / single-region strips). Captures README entry.
+- Docs: `docs/design/04-shell.md` "Region dividers (T-14.7v)";
+  `docs/design/adr/0109-dock-region-dividers.md`.
+
+Commands that work (repo root):
+
+- `ctest --test-dir build --output-on-failure` — 53/53 (`tst_dock` 248,
+  `tst_dockcore` 116).
+- `make e2e`; `make clippy`; `cargo fmt --all -- --check`;
+  `./scripts/gen-tokens.py --check`; `./scripts/check-design-tokens.sh`;
+  `./scripts/check-no-capture-grab.sh`;
+  `./scripts/check-gallery-snapshots.py --strict` — green.
+- Live: `make dock-dividers-capture` (host Wayland + spectacle + gdbus +
+  Pillow). Pixel analysis of `t14-dock-dividers-dark.png`: two rules in the
+  three-region strip, one in the empty-tail strip, none in the single-region
+  strip; each rule is 64 px tall (0.82 × the 78 px plate). The primary divider
+  still drag-resizes icon size.
+
+Gotchas for later tasks:
+
+- **`applyDockOverflow` counts every planned divider but still models the gaps
+  as the uniform icon `gap`.** The divider `gap` (22) is not in the fit
+  estimate; the clamp stays a worst-case budget. If a later task needs an exact
+  overflow, thread `component.dock.divider.gap` through and charge 2 per rule.
+- **The Dock QML region builder mirrors `planDockRegions`.** There is no Dock
+  QML singleton (same constraint as `movePinnedEntry`); keep the two in sync.
+- **`appItemIndices` is required for any drag/gap math that speaks in
+  `appEntries` indices:** an inserted rule shifts the tail entries in `items`.
+  Do not index `items` with an `appEntries` index.
+- **`plateRect` must exclude dividers from its cross-axis union** or the
+  full-plate rule grows the plate upward by `padding` on every Dock.
+- **A divider delegate's root box is `dividerWidth × barThickness` (bottom) or
+  `barThickness × dividerWidth` (left/right),** not `iconSize`; the rule inside
+  is oriented from `indicatorEdge`.
 - `check-desktop-names.sh` still fails only on the pre-existing
   StatusNotifier/zoo/apppicker lines (unchanged here).

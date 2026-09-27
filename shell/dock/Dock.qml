@@ -614,6 +614,10 @@ Rectangle {
     readonly property real padding: Theme.controls.dock.padding
     readonly property real paddingAlong: Theme.controls.dock.paddingAlong
     readonly property real gap: Theme.controls.dock.gap
+    // The over-sized room on each side of a region divider (T-14.7v). It
+    // replaces the icon `gap` at a divider boundary so a rule reads as a
+    // region break rather than as one more icon.
+    readonly property real dividerGap: Theme.controls.dock.divider.gap
     readonly property real edgeMargin: Theme.controls.dock.edgeMargin
     readonly property real dividerWidth: 1
     // Room reserved beyond every entry's artwork for a running indicator on the
@@ -873,7 +877,30 @@ Rectangle {
         }
         return out;
     }
-    readonly property var dividerEntry: ({ id: "__divider__", kind: "divider" })
+    readonly property var fixedEntries: {
+        // The fixed right region: the built-in Downloads stack, the user
+        // folder pins, and the permanent Trash. It is never empty (the Trash
+        // is always present), so it is the anchor for the leading rule.
+        var out = [stackEntry];
+        for (var f = 0; f < folderEntries.length; ++f)
+            out.push(folderEntries[f]);
+        out.push(trashEntry);
+        return out;
+    }
+    // The resize-handle divider (T-10 section 5): the boundary between the app
+    // region and the right (minimized/stacks/Trash) region. It is the only
+    // divider that carries the drag handle. The pinned | temporary/recent rule
+    // and the minimized | stacks/Trash rule are non-interactive markers
+    // (T-14.7v).
+    readonly property var dividerEntry: ({
+        id: "__divider__", kind: "divider", resizeHandle: true
+    })
+    readonly property var pinnedDividerEntry: ({
+        id: "__divider_pinned__", kind: "divider", resizeHandle: false
+    })
+    readonly property var minimizedDividerEntry: ({
+        id: "__divider_minimized__", kind: "divider", resizeHandle: false
+    })
 
     // Pinned entries are the prefix of the app region (the shell emits pinned
     // first, then temporary running apps); only this prefix is user-orderable.
@@ -900,7 +927,9 @@ Rectangle {
         return list;
     }
 
-    // Ordered items: apps, divider, minimized windows, Trash. The order is
+    // Ordered items: the app region (split at the pinned prefix), the
+    // minimized windows, and the fixed stacks/Trash tail, with a divider
+    // between each pair of adjacent non-empty regions (T-14.7v). The order is
     // stable during a drag (the Repeater must not be reset while a DragHandler
     // holds the pointer); the drag gap is applied in `layout` instead.
     //
@@ -919,18 +948,64 @@ Rectangle {
         running: false
     })
     readonly property var items: {
-        var out = appEntries.slice();
+        var appSeq = appEntries.slice();
         if (externalGap) {
-            var idx = Math.max(0, Math.min(out.length, externalInsertIndex));
-            out.splice(idx, 0, externalPlaceholderEntry);
+            var idx = Math.max(0, Math.min(appSeq.length, externalInsertIndex));
+            appSeq.splice(idx, 0, externalPlaceholderEntry);
         }
-        out.push(dividerEntry);
-        for (var i = 0; i < minimizedEntries.length; ++i)
-            out.push(minimizedEntries[i]);
-        out.push(stackEntry);
-        for (var f = 0; f < folderEntries.length; ++f)
-            out.push(folderEntries[f]);
-        out.push(trashEntry);
+        // Split at the pinned prefix so the pinned | temporary/recent boundary
+        // can carry its own rule. A placeholder inserted inside the prefix
+        // stays with it.
+        var split = pinnedCount;
+        if (externalGap && externalInsertIndex <= pinnedCount)
+            split = Math.min(appSeq.length, pinnedCount + 1);
+        var pinnedPart = appSeq.slice(0, split);
+        var tailPart = appSeq.slice(split);
+
+        var groups = [];
+        if (pinnedPart.length > 0)
+            groups.push({ region: "pinned", list: pinnedPart });
+        if (tailPart.length > 0)
+            groups.push({ region: "tail", list: tailPart });
+        if (minimizedEntries.length > 0)
+            groups.push({ region: "minimized", list: minimizedEntries });
+        groups.push({ region: "fixed", list: fixedEntries });
+
+        var out = [];
+        var resizeAssigned = false;
+        for (var g = 0; g < groups.length; ++g) {
+            if (g > 0) {
+                var prevApp = groups[g - 1].region === "pinned"
+                              || groups[g - 1].region === "tail";
+                var curApp = groups[g].region === "pinned"
+                             || groups[g].region === "tail";
+                if (prevApp && !curApp && !resizeAssigned) {
+                    // The app region meets the right region: the resize handle.
+                    out.push(dividerEntry);
+                    resizeAssigned = true;
+                } else if (groups[g - 1].region === "pinned"
+                           && groups[g].region === "tail") {
+                    out.push(pinnedDividerEntry);
+                } else {
+                    out.push(minimizedDividerEntry);
+                }
+            }
+            for (var k = 0; k < groups[g].list.length; ++k)
+                out.push(groups[g].list[k]);
+        }
+        return out;
+    }
+
+    // The index in `items` of each app-region entry, in `appEntries` order.
+    // An inserted divider shifts the tail entries, so drag/cursor math that
+    // speaks in `appEntries` indices must map through this (T-14.7v).
+    readonly property var appItemIndices: {
+        var out = [];
+        for (var i = 0; i < items.length; ++i) {
+            var k = items[i].kind;
+            if (k === "pinned" || k === "temporary" || k === "recent" || k === "overflow")
+                out.push(i);
+        }
         return out;
     }
 
@@ -954,6 +1029,13 @@ Rectangle {
         return appIndex;
     }
 
+    // The gap between two adjacent items: a divider boundary gets the
+    // over-sized `dividerGap`, every icon pair the icon `gap` (T-14.7v).
+    function gapBetween(i, j) {
+        return (items[i].kind === "divider" || items[j].kind === "divider")
+               ? dividerGap : gap;
+    }
+
     // --- Baseline layout (no magnification) -----------------------------
     readonly property var _baseline: {
         var list = items;
@@ -966,7 +1048,7 @@ Rectangle {
         for (i = 0; i < n; ++i) {
             total += sizes[i];
             if (i < n - 1)
-                total += gap;
+                total += gapBetween(i, i + 1);
         }
         var start = (axisLength - total) / 2;
         var positions = [];
@@ -975,7 +1057,7 @@ Rectangle {
         for (i = 0; i < n; ++i) {
             positions.push(cursor);
             centers.push(cursor + sizes[i] / 2);
-            cursor += sizes[i] + gap;
+            cursor += sizes[i] + (i < n - 1 ? gapBetween(i, i + 1) : 0);
         }
         return { sizes: sizes, positions: positions, centers: centers, total: total };
     }
@@ -1986,10 +2068,9 @@ Rectangle {
         var appIdx = 0;
         for (var i = 0; i < items.length; ++i) {
             var k = items[i].kind;
-            if (k === "external")
+            if (k === "external" || k === "divider")
                 continue;
-            if (k === "divider" || k === "trash" || k === "minimized" || k === "stack"
-                    || k === "overflow")
+            if (k === "trash" || k === "minimized" || k === "stack" || k === "overflow")
                 break;
             var center = axisIsX ? (l[i].x + l[i].w / 2) : (l[i].y + l[i].h / 2);
             if (localAlong < center)
@@ -2529,7 +2610,7 @@ Rectangle {
 
     function scaledGap(a, b, aDivider, bDivider) {
         if (aDivider || bDivider)
-            return gap;
+            return dividerGap;
         return gap * (a + b) / (2 * iconSize);
     }
 
@@ -2639,15 +2720,20 @@ Rectangle {
         var magnified = magnifying;
 
         // A drag permutes the app slots (the gap) without reordering the
-        // model, so the active DragHandler's delegate survives.
+        // model, so the active DragHandler's delegate survives. The app slots
+        // are items indices; an inserted region divider shifts the tail, so
+        // map through `appItemIndices`.
         if (dragging) {
             for (var a = 0; a < n; ++a) {
                 var k = list[a].kind;
                 if (k === "divider" || k === "trash" || k === "minimized")
                     continue;
-                var slot = appSlot(a);
-                positions[a] = base.positions[slot];
-                sizes[a] = base.sizes[slot];
+                var appIdx = appItemIndices.indexOf(a);
+                if (appIdx < 0)
+                    continue;
+                var targetItem = appItemIndices[appSlot(appIdx)];
+                positions[a] = base.positions[targetItem];
+                sizes[a] = base.sizes[targetItem];
             }
         }
 
@@ -2692,15 +2778,18 @@ Rectangle {
                 // magnification it grows *up* into the magnify band while the
                 // running dot (in the anchored-edge padding, T-14.7u) stays
                 // put. A bounce lifts it further into the band. The plate
-                // already carries `hideY`.
-                var y = isDivider ? restingPlateRect.y + padding
+                // already carries `hideY`. A divider instead spans the whole
+                // plate cross-axis so its hairline can read near-plate-height
+                // (T-14.7v); its slot is still one `dividerWidth` along the
+                // axis.
+                var y = isDivider ? restingPlateRect.y
                                   : restingPlateRect.y + barThickness - padding
                                     - sizes[j] - bounce;
                 out.push({
                     x: positions[j],
                     y: y,
                     w: isDivider ? dividerWidth : sizes[j],
-                    h: isDivider ? barThickness - 2 * padding : h,
+                    h: isDivider ? barThickness : h,
                     iconSize: sizes[j]
                 });
             } else {
@@ -2716,10 +2805,10 @@ Rectangle {
                        ? restingPlateRect.x + padding + iconSize - sizes[j] - bounce
                        : restingPlateRect.x + padding - indicatorSpace + bounce;
                 out.push({
-                    x: vx,
+                    x: isDivider ? restingPlateRect.x : vx,
                     y: positions[j],
-                    w: isDivider ? dividerWidth : w,
-                    h: isDivider ? barThickness - 2 * padding : sizes[j],
+                    w: isDivider ? barThickness : w,
+                    h: isDivider ? dividerWidth : sizes[j],
                     iconSize: sizes[j]
                 });
             }
@@ -2769,6 +2858,10 @@ Rectangle {
             var maxX = -Number.MAX_VALUE;
             var minTop = Number.MAX_VALUE;
             for (i = 0; i < n; ++i) {
+                // A divider is a full-cross-axis marker; it must not expand
+                // the plate (T-14.7v). The real entries set the union.
+                if (items[i].kind === "divider")
+                    continue;
                 r = l[i];
                 if (r.w <= 0)
                     continue;
@@ -2776,7 +2869,7 @@ Rectangle {
                 maxX = Math.max(maxX, r.x + r.w);
                 // Add the bounce back so a launch/attention hop does not pump
                 // the plate (T-14.7b).
-                b = items[i].kind === "divider" ? 0 : entryBounce(items[i]);
+                b = entryBounce(items[i]);
                 minTop = Math.min(minTop, r.y + b);
             }
             if (minX > maxX)
@@ -2798,6 +2891,8 @@ Rectangle {
         var minY = Number.MAX_VALUE;
         var maxY = -Number.MAX_VALUE;
         for (i = 0; i < n; ++i) {
+            if (items[i].kind === "divider")
+                continue;
             r = l[i];
             if (r.h <= 0)
                 continue;
@@ -2818,9 +2913,9 @@ Rectangle {
             var right = restingPlateRect.x + restingPlateRect.w;
             var minLeft = Number.MAX_VALUE;
             for (i = 0; i < n; ++i) {
-                if (l[i].h <= 0)
+                if (items[i].kind === "divider" || l[i].h <= 0)
                     continue;
-                b = items[i].kind === "divider" ? 0 : entryBounce(items[i]);
+                b = entryBounce(items[i]);
                 minLeft = Math.min(minLeft, l[i].x + b);
             }
             var rx = Math.max(0, minLeft - padding);
@@ -2829,9 +2924,9 @@ Rectangle {
         var left = restingPlateRect.x;
         var maxRight = -Number.MAX_VALUE;
         for (i = 0; i < n; ++i) {
-            if (l[i].h <= 0)
+            if (items[i].kind === "divider" || l[i].h <= 0)
                 continue;
-            b = items[i].kind === "divider" ? 0 : entryBounce(items[i]);
+            b = entryBounce(items[i]);
             maxRight = Math.max(maxRight, l[i].x + l[i].w - b);
         }
         var leftRight = Math.min(width, maxRight + padding);

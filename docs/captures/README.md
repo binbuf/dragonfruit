@@ -358,6 +358,19 @@ sets the compositor's `Minimal` material tier (blur off) and reduced motion, so
 the plate reads as a clean capsule with no glass claim. Needs a host Wayland
 session, spectacle, and Pillow; not in `make e2e`.
 
+T-14.7v's Dock region-divider sign-off is produced by
+`scripts/capture-dock-dividers.sh` (`make dock-dividers-capture`): the nested
+demo is captured in its default state (a pinned prefix, the running demo client
+as the temporary tail, and the fixed stacks/Trash tail -> two rules), after the
+unpinned client is closed (empty tail -> one rule), and after `dock.pinned` is
+cleared and the demo client exits (the fixed region alone -> no rule). The three
+190 px-tall bottom-Dock strips are stacked into
+`t14-dock-dividers-{light,dark}.png`. Measured on the dark composite: the
+three-region strip shows two 1 px rules 64 px tall (0.82 x the 78 px plate) with
+a 22 px gap on each side; the empty-tail strip one rule; the single-region strip
+none. Needs a host Wayland session, spectacle, gdbus, and Pillow; not in
+`make e2e`.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

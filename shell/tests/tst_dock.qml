@@ -138,14 +138,16 @@ Item {
                            minimized("win1", "Document") ]
             });
             var items = dock.items;
-            compare(items.length, 6); // apps, divider, minimized, stack, trash
+            compare(items.length, 8); // pinned, |, temp, |, min, |, stack, trash
             compare(items[0].kind, "pinned");
-            compare(items[1].kind, "temporary");
-            compare(items[2].kind, "divider");
-            compare(items[3].kind, "minimized");
-            compare(items[4].kind, "stack");
-            compare(items[5].kind, "trash");
-            compare(dock.itemCount(), 6);
+            compare(items[1].kind, "divider");
+            compare(items[2].kind, "temporary");
+            compare(items[3].kind, "divider");
+            compare(items[4].kind, "minimized");
+            compare(items[5].kind, "divider");
+            compare(items[6].kind, "stack");
+            compare(items[7].kind, "trash");
+            compare(dock.itemCount(), 8);
         }
 
         function test_minimized_hidden_when_minimize_into_tile_icon() {
@@ -157,6 +159,143 @@ Item {
             compare(dock.minimizedEntries.length, 0);
             // apps, divider, stack, trash
             compare(dock.items.length, 4);
+        }
+
+        // -- T-14.7v region dividers -----------------------------------------
+
+        function countDividers(dock) {
+            var n = 0;
+            for (var i = 0; i < dock.items.length; ++i)
+                if (dock.items[i].kind === "divider")
+                    ++n;
+            return n;
+        }
+
+        function test_region_dividers_split_pinned_tail_and_fixed() {
+            // pinned + running unpinned + stack + Trash: two rules, matching
+            // the reference `[pinned] | [temporary/recent] | [stacks Trash]`.
+            var dock = make(dockComponent, {
+                width: 1280, height: 200,
+                entries: [ app("files", "Files", true), temporary("term", "Terminal") ]
+            });
+            compare(countDividers(dock), 2);
+            compare(dock.items[0].kind, "pinned");
+            compare(dock.items[1].kind, "divider");
+            compare(dock.items[2].kind, "temporary");
+            compare(dock.items[3].kind, "divider");
+            compare(dock.items[4].kind, "stack");
+            compare(dock.items[5].kind, "trash");
+            // Only the app | right-region rule carries the resize handle.
+            compare(dock.items[1].resizeHandle, false);
+            compare(dock.items[3].resizeHandle, true);
+        }
+
+        function test_pinned_only_dock_has_no_orphan_rule() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 200,
+                entries: [ app("a", "A", true), app("b", "B", true) ]
+            });
+            // No temporary/recent tail: pinned meets the fixed tail in one rule.
+            compare(countDividers(dock), 1);
+            compare(dock.items[2].kind, "divider");
+            compare(dock.items[2].resizeHandle, true);
+            // No doubled or orphaned rule at the end.
+            compare(dock.items[dock.items.length - 2].kind, "stack");
+            compare(dock.items[dock.items.length - 1].kind, "trash");
+        }
+
+        function test_no_divider_when_app_region_is_empty() {
+            var dock = make(dockComponent, { width: 1280, height: 200, entries: [] });
+            compare(countDividers(dock), 0);
+            compare(dock.items[0].kind, "stack");
+            compare(dock.items[1].kind, "trash");
+        }
+
+        function test_minimized_region_gets_its_own_divider() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 200,
+                entries: [ app("a", "A", true), minimized("win1", "Doc") ]
+            });
+            compare(countDividers(dock), 2);
+            compare(dock.items[0].kind, "pinned");
+            compare(dock.items[1].kind, "divider");
+            compare(dock.items[1].resizeHandle, true);
+            compare(dock.items[2].kind, "minimized");
+            compare(dock.items[3].kind, "divider");
+            compare(dock.items[3].resizeHandle, false);
+            compare(dock.items[4].kind, "stack");
+        }
+
+        function test_divider_uses_the_oversized_gap() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 220, magnification: 0,
+                entries: [ app("a", "A", true), temporary("t", "T") ]
+            });
+            var base = dock._baseline;
+            // a at 0, pinned rule at 1, t at 2.
+            var gapBefore = base.positions[1] - (base.positions[0] + base.sizes[0]);
+            var gapAfter = base.positions[2] - (base.positions[1] + base.sizes[1]);
+            fuzzyCompare(gapBefore, dock.dividerGap, 0.001);
+            fuzzyCompare(gapAfter, dock.dividerGap, 0.001);
+            verify(dock.dividerGap > dock.gap);
+            compare(dock.dividerGap, Theme.controls.dock.divider.gap);
+        }
+
+        function test_divider_gap_holds_on_every_position() {
+            var entries = [ app("a", "A", true), temporary("t", "T") ];
+            var bottom = make(dockComponent, {
+                width: 1280, height: 220, position: "bottom", entries: entries
+            });
+            var db = bottom._baseline;
+            fuzzyCompare(db.positions[1] - (db.positions[0] + db.sizes[0]),
+                         bottom.dividerGap, 0.001);
+
+            var left = make(dockComponent, {
+                width: 240, height: 800, position: "left", entries: entries
+            });
+            var dl = left._baseline;
+            fuzzyCompare(dl.positions[1] - (dl.positions[0] + dl.sizes[0]),
+                         left.dividerGap, 0.001);
+
+            var right = make(dockComponent, {
+                width: 240, height: 800, position: "right", entries: entries
+            });
+            var dr = right._baseline;
+            fuzzyCompare(dr.positions[1] - (dr.positions[0] + dr.sizes[0]),
+                         right.dividerGap, 0.001);
+        }
+
+        function test_divider_hairline_spans_the_plate_cross_axis() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 220,
+                entries: [ app("a", "A", true), temporary("t", "T") ]
+            });
+            var divider = dock.itemAt(dock.indexOfItemId("__divider__"));
+            // The divider's slot is one pixel along the axis but spans the
+            // plate cross-axis so the hairline reads near-plate-height.
+            fuzzyCompare(divider.height, dock.barThickness, 0.001);
+            var line = findChild(divider, "divider");
+            fuzzyCompare(line.height,
+                         divider.height * Theme.controls.dock.divider.heightRatio, 0.001);
+            fuzzyCompare(line.width, Theme.controls.dock.divider.width, 0.001);
+            // Only the app | right-region rule mounts the resize handle.
+            var pinnedRule = dock.itemAt(dock.indexOfItemId("__divider_pinned__"));
+            compare(findChild(pinnedRule, "dividerHit").visible, false);
+            compare(findChild(divider, "dividerHit").visible, true);
+        }
+
+        function test_divider_spacing_survives_magnification() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 260, magnification: 1.0,
+                entries: [ app("a", "A", true), temporary("t", "T") ]
+            });
+            dock.pointerAlong = dock._baseline.centers[0];
+            waitForRendering(stage);
+            compare(dock.magnifying, true);
+            var layout = dock.layout;
+            // The rule's neighbours keep the over-sized gap under magnification.
+            var gapAfter = layout[2].x - (layout[1].x + layout[1].w);
+            fuzzyCompare(gapAfter, dock.dividerGap, 0.001);
         }
 
         function test_running_indicator_only_for_running_apps() {
@@ -1683,7 +1822,7 @@ Item {
                                  { windowId: "2", title: "Other", focused: true }
                              ] } ]
             });
-            dock.openEntryMenu(dock.items[1]); // divider, minimized, stack, trash
+            dock.openEntryMenu(dock.minimizedEntries[0]);
             var menu = findChild(dock, "entryMenu");
             var labels = menuLabels(menu);
             verify(labels.indexOf("Doc (minimized)") >= 0);
@@ -4700,7 +4839,7 @@ Item {
                 width: 1280, height: 160,
                 downloadsName: "Screenshots", downloadsCount: 1, entries: []
             });
-            compare(dock.itemAt(1).tooltipLabel, "Screenshots — 1 item");
+            compare(dock.itemAt(0).tooltipLabel, "Screenshots — 1 item");
         }
 
         function test_tooltip_follows_the_magnified_entry_and_stays_open() {
