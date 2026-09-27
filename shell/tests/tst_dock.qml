@@ -3035,6 +3035,147 @@ Item {
             compare(findChild(emptyEntry, "stackBadge").visible, false);
         }
 
+        // -- Window-count badge (T-14.7o) ----------------------------------
+
+        function windowedEntry(id, count, extra) {
+            var list = [];
+            for (var i = 0; i < count; ++i)
+                list.push({ windowId: String(i + 1), title: "W" + (i + 1) });
+            var e = { id: id, appId: id, name: id, kind: "pinned",
+                      pinned: true, running: true, windowCount: count,
+                      windows: count, windowList: list };
+            if (extra)
+                for (var k in extra)
+                    e[k] = extra[k];
+            return e;
+        }
+
+        function test_window_badge_shows_for_a_grouped_app() {
+            var entry = make(entryComponent, {
+                iconSize: 48, entry: windowedEntry("files", 2)
+            });
+            var badge = findChild(entry, "windowBadge");
+            verify(badge !== null);
+            compare(badge.visible, true);
+            compare(findChild(entry, "windowBadgeText").text, "2");
+            compare(badge.color, Theme.color.accent);
+        }
+
+        function test_window_badge_hides_for_zero_or_one_window() {
+            var one = make(entryComponent, {
+                iconSize: 48, entry: windowedEntry("files", 1)
+            });
+            compare(findChild(one, "windowBadge").visible, false);
+
+            var zero = make(entryComponent, {
+                iconSize: 48, entry: windowedEntry("files", 0)
+            });
+            compare(findChild(zero, "windowBadge").visible, false);
+
+            // A stopped pinned app (no window list at all) shows nothing.
+            var stopped = make(entryComponent, {
+                iconSize: 48, entry: app("files", "Files", false)
+            });
+            compare(findChild(stopped, "windowBadge").visible, false);
+        }
+
+        function test_window_badge_caps_at_nine_plus() {
+            var entry = make(entryComponent, {
+                iconSize: 48, entry: windowedEntry("files", 12)
+            });
+            compare(findChild(entry, "windowBadgeText").text, "9+");
+        }
+
+        function test_window_badge_is_attention_colored() {
+            var normal = make(entryComponent, {
+                iconSize: 48, entry: windowedEntry("files", 3)
+            });
+            compare(findChild(normal, "windowBadge").color, Theme.color.accent);
+
+            var urgent = make(entryComponent, {
+                iconSize: 48,
+                entry: windowedEntry("mail", 3, { attention: true })
+            });
+            compare(findChild(urgent, "windowBadge").color, Theme.color.danger);
+        }
+
+        function test_window_badge_yields_to_status_and_app_badge() {
+            // The failure state wins: no count badge, the status badge shows.
+            var failed = make(entryComponent, {
+                iconSize: 48,
+                entry: windowedEntry("files", 4, { launch: "failed" })
+            });
+            compare(findChild(failed, "windowBadge").visible, false);
+            compare(findChild(failed, "statusBadge").visible, true);
+
+            var missing = make(entryComponent, {
+                iconSize: 48,
+                entry: windowedEntry("files", 4, { missing: true })
+            });
+            compare(findChild(missing, "windowBadge").visible, false);
+
+            // An app-provided count also wins over the derived one.
+            var appBadge = make(entryComponent, {
+                iconSize: 48,
+                entry: windowedEntry("files", 4, { badge: 7 })
+            });
+            compare(findChild(appBadge, "windowBadge").visible, false);
+        }
+
+        function test_window_badge_never_on_stacks_or_trash() {
+            var stack = make(entryComponent, {
+                iconSize: 48,
+                entry: { id: "downloads", name: "Downloads", kind: "stack",
+                         stackCount: 4, running: false, windowCount: 4 }
+            });
+            compare(findChild(stack, "windowBadge").visible, false);
+
+            var trash = make(entryComponent, {
+                iconSize: 48,
+                entry: { id: "__trash__", name: "Trash", kind: "trash",
+                         running: false, windowCount: 3 }
+            });
+            compare(findChild(trash, "windowBadge").visible, false);
+
+            // A per-window minimized row is one window, not the app's group.
+            var minimized = make(entryComponent, {
+                iconSize: 48,
+                entry: { id: "win:1", name: "Doc", kind: "minimized",
+                         running: false, windowCount: 3,
+                         windowList: [ { windowId: "1" }, { windowId: "2" },
+                                       { windowId: "3" } ] }
+            });
+            compare(findChild(minimized, "windowBadge").visible, false);
+        }
+
+        function test_window_badge_geometry_comes_from_tokens() {
+            var entry = make(entryComponent, {
+                iconSize: 48, entry: windowedEntry("files", 2)
+            });
+            var badge = findChild(entry, "windowBadge");
+            var expected = Math.max(
+                Theme.controls.dock.windowBadge.sizeMin,
+                Math.min(Theme.controls.dock.windowBadge.sizeMax,
+                         Math.round(48 * Theme.controls.dock.windowBadge.sizeRatio)));
+            fuzzyCompare(badge.height, expected, 0.001);
+            fuzzyCompare(badge.x,
+                         entry.artworkX + entry.iconSize - badge.width
+                         - Theme.controls.dock.windowBadge.inset, 0.001);
+        }
+
+        function test_window_badge_is_instant_under_reduced_motion() {
+            Theme.reducedMotion = true;
+            var entry = make(entryComponent, {
+                iconSize: 48, entry: windowedEntry("files", 2)
+            });
+            var badge = findChild(entry, "windowBadge");
+            compare(badge.visible, true);
+            // Dropping to one window removes it with no fade under reduced
+            // motion (the `motion.focus` duration is 0).
+            entry.entry = windowedEntry("files", 1);
+            tryCompare(badge, "visible", false);
+        }
+
         function test_stack_drop_reports_downloads() {
             var dock = make(dockComponent, {
                 width: 1280, height: 160,

@@ -533,6 +533,8 @@ private slots:
         QCOMPARE(files.value(QStringLiteral("name")).toString(), QStringLiteral("Files"));
         QCOMPARE(files.value(QStringLiteral("running")).toBool(), true);
         QCOMPARE(files.value(QStringLiteral("windows")).toInt(), 2);
+        // The merged published entry carries the derived count too (T-14.7o).
+        QCOMPARE(files.value(QStringLiteral("windowCount")).toInt(), 2);
         // The per-window list survives the pin merge for the chooser.
         const QVariantList filesWindows = files.value(QStringLiteral("windowList")).toList();
         QCOMPARE(filesWindows.size(), 2);
@@ -570,6 +572,7 @@ private slots:
         QCOMPARE(entries.size(), 1);
         QCOMPARE(entries.at(0).toMap().value(QStringLiteral("kind")).toString(),
                  QStringLiteral("temporary"));
+        QCOMPARE(entries.at(0).toMap().value(QStringLiteral("windowCount")).toInt(), 1);
     }
 
     void mergeTemporaryCarriesDesktopIdForPromotion()
@@ -831,6 +834,50 @@ private slots:
     void projectionLastWindowClosedRemovesTheApp()
     {
         QVERIFY(buildDockProjection({}).isEmpty());
+    }
+
+    // T-14.7o: the projection exposes the app's window count directly, so the
+    // Dock's badge never has to infer it from the raw list.
+    void projectionExposesTheWindowCount()
+    {
+        const QVariantList entries = buildDockProjection({
+            window(1, QStringLiteral("org.example.Alpha"), QStringLiteral("a1")),
+            window(2, QStringLiteral("org.example.Alpha"), QStringLiteral("a2")),
+            window(3, QStringLiteral("org.example.Beta"), QStringLiteral("b1"), true),
+        });
+
+        const QVariantMap alpha = entryForAppId(entries, QStringLiteral("org.example.Alpha"));
+        QCOMPARE(alpha.value(QStringLiteral("windowCount")).toInt(), 2);
+        QCOMPARE(dockWindowCount(alpha), 2);
+
+        // A minimized entry carries its owning app's full count too, so a
+        // click-to-choose from the minimized row still badges correctly.
+        const QVariantMap beta = entryForAppId(entries, QStringLiteral("org.example.Beta"));
+        QCOMPARE(beta.value(QStringLiteral("windowCount")).toInt(), 1);
+        for (const QVariant &value : entries) {
+            const QVariantMap map = value.toMap();
+            if (map.value(QStringLiteral("kind")).toString() != QLatin1String("minimized"))
+                continue;
+            QCOMPARE(map.value(QStringLiteral("windowCount")).toInt(), 1);
+        }
+    }
+
+    // The helper is the single source of the count: it prefers `windowList` and
+    // falls back to the legacy scalar, and never invents a count.
+    void windowCountDerivesFromTheWindowListOrTheScalar()
+    {
+        QCOMPARE(dockWindowCount(QVariantMap{}), 0);
+        QCOMPARE(dockWindowCount(QVariantMap{{QStringLiteral("windows"), 4}}), 4);
+        QCOMPARE(dockWindowCount(QVariantMap{
+                     {QStringLiteral("windows"), 1},
+                     {QStringLiteral("windowList"),
+                      QVariantList{QVariantMap{{QStringLiteral("windowId"),
+                                                QStringLiteral("1")}},
+                                   QVariantMap{{QStringLiteral("windowId"),
+                                                QStringLiteral("2")}}}}}),
+                 2);
+        // An entry with neither field is a zero, not a crash.
+        QCOMPARE(dockWindowCount(QVariantMap{{QStringLiteral("id"), QStringLiteral("x")}}), 0);
     }
 
     void projectionUnknownAppIdUsesOneGenericGroup()

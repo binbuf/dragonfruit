@@ -175,6 +175,25 @@ deferred (ADR 0103). The live visual check is
 `docs/captures/t14-dock-chooser-actions.png` (`make
 dock-chooser-actions-capture`).
 
+### Dock window-count badge
+
+A grouped app is visible at rest (T-14.7o): an entry with two or more windows
+shows a small count at its tile's top-right corner, capped at `9+`. The count is
+derived in the pure projection, not in QML — `buildDockProjection` /
+`buildDockEntries` publish a `windowCount` field (`dockWindowCount` is the one
+helper) — and `DockEntry.qml` only formats the numeral. There is exactly one
+badge per entry, with the precedence status (failure / not-found / Trash
+unavailable) > app-provided `badge` > window count > none: a failure never shows
+a count, a folder stack or Trash never shows one, and a pinned app that is not
+running has zero windows so it shows nothing. A minimized-only app still counts
+its windows (the running indicator stays), matching legacy T-10 §10. The badge
+is accent-filled, tinted with the attention (danger) color while the app demands
+attention, and its size/typography scale with the tile from
+`component.dock.windowBadge` so it stays legible at `iconSizeMin` and
+`iconSizeMax`. It fades in with `motion.focus` (instant under reduced motion)
+and is presentational only: the accessible name and the hover label already
+carry the window count, so the badge announces nothing on its own.
+
 ### Dock plate and materials
 
 The Dock is a **floating plate**: `controls.dock.edgeMargin` keeps it off its

@@ -2,6 +2,7 @@
 #include "dockmodel.h"
 
 #include "desktopentry.h"
+#include "dockprojection.h"
 
 #include <QSet>
 #include <QVariantMap>
@@ -205,6 +206,7 @@ QVariantList buildRecentEntries(const QStringList &recentIds, const QStringList 
         merged.insert(QStringLiteral("missing"), false);
         merged.insert(QStringLiteral("running"), false);
         merged.insert(QStringLiteral("windows"), 0);
+        merged.insert(QStringLiteral("windowCount"), 0);
         out.append(merged);
     }
     return out;
@@ -302,6 +304,7 @@ QVariantList buildDockEntries(const QStringList &pinnedIds, const DesktopEntryIn
         merged.insert(QStringLiteral("running"), matched);
         merged.insert(QStringLiteral("windows"), windows);
         merged.insert(QStringLiteral("windowList"), windowList);
+        merged.insert(QStringLiteral("windowCount"), windowList.size());
         merged.insert(QStringLiteral("minimized"), matched && anyMinimized);
         const QString launch = launchStates.value(pinId);
         if (!launch.isEmpty())
@@ -316,6 +319,7 @@ QVariantList buildDockEntries(const QStringList &pinnedIds, const DesktopEntryIn
         entry.insert(QStringLiteral("kind"), QStringLiteral("temporary"));
         entry.insert(QStringLiteral("pinned"), false);
         entry.insert(QStringLiteral("missing"), false);
+        entry.insert(QStringLiteral("windowCount"), dockWindowCount(entry));
         // A temporary running app that resolves to an installed `.desktop`
         // entry can be promoted ("Keep in Dock") by dragging it into the
         // pinned region (T-10 section 12); carry the desktop id so the Dock
