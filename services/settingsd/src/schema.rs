@@ -19,7 +19,7 @@ use crate::value::{SettingsError, Value};
 
 /// The current schema revision. Bump only when a key is added or a default
 /// changes; renames and removals are forbidden within the `1` series.
-pub const SCHEMA_VERSION: u32 = 7;
+pub const SCHEMA_VERSION: u32 = 8;
 
 /// The D-Bus type of a settings value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -355,6 +355,19 @@ pub const KEYS: &[KeySpec] = &[
         consumer: "shell/Dock",
         since: 7,
         summary: "Ordered absolute folder paths pinned to the Dock as stacks; empty seeds the Downloads default.",
+    },
+    KeySpec {
+        key: "dock.chooserOnHover",
+        group: KeyGroup::Dock,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(false),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "shell/Dock",
+        consumer: "shell/Dock",
+        since: 8,
+        summary: "Open a grouped app's window chooser on hover dwell, and retarget it along the Dock.",
     },
     // ── Workspaces ──────────────────────────────────────────────────────
     KeySpec {
@@ -774,6 +787,20 @@ mod tests {
             spec.default.to_value(),
             Value::TextList(items) if items.is_empty()
         ));
+    }
+
+    /// The Dock on-hover chooser opt-in (T-14.7p): a boolean, default off, so
+    /// the shipping macOS click contract is unchanged, additive in revision 8.
+    #[test]
+    fn the_dock_on_hover_chooser_is_declared_in_revision_eight() {
+        let spec = spec("dock.chooserOnHover").expect("dock.chooserOnHover is declared");
+        assert_eq!(spec.group, KeyGroup::Dock);
+        assert_eq!(spec.kind, KeyType::Bool);
+        assert_eq!(spec.default, KeyDefault::Bool(false));
+        assert_eq!(spec.since, 8);
+        assert!(spec.since <= SCHEMA_VERSION);
+        assert!(spec.validate(&Value::Bool(true)).is_ok());
+        assert!(spec.validate(&Value::Text("on".into())).is_err());
     }
 
     /// A frozen manifest of the v1 key set. Adding a key is allowed (extend

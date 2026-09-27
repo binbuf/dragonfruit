@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(92 earlier sections omitted)_
+_(93 earlier sections omitted)_
 
-- **T88 — T-13.1a Portal backend and session service**: **State: done.** `portal/` is now a real session-bus portal backend plus its; **`portal/src/`** (new `[lib]` + existing binary) — `model` (pure:
 - **T89 — T-13.1b Settings and GlobalShortcuts portals**: **State: done.** The backend now serves the first two standard interfaces at; **`portal/src/settings.rs`** (new) — the pure projection:
 - **T90 — T-13.2a FileChooser portal**: **State: done.** The backend now serves the standard FileChooser interface; **`portal/src/chooser.rs`** (new) — the pure model: `ChooserKind`
 - **T91 — T-13.2b FileChooser picker UI**: **State: done.** The FileChooser portal now has its dialog: a design-system; **`shell/screenshot/FileChooser.qml`** (new) — the pure view: title, an Up
@@ -44,6 +43,7 @@ _(92 earlier sections omitted)_
 - **T110m — T-14.7m Dock window chooser: per-window actions**: **State: done.** Each window row in the Dock's chooser now carries a stateful; `shell/src/shellprotocol.{h,cpp}` — `setToplevelMinimized(windowId, bool)`
 - **T110n — T-14.7n Dock window chooser: row discipline**: **State: done.** The window chooser's row list is now bounded: at most; `design-system/tokens/tokens.json` — `component.dock.chooser`:
 - **T110o — T-14.7o Dock window-count badge**: **State: done.** A grouped app now shows a count at its icon's top-right corner; `shell/src/dockprojection.{h,cpp}` — new `dockWindowCount(entry)` (prefers
+- **T110p — T-14.7p Dock hover-open, retargetable chooser and stable anchor**: **State: done.** `dock.chooserOnHover` (bool, default off) opts into a; `services/settingsd/src/schema.rs` — `dock.chooserOnHover` (`since: 8`),
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -9469,3 +9469,75 @@ Gotchas for later tasks:
   T-14.7p overflow work must keep it inside the tile at `iconSizeMin`.
 - `check-desktop-names.sh` still fails on the pre-existing StatusNotifier/zoo
   lines (unchanged here); `make check` stops there.
+
+## T110p — T-14.7p Dock hover-open, retargetable chooser and stable anchor
+
+**State: done.** `dock.chooserOnHover` (bool, default off) opts into a
+dwell-open window chooser: hovering a grouped running entry (`> 1` window, not
+a minimized row) for `component.dock.chooser.hoverDwell` (280 ms) opens the
+popover without a click, and dwelling on another grouped entry retargets the
+same popover once its own dwell elapses — no close/reopen. Pointer leave starts
+`hoverCloseDelay` (260 ms); releasing onto an entry with `<= 1` window closes it.
+Drag, resize, keyboard navigation, and any other popover suppress/dismiss the
+hover path; a hover-open chooser suppresses the name label. The popover anchors
+to `chooserAnchorProxy`, a non-visual snapshot `Item` in `Dock.qml`, not the
+live delegate, so a pin-reorder Repeater rebuild cannot orphan it. No new ADR
+(ADR 0103/0100 already decide the chooser and its buffer).
+
+Real paths:
+
+- `services/settingsd/src/schema.rs` — `dock.chooserOnHover` (`since: 8`),
+  `SCHEMA_VERSION` 7 → 8; a declaration test. `docs/settings-keys.md` row.
+- `libs/settings-client/settingsclient.cpp` — seeds `dock.chooserOnHover` false.
+- `shell/src/dockmodel.{h,cpp}` — `DockConfig.chooserOnHover` +
+  `dockConfigFromValues` read.
+- `shell/src/shellcontroller.cpp` — `applyDockSettings` sets the QML property;
+  new `DF_DOCK_HOVER_FIXTURE` (`open`/`retarget`) capture seam.
+- `apps/settings/DesktopDockPane.qml` — "Open a window chooser by hovering"
+  toggle + `chooserOnHoverToggle` alias + Binding; two pane suites' row count
+  10 → 11.
+- `design-system/tokens/tokens.json` — `component.dock.chooser.hoverDwell` 280,
+  `hoverCloseDelay` 260; `Theme.qml` + `compositor/src/design_tokens.rs`
+  regenerated.
+- `shell/dock/Dock.qml` — `chooserOnHover`; `chooserHoverDwell`/
+  `chooserHoverCloseDelay`; `chooserAnchorProxy` (`capture`/`reposition`);
+  `chooserHoverTimer`/`chooserCloseTimer`; `chooserEligible`, `stopChooserHover`,
+  `openChooserOnHover`, `closeHoverChooser`, `retargetChooser`,
+  `hoverChooserFixture`; `openChooser(entry, fromHover)`; `entryHoverBegan`/
+  `entryHoverEnded` reworked; `refreshChooserAfterProjection` re-captures;
+  `beginKeyboardNavigation`/`closePopovers`/`handleEntryTap`/Dock-leave stop it;
+  `windowChooser.onClosed` resets hover state.
+- `shell/tests/tst_dock.qml` — 8 `test_chooser_hover_*` /
+  `test_chooser_anchor_survives_a_delegate_rebuild`. `tst_dock` 204 → 212.
+- `shell/tests/tst_dockcore.cpp` — config default + `chooserOnHover` override.
+- `scripts/capture-dock-hover-chooser.sh` + `make dock-hover-chooser-capture`;
+  `docs/captures/t14-dock-hover-chooser{,-light,-dark}.png`; captures README.
+- Docs: `docs/design/04-shell.md` "Dock window chooser" hover-open paragraph.
+
+Commands that work (repo root):
+
+- `ctest --test-dir build --output-on-failure` — 53/53 (`tst_dock` 212).
+- `make e2e` — green.
+- `cargo test -p dragonfruit-settingsd`; `cargo clippy -p dragonfruit-settingsd
+  --all-targets -- -D warnings`; `cargo fmt --all -- --check`;
+  `./scripts/gen-tokens.py --check`; `./scripts/check-design-tokens.sh`;
+  `./scripts/check-no-capture-grab.sh`; `./scripts/check-gallery-snapshots.py
+  --strict` — green.
+- Live: `make dock-hover-chooser-capture`.
+
+Gotchas for later tasks:
+
+- **The anchor is `chooserAnchorProxy`, a snapshot, never the delegate.**
+  `chooserAnchor` must stay the proxy; re-capture via `capture(item)` on open,
+  retarget, and after every projection rebuild, then `reposition()`.
+- **`chooserHoverOpened` distinguishes hover from click.** Only a hover-opened
+  chooser is closed by a pointer leave; a click-opened one persists until an
+  explicit dismiss. `windowChooser.onClosed` resets both timers + flags.
+- **Hover diversion lives in `entryHoverBegan`.** A grouped entry starts the
+  chooser dwell and never the Tooltip; `entryHoverEnded` only restarts the
+  close delay (the next `entryHoverBegan` stops it) — do not clear the target
+  there or retarget flickers.
+- **T-14.7q overflow work** must not grow the popover past ADR 0100's headroom;
+  the hover path adds no surface, only a geometry proxy.
+- `check-desktop-names.sh` still fails on the pre-existing
+  StatusNotifier/zoo/apppicker lines (unchanged here).

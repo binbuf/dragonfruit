@@ -175,6 +175,25 @@ deferred (ADR 0103). The live visual check is
 `docs/captures/t14-dock-chooser-actions.png` (`make
 dock-chooser-actions-capture`).
 
+**Hover-open and the stable anchor (T-14.7p).** `dock.chooserOnHover` (bool,
+default off; settingsd is the only writer) opts into a dwell-open chooser:
+hovering a grouped app entry (`> 1` window) for `component.dock.chooser.hoverDwell`
+opens the popover without a click, and moving along the Dock retargets the same
+popover to the newly hovered grouped entry once its own dwell elapses — no
+close/reopen flash. Leaving the entries starts `hoverCloseDelay` before the
+popover dismisses, so crossing the gap between tiles does not flicker; releasing
+onto an entry with `<= 1` window closes it cleanly. Drag, resize, keyboard
+navigation, and any other popover suppress or dismiss the hover path, and a
+hover-open chooser suppresses the hover name label (one popover, one Tooltip).
+The chooser anchors to a small geometry-proxy `Item` (`chooserAnchorProxy`) that
+snapshots the target delegate's rect in the Dock's coordinates and outlives the
+delegate: a projection/pin rebuild destroys and recreates the Repeater delegate
+but re-captures the proxy and re-parents it to force a reposition, so the
+popover is never orphaned. It allocates no surface and stays inside the existing
+popover buffer (ADR 0100). The live visual check is
+`docs/captures/t14-dock-hover-chooser.png` (`make
+dock-hover-chooser-capture`).
+
 ### Dock window-count badge
 
 A grouped app is visible at rest (T-14.7o): an entry with two or more windows

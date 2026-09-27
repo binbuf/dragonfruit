@@ -337,6 +337,8 @@ pub mod component {
             pub const MAX_ROWS: f32 = 7.0_f32;
             pub const SCROLLBAR_WIDTH: f32 = 8.0_f32;
             pub const SCROLLBAR_MARGIN: f32 = 2.0_f32;
+            pub const HOVER_DWELL: f32 = 280.0_f32;
+            pub const HOVER_CLOSE_DELAY: f32 = 260.0_f32;
         }
         pub mod window_badge {
             pub const SIZE_RATIO: f32 = 0.34_f32;

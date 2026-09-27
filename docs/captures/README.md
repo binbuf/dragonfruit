@@ -289,6 +289,17 @@ stacked into `t14-dock-window-badge.png` (light over dark) and saved
 individually, with `t14-dock-window-badge-{min,max}.png` for the size extremes.
 Needs a host Wayland session, spectacle, gdbus, and Pillow; not in `make e2e`.
 
+T-14.7p's Dock hover-open chooser sign-off is produced by
+`scripts/capture-dock-hover-chooser.sh` (`make dock-hover-chooser-capture`):
+the nested demo runs with `dock.chooserOnHover` on and two grouped Dock entries
+(two Settings and two Files windows), then the shell's `DF_DOCK_HOVER_FIXTURE`
+seam drives the production hover-open path without a real pointer dwell. The
+light run captures the dwell-open chooser anchored to the first grouped entry;
+the dark run captures the same popover retargeted to the second entry with the
+magnification pointer parked between them. The two 2x crops are stacked into
+`t14-dock-hover-chooser.png` (light over dark) and saved individually. Needs a
+host Wayland session, spectacle, gdbus, and Pillow; not in `make e2e`.
+
 T-14.7i's Dock hover name label sign-off is produced by
 `scripts/capture-dock-tooltip.sh` (`make dock-tooltip-capture`): the nested demo
 runs once per entry kind through the shell's `DF_DOCK_TOOLTIP_FIXTURE` seam

@@ -1438,6 +1438,28 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         timer->start();
     }
 
+    // Capture/demo seam (T-14.7p): open the hover chooser once the Dock is up,
+    // without a synthetic pointer dwell. `DF_DOCK_HOVER_FIXTURE=retarget` also
+    // places the magnification pointer between two grouped entries and
+    // retargets the popover to the second. The `dock.chooserOnHover` key must
+    // already be on (the capture script sets it through settingsd). Never set
+    // in a normal session.
+    if (qEnvironmentVariableIsSet("DF_DOCK_HOVER_FIXTURE")) {
+        const QString mode = qEnvironmentVariable("DF_DOCK_HOVER_FIXTURE");
+        auto *timer = new QTimer(this);
+        timer->setInterval(500);
+        connect(timer, &QTimer::timeout, this, [this, timer, mode]() {
+            if (!m_dockItem)
+                return;
+            QMetaObject::invokeMethod(m_dockItem, "reveal");
+            QMetaObject::invokeMethod(m_dockItem, "hoverChooserFixture",
+                                      Q_ARG(QVariant, mode));
+            if (m_dockItem->property("chooserOpen").toBool())
+                timer->stop();
+        });
+        timer->start();
+    }
+
     // Capture/demo seam (T-12.3a): lock the session once the chrome is up so
     // the live visual check can capture the lock screen with no hardware key
     // wiring. `DF_LOCK_FIXTURE` is the lock delay in ms (or `1` for the
@@ -4068,6 +4090,7 @@ void ShellController::applyDockSettings(bool reconfigure)
     m_dockItem->setProperty("minimizeIntoTileIcon", m_dockConfig.minimizeIntoTileIcon);
     m_dockItem->setProperty("animateOpening", m_dockConfig.animateOpening);
     m_dockItem->setProperty("showRecentApps", m_dockConfig.showRecentApps);
+    m_dockItem->setProperty("chooserOnHover", m_dockConfig.chooserOnHover);
     // The position is applied to the surface anchor (T-10 section 5); the
     // QML layout mirrors for a vertical Dock.
     const ShellProtocol::DockPosition position = dockPosition();
