@@ -278,6 +278,17 @@ the pinned "Show All Windows" header, the capped seven-row viewport scrolled to
 the lower rows, the scrollbar, and the hovered row's actions clear of it. Needs
 a host Wayland session, spectacle, gdbus, and Pillow; not in `make e2e`.
 
+T-14.7o's Dock window-count badge sign-off is produced by
+`scripts/capture-dock-window-badge.sh` (`make dock-window-badge-capture`): the
+nested demo runs with a grouped Settings entry (two windows via one `--launch`)
+and a single-window Files entry, so the Settings tile shows a `2` at its
+top-right corner and Files shows nothing. It runs light and dark at
+`dock.size` 0.5, then light at `dock.size` 0 and 1 to record the badge at
+`iconSizeMin` (32) and `iconSizeMax` (64). The two default-size 2x crops are
+stacked into `t14-dock-window-badge.png` (light over dark) and saved
+individually, with `t14-dock-window-badge-{min,max}.png` for the size extremes.
+Needs a host Wayland session, spectacle, gdbus, and Pillow; not in `make e2e`.
+
 T-14.7i's Dock hover name label sign-off is produced by
 `scripts/capture-dock-tooltip.sh` (`make dock-tooltip-capture`): the nested demo
 runs once per entry kind through the shell's `DF_DOCK_TOOLTIP_FIXTURE` seam

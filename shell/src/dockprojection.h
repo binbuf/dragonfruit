@@ -8,6 +8,7 @@
 #include <QList>
 #include <QString>
 #include <QVariantList>
+#include <QVariantMap>
 
 // One window from the compositor, already resolved by the shell: the private
 // protocol's toplevel id, app id, title, minimize state, focus, and its Space
@@ -37,6 +38,13 @@ struct DockWindow {
 // on another Space, a rapid open/close, or the last window closing all
 // resolve here, so the Dock can never hold a stale per-app row.
 QVariantList buildDockProjection(const QList<DockWindow> &windows);
+
+// The number of windows a projected entry represents (T-14.7o): the
+// `windowList` length when the entry carries one, falling back to the legacy
+// `windows` scalar, and 0 when it carries neither. This is the Dock's
+// window-count badge source — the pure model owns the count, QML only formats
+// `9+`. Pure and unit-tested (tst_dockcore).
+int dockWindowCount(const QVariantMap &entry);
 
 // Human-readable fallback name for an unresolved app id (last reverse-DNS
 // segment). The real name and icon come from app-index (T-14.1a).

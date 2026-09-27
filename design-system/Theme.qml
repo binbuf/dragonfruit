@@ -354,6 +354,16 @@ QtObject {
                 readonly property int scrollbarWidth: 8
                 readonly property int scrollbarMargin: 2
             }
+            readonly property var windowBadge: QtObject {
+                readonly property real sizeRatio: 0.34
+                readonly property int sizeMin: 14
+                readonly property int sizeMax: 22
+                readonly property real fontRatio: 0.56
+                readonly property int fontMin: 10
+                readonly property int paddingH: 5
+                readonly property int inset: 2
+                readonly property int borderWidth: 1
+            }
         }
         readonly property var contextMenu: QtObject {
             readonly property int radius: 14

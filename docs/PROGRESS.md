@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(91 earlier sections omitted)_
+_(92 earlier sections omitted)_
 
-- **T87 — T-12.5b Session policy keys, kill matrix, capture**: **State: done.** The session policy keys are registered in settingsd, the; **`services/settingsd/src/schema.rs`** — schema v5, new `Session` key group:
 - **T88 — T-13.1a Portal backend and session service**: **State: done.** `portal/` is now a real session-bus portal backend plus its; **`portal/src/`** (new `[lib]` + existing binary) — `model` (pure:
 - **T89 — T-13.1b Settings and GlobalShortcuts portals**: **State: done.** The backend now serves the first two standard interfaces at; **`portal/src/settings.rs`** (new) — the pure projection:
 - **T90 — T-13.2a FileChooser portal**: **State: done.** The backend now serves the standard FileChooser interface; **`portal/src/chooser.rs`** (new) — the pure model: `ChooserKind`
@@ -44,6 +43,7 @@ _(91 earlier sections omitted)_
 - **T110l — T-14.7l Dock launch-origin tile hand-off**: **State: done.** The Dock now hands the acted-on entry's icon tile to the; `shell/src/dockmodel.{h,cpp}` — `dockLaunchAppId(entry)` (`StartupWMClass`
 - **T110m — T-14.7m Dock window chooser: per-window actions**: **State: done.** Each window row in the Dock's chooser now carries a stateful; `shell/src/shellprotocol.{h,cpp}` — `setToplevelMinimized(windowId, bool)`
 - **T110n — T-14.7n Dock window chooser: row discipline**: **State: done.** The window chooser's row list is now bounded: at most; `design-system/tokens/tokens.json` — `component.dock.chooser`:
+- **T110o — T-14.7o Dock window-count badge**: **State: done.** A grouped app now shows a count at its icon's top-right corner; `shell/src/dockprojection.{h,cpp}` — new `dockWindowCount(entry)` (prefers
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -9413,3 +9413,59 @@ Gotchas for later tasks:
   `scrollChooserFixture()` is a fixture, never session state.
 - `check-desktop-names.sh` still fails on the pre-existing StatusNotifier/zoo
   lines (unchanged here).
+
+## T110o — T-14.7o Dock window-count badge
+
+**State: done.** A grouped app now shows a count at its icon's top-right corner
+(`2` for two windows, capped at `9+`); zero/one-window and stopped apps show
+nothing. The count lives in the pure model. No new ADR: ADR 0103 already
+decides the entry gains a window-count badge.
+
+Real paths:
+
+- `shell/src/dockprojection.{h,cpp}` — new `dockWindowCount(entry)` (prefers
+  `windowList` length, falls back to the `windows` scalar, else 0);
+  `buildDockProjection` inserts `windowCount` on app and minimized entries.
+- `shell/src/dockmodel.cpp` — `buildDockEntries` sets `windowCount` on pinned,
+  temporary, and recent entries; minimized entries carry it from the projection.
+- `shell/dock/DockEntry.qml` — `windowCount`, `isMinimized`, `showStatusBadge`,
+  `showWindowBadge`, `windowBadgeSize`/`Label`/`Color`; the `windowBadge`
+  Rectangle + `windowBadgeText`. Precedence: status > app `badge` > window
+  count. Stacks/Trash/dividers/external/minimized rows never badge. Normal fill
+  `Theme.color.accent`, attention `Theme.color.danger`, numeral
+  `accentContent`, `chrome` hairline.
+- `design-system/tokens/tokens.json` — `component.dock.windowBadge`
+  (`sizeRatio` 0.34, `sizeMin` 14, `sizeMax` 22, `fontRatio` 0.56, `fontMin`
+  = `primitive.font.sizeXs`, `paddingH` 5, `inset` 2, `borderWidth` 1);
+  `Theme.qml` + `compositor/src/design_tokens.rs` regenerated.
+- Tests: `tst_dockcore` — `projectionExposesTheWindowCount`,
+  `windowCountDerivesFromTheWindowListOrTheScalar` + merge assertions;
+  `tst_dock.qml` — `windowedEntry` helper and 8 badge cases. `tst_dock`
+  196 → 204.
+- `scripts/capture-dock-window-badge.sh` + `make dock-window-badge-capture`;
+  `docs/captures/t14-dock-window-badge-{light,dark,min,max}.png` and the
+  light-over-dark composite; captures README paragraph.
+- Docs: `docs/design/04-shell.md` "Dock window-count badge".
+
+Commands that work (repo root):
+
+- `ctest --test-dir build --output-on-failure` — 53/53 (`tst_dock` 204).
+- `make e2e` — green (Rust workspace suites + `make demo --headless`).
+- `cargo fmt --all -- --check`; `./scripts/gen-tokens.py --check`;
+  `./scripts/check-design-tokens.sh`; `./scripts/check-no-capture-grab.sh`;
+  `./scripts/check-gallery-snapshots.py` — green.
+- Live: `make dock-window-badge-capture` (host Wayland + spectacle + gdbus +
+  Pillow; Settings grouped via one `--launch` plus a single Files window).
+
+Gotchas for later tasks:
+
+- **`windowCount` is the field; do not re-derive from `windowList` in QML.**
+  The QML fallback is only for direct test/fixture callers.
+- **`showStatusBadge` is the single status condition**; extend precedence in
+  `showWindowBadge`, not the status Rectangle.
+- **Minimized per-window rows never badge** (`isMinimized`): they carry the
+  app's full `windowList` for the menu but represent one window.
+- **`windowBadge` size scales with the tile**, clamped to `sizeMin`/`sizeMax`;
+  T-14.7p overflow work must keep it inside the tile at `iconSizeMin`.
+- `check-desktop-names.sh` still fails on the pre-existing StatusNotifier/zoo
+  lines (unchanged here); `make check` stops there.

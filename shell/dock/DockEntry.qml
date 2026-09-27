@@ -45,6 +45,17 @@ Item {
     readonly property bool isStack: kind === "stack"
     readonly property int stackCount: entry.stackCount !== undefined ? entry.stackCount : 0
     readonly property int badge: entry.badge !== undefined ? entry.badge : 0
+    // The number of windows the app is running (T-14.7o). The pure projection
+    // owns it (`windowCount`); the fallback derives it from `windowList` for
+    // direct callers (the QML tests, a fixture) that only set the list.
+    readonly property int windowCount: entry.windowCount !== undefined
+        ? entry.windowCount
+        : (entry.windowList !== undefined && entry.windowList !== null
+           ? entry.windowList.length : 0)
+    // A per-window minimized row is one window, never the app's whole group, so
+    // it never carries the window-count badge even though it holds the app's
+    // full list for its menu.
+    readonly property bool isMinimized: kind === "minimized"
     // A placeholder gap opened by an application-alias external drop; it is
     // layout only and never interactive.
     readonly property bool isExternal: kind === "external"
@@ -175,6 +186,32 @@ Item {
             return name + qsTr(" — %1 windows").arg(windows);
         return name;
     }
+
+    // The state badge (failure/missing/Trash-unavailable) wins over every
+    // other badge (T-14.7o precedence: status > app badge > window count).
+    readonly property bool showStatusBadge:
+        !isDivider && !isExternal && (failed || missing || trashUnavailable)
+    // The window-count badge (T-14.7o): a grouped app (2+ windows) with no
+    // status and no app-provided count shows how many windows it has. It never
+    // shows on folders/stacks or Trash, and a status or app badge suppresses it
+    // so there is exactly one badge per entry.
+    readonly property bool showWindowBadge:
+        !isDivider && !isExternal && !isTrash && !isStack && !isMinimized
+        && !showStatusBadge && badge <= 0 && windowCount >= 2
+    // The badge geometry/typography is token-driven and scales with the tile so
+    // it stays legible at the minimum and maximum icon sizes (T-14.7o).
+    readonly property real windowBadgeSize: {
+        var wb = Theme.controls.dock.windowBadge;
+        return Math.max(wb.sizeMin,
+                        Math.min(wb.sizeMax,
+                                 Math.round(root.iconSize * wb.sizeRatio)));
+    }
+    readonly property string windowBadgeLabel:
+        windowCount > 9 ? qsTr("9+") : String(windowCount)
+    // An app demanding attention tints the badge; otherwise the accent marks a
+    // grouped app (the reference behavior, our own tokens).
+    readonly property color windowBadgeColor:
+        attention ? Theme.color.danger : Theme.color.accent
 
     Accessible.role: isDivider ? Accessible.Separator : Accessible.ListItem
     Accessible.name: isDivider ? qsTr("Dock separator")
@@ -359,8 +396,7 @@ Item {
     // small badge marks it and the accessible name says why.
     Rectangle {
         objectName: "statusBadge"
-        visible: !root.isDivider && !root.isExternal
-                 && (root.failed || root.missing || root.trashUnavailable)
+        visible: root.showStatusBadge
         width: root.indicatorSize
         height: root.indicatorSize
         radius: root.indicatorSize / 2
@@ -391,6 +427,49 @@ Item {
             text: root.badge > 9 ? qsTr("9+") : String(root.badge)
             color: Theme.color.accentContent
             font.pixelSize: Math.max(9, Math.round(root.indicatorSize * 0.7))
+        }
+    }
+
+    // The grouped-app window-count badge (T-14.7o): one numeral (capped at
+    // `9+`) at the tile's top-right corner when the app has two or more
+    // windows. It is presentational only; the accessible name and the tooltip
+    // already carry the count, so it announces nothing on its own. It fades in
+    // with `motion.focus` (instant under reduced motion) and is suppressed by a
+    // status or app badge.
+    Rectangle {
+        objectName: "windowBadge"
+        visible: opacity > 0
+        opacity: root.showWindowBadge ? 1.0 : 0.0
+        width: Math.max(root.windowBadgeSize,
+                        windowBadgeText.implicitWidth
+                        + 2 * Theme.controls.dock.windowBadge.paddingH)
+        height: root.windowBadgeSize
+        radius: height / 2
+        color: root.windowBadgeColor
+        border.width: Theme.controls.dock.windowBadge.borderWidth
+        border.color: Theme.color.chrome
+        x: root.artworkX + root.iconSize - width
+           - Theme.controls.dock.windowBadge.inset
+        y: root.artworkY + Theme.controls.dock.windowBadge.inset
+        z: 1
+        Text {
+            id: windowBadgeText
+            objectName: "windowBadgeText"
+            anchors.centerIn: parent
+            text: root.windowBadgeLabel
+            color: Theme.color.accentContent
+            font.pixelSize: Math.max(
+                Theme.controls.dock.windowBadge.fontMin,
+                Math.round(root.windowBadgeSize
+                           * Theme.controls.dock.windowBadge.fontRatio))
+            font.weight: Theme.primitive.font.weightSemibold
+        }
+
+        Behavior on opacity {
+            NumberAnimation {
+                duration: Theme.motion.focus.duration
+                easing.type: Easing.OutCubic
+            }
         }
     }
 
