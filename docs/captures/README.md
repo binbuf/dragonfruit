@@ -177,6 +177,18 @@ the nested popover open/close with no degrade-tier downgrade. Needs a host
 Wayland session, spectacle, gdbus, Pillow, and a session bus with no settingsd
 owner; not in `make e2e`.
 
+T-14.7d's Trash artwork sign-off is produced by
+`scripts/capture-dock-trash.sh` (`make dock-trash-capture`): the nested demo
+runs once per Trash state with a scratch settingsd and a scratch
+`XDG_DATA_HOME` whose home trash is empty, full (two `.trashinfo` records plus
+payloads), or blocked so the store reads as unavailable; the driver flips
+`appearance.colorScheme` (dark/light) and writes one 2x crop per state/scheme to
+`t14-dock-trash-{empty,full,unavailable}-{light,dark}.png`, each showing the
+whole Dock so the Trash reads next to the themed tiles. Empty is a tidy neutral
+bin; full shows crumpled paper overflowing behind the rim plus an accent rim;
+unavailable is dimmed with the status badge. Needs a host Wayland session,
+spectacle, gdbus, and Pillow; not in `make e2e`.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(79 earlier sections omitted)_
+_(80 earlier sections omitted)_
 
-- **T76 — T-11.4a OSD overlay**: **State: done.** A volume/brightness change presents a brief centered OSD card; **`shell/src/osdmodel.{h,cpp}`** (new, dockcore) — the pure `OsdModel`:
 - **T77 — T-11.4b OSD keyboard/a11y and captures**: **State: done.** The OSD is keyboard/AT-SPI accessible and the T-11 capture; **`shell/osd/Osd.qml`** — `Accessible.role: Alert` + value-derived
 - **T78 — T-12.1a Session manager and restart policy**: **State: done.** `services/session` is a real session manager: the composition; **`services/session/src/plan.rs`** (new) — `RestartPolicy` (`always` /
 - **T79 — T-12.1b Session environment, systemd units, second-VT**: **State: done.** The session environment is data and reaches every child; the; **`services/session/src/env.rs`** (new) — `SessionEnvironment` (`new`,
@@ -45,6 +44,7 @@ _(79 earlier sections omitted)_
 - **T110a — T-14.7a Dock plate geometry and spacing**: **State: done.** The Dock plate now floats: token-driven cross-axis and; `design-system/tokens/tokens.json` — `controls.dock`: `padding` 10,
 - **T110b — T-14.7b Magnified plate growth and backdrop panel**: **State: done.** The Dock plate now grows to wrap the magnified row (both axes); `protocols/dragonfruit-shell.xml` — `df_shell` v2, `df_layer_surface` v2, new
 - **T110c — T-14.7c Dock motion smoothness and frame discipline**: **State: done.** Continuous Dock motion no longer rebuilds the entry model:; `shell/src/shellcontroller.cpp` — `withBounce` deleted; `rebuildDockEntries`
+- **T110d — T-14.7d Trash entry artwork**: **State: done.** The Trash glyph is now a designed, original bin at the token; `shell/dock/DockGlyph.qml` — `import QtQuick.Shapes`; the `trash` item is a
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -8594,3 +8594,72 @@ Gotchas for later tasks:
 - Running the `tst_dock` binary directly needs
   `QML2_IMPORT_PATH=$PWD/build/qml QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software`;
   `ctest` sets this.
+
+## T110d — T-14.7d Trash entry artwork
+
+**State: done.** The Trash glyph is now a designed, original bin at the token
+size, with empty/full/unavailable states that read at a glance in light and
+dark. No new ADR — ADR 0091 already froze "original geometry at the token size";
+`docs/design/04-shell.md` gains a "Trash entry artwork" subsection.
+
+Real paths:
+
+- `shell/dock/DockGlyph.qml` — `import QtQuick.Shapes`; the `trash` item is a
+  `trashSize`-derived box (`root.size * Theme.controls.dock.trashSize /
+  Theme.controls.dock.iconSize`) centred in the iconSize box. Anatomy: body
+  (gradient + rim + sheen), overhanging lid (rim + top highlight), clean handle;
+  no plus ribs. Full adds a crumpled-paper `Shape` behind the lid (`PathSvg`
+  jagged silhouette) plus the accent rim; empty is neutral. All colours are
+  `Theme.color.trash*` tokens.
+- `design-system/tokens/tokens.json` — new semantic colours `trashFillTop`,
+  `trashFillBottom`, `trashRim`, `trashHighlight`, `trashPaper`,
+  `trashPaperEdge` (light neutral200/300/500/neutral0/neutral50/neutral400;
+  dark neutral600/800/400/300/200/600). Regenerated `Theme.qml` +
+  `compositor/src/design_tokens.rs`.
+- `shell/tests/tst_dock.qml` — helpers `backgroundIs`/`countForeground`/
+  `countForegroundAll`/`sumLuma`/`trashBox`/`trashInset`/`contentsBand`/
+  `makeGlyphOnBackdrop`; tests `test_trash_glyph_renders_pixels_at_every_dock_size`,
+  `test_trash_empty_and_full_differ_above_the_lid`,
+  `test_trash_full_and_empty_render_in_both_schemes`,
+  `test_trash_unavailable_renders_dimmer`; `init()` now resets `Theme.dark`.
+- `scripts/capture-dock-trash.sh` (new; `make dock-trash-capture`) — three
+  nested runs (scratch `XDG_DATA_HOME`: empty / two `.trashinfo` records /
+  a regular file at `Trash` for unavailable) + scratch settingsd; flips
+  `appearance.colorScheme`; writes 2x whole-Dock crops.
+- `docs/captures/t14-dock-trash-{empty,full,unavailable}-{light,dark}.png`
+  (1690x400) — verified live: empty tidy, full paper + accent rim, unavailable
+  dimmed + badge dot.
+- Docs: `docs/design/04-shell.md`; `docs/captures/README.md` T-14.7d paragraph;
+  task Hand-off.
+
+Commands that work (repo root):
+
+- `ctest --test-dir build -R "tst_dock$"` — 129/129; `make qml-test` — 53/53.
+- `make e2e` — green (see flake note); `cargo clippy --workspace --all-targets`;
+  `cargo fmt --all -- --check`; `./scripts/gen-tokens.py --check`;
+  `./scripts/check-design-tokens.sh`; `check-no-capture-grab.sh` — green.
+- `make check` — unchanged: still stops at `check-desktop-names.sh` on the
+  pre-existing StatusNotifier/zoo lines (nothing from this task).
+- Build note (unchanged): `export
+  PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig:$PKG_CONFIG_PATH` and
+  `RUSTFLAGS="-L $HOME/.local/df-devroot/lib64"` (or just `make`).
+- Live: `make dock-trash-capture` (host Wayland + spectacle + gdbus + Pillow).
+
+Gotchas for later tasks:
+
+- **The Trash is a bin, not a squircle.** T-14.7j's tile/inset work must leave
+  the `trash` item's centred `trashSize` box alone; app tiles fill the whole
+  iconSize box, the Trash deliberately does not.
+- **`grabImage` does not apply the grabbed item's own opacity.** To pixel-test
+  the unavailable dimming, grab the `DockEntry` (not the glyph) over a fixed
+  dark backdrop; `shell/tests/tst_dock.qml` does this.
+- **Testing gotcha:** `grabImage` composites over the offscreen stage, and
+  `createTemporaryObject` deletion can overlap siblings within one test; the
+  trash tests place each glyph on a dark backdrop at a distinct x to keep the
+  foreground sample clean.
+- **Flake:** `dragonfruit-files-core`'s
+  `trash_source::tests::trash_monitor_watches_and_wakes_on_a_change` can fail
+  once under parallel `make e2e` load (inotify wake vs scan); it passes on
+  rerun. Not caused by this task.
+- `check-desktop-names.sh` still fails on the pre-existing StatusNotifier/zoo
+  lines (unchanged here).

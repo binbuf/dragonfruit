@@ -130,6 +130,12 @@ pub mod semantic {
             pub const CONTROL_KNOB: [u8; 4] = [0xff, 0xff, 0xff, 0xff];
             pub const TRAFFIC_GLYPH: [u8; 4] = [0x00, 0x00, 0x00, 0x8f];
             pub const SHADOW_COLOR: [u8; 4] = [0x00, 0x00, 0x00, 0xff];
+            pub const TRASH_FILL_TOP: [u8; 4] = [0xde, 0xd6, 0xe5, 0xff];
+            pub const TRASH_FILL_BOTTOM: [u8; 4] = [0xc3, 0xb8, 0xcc, 0xff];
+            pub const TRASH_RIM: [u8; 4] = [0x78, 0x6a, 0x84, 0xff];
+            pub const TRASH_HIGHLIGHT: [u8; 4] = [0xff, 0xff, 0xff, 0xff];
+            pub const TRASH_PAPER: [u8; 4] = [0xf8, 0xf6, 0xfa, 0xff];
+            pub const TRASH_PAPER_EDGE: [u8; 4] = [0x9c, 0x8f, 0xa8, 0xff];
         }
         pub mod material {
             pub const CHROME_OPACITY: f32 = 0.82_f32;
@@ -170,6 +176,12 @@ pub mod semantic {
             pub const CONTROL_KNOB: [u8; 4] = [0xff, 0xff, 0xff, 0xff];
             pub const TRAFFIC_GLYPH: [u8; 4] = [0x00, 0x00, 0x00, 0x99];
             pub const SHADOW_COLOR: [u8; 4] = [0x00, 0x00, 0x00, 0xff];
+            pub const TRASH_FILL_TOP: [u8; 4] = [0x5b, 0x4e, 0x66, 0xff];
+            pub const TRASH_FILL_BOTTOM: [u8; 4] = [0x2d, 0x25, 0x34, 0xff];
+            pub const TRASH_RIM: [u8; 4] = [0x9c, 0x8f, 0xa8, 0xff];
+            pub const TRASH_HIGHLIGHT: [u8; 4] = [0xc3, 0xb8, 0xcc, 0xff];
+            pub const TRASH_PAPER: [u8; 4] = [0xde, 0xd6, 0xe5, 0xff];
+            pub const TRASH_PAPER_EDGE: [u8; 4] = [0x5b, 0x4e, 0x66, 0xff];
         }
         pub mod material {
             pub const CHROME_OPACITY: f32 = 0.72_f32;
