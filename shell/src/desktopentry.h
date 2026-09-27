@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: MIT
-// Interim `.desktop` resolver and launcher for the Dock (T-10, section 8).
+// The Dock's application-entry cache and launcher.
 //
-// This is explicitly a stand-in for app-index (T-23): it scans the XDG
-// application directories, parses the fields the Dock needs (Name, Icon,
-// Exec, StartupWMClass), and launches with QProcess::startDetached. It has no
-// D-Bus, no compositor coupling, and no state beyond the scanned index.
-//
-// DELETE THIS FILE when T-23's `org.dragonfruit.AppIndex1` lands: the Dock
-// switches to the app-index resolve/launch API and the public behavior is
-// unchanged (T-10 section 8, "Interim note").
+// Identity is owned by `org.dragonfruit.AppIndex1` (T-14.1a, ADR 0086): the
+// cache is loaded from `AppIndexClient::enumerate()` and never scans or parses
+// `.desktop` files itself (the interim resolver was retired in T-14.7). What
+// remains here is the record shape the Dock renders, the in-memory lookup the
+// pure merge model uses, and the launcher (`buildLaunchCommand` /
+// `appLaunchEnvironment`).
 #pragma once
 
 #include <QHash>
@@ -39,16 +37,10 @@ class DesktopEntryIndex
 public:
     DesktopEntryIndex() = default;
 
-    // Scan `applicationDirs` (default: the XDG application directories, user
-    // dirs first) and build the lookup tables. Later duplicates of the same
-    // id do not override the first one (desktop-file spec precedence).
-    void scan(const QStringList &applicationDirs = defaultApplicationDirs());
-    static QStringList defaultApplicationDirs();
-
     // Populate from `org.dragonfruit.AppIndex1` (T-14.1a): the service is the
     // single owner of identity and themed icons. Clears any previous content
-    // and inserts every enumerated record. Callers fall back to `scan()` only
-    // when the service is absent (deleted in T-14.7).
+    // and inserts every enumerated record. When the service is absent the
+    // call is a no-op and the cache stays empty (the Dock renders no entries).
     void loadFromAppIndex(const AppIndexClient &client);
 
     // Insert a set of records (from app-index) into the lookup tables. Pure;
@@ -74,11 +66,6 @@ public:
     // codes (%d/%D/%n/%N/%v/%m) are dropped. Empty when not launchable.
     static QStringList buildLaunchCommand(const DesktopEntry &entry,
                                           const QStringList &files = QStringList());
-
-    // Parse the contents of one desktop file (exposed for tests). Only the
-    // `[Desktop Entry]` group is read; localized keys (`Name[xx]`) are
-    // ignored in favor of the unlocalized key.
-    static DesktopEntry parse(const QString &id, const QString &contents);
 
 private:
     void insert(const DesktopEntry &entry);

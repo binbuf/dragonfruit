@@ -175,15 +175,6 @@ QVariantMap menuSeparator()
     return entry;
 }
 
-QVariantMap menuSubmenu(const QString &label, const QVariantList &items)
-{
-    QVariantMap entry;
-    entry.insert(QStringLiteral("label"), label);
-    entry.insert(QStringLiteral("type"), QStringLiteral("submenu"));
-    entry.insert(QStringLiteral("submenu"), items);
-    return entry;
-}
-
 // The fixed system menu (the dragonfruit mark), always leftmost. The actions
 // are session/system operations: System Settings opens the first-party
 // Settings app (T-09); Lock Screen is wired (T-12.3a); App Store has no
@@ -206,50 +197,6 @@ QVariantList systemMenu(const QString &userName)
                       QStringLiteral("lock-screen"));
     menu << menuEntry(QStringLiteral("Log Out %1\u2026").arg(userName),
                       QStringLiteral("Super+Shift+Q"), QStringLiteral("log-out"));
-    return menu;
-}
-
-// T-22 stand-in: a small app menu so the dropdown can be exercised before the
-// menu-broker lands. Applied to every focused app until T-14.7 retires it.
-QVariantList demoAppMenu()
-{
-    QVariantList menu;
-
-    QVariantMap file;
-    file.insert(QStringLiteral("title"), QStringLiteral("File"));
-    file.insert(QStringLiteral("items"),
-                QVariantList{menuEntry(QStringLiteral("New Window"), QStringLiteral("Ctrl+N"),
-                                       QStringLiteral("file.new")),
-                             menuEntry(QStringLiteral("Open..."), QStringLiteral("Ctrl+O"),
-                                       QStringLiteral("file.open")),
-                             menuEntry(QStringLiteral("Close"), QStringLiteral("Ctrl+W"),
-                                       QStringLiteral("close"))});
-    menu << file;
-
-    QVariantMap edit;
-    edit.insert(QStringLiteral("title"), QStringLiteral("Edit"));
-    edit.insert(QStringLiteral("items"),
-                QVariantList{menuEntry(QStringLiteral("Undo"), QStringLiteral("Ctrl+Z"),
-                                       QStringLiteral("edit.undo")),
-                             menuEntry(QStringLiteral("Redo"), QStringLiteral("Ctrl+Shift+Z"),
-                                       QStringLiteral("edit.redo"))});
-    menu << edit;
-
-    QVariantMap view;
-    view.insert(QStringLiteral("title"), QStringLiteral("View"));
-    view.insert(QStringLiteral("items"),
-                QVariantList{menuEntry(QStringLiteral("Zoom"), QString(),
-                                       QStringLiteral("zoom")),
-                             menuEntry(QStringLiteral("Enter Full Screen"),
-                                       QStringLiteral("Ctrl+Super+F"),
-                                       QStringLiteral("fullscreen")),
-                             menuSeparator(),
-                             menuSubmenu(QStringLiteral("Sort By"),
-                                         QVariantList{menuEntry(QStringLiteral("Name"), QString(), QStringLiteral("sort-name")),
-                                                      menuEntry(QStringLiteral("Size"), QString(), QStringLiteral("sort-size")),
-                                                      menuEntry(QStringLiteral("Kind"), QString(), QStringLiteral("sort-kind"))})});
-    menu << view;
-
     return menu;
 }
 
@@ -294,14 +241,11 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             &ShellController::onClipboardObserved);
 
     // Application identity (T-14.1a): `org.dragonfruit.AppIndex1` owns the
-    // `.desktop` corpus, themed icons, and resolution. When the service is
-    // absent the legacy local scan is the fallback (deleted in T-14.7). The
-    // service is restartable; a real subscription arrives in T-14.1c.
+    // `.desktop` corpus, themed icons, and resolution. T-14.7 retired the
+    // shell's local `.desktop` scan, so the service is the only source; a
+    // session without it shows an empty Dock rather than a divergent corpus.
     AppIndexClient appIndex;
-    if (appIndex.available())
-        m_index.loadFromAppIndex(appIndex);
-    else
-        m_index.scan();
+    m_index.loadFromAppIndex(appIndex);
     // T-08.2a: settingsd is the single Dock-settings owner. The client is the
     // live `org.dragonfruit.Settings1` client; it is seeded with the schema
     // defaults so the Dock works when the daemon is absent (the dev tool does
@@ -1535,19 +1479,36 @@ void ShellController::applyFocusedApp()
         name = m_appTitle;
     if (name.isEmpty())
         name = QStringLiteral("Files");
+    // The menu-broker owns global-menu resolution and the fixed application
+    // menu's live Hide/Hide Others/Show All state (T-14.2a). The shell pushes
+    // the focus and the running-window projection, then reads the resolved
+    // model: the fixed menu plus any menus the focused app exported (natively
+    // or through the DBusMenu bridge). The local fixed menu is only the
+    // fallback when the service is absent (T-14.7).
+    QVariantList applicationMenu;
+    QVariantList appMenu;
+    if (m_menuBroker.available()) {
+        m_menuBroker.setFocusedApp(m_appId);
+        m_menuBroker.setWindowStates(windowStatesJson(m_runningEntries));
+        const ResolvedMenu resolved = m_menuBroker.resolveFocused();
+        if (resolved.valid) {
+            if (!m_menuBrokerLogged) {
+                m_menuBrokerLogged = true;
+                qInfo() << "shell: global menu resolved by org.dragonfruit.MenuBroker1"
+                        << "tier" << resolved.tier << "for" << resolved.appId;
+            }
+            if (!resolved.appName.isEmpty())
+                name = resolved.appName;
+            applicationMenu = resolved.applicationMenuItems;
+            appMenu = resolved.menus;
+        }
+    }
+    if (applicationMenu.isEmpty()) {
+        const AppMenuLiveState live = appMenuLiveState(m_appId, m_runningEntries);
+        applicationMenu = fixedApplicationMenu(name, live);
+    }
     m_item->setProperty("appName", name);
-    // The fixed application menu's Hide/Hide Others/Show All verbs carry live
-    // state derived from the running-window projection (T-14.2a). The
-    // menu-broker owns this rule; the shell mirrors it so the demo bar is live
-    // even when the service is absent, and consumes the broker's resolved
-    // model once the native publication channel is wired.
-    const AppMenuLiveState live = appMenuLiveState(m_appId, m_runningEntries);
-    const QVariantList applicationMenu = fixedApplicationMenu(name, live);
     m_item->setProperty("applicationMenuItems", applicationMenu);
-    // The menu-broker (T-22) resolves a real menu model here; until it lands
-    // a small demo menu stands in so the dropdown (input routing + overlay
-    // surface) stays exercisable in a live session. T-14.7 retires it.
-    const QVariantList appMenu = demoAppMenu();
     m_item->setProperty("appMenuModel", appMenu);
     // T-14.2b: register the focused app's accelerators with the compositor,
     // focus-scoped. The table carries the fixed menu's Shell-owned actions and
@@ -4121,7 +4082,7 @@ void ShellController::onDockEntryActivated(const QVariant &entry)
     }
 
     if (map.value(QStringLiteral("missing")).toBool()) {
-        qWarning() << "shell: Dock entry is not installed (T-23 app-index):"
+        qWarning() << "shell: Dock entry is not installed (app-index):"
                    << map.value(QStringLiteral("desktopId")).toString();
         return;
     }
@@ -4194,9 +4155,8 @@ void ShellController::openApp(const QString &desktopId)
 {
     // One entry point for the fixed menus (system "System Settings…",
     // application "Settings…", and any future first-party item): focus the
-    // running window if the app is already open, otherwise launch it through
-    // the interim `.desktop` resolver (the app-index launch API arrives in
-    // T-14.7).
+    // running window if the app is already open, otherwise launch it from its
+    // cached app-index record.
     const AppOpenPlan plan = planAppOpen(m_index, m_runningEntries, desktopId);
     if (!plan.resolved) {
         qWarning() << "shell: cannot open app; no usable .desktop entry:" << desktopId;
