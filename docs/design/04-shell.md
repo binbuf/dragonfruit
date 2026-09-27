@@ -106,6 +106,26 @@ same GVfs `trash://` mount Files does — one source of truth that also
 catches deletions made by other applications (see
 [09-files.md](09-files.md)).
 
+### Dock activation and launch
+
+A click is a request to the one activation authority, never a re-derivation of
+"which window": the shell asks the compositor to activate the app's most recent
+window (`df_toplevel_manager.activate_app`) and the compositor replies with
+`activation_result(found)` (T-14.7g, protocol v8). When no window was found the
+shell falls back to launching the installed `.desktop` entry (the app exited
+between the projection and the click) or raises a notice — a click never dies
+silently. A pinned identity the app-index cannot resolve produces a notice and
+keeps its not-found mark. A near-stationary click always activates: the entry's
+tap and drag handlers share one 8 px slop (`dockEntry.dragSlop`), so only a real
+drag lifts into a rearrangement.
+
+Every launch path (Dock, menu-bar `openApp`, Files reveal) goes through one
+helper (`appLaunchEnvironment`) that replaces the shell's forced
+`QT_QPA_PLATFORM=offscreen` with `wayland` and exports the socket the shell
+connected on as `WAYLAND_DISPLAY`; a shell started with `--socket-name` therefore
+still launches a client that maps a window. See
+[ADR 0101](adr/0101-dock-activation-result-and-launch-display.md).
+
 The difficult part is not drawing the Dock; it is getting all the lifecycle
 details and edge cases polished — launch failures, app exit while animating,
 windows opening on other workspaces, and apps with inconsistent identifiers.

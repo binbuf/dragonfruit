@@ -293,6 +293,46 @@ private slots:
                  QStringLiteral("dragonfruit-wayland"));
     }
 
+    // T-14.7g: the shell connected with `--socket-name`, so the environment it
+    // was started in never held `WAYLAND_DISPLAY`. A launched child must still
+    // receive the actual socket or it maps no window ("clicking does nothing").
+    void appLaunchEnvironmentExportsTheShellsSocketName()
+    {
+        QProcessEnvironment base;
+        base.insert(QStringLiteral("QT_QPA_PLATFORM"), QStringLiteral("offscreen"));
+        QVERIFY(!base.contains(QStringLiteral("WAYLAND_DISPLAY")));
+
+        const QProcessEnvironment environment =
+            appLaunchEnvironment(base, QStringLiteral("dragonfruit-wayland-7"));
+        QCOMPARE(environment.value(QStringLiteral("WAYLAND_DISPLAY")),
+                 QStringLiteral("dragonfruit-wayland-7"));
+        QCOMPARE(environment.value(QStringLiteral("QT_QPA_PLATFORM")),
+                 QStringLiteral("wayland"));
+    }
+
+    // The socket the shell connected on wins over a stale inherited name (the
+    // nested backend may publish a different socket than the shell's env).
+    void appLaunchEnvironmentUsesTheShellsSocketOverAStaleOne()
+    {
+        QProcessEnvironment base;
+        base.insert(QStringLiteral("WAYLAND_DISPLAY"), QStringLiteral("wayland-0"));
+        const QProcessEnvironment environment =
+            appLaunchEnvironment(base, QStringLiteral("dragonfruit-nested"));
+        QCOMPARE(environment.value(QStringLiteral("WAYLAND_DISPLAY")),
+                 QStringLiteral("dragonfruit-nested"));
+    }
+
+    // With no socket supplied (an empty socket name) the inherited display is
+    // left untouched.
+    void appLaunchEnvironmentKeepsTheInheritedDisplayWithoutASocket()
+    {
+        QProcessEnvironment base;
+        base.insert(QStringLiteral("WAYLAND_DISPLAY"), QStringLiteral("wayland-0"));
+        const QProcessEnvironment environment = appLaunchEnvironment(base, QString());
+        QCOMPARE(environment.value(QStringLiteral("WAYLAND_DISPLAY")),
+                 QStringLiteral("wayland-0"));
+    }
+
     // -- reveal target (T-10.6c) -----------------------------------------
 
     void revealExecutableResolvesAnAbsoluteProgram()
@@ -627,6 +667,31 @@ private slots:
         QCOMPARE(plan.resolved, false);
         QCOMPARE(plan.running, false);
         QVERIFY(plan.desktopId.isEmpty());
+    }
+
+    // T-14.7g identity fallback: a projection row with no compositor app id
+    // cannot be activated, so the plan stays "not running" and the caller
+    // launches the installed entry ("treat an empty app id as a launch").
+    void planAppOpenTreatsAnEmptyAppIdAsANonMatch()
+    {
+        DesktopEntryIndex index;
+        index.loadFromRecords(QList<DesktopEntry>{
+            makeEntry(QStringLiteral("org.dragonfruit.Settings.desktop"),
+                      QStringLiteral("Settings"), QStringLiteral("df-settings")),
+        });
+        const QVariantList running{
+            QVariantMap{{QStringLiteral("id"), QStringLiteral("unknown")},
+                        {QStringLiteral("appId"), QString()},
+                        {QStringLiteral("kind"), QStringLiteral("temporary")},
+                        {QStringLiteral("running"), true},
+                        {QStringLiteral("windows"), 1}},
+        };
+        const AppOpenPlan plan = planAppOpen(
+            index, running, QStringLiteral("org.dragonfruit.Settings.desktop"));
+        QVERIFY(plan.resolved);
+        QCOMPARE(plan.desktopId, QStringLiteral("org.dragonfruit.Settings.desktop"));
+        QCOMPARE(plan.running, false);
+        QVERIFY(plan.appId.isEmpty());
     }
 
     // The shipped first-party `.desktop` entries are verified by app-index's

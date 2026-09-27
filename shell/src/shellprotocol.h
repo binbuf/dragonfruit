@@ -586,6 +586,10 @@ signals:
     // A compositor input action broadcast (`df_toplevel_manager.input_action`,
     // T-07). The Dock uses `focus-dock` and `toggle-dock` (T-10 section 20).
     void inputAction(const QString &action, const QString &source);
+    // The compositor's reply to `activateApp` (T-14.7g): `found` is false when
+    // the app had no window to activate. The controller then launches the
+    // resolved desktop entry or raises a notice, so a click never no-ops.
+    void activationResult(const QString &appId, bool found);
     // A clipboard selection was observed over `wlr-data-control` (T-13.5b).
     // `mimes` is the full offered set and `payloads` are the supported ones
     // the shell read. The history store consumes this; the shell never
@@ -778,6 +782,8 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
     static void onManagerScreenshotSaved(void *data, df_toplevel_manager *manager, const char *path);
     static void onManagerScreenshotFailed(void *data, df_toplevel_manager *manager,
                                           const char *reason);
+    static void onManagerActivationResult(void *data, df_toplevel_manager *manager,
+                                          const char *appId, uint32_t found);
     static void onManagerDone(void *data, df_toplevel_manager *manager);
     static void onToplevelTitle(void *data, df_toplevel *toplevel, const char *title);
     static void onToplevelAppId(void *data, df_toplevel *toplevel, const char *appId);

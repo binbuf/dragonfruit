@@ -156,6 +156,9 @@ struct TestClient {
     /// reason a capture could not be produced.
     screenshot_saved: Vec<String>,
     screenshot_failed: Vec<String>,
+    /// `activate_app` replies (T-14.7g): `(app_id, found)`; `found` false means
+    /// the app had no window and the shell must fall back.
+    activation_results: Vec<(String, bool)>,
     // Drag-and-drop (T-10 external drops). The same harness acts as the
     // drag source (offers a payload) and as the target (a trusted chrome
     // surface that receives the offer).
@@ -355,6 +358,9 @@ impl Dispatch<df_toplevel_manager::DfToplevelManager, ()> for TestClient {
             }
             df_toplevel_manager::Event::ScreenshotFailed { reason } => {
                 state.screenshot_failed.push(reason)
+            }
+            df_toplevel_manager::Event::ActivationResult { app_id, found } => {
+                state.activation_results.push((app_id, found != 0))
             }
             df_toplevel_manager::Event::Done => state.done_count += 1,
         }
@@ -1929,6 +1935,7 @@ fn dock_click_tree_activation_conformance() {
     // `activate_app` must find the app's windows even though none has held
     // focus yet, and select the most recently mapped one (B).
     state.focused.clear();
+    state.activation_results.clear();
     manager.activate_app(APP.to_string());
     wait_for(
         &conn,
@@ -1941,6 +1948,20 @@ fn dock_click_tree_activation_conformance() {
         focused_is(&state, &handle_b),
         "activate_app must pick the app's most recent window (B): {:?}",
         state.focused
+    );
+    // T-14.7g: the request is answered, so the shell can tell success from a
+    // dead click.
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .activation_results
+                .iter()
+                .any(|(app, found)| app == APP && *found)
+        },
     );
 
     // --- an unrelated app resolves to its own window ---------------------
@@ -1994,6 +2015,26 @@ fn dock_click_tree_activation_conformance() {
                 .iter()
                 .any(|flags| flags & df_toplevel::State::Minimized.bits() == 0)
         },
+    );
+
+    // --- a click for an app with no window reports not-found ---------------
+    // T-14.7g: the reply is what lets the shell fall back to a launch or a
+    // notice; a silent no-op is the regression this guards.
+    const GHOST: &str = "org.dragonfruit.GhostApp";
+    state.activation_results.clear();
+    manager.activate_app(GHOST.to_string());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.activation_results.is_empty(),
+    );
+    assert_eq!(
+        state.activation_results.last(),
+        Some(&(GHOST.to_string(), false)),
+        "activate_app for an app with no window must report not-found: {:?}",
+        state.activation_results
     );
 
     // --- the chooser selects a specific window and its Space -------------

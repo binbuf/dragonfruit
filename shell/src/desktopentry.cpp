@@ -235,7 +235,8 @@ QStringList DesktopEntryIndex::buildLaunchCommand(const DesktopEntry &entry,
     return argv;
 }
 
-QProcessEnvironment appLaunchEnvironment(const QProcessEnvironment &base)
+QProcessEnvironment appLaunchEnvironment(const QProcessEnvironment &base,
+                                         const QString &waylandDisplay)
 {
     QProcessEnvironment environment = base;
     if (environment.value(QStringLiteral("QT_QPA_PLATFORM"))
@@ -244,6 +245,14 @@ QProcessEnvironment appLaunchEnvironment(const QProcessEnvironment &base)
         // app must use the session's Wayland platform (not inherit offscreen,
         // and not fall back to X11 because the shell also carries DISPLAY).
         environment.insert(QStringLiteral("QT_QPA_PLATFORM"), QStringLiteral("wayland"));
+    }
+    if (!waylandDisplay.isEmpty()) {
+        // The shell's own connection names the display the compositor serves;
+        // a child must use the same socket. This fixes the `--socket-name`
+        // case where `$WAYLAND_DISPLAY` was never set, so a launch otherwise
+        // produced a client with no display that never maps a window
+        // (T-14.7g).
+        environment.insert(QStringLiteral("WAYLAND_DISPLAY"), waylandDisplay);
     }
     return environment;
 }

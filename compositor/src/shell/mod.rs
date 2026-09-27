@@ -1680,7 +1680,7 @@ impl Dispatch<df_toplevel_manager::DfToplevelManager, ()> for DfState {
     fn request(
         state: &mut Self,
         _client: &Client,
-        _resource: &df_toplevel_manager::DfToplevelManager,
+        resource: &df_toplevel_manager::DfToplevelManager,
         request: df_toplevel_manager::Request,
         _data: &(),
         _dhandle: &DisplayHandle,
@@ -1737,8 +1737,11 @@ impl Dispatch<df_toplevel_manager::DfToplevelManager, ()> for DfState {
             }
             df_toplevel_manager::Request::ActivateApp { app_id } => {
                 // The Dock's "most recent window of an app" path; the
-                // app-switcher commit shares the same `activate_app`.
-                state.activate_app(&app_id);
+                // app-switcher commit shares the same `activate_app`. The
+                // result is sent back (T-14.7g) so the shell can fall back to
+                // a launch or a notice instead of leaving a dead click.
+                let found = state.activate_app(&app_id);
+                resource.activation_result(app_id, found as u32);
             }
             df_toplevel_manager::Request::CycleAppSwitcher { direction } => {
                 state.cycle_app_switcher(direction);

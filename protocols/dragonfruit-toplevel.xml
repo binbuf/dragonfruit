@@ -24,7 +24,7 @@
 -->
 <protocol name="dragonfruit_toplevel">
 
-  <interface name="df_toplevel_manager" version="7">
+  <interface name="df_toplevel_manager" version="8">
     <description summary="window/workspace/output control for trusted clients">
       The manager is per-client. On bind the compositor replays the current
       scene: it announces every output, workspace, and toplevel, then emits
@@ -302,6 +302,20 @@
       <arg name="app_id" type="string"/>
       <arg name="accelerators" type="string"/>
     </request>
+
+    <!-- T-14.7g: the reply to `activate_app`, so the shell can tell a real
+         activation from a dead click. Appended after the v7 messages so the
+         scanner's `since` stays non-decreasing and every pre-existing message
+         keeps its opcode (append-only). Additive in v8. -->
+    <event name="activation_result" since="8">
+      <description summary="the compositor's answer to activate_app">
+        Sent in reply to `activate_app`; `found` is 0 when the app had no
+        window to activate. The shell falls back to a launch (when it knows the
+        desktop id) or a notice, so a click never silently no-ops (T-14.7g).
+      </description>
+      <arg name="app_id" type="string"/>
+      <arg name="found" type="uint" summary="1 when a window was activated"/>
+    </event>
 
     <enum name="hot_corner">
       <entry name="top_left" value="0"/>
