@@ -349,6 +349,11 @@ QtObject {
                 readonly property int width: 1
                 readonly property real heightRatio: 0.6
             }
+            readonly property var chooser: QtObject {
+                readonly property int maxRows: 7
+                readonly property int scrollbarWidth: 8
+                readonly property int scrollbarMargin: 2
+            }
         }
         readonly property var contextMenu: QtObject {
             readonly property int radius: 14

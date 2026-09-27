@@ -18,12 +18,25 @@ import Dragonfruit
 // with its `windowList`) and relays `windowActivated`/`windowCloseRequested`/
 // `windowMinimizeRequested`/`showAllWindows` to the shell, which performs the
 // compositor round-trips.
-Item {
+//
+// T-14.7n bounds the row list: at most `maxRows` rows are visible
+// (`component.dock.chooser.maxRows`), a longer list scrolls through the
+// design-system `ScrollView` (the stack popover's proven viewport idiom), and
+// the "Show All Windows" header and separator stay pinned above it. The
+// popover therefore never grows past its pre-sized headroom (ADR 0100), and
+// every row (and its T-14.7m actions) stays reachable by scroll or keyboard.
+FocusScope {
     id: root
 
     property var entry: null
     property Item anchorItem: null
     property bool open: false
+    // The visible-row cap; a longer window list scrolls through the rest. The
+    // default is the token, not a literal.
+    property int maxRows: Theme.controls.dock.chooser.maxRows
+    // The keyboard-highlighted row; -1 is the pinned "Show All Windows"
+    // header action. It keeps the focused row scrolled into the viewport.
+    property int currentIndex: -1
     // Capture/demo seam (T-14.7m): force the hover treatment onto the row at
     // this index so the live visual check can show the revealed actions
     // without a synthetic pointer. Never set in a normal session.
@@ -44,6 +57,18 @@ Item {
 
     readonly property var windows:
         entry && entry.windowList !== undefined ? entry.windowList : []
+    readonly property int rowCount: windows.length
+    readonly property int visibleRows: Math.min(rowCount, maxRows)
+    readonly property real listHeight: visibleRows * rowHeight
+    readonly property bool scrolls: rowCount > maxRows
+    // The scrollbar overlays the viewport's right edge; a scrolling list
+    // reserves this gutter to its right so the T-14.7m actions never sit under
+    // the thumb. A short list reserves nothing (no scrollbar, unchanged rows).
+    readonly property real scrollbarGutter: scrolls
+        ? Theme.controls.dock.chooser.scrollbarWidth
+          + Theme.controls.dock.chooser.scrollbarMargin
+        : 0
+
     readonly property real padding: Theme.controls.contextMenu.padding
     readonly property real rowHeight: Theme.controls.contextMenu.rowHeight
     readonly property real arrowSize: Theme.controls.popover.arrowSize
@@ -87,16 +112,71 @@ Item {
         return name;
     }
 
-    onOpenChanged: {
-        if (root.open)
-            root.opened();
+    // Keyboard traversal over the pinned header (-1) and every row (T-14.7n).
+    function moveSelection(delta) {
+        var last = root.rowCount - 1;
+        var next = root.currentIndex + delta;
+        root.currentIndex = Math.max(-1, Math.min(last, next));
+        keepSelectionVisible();
+    }
+
+    function moveSelectionTo(index) {
+        root.currentIndex = Math.max(-1, Math.min(root.rowCount - 1, index));
+        keepSelectionVisible();
+    }
+
+    // Scroll the highlighted row fully into the bounded viewport, the same
+    // math the App picker and stack popover use.
+    function keepSelectionVisible() {
+        if (root.currentIndex < 0)
+            return;
+        var flickable = rowsView.flickable;
+        if (!flickable)
+            return;
+        var top = root.currentIndex * root.rowHeight;
+        var bottom = top + root.rowHeight;
+        if (top < flickable.contentY)
+            flickable.contentY = top;
+        else if (bottom > flickable.contentY + flickable.height)
+            flickable.contentY = Math.min(bottom - flickable.height,
+                                          Math.max(0, flickable.contentHeight - flickable.height));
+    }
+
+    // Return activates the highlighted thing: the header action (-1) or the
+    // highlighted row. Activating a row closes the chooser, matching a click.
+    function activateCurrent() {
+        if (root.currentIndex < 0)
+            root.activateShowAll();
         else
+            root.activateWindow(root.currentIndex);
+    }
+
+    // Capture/demo seam (T-14.7n): scroll the bounded viewport to a row so the
+    // live visual check can show a long list mid-scroll. Never set in a normal
+    // session.
+    function scrollToRow(index) {
+        var flickable = rowsView.flickable;
+        if (!flickable)
+            return;
+        flickable.contentY = Math.max(0, Math.min(index * root.rowHeight,
+            Math.max(0, flickable.contentHeight - flickable.height)));
+    }
+
+    onOpenChanged: {
+        if (root.open) {
+            root.currentIndex = -1;
+            if (rowsView.flickable)
+                rowsView.flickable.contentY = 0;
+            root.forceActiveFocus();
+            root.opened();
+        } else {
             root.closed();
+        }
     }
 
     width: Math.max(Theme.controls.contextMenu.minWidth,
-                    rows.implicitWidth + 2 * root.padding)
-    height: root.padding + headerRow.height + separator.height + rows.height
+                    rowsContent.implicitWidth + 2 * root.padding)
+    height: root.padding + headerRow.height + separator.height + root.listHeight
             + root.padding + root.arrowSize / 2
     visible: opacity > 0
     scale: root.open ? 1.0 : 0.97
@@ -226,7 +306,8 @@ Item {
         Rectangle {
             anchors.fill: parent
             radius: Theme.controls.focusRing.radius
-            color: headerHover.hovered ? Theme.color.controlFill : "transparent"
+            color: root.currentIndex === -1 ? Theme.color.controlActive
+                 : (headerHover.hovered ? Theme.color.controlFill : "transparent")
         }
         Text {
             id: headerText
@@ -251,134 +332,171 @@ Item {
         width: root.width - 2 * root.padding
         height: Theme.controls.window.borderWidth
         color: Theme.color.separator
-        visible: root.windows.length > 0
+        visible: root.rowCount > 0
     }
 
-    Column {
-        id: rows
+    // The bounded row viewport (T-14.7n). The height is
+    // `min(rows, maxRows) * rowHeight`; a longer list flick-scrolls through the
+    // design-system ScrollView while the header stays pinned above it. A short
+    // list is not interactive and shows no scrollbar or gutter.
+    ScrollView {
+        id: rowsView
         objectName: "chooserRows"
         x: root.padding
         y: separator.y + separator.height
         width: root.width - 2 * root.padding
+        height: root.listHeight
+        interactive: root.scrolls
+        scrollbarVisible: root.scrolls
 
-        Repeater {
-            model: root.windows
+        Column {
+            id: rowsContent
+            width: rowsView.width
 
-            delegate: Item {
-                id: row
-                required property var modelData
-                required property int index
+            Repeater {
+                model: root.windows
 
-                width: rows.width
-                height: root.rowHeight
-                readonly property bool focused: modelData.focused === true
-                readonly property bool minimized: modelData.minimized === true
-                // `rowHover.hovered` is the live pointer; the fixture index
-                // forces it for the capture seam.
-                readonly property bool hovered:
-                    rowHover.hovered || row.index === root.fixtureHoverIndex
-                readonly property string windowTitle:
-                    modelData.title !== undefined ? modelData.title : ""
-                readonly property string spaceName:
-                    modelData.workspaceName !== undefined ? modelData.workspaceName : ""
-                // The two actions reveal together on hover (or row focus); the
-                // slot below always reserves their footprint (T-14.7m).
-                readonly property bool showActions: row.hovered || row.activeFocus
+                delegate: Item {
+                    id: row
+                    required property var modelData
+                    required property int index
 
-                Rectangle {
-                    anchors.fill: parent
-                    radius: Theme.controls.focusRing.radius
-                    color: row.hovered ? Theme.color.accent : "transparent"
-                }
-                Icon {
-                    id: check
-                    visible: row.focused
-                    name: "check"
-                    size: Theme.controls.button.fontSize
-                    color: row.hovered ? Theme.color.accentContent : Theme.color.accent
-                    x: Theme.controls.contextMenu.padding
-                    anchors.verticalCenter: parent.verticalCenter
-                }
-                Text {
-                    id: title
-                    text: row.windowTitle
-                    color: row.hovered ? Theme.color.accentContent : Theme.color.textPrimary
-                    font.pixelSize: Theme.controls.button.fontSize
-                    elide: Text.ElideRight
-                    anchors.left: check.visible ? check.right : parent.left
-                    anchors.leftMargin: check.visible ? Theme.primitive.spacing.sm
-                                                      : Theme.controls.contextMenu.padding
-                    anchors.right: space.left
-                    anchors.rightMargin: Theme.primitive.spacing.sm
-                    anchors.verticalCenter: parent.verticalCenter
-                }
-                Text {
-                    id: space
-                    text: (row.minimized ? qsTr("minimized") + (row.spaceName.length > 0 ? " · " : "")
-                                         : "")
-                          + row.spaceName
-                    visible: text.length > 0
-                    color: row.hovered ? Theme.color.accentContent : Theme.color.textTertiary
-                    font.pixelSize: Theme.primitive.font.sizeSm
-                    anchors.right: actionSlot.left
-                    anchors.rightMargin: Theme.primitive.spacing.sm
-                    anchors.verticalCenter: parent.verticalCenter
-                }
-                // The reserved action slot. It always occupies the same width,
-                // so revealing the buttons never resizes the popover; a click
-                // on the empty slot falls through to the row's activate tap.
-                Item {
-                    id: actionSlot
-                    objectName: "chooserRowActions"
-                    width: 2 * root.actionButtonSize + root.actionGap
-                    height: parent.height
-                    anchors.right: parent.right
-                    anchors.rightMargin: Theme.controls.contextMenu.padding
+                    width: rowsContent.width
+                    height: root.rowHeight
+                    readonly property bool focused: modelData.focused === true
+                    readonly property bool minimized: modelData.minimized === true
+                    // `rowHover.hovered` is the live pointer; the fixture index
+                    // forces it for the capture seam.
+                    readonly property bool hovered:
+                        rowHover.hovered || row.index === root.fixtureHoverIndex
+                    // The keyboard-highlighted row (T-14.7n).
+                    readonly property bool active: row.index === root.currentIndex
+                    readonly property string windowTitle:
+                        modelData.title !== undefined ? modelData.title : ""
+                    readonly property string spaceName:
+                        modelData.workspaceName !== undefined ? modelData.workspaceName : ""
+                    // The two actions reveal together on hover, row focus, or
+                    // keyboard highlight; the slot below always reserves their
+                    // footprint (T-14.7m, T-14.7n).
+                    readonly property bool showActions:
+                        row.hovered || row.activeFocus || row.active
 
-                    ChooserActionButton {
-                        id: minimizeAction
-                        objectName: "chooserMinimizeAction"
-                        anchors.right: closeAction.left
-                        anchors.rightMargin: root.actionGap
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: root.actionButtonSize
-                        height: root.actionButtonSize
-                        glyph: row.minimized ? "restore" : "minimize"
-                        revealed: row.showActions
-                        accessibleLabel: (row.minimized ? qsTr("Restore ")
-                                                        : qsTr("Minimize "))
-                                         + row.windowTitle
-                        onActivated: root.minimizeWindow(row.index)
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: Theme.controls.focusRing.radius
+                        color: row.hovered ? Theme.color.accent
+                             : (row.active ? Theme.color.controlActive : "transparent")
                     }
-                    ChooserActionButton {
-                        id: closeAction
-                        objectName: "chooserCloseAction"
+                    Icon {
+                        id: check
+                        visible: row.focused
+                        name: "check"
+                        size: Theme.controls.button.fontSize
+                        color: row.hovered ? Theme.color.accentContent : Theme.color.accent
+                        x: Theme.controls.contextMenu.padding
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                    Text {
+                        id: title
+                        text: row.windowTitle
+                        color: row.hovered ? Theme.color.accentContent : Theme.color.textPrimary
+                        font.pixelSize: Theme.controls.button.fontSize
+                        elide: Text.ElideRight
+                        anchors.left: check.visible ? check.right : parent.left
+                        anchors.leftMargin: check.visible ? Theme.primitive.spacing.sm
+                                                          : Theme.controls.contextMenu.padding
+                        anchors.right: space.left
+                        anchors.rightMargin: Theme.primitive.spacing.sm
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                    Text {
+                        id: space
+                        text: (row.minimized ? qsTr("minimized") + (row.spaceName.length > 0 ? " · " : "")
+                                             : "")
+                              + row.spaceName
+                        visible: text.length > 0
+                        color: row.hovered ? Theme.color.accentContent : Theme.color.textTertiary
+                        font.pixelSize: Theme.primitive.font.sizeSm
+                        anchors.right: actionSlot.left
+                        anchors.rightMargin: Theme.primitive.spacing.sm
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                    // The reserved action slot. It always occupies the same
+                    // width, so revealing the buttons never resizes the popover;
+                    // a click on the empty slot falls through to the row's
+                    // activate tap. A scrolling list shifts the slot left of the
+                    // scrollbar gutter (T-14.7n).
+                    Item {
+                        id: actionSlot
+                        objectName: "chooserRowActions"
+                        width: 2 * root.actionButtonSize + root.actionGap
+                        height: parent.height
                         anchors.right: parent.right
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: root.actionButtonSize
-                        height: root.actionButtonSize
-                        glyph: "close"
-                        destructive: true
-                        revealed: row.showActions
-                        accessibleLabel: qsTr("Close ") + row.windowTitle
-                        onActivated: root.closeWindow(row.index)
+                        anchors.rightMargin: Theme.controls.contextMenu.padding
+                                            + root.scrollbarGutter
+
+                        ChooserActionButton {
+                            id: minimizeAction
+                            objectName: "chooserMinimizeAction"
+                            anchors.right: closeAction.left
+                            anchors.rightMargin: root.actionGap
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: root.actionButtonSize
+                            height: root.actionButtonSize
+                            glyph: row.minimized ? "restore" : "minimize"
+                            revealed: row.showActions
+                            accessibleLabel: (row.minimized ? qsTr("Restore ")
+                                                            : qsTr("Minimize "))
+                                             + row.windowTitle
+                            onActivated: root.minimizeWindow(row.index)
+                        }
+                        ChooserActionButton {
+                            id: closeAction
+                            objectName: "chooserCloseAction"
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: root.actionButtonSize
+                            height: root.actionButtonSize
+                            glyph: "close"
+                            destructive: true
+                            revealed: row.showActions
+                            accessibleLabel: qsTr("Close ") + row.windowTitle
+                            onActivated: root.closeWindow(row.index)
+                        }
                     }
+                    HoverHandler { id: rowHover }
+                    TapHandler { onTapped: root.activateWindow(row.index) }
+                    Accessible.role: Accessible.MenuItem
+                    Accessible.name: root.windowAccessibleName(row.windowTitle, row.focused,
+                                                               row.minimized)
+                    Accessible.checkable: true
+                    Accessible.checked: row.focused
+                    Accessible.onPressAction: root.activateWindow(row.index)
                 }
-                HoverHandler { id: rowHover }
-                TapHandler { onTapped: root.activateWindow(row.index) }
-                Accessible.role: Accessible.MenuItem
-                Accessible.name: root.windowAccessibleName(row.windowTitle, row.focused,
-                                                           row.minimized)
-                Accessible.checkable: true
-                Accessible.checked: row.focused
-                Accessible.onPressAction: root.activateWindow(row.index)
             }
         }
     }
 
-    Keys.onEscapePressed: (event) => {
-        root.hide();
-        event.accepted = true;
+    Keys.onPressed: (event) => {
+        if (event.key === Qt.Key_Escape) {
+            root.hide();
+            event.accepted = true;
+        } else if (event.key === Qt.Key_Down) {
+            root.moveSelection(1);
+            event.accepted = true;
+        } else if (event.key === Qt.Key_Up) {
+            root.moveSelection(-1);
+            event.accepted = true;
+        } else if (event.key === Qt.Key_Home) {
+            root.moveSelectionTo(0);
+            event.accepted = true;
+        } else if (event.key === Qt.Key_End) {
+            root.moveSelectionTo(root.rowCount - 1);
+            event.accepted = true;
+        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+            root.activateCurrent();
+            event.accepted = true;
+        }
     }
 
     Accessible.role: Accessible.PopupMenu

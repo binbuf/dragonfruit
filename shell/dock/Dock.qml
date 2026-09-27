@@ -1055,6 +1055,15 @@ Rectangle {
         return false;
     }
 
+    // Capture/demo seam (T-14.7n): scroll the open chooser's bounded viewport
+    // mid-list and highlight a visible row, so the live visual check shows a
+    // long list scrolled with the per-row actions revealed. Never set in a
+    // normal session.
+    function scrollChooserFixture() {
+        windowChooser.scrollToRow(4);
+        windowChooser.fixtureHoverIndex = 6;
+    }
+
     // Capture/demo seam (T-14.7k): open the stack entry with `id` without a
     // synthetic pointer click. Never used in a normal session.
     function openStackById(id) {
