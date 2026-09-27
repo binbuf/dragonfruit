@@ -106,3 +106,8 @@ QString AppIndexClient::iconPath(const QString &name, int size) const
 {
     return call(QStringLiteral("IconPath"), {name, size});
 }
+
+QString AppIndexClient::subscribe(const QString &interests) const
+{
+    return call(QStringLiteral("Subscribe"), {interests});
+}

@@ -211,11 +211,23 @@ Rectangle {
     // The Downloads stack popover (T-10 section 17).
     property bool stackOpen: false
     property Item stackAnchor: null
+    // The Add Application picker (T-14.7e, ADR 0090): the app-index corpus the
+    // shell builds with the pure `buildAppPickerList` helper, whether the
+    // service is reachable, and the open/anchor state.
+    property var appPickerItems: []
+    property bool appIndexAvailable: true
+    property bool appPickerOpen: false
+    property Item appPickerAnchor: null
 
     signal entryActivated(var entry)
     signal entryContextMenuRequested(var entry, real globalX, real globalY)
     signal dividerContextMenuRequested(real globalX, real globalY)
     signal settingsRequested()
+    // The Add Application picker (T-14.7e): the divider menu asks the shell to
+    // refresh the app-index corpus; a row toggle asks the shell to write
+    // `dock.pinned` (the single writer path).
+    signal appPickerRequested()
+    signal appPinToggled(string desktopId, bool pinned)
     // A context-menu/chooser action resolved to a shell operation.
     signal menuActionRequested(string action, var payload)
     // A specific window chosen from the window chooser (T-10 FR-5).
@@ -545,7 +557,7 @@ Rectangle {
 
     // Magnification is suppressed while a context menu, chooser, or stack
     // popover is open (T-10 section 14).
-    readonly property bool popoverOpen: menuOpen || chooserOpen || stackOpen
+    readonly property bool popoverOpen: menuOpen || chooserOpen || stackOpen || appPickerOpen
 
     // --- Keyboard navigation (T-10 section 20) ---------------------------
     // The entries the arrow keys traverse: every entry except the divider.
@@ -692,6 +704,7 @@ Rectangle {
         entryMenu.hide();
         windowChooser.hide();
         stackPopover.hide();
+        appPicker.hide();
         trashConfirming = false;
     }
 
@@ -724,6 +737,23 @@ Rectangle {
         stackPopover.open = true;
         downloadsViewed();
     }
+
+    // Open the Add Application picker anchored to the divider (T-14.7e). The
+    // signal lets the shell refresh the app-index corpus and push it into
+    // `appPickerItems`; the picker opens immediately and shows the current
+    // corpus while that refresh lands.
+    function openAppPicker() {
+        closePopovers();
+        hideTimer.stop();
+        var idx = indexOfItemId(dividerEntry.id);
+        appPickerAnchor = idx >= 0 ? entryRepeater.itemAt(idx) : null;
+        appPicker.open = true;
+        appPickerRequested();
+    }
+
+    // Capture/demo seam only: set the picker's filter text. The shell calls
+    // this from the `DF_APP_PICKER_FIXTURE` path; normal sessions never do.
+    function setAppPickerQuery(text) { appPicker.setQueryText(text); }
 
     // --- Drag rearrangement (T-10 section 12) ----------------------------
     function appIndexOfId(id) {
@@ -1279,6 +1309,10 @@ Rectangle {
         });
         out.push({ type: "separator" });
         out.push({
+            type: "item", label: qsTr("Add Application…"),
+            action: "add_application"
+        });
+        out.push({
             type: "item", label: qsTr("Dock Settings…"),
             action: "open_dock_settings"
         });
@@ -1346,7 +1380,8 @@ Rectangle {
         // shell captures the animation); `visible` covers the close tail.
         var popup = (entryMenu.open || entryMenu.visible) ? entryMenu
                  : ((windowChooser.open || windowChooser.visible) ? windowChooser
-                 : ((stackPopover.open || stackPopover.visible) ? stackPopover : null));
+                 : ((stackPopover.open || stackPopover.visible) ? stackPopover
+                 : ((appPicker.open || appPicker.visible) ? appPicker : null)));
         if (!popup || popup.width <= 0 || popup.height <= 0)
             return { x: 0, y: 0, w: 0, h: 0 };
         if (popup.contentRect !== undefined) {
@@ -1804,6 +1839,12 @@ Rectangle {
             }
             if (item.action === "empty_trash")
                 dock.trashConfirming = false;
+            // The Add Application picker is a Dock-local surface; it opens
+            // anchored to the divider without a shell round trip (T-14.7e).
+            if (item.action === "add_application") {
+                dock.openAppPicker();
+                return;
+            }
             dock.menuActionRequested(item.action, item.payload);
         }
     }
@@ -1890,6 +1931,49 @@ Rectangle {
         }
         onItemActivated: (path) => dock.downloadActivated(path)
         onOpenFolder: () => dock.downloadsFolderRequested()
+    }
+
+    // The Add Application picker (T-14.7e, ADR 0090). It is anchored to the
+    // divider and placed exactly like the stack/chooser; the shell renders it
+    // into the Dock's overlay surface. Filtering is local; a row toggle goes
+    // back to the controller's single `dock.pinned` writer.
+    DockAppPicker {
+        id: appPicker
+        objectName: "appPicker"
+        items: dock.appPickerItems
+        available: dock.appIndexAvailable
+        anchorItem: dock.appPickerAnchor
+        x: {
+            if (!dock.appPickerAnchor)
+                return 0;
+            var px;
+            if (dock.axisIsX)
+                px = Math.max(0, Math.min(dock.width - width,
+                    dock.appPickerAnchor.x + (dock.appPickerAnchor.width - width) / 2));
+            else
+                px = dock.position === "left"
+                    ? dock.plateRect.x + dock.plateRect.w + 4
+                    : dock.plateRect.x - width - 4;
+            return dock.clampPopoverX(px, width);
+        }
+        y: {
+            if (!dock.appPickerAnchor)
+                return 0;
+            if (dock.axisIsX)
+                return dock.clampPopoverY(dock.appPickerAnchor.y - height - 4, height);
+            return Math.max(0, Math.min(dock.height - height,
+                dock.appPickerAnchor.y + (dock.appPickerAnchor.height - height) / 2));
+        }
+        onOpened: {
+            dock.appPickerOpen = true;
+            dock.popoverChanged();
+        }
+        onClosed: {
+            dock.appPickerOpen = false;
+            dock.popoverChanged();
+            dock.scheduleHide();
+        }
+        onPinToggled: (desktopId, pinned) => dock.appPinToggled(desktopId, pinned)
     }
 
     // Clicking empty Dock space dismisses an open popover (T-10 section 13).
