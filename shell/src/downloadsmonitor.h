@@ -31,6 +31,11 @@ public:
 
     QString directory() const { return m_directory; }
 
+    // The folder's display name (its basename), for the Dock entry's hover
+    // label and the stack popover header (T-14.7h). Falls back to
+    // "Downloads" for a root/empty basename so there is always a name.
+    QString displayName() const;
+
     // Newest first: `{ name, path, isDir }`. Directories sort after files at
     // equal timestamps so the common case (a fresh download) leads.
     QVariantList items() const { return m_items; }

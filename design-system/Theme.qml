@@ -135,6 +135,11 @@ QtObject {
             readonly property color trashHighlight: "#ffffff"
             readonly property color trashPaper: "#f8f6fa"
             readonly property color trashPaperEdge: "#9c8fa8"
+            readonly property color folderTab: "#3a66e0"
+            readonly property color folderFillTop: "#5b8dff"
+            readonly property color folderFillBottom: "#4a7dff"
+            readonly property color folderRim: "#3a66e0"
+            readonly property color folderHighlight: "#ffffff"
         }
         readonly property var material: QtObject {
             readonly property real chromeOpacity: 0.82
@@ -181,6 +186,11 @@ QtObject {
             readonly property color trashHighlight: "#c3b8cc"
             readonly property color trashPaper: "#ded6e5"
             readonly property color trashPaperEdge: "#5b4e66"
+            readonly property color folderTab: "#3a66e0"
+            readonly property color folderFillTop: "#4a7dff"
+            readonly property color folderFillBottom: "#3a66e0"
+            readonly property color folderRim: "#5b8dff"
+            readonly property color folderHighlight: "#ded6e5"
         }
         readonly property var material: QtObject {
             readonly property real chromeOpacity: 0.72

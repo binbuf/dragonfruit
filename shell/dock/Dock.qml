@@ -57,6 +57,10 @@ Rectangle {
     property var downloadsItems: []
     property int downloadsCount: 0
     property int downloadsBadge: 0
+    // The folder's display name (its basename), so the hover label and the
+    // popover header name the folder without the artwork carrying text
+    // (T-14.7h); the Downloads special case just uses "Downloads".
+    property string downloadsName: qsTr("Downloads")
     // The Trash menu's Empty Trash confirmation step (section 13): selecting
     // Empty Trash replaces the menu model with the confirm/cancel choice
     // before the shell performs the destructive operation.
@@ -210,6 +214,11 @@ Rectangle {
     readonly property int springLoadDelay: 500
     // How long a duplicate-pin highlight stays visible (T-14.7f).
     readonly property int duplicateFlashMs: 700
+    // The double-click window for a folder stack (T-14.7h). The first tap
+    // opens the popover immediately; a second tap inside this window opens the
+    // folder in Files.
+    readonly property int stackDoubleClickMs: 400
+    property real lastStackTapTime: 0
 
     // The app entry whose context menu / window chooser is open, plus the
     // entry item each is anchored to. Only one popover is open at a time.
@@ -438,7 +447,7 @@ Rectangle {
     // section 17). It is present even when the folder is empty so it is a
     // stable drop target.
     readonly property var stackEntry: ({
-        id: "__downloads__", appId: "", name: qsTr("Downloads"), kind: "stack",
+        id: "__downloads__", appId: "", name: dock.downloadsName, kind: "stack",
         running: false, stackCount: dock.downloadsCount, badge: dock.downloadsBadge
     })
     readonly property var dividerEntry: ({ id: "__divider__", kind: "divider" })
@@ -646,6 +655,40 @@ Rectangle {
             return;
         }
         entryActivated(entry);
+    }
+
+    // A double-click on a folder stack opens the folder itself in Files
+    // (T-14.7h, ADR 0092) instead of opening the popover.
+    function doubleActivateEntry(entry) {
+        if (!entry)
+            return;
+        if (entry.kind === "stack") {
+            if (stackOpen)
+                closePopovers();
+            downloadsFolderRequested();
+        }
+    }
+
+    // Resolve an entry tap: a folder stack distinguishes a single click (open
+    // its popover) from a double click (open the folder in Files), while every
+    // other entry activates immediately. The double-click timer lives on the
+    // Dock, not the entry delegate, because clearing the stack's new-items
+    // badge can recreate the delegate between the two taps.
+    function handleEntryTap(entry) {
+        if (!entry)
+            return;
+        if (entry.kind !== "stack") {
+            activateEntry(entry);
+            return;
+        }
+        var now = Date.now();
+        if (lastStackTapTime > 0 && now - lastStackTapTime < stackDoubleClickMs) {
+            lastStackTapTime = 0;
+            doubleActivateEntry(entry);
+        } else {
+            lastStackTapTime = now;
+            activateEntry(entry);
+        }
     }
 
     // Typing jumps to the first entry whose name starts with the buffer
@@ -1467,12 +1510,12 @@ Rectangle {
         return out;
     }
 
-    // The Downloads stack menu (T-10 section 17): open the folder; the
-    // folder listing itself is the click popover.
+    // The Downloads stack menu (T-10 section 17): open the folder in Files;
+    // the folder listing itself is the click popover.
     function stackMenuModel() {
         var out = [];
         out.push({
-            type: "item", label: qsTr("Open Downloads Folder"),
+            type: "item", label: qsTr("Open in Files"),
             action: "open_downloads_folder"
         });
         return out;
@@ -1881,7 +1924,8 @@ Rectangle {
                 // The click tree (T-10 section 8): a running app with more
                 // than one window opens the chooser; everything else is a
                 // shell activation (single window, minimized restore, launch).
-                dock.activateEntry(entry);
+                // A folder stack resolves single vs double click here.
+                dock.handleEntryTap(entry);
             }
             onContextMenuRequested: (entry, gx, gy) => {
                 if (entry.kind === "divider") {
@@ -2008,6 +2052,7 @@ Rectangle {
         id: stackPopover
         objectName: "stackPopover"
         items: dock.downloadsItems
+        title: dock.downloadsName
         anchorItem: dock.stackAnchor
         x: {
             if (!dock.stackAnchor)
