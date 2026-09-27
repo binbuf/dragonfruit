@@ -43,6 +43,7 @@ qt_add_qml_module(dragonfruit-design-system
         components/Dialog.qml
         components/Sheet.qml
         components/Popover.qml
+        components/Tooltip.qml
         components/ScrollView.qml
 )
 target_link_libraries(dragonfruit-design-system PUBLIC Qt6::Core Qt6::Gui Qt6::Quick)
@@ -74,6 +75,7 @@ df_qml_lint(design-system
     components/Dialog.qml
     components/Sheet.qml
     components/Popover.qml
+    components/Tooltip.qml
     components/ScrollView.qml
 )
 
