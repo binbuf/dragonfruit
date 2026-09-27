@@ -801,7 +801,35 @@ each raw identity through `dragonfruit-app-index`, reads the decoration tier
 from the `server_side` flag of `query decorations`, and reads the global-menu
 tier from `dragonfruit-menu-broker`. The matrix is committed under
 `docs/captures/t14-zoo-matrix.md` and the desktop still as
-`docs/captures/t14-zoo.png`.
+`docs/captures/t14-zoo.png`. (T-14.6b moved the SDL row from Xwayland to the
+Wayland path; see below.)
+
+### Implementation note (T-14.6b)
+
+The zoo surfaced one real fix and one hardening. The SDL2 sample
+(`scripts/zoo/sdl_zoo.c`) never presented a frame, and SDL's Wayland backend
+does not attach its first `wl_buffer` until the app draws — so the compositor
+had nothing to map and the T-14.6a run fell back to SDL's X11 driver. The
+sample now fills and presents a frame each loop; the zoo runs it through the
+nested Wayland socket (`SDL_VIDEODRIVER=wayland`, `SDL_APP_ID=game.zoo.sdl`)
+and the matrix records the Wayland row (SSD decoration, `game.zoo.sdl`).
+
+The zoo's Wayland trace also showed SDL requests a `wl_surface.frame` callback
+*before* its first buffer. A toplevel that has committed but not yet mapped is
+not in the `Space`, and both frame-callback paths (`post_repaint` and
+`send_frame_callbacks`) only walk `Space` members, so such a request would go
+unanswered and a client that paced its first paint on it could stall. The
+compositor now answers pending callbacks for a buffer-less toplevel from the
+commit handler (`DfState::send_pending_frame_callbacks`). The regression test
+is `sdl_style_pre_map_frame_callback_is_answered_and_then_maps` in
+`compositor/tests/window_conformance.rs`, which reproduces SDL's exact
+sequence (pre-role buffer-less commit → configure → pre-map frame request →
+first buffer) and fails if the callback is not answered.
+
+Remaining zoo outcomes are known and unchanged: the Steam row is an X11
+`WM_CLASS` stand-in (Steam is not installable here), every row falls back to
+the fixed application menu, and cross-boundary XDnD is still the documented
+T-14.5 gap.
 
 ## Out of scope
 
