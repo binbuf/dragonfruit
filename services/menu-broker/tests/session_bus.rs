@@ -248,6 +248,52 @@ fn registrations_are_focus_scoped_and_dispatch_over_the_bus() {
 }
 
 #[test]
+fn a_dbusmenu_bridge_publish_resolves_at_the_dbusmenu_tier() {
+    let bus = PrivateBus::start();
+    let _service = serve(&bus);
+    let client = bus.connect();
+
+    let bridge_model = r#"{ "appName": "Konsole",
+        "applicationMenuItems": [],
+        "menus": [ { "title": "File", "items": [
+            { "label": "New", "enabled": true, "shortcut": "Ctrl+N", "action": "dbusmenu:1" },
+            { "label": "Quit", "enabled": false, "action": "dbusmenu:2" } ] } ] }"#;
+    assert!(call::<bool>(
+        &client,
+        "PublishDbusMenu",
+        ("org.example.Konsole", bridge_model),
+    )
+    .unwrap());
+
+    call::<bool>(&client, "SetFocusedApp", ("org.example.Konsole",)).unwrap();
+    let resolved = json(&call::<String>(&client, "ResolveFocused", ()).unwrap());
+    assert_eq!(resolved["tier"], "dbusmenu");
+    assert_eq!(resolved["appName"], "Konsole");
+    assert_eq!(resolved["menus"][0]["items"][0]["enabled"], true);
+    assert_eq!(resolved["menus"][0]["items"][1]["enabled"], false);
+
+    // The bridge-born accelerator is focus-scoped like any other.
+    let accelerators = json(&call::<String>(&client, "FocusedAccelerators", ()).unwrap());
+    assert_eq!(accelerators[0]["action"], "dbusmenu:1");
+    assert_eq!(accelerators[0]["chord"], "Control+N");
+    let dispatched = json(&call::<String>(&client, "Dispatch", ("Ctrl+N",)).unwrap());
+    assert_eq!(dispatched["kind"], "application");
+    assert_eq!(dispatched["action"], "dbusmenu:1");
+
+    // A malformed bridge payload is rejected without clobbering the model.
+    assert!(!call::<bool>(
+        &client,
+        "PublishDbusMenu",
+        ("org.example.Konsole", "{not json"),
+    )
+    .unwrap());
+    assert_eq!(
+        json(&call::<String>(&client, "ResolveFocused", ()).unwrap())["tier"],
+        "dbusmenu"
+    );
+}
+
+#[test]
 fn a_malformed_publish_is_rejected_and_withdraw_counts() {
     let bus = PrivateBus::start();
     let _service = serve(&bus);

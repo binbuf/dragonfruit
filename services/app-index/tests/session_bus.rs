@@ -16,8 +16,9 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use dragonfruit_app_index::dbus::{
-    AppIndex1, StatusNotifierWatcher, DBUS_NAME, DBUS_PATH, INTERFACE, WATCHER_INTERFACE,
-    WATCHER_NAME, WATCHER_PATH,
+    AppIndex1, AppMenuRegistrar, StatusNotifierWatcher, APP_MENU_REGISTRAR_INTERFACE,
+    APP_MENU_REGISTRAR_NAME, APP_MENU_REGISTRAR_PATH, DBUS_NAME, DBUS_PATH, INTERFACE,
+    WATCHER_INTERFACE, WATCHER_NAME, WATCHER_PATH,
 };
 use dragonfruit_app_index::icons::IconTheme;
 use dragonfruit_app_index::index::AppIndex;
@@ -174,6 +175,67 @@ fn serve_tray(bus: &PrivateBus, fixture: &Fixture) -> (Connection, AppIndex1) {
     (service, object)
 }
 
+/// Serve the fixture index plus the AppMenu.Registrar as the daemon does.
+fn serve_appmenu(bus: &PrivateBus, fixture: &Fixture) -> (Connection, AppIndex1) {
+    let index = AppIndex::from_dirs([fixture.apps()]);
+    let theme = IconTheme::from_roots([fixture.icons()], ["hicolor".to_owned()], Vec::new());
+    let object = AppIndex1::from_index(index, theme);
+    let registrar = AppMenuRegistrar::over(object.menus().clone(), object.index().clone());
+    let service = zbus::blocking::connection::Builder::address(bus.address.as_str())
+        .expect("valid bus address")
+        .name(DBUS_NAME)
+        .expect("valid well-known name")
+        .serve_at(DBUS_PATH, object.clone())
+        .expect("serve the app index interface")
+        .serve_at(APP_MENU_REGISTRAR_PATH, registrar)
+        .expect("serve the app-menu registrar")
+        .build()
+        .expect("build the service connection");
+    service
+        .request_name(APP_MENU_REGISTRAR_NAME)
+        .expect("own the AppMenu.Registrar name");
+    (service, object)
+}
+
+/// A mock `org.dragonfruit.MenuBroker1` the bridge pushes into. It records the
+/// `PublishDbusMenu`/`Withdraw` calls so a test can assert the bridge direction.
+#[derive(Clone, Default)]
+struct FakeBroker {
+    published: Arc<Mutex<Vec<(String, String)>>>,
+    withdrawn: Arc<Mutex<Vec<String>>>,
+}
+
+#[zbus::interface(name = "org.dragonfruit.MenuBroker1")]
+impl FakeBroker {
+    #[zbus(name = "PublishDbusMenu")]
+    fn publish_dbusmenu(&self, app_id: &str, model: &str) -> bool {
+        self.published
+            .lock()
+            .unwrap()
+            .push((app_id.to_owned(), model.to_owned()));
+        true
+    }
+
+    fn withdraw(&self, app_id: &str) -> bool {
+        self.withdrawn.lock().unwrap().push(app_id.to_owned());
+        true
+    }
+}
+
+/// Serve a fake menu-broker owning `org.dragonfruit.MenuBroker1` on `bus`.
+fn serve_fake_broker(bus: &PrivateBus) -> (Connection, FakeBroker) {
+    let broker = FakeBroker::default();
+    let service = zbus::blocking::connection::Builder::address(bus.address.as_str())
+        .expect("valid bus address")
+        .name("org.dragonfruit.MenuBroker1")
+        .expect("valid well-known name")
+        .serve_at("/org/dragonfruit/MenuBroker1", broker.clone())
+        .expect("serve the fake broker")
+        .build()
+        .expect("build the fake broker connection");
+    (service, broker)
+}
+
 /// A mock StatusNotifierItem a tray app would serve.
 struct MockItem;
 
@@ -267,6 +329,84 @@ fn mock_menu_layout() -> OwnedValue {
         vec![row, separator],
     )))
     .unwrap()
+}
+
+/// A mock `com.canonical.dbusmenu` global menu a window app exports. Its layout
+/// is File › New (enabled) / Quit (disabled), then Edit › Cut.
+struct MockGlobalMenu {
+    events: EventLog,
+}
+
+#[zbus::interface(name = "com.canonical.dbusmenu")]
+impl MockGlobalMenu {
+    fn about_to_show(&self, _id: i32) -> bool {
+        true
+    }
+
+    fn get_layout(&self, _parent: i32, _depth: i32, _names: Vec<String>) -> (u32, OwnedValue) {
+        (1, mock_global_menu_layout())
+    }
+
+    fn event(&self, id: i32, event_id: String, _data: OwnedValue, _timestamp: u32) -> bool {
+        self.events.lock().unwrap().push((id, event_id));
+        true
+    }
+}
+
+fn global_row(id: i32, label: &str, enabled: bool) -> OwnedValue {
+    let mut props = HashMap::new();
+    props.insert(
+        "label".to_owned(),
+        OwnedValue::try_from(Value::from(label)).unwrap(),
+    );
+    props.insert("enabled".to_owned(), OwnedValue::from(enabled));
+    OwnedValue::try_from(Value::from((id, props, Vec::<OwnedValue>::new()))).unwrap()
+}
+
+fn global_menu(id: i32, label: &str, children: Vec<OwnedValue>) -> OwnedValue {
+    let mut props = HashMap::new();
+    props.insert(
+        "label".to_owned(),
+        OwnedValue::try_from(Value::from(label)).unwrap(),
+    );
+    props.insert(
+        "children-display".to_owned(),
+        OwnedValue::try_from(Value::from("submenu")).unwrap(),
+    );
+    OwnedValue::try_from(Value::from((id, props, children))).unwrap()
+}
+
+fn mock_global_menu_layout() -> OwnedValue {
+    let file = global_menu(
+        10,
+        "_File",
+        vec![global_row(1, "New", true), global_row(2, "Quit", false)],
+    );
+    let edit = global_menu(11, "Edit", vec![global_row(3, "Cut", true)]);
+    OwnedValue::try_from(Value::from((
+        0i32,
+        HashMap::<String, OwnedValue>::new(),
+        vec![file, edit],
+    )))
+    .unwrap()
+}
+
+/// Serve a mock global-menu app under `name` and return its connection and the
+/// recorded menu-event log. It does not register; the test does.
+fn mock_global_menu(bus: &PrivateBus, name: &str) -> (Connection, EventLog) {
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let menu = MockGlobalMenu {
+        events: events.clone(),
+    };
+    let app = zbus::blocking::connection::Builder::address(bus.address.as_str())
+        .expect("valid bus address")
+        .name(name)
+        .expect("valid well-known name")
+        .serve_at("/MenuBar", menu)
+        .expect("serve the mock global menu")
+        .build()
+        .expect("build the mock app connection");
+    (app, events)
 }
 
 /// Stand up a mock tray app on `bus`, serve its item and menu under `name`,
@@ -803,4 +943,131 @@ fn a_path_registration_is_namespaced_by_the_sender() {
     );
     let items = json(&call::<String>(&client, "TrayItems", ()).unwrap());
     assert_eq!(items[0]["path"], "/SelfItem");
+}
+
+// T-14.4: a mock DBusMenu app registers with the AppMenu.Registrar; app-index
+// projects its layout into the menu-broker's menus shape (live enabled state
+// preserved) and pushes it into the broker with the `dbusmenu` tier.
+#[test]
+fn a_mock_dbusmenu_app_bridges_into_the_menu_broker() {
+    let bus = PrivateBus::start();
+    let fixture = Fixture::new("menubridge");
+    fixture.seed();
+    let _service = serve_appmenu(&bus, &fixture);
+    let (_broker_service, broker) = serve_fake_broker(&bus);
+    let client = bus.connect();
+    let (app, events) = mock_global_menu(&bus, "org.example.MockMenu");
+
+    let registered: bool = app
+        .call_method(
+            Some(APP_MENU_REGISTRAR_NAME),
+            APP_MENU_REGISTRAR_PATH,
+            Some(APP_MENU_REGISTRAR_INTERFACE),
+            "RegisterWindowForApp",
+            &(
+                1u32,
+                "org.example.MockMenu",
+                ObjectPath::try_from("/MenuBar").unwrap(),
+            ),
+        )
+        .expect("call RegisterWindowForApp")
+        .body()
+        .deserialize()
+        .expect("registration reply");
+    assert!(registered);
+
+    // app-index lists the registration.
+    let windows = json(&call::<String>(&client, "AppMenuWindows", ()).unwrap());
+    assert_eq!(windows.as_array().unwrap().len(), 1);
+    assert_eq!(windows[0]["windowId"], 1);
+    assert_eq!(windows[0]["appId"], "org.example.MockMenu");
+    assert_eq!(windows[0]["menuPath"], "/MenuBar");
+
+    // The local projection is the menu-broker's `{title, items}` shape, with
+    // enable/disable state and routable actions preserved.
+    let menu = json(&call::<String>(&client, "WindowMenu", (1u32,)).unwrap());
+    assert_eq!(menu[0]["title"], "File");
+    assert_eq!(menu[0]["items"][0]["label"], "New");
+    assert_eq!(menu[0]["items"][0]["enabled"], true);
+    assert_eq!(menu[0]["items"][1]["label"], "Quit");
+    assert_eq!(menu[0]["items"][1]["enabled"], false);
+    assert_eq!(menu[0]["items"][0]["action"], "dbusmenu:1");
+    assert_eq!(menu[1]["title"], "Edit");
+
+    // The bridge pushed the projection into the broker.
+    let published = broker.published.lock().unwrap().clone();
+    assert_eq!(published.len(), 1);
+    assert_eq!(published[0].0, "org.example.MockMenu");
+    let model = json(&published[0].1);
+    assert!(model["applicationMenuItems"].as_array().unwrap().is_empty());
+    assert_eq!(model["menus"][0]["title"], "File");
+    assert_eq!(model["menus"][0]["items"][1]["enabled"], false);
+
+    // A click on a row is forwarded to the app as `Event(id, "clicked")`.
+    assert!(call::<bool>(&client, "WindowMenuEvent", (1u32, 1i32)).unwrap());
+    assert_eq!(*events.lock().unwrap(), vec![(1, "clicked".to_owned())]);
+
+    // Unregistering withdraws the bridge-born model again.
+    let unregistered: bool = app
+        .call_method(
+            Some(APP_MENU_REGISTRAR_NAME),
+            APP_MENU_REGISTRAR_PATH,
+            Some(APP_MENU_REGISTRAR_INTERFACE),
+            "UnregisterWindow",
+            &(1u32,),
+        )
+        .expect("call UnregisterWindow")
+        .body()
+        .deserialize()
+        .expect("unregistration reply");
+    assert!(unregistered);
+    assert_eq!(
+        *broker.withdrawn.lock().unwrap(),
+        vec!["org.example.MockMenu".to_owned()]
+    );
+    assert_eq!(
+        json(&call::<String>(&client, "AppMenuWindows", ()).unwrap()),
+        json("[]")
+    );
+
+    // A miss is empty, never an error.
+    assert_eq!(
+        json(&call::<String>(&client, "WindowMenu", (99u32,)).unwrap()),
+        json("[]")
+    );
+    assert!(!call::<bool>(&client, "WindowMenuEvent", (99u32, 1i32)).unwrap());
+}
+
+// T-14.4: the standard `RegisterWindow` (no app id) keys the bridge model by
+// the caller's bus name.
+#[test]
+fn a_standard_registration_keys_the_bridge_by_the_owner() {
+    let bus = PrivateBus::start();
+    let fixture = Fixture::new("menubridge-standard");
+    fixture.seed();
+    let _service = serve_appmenu(&bus, &fixture);
+    let client = bus.connect();
+    let (app, _events) = mock_global_menu(&bus, "org.example.MockMenu");
+
+    let registered: bool = app
+        .call_method(
+            Some(APP_MENU_REGISTRAR_NAME),
+            APP_MENU_REGISTRAR_PATH,
+            Some(APP_MENU_REGISTRAR_INTERFACE),
+            "RegisterWindow",
+            &(2u32, ObjectPath::try_from("/MenuBar").unwrap()),
+        )
+        .expect("call RegisterWindow")
+        .body()
+        .deserialize()
+        .expect("registration reply");
+    assert!(registered);
+
+    let windows = json(&call::<String>(&client, "AppMenuWindows", ()).unwrap());
+    let app_id = windows[0]["appId"].as_str().unwrap();
+    assert!(
+        app_id.starts_with(':'),
+        "a standard registration keys by the owner unique name, got {app_id}"
+    );
+    assert_eq!(windows[0]["owner"], app_id);
 }

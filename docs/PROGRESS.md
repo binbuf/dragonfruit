@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(71 earlier sections omitted)_
+_(72 earlier sections omitted)_
 
-- **T68 — T-10.6c Show in Files, Downloads, and .desktop identity**: **State: done.** The Files identity is installed and the Dock's two navigation; **`apps/files/org.dragonfruit.Files.desktop`** (new) — `Exec=dragonfruit-files
 - **T69 — T-10.7 Files capture and acceptance walkthrough**: **State: done.** T-10 (Files MVP) is captured at the track boundary and the; **`scripts/capture-files.sh`** (new) — `make files-capture` (new target in
 - **T70 — T-11.1a Notification service core**: **State: done.** The `org.freedesktop.Notifications` service and the shell; **`services/notifications/`** (new crate `dragonfruit-notifications`,
 - **T71 — T-11.1b Notification actions and Dock badge replacement**: **State: done.** Notification actions round-trip to the originating app, the; **`services/notifications/src/dbus.rs`** — `GetCapabilities` adds `actions`;
@@ -44,6 +43,7 @@ _(71 earlier sections omitted)_
 - **T103 — T-14.2a menu-broker export model and fixed menu**: **State: done.** `services/menu-broker` is a real service and the fixed; `services/menu-broker/src/model.rs` (new) — pure `Broker`: `PublishedModel`
 - **T104 — T-14.2b menu-broker accelerators and toggle**: **State: done.** The menu-broker now parses and dispatches focus-scoped; `services/menu-broker/src/accelerators.rs` (new) — pure `Mods`/`Chord`
 - **T105 — T-14.3 StatusNotifier/AppIndicator tray**: **State: done.** StatusNotifier/AppIndicator tray items render in the menu; `services/app-index/src/tray.rs` (new) — pure `Registration`
+- **T106 — T-14.4 DBusMenu bridge**: **State: done.** A DBusMenu/AppMenu-exporting app's global menu is now bridged; `services/app-index/src/menubridge.rs` (new) — pure `MenuRegistration`
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -7881,3 +7881,115 @@ Gotchas for later tasks:
   `Show Window` logged `mock tray menu event 1 (clicked)`. The active-window
   capture trim is flaky on this KWin host, so treat the shell/DBus logs as the
   hard evidence. Not committed to `docs/captures` (track-boundary artifact).
+
+## T106 — T-14.4 DBusMenu bridge
+
+**State: done.** A DBusMenu/AppMenu-exporting app's global menu is now bridged
+into the menu-broker at the `dbusmenu` tier, with live enable/disable state.
+`dragonfruit-app-index` is also the AppMenu.Registrar host. Contract frozen in
+ADR [0098](design/adr/0098-dbusmenu-bridge-in-app-index.md).
+
+Real paths:
+
+- `services/app-index/src/menubridge.rs` (new) — pure `MenuRegistration`
+  (`parse`: explicit app id, else the owner bus name; absolute path),
+  `AppMenuRegistry` (`register`/`unregister`/`remove_owner`/`has_app`/`entries`),
+  `menus_from_layout` (DBusMenu root children → the broker's `[{title, items}]`
+  menus, invisible rows omitted, separators skipped), `entry_json` (row +
+  synthesized `action: "dbusmenu:<id>"`; `enabled`/`checked`/`shortcut`/`id`
+  unchanged from `tray::MenuNode::to_json`), `action_for`/`id_from_action`,
+  `published_model`, `fallback_app_name`, and the registrar/broker constants.
+- `services/app-index/src/dbus.rs` — `APP_MENU_REGISTRAR_{NAME,PATH,INTERFACE}`;
+  `AppMenuRegistrar` object (`com.canonical.AppMenu.Registrar`) sharing
+  `AppIndex1::menus()` + the index: `RegisterWindow(u,o)`,
+  `RegisterWindowForApp(u,s,o)` (additive), `UnregisterWindow(u)`,
+  `GetMenuForWindow(u)`, `IsWindowRegistered(u)`, property `RegisteredWindows`;
+  new `AppIndex1` methods `AppMenuWindows`/`WindowMenu`/`WindowMenuEvent`;
+  `publish_to_broker`/`withdraw_from_broker` best-effort pushes; `run()`
+  serves the registrar and takes its name best-effort (like the watcher); the
+  `NameOwnerChanged` cleaner now also prunes menu registrations and withdraws
+  models whose last window left.
+- `services/app-index/src/main.rs` — `--mock-menu [appId]` debug DBusMenu app
+  (File › New enabled / Quit disabled, Edit › Cut) that registers with the
+  registrar; registers keyed by app id via `RegisterWindowForApp`.
+- `services/menu-broker/src/model.rs` — `tiers: BTreeMap<String, Tier>`;
+  `publish` delegates to `publish_tiered(_, _, Tier::Native)`;
+  `publish_dbusmenu` (tier `DbusMenu`); `withdraw` clears the tier; `tier(app)`;
+  `resolve` reads the stored tier.
+- `services/menu-broker/src/dbus.rs` — additive `PublishDbusMenu(appId, model)`
+  (`#[zbus(name = "PublishDbusMenu")]`; zbus would otherwise emit
+  `PublishDbusmenu`), signal reason `publish-dbusmenu`.
+- Tests: `services/app-index/src/menubridge.rs` (6 unit cases),
+  `services/app-index/tests/session_bus.rs` (2 new: mock app → registrar →
+  broker push round-trip incl. enabled, and the standard registration key),
+  `services/menu-broker/src/model.rs` (tier unit case),
+  `services/menu-broker/tests/session_bus.rs` (bridge publish resolves at
+  `dbusmenu` + focus-scoped `dbusmenu:<id>` accelerator).
+- Docs: `docs/design/06-global-menu.md` "Implementation note (T-14.4)";
+  `docs/design/adr/0098-*.md` (new).
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-app-index` — 48 unit + 14 session-bus cases.
+- `cargo test -p dragonfruit-menu-broker` — 26 unit + 6 session-bus cases.
+- `cargo test --workspace`; `cargo clippy --workspace --all-targets -- -D
+  warnings`; `cargo fmt --all -- --check` — all green.
+- `ctest --test-dir build --output-on-failure` — 53/53; `make e2e` — exit 0.
+- Build note (unchanged): `export
+  PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig:$PKG_CONFIG_PATH` and
+  `RUSTFLAGS="-L $HOME/.local/df-devroot/lib64"` (or just `make`).
+- Live bridge proof (private bus, real binaries): start
+  `dragonfruit-app-index` + `dragonfruit-menu-broker`, then
+  `dragonfruit-app-index --mock-menu org.example.MockMenu`; `gdbus call … 
+  MenuBroker1.Resolve org.example.MockMenu` returned
+  `"tier":"dbusmenu"` with `menus` File(`New` enabled, `Quit` disabled)/Edit and
+  `accelerators` `[{"action":"dbusmenu:1","chord":"Control+N"}]`.
+
+Gotchas for later tasks:
+
+- **The registrar body is `(u, o)`, not `(u, s)`.** Pass a
+  `zvariant::ObjectPath`, never a `&str`, or zbus errors with a signature
+  mismatch. `RegisterWindowForApp` is `(u, s, o)`.
+- **The bridge is a push.** app-index projects on each registration and calls
+  `org.dragonfruit.MenuBroker1.PublishDbusMenu(appId, model)`; an absent broker
+  is silent (best-effort). `WindowMenu`/`WindowMenuEvent` on
+  `org.dragonfruit.AppIndex1` are the local query/click paths and work without
+  the broker.
+- **The app key is the registration's `app_id`**: the explicit id from
+  `RegisterWindowForApp`, else the caller's unique bus name (`:1.x`) under the
+  standard `RegisterWindow`. The shell must map focus to the same key before
+  the global menu renders bridged menus.
+- **Rows carry `action: "dbusmenu:<id>"`, not a semantic action.** The broker's
+  accelerator extraction picks them up (a shortcut string from DBusMenu
+  `shortcut` + the synthesized action). Routing that action back to the app
+  means calling `WindowMenuEvent(windowId, id)`; the shell→app half is not
+  wired.
+- **Only visible rows survive** (`menus_from_layout` drops invisible and
+  top-level separators); an empty projection is not published, so the broker
+  stays Tier 3.
+- **`PublishDbusMenu` must keep its explicit `#[zbus(name = …)]`** (capital M):
+  zbus's default conversion of `publish_dbusmenu` is `PublishDbusmenu`.
+- Live check: `make demo` (nested, host Wayland) captured
+  `/tmp/opencode/t106-desktop.png` (17:02) — the desktop, menu bar, Dock, and
+  settings window render normally, no stray artifacts. The bridge has no shell
+  surface yet (the shell still computes its own menu), so the pixel check only
+  confirms the demo renders; the D-Bus round-trip above is the hard evidence.
+  Not committed to `docs/captures` (track-boundary artifact).
+
+Pre-existing, not introduced by T106: `make lint`'s `check-desktop-names`
+gate is red because T-14.3's standard protocol names (`org.kde.
+StatusNotifierWatcher` / `org.kde.StatusNotifierItem`) trip the `kde` word
+match in `services/app-index/{dbus,tray,lib,main}.rs`,
+`services/app-index/tests/session_bus.rs`, `shell/src/trayclient.h`, and
+`shell/tests/tst_dockcore.cpp`. The gate supports a `df-allow-desktop-name`
+marker; adding it (or exempting the `org.kde.` freedesktop namespace) is a
+small separate fix. `cargo fmt`/`clippy` and every task-relevant suite are
+green.
+
+Remaining for a later session (none required for this task's acceptance):
+
+- Shell wiring: on focus, map the app/window to a registrar entry, read
+  `WindowMenu`/the broker's `Resolve`, render it, and route `dbusmenu:<id>`
+  actions through `WindowMenuEvent`. Live re-projection on `about-to-show` /
+  DBusMenu `ItemsPropertiesUpdated`/`LayoutUpdated` is deferred (a registration
+  projects once).

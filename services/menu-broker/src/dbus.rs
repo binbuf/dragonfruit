@@ -94,6 +94,23 @@ impl MenuBroker1 {
         changed
     }
 
+    /// Publish or replace one app's model from the DBusMenu bridge (T-14.4).
+    /// Same payload as `Publish`, but the resolved tier is `dbusmenu`. Returns
+    /// `false` for an empty id or a malformed payload.
+    #[zbus(name = "PublishDbusMenu")]
+    async fn publish_dbusmenu(
+        &self,
+        app_id: &str,
+        model: &str,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+    ) -> bool {
+        let changed = lock(&self.broker).publish_dbusmenu(app_id, model);
+        if changed {
+            let _ = Self::changed(&emitter, "publish-dbusmenu", app_id).await;
+        }
+        changed
+    }
+
     /// Withdraw an app's published model. Returns whether one was present.
     async fn withdraw(
         &self,
