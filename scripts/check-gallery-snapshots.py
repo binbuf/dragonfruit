@@ -32,7 +32,7 @@ PAGES = [
     "tokens", "window", "titlebar", "trafficlights", "toggle", "popup", "menu", "ssd",
     "buttons", "sidebar", "toolbar", "splitview", "settings", "segmented", "contextmenu",
     "searchfield", "sourcelist", "dialog", "sheet", "popover", "scrollview", "slider",
-    "select", "icons",
+    "select", "icons", "tooltip",
 ]
 SCHEMES = [("light", False), ("dark", False), ("dark", True)]
 

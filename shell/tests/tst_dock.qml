@@ -3152,5 +3152,150 @@ Item {
             compare(picker.open, false);
             compare(dock.appPickerOpen, false);
         }
+
+        // -- T-14.7i hover name label ---------------------------------------
+
+        function test_tooltip_shows_the_name_after_the_dwell() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "Safari", true) ]
+            });
+            var entry = dock.itemAt(0);
+            dock.entryHoverBegan(dock.entries[0], entry);
+            compare(dock.tooltipOpen, false, "the label waits for the dwell");
+            compare(dock.tooltipText, "Safari");
+            tryCompare(dock, "tooltipOpen", true);
+            compare(dock.tooltipAnchor, entry);
+            var tooltip = findChild(dock, "dockTooltip");
+            verify(tooltip !== null, "the Dock hosts one design-system Tooltip");
+            compare(tooltip.text, "Safari");
+            verify(tooltip.y + tooltip.height <= entry.y + 0.5,
+                   "a bottom Dock's label sits above the entry");
+            compare(tooltip.activeFocus, false, "a tooltip never takes focus");
+            compare(tooltip.focus, false);
+        }
+
+        function test_tooltip_hides_on_pointer_leave() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "Safari", true) ]
+            });
+            var entry = dock.itemAt(0);
+            dock.entryHoverBegan(dock.entries[0], entry);
+            tryCompare(dock, "tooltipOpen", true);
+            dock.entryHoverEnded(entry);
+            compare(dock.tooltipOpen, false);
+            var tooltip = findChild(dock, "dockTooltip");
+            tryCompare(tooltip, "visible", false);
+            wait(200);
+            verify(dock.tooltipAnchor === null,
+                   "the anchor is released once the label is hidden");
+        }
+
+        function test_tooltip_hides_on_click() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "Safari", true) ]
+            });
+            var entry = dock.itemAt(0);
+            dock.entryHoverBegan(dock.entries[0], entry);
+            tryCompare(dock, "tooltipOpen", true);
+            dock.handleEntryTap(dock.entries[0]);
+            compare(dock.tooltipOpen, false);
+        }
+
+        function test_tooltip_is_suppressed_by_a_popover() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "Safari", true) ]
+            });
+            var entry = dock.itemAt(0);
+            dock.entryHoverBegan(dock.entries[0], entry);
+            tryCompare(dock, "tooltipOpen", true);
+            dock.openEntryMenu(dock.entries[0]);
+            compare(dock.tooltipOpen, false);
+        }
+
+        function test_tooltip_state_text_for_windows_folder_and_trash() {
+            var withWindows = { id: "a", appId: "a", name: "Safari", kind: "pinned",
+                                running: true, pinned: true, desktopId: "a.desktop",
+                                windowList: [ { windowId: 1 }, { windowId: 2 },
+                                              { windowId: 3 } ] };
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                downloadsCount: 3,
+                entries: [ withWindows ]
+            });
+            compare(dock.itemAt(0).tooltipLabel, "Safari — 3 windows");
+            // items: app, divider, stack, trash.
+            compare(dock.itemAt(2).tooltipLabel, "Downloads — 3 items");
+            compare(dock.itemAt(3).tooltipLabel, "Trash — empty");
+        }
+
+        function test_tooltip_folder_name_is_data_not_a_literal() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                downloadsName: "Screenshots", downloadsCount: 1, entries: []
+            });
+            compare(dock.itemAt(1).tooltipLabel, "Screenshots — 1 item");
+        }
+
+        function test_tooltip_follows_the_magnified_entry_and_stays_open() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, magnification: 1.0,
+                entries: [ app("a", "Safari", true), app("b", "Music", true) ]
+            });
+            var entry = dock.itemAt(0);
+            dock.entryHoverBegan(dock.entries[0], entry);
+            tryCompare(dock, "tooltipOpen", true);
+            dock.pointerAlong = dock._baseline.centers[0];
+            tryCompare(dock, "magnifying", true);
+            wait(250);
+            compare(dock.tooltipOpen, true,
+                    "a label stays up while magnification runs");
+            var tooltip = findChild(dock, "dockTooltip");
+            verify(entry.iconSize > dock.iconSize, "the hovered entry grew");
+            verify(tooltip.y + tooltip.height <= entry.y + 0.5,
+                   "the label stays anchored above the magnified entry");
+        }
+
+        function test_tooltip_clamps_at_the_dock_end() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "A", true) ]
+            });
+            dock.entryHoverBegan(dock.entries[0], dock.itemAt(0));
+            tryCompare(dock, "tooltipOpen", true);
+            var tooltip = findChild(dock, "dockTooltip");
+            verify(tooltip.x >= 0, "the label must not spill past the leading edge");
+            verify(tooltip.x + tooltip.width <= dock.width + 0.5,
+                   "the label must be clamped at the trailing edge");
+        }
+
+        function test_tooltip_rides_the_overlay_rect() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "Safari", true) ]
+            });
+            compare(dock.popoverRect.w, 0);
+            dock.entryHoverBegan(dock.entries[0], dock.itemAt(0));
+            tryCompare(dock, "tooltipOpen", true);
+            tryCompare(findChild(dock, "dockTooltip"), "visible", true);
+            verify(dock.popoverRect.w > 0,
+                   "the hover label is committed through the overlay path");
+            verify(dock.popoverRect.h > 0);
+        }
+
+        function test_tooltip_reduced_motion_opens_without_a_fade() {
+            Theme.reducedMotion = true;
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "Safari", true) ]
+            });
+            dock.entryHoverBegan(dock.entries[0], dock.itemAt(0));
+            dock.showTooltip();
+            waitForRendering(stage);
+            compare(findChild(dock, "dockTooltip").opacity, 1);
+        }
     }
 }

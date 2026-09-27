@@ -52,6 +52,7 @@ TestCase {
     Component { id: dialogComponent; Dialog { } }
     Component { id: sheetComponent; Sheet { } }
     Component { id: popoverComponent; Popover { } }
+    Component { id: tooltipComponent; Tooltip { } }
     Component {
         id: scrollViewComponent
         ScrollView {
@@ -686,6 +687,78 @@ TestCase {
         waitForRendering(stage);
         keyClick(Qt.Key_Escape);
         compare(p.open, false);
+    }
+
+    // -- Tooltip (T-14.7i, ADR 0093) ----------------------------------------
+
+    function test_tooltip_is_passive_and_never_takes_focus() {
+        var anchor = make(rectComponent, { width: 48, height: 48, x: 100, y: 120 });
+        var t = make(tooltipComponent, { anchorItem: anchor, text: "Safari", open: true });
+        tryCompare(t, "opacity", 1);
+        compare(t.activeFocus, false, "a tooltip must never take active focus");
+        compare(t.focus, false);
+        compare(t.activeFocusOnTab, false);
+        compare(t.Accessible.ignored, true, "a tooltip is presentational only");
+    }
+
+    function test_tooltip_opens_and_closes_with_motion() {
+        var anchor = make(rectComponent, { width: 48, height: 48, x: 100, y: 120 });
+        var t = make(tooltipComponent, { anchorItem: anchor, text: "Safari", open: false });
+        compare(t.opacity, 0);
+        compare(t.visible, false);
+        t.open = true;
+        tryCompare(t, "opacity", 1);
+        compare(t.visible, true);
+        t.open = false;
+        tryCompare(t, "opacity", 0);
+    }
+
+    function test_tooltip_elides_long_text_at_the_max_width() {
+        var anchor = make(rectComponent, { width: 48, height: 48, x: 100, y: 120 });
+        var t = make(tooltipComponent, {
+            anchorItem: anchor,
+            text: "A very long hover label that cannot possibly fit inside the narrow token width",
+            open: true
+        });
+        tryCompare(t, "opacity", 1);
+        compare(t.width, Theme.controls.tooltip.maxWidth);
+        verify(t.textElided, "a long single line must elide, never widen the capsule");
+    }
+
+    function test_tooltip_placement_above_and_below() {
+        var anchor = make(rectComponent, { width: 48, height: 48, x: 100, y: 120 });
+        var t = make(tooltipComponent, {
+            anchorItem: anchor, text: "Safari", placement: "above", open: true
+        });
+        tryCompare(t, "opacity", 1);
+        verify(t.y + t.height <= anchor.y, "an above label must clear the anchor");
+        t.placement = "below";
+        waitForRendering(stage);
+        verify(t.y >= anchor.y + anchor.height, "a below label must sit under the anchor");
+    }
+
+    function test_tooltip_clamps_inside_its_bounds() {
+        var bounds = make(rectComponent, { width: 200, height: 200 });
+        var anchor = make(rectComponent, { width: 40, height: 40, x: 180, y: 20 });
+        var t = make(tooltipComponent, {
+            anchorItem: anchor, bounds: bounds, text: "Wide label", placement: "above", open: true
+        });
+        tryCompare(t, "opacity", 1);
+        verify(t.x >= 0, "the capsule must not spill past the leading edge");
+        verify(t.x + t.width <= bounds.width + 0.5,
+               "the capsule must be clamped at the trailing edge");
+    }
+
+    function test_tooltip_reduced_motion_opens_instantly() {
+        var saved = Theme.reducedMotion;
+        Theme.reducedMotion = true;
+        var anchor = make(rectComponent, { width: 48, height: 48, x: 100, y: 120 });
+        var t = make(tooltipComponent, { anchorItem: anchor, text: "Safari", open: false });
+        compare(t.opacity, 0);
+        t.open = true;
+        waitForRendering(stage);
+        compare(t.opacity, 1, "reduced motion must open with no fade");
+        Theme.reducedMotion = saved;
     }
 
     // -- ScrollView (FR-1) --------------------------------------------------

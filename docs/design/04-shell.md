@@ -159,6 +159,24 @@ icon (T-14.7i). See
 [ADR 0089](adr/0089-dock-plate-geometry-and-live-panel-rect.md) and the
 T-14.7a/T-14.7b/T-14.7j units.
 
+### Dock hover name label
+
+Pausing over an entry for `controls.tooltip.dwell` (600 ms) shows the
+design-system `Tooltip` — a passive, pointer-anchored capsule with one elided
+line — above the icon on a bottom Dock and on the interior side on a vertical
+one (ADR [0093](adr/0093-tooltip-joins-the-design-system.md), T-14.7i). The
+label text is the entry `name` plus its state ("3 windows", "Trash — empty",
+"Downloads — 2 items"), computed once in `DockEntry.tooltipLabel` so no QML
+consumer re-derives it and no text returns to the artwork (ADR 0092). The Dock
+owns the dwell timer and the suppression rules: a click, a drag, an external
+drag, a resize, or any open context menu/chooser/stack hides it, and it is
+never up at the same time as a popover. `anchorItem` is the live entry
+delegate, so the capsule follows a magnified icon frame by frame and is clamped
+to the Dock's ends; it rides the same `popoverRect` overlay/headroom path as a
+menu so a bottom Dock's label is committed and never clipped. It is
+presentational only — no focus, no key capture; the entry's accessible name
+already carries the state.
+
 ### Dock motion and frame discipline
 
 Continuous Dock motion is deliberately separate from the entry model. Launch

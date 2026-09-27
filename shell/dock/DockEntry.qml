@@ -94,6 +94,10 @@ Item {
     signal dragBegan(var entry, real sceneX, real sceneY)
     signal dragMoved(var entry, real sceneX, real sceneY)
     signal dragEnded(var entry, real sceneX, real sceneY)
+    // The pointer entered/left this entry's hover region (T-14.7i). The Dock
+    // owns the dwell timer and the single Tooltip; this only reports the edge.
+    signal hoverBegan(Item entryItem)
+    signal hoverEnded(Item entryItem)
     // The divider resize handle (T-10 section 5): scene coordinates so the
     // Dock maps them into its axis space.
     signal dividerResizeBegan(real sceneX, real sceneY)
@@ -135,6 +139,30 @@ Item {
         if (attention && !missing && !launching)
             label += qsTr(", needs attention");
         return label;
+    }
+
+    // The hover name label shown by the design-system Tooltip (T-14.7i): the
+    // entry name plus its state. It is the one label source ADR 0092 approved;
+    // no text is ever drawn inside the artwork.
+    readonly property string tooltipLabel: {
+        if (isDivider || isExternal)
+            return "";
+        if (isTrash) {
+            var trashName = name.length > 0 ? name : qsTr("Trash");
+            return trashName + (trashUnavailable ? qsTr(" — unavailable")
+                                : trashFull ? qsTr(" — full") : qsTr(" — empty"));
+        }
+        if (isStack) {
+            var stackName = name.length > 0 ? name : qsTr("Downloads");
+            var countLabel = stackCount === 1 ? qsTr("1 item")
+                                              : qsTr("%1 items").arg(stackCount);
+            return stackName + qsTr(" — %1").arg(countLabel);
+        }
+        var windows = entry.windowList !== undefined && entry.windowList !== null
+                      ? entry.windowList.length : 0;
+        if (windows > 1)
+            return name + qsTr(" — %1 windows").arg(windows);
+        return name;
     }
 
     Accessible.role: isDivider ? Accessible.Separator : Accessible.ListItem
@@ -377,6 +405,12 @@ Item {
 
     HoverHandler {
         id: hoverHandler
+        onHoveredChanged: {
+            if (hovered)
+                root.hoverBegan(root);
+            else
+                root.hoverEnded(root);
+        }
     }
 
     TapHandler {

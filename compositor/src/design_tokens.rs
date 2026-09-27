@@ -386,6 +386,15 @@ pub mod component {
         pub const ARROW_SIZE: f32 = 8.0_f32;
         pub const SHADOW_BLUR: f32 = 40.0_f32;
     }
+    pub mod tooltip {
+        pub const DWELL: f32 = 600.0_f32;
+        pub const OFFSET: f32 = 8.0_f32;
+        pub const RADIUS: f32 = 10.0_f32;
+        pub const PADDING_H: f32 = 8.0_f32;
+        pub const PADDING_V: f32 = 4.0_f32;
+        pub const MAX_WIDTH: f32 = 260.0_f32;
+        pub const FONT_SIZE: f32 = 12.0_f32;
+    }
     pub mod shadow {
         pub const LAYERS: f32 = 8.0_f32;
         pub const OFFSET_Y: f32 = 5.0_f32;
