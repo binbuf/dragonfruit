@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(97 earlier sections omitted)_
+_(98 earlier sections omitted)_
 
-- **T93 — T-13.3b Screenshot save/copy and portal-only gate**: **State: done.** A capture is now actually produced, saved, and copied. The; **`protocols/dragonfruit-toplevel.xml`** — `df_toplevel_manager` v6 adds
 - **T94 — T-13.4a ScreenCast portal and source picker**: **State: done.** The backend serves `org.freedesktop.impl.portal.ScreenCast`; **`portal/src/screencast.rs`** (new) — the pure model: `SourceType`
 - **T95 — T-13.4b ScreenCast stream and stills fallback**: **State: done.** The ScreenCast stream now goes through one transport seam, and; **`portal/src/stream.rs`** (new) — `StreamMode` (`pipewire`/`stills`),
 - **T96 — T-13.5a Clipboard text/image/uri-list round-trips**: **State: done.** The clipboard round-trip matrix is proven on the headless; **`compositor/tests/shell_protocol_conformance.rs`** — new
@@ -44,6 +43,7 @@ _(97 earlier sections omitted)_
 - **T110r — T-14.7r Dock Trash empty progress and result**: **State: done.** Empty Trash is asynchronous with visible states. Confirming; `shell/src/trashbridge.{h,cpp}` — `EmptyState {Idle,Emptying,Succeeded,Failed}`;
 - **T110s — T-14.7s Dock minimize-to-icon reaction**: **State: done.** With `dock.minimizeReaction` on, a window entering `minimized`; `shell/src/dockprojection.{h,cpp}` — pure `dockMinimizedCounts(entries)` and
 - **T110t — T-14.7t Dock keyboard reordering**: **State: done.** The Dock's rearrangement affordance is no longer pointer-only:; `shell/src/dockmodel.{h,cpp}` — `QStringList movePinnedEntry(const QStringList
+- **T110u — T-14.7u Dock reference metrics: spacing, plate radius, indicator inset**: **State: done.** The resting Dock is retuned to the mature reference capture:; `design-system/tokens/tokens.json` — `component.dock`: `padding` 10 → 15,
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -9852,5 +9852,80 @@ Gotchas for later tasks:
 - **The T-14.7c optimistic no-model-reset follow-up still applies** to the
   keyboard path too (the shell `rebuildDockEntries()` resets the Repeater); it
   was not fixed here.
+- `check-desktop-names.sh` still fails only on the pre-existing
+  StatusNotifier/zoo/apppicker lines (unchanged here).
+
+## T110u — T-14.7u Dock reference metrics: spacing, plate radius, indicator inset
+
+**State: done.** The resting Dock is retuned to the mature reference capture:
+wider tile gaps (14), softer cross-axis padding (15), a rounder plate (radius
+28), and the running dot moved into the anchored-edge padding (8 below the
+artwork) instead of an additive band. No interaction, material, protocol, or
+settings-key change. ADR 0108 records the reconciliation.
+
+Real paths:
+
+- `design-system/tokens/tokens.json` — `component.dock`: `padding` 10 → 15,
+  `paddingAlong` 14 → 16, `gap` 8 → 14, `indicatorGap` 3 → 8, `radius` moved
+  from `$ref primitive.radius.xl` (20) to the literal `28` (≈0.36 × the resting
+  `barThickness`). `iconSize` 48 and `indicatorSize` 4 are unchanged, so the
+  plate is now `iconSize + 2 * padding` = 78 px. `Theme.qml` +
+  `compositor/src/design_tokens.rs` regenerated; the Rust constant stays
+  `component::dock::RADIUS` and still drives the compositor Dock backdrop.
+- `shell/dock/Dock.qml` — `barThickness = iconSize + 2 * padding` (the
+  indicator is no longer additive); the per-frame `layout` now anchors each
+  *artwork* on the anchored-edge side: for a bottom Dock
+  `y = plate.bottom - padding - sizes[j]`, for a left Dock
+  `x = plate.x + padding - indicatorSpace`, for a right Dock
+  `x = plate.x + padding + iconSize - sizes[j]`. `draggedX`/`draggedY` updated
+  to the same anchors. Comment block on `indicatorSpace`/`barThickness` rewritten.
+- `shell/dock/DockEntry.qml` — unchanged; `artworkX`/`artworkY` and the dot at
+  `height - indicatorSize` already place the dot `indicatorGap` below the
+  artwork once the entry height is `iconSize + indicatorSpace`.
+- `compositor/src/window/backdrop.rs` — the Dock-material unit test now asserts
+  `light.radius == component::dock::RADIUS` and `== 28.0` (was 20.0). No code
+  change to the compositor.
+- Tests: `tst_dock.qml` left/right placement expectations updated (the artwork,
+  not the entry box, sits `padding` inside the plate) plus two new cases,
+  `test_plate_thickness_and_indicator_inset_match_the_reference` and
+  `test_indicator_stays_inside_the_plate_at_icon_size_extremes`; `tst_dock`
+  238 → 240, `tst_dockcore` 112 (unchanged). `ctest` 53/53.
+- Captures refreshed: `docs/captures/t14-dock-spacing-{bottom,left,right}-{light,dark}.png`
+  and `t14-dock-tahoe-{light,dark,reduced}.png`.
+- Docs: `docs/design/04-shell.md` "Resting proportions (T-14.7u)";
+  `docs/design/adr/0108-dock-reference-metrics-indicator-inset.md`;
+  `docs/captures/README.md` measured values; the stale spacing-capture strip
+  comment.
+
+Commands that work (repo root):
+
+- `ctest --test-dir build --output-on-failure` — 53/53 (`tst_dock` 240,
+  `tst_dockcore` 112).
+- `make e2e` — green.
+- `make clippy`; `make fmt-check`; `./scripts/gen-tokens.py --check`;
+  `./scripts/check-design-tokens.sh`; `./scripts/check-no-capture-grab.sh`;
+  `./scripts/check-gallery-snapshots.py --strict` — green.
+- Live: `make dock-spacing-capture` and `make dock-tahoe-capture` (host Wayland
+  + spectacle + gdbus + Pillow). Pixel analysis of
+  `t14-dock-spacing-bottom-light.png`: plate 78 px tall, radius ≈28 px (measured
+  corner inset 8 px at 8 px below the top edge matches r≈28), artwork top inset
+  15 px, dot 4 px with an 8 px gap under the artwork and a 3 px margin to the
+  plate edge; no clipping.
+
+Gotchas for later tasks:
+
+- **`component.dock.radius` is the single static plate/backdrop radius** shared
+  by the shell plate, the compositor Dock backdrop, and the gallery tooltip
+  demo. It is *not* recomputed as `ratio × barThickness`; a size-tracking
+  radius would need the compositor to know the panel thickness (deferred,
+  T-16.1a). Keep the value static or update all three together.
+- **`barThickness` no longer includes `indicatorSpace`.** Any geometry that
+  used it to place the dot/entry band must anchor on the artwork edge instead
+  (`plate.bottom - padding - size` for the cross axis). `surfaceThickness` is
+  159 px at the default size (78 plate + 73 band + 8 edge margin).
+- **`indicatorSpace` (12) must stay ≤ `padding` (15)** or an entry's dot clips
+  the plate at the anchored edge; the new QML test pins this.
+- **The QML test's `dock.indicatorGap` does not exist** — use
+  `Theme.controls.dock.indicatorGap`; the Dock only exposes `indicatorSpace`.
 - `check-desktop-names.sh` still fails only on the pre-existing
   StatusNotifier/zoo/apppicker lines (unchanged here).

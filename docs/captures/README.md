@@ -148,9 +148,11 @@ demo runs with a scratch settingsd, and the driver flips `dock.position`
 crop per position/scheme to `t14-dock-spacing-{bottom,left,right}-{light,dark}.png`.
 Each crop is trimmed to the nested 1920x1200 output and then to a 190 px edge
 strip, so the floating plate, its `padding`/`paddingAlong` insets, and the
-`edgeMargin` gap to the screen edge are all visible (measured: plate 75 px,
-gap 8 px on every edge). Needs a host Wayland session, spectacle, and Pillow;
-not in `make e2e`.
+`edgeMargin` gap to the screen edge are all visible (T-14.7u retune, measured:
+plate 78 px, cross-axis padding 15 px, along-axis padding 16 px, gap 14 px, dot
+4 px sitting 8 px below the artwork, plate radius 28 px; `edgeMargin` 8 px on
+every edge). Needs a host Wayland session, spectacle, and Pillow; not in
+`make e2e`.
 
 T-14.7b's Dock magnification sign-off is produced by
 `scripts/capture-dock-magnify.sh` (`make dock-magnify-capture`): the nested demo

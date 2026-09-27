@@ -616,13 +616,20 @@ Rectangle {
     readonly property real gap: Theme.controls.dock.gap
     readonly property real edgeMargin: Theme.controls.dock.edgeMargin
     readonly property real dividerWidth: 1
-    // Room reserved below every entry's artwork for a running indicator. It is
-    // reserved for all entries, not only running ones, so running and idle
-    // icons share one baseline (a per-running reservation lifts the running
-    // icons, which reads as a magnification bump).
+    // Room reserved beyond every entry's artwork for a running indicator on the
+    // anchored-edge side. It is reserved for all entries, not only running
+    // ones, so running and idle icons share one baseline (a per-running
+    // reservation lifts the running icons, which reads as a magnification
+    // bump).
+    //
+    // T-14.7u: the indicator lives *inside* the cross-axis padding rather than
+    // in a band added on top of it. `barThickness` is one icon plus two
+    // paddings on every side, and `indicatorSpace` (dot + gap) must not exceed
+    // `padding`, so the dot sits `indicatorGap` below the artwork while the
+    // artwork keeps the same inset from both plate edges.
     readonly property real indicatorSpace:
         showIndicators ? Theme.controls.dock.indicatorGap + Theme.controls.dock.indicatorSize : 0
-    readonly property real barThickness: iconSize + indicatorSpace + 2 * padding
+    readonly property real barThickness: iconSize + 2 * padding
     // `dock.magnification` (0..1, 0 = off) maps onto the peak icon factor;
     // 0.5 (the default) lands on the `magnifyPeak` token (T-10 section 19).
     readonly property real magnifyPeakFactor:
@@ -2199,12 +2206,12 @@ Rectangle {
         if (axisIsX)
             return dragPointerAlong - itemWidth / 2;
         if (position === "right")
-            return restingPlateRect.x + barThickness - padding - itemWidth;
-        return restingPlateRect.x + padding;
+            return restingPlateRect.x + padding;
+        return restingPlateRect.x + padding - indicatorSpace;
     }
     function draggedY(itemHeight) {
         if (axisIsX)
-            return restingPlateRect.y + barThickness - padding - itemHeight - dragLift;
+            return restingPlateRect.y + padding - dragLift;
         return dragPointerAlong - itemHeight / 2;
     }
 
@@ -2679,25 +2686,35 @@ Rectangle {
             var bounce = isDivider ? 0 : entryBounce(list[j]);
             if (axisIsX) {
                 var h = sizes[j] + extra;
-                // Cross-axis placement is relative to the floating plate, so
-                // the entries keep their `padding` inset from the plate edge
-                // on both sides (the plate already carries `hideY`).
+                // Cross-axis placement is relative to the floating plate. The
+                // artwork keeps its `padding` inset from the plate's interior
+                // edge and is anchored on the anchored-edge side, so under
+                // magnification it grows *up* into the magnify band while the
+                // running dot (in the anchored-edge padding, T-14.7u) stays
+                // put. A bounce lifts it further into the band. The plate
+                // already carries `hideY`.
+                var y = isDivider ? restingPlateRect.y + padding
+                                  : restingPlateRect.y + barThickness - padding
+                                    - sizes[j] - bounce;
                 out.push({
                     x: positions[j],
-                    y: restingPlateRect.y + barThickness - padding - h - bounce,
+                    y: y,
                     w: isDivider ? dividerWidth : sizes[j],
                     h: isDivider ? barThickness - 2 * padding : h,
                     iconSize: sizes[j]
                 });
             } else {
                 var w = sizes[j] + extra;
-                // A vertical plate floats off the anchored edge: a left Dock
-                // packs entries from the plate's interior side, a right Dock
-                // mirrors it so the running indicator hugs the screen edge.
-                // Bounce moves away from the edge, into the magnify band
-                // (T-10 section 14). The plate already carries `hideX`.
-                var vx = position === "right" ? restingPlateRect.x + restingPlateRect.w - padding - w - bounce
-                                              : restingPlateRect.x + padding + bounce;
+                // A vertical plate floats off the anchored edge. The artwork
+                // keeps its `padding` inset on both sides at rest; under
+                // magnification it grows toward the interior (right for a left
+                // Dock, left for a right Dock) while the running dot in the
+                // anchored-edge padding stays put (T-14.7u). Bounce moves away
+                // from the edge, into the magnify band (T-10 section 14). The
+                // plate already carries `hideX`.
+                var vx = position === "right"
+                       ? restingPlateRect.x + padding + iconSize - sizes[j] - bounce
+                       : restingPlateRect.x + padding - indicatorSpace + bounce;
                 out.push({
                     x: vx,
                     y: positions[j],
