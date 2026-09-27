@@ -32,6 +32,7 @@
 //! touch-down <slot> <x-norm> <y-norm> | touch-motion <slot> <x-norm> <y-norm>
 //! touch-up <slot> | touch-frame
 //! query decorations
+//! query identity
 //! query window-menu
 //! query motion
 //! query events
@@ -660,6 +661,12 @@ pub enum SyntheticCommand {
     TouchFrame,
     /// Read-only SSD titlebar introspection (T-01.1).
     QueryDecorations,
+    /// Read-only raw window-identity introspection (T-14.6a): one `identity`
+    /// line per tracked window (window id, the Wayland `app_id` or the
+    /// Xwayland `WM_CLASS` class, and the advertised title), followed by
+    /// `end`. The zoo matrix records this before `app-index` resolves the
+    /// desktop entry, so a Wayland app's identity is observable too.
+    QueryIdentity,
     /// Read-only window-menu introspection (T-01.4).
     QueryWindowMenu,
     /// Read-only lifecycle-motion introspection (T-02.1b/T-02.2). One line
@@ -882,6 +889,7 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
         },
         "query" => match parts.next() {
             Some("decorations") => SyntheticCommand::QueryDecorations,
+            Some("identity") => SyntheticCommand::QueryIdentity,
             Some("window-menu") => SyntheticCommand::QueryWindowMenu,
             // `motion` is the T-02.2 name; `appear` is kept as an alias so
             // the T-02.1b tests and scripts keep working.
@@ -902,7 +910,7 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
             Some("session") => SyntheticCommand::QuerySession,
             _ => {
                 return Err(
-                    "query requires a known subject (decorations, window-menu, motion, events, latency, scanout, degrade, material, grid, spaces, wallpaper, reveal, gesture, switcher, policy, lock, session)"
+                    "query requires a known subject (decorations, identity, window-menu, motion, events, latency, scanout, degrade, material, grid, spaces, wallpaper, reveal, gesture, switcher, policy, lock, session)"
                         .into(),
                 );
             }
@@ -1114,6 +1122,9 @@ impl SyntheticCommand {
             SyntheticCommand::QueryDecorations => {
                 unreachable!("query decorations is handled by apply_datagram")
             }
+            SyntheticCommand::QueryIdentity => {
+                unreachable!("query identity is handled by apply_datagram")
+            }
             SyntheticCommand::QueryWindowMenu => {
                 unreachable!("query window-menu is handled by apply_datagram")
             }
@@ -1243,6 +1254,15 @@ fn apply_datagram_reply(
             Ok(SyntheticCommand::QueryDecorations) => {
                 if let Some((socket, peer)) = &reply {
                     let report = decoration_report(state);
+                    if let Some(path) = peer.as_pathname() {
+                        let _ = socket.send_to(report.as_bytes(), path);
+                    }
+                }
+                applied += 1;
+            }
+            Ok(SyntheticCommand::QueryIdentity) => {
+                if let Some((socket, peer)) = &reply {
+                    let report = identity_report(state);
                     if let Some(path) = peer.as_pathname() {
                         let _ = socket.send_to(report.as_bytes(), path);
                     }
@@ -1529,6 +1549,31 @@ fn decoration_report(state: &DfState) -> String {
             "decoration {} {} {tx} {ty} {tw} {th} {} {} {} {} {window_state} {space}\n",
             id.0, ssd as u32, content.loc.x, content.loc.y, content.size.w, content.size.h,
         ));
+    }
+    out.push_str("end\n");
+    out
+}
+
+/// The `query identity` report (T-14.6a): one line per tracked window.
+///
+/// `identity <id> <app_id|-> <title>` followed by `end`. `app_id` is the
+/// Wayland `app_id` or the Xwayland `WM_CLASS` class (or `-` when neither is
+/// known); `title` is the rest of the line with embedded newlines flattened.
+/// This is the raw identity the zoo matrix records before `app-index`
+/// resolves the desktop entry.
+fn identity_report(state: &DfState) -> String {
+    let mut out = String::new();
+    for window in state.windows.windows() {
+        let Some(id) = state.windows.id(window) else {
+            continue;
+        };
+        let app_id = state.windows.app_id(window).unwrap_or("-");
+        let title = state
+            .windows
+            .title(window)
+            .map(|title| title.replace('\n', " "))
+            .unwrap_or_default();
+        out.push_str(&format!("identity {} {} {}\n", id.0, app_id, title));
     }
     out.push_str("end\n");
     out
@@ -2270,6 +2315,10 @@ mod tests {
         assert_eq!(
             parse_command("query switcher").unwrap(),
             SyntheticCommand::QuerySwitcher
+        );
+        assert_eq!(
+            parse_command("query identity").unwrap(),
+            SyntheticCommand::QueryIdentity
         );
     }
 

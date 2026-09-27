@@ -787,6 +787,22 @@ recorded as an explicit gap; see
 [ADR 0099](adr/0099-xdnd-bridge-model-and-documented-gap.md) and the T-17 note
 in [17-premium-gate.md](tracks/17-premium-gate.md).
 
+### Implementation note (T-14.6a)
+
+The strange-app zoo is scripted in `scripts/zoo/zoo-run.sh`: it launches the
+nested compositor with the synthetic-input harness, then drives Firefox (X11),
+xterm, a Steam-`WM_CLASS` stand-in, GNOME Calculator (GTK4 via flatpak), an SDL2
+window via Xwayland, and an Electron client against the private socket. To make
+each app's *raw* identity observable, the synthetic harness gains a read-only
+`query identity` command: one `identity <id> <app_id|-> <title>` line per tracked
+window, where `app_id` is the Wayland `app_id` or the Xwayland `WM_CLASS` class
+— the same raw identity the compositor forwards to the shell. The run resolves
+each raw identity through `dragonfruit-app-index`, reads the decoration tier
+from the `server_side` flag of `query decorations`, and reads the global-menu
+tier from `dragonfruit-menu-broker`. The matrix is committed under
+`docs/captures/t14-zoo-matrix.md` and the desktop still as
+`docs/captures/t14-zoo.png`.
+
 ## Out of scope
 
 - Wi-Fi/Bluetooth/audio/power logic — these belong to NetworkManager, BlueZ,

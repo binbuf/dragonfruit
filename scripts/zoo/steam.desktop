@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Steam
+Comment=Steam is a digital distribution platform (zoo stand-in desktop entry)
+Exec=steam
+Icon=steam
+Terminal=false
+Categories=Game;Network;
+StartupWMClass=Steam

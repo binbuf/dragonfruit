@@ -512,6 +512,94 @@ fn x11_window_carries_the_ssd_titlebar() {
     );
 }
 
+/// T-14.6a: the read-only `query identity` report exposes the raw X11
+/// identity (the `WM_CLASS` class) the strange-app zoo matrix records before
+/// `app-index` resolves it to a desktop entry.
+#[test]
+fn identity_query_reports_x11_wm_class() {
+    if !xwayland_available() {
+        eprintln!("skipping: Xwayland is not installed");
+        return;
+    }
+
+    let socket_name = format!("dragonfruit-test-x11-ident-{}", std::process::id());
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir).join(format!(
+        "dragonfruit-x11-ident-synth-{}",
+        std::process::id()
+    ));
+    let proc = CompositorProcess::start_with_synthetic(&socket_name, Some(&synthetic_path));
+    let input = SyntheticInput::connect(&synthetic_path);
+    let Some(display) = proc.wait_for_display() else {
+        eprintln!("skipping: Xwayland did not become ready");
+        return;
+    };
+
+    let (conn, screen_num) = x11rb::connect(Some(&display)).expect("connect to Xwayland");
+    let root = conn.setup().roots[screen_num].root;
+    let screen = &conn.setup().roots[screen_num];
+    let window = conn.generate_id().expect("generate window id");
+    let aux = CreateWindowAux::new().background_pixel(screen.white_pixel);
+    conn.create_window(
+        screen.root_depth,
+        window,
+        root,
+        10,
+        10,
+        200,
+        120,
+        0,
+        WindowClass::INPUT_OUTPUT,
+        x11rb::COPY_FROM_PARENT,
+        &aux,
+    )
+    .expect("create_window");
+    conn.change_property8(
+        PropMode::REPLACE,
+        window,
+        AtomEnum::WM_CLASS,
+        AtomEnum::STRING,
+        b"Navigator\0Firefox\0",
+    )
+    .expect("set WM_CLASS");
+    conn.map_window(window).expect("map_window");
+    conn.flush().expect("flush");
+
+    wait_until(
+        || client_list(&conn, root).contains(&window),
+        Duration::from_secs(5),
+        "X11 window to be managed",
+    );
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let line = loop {
+        let report = input.query("query identity");
+        if let Some(line) = report.lines().find(|line| line.contains("Firefox")) {
+            break line.to_string();
+        }
+        assert!(
+            Instant::now() < deadline,
+            "identity query never reported the X11 window: {report:?}"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    let fields: Vec<&str> = line.splitn(4, ' ').collect();
+    assert_eq!(fields.first().copied(), Some("identity"), "line: {line:?}");
+    assert_eq!(
+        fields.get(2).copied(),
+        Some("Firefox"),
+        "the WM_CLASS class must be the raw identity: {line:?}"
+    );
+
+    drop(conn);
+    drop(input);
+    proc.assert_clean_exit();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic socket survived"
+    );
+}
+
 /// T-01.5: an X11 window that asks to be undecorated via `_MOTIF_WM_HINTS`
 /// gets no compositor titlebar (the double-decoration guard). A runtime hint
 /// flip reflows a zoomed window through `configure_window_size`, and the X
