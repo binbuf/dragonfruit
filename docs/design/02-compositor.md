@@ -673,6 +673,11 @@ complete the track:
   into the usable area, zoomed windows re-fit it, fullscreen fills it — so no
   window is stranded at coordinates on the dead display. Chrome re-anchors
   through the same per-output reserve path (T-16.1a).
+- **Integer-scaled Xwayland.** Xwayland runs at `ceil(primary_output_scale)`
+  (clamped to >= 1) and X11 windows never receive a fractional
+  `preferred_scale`; they only see the integer `wl_output.scale`, so their
+  metrics stay integral (T-16.3a, [../xwayland-scaling.md](../xwayland-scaling.md)).
+  The per-surface viewport downscale is T-16.3b.
 - **Regions.** Client-provided opaque, translucent, and input regions are
   honored: input outside the input region falls through, and translucent
   regions participate in the blur pass rather than fighting it.
