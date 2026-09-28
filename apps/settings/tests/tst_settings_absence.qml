@@ -32,7 +32,7 @@ Item {
         // matrix asserts stays live while its provider is absent.
         readonly property var shippedPaneIds:
             ["appearance", "desktop-dock", "displays", "wallpaper", "bluetooth",
-             "storage", "sound"]
+             "storage", "sound", "keyboard", "mouse", "trackpad"]
 
         function make() {
             var shell = createTemporaryObject(shellComponent, stage,
@@ -85,7 +85,7 @@ Item {
 
         function test_every_shipped_pane_has_a_body_and_no_other_does() {
             var shell = make();
-            compare(SettingsPanes.shippedPanes.length, 7);
+            compare(SettingsPanes.shippedPanes.length, 10);
             for (var i = 0; i < SettingsPanes.catalog.length; ++i) {
                 var pane = SettingsPanes.catalog[i];
                 var body = shell.paneComponent(pane.id);
@@ -257,6 +257,45 @@ Item {
             // A routing write is a safe no-op with no host.
             pane.selectDevice(9);
             compare(Settings.soundAvailable, false);
+        }
+
+        // With no bridge host on the private bus, the Keyboard/Mouse/Trackpad
+        // panes' inventory half is the absence state: a one-line note explains
+        // the missing libinput view. Every preference row is settingsd-backed
+        // and stays live on the schema defaults, so the panes are never dead
+        // surfaces.
+        function test_keyboard_pane_degrades_cleanly_without_the_bridge_host() {
+            var shell = make();
+            compare(Settings.inputAvailable, false,
+                    "no bridge host is the absent state under test");
+            compare(Settings.input.state, undefined);
+
+            var pane = showPane(shell, "keyboard");
+            compare(pane.ready, false);
+            compare(pane.absenceNote.visible, true,
+                    "the absence note explains the missing input inventory");
+            verify(pane.absenceNote.text.length > 0);
+
+            // The settingsd-backed controls still work with no daemon.
+            pane.keyboardNavigationToggle.toggle();
+            compare(Settings.values["input.keyboardNavigation"], true);
+            pane.repeatRateSlider.setValue(0.5);
+            pane.repeatRateSlider.commit();
+            verify(Math.abs(Settings.values["input.repeatRate"] - 100) < 0.001);
+
+            // A refresh is a safe no-op with no host.
+            Settings.refreshInput();
+            compare(Settings.inputAvailable, false);
+        }
+
+        function test_trackpad_pane_degrades_cleanly_without_the_bridge_host() {
+            var shell = make();
+            var pane = showPane(shell, "trackpad");
+            compare(pane.ready, false);
+            compare(pane.absenceNote.visible, true);
+            compare(pane.tapToClickToggle.enabled, true);
+            pane.tapToClickToggle.toggle();
+            compare(Settings.values["input.tapToClick"], false);
         }
 
         // A control changed while the daemon is absent still converges into the

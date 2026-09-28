@@ -19,7 +19,7 @@ use crate::value::{SettingsError, Value};
 
 /// The current schema revision. Bump only when a key is added or a default
 /// changes; renames and removals are forbidden within the `1` series.
-pub const SCHEMA_VERSION: u32 = 11;
+pub const SCHEMA_VERSION: u32 = 12;
 
 /// The D-Bus type of a settings value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -652,6 +652,144 @@ pub const KEYS: &[KeySpec] = &[
         since: 1,
         summary: "Key repeat rate in keys per second; 0 disables repeat.",
     },
+    // ── Pointer and keyboard-brightness keys (T-15.4b) ─────────────────
+    // `Key repeat rate`/`Delay until repeat` are the revision-1 keys above.
+    // These are the rest of the Keyboard/Mouse/Trackpad pane: the pointer
+    // half maps to `PointerSettings` in `compositor/src/input/settings.rs`
+    // and the keyboard-brightness half is a hardware bridge that is still a
+    // follow-up, so its consumer is the Settings app for now. The read-only
+    // libinput adapter (T-15.4a) supplies the device inventory, not these
+    // preferences.
+    KeySpec {
+        key: "input.pointerSpeed",
+        group: KeyGroup::Input,
+        kind: KeyType::Number,
+        default: KeyDefault::Number(0.0),
+        allowed: &[],
+        min: Some(-1.0),
+        max: Some(1.0),
+        owner: "apps/settings",
+        consumer: "compositor/input pointer acceleration",
+        since: 12,
+        summary: "Pointer tracking speed, -1.0 (slow) to 1.0 (fast); 0 is neutral.",
+    },
+    KeySpec {
+        key: "input.naturalScroll",
+        group: KeyGroup::Input,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(true),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "compositor/input pointer scrolling",
+        since: 12,
+        summary: "Natural (content follows finger) scrolling for pointers.",
+    },
+    KeySpec {
+        key: "input.tapToClick",
+        group: KeyGroup::Input,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(true),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "compositor/input pointer tapping",
+        since: 12,
+        summary: "Tap the trackpad to click.",
+    },
+    KeySpec {
+        key: "input.leftHanded",
+        group: KeyGroup::Input,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(false),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "compositor/input pointer handedness",
+        since: 12,
+        summary: "Swap the primary and secondary pointer buttons.",
+    },
+    KeySpec {
+        key: "input.scrollMethod",
+        group: KeyGroup::Input,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("two-finger"),
+        allowed: &["two-finger", "edge", "button"],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "compositor/input pointer scrolling",
+        since: 12,
+        summary: "How a trackpad scrolls: two-finger, edge, or button.",
+    },
+    KeySpec {
+        key: "input.keyboardBrightness",
+        group: KeyGroup::Input,
+        kind: KeyType::Number,
+        default: KeyDefault::Number(0.5),
+        allowed: &[],
+        min: Some(0.0),
+        max: Some(1.0),
+        owner: "apps/settings",
+        consumer: "compositor/keyboard backlight (hardware bridge deferred)",
+        since: 12,
+        summary: "Keyboard backlight level, 0.0 (off) to 1.0 (bright).",
+    },
+    KeySpec {
+        key: "input.adjustBrightnessLowLight",
+        group: KeyGroup::Input,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(true),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "compositor/keyboard backlight (hardware bridge deferred)",
+        since: 12,
+        summary: "Adjust the keyboard backlight automatically in low light.",
+    },
+    KeySpec {
+        key: "input.backlightOffAfter",
+        group: KeyGroup::Input,
+        kind: KeyType::Integer,
+        default: KeyDefault::Integer(0),
+        allowed: &[],
+        min: Some(0.0),
+        max: Some(3600.0),
+        owner: "apps/settings",
+        consumer: "compositor/keyboard backlight (hardware bridge deferred)",
+        since: 12,
+        summary: "Seconds of inactivity before the keyboard backlight turns off; 0 keeps it on.",
+    },
+    KeySpec {
+        key: "input.keyboardNavigation",
+        group: KeyGroup::Input,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(false),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "compositor/input keyboard navigation",
+        since: 12,
+        summary: "Move focus between controls with Tab and Shift+Tab.",
+    },
+    KeySpec {
+        key: "input.emojiKeyAction",
+        group: KeyGroup::Input,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("emoji"),
+        allowed: &["emoji", "none"],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "compositor/input (emoji panel bridge deferred)",
+        since: 12,
+        summary: "Action when the Compose/Super key is pressed: show the emoji panel or nothing.",
+    },
     // ── Session (lock / idle / suspend policy, T-12.5b) ─────────────────
     KeySpec {
         key: "idle.dim",
@@ -1073,6 +1211,79 @@ mod tests {
             assert_eq!(spec.since, 11, "{key}");
             assert!(spec.since <= SCHEMA_VERSION, "{key}");
         }
+    }
+
+    /// The Keyboard/Mouse/Trackpad-pane keys (T-15.4b): the pointer and
+    /// keyboard-brightness rows, additive in revision 12. `input.repeatDelay`
+    /// and `input.repeatRate` stay the revision-1 keyboard-repeat keys.
+    #[test]
+    fn the_pointer_and_keyboard_pane_keys_are_declared_in_revision_twelve() {
+        for (key, kind, default) in [
+            (
+                "input.pointerSpeed",
+                KeyType::Number,
+                KeyDefault::Number(0.0),
+            ),
+            ("input.naturalScroll", KeyType::Bool, KeyDefault::Bool(true)),
+            ("input.tapToClick", KeyType::Bool, KeyDefault::Bool(true)),
+            ("input.leftHanded", KeyType::Bool, KeyDefault::Bool(false)),
+            (
+                "input.scrollMethod",
+                KeyType::Text,
+                KeyDefault::Text("two-finger"),
+            ),
+            (
+                "input.keyboardBrightness",
+                KeyType::Number,
+                KeyDefault::Number(0.5),
+            ),
+            (
+                "input.adjustBrightnessLowLight",
+                KeyType::Bool,
+                KeyDefault::Bool(true),
+            ),
+            (
+                "input.backlightOffAfter",
+                KeyType::Integer,
+                KeyDefault::Integer(0),
+            ),
+            (
+                "input.keyboardNavigation",
+                KeyType::Bool,
+                KeyDefault::Bool(false),
+            ),
+            (
+                "input.emojiKeyAction",
+                KeyType::Text,
+                KeyDefault::Text("emoji"),
+            ),
+        ] {
+            let spec = spec(key).unwrap_or_else(|| panic!("{key} is declared"));
+            assert_eq!(spec.group, KeyGroup::Input, "{key}");
+            assert_eq!(spec.kind, kind, "{key}");
+            assert_eq!(spec.default, default, "{key}");
+            assert_eq!(spec.owner, "apps/settings", "{key}");
+            assert_eq!(spec.since, 12, "{key}");
+            assert!(spec.since <= SCHEMA_VERSION, "{key}");
+            assert!(
+                spec.validate(&spec.default.to_value()).is_ok(),
+                "{key} default validates"
+            );
+        }
+        // The pointer speed is signed so slow is expressible.
+        let speed = spec("input.pointerSpeed").unwrap();
+        assert!(speed.validate(&Value::Number(-1.0)).is_ok());
+        assert!(speed.validate(&Value::Number(1.0)).is_ok());
+        assert!(speed.validate(&Value::Number(1.5)).is_err());
+        // The scroll method is an enumeration.
+        assert!(spec("input.scrollMethod")
+            .unwrap()
+            .validate(&Value::Text("edge".into()))
+            .is_ok());
+        assert!(spec("input.scrollMethod")
+            .unwrap()
+            .validate(&Value::Text("pinch".into()))
+            .is_err());
     }
 
     /// A frozen manifest of the v1 key set. Adding a key is allowed (extend
