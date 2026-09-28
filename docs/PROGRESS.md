@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(131 earlier sections omitted)_
+_(132 earlier sections omitted)_
 
-- **T110p — T-14.7p Dock hover-open, retargetable chooser and stable anchor**: **State: done.** `dock.chooserOnHover` (bool, default off) opts into a; `services/settingsd/src/schema.rs` — `dock.chooserOnHover` (`since: 8`),
 - **T110q — T-14.7q Dock overflow cell and More Windows popover**: **State: done.** When the running groups do not fit even at the minimum icon,; `shell/src/dockmodel.{h,cpp}` — `applyDockOverflow` now returns a terminal
 - **T110r — T-14.7r Dock Trash empty progress and result**: **State: done.** Empty Trash is asynchronous with visible states. Confirming; `shell/src/trashbridge.{h,cpp}` — `EmptyState {Idle,Emptying,Succeeded,Failed}`;
 - **T110s — T-14.7s Dock minimize-to-icon reaction**: **State: done.** With `dock.minimizeReaction` on, a window entering `minimized`; `shell/src/dockprojection.{h,cpp}` — pure `dockMinimizedCounts(entries)` and
@@ -43,6 +42,7 @@ _(131 earlier sections omitted)_
 - **T130 — T-15.10b General, About, and Updates pane and tile**: **State: done.** The Settings `General` pane and the Control Center `Software; `services/system-status/src/updates.rs` (new) — `UpdatesHost<S>` (refresh/
 - **T131 — T-15.11a Users and Groups adapter**: **State: done.** New workspace crate `dragonfruit-account-adapter`; `services/account-adapter/` (new crate, workspace member) —
 - **T132 — T-15.11b Users and Groups pane and tile**: **State: done.** The Settings `Users & Groups` pane and the Control Center; `services/system-status/src/accounts.rs` (new) — `AccountsHost<S>` (refresh/
+- **T133 — T-15.12a Printers and Scanners adapter**: **State: done.** New workspace crate `dragonfruit-printer-adapter`; `services/printer-adapter/src/source.rs` — `PrinterState` (CUPS `3`/`4`/`5` +
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -12612,3 +12612,97 @@ Decisions / gotchas for T-15.12a and later:
   `users` (2 members) groups, and no clipped/blank/overlapping text; and the
   panel's 14 tiles through `Users` (`2 Users`, `Users & Groups Settings…`) plus
   Clipboard with the bottom fully visible and no artifacts.
+
+## T133 — T-15.12a Printers and Scanners adapter
+
+**State: done.** New workspace crate `dragonfruit-printer-adapter`
+(`services/printer-adapter`) projects the **host stack** over the T-07 adapter
+contract, with two independent halves, both reused, never reimplemented
+(ADR 0140).
+
+Real paths:
+
+- `services/printer-adapter/src/source.rs` — `PrinterState` (CUPS `3`/`4`/`5` +
+  `Unknown`; unrecognized code is `Unknown`, never `Idle`), `PrintJobData`
+  (`{id, user, size}` — `lpstat` prints no job title), `PrinterData` (name,
+  display name, make/model, location, URI, state, state message,
+  accepting/enabled flags, is_default, jobs), `ScannerKind`
+  (`flatbed`/`sheetfed`/`handheld`/`unknown`),
+  `ScanDeviceData` (device, verbatim description, kind), `PrintData
+  { printers: Option<Vec<..>>, default_printer, scanners: Option<Vec<..>> }`,
+  `PrintOutcome` (`Applied`/`Denied`/`Absent`/`Failed`), `PrintSource`, and
+  `MockPrint` (layered `kill_cups`/`restart_cups` + `kill_sane`/`restart_sane`,
+  `push`, `deny_writes`/`fail_writes`, write counters, and a simulated queue
+  that mutates on apply so a re-read sees a write).
+- `services/printer-adapter/src/model.rs` — `PrintJob`, `Printer`, `Scanner`,
+  `PrintSnapshot::from_data` (default queue first, then queues by name;
+  scanners by kind then device), `printers_available()`/`scanners_available()`,
+  `present()` (any queue or scanner), `label()` (`"2 Printers, 1 Scanner"`),
+  `glyph()` = `"printer"`, counts, `default_printer()`, and the pure
+  `changes(previous)` diff (`PrintChange`: daemon presence, queue/scanner
+  add/remove/change, default destination, job add/remove/change).
+- `services/printer-adapter/src/adapter.rs` — `PrinterAdapter<S>` over the
+  shared `Subscription`; `refresh`, `set_default_printer`,
+  `set_printer_accepting_jobs`, `cancel_job`, `drain_changes`; implements
+  `Adapter` with `AdapterId::PRINTER`.
+- `services/printer-adapter/src/printers.rs` — live `HostPrint`; the printers
+  half is one `lpstat -l -t` per read via `printers_from_lpstat`; the scanners
+  half is `scanimage -L` via `scanners_from_scanimage`; writes are
+  `lpadmin -d`, `cupsaccept`/`cupsreject`, `cancel`. A non-zero write exit is
+  classified `Denied` (policy/polkit wording) or `Failed`.
+- `services/printer-adapter/src/lib.rs` — crate docs + re-exports.
+- `services/printer-adapter/tests/fixtures/printers-workstation.json` — two
+  queues + one scanner; `tests/read_path.rs` — 12 acceptance tests.
+- `services/system-adapters/src/state.rs` — `AdapterId::PRINTER`
+  (`"printer"`); id test updated.
+- `Cargo.toml` workspace member; `Makefile` e2e runs
+  `cargo test -p dragonfruit-printer-adapter`.
+- Docs/scripts — ADR `0140-printers-and-scanners-adapter.md`;
+  `docs/design/07-system-integration.md` table row + new "The printers and
+  scanners path (T-15.12a)" section; `scripts/capture-t15-printer-adapter.sh` +
+  `docs/captures/README.md`.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-printer-adapter` — 41 lib + 12 read_path green.
+- `cargo test -p dragonfruit-system-adapters` — green.
+- `cargo clippy -p dragonfruit-printer-adapter -p dragonfruit-system-adapters
+  --all-targets -- -D warnings` — clean; `cargo fmt --all -- --check` — clean.
+- `make e2e` — EXIT 0 (captured `/tmp/opencode/e2e-t133.log`).
+- `make check-design-tokens check-tokens check-no-capture-grab` — clean;
+  `./scripts/check-gallery-snapshots.py` — 78 green.
+- `make lint` — still fails only on the pre-existing `check-desktop-names`
+  lines (none in the new crate); unchanged from T125–T132.
+
+Decisions / gotchas for T-15.12b and later:
+
+- **Two halves, layered absence.** `printers: None` = CUPS absent (print half
+  disables only); `scanners: None` = SANE absent (scanner half disables only);
+  the adapter is `Unavailable` only when **both** are absent. CUPS with no
+  queue is `Some(vec![])` and `printers_available()` is true. Do not collapse
+  these into one hide rule.
+- **CUPS is read through its client tools, not a library.** `HostPrint` runs
+  `lpstat -l -t`; the output churn is pinned in `printers_from_lpstat` and must
+  stay behind the `PrintSource` seam. No libcups/IPP reimplementation.
+- **`lpstat` prints no make/model and no job title.** `make_and_model` stays
+  empty on the live read and `PrintJob` is `{id, user, size}`; the field/type
+  exist for fixtures and a future IPP read. Do not guess.
+- **Writes are explicit and per-request.** `set_default_printer`,
+  `set_printer_accepting_jobs`, `cancel_job`; a `Denied` does not degrade the
+  read state. A `Failed`/`Absent` does not invent a snapshot — the host
+  re-reads. The T-15.12b bridge host should follow the account adapter's
+  pattern (a `PrinterHost` in `services/system-status`, interface
+  `org.dragonfruit.SystemStatus1.Printers`, and a `PrinterClient` seam in
+  Settings).
+- **No settingsd keys here.** `Default paper size` and any presentation
+  preference are T-15.12b's to declare. Adding a printer (discovery +
+  `lpadmin -p …`) is not in this adapter; decide that flow in T-15.12b and
+  extend the adapter rather than reimplementing CUPS.
+- **`DF_*` fixture convention.** The mock is `MockPrint`; T-15.12b should add a
+  `DF_PRINTERS_FIXTURE` seam on the Settings client and a shell fixture like
+  the other T-15 adapters.
+- Live visual check: `bash scripts/capture-t15-printer-adapter.sh` (now
+  captures the nested compositor's active window) produced
+  `docs/captures/t15-12a-printer-adapter.png` (2115x1437). Vision found the
+  menu bar with status items, the Dock, the wallpaper, and the Settings/demo
+  windows, with no blank areas, clipping, or artifacts.

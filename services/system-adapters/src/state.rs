@@ -36,6 +36,8 @@ impl AdapterId {
     pub const UPDATES: AdapterId = AdapterId("updates");
     /// Users and Groups (AccountsService users + the distro group provider).
     pub const ACCOUNTS: AdapterId = AdapterId("accounts");
+    /// Printers and Scanners (CUPS queues + SANE devices).
+    pub const PRINTER: AdapterId = AdapterId("printer");
 
     /// An id for a status slot the constants above do not name.
     pub const fn new(id: &'static str) -> Self {
@@ -260,5 +262,6 @@ mod tests {
         assert_eq!(AdapterId::MENU_BAR.as_str(), "menu-bar");
         assert_eq!(AdapterId::UPDATES.as_str(), "updates");
         assert_eq!(AdapterId::ACCOUNTS.as_str(), "accounts");
+        assert_eq!(AdapterId::PRINTER.as_str(), "printer");
     }
 }
