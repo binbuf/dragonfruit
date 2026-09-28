@@ -182,6 +182,19 @@ px; fixed 0.0 px). The same 40-step run is recorded in
 px; fixed: 0 reversals). Needs a host Wayland session, spectacle, and Pillow;
 not in `make e2e`.
 
+T-14.7z's Dock plate corner/frost sign-off is produced by
+`scripts/capture-dock-plate-corners.sh` (`make dock-plate-corners-capture`): the
+nested demo runs with the synthetic-input harness, the driver detects the
+resting plate's bright top rim in a full screenshot, and writes a 6x
+nearest-neighbour close-up of the top-left and top-right corners side by side to
+`t14-dock-plate-corners-{light,dark}.png`. It then parks the pointer over the
+plate centre and writes a 2x strip to
+`t14-dock-plate-magnified-{light,dark}.png`. The rim follows the corner arcs
+(no straight hairline pokes past them), and the QML fill and the compositor
+frost are the same integer rounded rect — pinned deterministically by the
+`tst_dock.qml` rim-differential and panel-parity cases (T-14.7z, ADR 0112).
+Needs a host Wayland session, spectacle, and Pillow; not in `make e2e`.
+
 T-14.7c's Dock motion/frame-discipline sign-off is produced by
 `scripts/capture-dock-motion.sh` (`make dock-motion-capture`): the nested demo
 runs with a scratch settingsd and the synthetic-input harness, and the driver

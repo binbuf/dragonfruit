@@ -312,6 +312,21 @@ running dot, and divider follow `controls.dock.hover`/`indicator`/`divider`.
 At the `Minimal` degrade tier the compositor draws no frost and the plate reads
 as a clean capsule with no highlight claim.
 
+**One rounded edge (T-14.7z).** The plate's rounded edge has a single owner:
+`Dock.qml` derives an integer `panelRect` by snapping each edge of the live
+`plateRect` to the pixel grid, draws its fill/rim/border on that rect, and the
+shell declares the *same* integer rect to the compositor as the backdrop panel
+— so the QML fill and the frost are one rounded rectangle, not two
+independently rasterized ones, and no 1 px fringe appears as the plate grows.
+The shell commits the declared panel only when the integer rect actually
+changes, so a smooth animation cannot ping-pong the backdrop. The bright rim is
+a stroked path along the interior edge (top for a bottom Dock, the interior
+side for a vertical one) that follows the corner arcs and is inset by half the
+stroke, so no rim pixel leaves the plate; a straight hairline no longer runs
+into the corner curve. Geometry and tone stay token-driven
+(`controls.dock.radius`, `plate.rimHeight`/`rimOpacity`); the radius stays
+static (T-14.7u).
+
 **Region dividers (T-14.7v).** The Dock's regions are the pinned prefix, the
 temporary/recent tail, the minimized group, and the fixed stacks/Trash tail.
 The pure `dockmodel::planDockRegions` derives them from the entry list and the

@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(102 earlier sections omitted)_
+_(103 earlier sections omitted)_
 
-- **T98 — T-13.6 polkit authentication agent**: **State: done.** A privileged polkit request now raises a Dragonfruit; **`shell/src/polkitagent.{h,cpp}`** (dockcore) — `PolkitAgent` exports
 - **T99 — T-13.7 Flatpak validation and capture**: **State: done** (one honest deviation: no Flatpak↔native clipboard still; see; **`scripts/capture-portals.sh`** (new; `make portals-capture`) — private
 - **T100 — T-14.1a app-index identity resolution and icons**: **State: done.** `org.dragonfruit.AppIndex1` is real: identity resolution for; `services/app-index/src/index.rs` — pure `AppIndex` (scan, `resolve`,
 - **T101 — T-14.1b app-index events, launch registry, recency**: **State: done.** `org.dragonfruit.AppIndex1` is now live: the index re-scans; `services/app-index/src/index.rs` — `IndexEvent`/`IndexEventKind`; `AppIndex`
@@ -43,6 +42,7 @@ _(102 earlier sections omitted)_
 - **T110v — T-14.7v Dock region dividers: pinned | temporary/recent | stacks and Trash**: **State: done.** The Dock projects the reference's region structure: a rule; `shell/src/dockmodel.{h,cpp}` — `DockRegionPlan` + `planDockRegions(entries,
 - **T110x — T-14.7x Dock activation: taps on entries that carry a DragHandler**: **State: done.** A stationary left click on any app/temporary/overflow entry; `shell/src/dockpointer.{h,cpp}` (new, dockcore) — `DockPointer::timestamp()`
 - **T110y — T-14.7y Dock magnification tracking: stable pointer and anchor**: **State: done.** Hover magnification now tracks the pointer without ringing.; `design-system/tokens/tokens.json` — `motion.dockMagnifyTrack` added;
+- **T110z — T-14.7z Dock plate rendering: corner-following rim and frost alignment**: **State: done.** The plate is now one integer rounded rect in every state. The; `shell/dock/Dock.qml` — new `panelRect` (each edge of the live `plateRect`
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -10181,5 +10181,86 @@ Gotchas for later tasks:
 - The strip capture driver hard-codes `DOCK_Y=1155` and the sweep range
   `785..1135` (same convention as `capture-dock-magnify-driver.py`); a Dock
   position/token change needs those revisited.
+- `check-desktop-names.sh` still fails only on the pre-existing
+  StatusNotifier/zoo/apppicker lines (unchanged here).
+
+## T110z — T-14.7z Dock plate rendering: corner-following rim and frost alignment
+
+**State: done.** The plate is now one integer rounded rect in every state. The
+QML fill and the compositor frost draw the same snapped edge, the bright rim
+follows the corner arcs, and the declared backdrop panel is only committed when
+its integer rect changes. ADR 0112 records the single-edge rule.
+
+Real paths:
+
+- `shell/dock/Dock.qml` — new `panelRect` (each edge of the live `plateRect`
+  `Math.round`ed); the `dockPlate` group draws `panelRect` (fill, rim, border,
+  shadow, clip). `dockRim` is now a `Shape` with a `PathSvg` traced by
+  `rimOutlinePath(w, h)` along the interior edge (flat + both interior corner
+  arcs), inset by half the stroke; the straight hairline `Rectangle` is gone.
+  `import QtQuick.Shapes` added.
+- `shell/src/shellcontroller.cpp` `renderDock` — reads `panelRect` (not
+  `plateRect`) and commits it only when `m_dockPanelRect` changes and the
+  protocol call succeeds.
+- `shell/src/shellcontroller.h` — `m_dockPanelRect` / `m_dockPanelRectValid`
+  (and `<QRect>`).
+- `shell/tests/tst_dock.qml` — `test_panel_rect_is_the_integer_edge_the_qml_draws`,
+  `test_panel_rect_never_flips_during_a_sweep`,
+  `test_rim_pixels_follow_the_plate_round_rect` (hide-the-rim frame diff: no
+  changed pixel outside the plate rounded rect, at least one on the top-left
+  arc), `test_artwork_padding_is_even_at_rest_and_magnified`; updated
+  `test_plate_is_a_layered_glass_not_a_flat_slab` and
+  `test_plate_glass_follows_the_color_scheme` to read the `ShapePath`
+  (`dockRimStroke`). `tst_dock` 260 → 264.
+- `scripts/capture-dock-plate-corners.sh` +
+  `scripts/capture-dock-plate-corners-driver.py` (`make
+  dock-plate-corners-capture`); captures
+  `docs/captures/t14-dock-plate-corners-{light,dark}.png` (6x corner pair) and
+  `docs/captures/t14-dock-plate-magnified-{light,dark}.png` (2x strip). Captures
+  README entry.
+- Docs: `docs/design/04-shell.md` \"One rounded edge (T-14.7z)\";
+  `docs/design/adr/0112-dock-plate-single-rounded-edge.md`.
+
+Commands that work (repo root):
+
+- `ctest --test-dir build --output-on-failure` — 53/53 (`tst_dock` 264).
+- `make e2e` — green; `material stats` still `backdrop_passes=0
+  backdrop_skipped=0` (no double-blur regression).
+- `cargo test --workspace` (needs
+  `PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig`; the Makefile
+  exports it) — green.
+- `./scripts/gen-tokens.py --check`; `./scripts/check-design-tokens.sh`;
+  `./scripts/check-no-capture-grab.sh`;
+  `./scripts/check-gallery-snapshots.py --strict` — green.
+- Pre-fix probe: temporarily make `rimOutlinePath` return `\"M 0 0 L <w> 0\"`
+  (the old straight hairline) and rebuild `tst_dock`; the rim-differential case
+  fails with **38** changed pixels outside the plate shape (fixed: 0). Restore.
+- Live: `make dock-plate-corners-capture` (host Wayland + spectacle + Pillow).
+  Detected resting plate nested `top=1085 left=703 right=1216`; pixel scan of
+  the raw still shows a clean arc (no straight run past the curve). Vision
+  review of the 6x close-up was ambiguous (it mistook the end artwork for a
+  line); the deterministic QML differential is the authority.
+
+Gotchas for later tasks:
+
+- **`panelRect` is the drawn edge; `plateRect` is still the logical one.**
+  Input region, magnify math, and most tests use the fractional `plateRect`.
+  Only the plate group and the declared backdrop use `panelRect`. Do not feed
+  `panelRect` back into the layout.
+- **The declared panel is deduped by integer rect.** This is safe because
+  `configureDockSurface` reuses the leading `m_dockLayer` (no recreate); a
+  position change swaps the axes, so a new rect is sent. If a future task ever
+  *destroys and recreates* the Dock layer surface with the same rect, reset
+  `m_dockPanelRectValid`.
+- **The rim is a `Shape`/`PathSvg`; `findChild("dockRim")` is the Shape and the
+  stroke colour lives on `dockRimStroke`.** Update tests accordingly; `rim.height`
+  is now `plateH - strokeWidth`, not `rimHeight`.
+- **`rimOutlinePath` depends on `dock.position`** (`bottom`/`left`/`right`); a
+  new top-anchored position would need a fourth branch. The SVG sweep flags are
+  picked for the interior edge per position.
+- The capture driver uses scheme-specific absolute rim thresholds
+  (`RIM_THRESHOLD` dark 430 / light 560) and a broad `DOCK_BAND`; a theme or
+  wallpaper change needs those revisited (same convention as the other Dock
+  drivers).
 - `check-desktop-names.sh` still fails only on the pre-existing
   StatusNotifier/zoo/apppicker lines (unchanged here).
