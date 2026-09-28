@@ -3,10 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(151 earlier sections omitted)_
+_(153 earlier sections omitted)_
 
-- **T115 — T-15.3a Sound and routing adapter**: **State: done.** The T-07.3 audio adapter (`dragonfruit-audio`) grew the input; `services/audio/src/source.rs` — new `SourceData`; `AudioData` gained
-- **T116 — T-15.3b Sound and routing pane and tile**: **State: done.** The Settings Sound pane and the Control Center Sound tile ship; `services/system-status/src/lib.rs` — `audio_view` now carries `sources`,
 - **T117 — T-15.4a Keyboard, Mouse, and Trackpad adapter**: **State: done.** A new workspace crate `dragonfruit-input` (`services/input`); `services/input/src/lib.rs` — crate docs + exports.
 - **T118 — T-15.4b Keyboard, Mouse, and Trackpad pane and tile**: **State: done.** The Settings Keyboard/Mouse/Trackpad panes and the Control; `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 11 → 12; 10 new
 - **T119 — T-15.5a Mission Control and hot corners adapter**: **State: done.** A new workspace crate `dragonfruit-overview`; `services/overview/src/source.rs` — `MissionControlSource` seam,
@@ -44,7 +42,8 @@ _(151 earlier sections omitted)_
 - **T151 — T-16.8b Compositor-death behavior and restart-policy docs**: **State: done.** Compositor death is documented once as session-ending and the; `services/session/tests/restart_policy_matrix.rs` (new; 3 tests) — the
 - **T151a — T-16.12 Synthetic chrome pointer injection timestamps**: **State: done.** Every chrome surface that re-injects the compositor's pointer; `shell/src/chromepointer.{h,cpp}` (renamed from `dockpointer.*`, still in
 - **T152 — T-17.1a Nested window loop verification**: **State: done.** The nested window loop is verified with a committed capture.; `scripts/capture-t17-window-loop.sh` + `scripts/t17-window-loop-driver.py`
-- **Follow-ups**: **Stable Dock-tile locator for a synthesized restore-fro
+- **T153 — T-17.1b Workspace, Mission Control, and app-switch verification**: **State: done.** The T-17 premium gate's navigation verification unit lands; `scripts/capture-t17-navigation.sh` + `scripts/t17-navigation-driver.py`
+- **Follow-ups**: **Stable Mission Control window-card locator.** So a future capture can; **Stable Dock-tile locator for a synthesized restore-from-Dock click.**
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -14279,8 +14278,82 @@ Decisions / gotchas for T-17.1b, T-17.1c, and T-17.2:
   headlessly by the T-01/T-02 suites. A stable Dock-tile locator is a
   follow-up.
 
+## T153 — T-17.1b Workspace, Mission Control, and app-switch verification
+
+**State: done.** The T-17 premium gate's navigation verification unit lands
+with a committed capture. It adds no product code; it adds a reproducible
+scripted navigation loop and its evidence over the already-green headless
+conformance. `make e2e` is green (129 `test result: ok`) and the live capture
+was reviewed.
+
+Real paths:
+
+- `scripts/capture-t17-navigation.sh` + `scripts/t17-navigation-driver.py`
+  (new) — `make demo` nested with the synthetic-input harness, then workspace
+  switching (keyboard `Ctrl+Left`/`Ctrl+Right`, a three-finger swipe caught
+  mid-slide, and a pointer click on a Mission Control workspace-strip card),
+  Mission Control (keyboard `Ctrl+Up` and a top-left hot-corner dwell), and app
+  switching (keyboard `Cmd+Tab` with commit on modifier release, and a pointer
+  click on a live preview). Every path is asserted through `query spaces`,
+  `query grid`, `query wallpaper`, and `query switcher`; a path that does not
+  reach the documented state fails the run.
+- `docs/captures/t17-navigation.{png,mp4,txt}` and the step stills
+  (`-workspace-keyboard`, `-workspace-gesture`, `-mission-control-keyboard`,
+  `-mission-control-pointer`, `-workspace-pointer`, `-app-switch-keyboard`,
+  `-app-switch-pointer`, `-app-switch-pointer-committed`). The `.txt` is the
+  JSON transcript of the four queries at each step.
+- `docs/captures/t17-navigation.md` (reviewed matrix + live check),
+  `docs/design/adr/0160-t17-navigation-capture.md` (new),
+  `docs/captures/README.md`, `docs/design/11-session-and-dev-workflow.md`,
+  `Makefile` (`t17-navigation-capture`).
+
+Commands that work (repo root; `PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig`,
+`RUSTFLAGS=-L $HOME/.local/df-devroot/lib64`):
+
+- `cargo test -p dragonfruit-compositor --test window_conformance --test
+  shell_protocol_conformance` — 37 + 41 passed.
+- `make e2e` — exit 0; 129 `test result: ok`.
+- `make lint` — fails only at `check-desktop-names` (pre-existing
+  StatusNotifier/`org.kde` + `scripts/zoo/zoo-run.sh`); all other components
+  green. No new file is flagged.
+- `make t17-navigation-capture` (or `bash scripts/capture-t17-navigation.sh`)
+  — exit 0; navigation loop complete.
+- Live visual check: `docs/captures/t17-navigation*.png` via the vision model —
+  menu bar and Dock present, the Mission Control grid with the workspace strip,
+  the two live surfaces, and the app-switcher scrim + cards; no
+  blank/torn/ghosted regions.
+
+Decisions / gotchas for T-17.1c and T-17.2:
+
+- **Observe through the compositor, not the pixels.** The four `query *`
+  reports are the evidence; the stills are the reviewer's aid. The app-switcher
+  chrome is a faint scrim plus cards, and the vision model reads it (and the
+  committed T-06 stills) as a plain desktop — trust the transcript and the
+  frame delta.
+- **One trigger per column, same state machine.** Keyboard, gesture, hot
+  corner, and pointer all resolve to the same `InputAction` and the same
+  overview/switcher machine, so the Mission Control keyboard and pointer stills
+  are byte-identical by design.
+- **The Mission Control strip-card geometry lives in the compositor too.**
+  `strip_card_rect` (`compositor/src/overview/grid.rs`) and the shell's centered
+  `Row` agree: top = `menu_bar::HEIGHT (28) + overview::STRIP_MARGIN (16)`,
+  cards 132x84, gap 12. The driver reproduces it for the pointer workspace
+  switch.
+- **A Space card click activates but does not dismiss.** `onOverviewWorkspaceActivated`
+  sends `activateWorkspace` only; the keyboard/gesture path dismisses. Recorded,
+  not changed.
+- **Mission Control window-card pointer selection is not synthesized.** The
+  shell's centered title-card row is not the live-surface rect; the synthetic
+  click did not reliably hit it. The compositor round-trip is headless-pinned
+  by `overview_click_selects_and_focuses_the_live_representation`; the pointer
+  workspace switch (strip card) *is* live-captured.
+
 ## Follow-ups
 
+- **Stable Mission Control window-card locator.** So a future capture can
+  synthesize the pointer selection round-trip; the shell's cards are centered
+  title cards, not the compositor's live-surface rects, and the headless
+  round-trip already passes.
 - **Stable Dock-tile locator for a synthesized restore-from-Dock click.**
   The agent capture cannot reliably click the minimized tile of an unpinned
   running app (see above); T-17.5a/T-17.2 may want the real click automated.

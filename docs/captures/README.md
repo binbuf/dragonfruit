@@ -830,6 +830,26 @@ per-behaviour conformance remains
 `milestone_e2e` (all in `make e2e`). Needs a host Wayland session, spectacle,
 python3+Pillow, ffmpeg (optional clip), and the built tree; not in `make e2e`.
 
+T-17.1b's nested navigation sign-off is produced by
+`scripts/capture-t17-navigation.sh` (`make t17-navigation-capture`): the nested
+demo runs with the synthetic-input harness and the driver exercises workspace
+switching (keyboard `Ctrl+Left`/`Ctrl+Right`, a three-finger swipe caught
+mid-slide, and a pointer click on a Mission Control strip card), Mission
+Control (keyboard `Ctrl+Up` and a top-left hot-corner dwell), and app switching
+(keyboard `Cmd+Tab` and a pointer click on a live preview) on the live
+session, asserting each path through `query spaces`/`query grid`/`query
+wallpaper`/`query switcher`. It writes `t17-navigation.png` (the representative
+Space 0 desktop), the step stills `-workspace-keyboard`, `-workspace-gesture`,
+`-mission-control-keyboard`, `-mission-control-pointer`, `-workspace-pointer`,
+`-app-switch-keyboard`, `-app-switch-pointer`, `-app-switch-pointer-committed`,
+the clip `t17-navigation.mp4`, and the machine transcript
+`t17-navigation.txt`. The harness and its evidence boundary are
+[ADR 0160](../design/adr/0160-t17-navigation-capture.md); pointer Mission
+Control *selection* is not synthesized (the composition-level round-trip stays
+headless-pinned) and is recorded as a follow-up. Needs a host Wayland session,
+spectacle, python3+Pillow, ffmpeg (optional clip), and the built tree; not in
+`make e2e`.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture
