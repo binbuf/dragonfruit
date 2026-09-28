@@ -44,3 +44,33 @@ T-14.7g worked around it with the `DF_DOCK_ACTIVATION_FIXTURE` capture seam.
   `DockPointer` (or set a timestamp) or it can hit the same DragHandler grab.
 - The timestamp is wall-independent (elapsed monotonic), so it needs no clock
   injection and cannot regress to zero on the first event.
+
+## Amendment — T-16.12: the rule is chrome-wide, and the helper is renamed
+
+The scope note below was originally Dock-only because only the Dock paired a
+`TapHandler` with a `DragHandler`. T-16.12 generalizes the rule to **every**
+chrome pointer injection, so no surface can re-introduce the bug when it later
+grows a `DragHandler` sibling.
+
+- **One constructor for every injected chrome pointer event.** The helper is
+  renamed `ChromePointer` (`shell/src/chromepointer.{h,cpp}`); the timestamp is
+  owned by the helper, never by the call site. `DockPointer` remains a thin
+  compatibility alias, so the Dock path and `tst_dock`'s `DockInject` name it
+  unchanged. A handler that builds its own `QMouseEvent` is the bug.
+- **Every injection site routes through it.** Menu bar / main,
+  Control Center, the FileChooser overlay, screenshot, screencast, polkit,
+  overview, and the notification banner now call `ChromePointer::send` for
+  their move / button / leave events, keeping each surface's existing button
+  bookkeeping. Ad-hoc `QMouseEvent` construction in those handlers is gone
+  (`grep QMouseEvent shell/src/shellcontroller.cpp` is empty), so a reviewer can
+  find a violation mechanically.
+- **The regression is generalized.** Besides the Dock's `DockInject` cases, a
+  sibling `tst_chromepointer` unit test drives the helper directly and
+  `tst_chromepointerui` proves a stationary injected tap beside a `DragHandler`
+  taps on a non-Dock surface. Zeroing the timestamp in the helper fails that
+  case (the T-14.7x probe, repeated), so the invariant is enforced outside the
+  Dock.
+- **No behavior change is intended.** Only the timestamp differs; positions,
+  buttons, modifiers, and per-surface state are identical. The offscreen-window
+  injection seam (compositor event → `ShellController::on*Pointer*` →
+  `ChromePointer::send` into the offscreen `QWindow`) is unchanged.

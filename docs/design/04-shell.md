@@ -118,12 +118,17 @@ silently. A pinned identity the app-index cannot resolve produces a notice and
 keeps its not-found mark. A near-stationary click always activates: the entry's
 tap and drag handlers share one 8 px slop (`dockEntry.dragSlop`), so only a real
 drag lifts into a rearrangement. Because the shell runs its chrome on the
-offscreen QPA, the compositor's Dock pointer events are re-injected as
+offscreen QPA, the compositor's pointer events are re-injected as
 `QMouseEvent`s; every injected event is stamped with a monotonic timestamp
-(`DockPointer`), because a zero timestamp makes `QQuickDragHandler` measure a
-bogus initial movement and grab the press before the sibling `TapHandler` can
-see the tap (T-14.7x). A stationary tap therefore always reaches the entry.
-See [ADR 0110](adr/0110-dock-pointer-injection-timestamps.md).
+(`ChromePointer`, T-16.12; the Dock names the same helper through the
+`DockPointer` alias), because a zero timestamp makes `QQuickDragHandler` measure
+a bogus initial movement and grab the press before the sibling `TapHandler` can
+see the tap (T-14.7x). A stationary tap therefore always reaches the entry. The
+rule is chrome-wide: menu bar / main, Control Center, the FileChooser overlay,
+screenshot, screencast, polkit, overview, and the notification banner all inject
+through `ChromePointer`, so a later `DragHandler` anywhere cannot ship dead
+controls with green tests. See
+[ADR 0110](adr/0110-dock-pointer-injection-timestamps.md).
 
 Every launch path (Dock, menu-bar `openApp`, Files reveal) goes through one
 helper (`appLaunchEnvironment`) that replaces the shell's forced

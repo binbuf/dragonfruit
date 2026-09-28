@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(149 earlier sections omitted)_
+_(150 earlier sections omitted)_
 
-- **T113 — T-15.2a Storage and removable media adapter**: **State: done.** The UDisks2 storage/removable-media adapter landed in a new; `services/storage/` (new crate) — `src/source.rs` (`StorageData`,
 - **T114 — T-15.2b Storage and removable media pane and tile**: **State: done.** The Storage pane and Control Center tile ship as one unit over; `services/system-status/src/storage.rs` (new) — `StorageHost<S>` +
 - **T115 — T-15.3a Sound and routing adapter**: **State: done.** The T-07.3 audio adapter (`dragonfruit-audio`) grew the input; `services/audio/src/source.rs` — new `SourceData`; `AudioData` gained
 - **T116 — T-15.3b Sound and routing pane and tile**: **State: done.** The Settings Sound pane and the Control Center Sound tile ship; `services/system-status/src/lib.rs` — `audio_view` now carries `sources`,
@@ -44,6 +43,7 @@ _(149 earlier sections omitted)_
 - **T149 — T-16.7 Localization and i18n**: **State: done.** The shell and first-party apps are translatable and a locale; `libs/i18n/` (new static lib `dragonfruit-i18n`) — `i18n.cpp`/`i18n.h`:
 - **T150 — T-16.8a Crash/kill matrix**: **State: done.** The crash/kill matrix covers every restartable shipped; `services/session/tests/kill_matrix.rs` (5 → 9 tests) — the stand-in plan is
 - **T151 — T-16.8b Compositor-death behavior and restart-policy docs**: **State: done.** Compositor death is documented once as session-ending and the; `services/session/tests/restart_policy_matrix.rs` (new; 3 tests) — the
+- **T151a — T-16.12 Synthetic chrome pointer injection timestamps**: **State: done.** Every chrome surface that re-injects the compositor's pointer; `shell/src/chromepointer.{h,cpp}` (renamed from `dockpointer.*`, still in
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -10172,13 +10172,14 @@ Commands that work (repo root):
 Gotchas for later tasks:
 
 - **Any chrome surface re-injected into an offscreen window must set a nonzero
-  monotonic timestamp** (use `DockPointer`). The same zero-timestamp
-  DragHandler-grab can hit any new handler pair over a `sendEvent` injection;
-  only the Dock uses `DockPointer` today. The other chrome input paths
-  (control center, chooser, screenshot, screencast, polkit, overview, banner,
-  menubar) still build bare `QMouseEvent`s; they have no DragHandler siblings
-  yet, so they are unchanged, but a new DragHandler there would need the same
-  fix.
+  monotonic timestamp** (use `ChromePointer`; `DockPointer` is its
+  compatibility alias). **Resolved across all chrome by T-16.12**: every
+  injection site (menu bar / main, control center, chooser, screenshot,
+  screencast, polkit, overview, banner — and the Dock) now routes through
+  `ChromePointer::send`, and no bare `QMouseEvent` construction remains in the
+  `ShellController` pointer handlers. An earlier revision of this note said the
+  non-Dock paths were unchanged; that is superseded. See the T151a section and
+  ADR 0110's amendment.
 - **The QML test's `DockInject` wrapper is not the controller**, but it calls
   the same `DockPointer::send`; keep the wrapper's button-state bookkeeping in
   sync with `ShellController::m_dockButtons` if the controller's changes.
@@ -14147,3 +14148,71 @@ Decisions / gotchas for later tasks:
   compositor-death by restarting it.
 - **The real-binary `kill -9` drill is still manual/VM** (recorded in
   `docs/captures/t16-kill-matrix.md`); T-17.5a re-verifies a subset.
+
+## T151a — T-16.12 Synthetic chrome pointer injection timestamps
+
+**State: done.** Every chrome surface that re-injects the compositor's pointer
+events into its offscreen QML window now goes through one timestamped helper, so
+the zero-timestamp `DragHandler` grab that killed Dock clicks (T-14.7x) cannot
+recur on the menu bar, Control Center, chooser, screenshot, screencast, polkit,
+overview, or notification banner. The rule in ADR 0110 is now chrome-wide.
+
+Real paths:
+
+- `shell/src/chromepointer.{h,cpp}` (renamed from `dockpointer.*`, still in
+  `dragonfruit-shell-dockcore`) — `ChromePointer::timestamp()` (one shared
+  `QElapsedTimer`, `msecsSinceReference() + 1`, bumped past the previous value)
+  and `ChromePointer::send(window, type, pos, button, buttons)`. `namespace
+  DockPointer = ChromePointer;` is the compatibility alias, so the Dock path and
+  `tst_dock`'s `DockInject` are unchanged.
+- `shell/src/shellcontroller.cpp` — all pointer handlers (menu bar / main,
+  Control Center, chooser, screenshot, screencast, polkit, overview, banner,
+  Dock) call `ChromePointer::send` for move / button / leave, keeping their
+  existing `m_*Buttons` bookkeeping; `#include <QMouseEvent>` removed.
+  `grep -n "QMouseEvent(" shell/src/shellcontroller.cpp` is empty.
+- `shell/tests/tst_chromepointer.cpp` (new unit test) — first timestamp
+  nonzero, strictly increasing across a sequence, every delivered event
+  stamped, null window a no-op.
+- `shell/tests/tst_chromepointerui.{cpp,qml}` (new) — `ChromeInject` context
+  property over the production helper; a stationary injected tap beside a
+  `DragHandler` taps and a slop drag lifts (non-Dock surface, the T110x probe
+  repeated).
+- `shell/tests/tst_dock.cpp` / `tst_dock.qml` — only the include/type name and a
+  comment changed; Dock behavior identical.
+
+Commands that work (repo root; `PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig`,
+`RUSTFLAGS=-L $HOME/.local/df-devroot/lib64`):
+
+- `cmake --build build` — exit 0.
+- `ctest --test-dir build -R "tst_dock$|tst_dockcore|tst_menubar|tst_controlcenter$|tst_controlcenterpolicy|tst_overview|tst_chromepointer"` — 8/8 green.
+- `make qml-test` — 72/72 pass (was 70; the two new tests).
+- `make e2e` — exit 0.
+- `make check` — fails only at `check-desktop-names` on the pre-existing
+  StatusNotifier/zoo/apppicker lines (same as the T110x note); every other
+  component green (`fmt-check`, `clippy`, `check-tokens`, `check-design-tokens`,
+  `check-no-capture-grab`, `check-i18n`, `cargo-test` 143 suites, `visual-test`
+  78 snapshots, `soak` 100 clean cycles).
+- Pre-fix probe: zeroing the timestamp in `chromepointer.cpp` and rebuilding
+  `tst_chromepointerui` yields 3 passed / 1 failed (the stationary tap does not
+  tap); restored green.
+- Live: `make demo` nested + synthetic pointer. Menu-bar status click opened a
+  popover; a Control Center panel click closed the panel and opened Settings >
+  Appearance. Captures `/tmp/opencode/t151cap/*.png`, `/tmp/opencode/t151-post.png`.
+
+Decisions / gotchas for later tasks:
+
+- **One constructor, one timestamp source.** A call site that builds its own
+  `QMouseEvent` is the bug; grep for `QMouseEvent(` in the shell pointer
+  handlers must stay empty. Later chrome input must call `ChromePointer::send`.
+- **The compatibility alias is intentional.** `DockPointer` still resolves to
+  `ChromePointer`; the Dock method names (`onDockPointerMoved/Button/Left`) are
+  unchanged and are not a violation.
+- **Test seam pattern.** A QML injection test wraps `ChromePointer` in a
+  context-property object (`DockInject`, `ChromeInject`) that mirrors the
+  controller's button-state bookkeeping; QtTest's own `mouseClick` stamps its
+  events and hides the bug.
+- **Live tile-click captures have stale geometry.** The existing Control Center
+  capture drivers assume output scale 1.0 and wallpaper-based window detection,
+  but the nested output reports `scale=1.1600` on this host, so fixed switch
+  coordinates miss. Not caused by this change; a driver refresh would key
+  coordinates off the reported scale.
