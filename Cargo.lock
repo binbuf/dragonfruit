@@ -628,6 +628,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "dragonfruit-menubar-adapter"
+version = "0.1.0"
+dependencies = [
+ "dragonfruit-system-adapters",
+]
+
+[[package]]
 name = "dragonfruit-networkmanager"
 version = "0.1.0"
 dependencies = [

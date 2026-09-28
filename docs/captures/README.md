@@ -618,6 +618,14 @@ composited with no blank areas or stray artifacts. Captured by
 `scripts/capture-t15-lock-adapter.sh`; requires a host Wayland session,
 spectacle, and Pillow, and is not in `make e2e`.
 
+`t15-9a-menubar-adapter.png` is the nested demo desktop captured to prove the
+Menu Bar configuration adapter (T-15.9a) leaves the tree healthy. The adapter
+has no surface of its own (the pane and tile are T-15.9b), so the capture only
+confirms the desktop renders: menu bar, Dock, wallpaper, and windows
+composited with no blank areas or stray artifacts. Captured by
+`scripts/capture-t15-menubar-adapter.sh`; requires a host Wayland session,
+spectacle, and Pillow, and is not in `make e2e`.
+
 `t15-8b-lock-screen-pane.png` and `t15-8b-lock-screen-control-center.png` are
 the Lock Screen pane and Control Center tile for T-15.8b. The pane capture
 shows the display/password timing rows (the reused `idle.blank`/`idle.lock`

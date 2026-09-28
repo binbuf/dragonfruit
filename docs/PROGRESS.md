@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(125 earlier sections omitted)_
+_(126 earlier sections omitted)_
 
-- **T110j — T-14.7j Dock Tahoe visual language: floating glass, squircles, states**: **State: done.** The Dock is now a layered floating glass plate with a bright; `design-system/tokens/tokens.json` — semantic colors `dockFill`, `dockRim`,
 - **T110k — T-14.7k Dock folder pins: any folder as a stack**: **State: done.** Any folder can be pinned to the Dock as a stack: a single; `services/settingsd/src/schema.rs` — `dock.pinnedFolders` (`as`, default
 - **T110l — T-14.7l Dock launch-origin tile hand-off**: **State: done.** The Dock now hands the acted-on entry's icon tile to the; `shell/src/dockmodel.{h,cpp}` — `dockLaunchAppId(entry)` (`StartupWMClass`
 - **T110m — T-14.7m Dock window chooser: per-window actions**: **State: done.** Each window row in the Dock's chooser now carries a stateful; `shell/src/shellprotocol.{h,cpp}` — `setToplevelMinimized(windowId, bool)`
@@ -43,6 +42,7 @@ _(125 earlier sections omitted)_
 - **T124 — T-15.7b Notifications and Focus pane and tile**: **State: done.** The Settings Notifications and Focus panes and the Control; `services/system-status/src/notifications.rs` (new) — `NotificationsHost`
 - **T125 — T-15.8a Lock Screen policy adapter**: **State: done.** New workspace crate `dragonfruit-lock-adapter`; `services/lock-adapter/` (new crate, workspace member) —
 - **T126 — T-15.8b Lock Screen policy pane and tile**: **State: done.** The Settings Lock Screen pane and the Control Center Lock; `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 14 → 15; new
+- **T127 — T-15.9a Menu Bar configuration adapter**: **State: done.** New workspace crate `dragonfruit-menubar-adapter`; `services/menubar-adapter/` (new crate, workspace member) —
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3226,6 +3226,14 @@ Gotchas for later tasks:
 
 ## Follow-ups
 
+- **T-15.9a richer clock options and Apple-only controls are not modelled.**
+  `dragonfruit-menubar-adapter` models the two clock options the shell's
+  `MenuBarClock` actually renders (`showDate`, `showSeconds`) and the seven
+  controls whose slots exist in `shell/menubar/MenuBar.qml`. The macOS
+  `Clock Options...` rows (day of week, 24-hour, flashing separators) and the
+  Apple-only `AirDrop`/`Screen Mirroring`/`Display` controls are deliberately
+  omitted rather than shipped as dead controls. Adding a clock option means
+  teaching `MenuBarClock` to render it first, then extending `ClockOption`.
 - **T-15.8b lock-screen display keys are stored policy.** The four `lock.*`
   display keys (revision 15) round-trip live and the Lock Screen pane reflects
   them, but `shell/lock/LockScreen.qml` does not yet read them: it always
@@ -11971,3 +11979,78 @@ Decisions / gotchas for later tasks:
   artifacts. (*Vision read the disabled `Set…` as enabled; the unit test
   `test_set_message_button_gates_on_the_toggle` asserts it is disabled while
   the toggle is off — it renders dimmed.)
+
+## T127 — T-15.9a Menu Bar configuration adapter
+
+**State: done.** New workspace crate `dragonfruit-menubar-adapter`
+(`services/menubar-adapter`) projects the **shell menu bar** and the
+**menu-broker**, not a second bar or menu resolver. The menu bar is
+shell-native (no external daemon), so the adapter faces the state the shell
+already publishes and reuses the T-07 contract, exactly like
+`dragonfruit-overview` and `dragonfruit-lock-adapter` (ADR 0134).
+
+Real paths:
+
+- `services/menubar-adapter/` (new crate, workspace member) —
+  - `src/source.rs` — `MenuBarSource` seam; `MenuBarData` (`hidden`,
+    `auto_hide`, `show_background`, `global_menu`, `clock`, `controls[7]`);
+    `MenuBarControlState` (`ABSENT`/`PRESENT`/`INERT`, `is_visible`/
+    `is_enabled`, default absent); `MockMenuBar`
+    (`absent`/`present`/`failing`/`push`/`kill`/`restart`/`reads`).
+  - `src/model.rs` — `MenuBarAutoHide` (`never`/`always`/`full-screen`,
+    default `full-screen`); `MenuBarControl`
+    (`clock`/`wifi`/`bluetooth`/`battery`/`volume`/`focus`/`accessibility`,
+    ids = shell status-item ids); `ClockOption` (`showDate`/`showSeconds`) +
+    `ClockOptions`; `MenuBarSnapshot` (`from_data`, `is_hidden`,
+    `clock_option`, `control`, `visible_controls`, `label`, `glyph` =
+    `"menu-bar"`); `MenuBarChange` (visibility / auto-hide / background /
+    global-menu / clock option / control slot).
+  - `src/adapter.rs` — `MenuBarAdapter<S>` over the shared `Subscription`
+    lifecycle; `refresh`, `drain_changes`; implements `Adapter` with
+    `AdapterId::MENU_BAR`.
+  - `tests/read_path.rs` — 8 acceptance tests.
+- `services/system-adapters/src/state.rs` — `AdapterId::MENU_BAR`
+  (`"menu-bar"`); id test updated.
+- `Cargo.toml` — workspace member; `Makefile` e2e runs
+  `cargo test -p dragonfruit-menubar-adapter`.
+- Docs — `docs/design/07-system-integration.md` adapter-table row + new "The
+  Menu Bar configuration path (T-15.9a)" section; ADR
+  `0134-menu-bar-configuration-adapter.md`; capture script
+  `scripts/capture-t15-menubar-adapter.sh` + `docs/captures/README.md`.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-menubar-adapter` — 29 lib + 8 read_path green.
+- `cargo test -p dragonfruit-system-adapters` — green.
+- `cargo fmt --all -- --check`; clippy on both crates `--all-targets
+  -D warnings` — clean.
+- `make e2e` — EXIT 0.
+- `make check-design-tokens check-tokens check-no-capture-grab` — clean.
+- `./scripts/check-gallery-snapshots.py` — 78 snapshots green.
+- `make lint` — still fails only on the pre-existing `check-desktop-names`
+  lines (none in the new crate); unchanged from T125/T126.
+
+Decisions / gotchas for T-15.9b and later:
+
+- **Reuse is load-bearing.** The adapter has no dependency beyond the
+  dependency-free adapter contract; it re-models nothing the shell renders.
+  Do not add a second bar model or a menu resolver.
+- **Read-only adapter.** The durable preferences are settingsd's (the keys
+  land in T-15.9b) and the shell applies them live. T-15.9b declares the
+  `menu.*`/clock keys and wires the pane/tile shell-native (T-15.5b /
+  T-15.8b precedent); no write on the adapter.
+- **Control ids are the shell status-item ids.** `MenuBarControl::Sound`
+  carries the audio adapter's id `volume`; `Clock` is `clock`. Use these for
+  the settings key values and the wire.
+- **Per-control absence is not adapter absence.** A missing control daemon is
+  an absent `MenuBarControlState` slot inside an `Available` snapshot (only
+  that slot hides); the whole adapter is `Unavailable` only when the menu-bar
+  bridge is missing.
+- **Not modelled:** richer clock options and Apple-only controls (see
+  `## Follow-ups`); the default `MenuBarData` is a fully-populated bar
+  (`controls = [PRESENT; 7]`).
+- Live visual check: `bash scripts/capture-t15-menubar-adapter.sh` produced
+  `docs/captures/t15-9a-menubar-adapter.png` (3840x2160). No surface of its
+  own, so it confirms only that the nested desktop renders; vision found the
+  menu bar, Dock, wallpaper, and open windows composited with no blank
+  regions, clipping, z-order issues, or stray artifacts.

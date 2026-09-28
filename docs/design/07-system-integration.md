@@ -25,6 +25,7 @@ equivalent) API intended exactly for custom desktop frontends.
 | Mission Control / hot corners | compositor (`df_toplevel_manager`) | Trigger configuration and overview runtime state. Mission Control and hot corners are compositor-native: the compositor detects corners and owns the one overview machine, and the shell learns both over the private bridge. The adapter reuses that path; it is the projection, never a second detector. |
 | Notifications / Focus | notification service | The Focus/DND policy (mode, allow list, suppressed batch) and the active-banner / history state. The service already owns the queue, the history, and the admission rule (ADR [0058](adr/0058-focus-dnd-policy-semantics.md)); the adapter is the projection over its shell-facing JSON views and never reimplements them. |
 | Lock Screen policy | session idle engine + compositor lock | The `idle.*` stage delays the session's idle/lock engine applies ([ADR 0070](adr/0070-idle-timer-engine-and-policy.md)) and the compositor's fail-secure lock state ([ADR 0067](adr/0067-session-lock-protocol-and-ui.md)), mirrored by the shell over `df_toplevel_manager`. The adapter is the projection over the confirmed lock state and the applied policy; it never re-times a stage or re-implements a lock transition, and the display preferences are settingsd-owned. |
+| Menu Bar configuration | shell menu bar + menu-broker | The chrome, status-item model, and clock the shell's `MenuBar` owns, and the global application-menu resolution the menu-broker owns. The adapter is the projection over the effective auto-hide/background/global-menu flags, the clock options, and the live availability of each control; it never re-renders the bar or re-resolves a menu, and the durable preferences are settingsd-owned. |
 | Seat/session | systemd / logind | Session lifetime, `graphical-session.target`, VT management. |
 | Privileged operations | host policy infrastructure | polkit / authentication agent integration; we never roll our own privilege escalation. |
 
@@ -750,6 +751,46 @@ Mission Control (T-15.5b; ADR [0127](adr/0127-mission-control-pane-and-tile.md))
   that is a follow-up (see
   [adr/0133](adr/0133-lock-screen-pane-and-tile.md)); the rows are the capture's
   controls and are not dead.
+
+## The Menu Bar configuration path (T-15.9a)
+
+Menu Bar configuration does not wrap an external daemon either: the shell's
+`MenuBar` (`shell/menubar/MenuBar.qml`) owns the chrome, the status-item model,
+and the clock, and the menu-broker (`services/menu-broker`) resolves the
+focused app's global menu. The adapter (`services/menubar-adapter`,
+`dragonfruit-menubar-adapter`) is therefore a **projection** over that host
+stack, exactly as `dragonfruit-overview` projects the compositor and
+`dragonfruit-lock-adapter` projects the session/compositor pair. See
+[adr/0134](adr/0134-menu-bar-configuration-adapter.md).
+
+- **The read** is `MenuBarData`: whether the bar is hidden by auto-hide, the
+  effective `MenuBarAutoHide` mode (`never`/`always`/`full-screen`), the
+  background and global application-menu flags, the `ClockOptions`
+  (`showDate`/`showSeconds`), and the availability of each `MenuBarControl`
+  (`clock`, `wifi`, `bluetooth`, `battery`, `volume`, `focus`,
+  `accessibility`). `MenuBarSnapshot` types all of it; the control ids are the
+  shell status-item ids, so a projection maps straight onto the status row.
+- **Events** are the shared subscription lifecycle (`AdapterEvent`) plus a pure
+  `MenuBarSnapshot::changes` diff — the runtime hidden flag, the auto-hide
+  mode, the background and global-menu flags, each clock option, each control
+  slot — drained through `drain_changes`.
+- **Per-control absence is not adapter absence.** One control's daemon going
+  away is an absent `MenuBarControlState` slot inside an `Available` snapshot
+  (mirroring `StatusItem`'s `available`/`enabled`), so only that slot hides.
+- **Read-only.** The durable preferences are `settingsd`'s and the shell
+  renders the bar; the adapter has no write method, exactly as
+  `dragonfruit-overview` and `dragonfruit-lock-adapter` have none.
+- **Absence is a normal state.** A missing menu-bar bridge is
+  `AdapterState::Unavailable` and hides the item; a present bridge that cannot
+  be read is `Error`, visible and inert with the message. Neither blocks
+  session startup. `MockMenuBar` drives the states in CI, with
+  `kill`/`restart` for the re-subscribe lifecycle and `push` for the state and
+  configuration stream.
+- **The Linux adaptation.** The Apple-only controls (AirDrop, Screen
+  Mirroring) and the deferred Search/Spotlight entry are omitted; the richer
+  macOS `Clock Options...` rows the shell clock does not yet render are
+  recorded as follow-ups rather than shipped as dead controls. The pane and
+  Control Center tile are T-15.9b.
 
 ## The status bridge host (T-07.5a)
 
