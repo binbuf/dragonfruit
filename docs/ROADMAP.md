@@ -404,7 +404,7 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 
 - [x] T152 — T-17.1a Nested window loop verification → [tasks/152-t-17.1a-nested-window-loop-verification.md](tasks/152-t-17.1a-nested-window-loop-verification.md)
 - [x] T153 — T-17.1b Workspace, Mission Control, and app-switch verification → [tasks/153-t-17.1b-workspace-overview-switcher-verification.md](tasks/153-t-17.1b-workspace-overview-switcher-verification.md)
-- [ ] T154 — T-17.1c Flatpak/browser end-to-end verification → [tasks/154-t-17.1c-flatpak-browser-verification.md](tasks/154-t-17.1c-flatpak-browser-verification.md)
+- [~] T154 — T-17.1c Flatpak/browser end-to-end verification → [tasks/154-t-17.1c-flatpak-browser-verification.md](tasks/154-t-17.1c-flatpak-browser-verification.md) ⟵ running
 - [ ] T155 — T-17.3 Visual floor and reduced-motion sign-off → [tasks/155-t-17.3-visual-floor-and-reduced-motion-sign-off.md](tasks/155-t-17.3-visual-floor-and-reduced-motion-sign-off.md)
 - [ ] T156 — T-17.5a Absent-daemon and crash matrix verification → [tasks/156-t-17.5a-absent-daemon-and-crash-matrix.md](tasks/156-t-17.5a-absent-daemon-and-crash-matrix.md)
 - [ ] T157 — T-17.5b Leak and lock enforcement verification → [tasks/157-t-17.5b-leak-and-lock-enforcement-verification.md](tasks/157-t-17.5b-leak-and-lock-enforcement-verification.md)

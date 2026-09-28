@@ -14348,8 +14348,82 @@ Decisions / gotchas for T-17.1c and T-17.2:
   by `overview_click_selects_and_focuses_the_live_representation`; the pointer
   workspace switch (strip card) *is* live-captured.
 
+## T154 — T-17.1c Flatpak/browser end-to-end verification
+
+**State: done.** A real Flatpak browser (`org.mozilla.firefox`) file-chooses,
+screenshots, and screen-shares on the nested session with the **live shell** as
+the portal presenter, and the nested capture is committed. The verification
+surfaced and fixed one real presenter bug. `make e2e` is green (129
+`test result: ok`) and the live capture was reviewed.
+
+Real paths:
+
+- `scripts/capture-t17-flatpak-browser.sh` + `scripts/t17-flatpak-browser-driver.py`
+  + `scripts/t17-flatpak-flow.py` (new) — a private session bus runs the real
+  `xdg-desktop-portal` frontend with the Dragonfruit backend, `make demo` runs
+  nested with the synthetic-input harness, and the flow client runs *inside*
+  `flatpak run org.mozilla.firefox`. The host driver completes each shell
+  presenter (picker / selection overlay / source picker) by synthetic input and
+  fails unless the client prints `FLOW: RESULT: PASS`. `make
+  t17-flatpak-browser-capture`.
+- `docs/captures/t17-flatpak-browser.{png,mp4,txt}` and the step stills
+  (`-file-choose`, `-file-choose-accepted`, `-screenshot`,
+  `-screenshot-accepted`, `-screen-share`, `-screen-share-accepted`).
+  `t17-flatpak-browser.txt` is the JSON transcript of the client's portal calls
+  and responses.
+- `docs/captures/t17-flatpak-browser.md`,
+  `docs/design/adr/0161-t17-flatpak-browser-capture.md` (new),
+  `docs/captures/README.md`, `docs/design/11-session-and-dev-workflow.md`,
+  `Makefile`.
+- **Product fix**: `shell/src/chooserbridge.cpp` `suggestedUri` now trims the
+  trailing NUL from `current_file`/`current_folder`; `shell/tests/tst_chooser.cpp`
+  pins the real NUL-terminated option.
+
+Commands that work (repo root; `PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig`,
+`RUSTFLAGS=-L $HOME/.local/df-devroot/lib64`):
+
+- `cmake --build build -j` — exit 0.
+- `ctest --test-dir build -R "tst_chooser$|tst_screenshot$|tst_screencast$"` —
+  3/3 passed.
+- `make e2e` — exit 0; 129 `test result: ok`.
+- `make lint` — fails only at `check-desktop-names` (pre-existing
+  StatusNotifier/`org.kde`, `scripts/zoo/zoo-run.sh`, and
+  `scripts/capture-t17-window-loop.sh`); no new file flagged.
+- `make t17-flatpak-browser-capture` (or `bash
+  scripts/capture-t17-flatpak-browser.sh`) — exit 0; all three flows `PASS`.
+- Live visual check: `docs/captures/t17-flatpak-browser*.png` via the vision
+  model — picker with `picked.txt`, region overlay with the badge, and the
+  `Share your screen` card naming the browser + `NESTED-1`; no artifacts.
+
+Decisions / gotchas for T-17.2:
+
+- **Qt's `ay` `current_folder` carries a trailing NUL.** `QFile::decodeName` on
+  a Qt-decoded D-Bus `ay` kept the NUL, so `QUrl::fromLocalFile` produced
+  `…%00` and the listing failed with `Cannot open file:%00.`. Trim trailing
+  NULs (the portal backend's `decode_path_bytes` does the same). The T-13
+  fixture tests missed it because they pass a bare `QByteArray`.
+- **The live shell is the presenter; the browser's response is the proof.**
+  The host stand-in of T-13.7 is replaced by real synthetic input into the
+  shell's picker/overlay/source-picker, and the run asserts the returned
+  file/screenshot URI or stream list.
+- **Diff-calibrate the overlay rect.** The picker and source picker are the
+  only change between a pre-flow baseline still and the mapped still, so the
+  driver recovers their rects (`640x440` at `(640,378)`, `560x460` at
+  `(680,368)`) instead of hard-coding geometry. The screenshot overlay is
+  full-output and driven by a region drag.
+- **KWin/Spectacle use the host session bus.** The demo is on the private
+  portal bus; pin `DBUS_SESSION_BUS_ADDRESS` to the host bus for the
+  active-window raise and `spectacle -a`, or the capture fails silently.
+- **The screen-share stream is the stills fallback** (`df_fallback =
+  pipewire-producer-unavailable`, `id = monitor:NESTED-1`) on this host; the
+  live PipeWire producer is a host capability. The screenshot flow writes one
+  real PNG to `~/Pictures/Screenshots`.
+
 ## Follow-ups
 
+- **Live PipeWire screencast producer.** The ScreenCast portal flow returns the
+  documented stills fallback on this host; a capture with a real PipeWire
+  producer would show a live stream instead (T-17.2/T-13.4b territory).
 - **Stable Mission Control window-card locator.** So a future capture can
   synthesize the pointer selection round-trip; the shell's cards are centered
   title cards, not the compositor's live-surface rects, and the headless

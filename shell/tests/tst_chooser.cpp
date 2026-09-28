@@ -207,7 +207,12 @@ private slots:
         QTRY_VERIFY(bridge.serviceAvailable());
 
         QVariantMap options;
-        options.insert(QStringLiteral("current_folder"), QByteArray(folder.dir.path().toUtf8()));
+        // The real portal carries `current_folder` as a NUL-terminated `ay`;
+        // Qt hands the shell that trailing NUL, which the presenter must trim
+        // (else the URI grows a `%00` and the listing fails).
+        QByteArray folderBytes = folder.dir.path().toUtf8();
+        folderBytes.append('\0');
+        options.insert(QStringLiteral("current_folder"), folderBytes);
         options.insert(QStringLiteral("multiple"), false);
         options.insert(QStringLiteral("directory"), false);
         portal.emitOpened(QStringLiteral("/org/freedesktop/portal/desktop/request/1"),

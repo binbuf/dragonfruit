@@ -850,6 +850,29 @@ headless-pinned) and is recorded as a follow-up. Needs a host Wayland session,
 spectacle, python3+Pillow, ffmpeg (optional clip), and the built tree; not in
 `make e2e`.
 
+T-17.1c's live Flatpak/browser sign-off is produced by
+`scripts/capture-t17-flatpak-browser.sh` (`make t17-flatpak-browser-capture`):
+a private session bus runs the real `xdg-desktop-portal` frontend with the
+Dragonfruit backend, the nested demo runs with the synthetic-input harness, and
+a real Flatpak browser (`org.mozilla.firefox`) is executed *inside its sandbox*
+to issue file-choose (`FileChooser.OpenFile`), screenshot (interactive
+`Screenshot.Screenshot`), and screen-share (`ScreenCast.CreateSession` /
+`SelectSources` / `Start`). The **live shell** presents and answers each
+request (the picker, the selection overlay, the source picker); the driver
+clicks/drags each by synthetic input and the run fails unless the client's
+portal response returns the file URI, the screenshot URI, or the stream list.
+It writes `t17-flatpak-browser.png` (the nested desktop), the step stills
+`-file-choose`, `-file-choose-accepted`, `-screenshot`, `-screenshot-accepted`,
+`-screen-share`, `-screen-share-accepted`, the clip
+`t17-flatpak-browser.mp4`, and the machine transcript
+`t17-flatpak-browser.txt` (the client's portal calls and responses). The
+harness and its evidence boundary are
+[ADR 0161](../design/adr/0161-t17-flatpak-browser-capture.md); the review notes
+are in `t17-flatpak-browser.md`. Needs Flatpak + Firefox,
+`/usr/libexec/xdg-desktop-portal`, a host Wayland session, spectacle,
+python3 (host and sandbox) with PyGObject/Pillow, ffmpeg (optional clip), and
+the built tree; not in `make e2e`.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

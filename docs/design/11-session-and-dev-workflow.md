@@ -128,6 +128,17 @@ wallpaper`/`query switcher`. The stills, clip, and machine transcript land
 under `docs/captures/t17-navigation.*`; the harness and its evidence boundary
 are [ADR 0160](adr/0160-t17-navigation-capture.md).
 
+`scripts/capture-t17-flatpak-browser.sh` (`make
+t17-flatpak-browser-capture`) is the T-17.1c verification capture: a private
+session bus runs the real `xdg-desktop-portal` frontend with the Dragonfruit
+backend and a real Flatpak browser (`org.mozilla.firefox`) is executed *inside
+its sandbox* against the nested session, with the **live shell** as the portal
+presenter. The driver completes file-choose, screenshot, and screen-share by
+synthetic input and the run fails unless the client's portal response returns a
+file URI, a screenshot URI, or a stream list. The stills, clip, and machine
+transcript land under `docs/captures/t17-flatpak-browser.*`; the harness and its
+evidence boundary are [ADR 0161](adr/0161-t17-flatpak-browser-capture.md).
+
 ### Tracing a pane switch
 
 To find where a Settings pane switch spends its time, run the nested demo with
