@@ -7,6 +7,7 @@
 
 #include <QObject>
 #include <QHash>
+#include <QRect>
 #include <QSet>
 #include <QSize>
 #include <QString>
@@ -896,6 +897,11 @@ private:
     int m_dockPopoverWidth = 0;
     int m_dockPopoverHeight = 0;
     bool m_dockPopoverMapped = false;
+    // The last integer plate panel committed to the compositor (T-14.7z).
+    // `setDockPanelRect` is called only when this changes, so the declared
+    // backdrop cannot ping-pong by a pixel during a smooth plate animation.
+    QRect m_dockPanelRect;
+    bool m_dockPanelRectValid = false;
     // Scene-graph frame gates (FR-14): the Dock and menu-bar windows commit
     // from `afterRendering`, and the gate suppresses the re-entrant frame the
     // `grabWindow()` readback itself produces.

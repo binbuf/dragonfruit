@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 import QtQuick
+import QtQuick.Shapes
 import Dragonfruit
 
 // The Dock (T-10): a persistent chrome surface that projects compositor and
@@ -3018,6 +3019,43 @@ Rectangle {
         return { x: left, y: pyv, w: leftRight - left, h: ph };
     }
 
+    // The plate's rounded edge snapped to the integer pixel grid (T-14.7z).
+    // The QML plate draws this rect and the shell declares the same rect to the
+    // compositor as the backdrop panel, so the translucent fill and the frost
+    // share one rounded edge instead of two independently rasterized ones (no
+    // 1 px fringe as the plate grows). Each edge is snapped on its own so the
+    // anchored edge never wobbles when the magnify edge moves by a fraction.
+    readonly property var panelRect: {
+        var r = plateRect;
+        var left = Math.round(r.x);
+        var top = Math.round(r.y);
+        var right = Math.round(r.x + r.w);
+        var bottom = Math.round(r.y + r.h);
+        return { x: left, y: top,
+                 w: Math.max(0, right - left), h: Math.max(0, bottom - top) };
+    }
+
+    // The interior-edge rim outline as an SVG path for the plate's rounded
+    // rectangle, inset by half the stroke so every rim pixel lies inside the
+    // plate shape (T-14.7z). The path traces the flat interior edge and both
+    // interior corner arcs, so the highlight follows the curve instead of
+    // poking a straight hairline across the corner. `w`/`h` are the already
+    // inset box (the Shape's own size).
+    function rimOutlinePath(w, h) {
+        var d = Theme.controls.dock.plate.rimHeight / 2;
+        var r = Math.max(0, Theme.controls.dock.radius - d);
+        if (position === "right")
+            return "M " + r + " 0 A " + r + " " + r + " 0 0 0 0 " + r
+                 + " L 0 " + (h - r) + " A " + r + " " + r + " 0 0 0 " + r + " " + h;
+        if (position === "left")
+            return "M " + (w - r) + " 0 A " + r + " " + r + " 0 0 1 " + w + " " + r
+                 + " L " + w + " " + (h - r) + " A " + r + " " + r + " 0 0 1 "
+                 + (w - r) + " " + h;
+        // bottom (default): the interior edge is the top.
+        return "M 0 " + r + " A " + r + " " + r + " 0 0 1 " + r + " 0"
+             + " L " + (w - r) + " 0 A " + r + " " + r + " 0 0 1 " + w + " " + r;
+    }
+
     // The surface input region: the visible bar plus the currently magnified
     // or bouncing icon rectangles. The transparent magnified band passes
     // clicks through to the windows beneath. A hidden auto-hide Dock keeps
@@ -3056,24 +3094,23 @@ Rectangle {
         id: dockPlate
         objectName: "dockPlate"
 
-        readonly property bool horizontal: dock.axisIsX
         // The plate's origin inside this group (the group is the plate plus
-        // the edge room the shadow may use).
-        readonly property real plateX: dock.plateRect.x - x
-        readonly property real plateY: dock.plateRect.y - y
-        readonly property real plateW: dock.plateRect.w
-        readonly property real plateH: dock.plateRect.h
+        // the edge room the shadow may use). The group draws the integer
+        // `panelRect`, the same rounded rect the shell declares to the
+        // compositor, so the fill and the frost share one edge (T-14.7z).
+        readonly property real plateX: dock.panelRect.x - x
+        readonly property real plateY: dock.panelRect.y - y
+        readonly property real plateW: dock.panelRect.w
+        readonly property real plateH: dock.panelRect.h
         readonly property real plateRadius: Theme.controls.dock.radius
-        readonly property real rimInset: plateRadius * 0.6
-        readonly property real rimThickness: Theme.controls.dock.plate.rimHeight
 
-        x: dock.axisIsX || dock.position === "right" ? dock.plateRect.x : 0
-        y: dock.plateRect.y
-        width: dock.axisIsX ? dock.plateRect.w
-               : dock.position === "right" ? dock.width - dock.plateRect.x
-               : dock.plateRect.x + dock.plateRect.w
-        height: dock.axisIsX ? Math.max(0, dock.height - dock.plateRect.y)
-                             : dock.plateRect.h
+        x: dock.axisIsX || dock.position === "right" ? dock.panelRect.x : 0
+        y: dock.panelRect.y
+        width: dock.axisIsX ? dock.panelRect.w
+               : dock.position === "right" ? dock.width - dock.panelRect.x
+               : dock.panelRect.x + dock.panelRect.w
+        height: dock.axisIsX ? Math.max(0, dock.height - dock.panelRect.y)
+                             : dock.panelRect.h
         clip: true
 
         Shadow {
@@ -3099,27 +3136,31 @@ Rectangle {
             opacity: Theme.controls.dock.plate.fillOpacity
         }
 
-        // The bright inner highlight: a short hairline inset from the rounded
-        // corners so it reads as a glass rim, not a lid.
-        Rectangle {
+        // The bright inner highlight: a stroked path along the interior edge
+        // that follows the plate's corner arcs instead of a straight hairline
+        // poking into them (T-14.7z). It is inset by half the stroke so every
+        // rim pixel lies inside the plate shape. Only the interior edge is
+        // traced: the top for a bottom Dock, the interior side for a vertical
+        // one.
+        Shape {
+            id: dockRim
             objectName: "dockRim"
-            x: dockPlate.horizontal
-               ? dockPlate.plateX + dockPlate.rimInset
-               : (dock.position === "left"
-                  ? dockPlate.plateX + dockPlate.plateW - dockPlate.rimThickness
-                  : dockPlate.plateX)
-            y: dockPlate.horizontal
-               ? dockPlate.plateY
-               : dockPlate.plateY + dockPlate.rimInset
-            width: dockPlate.horizontal
-                   ? Math.max(0, dockPlate.plateW - 2 * dockPlate.rimInset)
-                   : dockPlate.rimThickness
-            height: dockPlate.horizontal
-                    ? dockPlate.rimThickness
-                    : Math.max(0, dockPlate.plateH - 2 * dockPlate.rimInset)
-            radius: dockPlate.rimThickness / 2
-            color: Theme.color.dockRim
+            readonly property real inset: Theme.controls.dock.plate.rimHeight / 2
+            x: dockPlate.plateX + inset
+            y: dockPlate.plateY + inset
+            width: Math.max(0, dockPlate.plateW - 2 * inset)
+            height: Math.max(0, dockPlate.plateH - 2 * inset)
+            preferredRendererType: Shape.GeometryRenderer
+            antialiasing: true
             opacity: Theme.controls.dock.plate.rimOpacity
+            ShapePath {
+                objectName: "dockRimStroke"
+                strokeColor: Theme.color.dockRim
+                strokeWidth: Theme.controls.dock.plate.rimHeight
+                fillColor: "transparent"
+                capStyle: ShapePath.FlatCap
+                PathSvg { path: dock.rimOutlinePath(dockRim.width, dockRim.height) }
+            }
         }
 
         // The hairline border around the whole plate.
