@@ -147,6 +147,8 @@ QtObject {
             readonly property color dockHoverFill: "#786a84"
             readonly property color dockDivider: "#9c8fa8"
             readonly property color dockIndicator: "#1d1723"
+            readonly property color skeletonBase: "#ded6e5"
+            readonly property color skeletonHighlight: "#f8f6fa"
         }
         readonly property var material: QtObject {
             readonly property real chromeOpacity: 0.82
@@ -207,6 +209,8 @@ QtObject {
             readonly property color dockHoverFill: "#c3b8cc"
             readonly property color dockDivider: "#786a84"
             readonly property color dockIndicator: "#f8f6fa"
+            readonly property color skeletonBase: "#2d2534"
+            readonly property color skeletonHighlight: "#44394d"
         }
         readonly property var material: QtObject {
             readonly property real chromeOpacity: 0.72
@@ -548,6 +552,12 @@ QtObject {
             readonly property int trackRadius: 999
             readonly property int fontSize: 13
         }
+        readonly property var skeleton: QtObject {
+            readonly property int radius: 10
+            readonly property int width: 120
+            readonly property int height: 72
+            readonly property real highlightRatio: 0.4
+        }
     }
 
     readonly property var motion: QtObject {
@@ -640,6 +650,11 @@ QtObject {
             readonly property int fullDuration: 160
             readonly property int duration: tokens.reducedMotion ? 0 : 160
             readonly property var curve: [0.2, 0.0, 0.0, 1.0, 1.0, 1.0]
+        }
+        readonly property QtObject skeleton: QtObject {
+            readonly property int fullDuration: 400
+            readonly property int duration: tokens.reducedMotion ? 0 : 400
+            readonly property var curve: [0.4, 0.0, 0.6, 1.0, 1.0, 1.0]
         }
     }
 }
