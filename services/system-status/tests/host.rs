@@ -52,6 +52,7 @@ fn audio_data(volume: f32, muted: bool) -> AudioData {
             volume,
             muted,
         }],
+        ..AudioData::default()
     }
 }
 

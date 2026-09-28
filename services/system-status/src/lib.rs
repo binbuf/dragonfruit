@@ -421,6 +421,7 @@ mod tests {
                 volume: 0.6,
                 muted: false,
             }],
+            ..AudioData::default()
         }
     }
 
