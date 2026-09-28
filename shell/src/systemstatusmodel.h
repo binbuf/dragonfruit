@@ -31,6 +31,7 @@ public:
     QVariantMap storage() const { return m_storage; }
     QVariantMap input() const { return m_input; }
     QVariantMap updates() const { return m_updates; }
+    QVariantMap accounts() const { return m_accounts; }
 
     // Whether the item is drawn at all (`state != "unavailable"`; the battery
     // also hides when the machine has no present battery).
@@ -41,6 +42,7 @@ public:
     bool storageVisible() const;
     bool inputVisible() const;
     bool updatesVisible() const;
+    bool accountsVisible() const;
 
     // Decode a host `State()` payload (JSON object). Returns the normalized
     // map; an empty map on a parse failure, with `error` set when non-null.
@@ -61,6 +63,7 @@ public slots:
     void applyStorage(const QVariantMap &view);
     void applyInput(const QVariantMap &view);
     void applyUpdates(const QVariantMap &view);
+    void applyAccounts(const QVariantMap &view);
     void applyWifiJson(const QByteArray &json);
     void applyAudioJson(const QByteArray &json);
     void applyBatteryJson(const QByteArray &json);
@@ -68,6 +71,7 @@ public slots:
     void applyStorageJson(const QByteArray &json);
     void applyInputJson(const QByteArray &json);
     void applyUpdatesJson(const QByteArray &json);
+    void applyAccountsJson(const QByteArray &json);
 
     // User gestures from the popovers; the controller forwards each to the
     // bridge host. They do not mutate the view (the host re-read is the only
@@ -87,6 +91,8 @@ public slots:
     void requestCheckUpdates();
     void requestInstallUpdates();
     void requestRebootUpdates();
+    // Users and Groups is a read-only summary: refresh only, no write.
+    void requestRefreshAccounts();
 
 signals:
     void changed();
@@ -103,6 +109,7 @@ signals:
     void checkUpdatesRequested();
     void installUpdatesRequested();
     void rebootUpdatesRequested();
+    void refreshAccountsRequested();
 
 private:
     static QVariantMap normalize(const QVariantMap &view, const QString &kind);
@@ -113,4 +120,5 @@ private:
     QVariantMap m_storage;
     QVariantMap m_input;
     QVariantMap m_updates;
+    QVariantMap m_accounts;
 };

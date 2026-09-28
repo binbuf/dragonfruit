@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "SettingsBridge.h"
 
+#include "AccountsClient.h"
 #include "BatteryClient.h"
 #include "BluetoothClient.h"
 #include "InputClient.h"
@@ -184,6 +185,16 @@ SettingsBridge::SettingsBridge(QObject *parent)
     connect(m_updates, &UpdatesClient::availableChanged, this,
             [this](bool) { emit updatesChanged(); });
 
+    // T-15.11b: the Users & Groups seam, selected the same way.
+    if (qEnvironmentVariableIsSet("DF_ACCOUNTS_FIXTURE"))
+        m_accounts = new MockAccountsClient(this);
+    else
+        m_accounts = new DbusAccountsClient(this);
+    connect(m_accounts, &AccountsClient::changed, this,
+            [this](const QVariantMap &) { emit accountsChanged(); });
+    connect(m_accounts, &AccountsClient::availableChanged, this,
+            [this](bool) { emit accountsChanged(); });
+
     buildWallpaperPresets();
     connectPortalWatcher();
     m_wallpaperFixture = qEnvironmentVariableIsSet("DF_WALLPAPER_FIXTURE");
@@ -286,6 +297,16 @@ QVariantMap SettingsBridge::updates() const
 bool SettingsBridge::updatesAvailable() const
 {
     return m_updates && m_updates->available();
+}
+
+QVariantMap SettingsBridge::accounts() const
+{
+    return m_accounts ? m_accounts->view() : QVariantMap();
+}
+
+bool SettingsBridge::accountsAvailable() const
+{
+    return m_accounts && m_accounts->available();
 }
 
 QString SettingsBridge::providerStatus() const
@@ -701,6 +722,67 @@ void SettingsBridge::resetUpdatesFixture()
 {
     if (m_updates)
         m_updates->resetForTest();
+}
+
+void SettingsBridge::refreshAccounts()
+{
+    if (m_accounts)
+        m_accounts->refresh();
+}
+
+void SettingsBridge::createAccount(const QString &userName, const QString &realName,
+                                   const QString &accountType)
+{
+    if (m_accounts && !userName.trimmed().isEmpty())
+        m_accounts->createUser(userName, realName, accountType);
+}
+
+void SettingsBridge::deleteAccount(int uid)
+{
+    if (m_accounts)
+        m_accounts->deleteUser(uid);
+}
+
+void SettingsBridge::setAccountType(int uid, const QString &accountType)
+{
+    if (m_accounts && !accountType.isEmpty())
+        m_accounts->setAccountType(uid, accountType);
+}
+
+void SettingsBridge::setAccountLocked(int uid, bool locked)
+{
+    if (m_accounts)
+        m_accounts->setLocked(uid, locked);
+}
+
+void SettingsBridge::setAccountAutomaticLogin(int uid, bool automaticLogin)
+{
+    if (m_accounts)
+        m_accounts->setAutomaticLogin(uid, automaticLogin);
+}
+
+void SettingsBridge::createAccountGroup(const QString &name)
+{
+    if (m_accounts && !name.trimmed().isEmpty())
+        m_accounts->createGroup(name);
+}
+
+void SettingsBridge::deleteAccountGroup(const QString &name)
+{
+    if (m_accounts && !name.isEmpty())
+        m_accounts->deleteGroup(name);
+}
+
+void SettingsBridge::setAccountGroupMembers(const QString &name, const QStringList &members)
+{
+    if (m_accounts && !name.isEmpty())
+        m_accounts->setGroupMembers(name, members);
+}
+
+void SettingsBridge::resetAccountsFixture()
+{
+    if (m_accounts)
+        m_accounts->resetForTest();
 }
 
 void SettingsBridge::setWallpaperFixture(const QString &status)

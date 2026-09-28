@@ -981,6 +981,44 @@ never a second package manager. See
   [adr/0122](adr/0122-tahoe-interface-language-across-chrome.md). The pane and
   Control Center tile are T-15.11b.
 
+### The Users & Groups pane and tile (T-15.11b)
+
+The Settings pane and the Control Center tile ship as one functional unit over
+the T-15.11a adapter, through the bridge host (ADR
+[0139](adr/0139-users-groups-pane-and-tile.md)) rather than by linking the Rust
+crate into the app.
+
+- **The bridge host grows an `Accounts` interface.** `AccountsHost<HostAccounts>`
+  projects the typed `AccountsSnapshot` to one flat `accounts` view — the
+  ordered users (display name, initial, account type, locked, system,
+  automatic-login), the groups (name, member count, members, system), the human/
+  admin/locked counts, the automatic-login user, and `groupsAvailable` — and
+  exposes the five account writes and three group writes. Each write returns an
+  `applied`/`denied`/`absent`/`failed` report and the host re-reads; no snapshot
+  is invented.
+- **No settingsd keys.** Users and groups are host state, not durable
+  presentation preferences. The pane's read-only fields are reads and its
+  controls are explicit actions; the tile is read-only.
+- **Absence is layered.** The view is `unavailable` only when neither
+  AccountsService nor the group provider is reachable; a host with no group
+  provider is `available` with `groupsAvailable: false`, so only the group
+  controls disable and the user list stays live. The pane shows a one-line
+  absence note (and a separate note when only the provider is missing); the
+  tile hides on `unavailable`.
+- **The Linux adaptation of the reference.** The Apple Account/iCloud rows,
+  Touch ID, and the FileVault helper text are dropped or adapted per
+  [adr/0122](adr/0122-tahoe-interface-language-across-chrome.md);
+  `Network account server` is dropped (no directory provider, and a disabled
+  `Edit…` would be a dead control). `Add User…`/`Add Group…` open dialogs that
+  perform the explicit writes; each user/group info button opens a dialog that
+  edits the account type, disabled state, and automatic login (or group
+  membership) and can delete the account/group.
+- **The Control Center tile fits without a scroll.** A fourteenth tile needed
+  the panel's per-tile vertical padding compacted from `xs` to `xxs`; a
+  scrolling panel was rejected because the compositor forwards no pointer-axis
+  events (`ShellProtocol::onPointerAxis` is a no-op), so the scroll would be
+  unreachable in a real session. A fifteenth tile needs a taller nested output.
+
 ## The status bridge host (T-07.5a)
 
 The adapters are Rust crates; the menu bar is C++/QML. T-07.5a bridges them in
@@ -1008,6 +1046,10 @@ NetworkManager, audio, and power adapters and serves
 - `org.dragonfruit.SystemStatus1.Updates` (T-15.10b) — `State()`/`Refresh()`
   plus `Check()`, `Install()`, and `Reboot()` (the General/Software Update
   pane's writes over the host-stack adapter).
+- `org.dragonfruit.SystemStatus1.Accounts` (T-15.11b) — `State()`/`Refresh()`
+  plus `CreateUser`, `DeleteUser`, `SetAccountType`, `SetLocked`,
+  `SetAutomaticLogin`, `CreateGroup`, `DeleteGroup`, and `SetGroupMembers`
+  (the Users & Groups pane's writes over the host-stack adapter).
 
 The host core (`StatusHost`) is adapter-only and CI-tested with the mocks; the
 D-Bus layer is a thin mechanical wrapper. The shell decodes the JSON in one

@@ -488,6 +488,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             &ShellController::onInputState);
     connect(m_statusClient, &SystemStatusClient::updatesState, this,
             &ShellController::onUpdatesState);
+    connect(m_statusClient, &SystemStatusClient::accountsState, this,
+            &ShellController::onAccountsState);
     connect(m_statusClient, &SystemStatusClient::joinReport, this,
             &ShellController::onStatusReport);
     connect(m_statusClient, &SystemStatusClient::writeReport, this,
@@ -511,6 +513,7 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     m_statusClient->refreshStorage();
     m_statusClient->refreshInput();
     m_statusClient->refreshUpdates();
+    m_statusClient->refreshAccounts();
 
     // T-14.3: StatusNotifier tray items. app-index owns the watcher; the shell
     // reads its live item view and re-reads on a short timer (a tray app can
@@ -857,6 +860,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onUpdatesRebootRequested()));
     connect(controlCenterObject, SIGNAL(updatesSettingsRequested()), this,
             SLOT(onUpdatesSettingsRequested()));
+    connect(controlCenterObject, SIGNAL(usersSettingsRequested()), this,
+            SLOT(onUsersSettingsRequested()));
     connect(controlCenterObject, SIGNAL(focusToggleRequested(bool)), this,
             SLOT(onFocusToggleRequested(bool)));
     connect(controlCenterObject, SIGNAL(focusSettingsRequested()), this,
@@ -1876,6 +1881,12 @@ void ShellController::onUpdatesState(const QByteArray &json)
         m_statusModel->applyUpdatesJson(json);
 }
 
+void ShellController::onAccountsState(const QByteArray &json)
+{
+    if (m_statusModel)
+        m_statusModel->applyAccountsJson(json);
+}
+
 void ShellController::onStatusReport(const QByteArray &json)
 {
     qInfo() << "shell: system-status action:" << SystemStatusModel::outcomeOf(json);
@@ -1889,6 +1900,7 @@ void ShellController::onStatusReport(const QByteArray &json)
         m_statusClient->refreshStorage();
         m_statusClient->refreshInput();
         m_statusClient->refreshUpdates();
+        m_statusClient->refreshAccounts();
     }
 }
 
@@ -2060,6 +2072,9 @@ void ShellController::applyControlCenterData()
     // General/About/Updates (T-15.10b): the tile reflects the bridge host's
     // host-stack view (the same view the Settings General pane reads).
     const QVariantMap updates = m_statusModel ? m_statusModel->updates() : QVariantMap();
+    // Users and Groups (T-15.11b): the tile reflects the bridge host's
+    // AccountsService/distro-group view (the same view the Settings pane reads).
+    const QVariantMap accounts = m_statusModel ? m_statusModel->accounts() : QVariantMap();
     // Mission Control and hot corners are compositor-native: the shell owns the
     // compositor mirror and the settingsd values, so it projects the tile's
     // summary locally (T-15.5b) instead of reading a services-layer host.
@@ -2081,6 +2096,7 @@ void ShellController::applyControlCenterData()
     m_controlCenterItem->setProperty("input", input);
     m_controlCenterItem->setProperty("battery", battery);
     m_controlCenterItem->setProperty("updates", updates);
+    m_controlCenterItem->setProperty("accounts", accounts);
     m_controlCenterItem->setProperty("missionControl", missionControl);
     m_controlCenterItem->setProperty("lockPolicy", lockPolicy);
     m_controlCenterItem->setProperty("menuBar", menuBar);
@@ -2312,6 +2328,13 @@ void ShellController::onUpdatesSettingsRequested()
     // Launching Settings on the General pane is T-16; the entry point is wired
     // and logs until then.
     qInfo() << "shell: General Settings requested (T-16)";
+}
+
+void ShellController::onUsersSettingsRequested()
+{
+    // Launching Settings on the Users & Groups pane is T-16; the entry point is
+    // wired and logs until then.
+    qInfo() << "shell: Users & Groups Settings requested (T-16)";
 }
 
 void ShellController::onFocusToggleRequested(bool enabled)

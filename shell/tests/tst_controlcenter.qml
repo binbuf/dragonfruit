@@ -37,6 +37,7 @@ Item {
         SignalSpy { id: updatesInstallSpy; signalName: "updatesInstallRequested" }
         SignalSpy { id: updatesRebootSpy; signalName: "updatesRebootRequested" }
         SignalSpy { id: updatesSettingsSpy; signalName: "updatesSettingsRequested" }
+        SignalSpy { id: usersSettingsSpy; signalName: "usersSettingsRequested" }
         SignalSpy { id: focusSpy; signalName: "focusToggleRequested" }
         SignalSpy { id: darkSpy; signalName: "darkModeToggleRequested" }
         SignalSpy { id: closedSpy; signalName: "closed" }
@@ -210,8 +211,6 @@ Item {
             };
         }
 
-        // The shell-projected Menu Bar summary (T-15.9b), shaped by
-        // `controlcenterpolicy.cpp`'s `menuBarView`.
         function updatesModel(label, phase, count) {
             return {
                 kind: "updates",
@@ -225,6 +224,30 @@ Item {
                 busy: false,
                 rebootRequired: phase === "reboot-required",
                 updateCount: count !== undefined ? count : 1
+            };
+        }
+
+        // The shell's decoded Users and Groups view (T-15.11b), shaped by
+        // `SystemStatusModel`.
+        function usersModel(label, humanCount, adminCount) {
+            return {
+                kind: "accounts",
+                state: "available",
+                visible: true,
+                enabled: true,
+                glyph: "users",
+                label: label !== undefined ? label : "2 Users",
+                present: true,
+                humanCount: humanCount !== undefined ? humanCount : 2,
+                adminCount: adminCount !== undefined ? adminCount : 1,
+                lockedCount: 1,
+                groupsAvailable: true,
+                groupCount: 1,
+                automaticLogin: "Dan Doe",
+                automaticLoginUser: "dan",
+                automaticLoginUid: 1000,
+                users: [],
+                groups: []
             };
         }
 
@@ -271,11 +294,12 @@ Item {
                 lockPolicy: lockPolicyModel(600),
                 menuBar: menuBarModel("full-screen"),
                 updates: updatesModel("1 Update Available", "available", 1),
+                accounts: usersModel("2 Users", 2, 1),
                 brightness: 0.8,
                 focusPolicy: focusModel("off"),
                 dark: true
             });
-            compare(panel.tiles.length, 13);
+            compare(panel.tiles.length, 14);
             compare(panel.tiles[0].id, "wifi");
             compare(panel.tiles[0].kind, "toggle");
             compare(panel.tiles[0].checked, true);
@@ -311,6 +335,9 @@ Item {
             compare(panel.tiles[12].id, "software-update");
             compare(panel.tiles[12].kind, "info");
             compare(panel.tiles[12].subtitle, "1 Update Available");
+            compare(panel.tiles[13].id, "users");
+            compare(panel.tiles[13].kind, "info");
+            compare(panel.tiles[13].subtitle, "2 Users");
             compare(panel.wifiLabel, "home");
         }
 
@@ -319,8 +346,9 @@ Item {
             // (kControlCenterWidth/Height). With the Bluetooth tile's device
             // rows, the Storage tile, the Sound tile's routing subtitle, the
             // Keyboard tile, the Mission Control tile, the Battery tile, the
-            // Lock Screen tile, and the Menu Bar tile the content must still
-            // fit, or the lower tiles are clipped.
+            // Lock Screen tile, the Menu Bar tile, the Software Update tile, and the
+            // Users tile the content must still fit, or the lower tiles are
+            // clipped.
             var panel = make({
                 wifi: wifiModel("available", true, "home"),
                 bluetooth: bluetoothModel("available", true, true, false,
@@ -337,6 +365,7 @@ Item {
 lockPolicy: lockPolicyModel(600),
                 menuBar: menuBarModel("full-screen"),
                 updates: updatesModel("1 Update Available", "available", 1),
+                accounts: usersModel("2 Users", 2, 1),
                 brightness: 1.0,
                 focusPolicy: focusModel("off"),
                 dark: false
@@ -733,6 +762,50 @@ lockPolicy: lockPolicyModel(600),
             compare(link.Accessible.name, "Open General Settings");
             mouseClick(link, link.width / 2, link.height / 2);
             compare(updatesSettingsSpy.count, 1);
+        }
+
+        function test_users_tile_reflects_state() {
+            var panel = make({ accounts: usersModel("2 Users", 2, 1) });
+            compare(panel.accountsAvailable, true);
+            compare(panel.accountsHumanCount, 2);
+            compare(panel.accountsAdminCount, 1);
+            compare(panel.accountsGlyph, "users");
+            compare(panel.accountsLabel, "2 Users");
+            compare(panel.tiles[13].visible, true);
+            compare(panel.tiles[13].enabled, true);
+
+            // A host with no group provider keeps the tile visible: the user
+            // list is still live.
+            panel.accounts = { kind: "accounts", state: "available", visible: true,
+                               enabled: true, groupsAvailable: false,
+                               label: "1 User", humanCount: 1, adminCount: 0 };
+            compare(panel.accountsAvailable, true);
+            compare(panel.accountsLabel, "1 User");
+
+            // No host at all hides the tile.
+            panel.accounts = ({});
+            compare(panel.accountsAvailable, false);
+            compare(panel.tiles[13].visible, false);
+        }
+
+        function test_users_tile_hides_on_absence() {
+            var panel = make({ accounts: ({ state: "unavailable" }) });
+            compare(panel.accountsAvailable, false);
+            var tile = findChild(panel, "usersTile");
+            verify(tile !== null);
+            compare(tile.visible, false);
+        }
+
+        function test_users_settings_link_raises_the_request() {
+            var panel = make({ accounts: usersModel("2 Users", 2, 1) });
+            usersSettingsSpy.target = panel;
+            usersSettingsSpy.clear();
+            var link = findChild(panel, "usersSettingsLink");
+            verify(link !== null, "the Users & Groups Settings link is present");
+            compare(link.Accessible.role, Accessible.Button);
+            compare(link.Accessible.name, "Open Users & Groups Settings");
+            mouseClick(link, link.width / 2, link.height / 2);
+            compare(usersSettingsSpy.count, 1);
         }
 
         function test_battery_settings_link_raises_the_request() {

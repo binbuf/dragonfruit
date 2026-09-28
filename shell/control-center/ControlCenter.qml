@@ -64,6 +64,13 @@ Item {
     // glyph, label, phase, busy, rebootRequired, updateCount, updates }`. The
     // tile stays visible whenever the host answers; empty hides it.
     property var updates: ({})
+    // The Users and Groups view from the bridge host (T-15.11b), shaped by
+    // `SystemStatusModel`: `{ state, glyph, label, present, humanCount,
+    // adminCount, lockedCount, groupsAvailable, automaticLogin, users,
+    // groups }`. The tile stays visible whenever the host answers; empty hides
+    // it. It is a read-only summary; the Settings link opens the pane where the
+    // account/group writes live.
+    property var accounts: ({})
     property real brightness: 1.0
     // The notification service's Focus/DND policy view
     // (`{mode, allowList, batchedCount}`); empty when the service is absent.
@@ -275,6 +282,26 @@ Item {
         return qsTr("Check for Updates");
     }
 
+    // Users and Groups (T-15.11b): the tile reflects the bridge host's
+    // AccountsService/distro-group view. It stays visible whenever the host
+    // answers (an absent group provider does not hide it); the subtitle is the
+    // live user count; the link opens the Users & Groups pane.
+    readonly property bool accountsAvailable: root.accounts.state === "available"
+    readonly property int accountsHumanCount:
+        root.accounts.humanCount !== undefined ? Number(root.accounts.humanCount) : 0
+    readonly property int accountsAdminCount:
+        root.accounts.adminCount !== undefined ? Number(root.accounts.adminCount) : 0
+    readonly property string accountsGlyph:
+        root.accounts.glyph !== undefined ? String(root.accounts.glyph) : "users"
+    readonly property string accountsLabel: {
+        if (!root.accountsAvailable)
+            return qsTr("Unavailable");
+        if (root.accounts.label !== undefined && root.accounts.label !== "")
+            return root.accounts.label;
+        return root.accountsHumanCount > 0
+            ? qsTr("%1 Users").arg(root.accountsHumanCount) : qsTr("No Users");
+    }
+
     // The notification service's mode (`off`/`focus`/`dnd`). The toggle is Do
     // Not Disturb: `focus` also lights it, because both suppress banners.
     readonly property string focusMode: root.focusPolicy.mode !== undefined
@@ -414,6 +441,14 @@ Item {
             subtitle: root.updatesLabel,
             visible: root.updatesAvailable,
             enabled: root.updatesAvailable
+        },
+        {
+            id: "users",
+            kind: "info",
+            title: qsTr("Users"),
+            subtitle: root.accountsLabel,
+            visible: root.accountsAvailable,
+            enabled: root.accountsAvailable
         }
     ]
 
@@ -471,6 +506,9 @@ Item {
     signal updatesInstallRequested()
     signal updatesRebootRequested()
     signal updatesSettingsRequested()
+    // The Users tile (T-15.11b) is a read-only summary; the link opens the
+    // Users & Groups pane where the account and group writes live.
+    signal usersSettingsRequested()
 
     // Apply a volume fraction (0..1) and raise the request.
     function setVolume(fraction) {
@@ -582,9 +620,11 @@ Item {
             objectName: "controlCenterContent"
             anchors.fill: parent
             anchors.margins: Theme.primitive.spacing.md
-            // The panel now carries twelve tiles (T-15.9b); the gap is the
-            // compact `xs` step so the content fits the fixed 360x1160 surface
-            // (the nested output leaves 1164 px below the bar).
+            // The panel now carries fourteen tiles (T-15.11b). Every tile's
+            // vertical padding is the compact `xxs` step and the gap is `xs`,
+            // so the content still fits the fixed 360x1160 surface (the nested
+            // output leaves 1164 px below the bar) without a scrolling panel
+            // (the compositor forwards no pointer-axis events, ADR 0139).
             spacing: Theme.primitive.spacing.xs
 
             // ── Wi-Fi ────────────────────────────────────────────────────
@@ -593,7 +633,7 @@ Item {
                 objectName: "wifiTile"
                 width: parent.width
                 implicitHeight: wifiColumn.implicitHeight
-                                + 2 * Theme.primitive.spacing.xs
+                                + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
                 color: Theme.color.surfaceSunken
                 Accessible.role: Accessible.Grouping
@@ -604,7 +644,7 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    anchors.margins: Theme.primitive.spacing.xs
+                    anchors.margins: Theme.primitive.spacing.xxs
                     spacing: Theme.primitive.spacing.sm
 
                     Row {
@@ -674,7 +714,7 @@ Item {
                 width: parent.width
                 visible: root.bluetoothVisible
                 implicitHeight: bluetoothColumn.implicitHeight
-                                + 2 * Theme.primitive.spacing.xs
+                                + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
                 color: Theme.color.surfaceSunken
                 Accessible.role: Accessible.Grouping
@@ -685,7 +725,7 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    anchors.margins: Theme.primitive.spacing.xs
+                    anchors.margins: Theme.primitive.spacing.xxs
                     spacing: Theme.primitive.spacing.sm
 
                     Row {
@@ -807,7 +847,7 @@ Item {
                 width: parent.width
                 visible: root.storageVisible
                 implicitHeight: storageColumn.implicitHeight
-                                + 2 * Theme.primitive.spacing.xs
+                                + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
                 color: Theme.color.surfaceSunken
                 Accessible.role: Accessible.Grouping
@@ -818,7 +858,7 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    anchors.margins: Theme.primitive.spacing.xs
+                    anchors.margins: Theme.primitive.spacing.xxs
                     spacing: Theme.primitive.spacing.sm
 
                     Row {
@@ -942,7 +982,7 @@ Item {
                 objectName: "focusTile"
                 width: parent.width
                 implicitHeight: focusColumn.implicitHeight
-                                + 2 * Theme.primitive.spacing.xs
+                                + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
                 color: Theme.color.surfaceSunken
                 Accessible.role: Accessible.Grouping
@@ -953,7 +993,7 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    anchors.margins: Theme.primitive.spacing.xs
+                    anchors.margins: Theme.primitive.spacing.xxs
                     spacing: Theme.primitive.spacing.sm
 
                     Row {
@@ -1015,7 +1055,7 @@ Item {
                 objectName: "volumeTile"
                 width: parent.width
                 implicitHeight: volumeColumn.implicitHeight
-                                + 2 * Theme.primitive.spacing.xs
+                                + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
                 color: Theme.color.surfaceSunken
                 opacity: root.audioAvailable ? 1.0 : 0.5
@@ -1027,7 +1067,7 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    anchors.margins: Theme.primitive.spacing.xs
+                    anchors.margins: Theme.primitive.spacing.xxs
                     spacing: Theme.primitive.spacing.sm
 
                     Row {
@@ -1116,7 +1156,7 @@ Item {
                 objectName: "brightnessTile"
                 width: parent.width
                 implicitHeight: brightnessColumn.implicitHeight
-                                + 2 * Theme.primitive.spacing.xs
+                                + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
                 color: Theme.color.surfaceSunken
                 Accessible.role: Accessible.Grouping
@@ -1127,7 +1167,7 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    anchors.margins: Theme.primitive.spacing.xs
+                    anchors.margins: Theme.primitive.spacing.xxs
                     spacing: Theme.primitive.spacing.sm
 
                     Row {
@@ -1170,7 +1210,7 @@ Item {
                 objectName: "darkTile"
                 width: parent.width
                 implicitHeight: darkColumn.implicitHeight
-                                + 2 * Theme.primitive.spacing.xs
+                                + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
                 color: Theme.color.surfaceSunken
                 Accessible.role: Accessible.Grouping
@@ -1181,7 +1221,7 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    anchors.margins: Theme.primitive.spacing.xs
+                    anchors.margins: Theme.primitive.spacing.xxs
                     spacing: Theme.primitive.spacing.sm
 
                     Row {
@@ -1244,7 +1284,7 @@ Item {
                 width: parent.width
                 visible: root.inputVisible
                 implicitHeight: keyboardColumn.implicitHeight
-                                + 2 * Theme.primitive.spacing.xs
+                                + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
                 color: Theme.color.surfaceSunken
                 Accessible.role: Accessible.Grouping
@@ -1255,7 +1295,7 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    anchors.margins: Theme.primitive.spacing.xs
+                    anchors.margins: Theme.primitive.spacing.xxs
                     spacing: Theme.primitive.spacing.sm
 
                     Row {
@@ -1309,7 +1349,7 @@ Item {
                 width: parent.width
                 visible: root.missionControlVisible
                 implicitHeight: missionControlColumn.implicitHeight
-                                + 2 * Theme.primitive.spacing.xs
+                                + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
                 color: Theme.color.surfaceSunken
                 Accessible.role: Accessible.Grouping
@@ -1320,7 +1360,7 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    anchors.margins: Theme.primitive.spacing.xs
+                    anchors.margins: Theme.primitive.spacing.xxs
                     spacing: Theme.primitive.spacing.sm
 
                     Row {
@@ -1374,7 +1414,7 @@ Item {
                 width: parent.width
                 visible: root.batteryVisible
                 implicitHeight: batteryColumn.implicitHeight
-                                + 2 * Theme.primitive.spacing.xs
+                                + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
                 color: Theme.color.surfaceSunken
                 Accessible.role: Accessible.Grouping
@@ -1385,7 +1425,7 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    anchors.margins: Theme.primitive.spacing.xs
+                    anchors.margins: Theme.primitive.spacing.xxs
                     spacing: Theme.primitive.spacing.sm
 
                     Row {
@@ -1439,7 +1479,7 @@ Item {
                 width: parent.width
                 visible: root.lockScreenVisible
                 implicitHeight: lockScreenColumn.implicitHeight
-                                + 2 * Theme.primitive.spacing.xs
+                                + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
                 color: Theme.color.surfaceSunken
                 Accessible.role: Accessible.Grouping
@@ -1450,7 +1490,7 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    anchors.margins: Theme.primitive.spacing.xs
+                    anchors.margins: Theme.primitive.spacing.xxs
                     spacing: Theme.primitive.spacing.sm
 
                     Row {
@@ -1505,7 +1545,7 @@ Item {
                 width: parent.width
                 visible: root.menuBarVisible
                 implicitHeight: menuBarColumn.implicitHeight
-                                + 2 * Theme.primitive.spacing.xs
+                                + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
                 color: Theme.color.surfaceSunken
                 Accessible.role: Accessible.Grouping
@@ -1516,7 +1556,7 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    anchors.margins: Theme.primitive.spacing.xs
+                    anchors.margins: Theme.primitive.spacing.xxs
                     spacing: Theme.primitive.spacing.sm
 
                     Row {
@@ -1571,7 +1611,7 @@ Item {
                 width: parent.width
                 visible: root.updatesAvailable
                 implicitHeight: updatesColumn.implicitHeight
-                                + 2 * Theme.primitive.spacing.xs
+                                + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
                 color: Theme.color.surfaceSunken
                 Accessible.role: Accessible.Grouping
@@ -1582,7 +1622,7 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    anchors.margins: Theme.primitive.spacing.xs
+                    anchors.margins: Theme.primitive.spacing.xxs
                     spacing: Theme.primitive.spacing.sm
 
                     Row {
@@ -1644,13 +1684,78 @@ Item {
                 }
             }
 
+            // ── Users and Groups (T-15.11b) ──────────────────────────────
+            Rectangle {
+                id: usersTile
+                objectName: "usersTile"
+                width: parent.width
+                visible: root.accountsAvailable
+                implicitHeight: usersColumn.implicitHeight
+                                + 2 * Theme.primitive.spacing.xxs
+                radius: Theme.primitive.radius.md
+                color: Theme.color.surfaceSunken
+                Accessible.role: Accessible.Grouping
+                Accessible.name: qsTr("Users")
+
+                Column {
+                    id: usersColumn
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: Theme.primitive.spacing.xxs
+                    spacing: Theme.primitive.spacing.sm
+
+                    Row {
+                        width: parent.width
+                        spacing: Theme.primitive.spacing.md
+
+                        IconTile {
+                            objectName: "usersIcon"
+                            name: root.accountsGlyph
+                            tileSize: 32
+                            iconSize: 18
+                            active: root.accountsAdminCount > 0
+                        }
+
+                        Column {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: parent.width - 32 - 2 * Theme.primitive.spacing.md
+
+                            Text {
+                                objectName: "usersTitle"
+                                text: qsTr("Users")
+                                color: Theme.color.textPrimary
+                                font.pixelSize: Theme.controls.button.fontSize
+                                font.weight: Theme.primitive.font.weightMedium
+                            }
+
+                            Text {
+                                objectName: "usersSubtitle"
+                                width: parent.width
+                                text: root.accountsLabel
+                                color: Theme.color.textSecondary
+                                font.pixelSize: Theme.primitive.font.sizeSm
+                                elide: Text.ElideRight
+                            }
+                        }
+                    }
+
+                    TextLink {
+                        objectName: "usersSettingsLink"
+                        text: qsTr("Users & Groups Settings\u2026")
+                        accessibleName: qsTr("Open Users & Groups Settings")
+                        onActivated: root.usersSettingsRequested()
+                    }
+                }
+            }
+
             // ── Clipboard history ────────────────────────────────────────
             Rectangle {
                 id: clipboardTile
                 objectName: "clipboardTile"
                 width: parent.width
                 implicitHeight: clipboardColumn.implicitHeight
-                                + 2 * Theme.primitive.spacing.xs
+                                + 2 * Theme.primitive.spacing.xxs
                 radius: Theme.primitive.radius.md
                 color: Theme.color.surfaceSunken
                 Accessible.role: Accessible.Grouping
@@ -1661,7 +1766,7 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    anchors.margins: Theme.primitive.spacing.xs
+                    anchors.margins: Theme.primitive.spacing.xxs
                     spacing: Theme.primitive.spacing.xs
 
                     Text {
