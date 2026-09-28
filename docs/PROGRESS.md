@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(144 earlier sections omitted)_
+_(145 earlier sections omitted)_
 
-- **T174 — T-18.2 Wallpaper pane collections, skeleton, and attribution**: **State: done.** The Wallpaper pane now has Featured / Built-in / Custom rows;; `design-system/tokens/tokens.json` — semantic `skeletonBase`/`skeletonHighlight`
 - **T175 — T-18.3 Provider licensing, absence matrix, and capture**: **State: done.** The licensing policy is reviewed and made true (`NOTICE`; `docs/licensing.md` — "Fetched third-party content (wallpaper)" extended:
 - **Dev tooling — wallpaper provider in the dev session (T-18.1a follow-up)**: **State: done.** `make demo` (nested) and `make dev --shell` now start; `tools/dragonfruit-dev/src/main.rs` — `launch_services` takes a
 - **T111 — T-15.1a Bluetooth adapter**: **State: done.** The BlueZ Bluetooth adapter landed in a new crate,; `services/bluetooth/` (new crate) — `src/source.rs` (`BluetoothData`,
@@ -44,6 +43,7 @@ _(144 earlier sections omitted)_
 - **T144 — T-16.2 Hotplug under load and lockstep**: **State: done.** Output hotplug now preserves lockstep and loses no windows.; `compositor/src/workspace/mod.rs` — `add_output` mirrors the existing
 - **T145 — T-16.3a Integer-scaled Xwayland**: **State: done.** The integer-scale half of `docs/xwayland-scaling.md` is built.; `compositor/src/xwayland.rs` — `XwaylandState.integer_scale`; computed and
 - **T146 — T-16.3b Viewport downscale and chrome sizing**: **State: done.** Fractional-scale chrome is sized per output and the nested; `compositor/src/backend/mod.rs` — `ENV_NESTED_SCALE` = `DRAGONFRUIT_NESTED_SCALE`.
+- **T147 — T-16.6a AT-SPI and keyboard-only audit**: **State: done.** The live AT-SPI dump/walkthrough and the keyboard-only; `scripts/t16-a11y-audit.sh` + `scripts/t16-a11y-audit.py` (new;
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -13833,3 +13833,61 @@ Decisions / gotchas for T-16.4 and later:
   comma-separated `x,y,w,h` tokens (the output line keeps `WxH`).
 - **Nested cannot add outputs**, so the multi-output fractional matrix is still
   the headless synthetic-output harness + the batched human VM step.
+
+## T147 — T-16.6a AT-SPI and keyboard-only audit
+
+**State: done.** The live AT-SPI dump/walkthrough and the keyboard-only
+operation proof both pass. Contract frozen in ADR 0154.
+
+Real paths:
+
+- `scripts/t16-a11y-audit.sh` + `scripts/t16-a11y-audit.py` (new;
+  `make t16-a11y-audit`): launch the nested demo twice (Settings, Files) with
+  `QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1` and `DRAGONFRUIT_SYNTHETIC_INPUT`, dump
+  the live AT-SPI tree, fail on any unnamed interactive node, and drive a
+  keyboard-only walkthrough reading focus/pane changes back from AT-SPI.
+  Writes `docs/captures/t16-a11y-atspi.txt` (both passes `RESULT: PASS`) and
+  `docs/captures/t16-a11y-desktop.png`.
+- `compositor/tests/shell_protocol_conformance.rs` — new
+  `keyboard_only_walkthrough_dispatches_every_system_binding` (40 → 41 tests):
+  every default system chord through the synthetic path, asserting the outbox
+  records the action with a `keyboard` trigger.
+- `docs/design/adr/0154-atspi-and-keyboard-audit-boundary.md` (new);
+  `docs/design/04-shell.md` (T-16.6a status); `docs/design/10-design-system.md`
+  (quality-gate layering); `docs/captures/README.md`.
+
+Commands that work (repo root; `PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig`,
+`RUSTFLAGS=-L $HOME/.local/df-devroot/lib64`):
+
+- `cargo test -p dragonfruit-compositor --test shell_protocol_conformance` —
+  41 passed.
+- `cargo fmt --all -- --check` and
+  `cargo clippy -p dragonfruit-compositor --all-targets -- -D warnings` — clean.
+- `make e2e` — EXIT 0 (`/tmp/opencode/t147-e2e.log`).
+- `bash scripts/t16-a11y-audit.sh` — PASS (host Wayland + pyatspi + Pillow +
+  spectacle; not in `make e2e`).
+- Live visual check: `docs/captures/t16-a11y-desktop.png` (2115x1437); vision
+  found the desktop fully composited (menu bar, Dock, wallpaper, Settings, X11
+  client), sharp text, no artifacts.
+
+Decisions / gotchas for T-16.6b and later:
+
+- **The shell offscreen chrome is not on the AT-SPI bus.** Qt's Linux AT-SPI
+  bridge registers from shown `QWindow`s via the platform plugin; the offscreen
+  QPA exposes no accessibility backend, so the shell (menu bar, Dock, Control
+  Center, OSD, dialogs) never appears to `pyatspi` — only the first-party apps
+  do. This is architectural (ADR 0154), not a missing test. Do not try to
+  "fix" it per component; a compositor-side a11y bridge is a new track.
+- **Live keyboard walkthrough needs `DRAGONFRUIT_SYNTHETIC_INPUT` and
+  `QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1`** exported before the demo; the
+  compositor's synthetic harness works on the nested backend too. The client
+  binds `<path>.reply`; `key <evdev> down|up` chords reach the focused client.
+- **AT-SPI focus is the live proof.** `pyatspi` `STATE_FOCUSED` reflects Qt
+  focus; Tab order in Settings is Close→Minimize→Zoom→Search→Sidebar→content.
+  After 6 Tabs one Shift+Tab returns to the Sidebar (Down + Return activates a
+  pane; read the `tool bar` name back). This is deterministic and used by the
+  audit.
+- **The global-flow proof is the headless test**, not the live dump: the
+  compositor test exercises all 16 system chords. Any new system shortcut must
+  be added to `default_system_bindings()` and to that test's `walkthrough`
+  table.

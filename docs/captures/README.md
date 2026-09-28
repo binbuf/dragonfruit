@@ -753,6 +753,17 @@ summary and the compact eighteenth tile in the fixed panel. Captured by
 `scripts/capture-t15-vpn-pane.sh`; requires a host Wayland session, spectacle,
 and Pillow, and is not in `make e2e`.
 
+T-16.6a's accessibility audit is `t16-a11y-atspi.txt`, produced by
+`scripts/t16-a11y-audit.sh` (`make t16-a11y-audit`): the live AT-SPI tree of
+the first-party apps (Settings and Files) plus a keyboard-only walkthrough
+whose focus moves and Settings pane selections are read back from AT-SPI over
+the compositor's synthetic-input harness. The representative whole-desktop
+still is `t16-a11y-desktop.png`; the shell's offscreen chrome is not on the
+accessibility bus, and its global keyboard flows are proven headlessly (see
+[ADR 0154](../design/adr/0154-atspi-and-keyboard-audit-boundary.md)). Requires
+a host Wayland session, python3 with `pyatspi` and Pillow, spectacle, and the
+built tree; not in `make e2e`.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture
