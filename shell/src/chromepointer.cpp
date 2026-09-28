@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
-#include "dockpointer.h"
+#include "chromepointer.h"
 
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QMouseEvent>
 #include <QWindow>
 
-namespace DockPointer {
+namespace ChromePointer {
 
 quint64 timestamp()
 {
@@ -15,9 +15,15 @@ quint64 timestamp()
         timer.start();
         return timer;
     }();
+    static quint64 last = 0;
     // The monotonic reference is already large; +1 guarantees the first event is
-    // never zero (the value that triggers the DragHandler bug).
-    return static_cast<quint64>(clock.msecsSinceReference()) + 1;
+    // never zero (the value that triggers the DragHandler bug). A strict bump
+    // past the previous value keeps a same-millisecond sequence monotonic too.
+    quint64 now = static_cast<quint64>(clock.msecsSinceReference()) + 1;
+    if (now <= last)
+        now = last + 1;
+    last = now;
+    return now;
 }
 
 void send(QWindow *window, QEvent::Type type, const QPointF &pos, Qt::MouseButton button,
@@ -30,4 +36,4 @@ void send(QWindow *window, QEvent::Type type, const QPointF &pos, Qt::MouseButto
     QCoreApplication::sendEvent(window, &event);
 }
 
-} // namespace DockPointer
+} // namespace ChromePointer

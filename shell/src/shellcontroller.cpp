@@ -24,7 +24,6 @@
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QKeyEvent>
-#include <QMouseEvent>
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QStandardPaths>
@@ -39,7 +38,7 @@
 #include "desktopentry.h"
 #include "dockdrops.h"
 #include "dockmodel.h"
-#include "dockpointer.h"
+#include "chromepointer.h"
 #include "dockprojection.h"
 
 #include "filestarget.h"
@@ -1629,9 +1628,7 @@ void ShellController::settleInitialState()
     // Clear any hover the window inherited from its default cursor position:
     // move the synthesized pointer off the bar. Real motion re-establishes
     // hover as soon as the user interacts.
-    QMouseEvent move(QEvent::MouseMove, QPointF(-1, -1), QPointF(-1, -1), Qt::NoButton,
-                     Qt::NoButton, Qt::NoModifier);
-    QCoreApplication::sendEvent(m_window, &move);
+    ChromePointer::send(m_window, QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton, Qt::NoButton);
     render();
 }
 
@@ -2208,9 +2205,8 @@ void ShellController::onControlCenterPointerMoved(qreal x, qreal y)
     if (!m_controlCenterWindow)
         return;
     const QPointF p(x, y);
-    QMouseEvent event(QEvent::MouseMove, p, p, Qt::NoButton, m_controlCenterButtons,
-                      Qt::NoModifier);
-    QCoreApplication::sendEvent(m_controlCenterWindow, &event);
+    ChromePointer::send(m_controlCenterWindow, QEvent::MouseMove, p, Qt::NoButton,
+                        m_controlCenterButtons);
     scheduleControlCenterRender();
 }
 
@@ -2226,9 +2222,9 @@ void ShellController::onControlCenterPointerButton(qreal x, qreal y, quint32 but
     else
         m_controlCenterButtons &= ~qtButton;
     const QPointF p(x, y);
-    QMouseEvent event(pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease, p, p,
-                      qtButton, m_controlCenterButtons, Qt::NoModifier);
-    QCoreApplication::sendEvent(m_controlCenterWindow, &event);
+    ChromePointer::send(m_controlCenterWindow,
+                        pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease, p,
+                        qtButton, m_controlCenterButtons);
     scheduleControlCenterRender();
 }
 
@@ -2236,9 +2232,8 @@ void ShellController::onControlCenterPointerLeft()
 {
     if (!m_controlCenterWindow)
         return;
-    QMouseEvent event(QEvent::MouseMove, QPointF(-1, -1), QPointF(-1, -1), Qt::NoButton,
-                      m_controlCenterButtons, Qt::NoModifier);
-    QCoreApplication::sendEvent(m_controlCenterWindow, &event);
+    ChromePointer::send(m_controlCenterWindow, QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton,
+                        m_controlCenterButtons);
     scheduleControlCenterRender();
 }
 
@@ -2757,8 +2752,7 @@ void ShellController::onChooserPointerMoved(qreal x, qreal y)
     if (!m_chooserWindow)
         return;
     const QPointF p(x, y);
-    QMouseEvent event(QEvent::MouseMove, p, p, Qt::NoButton, m_chooserButtons, Qt::NoModifier);
-    QCoreApplication::sendEvent(m_chooserWindow, &event);
+    ChromePointer::send(m_chooserWindow, QEvent::MouseMove, p, Qt::NoButton, m_chooserButtons);
     scheduleChooserRender();
 }
 
@@ -2774,9 +2768,9 @@ void ShellController::onChooserPointerButton(qreal x, qreal y, quint32 button, b
     else
         m_chooserButtons &= ~qtButton;
     const QPointF p(x, y);
-    QMouseEvent event(pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease, p, p,
-                      qtButton, m_chooserButtons, Qt::NoModifier);
-    QCoreApplication::sendEvent(m_chooserWindow, &event);
+    ChromePointer::send(m_chooserWindow,
+                        pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease, p,
+                        qtButton, m_chooserButtons);
     scheduleChooserRender();
 }
 
@@ -2784,9 +2778,8 @@ void ShellController::onChooserPointerLeft()
 {
     if (!m_chooserWindow)
         return;
-    QMouseEvent event(QEvent::MouseMove, QPointF(-1, -1), QPointF(-1, -1), Qt::NoButton,
-                      m_chooserButtons, Qt::NoModifier);
-    QCoreApplication::sendEvent(m_chooserWindow, &event);
+    ChromePointer::send(m_chooserWindow, QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton,
+                        m_chooserButtons);
     scheduleChooserRender();
 }
 
@@ -3038,9 +3031,7 @@ void ShellController::onScreenshotPointerMoved(qreal x, qreal y)
     if (!m_screenshotWindow)
         return;
     const QPointF p(x, y);
-    QMouseEvent event(QEvent::MouseMove, p, p, Qt::NoButton, m_screenshotButtons,
-                      Qt::NoModifier);
-    QCoreApplication::sendEvent(m_screenshotWindow, &event);
+    ChromePointer::send(m_screenshotWindow, QEvent::MouseMove, p, Qt::NoButton, m_screenshotButtons);
     scheduleScreenshotRender();
 }
 
@@ -3056,9 +3047,9 @@ void ShellController::onScreenshotPointerButton(qreal x, qreal y, quint32 button
     else
         m_screenshotButtons &= ~qtButton;
     const QPointF p(x, y);
-    QMouseEvent event(pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease, p, p,
-                      qtButton, m_screenshotButtons, Qt::NoModifier);
-    QCoreApplication::sendEvent(m_screenshotWindow, &event);
+    ChromePointer::send(m_screenshotWindow,
+                        pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease, p,
+                        qtButton, m_screenshotButtons);
     scheduleScreenshotRender();
 }
 
@@ -3066,9 +3057,8 @@ void ShellController::onScreenshotPointerLeft()
 {
     if (!m_screenshotWindow)
         return;
-    QMouseEvent event(QEvent::MouseMove, QPointF(-1, -1), QPointF(-1, -1), Qt::NoButton,
-                      m_screenshotButtons, Qt::NoModifier);
-    QCoreApplication::sendEvent(m_screenshotWindow, &event);
+    ChromePointer::send(m_screenshotWindow, QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton,
+                        m_screenshotButtons);
     scheduleScreenshotRender();
 }
 
@@ -3296,9 +3286,7 @@ void ShellController::onScreenCastPointerMoved(qreal x, qreal y)
     if (!m_screencastWindow)
         return;
     const QPointF p(x, y);
-    QMouseEvent event(QEvent::MouseMove, p, p, Qt::NoButton, m_screencastButtons,
-                      Qt::NoModifier);
-    QCoreApplication::sendEvent(m_screencastWindow, &event);
+    ChromePointer::send(m_screencastWindow, QEvent::MouseMove, p, Qt::NoButton, m_screencastButtons);
     scheduleScreenCastRender();
 }
 
@@ -3314,9 +3302,9 @@ void ShellController::onScreenCastPointerButton(qreal x, qreal y, quint32 button
     else
         m_screencastButtons &= ~qtButton;
     const QPointF p(x, y);
-    QMouseEvent event(pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease, p, p,
-                      qtButton, m_screencastButtons, Qt::NoModifier);
-    QCoreApplication::sendEvent(m_screencastWindow, &event);
+    ChromePointer::send(m_screencastWindow,
+                        pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease, p,
+                        qtButton, m_screencastButtons);
     scheduleScreenCastRender();
 }
 
@@ -3324,9 +3312,8 @@ void ShellController::onScreenCastPointerLeft()
 {
     if (!m_screencastWindow)
         return;
-    QMouseEvent event(QEvent::MouseMove, QPointF(-1, -1), QPointF(-1, -1), Qt::NoButton,
-                      m_screencastButtons, Qt::NoModifier);
-    QCoreApplication::sendEvent(m_screencastWindow, &event);
+    ChromePointer::send(m_screencastWindow, QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton,
+                        m_screencastButtons);
     scheduleScreenCastRender();
 }
 
@@ -3523,8 +3510,7 @@ void ShellController::onPolkitPointerMoved(qreal x, qreal y)
     if (!m_polkitWindow)
         return;
     const QPointF p(x, y);
-    QMouseEvent event(QEvent::MouseMove, p, p, Qt::NoButton, m_polkitButtons, Qt::NoModifier);
-    QCoreApplication::sendEvent(m_polkitWindow, &event);
+    ChromePointer::send(m_polkitWindow, QEvent::MouseMove, p, Qt::NoButton, m_polkitButtons);
     schedulePolkitRender();
 }
 
@@ -3540,9 +3526,9 @@ void ShellController::onPolkitPointerButton(qreal x, qreal y, quint32 button, bo
     else
         m_polkitButtons &= ~qtButton;
     const QPointF p(x, y);
-    QMouseEvent event(pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease, p, p,
-                      qtButton, m_polkitButtons, Qt::NoModifier);
-    QCoreApplication::sendEvent(m_polkitWindow, &event);
+    ChromePointer::send(m_polkitWindow,
+                        pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease, p,
+                        qtButton, m_polkitButtons);
     schedulePolkitRender();
 }
 
@@ -3550,9 +3536,8 @@ void ShellController::onPolkitPointerLeft()
 {
     if (!m_polkitWindow)
         return;
-    QMouseEvent event(QEvent::MouseMove, QPointF(-1, -1), QPointF(-1, -1), Qt::NoButton,
-                      m_polkitButtons, Qt::NoModifier);
-    QCoreApplication::sendEvent(m_polkitWindow, &event);
+    ChromePointer::send(m_polkitWindow, QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton,
+                        m_polkitButtons);
     schedulePolkitRender();
 }
 
@@ -4044,9 +4029,7 @@ void ShellController::onPointerMoved(qreal x, qreal y)
 {
     if (!m_window)
         return;
-    QMouseEvent event(QEvent::MouseMove, QPointF(x, y), QPointF(x, y), Qt::NoButton, m_buttons,
-                      Qt::NoModifier);
-    QCoreApplication::sendEvent(m_window, &event);
+    ChromePointer::send(m_window, QEvent::MouseMove, QPointF(x, y), Qt::NoButton, m_buttons);
     // Hover/title/row highlights changed in QML; push the new frame.
     scheduleRender();
 }
@@ -4060,9 +4043,8 @@ void ShellController::onPointerButton(qreal x, qreal y, quint32 button, bool pre
         m_buttons |= qtButton;
     else
         m_buttons &= ~qtButton;
-    QMouseEvent event(pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease, QPointF(x, y),
-                      QPointF(x, y), qtButton, m_buttons, Qt::NoModifier);
-    QCoreApplication::sendEvent(m_window, &event);
+    ChromePointer::send(m_window, pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease,
+                        QPointF(x, y), qtButton, m_buttons);
     scheduleRender();
 }
 
@@ -4072,9 +4054,7 @@ void ShellController::onPointerLeft()
         return;
     // Move the pointer off-screen so hover states clear when the compositor
     // takes the pointer away (e.g. it moved onto a window).
-    QMouseEvent event(QEvent::MouseMove, QPointF(-1, -1), QPointF(-1, -1), Qt::NoButton, m_buttons,
-                      Qt::NoModifier);
-    QCoreApplication::sendEvent(m_window, &event);
+    ChromePointer::send(m_window, QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton, m_buttons);
     scheduleRender();
 }
 
@@ -5511,7 +5491,7 @@ void ShellController::onDockPointerMoved(qreal x, qreal y)
     // headroom (above a bottom Dock) or a side gutter (beside a vertical
     // Dock).
     const QPointF p(x + m_dockItemOffsetX, y + m_dockItemOffsetY);
-    DockPointer::send(m_dockWindow, QEvent::MouseMove, p, Qt::NoButton, m_dockButtons);
+    ChromePointer::send(m_dockWindow, QEvent::MouseMove, p, Qt::NoButton, m_dockButtons);
     scheduleDockRender();
 }
 
@@ -5529,7 +5509,7 @@ void ShellController::onDockPointerButton(qreal x, qreal y, quint32 button, bool
     else
         m_dockButtons &= ~qtButton;
     const QPointF p(x + m_dockItemOffsetX, y + m_dockItemOffsetY);
-    DockPointer::send(m_dockWindow, pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease,
+    ChromePointer::send(m_dockWindow, pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease,
                       p, qtButton, m_dockButtons);
     scheduleDockRender();
 }
@@ -5538,7 +5518,7 @@ void ShellController::onDockPointerLeft()
 {
     if (!m_dockWindow)
         return;
-    DockPointer::send(m_dockWindow, QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton,
+    ChromePointer::send(m_dockWindow, QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton,
                       m_dockButtons);
     scheduleDockRender();
 }
@@ -5665,9 +5645,7 @@ void ShellController::onOverviewPointerMoved(qreal x, qreal y)
     if (!m_overviewWindow)
         return;
     const QPointF p(x, y);
-    QMouseEvent event(QEvent::MouseMove, p, p, Qt::NoButton, m_overviewButtons,
-                      Qt::NoModifier);
-    QCoreApplication::sendEvent(m_overviewWindow, &event);
+    ChromePointer::send(m_overviewWindow, QEvent::MouseMove, p, Qt::NoButton, m_overviewButtons);
     scheduleOverviewRender();
 }
 
@@ -5685,9 +5663,9 @@ void ShellController::onOverviewPointerButton(qreal x, qreal y, quint32 button, 
     else
         m_overviewButtons &= ~qtButton;
     const QPointF p(x, y);
-    QMouseEvent event(pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease, p, p,
-                      qtButton, m_overviewButtons, Qt::NoModifier);
-    QCoreApplication::sendEvent(m_overviewWindow, &event);
+    ChromePointer::send(m_overviewWindow,
+                        pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease, p,
+                        qtButton, m_overviewButtons);
     scheduleOverviewRender();
 }
 
@@ -5695,9 +5673,8 @@ void ShellController::onOverviewPointerLeft()
 {
     if (!m_overviewWindow)
         return;
-    QMouseEvent event(QEvent::MouseMove, QPointF(-1, -1), QPointF(-1, -1), Qt::NoButton,
-                      m_overviewButtons, Qt::NoModifier);
-    QCoreApplication::sendEvent(m_overviewWindow, &event);
+    ChromePointer::send(m_overviewWindow, QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton,
+                        m_overviewButtons);
     scheduleOverviewRender();
 }
 
@@ -5940,8 +5917,7 @@ void ShellController::onBannerPointerMoved(qreal x, qreal y)
     if (!m_bannerWindow)
         return;
     const QPointF p(x, y);
-    QMouseEvent event(QEvent::MouseMove, p, p, Qt::NoButton, m_bannerButtons, Qt::NoModifier);
-    QCoreApplication::sendEvent(m_bannerWindow, &event);
+    ChromePointer::send(m_bannerWindow, QEvent::MouseMove, p, Qt::NoButton, m_bannerButtons);
     scheduleBannerRender();
 }
 
@@ -5957,9 +5933,9 @@ void ShellController::onBannerPointerButton(qreal x, qreal y, quint32 button, bo
     else
         m_bannerButtons &= ~qtButton;
     const QPointF p(x, y);
-    QMouseEvent event(pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease, p, p,
-                      qtButton, m_bannerButtons, Qt::NoModifier);
-    QCoreApplication::sendEvent(m_bannerWindow, &event);
+    ChromePointer::send(m_bannerWindow,
+                        pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease, p,
+                        qtButton, m_bannerButtons);
     scheduleBannerRender();
 }
 
@@ -5967,9 +5943,8 @@ void ShellController::onBannerPointerLeft()
 {
     if (!m_bannerWindow)
         return;
-    QMouseEvent event(QEvent::MouseMove, QPointF(-1, -1), QPointF(-1, -1), Qt::NoButton,
-                      m_bannerButtons, Qt::NoModifier);
-    QCoreApplication::sendEvent(m_bannerWindow, &event);
+    ChromePointer::send(m_bannerWindow, QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton,
+                        m_bannerButtons);
     scheduleBannerRender();
 }
 
