@@ -5912,12 +5912,22 @@ void ShellController::renderDock()
     m_protocol->setDockInputRegion(inputRects);
     // The live plate the Dock paints, in surface-local coordinates: the
     // compositor's frosted backdrop follows it as the plate grows around the
-    // magnified row (T-14.7b).
-    const QVariantMap plate = m_dockItem->property("plateRect").toMap();
-    m_protocol->setDockPanelRect(qFloor(plate.value(QStringLiteral("x")).toReal()),
-                                 qFloor(plate.value(QStringLiteral("y")).toReal()),
-                                 qCeil(plate.value(QStringLiteral("w")).toReal()),
-                                 qCeil(plate.value(QStringLiteral("h")).toReal()));
+    // magnified row (T-14.7b). The Dock reports `panelRect`, the integer edge
+    // it draws, so the declared panel and the QML fill are the same rounded
+    // rect (T-14.7z). Only a changed integer rect is committed: a smooth
+    // animation that crosses no pixel boundary cannot ping-pong the backdrop.
+    const QVariantMap plate = m_dockItem->property("panelRect").toMap();
+    const QRect panel(qFloor(plate.value(QStringLiteral("x")).toReal()),
+                      qFloor(plate.value(QStringLiteral("y")).toReal()),
+                      qCeil(plate.value(QStringLiteral("w")).toReal()),
+                      qCeil(plate.value(QStringLiteral("h")).toReal()));
+    if (!m_dockPanelRectValid || panel != m_dockPanelRect) {
+        if (m_protocol->setDockPanelRect(panel.x(), panel.y(),
+                                         panel.width(), panel.height())) {
+            m_dockPanelRect = panel;
+            m_dockPanelRectValid = true;
+        }
+    }
     if (!m_protocol->commitDockImage(
                 image.copy(leftGutter, headroom, m_dockWidth, m_dockHeight)))
         qWarning() << "shell: failed to commit the Dock:" << m_protocol->lastError();

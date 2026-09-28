@@ -967,17 +967,22 @@ Item {
             var plate = findChild(dock, "dockPlate");
             var bar = findChild(dock, "dockBar");
             var rim = findChild(dock, "dockRim");
+            var stroke = findChild(dock, "dockRimStroke");
             var border = findChild(dock, "dockBorder");
             var shadow = findChild(dock, "dockPlateShadow");
             verify(plate !== null && bar !== null && rim !== null);
-            verify(border !== null && shadow !== null);
+            verify(stroke !== null && border !== null && shadow !== null);
 
             compare(bar.radius, Theme.controls.dock.radius);
             compare(bar.color, Theme.color.dockFill);
             fuzzyCompare(bar.opacity, Theme.controls.dock.plate.fillOpacity, 0.0001);
-            compare(rim.color, Theme.color.dockRim);
-            compare(rim.height, Theme.controls.dock.plate.rimHeight);
+            // The rim is a stroked path along the interior edge, inset by half
+            // the stroke so no rim pixel leaves the plate (T-14.7z).
+            compare(stroke.strokeColor, Theme.color.dockRim);
+            fuzzyCompare(stroke.strokeWidth,
+                         Theme.controls.dock.plate.rimHeight, 0.0001);
             fuzzyCompare(rim.opacity, Theme.controls.dock.plate.rimOpacity, 0.0001);
+            fuzzyCompare(rim.height, plate.plateH - stroke.strokeWidth, 0.001);
             compare(border.border.width, Theme.controls.dock.plate.borderWidth);
             compare(border.border.color, Theme.color.dockBorder);
             fuzzyCompare(border.opacity, Theme.controls.dock.plate.borderOpacity, 0.0001);
@@ -1021,7 +1026,7 @@ Item {
             var darkFill = String(findChild(dark, "dockBar").color);
             compare(darkFill, String(Theme.darkScheme.color.dockFill));
             verify(lightFill !== darkFill, "the plate tone is scheme-aware");
-            compare(String(findChild(dark, "dockRim").color),
+            compare(String(findChild(dark, "dockRimStroke").strokeColor),
                     String(Theme.darkScheme.color.dockRim));
         }
 
@@ -1105,6 +1110,165 @@ Item {
             var rPlate = findChild(right, "dockPlate");
             verify(rRim.height > rRim.width, "the right rim is vertical");
             fuzzyCompare(rRim.x, rPlate.plateX, 1.5);
+        }
+
+        // -- T-14.7z plate corners and frost alignment -----------------------
+
+        // Point-in-rounded-rect, inflated by `slop` so a stroke's anti-aliased
+        // outer pixel is not counted as leaving the shape.
+        function insideRoundedRect(px, py, r, R, slop) {
+            var s = slop === undefined ? 0 : slop;
+            if (px < r.x - s || px > r.x + r.w + s
+                    || py < r.y - s || py > r.y + r.h + s)
+                return false;
+            var cx = Math.min(Math.max(px, r.x + R), r.x + r.w - R);
+            var cy = Math.min(Math.max(py, r.y + R), r.y + r.h - R);
+            var dx = px - cx;
+            var dy = py - cy;
+            var rad = R + s;
+            return dx * dx + dy * dy <= rad * rad + 0.001;
+        }
+
+        function test_panel_rect_is_the_integer_edge_the_qml_draws() {
+            // The plate the QML draws and the rect declared to the compositor
+            // are one integer rounded rect (T-14.7z).
+            var dock = make(dockComponent, {
+                width: 1280, height: 240, position: "bottom",
+                entries: [ app("a", "A", true), app("b", "B", true) ]
+            });
+            var r = dock.panelRect;
+            compare(r.x, Math.round(r.x));
+            compare(r.y, Math.round(r.y));
+            compare(r.w, Math.round(r.w));
+            compare(r.h, Math.round(r.h));
+            // Each snapped edge is within half a pixel of the live plate edge.
+            fuzzyCompare(r.x, dock.plateRect.x, 0.501);
+            fuzzyCompare(r.x + r.w, dock.plateRect.x + dock.plateRect.w, 0.501);
+            fuzzyCompare(r.y, dock.plateRect.y, 0.501);
+            fuzzyCompare(r.y + r.h, dock.plateRect.y + dock.plateRect.h, 0.501);
+            // The QML fill (dockBar) draws exactly `panelRect` with the token
+            // radius; that is the rounded edge the frost shares.
+            var plate = findChild(dock, "dockPlate");
+            var bar = findChild(dock, "dockBar");
+            fuzzyCompare(plate.plateX, dock.panelRect.x - plate.x, 0.001);
+            fuzzyCompare(plate.plateY, dock.panelRect.y - plate.y, 0.001);
+            fuzzyCompare(bar.width, dock.panelRect.w, 0.001);
+            fuzzyCompare(bar.height, dock.panelRect.h, 0.001);
+            compare(bar.radius, Theme.controls.dock.radius);
+        }
+
+        function test_panel_rect_never_flips_during_a_sweep() {
+            // A one-way pointer sweep must move the integer panel edge one way
+            // only, so the declared backdrop cannot ping-pong by a pixel.
+            mouseMove(stage, 640, stage.height - 1);
+            waitForRendering(stage);
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, position: "bottom", magnification: 1.0,
+                entries: [ app("a", "A", true), app("b", "B", true),
+                           app("c", "C", true) ]
+            });
+            var base = dock._baseline;
+            var start = base.centers[0];
+            var end = base.centers[2];
+            dock.pointerAlong = start;
+            waitForRendering(stage);
+            var prevTop = dock.panelRect.y;
+            var flips = 0;
+            for (var i = 1; i <= 30; ++i) {
+                dock.pointerAlong = start + (end - start) * i / 30;
+                wait(16);
+                var top = dock.panelRect.y;
+                if (top - prevTop > 0)
+                    ++flips;
+                prevTop = top;
+            }
+            compare(flips, 0,
+                    "the integer panel edge flipped back during a one-way sweep");
+        }
+
+        function test_rim_pixels_follow_the_plate_round_rect() {
+            // Hiding the rim and diffing the two frames isolates the rim
+            // pixels: every one must lie inside the plate's rounded rect, and
+            // at least one must sit on the top-left corner arc (the pre-fix
+            // straight hairline poked outside and had none on the arc).
+            var dock = make(dockComponent, {
+                width: 1280, height: 240, position: "bottom",
+                entries: [ app("a", "A", true), app("b", "B", true) ]
+            });
+            waitForRendering(stage);
+            var r = dock.panelRect;
+            var R = Theme.controls.dock.radius;
+            var before = grabImage(stage);
+            var rim = findChild(dock, "dockRim");
+            verify(rim !== null);
+            rim.visible = false;
+            waitForRendering(stage);
+            var after = grabImage(stage);
+            rim.visible = true;
+            waitForRendering(stage);
+
+            var x0 = Math.max(0, Math.floor(r.x) - 2);
+            var x1 = Math.min(before.width, Math.ceil(r.x + r.w) + 2);
+            var y0 = Math.max(0, Math.floor(r.y) - 2);
+            var y1 = Math.min(before.height, Math.ceil(r.y + R) + 2);
+            var outside = 0;
+            var onArc = 0;
+            for (var y = y0; y < y1; ++y) {
+                for (var x = x0; x < x1; ++x) {
+                    var d = Math.abs(before.red(x, y) - after.red(x, y))
+                          + Math.abs(before.green(x, y) - after.green(x, y))
+                          + Math.abs(before.blue(x, y) - after.blue(x, y));
+                    if (d <= 6)
+                        continue;
+                    var px = x + 0.5;
+                    var py = y + 0.5;
+                    if (!insideRoundedRect(px, py, r, R, 1.0)) {
+                        ++outside;
+                        continue;
+                    }
+                    // The top-left corner quadrant carries the arc.
+                    if (px < r.x + R && py < r.y + R)
+                        ++onArc;
+                }
+            }
+            compare(outside, 0, "a rim pixel left the plate shape");
+            verify(onArc > 0, "the rim must follow the top-left corner arc");
+        }
+
+        function test_artwork_padding_is_even_at_rest_and_magnified() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 240, position: "bottom", magnification: 1.0,
+                entries: [ app("a", "A", true), app("b", "B", true),
+                           app("c", "C", true) ]
+            });
+            waitForRendering(stage);
+            // Take magnification off so the baseline is at rest.
+            dock.magnification = 0;
+            waitForRendering(stage);
+            // At rest the top artwork inset and both end insets are the pad.
+            fuzzyCompare(dock.layout[0].y - dock.panelRect.y, dock.padding, 0.501);
+            fuzzyCompare(dock.layout[0].x - dock.panelRect.x,
+                         dock.paddingAlong, 0.501);
+            var last = dock.layout.length - 1;
+            fuzzyCompare(dock.panelRect.x + dock.panelRect.w
+                         - (dock.layout[last].x + dock.layout[last].w),
+                         dock.paddingAlong, 0.501);
+
+            // Settle anchored on the center tile: the same top/end insets
+            // hold, so the artwork stays evenly padded as the plate grows.
+            dock.magnification = 1.0;
+            dock.pointerAlong = dock._baseline.centers[1];
+            wait(Theme.motion.dockMagnifyTrack.duration + 160);
+            var top = Number.MAX_VALUE;
+            for (var i = 0; i < dock.layout.length; ++i) {
+                if (dock.items[i].kind === "divider" || dock.layout[i].w <= 0)
+                    continue;
+                top = Math.min(top, dock.layout[i].y);
+            }
+            fuzzyCompare(top - dock.panelRect.y, dock.padding, 0.501);
+            fuzzyCompare(dock.panelRect.x + dock.panelRect.w
+                         - (dock.layout[last].x + dock.layout[last].w),
+                         dock.paddingAlong, 0.501);
         }
 
         function test_entries_stay_inside_the_plate_at_icon_size_min_and_max() {
