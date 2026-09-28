@@ -34,7 +34,7 @@ Item {
             ["appearance", "desktop-dock", "mission-control", "displays",
              "wallpaper", "bluetooth", "battery", "storage", "general", "sound",
              "keyboard", "mouse", "trackpad", "notifications", "focus",
-             "lock-screen", "menu-bar", "users-groups", "printers"]
+             "lock-screen", "menu-bar", "users-groups", "printers", "privacy"]
 
         function make() {
             var shell = createTemporaryObject(shellComponent, stage,
@@ -87,7 +87,7 @@ Item {
 
         function test_every_shipped_pane_has_a_body_and_no_other_does() {
             var shell = make();
-            compare(SettingsPanes.shippedPanes.length, 19);
+            compare(SettingsPanes.shippedPanes.length, 20);
             for (var i = 0; i < SettingsPanes.catalog.length; ++i) {
                 var pane = SettingsPanes.catalog[i];
                 var body = shell.paneComponent(pane.id);
@@ -531,6 +531,31 @@ Item {
             Settings.setPrinterAcceptingJobs("Canon_MF230", false);
             Settings.cancelPrinterJob(1);
             compare(Settings.printersAvailable, false);
+        }
+
+        // The Privacy & Security view is a host-stack adapter read, so with no
+        // bridge host it is the absence state: the category list is replaced by
+        // a one-line note and the permission writes are safe no-ops. The pane
+        // owns no settingsd preference, because the portal store is the state
+        // (T-15.13b).
+        function test_privacy_pane_degrades_cleanly_without_the_bridge_host() {
+            var shell = make();
+            compare(Settings.privacyAvailable, false,
+                    "no bridge host is the absent state under test");
+            compare(Settings.privacy.state, undefined);
+
+            var pane = showPane(shell, "privacy");
+            compare(pane.ready, false);
+            compare(pane.absenceNote.visible, true,
+                    "the absence note explains the missing permission service");
+            verify(pane.absenceNote.text.length > 0);
+            compare(pane.categoryRepeater.count, 0);
+
+            // A refresh and the permission writes are safe no-ops with no host.
+            Settings.refreshPrivacy();
+            Settings.setPrivacyPermission("devices", "camera", "org.mozilla.firefox", "denied");
+            Settings.deletePrivacyPermission("devices", "camera", "org.mozilla.firefox");
+            compare(Settings.privacyAvailable, false);
         }
     }
 }

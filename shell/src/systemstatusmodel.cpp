@@ -17,6 +17,7 @@ const QString kKindInput = QStringLiteral("input");
 const QString kKindUpdates = QStringLiteral("updates");
 const QString kKindAccounts = QStringLiteral("accounts");
 const QString kKindPrinters = QStringLiteral("printers");
+const QString kKindPrivacy = QStringLiteral("privacy");
 
 } // namespace
 
@@ -70,6 +71,11 @@ bool SystemStatusModel::printersVisible() const
     return m_printers.value(QStringLiteral("visible")).toBool();
 }
 
+bool SystemStatusModel::privacyVisible() const
+{
+    return m_privacy.value(QStringLiteral("visible")).toBool();
+}
+
 QVariantMap SystemStatusModel::parseView(const QByteArray &json, const QString &kind, QString *error)
 {
     QJsonParseError parseError{};
@@ -108,7 +114,7 @@ QVariantMap SystemStatusModel::normalize(const QVariantMap &view, const QString 
     // shares the rule (ADR 0117): a running `bluetoothd` with no controller is
     // `available` with `present: false` and the tile hides.
     if ((kind == kKindBattery || kind == kKindBluetooth || kind == kKindStorage
-             || kind == kKindInput || kind == kKindPrinters)
+             || kind == kKindInput || kind == kKindPrinters || kind == kKindPrivacy)
             && view.contains(QStringLiteral("present"))
             && !view.value(QStringLiteral("present")).toBool())
         hidden = true;
@@ -182,6 +188,15 @@ void SystemStatusModel::applyPrinters(const QVariantMap &view)
     // running CUPS with no queue and a running SANE with no device are
     // `available` with `present: false`, so the tile hides then too.
     m_printers = normalize(view, kKindPrinters);
+    emit changed();
+}
+
+void SystemStatusModel::applyPrivacy(const QVariantMap &view)
+{
+    // The Privacy and Security view has a second hide rule (`present`): a
+    // running portal PermissionStore that records no application permission is
+    // `available` with `present: false`, so the tile hides then too.
+    m_privacy = normalize(view, kKindPrivacy);
     emit changed();
 }
 
@@ -266,6 +281,15 @@ void SystemStatusModel::applyPrintersJson(const QByteArray &json)
     applyPrinters(view);
 }
 
+void SystemStatusModel::applyPrivacyJson(const QByteArray &json)
+{
+    QString error;
+    const QVariantMap view = parseView(json, kKindPrivacy, &error);
+    if (!error.isEmpty())
+        return;
+    applyPrivacy(view);
+}
+
 void SystemStatusModel::requestJoin(const QString &ssid, const QString &secret)
 {
     if (ssid.isEmpty())
@@ -341,4 +365,9 @@ void SystemStatusModel::requestRefreshAccounts()
 void SystemStatusModel::requestRefreshPrinters()
 {
     emit refreshPrintersRequested();
+}
+
+void SystemStatusModel::requestRefreshPrivacy()
+{
+    emit refreshPrivacyRequested();
 }

@@ -26,6 +26,7 @@ const QString kInputInterface = QStringLiteral("org.dragonfruit.SystemStatus1.In
 const QString kUpdatesInterface = QStringLiteral("org.dragonfruit.SystemStatus1.Updates");
 const QString kAccountsInterface = QStringLiteral("org.dragonfruit.SystemStatus1.Accounts");
 const QString kPrintersInterface = QStringLiteral("org.dragonfruit.SystemStatus1.Printers");
+const QString kPrivacyInterface = QStringLiteral("org.dragonfruit.SystemStatus1.Privacy");
 
 // Serialize a QJsonObject to the compact byte form the host uses.
 QByteArray compact(const QJsonObject &object)
@@ -218,6 +219,12 @@ void DbusSystemStatusClient::refreshPrinters()
          &SystemStatusClient::printersState);
 }
 
+void DbusSystemStatusClient::refreshPrivacy()
+{
+    call(kPrivacyInterface, QStringLiteral("State"), {},
+         &SystemStatusClient::privacyState);
+}
+
 void DbusSystemStatusClient::join(const QString &ssid, const QString &secret)
 {
     call(kWifiInterface, QStringLiteral("Join"), {ssid, secret},
@@ -250,6 +257,7 @@ MockSystemStatusClient::MockSystemStatusClient(QObject *parent)
     refreshUpdates();
     refreshAccounts();
     refreshPrinters();
+    refreshPrivacy();
 }
 
 void MockSystemStatusClient::refreshInput()
@@ -658,6 +666,77 @@ void MockSystemStatusClient::refreshPrinters()
     scanners.append(scanner);
     view.insert(QStringLiteral("scanners"), scanners);
     emit printersState(compact(view));
+}
+
+void MockSystemStatusClient::refreshPrivacy()
+{
+    // The Privacy and Security fixture (T-15.13b): a portal PermissionStore
+    // with three application permissions across camera and location. The tile
+    // is a read-only summary of the host stack, so the fixture never mutates.
+    QJsonObject view;
+    view.insert(QStringLiteral("kind"), QStringLiteral("privacy"));
+    view.insert(QStringLiteral("state"), QStringLiteral("available"));
+    view.insert(QStringLiteral("glyph"), QStringLiteral("privacy"));
+    view.insert(QStringLiteral("label"), QStringLiteral("3 Apps"));
+    view.insert(QStringLiteral("present"), true);
+    view.insert(QStringLiteral("appCount"), 3);
+    view.insert(QStringLiteral("grantedCount"), 1);
+    view.insert(QStringLiteral("deniedCount"), 1);
+    view.insert(QStringLiteral("categoryCount"), 14);
+
+    const auto app = [](const QString &id, const QString &state, const QString &stateLabel,
+                        const QStringList &permissions) {
+        QJsonObject entry;
+        entry.insert(QStringLiteral("app"), id);
+        entry.insert(QStringLiteral("state"), state);
+        entry.insert(QStringLiteral("stateLabel"), stateLabel);
+        entry.insert(QStringLiteral("permissions"),
+                     QJsonArray::fromStringList(permissions));
+        return entry;
+    };
+    const auto category = [&app](const QString &id, const QString &label,
+                                 const QString &summary, int appCount, int grantedCount,
+                                 const QJsonArray &resources) {
+        QJsonObject entry;
+        entry.insert(QStringLiteral("id"), id);
+        entry.insert(QStringLiteral("label"), label);
+        entry.insert(QStringLiteral("summary"), summary);
+        entry.insert(QStringLiteral("appCount"), appCount);
+        entry.insert(QStringLiteral("grantedCount"), grantedCount);
+        entry.insert(QStringLiteral("resources"), resources);
+        return entry;
+    };
+
+    QJsonObject cameraResource;
+    cameraResource.insert(QStringLiteral("id"), QStringLiteral("camera"));
+    cameraResource.insert(QStringLiteral("appCount"), 2);
+    cameraResource.insert(QStringLiteral("apps"), QJsonArray {
+        app(QStringLiteral("org.example.Snapshot"), QStringLiteral("denied"),
+            QStringLiteral("Denied"), { QStringLiteral("no") }),
+        app(QStringLiteral("org.mozilla.firefox"), QStringLiteral("allowed"),
+            QStringLiteral("Allowed"), { QStringLiteral("yes") }),
+    });
+    QJsonObject locationResource;
+    locationResource.insert(QStringLiteral("id"), QStringLiteral("location"));
+    locationResource.insert(QStringLiteral("appCount"), 1);
+    locationResource.insert(QStringLiteral("apps"), QJsonArray {
+        app(QStringLiteral("org.example.Maps"), QStringLiteral("ask"),
+            QStringLiteral("Ask"), { QStringLiteral("ask") }),
+    });
+
+    QJsonArray categories;
+    categories.append(category(QStringLiteral("devices"), QStringLiteral("Camera"),
+                               QStringLiteral("2 apps"), 2, 1,
+                               QJsonArray { cameraResource }));
+    categories.append(category(QStringLiteral("location"), QStringLiteral("Location Services"),
+                               QStringLiteral("1 app"), 1, 0,
+                               QJsonArray { locationResource }));
+    categories.append(category(QStringLiteral("notifications"), QStringLiteral("Notifications"),
+                               QStringLiteral("None"), 0, 0, QJsonArray {}));
+    categories.append(category(QStringLiteral("screencast"), QStringLiteral("Screen Recording"),
+                               QStringLiteral("None"), 0, 0, QJsonArray {}));
+    view.insert(QStringLiteral("categories"), categories);
+    emit privacyState(compact(view));
 }
 
 void MockSystemStatusClient::refreshWifi()

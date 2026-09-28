@@ -20,6 +20,7 @@
 //! dragonfruit-system-status --print-updates
 //! dragonfruit-system-status --print-accounts
 //! dragonfruit-system-status --print-printers
+//! dragonfruit-system-status --print-privacy
 //! ```
 
 use std::process::ExitCode;
@@ -32,6 +33,7 @@ use dragonfruit_networkmanager::DbusNetworkManager;
 use dragonfruit_notify_adapter::DbusNotifications;
 use dragonfruit_power::DbusUPower;
 use dragonfruit_printer_adapter::HostPrint;
+use dragonfruit_privacy_adapter::HostPrivacy;
 use dragonfruit_storage::DbusUDisks;
 use dragonfruit_system_status::dbus;
 use dragonfruit_system_status::AccountsHost;
@@ -39,6 +41,7 @@ use dragonfruit_system_status::BluetoothHost;
 use dragonfruit_system_status::InputHost;
 use dragonfruit_system_status::NotificationsHost;
 use dragonfruit_system_status::PrintersHost;
+use dragonfruit_system_status::PrivacyHost;
 use dragonfruit_system_status::StatusHost;
 use dragonfruit_system_status::StorageHost;
 use dragonfruit_system_status::UpdatesHost;
@@ -55,6 +58,7 @@ fn main() -> ExitCode {
     let mut print_updates = false;
     let mut print_accounts = false;
     let mut print_printers = false;
+    let mut print_privacy = false;
     for arg in std::env::args().skip(1) {
         match arg.as_str() {
             "--print-wifi" => print_wifi = true,
@@ -67,6 +71,7 @@ fn main() -> ExitCode {
             "--print-updates" => print_updates = true,
             "--print-accounts" => print_accounts = true,
             "--print-printers" => print_printers = true,
+            "--print-privacy" => print_privacy = true,
             "-h" | "--help" => {
                 print_help();
                 return ExitCode::SUCCESS;
@@ -99,7 +104,15 @@ fn main() -> ExitCode {
     // CUPS and SANE through their client tools; a host with neither is a
     // normal hidden state (ADR 0140).
     let mut printers = PrintersHost::new(HostPrint::new());
+    // The portal PermissionStore over the session bus; no portal or no store is
+    // a normal hidden state (ADR 0142).
+    let mut privacy = PrivacyHost::new(HostPrivacy::new());
 
+    if print_privacy {
+        privacy.refresh();
+        println!("{}", privacy.state());
+        return ExitCode::SUCCESS;
+    }
     if print_printers {
         printers.refresh();
         println!("{}", printers.state());
@@ -159,6 +172,7 @@ fn main() -> ExitCode {
     updates.refresh();
     accounts.refresh();
     printers.refresh();
+    privacy.refresh();
     match dbus::run(
         host,
         bluetooth,
@@ -168,6 +182,7 @@ fn main() -> ExitCode {
         updates,
         accounts,
         printers,
+        privacy,
     ) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
@@ -197,6 +212,7 @@ fn print_help() {
            --print-accounts refresh AccountsService/the group provider and print the\n\
                             Users and Groups JSON view\n\
            --print-printers refresh CUPS/SANE and print the Printers and Scanners JSON view\n\
+           --print-privacy  refresh the portal PermissionStore and print the Privacy JSON view\n\
            -h, --help       show this help"
     );
 }

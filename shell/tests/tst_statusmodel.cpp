@@ -47,6 +47,9 @@ private slots:
     void printersDecodesTheQueuesAndScanners();
     void printersHidesOnAnAbsentHostOrAnEmptyHost();
     void printersRefreshRaisesTheRequest();
+    void privacyDecodesTheCategories();
+    void privacyHidesOnAnAbsentHostOrAnEmptyStore();
+    void privacyRefreshRaisesTheRequest();
 
     void theAbsentDaemonMaskingMatrixHidesOnlyTheMaskedItem();
     void anUnreachedBridgeHostLeavesEveryItemHidden();
@@ -602,6 +605,68 @@ void TestStatusModel::printersRefreshRaisesTheRequest()
     SystemStatusModel model;
     QSignalSpy refreshSpy(&model, &SystemStatusModel::refreshPrintersRequested);
     model.requestRefreshPrinters();
+    QCOMPARE(refreshSpy.count(), 1);
+}
+
+// Privacy and Security (T-15.13b) decodes the bridge host's portal
+// PermissionStore view. The item hides when the host answers with no
+// application permission (`present: false`).
+void TestStatusModel::privacyDecodesTheCategories()
+{
+    const QVariantMap view = SystemStatusModel::parseView(
+        R"({"kind":"privacy","state":"available","glyph":"privacy",
+            "label":"3 Apps","present":true,"appCount":3,
+            "grantedCount":1,"deniedCount":1,"categoryCount":14,
+            "categories":[{"id":"devices","label":"Camera","summary":"2 apps",
+                           "appCount":2,"grantedCount":1,
+                           "resources":[{"id":"camera","appCount":2,
+                             "apps":[{"app":"org.example.Snapshot","state":"denied",
+                                      "stateLabel":"Denied","permissions":["no"]},
+                                     {"app":"org.mozilla.firefox","state":"allowed",
+                                      "stateLabel":"Allowed","permissions":["yes"]}]}]}]})",
+        QStringLiteral("privacy"));
+    QCOMPARE(view.value(QStringLiteral("state")).toString(), QStringLiteral("available"));
+    QCOMPARE(view.value(QStringLiteral("visible")).toBool(), true);
+    QCOMPARE(view.value(QStringLiteral("enabled")).toBool(), true);
+    QCOMPARE(view.value(QStringLiteral("glyph")).toString(), QStringLiteral("privacy"));
+    QCOMPARE(view.value(QStringLiteral("label")).toString(), QStringLiteral("3 Apps"));
+    QCOMPARE(view.value(QStringLiteral("appCount")).toInt(), 3);
+    QCOMPARE(view.value(QStringLiteral("categories")).toList().size(), 1);
+
+    SystemStatusModel model;
+    model.applyPrivacyJson(
+        R"({"kind":"privacy","state":"available","present":true,"appCount":2,
+            "categories":[{"id":"devices","label":"Camera","summary":"2 apps"}]})");
+    QVERIFY(model.privacyVisible());
+    QCOMPARE(model.privacy().value(QStringLiteral("appCount")).toInt(), 2);
+}
+
+void TestStatusModel::privacyHidesOnAnAbsentHostOrAnEmptyStore()
+{
+    SystemStatusModel model;
+    model.applyPrivacyJson(R"({"kind":"privacy","state":"unavailable"})");
+    QCOMPARE(model.privacyVisible(), false);
+    QCOMPARE(model.privacy().value(QStringLiteral("state")).toString(),
+             QStringLiteral("unavailable"));
+
+    // A running store with no application permission is `available` with
+    // `present: false`; the second hide rule hides the tile.
+    model.applyPrivacyJson(
+        R"({"kind":"privacy","state":"available","present":false,
+            "label":"No App Permissions","appCount":0,"categoryCount":14})");
+    QCOMPARE(model.privacyVisible(), false);
+
+    // A mismatched kind is rejected and leaves the last view in place.
+    model.applyPrivacyJson(R"({"kind":"printers","state":"available"})");
+    QCOMPARE(model.privacy().value(QStringLiteral("state")).toString(),
+             QStringLiteral("available"));
+}
+
+void TestStatusModel::privacyRefreshRaisesTheRequest()
+{
+    SystemStatusModel model;
+    QSignalSpy refreshSpy(&model, &SystemStatusModel::refreshPrivacyRequested);
+    model.requestRefreshPrivacy();
     QCOMPARE(refreshSpy.count(), 1);
 }
 

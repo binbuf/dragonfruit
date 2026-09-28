@@ -3,7 +3,7 @@
 //!
 //! Every subsystem interface lives at one object path — `Wifi`, `Audio`,
 //! `Battery`, `Bluetooth`, `Storage`, `Input`, `Notifications`, `Updates`,
-//! `Accounts`, and `Printers` — each with a `State()` read (the JSON view the matching
+//! `Accounts`, `Printers`, and `Privacy` — each with a `State()` read (the JSON view the matching
 //! `*_view` produces) and an explicit `Refresh()` re-sync; the interfaces that
 //! own one add the writes their pane offers. The shell (C++/QML) owns the
 //! corresponding client; nothing on that side links an adapter ([adr/0029]).
@@ -20,16 +20,17 @@ use dragonfruit_networkmanager::DbusNetworkManager;
 use dragonfruit_notify_adapter::DbusNotifications;
 use dragonfruit_power::DbusUPower;
 use dragonfruit_printer_adapter::HostPrint;
+use dragonfruit_privacy_adapter::HostPrivacy;
 use dragonfruit_storage::DbusUDisks;
 use dragonfruit_update_adapter::HostSystem;
 use zbus::blocking::connection;
 use zbus::interface;
 
 use crate::{
-    AccountsHost, BluetoothHost, InputHost, NotificationsHost, PrintersHost, StatusHost,
-    StorageHost, UpdatesHost, ACCOUNTS_INTERFACE, AUDIO_INTERFACE, BATTERY_INTERFACE,
+    AccountsHost, BluetoothHost, InputHost, NotificationsHost, PrintersHost, PrivacyHost,
+    StatusHost, StorageHost, UpdatesHost, ACCOUNTS_INTERFACE, AUDIO_INTERFACE, BATTERY_INTERFACE,
     BLUETOOTH_INTERFACE, DBUS_NAME, DBUS_PATH, INPUT_INTERFACE, NOTIFICATIONS_INTERFACE,
-    PRINTERS_INTERFACE, STORAGE_INTERFACE, UPDATES_INTERFACE, WIFI_INTERFACE,
+    PRINTERS_INTERFACE, PRIVACY_INTERFACE, STORAGE_INTERFACE, UPDATES_INTERFACE, WIFI_INTERFACE,
 };
 
 /// The live host: the three real network/audio/power adapter sources behind
@@ -64,6 +65,10 @@ pub type LiveAccounts = AccountsHost<HostAccounts>;
 /// The live Printers and Scanners host: CUPS and SANE through their client
 /// tools (ADR 0140) behind the bridge (T-15.12b).
 pub type LivePrinters = PrintersHost<HostPrint>;
+
+/// The live Privacy and Security host: the portal PermissionStore over the
+/// session bus (ADR 0142) behind the bridge (T-15.13b).
+pub type LivePrivacy = PrivacyHost<HostPrivacy>;
 
 /// The Wi-Fi half of the service.
 pub struct WifiInterface {
@@ -128,6 +133,14 @@ pub struct AccountsInterface {
 /// same view.
 pub struct PrintersInterface {
     host: Arc<Mutex<LivePrinters>>,
+}
+
+/// The Privacy and Security half of the service (T-15.13b): the portal
+/// PermissionStore's per-application permission categories, plus the two
+/// explicit permission writes the Settings pane offers. The Control Center tile
+/// is a read-only summary of the same view.
+pub struct PrivacyInterface {
+    host: Arc<Mutex<LivePrivacy>>,
 }
 
 #[interface(name = "org.dragonfruit.SystemStatus1.Wifi")]
@@ -492,6 +505,43 @@ impl PrintersInterface {
     }
 }
 
+#[interface(name = "org.dragonfruit.SystemStatus1.Privacy")]
+impl PrivacyInterface {
+    /// The current Privacy and Security view as JSON (the last adapter state).
+    /// Every portal category is carried, empty ones included; `present: false`
+    /// means the store records no application permission at all (the tile's
+    /// hide rule).
+    fn state(&self) -> String {
+        lock_privacy(&self.host).state()
+    }
+
+    /// Re-read the portal PermissionStore once and return the new view. The
+    /// shell and the Settings pane call this when they open; it is an explicit
+    /// resync, not a poll.
+    fn refresh(&self) -> String {
+        let mut host = lock_privacy(&self.host);
+        host.refresh();
+        host.state()
+    }
+
+    /// Store the permission for `app` on the resource `id` in `table`. The
+    /// `permission` is the stable state id (`allowed`/`denied`/`ask`); an
+    /// unknown id is `unset`. Returns the JSON report.
+    fn set_permission(&self, table: &str, id: &str, app: &str, permission: &str) -> String {
+        lock_privacy(&self.host)
+            .set_permission(table, id, app, permission)
+            .to_string()
+    }
+
+    /// Remove the stored permission for `app` on the resource `id` in `table`.
+    /// Returns the JSON report.
+    fn delete_permission(&self, table: &str, id: &str, app: &str) -> String {
+        lock_privacy(&self.host)
+            .delete_permission(table, id, app)
+            .to_string()
+    }
+}
+
 /// Lock the shared host, recovering from a poisoned mutex: a D-Bus method may
 /// panic on a bad argument, and the service must keep answering.
 fn lock(host: &Arc<Mutex<LiveHost>>) -> std::sync::MutexGuard<'_, LiveHost> {
@@ -537,6 +587,12 @@ fn lock_printers(host: &Arc<Mutex<LivePrinters>>) -> std::sync::MutexGuard<'_, L
     host.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
+/// Lock the shared Privacy and Security host, recovering from a poisoned
+/// mutex.
+fn lock_privacy(host: &Arc<Mutex<LivePrivacy>>) -> std::sync::MutexGuard<'_, LivePrivacy> {
+    host.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 /// Serve the three interfaces on the session bus until the process is asked to
 /// stop. Returns an error only when the bus or the name cannot be taken; an
 /// absent session bus exits with a message instead of blocking a session.
@@ -552,6 +608,7 @@ pub fn run(
     updates: LiveUpdates,
     accounts: LiveAccounts,
     printers: LivePrinters,
+    privacy: LivePrivacy,
 ) -> zbus::Result<()> {
     let host = Arc::new(Mutex::new(host));
     let bluetooth = Arc::new(Mutex::new(bluetooth));
@@ -561,6 +618,7 @@ pub fn run(
     let updates = Arc::new(Mutex::new(updates));
     let accounts = Arc::new(Mutex::new(accounts));
     let printers = Arc::new(Mutex::new(printers));
+    let privacy = Arc::new(Mutex::new(privacy));
     let connection = connection::Builder::session()?
         .name(DBUS_NAME)?
         .serve_at(
@@ -623,6 +681,12 @@ pub fn run(
                 host: Arc::clone(&printers),
             },
         )?
+        .serve_at(
+            DBUS_PATH,
+            PrivacyInterface {
+                host: Arc::clone(&privacy),
+            },
+        )?
         .build()?;
 
     // The blocking object server runs on its own executor; parking the main
@@ -634,7 +698,7 @@ pub fn run(
 }
 
 /// The interface names the service serves, for logs and tests.
-pub fn interface_names() -> [&'static str; 10] {
+pub fn interface_names() -> [&'static str; 11] {
     [
         WIFI_INTERFACE,
         AUDIO_INTERFACE,
@@ -646,5 +710,6 @@ pub fn interface_names() -> [&'static str; 10] {
         UPDATES_INTERFACE,
         ACCOUNTS_INTERFACE,
         PRINTERS_INTERFACE,
+        PRIVACY_INTERFACE,
     ]
 }

@@ -68,7 +68,7 @@ explicit — no pane is "a wrapper around a GNOME dialog":
 | Search | `settingsd` → app-index (Spotlight-equivalent; roadmap "later") |
 | Notifications, Focus | Notification service |
 | Lock Screen | `settingsd` + compositor lock/idle policy |
-| Privacy & Security | `settingsd` + portals (`xdg-desktop-portal` PermissionStore) + host services (Secret Service, polkit) |
+| Privacy & Security | Portals (`xdg-desktop-portal` PermissionStore); no `settingsd` key — the store is the state (Secret Service/polkit later) |
 | Biometrics & Password | host services (fprintd, Secret Service) where present |
 | Users & Groups | accountsservice + distro provider |
 | Internet Accounts | host services (GOA) — deferred, not core |
