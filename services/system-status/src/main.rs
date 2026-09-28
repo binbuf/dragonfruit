@@ -19,6 +19,7 @@
 //! dragonfruit-system-status --print-notifications
 //! dragonfruit-system-status --print-updates
 //! dragonfruit-system-status --print-accounts
+//! dragonfruit-system-status --print-printers
 //! ```
 
 use std::process::ExitCode;
@@ -30,12 +31,14 @@ use dragonfruit_input::CommandLibinput;
 use dragonfruit_networkmanager::DbusNetworkManager;
 use dragonfruit_notify_adapter::DbusNotifications;
 use dragonfruit_power::DbusUPower;
+use dragonfruit_printer_adapter::HostPrint;
 use dragonfruit_storage::DbusUDisks;
 use dragonfruit_system_status::dbus;
 use dragonfruit_system_status::AccountsHost;
 use dragonfruit_system_status::BluetoothHost;
 use dragonfruit_system_status::InputHost;
 use dragonfruit_system_status::NotificationsHost;
+use dragonfruit_system_status::PrintersHost;
 use dragonfruit_system_status::StatusHost;
 use dragonfruit_system_status::StorageHost;
 use dragonfruit_system_status::UpdatesHost;
@@ -51,6 +54,7 @@ fn main() -> ExitCode {
     let mut print_notifications = false;
     let mut print_updates = false;
     let mut print_accounts = false;
+    let mut print_printers = false;
     for arg in std::env::args().skip(1) {
         match arg.as_str() {
             "--print-wifi" => print_wifi = true,
@@ -62,6 +66,7 @@ fn main() -> ExitCode {
             "--print-notifications" => print_notifications = true,
             "--print-updates" => print_updates = true,
             "--print-accounts" => print_accounts = true,
+            "--print-printers" => print_printers = true,
             "-h" | "--help" => {
                 print_help();
                 return ExitCode::SUCCESS;
@@ -91,7 +96,15 @@ fn main() -> ExitCode {
     // attached until packaging supplies one (ADR 0138), so the group controls
     // report absence rather than inventing state.
     let mut accounts = AccountsHost::new(HostAccounts::new());
+    // CUPS and SANE through their client tools; a host with neither is a
+    // normal hidden state (ADR 0140).
+    let mut printers = PrintersHost::new(HostPrint::new());
 
+    if print_printers {
+        printers.refresh();
+        println!("{}", printers.state());
+        return ExitCode::SUCCESS;
+    }
     if print_accounts {
         accounts.refresh();
         println!("{}", accounts.state());
@@ -145,6 +158,7 @@ fn main() -> ExitCode {
     notifications.refresh();
     updates.refresh();
     accounts.refresh();
+    printers.refresh();
     match dbus::run(
         host,
         bluetooth,
@@ -153,6 +167,7 @@ fn main() -> ExitCode {
         notifications,
         updates,
         accounts,
+        printers,
     ) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
@@ -181,6 +196,7 @@ fn print_help() {
            --print-updates  refresh the host stack and print the updates JSON view\n\
            --print-accounts refresh AccountsService/the group provider and print the\n\
                             Users and Groups JSON view\n\
+           --print-printers refresh CUPS/SANE and print the Printers and Scanners JSON view\n\
            -h, --help       show this help"
     );
 }

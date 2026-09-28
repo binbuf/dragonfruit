@@ -25,6 +25,7 @@ const QString kStorageInterface = QStringLiteral("org.dragonfruit.SystemStatus1.
 const QString kInputInterface = QStringLiteral("org.dragonfruit.SystemStatus1.Input");
 const QString kUpdatesInterface = QStringLiteral("org.dragonfruit.SystemStatus1.Updates");
 const QString kAccountsInterface = QStringLiteral("org.dragonfruit.SystemStatus1.Accounts");
+const QString kPrintersInterface = QStringLiteral("org.dragonfruit.SystemStatus1.Printers");
 
 // Serialize a QJsonObject to the compact byte form the host uses.
 QByteArray compact(const QJsonObject &object)
@@ -211,6 +212,12 @@ void DbusSystemStatusClient::refreshAccounts()
          &SystemStatusClient::accountsState);
 }
 
+void DbusSystemStatusClient::refreshPrinters()
+{
+    call(kPrintersInterface, QStringLiteral("State"), {},
+         &SystemStatusClient::printersState);
+}
+
 void DbusSystemStatusClient::join(const QString &ssid, const QString &secret)
 {
     call(kWifiInterface, QStringLiteral("Join"), {ssid, secret},
@@ -242,6 +249,7 @@ MockSystemStatusClient::MockSystemStatusClient(QObject *parent)
     refreshInput();
     refreshUpdates();
     refreshAccounts();
+    refreshPrinters();
 }
 
 void MockSystemStatusClient::refreshInput()
@@ -590,6 +598,66 @@ void MockSystemStatusClient::refreshAccounts()
                       QStringLiteral("S"), true, false, false));
     view.insert(QStringLiteral("users"), users);
     emit accountsState(compact(view));
+}
+
+void MockSystemStatusClient::refreshPrinters()
+{
+    // The Printers and Scanners fixture (T-15.12b): a workstation with one
+    // idle default queue and one processing queue with a job, plus a scanner.
+    // The tile is a read-only summary, so the fixture never mutates.
+    QJsonObject view;
+    view.insert(QStringLiteral("kind"), QStringLiteral("printers"));
+    view.insert(QStringLiteral("state"), QStringLiteral("available"));
+    view.insert(QStringLiteral("glyph"), QStringLiteral("printer"));
+    view.insert(QStringLiteral("label"), QStringLiteral("2 Printers, 1 Scanner"));
+    view.insert(QStringLiteral("present"), true);
+    view.insert(QStringLiteral("printersAvailable"), true);
+    view.insert(QStringLiteral("scannersAvailable"), true);
+    view.insert(QStringLiteral("printerCount"), 2);
+    view.insert(QStringLiteral("scannerCount"), 1);
+    view.insert(QStringLiteral("queuedJobCount"), 2);
+    view.insert(QStringLiteral("defaultPrinter"), QStringLiteral("Canon_MF230"));
+
+    const auto printer = [](const QString &name, const QString &displayName,
+                            const QString &state, const QString &stateLabel,
+                            const QString &stateMessage, bool isDefault, int jobCount) {
+        QJsonObject entry;
+        entry.insert(QStringLiteral("name"), name);
+        entry.insert(QStringLiteral("displayName"), displayName);
+        entry.insert(QStringLiteral("makeAndModel"), QString());
+        entry.insert(QStringLiteral("location"), QString());
+        entry.insert(QStringLiteral("uri"), QString());
+        entry.insert(QStringLiteral("state"), state);
+        entry.insert(QStringLiteral("stateLabel"), stateLabel);
+        entry.insert(QStringLiteral("stateMessage"), stateMessage);
+        entry.insert(QStringLiteral("acceptingJobs"), true);
+        entry.insert(QStringLiteral("enabled"), true);
+        entry.insert(QStringLiteral("isDefault"), isDefault);
+        entry.insert(QStringLiteral("jobCount"), jobCount);
+        entry.insert(QStringLiteral("jobs"), QJsonArray());
+        return entry;
+    };
+    QJsonArray printers;
+    printers.append(printer(QStringLiteral("Canon_MF230"), QStringLiteral("Canon MF230"),
+                            QStringLiteral("idle"), QStringLiteral("Idle"),
+                            QStringLiteral("Idle, Last Used"), true, 0));
+    printers.append(printer(QStringLiteral("HP_LaserJet"), QStringLiteral("HP LaserJet"),
+                            QStringLiteral("processing"), QStringLiteral("Printing"),
+                            QStringLiteral("Printing"), false, 1));
+    view.insert(QStringLiteral("printers"), printers);
+
+    QJsonObject scanner;
+    scanner.insert(QStringLiteral("device"), QStringLiteral("epson2:net:192.168.0.7"));
+    scanner.insert(QStringLiteral("description"),
+                   QStringLiteral("Epson GT-1500 flatbed scanner"));
+    scanner.insert(QStringLiteral("displayName"),
+                   QStringLiteral("Epson GT-1500 flatbed scanner"));
+    scanner.insert(QStringLiteral("kind"), QStringLiteral("flatbed"));
+    scanner.insert(QStringLiteral("kindLabel"), QStringLiteral("Flatbed"));
+    QJsonArray scanners;
+    scanners.append(scanner);
+    view.insert(QStringLiteral("scanners"), scanners);
+    emit printersState(compact(view));
 }
 
 void MockSystemStatusClient::refreshWifi()

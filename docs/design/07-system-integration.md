@@ -1059,8 +1059,47 @@ halves, both reused, never reimplemented
 - **One event stream.** `PrintSnapshot::changes(previous)` is a pure diff — the
   daemons' presence, queues added/removed/edited, the default destination,
   scanners added/removed/edited, and jobs entering/leaving a queue — queued by
-  the adapter and drained through `drain_changes`. The Settings pane and
-  Control Center tile are T-15.12b.
+  the adapter and drained through `drain_changes`.
+
+### The Printers & Scanners pane and tile (T-15.12b)
+
+The Settings pane and the Control Center tile ship as one functional unit over
+the T-15.12a adapter, through the bridge host (ADR
+[0141](adr/0141-printers-scanners-pane-and-tile.md)) rather than by linking the
+Rust crate into the app.
+
+- **The bridge host grows a `Printers` interface.** `PrintersHost<HostPrint>`
+  projects the typed `PrintSnapshot` to one flat `printers` view — the ordered
+  queues (display name, make/model, location, URI, state, state message,
+  accepting/enabled, default flag, and the queued jobs) and the SANE devices
+  (description and derived kind), plus `printersAvailable`,
+  `scannersAvailable`, the counts, the queued-job count, and the default
+  destination — and exposes the three queue writes (`SetDefaultPrinter`,
+  `SetPrinterAcceptingJobs`, `CancelJob`). Each write returns an
+  `applied`/`denied`/`absent`/`failed` report and the host re-reads; no snapshot
+  is invented.
+- **One settingsd key.** CUPS and SANE own their state; the pane's queue
+  controls are explicit actions over the adapter. The one durable presentation
+  preference the pane owns is `printers.defaultPaperSize` (revision 17): there
+  is no CUPS client-tool equivalent for a system-wide default paper size. The
+  tile is read-only.
+- **Absence is layered.** The view is `unavailable` only when neither CUPS nor
+  SANE is reachable; a host with no SANE is `available` with
+  `scannersAvailable: false`, so only the scanner half is marked absent, and a
+  CUPS that answers with no queue is `available` with an empty printer list.
+  The pane shows a one-line absence note plus a per-half note; the tile hides on
+  `unavailable` or when the host has neither a queue nor a device
+  (`present: false`).
+- **The Linux adaptation of the reference.** AirPrint wording is dropped (CUPS
+  discovers the same printers over generic IPP/DNS-SD); the per-printer
+  disclosure opens a detail dialog with the status, model/location, the
+  accept-jobs toggle, the queued jobs with a Cancel action, and a
+  `Set as Default Printer` action. `Add Printer, Scanner, or Fax…` is not shown
+  yet (no CUPS discovery seam in the adapter; a disabled button would be a dead
+  control — recorded as a follow-up).
+- **The Control Center tile fits without a scroll.** The fifteenth tile needed
+  the content gap compacted from `xs` to `xxs` (and the new tile's own gap
+  compacted to `xs`); the fixed 360×1160 surface still holds every tile.
 
 ## The status bridge host (T-07.5a)
 
@@ -1093,6 +1132,10 @@ NetworkManager, audio, and power adapters and serves
   plus `CreateUser`, `DeleteUser`, `SetAccountType`, `SetLocked`,
   `SetAutomaticLogin`, `CreateGroup`, `DeleteGroup`, and `SetGroupMembers`
   (the Users & Groups pane's writes over the host-stack adapter).
+- `org.dragonfruit.SystemStatus1.Printers` (T-15.12b) — `State()`/`Refresh()`
+  plus `SetDefaultPrinter(name)`, `SetPrinterAcceptingJobs(name, accepting)`,
+  and `CancelJob(id)` (the Printers & Scanners pane's writes over the CUPS/SANE
+  host-stack adapter).
 
 The host core (`StatusHost`) is adapter-only and CI-tested with the mocks; the
 D-Bus layer is a thin mechanical wrapper. The shell decodes the JSON in one

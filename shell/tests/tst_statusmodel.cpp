@@ -44,6 +44,9 @@ private slots:
     void accountsDecodesTheUsersAndGroups();
     void accountsHidesOnAnAbsentHost();
     void accountsRefreshRaisesTheRequest();
+    void printersDecodesTheQueuesAndScanners();
+    void printersHidesOnAnAbsentHostOrAnEmptyHost();
+    void printersRefreshRaisesTheRequest();
 
     void theAbsentDaemonMaskingMatrixHidesOnlyTheMaskedItem();
     void anUnreachedBridgeHostLeavesEveryItemHidden();
@@ -530,6 +533,75 @@ void TestStatusModel::accountsRefreshRaisesTheRequest()
     SystemStatusModel model;
     QSignalSpy refreshSpy(&model, &SystemStatusModel::refreshAccountsRequested);
     model.requestRefreshAccounts();
+    QCOMPARE(refreshSpy.count(), 1);
+}
+
+// Printers and Scanners (T-15.12b) decodes the bridge host's CUPS/SANE view.
+// The item hides when the host answers with no queue and no scanner
+// (`present: false`); only a present queue or scanner keeps it visible.
+void TestStatusModel::printersDecodesTheQueuesAndScanners()
+{
+    const QVariantMap view = SystemStatusModel::parseView(
+        R"({"kind":"printers","state":"available","glyph":"printer",
+            "label":"2 Printers, 1 Scanner","present":true,
+            "printersAvailable":true,"scannersAvailable":true,
+            "printerCount":2,"scannerCount":1,"queuedJobCount":1,
+            "defaultPrinter":"Canon_MF230",
+            "printers":[{"name":"Canon_MF230","displayName":"Canon MF230",
+                         "state":"idle","stateLabel":"Idle",
+                         "stateMessage":"Idle, Last Used","isDefault":true,
+                         "acceptingJobs":true,"jobCount":0,"jobs":[]}],
+            "scanners":[{"device":"epson2:net:192.168.0.7",
+                         "description":"Epson GT-1500 flatbed scanner",
+                         "kind":"flatbed","kindLabel":"Flatbed"}]})",
+        QStringLiteral("printers"));
+    QCOMPARE(view.value(QStringLiteral("state")).toString(), QStringLiteral("available"));
+    QCOMPARE(view.value(QStringLiteral("visible")).toBool(), true);
+    QCOMPARE(view.value(QStringLiteral("enabled")).toBool(), true);
+    QCOMPARE(view.value(QStringLiteral("glyph")).toString(), QStringLiteral("printer"));
+    QCOMPARE(view.value(QStringLiteral("label")).toString(),
+             QStringLiteral("2 Printers, 1 Scanner"));
+    QCOMPARE(view.value(QStringLiteral("defaultPrinter")).toString(),
+             QStringLiteral("Canon_MF230"));
+    QCOMPARE(view.value(QStringLiteral("printers")).toList().size(), 1);
+    QCOMPARE(view.value(QStringLiteral("scanners")).toList().size(), 1);
+
+    SystemStatusModel model;
+    // A host with one half absent keeps the other half live and stays visible.
+    model.applyPrintersJson(
+        R"({"kind":"printers","state":"available","printersAvailable":true,
+            "scannersAvailable":false,"present":true,"printerCount":1,
+            "scannerCount":0})");
+    QVERIFY(model.printersVisible());
+    QCOMPARE(model.printers().value(QStringLiteral("scannersAvailable")).toBool(), false);
+}
+
+void TestStatusModel::printersHidesOnAnAbsentHostOrAnEmptyHost()
+{
+    SystemStatusModel model;
+    model.applyPrintersJson(R"({"kind":"printers","state":"unavailable"})");
+    QCOMPARE(model.printersVisible(), false);
+    QCOMPARE(model.printers().value(QStringLiteral("state")).toString(),
+             QStringLiteral("unavailable"));
+
+    // A running host with no queue and no scanner is `available` with
+    // `present: false`; the second hide rule hides the tile.
+    model.applyPrintersJson(
+        R"({"kind":"printers","state":"available","present":false,
+            "label":"No Printers or Scanners","printerCount":0,"scannerCount":0})");
+    QCOMPARE(model.printersVisible(), false);
+
+    // A mismatched kind is rejected and leaves the last view in place.
+    model.applyPrintersJson(R"({"kind":"accounts","state":"available"})");
+    QCOMPARE(model.printers().value(QStringLiteral("state")).toString(),
+             QStringLiteral("available"));
+}
+
+void TestStatusModel::printersRefreshRaisesTheRequest()
+{
+    SystemStatusModel model;
+    QSignalSpy refreshSpy(&model, &SystemStatusModel::refreshPrintersRequested);
+    model.requestRefreshPrinters();
     QCOMPARE(refreshSpy.count(), 1);
 }
 

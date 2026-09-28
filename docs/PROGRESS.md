@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(132 earlier sections omitted)_
+_(133 earlier sections omitted)_
 
-- **T110q — T-14.7q Dock overflow cell and More Windows popover**: **State: done.** When the running groups do not fit even at the minimum icon,; `shell/src/dockmodel.{h,cpp}` — `applyDockOverflow` now returns a terminal
 - **T110r — T-14.7r Dock Trash empty progress and result**: **State: done.** Empty Trash is asynchronous with visible states. Confirming; `shell/src/trashbridge.{h,cpp}` — `EmptyState {Idle,Emptying,Succeeded,Failed}`;
 - **T110s — T-14.7s Dock minimize-to-icon reaction**: **State: done.** With `dock.minimizeReaction` on, a window entering `minimized`; `shell/src/dockprojection.{h,cpp}` — pure `dockMinimizedCounts(entries)` and
 - **T110t — T-14.7t Dock keyboard reordering**: **State: done.** The Dock's rearrangement affordance is no longer pointer-only:; `shell/src/dockmodel.{h,cpp}` — `QStringList movePinnedEntry(const QStringList
@@ -43,6 +42,7 @@ _(132 earlier sections omitted)_
 - **T131 — T-15.11a Users and Groups adapter**: **State: done.** New workspace crate `dragonfruit-account-adapter`; `services/account-adapter/` (new crate, workspace member) —
 - **T132 — T-15.11b Users and Groups pane and tile**: **State: done.** The Settings `Users & Groups` pane and the Control Center; `services/system-status/src/accounts.rs` (new) — `AccountsHost<S>` (refresh/
 - **T133 — T-15.12a Printers and Scanners adapter**: **State: done.** New workspace crate `dragonfruit-printer-adapter`; `services/printer-adapter/src/source.rs` — `PrinterState` (CUPS `3`/`4`/`5` +
+- **T134 — T-15.12b Printers and Scanners pane and tile**: **State: done.** The Settings `Printers & Scanners` pane and the Control Center; `services/system-status/src/printers.rs` (new) — `PrintersHost<S>` (refresh/
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -12706,3 +12706,120 @@ Decisions / gotchas for T-15.12b and later:
   `docs/captures/t15-12a-printer-adapter.png` (2115x1437). Vision found the
   menu bar with status items, the Dock, the wallpaper, and the Settings/demo
   windows, with no blank areas, clipping, or artifacts.
+
+## T134 — T-15.12b Printers and Scanners pane and tile
+
+**State: done.** The Settings `Printers & Scanners` pane and the Control Center
+`Printers` tile ship as one functional unit over the T-15.12a adapter, through
+the bridge host (ADR 0141), not by linking the Rust crate. One new settingsd
+key (`printers.defaultPaperSize`); the queue/scanner state stays CUPS/SANE and
+the three queue writes are explicit actions. The tile is a read-only summary.
+
+Real paths:
+
+- `services/system-status/src/printers.rs` (new) — `PrintersHost<S>` (refresh/
+  view/state + `set_default_printer`/`set_printer_accepting_jobs`/`cancel_job`)
+  + pure `printers_view`/`printers_snapshot_view` + `printers_report`. The view
+  carries `glyph`/`label`/`present`/`printersAvailable`/`scannersAvailable`/
+  `printerCount`/`scannerCount`/`queuedJobCount`/`defaultPrinter`/`printers[]`/
+  `scanners[]`.
+- `services/system-status/src/lib.rs` — `pub mod printers`, re-exports, and
+  `PRINTERS_INTERFACE = "org.dragonfruit.SystemStatus1.Printers"`.
+- `services/system-status/src/dbus.rs` — `LivePrinters =
+  PrintersHost<HostPrint>`; `PrintersInterface` with `State`/`Refresh`/
+  `SetDefaultPrinter`/`SetPrinterAcceptingJobs`/`CancelJob`; `run(...)` takes the
+  printers host (`#[allow(clippy::too_many_arguments)]`); `interface_names()` is
+  now 10.
+- `services/system-status/src/main.rs` — `PrintersHost::new(HostPrint::new())`,
+  `--print-printers`.
+- `services/system-status/tests/printers.rs` (new) — 5 bridge acceptance tests.
+- `services/system-status/Cargo.toml` — depends on `dragonfruit-printer-adapter`.
+- `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 16 → 17;
+  `KeyGroup::Printers`; `printers.defaultPaperSize` (Text, default `us-letter`,
+  allowed `us-letter`/`us-legal`/`a3`/`a4`/`a5`, since 17) + declaration test.
+- `docs/settings-keys.md` — the new row (the schema-doc test parses it).
+- `apps/settings/PrintersClient.{h,cpp}` (new) — `PrintersClient` seam;
+  `DbusPrintersClient` over the `Printers` interface; `MockPrintersClient`
+  (`DF_PRINTERS_FIXTURE`) with a simulated two-queue/one-scanner stack that
+  mutates on every write and `resetForTest()`.
+- `apps/settings/SettingsBridge.{h,cpp}` — `printers`/`printersAvailable`
+  properties, `printersChanged`, `refreshPrinters`, `setDefaultPrinter`,
+  `setPrinterAcceptingJobs`, `cancelPrinterJob`, `resetPrintersFixture`.
+- `apps/settings/PrintersScannersPane.qml` (new) — `Default printer` popup
+  (CUPS default; `Last Printer Used` is the value when CUPS names none),
+  `Default paper size` popup (settingsd), printer rows (state dot + message +
+  per-printer disclosure), scanner rows, per-half absence notes, and the
+  per-printer detail dialog (status/model/location, accept-jobs toggle, jobs
+  with Cancel, `Set as Default Printer`). No Add button (see deviations).
+- `apps/settings/SettingsPanes.qml` — `printers` shipped `true`, icon
+  `printer`; `SettingsShell.qml` registers the body.
+- `apps/settings/CMakeLists.txt` (module + `df_qml_lint`) and
+  `apps/settings/tests/CMakeLists.txt` (`tst_settings_printers`).
+- `design-system/components/Icon.qml` — new painted `printer` and `scanner`
+  glyphs.
+- Shell: `systemstatusclient.{h,cpp}` (read-only `refreshPrinters` +
+  `printersState`, mock fixture), `systemstatusmodel.{h,cpp}` (`printers()`,
+  `printersVisible()`, `applyPrintersJson`, `requestRefreshPrinters`,
+  the `present` second-hide rule), `shellcontroller.{h,cpp}` (`onPrintersState`,
+  startup/status-report refresh, `applyControlCenterData` pushes `printers`,
+  `onPrintersSettingsRequested`), `shell/control-center/ControlCenter.qml`
+  (15th tile `printers` with the count label + `Printers & Scanners Settings…`
+  link).
+- Tests — `apps/settings/tests/tst_settings_printers.{cpp,qml}` (new, 6 cases);
+  `tst_settings_absence.qml` (shipped 18 → 19, id list, printers absence case);
+  `tst_settings_shell.qml` (shipped 18 → 19, list); `shell/tests/
+  tst_controlcenter.qml` (15 tiles, fit test, printers cases);
+  `shell/tests/tst_statusmodel.cpp` (3 printers cases).
+- Docs/scripts — ADR `0141-printers-scanners-pane-and-tile.md`;
+  `docs/design/07-system-integration.md` D-Bus bullet + T-15.12b subsection;
+  capture script `scripts/capture-t15-printers-pane.sh` + `docs/captures/README.md`.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-system-status -p dragonfruit-printer-adapter
+  -p dragonfruit-settingsd` — green (system-status 62 lib + 5 printers
+  integration; settingsd 39 lib + schema_doc).
+- `cargo clippy -p dragonfruit-system-status -p dragonfruit-printer-adapter
+  -p dragonfruit-settingsd --all-targets -- -D warnings` — clean;
+  `cargo fmt --all -- --check` — clean.
+- `ctest --test-dir build --output-on-failure -j4` — 66/66.
+- `make e2e` — EXIT 0 (captured `/tmp/opencode/e2e-t134.log`).
+- `make check-design-tokens check-tokens check-no-capture-grab` — clean;
+  `./scripts/check-gallery-snapshots.py` — 78 green.
+- `make lint` — still fails only on the pre-existing `check-desktop-names`
+  lines (none in the new work); unchanged from T125–T133.
+
+Decisions / gotchas for T-15.13a and later:
+
+- **One settingsd key only.** `printers.defaultPaperSize` (rev 17). Do not add
+  keys for the default printer, queue state, or jobs: CUPS owns them and the
+  pane's controls are explicit adapter actions.
+- **Absence is layered (ADR 0140/0141).** `printers: None` = CUPS absent (print
+  half marks absent only); `scanners: None` = SANE absent (scanner half marks
+  absent only); the view is `unavailable` only when **both** are absent. The
+  tile hides on `unavailable` or `present: false` (no queue and no device); the
+  pane shows a per-half note.
+- **A write never invents a snapshot.** The host re-reads after each action;
+  `MockPrintersClient` mutates its simulated queue so a round-trip is observable
+  headlessly.
+- **`DF_PRINTERS_FIXTURE`** selects the Settings mock and is process-global;
+  the test calls `Settings.resetPrintersFixture()` in `init()`. The shell
+  fixture is `DF_STATUS_FIXTURE` (its mock now emits a printers view too).
+- **The pane derives `selectedPrinter` from the live view by name**, so an open
+  dialog converges after a write.
+- **Control Center content gap is now `xxs` (was `xs`) and the printers tile's
+  own internal gap is `xs`**; 15 tiles fit the fixed 360×1160 surface. A 16th
+  tile needs a taller nested output (no pointer-axis forwarding, ADR 0139/0141).
+- **Follow-up: `Add Printer, Scanner, or Fax…`.** The reference row is not
+  shown; there is no CUPS discovery seam in the adapter (`lpinfo -v` + `lpadmin
+  -p …`). Adding it belongs in `dragonfruit-printer-adapter`, not the pane.
+- Live visual check: `bash scripts/capture-t15-printers-pane.sh` produced
+  `docs/captures/t15-12b-printers-pane.png` (2088x1410) and
+  `docs/captures/t15-12b-printers-control-center.png` (360x1160). Vision
+  confirmed the pane's selected `Printers & Scanners` sidebar row, the
+  `Default printer` value `Canon MF230`, `Default paper size` `US Letter`, the
+  `Canon MF230` (`Idle, Last Used · Default`) and `HP LaserJet` (`Printing`)
+  rows, and the `Epson GT-1500 flatbed scanner` (`Flatbed`) row with no
+  clipped/blank/overlapping text; and the panel's 15 tiles through Printers
+  (`2 Printers, 1 Scanner`, `Printers & Scanners Settings…`) plus Clipboard with
+  the bottom fully visible and no artifacts.

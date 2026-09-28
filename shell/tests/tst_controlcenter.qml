@@ -38,6 +38,7 @@ Item {
         SignalSpy { id: updatesRebootSpy; signalName: "updatesRebootRequested" }
         SignalSpy { id: updatesSettingsSpy; signalName: "updatesSettingsRequested" }
         SignalSpy { id: usersSettingsSpy; signalName: "usersSettingsRequested" }
+        SignalSpy { id: printersSettingsSpy; signalName: "printersSettingsRequested" }
         SignalSpy { id: focusSpy; signalName: "focusToggleRequested" }
         SignalSpy { id: darkSpy; signalName: "darkModeToggleRequested" }
         SignalSpy { id: closedSpy; signalName: "closed" }
@@ -251,6 +252,26 @@ Item {
             };
         }
 
+        // The shell's decoded Printers and Scanners view (T-15.12b), shaped by
+        // `SystemStatusModel`.
+        function printersModel(label, printerCount, scannerCount) {
+            return {
+                kind: "printers",
+                state: "available",
+                visible: true,
+                enabled: true,
+                glyph: "printer",
+                label: label !== undefined ? label : "2 Printers, 1 Scanner",
+                present: true,
+                printersAvailable: true,
+                scannersAvailable: true,
+                printerCount: printerCount !== undefined ? printerCount : 2,
+                scannerCount: scannerCount !== undefined ? scannerCount : 1,
+                queuedJobCount: 0,
+                defaultPrinter: "Canon_MF230"
+            };
+        }
+
         function menuBarModel(autoHide, showBackground, globalMenu) {
             var label = autoHide === "never" ? "Never"
                 : autoHide === "always" ? "Always"
@@ -295,11 +316,12 @@ Item {
                 menuBar: menuBarModel("full-screen"),
                 updates: updatesModel("1 Update Available", "available", 1),
                 accounts: usersModel("2 Users", 2, 1),
+                printers: printersModel("2 Printers, 1 Scanner", 2, 1),
                 brightness: 0.8,
                 focusPolicy: focusModel("off"),
                 dark: true
             });
-            compare(panel.tiles.length, 14);
+            compare(panel.tiles.length, 15);
             compare(panel.tiles[0].id, "wifi");
             compare(panel.tiles[0].kind, "toggle");
             compare(panel.tiles[0].checked, true);
@@ -338,6 +360,9 @@ Item {
             compare(panel.tiles[13].id, "users");
             compare(panel.tiles[13].kind, "info");
             compare(panel.tiles[13].subtitle, "2 Users");
+            compare(panel.tiles[14].id, "printers");
+            compare(panel.tiles[14].kind, "info");
+            compare(panel.tiles[14].subtitle, "2 Printers, 1 Scanner");
             compare(panel.wifiLabel, "home");
         }
 
@@ -347,7 +372,8 @@ Item {
             // rows, the Storage tile, the Sound tile's routing subtitle, the
             // Keyboard tile, the Mission Control tile, the Battery tile, the
             // Lock Screen tile, the Menu Bar tile, the Software Update tile, and the
-            // Users tile the content must still fit, or the lower tiles are
+            // Users tile and the Printers tile the content must still fit, or the
+            // lower tiles are
             // clipped.
             var panel = make({
                 wifi: wifiModel("available", true, "home"),
@@ -366,6 +392,7 @@ lockPolicy: lockPolicyModel(600),
                 menuBar: menuBarModel("full-screen"),
                 updates: updatesModel("1 Update Available", "available", 1),
                 accounts: usersModel("2 Users", 2, 1),
+                printers: printersModel("2 Printers, 1 Scanner", 2, 1),
                 brightness: 1.0,
                 focusPolicy: focusModel("off"),
                 dark: false
@@ -806,6 +833,52 @@ lockPolicy: lockPolicyModel(600),
             compare(link.Accessible.name, "Open Users & Groups Settings");
             mouseClick(link, link.width / 2, link.height / 2);
             compare(usersSettingsSpy.count, 1);
+        }
+
+        function test_printers_tile_reflects_state() {
+            var panel = make({ printers: printersModel("2 Printers, 1 Scanner", 2, 1) });
+            compare(panel.printersAvailable, true);
+            compare(panel.printersVisible, true);
+            compare(panel.printersPrinterCount, 2);
+            compare(panel.printersScannerCount, 1);
+            compare(panel.printersGlyph, "printer");
+            compare(panel.printersLabel, "2 Printers, 1 Scanner");
+            compare(panel.tiles[14].visible, true);
+            compare(panel.tiles[14].enabled, true);
+
+            // A running host with no queue and no scanner (`present: false`)
+            // hides the tile; the model normalizes it that way.
+            panel.printers = {
+                kind: "printers", state: "available", visible: false, enabled: true,
+                present: false, printerCount: 0, scannerCount: 0, label: "No Printers or Scanners"
+            };
+            compare(panel.printersVisible, false);
+            compare(panel.tiles[14].visible, false);
+
+            // No host at all hides the tile.
+            panel.printers = ({});
+            compare(panel.printersAvailable, false);
+            compare(panel.tiles[14].visible, false);
+        }
+
+        function test_printers_tile_hides_on_absence() {
+            var panel = make({ printers: ({ state: "unavailable" }) });
+            compare(panel.printersAvailable, false);
+            var tile = findChild(panel, "printersTile");
+            verify(tile !== null);
+            compare(tile.visible, false);
+        }
+
+        function test_printers_settings_link_raises_the_request() {
+            var panel = make({ printers: printersModel("2 Printers, 1 Scanner", 2, 1) });
+            printersSettingsSpy.target = panel;
+            printersSettingsSpy.clear();
+            var link = findChild(panel, "printersSettingsLink");
+            verify(link !== null, "the Printers & Scanners Settings link is present");
+            compare(link.Accessible.role, Accessible.Button);
+            compare(link.Accessible.name, "Open Printers & Scanners Settings");
+            mouseClick(link, link.width / 2, link.height / 2);
+            compare(printersSettingsSpy.count, 1);
         }
 
         function test_battery_settings_link_raises_the_request() {

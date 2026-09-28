@@ -684,6 +684,14 @@ with no blank areas or stray artifacts. Captured by
 `scripts/capture-t15-printer-adapter.sh`; requires a host Wayland session,
 spectacle, and Pillow, and is not in `make e2e`.
 
+`t15-12b-printers-pane.png` and `t15-12b-printers-control-center.png` are the
+Printers & Scanners pane and Control Center Printers tile for T-15.12b. The pane
+capture shows the `Default printer` / `Default paper size` popups, the printer
+rows with their state dots and per-printer disclosure, and the scanner list; the
+tile capture shows the read-only summary (`2 Printers, 1 Scanner`) and its
+settings link. Captured by `scripts/capture-t15-printers-pane.sh`; requires a
+host Wayland session, spectacle, and Pillow, and is not in `make e2e`.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

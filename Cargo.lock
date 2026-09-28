@@ -743,6 +743,7 @@ dependencies = [
  "dragonfruit-networkmanager",
  "dragonfruit-notify-adapter",
  "dragonfruit-power",
+ "dragonfruit-printer-adapter",
  "dragonfruit-storage",
  "dragonfruit-system-adapters",
  "dragonfruit-update-adapter",

@@ -57,6 +57,10 @@ public:
     // Users and Groups (T-15.11b): a read-only summary. The tile reflects the
     // user/group state; the writes live in the Settings pane (ADR 0139).
     virtual void refreshAccounts() = 0;
+    // Printers and Scanners (T-15.12b): a read-only summary. The tile reflects
+    // the bridge host's CUPS/SANE view; the queue writes live in the Settings
+    // pane (ADR 0141).
+    virtual void refreshPrinters() = 0;
     virtual void join(const QString &ssid, const QString &secret) = 0;
     virtual void setVolume(double volume) = 0;
     virtual void setMute(bool muted) = 0;
@@ -71,6 +75,7 @@ signals:
     void inputState(const QByteArray &json);
     void updatesState(const QByteArray &json);
     void accountsState(const QByteArray &json);
+    void printersState(const QByteArray &json);
     void joinReport(const QByteArray &json);
     void writeReport(const QByteArray &json);
 };
@@ -102,6 +107,7 @@ public:
     void installUpdates() override;
     void rebootUpdates() override;
     void refreshAccounts() override;
+    void refreshPrinters() override;
     void join(const QString &ssid, const QString &secret) override;
     void setVolume(double volume) override;
     void setMute(bool muted) override;
@@ -148,6 +154,7 @@ public:
     void installUpdates() override;
     void rebootUpdates() override;
     void refreshAccounts() override;
+    void refreshPrinters() override;
     void join(const QString &ssid, const QString &secret) override;
     void setVolume(double volume) override;
     void setMute(bool muted) override;
