@@ -701,6 +701,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "dragonfruit-privacy-adapter"
+version = "0.1.0"
+dependencies = [
+ "dragonfruit-system-adapters",
+ "serde",
+ "serde_json",
+ "zbus",
+]
+
+[[package]]
 name = "dragonfruit-session"
 version = "0.1.0"
 dependencies = [
