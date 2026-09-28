@@ -35,6 +35,7 @@ class BluetoothClient;
 class StorageClient;
 class SoundClient;
 class InputClient;
+class BatteryClient;
 class QDBusServiceWatcher;
 
 class SettingsBridge : public QObject
@@ -111,6 +112,16 @@ class SettingsBridge : public QObject
     // Whether the bridge host is on the session bus. False means no input
     // inventory at all; the pane shows the absence note.
     Q_PROPERTY(bool inputAvailable READ inputAvailable NOTIFY inputChanged)
+    // The battery and power-profiles view from the bridge host (T-15.6b):
+    // `{ state, present, percent, level, charging, plugged, onBattery,
+    // chargeState, health, healthLabel, capacity, chargeCycles,
+    // profilesAvailable, activeProfile, profileLabel, profiles }`. Empty when
+    // the host (or both daemons) is absent; the pane renders the absence state
+    // rather than erroring.
+    Q_PROPERTY(QVariantMap battery READ battery NOTIFY batteryChanged)
+    // Whether the bridge host is on the session bus. False means no battery or
+    // power-profile surface at all; the pane shows the absence note.
+    Q_PROPERTY(bool batteryAvailable READ batteryAvailable NOTIFY batteryChanged)
     // The pane the shell opens on startup. Empty uses the first shipped pane;
     // `DF_SETTINGS_START_PANE=wallpaper` selects one for captures and tests.
     Q_PROPERTY(QString startPane READ startPane CONSTANT)
@@ -134,6 +145,8 @@ public:
     bool soundAvailable() const;
     QVariantMap input() const;
     bool inputAvailable() const;
+    QVariantMap battery() const;
+    bool batteryAvailable() const;
     QString providerStatus() const;
     QString providerDefault() const;
     QString wallpaperBuiltinDefault() const;
@@ -201,6 +214,14 @@ public:
     // when the host is absent.
     Q_INVOKABLE void refreshInput();
 
+    // T-15.6b: the Battery pane's one seam. `refreshBattery` re-reads the
+    // bridge host on pane open; `setPowerProfile` selects the active profile by
+    // its stable id (`power-saver`/`balanced`/`performance`) and the host
+    // pushes the new view back through `batteryChanged`. A no-op when the host
+    // is absent.
+    Q_INVOKABLE void refreshBattery();
+    Q_INVOKABLE void setPowerProfile(const QString &profile);
+
     // T-18.2 test seam: with `DF_WALLPAPER_FIXTURE` set, seed the provider
     // lifecycle to `status` (`ready` loads the deterministic fixture
     // catalogue; any other status leaves it empty) so the pane's fetching /
@@ -236,6 +257,8 @@ signals:
     void soundChanged();
     // The input inventory or availability changed (T-15.4b).
     void inputChanged();
+    // The battery / power-profiles view or availability changed (T-15.6b).
+    void batteryChanged();
 
 private:
     void buildWallpaperPresets();
@@ -284,4 +307,7 @@ private:
     SoundClient *m_sound = nullptr;
     // T-15.4b: the input inventory seam (`DF_INPUT_FIXTURE` selects the mock).
     InputClient *m_input = nullptr;
+    // T-15.6b: the battery / power-profiles seam (`DF_BATTERY_FIXTURE` selects
+    // the mock).
+    BatteryClient *m_battery = nullptr;
 };

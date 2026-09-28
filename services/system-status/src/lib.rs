@@ -15,7 +15,8 @@
 //!
 //! * [`wifi_view`] — the Wi-Fi status slot, glyph/label, and the network list.
 //! * [`audio_view`] — the volume status slot, glyph/label, and the sink list.
-//! * [`battery_view`] — the read-only battery slot, charge state, and level.
+//! * [`battery_view`] — the battery slot, charge state, level, health, and the
+//!   power-profiles selection.
 //!
 //! The views are deliberately flat JSON so the shell side is a decoder, not a
 //! second model: the adapter already owns aggregation, defaults, and the
@@ -24,9 +25,10 @@
 //! # Actions
 //!
 //! [`StatusHost::join`], [`StatusHost::set_volume`], [`StatusHost::set_mute`],
-//! and [`StatusHost::toggle_mute`] are the explicit user actions. They call
-//! the adapter write path once and report the outcome; they never invent a
-//! snapshot (the adapter's read state stays the single source of truth).
+//! [`StatusHost::toggle_mute`], and [`StatusHost::set_active_profile`] are the
+//! explicit user actions. They call the adapter write path once and report the
+//! outcome; they never invent a snapshot (the adapter's read state stays the
+//! single source of truth).
 //!
 //! # No polling
 //!
@@ -41,7 +43,7 @@ use dragonfruit_audio::{AudioAdapter, AudioSource, SetOutcome};
 use dragonfruit_networkmanager::{
     JoinRequest, JoinResult, NetworkManagerAdapter, NetworkManagerSource, WifiAccess,
 };
-use dragonfruit_power::{PowerAdapter, PowerSource};
+use dragonfruit_power::{PowerAdapter, PowerProfile, PowerSource, ProfileOutcome};
 use dragonfruit_system_adapters::Adapter;
 use serde_json::{json, Value};
 
@@ -180,6 +182,19 @@ impl<N: NetworkManagerSource, A: AudioSource, P: PowerSource> StatusHost<N, A, P
     pub fn toggle_mute(&mut self) -> Value {
         let outcome = self.audio.toggle_mute();
         write_report(&outcome)
+    }
+
+    /// Select the active power profile by its stable id (T-15.6b): the one
+    /// write the Battery pane raises. An unknown id is a failure, never a
+    /// guess. One explicit write; the snapshot stays the adapter's truth.
+    pub fn set_active_profile(&mut self, profile: &str) -> Value {
+        match PowerProfile::from_id(profile) {
+            Some(profile) => profile_report(&self.battery.set_active_profile(profile)),
+            None => json!({
+                "outcome": "failed",
+                "error": format!("unknown power profile: {profile}"),
+            }),
+        }
     }
 
     /// The Wi-Fi adapter (read-only), for tests and introspection.
@@ -334,13 +349,17 @@ pub fn audio_view<A: AudioSource>(adapter: &AudioAdapter<A>) -> Value {
     })
 }
 
-/// Build the read-only battery status view from an adapter.
+/// Build the battery status view from an adapter.
 ///
 /// The three states map straight to the contract: `unavailable` hides the
-/// item (UPower absent), `error` shows it visible and inert, `available`
-/// carries the charge state and level. A machine with UPower but no present
-/// battery is `available` with `present: false`; the consumer hides the item
-/// then too, so the two "no battery" cases stay distinct on the wire.
+/// item (both daemons absent), `error` shows it visible and inert, `available`
+/// carries the charge state, level, health, and the power-profiles selection.
+/// A machine with UPower but no present battery is `available` with
+/// `present: false`; the consumer hides the battery item then too, so the two
+/// "no battery" cases stay distinct on the wire. `profilesAvailable` is
+/// independent of the battery: a desktop with no battery can still select a
+/// power profile, and a laptop whose power-profiles-daemon is masked still
+/// reports its battery.
 pub fn battery_view<P: PowerSource>(adapter: &PowerAdapter<P>) -> Value {
     let state = adapter.state();
     if state.is_unavailable() {
@@ -356,6 +375,28 @@ pub fn battery_view<P: PowerSource>(adapter: &PowerAdapter<P>) -> Value {
     let Some(snapshot) = snapshot(state) else {
         return json!({ "kind": KIND_BATTERY, "state": "unavailable" });
     };
+    let battery = snapshot.battery();
+    let profiles: Vec<Value> = snapshot
+        .profiles()
+        .map(|profiles| {
+            profiles
+                .available
+                .iter()
+                .map(|profile| {
+                    json!({
+                        "id": profile.id(),
+                        "label": profile.label(),
+                        "glyph": profile.glyph(),
+                        "active": profiles.active == Some(*profile),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let (capacity, charge_cycles) = match battery {
+        Some(battery) => (battery.capacity, battery.charge_cycles),
+        None => (None, None),
+    };
     json!({
         "kind": KIND_BATTERY,
         "state": "available",
@@ -367,8 +408,17 @@ pub fn battery_view<P: PowerSource>(adapter: &PowerAdapter<P>) -> Value {
         "charging": snapshot.charging(),
         "plugged": snapshot.plugged(),
         "onBattery": snapshot.on_battery(),
+        "chargeState": snapshot.state().name(),
+        "health": snapshot.health().name(),
+        "healthLabel": snapshot.health().label(),
+        "capacity": capacity,
+        "chargeCycles": charge_cycles,
         "timeToEmpty": snapshot.time_to_empty(),
         "timeToFull": snapshot.time_to_full(),
+        "profilesAvailable": snapshot.profiles_available(),
+        "activeProfile": snapshot.active_profile().map(PowerProfile::id),
+        "profileLabel": snapshot.profile_label(),
+        "profiles": profiles,
     })
 }
 
@@ -395,6 +445,17 @@ pub fn write_report(outcome: &SetOutcome) -> Value {
         SetOutcome::Applied => json!({ "outcome": "applied" }),
         SetOutcome::Absent => json!({ "outcome": "absent" }),
         SetOutcome::Failed(error) => {
+            json!({ "outcome": "failed", "error": error.message() })
+        }
+    }
+}
+
+/// The JSON report for a power-profile [`ProfileOutcome`] (T-15.6b).
+pub fn profile_report(outcome: &ProfileOutcome) -> Value {
+    match outcome {
+        ProfileOutcome::Applied => json!({ "outcome": "applied" }),
+        ProfileOutcome::Absent => json!({ "outcome": "absent" }),
+        ProfileOutcome::Failed(error) => {
             json!({ "outcome": "failed", "error": error.message() })
         }
     }
@@ -485,6 +546,28 @@ mod tests {
                 time_to_full: 0,
             }],
             profiles: None,
+        }
+    }
+
+    fn profiles_data(active: &str) -> dragonfruit_power::PowerProfilesData {
+        use dragonfruit_power::{PowerProfileData, PowerProfilesData};
+        PowerProfilesData {
+            active_profile: active.to_owned(),
+            profiles: vec![
+                PowerProfileData {
+                    profile: "power-saver".to_owned(),
+                    ..PowerProfileData::default()
+                },
+                PowerProfileData {
+                    profile: "balanced".to_owned(),
+                    ..PowerProfileData::default()
+                },
+                PowerProfileData {
+                    profile: "performance".to_owned(),
+                    ..PowerProfileData::default()
+                },
+            ],
+            ..PowerProfilesData::default()
         }
     }
 
@@ -659,6 +742,72 @@ mod tests {
         assert!((level - 0.82).abs() < 1e-6);
         // Read-only: the view has no write action to expose.
         assert!(view.get("outcome").is_none());
+    }
+
+    #[test]
+    fn the_battery_view_carries_health_and_the_profile_selection() {
+        let mut data = battery_data(71.0, 2);
+        data.profiles = Some(profiles_data("balanced"));
+        let mut host = StatusHost::new(
+            MockNetworkManager::absent(),
+            MockAudio::absent(),
+            MockPower::present(data),
+        );
+        host.refresh_battery();
+        let view = host.battery_view();
+        assert_eq!(view["health"], "normal");
+        assert_eq!(view["healthLabel"], "Normal");
+        assert_eq!(view["capacity"], 96);
+        assert_eq!(view["chargeCycles"], 112);
+        assert_eq!(view["chargeState"], "discharging");
+        assert_eq!(view["profilesAvailable"], true);
+        assert_eq!(view["activeProfile"], "balanced");
+        assert_eq!(view["profileLabel"], "Balanced");
+        assert_eq!(view["profiles"].as_array().unwrap().len(), 3);
+        assert_eq!(view["profiles"][0]["id"], "power-saver");
+        assert_eq!(view["profiles"][0]["label"], "Power Saver");
+        assert_eq!(view["profiles"][0]["glyph"], "power-saver");
+        assert_eq!(view["profiles"][1]["active"], true);
+    }
+
+    #[test]
+    fn the_profile_write_applies_and_never_invents_a_snapshot() {
+        let mut data = battery_data(60.0, 2);
+        data.profiles = Some(profiles_data("balanced"));
+        let mut host = StatusHost::new(
+            MockNetworkManager::absent(),
+            MockAudio::absent(),
+            MockPower::present(data),
+        );
+        host.refresh_battery();
+        assert_eq!(host.set_active_profile("power-saver")["outcome"], "applied");
+        assert_eq!(host.battery().source().profile_writes(), 1);
+        // The view still reflects the adapter's last read until it syncs.
+        assert_eq!(host.battery_view()["activeProfile"], "balanced");
+        host.refresh_battery();
+        assert_eq!(host.battery_view()["activeProfile"], "power-saver");
+
+        // An unknown id is a failure, not a guess, and never reaches the daemon.
+        let report = host.set_active_profile("turbo");
+        assert_eq!(report["outcome"], "failed");
+        assert!(report["error"].as_str().unwrap().contains("turbo"));
+        assert_eq!(host.battery().source().profile_writes(), 1);
+    }
+
+    #[test]
+    fn a_battery_without_a_profiles_daemon_still_reports_the_battery() {
+        let mut host = StatusHost::new(
+            MockNetworkManager::absent(),
+            MockAudio::absent(),
+            MockPower::present(battery_data(55.0, 1)),
+        );
+        host.refresh_battery();
+        let view = host.battery_view();
+        assert_eq!(view["present"], true);
+        assert_eq!(view["profilesAvailable"], false);
+        assert_eq!(view["profiles"].as_array().unwrap().len(), 0);
+        // The profile write answers absence; the battery half is untouched.
+        assert_eq!(host.set_active_profile("balanced")["outcome"], "absent");
     }
 
     #[test]

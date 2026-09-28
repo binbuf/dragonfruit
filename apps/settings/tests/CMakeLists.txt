@@ -236,6 +236,31 @@ set_tests_properties(tst_settings_mission_control PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# The Battery-pane tests (T-15.6b): the Low Power Mode profile picker
+# round-trips through the battery adapter fixture, the Battery Health/Charging
+# info rows expand, the Usage History range switch rewords its empty state, and
+# the absence note is gated. `DF_BATTERY_FIXTURE` is deterministic and
+# in-process, so the cases never touch the host session bus.
+qt_add_executable(tst_settings_battery
+    tst_settings_battery.cpp
+)
+target_link_libraries(tst_settings_battery PRIVATE
+    Qt6::QuickTest
+    dragonfruit-design-systemplugin
+    dragonfruit-settings-uiplugin
+)
+qt_import_qml_plugins(tst_settings_battery)
+
+add_test(
+    NAME tst_settings_battery
+    COMMAND tst_settings_battery
+        -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_settings_battery.qml
+)
+set_tests_properties(tst_settings_battery PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;DF_SETTINGS_FIXTURE=1;DF_BATTERY_FIXTURE=1;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Settings menu-model publication tests (T-09.6a): the app's published menu
 # model is asserted in shape and injected into the shell's `MenuBar` (the
 # `Dragonfruit.MenuBar` module is linked so the round-trip is real). Headless

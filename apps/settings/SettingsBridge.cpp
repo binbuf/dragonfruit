@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "SettingsBridge.h"
 
+#include "BatteryClient.h"
 #include "BluetoothClient.h"
 #include "InputClient.h"
 #include "SoundClient.h"
@@ -150,6 +151,16 @@ SettingsBridge::SettingsBridge(QObject *parent)
     connect(m_input, &InputClient::availableChanged, this,
             [this](bool) { emit inputChanged(); });
 
+    // T-15.6b: the battery / power-profiles seam, selected the same way.
+    if (qEnvironmentVariableIsSet("DF_BATTERY_FIXTURE"))
+        m_battery = new MockBatteryClient(this);
+    else
+        m_battery = new DbusBatteryClient(this);
+    connect(m_battery, &BatteryClient::changed, this,
+            [this](const QVariantMap &) { emit batteryChanged(); });
+    connect(m_battery, &BatteryClient::availableChanged, this,
+            [this](bool) { emit batteryChanged(); });
+
     buildWallpaperPresets();
     connectPortalWatcher();
     m_wallpaperFixture = qEnvironmentVariableIsSet("DF_WALLPAPER_FIXTURE");
@@ -222,6 +233,16 @@ QVariantMap SettingsBridge::input() const
 bool SettingsBridge::inputAvailable() const
 {
     return m_input && m_input->available();
+}
+
+QVariantMap SettingsBridge::battery() const
+{
+    return m_battery ? m_battery->view() : QVariantMap();
+}
+
+bool SettingsBridge::batteryAvailable() const
+{
+    return m_battery && m_battery->available();
 }
 
 QString SettingsBridge::providerStatus() const
@@ -562,6 +583,18 @@ void SettingsBridge::refreshInput()
 {
     if (m_input)
         m_input->refresh();
+}
+
+void SettingsBridge::refreshBattery()
+{
+    if (m_battery)
+        m_battery->refresh();
+}
+
+void SettingsBridge::setPowerProfile(const QString &profile)
+{
+    if (m_battery && !profile.isEmpty())
+        m_battery->setActiveProfile(profile);
 }
 
 void SettingsBridge::setWallpaperFixture(const QString &status)

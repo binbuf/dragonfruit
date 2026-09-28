@@ -4,9 +4,9 @@
 //! Three interfaces live at one object path — `Wifi`, `Audio`, and `Battery`
 //! — each with a `State()` read (the JSON view [`crate::wifi_view`] /
 //! [`crate::audio_view`] / [`crate::battery_view`] produces) and an explicit
-//! `Refresh()` re-sync; Wi-Fi and audio add the one write their menu offers,
-//! the battery is read-only. The shell (C++/QML) owns the corresponding
-//! client; nothing on that side links an adapter ([adr/0029]).
+//! `Refresh()` re-sync; Wi-Fi, audio, and battery add the one write their menu
+//! offers. The shell (C++/QML) owns the corresponding client; nothing on that
+//! side links an adapter ([adr/0029]).
 //!
 //! [adr/0029]: ../../../docs/design/adr/0029-system-status-bridge-host.md
 
@@ -51,7 +51,8 @@ pub struct AudioInterface {
     host: Arc<Mutex<LiveHost>>,
 }
 
-/// The read-only battery half of the service.
+/// The battery half of the service: the charge state plus the one power-profile
+/// write the Settings pane and Control Center tile offer (T-15.6b).
 pub struct BatteryInterface {
     host: Arc<Mutex<LiveHost>>,
 }
@@ -155,6 +156,13 @@ impl BatteryInterface {
         let mut host = lock(&self.host);
         host.refresh_battery();
         host.battery_state()
+    }
+
+    /// Select the active power profile by its stable id (`power-saver`,
+    /// `balanced`, `performance`). Returns the JSON report. One explicit write;
+    /// the snapshot stays the adapter's read state (T-15.6b).
+    fn set_active_profile(&self, profile: &str) -> String {
+        lock(&self.host).set_active_profile(profile).to_string()
     }
 }
 

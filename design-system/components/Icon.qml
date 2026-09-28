@@ -31,7 +31,9 @@ Item {
                                           "list-view", "wifi", "bluetooth",
                                           "brightness", "focus", "storage",
                                           "keyboard", "mouse", "trackpad",
-                                          "overview"]
+                                          "overview", "battery", "power-saver",
+                                          "power-balanced", "power-performance",
+                                          "info"]
     readonly property bool painted: root.paintedGlyphs.indexOf(root.name) >= 0
 
     readonly property var bars: {
@@ -490,6 +492,82 @@ Item {
                 ctx.stroke();
                 ctx.beginPath();
                 ctx.arc(s * 0.54, s * 0.50, s * 0.32, -Math.PI * 0.34, Math.PI * 0.34);
+                ctx.stroke();
+                break;
+            }
+            case "battery": {
+                // A battery cell: a rounded body, a positive nub, and a level
+                // fill (the Battery pane sidebar row / tile glyph).
+                roundedRect(s * 0.10, s * 0.30, s * 0.68, s * 0.42, s * 0.10);
+                ctx.stroke();
+                roundedRect(s * 0.80, s * 0.42, s * 0.08, s * 0.18, s * 0.03);
+                ctx.fill();
+                roundedRect(s * 0.16, s * 0.36, s * 0.40, s * 0.30, s * 0.06);
+                ctx.fill();
+                break;
+            }
+            case "power-saver": {
+                // A leaf (efficiency): a pointed blade with a midrib.
+                ctx.beginPath();
+                ctx.moveTo(s * 0.20, s * 0.80);
+                ctx.quadraticCurveTo(s * 0.22, s * 0.30, s * 0.78, s * 0.22);
+                ctx.quadraticCurveTo(s * 0.74, s * 0.80, s * 0.20, s * 0.80);
+                ctx.closePath();
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(s * 0.26, s * 0.74);
+                ctx.lineTo(s * 0.68, s * 0.32);
+                ctx.stroke();
+                break;
+            }
+            case "power-balanced": {
+                // A balance scale (the default profile).
+                ctx.beginPath();
+                ctx.moveTo(c, s * 0.16);
+                ctx.lineTo(c, s * 0.70);
+                ctx.moveTo(s * 0.20, s * 0.32);
+                ctx.lineTo(s * 0.80, s * 0.32);
+                ctx.moveTo(s * 0.36, s * 0.74);
+                ctx.lineTo(s * 0.64, s * 0.74);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(s * 0.20, s * 0.32);
+                ctx.lineTo(s * 0.12, s * 0.54);
+                ctx.lineTo(s * 0.28, s * 0.54);
+                ctx.closePath();
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(s * 0.80, s * 0.32);
+                ctx.lineTo(s * 0.72, s * 0.54);
+                ctx.lineTo(s * 0.88, s * 0.54);
+                ctx.closePath();
+                ctx.stroke();
+                break;
+            }
+            case "power-performance": {
+                // A lightning bolt (the performance profile).
+                ctx.beginPath();
+                ctx.moveTo(s * 0.58, s * 0.10);
+                ctx.lineTo(s * 0.28, s * 0.54);
+                ctx.lineTo(s * 0.46, s * 0.54);
+                ctx.lineTo(s * 0.40, s * 0.90);
+                ctx.lineTo(s * 0.72, s * 0.44);
+                ctx.lineTo(s * 0.52, s * 0.44);
+                ctx.closePath();
+                ctx.fill();
+                break;
+            }
+            case "info": {
+                // An information disc with a dot and stem (the `i` affordance).
+                ctx.beginPath();
+                ctx.arc(c, c, s * 0.38, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(c, s * 0.34, root.stroke * 0.6, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo(c, s * 0.46);
+                ctx.lineTo(c, s * 0.70);
                 ctx.stroke();
                 break;
             }
