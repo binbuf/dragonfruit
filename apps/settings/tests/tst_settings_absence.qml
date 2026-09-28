@@ -104,6 +104,37 @@ Item {
             compare(listed.sort().join(","), shippedPaneIds.slice().sort().join(","));
         }
 
+        // -- The per-pane routing sweep (T-15.16) -----------------------------
+
+        // Every shipped pane must mount its body and read as an interactive
+        // surface when **both** providers are absent (no settingsd, no bridge
+        // host). This is the headless half of the T-15 absent-daemon masking
+        // matrix: it catches a pane that throws, mounts empty, or disables
+        // wholesale when its subsystem is gone. A pane whose live half is an
+        // adapter read owns an `absenceNote`; the settingsd/compositor-backed
+        // panes stay live on the schema defaults.
+        function test_every_shipped_pane_routes_and_stays_live_with_providers_absent() {
+            compare(Settings.available, false,
+                    "settingsd is absent under this suite");
+            var shell = make();
+            for (var i = 0; i < shippedPaneIds.length; ++i) {
+                var id = shippedPaneIds[i];
+                var pane = showPane(shell, id);
+                verify(pane !== null && pane !== undefined,
+                       "shipped pane " + id + " must mount with both providers absent");
+                verify(pane.enabled !== false,
+                       "shipped pane " + id + " must stay interactive");
+                verify(pane.visible !== false,
+                       "shipped pane " + id + " must be visible");
+                // A routing-table row that owns an absence note must expose it
+                // as a live object (its visibility is the per-pane assertion
+                // above; a missing note would be a half-pane).
+                if (SettingsPanes.paneById(id) !== null && pane.absenceNote !== undefined)
+                    verify(pane.absenceNote !== null,
+                           "shipped pane " + id + " must own its absenceNote");
+            }
+        }
+
         // -- Each pane degrades cleanly ----------------------------------------
 
         function test_appearance_pane_stays_live_without_a_daemon() {
@@ -300,6 +331,22 @@ Item {
             compare(pane.tapToClickToggle.enabled, true);
             pane.tapToClickToggle.toggle();
             compare(Settings.values["input.tapToClick"], false);
+        }
+
+        // The Mouse section shares the input body: with no bridge host its
+        // inventory note shows while the pointer settings stay live.
+        function test_mouse_pane_degrades_cleanly_without_the_bridge_host() {
+            var shell = make();
+            var pane = showPane(shell, "mouse");
+            compare(pane.ready, false);
+            compare(pane.absenceNote.visible, true);
+            verify(pane.absenceNote.text.length > 0);
+
+            pane.pointerSpeedSlider.setValue(0.5);
+            pane.pointerSpeedSlider.commit();
+            verify(Math.abs(Settings.values["input.pointerSpeed"] - 0.5) < 0.001);
+            pane.naturalScrollToggle.toggle();
+            compare(Settings.values["input.naturalScroll"], false);
         }
 
         // Mission Control is compositor-native: the pane's rows are settingsd
