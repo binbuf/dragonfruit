@@ -3221,6 +3221,69 @@ fn reduced_motion_zoom_and_fullscreen_take_a_single_frame() {
     );
 }
 
+/// T-16.6b: the compositor magnifier's model is exposed over the synthetic
+/// harness, and its physical view transform follows the zoom and centre. The
+/// render pass that consumes it is the nested backend's element rescale; this
+/// headless test proves the numbers the render pass applies.
+#[test]
+fn magnifier_reports_its_view_transform_and_zoom() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path =
+        PathBuf::from(&runtime_dir).join(format!("dragonfruit-magnifier-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-magnifier",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+
+    // Inactive by default, with a stored zoom and follow-focus mode.
+    let report = input.query("query magnifier");
+    assert!(
+        report.contains("magnifier enabled=0 active=0 zoom=2 mode=follow-focus"),
+        "{report}"
+    );
+    assert!(report.contains("translation=0 0"), "{report}");
+
+    input.send("set magnifier on");
+    let report = input.query("query magnifier");
+    assert!(
+        report.contains("magnifier enabled=1 active=1 zoom=2 mode=follow-focus"),
+        "{report}"
+    );
+    // Seeded on the output centre: no translation, the origin is the centre.
+    assert!(report.contains("center=640 360"), "{report}");
+    assert!(
+        report.contains("origin=640 360 translation=0 0"),
+        "{report}"
+    );
+
+    // An explicit scene centre produces the expected translation:
+    // (out_centre - centre) * zoom = ((640,360) - (400,300)) * 2.
+    input.send("set magnifier-center 400 300");
+    let report = input.query("query magnifier");
+    assert!(report.contains("center=400 300"), "{report}");
+    assert!(report.contains("translation=480 120"), "{report}");
+
+    // The follow mode is live.
+    input.send("set magnifier-mode follow-caret");
+    let report = input.query("query magnifier");
+    assert!(report.contains("mode=follow-caret"), "{report}");
+
+    // Zoom 1 collapses the magnifier off through the same setter.
+    input.send("set magnifier-zoom 1");
+    let report = input.query("query magnifier");
+    assert!(
+        report.contains("magnifier enabled=0 active=0"),
+        "min zoom disables the magnifier: {report}"
+    );
+
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}
+
 /// T-02.4a acceptance: a closing window fades/scales out as a ghost that takes
 /// no input, and its removal from the model commits exactly once when the
 /// motion settles. The window stays tracked (and out of `Space`) while the

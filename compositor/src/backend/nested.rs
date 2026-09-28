@@ -16,7 +16,9 @@ use smithay::backend::egl::EGLDevice;
 use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
-use smithay::backend::renderer::element::utils::{RelocateRenderElement, RescaleRenderElement};
+use smithay::backend::renderer::element::utils::{
+    Relocate, RelocateRenderElement, RescaleRenderElement,
+};
 use smithay::backend::renderer::glow::GlowRenderer;
 use smithay::backend::renderer::{ImportAll, ImportDma, ImportMem, ImportMemWl};
 use smithay::backend::winit::{self, WinitEvent, WinitGraphicsBackend};
@@ -41,6 +43,53 @@ render_elements! {
     Appear=RelocateRenderElement<RescaleRenderElement<WaylandSurfaceRenderElement<R>>>,
     // The per-Space wallpaper (T-05.4): behind the windows.
     Wallpaper=crate::render::WallpaperRenderElement<R>,
+}
+
+// The frame element list after the magnifier pass (T-16.6b): the untransformed
+// elements (`Plain`) or each element scaled/translated about the output centre
+// (`Magnified`). One enum so the live frame and the offscreen capture render
+// the same list.
+render_elements! {
+    pub NestedFrameElements<R> where R: ImportAll + ImportMem + ImportMemWl;
+    Plain=NestedOutputElements<R>,
+    Magnified=RelocateRenderElement<RescaleRenderElement<NestedOutputElements<R>>>,
+}
+
+/// Apply the compositor magnifier (T-16.6b) to an output's element list. When
+/// the magnifier is inactive the elements are returned untouched, so an
+/// unmagnified frame is byte-identical to the pre-magnifier path.
+fn magnify_elements(
+    state: &crate::state::DfState,
+    output: &smithay::output::Output,
+    scale: smithay::utils::Scale<f64>,
+    elements: Vec<NestedOutputElements<GlowRenderer>>,
+) -> Vec<NestedFrameElements<GlowRenderer>> {
+    let transform = state
+        .space
+        .output_geometry(output)
+        .and_then(|geometry| state.magnifier().view_transform(geometry, scale.x));
+    match transform {
+        Some(transform) if !transform.is_identity() => {
+            let factor = smithay::utils::Scale::from((transform.scale, transform.scale));
+            elements
+                .into_iter()
+                .map(|element| {
+                    let scaled =
+                        RescaleRenderElement::from_element(element, transform.origin, factor);
+                    let relocated = RelocateRenderElement::from_element(
+                        scaled,
+                        transform.translation,
+                        Relocate::Relative,
+                    );
+                    NestedFrameElements::Magnified(relocated)
+                })
+                .collect()
+        }
+        _ => elements
+            .into_iter()
+            .map(NestedFrameElements::Plain)
+            .collect(),
+    }
 }
 
 pub fn run(socket_name: &str) -> Result<(), String> {
@@ -248,7 +297,14 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
         output.current_scale().fractional_scale(),
     );
 
-    let age = data.backend.buffer_age().unwrap_or(0);
+    let age = if state.magnifier().is_active() {
+        // The magnifier moves every element; a partial buffer from the
+        // pre-magnifier frame would leave stale pixels, so the pass forces a
+        // full damage frame while it is active (T-16.6b).
+        0
+    } else {
+        data.backend.buffer_age().unwrap_or(0)
+    };
     // T-13.3b: a capture requested by the trusted shell is produced from a
     // second, offscreen render pass of the same element list (so the live
     // frame is untouched) and resolved after this frame is submitted.
@@ -309,6 +365,11 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                     .into_iter()
                     .map(NestedOutputElements::Wallpaper),
             );
+            // The compositor magnifier (T-16.6b) scales and pans the whole
+            // scene about the output centre. Inactive, this is the identity;
+            // active, every element is rescale+relocate wrapped. The live
+            // frame and the offscreen capture render the same wrapped list.
+            let frame_elements = magnify_elements(state, &output, scale, custom_elements);
             // T-13.3b: produce a requested capture first, into an offscreen
             // texture. Doing it before the window render lets the render pass
             // below restore the winit EGL surface (the offscreen bind makes
@@ -317,7 +378,7 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
             if capture_requested {
                 captured = Some(capture_frame(
                     renderer,
-                    &custom_elements,
+                    &frame_elements,
                     state,
                     &output,
                     scale,
@@ -328,7 +389,7 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                 renderer,
                 &mut framebuffer,
                 age,
-                &custom_elements,
+                &frame_elements,
                 state.wallpaper_color_for(&output),
             )
         }

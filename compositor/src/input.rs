@@ -355,7 +355,11 @@ where
         }
         InputEvent::PointerMotion { event } => {
             let pointer = state.seat.get_pointer().unwrap();
-            let location = pointer.current_location() + event.delta();
+            // Under the magnifier a physical pointer delta moves the scene
+            // point by `delta / zoom` (T-16.6b), so hit-testing and the
+            // client's cursor stay on the content under the pointer.
+            let delta = magnified_delta(state, event.delta());
+            let location = pointer.current_location() + delta;
             pointer.motion(
                 state,
                 surface_under(state, location).map(|(surface, loc)| (surface, loc.to_f64())),
@@ -400,6 +404,9 @@ where
             } else {
                 return;
             };
+            // The magnifier maps the physical pointer position back to the
+            // scene point it is over (T-16.6b).
+            let location = magnified_location(state, location);
             let pointer = state.seat.get_pointer().unwrap();
             pointer.motion(
                 state,
@@ -1002,6 +1009,28 @@ fn poll_animations(state: &mut DfState) {
     }
 }
 
+/// Map a global-logical view point to the scene point under it through the
+/// compositor magnifier (T-16.6b). The identity when the magnifier is off.
+fn magnified_location(state: &DfState, view: Point<f64, Logical>) -> Point<f64, Logical> {
+    if !state.magnifier().is_active() {
+        return view;
+    }
+    match state.magnifier_geometry_at(view) {
+        Some(geometry) => state.magnifier().map_from_view(view, geometry),
+        None => view,
+    }
+}
+
+/// Map a physical pointer delta into scene units through the magnifier
+/// (T-16.6b): at zoom `z` a physical pixel moves `1/z` scene pixels.
+fn magnified_delta(state: &DfState, delta: Point<f64, Logical>) -> Point<f64, Logical> {
+    if !state.magnifier().is_active() {
+        return delta;
+    }
+    let zoom = state.magnifier().zoom();
+    (delta.x / zoom, delta.y / zoom).into()
+}
+
 /// libinput reports device-normalized coordinates for touch; winit reports
 /// window pixels. `position()` is in Raw coordinates in both cases, so map
 /// through the output geometry like absolute pointer motion.
@@ -1015,10 +1044,11 @@ fn touch_location(
     let Some(geometry) = state.space.output_geometry(&output) else {
         return Point::from((0.0, 0.0));
     };
-    Point::from((
+    let view = Point::from((
         geometry.loc.x as f64 + position.x * geometry.size.w as f64,
         geometry.loc.y as f64 + position.y * geometry.size.h as f64,
-    ))
+    ));
+    magnified_location(state, view)
 }
 
 #[cfg(test)]

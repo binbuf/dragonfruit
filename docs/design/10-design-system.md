@@ -102,7 +102,10 @@ Named curves and durations (`motion.spaces-switch`, `motion.dock-magnify`,
 rules:
 
 - Every animation maps to a **reduced-motion variant** that removes
-  translation/scale while keeping the state change legible.
+  translation/scale while keeping the state change legible. A headless sweep
+  enumerates every motion token and every animation site in the shell,
+  design-system, and apps and fails if one lacks a variant
+  ([adr/0155](adr/0155-compositor-magnifier.md)).
 - Gesture-driven transitions are **progress-based and interruptible**; a
   discrete "instant" code path is a bug (see
   [03-workspaces.md](03-workspaces.md)).
