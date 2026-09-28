@@ -35,6 +35,12 @@ Item {
     // keyboardCount, pointerCount, devices: [...] }`. Empty/absent hides the
     // tile.
     property var input: ({})
+    // The Mission Control / hot corners summary (T-15.5b). Mission Control and
+    // hot corners are compositor-native, so the shell projects the tile's
+    // summary locally from the settingsd trigger keys rather than a host view:
+    // `{ state, glyph, label, reachable, gesture, cornerCount }`. `state` is
+    // always `available` while the shell runs; empty hides the tile.
+    property var missionControl: ({})
     property real brightness: 1.0
     // The notification service's Focus/DND policy view
     // (`{mode, allowList, batchedCount}`); empty when the service is absent.
@@ -133,6 +139,21 @@ Item {
         if (root.input.label !== undefined && root.input.label !== "")
             return root.input.label;
         return qsTr("No input devices");
+    }
+
+    // Mission Control (T-15.5b): the tile hides only when the shell has no
+    // projection at all (no settings values and no compositor mirror). The
+    // subtitle is the trigger summary the shell computes; the link opens the
+    // Mission Control pane where the triggers are configured.
+    readonly property bool missionControlVisible:
+        root.missionControl.state === "available"
+    readonly property string missionControlLabel: {
+        if (!root.missionControlVisible)
+            return qsTr("Unavailable");
+        if (root.missionControl.label !== undefined
+                && root.missionControl.label !== "")
+            return root.missionControl.label;
+        return qsTr("No trigger");
     }
 
     // The notification service's mode (`off`/`focus`/`dnd`). The toggle is Do
@@ -234,6 +255,14 @@ Item {
             subtitle: root.inputLabel,
             visible: root.inputVisible,
             enabled: root.inputVisible
+        },
+        {
+            id: "mission-control",
+            kind: "info",
+            title: qsTr("Mission Control"),
+            subtitle: root.missionControlLabel,
+            visible: root.missionControlVisible,
+            enabled: root.missionControlVisible
         }
     ]
 
@@ -270,6 +299,9 @@ Item {
     signal appearanceSettingsRequested()
     // The input tile is read-only; the link opens the Keyboard pane (T-16).
     signal keyboardSettingsRequested()
+    // The Mission Control tile is a trigger summary; the link opens the Mission
+    // Control pane where the hot-corner assignments live (T-16).
+    signal missionControlSettingsRequested()
 
     // Apply a volume fraction (0..1) and raise the request.
     function setVolume(fraction) {
@@ -1082,6 +1114,71 @@ Item {
                         text: qsTr("Keyboard Settings\u2026")
                         accessibleName: qsTr("Open Keyboard Settings")
                         onActivated: root.keyboardSettingsRequested()
+                    }
+                }
+            }
+
+            // ── Mission Control (T-15.5b) ───────────────────────────────
+            Rectangle {
+                id: missionControlTile
+                objectName: "missionControlTile"
+                width: parent.width
+                visible: root.missionControlVisible
+                implicitHeight: missionControlColumn.implicitHeight
+                                + 2 * Theme.controls.settingsGroup.padding
+                radius: Theme.primitive.radius.md
+                color: Theme.color.surfaceSunken
+                Accessible.role: Accessible.Grouping
+                Accessible.name: qsTr("Mission Control")
+
+                Column {
+                    id: missionControlColumn
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: Theme.controls.settingsGroup.padding
+                    spacing: Theme.primitive.spacing.sm
+
+                    Row {
+                        width: parent.width
+                        spacing: Theme.primitive.spacing.md
+
+                        IconTile {
+                            objectName: "missionControlIcon"
+                            name: "overview"
+                            tileSize: 32
+                            iconSize: 18
+                            active: root.missionControl.reachable === true
+                        }
+
+                        Column {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: parent.width - 32 - 2 * Theme.primitive.spacing.md
+
+                            Text {
+                                objectName: "missionControlTitle"
+                                text: qsTr("Mission Control")
+                                color: Theme.color.textPrimary
+                                font.pixelSize: Theme.controls.button.fontSize
+                                font.weight: Theme.primitive.font.weightMedium
+                            }
+
+                            Text {
+                                objectName: "missionControlSubtitle"
+                                width: parent.width
+                                text: root.missionControlLabel
+                                color: Theme.color.textSecondary
+                                font.pixelSize: Theme.primitive.font.sizeSm
+                                elide: Text.ElideRight
+                            }
+                        }
+                    }
+
+                    TextLink {
+                        objectName: "missionControlSettingsLink"
+                        text: qsTr("Mission Control Settings\u2026")
+                        accessibleName: qsTr("Open Mission Control Settings")
+                        onActivated: root.missionControlSettingsRequested()
                     }
                 }
             }

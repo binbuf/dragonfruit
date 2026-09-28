@@ -211,6 +211,31 @@ set_tests_properties(tst_settings_input PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# Mission Control & Hot Corners-pane tests (T-15.5b): the four hot-corner
+# assignments and the gesture rows round-trip through settingsd's schema
+# defaults live, an external change converges, and the absence note is gated.
+# The pane writes only settingsd keys (Mission Control itself is
+# compositor-native), so no adapter fixture is needed.
+qt_add_executable(tst_settings_mission_control
+    tst_settings_mission_control.cpp
+)
+target_link_libraries(tst_settings_mission_control PRIVATE
+    Qt6::QuickTest
+    dragonfruit-design-systemplugin
+    dragonfruit-settings-uiplugin
+)
+qt_import_qml_plugins(tst_settings_mission_control)
+
+add_test(
+    NAME tst_settings_mission_control
+    COMMAND tst_settings_mission_control
+        -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_settings_mission_control.qml
+)
+set_tests_properties(tst_settings_mission_control PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;DF_SETTINGS_FIXTURE=1;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Settings menu-model publication tests (T-09.6a): the app's published menu
 # model is asserted in shape and injected into the shell's `MenuBar` (the
 # `Dragonfruit.MenuBar` module is linked so the round-trip is real). Headless

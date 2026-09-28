@@ -19,7 +19,7 @@ use crate::value::{SettingsError, Value};
 
 /// The current schema revision. Bump only when a key is added or a default
 /// changes; renames and removals are forbidden within the `1` series.
-pub const SCHEMA_VERSION: u32 = 12;
+pub const SCHEMA_VERSION: u32 = 13;
 
 /// The D-Bus type of a settings value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,11 +70,12 @@ pub enum KeyGroup {
     Session,
     Menu,
     Sound,
+    Overview,
 }
 
 impl KeyGroup {
     /// Every group, in schema order.
-    pub const ALL: [KeyGroup; 11] = [
+    pub const ALL: [KeyGroup; 12] = [
         KeyGroup::Dock,
         KeyGroup::Workspaces,
         KeyGroup::Gestures,
@@ -86,6 +87,7 @@ impl KeyGroup {
         KeyGroup::Session,
         KeyGroup::Menu,
         KeyGroup::Sound,
+        KeyGroup::Overview,
     ];
 
     /// The group name used in docs and tests.
@@ -102,6 +104,7 @@ impl KeyGroup {
             KeyGroup::Session => "session",
             KeyGroup::Menu => "menu",
             KeyGroup::Sound => "sound",
+            KeyGroup::Overview => "overview",
         }
     }
 }
@@ -954,6 +957,92 @@ pub const KEYS: &[KeySpec] = &[
         since: 11,
         summary: "Output balance from Left (0.0) to Right (1.0); 0.5 is centered.",
     },
+    // ── Mission Control / hot corners (T-15.5b) ─────────────────────────
+    // Mission Control and hot corners are compositor-native: the compositor
+    // owns the one overview machine and the corner detector, and the shell
+    // mirrors both over `df_toplevel_manager`. These four keys are the
+    // durable trigger *configuration* the Mission Control pane writes; the
+    // action ids are the `HotCornerAction::id()` spellings the compositor's
+    // `HotCornerConfig` already uses. The gesture trio that also reaches
+    // Mission Control is the revision-1 `gestures.*` keys above. The pane
+    // reports the adapter/projection directly; applying an assignment needs
+    // the append-only compositor policy request ADR 0126 names, deferred.
+    KeySpec {
+        key: "overview.hotCornerTopLeft",
+        group: KeyGroup::Overview,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("mission-control"),
+        allowed: &[
+            "none",
+            "mission-control",
+            "notification-center",
+            "desktop-reveal",
+            "lock-screen",
+        ],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "compositor/input hot corners (apply deferred, ADR 0126)",
+        since: 13,
+        summary: "Action assigned to the top-left hot corner; `none` disables it.",
+    },
+    KeySpec {
+        key: "overview.hotCornerTopRight",
+        group: KeyGroup::Overview,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("notification-center"),
+        allowed: &[
+            "none",
+            "mission-control",
+            "notification-center",
+            "desktop-reveal",
+            "lock-screen",
+        ],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "compositor/input hot corners (apply deferred, ADR 0126)",
+        since: 13,
+        summary: "Action assigned to the top-right hot corner; `none` disables it.",
+    },
+    KeySpec {
+        key: "overview.hotCornerBottomLeft",
+        group: KeyGroup::Overview,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("desktop-reveal"),
+        allowed: &[
+            "none",
+            "mission-control",
+            "notification-center",
+            "desktop-reveal",
+            "lock-screen",
+        ],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "compositor/input hot corners (apply deferred, ADR 0126)",
+        since: 13,
+        summary: "Action assigned to the bottom-left hot corner; `none` disables it.",
+    },
+    KeySpec {
+        key: "overview.hotCornerBottomRight",
+        group: KeyGroup::Overview,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("lock-screen"),
+        allowed: &[
+            "none",
+            "mission-control",
+            "notification-center",
+            "desktop-reveal",
+            "lock-screen",
+        ],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "compositor/input hot corners (apply deferred, ADR 0126)",
+        since: 13,
+        summary: "Action assigned to the bottom-right hot corner; `none` disables it.",
+    },
 ];
 
 /// Look up a key's declaration.
@@ -1284,6 +1373,45 @@ mod tests {
             .unwrap()
             .validate(&Value::Text("pinch".into()))
             .is_err());
+    }
+
+    /// The Mission Control / hot corners keys (T-15.5b): the four corner
+    /// assignments, additive in revision 13. The gesture trio that also opens
+    /// Mission Control stays the revision-1 `gestures.*` keys.
+    #[test]
+    fn the_hot_corner_keys_are_declared_in_revision_thirteen() {
+        for (key, default) in [
+            ("overview.hotCornerTopLeft", "mission-control"),
+            ("overview.hotCornerTopRight", "notification-center"),
+            ("overview.hotCornerBottomLeft", "desktop-reveal"),
+            ("overview.hotCornerBottomRight", "lock-screen"),
+        ] {
+            let spec = spec(key).unwrap_or_else(|| panic!("{key} is declared"));
+            assert_eq!(spec.group, KeyGroup::Overview, "{key}");
+            assert_eq!(spec.kind, KeyType::Text, "{key}");
+            assert_eq!(spec.default, KeyDefault::Text(default), "{key}");
+            assert_eq!(spec.owner, "apps/settings", "{key}");
+            assert_eq!(spec.since, 13, "{key}");
+            assert!(spec.since <= SCHEMA_VERSION, "{key}");
+            assert!(
+                spec.validate(&spec.default.to_value()).is_ok(),
+                "{key} default validates"
+            );
+            // The action vocabulary is the `HotCornerAction::id()` set.
+            for action in [
+                "none",
+                "mission-control",
+                "notification-center",
+                "desktop-reveal",
+                "lock-screen",
+            ] {
+                assert!(
+                    spec.validate(&Value::Text(action.into())).is_ok(),
+                    "{key} accepts {action}"
+                );
+            }
+            assert!(spec.validate(&Value::Text("corners".into())).is_err());
+        }
     }
 
     /// A frozen manifest of the v1 key set. Adding a key is allowed (extend

@@ -30,7 +30,8 @@ Item {
                                           "folder", "file", "icon-view",
                                           "list-view", "wifi", "bluetooth",
                                           "brightness", "focus", "storage",
-                                          "keyboard", "mouse", "trackpad"]
+                                          "keyboard", "mouse", "trackpad",
+                                          "overview"]
     readonly property bool painted: root.paintedGlyphs.indexOf(root.name) >= 0
 
     readonly property var bars: {
@@ -452,6 +453,23 @@ Item {
                 ctx.beginPath();
                 ctx.arc(s * 0.50, s * 0.58, root.stroke * 0.9, 0, Math.PI * 2);
                 ctx.fill();
+                break;
+            }
+            case "overview": {
+                // Mission Control: a 2x2 grid of window thumbnails, the
+                // layout the overview arranges recent windows into.
+                var ow = s * 0.32;
+                var oh = s * 0.22;
+                var ogx = (s - 2 * ow - s * 0.08) / 2;
+                var ogy = (s - 2 * oh - s * 0.08) / 2;
+                for (var orow = 0; orow < 2; ++orow) {
+                    for (var ocol = 0; ocol < 2; ++ocol) {
+                        roundedRect(ogx + ocol * (ow + s * 0.08),
+                                    ogy + orow * (oh + s * 0.08),
+                                    ow, oh, s * 0.05);
+                        ctx.stroke();
+                    }
+                }
                 break;
             }
             case "volume": {

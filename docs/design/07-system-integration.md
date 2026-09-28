@@ -494,9 +494,34 @@ them live, and the adapter only reports. A missing bridge is the adapter's
 cannot be read is `Error`, visible and inert with the message. The
 `MockMissionControl` source drives the states in CI, with `kill`/`restart` for
 absence and re-subscribe and `trigger` for the event stream
-([adr/0126](adr/0126-mission-control-hot-corners-adapter.md)). T-15.5b adds the
-Settings pane and the Control Center tile; it wires the shell bridge into the
-source and adds the hot-corner assignment keys.
+([adr/0126](adr/0126-mission-control-hot-corners-adapter.md)).
+
+### The Mission Control pane and tile (T-15.5b)
+
+T-15.5b adds the Settings pane and the Control Center tile as one functional
+unit ([adr/0127](adr/0127-mission-control-pane-and-tile.md)). It is the one T-15
+surface where **no services-layer host is added**: the only reader of the
+compositor's overview state is the shell itself (the `df_toplevel_manager`
+client), and the settings values live in the same process. Adding a
+`dragonfruit-system-status` source would mean inventing a bridge from a
+service to a Wayland client that does not exist, so the shell projects the tile
+locally instead.
+
+- The **Control Center tile** carries a trigger summary the shell computes from
+  the settingsd values (`shell/src/controlcenterpolicy.cpp::missionControlView`
+  mirrors the Rust `MissionControlSnapshot::label()`): `Gesture`,
+  `Gesture, n corner(s)`, `n corner(s)`, or `No trigger`, with the `overview`
+  glyph, plus a `Mission Control Settings…` link. It is shell-native because
+  Mission Control is compositor-native.
+- The **Settings pane** (`apps/settings/MissionControlPane.qml`) writes the
+  revision-13 `overview.hotCorner*` assignment keys and the revision-1
+  `gestures.*` trio. Every row applies live; the compositor already applies the
+  gesture trio over `set_input_policy`, and applying a corner assignment needs
+  the append-only request ADR [0126](adr/0126-mission-control-hot-corners-adapter.md)
+  names (deferred).
+- **Absence** is a missing settings daemon: the pane's rows stay live on the
+  schema defaults and it shows a one-line note. There is no adapter `present`
+  hide rule, because there is no adapter view in the shell path.
 
 ## The status bridge host (T-07.5a)
 
