@@ -35,7 +35,7 @@ Item {
                                           "power-balanced", "power-performance",
                                           "info", "bell", "lock", "menu-bar",
                                           "general", "software-update", "users", "printer",
-                                          "scanner"]
+                                          "scanner", "privacy"]
     readonly property bool painted: root.paintedGlyphs.indexOf(root.name) >= 0
 
     readonly property var bars: {
@@ -540,6 +540,26 @@ Item {
                 ctx.beginPath();
                 ctx.moveTo(s * 0.28, s * 0.64);
                 ctx.lineTo(s * 0.72, s * 0.64);
+                ctx.stroke();
+                break;
+            }
+            case "privacy": {
+                // A shield with a keyhole check (the Privacy & Security pane /
+                // tile glyph). Original geometry: a rounded shield outline over
+                // a checked center.
+                ctx.beginPath();
+                ctx.moveTo(c, s * 0.12);
+                ctx.lineTo(s * 0.80, s * 0.28);
+                ctx.lineTo(s * 0.80, s * 0.52);
+                ctx.quadraticCurveTo(s * 0.80, s * 0.78, c, s * 0.90);
+                ctx.quadraticCurveTo(s * 0.20, s * 0.78, s * 0.20, s * 0.52);
+                ctx.lineTo(s * 0.20, s * 0.28);
+                ctx.closePath();
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(s * 0.36, s * 0.50);
+                ctx.lineTo(s * 0.46, s * 0.62);
+                ctx.lineTo(s * 0.66, s * 0.38);
                 ctx.stroke();
                 break;
             }

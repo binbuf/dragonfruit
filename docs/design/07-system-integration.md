@@ -1145,10 +1145,16 @@ applications may reach the resources portals mediate, as
 ### The Privacy & Security pane and tile (T-15.13b)
 
 The Settings pane and the Control Center tile ship in T-15.13b over this
-adapter, through the bridge host like the other T-15 adapters. That task
-declares any settingsd presentation keys and wires the pane and tile; it must
-not add a second permission implementation. The Secret Service and polkit host
-services the reference also names are not part of this adapter.
+adapter, through the bridge host like the other T-15 adapters
+([adr/0143](adr/0143-privacy-security-pane-and-tile.md)). That task declares
+no settingsd key — the portal store is the state — and wires the pane's flat
+list of portal categories and the tile's app-count summary. It must not add a
+second permission implementation. The Secret Service and polkit host services
+the reference also names are not part of this adapter.
+
+- **The Control Center tile fits without a scroll.** The sixteenth tile needed
+  the tiles' internal gap compacted from `sm` to `xs` (the content gap stays
+  `xxs`); the fixed 360×1160 surface still holds every tile.
 
 ## The status bridge host (T-07.5a)
 
@@ -1185,6 +1191,10 @@ NetworkManager, audio, and power adapters and serves
   plus `SetDefaultPrinter(name)`, `SetPrinterAcceptingJobs(name, accepting)`,
   and `CancelJob(id)` (the Printers & Scanners pane's writes over the CUPS/SANE
   host-stack adapter).
+- `org.dragonfruit.SystemStatus1.Privacy` (T-15.13b) — `State()`/`Refresh()`
+  plus `SetPermission(table, id, app, permission)` and
+  `DeletePermission(table, id, app)` (the Privacy & Security pane's writes over
+  the portal PermissionStore adapter).
 
 The host core (`StatusHost`) is adapter-only and CI-tested with the mocks; the
 D-Bus layer is a thin mechanical wrapper. The shell decodes the JSON in one

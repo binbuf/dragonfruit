@@ -61,6 +61,10 @@ public:
     // the bridge host's CUPS/SANE view; the queue writes live in the Settings
     // pane (ADR 0141).
     virtual void refreshPrinters() = 0;
+    // Privacy and Security (T-15.13b): a read-only summary. The tile reflects
+    // the bridge host's portal PermissionStore view; the permission writes live
+    // in the Settings pane (ADR 0142).
+    virtual void refreshPrivacy() = 0;
     virtual void join(const QString &ssid, const QString &secret) = 0;
     virtual void setVolume(double volume) = 0;
     virtual void setMute(bool muted) = 0;
@@ -76,6 +80,7 @@ signals:
     void updatesState(const QByteArray &json);
     void accountsState(const QByteArray &json);
     void printersState(const QByteArray &json);
+    void privacyState(const QByteArray &json);
     void joinReport(const QByteArray &json);
     void writeReport(const QByteArray &json);
 };
@@ -108,6 +113,7 @@ public:
     void rebootUpdates() override;
     void refreshAccounts() override;
     void refreshPrinters() override;
+    void refreshPrivacy() override;
     void join(const QString &ssid, const QString &secret) override;
     void setVolume(double volume) override;
     void setMute(bool muted) override;
@@ -155,6 +161,7 @@ public:
     void rebootUpdates() override;
     void refreshAccounts() override;
     void refreshPrinters() override;
+    void refreshPrivacy() override;
     void join(const QString &ssid, const QString &secret) override;
     void setVolume(double volume) override;
     void setMute(bool muted) override;

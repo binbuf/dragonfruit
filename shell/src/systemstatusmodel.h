@@ -33,6 +33,7 @@ public:
     QVariantMap updates() const { return m_updates; }
     QVariantMap accounts() const { return m_accounts; }
     QVariantMap printers() const { return m_printers; }
+    QVariantMap privacy() const { return m_privacy; }
 
     // Whether the item is drawn at all (`state != "unavailable"`; the battery
     // also hides when the machine has no present battery).
@@ -45,6 +46,7 @@ public:
     bool updatesVisible() const;
     bool accountsVisible() const;
     bool printersVisible() const;
+    bool privacyVisible() const;
 
     // Decode a host `State()` payload (JSON object). Returns the normalized
     // map; an empty map on a parse failure, with `error` set when non-null.
@@ -67,6 +69,7 @@ public slots:
     void applyUpdates(const QVariantMap &view);
     void applyAccounts(const QVariantMap &view);
     void applyPrinters(const QVariantMap &view);
+    void applyPrivacy(const QVariantMap &view);
     void applyWifiJson(const QByteArray &json);
     void applyAudioJson(const QByteArray &json);
     void applyBatteryJson(const QByteArray &json);
@@ -76,6 +79,7 @@ public slots:
     void applyUpdatesJson(const QByteArray &json);
     void applyAccountsJson(const QByteArray &json);
     void applyPrintersJson(const QByteArray &json);
+    void applyPrivacyJson(const QByteArray &json);
 
     // User gestures from the popovers; the controller forwards each to the
     // bridge host. They do not mutate the view (the host re-read is the only
@@ -99,6 +103,8 @@ public slots:
     void requestRefreshAccounts();
     // Printers and Scanners is a read-only summary: refresh only, no write.
     void requestRefreshPrinters();
+    // Privacy and Security is a read-only summary: refresh only, no write.
+    void requestRefreshPrivacy();
 
 signals:
     void changed();
@@ -117,6 +123,7 @@ signals:
     void rebootUpdatesRequested();
     void refreshAccountsRequested();
     void refreshPrintersRequested();
+    void refreshPrivacyRequested();
 
 private:
     static QVariantMap normalize(const QVariantMap &view, const QString &kind);
@@ -129,4 +136,5 @@ private:
     QVariantMap m_updates;
     QVariantMap m_accounts;
     QVariantMap m_printers;
+    QVariantMap m_privacy;
 };

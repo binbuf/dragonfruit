@@ -78,6 +78,13 @@ Item {
     // with no queue and no scanner (`present: false`). It is a read-only
     // summary; the Settings link opens the pane where the queue writes live.
     property var printers: ({})
+    // The Privacy and Security view from the bridge host (T-15.13b), shaped by
+    // `SystemStatusModel`: `{ state, glyph, label, present, appCount,
+    // grantedCount, deniedCount, categoryCount, categories }`. The tile hides
+    // when the host answers with no application permission (`present: false`).
+    // It is a read-only summary; the Settings link opens the pane where the
+    // permission writes live.
+    property var privacy: ({})
     property real brightness: 1.0
     // The notification service's Focus/DND policy view
     // (`{mode, allowList, batchedCount}`); empty when the service is absent.
@@ -336,6 +343,30 @@ Item {
             .arg(root.printersPrinterCount).arg(root.printersScannerCount);
     }
 
+    // Privacy and Security (T-15.13b): the tile reflects the bridge host's
+    // portal PermissionStore view. It stays visible whenever the host records
+    // at least one application permission (`present`); the subtitle is the live
+    // app-count label; the link opens the Privacy & Security pane.
+    readonly property bool privacyAvailable: root.privacy.state === "available"
+    // The tile hides when the host answers `present: false` (a running store
+    // that records no application permission); a raw view without the
+    // normalized flag falls back to the availability state.
+    readonly property bool privacyVisible: root.privacy.visible !== undefined
+        ? root.privacy.visible === true : root.privacyAvailable
+    readonly property int privacyAppCount:
+        root.privacy.appCount !== undefined ? Number(root.privacy.appCount) : 0
+    readonly property string privacyGlyph:
+        root.privacy.glyph !== undefined ? String(root.privacy.glyph) : "privacy"
+    readonly property string privacyLabel: {
+        if (!root.privacyAvailable)
+            return qsTr("Unavailable");
+        if (root.privacy.label !== undefined && root.privacy.label !== "")
+            return root.privacy.label;
+        return root.privacyAppCount > 0
+            ? qsTr("%1 Apps").arg(root.privacyAppCount)
+            : qsTr("No App Permissions");
+    }
+
     // The notification service's mode (`off`/`focus`/`dnd`). The toggle is Do
     // Not Disturb: `focus` also lights it, because both suppress banners.
     readonly property string focusMode: root.focusPolicy.mode !== undefined
@@ -491,6 +522,14 @@ Item {
             subtitle: root.printersLabel,
             visible: root.printersVisible,
             enabled: root.printersVisible
+        },
+        {
+            id: "privacy",
+            kind: "info",
+            title: qsTr("Privacy"),
+            subtitle: root.privacyLabel,
+            visible: root.privacyVisible,
+            enabled: root.privacyVisible
         }
     ]
 
@@ -554,6 +593,9 @@ Item {
     // The Printers tile (T-15.12b) is a read-only summary; the link opens the
     // Printers & Scanners pane where the queue writes live.
     signal printersSettingsRequested()
+    // The Privacy tile (T-15.13b) is a read-only summary; the link opens the
+    // Privacy & Security pane where the permission writes live.
+    signal privacySettingsRequested()
 
     // Apply a volume fraction (0..1) and raise the request.
     function setVolume(fraction) {
@@ -665,12 +707,13 @@ Item {
             objectName: "controlCenterContent"
             anchors.fill: parent
             anchors.margins: Theme.primitive.spacing.md
-            // The panel now carries fifteen tiles (T-15.12b). Every tile's
+            // The panel now carries sixteen tiles (T-15.13b). Every tile's
             // vertical padding is the compact `xxs` step and the intermediate
-            // gap is the compact `xxs` step too, so the content still fits the
-            // fixed 360x1160 surface (the nested output leaves 1164 px below
-            // the bar) without a scrolling panel (the compositor forwards no
-            // pointer-axis events, ADR 0139/0141).
+            // gap is the compact `xxs` step too; to fit the sixteenth tile the
+            // tiles' internal gap is compacted from `sm` to `xs`, so the content
+            // still fits the fixed 360x1160 surface (the nested output leaves
+            // 1164 px below the bar) without a scrolling panel (the compositor
+            // forwards no pointer-axis events, ADR 0139/0141).
             spacing: Theme.primitive.spacing.xxs
 
             // ── Wi-Fi ────────────────────────────────────────────────────
@@ -691,7 +734,7 @@ Item {
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.margins: Theme.primitive.spacing.xxs
-                    spacing: Theme.primitive.spacing.sm
+                    spacing: Theme.primitive.spacing.xs
 
                     Row {
                         width: parent.width
@@ -772,7 +815,7 @@ Item {
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.margins: Theme.primitive.spacing.xxs
-                    spacing: Theme.primitive.spacing.sm
+                    spacing: Theme.primitive.spacing.xs
 
                     Row {
                         width: parent.width
@@ -905,7 +948,7 @@ Item {
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.margins: Theme.primitive.spacing.xxs
-                    spacing: Theme.primitive.spacing.sm
+                    spacing: Theme.primitive.spacing.xs
 
                     Row {
                         width: parent.width
@@ -1040,7 +1083,7 @@ Item {
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.margins: Theme.primitive.spacing.xxs
-                    spacing: Theme.primitive.spacing.sm
+                    spacing: Theme.primitive.spacing.xs
 
                     Row {
                         width: parent.width
@@ -1114,7 +1157,7 @@ Item {
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.margins: Theme.primitive.spacing.xxs
-                    spacing: Theme.primitive.spacing.sm
+                    spacing: Theme.primitive.spacing.xs
 
                     Row {
                         width: parent.width
@@ -1214,7 +1257,7 @@ Item {
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.margins: Theme.primitive.spacing.xxs
-                    spacing: Theme.primitive.spacing.sm
+                    spacing: Theme.primitive.spacing.xs
 
                     Row {
                         width: parent.width
@@ -1268,7 +1311,7 @@ Item {
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.margins: Theme.primitive.spacing.xxs
-                    spacing: Theme.primitive.spacing.sm
+                    spacing: Theme.primitive.spacing.xs
 
                     Row {
                         width: parent.width
@@ -1342,7 +1385,7 @@ Item {
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.margins: Theme.primitive.spacing.xxs
-                    spacing: Theme.primitive.spacing.sm
+                    spacing: Theme.primitive.spacing.xs
 
                     Row {
                         width: parent.width
@@ -1407,7 +1450,7 @@ Item {
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.margins: Theme.primitive.spacing.xxs
-                    spacing: Theme.primitive.spacing.sm
+                    spacing: Theme.primitive.spacing.xs
 
                     Row {
                         width: parent.width
@@ -1472,7 +1515,7 @@ Item {
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.margins: Theme.primitive.spacing.xxs
-                    spacing: Theme.primitive.spacing.sm
+                    spacing: Theme.primitive.spacing.xs
 
                     Row {
                         width: parent.width
@@ -1537,7 +1580,7 @@ Item {
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.margins: Theme.primitive.spacing.xxs
-                    spacing: Theme.primitive.spacing.sm
+                    spacing: Theme.primitive.spacing.xs
 
                     Row {
                         width: parent.width
@@ -1603,7 +1646,7 @@ Item {
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.margins: Theme.primitive.spacing.xxs
-                    spacing: Theme.primitive.spacing.sm
+                    spacing: Theme.primitive.spacing.xs
 
                     Row {
                         width: parent.width
@@ -1669,7 +1712,7 @@ Item {
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.margins: Theme.primitive.spacing.xxs
-                    spacing: Theme.primitive.spacing.sm
+                    spacing: Theme.primitive.spacing.xs
 
                     Row {
                         width: parent.width
@@ -1749,7 +1792,7 @@ Item {
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.margins: Theme.primitive.spacing.xxs
-                    spacing: Theme.primitive.spacing.sm
+                    spacing: Theme.primitive.spacing.xs
 
                     Row {
                         width: parent.width
@@ -1858,6 +1901,73 @@ Item {
                         text: qsTr("Printers & Scanners Settings\u2026")
                         accessibleName: qsTr("Open Printers & Scanners Settings")
                         onActivated: root.printersSettingsRequested()
+                    }
+                }
+            }
+
+            // ── Privacy and Security (T-15.13b) ──────────────────────────
+            Rectangle {
+                id: privacyTile
+                objectName: "privacyTile"
+                width: parent.width
+                visible: root.privacyVisible
+                implicitHeight: privacyColumn.implicitHeight
+                                + 2 * Theme.primitive.spacing.xxs
+                radius: Theme.primitive.radius.md
+                color: Theme.color.surfaceSunken
+                Accessible.role: Accessible.Grouping
+                Accessible.name: qsTr("Privacy")
+
+                Column {
+                    id: privacyColumn
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: Theme.primitive.spacing.xxs
+                    // The compact gap keeps the sixteenth tile inside the fixed
+                    // surface (T-15.13b).
+                    spacing: Theme.primitive.spacing.xs
+
+                    Row {
+                        width: parent.width
+                        spacing: Theme.primitive.spacing.md
+
+                        IconTile {
+                            objectName: "privacyIcon"
+                            name: root.privacyGlyph
+                            tileSize: 32
+                            iconSize: 18
+                            active: root.privacyAppCount > 0
+                        }
+
+                        Column {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: parent.width - 32 - 2 * Theme.primitive.spacing.md
+
+                            Text {
+                                objectName: "privacyTitle"
+                                text: qsTr("Privacy")
+                                color: Theme.color.textPrimary
+                                font.pixelSize: Theme.controls.button.fontSize
+                                font.weight: Theme.primitive.font.weightMedium
+                            }
+
+                            Text {
+                                objectName: "privacySubtitle"
+                                width: parent.width
+                                text: root.privacyLabel
+                                color: Theme.color.textSecondary
+                                font.pixelSize: Theme.primitive.font.sizeSm
+                                elide: Text.ElideRight
+                            }
+                        }
+                    }
+
+                    TextLink {
+                        objectName: "privacySettingsLink"
+                        text: qsTr("Privacy & Security Settings\u2026")
+                        accessibleName: qsTr("Open Privacy & Security Settings")
+                        onActivated: root.privacySettingsRequested()
                     }
                 }
             }
