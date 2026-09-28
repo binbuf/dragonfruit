@@ -55,7 +55,7 @@ explicit — no pane is "a wrapper around a GNOME dialog":
 
 | Pane | Routed to |
 |---|---|
-| Wi-Fi, Network | NetworkManager |
+| Wi-Fi, Network | NetworkManager (Wi-Fi + the VPN connections, [adr/0146](adr/0146-network-advanced-vpn-adapter.md)) |
 | Bluetooth | BlueZ |
 | Battery | UPower + power-profiles-daemon where present |
 | General | `settingsd` + distro provider (about, updates, defaults) |

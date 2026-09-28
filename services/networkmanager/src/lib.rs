@@ -34,11 +34,26 @@
 //! Absence is a normal state: a session booted without NetworkManager renders
 //! a hidden Wi-Fi item and is otherwise unaffected.
 //!
+//! # The VPN path (T-15.15a)
+//!
+//! The same daemon is also the host stack for **Network advanced / VPN**
+//! ([`VpnAdapter`]): NetworkManager already owns every `vpn` and `wireguard`
+//! connection, so the adapter projects its settings objects and active
+//! connections ([`DbusVpn`]) rather than reimplementing a VPN stack. It is a
+//! second adapter behind its own [`VpnSource`] seam with its own
+//! `AdapterId::VPN` slot, mirroring the Wi-Fi shape: three-state reads,
+//! subscription events, a configurable-but-empty `present` distinction, and a
+//! polkit read-only degradation on its two writes ([`VpnAdapter::connect`] /
+//! [`VpnAdapter::deactivate`]). The Settings pane and Control Center tile land
+//! with T-15.15b.
+//!
 //! # Testing
 //!
-//! CI has no bus and no daemon, so the adapter is driven by
-//! [`MockNetworkManager`] over a fixture ([`NetworkManagerSource`] is the
-//! seam). The live D-Bus source is a thin mechanical layer over that seam.
+//! CI has no bus and no daemon, so each adapter is driven by a mock over a
+//! fixture ([`NetworkManagerSource`] / [`VpnSource`] are the seams). The live
+//! D-Bus sources are thin mechanical layers over those seams; [`MockVpn`]
+//! mutates its simulated store on an accepted write so a connect/disconnect
+//! round-trip is observable headlessly.
 //!
 //! [07-system-integration.md]: ../../../docs/design/07-system-integration.md
 
@@ -46,11 +61,16 @@ mod adapter;
 mod dbus;
 mod model;
 mod source;
+mod vpn;
 
 pub use adapter::{JoinRequest, JoinResult, NetworkManagerAdapter, WifiAccess};
-pub use dbus::{DbusNetworkManager, NM_SERVICE};
+pub use dbus::{DbusNetworkManager, DbusVpn, NM_SERVICE, VPN_SETTINGS_PATH};
 pub use model::{AccessPoint, Band, Connectivity, Security, WifiSnapshot, WifiState};
 pub use source::{
     AccessPointData, ActivateOutcome, ActivateRequest, MockNetworkManager, NetworkManagerData,
     NetworkManagerSource, WifiDeviceData,
+};
+pub use vpn::{
+    ActiveVpnData, MockVpn, VpnAccess, VpnAdapter, VpnConnection, VpnConnectionData, VpnData,
+    VpnKind, VpnOutcome, VpnRequest, VpnResult, VpnSnapshot, VpnSource, VpnState,
 };
