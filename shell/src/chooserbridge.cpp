@@ -388,14 +388,21 @@ QVariantMap ChooserBridge::entryAt(int index) const
 
 QString ChooserBridge::suggestedUri(const QVariantMap &options) const
 {
-    const QByteArray fileBytes =
-        options.value(QStringLiteral("current_file")).toByteArray();
+    // `current_file`/`current_folder` cross the portal as D-Bus byte arrays
+    // (`ay`) that carry a trailing NUL. Qt hands the shell that NUL verbatim,
+    // so strip it before resolving the local path or the URI grows a `%00`
+    // and the listing fails (the same trim the portal backend's
+    // `decode_path_bytes` already does).
+    QByteArray fileBytes = options.value(QStringLiteral("current_file")).toByteArray();
+    while (fileBytes.endsWith('\0'))
+        fileBytes.chop(1);
     if (!fileBytes.isEmpty()) {
         const QString path = QFile::decodeName(fileBytes);
         return QUrl::fromLocalFile(QFileInfo(path).absolutePath()).toString();
     }
-    const QByteArray folderBytes =
-        options.value(QStringLiteral("current_folder")).toByteArray();
+    QByteArray folderBytes = options.value(QStringLiteral("current_folder")).toByteArray();
+    while (folderBytes.endsWith('\0'))
+        folderBytes.chop(1);
     if (!folderBytes.isEmpty())
         return QUrl::fromLocalFile(QFile::decodeName(folderBytes)).toString();
     return QString();
