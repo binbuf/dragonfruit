@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(104 earlier sections omitted)_
+_(105 earlier sections omitted)_
 
-- **T100 — T-14.1a app-index identity resolution and icons**: **State: done.** `org.dragonfruit.AppIndex1` is real: identity resolution for; `services/app-index/src/index.rs` — pure `AppIndex` (scan, `resolve`,
 - **T101 — T-14.1b app-index events, launch registry, recency**: **State: done.** `org.dragonfruit.AppIndex1` is now live: the index re-scans; `services/app-index/src/index.rs` — `IndexEvent`/`IndexEventKind`; `AppIndex`
 - **T102 — T-14.1c app-index subscription API**: **State: done.** `org.dragonfruit.AppIndex1` now has a subscription surface:; `services/app-index/src/subscription.rs` (new) — pure `ChangeKind`
 - **T103 — T-14.2a menu-broker export model and fixed menu**: **State: done.** `services/menu-broker` is a real service and the fixed; `services/menu-broker/src/model.rs` (new) — pure `Broker`: `PublishedModel`
@@ -43,6 +42,7 @@ _(104 earlier sections omitted)_
 - **T110y — T-14.7y Dock magnification tracking: stable pointer and anchor**: **State: done.** Hover magnification now tracks the pointer without ringing.; `design-system/tokens/tokens.json` — `motion.dockMagnifyTrack` added;
 - **T110z — T-14.7z Dock plate rendering: corner-following rim and frost alignment**: **State: done.** The plate is now one integer rounded rect in every state. The; `shell/dock/Dock.qml` — new `panelRect` (each edge of the live `plateRect`
 - **T110w — T-14.7w Dock icon tiles: true squircle masking**: **State: done.** Every Dock app tile now clips its themed artwork to the token; `shell/dock/DockGlyph.qml` — the themed app artwork is now a `Canvas`
+- **T172 — T-18.1a Wallpaper provider service and shipped default**: **State: done.** `services/wallpaperd` is a real session service. It resolves; `services/wallpaperd/` (new crate, workspace member) —
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3226,6 +3226,23 @@ Gotchas for later tasks:
 
 ## Follow-ups
 
+- **T-18.1a live-network coverage.** The provider's catalogue/download path is
+  tested through `MockSource`; CI never hits Wikimedia (no network, and a full
+  first run downloads up to 60 × 3840 px images). The live `UreqHttp` path was
+  smoke-tested manually (empty cache + `HTTPS_PROXY=http://127.0.0.1:1` →
+  immediate `offline`); if a live test is wanted, gate one category behind an
+  `--ignored` test.
+- **T-18.1a not launched by `dragonfruit dev`/`make demo`.** `launch_services`
+  in `tools/dragonfruit-dev/src/main.rs` starts only app-index and menu-broker;
+  adding wallpaperd there would make the demo fetch in the background. The live
+  pane/shell path arrives with T-18.1b/T-18.2, so leave the harness alone until
+  then.
+- **T-18.1a cache size.** The provider caps 10/category and downloads
+  sequentially, but does not cap the total cache size or evict old items; add
+  an LRU/size cap if the install footprint becomes a concern.
+- **T-18.1a default path canonicalization.** `DefaultResolver::resolve` returns
+  the in-tree path with its `../..` segments (absolute, not canonicalized); the
+  compositor's loader handles it, but a future task could canonicalize.
 - **T-14.7f drop capture follow-up.** The committed `t14-dock-drops.png` drives
   the Dock's production presentation through the `DF_DOCK_DROP_FIXTURE` seam
   because the harness has no reusable external drag source. A small scripted
@@ -10348,5 +10365,73 @@ Gotchas for later tasks:
   (same convention as the other Dock drivers). The capture runner re-asserts
   `dock.pinned` after settle because the shell seeds default pins on the first
   empty settings snapshot.
+- `check-desktop-names.sh` still fails only on the pre-existing
+  StatusNotifier/zoo/apppicker lines (unchanged here).
+
+## T172 — T-18.1a Wallpaper provider service and shipped default
+
+**State: done.** `services/wallpaperd` is a real session service. It resolves
+the shipped original default, fetches Wikimedia Commons Featured Pictures into
+a lazy cache with attribution, selects the deterministic Nature entry, and
+serves `org.dragonfruit.Wallpaper1`; T-18.1b consumes the interface.
+
+Real paths:
+
+- `services/wallpaperd/` (new crate, workspace member) —
+  `src/model.rs` (`Category` + ADR 0055 map, `Status`, `WallpaperItem`,
+  `Catalogue`); `src/wikipedia.rs` (`build_query`, `strip_utm`, `strip_html`,
+  fixture-pinned `parse_response`); `src/source.rs` (`HttpClient`, live
+  `UreqHttp`, `ContentSource`, `WikipediaSource`, `MockSource`);
+  `src/cache.rs` (`$XDG_CACHE_HOME/dragonfruit/wallpapers`, `index.json`,
+  `WEEK_SECS`); `src/defaults.rs` (resolution + `install_default`);
+  `src/provider.rs` (`Provider`, `fetch`, `ServiceState`, one in-flight
+  refresh); `src/dbus.rs`; `src/main.rs`; `tests/read_path.rs` (8);
+  `tests/session_bus.rs` (3, private dbus-daemon);
+  `tests/fixtures/commons-landscapes.json` (real API response).
+- `Cargo.toml` — member added; the only new dependency is
+  `ureq = "=3.4.2"` (rustls+gzip, MIT/Apache-2.0).
+- `services/session/units/dragonfruit-wallpaperd.service` (new),
+  `dragonfruit-session.target` `Wants`, `services/session/src/plan.rs`
+  (stage 1), `services/session/src/entry.rs` (`UNIT_FILES` + installs
+  `Default.jpg` to `share/dragonfruit/wallpapers/`).
+- `services/session/tests/{units,session_entry}.rs` — unit set, policies, and
+  the wallpaper install asserted.
+- `Makefile` — `e2e` runs `dragonfruit-wallpaperd`; new `install` target
+  (`dragonfruit-session --install-session $(DESTDIR)$(PREFIX)`).
+- Docs: `docs/design/adr/0114-wallpaper-provider-service-and-shipped-default.md`.
+- No deviation from the task's D-Bus contract. The custom `ItemsChanged` /
+  `StatusChanged` signals use Rust idents `notify_*` with
+  `#[zbus(name = ...)]` because zbus reserves `<property>_changed` for the
+  standard `PropertiesChanged`; both are emitted.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-wallpaperd` — 37 lib + 8 + 3 integration green.
+- `cargo test --workspace` (`PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig`)
+  — green.
+- `make e2e` — green (`make demo --headless` scripted half OK).
+- `cargo clippy --workspace --all-targets -- -D warnings`; `cargo fmt --all -- --check`
+  — green.
+- Live smoke: `target/debug/dragonfruit-wallpaperd --print-builtin`
+  (override → share → in-tree), `--print-status` (lazy: `status:"idle"`, no
+  fetch), `--install-default DIR`; with
+  `HTTPS_PROXY=http://127.0.0.1:1 ... --preload` → `status:"offline"` in 11 ms,
+  shipped default still resolved.
+
+Gotchas for later tasks:
+
+- **Two defaults, two properties.** `BuiltinDefaultSource` is the shipped
+  `Default.jpg` (resolved, read in place, never cached); `DefaultSource` is the
+  fetched first-Nature entry and its fallback. T-18.1b's precedence is user →
+  builtin → provider → solid colour.
+- **The refresh lock is never held across network I/O.** `ServiceState::
+  refresh_if_needed` locks only for `warm_decision`/`begin_fetch`/`apply_fetch`;
+  `fetch` runs unlocked. `begin_fetch` is the single in-flight guard. Keep that
+  split — holding the provider mutex across a fetch would block `Items` reads.
+- **Resolution order is `DF_DEFAULT_WALLPAPER` → `$XDG_DATA_DIRS/dragonfruit/
+  wallpapers/Default.jpg` → in-tree.** Tests inject the resolver's fields; do
+  not add another env var without updating `defaults.rs` tests.
+- **`ureq` is the one HTTP dependency; keep the license permissive.** Do not
+  swap in a GPL/AGPL client.
 - `check-desktop-names.sh` still fails only on the pre-existing
   StatusNotifier/zoo/apppicker lines (unchanged here).

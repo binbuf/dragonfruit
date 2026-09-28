@@ -12,6 +12,7 @@ Wants=dragonfruit-settingsd.service
 Wants=dragonfruit-menu-broker.service
 Wants=dragonfruit-app-index.service
 Wants=dragonfruit-notifications.service
+Wants=dragonfruit-wallpaperd.service
 Wants=dragonfruit-portal.service
 After=dragonfruit-compositor.service
 

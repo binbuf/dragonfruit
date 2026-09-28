@@ -42,6 +42,12 @@ pub const WAYLAND_SESSIONS_DIR: &str = "share/wayland-sessions";
 pub const SYSTEMD_USER_DIR: &str = "lib/systemd/user";
 /// Where executables are installed, relative to the prefix.
 pub const BIN_DIR: &str = "bin";
+/// Where the shipped default wallpaper is installed, relative to the prefix.
+pub const WALLPAPER_DIR: &str = "share/dragonfruit/wallpapers";
+/// The shipped default wallpaper's installed filename.
+pub const WALLPAPER_FILE: &str = "Default.jpg";
+/// The shipped default wallpaper's source, relative to the session crate.
+pub const WALLPAPER_ASSET: &str = "../../assets/graphics/wallpapers/Default.jpg";
 
 /// The shipped entry file, embedded verbatim.
 pub const DESKTOP_ENTRY: &str = include_str!("../dragonfruit.desktop");
@@ -79,6 +85,10 @@ pub const UNIT_FILES: &[(&str, &str)] = &[
         include_str!("../units/dragonfruit-notifications.service"),
     ),
     (
+        "dragonfruit-wallpaperd.service",
+        include_str!("../units/dragonfruit-wallpaperd.service"),
+    ),
+    (
         "dragonfruit-portal.service",
         include_str!("../units/dragonfruit-portal.service"),
     ),
@@ -114,6 +124,19 @@ pub fn install_into(prefix: &Path) -> io::Result<Vec<PathBuf>> {
         std::fs::write(&path, contents)?;
         written.push(path);
     }
+
+    // The shipped original default wallpaper (T-18.1a): installed to the stable
+    // share path the provider resolves. Original project asset, MIT (ADR 0094);
+    // never a fetched/third-party image.
+    let wallpaper_dir = prefix.join(WALLPAPER_DIR);
+    std::fs::create_dir_all(&wallpaper_dir)?;
+    let wallpaper = wallpaper_dir.join(WALLPAPER_FILE);
+    std::fs::copy(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join(WALLPAPER_ASSET),
+        &wallpaper,
+    )?;
+    written.push(wallpaper);
+
     Ok(written)
 }
 
