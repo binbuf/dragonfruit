@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(115 earlier sections omitted)_
+_(116 earlier sections omitted)_
 
-- **T110 — T-14.7 Retire interim paths**: **State: done.** The last two interim hacks are gone: the Dock's local; `shell/src/desktopentry.{h,cpp}` — `scan`, `parse`, `defaultApplicationDirs`
 - **T110a — T-14.7a Dock plate geometry and spacing**: **State: done.** The Dock plate now floats: token-driven cross-axis and; `design-system/tokens/tokens.json` — `controls.dock`: `padding` 10,
 - **T110b — T-14.7b Magnified plate growth and backdrop panel**: **State: done.** The Dock plate now grows to wrap the magnified row (both axes); `protocols/dragonfruit-shell.xml` — `df_shell` v2, `df_layer_surface` v2, new
 - **T110c — T-14.7c Dock motion smoothness and frame discipline**: **State: done.** Continuous Dock motion no longer rebuilds the entry model:; `shell/src/shellcontroller.cpp` — `withBounce` deleted; `rebuildDockEntries`
@@ -42,6 +41,7 @@ _(115 earlier sections omitted)_
 - **T113 — T-15.2a Storage and removable media adapter**: **State: done.** The UDisks2 storage/removable-media adapter landed in a new; `services/storage/` (new crate) — `src/source.rs` (`StorageData`,
 - **T114 — T-15.2b Storage and removable media pane and tile**: **State: done.** The Storage pane and Control Center tile ship as one unit over; `services/system-status/src/storage.rs` (new) — `StorageHost<S>` +
 - **T115 — T-15.3a Sound and routing adapter**: **State: done.** The T-07.3 audio adapter (`dragonfruit-audio`) grew the input; `services/audio/src/source.rs` — new `SourceData`; `AudioData` gained
+- **T116 — T-15.3b Sound and routing pane and tile**: **State: done.** The Settings Sound pane and the Control Center Sound tile ship; `services/system-status/src/lib.rs` — `audio_view` now carries `sources`,
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -11068,3 +11068,95 @@ Decisions / gotchas for T-15.3b:
   `docs/captures/t15-3a-audio-routing.png` (3840x2160; unique 454 797, full
   luminance sigma 95.4). Vision confirmed the nested desktop, menu bar, Dock,
   and client windows render with no blank areas or clipping.
+
+## T116 — T-15.3b Sound and routing pane and tile
+
+**State: done.** The Settings Sound pane and the Control Center Sound tile ship
+as one unit over the T-15.3a audio adapter. Device routing, `Output volume`, and
+`Mute` round-trip through the bridge host; the `Sound Effects`/`Balance` rows
+are settingsd keys (new `sound` group, schema revision 11), so every control
+applies live with no dead toggles. Absence is documented and tested.
+
+Real paths:
+
+- `services/system-status/src/lib.rs` — `audio_view` now carries `sources`,
+  `sourceCount`, `defaultSource`; `StatusHost::set_default_sink` /
+  `set_default_source` (+ tests).
+- `services/system-status/src/dbus.rs` — `Audio` interface adds
+  `SetDefaultSink(id)` / `SetDefaultSource(id)`.
+- `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 10 → 11; new
+  `KeyGroup::Sound`; 7 keys (`sound.alertSound`, `sound.playEffectsThrough`,
+  `sound.alertVolume`, `sound.playOnStartup`, `sound.uiEffects`,
+  `sound.volumeFeedback`, `sound.balance`) + revision-11 test.
+- `docs/settings-keys.md` — the 7 rows.
+- `libs/settings-client/settingsclient.cpp` — the same 7 defaults (schema
+  mirror), comment to revision 11.
+- `shell/src/systemstatusclient.{h,cpp}` — the mock audio view now carries
+  `sources` + the default output/input names (the shell tile reflects routing;
+  it never writes it).
+- `shell/src/systemstatusmodel.cpp` — the audio view decode already passes the
+  wider payload through, so no model change was needed for routing.
+- `shell/src/shellcontroller.{h,cpp}` — `onSoundSettingsRequested`; Control
+  Center `soundSettingsRequested` connection.
+- `shell/control-center/ControlCenter.qml` — Sound tile subtitle reflects the
+  default output device (`audioOutputName`); `Mute` and `Sound Settings…` share
+  one row; `soundSettingsRequested` signal.
+- `apps/settings/SoundClient.{h,cpp}` (new) — `DbusSoundClient` +
+  `MockSoundClient` (`DF_SOUND_FIXTURE`); State/SetVolume/SetMute/
+  SetDefaultSink/SetDefaultSource.
+- `apps/settings/SettingsBridge.{h,cpp}` — `sound`/`soundAvailable` +
+  `refreshSound`/`setSoundVolume`/`setSoundMute`/`setSoundDefaultSink`/
+  `setSoundDefaultSource`.
+- `apps/settings/SoundPane.qml` (new) — `Sound Effects` (2 popups, alert-volume
+  slider, 3 toggles) + `Output & Input` (segmented tabs, Name/Type device table,
+  output volume, Mute, Balance) + absence note.
+- `apps/settings/SettingsPanes.qml` (sound shipped; icon `volume`),
+  `SettingsShell.qml` (sound body), `apps/settings/CMakeLists.txt`.
+- Tests — `shell/tests/tst_statusmodel.cpp` (audio view decode),
+  `shell/tests/tst_controlcenter.qml` (sound reflect + link; fit test now
+  includes Storage and routing), `apps/settings/tests/tst_settings_sound.{cpp,
+  qml}` (new), `tst_settings_absence.qml` (sound absence; counts 7),
+  `tst_settings_shell.qml` (counts 7).
+- Docs — `docs/design/07-system-integration.md` "The Sound pane and tile
+  (T-15.3b)" + Audio interface bullet; ADR
+  `docs/design/adr/0123-sound-pane-and-tile.md`; capture script
+  `scripts/capture-t15-sound-pane.sh` + two stills; `docs/captures/README.md`.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-system-status` — 25 lib + 9 host + 4 storage green.
+- `cargo test -p dragonfruit-settingsd` — 33 lib + schema_doc green.
+- `ctest --output-on-failure -j4` (in `build/`) — 56/56.
+- `make e2e` — EXIT 0.
+- `cargo fmt --all -- --check`; clippy on `dragonfruit-system-status` and
+  `dragonfruit-settingsd` — clean.
+
+Decisions / gotchas for later tasks:
+
+- **Sound Effects/Balance are settingsd keys, not adapter state.** The task left
+  the providers "TBD"; no later T-15 task owns them, and the no-half-panes rule
+  forbids dead controls, so a new `sound` key group (revision 11) owns the
+  preference. An actual alert/UI-sound playback engine is the one deferred item
+  (ADR 0123). Device selection/volume/mute stay on the adapter.
+- **Three hide rules for audio:** WirePlumber absent (`unavailable`) or a
+  running daemon that names no device hides the `Output & Input` group; the
+  `Sound Effects`/`Balance` controls stay live on schema defaults. The tile
+  still shows when `state: available` (audio has no `present` flag).
+- **Input volume/mute and per-app stream routing are not implemented.** The
+  Input tab shows only the device table (selecting routes the default source);
+  no inert slider.
+- **The Control Center panel is a fixed 360x780 and clips overflow.** The Sound
+  settings link shares the `Mute` row to keep the tile one row taller than
+  before; `tst_controlcenter`'s fit test now includes the Storage tile and the
+  routing subtitle, and the live capture confirms the Clipboard tile is not
+  clipped.
+- **The Sound pane is taller than the window and scrolls.** The capture shows
+  the top (`Sound Effects` + the device table); `Output volume`, `Mute`, and
+  `Balance` are below the fold. `tst_settings_sound` exercises them directly.
+- `DF_SOUND_FIXTURE` is the Settings-pane seam; `DF_STATUS_FIXTURE` drives the
+  shell's Sound tile. Neither is set in `make e2e`.
+- Live visual check: `bash scripts/capture-t15-sound-pane.sh` produced
+  `docs/captures/t15-3b-sound-pane.png` (2088x1410) and
+  `docs/captures/t15-3b-sound-control-center.png` (360x780). Vision confirmed
+  both groups, the device table, the sliders, the toggles, the `Built-in
+  Speakers` tile subtitle, and an unclipped Control Center bottom.

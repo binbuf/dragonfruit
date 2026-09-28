@@ -497,6 +497,22 @@ desktop, menu bar, Dock, and client windows render with no blank areas or
 clipping. The adapter itself — output/input device lists, default-device
 switching, absence — is proven headlessly by `cargo test -p dragonfruit-audio`.
 
+T-15.3b's Sound pane and Control Center tile are captured by
+`scripts/capture-t15-sound-pane.sh`: `t15-3b-sound-pane.png` is the Settings
+Sound pane (the `Sound Effects` group with `Alert sound`, `Play sound effects
+through`, `Alert volume` and the three playback toggles, and the `Output &
+Input` group with the `Output`/`Input` tab bar and the `Name`/`Type` device
+table), and `t15-3b-sound-control-center.png` is the panel with the Sound
+tile's `Built-in Speakers` routing subtitle, the volume slider, and the `Mute` /
+`Sound Settings…` row. The demo runs with `DF_SETTINGS_START_PANE=sound`,
+`DF_SETTINGS_FIXTURE`, `DF_STATUS_FIXTURE` and `DF_SOUND_FIXTURE` so no host
+WirePlumber or settingsd is needed. Needs a host Wayland session, spectacle,
+and Pillow; not in `make e2e`. The pane still is 2088x1410 and the panel crop
+is 360x780. Vision confirmed the two groups, the device table, the sliders, and
+the toggles render; the pane scrolls (its `Output volume`, `Mute`, and `Balance`
+rows are below the fold in the window-height still), and the Control Center
+bottom (Clipboard tile) is fully visible with no clipping.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

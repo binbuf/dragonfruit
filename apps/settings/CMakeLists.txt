@@ -17,6 +17,8 @@ qt_add_qml_module(dragonfruit-settings-ui
         BluetoothClient.h
         StorageClient.cpp
         StorageClient.h
+        SoundClient.cpp
+        SoundClient.h
     QML_FILES
         SettingsPanes.qml
         SettingsMenu.qml
@@ -27,6 +29,7 @@ qt_add_qml_module(dragonfruit-settings-ui
         DisplaysPane.qml
         BluetoothPane.qml
         StoragePane.qml
+        SoundPane.qml
         SettingsShell.qml
         SettingsWindow.qml
 )
@@ -63,6 +66,7 @@ df_qml_lint(app-settings
     DisplaysPane.qml
     BluetoothPane.qml
     StoragePane.qml
+    SoundPane.qml
     SettingsShell.qml
     SettingsWindow.qml
 )

@@ -348,6 +348,43 @@ the tile and shows the pane's one-line note with the controls inert; a
 `StorageOutcome::Denied` write is surfaced per action without degrading the read
 state.
 
+### The Sound pane and tile (T-15.3b)
+
+The Settings Sound pane and the Control Center Sound tile are one functional
+unit over the audio adapter's routing path. Both read the
+`dragonfruit-system-status` bridge host's
+`org.dragonfruit.SystemStatus1.Audio` interface
+([adr/0123](adr/0123-sound-pane-and-tile.md)): its `State()` now carries the
+input list (`sources`, `sourceCount`) and the `defaultSource` name alongside the
+output list, and `SetDefaultSink(id)` / `SetDefaultSource(id)` are the two
+routing writes the pane raises. The host re-reads WirePlumber after a write; the
+pane and tile never invent state.
+
+The pane mirrors the reference's two groups. `Output & Input` is the routing
+unit: an `Output`/`Input` segmented control, a `Name`/`Type` device table whose
+row selection makes that device the default (`wpctl set-default`), an `Output
+volume` slider, a `Mute` toggle, and a `Balance` slider. `Sound Effects` holds
+`Alert sound`, `Play sound effects through`, `Alert volume`, and the three
+playback toggles. The Control Center tile stays compact: it reflects the default
+output device's name and the volume/mute state it already wrote, plus a `Sound
+Settings…` entry point (the launch itself is T-16).
+
+The `Sound Effects` and `Balance` rows have no daemon of their own: they are
+settingsd keys in the new `sound` group (`sound.alertSound`,
+`sound.playEffectsThrough`, `sound.alertVolume`, `sound.playOnStartup`,
+`sound.uiEffects`, `sound.volumeFeedback`, `sound.balance`), additive in schema
+revision 11. That is the T-08 host-services provider for the rows the reference
+draws, so every control in the shipped pane writes somewhere durable and
+applies live — no dead toggles. An actual alert/UI-sound playback engine is the
+one documented follow-up; the pane owns and persists the user's preference
+today. Device selection, `Output volume`, and `Mute` are deliberately *not*
+settings keys: they stay on the adapter and round-trip through the bridge host.
+
+Absence follows the adapter's two hide rules (ADR 0121). WirePlumber gone or a
+running daemon with no device hides the `Output & Input` group and shows a
+one-line note; the `Sound Effects`/`Balance` controls stay live on the schema
+defaults, so an absent daemon never turns the pane into a dead surface.
+
 ## The status bridge host (T-07.5a)
 
 The adapters are Rust crates; the menu bar is C++/QML. T-07.5a bridges them in
@@ -361,7 +398,8 @@ NetworkManager, audio, and power adapters and serves
   Wi-Fi view as JSON, with the network list and the polkit read-only
   degradation) and `Join(ssid, secret)`.
 - `org.dragonfruit.SystemStatus1.Audio` — `State()`/`Refresh()` and
-  `SetVolume(volume)`, `SetMute(muted)`, `ToggleMute()`.
+  `SetVolume(volume)`, `SetMute(muted)`, `ToggleMute()`, plus the T-15.3b
+  routing writes `SetDefaultSink(id)` and `SetDefaultSource(id)`.
 - `org.dragonfruit.SystemStatus1.Battery` — `State()`/`Refresh()` only (the
   read-only battery view; no write).
 

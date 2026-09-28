@@ -32,7 +32,7 @@ Item {
         // matrix asserts stays live while its provider is absent.
         readonly property var shippedPaneIds:
             ["appearance", "desktop-dock", "displays", "wallpaper", "bluetooth",
-             "storage"]
+             "storage", "sound"]
 
         function make() {
             var shell = createTemporaryObject(shellComponent, stage,
@@ -85,7 +85,7 @@ Item {
 
         function test_every_shipped_pane_has_a_body_and_no_other_does() {
             var shell = make();
-            compare(SettingsPanes.shippedPanes.length, 6);
+            compare(SettingsPanes.shippedPanes.length, 7);
             for (var i = 0; i < SettingsPanes.catalog.length; ++i) {
                 var pane = SettingsPanes.catalog[i];
                 var body = shell.paneComponent(pane.id);
@@ -226,6 +226,37 @@ Item {
             // A write is a safe no-op with no host.
             pane.mountVolume("/org/freedesktop/UDisks2/block_devices/sdb1");
             compare(Settings.storageAvailable, false);
+        }
+
+        // With no bridge host on the private bus, the Sound pane's routing half is
+        // the absence state: the Output & Input group is hidden and a one-line
+        // note explains the missing daemon. The Sound Effects/Balance controls
+        // are settingsd-backed and stay live on the schema defaults, so the
+        // pane is never a dead surface.
+        function test_sound_pane_degrades_cleanly_without_the_bridge_host() {
+            var shell = make();
+            compare(Settings.soundAvailable, false,
+                    "no bridge host is the absent state under test");
+            compare(Settings.sound.state, undefined);
+
+            var pane = showPane(shell, "sound");
+            compare(pane.ready, false);
+            compare(pane.outputInputGroup.visible, false);
+            compare(pane.absenceNote.visible, true,
+                    "the absence note explains the missing bridge host");
+            verify(pane.absenceNote.text.length > 0);
+
+            // The settingsd-backed controls still work with no daemon.
+            verify(pane.effectsGroup.visible);
+            pane.playOnStartupToggle.toggle();
+            compare(Settings.values["sound.playOnStartup"], false);
+            pane.alertVolumeSlider.setValue(0.4);
+            pane.alertVolumeSlider.commit();
+            verify(Math.abs(Settings.values["sound.alertVolume"] - 0.4) < 0.001);
+
+            // A routing write is a safe no-op with no host.
+            pane.selectDevice(9);
+            compare(Settings.soundAvailable, false);
         }
 
         // A control changed while the daemon is absent still converges into the

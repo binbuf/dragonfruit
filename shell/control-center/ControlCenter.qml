@@ -62,6 +62,18 @@ Item {
     readonly property bool audioAvailable: root.audio.state === "available"
     readonly property bool muted: root.audio.muted === true
     property real volume: root.audio.volume !== undefined ? root.audio.volume : 0.0
+    // The default output device's label (T-15.3b), so the tile reflects the
+    // routing state the Settings pane writes; empty when the adapter named none.
+    readonly property var audioOutputs: root.audio.sinks !== undefined
+        ? root.audio.sinks : []
+    readonly property string audioOutputName: {
+        for (var i = 0; i < root.audioOutputs.length; ++i) {
+            if (root.audioOutputs[i].default === true)
+                return root.audioOutputs[i].description !== undefined
+                    ? root.audioOutputs[i].description : "";
+        }
+        return "";
+    }
 
     // Bluetooth (T-15.1b). The tile hides when `bluetoothd` is absent
     // (`unavailable`) or when the daemon is present with no controller
@@ -175,6 +187,7 @@ Item {
             id: "volume",
             kind: "slider",
             title: qsTr("Sound"),
+            subtitle: root.audioOutputName,
             value: root.volume,
             muted: root.muted,
             enabled: root.audioAvailable
@@ -205,6 +218,9 @@ Item {
     signal brightnessSetRequested(double level)
     signal wifiToggleRequested(bool enabled)
     signal wifiSettingsRequested()
+    // Sound (T-15.3b): the tile reflects the default output device the pane
+    // routes to; the link opens the pane (T-16).
+    signal soundSettingsRequested()
     // Bluetooth (T-15.1b): the toggle powers the adapter; a known-device row
     // connects/disconnects it; the link opens the pane (T-16).
     signal bluetoothToggleRequested(bool enabled)
@@ -794,9 +810,14 @@ Item {
 
                             Text {
                                 objectName: "volumeSubtitle"
-                                text: root.muted ? qsTr("Muted") : qsTr("Output")
+                                width: parent.width
+                                text: root.muted
+                                    ? qsTr("Muted")
+                                    : (root.audioOutputName.length > 0
+                                       ? root.audioOutputName : qsTr("Output"))
                                 color: Theme.color.textSecondary
                                 font.pixelSize: Theme.primitive.font.sizeSm
+                                elide: Text.ElideRight
                             }
                         }
 
@@ -822,12 +843,23 @@ Item {
                         onMoved: (value) => root.setVolume(value)
                     }
 
-                    TextLink {
-                        objectName: "muteButton"
-                        text: root.muted ? qsTr("Unmute") : qsTr("Mute")
-                        accessibleName: root.muted ? qsTr("Unmute") : qsTr("Mute")
-                        visible: root.audioAvailable
-                        onActivated: root.muteToggleRequested()
+                    Row {
+                        spacing: Theme.primitive.spacing.md
+
+                        TextLink {
+                            objectName: "muteButton"
+                            text: root.muted ? qsTr("Unmute") : qsTr("Mute")
+                            accessibleName: root.muted ? qsTr("Unmute") : qsTr("Mute")
+                            visible: root.audioAvailable
+                            onActivated: root.muteToggleRequested()
+                        }
+
+                        TextLink {
+                            objectName: "soundSettingsLink"
+                            text: qsTr("Sound Settings\u2026")
+                            accessibleName: qsTr("Open Sound Settings")
+                            onActivated: root.soundSettingsRequested()
+                        }
                     }
                 }
             }

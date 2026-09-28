@@ -163,6 +163,30 @@ set_tests_properties(tst_settings_storage PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# Sound-pane tests (T-15.3b): the Sound Effects/Balance rows round-trip through
+# settingsd's schema defaults and the Output/Input device selection, volume, and
+# mute round-trip through the audio adapter. The `DF_SOUND_FIXTURE` client is
+# deterministic and in-process, so the cases never touch the host session bus.
+qt_add_executable(tst_settings_sound
+    tst_settings_sound.cpp
+)
+target_link_libraries(tst_settings_sound PRIVATE
+    Qt6::QuickTest
+    dragonfruit-design-systemplugin
+    dragonfruit-settings-uiplugin
+)
+qt_import_qml_plugins(tst_settings_sound)
+
+add_test(
+    NAME tst_settings_sound
+    COMMAND tst_settings_sound
+        -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_settings_sound.qml
+)
+set_tests_properties(tst_settings_sound PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;DF_SETTINGS_FIXTURE=1;DF_SOUND_FIXTURE=1;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Settings menu-model publication tests (T-09.6a): the app's published menu
 # model is asserted in shape and injected into the shell's `MenuBar` (the
 # `Dragonfruit.MenuBar` module is linked so the round-trip is real). Headless

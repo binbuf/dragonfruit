@@ -33,6 +33,7 @@
 class SettingsClient;
 class BluetoothClient;
 class StorageClient;
+class SoundClient;
 class QDBusServiceWatcher;
 
 class SettingsBridge : public QObject
@@ -92,6 +93,14 @@ class SettingsBridge : public QObject
     // Whether the bridge host is on the session bus. False means no storage
     // surface at all; the pane shows the absence note.
     Q_PROPERTY(bool storageAvailable READ storageAvailable NOTIFY storageChanged)
+    // The audio view from the bridge host (T-15.3b): `{ state, volume, muted,
+    // defaultSink, defaultSource, sinks, sources }`. Empty when the host (or
+    // WirePlumber) is absent; the pane renders the absence state and disables
+    // its controls rather than erroring.
+    Q_PROPERTY(QVariantMap sound READ sound NOTIFY soundChanged)
+    // Whether the bridge host is on the session bus. False means no Sound
+    // surface at all; the pane shows the absence note.
+    Q_PROPERTY(bool soundAvailable READ soundAvailable NOTIFY soundChanged)
     // The pane the shell opens on startup. Empty uses the first shipped pane;
     // `DF_SETTINGS_START_PANE=wallpaper` selects one for captures and tests.
     Q_PROPERTY(QString startPane READ startPane CONSTANT)
@@ -111,6 +120,8 @@ public:
     bool bluetoothAvailable() const;
     QVariantMap storage() const;
     bool storageAvailable() const;
+    QVariantMap sound() const;
+    bool soundAvailable() const;
     QString providerStatus() const;
     QString providerDefault() const;
     QString wallpaperBuiltinDefault() const;
@@ -162,6 +173,16 @@ public:
     Q_INVOKABLE void unmountStorage(const QString &volumePath);
     Q_INVOKABLE void ejectStorage(const QString &drivePath);
 
+    // T-15.3b: the Sound pane's one seam. `refreshSound` re-reads the bridge
+    // host on pane open; the writes each call the audio adapter once and the
+    // host pushes the new view back through `soundChanged`. Device routing is
+    // by PipeWire node id. A no-op when the host is absent.
+    Q_INVOKABLE void refreshSound();
+    Q_INVOKABLE void setSoundVolume(double volume);
+    Q_INVOKABLE void setSoundMute(bool muted);
+    Q_INVOKABLE void setSoundDefaultSink(int id);
+    Q_INVOKABLE void setSoundDefaultSource(int id);
+
     // T-18.2 test seam: with `DF_WALLPAPER_FIXTURE` set, seed the provider
     // lifecycle to `status` (`ready` loads the deterministic fixture
     // catalogue; any other status leaves it empty) so the pane's fetching /
@@ -193,6 +214,8 @@ signals:
     void bluetoothChanged();
     // The storage view or availability changed (T-15.2b).
     void storageChanged();
+    // The audio view or availability changed (T-15.3b).
+    void soundChanged();
 
 private:
     void buildWallpaperPresets();
@@ -237,4 +260,6 @@ private:
     BluetoothClient *m_bluetooth = nullptr;
     // T-15.2b: the storage seam (`DF_STORAGE_FIXTURE` selects the mock).
     StorageClient *m_storage = nullptr;
+    // T-15.3b: the Sound seam (`DF_SOUND_FIXTURE` selects the mock).
+    SoundClient *m_sound = nullptr;
 };
