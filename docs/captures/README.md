@@ -444,6 +444,13 @@ a 22 px gap on each side; the empty-tail strip one rule; the single-region strip
 none. Needs a host Wayland session, spectacle, gdbus, and Pillow; not in
 `make e2e`.
 
+T-15.1a's Bluetooth adapter has no surface of its own (the pane and tile are
+T-15.1b); `t15-1a-bluetooth-adapter.png` is the nested demo launched with the
+new `dragonfruit-bluetooth` crate in the workspace, confirming the desktop
+still renders (3840x2160, 468 614 unique colours; menu bar, Dock, and client
+window present, clean teardown). The adapter itself is proven headlessly by
+`cargo test -p dragonfruit-bluetooth`.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

@@ -3,10 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(108 earlier sections omitted)_
+_(110 earlier sections omitted)_
 
-- **T104 — T-14.2b menu-broker accelerators and toggle**: **State: done.** The menu-broker now parses and dispatches focus-scoped; `services/menu-broker/src/accelerators.rs` (new) — pure `Mods`/`Chord`
-- **T105 — T-14.3 StatusNotifier/AppIndicator tray**: **State: done.** StatusNotifier/AppIndicator tray items render in the menu; `services/app-index/src/tray.rs` (new) — pure `Registration`
 - **T106 — T-14.4 DBusMenu bridge**: **State: done.** A DBusMenu/AppMenu-exporting app's global menu is now bridged; `services/app-index/src/menubridge.rs` (new) — pure `MenuRegistration`
 - **T107 — T-14.5 XDnD bridge**: **State: done (protocol half + documented gap; the task explicitly allows; `compositor/src/xdnd.rs` (new) — pure XDnD:
 - **T107 — T-14.5 XDnD bridge (attempt 2 — gate repair)**: **State: done.** The attempt-1 protocol half and documented gap stand; `Makefile` — the `e2e` recipe runs
@@ -43,6 +41,8 @@ _(108 earlier sections omitted)_
 - **T173 — T-18.1b Provider settings, wallpaper API wiring, and effective source**: **State: done.** The additive provider keys are declared (schema rev 10), the; `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 9 → 10; 5 additive
 - **T174 — T-18.2 Wallpaper pane collections, skeleton, and attribution**: **State: done.** The Wallpaper pane now has Featured / Built-in / Custom rows;; `design-system/tokens/tokens.json` — semantic `skeletonBase`/`skeletonHighlight`
 - **T175 — T-18.3 Provider licensing, absence matrix, and capture**: **State: done.** The licensing policy is reviewed and made true (`NOTICE`; `docs/licensing.md` — "Fetched third-party content (wallpaper)" extended:
+- **Dev tooling — wallpaper provider in the dev session (T-18.1a follow-up)**: **State: done.** `make demo` (nested) and `make dev --shell` now start; `tools/dragonfruit-dev/src/main.rs` — `launch_services` takes a
+- **T111 — T-15.1a Bluetooth adapter**: **State: done.** The BlueZ Bluetooth adapter landed in a new crate,; `services/bluetooth/` (new crate) — `src/source.rs` (`BluetoothData`,
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3232,11 +3232,14 @@ Gotchas for later tasks:
   smoke-tested manually (empty cache + `HTTPS_PROXY=http://127.0.0.1:1` →
   immediate `offline`); if a live test is wanted, gate one category behind an
   `--ignored` test.
-- **T-18.1a not launched by `dragonfruit dev`/`make demo`.** `launch_services`
-  in `tools/dragonfruit-dev/src/main.rs` starts only app-index and menu-broker;
-  adding wallpaperd there would make the demo fetch in the background. The live
-  pane/shell path arrives with T-18.1b/T-18.2, so leave the harness alone until
-  then.
+- **T-18.1a provider launch in the dev harness (resolved).**
+  `launch_services` in `tools/dragonfruit-dev/src/main.rs` now starts
+  `dragonfruit-wallpaperd` alongside app-index and menu-broker for the nested
+  human demo and `dev --shell`, so opening Settings → Wallpaper shows the
+  Featured catalogue. The `--headless` scripted demo (`make demo
+  DEMO_ARGS=--headless`, hence `make e2e`) deliberately skips it, so CI never
+  warms the provider's cache or hits the network. Selected by the pure
+  `service_names(wallpaper)` helper (covered by a unit test).
 - **T-18.1a cache size.** The provider caps 10/category and downloads
   sequentially, but does not cap the total cache size or evict old items; add
   an LRU/size cap if the install footprint becomes a concern.
@@ -10686,3 +10689,70 @@ Gotchas for later tasks:
   `make t18-absence-matrix` if the CLI/tests change.
 - The provider reports the in-tree default as a `../../`-relative path; the
   transcript shows it. Canonicalizing would be cosmetic only.
+
+## Dev tooling — wallpaper provider in the dev session (T-18.1a follow-up)
+
+**State: done.** `make demo` (nested) and `make dev --shell` now start
+`dragonfruit-wallpaperd`, so the Settings → Wallpaper **Featured** row fills
+from `org.dragonfruit.Wallpaper1` instead of always showing "available soon".
+
+Real paths:
+
+- `tools/dragonfruit-dev/src/main.rs` — `launch_services` takes a
+  `wallpaper: bool`; a new pure `service_names(wallpaper)` returns app-index,
+  menu-broker, and (when set) wallpaperd. `run_demo_session` passes
+  `!scripted`, `run_dev_session` passes `true`; the `--headless` scripted path
+  (CI / `make e2e`) skips the provider so the gate never warms its cache.
+- Unit test `wallpaperd_is_started_for_the_live_session_but_not_the_scripted_demo`.
+
+## T111 — T-15.1a Bluetooth adapter
+
+**State: done.** The BlueZ Bluetooth adapter landed in a new crate,
+`dragonfruit-bluetooth` (`services/bluetooth`, workspace member), behind the
+shared contract. No shell wiring (T-15.1b renders it; the status-bridge host is
+T-15.16).
+
+Real paths:
+
+- `services/bluetooth/` (new crate) — `src/source.rs` (`BluetoothData`,
+  `BluetoothOutcome`, `BluetoothSource`, `MockBluetooth`), `src/model.rs`
+  (`BluetoothController`, `BluetoothDevice`, `BluetoothSnapshot`),
+  `src/bluez.rs` (`DbusBluez`: `GetManagedObjects` at `/` on the system bus +
+  `Properties.Set Powered` / `Start|StopDiscovery` / `Pair` / `Connect|Disconnect`),
+  `src/adapter.rs` (`BluetoothAdapter<S>`), `src/lib.rs`.
+  `tests/read_path.rs` + `tests/fixtures/bluez-office.json`.
+- `Cargo.toml` (workspace members) + `Makefile` (`make e2e` now runs
+  `cargo test -p dragonfruit-bluetooth`).
+- `docs/design/07-system-integration.md` — "The Bluetooth path (T-15.1a)".
+- `docs/design/adr/0117-bluetooth-adapter-absence-and-write-outcomes.md` (new).
+- `docs/captures/t15-1a-bluetooth-adapter.png` + `docs/captures/README.md`.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-bluetooth` — 30 lib + 9 integration green.
+- `make e2e` — EXIT 0.
+- `cargo fmt --all -- --check`;
+  `cargo clippy --workspace --all-targets -- -D warnings` — green.
+- `make lint` — still fails only on the pre-existing `check-desktop-names`
+  lines (StatusNotifier/zoo/apppicker), unchanged.
+
+Gotchas for later tasks (T-15.1b / T-15.16):
+
+- **No `BluetoothAccess` read-only degradation.** Unlike Wi-Fi, a polkit denial
+  is per-request (`BluetoothOutcome::Denied`); reads stay live and the adapter
+  keeps no access mode (ADR 0117). Each refused action surfaces its own note.
+- **Two hide rules**: `bluetoothd` absent ⇒ `AdapterState::Unavailable` (slot
+  hidden); BlueZ present but no controller ⇒ `Available` with
+  `BluetoothSnapshot::present() == false` (consumer hides). A present but
+  `Powered = false` controller is shown with an Off switch.
+- **Writes invent no snapshot**: after `set_powered`/`set_discovering`/`pair`/
+  `set_connected`, BlueZ pushes `PropertiesChanged`/`InterfacesAdded`; the host
+  calls `BluetoothAdapter::refresh` and re-reads. The adapter is event-driven;
+  do not add a poll.
+- **ObjectManager read decodes property maps directly** (`downcast_ref`), so a
+  missing optional property (`Name`, `RSSI`, `Alias`) is a default, not an
+  error. RSSI 0 is "unknown" (`BluetoothDevice::rssi == None`).
+- The live D-Bus path is compile-checked but not run in CI (no bus/daemon); the
+  fixture seam is the tested contract.
+- `BluetoothAdapter` is the adapter struct; the controller model is
+  re-exported as `BluetoothController` to avoid the name clash.
