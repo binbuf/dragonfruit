@@ -765,6 +765,15 @@ committed stills are `docs/captures/t11-control-center.*`,
 (the menu-bar DND crescent), produced by `scripts/capture-osd-dnd.sh`
 (`make osd-dnd-capture`). See [adr/0063](adr/0063-osd-keyboard-atspi.md).
 
+**T-16.6a status.** The live AT-SPI audit and its boundary are fixed in
+[adr/0154](adr/0154-atspi-and-keyboard-audit-boundary.md): the first-party
+apps (Settings, Files) are dumped live and walked keyboard-only
+(`scripts/t16-a11y-audit.sh`, `make t16-a11y-audit`), every compositor-owned
+system binding is proven keyboard-only in the headless conformance suite, and
+the shell chrome keeps its per-component `Accessible.*` contract because the
+offscreen render path is not exported to the accessibility bus. The OSD alert
+above is part of that per-component contract.
+
 ## Relationship to compositor and services
 
 - Compositor state (windows, workspaces, outputs) arrives via private

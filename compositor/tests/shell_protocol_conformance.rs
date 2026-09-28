@@ -3031,6 +3031,121 @@ fn synthetic_input_drives_shortcuts_hot_corners_and_gestures() {
     );
 }
 
+/// T-16.6a acceptance (integration, headless): every compositor-owned system
+/// flow is reachable from the keyboard alone.
+///
+/// The scripted walkthrough sends each default system binding's chord over
+/// the synthetic-input harness (the same libinput-equivalent path a real
+/// device takes) and asserts the shared outbox records the matching action
+/// with a `keyboard` trigger. The live cross-process AT-SPI half of the audit
+/// is `scripts/t16-a11y-audit.sh`; this suite is its CI half and needs no
+/// session bus, display server, or assistive client.
+#[test]
+fn keyboard_only_walkthrough_dispatches_every_system_binding() {
+    let token = "9a".repeat(32);
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir)
+        .join(format!("dragonfruit-synth-keyboard-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-keyboard-only",
+        std::slice::from_ref(&token),
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (name, version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, name, version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+    let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
+    let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.outputs.is_empty() && state.workspaces.len() >= 3 && state.done_count > 0,
+    );
+
+    // Press every key down in order, then release in reverse: one chord.
+    let send_chord = |keys: &[u32]| {
+        let mut script = String::new();
+        for key in keys {
+            script.push_str(&format!("key {key} down\n"));
+        }
+        for key in keys.iter().rev() {
+            script.push_str(&format!("key {key} up\n"));
+        }
+        input.send(script.trim_end());
+    };
+
+    // (chord, expected action). evdev codes: Ctrl=29 Shift=42 Alt=56
+    // Super=125; Left=105 Right=106 Up=103 Down=108 Tab=15 grave=41 F3=61
+    // 1=2 3=4 4=5 Q=16 C=46 D=32 N=49.
+    //
+    // The screenshot and lock flows run last: they open chrome overlays and a
+    // lock state, so they must not shadow the earlier cases.
+    let walkthrough: &[(&[u32], &str)] = &[
+        (&[29, 105], "workspace-prev"),
+        (&[29, 106], "workspace-next"),
+        (&[29, 2], "workspace-activate"),
+        (&[29, 103], "mission-control"),
+        (&[29, 108], "desktop-reveal"),
+        (&[125, 15], "app-switcher"),
+        (&[125, 42, 15], "app-switcher"),
+        (&[125, 41], "app-switcher-window"),
+        (&[125, 42, 41], "app-switcher-window"),
+        (&[29, 42, 49], "notification-center"),
+        (&[125, 56, 32], "toggle-dock"),
+        (&[29, 61], "focus-dock"),
+        (&[29, 56, 46], "control-center"),
+        (&[125, 42, 4], "screenshot"),
+        (&[125, 42, 5], "screenshot-region"),
+        (&[125, 29, 16], "lock-screen"),
+    ];
+
+    for (keys, action) in walkthrough {
+        state.input_actions.clear();
+        send_chord(keys);
+        let expected = *action;
+        wait_for(
+            &conn,
+            &mut queue,
+            &mut state,
+            Duration::from_secs(5),
+            |state| {
+                state
+                    .input_actions
+                    .iter()
+                    .any(|(a, source, _)| a == expected && source == "keyboard")
+            },
+        );
+        assert!(
+            state
+                .input_actions
+                .iter()
+                .any(|(a, source, _)| a == expected && source == "keyboard"),
+            "keyboard chord {keys:?} must dispatch {expected:?} from the keyboard: {:?}",
+            state.input_actions
+        );
+    }
+
+    manager.destroy();
+    let _ = conn.flush();
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}
+
 /// T-11 FR-1: a gesture and a hot corner drive the *same* overview state
 /// machine, so one opens Mission Control and the other toggles it closed.
 #[test]
