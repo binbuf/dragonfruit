@@ -4,12 +4,11 @@
 # T-14.7l Dock launch-origin tile hand-off capture.
 #
 # Runs the nested demo with a scratch settingsd (Settings pinned, bottom Dock,
-# dark), drives the Dock launch through the real click tree using the
-# shell's `DF_DOCK_ACTIVATION_FIXTURE=launch` seam, and checks the compositor's
+# dark) and drives the Dock launch with the T-14.7x *real* synthetic click
+# (the `DF_DOCK_ACTIVATION_FIXTURE` seam retired), then checks the compositor's
 # `query motion` record: the launched window's appear must originate at the
-# pinned entry's icon (the bottom Dock band), not the centered fallback. The
-# identical fixture path the previous capture used now also publishes the
-# entry tile, so this exercises the whole QML -> shell -> protocol hand-off.
+# pinned entry's icon (the bottom Dock band), not the centered fallback. This
+# exercises the whole QML -> shell -> protocol hand-off.
 #
 # Stills:
 #
@@ -96,7 +95,6 @@ gdbus call --session --dest "$DBUS_DEST" --object-path "$DBUS_PATH" \
 
 echo "capture-dock-launch-origin: starting the nested demo ($SOCKET)"
 env DRAGONFRUIT_SYNTHETIC_INPUT="$SYNTH" DF_DEMO_QT_APP=/bin/true \
-    DF_DOCK_ACTIVATION_FIXTURE=launch \
     setsid make demo DEMO_ARGS="--socket-name $SOCKET" \
     >"$SCRATCH/demo.log" 2>&1 &
 DEMO_PGID=$!

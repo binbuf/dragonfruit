@@ -29,8 +29,10 @@ qt_add_executable(tst_dock
 )
 target_link_libraries(tst_dock PRIVATE
     Qt6::QuickTest
+    Qt6::Quick
     dragonfruit-design-systemplugin
     dragonfruit-shell-dockplugin
+    dragonfruit-shell-dockcore
 )
 qt_import_qml_plugins(tst_dock)
 
