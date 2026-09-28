@@ -119,7 +119,11 @@ rules:
 - A component **gallery app** renders every component in every state,
   scheme, and motion variant; visual regression tests run against it.
 - Keyboard navigation and AT-SPI roles are verified **per component**, not
-  re-proven per application.
+  re-proven per application. The live cross-process check is layered on top:
+  the first-party apps are dumped and walked keyboard-only through AT-SPI, and
+  every compositor-owned global flow is proven keyboard-only in the headless
+  conformance suite. The shell's offscreen chrome is not exported to the
+  accessibility bus (see [ADR 0154](adr/0154-atspi-and-keyboard-audit-boundary.md)).
 - Dark/light and reduced-motion variants are part of the definition of done
   for every component.
 
