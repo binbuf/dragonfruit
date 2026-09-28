@@ -20,6 +20,7 @@ members = [
     "services/input",
     "services/overview",
     "services/notify-adapter",
+    "services/lock-adapter",
     "services/system-status",
     "services/wallpaperd",
     "tools/dragonfruit-dev",

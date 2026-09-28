@@ -28,6 +28,8 @@ impl AdapterId {
     pub const NOTIFICATIONS: AdapterId = AdapterId("notifications");
     /// Focus / Do Not Disturb (the notification service's policy).
     pub const FOCUS: AdapterId = AdapterId("focus");
+    /// Lock Screen policy (the session idle/lock engine and compositor lock).
+    pub const LOCK: AdapterId = AdapterId("lock");
 
     /// An id for a status slot the constants above do not name.
     pub const fn new(id: &'static str) -> Self {
@@ -248,5 +250,6 @@ mod tests {
         assert_eq!(AdapterId::MISSION_CONTROL.as_str(), "mission-control");
         assert_eq!(AdapterId::NOTIFICATIONS.as_str(), "notifications");
         assert_eq!(AdapterId::FOCUS.as_str(), "focus");
+        assert_eq!(AdapterId::LOCK.as_str(), "lock");
     }
 }

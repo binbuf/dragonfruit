@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(124 earlier sections omitted)_
+_(125 earlier sections omitted)_
 
-- **T110i — T-14.7i Dock hover name labels (Tooltip)**: **State: done.** The design system has a passive `Tooltip` and the Dock shows a; `design-system/components/Tooltip.qml` (new) — `open`, `anchorItem`,
 - **T110j — T-14.7j Dock Tahoe visual language: floating glass, squircles, states**: **State: done.** The Dock is now a layered floating glass plate with a bright; `design-system/tokens/tokens.json` — semantic colors `dockFill`, `dockRim`,
 - **T110k — T-14.7k Dock folder pins: any folder as a stack**: **State: done.** Any folder can be pinned to the Dock as a stack: a single; `services/settingsd/src/schema.rs` — `dock.pinnedFolders` (`as`, default
 - **T110l — T-14.7l Dock launch-origin tile hand-off**: **State: done.** The Dock now hands the acted-on entry's icon tile to the; `shell/src/dockmodel.{h,cpp}` — `dockLaunchAppId(entry)` (`StartupWMClass`
@@ -42,6 +41,7 @@ _(124 earlier sections omitted)_
 - **T122 — T-15.6b Battery and power profiles pane and tile**: **State: done.** The Settings Battery pane and the Control Center Battery tile; `services/system-status/src/lib.rs` — `battery_view` now carries
 - **T123 — T-15.7a Notifications and Focus adapter**: **State: done.** New workspace crate `dragonfruit-notify-adapter`; `services/notify-adapter/` (new crate, workspace member) —
 - **T124 — T-15.7b Notifications and Focus pane and tile**: **State: done.** The Settings Notifications and Focus panes and the Control; `services/system-status/src/notifications.rs` (new) — `NotificationsHost`
+- **T125 — T-15.8a Lock Screen policy adapter**: **State: done.** New workspace crate `dragonfruit-lock-adapter`; `services/lock-adapter/` (new crate, workspace member) —
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -11812,3 +11812,68 @@ Decisions / gotchas for later tasks:
   selecting `Focus` with its summary, the Allowed Apps rows with the Pager
   toggle on, and the Control Center panel with the Focus tile (off — no live
   notification service on the host).
+
+## T125 — T-15.8a Lock Screen policy adapter
+
+**State: done.** New workspace crate `dragonfruit-lock-adapter`
+(`services/lock-adapter`): a projection over the **session idle/lock engine**
+and the **compositor lock state**, not a second timer or a second lock. It
+reuses `dragonfruit-session`'s `IdlePolicy`/`IdleStage` vocabulary and the
+T-07 adapter contract; it is the model T-15.8b's pane/tile bind to (ADR 0132).
+
+Real paths:
+
+- `services/lock-adapter/` (new crate, workspace member) —
+  - `src/source.rs` — `LockPolicySource` seam; `LockPolicyData` (`locked`,
+    `idle: IdlePolicy`, `display: LockDisplay`); `LockDisplay`
+    (`show_user_name_and_photo`/`show_password_hints`/`show_message_when_locked`/
+    `message`/`show_power_buttons`, with the shipped defaults);
+    `MockLockPolicy` (`absent`/`present`/`failing`/`push`/`kill`/`restart`/
+    `reads`).
+  - `src/model.rs` — `LockState` (`Unlocked`/`Locked`), `LockDisplayOption`
+    (stable ids are the settings key suffixes), `LockPolicySnapshot`
+    (`from_data`, `is_locked`, `glyph`, `display_off_after`, `lock_after`,
+    `display_option`, `message`), `LockPolicyChange` (state / per-stage delay /
+    display option / message), `IDLE_STAGES`.
+  - `src/adapter.rs` — `LockPolicyAdapter<S>` over the shared `Subscription`
+    lifecycle; `refresh`, `drain_changes`; implements `Adapter` with
+    `AdapterId::LOCK`.
+  - `src/lib.rs` — re-exports `dragonfruit_session::{IdlePolicy, IdleStage}`.
+  - `tests/read_path.rs` — 7 acceptance tests.
+- `services/system-adapters/src/state.rs` — `AdapterId::LOCK` (`"lock"`); id
+  test updated.
+- `Cargo.toml` — workspace member; `Makefile` e2e runs
+  `cargo test -p dragonfruit-lock-adapter`.
+- Docs — `docs/design/07-system-integration.md` adapter-table row + new "The
+  Lock Screen policy path (T-15.8a)" section; ADR
+  `0132-lock-screen-policy-adapter.md`; capture script
+  `scripts/capture-t15-lock-adapter.sh` + `docs/captures/README.md`.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-lock-adapter` — 22 lib + 7 read_path green.
+- `cargo test -p dragonfruit-system-adapters` — green.
+- `cargo fmt --all -- --check`; clippy on both crates `--all-targets -D warnings`
+  — clean.
+- `make e2e` — EXIT 0.
+- `make check-design-tokens check-tokens check-no-capture-grab` — clean.
+- `./scripts/check-gallery-snapshots.py` — 78 snapshots green.
+
+Decisions / gotchas for T-15.8b and later:
+
+- **Reuse is load-bearing.** The adapter depends on `dragonfruit-session` for
+  `IdlePolicy`/`IdleStage`; do not re-model the idle chain or re-time a stage.
+- **Read-only adapter.** The compositor owns lock, the session owns timing, and
+  the display preferences are settingsd's. T-15.8b declares the `lock.*` keys
+  (likely revision 15) and the engine applies them live; no write on the
+  adapter.
+- **No live D-Bus source.** Lock state and idle policy are not on the bus; the
+  concrete source is the shell's `df_toplevel_manager` client. T-15.8b is
+  expected to be shell-native + settingsd keys (T-15.5b Mission Control
+  precedent), not a system-status host.
+- **Linux adaptation:** one `blank` delay, not the macOS battery/AC pair.
+- Live visual check: `bash scripts/capture-t15-lock-adapter.sh` produced
+  `docs/captures/t15-8a-lock-adapter.png` (3840x2160); no surface of its own,
+  so it only confirms the nested desktop renders. Vision found the menu bar,
+  Dock, wallpaper, Settings window, and X11 demo window composited with no
+  blank regions or stray artifacts.

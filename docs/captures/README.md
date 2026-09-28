@@ -610,6 +610,14 @@ notification service is needed. Captured by
 `scripts/capture-t15-notifications-pane.sh`; requires a host Wayland session,
 spectacle, and Pillow, and is not in `make e2e`.
 
+`t15-8a-lock-adapter.png` is the nested demo desktop captured to prove the
+Lock Screen policy adapter (T-15.8a) leaves the tree healthy. The adapter has
+no surface of its own (the pane and tile are T-15.8b), so the capture only
+confirms the desktop renders: menu bar, Dock, wallpaper, and windows
+composited with no blank areas or stray artifacts. Captured by
+`scripts/capture-t15-lock-adapter.sh`; requires a host Wayland session,
+spectacle, and Pillow, and is not in `make e2e`.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

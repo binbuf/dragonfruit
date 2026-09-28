@@ -602,6 +602,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "dragonfruit-lock-adapter"
+version = "0.1.0"
+dependencies = [
+ "dragonfruit-session",
+ "dragonfruit-system-adapters",
+]
+
+[[package]]
 name = "dragonfruit-lock-auth"
 version = "0.1.0"
 dependencies = [
