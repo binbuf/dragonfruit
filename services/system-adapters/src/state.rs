@@ -24,6 +24,10 @@ impl AdapterId {
     pub const INPUT: AdapterId = AdapterId("input");
     /// Mission Control and hot corners (compositor overview).
     pub const MISSION_CONTROL: AdapterId = AdapterId("mission-control");
+    /// Notifications and the recorded history (notification service).
+    pub const NOTIFICATIONS: AdapterId = AdapterId("notifications");
+    /// Focus / Do Not Disturb (the notification service's policy).
+    pub const FOCUS: AdapterId = AdapterId("focus");
 
     /// An id for a status slot the constants above do not name.
     pub const fn new(id: &'static str) -> Self {
@@ -242,5 +246,7 @@ mod tests {
         assert_eq!(AdapterId::POWER.as_str(), "battery");
         assert_eq!(AdapterId::INPUT.as_str(), "input");
         assert_eq!(AdapterId::MISSION_CONTROL.as_str(), "mission-control");
+        assert_eq!(AdapterId::NOTIFICATIONS.as_str(), "notifications");
+        assert_eq!(AdapterId::FOCUS.as_str(), "focus");
     }
 }
