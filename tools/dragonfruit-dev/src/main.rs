@@ -282,7 +282,7 @@ fn wait_for_x11_display(path: &Path, timeout: Duration) -> Option<String> {
 struct ChildGuard {
     compositor: Option<std::process::Child>,
     launched: Vec<(String, std::process::Child)>,
-    /// Best-effort session services (app-index, menu-broker). Unlike
+    /// Best-effort session services (app-index, menu-broker, wallpaperd). Unlike
     /// `launched`, their early exit is not a demo failure: the shell degrades
     /// gracefully when one is absent. They are still owned here so teardown
     /// can never leak them into the host session.
@@ -532,16 +532,33 @@ fn service_path(name: &str) -> Option<PathBuf> {
     sibling.is_file().then_some(sibling)
 }
 
-/// Start the session services the live shell depends on but `make demo` does
-/// not otherwise provide: `dragonfruit-app-index` (application identity, T-14)
-/// and `dragonfruit-menu-broker` (global menu, T-14.2). Both are best-effort:
-/// missing binaries or a missing session bus are reported and skipped, and the
-/// shell falls back (an empty Dock / its own fixed application menu). A short
-/// settle lets them register their bus names before the shell's one-shot
-/// identity load.
-fn launch_services(guard: &mut ChildGuard, socket_name: &str, runtime_dir: &Path) {
+/// The best-effort session services to start, in launch order. `wallpaper`
+/// adds the content provider (T-18.1a); it is dropped on the headless scripted
+/// path so CI never warms its cache.
+fn service_names(wallpaper: bool) -> Vec<&'static str> {
+    let mut names = vec!["dragonfruit-app-index", "dragonfruit-menu-broker"];
+    if wallpaper {
+        names.push("dragonfruit-wallpaperd");
+    }
+    names
+}
+
+/// Start the session services the live shell depends on but a dev session
+/// does not otherwise provide: `dragonfruit-app-index` (application identity,
+/// T-14) and `dragonfruit-menu-broker` (global menu, T-14.2), plus
+/// `dragonfruit-wallpaperd` (the wallpaper content provider, T-18.1a) when
+/// `wallpaper` is set. All are best-effort: missing binaries or a missing
+/// session bus are reported and skipped, and the shell falls back (an empty
+/// Dock / its own fixed application menu / an empty Featured row).
+///
+/// `wallpaper` is false only for the `--headless` scripted demo: the provider
+/// warms in the background and would fetch on CI. The nested human demo and
+/// `dev --shell` start it, so opening Settings → Wallpaper shows the Featured
+/// catalogue. A short settle lets them register their bus names before the
+/// shell's one-shot identity load.
+fn launch_services(guard: &mut ChildGuard, socket_name: &str, runtime_dir: &Path, wallpaper: bool) {
     if std::env::var_os("DBUS_SESSION_BUS_ADDRESS").is_none() {
-        eprintln!("dragonfruit dev: no session bus; skipping app-index/menu-broker");
+        eprintln!("dragonfruit dev: no session bus; skipping session services");
         return;
     }
     let share = dev_share_env(runtime_dir);
@@ -553,7 +570,7 @@ fn launch_services(guard: &mut ChildGuard, socket_name: &str, runtime_dir: &Path
         base.push((*key, value.clone()));
     }
     let mut launched = false;
-    for name in ["dragonfruit-app-index", "dragonfruit-menu-broker"] {
+    for name in service_names(wallpaper) {
         let Some(path) = service_path(name) else {
             eprintln!("dragonfruit dev: {name} not built; the shell runs without it");
             continue;
@@ -746,7 +763,7 @@ fn run_dev_session(args: &DevArgs) -> ExitCode {
     };
 
     if args.shell {
-        launch_services(&mut session.guard, &args.socket_name, &runtime_dir);
+        launch_services(&mut session.guard, &args.socket_name, &runtime_dir, true);
         launch_shell(&mut session.guard, &args.socket_name, &runtime_dir);
     }
 
@@ -817,10 +834,16 @@ fn run_demo_session(args: &DevArgs) -> ExitCode {
 
     let mut dirty = false;
 
-    // The live Dock identity (app-index) and global menu (menu-broker) are
-    // real services now (T-14.7); start them before the shell, which loads
-    // the app corpus once at startup.
-    launch_services(&mut session.guard, &args.socket_name, &runtime_dir);
+    // The live Dock identity (app-index), global menu (menu-broker), and
+    // wallpaper provider (wallpaperd) are real services now; start them before
+    // the shell, which loads the app corpus once at startup. The provider is
+    // skipped on the headless scripted path so CI never warms its cache.
+    launch_services(
+        &mut session.guard,
+        &args.socket_name,
+        &runtime_dir,
+        !scripted,
+    );
     if !launch_shell(&mut session.guard, &args.socket_name, &runtime_dir) {
         dirty = true;
     }
@@ -1054,5 +1077,21 @@ mod tests {
         let args = parse_dev_args(["--demo"].iter().map(|s| s.to_string())).expect("parse");
         assert!(args.demo);
         assert!(!args.backend_explicit);
+    }
+
+    #[test]
+    fn wallpaperd_is_started_for_the_live_session_but_not_the_scripted_demo() {
+        assert_eq!(
+            service_names(true),
+            vec![
+                "dragonfruit-app-index",
+                "dragonfruit-menu-broker",
+                "dragonfruit-wallpaperd",
+            ]
+        );
+        assert_eq!(
+            service_names(false),
+            vec!["dragonfruit-app-index", "dragonfruit-menu-broker"]
+        );
     }
 }

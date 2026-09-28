@@ -21,6 +21,12 @@ for Dragonfruit alters the terms of these components.
 | Component | License |
 |---|---|
 | [Inter](https://github.com/rsms/inter) 4.001 (`assets/fonts/Inter/`, embedded in first-party binaries via `libs/system-font/`) | SIL OFL 1.1 |
+| Default wallpaper (`assets/graphics/wallpapers/Default.jpg`, installed to `share/dragonfruit/wallpapers/Default.jpg`) | MIT (original project asset) |
+
+The default wallpaper is the only image bundled in a package. Featured
+pictures are fetched from Wikimedia Commons at runtime under their own
+licenses and are never shipped — see
+[docs/licensing.md](docs/licensing.md).
 
 ## System libraries (used via the Linux stack)
 

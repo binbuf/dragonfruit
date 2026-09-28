@@ -727,8 +727,24 @@ fn xwayland_running_for(display: &str) -> bool {
         let Ok(cmdline) = std::fs::read(format!("/proc/{pid}/cmdline")) else {
             continue;
         };
-        let cmdline = String::from_utf8_lossy(&cmdline);
-        if cmdline.contains("Xwayland") && cmdline.contains(display) {
+        // Split the NUL-separated argv and require argv[0] to be the Xwayland
+        // binary and the display to be a whole argument. A substring scan over
+        // the flattened cmdline false-positives on any process whose arguments
+        // merely mention "Xwayland" and the display (e.g. a test runner whose
+        // argument is a long document).
+        let mut argv = cmdline.split(|byte| *byte == 0);
+        let Some(program) = argv.next() else {
+            continue;
+        };
+        let program = String::from_utf8_lossy(program);
+        if !program
+            .rsplit(['/', '\\'])
+            .next()
+            .is_some_and(|name| name == "Xwayland")
+        {
+            continue;
+        }
+        if argv.any(|arg| String::from_utf8_lossy(arg).as_ref() == display) {
             return true;
         }
     }
