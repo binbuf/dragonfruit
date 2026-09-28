@@ -1,0 +1,28 @@
+[package]
+name = "dragonfruit-wallpaperd"
+description = "Wallpaper content provider: shipped default + Wikimedia Commons Featured Pictures (T-18.1a)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+# The provider owns its HTTP stack (ureq, MIT/Apache-2.0 — see
+# docs/licensing.md) and serves the catalogue over the user session bus
+# (`org.dragonfruit.Wallpaper1`). No GPL/AGPL dependency is added.
+[dependencies]
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
+zbus = { version = "=5.19.0", features = ["blocking-api"] }
+ureq = { version = "=3.4.2", default-features = false, features = ["rustls", "gzip"] }
+
+[dev-dependencies]
+tempfile = "=3.27.0"
+
+[lib]
+name = "dragonfruit_wallpaperd"
+path = "src/lib.rs"
+
+[[bin]]
+name = "dragonfruit-wallpaperd"
+path = "src/main.rs"
