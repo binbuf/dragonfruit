@@ -2632,7 +2632,8 @@ Item {
 
         // -- T-14.7x production pointer injection --------------------------
         // These drive `DockInject`, a QML-callable wrapper over the same
-        // `DockPointer` injection `ShellController::onDockPointerMoved/Button`
+        // `ChromePointer` injection (`DockPointer` alias, T-16.12)
+        // `ShellController::onDockPointerMoved/Button`
         // uses. QtTest's own `mouseClick` stamps its events, which hides the
         // zero-timestamp DragHandler bug the compositor's synthetic path hit;
         // the wrapper reproduces the production sequence exactly.
