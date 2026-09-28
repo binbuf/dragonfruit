@@ -17,7 +17,7 @@ equivalent) API intended exactly for custom desktop frontends.
 | Power | UPower | Batteries and power devices over the system bus. |
 | Power profiles | power-profiles-daemon | performance / balanced / power-saver selection where the service exists (Battery pane, Control Center). |
 | Storage | UDisks2 + GIO/GVfs | UDisks provides block devices, monitoring, and mount operations; GIO has abstractions for user-interesting volumes and mounts. |
-| Printing & scanning | CUPS + SANE | IPP printing via the standard `org.cups.*` / freedesktop print APIs; drivers and queues stay with CUPS. |
+| Printing & scanning | CUPS + SANE | IPP printing via the standard `org.cups.*` / freedesktop print APIs; drivers and queues stay with CUPS. SANE enumerates scanner devices. The adapter reads and writes through the client tools the stacks ship (`lpstat`/`lpadmin`/`cupsaccept`/`cupsreject`/`cancel`, `scanimage`); see [adr/0140](adr/0140-printers-and-scanners-adapter.md). |
 | Secrets | Secret Service API | Reuse the host keyring (e.g. gnome-keyring); we never build a credential store, and first-party apps never cache secrets themselves. |
 | Date & time | systemd-timedated | Timezone and NTP settings for the Settings panes. |
 | User accounts | accountsservice | User list, avatars, account type — for Settings' Users & Groups pane. |
@@ -1018,6 +1018,49 @@ crate into the app.
   scrolling panel was rejected because the compositor forwards no pointer-axis
   events (`ShellProtocol::onPointerAxis` is a no-op), so the scroll would be
   unreachable in a real session. A fifteenth tile needs a taller nested output.
+
+## The printers and scanners path (T-15.12a)
+
+The printers and scanners adapter, `dragonfruit-printer-adapter`
+(`services/printer-adapter`), gives a pane the CUPS queues (name, description,
+location, device URI, state, accepting/enabled flags, and the queued jobs) plus
+the default destination, and the SANE scanner devices. It has two independent
+halves, both reused, never reimplemented
+([adr/0140](adr/0140-printers-and-scanners-adapter.md)).
+
+- **The printers half is CUPS through the tools it ships.** CUPS exposes no
+  stable machine-readable local API and its own client tools are the intended
+  front door, so the live source runs one `lpstat -l -t` (scheduler state,
+  default destination, device URIs, accepting state, queues with their long
+  info, and queued jobs) and writes through `lpadmin -d`,
+  `cupsaccept`/`cupsreject`, and `cancel`. This is the same reuse the audio
+  adapter makes of `pw-dump`/`wpctl` and the input adapter of
+  `libinput list-devices`: the human-oriented output churn is pinned in
+  `printers_from_lpstat` and tested against a fixture.
+- **The scanners half is SANE through `scanimage -L`.** Each
+  ``device `…' is a …`` line becomes a device with its verbatim description;
+  only the physical form (flatbed/sheet-fed/handheld) is derived, and an
+  unrecognized description stays `Unknown`.
+- **The read path is the same three-state seam as the other adapters.**
+  `PrintSource::read` returns the raw queues and devices (`Ok(Some)`), absence
+  (`Ok(None)`), or a read failure (`Err`). A host with no CUPS scheduler and no
+  SANE is absence — hidden, never an error. A stack that answers but cannot be
+  read is `Error`, visible and inert with the message.
+- **Absence is layered and per stack.** The adapter is `Unavailable` only when
+  **both** CUPS and SANE are unreachable. CUPS answering with no queue is
+  `Available` with an empty printer list; a running host with no SANE is
+  `Available` with `scanners: None`, so only the scanner half disables. This
+  mirrors the battery/UDisks2 and account adapters' per-half hide rules.
+- **Explicit writes, no invented snapshots.** `set_default_printer`,
+  `set_printer_accepting_jobs`, and `cancel_job` forward one request each and
+  answer `Applied`/`Denied`/`Absent`/`Failed`; CUPS publishes the result and
+  the host re-reads. A policy refusal is surfaced per action without degrading
+  the read state.
+- **One event stream.** `PrintSnapshot::changes(previous)` is a pure diff — the
+  daemons' presence, queues added/removed/edited, the default destination,
+  scanners added/removed/edited, and jobs entering/leaving a queue — queued by
+  the adapter and drained through `drain_changes`. The Settings pane and
+  Control Center tile are T-15.12b.
 
 ## The status bridge host (T-07.5a)
 

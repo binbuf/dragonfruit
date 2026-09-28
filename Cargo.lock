@@ -692,6 +692,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "dragonfruit-printer-adapter"
+version = "0.1.0"
+dependencies = [
+ "dragonfruit-system-adapters",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "dragonfruit-session"
 version = "0.1.0"
 dependencies = [

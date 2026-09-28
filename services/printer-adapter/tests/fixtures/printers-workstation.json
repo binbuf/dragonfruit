@@ -1,0 +1,40 @@
+{
+  "printers": [
+    {
+      "name": "Canon_MF230",
+      "display_name": "Canon MF230",
+      "make_and_model": "Canon MF230 Series",
+      "location": "Office",
+      "uri": "ipp://192.168.0.5/ipp/print",
+      "state": "idle",
+      "state_message": "Idle, Last Used",
+      "accepting_jobs": true,
+      "enabled": true,
+      "is_default": true,
+      "jobs": [
+        { "id": 12, "user": "dan", "size": 2048 }
+      ]
+    },
+    {
+      "name": "HP_LaserJet",
+      "display_name": "HP LaserJet",
+      "make_and_model": "HP LaserJet Pro",
+      "location": "Lab",
+      "uri": "ipp://192.168.0.9/ipp/print",
+      "state": "processing",
+      "state_message": "Printing document",
+      "accepting_jobs": true,
+      "enabled": true,
+      "is_default": false,
+      "jobs": []
+    }
+  ],
+  "default_printer": "Canon_MF230",
+  "scanners": [
+    {
+      "device": "epson2:net:192.168.0.7",
+      "description": "Epson GT-1500 flatbed scanner",
+      "kind": "flatbed"
+    }
+  ]
+}
