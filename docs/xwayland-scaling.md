@@ -18,13 +18,15 @@ which is a Wayland-client mechanism; X11 clients cannot opt in.
    through the integer `wl_output.scale` it advertises (Xwayland's own
    `-hidpi` is integer-only **and** rootful-only, so it is not the
    mechanism for a rootless session).
-2. The compositor maps each X11 toplevel buffer to the output's logical
-   size with a `wp_viewport` (`set_destination`), i.e. it downscales the
-   integer-scaled buffer to the fractional scale. This is the same
-   `viewporter` path the Wayland surface already uses.
+2. The compositor maps each X11 toplevel to the output's **logical** size
+   when it composites: every surface is resolved against the output's
+   fractional scale (`logical * scale` physical pixels). The integer scale
+   keeps Xwayland's coordinate space integral; the fractional output scale
+   is applied once, by the compositor, on the way to the framebuffer.
 3. `wp_fractional_scale_v1` is never advertised to Xwayland; it is a
-   Wayland-client protocol. X11 clients see the integer scale and a
-   consistent, if slightly soft, rendering at 1.5x/1.75x.
+   Wayland-client protocol, and T-16.3a's policy keeps X11 metrics integral.
+   The compositor maps the surface itself, so no fractional metric reaches
+   an X11 client.
 
 ## Why not the alternatives
 
@@ -40,39 +42,51 @@ which is a Wayland-client mechanism; X11 clients cannot opt in.
 
 ## Trade-offs and follow-ups
 
-- Downscaling a 2x buffer to 1.5x can soften subpixel-hinted text; the
-  compositor's viewport filter choice is the mitigation.
-- X11 popups, menus, and override-redirect windows must inherit the same
-  viewport mapping so they scale consistently with their toplevel.
+- X11 popups, menus, and override-redirect windows are composited with the
+  same output-scale mapping as their toplevel, so their offsets stay
+  consistent.
 - The integer scale is chosen once per Xwayland session from the primary
   output; multi-monitor outputs with different scales need a per-output
-  decision (run Xwayland at the largest, downscale on the smaller). The
-  per-surface viewport plumbing and the per-output decision land with
-  T-16.3b (fractional-scale edge cases).
+  decision (run Xwayland at the largest, downscale on the smaller). That
+  per-output decision is still open; the render path already resolves each
+  surface against its own output's fractional scale.
 
 ## Current state
 
-The **integer-scale half is built** (T-16.3a). The compositor chooses the
-Xwayland integer scale once per session as `ceil(primary_output_scale)`,
-clamped to at least 1, and records it in `XwaylandState::integer_scale`
-(`compositor/src/xwayland.rs`). Smithay already advertises that same value
-as the output's integer `wl_output.scale` (`Scale::integer_scale`), and the
-compositor never sends an X11 window a fractional `preferred_scale`
-(`compositor/src/render.rs`: `accepts_fractional_scale` skips X11 surfaces in
-`post_repaint`), so X11 clients only ever see the integer coordinate space
-and consistent integer metrics. The headless conformance fixture boots its
-primary output at scale 2 and proves the X server's screen and X11 window
-geometry stay logical
-(`xwayland_conformance::x11_fixture_at_integer_scale_two`).
+Both halves are built. The compositor chooses the Xwayland integer scale once
+per session as `ceil(primary_output_scale)`, clamped to at least 1, and records
+it in `XwaylandState::integer_scale` (`compositor/src/xwayland.rs`). Smithay
+advertises that same value as the output's integer `wl_output.scale`
+(`Scale::integer_scale`), and the compositor never sends an X11 window a
+fractional `preferred_scale` (`compositor/src/render.rs`:
+`accepts_fractional_scale` skips X11 surfaces in `post_repaint`), so X11
+clients only ever see the integer coordinate space and consistent integer
+metrics.
 
-The **per-surface viewport downscale is still not built**; it lands with
-T-16.3b, which maps each integer-scaled X11 buffer onto the output's logical
-size (`wp_viewport.set_destination`). Until then a fractional (non-integer)
-output scale shows X11 windows at the integer `ceil` scale, slightly large —
-the documented, accepted fallback.
+Xwayland derives its root window from the output's **logical** size, which
+Smithay computes from the physical mode and the *fractional* output scale
+(`Space::output_geometry`). At output scale 1.5 the X screen is therefore
+853x480 (`1280/1.5`, `720/1.5`), and X11 clients keep integral X pixels: they
+are never double-scaled by Xwayland. The compositor maps each surface's
+logical rectangle to physical pixels with the output's fractional scale, so a
+200x120 X11 window is composited into 300x180 physical pixels (`logical *
+1.5`), not 400x240 (an integer 2x footprint). This is the per-surface
+downscale, and it is verified by
+`xwayland_conformance::x11_fixture_at_fractional_scale_sizes_per_output` and
+the synthetic `query scale` report. The integer-scale fixture
+(`xwayland_conformance::x11_fixture_at_integer_scale_two`) still pins the
+integer coordinate space.
 
-Known follow-up discovered during this slice: the nested/DRM render path
-still sizes the wallpaper image element in logical pixels while placing it in
-physical pixels, so an output scale above 1 shows the wallpaper image only in
-the top-left fraction of the output (the solid fill still covers it). This is
-chrome-sizing work and belongs to T-16.3b.
+The nested session can boot at a fractional scale with
+`DRAGONFRUIT_NESTED_SCALE` (T-16.3b); its render path sizes chrome elements in
+physical pixels at every output scale. The wallpaper top-left bug found during
+T-16.3a is fixed (the nested damage tracker now carries the output scale, ADR
+0153).
+
+**Deferred, shell-side:** the shell's hand-rolled Wayland client renders its
+QML chrome offscreen at a device pixel ratio of 1 and does not bind
+`wp_fractional_scale` / `wp_viewporter`; at a fractional output scale the shell
+ignores the compositor's preferred-scale event and its chrome is upscaled. The
+compositor advertises the preferred scale (`render::update_chrome_preferred_scale`),
+so the remaining work is entirely in `shell/`. Recorded in `docs/PROGRESS.md`
+under Follow-ups.

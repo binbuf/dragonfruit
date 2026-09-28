@@ -71,6 +71,15 @@ pub fn run(socket_name: &str) -> Result<(), String> {
         BackendHooks {
             init: Box::new(move |state| {
                 let window_size = backend.window_size();
+                // T-16.3b: the nested output's scale. Fractional values let a
+                // live session exercise chrome sizing and the per-surface
+                // downscale (`DRAGONFRUIT_NESTED_SCALE`); the default is 1.0.
+                let scale = crate::backend::parse_output_scale(
+                    std::env::var(crate::backend::ENV_NESTED_SCALE)
+                        .ok()
+                        .as_deref(),
+                    1.0,
+                );
                 add_output(
                     state,
                     "NESTED-1",
@@ -85,7 +94,7 @@ pub fn run(socket_name: &str) -> Result<(), String> {
                         refresh: 60_000,
                     },
                     (0, 0),
-                    1.0,
+                    scale,
                 );
                 add_seat_capabilities(state);
                 if let Some(path) = &install_path {
@@ -118,6 +127,7 @@ pub fn run(socket_name: &str) -> Result<(), String> {
                             state.running = false;
                         }
                         WinitEvent::Resized { size, .. } => {
+                            let mut current_scale = 1.0;
                             if let Some(output) = state.space.outputs().next().cloned() {
                                 let mode = Mode {
                                     size,
@@ -125,19 +135,15 @@ pub fn run(socket_name: &str) -> Result<(), String> {
                                 };
                                 output.change_current_state(Some(mode), None, None, None);
                                 output.set_preferred(mode);
+                                current_scale = output.current_scale().fractional_scale();
                             }
                             // The winit/EGL back buffer is bottom-up, so the
-                            // damage tracker must render with Flipped180
-                            // (smithay's `minimal.rs` winit example does the
-                            // same). The output itself stays Normal so clients
-                            // and input mapping are unaffected. The tracker's
-                            // mode is static, so recreate it on resize.
+                            // damage tracker must render with Flipped180. The
+                            // tracker's static mode also carries the output
+                            // scale, so rebuild it on resize or a scale change
+                            // (T-16.3b).
                             if let Some(data) = shared_events.borrow_mut().as_mut() {
-                                data.damage_tracker = OutputDamageTracker::new(
-                                    size,
-                                    smithay::utils::Scale::from(1.0),
-                                    smithay::utils::Transform::Flipped180,
-                                );
+                                data.ensure_tracker((size.w, size.h), current_scale);
                             }
                             state.needs_redraw = true;
                         }
@@ -152,9 +158,11 @@ pub fn run(socket_name: &str) -> Result<(), String> {
                     backend,
                     damage_tracker: OutputDamageTracker::new(
                         window_size,
-                        smithay::utils::Scale::from(1.0),
+                        smithay::utils::Scale::from(scale),
                         smithay::utils::Transform::Flipped180,
                     ),
+                    tracker_scale: scale,
+                    tracker_size: (window_size.w, window_size.h),
                 });
                 Ok(())
             }),
@@ -181,6 +189,35 @@ pub fn run(socket_name: &str) -> Result<(), String> {
 struct NestedData {
     backend: WinitGraphicsBackend<GlowRenderer>,
     damage_tracker: OutputDamageTracker,
+    /// The output scale the tracker was built with. The damage tracker's
+    /// static mode supplies the scale every render element's geometry is
+    /// resolved with, so it must track the output scale: at a fractional
+    /// scale a stale `1.0` sizes chrome and window elements in logical pixels
+    /// while placing them in physical pixels (T-16.3b).
+    tracker_scale: f64,
+    /// The physical mode size the tracker was built with.
+    tracker_size: (i32, i32),
+}
+
+impl NestedData {
+    /// Rebuild the damage tracker when its static output mode (physical size
+    /// or scale) no longer matches the live output.
+    fn ensure_tracker(&mut self, size: (i32, i32), scale: f64) {
+        if self.tracker_size == size && (self.tracker_scale - scale).abs() <= f64::EPSILON {
+            return;
+        }
+        // The winit/EGL back buffer is bottom-up, so the damage tracker must
+        // render with Flipped180 (smithay's `minimal.rs` winit example does
+        // the same). The output itself stays Normal so clients and input
+        // mapping are unaffected.
+        self.damage_tracker = OutputDamageTracker::new(
+            size,
+            smithay::utils::Scale::from(scale),
+            smithay::utils::Transform::Flipped180,
+        );
+        self.tracker_size = size;
+        self.tracker_scale = scale;
+    }
 }
 
 fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Result<(), String> {
@@ -195,6 +232,21 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
     let Some(output) = state.space.outputs().next().cloned() else {
         return Ok(());
     };
+
+    // The damage tracker's static mode carries the output's physical size and
+    // scale; its scale is what every render element's geometry is resolved
+    // with. Reconcile it before building the frame so a runtime scale change
+    // (the Displays pane's `df_output.set_scale`) re-sizes chrome and window
+    // elements into physical pixels instead of mixing logical and physical
+    // pixels (T-16.3b).
+    let mode_size = output
+        .current_mode()
+        .map(|mode| mode.size)
+        .unwrap_or_default();
+    data.ensure_tracker(
+        (mode_size.w, mode_size.h),
+        output.current_scale().fractional_scale(),
+    );
 
     let age = data.backend.buffer_age().unwrap_or(0);
     // T-13.3b: a capture requested by the trusted shell is produced from a

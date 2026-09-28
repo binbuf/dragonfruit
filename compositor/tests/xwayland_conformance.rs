@@ -1431,3 +1431,160 @@ unsafe fn libc_kill_pid(pid: i32) {
     const SIGKILL: i32 = 9;
     kill(pid, SIGKILL);
 }
+
+/// `key=value` field from a `query scale` line.
+fn scale_field<'a>(line: &'a str, key: &str) -> Option<&'a str> {
+    line.split_whitespace()
+        .find_map(|token| token.strip_prefix(&format!("{key}=")))
+}
+
+fn scale_dims(token: &str) -> (i32, i32) {
+    let (w, h) = token.split_once('x').expect("WxH field");
+    (w.parse().expect("width"), h.parse().expect("height"))
+}
+
+/// Parse a `x,y,w,h` rect field.
+fn scale_rect(token: &str) -> (i32, i32, i32, i32) {
+    let parts: Vec<i32> = token
+        .split(',')
+        .map(|part| part.parse().expect("rect member"))
+        .collect();
+    assert_eq!(parts.len(), 4, "a rect field: {token:?}");
+    (parts[0], parts[1], parts[2], parts[3])
+}
+
+/// T-16.3b acceptance: a fractional output scale keeps Xwayland in integer
+/// coordinate space while every composited surface is sized per output.
+///
+/// The headless fixture boots at output scale 1.5. Xwayland derives its root
+/// window from the output's logical size, so at 1.5 the X screen is 853x480
+/// (`1280/1.5`, `720/1.5`): X11 clients keep integral X pixels and are never
+/// double-scaled by Xwayland itself. The compositor maps each surface's
+/// logical rect to physical pixels with the output's *fractional* scale, so a
+/// 200x120 X11 window lands in 300x180 physical pixels (`logical * 1.5`), not
+/// 400x240 (an integer 2x footprint). Chrome is sized against the same
+/// fractional logical output (covered by the shell-protocol suite).
+#[test]
+fn x11_fixture_at_fractional_scale_sizes_per_output() {
+    if !xwayland_available() {
+        eprintln!("skipping: Xwayland is not installed");
+        return;
+    }
+
+    let socket_name = format!("dragonfruit-test-x11-frac-{}", std::process::id());
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir)
+        .join(format!("dragonfruit-x11-frac-synth-{}", std::process::id()));
+    let proc =
+        CompositorProcess::start_with_synthetic_at_scale(&socket_name, Some(&synthetic_path), 1.5);
+    let input = SyntheticInput::connect(&synthetic_path);
+    let Some(display) = proc.wait_for_display() else {
+        eprintln!("skipping: Xwayland did not become ready");
+        return;
+    };
+
+    let (conn, screen_num) = x11rb::connect(Some(&display)).expect("connect to Xwayland");
+    let root = conn.setup().roots[screen_num].root;
+    let screen = &conn.setup().roots[screen_num];
+
+    // Xwayland computes its root window from the output's **logical** size
+    // (xdg-output), so at output scale 1.5 the X screen is 1280/1.5 = 853
+    // wide, not the physical 1280.
+    let logical = (OUTPUT_W * 2 / 3, OUTPUT_H * 2 / 3);
+    assert_eq!(
+        (
+            i32::from(screen.width_in_pixels),
+            i32::from(screen.height_in_pixels)
+        ),
+        logical,
+        "Xwayland's X screen is the fractional logical output size"
+    );
+
+    let window = conn.generate_id().expect("generate window id");
+    let aux = CreateWindowAux::new().background_pixel(screen.white_pixel);
+    conn.create_window(
+        screen.root_depth,
+        window,
+        root,
+        40,
+        40,
+        200,
+        120,
+        0,
+        WindowClass::INPUT_OUTPUT,
+        x11rb::COPY_FROM_PARENT,
+        &aux,
+    )
+    .expect("create_window");
+    conn.map_window(window).expect("map_window");
+    conn.flush().expect("flush");
+
+    wait_until(
+        || client_list(&conn, root).contains(&window),
+        Duration::from_secs(5),
+        "X11 window to be managed",
+    );
+
+    // The compositor's own output is fractional: 1280x720 physical at 1.5 is
+    // 854x480 logical (ceil of 1280/1.5 and 720/1.5).
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let report = loop {
+        let report = input.query("query scale");
+        let has_window = report.lines().any(|line| {
+            line.starts_with("scale window") && scale_field(line, "physical").is_some()
+        });
+        if has_window {
+            break report;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "query scale never reported the window: {report:?}"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    };
+
+    let output_line = report
+        .lines()
+        .find(|line| line.starts_with("scale output"))
+        .expect("an output scale line");
+    assert_eq!(
+        scale_dims(scale_field(output_line, "physical").unwrap()),
+        (OUTPUT_W, OUTPUT_H)
+    );
+    assert_eq!(
+        scale_dims(scale_field(output_line, "logical").unwrap()),
+        (854, 480),
+        "the output's logical size is the fractional size: {output_line:?}"
+    );
+    assert_eq!(scale_field(output_line, "scale").unwrap(), "1.500");
+
+    let window_line = report
+        .lines()
+        .find(|line| line.starts_with("scale window"))
+        .expect("a window scale line");
+    let logical = scale_rect(scale_field(window_line, "logical").unwrap());
+    assert_eq!(
+        (logical.2, logical.3),
+        (200, 120),
+        "an X11 window keeps its logical size: {window_line:?}"
+    );
+    let physical = scale_rect(scale_field(window_line, "physical").unwrap());
+    assert_eq!(
+        (physical.2, physical.3),
+        (300, 180),
+        "the compositor sizes the surface with the fractional output scale: {window_line:?}"
+    );
+    assert_eq!(
+        scale_field(window_line, "buffer_scale").unwrap(),
+        "1",
+        "Xwayland is not double-scaling (no fractional preferred scale): {window_line:?}"
+    );
+
+    drop(conn);
+    drop(input);
+    proc.assert_clean_exit();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic socket survived"
+    );
+}

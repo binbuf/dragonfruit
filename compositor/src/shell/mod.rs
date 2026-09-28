@@ -2045,6 +2045,12 @@ impl Dispatch<df_output::DfOutput, OutputUserData> for DfState {
         else {
             return;
         };
+        // A mode/scale/transform change reshapes the output's logical
+        // geometry, so every chrome surface anchored to it must be
+        // reconfigured for the new size (T-16.3b). Without this the shell
+        // keeps rendering a surface sized for the old logical output and the
+        // compositor places it oversized/off-screen.
+        let mut geometry_changed = false;
         match request {
             df_output::Request::SetMode {
                 width,
@@ -2062,6 +2068,7 @@ impl Dispatch<df_output::DfOutput, OutputUserData> for DfState {
                         refresh: refresh as i32,
                     };
                     output.change_current_state(Some(mode), None, None, None);
+                    geometry_changed = true;
                 } else {
                     eprintln!(
                         "dragonfruit-compositor: ignoring invalid mode request {width}x{height}"
@@ -2078,6 +2085,7 @@ impl Dispatch<df_output::DfOutput, OutputUserData> for DfState {
                         Some(OutputScale::Fractional(scale)),
                         None,
                     );
+                    geometry_changed = true;
                 } else {
                     eprintln!("dragonfruit-compositor: ignoring invalid scale request {scale}");
                 }
@@ -2090,6 +2098,7 @@ impl Dispatch<df_output::DfOutput, OutputUserData> for DfState {
                         .unwrap_or(0),
                 );
                 output.change_current_state(None, Some(transform), None, None);
+                geometry_changed = true;
             }
             df_output::Request::SetVrr { .. } | df_output::Request::SetNightLight { .. } => {
                 // VRR and night-light plumbing is a T-16 displays-pane item
@@ -2113,6 +2122,13 @@ impl Dispatch<df_output::DfOutput, OutputUserData> for DfState {
                 }
             }
             df_output::Request::Destroy => {}
+        }
+        // A scale/mode/transform change reshapes the output's logical
+        // geometry: re-anchor every chrome surface to it so the shell
+        // re-lays-out at the new size (T-16.3b). The ack below carries the
+        // new geometry/scale to the shell.
+        if geometry_changed {
+            state.reconfigure_layers();
         }
         // Ack with the applied properties.
         state.send_output_properties(resource, &output);
