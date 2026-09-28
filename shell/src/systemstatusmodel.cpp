@@ -15,6 +15,7 @@ const QString kKindBluetooth = QStringLiteral("bluetooth");
 const QString kKindStorage = QStringLiteral("storage");
 const QString kKindInput = QStringLiteral("input");
 const QString kKindUpdates = QStringLiteral("updates");
+const QString kKindAccounts = QStringLiteral("accounts");
 
 } // namespace
 
@@ -56,6 +57,11 @@ bool SystemStatusModel::inputVisible() const
 bool SystemStatusModel::updatesVisible() const
 {
     return m_updates.value(QStringLiteral("visible")).toBool();
+}
+
+bool SystemStatusModel::accountsVisible() const
+{
+    return m_accounts.value(QStringLiteral("visible")).toBool();
 }
 
 QVariantMap SystemStatusModel::parseView(const QByteArray &json, const QString &kind, QString *error)
@@ -154,6 +160,16 @@ void SystemStatusModel::applyUpdates(const QVariantMap &view)
     emit changed();
 }
 
+void SystemStatusModel::applyAccounts(const QVariantMap &view)
+{
+    // The Users and Groups view also has no `present` second hide rule: when
+    // AccountsService answers the tile shows the live user count, even if it
+    // caches no user. A host with no group provider is still `available` with
+    // `groupsAvailable: false`, which only affects the Settings pane.
+    m_accounts = normalize(view, kKindAccounts);
+    emit changed();
+}
+
 void SystemStatusModel::applyWifiJson(const QByteArray &json)
 {
     QString error;
@@ -215,6 +231,15 @@ void SystemStatusModel::applyUpdatesJson(const QByteArray &json)
     if (!error.isEmpty())
         return;
     applyUpdates(view);
+}
+
+void SystemStatusModel::applyAccountsJson(const QByteArray &json)
+{
+    QString error;
+    const QVariantMap view = parseView(json, kKindAccounts, &error);
+    if (!error.isEmpty())
+        return;
+    applyAccounts(view);
 }
 
 void SystemStatusModel::requestJoin(const QString &ssid, const QString &secret)
@@ -282,4 +307,9 @@ void SystemStatusModel::requestInstallUpdates()
 void SystemStatusModel::requestRebootUpdates()
 {
     emit rebootUpdatesRequested();
+}
+
+void SystemStatusModel::requestRefreshAccounts()
+{
+    emit refreshAccountsRequested();
 }

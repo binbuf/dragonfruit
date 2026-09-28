@@ -34,7 +34,7 @@ Item {
             ["appearance", "desktop-dock", "mission-control", "displays",
              "wallpaper", "bluetooth", "battery", "storage", "general", "sound",
              "keyboard", "mouse", "trackpad", "notifications", "focus",
-             "lock-screen", "menu-bar"]
+             "lock-screen", "menu-bar", "users-groups"]
 
         function make() {
             var shell = createTemporaryObject(shellComponent, stage,
@@ -87,7 +87,7 @@ Item {
 
         function test_every_shipped_pane_has_a_body_and_no_other_does() {
             var shell = make();
-            compare(SettingsPanes.shippedPanes.length, 17);
+            compare(SettingsPanes.shippedPanes.length, 18);
             for (var i = 0; i < SettingsPanes.catalog.length; ++i) {
                 var pane = SettingsPanes.catalog[i];
                 var body = shell.paneComponent(pane.id);
@@ -476,6 +476,30 @@ Item {
             Settings.installUpdates();
             Settings.rebootUpdates();
             compare(Settings.updatesAvailable, false);
+        }
+
+        // The Users & Groups view is a host-stack adapter read, so with no
+        // bridge host it is the absence state: the user/group lists and the
+        // add/edit dialogs are replaced by a one-line note. Nothing errors and
+        // no write is attempted (T-15.11b).
+        function test_users_groups_pane_degrades_cleanly_without_the_bridge_host() {
+            var shell = make();
+            compare(Settings.accountsAvailable, false,
+                    "no bridge host is the absent state under test");
+            compare(Settings.accounts.state, undefined);
+
+            var pane = showPane(shell, "users-groups");
+            compare(pane.ready, false);
+            compare(pane.absenceNote.visible, true,
+                    "the absence note explains the missing account service");
+            verify(pane.absenceNote.text.length > 0);
+
+            // A refresh and the account/group writes are safe no-ops.
+            Settings.refreshAccounts();
+            Settings.createAccount("kim", "Kim", "standard");
+            Settings.setAccountLocked(1000, true);
+            Settings.createAccountGroup("devs");
+            compare(Settings.accountsAvailable, false);
         }
     }
 }

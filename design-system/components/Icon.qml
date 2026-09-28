@@ -34,7 +34,7 @@ Item {
                                           "overview", "battery", "power-saver",
                                           "power-balanced", "power-performance",
                                           "info", "bell", "lock", "menu-bar",
-                                          "general", "software-update"]
+                                          "general", "software-update", "users"]
     readonly property bool painted: root.paintedGlyphs.indexOf(root.name) >= 0
 
     readonly property var bars: {
@@ -455,6 +455,29 @@ Item {
                 ctx.arc(c, c, s * 0.13, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.globalCompositeOperation = "source-over";
+                break;
+            }
+            case "users": {
+                // Two people: a front silhouette and a smaller companion (the
+                // Users & Groups pane / tile glyph).
+                ctx.beginPath();
+                ctx.arc(s * 0.40, s * 0.36, s * 0.14, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo(s * 0.16, s * 0.86);
+                ctx.quadraticCurveTo(s * 0.16, s * 0.56, s * 0.40, s * 0.56);
+                ctx.quadraticCurveTo(s * 0.64, s * 0.56, s * 0.64, s * 0.86);
+                ctx.closePath();
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(s * 0.69, s * 0.40, s * 0.11, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo(s * 0.60, s * 0.86);
+                ctx.quadraticCurveTo(s * 0.60, s * 0.62, s * 0.78, s * 0.60);
+                ctx.quadraticCurveTo(s * 0.90, s * 0.60, s * 0.90, s * 0.86);
+                ctx.closePath();
+                ctx.fill();
                 break;
             }
             case "software-update": {
