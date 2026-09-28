@@ -651,6 +651,15 @@ shows the Menu Bar tile below the Lock Screen tile. Captured by
 `scripts/capture-t15-menubar-pane.sh`; requires a host Wayland session,
 spectacle, and Pillow, and is not in `make e2e`.
 
+`t15-10b-general-pane.png` and `t15-10b-general-control-center.png` are the
+General pane and Software Update Control Center tile for T-15.10b. The pane
+capture shows the header card, the `About` and `Software Update` disclosure
+rows (with the live update summary), and the `About This System` / update
+dialogs are asserted headlessly; the Control Center capture shows the Software
+Update tile at the bottom of the panel with its state-dependent action link.
+Captured by `scripts/capture-t15-general-pane.sh`; requires a host Wayland
+session, spectacle, and Pillow, and is not in `make e2e`.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

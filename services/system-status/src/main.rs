@@ -17,6 +17,7 @@
 //! dragonfruit-system-status --print-storage
 //! dragonfruit-system-status --print-input
 //! dragonfruit-system-status --print-notifications
+//! dragonfruit-system-status --print-updates
 //! ```
 
 use std::process::ExitCode;
@@ -34,6 +35,8 @@ use dragonfruit_system_status::InputHost;
 use dragonfruit_system_status::NotificationsHost;
 use dragonfruit_system_status::StatusHost;
 use dragonfruit_system_status::StorageHost;
+use dragonfruit_system_status::UpdatesHost;
+use dragonfruit_update_adapter::HostSystem;
 
 fn main() -> ExitCode {
     let mut print_wifi = false;
@@ -43,6 +46,7 @@ fn main() -> ExitCode {
     let mut print_storage = false;
     let mut print_input = false;
     let mut print_notifications = false;
+    let mut print_updates = false;
     for arg in std::env::args().skip(1) {
         match arg.as_str() {
             "--print-wifi" => print_wifi = true,
@@ -52,6 +56,7 @@ fn main() -> ExitCode {
             "--print-storage" => print_storage = true,
             "--print-input" => print_input = true,
             "--print-notifications" => print_notifications = true,
+            "--print-updates" => print_updates = true,
             "-h" | "--help" => {
                 print_help();
                 return ExitCode::SUCCESS;
@@ -73,7 +78,16 @@ fn main() -> ExitCode {
     let mut storage = StorageHost::new(DbusUDisks::new());
     let mut input = InputHost::new(CommandLibinput::new());
     let mut notifications = NotificationsHost::new(DbusNotifications::new());
+    // The host identity is always read; the distribution update provider is
+    // absent until packaging attaches one (ADR 0136), so the update controls
+    // report absence rather than inventing state.
+    let mut updates = UpdatesHost::new(HostSystem::new());
 
+    if print_updates {
+        updates.refresh();
+        println!("{}", updates.state());
+        return ExitCode::SUCCESS;
+    }
     if print_input {
         input.refresh();
         println!("{}", input.state());
@@ -115,7 +129,8 @@ fn main() -> ExitCode {
     storage.refresh();
     input.refresh();
     notifications.refresh();
-    match dbus::run(host, bluetooth, storage, input, notifications) {
+    updates.refresh();
+    match dbus::run(host, bluetooth, storage, input, notifications, updates) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!(
@@ -140,6 +155,7 @@ fn print_help() {
            --print-storage  refresh UDisks2 and print the storage JSON view\n\
            --print-input    refresh libinput and print the input JSON view\n\
            --print-notifications refresh the notification service and print its JSON view\n\
+           --print-updates  refresh the host stack and print the updates JSON view\n\
            -h, --help       show this help"
     );
 }

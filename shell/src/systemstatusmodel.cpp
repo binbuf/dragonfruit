@@ -14,6 +14,7 @@ const QString kKindBattery = QStringLiteral("battery");
 const QString kKindBluetooth = QStringLiteral("bluetooth");
 const QString kKindStorage = QStringLiteral("storage");
 const QString kKindInput = QStringLiteral("input");
+const QString kKindUpdates = QStringLiteral("updates");
 
 } // namespace
 
@@ -50,6 +51,11 @@ bool SystemStatusModel::storageVisible() const
 bool SystemStatusModel::inputVisible() const
 {
     return m_input.value(QStringLiteral("visible")).toBool();
+}
+
+bool SystemStatusModel::updatesVisible() const
+{
+    return m_updates.value(QStringLiteral("visible")).toBool();
 }
 
 QVariantMap SystemStatusModel::parseView(const QByteArray &json, const QString &kind, QString *error)
@@ -138,6 +144,16 @@ void SystemStatusModel::applyInput(const QVariantMap &view)
     emit changed();
 }
 
+void SystemStatusModel::applyUpdates(const QVariantMap &view)
+{
+    // The General/About/Updates view has no `present` second hide rule: the
+    // host identity is always read when the host answers, so the item is
+    // visible whenever the state is `available` (the update provider may be
+    // absent within it, which only disables the update controls).
+    m_updates = normalize(view, kKindUpdates);
+    emit changed();
+}
+
 void SystemStatusModel::applyWifiJson(const QByteArray &json)
 {
     QString error;
@@ -192,6 +208,15 @@ void SystemStatusModel::applyInputJson(const QByteArray &json)
     applyInput(view);
 }
 
+void SystemStatusModel::applyUpdatesJson(const QByteArray &json)
+{
+    QString error;
+    const QVariantMap view = parseView(json, kKindUpdates, &error);
+    if (!error.isEmpty())
+        return;
+    applyUpdates(view);
+}
+
 void SystemStatusModel::requestJoin(const QString &ssid, const QString &secret)
 {
     if (ssid.isEmpty())
@@ -237,4 +262,24 @@ void SystemStatusModel::requestRefreshStorage()
 void SystemStatusModel::requestRefreshInput()
 {
     emit refreshInputRequested();
+}
+
+void SystemStatusModel::requestRefreshUpdates()
+{
+    emit refreshUpdatesRequested();
+}
+
+void SystemStatusModel::requestCheckUpdates()
+{
+    emit checkUpdatesRequested();
+}
+
+void SystemStatusModel::requestInstallUpdates()
+{
+    emit installUpdatesRequested();
+}
+
+void SystemStatusModel::requestRebootUpdates()
+{
+    emit rebootUpdatesRequested();
 }

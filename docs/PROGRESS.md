@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(128 earlier sections omitted)_
+_(129 earlier sections omitted)_
 
-- **T110m — T-14.7m Dock window chooser: per-window actions**: **State: done.** Each window row in the Dock's chooser now carries a stateful; `shell/src/shellprotocol.{h,cpp}` — `setToplevelMinimized(windowId, bool)`
 - **T110n — T-14.7n Dock window chooser: row discipline**: **State: done.** The window chooser's row list is now bounded: at most; `design-system/tokens/tokens.json` — `component.dock.chooser`:
 - **T110o — T-14.7o Dock window-count badge**: **State: done.** A grouped app now shows a count at its icon's top-right corner; `shell/src/dockprojection.{h,cpp}` — new `dockWindowCount(entry)` (prefers
 - **T110p — T-14.7p Dock hover-open, retargetable chooser and stable anchor**: **State: done.** `dock.chooserOnHover` (bool, default off) opts into a; `services/settingsd/src/schema.rs` — `dock.chooserOnHover` (`since: 8`),
@@ -43,6 +42,7 @@ _(128 earlier sections omitted)_
 - **T127 — T-15.9a Menu Bar configuration adapter**: **State: done.** New workspace crate `dragonfruit-menubar-adapter`; `services/menubar-adapter/` (new crate, workspace member) —
 - **T128 — T-15.9b Menu Bar configuration pane and tile**: **State: done.** The Settings Menu Bar pane and the Control Center Menu Bar; `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 15 → 16; new
 - **T129 — T-15.10a General, About, and Updates adapter**: **State: done.** New workspace crate `dragonfruit-update-adapter`; `services/update-adapter/` (new crate, workspace member) —
+- **T130 — T-15.10b General, About, and Updates pane and tile**: **State: done.** The Settings `General` pane and the Control Center `Software; `services/system-status/src/updates.rs` (new) — `UpdatesHost<S>` (refresh/
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3240,11 +3240,22 @@ Gotchas for later tasks:
   auto-hide needs the compositor input-region/hover contract; the recent count
   needs a recents source. The clock options, the background material, and the
   per-control `menu.control.*` visibility all apply live.
-- **T-15.9b Control Center is at its nested-output height ceiling.** The panel
-  is now 360×1160 with `xs` inter-tile gaps; the nested demo output is
-  1920×1200 and leaves only 1164 px below the bar, so a further tile will not
-  fit. The next Control Center tile task must make the panel scroll (or grow
-  the nested output), not just bump the constant.
+- **T-15.9b/T-15.10b Control Center is at its nested-output height ceiling.**
+  The panel is now 360×1160; T-15.10b fit a thirteenth tile (Software Update)
+  by tightening every tile's internal padding to the `spacing.xs` token (the
+  inter-tile gap was already `xs`), leaving the content at ~1097 px inside the
+  1140 px the surface gives it. There is no room for a fourteenth tile: the
+  nested demo output is 1920×1200 and leaves only 1164 px below the bar. The
+  next Control Center tile task must make the panel scroll (or grow the nested
+  output), not just bump the constant or shave more padding.
+- **T-15.10b has no live distro update provider yet (inherits T-15.10a).**
+  The `Updates` bridge interface and both consumers are live, but
+  `dragonfruit-system-status` attaches no provider to `HostSystem`, so a real
+  session shows the About rows live and `updatesAvailable: false` (the update
+  controls disabled, the tile subtitle `Software Update Unavailable`). The
+  concrete `SystemProvider` lands with packaging (T-16.9/T-16.10); attaching it
+  to `HostSystem` in `services/system-status/src/main.rs` is the only wiring
+  change then.
 - **T-15.9a richer clock options and Apple-only controls are not modelled.**
   `dragonfruit-menubar-adapter` models the two clock options the shell's
   `MenuBarClock` actually renders (`showDate`, `showSeconds`) and the seven
@@ -12262,3 +12273,112 @@ Decisions / gotchas for T-15.10b and later:
   menu bar (Dragonfruit, Wi-Fi/battery/clock), the translucent Dock, the
   wallpaper, and the open Settings/X11 windows composited with no blank
   regions, clipping, or stray artifacts.
+
+## T130 — T-15.10b General, About, and Updates pane and tile
+
+**State: done.** The Settings `General` pane and the Control Center `Software
+Update` tile ship as one functional unit over the T-15.10a adapter. Because the
+host identity is a real read and the provider is a distro seam, the pair rides
+the `org.dragonfruit.SystemStatus1` bridge host (ADR 0137), not settingsd —
+there are **no new settingsd keys** (About is a live read; the update writes are
+explicit actions, exactly like Storage).
+
+Real paths:
+
+- `services/system-status/src/updates.rs` (new) — `UpdatesHost<S>` (refresh/
+  view/state/check/install/reboot) + pure `updates_view`/`updates_snapshot_view`
+  + `update_report`. The view carries the identity (`hostName`, `deviceName`,
+  `osLabel`, `kernel`, `architecture`, `processor`, `memoryLabel`,
+  `serial`/`hasSerial`) and, when present, the provider (`updatesAvailable`,
+  `phase`, `label`, `busy`, `rebootRequired`, `updateCount`, `securityCount`,
+  `lastCheckedMs`, `message`, `updates[]`).
+- `services/system-status/src/lib.rs` — `pub mod updates`, re-exports, and
+  `UPDATES_INTERFACE = "org.dragonfruit.SystemStatus1.Updates"`.
+- `services/system-status/src/dbus.rs` — `LiveUpdates = UpdatesHost<HostSystem>`;
+  `UpdatesInterface` with `State`/`Refresh`/`Check`/`Install`/`Reboot`;
+  `run(...)` takes the updates host; `interface_names()` is now 8.
+- `services/system-status/src/main.rs` — `UpdatesHost::new(HostSystem::new())`
+  (identity live, provider absent), `--print-updates`.
+- `services/system-status/tests/updates.rs` (new) — 5 bridge acceptance tests.
+- `services/system-status/Cargo.toml` — depends on `dragonfruit-update-adapter`.
+- `services/update-adapter/src/host.rs` — `UpdateProvider` now `: Send` (the
+  bridge host serves it from D-Bus worker threads; all implementors already
+  were). This is the only T-15.10a crate change.
+- `apps/settings/UpdatesClient.{h,cpp}` (new) — `UpdatesClient` seam;
+  `DbusUpdatesClient` over the `Updates` interface; `MockUpdatesClient`
+  (`DF_UPDATES_FIXTURE`) with `resetForTest()`.
+- `apps/settings/SettingsBridge.{h,cpp}` — `updates`/`updatesAvailable`
+  properties, `updatesChanged`, `refreshUpdates`/`checkUpdates`/
+  `installUpdates`/`rebootUpdates`/`resetUpdatesFixture` invokables.
+- `apps/settings/GeneralPane.qml` (new) — header card is the shell's
+  `PaneHeader` (catalog description); grouped disclosure rows `About` (→ About
+  This System dialog: computer glyph, device name, processor, Memory, Serial
+  number when present, OS) and `Software Update` (row description = live update
+  summary; dialog with `Check for Updates`/`Install`/`Restart` and the offered
+  list). Absence note when the host is missing.
+- `apps/settings/SettingsPanes.qml` — `general` shipped `true` + description;
+  `SettingsShell.qml` registers the body; `CMakeLists.txt` adds the client,
+  pane, and `df_qml_lint`.
+- `design-system/components/Icon.qml` — two new painted glyphs: `general` (a
+  gear) and `software-update` (a download/update arrow into a tray). Both were
+  missing before (the General catalog row used a blank `general`).
+- Shell: `systemstatusclient.{h,cpp}` (Updates methods + mock fixture),
+  `systemstatusmodel.{h,cpp}` (`updates()`, `updatesVisible()`,
+  `applyUpdatesJson`, request signals), `shellcontroller.{h,cpp}`
+  (`onUpdatesState`, `applyControlCenterData` pushes `updates`, tile action and
+  settings-link slots, `onStatusReport` refreshes updates), and
+  `shell/control-center/ControlCenter.qml` (13th tile `software-update` with the
+  state-chosen action link + `General Settings…`).
+- Tests — `apps/settings/tests/tst_settings_general.{cpp,qml}` (new, 6 cases);
+  `tst_settings_absence.qml` (shipped 16 → 17, id list, general absence case);
+  `tst_settings_shell.qml` (shipped 16 → 17, search list, default index 3 → 4);
+  `shell/tests/tst_controlcenter.qml` (13 tiles, fit at 1160, updates cases);
+  `shell/tests/tst_statusmodel.cpp` (3 updates cases).
+- Docs/scripts — ADR `0137-general-about-updates-pane-and-tile.md`;
+  `docs/design/07-system-integration.md` D-Bus bullet + T-15.10b subsection;
+  capture script `scripts/capture-t15-general-pane.sh` + `docs/captures/README.md`.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-system-status` — 46 lib + 10 host + 4 input + 4
+  storage + 5 updates (integration) green.
+- `cargo test -p dragonfruit-update-adapter` — 40 lib + 8 read_path green.
+- `cargo clippy -p dragonfruit-update-adapter -p dragonfruit-system-status
+  --all-targets -- -D warnings` — clean; `cargo fmt --all -- --check` — clean.
+- `ctest --test-dir build --output-on-failure -j4` — 64/64.
+- `make e2e` — EXIT 0 (captured `/tmp/opencode/e2e-t130.log`).
+- `make check-design-tokens check-tokens check-no-capture-grab` — clean;
+  `./scripts/check-gallery-snapshots.py` — 78 green.
+- `make lint` — still fails only on the pre-existing `check-desktop-names`
+  lines (none in the new work); unchanged from T125–T129.
+
+Decisions / gotchas for T-15.11b and later:
+
+- **The bridge host serves `Updates`, not the adapter being linked.** No C++
+  target links a Rust adapter. The pane and tile both decode the same JSON view
+  (`SystemStatusModel` for the shell; `UpdatesClient` for Settings).
+- **Absence is layered (ADR 0136/0137).** The view is `unavailable` only when
+  neither identity nor provider is reachable; a reachable host with no provider
+  is `available` with `updatesAvailable: false` (About live, update controls
+  disabled). The tile stays visible whenever the host answers; the Settings pane
+  shows the absence note only when the host is absent.
+- **`UpdateProvider: Send`** was added in `services/update-adapter/src/host.rs`
+  so `HostSystem` can live in the bridge host's `Mutex` across zbus threads.
+  Adding a provider type only needs `Send` (all concrete providers should be).
+- **No settingsd keys.** Do not add presentation keys for General: the update
+  writes are explicit actions over the host stack, and the About rows are reads.
+- **Control Center panel is at the ceiling.** T-15.10b fit the 13th tile by
+  setting the tile padding to `Theme.primitive.spacing.xs` for every Control
+  Center tile (`Theme.controls.settingsGroup.padding` is gone from
+  `ControlCenter.qml`). Content is ~1097 px within 1140 px. A 14th tile needs a
+  scrolling panel or a taller nested output.
+- **`DF_UPDATES_FIXTURE`** selects the Settings mock and is process-global; the
+  test calls `Settings.resetUpdatesFixture()` in `init()`. `DF_STATUS_FIXTURE`
+  drives the shell's mock (which also has the updates fixture state).
+- Live visual check: `bash scripts/capture-t15-general-pane.sh` produced
+  `docs/captures/t15-10b-general-pane.png` (2088x1410) and
+  `docs/captures/t15-10b-general-control-center.png` (360x1160). Vision
+  confirmed the General header card and the `About` / `Software Update` rows
+  with `1 Update Available`, and the Control Center's 13 tiles plus Clipboard
+  with the Software Update tile (`1 Update Available`, `Install`, `General
+  Settings…`) fully visible and no clipping or overlap.

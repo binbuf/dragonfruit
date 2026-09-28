@@ -486,6 +486,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             &ShellController::onStorageState);
     connect(m_statusClient, &SystemStatusClient::inputState, this,
             &ShellController::onInputState);
+    connect(m_statusClient, &SystemStatusClient::updatesState, this,
+            &ShellController::onUpdatesState);
     connect(m_statusClient, &SystemStatusClient::joinReport, this,
             &ShellController::onStatusReport);
     connect(m_statusClient, &SystemStatusClient::writeReport, this,
@@ -508,6 +510,7 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     m_statusClient->refreshBluetooth();
     m_statusClient->refreshStorage();
     m_statusClient->refreshInput();
+    m_statusClient->refreshUpdates();
 
     // T-14.3: StatusNotifier tray items. app-index owns the watcher; the shell
     // reads its live item view and re-reads on a short timer (a tray app can
@@ -846,6 +849,14 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onLockScreenSettingsRequested()));
     connect(controlCenterObject, SIGNAL(menuBarSettingsRequested()), this,
             SLOT(onMenuBarSettingsRequested()));
+    connect(controlCenterObject, SIGNAL(updatesCheckRequested()), this,
+            SLOT(onUpdatesCheckRequested()));
+    connect(controlCenterObject, SIGNAL(updatesInstallRequested()), this,
+            SLOT(onUpdatesInstallRequested()));
+    connect(controlCenterObject, SIGNAL(updatesRebootRequested()), this,
+            SLOT(onUpdatesRebootRequested()));
+    connect(controlCenterObject, SIGNAL(updatesSettingsRequested()), this,
+            SLOT(onUpdatesSettingsRequested()));
     connect(controlCenterObject, SIGNAL(focusToggleRequested(bool)), this,
             SLOT(onFocusToggleRequested(bool)));
     connect(controlCenterObject, SIGNAL(focusSettingsRequested()), this,
@@ -1859,6 +1870,12 @@ void ShellController::onInputState(const QByteArray &json)
         m_statusModel->applyInputJson(json);
 }
 
+void ShellController::onUpdatesState(const QByteArray &json)
+{
+    if (m_statusModel)
+        m_statusModel->applyUpdatesJson(json);
+}
+
 void ShellController::onStatusReport(const QByteArray &json)
 {
     qInfo() << "shell: system-status action:" << SystemStatusModel::outcomeOf(json);
@@ -1871,6 +1888,7 @@ void ShellController::onStatusReport(const QByteArray &json)
         m_statusClient->refreshBluetooth();
         m_statusClient->refreshStorage();
         m_statusClient->refreshInput();
+        m_statusClient->refreshUpdates();
     }
 }
 
@@ -2039,6 +2057,9 @@ void ShellController::applyControlCenterData()
     // Battery / power profiles (T-15.6b): the tile reflects the bridge host's
     // battery view (the same view the Settings pane and menu bar read).
     const QVariantMap battery = m_statusModel ? m_statusModel->battery() : QVariantMap();
+    // General/About/Updates (T-15.10b): the tile reflects the bridge host's
+    // host-stack view (the same view the Settings General pane reads).
+    const QVariantMap updates = m_statusModel ? m_statusModel->updates() : QVariantMap();
     // Mission Control and hot corners are compositor-native: the shell owns the
     // compositor mirror and the settingsd values, so it projects the tile's
     // summary locally (T-15.5b) instead of reading a services-layer host.
@@ -2059,6 +2080,7 @@ void ShellController::applyControlCenterData()
     m_controlCenterItem->setProperty("storage", storage);
     m_controlCenterItem->setProperty("input", input);
     m_controlCenterItem->setProperty("battery", battery);
+    m_controlCenterItem->setProperty("updates", updates);
     m_controlCenterItem->setProperty("missionControl", missionControl);
     m_controlCenterItem->setProperty("lockPolicy", lockPolicy);
     m_controlCenterItem->setProperty("menuBar", menuBar);
@@ -2262,6 +2284,34 @@ void ShellController::onMenuBarSettingsRequested()
     // Launching Settings on the Menu Bar pane is T-16; the entry point is
     // wired and logs until then.
     qInfo() << "shell: Menu Bar Settings requested (T-16)";
+}
+
+void ShellController::onUpdatesCheckRequested()
+{
+    // One explicit host-stack write through the bridge host (T-15.10b). The
+    // host re-reads and the pushed view updates the tile; no local state is
+    // kept.
+    if (m_statusClient)
+        m_statusClient->checkUpdates();
+}
+
+void ShellController::onUpdatesInstallRequested()
+{
+    if (m_statusClient)
+        m_statusClient->installUpdates();
+}
+
+void ShellController::onUpdatesRebootRequested()
+{
+    if (m_statusClient)
+        m_statusClient->rebootUpdates();
+}
+
+void ShellController::onUpdatesSettingsRequested()
+{
+    // Launching Settings on the General pane is T-16; the entry point is wired
+    // and logs until then.
+    qInfo() << "shell: General Settings requested (T-16)";
 }
 
 void ShellController::onFocusToggleRequested(bool enabled)

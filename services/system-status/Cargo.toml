@@ -20,6 +20,7 @@ dragonfruit-bluetooth = { path = "../bluetooth", version = "0.1.0" }
 dragonfruit-storage = { path = "../storage", version = "0.1.0" }
 dragonfruit-input = { path = "../input", version = "0.1.0" }
 dragonfruit-notify-adapter = { path = "../notify-adapter", version = "0.1.0" }
+dragonfruit-update-adapter = { path = "../update-adapter", version = "0.1.0" }
 zbus = { version = "=5.19.0", features = ["blocking-api"] }
 serde_json = "=1.0.151"
 

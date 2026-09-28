@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 //! The session-bus surface: `org.dragonfruit.SystemStatus1`.
 //!
-//! Three interfaces live at one object path — `Wifi`, `Audio`, and `Battery`
-//! — each with a `State()` read (the JSON view [`crate::wifi_view`] /
-//! [`crate::audio_view`] / [`crate::battery_view`] produces) and an explicit
-//! `Refresh()` re-sync; Wi-Fi, audio, and battery add the one write their menu
-//! offers. The shell (C++/QML) owns the corresponding client; nothing on that
-//! side links an adapter ([adr/0029]).
+//! Every subsystem interface lives at one object path — `Wifi`, `Audio`,
+//! `Battery`, `Bluetooth`, `Storage`, `Input`, `Notifications`, and `Updates` —
+//! each with a `State()` read (the JSON view the matching `*_view` produces)
+//! and an explicit `Refresh()` re-sync; the interfaces that own one add the
+//! writes their pane offers. The shell (C++/QML) owns the corresponding client;
+//! nothing on that side links an adapter ([adr/0029]).
 //!
 //! [adr/0029]: ../../../docs/design/adr/0029-system-status-bridge-host.md
 
@@ -19,13 +19,14 @@ use dragonfruit_networkmanager::DbusNetworkManager;
 use dragonfruit_notify_adapter::DbusNotifications;
 use dragonfruit_power::DbusUPower;
 use dragonfruit_storage::DbusUDisks;
+use dragonfruit_update_adapter::HostSystem;
 use zbus::blocking::connection;
 use zbus::interface;
 
 use crate::{
-    BluetoothHost, InputHost, NotificationsHost, StatusHost, StorageHost, AUDIO_INTERFACE,
-    BATTERY_INTERFACE, BLUETOOTH_INTERFACE, DBUS_NAME, DBUS_PATH, INPUT_INTERFACE,
-    NOTIFICATIONS_INTERFACE, STORAGE_INTERFACE, WIFI_INTERFACE,
+    BluetoothHost, InputHost, NotificationsHost, StatusHost, StorageHost, UpdatesHost,
+    AUDIO_INTERFACE, BATTERY_INTERFACE, BLUETOOTH_INTERFACE, DBUS_NAME, DBUS_PATH, INPUT_INTERFACE,
+    NOTIFICATIONS_INTERFACE, STORAGE_INTERFACE, UPDATES_INTERFACE, WIFI_INTERFACE,
 };
 
 /// The live host: the three real network/audio/power adapter sources behind
@@ -46,6 +47,11 @@ pub type LiveInput = InputHost<CommandLibinput>;
 /// The live notifications host: the real session-bus notification-service
 /// source behind the bridge (T-15.7b).
 pub type LiveNotifications = NotificationsHost<DbusNotifications>;
+
+/// The live General/About/Updates host: the real host-stack identity read
+/// (with no distribution update provider attached until packaging supplies one,
+/// ADR 0136) behind the bridge (T-15.10b).
+pub type LiveUpdates = UpdatesHost<HostSystem>;
 
 /// The Wi-Fi half of the service.
 pub struct WifiInterface {
@@ -87,6 +93,13 @@ pub struct InputInterface {
 /// writes the Settings pane offers.
 pub struct NotificationsInterface {
     host: Arc<Mutex<LiveNotifications>>,
+}
+
+/// The General/About/Updates half of the service (T-15.10b): the host identity
+/// plus the distribution update provider's state, and the three explicit update
+/// writes the Settings pane offers.
+pub struct UpdatesInterface {
+    host: Arc<Mutex<LiveUpdates>>,
 }
 
 #[interface(name = "org.dragonfruit.SystemStatus1.Wifi")]
@@ -300,6 +313,45 @@ impl NotificationsInterface {
     }
 }
 
+#[interface(name = "org.dragonfruit.SystemStatus1.Updates")]
+impl UpdatesInterface {
+    /// The current General/About/Updates view as JSON (the last adapter state).
+    /// The host identity is always read; the update provider may be absent
+    /// within it (`updatesAvailable: false`), which disables only the update
+    /// controls.
+    fn state(&self) -> String {
+        lock_updates(&self.host).state()
+    }
+
+    /// Re-read the host stack once and return the new view. The shell and the
+    /// Settings pane call this when they open; it is an explicit resync, not a
+    /// poll.
+    fn refresh(&self) -> String {
+        let mut host = lock_updates(&self.host);
+        host.refresh();
+        host.state()
+    }
+
+    /// Ask the distribution provider to check for updates. Returns the JSON
+    /// report. One explicit write; the provider publishes the result and the
+    /// host re-reads.
+    fn check(&self) -> String {
+        lock_updates(&self.host).check().to_string()
+    }
+
+    /// Ask the distribution provider to install the available updates.
+    /// Returns the JSON report. One explicit write.
+    fn install(&self) -> String {
+        lock_updates(&self.host).install().to_string()
+    }
+
+    /// Ask the distribution provider to restart the host to finish an update.
+    /// Returns the JSON report. One explicit write.
+    fn reboot(&self) -> String {
+        lock_updates(&self.host).reboot().to_string()
+    }
+}
+
 /// Lock the shared host, recovering from a poisoned mutex: a D-Bus method may
 /// panic on a bad argument, and the service must keep answering.
 fn lock(host: &Arc<Mutex<LiveHost>>) -> std::sync::MutexGuard<'_, LiveHost> {
@@ -328,6 +380,12 @@ fn lock_notifications(
     host.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
+/// Lock the shared General/About/Updates host, recovering from a poisoned
+/// mutex.
+fn lock_updates(host: &Arc<Mutex<LiveUpdates>>) -> std::sync::MutexGuard<'_, LiveUpdates> {
+    host.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 /// Serve the three interfaces on the session bus until the process is asked to
 /// stop. Returns an error only when the bus or the name cannot be taken; an
 /// absent session bus exits with a message instead of blocking a session.
@@ -337,12 +395,14 @@ pub fn run(
     storage: LiveStorage,
     input: LiveInput,
     notifications: LiveNotifications,
+    updates: LiveUpdates,
 ) -> zbus::Result<()> {
     let host = Arc::new(Mutex::new(host));
     let bluetooth = Arc::new(Mutex::new(bluetooth));
     let storage = Arc::new(Mutex::new(storage));
     let input = Arc::new(Mutex::new(input));
     let notifications = Arc::new(Mutex::new(notifications));
+    let updates = Arc::new(Mutex::new(updates));
     let connection = connection::Builder::session()?
         .name(DBUS_NAME)?
         .serve_at(
@@ -387,6 +447,12 @@ pub fn run(
                 host: Arc::clone(&notifications),
             },
         )?
+        .serve_at(
+            DBUS_PATH,
+            UpdatesInterface {
+                host: Arc::clone(&updates),
+            },
+        )?
         .build()?;
 
     // The blocking object server runs on its own executor; parking the main
@@ -398,7 +464,7 @@ pub fn run(
 }
 
 /// The interface names the service serves, for logs and tests.
-pub fn interface_names() -> [&'static str; 7] {
+pub fn interface_names() -> [&'static str; 8] {
     [
         WIFI_INTERFACE,
         AUDIO_INTERFACE,
@@ -407,5 +473,6 @@ pub fn interface_names() -> [&'static str; 7] {
         STORAGE_INTERFACE,
         INPUT_INTERFACE,
         NOTIFICATIONS_INTERFACE,
+        UPDATES_INTERFACE,
     ]
 }

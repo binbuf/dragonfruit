@@ -37,8 +37,11 @@ use crate::source::{SystemData, SystemIdentity, SystemSource, UpdateData, Update
 /// shape. A provider is owned by the host and reports its own state; the
 /// adapter never opens a transaction itself.
 ///
+/// The provider is owned by a session host and may be driven from the bridge
+/// host's D-Bus worker threads, so it must be `Send`.
+///
 /// [08-settings.md]: ../../../docs/design/08-settings.md
-pub trait UpdateProvider {
+pub trait UpdateProvider: Send {
     /// The provider's current state. `Ok(None)` means the provider has gone
     /// away; `Err` means it is present but could not be read.
     fn status(&mut self) -> Result<Option<UpdateData>, AdapterError>;

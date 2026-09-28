@@ -876,6 +876,54 @@ never a second notification queue. See
   the Apple copyright footer is omitted. The pane and Control Center tile are
   T-15.10b.
 
+### The General pane and Software Update tile (T-15.10b)
+
+The pane and tile ship as one functional unit over the T-15.10a adapter, exactly
+as the Bluetooth (T-15.1b), Storage (T-15.2b), Sound (T-15.3b), and Battery
+(T-15.6b) pairs do. Because the host identity is a real read and the update
+provider is a distro seam, this pair rides the **bridge host**, not settingsd
+(ADR [0137](adr/0137-general-about-updates-pane-and-tile.md)):
+
+- **The bridge host grows an `Updates` interface.** `UpdatesHost`
+  (`services/system-status/src/updates.rs`) owns the adapter and projects the
+  typed `SystemSnapshot` to the flat JSON view: the identity (`hostName`,
+  `deviceName`, `osLabel`, `kernel`, `architecture`, `processor`, `memoryLabel`,
+  `serial`/`hasSerial`) and, when present, the update provider (`phase`,
+  `label`, `busy`, `rebootRequired`, `updateCount`, `securityCount`,
+  `lastCheckedMs`, `message`, `updates[]`). The live host attaches no provider
+  yet — `HostSystem::new()` reports `updatesAvailable: false` until packaging
+  supplies one (ADR 0136) — so in a session the About rows are live and the
+  update controls report absence.
+- **`org.dragonfruit.SystemStatus1.Updates`** — `State()`/`Refresh()` plus the
+  three explicit writes `Check()`, `Install()`, `Reboot()`. A write invents no
+  snapshot: the host re-reads and pushes the new view. This is the same shape
+  the storage and notifications interfaces use.
+- **The Settings pane is `General`.** `apps/settings/GeneralPane.qml` mirrors the
+  capture's grouped disclosure rows: `About` opens the About This System dialog
+  (device illustration, host name, processor, `Memory`, `Serial number` when the
+  DMI read has one, and the distribution release as `OS`), and `Software
+  Update` opens the update dialog whose `Check for Updates` / `Install` /
+  `Restart` buttons and offered-update list apply live through
+  `Settings.refreshUpdates()`/`checkUpdates()`/`installUpdates()`/
+  `rebootUpdates()`. The row's description carries the live update summary.
+- **The Control Center tile is `Software Update`.** The shell decodes the same
+  view in `systemstatusmodel.*` and the tile shows the update summary plus the
+  one action the state calls for (`Check for Updates` / `Install` / `Restart`),
+  with a `General Settings…` link that is T-16's launch entry point. The tile
+  stays visible whenever the host answers; the update provider may be absent
+  within it, which only disables the action.
+- **Absence is layered.** The Settings pane shows a one-line note when the
+  bridge host is absent; a reachable host with no provider keeps the About rows
+  live and the update row disabled. The tile hides only when the host is absent
+  (the identity half is always read). The absent-provider case is asserted in
+  `tst_settings_absence.qml` and the per-provider case in
+  `tst_settings_general.qml`.
+- **Deviations (ADR 0122).** `Storage` is its own Dragonfruit sidebar pane
+  (T-15.2b) rather than a General row; the other General rows have no provider
+  yet and are omitted, not shipped dead; the `More Info...` button and the Apple
+  regulatory/copyright footer are omitted (no System Information app or legal
+  page to open).
+
 ## The status bridge host (T-07.5a)
 
 The adapters are Rust crates; the menu bar is C++/QML. T-07.5a bridges them in
@@ -900,6 +948,9 @@ NetworkManager, audio, and power adapters and serves
 - `org.dragonfruit.SystemStatus1.Notifications` (T-15.7b) —
   `State()`/`Refresh()` plus `SetFocusMode(mode)` and
   `SetFocusAllowList(apps)` (the Notifications/Focus panes' writes).
+- `org.dragonfruit.SystemStatus1.Updates` (T-15.10b) — `State()`/`Refresh()`
+  plus `Check()`, `Install()`, and `Reboot()` (the General/Software Update
+  pane's writes over the host-stack adapter).
 
 The host core (`StatusHost`) is adapter-only and CI-tested with the mocks; the
 D-Bus layer is a thin mechanical wrapper. The shell decodes the JSON in one

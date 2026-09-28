@@ -37,6 +37,10 @@ private slots:
     void inputDecodesTheInventoryAndHidesWhenEmpty();
     void inputRefreshRaisesTheRequest();
 
+    void updatesDecodesTheHostStack();
+    void updatesHidesOnAnAbsentHost();
+    void updatesRefreshAndActionsRaiseTheRequests();
+
     void theAbsentDaemonMaskingMatrixHidesOnlyTheMaskedItem();
     void anUnreachedBridgeHostLeavesEveryItemHidden();
 };
@@ -389,6 +393,73 @@ void TestStatusModel::inputRefreshRaisesTheRequest()
     QSignalSpy spy(&model, &SystemStatusModel::refreshInputRequested);
     model.requestRefreshInput();
     QCOMPARE(spy.count(), 1);
+}
+
+// General/About/Updates (T-15.10b) decodes the host-stack view. The identity
+// is always read when the host answers, so the item stays visible even with no
+// update provider (`updatesAvailable: false`); only an absent host hides it.
+void TestStatusModel::updatesDecodesTheHostStack()
+{
+    const QVariantMap view = SystemStatusModel::parseView(
+        R"({"kind":"updates","state":"available","hostName":"dragon",
+            "deviceName":"Dragonfruit Book","osLabel":"Dragonfruit Linux 44",
+            "memoryLabel":"16 GB","updatesAvailable":true,"glyph":"software-update",
+            "label":"1 Update Available","phase":"available","busy":false,
+            "rebootRequired":false,"updateCount":1,"securityCount":1,
+            "updates":[{"id":"glibc","name":"glibc","summary":"C library",
+                        "currentVersion":"2.40","availableVersion":"2.41",
+                        "severity":"security","severityLabel":"Security Update"}]})",
+        QStringLiteral("updates"));
+    QCOMPARE(view.value(QStringLiteral("state")).toString(), QStringLiteral("available"));
+    QCOMPARE(view.value(QStringLiteral("visible")).toBool(), true);
+    QCOMPARE(view.value(QStringLiteral("enabled")).toBool(), true);
+    QCOMPARE(view.value(QStringLiteral("hostName")).toString(), QStringLiteral("dragon"));
+    QCOMPARE(view.value(QStringLiteral("updatesAvailable")).toBool(), true);
+    QCOMPARE(view.value(QStringLiteral("label")).toString(),
+             QStringLiteral("1 Update Available"));
+    QCOMPARE(view.value(QStringLiteral("updates")).toList().size(), 1);
+
+    SystemStatusModel model;
+    model.applyUpdatesJson(
+        R"({"kind":"updates","state":"available","hostName":"dragon",
+            "updatesAvailable":false,"label":"Software Update Unavailable"})");
+    QVERIFY(model.updatesVisible());
+    QCOMPARE(model.updates().value(QStringLiteral("updatesAvailable")).toBool(), false);
+    QCOMPARE(model.updates().value(QStringLiteral("hostName")).toString(),
+             QStringLiteral("dragon"));
+}
+
+void TestStatusModel::updatesHidesOnAnAbsentHost()
+{
+    SystemStatusModel model;
+    model.applyUpdatesJson(R"({"kind":"updates","state":"unavailable"})");
+    QCOMPARE(model.updatesVisible(), false);
+    QCOMPARE(model.updates().value(QStringLiteral("state")).toString(),
+             QStringLiteral("unavailable"));
+
+    // A mismatched kind is rejected and leaves the last view in place, never
+    // clearing it into a visible error.
+    model.applyUpdatesJson(R"({"kind":"storage","state":"available"})");
+    QCOMPARE(model.updatesVisible(), false);
+    QCOMPARE(model.updates().value(QStringLiteral("state")).toString(),
+             QStringLiteral("unavailable"));
+}
+
+void TestStatusModel::updatesRefreshAndActionsRaiseTheRequests()
+{
+    SystemStatusModel model;
+    QSignalSpy refreshSpy(&model, &SystemStatusModel::refreshUpdatesRequested);
+    QSignalSpy checkSpy(&model, &SystemStatusModel::checkUpdatesRequested);
+    QSignalSpy installSpy(&model, &SystemStatusModel::installUpdatesRequested);
+    QSignalSpy rebootSpy(&model, &SystemStatusModel::rebootUpdatesRequested);
+    model.requestRefreshUpdates();
+    model.requestCheckUpdates();
+    model.requestInstallUpdates();
+    model.requestRebootUpdates();
+    QCOMPARE(refreshSpy.count(), 1);
+    QCOMPARE(checkSpy.count(), 1);
+    QCOMPARE(installSpy.count(), 1);
+    QCOMPARE(rebootSpy.count(), 1);
 }
 
 // T-07.6a: the absent-daemon masking matrix at the decode seam. Masking one

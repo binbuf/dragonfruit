@@ -33,6 +33,10 @@ Item {
         SignalSpy { id: batterySettingsSpy; signalName: "batterySettingsRequested" }
         SignalSpy { id: lockScreenSettingsSpy; signalName: "lockScreenSettingsRequested" }
         SignalSpy { id: menuBarSettingsSpy; signalName: "menuBarSettingsRequested" }
+        SignalSpy { id: updatesCheckSpy; signalName: "updatesCheckRequested" }
+        SignalSpy { id: updatesInstallSpy; signalName: "updatesInstallRequested" }
+        SignalSpy { id: updatesRebootSpy; signalName: "updatesRebootRequested" }
+        SignalSpy { id: updatesSettingsSpy; signalName: "updatesSettingsRequested" }
         SignalSpy { id: focusSpy; signalName: "focusToggleRequested" }
         SignalSpy { id: darkSpy; signalName: "darkModeToggleRequested" }
         SignalSpy { id: closedSpy; signalName: "closed" }
@@ -208,6 +212,22 @@ Item {
 
         // The shell-projected Menu Bar summary (T-15.9b), shaped by
         // `controlcenterpolicy.cpp`'s `menuBarView`.
+        function updatesModel(label, phase, count) {
+            return {
+                kind: "updates",
+                state: "available",
+                visible: true,
+                enabled: true,
+                glyph: "software-update",
+                label: label !== undefined ? label : "1 Update Available",
+                updatesAvailable: true,
+                phase: phase !== undefined ? phase : "available",
+                busy: false,
+                rebootRequired: phase === "reboot-required",
+                updateCount: count !== undefined ? count : 1
+            };
+        }
+
         function menuBarModel(autoHide, showBackground, globalMenu) {
             var label = autoHide === "never" ? "Never"
                 : autoHide === "always" ? "Always"
@@ -250,11 +270,12 @@ Item {
                 battery: batteryModel(71, "balanced", true, true),
                 lockPolicy: lockPolicyModel(600),
                 menuBar: menuBarModel("full-screen"),
+                updates: updatesModel("1 Update Available", "available", 1),
                 brightness: 0.8,
                 focusPolicy: focusModel("off"),
                 dark: true
             });
-            compare(panel.tiles.length, 12);
+            compare(panel.tiles.length, 13);
             compare(panel.tiles[0].id, "wifi");
             compare(panel.tiles[0].kind, "toggle");
             compare(panel.tiles[0].checked, true);
@@ -287,6 +308,9 @@ Item {
             compare(panel.tiles[11].id, "menu-bar");
             compare(panel.tiles[11].kind, "info");
             compare(panel.tiles[11].subtitle, "In Full Screen Only");
+            compare(panel.tiles[12].id, "software-update");
+            compare(panel.tiles[12].kind, "info");
+            compare(panel.tiles[12].subtitle, "1 Update Available");
             compare(panel.wifiLabel, "home");
         }
 
@@ -310,8 +334,9 @@ Item {
                                   [{ name: "AT keyboard", kind: "keyboard" }]),
                 missionControl: missionControlModel(true, 1),
                 battery: batteryModel(71, "balanced", true, true),
-                lockPolicy: lockPolicyModel(600),
+lockPolicy: lockPolicyModel(600),
                 menuBar: menuBarModel("full-screen"),
+                updates: updatesModel("1 Update Available", "available", 1),
                 brightness: 1.0,
                 focusPolicy: focusModel("off"),
                 dark: false
@@ -642,6 +667,72 @@ Item {
             compare(link.Accessible.name, "Open Menu Bar Settings");
             mouseClick(link, link.width / 2, link.height / 2);
             compare(menuBarSettingsSpy.count, 1);
+        }
+
+        function test_software_update_tile_reflects_state() {
+            var panel = make({ updates: updatesModel("1 Update Available", "available", 1) });
+            compare(panel.updatesAvailable, true);
+            compare(panel.updatesProvider, true);
+            compare(panel.updatesCount, 1);
+            compare(panel.updatesLabel, "1 Update Available");
+            compare(panel.updatesAction, "Install");
+            compare(panel.tiles[12].visible, true);
+            compare(panel.tiles[12].enabled, true);
+
+            // A host with no provider keeps the tile visible but inert.
+            panel.updates = { kind: "updates", state: "available",
+                              visible: true, enabled: true,
+                              updatesAvailable: false,
+                              label: "Software Update Unavailable" };
+            compare(panel.updatesAvailable, true);
+            compare(panel.updatesProvider, false);
+            compare(panel.updatesLabel, "Software Update Unavailable");
+            compare(panel.updatesAction, "Unavailable");
+
+            // No host at all hides the tile.
+            panel.updates = ({});
+            compare(panel.updatesAvailable, false);
+            compare(panel.tiles[12].visible, false);
+        }
+
+        function test_software_update_action_link_raises_the_state_action() {
+            var panel = make({ updates: updatesModel("1 Update Available", "available", 1) });
+            updatesInstallSpy.target = panel;
+            updatesInstallSpy.clear();
+            updatesCheckSpy.target = panel;
+            updatesCheckSpy.clear();
+            updatesRebootSpy.target = panel;
+            updatesRebootSpy.clear();
+
+            panel.performUpdatesAction();
+            compare(updatesInstallSpy.count, 1);
+            compare(updatesCheckSpy.count, 0);
+
+            // Up to date: the action is a check.
+            panel.updates = { kind: "updates", state: "available", visible: true,
+                              enabled: true, updatesAvailable: true,
+                              label: "Up to Date", updateCount: 0 };
+            compare(panel.updatesAction, "Check for Updates");
+            panel.performUpdatesAction();
+            compare(updatesCheckSpy.count, 1);
+
+            // Reboot required: the action is a restart.
+            panel.updates = updatesModel("Restart Required", "reboot-required", 0);
+            compare(panel.updatesAction, "Restart");
+            panel.performUpdatesAction();
+            compare(updatesRebootSpy.count, 1);
+        }
+
+        function test_software_update_settings_link_raises_the_request() {
+            var panel = make({ updates: updatesModel("Up to Date", "up-to-date", 0) });
+            updatesSettingsSpy.target = panel;
+            updatesSettingsSpy.clear();
+            var link = findChild(panel, "updatesSettingsLink");
+            verify(link !== null, "the General Settings link is present");
+            compare(link.Accessible.role, Accessible.Button);
+            compare(link.Accessible.name, "Open General Settings");
+            mouseClick(link, link.width / 2, link.height / 2);
+            compare(updatesSettingsSpy.count, 1);
         }
 
         function test_battery_settings_link_raises_the_request() {

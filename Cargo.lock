@@ -725,6 +725,7 @@ dependencies = [
  "dragonfruit-power",
  "dragonfruit-storage",
  "dragonfruit-system-adapters",
+ "dragonfruit-update-adapter",
  "serde_json",
  "zbus",
 ]

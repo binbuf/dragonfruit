@@ -30,6 +30,7 @@ public:
     QVariantMap bluetooth() const { return m_bluetooth; }
     QVariantMap storage() const { return m_storage; }
     QVariantMap input() const { return m_input; }
+    QVariantMap updates() const { return m_updates; }
 
     // Whether the item is drawn at all (`state != "unavailable"`; the battery
     // also hides when the machine has no present battery).
@@ -39,6 +40,7 @@ public:
     bool bluetoothVisible() const;
     bool storageVisible() const;
     bool inputVisible() const;
+    bool updatesVisible() const;
 
     // Decode a host `State()` payload (JSON object). Returns the normalized
     // map; an empty map on a parse failure, with `error` set when non-null.
@@ -58,12 +60,14 @@ public slots:
     void applyBluetooth(const QVariantMap &view);
     void applyStorage(const QVariantMap &view);
     void applyInput(const QVariantMap &view);
+    void applyUpdates(const QVariantMap &view);
     void applyWifiJson(const QByteArray &json);
     void applyAudioJson(const QByteArray &json);
     void applyBatteryJson(const QByteArray &json);
     void applyBluetoothJson(const QByteArray &json);
     void applyStorageJson(const QByteArray &json);
     void applyInputJson(const QByteArray &json);
+    void applyUpdatesJson(const QByteArray &json);
 
     // User gestures from the popovers; the controller forwards each to the
     // bridge host. They do not mutate the view (the host re-read is the only
@@ -78,6 +82,11 @@ public slots:
     void requestRefreshStorage();
     // The input inventory is read-only: refresh only, no write.
     void requestRefreshInput();
+    // General/About/Updates: refresh plus the three explicit update writes.
+    void requestRefreshUpdates();
+    void requestCheckUpdates();
+    void requestInstallUpdates();
+    void requestRebootUpdates();
 
 signals:
     void changed();
@@ -90,6 +99,10 @@ signals:
     void refreshBluetoothRequested();
     void refreshStorageRequested();
     void refreshInputRequested();
+    void refreshUpdatesRequested();
+    void checkUpdatesRequested();
+    void installUpdatesRequested();
+    void rebootUpdatesRequested();
 
 private:
     static QVariantMap normalize(const QVariantMap &view, const QString &kind);
@@ -99,4 +112,5 @@ private:
     QVariantMap m_bluetooth;
     QVariantMap m_storage;
     QVariantMap m_input;
+    QVariantMap m_updates;
 };

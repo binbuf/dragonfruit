@@ -23,6 +23,7 @@ const QString kBatteryInterface = QStringLiteral("org.dragonfruit.SystemStatus1.
 const QString kBluetoothInterface = QStringLiteral("org.dragonfruit.SystemStatus1.Bluetooth");
 const QString kStorageInterface = QStringLiteral("org.dragonfruit.SystemStatus1.Storage");
 const QString kInputInterface = QStringLiteral("org.dragonfruit.SystemStatus1.Input");
+const QString kUpdatesInterface = QStringLiteral("org.dragonfruit.SystemStatus1.Updates");
 
 // Serialize a QJsonObject to the compact byte form the host uses.
 QByteArray compact(const QJsonObject &object)
@@ -179,6 +180,30 @@ void DbusSystemStatusClient::refreshInput()
          &SystemStatusClient::inputState);
 }
 
+void DbusSystemStatusClient::refreshUpdates()
+{
+    call(kUpdatesInterface, QStringLiteral("State"), {},
+         &SystemStatusClient::updatesState);
+}
+
+void DbusSystemStatusClient::checkUpdates()
+{
+    call(kUpdatesInterface, QStringLiteral("Check"), {},
+         &SystemStatusClient::writeReport);
+}
+
+void DbusSystemStatusClient::installUpdates()
+{
+    call(kUpdatesInterface, QStringLiteral("Install"), {},
+         &SystemStatusClient::writeReport);
+}
+
+void DbusSystemStatusClient::rebootUpdates()
+{
+    call(kUpdatesInterface, QStringLiteral("Reboot"), {},
+         &SystemStatusClient::writeReport);
+}
+
 void DbusSystemStatusClient::join(const QString &ssid, const QString &secret)
 {
     call(kWifiInterface, QStringLiteral("Join"), {ssid, secret},
@@ -208,6 +233,7 @@ MockSystemStatusClient::MockSystemStatusClient(QObject *parent)
     refreshBluetooth();
     refreshStorage();
     refreshInput();
+    refreshUpdates();
 }
 
 void MockSystemStatusClient::refreshInput()
@@ -424,6 +450,88 @@ void MockSystemStatusClient::ejectStorage(const QString &)
     refreshStorage();
     QJsonObject report;
     report.insert(QStringLiteral("outcome"), QStringLiteral("accepted"));
+    emit writeReport(compact(report));
+}
+
+void MockSystemStatusClient::refreshUpdates()
+{
+    // The General/About/Updates fixture (T-15.10b): a Dragonfruit host identity
+    // with one security update on offer. Writes mutate the phase and re-emit.
+    QJsonObject view;
+    view.insert(QStringLiteral("kind"), QStringLiteral("updates"));
+    view.insert(QStringLiteral("state"), QStringLiteral("available"));
+    view.insert(QStringLiteral("hostName"), QStringLiteral("dragon"));
+    view.insert(QStringLiteral("deviceName"), QStringLiteral("Dragonfruit Book"));
+    view.insert(QStringLiteral("osLabel"), QStringLiteral("Dragonfruit Linux 44"));
+    view.insert(QStringLiteral("kernel"), QStringLiteral("6.12.0"));
+    view.insert(QStringLiteral("architecture"), QStringLiteral("x86_64"));
+    view.insert(QStringLiteral("processor"), QStringLiteral("Example CPU"));
+    view.insert(QStringLiteral("memoryLabel"), QStringLiteral("16 GB"));
+    view.insert(QStringLiteral("serial"), QStringLiteral("SERIAL-1"));
+    view.insert(QStringLiteral("hasSerial"), true);
+    view.insert(QStringLiteral("updatesAvailable"), true);
+    view.insert(QStringLiteral("glyph"), QStringLiteral("software-update"));
+    view.insert(QStringLiteral("phase"), m_updatesPhase);
+    view.insert(QStringLiteral("busy"), false);
+    view.insert(QStringLiteral("rebootRequired"),
+                m_updatesPhase == QStringLiteral("reboot-required"));
+    view.insert(QStringLiteral("updateCount"), m_updatesCount);
+    view.insert(QStringLiteral("securityCount"),
+                m_updatesPhase == QStringLiteral("available") ? 1 : 0);
+    view.insert(QStringLiteral("lastCheckedMs"), 1000);
+    const QString label = m_updatesPhase == QStringLiteral("reboot-required")
+        ? QStringLiteral("Restart Required")
+        : m_updatesCount > 0 ? QStringLiteral("1 Update Available")
+                             : QStringLiteral("Up to Date");
+    view.insert(QStringLiteral("label"), label);
+
+    QJsonArray updates;
+    if (m_updatesCount > 0) {
+        QJsonObject update;
+        update.insert(QStringLiteral("id"), QStringLiteral("glibc"));
+        update.insert(QStringLiteral("name"), QStringLiteral("glibc"));
+        update.insert(QStringLiteral("summary"), QStringLiteral("C library"));
+        update.insert(QStringLiteral("currentVersion"), QStringLiteral("2.40"));
+        update.insert(QStringLiteral("availableVersion"), QStringLiteral("2.41"));
+        update.insert(QStringLiteral("severity"), QStringLiteral("security"));
+        update.insert(QStringLiteral("severityLabel"),
+                      QStringLiteral("Security Update"));
+        updates.append(update);
+    }
+    view.insert(QStringLiteral("updates"), updates);
+    emit updatesState(compact(view));
+}
+
+void MockSystemStatusClient::checkUpdates()
+{
+    m_updatesPhase = m_updatesCount > 0 ? QStringLiteral("available")
+                                        : QStringLiteral("up-to-date");
+    refreshUpdates();
+    QJsonObject report;
+    report.insert(QStringLiteral("outcome"), QStringLiteral("applied"));
+    emit writeReport(compact(report));
+}
+
+void MockSystemStatusClient::installUpdates()
+{
+    if (m_updatesCount > 0) {
+        m_updatesCount = 0;
+        m_updatesPhase = QStringLiteral("reboot-required");
+    } else {
+        m_updatesPhase = QStringLiteral("up-to-date");
+    }
+    refreshUpdates();
+    QJsonObject report;
+    report.insert(QStringLiteral("outcome"), QStringLiteral("applied"));
+    emit writeReport(compact(report));
+}
+
+void MockSystemStatusClient::rebootUpdates()
+{
+    m_updatesPhase = QStringLiteral("up-to-date");
+    refreshUpdates();
+    QJsonObject report;
+    report.insert(QStringLiteral("outcome"), QStringLiteral("applied"));
     emit writeReport(compact(report));
 }
 
