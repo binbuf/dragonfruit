@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "SettingsBridge.h"
 
+#include "AccessibilityClient.h"
 #include "AccountsClient.h"
 #include "BatteryClient.h"
 #include "BluetoothClient.h"
@@ -217,6 +218,16 @@ SettingsBridge::SettingsBridge(QObject *parent)
     connect(m_privacy, &PrivacyClient::availableChanged, this,
             [this](bool) { emit privacyChanged(); });
 
+    // T-15.14b: the Accessibility seam, selected the same way.
+    if (qEnvironmentVariableIsSet("DF_ACCESSIBILITY_FIXTURE"))
+        m_accessibility = new MockAccessibilityClient(this);
+    else
+        m_accessibility = new DbusAccessibilityClient(this);
+    connect(m_accessibility, &AccessibilityClient::changed, this,
+            [this](const QVariantMap &) { emit accessibilityChanged(); });
+    connect(m_accessibility, &AccessibilityClient::availableChanged, this,
+            [this](bool) { emit accessibilityChanged(); });
+
     buildWallpaperPresets();
     connectPortalWatcher();
     m_wallpaperFixture = qEnvironmentVariableIsSet("DF_WALLPAPER_FIXTURE");
@@ -349,6 +360,16 @@ QVariantMap SettingsBridge::privacy() const
 bool SettingsBridge::privacyAvailable() const
 {
     return m_privacy && m_privacy->available();
+}
+
+QVariantMap SettingsBridge::accessibility() const
+{
+    return m_accessibility ? m_accessibility->view() : QVariantMap();
+}
+
+bool SettingsBridge::accessibilityAvailable() const
+{
+    return m_accessibility && m_accessibility->available();
 }
 
 QString SettingsBridge::providerStatus() const
@@ -881,6 +902,18 @@ void SettingsBridge::resetPrivacyFixture()
 {
     if (m_privacy)
         m_privacy->resetForTest();
+}
+
+void SettingsBridge::refreshAccessibility()
+{
+    if (m_accessibility)
+        m_accessibility->refresh();
+}
+
+void SettingsBridge::resetAccessibilityFixture()
+{
+    if (m_accessibility)
+        m_accessibility->resetForTest();
 }
 
 void SettingsBridge::setWallpaperFixture(const QString &status)

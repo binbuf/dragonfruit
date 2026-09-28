@@ -85,6 +85,13 @@ Item {
     // It is a read-only summary; the Settings link opens the pane where the
     // permission writes live.
     property var privacy: ({})
+    // The Accessibility view from the bridge host (T-15.14b), shaped by
+    // `SystemStatusModel`: `{ state, glyph, label, present, enabled,
+    // enabledLabel, screenReader, screenReaderLabel }`. The tile hides when the
+    // AT-SPI bus answers with every feature off (`present: false`). It is a
+    // read-only summary; the Settings link opens the pane where the durable
+    // preferences live.
+    property var accessibility: ({})
     property real brightness: 1.0
     // The notification service's Focus/DND policy view
     // (`{mode, allowList, batchedCount}`); empty when the service is absent.
@@ -367,6 +374,28 @@ Item {
             : qsTr("No App Permissions");
     }
 
+    // Accessibility (T-15.14b): the tile reflects the bridge host's live
+    // AT-SPI view. It stays visible whenever the bus reports at least one
+    // feature on (`present`); the subtitle is the live `Screen Reader On` /
+    // `On` / `Off` label; the link opens the Accessibility pane.
+    readonly property bool accessibilityAvailable: root.accessibility.state === "available"
+    // The tile hides when the bus answers `present: false` (every feature off);
+    // a raw view without the normalized flag falls back to the availability.
+    readonly property bool accessibilityVisible: root.accessibility.visible !== undefined
+        ? root.accessibility.visible === true : root.accessibilityAvailable
+    readonly property bool accessibilityScreenReader:
+        root.accessibility.screenReader === true
+    readonly property string accessibilityGlyph:
+        root.accessibility.glyph !== undefined
+            ? String(root.accessibility.glyph) : "accessibility"
+    readonly property string accessibilityLabel: {
+        if (!root.accessibilityAvailable)
+            return qsTr("Unavailable");
+        if (root.accessibility.label !== undefined && root.accessibility.label !== "")
+            return root.accessibility.label;
+        return root.accessibilityScreenReader ? qsTr("Screen Reader On") : qsTr("Off");
+    }
+
     // The notification service's mode (`off`/`focus`/`dnd`). The toggle is Do
     // Not Disturb: `focus` also lights it, because both suppress banners.
     readonly property string focusMode: root.focusPolicy.mode !== undefined
@@ -530,6 +559,14 @@ Item {
             subtitle: root.privacyLabel,
             visible: root.privacyVisible,
             enabled: root.privacyVisible
+        },
+        {
+            id: "accessibility",
+            kind: "info",
+            title: qsTr("Accessibility"),
+            subtitle: root.accessibilityLabel,
+            visible: root.accessibilityVisible,
+            enabled: root.accessibilityVisible
         }
     ]
 
@@ -596,6 +633,9 @@ Item {
     // The Privacy tile (T-15.13b) is a read-only summary; the link opens the
     // Privacy & Security pane where the permission writes live.
     signal privacySettingsRequested()
+    // The Accessibility tile (T-15.14b) is a read-only summary; the link opens
+    // the Accessibility pane where the durable preferences live.
+    signal accessibilitySettingsRequested()
 
     // Apply a volume fraction (0..1) and raise the request.
     function setVolume(fraction) {
@@ -707,13 +747,15 @@ Item {
             objectName: "controlCenterContent"
             anchors.fill: parent
             anchors.margins: Theme.primitive.spacing.md
-            // The panel now carries sixteen tiles (T-15.13b). Every tile's
+            // The panel now carries seventeen tiles (T-15.14b). Every tile's
             // vertical padding is the compact `xxs` step and the intermediate
-            // gap is the compact `xxs` step too; to fit the sixteenth tile the
-            // tiles' internal gap is compacted from `sm` to `xs`, so the content
-            // still fits the fixed 360x1160 surface (the nested output leaves
-            // 1164 px below the bar) without a scrolling panel (the compositor
-            // forwards no pointer-axis events, ADR 0139/0141).
+            // gap is the compact `xxs` step too; to fit the seventeenth tile the
+            // tiles' internal gap is compacted once more from `xs` to `xxs`, and
+            // the Accessibility tile is a compact single-row summary (no
+            // separate link line), so the content still fits the fixed 360x1160
+            // surface (the nested output leaves 1164 px below the bar) without a
+            // scrolling panel (the compositor forwards no pointer-axis events,
+            // ADR 0139/0141).
             spacing: Theme.primitive.spacing.xxs
 
             // ── Wi-Fi ────────────────────────────────────────────────────
@@ -734,7 +776,7 @@ Item {
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.margins: Theme.primitive.spacing.xxs
-                    spacing: Theme.primitive.spacing.xs
+                    spacing: Theme.primitive.spacing.xxs
 
                     Row {
                         width: parent.width
@@ -815,7 +857,7 @@ Item {
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.margins: Theme.primitive.spacing.xxs
-                    spacing: Theme.primitive.spacing.xs
+                    spacing: Theme.primitive.spacing.xxs
 
                     Row {
                         width: parent.width
@@ -874,7 +916,7 @@ Item {
                         id: bluetoothDeviceList
                         objectName: "bluetoothDeviceList"
                         width: parent.width
-                        spacing: Theme.primitive.spacing.xs
+                        spacing: Theme.primitive.spacing.xxs
                         readonly property int count: root.bluetoothDevices.length
 
                         Repeater {
@@ -948,7 +990,7 @@ Item {
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.margins: Theme.primitive.spacing.xxs
-                    spacing: Theme.primitive.spacing.xs
+                    spacing: Theme.primitive.spacing.xxs
 
                     Row {
                         width: parent.width
@@ -989,7 +1031,7 @@ Item {
                         id: storageVolumeList
                         objectName: "storageVolumeList"
                         width: parent.width
-                        spacing: Theme.primitive.spacing.xs
+                        spacing: Theme.primitive.spacing.xxs
                         readonly property int count: root.storageVolumes.length
                         visible: count > 0
 
@@ -1083,7 +1125,7 @@ Item {
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.margins: Theme.primitive.spacing.xxs
-                    spacing: Theme.primitive.spacing.xs
+                    spacing: Theme.primitive.spacing.xxs
 
                     Row {
                         width: parent.width
@@ -1157,7 +1199,7 @@ Item {
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.margins: Theme.primitive.spacing.xxs
-                    spacing: Theme.primitive.spacing.xs
+                    spacing: Theme.primitive.spacing.xxs
 
                     Row {
                         width: parent.width
@@ -1257,7 +1299,7 @@ Item {
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.margins: Theme.primitive.spacing.xxs
-                    spacing: Theme.primitive.spacing.xs
+                    spacing: Theme.primitive.spacing.xxs
 
                     Row {
                         width: parent.width
@@ -1311,7 +1353,7 @@ Item {
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.margins: Theme.primitive.spacing.xxs
-                    spacing: Theme.primitive.spacing.xs
+                    spacing: Theme.primitive.spacing.xxs
 
                     Row {
                         width: parent.width
@@ -1385,7 +1427,7 @@ Item {
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.margins: Theme.primitive.spacing.xxs
-                    spacing: Theme.primitive.spacing.xs
+                    spacing: Theme.primitive.spacing.xxs
 
                     Row {
                         width: parent.width
@@ -1450,7 +1492,7 @@ Item {
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.margins: Theme.primitive.spacing.xxs
-                    spacing: Theme.primitive.spacing.xs
+                    spacing: Theme.primitive.spacing.xxs
 
                     Row {
                         width: parent.width
@@ -1515,7 +1557,7 @@ Item {
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.margins: Theme.primitive.spacing.xxs
-                    spacing: Theme.primitive.spacing.xs
+                    spacing: Theme.primitive.spacing.xxs
 
                     Row {
                         width: parent.width
@@ -1580,7 +1622,7 @@ Item {
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.margins: Theme.primitive.spacing.xxs
-                    spacing: Theme.primitive.spacing.xs
+                    spacing: Theme.primitive.spacing.xxs
 
                     Row {
                         width: parent.width
@@ -1646,7 +1688,7 @@ Item {
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.margins: Theme.primitive.spacing.xxs
-                    spacing: Theme.primitive.spacing.xs
+                    spacing: Theme.primitive.spacing.xxs
 
                     Row {
                         width: parent.width
@@ -1712,7 +1754,7 @@ Item {
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.margins: Theme.primitive.spacing.xxs
-                    spacing: Theme.primitive.spacing.xs
+                    spacing: Theme.primitive.spacing.xxs
 
                     Row {
                         width: parent.width
@@ -1792,7 +1834,7 @@ Item {
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.margins: Theme.primitive.spacing.xxs
-                    spacing: Theme.primitive.spacing.xs
+                    spacing: Theme.primitive.spacing.xxs
 
                     Row {
                         width: parent.width
@@ -1859,7 +1901,7 @@ Item {
                     anchors.margins: Theme.primitive.spacing.xxs
                     // The compact gap keeps the fifteenth tile inside the
                     // fixed surface (T-15.12b, ADR 0141).
-                    spacing: Theme.primitive.spacing.xs
+                    spacing: Theme.primitive.spacing.xxs
 
                     Row {
                         width: parent.width
@@ -1926,7 +1968,7 @@ Item {
                     anchors.margins: Theme.primitive.spacing.xxs
                     // The compact gap keeps the sixteenth tile inside the fixed
                     // surface (T-15.13b).
-                    spacing: Theme.primitive.spacing.xs
+                    spacing: Theme.primitive.spacing.xxs
 
                     Row {
                         width: parent.width
@@ -1972,6 +2014,76 @@ Item {
                 }
             }
 
+            // ── Accessibility (T-15.14b) ─────────────────────────────────
+            // A compact read-only summary: the tile is the tappable affordance
+            // that opens the Accessibility pane (no separate link line, so the
+            // seventeenth tile still fits the fixed surface).
+            Rectangle {
+                id: accessibilityTile
+                objectName: "accessibilityTile"
+                width: parent.width
+                visible: root.accessibilityVisible
+                implicitHeight: accessibilityColumn.implicitHeight
+                                + 2 * Theme.primitive.spacing.xxs
+                radius: Theme.primitive.radius.md
+                color: accessibilityHover.hovered ? Theme.color.surfaceElevated
+                                                  : Theme.color.surfaceSunken
+                Accessible.role: Accessible.Button
+                Accessible.name: qsTr("Accessibility")
+                Accessible.description: root.accessibilityLabel
+                Accessible.onPressAction: root.accessibilitySettingsRequested()
+
+                HoverHandler { id: accessibilityHover }
+
+                TapHandler {
+                    onTapped: root.accessibilitySettingsRequested()
+                }
+
+                Column {
+                    id: accessibilityColumn
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: Theme.primitive.spacing.xxs
+                    spacing: Theme.primitive.spacing.xxs
+
+                    Row {
+                        width: parent.width
+                        spacing: Theme.primitive.spacing.md
+
+                        IconTile {
+                            objectName: "accessibilityIcon"
+                            name: root.accessibilityGlyph
+                            tileSize: 32
+                            iconSize: 18
+                            active: root.accessibilityScreenReader
+                        }
+
+                        Column {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: parent.width - 32 - 2 * Theme.primitive.spacing.md
+
+                            Text {
+                                objectName: "accessibilityTitle"
+                                text: qsTr("Accessibility")
+                                color: Theme.color.textPrimary
+                                font.pixelSize: Theme.controls.button.fontSize
+                                font.weight: Theme.primitive.font.weightMedium
+                            }
+
+                            Text {
+                                objectName: "accessibilitySubtitle"
+                                width: parent.width
+                                text: root.accessibilityLabel
+                                color: Theme.color.textSecondary
+                                font.pixelSize: Theme.primitive.font.sizeSm
+                                elide: Text.ElideRight
+                            }
+                        }
+                    }
+                }
+            }
+
             // ── Clipboard history ────────────────────────────────────────
             Rectangle {
                 id: clipboardTile
@@ -1990,7 +2102,7 @@ Item {
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.margins: Theme.primitive.spacing.xxs
-                    spacing: Theme.primitive.spacing.xs
+                    spacing: Theme.primitive.spacing.xxs
 
                     Text {
                         objectName: "clipboardTitle"

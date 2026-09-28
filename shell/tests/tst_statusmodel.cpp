@@ -50,6 +50,9 @@ private slots:
     void privacyDecodesTheCategories();
     void privacyHidesOnAnAbsentHostOrAnEmptyStore();
     void privacyRefreshRaisesTheRequest();
+    void accessibilityDecodesTheBridgeState();
+    void accessibilityHidesOnAnAbsentBusOrAnAllOffBus();
+    void accessibilityRefreshRaisesTheRequest();
 
     void theAbsentDaemonMaskingMatrixHidesOnlyTheMaskedItem();
     void anUnreachedBridgeHostLeavesEveryItemHidden();
@@ -667,6 +670,64 @@ void TestStatusModel::privacyRefreshRaisesTheRequest()
     SystemStatusModel model;
     QSignalSpy refreshSpy(&model, &SystemStatusModel::refreshPrivacyRequested);
     model.requestRefreshPrivacy();
+    QCOMPARE(refreshSpy.count(), 1);
+}
+
+// Accessibility (T-15.14b) decodes the bridge host's live AT-SPI view. The item
+// hides when the bus answers with every feature off (`present: false`).
+void TestStatusModel::accessibilityDecodesTheBridgeState()
+{
+    const QVariantMap view = SystemStatusModel::parseView(
+        R"({"kind":"accessibility","state":"available","glyph":"accessibility",
+            "label":"Screen Reader On","present":true,"enabled":true,
+            "enabledLabel":"On","screenReader":true,"screenReaderLabel":"On"})",
+        QStringLiteral("accessibility"));
+    QCOMPARE(view.value(QStringLiteral("state")).toString(), QStringLiteral("available"));
+    QCOMPARE(view.value(QStringLiteral("visible")).toBool(), true);
+    QCOMPARE(view.value(QStringLiteral("enabled")).toBool(), true);
+    QCOMPARE(view.value(QStringLiteral("glyph")).toString(),
+             QStringLiteral("accessibility"));
+    QCOMPARE(view.value(QStringLiteral("label")).toString(),
+             QStringLiteral("Screen Reader On"));
+    QCOMPARE(view.value(QStringLiteral("screenReader")).toBool(), true);
+    QCOMPARE(view.value(QStringLiteral("screenReaderLabel")).toString(),
+             QStringLiteral("On"));
+
+    SystemStatusModel model;
+    model.applyAccessibilityJson(
+        R"({"kind":"accessibility","state":"available","present":true,
+            "enabled":true,"screenReader":false,"label":"On"})");
+    QVERIFY(model.accessibilityVisible());
+    QCOMPARE(model.accessibility().value(QStringLiteral("label")).toString(),
+             QStringLiteral("On"));
+}
+
+void TestStatusModel::accessibilityHidesOnAnAbsentBusOrAnAllOffBus()
+{
+    SystemStatusModel model;
+    model.applyAccessibilityJson(R"({"kind":"accessibility","state":"unavailable"})");
+    QCOMPARE(model.accessibilityVisible(), false);
+    QCOMPARE(model.accessibility().value(QStringLiteral("state")).toString(),
+             QStringLiteral("unavailable"));
+
+    // A bus that answers with every feature off is `available` with
+    // `present: false`; the second hide rule hides the tile.
+    model.applyAccessibilityJson(
+        R"({"kind":"accessibility","state":"available","present":false,
+            "label":"Off","enabled":false,"screenReader":false})");
+    QCOMPARE(model.accessibilityVisible(), false);
+
+    // A mismatched kind is rejected and leaves the last view in place.
+    model.applyAccessibilityJson(R"({"kind":"input","state":"available"})");
+    QCOMPARE(model.accessibility().value(QStringLiteral("state")).toString(),
+             QStringLiteral("available"));
+}
+
+void TestStatusModel::accessibilityRefreshRaisesTheRequest()
+{
+    SystemStatusModel model;
+    QSignalSpy refreshSpy(&model, &SystemStatusModel::refreshAccessibilityRequested);
+    model.requestRefreshAccessibility();
     QCOMPARE(refreshSpy.count(), 1);
 }
 

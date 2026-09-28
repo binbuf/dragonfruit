@@ -34,7 +34,8 @@ Item {
             ["appearance", "desktop-dock", "mission-control", "displays",
              "wallpaper", "bluetooth", "battery", "storage", "general", "sound",
              "keyboard", "mouse", "trackpad", "notifications", "focus",
-             "lock-screen", "menu-bar", "users-groups", "printers", "privacy"]
+             "lock-screen", "menu-bar", "users-groups", "printers", "privacy",
+             "accessibility"]
 
         function make() {
             var shell = createTemporaryObject(shellComponent, stage,
@@ -87,7 +88,7 @@ Item {
 
         function test_every_shipped_pane_has_a_body_and_no_other_does() {
             var shell = make();
-            compare(SettingsPanes.shippedPanes.length, 20);
+            compare(SettingsPanes.shippedPanes.length, 21);
             for (var i = 0; i < SettingsPanes.catalog.length; ++i) {
                 var pane = SettingsPanes.catalog[i];
                 var body = shell.paneComponent(pane.id);
@@ -556,6 +557,32 @@ Item {
             Settings.setPrivacyPermission("devices", "camera", "org.mozilla.firefox", "denied");
             Settings.deletePrivacyPermission("devices", "camera", "org.mozilla.firefox");
             compare(Settings.privacyAvailable, false);
+        }
+
+        // The Accessibility view is a host-stack adapter read, so with no
+        // bridge host it is the absence state: the live status rows are
+        // replaced by a one-line note, while the one durable preference (a
+        // settingsd key) still applies (T-15.14b).
+        function test_accessibility_pane_degrades_cleanly_without_the_bridge_host() {
+            var shell = make();
+            compare(Settings.accessibilityAvailable, false,
+                    "no bridge host is the absent state under test");
+            compare(Settings.accessibility.state, undefined);
+
+            var pane = showPane(shell, "accessibility");
+            compare(pane.ready, false);
+            compare(pane.absenceNote.visible, true,
+                    "the absence note explains the missing accessibility service");
+            verify(pane.absenceNote.text.length > 0);
+            compare(pane.statusGroup.visible, false);
+            // The durable preference is a settingsd key: it stays live.
+            compare(pane.motionGroup.visible, true);
+            pane.reduceMotionToggle.toggle();
+            compare(Settings.values["accessibility.reduceMotion"], true);
+
+            // A refresh is a safe no-op with no host.
+            Settings.refreshAccessibility();
+            compare(Settings.accessibilityAvailable, false);
         }
     }
 }
