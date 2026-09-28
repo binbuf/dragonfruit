@@ -167,6 +167,21 @@ T-14.7b sign-off). The same script brackets one timed sweep with compositor
 `frames_rendered`/`frames_skipped_no_damage` deltas). Needs a host Wayland
 session, spectacle, and Pillow; not in `make e2e`.
 
+T-14.7y's magnification-tracking sign-off is produced by
+`scripts/capture-dock-magnify-sweep.sh` (`make dock-magnify-sweep-capture`): the
+driver sweeps the pointer slowly across the Dock and takes six crops at evenly
+spaced positions, stacked vertically into one filmstrip per scheme,
+`t14-dock-magnify-sweep-{light,dark}.png`. The committed strips carry the
+pre-fix row (`sweep-row-*-before.png`, captured from the T110y parent tree)
+above the fixed row (`sweep-row-*-after.png`); the settled crops read
+equivalently because the bug was *temporal* (ringing during motion), so the
+oscillation itself is pinned by `tst_dock.qml` and measured in the T110y
+PROGRESS note (pre-fix smoothed-pointer overshoot 635.5 vs target 624.5 = 11.0
+px; fixed 0.0 px). The same 40-step run is recorded in
+`t14-dock-magnify-sweep-trace.txt` (pre-fix: 19 plate-top reversals, max 1.11
+px; fixed: 0 reversals). Needs a host Wayland session, spectacle, and Pillow;
+not in `make e2e`.
+
 T-14.7c's Dock motion/frame-discipline sign-off is produced by
 `scripts/capture-dock-motion.sh` (`make dock-motion-capture`): the nested demo
 runs with a scratch settingsd and the synthetic-input harness, and the driver

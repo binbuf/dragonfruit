@@ -269,13 +269,20 @@ the resting plate plus that margin; auto-hide reserves nothing. The plate is
 **cosmetic**: under magnification it grows to wrap the magnified row in both
 axes, inside the pre-reserved magnify band, while the reserved zone stays at the
 resting thickness so windows never re-lay-out when the pointer sweeps the Dock.
-The pointer is smoothed with `motion.dock-magnify` (the slight overshoot comes
-from the token curve); reduced motion tracks the pointer directly. The
-compositor's frosted backdrop follows the live plate rect that the shell
-declares on each commit, so the material always sits under the artwork. A
-hovered entry reveals its name (and state) in a `Tooltip` capsule above the
-icon (T-14.7i). See
-[ADR 0089](adr/0089-dock-plate-geometry-and-live-panel-rect.md) and the
+The pointer is smoothed with `motion.dockMagnifyTrack`, a short low-pass whose
+curve has no overshoot, so the per-sample follow cannot ring around the real
+position; `motion.dockMagnify`'s overshoot stays only for *discrete* changes
+(the icon-size spring and the reveal). The anchored tile is chosen from the
+**raw** pointer, so the filter can never flip it back and forth at a boundary,
+and the plate's magnify edge reads a peak-hold follow of the entry union edge
+(a small deadband) rather than the raw per-frame `min()`, so the top edge moves
+with the peak and never against it. Reduced motion tracks the pointer and the
+plate edge directly. The compositor's frosted backdrop follows the live plate
+rect that the shell declares on each commit, so the material always sits under
+the artwork. A hovered entry reveals its name (and state) in a `Tooltip` capsule
+above the icon (T-14.7i). See
+[ADR 0089](adr/0089-dock-plate-geometry-and-live-panel-rect.md),
+[ADR 0111](adr/0111-dock-magnification-tracking-stability.md), and the
 T-14.7a/T-14.7b/T-14.7j units.
 
 **Resting proportions (T-14.7u).** The resting Dock is retuned to the mature

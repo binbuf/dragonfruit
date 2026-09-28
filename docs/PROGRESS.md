@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(101 earlier sections omitted)_
+_(102 earlier sections omitted)_
 
-- **T97 — T-13.5b Clipboard history (if specified)**: **State: done.** The design calls for history (ADR 0082's accepted consequences; **`shell/src/clipboardhistory.{h,cpp}`** (new, dockcore) — `ClipboardHistory`:
 - **T98 — T-13.6 polkit authentication agent**: **State: done.** A privileged polkit request now raises a Dragonfruit; **`shell/src/polkitagent.{h,cpp}`** (dockcore) — `PolkitAgent` exports
 - **T99 — T-13.7 Flatpak validation and capture**: **State: done** (one honest deviation: no Flatpak↔native clipboard still; see; **`scripts/capture-portals.sh`** (new; `make portals-capture`) — private
 - **T100 — T-14.1a app-index identity resolution and icons**: **State: done.** `org.dragonfruit.AppIndex1` is real: identity resolution for; `services/app-index/src/index.rs` — pure `AppIndex` (scan, `resolve`,
@@ -43,6 +42,7 @@ _(101 earlier sections omitted)_
 - **T110u — T-14.7u Dock reference metrics: spacing, plate radius, indicator inset**: **State: done.** The resting Dock is retuned to the mature reference capture:; `design-system/tokens/tokens.json` — `component.dock`: `padding` 10 → 15,
 - **T110v — T-14.7v Dock region dividers: pinned | temporary/recent | stacks and Trash**: **State: done.** The Dock projects the reference's region structure: a rule; `shell/src/dockmodel.{h,cpp}` — `DockRegionPlan` + `planDockRegions(entries,
 - **T110x — T-14.7x Dock activation: taps on entries that carry a DragHandler**: **State: done.** A stationary left click on any app/temporary/overflow entry; `shell/src/dockpointer.{h,cpp}` (new, dockcore) — `DockPointer::timestamp()`
+- **T110y — T-14.7y Dock magnification tracking: stable pointer and anchor**: **State: done.** Hover magnification now tracks the pointer without ringing.; `design-system/tokens/tokens.json` — `motion.dockMagnifyTrack` added;
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -10080,5 +10080,106 @@ Gotchas for later tasks:
   scan x 770–990) and only scans for a launched Settings window; a Dock
   position/token change needs those constants revisited (same convention as
   `capture-dock-magnify-driver.py`).
+- `check-desktop-names.sh` still fails only on the pre-existing
+  StatusNotifier/zoo/apppicker lines (unchanged here).
+
+## T110y — T-14.7y Dock magnification tracking: stable pointer and anchor
+
+**State: done.** Hover magnification now tracks the pointer without ringing.
+Three couplings were removed in `shell/dock/Dock.qml`:
+
+1. The per-sample pointer tracker no longer uses the overshoot
+   `motion.dockMagnify` curve. A new token
+   `motion.dockMagnifyTrack` (`primitive.duration.fast` = 100 ms, curve
+   `[0.2, 0.0, 0.0, 1.0]`, `reducedDuration` 0) drives
+   `smoothPointerAlong`; `motion.dockMagnify` keeps its overshoot only for
+   discrete changes (the `iconSize` spring and reveal). Reduced motion tracks
+   the raw pointer.
+2. `anchorIndex` is computed from the **raw** `pointerAlong` (was the smoothed
+   value), so the filter can never flip the anchored tile at a boundary. The
+   anchor rule (the tile under the pointer stays put) is unchanged.
+3. The plate's magnify edge is a damped peak-hold. `plateTrackRaw` is the
+   entry-union edge with launch/attention bounce added back (bottom = topmost
+   entry edge; right = interior left edge; left = interior right edge) and
+   `smoothPlateTrack` follows a *deeper* peak through `motion.dockMagnifyTrack`,
+   holds while the pointer stays on the Dock, ignores a sub-pixel
+   `plateTrackDeadband` (0.75 px), and snaps on discrete magnify entry/exit
+   (`plateTrackEngaged`) and under reduced motion. `plateRect` reads
+   `smoothPlateTrack`. The plate still grows into the magnify band with
+   magnification; it just no longer follows the per-tile ripple or sub-pixel
+   noise.
+
+Real paths:
+
+- `design-system/tokens/tokens.json` — `motion.dockMagnifyTrack` added;
+  `Theme.qml` + `compositor/src/design_tokens.rs` regenerated
+  (`Theme.motion.dockMagnifyTrack`, `motion::DOCK_MAGNIFY_TRACK`).
+- `shell/dock/Dock.qml` — tracker token swap + comment; `anchorIndex` raw;
+  `plateTrackRaw`/`smoothPlateTrack`/`plateTrackDeadband`/`plateTrackEngaged`/
+  `plateTrackAnimation`; `plateRect` now uses `smoothPlateTrack` for both axes.
+- `shell/tests/tst_dock.qml` — four new cases (below); `tst_dock` 256 → 260.
+- Docs: `docs/design/04-shell.md` magnification paragraph;
+  `docs/design/10-design-system.md` Motion rule;
+  `docs/design/adr/0111-dock-magnification-tracking-stability.md`.
+- Captures: `scripts/capture-dock-magnify-sweep.sh` +
+  `scripts/capture-dock-magnify-sweep-driver.py` (`make
+  dock-magnify-sweep-capture`), `docs/captures/t14-dock-magnify-sweep-{light,dark}.png`
+  (before row over after row), `docs/captures/sweep-row-{light,dark}-{before,after}.png`,
+  `docs/captures/t14-dock-magnify-sweep-trace.txt`, captures README entry. The
+  `make dock-magnify-capture` stills were regenerated once (settled; content
+  unchanged).
+
+Measured oscillation (real numbers, pre-fix vs fixed):
+
+- One-tile pointer jump: smoothed-pointer overshoot **11.0 px** pre-fix (635.5
+  vs target 624.5), **0.0 px** fixed (`test_smoothed_pointer_never_overshoots_the_target`
+  fails pre-fix).
+- 40-step slow sweep (QML trace): **19** plate-top reversals, max **1.108 px**
+  pre-fix; **0** reversals fixed (`test_slow_sweep_has_a_stable_anchor_and_plate`).
+- Captured 6-frame strip, settled crops, plate top local-y range: light
+  before `[58,57,57,59,63,58]` range 6 px → after `[58,57,57,57,57,57]` range
+  1 px; dark before `[59,58,57,60,63,59]` range 6 px → after all 57 range 0 px.
+  The pre-fix row follows the per-tile ripple; the fixed peak-hold holds it.
+- `anchorIndex` raw-pointer case and the sweep's anchor check flip on pre-fix
+  code.
+
+Commands that work (repo root):
+
+- `ctest --test-dir build -R "tst_dock$|tst_dockcore|tst_design_system"
+  --output-on-failure` — 260 + 116 + design-system green.
+- `ctest --test-dir build --output-on-failure` — 53/53.
+- `make e2e`; `make cargo-test`; `make soak` (100 clean cycles); `make clippy`;
+  `cargo fmt --all -- --check`; `./scripts/gen-tokens.py --check`;
+  `./scripts/check-design-tokens.sh`; `./scripts/check-no-capture-grab.sh`;
+  `./scripts/check-gallery-snapshots.py --strict` — green.
+- Pre-fix probe: `git show HEAD:shell/dock/Dock.qml > shell/dock/Dock.qml`,
+  rebuild, run `tst_dock` — the 4 new cases fail (overshoot, raw anchor, sweep
+  anchor flip, plate reversal); restore and rebuild.
+- Live: `make dock-magnify-sweep-capture` (host Wayland + spectacle + Pillow).
+  To capture the committed before row, revert `Dock.qml` to HEAD, rebuild, run
+  `LABEL=before COMPOSE=0 bash scripts/capture-dock-magnify-sweep.sh`, restore,
+  rebuild, then run the script normally to compose.
+
+Gotchas for later tasks:
+
+- **The plate edge is peak-held, not released, while the pointer is on the
+  Dock.** A slow move toward the Dock's ends does not shrink the plate until
+  magnification ends (pointer leaves / popover / drag). That is deliberate: the
+  per-tile `min()` ripple is what jittered. If T-14.7z or a later unit needs a
+  release, add a release deadband on top of `plateTrackRaw` rather than
+  reverting to the raw `min()`.
+- **`plateTrackRaw` differs per position.** Bottom = topmost entry edge; right =
+  interior (left) edge; left = interior (right) edge. The no-entry fallback was
+  fixed to `rest.x + padding` (right) / `rest.x + barThickness - padding`
+  (left); keep those in sync if the artwork anchor changes.
+- **The tracker and the plate edge share one motion token** (`motion.dockMagnifyTrack`).
+  Do not give the plate a second animation on top of the pointer tracker — ADR
+  0111's "one smoothing source" rule.
+- **The public QML property names are unchanged** (`pointerAlong`,
+  `smoothPointerAlong`, `anchorIndex`, `plateRect`, `restingPlateRect`), so the
+  shell controller and capture drivers need no change.
+- The strip capture driver hard-codes `DOCK_Y=1155` and the sweep range
+  `785..1135` (same convention as `capture-dock-magnify-driver.py`); a Dock
+  position/token change needs those revisited.
 - `check-desktop-names.sh` still fails only on the pre-existing
   StatusNotifier/zoo/apppicker lines (unchanged here).
