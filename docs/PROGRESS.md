@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(113 earlier sections omitted)_
+_(114 earlier sections omitted)_
 
-- **T108 — T-14.6a Strange-app zoo run and matrix**: **State: done.** The scripted zoo run and its matrix are committed. Six rows,; `scripts/zoo/zoo-run.sh` (new) — orchestrator (`make zoo-run`): private nested
 - **T109 — T-14.6b Strange-app zoo fixes**: **State: done.** The zoo surfaced one fixable failure and one compositor; `scripts/zoo/sdl_zoo.c` — the loop now calls `SDL_GetWindowSurface` +
 - **T110 — T-14.7 Retire interim paths**: **State: done.** The last two interim hacks are gone: the Dock's local; `shell/src/desktopentry.{h,cpp}` — `scan`, `parse`, `defaultApplicationDirs`
 - **T110a — T-14.7a Dock plate geometry and spacing**: **State: done.** The Dock plate now floats: token-driven cross-axis and; `design-system/tokens/tokens.json` — `controls.dock`: `padding` 10,
@@ -42,6 +41,7 @@ _(113 earlier sections omitted)_
 - **T111 — T-15.1a Bluetooth adapter**: **State: done.** The BlueZ Bluetooth adapter landed in a new crate,; `services/bluetooth/` (new crate) — `src/source.rs` (`BluetoothData`,
 - **T112 — T-15.1b Bluetooth pane and tile**: **State: done.** The Bluetooth pane and Control Center tile ship as one unit; `services/system-status/src/bluetooth.rs` (new) — `BluetoothHost<B>` and
 - **T113 — T-15.2a Storage and removable media adapter**: **State: done.** The UDisks2 storage/removable-media adapter landed in a new; `services/storage/` (new crate) — `src/source.rs` (`StorageData`,
+- **T114 — T-15.2b Storage and removable media pane and tile**: **State: done.** The Storage pane and Control Center tile ship as one unit over; `services/system-status/src/storage.rs` (new) — `StorageHost<S>` +
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -10925,3 +10925,76 @@ Gotchas for T-15.2b / T-15.16:
 - Live visual check: nested demo + `scripts/capture-t15-storage.sh` (no
   surface; vision tool returned HTTP 429 — evidence is pixel statistics plus
   the headless suites).
+
+## T114 — T-15.2b Storage and removable media pane and tile
+
+**State: done.** The Storage pane and Control Center tile ship as one unit over
+a fourth interface on the existing `dragonfruit-system-status` bridge host
+(ADR 0120). The pane applies live (mount/unmount/eject), the tile reflects
+state and writes it, and absence is documented and tested.
+
+Real paths:
+
+- `services/system-status/src/storage.rs` (new) — `StorageHost<S>` +
+  `storage_view`/`storage_snapshot_view`/`storage_report`; view
+  `{state,present,glyph,label,mountedCount,volumeCount,removableCount,drives,
+  volumes}`; three writes report `accepted/denied/absent/failed`.
+- `services/system-status/src/{lib,dbus,main}.rs` — `STORAGE_INTERFACE`,
+  `LiveStorage`, `StorageInterface (State/Refresh/Mount/Unmount/Eject)`,
+  `run(host, bluetooth, storage)`, `interface_names()` 5, `--print-storage`.
+- `services/system-status/Cargo.toml` — `dragonfruit-storage` dep.
+- `services/system-status/tests/storage.rs` (new) — 4 integration tests.
+- `shell/src/systemstatusclient.{h,cpp}` — `refreshStorage` + mount/unmount/
+  eject + `storageState`; mock serves a removable-drive fixture.
+- `shell/src/systemstatusmodel.{h,cpp}` — `storage()`/`storageVisible()`,
+  `applyStorage(Json)`; `present:false` hide rule now covers storage.
+- `shell/src/shellcontroller.{h,cpp}` — tile data + `storageWritable`, four
+  `onStorage*` slots.
+- `shell/control-center/ControlCenter.qml` — compact Storage tile; tile model
+  now 7 entries.
+- `design-system/components/Icon.qml` — `storage` painted glyph.
+- `apps/settings/StorageClient.{h,cpp}` (new) — `DbusStorageClient` +
+  `MockStorageClient` (`DF_STORAGE_FIXTURE`).
+- `apps/settings/SettingsBridge.{h,cpp}` — `storage`/`storageAvailable` +
+  four writes.
+- `apps/settings/StoragePane.qml` (new) — `Volumes` (Mount/Unmount per row) +
+  `Removable Media` (Eject) + absence note.
+- `apps/settings/SettingsPanes.qml` — top-level `storage` row shipped;
+  `SettingsShell.qml` registers the pane.
+- Tests — `shell/tests/tst_statusmodel.cpp` (2), `shell/tests/
+  tst_controlcenter.qml`, `apps/settings/tests/tst_settings_storage.{cpp,qml}`
+  (new), `tst_settings_absence.qml`, `tst_settings_shell.qml`.
+- Docs — `docs/design/07-system-integration.md` "The Storage pane and tile
+  (T-15.2b)"; `docs/design/adr/0120-storage-pane-and-tile.md`; capture script
+  `scripts/capture-t15-storage-pane.sh` + two stills; `docs/captures/README.md`.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-system-status` — 17 lib + 4 bluetooth + 9 host +
+  4 storage green.
+- `ctest --output-on-failure -j4` (in `build/`) — 55/55.
+- `make e2e` — EXIT 0.
+- `cargo fmt --all -- --check`; `cargo clippy -p dragonfruit-system-status
+  --all-targets -- -D warnings` — clean.
+- `make lint` — still fails only on the pre-existing `check-desktop-names`
+  lines (StatusNotifier/zoo/apppicker), unchanged.
+
+Decisions / gotchas for later tasks:
+
+- **Storage is a top-level Settings pane, not under `General`.** The reference
+  has `General > Storage`, but `General` is unshipped (T-15.10); this keeps the
+  no-half-panes rule. Move the row into General when T-15.10 lands (ADR 0120).
+- **Fourth interface on the bridge host** (Bluetooth precedent, ADR 0118).
+- **`DF_STORAGE_FIXTURE`** is the Settings-pane seam; `DF_STATUS_FIXTURE` now
+  also drives the shell's Storage tile. Neither is set in `make e2e`.
+- **Absence matrix for T-15.16**: mask the bridge host (view empty), mask
+  `org.freedesktop.UDisks2` (`unavailable`), or drop the mountable volume
+  (`present: false`).
+- The shell menu bar has no Storage slot (no dead control); Storage is the
+  Control Center tile only.
+- **The fixture's eject case is order-sensitive**: the mock cannot restore an
+  ejected drive, so `tst_settings_storage` names it `test_zz_…` to run last.
+- The Control Center surface is a fixed 360x780; the tile is deliberately
+  compact and `tst_controlcenter` asserts the content still fits.
+- Live visual check: `scripts/capture-t15-storage-pane.sh`; the vision tool
+  confirmed both surfaces render with no clipping.

@@ -32,6 +32,7 @@
 
 class SettingsClient;
 class BluetoothClient;
+class StorageClient;
 class QDBusServiceWatcher;
 
 class SettingsBridge : public QObject
@@ -83,6 +84,14 @@ class SettingsBridge : public QObject
     // Whether the bridge host is on the session bus. False means no Bluetooth
     // surface at all; the pane shows the absence note.
     Q_PROPERTY(bool bluetoothAvailable READ bluetoothAvailable NOTIFY bluetoothChanged)
+    // The storage view from the bridge host (T-15.2b): `{ state, present,
+    // label, mountedCount, volumes, drives }`. Empty when the host (or
+    // UDisks2) is absent; the pane renders the absence state and disables its
+    // controls rather than erroring.
+    Q_PROPERTY(QVariantMap storage READ storage NOTIFY storageChanged)
+    // Whether the bridge host is on the session bus. False means no storage
+    // surface at all; the pane shows the absence note.
+    Q_PROPERTY(bool storageAvailable READ storageAvailable NOTIFY storageChanged)
     // The pane the shell opens on startup. Empty uses the first shipped pane;
     // `DF_SETTINGS_START_PANE=wallpaper` selects one for captures and tests.
     Q_PROPERTY(QString startPane READ startPane CONSTANT)
@@ -100,6 +109,8 @@ public:
     QVariantList providerItems() const;
     QVariantMap bluetooth() const;
     bool bluetoothAvailable() const;
+    QVariantMap storage() const;
+    bool storageAvailable() const;
     QString providerStatus() const;
     QString providerDefault() const;
     QString wallpaperBuiltinDefault() const;
@@ -142,6 +153,15 @@ public:
     Q_INVOKABLE void pairBluetooth(const QString &address);
     Q_INVOKABLE void setBluetoothConnected(const QString &address, bool connected);
 
+    // T-15.2b: the Storage pane's one seam. `refreshStorage` re-reads the
+    // bridge host on pane open; the three writes each call the adapter once
+    // and the host pushes the new view back through `storageChanged`. A no-op
+    // when the host is absent.
+    Q_INVOKABLE void refreshStorage();
+    Q_INVOKABLE void mountStorage(const QString &volumePath);
+    Q_INVOKABLE void unmountStorage(const QString &volumePath);
+    Q_INVOKABLE void ejectStorage(const QString &drivePath);
+
     // T-18.2 test seam: with `DF_WALLPAPER_FIXTURE` set, seed the provider
     // lifecycle to `status` (`ready` loads the deterministic fixture
     // catalogue; any other status leaves it empty) so the pane's fetching /
@@ -171,6 +191,8 @@ signals:
     void providerChanged();
     // The Bluetooth view or availability changed (T-15.1b).
     void bluetoothChanged();
+    // The storage view or availability changed (T-15.2b).
+    void storageChanged();
 
 private:
     void buildWallpaperPresets();
@@ -213,4 +235,6 @@ private:
     QDBusServiceWatcher *m_providerWatcher = nullptr;
     // T-15.1b: the Bluetooth seam (`DF_BLUETOOTH_FIXTURE` selects the mock).
     BluetoothClient *m_bluetooth = nullptr;
+    // T-15.2b: the storage seam (`DF_STORAGE_FIXTURE` selects the mock).
+    StorageClient *m_storage = nullptr;
 };

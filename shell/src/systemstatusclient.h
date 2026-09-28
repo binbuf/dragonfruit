@@ -38,6 +38,12 @@ public:
     virtual void setBluetoothDiscovering(bool discovering) = 0;
     virtual void pairBluetooth(const QString &address) = 0;
     virtual void setBluetoothConnected(const QString &address, bool connected) = 0;
+    // Storage (T-15.2b): a live state read plus the three explicit writes the
+    // Control Center tile and the Settings pane raise.
+    virtual void refreshStorage() = 0;
+    virtual void mountStorage(const QString &volumePath) = 0;
+    virtual void unmountStorage(const QString &volumePath) = 0;
+    virtual void ejectStorage(const QString &drivePath) = 0;
     virtual void join(const QString &ssid, const QString &secret) = 0;
     virtual void setVolume(double volume) = 0;
     virtual void setMute(bool muted) = 0;
@@ -48,6 +54,7 @@ signals:
     void audioState(const QByteArray &json);
     void batteryState(const QByteArray &json);
     void bluetoothState(const QByteArray &json);
+    void storageState(const QByteArray &json);
     void joinReport(const QByteArray &json);
     void writeReport(const QByteArray &json);
 };
@@ -69,6 +76,10 @@ public:
     void setBluetoothDiscovering(bool discovering) override;
     void pairBluetooth(const QString &address) override;
     void setBluetoothConnected(const QString &address, bool connected) override;
+    void refreshStorage() override;
+    void mountStorage(const QString &volumePath) override;
+    void unmountStorage(const QString &volumePath) override;
+    void ejectStorage(const QString &drivePath) override;
     void join(const QString &ssid, const QString &secret) override;
     void setVolume(double volume) override;
     void setMute(bool muted) override;
@@ -105,6 +116,10 @@ public:
     void setBluetoothDiscovering(bool discovering) override;
     void pairBluetooth(const QString &address) override;
     void setBluetoothConnected(const QString &address, bool connected) override;
+    void refreshStorage() override;
+    void mountStorage(const QString &volumePath) override;
+    void unmountStorage(const QString &volumePath) override;
+    void ejectStorage(const QString &drivePath) override;
     void join(const QString &ssid, const QString &secret) override;
     void setVolume(double volume) override;
     void setMute(bool muted) override;
@@ -119,4 +134,9 @@ private:
     bool m_btPowered = true;
     bool m_btDiscovering = false;
     bool m_btDeviceConnected = false;
+    // The storage fixture state (T-15.2b): one removable drive with a volume
+    // that mount/unmount toggles in place, so the tile's round-trip is
+    // observable headlessly (`DF_STATUS_FIXTURE`).
+    bool m_storageVolumeMounted = false;
+    bool m_storageDrivePresent = true;
 };

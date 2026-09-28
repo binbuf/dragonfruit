@@ -298,6 +298,34 @@ hardware blocks session startup. Locked encrypted volumes have no `Filesystem`
 until unlocked and are not listed as mountable; unlock and format are out of
 scope.
 
+### The Storage pane and tile (T-15.2b)
+
+The Settings Storage pane and the Control Center tile are one functional unit
+over the same adapter. Both read the `dragonfruit-system-status` bridge host's
+`org.dragonfruit.SystemStatus1.Storage` interface
+([adr/0120](adr/0120-storage-pane-and-tile.md)): its `State()` returns the flat
+JSON view `StorageHost` projects from `StorageSnapshot` (the `present` flag, the
+`mountedCount`/`volumeCount`/`removableCount` summary, and the drive and volume
+lists with each volume's mounted state, mount point, filesystem, and
+removable/ejectable/system flags), and `Mount`, `Unmount`, and `Eject` are the
+three explicit writes. The host re-reads UDisks2 after a write; the pane and
+tile never invent state.
+
+The pane lists the mountable volumes with a Mount/Unmount action per row and a
+`Removable Media` group with an Eject action per removable drive. The Control
+Center tile mirrors that: the mounted-count subtitle, a Mount/Unmount row per
+volume, an Eject action on removable volumes, and a `Storage Settings…` entry
+point (the launch itself is T-16). Opening the pane asks the host for a re-read.
+
+The pane follows the reference's IA only in spirit: the macOS reference puts
+Storage under `General > Storage`, but this project's `General` pane has not
+shipped (T-15.10). Shipping Storage as a top-level pane keeps the no-half-panes
+rule without gating it behind a later task. The absence behavior mirrors the
+adapter's two hide rules (ADR 0119): UDisks2 gone or no mountable volume hides
+the tile and shows the pane's one-line note with the controls inert; a
+`StorageOutcome::Denied` write is surfaced per action without degrading the read
+state.
+
 ## The status bridge host (T-07.5a)
 
 The adapters are Rust crates; the menu bar is C++/QML. T-07.5a bridges them in

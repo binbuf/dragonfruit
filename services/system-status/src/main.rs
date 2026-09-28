@@ -13,6 +13,8 @@
 //! dragonfruit-system-status --print-wifi     # refresh and print the JSON view
 //! dragonfruit-system-status --print-audio
 //! dragonfruit-system-status --print-battery
+//! dragonfruit-system-status --print-bluetooth
+//! dragonfruit-system-status --print-storage
 //! ```
 
 use std::process::ExitCode;
@@ -21,21 +23,25 @@ use dragonfruit_audio::CommandAudio;
 use dragonfruit_bluetooth::DbusBluez;
 use dragonfruit_networkmanager::DbusNetworkManager;
 use dragonfruit_power::DbusUPower;
+use dragonfruit_storage::DbusUDisks;
 use dragonfruit_system_status::dbus;
 use dragonfruit_system_status::BluetoothHost;
 use dragonfruit_system_status::StatusHost;
+use dragonfruit_system_status::StorageHost;
 
 fn main() -> ExitCode {
     let mut print_wifi = false;
     let mut print_audio = false;
     let mut print_battery = false;
     let mut print_bluetooth = false;
+    let mut print_storage = false;
     for arg in std::env::args().skip(1) {
         match arg.as_str() {
             "--print-wifi" => print_wifi = true,
             "--print-audio" => print_audio = true,
             "--print-battery" => print_battery = true,
             "--print-bluetooth" => print_bluetooth = true,
+            "--print-storage" => print_storage = true,
             "-h" | "--help" => {
                 print_help();
                 return ExitCode::SUCCESS;
@@ -54,7 +60,13 @@ fn main() -> ExitCode {
         DbusUPower::new(),
     );
     let mut bluetooth = BluetoothHost::new(DbusBluez::new());
+    let mut storage = StorageHost::new(DbusUDisks::new());
 
+    if print_storage {
+        storage.refresh();
+        println!("{}", storage.state());
+        return ExitCode::SUCCESS;
+    }
     if print_bluetooth {
         bluetooth.refresh();
         println!("{}", bluetooth.state());
@@ -78,7 +90,8 @@ fn main() -> ExitCode {
 
     host.refresh();
     bluetooth.refresh();
-    match dbus::run(host, bluetooth) {
+    storage.refresh();
+    match dbus::run(host, bluetooth, storage) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!(
@@ -100,6 +113,7 @@ fn print_help() {
            --print-audio    refresh WirePlumber and print the audio JSON view\n\
            --print-battery  refresh UPower and print the battery JSON view\n\
            --print-bluetooth refresh BlueZ and print the Bluetooth JSON view\n\
+           --print-storage  refresh UDisks2 and print the storage JSON view\n\
            -h, --help       show this help"
     );
 }

@@ -474,6 +474,19 @@ down cleanly. The adapter itself is proven headlessly by
 evidence is the pixel statistics (menu-bar strip sigma 82.0, dock region sigma
 37.6, client window sigma 65.2) plus the headless suites.
 
+T-15.2b's Storage pane and Control Center tile are captured by
+`scripts/capture-t15-storage-pane.sh`: `t15-2b-storage-pane.png` is the
+Settings Storage pane (the `Volumes` group with the `Photos` row and its
+`Mount` action, and the `Removable Media` group with the `Flash Drive` row and
+`Eject`), and `t15-2b-storage-control-center.png` is the panel with the Storage
+tile, the volume row, and the `Storage Settings…` link. The demo runs with
+`DF_SETTINGS_START_PANE=storage`, `DF_STATUS_FIXTURE` and
+`DF_STORAGE_FIXTURE` so no host UDisks2 is needed. Needs a host Wayland
+session, spectacle, and Pillow; not in `make e2e`. The pane still is 2088x1410
+and the panel crop is 360x780; the vision check confirmed the pane's volume
+and removable-media rows render with no clipping or stray artifacts, and the
+Control Center bottom is not clipped.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

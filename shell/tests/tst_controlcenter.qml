@@ -24,6 +24,9 @@ Item {
         SignalSpy { id: muteSpy; signalName: "muteToggleRequested" }
         SignalSpy { id: bluetoothToggleSpy; signalName: "bluetoothToggleRequested" }
         SignalSpy { id: bluetoothDeviceSpy; signalName: "bluetoothDeviceToggled" }
+        SignalSpy { id: storageMountSpy; signalName: "storageMountRequested" }
+        SignalSpy { id: storageUnmountSpy; signalName: "storageUnmountRequested" }
+        SignalSpy { id: storageEjectSpy; signalName: "storageEjectRequested" }
         SignalSpy { id: focusSpy; signalName: "focusToggleRequested" }
         SignalSpy { id: darkSpy; signalName: "darkModeToggleRequested" }
         SignalSpy { id: closedSpy; signalName: "closed" }
@@ -72,6 +75,21 @@ Item {
             return view;
         }
 
+        function storageModel(state, present, mounted, volumes, drives) {
+            return {
+                kind: "storage",
+                state: state,
+                present: present,
+                visible: state === "available" && present,
+                enabled: state === "available" && present,
+                label: (state !== "available" || !present) ? "Storage unavailable"
+                     : mounted ? "Storage 1 mounted" : "Storage",
+                mountedCount: mounted ? 1 : 0,
+                volumes: volumes !== undefined ? volumes : [],
+                drives: drives !== undefined ? drives : []
+            };
+        }
+
         function focusModel(mode, batchedCount) {
             return {
                 mode: mode,
@@ -89,36 +107,42 @@ Item {
             // The shell sets this from the bridge host's Bluetooth interface
             // (T-15.1b); the tile is live when it is true.
             panel.bluetoothWritable = true;
+            // The shell sets this from the bridge host's Storage interface
+            // (T-15.2b); the tile is live when it is true.
+            panel.storageWritable = true;
             waitForRendering(stage);
             return panel;
         }
 
-        function test_tiles_expose_all_six_controls() {
+        function test_tiles_expose_all_seven_controls() {
             var panel = make({
                 wifi: wifiModel("available", true, "home"),
                 bluetooth: bluetoothModel("available", true, true, false),
+                storage: storageModel("available", true, false),
                 audio: audioModel("available", 0.6, false),
                 brightness: 0.8,
                 focusPolicy: focusModel("off"),
                 dark: true
             });
-            compare(panel.tiles.length, 6);
+            compare(panel.tiles.length, 7);
             compare(panel.tiles[0].id, "wifi");
             compare(panel.tiles[0].kind, "toggle");
             compare(panel.tiles[0].checked, true);
             compare(panel.tiles[1].id, "bluetooth");
             compare(panel.tiles[1].kind, "toggle");
             compare(panel.tiles[1].checked, true);
-            compare(panel.tiles[2].id, "focus");
-            compare(panel.tiles[2].kind, "toggle");
-            compare(panel.tiles[3].id, "volume");
-            compare(panel.tiles[3].kind, "slider");
-            compare(Math.abs(panel.tiles[3].value - 0.6) < 0.0001, true);
-            compare(panel.tiles[4].id, "brightness");
-            compare(Math.abs(panel.tiles[4].value - 0.8) < 0.0001, true);
-            compare(panel.tiles[5].id, "dark");
-            compare(panel.tiles[5].kind, "toggle");
-            compare(panel.tiles[5].checked, true);
+            compare(panel.tiles[2].id, "storage");
+            compare(panel.tiles[2].kind, "storage");
+            compare(panel.tiles[3].id, "focus");
+            compare(panel.tiles[3].kind, "toggle");
+            compare(panel.tiles[4].id, "volume");
+            compare(panel.tiles[4].kind, "slider");
+            compare(Math.abs(panel.tiles[4].value - 0.6) < 0.0001, true);
+            compare(panel.tiles[5].id, "brightness");
+            compare(Math.abs(panel.tiles[5].value - 0.8) < 0.0001, true);
+            compare(panel.tiles[6].id, "dark");
+            compare(panel.tiles[6].kind, "toggle");
+            compare(panel.tiles[6].checked, true);
             compare(panel.wifiLabel, "home");
         }
 
@@ -219,6 +243,85 @@ Item {
             compare(link.Accessible.name, "Open Bluetooth Settings");
         }
 
+        function test_storage_tile_reflects_state() {
+            var panel = make({
+                storage: storageModel("available", true, true,
+                                      [{ path: "/dev/sdb1", drivePath: "/drives/usb",
+                                         name: "Photos", mounted: true,
+                                         removable: true, ejectable: true }])
+            });
+            compare(panel.storageVisible, true);
+            compare(panel.storageMountedCount, 1);
+            compare(panel.storageVolumes.length, 1);
+            compare(panel.storageLabel, "Storage 1 mounted");
+            compare(panel.tiles[2].enabled, true);
+
+            panel.storage = storageModel("available", true, false);
+            compare(panel.storageMountedCount, 0);
+            compare(panel.storageLabel, "Storage");
+        }
+
+        function test_storage_tile_hides_on_absence_and_no_volumes() {
+            var panel = make({ storage: storageModel("unavailable", false, false) });
+            compare(panel.storageVisible, false);
+            compare(panel.tiles[2].visible, false);
+            var tile = findChild(panel, "storageTile");
+            verify(tile !== null);
+            compare(tile.visible, false);
+
+            // UDisks2 present but no mountable volume: available, yet hidden.
+            panel.storage = storageModel("available", false, false);
+            compare(panel.storageVisible, false);
+        }
+
+        function test_storage_volume_row_raises_mount_or_unmount() {
+            var panel = make({
+                storage: storageModel("available", true, false,
+                                      [{ path: "/dev/sdb1", drivePath: "/drives/usb",
+                                         name: "Photos", mounted: false,
+                                         removable: true, ejectable: true }])
+            });
+            storageMountSpy.target = panel;
+            storageMountSpy.clear();
+            storageUnmountSpy.target = panel;
+            storageUnmountSpy.clear();
+            panel.toggleStorageVolume("/dev/sdb1");
+            compare(storageMountSpy.count, 1);
+            compare(storageMountSpy.signalArguments[0][0], "/dev/sdb1");
+
+            panel.storage = storageModel("available", true, true,
+                                         [{ path: "/dev/sdb1", drivePath: "/drives/usb",
+                                            name: "Photos", mounted: true,
+                                            removable: true, ejectable: true }]);
+            panel.toggleStorageVolume("/dev/sdb1");
+            compare(storageUnmountSpy.count, 1);
+            compare(storageUnmountSpy.signalArguments[0][0], "/dev/sdb1");
+        }
+
+        function test_storage_eject_raises_the_drive() {
+            var panel = make({
+                storage: storageModel("available", true, true,
+                                      [{ path: "/dev/sdb1", drivePath: "/drives/usb",
+                                         name: "Photos", mounted: true,
+                                         removable: true, ejectable: true }])
+            });
+            storageEjectSpy.target = panel;
+            storageEjectSpy.clear();
+            panel.ejectStorageVolume("/dev/sdb1");
+            compare(storageEjectSpy.count, 1);
+            compare(storageEjectSpy.signalArguments[0][0], "/drives/usb");
+        }
+
+        function test_storage_settings_link_is_accessible() {
+            var panel = make({
+                storage: storageModel("available", true, false)
+            });
+            var link = findChild(panel, "storageSettingsLink");
+            verify(link !== null);
+            compare(link.Accessible.role, Accessible.Button);
+            compare(link.Accessible.name, "Open Storage Settings");
+        }
+
         function test_wifi_tile_is_read_only_until_the_adapter_can_write() {
             // The T-07 adapter exposes no radio write (T-15); the toggle
             // reflects state and is inert, so its model entry is disabled.
@@ -280,7 +383,7 @@ Item {
             compare(panel.focusMode, "dnd");
             compare(panel.focusOn, true);
             compare(panel.focusLabel, "Do Not Disturb");
-            compare(panel.tiles[2].checked, true);
+            compare(panel.tiles[3].checked, true);
             verify(panel.focusSubtitle.indexOf("3") >= 0);
             verify(panel.focusSubtitle.indexOf("Do Not Disturb") >= 0);
 
@@ -335,11 +438,11 @@ Item {
 
         function test_dark_mode_tile_reflects_the_scheme() {
             var panel = make({ dark: false });
-            compare(panel.tiles[5].checked, false);
-            compare(panel.tiles[5].subtitle, "Off");
+            compare(panel.tiles[6].checked, false);
+            compare(panel.tiles[6].subtitle, "Off");
             panel.dark = true;
-            compare(panel.tiles[5].checked, true);
-            compare(panel.tiles[5].subtitle, "On");
+            compare(panel.tiles[6].checked, true);
+            compare(panel.tiles[6].subtitle, "On");
         }
 
         function test_dark_mode_toggle_raises_the_absolute_scheme() {

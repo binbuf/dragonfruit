@@ -12,6 +12,7 @@ const QString kKindWifi = QStringLiteral("wifi");
 const QString kKindAudio = QStringLiteral("audio");
 const QString kKindBattery = QStringLiteral("battery");
 const QString kKindBluetooth = QStringLiteral("bluetooth");
+const QString kKindStorage = QStringLiteral("storage");
 
 } // namespace
 
@@ -38,6 +39,11 @@ bool SystemStatusModel::batteryVisible() const
 bool SystemStatusModel::bluetoothVisible() const
 {
     return m_bluetooth.value(QStringLiteral("visible")).toBool();
+}
+
+bool SystemStatusModel::storageVisible() const
+{
+    return m_storage.value(QStringLiteral("visible")).toBool();
 }
 
 QVariantMap SystemStatusModel::parseView(const QByteArray &json, const QString &kind, QString *error)
@@ -77,7 +83,7 @@ QVariantMap SystemStatusModel::normalize(const QVariantMap &view, const QString 
     // `available` with `present: false`; hide the item then too. Bluetooth
     // shares the rule (ADR 0117): a running `bluetoothd` with no controller is
     // `available` with `present: false` and the tile hides.
-    if ((kind == kKindBattery || kind == kKindBluetooth)
+    if ((kind == kKindBattery || kind == kKindBluetooth || kind == kKindStorage)
             && view.contains(QStringLiteral("present"))
             && !view.value(QStringLiteral("present")).toBool())
         hidden = true;
@@ -110,6 +116,12 @@ void SystemStatusModel::applyBattery(const QVariantMap &view)
 void SystemStatusModel::applyBluetooth(const QVariantMap &view)
 {
     m_bluetooth = normalize(view, kKindBluetooth);
+    emit changed();
+}
+
+void SystemStatusModel::applyStorage(const QVariantMap &view)
+{
+    m_storage = normalize(view, kKindStorage);
     emit changed();
 }
 
@@ -149,6 +161,15 @@ void SystemStatusModel::applyBluetoothJson(const QByteArray &json)
     applyBluetooth(view);
 }
 
+void SystemStatusModel::applyStorageJson(const QByteArray &json)
+{
+    QString error;
+    const QVariantMap view = parseView(json, kKindStorage, &error);
+    if (!error.isEmpty())
+        return;
+    applyStorage(view);
+}
+
 void SystemStatusModel::requestJoin(const QString &ssid, const QString &secret)
 {
     if (ssid.isEmpty())
@@ -184,4 +205,9 @@ void SystemStatusModel::requestRefreshBattery()
 void SystemStatusModel::requestRefreshBluetooth()
 {
     emit refreshBluetoothRequested();
+}
+
+void SystemStatusModel::requestRefreshStorage()
+{
+    emit refreshStorageRequested();
 }
