@@ -18,15 +18,20 @@ use std::collections::HashMap;
 
 use dragonfruit_system_adapters::AdapterError;
 use zbus::blocking::Connection;
-use zbus::zvariant::{ObjectPath, OwnedObjectPath, Value};
+use zbus::zvariant::{ObjectPath, OwnedObjectPath, OwnedValue, Value};
 
 use crate::source::{
     AccessPointData, ActivateOutcome, ActivateRequest, NetworkManagerData, NetworkManagerSource,
     WifiDeviceData,
 };
+use crate::vpn::source::{
+    ActiveVpnData, VpnConnectionData, VpnData, VpnOutcome, VpnRequest, VpnSource,
+};
 
 /// The well-known name `NetworkManager` owns.
 pub const NM_SERVICE: &str = "org.freedesktop.NetworkManager";
+/// The object path of the NetworkManager settings service.
+pub const VPN_SETTINGS_PATH: &str = "/org/freedesktop/NetworkManager/Settings";
 /// `NM_DEVICE_TYPE_WIFI`.
 const NM_DEVICE_TYPE_WIFI: u32 = 2;
 
@@ -42,6 +47,8 @@ trait NetworkManager {
     fn connectivity(&self) -> zbus::Result<u32>;
     #[zbus(property)]
     fn devices(&self) -> zbus::Result<Vec<OwnedObjectPath>>;
+    #[zbus(property)]
+    fn active_connections(&self) -> zbus::Result<Vec<OwnedObjectPath>>;
 }
 
 #[zbus::proxy(
@@ -329,6 +336,296 @@ fn failed(error: zbus::Error) -> AdapterError {
     AdapterError::new(format!("NetworkManager: {error}"))
 }
 
+/// The NetworkManager settings service, `/org/freedesktop/NetworkManager/
+/// Settings`.
+#[zbus::proxy(
+    interface = "org.freedesktop.NetworkManager.Settings",
+    default_service = "org.freedesktop.NetworkManager",
+    default_path = "/org/freedesktop/NetworkManager/Settings"
+)]
+trait NmSettings {
+    #[zbus(property)]
+    fn connections(&self) -> zbus::Result<Vec<OwnedObjectPath>>;
+    fn get_connection_by_uuid(&self, uuid: &str) -> zbus::Result<OwnedObjectPath>;
+}
+
+/// One live active connection, `org.freedesktop.NetworkManager.Connection.
+/// Active`.
+#[zbus::proxy(
+    interface = "org.freedesktop.NetworkManager.Connection.Active",
+    default_service = "org.freedesktop.NetworkManager"
+)]
+trait ActiveConnection {
+    #[zbus(property)]
+    fn connection(&self) -> zbus::Result<OwnedObjectPath>;
+    #[zbus(property)]
+    fn uuid(&self) -> zbus::Result<String>;
+    #[zbus(property)]
+    fn id(&self) -> zbus::Result<String>;
+    #[zbus(property)]
+    fn state(&self) -> zbus::Result<u32>;
+    #[zbus(property)]
+    fn vpn(&self) -> zbus::Result<bool>;
+    #[zbus(property, name = "Type")]
+    fn connection_type(&self) -> zbus::Result<String>;
+}
+
+/// The real NetworkManager VPN transport.
+///
+/// Reads the configured VPN connections (the settings objects of type `vpn`
+/// or `wireguard`) and the live active connections, both over the system bus;
+/// writes are `ActivateConnection`/`DeactivateConnection` by UUID. It reuses
+/// the same D-Bus client and the same absence discipline as
+/// [`DbusNetworkManager`], and reimplements no VPN stack.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct DbusVpn;
+
+impl DbusVpn {
+    /// A source that reads the system bus on demand.
+    pub const fn new() -> Self {
+        DbusVpn
+    }
+}
+
+impl VpnSource for DbusVpn {
+    fn read(&mut self) -> Result<Option<VpnData>, AdapterError> {
+        // No system bus means no NetworkManager can be reached: absence, not
+        // an error, and never a startup blocker.
+        let connection = match Connection::system() {
+            Ok(connection) => connection,
+            Err(_) => return Ok(None),
+        };
+        if !name_has_owner(&connection).map_err(failed)? {
+            return Ok(None);
+        }
+        Ok(Some(read_vpn(&connection).map_err(failed)?))
+    }
+
+    fn activate(&mut self, request: &VpnRequest) -> VpnOutcome {
+        let connection = match daemon_connection() {
+            Ok(connection) => connection,
+            Err(outcome) => return outcome,
+        };
+        let path = match resolve_connection(&connection, &request.uuid) {
+            Ok(path) => path,
+            Err(outcome) => return outcome,
+        };
+        let connection_path = match ObjectPath::try_from(path.as_str()) {
+            Ok(path) => path,
+            Err(error) => {
+                return VpnOutcome::Failed(AdapterError::new(format!("NetworkManager: {error}")))
+            }
+        };
+        let root = ObjectPath::try_from("/").expect("root path is valid");
+        match connection.call_method(
+            Some(NM_SERVICE),
+            "/org/freedesktop/NetworkManager",
+            Some("org.freedesktop.NetworkManager"),
+            "ActivateConnection",
+            &(connection_path, root.clone(), root),
+        ) {
+            Ok(_) => VpnOutcome::Accepted,
+            Err(error) => classify_vpn_error(error),
+        }
+    }
+
+    fn deactivate(&mut self, request: &VpnRequest) -> VpnOutcome {
+        let connection = match daemon_connection() {
+            Ok(connection) => connection,
+            Err(outcome) => return outcome,
+        };
+        let path = match active_path_for_uuid(&connection, &request.uuid) {
+            Ok(Some(path)) => path,
+            Ok(None) => {
+                return VpnOutcome::Failed(AdapterError::new(format!(
+                    "NetworkManager: VPN connection '{}' is not active",
+                    request.uuid
+                )))
+            }
+            Err(error) => {
+                return VpnOutcome::Failed(AdapterError::new(format!("NetworkManager: {error}")))
+            }
+        };
+        let active_path = match ObjectPath::try_from(path.as_str()) {
+            Ok(path) => path,
+            Err(error) => {
+                return VpnOutcome::Failed(AdapterError::new(format!("NetworkManager: {error}")))
+            }
+        };
+        match connection.call_method(
+            Some(NM_SERVICE),
+            "/org/freedesktop/NetworkManager",
+            Some("org.freedesktop.NetworkManager"),
+            "DeactivateConnection",
+            &(active_path,),
+        ) {
+            Ok(_) => VpnOutcome::Accepted,
+            Err(error) => classify_vpn_error(error),
+        }
+    }
+}
+
+/// Read every configured VPN connection and every live active connection.
+fn read_vpn(connection: &Connection) -> zbus::Result<VpnData> {
+    let manager = NetworkManagerProxyBlocking::new(connection)?;
+    let settings = NmSettingsProxyBlocking::new(connection)?;
+
+    let mut connections = Vec::new();
+    for path in settings.connections()? {
+        let map = get_connection_settings(connection, path.as_str())?;
+        if let Some(connection) = vpn_connection_from_settings(path.as_str(), &map) {
+            connections.push(connection);
+        }
+    }
+
+    let mut active = Vec::new();
+    for path in manager.active_connections()? {
+        let proxy = ActiveConnectionProxyBlocking::new(connection, path.as_str())?;
+        let is_vpn = proxy.vpn().unwrap_or(false);
+        let kind = proxy.connection_type().unwrap_or_default();
+        if !is_vpn && kind != "vpn" && kind != "wireguard" {
+            continue;
+        }
+        active.push(ActiveVpnData {
+            path: path.as_str().to_owned(),
+            connection: proxy.connection()?.as_str().to_owned(),
+            id: proxy.id().unwrap_or_default(),
+            uuid: proxy.uuid()?,
+            state: proxy.state()?,
+            vpn: is_vpn,
+        });
+    }
+
+    Ok(VpnData {
+        connections,
+        active,
+    })
+}
+
+/// One connection's `a{sa{sv}}` settings map from `GetSettings`.
+fn get_connection_settings(
+    connection: &Connection,
+    path: &str,
+) -> zbus::Result<HashMap<String, HashMap<String, OwnedValue>>> {
+    let reply = connection.call_method(
+        Some(NM_SERVICE),
+        path,
+        Some("org.freedesktop.NetworkManager.Settings.Connection"),
+        "GetSettings",
+        &(),
+    )?;
+    reply.body().deserialize()
+}
+
+/// Decode one connection settings map into a [`VpnConnectionData`], or `None`
+/// when it is not a VPN connection (a settings object of any other type).
+///
+/// Pure and total: a missing or mistyped property falls back to a default
+/// rather than failing the whole read, so a daemon that adds a field keeps
+/// working.
+pub fn vpn_connection_from_settings(
+    path: &str,
+    settings: &HashMap<String, HashMap<String, OwnedValue>>,
+) -> Option<VpnConnectionData> {
+    let connection = settings.get("connection")?;
+
+    let kind = connection.get("type").and_then(value_string)?;
+    if kind != "vpn" && kind != "wireguard" {
+        return None;
+    }
+
+    let id = connection
+        .get("id")
+        .and_then(value_string)
+        .unwrap_or_default();
+    let uuid = connection
+        .get("uuid")
+        .and_then(value_string)
+        .unwrap_or_default();
+    let autoconnect = connection
+        .get("autoconnect")
+        .and_then(value_bool)
+        .unwrap_or(false);
+    let service_type = settings
+        .get("vpn")
+        .and_then(|vpn| vpn.get("service-type"))
+        .and_then(value_string);
+
+    Some(VpnConnectionData {
+        path: path.to_owned(),
+        id,
+        uuid,
+        kind,
+        service_type,
+        autoconnect,
+    })
+}
+
+/// A string out of one settings value.
+fn value_string(value: &OwnedValue) -> Option<String> {
+    value.downcast_ref::<String>().ok()
+}
+
+/// A bool out of one settings value.
+fn value_bool(value: &OwnedValue) -> Option<bool> {
+    value.downcast_ref::<bool>().ok()
+}
+
+/// A connection to the system bus with NetworkManager owning its name, or the
+/// [`VpnOutcome`] that stands in for it.
+fn daemon_connection() -> Result<Connection, VpnOutcome> {
+    let connection = Connection::system().map_err(|_| VpnOutcome::Absent)?;
+    match name_has_owner(&connection) {
+        Ok(true) => Ok(connection),
+        Ok(false) | Err(_) => Err(VpnOutcome::Absent),
+    }
+}
+
+/// Resolve `uuid` to the settings object path, or a failure saying it is
+/// unknown.
+fn resolve_connection(connection: &Connection, uuid: &str) -> Result<String, VpnOutcome> {
+    let settings = NmSettingsProxyBlocking::new(connection).map_err(vpn_failed)?;
+    match settings.get_connection_by_uuid(uuid) {
+        Ok(path) => Ok(path.as_str().to_owned()),
+        Err(error) => Err(VpnOutcome::Failed(AdapterError::new(format!(
+            "NetworkManager: unknown VPN connection '{uuid}' ({error})"
+        )))),
+    }
+}
+
+/// The active-connection object path for `uuid`, if it is currently active.
+fn active_path_for_uuid(connection: &Connection, uuid: &str) -> zbus::Result<Option<String>> {
+    let manager = NetworkManagerProxyBlocking::new(connection)?;
+    for path in manager.active_connections()? {
+        let proxy = ActiveConnectionProxyBlocking::new(connection, path.as_str())?;
+        if proxy.uuid()? == uuid {
+            return Ok(Some(path.as_str().to_owned()));
+        }
+    }
+    Ok(None)
+}
+
+/// Map a D-Bus error from a VPN write to the adapter outcome.
+///
+/// A polkit refusal (by error name or message) is a read-only degradation, not
+/// a failure; everything else is a plain failure.
+fn classify_vpn_error(error: zbus::Error) -> VpnOutcome {
+    let name = match &error {
+        zbus::Error::MethodError(name, ..) => name.as_str(),
+        _ => "",
+    };
+    if is_permission_denied(name, &error.to_string()) {
+        VpnOutcome::Denied(format!("NetworkManager: {error}"))
+    } else {
+        VpnOutcome::Failed(AdapterError::new(format!("NetworkManager: {error}")))
+    }
+}
+
+/// One zbus error on the VPN path as an adapter error.
+fn vpn_failed(error: zbus::Error) -> VpnOutcome {
+    VpnOutcome::Failed(AdapterError::new(format!("NetworkManager: {error}")))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -403,5 +700,112 @@ mod tests {
             .expect("security setting present");
         assert_eq!(security.get("key-mgmt"), Some(&Value::from("wpa-psk")));
         assert_eq!(security.get("psk"), Some(&Value::from("hunter2")));
+    }
+
+    #[test]
+    fn the_vpn_source_is_free_to_construct() {
+        // Constructing the source must not touch the bus; only `read` does.
+        let _source = DbusVpn::new();
+    }
+
+    fn owned(value: Value<'static>) -> OwnedValue {
+        OwnedValue::try_from(value).expect("owned value")
+    }
+
+    fn settings_map(
+        kind: &str,
+        id: &str,
+        uuid: &str,
+        service: Option<&str>,
+    ) -> HashMap<String, HashMap<String, OwnedValue>> {
+        let mut connection: HashMap<String, OwnedValue> = HashMap::new();
+        connection.insert("type".to_owned(), owned(Value::from(kind.to_owned())));
+        connection.insert("id".to_owned(), owned(Value::from(id.to_owned())));
+        connection.insert("uuid".to_owned(), owned(Value::from(uuid.to_owned())));
+        connection.insert("autoconnect".to_owned(), owned(Value::from(true)));
+        let mut settings: HashMap<String, HashMap<String, OwnedValue>> = HashMap::new();
+        settings.insert("connection".to_owned(), connection);
+        if let Some(service) = service {
+            let mut vpn: HashMap<String, OwnedValue> = HashMap::new();
+            vpn.insert(
+                "service-type".to_owned(),
+                owned(Value::from(service.to_owned())),
+            );
+            settings.insert("vpn".to_owned(), vpn);
+        }
+        settings
+    }
+
+    #[test]
+    fn a_vpn_settings_map_decodes_to_a_connection() {
+        let settings = settings_map(
+            "vpn",
+            "Work VPN",
+            "11112222",
+            Some("org.freedesktop.NetworkManager.openvpn"),
+        );
+        let connection =
+            vpn_connection_from_settings("/org/freedesktop/NetworkManager/Settings/1", &settings)
+                .expect("a vpn connection");
+        assert_eq!(
+            connection.path,
+            "/org/freedesktop/NetworkManager/Settings/1"
+        );
+        assert_eq!(connection.id, "Work VPN");
+        assert_eq!(connection.uuid, "11112222");
+        assert_eq!(connection.kind, "vpn");
+        assert_eq!(
+            connection.service_type.as_deref(),
+            Some("org.freedesktop.NetworkManager.openvpn")
+        );
+        assert!(connection.autoconnect);
+    }
+
+    #[test]
+    fn a_wireguard_settings_map_decodes_without_a_service() {
+        let settings = settings_map("wireguard", "Home", "3333", None);
+        let connection =
+            vpn_connection_from_settings("/org/freedesktop/NetworkManager/Settings/2", &settings)
+                .expect("a wireguard connection");
+        assert_eq!(connection.kind, "wireguard");
+        assert_eq!(connection.service_type, None);
+    }
+
+    #[test]
+    fn a_non_vpn_settings_map_is_filtered_out() {
+        let settings = settings_map("802-3-ethernet", "Wired", "4444", None);
+        assert_eq!(
+            vpn_connection_from_settings("/org/freedesktop/NetworkManager/Settings/3", &settings),
+            None
+        );
+    }
+
+    #[test]
+    fn a_settings_map_without_a_connection_table_is_filtered_out() {
+        let settings: HashMap<String, HashMap<String, OwnedValue>> = HashMap::new();
+        assert_eq!(
+            vpn_connection_from_settings("/org/freedesktop/NetworkManager/Settings/4", &settings),
+            None
+        );
+    }
+
+    #[test]
+    fn a_vpn_write_polkit_error_becomes_a_denial() {
+        let error = zbus::Error::FDO(Box::new(zbus::fdo::Error::AccessDenied(
+            "polkit refused the request".to_owned(),
+        )));
+        match classify_vpn_error(error) {
+            VpnOutcome::Denied(note) => assert!(note.starts_with("NetworkManager: ")),
+            other => panic!("expected a denial, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_vpn_write_other_error_is_a_failure() {
+        let error = zbus::Error::Failure("unknown connection".to_owned());
+        assert_eq!(
+            classify_vpn_error(error),
+            VpnOutcome::Failed(AdapterError::new("NetworkManager: unknown connection"))
+        );
     }
 }

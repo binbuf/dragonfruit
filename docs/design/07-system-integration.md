@@ -12,6 +12,7 @@ equivalent) API intended exactly for custom desktop frontends.
 | Subsystem | Service | What we consume |
 |---|---|---|
 | Networking | NetworkManager | Device/access-point enumeration; activate, deactivate, create, edit, delete connections. `libnm` provides a higher-level client on top of the D-Bus service. |
+| Network advanced (VPN) | NetworkManager | The configured `vpn`/`wireguard` connections and their live active connections; activate/deactivate by UUID. The same D-Bus API as networking; no VPN stack is reimplemented. See [adr/0146](adr/0146-network-advanced-vpn-adapter.md). |
 | Bluetooth | BlueZ | `org.bluez.Adapter1` and device objects; `bluetoothd` keeps handling controller/protocol details. |
 | Audio | PipeWire + WirePlumber | PipeWire supplies the audio/video graph; WirePlumber is the policy/session manager and provides an API intended for management/status applications. |
 | Power | UPower | Batteries and power devices over the system bus. |
@@ -146,6 +147,36 @@ property of the session's authorization rather than of the daemon's state (see
 [adr/0027](adr/0027-networkmanager-join-read-only-degradation.md)). Absence
 still has its usual meaning: a join while NetworkManager is absent reports
 `JoinResult::Absent` and hides the item, never an error.
+
+## The Network advanced (VPN) path (T-15.15a)
+
+Network advanced / VPN is the same daemon again. The `VpnAdapter`
+(`services/networkmanager/src/vpn/`) is the projection of NetworkManager's
+**VPN connections** — the configured settings objects of type `vpn` or
+`wireguard` and the live active connections made from them — behind its own
+`VpnSource` seam and `AdapterId::VPN` slot
+([adr/0146](adr/0146-network-advanced-vpn-adapter.md)). It reuses the crate's
+`zbus` client and absence discipline and reimplements no VPN stack; `libnm` is
+never linked.
+
+One `DbusVpn::read` enumerates the settings connections (`Settings.Connection.
+GetSettings`, keeping only the VPN types) and the active connections
+(`Connection.Active` properties), and `VpnSnapshot::from_data` joins them by
+settings path (UUID fallback), naming each `VpnKind` (OpenVPN, OpenConnect,
+IPsec, PPTP, L2TP, WireGuard, or generic VPN) and mapping each
+`NMActiveConnectionState` to a `VpnState`. Connected connections sort first.
+Absence is layered: `Unavailable` only when the system bus is unreachable or no
+`org.freedesktop.NetworkManager` owns its name; a daemon that answers with no
+VPN configured is `Available` with `VpnSnapshot::present()` false (the second
+hide rule for a consumer that shows only active status); a name owned but
+unreadable is `Error`, visible and inert.
+
+The two writes, `VpnAdapter::connect(uuid)` and `deactivate(uuid)`, are one
+`ActivateConnection`/`DeactivateConnection` call each, never a poll, and invent
+no snapshot — the daemon pushes and the host re-reads. A polkit refusal becomes
+a `VpnAccess::ReadOnly { note }` degradation, exactly like the Wi-Fi join
+(ADR 0027): reads stay live and only the write affordances disable. The
+Settings pane and Control Center tile land with T-15.15b.
 
 ## The audio path (T-07.3)
 
