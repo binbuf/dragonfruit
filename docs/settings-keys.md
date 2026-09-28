@@ -81,6 +81,10 @@ freezes the v1 key set.
 | `overview.hotCornerTopRight` | s | `notification-center` | `none`/`mission-control`/`notification-center`/`desktop-reveal`/`lock-screen` | apps/settings | compositor/input hot corners (apply deferred, ADR 0126) | Action assigned to the top-right hot corner; `none` disables it. |
 | `overview.hotCornerBottomLeft` | s | `desktop-reveal` | `none`/`mission-control`/`notification-center`/`desktop-reveal`/`lock-screen` | apps/settings | compositor/input hot corners (apply deferred, ADR 0126) | Action assigned to the bottom-left hot corner; `none` disables it. |
 | `overview.hotCornerBottomRight` | s | `lock-screen` | `none`/`mission-control`/`notification-center`/`desktop-reveal`/`lock-screen` | apps/settings | compositor/input hot corners (apply deferred, ADR 0126) | Action assigned to the bottom-right hot corner; `none` disables it. |
+| `notifications.showPreviews` | s | `when-unlocked` | `always`/`when-unlocked`/`never` | apps/settings | apps/settings (stored policy) | When notification previews show: always, when unlocked, or never. |
+| `notifications.showWhenSleeping` | b | false | | apps/settings | apps/settings (stored policy) | Show notification banners while the display is sleeping. |
+| `notifications.showWhenLocked` | b | true | | apps/settings | apps/settings (stored policy) | Show notification banners while the screen is locked. |
+| `notifications.showWhenMirroring` | b | false | | apps/settings | apps/settings (stored policy) | Show notification banners while mirroring or sharing the display. |
 
 ## Consumer map
 
@@ -97,6 +101,7 @@ freezes the v1 key set.
 | compositor workspace model | `workspaces.count` (no live owner yet; follow-up) |
 | `session/idle engine` (`services/session/src/idle.rs`, ADR [0070](design/adr/0070-idle-timer-engine-and-policy.md)) | `idle.dim`, `idle.blank`, `idle.lock`, `idle.suspend` via `IdlePolicy::from_keys` (the production reader is the future idle service; T-12.5b registers the keys and freezes the contract) |
 | `shell/MenuBar` (`shell/src/shellcontroller.cpp`, the `menu.global` toggle, T-14.2b) | `menu.global` — off suppresses the focused app's exported menus in the bar |
+| Notifications/Focus panes (`apps/settings/NotificationsPane.qml`, `apps/settings/FocusPane.qml`, T-15.7b) | `notifications.showPreviews`, `notifications.showWhenSleeping`, `notifications.showWhenLocked`, `notifications.showWhenMirroring` — the stored presentation policy the Notifications pane writes; the Focus mode and per-app allow list are the notification adapter's state, not settingsd keys |
 | Mission Control / hot corners (T-15.5b; `compositor/input/hot_corners.rs`) | `overview.hotCornerTopLeft`, `overview.hotCornerTopRight`, `overview.hotCornerBottomLeft`, `overview.hotCornerBottomRight` — the durable corner assignments the Mission Control pane writes, plus the revision-1 `gestures.enabled`/`gestures.spaceSwitch`/`gestures.missionControl` trio the compositor already applies live via `set_input_policy`. Applying an assignment needs the append-only compositor request ADR [0126](design/adr/0126-mission-control-hot-corners-adapter.md) names (deferred). |
 
 `dock.minimizeIntoTileIcon` is Dock entry visibility, not a compositor

@@ -633,13 +633,49 @@ a **projection over our own service**, never a second queue or a second policy:
   `Error`: visible, inert, with the message.
 - **What is not here.** The global notification preferences the macOS pane
   shows (`Show previews`, `when display is sleeping`, `when screen is locked`,
-  `when mirroring`) have no owner in the service today; they are settingsd keys
-  for T-15.7b, not adapter state. The pane and Control Center tile are T-15.7b.
+  `when mirroring`) have no owner in the service; T-15.7b adds them as
+  settingsd keys (revision 14), not adapter state. The pane and Control Center
+  tile are T-15.7b.
 
 Like every adapter, the live D-Bus source is a thin mechanical layer behind the
 `NotificationsSource` seam; the mock (`MockNotifications`) drives all three
 states, the change stream, and absence in CI, and the live source is proven
 over a private `dbus-daemon` in `services/notify-adapter/tests/session_bus.rs`.
+
+### The Notifications and Focus panes and tile (T-15.7b)
+
+The pane and tile ship as one functional unit over the T-15.7a adapter. The
+bridge host's `Notifications` interface mirrors Bluetooth/storage/battery:
+
+- `org.dragonfruit.SystemStatus1.Notifications` — `State()`/`Refresh()` and the
+  two Focus writes `SetFocusMode(mode)` (`off`/`focus`/`dnd`) and
+  `SetFocusAllowList(apps)`.
+- `notifications_view` carries the Focus mode/label, the suppressed batch, the
+  allow list, the banner/history counts, and the observed per-app list; the
+  settingsd preferences are not on this view.
+- The Settings app talks to the interface through a dedicated
+  `NotificationsClient` seam (`apps/settings/NotificationsClient.{h,cpp}`,
+  `DF_NOTIFICATIONS_FIXTURE` for tests) and the `Settings` singleton's
+  `notifications`/`notificationsAvailable`/`refreshNotifications`/
+  `setFocusMode`/`setFocusApp`.
+- The **Notifications pane** (`apps/settings/NotificationsPane.qml`) owns the
+  four global preferences (`notifications.showPreviews`,
+  `notifications.showWhenSleeping`, `notifications.showWhenLocked`,
+  `notifications.showWhenMirroring`, settingsd revision 14) and the read-only
+  per-app inventory. The **Focus pane** (`apps/settings/FocusPane.qml`) owns the
+  mode selector and the per-app allow list, sharing the same adapter view. The
+  Control Center **Focus tile** (T-11.3b) reflects the same service policy and
+  remains the tile for this unit.
+- **Absence is layered.** The bridge host absent, or a foreign notification
+  daemon that does not serve the shell interface, hides the per-app inventory
+  and shows a one-line note; the settingsd preference rows stay live on the
+  schema defaults. No write while absent is anything but a no-op.
+
+The four presentation preferences are **stored policy**: they apply to
+settingsd live (and the pane reflects them), but the notification service does
+not yet read them to gate a banner. Wiring that enforcement is a follow-up; the
+rows are the capture's controls and are not dead (see ADR
+[0131](adr/0131-notifications-pane-and-tile.md)).
 
 ## The status bridge host (T-07.5a)
 
@@ -662,6 +698,9 @@ NetworkManager, audio, and power adapters and serves
   plus `Mount(volumePath)`, `Unmount(volumePath)`, `Eject(drivePath)`.
 - `org.dragonfruit.SystemStatus1.Input` (T-15.4b) — `State()`/`Refresh()` only
   (the read-only keyboard/mouse/trackpad inventory; libinput has no setter).
+- `org.dragonfruit.SystemStatus1.Notifications` (T-15.7b) —
+  `State()`/`Refresh()` plus `SetFocusMode(mode)` and
+  `SetFocusAllowList(apps)` (the Notifications/Focus panes' writes).
 
 The host core (`StatusHost`) is adapter-only and CI-tested with the mocks; the
 D-Bus layer is a thin mechanical wrapper. The shell decodes the JSON in one

@@ -597,6 +597,19 @@ blank areas or stray artifacts. Captured by
 `scripts/capture-t15-notify-adapter.sh`; requires a host Wayland session,
 spectacle, and Pillow, and is not in `make e2e`.
 
+T-15.7b's Notifications and Focus panes and tile: `t15-7b-notifications-pane.png`
+is the active Settings window on the Notifications pane (the shell header card,
+the `Notification Center` group with the `Show previews` popup and the three
+`Show Notifications:` toggles, and the `Application Notifications` inventory),
+`t15-7b-focus-pane.png` is the Focus pane (the `Off`/`Focus`/`Do Not Disturb`
+selector, the summary, and the `Allowed Apps` toggles), and
+`t15-7b-control-center.png` is the 360x1040 panel crop with the Focus tile. The
+demo runs with `DF_SETTINGS_START_PANE=notifications|focus`, `DF_SETTINGS_FIXTURE`,
+`DF_NOTIFICATIONS_FIXTURE`, and `DF_STATUS_FIXTURE`, so no host settingsd or
+notification service is needed. Captured by
+`scripts/capture-t15-notifications-pane.sh`; requires a host Wayland session,
+spectacle, and Pillow, and is not in `make e2e`.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

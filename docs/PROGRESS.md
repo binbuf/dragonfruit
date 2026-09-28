@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(123 earlier sections omitted)_
+_(124 earlier sections omitted)_
 
-- **T110h — T-14.7h Dock folder stacks: presentation and clicks**: **State: done.** Folder entries read like macOS: a clean folder silhouette with; `shell/dock/DockGlyph.qml` — the `stack` block is `stackArtwork`: back tab
 - **T110i — T-14.7i Dock hover name labels (Tooltip)**: **State: done.** The design system has a passive `Tooltip` and the Dock shows a; `design-system/components/Tooltip.qml` (new) — `open`, `anchorItem`,
 - **T110j — T-14.7j Dock Tahoe visual language: floating glass, squircles, states**: **State: done.** The Dock is now a layered floating glass plate with a bright; `design-system/tokens/tokens.json` — semantic colors `dockFill`, `dockRim`,
 - **T110k — T-14.7k Dock folder pins: any folder as a stack**: **State: done.** Any folder can be pinned to the Dock as a stack: a single; `services/settingsd/src/schema.rs` — `dock.pinnedFolders` (`as`, default
@@ -42,6 +41,7 @@ _(123 earlier sections omitted)_
 - **T121 — T-15.6a Battery and power profiles adapter**: **State: done.** `dragonfruit-power` (`services/power`) grew from the T-07.4; `services/power/src/source.rs` — `PowerData.profiles:
 - **T122 — T-15.6b Battery and power profiles pane and tile**: **State: done.** The Settings Battery pane and the Control Center Battery tile; `services/system-status/src/lib.rs` — `battery_view` now carries
 - **T123 — T-15.7a Notifications and Focus adapter**: **State: done.** New workspace crate `dragonfruit-notify-adapter`; `services/notify-adapter/` (new crate, workspace member) —
+- **T124 — T-15.7b Notifications and Focus pane and tile**: **State: done.** The Settings Notifications and Focus panes and the Control; `services/system-status/src/notifications.rs` (new) — `NotificationsHost`
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3225,6 +3225,17 @@ Gotchas for later tasks:
 
 ## Follow-ups
 
+- **T-15.7b notification presentation prefs are stored policy.** The four
+  settingsd keys (`notifications.showPreviews`, `notifications.showWhenSleeping`,
+  `notifications.showWhenLocked`, `notifications.showWhenMirroring`, revision
+  14) round-trip live and the Notifications pane reflects them, but the
+  notification service does not yet read them to gate a banner. Enforcement
+  (the service consulting settingsd, or the shell banner path) is a follow-up.
+- **T-15.7b per-app notification detail.** The macOS per-app disclosure sheet
+  has no Linux provider: the Application Notifications rows are a read-only
+  inventory (`status` + count) with no chevron, and per-app notification policy
+  is reduced to the Focus allow list. A richer per-app model would extend
+  `NotificationsSnapshot`/`AppNotifications` in the service and adapter.
 - **T-18.1a live-network coverage.** The provider's catalogue/download path is
   tested through `MockSource`; CI never hits Wikimedia (no network, and a full
   first run downloads up to 60 × 3840 px images). The live `UreqHttp` path was
@@ -11714,3 +11725,90 @@ Decisions / gotchas for T-15.7b and later:
   the menu bar, Dock, wallpaper, and windows composited without clipping or
   stray artifacts (the one dark rectangle it flagged is the host screen outside
   the nested output, matching T121's capture).
+
+## T124 — T-15.7b Notifications and Focus pane and tile
+
+**State: done.** The Settings Notifications and Focus panes and the Control
+Center Focus tile ship as one functional unit over the T-15.7a adapter
+(ADR 0131). The bridge host grows a `Notifications` interface; the four global
+presentation preferences are settingsd keys (revision 14); the two panes bind
+the same adapter view, so a Focus write in one reflects in the other and in the
+existing Control Center Focus tile. Absence is layered and documented.
+
+Real paths:
+
+- `services/system-status/src/notifications.rs` (new) — `NotificationsHost`
+  (new/refresh/view/state/set_focus_mode/set_focus_allow_list),
+  `notifications_view` / `notifications_snapshot_view`, `focus_report`; six
+  unit tests. `lib.rs` re-exports them and adds `NOTIFICATIONS_INTERFACE`.
+- `services/system-status/src/dbus.rs` — `LiveNotifications`,
+  `NotificationsInterface` (`State`/`Refresh`/`SetFocusMode`/`SetFocusAllowList`),
+  `run` takes the host, `interface_names()` is 7.
+- `services/system-status/Cargo.toml` — depends on `dragonfruit-notify-adapter`.
+- `services/system-status/src/main.rs` — `--print-notifications`, live host.
+- `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 13 → 14; new
+  `KeyGroup::Notifications` (ALL 12 → 13) and four keys
+  (`notifications.showPreviews` text allowed always/when-unlocked/never;
+  `notifications.showWhenSleeping` false; `notifications.showWhenLocked` true;
+  `notifications.showWhenMirroring` false); new revision-14 test.
+- `docs/settings-keys.md` — the four rows + a consumer-map row.
+- `libs/settings-client/settingsclient.cpp` — `settingsSchemaDefaults()` mirrors
+  revision 14.
+- `apps/settings/NotificationsClient.{h,cpp}` (new) — `DbusNotificationsClient`
+  / `MockNotificationsClient` (`DF_NOTIFICATIONS_FIXTURE`), one read + two
+  writes; `setFocusApp` in the bridge is the whole-list replace.
+- `apps/settings/SettingsBridge.{h,cpp}` — `notifications`/
+  `notificationsAvailable`, `refreshNotifications()`, `setFocusMode(id)`,
+  `setFocusApp(name, allowed)`; `SettingsBridge.cpp` gained
+  `<QRegularExpression>`.
+- `apps/settings/NotificationsPane.qml`, `apps/settings/FocusPane.qml` (new);
+  `SettingsPanes.qml` ships both (`notifications` icon `bell` with the header
+  description, `focus` icon `focus`); `SettingsShell.qml` registers both bodies;
+  `CMakeLists.txt`.
+- `design-system/components/Icon.qml` — new painted `bell` glyph.
+- Tests — `apps/settings/tests/tst_settings_notifications.{cpp,qml}` (new);
+  `tst_settings_shell.qml` (shipped 12 → 14, search list), `tst_settings_absence.qml`
+  (shipped 12 → 14, id list, two absence cases), test target in
+  `apps/settings/tests/CMakeLists.txt`.
+- Docs — ADR `0131-notifications-pane-and-tile.md`;
+  `docs/design/07-system-integration.md` T-15.7b section + interface row;
+  capture script `scripts/capture-t15-notifications-pane.sh`;
+  `docs/captures/README.md`.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-system-status` — 39 lib (six new) + 4 test binaries green.
+- `cargo test -p dragonfruit-settingsd` — green (schema_doc included).
+- `ctest --test-dir build --output-on-failure -j4` — 61/61.
+- `make e2e` — EXIT 0.
+- `cargo fmt --all -- --check`; clippy on `system-status`/`notify-adapter`/
+  `settingsd` `--all-targets -D warnings` — clean.
+- `make check-design-tokens check-tokens check-no-capture-grab` — clean.
+- `./scripts/check-gallery-snapshots.py` — 78 snapshots green.
+
+Decisions / gotchas for later tasks:
+
+- **The Focus mode + allow list are adapter state, not settingsd.** Only the
+  four presentation prefs are settingsd keys. Do not move the mode/allow list
+  into settingsd.
+- **The four prefs are stored policy, not yet enforced.** The service does not
+  read them to gate a banner; enforcement is a follow-up (see `## Follow-ups`).
+- **Repeater delegate width.** Both new panes' dynamic delegates use
+  `width: parent.width`, not `<repeater>.width` (a Repeater is non-visual and
+  has no width); the wrong form collapses the rows to width 0 and they vanish.
+  The pane tests assert `itemAt(0).width > 0` to catch it.
+- **The Control Center tile is the existing T-11.3b Focus tile.** It reads the
+  notification service's `FocusPolicy` via the shell's `NotificationClient`; the
+  panes write the same service through the system-status host, so the tile
+  reflects the same state. No second tile was added and the shell was untouched.
+- **Absence is layered:** no bridge host or a foreign notification daemon hides
+  the inventory/Focus controls with a note; the settingsd prefs stay live.
+- Live visual check: `bash scripts/capture-t15-notifications-pane.sh` produced
+  `docs/captures/t15-7b-notifications-pane.png` (2088x1410),
+  `t15-7b-focus-pane.png` (2088x1410), and `t15-7b-control-center.png`
+  (360x1040). The first capture caught a real bug (the per-app rows rendered at
+  width 0); after the fix vision confirmed the Application Notifications rows
+  (chat/Mail/Pager with Default/Default/Allowed), the Focus segmented control
+  selecting `Focus` with its summary, the Allowed Apps rows with the Pager
+  toggle on, and the Control Center panel with the Focus tile (off — no live
+  notification service on the host).

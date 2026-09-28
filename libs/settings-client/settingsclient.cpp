@@ -117,7 +117,7 @@ void SettingsClient::setAvailable(bool available)
 
 QVariantMap settingsSchemaDefaults()
 {
-    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 13). Values are
+    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 14). Values are
     // typed exactly as the schema declares: d, x, b, s, as.
     QVariantMap values;
     values.insert(QStringLiteral("dock.size"), 0.5);
@@ -179,6 +179,11 @@ QVariantMap settingsSchemaDefaults()
     values.insert(QStringLiteral("overview.hotCornerTopRight"), QStringLiteral("notification-center"));
     values.insert(QStringLiteral("overview.hotCornerBottomLeft"), QStringLiteral("desktop-reveal"));
     values.insert(QStringLiteral("overview.hotCornerBottomRight"), QStringLiteral("lock-screen"));
+    values.insert(QStringLiteral("notifications.showPreviews"),
+                  QStringLiteral("when-unlocked"));
+    values.insert(QStringLiteral("notifications.showWhenSleeping"), false);
+    values.insert(QStringLiteral("notifications.showWhenLocked"), true);
+    values.insert(QStringLiteral("notifications.showWhenMirroring"), false);
     return values;
 }
 
