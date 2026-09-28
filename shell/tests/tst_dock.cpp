@@ -4,9 +4,10 @@
 // scene graph (see CMakeLists.txt).
 //
 // The setup adds `DockInject`, a thin QML-callable wrapper over the production
-// `DockPointer` injection, so the QML tests can drive the exact pointer
-// sequence the compositor path uses instead of QtTest's own mouse injection
-// (T-14.7x). That sequence is what exposes the zero-timestamp DragHandler bug.
+// `ChromePointer` injection (the T-16.12 name for the T-14.7x `DockPointer`),
+// so the QML tests can drive the exact pointer sequence the compositor path
+// uses instead of QtTest's own mouse injection (T-14.7x). That sequence is what
+// exposes the zero-timestamp DragHandler bug.
 #include <QEvent>
 #include <QObject>
 #include <QPointF>
@@ -16,7 +17,7 @@
 
 #include <QtQuickTest>
 
-#include "dockpointer.h"
+#include "chromepointer.h"
 
 class DockInject : public QObject
 {
@@ -28,7 +29,7 @@ public:
     // Mirrors ShellController::onDockPointerMoved / Button / Left.
     Q_INVOKABLE void move(QObject *window, qreal x, qreal y)
     {
-        DockPointer::send(windowFor(window), QEvent::MouseMove, QPointF(x, y), Qt::NoButton,
+        ChromePointer::send(windowFor(window), QEvent::MouseMove, QPointF(x, y), Qt::NoButton,
                           m_buttons);
     }
 
@@ -39,14 +40,14 @@ public:
             m_buttons |= qtButton;
         else
             m_buttons &= ~qtButton;
-        DockPointer::send(windowFor(window),
+        ChromePointer::send(windowFor(window),
                           pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease,
                           QPointF(x, y), qtButton, m_buttons);
     }
 
     Q_INVOKABLE void left(QObject *window)
     {
-        DockPointer::send(windowFor(window), QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton,
+        ChromePointer::send(windowFor(window), QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton,
                           m_buttons);
     }
 
