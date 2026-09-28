@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(106 earlier sections omitted)_
+_(107 earlier sections omitted)_
 
-- **T102 — T-14.1c app-index subscription API**: **State: done.** `org.dragonfruit.AppIndex1` now has a subscription surface:; `services/app-index/src/subscription.rs` (new) — pure `ChangeKind`
 - **T103 — T-14.2a menu-broker export model and fixed menu**: **State: done.** `services/menu-broker` is a real service and the fixed; `services/menu-broker/src/model.rs` (new) — pure `Broker`: `PublishedModel`
 - **T104 — T-14.2b menu-broker accelerators and toggle**: **State: done.** The menu-broker now parses and dispatches focus-scoped; `services/menu-broker/src/accelerators.rs` (new) — pure `Mods`/`Chord`
 - **T105 — T-14.3 StatusNotifier/AppIndicator tray**: **State: done.** StatusNotifier/AppIndicator tray items render in the menu; `services/app-index/src/tray.rs` (new) — pure `Registration`
@@ -43,6 +42,7 @@ _(106 earlier sections omitted)_
 - **T110w — T-14.7w Dock icon tiles: true squircle masking**: **State: done.** Every Dock app tile now clips its themed artwork to the token; `shell/dock/DockGlyph.qml` — the themed app artwork is now a `Canvas`
 - **T172 — T-18.1a Wallpaper provider service and shipped default**: **State: done.** `services/wallpaperd` is a real session service. It resolves; `services/wallpaperd/` (new crate, workspace member) —
 - **T173 — T-18.1b Provider settings, wallpaper API wiring, and effective source**: **State: done.** The additive provider keys are declared (schema rev 10), the; `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 9 → 10; 5 additive
+- **T174 — T-18.2 Wallpaper pane collections, skeleton, and attribution**: **State: done.** The Wallpaper pane now has Featured / Built-in / Custom rows;; `design-system/tokens/tokens.json` — semantic `skeletonBase`/`skeletonHighlight`
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -10531,3 +10531,90 @@ Gotchas for later tasks:
   T-18.2 consumes `providerItems`/`providerStatus`/`preloadWallpapers`.
 - `check-desktop-names.sh` still fails only on the pre-existing
   StatusNotifier/zoo/apppicker lines (unchanged here).
+
+## T174 — T-18.2 Wallpaper pane collections, skeleton, and attribution
+
+**State: done.** The Wallpaper pane now has Featured / Built-in / Custom rows;
+Featured binds the provider catalogue, shimmers with a new design-system
+`Skeleton` while it downloads, shows attribution for the current fetched
+picture, and requests an eager `Preload` on open. A guarded `DF_WALLPAPER_FIXTURE`
+seam makes every provider state assertable headlessly.
+
+Real paths:
+
+- `design-system/tokens/tokens.json` — semantic `skeletonBase`/`skeletonHighlight`
+  (light/dark), `component.skeleton` (`radius`/`width`/`height`/`highlightRatio`),
+  `motion.skeleton` (`duration` = primitive.duration.slower, curve, reduced 0).
+  `Theme.qml` and `compositor/src/design_tokens.rs` regenerated.
+- `design-system/components/Skeleton.qml` (new) — a clipped grey rect with a
+  horizontal plateau gradient highlight; `shimmering` is false under
+  `Theme.reducedMotion`, which starts no animation and centers the band.
+  `progress` + `highlightX` are exposed for tests; `accessibleName` drives
+  `Accessible.name` (unnamed = ignored).
+- `design-system/gallery/GalleryContent.qml` — new `SkeletonPage` (index 25).
+- `scripts/check-gallery-snapshots.py` — `skeleton` page + light/dark base and
+  light highlight invariant checks; goldens
+  `design-system/gallery/snapshots/skeleton_{light,dark,dark_reduced}.png`.
+- `design-system/tests/tst_design_system.qml` — four Skeleton cases (tokens,
+  accessible name, shimmer moves, reduced motion static).
+- `apps/settings/SettingsBridge.{h,cpp}` — `providerPreloadCount` property;
+  `preloadWallpapers()` counts fixture requests; `setWallpaperFixture(status)`
+  seeds ready/fetching/offline/error under `DF_WALLPAPER_FIXTURE`;
+  `sanitizeHtmlText()` strips tags/decodes entities from `artist`/`description`
+  in `applyProviderItems`.
+- `apps/settings/WallpaperPane.qml` — three groups; `featuredItems` (provider),
+  `builtinItems` (shipped `Default` tile first + 6 gradients), `currentItem`,
+  `hasAttribution`; `Component.onCompleted` calls `preloadWallpapers()`;
+  attribution = artist (PlainText) + license link + file-page link.
+- `apps/settings/tests/tst_settings_wallpaper.qml` — fetching skeleton,
+  reduced motion, ready tiles + accessible names, offline/error, selection,
+  sanitized attribution, shipped-default tile, preload-on-open, and the old
+  fit/all-Spaces/photo cases. `CMakeLists.txt` sets `DF_WALLPAPER_FIXTURE=1`.
+- `apps/settings/tests/tst_settings_absence.qml` — absent provider leaves
+  Featured empty with the note and the Built-in default visible; portal absent
+  disables only Custom.
+- `scripts/capture-t18-wallpaper.sh` (new, `make t18-wallpaper-capture`) +
+  `docs/captures/t18-wallpaper-{fetching,filled}.png`.
+- `docs/design/adr/0116-wallpaper-pane-rows-skeleton-and-fixture-seam.md` (new);
+  `docs/captures/README.md` entry.
+
+Commands that work (repo root):
+
+- `ctest --test-dir build -R "tst_design_system|tst_settings_wallpaper|tst_settings_absence|tst_settings_live" --output-on-failure` — green.
+- `make qml-test` — 53/53.
+- `./scripts/gen-tokens.py --check`; `./scripts/check-design-tokens.sh`;
+  `./scripts/check-no-capture-grab.sh`;
+  `./scripts/check-gallery-snapshots.py --strict` — green.
+- `cargo fmt --all -- --check` — green (no Rust logic changed; only the
+  generated token module).
+- Live: `make t18-wallpaper-capture` (host Wayland + scratch settingsd +
+  scratch-cache wallpaperd through a hanging CONNECT proxy for the fetching
+  still, then a real fetch and a selected item for attribution). PIL evidence:
+  the Featured row area at (820,430)-(1280,560) is 9 unique colours (uniform
+  `#f8f6fa`) in the fetching still and 1639 unique colours (a photo) in the
+  filled still.
+- `check-desktop-names.sh` still fails only on the pre-existing
+  StatusNotifier/zoo/apppicker lines (unchanged here).
+
+Gotchas for later tasks:
+
+- **The skeleton highlight is a plateau (two `#skeletonHighlight` stops at
+  0.4/0.6).** A single stop at 0.5 never lands on a pixel centre, so the exact
+  token colour would not appear in the golden; the `--strict` gallery invariant
+  checks the exact colour. Keep the plateau if you retune the gradient.
+- **`DF_WALLPAPER_FIXTURE` is the only provider test seam.** It seeds the
+  bridge in-process and makes `preloadWallpapers()` a counted no-op; it is
+  inert without the env var. Do not build production behavior on it.
+- **Attribution is only for fetched items.** `currentItem.fetched` gates the
+  artist/license/file-page panel; built-in and user photos intentionally show
+  none (ADR 0094). The artist/description are sanitized in the bridge and
+  rendered as `Text.PlainText` (defense in depth).
+- **`category` arrives as a lowercase slug**; the pane capitalizes it for the
+  tile accessible name via `categoryLabel()`.
+- **The pane calls `Preload` in `Component.onCompleted`**; the shell's Loader
+  destroys/recreates the body on each pane switch, so this is once per open.
+  The provider has no explicit "return to idle" call — leaving the pane simply
+  stops asking, and the service stays lazy.
+- The `check-gallery-snapshots.py --update` run rewrites the timing-sensitive
+  `tooltip_*` goldens; restore them (`git checkout -- ...tooltip_*.png`) unless
+  the tooltip actually changed.

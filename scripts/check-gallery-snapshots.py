@@ -32,7 +32,7 @@ PAGES = [
     "tokens", "window", "titlebar", "trafficlights", "toggle", "popup", "menu", "ssd",
     "buttons", "sidebar", "toolbar", "splitview", "settings", "segmented", "contextmenu",
     "searchfield", "sourcelist", "dialog", "sheet", "popover", "scrollview", "slider",
-    "select", "icons", "tooltip",
+    "select", "icons", "tooltip", "skeleton",
 ]
 SCHEMES = [("light", False), ("dark", False), ("dark", True)]
 
@@ -165,6 +165,12 @@ def invariant_checks(output: Path, tokens: dict, resolve) -> list[str]:
           "light settings: elevated surface color not found")
     check(contains_color(output / "searchfield_light.png", hex_rgb(resolve(light["controlFill"], tokens))),
           "light search field: control fill color not found")
+    check(contains_color(output / "skeleton_light.png", hex_rgb(resolve(light["skeletonBase"], tokens))),
+          "light skeleton: base color not found")
+    check(contains_color(output / "skeleton_light.png", hex_rgb(resolve(light["skeletonHighlight"], tokens))),
+          "light skeleton: highlight color not found")
+    check(contains_color(output / "skeleton_dark.png", hex_rgb(resolve(dark["skeletonBase"], tokens))),
+          "dark skeleton: base color not found")
 
     # Light and dark renders must actually differ.
     light_bytes = (output / "window_light.png").read_bytes()

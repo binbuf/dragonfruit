@@ -15,7 +15,8 @@ Item {
                                   "Sidebar", "Toolbar", "SplitView", "Settings",
                                   "Segmented", "ContextMenu", "SearchField",
                                   "SourceList", "Dialog", "Sheet", "Popover",
-                                  "ScrollView", "Slider", "Select", "Icons", "Tooltip"]
+                                  "ScrollView", "Slider", "Select", "Icons", "Tooltip",
+                                  "Skeleton"]
     property string scheme: "dark"
     property bool reducedMotion: false
 
@@ -64,6 +65,7 @@ Item {
             case 22: return selectPageComponent;
             case 23: return iconsPageComponent;
             case 24: return tooltipPageComponent;
+            case 25: return skeletonPageComponent;
             default: return iconsPageComponent;
             }        }
     }
@@ -93,6 +95,7 @@ Item {
     Component { id: selectPageComponent; SelectPage { } }
     Component { id: iconsPageComponent; IconsPage { } }
     Component { id: tooltipPageComponent; TooltipPage { } }
+    Component { id: skeletonPageComponent; SkeletonPage { } }
 
     component Page: Column {
         spacing: Theme.primitive.spacing.lg
@@ -893,6 +896,42 @@ Item {
                     open: true
                     text: qsTr("A very long hover label that must elide inside the token max width")
                     placement: "below"
+                }
+            }
+        }
+    }
+
+    // A row of loading placeholders (T-18.2): the same rectangles the Wallpaper
+    // pane renders over the Featured row while the provider's first catalogue
+    // downloads. The reduced-motion snapshot is the static variant.
+    component SkeletonPage: Page {
+        Section {
+            heading: qsTr("Shimmer")
+            Row {
+                spacing: Theme.primitive.spacing.md
+                Repeater {
+                    model: 3
+                    delegate: Skeleton {
+                        width: (520 - 2 * Theme.primitive.spacing.md) / 3
+                        height: 96
+                        accessibleName: qsTr("Downloading wallpapers")
+                    }
+                }
+            }
+        }
+        Section {
+            heading: qsTr("Static (active false)")
+            Row {
+                spacing: Theme.primitive.spacing.md
+                Skeleton {
+                    width: 160
+                    height: 24
+                    active: false
+                }
+                Skeleton {
+                    width: 120
+                    height: 24
+                    active: false
                 }
             }
         }

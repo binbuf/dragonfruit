@@ -59,6 +59,15 @@ const QString kWallpaperService = QStringLiteral("org.dragonfruit.Wallpaper1");
 const QString kWallpaperPath = QStringLiteral("/org/dragonfruit/Wallpaper1");
 const QString kWallpaperInterface = QStringLiteral("org.dragonfruit.Wallpaper1");
 
+// The deterministic provider catalogue used by `DF_WALLPAPER_FIXTURE` (mirrors
+// `DF_SETTINGS_FIXTURE`). The first entry's `artist` deliberately carries HTML
+// so the pane's sanitization is exercised; both `localPath`s are scratch paths
+// the Image loader never has to resolve for the tests to pass.
+const char *kWallpaperFixtureItems = R"JSON([
+  {"pageid":1,"title":"File:Alpine Lake.jpg","artist":"<a href=\"https://example.org/Alice\">Alice Example</a>","licenseShortName":"CC BY-SA 4.0","licenseUrl":"https://creativecommons.org/licenses/by-sa/4.0/","pageUrl":"https://commons.wikimedia.org/wiki/File:Alpine_Lake.jpg","description":"An alpine lake","category":"nature","width":3840,"height":2160,"mime":"image/jpeg","sourceUrl":"https://example.org/a.jpg","localPath":"/tmp/dragonfruit-fixture-nature.jpg","fetchedAt":1},
+  {"pageid":2,"title":"File:Ocean Wave.jpg","artist":"Bob","licenseShortName":"CC BY 4.0","licenseUrl":"https://creativecommons.org/licenses/by/4.0/","pageUrl":"https://commons.wikimedia.org/wiki/File:Ocean_Wave.jpg","description":"An ocean wave","category":"water","width":3840,"height":2160,"mime":"image/jpeg","sourceUrl":"https://example.org/b.jpg","localPath":"/tmp/dragonfruit-fixture-water.jpg","fetchedAt":2}
+])JSON";
+
 // Render one original gradient preset in-memory (the same pixels the QML
 // preview shows).
 QImage renderGradient(const QColor &top, const QColor &bottom)
@@ -97,7 +106,14 @@ SettingsBridge::SettingsBridge(QObject *parent)
 
     buildWallpaperPresets();
     connectPortalWatcher();
-    connectWallpaperProvider();
+    m_wallpaperFixture = qEnvironmentVariableIsSet("DF_WALLPAPER_FIXTURE");
+    if (m_wallpaperFixture)
+        // The fixture is deterministic and in-process: seed the ready
+        // catalogue so a pane that opens before any test drives a status
+        // still has tiles, never a bus round trip.
+        setWallpaperFixture(QStringLiteral("ready"));
+    else
+        connectWallpaperProvider();
 }
 
 SettingsBridge::~SettingsBridge() = default;
@@ -137,6 +153,11 @@ QString SettingsBridge::wallpaperBuiltinDefault() const
     // The provider's own resolution wins; absent, the shared resolver still
     // gives the shipped asset so the Built-in row is never empty (ADR 0094).
     return m_providerBuiltin.isEmpty() ? shippedDefaultWallpaperPath() : m_providerBuiltin;
+}
+
+int SettingsBridge::providerPreloadCount() const
+{
+    return m_providerPreloads;
 }
 
 bool SettingsBridge::wallpaperChooserAvailable() const
@@ -278,6 +299,13 @@ void SettingsBridge::applyProviderItems(const QString &json)
     items.reserve(array.size());
     for (const QJsonValue &value : array) {
         QVariantMap entry = value.toObject().toVariantMap();
+        // The pane renders the attribution as plain text, but never trust the
+        // provider's HTML: strip tags from the free-text fields (T-18.2).
+        for (const char *key : { "artist", "description" }) {
+            const QString name = QString::fromLatin1(key);
+            if (entry.contains(name))
+                entry.insert(name, sanitizeHtmlText(entry.value(name).toString()));
+        }
         const QString localPath = entry.value(QStringLiteral("localPath")).toString();
         entry.insert(QStringLiteral("source"), localPath);
         entry.insert(QStringLiteral("url"),
@@ -338,6 +366,13 @@ void SettingsBridge::onProviderPropertiesChanged(const QString &interface,
 
 void SettingsBridge::preloadWallpapers()
 {
+    if (m_wallpaperFixture) {
+        // The fixture provider is in-process: record the eager request so the
+        // pane-open contract is observable, and leave the catalogue in place.
+        ++m_providerPreloads;
+        emit providerChanged();
+        return;
+    }
     QDBusConnection bus = QDBusConnection::sessionBus();
     if (!bus.isConnected())
         return;
@@ -351,6 +386,48 @@ void SettingsBridge::preloadWallpapers()
                 // properties stay empty and no error reaches the pane.
                 refreshWallpaperProvider();
             });
+}
+
+void SettingsBridge::setWallpaperFixture(const QString &status)
+{
+    if (!m_wallpaperFixture)
+        return;
+    const bool ready = status == QStringLiteral("ready");
+    applyProviderStatus(status);
+    applyProviderItems(ready ? QString::fromLatin1(kWallpaperFixtureItems)
+                             : QStringLiteral("[]"));
+    const QString firstPath =
+        ready ? QStringLiteral("/tmp/dragonfruit-fixture-nature.jpg") : QString();
+    applyProviderDefault(firstPath);
+    // Leave `BuiltinDefaultSource` empty so the shared shipped-asset resolver
+    // supplies the Built-in "Default" tile exactly as production does.
+    applyProviderBuiltin(QString());
+}
+
+QString SettingsBridge::sanitizeHtmlText(const QString &value)
+{
+    QString out;
+    out.reserve(value.size());
+    bool inTag = false;
+    for (const QChar ch : value) {
+        if (ch == u'<') {
+            inTag = true;
+            continue;
+        }
+        if (ch == u'>') {
+            inTag = false;
+            continue;
+        }
+        if (!inTag)
+            out.append(ch);
+    }
+    out.replace(QStringLiteral("&amp;"), QStringLiteral("&"));
+    out.replace(QStringLiteral("&lt;"), QStringLiteral("<"));
+    out.replace(QStringLiteral("&gt;"), QStringLiteral(">"));
+    out.replace(QStringLiteral("&quot;"), QStringLiteral("\""));
+    out.replace(QStringLiteral("&#39;"), QStringLiteral("'"));
+    out.replace(QStringLiteral("&nbsp;"), QStringLiteral(" "));
+    return out.simplified();
 }
 
 void SettingsBridge::connectPortalWatcher()

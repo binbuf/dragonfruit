@@ -83,6 +83,18 @@ absent-provider stills are intentionally not in this set: absence is asserted
 headlessly by `apps/settings/tests/tst_settings_absence.qml` and documented in
 [../design/08-settings.md](../design/08-settings.md).
 
+T-18.2's Wallpaper-pane capture is produced by
+`scripts/capture-t18-wallpaper.sh` (`make t18-wallpaper-capture`): a scratch
+settingsd and a scratch-cache `dragonfruit-wallpaperd` on the session bus, with
+the nested demo opened directly at the Wallpaper pane. It writes
+`t18-wallpaper-fetching.png` (the provider held in `fetching` by a hanging
+CONNECT proxy, so the Featured row shows the grey shimmer skeletons) and
+`t18-wallpaper-filled.png` (the real Wikimedia fetch completed, the Featured
+row filled and the attribution visible). The three source rows (Featured /
+Built-in / Custom) and the shipped-default Built-in tile are visible in both;
+the state matrix itself is asserted headlessly by
+`apps/settings/tests/tst_settings_wallpaper.qml`.
+
 T-10.7's Files slice capture is produced by `scripts/capture-files.sh`
 (`make files-capture`): the nested demo runs with `DF_DEMO_QT_APP` pointing at
 Files over a scratch fixture tree and a scratch trash store, and it writes
