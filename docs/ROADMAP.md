@@ -301,9 +301,10 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 > smoothed-pointer anchor flip), and plate rendering (the rim not following
 > the corner arcs, and the QML plate/compositor frost alignment). They carry
 > measured before/after captures; run them before the T-15 breadth work if
-> the Dock is still in daily use. T110x landed (ADR 0110, timestamped pointer
-> injection); the same zero-timestamp trap in the other chrome injection
-> paths is carried as T-16.12 (T151a) in Phase 16.
+> the Dock is still in daily use. T110x and T110y landed (ADR 0110 timestamped
+> pointer injection; ADR 0111 non-overshoot tracker, raw-pointer anchor,
+> peak-hold plate edge); the same zero-timestamp trap in the other chrome
+> injection paths is carried as T-16.12 (T151a) in Phase 16.
 
 - [x] T110a — T-14.7a Dock plate geometry and spacing → [tasks/110a-t-14.7a-dock-plate-geometry-and-spacing.md](tasks/110a-t-14.7a-dock-plate-geometry-and-spacing.md)
 - [x] T110b — T-14.7b Magnified plate growth and backdrop panel → [tasks/110b-t-14.7b-dock-magnified-plate-and-backdrop.md](tasks/110b-t-14.7b-dock-magnified-plate-and-backdrop.md)
