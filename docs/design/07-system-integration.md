@@ -249,6 +249,55 @@ rules: `bluetoothd` gone or no controller hides the tile and disables the pane's
 controls with a one-line note; a `BluetoothOutcome::Denied` write is surfaced
 per action without degrading the read state.
 
+## The storage path (T-15.2a)
+
+The storage adapter, `dragonfruit-storage` (`services/storage`), gives a pane
+the drives, the mountable volumes, and the mounted/removable state the track
+demo needs to "mount/eject a USB drive and see it in Files and the sidebar".
+UDisks2 exposes the whole tree over its D-Bus API on the **system bus**
+(`org.freedesktop.UDisks2`): one
+`org.freedesktop.DBus.ObjectManager.GetManagedObjects` at
+`/org/freedesktop/UDisks2` enumerates every `org.freedesktop.UDisks2.Drive`
+and `org.freedesktop.UDisks2.Block` object (with an optional
+`org.freedesktop.UDisks2.Filesystem`), so the live source is a `zbus` client
+that decodes the property maps directly
+([adr/0119](adr/0119-storage-adapter-absence-and-mount-outcomes.md)).
+
+The adapter consumes **UDisks2 alone**. UDisks2 already carries the block
+enumeration, the `HintAuto`/`HintSystem`/`HintIgnore` hints, and the mount
+operations, so loading GIO/GVfs as well would reimplement the volume monitor
+for no new state; GIO stays where the project already uses it — the Files
+sidebar's volume view (`files-core`).
+
+The read path is the same three-state seam as the other adapters:
+`StorageSource::read` returns the raw object lists (`Ok(Some)`), absence
+(`Ok(None)`), or a read failure (`Err`). A bus where
+`org.freedesktop.UDisks2` does not own its name is absence — hidden, never an
+error. `StorageSnapshot::from_data` joins each block object to its drive,
+keeps only the mountable blocks that are not `HintIgnore`, orders the volumes
+mounted first, removable next, then by name, and derives the
+`drive-harddisk`/`drive-removable-media` glyph and each volume's display name
+(label, then device node, then UUID).
+
+The writes are explicit user actions, all over the same seam and one call
+each, never a loop: `mount` and `unmount` (`Mount`/`Unmount` on the block's
+`Filesystem`) and `eject` (`Eject` on the owning `Drive`). They are addressed
+by the UDisks2 **object path** the snapshot carries, not by device node. A
+successful write invents no snapshot: UDisks2 pushes the resulting property
+changes, the host re-reads, and the snapshot stays the single source of truth.
+UDisks2 authorizes mounting, unmounting, and ejecting through polkit; a
+refusal comes back as `StorageOutcome::Denied` with the daemon's message and
+leaves the read state live. A busy device that refuses to unmount is
+`StorageOutcome::Failed`, not a denial.
+
+The item hides in two different ways. UDisks2 itself being absent is the
+adapter's `AdapterState::Unavailable`. A machine that runs UDisks2 but has
+**no mountable volume** answers `Available`, with `StorageSnapshot::present()`
+false — the consumer hides the item then. Neither missing daemon nor missing
+hardware blocks session startup. Locked encrypted volumes have no `Filesystem`
+until unlocked and are not listed as mountable; unlock and format are out of
+scope.
+
 ## The status bridge host (T-07.5a)
 
 The adapters are Rust crates; the menu bar is C++/QML. T-07.5a bridges them in
