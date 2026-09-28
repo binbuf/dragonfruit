@@ -111,6 +111,15 @@ short walkthrough clip land in `docs/captures/`. It needs a host Wayland
 session, Spectacle, ffmpeg, and Pillow, so it is deliberately not part of
 `make e2e`.
 
+`scripts/capture-t17-window-loop.sh` (`make t17-window-loop-capture`) is the
+T-17.1a verification capture: it runs the same synthetic-input loop but on a
+real third-party Qt SSD client (`kcalc`) started against the private socket,
+records the exact titlebar drag, zoom, minimize, restore, and close, and also
+captures the first-party CSD client and the X11 client. The stills, clip, and
+machine transcript land under `docs/captures/t17-window-loop.*`; the harness
+and its evidence boundary are
+[ADR 0159](adr/0159-t17-nested-window-loop-capture.md).
+
 ### Tracing a pane switch
 
 To find where a Settings pane switch spends its time, run the nested demo with

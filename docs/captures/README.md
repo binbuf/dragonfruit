@@ -802,6 +802,34 @@ recorded by hand in `t16-kill-matrix.md`. The contracts are
 compositor-death outcome and restart policy,
 [ADR 0158](../design/adr/0158-compositor-death-ends-the-session.md).
 
+T-17.1a's nested window-loop sign-off is produced by
+`scripts/capture-t17-window-loop.sh` (`make t17-window-loop-capture`): the
+nested demo runs with the synthetic-input harness and a real third-party Qt
+client (`kcalc`, server-side decoration) on the private socket. The driver
+performs launch/appear, focus, move (a titlebar drag of exactly (90,70)), zoom
+(double-click), minimize (yellow light), restore, and close (red light) on the
+Qt SSD window, and writes `t17-window-loop.png` (the representative whole
+desktop: the Qt SSD client, the first-party CSD Settings, and the X11
+`xmessage` client all mapped), the step stills `-focused`, `-move`, `-zoom`,
+`-minimized`, `-restored`, `-closed`, the CSD-unaffected crop `-csd`, the X11
+SSD titlebar crop `-x11`, the clip `t17-window-loop.mp4`, and the machine
+transcript `t17-window-loop.txt` (the `query decorations`/`query identity`
+report around each lifecycle primitive). The restore uses the same compositor
+primitive the Dock tile invokes; the Dock-tile geometry itself is covered by the
+headless T-01/T-02 suites and the human walkthrough (the agent capture's
+Dock-tile pixel diff is ambiguous because an unpinned running app's tile makes
+the pinned tiles re-center — see
+[ADR 0159](../design/adr/0159-t17-nested-window-loop-capture.md)). The loop's
+per-behaviour conformance remains
+`traffic_lights_drive_zoom_minimize_and_close`,
+`titlebar_drag_and_double_click_move_and_zoom`,
+`window_menu_runs_zoom_minimize_close_and_move_to_space`,
+`x11_traffic_lights_drive_zoom_minimize_and_close`,
+`ssd_toplevel_carries_a_titlebar_and_csd_does_not`,
+`decoration_tier_matrix_default_explicit_ssd_and_csd_side_by_side`, and
+`milestone_e2e` (all in `make e2e`). Needs a host Wayland session, spectacle,
+python3+Pillow, ffmpeg (optional clip), and the built tree; not in `make e2e`.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

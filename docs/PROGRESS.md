@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(150 earlier sections omitted)_
+_(151 earlier sections omitted)_
 
-- **T114 — T-15.2b Storage and removable media pane and tile**: **State: done.** The Storage pane and Control Center tile ship as one unit over; `services/system-status/src/storage.rs` (new) — `StorageHost<S>` +
 - **T115 — T-15.3a Sound and routing adapter**: **State: done.** The T-07.3 audio adapter (`dragonfruit-audio`) grew the input; `services/audio/src/source.rs` — new `SourceData`; `AudioData` gained
 - **T116 — T-15.3b Sound and routing pane and tile**: **State: done.** The Settings Sound pane and the Control Center Sound tile ship; `services/system-status/src/lib.rs` — `audio_view` now carries `sources`,
 - **T117 — T-15.4a Keyboard, Mouse, and Trackpad adapter**: **State: done.** A new workspace crate `dragonfruit-input` (`services/input`); `services/input/src/lib.rs` — crate docs + exports.
@@ -44,6 +43,8 @@ _(150 earlier sections omitted)_
 - **T150 — T-16.8a Crash/kill matrix**: **State: done.** The crash/kill matrix covers every restartable shipped; `services/session/tests/kill_matrix.rs` (5 → 9 tests) — the stand-in plan is
 - **T151 — T-16.8b Compositor-death behavior and restart-policy docs**: **State: done.** Compositor death is documented once as session-ending and the; `services/session/tests/restart_policy_matrix.rs` (new; 3 tests) — the
 - **T151a — T-16.12 Synthetic chrome pointer injection timestamps**: **State: done.** Every chrome surface that re-injects the compositor's pointer; `shell/src/chromepointer.{h,cpp}` (renamed from `dockpointer.*`, still in
+- **T152 — T-17.1a Nested window loop verification**: **State: done.** The nested window loop is verified with a committed capture.; `scripts/capture-t17-window-loop.sh` + `scripts/t17-window-loop-driver.py`
+- **Follow-ups**: **Stable Dock-tile locator for a synthesized restore-fro
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -14216,3 +14217,74 @@ Decisions / gotchas for later tasks:
   but the nested output reports `scale=1.1600` on this host, so fixed switch
   coordinates miss. Not caused by this change; a driver refresh would key
   coordinates off the reported scale.
+
+## T152 — T-17.1a Nested window loop verification
+
+**State: done.** The nested window loop is verified with a committed capture.
+The T-17 premium gate's first verification unit leaves no product code; it adds
+a reproducible scripted loop and its evidence. `make e2e` is green and the live
+capture was reviewed.
+
+Real paths:
+
+- `scripts/capture-t17-window-loop.sh` + `scripts/t17-window-loop-driver.py`
+  (new) — `make demo` nested with the synthetic-input harness, a real
+  third-party Qt SSD client (`kcalc`) started against the private socket, then
+  launch/appear → focus → move (exact (90,70) titlebar drag) → zoom → minimize
+  → restore → close on the Qt SSD window, plus the CSD-unaffected and X11 SSD
+  checks. `make t17-window-loop-capture`.
+- `docs/captures/t17-window-loop.{png,mp4,txt}` and the step stills
+  (`-focused`, `-move`, `-zoom`, `-minimized`, `-restored`, `-closed`, `-csd`,
+  `-x11`). `t17-window-loop.txt` is the JSON transcript of the
+  `query decorations`/`query identity` report around each primitive.
+- `docs/captures/t17-window-loop.md` (reviewed matrix + live check),
+  `docs/design/adr/0159-t17-nested-window-loop-capture.md` (new),
+  `docs/captures/README.md`, `docs/design/11-session-and-dev-workflow.md`,
+  `Makefile`.
+
+Commands that work (repo root; `PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig`,
+`RUSTFLAGS=-L $HOME/.local/df-devroot/lib64`):
+
+- `cargo test -p dragonfruit-compositor --test window_conformance --test
+  xwayland_conformance --test milestone_e2e` — 37 + 9 + 1 passed.
+- `make e2e` — exit 0; 129 `test result: ok`.
+- `make t17-window-loop-capture` (or `bash scripts/capture-t17-window-loop.sh`)
+  — exit 0; loop complete.
+- Live visual check: `docs/captures/t17-window-loop.png` + step stills via the
+  vision model — menu bar and Dock present, Qt SSD traffic lights, no
+  blank/torn/ghosted regions.
+
+Decisions / gotchas for T-17.1b, T-17.1c, and T-17.2:
+
+- **Capture by active window, not wallpaper colour.** T-18 ships a photo
+  wallpaper, so the T-01 driver's `WALL=(45,35,51)` nested-window detection no
+  longer finds the window. The T-17 driver raises the nested window via the
+  KWin scripting D-Bus and crops the active-window capture (the T-16.7
+  pattern); window tiers come from `query decorations`/`query identity`, and a
+  window occluding the loop titlebar is dragged clear first.
+- **The first-party Qt apps are CSD by design.** `apps/settings`/`apps/files`
+  use `Qt.FramelessWindowHint` and draw the design-system `TitleBar`, so the
+  loop's *SSD* traffic lights need a real third-party Qt client. `kcalc` is
+  installed and negotiates `ssd=True`; without it the loop falls back to the
+  X11 window and records the deviation.
+- **CSD titlebar drags need a stepped motion.** A CSD client turns the press
+  into an `xdg_toplevel.move` request, so an abrupt `down;motion;up` is lost;
+  the driver pauses after the press and sends the delta in steps. This also
+  fixed the `clear-the-stage` drag.
+- **Restore-from-Dock is not synthesized in the agent capture.** `kcalc` is an
+  unpinned running app: minimizing makes its tile appear and the pinned tiles
+  re-center, so a Dock-band pixel diff can hit a pinned app (it launched an
+  extra Files window in a trial). The capture uses the compositor `restore
+  <id>` primitive instead; the Dock-tile click is human-verified and pinned
+  headlessly by the T-01/T-02 suites. A stable Dock-tile locator is a
+  follow-up.
+
+## Follow-ups
+
+- **Stable Dock-tile locator for a synthesized restore-from-Dock click.**
+  The agent capture cannot reliably click the minimized tile of an unpinned
+  running app (see above); T-17.5a/T-17.2 may want the real click automated.
+- **The nested output scale seam.** Captures on this host still assume the
+  nested logical 1920x1200 maps 1:1 after the active-window crop; if a future
+  host reports a different nested scale, the per-window crop boxes need to be
+  keyed off the reported scale (same class as the T151a Control Center note).
