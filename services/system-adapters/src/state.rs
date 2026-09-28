@@ -40,6 +40,8 @@ impl AdapterId {
     pub const PRINTER: AdapterId = AdapterId("printer");
     /// Privacy and Security (the portal PermissionStore).
     pub const PRIVACY: AdapterId = AdapterId("privacy");
+    /// Accessibility (the AT-SPI accessibility bus status).
+    pub const ACCESSIBILITY: AdapterId = AdapterId("accessibility");
 
     /// An id for a status slot the constants above do not name.
     pub const fn new(id: &'static str) -> Self {
@@ -266,5 +268,6 @@ mod tests {
         assert_eq!(AdapterId::ACCOUNTS.as_str(), "accounts");
         assert_eq!(AdapterId::PRINTER.as_str(), "printer");
         assert_eq!(AdapterId::PRIVACY.as_str(), "privacy");
+        assert_eq!(AdapterId::ACCESSIBILITY.as_str(), "accessibility");
     }
 }

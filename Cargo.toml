@@ -26,6 +26,7 @@ members = [
     "services/account-adapter",
     "services/printer-adapter",
     "services/privacy-adapter",
+    "services/accessibility-adapter",
     "services/system-status",
     "services/wallpaperd",
     "tools/dragonfruit-dev",
