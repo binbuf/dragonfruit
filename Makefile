@@ -50,7 +50,8 @@ endif
         visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev dev-full demo soak e2e \
         idle-trace menubar-idle-trace latency-trace settingsd-capture settings-wave-1-capture \
         t18-wallpaper-capture t18-absence-matrix t15-absence-matrix t15-breadth-capture t16-a11y-audit \
-        t16-i18n-capture t16-kill-matrix t17-window-loop-capture t17-navigation-capture i18n-update \
+        t16-i18n-capture t16-kill-matrix t17-window-loop-capture t17-navigation-capture \
+        t17-flatpak-browser-capture i18n-update \
         files-capture osd-dnd-capture portals-capture zoo-run dock-spacing-capture dock-magnify-capture dock-motion-capture dock-trash-capture dock-app-picker-capture dock-drops-capture dock-activation-capture dock-launch-origin-capture dock-folder-stack-capture dock-tooltip-capture dock-tahoe-capture dock-folder-pin-capture dock-chooser-actions-capture dock-chooser-scroll-capture dock-window-badge-capture dock-hover-chooser-capture dock-overflow-capture dock-trash-empty-capture dock-minimize-reaction-capture dock-keyboard-reorder-capture dock-dividers-capture dock-magnify-sweep-capture dock-plate-corners-capture dock-icon-mask-capture check-desktop-names check-no-capture-grab check-design-tokens check-i18n clean install
 
 help:
@@ -69,6 +70,7 @@ help:
 	@echo "  make t16-kill-matrix — T-16.8a headless crash/kill matrix transcript"
 	@echo "  make t17-window-loop-capture — T-17.1a nested window-loop stills, clip + transcript"
 	@echo "  make t17-navigation-capture — T-17.1b workspace/Mission Control/app-switch stills, clip + transcript"
+	@echo "  make t17-flatpak-browser-capture — T-17.1c live Flatpak browser file-choose/screenshot/screen-share stills, clip + transcript"
 	@echo "  make files-capture — T-10.7 Files slice stills + large-directory scroll trace"
 	@echo "  make osd-dnd-capture — T-11.4b OSD card + menu-bar DND still"
 	@echo "  make portals-capture — T-13.7 Flatpak portal round-trips + picker still"
@@ -258,6 +260,16 @@ t17-window-loop-capture: build
 # transcript under docs/captures/t17-navigation.*.
 t17-navigation-capture: build
 	bash scripts/capture-t17-navigation.sh
+
+# T-17.1c: the live Flatpak/browser capture. Needs a host Wayland session,
+# `flatpak` with org.mozilla.firefox, /usr/libexec/xdg-desktop-portal,
+# `spectacle`, python3 (host and sandbox) with PyGObject/Pillow, ffmpeg
+# (optional clip) and the built tree. Runs the real Flatpak browser against the
+# nested session with the live shell as the portal presenter, completing
+# file-choose, screenshot, and screen-share by synthetic input and writing the
+# stills, clip and transcript under docs/captures/t17-flatpak-browser.*.
+t17-flatpak-browser-capture: build
+	bash scripts/capture-t17-flatpak-browser.sh
 
 # T-10.7: the Files slice capture. Needs a host Wayland session, `spectacle`,
 # `ffmpeg`, `gdbus`, Pillow and the built tree; drives the nested demo over the
