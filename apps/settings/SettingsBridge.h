@@ -38,6 +38,7 @@ class InputClient;
 class BatteryClient;
 class NotificationsClient;
 class UpdatesClient;
+class AccountsClient;
 class QDBusServiceWatcher;
 
 class SettingsBridge : public QObject
@@ -144,6 +145,17 @@ class SettingsBridge : public QObject
     // Whether the bridge host is on the session bus. False means no General /
     // About / Updates surface at all; the pane shows the absence note.
     Q_PROPERTY(bool updatesAvailable READ updatesAvailable NOTIFY updatesChanged)
+    // The Users and Groups view from the bridge host (T-15.11b):
+    // `{ state, glyph, label, present, humanCount, adminCount, lockedCount,
+    // groupsAvailable, groupCount, automaticLogin, automaticLoginUser,
+    // automaticLoginUid, users, groups }`. Empty when the host is absent; the
+    // pane renders the absence state rather than erroring. A host with no group
+    // provider is `available` with `groupsAvailable: false`, so only the group
+    // controls disable.
+    Q_PROPERTY(QVariantMap accounts READ accounts NOTIFY accountsChanged)
+    // Whether the bridge host is on the session bus. False means no Users &
+    // Groups surface at all; the pane shows the absence note.
+    Q_PROPERTY(bool accountsAvailable READ accountsAvailable NOTIFY accountsChanged)
     // The pane the shell opens on startup. Empty uses the first shipped pane;
     // `DF_SETTINGS_START_PANE=wallpaper` selects one for captures and tests.
     Q_PROPERTY(QString startPane READ startPane CONSTANT)
@@ -173,6 +185,8 @@ public:
     bool notificationsAvailable() const;
     QVariantMap updates() const;
     bool updatesAvailable() const;
+    QVariantMap accounts() const;
+    bool accountsAvailable() const;
     QString providerStatus() const;
     QString providerDefault() const;
     QString wallpaperBuiltinDefault() const;
@@ -270,6 +284,26 @@ public:
     // live client, which has no fixture to reset.
     Q_INVOKABLE void resetUpdatesFixture();
 
+    // T-15.11b: the Users & Groups pane's one seam. `refreshAccounts` re-reads
+    // the bridge host on pane open; each write calls the host stack adapter
+    // once and the host pushes the new view back through `accountsChanged`. A
+    // no-op when the host is absent. Account types are stable ids (`standard` /
+    // `administrator`); automatic login takes a uid (`0` clears it).
+    Q_INVOKABLE void refreshAccounts();
+    Q_INVOKABLE void createAccount(const QString &userName, const QString &realName,
+                                   const QString &accountType);
+    Q_INVOKABLE void deleteAccount(int uid);
+    Q_INVOKABLE void setAccountType(int uid, const QString &accountType);
+    Q_INVOKABLE void setAccountLocked(int uid, bool locked);
+    Q_INVOKABLE void setAccountAutomaticLogin(int uid, bool automaticLogin);
+    Q_INVOKABLE void createAccountGroup(const QString &name);
+    Q_INVOKABLE void deleteAccountGroup(const QString &name);
+    Q_INVOKABLE void setAccountGroupMembers(const QString &name,
+                                            const QStringList &members);
+    // Test seam (`DF_ACCOUNTS_FIXTURE` only): restore the in-process fixture's
+    // initial stack. A no-op on the live client.
+    Q_INVOKABLE void resetAccountsFixture();
+
     // T-18.2 test seam: with `DF_WALLPAPER_FIXTURE` set, seed the provider
     // lifecycle to `status` (`ready` loads the deterministic fixture
     // catalogue; any other status leaves it empty) so the pane's fetching /
@@ -311,6 +345,8 @@ signals:
     void notificationsChanged();
     // The General/About/Updates view or availability changed (T-15.10b).
     void updatesChanged();
+    // The Users and Groups view or availability changed (T-15.11b).
+    void accountsChanged();
 
 private:
     void buildWallpaperPresets();
@@ -368,4 +404,7 @@ private:
     // T-15.10b: the General/About/Updates seam (`DF_UPDATES_FIXTURE` selects
     // the mock).
     UpdatesClient *m_updates = nullptr;
+    // T-15.11b: the Users & Groups seam (`DF_ACCOUNTS_FIXTURE` selects the
+    // mock).
+    AccountsClient *m_accounts = nullptr;
 };

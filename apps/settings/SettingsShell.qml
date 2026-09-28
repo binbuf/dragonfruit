@@ -162,6 +162,8 @@ Item {
             return menuBarPaneComponent;
         case "general":
             return generalPaneComponent;
+        case "users-groups":
+            return usersGroupsPaneComponent;
         default:
             return null;
         }
@@ -317,6 +319,11 @@ Item {
     Component {
         id: generalPaneComponent
         GeneralPane { }
+    }
+
+    Component {
+        id: usersGroupsPaneComponent
+        UsersGroupsPane { }
     }
 
     AppWindow {

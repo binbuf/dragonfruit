@@ -54,6 +54,9 @@ public:
     virtual void checkUpdates() = 0;
     virtual void installUpdates() = 0;
     virtual void rebootUpdates() = 0;
+    // Users and Groups (T-15.11b): a read-only summary. The tile reflects the
+    // user/group state; the writes live in the Settings pane (ADR 0139).
+    virtual void refreshAccounts() = 0;
     virtual void join(const QString &ssid, const QString &secret) = 0;
     virtual void setVolume(double volume) = 0;
     virtual void setMute(bool muted) = 0;
@@ -67,6 +70,7 @@ signals:
     void storageState(const QByteArray &json);
     void inputState(const QByteArray &json);
     void updatesState(const QByteArray &json);
+    void accountsState(const QByteArray &json);
     void joinReport(const QByteArray &json);
     void writeReport(const QByteArray &json);
 };
@@ -97,6 +101,7 @@ public:
     void checkUpdates() override;
     void installUpdates() override;
     void rebootUpdates() override;
+    void refreshAccounts() override;
     void join(const QString &ssid, const QString &secret) override;
     void setVolume(double volume) override;
     void setMute(bool muted) override;
@@ -142,6 +147,7 @@ public:
     void checkUpdates() override;
     void installUpdates() override;
     void rebootUpdates() override;
+    void refreshAccounts() override;
     void join(const QString &ssid, const QString &secret) override;
     void setVolume(double volume) override;
     void setMute(bool muted) override;

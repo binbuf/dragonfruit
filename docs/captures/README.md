@@ -668,6 +668,14 @@ with no blank areas or stray artifacts. Captured by
 `scripts/capture-t15-account-adapter.sh`; requires a host Wayland session,
 spectacle, and Pillow, and is not in `make e2e`.
 
+`t15-11b-users-pane.png` and `t15-11b-users-control-center.png` are the Users &
+Groups pane and Control Center Users tile for T-15.11b. The pane capture shows
+the user list (avatar, display name, role), the `Add User…` / `Add Group…`
+buttons, the `Automatically log in as` popup, and the group list; the tile
+capture shows the read-only user summary (`2 Users`) and its settings link.
+Captured by `scripts/capture-t15-users-pane.sh`; requires a host Wayland
+session, spectacle, and Pillow, and is not in `make e2e`.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

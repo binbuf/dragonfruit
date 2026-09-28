@@ -24,6 +24,7 @@ const QString kBluetoothInterface = QStringLiteral("org.dragonfruit.SystemStatus
 const QString kStorageInterface = QStringLiteral("org.dragonfruit.SystemStatus1.Storage");
 const QString kInputInterface = QStringLiteral("org.dragonfruit.SystemStatus1.Input");
 const QString kUpdatesInterface = QStringLiteral("org.dragonfruit.SystemStatus1.Updates");
+const QString kAccountsInterface = QStringLiteral("org.dragonfruit.SystemStatus1.Accounts");
 
 // Serialize a QJsonObject to the compact byte form the host uses.
 QByteArray compact(const QJsonObject &object)
@@ -204,6 +205,12 @@ void DbusSystemStatusClient::rebootUpdates()
          &SystemStatusClient::writeReport);
 }
 
+void DbusSystemStatusClient::refreshAccounts()
+{
+    call(kAccountsInterface, QStringLiteral("State"), {},
+         &SystemStatusClient::accountsState);
+}
+
 void DbusSystemStatusClient::join(const QString &ssid, const QString &secret)
 {
     call(kWifiInterface, QStringLiteral("Join"), {ssid, secret},
@@ -234,6 +241,7 @@ MockSystemStatusClient::MockSystemStatusClient(QObject *parent)
     refreshStorage();
     refreshInput();
     refreshUpdates();
+    refreshAccounts();
 }
 
 void MockSystemStatusClient::refreshInput()
@@ -533,6 +541,55 @@ void MockSystemStatusClient::rebootUpdates()
     QJsonObject report;
     report.insert(QStringLiteral("outcome"), QStringLiteral("applied"));
     emit writeReport(compact(report));
+}
+
+void MockSystemStatusClient::refreshAccounts()
+{
+    // The Users and Groups fixture (T-15.11b): a workstation with one admin
+    // (Dan, the automatic login user) and one locked standard user (Sam), plus
+    // one user group. The tile is a read-only summary, so the fixture never
+    // mutates.
+    QJsonObject view;
+    view.insert(QStringLiteral("kind"), QStringLiteral("accounts"));
+    view.insert(QStringLiteral("state"), QStringLiteral("available"));
+    view.insert(QStringLiteral("glyph"), QStringLiteral("users"));
+    view.insert(QStringLiteral("label"), QStringLiteral("2 Users"));
+    view.insert(QStringLiteral("present"), true);
+    view.insert(QStringLiteral("humanCount"), 2);
+    view.insert(QStringLiteral("adminCount"), 1);
+    view.insert(QStringLiteral("lockedCount"), 1);
+    view.insert(QStringLiteral("groupsAvailable"), true);
+    view.insert(QStringLiteral("groupCount"), 1);
+    view.insert(QStringLiteral("automaticLogin"), QStringLiteral("Dan Doe"));
+    view.insert(QStringLiteral("automaticLoginUser"), QStringLiteral("dan"));
+    view.insert(QStringLiteral("automaticLoginUid"), 1000);
+
+    const auto user = [](int uid, const QString &userName, const QString &realName,
+                         const QString &accountType, const QString &accountTypeLabel,
+                         const QString &initial, bool locked, bool automaticLogin,
+                         bool system) {
+        QJsonObject entry;
+        entry.insert(QStringLiteral("uid"), uid);
+        entry.insert(QStringLiteral("userName"), userName);
+        entry.insert(QStringLiteral("realName"), realName);
+        entry.insert(QStringLiteral("displayName"), realName);
+        entry.insert(QStringLiteral("initial"), initial);
+        entry.insert(QStringLiteral("accountType"), accountType);
+        entry.insert(QStringLiteral("accountTypeLabel"), accountTypeLabel);
+        entry.insert(QStringLiteral("locked"), locked);
+        entry.insert(QStringLiteral("automaticLogin"), automaticLogin);
+        entry.insert(QStringLiteral("system"), system);
+        return entry;
+    };
+    QJsonArray users;
+    users.append(user(1000, QStringLiteral("dan"), QStringLiteral("Dan Doe"),
+                      QStringLiteral("administrator"), QStringLiteral("Admin"),
+                      QStringLiteral("D"), false, true, false));
+    users.append(user(1001, QStringLiteral("sam"), QStringLiteral("Sam Smith"),
+                      QStringLiteral("standard"), QStringLiteral("Standard"),
+                      QStringLiteral("S"), true, false, false));
+    view.insert(QStringLiteral("users"), users);
+    emit accountsState(compact(view));
 }
 
 void MockSystemStatusClient::refreshWifi()

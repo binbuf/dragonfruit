@@ -363,6 +363,31 @@ set_tests_properties(tst_settings_general PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# The Users & Groups-pane tests (T-15.11b): the user list, the per-user dialog's
+# account-type/lock/auto-login round-trips, adding and deleting a user, the
+# group list and membership writes, and the auto-login popup. `DF_ACCOUNTS_FIXTURE`
+# is the deterministic in-process host-stack client, so the cases never touch
+# AccountsService or a distro group provider.
+qt_add_executable(tst_settings_users
+    tst_settings_users.cpp
+)
+target_link_libraries(tst_settings_users PRIVATE
+    Qt6::QuickTest
+    dragonfruit-design-systemplugin
+    dragonfruit-settings-uiplugin
+)
+qt_import_qml_plugins(tst_settings_users)
+
+add_test(
+    NAME tst_settings_users
+    COMMAND tst_settings_users
+        -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_settings_users.qml
+)
+set_tests_properties(tst_settings_users PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;DF_SETTINGS_FIXTURE=1;DF_ACCOUNTS_FIXTURE=1;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Settings menu-model publication tests (T-09.6a): the app's published menu
 # model is asserted in shape and injected into the shell's `MenuBar` (the
 # `Dragonfruit.MenuBar` module is linked so the round-trip is real). Headless

@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(130 earlier sections omitted)_
+_(131 earlier sections omitted)_
 
-- **T110o — T-14.7o Dock window-count badge**: **State: done.** A grouped app now shows a count at its icon's top-right corner; `shell/src/dockprojection.{h,cpp}` — new `dockWindowCount(entry)` (prefers
 - **T110p — T-14.7p Dock hover-open, retargetable chooser and stable anchor**: **State: done.** `dock.chooserOnHover` (bool, default off) opts into a; `services/settingsd/src/schema.rs` — `dock.chooserOnHover` (`since: 8`),
 - **T110q — T-14.7q Dock overflow cell and More Windows popover**: **State: done.** When the running groups do not fit even at the minimum icon,; `shell/src/dockmodel.{h,cpp}` — `applyDockOverflow` now returns a terminal
 - **T110r — T-14.7r Dock Trash empty progress and result**: **State: done.** Empty Trash is asynchronous with visible states. Confirming; `shell/src/trashbridge.{h,cpp}` — `EmptyState {Idle,Emptying,Succeeded,Failed}`;
@@ -43,6 +42,7 @@ _(130 earlier sections omitted)_
 - **T129 — T-15.10a General, About, and Updates adapter**: **State: done.** New workspace crate `dragonfruit-update-adapter`; `services/update-adapter/` (new crate, workspace member) —
 - **T130 — T-15.10b General, About, and Updates pane and tile**: **State: done.** The Settings `General` pane and the Control Center `Software; `services/system-status/src/updates.rs` (new) — `UpdatesHost<S>` (refresh/
 - **T131 — T-15.11a Users and Groups adapter**: **State: done.** New workspace crate `dragonfruit-account-adapter`; `services/account-adapter/` (new crate, workspace member) —
+- **T132 — T-15.11b Users and Groups pane and tile**: **State: done.** The Settings `Users & Groups` pane and the Control Center; `services/system-status/src/accounts.rs` (new) — `AccountsHost<S>` (refresh/
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3225,6 +3225,25 @@ Gotchas for later tasks:
   a dark compositor default.
 
 ## Follow-ups
+
+- **T-15.11a has no live distro group provider yet.**
+  `dragonfruit-account-adapter` ships the `GroupProvider` seam and the mock;
+  the concrete provider belongs with packaging (T-16.9/T-16.10) because
+  AccountsService has no group API. `HostAccounts` therefore runs with
+  `groups: None` (a normal layered absence) until one is attached, so the
+  Users & Groups pane shows a live user list, disabled group controls, and the
+  "no group provider" note. Attach a `Box<dyn GroupProvider>` to the
+  `AccountsHost` in `services/system-status/src/main.rs` to light it up.
+- **T-15.11b drops `Network account server` from the reference pane.** There is
+  no enterprise directory join provider, so the row (and its `Edit…` button)
+  is omitted rather than shipped as a dead control. A future directory-join
+  task can add the provider and the row together.
+- **T-15.11b Control Center panel is at its nested-output height ceiling.**
+  The fourteenth (Users) tile fit by compacting every tile's vertical padding
+  from `spacing.xs` to `spacing.xxs` (content ~1108 px inside 1140 px). A
+  fifteenth tile needs a taller nested output: a scrolling panel is not
+  reachable because `ShellProtocol::onPointerAxis` is a no-op and the
+  compositor forwards no pointer-axis events to overlay surfaces.
 
 - **T-15.10a has no live distro update provider yet.**
   `dragonfruit-update-adapter` ships the `UpdateProvider` seam and the mock;
@@ -12481,3 +12500,115 @@ Decisions / gotchas for T-15.11b and later:
   own, so it confirms only that the nested desktop renders; vision found the
   menu bar, Dock, wallpaper, and the composited windows with no blank regions,
   clipping, missing text, or stray artifacts.
+
+## T132 — T-15.11b Users and Groups pane and tile
+
+**State: done.** The Settings `Users & Groups` pane and the Control Center
+`Users` tile ship as one functional unit over the T-15.11a adapter, through the
+bridge host (ADR 0139), not settingsd — there are **no new settingsd keys**
+(account/group management are explicit actions; the fields are reads). The tile
+is a read-only summary.
+
+Real paths:
+
+- `services/system-status/src/accounts.rs` (new) — `AccountsHost<S>` (refresh/
+  view/state + `create_user`/`delete_user`/`set_account_type`/`set_locked`/
+  `set_automatic_login`/`create_group`/`delete_group`/`set_group_members`) +
+  pure `accounts_view`/`accounts_snapshot_view` + `account_report`. The view
+  carries `glyph`/`label`/`present`/`userCount`/`humanCount`/`systemCount`/
+  `adminCount`/`lockedCount`/`groupsAvailable`/`groupCount`/`automaticLogin`
+  (`User`)/`automaticLoginUid`/`users[]`/`groups[]`. An unknown account-type id
+  is a `failed` report, not a guessed `Standard`.
+- `services/system-status/src/lib.rs` — `pub mod accounts`, re-exports, and
+  `ACCOUNTS_INTERFACE = "org.dragonfruit.SystemStatus1.Accounts"`.
+- `services/system-status/src/dbus.rs` — `LiveAccounts =
+  AccountsHost<HostAccounts>`; `AccountsInterface` with `State`/`Refresh`/the
+  eight writes; `run(...)` takes the accounts host; `interface_names()` is now
+  9.
+- `services/system-status/src/main.rs` — `AccountsHost::new(HostAccounts::new())`
+  (AccountsService live, no group provider), `--print-accounts`.
+- `services/system-status/tests/accounts.rs` (new) — 7 bridge acceptance tests.
+- `services/system-status/Cargo.toml` — depends on
+  `dragonfruit-account-adapter`.
+- `apps/settings/AccountsClient.{h,cpp}` (new) — `AccountsClient` seam;
+  `DbusAccountsClient` over the `Accounts` interface; `MockAccountsClient`
+  (`DF_ACCOUNTS_FIXTURE`) with a simulated user/group stack that mutates on
+  every write and `resetForTest()`.
+- `apps/settings/SettingsBridge.{h,cpp}` — `accounts`/`accountsAvailable`
+  properties, `accountsChanged`, `refreshAccounts`, the eight write invokables,
+  `resetAccountsFixture`.
+- `apps/settings/UsersGroupsPane.qml` (new) — user list rows (circular initial
+  avatar, display name, `Admin`/`Standard` + `Locked`, info button), `Add
+  User…`/`Add Group…` buttons, `Automatically log in as` popup, group list
+  (name, member count, info button), plus the per-user dialog (account type,
+  Disabled, Automatically Log In, Delete User with confirmation), the add-user
+  dialog, the per-group dialog (membership toggles, Delete Group), the add-group
+  dialog, and the absence / no-group-provider notes.
+- `apps/settings/SettingsPanes.qml` — `users-groups` shipped `true`, icon
+  `users`; `SettingsShell.qml` registers the body.
+- `apps/settings/CMakeLists.txt` (module + `df_qml_lint`) and
+  `apps/settings/tests/CMakeLists.txt` (`tst_settings_users`).
+- `design-system/components/Icon.qml` — new painted `users` glyph (two
+  silhouettes).
+- Shell: `systemstatusclient.{h,cpp}` (read-only `refreshAccounts` +
+  `accountsState`, mock fixture), `systemstatusmodel.{h,cpp}` (`accounts()`,
+  `accountsVisible()`, `applyAccountsJson`, `requestRefreshAccounts`),
+  `shellcontroller.{h,cpp}` (`onAccountsState`, startup/status-report refresh,
+  `applyControlCenterData` pushes `accounts`, `onUsersSettingsRequested`),
+  `shell/control-center/ControlCenter.qml` (14th tile `users` with the state
+  label + `Users & Groups Settings…` link).
+- Tests — `apps/settings/tests/tst_settings_users.{cpp,qml}` (new, 9 cases);
+  `tst_settings_absence.qml` (shipped 17 → 18, id list, users-groups absence
+  case); `tst_settings_shell.qml` (shipped 17 → 18, search list);
+  `shell/tests/tst_controlcenter.qml` (14 tiles, fit test, users cases);
+  `shell/tests/tst_statusmodel.cpp` (3 accounts cases).
+- Docs/scripts — ADR `0139-users-groups-pane-and-tile.md`;
+  `docs/design/07-system-integration.md` D-Bus bullet + T-15.11b subsection;
+  capture script `scripts/capture-t15-users-pane.sh` + `docs/captures/README.md`.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-system-status` — 55 lib (9 accounts) + 7 accounts
+  integration + the other integration suites green.
+- `cargo test -p dragonfruit-account-adapter` — green (unchanged).
+- `cargo clippy -p dragonfruit-system-status -p dragonfruit-account-adapter
+  --all-targets -- -D warnings` — clean; `cargo fmt --all -- --check` — clean.
+- `ctest --test-dir build --output-on-failure -j4` — 65/65.
+- `make e2e` — EXIT 0 (captured `/tmp/opencode/e2e-t132.log`).
+- `make check-design-tokens check-tokens check-no-capture-grab` — clean;
+  `./scripts/check-gallery-snapshots.py` — 78 green.
+- `make lint` — still fails only on the pre-existing `check-desktop-names`
+  lines (none in the new work); unchanged from T125–T131.
+
+Decisions / gotchas for T-15.12a and later:
+
+- **The tile is read-only; the pane owns the writes.** `SystemStatusClient`
+  gains only `refreshAccounts`; the eight writes live in the Settings
+  `AccountsClient`. Do not add tile writes.
+- **Absence is layered (ADR 0138/0139).** The view is `unavailable` only when
+  neither AccountsService nor the group provider is reachable; a reachable host
+  with no group provider is `available` with `groupsAvailable: false` (users
+  live, only group controls disabled, pane shows a distinct note). The tile
+  stays visible whenever the host answers.
+- **No settingsd keys.** Do not add presentation keys for Users & Groups.
+- **A write never invents a snapshot.** The host re-reads after each action;
+  `MockAccountsClient` mutates its simulated stack so a round-trip is
+  observable headlessly.
+- **`DF_ACCOUNTS_FIXTURE`** selects the Settings mock and is process-global; the
+  test calls `Settings.resetAccountsFixture()` in `init()`. The shell fixture is
+  `DF_STATUS_FIXTURE` (its mock now emits an accounts view too).
+- **The pane derives `selectedUser`/`selectedGroup` from the live view by
+  uid/name** (not a stored copy), so an open dialog converges after a write.
+  Do not revert to storing the entry object.
+- **Control Center padding compacted to `xxs`.** 14 tiles fit at ~1108 px
+  inside 1140 px. A 15th tile needs a taller nested output (no pointer-axis
+  forwarding, ADR 0139).
+- Live visual check: `bash scripts/capture-t15-users-pane.sh` produced
+  `docs/captures/t15-11b-users-pane.png` (2088x1410) and
+  `docs/captures/t15-11b-users-control-center.png` (360x1160). Vision confirmed
+  the pane's selected `Users & Groups` sidebar row, the `Dan Doe, Admin` /
+  `Sam Smith, Standard · Locked` rows, both `Add User…`/`Add Group…` buttons,
+  the `Automatically log in as` value `Dan Doe`, the `wheel` (1 member) /
+  `users` (2 members) groups, and no clipped/blank/overlapping text; and the
+  panel's 14 tiles through `Users` (`2 Users`, `Users & Groups Settings…`) plus
+  Clipboard with the bottom fully visible and no artifacts.

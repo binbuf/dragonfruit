@@ -47,6 +47,7 @@ use dragonfruit_power::{PowerAdapter, PowerProfile, PowerSource, ProfileOutcome}
 use dragonfruit_system_adapters::Adapter;
 use serde_json::{json, Value};
 
+pub mod accounts;
 pub mod bluetooth;
 pub mod dbus;
 pub mod input;
@@ -54,6 +55,9 @@ pub mod notifications;
 pub mod storage;
 pub mod updates;
 
+pub use accounts::{
+    account_report, account_type_label, accounts_snapshot_view, accounts_view, AccountsHost,
+};
 pub use bluetooth::{bluetooth_report, bluetooth_snapshot_view, bluetooth_view, BluetoothHost};
 pub use input::{input_snapshot_view, input_view, InputHost};
 pub use notifications::{
@@ -82,6 +86,8 @@ pub const INPUT_INTERFACE: &str = "org.dragonfruit.SystemStatus1.Input";
 pub const NOTIFICATIONS_INTERFACE: &str = "org.dragonfruit.SystemStatus1.Notifications";
 /// The General/About/Updates interface name under [`DBUS_NAME`] (T-15.10b).
 pub const UPDATES_INTERFACE: &str = "org.dragonfruit.SystemStatus1.Updates";
+/// The Users and Groups interface name under [`DBUS_NAME`] (T-15.11b).
+pub const ACCOUNTS_INTERFACE: &str = "org.dragonfruit.SystemStatus1.Accounts";
 
 /// The host owns the three menu-bar adapters and exposes their snapshots and
 /// actions. Generic over the transport seams so CI drives it with the mocks.

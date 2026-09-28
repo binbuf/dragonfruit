@@ -18,10 +18,12 @@
 //! dragonfruit-system-status --print-input
 //! dragonfruit-system-status --print-notifications
 //! dragonfruit-system-status --print-updates
+//! dragonfruit-system-status --print-accounts
 //! ```
 
 use std::process::ExitCode;
 
+use dragonfruit_account_adapter::HostAccounts;
 use dragonfruit_audio::CommandAudio;
 use dragonfruit_bluetooth::DbusBluez;
 use dragonfruit_input::CommandLibinput;
@@ -30,6 +32,7 @@ use dragonfruit_notify_adapter::DbusNotifications;
 use dragonfruit_power::DbusUPower;
 use dragonfruit_storage::DbusUDisks;
 use dragonfruit_system_status::dbus;
+use dragonfruit_system_status::AccountsHost;
 use dragonfruit_system_status::BluetoothHost;
 use dragonfruit_system_status::InputHost;
 use dragonfruit_system_status::NotificationsHost;
@@ -47,6 +50,7 @@ fn main() -> ExitCode {
     let mut print_input = false;
     let mut print_notifications = false;
     let mut print_updates = false;
+    let mut print_accounts = false;
     for arg in std::env::args().skip(1) {
         match arg.as_str() {
             "--print-wifi" => print_wifi = true,
@@ -57,6 +61,7 @@ fn main() -> ExitCode {
             "--print-input" => print_input = true,
             "--print-notifications" => print_notifications = true,
             "--print-updates" => print_updates = true,
+            "--print-accounts" => print_accounts = true,
             "-h" | "--help" => {
                 print_help();
                 return ExitCode::SUCCESS;
@@ -82,7 +87,16 @@ fn main() -> ExitCode {
     // absent until packaging attaches one (ADR 0136), so the update controls
     // report absence rather than inventing state.
     let mut updates = UpdatesHost::new(HostSystem::new());
+    // AccountsService over the system bus, with no distribution group provider
+    // attached until packaging supplies one (ADR 0138), so the group controls
+    // report absence rather than inventing state.
+    let mut accounts = AccountsHost::new(HostAccounts::new());
 
+    if print_accounts {
+        accounts.refresh();
+        println!("{}", accounts.state());
+        return ExitCode::SUCCESS;
+    }
     if print_updates {
         updates.refresh();
         println!("{}", updates.state());
@@ -130,7 +144,16 @@ fn main() -> ExitCode {
     input.refresh();
     notifications.refresh();
     updates.refresh();
-    match dbus::run(host, bluetooth, storage, input, notifications, updates) {
+    accounts.refresh();
+    match dbus::run(
+        host,
+        bluetooth,
+        storage,
+        input,
+        notifications,
+        updates,
+        accounts,
+    ) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!(
@@ -156,6 +179,8 @@ fn print_help() {
            --print-input    refresh libinput and print the input JSON view\n\
            --print-notifications refresh the notification service and print its JSON view\n\
            --print-updates  refresh the host stack and print the updates JSON view\n\
+           --print-accounts refresh AccountsService/the group provider and print the\n\
+                            Users and Groups JSON view\n\
            -h, --help       show this help"
     );
 }

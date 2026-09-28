@@ -41,6 +41,10 @@ private slots:
     void updatesHidesOnAnAbsentHost();
     void updatesRefreshAndActionsRaiseTheRequests();
 
+    void accountsDecodesTheUsersAndGroups();
+    void accountsHidesOnAnAbsentHost();
+    void accountsRefreshRaisesTheRequest();
+
     void theAbsentDaemonMaskingMatrixHidesOnlyTheMaskedItem();
     void anUnreachedBridgeHostLeavesEveryItemHidden();
 };
@@ -460,6 +464,73 @@ void TestStatusModel::updatesRefreshAndActionsRaiseTheRequests()
     QCOMPARE(checkSpy.count(), 1);
     QCOMPARE(installSpy.count(), 1);
     QCOMPARE(rebootSpy.count(), 1);
+}
+
+// Users and Groups (T-15.11b) decodes the host-stack view. The user list is
+// always read when AccountsService answers, so the item stays visible even with
+// no group provider (`groupsAvailable: false`); only an absent host hides it.
+void TestStatusModel::accountsDecodesTheUsersAndGroups()
+{
+    const QVariantMap view = SystemStatusModel::parseView(
+        R"({"kind":"accounts","state":"available","glyph":"users",
+            "label":"2 Users","present":true,"humanCount":2,"adminCount":1,
+            "lockedCount":1,"groupsAvailable":true,"groupCount":1,
+            "automaticLogin":"Dan Doe","automaticLoginUser":"dan",
+            "automaticLoginUid":1000,
+            "users":[{"uid":1000,"userName":"dan","displayName":"Dan Doe",
+                      "initial":"D","accountType":"administrator",
+                      "accountTypeLabel":"Admin","locked":false,"system":false,
+                      "automaticLogin":true},
+                     {"uid":1001,"userName":"sam","displayName":"Sam Smith",
+                      "initial":"S","accountType":"standard",
+                      "accountTypeLabel":"Standard","locked":true,"system":false}],
+            "groups":[{"name":"wheel","gid":10,"memberCount":1,
+                       "members":["dan"],"system":false}]})",
+        QStringLiteral("accounts"));
+    QCOMPARE(view.value(QStringLiteral("state")).toString(), QStringLiteral("available"));
+    QCOMPARE(view.value(QStringLiteral("visible")).toBool(), true);
+    QCOMPARE(view.value(QStringLiteral("enabled")).toBool(), true);
+    QCOMPARE(view.value(QStringLiteral("glyph")).toString(), QStringLiteral("users"));
+    QCOMPARE(view.value(QStringLiteral("label")).toString(), QStringLiteral("2 Users"));
+    QCOMPARE(view.value(QStringLiteral("humanCount")).toInt(), 2);
+    QCOMPARE(view.value(QStringLiteral("automaticLoginUser")).toString(),
+             QStringLiteral("dan"));
+    QCOMPARE(view.value(QStringLiteral("users")).toList().size(), 2);
+    QCOMPARE(view.value(QStringLiteral("groups")).toList().size(), 1);
+
+    SystemStatusModel model;
+    // A host with no group provider stays visible: only the Settings pane's
+    // group controls disable.
+    model.applyAccountsJson(
+        R"({"kind":"accounts","state":"available","label":"1 User",
+            "groupsAvailable":false,"humanCount":1})");
+    QVERIFY(model.accountsVisible());
+    QCOMPARE(model.accounts().value(QStringLiteral("groupsAvailable")).toBool(), false);
+    QCOMPARE(model.accounts().value(QStringLiteral("label")).toString(),
+             QStringLiteral("1 User"));
+}
+
+void TestStatusModel::accountsHidesOnAnAbsentHost()
+{
+    SystemStatusModel model;
+    model.applyAccountsJson(R"({"kind":"accounts","state":"unavailable"})");
+    QCOMPARE(model.accountsVisible(), false);
+    QCOMPARE(model.accounts().value(QStringLiteral("state")).toString(),
+             QStringLiteral("unavailable"));
+
+    // A mismatched kind is rejected and leaves the last view in place.
+    model.applyAccountsJson(R"({"kind":"updates","state":"available"})");
+    QCOMPARE(model.accountsVisible(), false);
+    QCOMPARE(model.accounts().value(QStringLiteral("state")).toString(),
+             QStringLiteral("unavailable"));
+}
+
+void TestStatusModel::accountsRefreshRaisesTheRequest()
+{
+    SystemStatusModel model;
+    QSignalSpy refreshSpy(&model, &SystemStatusModel::refreshAccountsRequested);
+    model.requestRefreshAccounts();
+    QCOMPARE(refreshSpy.count(), 1);
 }
 
 // T-07.6a: the absent-daemon masking matrix at the decode seam. Masking one
