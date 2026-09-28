@@ -21,6 +21,7 @@ const QString kWifiInterface = QStringLiteral("org.dragonfruit.SystemStatus1.Wif
 const QString kAudioInterface = QStringLiteral("org.dragonfruit.SystemStatus1.Audio");
 const QString kBatteryInterface = QStringLiteral("org.dragonfruit.SystemStatus1.Battery");
 const QString kBluetoothInterface = QStringLiteral("org.dragonfruit.SystemStatus1.Bluetooth");
+const QString kStorageInterface = QStringLiteral("org.dragonfruit.SystemStatus1.Storage");
 
 // Serialize a QJsonObject to the compact byte form the host uses.
 QByteArray compact(const QJsonObject &object)
@@ -147,6 +148,30 @@ void DbusSystemStatusClient::setBluetoothConnected(const QString &address, bool 
          &SystemStatusClient::writeReport);
 }
 
+void DbusSystemStatusClient::refreshStorage()
+{
+    call(kStorageInterface, QStringLiteral("State"), {},
+         &SystemStatusClient::storageState);
+}
+
+void DbusSystemStatusClient::mountStorage(const QString &volumePath)
+{
+    call(kStorageInterface, QStringLiteral("Mount"), {volumePath},
+         &SystemStatusClient::writeReport);
+}
+
+void DbusSystemStatusClient::unmountStorage(const QString &volumePath)
+{
+    call(kStorageInterface, QStringLiteral("Unmount"), {volumePath},
+         &SystemStatusClient::writeReport);
+}
+
+void DbusSystemStatusClient::ejectStorage(const QString &drivePath)
+{
+    call(kStorageInterface, QStringLiteral("Eject"), {drivePath},
+         &SystemStatusClient::writeReport);
+}
+
 void DbusSystemStatusClient::join(const QString &ssid, const QString &secret)
 {
     call(kWifiInterface, QStringLiteral("Join"), {ssid, secret},
@@ -174,6 +199,7 @@ MockSystemStatusClient::MockSystemStatusClient(QObject *parent)
     refreshAudio();
     refreshBattery();
     refreshBluetooth();
+    refreshStorage();
 }
 
 void MockSystemStatusClient::refreshBluetooth()
@@ -262,6 +288,92 @@ void MockSystemStatusClient::setBluetoothConnected(const QString &address, bool 
     if (address == QStringLiteral("AA:BB:CC:DD:EE:FF"))
         m_btDeviceConnected = connected;
     refreshBluetooth();
+    QJsonObject report;
+    report.insert(QStringLiteral("outcome"), QStringLiteral("accepted"));
+    emit writeReport(compact(report));
+}
+
+void MockSystemStatusClient::refreshStorage()
+{
+    QJsonObject view;
+    view.insert(QStringLiteral("kind"), QStringLiteral("storage"));
+    view.insert(QStringLiteral("state"), QStringLiteral("available"));
+    view.insert(QStringLiteral("present"), m_storageDrivePresent);
+    view.insert(QStringLiteral("glyph"), QStringLiteral("storage"));
+    view.insert(QStringLiteral("label"),
+                !m_storageDrivePresent ? QStringLiteral("Storage unavailable")
+                : m_storageVolumeMounted ? QStringLiteral("Storage 1 mounted")
+                                         : QStringLiteral("Storage"));
+
+    const auto volume = [this](const QString &path, const QString &name,
+                               const QString &filesystem, bool mounted,
+                               const QString &mountPoint) {
+        QJsonObject entry;
+        entry.insert(QStringLiteral("path"), path);
+        entry.insert(QStringLiteral("drivePath"),
+                     QStringLiteral("/org/freedesktop/UDisks2/drives/usb"));
+        entry.insert(QStringLiteral("device"), QStringLiteral("/dev/sdb1"));
+        entry.insert(QStringLiteral("name"), name);
+        entry.insert(QStringLiteral("label"), name);
+        entry.insert(QStringLiteral("filesystem"), filesystem);
+        entry.insert(QStringLiteral("mounted"), mounted);
+        entry.insert(QStringLiteral("mountPoint"),
+                     mounted ? QJsonValue(mountPoint) : QJsonValue(QJsonValue::Null));
+        entry.insert(QStringLiteral("removable"), true);
+        entry.insert(QStringLiteral("system"), false);
+        entry.insert(QStringLiteral("ejectable"), true);
+        entry.insert(QStringLiteral("readOnly"), false);
+        entry.insert(QStringLiteral("glyph"), QStringLiteral("drive-removable-media"));
+        return entry;
+    };
+
+    QJsonArray volumes;
+    QJsonArray drives;
+    if (m_storageDrivePresent) {
+        QJsonObject drive;
+        drive.insert(QStringLiteral("path"),
+                     QStringLiteral("/org/freedesktop/UDisks2/drives/usb"));
+        drive.insert(QStringLiteral("name"), QStringLiteral("Flash Drive"));
+        drive.insert(QStringLiteral("removable"), true);
+        drive.insert(QStringLiteral("ejectable"), true);
+        drive.insert(QStringLiteral("glyph"), QStringLiteral("drive-removable-media"));
+        drives.append(drive);
+        volumes.append(volume(QStringLiteral("/org/freedesktop/UDisks2/block_devices/sdb1"),
+                              QStringLiteral("Photos"), QStringLiteral("vfat"),
+                              m_storageVolumeMounted,
+                              QStringLiteral("/run/media/user/Photos")));
+    }
+    view.insert(QStringLiteral("drives"), drives);
+    view.insert(QStringLiteral("volumes"), volumes);
+    view.insert(QStringLiteral("mountedCount"), m_storageVolumeMounted ? 1 : 0);
+    view.insert(QStringLiteral("volumeCount"), volumes.size());
+    view.insert(QStringLiteral("removableCount"), volumes.size());
+    emit storageState(compact(view));
+}
+
+void MockSystemStatusClient::mountStorage(const QString &)
+{
+    m_storageVolumeMounted = true;
+    refreshStorage();
+    QJsonObject report;
+    report.insert(QStringLiteral("outcome"), QStringLiteral("accepted"));
+    emit writeReport(compact(report));
+}
+
+void MockSystemStatusClient::unmountStorage(const QString &)
+{
+    m_storageVolumeMounted = false;
+    refreshStorage();
+    QJsonObject report;
+    report.insert(QStringLiteral("outcome"), QStringLiteral("accepted"));
+    emit writeReport(compact(report));
+}
+
+void MockSystemStatusClient::ejectStorage(const QString &)
+{
+    m_storageVolumeMounted = false;
+    m_storageDrivePresent = false;
+    refreshStorage();
     QJsonObject report;
     report.insert(QStringLiteral("outcome"), QStringLiteral("accepted"));
     emit writeReport(compact(report));

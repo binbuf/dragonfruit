@@ -138,6 +138,8 @@ Item {
             return displaysPaneComponent;
         case "bluetooth":
             return bluetoothPaneComponent;
+        case "storage":
+            return storagePaneComponent;
         default:
             return null;
         }
@@ -233,6 +235,11 @@ Item {
     Component {
         id: bluetoothPaneComponent
         BluetoothPane { }
+    }
+
+    Component {
+        id: storagePaneComponent
+        StoragePane { }
     }
 
     AppWindow {

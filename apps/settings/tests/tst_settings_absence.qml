@@ -31,7 +31,8 @@ Item {
         // Every shipped Wave-1 pane, with the exact control surface the
         // matrix asserts stays live while its provider is absent.
         readonly property var shippedPaneIds:
-            ["appearance", "desktop-dock", "displays", "wallpaper", "bluetooth"]
+            ["appearance", "desktop-dock", "displays", "wallpaper", "bluetooth",
+             "storage"]
 
         function make() {
             var shell = createTemporaryObject(shellComponent, stage,
@@ -84,7 +85,7 @@ Item {
 
         function test_every_shipped_pane_has_a_body_and_no_other_does() {
             var shell = make();
-            compare(SettingsPanes.shippedPanes.length, 5);
+            compare(SettingsPanes.shippedPanes.length, 6);
             for (var i = 0; i < SettingsPanes.catalog.length; ++i) {
                 var pane = SettingsPanes.catalog[i];
                 var body = shell.paneComponent(pane.id);
@@ -203,6 +204,28 @@ Item {
             // A write is a safe no-op with no host.
             pane.togglePower();
             compare(Settings.bluetoothAvailable, false);
+        }
+
+        // With no bridge host on the private bus, the Storage pane is the
+        // absence state: both groups are hidden and a one-line note explains
+        // the missing daemon. Nothing errors and no write is attempted.
+        function test_storage_pane_degrades_cleanly_without_the_bridge_host() {
+            var shell = make();
+            compare(Settings.storageAvailable, false,
+                    "no bridge host is the absent state under test");
+            compare(Settings.storage.present, undefined);
+
+            var pane = showPane(shell, "storage");
+            compare(pane.ready, false);
+            compare(pane.volumesGroup.visible, false);
+            compare(pane.removableGroup.visible, false);
+            compare(pane.absenceNote.visible, true,
+                    "the absence note explains the missing bridge host");
+            verify(pane.absenceNote.text.length > 0);
+
+            // A write is a safe no-op with no host.
+            pane.mountVolume("/org/freedesktop/UDisks2/block_devices/sdb1");
+            compare(Settings.storageAvailable, false);
         }
 
         // A control changed while the daemon is absent still converges into the

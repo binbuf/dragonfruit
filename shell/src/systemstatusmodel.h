@@ -28,6 +28,7 @@ public:
     QVariantMap audio() const { return m_audio; }
     QVariantMap battery() const { return m_battery; }
     QVariantMap bluetooth() const { return m_bluetooth; }
+    QVariantMap storage() const { return m_storage; }
 
     // Whether the item is drawn at all (`state != "unavailable"`; the battery
     // also hides when the machine has no present battery).
@@ -35,6 +36,7 @@ public:
     bool audioVisible() const;
     bool batteryVisible() const;
     bool bluetoothVisible() const;
+    bool storageVisible() const;
 
     // Decode a host `State()` payload (JSON object). Returns the normalized
     // map; an empty map on a parse failure, with `error` set when non-null.
@@ -52,10 +54,12 @@ public slots:
     void applyAudio(const QVariantMap &view);
     void applyBattery(const QVariantMap &view);
     void applyBluetooth(const QVariantMap &view);
+    void applyStorage(const QVariantMap &view);
     void applyWifiJson(const QByteArray &json);
     void applyAudioJson(const QByteArray &json);
     void applyBatteryJson(const QByteArray &json);
     void applyBluetoothJson(const QByteArray &json);
+    void applyStorageJson(const QByteArray &json);
 
     // User gestures from the popovers; the controller forwards each to the
     // bridge host. They do not mutate the view (the host re-read is the only
@@ -67,6 +71,7 @@ public slots:
     void requestRefreshAudio();
     void requestRefreshBattery();
     void requestRefreshBluetooth();
+    void requestRefreshStorage();
 
 signals:
     void changed();
@@ -77,6 +82,7 @@ signals:
     void refreshAudioRequested();
     void refreshBatteryRequested();
     void refreshBluetoothRequested();
+    void refreshStorageRequested();
 
 private:
     static QVariantMap normalize(const QVariantMap &view, const QString &kind);
@@ -84,4 +90,5 @@ private:
     QVariantMap m_audio;
     QVariantMap m_battery;
     QVariantMap m_bluetooth;
+    QVariantMap m_storage;
 };

@@ -41,6 +41,8 @@ QtObject {
           description: "", shipped: false },
         { id: "battery", title: qsTr("Battery"), icon: "battery",
           description: "", shipped: false },
+        { id: "storage", title: qsTr("Storage"), icon: "storage",
+          description: "", shipped: true },
         { id: "general", title: qsTr("General"), icon: "general",
           description: "", shipped: false },
         { id: "accessibility", title: qsTr("Accessibility"), icon: "accessibility",

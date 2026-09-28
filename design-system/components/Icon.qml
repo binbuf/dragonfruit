@@ -29,7 +29,7 @@ Item {
                                           "trash", "computer", "volume",
                                           "folder", "file", "icon-view",
                                           "list-view", "wifi", "bluetooth",
-                                          "brightness", "focus"]
+                                          "brightness", "focus", "storage"]
     readonly property bool painted: root.paintedGlyphs.indexOf(root.name) >= 0
 
     readonly property var bars: {
@@ -393,6 +393,20 @@ Item {
                 ctx.moveTo(s * 0.34, s * 0.86);
                 ctx.lineTo(s * 0.66, s * 0.86);
                 ctx.stroke();
+                break;
+            }
+            case "storage": {
+                // An internal drive: a rounded body with a platter slot and a
+                // small activity dot (the Storage pane / tile glyph).
+                roundedRect(s * 0.14, s * 0.22, s * 0.72, s * 0.56, s * 0.12);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(s * 0.22, s * 0.62);
+                ctx.lineTo(s * 0.78, s * 0.62);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(s * 0.70, s * 0.74, root.stroke * 0.7, 0, Math.PI * 2);
+                ctx.fill();
                 break;
             }
             case "volume": {

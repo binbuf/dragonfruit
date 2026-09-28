@@ -30,6 +30,9 @@ private slots:
     void bluetoothHidesWhenTheDaemonHasNoController();
     void bluetoothRefreshRaisesTheRequest();
 
+    void storageDecodesVolumesAndHidesWhenEmpty();
+    void storageRefreshRaisesTheRequest();
+
     void theAbsentDaemonMaskingMatrixHidesOnlyTheMaskedItem();
     void anUnreachedBridgeHostLeavesEveryItemHidden();
 };
@@ -264,6 +267,54 @@ void TestStatusModel::bluetoothRefreshRaisesTheRequest()
     SystemStatusModel model;
     QSignalSpy spy(&model, &SystemStatusModel::refreshBluetoothRequested);
     model.requestRefreshBluetooth();
+    QCOMPARE(spy.count(), 1);
+}
+
+// Storage (T-15.2b) decodes like the other views; the `present: false` case
+// (a running UDisks2 with no mountable volume) hides the tile exactly as the
+// battery hides with no battery and Bluetooth with no controller.
+void TestStatusModel::storageDecodesVolumesAndHidesWhenEmpty()
+{
+    const QVariantMap view = SystemStatusModel::parseView(
+        R"({"kind":"storage","state":"available","present":true,
+            "glyph":"storage","label":"Storage 1 mounted","mountedCount":1,
+            "volumeCount":1,"removableCount":1,
+            "drives":[{"path":"/drives/usb","name":"Flash Drive","removable":true,
+                       "ejectable":true}],
+            "volumes":[{"path":"/dev/sdb1","drivePath":"/drives/usb",
+                        "name":"Photos","mounted":true,
+                        "mountPoint":"/run/media/user/Photos","removable":true}]})",
+        QStringLiteral("storage"));
+    QCOMPARE(view.value(QStringLiteral("state")).toString(), QStringLiteral("available"));
+    QCOMPARE(view.value(QStringLiteral("visible")).toBool(), true);
+    QCOMPARE(view.value(QStringLiteral("enabled")).toBool(), true);
+    QCOMPARE(view.value(QStringLiteral("mountedCount")).toInt(), 1);
+    QCOMPARE(view.value(QStringLiteral("volumes")).toList().size(), 1);
+    QCOMPARE(view.value(QStringLiteral("volumes")).toList().at(0).toMap()
+                 .value(QStringLiteral("name")).toString(),
+             QStringLiteral("Photos"));
+
+    SystemStatusModel model;
+    model.applyStorageJson(
+        R"({"kind":"storage","state":"available","present":true,"mountedCount":1})");
+    QVERIFY(model.storageVisible());
+
+    // UDisks2 present but no mountable volume: available, yet the tile hides.
+    model.applyStorageJson(
+        R"({"kind":"storage","state":"available","present":false,
+            "label":"Storage unavailable"})");
+    QCOMPARE(model.storageVisible(), false);
+
+    // The daemon absent altogether.
+    model.applyStorageJson(R"({"kind":"storage","state":"unavailable"})");
+    QCOMPARE(model.storageVisible(), false);
+}
+
+void TestStatusModel::storageRefreshRaisesTheRequest()
+{
+    SystemStatusModel model;
+    QSignalSpy spy(&model, &SystemStatusModel::refreshStorageRequested);
+    model.requestRefreshStorage();
     QCOMPARE(spy.count(), 1);
 }
 

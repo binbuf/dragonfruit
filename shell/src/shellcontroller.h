@@ -189,6 +189,13 @@ private slots:
     void onBluetoothToggleRequested(bool enabled);
     void onBluetoothDeviceToggled(const QString &address, bool connected);
     void onBluetoothSettingsRequested();
+    // T-15.2b: the Control Center Storage tile. Mount/unmount a volume and
+    // eject a drive through the bridge host; the Settings link is an entry
+    // point only until T-16.
+    void onStorageMountRequested(const QString &volumePath);
+    void onStorageUnmountRequested(const QString &volumePath);
+    void onStorageEjectRequested(const QString &drivePath);
+    void onStorageSettingsRequested();
     // T-11.3b: the Focus/DND and dark-mode tiles. Focus writes the
     // notification service's mode; dark mode writes settingsd's
     // `appearance.colorScheme` (ThemeBinding applies it live). The two
@@ -215,6 +222,7 @@ private slots:
     void onAudioState(const QByteArray &json);
     void onBatteryState(const QByteArray &json);
     void onBluetoothState(const QByteArray &json);
+    void onStorageState(const QByteArray &json);
     void onStatusReport(const QByteArray &json);
     void onClockTick();
     void onAppMenuOpened(int index);

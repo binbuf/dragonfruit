@@ -26,6 +26,10 @@ Item {
     // `SystemStatusModel`: `{ state, present, powered, discovering, label,
     // glyph, knownDevices: [...] }`. Empty/absent hides the tile.
     property var bluetooth: ({})
+    // The storage view from the bridge host (T-15.2b), shaped by
+    // `SystemStatusModel`: `{ state, present, label, mountedCount, volumes:
+    // [...], drives: [...] }`. Empty/absent hides the tile.
+    property var storage: ({})
     property real brightness: 1.0
     // The notification service's Focus/DND policy view
     // (`{mode, allowList, batchedCount}`); empty when the service is absent.
@@ -40,6 +44,10 @@ Item {
 
     // Bluetooth writes are live through the T-15.1b bridge host.
     property bool bluetoothWritable: false
+
+    // Storage writes (mount/unmount/eject) are live through the T-15.2b bridge
+    // host.
+    property bool storageWritable: false
 
     readonly property bool wifiAvailable: root.wifi.state === "available"
     readonly property bool wifiOn: root.wifi.radioEnabled === true
@@ -74,6 +82,26 @@ Item {
     }
     readonly property var bluetoothDevices: root.bluetooth.knownDevices !== undefined
         ? root.bluetooth.knownDevices : []
+
+    // Storage (T-15.2b). The tile hides when UDisks2 is absent (`unavailable`)
+    // or when the daemon is present with no mountable volume (`present: false`),
+    // mirroring the model's hide rule.
+    readonly property bool storageAvailable: root.storage.state === "available"
+    readonly property bool storagePresent: root.storage.present === true
+    readonly property bool storageVisible: root.storageAvailable
+        && root.storagePresent
+    readonly property var storageVolumes: root.storage.volumes !== undefined
+        ? root.storage.volumes : []
+    readonly property int storageMountedCount:
+        root.storage.mountedCount !== undefined ? root.storage.mountedCount : 0
+    readonly property string storageLabel: {
+        if (!root.storageVisible)
+            return qsTr("Unavailable");
+        if (root.storage.label !== undefined && root.storage.label !== "")
+            return root.storage.label;
+        return root.storageMountedCount > 0
+            ? qsTr("%1 mounted").arg(root.storageMountedCount) : qsTr("No volumes");
+    }
 
     // The notification service's mode (`off`/`focus`/`dnd`). The toggle is Do
     // Not Disturb: `focus` also lights it, because both suppress banners.
@@ -128,6 +156,14 @@ Item {
             enabled: root.bluetoothVisible && root.bluetoothWritable
         },
         {
+            id: "storage",
+            kind: "storage",
+            title: qsTr("Storage"),
+            subtitle: root.storageLabel,
+            visible: root.storageVisible,
+            enabled: root.storageVisible && root.storageWritable
+        },
+        {
             id: "focus",
             kind: "toggle",
             title: qsTr("Focus"),
@@ -174,6 +210,12 @@ Item {
     signal bluetoothToggleRequested(bool enabled)
     signal bluetoothDeviceToggled(string address, bool connected)
     signal bluetoothSettingsRequested()
+    // Storage (T-15.2b): mount/unmount a volume, eject the drive that owns it,
+    // and the link opens the pane (T-16).
+    signal storageMountRequested(string volumePath)
+    signal storageUnmountRequested(string volumePath)
+    signal storageEjectRequested(string drivePath)
+    signal storageSettingsRequested()
     // Focus/DND is owned by the notification service (T-11.2a). On = Do Not
     // Disturb (`dnd`), off clears the policy (`off`).
     signal focusToggleRequested(bool enabled)
@@ -218,6 +260,32 @@ Item {
                                             !root.bluetoothDevices[i].connected);
                 return;
             }
+        }
+    }
+
+    // Mount or unmount one volume (a row tap), based on its current state.
+    function toggleStorageVolume(path) {
+        if (!root.storageVisible || !root.storageWritable || !path)
+            return;
+        for (var i = 0; i < root.storageVolumes.length; ++i) {
+            if (root.storageVolumes[i].path === path) {
+                if (root.storageVolumes[i].mounted)
+                    root.storageUnmountRequested(path);
+                else
+                    root.storageMountRequested(path);
+                return;
+            }
+        }
+    }
+
+    // Eject the removable drive that owns one volume (a row tap).
+    function ejectStorageVolume(path) {
+        if (!root.storageVisible || !root.storageWritable || !path)
+            return;
+        for (var i = 0; i < root.storageVolumes.length; ++i) {
+            if (root.storageVolumes[i].path === path
+                    && root.storageVolumes[i].drivePath)
+                root.storageEjectRequested(root.storageVolumes[i].drivePath);
         }
     }
 
@@ -466,6 +534,142 @@ Item {
                         text: qsTr("Bluetooth Settings\u2026")
                         accessibleName: qsTr("Open Bluetooth Settings")
                         onActivated: root.bluetoothSettingsRequested()
+                    }
+                }
+            }
+
+            // ── Storage (T-15.2b) ────────────────────────────────────────
+            Rectangle {
+                id: storageTile
+                objectName: "storageTile"
+                width: parent.width
+                visible: root.storageVisible
+                implicitHeight: storageColumn.implicitHeight
+                                + 2 * Theme.controls.settingsGroup.padding
+                radius: Theme.primitive.radius.md
+                color: Theme.color.surfaceSunken
+                Accessible.role: Accessible.Grouping
+                Accessible.name: qsTr("Storage")
+
+                Column {
+                    id: storageColumn
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: Theme.controls.settingsGroup.padding
+                    spacing: Theme.primitive.spacing.sm
+
+                    Row {
+                        width: parent.width
+                        spacing: Theme.primitive.spacing.md
+
+                        IconTile {
+                            objectName: "storageIcon"
+                            name: "storage"
+                            tileSize: 32
+                            iconSize: 18
+                            active: root.storageMountedCount > 0
+                        }
+
+                        Column {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: parent.width - 32 - 2 * Theme.primitive.spacing.md
+
+                            Text {
+                                objectName: "storageTitle"
+                                text: qsTr("Storage")
+                                color: Theme.color.textPrimary
+                                font.pixelSize: Theme.controls.button.fontSize
+                                font.weight: Theme.primitive.font.weightMedium
+                            }
+
+                            Text {
+                                objectName: "storageSubtitle"
+                                width: parent.width
+                                text: root.storageLabel
+                                color: Theme.color.textSecondary
+                                font.pixelSize: Theme.primitive.font.sizeSm
+                                elide: Text.ElideRight
+                            }
+                        }
+                    }
+
+                    Column {
+                        id: storageVolumeList
+                        objectName: "storageVolumeList"
+                        width: parent.width
+                        spacing: Theme.primitive.spacing.xs
+                        readonly property int count: root.storageVolumes.length
+                        visible: count > 0
+
+                        Repeater {
+                            model: root.storageVolumes
+                            delegate: Item {
+                                id: storageRow
+                                required property var modelData
+                                width: storageVolumeList.width
+                                height: 22
+
+                                Text {
+                                    objectName: "storageVolumeName"
+                                    anchors.left: parent.left
+                                    anchors.right: storageRowAction.left
+                                    anchors.rightMargin: Theme.primitive.spacing.sm
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: storageRow.modelData.name
+                                    color: Theme.color.textPrimary
+                                    font.pixelSize: Theme.primitive.font.sizeSm
+                                    elide: Text.ElideRight
+                                }
+
+                                Text {
+                                    id: storageRowEject
+                                    objectName: "storageVolumeEject"
+                                    visible: storageRow.modelData.removable === true
+                                             && storageRow.modelData.drivePath !== undefined
+                                    anchors.right: parent.right
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: qsTr("Eject")
+                                    color: Theme.color.accent
+                                    font.pixelSize: Theme.primitive.font.sizeSm
+                                    Accessible.role: Accessible.Button
+                                    Accessible.name: qsTr("Eject %1")
+                                        .arg(storageRow.modelData.name)
+                                    TapHandler {
+                                        onTapped: root.ejectStorageVolume(
+                                            storageRow.modelData.path)
+                                    }
+                                }
+
+                                Text {
+                                    id: storageRowAction
+                                    objectName: "storageVolumeAction"
+                                    anchors.right: storageRowEject.visible
+                                        ? storageRowEject.left : parent.right
+                                    anchors.rightMargin: storageRowEject.visible
+                                        ? Theme.primitive.spacing.md : 0
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: storageRow.modelData.mounted
+                                        ? qsTr("Unmount") : qsTr("Mount")
+                                    color: Theme.color.accent
+                                    font.pixelSize: Theme.primitive.font.sizeSm
+                                    Accessible.role: Accessible.Button
+                                    Accessible.name: qsTr("%1 %2")
+                                        .arg(text).arg(storageRow.modelData.name)
+                                    TapHandler {
+                                        onTapped: root.toggleStorageVolume(
+                                            storageRow.modelData.path)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    TextLink {
+                        objectName: "storageSettingsLink"
+                        text: qsTr("Storage Settings\u2026")
+                        accessibleName: qsTr("Open Storage Settings")
+                        onActivated: root.storageSettingsRequested()
                     }
                 }
             }
