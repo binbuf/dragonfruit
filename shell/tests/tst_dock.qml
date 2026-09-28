@@ -562,6 +562,129 @@ Item {
             fuzzyCompare(dock.smoothPointerAlong, dock._baseline.centers[2], 0.001);
         }
 
+        // -- T-14.7y tracking stability -------------------------------------
+
+        // The tracker must approach the raw pointer without passing it: an
+        // overshooting per-sample retarget is what made the smoothed value ring
+        // around the true position.
+        function test_smoothed_pointer_never_overshoots_the_target() {
+            mouseMove(stage, 640, stage.height - 1);
+            waitForRendering(stage);
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, position: "bottom", magnification: 1.0,
+                entries: [ app("a", "A", true), app("b", "B", true), app("c", "C", true) ]
+            });
+            dock.pointerAlong = dock._baseline.centers[0];
+            waitForRendering(stage);
+            var start = dock.smoothPointerAlong;
+            var target = dock._baseline.centers[2];
+            verify(target > start);
+            dock.pointerAlong = target;
+            var peak = start;
+            for (var i = 0; i < 18; ++i) {
+                wait(12);
+                peak = Math.max(peak, dock.smoothPointerAlong);
+            }
+            verify(peak <= target + 0.5,
+                   "smoothed pointer overshot its target: " + peak + " > " + target);
+            fuzzyCompare(dock.smoothPointerAlong, target, 1.0);
+        }
+
+        // The anchor is decided from the raw pointer, so the smoothing filter
+        // can never flip the anchored tile at a boundary. Immediately after a
+        // raw jump the smoothed value still sits on the old tile; the anchor
+        // must already be the tile under the *raw* pointer.
+        function test_anchor_index_follows_the_raw_pointer() {
+            mouseMove(stage, 640, stage.height - 1);
+            waitForRendering(stage);
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, position: "bottom", magnification: 1.0,
+                entries: [ app("a", "A", true), app("b", "B", true), app("c", "C", true) ]
+            });
+            dock.pointerAlong = dock._baseline.centers[0];
+            waitForRendering(stage);
+            compare(dock.anchorIndex, 0);
+            // Jump the raw pointer a tile over; do not wait for the tracker.
+            dock.pointerAlong = dock._baseline.centers[2];
+            compare(dock.anchorIndex, 2,
+                    "anchor must be the tile under the raw pointer, not the lagging filter");
+        }
+
+        // The anchor rule is intact: the anchored tile's center stays on its
+        // baseline center while the pointer is over it.
+        function nearestItemIndex(dock, along) {
+            var best = -1;
+            var bestDistance = Number.MAX_VALUE;
+            for (var i = 0; i < dock.items.length; ++i) {
+                if (dock.items[i].kind === "divider" || dock.items[i].kind === "external")
+                    continue;
+                var d = Math.abs(dock._baseline.centers[i] - along);
+                if (d < bestDistance) {
+                    bestDistance = d;
+                    best = i;
+                }
+            }
+            return best;
+        }
+
+        // A slow sweep across two tiles: the anchored tile tracks the raw
+        // pointer, stays put on its baseline center, and the plate top never
+        // reverses by more than a device pixel while the pointer moves one way.
+        function test_slow_sweep_has_a_stable_anchor_and_plate() {
+            mouseMove(stage, 640, stage.height - 1);
+            waitForRendering(stage);
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, position: "bottom", magnification: 1.0,
+                entries: [ app("a", "A", true), app("b", "B", true), app("c", "C", true) ]
+            });
+            var base = dock._baseline;
+            var start = base.centers[0];
+            var end = base.centers[2];
+            dock.pointerAlong = start;
+            waitForRendering(stage);
+            var prevTop = dock.plateRect.y;
+            var maxReversal = 0;
+            var steps = 30;
+            for (var i = 1; i <= steps; ++i) {
+                var along = start + (end - start) * i / steps;
+                dock.pointerAlong = along;
+                wait(16);
+                // (a)/(c): the anchor is exactly the tile under the raw pointer,
+                // and that tile keeps its baseline center.
+                var expected = nearestItemIndex(dock, along);
+                if (dock.anchorIndex !== expected)
+                    verify(false, "anchor flipped at step " + i + ": "
+                           + dock.anchorIndex + " != " + expected);
+                var anchorCenter = dock.layout[expected].x
+                        + dock.layout[expected].iconSize / 2;
+                verify(Math.abs(anchorCenter - base.centers[expected]) < 0.5,
+                       "anchored tile drifted at step " + i);
+                // (b): a one-way sweep must not backtrack the plate top by
+                // more than a device pixel.
+                var top = dock.plateRect.y;
+                if (top - prevTop > 0)
+                    maxReversal = Math.max(maxReversal, top - prevTop);
+                prevTop = top;
+            }
+            verify(maxReversal < 1.0,
+                   "plate top reversed by " + maxReversal + " px during a one-way sweep");
+        }
+
+        // Reduced motion follows the raw edge exactly: no tracker lag.
+        function test_plate_tracks_raw_under_reduced_motion() {
+            mouseMove(stage, 640, stage.height - 1);
+            waitForRendering(stage);
+            Theme.reducedMotion = true;
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, position: "bottom", magnification: 1.0,
+                entries: [ app("a", "A", true), app("b", "B", true), app("c", "C", true) ]
+            });
+            dock.pointerAlong = dock._baseline.centers[1];
+            waitForRendering(stage);
+            fuzzyCompare(dock.smoothPlateTrack, dock.plateTrackRaw, 0.001);
+            fuzzyCompare(dock.plateRect.y, dock.plateTrackRaw - dock.padding, 0.001);
+        }
+
         function test_entries_snap_to_layout_after_configure() {
             // The shell creates the Dock at width 0, sets `entries`, then the
             // surface configure sets the width. The delegates must snap to the
