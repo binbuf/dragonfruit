@@ -23,6 +23,7 @@ members = [
     "services/lock-adapter",
     "services/menubar-adapter",
     "services/update-adapter",
+    "services/account-adapter",
     "services/system-status",
     "services/wallpaperd",
     "tools/dragonfruit-dev",

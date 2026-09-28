@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(129 earlier sections omitted)_
+_(130 earlier sections omitted)_
 
-- **T110n — T-14.7n Dock window chooser: row discipline**: **State: done.** The window chooser's row list is now bounded: at most; `design-system/tokens/tokens.json` — `component.dock.chooser`:
 - **T110o — T-14.7o Dock window-count badge**: **State: done.** A grouped app now shows a count at its icon's top-right corner; `shell/src/dockprojection.{h,cpp}` — new `dockWindowCount(entry)` (prefers
 - **T110p — T-14.7p Dock hover-open, retargetable chooser and stable anchor**: **State: done.** `dock.chooserOnHover` (bool, default off) opts into a; `services/settingsd/src/schema.rs` — `dock.chooserOnHover` (`since: 8`),
 - **T110q — T-14.7q Dock overflow cell and More Windows popover**: **State: done.** When the running groups do not fit even at the minimum icon,; `shell/src/dockmodel.{h,cpp}` — `applyDockOverflow` now returns a terminal
@@ -43,6 +42,7 @@ _(129 earlier sections omitted)_
 - **T128 — T-15.9b Menu Bar configuration pane and tile**: **State: done.** The Settings Menu Bar pane and the Control Center Menu Bar; `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 15 → 16; new
 - **T129 — T-15.10a General, About, and Updates adapter**: **State: done.** New workspace crate `dragonfruit-update-adapter`; `services/update-adapter/` (new crate, workspace member) —
 - **T130 — T-15.10b General, About, and Updates pane and tile**: **State: done.** The Settings `General` pane and the Control Center `Software; `services/system-status/src/updates.rs` (new) — `UpdatesHost<S>` (refresh/
+- **T131 — T-15.11a Users and Groups adapter**: **State: done.** New workspace crate `dragonfruit-account-adapter`; `services/account-adapter/` (new crate, workspace member) —
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -12382,3 +12382,102 @@ Decisions / gotchas for T-15.11b and later:
   with `1 Update Available`, and the Control Center's 13 tiles plus Clipboard
   with the Software Update tile (`1 Update Available`, `Install`, `General
   Settings…`) fully visible and no clipping or overlap.
+
+## T131 — T-15.11a Users and Groups adapter
+
+**State: done.** New workspace crate `dragonfruit-account-adapter`
+(`services/account-adapter`) projects the **host stack**: AccountsService
+(`org.freedesktop.Accounts`) for the user list and a distribution **group
+provider** seam for groups, because AccountsService has no group API. It
+reuses both and never reimplements account or group management (ADR 0138).
+
+Real paths:
+
+- `services/account-adapter/` (new crate, workspace member) —
+  - `src/source.rs` — `AccountSource` seam; `AccountType`
+    (`standard`/`administrator`; AccountsService codes 0/1), `PasswordMode`
+    (`regular`/`none`/`set-at-login`/`empty`; codes 0–3), `AccountData`
+    (uid, login/real name, account type, password mode, home, shell, email,
+    language, icon, locked, system account, automatic login, login time,
+    x session), `GroupData` (name, gid, members, system), `AccountsData
+    { users, groups: Option<Vec<GroupData>> }`, `AccountOutcome`
+    (`Applied`/`Denied`/`Absent`/`Failed`); `MockAccounts`
+    (`absent`/`present`/`failing`/`deny_writes`/`fail_writes`/`push`/`kill`/
+    `restart` + per-method write counters) that mutates its simulated stack so
+    a re-read sees a write. Group writes are `Absent` when `groups` is `None`.
+  - `src/model.rs` — `Account` (display name, uppercase initial, admin/locked/
+    system, avatar), `Group`, `AccountsSnapshot` (`from_data` orders human
+    users before system accounts and user groups before system ones;
+    `human_users`/`system_users`/`groups`/`groups_available`/`user_by_uid`/
+    `user_by_name`/`group_by_name`/`present`/`human_count`/`admin_count`/
+    `locked_count`/`automatic_login_user`/`label`/`glyph` = `"users"`);
+    `AccountsChange` (user added/removed/changed, automatic-login changed,
+    group provider appeared/vanished, group added/removed/changed).
+  - `src/adapter.rs` — `AccountsAdapter<S>` over the shared `Subscription`
+    lifecycle; `refresh`, the five account writes (`create_user`,
+    `delete_user`, `set_account_type`, `set_locked`, `set_automatic_login`),
+    the three group writes (`create_group`, `delete_group`,
+    `set_group_members`), `drain_changes`; implements `Adapter` with
+    `AdapterId::ACCOUNTS`.
+  - `src/accounts.rs` — live `HostAccounts` (`AccountSource`): `ListCachedUsers`
+    at `/org/freedesktop/Accounts` then
+    `Properties.GetAll("org.freedesktop.Accounts.User")` per user; writes
+    `CreateUser`/`DeleteUser` (manager) and
+    `SetAccountType`/`SetLocked`/`SetAutomaticLogin` (user object); pure
+    `account_from_props` + `user_path`. `GroupProvider` trait
+    (`status`/`create_group`/`delete_group`/`set_members`) + `MockGroupProvider`;
+    `HostAccounts::new()` runs with no provider (groups absent) until one is
+    attached, exactly like `HostSystem`'s update provider.
+  - `tests/fixtures/accounts-workstation.json` — one admin + one locked
+    standard user + root, and wheel/users groups.
+  - `tests/read_path.rs` — 12 acceptance tests.
+- `services/system-adapters/src/state.rs` — `AdapterId::ACCOUNTS`
+  (`"accounts"`); id test updated.
+- `Cargo.toml` — workspace member; `Makefile` e2e runs
+  `cargo test -p dragonfruit-account-adapter`.
+- Docs/scripts — ADR `0138-users-and-groups-adapter.md`;
+  `docs/design/07-system-integration.md` adapter-table row + new "The Users and
+  Groups path (T-15.11a)" section; capture script
+  `scripts/capture-t15-account-adapter.sh` + `docs/captures/README.md`.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-account-adapter` — 45 lib + 12 read_path green.
+- `cargo test -p dragonfruit-system-adapters` — green.
+- `cargo clippy -p dragonfruit-account-adapter -p dragonfruit-system-adapters
+  --all-targets -- -D warnings` — clean; `cargo fmt --all -- --check` — clean.
+- `make e2e` — EXIT 0 (captured `/tmp/opencode/e2e-t131.log`).
+- `make check-design-tokens check-tokens check-no-capture-grab` — clean;
+  `./scripts/check-gallery-snapshots.py` — 78 green.
+- `make lint` — still fails only on the pre-existing `check-desktop-names`
+  lines (all in app-index/shell/scripts; none in the new crate); unchanged from
+  T125–T130.
+
+Decisions / gotchas for T-15.11b and later:
+
+- **Absence is layered.** The adapter is `Unavailable` only when neither
+  AccountsService nor the group provider is reachable. `AccountsService`
+  present with no cached user is `Available` with `present()` false; a running
+  host with **no group provider** is `Available` with `groups: None`, so only
+  the group controls disable. Do not collapse these into one hide rule.
+- **A write never changes the adapter state.** Unlike the single-daemon storage
+  adapter, an `Absent` group write (no provider) must not hide the live user
+  list; the host re-reads after the daemon/provider publishes. The pane's group
+  controls are the only thing that disables when `groups_available()` is false.
+- **The group provider is a seam, not an implementation.** Do not parse
+  `/etc/group` and do not add a group manager to this crate; attach a
+  `Box<dyn GroupProvider>` to `HostAccounts` (or have the bridge host read one).
+  `GroupProvider: Send` so it can live in the bridge host's `Mutex`.
+- **`AdapterId::ACCOUNTS` is `"accounts"`.** The account writes are
+  AccountsService method calls authorized by polkit, so `AccountOutcome::Denied`
+  is surfaced per action without degrading the read state.
+- **No settingsd keys.** Account and group management are explicit actions over
+  the host stack; the pane's read-only fields are reads. T-15.11b adds the pane
+  and tile; per the T-15.10b note the Control Center panel is at the nested
+  output ceiling, so a 14th tile needs a scrolling panel or a taller nested
+  output.
+- Live visual check: `bash scripts/capture-t15-account-adapter.sh` produced
+  `docs/captures/t15-11a-account-adapter.png` (3840x2160). No surface of its
+  own, so it confirms only that the nested desktop renders; vision found the
+  menu bar, Dock, wallpaper, and the composited windows with no blank regions,
+  clipping, missing text, or stray artifacts.

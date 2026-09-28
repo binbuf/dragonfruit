@@ -660,6 +660,14 @@ Update tile at the bottom of the panel with its state-dependent action link.
 Captured by `scripts/capture-t15-general-pane.sh`; requires a host Wayland
 session, spectacle, and Pillow, and is not in `make e2e`.
 
+`t15-11a-account-adapter.png` is the nested demo desktop captured to prove the
+Users and Groups adapter (T-15.11a) leaves the tree healthy. The adapter has no
+surface of its own (the pane and tile are T-15.11b), so the capture only
+confirms the desktop renders: menu bar, Dock, wallpaper, and windows composited
+with no blank areas or stray artifacts. Captured by
+`scripts/capture-t15-account-adapter.sh`; requires a host Wayland session,
+spectacle, and Pillow, and is not in `make e2e`.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

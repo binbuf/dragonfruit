@@ -1,0 +1,69 @@
+{
+  "users": [
+    {
+      "uid": 0,
+      "user_name": "root",
+      "real_name": "root",
+      "account_type": "administrator",
+      "password_mode": "regular",
+      "home_directory": "/root",
+      "shell": "/bin/bash",
+      "email": "",
+      "language": "",
+      "icon_file": "",
+      "locked": false,
+      "system_account": true,
+      "automatic_login": false,
+      "login_time": 0,
+      "x_session": ""
+    },
+    {
+      "uid": 1000,
+      "user_name": "dan",
+      "real_name": "Dan Doe",
+      "account_type": "administrator",
+      "password_mode": "regular",
+      "home_directory": "/home/dan",
+      "shell": "/bin/bash",
+      "email": "dan@example.com",
+      "language": "en_US.UTF-8",
+      "icon_file": "/usr/share/pixmaps/faces/dan.png",
+      "locked": false,
+      "system_account": false,
+      "automatic_login": true,
+      "login_time": 1700000000,
+      "x_session": "dragonfruit"
+    },
+    {
+      "uid": 1001,
+      "user_name": "sam",
+      "real_name": "Sam Smith",
+      "account_type": "standard",
+      "password_mode": "regular",
+      "home_directory": "/home/sam",
+      "shell": "/bin/bash",
+      "email": "",
+      "language": "",
+      "icon_file": "",
+      "locked": true,
+      "system_account": false,
+      "automatic_login": false,
+      "login_time": 1600000000,
+      "x_session": "dragonfruit"
+    }
+  ],
+  "groups": [
+    {
+      "name": "wheel",
+      "gid": 10,
+      "members": ["dan"],
+      "system": false
+    },
+    {
+      "name": "users",
+      "gid": 100,
+      "members": ["dan", "sam"],
+      "system": true
+    }
+  ]
+}
