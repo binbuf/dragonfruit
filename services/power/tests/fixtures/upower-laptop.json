@@ -9,6 +9,8 @@
       "percentage": 0.0,
       "state": 0,
       "battery_level": 0,
+      "capacity": 0.0,
+      "charge_cycles": 0,
       "time_to_empty": 0,
       "time_to_full": 0
     },
@@ -20,8 +22,21 @@
       "percentage": 82.0,
       "state": 1,
       "battery_level": 4,
+      "capacity": 96.0,
+      "charge_cycles": 112,
       "time_to_empty": 0,
       "time_to_full": 5400
     }
-  ]
+  ],
+  "profiles": {
+    "active_profile": "balanced",
+    "profiles": [
+      { "profile": "power-saver", "driver": "amd_pstate", "platform_driver": "amd_pstate_epp" },
+      { "profile": "balanced", "driver": "amd_pstate", "platform_driver": "amd_pstate_epp" },
+      { "profile": "performance", "driver": "amd_pstate", "platform_driver": "amd_pstate_epp" }
+    ],
+    "performance_inhibited": "",
+    "performance_degraded": "",
+    "holds": 0
+  }
 }

@@ -199,15 +199,59 @@ The read path is the same three-state seam as the other adapters:
 name is absence — hidden, never an error. `PowerSnapshot::from_data` picks the
 first present battery, maps `UPowerDeviceState` to `ChargeState` and
 `UPowerBatteryLevel` to `BatteryLevel`, and clamps the percentage to 0–100.
-There is **no write**: the battery item is read-only (power profiles via
-`power-profiles-daemon` are deferred to T-15).
+It also reads `Capacity` and `ChargeCycles` for the health row. The battery
+half is **read-only**; the power-profile half (T-15.6a) adds the one write.
 
-Being read-only, the item is hidden in two different ways. UPower itself being
+The item is hidden in two different ways. UPower itself being
 absent is the adapter's `AdapterState::Unavailable`. A machine that runs UPower
 but has no present battery (a desktop, a VM) still answers `Available`, with
 `PowerSnapshot::present()` false — the consumer hides the item then. A battery
 that is present but whose `IsPresent` is false is treated the same as no
 battery. Nothing blocks session startup when either is missing.
+
+### The battery and power profiles adapter (T-15.6a)
+
+T-15.6a grows `dragonfruit-power` from the read-only battery item into the
+full battery **and** power-profiles adapter. UPower and
+power-profiles-daemon are independent system-bus daemons, so the source reads
+both in one `read`:
+
+- UPower, as above, now also carrying `Capacity` (health as a percentage of
+  design capacity; `BatteryHealth::from_capacity` maps a documented 80%
+  threshold to `Normal`/`Service`) and `ChargeCycles`;
+- power-profiles-daemon — `ActiveProfile`, the `Profiles` list (`aa{sv}` of
+  `{Profile, Driver, PlatformDriver}`), `PerformanceInhibited`,
+  `PerformanceDegraded`, and the `ActiveProfileHolds` count. The one write is
+  [`set_active_profile`], a single `Properties.Set` of `ActiveProfile`; a
+  successful write invents no snapshot and the host re-reads.
+
+The daemon moved its well-known name from `net.hadess.PowerProfiles` to
+`org.freedesktop.UPower.PowerProfiles` (matching path and interface); the live
+source probes both and speaks to whichever owns its name. The model keeps the
+three-profile vocabulary (`power-saver`, `balanced`, `performance`) as
+[`PowerProfile`] with stable ids and glyphs; an unrecognized active id is not
+guessed. The adapter's [`PowerSnapshot::changes`] is the event half: a pure
+diff that reports a battery level/charge-state/health/on-battery move, a change
+to the available or active profile, a newly (un)degraded performance state, or
+a hold-count move, with no polling.
+
+**Absent-daemon behavior is per daemon.** UPower absent hides the battery item;
+power-profiles-daemon absent is carried inside the snapshot
+(`PowerSnapshot::profiles` is `None`) and only disables the profile control —
+the battery half stays live. `PowerSource::read` answers `Ok(None)` (the
+adapter's `Unavailable`) only when **both** daemons are unreachable, which is a
+normal hidden state. A machine that runs only power-profiles-daemon answers
+`Available` with `present: false` and a live profile list; a machine that runs
+only UPower answers `Available` with `profiles_available()` false. Nothing
+blocks session startup in any case.
+
+The Settings pane and Control Center tile are T-15.6b; T-15.6a ships the
+backend and its mock-driven tests only
+([adr/0128](adr/0128-battery-power-profiles-adapter.md)).
+
+[`set_active_profile`]: ../../services/power/src/adapter.rs
+[`PowerProfile`]: ../../services/power/src/model.rs
+[`PowerSnapshot::changes`]: ../../services/power/src/model.rs
 
 ## The Bluetooth path (T-15.1a)
 
@@ -229,7 +273,7 @@ then name, and derives the `powered`/`discovering` flags, the
 `bluetooth`/`bluetooth-disabled` glyph, the label, and each device's 0–100
 signal fill (from the BlueZ RSSI, which is `None` at the 0 sentinel).
 
-Unlike the read-only battery item, Bluetooth has explicit writes, all over the
+Unlike the read-only battery view, Bluetooth has explicit writes, all over the
 same seam and one call each, never a loop: `set_powered` (a `Properties.Set`
 of `org.bluez.Adapter1.Powered`), `set_discovering`
 (`StartDiscovery`/`StopDiscovery`), `pair`, and `set_connected`
