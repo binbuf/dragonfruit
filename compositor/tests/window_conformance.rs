@@ -2373,6 +2373,91 @@ fn malformed_client_requests_never_crash() {
     proc.shutdown();
 }
 
+/// T-16.8a: an app is a plain client, and its crash is not a compositor
+/// crash. Two independent apps map windows; one hard-closes its connection
+/// (a `SIGKILL`-style crash), and the compositor must stay alive, drop only
+/// the dead app's window, and keep serving the surviving app.
+#[test]
+fn a_crashed_app_leaves_the_compositor_and_the_other_app_running() {
+    use std::os::fd::AsRawFd;
+
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path =
+        PathBuf::from(&runtime_dir).join(format!("dragonfruit-app-crash-{}", std::process::id()));
+    let mut proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-app-crash",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+
+    // App A maps the first window and stays alive for the whole test.
+    let (_conn_a, mut queue_a, mut state_a) = connect(&proc.socket_path);
+    let (surface_a, xdg_a, toplevel_a, _file_a) = map_toplevel(&mut state_a, &mut queue_a);
+    queue_a.roundtrip(&mut state_a).expect("app A maps");
+    let after_a = wait_for_report(&mut state_a, &mut queue_a, &input, |reports| {
+        reports.len() == 1
+    });
+    let window_a = after_a[0].window;
+
+    // App B maps a second window.
+    let (conn_b, mut queue_b, mut state_b) = connect(&proc.socket_path);
+    let (_surface_b, _xdg_b, _toplevel_b, _file_b) = map_toplevel(&mut state_b, &mut queue_b);
+    queue_b.roundtrip(&mut state_b).expect("app B maps");
+    let after_b = wait_for_report(&mut state_a, &mut queue_a, &input, |reports| {
+        reports.len() == 2
+    });
+    let window_b = after_b
+        .iter()
+        .map(|report| report.window)
+        .find(|window| *window != window_a)
+        .expect("app B's window has a distinct id");
+
+    // Crash app B: hard-close its socket, the same way a `SIGKILL`ed client
+    // leaves the connection. The compositor must notice the disconnect and
+    // remove only that window.
+    let kill_fd = conn_b.as_fd().as_raw_fd();
+    unsafe {
+        libc::shutdown(kill_fd, libc::SHUT_RDWR);
+    }
+    let remaining = wait_for_report(&mut state_a, &mut queue_a, &input, |reports| {
+        reports.len() == 1 && reports[0].window == window_a
+    });
+    assert!(
+        remaining.iter().all(|report| report.window == window_a),
+        "only the dead app's window is removed: {remaining:?}"
+    );
+    assert_ne!(window_a, window_b, "the two app windows stay distinct");
+
+    // The compositor is alive and still serves app A.
+    assert!(
+        proc.child
+            .try_wait()
+            .expect("wait on the compositor")
+            .is_none(),
+        "the compositor must survive an app crash"
+    );
+    let _ = input.query("query decorations");
+    assert!(
+        parse_decorations(&input.query("query decorations"))
+            .iter()
+            .any(|report| report.window == window_a),
+        "app A's window is still mapped after app B crashed"
+    );
+
+    // `Connection` owns the fd; dropping it is a plain close of the socket we
+    // already shut down.
+    drop(conn_b);
+
+    surface_a.destroy();
+    toplevel_a.destroy();
+    xdg_a.destroy();
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}
+
 /// T-04 test-plan requirement: interactive move/resize over the protocol.
 /// The synthetic-input harness (T-03) supplies the seat button that starts
 /// the pointer grab, so this exercises `xdg_toplevel.move`/`resize` end to

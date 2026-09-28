@@ -50,7 +50,7 @@ endif
         visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev dev-full demo soak e2e \
         idle-trace menubar-idle-trace latency-trace settingsd-capture settings-wave-1-capture \
         t18-wallpaper-capture t18-absence-matrix t15-absence-matrix t15-breadth-capture t16-a11y-audit \
-        t16-i18n-capture i18n-update \
+        t16-i18n-capture t16-kill-matrix i18n-update \
         files-capture osd-dnd-capture portals-capture zoo-run dock-spacing-capture dock-magnify-capture dock-motion-capture dock-trash-capture dock-app-picker-capture dock-drops-capture dock-activation-capture dock-launch-origin-capture dock-folder-stack-capture dock-tooltip-capture dock-tahoe-capture dock-folder-pin-capture dock-chooser-actions-capture dock-chooser-scroll-capture dock-window-badge-capture dock-hover-chooser-capture dock-overflow-capture dock-trash-empty-capture dock-minimize-reaction-capture dock-keyboard-reorder-capture dock-dividers-capture dock-magnify-sweep-capture dock-plate-corners-capture dock-icon-mask-capture check-desktop-names check-no-capture-grab check-design-tokens check-i18n clean install
 
 help:
@@ -66,6 +66,7 @@ help:
 	@echo "  make t18-absence-matrix — T-18.3 headless absence/state matrix transcript"
 	@echo "  make t15-absence-matrix — T-15.16 headless absent-daemon masking matrix transcript"
 	@echo "  make t15-breadth-capture — T-15.16 whole-desktop breadth still (all providers absent)"
+	@echo "  make t16-kill-matrix — T-16.8a headless crash/kill matrix transcript"
 	@echo "  make files-capture — T-10.7 Files slice stills + large-directory scroll trace"
 	@echo "  make osd-dnd-capture — T-11.4b OSD card + menu-bar DND still"
 	@echo "  make portals-capture — T-13.7 Flatpak portal round-trips + picker still"
@@ -229,6 +230,13 @@ t16-a11y-audit: build
 # and writes the English/Spanish A/B stills under docs/captures/t16-i18n-*.png.
 t16-i18n-capture: build
 	bash scripts/capture-t16-i18n.sh
+
+# T-16.8a: the headless crash/kill matrix. Writes the reproduction transcript
+# for every restartable component under docs/captures/t16-kill-matrix.txt. No
+# host session and no real services are required (stand-ins + the headless
+# backend are the state under test).
+t16-kill-matrix: cargo-build
+	bash scripts/t16-kill-matrix.sh
 
 # T-10.7: the Files slice capture. Needs a host Wayland session, `spectacle`,
 # `ffmpeg`, `gdbus`, Pillow and the built tree; drives the nested demo over the
