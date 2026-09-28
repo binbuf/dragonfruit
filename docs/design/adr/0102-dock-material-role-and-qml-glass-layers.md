@@ -45,7 +45,12 @@ be tuned without moving the menu bar, and the QML plate was a single flat
 - Because the shell receives no degrade-tier signal, the QML plate fill is
   designed to read as a clean capsule on its own; the tier only changes the
   compositor frost (Reduced scales it, Minimal drops it). A future tier signal
-  to the shell would let the QML rim drop its "glass claim" at `Minimal`.
-- Arbitrary square theme artwork is inset and fitted, not per-pixel squircle
-  masked: a software-renderer-safe mask needs a GPU pass and is deferred with
-  refraction.
+  to the shell would let the QML rim drop its \"glass claim\" at `Minimal`.
+- Arbitrary square theme artwork used to be inset and fitted rather than
+  squircle masked. T-14.7w replaced that with a real tile clip: `DockGlyph.qml`
+  draws the themed artwork into a `Canvas` clipped to the token squircle, and
+  `component.dock.icon.inset` is now 0 so the artwork reaches the tile edge.
+  A `Canvas` clip is executed by the headless software scene graph, so the
+  pixel tests observe the masked corners; true liquid-glass refraction (a
+  texture sampler) remains deferred (ADR 0091, `14-risks.md`). See
+  [ADR 0113](0113-dock-icon-squircle-canvas-clip.md) for the tier behavior.

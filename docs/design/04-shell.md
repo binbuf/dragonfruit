@@ -306,11 +306,18 @@ inner top-edge rim, a hairline `dockBorder`, and a soft shadow above it. Every
 value is a `controls.dock.plate` token. The plate group is clipped at its top
 edge so the shadow never bleeds into the transparent magnify band above it
 (T-10 section 2). Icon tiles are rounded squares at
-`controls.dock.icon.radiusRatio`, themed artwork is inset by
-`controls.dock.icon.inset`, and the hover wash, lift shadow, focus ring,
-running dot, and divider follow `controls.dock.hover`/`indicator`/`divider`.
-At the `Minimal` degrade tier the compositor draws no frost and the plate reads
-as a clean capsule with no highlight claim.
+`controls.dock.icon.radiusRatio`, and the themed artwork is **masked** into
+that tile rather than inset (T-14.7w): `component.dock.icon.inset` is 0, so the
+artwork reaches the tile edge, and `DockGlyph.qml` draws it into a `Canvas`
+clipped to the tile squircle. The `Canvas` clip is executed by the headless
+software scene graph the Dock tests run on, so the masked corners are real
+pixels (unlike `MultiEffect`/`OpacityMask`/`ShaderEffect`, which no-op there);
+the hover wash, lift shadow, focus ring, running dot, and divider are siblings
+of the artwork and are never clipped, and they follow
+`controls.dock.hover`/`indicator`/`divider`. At the `Minimal` degrade tier the
+compositor draws no frost and the plate reads as a clean capsule with no
+highlight claim. See
+[ADR 0113](adr/0113-dock-icon-squircle-canvas-clip.md).
 
 **One rounded edge (T-14.7z).** The plate's rounded edge has a single owner:
 `Dock.qml` derives an integer `panelRect` by snapping each edge of the live

@@ -319,7 +319,7 @@ pub mod component {
         }
         pub mod icon {
             pub const RADIUS_RATIO: f32 = 0.24_f32;
-            pub const INSET: f32 = 0.06_f32;
+            pub const INSET: f32 = 0.0_f32;
         }
         pub mod hover {
             pub const FILL_OPACITY: f32 = 0.18_f32;
