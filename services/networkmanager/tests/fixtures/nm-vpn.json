@@ -1,0 +1,45 @@
+{
+  "connections": [
+    {
+      "path": "/org/freedesktop/NetworkManager/Settings/1",
+      "id": "Work VPN",
+      "uuid": "11112222-3333-4444-5555-666677778888",
+      "kind": "vpn",
+      "service_type": "org.freedesktop.NetworkManager.openvpn",
+      "autoconnect": false
+    },
+    {
+      "path": "/org/freedesktop/NetworkManager/Settings/2",
+      "id": "Home WG",
+      "uuid": "99990000-aaaa-bbbb-cccc-ddddeeeeffff",
+      "kind": "wireguard",
+      "autoconnect": true
+    },
+    {
+      "path": "/org/freedesktop/NetworkManager/Settings/3",
+      "id": "Branch Office",
+      "uuid": "abcdabcd-abcd-abcd-abcd-abcdabcdabcd",
+      "kind": "vpn",
+      "service_type": "org.freedesktop.NetworkManager.libreswan",
+      "autoconnect": false
+    }
+  ],
+  "active": [
+    {
+      "path": "/org/freedesktop/NetworkManager/ActiveConnection/1",
+      "connection": "/org/freedesktop/NetworkManager/Settings/1",
+      "id": "Work VPN",
+      "uuid": "11112222-3333-4444-5555-666677778888",
+      "state": 2,
+      "vpn": true
+    },
+    {
+      "path": "/org/freedesktop/NetworkManager/ActiveConnection/2",
+      "connection": "/org/freedesktop/NetworkManager/Settings/3",
+      "id": "Branch Office",
+      "uuid": "abcdabcd-abcd-abcd-abcd-abcdabcdabcd",
+      "state": 1,
+      "vpn": true
+    }
+  ]
+}

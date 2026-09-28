@@ -43,6 +43,7 @@ _(137 earlier sections omitted)_
 - **T136 — T-15.13b Privacy and Security pane and tile**: **State: done.** The Settings `Privacy & Security` pane and the Control Center; `services/system-status/src/privacy.rs` (new) — `PrivacyHost<S>` (refresh/
 - **T137 — T-15.14a Accessibility adapter**: **State: done.** New workspace crate `dragonfruit-accessibility-adapter`; `services/accessibility-adapter/src/source.rs` — `AccessibilityData
 - **T138 — T-15.14b Accessibility pane and tile**: **State: done.** The Settings `Accessibility` pane and the Control Center; `services/system-status/src/accessibility.rs` (new) — `AccessibilityHost<S>`
+- **T139 — T-15.15a Network advanced (VPN) adapter**: **State: done.** The Network advanced (VPN) adapter landed as a **second; `services/networkmanager/src/vpn/mod.rs` (new) — module docs + re-exports.
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -13240,3 +13241,108 @@ Decisions / gotchas for T-15.15a and later:
   (`Reduce Motion`) with no clipping/overlap/artifacts; the panel showed the
   `Accessibility` tile (`Screen Reader On`) with all tiles fully visible and no
   bottom clipping.
+
+## T139 — T-15.15a Network advanced (VPN) adapter
+
+**State: done.** The Network advanced (VPN) adapter landed as a **second
+adapter inside the existing `dragonfruit-networkmanager` crate**
+(`services/networkmanager/src/vpn/`), because a VPN is not a second daemon:
+NetworkManager already owns every `vpn`/`wireguard` connection. It projects the
+configured settings objects plus the live active connections over the same
+`zbus` client, with state, events, absence, and the two explicit writes
+(ADR 0146).
+
+Real paths:
+
+- `services/networkmanager/src/vpn/mod.rs` (new) — module docs + re-exports.
+- `services/networkmanager/src/vpn/source.rs` (new) — `VpnData`,
+  `VpnConnectionData`, `ActiveVpnData`, `VpnSource` (`read`/`activate`/
+  `deactivate`), `VpnRequest`, `VpnOutcome`, and `MockVpn`
+  (`absent`/`present`/`failing`, `deny_writes`/`fail_writes`/`allow_writes`,
+  `push`/`kill`/`restart`, `reads`/`activations`/`deactivations`). An accepted
+  write mutates the simulated store (connect marks the connection active,
+  disconnect removes it) so the adapter's write-then-re-read round-trip is
+  observable headlessly.
+- `services/networkmanager/src/vpn/model.rs` (new) — `VpnSnapshot::from_data`
+  joins settings connections to active connections by settings path (UUID
+  fallback); `VpnKind` (`Vpn`/`OpenVpn`/`OpenConnect`/`Ipsec`/`Pptp`/`L2tp`/
+  `WireGuard`) from `connection.type` + `vpn.service-type`; `VpnState`
+  (`Disconnected`/`Connecting`/`Connected`/`Disconnecting`/`Unknown`) from
+  `NMActiveConnectionState`; `VpnConnection`; `present`/`connected_count`/
+  `active_uuid`/`active_name`/`glyph` (`vpn`/`vpn-off`)/`label`.
+- `services/networkmanager/src/vpn/adapter.rs` (new) — `VpnAdapter<S>`
+  (`refresh`/`snapshot`/`connect`/`deactivate`) + `VpnAccess`
+  (`ReadWrite`/`ReadOnly{note}`) + `VpnResult`; `Adapter` with
+  `AdapterId::VPN`.
+- `services/networkmanager/src/dbus.rs` — `DbusVpn` (`VpnSource`) + proxies
+  `NmSettings` (`Settings.Connections`, `GetConnectionByUuid`),
+  `ActiveConnection` (`Connection`/`Uuid`/`Id`/`State`/`Vpn`/`Type`),
+  `NetworkManager.ActiveConnections`; `read_vpn`, `get_connection_settings`,
+  pure+tested `vpn_connection_from_settings`, `classify_vpn_error`; const
+  `VPN_SETTINGS_PATH`.
+- `services/networkmanager/src/lib.rs` — `mod vpn;` + re-exports; crate docs
+  got a "The VPN path (T-15.15a)" section.
+- `services/networkmanager/tests/vpn_read_path.rs` (new) — 7 acceptance tests.
+- `services/networkmanager/tests/fixtures/nm-vpn.json` (new) — 3 connections
+  (OpenVPN connected, IPsec connecting, WireGuard disconnected) + 2 active.
+- `services/system-adapters/src/state.rs` — `AdapterId::VPN` (`"vpn"`); id
+  test updated.
+- Docs/scripts — ADR `0146-network-advanced-vpn-adapter.md`;
+  `docs/design/07-system-integration.md` table row + "The Network advanced
+  (VPN) path (T-15.15a)" section; `docs/design/08-settings.md` routing row;
+  capture script `scripts/capture-t15-vpn-adapter.sh` + `docs/captures/README.md`.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-networkmanager` — green (67 lib + 4 read_path +
+  5 join_path + 7 vpn_read_path). `cargo test -p dragonfruit-system-adapters`
+  — green (16 lib + …).
+- `cargo clippy -p dragonfruit-networkmanager -p dragonfruit-system-adapters
+  --all-targets -- -D warnings` — clean; `cargo fmt --all -- --check` — clean.
+- `cmake -S . -B build -G Ninja && cmake --build build` — EXIT 0;
+  `ctest --test-dir build -j4` — 68/68.
+- `make e2e` — EXIT 0 (captured `/tmp/opencode/e2e-t139.log`).
+- `make check-design-tokens check-tokens check-no-capture-grab` — clean;
+  `./scripts/check-gallery-snapshots.py` — 78 green.
+- `make lint` — still fails only on the pre-existing `check-desktop-names`
+  lines (none in the new work); unchanged from T125–T138.
+
+Decisions / gotchas for T-15.15b and later:
+
+- **Adapter id is `vpn` (`AdapterId::VPN`), not `network`.** The Settings
+  catalog pane is already `{ id: "network", title: "Network", shipped: false }`
+  (`apps/settings/SettingsPanes.qml`); T-15.15b ships that pane and wires it
+  to this adapter through the bridge host. Pane id and adapter id need not
+  match (`printers` vs `printer`, `users-groups` vs `accounts`).
+- **Grow the crate, do not make a new one.** `dragonfruit-networkmanager`
+  already carries the D-Bus client, proxies, and absence discipline. A later
+  VPN task must extend `src/vpn/`, not fork a `dragonfruit-vpn-adapter` crate
+  (ADR 0146).
+- **Two writes are `connect`/`deactivate`, by UUID**, one
+  `ActivateConnection`/`DeactivateConnection` each. A polkit refusal degrades
+  to `VpnAccess::ReadOnly{note}` and further writes are refused locally; reads
+  stay live. A write invents no snapshot — the daemon pushes and the host
+  re-reads.
+- **Absence is layered.** `Unavailable` = no system bus / no
+  `org.freedesktop.NetworkManager` owner; `available` + `present: false` = the
+  daemon answered with no VPN configured. T-15.15b should hide the tile on
+  either, and show the pane's empty note for the latter. A name owned but
+  unreadable is `Error`, visible and inert.
+- **`libnm` is never linked.** The live path is `Settings.Connection.
+  GetSettings` (`a{sa{sv}}`; decode into `HashMap<String, HashMap<String,
+  OwnedValue>>` and use `OwnedValue::downcast_ref::<String>()` /
+  `::<bool>()`, which yield owned values) plus `Connection.Active` properties
+  and `ActivateConnection`/`DeactivateConnection` on
+  `/org/freedesktop/NetworkManager`.
+- **`DbusVpn` and `MockVpn` are compile-checked/CI green; the live D-Bus path
+  is not exercised in CI** (no bus/daemon), same as the Wi-Fi source.
+- **Reference mapping.** The macOS Network pane shows Wi-Fi / Firewall / Other
+  Services and no VPN; per ADR 0122 and the T-15.15b task, map the VPN rows
+  and the connections behind the chevrons to this adapter. `Thunderbolt Bridge`
+  is Apple-hardware-specific; bridges/ethernet are out of scope for this
+  adapter (VPN only).
+- Live visual check: `bash scripts/capture-t15-vpn-adapter.sh` produced
+  `docs/captures/t15-15a-vpn-adapter.png` (2115x1437). The adapter has no
+  surface of its own, so this confirms the desktop renders; vision found menu
+  bar, Dock, wallpaper, Settings window, and the demo client composited with
+  no blank areas, tearing, or stray artifacts.
