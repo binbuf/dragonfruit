@@ -1,0 +1,23 @@
+[package]
+name = "dragonfruit-lock-adapter"
+description = "Lock Screen policy adapter: session idle/lock policy, lock state, and events (T-15.8a)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+# The adapter projects the lock-screen host stack: the session's idle/lock
+# policy engine (`dragonfruit-session`, which owns `IdlePolicy`/`IdleStage`)
+# and the compositor's fail-secure lock state (published to the shell over the
+# private `df_toplevel_manager` bridge). It never re-derives a stage delay or a
+# lock transition; it reuses the session's `IdlePolicy` vocabulary and is the
+# *projection* over the published state. The dependency-free contract lives in
+# `dragonfruit-system-adapters`, exactly like `dragonfruit-overview`.
+[dependencies]
+dragonfruit-session = { path = "../session", version = "0.1.0" }
+dragonfruit-system-adapters = { path = "../system-adapters", version = "0.1.0" }
+
+[lib]
+name = "dragonfruit_lock_adapter"
+path = "src/lib.rs"
