@@ -26,6 +26,10 @@ private slots:
     void batteryDecodesAndHidesWhenNotPresent();
     void batteryRefreshRaisesTheRequest();
 
+    void bluetoothDecodesKnownAndNearbyDevices();
+    void bluetoothHidesWhenTheDaemonHasNoController();
+    void bluetoothRefreshRaisesTheRequest();
+
     void theAbsentDaemonMaskingMatrixHidesOnlyTheMaskedItem();
     void anUnreachedBridgeHostLeavesEveryItemHidden();
 };
@@ -205,6 +209,61 @@ void TestStatusModel::batteryRefreshRaisesTheRequest()
     SystemStatusModel model;
     QSignalSpy spy(&model, &SystemStatusModel::refreshBatteryRequested);
     model.requestRefreshBattery();
+    QCOMPARE(spy.count(), 1);
+}
+
+// Bluetooth (T-15.1b) decodes like the other views; the `present: false`
+// case (a running daemon with no controller) hides the tile exactly as the
+// battery hides with no battery.
+void TestStatusModel::bluetoothDecodesKnownAndNearbyDevices()
+{
+    const QVariantMap view = SystemStatusModel::parseView(
+        R"({"kind":"bluetooth","state":"available","present":true,"powered":true,
+            "discovering":false,"glyph":"bluetooth","label":"Bluetooth connected one",
+            "adapterName":"Workstation","connectedCount":1,
+            "knownDevices":[{"address":"AA:BB:CC:DD:EE:FF","name":"WF-1000XM6",
+                             "paired":true,"connected":true,"signal":64}],
+            "nearbyDevices":[{"address":"11:22:33:44:55:66","name":"Speaker",
+                              "paired":false,"connected":false,"signal":30}]})",
+        QStringLiteral("bluetooth"));
+    QCOMPARE(view.value(QStringLiteral("state")).toString(), QStringLiteral("available"));
+    QCOMPARE(view.value(QStringLiteral("visible")).toBool(), true);
+    QCOMPARE(view.value(QStringLiteral("enabled")).toBool(), true);
+    QCOMPARE(view.value(QStringLiteral("powered")).toBool(), true);
+    QCOMPARE(view.value(QStringLiteral("knownDevices")).toList().size(), 1);
+    QCOMPARE(view.value(QStringLiteral("knownDevices")).toList().at(0).toMap()
+                 .value(QStringLiteral("name")).toString(),
+             QStringLiteral("WF-1000XM6"));
+
+    SystemStatusModel model;
+    model.applyBluetoothJson(
+        R"({"kind":"bluetooth","state":"available","present":true,"powered":false})");
+    QVERIFY(model.bluetoothVisible());
+    QCOMPARE(model.bluetooth().value(QStringLiteral("powered")).toBool(), false);
+}
+
+void TestStatusModel::bluetoothHidesWhenTheDaemonHasNoController()
+{
+    // A running `bluetoothd` with no controller: available but not present.
+    const QVariantMap noController = SystemStatusModel::parseView(
+        R"({"kind":"bluetooth","state":"available","present":false,
+            "label":"Bluetooth unavailable"})",
+        QStringLiteral("bluetooth"));
+    QCOMPARE(noController.value(QStringLiteral("state")).toString(),
+             QStringLiteral("available"));
+    QCOMPARE(noController.value(QStringLiteral("visible")).toBool(), false);
+
+    // The daemon absent altogether.
+    const QVariantMap absent = SystemStatusModel::parseView(
+        R"({"kind":"bluetooth","state":"unavailable"})", QStringLiteral("bluetooth"));
+    QCOMPARE(absent.value(QStringLiteral("visible")).toBool(), false);
+}
+
+void TestStatusModel::bluetoothRefreshRaisesTheRequest()
+{
+    SystemStatusModel model;
+    QSignalSpy spy(&model, &SystemStatusModel::refreshBluetoothRequested);
+    model.requestRefreshBluetooth();
     QCOMPARE(spy.count(), 1);
 }
 

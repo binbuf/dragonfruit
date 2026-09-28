@@ -136,6 +136,8 @@ Item {
             return desktopDockPaneComponent;
         case "displays":
             return displaysPaneComponent;
+        case "bluetooth":
+            return bluetoothPaneComponent;
         default:
             return null;
         }
@@ -143,6 +145,12 @@ Item {
 
     Component.onCompleted: {
         var first = root.visiblePanes.length > 0 ? root.visiblePanes[0].id : "";
+        // The out-of-box pane stays `appearance` while it ships, so opening
+        // Settings never auto-starts a subsystem side effect (the Bluetooth
+        // pane begins an inquiry while it is open, T-15.1b). Otherwise fall
+        // back to the first shipped pane.
+        if (SettingsPanes.indexOf("appearance") >= 0)
+            first = "appearance";
         // `DF_SETTINGS_START_PANE` opens a specific shipped pane for captures
         // and scripted checks; an unknown or unshipped id is ignored.
         var requested = Settings.startPane;
@@ -220,6 +228,11 @@ Item {
     Component {
         id: displaysPaneComponent
         DisplaysPane { }
+    }
+
+    Component {
+        id: bluetoothPaneComponent
+        BluetoothPane { }
     }
 
     AppWindow {

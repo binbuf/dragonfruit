@@ -22,6 +22,10 @@ Item {
     // settingsd brightness / appearance values, pushed by ShellController.
     property var wifi: ({})
     property var audio: ({})
+    // The Bluetooth view from the bridge host (T-15.1b), shaped by
+    // `SystemStatusModel`: `{ state, present, powered, discovering, label,
+    // glyph, knownDevices: [...] }`. Empty/absent hides the tile.
+    property var bluetooth: ({})
     property real brightness: 1.0
     // The notification service's Focus/DND policy view
     // (`{mode, allowList, batchedCount}`); empty when the service is absent.
@@ -33,6 +37,9 @@ Item {
     // Wi-Fi radio writes are not exposed by the T-07 adapter yet (a T-15
     // follow-up); the toggle reflects state and is inert until then.
     property bool wifiWritable: false
+
+    // Bluetooth writes are live through the T-15.1b bridge host.
+    property bool bluetoothWritable: false
 
     readonly property bool wifiAvailable: root.wifi.state === "available"
     readonly property bool wifiOn: root.wifi.radioEnabled === true
@@ -47,6 +54,26 @@ Item {
     readonly property bool audioAvailable: root.audio.state === "available"
     readonly property bool muted: root.audio.muted === true
     property real volume: root.audio.volume !== undefined ? root.audio.volume : 0.0
+
+    // Bluetooth (T-15.1b). The tile hides when `bluetoothd` is absent
+    // (`unavailable`) or when the daemon is present with no controller
+    // (`present: false`), mirroring the model's hide rule.
+    readonly property bool bluetoothAvailable: root.bluetooth.state === "available"
+    readonly property bool bluetoothPresent: root.bluetooth.present === true
+    readonly property bool bluetoothVisible: root.bluetoothAvailable
+        && root.bluetoothPresent
+    readonly property bool bluetoothOn: root.bluetooth.powered === true
+    readonly property string bluetoothLabel: {
+        if (!root.bluetoothVisible)
+            return qsTr("Unavailable");
+        if (root.bluetooth.discovering === true)
+            return qsTr("Discovering\u2026");
+        if (root.bluetooth.label !== undefined && root.bluetooth.label !== "")
+            return root.bluetooth.label;
+        return root.bluetoothOn ? qsTr("On") : qsTr("Off");
+    }
+    readonly property var bluetoothDevices: root.bluetooth.knownDevices !== undefined
+        ? root.bluetooth.knownDevices : []
 
     // The notification service's mode (`off`/`focus`/`dnd`). The toggle is Do
     // Not Disturb: `focus` also lights it, because both suppress banners.
@@ -92,6 +119,15 @@ Item {
             enabled: root.wifiAvailable && root.wifiWritable
         },
         {
+            id: "bluetooth",
+            kind: "toggle",
+            title: qsTr("Bluetooth"),
+            subtitle: root.bluetoothLabel,
+            checked: root.bluetoothOn,
+            visible: root.bluetoothVisible,
+            enabled: root.bluetoothVisible && root.bluetoothWritable
+        },
+        {
             id: "focus",
             kind: "toggle",
             title: qsTr("Focus"),
@@ -133,6 +169,11 @@ Item {
     signal brightnessSetRequested(double level)
     signal wifiToggleRequested(bool enabled)
     signal wifiSettingsRequested()
+    // Bluetooth (T-15.1b): the toggle powers the adapter; a known-device row
+    // connects/disconnects it; the link opens the pane (T-16).
+    signal bluetoothToggleRequested(bool enabled)
+    signal bluetoothDeviceToggled(string address, bool connected)
+    signal bluetoothSettingsRequested()
     // Focus/DND is owned by the notification service (T-11.2a). On = Do Not
     // Disturb (`dnd`), off clears the policy (`off`).
     signal focusToggleRequested(bool enabled)
@@ -158,6 +199,26 @@ Item {
         if (!root.wifiAvailable || !root.wifiWritable)
             return;
         root.wifiToggleRequested(!root.wifiOn);
+    }
+
+    // Toggle the Bluetooth radio without the switch (keyboard/AT-SPI/tests).
+    function toggleBluetooth() {
+        if (!root.bluetoothVisible || !root.bluetoothWritable)
+            return;
+        root.bluetoothToggleRequested(!root.bluetoothOn);
+    }
+
+    // Connect or disconnect one known device (a row tap).
+    function toggleBluetoothDevice(address) {
+        if (!root.bluetoothVisible || !root.bluetoothWritable || !address)
+            return;
+        for (var i = 0; i < root.bluetoothDevices.length; ++i) {
+            if (root.bluetoothDevices[i].address === address) {
+                root.bluetoothDeviceToggled(address,
+                                            !root.bluetoothDevices[i].connected);
+                return;
+            }
+        }
     }
 
     // Toggle Do Not Disturb without the switch (keyboard/AT-SPI and tests).
@@ -272,6 +333,139 @@ Item {
                         text: qsTr("Wi-Fi Settings\u2026")
                         accessibleName: qsTr("Open Wi-Fi Settings")
                         onActivated: root.wifiSettingsRequested()
+                    }
+                }
+            }
+
+            // ── Bluetooth (T-15.1b) ──────────────────────────────────────
+            Rectangle {
+                id: bluetoothTile
+                objectName: "bluetoothTile"
+                width: parent.width
+                visible: root.bluetoothVisible
+                implicitHeight: bluetoothColumn.implicitHeight
+                                + 2 * Theme.controls.settingsGroup.padding
+                radius: Theme.primitive.radius.md
+                color: Theme.color.surfaceSunken
+                Accessible.role: Accessible.Grouping
+                Accessible.name: qsTr("Bluetooth")
+
+                Column {
+                    id: bluetoothColumn
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: Theme.controls.settingsGroup.padding
+                    spacing: Theme.primitive.spacing.sm
+
+                    Row {
+                        width: parent.width
+                        spacing: Theme.primitive.spacing.md
+
+                        IconTile {
+                            objectName: "bluetoothIcon"
+                            name: "bluetooth"
+                            tileSize: 32
+                            iconSize: 18
+                            active: root.bluetoothOn
+                        }
+
+                        Column {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: parent.width - 32 - bluetoothToggle.width
+                                   - 2 * Theme.primitive.spacing.md
+
+                            Text {
+                                objectName: "bluetoothTitle"
+                                text: qsTr("Bluetooth")
+                                color: Theme.color.textPrimary
+                                font.pixelSize: Theme.controls.button.fontSize
+                                font.weight: Theme.primitive.font.weightMedium
+                            }
+
+                            Text {
+                                objectName: "bluetoothSubtitle"
+                                width: parent.width
+                                text: root.bluetoothLabel
+                                color: Theme.color.textSecondary
+                                font.pixelSize: Theme.primitive.font.sizeSm
+                                elide: Text.ElideRight
+                            }
+                        }
+
+                        Toggle {
+                            id: bluetoothToggle
+                            objectName: "bluetoothToggle"
+                            accessibleName: qsTr("Bluetooth")
+                            enabled: root.bluetoothVisible && root.bluetoothWritable
+                            anchors.verticalCenter: parent.verticalCenter
+                            onToggled: (checked) => root.bluetoothToggleRequested(checked)
+                        }
+                    }
+
+                    Rectangle {
+                        objectName: "bluetoothSeparator"
+                        width: parent.width
+                        height: Theme.controls.window.borderWidth
+                        color: Theme.color.separator
+                        visible: bluetoothDeviceList.count > 0
+                    }
+
+                    Column {
+                        id: bluetoothDeviceList
+                        objectName: "bluetoothDeviceList"
+                        width: parent.width
+                        spacing: Theme.primitive.spacing.xs
+                        readonly property int count: root.bluetoothDevices.length
+
+                        Repeater {
+                            model: root.bluetoothDevices
+                            delegate: Item {
+                                id: bluetoothRow
+                                required property var modelData
+                                width: bluetoothDeviceList.width
+                                height: 24
+
+                                Text {
+                                    objectName: "bluetoothDeviceName"
+                                    anchors.left: parent.left
+                                    anchors.right: bluetoothDeviceAction.left
+                                    anchors.rightMargin: Theme.primitive.spacing.sm
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: bluetoothRow.modelData.name
+                                    color: Theme.color.textPrimary
+                                    font.pixelSize: Theme.primitive.font.sizeSm
+                                    elide: Text.ElideRight
+                                }
+
+                                Text {
+                                    id: bluetoothDeviceAction
+                                    objectName: "bluetoothDeviceAction"
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    anchors.right: parent.right
+                                    text: bluetoothRow.modelData.connected
+                                        ? qsTr("Connected") : qsTr("Not Connected")
+                                    color: bluetoothRow.modelData.connected
+                                        ? Theme.color.accent : Theme.color.textSecondary
+                                    font.pixelSize: Theme.primitive.font.sizeSm
+                                    Accessible.role: Accessible.Button
+                                    Accessible.name: qsTr("%1, %2")
+                                        .arg(bluetoothRow.modelData.name)
+                                        .arg(text)
+                                    TapHandler {
+                                        onTapped: root.toggleBluetoothDevice(
+                                            bluetoothRow.modelData.address)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    TextLink {
+                        objectName: "bluetoothSettingsLink"
+                        text: qsTr("Bluetooth Settings\u2026")
+                        accessibleName: qsTr("Open Bluetooth Settings")
+                        onActivated: root.bluetoothSettingsRequested()
                     }
                 }
             }
@@ -672,6 +866,11 @@ Item {
         target: toggle
         property: "checked"
         value: root.wifiOn
+    }
+    Binding {
+        target: bluetoothToggle
+        property: "checked"
+        value: root.bluetoothOn
     }
     Binding {
         target: focusToggle

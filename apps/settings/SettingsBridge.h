@@ -31,6 +31,7 @@
 #include <QtQml/qqmlregistration.h>
 
 class SettingsClient;
+class BluetoothClient;
 class QDBusServiceWatcher;
 
 class SettingsBridge : public QObject
@@ -74,6 +75,14 @@ class SettingsBridge : public QObject
     // this counter advanced. With `DF_WALLPAPER_FIXTURE` the request is served
     // in-process, so the count is observable without a bus.
     Q_PROPERTY(int providerPreloadCount READ providerPreloadCount NOTIFY providerChanged)
+    // The Bluetooth view from the bridge host (T-15.1b): `{ state, present,
+    // powered, discovering, label, adapterName, knownDevices, nearbyDevices }`.
+    // Empty when the host (or BlueZ) is absent; the pane renders the absence
+    // state and disables its controls rather than erroring.
+    Q_PROPERTY(QVariantMap bluetooth READ bluetooth NOTIFY bluetoothChanged)
+    // Whether the bridge host is on the session bus. False means no Bluetooth
+    // surface at all; the pane shows the absence note.
+    Q_PROPERTY(bool bluetoothAvailable READ bluetoothAvailable NOTIFY bluetoothChanged)
     // The pane the shell opens on startup. Empty uses the first shipped pane;
     // `DF_SETTINGS_START_PANE=wallpaper` selects one for captures and tests.
     Q_PROPERTY(QString startPane READ startPane CONSTANT)
@@ -89,6 +98,8 @@ public:
     bool available() const;
     QVariantList wallpaperPresets() const;
     QVariantList providerItems() const;
+    QVariantMap bluetooth() const;
+    bool bluetoothAvailable() const;
     QString providerStatus() const;
     QString providerDefault() const;
     QString wallpaperBuiltinDefault() const;
@@ -121,6 +132,16 @@ public:
     // the catalogue arrives through `providerChanged`.
     Q_INVOKABLE void preloadWallpapers();
 
+    // T-15.1b: the Bluetooth pane's one seam. `refreshBluetooth` re-reads the
+    // bridge host on pane open; the four writes each call the adapter once and
+    // the host pushes the new view back through `bluetoothChanged`. A no-op
+    // when the host is absent.
+    Q_INVOKABLE void refreshBluetooth();
+    Q_INVOKABLE void setBluetoothPowered(bool powered);
+    Q_INVOKABLE void setBluetoothDiscovering(bool discovering);
+    Q_INVOKABLE void pairBluetooth(const QString &address);
+    Q_INVOKABLE void setBluetoothConnected(const QString &address, bool connected);
+
     // T-18.2 test seam: with `DF_WALLPAPER_FIXTURE` set, seed the provider
     // lifecycle to `status` (`ready` loads the deterministic fixture
     // catalogue; any other status leaves it empty) so the pane's fetching /
@@ -148,6 +169,8 @@ signals:
     // Any provider property (catalogue, status, defaults) changed. Panes bind
     // the `provider*` properties and re-read on this.
     void providerChanged();
+    // The Bluetooth view or availability changed (T-15.1b).
+    void bluetoothChanged();
 
 private:
     void buildWallpaperPresets();
@@ -188,4 +211,6 @@ private:
     // catalogue, so `Preload` and fixture seeding stay deterministic.
     bool m_wallpaperFixture = false;
     QDBusServiceWatcher *m_providerWatcher = nullptr;
+    // T-15.1b: the Bluetooth seam (`DF_BLUETOOTH_FIXTURE` selects the mock).
+    BluetoothClient *m_bluetooth = nullptr;
 };

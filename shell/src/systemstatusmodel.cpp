@@ -11,6 +11,7 @@ namespace {
 const QString kKindWifi = QStringLiteral("wifi");
 const QString kKindAudio = QStringLiteral("audio");
 const QString kKindBattery = QStringLiteral("battery");
+const QString kKindBluetooth = QStringLiteral("bluetooth");
 
 } // namespace
 
@@ -32,6 +33,11 @@ bool SystemStatusModel::audioVisible() const
 bool SystemStatusModel::batteryVisible() const
 {
     return m_battery.value(QStringLiteral("visible")).toBool();
+}
+
+bool SystemStatusModel::bluetoothVisible() const
+{
+    return m_bluetooth.value(QStringLiteral("visible")).toBool();
 }
 
 QVariantMap SystemStatusModel::parseView(const QByteArray &json, const QString &kind, QString *error)
@@ -68,8 +74,11 @@ QVariantMap SystemStatusModel::normalize(const QVariantMap &view, const QString 
     bool hidden = state.isEmpty() || state == QLatin1String("unavailable");
     // The battery has a second hidden case: UPower is present but the machine
     // has no present battery (a desktop, a VM). The host reports it as
-    // `available` with `present: false`; hide the item then too.
-    if (kind == kKindBattery && view.contains(QStringLiteral("present"))
+    // `available` with `present: false`; hide the item then too. Bluetooth
+    // shares the rule (ADR 0117): a running `bluetoothd` with no controller is
+    // `available` with `present: false` and the tile hides.
+    if ((kind == kKindBattery || kind == kKindBluetooth)
+            && view.contains(QStringLiteral("present"))
             && !view.value(QStringLiteral("present")).toBool())
         hidden = true;
     normalized.insert(QStringLiteral("kind"), kind);
@@ -98,6 +107,12 @@ void SystemStatusModel::applyBattery(const QVariantMap &view)
     emit changed();
 }
 
+void SystemStatusModel::applyBluetooth(const QVariantMap &view)
+{
+    m_bluetooth = normalize(view, kKindBluetooth);
+    emit changed();
+}
+
 void SystemStatusModel::applyWifiJson(const QByteArray &json)
 {
     QString error;
@@ -123,6 +138,15 @@ void SystemStatusModel::applyBatteryJson(const QByteArray &json)
     if (!error.isEmpty())
         return;
     applyBattery(view);
+}
+
+void SystemStatusModel::applyBluetoothJson(const QByteArray &json)
+{
+    QString error;
+    const QVariantMap view = parseView(json, kKindBluetooth, &error);
+    if (!error.isEmpty())
+        return;
+    applyBluetooth(view);
 }
 
 void SystemStatusModel::requestJoin(const QString &ssid, const QString &secret)
@@ -155,4 +179,9 @@ void SystemStatusModel::requestRefreshAudio()
 void SystemStatusModel::requestRefreshBattery()
 {
     emit refreshBatteryRequested();
+}
+
+void SystemStatusModel::requestRefreshBluetooth()
+{
+    emit refreshBluetoothRequested();
 }

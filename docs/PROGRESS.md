@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(110 earlier sections omitted)_
+_(111 earlier sections omitted)_
 
-- **T106 — T-14.4 DBusMenu bridge**: **State: done.** A DBusMenu/AppMenu-exporting app's global menu is now bridged; `services/app-index/src/menubridge.rs` (new) — pure `MenuRegistration`
 - **T107 — T-14.5 XDnD bridge**: **State: done (protocol half + documented gap; the task explicitly allows; `compositor/src/xdnd.rs` (new) — pure XDnD:
 - **T107 — T-14.5 XDnD bridge (attempt 2 — gate repair)**: **State: done.** The attempt-1 protocol half and documented gap stand; `Makefile` — the `e2e` recipe runs
 - **T108 — T-14.6a Strange-app zoo run and matrix**: **State: done.** The scripted zoo run and its matrix are committed. Six rows,; `scripts/zoo/zoo-run.sh` (new) — orchestrator (`make zoo-run`): private nested
@@ -43,6 +42,7 @@ _(110 earlier sections omitted)_
 - **T175 — T-18.3 Provider licensing, absence matrix, and capture**: **State: done.** The licensing policy is reviewed and made true (`NOTICE`; `docs/licensing.md` — "Fetched third-party content (wallpaper)" extended:
 - **Dev tooling — wallpaper provider in the dev session (T-18.1a follow-up)**: **State: done.** `make demo` (nested) and `make dev --shell` now start; `tools/dragonfruit-dev/src/main.rs` — `launch_services` takes a
 - **T111 — T-15.1a Bluetooth adapter**: **State: done.** The BlueZ Bluetooth adapter landed in a new crate,; `services/bluetooth/` (new crate) — `src/source.rs` (`BluetoothData`,
+- **T112 — T-15.1b Bluetooth pane and tile**: **State: done.** The Bluetooth pane and Control Center tile ship as one unit; `services/system-status/src/bluetooth.rs` (new) — `BluetoothHost<B>` and
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -10756,3 +10756,114 @@ Gotchas for later tasks (T-15.1b / T-15.16):
   fixture seam is the tested contract.
 - `BluetoothAdapter` is the adapter struct; the controller model is
   re-exported as `BluetoothController` to avoid the name clash.
+
+## T112 — T-15.1b Bluetooth pane and tile
+
+**State: done.** The Bluetooth pane and Control Center tile ship as one unit
+over the bridge host. The pane applies live (power/discovery/connect), the tile
+reflects state and writes the radio, and absence is documented and tested.
+
+Architecture (ADR 0118): the Bluetooth adapter rides a **fourth interface** on
+the existing `dragonfruit-system-status` host, not a second service.
+
+Real paths:
+
+- `services/system-status/src/bluetooth.rs` (new) — `BluetoothHost<B>` and
+  `bluetooth_view`/`bluetooth_snapshot_view`/`bluetooth_report`. The view is
+  `{state,present,powered,discovering,discoverable,pairable,glyph,label,
+  adapterName,connectedCount,knownCount,nearbyCount,knownDevices,nearbyDevices}`;
+  each device carries `address,name,paired,connected,trusted,blocked,rssi,
+  signal`. Four writes return `accepted/denied/absent/failed`.
+- `services/system-status/src/lib.rs` — `BLUETOOTH_INTERFACE` constant,
+  re-exports.
+- `services/system-status/src/dbus.rs` — `LiveBluetooth = BluetoothHost<DbusBluez>`,
+  `BluetoothInterface` (`State/Refresh/SetPowered/SetDiscovering/Pair/
+  SetConnected`), `run(host, bluetooth)`, `interface_names()` now 4.
+- `services/system-status/src/main.rs` — `--print-bluetooth`, constructs the
+  BlueZ host.
+- `services/system-status/Cargo.toml` — `dragonfruit-bluetooth` dependency.
+- `services/system-status/tests/bluetooth.rs` (new) — 4 integration tests.
+- `shell/src/systemstatusclient.{h,cpp}` — `refreshBluetooth` + four writes +
+  `bluetoothState`/`writeReport`; `MockSystemStatusClient` serves a fixture
+  (powered, 2 known devices, nearby when discovering) — `DF_STATUS_FIXTURE`.
+- `shell/src/systemstatusmodel.{h,cpp}` — `bluetooth()`/`bluetoothVisible()`,
+  `applyBluetooth(Json)`, kind `bluetooth`; the `present: false` second hide
+  rule is shared with the battery.
+- `shell/src/shellcontroller.{h,cpp}` — wires the signals, pushes the tile
+  data and `bluetoothWritable=true`, adds
+  `onBluetoothToggleRequested`/`onBluetoothDeviceToggled`/
+  `onBluetoothSettingsRequested` (the Settings link logs T-16, like
+  Wi-Fi/Focus).
+- `shell/control-center/ControlCenter.qml` — a Bluetooth tile (icon, toggle,
+  known-device rows with Connected/Not Connected, `Bluetooth Settings…`);
+  tile model now 6 entries and the Bluetooth entry carries `visible`.
+- `apps/settings/BluetoothClient.{h,cpp}` (new) — abstract seam +
+  `DbusBluetoothClient` (`org.dragonfruit.SystemStatus1.Bluetooth`) +
+  `MockBluetoothClient` (`DF_BLUETOOTH_FIXTURE`).
+- `apps/settings/SettingsBridge.{h,cpp}` — `bluetooth`/`bluetoothAvailable`
+  properties + `refreshBluetooth`/`setBluetoothPowered`/
+  `setBluetoothDiscovering`/`pairBluetooth`/`setBluetoothConnected`.
+- `apps/settings/BluetoothPane.qml` (new) — toggle card + discoverable caption,
+  `My Devices` rows with a circular info/connect button, `Nearby Devices`
+  (`Searching…` + a `Shape` spinner). Starts discovery on open, stops on close.
+- `apps/settings/SettingsPanes.qml` — `bluetooth.shipped: true`;
+  `SettingsShell.qml` registers the pane and now defaults to `appearance`
+  (the first row is Bluetooth; opening Settings must not auto-start an
+  inquiry).
+- `apps/settings/CMakeLists.txt` — new sources/QML; tests CMake adds
+  `tst_settings_bluetooth` (with `DF_BLUETOOTH_FIXTURE`).
+- Tests: `shell/tests/tst_statusmodel.cpp` (3 new), `shell/tests/
+  tst_controlcenter.qml` (Bluetooth tile, toggle/device round-trip, absence
+  hide, fit-to-surface, six-tile model), `apps/settings/tests/
+  tst_settings_bluetooth.{cpp,qml}` (new), `tst_settings_absence.qml`
+  (bluetooth shipped + absence), `tst_settings_shell.qml` (5 shipped panes).
+- Docs — `docs/design/07-system-integration.md` "The Bluetooth pane and tile
+  (T-15.1b)"; ADR `0118-bluetooth-pane-and-tile.md`; `docs/captures/README.md`.
+- Captures — `scripts/capture-t15-bluetooth.sh` (new);
+  `docs/captures/t15-1b-bluetooth-pane.png`,
+  `docs/captures/t15-1b-bluetooth-control-center.png`.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-system-status` — 17 lib + 4 bluetooth + 9 host.
+- `cmake --build build --target ...`; `ctest --output-on-failure -j4` —
+  54/54.
+- `make e2e` — EXIT 0 (one flaky `dragonfruit-lock-auth` run first; the
+  isolated test passes and the rerun is green).
+- `cargo fmt --all -- --check`; `cargo clippy -p dragonfruit-system-status
+  --all-targets -- -D warnings` — clean.
+- `make lint` — still fails only on the pre-existing `check-desktop-names`
+  lines (StatusNotifier/zoo/apppicker), unchanged.
+
+Decisions / deviations:
+
+- **Bridge host, not a second service.** A `BluetoothHost<B>` sits beside
+  `StatusHost` under one `org.dragonfruit.SystemStatus1`, so the three-adapter
+  host and its tests are untouched (ADR 0118).
+- **Settings link is a T-16 entry point.** `Bluetooth Settings…` logs, matching
+  the existing Wi-Fi/Focus/Appearance links; launching Settings on a named pane
+  is T-16.
+- **Menu-bar Bluetooth slot stays hidden.** The task owns the Control Center
+  tile; a visible slot with no Bluetooth menu would be a dead control.
+- **Default Settings pane stays `appearance`.** Shipping Bluetooth (catalog
+  row 2) would otherwise make it the default and auto-start discovery on every
+  Settings launch.
+
+Live visual check: `bash scripts/capture-t15-bluetooth.sh` on the host Wayland
+session. Both stills written (paths above). The vision tool returned HTTP 429,
+so the evidence is the pixel statistics plus the headless tests: the pane still
+is a rendered Settings window (2088x1410, 430 364 unique colours, luminance
+sigma 93.5) and the panel crop is 360x760 (4 942 unique colours, sigma 33.1).
+`tst_controlcenter` additionally asserts the panel content fits the 780 px
+surface, and `tst_settings_bluetooth` asserts the toggle caption, device
+connect round-trip, and searching state.
+
+Gotchas for T-15.16 / later:
+
+- `DF_BLUETOOTH_FIXTURE` is the Settings-pane seam; `DF_STATUS_FIXTURE` now
+  also drives the shell's Bluetooth tile. Neither is set in `make e2e`.
+- The absent-daemon matrix can drive Bluetooth three ways: mask the bridge host
+  (view empty/`unavailable`), mask `org.bluez` (`unavailable`), or drop the
+  controller (`present: false`).
+- The shell menu-bar Bluetooth item (`shellcontroller.cpp` `applyStatusItems`)
+  is still hardcoded hidden; enabling it needs a Bluetooth menu (not this task).

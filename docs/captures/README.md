@@ -451,6 +451,19 @@ still renders (3840x2160, 468 614 unique colours; menu bar, Dock, and client
 window present, clean teardown). The adapter itself is proven headlessly by
 `cargo test -p dragonfruit-bluetooth`.
 
+T-15.1b's Bluetooth pane and Control Center tile are captured by
+`scripts/capture-t15-bluetooth.sh`: `t15-1b-bluetooth-pane.png` is the Settings
+Bluetooth pane (toggle card with the discoverable caption, `My Devices`,
+`Nearby Devices`), and `t15-1b-bluetooth-control-center.png` is the panel with
+the Bluetooth tile and known-device rows. The demo runs with
+`DF_SETTINGS_START_PANE=bluetooth`, `DF_STATUS_FIXTURE` and
+`DF_BLUETOOTH_FIXTURE` so no host BlueZ is needed. Needs a host Wayland
+session, spectacle, and Pillow; not in `make e2e`. Vision (OpenRouter) returned
+HTTP 429 during the run, so the evidence is the pixel statistics and the pane's
+headless tests: the pane still is a rendered Settings window (2088x1410, 430 364
+unique colours, luminance sigma 93.5) and the panel crop is 360x760 with 4 942
+unique colours, sigma 33.1.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

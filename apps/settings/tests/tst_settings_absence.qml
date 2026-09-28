@@ -31,7 +31,7 @@ Item {
         // Every shipped Wave-1 pane, with the exact control surface the
         // matrix asserts stays live while its provider is absent.
         readonly property var shippedPaneIds:
-            ["appearance", "desktop-dock", "displays", "wallpaper"]
+            ["appearance", "desktop-dock", "displays", "wallpaper", "bluetooth"]
 
         function make() {
             var shell = createTemporaryObject(shellComponent, stage,
@@ -84,7 +84,7 @@ Item {
 
         function test_every_shipped_pane_has_a_body_and_no_other_does() {
             var shell = make();
-            compare(SettingsPanes.shippedPanes.length, 4);
+            compare(SettingsPanes.shippedPanes.length, 5);
             for (var i = 0; i < SettingsPanes.catalog.length; ++i) {
                 var pane = SettingsPanes.catalog[i];
                 var body = shell.paneComponent(pane.id);
@@ -176,6 +176,33 @@ Item {
             verify(Math.abs(Settings.values["display.scale"] - 1.5) < 0.001);
             pane.rotationSelect.activateIndex(2); // 180°
             compare(Settings.values["display.rotation"], "180");
+        }
+
+        // With no bridge host on the private bus, the Bluetooth pane is the absence
+// state: the toggle is disabled, the discoverable caption and both device
+// groups are hidden, and a one-line note explains the missing daemon. Nothing
+// errors and no write is attempted.
+        function test_bluetooth_pane_degrades_cleanly_without_the_bridge_host() {
+            var shell = make();
+            compare(Settings.bluetoothAvailable, false,
+                    "no bridge host is the absent state under test");
+            compare(Settings.bluetooth.present, undefined);
+
+            var pane = showPane(shell, "bluetooth");
+            compare(pane.ready, false);
+            verify(pane.powerToggle);
+            compare(pane.powerToggle.enabled, false,
+                    "the Bluetooth toggle is disabled when the host is absent");
+            compare(pane.caption.visible, false);
+            compare(pane.absenceNote.visible, true,
+                    "the absence note explains the missing bridge host");
+            verify(pane.absenceNote.text.length > 0);
+            compare(pane.myDevicesGroup.visible, false);
+            compare(pane.nearbyGroup.visible, false);
+
+            // A write is a safe no-op with no host.
+            pane.togglePower();
+            compare(Settings.bluetoothAvailable, false);
         }
 
         // A control changed while the daemon is absent still converges into the

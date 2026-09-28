@@ -183,6 +183,12 @@ private slots:
     void onBrightnessSetRequested(double level);
     void onWifiToggleRequested(bool enabled);
     void onWifiSettingsRequested();
+    // T-15.1b: the Control Center Bluetooth tile. The toggle powers the BlueZ
+    // adapter; a known-device row connects/disconnects it; the Settings link is
+    // an entry point only until T-16.
+    void onBluetoothToggleRequested(bool enabled);
+    void onBluetoothDeviceToggled(const QString &address, bool connected);
+    void onBluetoothSettingsRequested();
     // T-11.3b: the Focus/DND and dark-mode tiles. Focus writes the
     // notification service's mode; dark mode writes settingsd's
     // `appearance.colorScheme` (ThemeBinding applies it live). The two
@@ -208,6 +214,7 @@ private slots:
     void onWifiState(const QByteArray &json);
     void onAudioState(const QByteArray &json);
     void onBatteryState(const QByteArray &json);
+    void onBluetoothState(const QByteArray &json);
     void onStatusReport(const QByteArray &json);
     void onClockTick();
     void onAppMenuOpened(int index);
