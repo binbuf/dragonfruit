@@ -28,6 +28,7 @@ equivalent) API intended exactly for custom desktop frontends.
 | Menu Bar configuration | shell menu bar + menu-broker | The chrome, status-item model, and clock the shell's `MenuBar` owns, and the global application-menu resolution the menu-broker owns. The adapter is the projection over the effective auto-hide/background/global-menu flags, the clock options, and the live availability of each control; it never re-renders the bar or re-resolves a menu, and the durable preferences are settingsd-owned. |
 | General / About / Updates | host identity + distro update provider | The About/General rows read the host's own release/kernel/DMI/processor/memory files, and Updates is the distribution's update provider (the `SystemProvider` of [08-settings.md](08-settings.md)) behind a seam. The adapter is the projection over the identity and the provider's check/install/reboot state; it never reimplements package management, and the concrete provider is distro-specific and belongs with packaging. |
 | Users & Groups | AccountsService + distro group provider | The user list (login/real name, account type, password mode, home, shell, avatar, locked, system account, automatic login) is AccountsService over its system-bus API; groups are the distribution's own provider behind a seam, because AccountsService has no group API. The adapter is the projection over both; it never reimplements account or group management, and the concrete provider is distro-specific and belongs with packaging. |
+| Privacy & Security | xdg-desktop-portal PermissionStore | The record portals already keep of which applications may reach the resources they mediate (camera, location, notifications, screen casting, remote desktop, USB, …), read and written through the standard `org.freedesktop.impl.portal.PermissionStore` session-bus interface. The adapter is the projection over the store's tables and entries; it never reimplements a portal or makes a permission decision, and the Secret Service / polkit host services the reference also names stay with their own tasks. See [adr/0142](adr/0142-privacy-and-security-adapter.md). |
 | Seat/session | systemd / logind | Session lifetime, `graphical-session.target`, VT management. |
 | Privileged operations | host policy infrastructure | polkit / authentication agent integration; we never roll our own privilege escalation. |
 
@@ -1100,6 +1101,54 @@ Rust crate into the app.
 - **The Control Center tile fits without a scroll.** The fifteenth tile needed
   the content gap compacted from `xs` to `xxs` (and the new tile's own gap
   compacted to `xs`); the fixed 360×1160 surface still holds every tile.
+
+## The privacy and security path (T-15.13a)
+
+The privacy and security adapter, `dragonfruit-privacy-adapter`
+(`services/privacy-adapter`), gives a pane the desktop's privacy record: which
+applications may reach the resources portals mediate, as
+`xdg-desktop-portal` already stores it
+([adr/0142](adr/0142-privacy-and-security-adapter.md)).
+
+- **The host stack is the portal PermissionStore.** The live source talks to
+  `org.freedesktop.impl.portal.PermissionStore` on the session bus at
+  `/org/freedesktop/impl/portal/PermissionStore` — the interface the portal
+  spec documents and the `xdg-permission-store` daemon serves. One read is
+  `List(table)` plus `Lookup(table, id)` per resource; a write is one
+  `SetPermission` or `DeletePermission`. This is the same reuse the audio
+  adapter makes of `pw-dump`/`wpctl` and the printer adapter of the CUPS
+  tools; no portal is reimplemented and no permission decision is made here.
+- **The categories are the portal tables.** `KNOWN_TABLES` pins the fourteen
+  tables `xdg-desktop-portal` uses — `devices` (camera), `location`,
+  `notifications`, `screencast`, `remote-desktop`, `screenshot`, `background`,
+  `usb`, `input-capture`, `gamemode`, `inhibit`, `realtime`, `wallpaper`, and
+  `desktop-used-apps` — as the pane's ordered rows. A table with no entry is an
+  honest empty category (`None`), never missing.
+- **The value is a tristate; the strings are preserved.** `PermissionState`
+  derives `Allowed`/`Denied`/`Ask` from `yes`/`no`/`ask`; any other record
+  (a location accuracy pair, an empty list) stays `Unset`, and the raw
+  permission strings remain on `AppPermission`.
+- **The read path is the same three-state seam as the other adapters.**
+  `PrivacySource::read` returns the raw tables (`Ok(Some)`), absence
+  (`Ok(None)`), or a read failure (`Err`). No session bus, or no store owner,
+  is absence — hidden, never an error. A store that owns its name but cannot be
+  read is `Error`, visible and inert with the message.
+- **Explicit writes, no invented snapshots.** `set_permission` and
+  `delete_permission` forward one request each and answer
+  `Applied`/`Denied`/`Absent`/`Failed`; the store publishes the result and the
+  host re-reads. A policy refusal is surfaced per action without degrading the
+  read state.
+- **One event stream.** `PrivacySnapshot::changes(previous)` is a pure diff —
+  resources added/removed and applications added/removed/changed — queued by
+  the adapter and drained through `drain_changes`.
+
+### The Privacy & Security pane and tile (T-15.13b)
+
+The Settings pane and the Control Center tile ship in T-15.13b over this
+adapter, through the bridge host like the other T-15 adapters. That task
+declares any settingsd presentation keys and wires the pane and tile; it must
+not add a second permission implementation. The Secret Service and polkit host
+services the reference also names are not part of this adapter.
 
 ## The status bridge host (T-07.5a)
 

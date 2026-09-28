@@ -1,0 +1,53 @@
+{
+  "tables": [
+    {
+      "table": "devices",
+      "resources": [
+        {
+          "id": "camera",
+          "apps": [
+            { "app": "org.mozilla.firefox", "permissions": ["yes"] },
+            { "app": "org.example.Snapshot", "permissions": ["no"] }
+          ]
+        }
+      ]
+    },
+    {
+      "table": "location",
+      "resources": [
+        {
+          "id": "location",
+          "apps": [
+            {
+              "app": "org.example.Maps",
+              "permissions": ["exact", "2026-09-01T10:00:00Z"]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "table": "notifications",
+      "resources": [
+        {
+          "id": "notification",
+          "apps": [
+            { "app": "org.mozilla.firefox", "permissions": ["yes"] },
+            { "app": "org.example.Calendar", "permissions": ["ask"] }
+          ]
+        }
+      ]
+    },
+    {
+      "table": "screencast",
+      "resources": [
+        {
+          "id": "screencast",
+          "apps": [
+            { "app": "com.obsproject.Studio", "permissions": ["yes"] }
+          ]
+        }
+      ]
+    }
+  ]
+}

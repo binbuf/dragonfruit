@@ -1,0 +1,28 @@
+[package]
+name = "dragonfruit-privacy-adapter"
+description = "Privacy and Security adapter: the xdg-desktop-portal PermissionStore, state, events, and absence (T-15.13a)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+# The adapter projects the host stack: the **xdg-desktop-portal PermissionStore**
+# (`org.freedesktop.impl.portal.PermissionStore` on the session bus), the
+# database portals already use to record which sandboxed applications may reach
+# camera, location, notifications, screen casting, USB, and the other
+# portal-mediated resources. It reuses that store and never reimplements a
+# portal or a permission decision: the store is the single source of truth, and
+# `xdg-desktop-portal` owns the values. The dependency-free contract lives in
+# `dragonfruit-system-adapters`.
+[dependencies]
+dragonfruit-system-adapters = { path = "../system-adapters", version = "0.1.0" }
+zbus = { version = "=5.19.0", features = ["blocking-api"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "=1.0.151"
+
+[lib]
+name = "dragonfruit_privacy_adapter"
+path = "src/lib.rs"
