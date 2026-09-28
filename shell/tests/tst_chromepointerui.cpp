@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: MIT
-// Dock test runner (T-10): `QUICK_TEST_MAIN_WITH_SETUP` finds the QML TestCase
-// in this directory. Run headless with the offscreen platform and the software
-// scene graph (see CMakeLists.txt).
+// Chrome pointer injection view tests (T-16.12): `QUICK_TEST_MAIN_WITH_SETUP`
+// finds the QML TestCase in this directory. The setup adds `ChromeInject`, a
+// QML-callable wrapper over the production `ChromePointer` injection, so the
+// QML test can drive the exact sequence the compositor path uses. QtTest's own
+// mouse injection stamps its events, which hides the zero-timestamp
+// DragHandler grab; the wrapper reproduces the production sequence exactly.
 //
-// The setup adds `DockInject`, a thin QML-callable wrapper over the production
-// `ChromePointer` injection (the T-16.12 name for the T-14.7x `DockPointer`),
-// so the QML tests can drive the exact pointer sequence the compositor path
-// uses instead of QtTest's own mouse injection (T-14.7x). That sequence is what
-// exposes the zero-timestamp DragHandler bug.
+// Run headless with the offscreen platform and the software scene graph (see
+// CMakeLists.txt).
 #include <QEvent>
 #include <QObject>
 #include <QPointF>
@@ -19,18 +19,17 @@
 
 #include "chromepointer.h"
 
-class DockInject : public QObject
+class ChromeInject : public QObject
 {
     Q_OBJECT
 
 public:
     using QObject::QObject;
 
-    // Mirrors ShellController::onDockPointerMoved / Button / Left.
     Q_INVOKABLE void move(QObject *window, qreal x, qreal y)
     {
         ChromePointer::send(windowFor(window), QEvent::MouseMove, QPointF(x, y), Qt::NoButton,
-                          m_buttons);
+                            m_buttons);
     }
 
     Q_INVOKABLE void button(QObject *window, qreal x, qreal y, int button, bool pressed)
@@ -41,14 +40,14 @@ public:
         else
             m_buttons &= ~qtButton;
         ChromePointer::send(windowFor(window),
-                          pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease,
-                          QPointF(x, y), qtButton, m_buttons);
+                            pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease,
+                            QPointF(x, y), qtButton, m_buttons);
     }
 
     Q_INVOKABLE void left(QObject *window)
     {
         ChromePointer::send(windowFor(window), QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton,
-                          m_buttons);
+                            m_buttons);
     }
 
     Q_INVOKABLE void reset() { m_buttons = Qt::NoButton; }
@@ -59,20 +58,20 @@ private:
     Qt::MouseButtons m_buttons = Qt::NoButton;
 };
 
-class DockTestSetup : public QObject
+class ChromeTestSetup : public QObject
 {
     Q_OBJECT
 
 public:
-    DockInject injector;
+    ChromeInject injector;
 
 public slots:
     void qmlEngineAvailable(QQmlEngine *engine)
     {
-        engine->rootContext()->setContextProperty(QStringLiteral("DockInject"), &injector);
+        engine->rootContext()->setContextProperty(QStringLiteral("ChromeInject"), &injector);
     }
 };
 
-QUICK_TEST_MAIN_WITH_SETUP(tst_dock, DockTestSetup)
+QUICK_TEST_MAIN_WITH_SETUP(tst_chromepointerui, ChromeTestSetup)
 
-#include "tst_dock.moc"
+#include "tst_chromepointerui.moc"

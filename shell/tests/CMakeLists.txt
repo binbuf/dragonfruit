@@ -45,6 +45,50 @@ set_tests_properties(tst_dock PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# Chrome pointer injection unit tests (T-16.12): the shared helper owns every
+# injected event's timestamp (nonzero, strictly increasing) and never hands a
+# zero-timestamp `QMouseEvent` to a chrome window. No QML, Wayland, or
+# compositor.
+qt_add_executable(tst_chromepointer
+    tst_chromepointer.cpp
+)
+target_link_libraries(tst_chromepointer PRIVATE
+    Qt6::Core Qt6::Gui Qt6::Test
+    dragonfruit-shell-dockcore
+)
+
+add_test(
+    NAME tst_chromepointer
+    COMMAND tst_chromepointer
+)
+set_tests_properties(tst_chromepointer PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+# Chrome pointer injection view tests (T-16.12): a stationary tap beside a
+# `DragHandler` still taps when the sequence goes through the shared helper.
+# The zero-timestamp grab fails this case (the T-14.7x Dock probe, repeated on
+# a non-Dock surface).
+qt_add_executable(tst_chromepointerui
+    tst_chromepointerui.cpp
+)
+target_link_libraries(tst_chromepointerui PRIVATE
+    Qt6::QuickTest
+    Qt6::Quick
+    dragonfruit-shell-dockcore
+)
+qt_import_qml_plugins(tst_chromepointerui)
+
+add_test(
+    NAME tst_chromepointerui
+    COMMAND tst_chromepointerui -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_chromepointerui.qml
+)
+set_tests_properties(tst_chromepointerui PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Dock core unit tests (T-10): the app-index entry cache and launcher,
 # `dock.pinned` persistence, and the pinned+running entry merge. No QML,
 # Wayland, or compositor required.

@@ -45,6 +45,7 @@ add_library(dragonfruit-shell-dockcore STATIC
     appindexclient.cpp
     apppicker.cpp
     chooserbridge.cpp
+    chromepointer.cpp
     clipboardhistory.cpp
     compositorpolicy.cpp
     controlcenterpolicy.cpp
@@ -52,7 +53,6 @@ add_library(dragonfruit-shell-dockcore STATIC
     displayspolicy.cpp
     dockdrops.cpp
     dockmodel.cpp
-    dockpointer.cpp
     dockprojection.cpp
     filestarget.cpp
     folderstacks.cpp
