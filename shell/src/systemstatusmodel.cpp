@@ -16,6 +16,7 @@ const QString kKindStorage = QStringLiteral("storage");
 const QString kKindInput = QStringLiteral("input");
 const QString kKindUpdates = QStringLiteral("updates");
 const QString kKindAccounts = QStringLiteral("accounts");
+const QString kKindPrinters = QStringLiteral("printers");
 
 } // namespace
 
@@ -64,6 +65,11 @@ bool SystemStatusModel::accountsVisible() const
     return m_accounts.value(QStringLiteral("visible")).toBool();
 }
 
+bool SystemStatusModel::printersVisible() const
+{
+    return m_printers.value(QStringLiteral("visible")).toBool();
+}
+
 QVariantMap SystemStatusModel::parseView(const QByteArray &json, const QString &kind, QString *error)
 {
     QJsonParseError parseError{};
@@ -102,7 +108,7 @@ QVariantMap SystemStatusModel::normalize(const QVariantMap &view, const QString 
     // shares the rule (ADR 0117): a running `bluetoothd` with no controller is
     // `available` with `present: false` and the tile hides.
     if ((kind == kKindBattery || kind == kKindBluetooth || kind == kKindStorage
-             || kind == kKindInput)
+             || kind == kKindInput || kind == kKindPrinters)
             && view.contains(QStringLiteral("present"))
             && !view.value(QStringLiteral("present")).toBool())
         hidden = true;
@@ -167,6 +173,15 @@ void SystemStatusModel::applyAccounts(const QVariantMap &view)
     // caches no user. A host with no group provider is still `available` with
     // `groupsAvailable: false`, which only affects the Settings pane.
     m_accounts = normalize(view, kKindAccounts);
+    emit changed();
+}
+
+void SystemStatusModel::applyPrinters(const QVariantMap &view)
+{
+    // The Printers and Scanners view has a second hide rule (`present`): a
+    // running CUPS with no queue and a running SANE with no device are
+    // `available` with `present: false`, so the tile hides then too.
+    m_printers = normalize(view, kKindPrinters);
     emit changed();
 }
 
@@ -242,6 +257,15 @@ void SystemStatusModel::applyAccountsJson(const QByteArray &json)
     applyAccounts(view);
 }
 
+void SystemStatusModel::applyPrintersJson(const QByteArray &json)
+{
+    QString error;
+    const QVariantMap view = parseView(json, kKindPrinters, &error);
+    if (!error.isEmpty())
+        return;
+    applyPrinters(view);
+}
+
 void SystemStatusModel::requestJoin(const QString &ssid, const QString &secret)
 {
     if (ssid.isEmpty())
@@ -312,4 +336,9 @@ void SystemStatusModel::requestRebootUpdates()
 void SystemStatusModel::requestRefreshAccounts()
 {
     emit refreshAccountsRequested();
+}
+
+void SystemStatusModel::requestRefreshPrinters()
+{
+    emit refreshPrintersRequested();
 }

@@ -52,6 +52,7 @@ pub mod bluetooth;
 pub mod dbus;
 pub mod input;
 pub mod notifications;
+pub mod printers;
 pub mod storage;
 pub mod updates;
 
@@ -63,6 +64,7 @@ pub use input::{input_snapshot_view, input_view, InputHost};
 pub use notifications::{
     focus_report, notifications_snapshot_view, notifications_view, NotificationsHost,
 };
+pub use printers::{printers_report, printers_snapshot_view, printers_view, PrintersHost};
 pub use storage::{storage_report, storage_snapshot_view, storage_view, StorageHost};
 pub use updates::{update_report, updates_snapshot_view, updates_view, UpdatesHost};
 
@@ -88,6 +90,8 @@ pub const NOTIFICATIONS_INTERFACE: &str = "org.dragonfruit.SystemStatus1.Notific
 pub const UPDATES_INTERFACE: &str = "org.dragonfruit.SystemStatus1.Updates";
 /// The Users and Groups interface name under [`DBUS_NAME`] (T-15.11b).
 pub const ACCOUNTS_INTERFACE: &str = "org.dragonfruit.SystemStatus1.Accounts";
+/// The Printers and Scanners interface name under [`DBUS_NAME`] (T-15.12b).
+pub const PRINTERS_INTERFACE: &str = "org.dragonfruit.SystemStatus1.Printers";
 
 /// The host owns the three menu-bar adapters and exposes their snapshots and
 /// actions. Generic over the transport seams so CI drives it with the mocks.

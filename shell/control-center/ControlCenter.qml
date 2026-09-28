@@ -71,6 +71,13 @@ Item {
     // it. It is a read-only summary; the Settings link opens the pane where the
     // account/group writes live.
     property var accounts: ({})
+    // The Printers and Scanners view from the bridge host (T-15.12b), shaped
+    // by `SystemStatusModel`: `{ state, glyph, label, present,
+    // printersAvailable, scannersAvailable, printerCount, scannerCount,
+    // queuedJobCount, defaultPrinter }`. The tile hides when the host answers
+    // with no queue and no scanner (`present: false`). It is a read-only
+    // summary; the Settings link opens the pane where the queue writes live.
+    property var printers: ({})
     property real brightness: 1.0
     // The notification service's Focus/DND policy view
     // (`{mode, allowList, batchedCount}`); empty when the service is absent.
@@ -302,6 +309,33 @@ Item {
             ? qsTr("%1 Users").arg(root.accountsHumanCount) : qsTr("No Users");
     }
 
+    // Printers and Scanners (T-15.12b): the tile reflects the bridge host's
+    // CUPS/SANE view. It stays visible whenever the host answers with at least
+    // one queue or scanner (`present`); the subtitle is the live count label;
+    // the link opens the Printers & Scanners pane.
+    readonly property bool printersAvailable: root.printers.state === "available"
+    // The tile hides when the host answers `present: false` (a running CUPS
+    // with no queue and a running SANE with no device); a raw view without the
+    // normalized flag falls back to the availability state.
+    readonly property bool printersVisible: root.printers.visible !== undefined
+        ? root.printers.visible === true : root.printersAvailable
+    readonly property int printersPrinterCount:
+        root.printers.printerCount !== undefined ? Number(root.printers.printerCount) : 0
+    readonly property int printersScannerCount:
+        root.printers.scannerCount !== undefined ? Number(root.printers.scannerCount) : 0
+    readonly property string printersGlyph:
+        root.printers.glyph !== undefined ? String(root.printers.glyph) : "printer"
+    readonly property string printersLabel: {
+        if (!root.printersAvailable)
+            return qsTr("Unavailable");
+        if (root.printers.label !== undefined && root.printers.label !== "")
+            return root.printers.label;
+        if (root.printersPrinterCount === 0 && root.printersScannerCount === 0)
+            return qsTr("No Printers or Scanners");
+        return qsTr("%1 Printers, %2 Scanners")
+            .arg(root.printersPrinterCount).arg(root.printersScannerCount);
+    }
+
     // The notification service's mode (`off`/`focus`/`dnd`). The toggle is Do
     // Not Disturb: `focus` also lights it, because both suppress banners.
     readonly property string focusMode: root.focusPolicy.mode !== undefined
@@ -449,6 +483,14 @@ Item {
             subtitle: root.accountsLabel,
             visible: root.accountsAvailable,
             enabled: root.accountsAvailable
+        },
+        {
+            id: "printers",
+            kind: "info",
+            title: qsTr("Printers"),
+            subtitle: root.printersLabel,
+            visible: root.printersVisible,
+            enabled: root.printersVisible
         }
     ]
 
@@ -509,6 +551,9 @@ Item {
     // The Users tile (T-15.11b) is a read-only summary; the link opens the
     // Users & Groups pane where the account and group writes live.
     signal usersSettingsRequested()
+    // The Printers tile (T-15.12b) is a read-only summary; the link opens the
+    // Printers & Scanners pane where the queue writes live.
+    signal printersSettingsRequested()
 
     // Apply a volume fraction (0..1) and raise the request.
     function setVolume(fraction) {
@@ -620,12 +665,13 @@ Item {
             objectName: "controlCenterContent"
             anchors.fill: parent
             anchors.margins: Theme.primitive.spacing.md
-            // The panel now carries fourteen tiles (T-15.11b). Every tile's
-            // vertical padding is the compact `xxs` step and the gap is `xs`,
-            // so the content still fits the fixed 360x1160 surface (the nested
-            // output leaves 1164 px below the bar) without a scrolling panel
-            // (the compositor forwards no pointer-axis events, ADR 0139).
-            spacing: Theme.primitive.spacing.xs
+            // The panel now carries fifteen tiles (T-15.12b). Every tile's
+            // vertical padding is the compact `xxs` step and the intermediate
+            // gap is the compact `xxs` step too, so the content still fits the
+            // fixed 360x1160 surface (the nested output leaves 1164 px below
+            // the bar) without a scrolling panel (the compositor forwards no
+            // pointer-axis events, ADR 0139/0141).
+            spacing: Theme.primitive.spacing.xxs
 
             // ── Wi-Fi ────────────────────────────────────────────────────
             Rectangle {
@@ -1745,6 +1791,73 @@ Item {
                         text: qsTr("Users & Groups Settings\u2026")
                         accessibleName: qsTr("Open Users & Groups Settings")
                         onActivated: root.usersSettingsRequested()
+                    }
+                }
+            }
+
+            // ── Printers and Scanners (T-15.12b) ─────────────────────────
+            Rectangle {
+                id: printersTile
+                objectName: "printersTile"
+                width: parent.width
+                visible: root.printersVisible
+                implicitHeight: printersColumn.implicitHeight
+                                + 2 * Theme.primitive.spacing.xxs
+                radius: Theme.primitive.radius.md
+                color: Theme.color.surfaceSunken
+                Accessible.role: Accessible.Grouping
+                Accessible.name: qsTr("Printers")
+
+                Column {
+                    id: printersColumn
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: Theme.primitive.spacing.xxs
+                    // The compact gap keeps the fifteenth tile inside the
+                    // fixed surface (T-15.12b, ADR 0141).
+                    spacing: Theme.primitive.spacing.xs
+
+                    Row {
+                        width: parent.width
+                        spacing: Theme.primitive.spacing.md
+
+                        IconTile {
+                            objectName: "printersIcon"
+                            name: root.printersGlyph
+                            tileSize: 32
+                            iconSize: 18
+                            active: root.printersPrinterCount > 0
+                        }
+
+                        Column {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: parent.width - 32 - 2 * Theme.primitive.spacing.md
+
+                            Text {
+                                objectName: "printersTitle"
+                                text: qsTr("Printers")
+                                color: Theme.color.textPrimary
+                                font.pixelSize: Theme.controls.button.fontSize
+                                font.weight: Theme.primitive.font.weightMedium
+                            }
+
+                            Text {
+                                objectName: "printersSubtitle"
+                                width: parent.width
+                                text: root.printersLabel
+                                color: Theme.color.textSecondary
+                                font.pixelSize: Theme.primitive.font.sizeSm
+                                elide: Text.ElideRight
+                            }
+                        }
+                    }
+
+                    TextLink {
+                        objectName: "printersSettingsLink"
+                        text: qsTr("Printers & Scanners Settings\u2026")
+                        accessibleName: qsTr("Open Printers & Scanners Settings")
+                        onActivated: root.printersSettingsRequested()
                     }
                 }
             }

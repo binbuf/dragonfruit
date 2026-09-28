@@ -6,6 +6,7 @@
 #include "BluetoothClient.h"
 #include "InputClient.h"
 #include "NotificationsClient.h"
+#include "PrintersClient.h"
 #include "SoundClient.h"
 #include "StorageClient.h"
 #include "UpdatesClient.h"
@@ -195,6 +196,16 @@ SettingsBridge::SettingsBridge(QObject *parent)
     connect(m_accounts, &AccountsClient::availableChanged, this,
             [this](bool) { emit accountsChanged(); });
 
+    // T-15.12b: the Printers & Scanners seam, selected the same way.
+    if (qEnvironmentVariableIsSet("DF_PRINTERS_FIXTURE"))
+        m_printers = new MockPrintersClient(this);
+    else
+        m_printers = new DbusPrintersClient(this);
+    connect(m_printers, &PrintersClient::changed, this,
+            [this](const QVariantMap &) { emit printersChanged(); });
+    connect(m_printers, &PrintersClient::availableChanged, this,
+            [this](bool) { emit printersChanged(); });
+
     buildWallpaperPresets();
     connectPortalWatcher();
     m_wallpaperFixture = qEnvironmentVariableIsSet("DF_WALLPAPER_FIXTURE");
@@ -307,6 +318,16 @@ QVariantMap SettingsBridge::accounts() const
 bool SettingsBridge::accountsAvailable() const
 {
     return m_accounts && m_accounts->available();
+}
+
+QVariantMap SettingsBridge::printers() const
+{
+    return m_printers ? m_printers->view() : QVariantMap();
+}
+
+bool SettingsBridge::printersAvailable() const
+{
+    return m_printers && m_printers->available();
 }
 
 QString SettingsBridge::providerStatus() const
@@ -783,6 +804,36 @@ void SettingsBridge::resetAccountsFixture()
 {
     if (m_accounts)
         m_accounts->resetForTest();
+}
+
+void SettingsBridge::refreshPrinters()
+{
+    if (m_printers)
+        m_printers->refresh();
+}
+
+void SettingsBridge::setDefaultPrinter(const QString &name)
+{
+    if (m_printers && !name.isEmpty())
+        m_printers->setDefaultPrinter(name);
+}
+
+void SettingsBridge::setPrinterAcceptingJobs(const QString &name, bool accepting)
+{
+    if (m_printers && !name.isEmpty())
+        m_printers->setPrinterAcceptingJobs(name, accepting);
+}
+
+void SettingsBridge::cancelPrinterJob(int jobId)
+{
+    if (m_printers)
+        m_printers->cancelJob(jobId);
+}
+
+void SettingsBridge::resetPrintersFixture()
+{
+    if (m_printers)
+        m_printers->resetForTest();
 }
 
 void SettingsBridge::setWallpaperFixture(const QString &status)

@@ -34,7 +34,8 @@ Item {
                                           "overview", "battery", "power-saver",
                                           "power-balanced", "power-performance",
                                           "info", "bell", "lock", "menu-bar",
-                                          "general", "software-update", "users"]
+                                          "general", "software-update", "users", "printer",
+                                          "scanner"]
     readonly property bool painted: root.paintedGlyphs.indexOf(root.name) >= 0
 
     readonly property var bars: {
@@ -511,6 +512,35 @@ Item {
                 ctx.beginPath();
                 ctx.arc(s * 0.70, s * 0.74, root.stroke * 0.7, 0, Math.PI * 2);
                 ctx.fill();
+                break;
+            }
+            case "printer": {
+                // A printer: a paper sheet above a rounded body with an output
+                // slot and a status dot (the Printers & Scanners glyph).
+                roundedRect(s * 0.20, s * 0.16, s * 0.60, s * 0.30, s * 0.04);
+                ctx.stroke();
+                roundedRect(s * 0.14, s * 0.42, s * 0.72, s * 0.34, s * 0.08);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(s * 0.28, s * 0.76);
+                ctx.lineTo(s * 0.72, s * 0.76);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(s * 0.74, s * 0.50, root.stroke * 0.7, 0, Math.PI * 2);
+                ctx.fill();
+                break;
+            }
+            case "scanner": {
+                // A flatbed scanner: a hinged lid over a glass bed (the scanner
+                // rows in the Printers & Scanners pane).
+                roundedRect(s * 0.16, s * 0.20, s * 0.68, s * 0.22, s * 0.05);
+                ctx.stroke();
+                roundedRect(s * 0.12, s * 0.52, s * 0.76, s * 0.24, s * 0.06);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(s * 0.28, s * 0.64);
+                ctx.lineTo(s * 0.72, s * 0.64);
+                ctx.stroke();
                 break;
             }
             case "keyboard": {
