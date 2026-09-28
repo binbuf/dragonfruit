@@ -134,6 +134,8 @@ Item {
             return wallpaperPaneComponent;
         case "desktop-dock":
             return desktopDockPaneComponent;
+        case "mission-control":
+            return missionControlPaneComponent;
         case "displays":
             return displaysPaneComponent;
         case "bluetooth":
@@ -233,6 +235,11 @@ Item {
     Component {
         id: desktopDockPaneComponent
         DesktopDockPane { }
+    }
+
+    Component {
+        id: missionControlPaneComponent
+        MissionControlPane { }
     }
 
     Component {

@@ -107,10 +107,11 @@ constexpr int kBannerTopGap = 8;
 // top-right corner below the menu bar. The panel fills the surface, so its
 // input region is the whole thing.
 // T-11.3b grows the panel to fit five tiles (Wi-Fi, Focus, Sound, Display,
-// Dark Mode); T-13.5b adds the clipboard-history section below them. The
-// surface is fixed and the panel fills it.
+// Dark Mode); T-13.5b adds the clipboard-history section below them; T-15.5b
+// adds the Mission Control summary tile. The surface is fixed and the panel
+// fills it.
 constexpr int kControlCenterWidth = 360;
-constexpr int kControlCenterHeight = 880;
+constexpr int kControlCenterHeight = 980;
 constexpr int kControlCenterTopGap = 8;
 
 // The OSD overlay (T-11.4a): a centered card. The surface is slightly larger
@@ -837,6 +838,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onSoundSettingsRequested()));
     connect(controlCenterObject, SIGNAL(keyboardSettingsRequested()), this,
             SLOT(onKeyboardSettingsRequested()));
+    connect(controlCenterObject, SIGNAL(missionControlSettingsRequested()), this,
+            SLOT(onMissionControlSettingsRequested()));
     connect(controlCenterObject, SIGNAL(focusToggleRequested(bool)), this,
             SLOT(onFocusToggleRequested(bool)));
     connect(controlCenterObject, SIGNAL(focusSettingsRequested()), this,
@@ -2007,11 +2010,17 @@ void ShellController::applyControlCenterData()
     const QVariantMap bluetooth = m_statusModel ? m_statusModel->bluetooth() : QVariantMap();
     const QVariantMap storage = m_statusModel ? m_statusModel->storage() : QVariantMap();
     const QVariantMap input = m_statusModel ? m_statusModel->input() : QVariantMap();
+    // Mission Control and hot corners are compositor-native: the shell owns the
+    // compositor mirror and the settingsd values, so it projects the tile's
+    // summary locally (T-15.5b) instead of reading a services-layer host.
+    const QVariantMap missionControl =
+        m_settingsClient ? missionControlView(m_settingsClient->values()) : QVariantMap();
     m_controlCenterItem->setProperty("wifi", wifi);
     m_controlCenterItem->setProperty("audio", audio);
     m_controlCenterItem->setProperty("bluetooth", bluetooth);
     m_controlCenterItem->setProperty("storage", storage);
     m_controlCenterItem->setProperty("input", input);
+    m_controlCenterItem->setProperty("missionControl", missionControl);
     m_controlCenterItem->setProperty("brightness", brightness);
     m_controlCenterItem->setProperty("focusPolicy", focus);
     m_controlCenterItem->setProperty("dark", dark);
@@ -2184,6 +2193,13 @@ void ShellController::onKeyboardSettingsRequested()
     // Launching Settings on the Keyboard pane is T-16; the entry point is wired
     // and logs until then.
     qInfo() << "shell: Keyboard Settings requested (T-16)";
+}
+
+void ShellController::onMissionControlSettingsRequested()
+{
+    // Launching Settings on the Mission Control pane is T-16; the entry point
+    // is wired and logs until then.
+    qInfo() << "shell: Mission Control Settings requested (T-16)";
 }
 
 void ShellController::onFocusToggleRequested(bool enabled)

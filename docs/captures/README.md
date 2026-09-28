@@ -549,6 +549,23 @@ itself — the corner/action map, gesture gating, overview runtime state,
 `changes` diff, hot-corner triggers, and absence at every seam — is proven
 headlessly by `cargo test -p dragonfruit-overview`.
 
+T-15.5b's Mission Control & Hot Corners pane and Control Center tile:
+`t15-5b-mission-control-pane.png` is the active Settings window on the Mission
+Control pane (the `Mission Control` group with `Swipe up to open` and `Swipe
+between Spaces`, and the `Hot Corners` group with `Top Left` = `Mission
+Control`, `Top Right` = `Notification Center`, `Bottom Left` = `Desktop`, and
+`Bottom Right` = `Lock Screen`), and
+`t15-5b-mission-control-control-center.png` is the 360x980 panel crop with the
+new Mission Control tile (`Gesture, 1 corner(s)`, `Mission Control Settings…`)
+above an unclipped Clipboard tile. The demo runs with
+`DF_SETTINGS_START_PANE=mission-control`, `DF_SETTINGS_FIXTURE`, and
+`DF_STATUS_FIXTURE`, so no host settingsd is needed. Captured by
+`scripts/capture-t15-mission-control-pane.sh`; requires a host Wayland session,
+spectacle, and Pillow, and is not in `make e2e`. Vision confirmed the pane's
+two groups and all four corner popups render with the schema-default values,
+and the Control Center shows the Mission Control tile and link with nothing
+clipped.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

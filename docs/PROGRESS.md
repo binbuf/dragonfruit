@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(119 earlier sections omitted)_
+_(120 earlier sections omitted)_
 
-- **T110d — T-14.7d Trash entry artwork**: **State: done.** The Trash glyph is now a designed, original bin at the token; `shell/dock/DockGlyph.qml` — `import QtQuick.Shapes`; the `trash` item is a
 - **T110e — T-14.7e Add Application picker**: **State: done.** The Dock's divider menu now offers **Add Application…**,; `shell/src/apppicker.{h,cpp}` (new, dockcore) — pure
 - **T110f — T-14.7f Dock drag-and-drop identity and feedback**: **State: done.** External drags are now read once at drag *enter*, so the Dock; `shell/src/dockdrops.{h,cpp}` — `DockDropPayloadData` +
 - **T110g — T-14.7g Dock activation and launch correctness**: **State: done.** The Dock click tree is now observable end to end: a launch; `protocols/dragonfruit-toplevel.xml` — manager version 8; new
@@ -42,6 +41,7 @@ _(119 earlier sections omitted)_
 - **T117 — T-15.4a Keyboard, Mouse, and Trackpad adapter**: **State: done.** A new workspace crate `dragonfruit-input` (`services/input`); `services/input/src/lib.rs` — crate docs + exports.
 - **T118 — T-15.4b Keyboard, Mouse, and Trackpad pane and tile**: **State: done.** The Settings Keyboard/Mouse/Trackpad panes and the Control; `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 11 → 12; 10 new
 - **T119 — T-15.5a Mission Control and hot corners adapter**: **State: done.** A new workspace crate `dragonfruit-overview`; `services/overview/src/source.rs` — `MissionControlSource` seam,
+- **T120 — T-15.5b Mission Control and hot corners pane and tile**: **State: done.** The Settings Mission Control & Hot Corners pane and the Control; `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 12 → 13; new
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -11402,3 +11402,95 @@ Decisions / gotchas for T-15.5b (and later):
   `docs/captures/t15-5a-mission-control-adapter.png` (3840x2160). Vision
   confirmed the nested desktop renders — menu bar, Dock, Settings, and client
   windows, no blank areas, clipping, or stray artifacts.
+
+## T120 — T-15.5b Mission Control and hot corners pane and tile
+
+**State: done.** The Settings Mission Control & Hot Corners pane and the Control
+Center Mission Control tile ship as one functional unit (ADR 0127). Four
+revision-13 settingsd keys hold the corner assignments and apply live; the
+gesture rows reuse the revision-1 `gestures.*` keys the compositor already
+applies over `set_input_policy`. The tile is projected by the shell from the
+settings values. Absence is documented and tested.
+
+**Deviation from the T-15.5a note/ADR 0126:** no `dragonfruit-system-status`
+overview host is added. Mission Control's runtime is compositor-native and the
+only reader is the shell's `df_toplevel_manager` client; a services-layer host
+would need an invented shell→D-Bus push bridge. The shell therefore projects
+the tile locally (`shell/src/controlcenterpolicy.cpp::missionControlView`,
+mirroring the Rust `MissionControlSnapshot::label()`), and the pane writes
+settingsd keys. The `dragonfruit-overview` adapter stays the contract/model and
+is exercised by its own crate tests; it is not linked into the shell or the
+host.
+
+Real paths:
+
+- `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 12 → 13; new
+  `KeyGroup::Overview`; 4 keys `overview.hotCornerTopLeft`/`TopRight`/
+  `BottomLeft`/`BottomRight` (Text, values = the `HotCornerAction::id()`
+  vocabulary, defaults mirror `HotCornerConfig::default()`) + a revision-13
+  test.
+- `libs/settings-client/settingsclient.cpp` — the schema-defaults mirror bumped
+  to revision 13 and the four defaults added.
+- `design-system/components/Icon.qml` — new original `overview` painted glyph
+  (a 2x2 window-thumbnail grid).
+- `apps/settings/MissionControlPane.qml` (new) — the pane body: a
+  `Mission Control` group (gesture toggles) and a `Hot Corners` group (four
+  `Select` rows), plus a settings-daemon absence note.
+- `apps/settings/SettingsPanes.qml` — `mission-control` catalog row
+  (`shipped: true`, icon `overview`), after `desktop-dock`.
+- `apps/settings/SettingsShell.qml`, `apps/settings/CMakeLists.txt` — register
+  the body/source/QML.
+- `shell/src/controlcenterpolicy.{h,cpp}` — pure `missionControlView(values)`
+  (state/glyph/label/reachable/gesture/cornerCount).
+- `shell/src/shellcontroller.{h,cpp}` — `missionControl` pushed in
+  `applyControlCenterData`; `onMissionControlSettingsRequested` slot;
+  `kControlCenterHeight` 880 → 980 (content measures 925 with the full tile
+  set).
+- `shell/control-center/ControlCenter.qml` — `missionControl` property, the
+  `info` tile at index 8, and `missionControlSettingsRequested`.
+- Tests — `apps/settings/tests/tst_settings_mission_control.{cpp,qml}` (new);
+  `apps/settings/tests/tst_settings_shell.qml` and `tst_settings_absence.qml`
+  (counts 10 → 11, shipped list, a mission-control absence case);
+  `shell/tests/tst_controlcenterpolicy.{cpp}` (new); `shell/tests/`
+  `tst_controlcenter.qml` (9 tiles, mission tile + link, fit at 980).
+- Docs — `docs/design/07-system-integration.md` "The Mission Control pane and
+  tile (T-15.5b)"; ADR `0127-mission-control-pane-and-tile.md`;
+  `docs/settings-keys.md` rows + consumer map; capture script
+  `scripts/capture-t15-mission-control-pane.sh`; `docs/captures/README.md`.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-settingsd` — green (incl. schema_doc).
+- `ctest --output-on-failure -j4` (in `build/`) — 59/59.
+- `make e2e` — EXIT 0.
+- `cargo fmt --all -- --check`; clippy on `dragonfruit-settingsd` — clean.
+- `make check-design-tokens check-tokens check-no-capture-grab` — clean.
+- `make lint` — still fails only on the pre-existing `check-desktop-names`
+  lines (app-index tray, apppicker, zoo), unchanged.
+
+Decisions / gotchas for later tasks:
+
+- **The compositor does not apply the `overview.hotCorner*` assignments yet.**
+  The gesture trio already applies over `set_input_policy`; applying a corner
+  assignment needs an append-only `df_toplevel_manager.set_hot_corners` request
+  (version bump, shell forward from `applyCompositorPolicy`) per ADR 0126/0127.
+  Until then the keys persist and apply live in settingsd, exactly like the
+  T-15.4b pointer keys.
+- **The Mission Control tile is shell-native.** Do not add a system-status
+  `MissionControl` interface unless a real services-layer source appears; the
+  shell owns the only compositor mirror.
+- **Panel height is now 980** (from 880). Another tile needs the fit test and
+  every capture crop revisited.
+- **`missionControlView` mirrors the Rust label exactly** (`Gesture`,
+  `Gesture, n corner(s)`, `n corner(s)`, `No trigger`). Keep the two in step if
+  the label format changes.
+- **`overview.hotCorner*` values are the `HotCornerAction::id()` strings**
+  (`none`, `mission-control`, `notification-center`, `desktop-reveal`,
+  `lock-screen`); reuse them for the wire and any popup.
+- Live visual check: `bash scripts/capture-t15-mission-control-pane.sh`
+  produced `docs/captures/t15-5b-mission-control-pane.png` (2088x1410) and
+  `docs/captures/t15-5b-mission-control-control-center.png` (360x980). Vision
+  confirmed the pane's two groups and all four corner popups
+  (`Mission Control`, `Notification Center`, `Desktop`, `Lock Screen`) and the
+  Control Center Mission Control tile (`Gesture, 1 corner(s)`,
+  `Mission Control Settings…`) above an unclipped Clipboard tile.
