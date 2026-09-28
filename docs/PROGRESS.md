@@ -3,10 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(99 earlier sections omitted)_
+_(101 earlier sections omitted)_
 
-- **T95 — T-13.4b ScreenCast stream and stills fallback**: **State: done.** The ScreenCast stream now goes through one transport seam, and; **`portal/src/stream.rs`** (new) — `StreamMode` (`pipewire`/`stills`),
-- **T96 — T-13.5a Clipboard text/image/uri-list round-trips**: **State: done.** The clipboard round-trip matrix is proven on the headless; **`compositor/tests/shell_protocol_conformance.rs`** — new
 - **T97 — T-13.5b Clipboard history (if specified)**: **State: done.** The design calls for history (ADR 0082's accepted consequences; **`shell/src/clipboardhistory.{h,cpp}`** (new, dockcore) — `ClipboardHistory`:
 - **T98 — T-13.6 polkit authentication agent**: **State: done.** A privileged polkit request now raises a Dragonfruit; **`shell/src/polkitagent.{h,cpp}`** (dockcore) — `PolkitAgent` exports
 - **T99 — T-13.7 Flatpak validation and capture**: **State: done** (one honest deviation: no Flatpak↔native clipboard still; see; **`scripts/capture-portals.sh`** (new; `make portals-capture`) — private
@@ -44,6 +42,7 @@ _(99 earlier sections omitted)_
 - **T110t — T-14.7t Dock keyboard reordering**: **State: done.** The Dock's rearrangement affordance is no longer pointer-only:; `shell/src/dockmodel.{h,cpp}` — `QStringList movePinnedEntry(const QStringList
 - **T110u — T-14.7u Dock reference metrics: spacing, plate radius, indicator inset**: **State: done.** The resting Dock is retuned to the mature reference capture:; `design-system/tokens/tokens.json` — `component.dock`: `padding` 10 → 15,
 - **T110v — T-14.7v Dock region dividers: pinned | temporary/recent | stacks and Trash**: **State: done.** The Dock projects the reference's region structure: a rule; `shell/src/dockmodel.{h,cpp}` — `DockRegionPlan` + `planDockRegions(entries,
+- **T110x — T-14.7x Dock activation: taps on entries that carry a DragHandler**: **State: done.** A stationary left click on any app/temporary/overflow entry; `shell/src/dockpointer.{h,cpp}` (new, dockcore) — `DockPointer::timestamp()`
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -8873,7 +8872,12 @@ Gotchas for later tasks:
   `DragHandler` (app/temporary); Trash/minimized/stack tap fine. The live
   capture therefore uses `DF_DOCK_ACTIVATION_FIXTURE`, which calls the real
   `onDockEntryActivated` path. Follow-up: fix the synthetic tap path and
-  re-capture without the seam.
+  re-capture without the seam. **Resolved by T-14.7x**: the injected
+  `QMouseEvent` had `timestamp() == 0`, which made `QQuickDragHandler` grab the
+  press before the sibling `TapHandler`; `DockPointer` now stamps a monotonic
+  timestamp, the `DF_DOCK_ACTIVATION_FIXTURE` seam is deleted, and the
+  activation/launch-origin captures drive a real synthetic click (see the
+  T110x section).
 - **`DF_DOCK_ACTIVATION_FIXTURE` is a capture seam, never a session value.**
 - Adding a manager event: append it last in the XML (append-only opcodes) and
   append its callback last in `bindTrustedGlobals`' listener initializer.
@@ -10000,5 +10004,81 @@ Gotchas for later tasks:
 - **A divider delegate's root box is `dividerWidth × barThickness` (bottom) or
   `barThickness × dividerWidth` (left/right),** not `iconSize`; the rule inside
   is oriented from `indicatorEdge`.
+- `check-desktop-names.sh` still fails only on the pre-existing
+  StatusNotifier/zoo/apppicker lines (unchanged here).
+
+## T110x — T-14.7x Dock activation: taps on entries that carry a DragHandler
+
+**State: done.** A stationary left click on any app/temporary/overflow entry
+now activates or launches in a real session. The recorded T110g "synthetic-tap
+limitation" is fixed at the injection boundary, not in QML: the shell's
+hand-built Dock `QMouseEvent`s carried `timestamp() == 0`, and with a zero
+timestamp `QQuickDragHandler` measures a bogus initial movement on the press and
+takes the exclusive grab, so the sibling `TapHandler` never sees the tap. The
+`DF_DOCK_ACTIVATION_FIXTURE` capture seam is retired. ADR 0110 records the rule;
+ADR 0101 gains a pointer to it.
+
+Real paths:
+
+- `shell/src/dockpointer.{h,cpp}` (new, dockcore) — `DockPointer::timestamp()`
+  (a shared `QElapsedTimer`, `+1` so the first event is nonzero) and
+  `DockPointer::send(window, type, pos, button, buttons)`, which builds the
+  `QMouseEvent` and calls `QEvent::setTimestamp` before `sendEvent`.
+- `shell/src/shellcontroller.cpp` — `onDockPointerMoved` / `onDockPointerButton`
+  / `onDockPointerLeft` route through `DockPointer::send`; the
+  `DF_DOCK_ACTIVATION_FIXTURE` block (`launch`/`activate`/`missing`) deleted.
+- `shell/tests/tst_dock.cpp` — now `QUICK_TEST_MAIN_WITH_SETUP`; a `DockInject`
+  context property wraps the production `DockPointer` using the same button-state
+  bookkeeping as the controller.
+- `shell/tests/tst_dock.qml` — eight new `test_injected_*` cases (stationary tap
+  on app/temporary/minimized/Trash/stack/overflow, right-click menu, slop-drag
+  lift) driven through `DockInject`; `tst_dock` 248 → 256.
+- `scripts/capture-dock-activation-driver.py` (new) — real synthetic click; scans
+  the left Dock half and detects the launched window via `query identity`.
+- `scripts/capture-dock-activation.sh` — no fixture; before/launch/active/missing
+  through the driver.
+- `scripts/capture-dock-launch-origin.sh` + `-driver.py` — no fixture; the driver
+  clicks the pinned entry, then reads `query motion`.
+- Captures refreshed: `docs/captures/t14-dock-activation{,-before,-after,-active,-missing}.png`
+  and `docs/captures/t14-dock-launch-origin.png` + `-trace.txt`.
+- Docs: `docs/design/04-shell.md` "Dock activation and launch";
+  `docs/design/adr/0110-dock-pointer-injection-timestamps.md`; ADR 0101
+  consequences; captures README.
+
+Commands that work (repo root):
+
+- `ctest --test-dir build -R "tst_dock$|tst_dockcore" --output-on-failure` —
+  256 + 116 green.
+- The pre-fix probe: comment out `event.setTimestamp(timestamp())`, rebuild
+  `tst_dock`, and `test_injected_stationary_tap_activates_{an_app,temporary}_entry`
+  fail (254 passed / 2 failed); all other injected cases still pass.
+- Live: `make dock-activation-capture` — the driver clicked the pinned Settings
+  entry at x=800 and launched it (real pointer); the stacked still reads
+  before (no window) / after (window mapped, running dot) / active (focused).
+  `make dock-launch-origin-capture` — real click, `appear origin=(800, 1104,
+  73, 85)` inside the bottom Dock band.
+
+Gotchas for later tasks:
+
+- **Any chrome surface re-injected into an offscreen window must set a nonzero
+  monotonic timestamp** (use `DockPointer`). The same zero-timestamp
+  DragHandler-grab can hit any new handler pair over a `sendEvent` injection;
+  only the Dock uses `DockPointer` today. The other chrome input paths
+  (control center, chooser, screenshot, screencast, polkit, overview, banner,
+  menubar) still build bare `QMouseEvent`s; they have no DragHandler siblings
+  yet, so they are unchanged, but a new DragHandler there would need the same
+  fix.
+- **The QML test's `DockInject` wrapper is not the controller**, but it calls
+  the same `DockPointer::send`; keep the wrapper's button-state bookkeeping in
+  sync with `ShellController::m_dockButtons` if the controller's changes.
+- **QtTest's own `mouseClick` stamps timestamps**, so the older `tst_dock.qml`
+  activation cases pass on broken injection. A regression that changes the
+  pointer synthesis must use `DockInject`, not `mouseClick`.
+- **`testCase.window` does not exist** in Qt Quick Test; use
+  `stage.Window.window` (the root Item's attached `Window.window`).
+- **The capture driver hard-codes the bottom Dock band** (`DOCK_Y=1155`,
+  scan x 770–990) and only scans for a launched Settings window; a Dock
+  position/token change needs those constants revisited (same convention as
+  `capture-dock-magnify-driver.py`).
 - `check-desktop-names.sh` still fails only on the pre-existing
   StatusNotifier/zoo/apppicker lines (unchanged here).

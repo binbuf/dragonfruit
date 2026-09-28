@@ -5,17 +5,18 @@
 Driven by ``scripts/capture-dock-launch-origin.sh`` (run that, not this).
 Requires a host Wayland session, ``spectacle`` and Pillow.
 
-The demo runs with ``DF_DOCK_ACTIVATION_FIXTURE=launch`` so the Dock launches a
-pinned app through the real click tree. This driver reads the compositor's
-``query motion`` record for the launched window and proves the appear started at
-the Dock entry's icon (bottom band), not the centered fallback, then annotates
-the still with the recorded origin.
+The demo runs with the T-14.7x real synthetic click (no activation fixture):
+this driver clicks the pinned Settings entry through the compositor pointer,
+then reads the compositor's ``query motion`` record for the launched window and
+proves the appear started at the Dock entry's icon (bottom band), not the
+centered fallback, before annotating the still with the recorded origin.
 """
 import argparse
 import os
 import socket
 import subprocess
 import sys
+import time
 
 from PIL import Image, ImageDraw
 
@@ -23,6 +24,11 @@ NESTED_W, NESTED_H = 1920, 1200
 # The bottom Dock band: an icon origin must fall near this edge, far below a
 # centered fallback for a normal window.
 DOCK_ORIGIN_MIN_Y = 1080
+# The pinned half of the Dock to scan for the Settings entry (T-14.7x).
+DOCK_Y = 1155
+SCAN_LEFT = 770
+SCAN_RIGHT = 990
+SCAN_STEP = 10
 
 
 def log(message):
@@ -57,6 +63,30 @@ class Synthetic:
             if "end\n" in text:
                 break
         return "".join(chunks)
+
+    def identities(self):
+        out = {}
+        for line in self.query("query identity").splitlines():
+            parts = line.split(" ", 3)
+            if len(parts) >= 3 and parts[0] == "identity":
+                out[int(parts[1])] = parts[2]
+        return out
+
+    def click_settings_entry(self):
+        """Real synthetic click on the pinned Settings entry (T-14.7x)."""
+        before = self.identities()
+        for x in range(SCAN_LEFT, SCAN_RIGHT + 1, SCAN_STEP):
+            self.send(f"motion-abs {x / NESTED_W:.5f} {DOCK_Y / NESTED_H:.5f}")
+            time.sleep(0.05)
+            self.send("button 272 down")
+            self.send("button 272 up")
+            time.sleep(0.4)
+            after = self.identities()
+            for win, app_id in after.items():
+                if win not in before and "settings" in app_id.lower():
+                    log(f"clicked the pinned Settings entry at x={x}")
+                    return
+        raise RuntimeError("the Dock click never launched Settings")
 
 
 def parse_motion(report):
@@ -98,6 +128,10 @@ def nested_window(raw_path):
 
 def run(args):
     synth = Synthetic(args.synth)
+    time.sleep(1.0)
+    synth.click_settings_entry()
+    # Let the appear animation record and settle.
+    time.sleep(1.0)
     report = synth.query("query motion")
     motions = parse_motion(report)
     appears = [m for m in motions if m["kind"] == "appear"]

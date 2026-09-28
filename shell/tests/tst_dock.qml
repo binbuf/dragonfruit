@@ -2213,6 +2213,125 @@ Item {
             compare(activatedSpy.count, 0);
         }
 
+        // -- T-14.7x production pointer injection --------------------------
+        // These drive `DockInject`, a QML-callable wrapper over the same
+        // `DockPointer` injection `ShellController::onDockPointerMoved/Button`
+        // uses. QtTest's own `mouseClick` stamps its events, which hides the
+        // zero-timestamp DragHandler bug the compositor's synthetic path hit;
+        // the wrapper reproduces the production sequence exactly.
+
+        function injectStationaryTap(window, item) {
+            DockInject.reset();
+            var p = item.mapToItem(null, item.width / 2, item.height / 2);
+            DockInject.move(window, p.x, p.y);
+            DockInject.button(window, p.x, p.y, Qt.LeftButton, true);
+            DockInject.button(window, p.x, p.y, Qt.LeftButton, false);
+            waitForRendering(stage);
+        }
+
+        function test_injected_stationary_tap_activates_an_app_entry() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("files", "Files", true) ]
+            });
+            activatedSpy.target = dock;
+            activatedSpy.clear();
+            injectStationaryTap(stage.Window.window, dock.itemAt(0));
+            compare(activatedSpy.count, 1);
+            compare(activatedSpy.signalArguments[0][0].appId, "files");
+        }
+
+        function test_injected_stationary_tap_activates_a_temporary_entry() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ temporary("term", "Terminal") ]
+            });
+            activatedSpy.target = dock;
+            activatedSpy.clear();
+            injectStationaryTap(stage.Window.window, dock.itemAt(0));
+            compare(activatedSpy.count, 1);
+            compare(activatedSpy.signalArguments[0][0].kind, "temporary");
+        }
+
+        function test_injected_stationary_tap_activates_a_minimized_entry() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ minimized("files", "Files") ]
+            });
+            activatedSpy.target = dock;
+            activatedSpy.clear();
+            injectStationaryTap(stage.Window.window, dock.itemAt(0));
+            compare(activatedSpy.count, 1);
+            compare(activatedSpy.signalArguments[0][0].kind, "minimized");
+        }
+
+        function test_injected_stationary_tap_activates_the_trash() {
+            var dock = make(dockComponent, { width: 1280, height: 160, entries: [] });
+            activatedSpy.target = dock;
+            activatedSpy.clear();
+            var trash = dock.itemAt(dock.itemCount() - 1);
+            compare(trash.isTrash, true);
+            injectStationaryTap(stage.Window.window, trash);
+            compare(activatedSpy.count, 1);
+            compare(activatedSpy.signalArguments[0][0].kind, "trash");
+        }
+
+        function test_injected_stationary_tap_opens_a_folder_stack() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                downloadsItems: stackItems(), downloadsCount: 2, downloadsBadge: 1,
+                entries: [ app("a", "A", true) ]
+            });
+            var idx = dock.indexOfItemId("__downloads__");
+            injectStationaryTap(stage.Window.window, dock.itemAt(idx));
+            compare(dock.stackOpen, true);
+            dock.closePopovers();
+        }
+
+        function test_injected_stationary_tap_opens_the_overflow_list() {
+            var dock = withOverflow([ hiddenGroup("alpha", "Alpha", 1) ]);
+            var idx = dock.indexOfItemId("__overflow__");
+            injectStationaryTap(stage.Window.window, dock.itemAt(idx));
+            compare(dock.overflowOpen, true);
+            dock.closePopovers();
+        }
+
+        function test_injected_right_button_opens_the_entry_menu() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("files", "Files", true) ]
+            });
+            menuSpy.target = dock;
+            menuSpy.clear();
+            var entry = dock.itemAt(0);
+            var p = entry.mapToItem(null, entry.width / 2, entry.height / 2);
+            DockInject.reset();
+            DockInject.move(stage.Window.window, p.x, p.y);
+            DockInject.button(stage.Window.window, p.x, p.y, Qt.RightButton, true);
+            DockInject.button(stage.Window.window, p.x, p.y, Qt.RightButton, false);
+            compare(menuSpy.count, 1);
+            compare(menuSpy.signalArguments[0][0].appId, "files");
+        }
+
+        function test_injected_slop_drag_lifts_instead_of_activating() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "A", true), app("b", "B", true) ]
+            });
+            activatedSpy.target = dock;
+            activatedSpy.clear();
+            var entry = dock.itemAt(0);
+            var p = entry.mapToItem(null, entry.width / 2, entry.height / 2);
+            DockInject.reset();
+            DockInject.move(stage.Window.window, p.x, p.y);
+            DockInject.button(stage.Window.window, p.x, p.y, Qt.LeftButton, true);
+            DockInject.move(stage.Window.window, p.x + 24, p.y);
+            compare(dock.dragging, true);
+            DockInject.button(stage.Window.window, p.x + 24, p.y, Qt.LeftButton, false);
+            compare(dock.dragging, false);
+            compare(activatedSpy.count, 0);
+        }
+
         // The root dismiss TapHandler must never eat an entry click: with a
         // popover open, a click on the entry still activates it (T-14.7g).
         function test_open_popover_does_not_eat_an_entry_click() {

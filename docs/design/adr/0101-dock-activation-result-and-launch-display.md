@@ -51,3 +51,8 @@ gaps made clicks silently no-op (T-14.7g):
   alone.
 - The pending-activation map keyed by app id is bounded by clicks; it is not a
   queue and makes no ordering guarantee beyond "the next reply for that app id".
+- The slop alone did not land a tap through the shell's offscreen injection: a
+  hand-built `QMouseEvent` with no timestamp made `QQuickDragHandler` grab the
+  press before the tap could complete. T-14.7x fixed the synthesis
+  ([ADR 0110](0110-dock-pointer-injection-timestamps.md)) and retired the
+  `DF_DOCK_ACTIVATION_FIXTURE` capture seam.
