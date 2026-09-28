@@ -786,6 +786,17 @@ proven headlessly (`tst_i18n`), and the string-extraction gate is
 `scripts/i18n-extract.py` (`make check-i18n`). Requires a host Wayland session,
 spectacle, Pillow, and the built tree; not in `make e2e`.
 
+T-16.8a's crash/kill matrix is `t16-kill-matrix.txt`, produced by
+`scripts/t16-kill-matrix.sh` (`make t16-kill-matrix`): a headless reproduction
+of every restartable-component kill and its documented recovery. Rows: the
+session supervision matrix (`cargo test -p dragonfruit-session --test
+kill_matrix`, derived from the shipped `SessionPlan::default_session` — shell,
+the five on-failure daemons, the portal backend, an app, and the compositor
+anchor), the compositor app-crash test against real Wayland clients, and the
+lock UI's fail-secure kill. No host session, VM, or real services are needed;
+the live/VM real-binary half is recorded by hand in `t16-kill-matrix.md`. The
+contract is [ADR 0157](../design/adr/0157-t16-crash-kill-matrix.md).
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

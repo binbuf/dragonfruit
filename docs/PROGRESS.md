@@ -44,6 +44,7 @@ _(147 earlier sections omitted)_
 - **T147 — T-16.6a AT-SPI and keyboard-only audit**: **State: done.** The live AT-SPI dump/walkthrough and the keyboard-only; `scripts/t16-a11y-audit.sh` + `scripts/t16-a11y-audit.py` (new;
 - **T148 — T-16.6b Magnifier and reduced-motion sweep**: **State: done.** Two units landed: a compositor-owned screen magnifier and an; `compositor/src/magnifier.rs` (new) — the pure `Magnifier` policy: zoom
 - **T149 — T-16.7 Localization and i18n**: **State: done.** The shell and first-party apps are translatable and a locale; `libs/i18n/` (new static lib `dragonfruit-i18n`) — `i18n.cpp`/`i18n.h`:
+- **T150 — T-16.8a Crash/kill matrix**: **State: done.** The crash/kill matrix covers every restartable shipped; `services/session/tests/kill_matrix.rs` (5 → 9 tests) — the stand-in plan is
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -14039,3 +14040,57 @@ Decisions / gotchas for later tasks:
   literal assigned to a user-visible label is not detected.
 - Escape hatch for a genuinely non-translatable property: a
   `// df-allow-untranslated` comment on the line (or the line above).
+
+## T150 — T-16.8a Crash/kill matrix
+
+**State: done.** The crash/kill matrix covers every restartable shipped
+component headlessly. Contract in ADR 0157.
+
+Real paths:
+
+- `services/session/tests/kill_matrix.rs` (5 → 9 tests) — the stand-in plan is
+  derived from `SessionPlan::default_session()` (name/stage/policy/anchor/gate
+  preserved), so the matrix cannot drift. New:
+  `every_restartable_service_restarts_in_place_and_keeps_the_session`,
+  `the_restartable_set_is_exactly_the_shipped_services`,
+  `killing_the_portal_backend_restarts_it_and_keeps_the_session`,
+  `killing_an_app_is_a_client_exit_not_a_session_event`; the compositor-death
+  test stops the whole shipped set.
+- `compositor/tests/window_conformance.rs` — new
+  `a_crashed_app_leaves_the_compositor_and_the_other_app_running` (36 → 37):
+  two real Wayland clients; one hard-closes its socket; only its window goes.
+- `scripts/t16-kill-matrix.sh` + `make t16-kill-matrix` (new, depends on
+  `cargo-build`) — headless transcript `docs/captures/t16-kill-matrix.txt`
+  (session kill_matrix + compositor app-crash + lock fail-secure; all PASS).
+- `docs/captures/t16-kill-matrix.md` (reviewed matrix + live check) and
+  `docs/captures/t16-kill-matrix.png` (live nested capture).
+- `docs/design/adr/0157-t16-crash-kill-matrix.md` (new);
+  `docs/design/11-session-and-dev-workflow.md` (kill-matrix table grown);
+  `docs/captures/README.md`.
+
+Commands that work (repo root; `PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig`,
+`RUSTFLAGS=-L $HOME/.local/df-devroot/lib64`):
+
+- `cargo test -p dragonfruit-session --test kill_matrix` — 9 passed.
+- `cargo test -p dragonfruit-compositor --test window_conformance` — 37 passed.
+- `cargo clippy -p dragonfruit-session -p dragonfruit-compositor --all-targets
+  -- -D warnings`, `cargo fmt --all -- --check` — clean.
+- `make t16-kill-matrix` — all rows passed.
+- Live visual check: `/tmp/opencode/t150-desktop.png` → committed
+  `docs/captures/t16-kill-matrix.png` (1920x1080). Vision found the nested
+  Dragonfruit desktop fully composited (menu bar, Dock, wallpaper, Settings,
+  demo client), no artifacts. No surface of its own changed.
+
+Decisions / gotchas for T-16.8b and later:
+
+- **Compositor death is an outcome row, not a recovery row.** T-16.8b owns the
+  compositor-death behavior/restart-policy docs.
+- **Apps are not session services.** The shipped plan has no app entry; the
+  session test models an app as a `Never` service, and the compositor test
+  proves a real client disconnect is non-fatal. Never add apps to
+  `SessionPlan::default_session`.
+- **Adding a restartable session service fails
+  `the_restartable_set_is_exactly_the_shipped_services`** until the matrix
+  covers it; keep the test derived from `default_session()`.
+- **The real-binary `kill -9` drill is manual/VM** (recorded in
+  `docs/captures/t16-kill-matrix.md`); T-17.5a re-verifies a subset.

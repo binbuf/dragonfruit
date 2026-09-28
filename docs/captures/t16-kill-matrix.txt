@@ -1,0 +1,94 @@
+T-16.8a crash/kill matrix (headless reproduction)
+generated: 2026-09-28T19:32:15Z
+state:     no host session, no VM, no real services
+
+================================================================
+## 0. The documented matrix
+================================================================
+
+| Killed | Outcome |
+|---|---|
+| shell / lock UI | restarts (`always`); the session keeps running |
+| settingsd, menu-broker, app-index, notifications, wallpaperd | restart (`on-failure`); the session keeps running |
+| portal backend | restarts (`on-failure`) and fails soft; the session keeps running |
+| app (a user-launched client) | a plain client exit: never restarted; the session keeps running |
+| lock UI (a crash while locked) | fail-secure: the session stays locked, never unlocks |
+| compositor | the session ends; every other service is stopped; never restarted |
+
+================================================================
+## 1. Session supervision — every restartable shipped service
+================================================================
+
+The stand-in plan is derived from SessionPlan::default_session, so a
+new service or a changed policy is exercised without editing the test.
+The matrix kills each service with a real SIGKILL and asserts the
+shipped recovery, and that an app kill is not a session event.
+$ cargo test -p dragonfruit-session --test kill_matrix -- --nocapture
+   Compiling dragonfruit-session v0.1.0 (/home/user/repos/dragonfruit/services/session)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.21s
+     Running tests/kill_matrix.rs (target/debug/deps/kill_matrix-1fcf448e86fdd668)
+
+running 9 tests
+test the_kill_matrix_plan_matches_the_shipped_restart_policies ... ok
+test the_restartable_set_is_exactly_the_shipped_services ... ok
+test killing_the_compositor_ends_the_session_and_stops_everything_else ... ok
+test killing_the_notification_service_restarts_it_and_keeps_the_session ... ok
+test killing_an_app_is_a_client_exit_not_a_session_event ... ok
+test killing_settingsd_restarts_it_and_keeps_the_session ... ok
+test killing_the_portal_backend_restarts_it_and_keeps_the_session ... ok
+test killing_the_shell_lock_ui_restarts_it_and_keeps_the_session ... ok
+test every_restartable_service_restarts_in_place_and_keeps_the_session ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.68s
+
+
+[PASS] session kill matrix
+
+================================================================
+## 2. An app client crash leaves the desktop running
+================================================================
+
+Two independent real Wayland clients map windows; one hard-closes its
+socket (a crash). The compositor must stay alive, drop only the dead
+app's window, and keep serving the survivor.
+$ cargo test -p dragonfruit-compositor --test window_conformance a_crashed_app_leaves_the_compositor_and_the_other_app_running -- --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.09s
+     Running tests/window_conformance.rs (target/debug/deps/window_conformance-c8615a4386bb1e33)
+
+running 1 test
+test a_crashed_app_leaves_the_compositor_and_the_other_app_running ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 36 filtered out; finished in 0.03s
+
+
+[PASS] compositor app-crash
+
+================================================================
+## 3. The lock UI's fail-secure kill
+================================================================
+
+The lock UI is the shell; the compositor owns the lock. Hard-closing
+the lock client's socket must leave the session locked — never
+unlocked — and this test also blankets the shell/lock restart row.
+$ cargo test -p dragonfruit-compositor --test session_lock_conformance locked_input_targets_the_lock_ui_and_survives_its_death -- --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.09s
+     Running tests/session_lock_conformance.rs (target/debug/deps/session_lock_conformance-3b2de0f87129ceec)
+
+running 1 test
+test locked_input_targets_the_lock_ui_and_survives_its_death ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.01s
+
+
+[PASS] lock kill-resistance
+
+================================================================
+## 4. Live/VM half (not automated here)
+================================================================
+
+Killing the real dragonfruit-shell/settingsd/dragonfruit-notifications/
+xdg-desktop-portal-dragonfruit binaries under a running session and
+watching each recover is the design's real-hardware check (no VM is
+available in CI). The nested session itself is exercised by 'make demo'
+and the T-16 breadth captures; the reviewed live state is recorded by
+hand in docs/captures/t16-kill-matrix.md.
