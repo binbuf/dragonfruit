@@ -156,6 +156,8 @@ Item {
             return notificationsPaneComponent;
         case "focus":
             return focusPaneComponent;
+        case "lock-screen":
+            return lockScreenPaneComponent;
         default:
             return null;
         }
@@ -296,6 +298,11 @@ Item {
     Component {
         id: focusPaneComponent
         FocusPane { }
+    }
+
+    Component {
+        id: lockScreenPaneComponent
+        LockScreenPane { }
     }
 
     AppWindow {

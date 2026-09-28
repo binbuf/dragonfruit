@@ -718,6 +718,39 @@ the compositor's hot corners and overview machine. It reuses the session's own
   `blank` stage; `display_off_after()` and `lock_after()` are the projection the
   pane will draw. The pane and Control Center tile are T-15.8b.
 
+### The Lock Screen pane and tile (T-15.8b)
+
+The pane and tile ship as one functional unit, and — because there is no
+external daemon and the shell is the only process that speaks to the
+compositor — both are shell-native where the runtime is concerned, exactly like
+Mission Control (T-15.5b; ADR [0127](adr/0127-mission-control-pane-and-tile.md)):
+
+- **Settingsd keys, revision 15.** The Lock Screen pane
+  (`apps/settings/LockScreenPane.qml`) writes the four display options as the
+  new `lock.*` keys (`lock.showUserNameAndPhoto`, `lock.showPasswordHints`,
+  `lock.showMessageWhenLocked`, `lock.showPowerButtons`) plus the custom
+  `lock.message`; their suffixes are `LockDisplayOption::id()` from the T-15.8a
+  adapter. The two timing rows reuse the existing revision-5 `idle.blank` /
+  `idle.lock` keys the session idle engine already reads (`IdlePolicy::from_keys`).
+  Every row applies live and persists; there is no Apply button, and the pane
+  never touches the compositor's lock hot path.
+- **The Control Center tile is projected by the shell.** No services-layer host
+  is added (the lock state and idle policy are not on the bus). The pure
+  `lockPolicyView(values)` in `shell/src/controlcenterpolicy.cpp` turns the
+  `idle.lock` delay into the tile subtitle (`Password after 10 min`,
+  `No password required`), mirroring the Mission Control projection; the QML
+  tile renders it and raises `lockScreenSettingsRequested` (the Settings launch
+  is T-16's entry point).
+- **Absence is a missing settings daemon.** With no daemon the pane's rows stay
+  live on the schema defaults and it shows a one-line note; the tile is always
+  present while the shell runs.
+- The four `lock.*` display keys are **stored policy**: settingsd holds them
+  live and the pane reflects them, but the lock-screen renderer does not yet
+  read them to hide the name/photo, hints, message, or power buttons. Wiring
+  that is a follow-up (see
+  [adr/0133](adr/0133-lock-screen-pane-and-tile.md)); the rows are the capture's
+  controls and are not dead.
+
 ## The status bridge host (T-07.5a)
 
 The adapters are Rust crates; the menu bar is C++/QML. T-07.5a bridges them in

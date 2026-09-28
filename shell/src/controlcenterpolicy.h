@@ -37,3 +37,18 @@ QString colorSchemeForDarkToggle(bool dark);
 // with `state` always `available`: the compositor that owns the runtime is the
 // shell's own peer. Pure, so the projection is unit-testable without a bus.
 QVariantMap missionControlView(const QVariantMap &values);
+
+// The Lock Screen tile's view, projected from the settingsd values (T-15.8b).
+// Lock policy has no external daemon: the session idle engine owns the timing
+// and the compositor owns the lock, and the shell is the only process that
+// speaks to the compositor. Like Mission Control, the shell derives the tile's
+// summary locally from the keys the pane writes:
+//
+//   * `idle.lock == 0`                        -> "No password required"
+//   * `idle.lock == n > 0`                    -> "Password after <duration>"
+//
+// The returned map is `{ state, glyph, label, requirePassword, lockSeconds }`
+// with `state` always `available` (the shell is the owner's peer) and `glyph`
+// the design-system `lock` mark. Pure, so the projection is unit-testable
+// without a bus.
+QVariantMap lockPolicyView(const QVariantMap &values);

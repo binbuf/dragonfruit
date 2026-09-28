@@ -33,7 +33,7 @@ Item {
                                           "keyboard", "mouse", "trackpad",
                                           "overview", "battery", "power-saver",
                                           "power-balanced", "power-performance",
-                                          "info", "bell"]
+                                          "info", "bell", "lock"]
     readonly property bool painted: root.paintedGlyphs.indexOf(root.name) >= 0
 
     readonly property var bars: {
@@ -180,6 +180,15 @@ Item {
                 ctx.fill();
                 ctx.beginPath();
                 ctx.arc(s * 0.5, s * 0.80, s * 0.07, 0, Math.PI * 2);
+                ctx.fill();
+                break;
+            }
+            case "lock": {
+                // A padlock: an open shackle over a rounded body.
+                ctx.beginPath();
+                ctx.arc(c, s * 0.38, s * 0.20, Math.PI, 0, false);
+                ctx.stroke();
+                roundedRect(s * 0.26, s * 0.42, s * 0.48, s * 0.40, s * 0.08);
                 ctx.fill();
                 break;
             }
