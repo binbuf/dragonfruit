@@ -11,11 +11,13 @@ which is a Wayland-client mechanism; X11 clients cannot opt in.
 
 **Integer-scaled Xwayland + per-surface viewport downscale.**
 
-1. Xwayland is spawned at an integer scale equal to
+1. Xwayland runs at an integer scale equal to
    `ceil(primary_output_scale)`, clamped to at least 1. X11 clients then
    render into an integer coordinate space they understand, and the X
-   server's DPI/scale is never fractional (Xwayland's `-scale` is
-   integer-only).
+   server's DPI/scale is never fractional. The compositor drives this
+   through the integer `wl_output.scale` it advertises (Xwayland's own
+   `-hidpi` is integer-only **and** rootful-only, so it is not the
+   mechanism for a rootless session).
 2. The compositor maps each X11 toplevel buffer to the output's logical
    size with a `wp_viewport` (`set_destination`), i.e. it downscales the
    integer-scaled buffer to the fractional scale. This is the same
@@ -44,14 +46,33 @@ which is a Wayland-client mechanism; X11 clients cannot opt in.
   viewport mapping so they scale consistently with their toplevel.
 - The integer scale is chosen once per Xwayland session from the primary
   output; multi-monitor outputs with different scales need a per-output
-  decision (run Xwayland at the largest, downscale on the smaller). This
-  is deferred to T-31 (fractional-scale edge cases), together with the
-  actual viewport plumbing.
+  decision (run Xwayland at the largest, downscale on the smaller). The
+  per-surface viewport plumbing and the per-output decision land with
+  T-16.3b (fractional-scale edge cases).
 
-## Current state (Foundation)
+## Current state
 
-The policy is recorded now; the plumbing is not built yet. Xwayland runs
-at scale 1 and the compositor does not yet apply a viewport to X11
-surfaces, so X11 currently renders at 1x on every output. The viewport
-downscale lands with T-13/T-31, when decorations and the render path are
-fractional-scale aware.
+The **integer-scale half is built** (T-16.3a). The compositor chooses the
+Xwayland integer scale once per session as `ceil(primary_output_scale)`,
+clamped to at least 1, and records it in `XwaylandState::integer_scale`
+(`compositor/src/xwayland.rs`). Smithay already advertises that same value
+as the output's integer `wl_output.scale` (`Scale::integer_scale`), and the
+compositor never sends an X11 window a fractional `preferred_scale`
+(`compositor/src/render.rs`: `accepts_fractional_scale` skips X11 surfaces in
+`post_repaint`), so X11 clients only ever see the integer coordinate space
+and consistent integer metrics. The headless conformance fixture boots its
+primary output at scale 2 and proves the X server's screen and X11 window
+geometry stay logical
+(`xwayland_conformance::x11_fixture_at_integer_scale_two`).
+
+The **per-surface viewport downscale is still not built**; it lands with
+T-16.3b, which maps each integer-scaled X11 buffer onto the output's logical
+size (`wp_viewport.set_destination`). Until then a fractional (non-integer)
+output scale shows X11 windows at the integer `ceil` scale, slightly large —
+the documented, accepted fallback.
+
+Known follow-up discovered during this slice: the nested/DRM render path
+still sizes the wallpaper image element in logical pixels while placing it in
+physical pixels, so an output scale above 1 shows the wallpaper image only in
+the top-left fraction of the output (the solid fill still covers it). This is
+chrome-sizing work and belongs to T-16.3b.

@@ -56,12 +56,25 @@ impl CompositorProcess {
     /// (`DRAGONFRUIT_SYNTHETIC_INPUT`), used to observe SSD titlebar geometry
     /// for X11 windows (T-01.1).
     fn start_with_synthetic(socket_name: &str, synthetic_path: Option<&Path>) -> Self {
+        Self::start_with_synthetic_at_scale(socket_name, synthetic_path, 1.0)
+    }
+
+    /// Start with the synthetic-input harness and an explicit headless output
+    /// scale (`DRAGONFRUIT_HEADLESS_SCALE`, T-16.3a). Xwayland is eager, so the
+    /// primary output must boot at the target scale for an integer-scaled X11
+    /// fixture.
+    fn start_with_synthetic_at_scale(
+        socket_name: &str,
+        synthetic_path: Option<&Path>,
+        scale: f64,
+    ) -> Self {
         let mut command = Command::new(env!("CARGO_BIN_EXE_dragonfruit-compositor"));
         command
             .arg("--backend")
             .arg("headless")
             .arg("--socket-name")
             .arg(socket_name)
+            .env("DRAGONFRUIT_HEADLESS_SCALE", scale.to_string())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         if let Some(path) = synthetic_path {
@@ -329,9 +342,22 @@ fn light_center(report: &DecorationReport, index: i32) -> (i32, i32) {
 
 /// Aim the synthetic pointer at one traffic light and click it.
 fn click_light(input: &SyntheticInput, report: &DecorationReport, index: i32) {
+    click_light_at(input, report, index, OUTPUT_W, OUTPUT_H);
+}
+
+/// Aim the synthetic pointer at one traffic light and click it, with the
+/// absolute position normalized against explicit logical output dimensions
+/// (the headless fixture at scale 2 is 640x360 logical, not 1280x720).
+fn click_light_at(
+    input: &SyntheticInput,
+    report: &DecorationReport,
+    index: i32,
+    out_w: i32,
+    out_h: i32,
+) {
     let (cx, cy) = light_center(report, index);
-    let nx = f64::from(cx) / f64::from(OUTPUT_W);
-    let ny = f64::from(cy) / f64::from(OUTPUT_H);
+    let nx = f64::from(cx) / f64::from(out_w);
+    let ny = f64::from(cy) / f64::from(out_h);
     input.send(&format!("motion-abs {nx} {ny}"));
     input.send("button 272 down");
     input.send("button 272 up");
@@ -501,6 +527,136 @@ fn x11_window_carries_the_ssd_titlebar() {
         ssd.titlebar.1 + ssd.titlebar.3,
         ssd.content.1,
         "the X11 client area must sit below the titlebar"
+    );
+
+    drop(conn);
+    drop(input);
+    proc.assert_clean_exit();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic socket survived"
+    );
+}
+
+/// T-16.3a acceptance: integer-scaled Xwayland.
+///
+/// The headless fixture boots its primary output at scale 2. The compositor
+/// advertises `ceil(2.0) = 2` to Xwayland (Smithay's integer `wl_output.scale`),
+/// so the X server's screen is the **logical** size — physical / 2 — and an X11
+/// client's geometry stays in logical pixels: a 200x120 X11 window is reported
+/// as 200x120, not 400x240 (double-scaled) or 100x60 (pre-divided). Zooming
+/// fills the logical usable area. The compositor applies no per-surface
+/// viewport yet; that downscale is T-16.3b.
+#[test]
+fn x11_fixture_at_integer_scale_two() {
+    if !xwayland_available() {
+        eprintln!("skipping: Xwayland is not installed");
+        return;
+    }
+
+    // Integer scale 2: logical = physical / 2.
+    const LOGICAL_W: i32 = OUTPUT_W / 2;
+    const LOGICAL_H: i32 = OUTPUT_H / 2;
+
+    let socket_name = format!("dragonfruit-test-x11-scale2-{}", std::process::id());
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path = PathBuf::from(&runtime_dir).join(format!(
+        "dragonfruit-x11-scale2-synth-{}",
+        std::process::id()
+    ));
+    let proc =
+        CompositorProcess::start_with_synthetic_at_scale(&socket_name, Some(&synthetic_path), 2.0);
+    let input = SyntheticInput::connect(&synthetic_path);
+    let Some(display) = proc.wait_for_display() else {
+        eprintln!("skipping: Xwayland did not become ready");
+        return;
+    };
+
+    let (conn, screen_num) = x11rb::connect(Some(&display)).expect("connect to Xwayland");
+    let root = conn.setup().roots[screen_num].root;
+    let screen = &conn.setup().roots[screen_num];
+
+    // The X screen is the integer-scaled logical space, not the physical mode.
+    assert_eq!(
+        (
+            i32::from(screen.width_in_pixels),
+            i32::from(screen.height_in_pixels)
+        ),
+        (LOGICAL_W, LOGICAL_H),
+        "Xwayland at integer scale 2 must expose the logical screen size"
+    );
+
+    let window = conn.generate_id().expect("generate window id");
+    let aux = CreateWindowAux::new().background_pixel(screen.white_pixel);
+    conn.create_window(
+        screen.root_depth,
+        window,
+        root,
+        40,
+        40,
+        200,
+        120,
+        0,
+        WindowClass::INPUT_OUTPUT,
+        x11rb::COPY_FROM_PARENT,
+        &aux,
+    )
+    .expect("create_window");
+    conn.map_window(window).expect("map_window");
+    conn.flush().expect("flush");
+
+    wait_until(
+        || client_list(&conn, root).contains(&window),
+        Duration::from_secs(5),
+        "X11 window to be managed",
+    );
+
+    let reports = wait_for_report(&input, |reports| {
+        reports
+            .iter()
+            .any(|report| report.server_side && report.state == WindowStateReport::Floating)
+    });
+    let report = *reports.iter().find(|report| report.server_side).unwrap();
+    let window_id = report.window;
+    assert_eq!(
+        (report.content.2, report.content.3),
+        (200, 120),
+        "an X11 window keeps its logical size at integer scale 2: {report:?}"
+    );
+    assert_eq!(
+        report.titlebar.3, TITLEBAR_HEIGHT,
+        "the SSD titlebar stays a logical token height at integer scale: {report:?}"
+    );
+
+    // Zoom through the green light (normalized against the logical output).
+    click_light_at(&input, &report, 2, LOGICAL_W, LOGICAL_H);
+    let reports = wait_for_report(&input, |reports| {
+        reports
+            .iter()
+            .any(|report| report.window == window_id && report.state == WindowStateReport::Zoomed)
+    });
+    let report = report_for(&reports, window_id);
+    assert_eq!(
+        (report.content.2, report.content.3),
+        (LOGICAL_W, LOGICAL_H - TITLEBAR_HEIGHT),
+        "a zoomed X11 window fills the logical usable area at scale 2: {report:?}"
+    );
+    assert_eq!(
+        report.titlebar.3, TITLEBAR_HEIGHT,
+        "the zoomed SSD titlebar stays logical"
+    );
+
+    // The X server receives the logical configure (no physical inflation).
+    wait_until(
+        || {
+            conn.get_geometry(window)
+                .ok()
+                .and_then(|cookie| cookie.reply().ok())
+                .map(|g| (i32::from(g.width), i32::from(g.height)))
+                == Some((LOGICAL_W, LOGICAL_H - TITLEBAR_HEIGHT))
+        },
+        Duration::from_secs(5),
+        "the X server to receive the logical zoom configure",
     );
 
     drop(conn);

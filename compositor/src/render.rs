@@ -687,6 +687,18 @@ pub fn send_frame_callbacks(
     state.stats.client_wakeups += wakeups;
 }
 
+/// Whether the compositor may advertise a fractional preferred scale to
+/// `window`'s surfaces.
+///
+/// X11 windows (`window.x11_surface().is_some()`) are integer-scaled by
+/// policy ([`docs/xwayland-scaling.md`], T-16.3a): Xwayland is a Wayland
+/// client but represents X11 clients that cannot interpret fractional
+/// metrics, so they only ever see the integer `wl_output.scale`. The
+/// compositor downscales them itself in a later slice (T-16.3b).
+pub fn accepts_fractional_scale(window: &smithay::desktop::Window) -> bool {
+    window.x11_surface().is_none()
+}
+
 /// After a successful frame: send frame callbacks (throttled) and update
 /// the preferred fractional scale the surfaces were displayed at.
 pub fn post_repaint(
@@ -699,14 +711,23 @@ pub fn post_repaint(
 
     let mut wakeups = 0u64;
     for window in state.space.elements() {
-        window.with_surfaces(|surface, surface_states| {
-            let primary_scanout_output = surface_primary_scanout_output(surface, surface_states);
-            if let Some(output) = primary_scanout_output.as_ref() {
-                with_fractional_scale(surface_states, |fractional_scale| {
-                    fractional_scale.set_preferred_scale(output.current_scale().fractional_scale());
-                });
-            }
-        });
+        // Integer-scaled Xwayland (T-16.3a): X11 clients never receive a
+        // fractional preferred scale. They render at the integer
+        // `wl_output.scale` the output advertises; T-16.3b adds the
+        // compositor-side viewport downscale. Wayland windows keep the
+        // fractional preferred scale.
+        if accepts_fractional_scale(window) {
+            window.with_surfaces(|surface, surface_states| {
+                let primary_scanout_output =
+                    surface_primary_scanout_output(surface, surface_states);
+                if let Some(output) = primary_scanout_output.as_ref() {
+                    with_fractional_scale(surface_states, |fractional_scale| {
+                        fractional_scale
+                            .set_preferred_scale(output.current_scale().fractional_scale());
+                    });
+                }
+            });
+        }
 
         if state.space.outputs_for_element(window).contains(output) {
             window.send_frame(output, time, throttle, surface_primary_scanout_output);

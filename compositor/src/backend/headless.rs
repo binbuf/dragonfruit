@@ -29,6 +29,15 @@ pub fn run(socket_name: &str) -> Result<(), String> {
         std::env::var_os(crate::backend::synthetic_output::ENV_SYNTHETIC_OUTPUT)
             .map(std::path::PathBuf::from);
     let install_output_path = synthetic_output_path.clone();
+    // T-16.3a: the headless output's scale. Xwayland is eager, so a scaling
+    // test must boot the primary output at the target scale; the synthetic
+    // output harness can only add displays after Xwayland has started.
+    let scale = crate::backend::parse_output_scale(
+        std::env::var(crate::backend::ENV_HEADLESS_SCALE)
+            .ok()
+            .as_deref(),
+        1.0,
+    );
     let result = run_session(
         socket_name,
         BackendHooks {
@@ -42,7 +51,7 @@ pub fn run(socket_name: &str) -> Result<(), String> {
                         refresh: 60_000,
                     },
                     (0, 0),
-                    1.0,
+                    scale,
                 );
                 add_seat_capabilities(state);
                 if let Some(path) = &install_path {

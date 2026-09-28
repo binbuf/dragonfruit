@@ -51,7 +51,7 @@ use crate::window::{
 };
 
 /// The Xwayland server, X11 window manager, and `DISPLAY` hand-off state.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct XwaylandState {
     /// The X11 window manager, once Xwayland is ready.
     pub wm: Option<X11Wm>,
@@ -70,6 +70,29 @@ pub struct XwaylandState {
     /// Override-redirect windows (menus, tooltips, DnD icons): mapped into
     /// the scene but never registered as user windows.
     pub override_windows: Vec<(X11Window, Window)>,
+    /// The integer scale Xwayland renders X11 clients at, chosen once per
+    /// session from the primary output: `ceil(output_scale)`, clamped to at
+    /// least 1 (`docs/xwayland-scaling.md`, T-16.3a). It is the same value
+    /// Smithay advertises as the output's `wl_output.scale`, so X11 clients
+    /// always render into an integer coordinate space.
+    pub integer_scale: i32,
+}
+
+impl Default for XwaylandState {
+    fn default() -> Self {
+        Self {
+            wm: None,
+            display: None,
+            display_number: None,
+            running: false,
+            pending_restart: false,
+            source_token: None,
+            start_count: 0,
+            override_windows: Vec::new(),
+            // Clamped to at least 1 even before the session's first output.
+            integer_scale: 1,
+        }
+    }
 }
 
 /// Path of the per-session `DISPLAY` hand-off file. The dev tool reads it
@@ -127,6 +150,21 @@ pub fn start(state: &mut DfState) -> Result<(), String> {
         return Ok(());
     }
 
+    // Integer-scaled Xwayland (T-16.3a, `docs/xwayland-scaling.md`):
+    // the server runs at `ceil(primary_output_scale)` (clamped to >= 1).
+    // Smithay advertises the same value as the output's integer
+    // `wl_output.scale`; the compositor never sends X11 surfaces a fractional
+    // preferred scale (`render::post_repaint`), so X11 clients only ever see
+    // the integer coordinate space. The per-surface fractional downscale is
+    // T-16.3b.
+    let integer_scale = state
+        .space
+        .outputs()
+        .next()
+        .map(|output| output.current_scale().integer_scale().max(1))
+        .unwrap_or(1);
+    state.xwayland.integer_scale = integer_scale;
+
     let (xwayland, client) = match XWayland::spawn(
         &state.display_handle,
         None,
@@ -177,8 +215,8 @@ pub fn start(state: &mut DfState) -> Result<(), String> {
                         state.xwayland.pending_restart = false;
                         println!(
                             "dragonfruit-compositor: Xwayland ready: DISPLAY={display} \
-                             (start #{})",
-                            state.xwayland.start_count
+                             (start #{}, integer scale {})",
+                            state.xwayland.start_count, state.xwayland.integer_scale
                         );
                     }
                     Err(err) => {
