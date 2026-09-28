@@ -378,7 +378,7 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 - [x] T132 — T-15.11b Users and Groups pane and tile → [tasks/132-t-15.11b-users-and-groups-pane-and-tile.md](tasks/132-t-15.11b-users-and-groups-pane-and-tile.md)
 - [x] T133 — T-15.12a Printers and Scanners adapter → [tasks/133-t-15.12a-printers-and-scanners-adapter.md](tasks/133-t-15.12a-printers-and-scanners-adapter.md)
 - [x] T134 — T-15.12b Printers and Scanners pane and tile → [tasks/134-t-15.12b-printers-and-scanners-pane-and-tile.md](tasks/134-t-15.12b-printers-and-scanners-pane-and-tile.md)
-- [ ] T135 — T-15.13a Privacy and Security adapter → [tasks/135-t-15.13a-privacy-and-security-adapter.md](tasks/135-t-15.13a-privacy-and-security-adapter.md)
+- [x] T135 — T-15.13a Privacy and Security adapter → [tasks/135-t-15.13a-privacy-and-security-adapter.md](tasks/135-t-15.13a-privacy-and-security-adapter.md)
 - [ ] T136 — T-15.13b Privacy and Security pane and tile → [tasks/136-t-15.13b-privacy-and-security-pane-and-tile.md](tasks/136-t-15.13b-privacy-and-security-pane-and-tile.md)
 - [ ] T137 — T-15.14a Accessibility adapter → [tasks/137-t-15.14a-accessibility-adapter.md](tasks/137-t-15.14a-accessibility-adapter.md)
 - [ ] T138 — T-15.14b Accessibility pane and tile → [tasks/138-t-15.14b-accessibility-pane-and-tile.md](tasks/138-t-15.14b-accessibility-pane-and-tile.md)
@@ -605,11 +605,11 @@ This plan restarts at T-01, so a legacy "T-13" and a new "T-13" are different
 tickets; use this table to translate.
 
 <!-- symphony:status -->
-**Pipeline status** — updated 2026-09-28T13:26:32Z · 164/202 done
+**Pipeline status** — updated 2026-09-28T13:41:14Z · 165/202 done
 
-- Completed: T01, T02, T03, T04, T05, T06, T07, T08, T09, T10, T11, T12, T13, T14, T15, T16, T17, T18, T19, T20, T21, T22, T23, T24, T25, T26, T27, T28, T29, T30, T31, T32, T33, T34, T35, T36, T37, T38, T39, T40, T41, T42, T43, T44, T45, T46, T47, T48, T49, T50, T51, T52, T53, T54, T55, T56, T57, T58, T59, T60, T61, T62, T63, T64, T65, T66, T67, T68, T69, T70, T71, T72, T73, T74, T75, T76, T77, T78, T79, T80, T81, T82, T83, T84, T85, T86, T87, T88, T89, T90, T91, T92, T93, T94, T95, T96, T97, T98, T99, T100, T101, T102, T103, T104, T105, T106, T107, T108, T109, T110, T110a, T110b, T110c, T110d, T110e, T110f, T110g, T110h, T110i, T110j, T110k, T110l, T110m, T110n, T110o, T110p, T110q, T110r, T110s, T110t, T110u, T110v, T110x, T110y, T110z, T110w, T172, T173, T174, T175, T111, T112, T113, T114, T115, T116, T117, T118, T119, T120, T121, T122, T123, T124, T125, T126, T127, T128, T129, T130, T131, T132, T133, T134
+- Completed: T01, T02, T03, T04, T05, T06, T07, T08, T09, T10, T11, T12, T13, T14, T15, T16, T17, T18, T19, T20, T21, T22, T23, T24, T25, T26, T27, T28, T29, T30, T31, T32, T33, T34, T35, T36, T37, T38, T39, T40, T41, T42, T43, T44, T45, T46, T47, T48, T49, T50, T51, T52, T53, T54, T55, T56, T57, T58, T59, T60, T61, T62, T63, T64, T65, T66, T67, T68, T69, T70, T71, T72, T73, T74, T75, T76, T77, T78, T79, T80, T81, T82, T83, T84, T85, T86, T87, T88, T89, T90, T91, T92, T93, T94, T95, T96, T97, T98, T99, T100, T101, T102, T103, T104, T105, T106, T107, T108, T109, T110, T110a, T110b, T110c, T110d, T110e, T110f, T110g, T110h, T110i, T110j, T110k, T110l, T110m, T110n, T110o, T110p, T110q, T110r, T110s, T110t, T110u, T110v, T110x, T110y, T110z, T110w, T172, T173, T174, T175, T111, T112, T113, T114, T115, T116, T117, T118, T119, T120, T121, T122, T123, T124, T125, T126, T127, T128, T129, T130, T131, T132, T133, T134, T135
 - Blocked: none
 - Failed: none
-- Remaining: T135, T136, T137, T138, T139, T140, T141, T142, T143, T144, T145, T146, T147, T148, T149, T150, T151, T151a, T152, T153, T154, T155, T156, T157, T158, T159, T160, T161, T162, T163, T164, T165, T166, T167, T168, T169, T170, T171
-- Last finished: T134 — done · Shipped the Printers & Scanners Settings pane and Control Center tile over the new SystemStatus1.Printers bridge host; all Rust/C++/QML suites, e2e, and the live visual capture pass.
+- Remaining: T136, T137, T138, T139, T140, T141, T142, T143, T144, T145, T146, T147, T148, T149, T150, T151, T151a, T152, T153, T154, T155, T156, T157, T158, T159, T160, T161, T162, T163, T164, T165, T166, T167, T168, T169, T170, T171
+- Last finished: T135 — done · Landed dragonfruit-privacy-adapter over the portal PermissionStore with mock state/events/absence, tests green, make e2e EXIT 0, ADR 0142, capture inspected.
 <!-- /symphony:status -->

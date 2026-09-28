@@ -38,6 +38,8 @@ impl AdapterId {
     pub const ACCOUNTS: AdapterId = AdapterId("accounts");
     /// Printers and Scanners (CUPS queues + SANE devices).
     pub const PRINTER: AdapterId = AdapterId("printer");
+    /// Privacy and Security (the portal PermissionStore).
+    pub const PRIVACY: AdapterId = AdapterId("privacy");
 
     /// An id for a status slot the constants above do not name.
     pub const fn new(id: &'static str) -> Self {
@@ -263,5 +265,6 @@ mod tests {
         assert_eq!(AdapterId::UPDATES.as_str(), "updates");
         assert_eq!(AdapterId::ACCOUNTS.as_str(), "accounts");
         assert_eq!(AdapterId::PRINTER.as_str(), "printer");
+        assert_eq!(AdapterId::PRIVACY.as_str(), "privacy");
     }
 }

@@ -133,6 +133,7 @@ e2e: build
 	$(CARGO) test -p dragonfruit-update-adapter
 	$(CARGO) test -p dragonfruit-account-adapter
 	$(CARGO) test -p dragonfruit-printer-adapter
+	$(CARGO) test -p dragonfruit-privacy-adapter
 	$(CARGO) test -p dragonfruit-system-status
 	$(CARGO) test -p dragonfruit-settingsd
 	$(CARGO) test -p dragonfruit-files-core

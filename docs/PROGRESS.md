@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(133 earlier sections omitted)_
+_(134 earlier sections omitted)_
 
-- **T110r — T-14.7r Dock Trash empty progress and result**: **State: done.** Empty Trash is asynchronous with visible states. Confirming; `shell/src/trashbridge.{h,cpp}` — `EmptyState {Idle,Emptying,Succeeded,Failed}`;
 - **T110s — T-14.7s Dock minimize-to-icon reaction**: **State: done.** With `dock.minimizeReaction` on, a window entering `minimized`; `shell/src/dockprojection.{h,cpp}` — pure `dockMinimizedCounts(entries)` and
 - **T110t — T-14.7t Dock keyboard reordering**: **State: done.** The Dock's rearrangement affordance is no longer pointer-only:; `shell/src/dockmodel.{h,cpp}` — `QStringList movePinnedEntry(const QStringList
 - **T110u — T-14.7u Dock reference metrics: spacing, plate radius, indicator inset**: **State: done.** The resting Dock is retuned to the mature reference capture:; `design-system/tokens/tokens.json` — `component.dock`: `padding` 10 → 15,
@@ -43,6 +42,7 @@ _(133 earlier sections omitted)_
 - **T132 — T-15.11b Users and Groups pane and tile**: **State: done.** The Settings `Users & Groups` pane and the Control Center; `services/system-status/src/accounts.rs` (new) — `AccountsHost<S>` (refresh/
 - **T133 — T-15.12a Printers and Scanners adapter**: **State: done.** New workspace crate `dragonfruit-printer-adapter`; `services/printer-adapter/src/source.rs` — `PrinterState` (CUPS `3`/`4`/`5` +
 - **T134 — T-15.12b Printers and Scanners pane and tile**: **State: done.** The Settings `Printers & Scanners` pane and the Control Center; `services/system-status/src/printers.rs` (new) — `PrintersHost<S>` (refresh/
+- **T135 — T-15.13a Privacy and Security adapter**: **State: done.** New workspace crate `dragonfruit-privacy-adapter`; `services/privacy-adapter/src/source.rs` — `AppPermissionData {app,
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -12823,3 +12823,105 @@ Decisions / gotchas for T-15.13a and later:
   clipped/blank/overlapping text; and the panel's 15 tiles through Printers
   (`2 Printers, 1 Scanner`, `Printers & Scanners Settings…`) plus Clipboard with
   the bottom fully visible and no artifacts.
+
+## T135 — T-15.13a Privacy and Security adapter
+
+**State: done.** New workspace crate `dragonfruit-privacy-adapter`
+(`services/privacy-adapter`) projects the **xdg-desktop-portal
+PermissionStore** over the T-07 adapter contract, with state, events, and
+absence (ADR 0142). Reused, never reimplemented.
+
+Real paths:
+
+- `services/privacy-adapter/src/source.rs` — `AppPermissionData {app,
+  permissions}`, `ResourceData {id, apps}`, `TableData {table, resources}`,
+  `PrivacyData {tables}`, `PrivacyOutcome` (`Applied`/`Denied`/`Absent`/
+  `Failed`), `PrivacySource` (`read` + `set_permission` + `delete_permission`),
+  and `MockPrivacy` (`absent`/`present`/`failing`, `kill`/`restart`, `push`,
+  `deny_writes`/`fail_writes`, read/write counters, and a simulated store that
+  mutates on apply so a re-read sees a write).
+- `services/privacy-adapter/src/model.rs` — `PermissionState`
+  (`allowed`/`denied`/`ask`/`unset`; `from_permissions` maps `yes`/`no`/`ask`,
+  anything else stays `Unset` and the raw strings are preserved),
+  `AppPermission`, `PermissionResource`, `PermissionCategory` (one portal
+  table; `summary()` = `None`/`1 app`/`N apps`), `PrivacySnapshot::from_data`
+  (always emits **all 14 `KNOWN_TABLES` categories** in curated order, empty
+  ones included; unknown tables kept last), `app_count`/`granted_count`/
+  `denied_count`/`present`/`label` (`N Apps`)/`glyph` = `privacy`, and the pure
+  `changes(previous)` diff (`PrivacyChange`: ResourceAdded/Removed,
+  AppAdded/Removed/Changed).
+- `services/privacy-adapter/src/adapter.rs` — `PrivacyAdapter<S>` over the
+  shared `Subscription`; `refresh`, `set_permission`, `delete_permission`,
+  `drain_changes`; implements `Adapter` with `AdapterId::PRIVACY`.
+- `services/privacy-adapter/src/privacy.rs` — live `HostPrivacy` over the
+  **session bus**: `org.freedesktop.impl.portal.PermissionStore` at
+  `/org/freedesktop/impl/portal/PermissionStore`. One read = `List(table)` +
+  `Lookup(table, id)` per id for each known table (only tables with entries are
+  carried); writes = `SetPermission(table, true, id, app, as)` and
+  `DeletePermission(table, id, app)`. `apps_from_lookup` is the pure decoder.
+- `services/privacy-adapter/src/lib.rs` — crate docs + re-exports.
+- `services/privacy-adapter/tests/fixtures/permission-store-workstation.json` —
+  4 tables (devices/location/notifications/screencast), 6 app permissions;
+  `tests/read_path.rs` — 11 acceptance tests.
+- `services/system-adapters/src/state.rs` — `AdapterId::PRIVACY` (`"privacy"`);
+  id test updated.
+- `Cargo.toml` workspace member; `Makefile` e2e runs
+  `cargo test -p dragonfruit-privacy-adapter`.
+- Docs/scripts — ADR `0142-privacy-and-security-adapter.md`;
+  `docs/design/07-system-integration.md` table row + new "The privacy and
+  security path (T-15.13a)" section; `docs/design/08-settings.md` Privacy row;
+  `scripts/capture-t15-privacy-adapter.sh` + `docs/captures/README.md`.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-privacy-adapter` — 38 lib + 11 read_path green.
+- `cargo test -p dragonfruit-system-adapters` — green.
+- `cargo clippy -p dragonfruit-privacy-adapter -p dragonfruit-system-adapters
+  --all-targets -- -D warnings` — clean; `cargo fmt --all -- --check` — clean.
+- `make e2e` — EXIT 0 (captured `/tmp/opencode/e2e-t135.log`).
+- `make check-design-tokens check-tokens check-no-capture-grab` — clean;
+  `./scripts/check-gallery-snapshots.py` — 78 green.
+- `make lint` — still fails only on the pre-existing `check-desktop-names`
+  lines (none in the new crate); unchanged from T125–T134.
+
+Decisions / gotchas for T-15.13b and later:
+
+- **The host stack is the portal PermissionStore, not Secret Service/polkit.**
+  The adapter is the portal-permission projection only: `org.freedesktop.impl
+  .portal.PermissionStore` on the **session bus** at
+  `/org/freedesktop/impl/portal/PermissionStore`. The reference's Secret
+  Service (passkeys) and polkit (App Management) services are not in this
+  adapter; a later task may add a read-only Secret Service projection.
+- **The categories are the portal tables, not macOS rows.** `KNOWN_TABLES`
+  pins the fourteen `xdg-desktop-portal` tables (`devices`=Camera,
+  `location`, `notifications`, `screencast`, `remote-desktop`, `screenshot`,
+  `background`, `usb`, `input-capture`, `gamemode`, `inhibit`, `realtime`,
+  `wallpaper`, `desktop-used-apps`). Do not invent Calendars/Photos/etc. with
+  no Linux host owner. The `devices` table's camera id is `camera`.
+- **Every known table is always a category row** (empty ones show `None`); the
+  snapshot model injects the missing empty categories, so the live read only
+  carries tables with entries.
+- **The value is a tristate with raw strings preserved.** `yes`/`no`/`ask` →
+  `Allowed`/`Denied`/`Ask`; a location accuracy pair or empty list → `Unset`
+  (never a guess). Keep `AppPermission.permissions` verbatim.
+- **Absence is single-layered.** `read() = Ok(None)` = no session bus or no
+  store name owner → hidden (`Unavailable`, normal). Empty store is
+  `Available`; the tile/pane hide rule is `snapshot.present()` (any app
+  permission). A store that owns its name but cannot be read is `Error`,
+  visible and inert.
+- **A write never invents a snapshot.** The store publishes the result and the
+  host re-reads; `MockPrivacy` mutates its simulated tables so a round-trip is
+  observable headlessly.
+- **`DF_*` fixture convention.** T-15.13b should add a `DF_PRIVACY_FIXTURE`
+  seam on the Settings client and a shell fixture like the other T-15 adapters,
+  plus the bridge host pattern (`PrivacyHost` in `services/system-status`,
+  interface `org.dragonfruit.SystemStatus1.Privacy`) — through the host, not by
+  linking the Rust crate.
+- **No `org.gnome.*`/`org.kde.*` strings in code.** `check-desktop-names.sh`
+  greps `-w` for `gnome|kde|…`; test app ids must use neutral names (the crate
+  uses `org.example.*`, `org.mozilla.firefox`, `com.obsproject.Studio`).
+- Live visual check: `bash scripts/capture-t15-privacy-adapter.sh` produced
+  `docs/captures/t15-13a-privacy-adapter.png` (2115x1437). Vision found the menu
+  bar, the Dock, the wallpaper, the Settings window, and the demo client
+  window composited with no blank areas, tearing, or ghosting (the only note is
+  the usual nested-session X11 demo-window edge, not a regression).
