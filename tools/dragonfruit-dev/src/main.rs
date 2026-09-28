@@ -11,6 +11,12 @@
 //! headless sessions and verifies zero stray processes and zero stray
 //! sockets after every cycle. This is the scripted form of the Foundation
 //! phase exit criterion (100 consecutive clean exits).
+//!
+//! A nested session is either **thin** (`--services core`, the loop demo's
+//! Dock identity + global menu) or **full** (`--services full`, adding
+//! settingsd, system-status, notifications, and wallpaperd). `--private-bus`
+//! plus `--fixtures` make a full session safe and populated next to another
+//! desktop; see ADR 0123 and `make dev-full`.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
@@ -50,6 +56,66 @@ fn send_sigterm(pid: u32) {
     }
 }
 
+/// The session-service set a nested dev session starts.
+///
+/// `None` is the headless/CI path (no services, no session-bus dependency).
+/// `Core` is the thin loop demo: `app-index` (Dock identity) and `menu-broker`
+/// (global menu), which the shell's chrome needs. `Full` adds the real session
+/// services so Settings, Control Center, notifications, and the wallpaper
+/// provider are live. `wallpaperd` is `Full`-only: it is a network-capable
+/// content provider and does not belong on the thin/CI path.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum ServiceSet {
+    None,
+    Core,
+    Full,
+}
+
+impl ServiceSet {
+    fn parse(value: &str) -> Option<ServiceSet> {
+        match value {
+            "none" => Some(ServiceSet::None),
+            "core" => Some(ServiceSet::Core),
+            "full" => Some(ServiceSet::Full),
+            _ => None,
+        }
+    }
+
+    /// Service binary names in launch order. `settingsd` is first so it owns
+    /// its bus name before the shell binds Theme/Dock to it.
+    fn names(self) -> Vec<&'static str> {
+        match self {
+            ServiceSet::None => Vec::new(),
+            ServiceSet::Core => vec!["dragonfruit-app-index", "dragonfruit-menu-broker"],
+            ServiceSet::Full => vec![
+                "dragonfruit-settingsd",
+                "dragonfruit-app-index",
+                "dragonfruit-menu-broker",
+                "dragonfruit-system-status",
+                "dragonfruit-notifications",
+                "dragonfruit-wallpaperd",
+            ],
+        }
+    }
+
+    /// The shell-critical bus names to wait for before launching the shell.
+    /// `wallpaperd` and `notifications` are intentionally absent: the shell
+    /// does not block on them.
+    fn bus_names(self) -> Vec<&'static str> {
+        match self {
+            ServiceSet::None => Vec::new(),
+            ServiceSet::Core => vec!["org.dragonfruit.AppIndex1", "org.dragonfruit.MenuBroker1"],
+            ServiceSet::Full => vec![
+                "org.dragonfruit.Settings1",
+                "org.dragonfruit.AppIndex1",
+                "org.dragonfruit.MenuBroker1",
+                "org.dragonfruit.SystemStatus1",
+            ],
+        }
+    }
+}
+
+#[derive(Debug)]
 struct DevArgs {
     backend: &'static str,
     backend_explicit: bool,
@@ -58,6 +124,11 @@ struct DevArgs {
     soak_cycles: Option<usize>,
     shell: bool,
     demo: bool,
+    /// `None` means "auto": `Core` for a live session, `None` for the
+    /// headless scripted half.
+    services: Option<ServiceSet>,
+    private_bus: bool,
+    fixtures: bool,
 }
 
 fn usage() -> String {
@@ -73,6 +144,22 @@ USAGE:
 
 --shell launches the built shell process (build/shell/src/dragonfruit-shell,
 or DF_SHELL_BIN) against the private socket.
+
+--services none|core|full selects the session services to start. `core` is
+`dragonfruit-app-index` and `dragonfruit-menu-broker` (the shell chrome the
+thin loop needs); `full` also starts `dragonfruit-settingsd`,
+`dragonfruit-system-status`, `dragonfruit-notifications`, and
+`dragonfruit-wallpaperd`. The headless scripted demo always uses `none`.
+
+--private-bus runs a private `dbus-daemon --session` and points
+XDG_CONFIG_HOME/XDG_CACHE_HOME/XDG_STATE_HOME at a scratch directory under
+the runtime dir, so an isolated session never touches the host desktop's
+daemons or the developer's real settings. Falls back to the inherited bus
+(with a warning) when `dbus-daemon` is missing.
+
+--fixtures exports the deterministic `DF_*_FIXTURE` pane fixtures to the
+session, so Settings and Control Center render populated without host
+hardware or daemons.
 
 --demo builds nothing (use `make demo`), but launches the shell, a Qt/Wayland
 app, and an X11 app against a private socket and prints the T-01 checklist.
@@ -92,6 +179,9 @@ fn parse_dev_args(mut it: impl Iterator<Item = String>) -> Result<DevArgs, Strin
         soak_cycles: None,
         shell: false,
         demo: false,
+        services: None,
+        private_bus: false,
+        fixtures: false,
     };
     let mut launch: Option<Vec<String>> = None;
     while let Some(arg) = it.next() {
@@ -106,6 +196,19 @@ fn parse_dev_args(mut it: impl Iterator<Item = String>) -> Result<DevArgs, Strin
             }
             "--shell" => args.shell = true,
             "--demo" => args.demo = true,
+            "--private-bus" => args.private_bus = true,
+            "--fixtures" => args.fixtures = true,
+            "--services" => {
+                let Some(value) = it.next() else {
+                    return Err("--services requires one of none|core|full".into());
+                };
+                let Some(set) = ServiceSet::parse(&value) else {
+                    return Err(format!(
+                        "unknown --services value {value:?}: expected none|core|full"
+                    ));
+                };
+                args.services = Some(set);
+            }
             "--soak" => {
                 args.soak_cycles = Some(it.next().and_then(|v| v.parse().ok()).unwrap_or(100));
             }
@@ -287,6 +390,9 @@ struct ChildGuard {
     /// gracefully when one is absent. They are still owned here so teardown
     /// can never leak them into the host session.
     services: Vec<(String, std::process::Child)>,
+    /// A private session bus started by `--private-bus`, when one was used.
+    /// Owned so an isolated session can never leak its daemon.
+    bus: Option<std::process::Child>,
 }
 
 impl ChildGuard {
@@ -295,6 +401,7 @@ impl ChildGuard {
             compositor: Some(compositor),
             launched: Vec::new(),
             services: Vec::new(),
+            bus: None,
         }
     }
 
@@ -347,6 +454,10 @@ impl Drop for ChildGuard {
             let _ = child.wait();
         }
         for (_, mut child) in self.services.drain(..) {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        if let Some(mut child) = self.bus.take() {
             let _ = child.kill();
             let _ = child.wait();
         }
@@ -532,31 +643,152 @@ fn service_path(name: &str) -> Option<PathBuf> {
     sibling.is_file().then_some(sibling)
 }
 
-/// The best-effort session services to start, in launch order. `wallpaper`
-/// adds the content provider (T-18.1a); it is dropped on the headless scripted
-/// path so CI never warms its cache.
-fn service_names(wallpaper: bool) -> Vec<&'static str> {
-    let mut names = vec!["dragonfruit-app-index", "dragonfruit-menu-broker"];
-    if wallpaper {
-        names.push("dragonfruit-wallpaperd");
-    }
-    names
+/// The deterministic pane fixtures the session can opt into with `--fixtures`.
+/// They are read by the shell (`DF_STATUS_FIXTURE`) and the Settings app, and
+/// are inherited by apps the shell launches.
+fn fixture_envs() -> Vec<(&'static str, &'static str)> {
+    [
+        "DF_STATUS_FIXTURE",
+        "DF_SETTINGS_FIXTURE",
+        "DF_BLUETOOTH_FIXTURE",
+        "DF_STORAGE_FIXTURE",
+        "DF_SOUND_FIXTURE",
+        "DF_INPUT_FIXTURE",
+        "DF_BATTERY_FIXTURE",
+        "DF_NOTIFICATIONS_FIXTURE",
+        "DF_UPDATES_FIXTURE",
+        "DF_ACCOUNTS_FIXTURE",
+        "DF_PRINTERS_FIXTURE",
+        "DF_PRIVACY_FIXTURE",
+        "DF_WALLPAPER_FIXTURE",
+    ]
+    .into_iter()
+    .map(|key| (key, "1"))
+    .collect()
 }
 
-/// Start the session services the live shell depends on but a dev session
-/// does not otherwise provide: `dragonfruit-app-index` (application identity,
-/// T-14) and `dragonfruit-menu-broker` (global menu, T-14.2), plus
-/// `dragonfruit-wallpaperd` (the wallpaper content provider, T-18.1a) when
-/// `wallpaper` is set. All are best-effort: missing binaries or a missing
-/// session bus are reported and skipped, and the shell falls back (an empty
-/// Dock / its own fixed application menu / an empty Featured row).
-///
-/// `wallpaper` is false only for the `--headless` scripted demo: the provider
-/// warms in the background and would fetch on CI. The nested human demo and
-/// `dev --shell` start it, so opening Settings → Wallpaper shows the Featured
-/// catalogue. A short settle lets them register their bus names before the
-/// shell's one-shot identity load.
-fn launch_services(guard: &mut ChildGuard, socket_name: &str, runtime_dir: &Path, wallpaper: bool) {
+/// Point the session's XDG config/cache/state at a scratch directory under the
+/// runtime dir, so an isolated session never reads or writes the developer's
+/// real desktop settings (`settingsd`) or wallpaper cache (`wallpaperd`).
+fn apply_scratch_xdg(runtime_dir: &Path, socket_name: &str) {
+    let base = runtime_dir.join(format!("{socket_name}.session"));
+    let config = base.join("config");
+    let cache = base.join("cache");
+    let state = base.join("state");
+    for dir in [&config, &cache, &state] {
+        if let Err(e) = std::fs::create_dir_all(dir) {
+            eprintln!("dragonfruit dev: could not create {}: {e}", dir.display());
+            return;
+        }
+    }
+    std::env::set_var("XDG_CONFIG_HOME", &config);
+    std::env::set_var("XDG_CACHE_HOME", &cache);
+    std::env::set_var("XDG_STATE_HOME", &state);
+    println!("dragonfruit dev: scratch XDG dirs under {}", base.display());
+}
+
+/// Start a private session bus for an isolated full session and export its
+/// address to every child spawned afterwards. Returns `true` when a private
+/// bus is now in use; `false` falls back to the inherited bus (with a warning,
+/// still using the scratch XDG dirs). Best-effort: a missing `dbus-daemon`
+/// never blocks the session.
+fn start_private_bus(guard: &mut ChildGuard, runtime_dir: &Path, socket_name: &str) -> bool {
+    apply_scratch_xdg(runtime_dir, socket_name);
+    if demo::which("dbus-daemon").is_none() {
+        eprintln!("dragonfruit dev: dbus-daemon not found; using the inherited session bus");
+        return false;
+    }
+    let mut child = match Command::new("dbus-daemon")
+        .args(["--session", "--nofork", "--print-address=1"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(e) => {
+            eprintln!("dragonfruit dev: failed to start a private bus: {e}");
+            return false;
+        }
+    };
+    let address = child.stdout.take().and_then(|stdout| {
+        use std::io::{BufRead, BufReader};
+        let mut line = String::new();
+        BufReader::new(stdout).read_line(&mut line).ok()?;
+        let line = line.trim().to_string();
+        (!line.is_empty()).then_some(line)
+    });
+    let Some(address) = address else {
+        let _ = child.kill();
+        let _ = child.wait();
+        eprintln!("dragonfruit dev: private bus printed no address; using the inherited bus");
+        return false;
+    };
+    std::env::set_var("DBUS_SESSION_BUS_ADDRESS", &address);
+    println!("dragonfruit dev: private session bus at {address}");
+    guard.bus = Some(child);
+    true
+}
+
+/// One `NameHasOwner` probe against the session bus through `gdbus` (the dev
+/// tool links no D-Bus crate). `None` when `gdbus` is unavailable.
+fn bus_name_has_owner(name: &str) -> Option<bool> {
+    let gdbus = demo::which("gdbus")?;
+    let output = Command::new(gdbus)
+        .args([
+            "call",
+            "--session",
+            "--dest",
+            "org.freedesktop.DBus",
+            "--object-path",
+            "/org/freedesktop/DBus",
+            "--method",
+            "org.freedesktop.DBus.NameHasOwner",
+            name,
+        ])
+        .output()
+        .ok()?;
+    Some(output.status.success() && String::from_utf8_lossy(&output.stdout).contains("true"))
+}
+
+/// Wait for the shell-critical service names to appear so the shell's
+/// one-shot startup identity load and Theme/Dock bind see them. Falls back to
+/// a short settle when `gdbus` is unavailable.
+fn wait_for_services_ready(set: ServiceSet, timeout: Duration) {
+    let names = set.bus_names();
+    if names.is_empty() {
+        return;
+    }
+    if demo::which("gdbus").is_none() {
+        std::thread::sleep(Duration::from_millis(500));
+        return;
+    }
+    for name in names {
+        let deadline = Instant::now() + timeout;
+        let mut ready = false;
+        while Instant::now() < deadline {
+            if bus_name_has_owner(name) == Some(true) {
+                ready = true;
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        if !ready {
+            eprintln!(
+                "dragonfruit dev: warning: {name} did not appear within {}s",
+                timeout.as_secs()
+            );
+        }
+    }
+}
+
+/// Start the session services selected by `set` and wait for the ones the
+/// shell depends on. All are best-effort: a missing binary or a missing
+/// session bus is reported and skipped, and the shell falls back (an empty
+/// Dock / its own fixed application menu / defaults).
+fn launch_services(guard: &mut ChildGuard, socket_name: &str, runtime_dir: &Path, set: ServiceSet) {
+    if set == ServiceSet::None {
+        return;
+    }
     if std::env::var_os("DBUS_SESSION_BUS_ADDRESS").is_none() {
         eprintln!("dragonfruit dev: no session bus; skipping session services");
         return;
@@ -570,7 +802,7 @@ fn launch_services(guard: &mut ChildGuard, socket_name: &str, runtime_dir: &Path
         base.push((*key, value.clone()));
     }
     let mut launched = false;
-    for name in service_names(wallpaper) {
+    for name in set.names() {
         let Some(path) = service_path(name) else {
             eprintln!("dragonfruit dev: {name} not built; the shell runs without it");
             continue;
@@ -589,9 +821,7 @@ fn launch_services(guard: &mut ChildGuard, socket_name: &str, runtime_dir: &Path
         }
     }
     if launched {
-        // The services register their names synchronously; give them a moment
-        // so the shell's startup identity load sees app-index.
-        std::thread::sleep(Duration::from_millis(500));
+        wait_for_services_ready(set, Duration::from_secs(5));
     }
 }
 
@@ -695,6 +925,11 @@ fn teardown_session(session: &mut Session) -> bool {
             dirty = true;
         }
     }
+    // The private bus, if any, goes last: every child has been signalled.
+    if let Some(mut bus) = session.guard.bus.take() {
+        let _ = shutdown_child(&mut bus);
+    }
+
     // Disarm the guard: teardown is complete, nothing left to kill.
     session.guard.compositor = None;
 
@@ -747,12 +982,25 @@ fn report_teardown(dirty: bool, clean_message: &str) -> ExitCode {
     }
 }
 
+/// Export the deterministic pane fixtures to this process so every child
+/// (shell, demo apps, services) inherits them.
+fn apply_fixtures(args: &DevArgs) {
+    if !args.fixtures {
+        return;
+    }
+    for (key, value) in fixture_envs() {
+        std::env::set_var(key, value);
+    }
+    println!("dragonfruit dev: deterministic pane fixtures enabled");
+}
+
 /// Run one development session: compositor + optional launched programs,
 /// all against a private socket, all torn down on exit.
 fn run_dev_session(args: &DevArgs) -> ExitCode {
     let Ok(runtime_dir) = runtime_dir() else {
         return ExitCode::from(EXIT_USAGE);
     };
+    apply_fixtures(args);
     let mut session = match start_session(args.backend, &args.socket_name, &runtime_dir) {
         Ok(session) => session,
         Err(SessionError::Interrupted) => return ExitCode::from(130),
@@ -763,7 +1011,11 @@ fn run_dev_session(args: &DevArgs) -> ExitCode {
     };
 
     if args.shell {
-        launch_services(&mut session.guard, &args.socket_name, &runtime_dir, true);
+        if args.private_bus {
+            start_private_bus(&mut session.guard, &runtime_dir, &args.socket_name);
+        }
+        let set = args.services.unwrap_or(ServiceSet::Core);
+        launch_services(&mut session.guard, &args.socket_name, &runtime_dir, set);
         launch_shell(&mut session.guard, &args.socket_name, &runtime_dir);
     }
 
@@ -796,6 +1048,7 @@ fn run_demo_session(args: &DevArgs) -> ExitCode {
     let Ok(runtime_dir) = runtime_dir() else {
         return ExitCode::from(EXIT_USAGE);
     };
+    apply_fixtures(args);
 
     // Pick the backend: an explicit flag wins; otherwise nested when a host
     // Wayland session exists, headless (the CI path) when it does not.
@@ -834,16 +1087,21 @@ fn run_demo_session(args: &DevArgs) -> ExitCode {
 
     let mut dirty = false;
 
-    // The live Dock identity (app-index), global menu (menu-broker), and
-    // wallpaper provider (wallpaperd) are real services now; start them before
-    // the shell, which loads the app corpus once at startup. The provider is
-    // skipped on the headless scripted path so CI never warms its cache.
-    launch_services(
-        &mut session.guard,
-        &args.socket_name,
-        &runtime_dir,
-        !scripted,
-    );
+    // The thin loop starts only the core services (Dock identity + global
+    // menu); the headless scripted half starts none so CI never depends on a
+    // session bus, and `--services full` (the `make dev-full` session) opts
+    // into settingsd, system-status, notifications, and the wallpaper
+    // provider. Start them before the shell, which loads the app corpus once
+    // at startup and binds Theme/Dock to settingsd.
+    if args.private_bus && !scripted {
+        start_private_bus(&mut session.guard, &runtime_dir, &args.socket_name);
+    }
+    let set = if scripted {
+        ServiceSet::None
+    } else {
+        args.services.unwrap_or(ServiceSet::Core)
+    };
+    launch_services(&mut session.guard, &args.socket_name, &runtime_dir, set);
     if !launch_shell(&mut session.guard, &args.socket_name, &runtime_dir) {
         dirty = true;
     }
@@ -1080,18 +1338,77 @@ mod tests {
     }
 
     #[test]
-    fn wallpaperd_is_started_for_the_live_session_but_not_the_scripted_demo() {
+    fn service_sets_are_none_core_and_full() {
+        assert!(ServiceSet::None.names().is_empty());
         assert_eq!(
-            service_names(true),
-            vec![
-                "dragonfruit-app-index",
-                "dragonfruit-menu-broker",
-                "dragonfruit-wallpaperd",
-            ]
-        );
-        assert_eq!(
-            service_names(false),
+            ServiceSet::Core.names(),
             vec!["dragonfruit-app-index", "dragonfruit-menu-broker"]
         );
+        let full = ServiceSet::Full.names();
+        for name in [
+            "dragonfruit-settingsd",
+            "dragonfruit-app-index",
+            "dragonfruit-menu-broker",
+            "dragonfruit-system-status",
+            "dragonfruit-notifications",
+            "dragonfruit-wallpaperd",
+        ] {
+            assert!(full.contains(&name), "full set is missing {name}: {full:?}");
+        }
+    }
+
+    #[test]
+    fn wallpaperd_is_full_only_and_never_on_the_thin_or_ci_path() {
+        assert!(!ServiceSet::Core.names().contains(&"dragonfruit-wallpaperd"));
+        assert!(!ServiceSet::None.names().contains(&"dragonfruit-wallpaperd"));
+        assert!(ServiceSet::Full.names().contains(&"dragonfruit-wallpaperd"));
+    }
+
+    #[test]
+    fn shell_critical_bus_names_track_the_service_set() {
+        assert!(ServiceSet::None.bus_names().is_empty());
+        assert!(!ServiceSet::Core
+            .bus_names()
+            .contains(&"org.dragonfruit.Settings1"));
+        assert!(ServiceSet::Full
+            .bus_names()
+            .contains(&"org.dragonfruit.Settings1"));
+        assert!(ServiceSet::Full
+            .bus_names()
+            .contains(&"org.dragonfruit.SystemStatus1"));
+    }
+
+    #[test]
+    fn parse_services_private_bus_and_fixtures() {
+        let args = parse_dev_args(
+            [
+                "--demo",
+                "--services",
+                "full",
+                "--private-bus",
+                "--fixtures",
+            ]
+            .iter()
+            .map(|s| s.to_string()),
+        )
+        .expect("parse");
+        assert_eq!(args.services, Some(ServiceSet::Full));
+        assert!(args.private_bus);
+        assert!(args.fixtures);
+    }
+
+    #[test]
+    fn parse_rejects_an_unknown_services_value() {
+        let err = parse_dev_args(["--services", "everything"].iter().map(|s| s.to_string()))
+            .expect_err("unknown services value must fail");
+        assert!(err.contains("none|core|full"), "{err}");
+    }
+
+    #[test]
+    fn parse_defaults_to_auto_services() {
+        let args = parse_dev_args(["--nested"].iter().map(|s| s.to_string())).expect("parse");
+        assert_eq!(args.services, None);
+        assert!(!args.private_bus);
+        assert!(!args.fixtures);
     }
 }
