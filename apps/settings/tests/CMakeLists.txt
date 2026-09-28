@@ -286,6 +286,32 @@ set_tests_properties(tst_settings_notifications PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# The Lock Screen-pane tests (T-15.8b): the two session-idle timing rows reuse
+# the `idle.blank`/`idle.lock` keys, the four `lock.*` display rows round-trip
+# through settingsd's schema defaults live, the `Set...` message editor writes
+# the message, and an external change converges into the controls. Lock policy
+# is session/compositor-native, so the pane writes only settingsd keys and no
+# adapter fixture is needed.
+qt_add_executable(tst_settings_lock_screen
+    tst_settings_lock_screen.cpp
+)
+target_link_libraries(tst_settings_lock_screen PRIVATE
+    Qt6::QuickTest
+    dragonfruit-design-systemplugin
+    dragonfruit-settings-uiplugin
+)
+qt_import_qml_plugins(tst_settings_lock_screen)
+
+add_test(
+    NAME tst_settings_lock_screen
+    COMMAND tst_settings_lock_screen
+        -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_settings_lock_screen.qml
+)
+set_tests_properties(tst_settings_lock_screen PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;DF_SETTINGS_FIXTURE=1;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Settings menu-model publication tests (T-09.6a): the app's published menu
 # model is asserted in shape and injected into the shell's `MenuBar` (the
 # `Dragonfruit.MenuBar` module is linked so the round-trip is real). Headless

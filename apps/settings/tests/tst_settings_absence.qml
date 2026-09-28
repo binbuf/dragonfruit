@@ -33,7 +33,7 @@ Item {
         readonly property var shippedPaneIds:
             ["appearance", "desktop-dock", "mission-control", "displays",
              "wallpaper", "bluetooth", "battery", "storage", "sound", "keyboard",
-             "mouse", "trackpad", "notifications", "focus"]
+             "mouse", "trackpad", "notifications", "focus", "lock-screen"]
 
         function make() {
             var shell = createTemporaryObject(shellComponent, stage,
@@ -86,7 +86,7 @@ Item {
 
         function test_every_shipped_pane_has_a_body_and_no_other_does() {
             var shell = make();
-            compare(SettingsPanes.shippedPanes.length, 14);
+            compare(SettingsPanes.shippedPanes.length, 15);
             for (var i = 0; i < SettingsPanes.catalog.length; ++i) {
                 var pane = SettingsPanes.catalog[i];
                 var body = shell.paneComponent(pane.id);
@@ -400,6 +400,29 @@ Item {
             // A mode write is a safe no-op with no host.
             Settings.setFocusMode("dnd");
             compare(Settings.notificationsAvailable, false);
+        }
+
+        // Lock policy is session/compositor-native: the pane's rows are
+        // settingsd keys, so with no daemon they stay live on the schema
+        // defaults and the pane shows the absence note instead of an adapter
+        // view. The lock itself is enforced by the compositor (T-15.8b).
+        function test_lock_screen_pane_stays_live_without_a_daemon() {
+            var shell = make();
+            var pane = showPane(shell, "lock-screen");
+            compare(pane.absenceNote.visible, true,
+                    "the absence note explains the missing settings daemon");
+            verify(pane.absenceNote.text.length > 0);
+
+            // The timing rows reuse the session `idle.*` keys and the display
+            // rows write the revision-15 `lock.*` keys through to the
+            // in-memory store on the schema defaults.
+            compare(pane.requirePasswordSeconds, 600);
+            pane.requirePasswordSelect.activateIndex(0); // After 5 seconds
+            compare(Settings.values["idle.lock"], 5);
+            pane.messageToggle.toggle();
+            compare(Settings.values["lock.showMessageWhenLocked"], true);
+            pane.powerButtonsToggle.toggle();
+            compare(Settings.values["lock.showPowerButtons"], false);
         }
     }
 }
