@@ -56,6 +56,9 @@ Rectangle {
     readonly property bool statusMenuOpen: openStatusItem !== ""
     property bool showDate: false
     property bool showSeconds: false
+    // T-15.9b: `menu.showBackground`. When off the bar keeps its items and its
+    // reserved zone but draws no chrome material, so the desktop shows through.
+    property bool showBackground: true
     // The compositor reports when the shell/menu surface holds focus; when
     // it is lost the open menu dismisses (FR-3).
     property bool shellFocused: true
@@ -150,7 +153,7 @@ Rectangle {
     implicitWidth: appMenuRow.implicitWidth + statusRow.implicitWidth
                    + 2 * Theme.controls.menuBar.paddingH
 
-    color: Theme.color.chrome
+    color: menuBar.showBackground ? Theme.color.chrome : "transparent"
 
     function openMenu(index) {
         if (index < 0 || index >= menuRepeater.count || index === openMenuIndex)

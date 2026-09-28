@@ -194,6 +194,9 @@ private slots:
     // T-15.8b: the Control Center Lock Screen tile is a policy summary; the
     // Settings link is an entry point only until T-16.
     void onLockScreenSettingsRequested();
+    // T-15.9b: the Control Center Menu Bar tile is a configuration summary;
+    // the Settings link is an entry point only until T-16.
+    void onMenuBarSettingsRequested();
     // T-15.1b: the Control Center Bluetooth tile. The toggle powers the BlueZ
     // adapter; a known-device row connects/disconnects it; the Settings link is
     // an entry point only until T-16.
@@ -794,6 +797,13 @@ private:
     // T-14.2b: the live global application-menu toggle (`menu.global`), the
     // property the bar reads to hide/show the focused app's exported menus.
     bool m_globalMenuEnabled = true;
+    // T-15.9b: the last Menu Bar configuration applied to the bar, so an
+    // unrelated settings change does not re-render the chrome.
+    bool m_menuBarShowDate = true;
+    bool m_menuBarShowSeconds = false;
+    bool m_menuBarShowBackground = true;
+    QString m_menuBarAutoHide;
+    bool m_menuBarPolicySent = false;
     // T-09.3: the last wallpaper selection forwarded, so an unchanged settings
     // value does not re-send the protocol requests.
     WallpaperSettings m_wallpaperSettings;

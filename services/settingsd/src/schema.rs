@@ -19,7 +19,7 @@ use crate::value::{SettingsError, Value};
 
 /// The current schema revision. Bump only when a key is added or a default
 /// changes; renames and removals are forbidden within the `1` series.
-pub const SCHEMA_VERSION: u32 = 15;
+pub const SCHEMA_VERSION: u32 = 16;
 
 /// The D-Bus type of a settings value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1180,6 +1180,158 @@ pub const KEYS: &[KeySpec] = &[
         since: 15,
         summary: "Show the Sleep, Restart, and Shut Down buttons on the lock screen.",
     },
+    // ── Menu Bar configuration (T-15.9b) ────────────────────────────────
+    // The menu bar is shell-native: the shell's `MenuBar` owns the chrome, the
+    // status row, and the clock, and the menu-broker resolves the focused
+    // app's menus. These are the durable preferences the Menu Bar pane owns
+    // (ADR 0135). The shell applies the clock options, the background, and the
+    // per-control visibility live; the auto-hide mode and the recent-items
+    // count are stored policy the shell does not consume yet (see the
+    // follow-ups). The spellings mirror `dragonfruit-menubar-adapter`'s
+    // `MenuBarAutoHide::id()` and `MenuBarControl::id()` values.
+    KeySpec {
+        key: "menu.autoHide",
+        group: KeyGroup::Menu,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("full-screen"),
+        allowed: &["never", "always", "full-screen"],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/MenuBar (auto-hide apply deferred)",
+        since: 16,
+        summary: "When the menu bar auto-hides: never, always, or only in full screen.",
+    },
+    KeySpec {
+        key: "menu.showBackground",
+        group: KeyGroup::Menu,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(true),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/MenuBar",
+        since: 16,
+        summary: "Draw the menu bar's background material behind its items.",
+    },
+    KeySpec {
+        key: "menu.recentItems",
+        group: KeyGroup::Menu,
+        kind: KeyType::Integer,
+        default: KeyDefault::Integer(10),
+        allowed: &[],
+        min: Some(0.0),
+        max: Some(50.0),
+        owner: "apps/settings",
+        consumer: "apps/settings (recent-items consumer deferred)",
+        since: 16,
+        summary: "How many recent documents, applications, and servers to remember.",
+    },
+    KeySpec {
+        key: "menu.clock.showDate",
+        group: KeyGroup::Menu,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(true),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/MenuBar clock",
+        since: 16,
+        summary: "Show the date beside the time in the menu-bar clock.",
+    },
+    KeySpec {
+        key: "menu.clock.showSeconds",
+        group: KeyGroup::Menu,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(false),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/MenuBar clock",
+        since: 16,
+        summary: "Display the menu-bar clock with seconds.",
+    },
+    KeySpec {
+        key: "menu.control.wifi",
+        group: KeyGroup::Menu,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(true),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/MenuBar status row",
+        since: 16,
+        summary: "Show the Wi-Fi control in the menu bar when its adapter is present.",
+    },
+    KeySpec {
+        key: "menu.control.bluetooth",
+        group: KeyGroup::Menu,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(true),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/MenuBar status row",
+        since: 16,
+        summary: "Show the Bluetooth control in the menu bar when its adapter is present.",
+    },
+    KeySpec {
+        key: "menu.control.battery",
+        group: KeyGroup::Menu,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(true),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/MenuBar status row",
+        since: 16,
+        summary: "Show the Battery control in the menu bar when its adapter is present.",
+    },
+    KeySpec {
+        key: "menu.control.volume",
+        group: KeyGroup::Menu,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(true),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/MenuBar status row",
+        since: 16,
+        summary: "Show the Sound control in the menu bar when its adapter is present.",
+    },
+    KeySpec {
+        key: "menu.control.focus",
+        group: KeyGroup::Menu,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(true),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/MenuBar status row",
+        since: 16,
+        summary: "Show the Focus control in the menu bar when its service is present.",
+    },
+    KeySpec {
+        key: "menu.control.accessibility",
+        group: KeyGroup::Menu,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(true),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/MenuBar status row",
+        since: 16,
+        summary: "Show the Accessibility control in the menu bar when it is available.",
+    },
 ];
 
 /// Look up a key's declaration.
@@ -1681,6 +1833,105 @@ mod tests {
             .unwrap()
             .validate(&Value::Text("Back at 3.".into()))
             .is_ok());
+    }
+
+    /// The Menu Bar configuration keys (T-15.9b): the auto-hide mode, the
+    /// background toggle, the recent-items count, the two clock options, and
+    /// the per-control visibility toggles, additive in revision 16. The
+    /// spellings mirror `dragonfruit-menubar-adapter` (ADR 0134/0135).
+    #[test]
+    fn the_menu_bar_keys_are_declared_in_revision_sixteen() {
+        for (key, kind, default) in [
+            (
+                "menu.autoHide",
+                KeyType::Text,
+                KeyDefault::Text("full-screen"),
+            ),
+            ("menu.showBackground", KeyType::Bool, KeyDefault::Bool(true)),
+            (
+                "menu.recentItems",
+                KeyType::Integer,
+                KeyDefault::Integer(10),
+            ),
+            ("menu.clock.showDate", KeyType::Bool, KeyDefault::Bool(true)),
+            (
+                "menu.clock.showSeconds",
+                KeyType::Bool,
+                KeyDefault::Bool(false),
+            ),
+            ("menu.control.wifi", KeyType::Bool, KeyDefault::Bool(true)),
+            (
+                "menu.control.bluetooth",
+                KeyType::Bool,
+                KeyDefault::Bool(true),
+            ),
+            (
+                "menu.control.battery",
+                KeyType::Bool,
+                KeyDefault::Bool(true),
+            ),
+            ("menu.control.volume", KeyType::Bool, KeyDefault::Bool(true)),
+            ("menu.control.focus", KeyType::Bool, KeyDefault::Bool(true)),
+            (
+                "menu.control.accessibility",
+                KeyType::Bool,
+                KeyDefault::Bool(true),
+            ),
+        ] {
+            let spec = spec(key).unwrap_or_else(|| panic!("{key} is declared"));
+            assert_eq!(spec.group, KeyGroup::Menu, "{key}");
+            assert_eq!(spec.kind, kind, "{key}");
+            assert_eq!(spec.default, default, "{key}");
+            assert_eq!(spec.owner, "apps/settings", "{key}");
+            assert_eq!(spec.since, 16, "{key}");
+            assert!(spec.since <= SCHEMA_VERSION, "{key}");
+            assert!(
+                spec.validate(&spec.default.to_value()).is_ok(),
+                "{key} default validates"
+            );
+        }
+        // The auto-hide value is the adapter's three-mode enumeration.
+        let auto_hide = spec("menu.autoHide").unwrap();
+        for mode in ["never", "always", "full-screen"] {
+            assert!(
+                auto_hide.validate(&Value::Text(mode.into())).is_ok(),
+                "{mode}"
+            );
+        }
+        assert!(auto_hide
+            .validate(&Value::Text("sometimes".into()))
+            .is_err());
+        // The recent-items count is bounded and integral.
+        let recent = spec("menu.recentItems").unwrap();
+        assert!(recent.validate(&Value::Integer(0)).is_ok());
+        assert!(recent.validate(&Value::Integer(10)).is_ok());
+        assert!(recent.validate(&Value::Integer(50)).is_ok());
+        assert!(recent.validate(&Value::Integer(-1)).is_err());
+        assert!(recent.validate(&Value::Integer(51)).is_err());
+        // The visibility and clock toggles reject a non-bool.
+        for key in [
+            "menu.showBackground",
+            "menu.clock.showDate",
+            "menu.clock.showSeconds",
+            "menu.control.wifi",
+            "menu.control.bluetooth",
+            "menu.control.battery",
+            "menu.control.volume",
+            "menu.control.focus",
+            "menu.control.accessibility",
+        ] {
+            assert!(
+                spec(key).unwrap().validate(&Value::Bool(false)).is_ok(),
+                "{key}"
+            );
+            assert!(
+                spec(key)
+                    .unwrap()
+                    .validate(&Value::Text("on".into()))
+                    .is_err(),
+                "{key}"
+            );
+        }
     }
 
     /// A frozen manifest of the v1 key set. Adding a key is allowed (extend
