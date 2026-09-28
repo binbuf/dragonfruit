@@ -1,0 +1,23 @@
+[package]
+name = "dragonfruit-input"
+description = "libinput device adapter: keyboard, mouse, and trackpad inventory and per-device state (T-15.4a)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+# The concrete adapter owns its host stack. Input devices are enumerated
+# through the `libinput` control tool it ships (`libinput list-devices`),
+# exactly as the audio adapter reads WirePlumber through `pw-dump`: no
+# `libinput` link, because the device handles belong to the compositor and the
+# native headers are not part of the pinned toolchain (see
+# docs/design/adr/0124-input-device-adapter.md). The dependency-free contract
+# lives in `dragonfruit-system-adapters` and nothing above this crate sees a
+# libinput type.
+[dependencies]
+dragonfruit-system-adapters = { path = "../system-adapters", version = "0.1.0" }
+
+[lib]
+name = "dragonfruit_input"
+path = "src/lib.rs"

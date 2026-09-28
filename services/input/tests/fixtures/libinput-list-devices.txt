@@ -1,0 +1,93 @@
+Device:           AT Translated Set 2 keyboard
+Kernel:           /dev/input/event3
+Id:               serial:0001:0001
+Group:            8
+Seat:             seat0, default
+Capabilities:     keyboard
+Tap-to-click:     n/a
+Tap-and-drag:     n/a
+Tap drag lock:    n/a
+Left-handed:      n/a
+Nat.scrolling:    n/a
+Middle emulation: n/a
+Calibration:      n/a
+Scroll methods:   none
+Scroll button:    n/a
+Scroll button lock: n/a
+Click methods:    none
+Clickfinger button: n/a
+Disable-w-typing: n/a
+Disable-w-trackpointing: n/a
+Accel profiles:   n/a
+Rotation:         n/a
+
+Device:           Logitech USB Optical Mouse
+Kernel:           /dev/input/event7
+Id:               usb:046d:c077
+Group:            10
+Seat:             seat0, default
+Capabilities:     pointer
+Tap-to-click:     n/a
+Tap-and-drag:     n/a
+Tap drag lock:    n/a
+Left-handed:      disabled
+Nat.scrolling:    disabled
+Middle emulation: disabled
+Calibration:      n/a
+Scroll methods:   *button
+Scroll button:    n/a
+Scroll button lock: disabled
+Click methods:    none
+Clickfinger button: n/a
+Disable-w-typing: n/a
+Disable-w-trackpointing: n/a
+Accel profiles:   flat *adaptive
+Rotation:         n/a
+
+Device:           SynPS/2 Synaptics TouchPad
+Kernel:           /dev/input/event5
+Id:               serial:0002:0007
+Group:            9
+Seat:             seat0, default
+Size:             97.33x66.86mm
+Capabilities:     pointer gesture
+Tap-to-click:     enabled
+Tap-and-drag:     enabled
+Tap drag lock:    disabled
+Left-handed:      disabled
+Nat.scrolling:    enabled
+Middle emulation: disabled
+Calibration:      n/a
+Scroll methods:   *two-finger edge button
+Scroll button:    n/a
+Scroll button lock: disabled
+Click methods:    *button-areas clickfinger
+Clickfinger button: disabled
+Disable-w-typing: enabled
+Disable-w-trackpointing: disabled
+Accel profiles:   flat *adaptive
+Rotation:         n/a
+
+Device:           ELAN Touchscreen
+Kernel:           /dev/input/event6
+Id:               usb:04f3:2d4a
+Group:            11
+Seat:             seat0, default
+Size:             305.00x172.00mm
+Capabilities:     touch
+Tap-to-click:     n/a
+Tap-and-drag:     n/a
+Tap drag lock:    n/a
+Left-handed:      n/a
+Nat.scrolling:    n/a
+Middle emulation: n/a
+Calibration:      n/a
+Scroll methods:   none
+Scroll button:    n/a
+Scroll button lock: n/a
+Click methods:    none
+Clickfinger button: n/a
+Disable-w-typing: n/a
+Disable-w-trackpointing: n/a
+Accel profiles:   n/a
+Rotation:         n/a
