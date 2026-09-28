@@ -120,6 +120,14 @@ machine transcript land under `docs/captures/t17-window-loop.*`; the harness
 and its evidence boundary are
 [ADR 0159](adr/0159-t17-nested-window-loop-capture.md).
 
+`scripts/capture-t17-navigation.sh` (`make t17-navigation-capture`) is the
+T-17.1b verification capture: it drives workspace switching, Mission Control,
+and app switching on the same synthetic-input nested session, by pointer and
+keyboard, asserting each path through `query spaces`/`query grid`/`query
+wallpaper`/`query switcher`. The stills, clip, and machine transcript land
+under `docs/captures/t17-navigation.*`; the harness and its evidence boundary
+are [ADR 0160](adr/0160-t17-navigation-capture.md).
+
 ### Tracing a pane switch
 
 To find where a Settings pane switch spends its time, run the nested demo with
