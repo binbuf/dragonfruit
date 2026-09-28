@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(143 earlier sections omitted)_
+_(144 earlier sections omitted)_
 
-- **T173 — T-18.1b Provider settings, wallpaper API wiring, and effective source**: **State: done.** The additive provider keys are declared (schema rev 10), the; `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 9 → 10; 5 additive
 - **T174 — T-18.2 Wallpaper pane collections, skeleton, and attribution**: **State: done.** The Wallpaper pane now has Featured / Built-in / Custom rows;; `design-system/tokens/tokens.json` — semantic `skeletonBase`/`skeletonHighlight`
 - **T175 — T-18.3 Provider licensing, absence matrix, and capture**: **State: done.** The licensing policy is reviewed and made true (`NOTICE`; `docs/licensing.md` — "Fetched third-party content (wallpaper)" extended:
 - **Dev tooling — wallpaper provider in the dev session (T-18.1a follow-up)**: **State: done.** `make demo` (nested) and `make dev --shell` now start; `tools/dragonfruit-dev/src/main.rs` — `launch_services` takes a
@@ -44,6 +43,7 @@ _(143 earlier sections omitted)_
 - **T143 — T-16.1b Per-output window placement**: **State: done.** New windows now open on the **focused output** and inside; `compositor/src/state.rs` — new `focused_output()` + `output_geometry_named()`;
 - **T144 — T-16.2 Hotplug under load and lockstep**: **State: done.** Output hotplug now preserves lockstep and loses no windows.; `compositor/src/workspace/mod.rs` — `add_output` mirrors the existing
 - **T145 — T-16.3a Integer-scaled Xwayland**: **State: done.** The integer-scale half of `docs/xwayland-scaling.md` is built.; `compositor/src/xwayland.rs` — `XwaylandState.integer_scale`; computed and
+- **T146 — T-16.3b Viewport downscale and chrome sizing**: **State: done.** Fractional-scale chrome is sized per output and the nested; `compositor/src/backend/mod.rs` — `ENV_NESTED_SCALE` = `DRAGONFRUIT_NESTED_SCALE`.
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3763,6 +3763,20 @@ Gotchas for later tasks:
   T-14.7c nested trace shows no degrade-tier downgrade, but a real-hardware
   trace that shows one should move the popover into its own fixed-size
   offscreen window (the task's documented fallback).
+
+- **T-16.3b shell-side fractional chrome (sharpness).** The compositor now
+  advertises each output's fractional scale to its chrome surfaces
+  (`render::update_chrome_preferred_scale`), but the shell's hand-rolled
+  Wayland client (`shell/src/shellprotocol.cpp`) renders QML offscreen at a
+  device pixel ratio of 1 and binds neither `wp_fractional_scale` nor
+  `wp_viewporter`. At a fractional output scale the shell ignores the
+  preferred-scale event, so its chrome surfaces are 1x rasters the compositor
+  upscales (visibly soft in `/tmp/opencode/t146-frac-active.png`). Fixing it
+  needs the shell to render each chrome `QImage` at the output scale and map
+  it back with `wl_surface.set_buffer_scale` (integer) or
+  `wp_viewport.set_destination` (fractional); all chrome commits already funnel
+  through `ShellProtocol::commitTo`, so that is the one choke point. The
+  compositor half and the per-output chrome *sizing* are done (ADR 0153).
 
 ## T49 — T-09.1b Settings live-apply plumbing
 
@@ -13733,3 +13747,89 @@ Decisions / gotchas for T-16.3b and later:
   shell can `df_output.set_scale` after boot (the demo does, to 1.0), so the
   logged value is the boot-time policy, not a live mirror. Xwayland itself
   tracks later output scale changes through Wayland as usual.
+
+## T146 — T-16.3b Viewport downscale and chrome sizing
+
+**State: done.** Fractional-scale chrome is sized per output and the nested
+session can run at a fractional scale. Two real bugs fixed: the nested render
+path hardcoded the damage tracker's scale to 1.0 (so at any output scale != 1
+elements were placed in physical pixels but sized in logical pixels — the
+wallpaper top-left bug T-16.3a found), and `df_output.set_scale` /
+`set_transform` / `set_mode` did not re-configure the chrome layers (so after a
+scale change the menu bar/Dock stayed sized for the old logical output).
+ADR 0153.
+
+Real paths:
+
+- `compositor/src/backend/mod.rs` — `ENV_NESTED_SCALE` = `DRAGONFRUIT_NESTED_SCALE`.
+- `compositor/src/backend/nested.rs` — reads the env via `parse_output_scale`
+  (default 1.0) for the nested `add_output`; `NestedData { tracker_scale,
+  tracker_size }` + `ensure_tracker(size, scale)` rebuilds the
+  `OutputDamageTracker` on a physical-size or **scale** change (called from
+  `render_frame` and the `Resized` handler).
+- `compositor/src/shell/mod.rs` — `df_output` request dispatch tracks
+  `geometry_changed` for `SetMode`/`SetScale`/`SetTransform` and calls
+  `state.reconfigure_layers()` before the property ack.
+- `compositor/src/render.rs` — `update_chrome_preferred_scale(state, output)`
+  (called from `post_repaint`) sends each visible chrome surface the output's
+  fractional `wp_fractional_scale` preferred scale. `accepts_fractional_scale`
+  still returns false for X11.
+- `compositor/src/input/synthetic.rs` — new `query scale` report:
+  `scale output <name> physical=WxH logical=WxH scale=S`, then
+  `scale window <id> logical=x,y,w,h physical=x,y,w,h buffer_scale=N buffer=WxH`
+  and `scale chrome <ns> logical=x,y,w,h physical=x,y,w,h`.
+- `compositor/tests/shell_protocol_conformance.rs` — new
+  `fractional_scale_reconfigures_chrome_to_the_logical_output` (top bar
+  1280x28 → 854x28 at scale 1.5; verified to fail with the reconfigure call
+  removed). 39 → 40 tests.
+- `compositor/tests/xwayland_conformance.rs` — new
+  `x11_fixture_at_fractional_scale_sizes_per_output` (scale 1.5: X screen
+  853x480, output 1280x720 physical / 854x480 logical, a 200x120 X11 window →
+  300x180 physical, `buffer_scale` 1). 8 → 9 tests.
+- `docs/xwayland-scaling.md`, `docs/design/02-compositor.md`,
+  `docs/design/adr/0152-integer-scaled-xwayland.md` (Update section),
+  `docs/design/adr/0153-per-output-chrome-sizing-and-nested-scale.md` (new).
+
+Commands that work (repo root; `PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig`,
+`RUSTFLAGS=-L $HOME/.local/df-devroot/lib64`):
+
+- `cargo test -p dragonfruit-compositor` — all suites green (bin unit 286,
+  `shell_protocol_conformance` 40, `xwayland_conformance` 9).
+- `cargo clippy -p dragonfruit-compositor --all-targets -- -D warnings` and
+  `cargo fmt --all -- --check` — clean.
+- `make e2e` — EXIT 0 (`/tmp/opencode/t146-e2e.log`).
+- Live visual check: `/tmp/opencode/t146-frac-active.png` (2115x1437) +
+  `/tmp/opencode/t146-frac-full.png` via `/tmp/opencode/capture-t146-frac.sh`
+  (`DRAGONFRUIT_NESTED_SCALE=1.5`, `display.scale=1.5` seeded into
+  `$XDG_RUNTIME_DIR/<socket>.session/config/dragonfruit/settings.json`, then
+  `make dev-full`). Vision found the wallpaper **filling the whole output**,
+  the menu bar and Dock present/correctly sized, nothing clipped or oversized;
+  text slightly soft from the shell's 1x QML raster (shell-side follow-up).
+
+Decisions / gotchas for T-16.4 and later:
+
+- **The damage tracker's static scale is the element-geometry scale.** Any
+  backend created with `OutputDamageTracker::new` must pass the output's real
+  scale and rebuild on scale change, or every element is sized wrong. Nested
+  is the only backend that builds a static tracker by hand (DRM uses the
+  compositor's auto mode source; headless renders nothing).
+- **A scale change is a geometry change.** Any output mode/scale/transform
+  change must `reconfigure_layers()`, because chrome layer sizes are logical
+  functions of the output geometry. Reserved thicknesses are logical and do
+  not change.
+- **Chrome now gets a fractional preferred scale; the shell ignores it.** The
+  shell does not bind `wp_fractional_scale`/`wp_viewporter`, so at a fractional
+  scale its QML buffers upscale. See PROGRESS.md Follow-ups (T-16.3b shell-side
+  sharpness) — this is the remaining "blurry chrome" gap, shell-only.
+- **Xwayland renders at the output's logical size, not an integer supersample.**
+  In this environment (`Xwayland 24.1.13`) an X11 surface's buffer is
+  `buffer_scale=1` at the logical size even at output scale 2, so the
+  compositor upsamples at >1. T-16.3a's "integer-scaled buffer downscaled"
+  description was inaccurate and is corrected in `docs/xwayland-scaling.md`.
+  Xwayland does **not** bind `wp_fractional_scale` for its X11 surfaces.
+- **`query scale` is append-only** and reports the model logical rect plus the
+  `to_physical_precise_round` mapping the render layer uses; use it for any
+  future per-output sizing assertion. The window line's `physical` uses
+  comma-separated `x,y,w,h` tokens (the output line keeps `WxH`).
+- **Nested cannot add outputs**, so the multi-output fractional matrix is still
+  the headless synthetic-output harness + the batched human VM step.

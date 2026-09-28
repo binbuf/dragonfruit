@@ -661,6 +661,13 @@ pub enum SyntheticCommand {
     TouchFrame,
     /// Read-only SSD titlebar introspection (T-01.1).
     QueryDecorations,
+    /// Read-only per-surface scale introspection (T-16.3b): per output its
+    /// physical mode, fractional logical size, and scale; and per window and
+    /// chrome surface the logical rect the model holds and the physical rect
+    /// the render layer composits it into, followed by `end`. A fractional
+    /// output scale shows chrome sized to the logical output and X11 windows
+    /// downscaled from their integer-scaled buffer.
+    QueryScale,
     /// Read-only raw window-identity introspection (T-14.6a): one `identity`
     /// line per tracked window (window id, the Wayland `app_id` or the
     /// Xwayland `WM_CLASS` class, and the advertised title), followed by
@@ -889,6 +896,7 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
         },
         "query" => match parts.next() {
             Some("decorations") => SyntheticCommand::QueryDecorations,
+            Some("scale") => SyntheticCommand::QueryScale,
             Some("identity") => SyntheticCommand::QueryIdentity,
             Some("window-menu") => SyntheticCommand::QueryWindowMenu,
             // `motion` is the T-02.2 name; `appear` is kept as an alias so
@@ -910,7 +918,7 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
             Some("session") => SyntheticCommand::QuerySession,
             _ => {
                 return Err(
-                    "query requires a known subject (decorations, identity, window-menu, motion, events, latency, scanout, degrade, material, grid, spaces, wallpaper, reveal, gesture, switcher, policy, lock, session)"
+                    "query requires a known subject (decorations, scale, identity, window-menu, motion, events, latency, scanout, degrade, material, grid, spaces, wallpaper, reveal, gesture, switcher, policy, lock, session)"
                         .into(),
                 );
             }
@@ -1122,6 +1130,9 @@ impl SyntheticCommand {
             SyntheticCommand::QueryDecorations => {
                 unreachable!("query decorations is handled by apply_datagram")
             }
+            SyntheticCommand::QueryScale => {
+                unreachable!("query scale is handled by apply_datagram")
+            }
             SyntheticCommand::QueryIdentity => {
                 unreachable!("query identity is handled by apply_datagram")
             }
@@ -1254,6 +1265,15 @@ fn apply_datagram_reply(
             Ok(SyntheticCommand::QueryDecorations) => {
                 if let Some((socket, peer)) = &reply {
                     let report = decoration_report(state);
+                    if let Some(path) = peer.as_pathname() {
+                        let _ = socket.send_to(report.as_bytes(), path);
+                    }
+                }
+                applied += 1;
+            }
+            Ok(SyntheticCommand::QueryScale) => {
+                if let Some((socket, peer)) = &reply {
+                    let report = scale_report(state);
                     if let Some(path) = peer.as_pathname() {
                         let _ = socket.send_to(report.as_bytes(), path);
                     }
@@ -1549,6 +1569,105 @@ fn decoration_report(state: &DfState) -> String {
             "decoration {} {} {tx} {ty} {tw} {th} {} {} {} {} {window_state} {space}\n",
             id.0, ssd as u32, content.loc.x, content.loc.y, content.size.w, content.size.h,
         ));
+    }
+    out.push_str("end\n");
+    out
+}
+
+/// The `query scale` report (T-16.3b): how each output's fractional scale maps
+/// the logical chrome and window rects to the physical pixels the render layer
+/// composites.
+///
+/// `scale output <name> physical=<w>x<h> logical=<w>x<h> scale=<s>` per
+/// output, then one `scale window <id> logical=<x> <y> <w> <h> physical=<x>
+/// <y> <w> <h>` per window on it and one `scale chrome <namespace> logical=...
+/// physical=...` per visible chrome surface, followed by `end`. At a
+/// fractional output scale this shows chrome sized to the output's logical
+/// geometry and an X11 window's integer-scaled buffer downscaled to
+/// `logical * scale` physical pixels.
+fn scale_report(state: &DfState) -> String {
+    use smithay::utils::{Physical, Rectangle, Scale};
+    use smithay::wayland::seat::WaylandFocus;
+    let mut out = String::new();
+    for output in state.space.outputs() {
+        let name = output.name();
+        let fractional = output.current_scale().fractional_scale();
+        let scale = Scale::from(fractional);
+        let physical = output
+            .current_mode()
+            .map(|mode| mode.size)
+            .unwrap_or_default();
+        let logical = state
+            .space
+            .output_geometry(output)
+            .map(|geometry| geometry.size)
+            .unwrap_or_default();
+        out.push_str(&format!(
+            "scale output {} physical={}x{} logical={}x{} scale={:.3}\n",
+            name, physical.w, physical.h, logical.w, logical.h, fractional,
+        ));
+        let Some(geometry) = state.space.output_geometry(output) else {
+            continue;
+        };
+        for window in state.space.elements() {
+            if !state.space.outputs_for_element(window).contains(output) {
+                continue;
+            }
+            let Some(id) = state.windows.id(window) else {
+                continue;
+            };
+            let Some(rect) = state.windows.geometry(window) else {
+                continue;
+            };
+            let phys: Rectangle<i32, Physical> = rect.to_physical_precise_round(scale);
+            // The attached buffer's own scale/size: an X11 window keeps the
+            // integer buffer scale Xwayland advertised while the compositor
+            // downscales the buffer to `logical * scale` physical pixels.
+            let (buffer_scale, buffer_size) = window
+                .wl_surface()
+                .and_then(|surface| {
+                    smithay::backend::renderer::utils::with_renderer_surface_state(
+                        surface.as_ref(),
+                        |state| (state.buffer_scale(), state.buffer_size()),
+                    )
+                })
+                .map(|(scale, size)| (scale, size.map(|size| (size.w, size.h))))
+                .unwrap_or((1, None));
+            let buffer = match buffer_size {
+                Some((w, h)) => format!("{w}x{h}"),
+                None => "-".to_string(),
+            };
+            out.push_str(&format!(
+                "scale window {} logical={},{},{},{} physical={},{},{},{} buffer_scale={} buffer={}\n",
+                id.0,
+                rect.loc.x,
+                rect.loc.y,
+                rect.size.w,
+                rect.size.h,
+                phys.loc.x,
+                phys.loc.y,
+                phys.size.w,
+                phys.size.h,
+                buffer_scale,
+                buffer,
+            ));
+        }
+        for chrome in state.chrome_surfaces(name.as_str(), geometry) {
+            let rect = chrome.panel;
+            let phys: Rectangle<i32, Physical> = rect.to_physical_precise_round(scale);
+            out.push_str(&format!(
+                "scale chrome {} logical={},{},{},{} physical={},{},{},{}\n",
+                chrome.namespace,
+                rect.loc.x,
+                rect.loc.y,
+                rect.size.w,
+                rect.size.h,
+                phys.loc.x,
+                phys.loc.y,
+                phys.size.w,
+                phys.size.h,
+            ));
+        }
     }
     out.push_str("end\n");
     out

@@ -65,6 +65,12 @@ pub const HEADLESS_MODE_SIZE: (i32, i32) = (1280, 720);
 /// Xwayland boots against an integer-scaled primary display.
 pub const ENV_HEADLESS_SCALE: &str = "DRAGONFRUIT_HEADLESS_SCALE";
 
+/// Environment variable overriding the nested output's scale (T-16.3b).
+/// The default is `1.0`; a fractional value (e.g. `1.5`) lets the nested
+/// session exercise fractional-scale chrome and the per-surface downscale
+/// without a physical display.
+pub const ENV_NESTED_SCALE: &str = "DRAGONFRUIT_NESTED_SCALE";
+
 /// Parse a positive finite output scale from `value`, or the `fallback`.
 pub fn parse_output_scale(value: Option<&str>, fallback: f64) -> f64 {
     value

@@ -52,3 +52,14 @@ forbids.
   sized in logical pixels but placed in physical pixels, so outputs above scale
   1 show the image only in the top-left fraction. It is chrome sizing and
   belongs to T-16.3b.
+
+## Update (T-16.3b, [0153](0153-per-output-chrome-sizing-and-nested-scale.md))
+
+The chrome bug above is fixed: the nested damage tracker now carries the
+output's real scale, and an output scale/mode/transform change re-configures
+the chrome layers. The "shown at the integer `ceil` size" consequence was
+based on the assumption that Xwayland renders an integer-scaled buffer. In
+practice Xwayland derives its root window from the output's logical size and
+renders at the logical size, so a fractional output scale composites X11
+surfaces at `logical * scale` physical pixels (the compositor does not
+double-scale them). See 0153 and the updated `docs/xwayland-scaling.md`.
