@@ -764,6 +764,16 @@ accessibility bus, and its global keyboard flows are proven headlessly (see
 a host Wayland session, python3 with `pyatspi` and Pillow, spectacle, and the
 built tree; not in `make e2e`.
 
+T-16.6b's compositor magnifier is `t16-magnifier.png`, produced by
+`scripts/capture-t16-magnifier.sh`: a stacked A/B of the nested demo with the
+magnifier off (top) and on at 2x, centred (bottom). The bottom half is a
+centred zoom of the top — UI enlarged and edge content (the top bar, the Dock)
+cropped out of view, with no blank/torn regions; the compositor model and the
+synthetic control are proven headlessly (`magnifier::tests`,
+`window_conformance::magnifier_reports_its_view_transform_and_zoom`). Requires
+a host Wayland session, spectacle, Pillow, and the built tree; not in
+`make e2e`.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

@@ -19,6 +19,7 @@ mod design_tokens;
 mod input;
 mod instrument;
 mod lock;
+mod magnifier;
 mod overview;
 mod render;
 mod session;

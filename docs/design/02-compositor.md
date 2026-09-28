@@ -22,7 +22,8 @@ hardware-management and product logic.
 - Security boundaries (seat/session, lock screen integration)
 - Screen magnification (accessibility zoom) with follow-focus and
   follow-caret modes — compositor-owned because it transforms the whole
-  scene, not one window
+  scene, not one window (implemented T-16.6b; the Settings row and its
+  durable key are a follow-up — [ADR 0155](adr/0155-compositor-magnifier.md))
 - Private shell protocols (see below)
 - Xwayland compatibility
 

@@ -1228,8 +1228,10 @@ read-only (the `Screen Reader` flag and the toolkit bridge), so it declares no
 new settingsd key: its one durable preference is the existing
 `accessibility.reduceMotion`, which the shell theme, the Dock, and the
 compositor already apply live. The Apple-only `Vision`/`Hearing` rows with no
-Linux host owner are omitted, and a compositor magnifier and a display-contrast
-preference are left as a follow-up rather than shipped as dead controls. It must
+Linux host owner are omitted. The compositor magnifier now exists (T-16.6b,
+[adr/0155](adr/0155-compositor-magnifier.md)); its Settings row and durable
+settingsd key are a follow-up, and a display-contrast preference is likewise
+left as a follow-up rather than shipped as a dead control. It must
 not add a second accessibility implementation.
 
 - **The Control Center tile fits without a scroll.** The seventeenth tile is a

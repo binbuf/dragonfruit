@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(145 earlier sections omitted)_
+_(146 earlier sections omitted)_
 
-- **T175 — T-18.3 Provider licensing, absence matrix, and capture**: **State: done.** The licensing policy is reviewed and made true (`NOTICE`; `docs/licensing.md` — "Fetched third-party content (wallpaper)" extended:
 - **Dev tooling — wallpaper provider in the dev session (T-18.1a follow-up)**: **State: done.** `make demo` (nested) and `make dev --shell` now start; `tools/dragonfruit-dev/src/main.rs` — `launch_services` takes a
 - **T111 — T-15.1a Bluetooth adapter**: **State: done.** The BlueZ Bluetooth adapter landed in a new crate,; `services/bluetooth/` (new crate) — `src/source.rs` (`BluetoothData`,
 - **T112 — T-15.1b Bluetooth pane and tile**: **State: done.** The Bluetooth pane and Control Center tile ship as one unit; `services/system-status/src/bluetooth.rs` (new) — `BluetoothHost<B>` and
@@ -44,6 +43,7 @@ _(145 earlier sections omitted)_
 - **T145 — T-16.3a Integer-scaled Xwayland**: **State: done.** The integer-scale half of `docs/xwayland-scaling.md` is built.; `compositor/src/xwayland.rs` — `XwaylandState.integer_scale`; computed and
 - **T146 — T-16.3b Viewport downscale and chrome sizing**: **State: done.** Fractional-scale chrome is sized per output and the nested; `compositor/src/backend/mod.rs` — `ENV_NESTED_SCALE` = `DRAGONFRUIT_NESTED_SCALE`.
 - **T147 — T-16.6a AT-SPI and keyboard-only audit**: **State: done.** The live AT-SPI dump/walkthrough and the keyboard-only; `scripts/t16-a11y-audit.sh` + `scripts/t16-a11y-audit.py` (new;
+- **T148 — T-16.6b Magnifier and reduced-motion sweep**: **State: done.** Two units landed: a compositor-owned screen magnifier and an; `compositor/src/magnifier.rs` (new) — the pure `Magnifier` policy: zoom
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -13891,3 +13891,88 @@ Decisions / gotchas for T-16.6b and later:
   compositor test exercises all 16 system chords. Any new system shortcut must
   be added to `default_system_bindings()` and to that test's `walkthrough`
   table.
+
+## T148 — T-16.6b Magnifier and reduced-motion sweep
+
+**State: done.** Two units landed: a compositor-owned screen magnifier and an
+always-on reduced-motion sweep. Contract in ADR 0155.
+
+Real paths:
+
+- `compositor/src/magnifier.rs` (new) — the pure `Magnifier` policy: zoom
+  (clamped 1.0..=8.0, 1.0 disables), the scene point kept at the output centre,
+  `MagnifierMode::{FollowFocus,FollowCaret}`, `map_from_view`/`map_to_view`/
+  `set_center`/`follow`/`seed_center`, and `view_transform` (the physical
+  Rescale(+Relocate) numbers). 10 unit tests.
+- `compositor/src/state.rs` — `DfState.magnifier` + `set_magnifier_enabled`/
+  `_zoom`/`_mode`/`_center`, `magnifier_output_geometry`,
+  `magnifier_geometry_at`, `refresh_magnifier_follow` (called from
+  `focus_changed`).
+- `compositor/src/backend/nested.rs` — `NestedFrameElements`
+  (`Plain`/`Magnified`) + `magnify_elements`: when active, every element is
+  `Rescale`d about the output centre and translated; the live frame and the
+  capture render the same wrapped list. `age = 0` while active forces a full
+  damage frame.
+- `compositor/src/input.rs` — `magnified_location` maps a view point to the
+  scene point under it; `magnified_delta` divides relative motion by the zoom;
+  applied to absolute pointer, relative pointer, and touch.
+- `compositor/src/input/synthetic.rs` — `set magnifier on|off`,
+  `set magnifier-zoom <f>`, `set magnifier-mode follow-focus|follow-caret`,
+  `set magnifier-center <x> <y>`, `query magnifier` (enabled/active/zoom/mode/
+  centre/output/origin/translation) + parse tests.
+- `compositor/tests/window_conformance.rs` — new
+  `magnifier_reports_its_view_transform_and_zoom` (36 tests total).
+- `compositor/tests/reduced_motion_sweep.rs` (new; in `make e2e` via the
+  Makefile) — 3 tests: (a) the Rust and QML motion catalogs are parsed and
+  cross-checked, every token has `reduced_ms == 0` and `full_ms > 0`;
+  (b) every QML animation site in `shell/`, `design-system/`, `apps/` resolves
+  through `Theme.motion` or gates on `Theme.reducedMotion` (56 sites);
+  (c) every `WindowMotionKind` routes through `Tween::from_motion` and the
+  overview keeps its reduced single-step branch.
+- `scripts/capture-t16-magnifier.sh` (new) + `docs/captures/t16-magnifier.png`
+  — the A/B live capture (off top / 2x centred bottom).
+- `docs/design/adr/0155-compositor-magnifier.md` (new);
+  `docs/design/02-compositor.md`, `docs/design/07-system-integration.md`,
+  `docs/design/10-design-system.md`, `docs/captures/README.md`.
+
+Commands that work (repo root; `PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig`,
+`RUSTFLAGS=-L $HOME/.local/df-devroot/lib64`):
+
+- `cargo test -p dragonfruit-compositor` — all suites green (lib 11, bin unit
+  296, `reduced_motion_sweep` 3, `window_conformance` 36,
+  `shell_protocol_conformance` 41, `xwayland_conformance` 9, the rest as
+  before).
+- `cargo clippy -p dragonfruit-compositor --all-targets -- -D warnings` and
+  `cargo fmt --all -- --check` — clean.
+- `make e2e` — EXIT 0 (`/tmp/opencode/t148-e2e-final.log`).
+- Live visual check: `docs/captures/t16-magnifier.png` (1057x1466 stack).
+  Vision confirmed the bottom half is a 2x centred zoom of the top (UI larger,
+  top bar and Dock cropped out) with no blank/black/torn regions. The
+  on→off probe (`/tmp/opencode/probe-t148-off.sh`) shows 0.0% sampled pixel
+  change after toggling on then off — no stale scaled damage.
+
+Decisions / gotchas for later tasks:
+
+- **The magnifier's durable trigger is not wired.** The Settings row,
+  its settingsd key, and the private-protocol request that carries the value
+  are out of this task's `compositor/`, `shell/` area, so the magnifier is
+  only reachable through the synthetic seam today. ADR 0155 records the
+  contract; wiring the row/key/request is the bounded follow-up.
+- **DRM magnification is not wired.** The nested backend applies the element
+  rescale; the DRM rail does not yet, and its cursor must **not** scale with
+  the scene. Nested is the demo/dev backend and is what the capture proves.
+- **`follow-caret` falls back to the focused window** because the compositor
+  has no caret-position source. The mode is modelled and accepted; a later
+  text-input caret source makes it real without changing the contract.
+- **Input mapping is required, not optional.** `map_from_view` maps the
+  physical pointer to the scene point under it and relative deltas are divided
+  by the zoom; without it a rendering magnifier silently misroutes clicks.
+- **The damage tracker handles the transform change.** Forcing `age = 0` while
+  active plus the per-element geometry change is enough; toggling off returns
+  to identical pixels.
+- **The reduced-motion sweep fails on a literal-duration animation.** Scope of
+  the site scan: `shell/`, `design-system/components`, `design-system/gallery`,
+  `apps/`, excluding `tests/`. A new animation must use `Theme.motion.*` or an
+  `enabled/running` guard on `Theme.reducedMotion`. The compositor half scans
+  `design_tokens.rs`/`Theme.qml` (generated from
+  `design-system/tokens/tokens.json`) and the lifecycle enum.
