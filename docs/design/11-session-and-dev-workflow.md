@@ -390,14 +390,28 @@ The **kill matrix** is deliberately split by owner. The compositor owns the
 fail-secure lock invariant — no crash unlocks — and
 `compositor/tests/session_lock_conformance.rs` closes the lock UI's socket and
 asserts `locked=1`. The session manager owns supervision and
-`services/session/tests/kill_matrix.rs` asserts the documented outcomes:
+`services/session/tests/kill_matrix.rs` asserts the documented outcomes
+(T-16.8a grew the T-12.5b subset to the whole shipped `SessionPlan::default_session`):
 
 | Killed | Outcome |
 |---|---|
 | shell / lock UI | restarts (`always`); the session keeps running |
-| settingsd | restarts (`on-failure`); the session keeps running |
-| notification service | restarts (`on-failure`); the session keeps running |
+| settingsd, menu-broker, app-index, notifications, wallpaperd | restart (`on-failure`); the session keeps running |
+| portal backend | restarts (`on-failure`) and fails soft; the session keeps running |
+| app (a user-launched client) | a plain client exit: never restarted; the session keeps running |
+| lock UI (a crash while locked) | fail-secure: the session stays locked, never unlocks |
 | compositor | the session ends; every other service is stopped; never restarted |
+
+Apps are not supervised session services: the shell/compositor launches them,
+so an app crash is neither a session event nor a compositor crash. The
+compositor half (`window_conformance::
+a_crashed_app_leaves_the_compositor_and_the_other_app_running`) proves a
+crashed app leaves the compositor and the surviving app running. The headless
+reproduction for the whole matrix is `make t16-kill-matrix`
+(`docs/captures/t16-kill-matrix.txt`); the live/VM real-binary half is recorded
+by hand in `docs/captures/t16-kill-matrix.md`. The contract is
+[ADR 0157](adr/0157-t16-crash-kill-matrix.md); compositor-death behavior itself
+is documented by T-16.8b.
 
 The T-12 track capture is `docs/captures/t12-session.*` (nested desktop, the
 real lock UI after Cmd+Ctrl+Q, a short clip, the `query lock`/`query session`
