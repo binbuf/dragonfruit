@@ -24,6 +24,7 @@ equivalent) API intended exactly for custom desktop frontends.
 | Input devices | libinput | Keyboard/mouse/trackpad enumeration and per-device capabilities. Unlike the daemons above, the **user's** input settings are compositor-applied and settingsd-owned, per principle 3; the adapter is the inventory only. |
 | Mission Control / hot corners | compositor (`df_toplevel_manager`) | Trigger configuration and overview runtime state. Mission Control and hot corners are compositor-native: the compositor detects corners and owns the one overview machine, and the shell learns both over the private bridge. The adapter reuses that path; it is the projection, never a second detector. |
 | Notifications / Focus | notification service | The Focus/DND policy (mode, allow list, suppressed batch) and the active-banner / history state. The service already owns the queue, the history, and the admission rule (ADR [0058](adr/0058-focus-dnd-policy-semantics.md)); the adapter is the projection over its shell-facing JSON views and never reimplements them. |
+| Lock Screen policy | session idle engine + compositor lock | The `idle.*` stage delays the session's idle/lock engine applies ([ADR 0070](adr/0070-idle-timer-engine-and-policy.md)) and the compositor's fail-secure lock state ([ADR 0067](adr/0067-session-lock-protocol-and-ui.md)), mirrored by the shell over `df_toplevel_manager`. The adapter is the projection over the confirmed lock state and the applied policy; it never re-times a stage or re-implements a lock transition, and the display preferences are settingsd-owned. |
 | Seat/session | systemd / logind | Session lifetime, `graphical-session.target`, VT management. |
 | Privileged operations | host policy infrastructure | polkit / authentication agent integration; we never roll our own privilege escalation. |
 
@@ -676,6 +677,46 @@ settingsd live (and the pane reflects them), but the notification service does
 not yet read them to gate a banner. Wiring that enforcement is a follow-up; the
 rows are the capture's controls and are not dead (see ADR
 [0131](adr/0131-notifications-pane-and-tile.md)).
+
+## The Lock Screen policy path (T-15.8a)
+
+Lock Screen policy does not wrap an external daemon either: the session's
+idle/lock engine (`services/session/src/idle.rs`) owns the `idle.*` stage
+delays ([ADR 0070](adr/0070-idle-timer-engine-and-policy.md)) and the
+compositor owns the one fail-secure lock state (`compositor/src/lock.rs`,
+[ADR 0067](adr/0067-session-lock-protocol-and-ui.md)); the shell mirrors both
+over the private `df_toplevel_manager` bridge. The adapter
+(`services/lock-adapter`, `dragonfruit-lock-adapter`) is therefore a
+**projection** over that host stack, exactly as `dragonfruit-overview` projects
+the compositor's hot corners and overview machine. It reuses the session's own
+`IdlePolicy`/`IdleStage` vocabulary rather than re-modelling the chain. See
+[adr/0132](adr/0132-lock-screen-policy-adapter.md).
+
+- **The read** is `LockPolicyData`: the runtime `locked` flag, the effective
+  `IdlePolicy` (dim/blank/lock/suspend), and the lock-screen display options
+  (show user name and photo, show password hints, show message when locked +
+  its text, show the sleep/restart/shut-down buttons). `LockPolicySnapshot`
+  types the lock state and names the four display options; the idle policy is
+  carried unchanged.
+- **Events** are the shared subscription lifecycle (`AdapterEvent`) plus a pure
+  `LockPolicySnapshot::changes` diff — the lock state, each idle stage delay,
+  each display option, and the message — drained through `drain_changes`. A
+  lock/unlock is a `StateChanged` event, not a poll.
+- **Read-only.** The compositor owns the lock and the session owns the timing;
+  the durable display preferences are `settingsd`'s (the `lock.*` keys land in
+  T-15.8b). The adapter has no write method, exactly as `dragonfruit-overview`
+  and `dragonfruit-input` have none.
+- **Absence is a normal state.** A missing compositor bridge (no
+  `df_toplevel_manager` global, or an unreachable compositor) is
+  `AdapterState::Unavailable` and hides the item; a present bridge that cannot
+  be read is `Error`, visible and inert with the message. Neither blocks
+  session startup. `MockLockPolicy` drives the states in CI, with
+  `kill`/`restart` for the re-subscribe lifecycle and `push` for the state and
+  policy stream.
+- **The Linux adaptation.** The session's idle engine blanks and locks at one
+  delay each, so the macOS battery/AC display-off pair becomes the single
+  `blank` stage; `display_off_after()` and `lock_after()` are the projection the
+  pane will draw. The pane and Control Center tile are T-15.8b.
 
 ## The status bridge host (T-07.5a)
 
