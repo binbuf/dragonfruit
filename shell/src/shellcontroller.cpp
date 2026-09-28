@@ -111,10 +111,12 @@ constexpr int kBannerTopGap = 8;
 // adds the Mission Control summary tile; T-15.9b adds the Menu Bar summary
 // tile; T-15.12b adds the Printers tile; T-15.13b adds the Privacy tile;
 // T-15.14b adds the compact Accessibility tile (the tiles' internal gap
-// compacted once more to `xxs` so the fixed surface still holds every tile).
+// compacted once more to `xxs` so the fixed surface still holds every tile);
+// T-15.15b adds the Network advanced (VPN) tile and raises the surface to the
+// 1164 px the nested output leaves below the bar so the eighteenth tile fits.
 // The surface is fixed and the panel fills it.
 constexpr int kControlCenterWidth = 360;
-constexpr int kControlCenterHeight = 1160;
+constexpr int kControlCenterHeight = 1164;
 constexpr int kControlCenterTopGap = 8;
 
 // The OSD overlay (T-11.4a): a centered card. The surface is slightly larger
@@ -499,6 +501,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             &ShellController::onPrivacyState);
     connect(m_statusClient, &SystemStatusClient::accessibilityState, this,
             &ShellController::onAccessibilityState);
+    connect(m_statusClient, &SystemStatusClient::vpnState, this,
+            &ShellController::onVpnState);
     connect(m_statusClient, &SystemStatusClient::joinReport, this,
             &ShellController::onStatusReport);
     connect(m_statusClient, &SystemStatusClient::writeReport, this,
@@ -526,6 +530,7 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     m_statusClient->refreshPrinters();
     m_statusClient->refreshPrivacy();
     m_statusClient->refreshAccessibility();
+    m_statusClient->refreshVpn();
 
     // T-14.3: StatusNotifier tray items. app-index owns the watcher; the shell
     // reads its live item view and re-reads on a short timer (a tray app can
@@ -880,6 +885,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onPrivacySettingsRequested()));
     connect(controlCenterObject, SIGNAL(accessibilitySettingsRequested()), this,
             SLOT(onAccessibilitySettingsRequested()));
+    connect(controlCenterObject, SIGNAL(vpnSettingsRequested()), this,
+            SLOT(onVpnSettingsRequested()));
     connect(controlCenterObject, SIGNAL(focusToggleRequested(bool)), this,
             SLOT(onFocusToggleRequested(bool)));
     connect(controlCenterObject, SIGNAL(focusSettingsRequested()), this,
@@ -1923,6 +1930,12 @@ void ShellController::onAccessibilityState(const QByteArray &json)
         m_statusModel->applyAccessibilityJson(json);
 }
 
+void ShellController::onVpnState(const QByteArray &json)
+{
+    if (m_statusModel)
+        m_statusModel->applyVpnJson(json);
+}
+
 void ShellController::onStatusReport(const QByteArray &json)
 {
     qInfo() << "shell: system-status action:" << SystemStatusModel::outcomeOf(json);
@@ -1938,8 +1951,9 @@ void ShellController::onStatusReport(const QByteArray &json)
         m_statusClient->refreshUpdates();
         m_statusClient->refreshAccounts();
         m_statusClient->refreshPrinters();
-        m_statusClient->refreshPrivacy();
+m_statusClient->refreshPrivacy();
         m_statusClient->refreshAccessibility();
+        m_statusClient->refreshVpn();
     }
 }
 
@@ -2124,6 +2138,9 @@ void ShellController::applyControlCenterData()
     // view (the same view the Settings pane reads).
     const QVariantMap accessibility =
         m_statusModel ? m_statusModel->accessibility() : QVariantMap();
+    // Network advanced (VPN) (T-15.15b): the tile reflects the bridge host's
+    // NetworkManager VPN view (the same view the Settings pane reads).
+    const QVariantMap vpn = m_statusModel ? m_statusModel->vpn() : QVariantMap();
     // Mission Control and hot corners are compositor-native: the shell owns the
     // compositor mirror and the settingsd values, so it projects the tile's
     // summary locally (T-15.5b) instead of reading a services-layer host.
@@ -2149,6 +2166,7 @@ void ShellController::applyControlCenterData()
     m_controlCenterItem->setProperty("printers", printers);
     m_controlCenterItem->setProperty("privacy", privacy);
     m_controlCenterItem->setProperty("accessibility", accessibility);
+    m_controlCenterItem->setProperty("vpn", vpn);
     m_controlCenterItem->setProperty("missionControl", missionControl);
     m_controlCenterItem->setProperty("lockPolicy", lockPolicy);
     m_controlCenterItem->setProperty("menuBar", menuBar);
@@ -2408,6 +2426,13 @@ void ShellController::onAccessibilitySettingsRequested()
     // Launching Settings on the Accessibility pane is T-16; the entry point is
     // wired and logs until then.
     qInfo() << "shell: Accessibility Settings requested (T-16)";
+}
+
+void ShellController::onVpnSettingsRequested()
+{
+    // Launching Settings on the Network pane is T-16; the entry point is wired
+    // and logs until then.
+    qInfo() << "shell: Network Settings requested (T-16)";
 }
 
 void ShellController::onFocusToggleRequested(bool enabled)

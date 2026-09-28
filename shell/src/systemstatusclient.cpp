@@ -29,6 +29,7 @@ const QString kPrintersInterface = QStringLiteral("org.dragonfruit.SystemStatus1
 const QString kPrivacyInterface = QStringLiteral("org.dragonfruit.SystemStatus1.Privacy");
 const QString kAccessibilityInterface =
     QStringLiteral("org.dragonfruit.SystemStatus1.Accessibility");
+const QString kVpnInterface = QStringLiteral("org.dragonfruit.SystemStatus1.Vpn");
 
 // Serialize a QJsonObject to the compact byte form the host uses.
 QByteArray compact(const QJsonObject &object)
@@ -233,6 +234,12 @@ void DbusSystemStatusClient::refreshAccessibility()
          &SystemStatusClient::accessibilityState);
 }
 
+void DbusSystemStatusClient::refreshVpn()
+{
+    call(kVpnInterface, QStringLiteral("State"), {},
+         &SystemStatusClient::vpnState);
+}
+
 void DbusSystemStatusClient::join(const QString &ssid, const QString &secret)
 {
     call(kWifiInterface, QStringLiteral("Join"), {ssid, secret},
@@ -267,6 +274,7 @@ MockSystemStatusClient::MockSystemStatusClient(QObject *parent)
     refreshPrinters();
     refreshPrivacy();
     refreshAccessibility();
+    refreshVpn();
 }
 
 void MockSystemStatusClient::refreshInput()
@@ -764,6 +772,52 @@ void MockSystemStatusClient::refreshAccessibility()
     view.insert(QStringLiteral("screenReader"), true);
     view.insert(QStringLiteral("screenReaderLabel"), QStringLiteral("On"));
     emit accessibilityState(compact(view));
+}
+
+void MockSystemStatusClient::refreshVpn()
+{
+    // The Network advanced (VPN) fixture (T-15.15b): a deterministic
+    // NetworkManager with one OpenVPN connection up and one WireGuard idle. The
+    // tile is a read-only summary; the connect/deactivate writes live in the
+    // Settings pane, so the fixture never mutates.
+    QJsonObject work;
+    work.insert(QStringLiteral("id"), QStringLiteral("Work VPN"));
+    work.insert(QStringLiteral("uuid"), QStringLiteral("11111111-1111-1111-1111-111111111111"));
+    work.insert(QStringLiteral("kind"), QStringLiteral("openvpn"));
+    work.insert(QStringLiteral("kindLabel"), QStringLiteral("OpenVPN"));
+    work.insert(QStringLiteral("state"), QStringLiteral("connected"));
+    work.insert(QStringLiteral("stateLabel"), QStringLiteral("Connected"));
+    work.insert(QStringLiteral("connected"), true);
+    work.insert(QStringLiteral("autoconnect"), true);
+    work.insert(QStringLiteral("label"), QStringLiteral("OpenVPN \u00b7 Connected"));
+
+    QJsonObject home;
+    home.insert(QStringLiteral("id"), QStringLiteral("Home"));
+    home.insert(QStringLiteral("uuid"), QStringLiteral("22222222-2222-2222-2222-222222222222"));
+    home.insert(QStringLiteral("kind"), QStringLiteral("wireguard"));
+    home.insert(QStringLiteral("kindLabel"), QStringLiteral("WireGuard"));
+    home.insert(QStringLiteral("state"), QStringLiteral("disconnected"));
+    home.insert(QStringLiteral("stateLabel"), QStringLiteral("Disconnected"));
+    home.insert(QStringLiteral("connected"), false);
+    home.insert(QStringLiteral("autoconnect"), false);
+    home.insert(QStringLiteral("label"), QStringLiteral("WireGuard \u00b7 Disconnected"));
+
+    QJsonObject view;
+    view.insert(QStringLiteral("kind"), QStringLiteral("vpn"));
+    view.insert(QStringLiteral("state"), QStringLiteral("available"));
+    view.insert(QStringLiteral("glyph"), QStringLiteral("vpn"));
+    view.insert(QStringLiteral("label"), QStringLiteral("Work VPN"));
+    view.insert(QStringLiteral("present"), true);
+    view.insert(QStringLiteral("connectionCount"), 2);
+    view.insert(QStringLiteral("connectedCount"), 1);
+    view.insert(QStringLiteral("activeUuid"),
+                QStringLiteral("11111111-1111-1111-1111-111111111111"));
+    view.insert(QStringLiteral("activeName"), QStringLiteral("Work VPN"));
+    view.insert(QStringLiteral("readOnly"), false);
+    view.insert(QStringLiteral("note"), QString());
+    view.insert(QStringLiteral("connections"),
+                QJsonArray { work, home });
+    emit vpnState(compact(view));
 }
 
 void MockSystemStatusClient::refreshWifi()

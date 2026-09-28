@@ -12,6 +12,7 @@
 #include "SoundClient.h"
 #include "StorageClient.h"
 #include "UpdatesClient.h"
+#include "VpnClient.h"
 #include "settingsclient.h"
 
 #include <QColor>
@@ -228,6 +229,16 @@ SettingsBridge::SettingsBridge(QObject *parent)
     connect(m_accessibility, &AccessibilityClient::availableChanged, this,
             [this](bool) { emit accessibilityChanged(); });
 
+    // T-15.15b: the Network advanced (VPN) seam, selected the same way.
+    if (qEnvironmentVariableIsSet("DF_VPN_FIXTURE"))
+        m_vpn = new MockVpnClient(this);
+    else
+        m_vpn = new DbusVpnClient(this);
+    connect(m_vpn, &VpnClient::changed, this,
+            [this](const QVariantMap &) { emit vpnChanged(); });
+    connect(m_vpn, &VpnClient::availableChanged, this,
+            [this](bool) { emit vpnChanged(); });
+
     buildWallpaperPresets();
     connectPortalWatcher();
     m_wallpaperFixture = qEnvironmentVariableIsSet("DF_WALLPAPER_FIXTURE");
@@ -370,6 +381,16 @@ QVariantMap SettingsBridge::accessibility() const
 bool SettingsBridge::accessibilityAvailable() const
 {
     return m_accessibility && m_accessibility->available();
+}
+
+QVariantMap SettingsBridge::vpn() const
+{
+    return m_vpn ? m_vpn->view() : QVariantMap();
+}
+
+bool SettingsBridge::vpnAvailable() const
+{
+    return m_vpn && m_vpn->available();
 }
 
 QString SettingsBridge::providerStatus() const
@@ -914,6 +935,30 @@ void SettingsBridge::resetAccessibilityFixture()
 {
     if (m_accessibility)
         m_accessibility->resetForTest();
+}
+
+void SettingsBridge::refreshVpn()
+{
+    if (m_vpn)
+        m_vpn->refresh();
+}
+
+void SettingsBridge::connectVpn(const QString &uuid)
+{
+    if (m_vpn && !uuid.isEmpty())
+        m_vpn->connectVpn(uuid);
+}
+
+void SettingsBridge::disconnectVpn(const QString &uuid)
+{
+    if (m_vpn && !uuid.isEmpty())
+        m_vpn->disconnectVpn(uuid);
+}
+
+void SettingsBridge::resetVpnFixture()
+{
+    if (m_vpn)
+        m_vpn->resetForTest();
 }
 
 void SettingsBridge::setWallpaperFixture(const QString &status)

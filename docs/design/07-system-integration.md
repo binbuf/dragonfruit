@@ -1237,6 +1237,25 @@ not add a second accessibility implementation.
   more from `xs` to `xxs` (the content gap stays `xxs`); the fixed 360×1160
   surface still holds every tile.
 
+### The Network advanced (VPN) pane and tile (T-15.15b)
+
+The Settings Network pane and the Control Center VPN tile ship in T-15.15b
+over the T-15.15a adapter, through the bridge host like the other T-15 adapters
+([adr/0147](adr/0147-network-advanced-vpn-pane-and-tile.md)). The pane carries
+the honest VPN surface the macOS Network capture does not pin: a `VPN` group
+with one row per configured connection and a live connect/disconnect toggle,
+the adapter's two writes, by UUID. It declares no settingsd key (NetworkManager
+owns the state, unlike the read-only Accessibility pane). The absence is
+layered: `unavailable` hides the item, a daemon with no VPN configured is
+`available` with `present: false` (the pane's empty note and the tile's hide
+rule), and a readable list polkit refuses to change stays visible with the
+writes disabled. It must not add a second VPN implementation.
+
+- **The Control Center tile fits without a scroll.** The eighteenth tile is a
+  compact single-line summary; the Accessibility and VPN tiles are single-line,
+  and the fixed surface grows to the 1164 px the nested output leaves below the
+  bar, so all eighteen tiles fit without clipping.
+
 ## The status bridge host (T-07.5a)
 
 The adapters are Rust crates; the menu bar is C++/QML. T-07.5a bridges them in
@@ -1280,6 +1299,9 @@ NetworkManager, audio, and power adapters and serves
   `Refresh()` only (the Accessibility pane and tile read the bridge host's
   live AT-SPI projection; the adapter has no setter, and the pane's
   `accessibility.reduceMotion` preference is a settingsd key).
+- `org.dragonfruit.SystemStatus1.Vpn` (T-15.15b) — `State()`/`Refresh()` plus
+  `Connect(uuid)` and `Deactivate(uuid)` (the Network advanced (VPN) pane's
+  writes over the NetworkManager VPN adapter).
 
 The host core (`StatusHost`) is adapter-only and CI-tested with the mocks; the
 D-Bus layer is a thin mechanical wrapper. The shell decodes the JSON in one

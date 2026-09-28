@@ -32,7 +32,8 @@ Item {
         // matrix asserts stays live while its provider is absent.
         readonly property var shippedPaneIds:
             ["appearance", "desktop-dock", "mission-control", "displays",
-             "wallpaper", "bluetooth", "battery", "storage", "general", "sound",
+             "wallpaper", "bluetooth", "network", "battery", "storage",
+             "general", "sound",
              "keyboard", "mouse", "trackpad", "notifications", "focus",
              "lock-screen", "menu-bar", "users-groups", "printers", "privacy",
              "accessibility"]
@@ -88,7 +89,7 @@ Item {
 
         function test_every_shipped_pane_has_a_body_and_no_other_does() {
             var shell = make();
-            compare(SettingsPanes.shippedPanes.length, 21);
+            compare(SettingsPanes.shippedPanes.length, 22);
             for (var i = 0; i < SettingsPanes.catalog.length; ++i) {
                 var pane = SettingsPanes.catalog[i];
                 var body = shell.paneComponent(pane.id);
@@ -583,6 +584,32 @@ Item {
             // A refresh is a safe no-op with no host.
             Settings.refreshAccessibility();
             compare(Settings.accessibilityAvailable, false);
+        }
+
+        // The Network advanced (VPN) view is a host-stack adapter read, so with
+        // no bridge host it is the absence state: the connection list is
+        // replaced by a one-line note and the two writes are safe no-ops. The
+        // pane owns no settingsd preference, because NetworkManager is the
+        // state (T-15.15b).
+        function test_network_pane_degrades_cleanly_without_the_bridge_host() {
+            var shell = make();
+            compare(Settings.vpnAvailable, false,
+                    "no bridge host is the absent state under test");
+            compare(Settings.vpn.state, undefined);
+
+            var pane = showPane(shell, "network");
+            compare(pane.ready, false);
+            compare(pane.absenceNote.visible, true,
+                    "the absence note explains the missing network service");
+            verify(pane.absenceNote.text.length > 0);
+            compare(pane.vpnGroup.visible, false);
+            compare(pane.connectionRepeater.count, 0);
+
+            // A refresh and the two writes are safe no-ops with no host.
+            Settings.refreshVpn();
+            Settings.connectVpn("11111111-1111-1111-1111-111111111111");
+            Settings.disconnectVpn("11111111-1111-1111-1111-111111111111");
+            compare(Settings.vpnAvailable, false);
         }
     }
 }

@@ -92,6 +92,13 @@ Item {
     // read-only summary; the Settings link opens the pane where the durable
     // preferences live.
     property var accessibility: ({})
+    // The Network advanced (VPN) view from the bridge host (T-15.15b), shaped
+    // by `SystemStatusModel`: `{ state, glyph, label, present, connectionCount,
+    // connectedCount, activeUuid, activeName, connections }`. The tile hides
+    // when NetworkManager answers with no VPN configured (`present: false`). It
+    // is a read-only summary; the Settings link opens the pane where the
+    // connect/deactivate writes live.
+    property var vpn: ({})
     property real brightness: 1.0
     // The notification service's Focus/DND policy view
     // (`{mode, allowList, batchedCount}`); empty when the service is absent.
@@ -396,6 +403,28 @@ Item {
         return root.accessibilityScreenReader ? qsTr("Screen Reader On") : qsTr("Off");
     }
 
+    // Network advanced (VPN) (T-15.15b): the tile reflects the bridge host's
+    // NetworkManager VPN view. It stays visible whenever at least one VPN is
+    // configured (`present`); the subtitle is the live label; the tap opens the
+    // Network pane.
+    readonly property bool vpnAvailable: root.vpn.state === "available"
+    // The tile hides when NetworkManager answers `present: false` (no VPN
+    // configured); a raw view without the normalized flag falls back to the
+    // availability.
+    readonly property bool vpnVisible: root.vpn.visible !== undefined
+        ? root.vpn.visible === true : root.vpnAvailable
+    readonly property bool vpnConnected: root.vpn.connectedCount !== undefined
+        ? Number(root.vpn.connectedCount) > 0 : false
+    readonly property string vpnGlyph: root.vpn.glyph !== undefined
+        ? String(root.vpn.glyph) : "vpn-off"
+    readonly property string vpnLabel: {
+        if (!root.vpnAvailable)
+            return qsTr("Unavailable");
+        if (root.vpn.label !== undefined && root.vpn.label !== "")
+            return root.vpn.label;
+        return root.vpnConnected ? qsTr("Connected") : qsTr("Not Connected");
+    }
+
     // The notification service's mode (`off`/`focus`/`dnd`). The toggle is Do
     // Not Disturb: `focus` also lights it, because both suppress banners.
     readonly property string focusMode: root.focusPolicy.mode !== undefined
@@ -567,6 +596,14 @@ Item {
             subtitle: root.accessibilityLabel,
             visible: root.accessibilityVisible,
             enabled: root.accessibilityVisible
+        },
+        {
+            id: "vpn",
+            kind: "info",
+            title: qsTr("VPN"),
+            subtitle: root.vpnLabel,
+            visible: root.vpnVisible,
+            enabled: root.vpnVisible
         }
     ]
 
@@ -636,6 +673,9 @@ Item {
     // The Accessibility tile (T-15.14b) is a read-only summary; the link opens
     // the Accessibility pane where the durable preferences live.
     signal accessibilitySettingsRequested()
+    // The Network advanced (VPN) tile (T-15.15b) is a read-only summary; the
+    // tap opens the Network pane where the connect/deactivate writes live.
+    signal vpnSettingsRequested()
 
     // Apply a volume fraction (0..1) and raise the request.
     function setVolume(fraction) {
@@ -747,15 +787,14 @@ Item {
             objectName: "controlCenterContent"
             anchors.fill: parent
             anchors.margins: Theme.primitive.spacing.md
-            // The panel now carries seventeen tiles (T-15.14b). Every tile's
+            // The panel now carries eighteen tiles (T-15.15b). Every tile's
             // vertical padding is the compact `xxs` step and the intermediate
-            // gap is the compact `xxs` step too; to fit the seventeenth tile the
-            // tiles' internal gap is compacted once more from `xs` to `xxs`, and
-            // the Accessibility tile is a compact single-row summary (no
-            // separate link line), so the content still fits the fixed 360x1160
-            // surface (the nested output leaves 1164 px below the bar) without a
-            // scrolling panel (the compositor forwards no pointer-axis events,
-            // ADR 0139/0141).
+            // gap is the compact `xxs` step too; the Accessibility and Network
+            // advanced (VPN) tiles are compact single-row summaries (no
+            // separate link line), and the shell surface is 1164 px (the nested
+            // output leaves 1164 px below the bar), so the content still fits
+            // without a scrolling panel (the compositor forwards no
+            // pointer-axis events, ADR 0139/0141).
             spacing: Theme.primitive.spacing.xxs
 
             // ── Wi-Fi ────────────────────────────────────────────────────
@@ -2039,47 +2078,109 @@ Item {
                     onTapped: root.accessibilitySettingsRequested()
                 }
 
-                Column {
+                Row {
                     id: accessibilityColumn
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.margins: Theme.primitive.spacing.xxs
-                    spacing: Theme.primitive.spacing.xxs
+                    spacing: Theme.primitive.spacing.sm
 
-                    Row {
-                        width: parent.width
-                        spacing: Theme.primitive.spacing.md
+                    IconTile {
+                        objectName: "accessibilityIcon"
+                        name: root.accessibilityGlyph
+                        tileSize: 24
+                        iconSize: 14
+                        active: root.accessibilityScreenReader
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
 
-                        IconTile {
-                            objectName: "accessibilityIcon"
-                            name: root.accessibilityGlyph
-                            tileSize: 32
-                            iconSize: 18
-                            active: root.accessibilityScreenReader
-                        }
+                    Text {
+                        id: accessibilityTitle
+                        objectName: "accessibilityTitle"
+                        text: qsTr("Accessibility")
+                        color: Theme.color.textPrimary
+                        font.pixelSize: Theme.controls.button.fontSize
+                        font.weight: Theme.primitive.font.weightMedium
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
 
-                        Column {
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: parent.width - 32 - 2 * Theme.primitive.spacing.md
+                    Text {
+                        objectName: "accessibilitySubtitle"
+                        width: Math.max(0, parent.width - 24 - accessibilityTitle.width
+                               - 2 * Theme.primitive.spacing.sm)
+                        text: root.accessibilityLabel
+                        color: Theme.color.textSecondary
+                        font.pixelSize: Theme.primitive.font.sizeSm
+                        elide: Text.ElideRight
+                        horizontalAlignment: Text.AlignRight
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+            }
 
-                            Text {
-                                objectName: "accessibilityTitle"
-                                text: qsTr("Accessibility")
-                                color: Theme.color.textPrimary
-                                font.pixelSize: Theme.controls.button.fontSize
-                                font.weight: Theme.primitive.font.weightMedium
-                            }
+            // ── Network advanced (VPN) (T-15.15b) ───────────────────────
+            // A compact read-only summary: the tile is the tappable affordance
+            // that opens the Network pane (no separate link line, so the
+            // eighteenth tile still fits the fixed surface).
+            Rectangle {
+                id: vpnTile
+                objectName: "vpnTile"
+                width: parent.width
+                visible: root.vpnVisible
+                implicitHeight: vpnColumn.implicitHeight
+                                + 2 * Theme.primitive.spacing.xxs
+                radius: Theme.primitive.radius.md
+                color: vpnHover.hovered ? Theme.color.surfaceElevated
+                                        : Theme.color.surfaceSunken
+                Accessible.role: Accessible.Button
+                Accessible.name: qsTr("VPN")
+                Accessible.description: root.vpnLabel
+                Accessible.onPressAction: root.vpnSettingsRequested()
 
-                            Text {
-                                objectName: "accessibilitySubtitle"
-                                width: parent.width
-                                text: root.accessibilityLabel
-                                color: Theme.color.textSecondary
-                                font.pixelSize: Theme.primitive.font.sizeSm
-                                elide: Text.ElideRight
-                            }
-                        }
+                HoverHandler { id: vpnHover }
+
+                TapHandler {
+                    onTapped: root.vpnSettingsRequested()
+                }
+
+                Row {
+                    id: vpnColumn
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: Theme.primitive.spacing.xxs
+                    spacing: Theme.primitive.spacing.sm
+
+                    IconTile {
+                        objectName: "vpnIcon"
+                        name: root.vpnGlyph
+                        tileSize: 24
+                        iconSize: 14
+                        active: root.vpnConnected
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    Text {
+                        id: vpnTitle
+                        objectName: "vpnTitle"
+                        text: qsTr("VPN")
+                        color: Theme.color.textPrimary
+                        font.pixelSize: Theme.controls.button.fontSize
+                        font.weight: Theme.primitive.font.weightMedium
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    Text {
+                        objectName: "vpnSubtitle"
+                        width: Math.max(0, parent.width - 24 - vpnTitle.width
+                               - 2 * Theme.primitive.spacing.sm)
+                        text: root.vpnLabel
+                        color: Theme.color.textSecondary
+                        font.pixelSize: Theme.primitive.font.sizeSm
+                        elide: Text.ElideRight
+                        horizontalAlignment: Text.AlignRight
+                        anchors.verticalCenter: parent.verticalCenter
                     }
                 }
             }

@@ -22,6 +22,7 @@
 //! dragonfruit-system-status --print-printers
 //! dragonfruit-system-status --print-privacy
 //! dragonfruit-system-status --print-accessibility
+//! dragonfruit-system-status --print-vpn
 //! ```
 
 use std::process::ExitCode;
@@ -31,7 +32,7 @@ use dragonfruit_account_adapter::HostAccounts;
 use dragonfruit_audio::CommandAudio;
 use dragonfruit_bluetooth::DbusBluez;
 use dragonfruit_input::CommandLibinput;
-use dragonfruit_networkmanager::DbusNetworkManager;
+use dragonfruit_networkmanager::{DbusNetworkManager, DbusVpn};
 use dragonfruit_notify_adapter::DbusNotifications;
 use dragonfruit_power::DbusUPower;
 use dragonfruit_printer_adapter::HostPrint;
@@ -48,6 +49,7 @@ use dragonfruit_system_status::PrivacyHost;
 use dragonfruit_system_status::StatusHost;
 use dragonfruit_system_status::StorageHost;
 use dragonfruit_system_status::UpdatesHost;
+use dragonfruit_system_status::VpnHost;
 use dragonfruit_update_adapter::HostSystem;
 
 fn main() -> ExitCode {
@@ -63,6 +65,7 @@ fn main() -> ExitCode {
     let mut print_printers = false;
     let mut print_privacy = false;
     let mut print_accessibility = false;
+    let mut print_vpn = false;
     for arg in std::env::args().skip(1) {
         match arg.as_str() {
             "--print-wifi" => print_wifi = true,
@@ -77,6 +80,7 @@ fn main() -> ExitCode {
             "--print-printers" => print_printers = true,
             "--print-privacy" => print_privacy = true,
             "--print-accessibility" => print_accessibility = true,
+            "--print-vpn" => print_vpn = true,
             "-h" | "--help" => {
                 print_help();
                 return ExitCode::SUCCESS;
@@ -115,7 +119,15 @@ fn main() -> ExitCode {
     // The AT-SPI accessibility bus over the session bus; no bus is a normal
     // hidden state (ADR 0144).
     let mut accessibility = AccessibilityHost::new(HostAccessibility::new());
+    // NetworkManager's VPN connections over the system bus; no daemon is a
+    // normal hidden state (ADR 0146).
+    let mut vpn = VpnHost::new(DbusVpn::new());
 
+    if print_vpn {
+        vpn.refresh();
+        println!("{}", vpn.state());
+        return ExitCode::SUCCESS;
+    }
     if print_accessibility {
         accessibility.refresh();
         println!("{}", accessibility.state());
@@ -187,6 +199,7 @@ fn main() -> ExitCode {
     printers.refresh();
     privacy.refresh();
     accessibility.refresh();
+    vpn.refresh();
     match dbus::run(
         host,
         bluetooth,
@@ -198,6 +211,7 @@ fn main() -> ExitCode {
         printers,
         privacy,
         accessibility,
+        vpn,
     ) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
@@ -229,6 +243,7 @@ fn print_help() {
            --print-printers refresh CUPS/SANE and print the Printers and Scanners JSON view\n\
            --print-privacy  refresh the portal PermissionStore and print the Privacy JSON view\n\
            --print-accessibility refresh the AT-SPI bus and print the Accessibility JSON view\n\
+           --print-vpn      refresh NetworkManager and print the Network advanced (VPN) JSON view\n\
            -h, --help       show this help"
     );
 }

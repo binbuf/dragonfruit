@@ -41,6 +41,7 @@ Item {
         SignalSpy { id: printersSettingsSpy; signalName: "printersSettingsRequested" }
         SignalSpy { id: privacySettingsSpy; signalName: "privacySettingsRequested" }
         SignalSpy { id: accessibilitySettingsSpy; signalName: "accessibilitySettingsRequested" }
+        SignalSpy { id: vpnSettingsSpy; signalName: "vpnSettingsRequested" }
         SignalSpy { id: focusSpy; signalName: "focusToggleRequested" }
         SignalSpy { id: darkSpy; signalName: "darkModeToggleRequested" }
         SignalSpy { id: closedSpy; signalName: "closed" }
@@ -313,6 +314,28 @@ Item {
             };
         }
 
+        // The shell's decoded Network advanced (VPN) view (T-15.15b), shaped by
+        // `SystemStatusModel`.
+        function vpnModel(label, connected, present) {
+            var conn = connected !== undefined ? connected : true;
+            var pres = present !== undefined ? present : true;
+            return {
+                kind: "vpn",
+                state: "available",
+                visible: pres,
+                enabled: true,
+                glyph: conn ? "vpn" : "vpn-off",
+                label: label !== undefined ? label
+                    : (conn ? "Work VPN" : "Not Connected"),
+                present: pres,
+                connectionCount: 2,
+                connectedCount: conn ? 1 : 0,
+                activeUuid: conn ? "11111111-1111-1111-1111-111111111111" : "",
+                activeName: conn ? "Work VPN" : "",
+                connections: []
+            };
+        }
+
         function menuBarModel(autoHide, showBackground, globalMenu) {
             var label = autoHide === "never" ? "Never"
                 : autoHide === "always" ? "Always"
@@ -360,11 +383,12 @@ Item {
                 printers: printersModel("2 Printers, 1 Scanner", 2, 1),
                 privacy: privacyModel("3 Apps", 3),
                 accessibility: accessibilityModel("Screen Reader On", true, true),
+                vpn: vpnModel("Work VPN", true, true),
                 brightness: 0.8,
                 focusPolicy: focusModel("off"),
                 dark: true
             });
-            compare(panel.tiles.length, 17);
+            compare(panel.tiles.length, 18);
             compare(panel.tiles[0].id, "wifi");
             compare(panel.tiles[0].kind, "toggle");
             compare(panel.tiles[0].checked, true);
@@ -412,6 +436,9 @@ Item {
             compare(panel.tiles[16].id, "accessibility");
             compare(panel.tiles[16].kind, "info");
             compare(panel.tiles[16].subtitle, "Screen Reader On");
+            compare(panel.tiles[17].id, "vpn");
+            compare(panel.tiles[17].kind, "info");
+            compare(panel.tiles[17].subtitle, "Work VPN");
             compare(panel.wifiLabel, "home");
         }
 
@@ -444,17 +471,18 @@ lockPolicy: lockPolicyModel(600),
                 printers: printersModel("2 Printers, 1 Scanner", 2, 1),
                 privacy: privacyModel("3 Apps", 3),
                 accessibility: accessibilityModel("Screen Reader On", true, true),
+                vpn: vpnModel("Work VPN", true, true),
                 brightness: 1.0,
                 focusPolicy: focusModel("off"),
                 dark: false
             });
             panel.width = 360;
-            panel.height = 1160;
+            panel.height = 1164;
             waitForRendering(stage);
             var content = findChild(panel, "controlCenterContent");
             verify(content !== null);
-            verify(content.childrenRect.height <= 1160,
-                   "Control Center content must fit the 1160px surface, height="
+            verify(content.childrenRect.height <= 1164,
+                   "Control Center content must fit the 1164px surface, height="
                    + content.childrenRect.height);
         }
 
@@ -1020,6 +1048,53 @@ lockPolicy: lockPolicyModel(600),
             compare(tile.Accessible.name, "Accessibility");
             mouseClick(tile, tile.width / 2, tile.height / 2);
             compare(accessibilitySettingsSpy.count, 1);
+        }
+
+        function test_vpn_tile_reflects_state() {
+            var panel = make({ vpn: vpnModel("Work VPN", true, true) });
+            compare(panel.vpnAvailable, true);
+            compare(panel.vpnVisible, true);
+            compare(panel.vpnConnected, true);
+            compare(panel.vpnGlyph, "vpn");
+            compare(panel.vpnLabel, "Work VPN");
+            compare(panel.tiles[17].visible, true);
+            compare(panel.tiles[17].enabled, true);
+
+            // A disconnect round-trip converges into the tile.
+            panel.vpn = vpnModel("Not Connected", false, true);
+            compare(panel.vpnConnected, false);
+            compare(panel.vpnGlyph, "vpn-off");
+            compare(panel.vpnLabel, "Not Connected");
+            compare(panel.vpnVisible, true);
+
+            // NetworkManager with no VPN configured is `present: false`.
+            panel.vpn = {
+                kind: "vpn", state: "available", visible: false,
+                enabled: true, present: false, label: "No VPN",
+                connectionCount: 0, connectedCount: 0
+            };
+            compare(panel.vpnVisible, false);
+            compare(panel.tiles[17].visible, false);
+        }
+
+        function test_vpn_tile_hides_on_absence() {
+            var panel = make({ vpn: ({ state: "unavailable" }) });
+            compare(panel.vpnAvailable, false);
+            var tile = findChild(panel, "vpnTile");
+            verify(tile !== null);
+            compare(tile.visible, false);
+        }
+
+        function test_vpn_tile_opens_the_pane() {
+            var panel = make({ vpn: vpnModel("Work VPN", true, true) });
+            vpnSettingsSpy.target = panel;
+            vpnSettingsSpy.clear();
+            var tile = findChild(panel, "vpnTile");
+            verify(tile !== null, "the VPN tile is present");
+            compare(tile.Accessible.role, Accessible.Button);
+            compare(tile.Accessible.name, "VPN");
+            mouseClick(tile, tile.width / 2, tile.height / 2);
+            compare(vpnSettingsSpy.count, 1);
         }
 
         function test_battery_settings_link_raises_the_request() {

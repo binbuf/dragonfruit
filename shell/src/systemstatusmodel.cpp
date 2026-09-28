@@ -19,6 +19,7 @@ const QString kKindAccounts = QStringLiteral("accounts");
 const QString kKindPrinters = QStringLiteral("printers");
 const QString kKindPrivacy = QStringLiteral("privacy");
 const QString kKindAccessibility = QStringLiteral("accessibility");
+const QString kKindVpn = QStringLiteral("vpn");
 
 } // namespace
 
@@ -82,6 +83,11 @@ bool SystemStatusModel::accessibilityVisible() const
     return m_accessibility.value(QStringLiteral("visible")).toBool();
 }
 
+bool SystemStatusModel::vpnVisible() const
+{
+    return m_vpn.value(QStringLiteral("visible")).toBool();
+}
+
 QVariantMap SystemStatusModel::parseView(const QByteArray &json, const QString &kind, QString *error)
 {
     QJsonParseError parseError{};
@@ -121,7 +127,7 @@ QVariantMap SystemStatusModel::normalize(const QVariantMap &view, const QString 
     // `available` with `present: false` and the tile hides.
     if ((kind == kKindBattery || kind == kKindBluetooth || kind == kKindStorage
              || kind == kKindInput || kind == kKindPrinters || kind == kKindPrivacy
-             || kind == kKindAccessibility)
+             || kind == kKindAccessibility || kind == kKindVpn)
             && view.contains(QStringLiteral("present"))
             && !view.value(QStringLiteral("present")).toBool())
         hidden = true;
@@ -213,6 +219,15 @@ void SystemStatusModel::applyAccessibility(const QVariantMap &view)
     // that answers with every feature off is `available` with `present: false`,
     // so the tile hides then too (ADR 0144).
     m_accessibility = normalize(view, kKindAccessibility);
+    emit changed();
+}
+
+void SystemStatusModel::applyVpn(const QVariantMap &view)
+{
+    // The Network advanced (VPN) view has a second hide rule (`present`): a
+    // running NetworkManager with no VPN configured is `available` with
+    // `present: false`, so the tile hides then too (ADR 0146).
+    m_vpn = normalize(view, kKindVpn);
     emit changed();
 }
 
@@ -315,6 +330,15 @@ void SystemStatusModel::applyAccessibilityJson(const QByteArray &json)
     applyAccessibility(view);
 }
 
+void SystemStatusModel::applyVpnJson(const QByteArray &json)
+{
+    QString error;
+    const QVariantMap view = parseView(json, kKindVpn, &error);
+    if (!error.isEmpty())
+        return;
+    applyVpn(view);
+}
+
 void SystemStatusModel::requestJoin(const QString &ssid, const QString &secret)
 {
     if (ssid.isEmpty())
@@ -400,4 +424,9 @@ void SystemStatusModel::requestRefreshPrivacy()
 void SystemStatusModel::requestRefreshAccessibility()
 {
     emit refreshAccessibilityRequested();
+}
+
+void SystemStatusModel::requestRefreshVpn()
+{
+    emit refreshVpnRequested();
 }
