@@ -298,11 +298,14 @@ impl DfState {
                 let parent = surface
                     .is_transient_for()
                     .and_then(|id| self.window_for_x11_id(id));
-                let geometry = if let Some(parent) = &parent {
+                let (placement_output, geometry) = if let Some(parent) = &parent {
                     let parent_geometry = self.windows.geometry(parent).unwrap_or_default();
-                    centered_on(parent_geometry, size)
+                    (
+                        self.output_name_for(parent),
+                        centered_on(parent_geometry, size),
+                    )
                 } else {
-                    let (output_name, output_geometry) = self.primary_output();
+                    let (output_name, output_geometry) = self.focused_output();
                     // Honor an ICCCM *user-specified* position (`USPosition`),
                     // which a window manager must; `PPosition` is only a hint,
                     // so everything else cascades.
@@ -316,19 +319,34 @@ impl DfState {
                             )
                         })
                         .map(|(_, x, y)| (x, y));
-                    match (requested, output_geometry) {
+                    let geometry = match (requested, output_geometry) {
                         (Some(position), Some(output)) => {
                             user_positioned_geometry(output, size, position)
                         }
                         _ => {
                             let index = output_name
-                                .map(|name| self.windows.cascade_index(&name))
+                                .as_deref()
+                                .map(|name| self.windows.cascade_index(name))
                                 .unwrap_or(0);
+                            // Cascade inside the focused output's usable area,
+                            // clear of that display's reserved chrome (T-16.1b).
+                            let zones = output_name
+                                .as_deref()
+                                .map(|name| self.shell.reserved_zones_for(name))
+                                .unwrap_or(self.reserved_zones);
                             output_geometry
-                                .map(|output| cascaded_geometry(output, size, index, CASCADE_STEP))
+                                .map(|output| {
+                                    cascaded_geometry(
+                                        zones.usable(output),
+                                        size,
+                                        index,
+                                        CASCADE_STEP,
+                                    )
+                                })
                                 .unwrap_or_else(|| Rectangle::new(Point::from((0, 0)), size))
                         }
-                    }
+                    };
+                    (output_name, geometry)
                 };
                 let id = self.windows.insert(window.clone(), geometry);
                 let app_id = self.resolve_x11_identity(&surface.instance(), &surface.class());
@@ -340,7 +358,7 @@ impl DfState {
                 if let Some(parent) = parent {
                     self.windows.set_parent(&window, &parent);
                 }
-                self.assign_new_window_space(&window, id);
+                self.assign_new_window_space(&window, id, placement_output.as_deref());
                 (window, true)
             }
         };

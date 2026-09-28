@@ -654,9 +654,10 @@ impl DfState {
     /// Map pending toplevels into the scene once they have a buffer.
     ///
     /// Placement policy (T-04 FR-5/FR-6): transient dialogs center on
-    /// their parent; ordinary windows open centered on the active output
-    /// with a wrapping per-output cascade. Stacking and focus remain
-    /// compositor state.
+    /// their parent; ordinary windows open centered on the **focused
+    /// output** ([`Self::focused_output`]) with a wrapping per-output
+    /// cascade, inside that output's reserved zones (T-16.1b). Stacking
+    /// and focus remain compositor state.
     pub fn map_pending_windows(&mut self) {
         let mut to_map = Vec::new();
         self.pending_windows.retain(|window| {
@@ -687,21 +688,38 @@ impl DfState {
                 .and_then(|toplevel| toplevel.parent())
                 .and_then(|parent| self.window_for_surface(&parent));
 
-            let geometry = if let Some(parent) = &parent {
+            // The output this window belongs to: a transient dialog follows
+            // its parent; an ordinary window opens on the focused output
+            // (T-16.1b). The name also drives workspace assignment below.
+            let (placement_output, geometry) = if let Some(parent) = &parent {
                 let parent_geometry = self
                     .windows
                     .geometry(parent)
                     .or_else(|| self.space.element_geometry(parent))
                     .unwrap_or_default();
-                centered_on(parent_geometry, size)
+                (
+                    self.output_name_for(parent),
+                    centered_on(parent_geometry, size),
+                )
             } else {
-                let (output_name, output_geometry) = self.primary_output();
+                let (output_name, output_geometry) = self.focused_output();
                 let index = output_name
-                    .map(|name| self.windows.cascade_index(&name))
+                    .as_deref()
+                    .map(|name| self.windows.cascade_index(name))
                     .unwrap_or(0);
-                output_geometry
-                    .map(|output| cascaded_geometry(output, size, index, CASCADE_STEP))
-                    .unwrap_or_else(|| Rectangle::new(Point::from((0, 0)), size))
+                // Windows open inside the focused output's usable area, so a
+                // reserved menu bar or Dock pushes them clear of the chrome
+                // (T-16.1b).
+                let zones = output_name
+                    .as_deref()
+                    .map(|name| self.shell.reserved_zones_for(name))
+                    .unwrap_or(self.reserved_zones);
+                let geometry = output_geometry
+                    .map(|output| {
+                        cascaded_geometry(zones.usable(output), size, index, CASCADE_STEP)
+                    })
+                    .unwrap_or_else(|| Rectangle::new(Point::from((0, 0)), size));
+                (output_name, geometry)
             };
 
             let id = self.windows.insert(window.clone(), geometry);
@@ -725,7 +743,7 @@ impl DfState {
             // Workspace assignment: a new window opens on the Space its app
             // remembers (activating it in lockstep), otherwise on the active
             // Space of the output it is placed on (FR-5).
-            if self.assign_new_window_space(&window, id) {
+            if self.assign_new_window_space(&window, id, placement_output.as_deref()) {
                 switched = true;
             }
             if self.window_on_active_space(&window) {
@@ -742,7 +760,8 @@ impl DfState {
         }
     }
 
-    /// The output new windows are placed on until Spaces (T-05) select one.
+    /// The primary output: the first output in the space's iteration order.
+    /// This is the fallback when no focus is resolvable.
     pub fn primary_output(&self) -> (Option<String>, Option<Rectangle<i32, Logical>>) {
         match self.space.outputs().next() {
             Some(output) => (Some(output.name()), self.space.output_geometry(output)),
@@ -750,10 +769,44 @@ impl DfState {
         }
     }
 
+    /// The logical geometry of the output named `name`.
+    fn output_geometry_named(&self, name: &str) -> Option<Rectangle<i32, Logical>> {
+        self.space
+            .outputs()
+            .find(|output| output.name() == name)
+            .and_then(|output| self.space.output_geometry(output))
+    }
+
+    /// The output new windows are placed on: the **focused output**
+    /// (T-16.1b).
+    ///
+    /// Resolution order is the output under the pointer — the display the
+    /// user is currently working on, which is what makes new windows open
+    /// where the pointer is and lets a display with no windows yet receive
+    /// one — then the active window's output, then the primary output. The
+    /// geometry is the output's full logical rectangle; callers subtract
+    /// that output's reserved zones for a usable area.
+    pub fn focused_output(&self) -> (Option<String>, Option<Rectangle<i32, Logical>>) {
+        if let Some(name) = self.output_name_under_pointer() {
+            if let Some(geometry) = self.output_geometry_named(&name) {
+                return (Some(name), Some(geometry));
+            }
+        }
+        if let Some(window) = self.active_window.as_ref() {
+            if let Some(name) = self.output_name_for(window) {
+                if let Some(geometry) = self.output_geometry_named(&name) {
+                    return (Some(name), Some(geometry));
+                }
+            }
+        }
+        self.primary_output()
+    }
+
     /// The output whose geometry contains the pointer, if any.
     ///
     /// This is the "active" output for per-output chrome: a popover opened on
-    /// one display is shown only there (T-10 section 18).
+    /// one display is shown only there (T-10 section 18). It is also the
+    /// first signal of the focused output for window placement (T-16.1b).
     pub fn output_name_under_pointer(&self) -> Option<String> {
         let location = self.seat.get_pointer()?.current_location();
         self.space
@@ -778,10 +831,18 @@ impl DfState {
 
     /// Assign a newly mapped window to a Space. It goes to the Space its app
     /// remembers (activating that Space in lockstep, FR-5) or the active
-    /// Space of the primary output otherwise. Returns true if the active
-    /// Space changed.
-    pub(crate) fn assign_new_window_space(&mut self, window: &Window, id: WindowId) -> bool {
-        let (Some(output_name), _) = self.primary_output() else {
+    /// Space of `output_name` — the output the window was placed on — falling
+    /// back to the primary output. Returns true if the active Space changed.
+    pub(crate) fn assign_new_window_space(
+        &mut self,
+        window: &Window,
+        id: WindowId,
+        output_name: Option<&str>,
+    ) -> bool {
+        let Some(output_name) = output_name
+            .map(str::to_string)
+            .or_else(|| self.primary_output().0)
+        else {
             return false;
         };
         let remembered = self

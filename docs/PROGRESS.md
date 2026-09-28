@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(140 earlier sections omitted)_
+_(141 earlier sections omitted)_
 
-- **T110z — T-14.7z Dock plate rendering: corner-following rim and frost alignment**: **State: done.** The plate is now one integer rounded rect in every state. The; `shell/dock/Dock.qml` — new `panelRect` (each edge of the live `plateRect`
 - **T110w — T-14.7w Dock icon tiles: true squircle masking**: **State: done.** Every Dock app tile now clips its themed artwork to the token; `shell/dock/DockGlyph.qml` — the themed app artwork is now a `Canvas`
 - **T172 — T-18.1a Wallpaper provider service and shipped default**: **State: done.** `services/wallpaperd` is a real session service. It resolves; `services/wallpaperd/` (new crate, workspace member) —
 - **T173 — T-18.1b Provider settings, wallpaper API wiring, and effective source**: **State: done.** The additive provider keys are declared (schema rev 10), the; `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 9 → 10; 5 additive
@@ -44,6 +43,7 @@ _(140 earlier sections omitted)_
 - **T140 — T-15.15b Network advanced (VPN) pane and tile**: **State: done.** The Settings `Network` pane and the Control Center `VPN` tile; `services/system-status/src/vpn.rs` (new) — `VpnHost<S>` (refresh/view/state/
 - **T141 — T-15.16 Absent-daemon matrix and breadth capture**: **State: done.** The T-15 track is closed. The absent-daemon masking matrix is; `docs/design/08-settings.md` — new "The absent-daemon masking matrix
 - **T142 — T-16.1a Per-output chrome sizing and reserved zones**: **State: done.** Reserved zones are now **per output**: `aggregate_reserved_for`; `compositor/src/shell/layer.rs` — `aggregate_reserved_for(output_name,
+- **T143 — T-16.1b Per-output window placement**: **State: done.** New windows now open on the **focused output** and inside; `compositor/src/state.rs` — new `focused_output()` + `output_geometry_named()`;
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -13538,3 +13538,62 @@ Decisions / gotchas for T-16.1b and later:
 - **`DfState.reserved_zones` is now only a fallback** (the global union), not
   the source of truth. New consumers should use `usable_geometry_for` /
   `ShellProtocolState::reserved_zones_for`.
+
+## T143 — T-16.1b Per-output window placement
+
+**State: done.** New windows now open on the **focused output** and inside
+that output's reserved zones. `DfState::focused_output()` resolves the output
+under the pointer first, then the active window's output, then the primary.
+Ordinary windows cascade in `reserved_zones_for(name).usable(output)` so a menu
+bar or Dock pushes them clear of chrome. Workspace assignment follows the
+placement output (focused output; the transient parent's output for a dialog).
+The Xwayland placement path uses the same resolver. ADR 0150.
+
+Real paths:
+
+- `compositor/src/state.rs` — new `focused_output()` + `output_geometry_named()`;
+  `map_pending_windows` computes `placement_output` from the focused output (or
+  the parent for a transient) and cascades over the usable rect;
+  `assign_new_window_space(window, id, output_name)` now takes the target
+  output; `primary_output` kept as the fallback.
+- `compositor/src/xwayland.rs` — same focused-output + usable-area cascade and
+  output-aware workspace assignment.
+- `compositor/tests/shell_protocol_conformance.rs` — new
+  `new_windows_land_on_the_focused_output`: two outputs, a 28 px bar pinned to
+  the primary, three windows read back via `query decorations`; A (pointer on
+  primary) clears the reserve, B (pointer on HDMI-A-1) centers in the full
+  second-output height, C (pointer back) clears the reserve again. The
+  `identity_app_ids` / `decoration_content_rects` / `window_rect` helpers parse
+  the synthetic-input introspection.
+- `docs/design/02-compositor.md` — Placement bullet updated.
+- `docs/design/adr/0150-per-output-window-placement.md` (new).
+
+Commands that work (repo root; `PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig`,
+`RUSTFLAGS=-L $HOME/.local/df-devroot/lib64` when libudev is absent):
+
+- `cargo test -p dragonfruit-compositor` — all suites green
+  (`shell_protocol_conformance` 36 → 37 tests).
+- `cargo clippy -p dragonfruit-compositor --all-targets -- -D warnings` and
+  `cargo fmt --all -- --check` — clean.
+- `make e2e` — EXIT 0 (`/tmp/opencode/t143-e2e.log`).
+- Live visual check: `/tmp/opencode/t143.png` (2115x1437) via
+  `/tmp/opencode/capture-t143.sh`; vision found the menu bar, Dock, wallpaper,
+  the centered Settings client, and the X11 demo window compositing with no
+  blank areas, clipping, or stray artifacts.
+
+Decisions / gotchas for T-16.2 and later:
+
+- **Focused output = pointer-first**, then active window, then primary.
+  Documented tradeoff in ADR 0150: a keyboard launch while the pointer rests on
+  another display opens there. Pointer-first is also the only rule that can
+  seed a display with no windows yet.
+- **Placement subtracts only the focused output's zones**, never the global
+  union. `cascaded_geometry` receives the usable rect; the per-output cascade
+  index still keys on the output name.
+- **Assignment follows placement.** A window placed on output X is assigned to
+  X's active Space, not the primary's. Before T143 the geometry was per-output
+  but the Space assignment still used the primary — a latent mismatch now gone.
+- **Hotplug fallback is automatic.** `focused_output()` walks the live
+  `space.outputs()`, so a removed output cannot be selected; T-16.2 inherits it.
+- **No protocol change.** The shell sees the existing `df_toplevel.output_entered`
+  and per-output `df_output` events; nothing new is exposed.
