@@ -19,7 +19,7 @@ use crate::value::{SettingsError, Value};
 
 /// The current schema revision. Bump only when a key is added or a default
 /// changes; renames and removals are forbidden within the `1` series.
-pub const SCHEMA_VERSION: u32 = 9;
+pub const SCHEMA_VERSION: u32 = 10;
 
 /// The D-Bus type of a settings value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -503,6 +503,71 @@ pub const KEYS: &[KeySpec] = &[
         since: 2,
         summary: "Apply the selection to every Space, or only the active one.",
     },
+    KeySpec {
+        key: "wallpaper.provider",
+        group: KeyGroup::Wallpaper,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("wikimedia"),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "wallpaperd",
+        consumer: "services/wallpaperd",
+        since: 10,
+        summary: "Active online wallpaper content provider; `wikimedia` today.",
+    },
+    KeySpec {
+        key: "wallpaper.providerAutoFetch",
+        group: KeyGroup::Wallpaper,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(true),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "wallpaperd",
+        consumer: "services/wallpaperd",
+        since: 10,
+        summary: "Let the provider refresh its Featured catalogue in the background.",
+    },
+    KeySpec {
+        key: "wallpaper.providerLastFetch",
+        group: KeyGroup::Wallpaper,
+        kind: KeyType::Integer,
+        default: KeyDefault::Integer(0),
+        allowed: &[],
+        min: Some(0.0),
+        max: None,
+        owner: "wallpaperd",
+        consumer: "services/wallpaperd",
+        since: 10,
+        summary: "Unix seconds of the provider's last successful catalogue fetch; 0 = never.",
+    },
+    KeySpec {
+        key: "wallpaper.providerSource",
+        group: KeyGroup::Wallpaper,
+        kind: KeyType::Text,
+        default: KeyDefault::Text(""),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "wallpaperd",
+        consumer: "shell/wallpaper forwarder",
+        since: 10,
+        summary: "Fetched Featured default/fallback image path; empty until a catalogue exists.",
+    },
+    KeySpec {
+        key: "wallpaper.builtinDefault",
+        group: KeyGroup::Wallpaper,
+        kind: KeyType::Text,
+        default: KeyDefault::Text(""),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "wallpaperd",
+        consumer: "shell/wallpaper forwarder, apps/settings",
+        since: 10,
+        summary: "Resolved path of the shipped original Default.jpg; the out-of-box background.",
+    },
     // ── Displays ────────────────────────────────────────────────────────
     KeySpec {
         key: "display.scale",
@@ -829,6 +894,50 @@ mod tests {
         assert!(spec.since <= SCHEMA_VERSION);
         assert!(spec.validate(&Value::Bool(true)).is_ok());
         assert!(spec.validate(&Value::Text("on".into())).is_err());
+    }
+
+    /// The wallpaper provider keys (T-18.1b, ADR 0094/0055): additive in
+    /// revision 10, `wallpaperd`-owned, all defaults off/empty so the shipped
+    /// default and a user choice keep winning.
+    #[test]
+    fn the_wallpaper_provider_keys_are_declared_in_revision_ten() {
+        for (key, kind, default) in [
+            (
+                "wallpaper.provider",
+                KeyType::Text,
+                KeyDefault::Text("wikimedia"),
+            ),
+            (
+                "wallpaper.providerAutoFetch",
+                KeyType::Bool,
+                KeyDefault::Bool(true),
+            ),
+            (
+                "wallpaper.providerLastFetch",
+                KeyType::Integer,
+                KeyDefault::Integer(0),
+            ),
+            (
+                "wallpaper.providerSource",
+                KeyType::Text,
+                KeyDefault::Text(""),
+            ),
+            (
+                "wallpaper.builtinDefault",
+                KeyType::Text,
+                KeyDefault::Text(""),
+            ),
+        ] {
+            let spec = spec(key).unwrap_or_else(|| panic!("{key} is declared"));
+            assert_eq!(spec.group, KeyGroup::Wallpaper, "{key}");
+            assert_eq!(spec.kind, kind, "{key}");
+            assert_eq!(spec.default, default, "{key}");
+            assert_eq!(spec.owner, "wallpaperd", "{key}");
+            assert_eq!(spec.since, 10, "{key}");
+            assert!(spec.since <= SCHEMA_VERSION, "{key}");
+        }
+        // `wallpaper.source` stays the user override owned by apps/settings.
+        assert_eq!(spec("wallpaper.source").unwrap().owner, "apps/settings");
     }
 
     /// A frozen manifest of the v1 key set. Adding a key is allowed (extend

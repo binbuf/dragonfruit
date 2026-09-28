@@ -16,6 +16,9 @@
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDBusConnection>
+#include <QDBusMessage>
+#include <QDBusServiceWatcher>
+#include <QDBusVariant>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -55,6 +58,14 @@ namespace {
 // How long a launch may take to map its first window before the Dock treats
 // it as failed (T-10 section 8.5). Interim until app-index owns activation.
 constexpr qint64 kLaunchTimeoutMs = 8000;
+
+// The wallpaper content provider (T-18.1b): the session-bus surface the shell
+// reads the shipped and fetched defaults from, so the out-of-box background
+// reaches the compositor even when settingsd is absent (ADR 0094/0114). The
+// provider is never required: an absent service is a normal state.
+const QString kWallpaperService = QStringLiteral("org.dragonfruit.Wallpaper1");
+const QString kWallpaperPath = QStringLiteral("/org/dragonfruit/Wallpaper1");
+const QString kWallpaperInterface = QStringLiteral("org.dragonfruit.Wallpaper1");
 
 // The Dock's offscreen buffer reserves a fixed popover headroom (above a
 // bottom Dock / beside a vertical one) and side gutters so opening a
@@ -320,6 +331,10 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             &ShellController::applyDisplayPolicy);
     connect(m_settingsClient, &SettingsClient::refreshed, this,
             &ShellController::applyDisplayPolicy);
+    // T-18.1b: the provider's resolved defaults are a second wallpaper input;
+    // subscribing here means the shipped default reaches the compositor even
+    // when settingsd is absent, and a provider restart re-syncs it.
+    connectWallpaperProvider();
     // `auto` follows the host scheme for the compositor too; ThemeBinding owns
     // the Theme side, this keeps the forwarded scheme live.
     if (QStyleHints *hints = QGuiApplication::styleHints()) {
@@ -4288,23 +4303,117 @@ void ShellController::applyMenuBarPolicy()
 
 void ShellController::applyWallpaperPolicy()
 {
-    // T-09.3: one view of the settingsd wallpaper keys, forwarded to the
-    // compositor as per-Space `df_workspace.set_wallpaper`. The compositor is
-    // the sole applier; the shell keeps no second settings source.
-    if (!m_settingsClient || !m_protocol)
+    // T-09.3 / T-18.1b: one view of the settingsd wallpaper keys plus the
+    // provider's resolved defaults, forwarded to the compositor as per-Space
+    // `df_workspace.set_wallpaper`. The compositor is the sole applier; the
+    // shell keeps no second settings source. The effective source is the user
+    // choice, then the shipped default, then the fetched fallback (ADR 0094).
+    if (!m_protocol)
         return;
-    const WallpaperSettings settings =
-        wallpaperSettingsFromValues(m_settingsClient->values());
+    WallpaperSettings settings = wallpaperSettingsFromValues(
+        m_settingsClient ? m_settingsClient->values() : QVariantMap());
+    // The settingsd keys persist, but the provider's live properties are
+    // authoritative when a key is empty (settingsd absent, or not yet written).
+    if (settings.builtinDefault.isEmpty() && !m_providerBuiltinDefault.isEmpty())
+        settings.builtinDefault = m_providerBuiltinDefault;
+    if (settings.providerSource.isEmpty() && !m_providerDefault.isEmpty())
+        settings.providerSource = m_providerDefault;
+    // Last resort (provider absent too): resolve the shipped asset locally so
+    // the out-of-box background never depends on a service being up.
+    if (settings.builtinDefault.isEmpty())
+        settings.builtinDefault = shippedDefaultWallpaperPath();
+
+    const QString effective = settings.effectiveSource();
     if (m_wallpaperSent && settings == m_wallpaperSettings)
         return;
     m_wallpaperSettings = settings;
     m_wallpaperSent = true;
-    m_protocol->setWallpaper(settings.source, wallpaperFitFromName(settings.fit),
+    m_protocol->setWallpaper(effective, wallpaperFitFromName(settings.fit),
                              settings.showOnAllSpaces);
     fprintf(stderr,
             "dragonfruit-shell: wallpaper applied (fit=%s allSpaces=%d source=%s)\n",
             qPrintable(settings.fit), settings.showOnAllSpaces ? 1 : 0,
-            settings.source.isEmpty() ? "(solid)" : qPrintable(settings.source));
+            effective.isEmpty() ? "(solid)" : qPrintable(effective));
+}
+
+void ShellController::connectWallpaperProvider()
+{
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    if (!bus.isConnected())
+        return;
+    m_wallpaperWatcher = new QDBusServiceWatcher(
+        kWallpaperService, bus,
+        QDBusServiceWatcher::WatchForRegistration | QDBusServiceWatcher::WatchForUnregistration,
+        this);
+    // A provider (re)start re-reads its resolved defaults; an unregistration
+    // keeps the last known values so a restart leaves the desktop unchanged.
+    connect(m_wallpaperWatcher, &QDBusServiceWatcher::serviceRegistered, this,
+            [this](const QString &) { refreshWallpaperProvider(); });
+    // The standard property notification covers `DefaultSource` and
+    // `BuiltinDefaultSource`; the contract signals are a belt-and-braces
+    // refresh for a first fill.
+    bus.connect(kWallpaperService, kWallpaperPath,
+                QStringLiteral("org.freedesktop.DBus.Properties"),
+                QStringLiteral("PropertiesChanged"), this,
+                SLOT(onWallpaperProviderPropertiesChanged(QString, QVariantMap, QStringList)));
+    bus.connect(kWallpaperService, kWallpaperPath, kWallpaperInterface,
+                QStringLiteral("ItemsChanged"), this,
+                SLOT(onWallpaperProviderItemsChanged()));
+    refreshWallpaperProvider();
+}
+
+void ShellController::refreshWallpaperProvider()
+{
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    if (!bus.isConnected())
+        return;
+    const auto readProperty = [&bus](const QString &name) -> QString {
+        QDBusMessage call = QDBusMessage::createMethodCall(
+            kWallpaperService, kWallpaperPath,
+            QStringLiteral("org.freedesktop.DBus.Properties"), QStringLiteral("Get"));
+        call << kWallpaperInterface << name;
+        const QDBusMessage reply = bus.call(call);
+        if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().isEmpty())
+            return QString();
+        QVariant value = reply.arguments().constFirst();
+        if (value.userType() == qMetaTypeId<QDBusVariant>())
+            value = value.value<QDBusVariant>().variant();
+        return value.toString();
+    };
+    const QString providerDefault = readProperty(QStringLiteral("DefaultSource"));
+    const QString builtinDefault = readProperty(QStringLiteral("BuiltinDefaultSource"));
+    if (providerDefault == m_providerDefault && builtinDefault == m_providerBuiltinDefault)
+        return;
+    m_providerDefault = providerDefault;
+    m_providerBuiltinDefault = builtinDefault;
+    applyWallpaperPolicy();
+}
+
+void ShellController::onWallpaperProviderItemsChanged()
+{
+    // A first fill or a refreshed catalogue may have moved DefaultSource; the
+    // property read is local and cheap.
+    refreshWallpaperProvider();
+}
+
+void ShellController::onWallpaperProviderPropertiesChanged(const QString &interface,
+                                                           const QVariantMap &changed,
+                                                           const QStringList &invalidated)
+{
+    Q_UNUSED(interface);
+    Q_UNUSED(invalidated);
+    bool moved = false;
+    if (changed.contains(QStringLiteral("DefaultSource"))) {
+        m_providerDefault = changed.value(QStringLiteral("DefaultSource")).toString();
+        moved = true;
+    }
+    if (changed.contains(QStringLiteral("BuiltinDefaultSource"))) {
+        m_providerBuiltinDefault =
+            changed.value(QStringLiteral("BuiltinDefaultSource")).toString();
+        moved = true;
+    }
+    if (moved)
+        applyWallpaperPolicy();
 }
 
 void ShellController::applyDisplayPolicy()

@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(105 earlier sections omitted)_
+_(106 earlier sections omitted)_
 
-- **T101 — T-14.1b app-index events, launch registry, recency**: **State: done.** `org.dragonfruit.AppIndex1` is now live: the index re-scans; `services/app-index/src/index.rs` — `IndexEvent`/`IndexEventKind`; `AppIndex`
 - **T102 — T-14.1c app-index subscription API**: **State: done.** `org.dragonfruit.AppIndex1` now has a subscription surface:; `services/app-index/src/subscription.rs` (new) — pure `ChangeKind`
 - **T103 — T-14.2a menu-broker export model and fixed menu**: **State: done.** `services/menu-broker` is a real service and the fixed; `services/menu-broker/src/model.rs` (new) — pure `Broker`: `PublishedModel`
 - **T104 — T-14.2b menu-broker accelerators and toggle**: **State: done.** The menu-broker now parses and dispatches focus-scoped; `services/menu-broker/src/accelerators.rs` (new) — pure `Mods`/`Chord`
@@ -43,6 +42,7 @@ _(105 earlier sections omitted)_
 - **T110z — T-14.7z Dock plate rendering: corner-following rim and frost alignment**: **State: done.** The plate is now one integer rounded rect in every state. The; `shell/dock/Dock.qml` — new `panelRect` (each edge of the live `plateRect`
 - **T110w — T-14.7w Dock icon tiles: true squircle masking**: **State: done.** Every Dock app tile now clips its themed artwork to the token; `shell/dock/DockGlyph.qml` — the themed app artwork is now a `Canvas`
 - **T172 — T-18.1a Wallpaper provider service and shipped default**: **State: done.** `services/wallpaperd` is a real session service. It resolves; `services/wallpaperd/` (new crate, workspace member) —
+- **T173 — T-18.1b Provider settings, wallpaper API wiring, and effective source**: **State: done.** The additive provider keys are declared (schema rev 10), the; `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 9 → 10; 5 additive
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -10433,5 +10433,101 @@ Gotchas for later tasks:
   not add another env var without updating `defaults.rs` tests.
 - **`ureq` is the one HTTP dependency; keep the license permissive.** Do not
   swap in a GPL/AGPL client.
+- `check-desktop-names.sh` still fails only on the pre-existing
+  StatusNotifier/zoo/apppicker lines (unchanged here).
+
+## T173 — T-18.1b Provider settings, wallpaper API wiring, and effective source
+
+**State: done.** The additive provider keys are declared (schema rev 10), the
+shell resolves the effective source (user → shipped default → fetched
+fallback → solid), and `SettingsBridge` exposes the provider catalogue and
+`Preload` to panes. The out-of-box `Default.jpg` renders with the provider
+absent, the provider default reaches the compositor with settingsd absent, and
+a user `wallpaper.source` always wins. ADR 0115 records the wiring.
+
+Real paths:
+
+- `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 9 → 10; 5 additive
+  `wallpaper.*` keys (`provider`, `providerAutoFetch`, `providerLastFetch`,
+  `providerSource`, `builtinDefault`), owner `wallpaperd`; new unit test
+  `the_wallpaper_provider_keys_are_declared_in_revision_ten`.
+- `docs/settings-keys.md` — the five rows + consumer-map/effective-source text.
+- `libs/settings-client/settingsclient.{h,cpp}` — defaults for the five keys;
+  new shared `shippedDefaultWallpaperPath()` (`DF_DEFAULT_WALLPAPER` →
+  `$XDG_DATA_DIRS/dragonfruit/wallpapers/Default.jpg` → in-tree), mirroring
+  `services/wallpaperd/src/defaults.rs`.
+- `libs/settings-client/CMakeLists.txt` — compile define
+  `DF_IN_TREE_DEFAULT_WALLPAPER` = `<repo>/assets/graphics/wallpapers/Default.jpg`.
+- `shell/src/wallpaperpolicy.{h,cpp}` — `WallpaperSettings` gains
+  `builtinDefault`/`providerSource` + `effectiveSource()`;
+  `effectiveWallpaperSource(user, builtin, provider)` is the pure precedence;
+  `wallpaperSettingsFromValues` reads the two new keys.
+- `shell/src/shellcontroller.{h,cpp}` — `connectWallpaperProvider()` /
+  `refreshWallpaperProvider()` subscribe to `org.dragonfruit.Wallpaper1`
+  (`Properties.Get` + `PropertiesChanged` + `ItemsChanged`, restart resync);
+  `applyWallpaperPolicy` merges settingsd keys, provider props, then the local
+  shipped-asset resolver.
+- `apps/settings/SettingsBridge.{h,cpp}` — `providerItems`, `providerStatus`,
+  `providerDefault`, `wallpaperBuiltinDefault`, `providerChanged()`, and
+  `Q_INVOKABLE preloadWallpapers()`; parses the provider JSON, adds `source`
+  (local path) + `url` (`file://`) per entry.
+- `shell/tests/tst_wallpaperpolicy.cpp` — `userChoiceWins`,
+  `bundledDefaultBeatsTheProvider`, `providerIsTheFetchedFallback`,
+  `missingEverythingIsTheSolidColor`, `providerKeysMapThrough`,
+  `shippedDefaultResolvesTheOverride`.
+- `apps/settings/tests/tst_settings_absence.qml` —
+  `test_wallpaper_provider_absence_never_surfaces_an_error`.
+- `apps/settings/tests/tst_settings_live.cpp` — `FakeWallpaperService` +
+  `bridgeExposesTheWallpaperProviderProperties`.
+- `docs/design/adr/0115-wallpaper-effective-source-and-absence.md` (new).
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-settingsd` — green (schema/schema_doc/session_bus).
+- `cargo run -p dragonfruit-settingsd -- --print-keys | grep wallpaper` — the
+  five new keys with owner `wallpaperd`.
+- `ctest --test-dir build -R "tst_wallpaperpolicy|tst_settings_absence|tst_settings_live|tst_settingsclient|tst_settings_wallpaper" --output-on-failure` — green.
+- `ctest --test-dir build --output-on-failure` — 53/53.
+- `cargo test --workspace` (+ `PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig`) — green.
+- `cargo fmt --all -- --check`; `cargo clippy --workspace --all-targets -- -D warnings` — green.
+- `make e2e` — green; demo log line:
+  `wallpaper applied (... source=.../assets/graphics/wallpapers/Default.jpg)`.
+
+Live checks (host Wayland, scratch scripts under `/tmp/opencode/`):
+
+- No settingsd, no provider: demo renders
+  `source=.../assets/graphics/wallpapers/Default.jpg`; a spectacle still shows a
+  rich multicolour background (82k unique colours, σ≈85 in the centre band),
+  i.e. an image, not a solid colour. (Vision tool returned HTTP 429; the
+  pixel-stat + shell log are the evidence.)
+- Scratch settingsd owning `wallpaper.source=/tmp/opencode/user-wallpaper.png`:
+  shell log shows first the default, then
+  `source=/tmp/opencode/user-wallpaper.png` — user choice wins live.
+- No settingsd + scratch provider with `DF_DEFAULT_WALLPAPER=/tmp/opencode/provider-default.png`:
+  shell log shows `source=/tmp/opencode/provider-default.png` — the provider's
+  `BuiltinDefaultSource` reaches the compositor with settingsd absent.
+
+Gotchas for later tasks:
+
+- **Qt6 `QDBusConnection::connect` here has no functor overload.** Use the
+  `SLOT(...)` string form; the handlers must be declared under `private slots:`
+  (`onWallpaperProviderPropertiesChanged(QString,QVariantMap,QStringList)`,
+  `onProviderPropertiesChanged(...)`). A lambda does not compile.
+- **The provider's properties are read via `org.freedesktop.DBus.Properties.Get`**
+  on `org.dragonfruit.Wallpaper1` / `/org/dragonfruit/Wallpaper1`; the property
+  values arrive wrapped in a `QDBusVariant` and must be unwrapped.
+- **`wallpaperd` does not mirror its defaults into settingsd.** The five keys
+  are declared (owner `wallpaperd`) and the shell reads them when non-empty, but
+  T-18.1a publishes the values only as D-Bus properties. The shell therefore
+  prefers a non-empty settingsd key and falls back to the live provider
+  property; a future task can add the settingsd mirror without a shell change
+  (ADR 0115).
+- **The shipped-asset resolver lives in `libs/settings-client`**, not in
+  `wallpaperpolicy`, so both the shell and the Settings app share it. Its
+  in-tree path comes from the `DF_IN_TREE_DEFAULT_WALLPAPER` compile define; a
+  build that drops it still works when the asset is installed under
+  `$XDG_DATA_DIRS`.
+- **Pane UI is untouched** (`WallpaperPane.qml` still shows the six gradients);
+  T-18.2 consumes `providerItems`/`providerStatus`/`preloadWallpapers`.
 - `check-desktop-names.sh` still fails only on the pre-existing
   StatusNotifier/zoo/apppicker lines (unchanged here).
