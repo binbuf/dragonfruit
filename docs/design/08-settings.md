@@ -60,7 +60,7 @@ explicit — no pane is "a wrapper around a GNOME dialog":
 | Battery | UPower + power-profiles-daemon where present |
 | General | `settingsd` + distro provider (about, updates, defaults) |
 | Appearance | `settingsd` (design-system themes, dark/light, accent) |
-| Accessibility | `settingsd` → compositor magnification + toolkit/AT-SPI settings |
+| Accessibility | `settingsd` → compositor magnification + toolkit/AT-SPI settings ([adr/0144](adr/0144-accessibility-adapter.md)) |
 | Desktop & Dock | `settingsd` → shell + compositor |
 | Displays | Compositor output API (resolution, scaling, rotation, color, night light, VRR) |
 | Wallpaper | `settingsd` + compositor (per-Space wallpaper); `wallpaperd` for the fetched Featured Pictures |

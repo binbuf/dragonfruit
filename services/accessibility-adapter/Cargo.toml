@@ -1,0 +1,22 @@
+[package]
+name = "dragonfruit-accessibility-adapter"
+description = "Accessibility adapter: the AT-SPI host stack status, state, events, and absence (T-15.14a)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+# The adapter projects the host stack: the **AT-SPI accessibility bus**
+# (`org.a11y.Bus` and its `org.a11y.Status` properties on the session bus), the
+# accessibility bridge every toolkit and assistive client already speaks. It
+# reuses that status and never reimplements a screen reader, a toolkit, or a
+# compositor magnifier: the bus owns the state. The dependency-free contract
+# lives in `dragonfruit-system-adapters`.
+[dependencies]
+dragonfruit-system-adapters = { path = "../system-adapters", version = "0.1.0" }
+zbus = { version = "=5.19.0", features = ["blocking-api"] }
+
+[lib]
+name = "dragonfruit_accessibility_adapter"
+path = "src/lib.rs"

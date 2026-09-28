@@ -29,6 +29,7 @@ equivalent) API intended exactly for custom desktop frontends.
 | General / About / Updates | host identity + distro update provider | The About/General rows read the host's own release/kernel/DMI/processor/memory files, and Updates is the distribution's update provider (the `SystemProvider` of [08-settings.md](08-settings.md)) behind a seam. The adapter is the projection over the identity and the provider's check/install/reboot state; it never reimplements package management, and the concrete provider is distro-specific and belongs with packaging. |
 | Users & Groups | AccountsService + distro group provider | The user list (login/real name, account type, password mode, home, shell, avatar, locked, system account, automatic login) is AccountsService over its system-bus API; groups are the distribution's own provider behind a seam, because AccountsService has no group API. The adapter is the projection over both; it never reimplements account or group management, and the concrete provider is distro-specific and belongs with packaging. |
 | Privacy & Security | xdg-desktop-portal PermissionStore | The record portals already keep of which applications may reach the resources they mediate (camera, location, notifications, screen casting, remote desktop, USB, …), read and written through the standard `org.freedesktop.impl.portal.PermissionStore` session-bus interface. The adapter is the projection over the store's tables and entries; it never reimplements a portal or makes a permission decision, and the Secret Service / polkit host services the reference also names stay with their own tasks. See [adr/0142](adr/0142-privacy-and-security-adapter.md). |
+| Accessibility | AT-SPI accessibility bus | The live assistive bridge the toolkits and screen readers already publish: `org.a11y.Status` (`IsEnabled`, `ScreenReaderEnabled`) on `org.a11y.Bus` at `/org/a11y/bus` over the session bus. The adapter is the read-only projection over that status; the durable accessibility preferences stay with `settingsd` and magnification with the compositor, and it reimplements no screen reader or toolkit. See [adr/0144](adr/0144-accessibility-adapter.md). |
 | Seat/session | systemd / logind | Session lifetime, `graphical-session.target`, VT management. |
 | Privileged operations | host policy infrastructure | polkit / authentication agent integration; we never roll our own privilege escalation. |
 
@@ -1155,6 +1156,42 @@ the reference also names are not part of this adapter.
 - **The Control Center tile fits without a scroll.** The sixteenth tile needed
   the tiles' internal gap compacted from `sm` to `xs` (the content gap stays
   `xxs`); the fixed 360×1160 surface still holds every tile.
+
+## The accessibility path (T-15.14a)
+
+The accessibility adapter, `dragonfruit-accessibility-adapter`
+(`services/accessibility-adapter`), projects the **AT-SPI accessibility bus**
+— the assistive bridge every toolkit and screen reader already speaks
+([adr/0144](adr/0144-accessibility-adapter.md)).
+
+- **The host stack is AT-SPI.** The live source reads the standard
+  `org.a11y.Status` properties at `/org/a11y/bus` on the well-known session-bus
+  name `org.a11y.Bus`: `IsEnabled` (the toolkit accessibility bridge is on) and
+  `ScreenReaderEnabled` (a screen reader is enabled). One read is one
+  `org.freedesktop.DBus.Properties.GetAll`; the bus owns the values and no
+  screen reader, toolkit, or magnifier is reimplemented.
+- **The adapter is read-only.** `org.a11y.Status` offers no setter. The
+  durable accessibility preferences are `settingsd`'s and magnification is
+  compositor-owned ([07-system-integration.md], principle 3), exactly as input
+  settings are; this adapter is the live bridge projection.
+- **The read path is the same three-state seam as the other adapters.**
+  `AccessibilitySource::read` returns the raw status (`Ok(Some)`), absence
+  (`Ok(None)`), or a read failure (`Err`). No session bus, or no `org.a11y.Bus`
+  owner, is absence — hidden, never an error. A bus that owns its name but
+  cannot be read is `Error`, visible and inert with the message.
+- **An all-off bus is a value, not absence.** A bus that answers with both
+  flags off is `Available` with `AccessibilitySnapshot::present()` false; that
+  is the tile/pane's second hide rule, exactly as the input tile hides on an
+  empty inventory.
+- **One event stream.** The shared subscription lifecycle (`AdapterEvent`)
+  plus a pure `AccessibilitySnapshot::changes(previous)` diff — the
+  `Enabled`/`ScreenReader` flags — queued by the adapter and drained through
+  `drain_changes`.
+
+The Settings pane and Control Center tile ship in T-15.14b over this adapter,
+through the bridge host like the other T-15 adapters. That task declares the
+durable preferences and the compositor magnification the reference rows need;
+it must not add a second accessibility implementation.
 
 ## The status bridge host (T-07.5a)
 
