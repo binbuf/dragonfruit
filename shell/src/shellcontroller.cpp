@@ -479,6 +479,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             &ShellController::onAudioState);
     connect(m_statusClient, &SystemStatusClient::batteryState, this,
             &ShellController::onBatteryState);
+    connect(m_statusClient, &SystemStatusClient::bluetoothState, this,
+            &ShellController::onBluetoothState);
     connect(m_statusClient, &SystemStatusClient::joinReport, this,
             &ShellController::onStatusReport);
     connect(m_statusClient, &SystemStatusClient::writeReport, this,
@@ -498,6 +500,7 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     m_statusClient->refreshWifi();
     m_statusClient->refreshAudio();
     m_statusClient->refreshBattery();
+    m_statusClient->refreshBluetooth();
 
     // T-14.3: StatusNotifier tray items. app-index owns the watcher; the shell
     // reads its live item view and re-reads on a short timer (a tray app can
@@ -810,6 +813,12 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onWifiToggleRequested(bool)));
     connect(controlCenterObject, SIGNAL(wifiSettingsRequested()), this,
             SLOT(onWifiSettingsRequested()));
+    connect(controlCenterObject, SIGNAL(bluetoothToggleRequested(bool)), this,
+            SLOT(onBluetoothToggleRequested(bool)));
+    connect(controlCenterObject, SIGNAL(bluetoothDeviceToggled(QString,bool)), this,
+            SLOT(onBluetoothDeviceToggled(QString,bool)));
+    connect(controlCenterObject, SIGNAL(bluetoothSettingsRequested()), this,
+            SLOT(onBluetoothSettingsRequested()));
     connect(controlCenterObject, SIGNAL(focusToggleRequested(bool)), this,
             SLOT(onFocusToggleRequested(bool)));
     connect(controlCenterObject, SIGNAL(focusSettingsRequested()), this,
@@ -1785,6 +1794,12 @@ void ShellController::onBatteryState(const QByteArray &json)
         m_statusModel->applyBatteryJson(json);
 }
 
+void ShellController::onBluetoothState(const QByteArray &json)
+{
+    if (m_statusModel)
+        m_statusModel->applyBluetoothJson(json);
+}
+
 void ShellController::onStatusReport(const QByteArray &json)
 {
     qInfo() << "shell: system-status action:" << SystemStatusModel::outcomeOf(json);
@@ -1794,6 +1809,7 @@ void ShellController::onStatusReport(const QByteArray &json)
         m_statusClient->refreshWifi();
         m_statusClient->refreshAudio();
         m_statusClient->refreshBattery();
+        m_statusClient->refreshBluetooth();
     }
 }
 
@@ -1956,8 +1972,10 @@ void ShellController::applyControlCenterData()
         ? m_settingsClient->values().value(QStringLiteral("appearance.colorScheme")).toString()
         : QStringLiteral("auto");
     const bool dark = ThemeBinding::darkForScheme(scheme, ThemeBinding::hostDark());
+    const QVariantMap bluetooth = m_statusModel ? m_statusModel->bluetooth() : QVariantMap();
     m_controlCenterItem->setProperty("wifi", wifi);
     m_controlCenterItem->setProperty("audio", audio);
+    m_controlCenterItem->setProperty("bluetooth", bluetooth);
     m_controlCenterItem->setProperty("brightness", brightness);
     m_controlCenterItem->setProperty("focusPolicy", focus);
     m_controlCenterItem->setProperty("dark", dark);
@@ -1966,8 +1984,10 @@ void ShellController::applyControlCenterData()
     m_controlCenterItem->setProperty("clipboardEntries",
                                      m_clipboard ? m_clipboard->entries() : QVariantList());
     // Wi-Fi radio writes are not exposed by the bridge host yet (T-15); the
-    // toggle reflects state and is inert until then.
+    // toggle reflects state and is inert until then. Bluetooth writes *are*
+    // exposed (T-15.1b), so its tile is live.
     m_controlCenterItem->setProperty("wifiWritable", false);
+    m_controlCenterItem->setProperty("bluetoothWritable", true);
 }
 
 void ShellController::onControlCenterConfigured(int width, int height, quint32)
@@ -2059,6 +2079,30 @@ void ShellController::onWifiSettingsRequested()
     // Launching Settings on the matching pane is T-16; the entry point is
     // wired and logs until then.
     qInfo() << "shell: Wi-Fi Settings requested (T-16)";
+}
+
+void ShellController::onBluetoothToggleRequested(bool enabled)
+{
+    // One explicit BlueZ write through the bridge host (T-15.1b). The host
+    // re-reads and the pushed `PropertiesChanged` updates the tile; no local
+    // state is kept.
+    if (!m_statusClient)
+        return;
+    m_statusClient->setBluetoothPowered(enabled);
+}
+
+void ShellController::onBluetoothDeviceToggled(const QString &address, bool connected)
+{
+    if (!m_statusClient || address.isEmpty())
+        return;
+    m_statusClient->setBluetoothConnected(address, connected);
+}
+
+void ShellController::onBluetoothSettingsRequested()
+{
+    // Launching Settings on the Bluetooth pane is T-16; the entry point is
+    // wired and logs until then.
+    qInfo() << "shell: Bluetooth Settings requested (T-16)";
 }
 
 void ShellController::onFocusToggleRequested(bool enabled)

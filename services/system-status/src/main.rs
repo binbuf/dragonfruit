@@ -18,20 +18,24 @@
 use std::process::ExitCode;
 
 use dragonfruit_audio::CommandAudio;
+use dragonfruit_bluetooth::DbusBluez;
 use dragonfruit_networkmanager::DbusNetworkManager;
 use dragonfruit_power::DbusUPower;
 use dragonfruit_system_status::dbus;
+use dragonfruit_system_status::BluetoothHost;
 use dragonfruit_system_status::StatusHost;
 
 fn main() -> ExitCode {
     let mut print_wifi = false;
     let mut print_audio = false;
     let mut print_battery = false;
+    let mut print_bluetooth = false;
     for arg in std::env::args().skip(1) {
         match arg.as_str() {
             "--print-wifi" => print_wifi = true,
             "--print-audio" => print_audio = true,
             "--print-battery" => print_battery = true,
+            "--print-bluetooth" => print_bluetooth = true,
             "-h" | "--help" => {
                 print_help();
                 return ExitCode::SUCCESS;
@@ -49,7 +53,13 @@ fn main() -> ExitCode {
         CommandAudio::new(),
         DbusUPower::new(),
     );
+    let mut bluetooth = BluetoothHost::new(DbusBluez::new());
 
+    if print_bluetooth {
+        bluetooth.refresh();
+        println!("{}", bluetooth.state());
+        return ExitCode::SUCCESS;
+    }
     if print_wifi {
         host.refresh_wifi();
         println!("{}", host.wifi_state());
@@ -67,7 +77,8 @@ fn main() -> ExitCode {
     }
 
     host.refresh();
-    match dbus::run(host) {
+    bluetooth.refresh();
+    match dbus::run(host, bluetooth) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!(
@@ -88,6 +99,7 @@ fn print_help() {
            --print-wifi     refresh NetworkManager and print the Wi-Fi JSON view\n\
            --print-audio    refresh WirePlumber and print the audio JSON view\n\
            --print-battery  refresh UPower and print the battery JSON view\n\
+           --print-bluetooth refresh BlueZ and print the Bluetooth JSON view\n\
            -h, --help       show this help"
     );
 }

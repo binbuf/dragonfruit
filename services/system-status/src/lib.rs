@@ -45,7 +45,10 @@ use dragonfruit_power::{PowerAdapter, PowerSource};
 use dragonfruit_system_adapters::Adapter;
 use serde_json::{json, Value};
 
+pub mod bluetooth;
 pub mod dbus;
+
+pub use bluetooth::{bluetooth_report, bluetooth_snapshot_view, bluetooth_view, BluetoothHost};
 
 /// The stable well-known name the shell looks up on the session bus.
 pub const DBUS_NAME: &str = "org.dragonfruit.SystemStatus1";
@@ -57,6 +60,8 @@ pub const WIFI_INTERFACE: &str = "org.dragonfruit.SystemStatus1.Wifi";
 pub const AUDIO_INTERFACE: &str = "org.dragonfruit.SystemStatus1.Audio";
 /// The read-only battery interface name under [`DBUS_NAME`].
 pub const BATTERY_INTERFACE: &str = "org.dragonfruit.SystemStatus1.Battery";
+/// The Bluetooth interface name under [`DBUS_NAME`] (T-15.1b).
+pub const BLUETOOTH_INTERFACE: &str = "org.dragonfruit.SystemStatus1.Bluetooth";
 
 /// The host owns the three menu-bar adapters and exposes their snapshots and
 /// actions. Generic over the transport seams so CI drives it with the mocks.

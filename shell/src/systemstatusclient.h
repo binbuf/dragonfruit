@@ -31,6 +31,13 @@ public:
     virtual void refreshAudio() = 0;
     // The battery item is read-only: there is no write action.
     virtual void refreshBattery() = 0;
+    // Bluetooth (T-15.1b): a live state read plus the four explicit writes the
+    // Control Center tile and the Settings pane raise.
+    virtual void refreshBluetooth() = 0;
+    virtual void setBluetoothPowered(bool powered) = 0;
+    virtual void setBluetoothDiscovering(bool discovering) = 0;
+    virtual void pairBluetooth(const QString &address) = 0;
+    virtual void setBluetoothConnected(const QString &address, bool connected) = 0;
     virtual void join(const QString &ssid, const QString &secret) = 0;
     virtual void setVolume(double volume) = 0;
     virtual void setMute(bool muted) = 0;
@@ -40,6 +47,7 @@ signals:
     void wifiState(const QByteArray &json);
     void audioState(const QByteArray &json);
     void batteryState(const QByteArray &json);
+    void bluetoothState(const QByteArray &json);
     void joinReport(const QByteArray &json);
     void writeReport(const QByteArray &json);
 };
@@ -56,6 +64,11 @@ public:
     void refreshWifi() override;
     void refreshAudio() override;
     void refreshBattery() override;
+    void refreshBluetooth() override;
+    void setBluetoothPowered(bool powered) override;
+    void setBluetoothDiscovering(bool discovering) override;
+    void pairBluetooth(const QString &address) override;
+    void setBluetoothConnected(const QString &address, bool connected) override;
     void join(const QString &ssid, const QString &secret) override;
     void setVolume(double volume) override;
     void setMute(bool muted) override;
@@ -87,6 +100,11 @@ public:
     void refreshWifi() override;
     void refreshAudio() override;
     void refreshBattery() override;
+    void refreshBluetooth() override;
+    void setBluetoothPowered(bool powered) override;
+    void setBluetoothDiscovering(bool discovering) override;
+    void pairBluetooth(const QString &address) override;
+    void setBluetoothConnected(const QString &address, bool connected) override;
     void join(const QString &ssid, const QString &secret) override;
     void setVolume(double volume) override;
     void setMute(bool muted) override;
@@ -95,4 +113,10 @@ private:
     QString m_activeSsid = QStringLiteral("dragonfruit");
     double m_volume = 0.6;
     bool m_muted = false;
+    // The Bluetooth fixture state (T-15.1b): a powered adapter with one known
+    // device and one discoverable device. Writes mutate it and re-emit, so the
+    // Control Center tile's round-trip is observable headlessly.
+    bool m_btPowered = true;
+    bool m_btDiscovering = false;
+    bool m_btDeviceConnected = false;
 };
