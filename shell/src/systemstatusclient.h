@@ -44,6 +44,9 @@ public:
     virtual void mountStorage(const QString &volumePath) = 0;
     virtual void unmountStorage(const QString &volumePath) = 0;
     virtual void ejectStorage(const QString &drivePath) = 0;
+    // Input (T-15.4b): a read-only inventory. Refresh only; libinput has no
+    // setter (ADR 0124).
+    virtual void refreshInput() = 0;
     virtual void join(const QString &ssid, const QString &secret) = 0;
     virtual void setVolume(double volume) = 0;
     virtual void setMute(bool muted) = 0;
@@ -55,6 +58,7 @@ signals:
     void batteryState(const QByteArray &json);
     void bluetoothState(const QByteArray &json);
     void storageState(const QByteArray &json);
+    void inputState(const QByteArray &json);
     void joinReport(const QByteArray &json);
     void writeReport(const QByteArray &json);
 };
@@ -80,6 +84,7 @@ public:
     void mountStorage(const QString &volumePath) override;
     void unmountStorage(const QString &volumePath) override;
     void ejectStorage(const QString &drivePath) override;
+    void refreshInput() override;
     void join(const QString &ssid, const QString &secret) override;
     void setVolume(double volume) override;
     void setMute(bool muted) override;
@@ -120,6 +125,7 @@ public:
     void mountStorage(const QString &volumePath) override;
     void unmountStorage(const QString &volumePath) override;
     void ejectStorage(const QString &drivePath) override;
+    void refreshInput() override;
     void join(const QString &ssid, const QString &secret) override;
     void setVolume(double volume) override;
     void setMute(bool muted) override;

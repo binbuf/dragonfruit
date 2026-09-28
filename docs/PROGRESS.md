@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(117 earlier sections omitted)_
+_(118 earlier sections omitted)_
 
-- **T110b — T-14.7b Magnified plate growth and backdrop panel**: **State: done.** The Dock plate now grows to wrap the magnified row (both axes); `protocols/dragonfruit-shell.xml` — `df_shell` v2, `df_layer_surface` v2, new
 - **T110c — T-14.7c Dock motion smoothness and frame discipline**: **State: done.** Continuous Dock motion no longer rebuilds the entry model:; `shell/src/shellcontroller.cpp` — `withBounce` deleted; `rebuildDockEntries`
 - **T110d — T-14.7d Trash entry artwork**: **State: done.** The Trash glyph is now a designed, original bin at the token; `shell/dock/DockGlyph.qml` — `import QtQuick.Shapes`; the `trash` item is a
 - **T110e — T-14.7e Add Application picker**: **State: done.** The Dock's divider menu now offers **Add Application…**,; `shell/src/apppicker.{h,cpp}` (new, dockcore) — pure
@@ -42,6 +41,7 @@ _(117 earlier sections omitted)_
 - **T115 — T-15.3a Sound and routing adapter**: **State: done.** The T-07.3 audio adapter (`dragonfruit-audio`) grew the input; `services/audio/src/source.rs` — new `SourceData`; `AudioData` gained
 - **T116 — T-15.3b Sound and routing pane and tile**: **State: done.** The Settings Sound pane and the Control Center Sound tile ship; `services/system-status/src/lib.rs` — `audio_view` now carries `sources`,
 - **T117 — T-15.4a Keyboard, Mouse, and Trackpad adapter**: **State: done.** A new workspace crate `dragonfruit-input` (`services/input`); `services/input/src/lib.rs` — crate docs + exports.
+- **T118 — T-15.4b Keyboard, Mouse, and Trackpad pane and tile**: **State: done.** The Settings Keyboard/Mouse/Trackpad panes and the Control; `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 11 → 12; 10 new
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -11238,3 +11238,101 @@ Decisions / gotchas for T-15.4b (and T-15.5a):
   `docs/captures/t15-4a-input-adapter.png` (3840x2160). Vision confirmed the
   nested desktop, menu bar, Dock, and client windows render with no blank
   areas, clipping, or stray artifacts.
+
+## T118 — T-15.4b Keyboard, Mouse, and Trackpad pane and tile
+
+**State: done.** The Settings Keyboard/Mouse/Trackpad panes and the Control
+Center Keyboard tile ship as one functional unit (ADR 0125). Every preference
+row is a settingsd key (revision 12) and applies live; the device list is the
+read-only libinput inventory projected through the system-status bridge host.
+Absence is documented and tested.
+
+Real paths:
+
+- `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 11 → 12; 10 new
+  `input.*` keys (`pointerSpeed`, `naturalScroll`, `tapToClick`, `leftHanded`,
+  `scrollMethod`, `keyboardBrightness`, `adjustBrightnessLowLight`,
+  `backlightOffAfter`, `keyboardNavigation`, `emojiKeyAction`) + a revision-12
+  test. `docs/settings-keys.md` gained the rows and a consumer-map line.
+- `libs/settings-client/settingsclient.cpp` — the schema-defaults mirror updated
+  to revision 12, plus a new `coerceToSchema` used by `set`/`applyValue`: a QML
+  double bound to an integer key is stored and sent as `x`, so the daemon's
+  type check accepts it. This is the first pane to write integer keys from QML.
+- `services/system-status/src/input.rs` (new) — `InputHost`, `input_view`,
+  `input_snapshot_view`, tests.
+- `services/system-status/src/lib.rs`, `dbus.rs`, `main.rs` —
+  `INPUT_INTERFACE`, the read-only `InputInterface` (`State`/`Refresh`),
+  `LiveInput = InputHost<CommandLibinput>`, `--print-input`, `run()` signature,
+  `interface_names()` 5 → 6. `Cargo.toml` depends on `dragonfruit-input`.
+- `services/system-status/tests/input.rs` (new) — bridge integration tests.
+- `apps/settings/InputClient.{h,cpp}` (new) — `DbusInputClient` +
+  `MockInputClient` (selected by `DF_INPUT_FIXTURE`), read-only seam.
+- `apps/settings/SettingsBridge.{h,cpp}` — `input`/`inputAvailable` +
+  `refreshInput`.
+- `apps/settings/InputPane.qml` (new shared body) + `KeyboardPane.qml`,
+  `MousePane.qml`, `TrackpadPane.qml` (new thin wrappers setting `section`).
+- `apps/settings/SettingsPanes.qml` — the three panes `shipped: true` with
+  `keyboard`/`mouse`/`trackpad` icons; `SettingsShell.qml` registers the three
+  bodies; `CMakeLists.txt` lists the sources/QML.
+- `design-system/components/Icon.qml` — original `keyboard`, `mouse`,
+  `trackpad` painted glyphs.
+- `shell/src/systemstatusmodel.{h,cpp}` — `input()`/`inputVisible()`/
+  `applyInputJson`/`refreshInputRequested`; the `present:false` second hide rule
+  now includes `input`.
+- `shell/src/systemstatusclient.{h,cpp}` — `refreshInput` + `inputState`; the
+  mock inventory.
+- `shell/src/shellcontroller.{h,cpp}` — `onInputState`, a startup
+  `refreshInput()`, the `input` push in `applyControlCenterData`, the
+  `onKeyboardSettingsRequested` slot, and `kControlCenterHeight` 780 → 880.
+- `shell/control-center/ControlCenter.qml` — the Keyboard tile (inventory
+  summary + `Keyboard Settings…`), `keyboardSettingsRequested`.
+- Tests — `apps/settings/tests/tst_settings_input.{cpp,qml}` (new);
+  `tst_settings_absence.qml` (input absence, counts 10);
+  `tst_settings_shell.qml` (shipped/visual counts 10);
+  `shell/tests/tst_statusmodel.cpp` (input decode + refresh signal);
+  `shell/tests/tst_controlcenter.qml` (8 tiles, fit at 880, keyboard tile).
+- Docs — `docs/design/07-system-integration.md` "The Keyboard/Mouse/Trackpad
+  pane and tile (T-15.4b)" + the Input interface bullet; ADR
+  `docs/design/adr/0125-keyboard-mouse-trackpad-pane-and-tile.md`; capture
+  script `scripts/capture-t15-input-pane.sh` + two stills;
+  `docs/captures/README.md`.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-system-status` — 5 lib + 9 host + 4 bluetooth + 4
+  storage + 4 input green.
+- `cargo test -p dragonfruit-settingsd` — 34 lib + schema_doc green.
+- `ctest --output-on-failure -j4` (in `build/`) — 57/57.
+- `make e2e` — EXIT 0.
+- `cargo fmt --all -- --check`; clippy on `dragonfruit-system-status`,
+  `dragonfruit-input`, `dragonfruit-settingsd` — clean.
+- `make check-design-tokens check-tokens check-no-capture-grab` — clean.
+
+Decisions / gotchas for later tasks:
+
+- **The compositor does not apply the pointer keys yet.** The pointer
+  preferences map to `PointerSettings` in `compositor/src/input/settings.rs`,
+  but `df_toplevel_manager.set_input_policy` carries only keyboard repeat and
+  gesture gating. A later task extends the protocol (append-only request,
+  version bump) to apply them; until then the panes persist and apply live in
+  settingsd but pointer behavior is unchanged in the compositor.
+- **Keyboard-brightness and emoji-key rows persist a preference only**; their
+  hardware bridges are deferred (same shape as the Sound alert engine).
+- **`coerceToSchema`** in the settings client is the general fix for QML integer
+  writes; reuse it for any future integer/`x` key a QML control binds to.
+- **The Control Center panel is a fixed 360x880 and clips overflow.** Another
+  tile needs the fit test revisited.
+- **Three panes share one body.** `InputPane.qml` is parameterised by `section`;
+  keep new pointer rows there so Mouse and Trackpad cannot drift.
+- **Absent-inventory hide rule:** libinput gone or a running stack with no
+  recognized device hides the `Devices` group and shows a note; the settingsd
+  rows stay live on the defaults. `DF_INPUT_FIXTURE` is the pane seam;
+  `DF_STATUS_FIXTURE` drives the shell tile. Neither is set in `make e2e`.
+- Live visual check: `bash scripts/capture-t15-input-pane.sh` produced
+  `docs/captures/t15-4b-keyboard-pane.png` (2088x1410) and
+  `docs/captures/t15-4b-input-control-center.png` (360x880). Vision confirmed
+  the pane's `Devices` rows (`AT Translated Set 2 keyboard`, `Logitech USB
+  Mouse`, `Synaptics TouchPad`), the `Key repeat rate`/`Delay until repeat`
+  sliders, the `Keyboard Brightness` group with nothing cut off, and the
+  Control Center Keyboard tile (`1 keyboards, 2 pointing devices`,
+  `Keyboard Settings…`) above an unclipped Clipboard tile.

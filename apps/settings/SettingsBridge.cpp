@@ -2,6 +2,7 @@
 #include "SettingsBridge.h"
 
 #include "BluetoothClient.h"
+#include "InputClient.h"
 #include "SoundClient.h"
 #include "StorageClient.h"
 #include "settingsclient.h"
@@ -139,6 +140,16 @@ SettingsBridge::SettingsBridge(QObject *parent)
     connect(m_sound, &SoundClient::availableChanged, this,
             [this](bool) { emit soundChanged(); });
 
+    // T-15.4b: the input inventory seam, selected the same way. Read-only.
+    if (qEnvironmentVariableIsSet("DF_INPUT_FIXTURE"))
+        m_input = new MockInputClient(this);
+    else
+        m_input = new DbusInputClient(this);
+    connect(m_input, &InputClient::changed, this,
+            [this](const QVariantMap &) { emit inputChanged(); });
+    connect(m_input, &InputClient::availableChanged, this,
+            [this](bool) { emit inputChanged(); });
+
     buildWallpaperPresets();
     connectPortalWatcher();
     m_wallpaperFixture = qEnvironmentVariableIsSet("DF_WALLPAPER_FIXTURE");
@@ -201,6 +212,16 @@ QVariantMap SettingsBridge::sound() const
 bool SettingsBridge::soundAvailable() const
 {
     return m_sound && m_sound->available();
+}
+
+QVariantMap SettingsBridge::input() const
+{
+    return m_input ? m_input->view() : QVariantMap();
+}
+
+bool SettingsBridge::inputAvailable() const
+{
+    return m_input && m_input->available();
 }
 
 QString SettingsBridge::providerStatus() const
@@ -535,6 +556,12 @@ void SettingsBridge::setSoundDefaultSource(int id)
 {
     if (m_sound)
         m_sound->setDefaultSource(id);
+}
+
+void SettingsBridge::refreshInput()
+{
+    if (m_input)
+        m_input->refresh();
 }
 
 void SettingsBridge::setWallpaperFixture(const QString &status)

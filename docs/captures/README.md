@@ -523,6 +523,21 @@ The adapter itself — the libinput device inventory, classification,
 device-change diff, and absence at every seam — is proven headlessly by
 `cargo test -p dragonfruit-input`.
 
+T-15.4b's Keyboard/Mouse/Trackpad pane and Control Center tile:
+`t15-4b-keyboard-pane.png` is the active Settings window on the Keyboard pane
+(the `Devices` inventory with `AT Translated Set 2 keyboard`, `Logitech USB
+Mouse`, and `Synaptics TouchPad`; the `Key repeat rate` and `Delay until repeat`
+sliders; and the `Keyboard Brightness` group), and
+`t15-4b-input-control-center.png` is the 360x880 panel crop with the new
+Keyboard tile (`1 keyboards, 2 pointing devices`, `Keyboard Settings…`) above
+the Clipboard tile. The demo runs with `DF_SETTINGS_START_PANE=keyboard`,
+`DF_SETTINGS_FIXTURE`, `DF_STATUS_FIXTURE`, and `DF_INPUT_FIXTURE`, so no host
+libinput or settingsd is needed. Captured by
+`scripts/capture-t15-input-pane.sh`; requires a host Wayland session, spectacle,
+and Pillow, and is not in `make e2e`. Vision confirmed the pane's sections and
+the three device rows render with nothing cut off, and the Control Center
+bottom is complete with the Keyboard tile present and unclipped.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

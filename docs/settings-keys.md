@@ -55,6 +55,16 @@ freezes the v1 key set.
 | `accessibility.reduceMotion` | b | false | | settingsd | shell/design-system Theme, compositor/window motion | Global animation policy: collapse motion to instant transitions. |
 | `input.repeatDelay` | x | 200 | 0–5000 ms | settingsd | compositor/input keyboard repeat | Milliseconds before a held key begins repeating. |
 | `input.repeatRate` | x | 25 | 0–200 Hz | settingsd | compositor/input keyboard repeat | Key repeat rate in keys per second; 0 disables repeat. |
+| `input.pointerSpeed` | d | 0.0 | -1.0–1.0 | apps/settings | compositor/input pointer acceleration | Pointer tracking speed, -1.0 (slow) to 1.0 (fast); 0 is neutral. |
+| `input.naturalScroll` | b | true | | apps/settings | compositor/input pointer scrolling | Natural (content follows finger) scrolling for pointers. |
+| `input.tapToClick` | b | true | | apps/settings | compositor/input pointer tapping | Tap the trackpad to click. |
+| `input.leftHanded` | b | false | | apps/settings | compositor/input pointer handedness | Swap the primary and secondary pointer buttons. |
+| `input.scrollMethod` | s | `two-finger` | `two-finger`/`edge`/`button` | apps/settings | compositor/input pointer scrolling | How a trackpad scrolls: two-finger, edge, or button. |
+| `input.keyboardBrightness` | d | 0.5 | 0.0–1.0 | apps/settings | compositor/keyboard backlight (hardware bridge deferred) | Keyboard backlight level, 0.0 (off) to 1.0 (bright). |
+| `input.adjustBrightnessLowLight` | b | true | | apps/settings | compositor/keyboard backlight (hardware bridge deferred) | Adjust the keyboard backlight automatically in low light. |
+| `input.backlightOffAfter` | x | 0 | 0–3600 s | apps/settings | compositor/keyboard backlight (hardware bridge deferred) | Seconds of inactivity before the keyboard backlight turns off; 0 keeps it on. |
+| `input.keyboardNavigation` | b | false | | apps/settings | compositor/input keyboard navigation | Move focus between controls with Tab and Shift+Tab. |
+| `input.emojiKeyAction` | s | `emoji` | `emoji`/`none` | apps/settings | compositor/input (emoji panel bridge deferred) | Action when the Compose/Super key is pressed: show the emoji panel or nothing. |
 | `idle.dim` | x | 150 | 0–86400 s | apps/settings | session/idle engine | Seconds of inactivity before the screen dims; 0 disables the stage. |
 | `idle.blank` | x | 300 | 0–86400 s | apps/settings | session/idle engine | Seconds of inactivity before the screen blanks; 0 disables the stage. |
 | `idle.lock` | x | 600 | 0–86400 s | apps/settings | session/idle engine | Seconds of inactivity before the session locks; 0 disables the stage. |
@@ -77,6 +87,7 @@ freezes the v1 key set.
 | `shell/design-system Theme` (`shell/src/themebinding.*`) | `appearance.colorScheme`, `appearance.accent`, `accessibility.reduceMotion` |
 | `apps/settings/design-system Theme` (`apps/settings/SettingsShell.qml` bindings, T-09.2) | `appearance.colorScheme`, `appearance.accent`, `accessibility.reduceMotion` (the app is a separate process, so it mirrors the same keys onto its own `Theme`) |
 | compositor motion/input (over `df_toplevel_manager` v5, ADR [0034](design/adr/0034-compositor-policy-via-shell-bridge.md)) | `dock.titlebarDoubleClick`, `dock.minimizedAnimation`, `gestures.*`, `accessibility.reduceMotion`, `appearance.colorScheme`, `input.repeatDelay`, `input.repeatRate` |
+| compositor pointer (T-15.4b; the `PointerSettings` half of `compositor/src/input/settings.rs`) | `input.pointerSpeed`, `input.naturalScroll`, `input.tapToClick`, `input.leftHanded`, `input.scrollMethod` — `settingsd`-owned preferences the compositor applies live; the keyboard-backlight and emoji-panel bridges remain follow-ups |
 | shell/wallpaper forwarder (`shell/src/wallpaperpolicy.*`, `shell/src/shellcontroller.cpp`) | `wallpaper.source`, `wallpaper.fit`, `wallpaper.showOnAllSpaces`, `wallpaper.builtinDefault`, `wallpaper.providerSource` — the effective source (user choice, then shipped default, then fetched fallback, then solid color) is forwarded to the compositor as `df_workspace.set_wallpaper` |
 | shell/display forwarder (`shell/src/displayspolicy.*`, `shell/src/shellcontroller.cpp`) | `display.scale`, `display.rotation`, `display.brightness` — forwarded to the compositor as `df_output.set_scale` / `df_output.set_transform` / `df_output.set_brightness` |
 | compositor workspace model | `workspaces.count` (no live owner yet; follow-up) |

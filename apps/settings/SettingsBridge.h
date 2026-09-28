@@ -34,6 +34,7 @@ class SettingsClient;
 class BluetoothClient;
 class StorageClient;
 class SoundClient;
+class InputClient;
 class QDBusServiceWatcher;
 
 class SettingsBridge : public QObject
@@ -101,6 +102,15 @@ class SettingsBridge : public QObject
     // Whether the bridge host is on the session bus. False means no Sound
     // surface at all; the pane shows the absence note.
     Q_PROPERTY(bool soundAvailable READ soundAvailable NOTIFY soundChanged)
+    // The read-only input inventory from the bridge host (T-15.4b):
+    // `{ state, present, label, glyph, deviceCount, keyboardCount,
+    // pointerCount, mouseCount, touchpadCount, devices }`. Empty when the host
+    // (or libinput) is absent; the pane renders the absence state rather than
+    // erroring. The pane's preferences are settingsd keys, not this view.
+    Q_PROPERTY(QVariantMap input READ input NOTIFY inputChanged)
+    // Whether the bridge host is on the session bus. False means no input
+    // inventory at all; the pane shows the absence note.
+    Q_PROPERTY(bool inputAvailable READ inputAvailable NOTIFY inputChanged)
     // The pane the shell opens on startup. Empty uses the first shipped pane;
     // `DF_SETTINGS_START_PANE=wallpaper` selects one for captures and tests.
     Q_PROPERTY(QString startPane READ startPane CONSTANT)
@@ -122,6 +132,8 @@ public:
     bool storageAvailable() const;
     QVariantMap sound() const;
     bool soundAvailable() const;
+    QVariantMap input() const;
+    bool inputAvailable() const;
     QString providerStatus() const;
     QString providerDefault() const;
     QString wallpaperBuiltinDefault() const;
@@ -183,6 +195,12 @@ public:
     Q_INVOKABLE void setSoundDefaultSink(int id);
     Q_INVOKABLE void setSoundDefaultSource(int id);
 
+    // T-15.4b: the Keyboard/Mouse/Trackpad pane's one inventory seam.
+    // `refreshInput` re-reads the bridge host on pane open; the view is
+    // read-only (libinput has no setter), so `input` carries no write. A no-op
+    // when the host is absent.
+    Q_INVOKABLE void refreshInput();
+
     // T-18.2 test seam: with `DF_WALLPAPER_FIXTURE` set, seed the provider
     // lifecycle to `status` (`ready` loads the deterministic fixture
     // catalogue; any other status leaves it empty) so the pane's fetching /
@@ -216,6 +234,8 @@ signals:
     void storageChanged();
     // The audio view or availability changed (T-15.3b).
     void soundChanged();
+    // The input inventory or availability changed (T-15.4b).
+    void inputChanged();
 
 private:
     void buildWallpaperPresets();
@@ -262,4 +282,6 @@ private:
     StorageClient *m_storage = nullptr;
     // T-15.3b: the Sound seam (`DF_SOUND_FIXTURE` selects the mock).
     SoundClient *m_sound = nullptr;
+    // T-15.4b: the input inventory seam (`DF_INPUT_FIXTURE` selects the mock).
+    InputClient *m_input = nullptr;
 };

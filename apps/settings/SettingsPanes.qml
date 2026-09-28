@@ -77,12 +77,12 @@ QtObject {
           description: "", shipped: false },
         { id: "internet-accounts", title: qsTr("Internet Accounts"), icon: "general",
           description: "", shipped: false },
-        { id: "keyboard", title: qsTr("Keyboard"), icon: "general",
-          description: "", shipped: false },
-        { id: "mouse", title: qsTr("Mouse"), icon: "general",
-          description: "", shipped: false },
-        { id: "trackpad", title: qsTr("Trackpad"), icon: "general",
-          description: "", shipped: false },
+        { id: "keyboard", title: qsTr("Keyboard"), icon: "keyboard",
+          description: "", shipped: true },
+        { id: "mouse", title: qsTr("Mouse"), icon: "mouse",
+          description: "", shipped: true },
+        { id: "trackpad", title: qsTr("Trackpad"), icon: "trackpad",
+          description: "", shipped: true },
         { id: "printers", title: qsTr("Printers & Scanners"), icon: "general",
           description: "", shipped: false }
     ]
