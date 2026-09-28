@@ -706,6 +706,7 @@ dependencies = [
  "dragonfruit-bluetooth",
  "dragonfruit-input",
  "dragonfruit-networkmanager",
+ "dragonfruit-notify-adapter",
  "dragonfruit-power",
  "dragonfruit-storage",
  "dragonfruit-system-adapters",

@@ -261,6 +261,31 @@ set_tests_properties(tst_settings_battery PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# The Notifications and Focus pane tests (T-15.7b): the four Notification
+# Center preferences round-trip through settingsd, the Focus mode selector and
+# the per-app allow list round-trip through the notifications adapter fixture,
+# and an external change converges into the controls. `DF_NOTIFICATIONS_FIXTURE`
+# is deterministic and in-process, so the cases never touch the host bus.
+qt_add_executable(tst_settings_notifications
+    tst_settings_notifications.cpp
+)
+target_link_libraries(tst_settings_notifications PRIVATE
+    Qt6::QuickTest
+    dragonfruit-design-systemplugin
+    dragonfruit-settings-uiplugin
+)
+qt_import_qml_plugins(tst_settings_notifications)
+
+add_test(
+    NAME tst_settings_notifications
+    COMMAND tst_settings_notifications
+        -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_settings_notifications.qml
+)
+set_tests_properties(tst_settings_notifications PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;DF_SETTINGS_FIXTURE=1;DF_NOTIFICATIONS_FIXTURE=1;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Settings menu-model publication tests (T-09.6a): the app's published menu
 # model is asserted in shape and injected into the shell's `MenuBar` (the
 # `Dragonfruit.MenuBar` module is linked so the round-trip is real). Headless

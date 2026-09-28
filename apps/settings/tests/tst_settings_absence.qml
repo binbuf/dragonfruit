@@ -33,7 +33,7 @@ Item {
         readonly property var shippedPaneIds:
             ["appearance", "desktop-dock", "mission-control", "displays",
              "wallpaper", "bluetooth", "battery", "storage", "sound", "keyboard",
-             "mouse", "trackpad"]
+             "mouse", "trackpad", "notifications", "focus"]
 
         function make() {
             var shell = createTemporaryObject(shellComponent, stage,
@@ -86,7 +86,7 @@ Item {
 
         function test_every_shipped_pane_has_a_body_and_no_other_does() {
             var shell = make();
-            compare(SettingsPanes.shippedPanes.length, 12);
+            compare(SettingsPanes.shippedPanes.length, 14);
             for (var i = 0; i < SettingsPanes.catalog.length; ++i) {
                 var pane = SettingsPanes.catalog[i];
                 var body = shell.paneComponent(pane.id);
@@ -353,6 +353,53 @@ Item {
             compare(pane.showIndicatorsToggle.checked, false);
             Settings.set("dock.showIndicators", true);
             compare(pane.showIndicatorsToggle.checked, true);
+        }
+
+        // With no bridge host on the private bus, the Notifications pane's
+        // per-app inventory is the absence state while the four settingsd
+        // presentation preferences stay live on the schema defaults, so the
+        // pane is never a dead surface.
+        function test_notifications_pane_degrades_cleanly_without_the_bridge_host() {
+            var shell = make();
+            compare(Settings.notificationsAvailable, false,
+                    "no bridge host is the absent state under test");
+            compare(Settings.notifications.state, undefined);
+
+            var pane = showPane(shell, "notifications");
+            compare(pane.ready, false);
+            compare(pane.absenceNote.visible, true,
+                    "the absence note explains the missing notification service");
+            verify(pane.absenceNote.text.length > 0);
+            compare(pane.appGroup.visible, false);
+
+            // The settingsd-backed preferences still write in memory.
+            pane.previewSelect.activateIndex(0); // Always
+            compare(Settings.values["notifications.showPreviews"], "always");
+            pane.lockedToggle.toggle();
+            compare(Settings.values["notifications.showWhenLocked"], false);
+
+            // A refresh is a safe no-op with no host.
+            Settings.refreshNotifications();
+            compare(Settings.notificationsAvailable, false);
+        }
+
+        // The Focus pane's mode and allow-list are the notification adapter's
+        // state, so with no bridge host they are the absence state; nothing
+        // errors and no write is attempted.
+        function test_focus_pane_degrades_cleanly_without_the_bridge_host() {
+            var shell = make();
+            compare(Settings.notificationsAvailable, false,
+                    "no bridge host is the absent state under test");
+
+            var pane = showPane(shell, "focus");
+            compare(pane.ready, false);
+            compare(pane.absenceNote.visible, true,
+                    "the absence note explains the missing notification service");
+            verify(pane.absenceNote.text.length > 0);
+
+            // A mode write is a safe no-op with no host.
+            Settings.setFocusMode("dnd");
+            compare(Settings.notificationsAvailable, false);
         }
     }
 }

@@ -4,6 +4,7 @@
 #include "BatteryClient.h"
 #include "BluetoothClient.h"
 #include "InputClient.h"
+#include "NotificationsClient.h"
 #include "SoundClient.h"
 #include "StorageClient.h"
 #include "settingsclient.h"
@@ -28,6 +29,7 @@
 #include <QJsonValue>
 #include <QLinearGradient>
 #include <QPainter>
+#include <QRegularExpression>
 #include <QStandardPaths>
 #include <QUrl>
 
@@ -161,6 +163,16 @@ SettingsBridge::SettingsBridge(QObject *parent)
     connect(m_battery, &BatteryClient::availableChanged, this,
             [this](bool) { emit batteryChanged(); });
 
+    // T-15.7b: the Notifications/Focus seam, selected the same way.
+    if (qEnvironmentVariableIsSet("DF_NOTIFICATIONS_FIXTURE"))
+        m_notifications = new MockNotificationsClient(this);
+    else
+        m_notifications = new DbusNotificationsClient(this);
+    connect(m_notifications, &NotificationsClient::changed, this,
+            [this](const QVariantMap &) { emit notificationsChanged(); });
+    connect(m_notifications, &NotificationsClient::availableChanged, this,
+            [this](bool) { emit notificationsChanged(); });
+
     buildWallpaperPresets();
     connectPortalWatcher();
     m_wallpaperFixture = qEnvironmentVariableIsSet("DF_WALLPAPER_FIXTURE");
@@ -243,6 +255,16 @@ QVariantMap SettingsBridge::battery() const
 bool SettingsBridge::batteryAvailable() const
 {
     return m_battery && m_battery->available();
+}
+
+QVariantMap SettingsBridge::notifications() const
+{
+    return m_notifications ? m_notifications->view() : QVariantMap();
+}
+
+bool SettingsBridge::notificationsAvailable() const
+{
+    return m_notifications && m_notifications->available();
 }
 
 QString SettingsBridge::providerStatus() const
@@ -595,6 +617,39 @@ void SettingsBridge::setPowerProfile(const QString &profile)
 {
     if (m_battery && !profile.isEmpty())
         m_battery->setActiveProfile(profile);
+}
+
+void SettingsBridge::refreshNotifications()
+{
+    if (m_notifications)
+        m_notifications->refresh();
+}
+
+void SettingsBridge::setFocusMode(const QString &mode)
+{
+    if (m_notifications && !mode.isEmpty())
+        m_notifications->setFocusMode(mode);
+}
+
+void SettingsBridge::setFocusApp(const QString &app, bool allowed)
+{
+    if (!m_notifications || app.trimmed().isEmpty())
+        return;
+    // The adapter's allow list is a whole-list replace, so read the current
+    // list, change exactly one entry, and write it back.
+    QStringList list = m_notifications->view()
+                           .value(QStringLiteral("allowList"))
+                           .toStringList();
+    const int index = list.indexOf(QRegularExpression(
+        QStringLiteral("^%1$").arg(QRegularExpression::escape(app.trimmed())),
+        QRegularExpression::CaseInsensitiveOption));
+    if (allowed && index < 0)
+        list.append(app.trimmed());
+    else if (!allowed && index >= 0)
+        list.removeAt(index);
+    else
+        return;
+    m_notifications->setFocusAllowList(list);
 }
 
 void SettingsBridge::setWallpaperFixture(const QString &status)

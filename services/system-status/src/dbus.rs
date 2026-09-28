@@ -16,14 +16,16 @@ use dragonfruit_audio::CommandAudio;
 use dragonfruit_bluetooth::DbusBluez;
 use dragonfruit_input::CommandLibinput;
 use dragonfruit_networkmanager::DbusNetworkManager;
+use dragonfruit_notify_adapter::DbusNotifications;
 use dragonfruit_power::DbusUPower;
 use dragonfruit_storage::DbusUDisks;
 use zbus::blocking::connection;
 use zbus::interface;
 
 use crate::{
-    BluetoothHost, InputHost, StatusHost, StorageHost, AUDIO_INTERFACE, BATTERY_INTERFACE,
-    BLUETOOTH_INTERFACE, DBUS_NAME, DBUS_PATH, INPUT_INTERFACE, STORAGE_INTERFACE, WIFI_INTERFACE,
+    BluetoothHost, InputHost, NotificationsHost, StatusHost, StorageHost, AUDIO_INTERFACE,
+    BATTERY_INTERFACE, BLUETOOTH_INTERFACE, DBUS_NAME, DBUS_PATH, INPUT_INTERFACE,
+    NOTIFICATIONS_INTERFACE, STORAGE_INTERFACE, WIFI_INTERFACE,
 };
 
 /// The live host: the three real network/audio/power adapter sources behind
@@ -40,6 +42,10 @@ pub type LiveStorage = StorageHost<DbusUDisks>;
 
 /// The live input host: the real `libinput` tool source behind the bridge.
 pub type LiveInput = InputHost<CommandLibinput>;
+
+/// The live notifications host: the real session-bus notification-service
+/// source behind the bridge (T-15.7b).
+pub type LiveNotifications = NotificationsHost<DbusNotifications>;
 
 /// The Wi-Fi half of the service.
 pub struct WifiInterface {
@@ -74,6 +80,13 @@ pub struct StorageInterface {
 /// settingsd keys (ADR 0124).
 pub struct InputInterface {
     host: Arc<Mutex<LiveInput>>,
+}
+
+/// The Notifications/Focus half of the service (T-15.7b): the Focus/DND
+/// policy and the observed per-app notification list, plus the two Focus
+/// writes the Settings pane offers.
+pub struct NotificationsInterface {
+    host: Arc<Mutex<LiveNotifications>>,
 }
 
 #[interface(name = "org.dragonfruit.SystemStatus1.Wifi")]
@@ -255,6 +268,38 @@ impl InputInterface {
     }
 }
 
+#[interface(name = "org.dragonfruit.SystemStatus1.Notifications")]
+impl NotificationsInterface {
+    /// The current Notifications/Focus status view as JSON (the last adapter
+    /// state).
+    fn state(&self) -> String {
+        lock_notifications(&self.host).state()
+    }
+
+    /// Re-read the notification service once and return the new view. The
+    /// Settings pane calls this when it opens; it is an explicit resync, not a
+    /// poll.
+    fn refresh(&self) -> String {
+        let mut host = lock_notifications(&self.host);
+        host.refresh();
+        host.state()
+    }
+
+    /// Set the Focus/DND mode (`off`/`focus`/`dnd`). Returns the JSON report.
+    fn set_focus_mode(&self, mode: &str) -> String {
+        lock_notifications(&self.host)
+            .set_focus_mode(mode)
+            .to_string()
+    }
+
+    /// Replace the per-app Focus allow list. Returns the JSON report.
+    fn set_focus_allow_list(&self, apps: Vec<String>) -> String {
+        lock_notifications(&self.host)
+            .set_focus_allow_list(apps)
+            .to_string()
+    }
+}
+
 /// Lock the shared host, recovering from a poisoned mutex: a D-Bus method may
 /// panic on a bad argument, and the service must keep answering.
 fn lock(host: &Arc<Mutex<LiveHost>>) -> std::sync::MutexGuard<'_, LiveHost> {
@@ -276,6 +321,13 @@ fn lock_input(host: &Arc<Mutex<LiveInput>>) -> std::sync::MutexGuard<'_, LiveInp
     host.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
+/// Lock the shared notifications host, recovering from a poisoned mutex.
+fn lock_notifications(
+    host: &Arc<Mutex<LiveNotifications>>,
+) -> std::sync::MutexGuard<'_, LiveNotifications> {
+    host.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 /// Serve the three interfaces on the session bus until the process is asked to
 /// stop. Returns an error only when the bus or the name cannot be taken; an
 /// absent session bus exits with a message instead of blocking a session.
@@ -284,11 +336,13 @@ pub fn run(
     bluetooth: LiveBluetooth,
     storage: LiveStorage,
     input: LiveInput,
+    notifications: LiveNotifications,
 ) -> zbus::Result<()> {
     let host = Arc::new(Mutex::new(host));
     let bluetooth = Arc::new(Mutex::new(bluetooth));
     let storage = Arc::new(Mutex::new(storage));
     let input = Arc::new(Mutex::new(input));
+    let notifications = Arc::new(Mutex::new(notifications));
     let connection = connection::Builder::session()?
         .name(DBUS_NAME)?
         .serve_at(
@@ -327,6 +381,12 @@ pub fn run(
                 host: Arc::clone(&input),
             },
         )?
+        .serve_at(
+            DBUS_PATH,
+            NotificationsInterface {
+                host: Arc::clone(&notifications),
+            },
+        )?
         .build()?;
 
     // The blocking object server runs on its own executor; parking the main
@@ -338,7 +398,7 @@ pub fn run(
 }
 
 /// The interface names the service serves, for logs and tests.
-pub fn interface_names() -> [&'static str; 6] {
+pub fn interface_names() -> [&'static str; 7] {
     [
         WIFI_INTERFACE,
         AUDIO_INTERFACE,
@@ -346,5 +406,6 @@ pub fn interface_names() -> [&'static str; 6] {
         BLUETOOTH_INTERFACE,
         STORAGE_INTERFACE,
         INPUT_INTERFACE,
+        NOTIFICATIONS_INTERFACE,
     ]
 }

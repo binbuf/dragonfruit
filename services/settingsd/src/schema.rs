@@ -19,7 +19,7 @@ use crate::value::{SettingsError, Value};
 
 /// The current schema revision. Bump only when a key is added or a default
 /// changes; renames and removals are forbidden within the `1` series.
-pub const SCHEMA_VERSION: u32 = 13;
+pub const SCHEMA_VERSION: u32 = 14;
 
 /// The D-Bus type of a settings value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -71,11 +71,12 @@ pub enum KeyGroup {
     Menu,
     Sound,
     Overview,
+    Notifications,
 }
 
 impl KeyGroup {
     /// Every group, in schema order.
-    pub const ALL: [KeyGroup; 12] = [
+    pub const ALL: [KeyGroup; 13] = [
         KeyGroup::Dock,
         KeyGroup::Workspaces,
         KeyGroup::Gestures,
@@ -88,6 +89,7 @@ impl KeyGroup {
         KeyGroup::Menu,
         KeyGroup::Sound,
         KeyGroup::Overview,
+        KeyGroup::Notifications,
     ];
 
     /// The group name used in docs and tests.
@@ -105,6 +107,7 @@ impl KeyGroup {
             KeyGroup::Menu => "menu",
             KeyGroup::Sound => "sound",
             KeyGroup::Overview => "overview",
+            KeyGroup::Notifications => "notifications",
         }
     }
 }
@@ -1043,6 +1046,65 @@ pub const KEYS: &[KeySpec] = &[
         since: 13,
         summary: "Action assigned to the bottom-right hot corner; `none` disables it.",
     },
+    // ── Notifications presentation (T-15.7b) ────────────────────────────
+    // The four global "Notification Center" preferences the Notifications
+    // pane owns. They are presentation policy, not the notification service's
+    // queue or Focus admission rule (that lives in `services/notifications`,
+    // ADR 0058/0130), so they belong in settingsd like the other desktop
+    // preferences. The Focus mode and the per-app allow list are *not* here:
+    // they ride the notification adapter (T-15.7a).
+    KeySpec {
+        key: "notifications.showPreviews",
+        group: KeyGroup::Notifications,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("when-unlocked"),
+        allowed: &["always", "when-unlocked", "never"],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "apps/settings (stored policy)",
+        since: 14,
+        summary: "When notification previews show: always, when unlocked, or never.",
+    },
+    KeySpec {
+        key: "notifications.showWhenSleeping",
+        group: KeyGroup::Notifications,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(false),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "apps/settings (stored policy)",
+        since: 14,
+        summary: "Show notification banners while the display is sleeping.",
+    },
+    KeySpec {
+        key: "notifications.showWhenLocked",
+        group: KeyGroup::Notifications,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(true),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "apps/settings (stored policy)",
+        since: 14,
+        summary: "Show notification banners while the screen is locked.",
+    },
+    KeySpec {
+        key: "notifications.showWhenMirroring",
+        group: KeyGroup::Notifications,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(false),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "apps/settings (stored policy)",
+        since: 14,
+        summary: "Show notification banners while mirroring or sharing the display.",
+    },
 ];
 
 /// Look up a key's declaration.
@@ -1411,6 +1473,71 @@ mod tests {
                 );
             }
             assert!(spec.validate(&Value::Text("corners".into())).is_err());
+        }
+    }
+
+    /// The Notifications presentation keys (T-15.7b): the four global
+    /// Notification Center preferences the Notifications pane owns, additive
+    /// in revision 14. The Focus mode and per-app allow list stay on the
+    /// notification adapter, not here.
+    #[test]
+    fn the_notification_keys_are_declared_in_revision_fourteen() {
+        for (key, kind, default) in [
+            (
+                "notifications.showPreviews",
+                KeyType::Text,
+                KeyDefault::Text("when-unlocked"),
+            ),
+            (
+                "notifications.showWhenSleeping",
+                KeyType::Bool,
+                KeyDefault::Bool(false),
+            ),
+            (
+                "notifications.showWhenLocked",
+                KeyType::Bool,
+                KeyDefault::Bool(true),
+            ),
+            (
+                "notifications.showWhenMirroring",
+                KeyType::Bool,
+                KeyDefault::Bool(false),
+            ),
+        ] {
+            let spec = spec(key).unwrap_or_else(|| panic!("{key} is declared"));
+            assert_eq!(spec.group, KeyGroup::Notifications, "{key}");
+            assert_eq!(spec.kind, kind, "{key}");
+            assert_eq!(spec.default, default, "{key}");
+            assert_eq!(spec.owner, "apps/settings", "{key}");
+            assert_eq!(spec.since, 14, "{key}");
+            assert!(spec.since <= SCHEMA_VERSION, "{key}");
+            assert!(
+                spec.validate(&spec.default.to_value()).is_ok(),
+                "{key} default validates"
+            );
+        }
+        // The previews value is an enumeration of the three capture choices.
+        let previews = spec("notifications.showPreviews").unwrap();
+        assert!(previews.validate(&Value::Text("always".into())).is_ok());
+        assert!(previews.validate(&Value::Text("never".into())).is_ok());
+        assert!(previews.validate(&Value::Text("sometimes".into())).is_err());
+        // The three toggles reject a non-bool.
+        for key in [
+            "notifications.showWhenSleeping",
+            "notifications.showWhenLocked",
+            "notifications.showWhenMirroring",
+        ] {
+            assert!(
+                spec(key).unwrap().validate(&Value::Bool(true)).is_ok(),
+                "{key}"
+            );
+            assert!(
+                spec(key)
+                    .unwrap()
+                    .validate(&Value::Text("on".into()))
+                    .is_err(),
+                "{key}"
+            );
         }
     }
 
