@@ -635,6 +635,14 @@ below the Battery tile. Captured by `scripts/capture-t15-lock-pane.sh`;
 requires a host Wayland session, spectacle, and Pillow, and is not in
 `make e2e`.
 
+`t15-9b-menu-bar-pane.png` and `t15-9b-menu-bar-control-center.png` are the
+Menu Bar pane and Control Center tile for T-15.9b. The pane capture shows the
+behavior rows (auto-hide, background, recent items), the `Clock Options...`
+sheet, and the per-control visibility toggles; the Control Center capture
+shows the Menu Bar tile below the Lock Screen tile. Captured by
+`scripts/capture-t15-menubar-pane.sh`; requires a host Wayland session,
+spectacle, and Pillow, and is not in `make e2e`.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(126 earlier sections omitted)_
+_(127 earlier sections omitted)_
 
-- **T110k — T-14.7k Dock folder pins: any folder as a stack**: **State: done.** Any folder can be pinned to the Dock as a stack: a single; `services/settingsd/src/schema.rs` — `dock.pinnedFolders` (`as`, default
 - **T110l — T-14.7l Dock launch-origin tile hand-off**: **State: done.** The Dock now hands the acted-on entry's icon tile to the; `shell/src/dockmodel.{h,cpp}` — `dockLaunchAppId(entry)` (`StartupWMClass`
 - **T110m — T-14.7m Dock window chooser: per-window actions**: **State: done.** Each window row in the Dock's chooser now carries a stateful; `shell/src/shellprotocol.{h,cpp}` — `setToplevelMinimized(windowId, bool)`
 - **T110n — T-14.7n Dock window chooser: row discipline**: **State: done.** The window chooser's row list is now bounded: at most; `design-system/tokens/tokens.json` — `component.dock.chooser`:
@@ -43,6 +42,7 @@ _(126 earlier sections omitted)_
 - **T125 — T-15.8a Lock Screen policy adapter**: **State: done.** New workspace crate `dragonfruit-lock-adapter`; `services/lock-adapter/` (new crate, workspace member) —
 - **T126 — T-15.8b Lock Screen policy pane and tile**: **State: done.** The Settings Lock Screen pane and the Control Center Lock; `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 14 → 15; new
 - **T127 — T-15.9a Menu Bar configuration adapter**: **State: done.** New workspace crate `dragonfruit-menubar-adapter`; `services/menubar-adapter/` (new crate, workspace member) —
+- **T128 — T-15.9b Menu Bar configuration pane and tile**: **State: done.** The Settings Menu Bar pane and the Control Center Menu Bar; `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 15 → 16; new
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3226,6 +3226,18 @@ Gotchas for later tasks:
 
 ## Follow-ups
 
+- **T-15.9b auto-hide mode and recent-items count are stored policy.**
+  `menu.autoHide` (revision 16) and `menu.recentItems` round-trip live and the
+  Menu Bar pane reflects them, but the shell does not consume them: the menu-bar
+  chrome surface stays pinned and no recent-items consumer exists. Applying
+  auto-hide needs the compositor input-region/hover contract; the recent count
+  needs a recents source. The clock options, the background material, and the
+  per-control `menu.control.*` visibility all apply live.
+- **T-15.9b Control Center is at its nested-output height ceiling.** The panel
+  is now 360×1160 with `xs` inter-tile gaps; the nested demo output is
+  1920×1200 and leaves only 1164 px below the bar, so a further tile will not
+  fit. The next Control Center tile task must make the panel scroll (or grow
+  the nested output), not just bump the constant.
 - **T-15.9a richer clock options and Apple-only controls are not modelled.**
   `dragonfruit-menubar-adapter` models the two clock options the shell's
   `MenuBarClock` actually renders (`showDate`, `showSeconds`) and the seven
@@ -12054,3 +12066,103 @@ Decisions / gotchas for T-15.9b and later:
   own, so it confirms only that the nested desktop renders; vision found the
   menu bar, Dock, wallpaper, and open windows composited with no blank
   regions, clipping, z-order issues, or stray artifacts.
+
+## T128 — T-15.9b Menu Bar configuration pane and tile
+
+**State: done.** The Settings Menu Bar pane and the Control Center Menu Bar
+tile ship as one functional unit, shell-native plus settingsd keys (ADR 0135),
+exactly as T-15.9a anticipated. The bar is shell-native (no external daemon),
+so the pane writes only settingsd keys, the shell applies what has a runtime,
+and the shell projects the tile locally. The menu-broker and the bar hot path
+are never touched.
+
+Real paths:
+
+- `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 15 → 16; new
+  `KeyGroup::Menu` keys: `menu.autoHide` (text, `full-screen`),
+  `menu.showBackground` (bool, true), `menu.recentItems` (int, 10, 0–50),
+  `menu.clock.showDate` (bool, true), `menu.clock.showSeconds` (bool, false),
+  `menu.control.wifi/bluetooth/battery/sound/focus/accessibility` (bool, true).
+  New `the_menu_bar_keys_are_declared_in_revision_sixteen` test.
+- `docs/settings-keys.md` — the eleven rows + a Menu Bar pane consumer-map row.
+- `libs/settings-client/settingsclient.cpp` — `settingsSchemaDefaults()` mirrors
+  revision 16 (comment updated).
+- `apps/settings/MenuBarPane.qml` (new) — behavior group (auto-hide `Select`,
+  background `Toggle`, recent-items `Select`), the `Menu Bar Controls` group
+  with its description, a `Clock` row whose `Clock Options…` `Dialog` holds the
+  two clock toggles, and a `Repeater` of six per-control toggles bound to the
+  `menu.control.*` keys.
+- `apps/settings/SettingsPanes.qml` — `menu-bar` shipped `true`, icon
+  `menu-bar`; `SettingsShell.qml` registers the body; `CMakeLists.txt` adds the
+  pane to `QML_FILES` and `df_qml_lint`.
+- `design-system/components/Icon.qml` — new painted `menu-bar` glyph (added to
+  `paintedGlyphs`).
+- `shell/menubar/MenuBar.qml` — new `showBackground` property; `color` becomes
+  `showBackground ? Theme.color.chrome : "transparent"`.
+- `shell/src/controlcenterpolicy.{h,cpp}` — new pure `menuBarView(values)`
+  (`{state, glyph:"menu-bar", label, autoHide, showBackground, globalMenu}`);
+  label mirrors `MenuBarSnapshot::label()`.
+- `shell/src/shellcontroller.{h,cpp}` — `applyMenuBarPolicy` now also applies
+  the clock options and background live (with change tracking so an unrelated
+  settings change does not re-render); `applyStatusItems` gates each status item
+  on its `menu.control.<id>` key (additive with adapter availability);
+  `applyControlCenterData` pushes `menuBar`; `onMenuBarSettingsRequested` logs
+  until T-16; `kControlCenterHeight` 1120 → 1160.
+- `shell/control-center/ControlCenter.qml` — `menuBar` property,
+  `menuBarVisible`/`menuBarLabel`, the 12th tile (after Lock Screen), the tile
+  QML, the `menuBarSettingsRequested` signal, and inter-tile `spacing` `sm` →
+  `xs` so the taller panel fits the nested output.
+- Tests — `apps/settings/tests/tst_settings_menu_bar.{cpp,qml}` (new, 6 cases);
+  `tst_settings_absence.qml` (shipped 15 → 16, id list, new menu-bar absence
+  case); `tst_settings_shell.qml` (shipped 15 → 16, search list);
+  `shell/tests/tst_controlcenterpolicy.cpp` (3 new `menuBarView` cases);
+  `shell/tests/tst_controlcenter.qml` (12 tiles, menu bar tile + link, fit at
+  1160). Test target added to `apps/settings/tests/CMakeLists.txt`.
+- Docs/scripts — ADR `0135-menu-bar-pane-and-tile.md`;
+  `docs/design/07-system-integration.md` T-15.9b subsection;
+  `scripts/capture-t15-menubar-pane.sh`; `docs/captures/README.md`. The four
+  earlier Control Center capture scripts updated 1120 → 1160.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-settingsd` — green (incl. `schema_doc`).
+- `cargo clippy -p dragonfruit-settingsd --all-targets -- -D warnings` — clean.
+- `ctest --test-dir build --output-on-failure -j4` — 63/63.
+- `make e2e` — EXIT 0. (One run hit a pre-existing flake in
+  `dragonfruit-lock-auth --test helper` (`a_missing_user_is_a_usage_error`,
+  `BrokenPipe` writing the password after the helper exits); the test passes
+  5/5 in isolation and the next full run was green. Unrelated to T128.)
+- `cargo fmt --all -- --check`; `make check-design-tokens check-tokens
+  check-no-capture-grab` — clean; `./scripts/check-gallery-snapshots.py` — 78
+  green.
+- `make lint` — still fails only on the pre-existing `check-desktop-names`
+  lines (none in the new work); unchanged from T125/T126/T127.
+
+Decisions / gotchas for later tasks:
+
+- **The adapter stays read-only.** The pane writes settingsd keys; the shell
+  applies them. There is no system-status host for the menu bar.
+- **Control ids are the shell status-item ids.** `menu.control.<id>` uses the
+  adapter's `MenuBarControl::id()` spellings (`wifi`, `bluetooth`, `battery`,
+  `volume`, `focus`, `accessibility`); note `Sound` → `volume`.
+- **Per-control visibility is additive with adapter availability.** A control
+  shows only when its daemon is present *and* the key is true; a missing daemon
+  still hides only its slot.
+- **`menu.autoHide`/`menu.recentItems` are stored policy** (shell does not
+  consume them yet); clock options, background, and control visibility apply
+  live.
+- **Panel height is at the nested-output ceiling.** 360×1160 fits the
+  1920×1200 nested output (1164 below the bar). Any further tile needs a
+  scrolling panel or a taller output — do not just bump the constant.
+- Live visual check: `bash scripts/capture-t15-menubar-pane.sh` produced
+  `docs/captures/t15-9b-menu-bar-pane.png` (2088x1410) and
+  `t15-9b-menu-bar-control-center.png` (360x1160). The Settings window opens at
+  the fixed 800×640 default, so the pane scrolls; the committed pane capture
+  shows the behavior group, the `Menu Bar Controls` header, `Clock Options…`,
+  and Wi-Fi/Bluetooth/Battery/Focus/Sound, with Accessibility just below the
+  fold. A scrolled verification capture (`/tmp` only) confirmed the
+  `Accessibility` toggle renders and works, so nothing is clipped inside the
+  pane. Vision confirmed the Control Center tile (`In Full Screen Only`, link
+  present) and that the panel's last tile is fully visible with no clipping or
+  overlap. The pane capture is otherwise clean: no missing text or stray
+  artifacts inside the Settings window.

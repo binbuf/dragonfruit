@@ -45,7 +45,7 @@ Item {
             compare(SettingsPanes.catalog[SettingsPanes.catalog.length - 1].id,
                     "printers");
             // Only panes whose content has landed are advertised (no half panes).
-            compare(SettingsPanes.shippedPanes.length, 15);
+            compare(SettingsPanes.shippedPanes.length, 16);
         }
 
         function test_header_card_is_only_where_the_reference_has_one() {
@@ -71,7 +71,7 @@ Item {
         function test_shell_opens_with_sidebar_and_search() {
             var shell = make();
             compare(shell.currentPaneId, "appearance");
-            compare(shell.visiblePanes.length, 15);
+            compare(shell.visiblePanes.length, 16);
             verify(shell.searchField !== null);
             verify(shell.sidebar !== null);
             verify(shell.titleBar !== null);
@@ -104,7 +104,7 @@ Item {
             shell.searchText = "";
             compare(ids(shell), JSON.stringify(
                 ["bluetooth", "battery", "storage", "appearance", "desktop-dock",
-                 "mission-control", "displays", "wallpaper", "notifications",
+                 "mission-control", "displays", "menu-bar", "wallpaper", "notifications",
                  "sound", "focus", "lock-screen", "keyboard", "mouse",
                  "trackpad"]));
         }

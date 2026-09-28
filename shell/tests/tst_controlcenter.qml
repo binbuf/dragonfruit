@@ -32,6 +32,7 @@ Item {
         SignalSpy { id: missionControlSettingsSpy; signalName: "missionControlSettingsRequested" }
         SignalSpy { id: batterySettingsSpy; signalName: "batterySettingsRequested" }
         SignalSpy { id: lockScreenSettingsSpy; signalName: "lockScreenSettingsRequested" }
+        SignalSpy { id: menuBarSettingsSpy; signalName: "menuBarSettingsRequested" }
         SignalSpy { id: focusSpy; signalName: "focusToggleRequested" }
         SignalSpy { id: darkSpy; signalName: "darkModeToggleRequested" }
         SignalSpy { id: closedSpy; signalName: "closed" }
@@ -205,6 +206,22 @@ Item {
             };
         }
 
+        // The shell-projected Menu Bar summary (T-15.9b), shaped by
+        // `controlcenterpolicy.cpp`'s `menuBarView`.
+        function menuBarModel(autoHide, showBackground, globalMenu) {
+            var label = autoHide === "never" ? "Never"
+                : autoHide === "always" ? "Always"
+                : "In Full Screen Only";
+            return {
+                state: "available",
+                glyph: "menu-bar",
+                label: label,
+                autoHide: autoHide !== undefined ? autoHide : "full-screen",
+                showBackground: showBackground !== false,
+                globalMenu: globalMenu !== false
+            };
+        }
+
         function make(props) {
             var panel = createTemporaryObject(panelComponent, stage, props || {});
             // The shell sizes the panel to its surface; do the same here so
@@ -232,11 +249,12 @@ Item {
                 missionControl: missionControlModel(true, 1),
                 battery: batteryModel(71, "balanced", true, true),
                 lockPolicy: lockPolicyModel(600),
+                menuBar: menuBarModel("full-screen"),
                 brightness: 0.8,
                 focusPolicy: focusModel("off"),
                 dark: true
             });
-            compare(panel.tiles.length, 11);
+            compare(panel.tiles.length, 12);
             compare(panel.tiles[0].id, "wifi");
             compare(panel.tiles[0].kind, "toggle");
             compare(panel.tiles[0].checked, true);
@@ -266,15 +284,19 @@ Item {
             compare(panel.tiles[9].subtitle, "71% \u00b7 Balanced");
             compare(panel.tiles[10].id, "lock-screen");
             compare(panel.tiles[10].kind, "info");
+            compare(panel.tiles[11].id, "menu-bar");
+            compare(panel.tiles[11].kind, "info");
+            compare(panel.tiles[11].subtitle, "In Full Screen Only");
             compare(panel.wifiLabel, "home");
         }
 
         function test_panel_content_fits_the_shell_surface() {
-            // The shell sizes the Control Center surface to 360x1120
+            // The shell sizes the Control Center surface to 360x1160
             // (kControlCenterWidth/Height). With the Bluetooth tile's device
             // rows, the Storage tile, the Sound tile's routing subtitle, the
-            // Keyboard tile, the Mission Control tile, and the Battery tile the
-            // content must still fit, or the lower tiles are clipped.
+            // Keyboard tile, the Mission Control tile, the Battery tile, the
+            // Lock Screen tile, and the Menu Bar tile the content must still
+            // fit, or the lower tiles are clipped.
             var panel = make({
                 wifi: wifiModel("available", true, "home"),
                 bluetooth: bluetoothModel("available", true, true, false,
@@ -289,17 +311,18 @@ Item {
                 missionControl: missionControlModel(true, 1),
                 battery: batteryModel(71, "balanced", true, true),
                 lockPolicy: lockPolicyModel(600),
+                menuBar: menuBarModel("full-screen"),
                 brightness: 1.0,
                 focusPolicy: focusModel("off"),
                 dark: false
             });
             panel.width = 360;
-            panel.height = 1120;
+            panel.height = 1160;
             waitForRendering(stage);
             var content = findChild(panel, "controlCenterContent");
             verify(content !== null);
-            verify(content.childrenRect.height <= 1120,
-                   "Control Center content must fit the 1120px surface, height="
+            verify(content.childrenRect.height <= 1160,
+                   "Control Center content must fit the 1160px surface, height="
                    + content.childrenRect.height);
         }
 
@@ -588,6 +611,37 @@ Item {
             compare(link.Accessible.name, "Open Lock Screen Settings");
             mouseClick(link, link.width / 2, link.height / 2);
             compare(lockScreenSettingsSpy.count, 1);
+        }
+
+        function test_menu_bar_tile_reflects_the_auto_hide_mode() {
+            var panel = make({ menuBar: menuBarModel("full-screen") });
+            compare(panel.menuBarVisible, true);
+            compare(panel.menuBarLabel, "In Full Screen Only");
+            compare(panel.tiles[11].visible, true);
+            compare(panel.tiles[11].enabled, true);
+
+            // The mode converges when the settings-pane projection moves.
+            panel.menuBar = menuBarModel("always");
+            compare(panel.menuBarLabel, "Always");
+            panel.menuBar = menuBarModel("never");
+            compare(panel.menuBarLabel, "Never");
+
+            // No projection hides the tile.
+            panel.menuBar = ({});
+            compare(panel.menuBarVisible, false);
+            compare(panel.tiles[11].visible, false);
+        }
+
+        function test_menu_bar_settings_link_raises_the_request() {
+            var panel = make({ menuBar: menuBarModel("full-screen") });
+            menuBarSettingsSpy.target = panel;
+            menuBarSettingsSpy.clear();
+            var link = findChild(panel, "menuBarSettingsLink");
+            verify(link !== null, "the Menu Bar Settings link is present");
+            compare(link.Accessible.role, Accessible.Button);
+            compare(link.Accessible.name, "Open Menu Bar Settings");
+            mouseClick(link, link.width / 2, link.height / 2);
+            compare(menuBarSettingsSpy.count, 1);
         }
 
         function test_battery_settings_link_raises_the_request() {

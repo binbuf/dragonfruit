@@ -52,3 +52,19 @@ QVariantMap missionControlView(const QVariantMap &values);
 // the design-system `lock` mark. Pure, so the projection is unit-testable
 // without a bus.
 QVariantMap lockPolicyView(const QVariantMap &values);
+
+// The Menu Bar tile's view, projected from the settingsd values (T-15.9b). The
+// menu bar is shell-native (the shell's `MenuBar` owns the chrome and the
+// clock), so the shell derives the tile's summary locally from the keys the
+// pane writes, mirroring `dragonfruit-menubar-adapter`'s
+// `MenuBarSnapshot::label()`:
+//
+//   * `menu.autoHide == "never"`        -> "Never"
+//   * `menu.autoHide == "always"`       -> "Always"
+//   * `menu.autoHide == "full-screen"`  -> "In Full Screen Only"
+//
+// The returned map is `{ state, glyph, label, autoHide, showBackground,
+// globalMenu }` with `state` always `available` (the shell is the owner's peer)
+// and `glyph` the design-system `menu-bar` mark. Pure, so the projection is
+// unit-testable without a bus.
+QVariantMap menuBarView(const QVariantMap &values);

@@ -108,10 +108,10 @@ constexpr int kBannerTopGap = 8;
 // input region is the whole thing.
 // T-11.3b grows the panel to fit five tiles (Wi-Fi, Focus, Sound, Display,
 // Dark Mode); T-13.5b adds the clipboard-history section below them; T-15.5b
-// adds the Mission Control summary tile. The surface is fixed and the panel
-// fills it.
+// adds the Mission Control summary tile; T-15.9b adds the Menu Bar summary
+// tile. The surface is fixed and the panel fills it.
 constexpr int kControlCenterWidth = 360;
-constexpr int kControlCenterHeight = 1120;
+constexpr int kControlCenterHeight = 1160;
 constexpr int kControlCenterTopGap = 8;
 
 // The OSD overlay (T-11.4a): a centered card. The surface is slightly larger
@@ -844,6 +844,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onBatterySettingsRequested()));
     connect(controlCenterObject, SIGNAL(lockScreenSettingsRequested()), this,
             SLOT(onLockScreenSettingsRequested()));
+    connect(controlCenterObject, SIGNAL(menuBarSettingsRequested()), this,
+            SLOT(onMenuBarSettingsRequested()));
     connect(controlCenterObject, SIGNAL(focusToggleRequested(bool)), this,
             SLOT(onFocusToggleRequested(bool)));
     connect(controlCenterObject, SIGNAL(focusSettingsRequested()), this,
@@ -1599,6 +1601,17 @@ void ShellController::applyStatusItems()
     const QVariantMap audio = m_statusModel ? m_statusModel->audio() : QVariantMap();
     const QVariantMap battery = m_statusModel ? m_statusModel->battery() : QVariantMap();
 
+    // T-15.9b: the Menu Bar pane's per-control visibility keys gate the status
+    // row. The key is additive with the live adapter availability: a control
+    // shows only when its daemon is present *and* the user has not hidden it.
+    const QVariantMap menuControls =
+        m_settingsClient ? m_settingsClient->values() : QVariantMap();
+    const auto controlEnabled = [&menuControls](const char *id) {
+        return menuControls
+            .value(QStringLiteral("menu.control.") + QLatin1String(id), true)
+            .toBool();
+    };
+
     // Wi-Fi, volume, and battery are live from the bridge host (T-07.5a/b);
     // an absent daemon hides the slot, an error shows it visible but inert
     // (FR-4). `--placeholders` is gone, so no item is faked.
@@ -1606,20 +1619,22 @@ void ShellController::applyStatusItems()
     if (wifiGlyph.isEmpty())
         wifiGlyph = QStringLiteral("wifi");
     items << statusItem(QStringLiteral("wifi"), wifiGlyph, QString(), tr("Wi-Fi"),
-                        wifi.value(QStringLiteral("visible")).toBool(), 0.8,
-                        wifi.value(QStringLiteral("enabled")).toBool());
+                        wifi.value(QStringLiteral("visible")).toBool()
+                            && controlEnabled("wifi"),
+                        0.8, wifi.value(QStringLiteral("enabled")).toBool());
 
     // Bluetooth and Accessibility are later tasks (T-15/T-11); they stay
-    // hidden until their adapters land. Focus/DND is live now (T-11.2b): the
-    // item tracks the notification service's policy, hidden in `off`.
+    // hidden until their adapters land. The Menu Bar keys are still honored so
+    // the gate is in place when they become live.
     items << statusItem(QStringLiteral("bluetooth"), QStringLiteral("bluetooth"), QString(),
-                        tr("Bluetooth"), false);
+                        tr("Bluetooth"), false && controlEnabled("bluetooth"));
 
     QString audioGlyph = audio.value(QStringLiteral("glyph")).toString();
     if (audioGlyph.isEmpty())
         audioGlyph = QStringLiteral("volume");
     items << statusItem(QStringLiteral("volume"), audioGlyph, QString(), tr("Volume"),
-                        audio.value(QStringLiteral("visible")).toBool(),
+                        audio.value(QStringLiteral("visible")).toBool()
+                            && controlEnabled("volume"),
                         audio.value(QStringLiteral("volume")).toReal(),
                         audio.value(QStringLiteral("enabled")).toBool());
 
@@ -1631,14 +1646,21 @@ void ShellController::applyStatusItems()
     if (battery.value(QStringLiteral("charging")).toBool())
         batteryGlyph = QStringLiteral("battery-charging");
     items << statusItem(QStringLiteral("battery"), batteryGlyph, QString(), tr("Battery"),
-                        battery.value(QStringLiteral("visible")).toBool(),
+                        battery.value(QStringLiteral("visible")).toBool()
+                            && controlEnabled("battery"),
                         battery.value(QStringLiteral("level")).toReal(),
                         battery.value(QStringLiteral("enabled")).toBool());
 
-    items << focusStatusItem(m_notificationModel ? m_notificationModel->focusPolicy()
-                                                 : QVariantMap());
+    QVariantMap focusItem = focusStatusItem(m_notificationModel
+                                                ? m_notificationModel->focusPolicy()
+                                                : QVariantMap());
+    if (!controlEnabled("focus")) {
+        focusItem.insert(QStringLiteral("available"), false);
+        focusItem.insert(QStringLiteral("enabled"), false);
+    }
+    items << focusItem;
     items << statusItem(QStringLiteral("accessibility"), QStringLiteral("accessibility"),
-                        QString(), tr("Accessibility"), false);
+                        QString(), tr("Accessibility"), false && controlEnabled("accessibility"));
 
     // Third-party StatusNotifier/AppIndicator items (T-14.3). They join the
     // same status row as the first-party items, so sizing/hover/dark-light
@@ -2027,6 +2049,10 @@ void ShellController::applyControlCenterData()
     // (T-15.8b) instead of reading a services-layer host.
     const QVariantMap lockPolicy =
         m_settingsClient ? lockPolicyView(m_settingsClient->values()) : QVariantMap();
+    // Menu Bar configuration is shell-native: the shell owns the settingsd
+    // keys and the bar, so it projects the tile's summary locally (T-15.9b).
+    const QVariantMap menuBar =
+        m_settingsClient ? menuBarView(m_settingsClient->values()) : QVariantMap();
     m_controlCenterItem->setProperty("wifi", wifi);
     m_controlCenterItem->setProperty("audio", audio);
     m_controlCenterItem->setProperty("bluetooth", bluetooth);
@@ -2035,6 +2061,7 @@ void ShellController::applyControlCenterData()
     m_controlCenterItem->setProperty("battery", battery);
     m_controlCenterItem->setProperty("missionControl", missionControl);
     m_controlCenterItem->setProperty("lockPolicy", lockPolicy);
+    m_controlCenterItem->setProperty("menuBar", menuBar);
     m_controlCenterItem->setProperty("brightness", brightness);
     m_controlCenterItem->setProperty("focusPolicy", focus);
     m_controlCenterItem->setProperty("dark", dark);
@@ -2228,6 +2255,13 @@ void ShellController::onLockScreenSettingsRequested()
     // Launching Settings on the Lock Screen pane is T-16; the entry point is
     // wired and logs until then.
     qInfo() << "shell: Lock Screen Settings requested (T-16)";
+}
+
+void ShellController::onMenuBarSettingsRequested()
+{
+    // Launching Settings on the Menu Bar pane is T-16; the entry point is
+    // wired and logs until then.
+    qInfo() << "shell: Menu Bar Settings requested (T-16)";
 }
 
 void ShellController::onFocusToggleRequested(bool enabled)
@@ -4456,18 +4490,46 @@ void ShellController::applyMenuBarPolicy()
     // system and application menus stay.
     if (!m_settingsClient || !m_item)
         return;
-    const bool enabled = m_settingsClient->values()
-                             .value(QStringLiteral("menu.global"), true)
-                             .toBool();
-    if (m_globalMenuEnabled == enabled)
-        return;
-    m_globalMenuEnabled = enabled;
-    m_item->setProperty("globalMenuEnabled", enabled);
-    // Re-publish the focused menu so the bar reflects the toggle immediately.
-    applyFocusedApp();
-    render();
-    fprintf(stderr, "dragonfruit-shell: global application menu %s\n",
-            enabled ? "enabled" : "disabled");
+    const QVariantMap values = m_settingsClient->values();
+    const bool enabled = values.value(QStringLiteral("menu.global"), true).toBool();
+    if (m_globalMenuEnabled != enabled) {
+        m_globalMenuEnabled = enabled;
+        m_item->setProperty("globalMenuEnabled", enabled);
+        // Re-publish the focused menu so the bar reflects the toggle immediately.
+        applyFocusedApp();
+    }
+
+    // T-15.9b: the Menu Bar pane's keys. The clock options and the background
+    // material apply live; the auto-hide mode is stored policy the shell does
+    // not consume yet (the bar chrome surface stays pinned) and is carried on
+    // the bar until the apply lands.
+    const bool showDate = values.value(QStringLiteral("menu.clock.showDate"), true).toBool();
+    const bool showSeconds = values.value(QStringLiteral("menu.clock.showSeconds"), false).toBool();
+    const bool showBackground =
+        values.value(QStringLiteral("menu.showBackground"), true).toBool();
+    const QString autoHide =
+        values.value(QStringLiteral("menu.autoHide"), QStringLiteral("full-screen")).toString();
+    const bool changed = !m_menuBarPolicySent || showDate != m_menuBarShowDate
+        || showSeconds != m_menuBarShowSeconds
+        || showBackground != m_menuBarShowBackground || autoHide != m_menuBarAutoHide;
+    if (changed) {
+        m_menuBarShowDate = showDate;
+        m_menuBarShowSeconds = showSeconds;
+        m_menuBarShowBackground = showBackground;
+        m_menuBarAutoHide = autoHide;
+        m_menuBarPolicySent = true;
+        m_item->setProperty("showDate", showDate);
+        m_item->setProperty("showSeconds", showSeconds);
+        m_item->setProperty("showBackground", showBackground);
+        m_item->setProperty("autoHideMode", autoHide);
+        render();
+        fprintf(stderr,
+                "dragonfruit-shell: menu bar policy applied "
+                "(globalMenu=%d clockDate=%d clockSeconds=%d background=%d "
+                "autoHide=%s)\n",
+                m_globalMenuEnabled ? 1 : 0, showDate ? 1 : 0, showSeconds ? 1 : 0,
+                showBackground ? 1 : 0, qPrintable(autoHide));
+    }
 }
 
 void ShellController::applyWallpaperPolicy()

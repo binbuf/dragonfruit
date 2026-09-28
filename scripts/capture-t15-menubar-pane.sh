@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MIT
 #
-# T-15.8b Lock Screen pane + Control Center tile capture.
+# T-15.9b Menu Bar pane + Control Center tile capture.
 #
 # Produces:
-#   * t15-8b-lock-screen-pane.png           the Settings Lock Screen pane
-#   * t15-8b-lock-screen-control-center.png the Control Center with the Lock
-#                                           Screen tile
+#   * t15-9b-menu-bar-pane.png           the Settings Menu Bar pane
+#   * t15-9b-menu-bar-control-center.png the Control Center with the Menu Bar
+#                                        tile
 #
-# The nested demo runs with `DF_SETTINGS_START_PANE=lock-screen` and
+# The nested demo runs with `DF_SETTINGS_START_PANE=menu-bar` and
 # `DF_SETTINGS_FIXTURE` so the Settings pane shows the schema defaults with no
 # bus; the shell's status fixture (`DF_STATUS_FIXTURE`) keeps the rest of the
-# Control Center populated. Lock policy is session/compositor-native and the
-# pane writes only settingsd keys, so no adapter fixture is needed.
+# Control Center populated. The menu bar is shell-native and the pane writes
+# only settingsd keys, so no adapter fixture is needed.
 #
 # Requires: a host Wayland session, `spectacle`, python3 with Pillow, and the
 # built tree (`make build`). Not part of `make e2e`.
@@ -24,13 +24,13 @@ export LD_LIBRARY_PATH="$HOME/.local/df-toolchain/usr/lib64${LD_LIBRARY_PATH:+:$
 
 OUTDIR="${OUTDIR:-docs/captures}"
 SETTLE="${SETTLE:-12}"
-SOCKET="${SOCKET:-dragonfruit-t15-lock}"
+SOCKET="${SOCKET:-dragonfruit-t15-menubar-pane}"
 SYNTH="${XDG_RUNTIME_DIR:?}/$SOCKET.synth"
-LOG=/tmp/opencode/t15-lock-demo.log
+LOG=/tmp/opencode/t15-menubar-pane-demo.log
 mkdir -p "$OUTDIR" /tmp/opencode
 rm -f "$SYNTH" "$LOG"
 
-DF_SETTINGS_START_PANE=lock-screen DF_SETTINGS_FIXTURE=1 DF_STATUS_FIXTURE=1 \
+DF_SETTINGS_START_PANE=menu-bar DF_SETTINGS_FIXTURE=1 DF_STATUS_FIXTURE=1 \
     DRAGONFRUIT_SYNTHETIC_INPUT="$SYNTH" \
     setsid make demo DEMO_ARGS="--socket-name $SOCKET" >"$LOG" 2>&1 &
 PGID=$!
@@ -43,7 +43,7 @@ cleanup() {
 trap cleanup EXIT
 
 for _ in $(seq 1 600); do [ -e "$SYNTH" ] && break; sleep 0.1; done
-[ -e "$SYNTH" ] || { echo "capture-t15-lock: no synthetic socket"; tail -30 "$LOG"; exit 1; }
+[ -e "$SYNTH" ] || { echo "capture-t15-menubar: no synthetic socket"; tail -30 "$LOG"; exit 1; }
 sleep "$SETTLE"
 
 # Nudge the pointer so the nested compositor repaints the live state, then
@@ -52,7 +52,7 @@ python3 - "$SYNTH" <<'PY'
 import socket, sys, time
 path = sys.argv[1]
 sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
-client = f"/tmp/opencode-t15lock-nudge-{__import__('os').getpid()}.sock"
+client = f"/tmp/opencode-t15menubar-pane-nudge-{__import__('os').getpid()}.sock"
 try:
     __import__('os').unlink(client)
 except FileNotFoundError:
@@ -82,8 +82,8 @@ print("saved", dest, im.size)
 PY
 }
 
-PANE_RAW="/tmp/opencode/t15-lock-pane-raw.png"
-capture_active "$PANE_RAW" "$OUTDIR/t15-8b-lock-screen-pane.png"
+PANE_RAW="/tmp/opencode/t15-menubar-pane-raw.png"
+capture_active "$PANE_RAW" "$OUTDIR/t15-9b-menu-bar-pane.png"
 
 # Open the Control Center through the real shortcut (Control-Option-C) and
 # crop the panel from the nested output's top-right corner.
@@ -91,7 +91,7 @@ python3 - "$SYNTH" <<'PY'
 import socket, sys, time
 path = sys.argv[1]
 sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
-client = f"/tmp/opencode-t15lock-cc-{__import__('os').getpid()}.sock"
+client = f"/tmp/opencode-t15menubar-pane-cc-{__import__('os').getpid()}.sock"
 try:
     __import__('os').unlink(client)
 except FileNotFoundError:
@@ -110,9 +110,9 @@ for code in (KEY_LEFTALT, KEY_LEFTCTRL):
 time.sleep(2.0)
 PY
 
-FULL_RAW="/tmp/opencode/t15-lock-full-raw.png"
+FULL_RAW="/tmp/opencode/t15-menubar-pane-full-raw.png"
 spectacle -b -n -f -o "$FULL_RAW" >/dev/null 2>&1 || true
-python3 - "$FULL_RAW" "$OUTDIR/t15-8b-lock-screen-control-center.png" <<'PY'
+python3 - "$FULL_RAW" "$OUTDIR/t15-9b-menu-bar-control-center.png" <<'PY'
 import sys
 from PIL import Image
 raw, dest = sys.argv[1], sys.argv[2]
@@ -128,5 +128,5 @@ panel.save(dest)
 print("saved", dest, panel.size)
 PY
 
-echo "capture-t15-lock: done"
+echo "capture-t15-menubar: done"
 tail -5 "$LOG" || true

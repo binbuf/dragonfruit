@@ -33,7 +33,7 @@ Item {
                                           "keyboard", "mouse", "trackpad",
                                           "overview", "battery", "power-saver",
                                           "power-balanced", "power-performance",
-                                          "info", "bell", "lock"]
+                                          "info", "bell", "lock", "menu-bar"]
     readonly property bool painted: root.paintedGlyphs.indexOf(root.name) >= 0
 
     readonly property var bars: {
@@ -190,6 +190,18 @@ Item {
                 ctx.stroke();
                 roundedRect(s * 0.26, s * 0.42, s * 0.48, s * 0.40, s * 0.08);
                 ctx.fill();
+                break;
+            }
+            case "menu-bar": {
+                // A menu bar: a rounded strip with three status marks toward
+                // the right, matching the bar's own status-row treatment.
+                roundedRect(s * 0.10, s * 0.22, s * 0.80, s * 0.22, s * 0.11);
+                ctx.fill();
+                for (var m = 0; m < 3; ++m) {
+                    ctx.beginPath();
+                    ctx.arc(s * (0.62 + m * 0.11), s * 0.68, s * 0.07, 0, Math.PI * 2);
+                    ctx.fill();
+                }
                 break;
             }
             case "appearance": {

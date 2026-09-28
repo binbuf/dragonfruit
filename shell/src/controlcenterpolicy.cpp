@@ -83,3 +83,28 @@ QVariantMap lockPolicyView(const QVariantMap &values)
     view.insert(QStringLiteral("lockSeconds"), lockSeconds);
     return view;
 }
+
+QVariantMap menuBarView(const QVariantMap &values)
+{
+    const QString autoHide =
+        values.value(QStringLiteral("menu.autoHide"),
+                     QStringLiteral("full-screen")).toString();
+    QString label;
+    if (autoHide == QLatin1String("never"))
+        label = QStringLiteral("Never");
+    else if (autoHide == QLatin1String("always"))
+        label = QStringLiteral("Always");
+    else
+        label = QStringLiteral("In Full Screen Only");
+
+    QVariantMap view;
+    view.insert(QStringLiteral("state"), QStringLiteral("available"));
+    view.insert(QStringLiteral("glyph"), QStringLiteral("menu-bar"));
+    view.insert(QStringLiteral("label"), label);
+    view.insert(QStringLiteral("autoHide"), autoHide);
+    view.insert(QStringLiteral("showBackground"),
+                values.value(QStringLiteral("menu.showBackground"), true).toBool());
+    view.insert(QStringLiteral("globalMenu"),
+                values.value(QStringLiteral("menu.global"), true).toBool());
+    return view;
+}
