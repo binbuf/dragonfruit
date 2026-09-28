@@ -513,6 +513,16 @@ the toggles render; the pane scrolls (its `Output volume`, `Mute`, and `Balance`
 rows are below the fold in the window-height still), and the Control Center
 bottom (Clipboard tile) is fully visible with no clipping.
 
+T-15.4a's input device adapter has no surface of its own (the pane and tile are
+T-15.4b); `t15-4a-input-adapter.png` is the nested demo launched with the new
+`dragonfruit-input` crate in the workspace, confirming the desktop still
+renders (3840x2160; menu bar, Dock, Settings, and demo windows present, clean
+teardown). Captured by `scripts/capture-t15-input.sh`. Vision confirmed the
+composited desktop renders with no blank areas, clipping, or stray artifacts.
+The adapter itself — the libinput device inventory, classification,
+device-change diff, and absence at every seam — is proven headlessly by
+`cargo test -p dragonfruit-input`.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

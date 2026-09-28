@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(116 earlier sections omitted)_
+_(117 earlier sections omitted)_
 
-- **T110a — T-14.7a Dock plate geometry and spacing**: **State: done.** The Dock plate now floats: token-driven cross-axis and; `design-system/tokens/tokens.json` — `controls.dock`: `padding` 10,
 - **T110b — T-14.7b Magnified plate growth and backdrop panel**: **State: done.** The Dock plate now grows to wrap the magnified row (both axes); `protocols/dragonfruit-shell.xml` — `df_shell` v2, `df_layer_surface` v2, new
 - **T110c — T-14.7c Dock motion smoothness and frame discipline**: **State: done.** Continuous Dock motion no longer rebuilds the entry model:; `shell/src/shellcontroller.cpp` — `withBounce` deleted; `rebuildDockEntries`
 - **T110d — T-14.7d Trash entry artwork**: **State: done.** The Trash glyph is now a designed, original bin at the token; `shell/dock/DockGlyph.qml` — `import QtQuick.Shapes`; the `trash` item is a
@@ -42,6 +41,7 @@ _(116 earlier sections omitted)_
 - **T114 — T-15.2b Storage and removable media pane and tile**: **State: done.** The Storage pane and Control Center tile ship as one unit over; `services/system-status/src/storage.rs` (new) — `StorageHost<S>` +
 - **T115 — T-15.3a Sound and routing adapter**: **State: done.** The T-07.3 audio adapter (`dragonfruit-audio`) grew the input; `services/audio/src/source.rs` — new `SourceData`; `AudioData` gained
 - **T116 — T-15.3b Sound and routing pane and tile**: **State: done.** The Settings Sound pane and the Control Center Sound tile ship; `services/system-status/src/lib.rs` — `audio_view` now carries `sources`,
+- **T117 — T-15.4a Keyboard, Mouse, and Trackpad adapter**: **State: done.** A new workspace crate `dragonfruit-input` (`services/input`); `services/input/src/lib.rs` — crate docs + exports.
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -11160,3 +11160,81 @@ Decisions / gotchas for later tasks:
   `docs/captures/t15-3b-sound-control-center.png` (360x780). Vision confirmed
   both groups, the device table, the sliders, the toggles, the `Built-in
   Speakers` tile subtitle, and an unclipped Control Center bottom.
+
+## T117 — T-15.4a Keyboard, Mouse, and Trackpad adapter
+
+**State: done.** A new workspace crate `dragonfruit-input` (`services/input`)
+is the libinput keyboard/mouse/trackpad adapter. It implements the T-07
+contract behind an `InputSource` seam with a `MockInput`, reports state and
+events, and treats absence as a normal state. It is deliberately **read-only**:
+libinput persists nothing and has no setter, and the design's principle 3 / the
+legacy FR-4 reserve keyboard settings for the compositor, so the user's choices
+stay settingsd-owned and compositor-applied. The adapter is the device
+inventory. Backend only — the Settings pane and Control Center tile are
+T-15.4b.
+
+Real paths:
+
+- `services/input/src/lib.rs` — crate docs + exports.
+- `services/input/src/source.rs` — `InputSource` seam, `InputData` /
+  `InputDeviceData`, `MockInput` (`kill`/`restart`/`push`, `reads`).
+- `services/input/src/libinput.rs` — `CommandLibinput` (`libinput
+  list-devices`) + the total parser `InputData::from_list_devices` (mirrors the
+  audio `pw-dump` CLI source).
+- `services/input/src/model.rs` — `InputSnapshot`, `InputDevice`,
+  `DeviceKind`, `DeviceChange`; classification, ordering, glyph/label, and the
+  pure `device_changes(previous)` diff.
+- `services/input/src/adapter.rs` — `InputAdapter<S>` over `Adapter` /
+  `Subscription`.
+- `services/input/tests/fixtures/libinput-list-devices.txt` (new) — captured
+  tool fixture with a keyboard, mouse, touchpad, and touchscreen.
+- `services/input/tests/read_path.rs` (new) — 5 integration tests.
+- `services/system-adapters/src/state.rs` — `AdapterId::INPUT` (`"input"`) +
+  its id assertion.
+- `services/input/Cargo.toml`, `Cargo.toml` (workspace member), `Makefile`
+  (`cargo test -p dragonfruit-input` in the test target).
+- Docs — `docs/design/07-system-integration.md` "The input device path
+  (T-15.4a)" + an adapters-table row; ADR `0124-input-device-adapter.md`;
+  capture script `scripts/capture-t15-input.sh` → 
+  `docs/captures/t15-4a-input-adapter.png`; `docs/captures/README.md`.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-input` — 26 lib + 5 read_path green.
+- `cargo test -p dragonfruit-system-adapters` — green.
+- `make e2e` — EXIT 0 (includes the new test target).
+- `cargo fmt --all -- --check`; `cargo clippy -p dragonfruit-input
+  --all-targets -- -D warnings`; clippy on `dragonfruit-system-adapters` —
+  clean.
+- `make lint` — still fails only on the pre-existing `check-desktop-names`
+  lines (app-index tray, apppicker, zoo), unchanged.
+
+Decisions / gotchas for T-15.4b (and T-15.5a):
+
+- **Read-only adapter.** No write methods exist by design. Keyboard/pointer
+  settings are NOT this adapter's state: `input.repeatDelay`/`input.repeatRate`
+  already exist in settingsd and are forwarded to the compositor over
+  `df_toplevel_manager.set_input_policy` (ADR 0034). T-15.4b must add the
+  pointer keys (`Tracking speed`, `Tap to click`, scrolling, …) as settingsd
+  keys consumed by the compositor, the same split T-15.3b used for the `sound`
+  group, or the pane would have dead controls.
+- **Two hide rules**, like the battery item: libinput gone or unable to reach a
+  seat → `AdapterState::Unavailable`; a running stack with **no recognized
+  device** → `Available` with `InputSnapshot::present() == false`. Neither
+  blocks startup.
+- **Classification is capability-driven.** A pointer with gesture support or
+  `Tap-to-click` is a `Touchpad`; any other pointer is a `Mouse`. There is no
+  literal `touchpad` capability token.
+- **The parser is total and ignore-unknown.** `libinput list-devices` is
+  human-oriented ("may change its output at any time"); the fixture is the
+  tripwire and unknown keys are skipped, so a tool change is a one-file fix
+  behind the seam. It reports libinput **built-in defaults**, not the desktop's
+  applied configuration.
+- **The live source on CI/permission-limited hosts** exits 0 with no devices
+  (permission denied on `/dev/input`), which projects `Available` +
+  `present:false` — a normal state. It does not use the bridge host; T-15.4b
+  adds the `*Host`/`*Client` wiring if it projects the inventory.
+- Live visual check: `bash scripts/capture-t15-input.sh` produced
+  `docs/captures/t15-4a-input-adapter.png` (3840x2160). Vision confirmed the
+  nested desktop, menu bar, Dock, and client windows render with no blank
+  areas, clipping, or stray artifacts.

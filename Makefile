@@ -125,6 +125,7 @@ e2e: build
 	$(CARGO) test -p dragonfruit-power
 	$(CARGO) test -p dragonfruit-bluetooth
 	$(CARGO) test -p dragonfruit-storage
+	$(CARGO) test -p dragonfruit-input
 	$(CARGO) test -p dragonfruit-system-status
 	$(CARGO) test -p dragonfruit-settingsd
 	$(CARGO) test -p dragonfruit-files-core
