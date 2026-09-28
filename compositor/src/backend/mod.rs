@@ -60,11 +60,41 @@ pub fn add_seat_capabilities(state: &mut DfState) {
 /// The headless default mode.
 pub const HEADLESS_MODE_SIZE: (i32, i32) = (1280, 720);
 
+/// Environment variable overriding the headless output's scale (T-16.3a).
+/// The default is `1.0`; a scaling conformance test sets e.g. `2.0` so
+/// Xwayland boots against an integer-scaled primary display.
+pub const ENV_HEADLESS_SCALE: &str = "DRAGONFRUIT_HEADLESS_SCALE";
+
+/// Parse a positive finite output scale from `value`, or the `fallback`.
+pub fn parse_output_scale(value: Option<&str>, fallback: f64) -> f64 {
+    value
+        .and_then(|value| value.parse::<f64>().ok())
+        .filter(|scale| scale.is_finite() && *scale > 0.0)
+        .unwrap_or(fallback)
+}
+
 pub fn headless_physical_properties() -> PhysicalProperties {
     PhysicalProperties {
         size: (0, 0).into(),
         subpixel: Subpixel::Unknown,
         make: "Dragonfruit".into(),
         model: "Headless".into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_output_scale;
+
+    #[test]
+    fn parses_a_positive_output_scale_and_rejects_bad_values() {
+        assert_eq!(parse_output_scale(Some("2"), 1.0), 2.0);
+        assert_eq!(parse_output_scale(Some("1.5"), 1.0), 1.5);
+        // Missing, unparseable, non-finite, and non-positive fall back.
+        assert_eq!(parse_output_scale(None, 1.0), 1.0);
+        assert_eq!(parse_output_scale(Some("wide"), 1.0), 1.0);
+        assert_eq!(parse_output_scale(Some("NaN"), 1.0), 1.0);
+        assert_eq!(parse_output_scale(Some("0"), 1.0), 1.0);
+        assert_eq!(parse_output_scale(Some("-2"), 1.0), 1.0);
     }
 }

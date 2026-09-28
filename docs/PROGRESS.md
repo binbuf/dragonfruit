@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(142 earlier sections omitted)_
+_(143 earlier sections omitted)_
 
-- **T172 — T-18.1a Wallpaper provider service and shipped default**: **State: done.** `services/wallpaperd` is a real session service. It resolves; `services/wallpaperd/` (new crate, workspace member) —
 - **T173 — T-18.1b Provider settings, wallpaper API wiring, and effective source**: **State: done.** The additive provider keys are declared (schema rev 10), the; `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 9 → 10; 5 additive
 - **T174 — T-18.2 Wallpaper pane collections, skeleton, and attribution**: **State: done.** The Wallpaper pane now has Featured / Built-in / Custom rows;; `design-system/tokens/tokens.json` — semantic `skeletonBase`/`skeletonHighlight`
 - **T175 — T-18.3 Provider licensing, absence matrix, and capture**: **State: done.** The licensing policy is reviewed and made true (`NOTICE`; `docs/licensing.md` — "Fetched third-party content (wallpaper)" extended:
@@ -44,6 +43,7 @@ _(142 earlier sections omitted)_
 - **T142 — T-16.1a Per-output chrome sizing and reserved zones**: **State: done.** Reserved zones are now **per output**: `aggregate_reserved_for`; `compositor/src/shell/layer.rs` — `aggregate_reserved_for(output_name,
 - **T143 — T-16.1b Per-output window placement**: **State: done.** New windows now open on the **focused output** and inside; `compositor/src/state.rs` — new `focused_output()` + `output_geometry_named()`;
 - **T144 — T-16.2 Hotplug under load and lockstep**: **State: done.** Output hotplug now preserves lockstep and loses no windows.; `compositor/src/workspace/mod.rs` — `add_output` mirrors the existing
+- **T145 — T-16.3a Integer-scaled Xwayland**: **State: done.** The integer-scale half of `docs/xwayland-scaling.md` is built.; `compositor/src/xwayland.rs` — `XwaylandState.integer_scale`; computed and
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -13656,3 +13656,80 @@ Decisions / gotchas for T-16.3a and later:
   (windows on the output's inactive Spaces are not mapped).
 - **Nested cannot hotplug.** `DRAGONFRUIT_SYNTHETIC_OUTPUT` is installed only by
   the headless backend; T-16.3's scaling matrix should reuse that harness.
+
+## T145 — T-16.3a Integer-scaled Xwayland
+
+**State: done.** The integer-scale half of `docs/xwayland-scaling.md` is built.
+The compositor chooses the Xwayland integer scale once per session as
+`ceil(primary_output_scale).max(1)` and records it in
+`XwaylandState::integer_scale`; this is the value Smithay already advertises as
+the output's integer `wl_output.scale`. `render::post_repaint` no longer sends
+X11 windows a fractional `preferred_scale` (`accepts_fractional_scale` skips
+windows with an `x11_surface`), which is the effective enforcement of the
+"never advertise `wp_fractional_scale_v1` to Xwayland" policy — Smithay 0.7 has
+no per-client global filter, so not sending the event is the safe form. The
+per-surface viewport downscale remains T-16.3b. ADR 0152.
+
+Real paths:
+
+- `compositor/src/xwayland.rs` — `XwaylandState.integer_scale`; computed and
+  logged in `start()` (`Xwayland ready: DISPLAY=... (start #N, integer scale S)`).
+- `compositor/src/render.rs` — `accepts_fractional_scale(window)`; `post_repaint`
+  skips the fractional preferred scale for X11 surfaces and still sends frame
+  callbacks for them.
+- `compositor/src/backend/mod.rs` — `ENV_HEADLESS_SCALE` +
+  `parse_output_scale`; `compositor/src/backend/headless.rs` boots the headless
+  output at that scale. The synthetic-output harness runs only *after* Xwayland
+  starts, so the primary must boot at the target scale for an X11 scale fixture.
+- `compositor/tests/xwayland_conformance.rs` — new
+  `x11_fixture_at_integer_scale_two` (8 tests total): boots headless at scale 2,
+  asserts the X server screen is the logical size (640x360, not 1280x720), a
+  200x120 X11 window stays 200x120 (no double scale), zoom fills the logical
+  usable area (640x320), and the X server receives that logical configure. Also
+  `CompositorProcess::start_with_synthetic_at_scale` and `click_light_at`.
+- `docs/xwayland-scaling.md` — "Current state" rewritten; `-scale`/`-hidpi`
+  mechanism corrected (`-hidpi` is rootful-only); stale T-31 deferral → T-16.3b.
+- `docs/design/02-compositor.md` — new "Integer-scaled Xwayland" bullet.
+- `docs/design/adr/0152-integer-scaled-xwayland.md` (new).
+
+Commands that work (repo root; `PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig`,
+`RUSTFLAGS=-L $HOME/.local/df-devroot/lib64` when libudev/libseat are absent):
+
+- `cargo test -p dragonfruit-compositor` — all suites green (bin unit 286,
+  `xwayland_conformance` 8, `shell_protocol_conformance` 39).
+- `cargo clippy -p dragonfruit-compositor --all-targets -- -D warnings` and
+  `cargo fmt --all -- --check` — clean.
+- `make e2e` — EXIT 0 (`/tmp/opencode/t145-e2e-2.log`). A first run flaked in
+  the unrelated `dragonfruit-lock-auth` `a_missing_user_is_a_usage_error`
+  broken-pipe race; it passes alone and on rerun.
+- Live visual check: `/tmp/opencode/t145-demo-active.png` (2115x1437) via
+  `/tmp/opencode/capture-t145-demo.sh`; vision found the menu bar, Dock,
+  wallpaper, Settings client, and the X11 xmessage client composited with no
+  clipping/tearing/oversized chrome. Default nested scale is 1
+  (`Xwayland ready ... integer scale 1`).
+
+Decisions / gotchas for T-16.3b and later:
+
+- **The mechanism is `wl_output.scale`, not an Xwayland flag.** Upstream
+  Xwayland has no `-scale`; `-hidpi` is integer-only *and* rootful-only. A
+  rootless Xwayland only ever learns scale from the output global, which
+  Smithay already serializes as `ceil(fractional_scale)`.
+- **Not sending `preferred_scale` is the enforcement.** `wp_fractional_scale_v1`
+  is still bindable by Xwayland; `accepts_fractional_scale` just never fires for
+  X11 surfaces. If a stricter hide is ever wanted, the manager global would have
+  to be hand-rolled with a client filter (Smithay 0.7 does not expose one).
+- **Nested can now boot at scale > 1 only via `DRAGONFRUIT_HEADLESS_SCALE`'s
+  sibling — i.e. it cannot.** Nested is hardcoded 1.0. A scale-2 nested run
+  exposed a real chrome bug (below), so the knob was intentionally not kept;
+  T-16.3b should add the nested scale seam together with chrome sizing.
+- **Discovered chrome bug (for T-16.3b).** At output scale > 1 the wallpaper
+  image element is placed in physical pixels but sized in logical pixels
+  (`render::wallpaper_render_elements`), so the image draws only in the
+  top-left fraction of the output (solid fallback still covers the rest). This
+  is chrome sizing, explicitly deferred by T-16.3a.
+- **Fractional output scale is a documented fallback.** Until T-16.3b, a 1.5x
+  output shows X11 windows at the integer `ceil` (2x) size.
+- The headless `integer_scale` is only recomputed on Xwayland (re)start; the
+  shell can `df_output.set_scale` after boot (the demo does, to 1.0), so the
+  logged value is the boot-time policy, not a live mirror. Xwayland itself
+  tracks later output scale changes through Wayland as usual.
