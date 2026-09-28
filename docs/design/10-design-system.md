@@ -129,6 +129,12 @@ rules:
   accessibility bus (see [ADR 0154](adr/0154-atspi-and-keyboard-audit-boundary.md)).
 - Dark/light and reduced-motion variants are part of the definition of done
   for every component.
+- **Every user-visible string is externalized** with Qt's `qsTr()`/`tr()` and
+  checked by the string-extraction gate (`scripts/i18n-extract.py`, wired into
+  `make lint`/CI). The checked-in `.ts` catalogs are loaded at runtime by
+  `dragonfruit-i18n`, which also sets the default `QLocale` so dates, times,
+  and numbers format for the active language
+  ([ADR 0156](adr/0156-localization-catalogs-and-locale-formatting.md)).
 
 ## Rules
 
@@ -141,6 +147,10 @@ rules:
   library owns reduced-motion behavior, keyboard navigation, focus rings, and
   AT-SPI-compatible semantics (`QAccessible`).
 - **Dark/light mode is a component-level concern,** not an app-level one.
+- **Localization is a component-level concern too.** Strings are externalized
+  where they are written (never concatenated into user-visible text), and a
+  translated string must fit the layout — prefer short catalog terms over a
+  literal translation that elides in the sidebar or a segmented control.
 - **No libadwaita.** First-party apps must have a strongly non-GNOME visual
   identity; libadwaita would put us in a recurring fight against another
   desktop's design language.

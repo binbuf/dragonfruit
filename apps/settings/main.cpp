@@ -7,6 +7,7 @@
 #include <cstdio>
 
 #include "systemfont.h"
+#include "i18n.h"
 
 int main(int argc, char *argv[])
 {
@@ -14,6 +15,7 @@ int main(int argc, char *argv[])
     app.setApplicationName(QStringLiteral("dragonfruit-settings"));
     app.setOrganizationName(QStringLiteral("dragonfruit"));
     Dragonfruit::installSystemFont();
+    Dragonfruit::installTranslations(app);
 
     QQmlApplicationEngine engine;
     QObject::connect(

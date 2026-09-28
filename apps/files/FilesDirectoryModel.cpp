@@ -3,6 +3,7 @@
 
 #include "ffi/files_core.h"
 
+#include <QCoreApplication>
 #include <QDateTime>
 #include <QFileInfo>
 #include <QLocale>
@@ -527,24 +528,26 @@ QString FilesDirectoryModel::kindTextFor(int kind)
 {
     switch (kind) {
     case DF_NODE_DIRECTORY:
-        return QStringLiteral("Folder");
+        return QCoreApplication::translate("FilesDirectoryModel", "Folder");
     case DF_NODE_FILE:
-        return QStringLiteral("File");
+        return QCoreApplication::translate("FilesDirectoryModel", "File");
     case DF_NODE_SYMLINK:
-        return QStringLiteral("Alias");
+        return QCoreApplication::translate("FilesDirectoryModel", "Alias");
     default:
-        return QStringLiteral("Item");
+        return QCoreApplication::translate("FilesDirectoryModel", "Item");
     }
 }
 
 QString FilesDirectoryModel::formatSize(quint64 bytes)
 {
-    return QLocale::system().formattedDataSize(static_cast<qint64>(bytes),
-                                              2, QLocale::DataSizeIecFormat);
+    // The default locale, not `QLocale::system()`: the localization helper
+    // installs the effective locale at startup (T-16.7).
+    return QLocale().formattedDataSize(static_cast<qint64>(bytes),
+                                       2, QLocale::DataSizeIecFormat);
 }
 
 QString FilesDirectoryModel::formatModified(qint64 unixMillis)
 {
     const QDateTime moment = QDateTime::fromMSecsSinceEpoch(unixMillis);
-    return QLocale::system().toString(moment, QLocale::ShortFormat);
+    return QLocale().toString(moment, QLocale::ShortFormat);
 }
