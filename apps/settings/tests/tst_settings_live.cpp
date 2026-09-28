@@ -26,6 +26,7 @@
 #include <QQmlEngine>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QVariantList>
 #include <QVariantMap>
 
 namespace {
@@ -34,6 +35,43 @@ const QString kService = QStringLiteral("org.dragonfruit.Settings1");
 const QString kPath = QStringLiteral("/org/dragonfruit/Settings1");
 const QString kInterface = QStringLiteral("org.dragonfruit.Settings1");
 const QString kKey = QStringLiteral("accessibility.reduceMotion");
+
+// The wallpaper content provider (T-18.1b), a minimal stand-in with the same
+// property surface the real `dragonfruit-wallpaperd` exports.
+const QString kWallpaperService = QStringLiteral("org.dragonfruit.Wallpaper1");
+const QString kWallpaperPath = QStringLiteral("/org/dragonfruit/Wallpaper1");
+const QString kWallpaperInterface = QStringLiteral("org.dragonfruit.Wallpaper1");
+
+class FakeWallpaperService : public QObject
+{
+    Q_OBJECT
+    Q_CLASSINFO("D-Bus Interface", "org.dragonfruit.Wallpaper1")
+    Q_PROPERTY(QString Status READ status CONSTANT)
+    Q_PROPERTY(QString DefaultSource READ defaultSource CONSTANT)
+    Q_PROPERTY(QString BuiltinDefaultSource READ builtinDefaultSource CONSTANT)
+    Q_PROPERTY(QString Items READ items CONSTANT)
+
+public:
+    QString status() const { return QStringLiteral("ready"); }
+    QString defaultSource() const { return QStringLiteral("/cache/nature/1.jpg"); }
+    QString builtinDefaultSource() const
+    {
+        return QStringLiteral("/usr/share/dragonfruit/wallpapers/Default.jpg");
+    }
+    QString items() const
+    {
+        return QStringLiteral(
+            "[{\"pageid\":1,\"title\":\"File:Nature.jpg\",\"artist\":\"A\","
+            "\"licenseShortName\":\"CC BY 4.0\",\"licenseUrl\":\"https://lic\","
+            "\"pageUrl\":\"https://page\",\"description\":\"d\",\"category\":\"nature\","
+            "\"width\":3840,\"height\":2160,\"mime\":\"image/jpeg\","
+            "\"sourceUrl\":\"https://src\",\"localPath\":\"/cache/nature/1.jpg\","
+            "\"fetchedAt\":1}]");
+    }
+
+public slots:
+    QString Preload() { return items(); }
+};
 
 // A minimal stand-in for settingsd's object, with the same method/signal
 // signatures the real daemon exports (the same fake `tst_settingsclient` uses).
@@ -90,6 +128,7 @@ Item {
     id: stage
     property alias toggle: reduceMotion
     property alias current: reduceMotion.checked
+    property var settings: Settings
     width: 240
     height: 60
 
@@ -188,6 +227,62 @@ private slots:
 
         bus.unregisterObject(kPath);
         bus.unregisterService(kService);
+    }
+
+    void bridgeExposesTheWallpaperProviderProperties()
+    {
+        QDBusConnection bus = QDBusConnection::sessionBus();
+        if (!bus.isConnected())
+            QSKIP("no session bus available (run under dbus-run-session)");
+
+        FakeWallpaperService provider;
+        QVERIFY(bus.registerService(kWallpaperService));
+        QVERIFY(bus.registerObject(kWallpaperPath, &provider,
+                                   QDBusConnection::ExportAllProperties
+                                       | QDBusConnection::ExportAllSlots));
+
+        QQmlEngine engine;
+        QScopedPointer<QObject> root(loadControl(engine, false));
+        QVERIFY(root);
+        QObject *settings = root->property("settings").value<QObject *>();
+        QVERIFY(settings);
+
+        // The bridge read the provider properties on construction (never polls).
+        QTRY_COMPARE(settings->property("providerStatus").toString(), QStringLiteral("ready"));
+        QCOMPARE(settings->property("providerDefault").toString(),
+                 QStringLiteral("/cache/nature/1.jpg"));
+        QCOMPARE(settings->property("wallpaperBuiltinDefault").toString(),
+                 QStringLiteral("/usr/share/dragonfruit/wallpapers/Default.jpg"));
+
+        const QVariantList items = settings->property("providerItems").toList();
+        QCOMPARE(items.size(), 1);
+        const QVariantMap entry = items.constFirst().toMap();
+        QCOMPARE(entry.value(QStringLiteral("source")).toString(),
+                 QStringLiteral("/cache/nature/1.jpg"));
+        QCOMPARE(entry.value(QStringLiteral("artist")).toString(), QStringLiteral("A"));
+        QCOMPARE(entry.value(QStringLiteral("licenseShortName")).toString(),
+                 QStringLiteral("CC BY 4.0"));
+        QVERIFY(entry.value(QStringLiteral("url")).toString().startsWith(QStringLiteral("file://")));
+
+        // A live `PropertiesChanged` (the provider's standard notification)
+        // reaches the bridge without a re-read of the object.
+        QDBusMessage changed = QDBusMessage::createSignal(
+            kWallpaperPath, QStringLiteral("org.freedesktop.DBus.Properties"),
+            QStringLiteral("PropertiesChanged"));
+        QVariantMap props;
+        props.insert(QStringLiteral("DefaultSource"), QStringLiteral("/cache/water/2.jpg"));
+        changed << kWallpaperInterface << props << QStringList();
+        QVERIFY(bus.send(changed));
+        QTRY_COMPARE(settings->property("providerDefault").toString(),
+                     QStringLiteral("/cache/water/2.jpg"));
+
+        // `Preload` is exposed through the bridge and is a safe round trip.
+        QMetaObject::invokeMethod(settings, "preloadWallpapers");
+        QTest::qWait(50);
+        QCOMPARE(settings->property("providerItems").toList().size(), 1);
+
+        bus.unregisterObject(kWallpaperPath);
+        bus.unregisterService(kWallpaperService);
     }
 
     void controlRoundTripsThroughTheRealSettingsd()

@@ -7,6 +7,7 @@
 #include <QDBusPendingCallWatcher>
 #include <QDBusPendingReply>
 #include <QDBusServiceWatcher>
+#include <QFileInfo>
 
 namespace {
 
@@ -95,7 +96,7 @@ void SettingsClient::setAvailable(bool available)
 
 QVariantMap settingsSchemaDefaults()
 {
-    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 6). Values are
+    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 10). Values are
     // typed exactly as the schema declares: d, x, b, s, as.
     QVariantMap values;
     values.insert(QStringLiteral("dock.size"), 0.5);
@@ -120,6 +121,11 @@ QVariantMap settingsSchemaDefaults()
     values.insert(QStringLiteral("wallpaper.source"), QString());
     values.insert(QStringLiteral("wallpaper.fit"), QStringLiteral("fill"));
     values.insert(QStringLiteral("wallpaper.showOnAllSpaces"), true);
+    values.insert(QStringLiteral("wallpaper.provider"), QStringLiteral("wikimedia"));
+    values.insert(QStringLiteral("wallpaper.providerAutoFetch"), true);
+    values.insert(QStringLiteral("wallpaper.providerLastFetch"), qlonglong(0));
+    values.insert(QStringLiteral("wallpaper.providerSource"), QString());
+    values.insert(QStringLiteral("wallpaper.builtinDefault"), QString());
     values.insert(QStringLiteral("display.scale"), 1.0);
     values.insert(QStringLiteral("display.rotation"), QStringLiteral("normal"));
     values.insert(QStringLiteral("display.brightness"), 1.0);
@@ -132,6 +138,32 @@ QVariantMap settingsSchemaDefaults()
     values.insert(QStringLiteral("idle.suspend"), qlonglong(0));
     values.insert(QStringLiteral("menu.global"), true);
     return values;
+}
+
+QString shippedDefaultWallpaperPath()
+{
+    // Mirrors services/wallpaperd/src/defaults.rs exactly so shell and
+    // provider never disagree about the out-of-box asset (ADR 0094).
+    const QString override = qEnvironmentVariable("DF_DEFAULT_WALLPAPER");
+    if (!override.isEmpty() && QFileInfo::exists(override))
+        return override;
+
+    const QString dataDirs = qEnvironmentVariable("XDG_DATA_DIRS");
+    const QStringList dirs = dataDirs.isEmpty()
+        ? QStringList{ QStringLiteral("/usr/local/share"), QStringLiteral("/usr/share") }
+        : dataDirs.split(QLatin1Char(':'), Qt::SkipEmptyParts);
+    for (const QString &dir : dirs) {
+        const QString path = dir + QStringLiteral("/dragonfruit/wallpapers/Default.jpg");
+        if (QFileInfo::exists(path))
+            return path;
+    }
+
+#ifdef DF_IN_TREE_DEFAULT_WALLPAPER
+    const QString inTree = QStringLiteral(DF_IN_TREE_DEFAULT_WALLPAPER);
+    if (QFileInfo::exists(inTree))
+        return inTree;
+#endif
+    return QString();
 }
 
 // --- DbusSettingsClient ----------------------------------------------------

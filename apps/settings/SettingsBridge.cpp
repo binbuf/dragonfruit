@@ -11,11 +11,16 @@
 #include <QDBusObjectPath>
 #include <QDBusPendingCallWatcher>
 #include <QDBusPendingReply>
+#include <QDBusServiceWatcher>
 #include <QDBusVariant>
 #include <QDir>
 #include <cstdio>
 #include <QFileInfo>
 #include <QImage>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonValue>
 #include <QLinearGradient>
 #include <QPainter>
 #include <QStandardPaths>
@@ -46,6 +51,13 @@ const WallpaperPreset kPresets[] = {
 
 constexpr int kPresetWidth = 960;
 constexpr int kPresetHeight = 600;
+
+// The wallpaper content provider (T-18.1b): the same session-bus surface the
+// shell reads. Panes never touch it directly (ADR 0036); this bridge is their
+// one accessor, and its absence is a normal state, never an error.
+const QString kWallpaperService = QStringLiteral("org.dragonfruit.Wallpaper1");
+const QString kWallpaperPath = QStringLiteral("/org/dragonfruit/Wallpaper1");
+const QString kWallpaperInterface = QStringLiteral("org.dragonfruit.Wallpaper1");
 
 // Render one original gradient preset in-memory (the same pixels the QML
 // preview shows).
@@ -85,6 +97,7 @@ SettingsBridge::SettingsBridge(QObject *parent)
 
     buildWallpaperPresets();
     connectPortalWatcher();
+    connectWallpaperProvider();
 }
 
 SettingsBridge::~SettingsBridge() = default;
@@ -102,6 +115,28 @@ bool SettingsBridge::available() const
 QVariantList SettingsBridge::wallpaperPresets() const
 {
     return m_presets;
+}
+
+QVariantList SettingsBridge::providerItems() const
+{
+    return m_providerItems;
+}
+
+QString SettingsBridge::providerStatus() const
+{
+    return m_providerStatus;
+}
+
+QString SettingsBridge::providerDefault() const
+{
+    return m_providerDefault;
+}
+
+QString SettingsBridge::wallpaperBuiltinDefault() const
+{
+    // The provider's own resolution wins; absent, the shared resolver still
+    // gives the shipped asset so the Built-in row is never empty (ADR 0094).
+    return m_providerBuiltin.isEmpty() ? shippedDefaultWallpaperPath() : m_providerBuiltin;
 }
 
 bool SettingsBridge::wallpaperChooserAvailable() const
@@ -187,6 +222,135 @@ void SettingsBridge::buildWallpaperPresets()
         entry.insert(QStringLiteral("url"), url.toString());
         m_presets.append(entry);
     }
+}
+
+void SettingsBridge::connectWallpaperProvider()
+{
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    if (!bus.isConnected())
+        return;
+    // A provider restart re-reads the catalogue; an unregistration keeps the
+    // last known values so the pane is not visibly reset (restart/resync).
+    m_providerWatcher = new QDBusServiceWatcher(
+        kWallpaperService, bus, QDBusServiceWatcher::WatchForRegistration, this);
+    connect(m_providerWatcher, &QDBusServiceWatcher::serviceRegistered, this,
+            [this](const QString &) { refreshWallpaperProvider(); });
+    bus.connect(kWallpaperService, kWallpaperPath,
+                QStringLiteral("org.freedesktop.DBus.Properties"),
+                QStringLiteral("PropertiesChanged"), this,
+                SLOT(onProviderPropertiesChanged(QString, QVariantMap, QStringList)));
+    // The contract signal covers a first fill whose PropertiesChanged the
+    // bridge may have missed; a refresh re-reads every property cheaply.
+    bus.connect(kWallpaperService, kWallpaperPath, kWallpaperInterface,
+                QStringLiteral("ItemsChanged"), this,
+                SLOT(onProviderItemsChanged()));
+    refreshWallpaperProvider();
+}
+
+void SettingsBridge::refreshWallpaperProvider()
+{
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    if (!bus.isConnected())
+        return;
+    const auto readProperty = [&bus](const QString &name) -> QString {
+        QDBusMessage call = QDBusMessage::createMethodCall(
+            kWallpaperService, kWallpaperPath,
+            QStringLiteral("org.freedesktop.DBus.Properties"), QStringLiteral("Get"));
+        call << kWallpaperInterface << name;
+        const QDBusMessage reply = bus.call(call);
+        if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().isEmpty())
+            return QString();
+        QVariant value = reply.arguments().constFirst();
+        if (value.userType() == qMetaTypeId<QDBusVariant>())
+            value = value.value<QDBusVariant>().variant();
+        return value.toString();
+    };
+    applyProviderItems(readProperty(QStringLiteral("Items")));
+    applyProviderStatus(readProperty(QStringLiteral("Status")));
+    applyProviderDefault(readProperty(QStringLiteral("DefaultSource")));
+    applyProviderBuiltin(readProperty(QStringLiteral("BuiltinDefaultSource")));
+}
+
+void SettingsBridge::applyProviderItems(const QString &json)
+{
+    const QJsonArray array = QJsonDocument::fromJson(json.toUtf8()).array();
+    QVariantList items;
+    items.reserve(array.size());
+    for (const QJsonValue &value : array) {
+        QVariantMap entry = value.toObject().toVariantMap();
+        const QString localPath = entry.value(QStringLiteral("localPath")).toString();
+        entry.insert(QStringLiteral("source"), localPath);
+        entry.insert(QStringLiteral("url"),
+                     localPath.isEmpty() ? QString()
+                                         : QUrl::fromLocalFile(localPath).toString());
+        items.append(entry);
+    }
+    if (items == m_providerItems)
+        return;
+    m_providerItems = items;
+    emit providerChanged();
+}
+
+void SettingsBridge::applyProviderStatus(const QString &status)
+{
+    if (status == m_providerStatus)
+        return;
+    m_providerStatus = status;
+    emit providerChanged();
+}
+
+void SettingsBridge::applyProviderDefault(const QString &path)
+{
+    if (path == m_providerDefault)
+        return;
+    m_providerDefault = path;
+    emit providerChanged();
+}
+
+void SettingsBridge::applyProviderBuiltin(const QString &path)
+{
+    if (path == m_providerBuiltin)
+        return;
+    m_providerBuiltin = path;
+    emit providerChanged();
+}
+
+void SettingsBridge::onProviderItemsChanged()
+{
+    refreshWallpaperProvider();
+}
+
+void SettingsBridge::onProviderPropertiesChanged(const QString &interface,
+                                                 const QVariantMap &changed,
+                                                 const QStringList &invalidated)
+{
+    Q_UNUSED(interface);
+    Q_UNUSED(invalidated);
+    if (changed.contains(QStringLiteral("Items")))
+        applyProviderItems(changed.value(QStringLiteral("Items")).toString());
+    if (changed.contains(QStringLiteral("Status")))
+        applyProviderStatus(changed.value(QStringLiteral("Status")).toString());
+    if (changed.contains(QStringLiteral("DefaultSource")))
+        applyProviderDefault(changed.value(QStringLiteral("DefaultSource")).toString());
+    if (changed.contains(QStringLiteral("BuiltinDefaultSource")))
+        applyProviderBuiltin(changed.value(QStringLiteral("BuiltinDefaultSource")).toString());
+}
+
+void SettingsBridge::preloadWallpapers()
+{
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    if (!bus.isConnected())
+        return;
+    const QDBusMessage call = QDBusMessage::createMethodCall(
+        kWallpaperService, kWallpaperPath, kWallpaperInterface, QStringLiteral("Preload"));
+    auto *watcher = new QDBusPendingCallWatcher(bus.asyncCall(call), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this](QDBusPendingCallWatcher *call) {
+                call->deleteLater();
+                // Absent provider: the reply is an error, which is ignored; the
+                // properties stay empty and no error reaches the pane.
+                refreshWallpaperProvider();
+            });
 }
 
 void SettingsBridge::connectPortalWatcher()

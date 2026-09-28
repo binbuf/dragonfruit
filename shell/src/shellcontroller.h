@@ -42,6 +42,7 @@
 
 class SystemStatusClient;
 class ThemeBinding;
+class QDBusServiceWatcher;
 class QQmlEngine;
 class QQuickWindow;
 class QQuickItem;
@@ -66,6 +67,13 @@ public:
     QString lastError() const;
 
 private slots:
+    // T-18.1b: the wallpaper provider's source properties and restart. Reading
+    // them is cheap (no network); absence is normal.
+    void refreshWallpaperProvider();
+    void onWallpaperProviderItemsChanged();
+    void onWallpaperProviderPropertiesChanged(const QString &interface,
+                                              const QVariantMap &changed,
+                                              const QStringList &invalidated);
     void onConfigured(int width, int height, quint32 serial);
     void onFocusedAppChanged(const QString &appId, const QString &title);
     // T-14.2b: a focus-scoped application accelerator the compositor matched.
@@ -317,6 +325,10 @@ private slots:
     void onSettingsChanged(const QString &key, const QVariant &value);
 
 private:
+    // T-18.1b: subscribe to `org.dragonfruit.Wallpaper1`'s source properties
+    // (with restart resync) so the shipped default and the fetched fallback
+    // reach the compositor even when settingsd is absent.
+    void connectWallpaperProvider();
     void applyStatusItems();
     // Re-read the live StatusNotifier items from app-index and rebuild the
     // status row (T-14.3). A no-op when the service is absent.
@@ -503,9 +515,10 @@ private:
     // T-14.2b: re-read `menu.global` (the global application-menu toggle) and
     // push it to the bar. Runs on every `changed`/`refreshed`.
     void applyMenuBarPolicy();
-    // T-09.3: re-read the settingsd wallpaper keys and forward them to the
-    // compositor (`df_workspace.set_wallpaper`). Runs on every
-    // `changed`/`refreshed` and once after the protocol connects.
+    // T-09.3 / T-18.1b: re-read the settingsd wallpaper keys and the provider
+    // defaults and forward the effective source to the compositor
+    // (`df_workspace.set_wallpaper`). Runs on every `changed`/`refreshed`, on a
+    // provider property change, and once after the protocol connects.
     void applyWallpaperPolicy();
     // T-09.5: re-read the settingsd display keys and forward them to the
     // compositor (`df_output.set_scale` / `df_output.set_transform`). Runs on
@@ -758,6 +771,12 @@ private:
     // value does not re-send the protocol requests.
     WallpaperSettings m_wallpaperSettings;
     bool m_wallpaperSent = false;
+    // T-18.1b: the provider's live `DefaultSource` / `BuiltinDefaultSource`
+    // (empty when the provider is absent or has not resolved them). Kept
+    // across a provider restart so the desktop is not visibly reset.
+    QString m_providerDefault;
+    QString m_providerBuiltinDefault;
+    QDBusServiceWatcher *m_wallpaperWatcher = nullptr;
     // T-09.5: the last display selection forwarded, so an unchanged settings
     // value does not re-send the protocol requests.
     DisplaySettings m_displaySettings;

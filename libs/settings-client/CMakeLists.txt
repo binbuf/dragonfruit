@@ -13,3 +13,8 @@ add_library(dragonfruit-settings-client STATIC
 )
 target_link_libraries(dragonfruit-settings-client PUBLIC Qt6::Core Qt6::DBus)
 target_include_directories(dragonfruit-settings-client PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+# The in-tree shipped default, resolved at configure time; the last-resort
+# fallback in `shippedDefaultWallpaperPath()` so `make dev` works from a
+# checkout (mirrors wallpaperd's `in_tree_default()`, ADR 0094).
+target_compile_definitions(dragonfruit-settings-client PRIVATE
+    DF_IN_TREE_DEFAULT_WALLPAPER="${CMAKE_SOURCE_DIR}/assets/graphics/wallpapers/Default.jpg")
