@@ -21,7 +21,7 @@ use std::process::Command;
 use dragonfruit_system_adapters::AdapterError;
 use serde_json::Value;
 
-use crate::source::{AudioData, AudioSource, SetOutcome, SinkData};
+use crate::source::{AudioData, AudioSource, SetOutcome, SinkData, SourceData};
 
 /// The PipeWire graph-dump tool (ships with `pipewire`).
 pub const PW_DUMP_BIN: &str = "pw-dump";
@@ -50,7 +50,9 @@ impl AudioData {
             .ok_or_else(|| AdapterError::new("PipeWire: pw-dump root is not an array"))?;
 
         let mut default_sink = None;
+        let mut default_source = None;
         let mut sinks = Vec::new();
+        let mut sources = Vec::new();
         for object in objects {
             match object.get("type").and_then(Value::as_str) {
                 Some("PipeWire:Interface:Metadata") => {
@@ -59,12 +61,27 @@ impl AudioData {
                         .and_then(Value::as_str)
                         == Some("default")
                     {
-                        default_sink = default_sink_name(object);
+                        default_sink = default_name(object, "default.audio.sink");
+                        default_source = default_name(object, "default.audio.source");
                     }
                 }
                 Some("PipeWire:Interface:Node") => {
-                    if let Some(sink) = sink_from_node(object) {
-                        sinks.push(sink);
+                    if let Some(sink) = device_from_node(object, "Audio/Sink") {
+                        sinks.push(SinkData {
+                            id: sink.id,
+                            name: sink.name,
+                            description: sink.description,
+                            volume: sink.volume,
+                            muted: sink.muted,
+                        });
+                    } else if let Some(source) = device_from_node(object, "Audio/Source") {
+                        sources.push(SourceData {
+                            id: source.id,
+                            name: source.name,
+                            description: source.description,
+                            volume: source.volume,
+                            muted: source.muted,
+                        });
                     }
                 }
                 _ => {}
@@ -73,19 +90,31 @@ impl AudioData {
 
         Ok(AudioData {
             default_sink,
+            default_source,
             sinks,
+            sources,
         })
     }
 }
 
-/// The `default.audio.sink` name from one metadata object.
+/// One decoded node, shared by the sink and source projections.
+struct NodeData {
+    id: u32,
+    name: String,
+    description: String,
+    volume: f32,
+    muted: bool,
+}
+
+/// The `default.audio.sink` / `default.audio.source` name from one metadata
+/// object.
 ///
 /// `value` is usually an already-decoded object (`{"name": "..."}`), but older
 /// PipeWire versions encode it as a JSON string; handle both.
-fn default_sink_name(metadata: &Value) -> Option<String> {
+fn default_name(metadata: &Value, key: &str) -> Option<String> {
     let entries = metadata.get("metadata")?.as_array()?;
     for entry in entries {
-        if entry.get("key").and_then(Value::as_str) != Some("default.audio.sink") {
+        if entry.get("key").and_then(Value::as_str) != Some(key) {
             continue;
         }
         let value = entry.get("value")?;
@@ -103,10 +132,10 @@ fn default_sink_name(metadata: &Value) -> Option<String> {
     None
 }
 
-/// One `Audio/Sink` node, when `node` is one.
-fn sink_from_node(node: &Value) -> Option<SinkData> {
+/// One node of `media.class == class`, when `node` is one.
+fn device_from_node(node: &Value, class: &str) -> Option<NodeData> {
     let props = node.pointer("/info/props")?;
-    if props.get("media.class").and_then(Value::as_str) != Some("Audio/Sink") {
+    if props.get("media.class").and_then(Value::as_str) != Some(class) {
         return None;
     }
     let id = node.get("id").and_then(Value::as_u64)? as u32;
@@ -122,7 +151,7 @@ fn sink_from_node(node: &Value) -> Option<SinkData> {
         .unwrap_or(name.as_str())
         .to_owned();
     let (volume, muted) = node_volume(node);
-    Some(SinkData {
+    Some(NodeData {
         id,
         name,
         description,
@@ -194,6 +223,16 @@ impl AudioSource for CommandAudio {
         let value = if muted { "1" } else { "0" };
         run_wpctl(&["set-mute", DEFAULT_SINK_TARGET, value])
     }
+
+    fn set_default_sink(&mut self, id: u32) -> SetOutcome {
+        // `wpctl set-default <id>` sets the default node; the sink/source
+        // distinction is implied by the node's own media class.
+        run_wpctl(&["set-default", &id.to_string()])
+    }
+
+    fn set_default_source(&mut self, id: u32) -> SetOutcome {
+        run_wpctl(&["set-default", &id.to_string()])
+    }
 }
 
 /// Run one `wpctl` write and map its result to the adapter outcome.
@@ -248,7 +287,22 @@ mod tests {
     }
 
     #[test]
-    fn a_non_sink_node_is_ignored() {
+    fn the_fixture_parses_to_the_default_source_and_list() {
+        let data = AudioData::from_pw_dump(FIXTURE).expect("fixture parses");
+        assert_eq!(
+            data.default_source.as_deref(),
+            Some("alsa_input.pci-0000_02_01.0.analog-stereo")
+        );
+        assert_eq!(data.sources.len(), 1);
+        assert_eq!(data.sources[0].id, 150);
+        assert!(data.sources[0].description.contains("Built-in Audio"));
+        // Stored 0.064 = 0.4^3; the linear volume is 0.4.
+        assert!((data.sources[0].volume - 0.4).abs() < 0.001);
+        assert!(!data.sources[0].muted);
+    }
+
+    #[test]
+    fn a_non_device_node_is_ignored() {
         let json = r#"[
             {"id": 76, "type": "PipeWire:Interface:Node",
              "info": {"props": {"media.class": "Stream/Output/Audio"},
@@ -256,7 +310,24 @@ mod tests {
         ]"#;
         let data = AudioData::from_pw_dump(json).unwrap();
         assert!(data.sinks.is_empty());
+        assert!(data.sources.is_empty());
         assert_eq!(data.default_sink, None);
+        assert_eq!(data.default_source, None);
+    }
+
+    #[test]
+    fn a_source_node_is_classified_as_an_input() {
+        let json = r#"[
+            {"id": 9, "type": "PipeWire:Interface:Node",
+             "info": {"props": {"media.class": "Audio/Source",
+                                "node.name": "mic", "node.description": "Mic"},
+                      "params": {"Props": [{"volume": 0.125, "mute": false}]}}}
+        ]"#;
+        let data = AudioData::from_pw_dump(json).unwrap();
+        assert_eq!(data.sources.len(), 1);
+        assert!(data.sinks.is_empty());
+        assert_eq!(data.sources[0].name, "mic");
+        assert!((data.sources[0].volume - 0.5).abs() < 0.001);
     }
 
     #[test]
@@ -277,10 +348,13 @@ mod tests {
             {"type": "PipeWire:Interface:Metadata",
              "props": {"metadata.name": "default"},
              "metadata": [{"key": "default.audio.sink",
-                           "value": "{\"name\": \"sink-a\"}"}]}
+                           "value": "{\"name\": \"sink-a\"}"},
+                          {"key": "default.audio.source",
+                           "value": "{\"name\": \"source-a\"}"}]}
         ]"#;
         let data = AudioData::from_pw_dump(json).unwrap();
         assert_eq!(data.default_sink.as_deref(), Some("sink-a"));
+        assert_eq!(data.default_source.as_deref(), Some("source-a"));
     }
 
     #[test]

@@ -18,13 +18,23 @@ use dragonfruit_system_adapters::AdapterError;
 /// This is deliberately flat and daemon-shaped: the live source builds it from
 /// a `pw-dump` snapshot, a fixture parses straight into it, and nothing above
 /// the adapter ever sees it.
+///
+/// Output nodes (`Audio/Sink`) and input nodes (`Audio/Source`) are both read,
+/// with their separate default routing metadata (`default.audio.sink` /
+/// `default.audio.source`). T-15.3a adds the input half and the default-device
+/// switches; the volume half is unchanged from T-07.3.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct AudioData {
     /// `node.name` of the default sink, from WirePlumber's `default` metadata
     /// (`default.audio.sink`); `None` when no default is set.
     pub default_sink: Option<String>,
+    /// `node.name` of the default source, from WirePlumber's `default`
+    /// metadata (`default.audio.source`); `None` when no default is set.
+    pub default_source: Option<String>,
     /// Every sink node (`media.class` = `Audio/Sink`) in the graph.
     pub sinks: Vec<SinkData>,
+    /// Every source node (`media.class` = `Audio/Source`) in the graph.
+    pub sources: Vec<SourceData>,
 }
 
 /// One PipeWire sink node.
@@ -42,12 +52,27 @@ pub struct SinkData {
     pub muted: bool,
 }
 
-/// The result of one volume/mute write.
+/// One PipeWire source (input) node.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct SourceData {
+    /// The PipeWire node id.
+    pub id: u32,
+    /// `node.name`, the stable identifier used to match the default.
+    pub name: String,
+    /// `node.description` (falling back to `node.nick`), the human label.
+    pub description: String,
+    /// The linear volume, 0..=1, un-cubed from `Props.channelVolumes`.
+    pub volume: f32,
+    /// `Props.mute`.
+    pub muted: bool,
+}
+
+/// The result of one write (volume, mute, or a default-device switch).
 ///
-/// These are explicit user actions (`wpctl set-volume` / `set-mute`), never a
-/// poll. A write that lands does not invent a snapshot: the daemon pushes the
-/// resulting state and the host re-reads the adapter, so the snapshot stays the
-/// single source of truth.
+/// These are explicit user actions (`wpctl set-volume` / `set-mute` /
+/// `set-default`), never a poll. A write that lands does not invent a
+/// snapshot: the daemon pushes the resulting state and the host re-reads the
+/// adapter, so the snapshot stays the single source of truth.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SetOutcome {
     /// WirePlumber applied the change.
@@ -80,6 +105,14 @@ pub trait AudioSource {
 
     /// Set the default sink's mute state. The one mute write.
     fn set_mute(&mut self, muted: bool) -> SetOutcome;
+
+    /// Route playback to the sink with this PipeWire node id: the output
+    /// device switch (`wpctl set-default <id>`). One explicit write.
+    fn set_default_sink(&mut self, id: u32) -> SetOutcome;
+
+    /// Route capture to the source with this PipeWire node id: the input
+    /// device switch (`wpctl set-default <id>`). One explicit write.
+    fn set_default_source(&mut self, id: u32) -> SetOutcome;
 }
 
 /// A fixture-backed source with a simulated daemon lifecycle.
@@ -97,6 +130,8 @@ pub struct MockAudio {
     reads: u32,
     volume_writes: u32,
     mute_writes: u32,
+    default_sink_writes: u32,
+    default_source_writes: u32,
 }
 
 impl MockAudio {
@@ -110,6 +145,8 @@ impl MockAudio {
             reads: 0,
             volume_writes: 0,
             mute_writes: 0,
+            default_sink_writes: 0,
+            default_source_writes: 0,
         }
     }
 
@@ -123,6 +160,8 @@ impl MockAudio {
             reads: 0,
             volume_writes: 0,
             mute_writes: 0,
+            default_sink_writes: 0,
+            default_source_writes: 0,
         }
     }
 
@@ -136,6 +175,8 @@ impl MockAudio {
             reads: 0,
             volume_writes: 0,
             mute_writes: 0,
+            default_sink_writes: 0,
+            default_source_writes: 0,
         }
     }
 
@@ -188,6 +229,16 @@ impl MockAudio {
         self.mute_writes
     }
 
+    /// How many default-sink (output routing) writes the source has served.
+    pub fn default_sink_writes(&self) -> u32 {
+        self.default_sink_writes
+    }
+
+    /// How many default-source (input routing) writes the source has served.
+    pub fn default_source_writes(&self) -> u32 {
+        self.default_source_writes
+    }
+
     /// The simulated default sink's current linear volume, after any writes.
     pub fn volume(&self) -> Option<f32> {
         self.default_sink().map(|sink| sink.volume)
@@ -196,6 +247,21 @@ impl MockAudio {
     /// The simulated default sink's current mute state, after any writes.
     pub fn muted(&self) -> Option<bool> {
         self.default_sink().map(|sink| sink.muted)
+    }
+
+    /// The simulated default sink's `node.name`, after any routing writes.
+    pub fn default_sink_name(&self) -> Option<&str> {
+        self.data.as_ref()?.default_sink.as_deref()
+    }
+
+    /// The simulated default source's `node.name`, after any routing writes.
+    pub fn default_source_name(&self) -> Option<&str> {
+        self.data.as_ref()?.default_source.as_deref()
+    }
+
+    /// The simulated default source's current linear volume, after any writes.
+    pub fn source_volume(&self) -> Option<f32> {
+        self.default_source().map(|source| source.volume)
     }
 
     fn default_sink(&self) -> Option<&SinkData> {
@@ -208,6 +274,12 @@ impl MockAudio {
         let data = self.data.as_mut()?;
         let name = data.default_sink.clone()?;
         data.sinks.iter_mut().find(|sink| sink.name == name)
+    }
+
+    fn default_source(&self) -> Option<&SourceData> {
+        let data = self.data.as_ref()?;
+        let name = data.default_source.as_deref()?;
+        data.sources.iter().find(|source| source.name == name)
     }
 
     /// A read/write failure, or absence, in that order.
@@ -258,6 +330,52 @@ impl AudioSource for MockAudio {
         }
         SetOutcome::Applied
     }
+
+    fn set_default_sink(&mut self, id: u32) -> SetOutcome {
+        self.default_sink_writes += 1;
+        if let Some(outcome) = self.write_outcome() {
+            return outcome;
+        }
+        let name = self
+            .data
+            .as_ref()
+            .and_then(|data| data.sinks.iter().find(|sink| sink.id == id))
+            .map(|sink| sink.name.clone());
+        match name {
+            Some(name) => {
+                if let Some(data) = self.data.as_mut() {
+                    data.default_sink = Some(name);
+                }
+                SetOutcome::Applied
+            }
+            None => SetOutcome::Failed(AdapterError::new(format!(
+                "wpctl: no sink with node id {id}"
+            ))),
+        }
+    }
+
+    fn set_default_source(&mut self, id: u32) -> SetOutcome {
+        self.default_source_writes += 1;
+        if let Some(outcome) = self.write_outcome() {
+            return outcome;
+        }
+        let name = self
+            .data
+            .as_ref()
+            .and_then(|data| data.sources.iter().find(|source| source.id == id))
+            .map(|source| source.name.clone());
+        match name {
+            Some(name) => {
+                if let Some(data) = self.data.as_mut() {
+                    data.default_source = Some(name);
+                }
+                SetOutcome::Applied
+            }
+            None => SetOutcome::Failed(AdapterError::new(format!(
+                "wpctl: no source with node id {id}"
+            ))),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -267,6 +385,7 @@ mod tests {
     fn data() -> AudioData {
         AudioData {
             default_sink: Some("sink-a".to_owned()),
+            default_source: Some("source-a".to_owned()),
             sinks: vec![
                 SinkData {
                     id: 1,
@@ -281,6 +400,22 @@ mod tests {
                     description: "Headphones".to_owned(),
                     volume: 0.25,
                     muted: true,
+                },
+            ],
+            sources: vec![
+                SourceData {
+                    id: 10,
+                    name: "source-a".to_owned(),
+                    description: "Built-in Microphone".to_owned(),
+                    volume: 0.8,
+                    muted: false,
+                },
+                SourceData {
+                    id: 11,
+                    name: "source-b".to_owned(),
+                    description: "USB Microphone".to_owned(),
+                    volume: 0.4,
+                    muted: false,
                 },
             ],
         }
@@ -338,6 +473,8 @@ mod tests {
         let mut mock = MockAudio::absent();
         assert_eq!(mock.set_volume(0.5), SetOutcome::Absent);
         assert_eq!(mock.set_mute(true), SetOutcome::Absent);
+        assert_eq!(mock.set_default_sink(1), SetOutcome::Absent);
+        assert_eq!(mock.set_default_source(10), SetOutcome::Absent);
     }
 
     #[test]
@@ -349,5 +486,55 @@ mod tests {
             SetOutcome::Failed(AdapterError::new("wpctl: no such node"))
         );
         assert_eq!(mock.volume(), Some(0.5));
+
+        assert_eq!(
+            mock.set_default_sink(2),
+            SetOutcome::Failed(AdapterError::new("wpctl: no such node"))
+        );
+        assert_eq!(mock.default_sink_name(), Some("sink-a"));
+    }
+
+    #[test]
+    fn a_default_sink_write_repoints_output_routing() {
+        let mut mock = MockAudio::present(data());
+        assert_eq!(mock.default_sink_name(), Some("sink-a"));
+
+        assert_eq!(mock.set_default_sink(2), SetOutcome::Applied);
+        assert_eq!(mock.default_sink_writes(), 1);
+        assert_eq!(mock.default_sink_name(), Some("sink-b"));
+        // Volume then follows the newly-routed sink.
+        assert_eq!(mock.set_volume(1.0), SetOutcome::Applied);
+        assert_eq!(mock.volume(), Some(1.0));
+
+        let read = mock.read().unwrap().unwrap();
+        assert_eq!(read.sinks[0].volume, 0.5);
+        assert_eq!(read.sinks[1].volume, 1.0);
+    }
+
+    #[test]
+    fn a_default_source_write_repoints_input_routing() {
+        let mut mock = MockAudio::present(data());
+        assert_eq!(mock.default_source_name(), Some("source-a"));
+
+        assert_eq!(mock.set_default_source(11), SetOutcome::Applied);
+        assert_eq!(mock.default_source_writes(), 1);
+        assert_eq!(mock.default_source_name(), Some("source-b"));
+        assert_eq!(mock.source_volume(), Some(0.4));
+
+        // Sources are untouched by output volume writes.
+        assert_eq!(mock.set_volume(0.1), SetOutcome::Applied);
+        assert_eq!(mock.source_volume(), Some(0.4));
+    }
+
+    #[test]
+    fn routing_to_an_unknown_node_id_is_a_failure() {
+        let mut mock = MockAudio::present(data());
+        assert!(matches!(mock.set_default_sink(999), SetOutcome::Failed(_)));
+        assert!(matches!(
+            mock.set_default_source(999),
+            SetOutcome::Failed(_)
+        ));
+        assert_eq!(mock.default_sink_name(), Some("sink-a"));
+        assert_eq!(mock.default_source_name(), Some("source-a"));
     }
 }

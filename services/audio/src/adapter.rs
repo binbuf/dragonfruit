@@ -91,6 +91,25 @@ impl<S: AudioSource> AudioAdapter<S> {
         outcome
     }
 
+    /// Route playback to the sink with this PipeWire node id. The output
+    /// device switch; otherwise the same contract as
+    /// [`set_volume`](Self::set_volume). The snapshot keeps the old default
+    /// until WirePlumber pushes the change and the host re-reads.
+    pub fn set_default_sink(&mut self, id: u32) -> SetOutcome {
+        let outcome = self.source.set_default_sink(id);
+        self.note_write(&outcome);
+        outcome
+    }
+
+    /// Route capture to the source with this PipeWire node id. The input
+    /// device switch; otherwise the same contract as
+    /// [`set_volume`](Self::set_volume).
+    pub fn set_default_source(&mut self, id: u32) -> SetOutcome {
+        let outcome = self.source.set_default_source(id);
+        self.note_write(&outcome);
+        outcome
+    }
+
     /// Flip the default sink's mute state. The Control Center/OSD affordance.
     pub fn toggle_mute(&mut self) -> SetOutcome {
         let muted = self
@@ -153,12 +172,20 @@ mod tests {
     fn data(volume: f32, muted: bool) -> AudioData {
         AudioData {
             default_sink: Some("sink".to_owned()),
+            default_source: Some("mic".to_owned()),
             sinks: vec![SinkData {
                 id: 1,
                 name: "sink".to_owned(),
                 description: "Speakers".to_owned(),
                 volume,
                 muted,
+            }],
+            sources: vec![crate::source::SourceData {
+                id: 10,
+                name: "mic".to_owned(),
+                description: "Microphone".to_owned(),
+                volume: 0.5,
+                muted: false,
             }],
         }
     }
@@ -262,5 +289,70 @@ mod tests {
         assert!(matches!(outcome, SetOutcome::Failed(_)));
         assert!(adapter.state().is_available());
         assert_eq!(adapter.snapshot().unwrap().volume(), 0.5);
+    }
+
+    #[test]
+    fn a_default_sink_switch_does_not_invent_a_snapshot() {
+        let mut mock_data = data(0.5, false);
+        mock_data.sinks.push(crate::source::SinkData {
+            id: 2,
+            name: "headphones".to_owned(),
+            description: "Headphones".to_owned(),
+            volume: 0.25,
+            muted: false,
+        });
+        let mut adapter = AudioAdapter::new(MockAudio::present(mock_data));
+        adapter.refresh();
+        let _ = adapter.drain_events();
+        assert_eq!(
+            adapter.snapshot().unwrap().default_sink.as_deref(),
+            Some("sink")
+        );
+
+        assert_eq!(adapter.set_default_sink(2), SetOutcome::Applied);
+        // The snapshot still holds the last pushed read until a refresh.
+        assert_eq!(
+            adapter.snapshot().unwrap().default_sink.as_deref(),
+            Some("sink")
+        );
+        assert!(adapter.drain_events().is_empty());
+
+        adapter.refresh();
+        assert_eq!(
+            adapter.snapshot().unwrap().default_sink.as_deref(),
+            Some("headphones")
+        );
+        assert_eq!(adapter.drain_events(), vec![AdapterEvent::Changed]);
+    }
+
+    #[test]
+    fn a_default_source_switch_reads_back_on_refresh() {
+        let mut adapter = AudioAdapter::new(MockAudio::present(data(0.5, false)));
+        adapter.refresh();
+        let _ = adapter.drain_events();
+        assert_eq!(
+            adapter.snapshot().unwrap().default_source_name(),
+            Some("mic")
+        );
+
+        assert_eq!(adapter.set_default_source(10), SetOutcome::Applied);
+        assert_eq!(adapter.source().default_source_writes(), 1);
+        adapter.refresh();
+        assert_eq!(
+            adapter.snapshot().unwrap().default_source_name(),
+            Some("mic")
+        );
+    }
+
+    #[test]
+    fn routing_writes_while_absent_hide_the_item() {
+        let mut adapter = AudioAdapter::new(MockAudio::present(data(0.5, false)));
+        adapter.refresh();
+        let _ = adapter.drain_events();
+        adapter.source_mut().kill();
+
+        assert_eq!(adapter.set_default_sink(1), SetOutcome::Absent);
+        assert!(adapter.state().is_unavailable());
+        assert_eq!(adapter.drain_events(), vec![AdapterEvent::Disconnected]);
     }
 }

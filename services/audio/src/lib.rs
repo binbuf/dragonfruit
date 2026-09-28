@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
-//! The PipeWire/WirePlumber audio adapter: the default sink's volume and mute,
-//! and the per-sink list (T-07.3).
+//! The PipeWire/WirePlumber audio adapter: the output (sink) and input
+//! (source) device lists, the default sink's volume and mute (T-07.3), and
+//! default output/input routing (T-15.3a).
 //!
 //! The menu bar's volume item does not talk to PipeWire. It reads an
 //! [`AudioAdapter`], which holds the last state the session manager pushed and
@@ -21,12 +22,22 @@
 //!
 //! # The write path
 //!
-//! [`AudioAdapter::set_volume`] and [`AudioAdapter::set_mute`] are the two
-//! writes, both over the same source seam (`wpctl` for the live source). They
-//! are explicit user actions, never a poll, and they do not invent a snapshot:
-//! the daemon pushes the resulting state and the host re-reads the adapter, so
-//! the snapshot stays the single source of truth. Routing and device switching
-//! are explicitly deferred (T-15).
+//! [`AudioAdapter::set_volume`] and [`AudioAdapter::set_mute`] control the
+//! default sink; [`AudioAdapter::set_default_sink`] and
+//! [`AudioAdapter::set_default_source`] switch the routed output/input device.
+//! All four writes go over the same source seam (`wpctl` for the live source).
+//! They are explicit user actions, never a poll, and they do not invent a
+//! snapshot: the daemon pushes the resulting state and the host re-reads the
+//! adapter, so the snapshot stays the single source of truth.
+//!
+//! # Routing (T-15.3a)
+//!
+//! WirePlumber's `default` metadata carries both `default.audio.sink` and
+//! `default.audio.source`, so one read fills both device lists and both
+//! defaults. Device switches are `wpctl set-default <node-id>`; the raw read
+//! stays daemon-shaped and the model resolves the default (falling back to the
+//! first device, per list) exactly as it did for the sink in T-07.3.
+//! Per-application stream routing stays out of scope (no consumer yet).
 //!
 //! # Pinning the WirePlumber API
 //!
@@ -53,6 +64,6 @@ mod pw_dump;
 mod source;
 
 pub use adapter::AudioAdapter;
-pub use model::{AudioSnapshot, Sink};
+pub use model::{AudioSnapshot, Sink, Source};
 pub use pw_dump::{CommandAudio, DEFAULT_SINK_TARGET, PW_DUMP_BIN, WPCTL_BIN};
-pub use source::{AudioData, AudioSource, MockAudio, SetOutcome, SinkData};
+pub use source::{AudioData, AudioSource, MockAudio, SetOutcome, SinkData, SourceData};
