@@ -2,6 +2,7 @@
 #include "SettingsBridge.h"
 
 #include "BluetoothClient.h"
+#include "SoundClient.h"
 #include "StorageClient.h"
 #include "settingsclient.h"
 
@@ -128,6 +129,16 @@ SettingsBridge::SettingsBridge(QObject *parent)
     connect(m_storage, &StorageClient::availableChanged, this,
             [this](bool) { emit storageChanged(); });
 
+    // T-15.3b: the Sound seam, selected the same way.
+    if (qEnvironmentVariableIsSet("DF_SOUND_FIXTURE"))
+        m_sound = new MockSoundClient(this);
+    else
+        m_sound = new DbusSoundClient(this);
+    connect(m_sound, &SoundClient::changed, this,
+            [this](const QVariantMap &) { emit soundChanged(); });
+    connect(m_sound, &SoundClient::availableChanged, this,
+            [this](bool) { emit soundChanged(); });
+
     buildWallpaperPresets();
     connectPortalWatcher();
     m_wallpaperFixture = qEnvironmentVariableIsSet("DF_WALLPAPER_FIXTURE");
@@ -180,6 +191,16 @@ QVariantMap SettingsBridge::storage() const
 bool SettingsBridge::storageAvailable() const
 {
     return m_storage && m_storage->available();
+}
+
+QVariantMap SettingsBridge::sound() const
+{
+    return m_sound ? m_sound->view() : QVariantMap();
+}
+
+bool SettingsBridge::soundAvailable() const
+{
+    return m_sound && m_sound->available();
 }
 
 QString SettingsBridge::providerStatus() const
@@ -484,6 +505,36 @@ void SettingsBridge::ejectStorage(const QString &drivePath)
 {
     if (m_storage && !drivePath.isEmpty())
         m_storage->eject(drivePath);
+}
+
+void SettingsBridge::refreshSound()
+{
+    if (m_sound)
+        m_sound->refresh();
+}
+
+void SettingsBridge::setSoundVolume(double volume)
+{
+    if (m_sound)
+        m_sound->setVolume(volume);
+}
+
+void SettingsBridge::setSoundMute(bool muted)
+{
+    if (m_sound)
+        m_sound->setMute(muted);
+}
+
+void SettingsBridge::setSoundDefaultSink(int id)
+{
+    if (m_sound)
+        m_sound->setDefaultSink(id);
+}
+
+void SettingsBridge::setSoundDefaultSource(int id)
+{
+    if (m_sound)
+        m_sound->setDefaultSource(id);
 }
 
 void SettingsBridge::setWallpaperFixture(const QString &status)

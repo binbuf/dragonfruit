@@ -117,6 +117,18 @@ impl AudioInterface {
     fn toggle_mute(&self) -> String {
         lock(&self.host).toggle_mute().to_string()
     }
+
+    /// Route output to the sink with this PipeWire node id (T-15.3b). Returns
+    /// the JSON report.
+    fn set_default_sink(&self, id: u32) -> String {
+        lock(&self.host).set_default_sink(id).to_string()
+    }
+
+    /// Route capture to the source with this PipeWire node id (T-15.3b).
+    /// Returns the JSON report.
+    fn set_default_source(&self, id: u32) -> String {
+        lock(&self.host).set_default_source(id).to_string()
+    }
 }
 
 #[interface(name = "org.dragonfruit.SystemStatus1.Battery")]

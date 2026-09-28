@@ -183,6 +183,9 @@ private slots:
     void onBrightnessSetRequested(double level);
     void onWifiToggleRequested(bool enabled);
     void onWifiSettingsRequested();
+    // T-15.3b: the Control Center Sound tile reflects the routing state; the
+    // routing writes are raised from the Settings pane, not the compact tile.
+    void onSoundSettingsRequested();
     // T-15.1b: the Control Center Bluetooth tile. The toggle powers the BlueZ
     // adapter; a known-device row connects/disconnects it; the Settings link is
     // an entry point only until T-16.

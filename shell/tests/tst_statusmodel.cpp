@@ -19,6 +19,7 @@ private slots:
     void joinRaisesTheRequestAndIgnoresEmpty();
     void volumeIsClampedToTheUnitRange();
     void muteRaisesTheRequest();
+    void audioDecodesOutputsInputsAndRouting();
     void outcomeOfReadsTheHostReport();
 
     void theWifiMenuModelExposesOneJoinRowPerNetwork();
@@ -152,6 +153,28 @@ void TestStatusModel::muteRaisesTheRequest()
     model.requestMute(true);
     QCOMPARE(spy.count(), 1);
     QCOMPARE(spy.at(0).at(0).toBool(), true);
+}
+
+void TestStatusModel::audioDecodesOutputsInputsAndRouting()
+{
+    const QVariantMap view = SystemStatusModel::parseView(
+        R"({"kind":"audio","state":"available","glyph":"volume","label":"60%",
+            "volume":0.6,"percent":60,"muted":false,"defaultSink":"speakers",
+            "defaultSource":"microphone","sinkCount":2,"sourceCount":1,
+            "sinks":[{"id":7,"name":"speakers","description":"Built-in Speakers",
+                      "volume":0.6,"percent":60,"muted":false,"default":true}],
+            "sources":[{"id":20,"name":"microphone",
+                        "description":"Built-in Microphone","volume":0.5,
+                        "percent":50,"muted":false,"default":true}]})",
+        QStringLiteral("audio"));
+    QCOMPARE(view.value(QStringLiteral("visible")).toBool(), true);
+    QCOMPARE(view.value(QStringLiteral("defaultSource")).toString(),
+             QStringLiteral("microphone"));
+    QCOMPARE(view.value(QStringLiteral("sourceCount")).toInt(), 1);
+    QCOMPARE(view.value(QStringLiteral("sources")).toList().size(), 1);
+    QCOMPARE(view.value(QStringLiteral("sources")).toList().at(0).toMap()
+                 .value(QStringLiteral("description")).toString(),
+             QStringLiteral("Built-in Microphone"));
 }
 
 void TestStatusModel::outcomeOfReadsTheHostReport()

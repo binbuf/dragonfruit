@@ -158,6 +158,20 @@ impl<N: NetworkManagerSource, A: AudioSource, P: PowerSource> StatusHost<N, A, P
         write_report(&outcome)
     }
 
+    /// Route output to the sink with this PipeWire node id (T-15.3b): the
+    /// output-device switch the Sound pane raises. One explicit write.
+    pub fn set_default_sink(&mut self, id: u32) -> Value {
+        let outcome = self.audio.set_default_sink(id);
+        write_report(&outcome)
+    }
+
+    /// Route capture to the source with this PipeWire node id (T-15.3b): the
+    /// input-device switch the Sound pane raises. One explicit write.
+    pub fn set_default_source(&mut self, id: u32) -> Value {
+        let outcome = self.audio.set_default_source(id);
+        write_report(&outcome)
+    }
+
     /// Flip the default sink's mute state. One explicit write.
     pub fn toggle_mute(&mut self) -> Value {
         let outcome = self.audio.toggle_mute();
@@ -284,6 +298,21 @@ pub fn audio_view<A: AudioSource>(adapter: &AudioAdapter<A>) -> Value {
             })
         })
         .collect();
+    let sources: Vec<Value> = snapshot
+        .sources
+        .iter()
+        .map(|source| {
+            json!({
+                "id": source.id,
+                "name": source.name,
+                "description": source.description,
+                "volume": source.volume,
+                "percent": source.volume_percent(),
+                "muted": source.muted,
+                "default": source.default,
+            })
+        })
+        .collect();
     json!({
         "kind": KIND_AUDIO,
         "state": "available",
@@ -293,8 +322,11 @@ pub fn audio_view<A: AudioSource>(adapter: &AudioAdapter<A>) -> Value {
         "percent": snapshot.volume_percent(),
         "muted": snapshot.muted(),
         "defaultSink": snapshot.default_sink,
+        "defaultSource": snapshot.default_source,
         "sinkCount": snapshot.sink_count(),
+        "sourceCount": snapshot.source_count(),
         "sinks": sinks,
+        "sources": sources,
     })
 }
 
@@ -373,7 +405,7 @@ pub fn can_join(access: &WifiAccess) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dragonfruit_audio::{AudioData, MockAudio, SinkData};
+    use dragonfruit_audio::{AudioData, MockAudio, SinkData, SourceData};
     use dragonfruit_networkmanager::{
         AccessPointData, MockNetworkManager, NetworkManagerData, WifiDeviceData,
     };
@@ -414,6 +446,7 @@ mod tests {
     fn audio_data() -> AudioData {
         AudioData {
             default_sink: Some("speakers".to_owned()),
+            default_source: Some("mic".to_owned()),
             sinks: vec![SinkData {
                 id: 7,
                 name: "speakers".to_owned(),
@@ -421,7 +454,13 @@ mod tests {
                 volume: 0.6,
                 muted: false,
             }],
-            ..AudioData::default()
+            sources: vec![SourceData {
+                id: 9,
+                name: "mic".to_owned(),
+                description: "Built-in Microphone".to_owned(),
+                volume: 0.5,
+                muted: false,
+            }],
         }
     }
 
@@ -494,6 +533,41 @@ mod tests {
         assert_eq!(view["muted"], false);
         assert_eq!(view["defaultSink"], "speakers");
         assert_eq!(view["sinks"][0]["description"], "Built-in Speakers");
+        // T-15.3b: the input half and the routing metadata ride the same view.
+        assert_eq!(view["defaultSource"], "mic");
+        assert_eq!(view["sourceCount"], 1);
+        assert_eq!(view["sources"][0]["description"], "Built-in Microphone");
+        assert_eq!(view["sources"][0]["default"], true);
+    }
+
+    #[test]
+    fn routing_writes_repoint_the_default_devices() {
+        let mut host = StatusHost::new(
+            MockNetworkManager::absent(),
+            MockAudio::present(audio_data()),
+            MockPower::absent(),
+        );
+        host.refresh();
+        assert_eq!(host.set_default_sink(7)["outcome"], "applied");
+        assert_eq!(host.set_default_source(9)["outcome"], "applied");
+        assert_eq!(host.audio().source().default_sink_writes(), 1);
+        assert_eq!(host.audio().source().default_source_writes(), 1);
+        // An unknown node id is a failure, and the read state stays the truth.
+        assert_eq!(host.set_default_sink(999)["outcome"], "failed");
+        host.refresh_audio();
+        assert_eq!(host.audio_view()["defaultSink"], "speakers");
+        assert_eq!(host.audio_view()["defaultSource"], "mic");
+    }
+
+    #[test]
+    fn an_absent_daemon_routing_write_reports_absence() {
+        let mut host = StatusHost::new(
+            MockNetworkManager::absent(),
+            MockAudio::absent(),
+            MockPower::absent(),
+        );
+        assert_eq!(host.set_default_sink(7)["outcome"], "absent");
+        assert_eq!(host.set_default_source(9)["outcome"], "absent");
     }
 
     #[test]

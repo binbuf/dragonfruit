@@ -19,7 +19,7 @@ use crate::value::{SettingsError, Value};
 
 /// The current schema revision. Bump only when a key is added or a default
 /// changes; renames and removals are forbidden within the `1` series.
-pub const SCHEMA_VERSION: u32 = 10;
+pub const SCHEMA_VERSION: u32 = 11;
 
 /// The D-Bus type of a settings value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,11 +69,12 @@ pub enum KeyGroup {
     Input,
     Session,
     Menu,
+    Sound,
 }
 
 impl KeyGroup {
     /// Every group, in schema order.
-    pub const ALL: [KeyGroup; 10] = [
+    pub const ALL: [KeyGroup; 11] = [
         KeyGroup::Dock,
         KeyGroup::Workspaces,
         KeyGroup::Gestures,
@@ -84,6 +85,7 @@ impl KeyGroup {
         KeyGroup::Input,
         KeyGroup::Session,
         KeyGroup::Menu,
+        KeyGroup::Sound,
     ];
 
     /// The group name used in docs and tests.
@@ -99,6 +101,7 @@ impl KeyGroup {
             KeyGroup::Input => "input",
             KeyGroup::Session => "session",
             KeyGroup::Menu => "menu",
+            KeyGroup::Sound => "sound",
         }
     }
 }
@@ -717,6 +720,102 @@ pub const KEYS: &[KeySpec] = &[
         summary:
             "Show the focused app's menus in the global menu bar; off restores local app menus.",
     },
+    // ── Sound effects and balance (T-15.3b) ─────────────────────────────
+    // Device selection, `Output volume`, and `Mute` are not settings keys:
+    // they live on the PipeWire/WirePlumber adapter (T-15.3a) and round-trip
+    // through the bridge host. These keys are the `Sound Effects`/`Balance`
+    // half of the pane, owned and persisted by settingsd.
+    KeySpec {
+        key: "sound.alertSound",
+        group: KeyGroup::Sound,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("Chime"),
+        allowed: &["Chime", "Marimba", "Pulse", "Woodblock", "Breeze"],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "apps/settings (alert playback engine deferred)",
+        since: 11,
+        summary: "Alert sound name selected in the Sound pane.",
+    },
+    KeySpec {
+        key: "sound.playEffectsThrough",
+        group: KeyGroup::Sound,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("output"),
+        allowed: &["output", "alerts"],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "apps/settings (alert playback engine deferred)",
+        since: 11,
+        summary: "Which device sound effects play through: the selected output or the alerts device.",
+    },
+    KeySpec {
+        key: "sound.alertVolume",
+        group: KeyGroup::Sound,
+        kind: KeyType::Number,
+        default: KeyDefault::Number(0.8),
+        allowed: &[],
+        min: Some(0.0),
+        max: Some(1.0),
+        owner: "apps/settings",
+        consumer: "apps/settings (alert playback engine deferred)",
+        since: 11,
+        summary: "Alert sound volume, 0.0 to 1.0, set by the Sound pane's Alert volume slider.",
+    },
+    KeySpec {
+        key: "sound.playOnStartup",
+        group: KeyGroup::Sound,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(true),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "apps/settings (startup chime engine deferred)",
+        since: 11,
+        summary: "Play the startup sound when the session begins.",
+    },
+    KeySpec {
+        key: "sound.uiEffects",
+        group: KeyGroup::Sound,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(true),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "apps/settings (UI sound engine deferred)",
+        since: 11,
+        summary: "Play user-interface sound effects.",
+    },
+    KeySpec {
+        key: "sound.volumeFeedback",
+        group: KeyGroup::Sound,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(false),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/control-center, apps/settings (UI sound engine deferred)",
+        since: 11,
+        summary: "Play feedback when the output volume is changed.",
+    },
+    KeySpec {
+        key: "sound.balance",
+        group: KeyGroup::Sound,
+        kind: KeyType::Number,
+        default: KeyDefault::Number(0.5),
+        allowed: &[],
+        min: Some(0.0),
+        max: Some(1.0),
+        owner: "apps/settings",
+        consumer: "apps/settings (balance write deferred)",
+        since: 11,
+        summary: "Output balance from Left (0.0) to Right (1.0); 0.5 is centered.",
+    },
 ];
 
 /// Look up a key's declaration.
@@ -938,6 +1037,42 @@ mod tests {
         }
         // `wallpaper.source` stays the user override owned by apps/settings.
         assert_eq!(spec("wallpaper.source").unwrap().owner, "apps/settings");
+    }
+
+    /// The Sound-pane keys (T-15.3b): the `Sound Effects`/`Balance` rows,
+    /// additive in revision 11. Device selection, `Output volume`, and `Mute`
+    /// stay on the audio adapter, not here.
+    #[test]
+    fn the_sound_keys_are_declared_in_revision_eleven() {
+        for (key, kind, default) in [
+            ("sound.alertSound", KeyType::Text, KeyDefault::Text("Chime")),
+            (
+                "sound.playEffectsThrough",
+                KeyType::Text,
+                KeyDefault::Text("output"),
+            ),
+            (
+                "sound.alertVolume",
+                KeyType::Number,
+                KeyDefault::Number(0.8),
+            ),
+            ("sound.playOnStartup", KeyType::Bool, KeyDefault::Bool(true)),
+            ("sound.uiEffects", KeyType::Bool, KeyDefault::Bool(true)),
+            (
+                "sound.volumeFeedback",
+                KeyType::Bool,
+                KeyDefault::Bool(false),
+            ),
+            ("sound.balance", KeyType::Number, KeyDefault::Number(0.5)),
+        ] {
+            let spec = spec(key).unwrap_or_else(|| panic!("{key} is declared"));
+            assert_eq!(spec.group, KeyGroup::Sound, "{key}");
+            assert_eq!(spec.kind, kind, "{key}");
+            assert_eq!(spec.default, default, "{key}");
+            assert_eq!(spec.owner, "apps/settings", "{key}");
+            assert_eq!(spec.since, 11, "{key}");
+            assert!(spec.since <= SCHEMA_VERSION, "{key}");
+        }
     }
 
     /// A frozen manifest of the v1 key set. Adding a key is allowed (extend

@@ -27,6 +27,7 @@ Item {
         SignalSpy { id: storageMountSpy; signalName: "storageMountRequested" }
         SignalSpy { id: storageUnmountSpy; signalName: "storageUnmountRequested" }
         SignalSpy { id: storageEjectSpy; signalName: "storageEjectRequested" }
+        SignalSpy { id: soundSettingsSpy; signalName: "soundSettingsRequested" }
         SignalSpy { id: focusSpy; signalName: "focusToggleRequested" }
         SignalSpy { id: darkSpy; signalName: "darkModeToggleRequested" }
         SignalSpy { id: closedSpy; signalName: "closed" }
@@ -53,6 +54,26 @@ Item {
                 enabled: state === "available",
                 volume: volume,
                 muted: muted
+            };
+        }
+
+        function audioRoutingModel(defaultName) {
+            var speakersDefault = defaultName === "Built-in Speakers";
+            return {
+                kind: "audio",
+                state: "available",
+                visible: true,
+                enabled: true,
+                volume: 0.6,
+                muted: false,
+                defaultSink: speakersDefault ? "speakers" : "headphones",
+                sinkCount: 2,
+                sinks: [
+                    { id: 7, name: "speakers", description: "Built-in Speakers",
+                      volume: 0.6, percent: 60, muted: false, default: speakersDefault },
+                    { id: 9, name: "headphones", description: "Headphones",
+                      volume: 0.6, percent: 60, muted: false, default: !speakersDefault }
+                ]
             };
         }
 
@@ -149,7 +170,8 @@ Item {
         function test_panel_content_fits_the_shell_surface() {
             // The shell sizes the Control Center surface to 360x780
             // (kControlCenterWidth/Height). With the Bluetooth tile's device
-            // rows the content must still fit, or the lower tiles are clipped.
+            // rows, the Storage tile, and the Sound tile's routing subtitle and
+            // links the content must still fit, or the lower tiles are clipped.
             var panel = make({
                 wifi: wifiModel("available", true, "home"),
                 bluetooth: bluetoothModel("available", true, true, false,
@@ -157,7 +179,8 @@ Item {
                                              name: "WF-1000XM6", connected: true },
                                            { address: "11:22:33:44:55:66",
                                              name: "WH-1000XM6", connected: false }]),
-                audio: audioModel("available", 0.6, false),
+                storage: storageModel("available", true, false),
+                audio: audioRoutingModel("Built-in Speakers"),
                 brightness: 1.0,
                 focusPolicy: focusModel("off"),
                 dark: false
@@ -320,6 +343,29 @@ Item {
             verify(link !== null);
             compare(link.Accessible.role, Accessible.Button);
             compare(link.Accessible.name, "Open Storage Settings");
+        }
+
+        function test_sound_tile_reflects_the_default_output_device() {
+            var panel = make({ audio: audioRoutingModel("Built-in Speakers") });
+            compare(panel.audioOutputName, "Built-in Speakers");
+            compare(panel.audioOutputs.length, 2);
+            compare(panel.tiles[4].subtitle, "Built-in Speakers");
+
+            // A routing change pushed by the host (the pane's write) converges.
+            panel.audio = audioRoutingModel("Headphones");
+            compare(panel.audioOutputName, "Headphones");
+        }
+
+        function test_sound_settings_link_raises_the_request() {
+            var panel = make({ audio: audioModel("available", 0.5, false) });
+            soundSettingsSpy.target = panel;
+            soundSettingsSpy.clear();
+            var link = findChild(panel, "soundSettingsLink");
+            verify(link !== null, "the Sound Settings link is present");
+            compare(link.Accessible.role, Accessible.Button);
+            compare(link.Accessible.name, "Open Sound Settings");
+            mouseClick(link, link.width / 2, link.height / 2);
+            compare(soundSettingsSpy.count, 1);
         }
 
         function test_wifi_tile_is_read_only_until_the_adapter_can_write() {

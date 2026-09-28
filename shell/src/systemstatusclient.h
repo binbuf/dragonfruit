@@ -128,6 +128,11 @@ private:
     QString m_activeSsid = QStringLiteral("dragonfruit");
     double m_volume = 0.6;
     bool m_muted = false;
+    // The audio routing fixture (T-15.3b): the default output/input names the
+    // tile reflects; the fixture never switches them (routing is the Settings
+    // pane's write path).
+    QString m_defaultSinkName = QStringLiteral("speakers");
+    QString m_defaultSourceName = QStringLiteral("microphone");
     // The Bluetooth fixture state (T-15.1b): a powered adapter with one known
     // device and one discoverable device. Writes mutate it and re-emit, so the
     // Control Center tile's round-trip is observable headlessly.
