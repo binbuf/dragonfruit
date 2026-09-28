@@ -665,6 +665,14 @@ complete the track:
   windows clear the menu bar and Dock) with a per-output cascade offset.
   Transient dialogs center on their parent, stay above it, and minimize with
   it (T-16.1b).
+- **Output hotplug.** Attaching a display gives it a fresh Space list that
+  joins the current lockstep index and mirrors any dedicated fullscreen Space
+  the other displays carry, so a later switch advances every display together
+  (T-16.2). Detaching one migrates its windows to the remaining primary's
+  active Space **and re-homes their geometry** — floating windows cascade
+  into the usable area, zoomed windows re-fit it, fullscreen fills it — so no
+  window is stranded at coordinates on the dead display. Chrome re-anchors
+  through the same per-output reserve path (T-16.1a).
 - **Regions.** Client-provided opaque, translucent, and input regions are
   honored: input outside the input region falls through, and translucent
   regions participate in the blur pass rather than fighting it.

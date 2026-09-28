@@ -192,18 +192,41 @@ impl WorkspaceModel {
     /// Register an output with a fresh Space list (hotplug attach and
     /// initial backend setup). Idempotent: an already-known output is left
     /// untouched.
+    ///
+    /// The new display joins the **current lockstep index** of the displays
+    /// already present and mirrors any dedicated fullscreen Space they
+    /// carry (T-16.2). A fresh list pinned to index 0 would silently break
+    /// lockstep after a hotplug: subsequent switches advance each display
+    /// from a different index, so they never realign without an explicit
+    /// `activate_all`.
     pub fn add_output(&mut self, output: &str) {
         if self.outputs.iter().any(|o| o.output == output) {
             return;
         }
-        let mut spaces = Vec::with_capacity(INITIAL_SPACES);
-        for index in 0..INITIAL_SPACES {
-            spaces.push(make_space(&mut self.next_space_id, index, None));
+        // Mirror the existing displays' Space *shape* (length and fullscreen
+        // markers) so the lists stay index-aligned, then adopt their active
+        // index. With no existing output this is the fresh three-Space list.
+        let template: Vec<Option<WindowId>> = self
+            .outputs
+            .first()
+            .map(|first| {
+                first
+                    .spaces
+                    .iter()
+                    .map(|space| space.fullscreen_for)
+                    .collect()
+            })
+            .unwrap_or_else(|| vec![None; INITIAL_SPACES]);
+        let active = self.outputs.first().map(|first| first.active).unwrap_or(0);
+        let mut spaces = Vec::with_capacity(template.len());
+        for (index, fullscreen_for) in template.iter().enumerate() {
+            spaces.push(make_space(&mut self.next_space_id, index, *fullscreen_for));
         }
+        let active = active.min(spaces.len().saturating_sub(1));
         self.outputs.push(OutputSpaces {
             output: output.to_string(),
             spaces,
-            active: 0,
+            active,
         });
         self.dispatch.push(WorkspaceEvent::output_added(output));
     }
@@ -872,10 +895,16 @@ mod tests {
         assert_eq!(model.window_space(a), Some(primary_active));
         assert_eq!(model.window_space(b), Some(primary_active));
 
-        // Re-attach: a fresh Space list, existing assignments untouched.
+        // Re-attach: a fresh Space list that snaps to the current lockstep
+        // index (T-16.2), existing assignments untouched.
         model.add_output("HDMI-A-1");
         assert_eq!(model.space_count("HDMI-A-1"), INITIAL_SPACES);
-        assert_eq!(model.active_index("HDMI-A-1"), Some(0));
+        assert_eq!(
+            model.active_index("HDMI-A-1"),
+            Some(1),
+            "a hotplugged display joins the lockstep index of the others"
+        );
+        assert_eq!(model.active_index("DP-1"), Some(1));
         for window in [a, b] {
             let space = model.window_space(window).unwrap();
             assert!(
@@ -883,6 +912,47 @@ mod tests {
                 "window {window} must still belong to a live Space"
             );
         }
+    }
+
+    #[test]
+    fn hotplugged_output_joins_lockstep_and_mirrors_a_fullscreen_space() {
+        let mut model = model_with_two_outputs();
+        // Both displays sit on Space 1, then the primary enters fullscreen: a
+        // dedicated Space is inserted at the same index on both.
+        model.activate_all(1);
+        let origin = model.active_space("DP-1").unwrap();
+        let fullscreen = model.enter_fullscreen(WindowId(3), origin).unwrap();
+        assert_eq!(model.active_index("DP-1"), Some(2));
+        assert_eq!(model.active_index("HDMI-A-1"), Some(2));
+
+        // A third display hotplugs in while fullscreen: it mirrors the
+        // fullscreen Space and joins index 2, so the lists stay aligned.
+        model.add_output("DP-2");
+        assert_eq!(model.space_count("DP-2"), INITIAL_SPACES + 1);
+        assert_eq!(model.active_index("DP-2"), Some(2));
+        assert!(
+            model.is_fullscreen_at("DP-2", 2),
+            "the new display mirrors the dedicated fullscreen Space"
+        );
+        assert_eq!(model.space_at("DP-1", 2), Some(fullscreen));
+        assert_eq!(
+            model.space_count("DP-2"),
+            model.space_count("DP-1"),
+            "the hotplugged display mirrors the list length"
+        );
+
+        // A lockstep switch advances every display, including the new one.
+        assert!(model.switch_all(1));
+        for output in ["DP-1", "HDMI-A-1", "DP-2"] {
+            assert_eq!(model.active_index(output), Some(3), "{output} switched");
+        }
+
+        // Leaving fullscreen removes the mirrored Space everywhere; the
+        // window returns to the origin on its owner output.
+        assert_eq!(model.exit_fullscreen(WindowId(3)), Some(origin));
+        assert_eq!(model.active_space("DP-1"), Some(origin));
+        assert_eq!(model.window_space(WindowId(3)), Some(origin));
+        assert_eq!(model.space_count("DP-2"), INITIAL_SPACES);
     }
 
     #[test]
