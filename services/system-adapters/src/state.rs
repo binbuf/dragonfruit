@@ -22,6 +22,8 @@ impl AdapterId {
     pub const POWER: AdapterId = AdapterId("battery");
     /// Keyboard/mouse/trackpad inventory (libinput).
     pub const INPUT: AdapterId = AdapterId("input");
+    /// Mission Control and hot corners (compositor overview).
+    pub const MISSION_CONTROL: AdapterId = AdapterId("mission-control");
 
     /// An id for a status slot the constants above do not name.
     pub const fn new(id: &'static str) -> Self {
@@ -239,5 +241,6 @@ mod tests {
         assert_eq!(AdapterId::AUDIO.as_str(), "volume");
         assert_eq!(AdapterId::POWER.as_str(), "battery");
         assert_eq!(AdapterId::INPUT.as_str(), "input");
+        assert_eq!(AdapterId::MISSION_CONTROL.as_str(), "mission-control");
     }
 }

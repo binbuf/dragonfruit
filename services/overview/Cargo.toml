@@ -1,0 +1,21 @@
+[package]
+name = "dragonfruit-overview"
+description = "Mission Control and hot corners adapter: trigger configuration, overview state, and events (T-15.5a)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+# The adapter reuses the compositor's already-built hot-corner detection and
+# overview state machine: it never re-derives a corner or a transition. What it
+# owns is the *projection* — the trigger configuration and the runtime overview
+# state the shell bridge publishes, with an explicit absent state. The
+# dependency-free contract lives in `dragonfruit-system-adapters`, exactly like
+# `dragonfruit-input` and `dragonfruit-storage`.
+[dependencies]
+dragonfruit-system-adapters = { path = "../system-adapters", version = "0.1.0" }
+
+[lib]
+name = "dragonfruit_overview"
+path = "src/lib.rs"

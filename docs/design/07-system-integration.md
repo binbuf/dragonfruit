@@ -22,6 +22,7 @@ equivalent) API intended exactly for custom desktop frontends.
 | Date & time | systemd-timedated | Timezone and NTP settings for the Settings panes. |
 | User accounts | accountsservice | User list, avatars, account type — for Settings' Users & Groups pane. |
 | Input devices | libinput | Keyboard/mouse/trackpad enumeration and per-device capabilities. Unlike the daemons above, the **user's** input settings are compositor-applied and settingsd-owned, per principle 3; the adapter is the inventory only. |
+| Mission Control / hot corners | compositor (`df_toplevel_manager`) | Trigger configuration and overview runtime state. Mission Control and hot corners are compositor-native: the compositor detects corners and owns the one overview machine, and the shell learns both over the private bridge. The adapter reuses that path; it is the projection, never a second detector. |
 | Seat/session | systemd / logind | Session lifetime, `graphical-session.target`, VT management. |
 | Privileged operations | host policy infrastructure | polkit / authentication agent integration; we never roll our own privilege escalation. |
 
@@ -458,6 +459,44 @@ Absence follows the adapter's two hide rules (ADR 0124). libinput gone, or a
 running stack with no recognized device, hides the device list and shows a
 one-line note; the settingsd-backed preference rows stay live on the schema
 defaults, so an absent inventory never turns the panes into dead surfaces.
+
+## The Mission Control and hot corners path (T-15.5a)
+
+Mission Control and hot corners are the one subsystem with **no external
+daemon**: the compositor detects a corner in its input path
+(`compositor/src/input/hot_corners.rs`) and drives the single overview state
+machine (`compositor/src/overview/mod.rs`), and the shell learns both over the
+private `df_toplevel_manager` bridge (`hot_corner`, `overview_changed`). The
+adapter, `dragonfruit-overview` (`services/overview`), therefore does not
+re-implement detection or the transition — it is the **projection** of what the
+compositor already publishes, behind a `MissionControlSource` seam.
+
+The snapshot names the four corners and the five assignable actions (`none`,
+`Mission Control`, `Notification Center`, `Desktop Reveal`, `Lock Screen`), the
+dwell and inset, and the gesture-gating trio (`gestures.enabled`,
+`gestures.spaceSwitch`, `gestures.missionControl`) the compositor applies live
+over `set_input_policy`. It carries the runtime overview state too — open or
+closed, the selection, and the Space/window counts. The stable action ids
+(`mission-control`, `notification-center`, …) are the same spelling the
+settings keys and the wire use, so the pane's popup maps straight onto a key
+value.
+
+The event half is two streams. A pure `MissionControlSnapshot::changes(previous)`
+diff reports a corner reassignment, a gesture change, the overview opening or
+closing, a selection move, and count changes without any polling. A hot-corner
+trigger is **instantaneous** — it is never part of a snapshot — so the bridge
+queues it and the adapter drains it as a `HotCornerTrigger { corner, action }`.
+
+The durable trigger choices stay where principle 3 puts them: the compositor
+owns the runtime, `settingsd` owns the preferences and the compositor applies
+them live, and the adapter only reports. A missing bridge is the adapter's
+`AdapterState::Unavailable` — a normal hidden state; a present bridge that
+cannot be read is `Error`, visible and inert with the message. The
+`MockMissionControl` source drives the states in CI, with `kill`/`restart` for
+absence and re-subscribe and `trigger` for the event stream
+([adr/0126](adr/0126-mission-control-hot-corners-adapter.md)). T-15.5b adds the
+Settings pane and the Control Center tile; it wires the shell bridge into the
+source and adds the hot-corner assignment keys.
 
 ## The status bridge host (T-07.5a)
 
