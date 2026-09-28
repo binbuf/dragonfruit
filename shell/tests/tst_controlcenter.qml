@@ -30,6 +30,7 @@ Item {
         SignalSpy { id: soundSettingsSpy; signalName: "soundSettingsRequested" }
         SignalSpy { id: keyboardSettingsSpy; signalName: "keyboardSettingsRequested" }
         SignalSpy { id: missionControlSettingsSpy; signalName: "missionControlSettingsRequested" }
+        SignalSpy { id: batterySettingsSpy; signalName: "batterySettingsRequested" }
         SignalSpy { id: focusSpy; signalName: "focusToggleRequested" }
         SignalSpy { id: darkSpy; signalName: "darkModeToggleRequested" }
         SignalSpy { id: closedSpy; signalName: "closed" }
@@ -152,6 +153,36 @@ Item {
             };
         }
 
+        // The shell's decoded battery / power-profiles view (T-15.6b), shaped by
+        // `SystemStatusModel`.
+        function batteryModel(percent, profile, profilesAvailable, present) {
+            var list = [];
+            if (profilesAvailable) {
+                list = [
+                    { id: "power-saver", label: "Power Saver",
+                      glyph: "power-saver", active: profile === "power-saver" },
+                    { id: "balanced", label: "Balanced",
+                      glyph: "power-balanced", active: profile === "balanced" },
+                    { id: "performance", label: "Performance",
+                      glyph: "power-performance", active: profile === "performance" }
+                ];
+            }
+            var label = profile === "power-saver" ? "Power Saver"
+                : profile === "performance" ? "Performance" : "Balanced";
+            return {
+                kind: "battery",
+                state: "available",
+                present: present,
+                visible: present,
+                enabled: true,
+                percent: percent,
+                profilesAvailable: profilesAvailable,
+                activeProfile: profile,
+                profileLabel: label,
+                profiles: list
+            };
+        }
+
         function make(props) {
             var panel = createTemporaryObject(panelComponent, stage, props || {});
             // The shell sizes the panel to its surface; do the same here so
@@ -168,7 +199,7 @@ Item {
             return panel;
         }
 
-        function test_tiles_expose_all_nine_controls() {
+        function test_tiles_expose_all_ten_controls() {
             var panel = make({
                 wifi: wifiModel("available", true, "home"),
                 bluetooth: bluetoothModel("available", true, true, false),
@@ -177,11 +208,12 @@ Item {
                 input: inputModel("available", true,
                                   [{ name: "AT keyboard", kind: "keyboard" }]),
                 missionControl: missionControlModel(true, 1),
+                battery: batteryModel(71, "balanced", true, true),
                 brightness: 0.8,
                 focusPolicy: focusModel("off"),
                 dark: true
             });
-            compare(panel.tiles.length, 9);
+            compare(panel.tiles.length, 10);
             compare(panel.tiles[0].id, "wifi");
             compare(panel.tiles[0].kind, "toggle");
             compare(panel.tiles[0].checked, true);
@@ -206,15 +238,18 @@ Item {
             compare(panel.tiles[8].id, "mission-control");
             compare(panel.tiles[8].kind, "info");
             compare(panel.tiles[8].subtitle, "Gesture, 1 corner(s)");
+            compare(panel.tiles[9].id, "battery");
+            compare(panel.tiles[9].kind, "info");
+            compare(panel.tiles[9].subtitle, "71% \u00b7 Balanced");
             compare(panel.wifiLabel, "home");
         }
 
         function test_panel_content_fits_the_shell_surface() {
-            // The shell sizes the Control Center surface to 360x980
+            // The shell sizes the Control Center surface to 360x1040
             // (kControlCenterWidth/Height). With the Bluetooth tile's device
             // rows, the Storage tile, the Sound tile's routing subtitle, the
-            // Keyboard tile, and the Mission Control tile the content must
-            // still fit, or the lower tiles are clipped.
+            // Keyboard tile, the Mission Control tile, and the Battery tile the
+            // content must still fit, or the lower tiles are clipped.
             var panel = make({
                 wifi: wifiModel("available", true, "home"),
                 bluetooth: bluetoothModel("available", true, true, false,
@@ -227,17 +262,18 @@ Item {
                 input: inputModel("available", true,
                                   [{ name: "AT keyboard", kind: "keyboard" }]),
                 missionControl: missionControlModel(true, 1),
+                battery: batteryModel(71, "balanced", true, true),
                 brightness: 1.0,
                 focusPolicy: focusModel("off"),
                 dark: false
             });
             panel.width = 360;
-            panel.height = 980;
+            panel.height = 1040;
             waitForRendering(stage);
             var content = findChild(panel, "controlCenterContent");
             verify(content !== null);
-            verify(content.childrenRect.height <= 980,
-                   "Control Center content must fit the 980px surface, height="
+            verify(content.childrenRect.height <= 1040,
+                   "Control Center content must fit the 1040px surface, height="
                    + content.childrenRect.height);
         }
 
@@ -457,6 +493,53 @@ Item {
             compare(link.Accessible.name, "Open Mission Control Settings");
             mouseClick(link, link.width / 2, link.height / 2);
             compare(missionControlSettingsSpy.count, 1);
+        }
+
+        function test_battery_tile_reflects_charge_and_profile() {
+            var panel = make({ battery: batteryModel(71, "balanced", true, true) });
+            compare(panel.batteryVisible, true);
+            compare(panel.batteryPercent, 71);
+            compare(panel.batteryGlyph, "power-balanced");
+            compare(panel.batteryLabel, "71% \u00b7 Balanced");
+            compare(panel.tiles[9].visible, true);
+            compare(panel.tiles[9].enabled, true);
+
+            // A profile change pushed by the host converges, and the tile glyph
+            // follows the active profile.
+            panel.battery = batteryModel(70, "performance", true, true);
+            compare(panel.batteryLabel, "70% \u00b7 Performance");
+            compare(panel.batteryGlyph, "power-performance");
+
+            // A desktop with no battery but selectable profiles still shows.
+            panel.battery = batteryModel(0, "power-saver", true, false);
+            compare(panel.batteryVisible, true);
+            compare(panel.batteryLabel, "Power Saver");
+
+            // No battery and no profiles hides the tile.
+            panel.battery = batteryModel(0, "balanced", false, false);
+            compare(panel.batteryVisible, false);
+            compare(panel.tiles[9].visible, false);
+        }
+
+        function test_battery_tile_hides_on_absence() {
+            var panel = make({ battery: ({ state: "unavailable" }) });
+            compare(panel.batteryAvailable, false);
+            compare(panel.batteryVisible, false);
+            var tile = findChild(panel, "batteryTile");
+            verify(tile !== null);
+            compare(tile.visible, false);
+        }
+
+        function test_battery_settings_link_raises_the_request() {
+            var panel = make({ battery: batteryModel(71, "balanced", true, true) });
+            batterySettingsSpy.target = panel;
+            batterySettingsSpy.clear();
+            var link = findChild(panel, "batterySettingsLink");
+            verify(link !== null, "the Battery Settings link is present");
+            compare(link.Accessible.role, Accessible.Button);
+            compare(link.Accessible.name, "Open Battery Settings");
+            mouseClick(link, link.width / 2, link.height / 2);
+            compare(batterySettingsSpy.count, 1);
         }
 
         function test_sound_tile_reflects_the_default_output_device() {

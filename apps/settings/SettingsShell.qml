@@ -132,6 +132,8 @@ Item {
             return appearancePaneComponent;
         case "wallpaper":
             return wallpaperPaneComponent;
+        case "battery":
+            return batteryPaneComponent;
         case "desktop-dock":
             return desktopDockPaneComponent;
         case "mission-control":
@@ -240,6 +242,11 @@ Item {
     Component {
         id: missionControlPaneComponent
         MissionControlPane { }
+    }
+
+    Component {
+        id: batteryPaneComponent
+        BatteryPane { }
     }
 
     Component {

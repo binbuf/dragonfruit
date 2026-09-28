@@ -41,6 +41,12 @@ Item {
     // `{ state, glyph, label, reachable, gesture, cornerCount }`. `state` is
     // always `available` while the shell runs; empty hides the tile.
     property var missionControl: ({})
+    // The battery / power-profiles view from the bridge host (T-15.6b), shaped
+    // by `SystemStatusModel`: `{ state, present, percent, level, charging,
+    // chargeState, healthLabel, profilesAvailable, activeProfile, profileLabel,
+    // profiles }`. The tile hides when the host is absent, and also when there
+    // is neither a battery nor a power profile to act on.
+    property var battery: ({})
     property real brightness: 1.0
     // The notification service's Focus/DND policy view
     // (`{mode, allowList, batchedCount}`); empty when the service is absent.
@@ -156,6 +162,41 @@ Item {
         return qsTr("No trigger");
     }
 
+    // Battery / power profiles (T-15.6b). The tile is shown when the host
+    // answers and there is something to summarize: a present battery or a
+    // selectable power profile. The subtitle carries the charge and the active
+    // profile; the link opens the Battery pane.
+    readonly property bool batteryAvailable: root.battery.state === "available"
+    readonly property bool batteryPresent: root.battery.present === true
+    readonly property bool batteryProfiles: root.battery.profilesAvailable === true
+    readonly property bool batteryVisible: root.batteryAvailable
+        && (root.batteryPresent || root.batteryProfiles)
+    readonly property int batteryPercent:
+        root.battery.percent !== undefined ? Number(root.battery.percent) : 0
+    readonly property string batteryProfileLabel:
+        root.battery.profileLabel !== undefined
+            ? String(root.battery.profileLabel) : ""
+    readonly property string batteryGlyph: {
+        for (var i = 0; i < batteryProfilesList.length; ++i) {
+            if (batteryProfilesList[i].active === true
+                    && batteryProfilesList[i].glyph !== undefined)
+                return batteryProfilesList[i].glyph;
+        }
+        return "battery";
+    }
+    readonly property var batteryProfilesList: root.battery.profiles !== undefined
+        ? root.battery.profiles : []
+    readonly property string batteryLabel: {
+        if (!root.batteryVisible)
+            return qsTr("Unavailable");
+        var parts = [];
+        if (root.batteryPresent)
+            parts.push(qsTr("%1%").arg(root.batteryPercent));
+        if (root.batteryProfiles && root.batteryProfileLabel.length > 0)
+            parts.push(root.batteryProfileLabel);
+        return parts.length > 0 ? parts.join(" \u00b7 ") : qsTr("Battery");
+    }
+
     // The notification service's mode (`off`/`focus`/`dnd`). The toggle is Do
     // Not Disturb: `focus` also lights it, because both suppress banners.
     readonly property string focusMode: root.focusPolicy.mode !== undefined
@@ -263,6 +304,14 @@ Item {
             subtitle: root.missionControlLabel,
             visible: root.missionControlVisible,
             enabled: root.missionControlVisible
+        },
+        {
+            id: "battery",
+            kind: "info",
+            title: qsTr("Battery"),
+            subtitle: root.batteryLabel,
+            visible: root.batteryVisible,
+            enabled: root.batteryVisible
         }
     ]
 
@@ -302,6 +351,10 @@ Item {
     // The Mission Control tile is a trigger summary; the link opens the Mission
     // Control pane where the hot-corner assignments live (T-16).
     signal missionControlSettingsRequested()
+    // The Battery tile is a status summary of charge and the active power
+    // profile; the link opens the Battery pane where the profile is selected
+    // (T-15.6b).
+    signal batterySettingsRequested()
 
     // Apply a volume fraction (0..1) and raise the request.
     function setVolume(fraction) {
@@ -1179,6 +1232,71 @@ Item {
                         text: qsTr("Mission Control Settings\u2026")
                         accessibleName: qsTr("Open Mission Control Settings")
                         onActivated: root.missionControlSettingsRequested()
+                    }
+                }
+            }
+
+            // ── Battery (T-15.6b) ───────────────────────────────────────
+            Rectangle {
+                id: batteryTile
+                objectName: "batteryTile"
+                width: parent.width
+                visible: root.batteryVisible
+                implicitHeight: batteryColumn.implicitHeight
+                                + 2 * Theme.controls.settingsGroup.padding
+                radius: Theme.primitive.radius.md
+                color: Theme.color.surfaceSunken
+                Accessible.role: Accessible.Grouping
+                Accessible.name: qsTr("Battery")
+
+                Column {
+                    id: batteryColumn
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: Theme.controls.settingsGroup.padding
+                    spacing: Theme.primitive.spacing.sm
+
+                    Row {
+                        width: parent.width
+                        spacing: Theme.primitive.spacing.md
+
+                        IconTile {
+                            objectName: "batteryIcon"
+                            name: root.batteryGlyph
+                            tileSize: 32
+                            iconSize: 18
+                            active: root.batteryVisible
+                        }
+
+                        Column {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: parent.width - 32 - 2 * Theme.primitive.spacing.md
+
+                            Text {
+                                objectName: "batteryTitle"
+                                text: qsTr("Battery")
+                                color: Theme.color.textPrimary
+                                font.pixelSize: Theme.controls.button.fontSize
+                                font.weight: Theme.primitive.font.weightMedium
+                            }
+
+                            Text {
+                                objectName: "batterySubtitle"
+                                width: parent.width
+                                text: root.batteryLabel
+                                color: Theme.color.textSecondary
+                                font.pixelSize: Theme.primitive.font.sizeSm
+                                elide: Text.ElideRight
+                            }
+                        }
+                    }
+
+                    TextLink {
+                        objectName: "batterySettingsLink"
+                        text: qsTr("Battery Settings\u2026")
+                        accessibleName: qsTr("Open Battery Settings")
+                        onActivated: root.batterySettingsRequested()
                     }
                 }
             }

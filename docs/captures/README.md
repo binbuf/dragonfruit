@@ -555,7 +555,7 @@ Control pane (the `Mission Control` group with `Swipe up to open` and `Swipe
 between Spaces`, and the `Hot Corners` group with `Top Left` = `Mission
 Control`, `Top Right` = `Notification Center`, `Bottom Left` = `Desktop`, and
 `Bottom Right` = `Lock Screen`), and
-`t15-5b-mission-control-control-center.png` is the 360x980 panel crop with the
+`t15-5b-mission-control-control-center.png` is the 360x1040 panel crop with the
 new Mission Control tile (`Gesture, 1 corner(s)`, `Mission Control Settings…`)
 above an unclipped Clipboard tile. The demo runs with
 `DF_SETTINGS_START_PANE=mission-control`, `DF_SETTINGS_FIXTURE`, and
@@ -573,6 +573,21 @@ confirms the desktop renders: menu bar, Dock, and windows composited with no
 blank areas or stray artifacts. Captured by
 `scripts/capture-t15-power-adapter.sh`; requires a host Wayland session,
 spectacle, and Pillow, and is not in `make e2e`.
+
+T-15.6b's Battery and power profiles pane and Control Center tile:
+`t15-6b-battery-pane.png` is the active Settings window on the Battery pane
+(the `Power Mode` group with the `Low Power Mode` profile picker, the `Battery`
+group with `Battery Health`/`Charging` and their `i` details, and the
+`Usage History` group with the range switch and the honest absent-state chart
+frames), and `t15-6b-battery-control-center.png` is the 360x1040 panel crop with
+the new Battery tile (`71% · Balanced`, `Battery Settings…`) above an unclipped
+Clipboard tile. The demo runs with `DF_SETTINGS_START_PANE=battery`,
+`DF_SETTINGS_FIXTURE`, `DF_BATTERY_FIXTURE`, and `DF_STATUS_FIXTURE`, so no host
+settingsd or system-bus daemon is needed. Captured by
+`scripts/capture-t15-battery-pane.sh`; requires a host Wayland session,
+spectacle, and Pillow, and is not in `make e2e`. Vision confirmed the pane's
+three groups and all three profile popup values render with the fixture state,
+and the Control Center shows the Battery tile and link with nothing clipped.
 
 Guidelines:
 

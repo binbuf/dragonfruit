@@ -111,7 +111,7 @@ constexpr int kBannerTopGap = 8;
 // adds the Mission Control summary tile. The surface is fixed and the panel
 // fills it.
 constexpr int kControlCenterWidth = 360;
-constexpr int kControlCenterHeight = 980;
+constexpr int kControlCenterHeight = 1040;
 constexpr int kControlCenterTopGap = 8;
 
 // The OSD overlay (T-11.4a): a centered card. The surface is slightly larger
@@ -840,6 +840,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onKeyboardSettingsRequested()));
     connect(controlCenterObject, SIGNAL(missionControlSettingsRequested()), this,
             SLOT(onMissionControlSettingsRequested()));
+    connect(controlCenterObject, SIGNAL(batterySettingsRequested()), this,
+            SLOT(onBatterySettingsRequested()));
     connect(controlCenterObject, SIGNAL(focusToggleRequested(bool)), this,
             SLOT(onFocusToggleRequested(bool)));
     connect(controlCenterObject, SIGNAL(focusSettingsRequested()), this,
@@ -2010,6 +2012,9 @@ void ShellController::applyControlCenterData()
     const QVariantMap bluetooth = m_statusModel ? m_statusModel->bluetooth() : QVariantMap();
     const QVariantMap storage = m_statusModel ? m_statusModel->storage() : QVariantMap();
     const QVariantMap input = m_statusModel ? m_statusModel->input() : QVariantMap();
+    // Battery / power profiles (T-15.6b): the tile reflects the bridge host's
+    // battery view (the same view the Settings pane and menu bar read).
+    const QVariantMap battery = m_statusModel ? m_statusModel->battery() : QVariantMap();
     // Mission Control and hot corners are compositor-native: the shell owns the
     // compositor mirror and the settingsd values, so it projects the tile's
     // summary locally (T-15.5b) instead of reading a services-layer host.
@@ -2020,6 +2025,7 @@ void ShellController::applyControlCenterData()
     m_controlCenterItem->setProperty("bluetooth", bluetooth);
     m_controlCenterItem->setProperty("storage", storage);
     m_controlCenterItem->setProperty("input", input);
+    m_controlCenterItem->setProperty("battery", battery);
     m_controlCenterItem->setProperty("missionControl", missionControl);
     m_controlCenterItem->setProperty("brightness", brightness);
     m_controlCenterItem->setProperty("focusPolicy", focus);
@@ -2200,6 +2206,13 @@ void ShellController::onMissionControlSettingsRequested()
     // Launching Settings on the Mission Control pane is T-16; the entry point
     // is wired and logs until then.
     qInfo() << "shell: Mission Control Settings requested (T-16)";
+}
+
+void ShellController::onBatterySettingsRequested()
+{
+    // Launching Settings on the Battery pane is T-16; the entry point is wired
+    // and logs until then.
+    qInfo() << "shell: Battery Settings requested (T-16)";
 }
 
 void ShellController::onFocusToggleRequested(bool enabled)

@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(121 earlier sections omitted)_
+_(122 earlier sections omitted)_
 
-- **T110f — T-14.7f Dock drag-and-drop identity and feedback**: **State: done.** External drags are now read once at drag *enter*, so the Dock; `shell/src/dockdrops.{h,cpp}` — `DockDropPayloadData` +
 - **T110g — T-14.7g Dock activation and launch correctness**: **State: done.** The Dock click tree is now observable end to end: a launch; `protocols/dragonfruit-toplevel.xml` — manager version 8; new
 - **T110h — T-14.7h Dock folder stacks: presentation and clicks**: **State: done.** Folder entries read like macOS: a clean folder silhouette with; `shell/dock/DockGlyph.qml` — the `stack` block is `stackArtwork`: back tab
 - **T110i — T-14.7i Dock hover name labels (Tooltip)**: **State: done.** The design system has a passive `Tooltip` and the Dock shows a; `design-system/components/Tooltip.qml` (new) — `open`, `anchorItem`,
@@ -42,6 +41,7 @@ _(121 earlier sections omitted)_
 - **T119 — T-15.5a Mission Control and hot corners adapter**: **State: done.** A new workspace crate `dragonfruit-overview`; `services/overview/src/source.rs` — `MissionControlSource` seam,
 - **T120 — T-15.5b Mission Control and hot corners pane and tile**: **State: done.** The Settings Mission Control & Hot Corners pane and the Control; `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 12 → 13; new
 - **T121 — T-15.6a Battery and power profiles adapter**: **State: done.** `dragonfruit-power` (`services/power`) grew from the T-07.4; `services/power/src/source.rs` — `PowerData.profiles:
+- **T122 — T-15.6b Battery and power profiles pane and tile**: **State: done.** The Settings Battery pane and the Control Center Battery tile; `services/system-status/src/lib.rs` — `battery_view` now carries
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -11558,3 +11558,84 @@ Decisions / gotchas for T-15.6b and later:
   `docs/captures/t15-6a-power-adapter.png` (3840x2160). No surface of its own,
   so the capture confirms only that the nested desktop renders; vision found no
   blank areas, clipping, or stray artifacts.
+
+## T122 — T-15.6b Battery and power profiles pane and tile
+
+**State: done.** The Settings Battery pane and the Control Center Battery tile
+ship as one functional unit over the T-15.6a adapter (ADR 0129). The bridge
+host's `Battery` interface gains the one `SetActiveProfile` write; the pane
+picks the active profile live, reads battery health/charging from UPower, and
+the tile summarizes charge + active profile. Absence is layered and documented
+per daemon. The Usage History range switch and chart frames render an honest
+absent state because UPower exposes no charge history.
+
+Real paths:
+
+- `services/system-status/src/lib.rs` — `battery_view` now carries
+  `health`/`healthLabel`/`capacity`/`chargeCycles`, `chargeState`,
+  `profilesAvailable`, `activeProfile`/`profileLabel`, and the `profiles`
+  list; new `StatusHost::set_active_profile(&str) -> Value` and
+  `profile_report(&ProfileOutcome)`.
+- `services/system-status/src/dbus.rs` — `BatteryInterface` gains
+  `SetActiveProfile(profile)`; the interface is no longer read-only.
+- `services/system-status/tests/host.rs` + `src/lib.rs` tests — profile
+  read/write and absence.
+- `design-system/components/Icon.qml` — new painted glyphs `battery`,
+  `power-saver` (leaf), `power-balanced` (balance scale), `power-performance`
+  (bolt), `info`.
+- `apps/settings/BatteryClient.{h,cpp}` (new) — `DbusBatteryClient` /
+  `MockBatteryClient` (`DF_BATTERY_FIXTURE`), one read + one write.
+- `apps/settings/SettingsBridge.{h,cpp}` — `battery`/`batteryAvailable`,
+  `refreshBattery()`, `setPowerProfile(id)`.
+- `apps/settings/BatteryPane.qml` (new) — Power Mode / Battery / Usage History
+  groups; `apps/settings/SettingsPanes.qml` `battery` shipped; `SettingsShell`
+  body; `CMakeLists.txt`.
+- `shell/src/shellcontroller.cpp` — pushes `battery` into the Control Center;
+  `onBatterySettingsRequested`; `kControlCenterHeight` 980 → 1040.
+- `shell/src/systemstatusclient.cpp` — the `DF_STATUS_FIXTURE` battery view
+  carries health + the profile list so the tile renders in the demo.
+- `shell/control-center/ControlCenter.qml` — `battery` property, visibility/
+  label/glyph, tile at index 9, `batterySettingsRequested`.
+- Tests — `apps/settings/tests/tst_settings_battery.{cpp,qml}` (new);
+  `tst_settings_shell.qml` and `tst_settings_absence.qml` (counts 11 → 12,
+  battery in the id list, a battery absence case); `tst_controlcenter.qml`
+  (10 tiles, battery tile tests, fit at 1040).
+- Docs — ADR `0129-battery-pane-and-tile.md`;
+  `docs/design/07-system-integration.md` battery pane/tile section + interface
+  row; capture script `scripts/capture-t15-battery-pane.sh`;
+  `docs/captures/README.md`.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-system-status` — 33 lib + 4 host green.
+- `ctest --test-dir build --output-on-failure -j4` — 60/60.
+- `make e2e` — EXIT 0.
+- `cargo fmt --all -- --check`; clippy on `dragonfruit-system-status` — clean.
+- `make check-design-tokens check-tokens check-no-capture-grab` — clean.
+- `./scripts/check-gallery-snapshots.py` — 78 snapshots green.
+
+Decisions / gotchas for later tasks:
+
+- **The Control Center panel is now 360x1040** (was 980). A further tile needs
+  the fit test and every capture crop revisited; the T-15.5b capture script's
+  crop was updated to 1040.
+- **No settingsd keys were added.** The active profile lives in
+  power-profiles-daemon; the pane writes it through the bridge host. Do not add
+  a `battery.*` key for it.
+- **Absence stays layered:** host absent → note; no battery but profiles →
+  picker only; no profiles daemon → battery rows only + note.
+- **UPower charge history is still unread.** The `Usage History` group's range
+  switch and two chart frames are honest empty states; a history provider is
+  T-15.x. `Options…`/`?` are omitted (no function → no dead controls).
+- **`battery_view` is consumed by both the menu bar and the tile.**
+  `normalize()` still hides the battery item when `present:false`; the Control
+  Center tile deliberately ignores that and computes its own visibility from
+  `present || profilesAvailable`.
+- Live visual check: `bash scripts/capture-t15-battery-pane.sh` produced
+  `docs/captures/t15-6b-battery-pane.png` (2088x1410) and
+  `docs/captures/t15-6b-battery-control-center.png` (360x1040). Vision confirmed
+  the pane's three groups (Power Mode `Balanced`, Battery `Normal`/`On Battery`,
+  Usage History `Last 24 Hours`/`Not available`), the battery-level chart's
+  `No battery history for the last 24 hours.` absent state, and the Battery tile
+  (`82% · Balanced`, balance-scale glyph, `Battery Settings…`) above an
+  unclipped Clipboard tile.

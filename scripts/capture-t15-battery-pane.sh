@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MIT
 #
-# T-15.5b Mission Control & Hot Corners pane + Control Center tile capture.
+# T-15.6b Battery and power profiles pane + Control Center tile capture.
 #
 # Produces:
-#   * t15-5b-mission-control-pane.png          the Settings Mission Control pane
-#   * t15-5b-mission-control-control-center.png the Control Center with the
-#                                              Mission Control tile
+#   * t15-6b-battery-pane.png           the Settings Battery pane
+#   * t15-6b-battery-control-center.png the Control Center with the Battery tile
 #
-# The nested demo runs with `DF_SETTINGS_START_PANE=mission-control`, the
-# shell's status fixture (`DF_STATUS_FIXTURE`) so the Control Center has its
-# usual tiles, and `DF_SETTINGS_FIXTURE` so the Settings pane shows the schema
-# defaults (the corner map and the gesture trio) with no settingsd on the host.
+# The nested demo runs with `DF_SETTINGS_START_PANE=battery`, the shell's status
+# fixture (`DF_STATUS_FIXTURE`) so the Control Center has its usual tiles (and a
+# battery/power-profiles view), `DF_SETTINGS_FIXTURE` so the Settings pane shows
+# the schema defaults, and `DF_BATTERY_FIXTURE` so the Battery pane's profile
+# picker is deterministic with no system-bus daemons on the host.
 #
 # Requires: a host Wayland session, `spectacle`, python3 with Pillow, and the
 # built tree (`make build`). Not part of `make e2e`.
@@ -23,14 +23,14 @@ export LD_LIBRARY_PATH="$HOME/.local/df-toolchain/usr/lib64${LD_LIBRARY_PATH:+:$
 
 OUTDIR="${OUTDIR:-docs/captures}"
 SETTLE="${SETTLE:-12}"
-SOCKET="${SOCKET:-dragonfruit-t15-mission-control}"
+SOCKET="${SOCKET:-dragonfruit-t15-battery}"
 SYNTH="${XDG_RUNTIME_DIR:?}/$SOCKET.synth"
-LOG=/tmp/opencode/t15-mission-control-demo.log
+LOG=/tmp/opencode/t15-battery-demo.log
 mkdir -p "$OUTDIR" /tmp/opencode
 rm -f "$SYNTH" "$LOG"
 
-DF_SETTINGS_START_PANE=mission-control DF_SETTINGS_FIXTURE=1 DF_STATUS_FIXTURE=1 \
-    DRAGONFRUIT_SYNTHETIC_INPUT="$SYNTH" \
+DF_SETTINGS_START_PANE=battery DF_SETTINGS_FIXTURE=1 DF_BATTERY_FIXTURE=1 \
+    DF_STATUS_FIXTURE=1 DRAGONFRUIT_SYNTHETIC_INPUT="$SYNTH" \
     setsid make demo DEMO_ARGS="--socket-name $SOCKET" >"$LOG" 2>&1 &
 PGID=$!
 cleanup() {
@@ -42,7 +42,7 @@ cleanup() {
 trap cleanup EXIT
 
 for _ in $(seq 1 600); do [ -e "$SYNTH" ] && break; sleep 0.1; done
-[ -e "$SYNTH" ] || { echo "capture-t15-mission-control: no synthetic socket"; tail -30 "$LOG"; exit 1; }
+[ -e "$SYNTH" ] || { echo "capture-t15-battery: no synthetic socket"; tail -30 "$LOG"; exit 1; }
 sleep "$SETTLE"
 
 # Nudge the pointer so the nested compositor repaints the live state, then
@@ -51,7 +51,7 @@ python3 - "$SYNTH" <<'PY'
 import socket, sys, time
 path = sys.argv[1]
 sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
-client = f"/tmp/opencode-t15mc-nudge-{__import__('os').getpid()}.sock"
+client = f"/tmp/opencode-t15bat-nudge-{__import__('os').getpid()}.sock"
 try:
     __import__('os').unlink(client)
 except FileNotFoundError:
@@ -81,8 +81,8 @@ print("saved", dest, im.size)
 PY
 }
 
-PANE_RAW="/tmp/opencode/t15-mc-pane-raw.png"
-capture_active "$PANE_RAW" "$OUTDIR/t15-5b-mission-control-pane.png"
+PANE_RAW="/tmp/opencode/t15-bat-pane-raw.png"
+capture_active "$PANE_RAW" "$OUTDIR/t15-6b-battery-pane.png"
 
 # Open the Control Center through the real shortcut (Control-Option-C) and
 # crop the panel from the nested output's top-right corner.
@@ -90,7 +90,7 @@ python3 - "$SYNTH" <<'PY'
 import socket, sys, time
 path = sys.argv[1]
 sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
-client = f"/tmp/opencode-t15mc-cc-{__import__('os').getpid()}.sock"
+client = f"/tmp/opencode-t15bat-cc-{__import__('os').getpid()}.sock"
 try:
     __import__('os').unlink(client)
 except FileNotFoundError:
@@ -109,9 +109,9 @@ for code in (KEY_LEFTALT, KEY_LEFTCTRL):
 time.sleep(2.0)
 PY
 
-FULL_RAW="/tmp/opencode/t15-mc-full-raw.png"
+FULL_RAW="/tmp/opencode/t15-bat-full-raw.png"
 spectacle -b -n -f -o "$FULL_RAW" >/dev/null 2>&1 || true
-python3 - "$FULL_RAW" "$OUTDIR/t15-5b-mission-control-control-center.png" <<'PY'
+python3 - "$FULL_RAW" "$OUTDIR/t15-6b-battery-control-center.png" <<'PY'
 import sys
 from PIL import Image
 raw, dest = sys.argv[1], sys.argv[2]
@@ -127,5 +127,5 @@ panel.save(dest)
 print("saved", dest, panel.size)
 PY
 
-echo "capture-t15-mission-control: done"
+echo "capture-t15-battery: done"
 tail -5 "$LOG" || true
