@@ -33,7 +33,8 @@ Item {
                                           "keyboard", "mouse", "trackpad",
                                           "overview", "battery", "power-saver",
                                           "power-balanced", "power-performance",
-                                          "info", "bell", "lock", "menu-bar"]
+                                          "info", "bell", "lock", "menu-bar",
+                                          "general", "software-update"]
     readonly property bool painted: root.paintedGlyphs.indexOf(root.name) >= 0
 
     readonly property var bars: {
@@ -432,6 +433,46 @@ Item {
                 ctx.lineTo(c, s * 0.83);
                 ctx.moveTo(s * 0.34, s * 0.86);
                 ctx.lineTo(s * 0.66, s * 0.86);
+                ctx.stroke();
+                break;
+            }
+            case "general": {
+                // A gear: a filled annulus with eight rim teeth (the General
+                // pane / sidebar glyph).
+                for (var gt = 0; gt < 8; ++gt) {
+                    var gAngle = (Math.PI * 2 / 8) * gt;
+                    ctx.beginPath();
+                    ctx.arc(c + Math.cos(gAngle) * s * 0.36,
+                            c + Math.sin(gAngle) * s * 0.36,
+                            s * 0.09, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                ctx.beginPath();
+                ctx.arc(c, c, s * 0.28, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalCompositeOperation = "destination-out";
+                ctx.beginPath();
+                ctx.arc(c, c, s * 0.13, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalCompositeOperation = "source-over";
+                break;
+            }
+            case "software-update": {
+                // A download/update arrow into a tray (the Software Update
+                // pane / tile glyph).
+                ctx.lineWidth = root.stroke;
+                ctx.beginPath();
+                ctx.moveTo(c, s * 0.16);
+                ctx.lineTo(c, s * 0.56);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(s * 0.33, s * 0.40);
+                ctx.lineTo(c, s * 0.62);
+                ctx.lineTo(s * 0.67, s * 0.40);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(s * 0.24, s * 0.80);
+                ctx.lineTo(s * 0.76, s * 0.80);
                 ctx.stroke();
                 break;
             }

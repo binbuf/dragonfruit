@@ -32,9 +32,9 @@ Item {
         // matrix asserts stays live while its provider is absent.
         readonly property var shippedPaneIds:
             ["appearance", "desktop-dock", "mission-control", "displays",
-             "wallpaper", "bluetooth", "battery", "storage", "sound", "keyboard",
-             "mouse", "trackpad", "notifications", "focus", "lock-screen",
-             "menu-bar"]
+             "wallpaper", "bluetooth", "battery", "storage", "general", "sound",
+             "keyboard", "mouse", "trackpad", "notifications", "focus",
+             "lock-screen", "menu-bar"]
 
         function make() {
             var shell = createTemporaryObject(shellComponent, stage,
@@ -87,7 +87,7 @@ Item {
 
         function test_every_shipped_pane_has_a_body_and_no_other_does() {
             var shell = make();
-            compare(SettingsPanes.shippedPanes.length, 16);
+            compare(SettingsPanes.shippedPanes.length, 17);
             for (var i = 0; i < SettingsPanes.catalog.length; ++i) {
                 var pane = SettingsPanes.catalog[i];
                 var body = shell.paneComponent(pane.id);
@@ -452,6 +452,30 @@ Item {
                                    "menuBarControlToggle");
             toggle.toggle();
             compare(Settings.values["menu.control.wifi"], false);
+        }
+
+        // The General/About/Updates view is a host-stack adapter read, so with
+        // no bridge host it is the absence state: the disclosure rows and the
+        // dialogs' controls are replaced by a one-line note. Nothing errors and
+        // no write is attempted.
+        function test_general_pane_degrades_cleanly_without_the_bridge_host() {
+            var shell = make();
+            compare(Settings.updatesAvailable, false,
+                    "no bridge host is the absent state under test");
+            compare(Settings.updates.state, undefined);
+
+            var pane = showPane(shell, "general");
+            compare(pane.ready, false);
+            compare(pane.absenceNote.visible, true,
+                    "the absence note explains the missing host-stack service");
+            verify(pane.absenceNote.text.length > 0);
+
+            // A refresh and the update writes are safe no-ops with no host.
+            Settings.refreshUpdates();
+            Settings.checkUpdates();
+            Settings.installUpdates();
+            Settings.rebootUpdates();
+            compare(Settings.updatesAvailable, false);
         }
     }
 }

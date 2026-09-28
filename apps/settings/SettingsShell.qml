@@ -160,6 +160,8 @@ Item {
             return lockScreenPaneComponent;
         case "menu-bar":
             return menuBarPaneComponent;
+        case "general":
+            return generalPaneComponent;
         default:
             return null;
         }
@@ -310,6 +312,11 @@ Item {
     Component {
         id: menuBarPaneComponent
         MenuBarPane { }
+    }
+
+    Component {
+        id: generalPaneComponent
+        GeneralPane { }
     }
 
     AppWindow {

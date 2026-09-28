@@ -37,6 +37,7 @@ class SoundClient;
 class InputClient;
 class BatteryClient;
 class NotificationsClient;
+class UpdatesClient;
 class QDBusServiceWatcher;
 
 class SettingsBridge : public QObject
@@ -133,6 +134,16 @@ class SettingsBridge : public QObject
     // Whether the bridge host is on the session bus. False means no
     // Notifications/Focus surface at all; the panes show the absence note.
     Q_PROPERTY(bool notificationsAvailable READ notificationsAvailable NOTIFY notificationsChanged)
+    // The General/About/Updates view from the bridge host (T-15.10b):
+    // `{ state, hostName, deviceName, osLabel, kernel, architecture, processor,
+    // memoryLabel, serial, hasSerial, updatesAvailable, glyph, label, phase,
+    // busy, rebootRequired, updateCount, securityCount, lastCheckedMs,
+    // message, updates }`. Empty when the host is absent; the pane renders the
+    // absence state and disables its controls rather than erroring.
+    Q_PROPERTY(QVariantMap updates READ updates NOTIFY updatesChanged)
+    // Whether the bridge host is on the session bus. False means no General /
+    // About / Updates surface at all; the pane shows the absence note.
+    Q_PROPERTY(bool updatesAvailable READ updatesAvailable NOTIFY updatesChanged)
     // The pane the shell opens on startup. Empty uses the first shipped pane;
     // `DF_SETTINGS_START_PANE=wallpaper` selects one for captures and tests.
     Q_PROPERTY(QString startPane READ startPane CONSTANT)
@@ -160,6 +171,8 @@ public:
     bool batteryAvailable() const;
     QVariantMap notifications() const;
     bool notificationsAvailable() const;
+    QVariantMap updates() const;
+    bool updatesAvailable() const;
     QString providerStatus() const;
     QString providerDefault() const;
     QString wallpaperBuiltinDefault() const;
@@ -244,6 +257,19 @@ public:
     Q_INVOKABLE void setFocusMode(const QString &mode);
     Q_INVOKABLE void setFocusApp(const QString &app, bool allowed);
 
+    // T-15.10b: the General/About/Updates pane's one seam. `refreshUpdates`
+    // re-reads the bridge host on pane open; the three writes each call the
+    // host stack adapter once and the host pushes the new view back through
+    // `updatesChanged`. A no-op when the host is absent.
+    Q_INVOKABLE void refreshUpdates();
+    Q_INVOKABLE void checkUpdates();
+    Q_INVOKABLE void installUpdates();
+    Q_INVOKABLE void rebootUpdates();
+    // Test seam (`DF_UPDATES_FIXTURE` only): restore the in-process fixture's
+    // initial state so a test starts on a known update phase. A no-op on the
+    // live client, which has no fixture to reset.
+    Q_INVOKABLE void resetUpdatesFixture();
+
     // T-18.2 test seam: with `DF_WALLPAPER_FIXTURE` set, seed the provider
     // lifecycle to `status` (`ready` loads the deterministic fixture
     // catalogue; any other status leaves it empty) so the pane's fetching /
@@ -283,6 +309,8 @@ signals:
     void batteryChanged();
     // The Notifications/Focus view or availability changed (T-15.7b).
     void notificationsChanged();
+    // The General/About/Updates view or availability changed (T-15.10b).
+    void updatesChanged();
 
 private:
     void buildWallpaperPresets();
@@ -337,4 +365,7 @@ private:
     // T-15.7b: the Notifications/Focus seam (`DF_NOTIFICATIONS_FIXTURE`
     // selects the mock).
     NotificationsClient *m_notifications = nullptr;
+    // T-15.10b: the General/About/Updates seam (`DF_UPDATES_FIXTURE` selects
+    // the mock).
+    UpdatesClient *m_updates = nullptr;
 };
