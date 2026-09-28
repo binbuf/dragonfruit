@@ -49,7 +49,7 @@ endif
 .PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test \
         visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev dev-full demo soak e2e \
         idle-trace menubar-idle-trace latency-trace settingsd-capture settings-wave-1-capture \
-        t18-wallpaper-capture t18-absence-matrix \
+        t18-wallpaper-capture t18-absence-matrix t15-absence-matrix t15-breadth-capture \
         files-capture osd-dnd-capture portals-capture zoo-run dock-spacing-capture dock-magnify-capture dock-motion-capture dock-trash-capture dock-app-picker-capture dock-drops-capture dock-activation-capture dock-launch-origin-capture dock-folder-stack-capture dock-tooltip-capture dock-tahoe-capture dock-folder-pin-capture dock-chooser-actions-capture dock-chooser-scroll-capture dock-window-badge-capture dock-hover-chooser-capture dock-overflow-capture dock-trash-empty-capture dock-minimize-reaction-capture dock-keyboard-reorder-capture dock-dividers-capture dock-magnify-sweep-capture dock-plate-corners-capture dock-icon-mask-capture check-desktop-names check-no-capture-grab check-design-tokens clean install
 
 help:
@@ -63,6 +63,8 @@ help:
 	@echo "  make settings-wave-1-capture — T-09.6b Settings wave stills (light/dark/reduced + panes)"
 	@echo "  make t18-wallpaper-capture — T-18.2 Wallpaper pane stills (fetching skeleton + filled)"
 	@echo "  make t18-absence-matrix — T-18.3 headless absence/state matrix transcript"
+	@echo "  make t15-absence-matrix — T-15.16 headless absent-daemon masking matrix transcript"
+	@echo "  make t15-breadth-capture — T-15.16 whole-desktop breadth still (all providers absent)"
 	@echo "  make files-capture — T-10.7 Files slice stills + large-directory scroll trace"
 	@echo "  make osd-dnd-capture — T-11.4b OSD card + menu-bar DND still"
 	@echo "  make portals-capture — T-13.7 Flatpak portal round-trips + picker still"
@@ -197,6 +199,19 @@ t18-wallpaper-capture: build
 # session and no network are required (offline is a dead proxy).
 t18-absence-matrix: build
 	bash scripts/t18-absence-matrix.sh
+
+# T-15.16: the Wave-2/3 absent-daemon masking matrix. Writes the headless
+# reproduction transcript for every shipped pane under
+# docs/captures/t15-absence-matrix.txt. No host session and no daemons are
+# required (absence is the state under test).
+t15-absence-matrix: build
+	bash scripts/t15-absence-matrix.sh
+
+# T-15.16: the breadth capture. Needs a host Wayland session, `spectacle`,
+# Pillow and the built tree; runs the nested demo with every provider absent
+# and writes the whole-desktop still under docs/captures/t15-breadth.png.
+t15-breadth-capture: build
+	bash scripts/capture-t15-breadth.sh
 
 # T-10.7: the Files slice capture. Needs a host Wayland session, `spectacle`,
 # `ffmpeg`, `gdbus`, Pillow and the built tree; drives the nested demo over the
