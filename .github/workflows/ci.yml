@@ -73,6 +73,9 @@ jobs:
       - name: Design-token literal gate (T-08 FR-1)
         run: ./scripts/check-design-tokens.sh 2>&1 | tee logs/token-literal-gate.log
 
+      - name: String-extraction gate (T-16.7)
+        run: ./scripts/i18n-extract.py --check 2>&1 | tee logs/i18n-gate.log
+
       - name: Build Rust workspace
         run: cargo build --workspace 2>&1 | tee logs/rust-build.log
 

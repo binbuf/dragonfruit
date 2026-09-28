@@ -163,6 +163,7 @@ target_link_libraries(dragonfruit-shell PRIVATE
     Qt6::Core Qt6::Gui Qt6::Quick Qt6::DBus
     dragonfruit-shell-dockcore
     dragonfruit-system-font
+    dragonfruit-i18n
     dragonfruit-design-systemplugin
     dragonfruit-shell-menubarplugin
     dragonfruit-shell-dockplugin
