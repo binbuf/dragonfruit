@@ -148,6 +148,8 @@ pub mod semantic {
             pub const DOCK_HOVER_FILL: [u8; 4] = [0x78, 0x6a, 0x84, 0xff];
             pub const DOCK_DIVIDER: [u8; 4] = [0x9c, 0x8f, 0xa8, 0xff];
             pub const DOCK_INDICATOR: [u8; 4] = [0x1d, 0x17, 0x23, 0xff];
+            pub const SKELETON_BASE: [u8; 4] = [0xde, 0xd6, 0xe5, 0xff];
+            pub const SKELETON_HIGHLIGHT: [u8; 4] = [0xf8, 0xf6, 0xfa, 0xff];
         }
         pub mod material {
             pub const CHROME_OPACITY: f32 = 0.82_f32;
@@ -208,6 +210,8 @@ pub mod semantic {
             pub const DOCK_HOVER_FILL: [u8; 4] = [0xc3, 0xb8, 0xcc, 0xff];
             pub const DOCK_DIVIDER: [u8; 4] = [0x78, 0x6a, 0x84, 0xff];
             pub const DOCK_INDICATOR: [u8; 4] = [0xf8, 0xf6, 0xfa, 0xff];
+            pub const SKELETON_BASE: [u8; 4] = [0x2d, 0x25, 0x34, 0xff];
+            pub const SKELETON_HIGHLIGHT: [u8; 4] = [0x44, 0x39, 0x4d, 0xff];
         }
         pub mod material {
             pub const CHROME_OPACITY: f32 = 0.72_f32;
@@ -532,6 +536,12 @@ pub mod component {
         pub const TRACK_RADIUS: f32 = 999.0_f32;
         pub const FONT_SIZE: f32 = 13.0_f32;
     }
+    pub mod skeleton {
+        pub const RADIUS: f32 = 10.0_f32;
+        pub const WIDTH: f32 = 120.0_f32;
+        pub const HEIGHT: f32 = 72.0_f32;
+        pub const HIGHLIGHT_RATIO: f32 = 0.4_f32;
+    }
 }
 
 /// A named motion: full duration, cubic-bezier control points, and
@@ -633,6 +643,11 @@ pub mod motion {
     pub const SIDEBAR_REVEAL: Motion = Motion {
         duration_ms: 160_u32,
         curve: [0.2_f32, 0.0_f32, 0.0_f32, 1.0_f32],
+        reduced_duration_ms: 0_u32,
+    };
+    pub const SKELETON: Motion = Motion {
+        duration_ms: 400_u32,
+        curve: [0.4_f32, 0.0_f32, 0.6_f32, 1.0_f32],
         reduced_duration_ms: 0_u32,
     };
 }

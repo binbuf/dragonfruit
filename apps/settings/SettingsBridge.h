@@ -69,6 +69,11 @@ class SettingsBridge : public QObject
     // The resolved shipped `Default.jpg`; non-empty even with the provider
     // absent, so the Built-in row always has its out-of-box entry (ADR 0094).
     Q_PROPERTY(QString wallpaperBuiltinDefault READ wallpaperBuiltinDefault NOTIFY providerChanged)
+    // How many eager `Preload` requests the bridge has sent (T-18.2). The
+    // Wallpaper pane calls `preloadWallpapers()` when it opens; a test asserts
+    // this counter advanced. With `DF_WALLPAPER_FIXTURE` the request is served
+    // in-process, so the count is observable without a bus.
+    Q_PROPERTY(int providerPreloadCount READ providerPreloadCount NOTIFY providerChanged)
     // The pane the shell opens on startup. Empty uses the first shipped pane;
     // `DF_SETTINGS_START_PANE=wallpaper` selects one for captures and tests.
     Q_PROPERTY(QString startPane READ startPane CONSTANT)
@@ -87,6 +92,7 @@ public:
     QString providerStatus() const;
     QString providerDefault() const;
     QString wallpaperBuiltinDefault() const;
+    int providerPreloadCount() const;
     bool wallpaperChooserAvailable() const;
     QString startPane() const;
     bool trace() const;
@@ -115,9 +121,20 @@ public:
     // the catalogue arrives through `providerChanged`.
     Q_INVOKABLE void preloadWallpapers();
 
+    // T-18.2 test seam: with `DF_WALLPAPER_FIXTURE` set, seed the provider
+    // lifecycle to `status` (`ready` loads the deterministic fixture
+    // catalogue; any other status leaves it empty) so the pane's fetching /
+    // ready / offline / error states are assertable with no bus. Without the
+    // environment variable this is a no-op, so production behavior is
+    // unchanged.
+    Q_INVOKABLE void setWallpaperFixture(const QString &status);
+
     // `file:///path/to/a.png` / `file://host/path` -> a local path. Pure, so
     // the URI contract is unit-testable.
     static QString localPathFromUri(const QString &uri);
+    // Strip tags and decode the handful of HTML entities Wikimedia's
+    // `extmetadata` uses, so an `Artist` value is never rendered as markup.
+    static QString sanitizeHtmlText(const QString &value);
 
 signals:
     void valuesChanged();
@@ -166,5 +183,9 @@ private:
     QString m_providerStatus;
     QString m_providerDefault;
     QString m_providerBuiltin;
+    int m_providerPreloads = 0;
+    // T-18.2: true when `DF_WALLPAPER_FIXTURE` selected the in-process
+    // catalogue, so `Preload` and fixture seeding stay deterministic.
+    bool m_wallpaperFixture = false;
     QDBusServiceWatcher *m_providerWatcher = nullptr;
 };

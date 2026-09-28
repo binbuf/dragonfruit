@@ -53,6 +53,7 @@ TestCase {
     Component { id: sheetComponent; Sheet { } }
     Component { id: popoverComponent; Popover { } }
     Component { id: tooltipComponent; Tooltip { } }
+    Component { id: skeletonComponent; Skeleton { width: 160; height: 24 } }
     Component {
         id: scrollViewComponent
         ScrollView {
@@ -758,6 +759,51 @@ TestCase {
         t.open = true;
         waitForRendering(stage);
         compare(t.opacity, 1, "reduced motion must open with no fade");
+        Theme.reducedMotion = saved;
+    }
+
+    // -- Skeleton (T-18.2) --------------------------------------------------
+    //
+    // The loading placeholder: a token grey rectangle with a slow-moving
+    // highlight. The reduced-motion variant starts no animation at all and
+    // rests the highlight centered, so both states are assertable from the
+    // band's live x.
+
+    function test_skeleton_is_a_token_grey_placeholder() {
+        var s = make(skeletonComponent, {});
+        compare(s.radius, Theme.controls.skeleton.radius);
+        compare(String(s.color), String(Theme.color.skeletonBase));
+        verify(s.shimmering, "a default skeleton animates its highlight");
+        compare(s.Accessible.role, Accessible.Graphic);
+        compare(s.Accessible.ignored, true,
+                "an unnamed skeleton is presentational");
+    }
+
+    function test_skeleton_accessible_name_is_announced() {
+        var s = make(skeletonComponent, { accessibleName: "Downloading wallpapers" });
+        compare(s.Accessible.name, "Downloading wallpapers");
+        compare(s.Accessible.ignored, false);
+    }
+
+    function test_skeleton_shimmer_moves() {
+        var s = make(skeletonComponent, {});
+        var first = s.highlightX;
+        wait(150);
+        waitForRendering(stage);
+        verify(Math.abs(s.highlightX - first) > 0.5,
+               "the shimmer highlight must advance, was " + first + " now " + s.highlightX);
+    }
+
+    function test_skeleton_reduced_motion_is_static() {
+        var saved = Theme.reducedMotion;
+        Theme.reducedMotion = true;
+        var s = make(skeletonComponent, {});
+        verify(!s.shimmering, "reduced motion must stop the shimmer");
+        var first = s.highlightX;
+        wait(150);
+        waitForRendering(stage);
+        compare(s.highlightX, first, "the static highlight must not move");
+        compare(s.progress, 0.0, "no animation progress is recorded when reduced");
         Theme.reducedMotion = saved;
     }
 
