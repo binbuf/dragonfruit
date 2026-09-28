@@ -301,7 +301,9 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 > smoothed-pointer anchor flip), and plate rendering (the rim not following
 > the corner arcs, and the QML plate/compositor frost alignment). They carry
 > measured before/after captures; run them before the T-15 breadth work if
-> the Dock is still in daily use.
+> the Dock is still in daily use. T110x landed (ADR 0110, timestamped pointer
+> injection); the same zero-timestamp trap in the other chrome injection
+> paths is carried as T-16.12 (T151a) in Phase 16.
 
 - [x] T110a — T-14.7a Dock plate geometry and spacing → [tasks/110a-t-14.7a-dock-plate-geometry-and-spacing.md](tasks/110a-t-14.7a-dock-plate-geometry-and-spacing.md)
 - [x] T110b — T-14.7b Magnified plate growth and backdrop panel → [tasks/110b-t-14.7b-dock-magnified-plate-and-backdrop.md](tasks/110b-t-14.7b-dock-magnified-plate-and-backdrop.md)
@@ -395,6 +397,7 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 - [ ] T149 — T-16.7 Localization and i18n → [tasks/149-t-16.7-localization-and-i18n.md](tasks/149-t-16.7-localization-and-i18n.md)
 - [ ] T150 — T-16.8a Crash/kill matrix → [tasks/150-t-16.8a-crash-kill-matrix.md](tasks/150-t-16.8a-crash-kill-matrix.md)
 - [ ] T151 — T-16.8b Compositor-death behavior and restart-policy docs → [tasks/151-t-16.8b-compositor-death-and-restart-policy.md](tasks/151-t-16.8b-compositor-death-and-restart-policy.md)
+- [ ] T151a — T-16.12 Synthetic chrome pointer injection timestamps → [tasks/151a-t-16.12-chrome-pointer-injection-timestamps.md](tasks/151a-t-16.12-chrome-pointer-injection-timestamps.md)
 
 ## Phase 17 — T-17 The premium experience gate
 
