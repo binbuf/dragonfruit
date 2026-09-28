@@ -34,6 +34,9 @@ private slots:
     void storageDecodesVolumesAndHidesWhenEmpty();
     void storageRefreshRaisesTheRequest();
 
+    void inputDecodesTheInventoryAndHidesWhenEmpty();
+    void inputRefreshRaisesTheRequest();
+
     void theAbsentDaemonMaskingMatrixHidesOnlyTheMaskedItem();
     void anUnreachedBridgeHostLeavesEveryItemHidden();
 };
@@ -338,6 +341,53 @@ void TestStatusModel::storageRefreshRaisesTheRequest()
     SystemStatusModel model;
     QSignalSpy spy(&model, &SystemStatusModel::refreshStorageRequested);
     model.requestRefreshStorage();
+    QCOMPARE(spy.count(), 1);
+}
+
+// Input (T-15.4b) is a read-only inventory; the `present: false` case (a
+// running libinput with no recognized device) hides the tile exactly as the
+// battery/Bluetooth/Storage second hide rules do.
+void TestStatusModel::inputDecodesTheInventoryAndHidesWhenEmpty()
+{
+    const QVariantMap view = SystemStatusModel::parseView(
+        R"({"kind":"input","state":"available","present":true,"glyph":"keyboard",
+            "label":"1 keyboards, 2 pointing devices","deviceCount":3,
+            "keyboardCount":1,"pointerCount":2,"mouseCount":1,"touchpadCount":1,
+            "devices":[{"name":"AT keyboard","kernel":"/dev/input/event3",
+                        "kind":"keyboard","kindLabel":"Keyboard"},
+                       {"name":"TouchPad","kernel":"/dev/input/event7",
+                        "kind":"touchpad","kindLabel":"Trackpad"}]})",
+        QStringLiteral("input"));
+    QCOMPARE(view.value(QStringLiteral("state")).toString(), QStringLiteral("available"));
+    QCOMPARE(view.value(QStringLiteral("visible")).toBool(), true);
+    QCOMPARE(view.value(QStringLiteral("enabled")).toBool(), true);
+    QCOMPARE(view.value(QStringLiteral("touchpadCount")).toInt(), 1);
+    QCOMPARE(view.value(QStringLiteral("devices")).toList().size(), 2);
+    QCOMPARE(view.value(QStringLiteral("devices")).toList().at(1).toMap()
+                 .value(QStringLiteral("kindLabel")).toString(),
+             QStringLiteral("Trackpad"));
+
+    SystemStatusModel model;
+    model.applyInputJson(
+        R"({"kind":"input","state":"available","present":true,"deviceCount":3})");
+    QVERIFY(model.inputVisible());
+
+    // libinput present but no recognized device: available, yet the tile hides.
+    model.applyInputJson(
+        R"({"kind":"input","state":"available","present":false,
+            "label":"No input devices"})");
+    QCOMPARE(model.inputVisible(), false);
+
+    // libinput absent altogether.
+    model.applyInputJson(R"({"kind":"input","state":"unavailable"})");
+    QCOMPARE(model.inputVisible(), false);
+}
+
+void TestStatusModel::inputRefreshRaisesTheRequest()
+{
+    SystemStatusModel model;
+    QSignalSpy spy(&model, &SystemStatusModel::refreshInputRequested);
+    model.requestRefreshInput();
     QCOMPARE(spy.count(), 1);
 }
 

@@ -28,6 +28,7 @@ Item {
         SignalSpy { id: storageUnmountSpy; signalName: "storageUnmountRequested" }
         SignalSpy { id: storageEjectSpy; signalName: "storageEjectRequested" }
         SignalSpy { id: soundSettingsSpy; signalName: "soundSettingsRequested" }
+        SignalSpy { id: keyboardSettingsSpy; signalName: "keyboardSettingsRequested" }
         SignalSpy { id: focusSpy; signalName: "focusToggleRequested" }
         SignalSpy { id: darkSpy; signalName: "darkModeToggleRequested" }
         SignalSpy { id: closedSpy; signalName: "closed" }
@@ -111,6 +112,20 @@ Item {
             };
         }
 
+        function inputModel(state, present, devices) {
+            return {
+                kind: "input",
+                state: state,
+                present: present,
+                visible: state === "available" && present,
+                enabled: state === "available" && present,
+                label: (state !== "available" || !present)
+                    ? "No input devices" : "1 keyboards, 2 pointing devices",
+                deviceCount: devices !== undefined ? devices.length : 0,
+                devices: devices !== undefined ? devices : []
+            };
+        }
+
         function focusModel(mode, batchedCount) {
             return {
                 mode: mode,
@@ -135,17 +150,19 @@ Item {
             return panel;
         }
 
-        function test_tiles_expose_all_seven_controls() {
+        function test_tiles_expose_all_eight_controls() {
             var panel = make({
                 wifi: wifiModel("available", true, "home"),
                 bluetooth: bluetoothModel("available", true, true, false),
                 storage: storageModel("available", true, false),
                 audio: audioModel("available", 0.6, false),
+                input: inputModel("available", true,
+                                  [{ name: "AT keyboard", kind: "keyboard" }]),
                 brightness: 0.8,
                 focusPolicy: focusModel("off"),
                 dark: true
             });
-            compare(panel.tiles.length, 7);
+            compare(panel.tiles.length, 8);
             compare(panel.tiles[0].id, "wifi");
             compare(panel.tiles[0].kind, "toggle");
             compare(panel.tiles[0].checked, true);
@@ -164,14 +181,18 @@ Item {
             compare(panel.tiles[6].id, "dark");
             compare(panel.tiles[6].kind, "toggle");
             compare(panel.tiles[6].checked, true);
+            compare(panel.tiles[7].id, "keyboard");
+            compare(panel.tiles[7].kind, "info");
+            compare(panel.tiles[7].subtitle, "1 keyboards, 2 pointing devices");
             compare(panel.wifiLabel, "home");
         }
 
         function test_panel_content_fits_the_shell_surface() {
-            // The shell sizes the Control Center surface to 360x780
+            // The shell sizes the Control Center surface to 360x880
             // (kControlCenterWidth/Height). With the Bluetooth tile's device
-            // rows, the Storage tile, and the Sound tile's routing subtitle and
-            // links the content must still fit, or the lower tiles are clipped.
+            // rows, the Storage tile, the Sound tile's routing subtitle, and
+            // the Keyboard tile the content must still fit, or the lower tiles
+            // are clipped.
             var panel = make({
                 wifi: wifiModel("available", true, "home"),
                 bluetooth: bluetoothModel("available", true, true, false,
@@ -181,17 +202,19 @@ Item {
                                              name: "WH-1000XM6", connected: false }]),
                 storage: storageModel("available", true, false),
                 audio: audioRoutingModel("Built-in Speakers"),
+                input: inputModel("available", true,
+                                  [{ name: "AT keyboard", kind: "keyboard" }]),
                 brightness: 1.0,
                 focusPolicy: focusModel("off"),
                 dark: false
             });
             panel.width = 360;
-            panel.height = 780;
+            panel.height = 880;
             waitForRendering(stage);
             var content = findChild(panel, "controlCenterContent");
             verify(content !== null);
-            verify(content.childrenRect.height <= 780,
-                   "Control Center content must fit the 780px surface, height="
+            verify(content.childrenRect.height <= 880,
+                   "Control Center content must fit the 880px surface, height="
                    + content.childrenRect.height);
         }
 
@@ -343,6 +366,44 @@ Item {
             verify(link !== null);
             compare(link.Accessible.role, Accessible.Button);
             compare(link.Accessible.name, "Open Storage Settings");
+        }
+
+        function test_keyboard_tile_reflects_the_inventory() {
+            var panel = make({
+                input: inputModel("available", true,
+                                  [{ name: "AT keyboard", kind: "keyboard" },
+                                   { name: "TouchPad", kind: "touchpad" }])
+            });
+            compare(panel.inputVisible, true);
+            compare(panel.inputLabel, "1 keyboards, 2 pointing devices");
+            compare(panel.tiles[7].visible, true);
+
+            panel.input = inputModel("available", false);
+            compare(panel.inputVisible, false);
+            compare(panel.tiles[7].visible, false);
+        }
+
+        function test_keyboard_tile_hides_on_absence() {
+            var panel = make({ input: inputModel("unavailable", false) });
+            compare(panel.inputVisible, false);
+            var tile = findChild(panel, "keyboardTile");
+            verify(tile !== null);
+            compare(tile.visible, false);
+        }
+
+        function test_keyboard_settings_link_raises_the_request() {
+            var panel = make({
+                input: inputModel("available", true,
+                                  [{ name: "AT keyboard", kind: "keyboard" }])
+            });
+            keyboardSettingsSpy.target = panel;
+            keyboardSettingsSpy.clear();
+            var link = findChild(panel, "keyboardSettingsLink");
+            verify(link !== null, "the Keyboard Settings link is present");
+            compare(link.Accessible.role, Accessible.Button);
+            compare(link.Accessible.name, "Open Keyboard Settings");
+            mouseClick(link, link.width / 2, link.height / 2);
+            compare(keyboardSettingsSpy.count, 1);
         }
 
         function test_sound_tile_reflects_the_default_output_device() {

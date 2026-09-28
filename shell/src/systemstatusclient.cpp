@@ -22,6 +22,7 @@ const QString kAudioInterface = QStringLiteral("org.dragonfruit.SystemStatus1.Au
 const QString kBatteryInterface = QStringLiteral("org.dragonfruit.SystemStatus1.Battery");
 const QString kBluetoothInterface = QStringLiteral("org.dragonfruit.SystemStatus1.Bluetooth");
 const QString kStorageInterface = QStringLiteral("org.dragonfruit.SystemStatus1.Storage");
+const QString kInputInterface = QStringLiteral("org.dragonfruit.SystemStatus1.Input");
 
 // Serialize a QJsonObject to the compact byte form the host uses.
 QByteArray compact(const QJsonObject &object)
@@ -172,6 +173,12 @@ void DbusSystemStatusClient::ejectStorage(const QString &drivePath)
          &SystemStatusClient::writeReport);
 }
 
+void DbusSystemStatusClient::refreshInput()
+{
+    call(kInputInterface, QStringLiteral("State"), {},
+         &SystemStatusClient::inputState);
+}
+
 void DbusSystemStatusClient::join(const QString &ssid, const QString &secret)
 {
     call(kWifiInterface, QStringLiteral("Join"), {ssid, secret},
@@ -200,6 +207,47 @@ MockSystemStatusClient::MockSystemStatusClient(QObject *parent)
     refreshBattery();
     refreshBluetooth();
     refreshStorage();
+    refreshInput();
+}
+
+void MockSystemStatusClient::refreshInput()
+{
+    // A deterministic inventory: one keyboard, one mouse, one trackpad. The
+    // adapter is read-only, so the fixture never mutates.
+    QJsonObject view;
+    view.insert(QStringLiteral("kind"), QStringLiteral("input"));
+    view.insert(QStringLiteral("state"), QStringLiteral("available"));
+    view.insert(QStringLiteral("present"), true);
+    view.insert(QStringLiteral("glyph"), QStringLiteral("keyboard"));
+    view.insert(QStringLiteral("label"),
+                QStringLiteral("1 keyboards, 2 pointing devices"));
+    view.insert(QStringLiteral("deviceCount"), 3);
+    view.insert(QStringLiteral("keyboardCount"), 1);
+    view.insert(QStringLiteral("pointerCount"), 2);
+    view.insert(QStringLiteral("mouseCount"), 1);
+    view.insert(QStringLiteral("touchpadCount"), 1);
+
+    const auto device = [](const QString &name, const QString &kernel,
+                           const QString &kind, const QString &kindLabel) {
+        QJsonObject entry;
+        entry.insert(QStringLiteral("name"), name);
+        entry.insert(QStringLiteral("kernel"), kernel);
+        entry.insert(QStringLiteral("kind"), kind);
+        entry.insert(QStringLiteral("kindLabel"), kindLabel);
+        return entry;
+    };
+    QJsonArray devices;
+    devices.append(device(QStringLiteral("AT Translated Set 2 keyboard"),
+                          QStringLiteral("/dev/input/event3"),
+                          QStringLiteral("keyboard"), QStringLiteral("Keyboard")));
+    devices.append(device(QStringLiteral("Logitech USB Mouse"),
+                          QStringLiteral("/dev/input/event9"),
+                          QStringLiteral("mouse"), QStringLiteral("Mouse")));
+    devices.append(device(QStringLiteral("Synaptics TouchPad"),
+                          QStringLiteral("/dev/input/event7"),
+                          QStringLiteral("touchpad"), QStringLiteral("Trackpad")));
+    view.insert(QStringLiteral("devices"), devices);
+    emit inputState(compact(view));
 }
 
 void MockSystemStatusClient::refreshBluetooth()

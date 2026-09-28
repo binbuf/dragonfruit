@@ -118,6 +118,24 @@ private slots:
         QVERIFY(afterIcon > beforeIcon);
     }
 
+    // QML has one number type, so a control bound to an integer key
+    // (`input.repeatRate`) writes a double. The client coerces it to the
+    // schema's `x` type before storing or sending, so the daemon accepts it.
+    void integerKeysCoerceQmlDoubles()
+    {
+        MockSettingsClient client;
+        QSignalSpy spy(&client, &SettingsClient::changed);
+        client.set(QStringLiteral("input.repeatRate"), 100.0);
+        QCOMPARE(spy.count(), 1);
+        QCOMPARE(client.integer(QStringLiteral("input.repeatRate"), -1), qlonglong(100));
+        QCOMPARE(client.value(QStringLiteral("input.repeatRate")).metaType().id(),
+                 static_cast<int>(QMetaType::LongLong));
+
+        // A non-integral double rounds to the nearest integer.
+        client.set(QStringLiteral("input.repeatDelay"), 2500.4);
+        QCOMPARE(client.integer(QStringLiteral("input.repeatDelay"), -1), qlonglong(2500));
+    }
+
     void dbusClientRoundTripsAgainstTheService()
     {
         QDBusConnection bus = QDBusConnection::sessionBus();

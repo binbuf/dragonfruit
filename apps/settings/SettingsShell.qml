@@ -142,6 +142,12 @@ Item {
             return storagePaneComponent;
         case "sound":
             return soundPaneComponent;
+        case "keyboard":
+            return keyboardPaneComponent;
+        case "mouse":
+            return mousePaneComponent;
+        case "trackpad":
+            return trackpadPaneComponent;
         default:
             return null;
         }
@@ -247,6 +253,21 @@ Item {
     Component {
         id: soundPaneComponent
         SoundPane { }
+    }
+
+    Component {
+        id: keyboardPaneComponent
+        KeyboardPane { }
+    }
+
+    Component {
+        id: mousePaneComponent
+        MousePane { }
+    }
+
+    Component {
+        id: trackpadPaneComponent
+        TrackpadPane { }
     }
 
     AppWindow {

@@ -687,6 +687,7 @@ version = "0.1.0"
 dependencies = [
  "dragonfruit-audio",
  "dragonfruit-bluetooth",
+ "dragonfruit-input",
  "dragonfruit-networkmanager",
  "dragonfruit-power",
  "dragonfruit-storage",

@@ -110,7 +110,7 @@ constexpr int kBannerTopGap = 8;
 // Dark Mode); T-13.5b adds the clipboard-history section below them. The
 // surface is fixed and the panel fills it.
 constexpr int kControlCenterWidth = 360;
-constexpr int kControlCenterHeight = 780;
+constexpr int kControlCenterHeight = 880;
 constexpr int kControlCenterTopGap = 8;
 
 // The OSD overlay (T-11.4a): a centered card. The surface is slightly larger
@@ -483,6 +483,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             &ShellController::onBluetoothState);
     connect(m_statusClient, &SystemStatusClient::storageState, this,
             &ShellController::onStorageState);
+    connect(m_statusClient, &SystemStatusClient::inputState, this,
+            &ShellController::onInputState);
     connect(m_statusClient, &SystemStatusClient::joinReport, this,
             &ShellController::onStatusReport);
     connect(m_statusClient, &SystemStatusClient::writeReport, this,
@@ -504,6 +506,7 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     m_statusClient->refreshBattery();
     m_statusClient->refreshBluetooth();
     m_statusClient->refreshStorage();
+    m_statusClient->refreshInput();
 
     // T-14.3: StatusNotifier tray items. app-index owns the watcher; the shell
     // reads its live item view and re-reads on a short timer (a tray app can
@@ -832,6 +835,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onStorageSettingsRequested()));
     connect(controlCenterObject, SIGNAL(soundSettingsRequested()), this,
             SLOT(onSoundSettingsRequested()));
+    connect(controlCenterObject, SIGNAL(keyboardSettingsRequested()), this,
+            SLOT(onKeyboardSettingsRequested()));
     connect(controlCenterObject, SIGNAL(focusToggleRequested(bool)), this,
             SLOT(onFocusToggleRequested(bool)));
     connect(controlCenterObject, SIGNAL(focusSettingsRequested()), this,
@@ -1819,6 +1824,12 @@ void ShellController::onStorageState(const QByteArray &json)
         m_statusModel->applyStorageJson(json);
 }
 
+void ShellController::onInputState(const QByteArray &json)
+{
+    if (m_statusModel)
+        m_statusModel->applyInputJson(json);
+}
+
 void ShellController::onStatusReport(const QByteArray &json)
 {
     qInfo() << "shell: system-status action:" << SystemStatusModel::outcomeOf(json);
@@ -1830,6 +1841,7 @@ void ShellController::onStatusReport(const QByteArray &json)
         m_statusClient->refreshBattery();
         m_statusClient->refreshBluetooth();
         m_statusClient->refreshStorage();
+        m_statusClient->refreshInput();
     }
 }
 
@@ -1994,10 +2006,12 @@ void ShellController::applyControlCenterData()
     const bool dark = ThemeBinding::darkForScheme(scheme, ThemeBinding::hostDark());
     const QVariantMap bluetooth = m_statusModel ? m_statusModel->bluetooth() : QVariantMap();
     const QVariantMap storage = m_statusModel ? m_statusModel->storage() : QVariantMap();
+    const QVariantMap input = m_statusModel ? m_statusModel->input() : QVariantMap();
     m_controlCenterItem->setProperty("wifi", wifi);
     m_controlCenterItem->setProperty("audio", audio);
     m_controlCenterItem->setProperty("bluetooth", bluetooth);
     m_controlCenterItem->setProperty("storage", storage);
+    m_controlCenterItem->setProperty("input", input);
     m_controlCenterItem->setProperty("brightness", brightness);
     m_controlCenterItem->setProperty("focusPolicy", focus);
     m_controlCenterItem->setProperty("dark", dark);
@@ -2163,6 +2177,13 @@ void ShellController::onSoundSettingsRequested()
     // Launching Settings on the Sound pane is T-16; the entry point is wired
     // and logs until then.
     qInfo() << "shell: Sound Settings requested (T-16)";
+}
+
+void ShellController::onKeyboardSettingsRequested()
+{
+    // Launching Settings on the Keyboard pane is T-16; the entry point is wired
+    // and logs until then.
+    qInfo() << "shell: Keyboard Settings requested (T-16)";
 }
 
 void ShellController::onFocusToggleRequested(bool enabled)

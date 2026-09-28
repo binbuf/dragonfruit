@@ -19,6 +19,8 @@ qt_add_qml_module(dragonfruit-settings-ui
         StorageClient.h
         SoundClient.cpp
         SoundClient.h
+        InputClient.cpp
+        InputClient.h
     QML_FILES
         SettingsPanes.qml
         SettingsMenu.qml
@@ -30,6 +32,10 @@ qt_add_qml_module(dragonfruit-settings-ui
         BluetoothPane.qml
         StoragePane.qml
         SoundPane.qml
+        InputPane.qml
+        KeyboardPane.qml
+        MousePane.qml
+        TrackpadPane.qml
         SettingsShell.qml
         SettingsWindow.qml
 )
@@ -67,6 +73,10 @@ df_qml_lint(app-settings
     BluetoothPane.qml
     StoragePane.qml
     SoundPane.qml
+    InputPane.qml
+    KeyboardPane.qml
+    MousePane.qml
+    TrackpadPane.qml
     SettingsShell.qml
     SettingsWindow.qml
 )

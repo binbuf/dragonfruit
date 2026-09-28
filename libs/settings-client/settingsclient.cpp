@@ -71,13 +71,34 @@ QStringList SettingsClient::stringList(const QString &key) const
     return value(key).toStringList();
 }
 
+QVariant coerceToSchema(const QString &key, const QVariant &value)
+{
+    // QML has one number type (double), so a control bound to an integer key
+    // (`input.repeatRate`) writes a double. Coerce it back to the schema's
+    // `x`/`d` type here, before the value is stored or sent over D-Bus, so the
+    // daemon's type check accepts it and the reactive map keeps its type.
+    static const QVariantMap defaults = settingsSchemaDefaults();
+    const auto it = defaults.constFind(key);
+    if (it == defaults.constEnd())
+        return value;
+    const QVariant &declared = it.value();
+    if (declared.typeId() == QMetaType::LongLong
+            && value.typeId() == QMetaType::Double)
+        return QVariant::fromValue<qlonglong>(qRound64(value.toDouble()));
+    if (declared.typeId() == QMetaType::Double
+            && value.typeId() == QMetaType::LongLong)
+        return value.toDouble();
+    return value;
+}
+
 void SettingsClient::applyValue(const QString &key, const QVariant &value)
 {
+    const QVariant coerced = coerceToSchema(key, value);
     const auto it = m_values.constFind(key);
-    if (it != m_values.constEnd() && it.value() == value)
+    if (it != m_values.constEnd() && it.value() == coerced)
         return;
-    m_values.insert(key, value);
-    emit changed(key, value);
+    m_values.insert(key, coerced);
+    emit changed(key, coerced);
 }
 
 void SettingsClient::applyValues(const QVariantMap &values)
@@ -96,7 +117,7 @@ void SettingsClient::setAvailable(bool available)
 
 QVariantMap settingsSchemaDefaults()
 {
-    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 11). Values are
+    // Mirrors services/settingsd/src/schema.rs (SCHEMA_VERSION 12). Values are
     // typed exactly as the schema declares: d, x, b, s, as.
     QVariantMap values;
     values.insert(QStringLiteral("dock.size"), 0.5);
@@ -132,6 +153,16 @@ QVariantMap settingsSchemaDefaults()
     values.insert(QStringLiteral("accessibility.reduceMotion"), false);
     values.insert(QStringLiteral("input.repeatDelay"), qlonglong(200));
     values.insert(QStringLiteral("input.repeatRate"), qlonglong(25));
+    values.insert(QStringLiteral("input.pointerSpeed"), 0.0);
+    values.insert(QStringLiteral("input.naturalScroll"), true);
+    values.insert(QStringLiteral("input.tapToClick"), true);
+    values.insert(QStringLiteral("input.leftHanded"), false);
+    values.insert(QStringLiteral("input.scrollMethod"), QStringLiteral("two-finger"));
+    values.insert(QStringLiteral("input.keyboardBrightness"), 0.5);
+    values.insert(QStringLiteral("input.adjustBrightnessLowLight"), true);
+    values.insert(QStringLiteral("input.backlightOffAfter"), qlonglong(0));
+    values.insert(QStringLiteral("input.keyboardNavigation"), false);
+    values.insert(QStringLiteral("input.emojiKeyAction"), QStringLiteral("emoji"));
     values.insert(QStringLiteral("idle.dim"), qlonglong(150));
     values.insert(QStringLiteral("idle.blank"), qlonglong(300));
     values.insert(QStringLiteral("idle.lock"), qlonglong(600));
@@ -271,15 +302,18 @@ void DbusSettingsClient::set(const QString &key, const QVariant &value)
 {
     // Optimistic local apply so the Dock reacts on the same event-loop turn;
     // the daemon's `Changed` echo then de-duplicates. When no daemon is on the
-    // bus this is the only effect (in-memory for the session).
-    applyValue(key, value);
+    // bus this is the only effect (in-memory for the session). The value is
+    // coerced to the schema type first, so a QML double for an integer key is
+    // accepted by the daemon.
+    const QVariant coerced = coerceToSchema(key, value);
+    applyValue(key, coerced);
     if (!isAvailable())
         return;
     auto *call = new QDBusInterface(m_service, m_path, m_interface,
                                     QDBusConnection::sessionBus(), this);
     auto *watcher = new QDBusPendingCallWatcher(
         call->asyncCall(QStringLiteral("Set"), key,
-                        QVariant::fromValue(QDBusVariant(value))),
+                        QVariant::fromValue(QDBusVariant(coerced))),
         this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this,
             [this, watcher, call]() {

@@ -30,6 +30,11 @@ Item {
     // `SystemStatusModel`: `{ state, present, label, mountedCount, volumes:
     // [...], drives: [...] }`. Empty/absent hides the tile.
     property var storage: ({})
+    // The read-only input inventory from the bridge host (T-15.4b), shaped by
+    // `SystemStatusModel`: `{ state, present, label, glyph, deviceCount,
+    // keyboardCount, pointerCount, devices: [...] }`. Empty/absent hides the
+    // tile.
+    property var input: ({})
     property real brightness: 1.0
     // The notification service's Focus/DND policy view
     // (`{mode, allowList, batchedCount}`); empty when the service is absent.
@@ -113,6 +118,21 @@ Item {
             return root.storage.label;
         return root.storageMountedCount > 0
             ? qsTr("%1 mounted").arg(root.storageMountedCount) : qsTr("No volumes");
+    }
+
+    // Input (T-15.4b). The tile hides when libinput is absent (`unavailable`) or
+    // when the stack is present with no recognized device (`present: false`),
+    // mirroring the model's hide rule. It is a read-only inventory summary; the
+    // link opens the Keyboard pane where the preferences live.
+    readonly property bool inputAvailable: root.input.state === "available"
+    readonly property bool inputPresent: root.input.present === true
+    readonly property bool inputVisible: root.inputAvailable && root.inputPresent
+    readonly property string inputLabel: {
+        if (!root.inputVisible)
+            return qsTr("Unavailable");
+        if (root.input.label !== undefined && root.input.label !== "")
+            return root.input.label;
+        return qsTr("No input devices");
     }
 
     // The notification service's mode (`off`/`focus`/`dnd`). The toggle is Do
@@ -206,6 +226,14 @@ Item {
             subtitle: root.dark ? qsTr("On") : qsTr("Off"),
             checked: root.dark,
             enabled: true
+        },
+        {
+            id: "keyboard",
+            kind: "info",
+            title: qsTr("Keyboard"),
+            subtitle: root.inputLabel,
+            visible: root.inputVisible,
+            enabled: root.inputVisible
         }
     ]
 
@@ -240,6 +268,8 @@ Item {
     // ThemeBinding applies it live.
     signal darkModeToggleRequested(bool dark)
     signal appearanceSettingsRequested()
+    // The input tile is read-only; the link opens the Keyboard pane (T-16).
+    signal keyboardSettingsRequested()
 
     // Apply a volume fraction (0..1) and raise the request.
     function setVolume(fraction) {
@@ -987,6 +1017,71 @@ Item {
                         text: qsTr("Appearance Settings\u2026")
                         accessibleName: qsTr("Open Appearance Settings")
                         onActivated: root.appearanceSettingsRequested()
+                    }
+                }
+            }
+
+            // ── Keyboard (T-15.4b) ──────────────────────────────────────
+            Rectangle {
+                id: keyboardTile
+                objectName: "keyboardTile"
+                width: parent.width
+                visible: root.inputVisible
+                implicitHeight: keyboardColumn.implicitHeight
+                                + 2 * Theme.controls.settingsGroup.padding
+                radius: Theme.primitive.radius.md
+                color: Theme.color.surfaceSunken
+                Accessible.role: Accessible.Grouping
+                Accessible.name: qsTr("Keyboard")
+
+                Column {
+                    id: keyboardColumn
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: Theme.controls.settingsGroup.padding
+                    spacing: Theme.primitive.spacing.sm
+
+                    Row {
+                        width: parent.width
+                        spacing: Theme.primitive.spacing.md
+
+                        IconTile {
+                            objectName: "keyboardIcon"
+                            name: "keyboard"
+                            tileSize: 32
+                            iconSize: 18
+                            active: root.inputVisible
+                        }
+
+                        Column {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: parent.width - 32 - 2 * Theme.primitive.spacing.md
+
+                            Text {
+                                objectName: "keyboardTitle"
+                                text: qsTr("Keyboard")
+                                color: Theme.color.textPrimary
+                                font.pixelSize: Theme.controls.button.fontSize
+                                font.weight: Theme.primitive.font.weightMedium
+                            }
+
+                            Text {
+                                objectName: "keyboardSubtitle"
+                                width: parent.width
+                                text: root.inputLabel
+                                color: Theme.color.textSecondary
+                                font.pixelSize: Theme.primitive.font.sizeSm
+                                elide: Text.ElideRight
+                            }
+                        }
+                    }
+
+                    TextLink {
+                        objectName: "keyboardSettingsLink"
+                        text: qsTr("Keyboard Settings\u2026")
+                        accessibleName: qsTr("Open Keyboard Settings")
+                        onActivated: root.keyboardSettingsRequested()
                     }
                 }
             }

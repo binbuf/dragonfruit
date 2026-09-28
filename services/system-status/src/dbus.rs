@@ -14,6 +14,7 @@ use std::sync::{Arc, Mutex};
 
 use dragonfruit_audio::CommandAudio;
 use dragonfruit_bluetooth::DbusBluez;
+use dragonfruit_input::CommandLibinput;
 use dragonfruit_networkmanager::DbusNetworkManager;
 use dragonfruit_power::DbusUPower;
 use dragonfruit_storage::DbusUDisks;
@@ -21,8 +22,8 @@ use zbus::blocking::connection;
 use zbus::interface;
 
 use crate::{
-    BluetoothHost, StatusHost, StorageHost, AUDIO_INTERFACE, BATTERY_INTERFACE,
-    BLUETOOTH_INTERFACE, DBUS_NAME, DBUS_PATH, STORAGE_INTERFACE, WIFI_INTERFACE,
+    BluetoothHost, InputHost, StatusHost, StorageHost, AUDIO_INTERFACE, BATTERY_INTERFACE,
+    BLUETOOTH_INTERFACE, DBUS_NAME, DBUS_PATH, INPUT_INTERFACE, STORAGE_INTERFACE, WIFI_INTERFACE,
 };
 
 /// The live host: the three real network/audio/power adapter sources behind
@@ -36,6 +37,9 @@ pub type LiveBluetooth = BluetoothHost<DbusBluez>;
 /// The live storage host: the real UDisks2 source (system bus) behind the
 /// bridge.
 pub type LiveStorage = StorageHost<DbusUDisks>;
+
+/// The live input host: the real `libinput` tool source behind the bridge.
+pub type LiveInput = InputHost<CommandLibinput>;
 
 /// The Wi-Fi half of the service.
 pub struct WifiInterface {
@@ -62,6 +66,13 @@ pub struct BluetoothInterface {
 /// writes the Settings pane and Control Center tile offer.
 pub struct StorageInterface {
     host: Arc<Mutex<LiveStorage>>,
+}
+
+/// The read-only input half of the service (T-15.4b): the device inventory
+/// libinput reports. There are no writes — the pane's preferences are
+/// settingsd keys (ADR 0124).
+pub struct InputInterface {
+    host: Arc<Mutex<LiveInput>>,
 }
 
 #[interface(name = "org.dragonfruit.SystemStatus1.Wifi")]
@@ -219,6 +230,23 @@ impl StorageInterface {
     }
 }
 
+#[interface(name = "org.dragonfruit.SystemStatus1.Input")]
+impl InputInterface {
+    /// The current input status view as JSON (the last adapter state).
+    fn state(&self) -> String {
+        lock_input(&self.host).state()
+    }
+
+    /// Re-read libinput once and return the new view. The shell and the
+    /// Settings pane call this when they open; it is an explicit resync, not a
+    /// poll. The adapter is read-only, so there are no write methods.
+    fn refresh(&self) -> String {
+        let mut host = lock_input(&self.host);
+        host.refresh();
+        host.state()
+    }
+}
+
 /// Lock the shared host, recovering from a poisoned mutex: a D-Bus method may
 /// panic on a bad argument, and the service must keep answering.
 fn lock(host: &Arc<Mutex<LiveHost>>) -> std::sync::MutexGuard<'_, LiveHost> {
@@ -235,13 +263,24 @@ fn lock_storage(host: &Arc<Mutex<LiveStorage>>) -> std::sync::MutexGuard<'_, Liv
     host.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
+/// Lock the shared input host, recovering from a poisoned mutex.
+fn lock_input(host: &Arc<Mutex<LiveInput>>) -> std::sync::MutexGuard<'_, LiveInput> {
+    host.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 /// Serve the three interfaces on the session bus until the process is asked to
 /// stop. Returns an error only when the bus or the name cannot be taken; an
 /// absent session bus exits with a message instead of blocking a session.
-pub fn run(host: LiveHost, bluetooth: LiveBluetooth, storage: LiveStorage) -> zbus::Result<()> {
+pub fn run(
+    host: LiveHost,
+    bluetooth: LiveBluetooth,
+    storage: LiveStorage,
+    input: LiveInput,
+) -> zbus::Result<()> {
     let host = Arc::new(Mutex::new(host));
     let bluetooth = Arc::new(Mutex::new(bluetooth));
     let storage = Arc::new(Mutex::new(storage));
+    let input = Arc::new(Mutex::new(input));
     let connection = connection::Builder::session()?
         .name(DBUS_NAME)?
         .serve_at(
@@ -274,6 +313,12 @@ pub fn run(host: LiveHost, bluetooth: LiveBluetooth, storage: LiveStorage) -> zb
                 host: Arc::clone(&storage),
             },
         )?
+        .serve_at(
+            DBUS_PATH,
+            InputInterface {
+                host: Arc::clone(&input),
+            },
+        )?
         .build()?;
 
     // The blocking object server runs on its own executor; parking the main
@@ -285,12 +330,13 @@ pub fn run(host: LiveHost, bluetooth: LiveBluetooth, storage: LiveStorage) -> zb
 }
 
 /// The interface names the service serves, for logs and tests.
-pub fn interface_names() -> [&'static str; 5] {
+pub fn interface_names() -> [&'static str; 6] {
     [
         WIFI_INTERFACE,
         AUDIO_INTERFACE,
         BATTERY_INTERFACE,
         BLUETOOTH_INTERFACE,
         STORAGE_INTERFACE,
+        INPUT_INTERFACE,
     ]
 }

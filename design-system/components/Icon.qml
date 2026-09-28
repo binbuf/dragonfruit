@@ -29,7 +29,8 @@ Item {
                                           "trash", "computer", "volume",
                                           "folder", "file", "icon-view",
                                           "list-view", "wifi", "bluetooth",
-                                          "brightness", "focus", "storage"]
+                                          "brightness", "focus", "storage",
+                                          "keyboard", "mouse", "trackpad"]
     readonly property bool painted: root.paintedGlyphs.indexOf(root.name) >= 0
 
     readonly property var bars: {
@@ -406,6 +407,50 @@ Item {
                 ctx.stroke();
                 ctx.beginPath();
                 ctx.arc(s * 0.70, s * 0.74, root.stroke * 0.7, 0, Math.PI * 2);
+                ctx.fill();
+                break;
+            }
+            case "keyboard": {
+                // A keyboard: a rounded body with two rows of key dots and a
+                // spacebar rule (the Keyboard pane / tile glyph).
+                roundedRect(s * 0.10, s * 0.30, s * 0.80, s * 0.40, s * 0.10);
+                ctx.stroke();
+                for (var kr = 0; kr < 2; ++kr) {
+                    for (var kc = 0; kc < 4; ++kc) {
+                        ctx.beginPath();
+                        ctx.arc(s * (0.24 + kc * 0.17), s * (0.42 + kr * 0.14),
+                                root.stroke * 0.7, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                }
+                ctx.beginPath();
+                ctx.moveTo(s * 0.32, s * 0.62);
+                ctx.lineTo(s * 0.68, s * 0.62);
+                ctx.stroke();
+                break;
+            }
+            case "mouse": {
+                // A mouse: a rounded body split by a center line with a wheel.
+                ctx.beginPath();
+                ctx.moveTo(c, s * 0.16);
+                ctx.quadraticCurveTo(s * 0.78, s * 0.16, s * 0.78, s * 0.52);
+                ctx.quadraticCurveTo(s * 0.78, s * 0.86, c, s * 0.86);
+                ctx.quadraticCurveTo(s * 0.22, s * 0.86, s * 0.22, s * 0.52);
+                ctx.quadraticCurveTo(s * 0.22, s * 0.16, c, s * 0.16);
+                ctx.closePath();
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(c, s * 0.16);
+                ctx.lineTo(c, s * 0.48);
+                ctx.stroke();
+                break;
+            }
+            case "trackpad": {
+                // A trackpad: a wide rounded pad with a finger dot.
+                roundedRect(s * 0.12, s * 0.22, s * 0.76, s * 0.56, s * 0.12);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(s * 0.50, s * 0.58, root.stroke * 0.9, 0, Math.PI * 2);
                 ctx.fill();
                 break;
             }

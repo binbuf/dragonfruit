@@ -429,6 +429,36 @@ session startup. T-15.4b adds the pane and tile; it reads the settings values
 through `settingsd` and adds the pointer keys (`Tracking speed`, `Tap to
 click`, scrolling) as settingsd-owned, compositor-consumed settings.
 
+### The Keyboard/Mouse/Trackpad pane and tile (T-15.4b)
+
+The Settings Keyboard, Mouse, and Trackpad panes and the Control Center
+Keyboard tile are one functional unit over the input inventory. The three
+panes share one body (`apps/settings/InputPane.qml`) parameterised by
+`section`, so the pointer controls cannot drift between them. The inventory
+comes from the bridge host's `org.dragonfruit.SystemStatus1.Input` interface
+(ADR [0125](adr/0125-keyboard-mouse-trackpad-pane-and-tile.md)): `State()` and
+`Refresh()` over the read-only libinput adapter, with no write method. The pane
+renders the device list (name plus kind) and asks the host for a re-read on
+open.
+
+Every preference row is a settingsd key, additive in schema revision 12:
+`input.pointerSpeed`, `input.naturalScroll`, `input.tapToClick`,
+`input.leftHanded`, `input.scrollMethod`, `input.keyboardBrightness`,
+`input.adjustBrightnessLowLight`, `input.backlightOffAfter`,
+`input.keyboardNavigation`, and `input.emojiKeyAction`. `Key repeat rate` and
+`Delay until repeat` reuse the revision-1 `input.repeatRate`/`input.repeatDelay`.
+The pointer keys map to `PointerSettings` in
+`compositor/src/input/settings.rs` and are the compositor's to apply; the
+keyboard-backlight and emoji-panel bridges are follow-ups, so those rows
+persist their preference today (the same split T-15.3b used for the Sound
+Effects keys). The Control Center tile is a compact read-only summary of the
+inventory plus a `Keyboard Settings…` entry point (the launch itself is T-16).
+
+Absence follows the adapter's two hide rules (ADR 0124). libinput gone, or a
+running stack with no recognized device, hides the device list and shows a
+one-line note; the settingsd-backed preference rows stay live on the schema
+defaults, so an absent inventory never turns the panes into dead surfaces.
+
 ## The status bridge host (T-07.5a)
 
 The adapters are Rust crates; the menu bar is C++/QML. T-07.5a bridges them in
@@ -446,6 +476,10 @@ NetworkManager, audio, and power adapters and serves
   routing writes `SetDefaultSink(id)` and `SetDefaultSource(id)`.
 - `org.dragonfruit.SystemStatus1.Battery` — `State()`/`Refresh()` only (the
   read-only battery view; no write).
+- `org.dragonfruit.SystemStatus1.Storage` (T-15.2b) — `State()`/`Refresh()`
+  plus `Mount(volumePath)`, `Unmount(volumePath)`, `Eject(drivePath)`.
+- `org.dragonfruit.SystemStatus1.Input` (T-15.4b) — `State()`/`Refresh()` only
+  (the read-only keyboard/mouse/trackpad inventory; libinput has no setter).
 
 The host core (`StatusHost`) is adapter-only and CI-tested with the mocks; the
 D-Bus layer is a thin mechanical wrapper. The shell decodes the JSON in one
