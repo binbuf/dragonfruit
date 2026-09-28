@@ -3,7 +3,7 @@
 //!
 //! Every subsystem interface lives at one object path — `Wifi`, `Audio`,
 //! `Battery`, `Bluetooth`, `Storage`, `Input`, `Notifications`, `Updates`,
-//! `Accounts`, `Printers`, `Privacy`, and `Accessibility` — each with a `State()` read (the JSON view the matching
+//! `Accounts`, `Printers`, `Privacy`, `Accessibility`, and `Vpn` — each with a `State()` read (the JSON view the matching
 //! `*_view` produces) and an explicit `Refresh()` re-sync; the interfaces that
 //! own one add the writes their pane offers. The shell (C++/QML) owns the
 //! corresponding client; nothing on that side links an adapter ([adr/0029]).
@@ -17,7 +17,7 @@ use dragonfruit_account_adapter::HostAccounts;
 use dragonfruit_audio::CommandAudio;
 use dragonfruit_bluetooth::DbusBluez;
 use dragonfruit_input::CommandLibinput;
-use dragonfruit_networkmanager::DbusNetworkManager;
+use dragonfruit_networkmanager::{DbusNetworkManager, DbusVpn};
 use dragonfruit_notify_adapter::DbusNotifications;
 use dragonfruit_power::DbusUPower;
 use dragonfruit_printer_adapter::HostPrint;
@@ -29,10 +29,10 @@ use zbus::interface;
 
 use crate::{
     AccessibilityHost, AccountsHost, BluetoothHost, InputHost, NotificationsHost, PrintersHost,
-    PrivacyHost, StatusHost, StorageHost, UpdatesHost, ACCESSIBILITY_INTERFACE, ACCOUNTS_INTERFACE,
-    AUDIO_INTERFACE, BATTERY_INTERFACE, BLUETOOTH_INTERFACE, DBUS_NAME, DBUS_PATH, INPUT_INTERFACE,
-    NOTIFICATIONS_INTERFACE, PRINTERS_INTERFACE, PRIVACY_INTERFACE, STORAGE_INTERFACE,
-    UPDATES_INTERFACE, WIFI_INTERFACE,
+    PrivacyHost, StatusHost, StorageHost, UpdatesHost, VpnHost, ACCESSIBILITY_INTERFACE,
+    ACCOUNTS_INTERFACE, AUDIO_INTERFACE, BATTERY_INTERFACE, BLUETOOTH_INTERFACE, DBUS_NAME,
+    DBUS_PATH, INPUT_INTERFACE, NOTIFICATIONS_INTERFACE, PRINTERS_INTERFACE, PRIVACY_INTERFACE,
+    STORAGE_INTERFACE, UPDATES_INTERFACE, VPN_INTERFACE, WIFI_INTERFACE,
 };
 
 /// The live host: the three real network/audio/power adapter sources behind
@@ -75,6 +75,11 @@ pub type LivePrivacy = PrivacyHost<HostPrivacy>;
 /// The live Accessibility host: the AT-SPI accessibility bus (`org.a11y.Bus`)
 /// over the session bus (ADR 0144) behind the bridge (T-15.14b).
 pub type LiveAccessibility = AccessibilityHost<HostAccessibility>;
+
+/// The live VPN host: NetworkManager's `vpn`/`wireguard` connections
+/// (`Settings.Connection` + `Connection.Active`) over the system bus (ADR 0146)
+/// behind the bridge (T-15.15b).
+pub type LiveVpn = VpnHost<DbusVpn>;
 
 /// The Wi-Fi half of the service.
 pub struct WifiInterface {
@@ -155,6 +160,14 @@ pub struct PrivacyInterface {
 /// settingsd keys (ADR 0144).
 pub struct AccessibilityInterface {
     host: Arc<Mutex<LiveAccessibility>>,
+}
+
+/// The Network advanced (VPN) half of the service (T-15.15b): the configured
+/// VPN connections and their live state, plus the two explicit writes
+/// (`Connect`/`Deactivate`, by UUID) the Settings pane offers. The Control
+/// Center tile is a read-only summary of the same view.
+pub struct VpnInterface {
+    host: Arc<Mutex<LiveVpn>>,
 }
 
 #[interface(name = "org.dragonfruit.SystemStatus1.Wifi")]
@@ -576,6 +589,38 @@ impl AccessibilityInterface {
     }
 }
 
+#[interface(name = "org.dragonfruit.SystemStatus1.Vpn")]
+impl VpnInterface {
+    /// The current Network advanced (VPN) view as JSON (the last adapter
+    /// state). `present: false` means NetworkManager answered with no VPN
+    /// configured (the pane's empty note and the tile's hide rule).
+    fn state(&self) -> String {
+        lock_vpn(&self.host).state()
+    }
+
+    /// Re-read NetworkManager's VPN connections once and return the new view.
+    /// The shell and the Settings pane call this when they open; it is an
+    /// explicit resync, not a poll.
+    fn refresh(&self) -> String {
+        let mut host = lock_vpn(&self.host);
+        host.refresh();
+        host.state()
+    }
+
+    /// Connect (activate) the VPN with `uuid`. Returns the JSON report. One
+    /// explicit write; the daemon pushes the resulting state and the host
+    /// re-reads.
+    fn connect(&self, uuid: &str) -> String {
+        lock_vpn(&self.host).connect(uuid).to_string()
+    }
+
+    /// Disconnect (deactivate) the active VPN with `uuid`. Returns the JSON
+    /// report. One explicit write.
+    fn deactivate(&self, uuid: &str) -> String {
+        lock_vpn(&self.host).deactivate(uuid).to_string()
+    }
+}
+
 /// Lock the shared host, recovering from a poisoned mutex: a D-Bus method may
 /// panic on a bad argument, and the service must keep answering.
 fn lock(host: &Arc<Mutex<LiveHost>>) -> std::sync::MutexGuard<'_, LiveHost> {
@@ -634,6 +679,11 @@ fn lock_accessibility(
     host.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
+/// Lock the shared VPN host, recovering from a poisoned mutex.
+fn lock_vpn(host: &Arc<Mutex<LiveVpn>>) -> std::sync::MutexGuard<'_, LiveVpn> {
+    host.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 /// Serve the three interfaces on the session bus until the process is asked to
 /// stop. Returns an error only when the bus or the name cannot be taken; an
 /// absent session bus exits with a message instead of blocking a session.
@@ -651,6 +701,7 @@ pub fn run(
     printers: LivePrinters,
     privacy: LivePrivacy,
     accessibility: LiveAccessibility,
+    vpn: LiveVpn,
 ) -> zbus::Result<()> {
     let host = Arc::new(Mutex::new(host));
     let bluetooth = Arc::new(Mutex::new(bluetooth));
@@ -662,6 +713,7 @@ pub fn run(
     let printers = Arc::new(Mutex::new(printers));
     let privacy = Arc::new(Mutex::new(privacy));
     let accessibility = Arc::new(Mutex::new(accessibility));
+    let vpn = Arc::new(Mutex::new(vpn));
     let connection = connection::Builder::session()?
         .name(DBUS_NAME)?
         .serve_at(
@@ -736,6 +788,12 @@ pub fn run(
                 host: Arc::clone(&accessibility),
             },
         )?
+        .serve_at(
+            DBUS_PATH,
+            VpnInterface {
+                host: Arc::clone(&vpn),
+            },
+        )?
         .build()?;
 
     // The blocking object server runs on its own executor; parking the main
@@ -747,7 +805,7 @@ pub fn run(
 }
 
 /// The interface names the service serves, for logs and tests.
-pub fn interface_names() -> [&'static str; 12] {
+pub fn interface_names() -> [&'static str; 13] {
     [
         WIFI_INTERFACE,
         AUDIO_INTERFACE,
@@ -761,5 +819,6 @@ pub fn interface_names() -> [&'static str; 12] {
         PRINTERS_INTERFACE,
         PRIVACY_INTERFACE,
         ACCESSIBILITY_INTERFACE,
+        VPN_INTERFACE,
     ]
 }

@@ -72,6 +72,20 @@ impl VpnKind {
             VpnKind::WireGuard => "WireGuard",
         }
     }
+
+    /// A stable id for the wire view (lowercase, no spaces), so the pane and
+    /// tile never parse a display label.
+    pub const fn id(self) -> &'static str {
+        match self {
+            VpnKind::Vpn => "vpn",
+            VpnKind::OpenVpn => "openvpn",
+            VpnKind::OpenConnect => "openconnect",
+            VpnKind::Ipsec => "ipsec",
+            VpnKind::Pptp => "pptp",
+            VpnKind::L2tp => "l2tp",
+            VpnKind::WireGuard => "wireguard",
+        }
+    }
 }
 
 /// The live state of one VPN connection, mapped from the active connection's
@@ -131,6 +145,18 @@ impl VpnState {
             VpnState::Connected => "Connected",
             VpnState::Disconnecting => "Disconnecting…",
             VpnState::Unknown => "Unknown",
+        }
+    }
+
+    /// A stable id for the wire view, so the pane and tile never parse a
+    /// display label.
+    pub const fn id(self) -> &'static str {
+        match self {
+            VpnState::Disconnected => "disconnected",
+            VpnState::Connecting => "connecting",
+            VpnState::Connected => "connected",
+            VpnState::Disconnecting => "disconnecting",
+            VpnState::Unknown => "unknown",
         }
     }
 

@@ -170,6 +170,8 @@ Item {
             return privacyPaneComponent;
         case "accessibility":
             return accessibilityPaneComponent;
+        case "network":
+            return networkPaneComponent;
         default:
             return null;
         }
@@ -345,6 +347,11 @@ Item {
     Component {
         id: accessibilityPaneComponent
         AccessibilityPane { }
+    }
+
+    Component {
+        id: networkPaneComponent
+        NetworkPane { }
     }
 
     AppWindow {

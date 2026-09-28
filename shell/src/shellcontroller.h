@@ -216,6 +216,9 @@ private slots:
     // T-15.14b: the Control Center Accessibility tile is a read-only summary;
     // the Settings link is an entry point only until T-16.
     void onAccessibilitySettingsRequested();
+    // T-15.15b: the Control Center Network advanced (VPN) tile is a read-only
+    // summary; the Settings link is an entry point only until T-16.
+    void onVpnSettingsRequested();
     // T-15.1b: the Control Center Bluetooth tile. The toggle powers the BlueZ
     // adapter; a known-device row connects/disconnects it; the Settings link is
     // an entry point only until T-16.
@@ -262,6 +265,7 @@ private slots:
     void onPrintersState(const QByteArray &json);
     void onPrivacyState(const QByteArray &json);
     void onAccessibilityState(const QByteArray &json);
+    void onVpnState(const QByteArray &json);
     void onStatusReport(const QByteArray &json);
     void onClockTick();
     void onAppMenuOpened(int index);
