@@ -20,6 +20,8 @@ impl AdapterId {
     pub const AUDIO: AdapterId = AdapterId("volume");
     /// Battery level/charging (UPower).
     pub const POWER: AdapterId = AdapterId("battery");
+    /// Keyboard/mouse/trackpad inventory (libinput).
+    pub const INPUT: AdapterId = AdapterId("input");
 
     /// An id for a status slot the constants above do not name.
     pub const fn new(id: &'static str) -> Self {
@@ -236,5 +238,6 @@ mod tests {
         assert_eq!(AdapterId::STORAGE.as_str(), "storage");
         assert_eq!(AdapterId::AUDIO.as_str(), "volume");
         assert_eq!(AdapterId::POWER.as_str(), "battery");
+        assert_eq!(AdapterId::INPUT.as_str(), "input");
     }
 }

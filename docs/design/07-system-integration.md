@@ -21,6 +21,7 @@ equivalent) API intended exactly for custom desktop frontends.
 | Secrets | Secret Service API | Reuse the host keyring (e.g. gnome-keyring); we never build a credential store, and first-party apps never cache secrets themselves. |
 | Date & time | systemd-timedated | Timezone and NTP settings for the Settings panes. |
 | User accounts | accountsservice | User list, avatars, account type — for Settings' Users & Groups pane. |
+| Input devices | libinput | Keyboard/mouse/trackpad enumeration and per-device capabilities. Unlike the daemons above, the **user's** input settings are compositor-applied and settingsd-owned, per principle 3; the adapter is the inventory only. |
 | Seat/session | systemd / logind | Session lifetime, `graphical-session.target`, VT management. |
 | Privileged operations | host policy infrastructure | polkit / authentication agent integration; we never roll our own privilege escalation. |
 
@@ -384,6 +385,49 @@ Absence follows the adapter's two hide rules (ADR 0121). WirePlumber gone or a
 running daemon with no device hides the `Output & Input` group and shows a
 one-line note; the `Sound Effects`/`Balance` controls stay live on the schema
 defaults, so an absent daemon never turns the pane into a dead surface.
+
+## The input device path (T-15.4a)
+
+The input adapter, `dragonfruit-input` (`services/input`), gives the Keyboard /
+Mouse / Trackpad pane the device inventory its rows attach to: which keyboards,
+mice, and trackpads the session has, their capabilities, and the libinput
+built-in defaults of their configurable features. It is deliberately
+**read-only**, because input is the one subsystem principle 3 reserves for the
+compositor: libinput keeps no persisted configuration and ships no setter, the
+compositor owns the device handles, and the user's own keyboard/pointer choices
+belong to `settingsd`, applied live over the `df_toplevel_manager` bridge
+([adr/0034](adr/0034-compositor-policy-via-shell-bridge.md)). The adapter is the
+inventory half, not a second settings owner.
+
+The live source reuses libinput's shipped control tool. `CommandLibinput` runs
+`libinput list-devices` once per `InputAdapter::refresh` and parses the
+record-per-device output in one place (`services/input/src/libinput.rs`),
+exactly as the audio adapter reads WirePlumber through `pw-dump`
+([adr/0028](adr/0028-audio-adapter-over-wireplumber-cli.md)); the project links
+no libinput and the compositor stays the only holder of device handles. The
+parser is total — unknown keys are ignored and blank records skipped — so a tool
+that grows or renames a field keeps working, and the format is pinned by a
+fixture.
+
+The read path is the same three-state seam as the other adapters:
+`InputSource::read` returns the raw device list (`Ok(Some)`), absence
+(`Ok(None)`), or a read failure (`Err`). A host where libinput cannot run or
+cannot reach a seat is absence — hidden, never an error.
+`InputSnapshot::from_data` classifies each device from its capability tokens (a
+pointer with gesture support or tapping is a trackpad, any other pointer a
+mouse), orders keyboards then pointers, and derives the glyph and label. A pure
+`device_changes(previous)` diff reports added and removed devices, so a host
+that re-reads on an add/remove has the event without per-device polling
+([adr/0124](adr/0124-input-device-adapter.md)).
+
+The item hides in two different ways. libinput itself being absent is the
+adapter's `AdapterState::Unavailable`. A session that runs libinput but has
+**no recognized device** answers `Available`, with `InputSnapshot::present()`
+false — the consumer hides the item then, exactly as the battery item hides on
+a machine with no battery. Neither missing tool nor missing hardware blocks
+session startup. T-15.4b adds the pane and tile; it reads the settings values
+through `settingsd` and adds the pointer keys (`Tracking speed`, `Tap to
+click`, scrolling) as settingsd-owned, compositor-consumed settings.
 
 ## The status bridge host (T-07.5a)
 
