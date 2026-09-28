@@ -1,0 +1,25 @@
+[package]
+name = "dragonfruit-notify-adapter"
+description = "Notifications and Focus adapter: notification service state, Focus/DND, and events (T-15.7a)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+# The adapter is the projection over the notification service
+# (`org.freedesktop.Notifications` + the shell-facing
+# `org.dragonfruit.Notifications1`). It does not reimplement the queue, the
+# history, or the Focus/DND policy: it reuses `dragonfruit-notifications` for
+# the `FocusMode` vocabulary and the flat JSON views, reads and writes them
+# through the service's own D-Bus surface, and exposes the three-state contract
+# from `dragonfruit-system-adapters`. Nothing above this crate sees a zbus type.
+[dependencies]
+dragonfruit-notifications = { path = "../notifications", version = "0.1.0" }
+dragonfruit-system-adapters = { path = "../system-adapters", version = "0.1.0" }
+serde_json = "=1.0.151"
+zbus = { version = "=5.19.0", features = ["blocking-api"] }
+
+[lib]
+name = "dragonfruit_notify_adapter"
+path = "src/lib.rs"

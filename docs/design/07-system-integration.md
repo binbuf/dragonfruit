@@ -23,6 +23,7 @@ equivalent) API intended exactly for custom desktop frontends.
 | User accounts | accountsservice | User list, avatars, account type — for Settings' Users & Groups pane. |
 | Input devices | libinput | Keyboard/mouse/trackpad enumeration and per-device capabilities. Unlike the daemons above, the **user's** input settings are compositor-applied and settingsd-owned, per principle 3; the adapter is the inventory only. |
 | Mission Control / hot corners | compositor (`df_toplevel_manager`) | Trigger configuration and overview runtime state. Mission Control and hot corners are compositor-native: the compositor detects corners and owns the one overview machine, and the shell learns both over the private bridge. The adapter reuses that path; it is the projection, never a second detector. |
+| Notifications / Focus | notification service | The Focus/DND policy (mode, allow list, suppressed batch) and the active-banner / history state. The service already owns the queue, the history, and the admission rule (ADR [0058](adr/0058-focus-dnd-policy-semantics.md)); the adapter is the projection over its shell-facing JSON views and never reimplements them. |
 | Seat/session | systemd / logind | Session lifetime, `graphical-session.target`, VT management. |
 | Privileged operations | host policy infrastructure | polkit / authentication agent integration; we never roll our own privilege escalation. |
 
@@ -598,6 +599,47 @@ locally instead.
 - **Absence** is a missing settings daemon: the pane's rows stay live on the
   schema defaults and it shows a one-line note. There is no adapter `present`
   hide rule, because there is no adapter view in the shell path.
+
+## The Notifications and Focus path (T-15.7a)
+
+Notifications and Focus do not wrap a host daemon the way Bluetooth or UPower
+do: the **notification service is ourselves** (`services/notifications`,
+`dragonfruit-notifications`, T-11.1a/T-11.2a). It owns the queue, the bounded
+history, and the Focus/DND policy, and serves the standard
+`org.freedesktop.Notifications` and the shell-facing
+`org.dragonfruit.Notifications1` at `/org/freedesktop/Notifications`. The
+adapter (`services/notify-adapter`, `dragonfruit-notify-adapter`) is therefore
+a **projection over our own service**, never a second queue or a second policy:
+"reuse, never reimplement" is load-bearing here. See
+[adr/0130](adr/0130-notifications-focus-adapter.md).
+
+- **The read** is the service's three shell-facing JSON views — `FocusPolicy()`
+  (`mode`, `allowList`, `batchedCount`), `Banners()`, and `History()` — decoded
+  into `NotificationsData` and folded into `NotificationsSnapshot`: the
+  `FocusSnapshot` (mode, allow list, suppressed batch), the active banners, the
+  recorded history, and the derived per-app list (`AppNotifications`, the rows
+  the Notifications pane will draw).
+- **The writes** are the two Focus setters the service already exposes:
+  `set_focus_mode` (`off`/`focus`/`dnd`, reusing the service's own `FocusMode`
+  vocabulary) and `set_focus_allow_list`. A successful write invents no
+  snapshot; the service pushes `Changed` and the host re-reads.
+- **Events** are the shared subscription lifecycle (`AdapterEvent`) plus a pure
+  `NotificationsSnapshot::changes` diff (mode, allow list, batch, banner and
+  history counts) that the adapter queues in `drain_changes`.
+- **Absence is layered and normal.** No session bus, no daemon owning
+  `org.freedesktop.Notifications`, or a daemon that does not serve our shell
+  interface are all `Unavailable` and hide the item. A service that owns its
+  name and serves the interface but returns an error or malformed JSON is
+  `Error`: visible, inert, with the message.
+- **What is not here.** The global notification preferences the macOS pane
+  shows (`Show previews`, `when display is sleeping`, `when screen is locked`,
+  `when mirroring`) have no owner in the service today; they are settingsd keys
+  for T-15.7b, not adapter state. The pane and Control Center tile are T-15.7b.
+
+Like every adapter, the live D-Bus source is a thin mechanical layer behind the
+`NotificationsSource` seam; the mock (`MockNotifications`) drives all three
+states, the change stream, and absence in CI, and the live source is proven
+over a private `dbus-daemon` in `services/notify-adapter/tests/session_bus.rs`.
 
 ## The status bridge host (T-07.5a)
 
