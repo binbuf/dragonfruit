@@ -1188,10 +1188,23 @@ The accessibility adapter, `dragonfruit-accessibility-adapter`
   `Enabled`/`ScreenReader` flags — queued by the adapter and drained through
   `drain_changes`.
 
-The Settings pane and Control Center tile ship in T-15.14b over this adapter,
-through the bridge host like the other T-15 adapters. That task declares the
-durable preferences and the compositor magnification the reference rows need;
-it must not add a second accessibility implementation.
+### The Accessibility pane and tile (T-15.14b)
+
+The Settings pane and the Control Center tile ship in T-15.14b over this
+adapter, through the bridge host like the other T-15 adapters
+([adr/0145](adr/0145-accessibility-pane-and-tile.md)). The pane's live rows are
+read-only (the `Screen Reader` flag and the toolkit bridge), so it declares no
+new settingsd key: its one durable preference is the existing
+`accessibility.reduceMotion`, which the shell theme, the Dock, and the
+compositor already apply live. The Apple-only `Vision`/`Hearing` rows with no
+Linux host owner are omitted, and a compositor magnifier and a display-contrast
+preference are left as a follow-up rather than shipped as dead controls. It must
+not add a second accessibility implementation.
+
+- **The Control Center tile fits without a scroll.** The seventeenth tile is a
+  compact single-row summary and needed the tiles' internal gap compacted once
+  more from `xs` to `xxs` (the content gap stays `xxs`); the fixed 360×1160
+  surface still holds every tile.
 
 ## The status bridge host (T-07.5a)
 
@@ -1232,6 +1245,10 @@ NetworkManager, audio, and power adapters and serves
   plus `SetPermission(table, id, app, permission)` and
   `DeletePermission(table, id, app)` (the Privacy & Security pane's writes over
   the portal PermissionStore adapter).
+- `org.dragonfruit.SystemStatus1.Accessibility` (T-15.14b) — `State()`/
+  `Refresh()` only (the Accessibility pane and tile read the bridge host's
+  live AT-SPI projection; the adapter has no setter, and the pane's
+  `accessibility.reduceMotion` preference is a settingsd key).
 
 The host core (`StatusHost`) is adapter-only and CI-tested with the mocks; the
 D-Bus layer is a thin mechanical wrapper. The shell decodes the JSON in one

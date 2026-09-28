@@ -754,6 +754,7 @@ version = "0.1.0"
 name = "dragonfruit-system-status"
 version = "0.1.0"
 dependencies = [
+ "dragonfruit-accessibility-adapter",
  "dragonfruit-account-adapter",
  "dragonfruit-audio",
  "dragonfruit-bluetooth",

@@ -35,7 +35,7 @@ Item {
                                           "power-balanced", "power-performance",
                                           "info", "bell", "lock", "menu-bar",
                                           "general", "software-update", "users", "printer",
-                                          "scanner", "privacy"]
+                                          "scanner", "privacy", "accessibility"]
     readonly property bool painted: root.paintedGlyphs.indexOf(root.name) >= 0
 
     readonly property var bars: {
@@ -560,6 +560,23 @@ Item {
                 ctx.moveTo(s * 0.36, s * 0.50);
                 ctx.lineTo(s * 0.46, s * 0.62);
                 ctx.lineTo(s * 0.66, s * 0.38);
+                ctx.stroke();
+                break;
+            }
+            case "accessibility": {
+                // A person inside a circle (the Accessibility pane / tile
+                // glyph, our own geometry; the Apple person-in-circle mark is
+                // never reproduced): a ring, a filled head, and a shoulder
+                // arch.
+                ctx.beginPath();
+                ctx.arc(c, c, s * 0.46, 0, 2 * Math.PI);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(c, s * 0.38, s * 0.09, 0, 2 * Math.PI);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo(c - s * 0.19, s * 0.66);
+                ctx.quadraticCurveTo(c, s * 0.47, c + s * 0.19, s * 0.66);
                 ctx.stroke();
                 break;
             }

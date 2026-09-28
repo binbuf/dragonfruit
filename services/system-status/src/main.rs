@@ -21,10 +21,12 @@
 //! dragonfruit-system-status --print-accounts
 //! dragonfruit-system-status --print-printers
 //! dragonfruit-system-status --print-privacy
+//! dragonfruit-system-status --print-accessibility
 //! ```
 
 use std::process::ExitCode;
 
+use dragonfruit_accessibility_adapter::HostAccessibility;
 use dragonfruit_account_adapter::HostAccounts;
 use dragonfruit_audio::CommandAudio;
 use dragonfruit_bluetooth::DbusBluez;
@@ -36,6 +38,7 @@ use dragonfruit_printer_adapter::HostPrint;
 use dragonfruit_privacy_adapter::HostPrivacy;
 use dragonfruit_storage::DbusUDisks;
 use dragonfruit_system_status::dbus;
+use dragonfruit_system_status::AccessibilityHost;
 use dragonfruit_system_status::AccountsHost;
 use dragonfruit_system_status::BluetoothHost;
 use dragonfruit_system_status::InputHost;
@@ -59,6 +62,7 @@ fn main() -> ExitCode {
     let mut print_accounts = false;
     let mut print_printers = false;
     let mut print_privacy = false;
+    let mut print_accessibility = false;
     for arg in std::env::args().skip(1) {
         match arg.as_str() {
             "--print-wifi" => print_wifi = true,
@@ -72,6 +76,7 @@ fn main() -> ExitCode {
             "--print-accounts" => print_accounts = true,
             "--print-printers" => print_printers = true,
             "--print-privacy" => print_privacy = true,
+            "--print-accessibility" => print_accessibility = true,
             "-h" | "--help" => {
                 print_help();
                 return ExitCode::SUCCESS;
@@ -107,7 +112,15 @@ fn main() -> ExitCode {
     // The portal PermissionStore over the session bus; no portal or no store is
     // a normal hidden state (ADR 0142).
     let mut privacy = PrivacyHost::new(HostPrivacy::new());
+    // The AT-SPI accessibility bus over the session bus; no bus is a normal
+    // hidden state (ADR 0144).
+    let mut accessibility = AccessibilityHost::new(HostAccessibility::new());
 
+    if print_accessibility {
+        accessibility.refresh();
+        println!("{}", accessibility.state());
+        return ExitCode::SUCCESS;
+    }
     if print_privacy {
         privacy.refresh();
         println!("{}", privacy.state());
@@ -173,6 +186,7 @@ fn main() -> ExitCode {
     accounts.refresh();
     printers.refresh();
     privacy.refresh();
+    accessibility.refresh();
     match dbus::run(
         host,
         bluetooth,
@@ -183,6 +197,7 @@ fn main() -> ExitCode {
         accounts,
         printers,
         privacy,
+        accessibility,
     ) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
@@ -213,6 +228,7 @@ fn print_help() {
                             Users and Groups JSON view\n\
            --print-printers refresh CUPS/SANE and print the Printers and Scanners JSON view\n\
            --print-privacy  refresh the portal PermissionStore and print the Privacy JSON view\n\
+           --print-accessibility refresh the AT-SPI bus and print the Accessibility JSON view\n\
            -h, --help       show this help"
     );
 }

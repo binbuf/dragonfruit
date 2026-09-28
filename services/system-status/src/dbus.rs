@@ -3,7 +3,7 @@
 //!
 //! Every subsystem interface lives at one object path — `Wifi`, `Audio`,
 //! `Battery`, `Bluetooth`, `Storage`, `Input`, `Notifications`, `Updates`,
-//! `Accounts`, `Printers`, and `Privacy` — each with a `State()` read (the JSON view the matching
+//! `Accounts`, `Printers`, `Privacy`, and `Accessibility` — each with a `State()` read (the JSON view the matching
 //! `*_view` produces) and an explicit `Refresh()` re-sync; the interfaces that
 //! own one add the writes their pane offers. The shell (C++/QML) owns the
 //! corresponding client; nothing on that side links an adapter ([adr/0029]).
@@ -12,6 +12,7 @@
 
 use std::sync::{Arc, Mutex};
 
+use dragonfruit_accessibility_adapter::HostAccessibility;
 use dragonfruit_account_adapter::HostAccounts;
 use dragonfruit_audio::CommandAudio;
 use dragonfruit_bluetooth::DbusBluez;
@@ -27,10 +28,11 @@ use zbus::blocking::connection;
 use zbus::interface;
 
 use crate::{
-    AccountsHost, BluetoothHost, InputHost, NotificationsHost, PrintersHost, PrivacyHost,
-    StatusHost, StorageHost, UpdatesHost, ACCOUNTS_INTERFACE, AUDIO_INTERFACE, BATTERY_INTERFACE,
-    BLUETOOTH_INTERFACE, DBUS_NAME, DBUS_PATH, INPUT_INTERFACE, NOTIFICATIONS_INTERFACE,
-    PRINTERS_INTERFACE, PRIVACY_INTERFACE, STORAGE_INTERFACE, UPDATES_INTERFACE, WIFI_INTERFACE,
+    AccessibilityHost, AccountsHost, BluetoothHost, InputHost, NotificationsHost, PrintersHost,
+    PrivacyHost, StatusHost, StorageHost, UpdatesHost, ACCESSIBILITY_INTERFACE, ACCOUNTS_INTERFACE,
+    AUDIO_INTERFACE, BATTERY_INTERFACE, BLUETOOTH_INTERFACE, DBUS_NAME, DBUS_PATH, INPUT_INTERFACE,
+    NOTIFICATIONS_INTERFACE, PRINTERS_INTERFACE, PRIVACY_INTERFACE, STORAGE_INTERFACE,
+    UPDATES_INTERFACE, WIFI_INTERFACE,
 };
 
 /// The live host: the three real network/audio/power adapter sources behind
@@ -69,6 +71,10 @@ pub type LivePrinters = PrintersHost<HostPrint>;
 /// The live Privacy and Security host: the portal PermissionStore over the
 /// session bus (ADR 0142) behind the bridge (T-15.13b).
 pub type LivePrivacy = PrivacyHost<HostPrivacy>;
+
+/// The live Accessibility host: the AT-SPI accessibility bus (`org.a11y.Bus`)
+/// over the session bus (ADR 0144) behind the bridge (T-15.14b).
+pub type LiveAccessibility = AccessibilityHost<HostAccessibility>;
 
 /// The Wi-Fi half of the service.
 pub struct WifiInterface {
@@ -141,6 +147,14 @@ pub struct PrintersInterface {
 /// is a read-only summary of the same view.
 pub struct PrivacyInterface {
     host: Arc<Mutex<LivePrivacy>>,
+}
+
+/// The read-only Accessibility half of the service (T-15.14b): the live AT-SPI
+/// bridge state (`IsEnabled`, `ScreenReaderEnabled`). There are no writes —
+/// `org.a11y.Status` has no setter; the pane's durable preferences are
+/// settingsd keys (ADR 0144).
+pub struct AccessibilityInterface {
+    host: Arc<Mutex<LiveAccessibility>>,
 }
 
 #[interface(name = "org.dragonfruit.SystemStatus1.Wifi")]
@@ -542,6 +556,26 @@ impl PrivacyInterface {
     }
 }
 
+#[interface(name = "org.dragonfruit.SystemStatus1.Accessibility")]
+impl AccessibilityInterface {
+    /// The current accessibility view as JSON (the last adapter state). The
+    /// AT-SPI bus answered; `present: false` means every feature is off (the
+    /// tile's hide rule).
+    fn state(&self) -> String {
+        lock_accessibility(&self.host).state()
+    }
+
+    /// Re-read the AT-SPI accessibility bus once and return the new view. The
+    /// shell and the Settings pane call this when they open; it is an explicit
+    /// resync, not a poll. The adapter is read-only, so there are no write
+    /// methods.
+    fn refresh(&self) -> String {
+        let mut host = lock_accessibility(&self.host);
+        host.refresh();
+        host.state()
+    }
+}
+
 /// Lock the shared host, recovering from a poisoned mutex: a D-Bus method may
 /// panic on a bad argument, and the service must keep answering.
 fn lock(host: &Arc<Mutex<LiveHost>>) -> std::sync::MutexGuard<'_, LiveHost> {
@@ -593,6 +627,13 @@ fn lock_privacy(host: &Arc<Mutex<LivePrivacy>>) -> std::sync::MutexGuard<'_, Liv
     host.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
+/// Lock the shared Accessibility host, recovering from a poisoned mutex.
+fn lock_accessibility(
+    host: &Arc<Mutex<LiveAccessibility>>,
+) -> std::sync::MutexGuard<'_, LiveAccessibility> {
+    host.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 /// Serve the three interfaces on the session bus until the process is asked to
 /// stop. Returns an error only when the bus or the name cannot be taken; an
 /// absent session bus exits with a message instead of blocking a session.
@@ -609,6 +650,7 @@ pub fn run(
     accounts: LiveAccounts,
     printers: LivePrinters,
     privacy: LivePrivacy,
+    accessibility: LiveAccessibility,
 ) -> zbus::Result<()> {
     let host = Arc::new(Mutex::new(host));
     let bluetooth = Arc::new(Mutex::new(bluetooth));
@@ -619,6 +661,7 @@ pub fn run(
     let accounts = Arc::new(Mutex::new(accounts));
     let printers = Arc::new(Mutex::new(printers));
     let privacy = Arc::new(Mutex::new(privacy));
+    let accessibility = Arc::new(Mutex::new(accessibility));
     let connection = connection::Builder::session()?
         .name(DBUS_NAME)?
         .serve_at(
@@ -687,6 +730,12 @@ pub fn run(
                 host: Arc::clone(&privacy),
             },
         )?
+        .serve_at(
+            DBUS_PATH,
+            AccessibilityInterface {
+                host: Arc::clone(&accessibility),
+            },
+        )?
         .build()?;
 
     // The blocking object server runs on its own executor; parking the main
@@ -698,7 +747,7 @@ pub fn run(
 }
 
 /// The interface names the service serves, for logs and tests.
-pub fn interface_names() -> [&'static str; 11] {
+pub fn interface_names() -> [&'static str; 12] {
     [
         WIFI_INTERFACE,
         AUDIO_INTERFACE,
@@ -711,5 +760,6 @@ pub fn interface_names() -> [&'static str; 11] {
         ACCOUNTS_INTERFACE,
         PRINTERS_INTERFACE,
         PRIVACY_INTERFACE,
+        ACCESSIBILITY_INTERFACE,
     ]
 }

@@ -436,6 +436,30 @@ set_tests_properties(tst_settings_privacy PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# Accessibility pane tests (T-15.14b): the live AT-SPI status rows and the one
+# settingsd preference (`accessibility.reduceMotion`) round-tripping live.
+# `DF_ACCESSIBILITY_FIXTURE` is the deterministic in-process host-stack client,
+# so the cases never touch the session bus or the AT-SPI bus.
+qt_add_executable(tst_settings_accessibility
+    tst_settings_accessibility.cpp
+)
+target_link_libraries(tst_settings_accessibility PRIVATE
+    Qt6::QuickTest
+    dragonfruit-design-systemplugin
+    dragonfruit-settings-uiplugin
+)
+qt_import_qml_plugins(tst_settings_accessibility)
+
+add_test(
+    NAME tst_settings_accessibility
+    COMMAND tst_settings_accessibility
+        -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_settings_accessibility.qml
+)
+set_tests_properties(tst_settings_accessibility PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;DF_SETTINGS_FIXTURE=1;DF_ACCESSIBILITY_FIXTURE=1;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Settings menu-model publication tests (T-09.6a): the app's published menu
 # model is asserted in shape and injected into the shell's `MenuBar` (the
 # `Dragonfruit.MenuBar` module is linked so the round-trip is real). Headless

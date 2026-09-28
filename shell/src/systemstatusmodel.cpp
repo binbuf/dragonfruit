@@ -18,6 +18,7 @@ const QString kKindUpdates = QStringLiteral("updates");
 const QString kKindAccounts = QStringLiteral("accounts");
 const QString kKindPrinters = QStringLiteral("printers");
 const QString kKindPrivacy = QStringLiteral("privacy");
+const QString kKindAccessibility = QStringLiteral("accessibility");
 
 } // namespace
 
@@ -76,6 +77,11 @@ bool SystemStatusModel::privacyVisible() const
     return m_privacy.value(QStringLiteral("visible")).toBool();
 }
 
+bool SystemStatusModel::accessibilityVisible() const
+{
+    return m_accessibility.value(QStringLiteral("visible")).toBool();
+}
+
 QVariantMap SystemStatusModel::parseView(const QByteArray &json, const QString &kind, QString *error)
 {
     QJsonParseError parseError{};
@@ -114,7 +120,8 @@ QVariantMap SystemStatusModel::normalize(const QVariantMap &view, const QString 
     // shares the rule (ADR 0117): a running `bluetoothd` with no controller is
     // `available` with `present: false` and the tile hides.
     if ((kind == kKindBattery || kind == kKindBluetooth || kind == kKindStorage
-             || kind == kKindInput || kind == kKindPrinters || kind == kKindPrivacy)
+             || kind == kKindInput || kind == kKindPrinters || kind == kKindPrivacy
+             || kind == kKindAccessibility)
             && view.contains(QStringLiteral("present"))
             && !view.value(QStringLiteral("present")).toBool())
         hidden = true;
@@ -197,6 +204,15 @@ void SystemStatusModel::applyPrivacy(const QVariantMap &view)
     // running portal PermissionStore that records no application permission is
     // `available` with `present: false`, so the tile hides then too.
     m_privacy = normalize(view, kKindPrivacy);
+    emit changed();
+}
+
+void SystemStatusModel::applyAccessibility(const QVariantMap &view)
+{
+    // The Accessibility view has a second hide rule (`present`): an AT-SPI bus
+    // that answers with every feature off is `available` with `present: false`,
+    // so the tile hides then too (ADR 0144).
+    m_accessibility = normalize(view, kKindAccessibility);
     emit changed();
 }
 
@@ -290,6 +306,15 @@ void SystemStatusModel::applyPrivacyJson(const QByteArray &json)
     applyPrivacy(view);
 }
 
+void SystemStatusModel::applyAccessibilityJson(const QByteArray &json)
+{
+    QString error;
+    const QVariantMap view = parseView(json, kKindAccessibility, &error);
+    if (!error.isEmpty())
+        return;
+    applyAccessibility(view);
+}
+
 void SystemStatusModel::requestJoin(const QString &ssid, const QString &secret)
 {
     if (ssid.isEmpty())
@@ -370,4 +395,9 @@ void SystemStatusModel::requestRefreshPrinters()
 void SystemStatusModel::requestRefreshPrivacy()
 {
     emit refreshPrivacyRequested();
+}
+
+void SystemStatusModel::requestRefreshAccessibility()
+{
+    emit refreshAccessibilityRequested();
 }

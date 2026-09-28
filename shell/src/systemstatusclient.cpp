@@ -27,6 +27,8 @@ const QString kUpdatesInterface = QStringLiteral("org.dragonfruit.SystemStatus1.
 const QString kAccountsInterface = QStringLiteral("org.dragonfruit.SystemStatus1.Accounts");
 const QString kPrintersInterface = QStringLiteral("org.dragonfruit.SystemStatus1.Printers");
 const QString kPrivacyInterface = QStringLiteral("org.dragonfruit.SystemStatus1.Privacy");
+const QString kAccessibilityInterface =
+    QStringLiteral("org.dragonfruit.SystemStatus1.Accessibility");
 
 // Serialize a QJsonObject to the compact byte form the host uses.
 QByteArray compact(const QJsonObject &object)
@@ -225,6 +227,12 @@ void DbusSystemStatusClient::refreshPrivacy()
          &SystemStatusClient::privacyState);
 }
 
+void DbusSystemStatusClient::refreshAccessibility()
+{
+    call(kAccessibilityInterface, QStringLiteral("State"), {},
+         &SystemStatusClient::accessibilityState);
+}
+
 void DbusSystemStatusClient::join(const QString &ssid, const QString &secret)
 {
     call(kWifiInterface, QStringLiteral("Join"), {ssid, secret},
@@ -258,6 +266,7 @@ MockSystemStatusClient::MockSystemStatusClient(QObject *parent)
     refreshAccounts();
     refreshPrinters();
     refreshPrivacy();
+    refreshAccessibility();
 }
 
 void MockSystemStatusClient::refreshInput()
@@ -737,6 +746,24 @@ void MockSystemStatusClient::refreshPrivacy()
                                QStringLiteral("None"), 0, 0, QJsonArray {}));
     view.insert(QStringLiteral("categories"), categories);
     emit privacyState(compact(view));
+}
+
+void MockSystemStatusClient::refreshAccessibility()
+{
+    // The Accessibility fixture (T-15.14b): a deterministic AT-SPI bus with the
+    // toolkit bridge and a screen reader on. The adapter is read-only, so the
+    // fixture never mutates; the tile is a live summary.
+    QJsonObject view;
+    view.insert(QStringLiteral("kind"), QStringLiteral("accessibility"));
+    view.insert(QStringLiteral("state"), QStringLiteral("available"));
+    view.insert(QStringLiteral("glyph"), QStringLiteral("accessibility"));
+    view.insert(QStringLiteral("label"), QStringLiteral("Screen Reader On"));
+    view.insert(QStringLiteral("present"), true);
+    view.insert(QStringLiteral("enabled"), true);
+    view.insert(QStringLiteral("enabledLabel"), QStringLiteral("On"));
+    view.insert(QStringLiteral("screenReader"), true);
+    view.insert(QStringLiteral("screenReaderLabel"), QStringLiteral("On"));
+    emit accessibilityState(compact(view));
 }
 
 void MockSystemStatusClient::refreshWifi()

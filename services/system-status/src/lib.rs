@@ -47,6 +47,7 @@ use dragonfruit_power::{PowerAdapter, PowerProfile, PowerSource, ProfileOutcome}
 use dragonfruit_system_adapters::Adapter;
 use serde_json::{json, Value};
 
+pub mod accessibility;
 pub mod accounts;
 pub mod bluetooth;
 pub mod dbus;
@@ -57,6 +58,7 @@ pub mod privacy;
 pub mod storage;
 pub mod updates;
 
+pub use accessibility::{accessibility_snapshot_view, accessibility_view, AccessibilityHost};
 pub use accounts::{
     account_report, account_type_label, accounts_snapshot_view, accounts_view, AccountsHost,
 };
@@ -96,6 +98,8 @@ pub const ACCOUNTS_INTERFACE: &str = "org.dragonfruit.SystemStatus1.Accounts";
 pub const PRINTERS_INTERFACE: &str = "org.dragonfruit.SystemStatus1.Printers";
 /// The Privacy and Security interface name under [`DBUS_NAME`] (T-15.13b).
 pub const PRIVACY_INTERFACE: &str = "org.dragonfruit.SystemStatus1.Privacy";
+/// The read-only Accessibility interface name under [`DBUS_NAME`] (T-15.14b).
+pub const ACCESSIBILITY_INTERFACE: &str = "org.dragonfruit.SystemStatus1.Accessibility";
 
 /// The host owns the three menu-bar adapters and exposes their snapshots and
 /// actions. Generic over the transport seams so CI drives it with the mocks.
