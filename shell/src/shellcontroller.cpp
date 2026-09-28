@@ -830,6 +830,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onStorageEjectRequested(QString)));
     connect(controlCenterObject, SIGNAL(storageSettingsRequested()), this,
             SLOT(onStorageSettingsRequested()));
+    connect(controlCenterObject, SIGNAL(soundSettingsRequested()), this,
+            SLOT(onSoundSettingsRequested()));
     connect(controlCenterObject, SIGNAL(focusToggleRequested(bool)), this,
             SLOT(onFocusToggleRequested(bool)));
     connect(controlCenterObject, SIGNAL(focusSettingsRequested()), this,
@@ -2154,6 +2156,13 @@ void ShellController::onStorageSettingsRequested()
     // Launching Settings on the Storage pane is T-16; the entry point is wired
     // and logs until then.
     qInfo() << "shell: Storage Settings requested (T-16)";
+}
+
+void ShellController::onSoundSettingsRequested()
+{
+    // Launching Settings on the Sound pane is T-16; the entry point is wired
+    // and logs until then.
+    qInfo() << "shell: Sound Settings requested (T-16)";
 }
 
 void ShellController::onFocusToggleRequested(bool enabled)

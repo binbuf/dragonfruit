@@ -432,13 +432,15 @@ void MockSystemStatusClient::refreshAudio()
     view.insert(QStringLiteral("volume"), m_volume);
     view.insert(QStringLiteral("percent"), percent);
     view.insert(QStringLiteral("muted"), m_muted);
-    view.insert(QStringLiteral("defaultSink"), QStringLiteral("speakers"));
+    view.insert(QStringLiteral("defaultSink"), m_defaultSinkName);
+    view.insert(QStringLiteral("defaultSource"), m_defaultSourceName);
     view.insert(QStringLiteral("sinkCount"), 2);
+    view.insert(QStringLiteral("sourceCount"), 2);
 
-    const auto sink = [](const QString &name, const QString &description, double volume,
-                         bool muted, bool isDefault) {
+    const auto device = [](int id, const QString &name, const QString &description,
+                           double volume, bool muted, bool isDefault) {
         QJsonObject entry;
-        entry.insert(QStringLiteral("id"), name == QStringLiteral("speakers") ? 7 : 9);
+        entry.insert(QStringLiteral("id"), id);
         entry.insert(QStringLiteral("name"), name);
         entry.insert(QStringLiteral("description"), description);
         entry.insert(QStringLiteral("volume"), volume);
@@ -448,11 +450,22 @@ void MockSystemStatusClient::refreshAudio()
         return entry;
     };
     QJsonArray sinks;
-    sinks.append(sink(QStringLiteral("speakers"), QStringLiteral("Built-in Speakers"), m_volume,
-                      m_muted, true));
-    sinks.append(sink(QStringLiteral("headphones"), QStringLiteral("Headphones"),
-                      m_volume, m_muted, false));
+    sinks.append(device(7, QStringLiteral("speakers"), QStringLiteral("Built-in Speakers"),
+                        m_volume, m_muted,
+                        m_defaultSinkName == QStringLiteral("speakers")));
+    sinks.append(device(9, QStringLiteral("headphones"), QStringLiteral("Headphones"),
+                        m_volume, m_muted,
+                        m_defaultSinkName == QStringLiteral("headphones")));
     view.insert(QStringLiteral("sinks"), sinks);
+
+    QJsonArray sources;
+    sources.append(device(20, QStringLiteral("microphone"),
+                          QStringLiteral("Built-in Microphone"), 0.5, false,
+                          m_defaultSourceName == QStringLiteral("microphone")));
+    sources.append(device(21, QStringLiteral("usb-mic"), QStringLiteral("USB Microphone"),
+                          0.5, false,
+                          m_defaultSourceName == QStringLiteral("usb-mic")));
+    view.insert(QStringLiteral("sources"), sources);
     emit audioState(compact(view));
 }
 

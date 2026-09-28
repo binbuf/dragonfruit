@@ -60,6 +60,13 @@ freezes the v1 key set.
 | `idle.lock` | x | 600 | 0–86400 s | apps/settings | session/idle engine | Seconds of inactivity before the session locks; 0 disables the stage. |
 | `idle.suspend` | x | 0 | 0–86400 s | apps/settings | session/idle engine, session/suspend | Seconds of inactivity before the session suspends; 0 disables the stage. |
 | `menu.global` | b | true | | apps/settings | shell/MenuBar, services/menu-broker | Show the focused app's menus in the global menu bar; off restores local app menus. |
+| `sound.alertSound` | s | `Chime` | `Chime`/`Marimba`/`Pulse`/`Woodblock`/`Breeze` | apps/settings | apps/settings (alert playback engine deferred) | Alert sound name selected in the Sound pane. |
+| `sound.playEffectsThrough` | s | `output` | `output`/`alerts` | apps/settings | apps/settings (alert playback engine deferred) | Which device sound effects play through: the selected output or the alerts device. |
+| `sound.alertVolume` | d | 0.8 | 0.0–1.0 | apps/settings | apps/settings (alert playback engine deferred) | Alert sound volume, 0.0 to 1.0, set by the Sound pane's Alert volume slider. |
+| `sound.playOnStartup` | b | true | | apps/settings | apps/settings (startup chime engine deferred) | Play the startup sound when the session begins. |
+| `sound.uiEffects` | b | true | | apps/settings | apps/settings (UI sound engine deferred) | Play user-interface sound effects. |
+| `sound.volumeFeedback` | b | false | | apps/settings | shell/control-center, apps/settings (UI sound engine deferred) | Play feedback when the output volume is changed. |
+| `sound.balance` | d | 0.5 | 0.0–1.0 | apps/settings | apps/settings (balance write deferred) | Output balance from Left (0.0) to Right (1.0); 0.5 is centered. |
 
 ## Consumer map
 
