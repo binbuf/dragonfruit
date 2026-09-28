@@ -5642,6 +5642,307 @@ fn new_windows_land_on_the_focused_output() {
     );
 }
 
+/// Wait until the window for `app_id` reports a content rect fully inside the
+/// region `(0, 0, width, height)` — the remaining display after a hotplug —
+/// and return it. Used to observe the relocation `on_output_removed` performs.
+#[track_caller]
+fn wait_for_window_rect_in(
+    input: &SyntheticInput,
+    app_id: &str,
+    width: i32,
+    height: i32,
+) -> (i32, i32, i32, i32) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let rect = window_rect(input, app_id);
+        let inside =
+            rect.0 >= 0 && rect.1 >= 0 && rect.0 + rect.2 <= width && rect.1 + rect.3 <= height;
+        if inside {
+            return rect;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "window {app_id} was never re-homed inside {width}x{height}: {rect:?}"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// T-16.2 acceptance (headless): a display attached while the session sits on a
+/// non-zero Space joins the **current lockstep index**, so the next switch
+/// advances every display together. A fresh Space list pinned to index 0 would
+/// leave the new display behind on every later switch.
+#[test]
+fn workspace_switch_stays_lockstep_after_hotplug() {
+    let token = "e2".repeat(32);
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let input_path = PathBuf::from(&runtime_dir).join(format!(
+        "dragonfruit-lockstep-hotplug-{}",
+        std::process::id()
+    ));
+    let output_path = PathBuf::from(&runtime_dir).join(format!(
+        "dragonfruit-lockstep-hotplug-out-{}",
+        std::process::id()
+    ));
+    let proc = CompositorProcess::start_with_harnesses(
+        "dragonfruit-conformance-lockstep-hotplug",
+        std::slice::from_ref(&token),
+        Some(&input_path),
+        Some(&output_path),
+    );
+    let input = SyntheticInput::connect(&input_path);
+    let outputs = SyntheticOutput::connect(&output_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (name, version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, name, version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+    let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
+    let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.outputs.is_empty() && state.workspaces.len() >= 3 && state.done_count > 0,
+    );
+
+    // Ctrl+Right twice: the single output reaches Space 2.
+    for expected in [1u32, 2u32] {
+        state.workspace_activated.clear();
+        input.send("key 29 down\nkey 106 down\nkey 106 up\nkey 29 up");
+        wait_for(
+            &conn,
+            &mut queue,
+            &mut state,
+            Duration::from_secs(5),
+            |state| state.workspace_activated.contains(&expected),
+        );
+    }
+
+    // Hotplug a display while Space 2 is active. It must adopt index 2.
+    let names_before = state.output_names.len();
+    outputs.send("add HDMI-A-1 1920 1080 1280 0");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state.output_names[names_before..]
+                .iter()
+                .any(|name| name == "HDMI-A-1")
+        },
+    );
+
+    // Ctrl+Left must move **both** displays from the shared index 2 to index
+    // 1 in one lockstep transition.
+    state.workspace_activated.clear();
+    input.send("key 29 down\nkey 105 down\nkey 105 up\nkey 29 up");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.workspace_activated.len() >= 2,
+    );
+    assert!(
+        state.workspace_activated.iter().all(|index| *index == 1),
+        "every display switches to the shared Space in lockstep: {:?}",
+        state.workspace_activated
+    );
+    assert_eq!(
+        state
+            .workspace_activated
+            .iter()
+            .filter(|i| **i == 1)
+            .count(),
+        2,
+        "both displays emit the lockstep activation: {:?}",
+        state.workspace_activated
+    );
+
+    drop(manager);
+    drop(core);
+    let _ = conn.flush();
+    proc.shutdown();
+    assert!(
+        !input_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+    assert!(
+        !output_path.exists(),
+        "teardown leak: synthetic-output socket survived"
+    );
+}
+
+/// T-16.2 acceptance (headless): hotplugging an output away must not lose the
+/// windows that lived on it. Repeated add/remove cycles under load keep every
+/// tracked window, and each window re-homes inside the remaining display's
+/// bounds instead of being stranded at coordinates on the dead display.
+#[test]
+fn hotplug_under_load_keeps_every_window_on_a_live_display() {
+    const APP_A: &str = "org.dragonfruit.HotplugA";
+    const APP_B: &str = "org.dragonfruit.HotplugB";
+    const APP_C: &str = "org.dragonfruit.HotplugC";
+    const PRIMARY: (i32, i32) = (1280, 720);
+
+    let token = "e3".repeat(32);
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let input_path = PathBuf::from(&runtime_dir)
+        .join(format!("dragonfruit-hotplug-load-{}", std::process::id()));
+    let output_path = PathBuf::from(&runtime_dir).join(format!(
+        "dragonfruit-hotplug-load-out-{}",
+        std::process::id()
+    ));
+    let proc = CompositorProcess::start_with_harnesses(
+        "dragonfruit-conformance-hotplug-load",
+        std::slice::from_ref(&token),
+        Some(&input_path),
+        Some(&output_path),
+    );
+    let input = SyntheticInput::connect(&input_path);
+    let outputs = SyntheticOutput::connect(&output_path);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (name, version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, name, version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+    let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
+    let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.outputs.is_empty() && state.workspaces.len() >= 3 && state.done_count > 0,
+    );
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.pointer.is_some(),
+    );
+
+    // Window A on the primary display (the pointer starts there).
+    let (_a_surface, _a_xdg, _a_toplevel, _a_file) =
+        map_toplevel(&mut state, &mut queue, "Load A", APP_A);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.toplevels.is_empty(),
+    );
+    let a = window_rect(&input, APP_A);
+    assert!(
+        a.0 >= 0 && a.1 >= 0 && a.0 + a.2 <= PRIMARY.0 && a.1 + a.3 <= PRIMARY.1,
+        "A opens on the primary display: {a:?}"
+    );
+
+    // Attach a second display and put window B on it.
+    outputs.send("add HDMI-A-1 1920 1080 1280 0");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.output_names.iter().any(|name| name == "HDMI-A-1"),
+    );
+    input.send("motion 2100 500");
+    let _ = input.query("query identity"); // barrier: the motion lands first
+    let (_b_surface, _b_xdg, _b_toplevel, _b_file) =
+        map_toplevel(&mut state, &mut queue, "Load B", APP_B);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.toplevels.len() >= 2,
+    );
+    let b = window_rect(&input, APP_B);
+    assert!(b.0 >= 1280, "B opens on the hotplugged display: {b:?}");
+
+    // Detach it while B is on it: B must re-home inside the primary's bounds
+    // and both windows must stay tracked.
+    outputs.send("remove HDMI-A-1");
+    let b_after = wait_for_window_rect_in(&input, APP_B, PRIMARY.0, PRIMARY.1);
+    assert!(
+        b_after.0 >= 0,
+        "B moved off the dead display's coordinates: {b_after:?}"
+    );
+    let ids = identity_app_ids(&input.query("query identity"));
+    assert!(
+        ids.values().any(|app| app == APP_A),
+        "A survived the detach: {ids:?}"
+    );
+
+    // Under load: a second cycle. The pointer still sits over the second
+    // display's old coordinates, so C opens there; detaching again must
+    // re-home it too.
+    let names_before = state.output_names.len();
+    outputs.send("add HDMI-A-1 1920 1080 1280 0");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state.output_names[names_before..]
+                .iter()
+                .any(|name| name == "HDMI-A-1")
+        },
+    );
+    let (_c_surface, _c_xdg, _c_toplevel, _c_file) =
+        map_toplevel(&mut state, &mut queue, "Load C", APP_C);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.toplevels.len() >= 3,
+    );
+    outputs.send("remove HDMI-A-1");
+    let _c_after = wait_for_window_rect_in(&input, APP_C, PRIMARY.0, PRIMARY.1);
+
+    // All three survived two hotplug cycles.
+    let ids = identity_app_ids(&input.query("query identity"));
+    for app in [APP_A, APP_B, APP_C] {
+        assert!(
+            ids.values().any(|candidate| candidate == app),
+            "{app} survived two hotplug cycles: {ids:?}"
+        );
+    }
+
+    drop(manager);
+    drop(core);
+    let _ = conn.flush();
+    proc.shutdown();
+    assert!(
+        !input_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+    assert!(
+        !output_path.exists(),
+        "teardown leak: synthetic-output socket survived"
+    );
+}
+
 /// T-09 input routing (compositor half): a mapped chrome surface is hit-tested
 /// above the window space, receives pointer enter/motion/button, and an
 /// `OnDemand` surface takes keyboard focus on click so key events reach it.

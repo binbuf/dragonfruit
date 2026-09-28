@@ -231,6 +231,20 @@ impl WindowStateMachine {
         }
     }
 
+    /// Re-home this window onto `target` after the display it lived on went
+    /// away (T-16.2), preserving its state.
+    ///
+    /// The geometry of the current state is replaced so the window is
+    /// on-screen now; a minimized window updates the geometry of the state
+    /// it will restore to, so a later restore is on-screen too.
+    pub fn relocate(&mut self, target: Rectangle<i32, Logical>) {
+        let state = match self.state {
+            WindowState::Minimized => self.minimize_restore,
+            other => other,
+        };
+        self.set_state_geometry(state, target);
+    }
+
     /// Whether the state machine still holds `geometry` as its floating
     /// restore geometry.
     pub fn restores_to(&self, geometry: Rectangle<i32, Logical>) -> bool {
@@ -341,6 +355,43 @@ mod tests {
         let min2 = m.apply(WindowEvent::Minimize, rect(0, 0, 0, 0));
         assert!(min.changed);
         assert!(!min2.changed);
+    }
+
+    #[test]
+    fn relocate_rehomes_every_visible_state_and_the_restore_geometry() {
+        let target = rect(540, 285, 200, 150);
+
+        // Floating: the floating geometry moves, so leaving zoom restores
+        // to the display the window was re-homed to (T-16.2).
+        let mut m = machine();
+        m.relocate(target);
+        assert_eq!(m.state(), WindowState::Floating);
+        assert_eq!(m.geometry(), target);
+
+        // Zoomed: the zoomed geometry moves; the floating restore is kept.
+        let mut m = machine();
+        m.apply(WindowEvent::Zoom, rect(0, 24, 1920, 1056));
+        m.relocate(target);
+        assert_eq!(m.state(), WindowState::Zoomed);
+        assert_eq!(m.geometry(), target);
+        assert_eq!(m.floating_geometry(), rect(100, 100, 800, 600));
+
+        // Fullscreen: the fullscreen geometry moves.
+        let mut m = machine();
+        m.apply(WindowEvent::EnterFullscreen, rect(0, 0, 1920, 1080));
+        m.relocate(target);
+        assert_eq!(m.state(), WindowState::Fullscreen);
+        assert_eq!(m.geometry(), target);
+
+        // Minimized: the restore state's geometry moves, so the eventual
+        // restore is on-screen.
+        let mut m = machine();
+        m.apply(WindowEvent::Minimize, rect(0, 0, 0, 0));
+        m.relocate(target);
+        assert_eq!(m.state(), WindowState::Minimized);
+        assert_eq!(m.geometry(), target);
+        m.apply(WindowEvent::Restore, rect(0, 0, 0, 0));
+        assert_eq!(m.geometry(), target);
     }
 
     #[test]

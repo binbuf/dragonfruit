@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(141 earlier sections omitted)_
+_(142 earlier sections omitted)_
 
-- **T110w — T-14.7w Dock icon tiles: true squircle masking**: **State: done.** Every Dock app tile now clips its themed artwork to the token; `shell/dock/DockGlyph.qml` — the themed app artwork is now a `Canvas`
 - **T172 — T-18.1a Wallpaper provider service and shipped default**: **State: done.** `services/wallpaperd` is a real session service. It resolves; `services/wallpaperd/` (new crate, workspace member) —
 - **T173 — T-18.1b Provider settings, wallpaper API wiring, and effective source**: **State: done.** The additive provider keys are declared (schema rev 10), the; `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 9 → 10; 5 additive
 - **T174 — T-18.2 Wallpaper pane collections, skeleton, and attribution**: **State: done.** The Wallpaper pane now has Featured / Built-in / Custom rows;; `design-system/tokens/tokens.json` — semantic `skeletonBase`/`skeletonHighlight`
@@ -44,6 +43,7 @@ _(141 earlier sections omitted)_
 - **T141 — T-15.16 Absent-daemon matrix and breadth capture**: **State: done.** The T-15 track is closed. The absent-daemon masking matrix is; `docs/design/08-settings.md` — new "The absent-daemon masking matrix
 - **T142 — T-16.1a Per-output chrome sizing and reserved zones**: **State: done.** Reserved zones are now **per output**: `aggregate_reserved_for`; `compositor/src/shell/layer.rs` — `aggregate_reserved_for(output_name,
 - **T143 — T-16.1b Per-output window placement**: **State: done.** New windows now open on the **focused output** and inside; `compositor/src/state.rs` — new `focused_output()` + `output_geometry_named()`;
+- **T144 — T-16.2 Hotplug under load and lockstep**: **State: done.** Output hotplug now preserves lockstep and loses no windows.; `compositor/src/workspace/mod.rs` — `add_output` mirrors the existing
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -13597,3 +13597,62 @@ Decisions / gotchas for T-16.2 and later:
   `space.outputs()`, so a removed output cannot be selected; T-16.2 inherits it.
 - **No protocol change.** The shell sees the existing `df_toplevel.output_entered`
   and per-output `df_output` events; nothing new is exposed.
+
+## T144 — T-16.2 Hotplug under load and lockstep
+
+**State: done.** Output hotplug now preserves lockstep and loses no windows.
+Two real gaps fixed: a hotplugged display joined at index 0 instead of the
+session's current lockstep index (so later switches never realigned), and a
+detached display's windows kept geometry on the dead display (tracked in the
+model but off every remaining output). ADR 0151.
+
+Real paths:
+
+- `compositor/src/workspace/mod.rs` — `add_output` mirrors the existing
+  displays' Space shape (length + `fullscreen_for`) and adopts their active
+  index; new unit test
+  `hotplugged_output_joins_lockstep_and_mirrors_a_fullscreen_space`. The
+  `hotplug_attach_detach_matrix_loses_no_windows` assertion updated from
+  index 0 to the primary's index (the point of the fix).
+- `compositor/src/state.rs` — `on_output_removed` calls new
+  `relocate_windows_off_output(removed, primary)` before the output leaves the
+  `Space`: windows mapped to or geometrically on the dead display are re-homed
+  into the primary's usable area (floating cascades, zoomed re-fits via
+  `insets_for`, fullscreen fills the primary).
+- `compositor/src/window/state.rs` — new `WindowStateMachine::relocate(target)`
+  moves the current state's geometry (minimized moves its restore state) + unit
+  test `relocate_rehomes_every_visible_state_and_the_restore_geometry`.
+- `compositor/tests/shell_protocol_conformance.rs` — two new tests
+  (`workspace_switch_stays_lockstep_after_hotplug`,
+  `hotplug_under_load_keeps_every_window_on_a_live_display`) and the
+  `wait_for_window_rect_in` helper. 37 → 39 tests.
+- `docs/design/02-compositor.md` (new Output hotplug bullet),
+  `docs/design/03-workspaces.md` (hotplug bullet rewritten),
+  `docs/design/adr/0151-hotplug-lockstep-and-window-rehoming.md` (new).
+
+Commands that work (repo root; `PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig`,
+`RUSTFLAGS=-L $HOME/.local/df-devroot/lib64` when libudev is absent):
+
+- `cargo test -p dragonfruit-compositor` — all suites green (binary unit 285,
+  `shell_protocol_conformance` 39).
+- `cargo clippy -p dragonfruit-compositor --all-targets -- -D warnings` and
+  `cargo fmt --all -- --check` — clean.
+- `make e2e` — EXIT 0 (`/tmp/opencode/t144-e2e.log`).
+- Live visual check: `/tmp/opencode/t144-active.png` (2115x1437 active nested
+  window) + `/tmp/opencode/t144.png`; vision found the Dock, wallpaper, native
+  Settings and X11 demo clients, sharp text, and no blank/clipped/artifact
+  regions. Nested has **no** output hotplug (synthetic output is headless-only),
+  so this confirms the desktop renders; the cable hotplug matrix is the batched
+  human VM step.
+
+Decisions / gotchas for T-16.3a and later:
+
+- **Hotplug joins lockstep.** New displays align to the first output's active
+  index and mirror fullscreen Spaces. There is no per-output activate path;
+  `switch_all`/`activate_all` stay the only lockstep entry points.
+- **Relocation is geometry-only** and runs before `remove_output` + unmap, so
+  `outputs_for_element` still resolves the removed output. A window is
+  considered on it when mapped there *or* its stored geometry overlaps it
+  (windows on the output's inactive Spaces are not mapped).
+- **Nested cannot hotplug.** `DRAGONFRUIT_SYNTHETIC_OUTPUT` is installed only by
+  the headless backend; T-16.3's scaling matrix should reuse that harness.
