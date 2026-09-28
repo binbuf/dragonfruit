@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(137 earlier sections omitted)_
+_(138 earlier sections omitted)_
 
-- **T110v — T-14.7v Dock region dividers: pinned | temporary/recent | stacks and Trash**: **State: done.** The Dock projects the reference's region structure: a rule; `shell/src/dockmodel.{h,cpp}` — `DockRegionPlan` + `planDockRegions(entries,
 - **T110x — T-14.7x Dock activation: taps on entries that carry a DragHandler**: **State: done.** A stationary left click on any app/temporary/overflow entry; `shell/src/dockpointer.{h,cpp}` (new, dockcore) — `DockPointer::timestamp()`
 - **T110y — T-14.7y Dock magnification tracking: stable pointer and anchor**: **State: done.** Hover magnification now tracks the pointer without ringing.; `design-system/tokens/tokens.json` — `motion.dockMagnifyTrack` added;
 - **T110z — T-14.7z Dock plate rendering: corner-following rim and frost alignment**: **State: done.** The plate is now one integer rounded rect in every state. The; `shell/dock/Dock.qml` — new `panelRect` (each edge of the live `plateRect`
@@ -44,6 +43,7 @@ _(137 earlier sections omitted)_
 - **T137 — T-15.14a Accessibility adapter**: **State: done.** New workspace crate `dragonfruit-accessibility-adapter`; `services/accessibility-adapter/src/source.rs` — `AccessibilityData
 - **T138 — T-15.14b Accessibility pane and tile**: **State: done.** The Settings `Accessibility` pane and the Control Center; `services/system-status/src/accessibility.rs` (new) — `AccessibilityHost<S>`
 - **T139 — T-15.15a Network advanced (VPN) adapter**: **State: done.** The Network advanced (VPN) adapter landed as a **second; `services/networkmanager/src/vpn/mod.rs` (new) — module docs + re-exports.
+- **T140 — T-15.15b Network advanced (VPN) pane and tile**: **State: done.** The Settings `Network` pane and the Control Center `VPN` tile; `services/system-status/src/vpn.rs` (new) — `VpnHost<S>` (refresh/view/state/
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -13346,3 +13346,86 @@ Decisions / gotchas for T-15.15b and later:
   surface of its own, so this confirms the desktop renders; vision found menu
   bar, Dock, wallpaper, Settings window, and the demo client composited with
   no blank areas, tearing, or stray artifacts.
+
+## T140 — T-15.15b Network advanced (VPN) pane and tile
+
+**State: done.** The Settings `Network` pane and the Control Center `VPN` tile
+ship as one functional unit over the T-15.15a `dragonfruit-networkmanager` VPN
+adapter, through the bridge host (ADR 0147), not by linking the Rust crate. The
+adapter owns the connection state, so the pane has **no new settingsd key**: its
+two writes are the adapter's `Connect`/`Deactivate`, by UUID. Wi-Fi is the
+separate `wifi` pane; Firewall and Apple-only services are omitted (ADR 0122).
+
+Real paths:
+
+- `services/system-status/src/vpn.rs` (new) — `VpnHost<S>` (refresh/view/state/
+  connect/deactivate) + pure `vpn_view`/`vpn_snapshot_view`/`vpn_report`. View
+  carries `{state, glyph, label, present, connectionCount, connectedCount,
+  activeUuid, activeName, readOnly, note, connections:[{id,uuid,kind,kindLabel,
+  state,stateLabel,connected,autoconnect,label}]}`.
+- `services/system-status/src/lib.rs` — `pub mod vpn`, re-exports,
+  `VPN_INTERFACE = "org.dragonfruit.SystemStatus1.Vpn"`.
+- `services/system-status/src/dbus.rs` — `LiveVpn = VpnHost<DbusVpn>`;
+  `VpnInterface` `State`/`Refresh`/`Connect(uuid)`/`Deactivate(uuid)`;
+  `run(...)` takes vpn; `interface_names()` is 13.
+- `services/system-status/src/main.rs` — `VpnHost::new(DbusVpn::new())`,
+  startup refresh, `--print-vpn`.
+- `services/system-status/tests/vpn.rs` (new) — 7 bridge tests.
+- `services/networkmanager/src/vpn/model.rs` — additive `VpnKind::id()` /
+  `VpnState::id()` stable ids.
+- `apps/settings/VpnClient.{h,cpp}` (new) — `DbusVpnClient` + `MockVpnClient`
+  (`DF_VPN_FIXTURE`, mutable store so connect/disconnect round-trips headless).
+- `apps/settings/SettingsBridge.{h,cpp}` — `vpn`/`vpnAvailable`/`vpnChanged`,
+  `refreshVpn`, `connectVpn`, `disconnectVpn`, `resetVpnFixture`.
+- `apps/settings/NetworkPane.qml` (new) — `VPN` group, per-connection live
+  connect/disconnect `Toggle`, empty/read-only/absence notes.
+- `apps/settings/SettingsPanes.qml` (`network` shipped true),
+  `SettingsShell.qml` (`NetworkPane`), `CMakeLists.txt`; catalog counts 21 → 22.
+- `design-system/components/Icon.qml` — original `network`, `vpn`, `vpn-off`.
+- Shell: `systemstatusclient.{h,cpp}`, `systemstatusmodel.{h,cpp}`,
+  `shellcontroller.{h,cpp}`, `shell/control-center/ControlCenter.qml` (18th
+  `vpn` tile). Panel height `1160 → 1164`; Accessibility + VPN tiles are
+  single-line compact (`IconTile tileSize: 24`) so eighteen fit.
+- Tests — `apps/settings/tests/tst_settings_network.{cpp,qml}` (4 cases);
+  `tst_settings_absence.qml` (22, id list, network absence);
+  `tst_settings_shell.qml` (22, keyboard index 5 → 6);
+  `shell/tests/tst_controlcenter.qml` (18 tiles, fit → 1164, 3 vpn cases);
+  `shell/tests/tst_statusmodel.cpp` (3 vpn cases).
+- Docs/scripts — ADR `0147`; `docs/design/07-system-integration.md` (Vpn
+  interface bullet + T-15.15b subsection); `docs/design/08-settings.md`;
+  `scripts/capture-t15-vpn-pane.sh` + `docs/captures/README.md`.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-networkmanager -p dragonfruit-system-status` —
+  green. `cargo clippy -p ... --all-targets -- -D warnings` — clean;
+  `cargo fmt --all -- --check` — clean.
+- `cmake --build build` — EXIT 0; `ctest --test-dir build -j4` — 69/69.
+- `make e2e` — EXIT 0 (`/tmp/opencode/e2e-t140c.log`).
+- `make check-design-tokens check-tokens check-no-capture-grab` — clean;
+  `./scripts/check-gallery-snapshots.py` — 78 green.
+- `make lint` — only the pre-existing `check-desktop-names` failures
+  (`apppicker.h`, `tst_dockcore.cpp`, `zoo-run.sh`); unchanged from T125–T139.
+
+Decisions / gotchas for T-15.16 and later:
+
+- **No settingsd key.** NetworkManager owns the state; the pane's writes are
+  the adapter's `Connect`/`Deactivate`, by UUID.
+- **Absence is layered (ADR 0146/0147).** `unavailable` = no system bus / no
+  `NetworkManager` owner; `available` + `present: false` = the daemon answered
+  with no VPN (pane empty note, tile hides). `readOnly: true` is a polkit
+  degradation, not absence: the list stays visible and the writes disable.
+- **Integration gotcha caught by the live check.** The Control Center VPN tile
+  first captured blank because `ShellController`'s startup refresh block lacked
+  `refreshVpn()`. The headless tests inject the `vpn` property into the panel,
+  so they cannot catch a missing controller refresh; always inspect the capture.
+- **Panel capacity.** 18 tiles fit only at 1164 px with single-line compact
+  Accessibility/VPN tiles. A 19th full tile needs another compaction.
+- Live visual check: `bash scripts/capture-t15-vpn-pane.sh` produced
+  `docs/captures/t15-15b-vpn-pane.png` (2088x1410) and
+  `docs/captures/t15-15b-vpn-control-center.png` (360x1164); vision read the
+  pane (`VPN` group: `Work VPN` connected, `Home` idle, no clipping) and the
+  panel's `VPN`/`Work VPN` tile above Clipboard, fully visible.
+- Not touched (other tasks): launching Settings on a pane from the Control
+  Center (`onVpnSettingsRequested` is the log-only T-16 stub), the Firewall
+  pane, and the menu-bar VPN status item.

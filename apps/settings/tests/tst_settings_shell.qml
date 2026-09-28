@@ -45,7 +45,7 @@ Item {
             compare(SettingsPanes.catalog[SettingsPanes.catalog.length - 1].id,
                     "printers");
             // Only panes whose content has landed are advertised (no half panes).
-            compare(SettingsPanes.shippedPanes.length, 21);
+            compare(SettingsPanes.shippedPanes.length, 22);
         }
 
         function test_header_card_is_only_where_the_reference_has_one() {
@@ -71,7 +71,7 @@ Item {
         function test_shell_opens_with_sidebar_and_search() {
             var shell = make();
             compare(shell.currentPaneId, "appearance");
-            compare(shell.visiblePanes.length, 21);
+            compare(shell.visiblePanes.length, 22);
             verify(shell.searchField !== null);
             verify(shell.sidebar !== null);
             verify(shell.titleBar !== null);
@@ -103,8 +103,9 @@ Item {
 
             shell.searchText = "";
             compare(ids(shell), JSON.stringify(
-                ["bluetooth", "battery", "storage", "general", "accessibility",
-                 "appearance", "desktop-dock", "mission-control", "displays",
+                ["bluetooth", "network", "battery", "storage", "general",
+                 "accessibility", "appearance", "desktop-dock",
+                 "mission-control", "displays",
                  "menu-bar", "wallpaper", "notifications", "sound", "focus",
                  "lock-screen", "privacy", "users-groups", "keyboard", "mouse",
                  "trackpad", "printers"]));
@@ -123,12 +124,12 @@ Item {
             var shell = make();
             shell.sidebar.forceActiveFocus();
             waitForRendering(stage);
-            // The default pane is Appearance, the sixth shipped row (Bluetooth,
-            // Battery, Storage, General, and Accessibility come first in the
-            // reference catalog order).
-            compare(shell.sidebar.currentIndex, 5);
-            keyClick(Qt.Key_Down);
+            // The default pane is Appearance, the seventh shipped row (Bluetooth,
+            // Network, Battery, Storage, General, and Accessibility come first
+            // in the reference catalog order).
             compare(shell.sidebar.currentIndex, 6);
+            keyClick(Qt.Key_Down);
+            compare(shell.sidebar.currentIndex, 7);
             keyClick(Qt.Key_Return);
             compare(shell.currentPaneId, "desktop-dock");
             verify(shell.canGoBack);

@@ -53,6 +53,9 @@ private slots:
     void accessibilityDecodesTheBridgeState();
     void accessibilityHidesOnAnAbsentBusOrAnAllOffBus();
     void accessibilityRefreshRaisesTheRequest();
+    void vpnDecodesTheConnections();
+    void vpnHidesOnAnAbsentDaemonOrAnEmptyStore();
+    void vpnRefreshRaisesTheRequest();
 
     void theAbsentDaemonMaskingMatrixHidesOnlyTheMaskedItem();
     void anUnreachedBridgeHostLeavesEveryItemHidden();
@@ -728,6 +731,67 @@ void TestStatusModel::accessibilityRefreshRaisesTheRequest()
     SystemStatusModel model;
     QSignalSpy refreshSpy(&model, &SystemStatusModel::refreshAccessibilityRequested);
     model.requestRefreshAccessibility();
+    QCOMPARE(refreshSpy.count(), 1);
+}
+
+// Network advanced (VPN) (T-15.15b) decodes the bridge host's NetworkManager
+// view. The item hides when the daemon answers with no VPN configured
+// (`present: false`).
+void TestStatusModel::vpnDecodesTheConnections()
+{
+    const QVariantMap view = SystemStatusModel::parseView(
+        R"({"kind":"vpn","state":"available","glyph":"vpn","label":"Work VPN",
+            "present":true,"connectionCount":2,"connectedCount":1,
+            "activeUuid":"aaa","activeName":"Work VPN",
+            "connections":[
+              {"id":"Work VPN","uuid":"aaa","kind":"openvpn",
+               "state":"connected","connected":true,"label":"OpenVPN \u00b7 Connected"},
+              {"id":"Home","uuid":"bbb","kind":"wireguard",
+               "state":"disconnected","connected":false,"label":"WireGuard \u00b7 Disconnected"}]})",
+        QStringLiteral("vpn"));
+    QCOMPARE(view.value(QStringLiteral("state")).toString(), QStringLiteral("available"));
+    QCOMPARE(view.value(QStringLiteral("visible")).toBool(), true);
+    QCOMPARE(view.value(QStringLiteral("enabled")).toBool(), true);
+    QCOMPARE(view.value(QStringLiteral("glyph")).toString(), QStringLiteral("vpn"));
+    QCOMPARE(view.value(QStringLiteral("label")).toString(), QStringLiteral("Work VPN"));
+    QCOMPARE(view.value(QStringLiteral("connectionCount")).toInt(), 2);
+    QCOMPARE(view.value(QStringLiteral("connectedCount")).toInt(), 1);
+
+    SystemStatusModel model;
+    model.applyVpnJson(
+        R"({"kind":"vpn","state":"available","present":true,"glyph":"vpn",
+            "label":"Work VPN","connectedCount":1})");
+    QVERIFY(model.vpnVisible());
+    QCOMPARE(model.vpn().value(QStringLiteral("label")).toString(),
+             QStringLiteral("Work VPN"));
+}
+
+void TestStatusModel::vpnHidesOnAnAbsentDaemonOrAnEmptyStore()
+{
+    SystemStatusModel model;
+    model.applyVpnJson(R"({"kind":"vpn","state":"unavailable"})");
+    QCOMPARE(model.vpnVisible(), false);
+    QCOMPARE(model.vpn().value(QStringLiteral("state")).toString(),
+             QStringLiteral("unavailable"));
+
+    // A daemon that answers with no VPN configured is `available` with
+    // `present: false`; the second hide rule hides the tile.
+    model.applyVpnJson(
+        R"({"kind":"vpn","state":"available","present":false,"label":"No VPN",
+            "connectionCount":0,"connectedCount":0})");
+    QCOMPARE(model.vpnVisible(), false);
+
+    // A mismatched kind is rejected and leaves the last view in place.
+    model.applyVpnJson(R"({"kind":"input","state":"available"})");
+    QCOMPARE(model.vpn().value(QStringLiteral("state")).toString(),
+             QStringLiteral("available"));
+}
+
+void TestStatusModel::vpnRefreshRaisesTheRequest()
+{
+    SystemStatusModel model;
+    QSignalSpy refreshSpy(&model, &SystemStatusModel::refreshVpnRequested);
+    model.requestRefreshVpn();
     QCOMPARE(refreshSpy.count(), 1);
 }
 

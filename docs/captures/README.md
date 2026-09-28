@@ -735,6 +735,14 @@ with no blank areas or stray artifacts. Captured by
 `scripts/capture-t15-vpn-adapter.sh`; requires a host Wayland session,
 spectacle, and Pillow, and is not in `make e2e`.
 
+`t15-15b-vpn-pane.png` and `t15-15b-vpn-control-center.png` are the Network
+advanced (VPN) pane and Control Center VPN tile for T-15.15b. The pane capture
+shows the `VPN` group (`Work VPN` connected, `Home` idle) with the live
+connect/disconnect toggles; the tile capture shows the read-only `Work VPN`
+summary and the compact eighteenth tile in the fixed panel. Captured by
+`scripts/capture-t15-vpn-pane.sh`; requires a host Wayland session, spectacle,
+and Pillow, and is not in `make e2e`.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

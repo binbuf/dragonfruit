@@ -69,6 +69,10 @@ public:
     // bridge host's live AT-SPI view (`org.a11y.Status`); the adapter has no
     // setter and the pane's durable preferences are settingsd keys (ADR 0144).
     virtual void refreshAccessibility() = 0;
+    // Network advanced / VPN (T-15.15b): a read-only summary. The tile reflects
+    // the bridge host's NetworkManager VPN view; the connect/deactivate writes
+    // live in the Settings pane (ADR 0146).
+    virtual void refreshVpn() = 0;
     virtual void join(const QString &ssid, const QString &secret) = 0;
     virtual void setVolume(double volume) = 0;
     virtual void setMute(bool muted) = 0;
@@ -86,6 +90,7 @@ signals:
     void printersState(const QByteArray &json);
     void privacyState(const QByteArray &json);
     void accessibilityState(const QByteArray &json);
+    void vpnState(const QByteArray &json);
     void joinReport(const QByteArray &json);
     void writeReport(const QByteArray &json);
 };
@@ -120,6 +125,7 @@ public:
     void refreshPrinters() override;
     void refreshPrivacy() override;
     void refreshAccessibility() override;
+    void refreshVpn() override;
     void join(const QString &ssid, const QString &secret) override;
     void setVolume(double volume) override;
     void setMute(bool muted) override;
@@ -169,6 +175,7 @@ public:
     void refreshPrinters() override;
     void refreshPrivacy() override;
     void refreshAccessibility() override;
+    void refreshVpn() override;
     void join(const QString &ssid, const QString &secret) override;
     void setVolume(double volume) override;
     void setMute(bool muted) override;

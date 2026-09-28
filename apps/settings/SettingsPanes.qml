@@ -38,7 +38,7 @@ QtObject {
         { id: "bluetooth", title: qsTr("Bluetooth"), icon: "bluetooth",
           description: "", shipped: true },
         { id: "network", title: qsTr("Network"), icon: "network",
-          description: "", shipped: false },
+          description: "", shipped: true },
         { id: "battery", title: qsTr("Battery"), icon: "battery",
           description: "", shipped: true },
         { id: "storage", title: qsTr("Storage"), icon: "storage",

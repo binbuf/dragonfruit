@@ -35,7 +35,8 @@ Item {
                                           "power-balanced", "power-performance",
                                           "info", "bell", "lock", "menu-bar",
                                           "general", "software-update", "users", "printer",
-                                          "scanner", "privacy", "accessibility"]
+                                          "scanner", "privacy", "accessibility",
+                                          "network", "vpn", "vpn-off"]
     readonly property bool painted: root.paintedGlyphs.indexOf(root.name) >= 0
 
     readonly property var bars: {
@@ -577,6 +578,49 @@ Item {
                 ctx.beginPath();
                 ctx.moveTo(c - s * 0.19, s * 0.66);
                 ctx.quadraticCurveTo(c, s * 0.47, c + s * 0.19, s * 0.66);
+                ctx.stroke();
+                break;
+            }
+            case "network": {
+                // A globe: an outer ring, a vertical meridian ellipse, and the
+                // equator (the Network pane sidebar glyph).
+                ctx.beginPath();
+                ctx.arc(c, c, s * 0.40, 0, 2 * Math.PI);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.ellipse(c, c, s * 0.17, s * 0.40, 0, 0, 2 * Math.PI);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(s * 0.10, c);
+                ctx.lineTo(s * 0.90, c);
+                ctx.stroke();
+                break;
+            }
+            case "vpn": {
+                // A private tunnel: an arch over a baseline with a link node
+                // (the Network advanced / VPN pane and tile glyph).
+                ctx.beginPath();
+                ctx.moveTo(s * 0.18, s * 0.74);
+                ctx.lineTo(s * 0.18, s * 0.50);
+                ctx.arc(c, s * 0.50, s * 0.32, Math.PI, 0, false);
+                ctx.lineTo(s * 0.82, s * 0.74);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(c, s * 0.50, s * 0.10, 0, 2 * Math.PI);
+                ctx.fill();
+                break;
+            }
+            case "vpn-off": {
+                // The same tunnel with a diagonal slash (no VPN up).
+                ctx.beginPath();
+                ctx.moveTo(s * 0.18, s * 0.74);
+                ctx.lineTo(s * 0.18, s * 0.50);
+                ctx.arc(c, s * 0.50, s * 0.32, Math.PI, 0, false);
+                ctx.lineTo(s * 0.82, s * 0.74);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(s * 0.24, s * 0.24);
+                ctx.lineTo(s * 0.76, s * 0.76);
                 ctx.stroke();
                 break;
             }

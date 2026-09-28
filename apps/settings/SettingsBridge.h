@@ -42,6 +42,7 @@ class AccountsClient;
 class PrintersClient;
 class PrivacyClient;
 class AccessibilityClient;
+class VpnClient;
 class QDBusServiceWatcher;
 
 class SettingsBridge : public QObject
@@ -190,6 +191,17 @@ class SettingsBridge : public QObject
     // Accessibility surface at all; the pane shows the absence note.
     Q_PROPERTY(bool accessibilityAvailable READ accessibilityAvailable NOTIFY
                    accessibilityChanged)
+    // The Network advanced (VPN) view from the bridge host (T-15.15b):
+    // `{ state, glyph, label, present, connectionCount, connectedCount,
+    // activeUuid, activeName, readOnly, note, connections }`. Empty when the
+    // host (or NetworkManager) is absent; the pane renders the absence state
+    // rather than erroring. NetworkManager owns the connection state, so the
+    // pane has no durable settingsd preference of its own; the two writes are
+    // the adapter's (`connectVpn`/`disconnectVpn`).
+    Q_PROPERTY(QVariantMap vpn READ vpn NOTIFY vpnChanged)
+    // Whether the bridge host is on the session bus. False means no Network
+    // advanced (VPN) surface at all; the pane shows the absence note.
+    Q_PROPERTY(bool vpnAvailable READ vpnAvailable NOTIFY vpnChanged)
     // The pane the shell opens on startup. Empty uses the first shipped pane;
     // `DF_SETTINGS_START_PANE=wallpaper` selects one for captures and tests.
     Q_PROPERTY(QString startPane READ startPane CONSTANT)
@@ -227,6 +239,8 @@ public:
     bool privacyAvailable() const;
     QVariantMap accessibility() const;
     bool accessibilityAvailable() const;
+    QVariantMap vpn() const;
+    bool vpnAvailable() const;
     QString providerStatus() const;
     QString providerDefault() const;
     QString wallpaperBuiltinDefault() const;
@@ -380,6 +394,18 @@ public:
     // fixture. A no-op on the live client.
     Q_INVOKABLE void resetAccessibilityFixture();
 
+    // T-15.15b: the Network advanced (VPN) pane's one seam. `refreshVpn`
+    // re-reads the bridge host on pane open; `connectVpn`/`disconnectVpn` each
+    // call the adapter once, by UUID, and the host pushes the new view back
+    // through `vpnChanged`. There is no settingsd key: NetworkManager owns the
+    // state. A no-op when the host is absent.
+    Q_INVOKABLE void refreshVpn();
+    Q_INVOKABLE void connectVpn(const QString &uuid);
+    Q_INVOKABLE void disconnectVpn(const QString &uuid);
+    // Test seam (`DF_VPN_FIXTURE` only): restore the in-process fixture. A
+    // no-op on the live client.
+    Q_INVOKABLE void resetVpnFixture();
+
     // T-18.2 test seam: with `DF_WALLPAPER_FIXTURE` set, seed the provider
     // lifecycle to `status` (`ready` loads the deterministic fixture
     // catalogue; any other status leaves it empty) so the pane's fetching /
@@ -429,6 +455,8 @@ signals:
     void privacyChanged();
     // The Accessibility view or availability changed (T-15.14b).
     void accessibilityChanged();
+    // The Network advanced (VPN) view or availability changed (T-15.15b).
+    void vpnChanged();
 
 private:
     void buildWallpaperPresets();
@@ -498,4 +526,7 @@ private:
     // T-15.14b: the Accessibility seam (`DF_ACCESSIBILITY_FIXTURE` selects the
     // mock).
     AccessibilityClient *m_accessibility = nullptr;
+    // T-15.15b: the Network advanced (VPN) seam (`DF_VPN_FIXTURE` selects the
+    // mock).
+    VpnClient *m_vpn = nullptr;
 };

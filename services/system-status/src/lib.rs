@@ -57,6 +57,7 @@ pub mod printers;
 pub mod privacy;
 pub mod storage;
 pub mod updates;
+pub mod vpn;
 
 pub use accessibility::{accessibility_snapshot_view, accessibility_view, AccessibilityHost};
 pub use accounts::{
@@ -71,6 +72,7 @@ pub use printers::{printers_report, printers_snapshot_view, printers_view, Print
 pub use privacy::{privacy_report, privacy_snapshot_view, privacy_view, PrivacyHost};
 pub use storage::{storage_report, storage_snapshot_view, storage_view, StorageHost};
 pub use updates::{update_report, updates_snapshot_view, updates_view, UpdatesHost};
+pub use vpn::{vpn_report, vpn_snapshot_view, vpn_view, VpnHost};
 
 /// The stable well-known name the shell looks up on the session bus.
 pub const DBUS_NAME: &str = "org.dragonfruit.SystemStatus1";
@@ -100,6 +102,8 @@ pub const PRINTERS_INTERFACE: &str = "org.dragonfruit.SystemStatus1.Printers";
 pub const PRIVACY_INTERFACE: &str = "org.dragonfruit.SystemStatus1.Privacy";
 /// The read-only Accessibility interface name under [`DBUS_NAME`] (T-15.14b).
 pub const ACCESSIBILITY_INTERFACE: &str = "org.dragonfruit.SystemStatus1.Accessibility";
+/// The Network advanced (VPN) interface name under [`DBUS_NAME`] (T-15.15b).
+pub const VPN_INTERFACE: &str = "org.dragonfruit.SystemStatus1.Vpn";
 
 /// The host owns the three menu-bar adapters and exposes their snapshots and
 /// actions. Generic over the transport seams so CI drives it with the mocks.
