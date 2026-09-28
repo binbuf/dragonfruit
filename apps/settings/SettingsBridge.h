@@ -31,6 +31,7 @@
 #include <QtQml/qqmlregistration.h>
 
 class SettingsClient;
+class QDBusServiceWatcher;
 
 class SettingsBridge : public QObject
 {
@@ -53,6 +54,21 @@ class SettingsBridge : public QObject
     // "Add Photo…" button disables when it is not (absent provider).
     Q_PROPERTY(bool wallpaperChooserAvailable READ wallpaperChooserAvailable NOTIFY
                    wallpaperChooserAvailableChanged)
+    // The online provider catalogue (T-18.1b): one entry per cached Featured
+    // picture, mirroring `wallpaperPresets`. Empty when the provider is absent
+    // or its cache is cold; never an error. Each entry carries the attribution
+    // (`artist`, `licenseShortName`, `licenseUrl`, `pageUrl`, `description`)
+    // plus `source` (an absolute local path) and `url` (a `file://` preview).
+    Q_PROPERTY(QVariantList providerItems READ providerItems NOTIFY providerChanged)
+    // The provider lifecycle (`idle`/`fetching`/`ready`/`offline`), empty when
+    // the provider is absent. Panes must treat absence as a normal state.
+    Q_PROPERTY(QString providerStatus READ providerStatus NOTIFY providerChanged)
+    // The fetched Featured default/fallback local path; empty until a
+    // catalogue exists.
+    Q_PROPERTY(QString providerDefault READ providerDefault NOTIFY providerChanged)
+    // The resolved shipped `Default.jpg`; non-empty even with the provider
+    // absent, so the Built-in row always has its out-of-box entry (ADR 0094).
+    Q_PROPERTY(QString wallpaperBuiltinDefault READ wallpaperBuiltinDefault NOTIFY providerChanged)
     // The pane the shell opens on startup. Empty uses the first shipped pane;
     // `DF_SETTINGS_START_PANE=wallpaper` selects one for captures and tests.
     Q_PROPERTY(QString startPane READ startPane CONSTANT)
@@ -67,6 +83,10 @@ public:
     QVariantMap values() const;
     bool available() const;
     QVariantList wallpaperPresets() const;
+    QVariantList providerItems() const;
+    QString providerStatus() const;
+    QString providerDefault() const;
+    QString wallpaperBuiltinDefault() const;
     bool wallpaperChooserAvailable() const;
     QString startPane() const;
     bool trace() const;
@@ -90,6 +110,11 @@ public:
     // unavailable chooser emits nothing (the pane stays on the current image).
     Q_INVOKABLE void chooseWallpaperPhoto();
 
+    // T-18.1b: ask the wallpaper provider for an eager catalogue load (the
+    // Wallpapers pane calls this on open). A no-op when the provider is absent;
+    // the catalogue arrives through `providerChanged`.
+    Q_INVOKABLE void preloadWallpapers();
+
     // `file:///path/to/a.png` / `file://host/path` -> a local path. Pure, so
     // the URI contract is unit-testable.
     static QString localPathFromUri(const QString &uri);
@@ -103,18 +128,43 @@ signals:
     void wallpaperChooserAvailableChanged();
     // The chosen photo's local path, ready for `wallpaper.source`.
     void wallpaperPhotoChosen(const QString &path);
+    // Any provider property (catalogue, status, defaults) changed. Panes bind
+    // the `provider*` properties and re-read on this.
+    void providerChanged();
 
 private:
     void buildWallpaperPresets();
     void connectPortalWatcher();
     void setChooserAvailable(bool available);
+    // T-18.1b: subscribe to `org.dragonfruit.Wallpaper1` and read its
+    // properties. Absence is normal: the catalogue stays empty and
+    // `wallpaperBuiltinDefault` still resolves the shipped asset.
+    void connectWallpaperProvider();
+    void refreshWallpaperProvider();
+    void applyProviderItems(const QString &json);
+    void applyProviderStatus(const QString &status);
+    void applyProviderDefault(const QString &path);
+    void applyProviderBuiltin(const QString &path);
 
 private slots:
     void onPortalResponse(uint response, const QVariantMap &results);
+    // T-18.1b: the provider's contract signal and its standard property
+    // notification. Both keep the pane's catalogue and defaults in step.
+    void onProviderItemsChanged();
+    void onProviderPropertiesChanged(const QString &interface, const QVariantMap &changed,
+                                     const QStringList &invalidated);
 
 private:
     SettingsClient *m_client = nullptr;
     QVariantList m_presets;
     bool m_chooserAvailable = false;
     QString m_requestPath;
+    // T-18.1b: the provider catalogue and its resolved defaults. `m_providerBuiltin`
+    // is the provider's own `BuiltinDefaultSource`; the property falls back to
+    // the shared shipped-asset resolver so it is non-empty even when absent.
+    QVariantList m_providerItems;
+    QString m_providerStatus;
+    QString m_providerDefault;
+    QString m_providerBuiltin;
+    QDBusServiceWatcher *m_providerWatcher = nullptr;
 };

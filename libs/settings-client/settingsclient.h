@@ -81,6 +81,14 @@ protected:
 // (and to the consumers that read it); the values are the frozen v1 contract.
 QVariantMap settingsSchemaDefaults();
 
+// The shipped original wallpaper `Default.jpg` resolved on this host, matching
+// `services/wallpaperd/src/defaults.rs` (T-18.1b): `DF_DEFAULT_WALLPAPER`,
+// then `$XDG_DATA_DIRS/dragonfruit/wallpapers/Default.jpg`, then the in-tree
+// asset. Empty when the asset is nowhere (a normal state; the shell then falls
+// back to the provider or the solid color). Both the shell's wallpaper
+// forwarder and the Settings app's bridge share this one resolver.
+QString shippedDefaultWallpaperPath();
+
 // The live client over the user session bus.
 class DbusSettingsClient : public SettingsClient
 {

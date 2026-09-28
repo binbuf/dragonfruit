@@ -44,6 +44,11 @@ freezes the v1 key set.
 | `wallpaper.source` | s | `` (empty) | | apps/settings | shell/wallpaper forwarder, compositor/workspace model | Image path for the selected wallpaper; empty keeps the solid color. |
 | `wallpaper.fit` | s | `fill` | `fill`/`fit`/`stretch`/`center` | apps/settings | shell/wallpaper forwarder, compositor/workspace model | How the wallpaper image maps onto the output. |
 | `wallpaper.showOnAllSpaces` | b | true | | apps/settings | shell/wallpaper forwarder, compositor/workspace model | Apply the selection to every Space, or only the active one. |
+| `wallpaper.provider` | s | `wikimedia` | | wallpaperd | services/wallpaperd | Active online wallpaper content provider; `wikimedia` today. |
+| `wallpaper.providerAutoFetch` | b | true | | wallpaperd | services/wallpaperd | Let the provider refresh its Featured catalogue in the background. |
+| `wallpaper.providerLastFetch` | x | 0 | 0– | wallpaperd | services/wallpaperd | Unix seconds of the provider's last successful catalogue fetch; 0 = never. |
+| `wallpaper.providerSource` | s | `` (empty) | | wallpaperd | shell/wallpaper forwarder | Fetched Featured default/fallback image path; empty until a catalogue exists. |
+| `wallpaper.builtinDefault` | s | `` (empty) | | wallpaperd | shell/wallpaper forwarder, apps/settings | Resolved path of the shipped original Default.jpg; the out-of-box background. |
 | `display.scale` | d | 1.0 | 0.5–2.0 | apps/settings | shell/display forwarder, compositor/output | Output scale / scaled-resolution factor; 1.0 is the native mode. |
 | `display.rotation` | s | `normal` | `normal`/`90`/`180`/`270` | apps/settings | shell/display forwarder, compositor/output | Output rotation as clock-wise degrees. |
 | `display.brightness` | d | 1.0 | 0.0–1.0 | shell/control-center | shell/display forwarder, compositor/output | Output brightness level; 1.0 is full brightness. |
@@ -65,7 +70,7 @@ freezes the v1 key set.
 | `shell/design-system Theme` (`shell/src/themebinding.*`) | `appearance.colorScheme`, `appearance.accent`, `accessibility.reduceMotion` |
 | `apps/settings/design-system Theme` (`apps/settings/SettingsShell.qml` bindings, T-09.2) | `appearance.colorScheme`, `appearance.accent`, `accessibility.reduceMotion` (the app is a separate process, so it mirrors the same keys onto its own `Theme`) |
 | compositor motion/input (over `df_toplevel_manager` v5, ADR [0034](design/adr/0034-compositor-policy-via-shell-bridge.md)) | `dock.titlebarDoubleClick`, `dock.minimizedAnimation`, `gestures.*`, `accessibility.reduceMotion`, `appearance.colorScheme`, `input.repeatDelay`, `input.repeatRate` |
-| shell/wallpaper forwarder (`shell/src/wallpaperpolicy.*`, `shell/src/shellcontroller.cpp`) | `wallpaper.source`, `wallpaper.fit`, `wallpaper.showOnAllSpaces` — forwarded to the compositor as `df_workspace.set_wallpaper` |
+| shell/wallpaper forwarder (`shell/src/wallpaperpolicy.*`, `shell/src/shellcontroller.cpp`) | `wallpaper.source`, `wallpaper.fit`, `wallpaper.showOnAllSpaces`, `wallpaper.builtinDefault`, `wallpaper.providerSource` — the effective source (user choice, then shipped default, then fetched fallback, then solid color) is forwarded to the compositor as `df_workspace.set_wallpaper` |
 | shell/display forwarder (`shell/src/displayspolicy.*`, `shell/src/shellcontroller.cpp`) | `display.scale`, `display.rotation`, `display.brightness` — forwarded to the compositor as `df_output.set_scale` / `df_output.set_transform` / `df_output.set_brightness` |
 | compositor workspace model | `workspaces.count` (no live owner yet; follow-up) |
 | `session/idle engine` (`services/session/src/idle.rs`, ADR [0070](design/adr/0070-idle-timer-engine-and-policy.md)) | `idle.dim`, `idle.blank`, `idle.lock`, `idle.suspend` via `IdlePolicy::from_keys` (the production reader is the future idle service; T-12.5b registers the keys and freezes the contract) |
@@ -78,6 +83,17 @@ is consumed since T-09.2: the design-system `Theme` gained a writable
 shell's `ThemeBinding` and the Settings app's local bindings write it, so
 every `Theme.color.accent*` consumer follows live (ADR
 [0037](design/adr/0037-accent-override-and-app-local-theme-sync.md)).
+
+The `wallpaper.provider*` keys and `wallpaper.builtinDefault` are the additive
+T-18 provider group (revision 10, owner `wallpaperd`): `wallpaper.source` stays
+the user override and is never written by the provider. The shell's effective
+source is `wallpaper.source` when non-empty, otherwise `wallpaper.builtinDefault`
+(the shipped `Default.jpg`), otherwise `wallpaper.providerSource` (the fetched
+Featured fallback), otherwise the Space's solid color. The shell also reads the
+provider's live `org.dragonfruit.Wallpaper1` `BuiltinDefaultSource`/`DefaultSource`
+properties, so the shipped default still reaches the compositor when `settingsd`
+is absent; with the provider absent it resolves the shipped asset itself. See
+ADR [0094](design/adr/0094-bundled-default-wallpaper-and-lazy-cache.md).
 
 ## Restart and resync
 

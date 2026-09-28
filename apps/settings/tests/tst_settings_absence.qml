@@ -57,6 +57,29 @@ Item {
                     "no portal on the bus is the absent-provider state under test");
         }
 
+        // -- The wallpaper provider is absent too (T-18.1b) --------------------
+
+        // No `org.dragonfruit.Wallpaper1` on the private bus: the Featured
+        // catalogue and the fetched default are empty (never an error), while
+        // the shipped default still resolves so the Built-in row is never
+        // empty.
+        function test_wallpaper_provider_absence_never_surfaces_an_error() {
+            compare(Settings.providerItems.length, 0,
+                    "no provider: the Featured catalogue is empty, not an error");
+            compare(Settings.providerStatus, "",
+                    "no provider: the status is empty, not an error");
+            compare(Settings.providerDefault, "",
+                    "no provider: the fetched default is empty");
+            verify(Settings.wallpaperBuiltinDefault.length > 0,
+                   "the shipped default still resolves with the provider absent");
+            verify(Settings.wallpaperBuiltinDefault.indexOf("Default.jpg") >= 0,
+                   "the shipped default resolves to Default.jpg");
+
+            // An eager load request is a safe no-op with no provider.
+            Settings.preloadWallpapers();
+            compare(Settings.providerItems.length, 0);
+        }
+
         // -- The no-half-panes catalog rule ------------------------------------
 
         function test_every_shipped_pane_has_a_body_and_no_other_does() {
