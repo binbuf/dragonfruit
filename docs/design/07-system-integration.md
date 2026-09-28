@@ -185,6 +185,47 @@ but has no present battery (a desktop, a VM) still answers `Available`, with
 that is present but whose `IsPresent` is false is treated the same as no
 battery. Nothing blocks session startup when either is missing.
 
+## The Bluetooth path (T-15.1a)
+
+The Bluetooth adapter, `dragonfruit-bluetooth` (`services/bluetooth`), gives a
+pane the controller's power/discovery state plus the device list (paired,
+connected, discovered). BlueZ exposes the whole tree over its D-Bus API on the
+**system bus** (`org.bluez`): one `org.freedesktop.DBus.ObjectManager.GetManagedObjects`
+at `/` enumerates every `org.bluez.Adapter1` and `org.bluez.Device1` object, so
+the live source is a `zbus` client and decodes the property maps directly — no
+extra dependency beyond the other D-Bus adapters
+([adr/0026](adr/0026-concrete-adapters-in-their-own-crates.md)).
+
+The read path is the same three-state seam as the other adapters:
+`BluetoothSource::read` returns the raw object lists (`Ok(Some)`), absence
+(`Ok(None)`), or a read failure (`Err`). A bus where `org.bluez` does not own
+its name is absence — hidden, never an error. `BluetoothSnapshot::from_data`
+picks the controller, keeps only its devices, orders them connected, paired,
+then name, and derives the `powered`/`discovering` flags, the
+`bluetooth`/`bluetooth-disabled` glyph, the label, and each device's 0–100
+signal fill (from the BlueZ RSSI, which is `None` at the 0 sentinel).
+
+Unlike the read-only battery item, Bluetooth has explicit writes, all over the
+same seam and one call each, never a loop: `set_powered` (a `Properties.Set`
+of `org.bluez.Adapter1.Powered`), `set_discovering`
+(`StartDiscovery`/`StopDiscovery`), `pair`, and `set_connected`
+(`Connect`/`Disconnect`). A successful write invents no snapshot: BlueZ pushes
+the resulting `PropertiesChanged`/`InterfacesAdded`, the host re-reads, and the
+snapshot stays the single source of truth. BlueZ authorizes powering and
+pairing through polkit; a refusal comes back as `BluetoothOutcome::Denied` with
+the daemon's message and leaves the read state live — the adapter does **not**
+blanket-degrade to read-only the way the Wi-Fi join path does, because the
+denied operation is per-request rather than a session-wide loss of authority
+([adr/0117](adr/0117-bluetooth-adapter-absence-and-write-outcomes.md)).
+
+The item hides in two different ways, as the battery item does. `bluetoothd`
+itself being absent is the adapter's `AdapterState::Unavailable`. A machine
+that runs BlueZ but has **no controller** answers `Available`, with
+`BluetoothSnapshot::present()` false — the consumer hides the item then. A
+controller that is present but `Powered = false` is still present: the pane
+shows it with an Off switch. Neither missing daemon nor missing hardware blocks
+session startup.
+
 ## The status bridge host (T-07.5a)
 
 The adapters are Rust crates; the menu bar is C++/QML. T-07.5a bridges them in

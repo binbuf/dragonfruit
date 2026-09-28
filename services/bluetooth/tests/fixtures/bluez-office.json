@@ -1,0 +1,68 @@
+{
+  "adapters": [
+    {
+      "path": "/org/bluez/hci0",
+      "address": "11:22:33:44:55:66",
+      "name": "workstation",
+      "alias": "Workstation",
+      "powered": true,
+      "discoverable": false,
+      "pairable": true,
+      "discovering": false
+    }
+  ],
+  "devices": [
+    {
+      "path": "/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF",
+      "adapter_path": "/org/bluez/hci0",
+      "address": "AA:BB:CC:DD:EE:FF",
+      "name": "WH-1000XM5",
+      "alias": "Sony Headset",
+      "paired": true,
+      "connected": true,
+      "trusted": true,
+      "blocked": false,
+      "rssi": -47,
+      "icon": "audio-headset"
+    },
+    {
+      "path": "/org/bluez/hci0/dev_11_22_33_44_55_66",
+      "adapter_path": "/org/bluez/hci0",
+      "address": "11:22:33:44:55:66",
+      "name": "MX Master 3",
+      "alias": "Work Mouse",
+      "paired": true,
+      "connected": false,
+      "trusted": true,
+      "blocked": false,
+      "rssi": 0,
+      "icon": "input-mouse"
+    },
+    {
+      "path": "/org/bluez/hci0/dev_DE_AD_BE_EF_00_11",
+      "adapter_path": "/org/bluez/hci0",
+      "address": "DE:AD:BE:EF:00:11",
+      "name": "Speaker",
+      "alias": "",
+      "paired": false,
+      "connected": false,
+      "trusted": false,
+      "blocked": false,
+      "rssi": -78,
+      "icon": "audio-card"
+    },
+    {
+      "path": "/org/bluez/hci1/dev_66_66_66_66_66_66",
+      "adapter_path": "/org/bluez/hci1",
+      "address": "66:66:66:66:66:66",
+      "name": "Other-Adapters-Device",
+      "alias": "",
+      "paired": true,
+      "connected": false,
+      "trusted": true,
+      "blocked": false,
+      "rssi": 0,
+      "icon": ""
+    }
+  ]
+}
