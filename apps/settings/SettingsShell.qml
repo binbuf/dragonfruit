@@ -158,6 +158,8 @@ Item {
             return focusPaneComponent;
         case "lock-screen":
             return lockScreenPaneComponent;
+        case "menu-bar":
+            return menuBarPaneComponent;
         default:
             return null;
         }
@@ -303,6 +305,11 @@ Item {
     Component {
         id: lockScreenPaneComponent
         LockScreenPane { }
+    }
+
+    Component {
+        id: menuBarPaneComponent
+        MenuBarPane { }
     }
 
     AppWindow {

@@ -47,6 +47,12 @@ Item {
     // lockSeconds }`. `state` is always `available` while the shell runs;
     // empty hides the tile.
     property var lockPolicy: ({})
+    // The Menu Bar configuration summary (T-15.9b). The menu bar is
+    // shell-native, so the shell projects the tile's summary locally from the
+    // settingsd keys the pane writes: `{ state, glyph, label, autoHide,
+    // showBackground, globalMenu }`. `state` is always `available` while the
+    // shell runs; empty hides the tile.
+    property var menuBar: ({})
     // The battery / power-profiles view from the bridge host (T-15.6b), shaped
     // by `SystemStatusModel`: `{ state, present, percent, level, charging,
     // chargeState, healthLabel, profilesAvailable, activeProfile, profileLabel,
@@ -180,6 +186,20 @@ Item {
                 && root.lockPolicy.label !== "")
             return root.lockPolicy.label;
         return qsTr("No password required");
+    }
+
+    // Menu Bar (T-15.9b): the tile hides only when the shell has no projection
+    // at all. The subtitle is the auto-hide summary the shell computes from the
+    // `menu.autoHide` key; the link opens the Menu Bar pane.
+    readonly property bool menuBarVisible:
+        root.menuBar.state === "available"
+    readonly property string menuBarLabel: {
+        if (!root.menuBarVisible)
+            return qsTr("Unavailable");
+        if (root.menuBar.label !== undefined
+                && root.menuBar.label !== "")
+            return root.menuBar.label;
+        return qsTr("In Full Screen Only");
     }
 
     // Battery / power profiles (T-15.6b). The tile is shown when the host
@@ -340,6 +360,14 @@ Item {
             subtitle: root.lockScreenLabel,
             visible: root.lockScreenVisible,
             enabled: root.lockScreenVisible
+        },
+        {
+            id: "menu-bar",
+            kind: "info",
+            title: qsTr("Menu Bar"),
+            subtitle: root.menuBarLabel,
+            visible: root.menuBarVisible,
+            enabled: root.menuBarVisible
         }
     ]
 
@@ -386,6 +414,10 @@ Item {
     // The Lock Screen tile is a policy summary; the link opens the Lock Screen
     // pane where the delay and the display options live (T-15.8b).
     signal lockScreenSettingsRequested()
+    // The Menu Bar tile is a configuration summary; the link opens the Menu Bar
+    // pane where the auto-hide mode, the clock options, and the per-control
+    // visibility live (T-15.9b).
+    signal menuBarSettingsRequested()
 
     // Apply a volume fraction (0..1) and raise the request.
     function setVolume(fraction) {
@@ -485,7 +517,10 @@ Item {
             objectName: "controlCenterContent"
             anchors.fill: parent
             anchors.margins: Theme.primitive.spacing.md
-            spacing: Theme.primitive.spacing.sm
+            // The panel now carries twelve tiles (T-15.9b); the gap is the
+            // compact `xs` step so the content fits the fixed 360x1160 surface
+            // (the nested output leaves 1164 px below the bar).
+            spacing: Theme.primitive.spacing.xs
 
             // ── Wi-Fi ────────────────────────────────────────────────────
             Rectangle {
@@ -1394,6 +1429,72 @@ Item {
                         text: qsTr("Lock Screen Settings\u2026")
                         accessibleName: qsTr("Open Lock Screen Settings")
                         onActivated: root.lockScreenSettingsRequested()
+                    }
+                }
+            }
+
+            // ── Menu Bar (T-15.9b) ──────────────────────────────────────
+            Rectangle {
+                id: menuBarTile
+                objectName: "menuBarTile"
+                width: parent.width
+                visible: root.menuBarVisible
+                implicitHeight: menuBarColumn.implicitHeight
+                                + 2 * Theme.controls.settingsGroup.padding
+                radius: Theme.primitive.radius.md
+                color: Theme.color.surfaceSunken
+                Accessible.role: Accessible.Grouping
+                Accessible.name: qsTr("Menu Bar")
+
+                Column {
+                    id: menuBarColumn
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: Theme.controls.settingsGroup.padding
+                    spacing: Theme.primitive.spacing.sm
+
+                    Row {
+                        width: parent.width
+                        spacing: Theme.primitive.spacing.md
+
+                        IconTile {
+                            objectName: "menuBarIcon"
+                            name: root.menuBar.glyph !== undefined
+                                ? root.menuBar.glyph : "menu-bar"
+                            tileSize: 32
+                            iconSize: 18
+                            active: root.menuBar.showBackground === true
+                        }
+
+                        Column {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: parent.width - 32 - 2 * Theme.primitive.spacing.md
+
+                            Text {
+                                objectName: "menuBarTitle"
+                                text: qsTr("Menu Bar")
+                                color: Theme.color.textPrimary
+                                font.pixelSize: Theme.controls.button.fontSize
+                                font.weight: Theme.primitive.font.weightMedium
+                            }
+
+                            Text {
+                                objectName: "menuBarSubtitle"
+                                width: parent.width
+                                text: root.menuBarLabel
+                                color: Theme.color.textSecondary
+                                font.pixelSize: Theme.primitive.font.sizeSm
+                                elide: Text.ElideRight
+                            }
+                        }
+                    }
+
+                    TextLink {
+                        objectName: "menuBarSettingsLink"
+                        text: qsTr("Menu Bar Settings\u2026")
+                        accessibleName: qsTr("Open Menu Bar Settings")
+                        onActivated: root.menuBarSettingsRequested()
                     }
                 }
             }

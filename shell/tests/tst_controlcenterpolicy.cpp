@@ -21,6 +21,9 @@ private slots:
     void lockPolicySummaryMatchesTheSchemaDefaults();
     void lockPolicyNeverRequiresNoPassword();
     void lockPolicyFormatsSecondsMinutesAndHours();
+    void menuBarSummaryMatchesTheSchemaDefaults();
+    void menuBarLabelsEachAutoHideMode();
+    void menuBarFallsBackToFullScreen();
 };
 
 void TestControlCenterPolicy::focusToggleMapsToTheNotificationMode()
@@ -129,6 +132,42 @@ void TestControlCenterPolicy::lockPolicyFormatsSecondsMinutesAndHours()
     values.insert(QStringLiteral("idle.lock"), 3600);
     QCOMPARE(lockPolicyView(values).value(QStringLiteral("label")).toString(),
              QStringLiteral("Password after 1 h"));
+}
+
+void TestControlCenterPolicy::menuBarSummaryMatchesTheSchemaDefaults()
+{
+    // The shell always holds the schema defaults: auto-hide is `full-screen`,
+    // the background is on, and the global app menu is on.
+    const QVariantMap view = menuBarView(settingsSchemaDefaults());
+    QCOMPARE(view.value(QStringLiteral("state")).toString(), QStringLiteral("available"));
+    QCOMPARE(view.value(QStringLiteral("glyph")).toString(), QStringLiteral("menu-bar"));
+    QCOMPARE(view.value(QStringLiteral("label")).toString(),
+             QStringLiteral("In Full Screen Only"));
+    QCOMPARE(view.value(QStringLiteral("autoHide")).toString(),
+             QStringLiteral("full-screen"));
+    QCOMPARE(view.value(QStringLiteral("showBackground")).toBool(), true);
+    QCOMPARE(view.value(QStringLiteral("globalMenu")).toBool(), true);
+}
+
+void TestControlCenterPolicy::menuBarLabelsEachAutoHideMode()
+{
+    QVariantMap values;
+    values.insert(QStringLiteral("menu.autoHide"), QStringLiteral("never"));
+    QCOMPARE(menuBarView(values).value(QStringLiteral("label")).toString(),
+             QStringLiteral("Never"));
+    values.insert(QStringLiteral("menu.autoHide"), QStringLiteral("always"));
+    QCOMPARE(menuBarView(values).value(QStringLiteral("label")).toString(),
+             QStringLiteral("Always"));
+}
+
+void TestControlCenterPolicy::menuBarFallsBackToFullScreen()
+{
+    // A bare map (no keys at all) has the adapter's shipped default.
+    const QVariantMap view = menuBarView({});
+    QCOMPARE(view.value(QStringLiteral("label")).toString(),
+             QStringLiteral("In Full Screen Only"));
+    QCOMPARE(view.value(QStringLiteral("autoHide")).toString(),
+             QStringLiteral("full-screen"));
 }
 
 QTEST_MAIN(TestControlCenterPolicy)

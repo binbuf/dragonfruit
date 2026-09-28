@@ -33,7 +33,8 @@ Item {
         readonly property var shippedPaneIds:
             ["appearance", "desktop-dock", "mission-control", "displays",
              "wallpaper", "bluetooth", "battery", "storage", "sound", "keyboard",
-             "mouse", "trackpad", "notifications", "focus", "lock-screen"]
+             "mouse", "trackpad", "notifications", "focus", "lock-screen",
+             "menu-bar"]
 
         function make() {
             var shell = createTemporaryObject(shellComponent, stage,
@@ -86,7 +87,7 @@ Item {
 
         function test_every_shipped_pane_has_a_body_and_no_other_does() {
             var shell = make();
-            compare(SettingsPanes.shippedPanes.length, 15);
+            compare(SettingsPanes.shippedPanes.length, 16);
             for (var i = 0; i < SettingsPanes.catalog.length; ++i) {
                 var pane = SettingsPanes.catalog[i];
                 var body = shell.paneComponent(pane.id);
@@ -423,6 +424,34 @@ Item {
             compare(Settings.values["lock.showMessageWhenLocked"], true);
             pane.powerButtonsToggle.toggle();
             compare(Settings.values["lock.showPowerButtons"], false);
+        }
+
+        // The menu bar is shell-native: the pane's rows are settingsd keys, so
+        // with no daemon they stay live on the schema defaults and the pane
+        // shows the absence note instead of an adapter view. The bar itself is
+        // drawn by the shell (T-15.9b).
+        function test_menu_bar_pane_stays_live_without_a_daemon() {
+            var shell = make();
+            var pane = showPane(shell, "menu-bar");
+            compare(pane.absenceNote.visible, true,
+                    "the absence note explains the missing settings daemon");
+            verify(pane.absenceNote.text.length > 0);
+
+            // The behavior rows and the per-control toggles write through to
+            // the in-memory store on the schema defaults.
+            compare(pane.autoHide, "full-screen");
+            pane.autoHideSelect.activateIndex(0); // Never
+            compare(Settings.values["menu.autoHide"], "never");
+            pane.backgroundToggle.toggle();
+            compare(Settings.values["menu.showBackground"], false);
+            pane.recentSelect.activateIndex(0); // None
+            compare(Settings.values["menu.recentItems"], 0);
+            pane.clockSecondsToggle.toggle();
+            compare(Settings.values["menu.clock.showSeconds"], true);
+            var toggle = findChild(pane.controlsRepeater.itemAt(0),
+                                   "menuBarControlToggle");
+            toggle.toggle();
+            compare(Settings.values["menu.control.wifi"], false);
         }
     }
 }

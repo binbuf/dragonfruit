@@ -792,6 +792,41 @@ stack, exactly as `dragonfruit-overview` projects the compositor and
   recorded as follow-ups rather than shipped as dead controls. The pane and
   Control Center tile are T-15.9b.
 
+### The Menu Bar pane and tile (T-15.9b)
+
+The pane and tile ship as one functional unit, and — because the bar is
+shell-native — both are shell-native where the runtime is concerned, exactly
+like Mission Control (T-15.5b) and the Lock Screen (T-15.8b; ADR
+[0135](adr/0135-menu-bar-pane-and-tile.md)):
+
+- **Settingsd keys, revision 16.** The Menu Bar pane
+  (`apps/settings/MenuBarPane.qml`) writes `menu.autoHide`
+  (`never`/`always`/`full-screen`, mirroring `MenuBarAutoHide::id()`),
+  `menu.showBackground`, `menu.recentItems` (0–50), `menu.clock.showDate`,
+  `menu.clock.showSeconds`, and the six `menu.control.<id>` toggles whose
+  suffixes are `MenuBarControl::id()` from the T-15.9a adapter. Every row
+  applies live and persists; there is no Apply button.
+- **The shell applies what has a runtime.** `applyMenuBarPolicy` sets the
+  clock options and the background material on `shell/menubar/MenuBar.qml`
+  live; `applyStatusItems` gates each status item on its `menu.control.<id>`
+  key, additive with the adapter's own availability, so a control shows only
+  when its daemon is present *and* the user wants it.
+- **The Control Center tile is projected by the shell.** No services-layer
+  host is added. The pure `menuBarView(values)` in
+  `shell/src/controlcenterpolicy.cpp` turns `menu.autoHide` into the tile
+  subtitle (`Never` / `Always` / `In Full Screen Only`), mirroring
+  `MenuBarSnapshot::label()`; the QML tile renders it and raises
+  `menuBarSettingsRequested` (the Settings launch is T-16's entry point).
+- **Absence is a missing settings daemon.** With no daemon the pane's rows stay
+  live on the schema defaults and it shows a one-line note; the tile is always
+  present while the shell runs.
+- The `menu.autoHide` and `menu.recentItems` keys are **stored policy**:
+  settingsd holds them live and the pane reflects them, but the shell does not
+  yet apply auto-hide to the pinned chrome surface and no recent-items consumer
+  exists. Wiring that is a follow-up
+  (see [adr/0135](adr/0135-menu-bar-pane-and-tile.md)); the rows are the
+  capture's controls and are not dead.
+
 ## The status bridge host (T-07.5a)
 
 The adapters are Rust crates; the menu bar is C++/QML. T-07.5a bridges them in

@@ -312,6 +312,32 @@ set_tests_properties(tst_settings_lock_screen PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# The Menu Bar-pane tests (T-15.9b): the behavior rows (`menu.autoHide`,
+# `menu.showBackground`, `menu.recentItems`), the `Clock Options...` sheet, and
+# the per-control visibility toggles round-trip through settingsd's schema
+# defaults live, and an external change converges into the controls. The menu
+# bar is shell-native, so the pane writes only settingsd keys and no adapter
+# fixture is needed.
+qt_add_executable(tst_settings_menu_bar
+    tst_settings_menu_bar.cpp
+)
+target_link_libraries(tst_settings_menu_bar PRIVATE
+    Qt6::QuickTest
+    dragonfruit-design-systemplugin
+    dragonfruit-settings-uiplugin
+)
+qt_import_qml_plugins(tst_settings_menu_bar)
+
+add_test(
+    NAME tst_settings_menu_bar
+    COMMAND tst_settings_menu_bar
+        -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_settings_menu_bar.qml
+)
+set_tests_properties(tst_settings_menu_bar PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;DF_SETTINGS_FIXTURE=1;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Settings menu-model publication tests (T-09.6a): the app's published menu
 # model is asserted in shape and injected into the shell's `MenuBar` (the
 # `Dragonfruit.MenuBar` module is linked so the round-trip is real). Headless
