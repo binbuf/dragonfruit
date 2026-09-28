@@ -538,6 +538,17 @@ and Pillow, and is not in `make e2e`. Vision confirmed the pane's sections and
 the three device rows render with nothing cut off, and the Control Center
 bottom is complete with the Keyboard tile present and unclipped.
 
+T-15.5a's Mission Control and hot corners adapter has no surface of its own (the
+pane and tile are T-15.5b); `t15-5a-mission-control-adapter.png` is the nested
+demo launched with the new `dragonfruit-overview` crate in the workspace,
+confirming the desktop still renders (3840x2160; menu bar, Dock, Settings, and
+demo windows present, clean teardown). Captured by
+`scripts/capture-t15-overview-adapter.sh`. Vision confirmed the composited
+desktop renders with no blank areas, clipping, or stray artifacts. The adapter
+itself — the corner/action map, gesture gating, overview runtime state,
+`changes` diff, hot-corner triggers, and absence at every seam — is proven
+headlessly by `cargo test -p dragonfruit-overview`.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

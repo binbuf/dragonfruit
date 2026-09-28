@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(118 earlier sections omitted)_
+_(119 earlier sections omitted)_
 
-- **T110c — T-14.7c Dock motion smoothness and frame discipline**: **State: done.** Continuous Dock motion no longer rebuilds the entry model:; `shell/src/shellcontroller.cpp` — `withBounce` deleted; `rebuildDockEntries`
 - **T110d — T-14.7d Trash entry artwork**: **State: done.** The Trash glyph is now a designed, original bin at the token; `shell/dock/DockGlyph.qml` — `import QtQuick.Shapes`; the `trash` item is a
 - **T110e — T-14.7e Add Application picker**: **State: done.** The Dock's divider menu now offers **Add Application…**,; `shell/src/apppicker.{h,cpp}` (new, dockcore) — pure
 - **T110f — T-14.7f Dock drag-and-drop identity and feedback**: **State: done.** External drags are now read once at drag *enter*, so the Dock; `shell/src/dockdrops.{h,cpp}` — `DockDropPayloadData` +
@@ -42,6 +41,7 @@ _(118 earlier sections omitted)_
 - **T116 — T-15.3b Sound and routing pane and tile**: **State: done.** The Settings Sound pane and the Control Center Sound tile ship; `services/system-status/src/lib.rs` — `audio_view` now carries `sources`,
 - **T117 — T-15.4a Keyboard, Mouse, and Trackpad adapter**: **State: done.** A new workspace crate `dragonfruit-input` (`services/input`); `services/input/src/lib.rs` — crate docs + exports.
 - **T118 — T-15.4b Keyboard, Mouse, and Trackpad pane and tile**: **State: done.** The Settings Keyboard/Mouse/Trackpad panes and the Control; `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 11 → 12; 10 new
+- **T119 — T-15.5a Mission Control and hot corners adapter**: **State: done.** A new workspace crate `dragonfruit-overview`; `services/overview/src/source.rs` — `MissionControlSource` seam,
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -11336,3 +11336,69 @@ Decisions / gotchas for later tasks:
   sliders, the `Keyboard Brightness` group with nothing cut off, and the
   Control Center Keyboard tile (`1 keyboards, 2 pointing devices`,
   `Keyboard Settings…`) above an unclipped Clipboard tile.
+
+## T119 — T-15.5a Mission Control and hot corners adapter
+
+**State: done.** A new workspace crate `dragonfruit-overview`
+(`services/overview`) is the Mission Control and hot corners adapter. Mission
+Control and hot corners are compositor-native — there is no external daemon: the
+compositor detects corners (`compositor/src/input/hot_corners.rs`) and owns the
+one overview machine (`compositor/src/overview/mod.rs`), and the shell mirrors
+both over the private `df_toplevel_manager` bridge (`hot_corner`,
+`overview_changed`). The adapter projects that path (never re-detects a corner
+or re-runs a transition), implements the T-07 contract behind a
+`MissionControlSource` seam with `MockMissionControl`, reports state plus two
+event streams, and treats a missing bridge as a normal hidden state. Backend
+only — the pane and tile are T-15.5b.
+
+Real paths:
+
+- `services/overview/src/source.rs` — `MissionControlSource` seam,
+  `MissionControlData` (corner map, dwell/inset, gesture-gating trio, overview
+  runtime), `MockMissionControl` (`kill`/`restart`/`push`/`trigger`/`reads`).
+- `services/overview/src/model.rs` — `HotCorner` (4, wire order),
+  `HotCornerAction` (5, stable ids), `GestureGating`, `OverviewState`,
+  `MissionControlSnapshot` (label/glyph/reachability), the pure
+  `changes(previous)` diff, `HotCornerTrigger`, `MissionControlChange`.
+- `services/overview/src/adapter.rs` — `MissionControlAdapter<S>` over
+  `Adapter`/`Subscription`; `drain_changes`/`drain_triggers`.
+- `services/overview/tests/read_path.rs` (new) — 7 integration tests.
+- `services/system-adapters/src/state.rs` — `AdapterId::MISSION_CONTROL`
+  (`"mission-control"`) + its id assertion.
+- `services/overview/Cargo.toml`, `Cargo.toml` (workspace member), `Makefile`
+  (`cargo test -p dragonfruit-overview` in the test target).
+- Docs — `docs/design/07-system-integration.md` "The Mission Control and hot
+  corners path (T-15.5a)" + adapters-table row; ADR
+  `0126-mission-control-hot-corners-adapter.md`; capture script
+  `scripts/capture-t15-overview-adapter.sh` +
+  `docs/captures/t15-5a-mission-control-adapter.png`; `docs/captures/README.md`.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-overview` — 23 lib + 7 read_path green.
+- `cargo test -p dragonfruit-system-adapters` — green.
+- `make e2e` — EXIT 0 (includes the new test target).
+- `cargo fmt --all -- --check`; clippy on `dragonfruit-overview` and
+  `dragonfruit-system-adapters` — clean.
+- `make check-design-tokens check-tokens check-no-capture-grab` — clean.
+
+Decisions / gotchas for T-15.5b (and later):
+
+- **No live source ships here.** The production source is the shell's
+  `df_toplevel_manager` client (C++); T-15.5b wires it through the status bridge
+  host (`*Host`/`*Client`) and adds the hot-corner assignment settings keys the
+  pane writes, exactly as ADR 0124 anticipated for input's bridge host.
+- **The adapter is read-only.** Runtime state is the compositor's one machine;
+  configuration is settingsd-owned and compositor-applied. Applying an
+  assignment needs an append-only compositor-policy request, not an adapter
+  write (ADR 0126).
+- **`HotCornerAction::id()` is the cross-layer spelling** (`mission-control`,
+  `notification-center`, `desktop-reveal`, `lock-screen`, `none`) — reuse it for
+  settings key values and the wire so the pane popup maps straight on.
+- **Absence is one rule** (no second `present()` hide like input): a missing
+  bridge is `Unavailable` (hidden); a present-but-unreadable bridge is `Error`
+  (visible inert).
+- Live visual check: `bash scripts/capture-t15-overview-adapter.sh` produced
+  `docs/captures/t15-5a-mission-control-adapter.png` (3840x2160). Vision
+  confirmed the nested desktop renders — menu bar, Dock, Settings, and client
+  windows, no blank areas, clipping, or stray artifacts.

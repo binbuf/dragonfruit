@@ -640,6 +640,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "dragonfruit-overview"
+version = "0.1.0"
+dependencies = [
+ "dragonfruit-system-adapters",
+]
+
+[[package]]
 name = "dragonfruit-power"
 version = "0.1.0"
 dependencies = [
