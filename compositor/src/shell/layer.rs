@@ -284,24 +284,55 @@ impl LayerSurfaceState {
     }
 }
 
+/// Add one edge reserve to `zones`, keeping the deepest reserve per edge.
+fn reserve(zones: &mut ReservedZones, edge: Edge, thickness: i32) {
+    match edge {
+        Edge::Top => zones.top = zones.top.max(thickness),
+        Edge::Bottom => zones.bottom = zones.bottom.max(thickness),
+        Edge::Left => zones.left = zones.left.max(thickness),
+        Edge::Right => zones.right = zones.right.max(thickness),
+    }
+}
+
 /// Fold a set of chrome surfaces into the compositor's global reserved
 /// zones (the union of every edge, so Zoom never overlaps any chrome).
 ///
-/// Multi-monitor reserved zones are per-output in the design; the current
-/// `DfState.reserved_zones` is a single struct, so this takes the union and
-/// is a documented follow-up for T-11/T-16.
+/// This is the fallback for an output that has not been resolved per-output
+/// yet; [`aggregate_reserved_for`] is the per-output path (T-16.1a).
 pub fn aggregate_reserved<'a>(
     layers: impl Iterator<Item = &'a LayerSurfaceState>,
     mut zones: ReservedZones,
 ) -> ReservedZones {
     for layer in layers {
         if let Some((edge, thickness)) = layer.reserved() {
-            match edge {
-                Edge::Top => zones.top = zones.top.max(thickness),
-                Edge::Bottom => zones.bottom = zones.bottom.max(thickness),
-                Edge::Left => zones.left = zones.left.max(thickness),
-                Edge::Right => zones.right = zones.right.max(thickness),
-            }
+            reserve(&mut zones, edge, thickness);
+        }
+    }
+    zones
+}
+
+/// Fold the chrome surfaces that target `output_name` into that output's
+/// reserved zones (T-16.1a).
+///
+/// [`LayerSurfaceState::matches_output`] is the filter: a surface created
+/// without an explicit output (the menu bar, the Dock) targets **every**
+/// display and reserves on each of them; a surface pinned to one output
+/// reserves only there. Each edge keeps the deepest reserve, so a pinned
+/// Dock and an all-output bar can reserve different edges on the same
+/// output without either hiding the other. Reserved thicknesses are logical
+/// pixels, so an output's scale does not change them — only the geometry
+/// they are subtracted from.
+pub fn aggregate_reserved_for<'a>(
+    output_name: &str,
+    layers: impl Iterator<Item = &'a LayerSurfaceState>,
+    mut zones: ReservedZones,
+) -> ReservedZones {
+    for layer in layers {
+        if !layer.matches_output(output_name) {
+            continue;
+        }
+        if let Some((edge, thickness)) = layer.reserved() {
+            reserve(&mut zones, edge, thickness);
         }
     }
     zones
@@ -511,6 +542,82 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(panel.reserved(), None);
+    }
+
+    #[test]
+    fn per_output_reserves_are_scoped_by_matches_output() {
+        // A Dock pinned to the primary output reserves only there; the
+        // all-output menu bar reserves on every display (T-16.1a).
+        let primary_dock = LayerSurfaceState {
+            anchor: ANCHOR_BOTTOM | ANCHOR_LEFT | ANCHOR_RIGHT,
+            exclusive_zone: 60,
+            output: Some("eDP-1".into()),
+            ..Default::default()
+        };
+        let menu_bar = LayerSurfaceState {
+            exclusive_zone: 28,
+            ..anchored_top_bar()
+        };
+        let layers = [&primary_dock, &menu_bar];
+
+        let primary =
+            aggregate_reserved_for("eDP-1", layers.iter().copied(), ReservedZones::default());
+        assert_eq!(primary.top, 28, "the menu bar reserves on the primary");
+        assert_eq!(
+            primary.bottom, 60,
+            "the pinned Dock reserves on the primary"
+        );
+
+        let secondary =
+            aggregate_reserved_for("HDMI-A-1", layers.iter().copied(), ReservedZones::default());
+        assert_eq!(
+            secondary.top, 28,
+            "the menu bar also reserves on the second"
+        );
+        assert_eq!(
+            secondary.bottom, 0,
+            "the Dock pinned to eDP-1 must not reserve on HDMI-A-1"
+        );
+    }
+
+    #[test]
+    fn per_output_keeps_the_deepest_reserve_on_an_edge() {
+        // Two chrome surfaces can reserve the same edge on one output; the
+        // deeper reserve wins, not the sum.
+        let a = LayerSurfaceState {
+            anchor: ANCHOR_TOP | ANCHOR_LEFT | ANCHOR_RIGHT,
+            exclusive_zone: 24,
+            ..Default::default()
+        };
+        let b = LayerSurfaceState {
+            anchor: ANCHOR_TOP | ANCHOR_LEFT | ANCHOR_RIGHT,
+            exclusive_zone: 30,
+            ..Default::default()
+        };
+        let zones =
+            aggregate_reserved_for("HEADLESS-1", [&a, &b].into_iter(), ReservedZones::default());
+        assert_eq!(zones.top, 30);
+    }
+
+    #[test]
+    fn chrome_geometry_is_resolved_per_output_scale() {
+        // The same bar state sizes to each output's logical width, so two
+        // outputs at different scales both reserve the correct zone (T-16.1a).
+        let bar = LayerSurfaceState {
+            height: 28,
+            exclusive_zone: 28,
+            ..anchored_top_bar()
+        };
+        let scale_one = Rectangle::new(Point::from((0, 0)), (1280, 720).into());
+        let scale_two = Rectangle::new(Point::from((1280, 0)), (960, 540).into());
+
+        assert_eq!(bar.geometry(scale_one).size, (1280, 28).into());
+        assert_eq!(bar.geometry(scale_two).size, (960, 28).into());
+        assert_eq!(
+            bar.reserved_rect(bar.geometry(scale_two)),
+            Some(Rectangle::new(Point::from((1280, 0)), (960, 28).into())),
+            "the reserve follows the second output's logical geometry"
+        );
     }
 
     #[test]

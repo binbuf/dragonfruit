@@ -29,8 +29,11 @@
       <description summary="create a chrome surface on a layer">
         Turn an existing `wl_surface` into a chrome surface. The compositor
         assigns it a reserved zone (when `exclusive_zone` is set) and places
-        it on the requested layer. `output` NULL means the compositor picks
-        the output the surface should anchor to (the primary output).
+        it on the requested layer. `output` NULL targets **every** output
+        (matching `wlr-layer-shell`'s all-output rule), so the menu bar and
+        Dock anchor on any display attached later; a non-NULL output pins
+        the surface to that one display, and its reserve applies only there
+        (T-16.1a).
       </description>
       <arg name="id" type="new_id" interface="df_layer_surface"/>
       <arg name="surface" type="object" interface="wl_surface"/>
