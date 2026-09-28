@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MIT
 #
-# T-14.7g Dock activation and launch correctness capture.
+# T-14.7g/T-14.7x Dock activation and launch correctness capture.
 #
-# Runs the nested demo four times against a scratch settingsd and the shell's
-# `DF_DOCK_ACTIVATION_FIXTURE` seam (the production click tree without a
-# synthetic pointer tap):
+# Runs the nested demo four times against a scratch settingsd and performs a
+# *real* stationary click on the pinned entry through the compositor's
+# synthetic pointer (no `DF_DOCK_ACTIVATION_FIXTURE` seam; T-14.7x retired it):
 #
-#   * before   — Settings pinned, not running (no fixture);
-#   * launch   — fixture activates the stopped entry: Settings launches and
+#   * before   — Settings pinned, not running;
+#   * launch   — a real click on the stopped pinned entry: Settings launches and
 #                its window maps;
-#   * activate — fixture activates the already-running Settings (the demo's
-#                own Qt app), which focuses it;
-#   * missing  — fixture activates an unresolved pinned entry, which raises a
+#   * activate — a real click on the already-running Settings entry, which
+#                focuses it;
+#   * missing  — a real click on an unresolved pinned entry, which raises a
 #                notice instead of silently no-op'ing.
 #
 # Stills:
@@ -64,7 +64,8 @@ if gdbus call --session --dest org.freedesktop.DBus --object-path /org/freedeskt
 fi
 
 SYNTH="${XDG_RUNTIME_DIR}/$SOCKET.synth"
-rm -f "$SYNTH"
+ENTRY_X="$SCRATCH/entry-x.txt"
+rm -f "$SYNTH" "$ENTRY_X"
 
 cleanup() {
     stop_demo
@@ -97,15 +98,13 @@ set_key() {
         --method "$DBUS_IFACE.Set" "$1" "$2" >/dev/null
 }
 
-# run_demo <name> <fixture> <qt-app>
-run_demo() {
-    local name="$1" fixture="$2" qt_app="$3"
+# start_demo <name> <qt-app>: launch the nested demo against the synthetic
+# socket and wait for it to settle. No activation fixture is set.
+start_demo() {
+    local name="$1" qt_app="$2"
     rm -f "$SYNTH"
-    local envs=(DRAGONFRUIT_SYNTHETIC_INPUT="$SYNTH" DF_DEMO_QT_APP="$qt_app")
-    if [ -n "$fixture" ]; then
-        envs+=(DF_DOCK_ACTIVATION_FIXTURE="$fixture")
-    fi
-    env "${envs[@]}" setsid make demo DEMO_ARGS="--socket-name $SOCKET" \
+    env DRAGONFRUIT_SYNTHETIC_INPUT="$SYNTH" DF_DEMO_QT_APP="$qt_app" \
+        setsid make demo DEMO_ARGS="--socket-name $SOCKET" \
         >"$SCRATCH/demo-$name.log" 2>&1 &
     DEMO_PGID=$!
     for _ in $(seq 1 600); do [ -e "$XDG_RUNTIME_DIR/$SOCKET" ] && break; sleep 0.1; done
@@ -116,8 +115,6 @@ run_demo() {
         exit 1
     fi
     sleep "$SETTLE"
-    spectacle -b -n -a -o "$SCRATCH/$name-raw.png"
-    stop_demo
 }
 
 # crop_shot <raw> <name>: alpha-crop to the nested window, save the full
@@ -173,15 +170,26 @@ set_key "dock.pinned" "<['$SETTINGS_APP']>"
 set_key "dock.position" "<'bottom'>"
 set_key "appearance.colorScheme" "<'dark'>"
 
-run_demo before "" /bin/true
+# before: Settings pinned, not running.
+start_demo before /bin/true
+spectacle -b -n -a -o "$SCRATCH/before-raw.png"
+stop_demo
 crop_shot "$SCRATCH/before-raw.png" before
 
-run_demo after launch /bin/true
+# launch: a real click on the stopped pinned entry; the driver scans the left
+# Dock half for the launched Settings window and records the entry x.
+start_demo launch /bin/true
+python3 scripts/capture-dock-activation-driver.py \
+    --synth "$SYNTH" --mode launch --raw "$SCRATCH/after-raw.png" --entry-x "$ENTRY_X"
+stop_demo
 crop_shot "$SCRATCH/after-raw.png" after
 
-# The activate panel uses the demo's own Settings (running); the fixture waits
-# for it, then activates it.
-run_demo active activate ""
+# active: the demo's own Settings is running; a real click on its entry
+# focuses it.
+start_demo active ""
+python3 scripts/capture-dock-activation-driver.py \
+    --synth "$SYNTH" --mode click --raw "$SCRATCH/active-raw.png" --entry-x "$ENTRY_X"
+stop_demo
 crop_shot "$SCRATCH/active-raw.png" active
 
 # Stack before/after/active from the full nested stills so the window and the
@@ -215,11 +223,14 @@ out.save(dest)
 print(f"capture-dock-activation: saved {dest} ({out.width}x{out.height})")
 PY
 
-# The missing panel pins an unresolved identity, so the Dock shows the
-# not-found mark; the fixture also activates it, raising the (headless, since
-# `make demo` runs no notification service) notice through the real path.
+# The missing panel pins an unresolved identity; a real click raises the
+# (headless, since `make demo` runs no notification service) notice through the
+# real path.
 set_key "dock.pinned" "<['org.example.NotInstalled.desktop']>"
-run_demo missing missing /bin/true
+start_demo missing /bin/true
+python3 scripts/capture-dock-activation-driver.py \
+    --synth "$SYNTH" --mode click --raw "$SCRATCH/missing-raw.png" --entry-x "$ENTRY_X"
+stop_demo
 crop_shot "$SCRATCH/missing-raw.png" missing
 
 echo "capture-dock-activation: done"

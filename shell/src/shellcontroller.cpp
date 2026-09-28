@@ -36,6 +36,7 @@
 #include "desktopentry.h"
 #include "dockdrops.h"
 #include "dockmodel.h"
+#include "dockpointer.h"
 #include "dockprojection.h"
 
 #include "filestarget.h"
@@ -1294,80 +1295,6 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             QMetaObject::invokeMethod(m_dockItem, "externalHoverEntry",
                                       Q_ARG(QVariant, target));
         });
-    }
-
-    // Capture/demo seam (T-14.7g): run one Dock click-tree activation through
-    // the real controller path once the chrome is up, so the live visual check
-    // can capture a launch and an activation even though the synthetic pointer
-    // path cannot land a tap on an entry that also carries a DragHandler.
-    // Values: `launch` (activate the first app entry, launching it when it is
-    // stopped), `activate` (activate it again), `missing` (activate an
-    // unresolved pinned entry, which raises a notice). Never set in a normal
-    // session.
-    if (qEnvironmentVariableIsSet("DF_DOCK_ACTIVATION_FIXTURE")) {
-        const QString mode = qEnvironmentVariable("DF_DOCK_ACTIVATION_FIXTURE");
-        if (mode == QLatin1String("missing")) {
-            QTimer::singleShot(1500, this, [this]() {
-                QVariantMap entry;
-                entry.insert(QStringLiteral("kind"), QStringLiteral("pinned"));
-                entry.insert(QStringLiteral("missing"), true);
-                entry.insert(QStringLiteral("desktopId"),
-                             QStringLiteral("org.example.NotInstalled.desktop"));
-                entry.insert(QStringLiteral("name"), QStringLiteral("Not Installed"));
-                onDockEntryActivated(entry);
-            });
-        } else if (mode == QLatin1String("activate")) {
-            // Wait until the app the demo started is projected as running,
-            // then activate it (the second click in the capture).
-            auto *timer = new QTimer(this);
-            timer->setInterval(500);
-            connect(timer, &QTimer::timeout, this, [this, timer]() {
-                static int tries = 0;
-                for (const QVariant &value : std::as_const(m_dockAllEntries)) {
-                    const QVariantMap map = value.toMap();
-                    if (map.value(QStringLiteral("running")).toBool()
-                        && (map.value(QStringLiteral("kind")).toString()
-                                == QLatin1String("pinned")
-                            || map.value(QStringLiteral("kind")).toString()
-                                == QLatin1String("temporary"))) {
-                        timer->stop();
-                        timer->deleteLater();
-                        // Route through the Dock's own click tree so the
-                        // launch-origin tile signal fires exactly as a real
-                        // click would (T-14.7l).
-                        if (m_dockItem)
-                            QMetaObject::invokeMethod(m_dockItem, "activateEntry",
-                                                      Q_ARG(QVariant, map));
-                        else
-                            onDockEntryActivated(map);
-                        return;
-                    }
-                }
-                if (++tries > 40) {
-                    timer->stop();
-                    timer->deleteLater();
-                }
-            });
-            timer->start();
-        } else {
-            QTimer::singleShot(1500, this, [this]() {
-                for (const QVariant &value : std::as_const(m_dockAllEntries)) {
-                    const QVariantMap map = value.toMap();
-                    const QString kind = map.value(QStringLiteral("kind")).toString();
-                    if (kind == QLatin1String("pinned")
-                        || kind == QLatin1String("temporary")) {
-                        // Through the click tree, so the tile rect is published
-                        // before the shell launches (T-14.7l).
-                        if (m_dockItem)
-                            QMetaObject::invokeMethod(m_dockItem, "activateEntry",
-                                                      Q_ARG(QVariant, map));
-                        else
-                            onDockEntryActivated(map);
-                        return;
-                    }
-                }
-            });
-        }
     }
 
     // Capture/demo seam (T-14.7h): open the folder stack popover once the
@@ -5073,8 +5000,7 @@ void ShellController::onDockPointerMoved(qreal x, qreal y)
     // headroom (above a bottom Dock) or a side gutter (beside a vertical
     // Dock).
     const QPointF p(x + m_dockItemOffsetX, y + m_dockItemOffsetY);
-    QMouseEvent event(QEvent::MouseMove, p, p, Qt::NoButton, m_dockButtons, Qt::NoModifier);
-    QCoreApplication::sendEvent(m_dockWindow, &event);
+    DockPointer::send(m_dockWindow, QEvent::MouseMove, p, Qt::NoButton, m_dockButtons);
     scheduleDockRender();
 }
 
@@ -5092,9 +5018,8 @@ void ShellController::onDockPointerButton(qreal x, qreal y, quint32 button, bool
     else
         m_dockButtons &= ~qtButton;
     const QPointF p(x + m_dockItemOffsetX, y + m_dockItemOffsetY);
-    QMouseEvent event(pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease, p, p,
-                      qtButton, m_dockButtons, Qt::NoModifier);
-    QCoreApplication::sendEvent(m_dockWindow, &event);
+    DockPointer::send(m_dockWindow, pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease,
+                      p, qtButton, m_dockButtons);
     scheduleDockRender();
 }
 
@@ -5102,9 +5027,8 @@ void ShellController::onDockPointerLeft()
 {
     if (!m_dockWindow)
         return;
-    QMouseEvent event(QEvent::MouseMove, QPointF(-1, -1), QPointF(-1, -1), Qt::NoButton,
-                      m_dockButtons, Qt::NoModifier);
-    QCoreApplication::sendEvent(m_dockWindow, &event);
+    DockPointer::send(m_dockWindow, QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton,
+                      m_dockButtons);
     scheduleDockRender();
 }
 
