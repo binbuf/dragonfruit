@@ -410,8 +410,36 @@ crashed app leaves the compositor and the surviving app running. The headless
 reproduction for the whole matrix is `make t16-kill-matrix`
 (`docs/captures/t16-kill-matrix.txt`); the live/VM real-binary half is recorded
 by hand in `docs/captures/t16-kill-matrix.md`. The contract is
-[ADR 0157](adr/0157-t16-crash-kill-matrix.md); compositor-death behavior itself
-is documented by T-16.8b.
+[ADR 0157](adr/0157-t16-crash-kill-matrix.md).
+
+### Compositor death ends the session (T-16.8b)
+
+The compositor is the session anchor: **its death — a crash, a `kill -9`, or a
+clean quit — ends the session, and it is never restarted.** In
+`SessionPlan::default_session()` it is the one `ends_session` service with
+`RestartPolicy::Never`, the shipped `dragonfruit-compositor.service` is
+`Restart=no`, and `SessionPlan::validate()` rejects a restartable anchor. The
+reason is Wayland reality: clients are bound to one compositor and there is no
+live handoff, so a compositor restart would strand every client. Whether the
+death is a clean exit, a non-zero exit, or a fatal signal, the supervisor stops
+every surviving service and moves to `SessionState::Ended`.
+
+Recovery is a fresh login, not an in-place restart: the T-12.2 session entry
+waits for `dragonfruit-compositor.service` to leave the active state, stops
+`dragonfruit-session.target`, clears failed state, removes the runtime
+hand-off files, and the display manager returns the greeter. Everything that is
+*not* the compositor restarts in place ([the matrix
+above](#session-policy-keys-and-the-kill-matrix-t-125b)); apps are plain
+clients, and a crash while locked can never unlock because the lock is
+fail-secure inside the compositor. The compositor may restart subprocesses it
+owns (Xwayland), but that is not a session restart.
+
+The restart policy is enforced headlessly by
+`services/session/tests/restart_policy_matrix.rs`, which crosses all three
+policies with every exit kind (`exit 0`, non-zero, signal) and crosses
+compositor death with the same three exits. The contract, the policy table,
+and the nested/dev outcome are frozen in
+[ADR 0158](adr/0158-compositor-death-ends-the-session.md).
 
 The T-12 track capture is `docs/captures/t12-session.*` (nested desktop, the
 real lock UI after Cmd+Ctrl+Q, a short clip, the `query lock`/`query session`

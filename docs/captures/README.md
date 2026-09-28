@@ -793,9 +793,14 @@ session supervision matrix (`cargo test -p dragonfruit-session --test
 kill_matrix`, derived from the shipped `SessionPlan::default_session` — shell,
 the five on-failure daemons, the portal backend, an app, and the compositor
 anchor), the compositor app-crash test against real Wayland clients, and the
-lock UI's fail-secure kill. No host session, VM, or real services are needed;
-the live/VM real-binary half is recorded by hand in `t16-kill-matrix.md`. The
-contract is [ADR 0157](../design/adr/0157-t16-crash-kill-matrix.md).
+lock UI's fail-secure kill. T-16.8b adds the restart-policy matrix row
+(`cargo test -p dragonfruit-session --test restart_policy_matrix`: every policy
+crossed with every exit kind, plus compositor death for each exit). No host
+session, VM, or real services are needed; the live/VM real-binary half is
+recorded by hand in `t16-kill-matrix.md`. The contracts are
+[ADR 0157](../design/adr/0157-t16-crash-kill-matrix.md) and, for the
+compositor-death outcome and restart policy,
+[ADR 0158](../design/adr/0158-compositor-death-ends-the-session.md).
 
 Guidelines:
 

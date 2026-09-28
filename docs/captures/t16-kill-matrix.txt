@@ -1,5 +1,5 @@
 T-16.8a crash/kill matrix (headless reproduction)
-generated: 2026-09-28T19:32:15Z
+generated: 2026-09-28T19:45:05Z
 state:     no host session, no VM, no real services
 
 ================================================================
@@ -24,8 +24,7 @@ new service or a changed policy is exercised without editing the test.
 The matrix kills each service with a real SIGKILL and asserts the
 shipped recovery, and that an app kill is not a session event.
 $ cargo test -p dragonfruit-session --test kill_matrix -- --nocapture
-   Compiling dragonfruit-session v0.1.0 (/home/user/repos/dragonfruit/services/session)
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.21s
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.06s
      Running tests/kill_matrix.rs (target/debug/deps/kill_matrix-1fcf448e86fdd668)
 
 running 9 tests
@@ -39,10 +38,32 @@ test killing_the_portal_backend_restarts_it_and_keeps_the_session ... ok
 test killing_the_shell_lock_ui_restarts_it_and_keeps_the_session ... ok
 test every_restartable_service_restarts_in_place_and_keeps_the_session ... ok
 
-test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.68s
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.69s
 
 
 [PASS] session kill matrix
+
+================================================================
+## 1b. The restart-policy matrix (T-16.8b)
+================================================================
+
+Every policy is crossed with every exit kind (exit 0, non-zero,
+signal), and compositor death is crossed with the same three exits.
+The compositor ends the session and is never restarted for any of
+them; always/on-failure/never restart exactly as documented.
+$ cargo test -p dragonfruit-session --test restart_policy_matrix -- --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running tests/restart_policy_matrix.rs (target/debug/deps/restart_policy_matrix-5dfb4c1bfab50742)
+
+running 3 tests
+test the_shipped_anchor_is_the_compositor_and_is_never_restartable ... ok
+test the_compositor_exit_ends_the_session_for_every_exit_kind ... ok
+test restart_policy_matrix_matches_the_documented_decisions ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s
+
+
+[PASS] restart policy matrix
 
 ================================================================
 ## 2. An app client crash leaves the desktop running
@@ -52,7 +73,7 @@ Two independent real Wayland clients map windows; one hard-closes its
 socket (a crash). The compositor must stay alive, drop only the dead
 app's window, and keep serving the survivor.
 $ cargo test -p dragonfruit-compositor --test window_conformance a_crashed_app_leaves_the_compositor_and_the_other_app_running -- --nocapture
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.09s
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.10s
      Running tests/window_conformance.rs (target/debug/deps/window_conformance-c8615a4386bb1e33)
 
 running 1 test
@@ -71,13 +92,13 @@ The lock UI is the shell; the compositor owns the lock. Hard-closing
 the lock client's socket must leave the session locked — never
 unlocked — and this test also blankets the shell/lock restart row.
 $ cargo test -p dragonfruit-compositor --test session_lock_conformance locked_input_targets_the_lock_ui_and_survives_its_death -- --nocapture
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.09s
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.12s
      Running tests/session_lock_conformance.rs (target/debug/deps/session_lock_conformance-3b2de0f87129ceec)
 
 running 1 test
 test locked_input_targets_the_lock_ui_and_survives_its_death ... ok
 
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.01s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.02s
 
 
 [PASS] lock kill-resistance

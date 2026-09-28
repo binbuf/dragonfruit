@@ -14,7 +14,24 @@ the process model in [01-architecture.md](../design/01-architecture.md).
 | portal backend | restarts (`on-failure`) and fails soft; the session keeps running | `kill_matrix::killing_the_portal_backend...` | not run (no VM) |
 | app (a user-launched client) | a plain client exit: never restarted; the session keeps running | `kill_matrix::killing_an_app...`, `window_conformance::a_crashed_app...` | not run (no VM) |
 | lock UI while locked | fail-secure: the session stays locked, never unlocks | `session_lock_conformance::locked_input_targets_the_lock_ui_and_survives_its_death` | not run (no VM) |
-| compositor | the session ends; every other service is stopped; never restarted | `kill_matrix::killing_the_compositor...`; behavior documented by T-16.8b | not run (no VM) |
+| compositor | the session ends; every other service is stopped; never restarted | `kill_matrix::killing_the_compositor...`; `restart_policy_matrix::the_compositor_exit_ends_the_session_for_every_exit_kind` | not run (no VM) |
+
+## Restart policy matrix (T-16.8b)
+
+The policy behind the rows above is crossed with every way a child can leave in
+`services/session/tests/restart_policy_matrix.rs`:
+
+| Policy \ Exit | `exit 0` | non-zero | signal |
+|---|---|---|---|
+| `always` | restart | restart | restart |
+| `on-failure` | stay exited | restart | restart |
+| `never` | stay exited | stay exited | stay exited |
+
+The compositor is the anchor: its death ends the session and stops every
+survivor for **all three** exits, and it is never restarted. The outcome, the
+policy table, and the nested/dev behavior are documented by T-16.8b in
+[ADR 0158](../design/adr/0158-compositor-death-ends-the-session.md); the
+headless proof is the same suite plus the session `kill_matrix` rows above.
 
 ## Live nested check (run for this task)
 

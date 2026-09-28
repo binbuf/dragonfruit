@@ -3,10 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(147 earlier sections omitted)_
+_(149 earlier sections omitted)_
 
-- **T111 — T-15.1a Bluetooth adapter**: **State: done.** The BlueZ Bluetooth adapter landed in a new crate,; `services/bluetooth/` (new crate) — `src/source.rs` (`BluetoothData`,
-- **T112 — T-15.1b Bluetooth pane and tile**: **State: done.** The Bluetooth pane and Control Center tile ship as one unit; `services/system-status/src/bluetooth.rs` (new) — `BluetoothHost<B>` and
 - **T113 — T-15.2a Storage and removable media adapter**: **State: done.** The UDisks2 storage/removable-media adapter landed in a new; `services/storage/` (new crate) — `src/source.rs` (`StorageData`,
 - **T114 — T-15.2b Storage and removable media pane and tile**: **State: done.** The Storage pane and Control Center tile ship as one unit over; `services/system-status/src/storage.rs` (new) — `StorageHost<S>` +
 - **T115 — T-15.3a Sound and routing adapter**: **State: done.** The T-07.3 audio adapter (`dragonfruit-audio`) grew the input; `services/audio/src/source.rs` — new `SourceData`; `AudioData` gained
@@ -45,6 +43,7 @@ _(147 earlier sections omitted)_
 - **T148 — T-16.6b Magnifier and reduced-motion sweep**: **State: done.** Two units landed: a compositor-owned screen magnifier and an; `compositor/src/magnifier.rs` (new) — the pure `Magnifier` policy: zoom
 - **T149 — T-16.7 Localization and i18n**: **State: done.** The shell and first-party apps are translatable and a locale; `libs/i18n/` (new static lib `dragonfruit-i18n`) — `i18n.cpp`/`i18n.h`:
 - **T150 — T-16.8a Crash/kill matrix**: **State: done.** The crash/kill matrix covers every restartable shipped; `services/session/tests/kill_matrix.rs` (5 → 9 tests) — the stand-in plan is
+- **T151 — T-16.8b Compositor-death behavior and restart-policy docs**: **State: done.** Compositor death is documented once as session-ending and the; `services/session/tests/restart_policy_matrix.rs` (new; 3 tests) — the
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -14093,4 +14092,58 @@ Decisions / gotchas for T-16.8b and later:
   `the_restartable_set_is_exactly_the_shipped_services`** until the matrix
   covers it; keep the test derived from `default_session()`.
 - **The real-binary `kill -9` drill is manual/VM** (recorded in
+  `docs/captures/t16-kill-matrix.md`); T-17.5a re-verifies a subset.
+
+## T151 — T-16.8b Compositor-death behavior and restart-policy docs
+
+**State: done.** Compositor death is documented once as session-ending and the
+restart policy is enforced by a headless 3x3 matrix. Contract in ADR 0158.
+
+Real paths:
+
+- `services/session/tests/restart_policy_matrix.rs` (new; 3 tests) — the
+  restart-policy matrix. Crosses `always`/`on-failure`/`never` with
+  `exit 0`/non-zero/signal; crosses compositor death with the same three exits
+  (session ends, survivors stop, anchor restarts == 0); and pins the shipped
+  anchor (`SessionPlan::default_session()`) as `Never` + `ends_session` with
+  `validate()` rejecting a restartable anchor.
+- `docs/design/adr/0158-compositor-death-ends-the-session.md` (new) — one
+  decision: compositor death ends the session, it is never restarted, recovery
+  is a fresh login via the T-12.2 entry, no live handoff, nested ends only the
+  nested session, lock stays fail-secure, Xwayland subprocess restarts are not
+  session restarts. Includes the restart-policy table.
+- `docs/design/11-session-and-dev-workflow.md` — new "Compositor death ends
+  the session (T-16.8b)" subsection; the kill-matrix paragraph now links ADR
+  0158 instead of "documented by T-16.8b".
+- `docs/captures/t16-kill-matrix.md` — "Restart policy matrix (T-16.8b)"
+  section; compositor row points at the new test + ADR 0158.
+- `scripts/t16-kill-matrix.sh` — new section "1b. The restart-policy matrix";
+  `docs/captures/t16-kill-matrix.txt` regenerated (all rows PASS).
+- `docs/captures/README.md` — lists the new row and ADR 0158.
+
+Commands that work (repo root; `PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig`,
+`RUSTFLAGS=-L $HOME/.local/df-devroot/lib64`):
+
+- `cargo test -p dragonfruit-session --test restart_policy_matrix` — 3 passed.
+- `cargo test -p dragonfruit-session` — all suites green.
+- `cargo clippy -p dragonfruit-session --all-targets -- -D warnings`,
+  `cargo fmt --all -- --check` — clean.
+- `make t16-kill-matrix` — all rows passed.
+- Live visual check: `/tmp/opencode/t151-desktop.png`. Vision confirmed the
+  nested desktop fully composited, no blank/black/torn regions. No surface
+  changed; no committed PNG.
+
+Decisions / gotchas for later tasks:
+
+- **The restart-policy contract lives in `services/session`, not
+  `compositor/`.** The task area says `compositor/ + packaging/`, but the
+  policy is data (`SessionPlan`/`Supervisor`); the matrix test sits beside
+  `kill_matrix.rs`/`restart.rs`. No compositor code changed.
+- **The unit-level half is separate.** `Restart=` vs `plan.rs` is enforced by
+  `services/session/tests/units.rs`; the new matrix is the pure policy/exit
+  half. Changing a policy requires updating both.
+- **A restartable anchor is a plan error** (`PlanError::RestartableSessionAnchor`);
+  the matrix's third test guards it so no future change can satisfy
+  compositor-death by restarting it.
+- **The real-binary `kill -9` drill is still manual/VM** (recorded in
   `docs/captures/t16-kill-matrix.md`); T-17.5a re-verifies a subset.

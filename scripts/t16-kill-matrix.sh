@@ -20,6 +20,10 @@
 #   * compositor       ends the session; every other service is stopped;
 #                      never restarted (the behavior T-16.8b documents)
 #
+# T-16.8b adds the restart-policy matrix: every policy crossed with every exit
+# kind (`exit 0`, non-zero, signal), and compositor death crossed with the
+# same three exits (`services/session/tests/restart_policy_matrix.rs`).
+#
 # The live/VM half (killing the real binaries under a running session) is
 # recorded by hand in docs/captures/t16-kill-matrix.md.
 set -uo pipefail
@@ -70,6 +74,15 @@ TABLE
     echo "shipped recovery, and that an app kill is not a session event."
     run "session kill matrix" \
         cargo test -p dragonfruit-session --test kill_matrix -- --nocapture
+
+    section "1b. The restart-policy matrix (T-16.8b)"
+    echo "Every policy is crossed with every exit kind (exit 0, non-zero,"
+    echo "signal), and compositor death is crossed with the same three exits."
+    echo "The compositor ends the session and is never restarted for any of"
+    echo "them; always/on-failure/never restart exactly as documented."
+    run "restart policy matrix" \
+        cargo test -p dragonfruit-session \
+        --test restart_policy_matrix -- --nocapture
 
     section "2. An app client crash leaves the desktop running"
     echo "Two independent real Wayland clients map windows; one hard-closes its"
