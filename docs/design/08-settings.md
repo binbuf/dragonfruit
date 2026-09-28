@@ -166,6 +166,77 @@ nested demo with the Settings window zoomed, and `appearance.colorScheme` /
 `accessibility.reduceMotion` flipped live for the dark/light and
 reduced-motion stills.
 
+## The absent-daemon masking matrix (T-15.16)
+
+T-15 landed the Wave-2/3 panes and their Control Center tiles, taking the
+catalog to **22 shipped panes** (`SettingsPanes.shippedPanes`). Each pane routes
+to exactly one subsystem; masking that subsystem is a supported session state,
+not an incident. The matrix below is the contract every shipped pane satisfies
+and the wave-2/3 companion to the T-09.6b table above.
+
+Two absence families appear, and a pane can mix them:
+
+- **settingsd-backed controls** (Appearance, Desktop & Dock, Mission Control,
+  Displays, Lock Screen, Menu Bar, and the durable halves of Wallpaper, Sound,
+  Keyboard/Mouse/Trackpad, Notifications/Focus, Accessibility) stay **live on
+  the schema defaults** with no settingsd. A write lands in memory and is
+  mirrored when the daemon returns ([ADR 0030](adr/0030-settingsd-schema-and-dbus-surface.md));
+  there is no "settings unavailable" banner.
+- **adapter-read halves** read a host daemon through the `system-status` bridge
+  host ([ADR 0029](adr/0029-system-status-bridge-host.md)). With no host, an
+  unowned bus name, or a daemon answering `present: false`, the pane replaces
+  that half with a one-line note and attempts no write, and the matching tile
+  hides by the same rule. A present-but-unreadable daemon is `Error` — visible
+  and inert, never leaked into a neighbour.
+
+| Shipped pane | Routed to | Pane with the provider absent | Control Center tile |
+|---|---|---|---|
+| Appearance | settingsd | live on schema defaults | — (none) |
+| Desktop & Dock | settingsd → shell/compositor | live on defaults; no shell applier, but no error | — (none) |
+| Mission Control | settingsd + compositor | settingsd keys live on defaults; the note says the daemon is gone | **hides** (no compositor bridge) |
+| Displays | compositor output API + settingsd | live on defaults; shell applies the policy when an output appears | — (none) |
+| Wallpaper | settingsd + `wallpaperd` + FileChooser portal | built-in/toggle/fit live; Featured empty (never an error); the "Add Photo…" portal row **disabled** with its explanation | — (none) |
+| Bluetooth | BlueZ (bridge host) | note; toggle disabled; no write | **hides** |
+| Network (VPN) | NetworkManager (bridge host) | note; connection list empty; `Connect`/`Deactivate` are no-ops | **hides** |
+| Battery | UPower + power-profiles-daemon (bridge host) | note; no profile write | **hides** |
+| Storage | UDisks2/GIO (bridge host) | note; no mount/eject | **hides** |
+| General | settingsd + update adapter (bridge host) | About reads locally; the update half shows its note | **hides** |
+| Sound | PipeWire/WirePlumber (bridge host) + settingsd | routing half note; Sound Effects/Balance stay live on defaults | volume tile `enabled: audioAvailable` |
+| Keyboard | libinput (bridge host) + settingsd | inventory note; every preference row live on defaults | **hides** |
+| Mouse | libinput (bridge host) + settingsd | inventory note; pointer settings live on defaults | — (shared Keyboard tile) |
+| Trackpad | libinput (bridge host) + settingsd | inventory note; tap-to-click etc. live on defaults | — (shared Keyboard tile) |
+| Notifications | notification service (bridge host) + settingsd | per-app inventory note; presentation prefs stay live | — (none) |
+| Focus | notification service (bridge host) + settingsd | inventory note; policy rows stay live | **hides** |
+| Lock Screen | settingsd + compositor lock/idle | controls live on defaults; the note names the daemon | **hides** |
+| Menu Bar | settingsd → shell | controls live on defaults; the note names the daemon | **hides** |
+| Users & Groups | accountsservice/distro (bridge host) | note; read-only tile | **hides** |
+| Printers & Scanners | CUPS/SANE (bridge host) | note; no add/queue write | **hides** |
+| Privacy & Security | portal `PermissionStore` (bridge host) | note; no permission write | **hides** |
+| Accessibility | AT-SPI (bridge host) + settingsd | status note; `accessibility.reduceMotion` stays live | **hides** |
+
+The headless half is the CI gate:
+
+- **`apps/settings/tests/tst_settings_absence.qml`** runs under a private
+  `dbus-run-session` with no settingsd, no portal, and no bridge host. It
+  asserts both providers are absent, that all 22 shipped panes have a body and
+  no unshipped id does, that **every shipped pane mounts and stays interactive**
+  (the routing sweep, `test_every_shipped_pane_routes_and_stays_live_with_providers_absent`),
+  and carries one case per pane (including the shared Mouse section) that
+  asserts the absence note and that the settingsd-backed controls still write.
+- The per-pane suites (`tst_settings_<pane>.qml`) assert the adapter's
+  `absent` value through the mock or fixture seam; the Rust adapters assert the
+  three-state projection in `services/*/tests/`.
+- **`scripts/t15-absence-matrix.sh`** (`make t15-absence-matrix`) reproduces the
+  headless half into `docs/captures/t15-absence-matrix.txt`; the reviewed matrix
+  with the live halves is `docs/captures/t15-absence-matrix.md`.
+
+The real-daemon half — stopping BlueZ/UDisks/CUPS/etc. on a VM and watching the
+pane and tile — is the design's "real masking in a VM when available"
+([14-risks.md](14-risks.md)); no VM is in CI, so it is recorded in the reviewed
+matrix rather than automated. "No bridge host" is the same
+hidden-everything state on a live session, because the host is a separate
+process.
+
 ## Distro provider interface
 
 Settings should say "check for updates," not "execute a `dnf5` command." The

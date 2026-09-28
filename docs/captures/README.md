@@ -102,6 +102,16 @@ T-18.3's absence/state matrix is produced by `scripts/t18-absence-matrix.sh`
 `t18-absence-matrix.txt`, and the reviewed matrix with the live halves at
 `t18-absence-matrix.md`.
 
+T-15.16's absent-daemon masking matrix is produced by
+`scripts/t15-absence-matrix.sh` (`make t15-absence-matrix`): the headless
+reproduction transcript for every shipped Wave-2/3 pane at
+`t15-absence-matrix.txt`, and the reviewed 22-pane state matrix with the
+live/VM halves at `t15-absence-matrix.md`. The whole T-15 breadth capture set
+is indexed as a linked set in `t15-breadth.md`; its representative
+whole-desktop still is `t15-breadth.png`, produced by
+`scripts/capture-t15-breadth.sh` (`make t15-breadth-capture`) with every host
+provider absent (no `DF_STATUS_FIXTURE` / `DF_SETTINGS_FIXTURE`).
+
 T-10.7's Files slice capture is produced by `scripts/capture-files.sh`
 (`make files-capture`): the nested demo runs with `DF_DEMO_QT_APP` pointing at
 Files over a scratch fixture tree and a scratch trash store, and it writes

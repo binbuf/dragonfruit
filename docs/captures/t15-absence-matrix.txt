@@ -1,0 +1,572 @@
+T-15.16 absent-daemon masking matrix (headless reproduction)
+generated: 2026-09-28T16:36:48Z
+build:     build
+state:     private dbus-run-session, no settingsd, no portal, no bridge host
+
+================================================================
+## 0. The shipped pane set (the matrix's rows)
+================================================================
+
+Every shipped pane must mount and stay interactive with both providers
+absent (the routing sweep), and every pane with an adapter-read half
+must expose its absence note. The catalog is the source of truth.
+$ grep -c 'shipped: true' apps/settings/SettingsPanes.qml
+22
+$ awk '/\{ id: "/{id=$0} /shipped: true/{print id}' apps/settings/SettingsPanes.qml (ids)
+  { id: "bluetooth", title: qsTr("Bluetooth"), icon: "bluetooth",
+  { id: "network", title: qsTr("Network"), icon: "network",
+  { id: "battery", title: qsTr("Battery"), icon: "battery",
+  { id: "storage", title: qsTr("Storage"), icon: "storage",
+  { id: "general", title: qsTr("General"), icon: "general",
+  { id: "accessibility", title: qsTr("Accessibility"), icon: "accessibility",
+  { id: "appearance", title: qsTr("Appearance"), icon: "appearance",
+  { id: "desktop-dock", title: qsTr("Desktop & Dock"), icon: "dock",
+  { id: "mission-control", title: qsTr("Mission Control"), icon: "overview",
+  { id: "displays", title: qsTr("Displays"), icon: "displays",
+  { id: "menu-bar", title: qsTr("Menu Bar"), icon: "menu-bar",
+  { id: "wallpaper", title: qsTr("Wallpaper"), icon: "wallpaper",
+  { id: "notifications", title: qsTr("Notifications"), icon: "bell",
+  { id: "sound", title: qsTr("Sound"), icon: "volume",
+  { id: "focus", title: qsTr("Focus"), icon: "focus",
+  { id: "lock-screen", title: qsTr("Lock Screen"), icon: "lock",
+  { id: "privacy", title: qsTr("Privacy & Security"), icon: "privacy",
+  { id: "users-groups", title: qsTr("Users & Groups"), icon: "users",
+  { id: "keyboard", title: qsTr("Keyboard"), icon: "keyboard",
+  { id: "mouse", title: qsTr("Mouse"), icon: "mouse",
+  { id: "trackpad", title: qsTr("Trackpad"), icon: "trackpad",
+  { id: "printers", title: qsTr("Printers & Scanners"), icon: "printer",
+
+================================================================
+## 1. The Settings absent-provider gate (QML, private bus)
+================================================================
+
+No settingsd and no portal: both providers are absent, every shipped
+pane has a body and none of the unshipped ids do, every shipped pane
+mounts and stays interactive, and each pane's absent case holds.
+$ ctest --test-dir build -R 'tst_settings_absence' --output-on-failure
+Test project /home/user/repos/dragonfruit/build
+    Start 66: tst_settings_absence
+1/1 Test #66: tst_settings_absence .............   Passed    1.16 sec
+
+100% tests passed out of 1
+
+Total Test time (real) =   1.16 sec
+
+================================================================
+## 2. The per-pane suites (adapter absent values via fixtures)
+================================================================
+
+Each pane's own suite asserts the adapter absent value and the live
+settingsd-backed/host-fallback controls through the fixture seam.
+$ ctest --test-dir build -R '^tst_settings_' --output-on-failure
+Test project /home/user/repos/dragonfruit/build
+      Start 44: tst_settings_shell
+ 1/23 Test #44: tst_settings_shell ...............   Passed    5.57 sec
+      Start 45: tst_settings_appearance
+ 2/23 Test #45: tst_settings_appearance ..........   Passed    0.23 sec
+      Start 46: tst_settings_wallpaper
+ 3/23 Test #46: tst_settings_wallpaper ...........   Passed    0.61 sec
+      Start 47: tst_settings_desktop_dock
+ 4/23 Test #47: tst_settings_desktop_dock ........   Passed    0.40 sec
+      Start 48: tst_settings_displays
+ 5/23 Test #48: tst_settings_displays ............   Passed    0.18 sec
+      Start 49: tst_settings_bluetooth
+ 6/23 Test #49: tst_settings_bluetooth ...........   Passed    0.26 sec
+      Start 50: tst_settings_storage
+ 7/23 Test #50: tst_settings_storage .............   Passed    0.22 sec
+      Start 51: tst_settings_sound
+ 8/23 Test #51: tst_settings_sound ...............   Passed    0.31 sec
+      Start 52: tst_settings_input
+ 9/23 Test #52: tst_settings_input ...............   Passed    0.39 sec
+      Start 53: tst_settings_mission_control
+10/23 Test #53: tst_settings_mission_control .....   Passed    0.27 sec
+      Start 54: tst_settings_battery
+11/23 Test #54: tst_settings_battery .............   Passed    0.24 sec
+      Start 55: tst_settings_notifications
+12/23 Test #55: tst_settings_notifications .......   Passed    0.26 sec
+      Start 56: tst_settings_lock_screen
+13/23 Test #56: tst_settings_lock_screen .........   Passed    0.42 sec
+      Start 57: tst_settings_menu_bar
+14/23 Test #57: tst_settings_menu_bar ............   Passed    0.31 sec
+      Start 58: tst_settings_general
+15/23 Test #58: tst_settings_general .............   Passed    0.21 sec
+      Start 59: tst_settings_users
+16/23 Test #59: tst_settings_users ...............   Passed    0.47 sec
+      Start 60: tst_settings_printers
+17/23 Test #60: tst_settings_printers ............   Passed    0.28 sec
+      Start 61: tst_settings_privacy
+18/23 Test #61: tst_settings_privacy .............   Passed    0.27 sec
+      Start 62: tst_settings_accessibility
+19/23 Test #62: tst_settings_accessibility .......   Passed    0.20 sec
+      Start 63: tst_settings_network
+20/23 Test #63: tst_settings_network .............   Passed    0.21 sec
+      Start 64: tst_settings_menu
+21/23 Test #64: tst_settings_menu ................   Passed    0.16 sec
+      Start 65: tst_settings_live
+22/23 Test #65: tst_settings_live ................   Passed    0.34 sec
+      Start 66: tst_settings_absence
+23/23 Test #66: tst_settings_absence .............   Passed    1.14 sec
+
+100% tests passed out of 23
+
+Total Test time (real) =  12.96 sec
+
+================================================================
+## 3. The bridge host's adapter absence matrix (Rust)
+================================================================
+
+Every Wave-2/3 adapter read through the system-status bridge host:
+the masked daemon projects a hidden slot (`present: false`), never an
+error, and a write while absent answers absent. This is the headless
+half of the masking matrix (T-07.6a grown for T-15).
+$ cargo test -p dragonfruit-system-status absent -- --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.07s
+     Running unittests src/lib.rs (target/debug/deps/dragonfruit_system_status-87feaa7814fca00c)
+
+running 23 tests
+test accessibility::tests::an_absent_bus_projects_a_hidden_slot ... ok
+test accounts::tests::an_absent_host_stack_projects_a_hidden_slot ... ok
+test notifications::tests::a_write_while_absent_reports_absence_and_keeps_the_item_hidden ... ok
+test bluetooth::tests::an_absent_daemon_projects_a_hidden_slot ... ok
+test bluetooth::tests::a_denial_and_a_write_while_absent_are_reported ... ok
+test printers::tests::an_absent_host_stack_projects_a_hidden_slot ... ok
+test notifications::tests::an_absent_service_projects_a_hidden_slot ... ok
+test input::tests::an_absent_stack_projects_a_hidden_slot ... ok
+test printers::tests::a_host_with_only_printers_keeps_the_scanner_half_absent ... ok
+test accounts::tests::writes_while_absent_answer_absence ... ok
+test printers::tests::writes_while_absent_answer_absence ... ok
+test privacy::tests::an_absent_store_projects_a_hidden_slot ... ok
+test privacy::tests::writes_while_absent_answer_absence ... ok
+test storage::tests::a_denial_and_a_write_while_absent_are_reported ... ok
+test storage::tests::an_absent_daemon_projects_a_hidden_slot ... ok
+test tests::an_absent_daemon_projects_a_hidden_wifi_slot ... ok
+test tests::an_absent_daemon_routing_write_reports_absence ... ok
+test tests::an_absent_daemon_write_reports_absence_and_hides ... ok
+test tests::an_absent_upower_hides_the_battery_slot ... ok
+test updates::tests::an_absent_host_stack_projects_a_hidden_slot ... ok
+test updates::tests::writes_while_absent_answer_absence ... ok
+test vpn::tests::a_write_while_absent_reports_absence_and_hides ... ok
+test vpn::tests::an_absent_daemon_projects_a_hidden_slot ... ok
+
+test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 61 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/debug/deps/dragonfruit_system_status-a0a8c3307e9dcd82)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/accessibility.rs (target/debug/deps/accessibility-e697de6a4de2b478)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/accounts.rs (target/debug/deps/accounts-351287f6e5fba644)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+     Running tests/bluetooth.rs (target/debug/deps/bluetooth-a44eb6cdcad2b664)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/host.rs (target/debug/deps/host-30d37976053f3b97)
+
+running 2 tests
+test an_absent_daemon_hides_both_items_and_never_errors ... ok
+test the_absent_daemon_masking_matrix_hides_only_the_masked_item ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s
+
+     Running tests/input.rs (target/debug/deps/input-c7045d2a6ebe8d6f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/printers.rs (target/debug/deps/printers-46eac1eaf34149e6)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/privacy.rs (target/debug/deps/privacy-feb6c691d2c18031)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/storage.rs (target/debug/deps/storage-628ee9bdfa9ccc14)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/updates.rs (target/debug/deps/updates-54665da5ff4e9ed0)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/vpn.rs (target/debug/deps/vpn-711a6602b50fbdaa)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+
+================================================================
+## 4. The generic adapter subscription (Rust)
+================================================================
+
+The shared adapter seam: an absent daemon at startup is hidden and
+never errors; a new subscription is silent.
+$ cargo test -p dragonfruit-system-adapters --test subscription absent -- --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.04s
+     Running tests/subscription.rs (target/debug/deps/subscription-e6effffcec2ce48c)
+
+running 1 test
+test an_absent_daemon_at_startup_is_hidden_and_never_errors ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+
+================================================================
+## 5. The per-adapter sources (Rust, one representative per subsystem)
+================================================================
+
+Each host adapter's own mock asserts an absent read is absent and a
+write while absent is a no-op. The set below covers every Wave-2/3
+subsystem: BlueZ, UDisks, PipeWire, libinput, the compositor overview,
+UPower+ppd, notify, session lock, the menu bar, updates, accounts,
+CUPS/SANE, the portal PermissionStore, AT-SPI, and NetworkManager VPN.
+$ cargo test -p dragonfruit-bluetooth absent -- --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.06s
+     Running unittests src/lib.rs (target/debug/deps/dragonfruit_bluetooth-1737f9955f60dcdc)
+
+running 5 tests
+test adapter::tests::a_daemon_with_no_controller_is_available_but_absent_at_the_snapshot ... ok
+test adapter::tests::a_new_adapter_is_absent_and_unavailable ... ok
+test source::tests::an_absent_mock_reads_as_absent ... ok
+test adapter::tests::a_write_against_an_absent_daemon_hides_the_item ... ok
+test source::tests::a_write_while_absent_is_absent ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 25 filtered out; finished in 0.00s
+
+     Running tests/read_path.rs (target/debug/deps/read_path-688fad10bfb6bd8e)
+
+running 1 test
+test an_absent_bluez_hides_the_item_and_never_errors ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s
+
+$ cargo test -p dragonfruit-storage absent -- --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.06s
+     Running unittests src/lib.rs (target/debug/deps/dragonfruit_storage-92e5bd89b6abed1f)
+
+running 5 tests
+test adapter::tests::a_daemon_with_no_volumes_is_available_but_absent_at_the_snapshot ... ok
+test adapter::tests::a_new_adapter_is_absent_and_unavailable ... ok
+test adapter::tests::a_write_against_an_absent_daemon_hides_the_item ... ok
+test source::tests::a_write_while_absent_is_absent ... ok
+test source::tests::an_absent_mock_reads_as_absent ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 25 filtered out; finished in 0.00s
+
+     Running tests/read_path.rs (target/debug/deps/read_path-06b0b0db511ea0cb)
+
+running 1 test
+test an_absent_udisks_hides_the_item_and_never_errors ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.00s
+
+$ cargo test -p dragonfruit-audio absent -- --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.04s
+     Running unittests src/lib.rs (target/debug/deps/dragonfruit_audio-c9165268d48ac305)
+
+running 5 tests
+test adapter::tests::a_new_adapter_is_absent_and_unavailable ... ok
+test adapter::tests::a_write_while_absent_hides_the_item ... ok
+test adapter::tests::routing_writes_while_absent_hide_the_item ... ok
+test source::tests::an_absent_mock_reads_as_absent ... ok
+test source::tests::writes_against_an_absent_daemon_are_absent ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 33 filtered out; finished in 0.00s
+
+     Running tests/read_path.rs (target/debug/deps/read_path-3c0d312b42ac9383)
+
+running 1 test
+test an_absent_wireplumber_hides_the_item_and_never_errors ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/routing_path.rs (target/debug/deps/routing_path-ca26e11d6de76ce9)
+
+running 1 test
+test an_absent_daemon_is_a_normal_state_for_routing ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/volume_path.rs (target/debug/deps/volume_path-724a2e6d41219541)
+
+running 1 test
+test a_write_against_an_absent_daemon_reports_absence_and_never_errors ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+$ cargo test -p dragonfruit-input absent -- --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.04s
+     Running unittests src/lib.rs (target/debug/deps/dragonfruit_input-294f9a115618d6ce)
+
+running 3 tests
+test adapter::tests::a_new_adapter_is_absent_and_unavailable ... ok
+test adapter::tests::a_stack_with_no_devices_is_available_but_absent_at_the_snapshot ... ok
+test source::tests::an_absent_mock_reads_as_absent ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 23 filtered out; finished in 0.00s
+
+     Running tests/read_path.rs (target/debug/deps/read_path-ad8a16fe7d1a2f2b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+$ cargo test -p dragonfruit-overview absent -- --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.04s
+     Running unittests src/lib.rs (target/debug/deps/dragonfruit_overview-fb93a21c65e9c00c)
+
+running 2 tests
+test adapter::tests::a_new_adapter_is_absent_and_unavailable ... ok
+test source::tests::an_absent_mock_reads_as_absent ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 21 filtered out; finished in 0.00s
+
+     Running tests/read_path.rs (target/debug/deps/read_path-82ea5db959d7bf4a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+$ cargo test -p dragonfruit-power absent -- --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.06s
+     Running unittests src/lib.rs (target/debug/deps/dragonfruit_power-f7f3ce33c7b05ac0)
+
+running 5 tests
+test adapter::tests::a_new_adapter_is_absent_and_unavailable ... ok
+test adapter::tests::an_absent_profile_write_resyncs_to_unavailable ... ok
+test source::tests::an_absent_mock_reads_as_absent ... ok
+test source::tests::a_profile_write_is_absent_when_the_daemon_is_gone ... ok
+test source::tests::a_profile_write_is_absent_without_a_profiles_half ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 40 filtered out; finished in 0.00s
+
+     Running tests/read_path.rs (target/debug/deps/read_path-614d62994d7b8fb9)
+
+running 3 tests
+test an_absent_upower_hides_the_item_and_never_errors ... ok
+test both_daemons_absent_is_the_only_unavailable_state ... ok
+test an_absent_profiles_daemon_leaves_the_battery_live ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.00s
+
+$ cargo test -p dragonfruit-notify-adapter absent -- --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.06s
+     Running unittests src/lib.rs (target/debug/deps/dragonfruit_notify_adapter-6cdb3f566f18d44e)
+
+running 5 tests
+test adapter::tests::a_new_adapter_is_absent_and_unavailable ... ok
+test dbus::tests::absent_dbus_error_names_are_recognized ... ok
+test source::tests::a_write_while_absent_is_absent ... ok
+test source::tests::an_absent_mock_reads_as_absent ... ok
+test adapter::tests::an_absent_write_resyncs_to_unavailable ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 26 filtered out; finished in 0.00s
+
+     Running tests/session_bus.rs (target/debug/deps/session_bus-edb34abeea434b60)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+$ cargo test -p dragonfruit-lock-adapter absent -- --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.04s
+     Running unittests src/lib.rs (target/debug/deps/dragonfruit_lock_adapter-ad4b268124447ffc)
+
+running 3 tests
+test adapter::tests::a_new_adapter_is_absent_and_unavailable ... ok
+test adapter::tests::an_absent_write_free_adapter_stays_hidden ... ok
+test source::tests::an_absent_mock_reads_as_absent ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 19 filtered out; finished in 0.00s
+
+     Running tests/read_path.rs (target/debug/deps/read_path-dc8832f9aa68500c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+$ cargo test -p dragonfruit-menubar-adapter absent -- --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.04s
+     Running unittests src/lib.rs (target/debug/deps/dragonfruit_menubar_adapter-2b281b3bbe9f8de9)
+
+running 3 tests
+test adapter::tests::a_new_adapter_is_absent_and_unavailable ... ok
+test adapter::tests::an_absent_write_free_adapter_stays_hidden ... ok
+test source::tests::an_absent_mock_reads_as_absent ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 26 filtered out; finished in 0.00s
+
+     Running tests/read_path.rs (target/debug/deps/read_path-e573fdaf04d04d72)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s
+
+$ cargo test -p dragonfruit-update-adapter absent -- --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.04s
+     Running unittests src/lib.rs (target/debug/deps/dragonfruit_update_adapter-66684e605ccf2bb9)
+
+running 5 tests
+test adapter::tests::a_new_adapter_is_absent_and_unavailable ... ok
+test source::tests::an_absent_mock_reads_as_absent ... ok
+test model::tests::an_absent_provider_is_a_normal_snapshot ... ok
+test adapter::tests::writes_while_absent_are_absent_never_errors ... ok
+test source::tests::writes_while_absent_are_absent ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 35 filtered out; finished in 0.00s
+
+     Running tests/read_path.rs (target/debug/deps/read_path-1ba3d25d7241b825)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s
+
+$ cargo test -p dragonfruit-account-adapter absent -- --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.06s
+     Running unittests src/lib.rs (target/debug/deps/dragonfruit_account_adapter-58dc4237e1fb4266)
+
+running 8 tests
+test accounts::tests::a_killed_group_provider_is_absent ... ok
+test adapter::tests::a_group_without_a_provider_is_absent_but_the_users_stay_live ... ok
+test adapter::tests::a_new_adapter_is_absent_and_unavailable ... ok
+test adapter::tests::writes_while_absent_are_absent ... ok
+test model::tests::an_absent_group_provider_is_a_normal_snapshot ... ok
+test source::tests::a_group_write_without_a_provider_is_absent ... ok
+test source::tests::an_absent_mock_reads_as_absent ... ok
+test source::tests::writes_while_absent_are_absent ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 37 filtered out; finished in 0.00s
+
+     Running tests/read_path.rs (target/debug/deps/read_path-f162703c35172bf7)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 12 filtered out; finished in 0.00s
+
+$ cargo test -p dragonfruit-printer-adapter absent -- --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.04s
+     Running unittests src/lib.rs (target/debug/deps/dragonfruit_printer_adapter-1d9bae796398f592)
+
+running 5 tests
+test adapter::tests::a_new_adapter_is_absent_and_unavailable ... ok
+test adapter::tests::writes_while_absent_are_absent ... ok
+test adapter::tests::one_absent_half_is_still_available ... ok
+test source::tests::an_absent_mock_reads_as_absent ... ok
+test source::tests::writes_while_cups_is_absent_are_absent ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 36 filtered out; finished in 0.00s
+
+     Running tests/read_path.rs (target/debug/deps/read_path-afeb2f53326a22e6)
+
+running 1 test
+test one_absent_half_is_a_normal_available_state ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.00s
+
+$ cargo test -p dragonfruit-privacy-adapter absent -- --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.06s
+     Running unittests src/lib.rs (target/debug/deps/dragonfruit_privacy_adapter-50007ed86a389869)
+
+running 4 tests
+test adapter::tests::a_new_adapter_is_absent_and_unavailable ... ok
+test source::tests::an_absent_mock_reads_as_absent ... ok
+test adapter::tests::writes_while_absent_are_absent ... ok
+test source::tests::writes_while_absent_are_absent ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 34 filtered out; finished in 0.00s
+
+     Running tests/read_path.rs (target/debug/deps/read_path-5acc6fb500d4b2ed)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.00s
+
+$ cargo test -p dragonfruit-accessibility-adapter absent -- --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.06s
+     Running unittests src/lib.rs (target/debug/deps/dragonfruit_accessibility_adapter-474a1286f9d6dfdd)
+
+running 2 tests
+test adapter::tests::a_new_adapter_is_absent_and_unavailable ... ok
+test source::tests::an_absent_mock_reads_as_absent ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 23 filtered out; finished in 0.00s
+
+     Running tests/read_path.rs (target/debug/deps/read_path-6ae758c4ac69b643)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.00s
+
+$ cargo test -p dragonfruit-networkmanager absent -- --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.06s
+     Running unittests src/lib.rs (target/debug/deps/dragonfruit_networkmanager-01c0af3a120bfa40)
+
+running 8 tests
+test adapter::tests::a_join_while_absent_reports_absence_and_hides ... ok
+test adapter::tests::a_new_adapter_is_absent_and_unavailable ... ok
+test source::tests::an_absent_mock_join_is_absent ... ok
+test source::tests::an_absent_mock_reads_as_absent ... ok
+test vpn::adapter::tests::a_new_adapter_is_absent_and_unavailable ... ok
+test vpn::adapter::tests::a_write_while_absent_reports_absence_and_hides ... ok
+test vpn::source::tests::an_absent_mock_reads_as_absent ... ok
+test vpn::source::tests::an_absent_mock_write_is_absent ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 59 filtered out; finished in 0.00s
+
+     Running tests/join_path.rs (target/debug/deps/join_path-443753a8a67d3628)
+
+running 1 test
+test an_absent_daemon_reports_absence_and_never_errors ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/read_path.rs (target/debug/deps/read_path-4273bd543842bb49)
+
+running 1 test
+test an_absent_networkmanager_hides_the_item_and_never_errors ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/vpn_read_path.rs (target/debug/deps/vpn_read_path-7eb43d350b36c3cf)
+
+running 1 test
+test an_absent_networkmanager_hides_the_item_and_never_errors ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+
+================================================================
+## 6. Live/VM half (not automated here)
+================================================================
+
+Actually stopping BlueZ/UDisks/PipeWire/CUPS/NetworkManager in a VM and
+watching the pane and its Control Center tile is the design's real-VM
+check (14-risks.md). No VM is available in CI, so the reviewed state
+matrix in docs/captures/t15-absence-matrix.md records it by hand.
+On a live session, 'no bridge host' is the same hidden state because
+the host is a separate process; the nested breadth capture confirms
+the desktop and Settings render with no host at all.

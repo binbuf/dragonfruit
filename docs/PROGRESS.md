@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(138 earlier sections omitted)_
+_(139 earlier sections omitted)_
 
-- **T110x — T-14.7x Dock activation: taps on entries that carry a DragHandler**: **State: done.** A stationary left click on any app/temporary/overflow entry; `shell/src/dockpointer.{h,cpp}` (new, dockcore) — `DockPointer::timestamp()`
 - **T110y — T-14.7y Dock magnification tracking: stable pointer and anchor**: **State: done.** Hover magnification now tracks the pointer without ringing.; `design-system/tokens/tokens.json` — `motion.dockMagnifyTrack` added;
 - **T110z — T-14.7z Dock plate rendering: corner-following rim and frost alignment**: **State: done.** The plate is now one integer rounded rect in every state. The; `shell/dock/Dock.qml` — new `panelRect` (each edge of the live `plateRect`
 - **T110w — T-14.7w Dock icon tiles: true squircle masking**: **State: done.** Every Dock app tile now clips its themed artwork to the token; `shell/dock/DockGlyph.qml` — the themed app artwork is now a `Canvas`
@@ -44,6 +43,7 @@ _(138 earlier sections omitted)_
 - **T138 — T-15.14b Accessibility pane and tile**: **State: done.** The Settings `Accessibility` pane and the Control Center; `services/system-status/src/accessibility.rs` (new) — `AccessibilityHost<S>`
 - **T139 — T-15.15a Network advanced (VPN) adapter**: **State: done.** The Network advanced (VPN) adapter landed as a **second; `services/networkmanager/src/vpn/mod.rs` (new) — module docs + re-exports.
 - **T140 — T-15.15b Network advanced (VPN) pane and tile**: **State: done.** The Settings `Network` pane and the Control Center `VPN` tile; `services/system-status/src/vpn.rs` (new) — `VpnHost<S>` (refresh/view/state/
+- **T141 — T-15.16 Absent-daemon matrix and breadth capture**: **State: done.** The T-15 track is closed. The absent-daemon masking matrix is; `docs/design/08-settings.md` — new "The absent-daemon masking matrix
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -13429,3 +13429,58 @@ Decisions / gotchas for T-15.16 and later:
 - Not touched (other tasks): launching Settings on a pane from the Control
   Center (`onVpnSettingsRequested` is the log-only T-16 stub), the Firewall
   pane, and the menu-bar VPN status item.
+
+## T141 — T-15.16 Absent-daemon matrix and breadth capture
+
+**State: done.** The T-15 track is closed. The absent-daemon masking matrix is
+documented for all 22 shipped panes and reproduced headlessly; the breadth
+capture set is committed as a linked set with a whole-desktop still. No pane
+ships of its own.
+
+Real paths:
+
+- `docs/design/08-settings.md` — new "The absent-daemon masking matrix
+  (T-15.16)" section: two absence families, the 22-row per-pane state table,
+  the negative space (`Error` / `present:false` / polkit read-only), and the
+  headless-gate locations.
+- `docs/design/adr/0148-t15-absent-daemon-masking-matrix.md` (new).
+- `apps/settings/tests/tst_settings_absence.qml` — new
+  `test_every_shipped_pane_routes_and_stays_live_with_providers_absent` (the
+  routing sweep) and `test_mouse_pane_degrades_cleanly_without_the_bridge_host`.
+  Now 28 cases.
+- `scripts/t15-absence-matrix.sh` (new) + `make t15-absence-matrix` →
+  `docs/captures/t15-absence-matrix.txt` (583 lines, all rows green).
+- `docs/captures/t15-absence-matrix.md` (new) — reviewed 22-pane state matrix.
+- `docs/captures/t15-breadth.md` (new) — the linked breadth capture index.
+- `docs/captures/t15-breadth.png` (new, 2115x1437) + `scripts/capture-t15-breadth.sh`
+  (new) + `make t15-breadth-capture`.
+- `docs/captures/README.md` and `Makefile` (targets + help) updated.
+
+Commands that work (repo root):
+
+- `ctest --test-dir build -j4` — 69/69 (absence suite 28 cases).
+- `make e2e` — EXIT 0 (`/tmp/opencode/t141-e2e.log`).
+- `make t15-absence-matrix` — EXIT 0.
+- `make check-tokens check-design-tokens check-no-capture-grab` — clean.
+- `make check-desktop-names` — only the pre-existing failures (`apppicker.h`,
+  `tst_dockcore.cpp`, `zoo-run.sh`, `services/app-index/*`); unchanged from
+  T125–T140.
+
+Decisions / gotchas for T-16 and later:
+
+- **Two families, one pane.** A pane can mix settingsd-backed controls (live on
+  schema defaults, write in memory) and an adapter-read half (one-line note, no
+  write). The matrix says which half is which; never add a settingsd
+  "unavailable" banner.
+- **Absence ≠ error.** `Error` is visible+inert; `present:false` is the second
+  hide rule; a polkit refusal is read-only, not absence.
+- **"No bridge host" = the whole hidden state** on a live session (the host is a
+  separate process), so the nested no-host still is valid live evidence without
+  a VM.
+- **Remaining human step:** mask each real daemon on a VM and compare the
+  rendered pane/tile to `docs/captures/t15-absence-matrix.md`; batched at the
+  T-15 track sign-off (SLICING-REVIEW).
+- Live visual check: `bash scripts/capture-t15-breadth.sh` produced
+  `docs/captures/t15-breadth.png`; vision found the menu bar, Dock, wallpaper,
+  and client windows composited with no blank areas, clipping, or missing
+  chrome.
