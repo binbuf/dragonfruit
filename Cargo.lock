@@ -640,6 +640,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "dragonfruit-notify-adapter"
+version = "0.1.0"
+dependencies = [
+ "dragonfruit-notifications",
+ "dragonfruit-system-adapters",
+ "serde_json",
+ "zbus",
+]
+
+[[package]]
 name = "dragonfruit-overview"
 version = "0.1.0"
 dependencies = [

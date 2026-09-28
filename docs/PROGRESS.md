@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(122 earlier sections omitted)_
+_(123 earlier sections omitted)_
 
-- **T110g — T-14.7g Dock activation and launch correctness**: **State: done.** The Dock click tree is now observable end to end: a launch; `protocols/dragonfruit-toplevel.xml` — manager version 8; new
 - **T110h — T-14.7h Dock folder stacks: presentation and clicks**: **State: done.** Folder entries read like macOS: a clean folder silhouette with; `shell/dock/DockGlyph.qml` — the `stack` block is `stackArtwork`: back tab
 - **T110i — T-14.7i Dock hover name labels (Tooltip)**: **State: done.** The design system has a passive `Tooltip` and the Dock shows a; `design-system/components/Tooltip.qml` (new) — `open`, `anchorItem`,
 - **T110j — T-14.7j Dock Tahoe visual language: floating glass, squircles, states**: **State: done.** The Dock is now a layered floating glass plate with a bright; `design-system/tokens/tokens.json` — semantic colors `dockFill`, `dockRim`,
@@ -42,6 +41,7 @@ _(122 earlier sections omitted)_
 - **T120 — T-15.5b Mission Control and hot corners pane and tile**: **State: done.** The Settings Mission Control & Hot Corners pane and the Control; `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 12 → 13; new
 - **T121 — T-15.6a Battery and power profiles adapter**: **State: done.** `dragonfruit-power` (`services/power`) grew from the T-07.4; `services/power/src/source.rs` — `PowerData.profiles:
 - **T122 — T-15.6b Battery and power profiles pane and tile**: **State: done.** The Settings Battery pane and the Control Center Battery tile; `services/system-status/src/lib.rs` — `battery_view` now carries
+- **T123 — T-15.7a Notifications and Focus adapter**: **State: done.** New workspace crate `dragonfruit-notify-adapter`; `services/notify-adapter/` (new crate, workspace member) —
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -11639,3 +11639,78 @@ Decisions / gotchas for later tasks:
   `No battery history for the last 24 hours.` absent state, and the Battery tile
   (`82% · Balanced`, balance-scale glyph, `Battery Settings…`) above an
   unclipped Clipboard tile.
+
+## T123 — T-15.7a Notifications and Focus adapter
+
+**State: done.** New workspace crate `dragonfruit-notify-adapter`
+(`services/notify-adapter`): a projection adapter over the **existing**
+notification service (`services/notifications`), not a second service. It
+reuses the service's `FocusMode` vocabulary and its shell-facing JSON views,
+and it is the model the T-15.7b pane/tile bind to (ADR 0130).
+
+Real paths:
+
+- `services/notify-adapter/` (new crate, workspace member) —
+  - `src/source.rs` — `NotificationsSource` seam; `NotificationsData` /
+    `NotificationRecord`; `FocusOutcome {Applied,Absent,Failed}`; `MockNotifications`
+    (`absent`/`present`/`failing`/`fail_writes`/`push`/`kill`/`restart`/`reads`/
+    `focus_writes`).
+  - `src/model.rs` — `NotificationsSnapshot` (`FocusSnapshot` mode/allow_list/
+    batched, active banners, history), `AppNotifications` (+`status_label`),
+    pure `NotificationsSnapshot::changes -> Vec<NotificationsChange>`.
+  - `src/adapter.rs` — `NotificationsAdapter<S>` over the shared `Subscription`
+    lifecycle; `refresh`, `set_focus_mode`, `set_focus_allow_list`,
+    `drain_changes`; implements `Adapter` with `AdapterId::NOTIFICATIONS`.
+  - `src/dbus.rs` — `DbusNotifications` live session-bus source
+    (`new()` ambient, `at(addr)` for tests); reads `FocusPolicy()`/`Banners()`/
+    `History()`, writes `SetFocusMode`/`SetFocusAllowList`. Absence = no bus, no
+    owner, or a daemon that does not serve `org.dragonfruit.Notifications1`.
+  - `tests/session_bus.rs` — 5 tests over a private `dbus-daemon` (read, write,
+    adapter-driven, unserved-bus absence, slot id).
+- `services/system-adapters/src/state.rs` — `AdapterId::NOTIFICATIONS`
+  (`"notifications"`) and `AdapterId::FOCUS` (`"focus"`); the id test updated.
+- `Cargo.toml` — workspace member; `Makefile` e2e now runs
+  `cargo test -p dragonfruit-notify-adapter`.
+- Docs — `docs/design/07-system-integration.md` adapter table row + new
+  "The Notifications and Focus path (T-15.7a)" section; ADR
+  `0130-notifications-focus-adapter.md`; capture script
+  `scripts/capture-t15-notify-adapter.sh` + `docs/captures/README.md`.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-notify-adapter` — 31 lib + 5 session_bus green.
+- `cargo test -p dragonfruit-system-adapters` — green.
+- `cargo fmt --all -- --check`; clippy on both crates `-D warnings` — clean.
+- `make e2e` — EXIT 0 (includes the new crate's tests).
+- `make check-design-tokens check-tokens check-no-capture-grab` — clean.
+- `make lint` — still fails only on the pre-existing `check-desktop-names`
+  lines (Makefile GNOME Calculator, app-index tray, apppicker, zoo), unchanged.
+
+Decisions / gotchas for T-15.7b and later:
+
+- **Reuse is load-bearing.** Do not add a queue/history/policy to the adapter.
+  The service owns them; if per-app policy grows, it grows in
+  `services/notifications` and the adapter's read view.
+- **The global notification prefs have no owner yet.** `Show previews`, `when
+  display is sleeping`, `when screen is locked`, `when mirroring` are not in
+  the notification service; T-15.7b adds them as settingsd keys. Do not put
+  them on the adapter.
+- **The adapter is standalone; T-15.7b adds the host seam.** Mirror
+  bluetooth/storage/battery: add `services/system-status/src/notifications.rs`
+  (a `NotificationsHost` + JSON `notifications_view`) and a
+  `org.dragonfruit.SystemStatus1.Notifications` interface, then the C++
+  settings client/tile. `AdapterId::NOTIFICATIONS`/`FOCUS` are already in the
+  contract.
+- **Writes are snapshot-neutral.** `set_focus_mode`/`set_focus_allow_list`
+  leave the snapshot alone on success; the host re-reads after the service's
+  `Changed`. Only an absent write resyncs the adapter to `Unavailable`.
+- **The live source treats a foreign notification daemon as absence**, not
+  error: a daemon that owns `org.freedesktop.Notifications` but lacks
+  `org.dragonfruit.Notifications1` yields `Ok(None)` (hidden), so a dunst/mako
+  session never shows a broken item.
+- Live visual check: `bash scripts/capture-t15-notify-adapter.sh` produced
+  `docs/captures/t15-7a-notify-adapter.png` (3840x2160). No surface of its own,
+  so the capture confirms only that the nested desktop renders; vision found
+  the menu bar, Dock, wallpaper, and windows composited without clipping or
+  stray artifacts (the one dark rectangle it flagged is the host screen outside
+  the nested output, matching T121's capture).
