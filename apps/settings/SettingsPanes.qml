@@ -40,7 +40,7 @@ QtObject {
         { id: "network", title: qsTr("Network"), icon: "network",
           description: "", shipped: false },
         { id: "battery", title: qsTr("Battery"), icon: "battery",
-          description: "", shipped: false },
+          description: "", shipped: true },
         { id: "storage", title: qsTr("Storage"), icon: "storage",
           description: "", shipped: true },
         { id: "general", title: qsTr("General"), icon: "general",

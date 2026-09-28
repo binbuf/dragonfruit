@@ -32,8 +32,8 @@ Item {
         // matrix asserts stays live while its provider is absent.
         readonly property var shippedPaneIds:
             ["appearance", "desktop-dock", "mission-control", "displays",
-             "wallpaper", "bluetooth", "storage", "sound", "keyboard", "mouse",
-             "trackpad"]
+             "wallpaper", "bluetooth", "battery", "storage", "sound", "keyboard",
+             "mouse", "trackpad"]
 
         function make() {
             var shell = createTemporaryObject(shellComponent, stage,
@@ -86,7 +86,7 @@ Item {
 
         function test_every_shipped_pane_has_a_body_and_no_other_does() {
             var shell = make();
-            compare(SettingsPanes.shippedPanes.length, 11);
+            compare(SettingsPanes.shippedPanes.length, 12);
             for (var i = 0; i < SettingsPanes.catalog.length; ++i) {
                 var pane = SettingsPanes.catalog[i];
                 var body = shell.paneComponent(pane.id);
@@ -320,6 +320,27 @@ Item {
             compare(Settings.values["overview.hotCornerBottomRight"], "mission-control");
             pane.gestureMissionToggle.toggle();
             compare(Settings.values["gestures.missionControl"], false);
+        }
+
+        // With no bridge host on the private bus, the Battery pane is the absence
+        // state: the power/battery/history groups are hidden and a one-line note
+        // explains the missing service. Nothing errors and no write is attempted.
+        function test_battery_pane_degrades_cleanly_without_the_bridge_host() {
+            var shell = make();
+            compare(Settings.batteryAvailable, false,
+                    "no bridge host is the absent state under test");
+            compare(Settings.battery.state, undefined);
+
+            var pane = showPane(shell, "battery");
+            compare(pane.present, false);
+            compare(pane.profilesAvailable, false);
+            compare(pane.absenceNote.visible, true,
+                    "the absence note explains the missing status service");
+            verify(pane.absenceNote.text.length > 0);
+
+            // A profile write is a safe no-op with no host.
+            Settings.setPowerProfile("performance");
+            compare(Settings.batteryAvailable, false);
         }
 
         // A control changed while the daemon is absent still converges into the

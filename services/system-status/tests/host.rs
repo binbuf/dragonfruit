@@ -289,6 +289,45 @@ fn the_battery_menu_model_is_read_only_and_never_writes() {
 }
 
 #[test]
+fn the_battery_profile_selection_reads_and_writes_through_the_host() {
+    use dragonfruit_power::{PowerProfileData, PowerProfilesData};
+
+    let mut data = battery_data(71.0, 2);
+    data.profiles = Some(PowerProfilesData {
+        active_profile: "balanced".to_owned(),
+        profiles: vec![
+            PowerProfileData {
+                profile: "power-saver".to_owned(),
+                ..PowerProfileData::default()
+            },
+            PowerProfileData {
+                profile: "balanced".to_owned(),
+                ..PowerProfileData::default()
+            },
+        ],
+        ..PowerProfilesData::default()
+    });
+    let mut host = StatusHost::new(
+        MockNetworkManager::absent(),
+        MockAudio::absent(),
+        MockPower::present(data),
+    );
+    host.refresh();
+
+    let view = host.battery_view();
+    assert_eq!(view["profilesAvailable"], true);
+    assert_eq!(view["activeProfile"], "balanced");
+    assert_eq!(view["profiles"].as_array().unwrap().len(), 2);
+
+    // The pane's write applies through the adapter exactly once and the view
+    // converges only after the host re-reads.
+    assert_eq!(host.set_active_profile("power-saver")["outcome"], "applied");
+    assert_eq!(host.battery().source().profile_writes(), 1);
+    host.refresh_battery();
+    assert_eq!(host.battery_view()["activeProfile"], "power-saver");
+}
+
+#[test]
 fn a_machine_without_a_battery_keeps_the_item_available_but_not_present() {
     let mut host = StatusHost::new(
         MockNetworkManager::absent(),

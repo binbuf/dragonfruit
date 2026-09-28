@@ -245,9 +245,41 @@ normal hidden state. A machine that runs only power-profiles-daemon answers
 only UPower answers `Available` with `profiles_available()` false. Nothing
 blocks session startup in any case.
 
-The Settings pane and Control Center tile are T-15.6b; T-15.6a ships the
-backend and its mock-driven tests only
-([adr/0128](adr/0128-battery-power-profiles-adapter.md)).
+The Settings pane and Control Center tile are T-15.6b
+([adr/0129](adr/0129-battery-pane-and-tile.md)); T-15.6a ships the backend and
+its mock-driven tests only ([adr/0128](adr/0128-battery-power-profiles-adapter.md)).
+
+### The Battery pane and tile (T-15.6b)
+
+T-15.6b ships the Settings pane and the Control Center tile as one functional
+unit over the T-15.6a adapter ([adr/0129](adr/0129-battery-pane-and-tile.md)).
+The bridge host's `Battery` interface gains the one write the pane raises:
+
+- `org.dragonfruit.SystemStatus1.Battery` — `State()`/`Refresh()` and
+  `SetActiveProfile(profile)` (the stable `power-saver`/`balanced`/
+  `performance` id; an unknown id is a failure, never a guess).
+- `battery_view` carries `health`/`healthLabel`/`capacity`/`chargeCycles`,
+  `chargeState`, the `profiles` list (`{id, label, glyph, active}`),
+  `activeProfile`/`profileLabel`, and `profilesAvailable` alongside the charge
+  fields. `profilesAvailable` is independent of `present`: a desktop with no
+  battery can still select a profile.
+- The shell decodes the same view through `SystemStatusModel`; the Control
+  Center tile (index 9) summarizes charge and the active profile
+  (`"71% · Balanced"`), uses the active profile's glyph, and links to the pane.
+  It hides when the host is absent or when there is neither a battery nor a
+  profile.
+- The Settings app talks to the interface through a dedicated `BatteryClient`
+  seam (`apps/settings/BatteryClient.{h,cpp}`, `DF_BATTERY_FIXTURE` for tests)
+  and the `Settings` singleton's `battery`/`batteryAvailable`/`refreshBattery`/
+  `setPowerProfile`. The pane (`apps/settings/BatteryPane.qml`) writes live.
+
+**Absence is layered and per daemon**, matching T-15.6a. A missing host is the
+pane's one-line note; a present host with no battery hides the battery/history
+groups but keeps the profile picker; a missing power-profiles-daemon hides the
+picker and shows its own note while the battery rows stay live. Nothing errors.
+UPower no longer exposes charge history, so the `Usage History` range switch and
+chart frames render an honest absent state (provider T-15.x); the pane ships no
+dead controls.
 
 [`set_active_profile`]: ../../services/power/src/adapter.rs
 [`PowerProfile`]: ../../services/power/src/model.rs
@@ -582,8 +614,8 @@ NetworkManager, audio, and power adapters and serves
 - `org.dragonfruit.SystemStatus1.Audio` — `State()`/`Refresh()` and
   `SetVolume(volume)`, `SetMute(muted)`, `ToggleMute()`, plus the T-15.3b
   routing writes `SetDefaultSink(id)` and `SetDefaultSource(id)`.
-- `org.dragonfruit.SystemStatus1.Battery` — `State()`/`Refresh()` only (the
-  read-only battery view; no write).
+- `org.dragonfruit.SystemStatus1.Battery` — `State()`/`Refresh()` and
+  `SetActiveProfile(profile)` (the T-15.6b power-profile write).
 - `org.dragonfruit.SystemStatus1.Storage` (T-15.2b) — `State()`/`Refresh()`
   plus `Mount(volumePath)`, `Unmount(volumePath)`, `Eject(drivePath)`.
 - `org.dragonfruit.SystemStatus1.Input` (T-15.4b) — `State()`/`Refresh()` only

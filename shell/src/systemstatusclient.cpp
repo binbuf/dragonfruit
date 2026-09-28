@@ -532,8 +532,35 @@ void MockSystemStatusClient::refreshBattery()
     view.insert(QStringLiteral("charging"), true);
     view.insert(QStringLiteral("plugged"), true);
     view.insert(QStringLiteral("onBattery"), false);
+    view.insert(QStringLiteral("chargeState"), QStringLiteral("charging"));
+    view.insert(QStringLiteral("health"), QStringLiteral("normal"));
+    view.insert(QStringLiteral("healthLabel"), QStringLiteral("Normal"));
+    view.insert(QStringLiteral("capacity"), 96);
+    view.insert(QStringLiteral("chargeCycles"), 112);
     view.insert(QStringLiteral("timeToEmpty"), QJsonValue::Null);
     view.insert(QStringLiteral("timeToFull"), 5400);
+    // T-15.6b: the power-profiles half, so the Control Center tile renders the
+    // active profile without a power-profiles-daemon on the host.
+    view.insert(QStringLiteral("profilesAvailable"), true);
+    view.insert(QStringLiteral("activeProfile"), QStringLiteral("balanced"));
+    view.insert(QStringLiteral("profileLabel"), QStringLiteral("Balanced"));
+    QJsonArray profiles;
+    const auto profile = [](const QString &id, const QString &label, const QString &glyph,
+                            bool active) {
+        QJsonObject entry;
+        entry.insert(QStringLiteral("id"), id);
+        entry.insert(QStringLiteral("label"), label);
+        entry.insert(QStringLiteral("glyph"), glyph);
+        entry.insert(QStringLiteral("active"), active);
+        return entry;
+    };
+    profiles.append(profile(QStringLiteral("power-saver"), QStringLiteral("Power Saver"),
+                            QStringLiteral("power-saver"), false));
+    profiles.append(profile(QStringLiteral("balanced"), QStringLiteral("Balanced"),
+                            QStringLiteral("power-balanced"), true));
+    profiles.append(profile(QStringLiteral("performance"), QStringLiteral("Performance"),
+                            QStringLiteral("power-performance"), false));
+    view.insert(QStringLiteral("profiles"), profiles);
     emit batteryState(compact(view));
 }
 
