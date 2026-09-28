@@ -67,9 +67,12 @@ fn battery_data(percentage: f64, state: u32) -> PowerData {
             percentage,
             state,
             battery_level: 4,
+            capacity: 96.0,
+            charge_cycles: 112,
             time_to_empty: 0,
             time_to_full: 0,
         }],
+        profiles: None,
     }
 }
 
