@@ -6949,3 +6949,127 @@ fn screenshot_capture_requests_are_answered_portal_only() {
     let _ = conn.flush();
     proc.shutdown();
 }
+
+/// T-16.3b acceptance: fractional output scale renders chrome correctly.
+///
+/// A top bar anchored to the primary output is configured for the output's
+/// **logical** width. When the output scale changes (the Displays pane's
+/// `df_output.set_scale`) the compositor reconfigures the chrome to the new
+/// logical geometry, so the bar tracks the output instead of staying sized for
+/// the old scale (oversized/off-screen chrome). The reserved zone stays a
+/// logical thickness.
+#[test]
+fn fractional_scale_reconfigures_chrome_to_the_logical_output() {
+    let token = "16".repeat(32);
+    let proc = CompositorProcess::start("dragonfruit-conformance-scale", &[token]);
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+
+    let (core_name, core_version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, core_name, core_version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+
+    let (shell_name, shell_version) = state.shell_global.expect("df_shell advertised");
+    let shell = bind_shell(&mut state, &queue, shell_name, shell_version);
+    // The manager creates the shell's `df_output` objects (and their geometry
+    // events) and gives us an `df_output` handle to drive the scale request.
+    let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
+    let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.outputs.is_empty() && !state.output_geometries.is_empty(),
+    );
+    let qh = queue.handle();
+    let surface = state.compositor.clone().unwrap().create_surface(&qh, ());
+    let layer = shell.get_layer_surface(
+        &surface,
+        None,
+        df_shell::Layer::Top,
+        "menubar".to_string(),
+        &qh,
+        (),
+    );
+    layer.set_anchor(1 | 4 | 8); // top | left | right
+    layer.set_size(0, 28);
+    layer.set_exclusive_zone(28);
+    layer.set_keyboard_interaction(df_layer_surface::KeyboardInteraction::None);
+    surface.commit();
+
+    // At scale 1 the bar spans the native 1280-wide output.
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .layer_configures
+                .iter()
+                .any(|(_, width, height)| *width == OUTPUT_W && *height == 28)
+        },
+    );
+    assert!(state
+        .output_geometries
+        .iter()
+        .any(|(_, _, width, height)| *width == OUTPUT_W && *height == 720));
+
+    // A fractional scale shrinks the logical output: 1280/1.5 = 853.3 -> 854,
+    // 720/1.5 = 480. The chrome must be reconfigured for the new logical size.
+    state.layer_configures.clear();
+    state.output_geometries.clear();
+    state.outputs[0].set_scale(1.5);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .layer_configures
+                .iter()
+                .any(|(_, width, height)| *width == 854 && *height == 28)
+        },
+    );
+    assert!(
+        state
+            .output_scales
+            .iter()
+            .any(|scale| (*scale - 1.5).abs() < 0.001),
+        "the applied fractional scale must reach the shell: {:?}",
+        state.output_scales
+    );
+    assert!(
+        state
+            .output_geometries
+            .iter()
+            .any(|(_, _, width, height)| *width == 854 && *height == 480),
+        "the output geometry event carries the fractional logical size: {:?}",
+        state.output_geometries
+    );
+    // The reserved zone is in logical pixels, so the scale does not change it.
+    assert!(
+        state
+            .output_reserved
+            .iter()
+            .any(|(edge, thickness)| *edge == 0 && *thickness == 28),
+        "the bar still reserves its logical thickness: {:?}",
+        state.output_reserved
+    );
+
+    drop(layer);
+    drop(shell);
+    drop(surface);
+    drop(manager);
+    drop(core);
+    let _ = conn.flush();
+    proc.shutdown();
+}

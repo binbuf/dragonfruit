@@ -699,6 +699,29 @@ pub fn accepts_fractional_scale(window: &smithay::desktop::Window) -> bool {
     window.x11_surface().is_none()
 }
 
+/// Advertise `output`'s fractional scale to the shell chrome surfaces
+/// composited on it (T-16.3b).
+///
+/// Chrome surfaces are ordinary Wayland clients with a `wp_fractional_scale`
+/// object, so a scale-aware shell can render its menu bar and Dock at the
+/// output's real resolution instead of a 1x buffer the compositor then
+/// stretches (the "blurry chrome" failure). The compositor never advertises a
+/// fractional scale to Xwayland (`accepts_fractional_scale`); chrome is a
+/// first-party Wayland client and may use it.
+pub fn update_chrome_preferred_scale(state: &DfState, output: &Output) {
+    let Some(geometry) = state.space.output_geometry(output) else {
+        return;
+    };
+    let scale = output.current_scale().fractional_scale();
+    for chrome in state.chrome_surfaces(output.name().as_str(), geometry) {
+        smithay::wayland::compositor::with_states(&chrome.surface, |states| {
+            with_fractional_scale(states, |fractional_scale| {
+                fractional_scale.set_preferred_scale(scale);
+            });
+        });
+    }
+}
+
 /// After a successful frame: send frame callbacks (throttled) and update
 /// the preferred fractional scale the surfaces were displayed at.
 pub fn post_repaint(
@@ -708,6 +731,10 @@ pub fn post_repaint(
     _states: &RenderElementStates,
 ) {
     let throttle = Some(Duration::from_secs(1));
+
+    // Chrome surfaces on this output learn the output's fractional scale, so
+    // the shell can size its buffers per output (T-16.3b).
+    update_chrome_preferred_scale(state, output);
 
     let mut wakeups = 0u64;
     for window in state.space.elements() {
