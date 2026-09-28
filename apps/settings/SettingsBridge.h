@@ -39,6 +39,7 @@ class BatteryClient;
 class NotificationsClient;
 class UpdatesClient;
 class AccountsClient;
+class PrintersClient;
 class QDBusServiceWatcher;
 
 class SettingsBridge : public QObject
@@ -156,6 +157,16 @@ class SettingsBridge : public QObject
     // Whether the bridge host is on the session bus. False means no Users &
     // Groups surface at all; the pane shows the absence note.
     Q_PROPERTY(bool accountsAvailable READ accountsAvailable NOTIFY accountsChanged)
+    // The Printers and Scanners view from the bridge host (T-15.12b):
+    // `{ state, glyph, label, present, printersAvailable, scannersAvailable,
+    // printerCount, scannerCount, queuedJobCount, defaultPrinter, printers,
+    // scanners }`. Empty when the host is absent; the pane renders the absence
+    // state rather than erroring. A host with no SANE is `available` with
+    // `scannersAvailable: false`, so only the scanner half is marked absent.
+    Q_PROPERTY(QVariantMap printers READ printers NOTIFY printersChanged)
+    // Whether the bridge host is on the session bus. False means no Printers &
+    // Scanners surface at all; the pane shows the absence note.
+    Q_PROPERTY(bool printersAvailable READ printersAvailable NOTIFY printersChanged)
     // The pane the shell opens on startup. Empty uses the first shipped pane;
     // `DF_SETTINGS_START_PANE=wallpaper` selects one for captures and tests.
     Q_PROPERTY(QString startPane READ startPane CONSTANT)
@@ -187,6 +198,8 @@ public:
     bool updatesAvailable() const;
     QVariantMap accounts() const;
     bool accountsAvailable() const;
+    QVariantMap printers() const;
+    bool printersAvailable() const;
     QString providerStatus() const;
     QString providerDefault() const;
     QString wallpaperBuiltinDefault() const;
@@ -304,6 +317,18 @@ public:
     // initial stack. A no-op on the live client.
     Q_INVOKABLE void resetAccountsFixture();
 
+    // T-15.12b: the Printers & Scanners pane's one seam. `refreshPrinters`
+    // re-reads the bridge host on pane open; the three queue writes each call
+    // the host stack adapter once and the host pushes the new view back through
+    // `printersChanged`. A no-op when the host is absent.
+    Q_INVOKABLE void refreshPrinters();
+    Q_INVOKABLE void setDefaultPrinter(const QString &name);
+    Q_INVOKABLE void setPrinterAcceptingJobs(const QString &name, bool accepting);
+    Q_INVOKABLE void cancelPrinterJob(int jobId);
+    // Test seam (`DF_PRINTERS_FIXTURE` only): restore the in-process fixture's
+    // initial queues. A no-op on the live client.
+    Q_INVOKABLE void resetPrintersFixture();
+
     // T-18.2 test seam: with `DF_WALLPAPER_FIXTURE` set, seed the provider
     // lifecycle to `status` (`ready` loads the deterministic fixture
     // catalogue; any other status leaves it empty) so the pane's fetching /
@@ -347,6 +372,8 @@ signals:
     void updatesChanged();
     // The Users and Groups view or availability changed (T-15.11b).
     void accountsChanged();
+    // The Printers and Scanners view or availability changed (T-15.12b).
+    void printersChanged();
 
 private:
     void buildWallpaperPresets();
@@ -407,4 +434,7 @@ private:
     // T-15.11b: the Users & Groups seam (`DF_ACCOUNTS_FIXTURE` selects the
     // mock).
     AccountsClient *m_accounts = nullptr;
+    // T-15.12b: the Printers & Scanners seam (`DF_PRINTERS_FIXTURE` selects the
+    // mock).
+    PrintersClient *m_printers = nullptr;
 };

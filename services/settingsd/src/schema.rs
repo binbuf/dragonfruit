@@ -19,7 +19,7 @@ use crate::value::{SettingsError, Value};
 
 /// The current schema revision. Bump only when a key is added or a default
 /// changes; renames and removals are forbidden within the `1` series.
-pub const SCHEMA_VERSION: u32 = 16;
+pub const SCHEMA_VERSION: u32 = 17;
 
 /// The D-Bus type of a settings value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -73,11 +73,12 @@ pub enum KeyGroup {
     Overview,
     Notifications,
     Lock,
+    Printers,
 }
 
 impl KeyGroup {
     /// Every group, in schema order.
-    pub const ALL: [KeyGroup; 14] = [
+    pub const ALL: [KeyGroup; 15] = [
         KeyGroup::Dock,
         KeyGroup::Workspaces,
         KeyGroup::Gestures,
@@ -92,6 +93,7 @@ impl KeyGroup {
         KeyGroup::Overview,
         KeyGroup::Notifications,
         KeyGroup::Lock,
+        KeyGroup::Printers,
     ];
 
     /// The group name used in docs and tests.
@@ -111,6 +113,7 @@ impl KeyGroup {
             KeyGroup::Overview => "overview",
             KeyGroup::Notifications => "notifications",
             KeyGroup::Lock => "lock",
+            KeyGroup::Printers => "printers",
         }
     }
 }
@@ -1332,6 +1335,25 @@ pub const KEYS: &[KeySpec] = &[
         since: 16,
         summary: "Show the Accessibility control in the menu bar when it is available.",
     },
+    // ── Printers & Scanners (T-15.12b) ──────────────────────────────────
+    // CUPS owns the queues, the system default destination, and the job
+    // queue; SANE owns the scanner inventory (ADR 0140). The one durable
+    // presentation preference the pane owns is the default paper size, which
+    // has no CUPS client-tool equivalent for a system-wide default. The
+    // spellings are the pane's stable paper-size ids.
+    KeySpec {
+        key: "printers.defaultPaperSize",
+        group: KeyGroup::Printers,
+        kind: KeyType::Text,
+        default: KeyDefault::Text("us-letter"),
+        allowed: &["us-letter", "us-legal", "a3", "a4", "a5"],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "apps/settings (stored preference)",
+        since: 17,
+        summary: "The default paper size new print jobs assume.",
+    },
 ];
 
 /// Look up a key's declaration.
@@ -1932,6 +1954,33 @@ mod tests {
                 "{key}"
             );
         }
+    }
+
+    /// The Printers & Scanners key (T-15.12b): the one durable presentation
+    /// preference the pane owns (CUPS and SANE own their own state), additive
+    /// in revision 17 (ADR 0141).
+    #[test]
+    fn the_printer_key_is_declared_in_revision_seventeen() {
+        let spec =
+            spec("printers.defaultPaperSize").expect("printers.defaultPaperSize is declared");
+        assert_eq!(spec.group, KeyGroup::Printers);
+        assert_eq!(spec.kind, KeyType::Text);
+        assert_eq!(spec.default, KeyDefault::Text("us-letter"));
+        assert_eq!(spec.owner, "apps/settings");
+        assert_eq!(spec.since, 17);
+        assert!(spec.since <= SCHEMA_VERSION);
+        for size in ["us-letter", "us-legal", "a3", "a4", "a5"] {
+            assert!(
+                spec.validate(&Value::Text(size.into())).is_ok(),
+                "{size} is a valid paper size"
+            );
+        }
+        assert!(spec.validate(&Value::Text("tabloid".into())).is_err());
+        assert_eq!(
+            KeyGroup::Printers.name(),
+            "printers",
+            "the group name is stable"
+        );
     }
 
     /// A frozen manifest of the v1 key set. Adding a key is allowed (extend

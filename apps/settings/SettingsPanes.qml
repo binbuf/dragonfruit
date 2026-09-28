@@ -90,8 +90,8 @@ QtObject {
           description: "", shipped: true },
         { id: "trackpad", title: qsTr("Trackpad"), icon: "trackpad",
           description: "", shipped: true },
-        { id: "printers", title: qsTr("Printers & Scanners"), icon: "general",
-          description: "", shipped: false }
+        { id: "printers", title: qsTr("Printers & Scanners"), icon: "printer",
+          description: "", shipped: true }
     ]
 
     // Panes whose content has landed (the sidebar list).

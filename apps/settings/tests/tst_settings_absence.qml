@@ -34,7 +34,7 @@ Item {
             ["appearance", "desktop-dock", "mission-control", "displays",
              "wallpaper", "bluetooth", "battery", "storage", "general", "sound",
              "keyboard", "mouse", "trackpad", "notifications", "focus",
-             "lock-screen", "menu-bar", "users-groups"]
+             "lock-screen", "menu-bar", "users-groups", "printers"]
 
         function make() {
             var shell = createTemporaryObject(shellComponent, stage,
@@ -87,7 +87,7 @@ Item {
 
         function test_every_shipped_pane_has_a_body_and_no_other_does() {
             var shell = make();
-            compare(SettingsPanes.shippedPanes.length, 18);
+            compare(SettingsPanes.shippedPanes.length, 19);
             for (var i = 0; i < SettingsPanes.catalog.length; ++i) {
                 var pane = SettingsPanes.catalog[i];
                 var body = shell.paneComponent(pane.id);
@@ -500,6 +500,37 @@ Item {
             Settings.setAccountLocked(1000, true);
             Settings.createAccountGroup("devs");
             compare(Settings.accountsAvailable, false);
+        }
+
+        // The Printers & Scanners view is a host-stack adapter read, so with no
+        // bridge host it is the absence state: the queue/scanner lists and the
+        // per-printer dialog are replaced by a one-line note. The one settingsd
+        // key the pane owns (`printers.defaultPaperSize`) stays live on its
+        // schema default, so the pane is never a dead surface (T-15.12b).
+        function test_printers_pane_degrades_cleanly_without_the_bridge_host() {
+            var shell = make();
+            compare(Settings.printersAvailable, false,
+                    "no bridge host is the absent state under test");
+            compare(Settings.printers.state, undefined);
+
+            var pane = showPane(shell, "printers");
+            compare(pane.ready, false);
+            compare(pane.absenceNote.visible, true,
+                    "the absence note explains the missing printing service");
+            verify(pane.absenceNote.text.length > 0);
+            compare(pane.printersGroup.visible, false);
+            compare(pane.scannersGroup.visible, false);
+
+            // The settingsd-backed paper size still writes in memory.
+            pane.paperSizeSelect.activateIndex(3); // A4
+            compare(Settings.values["printers.defaultPaperSize"], "a4");
+
+            // The queue writes are safe no-ops with no host.
+            Settings.refreshPrinters();
+            Settings.setDefaultPrinter("Canon_MF230");
+            Settings.setPrinterAcceptingJobs("Canon_MF230", false);
+            Settings.cancelPrinterJob(1);
+            compare(Settings.printersAvailable, false);
         }
     }
 }

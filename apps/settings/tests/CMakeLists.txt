@@ -388,6 +388,30 @@ set_tests_properties(tst_settings_users PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# Printers & Scanners pane tests (T-15.12b): the two popups, the per-printer
+# detail (accept jobs, set default, cancel a job), and the scanner list.
+# `DF_PRINTERS_FIXTURE` is the deterministic in-process host-stack client, so
+# the cases never touch CUPS or SANE.
+qt_add_executable(tst_settings_printers
+    tst_settings_printers.cpp
+)
+target_link_libraries(tst_settings_printers PRIVATE
+    Qt6::QuickTest
+    dragonfruit-design-systemplugin
+    dragonfruit-settings-uiplugin
+)
+qt_import_qml_plugins(tst_settings_printers)
+
+add_test(
+    NAME tst_settings_printers
+    COMMAND tst_settings_printers
+        -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_settings_printers.qml
+)
+set_tests_properties(tst_settings_printers PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;DF_SETTINGS_FIXTURE=1;DF_PRINTERS_FIXTURE=1;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Settings menu-model publication tests (T-09.6a): the app's published menu
 # model is asserted in shape and injected into the shell's `MenuBar` (the
 # `Dragonfruit.MenuBar` module is linked so the round-trip is real). Headless

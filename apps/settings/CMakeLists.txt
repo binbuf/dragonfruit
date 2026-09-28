@@ -29,6 +29,8 @@ qt_add_qml_module(dragonfruit-settings-ui
         UpdatesClient.h
         AccountsClient.cpp
         AccountsClient.h
+        PrintersClient.cpp
+        PrintersClient.h
     QML_FILES
         SettingsPanes.qml
         SettingsMenu.qml
@@ -52,6 +54,7 @@ qt_add_qml_module(dragonfruit-settings-ui
         MenuBarPane.qml
         GeneralPane.qml
         UsersGroupsPane.qml
+        PrintersScannersPane.qml
         SettingsShell.qml
         SettingsWindow.qml
 )
@@ -101,6 +104,7 @@ df_qml_lint(app-settings
     MenuBarPane.qml
     GeneralPane.qml
     UsersGroupsPane.qml
+    PrintersScannersPane.qml
     SettingsShell.qml
     SettingsWindow.qml
 )
