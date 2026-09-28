@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(146 earlier sections omitted)_
+_(147 earlier sections omitted)_
 
-- **Dev tooling — wallpaper provider in the dev session (T-18.1a follow-up)**: **State: done.** `make demo` (nested) and `make dev --shell` now start; `tools/dragonfruit-dev/src/main.rs` — `launch_services` takes a
 - **T111 — T-15.1a Bluetooth adapter**: **State: done.** The BlueZ Bluetooth adapter landed in a new crate,; `services/bluetooth/` (new crate) — `src/source.rs` (`BluetoothData`,
 - **T112 — T-15.1b Bluetooth pane and tile**: **State: done.** The Bluetooth pane and Control Center tile ship as one unit; `services/system-status/src/bluetooth.rs` (new) — `BluetoothHost<B>` and
 - **T113 — T-15.2a Storage and removable media adapter**: **State: done.** The UDisks2 storage/removable-media adapter landed in a new; `services/storage/` (new crate) — `src/source.rs` (`StorageData`,
@@ -44,6 +43,7 @@ _(146 earlier sections omitted)_
 - **T146 — T-16.3b Viewport downscale and chrome sizing**: **State: done.** Fractional-scale chrome is sized per output and the nested; `compositor/src/backend/mod.rs` — `ENV_NESTED_SCALE` = `DRAGONFRUIT_NESTED_SCALE`.
 - **T147 — T-16.6a AT-SPI and keyboard-only audit**: **State: done.** The live AT-SPI dump/walkthrough and the keyboard-only; `scripts/t16-a11y-audit.sh` + `scripts/t16-a11y-audit.py` (new;
 - **T148 — T-16.6b Magnifier and reduced-motion sweep**: **State: done.** Two units landed: a compositor-owned screen magnifier and an; `compositor/src/magnifier.rs` (new) — the pure `Magnifier` policy: zoom
+- **T149 — T-16.7 Localization and i18n**: **State: done.** The shell and first-party apps are translatable and a locale; `libs/i18n/` (new static lib `dragonfruit-i18n`) — `i18n.cpp`/`i18n.h`:
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -13976,3 +13976,66 @@ Decisions / gotchas for later tasks:
   `enabled/running` guard on `Theme.reducedMotion`. The compositor half scans
   `design_tokens.rs`/`Theme.qml` (generated from
   `design-system/tokens/tokens.json`) and the lifecycle enum.
+
+## T149 — T-16.7 Localization and i18n
+
+**State: done.** The shell and first-party apps are translatable and a locale
+switch translates them; dates/numbers follow the locale. Contract in ADR 0156.
+
+Real paths:
+
+- `libs/i18n/` (new static lib `dragonfruit-i18n`) — `i18n.cpp`/`i18n.h`:
+  `CatalogTranslator` (a `QTranslator` that parses Qt `.ts` XML at runtime with
+  `QXmlStreamReader`; context+source lookup then source-only fallback),
+  `resolveLocale()` (`DRAGONFRUIT_LOCALE` then `QLocale::system()`),
+  `catalogSearchPaths()` (`$DRAGONFRUIT_TRANSLATIONS_DIR` → compiled-in
+  source tree → `../share/dragonfruit/translations` → `/usr[/local]/share/...`),
+  `installTranslations[For]()` (installs the catalog and `QLocale::setDefault`).
+  9 tests in `libs/i18n/tests/tst_i18n.cpp`.
+- `shell/src/main.cpp`, `apps/settings/main.cpp`, `apps/files/main.cpp` —
+  `Dragonfruit::installTranslations(app)` before QML loads; the executables link
+  `dragonfruit-i18n`.
+- `apps/files/FilesDirectoryModel.cpp` — size/modified now use the default
+  `QLocale()` (not `QLocale::system()`), and the Kind strings
+  (`Folder`/`File`/`Alias`/`Item`) are translated.
+- `scripts/i18n-extract.py` + `make check-i18n` (in `make lint` + CI) — the
+  string-extraction gate: `--check` fails on source/template drift and on a
+  bare literal in a user-visible QML property; `--update` regenerates the
+  template. Scopes: `shell/`, `apps/`, `design-system/components`, excluding
+  `tests/`.
+- `translations/dragonfruit.ts` (template, 909 strings / 65 contexts),
+  `translations/dragonfruit_es.ts` (458 Spanish translations / 45 contexts).
+- `scripts/capture-t16-i18n.sh` + `make t16-i18n-capture` —
+  `docs/captures/t16-i18n-{en,es}.png` and stacked `t16-i18n.png`.
+- CMake install rule puts the `.ts` files under
+  `${CMAKE_INSTALL_DATADIR}/dragonfruit/translations`.
+
+Commands that work (repo root; `PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig`,
+`RUSTFLAGS=-L $HOME/.local/df-devroot/lib64`):
+
+- `cmake --build build`, then `ctest --test-dir build` — 70/70 pass (new
+  `tst_i18n`).
+- `./scripts/i18n-extract.py --check` — OK (909 strings / 65 contexts).
+- `make e2e` — EXIT 0 after the change.
+- `bash scripts/capture-t16-i18n.sh` — PASS (host Wayland + Pillow + spectacle;
+  not in `make e2e`).
+- Live visual check: `docs/captures/t16-i18n.png` (1920x2400 stack). Vision
+  found the bottom half fully Spanish (title `Ajustes`, sidebar labels, `Buscar`,
+  General header/description/absence message), top half English, no leakage,
+  no clipped rows, no artifacts.
+
+Decisions / gotchas for later tasks:
+
+- **No Qt Linguist tools in the toolchain.** `.ts` files are the shipped
+  artifact and are parsed at runtime; there is no `lrelease`/`.qm` step.
+  `lupdate` will still read the files if ever adopted.
+- **Locale is chosen at process start**, not switched in place. Runtime
+  switching would need `QQmlEngine::retranslate()` and a language-change event.
+- **Spanish is a partial reference locale** (458/909); missing entries fall back
+  to source text. Product names identical in Spanish (Bluetooth, Mission
+  Control, General) are intentionally unchanged. RTL polish deferred.
+- **The gate's bare-literal scan is QML-only.** C++ literal strings are only
+  caught when wrapped in `tr()`/`QCoreApplication::translate`; a bare C++
+  literal assigned to a user-visible label is not detected.
+- Escape hatch for a genuinely non-translatable property: a
+  `// df-allow-untranslated` comment on the line (or the line above).

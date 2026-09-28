@@ -17,6 +17,7 @@
 
 #include "shellcontroller.h"
 #include "systemfont.h"
+#include "i18n.h"
 
 int main(int argc, char *argv[])
 {
@@ -36,6 +37,11 @@ int main(int argc, char *argv[])
 
     // The desktop's type, before any QML surface is created.
     Dragonfruit::installSystemFont();
+
+    // The desktop's language, before any QML surface is created (T-16.7):
+    // loads the catalog for the effective locale and sets the default
+    // `QLocale` for date/number formatting.
+    Dragonfruit::installTranslations(app);
 
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral("Dragonfruit shell"));

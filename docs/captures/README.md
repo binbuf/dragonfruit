@@ -774,6 +774,18 @@ synthetic control are proven headlessly (`magnifier::tests`,
 a host Wayland session, spectacle, Pillow, and the built tree; not in
 `make e2e`.
 
+T-16.7's locale switch is `t16-i18n.png`, produced by
+`scripts/capture-t16-i18n.sh` (`make t16-i18n-capture`): a stacked A/B of the
+Settings window with `DRAGONFRUIT_LOCALE=en_US` (top, source strings) and
+`es_ES` (bottom, `translations/dragonfruit_es.ts`). The Spanish half shows the
+window title `Ajustes`, the sidebar pane labels, the search placeholder, and
+the General pane header/description/absence message in Spanish; the per-half
+stills are `t16-i18n-en.png` and `t16-i18n-es.png`. The catalog parser, locale
+resolution, default-`QLocale` formatting, and a real QML `qsTr()` lookup are
+proven headlessly (`tst_i18n`), and the string-extraction gate is
+`scripts/i18n-extract.py` (`make check-i18n`). Requires a host Wayland session,
+spectacle, Pillow, and the built tree; not in `make e2e`.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

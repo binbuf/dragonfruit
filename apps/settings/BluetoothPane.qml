@@ -255,7 +255,7 @@ Item {
 
                         Text {
                             anchors.centerIn: parent
-                            text: "i"
+                            text: "i" // df-allow-untranslated: info glyph
                             color: Theme.color.textSecondary
                             font.pixelSize: Theme.primitive.font.sizeSm
                             font.weight: Theme.primitive.font.weightMedium
