@@ -47,6 +47,13 @@ public:
     // Input (T-15.4b): a read-only inventory. Refresh only; libinput has no
     // setter (ADR 0124).
     virtual void refreshInput() = 0;
+    // General/About/Updates (T-15.10b): a live host-stack read plus the three
+    // explicit update writes the Control Center tile and the Settings pane
+    // raise.
+    virtual void refreshUpdates() = 0;
+    virtual void checkUpdates() = 0;
+    virtual void installUpdates() = 0;
+    virtual void rebootUpdates() = 0;
     virtual void join(const QString &ssid, const QString &secret) = 0;
     virtual void setVolume(double volume) = 0;
     virtual void setMute(bool muted) = 0;
@@ -59,6 +66,7 @@ signals:
     void bluetoothState(const QByteArray &json);
     void storageState(const QByteArray &json);
     void inputState(const QByteArray &json);
+    void updatesState(const QByteArray &json);
     void joinReport(const QByteArray &json);
     void writeReport(const QByteArray &json);
 };
@@ -85,6 +93,10 @@ public:
     void unmountStorage(const QString &volumePath) override;
     void ejectStorage(const QString &drivePath) override;
     void refreshInput() override;
+    void refreshUpdates() override;
+    void checkUpdates() override;
+    void installUpdates() override;
+    void rebootUpdates() override;
     void join(const QString &ssid, const QString &secret) override;
     void setVolume(double volume) override;
     void setMute(bool muted) override;
@@ -126,6 +138,10 @@ public:
     void unmountStorage(const QString &volumePath) override;
     void ejectStorage(const QString &drivePath) override;
     void refreshInput() override;
+    void refreshUpdates() override;
+    void checkUpdates() override;
+    void installUpdates() override;
+    void rebootUpdates() override;
     void join(const QString &ssid, const QString &secret) override;
     void setVolume(double volume) override;
     void setMute(bool muted) override;
@@ -150,4 +166,9 @@ private:
     // observable headlessly (`DF_STATUS_FIXTURE`).
     bool m_storageVolumeMounted = false;
     bool m_storageDrivePresent = true;
+    // The General/About/Updates fixture state (T-15.10b): one security update
+    // on offer. check/install/reboot mutate the phase in place and re-emit, so
+    // the Control Center tile's round-trip is observable headlessly.
+    QString m_updatesPhase = QStringLiteral("available");
+    int m_updatesCount = 1;
 };

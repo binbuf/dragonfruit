@@ -44,7 +44,10 @@ QtObject {
         { id: "storage", title: qsTr("Storage"), icon: "storage",
           description: "", shipped: true },
         { id: "general", title: qsTr("General"), icon: "general",
-          description: "", shipped: false },
+          description: qsTr("Manage your overall setup and preferences, such "
+                            + "as software updates, your device details, and "
+                            + "more."),
+          shipped: true },
         { id: "accessibility", title: qsTr("Accessibility"), icon: "accessibility",
           description: "", shipped: false },
         { id: "appearance", title: qsTr("Appearance"), icon: "appearance",

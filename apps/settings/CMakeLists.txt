@@ -25,6 +25,8 @@ qt_add_qml_module(dragonfruit-settings-ui
         BatteryClient.h
         NotificationsClient.cpp
         NotificationsClient.h
+        UpdatesClient.cpp
+        UpdatesClient.h
     QML_FILES
         SettingsPanes.qml
         SettingsMenu.qml
@@ -46,6 +48,7 @@ qt_add_qml_module(dragonfruit-settings-ui
         FocusPane.qml
         LockScreenPane.qml
         MenuBarPane.qml
+        GeneralPane.qml
         SettingsShell.qml
         SettingsWindow.qml
 )
@@ -93,6 +96,7 @@ df_qml_lint(app-settings
     FocusPane.qml
     LockScreenPane.qml
     MenuBarPane.qml
+    GeneralPane.qml
     SettingsShell.qml
     SettingsWindow.qml
 )

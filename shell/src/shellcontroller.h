@@ -197,6 +197,13 @@ private slots:
     // T-15.9b: the Control Center Menu Bar tile is a configuration summary;
     // the Settings link is an entry point only until T-16.
     void onMenuBarSettingsRequested();
+    // T-15.10b: the Control Center Software Update tile. `check`/`install`/
+    // `restart` are the three explicit update writes; the Settings link opens
+    // the General pane where the same controls live.
+    void onUpdatesCheckRequested();
+    void onUpdatesInstallRequested();
+    void onUpdatesRebootRequested();
+    void onUpdatesSettingsRequested();
     // T-15.1b: the Control Center Bluetooth tile. The toggle powers the BlueZ
     // adapter; a known-device row connects/disconnects it; the Settings link is
     // an entry point only until T-16.
@@ -238,6 +245,7 @@ private slots:
     void onBluetoothState(const QByteArray &json);
     void onStorageState(const QByteArray &json);
     void onInputState(const QByteArray &json);
+    void onUpdatesState(const QByteArray &json);
     void onStatusReport(const QByteArray &json);
     void onClockTick();
     void onAppMenuOpened(int index);

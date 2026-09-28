@@ -7,6 +7,7 @@
 #include "NotificationsClient.h"
 #include "SoundClient.h"
 #include "StorageClient.h"
+#include "UpdatesClient.h"
 #include "settingsclient.h"
 
 #include <QColor>
@@ -173,6 +174,16 @@ SettingsBridge::SettingsBridge(QObject *parent)
     connect(m_notifications, &NotificationsClient::availableChanged, this,
             [this](bool) { emit notificationsChanged(); });
 
+    // T-15.10b: the General/About/Updates seam, selected the same way.
+    if (qEnvironmentVariableIsSet("DF_UPDATES_FIXTURE"))
+        m_updates = new MockUpdatesClient(this);
+    else
+        m_updates = new DbusUpdatesClient(this);
+    connect(m_updates, &UpdatesClient::changed, this,
+            [this](const QVariantMap &) { emit updatesChanged(); });
+    connect(m_updates, &UpdatesClient::availableChanged, this,
+            [this](bool) { emit updatesChanged(); });
+
     buildWallpaperPresets();
     connectPortalWatcher();
     m_wallpaperFixture = qEnvironmentVariableIsSet("DF_WALLPAPER_FIXTURE");
@@ -265,6 +276,16 @@ QVariantMap SettingsBridge::notifications() const
 bool SettingsBridge::notificationsAvailable() const
 {
     return m_notifications && m_notifications->available();
+}
+
+QVariantMap SettingsBridge::updates() const
+{
+    return m_updates ? m_updates->view() : QVariantMap();
+}
+
+bool SettingsBridge::updatesAvailable() const
+{
+    return m_updates && m_updates->available();
 }
 
 QString SettingsBridge::providerStatus() const
@@ -650,6 +671,36 @@ void SettingsBridge::setFocusApp(const QString &app, bool allowed)
     else
         return;
     m_notifications->setFocusAllowList(list);
+}
+
+void SettingsBridge::refreshUpdates()
+{
+    if (m_updates)
+        m_updates->refresh();
+}
+
+void SettingsBridge::checkUpdates()
+{
+    if (m_updates)
+        m_updates->check();
+}
+
+void SettingsBridge::installUpdates()
+{
+    if (m_updates)
+        m_updates->install();
+}
+
+void SettingsBridge::rebootUpdates()
+{
+    if (m_updates)
+        m_updates->reboot();
+}
+
+void SettingsBridge::resetUpdatesFixture()
+{
+    if (m_updates)
+        m_updates->resetForTest();
 }
 
 void SettingsBridge::setWallpaperFixture(const QString &status)

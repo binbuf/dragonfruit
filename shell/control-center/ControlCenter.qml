@@ -59,6 +59,11 @@ Item {
     // profiles }`. The tile hides when the host is absent, and also when there
     // is neither a battery nor a power profile to act on.
     property var battery: ({})
+    // The General/About/Updates view from the bridge host (T-15.10b), shaped by
+    // `SystemStatusModel`: `{ state, hostName, deviceName, osLabel, updatesAvailable,
+    // glyph, label, phase, busy, rebootRequired, updateCount, updates }`. The
+    // tile stays visible whenever the host answers; empty hides it.
+    property var updates: ({})
     property real brightness: 1.0
     // The notification service's Focus/DND policy view
     // (`{mode, allowList, batchedCount}`); empty when the service is absent.
@@ -237,6 +242,39 @@ Item {
         return parts.length > 0 ? parts.join(" \u00b7 ") : qsTr("Battery");
     }
 
+    // General/About/Updates (T-15.10b): the tile reflects the bridge host's
+    // host-stack view. It stays visible whenever the host answers (the identity
+    // half is always read); the update provider may be absent within it, which
+    // only disables the update action. The subtitle is the update summary; the
+    // action link is the one the state calls for (Check / Install / Restart).
+    readonly property bool updatesAvailable: root.updates.state === "available"
+    readonly property bool updatesProvider: root.updates.updatesAvailable === true
+    readonly property bool updatesBusy: root.updates.busy === true
+    readonly property bool updatesRebootRequired: root.updates.rebootRequired === true
+    readonly property int updatesCount: root.updates.updateCount !== undefined
+        ? Number(root.updates.updateCount) : 0
+    readonly property string updatesGlyph:
+        root.updates.glyph !== undefined ? String(root.updates.glyph)
+                                         : "software-update"
+    readonly property string updatesLabel: {
+        if (!root.updatesAvailable)
+            return qsTr("Unavailable");
+        if (root.updates.label !== undefined && root.updates.label !== "")
+            return root.updates.label;
+        return root.updatesProvider ? qsTr("Up to Date")
+                                    : qsTr("Software Update Unavailable");
+    }
+    // The one action the tile offers, chosen by state.
+    readonly property string updatesAction: {
+        if (!root.updatesProvider)
+            return qsTr("Unavailable");
+        if (root.updatesRebootRequired)
+            return qsTr("Restart");
+        if (root.updatesCount > 0)
+            return qsTr("Install");
+        return qsTr("Check for Updates");
+    }
+
     // The notification service's mode (`off`/`focus`/`dnd`). The toggle is Do
     // Not Disturb: `focus` also lights it, because both suppress banners.
     readonly property string focusMode: root.focusPolicy.mode !== undefined
@@ -368,6 +406,14 @@ Item {
             subtitle: root.menuBarLabel,
             visible: root.menuBarVisible,
             enabled: root.menuBarVisible
+        },
+        {
+            id: "software-update",
+            kind: "info",
+            title: qsTr("Software Update"),
+            subtitle: root.updatesLabel,
+            visible: root.updatesAvailable,
+            enabled: root.updatesAvailable
         }
     ]
 
@@ -418,6 +464,13 @@ Item {
     // pane where the auto-hide mode, the clock options, and the per-control
     // visibility live (T-15.9b).
     signal menuBarSettingsRequested()
+    // The Software Update tile (T-15.10b). The action link is the one the state
+    // calls for (check, install, or restart); the settings link opens the
+    // General pane where the same controls and the About rows live.
+    signal updatesCheckRequested()
+    signal updatesInstallRequested()
+    signal updatesRebootRequested()
+    signal updatesSettingsRequested()
 
     // Apply a volume fraction (0..1) and raise the request.
     function setVolume(fraction) {
@@ -493,6 +546,18 @@ Item {
         root.darkModeToggleRequested(!root.dark);
     }
 
+    // The one update action the tile offers, chosen by state.
+    function performUpdatesAction() {
+        if (!root.updatesAvailable || !root.updatesProvider || root.updatesBusy)
+            return;
+        if (root.updatesRebootRequired)
+            root.updatesRebootRequested();
+        else if (root.updatesCount > 0)
+            root.updatesInstallRequested();
+        else
+            root.updatesCheckRequested();
+    }
+
     focus: true
     Accessible.role: Accessible.Pane
     Accessible.name: qsTr("Control Center")
@@ -528,7 +593,7 @@ Item {
                 objectName: "wifiTile"
                 width: parent.width
                 implicitHeight: wifiColumn.implicitHeight
-                                + 2 * Theme.controls.settingsGroup.padding
+                                + 2 * Theme.primitive.spacing.xs
                 radius: Theme.primitive.radius.md
                 color: Theme.color.surfaceSunken
                 Accessible.role: Accessible.Grouping
@@ -539,7 +604,7 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    anchors.margins: Theme.controls.settingsGroup.padding
+                    anchors.margins: Theme.primitive.spacing.xs
                     spacing: Theme.primitive.spacing.sm
 
                     Row {
@@ -609,7 +674,7 @@ Item {
                 width: parent.width
                 visible: root.bluetoothVisible
                 implicitHeight: bluetoothColumn.implicitHeight
-                                + 2 * Theme.controls.settingsGroup.padding
+                                + 2 * Theme.primitive.spacing.xs
                 radius: Theme.primitive.radius.md
                 color: Theme.color.surfaceSunken
                 Accessible.role: Accessible.Grouping
@@ -620,7 +685,7 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    anchors.margins: Theme.controls.settingsGroup.padding
+                    anchors.margins: Theme.primitive.spacing.xs
                     spacing: Theme.primitive.spacing.sm
 
                     Row {
@@ -742,7 +807,7 @@ Item {
                 width: parent.width
                 visible: root.storageVisible
                 implicitHeight: storageColumn.implicitHeight
-                                + 2 * Theme.controls.settingsGroup.padding
+                                + 2 * Theme.primitive.spacing.xs
                 radius: Theme.primitive.radius.md
                 color: Theme.color.surfaceSunken
                 Accessible.role: Accessible.Grouping
@@ -753,7 +818,7 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    anchors.margins: Theme.controls.settingsGroup.padding
+                    anchors.margins: Theme.primitive.spacing.xs
                     spacing: Theme.primitive.spacing.sm
 
                     Row {
@@ -877,7 +942,7 @@ Item {
                 objectName: "focusTile"
                 width: parent.width
                 implicitHeight: focusColumn.implicitHeight
-                                + 2 * Theme.controls.settingsGroup.padding
+                                + 2 * Theme.primitive.spacing.xs
                 radius: Theme.primitive.radius.md
                 color: Theme.color.surfaceSunken
                 Accessible.role: Accessible.Grouping
@@ -888,7 +953,7 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    anchors.margins: Theme.controls.settingsGroup.padding
+                    anchors.margins: Theme.primitive.spacing.xs
                     spacing: Theme.primitive.spacing.sm
 
                     Row {
@@ -950,7 +1015,7 @@ Item {
                 objectName: "volumeTile"
                 width: parent.width
                 implicitHeight: volumeColumn.implicitHeight
-                                + 2 * Theme.controls.settingsGroup.padding
+                                + 2 * Theme.primitive.spacing.xs
                 radius: Theme.primitive.radius.md
                 color: Theme.color.surfaceSunken
                 opacity: root.audioAvailable ? 1.0 : 0.5
@@ -962,7 +1027,7 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    anchors.margins: Theme.controls.settingsGroup.padding
+                    anchors.margins: Theme.primitive.spacing.xs
                     spacing: Theme.primitive.spacing.sm
 
                     Row {
@@ -1051,7 +1116,7 @@ Item {
                 objectName: "brightnessTile"
                 width: parent.width
                 implicitHeight: brightnessColumn.implicitHeight
-                                + 2 * Theme.controls.settingsGroup.padding
+                                + 2 * Theme.primitive.spacing.xs
                 radius: Theme.primitive.radius.md
                 color: Theme.color.surfaceSunken
                 Accessible.role: Accessible.Grouping
@@ -1062,7 +1127,7 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    anchors.margins: Theme.controls.settingsGroup.padding
+                    anchors.margins: Theme.primitive.spacing.xs
                     spacing: Theme.primitive.spacing.sm
 
                     Row {
@@ -1105,7 +1170,7 @@ Item {
                 objectName: "darkTile"
                 width: parent.width
                 implicitHeight: darkColumn.implicitHeight
-                                + 2 * Theme.controls.settingsGroup.padding
+                                + 2 * Theme.primitive.spacing.xs
                 radius: Theme.primitive.radius.md
                 color: Theme.color.surfaceSunken
                 Accessible.role: Accessible.Grouping
@@ -1116,7 +1181,7 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    anchors.margins: Theme.controls.settingsGroup.padding
+                    anchors.margins: Theme.primitive.spacing.xs
                     spacing: Theme.primitive.spacing.sm
 
                     Row {
@@ -1179,7 +1244,7 @@ Item {
                 width: parent.width
                 visible: root.inputVisible
                 implicitHeight: keyboardColumn.implicitHeight
-                                + 2 * Theme.controls.settingsGroup.padding
+                                + 2 * Theme.primitive.spacing.xs
                 radius: Theme.primitive.radius.md
                 color: Theme.color.surfaceSunken
                 Accessible.role: Accessible.Grouping
@@ -1190,7 +1255,7 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    anchors.margins: Theme.controls.settingsGroup.padding
+                    anchors.margins: Theme.primitive.spacing.xs
                     spacing: Theme.primitive.spacing.sm
 
                     Row {
@@ -1244,7 +1309,7 @@ Item {
                 width: parent.width
                 visible: root.missionControlVisible
                 implicitHeight: missionControlColumn.implicitHeight
-                                + 2 * Theme.controls.settingsGroup.padding
+                                + 2 * Theme.primitive.spacing.xs
                 radius: Theme.primitive.radius.md
                 color: Theme.color.surfaceSunken
                 Accessible.role: Accessible.Grouping
@@ -1255,7 +1320,7 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    anchors.margins: Theme.controls.settingsGroup.padding
+                    anchors.margins: Theme.primitive.spacing.xs
                     spacing: Theme.primitive.spacing.sm
 
                     Row {
@@ -1309,7 +1374,7 @@ Item {
                 width: parent.width
                 visible: root.batteryVisible
                 implicitHeight: batteryColumn.implicitHeight
-                                + 2 * Theme.controls.settingsGroup.padding
+                                + 2 * Theme.primitive.spacing.xs
                 radius: Theme.primitive.radius.md
                 color: Theme.color.surfaceSunken
                 Accessible.role: Accessible.Grouping
@@ -1320,7 +1385,7 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    anchors.margins: Theme.controls.settingsGroup.padding
+                    anchors.margins: Theme.primitive.spacing.xs
                     spacing: Theme.primitive.spacing.sm
 
                     Row {
@@ -1374,7 +1439,7 @@ Item {
                 width: parent.width
                 visible: root.lockScreenVisible
                 implicitHeight: lockScreenColumn.implicitHeight
-                                + 2 * Theme.controls.settingsGroup.padding
+                                + 2 * Theme.primitive.spacing.xs
                 radius: Theme.primitive.radius.md
                 color: Theme.color.surfaceSunken
                 Accessible.role: Accessible.Grouping
@@ -1385,7 +1450,7 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    anchors.margins: Theme.controls.settingsGroup.padding
+                    anchors.margins: Theme.primitive.spacing.xs
                     spacing: Theme.primitive.spacing.sm
 
                     Row {
@@ -1440,7 +1505,7 @@ Item {
                 width: parent.width
                 visible: root.menuBarVisible
                 implicitHeight: menuBarColumn.implicitHeight
-                                + 2 * Theme.controls.settingsGroup.padding
+                                + 2 * Theme.primitive.spacing.xs
                 radius: Theme.primitive.radius.md
                 color: Theme.color.surfaceSunken
                 Accessible.role: Accessible.Grouping
@@ -1451,7 +1516,7 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    anchors.margins: Theme.controls.settingsGroup.padding
+                    anchors.margins: Theme.primitive.spacing.xs
                     spacing: Theme.primitive.spacing.sm
 
                     Row {
@@ -1499,13 +1564,93 @@ Item {
                 }
             }
 
+            // ── Software Update (T-15.10b) ───────────────────────────────
+            Rectangle {
+                id: updatesTile
+                objectName: "updatesTile"
+                width: parent.width
+                visible: root.updatesAvailable
+                implicitHeight: updatesColumn.implicitHeight
+                                + 2 * Theme.primitive.spacing.xs
+                radius: Theme.primitive.radius.md
+                color: Theme.color.surfaceSunken
+                Accessible.role: Accessible.Grouping
+                Accessible.name: qsTr("Software Update")
+
+                Column {
+                    id: updatesColumn
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: Theme.primitive.spacing.xs
+                    spacing: Theme.primitive.spacing.sm
+
+                    Row {
+                        width: parent.width
+                        spacing: Theme.primitive.spacing.md
+
+                        IconTile {
+                            objectName: "updatesIcon"
+                            name: root.updatesGlyph
+                            tileSize: 32
+                            iconSize: 18
+                            active: root.updatesRebootRequired
+                                || root.updatesCount > 0
+                        }
+
+                        Column {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: parent.width - 32 - 2 * Theme.primitive.spacing.md
+
+                            Text {
+                                objectName: "updatesTitle"
+                                text: qsTr("Software Update")
+                                color: Theme.color.textPrimary
+                                font.pixelSize: Theme.controls.button.fontSize
+                                font.weight: Theme.primitive.font.weightMedium
+                            }
+
+                            Text {
+                                objectName: "updatesSubtitle"
+                                width: parent.width
+                                text: root.updatesLabel
+                                color: Theme.color.textSecondary
+                                font.pixelSize: Theme.primitive.font.sizeSm
+                                elide: Text.ElideRight
+                            }
+                        }
+                    }
+
+                    Row {
+                        width: parent.width
+                        spacing: Theme.primitive.spacing.lg
+
+                        TextLink {
+                            objectName: "updatesActionLink"
+                            text: root.updatesAction
+                            accessibleName: qsTr("Software Update: %1")
+                                .arg(root.updatesAction)
+                            visible: root.updatesProvider
+                            onActivated: root.performUpdatesAction()
+                        }
+
+                        TextLink {
+                            objectName: "updatesSettingsLink"
+                            text: qsTr("General Settings\u2026")
+                            accessibleName: qsTr("Open General Settings")
+                            onActivated: root.updatesSettingsRequested()
+                        }
+                    }
+                }
+            }
+
             // ── Clipboard history ────────────────────────────────────────
             Rectangle {
                 id: clipboardTile
                 objectName: "clipboardTile"
                 width: parent.width
                 implicitHeight: clipboardColumn.implicitHeight
-                                + 2 * Theme.controls.settingsGroup.padding
+                                + 2 * Theme.primitive.spacing.xs
                 radius: Theme.primitive.radius.md
                 color: Theme.color.surfaceSunken
                 Accessible.role: Accessible.Grouping
@@ -1516,7 +1661,7 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    anchors.margins: Theme.controls.settingsGroup.padding
+                    anchors.margins: Theme.primitive.spacing.xs
                     spacing: Theme.primitive.spacing.xs
 
                     Text {
