@@ -16,6 +16,7 @@ members = [
     "services/audio",
     "services/power",
     "services/bluetooth",
+    "services/storage",
     "services/system-status",
     "services/wallpaperd",
     "tools/dragonfruit-dev",
