@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(153 earlier sections omitted)_
+_(154 earlier sections omitted)_
 
-- **T117 — T-15.4a Keyboard, Mouse, and Trackpad adapter**: **State: done.** A new workspace crate `dragonfruit-input` (`services/input`); `services/input/src/lib.rs` — crate docs + exports.
 - **T118 — T-15.4b Keyboard, Mouse, and Trackpad pane and tile**: **State: done.** The Settings Keyboard/Mouse/Trackpad panes and the Control; `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 11 → 12; 10 new
 - **T119 — T-15.5a Mission Control and hot corners adapter**: **State: done.** A new workspace crate `dragonfruit-overview`; `services/overview/src/source.rs` — `MissionControlSource` seam,
 - **T120 — T-15.5b Mission Control and hot corners pane and tile**: **State: done.** The Settings Mission Control & Hot Corners pane and the Control; `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 12 → 13; new
@@ -43,7 +42,8 @@ _(153 earlier sections omitted)_
 - **T151a — T-16.12 Synthetic chrome pointer injection timestamps**: **State: done.** Every chrome surface that re-injects the compositor's pointer; `shell/src/chromepointer.{h,cpp}` (renamed from `dockpointer.*`, still in
 - **T152 — T-17.1a Nested window loop verification**: **State: done.** The nested window loop is verified with a committed capture.; `scripts/capture-t17-window-loop.sh` + `scripts/t17-window-loop-driver.py`
 - **T153 — T-17.1b Workspace, Mission Control, and app-switch verification**: **State: done.** The T-17 premium gate's navigation verification unit lands; `scripts/capture-t17-navigation.sh` + `scripts/t17-navigation-driver.py`
-- **Follow-ups**: **Stable Mission Control window-card locator.** So a future capture can; **Stable Dock-tile locator for a synthesized restore-from-Dock click.**
+- **T154 — T-17.1c Flatpak/browser end-to-end verification**: **State: done.** A real Flatpak browser (`org.mozilla.firefox`) file-chooses,; `scripts/capture-t17-flatpak-browser.sh` + `scripts/t17-flatpak-browser-driver.py`
+- **Follow-ups**: **Live PipeWire screencast producer.** The ScreenCast portal flow returns the; **Stable Mission Control window-card locator.** So a future capture can
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
