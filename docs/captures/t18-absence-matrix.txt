@@ -1,0 +1,209 @@
+T-18.3 wallpaper absence/state matrix (headless reproduction)
+generated: 2026-09-28T05:55:46Z
+provider:  target/debug/dragonfruit-wallpaperd
+offline proxy: http://127.0.0.1:1 (accepts nothing)
+
+================================================================
+## 1. Lazy launch (cold cache, no display of the pane)
+================================================================
+
+The service rebuilds/loads an empty cache and must not fetch until a
+warm or Preload asks. Status stays idle and the shipped default
+resolves with no network call.
+$ XDG_CACHE_HOME=<empty> target/debug/dragonfruit-wallpaperd --print-builtin
+/home/user/repos/dragonfruit/services/wallpaperd/../../assets/graphics/wallpapers/Default.jpg
+$ XDG_CACHE_HOME=<empty> target/debug/dragonfruit-wallpaperd --print-status
+{"builtinDefaultSource":"/home/user/repos/dragonfruit/services/wallpaperd/../../assets/graphics/wallpapers/Default.jpg","defaultSource":"","items":[],"lastFetch":0,"status":"idle"}
+
+================================================================
+## 2. Cold cache + no network (Preload)
+================================================================
+
+An empty cache and a dead network: the eager refresh fails, the
+service reports offline, no items are served, and the shipped
+default still resolves. Nothing blocks.
+$ HTTPS_PROXY=http://127.0.0.1:1 XDG_CACHE_HOME=<empty> target/debug/dragonfruit-wallpaperd --preload
+{"builtinDefaultSource":"/home/user/repos/dragonfruit/services/wallpaperd/../../assets/graphics/wallpapers/Default.jpg","defaultSource":"","items":[],"lastFetch":0,"status":"offline"}
+
+cache after the failed fetch (must hold no fetched image):
+  dragonfruit/wallpapers/index.json
+
+the shipped default is read in place, never copied into the cache:
+-rw-r--r--. 1 user user 3469172 Sep 26 14:26 /home/user/repos/dragonfruit/services/wallpaperd/../../assets/graphics/wallpapers/Default.jpg
+
+================================================================
+## 3. Warm cache + no network (headless: the cache survives)
+================================================================
+
+A populated cache plus a dead network keeps every item; a failed
+fetch is not recorded as a fetch.
+$ cargo test -p dragonfruit-wallpaperd --test read_path an_offline_refresh_keeps_the_cache -- --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.08s
+     Running tests/read_path.rs (target/debug/deps/read_path-5dbe723bb3679de2)
+
+running 1 test
+test an_offline_refresh_keeps_the_cache ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+
+================================================================
+## 4. Provider restart (headless: rebuild from the cache)
+================================================================
+
+A fresh provider over the same cache rebuilds the catalogue without
+touching the network.
+$ cargo test -p dragonfruit-wallpaperd --test read_path a_cold_start_rebuilds_the_catalogue_from_the_cache_without_network -- --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.08s
+     Running tests/read_path.rs (target/debug/deps/read_path-5dbe723bb3679de2)
+
+running 1 test
+test a_cold_start_rebuilds_the_catalogue_from_the_cache_without_network ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+
+================================================================
+## 5. Weekly re-check (headless)
+================================================================
+
+Within the week no fetch; once the cache is stale a re-check runs.
+$ cargo test -p dragonfruit-wallpaperd --test read_path a_fresh_cache_is_not_refetched -- --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.08s
+     Running tests/read_path.rs (target/debug/deps/read_path-5dbe723bb3679de2)
+
+running 1 test
+test a_fresh_cache_is_not_refetched ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+
+================================================================
+## 6. API error / rate limit (headless: failure keeps the cache)
+================================================================
+
+Any non-2xx or transport error is a category failure; all categories
+failing yields an offline service that keeps the old cache. A rate
+limit (HTTP 429) takes the same path as any other HTTP error.
+$ cargo test -p dragonfruit-wallpaperd an_empty_fetch_result_keeps_the_cache_and_goes_offline -- --nocapture
+   Compiling dragonfruit-wallpaperd v0.1.0 (/home/user/repos/dragonfruit/services/wallpaperd)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.58s
+     Running unittests src/lib.rs (target/debug/deps/dragonfruit_wallpaperd-76f983a9b9ee1d9b)
+
+running 1 test
+test provider::tests::an_empty_fetch_result_keeps_the_cache_and_goes_offline ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 36 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/debug/deps/dragonfruit_wallpaperd-38eda1a81c12d29b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/read_path.rs (target/debug/deps/read_path-5dbe723bb3679de2)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s
+
+     Running tests/session_bus.rs (target/debug/deps/session_bus-fca5ae4bc8319520)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+$ cargo test -p dragonfruit-wallpaperd the_service_state_warm_is_offline_safe -- --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.07s
+     Running unittests src/lib.rs (target/debug/deps/dragonfruit_wallpaperd-76f983a9b9ee1d9b)
+
+running 1 test
+test provider::tests::the_service_state_warm_is_offline_safe ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 36 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/debug/deps/dragonfruit_wallpaperd-38eda1a81c12d29b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/read_path.rs (target/debug/deps/read_path-5dbe723bb3679de2)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s
+
+     Running tests/session_bus.rs (target/debug/deps/session_bus-fca5ae4bc8319520)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+
+================================================================
+## 7. Lazy launch vs open-pane Preload (headless)
+================================================================
+
+Loading the provider touches neither network nor disk; Preload does
+exactly one refresh, fills the cache, and selects the Featured default.
+$ cargo test -p dragonfruit-wallpaperd --test read_path preload_fetches_fills_the_cache_and_selects_the_featured_default -- --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.08s
+     Running tests/read_path.rs (target/debug/deps/read_path-5dbe723bb3679de2)
+
+running 1 test
+test preload_fetches_fills_the_cache_and_selects_the_featured_default ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+
+================================================================
+## 8. Session-bus round-trip and absent network (headless)
+================================================================
+
+The interface answers offline and serves the shipped default; a
+second Preload is a no-op.
+$ cargo test -p dragonfruit-wallpaperd --test session_bus -- --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.08s
+     Running tests/session_bus.rs (target/debug/deps/session_bus-fca5ae4bc8319520)
+
+running 3 tests
+test the_interface_constants_are_served ... ok
+test an_offline_service_survives_and_serves_the_builtin_default ... ok
+test preload_round_trips_properties_and_fires_the_change_signals ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+
+================================================================
+## 9. settingsd restart and portal absent (QML shell, headless)
+================================================================
+
+The Settings shell tolerates an absent settingsd and an absent
+FileChooser portal without surfacing an error; the shipped default
+and built-in rows stay live while only the Custom (portal) row is
+disabled.
+$ ctest --test-dir build -R 'tst_settings_absence|tst_wallpaperpolicy|tst_settings_wallpaper' --output-on-failure
+Test project /home/user/repos/dragonfruit/build
+    Start 19: tst_wallpaperpolicy
+1/3 Test #19: tst_wallpaperpolicy ..............   Passed    0.03 sec
+    Start 45: tst_settings_wallpaper
+2/3 Test #45: tst_settings_wallpaper ...........   Passed    0.49 sec
+    Start 50: tst_settings_absence
+3/3 Test #50: tst_settings_absence .............   Passed    0.31 sec
+
+100% tests passed out of 3
+
+Total Test time (real) =   0.83 sec
+
+================================================================
+## 10. Package artifact holds only the shipped original (no fetched bytes)
+================================================================
+
+The install seam copies Default.jpg to share/dragonfruit/wallpapers/
+and ships no fetched image.
+$ make install DESTDIR=/tmp/dragonfruit-t18-matrix.Z6kUie/package PREFIX=/usr
+installed images under the prefix:
+  /tmp/dragonfruit-t18-matrix.Z6kUie/package/usr/share/dragonfruit/wallpapers/Default.jpg
+  Default.jpg byte-identical to the in-tree asset:
+    yes

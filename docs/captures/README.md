@@ -87,13 +87,20 @@ T-18.2's Wallpaper-pane capture is produced by
 `scripts/capture-t18-wallpaper.sh` (`make t18-wallpaper-capture`): a scratch
 settingsd and a scratch-cache `dragonfruit-wallpaperd` on the session bus, with
 the nested demo opened directly at the Wallpaper pane. It writes
+`t18-wallpaper-offline.png` (cold cache, dead network: the shipped
+`Default.jpg` desktop and the Featured row's "available soon" note),
 `t18-wallpaper-fetching.png` (the provider held in `fetching` by a hanging
 CONNECT proxy, so the Featured row shows the grey shimmer skeletons) and
 `t18-wallpaper-filled.png` (the real Wikimedia fetch completed, the Featured
 row filled and the attribution visible). The three source rows (Featured /
-Built-in / Custom) and the shipped-default Built-in tile are visible in both;
+Built-in / Custom) and the shipped-default Built-in tile are visible in all;
 the state matrix itself is asserted headlessly by
 `apps/settings/tests/tst_settings_wallpaper.qml`.
+
+T-18.3's absence/state matrix is produced by `scripts/t18-absence-matrix.sh`
+(`make t18-absence-matrix`): the headless reproduction transcript at
+`t18-absence-matrix.txt`, and the reviewed matrix with the live halves at
+`t18-absence-matrix.md`.
 
 T-10.7's Files slice capture is produced by `scripts/capture-files.sh`
 (`make files-capture`): the nested demo runs with `DF_DEMO_QT_APP` pointing at

@@ -88,13 +88,25 @@ Two different things share this surface (ADRs
   use). Consequences:
 
   - No fetched image is ever shipped in a package artifact; the cache is user
-    data under `$XDG_CACHE_HOME/dragonfruit/`.
+    data under `$XDG_CACHE_HOME/dragonfruit/`. The only image in a package is
+    the shipped original `Default.jpg`.
   - Attribution (`Artist` + license name/link + file page) is displayed for the
     current fetched wallpaper and the tiles, and is not optional.
   - Share-alike (CC BY-SA) and FAL images are never represented as original
-    Dragonfruit work.
-  - The only new dependency is a permissively-licensed HTTP client; the
-    "no GPL/AGPL dependency" rule still applies.
+    Dragonfruit work. The provider stores the license fields verbatim and the
+    pane links to the file page; it never re-labels a fetched work as
+    Dragonfruit's own.
+  - The only new dependency is the HTTP client
+    [`ureq`](https://github.com/algesten/ureq) 3.4.2 (MIT OR Apache-2.0,
+    rustls + gzip; see `services/wallpaperd/Cargo.toml`); the "no GPL/AGPL
+    dependency" rule still applies to every future provider as well.
+
+The mechanical checks live beside the code:
+`services/session/tests/session_entry.rs` asserts `Default.jpg` is installed
+byte-identically to the stable share path,
+`services/wallpaperd/tests/read_path.rs` asserts the cache holds only fetched
+bytes and never the bundled asset, and
+`docs/captures/t18-absence-matrix.md` records the reviewed state matrix.
 
 ## Trademarks
 

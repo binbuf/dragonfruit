@@ -5,6 +5,8 @@
 #
 # Produces the T-18 pane artifacts in docs/captures/:
 #
+#   * t18-wallpaper-offline.png   cold cache + dead network: the shipped
+#                                 default desktop and the "available soon" row
 #   * t18-wallpaper-fetching.png  the Featured row downloading (skeletons)
 #   * t18-wallpaper-filled.png    the Featured row filled, attribution visible
 #
@@ -161,16 +163,27 @@ PY
     exit 1
 }
 
-# start_provider <proxied>: launch the provider with a fresh cache. When
-# `proxied` is "yes", route HTTP(S) through the hanging proxy.
+# start_provider <mode>: launch the provider with a fresh cache. Mode "yes"
+# routes HTTP(S) through the hanging proxy; "dead" routes it through a dead
+# proxy so every fetch fails immediately (the offline state); "no" is direct.
 start_provider() {
     local proxied="$1"
     local env_args=()
-    if [ "$proxied" = "yes" ]; then
-        env_args=(env HTTPS_PROXY="http://127.0.0.1:$PROXY_PORT"
-                      HTTP_PROXY="http://127.0.0.1:$PROXY_PORT"
-                      ALL_PROXY="http://127.0.0.1:$PROXY_PORT")
-    fi
+    case "$proxied" in
+        yes)
+            env_args=(env HTTPS_PROXY="http://127.0.0.1:$PROXY_PORT"
+                          HTTP_PROXY="http://127.0.0.1:$PROXY_PORT"
+                          ALL_PROXY="http://127.0.0.1:$PROXY_PORT")
+            ;;
+        dead)
+            env_args=(env HTTPS_PROXY="http://127.0.0.1:1"
+                          HTTP_PROXY="http://127.0.0.1:1"
+                          ALL_PROXY="http://127.0.0.1:1"
+                          https_proxy="http://127.0.0.1:1"
+                          http_proxy="http://127.0.0.1:1"
+                          all_proxy="http://127.0.0.1:1")
+            ;;
+    esac
     XDG_CACHE_HOME="$CACHE_DIR" HOME="$SCRATCH" "${env_args[@]}" "$WALLPAPER_BIN" \
         >"$SCRATCH/wallpaperd.log" 2>&1 &
     WP_PID=$!
@@ -341,6 +354,16 @@ start_settingsd
 echo "capture-t18-wallpaper: nested demo with the Wallpaper pane (provider absent)"
 start_demo
 zoom_settings
+
+echo "capture-t18-wallpaper: offline still (cold cache, dead network)"
+start_provider dead
+for _ in $(seq 1 200); do
+    [ "$(wallpaper_status)" = "offline" ] && break
+    sleep 0.1
+done
+echo "capture-t18-wallpaper: offline status: $(wallpaper_status)"
+capture "$OUTDIR/t18-wallpaper-offline.png"
+stop_provider
 
 echo "capture-t18-wallpaper: starting the provider behind a hanging proxy"
 start_proxy

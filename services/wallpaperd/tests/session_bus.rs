@@ -158,9 +158,21 @@ fn preload_round_trips_properties_and_fires_the_change_signals() {
         builtin
     );
 
-    // The properties now read back the populated catalogue.
+    // The properties now read back the populated catalogue. zbus caches proxy
+    // properties and invalidates them on `PropertiesChanged`; the `Preload`
+    // reply can beat that signal under load, so wait briefly for the cache to
+    // catch up (the returned snapshot above is the authoritative state).
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while proxy.status().unwrap() != "ready" && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
     assert_eq!(proxy.status().unwrap(), "ready");
-    let items_json: serde_json::Value = serde_json::from_str(&proxy.items().unwrap()).unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let mut items_json: serde_json::Value = serde_json::from_str(&proxy.items().unwrap()).unwrap();
+    while items_json.as_array().map(Vec::len) != Some(2) && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        items_json = serde_json::from_str(&proxy.items().unwrap()).unwrap();
+    }
     assert_eq!(items_json.as_array().unwrap().len(), 2);
     assert_eq!(items_json[0]["artist"], "Test Artist");
     assert_eq!(items_json[0]["licenseShortName"], "CC BY-SA 4.0");

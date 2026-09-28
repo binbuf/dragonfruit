@@ -47,7 +47,7 @@ endif
 .PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test \
         visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev demo soak e2e \
         idle-trace menubar-idle-trace latency-trace settingsd-capture settings-wave-1-capture \
-        t18-wallpaper-capture \
+        t18-wallpaper-capture t18-absence-matrix \
         files-capture osd-dnd-capture portals-capture zoo-run dock-spacing-capture dock-magnify-capture dock-motion-capture dock-trash-capture dock-app-picker-capture dock-drops-capture dock-activation-capture dock-launch-origin-capture dock-folder-stack-capture dock-tooltip-capture dock-tahoe-capture dock-folder-pin-capture dock-chooser-actions-capture dock-chooser-scroll-capture dock-window-badge-capture dock-hover-chooser-capture dock-overflow-capture dock-trash-empty-capture dock-minimize-reaction-capture dock-keyboard-reorder-capture dock-dividers-capture dock-magnify-sweep-capture dock-plate-corners-capture dock-icon-mask-capture check-desktop-names check-no-capture-grab check-design-tokens clean install
 
 help:
@@ -60,6 +60,7 @@ help:
 	@echo "  make settingsd-capture — T-08.3 settingsd flip + restart capture"
 	@echo "  make settings-wave-1-capture — T-09.6b Settings wave stills (light/dark/reduced + panes)"
 	@echo "  make t18-wallpaper-capture — T-18.2 Wallpaper pane stills (fetching skeleton + filled)"
+	@echo "  make t18-absence-matrix — T-18.3 headless absence/state matrix transcript"
 	@echo "  make files-capture — T-10.7 Files slice stills + large-directory scroll trace"
 	@echo "  make osd-dnd-capture — T-11.4b OSD card + menu-bar DND still"
 	@echo "  make portals-capture — T-13.7 Flatpak portal round-trips + picker still"
@@ -174,6 +175,12 @@ settings-wave-1-capture: build
 # (skeleton) and filled stills under docs/captures/t18-wallpaper.*.
 t18-wallpaper-capture: build
 	bash scripts/capture-t18-wallpaper.sh
+
+# T-18.3: the headless absence/state matrix. Writes the reproduction transcript
+# for every matrix row under docs/captures/t18-absence-matrix.txt. No host
+# session and no network are required (offline is a dead proxy).
+t18-absence-matrix: build
+	bash scripts/t18-absence-matrix.sh
 
 # T-10.7: the Files slice capture. Needs a host Wayland session, `spectacle`,
 # `ffmpeg`, `gdbus`, Pillow and the built tree; drives the nested demo over the

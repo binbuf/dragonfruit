@@ -100,21 +100,27 @@ the package (ADR [0055](../adr/0055-online-wallpaper-content-provider.md) /
 
 ## Acceptance
 
-- [ ] The out-of-box, cold-cache, and offline background is the shipped original
+- [x] The out-of-box, cold-cache, and offline background is the shipped original
       default, with no network dependency at first run.
-- [ ] The provider warms lazily on launch and eagerly when the Wallpapers pane
+- [x] The provider warms lazily on launch and eagerly when the Wallpapers pane
       is opened; neither path blocks the session.
-- [ ] First run with an empty cache populates Featured from Wikimedia; the
+- [x] First run with an empty cache populates Featured from Wikimedia; the
       deterministic top Nature photo is the Featured default/fallback.
-- [ ] The pane shows shimmer placeholders while fetching; reduced motion makes
+- [x] The pane shows shimmer placeholders while fetching; reduced motion makes
       them static.
-- [ ] Cached wallpapers work with the network absent; a cold cache keeps the
+- [x] Cached wallpapers work with the network absent; a cold cache keeps the
       shipped default and does not block the session.
-- [ ] Attribution (artist + license, linked) is visible for every fetched image.
-- [ ] A user-chosen wallpaper always wins over the shipped and fetched defaults
+- [x] Attribution (artist + license, linked) is visible for every fetched image.
+- [x] A user-chosen wallpaper always wins over the shipped and fetched defaults
       and persists.
-- [ ] The demo runs and the capture is committed; `make e2e`/`make check` stay
+- [x] The demo runs and the capture is committed; `make e2e`/`make check` stay
       green.
+
+Evidence: the T-18.3 reviewed matrix
+[`../../captures/t18-absence-matrix.md`](../../captures/t18-absence-matrix.md)
+(cold/warm/offline/restart/weekly/error/`Preload`/portal/package) with its
+headless transcript, and the capture stills
+`t18-wallpaper-{offline,fetching,filled}.png`.
 
 ## Test plan
 
@@ -145,3 +151,36 @@ the package (ADR [0055](../adr/0055-online-wallpaper-content-provider.md) /
 ## Hand-off
 
 - Feeds T-16 (a11y/i18n) and is validated by T-17's visual floor.
+
+### T-16.7 (localization) — strings the sweep must cover
+
+All in `apps/settings/WallpaperPane.qml` (new in T-18.2) unless noted:
+
+- Section titles: "Featured", "Built-in", "Custom".
+- Empty/offline/error note: "Featured pictures will be available soon."
+- Skeleton accessible label: "Downloading wallpapers"
+  (`design-system/components/Skeleton.qml`; callers pass `accessibleName`).
+- Attribution row: "Photo by %1", "License: %1", "View file page".
+- Existing copy touched by the row split: "Current wallpaper", "Default",
+  "Solid color", "Using %1", "Add Photo…", "Add wallpaper photo", "Choose an
+  image file for this Space.", "No file chooser is available.", "Show on all
+  Spaces", "Apply this wallpaper to every Space.", and the fit labels
+  Fill/Fit/Stretch/Center.
+- The plugin/category labels are capitalized from a lowercase provider slug at
+  runtime, not translated words; a future provider must localize its own.
+
+### T-16.6 (AT-SPI / keyboard) — surfaces to audit
+
+- `Skeleton.qml` is `Accessible.Graphic` and is `Accessible.ignored` when it
+  has no `accessibleName`; the Featured row passes "Downloading wallpapers".
+- Featured tiles are `Accessible.RadioButton` (checkable, focusable) with a
+  category-derived name; they are keyboard-selectable and the `Preload` on pane
+  open is not required for keyboard use.
+- Attribution links are `Accessible.Link` with press actions; verify they are
+  reachable and operable keyboard-only (the panel only appears for fetched
+  items, so T-16.6 needs a fixture or a warm cache to see it).
+- Built-in and Custom tiles keep their existing a11y roles; the shipped
+  `Default` tile's name is the translated "Default".
+
+Deferred to T-17: human visual-floor sign-off on the shipped default
+background (batched at the track boundary).

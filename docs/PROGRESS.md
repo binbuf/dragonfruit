@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(107 earlier sections omitted)_
+_(108 earlier sections omitted)_
 
-- **T103 — T-14.2a menu-broker export model and fixed menu**: **State: done.** `services/menu-broker` is a real service and the fixed; `services/menu-broker/src/model.rs` (new) — pure `Broker`: `PublishedModel`
 - **T104 — T-14.2b menu-broker accelerators and toggle**: **State: done.** The menu-broker now parses and dispatches focus-scoped; `services/menu-broker/src/accelerators.rs` (new) — pure `Mods`/`Chord`
 - **T105 — T-14.3 StatusNotifier/AppIndicator tray**: **State: done.** StatusNotifier/AppIndicator tray items render in the menu; `services/app-index/src/tray.rs` (new) — pure `Registration`
 - **T106 — T-14.4 DBusMenu bridge**: **State: done.** A DBusMenu/AppMenu-exporting app's global menu is now bridged; `services/app-index/src/menubridge.rs` (new) — pure `MenuRegistration`
@@ -43,6 +42,7 @@ _(107 earlier sections omitted)_
 - **T172 — T-18.1a Wallpaper provider service and shipped default**: **State: done.** `services/wallpaperd` is a real session service. It resolves; `services/wallpaperd/` (new crate, workspace member) —
 - **T173 — T-18.1b Provider settings, wallpaper API wiring, and effective source**: **State: done.** The additive provider keys are declared (schema rev 10), the; `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 9 → 10; 5 additive
 - **T174 — T-18.2 Wallpaper pane collections, skeleton, and attribution**: **State: done.** The Wallpaper pane now has Featured / Built-in / Custom rows;; `design-system/tokens/tokens.json` — semantic `skeletonBase`/`skeletonHighlight`
+- **T175 — T-18.3 Provider licensing, absence matrix, and capture**: **State: done.** The licensing policy is reviewed and made true (`NOTICE`; `docs/licensing.md` — "Fetched third-party content (wallpaper)" extended:
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -10618,3 +10618,71 @@ Gotchas for later tasks:
 - The `check-gallery-snapshots.py --update` run rewrites the timing-sensitive
   `tooltip_*` goldens; restore them (`git checkout -- ...tooltip_*.png`) unless
   the tooltip actually changed.
+
+## T175 — T-18.3 Provider licensing, absence matrix, and capture
+
+**State: done.** The licensing policy is reviewed and made true (`NOTICE`
+now lists the shipped default), the 11-row absence/state matrix is committed
+with a headless reproduction, the offline capture still is added, the
+T-16.6/T-16.7 hand-off notes are written into the track doc, all eight track
+acceptance boxes are ticked, and the package install proves only
+`Default.jpg` ships.
+
+Real paths:
+
+- `docs/licensing.md` — "Fetched third-party content (wallpaper)" extended:
+  the shipped original default is the only packaged image, fetched pictures
+  are cache-only user data, attribution is mandatory, share-alike/FAL are
+  never original, and the HTTP dependency is named (`ureq` 3.4.2,
+  MIT OR Apache-2.0). Names the mechanical checks.
+- `NOTICE` — `Default.jpg` added under "Bundled assets" plus the
+  never-bundled-fetched-content note.
+- `docs/captures/t18-absence-matrix.md` (new) — the reviewed matrix + live
+  halves + verdict; `docs/captures/t18-absence-matrix.txt` (new) — headless
+  reproduction transcript.
+- `scripts/t18-absence-matrix.sh` (new; `make t18-absence-matrix`) — runs the
+  row reproductions (CLI with a dead proxy + named tests + ctest + `make
+  install`) into the transcript.
+- `docs/captures/t18-wallpaper-offline.png` (new) — cold cache + dead network:
+  shipped-default desktop + "available soon" Featured row. Emitted first by
+  `scripts/capture-t18-wallpaper.sh` (now takes mode `dead` in
+  `start_provider`).
+- `docs/design/tracks/18-wallpaper-content-provider.md` — 8 acceptance boxes
+  ticked; T-16.7 string list + T-16.6 AT-SPI/keyboard notes added to Hand-off.
+- `docs/captures/README.md` — T-18.3 matrix + offline still described.
+- `compositor/tests/milestone_e2e.rs` — `xwayland_running_for` now splits argv
+  (argv[0] basename `Xwayland`, display as a whole arg) instead of substring
+  scanning the flattened cmdline.
+- `services/wallpaperd/tests/session_bus.rs` — `preload_round_trips…` waits
+  (bounded) for the zbus proxy property cache to be invalidated.
+
+Commands that work (repo root):
+
+- `make e2e` — EXIT 0.
+- `make test` — EXIT 0, 53/53 ctest, 78 gallery snapshots.
+- `make soak` — EXIT 0, "100 clean cycles, zero strays".
+- `make t18-absence-matrix` — transcript all green.
+- `make install DESTDIR=<scratch> PREFIX=/usr` — only
+  `share/dragonfruit/wallpapers/Default.jpg`, byte-identical to the asset.
+- `make t18-wallpaper-capture` (host Wayland) — offline/fetching/filled
+  stills. Pixel evidence: offline desktop 172,128 unique colours, σ 70.4,
+  identical to the pre-fetch still; offline Featured row 343 colours;
+  filled Featured row 43,972 colours. Vision HTTP 429 (pixel stats are the
+  evidence, as in T-18.1b).
+
+Gotchas for later tasks:
+
+- **`make check` still fails only on `check-desktop-names`** (pre-existing
+  StatusNotifier/zoo/apppicker lines), unchanged. `make lint` otherwise green.
+- **The `make soak` "stray processes" failure is a leftover-process gate, not
+  a product bug.** An interrupted/long run can leave `dragonfruit dev`
+  children; clear them (`pkill -f target/debug/dragonfruit`) before soak.
+- **`Default.jpg` provenance cannot be proven inside the repo.** It is a real
+  Canon 5D/Lightroom photo with no watermark, added in the early `c138043`
+  snapshot and treated as the project's original asset (ADR 0094). The
+  licensing claim rests on that prior decision; keep any provenance record
+  with the asset.
+- **`docs/captures/t18-absence-matrix.txt` is generated**; regenerate with
+  `make t18-absence-matrix` if the CLI/tests change.
+- The provider reports the in-tree default as a `../../`-relative path; the
+  transcript shows it. Canonicalizing would be cosmetic only.
