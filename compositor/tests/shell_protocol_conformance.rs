@@ -20,8 +20,8 @@ use std::time::{Duration, Instant};
 use wayland_client::protocol::wl_data_device_manager::DndAction;
 use wayland_client::protocol::{
     wl_buffer, wl_callback, wl_compositor, wl_data_device, wl_data_device_manager, wl_data_offer,
-    wl_data_source, wl_keyboard, wl_pointer, wl_region, wl_registry, wl_seat, wl_shm, wl_shm_pool,
-    wl_surface,
+    wl_data_source, wl_keyboard, wl_output, wl_pointer, wl_region, wl_registry, wl_seat, wl_shm,
+    wl_shm_pool, wl_surface,
 };
 use wayland_client::{delegate_noop, Connection, Dispatch, EventQueue, Proxy, QueueHandle};
 use wayland_protocols::wp::pointer_constraints::zv1::client::{
@@ -203,6 +203,9 @@ struct TestClient {
     /// `df_layer_surface` configures keyed by protocol id, so a test can prove
     /// a specific chrome surface was reconfigured on output hotplug.
     layer_configures_by_id: Vec<(u32, i32, i32)>,
+    /// Bound `wl_output` globals, so a test can pin a chrome surface to one
+    /// display (`df_shell.get_layer_surface` takes a `wl_output`).
+    wl_outputs: Vec<wl_output::WlOutput>,
 }
 
 impl Dispatch<wl_registry::WlRegistry, ()> for TestClient {
@@ -227,6 +230,11 @@ impl Dispatch<wl_registry::WlRegistry, ()> for TestClient {
                 }
                 "wl_shm" => {
                     state.shm = Some(registry.bind(name, version, _qh, ()));
+                }
+                "wl_output" => {
+                    state
+                        .wl_outputs
+                        .push(registry.bind(name, version.min(4), _qh, ()));
                 }
                 "xdg_wm_base" => {
                     state.xdg_wm_base = Some(registry.bind(name, version.min(6), _qh, ()));
@@ -494,6 +502,7 @@ impl Dispatch<wl_callback::WlCallback, ()> for TestClient {
 delegate_noop!(TestClient: ignore wl_compositor::WlCompositor);
 delegate_noop!(TestClient: ignore wl_shm::WlShm);
 delegate_noop!(TestClient: ignore wl_shm_pool::WlShmPool);
+delegate_noop!(TestClient: ignore wl_output::WlOutput);
 delegate_noop!(TestClient: ignore wl_buffer::WlBuffer);
 delegate_noop!(TestClient: ignore wl_surface::WlSurface);
 delegate_noop!(TestClient: ignore wl_region::WlRegion);
@@ -5177,6 +5186,184 @@ fn dock_follows_output_hotplug() {
     drop(dock_surface);
     drop(bar);
     drop(bar_surface);
+    drop(shell);
+    drop(manager);
+    drop(core);
+    let _ = conn.flush();
+    proc.shutdown();
+    assert!(
+        !output_path.exists(),
+        "teardown leak: synthetic-output socket survived"
+    );
+}
+
+/// T-16.1a: reserved zones are resolved per output, and a chrome surface pinned
+/// to one display never shrinks another's usable area. The menu bar (created
+/// without an output) targets every display; a bar pinned to the primary
+/// reserves only there. The two outputs carry different scales, so the test
+/// also pins that reserved thicknesses stay logical (scale-independent) while
+/// the geometry they are subtracted from is per-output.
+///
+/// This is the headless two-output reserve check named in the task plan.
+#[test]
+fn per_output_chrome_reserves_are_scoped_and_scale_aware() {
+    let token = "df".repeat(32);
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let output_path = PathBuf::from(&runtime_dir).join(format!(
+        "dragonfruit-per-output-reserve-{}",
+        std::process::id()
+    ));
+    let proc = CompositorProcess::start_with_harnesses(
+        "dragonfruit-conformance-per-output-reserve",
+        std::slice::from_ref(&token),
+        None,
+        Some(&output_path),
+    );
+    let outputs = SyntheticOutput::connect(&output_path);
+
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+    let (name, version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, name, version);
+    core.authenticate(1, token.clone());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+    let (shell_name, shell_version) = state.shell_global.expect("df_shell advertised");
+    let shell = bind_shell(&mut state, &queue, shell_name, shell_version);
+    let qh = queue.handle();
+    let headless_output = state
+        .wl_outputs
+        .first()
+        .cloned()
+        .expect("the static headless output is a bound wl_output");
+
+    // A bar pinned to the primary output, reserving 28 px on top. Its reserve
+    // must not leak to any other display (T-16.1a).
+    let pinned_surface = state.compositor.clone().unwrap().create_surface(&qh, ());
+    let pinned = shell.get_layer_surface(
+        &pinned_surface,
+        Some(&headless_output),
+        df_shell::Layer::Top,
+        "menubar".to_string(),
+        &qh,
+        (),
+    );
+    pinned.set_anchor(1 | 4 | 8); // top | left | right
+    pinned.set_size(0, 28);
+    pinned.set_exclusive_zone(28);
+    pinned_surface.commit();
+
+    // The menu bar proper: no output, so it targets every display, reserving a
+    // shallower 24 px. The deeper pinned reserve must win on the primary.
+    let global_surface = state.compositor.clone().unwrap().create_surface(&qh, ());
+    let global = shell.get_layer_surface(
+        &global_surface,
+        None,
+        df_shell::Layer::Top,
+        "menubar".to_string(),
+        &qh,
+        (),
+    );
+    global.set_anchor(1 | 4 | 8); // top | left | right
+    global.set_size(0, 24);
+    global.set_exclusive_zone(24);
+    global_surface.commit();
+
+    // Observe the reserved zones per output.
+    let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
+    let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .output_name_by_id
+                .iter()
+                .any(|(_, name)| name == "HEADLESS-1")
+                && state
+                    .output_reserved_by_id
+                    .iter()
+                    .any(|(_, edge, thickness)| *edge == 0 && *thickness == 28)
+        },
+    );
+    let headless_id = state
+        .output_name_by_id
+        .iter()
+        .find(|(_, name)| name == "HEADLESS-1")
+        .map(|(id, _)| *id)
+        .expect("HEADLESS-1 has a protocol id");
+
+    // --- attach a second output at a different scale ----------------------
+    outputs.send("add HDMI-A-1 1920 1080 1280 0 2.0");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .output_name_by_id
+                .iter()
+                .any(|(_, name)| name == "HDMI-A-1")
+                && state.output_geometries.contains(&(1280, 0, 960, 540))
+        },
+    );
+    let hdmi_id = state
+        .output_name_by_id
+        .iter()
+        .find(|(_, name)| name == "HDMI-A-1")
+        .map(|(id, _)| *id)
+        .expect("HDMI-A-1 has a protocol id");
+
+    // The all-output bar reserves 24 on the second display; the pinned bar's
+    // 28 px reserve is scoped to the primary and must not appear here.
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .output_reserved_by_id
+                .iter()
+                .any(|(id, edge, thickness)| *id == hdmi_id && *edge == 0 && *thickness == 24)
+        },
+    );
+    assert!(
+        !state
+            .output_reserved_by_id
+            .iter()
+            .any(|(id, edge, thickness)| *id == hdmi_id && *edge == 0 && *thickness == 28),
+        "the primary-pinned bar must not reserve on HDMI-A-1: {:?}",
+        state.output_reserved_by_id
+    );
+    assert!(
+        state
+            .output_reserved_by_id
+            .iter()
+            .any(|(id, edge, thickness)| *id == headless_id && *edge == 0 && *thickness == 28),
+        "the primary keeps the deeper pinned reserve: {:?}",
+        state.output_reserved_by_id
+    );
+    assert!(
+        state
+            .output_scales
+            .iter()
+            .any(|scale| (*scale - 2.0).abs() < 1e-6),
+        "the second output reports its fractional scale: {:?}",
+        state.output_scales
+    );
+
+    drop(global);
+    drop(pinned);
+    drop(global_surface);
+    drop(pinned_surface);
     drop(shell);
     drop(manager);
     drop(core);

@@ -36,10 +36,10 @@ use crate::shell_protocol::toplevel_protocol::{
     df_output, df_toplevel, df_toplevel_manager, df_workspace,
 };
 use crate::state::DfState;
-use crate::window::{WindowEventKind, WindowId, WindowState};
+use crate::window::{ReservedZones, WindowEventKind, WindowId, WindowState};
 use crate::workspace::{SpaceId, Wallpaper, WallpaperFit};
 
-use layer::{aggregate_reserved, Edge, KeyboardInteraction, LayerSurfaceState};
+use layer::{aggregate_reserved_for, Edge, KeyboardInteraction, LayerSurfaceState};
 use trust::{Refusal, TrustModel, TrustedRole};
 
 /// The version of every private interface this compositor implements.
@@ -118,8 +118,15 @@ pub struct ShellProtocolState {
     pub toplevel_global: GlobalId,
     sessions: HashMap<ClientId, ClientSession>,
     layers: Vec<LayerEntry>,
-    /// Reserved zones aggregated from chrome surfaces (menu bar, Dock).
-    pub reserved: crate::window::ReservedZones,
+    /// Reserved zones aggregated from chrome surfaces (menu bar, Dock), the
+    /// union across every output. Kept as the fallback for an output whose
+    /// per-output entry is not resolved yet.
+    pub reserved: ReservedZones,
+    /// Per-output reserved zones, keyed by output name (T-16.1a). A chrome
+    /// surface pinned to one output reserves only there; an all-output
+    /// surface reserves on every output. Recomputed by
+    /// [`DfState::refresh_reserved_zones`].
+    pub output_reserved: HashMap<String, ReservedZones>,
     /// The output a chrome surface last took keyboard focus on. Transient
     /// `overlay` chrome with no explicit output (popovers, menus, OSD) is
     /// shown only on this output, so it never floats across displays (T-10
@@ -153,7 +160,8 @@ impl ShellProtocolState {
             toplevel_global,
             sessions: HashMap::new(),
             layers: Vec::new(),
-            reserved: crate::window::ReservedZones::default(),
+            reserved: ReservedZones::default(),
+            output_reserved: HashMap::new(),
             chrome_focus_output: None,
             attention: Vec::new(),
             output_brightness: HashMap::new(),
@@ -168,6 +176,18 @@ impl ShellProtocolState {
     /// The role granted to `client`, if trusted.
     pub fn role(&self, client: &ClientId) -> Option<TrustedRole> {
         self.sessions.get(client).and_then(|session| session.role)
+    }
+
+    /// The reserved zones that apply to `output_name` (T-16.1a).
+    ///
+    /// Falls back to the global union for an output that has not been
+    /// resolved per-output yet (before the first chrome surface, or during
+    /// startup), so callers never see a spurious zero reserve.
+    pub fn reserved_zones_for(&self, output_name: &str) -> ReservedZones {
+        self.output_reserved
+            .get(output_name)
+            .copied()
+            .unwrap_or(self.reserved)
     }
 
     /// Drop a client's protocol objects when it disconnects.
@@ -365,14 +385,32 @@ impl DfState {
     }
 
     /// Recompute reserved zones from the current chrome surfaces.
+    ///
+    /// Zones are resolved **per output** (T-16.1a): each output keeps only
+    /// the reserves from the chrome surfaces that target it
+    /// ([`LayerSurfaceState::matches_output`]). The union across outputs is
+    /// kept as `reserved`/`reserved_zones`, the fallback for an output that
+    /// has not been resolved yet.
     pub fn refresh_reserved_zones(&mut self) {
-        let zones = aggregate_reserved(
-            self.shell.layers.iter().map(|entry| &entry.state),
-            crate::window::ReservedZones::default(),
-        );
-        if zones != self.shell.reserved {
-            self.shell.reserved = zones;
-            self.reserved_zones = zones;
+        let names: Vec<String> = self.space.outputs().map(|output| output.name()).collect();
+        let mut per_output: HashMap<String, ReservedZones> = HashMap::new();
+        let mut union = ReservedZones::default();
+        for name in &names {
+            let zones = aggregate_reserved_for(
+                name,
+                self.shell.layers.iter().map(|entry| &entry.state),
+                ReservedZones::default(),
+            );
+            union.top = union.top.max(zones.top);
+            union.bottom = union.bottom.max(zones.bottom);
+            union.left = union.left.max(zones.left);
+            union.right = union.right.max(zones.right);
+            per_output.insert(name.clone(), zones);
+        }
+        if per_output != self.shell.output_reserved {
+            self.shell.output_reserved = per_output;
+            self.shell.reserved = union;
+            self.reserved_zones = union;
             self.needs_redraw = true;
             self.broadcast_reserved_zones();
         }
@@ -682,7 +720,7 @@ impl DfState {
             .copied()
             .unwrap_or(1.0);
         resource.brightness(brightness);
-        let zones = self.shell.reserved;
+        let zones = self.shell.reserved_zones_for(&output_name);
         for (edge, thickness) in [
             (Edge::Top, zones.top),
             (Edge::Bottom, zones.bottom),
@@ -982,18 +1020,27 @@ impl DfState {
         }
     }
 
-    /// Push the current reserved zones to every output handle.
+    /// Push the current reserved zones to every output handle (T-16.1a).
+    ///
+    /// Each output is sent its own zones, so a chrome surface pinned to one
+    /// display does not reserve space on another.
     fn broadcast_reserved_zones(&mut self) {
         let sessions = self.manager_sessions();
-        let zones = self.shell.reserved;
         for (client, _manager) in &sessions {
-            let resources: Vec<df_output::DfOutput> = self
+            let resources: Vec<(String, df_output::DfOutput)> = self
                 .shell
                 .sessions
                 .get(client)
-                .map(|session| session.outputs.values().cloned().collect())
+                .map(|session| {
+                    session
+                        .outputs
+                        .iter()
+                        .map(|(name, resource)| (name.clone(), resource.clone()))
+                        .collect()
+                })
                 .unwrap_or_default();
-            for resource in resources {
+            for (name, resource) in resources {
+                let zones = self.shell.reserved_zones_for(&name);
                 for (edge, thickness) in [
                     (Edge::Top, zones.top),
                     (Edge::Bottom, zones.bottom),

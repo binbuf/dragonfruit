@@ -359,8 +359,10 @@ pub struct DfState {
     pub windows: WindowModel,
     /// Window lifecycle/focus broadcasts for the shell (T-07 seam).
     pub window_dispatch: WindowDispatch,
-    /// Reserved zones (menu bar, Dock) that Zoom fills around; supplied by
-    /// the shell over the private protocol in T-07.
+    /// The union of every output's reserved zones (menu bar, Dock), kept as
+    /// the fallback for an output whose per-output reserve is not resolved
+    /// yet. Consumers use [`DfState::usable_geometry_for`], which subtracts
+    /// the zones of the window's own output (T-16.1a).
     pub reserved_zones: ReservedZones,
     /// The window that currently owns keyboard focus, if any.
     pub active_window: Option<Window>,
@@ -1034,7 +1036,13 @@ impl DfState {
     /// `window` occupies — the Zoom target (FR-1).
     pub fn usable_geometry_for(&self, window: &Window) -> Option<Rectangle<i32, Logical>> {
         let output = self.output_bounds_for(window)?;
-        Some(self.reserved_zones.usable(output))
+        // Reserved zones are per-output (T-16.1a): a Zoom target on one
+        // display subtracts only the chrome that actually sits on it.
+        let zones = self
+            .output_name_for(window)
+            .map(|name| self.shell.reserved_zones_for(&name))
+            .unwrap_or(self.reserved_zones);
+        Some(zones.usable(output))
     }
 
     /// The decoration insets the compositor reserves for `window` (T-01.1).

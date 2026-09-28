@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(139 earlier sections omitted)_
+_(140 earlier sections omitted)_
 
-- **T110y — T-14.7y Dock magnification tracking: stable pointer and anchor**: **State: done.** Hover magnification now tracks the pointer without ringing.; `design-system/tokens/tokens.json` — `motion.dockMagnifyTrack` added;
 - **T110z — T-14.7z Dock plate rendering: corner-following rim and frost alignment**: **State: done.** The plate is now one integer rounded rect in every state. The; `shell/dock/Dock.qml` — new `panelRect` (each edge of the live `plateRect`
 - **T110w — T-14.7w Dock icon tiles: true squircle masking**: **State: done.** Every Dock app tile now clips its themed artwork to the token; `shell/dock/DockGlyph.qml` — the themed app artwork is now a `Canvas`
 - **T172 — T-18.1a Wallpaper provider service and shipped default**: **State: done.** `services/wallpaperd` is a real session service. It resolves; `services/wallpaperd/` (new crate, workspace member) —
@@ -44,6 +43,7 @@ _(139 earlier sections omitted)_
 - **T139 — T-15.15a Network advanced (VPN) adapter**: **State: done.** The Network advanced (VPN) adapter landed as a **second; `services/networkmanager/src/vpn/mod.rs` (new) — module docs + re-exports.
 - **T140 — T-15.15b Network advanced (VPN) pane and tile**: **State: done.** The Settings `Network` pane and the Control Center `VPN` tile; `services/system-status/src/vpn.rs` (new) — `VpnHost<S>` (refresh/view/state/
 - **T141 — T-15.16 Absent-daemon matrix and breadth capture**: **State: done.** The T-15 track is closed. The absent-daemon masking matrix is; `docs/design/08-settings.md` — new "The absent-daemon masking matrix
+- **T142 — T-16.1a Per-output chrome sizing and reserved zones**: **State: done.** Reserved zones are now **per output**: `aggregate_reserved_for`; `compositor/src/shell/layer.rs` — `aggregate_reserved_for(output_name,
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -13484,3 +13484,57 @@ Decisions / gotchas for T-16 and later:
   `docs/captures/t15-breadth.png`; vision found the menu bar, Dock, wallpaper,
   and client windows composited with no blank areas, clipping, or missing
   chrome.
+
+## T142 — T-16.1a Per-output chrome sizing and reserved zones
+
+**State: done.** Reserved zones are now **per output**: `aggregate_reserved_for`
+filters chrome surfaces with `matches_output`, so a surface pinned to one
+display reserves only there while an all-output surface (menu bar, Dock)
+reserves on every display. Window usable/Zoom geometry subtracts the zones of
+the window's own output. Chrome geometry (`chrome_surfaces`) was already
+per-output and now shares the same zone map. ADR 0149.
+
+Real paths:
+
+- `compositor/src/shell/layer.rs` — `aggregate_reserved_for(output_name,
+  layers, zones)`; shared `reserve` helper; `aggregate_reserved` kept as the
+  global-union fallback. 4 new unit tests.
+- `compositor/src/shell/mod.rs` — `ShellProtocolState.output_reserved:
+  HashMap<String, ReservedZones>`; `reserved_zones_for(name)`;
+  `refresh_reserved_zones` rebuilds the per-output map (union kept as fallback);
+  `send_output_properties` and `broadcast_reserved_zones` send per-output zones
+  (the session's `outputs` map is already keyed by name).
+- `compositor/src/state.rs` — `usable_geometry_for` uses
+  `output_name_for(window)` + `reserved_zones_for`.
+- `protocols/dragonfruit-shell.xml` — `get_layer_surface` description corrected
+  to the all-output `NULL` rule.
+- `docs/design/adr/0149-per-output-chrome-reserved-zones.md` (new).
+- `compositor/tests/shell_protocol_conformance.rs` — new
+  `per_output_chrome_reserves_are_scoped_and_scale_aware`; the test harness now
+  binds `wl_output` so a surface can be pinned to one display.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-compositor` — green (all suites, new test
+  included).
+- `cargo clippy -p dragonfruit-compositor --all-targets -- -D warnings` and
+  `cargo fmt --all -- --check` — clean.
+- `make e2e` — EXIT 0 (`/tmp/opencode/e2e-t142.log`).
+- Live visual check: `/tmp/opencode/t142.png`; vision found the menu bar, Dock,
+  wallpaper, and client windows composited with no artifacts.
+
+Decisions / gotchas for T-16.1b and later:
+
+- **`matches_output` is the one filter.** A pinned surface reserves only on its
+  own output; `NULL` reserves on every output. Each edge keeps the deepest
+  reserve (no summing).
+- **Reserved thicknesses are logical pixels**; output scale changes the
+  geometry they subtract from, not the reserve. T-16.1b gets per-output usable
+  geometry via `usable_geometry_for` for free.
+- **One surface, one configure.** A no-output chrome surface is still a single
+  `wl_surface`, so its client `configure` size resolves against the primary
+  output; true per-output client buffers need one layer surface per output in
+  the shell. This is the one open half of "chrome sizes per output" (ADR 0149).
+- **`DfState.reserved_zones` is now only a fallback** (the global union), not
+  the source of truth. New consumers should use `usable_geometry_for` /
+  `ShellProtocolState::reserved_zones_for`.
