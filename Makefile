@@ -12,6 +12,8 @@ BUILD_DIR ?= build
 SOAK_CYCLES ?= 100
 DEMO_ARGS ?=
 IDLE_TRACE_SECS ?= 60
+DESTDIR ?=
+PREFIX ?= /usr
 DF_TOOLCHAIN ?= $(HOME)/.local/df-toolchain/usr
 DF_DEVROOT ?= $(HOME)/.local/df-devroot/lib64
 
@@ -45,7 +47,7 @@ endif
 .PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test \
         visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev demo soak e2e \
         idle-trace menubar-idle-trace latency-trace settingsd-capture settings-wave-1-capture \
-        files-capture osd-dnd-capture portals-capture zoo-run dock-spacing-capture dock-magnify-capture dock-motion-capture dock-trash-capture dock-app-picker-capture dock-drops-capture dock-activation-capture dock-launch-origin-capture dock-folder-stack-capture dock-tooltip-capture dock-tahoe-capture dock-folder-pin-capture dock-chooser-actions-capture dock-chooser-scroll-capture dock-window-badge-capture dock-hover-chooser-capture dock-overflow-capture dock-trash-empty-capture dock-minimize-reaction-capture dock-keyboard-reorder-capture dock-dividers-capture dock-magnify-sweep-capture dock-plate-corners-capture dock-icon-mask-capture check-desktop-names check-no-capture-grab check-design-tokens clean
+        files-capture osd-dnd-capture portals-capture zoo-run dock-spacing-capture dock-magnify-capture dock-motion-capture dock-trash-capture dock-app-picker-capture dock-drops-capture dock-activation-capture dock-launch-origin-capture dock-folder-stack-capture dock-tooltip-capture dock-tahoe-capture dock-folder-pin-capture dock-chooser-actions-capture dock-chooser-scroll-capture dock-window-badge-capture dock-hover-chooser-capture dock-overflow-capture dock-trash-empty-capture dock-minimize-reaction-capture dock-keyboard-reorder-capture dock-dividers-capture dock-magnify-sweep-capture dock-plate-corners-capture dock-icon-mask-capture check-desktop-names check-no-capture-grab check-design-tokens clean install
 
 help:
 	@echo "Dragonfruit build targets:"
@@ -64,6 +66,7 @@ help:
 	@echo "  make lint     — fmt --check, clippy, qmllint, token freshness, desktop-name gate"
 	@echo "  make check    — lint + test + teardown soak gate"
 	@echo "  make dev      — dragonfruit dev --nested (daily workflow)"
+	@echo "  make install  — lay out session units + shipped wallpaper under DESTDIR/PREFIX"
 	@echo "  make soak     — teardown hygiene: N clean cycles (default 100)"
 	@echo "  make clean    — remove build artifacts (keeps cargo cache)"
 
@@ -123,6 +126,7 @@ e2e: build
 	$(CARGO) test -p dragonfruit-lock-auth
 	$(CARGO) test -p dragonfruit-session
 	$(CARGO) test -p dragonfruit-app-index
+	$(CARGO) test -p dragonfruit-wallpaperd
 	$(CARGO) test -p xdg-desktop-portal-dragonfruit -- --test-threads=1
 	$(MAKE) demo DEMO_ARGS=--headless
 
@@ -408,6 +412,12 @@ demo: build
 
 soak: cargo-build
 	$(CARGO) run -p dragonfruit-dev --bin dragonfruit -- dev --soak $(SOAK_CYCLES)
+
+# The packaging seam (T-12.2/T-18.1a): lay out the display-manager entry, the
+# systemd user units, and the shipped default wallpaper under
+# $(DESTDIR)$(PREFIX). T-32 packaging calls this.
+install: cargo-build
+	$(CARGO) run -p dragonfruit-session -- --install-session $(DESTDIR)$(PREFIX)
 
 clean:
 	rm -rf $(BUILD_DIR)

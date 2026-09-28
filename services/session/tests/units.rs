@@ -106,6 +106,7 @@ fn the_shipped_unit_set_is_complete() {
         "dragonfruit-menu-broker.service",
         "dragonfruit-app-index.service",
         "dragonfruit-notifications.service",
+        "dragonfruit-wallpaperd.service",
         "dragonfruit-portal.service",
     ]
     .iter()
@@ -128,6 +129,7 @@ fn the_target_pulls_the_whole_composition() {
         "dragonfruit-menu-broker.service",
         "dragonfruit-app-index.service",
         "dragonfruit-notifications.service",
+        "dragonfruit-wallpaperd.service",
         "dragonfruit-portal.service",
     ] {
         assert!(wants.contains(service), "{service} is wanted: {wants}");
@@ -157,6 +159,7 @@ fn restart_policies_match_the_plan() {
         ("dragonfruit-menu-broker.service", "on-failure"),
         ("dragonfruit-app-index.service", "on-failure"),
         ("dragonfruit-notifications.service", "on-failure"),
+        ("dragonfruit-wallpaperd.service", "on-failure"),
         ("dragonfruit-portal.service", "on-failure"),
     ];
     for (file, policy) in expectations {

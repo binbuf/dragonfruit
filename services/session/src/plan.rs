@@ -190,6 +190,7 @@ impl SessionPlan {
             ServiceSpec::new("menu-broker", "dragonfruit-menu-broker").stage(1),
             ServiceSpec::new("app-index", "dragonfruit-app-index").stage(1),
             ServiceSpec::new("notifications", "dragonfruit-notifications").stage(1),
+            ServiceSpec::new("wallpaperd", "dragonfruit-wallpaperd").stage(1),
             ServiceSpec::new("portal", "xdg-desktop-portal-dragonfruit").stage(2),
         ])
     }

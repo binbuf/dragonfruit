@@ -142,6 +142,21 @@ fn install_into_lays_out_the_entry_and_the_units() {
         .join(entry::SESSION_TARGET)
         .exists());
 
+    // T-18.1a: the shipped default wallpaper lands on the stable share path the
+    // provider resolves, byte-identical to the in-tree asset.
+    let wallpaper = prefix
+        .join(entry::WALLPAPER_DIR)
+        .join(entry::WALLPAPER_FILE);
+    assert!(
+        wallpaper.exists(),
+        "the shipped default wallpaper is installed"
+    );
+    assert!(written.contains(&wallpaper));
+    let installed = std::fs::read(&wallpaper).expect("read installed wallpaper");
+    let source = std::fs::read(manifest_dir().join(entry::WALLPAPER_ASSET))
+        .expect("read the in-tree wallpaper");
+    assert_eq!(installed, source, "the asset is copied verbatim");
+
     std::fs::remove_dir_all(&prefix).ok();
 }
 
