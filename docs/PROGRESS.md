@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(135 earlier sections omitted)_
+_(136 earlier sections omitted)_
 
-- **T110t — T-14.7t Dock keyboard reordering**: **State: done.** The Dock's rearrangement affordance is no longer pointer-only:; `shell/src/dockmodel.{h,cpp}` — `QStringList movePinnedEntry(const QStringList
 - **T110u — T-14.7u Dock reference metrics: spacing, plate radius, indicator inset**: **State: done.** The resting Dock is retuned to the mature reference capture:; `design-system/tokens/tokens.json` — `component.dock`: `padding` 10 → 15,
 - **T110v — T-14.7v Dock region dividers: pinned | temporary/recent | stacks and Trash**: **State: done.** The Dock projects the reference's region structure: a rule; `shell/src/dockmodel.{h,cpp}` — `DockRegionPlan` + `planDockRegions(entries,
 - **T110x — T-14.7x Dock activation: taps on entries that carry a DragHandler**: **State: done.** A stationary left click on any app/temporary/overflow entry; `shell/src/dockpointer.{h,cpp}` (new, dockcore) — `DockPointer::timestamp()`
@@ -43,6 +42,7 @@ _(135 earlier sections omitted)_
 - **T134 — T-15.12b Printers and Scanners pane and tile**: **State: done.** The Settings `Printers & Scanners` pane and the Control Center; `services/system-status/src/printers.rs` (new) — `PrintersHost<S>` (refresh/
 - **T135 — T-15.13a Privacy and Security adapter**: **State: done.** New workspace crate `dragonfruit-privacy-adapter`; `services/privacy-adapter/src/source.rs` — `AppPermissionData {app,
 - **T136 — T-15.13b Privacy and Security pane and tile**: **State: done.** The Settings `Privacy & Security` pane and the Control Center; `services/system-status/src/privacy.rs` (new) — `PrivacyHost<S>` (refresh/
+- **T137 — T-15.14a Accessibility adapter**: **State: done.** New workspace crate `dragonfruit-accessibility-adapter`; `services/accessibility-adapter/src/source.rs` — `AccessibilityData
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -13047,3 +13047,85 @@ Decisions / gotchas for T-15.14a and later:
   clipped/blank/overlapping text; the panel showed the `Privacy` tile
   (`3 Apps`, `Privacy & Security Settings…`) with every tile through Clipboard
   fully visible and no artifacts.
+
+## T137 — T-15.14a Accessibility adapter
+
+**State: done.** New workspace crate `dragonfruit-accessibility-adapter`
+(`services/accessibility-adapter`) projects the **AT-SPI accessibility bus**
+over the T-07 adapter contract, with state, events, and absence (ADR 0144).
+Reused, never reimplemented.
+
+Real paths:
+
+- `services/accessibility-adapter/src/source.rs` — `AccessibilityData
+  {enabled, screen_reader}`, `AccessibilitySource` (`read`), and
+  `MockAccessibility` (`absent`/`present`/`failing`, `kill`/`restart`, `push`,
+  `reads`, `is_present`).
+- `services/accessibility-adapter/src/model.rs` — `AccessibilitySnapshot`
+  (`is_enabled`/`is_screen_reader_enabled`/`present`/`enabled_label`/
+  `screen_reader_label`/`label`/glyph `accessibility`) + pure
+  `changes(previous)` (`AccessibilityChange::{Enabled,ScreenReader}`).
+- `services/accessibility-adapter/src/adapter.rs` — `AccessibilityAdapter<S>`
+  over the shared `Subscription` (`refresh`/`snapshot`/`drain_changes`/
+  `pending_changes`), `Adapter` with `AdapterId::ACCESSIBILITY`.
+- `services/accessibility-adapter/src/accessibility.rs` — live
+  `HostAccessibility`; session-bus `org.a11y.Bus` at `/org/a11y/bus`,
+  interface `org.a11y.Status`, one `GetAll` read; pure
+  `status_from_properties`.
+- `services/accessibility-adapter/src/lib.rs` — crate docs + re-exports.
+- `services/accessibility-adapter/tests/read_path.rs` — 9 acceptance tests.
+- `services/system-adapters/src/state.rs` — `AdapterId::ACCESSIBILITY`
+  (`"accessibility"`); id test updated.
+- `Cargo.toml` workspace member; `Makefile` e2e runs
+  `cargo test -p dragonfruit-accessibility-adapter`.
+- Docs/scripts — ADR `0144-accessibility-adapter.md`;
+  `docs/design/07-system-integration.md` table row + "The accessibility path
+  (T-15.14a)" section; `docs/design/08-settings.md` Accessibility routing row;
+  `scripts/capture-t15-accessibility-adapter.sh` + `docs/captures/README.md`.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-accessibility-adapter` — 25 lib + 9 read_path
+  green.
+- `cargo test -p dragonfruit-system-adapters` — green.
+- `cargo clippy -p dragonfruit-accessibility-adapter
+  -p dragonfruit-system-adapters --all-targets -- -D warnings` — clean;
+  `cargo fmt --all -- --check` — clean.
+- `make build` — EXIT 0; `make e2e` — EXIT 0 (captured
+  `/tmp/opencode/e2e-t137.log`).
+- `ctest --test-dir build --output-on-failure -j4` — 67/67.
+- `make check-design-tokens check-tokens check-no-capture-grab` — clean;
+  `./scripts/check-gallery-snapshots.py` — 78 green.
+- `make lint` — still fails only on the pre-existing `check-desktop-names`
+  lines (none in the new crate); unchanged from T125–T136.
+
+Decisions / gotchas for T-15.14b and later:
+
+- **The host stack is AT-SPI, not a desktop settings schema.** Only
+  `org.a11y.Status` (`IsEnabled`, `ScreenReaderEnabled`). Do not read a named
+  desktop's GSettings; `scripts/check-desktop-names.sh` forbids it and the bus
+  is the portable contract.
+- **Read-only.** `org.a11y.Status` has no setter. Durable accessibility
+  preferences and compositor magnification are T-15.14b's; do not add a write
+  here.
+- **Absence is single-layered.** `read() = Ok(None)` = no session bus or no
+  `org.a11y.Bus` owner → hidden (`Unavailable`, normal). An all-off bus is
+  `Available` with `present() == false` (the second hide rule). A bus that owns
+  its name but cannot be read is `Error`, visible and inert.
+- **`GetAll` answers `a{sv}`.** Deserialize into `HashMap<String, OwnedValue>`
+  and unwrap each bool at the boundary; deserializing straight into
+  `HashMap<String, bool>` fails the signature check (this was caught by the
+  live-read test). Missing/unexpected property → `false`.
+- **`AdapterId::ACCESSIBILITY` is `"accessibility"`**, matching
+  `menu.control.accessibility` and the shell status-item id. T-15.14b needs a
+  `dragonfruit-system-status` `Accessibility` interface + a
+  `DF_ACCESSIBILITY_FIXTURE` seam (through the host, not by linking the crate).
+- **Reference mapping.** Vision/VoiceOver → the screen-reader flag here;
+  Zoom/Display/Motion → compositor + settingsd (`accessibility.reduceMotion`
+  already exists); Hearing Devices/Captions/Live Captions/Name Recognition are
+  Apple-only or host-ownerless (omit per ADR 0122).
+- Live visual check: `bash scripts/capture-t15-accessibility-adapter.sh`
+  produced `docs/captures/t15-14a-accessibility-adapter.png` (2115x1437).
+  Vision found menu bar, Dock, wallpaper, Settings window, and the demo client
+  composited with no blank areas, tearing, or ghosting (only the usual nested
+  X11 demo-window edge).

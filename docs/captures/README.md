@@ -709,6 +709,14 @@ per-category permission dialog; the tile capture shows the read-only summary
 `scripts/capture-t15-privacy-pane.sh`; requires a host Wayland session,
 spectacle, and Pillow, and is not in `make e2e`.
 
+`t15-14a-accessibility-adapter.png` is the nested demo desktop captured to prove
+the Accessibility adapter (T-15.14a) leaves the tree healthy. The adapter has no
+surface of its own (the pane and tile are T-15.14b), so the capture only
+confirms the desktop renders: menu bar, Dock, wallpaper, and windows composited
+with no blank areas or stray artifacts. Captured by
+`scripts/capture-t15-accessibility-adapter.sh`; requires a host Wayland session,
+spectacle, and Pillow, and is not in `make e2e`.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture
