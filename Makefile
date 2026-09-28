@@ -11,6 +11,8 @@ CTEST ?= ctest
 BUILD_DIR ?= build
 SOAK_CYCLES ?= 100
 DEMO_ARGS ?=
+DEV_FULL_ARGS ?=
+FIXTURES ?=
 IDLE_TRACE_SECS ?= 60
 DESTDIR ?=
 PREFIX ?= /usr
@@ -45,7 +47,7 @@ endif
 
 .DEFAULT_GOAL := help
 .PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test \
-        visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev demo soak e2e \
+        visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev dev-full demo soak e2e \
         idle-trace menubar-idle-trace latency-trace settingsd-capture settings-wave-1-capture \
         t18-wallpaper-capture t18-absence-matrix \
         files-capture osd-dnd-capture portals-capture zoo-run dock-spacing-capture dock-magnify-capture dock-motion-capture dock-trash-capture dock-app-picker-capture dock-drops-capture dock-activation-capture dock-launch-origin-capture dock-folder-stack-capture dock-tooltip-capture dock-tahoe-capture dock-folder-pin-capture dock-chooser-actions-capture dock-chooser-scroll-capture dock-window-badge-capture dock-hover-chooser-capture dock-overflow-capture dock-trash-empty-capture dock-minimize-reaction-capture dock-keyboard-reorder-capture dock-dividers-capture dock-magnify-sweep-capture dock-plate-corners-capture dock-icon-mask-capture check-desktop-names check-no-capture-grab check-design-tokens clean install
@@ -68,7 +70,9 @@ help:
 	@echo "  make demo     — T-01 loop demo (nested; headless/scripted in CI)"
 	@echo "  make lint     — fmt --check, clippy, qmllint, token freshness, desktop-name gate"
 	@echo "  make check    — lint + test + teardown soak gate"
-	@echo "  make dev      — dragonfruit dev --nested (daily workflow)"
+	@echo "  make dev      — dragonfruit dev --nested (daily workflow, thin services)"
+	@echo "  make dev-full — nested session with settingsd/system-status/etc. on a private bus"
+	@echo "                  (FIXTURES=1 for deterministic pane fixtures)"
 	@echo "  make install  — lay out session units + shipped wallpaper under DESTDIR/PREFIX"
 	@echo "  make soak     — teardown hygiene: N clean cycles (default 100)"
 	@echo "  make clean    — remove build artifacts (keeps cargo cache)"
@@ -429,6 +433,17 @@ check: lint test soak
 
 dev: build
 	$(CARGO) run -p dragonfruit-dev --bin dragonfruit -- dev --nested --shell
+
+# The full nested dev session: the thin loop's core services (app-index,
+# menu-broker) plus the real session services (settingsd, system-status,
+# notifications, wallpaperd) on a private session bus with scratch XDG dirs,
+# so Settings, Control Center, and the wallpaper provider are live without
+# touching the host desktop or the developer's real settings. `FIXTURES=1`
+# swaps in the deterministic pane fixtures for hosts whose daemons/hardware
+# are absent. `make demo`/`make dev` stay thin and never start these.
+dev-full: build
+	$(CARGO) run -p dragonfruit-dev --bin dragonfruit -- dev --nested --shell \
+	    --services full --private-bus $(if $(FIXTURES),--fixtures,) $(DEV_FULL_ARGS)
 
 # T-01.6a: one command that builds and launches the loop demo. With a host
 # Wayland session it opens the nested compositor for the human walkthrough

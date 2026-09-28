@@ -67,6 +67,37 @@ missing; a Wayland-only session is a normal state.
 `DF_DEMO_QT_APP`, `DF_DEMO_X11_APP`, and `DF_QML_IMPORT_PATH` override the
 app/QML paths the harness discovers under `build/`.
 
+### The thin/full session split: `make dev-full`
+
+`make dev` and `make demo` are deliberately **thin**: they start the core
+services only (`dragonfruit-app-index` and `dragonfruit-menu-broker`, the Dock
+identity and global menu the shell chrome needs) and never touch the
+developer's real settings. The real session services —
+`dragonfruit-settingsd`, `dragonfruit-system-status`,
+`dragonfruit-notifications`, and `dragonfruit-wallpaperd` — are opt-in:
+
+```bash
+make dev-full              # nested session with the full service set
+make dev-full FIXTURES=1   # ... and the deterministic DF_*_FIXTURE pane data
+```
+
+`make dev-full` runs the same nested compositor and shell on a **private
+session bus** with scratch `XDG_CONFIG_HOME`/`XDG_CACHE_HOME`/`XDG_STATE_HOME`
+under the session runtime dir. It is therefore safe alongside another desktop
+(GNOME, KDE, Sway) on the workstation, and it can never read or overwrite the
+developer's real settings or wallpaper cache. It waits for the shell-critical
+bus names (`Settings1`, `AppIndex1`, `MenuBroker1`, `SystemStatus1`) before
+starting the shell. Host daemons (BlueZ, UDisks2, WirePlumber, UPower) remain
+optional — absence is a normal state — so `FIXTURES=1` is the deterministic
+alternative when the hardware is not there.
+
+The split is recorded in
+[ADR 0123](adr/0123-thin-demo-and-full-dev-session.md). `wallpaperd` is never
+on the thin path, and `make demo`'s headless scripted half starts **no**
+services, so CI never warms the provider's network cache. The per-pane capture
+scripts under `scripts/` still provision their own scratch daemons and
+fixtures; `make dev-full` is the general-purpose version of what they do.
+
 ### Capturing the walkthrough
 
 `scripts/capture-demo.sh` performs the checklist against the live nested
