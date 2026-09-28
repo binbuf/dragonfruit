@@ -682,6 +682,7 @@ dependencies = [
  "dragonfruit-bluetooth",
  "dragonfruit-networkmanager",
  "dragonfruit-power",
+ "dragonfruit-storage",
  "dragonfruit-system-adapters",
  "serde_json",
  "zbus",

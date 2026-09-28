@@ -2,6 +2,7 @@
 #include "SettingsBridge.h"
 
 #include "BluetoothClient.h"
+#include "StorageClient.h"
 #include "settingsclient.h"
 
 #include <QColor>
@@ -117,6 +118,16 @@ SettingsBridge::SettingsBridge(QObject *parent)
     connect(m_bluetooth, &BluetoothClient::availableChanged, this,
             [this](bool) { emit bluetoothChanged(); });
 
+    // T-15.2b: the storage seam, selected the same way.
+    if (qEnvironmentVariableIsSet("DF_STORAGE_FIXTURE"))
+        m_storage = new MockStorageClient(this);
+    else
+        m_storage = new DbusStorageClient(this);
+    connect(m_storage, &StorageClient::changed, this,
+            [this](const QVariantMap &) { emit storageChanged(); });
+    connect(m_storage, &StorageClient::availableChanged, this,
+            [this](bool) { emit storageChanged(); });
+
     buildWallpaperPresets();
     connectPortalWatcher();
     m_wallpaperFixture = qEnvironmentVariableIsSet("DF_WALLPAPER_FIXTURE");
@@ -159,6 +170,16 @@ QVariantMap SettingsBridge::bluetooth() const
 bool SettingsBridge::bluetoothAvailable() const
 {
     return m_bluetooth && m_bluetooth->available();
+}
+
+QVariantMap SettingsBridge::storage() const
+{
+    return m_storage ? m_storage->view() : QVariantMap();
+}
+
+bool SettingsBridge::storageAvailable() const
+{
+    return m_storage && m_storage->available();
 }
 
 QString SettingsBridge::providerStatus() const
@@ -439,6 +460,30 @@ void SettingsBridge::setBluetoothConnected(const QString &address, bool connecte
 {
     if (m_bluetooth)
         m_bluetooth->setConnected(address, connected);
+}
+
+void SettingsBridge::refreshStorage()
+{
+    if (m_storage)
+        m_storage->refresh();
+}
+
+void SettingsBridge::mountStorage(const QString &volumePath)
+{
+    if (m_storage && !volumePath.isEmpty())
+        m_storage->mount(volumePath);
+}
+
+void SettingsBridge::unmountStorage(const QString &volumePath)
+{
+    if (m_storage && !volumePath.isEmpty())
+        m_storage->unmount(volumePath);
+}
+
+void SettingsBridge::ejectStorage(const QString &drivePath)
+{
+    if (m_storage && !drivePath.isEmpty())
+        m_storage->eject(drivePath);
 }
 
 void SettingsBridge::setWallpaperFixture(const QString &status)

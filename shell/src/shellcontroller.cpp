@@ -481,6 +481,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             &ShellController::onBatteryState);
     connect(m_statusClient, &SystemStatusClient::bluetoothState, this,
             &ShellController::onBluetoothState);
+    connect(m_statusClient, &SystemStatusClient::storageState, this,
+            &ShellController::onStorageState);
     connect(m_statusClient, &SystemStatusClient::joinReport, this,
             &ShellController::onStatusReport);
     connect(m_statusClient, &SystemStatusClient::writeReport, this,
@@ -501,6 +503,7 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     m_statusClient->refreshAudio();
     m_statusClient->refreshBattery();
     m_statusClient->refreshBluetooth();
+    m_statusClient->refreshStorage();
 
     // T-14.3: StatusNotifier tray items. app-index owns the watcher; the shell
     // reads its live item view and re-reads on a short timer (a tray app can
@@ -819,6 +822,14 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onBluetoothDeviceToggled(QString,bool)));
     connect(controlCenterObject, SIGNAL(bluetoothSettingsRequested()), this,
             SLOT(onBluetoothSettingsRequested()));
+    connect(controlCenterObject, SIGNAL(storageMountRequested(QString)), this,
+            SLOT(onStorageMountRequested(QString)));
+    connect(controlCenterObject, SIGNAL(storageUnmountRequested(QString)), this,
+            SLOT(onStorageUnmountRequested(QString)));
+    connect(controlCenterObject, SIGNAL(storageEjectRequested(QString)), this,
+            SLOT(onStorageEjectRequested(QString)));
+    connect(controlCenterObject, SIGNAL(storageSettingsRequested()), this,
+            SLOT(onStorageSettingsRequested()));
     connect(controlCenterObject, SIGNAL(focusToggleRequested(bool)), this,
             SLOT(onFocusToggleRequested(bool)));
     connect(controlCenterObject, SIGNAL(focusSettingsRequested()), this,
@@ -1800,6 +1811,12 @@ void ShellController::onBluetoothState(const QByteArray &json)
         m_statusModel->applyBluetoothJson(json);
 }
 
+void ShellController::onStorageState(const QByteArray &json)
+{
+    if (m_statusModel)
+        m_statusModel->applyStorageJson(json);
+}
+
 void ShellController::onStatusReport(const QByteArray &json)
 {
     qInfo() << "shell: system-status action:" << SystemStatusModel::outcomeOf(json);
@@ -1810,6 +1827,7 @@ void ShellController::onStatusReport(const QByteArray &json)
         m_statusClient->refreshAudio();
         m_statusClient->refreshBattery();
         m_statusClient->refreshBluetooth();
+        m_statusClient->refreshStorage();
     }
 }
 
@@ -1973,9 +1991,11 @@ void ShellController::applyControlCenterData()
         : QStringLiteral("auto");
     const bool dark = ThemeBinding::darkForScheme(scheme, ThemeBinding::hostDark());
     const QVariantMap bluetooth = m_statusModel ? m_statusModel->bluetooth() : QVariantMap();
+    const QVariantMap storage = m_statusModel ? m_statusModel->storage() : QVariantMap();
     m_controlCenterItem->setProperty("wifi", wifi);
     m_controlCenterItem->setProperty("audio", audio);
     m_controlCenterItem->setProperty("bluetooth", bluetooth);
+    m_controlCenterItem->setProperty("storage", storage);
     m_controlCenterItem->setProperty("brightness", brightness);
     m_controlCenterItem->setProperty("focusPolicy", focus);
     m_controlCenterItem->setProperty("dark", dark);
@@ -1988,6 +2008,9 @@ void ShellController::applyControlCenterData()
     // exposed (T-15.1b), so its tile is live.
     m_controlCenterItem->setProperty("wifiWritable", false);
     m_controlCenterItem->setProperty("bluetoothWritable", true);
+    // Storage writes (mount/unmount/eject) are live through the T-15.2b bridge
+    // host, so its tile is live.
+    m_controlCenterItem->setProperty("storageWritable", true);
 }
 
 void ShellController::onControlCenterConfigured(int width, int height, quint32)
@@ -2103,6 +2126,34 @@ void ShellController::onBluetoothSettingsRequested()
     // Launching Settings on the Bluetooth pane is T-16; the entry point is
     // wired and logs until then.
     qInfo() << "shell: Bluetooth Settings requested (T-16)";
+}
+
+void ShellController::onStorageMountRequested(const QString &volumePath)
+{
+    // One explicit UDisks2 write through the bridge host (T-15.2b). The host
+    // re-reads and the pushed property change updates the tile; no local state
+    // is kept.
+    if (m_statusClient && !volumePath.isEmpty())
+        m_statusClient->mountStorage(volumePath);
+}
+
+void ShellController::onStorageUnmountRequested(const QString &volumePath)
+{
+    if (m_statusClient && !volumePath.isEmpty())
+        m_statusClient->unmountStorage(volumePath);
+}
+
+void ShellController::onStorageEjectRequested(const QString &drivePath)
+{
+    if (m_statusClient && !drivePath.isEmpty())
+        m_statusClient->ejectStorage(drivePath);
+}
+
+void ShellController::onStorageSettingsRequested()
+{
+    // Launching Settings on the Storage pane is T-16; the entry point is wired
+    // and logs until then.
+    qInfo() << "shell: Storage Settings requested (T-16)";
 }
 
 void ShellController::onFocusToggleRequested(bool enabled)
