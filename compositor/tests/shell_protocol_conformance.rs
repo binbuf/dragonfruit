@@ -5375,6 +5375,273 @@ fn per_output_chrome_reserves_are_scoped_and_scale_aware() {
     );
 }
 
+/// Parse a `query identity` reply into `window id -> app_id`.
+fn identity_app_ids(report: &str) -> HashMap<u64, String> {
+    report
+        .lines()
+        .filter_map(|line| {
+            let mut parts = line.split_whitespace();
+            if parts.next()? != "identity" {
+                return None;
+            }
+            let id = parts.next()?.parse().ok()?;
+            let app_id = parts.next()?.to_string();
+            Some((id, app_id))
+        })
+        .collect()
+}
+
+/// Parse a `query decorations` reply into `window id -> (x, y, w, h)` content
+/// rectangles.
+fn decoration_content_rects(report: &str) -> HashMap<u64, (i32, i32, i32, i32)> {
+    report
+        .lines()
+        .filter_map(|line| {
+            let mut parts = line.split_whitespace();
+            if parts.next()? != "decoration" {
+                return None;
+            }
+            let id = parts.next()?.parse().ok()?;
+            let _server_side = parts.next()?;
+            let _titlebar = [parts.next()?, parts.next()?, parts.next()?, parts.next()?];
+            let x = parts.next()?.parse().ok()?;
+            let y = parts.next()?.parse().ok()?;
+            let w = parts.next()?.parse().ok()?;
+            let h = parts.next()?.parse().ok()?;
+            Some((id, (x, y, w, h)))
+        })
+        .collect()
+}
+
+/// Wait for the window whose `app_id` is `app_id` and return its content rect.
+#[track_caller]
+fn window_rect(input: &SyntheticInput, app_id: &str) -> (i32, i32, i32, i32) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let ids = identity_app_ids(&input.query("query identity"));
+        if let Some(id) = ids
+            .iter()
+            .find_map(|(id, app)| (app == app_id).then_some(*id))
+        {
+            if let Some(rect) = decoration_content_rects(&input.query("query decorations")).get(&id)
+            {
+                return *rect;
+            }
+        }
+        assert!(
+            Instant::now() < deadline,
+            "no tracked window for {app_id}: {ids:?}"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// T-16.1b acceptance (headless, two outputs): a new window lands on the
+/// **focused output** and inside that output's reserved zones.
+///
+/// With no window focused, the focused output is the display under the
+/// pointer. The pointer starts on the primary display, so the first window
+/// lands there and must clear a top bar pinned to the primary (reserve 28) —
+/// the placement rect is the output minus its own reserved zones, never the
+/// full output. The pointer then moves onto a second, reserve-free display,
+/// where the next window lands; moving it back places a third on the primary
+/// again. Geometry is read back through `query decorations`, the same
+/// introspection the T-04 window suite uses.
+///
+/// This is the headless two-output placement gate named in the task plan.
+#[test]
+fn new_windows_land_on_the_focused_output() {
+    const APP_A: &str = "org.dragonfruit.PlacementA";
+    const APP_B: &str = "org.dragonfruit.PlacementB";
+    const APP_C: &str = "org.dragonfruit.PlacementC";
+    const MENUBAR: i32 = 28;
+
+    let token = "e1".repeat(32);
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let input_path = PathBuf::from(&runtime_dir).join(format!(
+        "dragonfruit-per-output-placement-{}",
+        std::process::id()
+    ));
+    let output_path = PathBuf::from(&runtime_dir).join(format!(
+        "dragonfruit-per-output-placement-out-{}",
+        std::process::id()
+    ));
+    let proc = CompositorProcess::start_with_harnesses(
+        "dragonfruit-conformance-per-output-placement",
+        std::slice::from_ref(&token),
+        Some(&input_path),
+        Some(&output_path),
+    );
+    let input = SyntheticInput::connect(&input_path);
+    let outputs = SyntheticOutput::connect(&output_path);
+
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+    let (name, version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, name, version);
+    core.authenticate(1, proc.read_token());
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+    let (shell_name, shell_version) = state.shell_global.expect("df_shell advertised");
+    let shell = bind_shell(&mut state, &queue, shell_name, shell_version);
+    let (manager_name, manager_version) = state.manager_global.expect("manager advertised");
+    let manager = bind_manager(&mut state, &queue, manager_name, manager_version);
+    let qh = queue.handle();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.outputs.is_empty() && state.workspaces.len() >= 3 && state.done_count > 0,
+    );
+    // The focused output follows the seat pointer; wait for the seat to exist.
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.pointer.is_some(),
+    );
+
+    // A bar pinned to the primary output reserves 28 px on top (T-16.1a). It
+    // must not reserve on the second display, so the two placements contrast.
+    let headless_output = state
+        .wl_outputs
+        .first()
+        .cloned()
+        .expect("the static headless output is a bound wl_output");
+    let bar_surface = state.compositor.clone().unwrap().create_surface(&qh, ());
+    let bar = shell.get_layer_surface(
+        &bar_surface,
+        Some(&headless_output),
+        df_shell::Layer::Top,
+        "menubar".to_string(),
+        &qh,
+        (),
+    );
+    bar.set_anchor(1 | 4 | 8); // top | left | right
+    bar.set_size(0, MENUBAR);
+    bar.set_exclusive_zone(MENUBAR);
+    bar_surface.commit();
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| {
+            state
+                .output_reserved_by_id
+                .iter()
+                .any(|(_, edge, thickness)| *edge == 0 && *thickness == MENUBAR as u32)
+        },
+    );
+
+    // Attach a second display to the right of the primary, at 1:1.
+    outputs.send("add HDMI-A-1 1920 1080 1280 0 1.0");
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.output_geometries.contains(&(1280, 0, 1920, 1080)),
+    );
+
+    // --- the pointer starts on the primary --------------------------------
+    let (_surface_a, _xdg_a, _toplevel_a, _file_a) =
+        map_toplevel(&mut state, &mut queue, "Placement A", APP_A);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| !state.toplevels.is_empty(),
+    );
+    let a = window_rect(&input, APP_A);
+    assert!(
+        a.0 >= 0 && a.0 + a.2 <= 1280,
+        "A lands on the primary display: {a:?}"
+    );
+    assert!(
+        a.1 >= MENUBAR,
+        "A clears the primary's reserved menu bar (top {MENUBAR}): {a:?}"
+    );
+    assert!(
+        a.1 > (720 - 150) / 2,
+        "the reserved zone pushes A below the no-reserve center: {a:?}"
+    );
+
+    // --- move the pointer onto the second display -------------------------
+    // The query round-trip is a barrier: the same synthetic socket is FIFO, so
+    // the motion is applied before the next window maps.
+    input.send("motion 2100 500");
+    let (_surface_b, _xdg_b, _toplevel_b, _file_b) =
+        map_toplevel(&mut state, &mut queue, "Placement B", APP_B);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.toplevels.len() >= 2,
+    );
+    let b = window_rect(&input, APP_B);
+    assert!(b.0 >= 1280, "B lands on the focused second display: {b:?}");
+    assert!(
+        b.1 + b.3 <= 1080,
+        "B stays inside the second display: {b:?}"
+    );
+    assert_eq!(
+        b.1,
+        (1080 - 150) / 2,
+        "the primary's reserved zone does not leak to the second display, \
+         so B centers in the full output height: {b:?}"
+    );
+
+    // --- move the pointer back to the primary -----------------------------
+    input.send("motion -2100 -500");
+    let (_surface_c, _xdg_c, _toplevel_c, _file_c) =
+        map_toplevel(&mut state, &mut queue, "Placement C", APP_C);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.toplevels.len() >= 3,
+    );
+    let c = window_rect(&input, APP_C);
+    assert!(
+        c.0 >= 0 && c.0 + c.2 <= 1280,
+        "C follows the pointer back to the primary: {c:?}"
+    );
+    assert!(
+        c.1 >= MENUBAR,
+        "C clears the primary's reserved menu bar again: {c:?}"
+    );
+    assert!(
+        c.1 > (720 - 150) / 2,
+        "C also sits below the reserved zone on the primary: {c:?}"
+    );
+
+    drop(bar);
+    drop(bar_surface);
+    drop(shell);
+    drop(manager);
+    drop(core);
+    let _ = conn.flush();
+    proc.shutdown();
+    assert!(
+        !input_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+    assert!(
+        !output_path.exists(),
+        "teardown leak: synthetic-output socket survived"
+    );
+}
+
 /// T-09 input routing (compositor half): a mapped chrome surface is hit-tested
 /// above the window space, receives pointer enter/motion/button, and an
 /// `OnDemand` surface takes keyboard focus on click so key events reach it.

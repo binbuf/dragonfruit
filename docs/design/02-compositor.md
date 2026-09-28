@@ -659,9 +659,12 @@ complete the track:
   Focus changes are broadcast over the private protocol so the shell, Dock,
   and menu-broker track the active application without polling (see
   [04-shell.md](04-shell.md), [06-global-menu.md](06-global-menu.md)).
-- **Placement.** New windows open near the center of the active Space with a
-  per-output cascade offset; transient dialogs center on their parent, stay
-  above it, and minimize with it.
+- **Placement.** New windows open near the center of the **focused output**
+  — the display under the pointer, else the active window's output, else the
+  primary — inside that output's usable area (minus its reserved zones, so
+  windows clear the menu bar and Dock) with a per-output cascade offset.
+  Transient dialogs center on their parent, stay above it, and minimize with
+  it (T-16.1b).
 - **Regions.** Client-provided opaque, translucent, and input regions are
   honored: input outside the input region falls through, and translucent
   regions participate in the blur pass rather than fighting it.
