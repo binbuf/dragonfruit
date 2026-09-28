@@ -566,6 +566,14 @@ two groups and all four corner popups render with the schema-default values,
 and the Control Center shows the Mission Control tile and link with nothing
 clipped.
 
+`t15-6a-power-adapter.png` is the nested demo desktop captured to prove the
+battery/power-profiles adapter (T-15.6a) leaves the tree healthy. The adapter
+has no surface of its own (the pane and tile are T-15.6b), so the capture only
+confirms the desktop renders: menu bar, Dock, and windows composited with no
+blank areas or stray artifacts. Captured by
+`scripts/capture-t15-power-adapter.sh`; requires a host Wayland session,
+spectacle, and Pillow, and is not in `make e2e`.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

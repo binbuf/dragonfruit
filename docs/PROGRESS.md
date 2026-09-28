@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(120 earlier sections omitted)_
+_(121 earlier sections omitted)_
 
-- **T110e — T-14.7e Add Application picker**: **State: done.** The Dock's divider menu now offers **Add Application…**,; `shell/src/apppicker.{h,cpp}` (new, dockcore) — pure
 - **T110f — T-14.7f Dock drag-and-drop identity and feedback**: **State: done.** External drags are now read once at drag *enter*, so the Dock; `shell/src/dockdrops.{h,cpp}` — `DockDropPayloadData` +
 - **T110g — T-14.7g Dock activation and launch correctness**: **State: done.** The Dock click tree is now observable end to end: a launch; `protocols/dragonfruit-toplevel.xml` — manager version 8; new
 - **T110h — T-14.7h Dock folder stacks: presentation and clicks**: **State: done.** Folder entries read like macOS: a clean folder silhouette with; `shell/dock/DockGlyph.qml` — the `stack` block is `stackArtwork`: back tab
@@ -42,6 +41,7 @@ _(120 earlier sections omitted)_
 - **T118 — T-15.4b Keyboard, Mouse, and Trackpad pane and tile**: **State: done.** The Settings Keyboard/Mouse/Trackpad panes and the Control; `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 11 → 12; 10 new
 - **T119 — T-15.5a Mission Control and hot corners adapter**: **State: done.** A new workspace crate `dragonfruit-overview`; `services/overview/src/source.rs` — `MissionControlSource` seam,
 - **T120 — T-15.5b Mission Control and hot corners pane and tile**: **State: done.** The Settings Mission Control & Hot Corners pane and the Control; `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 12 → 13; new
+- **T121 — T-15.6a Battery and power profiles adapter**: **State: done.** `dragonfruit-power` (`services/power`) grew from the T-07.4; `services/power/src/source.rs` — `PowerData.profiles:
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -11494,3 +11494,67 @@ Decisions / gotchas for later tasks:
   (`Mission Control`, `Notification Center`, `Desktop`, `Lock Screen`) and the
   Control Center Mission Control tile (`Gesture, 1 corner(s)`,
   `Mission Control Settings…`) above an unclipped Clipboard tile.
+
+## T121 — T-15.6a Battery and power profiles adapter
+
+**State: done.** `dragonfruit-power` (`services/power`) grew from the T-07.4
+read-only battery item into the battery **and** power-profiles adapter. Backend
+only — the pane and tile are T-15.6b (ADR 0128).
+
+Real paths:
+
+- `services/power/src/source.rs` — `PowerData.profiles:
+  Option<PowerProfilesData>`; `PowerProfilesData` / `PowerProfileData` raws;
+  `PowerDeviceData.capacity` (f64, UPower `Capacity`) and `charge_cycles`
+  (i32); `ProfileOutcome` + default `PowerSource::set_active_profile`;
+  `MockPower.fail_writes`/`profile_writes`.
+- `services/power/src/model.rs` — `PowerProfile` (stable ids
+  `power-saver`/`balanced`/`performance`), `PowerProfilesSnapshot`,
+  `BatteryHealth` (documented 80% threshold), `Battery.capacity`/
+  `charge_cycles`, and pure `PowerSnapshot::changes(previous) -> Vec<PowerChange>`.
+- `services/power/src/adapter.rs` — previous-snapshot diffing into
+  `drain_changes`; `set_active_profile` (snapshot-neutral; resyncs on absence).
+- `services/power/src/upower.rs` — live source reads UPower **and**
+  power-profiles-daemon, probing `net.hadess.PowerProfiles` then
+  `org.freedesktop.UPower.PowerProfiles`; implements the one write.
+- Tests — `services/power/tests/read_path.rs` (fixture drives battery health +
+  profiles) and crate tests: 45 lib + 12 read_path.
+- `services/system-status/src/lib.rs`, `tests/host.rs` — test literals updated
+  for the two new `PowerDeviceData` fields + `profiles`.
+- Docs — `docs/design/07-system-integration.md` power section rewritten; ADR
+  `docs/design/adr/0128-battery-power-profiles-adapter.md`; capture script
+  `scripts/capture-t15-power-adapter.sh` + `docs/captures/README.md`.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-power` — 45 lib + 12 read_path green.
+- `cargo test -p dragonfruit-system-status` — green.
+- `make e2e` — EXIT 0.
+- `cargo fmt --all -- --check`; clippy on `dragonfruit-power`,
+  `dragonfruit-system-status` — clean.
+- `make check-design-tokens check-tokens check-no-capture-grab` — clean.
+
+Decisions / gotchas for T-15.6b and later:
+
+- **Absence is per daemon.** `PowerData.profiles == None` means
+  power-profiles-daemon is absent; the adapter stays `Available` and the
+  battery half works. `Unavailable` only when **both** daemons are unreachable.
+  Do not collapse the two.
+- **`battery_view` does not project profiles yet.** T-15.6b extends the
+  `dragonfruit-system-status` `Battery` view (or adds a sibling interface) with
+  the profile list/active profile/degradation and a `SetActiveProfile` write.
+- **Profile glyphs are not in `Icon.qml`/`StatusGlyph.qml` yet.** The adapter
+  returns `power-saver`/`power-balanced`/`power-performance`; T-15.6b adds the
+  painted glyphs.
+- **The write is snapshot-neutral.** `set_active_profile` does not mutate the
+  snapshot; the host re-reads after the daemon's `PropertiesChanged`, exactly
+  as Bluetooth/storage/audio.
+- **`Capacity`/`ChargeCycles` are read via `Properties.Get`** and accepted as
+  double or integer, because UPower's spelling of `Capacity` has varied; the
+  typed device proxy carries the rest.
+- **Holds are read, not written.** `holds` counts `ActiveProfileHolds`;
+  `HoldProfile`/`ReleaseProfile` are deferred until a consumer needs them.
+- Live visual check: `bash scripts/capture-t15-power-adapter.sh` produced
+  `docs/captures/t15-6a-power-adapter.png` (3840x2160). No surface of its own,
+  so the capture confirms only that the nested desktop renders; vision found no
+  blank areas, clipping, or stray artifacts.
