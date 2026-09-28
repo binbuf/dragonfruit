@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(114 earlier sections omitted)_
+_(115 earlier sections omitted)_
 
-- **T109 — T-14.6b Strange-app zoo fixes**: **State: done.** The zoo surfaced one fixable failure and one compositor; `scripts/zoo/sdl_zoo.c` — the loop now calls `SDL_GetWindowSurface` +
 - **T110 — T-14.7 Retire interim paths**: **State: done.** The last two interim hacks are gone: the Dock's local; `shell/src/desktopentry.{h,cpp}` — `scan`, `parse`, `defaultApplicationDirs`
 - **T110a — T-14.7a Dock plate geometry and spacing**: **State: done.** The Dock plate now floats: token-driven cross-axis and; `design-system/tokens/tokens.json` — `controls.dock`: `padding` 10,
 - **T110b — T-14.7b Magnified plate growth and backdrop panel**: **State: done.** The Dock plate now grows to wrap the magnified row (both axes); `protocols/dragonfruit-shell.xml` — `df_shell` v2, `df_layer_surface` v2, new
@@ -42,6 +41,7 @@ _(114 earlier sections omitted)_
 - **T112 — T-15.1b Bluetooth pane and tile**: **State: done.** The Bluetooth pane and Control Center tile ship as one unit; `services/system-status/src/bluetooth.rs` (new) — `BluetoothHost<B>` and
 - **T113 — T-15.2a Storage and removable media adapter**: **State: done.** The UDisks2 storage/removable-media adapter landed in a new; `services/storage/` (new crate) — `src/source.rs` (`StorageData`,
 - **T114 — T-15.2b Storage and removable media pane and tile**: **State: done.** The Storage pane and Control Center tile ship as one unit over; `services/system-status/src/storage.rs` (new) — `StorageHost<S>` +
+- **T115 — T-15.3a Sound and routing adapter**: **State: done.** The T-07.3 audio adapter (`dragonfruit-audio`) grew the input; `services/audio/src/source.rs` — new `SourceData`; `AudioData` gained
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -10998,3 +10998,73 @@ Decisions / gotchas for later tasks:
   compact and `tst_controlcenter` asserts the content still fits.
 - Live visual check: `scripts/capture-t15-storage-pane.sh`; the vision tool
   confirmed both surfaces render with no clipping.
+
+## T115 — T-15.3a Sound and routing adapter
+
+**State: done.** The T-07.3 audio adapter (`dragonfruit-audio`) grew the input
+half and default-device routing. No new crate, no reimplementation: the same
+`AudioSource` seam over WirePlumber's `pw-dump`/`wpctl`. Backend only — the
+Settings pane and Control Center tile are T-15.3b.
+
+Real paths:
+
+- `services/audio/src/source.rs` — new `SourceData`; `AudioData` gained
+  `default_source` + `sources`; `AudioSource` gained `set_default_sink(id)` /
+  `set_default_source(id)`; `MockAudio` gained the two writes, the
+  `default_sink_writes`/`default_source_writes` counters, and
+  `default_sink_name`/`default_source_name`/`source_volume` readers.
+- `services/audio/src/model.rs` — new `Source`; `AudioSnapshot` gained
+  `sources` + `default_source`; `default_source_device()`/`default_source_name()`
+  /`source_count()`; independent default resolution (falls back to the first
+  device per list) via a private `Named` trait.
+- `services/audio/src/pw_dump.rs` — decodes `Audio/Source` nodes and the
+  `default.audio.source` metadata entry; `wpctl set-default <id>` for both
+  routing writes.
+- `services/audio/src/adapter.rs` — `set_default_sink`/`set_default_source`
+  pass through `note_write` (an absent write still hides the item).
+- `services/audio/src/lib.rs` — re-exports + module docs.
+- `services/audio/tests/routing_path.rs` (new) — 6 integration tests.
+- `services/audio/tests/fixtures/pw-dump-office.json` — added one
+  `Audio/Source` node (id 150); both defaults were already in the metadata.
+- `services/system-status/src/lib.rs`, `tests/host.rs` — fixture constructors
+  use `..AudioData::default()` (additive fields).
+- Docs — `docs/design/07-system-integration.md` "The audio routing path
+  (T-15.3a)"; ADR `0121-sound-routing-adapter.md`.
+- Capture — `scripts/capture-t15-audio-routing.sh`;
+  `docs/captures/t15-3a-audio-routing.png`; `docs/captures/README.md`.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-audio` — 38 lib + 6 read_path + 6 routing_path +
+  6 volume_path green.
+- `cargo test -p dragonfruit-system-status` — 17 lib + 4 bluetooth + 9 host +
+  4 storage green.
+- `make e2e` — EXIT 0 (first run hit the known flaky `dragonfruit-lock-auth`
+  `helper` test; rerun green).
+- `cargo fmt --all -- --check`; `cargo clippy -p dragonfruit-audio
+  --all-targets -- -D warnings`; `cargo clippy -p dragonfruit-system-status
+  --all-targets -- -D warnings` — clean.
+
+Decisions / gotchas for T-15.3b:
+
+- **Routing is default-device switching, by node id.** `set_default_sink` /
+  `set_default_source` take the PipeWire node `u32` carried by `Sink.id` /
+  `Source.id` and map to `wpctl set-default <id>`. Selecting a device makes it
+  the default; the existing `set_volume`/`set_mute` (which target
+  `@DEFAULT_AUDIO_SINK@`) then adjust it. There is no per-device volume write.
+- **Per-application stream routing is NOT implemented** (out of scope): no
+  `Stream/Output/Audio` decoding and no `move-stream`. Add it behind the same
+  seam if a consumer needs it.
+- **Independent default fallback per list.** If the named default is missing,
+  the first sink/source becomes the default (unchanged T-07.3 rule, now applied
+  to both lists).
+- **Unknown node id is `Failed`, not `Absent`/`Denied`.** The write does not
+  invent a snapshot; a failed write leaves the last snapshot live.
+- **T-15.3b's bridge work is not done here.** `services/system-status` still
+  serialises only `sinks` in `audio_view`; T-15.3b must extend the bridge
+  (input list + routing writes) and the shell/Settings clients, following the
+  Bluetooth/Storage `*Host` precedent (ADR 0118/0120).
+- Live visual check: `bash scripts/capture-t15-audio-routing.sh` produced
+  `docs/captures/t15-3a-audio-routing.png` (3840x2160; unique 454 797, full
+  luminance sigma 95.4). Vision confirmed the nested desktop, menu bar, Dock,
+  and client windows render with no blank areas or clipping.

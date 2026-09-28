@@ -40,6 +40,14 @@ it must not be allowed to precede them (the roadmap's explicit guardrail).
 - The Control Center panel from T-11 (tiles plug in).
 - T-08's settingsd host-services provider for the keys that belong there.
 - Design-system components; the no-half-panes rule.
+- The macOS **Tahoe 26** capture set and its per-image notes
+  (`docs/reference/macos/<Name>.md`, local only) as the pane visual reference.
+  The shared interface language and Linux adaptations live in
+  [ADR 0122](../adr/0122-tahoe-interface-language-across-chrome.md); the
+  distilled inventories are
+  [System_Preferences.md](../../reference/System_Preferences.md) and
+  [macos-ui-inventory.md](../../reference/macos-ui-inventory.md). Each pane
+  ticket cites its capture note.
 
 ## Scope
 

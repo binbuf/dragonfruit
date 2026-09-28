@@ -7,10 +7,13 @@ AppleCare, Continuity/AirDrop, Siri/Apple Intelligence, Screen Time, Touch
 ID/Apple Watch, App Store, Find My, FileVault. Generic terms are kept; Linux
 deviations are chosen later.
 
-Source: local-only captures under `docs/reference/macos/` that **never ship**
-([14-risks.md](../design/14-risks.md)); raw per-image inventories in
-`docs/reference/macos/notes/` (git-ignored). This is the IA/label source for
-Wave 1 ([T-09](../design/tracks/09-settings-app-wave-1.md)) and Waves 2–3
+Source: the macOS **Tahoe 26** capture set under `docs/reference/macos/` that
+**never ships** ([14-risks.md](../design/14-risks.md)) and the per-image vision
+inventory written beside each capture (`docs/reference/macos/<Name>.md`,
+git-ignored). The interface language and the Linux adaptations are fixed once
+in [ADR 0122](../design/adr/0122-tahoe-interface-language-across-chrome.md);
+this file is the pane-by-pane IA/label source for Wave 1
+([T-09](../design/tracks/09-settings-app-wave-1.md)) and Waves 2–3
 ([T-15](../design/tracks/15-system-services-breadth.md)); a capture wins on
 disagreement.
 
@@ -82,14 +85,16 @@ pane (Keyboard/Trackpad/Printers captures) — not part of the stock order.
 
 ## Panes
 
-Each pane names its capture (`Screenshot-2026-09-18-at-<time>-PM.png`), then
-the observed section titles and row labels in order with control types.
+Each pane names its capture (`SystemSettings_<Pane>.png`; the per-image note
+is the same name with `.md`), then the observed section titles and row labels
+in order with control types. The Tahoe set did not recapture the Control
+Center quick-settings sheets; their IA is carried from the earlier vision
+sweep in `docs/reference/macos/notes/`.
 
 ### Wi-Fi
 
-`Screenshot-2026-09-18-at-9.20.59-PM.png` (pane) +
-`Screenshot-2026-09-18-at-9.23.53-PM.png` (sheet) — routed to NetworkManager;
-no tracked task yet.
+`SystemSettings_WiFi.png` (pane; sheet not in the Tahoe set) — routed to
+NetworkManager; no tracked task yet.
 
 - `Wi-Fi` (header toggle, on) — "Set up Wi-Fi to wirelessly connect your Mac
   to the internet. Turn on Wi-Fi, then choose a network to join. Learn
@@ -108,8 +113,8 @@ no tracked task yet.
 
 ### Bluetooth
 
-`Screenshot-2026-09-18-at-9.21.00-PM.png` (pane) +
-`Screenshot-2026-09-18-at-9.23.47-PM.png` (sheet) — routed to BlueZ; T-15.1.
+`SystemSettings_Bluetooth.png` (pane; sheet not in the Tahoe set) — routed to
+BlueZ; T-15.1.
 
 - `Bluetooth` (toggle, on) — "Connect to accessories you can use for
   activities such as streaming music, typing, and gaming. Learn more...";
@@ -123,7 +128,7 @@ no tracked task yet.
 
 ### Network
 
-`Screenshot-2026-09-18-at-9.21.03-PM.png` — routed to NetworkManager; no
+`SystemSettings_Network.png` — routed to NetworkManager; no
 tracked task yet.
 
 - `Wi-Fi` — `Connected` (green dot), chevron.
@@ -133,7 +138,7 @@ tracked task yet.
 
 ### Battery
 
-`Screenshot-2026-09-18-at-9.21.05-PM.png` — routed to UPower +
+`SystemSettings_Battery.png` — routed to UPower +
 power-profiles-daemon where present; T-15.6.
 
 - `Low Power Mode` (popup, `Never`).
@@ -146,10 +151,10 @@ power-profiles-daemon where present; T-15.6.
 
 ### General
 
-`Screenshot-2026-09-18-at-9.20.49-PM.png` and
-`Screenshot-2026-09-18-at-9.21.09-PM.png` — routed to settingsd + the distro
+`SystemSettings_General.png` and
+`SystemSettings_General.png` — routed to settingsd + the distro
 update provider; T-15.10. Sub-screen `About`:
-`Screenshot-2026-09-18-at-9.22.28-PM.png`.
+`AboutDialog.png`.
 
 - Header: `General` — "Manage your overall setup and preferences for Mac,
   such as software updates, device language, AirDrop, and more."
@@ -164,7 +169,7 @@ update provider; T-15.10. Sub-screen `About`:
 
 ### Accessibility
 
-`Screenshot-2026-09-18-at-9.21.12-PM.png` — routed to settingsd → compositor
+`SystemSettings_Accessibilitypng` — routed to settingsd → compositor
 magnification + toolkit/AT-SPI; T-15.14.
 
 - Header: `Accessibility` — "Personalize Mac in ways that work best for you
@@ -177,7 +182,7 @@ magnification + toolkit/AT-SPI; T-15.14.
 
 ### Desktop & Dock
 
-`Screenshot-2026-09-18-at-9.21.21-PM.png` — routed to our own settings
+`SystemSettings_DesktopDock.png` — routed to our own settings
 (`dock.*` keys → shell/Dock); T-09 Wave 1 (T-09.4).
 
 - `Dock`: `Size` (slider, `Small`/`Large`; `dock.size`), `Magnification`
@@ -197,7 +202,7 @@ magnification + toolkit/AT-SPI; T-15.14.
 
 ### Displays
 
-`Screenshot-2026-09-18-at-9.21.29-PM.png` — routed to the compositor output
+`SystemSettings_Displays.png` — routed to the compositor output
 API; T-09 Wave 1 (T-09.5; advanced color, night light, VRR are T-15/T-16).
 
 - Preview: `Built-in Display` illustration.
@@ -214,7 +219,7 @@ API; T-09 Wave 1 (T-09.5; advanced color, night light, VRR are T-15/T-16).
 
 ### Menu Bar
 
-`Screenshot-2026-09-18-at-9.21.32-PM.png` — routed to settingsd → shell;
+`SystemSettings_MenuBar.png` — routed to settingsd → shell;
 T-15.9.
 
 - `Automatically hide and show the menu bar` (popup, `In Full Screen Only`);
@@ -229,7 +234,7 @@ T-15.9.
 
 ### Wallpaper
 
-`Screenshot-2026-09-18-at-9.21.35-PM.png` — routed to settingsd + compositor
+`SystemSettings_Wallpaper.png` — routed to settingsd + compositor
 (per-Space wallpaper); T-09 Wave 1 (T-09.3). Reference wallpaper names are
 Apple-specific; our artwork is our own.
 
@@ -244,7 +249,7 @@ Apple-specific; our artwork is our own.
 
 ### Notifications
 
-`Screenshot-2026-09-18-at-9.21.38-PM.png` — routed to the notification
+`SystemSettings_Notifiations.png` — routed to the notification
 service; T-15.7.
 
 - Header: `Notifications` — "Customize when and how notifications appear, if
@@ -261,7 +266,7 @@ service; T-15.7.
 
 ### Sound
 
-`Screenshot-2026-09-18-at-9.21.42-PM.png` — routed to
+`SystemSettings_Sound.png` — routed to
 PipeWire/WirePlumber; T-15.3.
 
 - `Sound Effects`: `Alert sound` (popup, `Boop`, with a play button); `Play
@@ -276,7 +281,7 @@ PipeWire/WirePlumber; T-15.3.
 
 ### Lock Screen
 
-`Screenshot-2026-09-18-at-9.21.45-PM.png` — routed to settingsd + compositor
+`SystemSettings_LockScreen.png` — routed to settingsd + compositor
 lock/idle policy; T-15.8.
 
 - `Turn display off on battery when inactive` (popup, `For 10 minutes`); `Turn
@@ -293,7 +298,7 @@ lock/idle policy; T-15.8.
 
 ### Privacy & Security
 
-`Screenshot-2026-09-18-at-9.21.47-PM.png` — routed to settingsd + host services
+`SystemSettings_PrivacySecurity.png` — routed to settingsd + host services
 (Secret Service, polkit) and portals; T-15.13. A flat list (no inset groups);
 every row is a disclosure row.
 
@@ -309,7 +314,7 @@ every row is a disclosure row.
 
 ### Touch ID & Password
 
-`Screenshot-2026-09-18-at-9.21.49-PM.png` — biometrics: fprintd + Secret
+`SystemSettings_TouchIDPrivacy.png` — biometrics: fprintd + Secret
 Service where present; no tracked task (T-15 has no biometrics unit).
 
 - `Password`: "A login password has been set for this user." + `Change...`
@@ -322,7 +327,7 @@ Service where present; no tracked task (T-15 has no biometrics unit).
 
 ### Users & Groups
 
-`Screenshot-2026-09-18-at-9.21.51-PM.png` — routed to accountsservice + the
+`SystemSettings_UsesGroups.png` — routed to accountsservice + the
 distro provider; T-15.11.
 
 - User list: `<user>` (`Admin`) and `Guest User` (`Off`), each with an info
@@ -333,7 +338,7 @@ distro provider; T-15.11.
 
 ### Keyboard
 
-`Screenshot-2026-09-18-at-9.21.55-PM.png` — routed to input settings
+`SystemSettings_Keyboard.png` — routed to input settings
 (libinput); T-15.4.
 
 - Keyboard section: `Key repeat rate` (slider, `Off`/`Slow`/`Fast`); `Delay
@@ -351,7 +356,7 @@ distro provider; T-15.11.
 
 ### Trackpad
 
-`Screenshot-2026-09-18-at-9.21.57-PM.png` — routed to the compositor input API
+`SystemSettings_Trackpad.png` — routed to the compositor input API
 + libinput; T-15.4.
 
 - Gesture preview area: a simulated trackpad and a gesture preview panel.
@@ -366,7 +371,7 @@ distro provider; T-15.11.
 
 ### Printers & Scanners
 
-`Screenshot-2026-09-18-at-9.21.58-PM.png` — routed to CUPS + SANE; T-15.12.
+`SystemSettings_PrintersScanners.png` — routed to CUPS + SANE; T-15.12.
 
 - `Default printer` (popup, `Last Printer Used`); `Default paper size`
   (popup, `US Letter`).

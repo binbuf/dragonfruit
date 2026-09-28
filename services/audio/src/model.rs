@@ -7,7 +7,7 @@
 //! volume slider from [`AudioSnapshot::level`], and the
 //! [`AudioSnapshot::sinks`] list.
 
-use crate::source::{AudioData, SinkData};
+use crate::source::{AudioData, SinkData, SourceData};
 
 /// One sink the menu bar lists.
 #[derive(Debug, Clone, PartialEq)]
@@ -33,35 +33,90 @@ impl Sink {
     }
 }
 
-/// The audio snapshot a menu bar renders: the sink list and the default sink.
+/// One source (input device) the Sound pane lists.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Source {
+    /// The PipeWire node id.
+    pub id: u32,
+    /// The stable `node.name`.
+    pub name: String,
+    /// The human label (`node.description`).
+    pub description: String,
+    /// The linear volume, 0..=1.
+    pub volume: f32,
+    /// Whether the source is muted.
+    pub muted: bool,
+    /// Whether this is the current default source.
+    pub default: bool,
+}
+
+impl Source {
+    /// The volume as the 0–100 integer the pane shows.
+    pub fn volume_percent(&self) -> u8 {
+        percent(self.volume)
+    }
+}
+
+/// The audio snapshot a menu bar or Sound pane renders: the output (sink) and
+/// input (source) device lists with their default routing.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct AudioSnapshot {
     /// Every sink, default first then discovery order.
     pub sinks: Vec<Sink>,
+    /// Every source, default first then discovery order.
+    pub sources: Vec<Source>,
     /// `node.name` of the default sink, when one is set.
     pub default_sink: Option<String>,
+    /// `node.name` of the default source, when one is set.
+    pub default_source: Option<String>,
 }
 
 impl AudioSnapshot {
-    /// Build the snapshot from one raw read: mark the default sink (falling
-    /// back to the first sink when WirePlumber named none) and clamp volumes.
+    /// Build the snapshot from one raw read: mark the default sink and source
+    /// (falling back to the first device when WirePlumber named none) and
+    /// clamp volumes.
     pub fn from_data(data: &AudioData) -> Self {
         let mut sinks: Vec<Sink> = data.sinks.iter().map(sink_from_data).collect();
-        let default_name = resolved_default(data, &sinks);
+        let default_name = resolved_default(data.default_sink.as_deref(), &sinks);
         for sink in &mut sinks {
             sink.default = Some(&sink.name) == default_name.as_ref();
         }
         // The default sink sorts first so the menu header is stable.
         sinks.sort_by_key(|sink| !sink.default);
+
+        let mut sources: Vec<Source> = data.sources.iter().map(source_from_data).collect();
+        let default_source = resolved_default(data.default_source.as_deref(), &sources);
+        for source in &mut sources {
+            source.default = Some(&source.name) == default_source.as_ref();
+        }
+        sources.sort_by_key(|source| !source.default);
+
         AudioSnapshot {
             sinks,
+            sources,
             default_sink: default_name,
+            default_source,
         }
     }
 
     /// The default sink, when the graph has one.
     pub fn default_sink(&self) -> Option<&Sink> {
         self.sinks.iter().find(|sink| sink.default)
+    }
+
+    /// The default source (input device), when the graph has one.
+    pub fn default_source_device(&self) -> Option<&Source> {
+        self.sources.iter().find(|source| source.default)
+    }
+
+    /// The default source's `node.name`, when one is set.
+    pub fn default_source_name(&self) -> Option<&str> {
+        self.default_source.as_deref()
+    }
+
+    /// The number of input devices in the graph.
+    pub fn source_count(&self) -> usize {
+        self.sources.len()
     }
 
     /// The default sink's linear volume, or `0.0` when there is no sink.
@@ -122,14 +177,44 @@ fn sink_from_data(data: &SinkData) -> Sink {
     }
 }
 
-/// The default sink name, falling back to the first sink when none is named.
-fn resolved_default(data: &AudioData, sinks: &[Sink]) -> Option<String> {
-    if let Some(name) = &data.default_sink {
-        if sinks.iter().any(|sink| &sink.name == name) {
-            return Some(name.clone());
+/// Map one raw source, clamping its volume to the renderable range.
+fn source_from_data(data: &SourceData) -> Source {
+    Source {
+        id: data.id,
+        name: data.name.clone(),
+        description: data.description.clone(),
+        volume: data.volume.clamp(0.0, 1.0),
+        muted: data.muted,
+        default: false,
+    }
+}
+
+/// A device list entry that carries a stable `node.name`.
+trait Named {
+    fn node_name(&self) -> &str;
+}
+
+impl Named for Sink {
+    fn node_name(&self) -> &str {
+        &self.name
+    }
+}
+
+impl Named for Source {
+    fn node_name(&self) -> &str {
+        &self.name
+    }
+}
+
+/// The default device name, falling back to the first entry when none is
+/// named (or the named one is not in the list).
+fn resolved_default<T: Named>(named: Option<&str>, devices: &[T]) -> Option<String> {
+    if let Some(name) = named {
+        if devices.iter().any(|device| device.node_name() == name) {
+            return Some(name.to_owned());
         }
     }
-    sinks.first().map(|sink| sink.name.clone())
+    devices.first().map(|device| device.node_name().to_owned())
 }
 
 /// Map a linear volume to the 0–100 integer the menu shows.
@@ -151,10 +236,21 @@ mod tests {
         }
     }
 
+    fn source(name: &str, volume: f32, muted: bool) -> SourceData {
+        SourceData {
+            id: 10,
+            name: name.to_owned(),
+            description: format!("{name} description"),
+            volume,
+            muted,
+        }
+    }
+
     fn data(default: Option<&str>, sinks: Vec<SinkData>) -> AudioData {
         AudioData {
             default_sink: default.map(str::to_owned),
             sinks,
+            ..AudioData::default()
         }
     }
 
@@ -222,5 +318,39 @@ mod tests {
         let snapshot = AudioSnapshot::from_data(&data(Some("a"), vec![sink("a", 4.0, false)]));
         assert_eq!(snapshot.volume(), 1.0);
         assert_eq!(snapshot.volume_percent(), 100);
+    }
+
+    #[test]
+    fn the_default_source_is_marked_and_sorted_first() {
+        let snapshot = AudioSnapshot::from_data(&AudioData {
+            default_source: Some("b".to_owned()),
+            sources: vec![source("a", 0.2, false), source("b", 0.6, false)],
+            ..AudioData::default()
+        });
+        assert_eq!(snapshot.default_source_name(), Some("b"));
+        assert_eq!(snapshot.source_count(), 2);
+        assert_eq!(snapshot.sources[0].name, "b");
+        assert!(snapshot.sources[0].default);
+        assert!(!snapshot.sources[1].default);
+        assert_eq!(snapshot.sources[0].volume_percent(), 60);
+    }
+
+    #[test]
+    fn a_missing_default_source_falls_back_to_the_first_source() {
+        let snapshot = AudioSnapshot::from_data(&AudioData {
+            default_source: Some("ghost".to_owned()),
+            sources: vec![source("a", 0.3, false), source("b", 0.4, false)],
+            ..AudioData::default()
+        });
+        assert_eq!(snapshot.default_source_name(), Some("a"));
+        assert!(snapshot.default_source_device().unwrap().default);
+    }
+
+    #[test]
+    fn an_empty_input_graph_has_no_default_source() {
+        let snapshot = AudioSnapshot::from_data(&data(Some("a"), vec![sink("a", 0.5, false)]));
+        assert_eq!(snapshot.source_count(), 0);
+        assert!(snapshot.default_source_device().is_none());
+        assert_eq!(snapshot.default_source_name(), None);
     }
 }

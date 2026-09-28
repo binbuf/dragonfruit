@@ -52,7 +52,9 @@ new scope here.
 ### Feel and visual floor
 
 - [ ] Materials present (blur/rounding/shadows) and signed off against the
-      design-system reference, light and dark.
+      design-system reference and the macOS **Tahoe 26** interface language
+      ([ADR 0122](../adr/0122-tahoe-interface-language-across-chrome.md),
+      captures in `docs/reference/macos/`), light and dark.
 - [ ] Every animation has a reduced-motion variant that passes.
 - [ ] No flat approximations remain in shipped chrome.
 
@@ -77,9 +79,12 @@ new scope here.
 
 - [ ] The unfamiliar-user test: a person who has not read the docs performs
       the loop without instructions; failures are legible.
-- [ ] Side-by-side against the design docs and
+- [ ] Side-by-side against the design docs, the macOS **Tahoe 26** captures and
+      their notes, and
       [`../reference/System_Preferences.md`](../../reference/System_Preferences.md):
-      the interaction model reads as intended, the assets are original.
+      the interaction model reads as intended, the assets are original, and the
+      Linux adaptations from
+      [ADR 0122](../adr/0122-tahoe-interface-language-across-chrome.md) hold.
 - [ ] The post-gate backlog is explicitly listed, not silently implied.
 
 ## Acceptance

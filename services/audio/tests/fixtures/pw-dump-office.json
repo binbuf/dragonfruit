@@ -388,5 +388,59 @@
         ]
       }
     }
+  },
+  {
+    "id": 150,
+    "type": "PipeWire:Interface:Node",
+    "info": {
+      "props": {
+        "alsa.card": 0,
+        "alsa.card_name": "Ensoniq AudioPCI",
+        "api.alsa.path": "front:0",
+        "api.alsa.pcm.card": 0,
+        "api.alsa.pcm.stream": "capture",
+        "audio.channels": 2,
+        "audio.position": "[ FL, FR ]",
+        "client.id": 42,
+        "device.api": "alsa",
+        "device.bus": "pci",
+        "device.class": "sound",
+        "device.icon-name": "audio-input-microphone",
+        "device.profile.description": "Analog Stereo",
+        "device.profile.name": "analog-stereo",
+        "factory.id": 18,
+        "factory.name": "api.alsa.pcm.source",
+        "media.class": "Audio/Source",
+        "node.description": "Built-in Audio Analog Stereo",
+        "node.driver": true,
+        "node.name": "alsa_input.pci-0000_02_01.0.analog-stereo",
+        "node.nick": "ES1371 DAC2/ADC",
+        "object.id": 150,
+        "object.serial": 150,
+        "port.group": "capture",
+        "priority.session": 1009
+      },
+      "params": {
+        "Props": [
+          {
+            "volume": 0.064,
+            "mute": false,
+            "channelVolumes": [
+              0.064,
+              0.064
+            ],
+            "channelMap": [
+              "FL",
+              "FR"
+            ],
+            "softMute": false,
+            "softVolumes": [
+              1.0,
+              1.0
+            ]
+          }
+        ]
+      }
+    }
   }
 ]

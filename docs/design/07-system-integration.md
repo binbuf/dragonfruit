@@ -157,7 +157,29 @@ returns the raw graph (`Ok(Some)`), absence (`Ok(None)`), or a read failure
 hidden, never an error. The two writes (`set_volume`/`set_mute`) are explicit
 user actions over the same seam and do not invent a snapshot; the daemon pushes
 the result and the host re-reads, so the snapshot stays the single source of
-truth. Routing and device switching are deferred to T-15.
+truth.
+
+## The audio routing path (T-15.3a)
+
+The same adapter also reads and routes input devices. WirePlumber's `default`
+metadata carries both `default.audio.sink` and `default.audio.source`, and the
+`pw-dump` graph holds both `Audio/Sink` and `Audio/Source` nodes, so one read
+fills the output and input device lists with their own default. The model
+resolves each default independently (falling back to the first device in that
+list when WirePlumber named none), marks it, and sorts it first; the output
+list still drives the menu-bar item, the input list adds the Sound pane's
+`Input` tab ([adr/0121](adr/0121-sound-routing-adapter.md)).
+
+Two writes switch the routed device: `AudioAdapter::set_default_sink(id)` and
+`set_default_source(id)`, both `wpctl set-default <node-id>` behind the same
+`AudioSource` seam. They are explicit user actions, not a poll, and they invent
+no snapshot: WirePlumber pushes the new default and the host re-reads. Selecting
+an output device thus makes it the default, after which the existing
+`set_volume`/`set_mute` (which target `@DEFAULT_AUDIO_SINK@`) control it. A
+write against a node id that is not in the graph is a `Failed` outcome, not a
+denial or a panic. Per-application stream routing stays out of scope (no
+consumer yet). This closes the "routing and device switching deferred to T-15"
+note in the T-07.3 path above.
 
 ## The power path (T-07.4)
 

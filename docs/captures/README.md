@@ -487,6 +487,16 @@ and the panel crop is 360x780; the vision check confirmed the pane's volume
 and removable-media rows render with no clipping or stray artifacts, and the
 Control Center bottom is not clipped.
 
+T-15.3a's sound-and-routing adapter has no surface of its own (the pane and
+tile are T-15.3b); `t15-3a-audio-routing.png` is the nested demo launched with
+the extended `dragonfruit-audio` crate in the workspace, confirming the desktop
+still renders (3840x2160, 454 797 unique colours, luminance sigma 95.4; menu
+bar, Dock, and client window present, clean teardown). Captured by
+`scripts/capture-t15-audio-routing.sh`. Vision confirmed the composited
+desktop, menu bar, Dock, and client windows render with no blank areas or
+clipping. The adapter itself — output/input device lists, default-device
+switching, absence — is proven headlessly by `cargo test -p dragonfruit-audio`.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

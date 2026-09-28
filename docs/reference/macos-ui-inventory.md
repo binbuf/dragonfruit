@@ -1,22 +1,25 @@
 # macOS UI inventory (reference screenshots)
 
-Distilled from the local art-direction screenshots in `docs/reference/macos/`
-(real macOS captures; **local reference only, never shipped** — see
+Distilled from the local art-direction captures in `docs/reference/macos/`
+(macOS **Tahoe 26**; **local reference only, never shipped** — see
 [14-risks.md](../design/14-risks.md)). Each image was reviewed with the vision
-model configured for this project; the raw per-image inventories live in
-`docs/reference/macos/notes/` (local, git-ignored).
+model configured for this project and one inventory is written beside it as
+`docs/reference/macos/<Name>.md` (local, git-ignored).
 
 This is an interaction and information-architecture guide: reproduce the
 structure and quality with Dragonfruit's own symbols, terms, and materials
-([10-design-system.md](../design/10-design-system.md)). It also covers
-Spotlight search, the Control Center quick-settings sheets, About This
-System, the applications grid, and Activity Monitor. System Settings panes
-have their own reference: [System_Preferences.md](System_Preferences.md).
+([10-design-system.md](../design/10-design-system.md)); the cross-cutting
+interface language and Linux adaptations are fixed in
+[ADR 0122](../design/adr/0122-tahoe-interface-language-across-chrome.md). It
+also covers the menu-bar and status menus, Spotlight search, the Control
+Center quick-settings sheets, About This System, the applications grid, and
+Activity Monitor. System Settings panes have their own reference:
+[System_Preferences.md](System_Preferences.md).
 
 ## Finder (Files)
 
-Reference: `Screenshot 2026-09-18 at 9.20.30 PM.png` (window over Desktop),
-`Screenshot 2026-09-18 at 9.20.18 PM.png` (desktop, Dock, menu bar).
+Reference: `Finder1.png` (window over Desktop),
+`Desktop1.png` (desktop, Dock, menu bar).
 
 ### Window and toolbar
 
@@ -52,7 +55,7 @@ Reference: `Screenshot 2026-09-18 at 9.20.30 PM.png` (window over Desktop),
 
 ## Desktop
 
-Reference: `Screenshot 2026-09-18 at 9.20.18 PM.png`.
+Reference: `Desktop1.png`.
 
 - Plain wallpaper with grid-aligned desktop icons, label under the icon.
 - Desktop is owned by the file manager (see
@@ -61,7 +64,7 @@ Reference: `Screenshot 2026-09-18 at 9.20.18 PM.png`.
 
 ## Dock
 
-Reference: `Screenshot 2026-09-18 at 9.20.18 PM.png`.
+Reference: `Desktop1.png`.
 
 - Translucent, rounded slab at the bottom center, icons evenly spaced.
 - Left-to-right: pinned apps, then a separator before the right-end items —
@@ -72,8 +75,8 @@ Reference: `Screenshot 2026-09-18 at 9.20.18 PM.png`.
 
 ## Menu bar
 
-Reference: `Screenshot 2026-09-18 at 9.20.18 PM.png`,
-`Screenshot 2026-09-18 at 9.20.46 PM.png` (system menu).
+Reference: `Desktop1.png`,
+`MenuBar_SystemContextMenu.png` (system menu).
 
 - Left: bold application name, then the app's menus (`File`, `Edit`, `View`,
   `Go`, `Window`, `Help` in Finder).
@@ -88,7 +91,7 @@ Reference: `Screenshot 2026-09-18 at 9.20.18 PM.png`,
 
 ## System menu
 
-Reference: `Screenshot 2026-09-18 at 9.20.46 PM.png` (Apple menu).
+Reference: `MenuBar_SystemContextMenu.png` (Apple menu).
 
 - The rounded translucent dropdown summarized under **Menu bar**: thin
   separators group the rows, and there is no header row.
@@ -101,10 +104,25 @@ Reference: `Screenshot 2026-09-18 at 9.20.46 PM.png` (Apple menu).
 - Ours: the shell's system menu, with `About This System` in place of the
   Apple name ([04-shell.md](../design/04-shell.md)).
 
+## Status menus
+
+Reference: `TopMenu_WiFi_ContextMenu.png`, `TopMenu_Bluetooth_ContextMenu.png`.
+
+- Both open as a rounded (~12 px) translucent glass panel with a soft shadow,
+  anchored under their menu-bar icon.
+- Wi-Fi: bold `Wi-Fi` title, on/off toggle top-right; `Known Network` header
+  with the joined row (accent icon, lock, selected fill); `Other Networks`
+  header with a down chevron over a network list (monochrome icon, lock per
+  row); `Other...` and `Wi-Fi Settings...` link rows separated by hairlines.
+- Bluetooth: `Bluetooth` toggle row; paired-device rows (circular icon tile +
+  name); a `Bluetooth Settings...` link row.
+- Ours: the T-07 status menus; `... Settings...` links open the matching
+  Settings pane (T-16 entry point).
+
 ## Spotlight search
 
-Reference: `Screenshot 2026-09-18 at 9.24.16 PM.png` (search field),
-`Screenshot 2026-09-18 at 9.24.19 PM.png` (field and quick actions).
+Reference: `Spotlight_Search.png` (search field),
+`SpotlightSearch2.png` (field and quick actions).
 
 - Rounded, horizontally elongated search pill: solid light-gray fill, subtle
   inner shadow, dark-gray text, magnifier glyph on the left. Placeholder is
@@ -120,8 +138,9 @@ Reference: `Screenshot 2026-09-18 at 9.24.16 PM.png` (search field),
 
 ## Control Center
 
-Reference: `Screenshot 2026-09-18 at 9.23.47 PM.png` (Bluetooth),
-`Screenshot 2026-09-18 at 9.23.53 PM.png` (Wi-Fi).
+Reference: the Control Center sheets were captured only in the earlier vision
+sweep (`docs/reference/macos/notes/`, local); the Tahoe set has no sheet
+capture. The panel itself remains uncaptured (T-11).
 
 - Quick-settings sheets open as modal rounded panels floating over the
   desktop; no title bar, traffic lights, or toolbar. Frosted translucent in
@@ -139,7 +158,7 @@ Reference: `Screenshot 2026-09-18 at 9.23.47 PM.png` (Bluetooth),
 
 ## About This System
 
-Reference: `Screenshot 2026-09-18 at 9.22.28 PM.png` (About This Mac).
+Reference: `AboutDialog.png` (About This Mac).
 
 - Standard rounded window with traffic lights; no sidebar or toolbar; solid
   light background.
@@ -155,7 +174,7 @@ Reference: `Screenshot 2026-09-18 at 9.22.28 PM.png` (About This Mac).
 
 ## Applications grid (Launchpad)
 
-Reference: `Screenshot 2026-09-18 at 9.22.17 PM.png`.
+Reference: `AppDrawer.png`.
 
 - Near-full-screen rounded applications window: leading launcher glyph, a
   large `Applications` search field, and a trailing three-dot menu button;
@@ -170,7 +189,7 @@ Reference: `Screenshot 2026-09-18 at 9.22.17 PM.png`.
 
 ## Activity Monitor
 
-Reference: `Screenshot 2026-09-18 at 9.23.13 PM.png`.
+Reference: `ActivityMonitor.png`.
 
 - Standard rounded window with a translucent title bar; title `Activity
   Monitor`, muted subtitle `All Processes`, traffic lights.

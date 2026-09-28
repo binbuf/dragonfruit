@@ -44,6 +44,11 @@ packages to be meaningful.
 - The bundled Inter system font (`assets/fonts/Inter/`, `libs/system-font/`): the
   first-party half is already wired in-process; packaging adds the
   system-wide install for third-party apps.
+- The macOS **Tahoe 26** chrome language
+  ([ADR 0122](../adr/0122-tahoe-interface-language-across-chrome.md), captures
+  in `docs/reference/macos/`) as the reference for per-output chrome sizing and
+  scaling, accessibility states, and localized labels; the exact strings come
+  from the per-image notes.
 
 ## Scope
 
