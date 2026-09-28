@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(127 earlier sections omitted)_
+_(128 earlier sections omitted)_
 
-- **T110l — T-14.7l Dock launch-origin tile hand-off**: **State: done.** The Dock now hands the acted-on entry's icon tile to the; `shell/src/dockmodel.{h,cpp}` — `dockLaunchAppId(entry)` (`StartupWMClass`
 - **T110m — T-14.7m Dock window chooser: per-window actions**: **State: done.** Each window row in the Dock's chooser now carries a stateful; `shell/src/shellprotocol.{h,cpp}` — `setToplevelMinimized(windowId, bool)`
 - **T110n — T-14.7n Dock window chooser: row discipline**: **State: done.** The window chooser's row list is now bounded: at most; `design-system/tokens/tokens.json` — `component.dock.chooser`:
 - **T110o — T-14.7o Dock window-count badge**: **State: done.** A grouped app now shows a count at its icon's top-right corner; `shell/src/dockprojection.{h,cpp}` — new `dockWindowCount(entry)` (prefers
@@ -43,6 +42,7 @@ _(127 earlier sections omitted)_
 - **T126 — T-15.8b Lock Screen policy pane and tile**: **State: done.** The Settings Lock Screen pane and the Control Center Lock; `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 14 → 15; new
 - **T127 — T-15.9a Menu Bar configuration adapter**: **State: done.** New workspace crate `dragonfruit-menubar-adapter`; `services/menubar-adapter/` (new crate, workspace member) —
 - **T128 — T-15.9b Menu Bar configuration pane and tile**: **State: done.** The Settings Menu Bar pane and the Control Center Menu Bar; `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 15 → 16; new
+- **T129 — T-15.10a General, About, and Updates adapter**: **State: done.** New workspace crate `dragonfruit-update-adapter`; `services/update-adapter/` (new crate, workspace member) —
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3226,6 +3226,13 @@ Gotchas for later tasks:
 
 ## Follow-ups
 
+- **T-15.10a has no live distro update provider yet.**
+  `dragonfruit-update-adapter` ships the `UpdateProvider` seam and the mock;
+  the concrete provider (the `SystemProvider` of
+  `docs/design/08-settings.md`) belongs with packaging (T-16.9/T-16.10) and is
+  not implemented here. `HostSystem` therefore runs with `updates: None`
+  (a normal layered absence) until T-15.10b or packaging attaches one. The
+  adapter itself is fully tested through `MockSystem`/`MockUpdateProvider`.
 - **T-15.9b auto-hide mode and recent-items count are stored policy.**
   `menu.autoHide` (revision 16) and `menu.recentItems` round-trip live and the
   Menu Bar pane reflects them, but the shell does not consume them: the menu-bar
@@ -12166,3 +12173,92 @@ Decisions / gotchas for later tasks:
   present) and that the panel's last tile is fully visible with no clipping or
   overlap. The pane capture is otherwise clean: no missing text or stray
   artifacts inside the Settings window.
+
+## T129 — T-15.10a General, About, and Updates adapter
+
+**State: done.** New workspace crate `dragonfruit-update-adapter`
+(`services/update-adapter`) projects the **host stack**: the host identity
+(About/General) and the distribution **update provider** (Updates) behind a
+seam. The adapter never reimplements package management — the concrete
+`SystemProvider` is distro-specific and belongs with packaging
+(T-16.9/T-16.10), exactly as `docs/design/12-packaging.md` puts it — so this
+crate ships the `UpdateProvider` trait, `MockUpdateProvider`, and a live
+`HostSystem` identity read (ADR 0136).
+
+Real paths:
+
+- `services/update-adapter/` (new crate, workspace member) —
+  - `src/source.rs` — `SystemSource` seam; `SystemIdentity` (host name,
+    `PRETTY_NAME`/`VERSION_ID`/`ID`, kernel, architecture, DMI
+    model/serial, processor, memory; `os_label`/`memory_label`/`device_name`/
+    `has_serial`); `UpdatePhase` (`idle`/`checking`/`up-to-date`/`available`/
+    `installing`/`reboot-required`/`failed`), `UpdateSeverity`
+    (`normal`/`important`/`security`), `UpdateItem`, `UpdateData`;
+    `SystemData { identity, updates: Option<UpdateData> }`; `UpdateOutcome`
+    (`Applied`/`Absent`/`Failed`); `MockSystem` (`absent`/`present`/`failing`/
+    `fail_writes`/`push`/`kill`/`restart`/`reads`/`checks`/`installs`/`reboots`).
+  - `src/model.rs` — `SystemSnapshot` (`from_data`, `updates_available`,
+    `phase`, `is_busy`, `is_reboot_required`, `updates`, `update_count`,
+    `security_count`, `last_checked_ms`, `message`, `label`, `glyph` =
+    `"software-update"`); `UpdateChange` (identity / provider presence / phase /
+    list size / last checked / message).
+  - `src/adapter.rs` — `UpdateAdapter<S>` over the shared `Subscription`
+    lifecycle; `refresh`, `check`, `install`, `reboot`, `drain_changes`;
+    implements `Adapter` with `AdapterId::UPDATES`.
+  - `src/host.rs` — `HostSystem` (live `SystemSource`, root-configurable
+    identity read from `/etc/os-release`, `/etc/hostname`,
+    `/proc/sys/kernel/osrelease`, `/proc/cpuinfo`, `/proc/meminfo`,
+    `/sys/devices/virtual/dmi/id/*`, `std::env::consts::ARCH`) + the
+    `UpdateProvider` trait and `MockUpdateProvider`; pure
+    `parse_os_release`/`parse_cpu_model`/`parse_mem_total`.
+  - `tests/read_path.rs` — 8 acceptance tests.
+- `services/system-adapters/src/state.rs` — `AdapterId::UPDATES`
+  (`"updates"`); id test updated.
+- `Cargo.toml` — workspace member; `Makefile` e2e runs
+  `cargo test -p dragonfruit-update-adapter`.
+- Docs/scripts — ADR `0136-general-about-updates-adapter.md`;
+  `docs/design/07-system-integration.md` adapter-table row + new "The General,
+  About, and Updates path (T-15.10a)" section; capture script
+  `scripts/capture-t15-update-adapter.sh` + `docs/captures/README.md`.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-update-adapter` — 40 lib + 8 read_path green.
+- `cargo test -p dragonfruit-system-adapters` — green.
+- `cargo clippy -p dragonfruit-update-adapter --all-targets -- -D warnings` —
+  clean; `cargo fmt --all -- --check` — clean.
+- `make e2e` — EXIT 0.
+- `make check-design-tokens check-tokens check-no-capture-grab` — clean;
+  `./scripts/check-gallery-snapshots.py` — 78 green.
+- `make lint` — still fails only on the pre-existing `check-desktop-names`
+  lines (none in the new crate); unchanged from T125–T128.
+
+Decisions / gotchas for T-15.10b and later:
+
+- **Absence is layered, like the battery adapter.** `SystemData::updates` is
+  `Option`; a reachable host with no update provider is `Available` with
+  `updates: None` and only the update controls disable. The whole adapter is
+  `Unavailable` only when neither identity nor provider is reachable. A present
+  provider that cannot be read is `Error` (visible, inert with the message).
+- **The provider is a seam, not an implementation.** Do not add a package
+  manager to this crate; attach a `Box<dyn UpdateProvider>` to `HostSystem`
+  (or have the bridge host read one). `MockSystem`'s writes answer `Absent`
+  when `SystemData::updates` is `None`, matching the layered absence.
+- **`AdapterId::UPDATES` is `"updates"`**, not `"general"`. The crate covers
+  General/About/Updates but the daemon-backed half and the tile are Updates.
+- **The identity read is real and root-configurable** (`HostSystem::with_root`),
+  so host tests can use a fixture tree; `HostSystem::new()` reads `/` with no
+  provider.
+- **Writes invent no snapshot.** `check`/`install`/`reboot` forward one request
+  and return an outcome; the host must `refresh()` after the provider pushes.
+- **T-15.10b:** the Settings pane is `General` (About + Software Update
+  disclosure rows) and the Control Center tile is `Software Update`. The
+  durable presentation preferences (if any) are settingsd keys; per the T-15.9b
+  note the panel is at the nested-output height ceiling, so a new tile needs a
+  scrolling panel or a taller nested output.
+- Live visual check: `bash scripts/capture-t15-update-adapter.sh` produced
+  `docs/captures/t15-10a-update-adapter.png` (3840x2160). No surface of its
+  own, so it confirms only that the nested desktop renders; vision found the
+  menu bar (Dragonfruit, Wi-Fi/battery/clock), the translucent Dock, the
+  wallpaper, and the open Settings/X11 windows composited with no blank
+  regions, clipping, or stray artifacts.

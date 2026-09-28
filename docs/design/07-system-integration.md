@@ -26,6 +26,7 @@ equivalent) API intended exactly for custom desktop frontends.
 | Notifications / Focus | notification service | The Focus/DND policy (mode, allow list, suppressed batch) and the active-banner / history state. The service already owns the queue, the history, and the admission rule (ADR [0058](adr/0058-focus-dnd-policy-semantics.md)); the adapter is the projection over its shell-facing JSON views and never reimplements them. |
 | Lock Screen policy | session idle engine + compositor lock | The `idle.*` stage delays the session's idle/lock engine applies ([ADR 0070](adr/0070-idle-timer-engine-and-policy.md)) and the compositor's fail-secure lock state ([ADR 0067](adr/0067-session-lock-protocol-and-ui.md)), mirrored by the shell over `df_toplevel_manager`. The adapter is the projection over the confirmed lock state and the applied policy; it never re-times a stage or re-implements a lock transition, and the display preferences are settingsd-owned. |
 | Menu Bar configuration | shell menu bar + menu-broker | The chrome, status-item model, and clock the shell's `MenuBar` owns, and the global application-menu resolution the menu-broker owns. The adapter is the projection over the effective auto-hide/background/global-menu flags, the clock options, and the live availability of each control; it never re-renders the bar or re-resolves a menu, and the durable preferences are settingsd-owned. |
+| General / About / Updates | host identity + distro update provider | The About/General rows read the host's own release/kernel/DMI/processor/memory files, and Updates is the distribution's update provider (the `SystemProvider` of [08-settings.md](08-settings.md)) behind a seam. The adapter is the projection over the identity and the provider's check/install/reboot state; it never reimplements package management, and the concrete provider is distro-specific and belongs with packaging. |
 | Seat/session | systemd / logind | Session lifetime, `graphical-session.target`, VT management. |
 | Privileged operations | host policy infrastructure | polkit / authentication agent integration; we never roll our own privilege escalation. |
 
@@ -826,6 +827,54 @@ like Mission Control (T-15.5b) and the Lock Screen (T-15.8b; ADR
   exists. Wiring that is a follow-up
   (see [adr/0135](adr/0135-menu-bar-pane-and-tile.md)); the rows are the
   capture's controls and are not dead.
+
+## The General, About, and Updates path (T-15.10a)
+
+General, About, and Updates do not wrap a single desktop daemon: they project
+the **host stack**, which has two independent halves. The adapter
+(`services/update-adapter`, `dragonfruit-update-adapter`) reads both and is
+never a second package manager, exactly as `dragonfruit-notify-adapter` is
+never a second notification queue. See
+[adr/0136](adr/0136-general-about-updates-adapter.md).
+
+- **The read** is `SystemData`:
+  - the always-read `SystemIdentity` — the computer name, the distribution's
+    `PRETTY_NAME`/`VERSION_ID`/`ID` (`/etc/os-release`), the kernel
+    (`/proc/sys/kernel/osrelease`), the architecture, the DMI
+    `product_name`/`product_serial`, the processor (`/proc/cpuinfo`), and
+    `MemTotal` (`/proc/meminfo`). This is the About/General half; `HostSystem`
+    reads it root-configurably and `SystemIdentity::os_label`/`memory_label`/
+    `device_name` derive the rows.
+  - the optional `UpdateData` — the distribution update provider's phase
+    (`idle`/`checking`/`up-to-date`/`available`/`installing`/`reboot-required`/
+    `failed`), the offered `UpdateItem` list (id, versions, severity), the
+    last-check timestamp, and the provider's message. This is the Updates half.
+- **The provider is a seam.** `UpdateProvider` (`status`, `start_check`,
+  `start_install`, `start_reboot`) is the distro-specific half; the concrete
+  provider lands with packaging (T-16.9/T-16.10), where
+  [12-packaging.md](12-packaging.md) puts the `SystemProvider` interface. The
+  adapter ships the trait, `MockUpdateProvider`, and the `HostSystem` identity
+  read — it never parses package-manager output.
+- **The writes are explicit and invent no snapshot.**
+  `UpdateAdapter::check`/`install`/`reboot` forward one request each and answer
+  `Applied`/`Absent`/`Failed`; the provider publishes the result and the host
+  re-reads, so the snapshot stays the single source of truth.
+- **Events** are the shared subscription lifecycle (`AdapterEvent`) plus a pure
+  `SystemSnapshot::changes` diff — the identity, the provider's presence, the
+  phase, the list size, the last-check time, and the message — drained through
+  `drain_changes`.
+- **Absence is layered and normal.** The adapter is `Unavailable` only when
+  neither the identity nor the provider is reachable; a running host with no
+  update provider is `Available` with `updates: None`, so the About rows stay
+  live and only the update controls disable (the same per-daemon rule the
+  battery adapter uses, [adr/0128](adr/0128-battery-power-profiles-adapter.md)).
+  A present provider that cannot be read is `Error`, visible and inert with the
+  message. `MockSystem` drives the states in CI, with `kill`/`restart` for the
+  re-subscribe lifecycle and `push` for the identity and update stream.
+- **The Linux adaptation.** The macOS `Chip`/`Memory`/`Serial number`/`macOS`
+  rows map to the processor, memory, DMI serial, and the distribution release;
+  the Apple copyright footer is omitted. The pane and Control Center tile are
+  T-15.10b.
 
 ## The status bridge host (T-07.5a)
 
