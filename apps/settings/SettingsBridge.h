@@ -36,6 +36,7 @@ class StorageClient;
 class SoundClient;
 class InputClient;
 class BatteryClient;
+class NotificationsClient;
 class QDBusServiceWatcher;
 
 class SettingsBridge : public QObject
@@ -122,6 +123,16 @@ class SettingsBridge : public QObject
     // Whether the bridge host is on the session bus. False means no battery or
     // power-profile surface at all; the pane shows the absence note.
     Q_PROPERTY(bool batteryAvailable READ batteryAvailable NOTIFY batteryChanged)
+    // The Notifications/Focus view from the bridge host (T-15.7b):
+    // `{ state, glyph, label, mode, modeLabel, suppressing, dnd, batched,
+    // allowList, activeCount, historyCount, appCount, apps }`. Empty when the
+    // host (or the notification service) is absent; the panes render the
+    // absence state rather than erroring. The four global presentation
+    // preferences are settingsd keys, not this view.
+    Q_PROPERTY(QVariantMap notifications READ notifications NOTIFY notificationsChanged)
+    // Whether the bridge host is on the session bus. False means no
+    // Notifications/Focus surface at all; the panes show the absence note.
+    Q_PROPERTY(bool notificationsAvailable READ notificationsAvailable NOTIFY notificationsChanged)
     // The pane the shell opens on startup. Empty uses the first shipped pane;
     // `DF_SETTINGS_START_PANE=wallpaper` selects one for captures and tests.
     Q_PROPERTY(QString startPane READ startPane CONSTANT)
@@ -147,6 +158,8 @@ public:
     bool inputAvailable() const;
     QVariantMap battery() const;
     bool batteryAvailable() const;
+    QVariantMap notifications() const;
+    bool notificationsAvailable() const;
     QString providerStatus() const;
     QString providerDefault() const;
     QString wallpaperBuiltinDefault() const;
@@ -222,6 +235,15 @@ public:
     Q_INVOKABLE void refreshBattery();
     Q_INVOKABLE void setPowerProfile(const QString &profile);
 
+    // T-15.7b: the Notifications/Focus panes' one seam. `refreshNotifications`
+    // re-reads the bridge host on pane open; `setFocusMode` selects the policy
+    // (`off`/`focus`/`dnd`) and `setFocusApp` adds or removes one app from the
+    // per-app allow list, reading the current list first so a toggle changes
+    // exactly one entry. A no-op when the host is absent.
+    Q_INVOKABLE void refreshNotifications();
+    Q_INVOKABLE void setFocusMode(const QString &mode);
+    Q_INVOKABLE void setFocusApp(const QString &app, bool allowed);
+
     // T-18.2 test seam: with `DF_WALLPAPER_FIXTURE` set, seed the provider
     // lifecycle to `status` (`ready` loads the deterministic fixture
     // catalogue; any other status leaves it empty) so the pane's fetching /
@@ -259,6 +281,8 @@ signals:
     void inputChanged();
     // The battery / power-profiles view or availability changed (T-15.6b).
     void batteryChanged();
+    // The Notifications/Focus view or availability changed (T-15.7b).
+    void notificationsChanged();
 
 private:
     void buildWallpaperPresets();
@@ -310,4 +334,7 @@ private:
     // T-15.6b: the battery / power-profiles seam (`DF_BATTERY_FIXTURE` selects
     // the mock).
     BatteryClient *m_battery = nullptr;
+    // T-15.7b: the Notifications/Focus seam (`DF_NOTIFICATIONS_FIXTURE`
+    // selects the mock).
+    NotificationsClient *m_notifications = nullptr;
 };

@@ -33,7 +33,7 @@ Item {
                                           "keyboard", "mouse", "trackpad",
                                           "overview", "battery", "power-saver",
                                           "power-balanced", "power-performance",
-                                          "info"]
+                                          "info", "bell"]
     readonly property bool painted: root.paintedGlyphs.indexOf(root.name) >= 0
 
     readonly property var bars: {
@@ -166,6 +166,21 @@ Item {
                 ctx.arc(s * 0.66, s * 0.34, s * 0.33, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.globalCompositeOperation = "source-over";
+                break;
+            }
+            case "bell": {
+                // A notification bell: a dome with a flat rim and a clapper.
+                ctx.beginPath();
+                ctx.moveTo(s * 0.24, s * 0.64);
+                ctx.quadraticCurveTo(s * 0.26, s * 0.20, s * 0.5, s * 0.20);
+                ctx.quadraticCurveTo(s * 0.74, s * 0.20, s * 0.76, s * 0.64);
+                ctx.closePath();
+                ctx.fill();
+                roundedRect(s * 0.16, s * 0.60, s * 0.68, s * 0.10, s * 0.05);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(s * 0.5, s * 0.80, s * 0.07, 0, Math.PI * 2);
+                ctx.fill();
                 break;
             }
             case "appearance": {

@@ -152,6 +152,10 @@ Item {
             return mousePaneComponent;
         case "trackpad":
             return trackpadPaneComponent;
+        case "notifications":
+            return notificationsPaneComponent;
+        case "focus":
+            return focusPaneComponent;
         default:
             return null;
         }
@@ -282,6 +286,16 @@ Item {
     Component {
         id: trackpadPaneComponent
         TrackpadPane { }
+    }
+
+    Component {
+        id: notificationsPaneComponent
+        NotificationsPane { }
+    }
+
+    Component {
+        id: focusPaneComponent
+        FocusPane { }
     }
 
     AppWindow {

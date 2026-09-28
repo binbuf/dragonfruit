@@ -16,6 +16,7 @@
 //! dragonfruit-system-status --print-bluetooth
 //! dragonfruit-system-status --print-storage
 //! dragonfruit-system-status --print-input
+//! dragonfruit-system-status --print-notifications
 //! ```
 
 use std::process::ExitCode;
@@ -24,11 +25,13 @@ use dragonfruit_audio::CommandAudio;
 use dragonfruit_bluetooth::DbusBluez;
 use dragonfruit_input::CommandLibinput;
 use dragonfruit_networkmanager::DbusNetworkManager;
+use dragonfruit_notify_adapter::DbusNotifications;
 use dragonfruit_power::DbusUPower;
 use dragonfruit_storage::DbusUDisks;
 use dragonfruit_system_status::dbus;
 use dragonfruit_system_status::BluetoothHost;
 use dragonfruit_system_status::InputHost;
+use dragonfruit_system_status::NotificationsHost;
 use dragonfruit_system_status::StatusHost;
 use dragonfruit_system_status::StorageHost;
 
@@ -39,6 +42,7 @@ fn main() -> ExitCode {
     let mut print_bluetooth = false;
     let mut print_storage = false;
     let mut print_input = false;
+    let mut print_notifications = false;
     for arg in std::env::args().skip(1) {
         match arg.as_str() {
             "--print-wifi" => print_wifi = true,
@@ -47,6 +51,7 @@ fn main() -> ExitCode {
             "--print-bluetooth" => print_bluetooth = true,
             "--print-storage" => print_storage = true,
             "--print-input" => print_input = true,
+            "--print-notifications" => print_notifications = true,
             "-h" | "--help" => {
                 print_help();
                 return ExitCode::SUCCESS;
@@ -67,10 +72,16 @@ fn main() -> ExitCode {
     let mut bluetooth = BluetoothHost::new(DbusBluez::new());
     let mut storage = StorageHost::new(DbusUDisks::new());
     let mut input = InputHost::new(CommandLibinput::new());
+    let mut notifications = NotificationsHost::new(DbusNotifications::new());
 
     if print_input {
         input.refresh();
         println!("{}", input.state());
+        return ExitCode::SUCCESS;
+    }
+    if print_notifications {
+        notifications.refresh();
+        println!("{}", notifications.state());
         return ExitCode::SUCCESS;
     }
     if print_storage {
@@ -103,7 +114,8 @@ fn main() -> ExitCode {
     bluetooth.refresh();
     storage.refresh();
     input.refresh();
-    match dbus::run(host, bluetooth, storage, input) {
+    notifications.refresh();
+    match dbus::run(host, bluetooth, storage, input, notifications) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!(
@@ -127,6 +139,7 @@ fn print_help() {
            --print-bluetooth refresh BlueZ and print the Bluetooth JSON view\n\
            --print-storage  refresh UDisks2 and print the storage JSON view\n\
            --print-input    refresh libinput and print the input JSON view\n\
+           --print-notifications refresh the notification service and print its JSON view\n\
            -h, --help       show this help"
     );
 }
