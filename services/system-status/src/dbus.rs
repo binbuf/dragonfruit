@@ -13,15 +13,24 @@
 use std::sync::{Arc, Mutex};
 
 use dragonfruit_audio::CommandAudio;
+use dragonfruit_bluetooth::DbusBluez;
 use dragonfruit_networkmanager::DbusNetworkManager;
 use dragonfruit_power::DbusUPower;
 use zbus::blocking::connection;
 use zbus::interface;
 
-use crate::{StatusHost, AUDIO_INTERFACE, BATTERY_INTERFACE, DBUS_NAME, DBUS_PATH, WIFI_INTERFACE};
+use crate::{
+    BluetoothHost, StatusHost, AUDIO_INTERFACE, BATTERY_INTERFACE, BLUETOOTH_INTERFACE, DBUS_NAME,
+    DBUS_PATH, WIFI_INTERFACE,
+};
 
-/// The live host: the three real adapter sources behind the bridge.
+/// The live host: the three real network/audio/power adapter sources behind
+/// the bridge.
 pub type LiveHost = StatusHost<DbusNetworkManager, CommandAudio, DbusUPower>;
+
+/// The live Bluetooth host: the real BlueZ source (system bus) behind the
+/// bridge.
+pub type LiveBluetooth = BluetoothHost<DbusBluez>;
 
 /// The Wi-Fi half of the service.
 pub struct WifiInterface {
@@ -36,6 +45,12 @@ pub struct AudioInterface {
 /// The read-only battery half of the service.
 pub struct BatteryInterface {
     host: Arc<Mutex<LiveHost>>,
+}
+
+/// The Bluetooth half of the service (T-15.1b): state plus the four explicit
+/// writes the Settings pane and Control Center tile offer.
+pub struct BluetoothInterface {
+    host: Arc<Mutex<LiveBluetooth>>,
 }
 
 #[interface(name = "org.dragonfruit.SystemStatus1.Wifi")]
@@ -109,17 +124,64 @@ impl BatteryInterface {
     }
 }
 
+#[interface(name = "org.dragonfruit.SystemStatus1.Bluetooth")]
+impl BluetoothInterface {
+    /// The current Bluetooth status view as JSON (the last adapter state).
+    fn state(&self) -> String {
+        lock_bluetooth(&self.host).state()
+    }
+
+    /// Re-read BlueZ once and return the new view. The shell and the Settings
+    /// pane call this when they open; it is an explicit resync, not a poll.
+    fn refresh(&self) -> String {
+        let mut host = lock_bluetooth(&self.host);
+        host.refresh();
+        host.state()
+    }
+
+    /// Power the controller on or off. Returns the JSON report.
+    fn set_powered(&self, powered: bool) -> String {
+        lock_bluetooth(&self.host).set_powered(powered).to_string()
+    }
+
+    /// Start or stop an inquiry. Returns the JSON report.
+    fn set_discovering(&self, discovering: bool) -> String {
+        lock_bluetooth(&self.host)
+            .set_discovering(discovering)
+            .to_string()
+    }
+
+    /// Pair (bond) the device at `address`. Returns the JSON report.
+    fn pair(&self, address: &str) -> String {
+        lock_bluetooth(&self.host).pair(address).to_string()
+    }
+
+    /// Connect to or disconnect from the device at `address`. Returns the JSON
+    /// report.
+    fn set_connected(&self, address: &str, connected: bool) -> String {
+        lock_bluetooth(&self.host)
+            .set_connected(address, connected)
+            .to_string()
+    }
+}
+
 /// Lock the shared host, recovering from a poisoned mutex: a D-Bus method may
 /// panic on a bad argument, and the service must keep answering.
 fn lock(host: &Arc<Mutex<LiveHost>>) -> std::sync::MutexGuard<'_, LiveHost> {
     host.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
+/// Lock the shared Bluetooth host, recovering from a poisoned mutex.
+fn lock_bluetooth(host: &Arc<Mutex<LiveBluetooth>>) -> std::sync::MutexGuard<'_, LiveBluetooth> {
+    host.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 /// Serve the three interfaces on the session bus until the process is asked to
 /// stop. Returns an error only when the bus or the name cannot be taken; an
 /// absent session bus exits with a message instead of blocking a session.
-pub fn run(host: LiveHost) -> zbus::Result<()> {
+pub fn run(host: LiveHost, bluetooth: LiveBluetooth) -> zbus::Result<()> {
     let host = Arc::new(Mutex::new(host));
+    let bluetooth = Arc::new(Mutex::new(bluetooth));
     let connection = connection::Builder::session()?
         .name(DBUS_NAME)?
         .serve_at(
@@ -140,6 +202,12 @@ pub fn run(host: LiveHost) -> zbus::Result<()> {
                 host: Arc::clone(&host),
             },
         )?
+        .serve_at(
+            DBUS_PATH,
+            BluetoothInterface {
+                host: Arc::clone(&bluetooth),
+            },
+        )?
         .build()?;
 
     // The blocking object server runs on its own executor; parking the main
@@ -151,6 +219,11 @@ pub fn run(host: LiveHost) -> zbus::Result<()> {
 }
 
 /// The interface names the service serves, for logs and tests.
-pub fn interface_names() -> [&'static str; 3] {
-    [WIFI_INTERFACE, AUDIO_INTERFACE, BATTERY_INTERFACE]
+pub fn interface_names() -> [&'static str; 4] {
+    [
+        WIFI_INTERFACE,
+        AUDIO_INTERFACE,
+        BATTERY_INTERFACE,
+        BLUETOOTH_INTERFACE,
+    ]
 }

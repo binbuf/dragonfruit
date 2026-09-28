@@ -22,6 +22,8 @@ Item {
         SignalSpy { id: volumeSpy; signalName: "volumeSetRequested" }
         SignalSpy { id: brightnessSpy; signalName: "brightnessSetRequested" }
         SignalSpy { id: muteSpy; signalName: "muteToggleRequested" }
+        SignalSpy { id: bluetoothToggleSpy; signalName: "bluetoothToggleRequested" }
+        SignalSpy { id: bluetoothDeviceSpy; signalName: "bluetoothDeviceToggled" }
         SignalSpy { id: focusSpy; signalName: "focusToggleRequested" }
         SignalSpy { id: darkSpy; signalName: "darkModeToggleRequested" }
         SignalSpy { id: closedSpy; signalName: "closed" }
@@ -51,6 +53,25 @@ Item {
             };
         }
 
+        function bluetoothModel(state, present, powered, discovering, devices) {
+            var view = {
+                kind: "bluetooth",
+                state: state,
+                present: present,
+                visible: state === "available" && present,
+                enabled: state === "available" && present,
+                powered: powered,
+                label: (state !== "available" || !present) ? "Bluetooth unavailable"
+                     : discovering === true ? "Bluetooth discovering"
+                     : powered ? "Bluetooth on" : "Bluetooth off"
+            };
+            if (discovering !== undefined)
+                view.discovering = discovering;
+            if (devices !== undefined)
+                view.knownDevices = devices;
+            return view;
+        }
+
         function focusModel(mode, batchedCount) {
             return {
                 mode: mode,
@@ -65,33 +86,137 @@ Item {
             // pointer coordinates land on the controls.
             panel.width = 360;
             panel.height = 520;
+            // The shell sets this from the bridge host's Bluetooth interface
+            // (T-15.1b); the tile is live when it is true.
+            panel.bluetoothWritable = true;
             waitForRendering(stage);
             return panel;
         }
 
-        function test_tiles_expose_all_five_controls() {
+        function test_tiles_expose_all_six_controls() {
             var panel = make({
                 wifi: wifiModel("available", true, "home"),
+                bluetooth: bluetoothModel("available", true, true, false),
                 audio: audioModel("available", 0.6, false),
                 brightness: 0.8,
                 focusPolicy: focusModel("off"),
                 dark: true
             });
-            compare(panel.tiles.length, 5);
+            compare(panel.tiles.length, 6);
             compare(panel.tiles[0].id, "wifi");
             compare(panel.tiles[0].kind, "toggle");
             compare(panel.tiles[0].checked, true);
-            compare(panel.tiles[1].id, "focus");
+            compare(panel.tiles[1].id, "bluetooth");
             compare(panel.tiles[1].kind, "toggle");
-            compare(panel.tiles[2].id, "volume");
-            compare(panel.tiles[2].kind, "slider");
-            compare(Math.abs(panel.tiles[2].value - 0.6) < 0.0001, true);
-            compare(panel.tiles[3].id, "brightness");
-            compare(Math.abs(panel.tiles[3].value - 0.8) < 0.0001, true);
-            compare(panel.tiles[4].id, "dark");
-            compare(panel.tiles[4].kind, "toggle");
-            compare(panel.tiles[4].checked, true);
+            compare(panel.tiles[1].checked, true);
+            compare(panel.tiles[2].id, "focus");
+            compare(panel.tiles[2].kind, "toggle");
+            compare(panel.tiles[3].id, "volume");
+            compare(panel.tiles[3].kind, "slider");
+            compare(Math.abs(panel.tiles[3].value - 0.6) < 0.0001, true);
+            compare(panel.tiles[4].id, "brightness");
+            compare(Math.abs(panel.tiles[4].value - 0.8) < 0.0001, true);
+            compare(panel.tiles[5].id, "dark");
+            compare(panel.tiles[5].kind, "toggle");
+            compare(panel.tiles[5].checked, true);
             compare(panel.wifiLabel, "home");
+        }
+
+        function test_panel_content_fits_the_shell_surface() {
+            // The shell sizes the Control Center surface to 360x780
+            // (kControlCenterWidth/Height). With the Bluetooth tile's device
+            // rows the content must still fit, or the lower tiles are clipped.
+            var panel = make({
+                wifi: wifiModel("available", true, "home"),
+                bluetooth: bluetoothModel("available", true, true, false,
+                                          [{ address: "AA:BB:CC:DD:EE:FF",
+                                             name: "WF-1000XM6", connected: true },
+                                           { address: "11:22:33:44:55:66",
+                                             name: "WH-1000XM6", connected: false }]),
+                audio: audioModel("available", 0.6, false),
+                brightness: 1.0,
+                focusPolicy: focusModel("off"),
+                dark: false
+            });
+            panel.width = 360;
+            panel.height = 780;
+            waitForRendering(stage);
+            var content = findChild(panel, "controlCenterContent");
+            verify(content !== null);
+            verify(content.childrenRect.height <= 780,
+                   "Control Center content must fit the 780px surface, height="
+                   + content.childrenRect.height);
+        }
+
+        function test_bluetooth_tile_reflects_state() {
+            var panel = make({
+                bluetooth: bluetoothModel("available", true, true, false,
+                                          [{ address: "AA:BB:CC:DD:EE:FF",
+                                             name: "WF-1000XM6", connected: true }])
+            });
+            compare(panel.bluetoothVisible, true);
+            compare(panel.bluetoothOn, true);
+            compare(panel.tiles[1].enabled, true);
+            compare(panel.bluetoothDevices.length, 1);
+            compare(panel.bluetoothLabel, "Bluetooth on");
+
+            panel.bluetooth = bluetoothModel("available", true, false, false);
+            compare(panel.bluetoothOn, false);
+            compare(panel.bluetoothLabel, "Bluetooth off");
+        }
+
+        function test_bluetooth_tile_hides_on_absence_and_no_controller() {
+            var panel = make({ bluetooth: bluetoothModel("unavailable", false, false) });
+            compare(panel.bluetoothVisible, false);
+            compare(panel.tiles[1].visible, false);
+            var tile = findChild(panel, "bluetoothTile");
+            verify(tile !== null);
+            compare(tile.visible, false);
+
+            // A running daemon with no controller is available but not present.
+            panel.bluetooth = bluetoothModel("available", false, false);
+            compare(panel.bluetoothVisible, false);
+        }
+
+        function test_bluetooth_toggle_raises_a_write() {
+            var panel = make({
+                bluetooth: bluetoothModel("available", true, true, false)
+            });
+            bluetoothToggleSpy.target = panel;
+            bluetoothToggleSpy.clear();
+            var toggle = findChild(panel, "bluetoothToggle");
+            verify(toggle !== null);
+            toggle.toggle();
+            compare(bluetoothToggleSpy.count, 1);
+            compare(bluetoothToggleSpy.signalArguments[0][0], false);
+
+            panel.toggleBluetooth();
+            compare(bluetoothToggleSpy.count, 2);
+            compare(bluetoothToggleSpy.signalArguments[1][0], false);
+        }
+
+        function test_bluetooth_device_row_raises_a_connect() {
+            var panel = make({
+                bluetooth: bluetoothModel("available", true, true, false,
+                                          [{ address: "AA:BB:CC:DD:EE:FF",
+                                             name: "WF-1000XM6", connected: false }])
+            });
+            bluetoothDeviceSpy.target = panel;
+            bluetoothDeviceSpy.clear();
+            panel.toggleBluetoothDevice("AA:BB:CC:DD:EE:FF");
+            compare(bluetoothDeviceSpy.count, 1);
+            compare(bluetoothDeviceSpy.signalArguments[0][0], "AA:BB:CC:DD:EE:FF");
+            compare(bluetoothDeviceSpy.signalArguments[0][1], true);
+        }
+
+        function test_bluetooth_settings_link_is_accessible() {
+            var panel = make({
+                bluetooth: bluetoothModel("available", true, true, false)
+            });
+            var link = findChild(panel, "bluetoothSettingsLink");
+            verify(link !== null);
+            compare(link.Accessible.role, Accessible.Button);
+            compare(link.Accessible.name, "Open Bluetooth Settings");
         }
 
         function test_wifi_tile_is_read_only_until_the_adapter_can_write() {
@@ -155,7 +280,7 @@ Item {
             compare(panel.focusMode, "dnd");
             compare(panel.focusOn, true);
             compare(panel.focusLabel, "Do Not Disturb");
-            compare(panel.tiles[1].checked, true);
+            compare(panel.tiles[2].checked, true);
             verify(panel.focusSubtitle.indexOf("3") >= 0);
             verify(panel.focusSubtitle.indexOf("Do Not Disturb") >= 0);
 
@@ -210,11 +335,11 @@ Item {
 
         function test_dark_mode_tile_reflects_the_scheme() {
             var panel = make({ dark: false });
-            compare(panel.tiles[4].checked, false);
-            compare(panel.tiles[4].subtitle, "Off");
+            compare(panel.tiles[5].checked, false);
+            compare(panel.tiles[5].subtitle, "Off");
             panel.dark = true;
-            compare(panel.tiles[4].checked, true);
-            compare(panel.tiles[4].subtitle, "On");
+            compare(panel.tiles[5].checked, true);
+            compare(panel.tiles[5].subtitle, "On");
         }
 
         function test_dark_mode_toggle_raises_the_absolute_scheme() {

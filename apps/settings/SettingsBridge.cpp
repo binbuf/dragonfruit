@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "SettingsBridge.h"
 
+#include "BluetoothClient.h"
 #include "settingsclient.h"
 
 #include <QColor>
@@ -104,6 +105,18 @@ SettingsBridge::SettingsBridge(QObject *parent)
     connect(m_client, &SettingsClient::availableChanged, this,
             [this](bool available) { emit availableChanged(available); });
 
+    // T-15.1b: the Bluetooth seam. `DF_BLUETOOTH_FIXTURE` selects the
+    // deterministic in-process client for the headless pane tests; otherwise
+    // the live bridge-host client, whose absence is a normal state.
+    if (qEnvironmentVariableIsSet("DF_BLUETOOTH_FIXTURE"))
+        m_bluetooth = new MockBluetoothClient(this);
+    else
+        m_bluetooth = new DbusBluetoothClient(this);
+    connect(m_bluetooth, &BluetoothClient::changed, this,
+            [this](const QVariantMap &) { emit bluetoothChanged(); });
+    connect(m_bluetooth, &BluetoothClient::availableChanged, this,
+            [this](bool) { emit bluetoothChanged(); });
+
     buildWallpaperPresets();
     connectPortalWatcher();
     m_wallpaperFixture = qEnvironmentVariableIsSet("DF_WALLPAPER_FIXTURE");
@@ -136,6 +149,16 @@ QVariantList SettingsBridge::wallpaperPresets() const
 QVariantList SettingsBridge::providerItems() const
 {
     return m_providerItems;
+}
+
+QVariantMap SettingsBridge::bluetooth() const
+{
+    return m_bluetooth ? m_bluetooth->view() : QVariantMap();
+}
+
+bool SettingsBridge::bluetoothAvailable() const
+{
+    return m_bluetooth && m_bluetooth->available();
 }
 
 QString SettingsBridge::providerStatus() const
@@ -386,6 +409,36 @@ void SettingsBridge::preloadWallpapers()
                 // properties stay empty and no error reaches the pane.
                 refreshWallpaperProvider();
             });
+}
+
+void SettingsBridge::refreshBluetooth()
+{
+    if (m_bluetooth)
+        m_bluetooth->refresh();
+}
+
+void SettingsBridge::setBluetoothPowered(bool powered)
+{
+    if (m_bluetooth)
+        m_bluetooth->setPowered(powered);
+}
+
+void SettingsBridge::setBluetoothDiscovering(bool discovering)
+{
+    if (m_bluetooth)
+        m_bluetooth->setDiscovering(discovering);
+}
+
+void SettingsBridge::pairBluetooth(const QString &address)
+{
+    if (m_bluetooth)
+        m_bluetooth->pair(address);
+}
+
+void SettingsBridge::setBluetoothConnected(const QString &address, bool connected)
+{
+    if (m_bluetooth)
+        m_bluetooth->setConnected(address, connected);
 }
 
 void SettingsBridge::setWallpaperFixture(const QString &status)

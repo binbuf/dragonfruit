@@ -20,6 +20,7 @@ const QString kPath = QStringLiteral("/org/dragonfruit/SystemStatus1");
 const QString kWifiInterface = QStringLiteral("org.dragonfruit.SystemStatus1.Wifi");
 const QString kAudioInterface = QStringLiteral("org.dragonfruit.SystemStatus1.Audio");
 const QString kBatteryInterface = QStringLiteral("org.dragonfruit.SystemStatus1.Battery");
+const QString kBluetoothInterface = QStringLiteral("org.dragonfruit.SystemStatus1.Bluetooth");
 
 // Serialize a QJsonObject to the compact byte form the host uses.
 QByteArray compact(const QJsonObject &object)
@@ -116,6 +117,36 @@ void DbusSystemStatusClient::refreshBattery()
     call(kBatteryInterface, QStringLiteral("State"), {}, &SystemStatusClient::batteryState);
 }
 
+void DbusSystemStatusClient::refreshBluetooth()
+{
+    call(kBluetoothInterface, QStringLiteral("State"), {},
+         &SystemStatusClient::bluetoothState);
+}
+
+void DbusSystemStatusClient::setBluetoothPowered(bool powered)
+{
+    call(kBluetoothInterface, QStringLiteral("SetPowered"), {powered},
+         &SystemStatusClient::writeReport);
+}
+
+void DbusSystemStatusClient::setBluetoothDiscovering(bool discovering)
+{
+    call(kBluetoothInterface, QStringLiteral("SetDiscovering"), {discovering},
+         &SystemStatusClient::writeReport);
+}
+
+void DbusSystemStatusClient::pairBluetooth(const QString &address)
+{
+    call(kBluetoothInterface, QStringLiteral("Pair"), {address},
+         &SystemStatusClient::writeReport);
+}
+
+void DbusSystemStatusClient::setBluetoothConnected(const QString &address, bool connected)
+{
+    call(kBluetoothInterface, QStringLiteral("SetConnected"), {address, connected},
+         &SystemStatusClient::writeReport);
+}
+
 void DbusSystemStatusClient::join(const QString &ssid, const QString &secret)
 {
     call(kWifiInterface, QStringLiteral("Join"), {ssid, secret},
@@ -142,6 +173,98 @@ MockSystemStatusClient::MockSystemStatusClient(QObject *parent)
     refreshWifi();
     refreshAudio();
     refreshBattery();
+    refreshBluetooth();
+}
+
+void MockSystemStatusClient::refreshBluetooth()
+{
+    QJsonObject view;
+    view.insert(QStringLiteral("kind"), QStringLiteral("bluetooth"));
+    view.insert(QStringLiteral("state"), QStringLiteral("available"));
+    view.insert(QStringLiteral("present"), true);
+    view.insert(QStringLiteral("glyph"),
+                m_btPowered ? QStringLiteral("bluetooth")
+                            : QStringLiteral("bluetooth-disabled"));
+    view.insert(QStringLiteral("label"),
+                m_btPowered ? (m_btDiscovering ? QStringLiteral("Bluetooth discovering")
+                                               : QStringLiteral("Bluetooth on"))
+                            : QStringLiteral("Bluetooth off"));
+    view.insert(QStringLiteral("powered"), m_btPowered);
+    view.insert(QStringLiteral("discovering"), m_btDiscovering);
+    view.insert(QStringLiteral("discoverable"), true);
+    view.insert(QStringLiteral("pairable"), true);
+    view.insert(QStringLiteral("adapterName"), QStringLiteral("workstation"));
+    view.insert(QStringLiteral("connectedCount"), m_btDeviceConnected ? 1 : 0);
+    view.insert(QStringLiteral("knownCount"), 2);
+    view.insert(QStringLiteral("nearbyCount"), m_btDiscovering ? 1 : 0);
+
+    const auto device = [](const QString &address, const QString &name, bool paired,
+                           bool connected, int signal) {
+        QJsonObject entry;
+        entry.insert(QStringLiteral("address"), address);
+        entry.insert(QStringLiteral("name"), name);
+        entry.insert(QStringLiteral("paired"), paired);
+        entry.insert(QStringLiteral("connected"), connected);
+        entry.insert(QStringLiteral("trusted"), paired);
+        entry.insert(QStringLiteral("blocked"), false);
+        entry.insert(QStringLiteral("rssi"), signal);
+        entry.insert(QStringLiteral("signal"), signal);
+        entry.insert(QStringLiteral("icon"), QStringLiteral("audio-headset"));
+        return entry;
+    };
+
+    QJsonArray known;
+    known.append(device(QStringLiteral("AA:BB:CC:DD:EE:FF"), QStringLiteral("WF-1000XM6"),
+                        true, m_btDeviceConnected, 64));
+    known.append(device(QStringLiteral("11:22:33:44:55:66"), QStringLiteral("WH-1000XM6"),
+                        true, false, 48));
+    view.insert(QStringLiteral("knownDevices"), known);
+
+    QJsonArray nearby;
+    if (m_btDiscovering) {
+        nearby.append(device(QStringLiteral("22:33:44:55:66:77"), QStringLiteral("Nearby Speaker"),
+                             false, false, 30));
+    }
+    view.insert(QStringLiteral("nearbyDevices"), nearby);
+    emit bluetoothState(compact(view));
+}
+
+void MockSystemStatusClient::setBluetoothPowered(bool powered)
+{
+    m_btPowered = powered;
+    if (!powered)
+        m_btDiscovering = false;
+    refreshBluetooth();
+    QJsonObject report;
+    report.insert(QStringLiteral("outcome"), QStringLiteral("accepted"));
+    emit writeReport(compact(report));
+}
+
+void MockSystemStatusClient::setBluetoothDiscovering(bool discovering)
+{
+    m_btDiscovering = discovering && m_btPowered;
+    refreshBluetooth();
+    QJsonObject report;
+    report.insert(QStringLiteral("outcome"), QStringLiteral("accepted"));
+    emit writeReport(compact(report));
+}
+
+void MockSystemStatusClient::pairBluetooth(const QString &)
+{
+    refreshBluetooth();
+    QJsonObject report;
+    report.insert(QStringLiteral("outcome"), QStringLiteral("accepted"));
+    emit writeReport(compact(report));
+}
+
+void MockSystemStatusClient::setBluetoothConnected(const QString &address, bool connected)
+{
+    if (address == QStringLiteral("AA:BB:CC:DD:EE:FF"))
+        m_btDeviceConnected = connected;
+    refreshBluetooth();
+    QJsonObject report;
+    report.insert(QStringLiteral("outcome"), QStringLiteral("accepted"));
+    emit writeReport(compact(report));
 }
 
 void MockSystemStatusClient::refreshWifi()

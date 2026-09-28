@@ -115,6 +115,30 @@ set_tests_properties(tst_settings_displays PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# Bluetooth-pane tests (T-15.1b): the toggle, the discoverable caption, the
+# known-device connect round-trip, and the Nearby Devices searching state. The
+# `DF_BLUETOOTH_FIXTURE` client is deterministic and in-process, so the cases
+# never touch the host session bus.
+qt_add_executable(tst_settings_bluetooth
+    tst_settings_bluetooth.cpp
+)
+target_link_libraries(tst_settings_bluetooth PRIVATE
+    Qt6::QuickTest
+    dragonfruit-design-systemplugin
+    dragonfruit-settings-uiplugin
+)
+qt_import_qml_plugins(tst_settings_bluetooth)
+
+add_test(
+    NAME tst_settings_bluetooth
+    COMMAND tst_settings_bluetooth
+        -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_settings_bluetooth.qml
+)
+set_tests_properties(tst_settings_bluetooth PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;DF_SETTINGS_FIXTURE=1;DF_BLUETOOTH_FIXTURE=1;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Settings menu-model publication tests (T-09.6a): the app's published menu
 # model is asserted in shape and injected into the shell's `MenuBar` (the
 # `Dragonfruit.MenuBar` module is linked so the round-trip is real). Headless

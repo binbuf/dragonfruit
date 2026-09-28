@@ -226,6 +226,29 @@ controller that is present but `Powered = false` is still present: the pane
 shows it with an Off switch. Neither missing daemon nor missing hardware blocks
 session startup.
 
+### The Bluetooth pane and tile (T-15.1b)
+
+The Settings Bluetooth pane and the Control Center tile are one functional unit
+over the same adapter. Both read the `dragonfruit-system-status` bridge host's
+`org.dragonfruit.SystemStatus1.Bluetooth` interface
+([adr/0118](adr/0118-bluetooth-pane-and-tile.md)): its `State()` returns the
+flat JSON view `BluetoothHost` projects from `BluetoothSnapshot` (adapter
+power/discovery, `present`, the known-device and nearby-device lists with each
+device's connection state and signal), and `SetPowered`, `SetDiscovering`,
+`Pair`, and `SetConnected` are the four explicit writes. The host re-reads BlueZ
+after a write; the pane and tile never invent state.
+
+The pane is the macOS information architecture: a toggle card with the
+discoverable caption (`This <device> is discoverable as "<device>" while
+Bluetooth Settings is open.`), a `My Devices` list, and a `Nearby Devices`
+section that shows `Searching…` while an inquiry runs. Opening the pane starts
+discovery and closing it stops discovery. The Control Center tile carries the
+same toggle plus the known-device rows and a `Bluetooth Settings…` entry point
+(the launch itself is T-16). The absence behavior mirrors the adapter's two hide
+rules: `bluetoothd` gone or no controller hides the tile and disables the pane's
+controls with a one-line note; a `BluetoothOutcome::Denied` write is surfaced
+per action without degrading the read state.
+
 ## The status bridge host (T-07.5a)
 
 The adapters are Rust crates; the menu bar is C++/QML. T-07.5a bridges them in
