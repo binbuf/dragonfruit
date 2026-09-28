@@ -39,9 +39,12 @@ The first vertical slice ships three workspaces (see
 - **Minimized windows are excluded from the layout** and shown as a separate
   bottom strip in Mission Control, restorable by click.
 - **Display hotplug preserves the model.** A newly attached output gets its
-  own fresh Space list; detaching an output migrates that output's windows to
-  the current Space of the remaining primary output before its Spaces are
-  destroyed.
+  own fresh Space list that joins the displays' **current lockstep index** and
+  mirrors any dedicated fullscreen Space, so switching stays lockstep after a
+  hotplug (T-16.2). Detaching an output migrates that output's windows to the
+  current Space of the remaining primary output **and re-homes their geometry**
+  onto it — a window is never left at coordinates on the dead display — before
+  its Spaces are destroyed.
 - Workspace events (created / removed / reordered / activated / window
   assigned) are broadcast over the private protocol; the shell renders the
   strip but never keeps a second copy of workspace state.

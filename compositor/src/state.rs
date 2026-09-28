@@ -1032,7 +1032,9 @@ impl DfState {
     }
 
     /// Hotplug detach: migrate the output's windows to the remaining primary
-    /// output's current Space before its Spaces are destroyed (FR-7).
+    /// output's current Space before its Spaces are destroyed (FR-7), and
+    /// re-home their geometry onto that output so none is stranded off-screen
+    /// (T-16.2).
     pub fn on_output_removed(&mut self, output: &Output) {
         let removed = output.name();
         let primary = self
@@ -1040,9 +1042,66 @@ impl DfState {
             .outputs()
             .map(|candidate| candidate.name())
             .find(|name| *name != removed);
+        // Reposition the windows that lived on the removed display *before* it
+        // leaves the Space (so `outputs_for_element` still resolves it) and
+        // before its Spaces are destroyed.
+        if let Some(primary) = &primary {
+            self.relocate_windows_off_output(&removed, primary);
+        }
         self.workspaces.remove_output(&removed, primary.as_deref());
         self.after_workspace_change();
         self.reconfigure_layers();
+    }
+
+    /// Re-home onto `primary` every window that was on the detached output
+    /// `removed` (T-16.2).
+    ///
+    /// The workspace migration moves the window's *Space assignment*, but its
+    /// geometry still names a location on the dead display; a window visible
+    /// in the model yet placed off every remaining display is a lost window to
+    /// the user. Zoomed windows re-fit the primary's usable area, fullscreen
+    /// windows fill the primary, and floating windows cascade into the usable
+    /// area, so nothing is lost.
+    fn relocate_windows_off_output(&mut self, removed: &str, primary: &str) {
+        let Some(removed_geometry) = self.output_geometry_named(removed) else {
+            return;
+        };
+        let Some(primary_geometry) = self.output_geometry_named(primary) else {
+            return;
+        };
+        let usable = self
+            .shell
+            .reserved_zones_for(primary)
+            .usable(primary_geometry);
+        let windows: Vec<Window> = self.windows.windows().cloned().collect();
+        for window in windows {
+            let Some(geometry) = self.windows.geometry(&window) else {
+                continue;
+            };
+            // A window is "on" the removed output when the scene maps it there
+            // (active Space) or when its stored geometry still lands there
+            // (a window on one of the output's inactive Spaces is not mapped).
+            let on_removed_output = self
+                .space
+                .outputs_for_element(&window)
+                .iter()
+                .any(|output| output.name() == removed)
+                || removed_geometry.overlaps(geometry);
+            if !on_removed_output {
+                continue;
+            }
+            let target = match self.windows.state(&window) {
+                Some(WindowState::Fullscreen) => primary_geometry,
+                Some(WindowState::Zoomed) => self.insets_for(&window).inset(usable),
+                _ => {
+                    let index = self.windows.cascade_index(primary);
+                    cascaded_geometry(usable, geometry.size, index, CASCADE_STEP)
+                }
+            };
+            if let Some(machine) = self.windows.machine_mut(&window) {
+                machine.relocate(target);
+            }
+        }
     }
 
     /// The window whose toplevel (or popup root) is `surface`.
