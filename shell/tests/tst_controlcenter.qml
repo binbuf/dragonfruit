@@ -31,6 +31,7 @@ Item {
         SignalSpy { id: keyboardSettingsSpy; signalName: "keyboardSettingsRequested" }
         SignalSpy { id: missionControlSettingsSpy; signalName: "missionControlSettingsRequested" }
         SignalSpy { id: batterySettingsSpy; signalName: "batterySettingsRequested" }
+        SignalSpy { id: lockScreenSettingsSpy; signalName: "lockScreenSettingsRequested" }
         SignalSpy { id: focusSpy; signalName: "focusToggleRequested" }
         SignalSpy { id: darkSpy; signalName: "darkModeToggleRequested" }
         SignalSpy { id: closedSpy; signalName: "closed" }
@@ -183,6 +184,27 @@ Item {
             };
         }
 
+        // The shell-projected Lock Screen summary (T-15.8b), shaped by
+        // `controlcenterpolicy.cpp`'s `lockPolicyView`.
+        function lockPolicyModel(lockSeconds) {
+            var label;
+            if (lockSeconds <= 0)
+                label = "No password required";
+            else if (lockSeconds % 3600 === 0)
+                label = "Password after " + (lockSeconds / 3600) + " h";
+            else if (lockSeconds % 60 === 0)
+                label = "Password after " + (lockSeconds / 60) + " min";
+            else
+                label = "Password after " + lockSeconds + " s";
+            return {
+                state: "available",
+                glyph: "lock",
+                label: label,
+                requirePassword: lockSeconds > 0,
+                lockSeconds: lockSeconds
+            };
+        }
+
         function make(props) {
             var panel = createTemporaryObject(panelComponent, stage, props || {});
             // The shell sizes the panel to its surface; do the same here so
@@ -209,11 +231,12 @@ Item {
                                   [{ name: "AT keyboard", kind: "keyboard" }]),
                 missionControl: missionControlModel(true, 1),
                 battery: batteryModel(71, "balanced", true, true),
+                lockPolicy: lockPolicyModel(600),
                 brightness: 0.8,
                 focusPolicy: focusModel("off"),
                 dark: true
             });
-            compare(panel.tiles.length, 10);
+            compare(panel.tiles.length, 11);
             compare(panel.tiles[0].id, "wifi");
             compare(panel.tiles[0].kind, "toggle");
             compare(panel.tiles[0].checked, true);
@@ -241,11 +264,13 @@ Item {
             compare(panel.tiles[9].id, "battery");
             compare(panel.tiles[9].kind, "info");
             compare(panel.tiles[9].subtitle, "71% \u00b7 Balanced");
+            compare(panel.tiles[10].id, "lock-screen");
+            compare(panel.tiles[10].kind, "info");
             compare(panel.wifiLabel, "home");
         }
 
         function test_panel_content_fits_the_shell_surface() {
-            // The shell sizes the Control Center surface to 360x1040
+            // The shell sizes the Control Center surface to 360x1120
             // (kControlCenterWidth/Height). With the Bluetooth tile's device
             // rows, the Storage tile, the Sound tile's routing subtitle, the
             // Keyboard tile, the Mission Control tile, and the Battery tile the
@@ -263,17 +288,18 @@ Item {
                                   [{ name: "AT keyboard", kind: "keyboard" }]),
                 missionControl: missionControlModel(true, 1),
                 battery: batteryModel(71, "balanced", true, true),
+                lockPolicy: lockPolicyModel(600),
                 brightness: 1.0,
                 focusPolicy: focusModel("off"),
                 dark: false
             });
             panel.width = 360;
-            panel.height = 1040;
+            panel.height = 1120;
             waitForRendering(stage);
             var content = findChild(panel, "controlCenterContent");
             verify(content !== null);
-            verify(content.childrenRect.height <= 1040,
-                   "Control Center content must fit the 1040px surface, height="
+            verify(content.childrenRect.height <= 1120,
+                   "Control Center content must fit the 1120px surface, height="
                    + content.childrenRect.height);
         }
 
@@ -528,6 +554,40 @@ Item {
             var tile = findChild(panel, "batteryTile");
             verify(tile !== null);
             compare(tile.visible, false);
+        }
+
+        function test_lock_screen_tile_reflects_the_policy() {
+            var panel = make({ lockPolicy: lockPolicyModel(600) });
+            compare(panel.lockScreenVisible, true);
+            compare(panel.lockScreenLabel, "Password after 10 min");
+            compare(panel.tiles[10].visible, true);
+            compare(panel.tiles[10].enabled, true);
+
+            // The delay converges when the settings-pane projection moves.
+            panel.lockPolicy = lockPolicyModel(30);
+            compare(panel.lockScreenLabel, "Password after 30 s");
+
+            // `Never` (0) disables the lock stage, so no password is required.
+            panel.lockPolicy = lockPolicyModel(0);
+            compare(panel.lockScreenLabel, "No password required");
+            compare(panel.lockPolicy.requirePassword, false);
+
+            // No projection hides the tile.
+            panel.lockPolicy = ({});
+            compare(panel.lockScreenVisible, false);
+            compare(panel.tiles[10].visible, false);
+        }
+
+        function test_lock_screen_settings_link_raises_the_request() {
+            var panel = make({ lockPolicy: lockPolicyModel(600) });
+            lockScreenSettingsSpy.target = panel;
+            lockScreenSettingsSpy.clear();
+            var link = findChild(panel, "lockScreenSettingsLink");
+            verify(link !== null, "the Lock Screen Settings link is present");
+            compare(link.Accessible.role, Accessible.Button);
+            compare(link.Accessible.name, "Open Lock Screen Settings");
+            mouseClick(link, link.width / 2, link.height / 2);
+            compare(lockScreenSettingsSpy.count, 1);
         }
 
         function test_battery_settings_link_raises_the_request() {

@@ -85,6 +85,11 @@ freezes the v1 key set.
 | `notifications.showWhenSleeping` | b | false | | apps/settings | apps/settings (stored policy) | Show notification banners while the display is sleeping. |
 | `notifications.showWhenLocked` | b | true | | apps/settings | apps/settings (stored policy) | Show notification banners while the screen is locked. |
 | `notifications.showWhenMirroring` | b | false | | apps/settings | apps/settings (stored policy) | Show notification banners while mirroring or sharing the display. |
+| `lock.showUserNameAndPhoto` | b | true | | apps/settings | shell/LockScreen (stored policy) | Show the user name and photo on the lock screen (T-15.8b). |
+| `lock.showPasswordHints` | b | false | | apps/settings | shell/LockScreen (stored policy) | Show the password hint on the lock screen (T-15.8b). |
+| `lock.showMessageWhenLocked` | b | false | | apps/settings | shell/LockScreen (stored policy) | Show a custom message on the lock screen (T-15.8b). |
+| `lock.message` | s | `` (empty) | | apps/settings | shell/LockScreen (stored policy) | The custom lock-screen message set by the `Set...` editor (T-15.8b). |
+| `lock.showPowerButtons` | b | true | | apps/settings | shell/LockScreen (stored policy) | Show the Sleep, Restart, and Shut Down buttons on the lock screen (T-15.8b). |
 
 ## Consumer map
 
@@ -103,6 +108,7 @@ freezes the v1 key set.
 | `shell/MenuBar` (`shell/src/shellcontroller.cpp`, the `menu.global` toggle, T-14.2b) | `menu.global` — off suppresses the focused app's exported menus in the bar |
 | Notifications/Focus panes (`apps/settings/NotificationsPane.qml`, `apps/settings/FocusPane.qml`, T-15.7b) | `notifications.showPreviews`, `notifications.showWhenSleeping`, `notifications.showWhenLocked`, `notifications.showWhenMirroring` — the stored presentation policy the Notifications pane writes; the Focus mode and per-app allow list are the notification adapter's state, not settingsd keys |
 | Mission Control / hot corners (T-15.5b; `compositor/input/hot_corners.rs`) | `overview.hotCornerTopLeft`, `overview.hotCornerTopRight`, `overview.hotCornerBottomLeft`, `overview.hotCornerBottomRight` — the durable corner assignments the Mission Control pane writes, plus the revision-1 `gestures.enabled`/`gestures.spaceSwitch`/`gestures.missionControl` trio the compositor already applies live via `set_input_policy`. Applying an assignment needs the append-only compositor request ADR [0126](design/adr/0126-mission-control-hot-corners-adapter.md) names (deferred). |
+| Lock Screen pane (`apps/settings/LockScreenPane.qml`, T-15.8b) | `lock.showUserNameAndPhoto`, `lock.showPasswordHints`, `lock.showMessageWhenLocked`, `lock.message`, `lock.showPowerButtons` — the stored display policy the pane writes; the pane reuses the existing `idle.blank`/`idle.lock` timing keys (session idle engine) and the compositor lock stays compositor-owned (ADR [0132](design/adr/0132-lock-screen-policy-adapter.md)). The lock-screen renderer that consumes the `lock.*` keys is a follow-up. |
 
 `dock.minimizeIntoTileIcon` is Dock entry visibility, not a compositor
 key — it is not forwarded over the private protocol. `appearance.accent`

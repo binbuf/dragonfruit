@@ -42,6 +42,7 @@ _(125 earlier sections omitted)_
 - **T123 — T-15.7a Notifications and Focus adapter**: **State: done.** New workspace crate `dragonfruit-notify-adapter`; `services/notify-adapter/` (new crate, workspace member) —
 - **T124 — T-15.7b Notifications and Focus pane and tile**: **State: done.** The Settings Notifications and Focus panes and the Control; `services/system-status/src/notifications.rs` (new) — `NotificationsHost`
 - **T125 — T-15.8a Lock Screen policy adapter**: **State: done.** New workspace crate `dragonfruit-lock-adapter`; `services/lock-adapter/` (new crate, workspace member) —
+- **T126 — T-15.8b Lock Screen policy pane and tile**: **State: done.** The Settings Lock Screen pane and the Control Center Lock; `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 14 → 15; new
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3225,6 +3226,14 @@ Gotchas for later tasks:
 
 ## Follow-ups
 
+- **T-15.8b lock-screen display keys are stored policy.** The four `lock.*`
+  display keys (revision 15) round-trip live and the Lock Screen pane reflects
+  them, but `shell/lock/LockScreen.qml` does not yet read them: it always
+  shows the user name/photo and has no custom-message path (its `message`
+  property is the auth status line, a different concept). Wiring the keys into
+  the lock-screen renderer (and hiding the name/photo, hints, message, and
+  power buttons accordingly) is a follow-up. The `idle.blank`/`idle.lock`
+  timing keys already apply live through the session idle engine.
 - **T-15.7b notification presentation prefs are stored policy.** The four
   settingsd keys (`notifications.showPreviews`, `notifications.showWhenSleeping`,
   `notifications.showWhenLocked`, `notifications.showWhenMirroring`, revision
@@ -11877,3 +11886,88 @@ Decisions / gotchas for T-15.8b and later:
   so it only confirms the nested desktop renders. Vision found the menu bar,
   Dock, wallpaper, Settings window, and X11 demo window composited with no
   blank regions or stray artifacts.
+
+## T126 — T-15.8b Lock Screen policy pane and tile
+
+**State: done.** The Settings Lock Screen pane and the Control Center Lock
+Screen tile ship as one functional unit, shell-native plus settingsd keys
+(ADR 0133), exactly as T-15.5b Mission Control anticipated. Lock policy has no
+external daemon, so the pane writes only settingsd keys and the shell projects
+the tile locally; the compositor lock hot path is never touched.
+
+Real paths:
+
+- `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 14 → 15; new
+  `KeyGroup::Lock` (`lock`, ALL 13 → 14) and five keys:
+  `lock.showUserNameAndPhoto` (bool, true), `lock.showPasswordHints` (bool,
+  false), `lock.showMessageWhenLocked` (bool, false), `lock.message` (text, ""),
+  `lock.showPowerButtons` (bool, true). New
+  `the_lock_screen_keys_are_declared_in_revision_fifteen` test.
+- `docs/settings-keys.md` — the five rows + a Lock Screen consumer-map row.
+- `libs/settings-client/settingsclient.cpp` — `settingsSchemaDefaults()` mirrors
+  revision 15 (comment updated).
+- `apps/settings/LockScreenPane.qml` (new) — the pane: display-off and
+  require-password `Select` rows bound to the **reused** `idle.blank`/`idle.lock`
+  keys, an inline yellow-triangle energy warning, the four `lock.*` toggles, a
+  `Set...` `Dialog` writing `lock.message`, and a "When Switching User" note.
+- `apps/settings/SettingsPanes.qml` — `lock-screen` shipped `true`, icon
+  `lock`; `SettingsShell.qml` registers the body; `CMakeLists.txt` adds the pane
+  to `QML_FILES` and `df_qml_lint`.
+- `design-system/components/Icon.qml` — new painted `lock` padlock glyph
+  (added to `paintedGlyphs`).
+- `shell/src/controlcenterpolicy.{h,cpp}` — pure `lockPolicyView(values)`:
+  `{state:"available", glyph:"lock", label, requirePassword, lockSeconds}`;
+  `idle.lock == 0` → `No password required`, else `Password after <duration>`
+  (`5 s`/`10 min`/`1 h`).
+- `shell/control-center/ControlCenter.qml` — `lockPolicy` property, computed
+  `lockScreenVisible`/`lockScreenLabel`, the `tiles` entry (11th, after Battery),
+  the tile QML, and the `lockScreenSettingsRequested` signal.
+- `shell/src/shellcontroller.{h,cpp}` — connects and handles
+  `onLockScreenSettingsRequested` (logs until T-16), and pushes `lockPolicy` in
+  `applyControlCenterData`. `kControlCenterHeight` 1040 → 1120 (new tile).
+- Tests — `apps/settings/tests/tst_settings_lock_screen.{cpp,qml}` (new, 8
+  cases); `tst_settings_absence.qml` (shipped 14 → 15, id list, new lock-screen
+  absence case); `tst_settings_shell.qml` (shipped 14 → 15, search list);
+  `shell/tests/tst_controlcenterpolicy.cpp` (3 new `lockPolicyView` cases);
+  `shell/tests/tst_controlcenter.qml` (11 tiles, lock tile + fit at 1120).
+  Test target added to `apps/settings/tests/CMakeLists.txt`.
+- Docs/scripts — ADR `0133-lock-screen-pane-and-tile.md`;
+  `docs/design/07-system-integration.md` T-15.8b subsection;
+  `scripts/capture-t15-lock-pane.sh`; `docs/captures/README.md`.
+  Three older Control Center capture scripts updated to 360×1120.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-settingsd` — green (incl. `schema_doc`).
+- `ctest --test-dir build --output-on-failure -j4` — 62/62.
+- `make e2e` — EXIT 0.
+- `cargo fmt --all -- --check`; `make check-design-tokens check-tokens
+  check-no-capture-grab` — clean; `./scripts/check-gallery-snapshots.py` — 78
+  green.
+- `make lint` — still fails only on the pre-existing `check-desktop-names`
+  lines (unchanged from T124/T125).
+
+Decisions / gotchas for later tasks:
+
+- **Timing keys are reused, not duplicated.** The pane binds `idle.blank` /
+  `idle.lock` (revision 5). Do not add `lock.displayOffAfter`; the session idle
+  engine already reads the `idle.*` keys live.
+- **The pane writes keys, never the adapter.** `dragonfruit-lock-adapter`
+  stays read-only; there is no system-status host for lock.
+- **`lock.*` display keys are stored policy.** The lock-screen renderer does
+  not read them yet (see `## Follow-ups`); the timing keys already apply.
+- **The `lock` glyph is new in `Icon.qml`.** It is a painted glyph; add future
+  lock-related marks to the Canvas, not the bar list.
+- **Panel height is now 360×1120.** Any later tile must re-check the
+  `test_panel_content_fits_the_shell_surface` assertion and bump the constant,
+  test, and capture-script crop together.
+- Live visual check: `bash scripts/capture-t15-lock-pane.sh` produced
+  `docs/captures/t15-8b-lock-screen-pane.png` (2088x1410) and
+  `t15-8b-lock-screen-control-center.png` (360x1120). Vision confirmed the pane
+  rows (For 5 minutes / After 10 minutes; Show user name and photo ON,
+  password hints OFF, message OFF, power buttons ON; Set… enabled*), the
+  "When Switching User" note, and the Control Center Lock Screen tile
+  (`Password after 10 min`, link present) with no clipping, overlap, or stray
+  artifacts. (*Vision read the disabled `Set…` as enabled; the unit test
+  `test_set_message_button_gates_on_the_toggle` asserts it is disabled while
+  the toggle is off — it renders dimmed.)

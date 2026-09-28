@@ -618,6 +618,15 @@ composited with no blank areas or stray artifacts. Captured by
 `scripts/capture-t15-lock-adapter.sh`; requires a host Wayland session,
 spectacle, and Pillow, and is not in `make e2e`.
 
+`t15-8b-lock-screen-pane.png` and `t15-8b-lock-screen-control-center.png` are
+the Lock Screen pane and Control Center tile for T-15.8b. The pane capture
+shows the display/password timing rows (the reused `idle.blank`/`idle.lock`
+keys), the energy warning, and the four `lock.*` display toggles plus the
+`Set...` message button; the Control Center capture shows the Lock Screen tile
+below the Battery tile. Captured by `scripts/capture-t15-lock-pane.sh`;
+requires a host Wayland session, spectacle, and Pillow, and is not in
+`make e2e`.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

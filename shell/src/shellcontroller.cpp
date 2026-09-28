@@ -111,7 +111,7 @@ constexpr int kBannerTopGap = 8;
 // adds the Mission Control summary tile. The surface is fixed and the panel
 // fills it.
 constexpr int kControlCenterWidth = 360;
-constexpr int kControlCenterHeight = 1040;
+constexpr int kControlCenterHeight = 1120;
 constexpr int kControlCenterTopGap = 8;
 
 // The OSD overlay (T-11.4a): a centered card. The surface is slightly larger
@@ -842,6 +842,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onMissionControlSettingsRequested()));
     connect(controlCenterObject, SIGNAL(batterySettingsRequested()), this,
             SLOT(onBatterySettingsRequested()));
+    connect(controlCenterObject, SIGNAL(lockScreenSettingsRequested()), this,
+            SLOT(onLockScreenSettingsRequested()));
     connect(controlCenterObject, SIGNAL(focusToggleRequested(bool)), this,
             SLOT(onFocusToggleRequested(bool)));
     connect(controlCenterObject, SIGNAL(focusSettingsRequested()), this,
@@ -2020,6 +2022,11 @@ void ShellController::applyControlCenterData()
     // summary locally (T-15.5b) instead of reading a services-layer host.
     const QVariantMap missionControl =
         m_settingsClient ? missionControlView(m_settingsClient->values()) : QVariantMap();
+    // Lock Screen policy is session/compositor-native: the shell owns the
+    // durable settingsd keys, so it projects the tile's summary locally
+    // (T-15.8b) instead of reading a services-layer host.
+    const QVariantMap lockPolicy =
+        m_settingsClient ? lockPolicyView(m_settingsClient->values()) : QVariantMap();
     m_controlCenterItem->setProperty("wifi", wifi);
     m_controlCenterItem->setProperty("audio", audio);
     m_controlCenterItem->setProperty("bluetooth", bluetooth);
@@ -2027,6 +2034,7 @@ void ShellController::applyControlCenterData()
     m_controlCenterItem->setProperty("input", input);
     m_controlCenterItem->setProperty("battery", battery);
     m_controlCenterItem->setProperty("missionControl", missionControl);
+    m_controlCenterItem->setProperty("lockPolicy", lockPolicy);
     m_controlCenterItem->setProperty("brightness", brightness);
     m_controlCenterItem->setProperty("focusPolicy", focus);
     m_controlCenterItem->setProperty("dark", dark);
@@ -2213,6 +2221,13 @@ void ShellController::onBatterySettingsRequested()
     // Launching Settings on the Battery pane is T-16; the entry point is wired
     // and logs until then.
     qInfo() << "shell: Battery Settings requested (T-16)";
+}
+
+void ShellController::onLockScreenSettingsRequested()
+{
+    // Launching Settings on the Lock Screen pane is T-16; the entry point is
+    // wired and logs until then.
+    qInfo() << "shell: Lock Screen Settings requested (T-16)";
 }
 
 void ShellController::onFocusToggleRequested(bool enabled)

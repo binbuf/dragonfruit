@@ -147,7 +147,7 @@ w, h = im.size
 NESTED_W, NESTED_H, BAR, GAP = 1920, 1200, 28, 8
 x = (w - NESTED_W) // 2
 y = (h - NESTED_H) // 2
-PANEL_W, PANEL_H = 360, 1040
+PANEL_W, PANEL_H = 360, 1120
 panel = im.crop((x + NESTED_W - PANEL_W, y + BAR + GAP,
                  x + NESTED_W, y + BAR + GAP + PANEL_H))
 panel.save(dest)

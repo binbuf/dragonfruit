@@ -41,6 +41,12 @@ Item {
     // `{ state, glyph, label, reachable, gesture, cornerCount }`. `state` is
     // always `available` while the shell runs; empty hides the tile.
     property var missionControl: ({})
+    // The Lock Screen policy summary (T-15.8b). Lock policy has no external
+    // daemon, so the shell projects the tile's summary locally from the
+    // settingsd keys the pane writes: `{ state, glyph, label, requirePassword,
+    // lockSeconds }`. `state` is always `available` while the shell runs;
+    // empty hides the tile.
+    property var lockPolicy: ({})
     // The battery / power-profiles view from the bridge host (T-15.6b), shaped
     // by `SystemStatusModel`: `{ state, present, percent, level, charging,
     // chargeState, healthLabel, profilesAvailable, activeProfile, profileLabel,
@@ -160,6 +166,20 @@ Item {
                 && root.missionControl.label !== "")
             return root.missionControl.label;
         return qsTr("No trigger");
+    }
+
+    // Lock Screen (T-15.8b): the tile hides only when the shell has no
+    // projection at all. The subtitle is the password-delay summary the shell
+    // computes from the `idle.lock` key; the link opens the Lock Screen pane.
+    readonly property bool lockScreenVisible:
+        root.lockPolicy.state === "available"
+    readonly property string lockScreenLabel: {
+        if (!root.lockScreenVisible)
+            return qsTr("Unavailable");
+        if (root.lockPolicy.label !== undefined
+                && root.lockPolicy.label !== "")
+            return root.lockPolicy.label;
+        return qsTr("No password required");
     }
 
     // Battery / power profiles (T-15.6b). The tile is shown when the host
@@ -312,6 +332,14 @@ Item {
             subtitle: root.batteryLabel,
             visible: root.batteryVisible,
             enabled: root.batteryVisible
+        },
+        {
+            id: "lock-screen",
+            kind: "info",
+            title: qsTr("Lock Screen"),
+            subtitle: root.lockScreenLabel,
+            visible: root.lockScreenVisible,
+            enabled: root.lockScreenVisible
         }
     ]
 
@@ -355,6 +383,9 @@ Item {
     // profile; the link opens the Battery pane where the profile is selected
     // (T-15.6b).
     signal batterySettingsRequested()
+    // The Lock Screen tile is a policy summary; the link opens the Lock Screen
+    // pane where the delay and the display options live (T-15.8b).
+    signal lockScreenSettingsRequested()
 
     // Apply a volume fraction (0..1) and raise the request.
     function setVolume(fraction) {
@@ -1297,6 +1328,72 @@ Item {
                         text: qsTr("Battery Settings\u2026")
                         accessibleName: qsTr("Open Battery Settings")
                         onActivated: root.batterySettingsRequested()
+                    }
+                }
+            }
+
+            // ── Lock Screen (T-15.8b) ───────────────────────────────────
+            Rectangle {
+                id: lockScreenTile
+                objectName: "lockScreenTile"
+                width: parent.width
+                visible: root.lockScreenVisible
+                implicitHeight: lockScreenColumn.implicitHeight
+                                + 2 * Theme.controls.settingsGroup.padding
+                radius: Theme.primitive.radius.md
+                color: Theme.color.surfaceSunken
+                Accessible.role: Accessible.Grouping
+                Accessible.name: qsTr("Lock Screen")
+
+                Column {
+                    id: lockScreenColumn
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: Theme.controls.settingsGroup.padding
+                    spacing: Theme.primitive.spacing.sm
+
+                    Row {
+                        width: parent.width
+                        spacing: Theme.primitive.spacing.md
+
+                        IconTile {
+                            objectName: "lockScreenIcon"
+                            name: root.lockPolicy.glyph !== undefined
+                                ? root.lockPolicy.glyph : "lock"
+                            tileSize: 32
+                            iconSize: 18
+                            active: root.lockPolicy.requirePassword === true
+                        }
+
+                        Column {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: parent.width - 32 - 2 * Theme.primitive.spacing.md
+
+                            Text {
+                                objectName: "lockScreenTitle"
+                                text: qsTr("Lock Screen")
+                                color: Theme.color.textPrimary
+                                font.pixelSize: Theme.controls.button.fontSize
+                                font.weight: Theme.primitive.font.weightMedium
+                            }
+
+                            Text {
+                                objectName: "lockScreenSubtitle"
+                                width: parent.width
+                                text: root.lockScreenLabel
+                                color: Theme.color.textSecondary
+                                font.pixelSize: Theme.primitive.font.sizeSm
+                                elide: Text.ElideRight
+                            }
+                        }
+                    }
+
+                    TextLink {
+                        objectName: "lockScreenSettingsLink"
+                        text: qsTr("Lock Screen Settings\u2026")
+                        accessibleName: qsTr("Open Lock Screen Settings")
+                        onActivated: root.lockScreenSettingsRequested()
                     }
                 }
             }

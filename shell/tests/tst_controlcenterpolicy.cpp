@@ -18,6 +18,9 @@ private slots:
     void missionControlCountsOnlyMissionControlCorners();
     void missionControlGestureRequiresBothSwitches();
     void missionControlNoTriggerIsValid();
+    void lockPolicySummaryMatchesTheSchemaDefaults();
+    void lockPolicyNeverRequiresNoPassword();
+    void lockPolicyFormatsSecondsMinutesAndHours();
 };
 
 void TestControlCenterPolicy::focusToggleMapsToTheNotificationMode()
@@ -90,6 +93,42 @@ void TestControlCenterPolicy::missionControlNoTriggerIsValid()
     QCOMPARE(view.value(QStringLiteral("label")).toString(), QStringLiteral("No trigger"));
     QCOMPARE(view.value(QStringLiteral("reachable")).toBool(), false);
     QCOMPARE(view.value(QStringLiteral("cornerCount")).toInt(), 0);
+}
+
+void TestControlCenterPolicy::lockPolicySummaryMatchesTheSchemaDefaults()
+{
+    // The shell always holds the schema defaults, so `idle.lock` is 600 s.
+    const QVariantMap view = lockPolicyView(settingsSchemaDefaults());
+    QCOMPARE(view.value(QStringLiteral("state")).toString(), QStringLiteral("available"));
+    QCOMPARE(view.value(QStringLiteral("glyph")).toString(), QStringLiteral("lock"));
+    QCOMPARE(view.value(QStringLiteral("label")).toString(),
+             QStringLiteral("Password after 10 min"));
+    QCOMPARE(view.value(QStringLiteral("requirePassword")).toBool(), true);
+    QCOMPARE(view.value(QStringLiteral("lockSeconds")).toInt(), 600);
+}
+
+void TestControlCenterPolicy::lockPolicyNeverRequiresNoPassword()
+{
+    QVariantMap values;
+    values.insert(QStringLiteral("idle.lock"), 0);
+    const QVariantMap view = lockPolicyView(values);
+    QCOMPARE(view.value(QStringLiteral("requirePassword")).toBool(), false);
+    QCOMPARE(view.value(QStringLiteral("label")).toString(),
+             QStringLiteral("No password required"));
+}
+
+void TestControlCenterPolicy::lockPolicyFormatsSecondsMinutesAndHours()
+{
+    QVariantMap values;
+    values.insert(QStringLiteral("idle.lock"), 5);
+    QCOMPARE(lockPolicyView(values).value(QStringLiteral("label")).toString(),
+             QStringLiteral("Password after 5 s"));
+    values.insert(QStringLiteral("idle.lock"), 30);
+    QCOMPARE(lockPolicyView(values).value(QStringLiteral("label")).toString(),
+             QStringLiteral("Password after 30 s"));
+    values.insert(QStringLiteral("idle.lock"), 3600);
+    QCOMPARE(lockPolicyView(values).value(QStringLiteral("label")).toString(),
+             QStringLiteral("Password after 1 h"));
 }
 
 QTEST_MAIN(TestControlCenterPolicy)

@@ -191,6 +191,9 @@ private slots:
     // T-15.6b: the Control Center Battery tile is a status summary; the
     // Settings link is an entry point only until T-16.
     void onBatterySettingsRequested();
+    // T-15.8b: the Control Center Lock Screen tile is a policy summary; the
+    // Settings link is an entry point only until T-16.
+    void onLockScreenSettingsRequested();
     // T-15.1b: the Control Center Bluetooth tile. The toggle powers the BlueZ
     // adapter; a known-device row connects/disconnects it; the Settings link is
     // an entry point only until T-16.

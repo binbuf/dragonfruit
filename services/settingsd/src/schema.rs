@@ -19,7 +19,7 @@ use crate::value::{SettingsError, Value};
 
 /// The current schema revision. Bump only when a key is added or a default
 /// changes; renames and removals are forbidden within the `1` series.
-pub const SCHEMA_VERSION: u32 = 14;
+pub const SCHEMA_VERSION: u32 = 15;
 
 /// The D-Bus type of a settings value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -72,11 +72,12 @@ pub enum KeyGroup {
     Sound,
     Overview,
     Notifications,
+    Lock,
 }
 
 impl KeyGroup {
     /// Every group, in schema order.
-    pub const ALL: [KeyGroup; 13] = [
+    pub const ALL: [KeyGroup; 14] = [
         KeyGroup::Dock,
         KeyGroup::Workspaces,
         KeyGroup::Gestures,
@@ -90,6 +91,7 @@ impl KeyGroup {
         KeyGroup::Sound,
         KeyGroup::Overview,
         KeyGroup::Notifications,
+        KeyGroup::Lock,
     ];
 
     /// The group name used in docs and tests.
@@ -108,6 +110,7 @@ impl KeyGroup {
             KeyGroup::Sound => "sound",
             KeyGroup::Overview => "overview",
             KeyGroup::Notifications => "notifications",
+            KeyGroup::Lock => "lock",
         }
     }
 }
@@ -1105,6 +1108,78 @@ pub const KEYS: &[KeySpec] = &[
         since: 14,
         summary: "Show notification banners while mirroring or sharing the display.",
     },
+    // ── Lock Screen display policy (T-15.8b) ────────────────────────────
+    // The idle/lock *timing* keys already live in the `Session` group
+    // (`idle.blank`, `idle.lock`; revision 5, ADR 0070) and the session idle
+    // engine applies them live. These keys are the lock-screen *display*
+    // options the pane owns; the stable suffix is `LockDisplayOption::id()`
+    // (dragonfruit-lock-adapter). The compositor lock and the session timing
+    // stay owned by their engines (ADR 0132).
+    KeySpec {
+        key: "lock.showUserNameAndPhoto",
+        group: KeyGroup::Lock,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(true),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/LockScreen (stored policy)",
+        since: 15,
+        summary: "Show the user name and photo on the lock screen.",
+    },
+    KeySpec {
+        key: "lock.showPasswordHints",
+        group: KeyGroup::Lock,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(false),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/LockScreen (stored policy)",
+        since: 15,
+        summary: "Show the password hint on the lock screen.",
+    },
+    KeySpec {
+        key: "lock.showMessageWhenLocked",
+        group: KeyGroup::Lock,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(false),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/LockScreen (stored policy)",
+        since: 15,
+        summary: "Show a custom message on the lock screen.",
+    },
+    KeySpec {
+        key: "lock.message",
+        group: KeyGroup::Lock,
+        kind: KeyType::Text,
+        default: KeyDefault::Text(""),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/LockScreen (stored policy)",
+        since: 15,
+        summary: "The custom lock-screen message set by the Set... editor.",
+    },
+    KeySpec {
+        key: "lock.showPowerButtons",
+        group: KeyGroup::Lock,
+        kind: KeyType::Bool,
+        default: KeyDefault::Bool(true),
+        allowed: &[],
+        min: None,
+        max: None,
+        owner: "apps/settings",
+        consumer: "shell/LockScreen (stored policy)",
+        since: 15,
+        summary: "Show the Sleep, Restart, and Shut Down buttons on the lock screen.",
+    },
 ];
 
 /// Look up a key's declaration.
@@ -1539,6 +1614,73 @@ mod tests {
                 "{key}"
             );
         }
+    }
+
+    /// The Lock Screen display keys (T-15.8b): the four `LockDisplayOption`
+    /// toggles plus the custom-message text, additive in revision 15. The
+    /// idle/lock *timing* keys already exist in the `Session` group
+    /// (`idle.blank`, `idle.lock`), so the pane reuses them; the compositor
+    /// lock and the session timing stay owned by their engines (ADR 0132).
+    #[test]
+    fn the_lock_screen_keys_are_declared_in_revision_fifteen() {
+        for (key, kind, default) in [
+            (
+                "lock.showUserNameAndPhoto",
+                KeyType::Bool,
+                KeyDefault::Bool(true),
+            ),
+            (
+                "lock.showPasswordHints",
+                KeyType::Bool,
+                KeyDefault::Bool(false),
+            ),
+            (
+                "lock.showMessageWhenLocked",
+                KeyType::Bool,
+                KeyDefault::Bool(false),
+            ),
+            ("lock.message", KeyType::Text, KeyDefault::Text("")),
+            (
+                "lock.showPowerButtons",
+                KeyType::Bool,
+                KeyDefault::Bool(true),
+            ),
+        ] {
+            let spec = spec(key).unwrap_or_else(|| panic!("{key} is declared"));
+            assert_eq!(spec.group, KeyGroup::Lock, "{key}");
+            assert_eq!(spec.kind, kind, "{key}");
+            assert_eq!(spec.default, default, "{key}");
+            assert_eq!(spec.owner, "apps/settings", "{key}");
+            assert_eq!(spec.since, 15, "{key}");
+            assert!(spec.since <= SCHEMA_VERSION, "{key}");
+            assert!(
+                spec.validate(&spec.default.to_value()).is_ok(),
+                "{key} default validates"
+            );
+        }
+        // The four toggles reject a non-bool; the message is free text.
+        for key in [
+            "lock.showUserNameAndPhoto",
+            "lock.showPasswordHints",
+            "lock.showMessageWhenLocked",
+            "lock.showPowerButtons",
+        ] {
+            assert!(
+                spec(key).unwrap().validate(&Value::Bool(true)).is_ok(),
+                "{key}"
+            );
+            assert!(
+                spec(key)
+                    .unwrap()
+                    .validate(&Value::Text("on".into()))
+                    .is_err(),
+                "{key}"
+            );
+        }
+        assert!(spec("lock.message")
+            .unwrap()
+            .validate(&Value::Text("Back at 3.".into()))
+            .is_ok());
     }
 
     /// A frozen manifest of the v1 key set. Adding a key is allowed (extend
