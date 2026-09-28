@@ -3,10 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(111 earlier sections omitted)_
+_(113 earlier sections omitted)_
 
-- **T107 — T-14.5 XDnD bridge**: **State: done (protocol half + documented gap; the task explicitly allows; `compositor/src/xdnd.rs` (new) — pure XDnD:
-- **T107 — T-14.5 XDnD bridge (attempt 2 — gate repair)**: **State: done.** The attempt-1 protocol half and documented gap stand; `Makefile` — the `e2e` recipe runs
 - **T108 — T-14.6a Strange-app zoo run and matrix**: **State: done.** The scripted zoo run and its matrix are committed. Six rows,; `scripts/zoo/zoo-run.sh` (new) — orchestrator (`make zoo-run`): private nested
 - **T109 — T-14.6b Strange-app zoo fixes**: **State: done.** The zoo surfaced one fixable failure and one compositor; `scripts/zoo/sdl_zoo.c` — the loop now calls `SDL_GetWindowSurface` +
 - **T110 — T-14.7 Retire interim paths**: **State: done.** The last two interim hacks are gone: the Dock's local; `shell/src/desktopentry.{h,cpp}` — `scan`, `parse`, `defaultApplicationDirs`
@@ -43,6 +41,7 @@ _(111 earlier sections omitted)_
 - **Dev tooling — wallpaper provider in the dev session (T-18.1a follow-up)**: **State: done.** `make demo` (nested) and `make dev --shell` now start; `tools/dragonfruit-dev/src/main.rs` — `launch_services` takes a
 - **T111 — T-15.1a Bluetooth adapter**: **State: done.** The BlueZ Bluetooth adapter landed in a new crate,; `services/bluetooth/` (new crate) — `src/source.rs` (`BluetoothData`,
 - **T112 — T-15.1b Bluetooth pane and tile**: **State: done.** The Bluetooth pane and Control Center tile ship as one unit; `services/system-status/src/bluetooth.rs` (new) — `BluetoothHost<B>` and
+- **T113 — T-15.2a Storage and removable media adapter**: **State: done.** The UDisks2 storage/removable-media adapter landed in a new; `services/storage/` (new crate) — `src/source.rs` (`StorageData`,
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -10867,3 +10866,62 @@ Gotchas for T-15.16 / later:
   controller (`present: false`).
 - The shell menu-bar Bluetooth item (`shellcontroller.cpp` `applyStatusItems`)
   is still hardcoded hidden; enabling it needs a Bluetooth menu (not this task).
+
+## T113 — T-15.2a Storage and removable media adapter
+
+**State: done.** The UDisks2 storage/removable-media adapter landed in a new
+crate, `dragonfruit-storage` (`services/storage`, workspace member), behind the
+shared contract. Backend only — no shell wiring (T-15.2b renders it).
+
+Real paths:
+
+- `services/storage/` (new crate) — `src/source.rs` (`StorageData`,
+  `StorageDriveData`, `StorageVolumeData`, `StorageOutcome`, `StorageSource`,
+  `MockStorage`), `src/model.rs` (`StorageSnapshot`, `StorageDrive`,
+  `StorageVolume`), `src/adapter.rs` (`StorageAdapter<S>`), `src/udisks.rs`
+  (`DbusUDisks`: ObjectManager `GetManagedObjects` at
+  `/org/freedesktop/UDisks2` on the system bus; `Mount`/`Unmount` on the
+  block's `Filesystem`, `Eject` on the owning `Drive`), `src/lib.rs`.
+  `tests/read_path.rs` + `tests/fixtures/udisks-workstation.json`.
+- `services/system-adapters/src/state.rs` — new `AdapterId::STORAGE` (`"storage"`).
+- `Cargo.toml` (workspace members) + `Makefile` (`make e2e` now runs
+  `cargo test -p dragonfruit-storage`).
+- `docs/design/07-system-integration.md` — "The storage path (T-15.2a)".
+- `docs/design/adr/0119-storage-adapter-absence-and-mount-outcomes.md` (new).
+- `scripts/capture-t15-storage.sh` (new) + `docs/captures/t15-2a-storage-adapter.png`;
+  `docs/captures/README.md`.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-storage` — 30 lib + 10 integration green.
+- `cargo test -p dragonfruit-system-adapters` — 4 green.
+- `make e2e` — EXIT 0 (first run hit the known flaky `dragonfruit-lock-auth`
+  `helper` test; the isolated test passed and the rerun was green).
+- `cargo fmt --all -- --check`; `cargo clippy -p dragonfruit-storage
+  --all-targets -- -D warnings` — clean.
+
+Gotchas for T-15.2b / T-15.16:
+
+- **UDisks2 is the one consumed stack, not GIO/GVfs.** UDisks2 already gives
+  the block enumeration, `HintAuto`/`HintSystem`/`HintIgnore`, and the mount
+  ops; the GIO/GVfs volume monitor stays in the Files sidebar (`files-core`).
+  ADR 0119 records this.
+- **Writes are addressed by UDisks2 object path**, not device node — the
+  snapshot carries `StorageVolume::path` / `StorageDrive::path`.
+- **Two hide rules**: UDisks2 absent ⇒ `AdapterState::Unavailable` (hidden);
+  UDisks2 present but no mountable volume ⇒ `Available` with
+  `StorageSnapshot::present() == false` (consumer hides).
+- **The model drops `HintIgnore` and non-mountable blocks.** Internal system
+  volumes are kept (attached to their drive, `is_system()` true); use
+  `removable_volumes()` / `internal_volumes()` / `mounted_volumes()`.
+- **Writes invent no snapshot**: after `mount`/`unmount`/`eject`, UDisks2
+  pushes the property changes and the host re-reads. Do not add a poll.
+- **A polkit refusal is `StorageOutcome::Denied`; a busy device is
+  `Failed`**, never a denial. There is no read-only degradation.
+- **Locked encrypted volumes have no `Filesystem`**, so they are not listed as
+  mountable; unlock/format are out of scope.
+- The live D-Bus path is compile-checked but not run in CI (no bus/daemon);
+  the fixture seam is the tested contract.
+- Live visual check: nested demo + `scripts/capture-t15-storage.sh` (no
+  surface; vision tool returned HTTP 429 — evidence is pixel statistics plus
+  the headless suites).

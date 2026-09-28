@@ -14,6 +14,8 @@ impl AdapterId {
     pub const WIFI: AdapterId = AdapterId("wifi");
     /// Bluetooth (BlueZ; later task).
     pub const BLUETOOTH: AdapterId = AdapterId("bluetooth");
+    /// Storage and removable media (UDisks2).
+    pub const STORAGE: AdapterId = AdapterId("storage");
     /// Default-sink volume/mute (PipeWire/WirePlumber).
     pub const AUDIO: AdapterId = AdapterId("volume");
     /// Battery level/charging (UPower).
@@ -231,6 +233,7 @@ mod tests {
     fn adapter_ids_match_the_shell_slot_ids() {
         assert_eq!(AdapterId::WIFI.as_str(), "wifi");
         assert_eq!(AdapterId::BLUETOOTH.as_str(), "bluetooth");
+        assert_eq!(AdapterId::STORAGE.as_str(), "storage");
         assert_eq!(AdapterId::AUDIO.as_str(), "volume");
         assert_eq!(AdapterId::POWER.as_str(), "battery");
     }

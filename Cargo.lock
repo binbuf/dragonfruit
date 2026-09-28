@@ -661,6 +661,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "dragonfruit-storage"
+version = "0.1.0"
+dependencies = [
+ "dragonfruit-system-adapters",
+ "serde",
+ "serde_json",
+ "zbus",
+]
+
+[[package]]
 name = "dragonfruit-system-adapters"
 version = "0.1.0"
 

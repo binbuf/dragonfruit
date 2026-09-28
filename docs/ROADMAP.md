@@ -356,7 +356,7 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 
 - [x] T111 — T-15.1a Bluetooth adapter → [tasks/111-t-15.1a-bluetooth-adapter.md](tasks/111-t-15.1a-bluetooth-adapter.md)
 - [x] T112 — T-15.1b Bluetooth pane and tile → [tasks/112-t-15.1b-bluetooth-pane-and-tile.md](tasks/112-t-15.1b-bluetooth-pane-and-tile.md)
-- [ ] T113 — T-15.2a Storage and removable media adapter → [tasks/113-t-15.2a-storage-and-removable-media-adapter.md](tasks/113-t-15.2a-storage-and-removable-media-adapter.md)
+- [x] T113 — T-15.2a Storage and removable media adapter → [tasks/113-t-15.2a-storage-and-removable-media-adapter.md](tasks/113-t-15.2a-storage-and-removable-media-adapter.md)
 - [ ] T114 — T-15.2b Storage and removable media pane and tile → [tasks/114-t-15.2b-storage-and-removable-media-pane-and-tile.md](tasks/114-t-15.2b-storage-and-removable-media-pane-and-tile.md)
 - [ ] T115 — T-15.3a Sound and routing adapter → [tasks/115-t-15.3a-sound-and-routing-adapter.md](tasks/115-t-15.3a-sound-and-routing-adapter.md)
 - [ ] T116 — T-15.3b Sound and routing pane and tile → [tasks/116-t-15.3b-sound-and-routing-pane-and-tile.md](tasks/116-t-15.3b-sound-and-routing-pane-and-tile.md)
@@ -605,11 +605,11 @@ This plan restarts at T-01, so a legacy "T-13" and a new "T-13" are different
 tickets; use this table to translate.
 
 <!-- symphony:status -->
-**Pipeline status** — updated 2026-09-28T06:43:12Z · 142/202 done
+**Pipeline status** — updated 2026-09-28T06:52:52Z · 143/202 done
 
-- Completed: T01, T02, T03, T04, T05, T06, T07, T08, T09, T10, T11, T12, T13, T14, T15, T16, T17, T18, T19, T20, T21, T22, T23, T24, T25, T26, T27, T28, T29, T30, T31, T32, T33, T34, T35, T36, T37, T38, T39, T40, T41, T42, T43, T44, T45, T46, T47, T48, T49, T50, T51, T52, T53, T54, T55, T56, T57, T58, T59, T60, T61, T62, T63, T64, T65, T66, T67, T68, T69, T70, T71, T72, T73, T74, T75, T76, T77, T78, T79, T80, T81, T82, T83, T84, T85, T86, T87, T88, T89, T90, T91, T92, T93, T94, T95, T96, T97, T98, T99, T100, T101, T102, T103, T104, T105, T106, T107, T108, T109, T110, T110a, T110b, T110c, T110d, T110e, T110f, T110g, T110h, T110i, T110j, T110k, T110l, T110m, T110n, T110o, T110p, T110q, T110r, T110s, T110t, T110u, T110v, T110x, T110y, T110z, T110w, T172, T173, T174, T175, T111, T112
+- Completed: T01, T02, T03, T04, T05, T06, T07, T08, T09, T10, T11, T12, T13, T14, T15, T16, T17, T18, T19, T20, T21, T22, T23, T24, T25, T26, T27, T28, T29, T30, T31, T32, T33, T34, T35, T36, T37, T38, T39, T40, T41, T42, T43, T44, T45, T46, T47, T48, T49, T50, T51, T52, T53, T54, T55, T56, T57, T58, T59, T60, T61, T62, T63, T64, T65, T66, T67, T68, T69, T70, T71, T72, T73, T74, T75, T76, T77, T78, T79, T80, T81, T82, T83, T84, T85, T86, T87, T88, T89, T90, T91, T92, T93, T94, T95, T96, T97, T98, T99, T100, T101, T102, T103, T104, T105, T106, T107, T108, T109, T110, T110a, T110b, T110c, T110d, T110e, T110f, T110g, T110h, T110i, T110j, T110k, T110l, T110m, T110n, T110o, T110p, T110q, T110r, T110s, T110t, T110u, T110v, T110x, T110y, T110z, T110w, T172, T173, T174, T175, T111, T112, T113
 - Blocked: none
 - Failed: none
-- Remaining: T113, T114, T115, T116, T117, T118, T119, T120, T121, T122, T123, T124, T125, T126, T127, T128, T129, T130, T131, T132, T133, T134, T135, T136, T137, T138, T139, T140, T141, T142, T143, T144, T145, T146, T147, T148, T149, T150, T151, T151a, T152, T153, T154, T155, T156, T157, T158, T159, T160, T161, T162, T163, T164, T165, T166, T167, T168, T169, T170, T171
-- Last finished: T112 — done · Bluetooth pane + Control Center tile shipped as one unit over a new system-status bridge interface; live writes, two hide rules, ADR 0118, captures, all tests green.
+- Remaining: T114, T115, T116, T117, T118, T119, T120, T121, T122, T123, T124, T125, T126, T127, T128, T129, T130, T131, T132, T133, T134, T135, T136, T137, T138, T139, T140, T141, T142, T143, T144, T145, T146, T147, T148, T149, T150, T151, T151a, T152, T153, T154, T155, T156, T157, T158, T159, T160, T161, T162, T163, T164, T165, T166, T167, T168, T169, T170, T171
+- Last finished: T113 — done · dragonfruit-storage UDisks2 adapter landed with state/events/absence, tests green, make e2e EXIT 0, capture committed
 <!-- /symphony:status -->

@@ -464,6 +464,16 @@ headless tests: the pane still is a rendered Settings window (2088x1410, 430 364
 unique colours, luminance sigma 93.5) and the panel crop is 360x760 with 4 942
 unique colours, sigma 33.1.
 
+T-15.2a's storage adapter has no surface of its own (the pane and tile are
+T-15.2b); `t15-2a-storage-adapter.png` is the nested demo launched with the new
+`dragonfruit-storage` crate in the workspace, confirming the desktop still
+renders (3840x2160, 455 585 unique colours, luminance sigma 95.5) and tears
+down cleanly. The adapter itself is proven headlessly by
+`cargo test -p dragonfruit-storage`. Captured by
+`scripts/capture-t15-storage.sh`; vision (OpenRouter) returned HTTP 429, so the
+evidence is the pixel statistics (menu-bar strip sigma 82.0, dock region sigma
+37.6, client window sigma 65.2) plus the headless suites.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture
