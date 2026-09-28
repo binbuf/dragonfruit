@@ -86,6 +86,15 @@ Item {
                  + Math.abs(image.blue(x, y) - image.blue(0, 0)) <= 24;
         }
 
+        // True when a pixel is (within `tol`) a known artwork fill colour. The
+        // mask tests use explicit colours so they never mistake a fully-drawn
+        // square (whose own pixel(0,0) is artwork) for a masked one.
+        function nearColor(image, x, y, r, g, b, tol) {
+            return Math.abs(image.red(x, y) - r) <= tol
+                && Math.abs(image.green(x, y) - g) <= tol
+                && Math.abs(image.blue(x, y) - b) <= tol;
+        }
+
         function countForeground(image, x0, y0, x1, y1) {
             var n = 0;
             for (var y = y0; y < y1; ++y)
@@ -127,6 +136,14 @@ Item {
                 x0: Math.round(off + t * 0.26), x1: Math.round(off + t * 0.34),
                 y0: Math.round(off + t * 0.14), y1: Math.round(off + t * 0.22)
             };
+        }
+
+        // -- T-14.7w squircle tile masking ----------------------------------
+        // The shipped test icons for the masking cases (a full-bleed square, a
+        // circle, and a padded square). `Qt.resolvedUrl` resolves them next to
+        // this file; DockGlyph prepends `file://`, so strip the scheme here.
+        function assetPath(name) {
+            return Qt.resolvedUrl("data/" + name).toString().replace("file://", "");
         }
 
         // -- Entry regions --------------------------------------------------
@@ -1031,8 +1048,9 @@ Item {
         }
 
         function test_glyph_tile_is_a_token_squircle_with_inset() {
-            // The placeholder tile draws at the icon radius ratio; a themed
-            // icon is inset by the icon inset so it sits in the same tile.
+            // The placeholder tile draws at the icon radius ratio and spans the
+            // icon box less the token inset; the themed artwork is masked into
+            // exactly the same tile (T-14.7w).
             var glyph = make(glyphComponent, {
                 kind: "app", name: "Files", appId: "org.dragonfruit.Files",
                 size: 48
@@ -1041,15 +1059,127 @@ Item {
             verify(tile !== null);
             fuzzyCompare(tile.radius,
                          48 * Theme.controls.dock.icon.radiusRatio, 0.001);
+            fuzzyCompare(tile.width,
+                         48 - 2 * 48 * Theme.controls.dock.icon.inset, 0.5);
 
             var themed = make(glyphComponent, {
                 kind: "app", name: "Files", size: 48,
-                iconPath: "/usr/share/icons/hicolor/48x48/apps/files.png"
+                iconPath: assetPath("icon-square.svg")
             });
-            var raster = findChild(themed, "rasterIcon");
-            verify(raster !== null);
-            fuzzyCompare(raster.width,
-                         48 - 2 * 48 * Theme.controls.dock.icon.inset, 0.5);
+            var art = findChild(themed, "artwork");
+            verify(art !== null);
+            tryCompare(themed, "maskedArtwork", true);
+            fuzzyCompare(art.width, tile.width, 0.5);
+            fuzzyCompare(art.x, tile.x, 0.001);
+        }
+
+        // T-14.7w: a full-bleed square icon is clipped to the tile squircle —
+        // the corners are transparent, the artwork reaches the tile edge, and
+        // the centre is painted. The mask is a Canvas clip, so the headless
+        // software scene graph used here executes it and `grabImage` sees it.
+        function test_square_icon_is_masked_to_the_tile() {
+            var glyph = make(glyphComponent, {
+                kind: "app", name: "Square", size: 48,
+                iconPath: assetPath("icon-square.svg")
+            });
+            tryCompare(glyph, "maskedArtwork", true);
+            waitForRendering(stage);
+            wait(60);
+            var img = grabImage(glyph);
+            // The corner (1,1) is outside the token radius (0.24*48 = 11.5),
+            // so it must not carry the square's red fill; the centre and the
+            // edge midpoints must.
+            verify(!nearColor(img, 1, 1, 226, 59, 59, 40),
+                   "the square tile corner is masked");
+            verify(nearColor(img, 24, 24, 226, 59, 59, 40),
+                   "the tile centre is the artwork");
+            verify(nearColor(img, 24, 1, 226, 59, 59, 40),
+                   "the artwork reaches the tile top");
+            verify(nearColor(img, 1, 24, 226, 59, 59, 40),
+                   "the artwork reaches the tile left");
+            glyph.destroy();
+        }
+
+        // T-14.7w: a round icon (no padding of ours) fills the tile — it is
+        // not shrunk by a second inset on top of the clip.
+        function test_round_icon_is_not_double_inset() {
+            var glyph = make(glyphComponent, {
+                kind: "app", name: "Round", size: 48,
+                iconPath: assetPath("icon-round.svg")
+            });
+            tryCompare(glyph, "maskedArtwork", true);
+            waitForRendering(stage);
+            wait(60);
+            var img = grabImage(glyph);
+            // The circle is inscribed in the tile: it touches the top and left
+            // edges at the midpoints. A 6% artwork inset would pull it in.
+            verify(nearColor(img, 24, 1, 43, 108, 255, 40),
+                   "the circle touches the tile top");
+            verify(nearColor(img, 1, 24, 43, 108, 255, 40),
+                   "the circle touches the tile left");
+            verify(nearColor(img, 24, 24, 43, 108, 255, 40),
+                   "the circle paints its centre");
+            verify(!nearColor(img, 1, 1, 43, 108, 255, 40),
+                   "the circle leaves the corner clear");
+            glyph.destroy();
+        }
+
+        // T-14.7w: the placeholder tile and the masked artwork have the same
+        // extent — same corner mask, same edge reach — so they read as one
+        // squircle family.
+        function test_placeholder_and_themed_artwork_share_the_tile() {
+            // A dark backdrop makes the transparent corners observable: the
+            // grab's pixel(0,0) is the corner (backdrop when masked, artwork
+            // when not).
+            var placeholder = makeGlyphOnBackdrop(
+                { kind: "app", name: "Files", appId: "org.dragonfruit.Files",
+                  size: 48 }, 0);
+            var themed = makeGlyphOnBackdrop(
+                { kind: "app", name: "Square", size: 48,
+                  iconPath: assetPath("icon-square.svg") }, 90);
+            tryCompare(themed.glyph, "maskedArtwork", true);
+            waitForRendering(stage);
+            wait(60);
+            var p = grabImage(placeholder.glyph);
+            var t = grabImage(themed.glyph);
+            compare(countForeground(p, 0, 0, 3, 3), 0,
+                    "the placeholder corner is rounded");
+            compare(countForeground(t, 0, 0, 3, 3), 0,
+                    "the artwork corner is masked");
+            verify(!backgroundIs(p, 24, 1), "the placeholder reaches the tile edge");
+            verify(!backgroundIs(t, 24, 1), "the artwork reaches the tile edge");
+            placeholder.glyph.destroy();
+            placeholder.back.destroy();
+            themed.glyph.destroy();
+            themed.back.destroy();
+        }
+
+        // T-14.7w: the mask lives on the artwork only; the running indicator
+        // and the window-count badge are siblings and stay unclipped.
+        function test_masked_artwork_does_not_clip_indicator_or_badge() {
+            var entry = make(entryComponent, {
+                iconSize: 48,
+                entry: { id: "a", appId: "a", name: "Square", kind: "pinned",
+                         running: true, iconPath: assetPath("icon-square.svg"),
+                         windowList: [ { id: 1 }, { id: 2 } ] }
+            });
+            var glyph = findChild(entry, "glyph");
+            tryCompare(glyph, "maskedArtwork", true);
+            waitForRendering(stage);
+            wait(60);
+            var img = grabImage(entry);
+            var indicator = findChild(entry, "indicator");
+            verify(indicator !== null && indicator.visible, "the indicator is present");
+            verify(!backgroundIs(img,
+                                 Math.round(indicator.x + indicator.width / 2),
+                                 Math.round(indicator.y + indicator.height / 2)),
+                   "the running indicator is not clipped by the artwork mask");
+            var badge = findChild(entry, "windowBadge");
+            verify(badge !== null && badge.opacity > 0, "the window badge is present");
+            verify(!backgroundIs(img, Math.round(badge.x + badge.width / 2),
+                                      Math.round(badge.y + badge.height / 2)),
+                   "the window badge is not clipped by the artwork mask");
+            entry.destroy();
         }
 
         function test_entry_states_use_the_squircle_and_state_tokens() {

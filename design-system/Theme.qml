@@ -335,7 +335,7 @@ QtObject {
             }
             readonly property var icon: QtObject {
                 readonly property real radiusRatio: 0.24
-                readonly property real inset: 0.06
+                readonly property real inset: 0.0
             }
             readonly property var hover: QtObject {
                 readonly property real fillOpacity: 0.18

@@ -31,13 +31,15 @@ Item {
 
     readonly property bool hasThemedIconHint:
         kind === "app" && iconPath.length > 0
-    // Set when a raster icon fails to load, so the initial tile shows instead.
-    property bool iconFailed: false
-    readonly property bool hasThemedIcon: hasThemedIconHint && !iconFailed
-    // Most Linux icon themes ship app icons as SVG; Qt's raster `Image` needs
-    // the (optional) svg imageformat plugin, while `QtQuick.VectorImage`
-    // renders SVG directly. Split on the extension so both work.
+    // Most Linux icon themes ship app icons as SVG; `Image` decodes both the
+    // raster and the SVG form when the SVG imageformat plugin is present. When
+    // it is not, an SVG still renders through the `QtQuick.VectorImage`
+    // fallback below (unclipped, the pre-T-14.7w inset+fit look) rather than
+    // resolving to the initial tile.
     readonly property bool isSvgIcon: iconPath.toLowerCase().endsWith(".svg")
+    // The themed artwork currently on screen: the masked Canvas, or the
+    // unmasked VectorImage fallback when the SVG cannot be decoded as an image.
+    readonly property bool hasThemedIcon: maskedArtwork || vectorFallback
 
     readonly property color tileColor: {
         var palette = [
@@ -58,19 +60,30 @@ Item {
     readonly property string initial:
         name.length > 0 ? name.charAt(0).toUpperCase() : "?"
 
-    // The rounded-square (squircle) wall the placeholder tile draws at, and
-    // the margin the themed artwork is inset by so every icon sits in a
-    // consistent tile (T-14.7j). Both are tokens, never literals.
-    readonly property real tileRadius:
-        root.size * Theme.controls.dock.icon.radiusRatio
+    // The one tile every app entry's artwork sits in (T-14.7w): a rounded
+    // square (squircle) reaching the tile edge, with the radius and inset from
+    // tokens, never literals. The placeholder tile, the masked themed artwork,
+    // and the unmasked fallback all share this geometry so they cannot drift.
     readonly property real iconInset:
         root.size * Theme.controls.dock.icon.inset
+    readonly property real tileW: root.size - 2 * root.iconInset
+    readonly property real tileH: root.size - 2 * root.iconInset
+    readonly property real tileRadius:
+        root.tileW * Theme.controls.dock.icon.radiusRatio
 
-    // -- App tile --------------------------------------------------------
+    // -- App tile (placeholder) -----------------------------------------
     Rectangle {
         objectName: "appTile"
-        visible: root.kind === "app" && !root.hasThemedIcon
-        anchors.fill: parent
+        // The placeholder shows only when there is no themed artwork to draw:
+        // no path at all, or a raster path that failed to decode. An SVG that
+        // fails to decode still shows through the VectorImage fallback below.
+        visible: root.kind === "app"
+                 && (!root.hasThemedIconHint
+                     || (iconLoader.status === Image.Error && !root.isSvgIcon))
+        x: root.iconInset
+        y: root.iconInset
+        width: root.tileW
+        height: root.tileH
         radius: root.tileRadius
         color: root.tileColor
         border.width: 1
@@ -85,32 +98,107 @@ Item {
         }
     }
 
-    // -- Themed app icon (T-14.1a) --------------------------------------
-    // The real icon app-index resolved from the active theme. Raster icons use
-    // `Image`; SVG icons use `VectorImage` (no svg imageformat plugin needed).
-    // A load failure falls back to the initial tile.
+    // -- Themed app icon (T-14.1a, masked T-14.7w) ----------------------
+    // app-index resolves the real icon from the active theme. The hidden
+    // `Image` loader is the load-state oracle — it reports `Ready` so the
+    // Canvas repaints once the source (raster or SVG) is decoded, and `Error`
+    // so the placeholder or the SVG fallback shows. The artwork itself is
+    // painted by the Canvas below, clipped to the tile squircle.
     Image {
-        id: rasterIcon
-        objectName: "rasterIcon"
-        visible: root.hasThemedIcon && !root.isSvgIcon
-        anchors.fill: parent
-        anchors.margins: root.iconInset
-        source: visible ? "file://" + root.iconPath : ""
-        sourceSize: Qt.size(Math.round(root.size), Math.round(root.size))
-        fillMode: Image.PreserveAspectFit
-        smooth: true
+        id: iconLoader
+        objectName: "iconLoader"
+        visible: false
+        source: root.hasThemedIconHint ? "file://" + root.iconPath : ""
+        // No `sourceSize`: the loader and the Canvas drawImage share one
+        // natural-size pixmap-cache entry, so the artwork is decoded once.
         onStatusChanged: {
-            if (status === Image.Error)
-                root.iconFailed = true
+            if (status === Image.Ready)
+                artwork.requestPaint();
         }
     }
 
+    readonly property bool maskedArtwork:
+        root.hasThemedIconHint && iconLoader.status === Image.Ready
+    readonly property bool vectorFallback:
+        root.hasThemedIconHint && root.isSvgIcon
+        && iconLoader.status === Image.Error
+
+    // The themed artwork clipped to the tile squircle. A Canvas clip is
+    // executed by the headless software scene graph used by `tst_dock.qml`,
+    // so the masked corners are real pixels a test can assert — unlike
+    // MultiEffect/OpacityMask/ShaderEffect, which silently no-op on that
+    // backend (Shadow.qml documents the same tier constraint). The clip path
+    // is the same rounded rect the placeholder tile draws.
+    Canvas {
+        id: artwork
+        objectName: "artwork"
+        visible: root.maskedArtwork
+        x: root.iconInset
+        y: root.iconInset
+        width: root.tileW
+        height: root.tileH
+        renderStrategy: Canvas.Immediate
+        onWidthChanged: requestPaint()
+        onHeightChanged: requestPaint()
+        // `drawImage(url)` loads through the canvas pixmap cache; if it had
+        // not been decoded yet the first paint draws nothing, so repaint once
+        // it lands.
+        onImageLoaded: requestPaint()
+
+        onPaint: {
+            var ctx = getContext("2d");
+            ctx.clearRect(0, 0, width, height);
+            if (iconLoader.status !== Image.Ready)
+                return;
+
+            // The tile squircle: a rounded rect traced at the token radius.
+            var w = width;
+            var h = height;
+            var r = Math.min(root.tileRadius, Math.min(w, h) / 2);
+            ctx.beginPath();
+            ctx.moveTo(r, 0);
+            ctx.lineTo(w - r, 0);
+            ctx.arcTo(w, 0, w, r, r);
+            ctx.lineTo(w, h - r);
+            ctx.arcTo(w, h, w - r, h, r);
+            ctx.lineTo(r, h);
+            ctx.arcTo(0, h, 0, h - r, r);
+            ctx.lineTo(0, r);
+            ctx.arcTo(0, 0, r, 0, r);
+            ctx.closePath();
+            ctx.save();
+            ctx.clip();
+
+            // Preserve the artwork's aspect within the tile (the pre-existing
+            // fit), then let the clip round the corners.
+            var iw = iconLoader.implicitWidth;
+            var ih = iconLoader.implicitHeight;
+            if (iw <= 0 || ih <= 0) {
+                iw = w;
+                ih = h;
+            }
+            var scale = Math.min(w / iw, h / ih);
+            var dw = iw * scale;
+            var dh = ih * scale;
+            ctx.drawImage("file://" + root.iconPath,
+                          (w - dw) / 2, (h - dh) / 2, dw, dh);
+            ctx.restore();
+        }
+    }
+
+    // Degrade tier: when the SVG cannot be decoded as an image (the optional
+    // imageformat plugin is absent), draw it through VectorImage instead of
+    // the placeholder. It reaches the same tile but is not squircle-masked —
+    // the pre-T-14.7w inset+fit look, never an unmasked square with a
+    // different tile size.
     VectorImage {
-        id: vectorIcon
+        id: vectorFallbackArtwork
         objectName: "vectorIcon"
-        visible: root.hasThemedIcon && root.isSvgIcon
-        anchors.fill: parent
-        anchors.margins: root.iconInset
+        visible: root.vectorFallback
+        x: root.iconInset
+        y: root.iconInset
+        width: root.tileW
+        height: root.tileH
         source: visible ? "file://" + root.iconPath : ""
         fillMode: VectorImage.PreserveAspectFit
     }
