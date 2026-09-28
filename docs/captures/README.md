@@ -195,6 +195,20 @@ frost are the same integer rounded rect — pinned deterministically by the
 `tst_dock.qml` rim-differential and panel-parity cases (T-14.7z, ADR 0112).
 Needs a host Wayland session, spectacle, and Pillow; not in `make e2e`.
 
+T-14.7w's Dock icon squircle-mask sign-off is produced by
+`scripts/capture-dock-icon-mask.sh` (`make dock-icon-mask-capture`): the nested
+demo runs with a scratch app-index corpus of three apps whose themed icon files
+are a full-bleed square (red), a padded square (green), and a circle (blue), and
+a scratch settingsd that pins them. For each colour scheme the driver locates
+the three tiles by colour and writes a 4x nearest-neighbour crop to
+`t14-dock-icon-mask-{light,dark}.png`: the red square's outer corners are the
+plate background (the tile is clipped to the token squircle), the circle is
+inscribed and reaches the tile edge (no double inset), and the padded square
+keeps only its own padding. The mask is a Canvas clip so the software scene
+graph in `tst_dock.qml` observes it (T-14.7w, ADR 0113). Needs a host Wayland
+session, spectacle, gdbus, Pillow, and a session bus with no settingsd owner;
+not in `make e2e`.
+
 T-14.7c's Dock motion/frame-discipline sign-off is produced by
 `scripts/capture-dock-motion.sh` (`make dock-motion-capture`): the nested demo
 runs with a scratch settingsd and the synthetic-input harness, and the driver

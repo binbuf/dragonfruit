@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(103 earlier sections omitted)_
+_(104 earlier sections omitted)_
 
-- **T99 — T-13.7 Flatpak validation and capture**: **State: done** (one honest deviation: no Flatpak↔native clipboard still; see; **`scripts/capture-portals.sh`** (new; `make portals-capture`) — private
 - **T100 — T-14.1a app-index identity resolution and icons**: **State: done.** `org.dragonfruit.AppIndex1` is real: identity resolution for; `services/app-index/src/index.rs` — pure `AppIndex` (scan, `resolve`,
 - **T101 — T-14.1b app-index events, launch registry, recency**: **State: done.** `org.dragonfruit.AppIndex1` is now live: the index re-scans; `services/app-index/src/index.rs` — `IndexEvent`/`IndexEventKind`; `AppIndex`
 - **T102 — T-14.1c app-index subscription API**: **State: done.** `org.dragonfruit.AppIndex1` now has a subscription surface:; `services/app-index/src/subscription.rs` (new) — pure `ChangeKind`
@@ -43,6 +42,7 @@ _(103 earlier sections omitted)_
 - **T110x — T-14.7x Dock activation: taps on entries that carry a DragHandler**: **State: done.** A stationary left click on any app/temporary/overflow entry; `shell/src/dockpointer.{h,cpp}` (new, dockcore) — `DockPointer::timestamp()`
 - **T110y — T-14.7y Dock magnification tracking: stable pointer and anchor**: **State: done.** Hover magnification now tracks the pointer without ringing.; `design-system/tokens/tokens.json` — `motion.dockMagnifyTrack` added;
 - **T110z — T-14.7z Dock plate rendering: corner-following rim and frost alignment**: **State: done.** The plate is now one integer rounded rect in every state. The; `shell/dock/Dock.qml` — new `panelRect` (each edge of the live `plateRect`
+- **T110w — T-14.7w Dock icon tiles: true squircle masking**: **State: done.** Every Dock app tile now clips its themed artwork to the token; `shell/dock/DockGlyph.qml` — the themed app artwork is now a `Canvas`
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -10262,5 +10262,91 @@ Gotchas for later tasks:
   (`RIM_THRESHOLD` dark 430 / light 560) and a broad `DOCK_BAND`; a theme or
   wallpaper change needs those revisited (same convention as the other Dock
   drivers).
+- `check-desktop-names.sh` still fails only on the pre-existing
+  StatusNotifier/zoo/apppicker lines (unchanged here).
+
+## T110w — T-14.7w Dock icon tiles: true squircle masking
+
+**State: done.** Every Dock app tile now clips its themed artwork to the token
+squircle. The mask is a `Canvas` 2D clip, which the headless software scene
+graph executes through `QPainter`, so `tst_dock.qml` sees real masked pixels —
+`MultiEffect`/`OpacityMask`/`ShaderEffect` all no-op there (ADR 0113). Closes the
+T-14.7j "inset-and-fitted, not squircle-masked" deviation.
+
+Real paths:
+
+- `shell/dock/DockGlyph.qml` — the themed app artwork is now a `Canvas`
+  (`objectName: "artwork"`) that traces the tile rounded rect at
+  `component.dock.icon.radiusRatio`, `ctx.clip()`s, and `ctx.drawImage()`s the
+  icon from its URL (aspect-preserving). A hidden `Image` (`objectName:
+  "iconLoader"`) is the load oracle: `Ready` drives `requestPaint()`, `Error`
+  selects the placeholder tile (raster) or the `VectorImage` fallback (SVG).
+  `hasThemedIcon` now means "masked artwork or SVG fallback showing".
+  `tileW`/`tileH`/`tileRadius` are the single tile geometry; the placeholder
+  `appTile` uses the same.
+- `design-system/tokens/tokens.json` — `component.dock.icon.inset` 0.06 → 0.0
+  (the artwork reaches the tile edge, matching the reference's "no letterbox");
+  `radiusRatio` stays 0.24. `Theme.qml` + `compositor/src/design_tokens.rs`
+  regenerated.
+- `shell/tests/tst_dock.qml` — four new cases + the rewritten
+  `test_glyph_tile_is_a_token_squircle_with_inset`; `tst_dock` 264 → 268. New
+  helpers `assetPath` (resolves `shell/tests/data`) and `nearColor` (explicit
+  artwork-colour checks, so a fully-drawn square cannot masquerade as masked).
+- `shell/tests/data/icon-{square,padded,round}.svg` (new) — a full-bleed red
+  square, a green padded square (25% padding each side), and a blue circle.
+- `scripts/capture-dock-icon-mask.sh` + `-driver.py` (new,
+  `make dock-icon-mask-capture`) — scratch app-index corpus + scratch settingsd
+  pinning the three test apps, nested demo, per-scheme colour-located 4x crop;
+  captures `docs/captures/t14-dock-icon-mask-{light,dark}.png` (748x252).
+- Docs: `docs/design/04-shell.md` tile-mask paragraph;
+  `docs/design/adr/0113-dock-icon-squircle-canvas-clip.md` (new); ADR 0102
+  consequences updated; captures README entry.
+
+Commands that work (repo root):
+
+- `ctest --test-dir build -R "tst_dock$|tst_dockcore|tst_design_system"
+  --output-on-failure` — 268 + 116 + design-system green.
+- `ctest --test-dir build --output-on-failure` — 53/53.
+- `make e2e` — exit 0 (`material stats` still `backdrop_passes=0
+  backdrop_skipped=0`).
+- `make lint` — fmt/clippy/qml-test(53)/check-tokens/check-design-tokens all
+  green; it still stops at `check-desktop-names` on the pre-existing
+  StatusNotifier/zoo/apppicker lines (unchanged baseline, same as T-14.7y/z).
+- `./scripts/gen-tokens.py --check`; `./scripts/check-design-tokens.sh`;
+  `./scripts/check-no-capture-grab.sh`;
+  `./scripts/check-gallery-snapshots.py --strict` — green.
+- Pre-fix probe: comment out `ctx.clip()` in `DockGlyph.qml`, rebuild `tst_dock`
+  — `test_square_icon_is_masked_to_the_tile` fails ("the square tile corner is
+  masked") and `test_placeholder_and_themed_artwork_share_the_tile` fails ("the
+  artwork reaches the tile edge"); restore and rebuild.
+- Live: `make dock-icon-mask-capture` (host Wayland + spectacle + gdbus +
+  Pillow). PIL on the committed light/dark stills: red square bbox
+  32..223 (192 px = 48 at 4x) with corner pixels = plate background; green
+  padded bbox 80..175 (96 px = the icon's own 24 px square); blue circle bbox
+  32..223 with centre blue and the pixel above the top edge background. The
+  nested Dock also showed the default pins/Downloads/Trash; the crop frames
+  only the three test tiles by colour.
+
+Gotchas for later tasks:
+
+- **The mask is a `Canvas` clip, not a shader.** Do not replace it with
+  `MultiEffect`/`OpacityMask`/`ShaderEffect`: those no-op on the software scene
+  graph and the `tst_dock.qml` pixel cases would silently stop observing the
+  mask (ADR 0113).
+- **`Canvas.drawImage(url)` and `drawImage(Image)` differ in software**: the
+  element form silently draws nothing under a clip, so the artwork is drawn by
+  URL. `imageLoaded` must `requestPaint()` because the first paint may precede
+  the decode.
+- **The hidden `iconLoader` and the Canvas share one cache entry** only because
+  neither sets `sourceSize`; re-adding `sourceSize` would double-decode.
+- **`component.dock.icon.inset` is now 0.** A padded theme icon therefore keeps
+  its own padding and its opaque content stays its own shape (a sharp inner
+  square) — that is the "not double-inset" behaviour, not a failure to mask.
+- The capture driver detects the three tiles by their exact fill colours inside
+  a fixed bottom-centre band and requires all three; a different pinned corpus
+  or a Dock-position change needs `CROP_HALF_W`/`CROP_HEIGHT`/`COLORS` revisited
+  (same convention as the other Dock drivers). The capture runner re-asserts
+  `dock.pinned` after settle because the shell seeds default pins on the first
+  empty settings snapshot.
 - `check-desktop-names.sh` still fails only on the pre-existing
   StatusNotifier/zoo/apppicker lines (unchanged here).
