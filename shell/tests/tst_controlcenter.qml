@@ -40,6 +40,7 @@ Item {
         SignalSpy { id: usersSettingsSpy; signalName: "usersSettingsRequested" }
         SignalSpy { id: printersSettingsSpy; signalName: "printersSettingsRequested" }
         SignalSpy { id: privacySettingsSpy; signalName: "privacySettingsRequested" }
+        SignalSpy { id: accessibilitySettingsSpy; signalName: "accessibilitySettingsRequested" }
         SignalSpy { id: focusSpy; signalName: "focusToggleRequested" }
         SignalSpy { id: darkSpy; signalName: "darkModeToggleRequested" }
         SignalSpy { id: closedSpy; signalName: "closed" }
@@ -291,6 +292,27 @@ Item {
             };
         }
 
+        // The shell's decoded Accessibility view (T-15.14b), shaped by
+        // `SystemStatusModel`.
+        function accessibilityModel(label, screenReader, enabled) {
+            var sr = screenReader !== undefined ? screenReader : true;
+            var en = enabled !== undefined ? enabled : true;
+            return {
+                kind: "accessibility",
+                state: "available",
+                visible: true,
+                enabled: true,
+                glyph: "accessibility",
+                label: label !== undefined ? label
+                    : (sr ? "Screen Reader On" : (en ? "On" : "Off")),
+                present: sr || en,
+                enabledValue: en,
+                enabledLabel: en ? "On" : "Off",
+                screenReader: sr,
+                screenReaderLabel: sr ? "On" : "Off"
+            };
+        }
+
         function menuBarModel(autoHide, showBackground, globalMenu) {
             var label = autoHide === "never" ? "Never"
                 : autoHide === "always" ? "Always"
@@ -337,11 +359,12 @@ Item {
                 accounts: usersModel("2 Users", 2, 1),
                 printers: printersModel("2 Printers, 1 Scanner", 2, 1),
                 privacy: privacyModel("3 Apps", 3),
+                accessibility: accessibilityModel("Screen Reader On", true, true),
                 brightness: 0.8,
                 focusPolicy: focusModel("off"),
                 dark: true
             });
-            compare(panel.tiles.length, 16);
+            compare(panel.tiles.length, 17);
             compare(panel.tiles[0].id, "wifi");
             compare(panel.tiles[0].kind, "toggle");
             compare(panel.tiles[0].checked, true);
@@ -386,6 +409,9 @@ Item {
             compare(panel.tiles[15].id, "privacy");
             compare(panel.tiles[15].kind, "info");
             compare(panel.tiles[15].subtitle, "3 Apps");
+            compare(panel.tiles[16].id, "accessibility");
+            compare(panel.tiles[16].kind, "info");
+            compare(panel.tiles[16].subtitle, "Screen Reader On");
             compare(panel.wifiLabel, "home");
         }
 
@@ -395,8 +421,9 @@ Item {
             // rows, the Storage tile, the Sound tile's routing subtitle, the
             // Keyboard tile, the Mission Control tile, the Battery tile, the
             // Lock Screen tile, the Menu Bar tile, the Software Update tile, the
-            // Users tile, the Printers tile, and the Privacy tile the content
-            // must still fit, or the lower tiles are clipped.
+            // Users tile, the Printers tile, the Privacy tile, and the compact
+            // Accessibility tile the content must still fit, or the lower tiles
+            // are clipped.
             var panel = make({
                 wifi: wifiModel("available", true, "home"),
                 bluetooth: bluetoothModel("available", true, true, false,
@@ -416,6 +443,7 @@ lockPolicy: lockPolicyModel(600),
                 accounts: usersModel("2 Users", 2, 1),
                 printers: printersModel("2 Printers, 1 Scanner", 2, 1),
                 privacy: privacyModel("3 Apps", 3),
+                accessibility: accessibilityModel("Screen Reader On", true, true),
                 brightness: 1.0,
                 focusPolicy: focusModel("off"),
                 dark: false
@@ -947,6 +975,51 @@ lockPolicy: lockPolicyModel(600),
             compare(link.Accessible.name, "Open Privacy & Security Settings");
             mouseClick(link, link.width / 2, link.height / 2);
             compare(privacySettingsSpy.count, 1);
+        }
+
+        function test_accessibility_tile_reflects_state() {
+            var panel = make({ accessibility: accessibilityModel("Screen Reader On", true, true) });
+            compare(panel.accessibilityAvailable, true);
+            compare(panel.accessibilityVisible, true);
+            compare(panel.accessibilityScreenReader, true);
+            compare(panel.accessibilityGlyph, "accessibility");
+            compare(panel.accessibilityLabel, "Screen Reader On");
+            compare(panel.tiles[16].visible, true);
+            compare(panel.tiles[16].enabled, true);
+
+            // A bridge-only session labels itself `On`.
+            panel.accessibility = accessibilityModel("On", false, true);
+            compare(panel.accessibilityScreenReader, false);
+            compare(panel.accessibilityLabel, "On");
+            compare(panel.accessibilityVisible, true);
+
+            // A bus with every feature off (`present: false`) hides the tile.
+            panel.accessibility = {
+                kind: "accessibility", state: "available", visible: false,
+                enabled: true, present: false, label: "Off"
+            };
+            compare(panel.accessibilityVisible, false);
+            compare(panel.tiles[16].visible, false);
+        }
+
+        function test_accessibility_tile_hides_on_absence() {
+            var panel = make({ accessibility: ({ state: "unavailable" }) });
+            compare(panel.accessibilityAvailable, false);
+            var tile = findChild(panel, "accessibilityTile");
+            verify(tile !== null);
+            compare(tile.visible, false);
+        }
+
+        function test_accessibility_tile_opens_the_pane() {
+            var panel = make({ accessibility: accessibilityModel("Screen Reader On", true, true) });
+            accessibilitySettingsSpy.target = panel;
+            accessibilitySettingsSpy.clear();
+            var tile = findChild(panel, "accessibilityTile");
+            verify(tile !== null, "the Accessibility tile is present");
+            compare(tile.Accessible.role, Accessible.Button);
+            compare(tile.Accessible.name, "Accessibility");
+            mouseClick(tile, tile.width / 2, tile.height / 2);
+            compare(accessibilitySettingsSpy.count, 1);
         }
 
         function test_battery_settings_link_raises_the_request() {

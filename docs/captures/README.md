@@ -717,6 +717,16 @@ with no blank areas or stray artifacts. Captured by
 `scripts/capture-t15-accessibility-adapter.sh`; requires a host Wayland session,
 spectacle, and Pillow, and is not in `make e2e`.
 
+`t15-14b-accessibility-pane.png` and
+`t15-14b-accessibility-control-center.png` are the Accessibility pane and
+Control Center Accessibility tile for T-15.14b. The pane capture shows the
+header card, the live `Vision` card (`Screen Reader` and `Accessibility`
+status rows) and the `Motion` card with the `Reduce Motion` toggle; the tile
+capture shows the read-only `Screen Reader On` summary and the compact
+seventeenth tile in the fixed panel. Captured by
+`scripts/capture-t15-accessibility-pane.sh`; requires a host Wayland session,
+spectacle, and Pillow, and is not in `make e2e`.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

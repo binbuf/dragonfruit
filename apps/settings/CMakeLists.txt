@@ -33,6 +33,8 @@ qt_add_qml_module(dragonfruit-settings-ui
         PrintersClient.h
         PrivacyClient.cpp
         PrivacyClient.h
+        AccessibilityClient.cpp
+        AccessibilityClient.h
     QML_FILES
         SettingsPanes.qml
         SettingsMenu.qml
@@ -58,6 +60,7 @@ qt_add_qml_module(dragonfruit-settings-ui
         UsersGroupsPane.qml
         PrintersScannersPane.qml
         PrivacyPane.qml
+        AccessibilityPane.qml
         SettingsShell.qml
         SettingsWindow.qml
 )
@@ -109,6 +112,7 @@ df_qml_lint(app-settings
     UsersGroupsPane.qml
     PrintersScannersPane.qml
     PrivacyPane.qml
+    AccessibilityPane.qml
     SettingsShell.qml
     SettingsWindow.qml
 )

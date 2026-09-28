@@ -49,7 +49,10 @@ QtObject {
                             + "more."),
           shipped: true },
         { id: "accessibility", title: qsTr("Accessibility"), icon: "accessibility",
-          description: "", shipped: false },
+          description: qsTr("Personalize your system in ways that work best for "
+                            + "you with accessibility features for vision, "
+                            + "hearing, motor, speech, and cognition."),
+          shipped: true },
         { id: "appearance", title: qsTr("Appearance"), icon: "appearance",
           description: "", shipped: true },
         { id: "desktop-dock", title: qsTr("Desktop & Dock"), icon: "dock",

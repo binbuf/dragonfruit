@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(136 earlier sections omitted)_
+_(137 earlier sections omitted)_
 
-- **T110u — T-14.7u Dock reference metrics: spacing, plate radius, indicator inset**: **State: done.** The resting Dock is retuned to the mature reference capture:; `design-system/tokens/tokens.json` — `component.dock`: `padding` 10 → 15,
 - **T110v — T-14.7v Dock region dividers: pinned | temporary/recent | stacks and Trash**: **State: done.** The Dock projects the reference's region structure: a rule; `shell/src/dockmodel.{h,cpp}` — `DockRegionPlan` + `planDockRegions(entries,
 - **T110x — T-14.7x Dock activation: taps on entries that carry a DragHandler**: **State: done.** A stationary left click on any app/temporary/overflow entry; `shell/src/dockpointer.{h,cpp}` (new, dockcore) — `DockPointer::timestamp()`
 - **T110y — T-14.7y Dock magnification tracking: stable pointer and anchor**: **State: done.** Hover magnification now tracks the pointer without ringing.; `design-system/tokens/tokens.json` — `motion.dockMagnifyTrack` added;
@@ -43,6 +42,7 @@ _(136 earlier sections omitted)_
 - **T135 — T-15.13a Privacy and Security adapter**: **State: done.** New workspace crate `dragonfruit-privacy-adapter`; `services/privacy-adapter/src/source.rs` — `AppPermissionData {app,
 - **T136 — T-15.13b Privacy and Security pane and tile**: **State: done.** The Settings `Privacy & Security` pane and the Control Center; `services/system-status/src/privacy.rs` (new) — `PrivacyHost<S>` (refresh/
 - **T137 — T-15.14a Accessibility adapter**: **State: done.** New workspace crate `dragonfruit-accessibility-adapter`; `services/accessibility-adapter/src/source.rs` — `AccessibilityData
+- **T138 — T-15.14b Accessibility pane and tile**: **State: done.** The Settings `Accessibility` pane and the Control Center; `services/system-status/src/accessibility.rs` (new) — `AccessibilityHost<S>`
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -13129,3 +13129,114 @@ Decisions / gotchas for T-15.14b and later:
   Vision found menu bar, Dock, wallpaper, Settings window, and the demo client
   composited with no blank areas, tearing, or ghosting (only the usual nested
   X11 demo-window edge).
+
+## T138 — T-15.14b Accessibility pane and tile
+
+**State: done.** The Settings `Accessibility` pane and the Control Center
+`Accessibility` tile ship as one functional unit over the T-15.14a adapter,
+through the bridge host (ADR 0145), not by linking the Rust crate. The adapter
+is read-only, so the pane has **no new settingsd key**: its one durable
+preference is the existing `accessibility.reduceMotion` (shell theme / Dock /
+compositor consumers), and the live AT-SPI rows are status-only.
+
+Real paths:
+
+- `services/system-status/src/accessibility.rs` (new) — `AccessibilityHost<S>`
+  (refresh/view/state) + pure `accessibility_view`/`accessibility_snapshot_view`.
+  The view carries `glyph`/`label`/`present`/`enabled`/`enabledLabel`/
+  `screenReader`/`screenReaderLabel`. Read-only: no writes.
+- `services/system-status/src/lib.rs` — `pub mod accessibility`, re-exports,
+  `ACCESSIBILITY_INTERFACE = "org.dragonfruit.SystemStatus1.Accessibility"`.
+- `services/system-status/src/dbus.rs` — `LiveAccessibility =
+  AccessibilityHost<HostAccessibility>`; `AccessibilityInterface` with
+  `State`/`Refresh`; `run(...)` takes the accessibility host; `interface_names()`
+  is now 12.
+- `services/system-status/src/main.rs` — `AccessibilityHost::new(HostAccessibility::new())`,
+  startup refresh, `--print-accessibility`.
+- `services/system-status/tests/accessibility.rs` (new) — 6 bridge tests.
+- `services/system-status/Cargo.toml` — depends on `dragonfruit-accessibility-adapter`.
+- `apps/settings/AccessibilityClient.{h,cpp}` (new) — read-only seam;
+  `DbusAccessibilityClient` over the `Accessibility` interface;
+  `MockAccessibilityClient` (`DF_ACCESSIBILITY_FIXTURE`) with bridge and screen
+  reader on; `resetForTest()`.
+- `apps/settings/SettingsBridge.{h,cpp}` — `accessibility`/`accessibilityAvailable`
+  properties, `accessibilityChanged`, `refreshAccessibility`,
+  `resetAccessibilityFixture`.
+- `apps/settings/AccessibilityPane.qml` (new) — grouped `Vision` card with the
+  read-only `Screen Reader` and `Accessibility` status rows, an absence note,
+  and a `Motion` card with the `Reduce Motion` toggle bound to
+  `accessibility.reduceMotion`.
+- `apps/settings/SettingsPanes.qml` — `accessibility` shipped `true`, header
+  description; `SettingsShell.qml` registers the body.
+- `apps/settings/CMakeLists.txt` (module + `df_qml_lint`) and
+  `apps/settings/tests/CMakeLists.txt` (`tst_settings_accessibility`).
+- `design-system/components/Icon.qml` — new original painted `accessibility`
+  person-in-circle glyph.
+- Shell: `systemstatusclient.{h,cpp}` (read-only `refreshAccessibility` +
+  `accessibilityState`, mock fixture), `systemstatusmodel.{h,cpp}`
+  (`accessibility()`, `accessibilityVisible()`, `applyAccessibilityJson`,
+  `requestRefreshAccessibility`, the `present` second-hide rule),
+  `shellcontroller.{h,cpp}` (`onAccessibilityState`, startup / status-report
+  refresh, `applyControlCenterData` pushes `accessibility`,
+  `onAccessibilitySettingsRequested`), `shell/control-center/ControlCenter.qml`
+  (17th `accessibility` tile, `present` hide rule, tile internal gap `xs` →
+  `xxs`).
+- Tests — `apps/settings/tests/tst_settings_accessibility.{cpp,qml}` (new, 4
+  cases); `tst_settings_absence.qml` (shipped 20 → 21, id list, accessibility
+  absence case); `tst_settings_shell.qml` (shipped 20 → 21, list, keyboard
+  index 4 → 5); `shell/tests/tst_controlcenter.qml` (17 tiles, fit test, 3
+  accessibility cases); `shell/tests/tst_statusmodel.cpp` (3 accessibility
+  cases).
+- Docs/scripts — ADR `0145-accessibility-pane-and-tile.md`;
+  `docs/design/07-system-integration.md` D-Bus bullet + T-15.14b subsection;
+  `docs/design/08-settings.md` Accessibility routing row; capture script
+  `scripts/capture-t15-accessibility-pane.sh` + `docs/captures/README.md`.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-system-status -p dragonfruit-accessibility-adapter`
+  — green (system-status 75 lib + 6 accessibility + the rest).
+- `cargo clippy -p dragonfruit-system-status -p dragonfruit-accessibility-adapter
+  --all-targets -- -D warnings` — clean; `cargo fmt --all -- --check` — clean.
+- `cmake -S . -B build -G Ninja && cmake --build build` — EXIT 0.
+- `ctest --test-dir build -j4` — 68/68 (one `tst_dock` flake under `-j4` on the
+  first run; `make lint`'s ctest run reported 68/68).
+- `make e2e` — EXIT 0 (captured `/tmp/opencode/e2e-t138.log`).
+- `make check-design-tokens check-tokens check-no-capture-grab` — clean;
+  `./scripts/check-gallery-snapshots.py` — 78 green.
+- `make lint` — still fails only on the pre-existing `check-desktop-names`
+  lines (none in the new work); unchanged from T125–T137.
+
+Decisions / gotchas for T-15.15a and later:
+
+- **Read-only adapter, one existing key.** `org.a11y.Status` has no setter, so
+  the `Accessibility` interface is `State`/`Refresh` only. The pane's one
+  durable preference is `accessibility.reduceMotion`; **no new settingsd key
+  and no schema bump**. A compositor magnifier and a display-contrast preference
+  are a follow-up (documented in ADR 0145), not shipped as dead rows.
+- **Absence is single-layered (ADR 0144/0145).** `state: "unavailable"` = no
+  session bus / no `org.a11y.Bus` owner; `available` + `present: false` = an
+  all-off bus. The tile hides on either; the pane shows the absence note beside
+  the still-live `Reduce Motion` toggle.
+- **The pane's groups are `Vision` and `Motion`.** `Hearing` and the Apple-only
+  rows (`Zoom`/`Hover Text`/`Display`/`Read & Speak`/`Audio Descriptions`/
+  `Live Captions`/`Name Recognition`) are omitted per ADR 0122; no row is
+  invented without a Linux host owner.
+- **`DF_ACCESSIBILITY_FIXTURE`** selects the Settings mock; the shell mock is
+  `DF_STATUS_FIXTURE` (its mock now emits an accessibility view too).
+- **Control Center now holds 17 tiles.** To fit, the tile internal gap is `xxs`
+  (was `xs`), and the Accessibility tile is a compact single-row summary (no
+  separate link line; tapping the tile opens the pane). Content height measured
+  1130 ≤ 1160; an **18th** full tile would need another compaction or a taller
+  nested output. No pointer-axis forwarding, so the panel cannot scroll.
+- **The menu-bar `accessibility` status item is still inert** (`false &&
+  controlEnabled("accessibility")` in `shellcontroller.cpp`); wiring it is a
+  separate surface, not this task.
+- Live visual check: `bash scripts/capture-t15-accessibility-pane.sh` produced
+  `docs/captures/t15-14b-accessibility-pane.png` (2088x1410) and
+  `docs/captures/t15-14b-accessibility-control-center.png` (360x1160). Vision
+  read the header (`Accessibility` + the reference description), the `Vision`
+  card (`Screen Reader` / `Accessibility` status rows) and the `Motion` card
+  (`Reduce Motion`) with no clipping/overlap/artifacts; the panel showed the
+  `Accessibility` tile (`Screen Reader On`) with all tiles fully visible and no
+  bottom clipping.

@@ -34,6 +34,7 @@ public:
     QVariantMap accounts() const { return m_accounts; }
     QVariantMap printers() const { return m_printers; }
     QVariantMap privacy() const { return m_privacy; }
+    QVariantMap accessibility() const { return m_accessibility; }
 
     // Whether the item is drawn at all (`state != "unavailable"`; the battery
     // also hides when the machine has no present battery).
@@ -47,6 +48,7 @@ public:
     bool accountsVisible() const;
     bool printersVisible() const;
     bool privacyVisible() const;
+    bool accessibilityVisible() const;
 
     // Decode a host `State()` payload (JSON object). Returns the normalized
     // map; an empty map on a parse failure, with `error` set when non-null.
@@ -70,6 +72,7 @@ public slots:
     void applyAccounts(const QVariantMap &view);
     void applyPrinters(const QVariantMap &view);
     void applyPrivacy(const QVariantMap &view);
+    void applyAccessibility(const QVariantMap &view);
     void applyWifiJson(const QByteArray &json);
     void applyAudioJson(const QByteArray &json);
     void applyBatteryJson(const QByteArray &json);
@@ -80,6 +83,7 @@ public slots:
     void applyAccountsJson(const QByteArray &json);
     void applyPrintersJson(const QByteArray &json);
     void applyPrivacyJson(const QByteArray &json);
+    void applyAccessibilityJson(const QByteArray &json);
 
     // User gestures from the popovers; the controller forwards each to the
     // bridge host. They do not mutate the view (the host re-read is the only
@@ -105,6 +109,8 @@ public slots:
     void requestRefreshPrinters();
     // Privacy and Security is a read-only summary: refresh only, no write.
     void requestRefreshPrivacy();
+    // Accessibility is a read-only summary: refresh only, no write.
+    void requestRefreshAccessibility();
 
 signals:
     void changed();
@@ -124,6 +130,7 @@ signals:
     void refreshAccountsRequested();
     void refreshPrintersRequested();
     void refreshPrivacyRequested();
+    void refreshAccessibilityRequested();
 
 private:
     static QVariantMap normalize(const QVariantMap &view, const QString &kind);
@@ -137,4 +144,5 @@ private:
     QVariantMap m_accounts;
     QVariantMap m_printers;
     QVariantMap m_privacy;
+    QVariantMap m_accessibility;
 };
