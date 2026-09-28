@@ -100,6 +100,7 @@ use crate::input::shortcuts::{GrabArbiter, GrabKind, ShortcutEngine};
 use crate::input::{InputAction, TriggerKind};
 use crate::instrument::{GestureBudgetTrace, LatencyInstrument};
 use crate::lock::LockModel;
+use crate::magnifier::{Magnifier, MagnifierMode};
 use crate::overview::grid::{
     grid_layout, strip_space_at, GridCandidate, GridDrag, GridLayout, GridMaterial,
 };
@@ -492,6 +493,11 @@ pub struct DfState {
     /// through [`Self::set_color_scheme`].
     pub color_scheme: ColorScheme,
 
+    /// The compositor-owned screen magnifier (T-16.6b): zoom, the scene point
+    /// kept at the output centre, and the follow mode. It transforms the whole
+    /// scene, so it is policy, not a client surface.
+    pub magnifier: Magnifier,
+
     pub stats: RenderStats,
 }
 
@@ -624,6 +630,7 @@ impl DfState {
             degrade: DegradeController::new(),
             gesture_trace: GestureBudgetTrace::new(),
             color_scheme: ColorScheme::default(),
+            magnifier: Magnifier::new(),
             stats: RenderStats::new(),
         }
     }
@@ -3017,6 +3024,101 @@ impl DfState {
         self.animation_clock.set_reduced_motion(reduced);
     }
 
+    /// The live magnifier policy (T-16.6b).
+    pub fn magnifier(&self) -> &Magnifier {
+        &self.magnifier
+    }
+
+    /// The first output's geometry: the magnifier transforms the whole scene,
+    /// and the shell/demo sessions are single-output today.
+    pub fn magnifier_output_geometry(&self) -> Option<Rectangle<i32, Logical>> {
+        self.space
+            .outputs()
+            .next()
+            .and_then(|output| self.space.output_geometry(output))
+    }
+
+    /// The output geometry under a global-logical view point, falling back to
+    /// the first output (T-16.6b input mapping).
+    pub fn magnifier_geometry_at(
+        &self,
+        view: Point<f64, Logical>,
+    ) -> Option<Rectangle<i32, Logical>> {
+        for output in self.space.outputs() {
+            if let Some(geometry) = self.space.output_geometry(output) {
+                if geometry.to_f64().contains(view) {
+                    return Some(geometry);
+                }
+            }
+        }
+        self.magnifier_output_geometry()
+    }
+
+    /// Switch the compositor magnifier on/off (T-16.6b). Enabling seeds the
+    /// centre from the output and follows the focused window; disabling is a
+    /// no-op transform.
+    pub fn set_magnifier_enabled(&mut self, enabled: bool) {
+        if self.magnifier.enabled() == enabled {
+            return;
+        }
+        self.magnifier.set_enabled(enabled);
+        if enabled {
+            if let Some(geometry) = self.magnifier_output_geometry() {
+                self.magnifier.seed_center(geometry);
+            }
+            self.refresh_magnifier_follow();
+        }
+        self.needs_redraw = true;
+    }
+
+    /// Set the magnifier zoom (T-16.6b), clamped to the model's range.
+    pub fn set_magnifier_zoom(&mut self, zoom: f64) {
+        self.magnifier.set_zoom(zoom);
+        if let Some(geometry) = self.magnifier_output_geometry() {
+            self.magnifier.seed_center(geometry);
+        }
+        self.refresh_magnifier_follow();
+        self.needs_redraw = true;
+    }
+
+    /// Set the magnifier follow mode (T-16.6b).
+    pub fn set_magnifier_mode(&mut self, mode: MagnifierMode) {
+        if self.magnifier.mode() != mode {
+            self.magnifier.set_mode(mode);
+            self.refresh_magnifier_follow();
+            self.needs_redraw = true;
+        }
+    }
+
+    /// Set an explicit magnifier centre, in global logical scene coordinates
+    /// (T-16.6b).
+    pub fn set_magnifier_center(&mut self, x: f64, y: f64) {
+        if let Some(geometry) = self.magnifier_output_geometry() {
+            self.magnifier.set_center((x, y).into(), geometry);
+            self.needs_redraw = true;
+        }
+    }
+
+    /// Re-centre an active follow magnifier on the focused window. A no-op
+    /// when the magnifier is off, not following, or no window is focused.
+    /// `FollowCaret` falls back to the window until a caret source exists.
+    pub fn refresh_magnifier_follow(&mut self) {
+        if !self.magnifier.is_active() {
+            return;
+        }
+        let Some(geometry) = self.magnifier_output_geometry() else {
+            return;
+        };
+        let Some(window) = self.active_window.clone() else {
+            self.magnifier.seed_center(geometry);
+            return;
+        };
+        let Some(window_geometry) = self.windows.geometry(&window) else {
+            return;
+        };
+        self.magnifier.follow(window_geometry, None, geometry);
+    }
+
     /// Set the live light/dark color scheme every compositor-drawn material
     /// renders with (T-04.4b). The shell mirrors `appearance.colorScheme`
     /// here once settingsd owns it (T-08); today the default is dark and the
@@ -4070,6 +4172,8 @@ impl SeatHandler for DfState {
                 self.shortcuts.set_focused_app(None);
             }
             self.active_window = new_active;
+            // A following magnifier pans to the newly focused window (T-16.6b).
+            self.refresh_magnifier_follow();
         }
     }
 

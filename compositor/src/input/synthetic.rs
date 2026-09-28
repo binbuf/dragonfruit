@@ -47,8 +47,13 @@
 //! query lock
 //! query session
 //! query spaces
+//! query magnifier
 //! set titlebar-double-click zoom|minimize|none
 //! set reduced-motion on|off
+//! set magnifier on|off
+//! set magnifier-zoom <factor>
+//! set magnifier-mode follow-focus|follow-caret
+//! set magnifier-center <x> <y>
 //! set launch-origin <app-id> <x> <y> <width> <height>
 //! set degrade-tier full|reduced|minimal
 //! set degrade-budget <microseconds>
@@ -111,6 +116,7 @@ use smithay::backend::input::{
 use smithay::reexports::calloop::generic::Generic;
 use smithay::reexports::calloop::{Interest, Mode, PostAction};
 
+use crate::magnifier::MagnifierMode;
 use crate::state::DfState;
 use crate::window::{ColorScheme, DegradeTier, TitlebarDoubleClick, WindowEventKind, WindowId};
 use crate::workspace::WallpaperFit;
@@ -738,6 +744,22 @@ pub enum SyntheticCommand {
     /// completed-cycle count, the live output count, and the mapped window
     /// count, followed by `end`.
     QuerySession,
+    /// Read-only magnifier introspection (T-16.6b): the enabled/active flags,
+    /// the zoom, the follow mode, the scene centre, and the physical view
+    /// transform, followed by `end`.
+    QueryMagnifier,
+    /// Switch the compositor magnifier on/off (T-16.6b test plumbing).
+    SetMagnifier(bool),
+    /// Set the magnifier zoom factor (T-16.6b test plumbing).
+    SetMagnifierZoom(f64),
+    /// Set the magnifier follow mode (T-16.6b test plumbing).
+    SetMagnifierMode(MagnifierMode),
+    /// Set an explicit magnifier centre in global logical scene coordinates
+    /// (T-16.6b test plumbing).
+    SetMagnifierCenter {
+        x: f64,
+        y: f64,
+    },
     /// Set `dock.titlebarDoubleClick` for the session (T-01.3 test plumbing).
     SetTitlebarDoubleClick(TitlebarDoubleClick),
     /// Set the compositor reduced-motion policy (T-02.1b test plumbing).
@@ -916,9 +938,10 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
             Some("policy") => SyntheticCommand::QueryPolicy,
             Some("lock") => SyntheticCommand::QueryLock,
             Some("session") => SyntheticCommand::QuerySession,
+            Some("magnifier") => SyntheticCommand::QueryMagnifier,
             _ => {
                 return Err(
-                    "query requires a known subject (decorations, scale, identity, window-menu, motion, events, latency, scanout, degrade, material, grid, spaces, wallpaper, reveal, gesture, switcher, policy, lock, session)"
+                    "query requires a known subject (decorations, scale, identity, window-menu, motion, events, latency, scanout, degrade, material, grid, spaces, wallpaper, reveal, gesture, switcher, policy, lock, session, magnifier)"
                         .into(),
                 );
             }
@@ -1037,9 +1060,29 @@ pub fn parse_command(line: &str) -> Result<SyntheticCommand, String> {
                         "degrade-budget must be an integer number of microseconds".to_string()
                     })?,
             ),
+            Some("magnifier") => match parts.next() {
+                Some("on") | Some("1") => SyntheticCommand::SetMagnifier(true),
+                Some("off") | Some("0") => SyntheticCommand::SetMagnifier(false),
+                other => {
+                    return Err(format!("expected on|off, got {other:?}"));
+                }
+            },
+            Some("magnifier-zoom") => SyntheticCommand::SetMagnifierZoom(parse_f64(
+                parts.next().ok_or("set magnifier-zoom requires a factor")?,
+            )?),
+            Some("magnifier-mode") => {
+                let value = parts.next().ok_or("set magnifier-mode requires a mode")?;
+                let mode = MagnifierMode::parse(value)
+                    .ok_or_else(|| format!("expected follow-focus|follow-caret, got {value:?}"))?;
+                SyntheticCommand::SetMagnifierMode(mode)
+            }
+            Some("magnifier-center") => SyntheticCommand::SetMagnifierCenter {
+                x: parse_f64(parts.next().ok_or("set magnifier-center requires x")?)?,
+                y: parse_f64(parts.next().ok_or("set magnifier-center requires y")?)?,
+            },
             _ => {
                 return Err(
-                    "set requires a known subject (titlebar-double-click, reduced-motion, launch-origin, degrade-tier, degrade-budget, color-scheme)"
+                    "set requires a known subject (titlebar-double-click, reduced-motion, launch-origin, degrade-tier, degrade-budget, color-scheme, magnifier, magnifier-zoom, magnifier-mode, magnifier-center)"
                         .into(),
                 );
             }
@@ -1191,6 +1234,9 @@ impl SyntheticCommand {
             SyntheticCommand::QuerySession => {
                 unreachable!("query session is handled by apply_datagram")
             }
+            SyntheticCommand::QueryMagnifier => {
+                unreachable!("query magnifier is handled by apply_datagram")
+            }
             // A settings command, not an input event.
             SyntheticCommand::SetTitlebarDoubleClick(_) => {
                 unreachable!("set titlebar-double-click is handled by apply_datagram")
@@ -1209,6 +1255,18 @@ impl SyntheticCommand {
             }
             SyntheticCommand::SetColorScheme(_) => {
                 unreachable!("set color-scheme is handled by apply_datagram")
+            }
+            SyntheticCommand::SetMagnifier(_) => {
+                unreachable!("set magnifier is handled by apply_datagram")
+            }
+            SyntheticCommand::SetMagnifierZoom(_) => {
+                unreachable!("set magnifier-zoom is handled by apply_datagram")
+            }
+            SyntheticCommand::SetMagnifierMode(_) => {
+                unreachable!("set magnifier-mode is handled by apply_datagram")
+            }
+            SyntheticCommand::SetMagnifierCenter { .. } => {
+                unreachable!("set magnifier-center is handled by apply_datagram")
             }
             SyntheticCommand::MinimizeWindow(_) => {
                 unreachable!("minimize is handled by apply_datagram")
@@ -1439,6 +1497,31 @@ fn apply_datagram_reply(
                         let _ = socket.send_to(report.as_bytes(), path);
                     }
                 }
+                applied += 1;
+            }
+            Ok(SyntheticCommand::QueryMagnifier) => {
+                if let Some((socket, peer)) = &reply {
+                    let report = magnifier_report(state);
+                    if let Some(path) = peer.as_pathname() {
+                        let _ = socket.send_to(report.as_bytes(), path);
+                    }
+                }
+                applied += 1;
+            }
+            Ok(SyntheticCommand::SetMagnifier(enabled)) => {
+                state.set_magnifier_enabled(enabled);
+                applied += 1;
+            }
+            Ok(SyntheticCommand::SetMagnifierZoom(zoom)) => {
+                state.set_magnifier_zoom(zoom);
+                applied += 1;
+            }
+            Ok(SyntheticCommand::SetMagnifierMode(mode)) => {
+                state.set_magnifier_mode(mode);
+                applied += 1;
+            }
+            Ok(SyntheticCommand::SetMagnifierCenter { x, y }) => {
+                state.set_magnifier_center(x, y);
                 applied += 1;
             }
             Ok(SyntheticCommand::SetTitlebarDoubleClick(mode)) => {
@@ -2143,6 +2226,51 @@ fn session_report(state: &DfState) -> String {
     )
 }
 
+/// The `query magnifier` report (T-16.6b): the compositor screen magnifier.
+///
+/// `magnifier enabled=<0|1> active=<0|1> zoom=<z> mode=<mode> center=<cx> <cy>
+/// output=<x> <y> <w> <h> origin=<ox> <oy> translation=<tx> <ty>` followed by
+/// `end`. `origin`/`translation` are the output-local physical view transform
+/// (the same numbers the render layer/rescale pass applies); they are `0 0`
+/// when the magnifier is inactive.
+fn magnifier_report(state: &DfState) -> String {
+    let magnifier = state.magnifier();
+    let center = magnifier.center();
+    let output = state.magnifier_output_geometry().unwrap_or_default();
+    let output_scale = state
+        .space
+        .outputs()
+        .next()
+        .map(|output| output.current_scale().fractional_scale())
+        .unwrap_or(1.0);
+    let transform = state
+        .space
+        .outputs()
+        .next()
+        .and_then(|output| state.space.output_geometry(output))
+        .and_then(|geometry| state.magnifier().view_transform(geometry, output_scale));
+    let (origin, translation) = transform
+        .map(|t| (t.origin, t.translation))
+        .unwrap_or_else(|| ((0, 0).into(), (0, 0).into()));
+    format!(
+        "magnifier enabled={} active={} zoom={} mode={} center={} {} output={} {} {} {} origin={} {} translation={} {}\nend\n",
+        magnifier.enabled() as u32,
+        magnifier.is_active() as u32,
+        magnifier.zoom(),
+        magnifier.mode().name(),
+        center.x,
+        center.y,
+        output.loc.x,
+        output.loc.y,
+        output.size.w,
+        output.size.h,
+        origin.x,
+        origin.y,
+        translation.x,
+        translation.y,
+    )
+}
+
 /// The `query switcher` report (T-06.1): the app-switcher state machine.
 ///
 /// `switcher active=<0|1> app=<app_id|-> direction=<d> selected=<i> count=<n>
@@ -2439,6 +2567,30 @@ mod tests {
             parse_command("query identity").unwrap(),
             SyntheticCommand::QueryIdentity
         );
+        assert_eq!(
+            parse_command("query magnifier").unwrap(),
+            SyntheticCommand::QueryMagnifier
+        );
+        assert_eq!(
+            parse_command("set magnifier on").unwrap(),
+            SyntheticCommand::SetMagnifier(true)
+        );
+        assert_eq!(
+            parse_command("set magnifier off").unwrap(),
+            SyntheticCommand::SetMagnifier(false)
+        );
+        assert_eq!(
+            parse_command("set magnifier-zoom 3.5").unwrap(),
+            SyntheticCommand::SetMagnifierZoom(3.5)
+        );
+        assert_eq!(
+            parse_command("set magnifier-mode follow-caret").unwrap(),
+            SyntheticCommand::SetMagnifierMode(MagnifierMode::FollowCaret)
+        );
+        assert_eq!(
+            parse_command("set magnifier-center 100 200").unwrap(),
+            SyntheticCommand::SetMagnifierCenter { x: 100.0, y: 200.0 }
+        );
     }
 
     #[test]
@@ -2455,6 +2607,10 @@ mod tests {
         assert!(parse_command("set degrade-budget fast").is_err());
         assert!(parse_command("set color-scheme sepia").is_err());
         assert!(parse_command("set color-scheme").is_err());
+        assert!(parse_command("set magnifier maybe").is_err());
+        assert!(parse_command("set magnifier-zoom fast").is_err());
+        assert!(parse_command("set magnifier-mode wiggle").is_err());
+        assert!(parse_command("set magnifier-center 1").is_err());
     }
 
     #[test]

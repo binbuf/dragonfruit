@@ -122,6 +122,7 @@ e2e: build
 	    --test idle_trace \
 	    --test latency_trace \
 	    --test animation_clock \
+	    --test reduced_motion_sweep \
 	    --test protocol_surface \
 	    --test session_lock_conformance \
 	    --test suspend_resume_conformance
