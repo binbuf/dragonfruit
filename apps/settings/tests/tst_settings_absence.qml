@@ -31,8 +31,9 @@ Item {
         // Every shipped Wave-1 pane, with the exact control surface the
         // matrix asserts stays live while its provider is absent.
         readonly property var shippedPaneIds:
-            ["appearance", "desktop-dock", "displays", "wallpaper", "bluetooth",
-             "storage", "sound", "keyboard", "mouse", "trackpad"]
+            ["appearance", "desktop-dock", "mission-control", "displays",
+             "wallpaper", "bluetooth", "storage", "sound", "keyboard", "mouse",
+             "trackpad"]
 
         function make() {
             var shell = createTemporaryObject(shellComponent, stage,
@@ -85,7 +86,7 @@ Item {
 
         function test_every_shipped_pane_has_a_body_and_no_other_does() {
             var shell = make();
-            compare(SettingsPanes.shippedPanes.length, 10);
+            compare(SettingsPanes.shippedPanes.length, 11);
             for (var i = 0; i < SettingsPanes.catalog.length; ++i) {
                 var pane = SettingsPanes.catalog[i];
                 var body = shell.paneComponent(pane.id);
@@ -296,6 +297,29 @@ Item {
             compare(pane.tapToClickToggle.enabled, true);
             pane.tapToClickToggle.toggle();
             compare(Settings.values["input.tapToClick"], false);
+        }
+
+        // Mission Control is compositor-native: the pane's rows are settingsd
+        // keys, so with no daemon they stay live on the schema defaults and the
+        // pane shows the absence note instead of an adapter view. The Control
+        // Center tile's absent case is the compositor bridge, owned by the
+        // shell (T-15.5b).
+        function test_mission_control_pane_stays_live_without_a_daemon() {
+            var shell = make();
+            var pane = showPane(shell, "mission-control");
+            compare(pane.absenceNote.visible, true,
+                    "the absence note explains the missing settings daemon");
+            verify(pane.absenceNote.text.length > 0);
+
+            // The corner rows and the gesture rows write through to the
+            // in-memory store on the schema defaults.
+            compare(pane.topLeft, "mission-control");
+            pane.topLeftSelect.activateIndex(0); // none
+            compare(Settings.values["overview.hotCornerTopLeft"], "none");
+            pane.bottomRightSelect.activateIndex(1); // Mission Control
+            compare(Settings.values["overview.hotCornerBottomRight"], "mission-control");
+            pane.gestureMissionToggle.toggle();
+            compare(Settings.values["gestures.missionControl"], false);
         }
 
         // A control changed while the daemon is absent still converges into the

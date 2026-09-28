@@ -29,6 +29,7 @@ Item {
         SignalSpy { id: storageEjectSpy; signalName: "storageEjectRequested" }
         SignalSpy { id: soundSettingsSpy; signalName: "soundSettingsRequested" }
         SignalSpy { id: keyboardSettingsSpy; signalName: "keyboardSettingsRequested" }
+        SignalSpy { id: missionControlSettingsSpy; signalName: "missionControlSettingsRequested" }
         SignalSpy { id: focusSpy; signalName: "focusToggleRequested" }
         SignalSpy { id: darkSpy; signalName: "darkModeToggleRequested" }
         SignalSpy { id: closedSpy; signalName: "closed" }
@@ -134,6 +135,23 @@ Item {
             };
         }
 
+        // The shell-projected Mission Control summary (T-15.5b), shaped by
+        // `controlcenterpolicy.cpp`'s `missionControlView`.
+        function missionControlModel(gesture, corners, label) {
+            var resolved = label !== undefined ? label
+                : gesture && corners === 0 ? "Gesture"
+                : gesture ? "Gesture, " + corners + " corner(s)"
+                : corners === 0 ? "No trigger" : corners + " corner(s)";
+            return {
+                state: "available",
+                glyph: "overview",
+                label: resolved,
+                reachable: gesture || corners > 0,
+                gesture: gesture,
+                cornerCount: corners
+            };
+        }
+
         function make(props) {
             var panel = createTemporaryObject(panelComponent, stage, props || {});
             // The shell sizes the panel to its surface; do the same here so
@@ -150,7 +168,7 @@ Item {
             return panel;
         }
 
-        function test_tiles_expose_all_eight_controls() {
+        function test_tiles_expose_all_nine_controls() {
             var panel = make({
                 wifi: wifiModel("available", true, "home"),
                 bluetooth: bluetoothModel("available", true, true, false),
@@ -158,11 +176,12 @@ Item {
                 audio: audioModel("available", 0.6, false),
                 input: inputModel("available", true,
                                   [{ name: "AT keyboard", kind: "keyboard" }]),
+                missionControl: missionControlModel(true, 1),
                 brightness: 0.8,
                 focusPolicy: focusModel("off"),
                 dark: true
             });
-            compare(panel.tiles.length, 8);
+            compare(panel.tiles.length, 9);
             compare(panel.tiles[0].id, "wifi");
             compare(panel.tiles[0].kind, "toggle");
             compare(panel.tiles[0].checked, true);
@@ -184,15 +203,18 @@ Item {
             compare(panel.tiles[7].id, "keyboard");
             compare(panel.tiles[7].kind, "info");
             compare(panel.tiles[7].subtitle, "1 keyboards, 2 pointing devices");
+            compare(panel.tiles[8].id, "mission-control");
+            compare(panel.tiles[8].kind, "info");
+            compare(panel.tiles[8].subtitle, "Gesture, 1 corner(s)");
             compare(panel.wifiLabel, "home");
         }
 
         function test_panel_content_fits_the_shell_surface() {
-            // The shell sizes the Control Center surface to 360x880
+            // The shell sizes the Control Center surface to 360x980
             // (kControlCenterWidth/Height). With the Bluetooth tile's device
-            // rows, the Storage tile, the Sound tile's routing subtitle, and
-            // the Keyboard tile the content must still fit, or the lower tiles
-            // are clipped.
+            // rows, the Storage tile, the Sound tile's routing subtitle, the
+            // Keyboard tile, and the Mission Control tile the content must
+            // still fit, or the lower tiles are clipped.
             var panel = make({
                 wifi: wifiModel("available", true, "home"),
                 bluetooth: bluetoothModel("available", true, true, false,
@@ -204,17 +226,18 @@ Item {
                 audio: audioRoutingModel("Built-in Speakers"),
                 input: inputModel("available", true,
                                   [{ name: "AT keyboard", kind: "keyboard" }]),
+                missionControl: missionControlModel(true, 1),
                 brightness: 1.0,
                 focusPolicy: focusModel("off"),
                 dark: false
             });
             panel.width = 360;
-            panel.height = 880;
+            panel.height = 980;
             waitForRendering(stage);
             var content = findChild(panel, "controlCenterContent");
             verify(content !== null);
-            verify(content.childrenRect.height <= 880,
-                   "Control Center content must fit the 880px surface, height="
+            verify(content.childrenRect.height <= 980,
+                   "Control Center content must fit the 980px surface, height="
                    + content.childrenRect.height);
         }
 
@@ -404,6 +427,36 @@ Item {
             compare(link.Accessible.name, "Open Keyboard Settings");
             mouseClick(link, link.width / 2, link.height / 2);
             compare(keyboardSettingsSpy.count, 1);
+        }
+
+        function test_mission_control_tile_reflects_the_trigger_summary() {
+            var panel = make({ missionControl: missionControlModel(true, 1) });
+            compare(panel.missionControlVisible, true);
+            compare(panel.missionControlLabel, "Gesture, 1 corner(s)");
+            compare(panel.tiles[8].visible, true);
+            compare(panel.tiles[8].enabled, true);
+
+            // No gesture and no corner is a valid "No trigger" state.
+            panel.missionControl = missionControlModel(false, 0);
+            compare(panel.missionControlLabel, "No trigger");
+            compare(panel.missionControl.reachable, false);
+
+            // With no projection at all the tile hides.
+            panel.missionControl = ({});
+            compare(panel.missionControlVisible, false);
+            compare(panel.tiles[8].visible, false);
+        }
+
+        function test_mission_control_settings_link_raises_the_request() {
+            var panel = make({ missionControl: missionControlModel(true, 1) });
+            missionControlSettingsSpy.target = panel;
+            missionControlSettingsSpy.clear();
+            var link = findChild(panel, "missionControlSettingsLink");
+            verify(link !== null, "the Mission Control Settings link is present");
+            compare(link.Accessible.role, Accessible.Button);
+            compare(link.Accessible.name, "Open Mission Control Settings");
+            mouseClick(link, link.width / 2, link.height / 2);
+            compare(missionControlSettingsSpy.count, 1);
         }
 
         function test_sound_tile_reflects_the_default_output_device() {

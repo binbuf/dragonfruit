@@ -51,6 +51,8 @@ QtObject {
           description: "", shipped: true },
         { id: "desktop-dock", title: qsTr("Desktop & Dock"), icon: "dock",
           description: "", shipped: true },
+        { id: "mission-control", title: qsTr("Mission Control"), icon: "overview",
+          description: "", shipped: true },
         { id: "displays", title: qsTr("Displays"), icon: "displays",
           description: "", shipped: true },
         { id: "menu-bar", title: qsTr("Menu Bar"), icon: "general",
