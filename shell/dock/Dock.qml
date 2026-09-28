@@ -123,23 +123,24 @@ Rectangle {
     // pointer is not over the Dock.
     property real pointerAlong: -1
     // The pointer position the magnification geometry actually reads (T-14.7b).
-    // It tracks `pointerAlong` but is smoothed with `motion.dockMagnify` while
-    // magnifying, so a coarse pointer sampling reads as a continuous slide. It
-    // snaps (tracks raw) when magnification is off and under reduced motion.
+    // It tracks `pointerAlong` through a short, non-overshooting low-pass
+    // (`motion.dockMagnifyTrack`) so a coarse pointer sampling reads as a
+    // continuous slide. It snaps (tracks raw) when magnification is off, while
+    // entering/leaving the Dock, and under reduced motion. `motion.dockMagnify`
+    // keeps its overshoot only for *discrete* changes (icon size, reveal); a
+    // per-sample overshoot is what rings, so the tracker must not overshoot.
     property real smoothPointerAlong: pointerAlong
-    // The pointer geometry reads `smoothPointerAlong`. It snaps while the
-    // pointer enters/leaves the Dock, magnification is off, or reduced motion
-    // is on, and springs between two real Dock positions while magnifying —
-    // `motion.dockMagnify`'s bezier already carries the slight overshoot. The
-    // decision is made imperatively from the *previous* smoothed value, so
-    // there is no binding cycle between the flag and the value it gates.
+    // `pointerAlong` sets the target; the tracker approaches it without ever
+    // passing it. The decision is made imperatively from the *previous*
+    // smoothed value, so there is no binding cycle between the flag and the
+    // value it gates.
     NumberAnimation {
         id: smoothPointerAnimation
         target: dock
         property: "smoothPointerAlong"
-        duration: Theme.motion.dockMagnify.duration
+        duration: Theme.motion.dockMagnifyTrack.duration
         easing.type: Easing.Bezier
-        easing.bezierCurve: Theme.motion.dockMagnify.curve
+        easing.bezierCurve: Theme.motion.dockMagnifyTrack.curve
     }
     onPointerAlongChanged: {
         if (dock.magnifying && !Theme.reducedMotion && dock.smoothPointerAlong >= 0) {
@@ -1063,12 +1064,14 @@ Rectangle {
     }
 
     // Index of the icon item nearest the pointer (never the divider). The
-    // smoothed pointer is what the geometry reads; the raw `pointerAlong`
-    // gates whether the pointer is over the Dock at all (T-14.7b).
+    // anchor decision is made from the **raw** `pointerAlong`, so the filter
+    // that smooths the geometry can never flip the anchored tile back and
+    // forth at a boundary (T-14.7y). The raw value also gates whether the
+    // pointer is over the Dock at all.
     readonly property int anchorIndex: {
         if (pointerAlong < 0 || items.length === 0)
             return -1;
-        var along = Math.max(0, smoothPointerAlong);
+        var along = Math.max(0, pointerAlong);
         var best = -1;
         var bestDistance = Number.MAX_VALUE;
         for (var i = 0; i < items.length; ++i) {
@@ -2841,22 +2844,122 @@ Rectangle {
         };
     }
 
+    // The raw cross-axis magnify edge the plate grows from (T-14.7y): the
+    // entry union edge with launch/attention bounce added back (so a bounce
+    // never pumps the plate) *before* any padding. For a bottom Dock it is the
+    // topmost entry edge, for a right Dock the interior (left) edge, for a
+    // left Dock the interior (right) edge. It is driven by the smoothed
+    // pointer, so it is already low-passed; the peak-hold below removes the
+    // per-tile ripple a per-frame `min()`/`max()` over the peak entry would
+    // otherwise pass on.
+    readonly property real plateTrackRaw: {
+        var l = layout;
+        var n = l.length;
+        var fallback = axisIsX
+                ? restingPlateRect.y + padding
+                : (position === "right" ? restingPlateRect.x + padding
+                                        : restingPlateRect.x + barThickness - padding);
+        if (n === 0)
+            return fallback;
+        var i, b;
+        if (axisIsX) {
+            var minTop = Number.MAX_VALUE;
+            for (i = 0; i < n; ++i) {
+                if (items[i].kind === "divider" || l[i].w <= 0)
+                    continue;
+                b = entryBounce(items[i]);
+                minTop = Math.min(minTop, l[i].y + b);
+            }
+            return minTop === Number.MAX_VALUE ? fallback : minTop;
+        }
+        if (position === "right") {
+            var minLeft = Number.MAX_VALUE;
+            for (i = 0; i < n; ++i) {
+                if (items[i].kind === "divider" || l[i].h <= 0)
+                    continue;
+                b = entryBounce(items[i]);
+                minLeft = Math.min(minLeft, l[i].x + b);
+            }
+            return minLeft === Number.MAX_VALUE ? fallback : minLeft;
+        }
+        var maxRight = -Number.MAX_VALUE;
+        for (i = 0; i < n; ++i) {
+            if (items[i].kind === "divider" || l[i].h <= 0)
+                continue;
+            b = entryBounce(items[i]);
+            maxRight = Math.max(maxRight, l[i].x + l[i].w - b);
+        }
+        return maxRight === -Number.MAX_VALUE ? fallback : maxRight;
+    }
+
+    // The damped follow of `plateTrackRaw` the live plate reads (T-14.7y). It
+    // is the only filter on the plate edge (the pointer tracker is upstream);
+    // it removes the sub-pixel reversals that made the plate's top edge jitter
+    // up and down. It is a **peak hold**: the edge follows a new deeper peak
+    // (a smaller top) with the short tracking low-pass, and does not move back
+    // toward rest while the pointer is still on the Dock, because the
+    // per-tile magnification profile naturally dips between tiles and those
+    // dips must not reverse the edge. It snaps on a discrete magnification
+    // change (entering/leaving the magnify set) and under reduced motion, so
+    // the plate still grows with magnification and is exact whenever it is not
+    // sweeping. A sub-pixel deadband keeps the last sliver from sticking.
+    property real smoothPlateTrack: plateTrackRaw
+    // The peak ripple that is not allowed to move the edge, in device px.
+    readonly property real plateTrackDeadband: 0.75
+    // True once a magnification session has snapped to its first peak; the
+    // peak hold only applies to the *continuous* follow, so the discrete
+    // entry into magnification is exact (T-14.7y).
+    property bool plateTrackEngaged: false
+    NumberAnimation {
+        id: plateTrackAnimation
+        target: dock
+        property: "smoothPlateTrack"
+        duration: Theme.motion.dockMagnifyTrack.duration
+        easing.type: Easing.Bezier
+        easing.bezierCurve: Theme.motion.dockMagnifyTrack.curve
+    }
+    onPlateTrackRawChanged: {
+        if (!dock.magnifying || Theme.reducedMotion) {
+            plateTrackAnimation.stop();
+            dock.smoothPlateTrack = dock.plateTrackRaw;
+            dock.plateTrackEngaged = false;
+            return;
+        }
+        if (!dock.plateTrackEngaged) {
+            // Discrete entry into magnification: snap to the live peak so the
+            // plate wraps the row on the first frame and the reserved zone and
+            // containment hold.
+            plateTrackAnimation.stop();
+            dock.smoothPlateTrack = dock.plateTrackRaw;
+            dock.plateTrackEngaged = true;
+            return;
+        }
+        // Follow a deeper peak; ignore a shallower raw while the pointer is
+        // still on the Dock (the peak hold), so the edge only ever moves with
+        // the peak, never against it.
+        if (dock.plateTrackRaw < dock.smoothPlateTrack - dock.plateTrackDeadband) {
+            plateTrackAnimation.from = dock.smoothPlateTrack;
+            plateTrackAnimation.to = dock.plateTrackRaw;
+            plateTrackAnimation.restart();
+        }
+    }
+
     // The visible floating plate: the *live* union of the entry rects (their
     // magnified sizes included, launch/attention bounce overshoot excluded) plus
     // the cross and along padding. The anchored edge stays put — the plate
     // grows into the pre-reserved magnify band — and the result is clamped to
     // the surface. It is the single source for the plate drawing, the input
-    // region, and the declared backdrop panel rect (T-14.7b).
+    // region, and the declared backdrop panel rect (T-14.7b). Its magnify edge
+    // is the damped `smoothPlateTrack` (T-14.7y).
     readonly property var plateRect: {
         var l = layout;
         var n = l.length;
         if (n === 0)
             return restingPlateRect;
-        var i, r, b;
+        var i, r;
         if (axisIsX) {
             var minX = Number.MAX_VALUE;
             var maxX = -Number.MAX_VALUE;
-            var minTop = Number.MAX_VALUE;
             for (i = 0; i < n; ++i) {
                 // A divider is a full-cross-axis marker; it must not expand
                 // the plate (T-14.7v). The real entries set the union.
@@ -2867,10 +2970,6 @@ Rectangle {
                     continue;
                 minX = Math.min(minX, r.x);
                 maxX = Math.max(maxX, r.x + r.w);
-                // Add the bounce back so a launch/attention hop does not pump
-                // the plate (T-14.7b).
-                b = entryBounce(items[i]);
-                minTop = Math.min(minTop, r.y + b);
             }
             if (minX > maxX)
                 return restingPlateRect;
@@ -2883,7 +2982,7 @@ Rectangle {
             }
             if (px + pw > width)
                 pw = width - px;
-            var py = Math.max(0, minTop - padding);
+            var py = Math.max(0, smoothPlateTrack - padding);
             return { x: px, y: py, w: pw, h: bottom - py };
         }
         // A vertical plate: the along axis is y; the anchored cross edge is
@@ -2911,25 +3010,11 @@ Rectangle {
             ph = height - pyv;
         if (position === "right") {
             var right = restingPlateRect.x + restingPlateRect.w;
-            var minLeft = Number.MAX_VALUE;
-            for (i = 0; i < n; ++i) {
-                if (items[i].kind === "divider" || l[i].h <= 0)
-                    continue;
-                b = entryBounce(items[i]);
-                minLeft = Math.min(minLeft, l[i].x + b);
-            }
-            var rx = Math.max(0, minLeft - padding);
+            var rx = Math.max(0, smoothPlateTrack - padding);
             return { x: rx, y: pyv, w: right - rx, h: ph };
         }
         var left = restingPlateRect.x;
-        var maxRight = -Number.MAX_VALUE;
-        for (i = 0; i < n; ++i) {
-            if (items[i].kind === "divider" || l[i].h <= 0)
-                continue;
-            b = entryBounce(items[i]);
-            maxRight = Math.max(maxRight, l[i].x + l[i].w - b);
-        }
-        var leftRight = Math.min(width, maxRight + padding);
+        var leftRight = Math.min(width, smoothPlateTrack + padding);
         return { x: left, y: pyv, w: leftRight - left, h: ph };
     }
 
