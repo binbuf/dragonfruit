@@ -129,6 +129,7 @@ e2e: build
 	$(CARGO) test -p dragonfruit-overview
 	$(CARGO) test -p dragonfruit-notify-adapter
 	$(CARGO) test -p dragonfruit-lock-adapter
+	$(CARGO) test -p dragonfruit-menubar-adapter
 	$(CARGO) test -p dragonfruit-system-status
 	$(CARGO) test -p dragonfruit-settingsd
 	$(CARGO) test -p dragonfruit-files-core

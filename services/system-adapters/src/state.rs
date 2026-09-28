@@ -30,6 +30,8 @@ impl AdapterId {
     pub const FOCUS: AdapterId = AdapterId("focus");
     /// Lock Screen policy (the session idle/lock engine and compositor lock).
     pub const LOCK: AdapterId = AdapterId("lock");
+    /// Menu Bar configuration (the shell menu bar + menu-broker).
+    pub const MENU_BAR: AdapterId = AdapterId("menu-bar");
 
     /// An id for a status slot the constants above do not name.
     pub const fn new(id: &'static str) -> Self {
@@ -251,5 +253,6 @@ mod tests {
         assert_eq!(AdapterId::NOTIFICATIONS.as_str(), "notifications");
         assert_eq!(AdapterId::FOCUS.as_str(), "focus");
         assert_eq!(AdapterId::LOCK.as_str(), "lock");
+        assert_eq!(AdapterId::MENU_BAR.as_str(), "menu-bar");
     }
 }

@@ -1,0 +1,23 @@
+[package]
+name = "dragonfruit-menubar-adapter"
+description = "Menu Bar configuration adapter: effective config, bar controls, and events (T-15.9a)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+# The adapter projects the menu-bar host stack: the shell's own `MenuBar`
+# chrome (`shell/menubar/MenuBar.qml` and its status-item model), the global
+# application-menu resolution (services/menu-broker, T-14.2) and the settingsd
+# policy that drives both. The menu bar is **shell-native** — there is no
+# external daemon — so this crate does not re-render the bar or re-resolve a
+# menu; it faces the state and configuration the shell already publishes. The
+# dependency-free contract lives in `dragonfruit-system-adapters`, exactly like
+# `dragonfruit-overview` and `dragonfruit-lock-adapter`.
+[dependencies]
+dragonfruit-system-adapters = { path = "../system-adapters", version = "0.1.0" }
+
+[lib]
+name = "dragonfruit_menubar_adapter"
+path = "src/lib.rs"
