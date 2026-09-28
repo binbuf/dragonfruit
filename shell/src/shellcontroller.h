@@ -210,6 +210,9 @@ private slots:
     // T-15.12b: the Control Center Printers tile is a read-only summary; the
     // Settings link is an entry point only until T-16.
     void onPrintersSettingsRequested();
+    // T-15.13b: the Control Center Privacy tile is a read-only summary; the
+    // Settings link is an entry point only until T-16.
+    void onPrivacySettingsRequested();
     // T-15.1b: the Control Center Bluetooth tile. The toggle powers the BlueZ
     // adapter; a known-device row connects/disconnects it; the Settings link is
     // an entry point only until T-16.
@@ -254,6 +257,7 @@ private slots:
     void onUpdatesState(const QByteArray &json);
     void onAccountsState(const QByteArray &json);
     void onPrintersState(const QByteArray &json);
+    void onPrivacyState(const QByteArray &json);
     void onStatusReport(const QByteArray &json);
     void onClockTick();
     void onAppMenuOpened(int index);

@@ -40,6 +40,7 @@ class NotificationsClient;
 class UpdatesClient;
 class AccountsClient;
 class PrintersClient;
+class PrivacyClient;
 class QDBusServiceWatcher;
 
 class SettingsBridge : public QObject
@@ -167,6 +168,16 @@ class SettingsBridge : public QObject
     // Whether the bridge host is on the session bus. False means no Printers &
     // Scanners surface at all; the pane shows the absence note.
     Q_PROPERTY(bool printersAvailable READ printersAvailable NOTIFY printersChanged)
+    // The Privacy and Security view from the bridge host (T-15.13b):
+    // `{ state, glyph, label, present, appCount, grantedCount, deniedCount,
+    // categoryCount, categories }`. Empty when the host is absent; the pane
+    // renders the absence state rather than erroring. Every portal category is
+    // a row (empty ones say `None`); the tile hides when `present` is false
+    // (the store records no application permission).
+    Q_PROPERTY(QVariantMap privacy READ privacy NOTIFY privacyChanged)
+    // Whether the bridge host is on the session bus. False means no Privacy &
+    // Security surface at all; the pane shows the absence note.
+    Q_PROPERTY(bool privacyAvailable READ privacyAvailable NOTIFY privacyChanged)
     // The pane the shell opens on startup. Empty uses the first shipped pane;
     // `DF_SETTINGS_START_PANE=wallpaper` selects one for captures and tests.
     Q_PROPERTY(QString startPane READ startPane CONSTANT)
@@ -200,6 +211,8 @@ public:
     bool accountsAvailable() const;
     QVariantMap printers() const;
     bool printersAvailable() const;
+    QVariantMap privacy() const;
+    bool privacyAvailable() const;
     QString providerStatus() const;
     QString providerDefault() const;
     QString wallpaperBuiltinDefault() const;
@@ -329,6 +342,21 @@ public:
     // initial queues. A no-op on the live client.
     Q_INVOKABLE void resetPrintersFixture();
 
+    // T-15.13b: the Privacy & Security pane's one seam. `refreshPrivacy`
+    // re-reads the bridge host on pane open; the two permission writes each
+    // call the host stack adapter once and the host pushes the new view back
+    // through `privacyChanged`. `permission` is the stable tristate id
+    // (`allowed`/`denied`/`ask`); an empty `permission` removes the record. A
+    // no-op when the host is absent.
+    Q_INVOKABLE void refreshPrivacy();
+    Q_INVOKABLE void setPrivacyPermission(const QString &table, const QString &resourceId,
+                                          const QString &app, const QString &permission);
+    Q_INVOKABLE void deletePrivacyPermission(const QString &table, const QString &resourceId,
+                                             const QString &app);
+    // Test seam (`DF_PRIVACY_FIXTURE` only): restore the in-process fixture's
+    // initial store. A no-op on the live client.
+    Q_INVOKABLE void resetPrivacyFixture();
+
     // T-18.2 test seam: with `DF_WALLPAPER_FIXTURE` set, seed the provider
     // lifecycle to `status` (`ready` loads the deterministic fixture
     // catalogue; any other status leaves it empty) so the pane's fetching /
@@ -374,6 +402,8 @@ signals:
     void accountsChanged();
     // The Printers and Scanners view or availability changed (T-15.12b).
     void printersChanged();
+    // The Privacy and Security view or availability changed (T-15.13b).
+    void privacyChanged();
 
 private:
     void buildWallpaperPresets();
@@ -437,4 +467,7 @@ private:
     // T-15.12b: the Printers & Scanners seam (`DF_PRINTERS_FIXTURE` selects the
     // mock).
     PrintersClient *m_printers = nullptr;
+    // T-15.13b: the Privacy & Security seam (`DF_PRIVACY_FIXTURE` selects the
+    // mock).
+    PrivacyClient *m_privacy = nullptr;
 };

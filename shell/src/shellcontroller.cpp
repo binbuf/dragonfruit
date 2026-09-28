@@ -109,7 +109,9 @@ constexpr int kBannerTopGap = 8;
 // T-11.3b grows the panel to fit five tiles (Wi-Fi, Focus, Sound, Display,
 // Dark Mode); T-13.5b adds the clipboard-history section below them; T-15.5b
 // adds the Mission Control summary tile; T-15.9b adds the Menu Bar summary
-// tile. The surface is fixed and the panel fills it.
+// tile; T-15.12b adds the Printers tile; T-15.13b adds the Privacy tile (the
+// tiles' internal gap compacted to `xs` so the fixed surface still holds every
+// tile). The surface is fixed and the panel fills it.
 constexpr int kControlCenterWidth = 360;
 constexpr int kControlCenterHeight = 1160;
 constexpr int kControlCenterTopGap = 8;
@@ -492,6 +494,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             &ShellController::onAccountsState);
     connect(m_statusClient, &SystemStatusClient::printersState, this,
             &ShellController::onPrintersState);
+    connect(m_statusClient, &SystemStatusClient::privacyState, this,
+            &ShellController::onPrivacyState);
     connect(m_statusClient, &SystemStatusClient::joinReport, this,
             &ShellController::onStatusReport);
     connect(m_statusClient, &SystemStatusClient::writeReport, this,
@@ -517,6 +521,7 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     m_statusClient->refreshUpdates();
     m_statusClient->refreshAccounts();
     m_statusClient->refreshPrinters();
+    m_statusClient->refreshPrivacy();
 
     // T-14.3: StatusNotifier tray items. app-index owns the watcher; the shell
     // reads its live item view and re-reads on a short timer (a tray app can
@@ -867,6 +872,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onUsersSettingsRequested()));
     connect(controlCenterObject, SIGNAL(printersSettingsRequested()), this,
             SLOT(onPrintersSettingsRequested()));
+    connect(controlCenterObject, SIGNAL(privacySettingsRequested()), this,
+            SLOT(onPrivacySettingsRequested()));
     connect(controlCenterObject, SIGNAL(focusToggleRequested(bool)), this,
             SLOT(onFocusToggleRequested(bool)));
     connect(controlCenterObject, SIGNAL(focusSettingsRequested()), this,
@@ -1898,6 +1905,12 @@ void ShellController::onPrintersState(const QByteArray &json)
         m_statusModel->applyPrintersJson(json);
 }
 
+void ShellController::onPrivacyState(const QByteArray &json)
+{
+    if (m_statusModel)
+        m_statusModel->applyPrivacyJson(json);
+}
+
 void ShellController::onStatusReport(const QByteArray &json)
 {
     qInfo() << "shell: system-status action:" << SystemStatusModel::outcomeOf(json);
@@ -1913,6 +1926,7 @@ void ShellController::onStatusReport(const QByteArray &json)
         m_statusClient->refreshUpdates();
         m_statusClient->refreshAccounts();
         m_statusClient->refreshPrinters();
+        m_statusClient->refreshPrivacy();
     }
 }
 
@@ -2090,6 +2104,9 @@ void ShellController::applyControlCenterData()
     // Printers and Scanners (T-15.12b): the tile reflects the bridge host's
     // CUPS/SANE view (the same view the Settings pane reads).
     const QVariantMap printers = m_statusModel ? m_statusModel->printers() : QVariantMap();
+    // Privacy and Security (T-15.13b): the tile reflects the bridge host's
+    // portal PermissionStore view (the same view the Settings pane reads).
+    const QVariantMap privacy = m_statusModel ? m_statusModel->privacy() : QVariantMap();
     // Mission Control and hot corners are compositor-native: the shell owns the
     // compositor mirror and the settingsd values, so it projects the tile's
     // summary locally (T-15.5b) instead of reading a services-layer host.
@@ -2113,6 +2130,7 @@ void ShellController::applyControlCenterData()
     m_controlCenterItem->setProperty("updates", updates);
     m_controlCenterItem->setProperty("accounts", accounts);
     m_controlCenterItem->setProperty("printers", printers);
+    m_controlCenterItem->setProperty("privacy", privacy);
     m_controlCenterItem->setProperty("missionControl", missionControl);
     m_controlCenterItem->setProperty("lockPolicy", lockPolicy);
     m_controlCenterItem->setProperty("menuBar", menuBar);
@@ -2358,6 +2376,13 @@ void ShellController::onPrintersSettingsRequested()
     // Launching Settings on the Printers & Scanners pane is T-16; the entry
     // point is wired and logs until then.
     qInfo() << "shell: Printers & Scanners Settings requested (T-16)";
+}
+
+void ShellController::onPrivacySettingsRequested()
+{
+    // Launching Settings on the Privacy & Security pane is T-16; the entry
+    // point is wired and logs until then.
+    qInfo() << "shell: Privacy & Security Settings requested (T-16)";
 }
 
 void ShellController::onFocusToggleRequested(bool enabled)

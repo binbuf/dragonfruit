@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(134 earlier sections omitted)_
+_(135 earlier sections omitted)_
 
-- **T110s — T-14.7s Dock minimize-to-icon reaction**: **State: done.** With `dock.minimizeReaction` on, a window entering `minimized`; `shell/src/dockprojection.{h,cpp}` — pure `dockMinimizedCounts(entries)` and
 - **T110t — T-14.7t Dock keyboard reordering**: **State: done.** The Dock's rearrangement affordance is no longer pointer-only:; `shell/src/dockmodel.{h,cpp}` — `QStringList movePinnedEntry(const QStringList
 - **T110u — T-14.7u Dock reference metrics: spacing, plate radius, indicator inset**: **State: done.** The resting Dock is retuned to the mature reference capture:; `design-system/tokens/tokens.json` — `component.dock`: `padding` 10 → 15,
 - **T110v — T-14.7v Dock region dividers: pinned | temporary/recent | stacks and Trash**: **State: done.** The Dock projects the reference's region structure: a rule; `shell/src/dockmodel.{h,cpp}` — `DockRegionPlan` + `planDockRegions(entries,
@@ -43,6 +42,7 @@ _(134 earlier sections omitted)_
 - **T133 — T-15.12a Printers and Scanners adapter**: **State: done.** New workspace crate `dragonfruit-printer-adapter`; `services/printer-adapter/src/source.rs` — `PrinterState` (CUPS `3`/`4`/`5` +
 - **T134 — T-15.12b Printers and Scanners pane and tile**: **State: done.** The Settings `Printers & Scanners` pane and the Control Center; `services/system-status/src/printers.rs` (new) — `PrintersHost<S>` (refresh/
 - **T135 — T-15.13a Privacy and Security adapter**: **State: done.** New workspace crate `dragonfruit-privacy-adapter`; `services/privacy-adapter/src/source.rs` — `AppPermissionData {app,
+- **T136 — T-15.13b Privacy and Security pane and tile**: **State: done.** The Settings `Privacy & Security` pane and the Control Center; `services/system-status/src/privacy.rs` (new) — `PrivacyHost<S>` (refresh/
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -12925,3 +12925,125 @@ Decisions / gotchas for T-15.13b and later:
   bar, the Dock, the wallpaper, the Settings window, and the demo client
   window composited with no blank areas, tearing, or ghosting (the only note is
   the usual nested-session X11 demo-window edge, not a regression).
+
+## T136 — T-15.13b Privacy and Security pane and tile
+
+**State: done.** The Settings `Privacy & Security` pane and the Control Center
+`Privacy` tile ship as one functional unit over the T-15.13a adapter, through
+the bridge host (ADR 0143), not by linking the Rust crate. No new settingsd
+key: the portal PermissionStore is the state and the two writes are explicit
+adapter actions. The tile is a read-only summary.
+
+Real paths:
+
+- `services/system-status/src/privacy.rs` (new) — `PrivacyHost<S>` (refresh/
+  view/state + `set_permission`/`delete_permission`) + pure `privacy_view`/
+  `privacy_snapshot_view` + `privacy_report`. The view carries `glyph`/`label`/
+  `present`/`appCount`/`grantedCount`/`deniedCount`/`categoryCount` plus
+  `categories[]` (each `{id,label,summary,appCount,grantedCount,resources[]}`;
+  each resource `{id,appCount,apps[]}`; each app `{app,state,stateLabel,
+  permissions}`). Every known table is a category, empty ones included.
+- `services/system-status/src/lib.rs` — `pub mod privacy`, re-exports, and
+  `PRIVACY_INTERFACE = "org.dragonfruit.SystemStatus1.Privacy"`.
+- `services/system-status/src/dbus.rs` — `LivePrivacy = PrivacyHost<HostPrivacy>`;
+  `PrivacyInterface` with `State`/`Refresh`/`SetPermission(table,id,app,
+  permission)`/`DeletePermission(table,id,app)`; `run(...)` takes the privacy
+  host; `interface_names()` is now 11.
+- `services/system-status/src/main.rs` — `PrivacyHost::new(HostPrivacy::new())`,
+  `--print-privacy`.
+- `services/system-status/tests/privacy.rs` (new) — 6 bridge acceptance tests.
+- `services/system-status/Cargo.toml` — depends on `dragonfruit-privacy-adapter`.
+- `apps/settings/PrivacyClient.{h,cpp}` (new) — `PrivacyClient` seam;
+  `DbusPrivacyClient` over the `Privacy` interface; `MockPrivacyClient`
+  (`DF_PRIVACY_FIXTURE`) with a simulated store (devices/camera:
+  firefox=yes, Snapshot=no; location: Maps=exact+timestamp; notifications:
+  Calendar=ask; screencast: OBS=yes) that mutates on every write and
+  `resetForTest()`.
+- `apps/settings/SettingsBridge.{h,cpp}` — `privacy`/`privacyAvailable`
+  properties, `privacyChanged`, `refreshPrivacy`, `setPrivacyPermission`,
+  `deletePrivacyPermission`, `resetPrivacyFixture`.
+- `apps/settings/PrivacyPane.qml` (new) — flat list of the 14 portal
+  categories (icon + label + secondary summary + chevron, separators, no inset
+  card per ADR 0122), an empty note, an absence note, and a per-category dialog
+  whose app rows use a four-way `Select` (`Allowed`/`Denied`/`Ask`/`Not Set`).
+  The dialog captures its row list once on open (`dialogApps`) and the Selects
+  re-read live state through a `Binding`, so a write converges without
+  rebuilding the Select mid-interaction.
+- `apps/settings/SettingsPanes.qml` — `privacy` shipped `true`, icon `privacy`,
+  header description; `SettingsShell.qml` registers the body.
+- `apps/settings/CMakeLists.txt` (module + `df_qml_lint`) and
+  `apps/settings/tests/CMakeLists.txt` (`tst_settings_privacy`).
+- `design-system/components/Icon.qml` — new painted `privacy` shield-with-check
+  glyph.
+- Shell: `systemstatusclient.{h,cpp}` (read-only `refreshPrivacy` +
+  `privacyState`, mock fixture), `systemstatusmodel.{h,cpp}` (`privacy()`,
+  `privacyVisible()`, `applyPrivacyJson`, `requestRefreshPrivacy`, the `present`
+  second-hide rule), `shellcontroller.{h,cpp}` (`onPrivacyState`, startup /
+  status-report refresh, `applyControlCenterData` pushes `privacy`,
+  `onPrivacySettingsRequested`), `shell/control-center/ControlCenter.qml`
+  (16th tile `privacy`, `present` hide rule, and the `sm` → `xs` internal-gap
+  compaction on the 14 existing tiles).
+- Tests — `apps/settings/tests/tst_settings_privacy.{cpp,qml}` (new, 6 cases);
+  `tst_settings_absence.qml` (shipped 19 → 20, id list, privacy absence case);
+  `tst_settings_shell.qml` (shipped 19 → 20, list); `shell/tests/
+  tst_controlcenter.qml` (16 tiles, fit test, privacy cases, `SignalSpy`);
+  `shell/tests/tst_statusmodel.cpp` (3 privacy cases).
+- Docs/scripts — ADR `0143-privacy-security-pane-and-tile.md`;
+  `docs/design/07-system-integration.md` D-Bus bullet + T-15.13b subsection;
+  `docs/design/08-settings.md` Privacy routing row; capture script
+  `scripts/capture-t15-privacy-pane.sh` + `docs/captures/README.md`.
+
+Commands that work (repo root):
+
+- `cargo test -p dragonfruit-system-status -p dragonfruit-privacy-adapter` —
+  green (system-status 70 lib + 6 privacy integration + 10 host).
+- `cargo clippy -p dragonfruit-system-status -p dragonfruit-privacy-adapter
+  --all-targets -- -D warnings` — clean; `cargo fmt --all -- --check` — clean.
+- `cmake -S . -B build -G Ninja && cmake --build build` — EXIT 0.
+- `ctest --test-dir build -j4` — 67/67.
+- `make check-design-tokens check-tokens check-no-capture-grab` — clean;
+  `./scripts/check-gallery-snapshots.py` — 78 green.
+- `make lint` — still fails only on the pre-existing `check-desktop-names`
+  lines (none in the new work); unchanged from T125–T135.
+
+Decisions / gotchas for T-15.14a and later:
+
+- **No settingsd key.** The portal PermissionStore is the state; the pane's
+  controls are explicit adapter writes. Do not add a durable preference for a
+  permission. (Contrast `printers.defaultPaperSize`.)
+- **Absence is single-layered (ADR 0142/0143).** `state: "unavailable"` = no
+  session bus / no store owner; `available` + `present: false` = a store that
+  records no app permission. The tile hides on either; the pane lists every
+  category (empty ones say `None`) and shows the absence note only when
+  `unavailable`.
+- **A write never invents a snapshot.** The host re-reads after each action;
+  `MockPrivacyClient` mutates its simulated store so a round-trip is observable
+  headlessly.
+- **`DF_PRIVACY_FIXTURE`** selects the Settings mock and is process-global; the
+  test calls `Settings.resetPrivacyFixture()` in `init()`. The shell fixture is
+  `DF_STATUS_FIXTURE` (its mock now emits a privacy view too).
+- **Permission `Select` inside a dynamic dialog.** The per-category dialog
+  captures `dialogApps` once on open and each Select binds `currentIndex` to
+  the live view through `permissionStateFor`; do not bind the Repeater model to
+  a live-derived array, or the Select is destroyed mid-`activateIndex` and Qt
+  errors on the dangling ContextMenu.
+- **Control Center now holds 16 tiles.** The tiles' internal gap is `xs` (was
+  `sm`); the content gap stays `xxs`. Content height measured 1143 at 15 tiles
+  (pre-change), so a **17th** tile needs either more compaction or a taller
+  nested output (the capture scripts assume 1920×1200 with a 1160 panel). No
+  pointer-axis forwarding, so the panel cannot scroll.
+- **Reference deviations, once.** The categories are the 14 portal tables, not
+  the macOS rows; no Calendars/Photos/Full Disk Access/Psskeys rows are
+  invented (Passkeys maps to the host Secret Service in a later task,
+  reuse-only); security rows (FileVault, Lockdown Mode, Find My) are omitted
+  with the Apple-only set. The macOS Allow/Deny toggles become a four-way
+  selector so `ask` and removal are reachable.
+- Live visual check: `bash scripts/capture-t15-privacy-pane.sh` produced
+  `docs/captures/t15-13b-privacy-pane.png` (2088x1410) and
+  `docs/captures/t15-13b-privacy-control-center.png` (360x1160). Vision read
+  the header (`Privacy & Security` + the reference description + shield-check
+  icon) and the rows `Camera · 2 apps`, `Location Services · 1 app`,
+  `Notifications · 1 app`, `Screen Recording · 1 app`, then `None` rows with no
+  clipped/blank/overlapping text; the panel showed the `Privacy` tile
+  (`3 Apps`, `Privacy & Security Settings…`) with every tile through Clipboard
+  fully visible and no artifacts.

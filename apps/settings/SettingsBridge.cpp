@@ -7,6 +7,7 @@
 #include "InputClient.h"
 #include "NotificationsClient.h"
 #include "PrintersClient.h"
+#include "PrivacyClient.h"
 #include "SoundClient.h"
 #include "StorageClient.h"
 #include "UpdatesClient.h"
@@ -206,6 +207,16 @@ SettingsBridge::SettingsBridge(QObject *parent)
     connect(m_printers, &PrintersClient::availableChanged, this,
             [this](bool) { emit printersChanged(); });
 
+    // T-15.13b: the Privacy & Security seam, selected the same way.
+    if (qEnvironmentVariableIsSet("DF_PRIVACY_FIXTURE"))
+        m_privacy = new MockPrivacyClient(this);
+    else
+        m_privacy = new DbusPrivacyClient(this);
+    connect(m_privacy, &PrivacyClient::changed, this,
+            [this](const QVariantMap &) { emit privacyChanged(); });
+    connect(m_privacy, &PrivacyClient::availableChanged, this,
+            [this](bool) { emit privacyChanged(); });
+
     buildWallpaperPresets();
     connectPortalWatcher();
     m_wallpaperFixture = qEnvironmentVariableIsSet("DF_WALLPAPER_FIXTURE");
@@ -328,6 +339,16 @@ QVariantMap SettingsBridge::printers() const
 bool SettingsBridge::printersAvailable() const
 {
     return m_printers && m_printers->available();
+}
+
+QVariantMap SettingsBridge::privacy() const
+{
+    return m_privacy ? m_privacy->view() : QVariantMap();
+}
+
+bool SettingsBridge::privacyAvailable() const
+{
+    return m_privacy && m_privacy->available();
 }
 
 QString SettingsBridge::providerStatus() const
@@ -834,6 +855,32 @@ void SettingsBridge::resetPrintersFixture()
 {
     if (m_printers)
         m_printers->resetForTest();
+}
+
+void SettingsBridge::refreshPrivacy()
+{
+    if (m_privacy)
+        m_privacy->refresh();
+}
+
+void SettingsBridge::setPrivacyPermission(const QString &table, const QString &resourceId,
+                                          const QString &app, const QString &permission)
+{
+    if (m_privacy && !table.isEmpty() && !resourceId.isEmpty() && !app.isEmpty())
+        m_privacy->setPermission(table, resourceId, app, permission);
+}
+
+void SettingsBridge::deletePrivacyPermission(const QString &table, const QString &resourceId,
+                                             const QString &app)
+{
+    if (m_privacy && !table.isEmpty() && !resourceId.isEmpty() && !app.isEmpty())
+        m_privacy->deletePermission(table, resourceId, app);
+}
+
+void SettingsBridge::resetPrivacyFixture()
+{
+    if (m_privacy)
+        m_privacy->resetForTest();
 }
 
 void SettingsBridge::setWallpaperFixture(const QString &status)

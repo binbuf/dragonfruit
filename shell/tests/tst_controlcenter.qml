@@ -39,6 +39,7 @@ Item {
         SignalSpy { id: updatesSettingsSpy; signalName: "updatesSettingsRequested" }
         SignalSpy { id: usersSettingsSpy; signalName: "usersSettingsRequested" }
         SignalSpy { id: printersSettingsSpy; signalName: "printersSettingsRequested" }
+        SignalSpy { id: privacySettingsSpy; signalName: "privacySettingsRequested" }
         SignalSpy { id: focusSpy; signalName: "focusToggleRequested" }
         SignalSpy { id: darkSpy; signalName: "darkModeToggleRequested" }
         SignalSpy { id: closedSpy; signalName: "closed" }
@@ -272,6 +273,24 @@ Item {
             };
         }
 
+        // The shell's decoded Privacy and Security view (T-15.13b), shaped by
+        // `SystemStatusModel`.
+        function privacyModel(label, appCount) {
+            return {
+                kind: "privacy",
+                state: "available",
+                visible: true,
+                enabled: true,
+                glyph: "privacy",
+                label: label !== undefined ? label : "3 Apps",
+                present: true,
+                appCount: appCount !== undefined ? appCount : 3,
+                grantedCount: 1,
+                deniedCount: 1,
+                categoryCount: 14
+            };
+        }
+
         function menuBarModel(autoHide, showBackground, globalMenu) {
             var label = autoHide === "never" ? "Never"
                 : autoHide === "always" ? "Always"
@@ -317,11 +336,12 @@ Item {
                 updates: updatesModel("1 Update Available", "available", 1),
                 accounts: usersModel("2 Users", 2, 1),
                 printers: printersModel("2 Printers, 1 Scanner", 2, 1),
+                privacy: privacyModel("3 Apps", 3),
                 brightness: 0.8,
                 focusPolicy: focusModel("off"),
                 dark: true
             });
-            compare(panel.tiles.length, 15);
+            compare(panel.tiles.length, 16);
             compare(panel.tiles[0].id, "wifi");
             compare(panel.tiles[0].kind, "toggle");
             compare(panel.tiles[0].checked, true);
@@ -363,6 +383,9 @@ Item {
             compare(panel.tiles[14].id, "printers");
             compare(panel.tiles[14].kind, "info");
             compare(panel.tiles[14].subtitle, "2 Printers, 1 Scanner");
+            compare(panel.tiles[15].id, "privacy");
+            compare(panel.tiles[15].kind, "info");
+            compare(panel.tiles[15].subtitle, "3 Apps");
             compare(panel.wifiLabel, "home");
         }
 
@@ -371,10 +394,9 @@ Item {
             // (kControlCenterWidth/Height). With the Bluetooth tile's device
             // rows, the Storage tile, the Sound tile's routing subtitle, the
             // Keyboard tile, the Mission Control tile, the Battery tile, the
-            // Lock Screen tile, the Menu Bar tile, the Software Update tile, and the
-            // Users tile and the Printers tile the content must still fit, or the
-            // lower tiles are
-            // clipped.
+            // Lock Screen tile, the Menu Bar tile, the Software Update tile, the
+            // Users tile, the Printers tile, and the Privacy tile the content
+            // must still fit, or the lower tiles are clipped.
             var panel = make({
                 wifi: wifiModel("available", true, "home"),
                 bluetooth: bluetoothModel("available", true, true, false,
@@ -393,6 +415,7 @@ lockPolicy: lockPolicyModel(600),
                 updates: updatesModel("1 Update Available", "available", 1),
                 accounts: usersModel("2 Users", 2, 1),
                 printers: printersModel("2 Printers, 1 Scanner", 2, 1),
+                privacy: privacyModel("3 Apps", 3),
                 brightness: 1.0,
                 focusPolicy: focusModel("off"),
                 dark: false
@@ -879,6 +902,51 @@ lockPolicy: lockPolicyModel(600),
             compare(link.Accessible.name, "Open Printers & Scanners Settings");
             mouseClick(link, link.width / 2, link.height / 2);
             compare(printersSettingsSpy.count, 1);
+        }
+
+        function test_privacy_tile_reflects_state() {
+            var panel = make({ privacy: privacyModel("3 Apps", 3) });
+            compare(panel.privacyAvailable, true);
+            compare(panel.privacyVisible, true);
+            compare(panel.privacyAppCount, 3);
+            compare(panel.privacyGlyph, "privacy");
+            compare(panel.privacyLabel, "3 Apps");
+            compare(panel.tiles[15].visible, true);
+            compare(panel.tiles[15].enabled, true);
+
+            // A running store with no application permission (`present: false`)
+            // hides the tile; the model normalizes it that way.
+            panel.privacy = {
+                kind: "privacy", state: "available", visible: false, enabled: true,
+                present: false, appCount: 0, label: "No App Permissions"
+            };
+            compare(panel.privacyVisible, false);
+            compare(panel.tiles[15].visible, false);
+
+            // No host at all hides the tile.
+            panel.privacy = ({});
+            compare(panel.privacyAvailable, false);
+            compare(panel.tiles[15].visible, false);
+        }
+
+        function test_privacy_tile_hides_on_absence() {
+            var panel = make({ privacy: ({ state: "unavailable" }) });
+            compare(panel.privacyAvailable, false);
+            var tile = findChild(panel, "privacyTile");
+            verify(tile !== null);
+            compare(tile.visible, false);
+        }
+
+        function test_privacy_settings_link_raises_the_request() {
+            var panel = make({ privacy: privacyModel("3 Apps", 3) });
+            privacySettingsSpy.target = panel;
+            privacySettingsSpy.clear();
+            var link = findChild(panel, "privacySettingsLink");
+            verify(link !== null, "the Privacy & Security Settings link is present");
+            compare(link.Accessible.role, Accessible.Button);
+            compare(link.Accessible.name, "Open Privacy & Security Settings");
+            mouseClick(link, link.width / 2, link.height / 2);
+            compare(privacySettingsSpy.count, 1);
         }
 
         function test_battery_settings_link_raises_the_request() {

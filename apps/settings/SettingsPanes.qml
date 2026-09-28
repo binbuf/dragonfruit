@@ -76,8 +76,11 @@ QtObject {
           description: "", shipped: false },
         { id: "lock-screen", title: qsTr("Lock Screen"), icon: "lock",
           description: "", shipped: true },
-        { id: "privacy", title: qsTr("Privacy & Security"), icon: "general",
-          description: "", shipped: false },
+        { id: "privacy", title: qsTr("Privacy & Security"), icon: "privacy",
+          description: qsTr("Control which apps can access your data, location, "
+                            + "camera, and microphone, and manage safety "
+                            + "protections."),
+          shipped: true },
         { id: "biometrics", title: qsTr("Biometrics & Password"), icon: "general",
           description: "", shipped: false },
         { id: "users-groups", title: qsTr("Users & Groups"), icon: "users",

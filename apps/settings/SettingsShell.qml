@@ -166,6 +166,8 @@ Item {
             return usersGroupsPaneComponent;
         case "printers":
             return printersPaneComponent;
+        case "privacy":
+            return privacyPaneComponent;
         default:
             return null;
         }
@@ -331,6 +333,11 @@ Item {
     Component {
         id: printersPaneComponent
         PrintersScannersPane { }
+    }
+
+    Component {
+        id: privacyPaneComponent
+        PrivacyPane { }
     }
 
     AppWindow {

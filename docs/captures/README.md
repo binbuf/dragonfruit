@@ -700,6 +700,15 @@ with no blank areas or stray artifacts. Captured by
 `scripts/capture-t15-privacy-adapter.sh`; requires a host Wayland session,
 spectacle, and Pillow, and is not in `make e2e`.
 
+`t15-13b-privacy-pane.png` and `t15-13b-privacy-control-center.png` are the
+Privacy & Security pane and Control Center Privacy tile for T-15.13b. The pane
+capture shows the flat list of portal permission categories (Camera with its
+`2 apps` secondary, Location Services, the empty `None` rows) and the
+per-category permission dialog; the tile capture shows the read-only summary
+(`3 Apps`) and its settings link. Captured by
+`scripts/capture-t15-privacy-pane.sh`; requires a host Wayland session,
+spectacle, and Pillow, and is not in `make e2e`.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture
