@@ -32,6 +32,8 @@ impl AdapterId {
     pub const LOCK: AdapterId = AdapterId("lock");
     /// Menu Bar configuration (the shell menu bar + menu-broker).
     pub const MENU_BAR: AdapterId = AdapterId("menu-bar");
+    /// General, About, and Updates (the host identity + distro update provider).
+    pub const UPDATES: AdapterId = AdapterId("updates");
 
     /// An id for a status slot the constants above do not name.
     pub const fn new(id: &'static str) -> Self {
@@ -254,5 +256,6 @@ mod tests {
         assert_eq!(AdapterId::FOCUS.as_str(), "focus");
         assert_eq!(AdapterId::LOCK.as_str(), "lock");
         assert_eq!(AdapterId::MENU_BAR.as_str(), "menu-bar");
+        assert_eq!(AdapterId::UPDATES.as_str(), "updates");
     }
 }

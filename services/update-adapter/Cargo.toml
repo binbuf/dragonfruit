@@ -1,0 +1,23 @@
+[package]
+name = "dragonfruit-update-adapter"
+description = "General, About, and Updates adapter: distro update provider state, host identity, and events (T-15.10a)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+# The adapter projects two halves of the host stack. The **identity** half (the
+# About/General rows) is the host's own release, kernel, DMI, and CPU/memory
+# read; the **Updates** half is the distribution's update provider behind an
+# [`dragonfruit_update_adapter::UpdateProvider`] seam. It never reimplements
+# package management or update resolution: the concrete provider belongs with
+# packaging (T-16.9/T-16.10), exactly as docs/design/12-packaging.md puts the
+# distro-specific `SystemProvider` below the distro-agnostic interface. The
+# dependency-free contract lives in `dragonfruit-system-adapters`.
+[dependencies]
+dragonfruit-system-adapters = { path = "../system-adapters", version = "0.1.0" }
+
+[lib]
+name = "dragonfruit_update_adapter"
+path = "src/lib.rs"

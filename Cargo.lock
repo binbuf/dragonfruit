@@ -730,6 +730,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "dragonfruit-update-adapter"
+version = "0.1.0"
+dependencies = [
+ "dragonfruit-system-adapters",
+]
+
+[[package]]
 name = "dragonfruit-wallpaperd"
 version = "0.1.0"
 dependencies = [
