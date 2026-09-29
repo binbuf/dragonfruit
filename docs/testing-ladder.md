@@ -95,11 +95,27 @@ this rung is **service isolation**:
 dbus-run-session -- target/debug/dragonfruit-compositor --backend nested
 ```
 
-Once T-12.2 and the hardware rail have landed, T-12.6c automates this rung
-(`dragonfruit dev --real --user dfdev`, no host logout) and T-12.6b automates
-the same-user display-manager round-trip
+T-12.6c automates this rung (`dragonfruit dev --real --user dfdev`, no host
+logout) and T-12.6b automates the same-user display-manager round-trip
 ([design](design/11-session-and-dev-workflow.md#the-real-session-dev-harness) ·
-[ADR 0053](design/adr/0053-real-session-dev-harness.md)).
+[ADR 0053](design/adr/0053-real-session-dev-harness.md)):
+
+```bash
+dragonfruit dev --real --plan --user dfdev   # preflight + free-VT plan only
+dragonfruit dev --real --user dfdev          # start on a free VT; return is a VT switch
+dragonfruit dev --real --teardown --user dfdev
+```
+
+The harness reads sessions from `loginctl`, **refuses** a user that already
+holds an active seat graphical session (a second graphical session for the same
+user collides over `XDG_RUNTIME_DIR`/portals), and starts the session as a
+`PAMName=login` session on the smallest free VT — never assuming VT1.
+`--plan` runs the preflight and VT selection without starting anything, so it is
+safe next to the host desktop. The one real start → switch → return → teardown
+cycle runs on the T-159…T-161 hardware rail; the pure logic is pinned by
+`cargo test -p dragonfruit-dev` (`second_vt::tests`) and
+[ADR 0175](design/adr/0175-second-vt-dev-harness.md). `make second-vt-validation`
+records the refusal, the mocked selection, and (on a free seat) the real cycle.
 
 The step-by-step T-03 hardware runs (bring-up, input, multi-GPU, soak, the demo
 walkthrough, and the exact artifacts) are in

@@ -27,10 +27,14 @@ use df_ipc::{DESKTOP_NAME, LOCKSTEP_VERSION};
 use dragonfruit_session::dev_session;
 
 use round_trip::{ArmOutcome, LogoutPlan, RoundTrip};
+use second_vt::{
+    Preflight, SecondVtPlan, DEFAULT_DEV_USER, FIRST_FREE_VT, LAST_VT, SESSION_SOCKET,
+};
 use session_selector::SessionSelector;
 
 mod demo;
 mod round_trip;
+mod second_vt;
 mod session_selector;
 mod soak;
 
@@ -135,14 +139,20 @@ struct DevArgs {
     services: Option<ServiceSet>,
     private_bus: bool,
     fixtures: bool,
-    /// T-12.6b real-session harness: `--real` selects the DM round-trip mode.
+    /// T-12.6 harness: `--real` selects a real-session mode.
     real: bool,
     round_trip: bool,
     return_now: bool,
     recover: bool,
     ready: bool,
     autologin: bool,
-    /// The user the round trip belongs to (`USER` by default).
+    /// T-12.6c second-VT mode: build the start/switch/teardown plan and print
+    /// it without starting (the safe, hardware-free form).
+    plan: bool,
+    /// T-12.6c second-VT mode: terminate the dedicated user's session.
+    teardown: bool,
+    /// The user the harness acts for (`USER` for a round trip, `dfdev` for the
+    /// second VT).
     user: Option<String>,
 }
 
@@ -156,6 +166,10 @@ USAGE:
     dragonfruit dev --demo [--nested|--headless] [--socket-name NAME]
     dragonfruit dev --soak [N] [--nested|--headless|--drm]
                                       # teardown soak (default 100 headless cycles)
+    dragonfruit dev --real [--user dfdev] [--plan]
+                                      # start a real session on a free VT (no logout)
+    dragonfruit dev --real --teardown [--user dfdev]
+                                      # terminate the second-VT session
     dragonfruit dev --real --round-trip [--autologin] [--user NAME]
                                       # arm the next DM login, then log out
     dragonfruit dev --real --return     # restore, clear the state, log out
@@ -194,6 +208,16 @@ leaked socket, lock, launch token, or orphan. It defaults to the headless
 backend; `--nested` and `--drm` run the same gate on those backends (one
 `--soak 1 --drm` is the DRM session cycle in the T-03.4 runbook).
 
+--real (no round-trip flag) is the T-12.6c second-VT mode: it runs the
+dedicated-user preflight against `loginctl`, refuses a user that already holds
+a seat graphical session (a second graphical session for the same user
+collides over XDG_RUNTIME_DIR/portals), finds a free VT, and starts the real
+Dragonfruit session there as `--user` (default dfdev) with its own
+XDG_RUNTIME_DIR and user manager. Returning is a VT switch; `--teardown` (or
+`loginctl terminate-session`) ends it cleanly. `--plan` performs the preflight
+and VT selection and prints the exact commands without starting anything, so it
+is safe to run next to the host desktop.
+
 --real --round-trip is the T-12.6b display-manager round trip: it writes
 $XDG_STATE_HOME/dragonfruit/dev-session.json, selects the Dragonfruit session
 via the T-12.6a DM seam, and asks the host session manager to log out (never
@@ -223,6 +247,8 @@ fn parse_dev_args(mut it: impl Iterator<Item = String>) -> Result<DevArgs, Strin
         recover: false,
         ready: false,
         autologin: false,
+        plan: false,
+        teardown: false,
         user: None,
     };
     let mut launch: Option<Vec<String>> = None;
@@ -250,6 +276,8 @@ fn parse_dev_args(mut it: impl Iterator<Item = String>) -> Result<DevArgs, Strin
             "--recover" => args.recover = true,
             "--ready" => args.ready = true,
             "--autologin" => args.autologin = true,
+            "--plan" => args.plan = true,
+            "--teardown" => args.teardown = true,
             "--user" => {
                 let Some(value) = it.next() else {
                     return Err("--user requires a value".into());
@@ -1184,6 +1212,13 @@ fn run_dev_session(args: &DevArgs) -> ExitCode {
 /// session-ready beat; `--return` and `--recover` restore and clear. The
 /// second-VT mode is T-12.6c and is not implemented here.
 fn run_real_session(args: &DevArgs) -> ExitCode {
+    // The second-VT mode (T-12.6c) is the `--real` form without a round-trip
+    // flag: no display manager and no state file, just a free VT for a
+    // dedicated user.
+    if !args.round_trip && !args.return_now && !args.recover && !args.ready {
+        return run_second_vt(args);
+    }
+
     let user = args
         .user
         .clone()
@@ -1271,6 +1306,180 @@ fn run_real_session(args: &DevArgs) -> ExitCode {
         );
         ExitCode::from(EXIT_USAGE)
     }
+}
+
+/// The session-entry script the second-VT session starts. `DF_SESSION_ENTRY`
+/// overrides; otherwise the in-tree script, else the installed name.
+fn session_entry_path() -> PathBuf {
+    if let Some(path) = std::env::var_os("DF_SESSION_ENTRY") {
+        return PathBuf::from(path);
+    }
+    let in_tree = PathBuf::from("services/session/dragonfruit-session-entry");
+    if in_tree.is_file() {
+        return in_tree;
+    }
+    demo::which("dragonfruit-session-entry").unwrap_or(in_tree)
+}
+
+/// Run a command, prefixing `sudo` when this process is not root (the second-VT
+/// start needs `chvt` and `systemd-run --uid`).
+fn run_privileged(command: &[String]) -> std::io::Result<std::process::ExitStatus> {
+    let root = unsafe { libc::geteuid() } == 0;
+    let mut parts: Vec<&str> = command.iter().map(String::as_str).collect();
+    if !root {
+        parts.insert(0, "sudo");
+    }
+    let (program, args) = parts.split_first().expect("non-empty command");
+    Command::new(program).args(args).status()
+}
+
+/// The second-VT dev harness (T-12.6c): preflight a dedicated user, find a free
+/// VT via `loginctl`, and start the real Dragonfruit session there — the host
+/// desktop stays on its own VT. `--plan` stops after printing the commands and
+/// `--teardown` ends the session, so both are safe next to the host desktop.
+fn run_second_vt(args: &DevArgs) -> ExitCode {
+    let user = args
+        .user
+        .clone()
+        .filter(|user| !user.is_empty())
+        .unwrap_or_else(|| DEFAULT_DEV_USER.to_string());
+
+    let logind = second_vt::Logind::host();
+    let sessions = match logind.sessions() {
+        Ok(sessions) => sessions,
+        Err(error) => {
+            eprintln!("dragonfruit dev: could not read logind sessions: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    // Teardown must work while the target user still holds the session, so it
+    // runs before the preflight refusal.
+    if args.teardown {
+        return run_second_vt_teardown(&logind, &user);
+    }
+
+    let preflight = second_vt::preflight(&user, &sessions);
+    println!("{}", preflight.marker(&user));
+    if let Preflight::Refuse(message) = &preflight {
+        eprintln!("dragonfruit dev: {message}");
+        return ExitCode::from(EXIT_USAGE);
+    }
+
+    let Some(ids) = second_vt::lookup_user(&user) else {
+        let command = second_vt::create_user_command(&user).join(" ");
+        eprintln!(
+            "dragonfruit dev: user {user} does not exist; create the dedicated \
+             user once with `{command}` (then `sudo passwd {user}`)"
+        );
+        return ExitCode::from(EXIT_USAGE);
+    };
+
+    let Some(vt) = second_vt::select_free_vt(&sessions) else {
+        eprintln!(
+            "dragonfruit dev: no free VT in {FIRST_FREE_VT}..={LAST_VT}; \
+             stop a seat session or use a VM"
+        );
+        return ExitCode::FAILURE;
+    };
+    let plan = SecondVtPlan::new(&user, ids, vt, SESSION_SOCKET, session_entry_path());
+    println!("{}", plan.marker());
+
+    let host_vt = sessions
+        .iter()
+        .find(|session| session.user != user && session.is_seat_graphical())
+        .and_then(|session| session.vt());
+    if let Some(host_vt) = host_vt {
+        println!(
+            "dragonfruit dev: host desktop is on VT{host_vt}; return with \
+             `chvt {host_vt}` (Ctrl+Alt+F{host_vt})"
+        );
+    }
+
+    if args.plan {
+        println!("dragonfruit dev: plan (nothing started):");
+        println!("  switch:   {}", plan.switch_command().join(" "));
+        println!("  start:    {}", plan.start_command().join(" "));
+        if let Some(host_vt) = host_vt {
+            println!("  return:   {}", plan.return_command(host_vt).join(" "));
+        }
+        println!("  teardown: dragonfruit dev --real --teardown --user {user}");
+        return ExitCode::SUCCESS;
+    }
+
+    // Real start: switch the seat to the free VT, then start the session entry
+    // as a PAM login session for the dedicated user.
+    if let Err(error) = run_privileged(&plan.switch_command()) {
+        eprintln!("dragonfruit dev: could not switch to VT{vt}: {error}");
+        return ExitCode::FAILURE;
+    }
+    if let Err(error) = run_privileged(&plan.start_command()) {
+        eprintln!("dragonfruit dev: could not start the session on VT{vt}: {error}");
+        return run_second_vt_teardown(&logind, &user);
+    }
+
+    let socket = plan.runtime_dir().join(&plan.socket);
+    let deadline = Instant::now() + SOCKET_WAIT;
+    while Instant::now() < deadline && !socket.exists() && !signalled() {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    if !socket.exists() {
+        eprintln!(
+            "dragonfruit dev: session socket {} never appeared",
+            socket.display()
+        );
+        return run_second_vt_teardown(&logind, &user);
+    }
+    println!(
+        "dragonfruit dev: Dragonfruit session ready on VT{vt} ({})",
+        socket.display()
+    );
+
+    // Block until the session ends or a signal arrives, then tear down.
+    while !signalled() {
+        let current = logind.sessions().unwrap_or_default();
+        if second_vt::session_on_vt(&current, &user, vt).is_none() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(500));
+    }
+    run_second_vt_teardown(&logind, &user)
+}
+
+/// Terminate every session the dedicated user holds and verify the teardown
+/// left nothing behind.
+fn run_second_vt_teardown(logind: &second_vt::Logind, user: &str) -> ExitCode {
+    let sessions = match logind.sessions() {
+        Ok(sessions) => sessions,
+        Err(error) => {
+            eprintln!("dragonfruit dev: could not read logind sessions: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let targets: Vec<String> = sessions
+        .iter()
+        .filter(|session| session.user == user)
+        .map(|session| session.id.clone())
+        .collect();
+    if targets.is_empty() {
+        println!("Second VT: TEARDOWN — no {user} session to terminate");
+    }
+    for id in &targets {
+        match logind.terminate_session(id) {
+            Ok(()) => println!("Second VT: TEARDOWN terminated session {id} ({user})"),
+            Err(error) => {
+                eprintln!("dragonfruit dev: could not terminate session {id}: {error}");
+                return ExitCode::FAILURE;
+            }
+        }
+    }
+    let strays = soak::dragonfruit_processes();
+    if !strays.is_empty() {
+        eprintln!("dragonfruit dev: DIRTY TEARDOWN — stray processes: {strays:?}");
+        return ExitCode::from(EXIT_DIRTY);
+    }
+    println!("Second VT: TEARDOWN clean — no orphaned process, socket, or VT master");
+    ExitCode::SUCCESS
 }
 
 /// Ask the host session manager to log out, never `SIGKILL`ing its clients, so
@@ -1696,6 +1905,32 @@ mod tests {
         assert!(args.autologin);
         assert_eq!(args.user.as_deref(), Some("dfdev"));
         assert!(!args.return_now && !args.recover && !args.ready);
+    }
+
+    #[test]
+    fn parse_real_second_vt_flags() {
+        // `--real` alone (no round-trip flag) is the T-12.6c second-VT mode;
+        // `--plan` is its side-effect-free form and `--teardown` ends it.
+        let args = parse_dev_args(
+            ["--real", "--plan", "--user", "dfdev"]
+                .iter()
+                .map(|s| s.to_string()),
+        )
+        .expect("parse");
+        assert!(args.real);
+        assert!(args.plan);
+        assert!(!args.teardown);
+        assert!(!args.round_trip && !args.return_now && !args.recover && !args.ready);
+        assert_eq!(args.user.as_deref(), Some("dfdev"));
+
+        let args = parse_dev_args(
+            ["--real", "--teardown", "--user", "dfdev"]
+                .iter()
+                .map(|s| s.to_string()),
+        )
+        .expect("parse");
+        assert!(args.teardown);
+        assert!(!args.plan);
     }
 
     #[test]
