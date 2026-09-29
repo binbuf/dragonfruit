@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(166 earlier sections omitted)_
+_(167 earlier sections omitted)_
 
-- **T130 — T-15.10b General, About, and Updates pane and tile**: **State: done.** The Settings `General` pane and the Control Center `Software; `services/system-status/src/updates.rs` (new) — `UpdatesHost<S>` (refresh/
 - **T131 — T-15.11a Users and Groups adapter**: **State: done.** New workspace crate `dragonfruit-account-adapter`; `services/account-adapter/` (new crate, workspace member) —
 - **T132 — T-15.11b Users and Groups pane and tile**: **State: done.** The Settings `Users & Groups` pane and the Control Center; `services/system-status/src/accounts.rs` (new) — `AccountsHost<S>` (refresh/
 - **T133 — T-15.12a Printers and Scanners adapter**: **State: done.** New workspace crate `dragonfruit-printer-adapter`; `services/printer-adapter/src/source.rs` — `PrinterState` (CUPS `3`/`4`/`5` +
@@ -43,7 +42,8 @@ _(166 earlier sections omitted)_
 - **T160 — T-03.3 Hardware input validation**: **State: OPEN (hardware unavailable).** Real-device input validation needs the; `compositor/src/input_validation.rs` (new) — pure matrix. `InputClass` with
 - **T161 — T-03.4 DRM soak, teardown, runbook**: **State: OPEN (hardware unavailable).** The T-03 hardware rail's final unit:; `tools/dragonfruit-dev/src/soak.rs` — new `teardown_artifacts(socket)`
 - **T169 — T-12.6a Display-manager session selection and optional autologin**: **State: done.** The display-manager session-selection seam landed; T-12.6b; `tools/dragonfruit-dev/src/session_selector.rs` (new, registered as `mod
-- **T170 — T-12.6b Real-session round-trip and "Quit to <previous desktop>"**: **State: done (automated half); real-DM validation open (hardware; `services/session/s
+- **T170 — T-12.6b Real-session round-trip and "Quit to <previous desktop>"**: **State: done (automated half); real-DM validation open (hardware; `services/session/src/dev_session.rs` (new) — the single state-file contract
+- **T171 — T-12.6c Second-VT dev harness and runbook**: **State: done (automated half); the real second-VT cycle is open on the; `tools/dragonfruit-dev/src/secon
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the

@@ -445,7 +445,7 @@ just the forward group with
 - [x] T161 — T-03.4 DRM soak, teardown, runbook → [tasks/161-t-03.4-drm-soak-teardown-runbook.md](tasks/161-t-03.4-drm-soak-teardown-runbook.md)
 - [x] T169 — T-12.6a Display-manager session selection and optional autologin → [tasks/169-t-12.6a-display-manager-session-selection.md](tasks/169-t-12.6a-display-manager-session-selection.md)
 - [x] T170 — T-12.6b Real-session round-trip and "Quit to <previous desktop>" → [tasks/170-t-12.6b-real-session-round-trip.md](tasks/170-t-12.6b-real-session-round-trip.md)
-- [ ] T171 — T-12.6c Second-VT dev harness and runbook → [tasks/171-t-12.6c-second-vt-dev-harness.md](tasks/171-t-12.6c-second-vt-dev-harness.md)
+- [x] T171 — T-12.6c Second-VT dev harness and runbook → [tasks/171-t-12.6c-second-vt-dev-harness.md](tasks/171-t-12.6c-second-vt-dev-harness.md)
 
 ## Phase 17 — T-17 The premium experience gate
 
@@ -650,11 +650,11 @@ This plan restarts at T-01, so a legacy "T-13" and a new "T-13" are different
 tickets; use this table to translate.
 
 <!-- symphony:status -->
-**Pipeline status** — updated 2026-09-29T12:13:59Z · 196/208 done
+**Pipeline status** — updated 2026-09-29T12:24:30Z · 197/208 done
 
-- Completed: T01, T02, T03, T04, T05, T06, T07, T08, T09, T10, T11, T12, T13, T14, T15, T16, T17, T18, T19, T20, T21, T22, T23, T24, T25, T26, T27, T28, T29, T30, T31, T32, T33, T34, T35, T36, T37, T38, T39, T40, T41, T42, T43, T44, T45, T46, T47, T48, T49, T50, T51, T52, T53, T54, T55, T56, T57, T58, T59, T60, T61, T62, T63, T64, T65, T66, T67, T68, T69, T70, T71, T72, T73, T74, T75, T76, T77, T78, T79, T80, T81, T82, T83, T84, T85, T86, T87, T88, T89, T90, T91, T92, T93, T94, T95, T96, T97, T98, T99, T100, T101, T102, T103, T104, T105, T106, T107, T108, T109, T110, T110a, T110b, T110c, T110d, T110e, T110f, T110g, T110h, T110i, T110j, T110k, T110l, T110m, T110n, T110o, T110p, T110q, T110r, T110s, T110t, T110u, T110v, T110x, T110y, T110z, T110w, T172, T173, T174, T175, T111, T112, T113, T114, T115, T116, T117, T118, T119, T120, T121, T122, T123, T124, T125, T126, T127, T128, T129, T130, T131, T132, T133, T134, T135, T136, T137, T138, T139, T140, T141, T142, T143, T144, T145, T146, T147, T148, T149, T150, T151, T151a, T176a, T176b, T176c, T176d, T177, T178, T159, T160, T161, T169, T170, T152, T153, T154
+- Completed: T01, T02, T03, T04, T05, T06, T07, T08, T09, T10, T11, T12, T13, T14, T15, T16, T17, T18, T19, T20, T21, T22, T23, T24, T25, T26, T27, T28, T29, T30, T31, T32, T33, T34, T35, T36, T37, T38, T39, T40, T41, T42, T43, T44, T45, T46, T47, T48, T49, T50, T51, T52, T53, T54, T55, T56, T57, T58, T59, T60, T61, T62, T63, T64, T65, T66, T67, T68, T69, T70, T71, T72, T73, T74, T75, T76, T77, T78, T79, T80, T81, T82, T83, T84, T85, T86, T87, T88, T89, T90, T91, T92, T93, T94, T95, T96, T97, T98, T99, T100, T101, T102, T103, T104, T105, T106, T107, T108, T109, T110, T110a, T110b, T110c, T110d, T110e, T110f, T110g, T110h, T110i, T110j, T110k, T110l, T110m, T110n, T110o, T110p, T110q, T110r, T110s, T110t, T110u, T110v, T110x, T110y, T110z, T110w, T172, T173, T174, T175, T111, T112, T113, T114, T115, T116, T117, T118, T119, T120, T121, T122, T123, T124, T125, T126, T127, T128, T129, T130, T131, T132, T133, T134, T135, T136, T137, T138, T139, T140, T141, T142, T143, T144, T145, T146, T147, T148, T149, T150, T151, T151a, T176a, T176b, T176c, T176d, T177, T178, T159, T160, T161, T169, T170, T171, T152, T153, T154
 - Blocked: none
 - Failed: none
-- Remaining: T171, T155, T156, T157, T158, T162, T163, T164, T165, T166, T167, T168
+- Remaining: T155, T156, T157, T158, T162, T163, T164, T165, T166, T167, T168
 - Last finished: T154 — done · Live Flatpak Firefox file-choose/screenshot/screen-share verified on the nested session with the live shell presenter and capture committed; fixed a NUL-terminated `current_folder` presenter bug; make e2e green (129 ok).
 <!-- /symphony:status -->
