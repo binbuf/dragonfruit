@@ -20,6 +20,7 @@
 #include "notificationclient.h"
 #include "osdmodel.h"
 #include "settingsclient.h"
+#include "shellmenus.h"
 #include "trayclient.h"
 #include "trashbridge.h"
 
@@ -53,6 +54,26 @@ QString makeAppDir(QTemporaryDir &dir)
     const QString apps = dir.path() + QStringLiteral("/applications");
     QDir().mkpath(apps);
     return apps;
+}
+
+// The index of the first menu row with `action`, or -1.
+int indexOfMenuAction(const QVariantList &menu, const QString &action)
+{
+    for (int i = 0; i < menu.size(); ++i) {
+        if (menu[i].toMap().value(QStringLiteral("action")).toString() == action)
+            return i;
+    }
+    return -1;
+}
+
+int countMenuAction(const QVariantList &menu, const QString &action)
+{
+    int count = 0;
+    for (const QVariant &row : menu) {
+        if (row.toMap().value(QStringLiteral("action")).toString() == action)
+            ++count;
+    }
+    return count;
 }
 
 QVariantList makeOverflowEntries(int pinned, int temporary, int recent, int minimized)
@@ -2737,6 +2758,46 @@ private slots:
         QVERIFY(!clampDockTileRect(QRect(2000, 2000, 48, 48), output).isValid());
         // An unknown output leaves the rect alone.
         QCOMPARE(clampDockTileRect(QRect(5, 6, 7, 8), QRect()), QRect(5, 6, 7, 8));
+    }
+
+    // -- the real-session return row (T-12.6b) ---------------------------
+
+    void systemMenuHasNoReturnRowForANormalSession()
+    {
+        const QVariantList menu = ShellMenus::systemMenu(QStringLiteral("dfdev"), QString());
+        QCOMPARE(countMenuAction(menu, QStringLiteral("quit-to-return")), 0);
+        for (const QVariant &row : menu) {
+            const QVariantMap map = row.toMap();
+            QVERIFY(!map.value(QStringLiteral("label")).toString().startsWith(
+                QStringLiteral("Quit to")));
+        }
+        // Log Out stays the last row.
+        QCOMPARE(menu.last().toMap().value(QStringLiteral("action")).toString(),
+                 QStringLiteral("log-out"));
+    }
+
+    void systemMenuAddsTheReturnRowOnlyWhenTheHarnessArmed()
+    {
+        const QVariantList menu =
+            ShellMenus::systemMenu(QStringLiteral("dfdev"), QStringLiteral("existing"));
+        const int index = indexOfMenuAction(menu, QStringLiteral("quit-to-return"));
+        QVERIFY(index >= 0);
+        QCOMPARE(countMenuAction(menu, QStringLiteral("quit-to-return")), 1);
+        QCOMPARE(menu[index].toMap().value(QStringLiteral("label")).toString(),
+                 QStringLiteral("Quit to existing"));
+        // It groups with the session-ending rows, before Lock Screen.
+        QVERIFY(index < indexOfMenuAction(menu, QStringLiteral("lock-screen")));
+    }
+
+    void devReturnDesktopReadsTheEnvironment()
+    {
+        const QByteArray before = qgetenv("DRAGONFRUIT_DEV_RETURN");
+        qputenv("DRAGONFRUIT_DEV_RETURN", "existing");
+        QCOMPARE(ShellMenus::devReturnDesktop(), QStringLiteral("existing"));
+        qunsetenv("DRAGONFRUIT_DEV_RETURN");
+        QVERIFY(ShellMenus::devReturnDesktop().isEmpty());
+        if (!before.isEmpty())
+            qputenv("DRAGONFRUIT_DEV_RETURN", before);
     }
 };
 

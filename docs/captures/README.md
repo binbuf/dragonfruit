@@ -192,6 +192,15 @@ surface; its exact-byte fixture writes are asserted by
 `cargo test -p dragonfruit-dev selected_bytes_are_exact -- --nocapture` (see
 [ADR 0173](../design/adr/0173-display-manager-session-selection-seam.md)).
 
+T-12.6b's live check is `t170-real-session-return-nested-check.png` (the nested
+system menu with **"Quit to existing"** visible when `DRAGONFRUIT_DEV_RETURN`
+is set) and `t170-real-session-return-absent-check.png` (the same menu without
+the variable, no "Quit to" row). Both are one-shot nested `make demo` stills
+(spectacle) captured for this unit; the arm/ready/restore state machine, the
+byte-identical snapshots, and the `DRAGONFRUIT_DEV_RETURN` export are asserted
+by `cargo test -p dragonfruit-dev` and `cargo test -p dragonfruit-session` (see
+[ADR 0174](../design/adr/0174-real-session-round-trip-state.md)).
+
 T-13.7's portal sign-off is produced by `scripts/capture-portals.sh`
 (`make portals-capture`): a private session bus runs the real
 `xdg-desktop-portal` frontend with the Dragonfruit backend and a driver

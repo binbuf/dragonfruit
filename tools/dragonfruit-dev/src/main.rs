@@ -24,8 +24,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use df_ipc::{DESKTOP_NAME, LOCKSTEP_VERSION};
+use dragonfruit_session::dev_session;
+
+use round_trip::{ArmOutcome, LogoutPlan, RoundTrip};
+use session_selector::SessionSelector;
 
 mod demo;
+mod round_trip;
 mod session_selector;
 mod soak;
 
@@ -130,6 +135,15 @@ struct DevArgs {
     services: Option<ServiceSet>,
     private_bus: bool,
     fixtures: bool,
+    /// T-12.6b real-session harness: `--real` selects the DM round-trip mode.
+    real: bool,
+    round_trip: bool,
+    return_now: bool,
+    recover: bool,
+    ready: bool,
+    autologin: bool,
+    /// The user the round trip belongs to (`USER` by default).
+    user: Option<String>,
 }
 
 fn usage() -> String {
@@ -142,6 +156,11 @@ USAGE:
     dragonfruit dev --demo [--nested|--headless] [--socket-name NAME]
     dragonfruit dev --soak [N] [--nested|--headless|--drm]
                                       # teardown soak (default 100 headless cycles)
+    dragonfruit dev --real --round-trip [--autologin] [--user NAME]
+                                      # arm the next DM login, then log out
+    dragonfruit dev --real --return     # restore, clear the state, log out
+    dragonfruit dev --real --recover    # one-shot crash recovery (no logout)
+    dragonfruit dev --real --ready      # the session-ready beat (inside a session)
     dragonfruit version
 
 --shell launches the built shell process (build/shell/src/dragonfruit-shell,
@@ -173,7 +192,16 @@ repeated to add extra programs.
 --soak runs the teardown gate: N compositor sessions, each asserting no
 leaked socket, lock, launch token, or orphan. It defaults to the headless
 backend; `--nested` and `--drm` run the same gate on those backends (one
-`--soak 1 --drm` is the DRM session cycle in the T-03.4 runbook)."
+`--soak 1 --drm` is the DRM session cycle in the T-03.4 runbook).
+
+--real --round-trip is the T-12.6b display-manager round trip: it writes
+$XDG_STATE_HOME/dragonfruit/dev-session.json, selects the Dragonfruit session
+via the T-12.6a DM seam, and asks the host session manager to log out (never
+SIGKILL). `--autologin` additionally arms the DM autologin at the
+session-ready beat (`--ready`, run from inside the session). The next login
+exports DRAGONFRUIT_DEV_RETURN, and its \"Quit to <previous desktop>\" item
+runs `--return`; a crashed round trip is finished by `--recover` on the next
+login. Deferred: the second-VT mode (T-12.6c)."
     )
 }
 
@@ -189,6 +217,13 @@ fn parse_dev_args(mut it: impl Iterator<Item = String>) -> Result<DevArgs, Strin
         services: None,
         private_bus: false,
         fixtures: false,
+        real: false,
+        round_trip: false,
+        return_now: false,
+        recover: false,
+        ready: false,
+        autologin: false,
+        user: None,
     };
     let mut launch: Option<Vec<String>> = None;
     while let Some(arg) = it.next() {
@@ -209,6 +244,18 @@ fn parse_dev_args(mut it: impl Iterator<Item = String>) -> Result<DevArgs, Strin
             "--demo" => args.demo = true,
             "--private-bus" => args.private_bus = true,
             "--fixtures" => args.fixtures = true,
+            "--real" => args.real = true,
+            "--round-trip" => args.round_trip = true,
+            "--return" => args.return_now = true,
+            "--recover" => args.recover = true,
+            "--ready" => args.ready = true,
+            "--autologin" => args.autologin = true,
+            "--user" => {
+                let Some(value) = it.next() else {
+                    return Err("--user requires a value".into());
+                };
+                args.user = Some(value);
+            }
             "--services" => {
                 let Some(value) = it.next() else {
                     return Err("--services requires one of none|core|full".into());
@@ -274,6 +321,7 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Some("dev") => match parse_dev_args(it) {
+            Ok(args) if args.real => run_real_session(&args),
             Ok(args) => match args.soak_cycles {
                 Some(cycles) => run_soak(cycles, &args),
                 None if args.demo => run_demo_session(&args),
@@ -1130,6 +1178,125 @@ fn run_dev_session(args: &DevArgs) -> ExitCode {
     )
 }
 
+/// The real-session harness (T-12.6b): the display-manager round trip.
+///
+/// `--round-trip` arms the next login and logs the host out; `--ready` is the
+/// session-ready beat; `--return` and `--recover` restore and clear. The
+/// second-VT mode is T-12.6c and is not implemented here.
+fn run_real_session(args: &DevArgs) -> ExitCode {
+    let user = args
+        .user
+        .clone()
+        .or_else(|| std::env::var("USER").ok())
+        .filter(|user| !user.is_empty())
+        .unwrap_or_else(|| "user".to_string());
+    let Some(state_home) = dev_session::state_home_from_env() else {
+        eprintln!("dragonfruit dev: XDG_STATE_HOME/HOME is not set");
+        return ExitCode::from(EXIT_USAGE);
+    };
+    let selector = SessionSelector::for_host(&user);
+    let trip = RoundTrip::new(&selector, &state_home, &user);
+
+    if args.round_trip {
+        match trip.arm(args.autologin) {
+            Ok(ArmOutcome::Armed { selected, .. }) => {
+                println!("{}", selected.marker());
+                println!(
+                    "dragonfruit dev: round trip armed — state at {}",
+                    round_trip::state_path(&state_home).display()
+                );
+                if args.autologin {
+                    println!(
+                        "dragonfruit dev: run `dragonfruit dev --real --ready` inside \
+                         the session to commit autologin"
+                    );
+                }
+                request_logout(&user)
+            }
+            Err(error) => {
+                eprintln!("dragonfruit dev: could not arm the round trip: {error}");
+                ExitCode::FAILURE
+            }
+        }
+    } else if args.return_now {
+        match trip.restore() {
+            Ok(outcome) => {
+                println!("{}", outcome.marker());
+                request_logout(&user)
+            }
+            Err(error) => {
+                eprintln!("dragonfruit dev: could not return: {error}");
+                ExitCode::FAILURE
+            }
+        }
+    } else if args.recover {
+        match trip.restore() {
+            Ok(outcome) => {
+                println!("{}", outcome.marker());
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                eprintln!("dragonfruit dev: could not recover: {error}");
+                ExitCode::FAILURE
+            }
+        }
+    } else if args.ready {
+        match trip.commit_ready() {
+            Ok(Some(state)) => {
+                println!(
+                    "Round trip: READY dm={} autologin_armed={} session_ready={}",
+                    if state.dm.is_empty() {
+                        "<none>"
+                    } else {
+                        &state.dm
+                    },
+                    state.autologin_armed,
+                    state.session_ready
+                );
+                ExitCode::SUCCESS
+            }
+            Ok(None) => {
+                println!("Round trip: READY — no armed dev session");
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                eprintln!("dragonfruit dev: could not commit the ready beat: {error}");
+                ExitCode::FAILURE
+            }
+        }
+    } else {
+        eprintln!(
+            "dragonfruit dev: --real needs --round-trip, --return, --recover, or --ready \
+             (the second-VT mode is T-12.6c)"
+        );
+        ExitCode::from(EXIT_USAGE)
+    }
+}
+
+/// Ask the host session manager to log out, never `SIGKILL`ing its clients, so
+/// unsaved-work prompts fire normally. The mechanism is chosen from the host
+/// desktop name; an unknown desktop uses the logind fallback.
+fn request_logout(user: &str) -> ExitCode {
+    let desktop = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
+    let session_id = std::env::var("XDG_SESSION_ID")
+        .ok()
+        .filter(|id| !id.is_empty());
+    let plan = LogoutPlan::detect(&desktop, |program| demo::which(program).is_some());
+    let (program, program_args) = plan.command(session_id.as_deref(), user);
+    println!("dragonfruit dev: {}", plan.marker());
+    match Command::new(&program).args(&program_args).status() {
+        Ok(status) if status.success() => ExitCode::SUCCESS,
+        Ok(status) => {
+            eprintln!("dragonfruit dev: {program} exited with {status}");
+            ExitCode::FAILURE
+        }
+        Err(error) => {
+            eprintln!("dragonfruit dev: could not run {program}: {error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
 /// The `make demo` harness (T-01.6a). Builds nothing (the Makefile does),
 /// but launches the shell, a Qt/Wayland app, and an X11 app, prints the
 /// checklist, and runs either the nested human walkthrough or the headless
@@ -1513,5 +1680,32 @@ mod tests {
         assert_eq!(args.services, None);
         assert!(!args.private_bus);
         assert!(!args.fixtures);
+        assert!(!args.real);
+    }
+
+    #[test]
+    fn parse_real_round_trip_flags() {
+        let args = parse_dev_args(
+            ["--real", "--round-trip", "--autologin", "--user", "dfdev"]
+                .iter()
+                .map(|s| s.to_string()),
+        )
+        .expect("parse");
+        assert!(args.real);
+        assert!(args.round_trip);
+        assert!(args.autologin);
+        assert_eq!(args.user.as_deref(), Some("dfdev"));
+        assert!(!args.return_now && !args.recover && !args.ready);
+    }
+
+    #[test]
+    fn parse_real_return_recover_and_ready_flags() {
+        for (flag, field) in [("--return", 0), ("--recover", 1), ("--ready", 2)] {
+            let args =
+                parse_dev_args(["--real", flag].iter().map(|s| s.to_string())).expect("parse");
+            let set = [args.return_now, args.recover, args.ready];
+            assert!(set[field], "{flag} sets its flag");
+            assert_eq!(set.iter().filter(|on| **on).count(), 1, "{flag} only");
+        }
     }
 }

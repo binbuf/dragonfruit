@@ -162,6 +162,8 @@ mod tests {
             "WAYLAND_DISPLAY",
             "DISPLAY",
             "DRAGONFRUIT_LAUNCH_TOKEN",
+            "DRAGONFRUIT_DEV_RETURN",
+            "DRAGONFRUIT_DEV_BIN",
             "start \"$target\"",
             "stop \"$target\"",
             "reset-failed",

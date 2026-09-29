@@ -65,9 +65,14 @@ running its window is focused instead of a second launch. Lock Screen routes to
 the same `ext-session-lock-v1` path as the Cmd+Ctrl+Q shortcut. About This
 System awaits the General > About pane (T-15.10); Sleep / Restart / Shut Down /
 Log Out await the real-session logind work (T-12.6/T-16.4); App Store ships
-disabled (no equivalent). Launched apps inherit the session environment with
-the shell's own `QT_QPA_PLATFORM=offscreen` replaced by the session's Wayland
-platform, so a Qt client maps on the real session platform.
+disabled (no equivalent). The system menu also carries the real-session
+**"Quit to \<previous desktop\>"** row (T-12.6b), shown only when the session
+was started by the dev harness (`DRAGONFRUIT_DEV_RETURN`); it runs the
+harness's return and logs out. The row's presence and label are unit-tested in
+`shell/tests/tst_dockcore.cpp` via `ShellMenus::systemMenu`. Launched apps
+inherit the session environment with the shell's own
+`QT_QPA_PLATFORM=offscreen` replaced by the session's Wayland platform, so a Qt
+client maps on the real session platform.
 
 Status items consume the system-service adapters described in
 [07-system-integration.md](07-system-integration.md).

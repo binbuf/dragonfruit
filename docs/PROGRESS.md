@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(165 earlier sections omitted)_
+_(166 earlier sections omitted)_
 
-- **T129 — T-15.10a General, About, and Updates adapter**: **State: done.** New workspace crate `dragonfruit-update-adapter`; `services/update-adapter/` (new crate, workspace member) —
 - **T130 — T-15.10b General, About, and Updates pane and tile**: **State: done.** The Settings `General` pane and the Control Center `Software; `services/system-status/src/updates.rs` (new) — `UpdatesHost<S>` (refresh/
 - **T131 — T-15.11a Users and Groups adapter**: **State: done.** New workspace crate `dragonfruit-account-adapter`; `services/account-adapter/` (new crate, workspace member) —
 - **T132 — T-15.11b Users and Groups pane and tile**: **State: done.** The Settings `Users & Groups` pane and the Control Center; `services/system-status/src/accounts.rs` (new) — `AccountsHost<S>` (refresh/
@@ -43,7 +42,8 @@ _(165 earlier sections omitted)_
 - **T159 — T-03.2 DRM first bring-up**: **State: OPEN (hardware unavailable).** The never-executed DRM backend was run; `compositor/src/drm_bringup.rs` (new) — pure
 - **T160 — T-03.3 Hardware input validation**: **State: OPEN (hardware unavailable).** Real-device input validation needs the; `compositor/src/input_validation.rs` (new) — pure matrix. `InputClass` with
 - **T161 — T-03.4 DRM soak, teardown, runbook**: **State: OPEN (hardware unavailable).** The T-03 hardware rail's final unit:; `tools/dragonfruit-dev/src/soak.rs` — new `teardown_artifacts(socket)`
-- **T169 — T-12.6a Display-manager session selection and optional autologin**: **State: done.** The display-manager session-selection seam landed; T-12.6b; `tools/dragonfruit-dev/src/session_selector.rs` (ne
+- **T169 — T-12.6a Display-manager session selection and optional autologin**: **State: done.** The display-manager session-selection seam landed; T-12.6b; `tools/dragonfruit-dev/src/session_selector.rs` (new, registered as `mod
+- **T170 — T-12.6b Real-session round-trip and "Quit to <previous desktop>"**: **State: done (automated half); real-DM validation open (hardware; `services/session/s
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -15382,3 +15382,99 @@ Commands / gotchas for later:
 - **Real-DM validation** on the T-159…T-161 rail: confirm GDM AccountsService
   (likely `gdbus`/polkit, not a direct file write), SDDM path/format, and the
   root-owned autologin files.
+
+## T170 — T-12.6b Real-session round-trip and "Quit to <previous desktop>"
+
+**State: done (automated half); real-DM validation open (hardware
+unavailable).** The display-manager round trip's state machine, the
+byte-identical file snapshots, the `DRAGONFRUIT_DEV_RETURN`/`DRAGONFRUIT_DEV_BIN`
+export, and the shell's conditional return row all landed and pass headlessly.
+`cargo test -p dragonfruit-dev` 45 passed / 0 failed, `cargo test -p
+dragonfruit-session` all green, `ctest` 75/75, `make e2e` green (exit 0),
+`fmt`/`clippy` clean, live nested demo + vision check clean. The real round trip
+and kill/restore need a free logind seat (same KDE-owns-`seat0` blocker as
+T-03.2/T-03.3) and remain open on the T-159…T-161 rail.
+
+Real paths:
+
+- `services/session/src/dev_session.rs` (new) — the single state-file contract
+  `$XDG_STATE_HOME/dragonfruit/dev-session.json`: `DevSessionState`, the prior
+  `AutologinSnapshot`, `FileBackup` (exact byte snapshot + verbatim restore),
+  atomic `read`/`write`/`clear`, `state_home_from_env`, and the
+  `DEV_RETURN`/`DEV_BIN`/`STATE_VERSION` contracts. JSON via the pinned
+  `serde =1.0.229`/`serde_json =1.0.151`.
+- `services/session/src/env.rs` — `SessionEnvironment::with_dev_return` /
+  `with_dev_bin`, exported in `base()`; `DEV_RETURN`/`DEV_BIN` constants.
+- `services/session/src/main.rs` — `--print-env` derives the return desktop
+  (and dev-tool path) from the armed state file; `--dev-return` overrides.
+- `services/session/dragonfruit-session-entry` + `entry.rs` — imports
+  `DRAGONFRUIT_DEV_RETURN`/`DRAGONFRUIT_DEV_BIN`.
+- `services/session/tests/environment.rs` — a trusted child sees the return
+  desktop; `--print-env` reads the state file and leaves it unset without one.
+- `tools/dragonfruit-dev/src/round_trip.rs` (new) — `RoundTrip::{arm,
+  commit_ready, restore}`, `ArmOutcome`/`RestoreOutcome`, `LogoutPlan`
+  (`SessionQuit`/`KsmServer`/`Logind`) with pure command construction, and 13
+  tests incl. byte-identical arm→ready→restore for GDM/SDDM/LightDM and a
+  simulated crash recovery.
+- `tools/dragonfruit-dev/src/session_selector.rs` — `session_file()` /
+  `autologin_file()` accessors for the snapshot (T-12.6a seam unchanged).
+- `tools/dragonfruit-dev/src/main.rs` + `Cargo.toml` — `--real` with
+  `--round-trip`/`--return`/`--recover`/`--ready`, `--autologin`, `--user`;
+  `run_real_session` + `request_logout`; depends on `dragonfruit-session`.
+- `shell/src/shellmenus.{h,cpp}` (new, `dragonfruit-shell-dockcore`) — the
+  system-menu builder with the conditional `quit-to-return` row.
+- `shell/src/shellcontroller.cpp`/`.h` — uses `ShellMenus::systemMenu`; the
+  `quit-to-return` action runs `dragonfruit dev --real --return`.
+- `shell/tests/tst_dockcore.cpp` — row absent by default, present/labelled only
+  when armed, `devReturnDesktop()` reads the env.
+- Docs: ADR `docs/design/adr/0174-real-session-round-trip-state.md`,
+  `docs/design/11-session-and-dev-workflow.md` §"The round-trip state file
+  (T-12.6b)", `docs/design/04-shell.md`, `docs/captures/README.md`.
+- Captures: `docs/captures/t170-real-session-return-nested-check.png` (menu with
+  "Quit to existing") and `t170-real-session-return-absent-check.png` (no row).
+
+Commands / gotchas for later:
+
+- **The state file carries exact file snapshots, not just values.** Restore
+  writes the snapshots back verbatim (an absent file is recorded as absent and
+  removed again), which is what makes a clean round trip byte-identical. This
+  matters because T-12.6a's semantic `restore` can leave residue (GDM's
+  `AutomaticLoginEnable=false`, or a file the arm created). The semantic
+  `restore`/`restore_autologin` remain the fallback for a state without backups.
+- **The ready beat is the only autologin writer.** `--round-trip` never arms
+  autologin; `--ready` (run inside the session) does. A crash before `--ready`
+  leaves the DM untouched, so it cannot loop back in. `--recover` and
+  `--return` share `RoundTrip::restore` and are idempotent.
+- **The shell triggers the restore; it never edits DM files.** The DM adapters
+  live in the dev tool, so the `quit-to-return` row runs
+  `dragonfruit dev --real --return` using `DRAGONFRUIT_DEV_BIN` (absolute path
+  the arm stored) or `dragonfruit` on `PATH`.
+- **`DRAGONFRUIT_DEV_RETURN` is set by `dragonfruit-session --print-env`**, not
+  by the harness process: the entry script imports it, so a session started by
+  the DM (not by `dragonfruit dev --nested`) still shows the return item.
+- **Testing the export needs `XDG_STATE_HOME` on the child**, not a
+  process-wide `set_var` (tests run in parallel). The `environment.rs` tests
+  pass it via `Command::env`.
+- **`make e2e` does not run `dragonfruit-dev` tests** — run
+  `cargo test -p dragonfruit-dev` explicitly. It also does not run ctest; the
+  shell row is pinned by `ctest --test-dir build -R tst_dockcore`.
+- **The desktop-name gate flags `gnome`/`kde`/`plasma`/`sway` in `.rs`.** The
+  logout adapter marks its deliberately literal host-desktop probes with
+  `// df-allow-desktop-name` (rustfmt must keep the marker on the *same* line —
+  bind the string to a `let` if a trailing marker would be reflowed). The gate
+  still reports its 15 pre-existing hits; `round_trip.rs` is not among them.
+- **`serde`/`serde_json` are now dependencies of `dragonfruit-session`.**
+  Versions are the workspace pins (already in `Cargo.lock`, no new downloads).
+- Live visual check: both stills are one-shot nested `make demo` + a synthetic
+  brand-mark click + espectacle. The vision read concatenates the existing
+  right-aligned shortcuts ("Lock ScreenSuper+Ctrl+Q"); that is a transcription
+  artifact, not a layout bug — the return row itself reads clean.
+
+### Follow-ups
+
+- **Real-DM validation (T-159…T-161 rail).** One real round trip plus one
+  kill/restore on a free seat / spare GPU / clean VM: confirm the GDM
+  AccountsService write (likely `gdbus`/polkit, not a direct file write), the
+  SDDM session-id format, and the root-owned autologin files.
+- **T-12.6c** adds the no-logout second-VT path (`dragonfruit dev --real`
+  without `--round-trip` currently errors, pointing at T-12.6c).
