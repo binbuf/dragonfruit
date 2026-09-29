@@ -26,6 +26,7 @@ use std::time::{Duration, Instant};
 use df_ipc::{DESKTOP_NAME, LOCKSTEP_VERSION};
 
 mod demo;
+mod session_selector;
 mod soak;
 
 const EXIT_USAGE: u8 = 64;

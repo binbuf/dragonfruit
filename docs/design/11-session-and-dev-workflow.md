@@ -578,6 +578,19 @@ Autologin is optional and off by default. It is armed only for a round trip and
 force-disabled on return or recovery. Session files and units come from
 T-12.1b/T-12.2.
 
+The table is data, not prose: T-12.6a implements it in
+`tools/dragonfruit-dev/src/session_selector.rs`. A `DmSession` adapter per DM
+reads, selects, and restores the session id (a minimal keyfile edit that keeps
+every unrelated line), and a separate `DmAutologin` adapter snapshots, arms,
+disarms, and restores autologin. Detection is by a running DM process
+(`/proc/*/comm`) or, when none is running, exactly one installed DM; a host
+that is unknown *or has several DMs installed and none running* is
+`Selected::Unsupported` and **no write is attempted**, so the caller falls back
+to "pick it in the greeter" rather than guessing. Every path derives from an
+explicit root and home, so the acceptance suite drives real reads and
+exact-byte writes against fixture directories with no DM installed. The
+decision is frozen in [ADR 0173](adr/0173-display-manager-session-selection-seam.md).
+
 ### What "seamless" cannot mean
 
 - **No app continuity across the swap.** Wayland has no live handoff, and the
