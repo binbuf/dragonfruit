@@ -358,6 +358,12 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                     .into_iter()
                     .map(NestedOutputElements::Decoration),
             );
+            // The Files-owned desktop layer (T-19.3) composites below every
+            // window and above the per-Space wallpaper, so desktop icons sit
+            // behind open windows.
+            custom_elements.extend(crate::render::desktop_render_elements(
+                renderer, state, &output, scale,
+            ));
             // The per-Space wallpaper is the bottom-most layer (T-05.4): it
             // fills the clear color and slides with its Space during a switch.
             custom_elements.extend(

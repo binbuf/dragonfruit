@@ -584,12 +584,27 @@ impl DfState {
         self.focus_chrome_surface(&surface)
     }
 
-    /// Whether a chrome surface currently holds the keyboard.
+    /// Whether an **above-window** chrome surface currently holds the keyboard.
+    ///
+    /// The Files desktop surface is a layer surface too, but it composites
+    /// below windows; its focus must not be treated as chrome focus, or a
+    /// desktop click would clear its own keyboard (T-19.3).
     pub fn chrome_has_keyboard_focus(&self) -> bool {
         self.seat
             .get_keyboard()
             .and_then(|keyboard| keyboard.current_focus())
-            .is_some_and(|surface| self.is_chrome_surface(&surface))
+            .is_some_and(|surface| self.is_above_window_chrome_surface(&surface))
+    }
+
+    /// Whether `surface` is a chrome layer surface that composites **above**
+    /// windows (`top`/`overlay`, T-19.3). The desktop `background` surface is
+    /// excluded: it is client-facing below windows, not shell chrome.
+    pub fn is_above_window_chrome_surface(&self, surface: &WlSurface) -> bool {
+        self.shell
+            .layers
+            .iter()
+            .find(|entry| entry.surface == *surface)
+            .is_some_and(|entry| layer::above_windows(entry.state.layer))
     }
 
     /// Give keyboard focus to a chrome surface, if its policy allows it.
@@ -1526,11 +1541,11 @@ impl GlobalDispatch<df_shell::DfShell, ()> for DfState {
 impl Dispatch<df_shell::DfShell, ()> for DfState {
     fn request(
         state: &mut Self,
-        _client: &Client,
+        client: &Client,
         _resource: &df_shell::DfShell,
         request: df_shell::Request,
         _data: &(),
-        _dhandle: &DisplayHandle,
+        dhandle: &DisplayHandle,
         data_init: &mut DataInit<'_, Self>,
     ) {
         match request {
@@ -1541,12 +1556,38 @@ impl Dispatch<df_shell::DfShell, ()> for DfState {
                 layer,
                 namespace,
             } => {
+                let layer_value = layer.into_result().map(|value| value as u32).unwrap_or(2);
+                // T-19.3: layers are role-scoped. The Files desktop process
+                // owns `background`; the shell owns the above-window chrome
+                // layers. A trusted client that crosses into the other's band
+                // is refused (and killed), exactly like an untrusted bind.
+                let permitted = state
+                    .shell
+                    .role(&client.id())
+                    .is_some_and(|role| role.may_create_layer(layer_value));
+                if !permitted {
+                    eprintln!(
+                        "dragonfruit-compositor: shell protocol: refusing layer {layer_value} \
+                         for client without the matching role"
+                    );
+                    client.kill(
+                        dhandle,
+                        wayland_server::backend::protocol::ProtocolError {
+                            code: ERROR_ACCESS_DENIED,
+                            object_id: 0,
+                            object_interface: "df_shell".into(),
+                            message: format!(
+                                "this role may not create a layer-{layer_value} surface"
+                            ),
+                        },
+                    );
+                    return;
+                }
                 let output_name = output
                     .as_ref()
                     .and_then(Output::from_resource)
                     .map(|output| output.name());
                 let resource = data_init.init(id, LayerUserData);
-                let layer_value = layer.into_result().map(|value| value as u32).unwrap_or(2);
                 let entry = LayerEntry {
                     resource: resource.clone(),
                     surface,
@@ -2150,59 +2191,90 @@ impl Dispatch<df_output::DfOutput, OutputUserData> for DfState {
 // --- session provisioning --------------------------------------------------
 
 /// Provision launch tokens at session start and write the shell hand-off
-/// file. `DRAGONFRUIT_LAUNCH_TOKENS` (comma-separated hex) lets the session
-/// manager (T-24) or the conformance tests supply pre-minted tokens;
+/// file. `DRAGONFRUIT_LAUNCH_TOKENS` (comma-separated `[role:]hex`) lets the
+/// session manager (T-24) or the conformance tests supply pre-minted tokens;
 /// otherwise one random shell token is minted.
+///
+/// A `desktop:`-tagged entry mints a [`TrustedRole::DesktopIcons`] token for
+/// the Files desktop process (T-19.3), written to its own hand-off file. The
+/// single `DRAGONFRUIT_LAUNCH_TOKEN`/`DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN` vars
+/// are the session-manager fallbacks.
 pub fn provision(state: &mut DfState) {
-    let mut tokens = Vec::new();
+    let mut shell_token: Option<trust::LaunchToken> = None;
+    let mut desktop_token: Option<trust::LaunchToken> = None;
     if let Ok(list) = std::env::var(trust::TOKENS_ENV) {
-        for hex in list
+        for entry in list
             .split(',')
             .map(str::trim)
             .filter(|entry| !entry.is_empty())
         {
-            if let Some(value) = trust::LaunchToken::parse_hex(hex) {
-                tokens.push(state.shell.trust.mint_with_value(TrustedRole::Shell, value));
-            }
+            let Some((role, value)) = trust::parse_token_entry(entry) else {
+                continue;
+            };
+            let token = state.shell.trust.mint_with_value(role, value);
+            match role {
+                TrustedRole::DesktopIcons => desktop_token.get_or_insert(token),
+                TrustedRole::Shell => shell_token.get_or_insert(token),
+            };
         }
     }
     // The single-token hand-off (T-24): the session manager may pass the
     // shell's token directly instead of a list.
-    if tokens.is_empty() {
+    if shell_token.is_none() {
         if let Ok(hex) = std::env::var(trust::TOKEN_ENV) {
             if let Some(value) = trust::LaunchToken::parse_hex(&hex) {
-                tokens.push(state.shell.trust.mint_with_value(TrustedRole::Shell, value));
+                shell_token = Some(state.shell.trust.mint_with_value(TrustedRole::Shell, value));
             }
         }
     }
-    if tokens.is_empty() {
-        tokens.push(state.shell.trust.mint(TrustedRole::Shell));
+    if let Ok(hex) = std::env::var(trust::DESKTOP_TOKEN_ENV) {
+        if let Some(value) = trust::LaunchToken::parse_hex(&hex) {
+            desktop_token = Some(
+                state
+                    .shell
+                    .trust
+                    .mint_with_value(TrustedRole::DesktopIcons, value),
+            );
+        }
     }
-    let Some(token) = tokens.first() else {
-        return;
-    };
-    let Some(runtime) = std::env::var_os("XDG_RUNTIME_DIR") else {
-        return;
-    };
-    let path = std::path::PathBuf::from(runtime).join(format!(
-        "{}{}",
-        state.socket_name,
-        trust::TOKEN_FILE_SUFFIX
-    ));
-    match write_private(&path, token.to_hex().as_bytes()) {
-        Ok(()) => println!("dragonfruit-compositor: launch token: {}", path.display()),
-        Err(err) => eprintln!("dragonfruit-compositor: failed to write launch token: {err}"),
+    let shell_token = shell_token.unwrap_or_else(|| state.shell.trust.mint(TrustedRole::Shell));
+    write_token_file(
+        state,
+        &shell_token,
+        trust::TOKEN_FILE_SUFFIX,
+        "launch token",
+    );
+    if let Some(token) = &desktop_token {
+        write_token_file(
+            state,
+            token,
+            trust::DESKTOP_TOKEN_FILE_SUFFIX,
+            "desktop launch token",
+        );
     }
 }
 
-/// Remove the shell token hand-off file at teardown.
+/// Write one token hand-off file (`0600`) and log its path.
+fn write_token_file(state: &DfState, token: &trust::LaunchToken, suffix: &str, label: &str) {
+    let Some(runtime) = std::env::var_os("XDG_RUNTIME_DIR") else {
+        return;
+    };
+    let path = std::path::PathBuf::from(runtime).join(format!("{}{suffix}", state.socket_name));
+    match write_private(&path, token.to_hex().as_bytes()) {
+        Ok(()) => println!("dragonfruit-compositor: {label}: {}", path.display()),
+        Err(err) => eprintln!("dragonfruit-compositor: failed to write {label}: {err}"),
+    }
+}
+
+/// Remove the shell and desktop token hand-off files at teardown.
 pub fn remove_token_file(socket_name: &str) {
     let Some(runtime) = std::env::var_os("XDG_RUNTIME_DIR") else {
         return;
     };
-    let path = std::path::PathBuf::from(runtime)
-        .join(format!("{socket_name}{}", trust::TOKEN_FILE_SUFFIX));
-    let _ = std::fs::remove_file(path);
+    for suffix in [trust::TOKEN_FILE_SUFFIX, trust::DESKTOP_TOKEN_FILE_SUFFIX] {
+        let path = std::path::PathBuf::from(&runtime).join(format!("{socket_name}{suffix}"));
+        let _ = std::fs::remove_file(path);
+    }
 }
 
 fn write_private(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {

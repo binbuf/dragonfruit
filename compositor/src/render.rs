@@ -114,8 +114,9 @@ where
 ///
 /// Chrome surfaces are composited *above* the window [`Space`]; Smithay's
 /// `render_output`/`DrmCompositor` take these as the custom-element list.
-/// Only the `top` and `overlay` layers are handled here — background/bottom
-/// layer stacking (wallpaper, desktop reveal) is a T-10/T-11 concern.
+/// Only the above-window `top`/`overlay` layers are handled here; the
+/// `background` desktop layer is composited below windows by
+/// [`desktop_render_elements`] (T-19.3).
 pub fn chrome_render_elements<R, E>(
     renderer: &mut R,
     state: &DfState,
@@ -132,7 +133,48 @@ where
     };
     let mut elements = Vec::new();
     for chrome in state.chrome_surfaces(output.name().as_str(), geometry) {
-        if chrome.layer < 2 {
+        if !crate::shell::layer::above_windows(chrome.layer) {
+            continue;
+        }
+        let location = chrome.location.to_physical_precise_round(scale);
+        elements.extend(render_elements_from_surface_tree::<R, E>(
+            renderer,
+            &chrome.surface,
+            location,
+            scale,
+            1.0,
+            Kind::Unspecified,
+        ));
+    }
+    elements
+}
+
+/// Build render elements for the Files-owned **desktop layer** surfaces on
+/// `output` (T-19.3).
+///
+/// The desktop-icon surface is a `background`-layer `df_layer_surface`: it
+/// composites **above the per-Space wallpaper and below every window**, so
+/// desktop items sit behind open windows. Callers append these elements
+/// between [`window_render_elements`] and [`wallpaper_render_elements`] in the
+/// front-to-back list, which is exactly the `Wallpaper < Desktop < Windows <
+/// Chrome` band order asserted by `shell::layer`'s unit test.
+pub fn desktop_render_elements<R, E>(
+    renderer: &mut R,
+    state: &DfState,
+    output: &Output,
+    scale: Scale<f64>,
+) -> Vec<E>
+where
+    R: Renderer + ImportAll,
+    R::TextureId: Clone + 'static,
+    E: From<WaylandSurfaceRenderElement<R>>,
+{
+    let Some(geometry) = state.space.output_geometry(output) else {
+        return Vec::new();
+    };
+    let mut elements = Vec::new();
+    for chrome in state.chrome_surfaces(output.name().as_str(), geometry) {
+        if !crate::shell::layer::is_desktop(chrome.layer) {
             continue;
         }
         let location = chrome.location.to_physical_precise_round(scale);

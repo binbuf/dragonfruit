@@ -1063,6 +1063,13 @@ fn render_surface(
             .map(DrmOutputElements::Decoration),
     );
 
+    // The Files-owned desktop layer (T-19.3) composites below every window
+    // and above the per-Space wallpaper.
+    custom_elements.extend(crate::render::desktop_render_elements::<
+        _,
+        DrmOutputElements<UdevRenderer<'_>, WaylandSurfaceRenderElement<UdevRenderer<'_>>>,
+    >(&mut renderer, state, &surface.output, scale));
+
     // The per-Space wallpaper is the bottom-most layer (T-05.4): it fills the
     // clear color and slides with its Space during a switch.
     custom_elements.extend(
