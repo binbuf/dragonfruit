@@ -65,6 +65,26 @@ seat it records `t03-drm-loop-trace.txt` instead. The classification and its
 `make e2e` test live in `compositor/src/drm_bringup.rs` and
 `compositor/tests/drm_bringup.rs` ([ADR 0170](adr/0170-drm-first-bringup-open-marker-and-no-output-guard.md)).
 
+### Hardware input validation (T-03.3)
+
+The input stack is validated on real devices, which — like DRM — needs the
+compositor to own a libinput seat. Each class the task names (`mouse`,
+`keyboard`, `touchpad-gestures`, `hot-corners`, `tablet-pen`, `non-us-layout`)
+is classified by the pure `input_validation` model into `device` (confirmed
+through the live seat), `headless` (exercised through the same input router by
+the libinput-equivalent synthetic harness, real-device confirmation pending),
+or `gap` (recorded absence). The `mouse`/`keyboard`/gesture/hot-corner classes
+are already driven headlessly by
+`compositor/tests/shell_protocol_conformance.rs::synthetic_input_drives_shortcuts_hot_corners_and_gestures`,
+and a non-US (German) layout is exercised headlessly by
+`compositor/tests/input_validation.rs`. `scripts/input-validation.sh`
+(`make input-validation`) writes the matrix: on this host, with no free seat,
+`docs/captures/t03-input-matrix.open.txt`; on a free seat,
+`t03-input-matrix.txt`. The classification and its `make e2e` test live in
+`compositor/src/input_validation.rs` and
+`compositor/tests/input_validation.rs`
+([ADR 0171](adr/0171-hardware-input-validation-matrix.md)).
+
 ## Input
 
 - libinput delivers pointer, keyboard, touch, and tablet events. Touch and
