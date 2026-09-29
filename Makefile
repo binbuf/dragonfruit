@@ -483,6 +483,7 @@ check-tokens:
 # glyph reference must name a vendored file (a typo fails the build).
 check-phosphor:
 	./scripts/gen-phosphor-glyphs.py --check
+	./scripts/gen-app-icons.py --check
 	./scripts/check-phosphor-icons.py
 
 lint: fmt-check clippy qml-test check-tokens check-design-tokens check-desktop-names check-no-capture-grab check-i18n check-phosphor

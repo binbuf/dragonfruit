@@ -86,6 +86,9 @@ Item {
     readonly property bool running: entry.running === true
     readonly property string name: entry.name !== undefined ? entry.name : ""
     readonly property string appId: entry.appId !== undefined ? entry.appId : ""
+    // The app-index record id ("org.dragonfruit.Files.desktop"); the first-party
+    // bundled-tile map (T-19.1d) is keyed by this.
+    readonly property string desktopId: entry.desktopId !== undefined ? entry.desktopId : ""
     // Themed icon file resolved by app-index (T-14.1a); empty until the
     // service is running or when no theme provides the name.
     readonly property string iconPath: entry.iconPath !== undefined ? entry.iconPath : ""
@@ -408,6 +411,7 @@ Item {
               : (root.isStack || root.isExternalFolder) ? "stack" : "app"
         name: root.name
         appId: root.appId
+        desktopId: root.desktopId
         iconPath: root.iconPath
         trashFull: root.trashFull
         size: root.iconSize

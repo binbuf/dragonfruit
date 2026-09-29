@@ -75,9 +75,15 @@ The icon language is one foundation (T-19.1a) and three migrations:
   [0165](../adr/0165-menubar-phosphor-marks.md)).
 - **T-19.1d** gives our first-party apps Phosphor artwork: the Dock's **Files**
   (our Finder) tile and the **System Settings** app icon (which carries the
-  gradient container). The Dragonfruit system-menu logo
-  (`DragonfruitLogo.qml`) is kept; the Dock's folder-stack, Trash, and overflow
-  artwork are untouched.
+  gradient container). Each app ships one SVG generated from Phosphor
+  (`assets/icons/apps/org.dragonfruit.{Files,Settings}.svg`) that is both the
+  bundled QML resource (`qrc:/icons/apps/…`) and the installed
+  `share/icons/hicolor/scalable/apps/` file, with the `.desktop` `Icon=` naming
+  the same id; `DockGlyph` maps the desktop id to the bundled tile, keeping
+  app-index's themed `iconPath` as the third-party fallback (ADR
+  [0166](../adr/0166-first-party-app-icons.md)). The Dragonfruit system-menu
+  logo (`DragonfruitLogo.qml`) is kept; the Dock's folder-stack, Trash, and
+  overflow artwork are untouched.
 
 ## T-19.2 — The Applications drawer
 

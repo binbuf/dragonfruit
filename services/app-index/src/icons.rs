@@ -530,4 +530,47 @@ mod tests {
 
         fs::remove_dir_all(&root).ok();
     }
+
+    #[test]
+    fn shipped_first_party_app_icons_resolve_in_hicolor() {
+        // T-19.1d: the shipped `.desktop` `Icon=` names must resolve against
+        // the installed hicolor theme, and the installed payload is the same
+        // asset the Dock bundles. A clean session resolves the launcher/menu
+        // icon by name, so the name and the asset cannot drift.
+        let assets = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../assets/icons/apps");
+        let root = temp_dir("first-party");
+        for name in ["org.dragonfruit.Files.svg", "org.dragonfruit.Settings.svg"] {
+            let src = assets.join(name);
+            assert!(src.is_file(), "missing shipped asset {}", src.display());
+            write_text(
+                &root.join("hicolor/scalable/apps").join(name),
+                &fs::read_to_string(&src).unwrap(),
+            );
+        }
+        let theme = IconTheme::from_roots([root.clone()], ["hicolor".to_owned()], []);
+        let apps = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../apps");
+        for (desktop, name) in [
+            (
+                "files/org.dragonfruit.Files.desktop",
+                "org.dragonfruit.Files",
+            ),
+            (
+                "settings/org.dragonfruit.Settings.desktop",
+                "org.dragonfruit.Settings",
+            ),
+        ] {
+            let text = fs::read_to_string(apps.join(desktop)).expect("read shipped entry");
+            let icon = text
+                .lines()
+                .find_map(|line| line.strip_prefix("Icon="))
+                .expect("the shipped entry names an icon");
+            assert_eq!(icon, name, "the .desktop Icon= matches the shipped asset");
+            assert!(
+                theme.lookup(icon, 128).is_some(),
+                "{icon} resolves in hicolor"
+            );
+        }
+
+        fs::remove_dir_all(&root).ok();
+    }
 }

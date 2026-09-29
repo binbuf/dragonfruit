@@ -69,6 +69,23 @@ qt_add_resources(dragonfruit-design-system "phosphor"
     FILES ${_phosphor_svgs}
 )
 
+# The first-party app icons (T-19.1d) are exposed unchanged at the stable
+# prefix `qrc:/icons/apps/<name>.svg`. The Dock renders them for the
+# first-party desktop ids before an install; the same files are installed into
+# the icon theme (`make install`), so the Dock, menus, and the portal file
+# chooser resolve one artwork source. Generated from Phosphor by
+# `scripts/gen-app-icons.py` (`make check-phosphor` fails if stale).
+file(GLOB _app_icons CONFIGURE_DEPENDS
+    "${CMAKE_SOURCE_DIR}/assets/icons/apps/*.svg")
+if(NOT _app_icons)
+    message(FATAL_ERROR "dragonfruit-design-system: assets/icons/apps is empty")
+endif()
+qt_add_resources(dragonfruit-design-system "app-icons"
+    PREFIX "/icons/apps"
+    BASE "${CMAKE_SOURCE_DIR}/assets/icons/apps"
+    FILES ${_app_icons}
+)
+
 df_qml_lint(design-system
     Theme.qml
     PhosphorGlyphs.qml

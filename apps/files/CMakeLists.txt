@@ -51,6 +51,13 @@ install(FILES org.dragonfruit.Files.desktop
 install(FILES org.dragonfruit.Files1.service
     DESTINATION ${CMAKE_INSTALL_DATADIR}/dbus-1/services)
 
+# The first-party app icon (T-19.1d), generated from Phosphor by
+# `scripts/gen-app-icons.py`, installs into hicolor so the `.desktop` `Icon=`
+# resolves for launchers, menus, and the portal file chooser — the same
+# artwork the Dock bundles at `qrc:/icons/apps/`.
+install(FILES "${CMAKE_SOURCE_DIR}/assets/icons/apps/org.dragonfruit.Files.svg"
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps)
+
 df_qml_lint(app-files
     FilesBrowser.qml
     FilesIconView.qml
