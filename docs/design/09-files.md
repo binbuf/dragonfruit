@@ -195,9 +195,13 @@ same QML call and confirms or snaps back with an inline notice from
 `FilesDirectoryModel.lastError`. `FilesDirectoryModel` now keeps its
 `files-core` session after the listing completes (only polling stops), so sort
 and operations work on a loaded folder; the session and its one worker are
-retired on navigation. **Still deferred:** rubber-band selection, Open With,
-Get Info, Copy/Duplicate/Compress/Make Alias, file opening, the folder watcher,
-and the search result set (T-10.4c+/T-10.5).
+retired on navigation. **Rubber-band selection is real (T-19.3):**
+`FilesIconView` paints a marquee over empty background and emits
+`marqueeSelected(nodeIds, modifiers)`, which the shell folds in with the same
+replace/Cmd-toggle/Shift-extend rules as the click paths; the desktop surface
+reuses the view. **Still deferred:** Open With, Get Info,
+Copy/Duplicate/Compress/Make Alias, file opening, the folder watcher, and the
+search result set (T-10.4c+/T-10.5).
 
 **Implementation status (T-10.5).** The performance budgets are met with
 windowed delivery. The C ABI no longer re-sends the whole listing per batch: a
@@ -618,6 +622,28 @@ The macOS model: **the file manager owns the desktop.**
   protocol admits a fixed set of trusted session processes by launch token —
   the shell, and this surface (see [02-compositor.md](02-compositor.md)). The
   compositor provides the layer; Files owns everything on it.
+  **Implemented (T-19.3):** the compositor composites the `background` layer
+  between the wallpaper and windows and exposes the desktop band in
+  `render::desktop_render_elements`; layer creation is **role-scoped** — the
+  `desktop-icons` role owns `background` and the shell owns the above-window
+  chrome (`TrustedRole::may_create_layer`, ADR
+  [0168](adr/0168-desktop-layer-and-role-scoped-layers.md)). The desktop's
+  launch token is the `desktop:`-tagged provision (`DRAGONFRUIT_LAUNCH_TOKENS`
+  or `DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN`), written to
+  `<socket>.desktop-launch-token`.
+- **Rubber-band selection is shared view logic (T-19.3).** `FilesIconView`
+  paints a marquee over empty background, maps the enclosed delegate
+  rectangles back to stable node ids, and emits `marqueeSelected(nodeIds,
+  modifiers)`; the shell's `selectMarquee` replaces/toggles/extends exactly
+  like click, Cmd-click, and Shift-click. The same view serves a Files window
+  and the desktop surface. Click/Cmd/Shift selection, the `activated` signal,
+  and the band are QML-tested.
+- **Still deferred:** the `dragonfruit-files --desktop` process itself (the
+  `--desktop` flag and `~/Desktop` resolution are parsed in `FilesArguments`,
+  but the background-layer protocol client and the offscreen desktop scene are
+  the next slice), the crash-isolation matrix, Desktop Reveal icon exposure,
+  and selection/focus transfer between the desktop, chrome, and windows (see
+  [09-files.md](09-files.md) and the T-19.3 hand-off).
 - The Desktop Reveal hot corner moves windows aside to expose the background
   and its icons (see [04-shell.md](04-shell.md)). The MVP ships plain
   wallpaper.

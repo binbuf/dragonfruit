@@ -4133,7 +4133,12 @@ impl SeatHandler for DfState {
         // Chrome (shell layer) surfaces take keyboard focus for menus/OSDs;
         // they are not windows, so the active window is preserved across a
         // chrome focus so it can be restored when the chrome closes (T-09).
-        let chrome_focus = focused.is_some_and(|surface| self.is_chrome_surface(surface));
+        // Only above-window chrome preserves the active window across a focus
+        // change. The Files desktop surface (`background`, T-19.3) is a layer
+        // surface but composites below windows: focusing it must *clear* the
+        // active window so clicking empty desktop deactivates the front window.
+        let chrome_focus =
+            focused.is_some_and(|surface| self.is_above_window_chrome_surface(surface));
         // Capture (or clear) the per-output popover target: an overlay popover
         // follows the output the interaction happened on, not the pointer
         // (T-10 section 18).

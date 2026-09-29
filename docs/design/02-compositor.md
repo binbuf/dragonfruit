@@ -736,6 +736,17 @@ and — when desktop icons ship — the Files desktop surface (see
 refused. The chrome protocols are a privilege of these processes, not a
 public extension surface.
 
+The trust model is **role-scoped** (T-19.3, ADR
+[0168](adr/0168-desktop-layer-and-role-scoped-layers.md)): the shell role may
+create the above-window `top`/`overlay` layers, and the Files
+`desktop-icons` role may create the `background` layer. A trusted client that
+requests the other role's band is refused like an untrusted bind. The desktop
+`background` surface composites **above the per-Space wallpaper and below every
+window** (`Wallpaper < Desktop < Windows < Chrome`); pointer hit-testing
+follows that order, and focusing it clears the active window. No desktop
+surface is mapped until `dragonfruit-files --desktop` connects, so the layer
+costs nothing when unused.
+
 ## Why the compositor owns everything visual
 
 The compositor already knows every mapped window, output, workspace, focus
