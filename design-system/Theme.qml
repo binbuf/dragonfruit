@@ -577,6 +577,24 @@ QtObject {
             readonly property real highlightOpacity: 0.28
             readonly property real glowOpacity: 0.42
         }
+        readonly property var appsDrawer: QtObject {
+            readonly property int headerTop: 44
+            readonly property int contentPadding: 64
+            readonly property int titleSize: 18
+            readonly property int searchWidth: 360
+            readonly property int searchMaxWidth: 640
+            readonly property int pillGap: 8
+            readonly property int tileSize: 64
+            readonly property int tileRadius: 14
+            readonly property int tileContentGap: 8
+            readonly property int gridColumnGap: 24
+            readonly property int gridRowGap: 16
+            readonly property int labelSize: 12
+            readonly property real scrimOpacity: 0.35
+            readonly property real panelOpacity: 0.94
+            readonly property real fallbackGlyphRatio: 0.6
+            readonly property int emptyGlyphSize: 40
+        }
     }
 
     readonly property var motion: QtObject {

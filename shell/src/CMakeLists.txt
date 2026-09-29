@@ -44,6 +44,7 @@ endif()
 add_library(dragonfruit-shell-dockcore STATIC
     appindexclient.cpp
     apppicker.cpp
+    appsdrawer.cpp
     chooserbridge.cpp
     chromepointer.cpp
     clipboardhistory.cpp
@@ -169,6 +170,7 @@ target_link_libraries(dragonfruit-shell PRIVATE
     dragonfruit-shell-dockplugin
     dragonfruit-shell-overviewplugin
     dragonfruit-shell-switcherplugin
+    dragonfruit-shell-apps-drawerplugin
     dragonfruit-shell-notificationsplugin
     dragonfruit-shell-control-centerplugin
     dragonfruit-shell-osdplugin

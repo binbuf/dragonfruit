@@ -280,6 +280,24 @@ public:
     // Unmap the polkit surface (attach a null buffer).
     bool hidePolkit();
 
+    // Create the Applications drawer overlay (T-19.2): a full-output `overlay`
+    // layer surface, namespace "apps-drawer", unmapped until the drawer opens.
+    // It reserves nothing (`exclusive_zone = -1`) and takes the keyboard on
+    // demand so Escape and click-away dismissal work and the grid's arrow/
+    // Return navigation reaches it. It follows `createOverviewSurface`.
+    bool createAppsDrawerSurface();
+
+    // Set the drawer's clickable input region to the full `width` x `height`
+    // top-left rect (a non-positive size passes everything through). Applied
+    // with the next buffer commit.
+    bool setAppsDrawerInputRegion(int width, int height);
+
+    // Attach `image` to the apps-drawer surface and commit.
+    bool commitAppsDrawerImage(const QImage &image);
+
+    // Unmap the apps-drawer surface (attach a null buffer).
+    bool hideAppsDrawer();
+
     // The ScreenCast source projection (T-13.4a): one entry per offered source
     // (`id`, `kind` (`monitor`/`window`), `label`, `detail`). Monitors come
     // first so the picker's sections order correctly. The shell's one source of
@@ -498,6 +516,13 @@ signals:
     void polkitPointerLeft();
     void polkitKeyboardFocused(bool focused);
     void polkitKeyEvent(uint32_t key, bool pressed, bool shift);
+    // Applications drawer overlay (T-19.2): a full-output launcher surface.
+    void appsDrawerConfigured(int width, int height, uint32_t serial);
+    void appsDrawerPointerMoved(qreal x, qreal y);
+    void appsDrawerPointerButton(qreal x, qreal y, uint32_t button, bool pressed);
+    void appsDrawerPointerLeft();
+    void appsDrawerKeyboardFocused(bool focused);
+    void appsDrawerKeyEvent(uint32_t key, bool pressed);
     // Single-frame capture result (T-13.3b): the compositor rendered the
     // selection and wrote a PNG (`screenshotSaved`), or could not
     // (`screenshotFailed`, reason for logs).
@@ -693,6 +718,8 @@ private:
                                       int32_t width, int32_t height);
     static void onPolkitConfigure(void *data, df_layer_surface *layer, uint32_t serial,
                                   int32_t width, int32_t height);
+    static void onAppsDrawerConfigure(void *data, df_layer_surface *layer, uint32_t serial,
+                                      int32_t width, int32_t height);
     // Session-lock listeners (T-12.3a).
     static void onSessionLockLocked(void *data, ext_session_lock_v1 *lock);
     static void onSessionLockFinished(void *data, ext_session_lock_v1 *lock);
@@ -935,6 +962,13 @@ static void onManagerAppAccelerator(void *data, df_toplevel_manager *manager,
     bool m_polkitMapped = false;
     bool m_pointerOnPolkit = false;
     bool m_keyboardOnPolkit = false;
+    // Applications drawer overlay (T-19.2): a full-output `overlay` surface
+    // mapped only while the drawer is open.
+    wl_surface *m_appsDrawerSurface = nullptr;
+    df_layer_surface *m_appsDrawerLayer = nullptr;
+    bool m_appsDrawerMapped = false;
+    bool m_pointerOnAppsDrawer = false;
+    bool m_keyboardOnAppsDrawer = false;
     // Session lock (T-12.3a): the manager, the lock object, the outputs a lock
     // surface has been (or will be) created on, and one lock surface per
     // output. `m_lockSurfaces` is keyed by the lock-surface object so the
