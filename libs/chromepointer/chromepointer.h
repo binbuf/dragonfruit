@@ -32,9 +32,12 @@ quint64 timestamp();
 // Sends one `QMouseEvent` to `window` at `pos` (local and scene coordinates)
 // with a fresh nonzero timestamp. `button` is the button that changed (or
 // `Qt::NoButton` for a move) and `buttons` is the full button state, exactly
-// like the per-surface button bookkeeping `ShellController` keeps.
+// like the per-surface button bookkeeping `ShellController` keeps. `modifiers`
+// carries the live keyboard modifiers so a surface that acts on Cmd-click or
+// Shift-click (the T-19.3 desktop selection) sees them; chrome callers keep
+// the default `Qt::NoModifier`.
 void send(QWindow *window, QEvent::Type type, const QPointF &pos, Qt::MouseButton button,
-          Qt::MouseButtons buttons);
+          Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers = Qt::NoModifier);
 
 } // namespace ChromePointer
 

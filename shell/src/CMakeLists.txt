@@ -46,7 +46,6 @@ add_library(dragonfruit-shell-dockcore STATIC
     apppicker.cpp
     appsdrawer.cpp
     chooserbridge.cpp
-    chromepointer.cpp
     clipboardhistory.cpp
     compositorpolicy.cpp
     controlcenterpolicy.cpp
@@ -83,6 +82,7 @@ add_library(dragonfruit-shell-dockcore STATIC
 # from files-core's one freedesktop Trash store (T-10.6a).
 target_link_libraries(dragonfruit-shell-dockcore PUBLIC
     Qt6::Core Qt6::Gui Qt6::DBus Qt6::Network
+    dragonfruit-chromepointer
     dragonfruit-settings-client
     dragonfruit-files-core
 )

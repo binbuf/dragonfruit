@@ -1669,6 +1669,109 @@ fn desktop_and_shell_roles_own_disjoint_layers() {
     proc.shutdown();
 }
 
+/// T-19.3: the desktop process is its own crash domain. Killing it must leave
+/// the shell, the browser (an ordinary client), and the session running; and
+/// the reverse — the desktop and the session survive the shell's death. This
+/// is the protocol half of the crash-isolation matrix; the live process half
+/// is exercised by `make demo`, which launches `dragonfruit-files --desktop`
+/// alongside the shell.
+#[test]
+fn desktop_client_death_leaves_the_shell_and_session_alive() {
+    let shell_token = "77".repeat(32);
+    let desktop_token = "88".repeat(32);
+    let proc = CompositorProcess::start(
+        "dragonfruit-conformance-desktop-crash",
+        &[shell_token.clone(), format!("desktop:{desktop_token}")],
+    );
+
+    // The shell (a trusted session process) authenticates and stays connected.
+    let (shell_conn, mut shell_queue, mut shell_state) = connect(&proc.socket_path);
+    {
+        let (name, version) = shell_state.core_global.expect("df_core advertised");
+        let core = bind_core(&mut shell_state, &shell_queue, name, version);
+        core.authenticate(1, shell_token);
+        wait_for(
+            &shell_conn,
+            &mut shell_queue,
+            &mut shell_state,
+            Duration::from_secs(5),
+            |state| state.authenticated.is_some(),
+        );
+    }
+
+    // An ordinary client stands in for the Files browser: it shares no state
+    // with the desktop and must be unaffected by its death.
+    let (_browser_conn, mut browser_queue, mut browser_state) = connect(&proc.socket_path);
+
+    // The desktop authenticates, maps its full-output background surface, then
+    // dies without a clean teardown.
+    {
+        let (desktop_conn, mut desktop_queue, mut desktop_state) = connect(&proc.socket_path);
+        let (name, version) = desktop_state.core_global.expect("df_core advertised");
+        let core = bind_core(&mut desktop_state, &desktop_queue, name, version);
+        core.authenticate(1, desktop_token);
+        wait_for(
+            &desktop_conn,
+            &mut desktop_queue,
+            &mut desktop_state,
+            Duration::from_secs(5),
+            |state| state.authenticated.is_some(),
+        );
+        let (shell_name, shell_version) = desktop_state.shell_global.expect("df_shell advertised");
+        let shell = bind_shell(
+            &mut desktop_state,
+            &desktop_queue,
+            shell_name,
+            shell_version,
+        );
+        let qh = desktop_queue.handle();
+        let surface = desktop_state
+            .compositor
+            .clone()
+            .unwrap()
+            .create_surface(&qh, ());
+        let layer = shell.get_layer_surface(
+            &surface,
+            None,
+            df_shell::Layer::Background,
+            "desktop".to_string(),
+            &qh,
+            (),
+        );
+        layer.set_anchor(1 | 2 | 4 | 8);
+        layer.set_size(0, 0);
+        layer.set_exclusive_zone(-1);
+        surface.commit();
+        wait_for(
+            &desktop_conn,
+            &mut desktop_queue,
+            &mut desktop_state,
+            Duration::from_secs(5),
+            |state| !state.layer_configures.is_empty(),
+        );
+        // Crash: drop the connection while its background layer is mapped.
+        drop(desktop_conn);
+    }
+
+    // The shell and the browser still roundtrip; the shell stays authenticated.
+    shell_queue
+        .roundtrip(&mut shell_state)
+        .expect("the shell survives the desktop's death");
+    assert!(shell_state.authenticated.is_some());
+    browser_queue
+        .roundtrip(&mut browser_state)
+        .expect("the browser survives the desktop's death");
+
+    // The reverse: dropping the shell leaves the desktop's band and the
+    // session alive (the browser still talks to the compositor).
+    drop(shell_conn);
+    browser_queue
+        .roundtrip(&mut browser_state)
+        .expect("the session survives the shell's death");
+
+    proc.shutdown();
+}
+
 #[test]
 fn refusal_matrix_rejects_bad_tokens_and_versions() {
     // Two valid tokens: one is used for the success/replay pair, the other

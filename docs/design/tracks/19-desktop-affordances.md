@@ -120,18 +120,24 @@ covers rendering, mouse selection (click, Cmd/Shift multi-select, rubber-band),
 and open — mutations, inline rename, drag-to-Trash, spring-loading, and Desktop
 Reveal icon exposure are follow-ups.
 
-**Built (T-19.3, partial).** The compositor half landed: the `background`
-layer composites between the wallpaper and windows, layer creation is
-role-scoped (`desktop-icons` owns `background`, the shell owns `top`/`overlay`),
-the desktop's token is provisioned via `desktop:`-tagged
+**Built (T-19.3).** The compositor half landed: the `background` layer
+composites between the wallpaper and windows, layer creation is role-scoped
+(`desktop-icons` owns `background`, the shell owns `top`/`overlay`), the
+desktop's token is provisioned via `desktop:`-tagged
 `DRAGONFRUIT_LAUNCH_TOKENS` / `DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN`, and
 hit-testing/focus follow the paint order (ADR
-[0168](../adr/0168-desktop-layer-and-role-scoped-layers.md)). The shared
-`FilesIconView` gained rubber-band selection (`marqueeSelected`), and
-`FilesArguments` parses `--desktop` and resolves `~/Desktop` via xdg-user-dirs.
-**Remaining:** the `dragonfruit-files --desktop` process (the background-layer
-protocol client + offscreen desktop scene), its `New Folder` background menu,
-the crash-isolation matrix, and the live capture — see the T-19.3 hand-off.
+[0168](../adr/0168-desktop-layer-and-role-scoped-layers.md)). The process
+landed: `dragonfruit-files --desktop` is a self-contained private-protocol
+client rendering the `DesktopSurface` QML offscreen onto that layer, with
+click/Cmd/Shift/rubber-band selection, double-click open, and an
+`Open in Files` / `New Folder` background menu (ADR
+[0169](../adr/0169-desktop-process-client.md)). `FilesArguments` parses
+`--desktop` and resolves `~/Desktop` via xdg-user-dirs; the dev tool provisions
+the token and launches it, and a conformance test kills the desktop client and
+asserts the shell/browser/session survive.
+**Remaining:** systemd session-manager provisioning of the desktop token, the
+live nested capture, and the deferred desktop operations (rename,
+drag-to-Trash, Reveal) — see the T-19.3 hand-off.
 
 ## Reference UI/UX
 

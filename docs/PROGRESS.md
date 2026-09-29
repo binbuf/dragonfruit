@@ -43,7 +43,7 @@ _(161 earlier sections omitted)_
 - **T176c — T-19.1c Menu-bar icon migration to Phosphor**: **State: done.** Every menu-bar status mark now renders from Phosphor via; `shell/menubar/StatusGlyph.qml` — rewritten. A `glyphName` switch maps each
 - **T176d — T-19.1d Dock Files tile and first-party app icons**: **State: done.** Our two first-party apps now carry Phosphor-derived artwork:; `assets/icons/apps/org.dragonfruit.Files.svg` / `org.dragonfruit.Settings.svg`
 - **T177 — T-19.2 Applications drawer**: **State: done.** The shell's launcher landed: a full-output `apps-drawer` overlay; `shell/src/appsdrawer.{h,cpp}` (new) — the pure list model:
-- **T178 — T-19.3 Desktop items and mouse selection**: **State: continue.** The compositor desktop-layer + trust slice and the shared; `compositor/src/shell/layer.rs` — `LAYER_BACKGROUND` (0) / `LAYER_TOP` (2),
+- **T178 — T-19.3 Desktop items and mouse selection**: **State: continue.** The compositor desktop-layer + trust slice, the shared; `compositor/src/shell/layer.rs` — `LAYER_BACKGROUND` (0) / `LAYER_TOP` (2),
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3227,6 +3227,18 @@ Gotchas for later tasks:
 
 ## Follow-ups
 
+- **T-19.3 systemd session-manager provisioning of the desktop token.** The
+  compositor writes `<socket>.desktop-launch-token` only when handed a
+  `desktop:`-scoped token; the dev tool (`make dev`/`make demo`) does this, but
+  `services/session`'s plan/entry does not. A `files-desktop` service needs a
+  desktop-token environment, which `SessionEnvironment.trusted()` does not yet
+  express. Until then a production session has no Files desktop.
+- **T-19.3 live nested capture.** No host display was available, so the desktop
+  with icons + a rubber band was not captured/inspected; the process is verified
+  headless by `make demo` (`desktop-icons` authentication + 1280x720 commits).
+- **T-19.3 inline-rename text entry on the desktop.** `DesktopInput.h` maps only
+  navigation/activation/Delete/select-all evdev keys; character keys are not
+  forwarded, so the shared rename editor cannot be driven from the desktop yet.
 - **T-19.2 Applications drawer: the deferred Spotlight-equivalent search pane.**
   The drawer's search field filters its own `buildAppsDrawerList` corpus only;
   app-index-backed *global* search (apps + files + settings) is still deferred
@@ -14881,10 +14893,11 @@ Gotchas for later:
 
 ## T178 — T-19.3 Desktop items and mouse selection
 
-**State: continue.** The compositor desktop-layer + trust slice and the shared
-view-selection slice landed; `make e2e` and the 74-test ctest suite are green.
-The `dragonfruit-files --desktop` process (compositor half of the feature) is
-the remaining slice.
+**State: continue.** The compositor desktop-layer + trust slice, the shared
+view-selection slice, and the `dragonfruit-files --desktop` process all landed;
+`make e2e` and the 75-test ctest suite are green. Remaining: the required live
+nested capture (no host display in this session) and systemd/session-manager
+provisioning of the desktop token (see the task hand-off and `## Follow-ups`).
 
 Real paths:
 
@@ -14956,3 +14969,57 @@ Gotchas for later:
   scrolled-away row selects nothing for that row.
 - `make check` remains red at `check-desktop-names` (pre-existing, see
   Follow-ups); T178 added no new violations.
+
+### T178 desktop process (continuation) — landed
+
+- `apps/files/DesktopProtocol.{h,cpp}` — self-contained private-protocol client
+  (connect + `df_core.authenticate` in one call, one full-output `background`
+  `df_layer_surface` anchored 1|2|4|8, `exclusive_zone -1`, OnDemand keyboard,
+  ARGB shm commit, `wl_pointer`/`wl_keyboard` → Qt signals). Generated
+  `dragonfruit-core`/`dragonfruit-shell` bindings go to `build/files-protocols`
+  (separate from the shell's `build/protocols`). Guarded by
+  `DF_FILES_DESKTOP_CLIENT` when libwayland/wayland-scanner are absent.
+- `apps/files/FilesDesktop.{h,cpp}` — offscreen `QQuickWindow` +
+  `Dragonfruit.Files` `DesktopSurface`, `grabWindow()` commit with a
+  re-entrancy gate, and injected pointer/keyboard via `ChromePointer` (with
+  modifiers). `openRequested(uri,isDir)` → `dragonfruit-files <uri>` for a
+  directory, `QDesktopServices::openUrl` for a file (wired in `main.cpp`).
+- `apps/files/DesktopSurface.qml` — `FilesDirectoryModel` + `FilesIconView`
+  over `~/Desktop`, click/Cmd/Shift + rubber band, double-click open, and the
+  `Open in Files` / `New Folder` background `ContextMenu`.
+- `apps/files/DesktopInput.h` — pure evdev key → `Qt::Key`, xkb mask →
+  `Qt::KeyboardModifiers`, evdev button → `Qt::MouseButton` (unit-tested).
+- `libs/chromepointer/` — moved out of `shell/src`; now a static lib linked by
+  `dragonfruit-shell-dockcore` and `dragonfruit-files`. `ChromePointer::send`
+  gained an optional `Qt::KeyboardModifiers` argument (default NoModifier).
+- `apps/files/main.cpp` — builds the argv `QStringList`, and for `--desktop`
+  forces `QT_QPA_PLATFORM=offscreen` **before** `QGuiApplication`, then runs
+  `FilesDesktop`. Token from `DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN` else
+  `<XDG_RUNTIME_DIR>/<socket>.desktop-launch-token`.
+- `tools/dragonfruit-dev/src/main.rs` — starts the compositor with a random
+  `DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN`, then `launch_desktop()` starts
+  `build/apps/files/dragonfruit-files --desktop` (offscreen, dev share env,
+  QML import path) after the shell in `make dev`/`make demo`.
+- Tests: `tst_files_desktop.cpp` (input mapping), desktop cases in
+  `tst_files_shell.qml` (`test_desktop_lists_the_fixture`,
+  `test_desktop_selection_command_shift_and_marquee`,
+  `test_desktop_background_menu_opens_in_files`,
+  `test_desktop_double_click_opens`),
+  `shell_protocol_conformance::desktop_client_death_leaves_the_shell_and_session_alive`.
+- Docs: ADR `docs/design/adr/0169-desktop-process-client.md`; track doc,
+  `09-files.md` §Desktop icons, `02-compositor.md` §Private shell protocols.
+
+Gotchas for the desktop process:
+
+- **QML-offscreen + private protocol, not the Qt Wayland plugin.** `main.cpp`
+  must set `QT_QPA_PLATFORM=offscreen` before constructing `QGuiApplication`;
+  the client uses libwayland itself.
+- **`libs/chromepointer` is now the one injected-pointer constructor.** A new
+  chrome/desktop surface must link it instead of building its own `QMouseEvent`.
+- **The desktop token file is only written when the compositor gets a desktop
+  token** (`desktop:` entry in `DRAGONFRUIT_LAUNCH_TOKENS` or
+  `DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN`). The dev tool sets the latter; the
+  systemd session entry does not yet (follow-up).
+- **`DesktopInput.h` is intentionally minimal** (navigation/activation/Delete/
+  select-all): the inline rename editor's text entry is not wired yet.
+- 75 ctest tests now; `tst_files_shell` takes ~28 s.
