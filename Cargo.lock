@@ -601,6 +601,7 @@ version = "0.1.0"
 dependencies = [
  "calloop 0.14.4",
  "df-ipc",
+ "dragonfruit-session",
  "libc",
 ]
 
@@ -724,6 +725,8 @@ version = "0.1.0"
 dependencies = [
  "df-ipc",
  "libc",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

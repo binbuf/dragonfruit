@@ -15,3 +15,6 @@ path = "src/main.rs"
 calloop.workspace = true
 df-ipc.workspace = true
 libc.workspace = true
+# The dev-session state file (T-12.6b) is the same contract the session entry
+# reads to export DRAGONFRUIT_DEV_RETURN.
+dragonfruit-session = { path = "../../services/session", version = "0.1.0" }

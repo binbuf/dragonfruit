@@ -36,7 +36,7 @@ systemctl="${DF_SYSTEMCTL:-systemctl}"
 eval "$("$session_bin" --print-env --socket-name "$socket")"
 "$systemctl" --user import-environment \
     XDG_CURRENT_DESKTOP XDG_SESSION_TYPE WAYLAND_DISPLAY \
-    DISPLAY DRAGONFRUIT_LAUNCH_TOKEN
+    DISPLAY DRAGONFRUIT_LAUNCH_TOKEN DRAGONFRUIT_DEV_RETURN DRAGONFRUIT_DEV_BIN
 
 # 2. Start the target (the units are the supervisor).
 "$systemctl" --user start "$target"
