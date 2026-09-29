@@ -1,0 +1,28 @@
+T-03.4 — Multi-GPU import/fallback: SINGLE
+=========================================
+
+recorded:  2026-09-29T11:31:05Z
+host:      Linux 7.2.5-200.fc44.x86_64 x86_64
+result:    Multi-GPU: SINGLE device=card0
+
+Seat ownership:
+  - no free DRM master (/dev/dri/card0 busy (Permission denied))
+  - the compositor opens DRM devices through the seat; on this host a
+    free seat is a precondition for any card to be composited on.
+
+GPU inventory (/sys/class/drm):
+  - card0  -> renderD128  [driver=vmwgfx]
+
+Decision (compositor/src/multi_gpu.rs; this probe mirrors it):
+  - one device: no cross-device import is required
+
+Tests that pin this without hardware (make e2e):
+  - compositor/tests/multi_gpu.rs
+  - compositor/src/multi_gpu.rs unit tests
+
+Remaining on hardware (T-03.4 runbook / T-16 driver matrix):
+  - this seat has a single GPU; attach a second GPU and re-run
+    `make multi-gpu-validation` to exercise import/fallback.
+
+Reproduce:
+  make multi-gpu-validation

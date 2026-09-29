@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(163 earlier sections omitted)_
+_(164 earlier sections omitted)_
 
-- **T127 — T-15.9a Menu Bar configuration adapter**: **State: done.** New workspace crate `dragonfruit-menubar-adapter`; `services/menubar-adapter/` (new crate, workspace member) —
 - **T128 — T-15.9b Menu Bar configuration pane and tile**: **State: done.** The Settings Menu Bar pane and the Control Center Menu Bar; `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 15 → 16; new
 - **T129 — T-15.10a General, About, and Updates adapter**: **State: done.** New workspace crate `dragonfruit-update-adapter`; `services/update-adapter/` (new crate, workspace member) —
 - **T130 — T-15.10b General, About, and Updates pane and tile**: **State: done.** The Settings `General` pane and the Control Center `Software; `services/system-status/src/updates.rs` (new) — `UpdatesHost<S>` (refresh/
@@ -44,6 +43,7 @@ _(163 earlier sections omitted)_
 - **T178 — T-19.3 Desktop items and mouse selection**: **State: continue.** The compositor desktop-layer + trust slice, the shared; `compositor/src/shell/layer.rs` — `LAYER_BACKGROUND` (0) / `LAYER_TOP` (2),
 - **T159 — T-03.2 DRM first bring-up**: **State: OPEN (hardware unavailable).** The never-executed DRM backend was run; `compositor/src/drm_bringup.rs` (new) — pure
 - **T160 — T-03.3 Hardware input validation**: **State: OPEN (hardware unavailable).** Real-device input validation needs the; `compositor/src/input_validation.rs` (new) — pure matrix. `InputClass` with
+- **T161 — T-03.4 DRM soak, teardown, runbook**: **State: OPEN (hardware unavailable).** The T-03 hardware rail's final unit:; `tools/dragonfruit-dev/src/soak.rs` — new `teardown_artifacts(socket)`
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -15218,3 +15218,98 @@ Gotchas for later:
   clean VM and replaces `t03-input-matrix.open.txt` with `t03-input-matrix.txt`.
 - **Pen pressure has no synthetic route.** If a future headless test needs it,
   the synthetic wire format must grow a pressure axis first.
+
+## T161 — T-03.4 DRM soak, teardown, runbook
+
+**State: OPEN (hardware unavailable).** The T-03 hardware rail's final unit:
+the teardown soak, the DRM session cycle, the multi-GPU import/fallback run,
+and the reproducible runbook. The automated half landed and passes; the DRM
+cycle and the multi-GPU hardware exercise need a free logind seat (same blocker
+as T-03.2/T-03.3: the KDE Wayland session owns DRM master on `seat0`). Per the
+track rule the unit is **marked open, not skipped**: the pure decisions are
+pinned in `make e2e`, the open artifacts are committed, and
+`docs/runbook-drm-session.md` completes the run on a free seat / spare GPU /
+clean VM. `make e2e` green (132 test binaries ok, 0 failed), `fmt`/`clippy`
+clean, `make soak` 100/100, live nested demo captured.
+
+Real paths:
+
+- `tools/dragonfruit-dev/src/soak.rs` — new `teardown_artifacts(socket)`
+  (socket, `.lock`, `.launch-token`, `.desktop-launch-token`); `run` now takes
+  a `backend` and fails on any leaked artifact, not just socket/lock. Unit test
+  `teardown_covers_the_socket_lock_and_both_tokens`.
+- `tools/dragonfruit-dev/src/main.rs` — `--drm` flag; `dev --soak [N]` uses the
+  explicit `--nested`/`--headless`/`--drm` backend (default headless) via
+  `run_soak(cycles, &args)`.
+- `compositor/src/multi_gpu.rs` (new) — pure `GpuNode`, `MultiGpuOutcome::{NoGpu,
+  Single, Imported, Fallback}` with `classify`/`is_multi`/`marker`, and
+  `format_allowed(renders_locally, linear)`. Markers are `Multi-GPU: NONE|SINGLE
+  |IMPORTED|FALLBACK`.
+- `compositor/src/backend/drm.rs` — prints the `Multi-GPU:` marker after the
+  initial device scan (primary first) and filters dmabuf render formats through
+  `format_allowed` (a device with no render node falls back to the primary
+  renderer and may only import `Linear`).
+- `compositor/tests/multi_gpu.rs` (new; in the `make e2e` list) — 4 tests
+  pinning the classification, the one-line markers, and the format rule.
+- `scripts/multi-gpu-probe.py` (new) — sysfs mirror of `multi_gpu.rs`
+  (`/sys/class/drm/cardN/device/drm/renderD*`); driver name; exit 0 only with
+  >1 card.
+- `scripts/multi-gpu-validation.sh` + `make multi-gpu-validation` — writes
+  `docs/captures/t03-multigpu.txt` (>1 card) or `t03-multigpu.open.txt`. Always
+  exits 0.
+- `scripts/drm-soak.sh` + `make drm-soak` — runs the automated soak
+  (`dragonfruit dev --soak $SOAK_CYCLES`, default 100) then one DRM cycle
+  (`dev --soak 1 --drm`); on a free seat it re-probes the card to prove DRM
+  master released and writes `docs/captures/t03-drm-soak.txt`; with no free seat
+  it writes `t03-drm-soak.open.txt` (no-op-seat self-report). Always exits 0.
+- `docs/runbook-drm-session.md` (new) — dedicated-user second-VT workflow, the
+  libvirt/virtio-GPU VM path, the four acceptance commands, the demo
+  walkthrough, teardown expectations, troubleshooting. Linked from
+  `docs/testing-ladder.md` rungs 2 & 3.
+- Artifacts: `docs/captures/t03-drm-soak.open.txt` (automated soak PASS + no-seat
+  evidence), `docs/captures/t03-multigpu.open.txt` (SINGLE device=card0),
+  `docs/captures/t03-soak-nested-check.png` (live nested check).
+- Docs: ADR `docs/design/adr/0172-drm-soak-teardown-and-runbook.md`,
+  `docs/design/02-compositor.md` §"DRM soak, teardown, and multi-GPU (T-03.4)",
+  `docs/design/tracks/03-real-session-bringup-perf.md` Status notes,
+  `docs/captures/README.md`.
+
+Commands / gotchas for later:
+
+- **The soak now checks tokens too.** `make soak` / `dev --soak` fails on a
+  leaked `.launch-token`/`.desktop-launch-token`. Any new trusted-role hand-off
+  file must be added to `soak::teardown_artifacts` *and*
+  `shell::remove_token_file`, or the gate misses it / false-fails.
+- **The headless compositor writes `<socket>.launch-token`** (verified during a
+  cycle) and removes it on SIGTERM; the token check is not vacuous.
+- **`dev --soak 1 --drm` is the one DRM cycle command.** Run it only on a free
+  seat; it uses the default logind seat. `make drm-soak` probes first and records
+  an open otherwise.
+- **DRM master release is proven by re-probing, not by the exit code.** After
+  the cycle the script re-runs `scripts/drm-seat-probe.py`; a card accepting
+  master again means the VT was released.
+- **`Multi-GPU:` marker vs. probe names.** The backend's marker uses
+  `DrmNode::dev_id()` numbers; the Python probe uses sysfs names (`card0`,
+  `renderD128`). Both keep the marker shape (`Multi-GPU: SINGLE device=…`); the
+  probe mirrors the decision, not the exact device string.
+- **The multi-GPU probe is sysfs-only** (`/sys/class/drm/cardN/device/drm/`),
+  so it needs no seat; `multi_gpu.rs` and the probe must stay in sync.
+- `make check` remains red only at the pre-existing `check-desktop-names`;
+  T161 added no violation.
+- **`$XDG_RUNTIME_DIR` is littered with old `dragonfruit-test-*` sockets/tokens
+  from past test runs** (hundreds). Not a T161 leak; `soak` checks only the
+  cycle's own socket and live `/proc` strays, so it is unaffected. A host
+  cleanup is a possible follow-up.
+
+### Follow-ups
+
+- **T-03.4 completes on hardware:** a free seat / spare GPU / clean VM replaces
+  `t03-drm-soak.open.txt` with `t03-drm-soak.txt`, `t03-multigpu.open.txt` with
+  `t03-multigpu.txt` (needs two cards), and `t03-input-matrix.open.txt` with
+  `t03-input-matrix.txt`; the runbook is the recipe.
+- **Stale test runtime files.** `$XDG_RUNTIME_DIR` accumulates
+  `dragonfruit-test-*` sockets/locks/tokens from interrupted suites; a sweep in
+  the soak or a dev cleanup command would keep it tidy.
+- **QEMU/VM capture path.** The runbook's VM still is suggested via `grim`;
+  nothing in the tree automates a DRM screenshot yet (the nested capture uses
+  `spectacle` on the host).

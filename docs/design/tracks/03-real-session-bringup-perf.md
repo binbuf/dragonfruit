@@ -105,6 +105,12 @@ T-17. Do not let hardware access stall the plan.
   devices; the pure matrix + headless non-US layout test are in (`make
   input-validation`, `docs/captures/t03-input-matrix.open.txt`), and T-03.4's
   runbook completes the real-device run ([ADR 0171](../adr/0171-hardware-input-validation-matrix.md)).
+- **T-03.4 (soak/teardown/runbook) is open on this host.** The automated
+  100-cycle soak passes with the token check added; the DRM cycle and the
+  multi-GPU import/fallback run need a free seat, so their artifacts are explicit
+  opens (`docs/captures/t03-drm-soak.open.txt`, `…multigpu.open.txt`) and the
+  [runbook](../../runbook-drm-session.md) completes them
+  ([ADR 0172](../adr/0172-drm-soak-teardown-and-runbook.md)).
 
 ## Hand-off
 

@@ -366,6 +366,34 @@ fn init(state: &mut crate::state::DfState, shared: SharedData) -> Result<(), Str
         return Err("DRM bring-up failed: no connected output".into());
     }
 
+    // Multi-GPU import/fallback classification (T-03.4): one greppable
+    // marker. The primary device is listed first; every other device either
+    // renders locally (its buffers are imported) or falls back to the primary
+    // renderer with linear-only import.
+    {
+        let mut gpus: Vec<(DrmNode, Option<DrmNode>)> = data
+            .devices
+            .iter()
+            .map(|(node, device)| (*node, device.render_node))
+            .collect();
+        gpus.sort_by_key(|(_, render)| {
+            u8::from(render.map(|r| r != data.primary_gpu).unwrap_or(true))
+        });
+        let nodes: Vec<dragonfruit_compositor::multi_gpu::GpuNode> = gpus
+            .iter()
+            .map(
+                |(node, render)| dragonfruit_compositor::multi_gpu::GpuNode {
+                    name: node.dev_id().to_string(),
+                    render_node: render.map(|r| r.dev_id().to_string()),
+                },
+            )
+            .collect();
+        println!(
+            "dragonfruit-compositor: {}",
+            dragonfruit_compositor::multi_gpu::MultiGpuOutcome::classify(&nodes).marker()
+        );
+    }
+
     // shm formats + dmabuf feedback from the primary gpu renderer.
     {
         let renderer = data
@@ -587,8 +615,10 @@ fn device_added(
         .dmabuf_render_formats()
         .iter()
         .filter(|format| {
-            render_node.is_some()
-                || format.modifier == smithay::backend::allocator::Modifier::Linear
+            dragonfruit_compositor::multi_gpu::format_allowed(
+                render_node.is_some(),
+                format.modifier == smithay::backend::allocator::Modifier::Linear,
+            )
         })
         .copied()
         .collect();

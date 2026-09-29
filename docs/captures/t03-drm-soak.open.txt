@@ -1,0 +1,27 @@
+T-03.4 — DRM soak and teardown: OPEN
+====================================
+
+recorded:  2026-09-29T11:31:18Z
+host:      Linux 7.2.5-200.fc44.x86_64 x86_64
+result:    DRM session cycle OPEN (no free logind seat)
+
+Automated teardown soak (headless, 100 cycles):
+  PASS — dragonfruit dev: soak passed — 100 clean headless cycles, zero strays, zero leaked sockets/tokens
+
+DRM master probe (before the cycle):
+  - /dev/dri/card0: busy (Permission denied)
+
+Backend self-report (no-op seat, host session untouched):
+  dragonfruit-compositor: DRM bring-up: OPEN (no connected output: master busy or all connectors disconnected)
+
+Why: the host runs a graphical session that owns DRM master, so the
+     compositor cannot take the VT for a real DRM cycle. The T-03.4
+     unit is marked open — not skipped — and swept on the hardware
+     rail (a free seat / spare GPU / clean VM).
+
+Reproduce on a machine with a free seat:
+  make drm-soak
+  # or directly, one DRM cycle with the teardown check:
+  target/debug/dragonfruit dev --soak 1 --drm
+
+The automated soak above is the same gate as `make soak`.

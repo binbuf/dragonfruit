@@ -75,6 +75,20 @@ real-device run. The classification is pinned by
 `compositor/tests/input_validation.rs` in `make e2e`
 ([ADR 0171](../design/adr/0171-hardware-input-validation-matrix.md)).
 
+T-03.4's soak and multi-GPU artifacts are produced by `scripts/drm-soak.sh`
+(`make drm-soak`) and `scripts/multi-gpu-validation.sh`
+(`make multi-gpu-validation`). On this host `t03-drm-soak.open.txt` records the
+automated 100-cycle teardown soak (PASS — zero strays, zero leaked
+sockets/tokens), the busy-card probe, and the no-op-seat self-report;
+`t03-multigpu.open.txt` records the single-card classification
+(`Multi-GPU: SINGLE device=card0`). On a free seat / second GPU / VM the same
+scripts write `t03-drm-soak.txt` (one real DRM cycle with DRM master released)
+and `t03-multigpu.txt`. The pure decisions are pinned by
+`compositor/tests/multi_gpu.rs` and the dev-tool soak tests in `make e2e`
+([ADR 0172](../design/adr/0172-drm-soak-teardown-and-runbook.md)); the exact
+hardware commands are in
+[runbook-drm-session.md](../runbook-drm-session.md).
+
 T-05.6's Mission Control capture is produced by `scripts/capture-overview.sh`:
 it runs the nested demo twice (normally and with `accessibility.reduceMotion`),
 drives the overview open, Desktop Reveal, and a per-Space wallpaper slide over
