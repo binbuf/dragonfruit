@@ -5270,6 +5270,70 @@ Item {
             themed.destroy();
         }
 
+        // T-19.1d: our own apps render their bundled Phosphor artwork keyed by
+        // desktop id, so nested dev (before an install) shows the right tile
+        // even with no app-index themed path.
+        function test_first_party_app_uses_bundled_tile() {
+            var files = make(glyphComponent, {
+                kind: "app", name: "Files", appId: "org.dragonfruit.Files",
+                desktopId: "org.dragonfruit.Files.desktop", size: 48
+            });
+            compare(files.bundledIcon,
+                    "qrc:/icons/apps/org.dragonfruit.Files.svg");
+            verify(files.hasBundledIcon);
+            verify(files.hasAppArtwork);
+            tryCompare(files, "maskedArtwork", true);
+            waitForRendering(stage);
+            wait(60);
+            var img = grabImage(files);
+            // The Files tile is our flat blue rounded square; a point above
+            // the centred folder glyph is a real bundled pixel, not the
+            // placeholder initial.
+            verify(nearColor(img, 24, 4, 59, 130, 246, 40),
+                   "the bundled Files artwork renders");
+            files.destroy();
+
+            var settings = make(glyphComponent, {
+                kind: "app", name: "Settings", appId: "org.dragonfruit.Settings",
+                desktopId: "org.dragonfruit.Settings.desktop", size: 48
+            });
+            compare(settings.bundledIcon,
+                    "qrc:/icons/apps/org.dragonfruit.Settings.svg");
+            verify(settings.hasBundledIcon);
+            tryCompare(settings, "maskedArtwork", true);
+            settings.destroy();
+        }
+
+        // T-19.1d: a third-party entry has no bundled tile and still prefers
+        // the app-index themed `iconPath`.
+        function test_third_party_prefers_themed_icon_path() {
+            var themed = make(glyphComponent, {
+                kind: "app", name: "Square",
+                desktopId: "com.example.Square.desktop",
+                iconPath: assetPath("icon-square.svg"), size: 48
+            });
+            compare(themed.bundledIcon, "");
+            verify(!themed.hasBundledIcon);
+            verify(themed.hasThemedIconHint);
+            verify(themed.iconUrl.startsWith("file://"));
+            tryCompare(themed, "maskedArtwork", true);
+            themed.destroy();
+        }
+
+        // T-19.1d: for a first-party id the bundled tile wins even when
+        // app-index happened to resolve a themed path.
+        function test_first_party_bundled_tile_wins_over_themed_path() {
+            var glyph = make(glyphComponent, {
+                kind: "app", name: "Files",
+                desktopId: "org.dragonfruit.Files.desktop",
+                iconPath: assetPath("icon-square.svg"), size: 48
+            });
+            compare(glyph.bundledIcon,
+                    "qrc:/icons/apps/org.dragonfruit.Files.svg");
+            compare(glyph.iconUrl, glyph.bundledIcon);
+            glyph.destroy();
+        }
+
         // -- T-14.7d Trash entry artwork ------------------------------------
 
         // `grabImage` does not apply the grabbed item's own opacity, and it

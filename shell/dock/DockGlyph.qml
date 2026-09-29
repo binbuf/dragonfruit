@@ -19,6 +19,9 @@ Item {
     property string kind: "app"
     property string name: ""
     property string appId: ""
+    // The app-index record id (e.g. "org.dragonfruit.Files.desktop"). The
+    // first-party bundled-tile map (T-19.1d) is keyed by this, not `appId`.
+    property string desktopId: ""
     // The themed icon file from `org.dragonfruit.AppIndex1`; empty when the
     // service is absent or no theme provides the name, in which case the
     // initial tile is drawn.
@@ -29,6 +32,36 @@ Item {
     implicitWidth: size
     implicitHeight: size
 
+    // The bundled first-party tile (T-19.1d). Our own apps ship their artwork
+    // under `assets/icons/apps/` and the id -> file map is keyed by desktop id,
+    // so nested dev (before an install) shows the right tile even when
+    // app-index has no themed path yet. Third-party apps keep using `iconPath`.
+    readonly property string firstPartyId: {
+        var id = root.desktopId.toLowerCase();
+        if (id.endsWith(".desktop"))
+            id = id.substring(0, id.length - 8);
+        return id;
+    }
+    readonly property string bundledIcon: {
+        if (root.kind !== "app")
+            return "";
+        if (root.firstPartyId === "org.dragonfruit.files")
+            return "qrc:/icons/apps/org.dragonfruit.Files.svg";
+        if (root.firstPartyId === "org.dragonfruit.settings")
+            return "qrc:/icons/apps/org.dragonfruit.Settings.svg";
+        return "";
+    }
+    readonly property bool hasBundledIcon:
+        root.kind === "app" && root.bundledIcon.length > 0
+    // The resolved artwork URL: the bundled first-party tile wins for our own
+    // apps, then app-index's themed path. Empty means the placeholder initial.
+    readonly property string iconUrl:
+        root.hasBundledIcon ? root.bundledIcon
+        : (root.iconPath.length > 0 ? "file://" + root.iconPath : "")
+    readonly property bool hasAppArtwork:
+        root.kind === "app" && root.iconUrl.length > 0
+    // A themed path from app-index (kept distinct from the bundled first-party
+    // tile so callers can tell the two apart; T-14.1a).
     readonly property bool hasThemedIconHint:
         kind === "app" && iconPath.length > 0
     // Most Linux icon themes ship app icons as SVG; `Image` decodes both the
@@ -36,9 +69,9 @@ Item {
     // it is not, an SVG still renders through the `QtQuick.VectorImage`
     // fallback below (unclipped, the pre-T-14.7w inset+fit look) rather than
     // resolving to the initial tile.
-    readonly property bool isSvgIcon: iconPath.toLowerCase().endsWith(".svg")
-    // The themed artwork currently on screen: the masked Canvas, or the
-    // unmasked VectorImage fallback when the SVG cannot be decoded as an image.
+    readonly property bool isSvgIcon: iconUrl.toLowerCase().endsWith(".svg")
+    // The app artwork currently on screen: the masked Canvas, or the unmasked
+    // VectorImage fallback when the SVG cannot be decoded as an image.
     readonly property bool hasThemedIcon: maskedArtwork || vectorFallback
 
     readonly property color tileColor: {
@@ -78,7 +111,7 @@ Item {
         // no path at all, or a raster path that failed to decode. An SVG that
         // fails to decode still shows through the VectorImage fallback below.
         visible: root.kind === "app"
-                 && (!root.hasThemedIconHint
+                 && (!root.hasAppArtwork
                      || (iconLoader.status === Image.Error && !root.isSvgIcon))
         x: root.iconInset
         y: root.iconInset
@@ -108,7 +141,7 @@ Item {
         id: iconLoader
         objectName: "iconLoader"
         visible: false
-        source: root.hasThemedIconHint ? "file://" + root.iconPath : ""
+        source: root.hasAppArtwork ? root.iconUrl : ""
         // No `sourceSize`: the loader and the Canvas drawImage share one
         // natural-size pixmap-cache entry, so the artwork is decoded once.
         onStatusChanged: {
@@ -118,9 +151,9 @@ Item {
     }
 
     readonly property bool maskedArtwork:
-        root.hasThemedIconHint && iconLoader.status === Image.Ready
+        root.hasAppArtwork && iconLoader.status === Image.Ready
     readonly property bool vectorFallback:
-        root.hasThemedIconHint && root.isSvgIcon
+        root.hasAppArtwork && root.isSvgIcon
         && iconLoader.status === Image.Error
 
     // The themed artwork clipped to the tile squircle. A Canvas clip is
@@ -180,7 +213,7 @@ Item {
             var scale = Math.min(w / iw, h / ih);
             var dw = iw * scale;
             var dh = ih * scale;
-            ctx.drawImage("file://" + root.iconPath,
+            ctx.drawImage(root.iconUrl,
                           (w - dw) / 2, (h - dh) / 2, dw, dh);
             ctx.restore();
         }
@@ -199,7 +232,7 @@ Item {
         y: root.iconInset
         width: root.tileW
         height: root.tileH
-        source: visible ? "file://" + root.iconPath : ""
+        source: visible ? root.iconUrl : ""
         fillMode: VectorImage.PreserveAspectFit
     }
 

@@ -35,7 +35,7 @@ sudo dnf install dragonfruit-desktop
 | `dragonfruit-compositor` | Compositor binary, private protocol XMLs + generated bindings |
 | `dragonfruit-shell` | Shell process: menu bar, Dock, Control Center, notifications, OSD |
 | `dragonfruit-settingsd` | `settingsd`, `menu-broker`, `app-index` (split later if warranted) |
-| `dragonfruit-settings`, `dragonfruit-files` | First-party applications, design system assets |
+| `dragonfruit-settings`, `dragonfruit-files` | First-party applications, design system assets, and their app icon under `share/icons/hicolor/scalable/apps/` (T-19.1d) |
 | `dragonfruit-portal` | `xdg-desktop-portal-dragonfruit` + `portals.conf` for our desktop name |
 | `dragonfruit-session` | `dragonfruit-session` binary, `share/wayland-sessions/dragonfruit.desktop`, `bin/dragonfruit-session-entry`, systemd user units and target (installed with `dragonfruit-session --install-session "$RPM_BUILD_ROOT/usr"`) |
 | `dragonfruit-desktop` | Meta-package requiring the above |
@@ -56,6 +56,14 @@ sudo dnf install dragonfruit-desktop
 - **Default handlers:** the packages register `dragonfruit-files.desktop` as
   the default `inode/directory` handler, so folder-opening from any app or
   portal routes to Files (see [09-files.md](09-files.md)).
+- **First-party app icons (T-19.1d):** each app installs its Phosphor-derived
+  SVG (`org.dragonfruit.Files.svg`, `org.dragonfruit.Settings.svg`, generated
+  by `scripts/gen-app-icons.py`) into `share/icons/hicolor/scalable/apps/`, and
+  its `.desktop` `Icon=` carries the same id. A launcher, the global menu, and
+  the portal file chooser therefore resolve the same artwork the shell bundles
+  at `qrc:/icons/apps/` for nested dev. The design-system resource payload and
+  the installed file are generated from one source and guarded by
+  `make check-phosphor` (ADR [0166](adr/0166-first-party-app-icons.md)).
 
 ## Distribution path
 

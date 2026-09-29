@@ -263,6 +263,7 @@ FocusScope {
                         kind: "app"
                         name: row.modelData.name !== undefined ? row.modelData.name : ""
                         appId: row.modelData.desktopId !== undefined ? row.modelData.desktopId : ""
+                        desktopId: row.modelData.desktopId !== undefined ? row.modelData.desktopId : ""
                         iconPath: row.modelData.iconPath !== undefined ? row.modelData.iconPath : ""
                         size: root.iconSize
                         anchors.left: parent.left
