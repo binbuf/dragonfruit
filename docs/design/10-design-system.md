@@ -42,7 +42,11 @@ ScrollView
 
 `Tooltip` (T-14.7i) is the passive hover label: pointer-anchored,
 non-focusable, token-driven, and used first by the Dock name labels (ADR
-[0093](adr/0093-tooltip-joins-the-design-system.md)).
+[0093](adr/0093-tooltip-joins-the-design-system.md)). Since T-14.7aa it is a
+pill with an opt-in pointer tail (`tailVisible`, the Dock's shipping form) and
+a token inner rim; the tail aims at the anchor centre and rides the owner's
+overlay rect (ADR
+[0162](adr/0162-dock-hover-zoom-profile-and-label-tail.md)).
 
 ## Token architecture
 
@@ -113,9 +117,13 @@ rules:
   short low-pass with **no** overshoot) and recomputes geometry every frame
   from the smoothed position, so it stays progress-based and interruptible.
   `motion.dock-magnify`'s overshoot is reserved for discrete changes (the icon
-  size and reveal). The plate/margin values it feeds are dock spacing tokens,
-  never literals. See [ADR 0089](adr/0089-dock-plate-geometry-and-live-panel-rect.md)
-  and [ADR 0111](adr/0111-dock-magnification-tracking-stability.md).
+  size and the reveal); the hover engage/release amplitude uses the
+  `motion.dock-hover` ease (T-14.7aa), whose gentler ramp keeps the whole-row
+  translation from popping. The
+  plate/margin values it feeds are dock spacing tokens,
+  never literals. See [ADR 0089](adr/0089-dock-plate-geometry-and-live-panel-rect.md),
+  [ADR 0111](adr/0111-dock-magnification-tracking-stability.md), and
+  [ADR 0162](adr/0162-dock-hover-zoom-profile-and-label-tail.md).
 
 ## Quality gates
 
