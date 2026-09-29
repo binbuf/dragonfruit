@@ -490,3 +490,118 @@ fn a_suspend_resume_cycle_recovers_outputs_input_and_clients() {
         "the client survived both cycles"
     );
 }
+
+/// T-16.4 acceptance: 100 suspend→resume cycles in one session leak no state.
+///
+/// The one-cycle test above proves *recovery*; this soak proves it *repeats*.
+/// A live client stays mapped across the whole run, and every cycle asserts
+/// the scene is intact on both sides of sleep (`outputs=1 windows=1`), the
+/// cycle counter advances by exactly one, and the suspend flag returns to
+/// awake. After the 100th wake the client's connection still round-trips and
+/// input still routes; a clean `SIGTERM` then asserts the compositor removed
+/// its socket, lock, both launch tokens, and the Xwayland `DISPLAY` file.
+#[test]
+fn one_hundred_suspend_resume_cycles_leak_no_state() {
+    const CYCLES: u64 = 100;
+
+    let socket_name = format!("dragonfruit-test-suspend-soak-{}", std::process::id());
+    let synthetic_path = std::env::temp_dir().join(format!("{socket_name}-synth"));
+    let mut proc = CompositorProcess::start(&socket_name, &synthetic_path);
+    let input = SyntheticInput::connect(&synthetic_path);
+
+    let (_conn, mut queue, mut client) = connect(&proc.socket_path);
+    let _file = map_toplevel(&mut client, &mut queue);
+    assert_eq!(client.outputs, 1, "one headless output");
+
+    let latency_before = latency_received(&input.query("query latency"));
+
+    for cycle in 1..=CYCLES {
+        input.send("suspend");
+        wait_for_session(&input, "suspended", 1);
+        let asleep = input.query("query session");
+        assert_eq!(
+            session_field(&asleep, "outputs"),
+            1,
+            "cycle {cycle}: an output was dropped on suspend"
+        );
+        assert_eq!(
+            session_field(&asleep, "windows"),
+            1,
+            "cycle {cycle}: the client window was lost on suspend"
+        );
+
+        input.send("resume");
+        wait_for_session(&input, "suspended", 0);
+        wait_for_session(&input, "cycles", cycle);
+        let awake = input.query("query session");
+        assert_eq!(
+            session_field(&awake, "outputs"),
+            1,
+            "cycle {cycle}: an output was dropped on resume"
+        );
+        assert_eq!(
+            session_field(&awake, "windows"),
+            1,
+            "cycle {cycle}: the client window was lost on resume"
+        );
+        assert_eq!(
+            session_field(&awake, "cycles"),
+            cycle,
+            "cycle {cycle}: the completed-cycle counter drifted"
+        );
+    }
+
+    // The client connection and the whole scene survived all 100 cycles.
+    queue
+        .roundtrip(&mut client)
+        .expect("the client connection died during the soak");
+    assert_eq!(client.outputs, 1, "the client saw no output change");
+
+    // Input routes again after the final wake.
+    input.send("key 30 down");
+    let latency_after = latency_received(&input.query("query latency"));
+    assert!(
+        latency_after > latency_before,
+        "input must route after the soak ({latency_after} vs {latency_before})"
+    );
+
+    let last = input.query("query session");
+    assert_eq!(session_field(&last, "suspended"), 0, "the soak ends awake");
+    assert_eq!(
+        session_field(&last, "cycles"),
+        CYCLES,
+        "100 complete cycles"
+    );
+    assert_eq!(session_field(&last, "outputs"), 1);
+    assert_eq!(session_field(&last, "windows"), 1);
+
+    // Clean teardown: SIGTERM, wait for the compositor's own shutdown path,
+    // then assert it removed every hand-off file (no leaked state).
+    unsafe {
+        libc::kill(proc.child.id() as libc::pid_t, libc::SIGTERM);
+    }
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        match proc.child.try_wait() {
+            Ok(Some(status)) => {
+                assert!(status.success(), "compositor exit after soak: {status}");
+                break;
+            }
+            Ok(None) => {
+                assert!(
+                    Instant::now() < deadline,
+                    "compositor ignored SIGTERM after {CYCLES} cycles"
+                );
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Err(err) => panic!("wait failed: {err}"),
+        }
+    }
+    for artifact in common::compositor_artifacts(&proc.socket_path) {
+        assert!(
+            !artifact.exists(),
+            "leaked artifact after the 100-cycle soak: {}",
+            artifact.display()
+        );
+    }
+}

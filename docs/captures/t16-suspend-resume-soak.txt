@@ -1,0 +1,102 @@
+T-16.4 suspend/resume soak
+generated: 2026-09-29T14:44:07Z
+host:      Linux 7.2.5-200.fc44.x86_64 x86_64
+build:     release
+state:     headless; no host session, no VM, no real services
+
+================================================================
+## 0. The soak contract
+================================================================
+
+| Question | Contract | Proof |
+|---|---|---|
+| 100 cycles in one session | `suspended=0 cycles=100` | `suspend_resume_conformance::one_hundred_suspend_resume_cycles_leak_no_state` |
+| Output recovery | `outputs=1` on both sides of every cycle | same test (asserted each cycle) |
+| Client recovery | the client connection round-trips after cycle 100 | same test |
+| Input recovery | input routes again after the final wake | same test |
+| No leaked state on exit | socket, lock, both tokens, `DISPLAY` file all removed | same test's clean-`SIGTERM` teardown check |
+| The session survives 100 cycles | same child pid, no restart | `dragonfruit-session::one_hundred_cycles_keep_the_supervised_session_alive` |
+| A real machine sleeps 100 times | logind `PrepareForSleep` round trips end to end | hardware rail (OPEN here) |
+
+================================================================
+## 1. Compositor 100-cycle soak (isolated runtime dir)
+================================================================
+
+One headless compositor session, one live Wayland client, 100
+suspend→resume cycles. Artifacts (socket, lock, tokens, DISPLAY) are
+asserted gone after a clean SIGTERM, and the isolated runtime dir must
+be empty so the run cannot litter (or mask) the host.
+isolated XDG_RUNTIME_DIR: /tmp/dragonfruit-t16-sr.i8FWyN
+
+$ XDG_RUNTIME_DIR=/tmp/dragonfruit-t16-sr.i8FWyN cargo test --release -p dragonfruit-compositor --test suspend_resume_conformance
+   Compiling dragonfruit-compositor v0.1.0 (/home/user/repos/dragonfruit/compositor)
+    Finished `release` profile [optimized] target(s) in 37.89s
+     Running tests/suspend_resume_conformance.rs (target/release/deps/suspend_resume_conformance-c025fb2fe11e7815)
+
+running 2 tests
+test a_suspend_resume_cycle_recovers_outputs_input_and_clients ... ok
+test one_hundred_suspend_resume_cycles_leak_no_state ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.18s
+
+
+[PASS] 100 cycles clean; no leaked runtime files
+
+================================================================
+## 2. Session 100-cycle soak (one supervised child)
+================================================================
+
+The same cycle 100 times through the real Supervisor and the
+recording MockSuspend: one platform request per cycle, the child's pid
+never changes, and no service restarts.
+$ cargo test --release -p dragonfruit-session --test suspend one_hundred_cycles_keep_the_supervised_session_alive -- --nocapture
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling serde_core v1.0.229
+   Compiling zmij v1.0.23
+   Compiling serde v1.0.229
+   Compiling libc v0.2.189
+   Compiling serde_json v1.0.151
+   Compiling memchr v2.8.3
+   Compiling itoa v1.0.18
+   Compiling syn v3.0.6
+   Compiling serde_derive v1.0.229
+   Compiling dragonfruit-session v0.1.0 (/home/user/repos/dragonfruit/services/session)
+    Finished `release` profile [optimized] target(s) in 10.14s
+     Running tests/suspend.rs (target/release/deps/suspend-297e92a81023c72b)
+
+running 1 test
+test one_hundred_cycles_keep_the_supervised_session_alive ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.01s
+
+
+[PASS] session 100-cycle soak
+
+================================================================
+## 3. Real hardware / logind probe
+================================================================
+
+logind: logind reachable (4 session(s))
+
+[OPEN] A true 100-cycle suspend/resume soak calls logind's suspend
+       and actually sleeps the machine 100 times, then verifies
+       output/input/client recovery on wake. On this host that would
+       sleep the developer's own graphical session, and the production
+       logind SuspendBackend is not wired (T-12.5b/real-session work).
+       Marked OPEN, not skipped (docs/SLICING-REVIEW.md). The hardware
+       rail is T-159…T-161 (free seat / spare GPU / clean VM) plus the
+       T-16 VM matrix; the automated halves above pin the state machine,
+       the scene counts, and the leak tripwire without hardware.
+
+================================================================
+## 4. Notes
+================================================================
+
+* The persisted-use ADR is docs/design/adr/0181-t16-suspend-resume-soak.md.
+* The one-cycle recovery test is
+  suspend_resume_conformance::a_suspend_resume_cycle_recovers_outputs_input_and_clients,
+  and the compositor's pure model is compositor/src/suspend.rs.
+* The soak's leak list mirrors common::compositor_artifacts and
+  tools/dragonfruit-dev/src/soak.rs::teardown_artifacts (socket, lock,
+  both launch tokens, Xwayland DISPLAY file).

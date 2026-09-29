@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(171 earlier sections omitted)_
+_(172 earlier sections omitted)_
 
-- **T135 — T-15.13a Privacy and Security adapter**: **State: done.** New workspace crate `dragonfruit-privacy-adapter`; `services/privacy-adapter/src/source.rs` — `AppPermissionData {app,
 - **T136 — T-15.13b Privacy and Security pane and tile**: **State: done.** The Settings `Privacy & Security` pane and the Control Center; `services/system-status/src/privacy.rs` (new) — `PrivacyHost<S>` (refresh/
 - **T137 — T-15.14a Accessibility adapter**: **State: done.** New workspace crate `dragonfruit-accessibility-adapter`; `services/accessibility-adapter/src/source.rs` — `AccessibilityData
 - **T138 — T-15.14b Accessibility pane and tile**: **State: done.** The Settings `Accessibility` pane and the Control Center; `services/system-status/src/accessibility.rs` (new) — `AccessibilityHost<S>`
@@ -43,7 +42,8 @@ _(171 earlier sections omitted)_
 - **T155 — T-17.3 Visual floor and reduced-motion sign-off**: **State: done (agent half; the human sign-off is batched at the track; `scripts/capture-t17-visual-floor.sh` (`make t17-visual-floor-capture`) — one
 - **T156 — T-17.5a Absent-daemon and crash matrix verification**: **State: done.** The premium gate's robustness contract is re-verified on the; `services/session/tests/absent_services.rs` (new, 4 tests) — the stand-in
 - **T157 — T-17.5b Leak and lock enforcement verification**: **State: done.** The premium gate's leak and lock contracts are re-verified on; vision read clean.
-- **T158 — T-17.6 Unfamiliar-user test and sign-off report**: **State: done (agent half; the human unfamiliar-user verdict is the batched; `docs/captures/t17-premium-gate.md
+- **T158 — T-17.6 Unfamiliar-user test and sign-off report**: **State: done (agent half; the human unfamiliar-user verdict is the batched; `docs/captures/t17-premium-gate.md` (new) — the sign-off report: the full
+- **T162 — T-16.4 Suspend/resume soak**: **State: done (automated half); the real-machine logind half is OPEN on the; `compositor/tests/suspend_resu
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -15835,3 +15835,83 @@ Commands / gotchas for later:
   rows; hardware rail. Post-gate backlog (desktop icons, Spotlight search, GOA,
   NVIDIA/HDR, printer breadth, GPU blur sampler, live PipeWire producer) is
   listed in `docs/captures/t17-premium-gate.md`.
+
+## T162 — T-16.4 Suspend/resume soak
+
+**State: done (automated half); the real-machine logind half is OPEN on the
+hardware rail.** The 100-cycle suspend/resume soak is proven headless with no
+leaked state: 100 cycles in one compositor session with a live client keep
+`outputs=1 windows=1` on both sides of sleep and the counter at exactly 100,
+the client still round-trips and input still routes after the final wake, and a
+clean `SIGTERM` removes every hand-off file; the session-manager half runs the
+same cycle 100 times through the real `Supervisor` (same child pid, zero
+restarts, one platform request per cycle). `make t16-suspend-resume-soak` all
+rows PASS, `cargo test -p dragonfruit-compositor --test
+suspend_resume_conformance` 2/2, `cargo test -p dragonfruit-session --test
+suspend` 4/4, `make e2e` exit 0 (133 `test result: ok`, 0 failed),
+`fmt`/`clippy` clean, live nested capture + vision read clean.
+
+Real paths:
+
+- `compositor/tests/suspend_resume_conformance.rs` — new
+  `one_hundred_suspend_resume_cycles_leak_no_state`. Per cycle it asserts
+  `suspended=1/0`, `outputs=1`, `windows=1`, and `cycles=cycle`; it then
+  round-trips the client, re-routes synthetic input, and `libc::kill`s
+  (`SIGTERM`) the compositor, waiting for the clean exit before asserting no
+  artifact survived.
+- `compositor/tests/common/mod.rs` — new `compositor_artifacts(socket)` returns
+  the one leak list (socket, `.lock`, `.launch-token`,
+  `.desktop-launch-token`, `.x11-display`); `cleanup_compositor_artifacts`
+  loops over it. Keep it in lockstep with
+  `tools/dragonfruit-dev/src/soak.rs::teardown_artifacts`.
+- `services/session/tests/suspend.rs` — new
+  `one_hundred_cycles_keep_the_supervised_session_alive`.
+- `scripts/t16-suspend-resume-soak.sh` + `make t16-suspend-resume-soak` (new) —
+  writes `docs/captures/t16-suspend-resume-soak.txt`; prefers the release tree
+  when present, runs both suites under an isolated `XDG_RUNTIME_DIR` and asserts
+  it is empty, and records the logind probe.
+- `docs/captures/t16-suspend-resume-soak.{txt,md,png}` (new);
+  `docs/design/adr/0181-t16-suspend-resume-soak.md` (new);
+  `docs/design/11-session-and-dev-workflow.md` new "The suspend/resume soak
+  (T-16.4)" section; `docs/captures/README.md`.
+
+Commands / gotchas for later:
+
+- **The counter is the contract.** `query session` reports
+  `session suspended=<0|1> cycles=<n> outputs=<n> windows=<n>`; the soak
+  asserts `outputs`/`windows` are unchanged asleep *and* awake, so a dropped
+  output or disconnected client fails mid-soak rather than at the end.
+- **A clean `SIGTERM` is required for the leak assertion, not `kill()`.** The
+  conformance harness defaults to `SIGKILL` in `Drop` (which skips the
+  compositor's teardown), so the new test explicitly `libc::kill`s `SIGTERM`,
+  waits for a successful exit, then checks `common::compositor_artifacts`. Both
+  `libc` (a normal dependency) and `effectively` the artifact helper are
+  available to integration tests.
+- **`make demo` does not survive a tool timeout as a detached job.** When the
+  calling shell is reaped, the `make`/`dragonfruit dev` parent dies and the
+  shell crashes with a QML `Dock.qml` TypeError, orphaning only the compositor.
+  Run the whole launch→wait→raise→capture→teardown sequence in one foreground
+  command so it finishes before the tool timeout. Killing by `pkill -f
+  'dragonfruit-t162'` from a bash command **matches the command itself** and
+  kills the shell — use pid lists or a bracketed pattern
+  (`'socket-name dragonfruit-t[1]62'`).
+- **Live active-window capture recipe** (reused from T-17.1a): `gdbus call
+  --session --dest org.kde.KWin --object-path /Scripting --method
+  org.kde.kwin.Scripting.loadScript <raise.js> df_capture_raise`, then
+  `org.kde.kwin.Scripting.start`, then `spectacle -b -n -a -o out.png`; crop
+  center-x / bottom 1920×1200. The nested output is 1920×1200 and the active
+  window came out 2115×1437.
+- **The production logind `SuspendBackend` is still not implemented** (the
+  `SuspendBackend` trait has only `MockSuspend`), which is one reason the real
+  100-sleep half is OPEN. Wiring it is real-session/T-12.5b follow-up work.
+
+### Follow-ups
+
+- **Real 100-cycle suspend/resume soak.** No disposable machine here (a
+  suspend would sleep the developer's session) and no logind backend, so the
+  real row is recorded OPEN. Run `make t16-suspend-resume-soak` on the hardware
+  rail (T-159…T-161 / the T-16 VM matrix) once the logind `SuspendBackend`
+  lands; the replacement artifact is `docs/captures/t16-suspend-resume-soak.txt`
+  (not `.open.txt`). Hibernate stays explicitly deferred.
+- **T-16.5 (graphics driver matrix) is the next unit** and consumes this soak's
+  output/input/client recovery evidence.

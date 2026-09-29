@@ -991,6 +991,17 @@ check. The live cycle and the two-TTY stills are on the T-159…T-161 rail; the
 pure logic is pinned by `cargo test -p dragonfruit-dev` (`second_vt::tests`) and
 [ADR 0175](../design/adr/0175-second-vt-dev-harness.md).
 
+T-16.4's suspend/resume soak is produced by
+`scripts/t16-suspend-resume-soak.sh` (`make t16-suspend-resume-soak`). It
+writes `t16-suspend-resume-soak.txt` (`t16-suspend-resume-soak.md` is the
+reviewed note): one headless compositor session driven through 100
+suspend→resume cycles with a live client (scene intact each cycle, clean
+teardown leaks nothing) plus the session-supervision 100-cycle soak, both in an
+isolated `XDG_RUNTIME_DIR`; the real-machine logind half is recorded **OPEN**,
+not skipped, on a host that cannot sleep itself and before the logind backend
+lands. The live nested still is `t16-suspend-resume-soak.png`; the contract is
+[ADR 0181](../design/adr/0181-t16-suspend-resume-soak.md).
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture
