@@ -43,6 +43,23 @@ target/debug/dragonfruit dev --drm --shell 2>&1 | tee /tmp/df-drm.log
 the VT) and, with `--shell`, the built shell against that private socket.
 Return to the host with `Ctrl+Alt+F1`; the host session is never closed.
 
+T-12.6c automates the same rung — find a free VT via `loginctl`, start the
+session for the dedicated user, and return by VT switch — without logging the
+host out. Inspect the plan first (it starts nothing), then run it:
+
+```bash
+target/debug/dragonfruit dev --real --plan --user dfdev   # preflight + free VT + commands
+target/debug/dragonfruit dev --real --user dfdev          # start on the free VT
+target/debug/dragonfruit dev --real --teardown --user dfdev
+```
+
+The harness refuses `dfdev` if that user already holds an active seat graphical
+session and prints the dedicated-user rationale; the free VT is the smallest
+one no `loginctl` session occupies. `make second-vt-validation` records the
+refusal, the mocked selection, and (on a free seat) one real cycle. The exact
+behavior is in [testing-ladder.md](testing-ladder.md) rung 2 and
+[ADR 0175](design/adr/0175-second-vt-dev-harness.md).
+
 If the session package is installed, the display-manager entry
 (`share/wayland-sessions/dragonfruit.desktop` +
 `dragonfruit-session-entry`) does the same thing: `sudo dragonfruit-session
@@ -144,6 +161,18 @@ leftover socket: it hands a later client a trusted role.
   attach one and re-run.
 - **`make multi-gpu-validation` writes `.open.txt`** — the seat has a single
   GPU; attach a second card (or a VM with two virtio-GPUs) and re-run.
+- **`Second VT: REFUSE user=…`** — the target user already holds an active
+  seat graphical session. Use a dedicated user (`sudo useradd -m dfdev` +
+  `sudo passwd dfdev`); two graphical sessions for one user collide over
+  `XDG_RUNTIME_DIR`/portals. Run `dev --real --plan --user dfdev` to see the
+  preflight and the chosen VT before starting.
+- **`user dfdev does not exist`** — the harness never creates users silently;
+  run the printed `sudo useradd -m dfdev` (then `sudo passwd dfdev`) once.
+- **`no free VT in 2..=12`** — every probed VT is occupied; stop a seat session
+  or use a VM. The free VT is read from `loginctl`, never assumed to be VT1.
+- **`session socket … never appeared`** — the transient session unit failed to
+  come up; read it with `journalctl --user-unit dragonfruit-second-vt` (or the
+  system journal) and re-run `dev --real --plan` to confirm the seat is free.
 - **Cargo cannot find the DRM stack** — set `PKG_CONFIG_PATH` /
   `RUSTFLAGS` / `LD_LIBRARY_PATH` at `$HOME/.local/df-devroot/lib64` as the
   Makefile does; `libxkbcommon.so` also needs `$HOME/.local/lib` at runtime.

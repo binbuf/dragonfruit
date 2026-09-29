@@ -488,7 +488,8 @@ user can collide through shared user-session services (portals, environment
 variables), so we use a **dedicated development user** for this.
 
 T-12.1b documents the manual, units-based workflow; T-12.6c automates it as
-`dragonfruit dev --real`:
+`dragonfruit dev --real` (see [Mode A](#mode-a--second-vt-no-logout-the-daily-mode)),
+which fails the preflight if the user already holds a seat graphical session:
 
 ```bash
 sudo useradd -m dfdev                       # once
@@ -532,11 +533,30 @@ VT for a **dedicated user**, so the two graphical sessions do not collide over
 
 ```bash
 dragonfruit dev --real --user dfdev      # start on a second VT
+dragonfruit dev --real --plan --user dfdev   # preflight + plan, start nothing
+dragonfruit dev --real --teardown --user dfdev
 ```
 
-`Ctrl+Alt+F1` returns to the host desktop exactly as it was; the host session
-is never logged out. This is the low-friction "fully test on the workstation"
-command.
+The harness runs the dedicated-user preflight against `loginctl` and **refuses**
+the command when `dfdev` already holds an active seat graphical session,
+explaining that a second graphical session for the same user collides over
+shared user-session state (portals, `XDG_RUNTIME_DIR`) and printing the
+`sudo useradd -m dfdev` bootstrap. Otherwise it picks the **smallest free VT**
+from the `loginctl` snapshot (never assuming VT1) and starts the shipped
+session entry as a `PAMName=login` session on that VT through `systemd-run`, so
+the dedicated user gets its own user manager, `XDG_RUNTIME_DIR`, and units.
+`Ctrl+Alt+F<host-vt>` (or the printed `chvt`) returns to the host desktop
+exactly as it was; the host session is never logged out. `--teardown`
+terminates the dedicated user's session with `loginctl terminate-session` and
+verifies no orphaned process survives.
+
+`--plan` performs the whole preflight and VT selection without starting
+anything, so it is safe to run next to the host desktop; the logic is pinned by
+`second_vt::tests` against a mocked `loginctl` and `make second-vt-validation`
+records the refusal and the selection. The start → switch → return → teardown
+cycle on real hardware is part of the T-159…T-161 rail. This is the
+low-friction "fully test on the workstation" command; the decision is frozen in
+[ADR 0175](adr/0175-second-vt-dev-harness.md).
 
 ### Mode B — display-manager round-trip (same user; the realism mode)
 
