@@ -1,0 +1,28 @@
+T-12.6c — second-VT dev harness: OPEN
+======================================
+
+recorded:  2026-09-29T12:16:43Z
+host:      Linux 7.2.5-200.fc44.x86_64 x86_64
+result:    real start → switch → return → teardown cycle OPEN (no dedicated development user (no free logind seat))
+
+Dedicated-user refusal (real loginctl, --user user):
+  PASS — Second VT: REFUSE user=user (exit 64)
+  dedicated-user guidance present
+
+Preflight/VT selection (mocked loginctl, host desktop on VT2):
+  PASS — Second VT: START user=dfdev uid=1001 vt=3 seat=seat0 socket=dragonfruit-wayland
+  systemd-run PAMName=login plan present
+
+Why: starting a real session needs a free logind seat and a dedicated
+     user. Create the user once with `sudo useradd -m dfdev` +
+     `sudo passwd dfdev`, then run the cycle on a free seat / clean VM.
+
+Reproduce:
+  # inspect the preflight and VT selection without starting anything:
+  target/debug/dragonfruit dev --real --plan --user dfdev
+  # the real start on a free seat, then return with the printed VT key:
+  target/debug/dragonfruit dev --real --user dfdev
+  # end the session cleanly:
+  target/debug/dragonfruit dev --real --teardown --user dfdev
+
+The pure preflight/VT logic is pinned by `cargo test -p dragonfruit-dev`.

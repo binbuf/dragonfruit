@@ -48,7 +48,7 @@ endif
 .DEFAULT_GOAL := help
 .PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test \
         visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev dev-full demo soak e2e \
-        idle-trace menubar-idle-trace latency-trace drm-bringup input-validation multi-gpu-validation drm-soak settingsd-capture settings-wave-1-capture \
+        idle-trace menubar-idle-trace latency-trace drm-bringup input-validation multi-gpu-validation drm-soak second-vt-validation settingsd-capture settings-wave-1-capture \
         t18-wallpaper-capture t18-absence-matrix t15-absence-matrix t15-breadth-capture t16-a11y-audit \
         t16-i18n-capture t16-kill-matrix t17-window-loop-capture t17-navigation-capture \
         t17-flatpak-browser-capture i18n-update \
@@ -63,6 +63,7 @@ help:
 	@echo "  make latency-trace — T-03.1b nested input-to-photon latency capture"
 	@echo "  make multi-gpu-validation — T-03.4 multi-GPU import/fallback validation"
 	@echo "  make drm-soak — T-03.4 100-cycle teardown soak + one DRM session cycle"
+	@echo "  make second-vt-validation — T-12.6c second-VT preflight/selection + one real cycle"
 	@echo "  make settingsd-capture — T-08.3 settingsd flip + restart capture"
 	@echo "  make settings-wave-1-capture — T-09.6b Settings wave stills (light/dark/reduced + panes)"
 	@echo "  make t18-wallpaper-capture — T-18.2 Wallpaper pane stills (fetching skeleton + filled)"
@@ -209,6 +210,13 @@ multi-gpu-validation: cargo-build
 # it is recorded OPEN (not skipped). Always exits 0.
 drm-soak: cargo-build
 	bash scripts/drm-soak.sh
+
+# T-12.6c: the second-VT dev harness. Records the dedicated-user refusal and
+# the mocked-loginctl VT selection always; the one real start → switch → return
+# → teardown cycle needs a free logind seat and the dedicated user, and with
+# neither it is recorded OPEN (not skipped). Always exits 0.
+second-vt-validation: cargo-build
+	bash scripts/second-vt-validation.sh
 
 # T-08.3: the settingsd flip + restart/resync track capture. Needs a host
 # Wayland session, `spectacle`, `ffmpeg`, and Pillow; records the stills,

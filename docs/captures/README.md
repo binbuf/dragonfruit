@@ -927,6 +927,20 @@ are in `t17-flatpak-browser.md`. Needs Flatpak + Firefox,
 python3 (host and sandbox) with PyGObject/Pillow, ffmpeg (optional clip), and
 the built tree; not in `make e2e`.
 
+T-12.6c's second-VT dev harness is produced by
+`scripts/second-vt-validation.sh` (`make second-vt-validation`). It records the
+dedicated-user **refusal** (running `dev --real --plan` for the host user, who
+holds the seat) and the **preflight/free-VT selection** against a mocked
+`loginctl` (the host desktop on VT2, so `dfdev` gets VT3) in
+`t171-second-vt.open.txt`. The one real start → switch → return → teardown cycle
+needs a free logind seat and the dedicated development user; on a host with
+neither it is **marked open, not skipped** and the artifact stays
+`t171-second-vt.open.txt` (a free seat replaces it with `t171-second-vt.txt`).
+`t171-second-vt-nested-check.png` is the required nested `make demo` visual
+check. The live cycle and the two-TTY stills are on the T-159…T-161 rail; the
+pure logic is pinned by `cargo test -p dragonfruit-dev` (`second_vt::tests`) and
+[ADR 0175](../design/adr/0175-second-vt-dev-harness.md).
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

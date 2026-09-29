@@ -15478,3 +15478,84 @@ Commands / gotchas for later:
   SDDM session-id format, and the root-owned autologin files.
 - **T-12.6c** adds the no-logout second-VT path (`dragonfruit dev --real`
   without `--round-trip` currently errors, pointing at T-12.6c).
+
+## T171 — T-12.6c Second-VT dev harness and runbook
+
+**State: done (automated half); the real second-VT cycle is open on the
+T-159…T-161 hardware rail (no free seat / no dedicated user on this host).**
+`dragonfruit dev --real [--user dfdev]` is now the T-12.6c second-VT mode:
+preflight against `loginctl`, refuse a colliding user, pick the smallest free
+VT, and (on a free seat) start the session there as a `PAMName=login` session
+via `systemd-run`, with `--plan` as the side-effect-free form and `--teardown`
+as the one-key end. `cargo test -p dragonfruit-dev` 60 passed / 0 failed,
+`make e2e` green (132 `test result: ok`, 0 failed), `make clippy` clean,
+`fmt-check` clean, `make second-vt-validation` exit 0, nested live check clean.
+
+Real paths:
+
+- `tools/dragonfruit-dev/src/second_vt.rs` (new) — pure `LogindSession`
+  (`is_seat_graphical`/`vt`), `parse_session_ids`, `parse_show_session`,
+  `preflight` (`Preflight::{Ready,Refuse}`, dedicated-user rationale +
+  `sudo useradd -m dfdev`), `select_free_vt` (smallest VT in `2..=12`, never
+  guessing VT1), `session_on_vt`, `passwd_ids`/`lookup_user`,
+  `create_user_command`, `SecondVtPlan` (`switch`/`start`/`return`/`marker`).
+  `Logind` runs `loginctl`; `DF_LOGINCTL`/`DF_PASSWD`/`DF_SESSION_ENTRY` are the
+  test/validation seams.
+- `tools/dragonfruit-dev/src/main.rs` — `--real` without a round-trip flag
+  dispatches to `run_second_vt`; `--plan`/`--teardown` parsed; `usage()` updated;
+  `run_second_vt_teardown` runs before the preflight so teardown works while the
+  session is up.
+- `scripts/second-vt-validation.sh` + `make second-vt-validation` — writes
+  `docs/captures/t171-second-vt.txt` (free seat) or
+  `t171-second-vt.open.txt`; always exits 0.
+- Docs: ADR `docs/design/adr/0175-second-vt-dev-harness.md`;
+  `docs/design/11-session-and-dev-workflow.md` (Mode A + "Second VT, with
+  isolation"); `docs/testing-ladder.md` rung 2; `docs/runbook-drm-session.md`
+  §1 + troubleshooting; `docs/captures/README.md`.
+- Captures: `docs/captures/t171-second-vt.open.txt`,
+  `docs/captures/t171-second-vt-nested-check.png`.
+
+Commands / gotchas for later:
+
+- **There is no `loginctl` "start session" API.** The plan uses `chvt <vt>` +
+  `systemd-run --uid <uid> --gid <gid> --property PAMName=login
+  --property TTYPath=/dev/tty<vt> …` running `services/session/dragonfruit-session-entry`;
+  PAM login is what starts the dedicated user's manager and gives it an
+  `XDG_RUNTIME_DIR`. Unvalidated on hardware — the manual runbook path is the
+  fallback.
+- **VT1 is never assumed to be the host desktop.** On this host the desktop is
+  on **VT2**; `select_free_vt` reads every session's `VTNr` from `loginctl` and
+  picks the smallest unused VT. Test fixtures use VT2 deliberately.
+- **`loginctl show-session -p User` returns the UID, not the name**; use
+  `-p Name` for the user. The harness asks for `Name,Seat,VTNr,Type,Class,Active,State`.
+- **Teardown must run before the preflight**, or `--teardown` while the session
+  is still up would be refused as a "colliding user".
+- **The refusal is acceptance criterion 1 and is safe to capture on any host**:
+  `dragonfruit dev --real --plan --user "$USER"` on the host user who holds the
+  seat prints `Second VT: REFUSE …` and exits 64. `make second-vt-validation`
+  records it.
+- **The mocked-`loginctl`/`passwd` seams (`DF_LOGINCTL`, `DF_PASSWD`) let the
+  full plan run with no seat, no DM, and no user** — the unit test
+  `a_mocked_loginctl_drives_preflight_and_vt_selection` and the validation
+  script part 2 both use them.
+- **`make e2e` still does not run `dragonfruit-dev` tests** — run
+  `cargo test -p dragonfruit-dev` (60 now). `make clippy` runs the workspace
+  and needs the Makefile's `PKG_CONFIG_PATH`/`RUSTFLAGS` sysroot; plain
+  `cargo clippy --workspace` fails on `libudev-sys`.
+- **The global orphan check is `soak::dragonfruit_processes()`** (not filtered
+  by user), so a host already running Dragonfruit would false-fail the
+  second-VT teardown; that is the same gate `make soak` uses.
+- **`second_vt.rs` is not among the 15 pre-existing `check-desktop-names`
+  hits** (it contains no DE names); `make check-desktop-names` is still red
+  only at those pre-existing hits.
+
+### Follow-ups
+
+- **Real second-VT cycle (T-159…T-161 rail).** On a free seat with the `dfdev`
+  user via `make second-vt-validation` or `docs/runbook-drm-session.md` §1:
+  replace `t171-second-vt.open.txt` with `t171-second-vt.txt`, capture both TTYs
+  at the switch under `docs/captures/`, and validate the `systemd-run`
+  PAM-login start (adjust to the manual entry script if libseat/systemd
+  disagrees).
+- **T170's follow-up is resolved:** `dragonfruit dev --real` without
+  `--round-trip` no longer errors — it is the second-VT mode.
