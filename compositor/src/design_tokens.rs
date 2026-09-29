@@ -302,9 +302,9 @@ pub mod component {
         pub const RADIUS: f32 = 28.0_f32;
         pub const INDICATOR_SIZE: f32 = 4.0_f32;
         pub const INDICATOR_GAP: f32 = 8.0_f32;
-        pub const MAGNIFY_PEAK: f32 = 1.6_f32;
-        pub const MAGNIFY_PEAK_MAX: f32 = 2.2_f32;
-        pub const MAGNIFY_FALLOFF: f32 = 3.0_f32;
+        pub const MAGNIFY_PEAK: f32 = 1.25_f32;
+        pub const MAGNIFY_PEAK_MAX: f32 = 1.5_f32;
+        pub const MAGNIFY_FALLOFF: f32 = 4.1_f32;
         pub const LABEL_SIZE: f32 = 12.0_f32;
         pub const TRASH_SIZE: f32 = 44.0_f32;
         pub const EDGE_MARGIN: f32 = 8.0_f32;
@@ -315,6 +315,10 @@ pub mod component {
             pub const FILL_OPACITY: f32 = 0.42_f32;
             pub const RIM_OPACITY: f32 = 0.7_f32;
             pub const RIM_HEIGHT: f32 = 1.0_f32;
+            pub const GLOSS_HEIGHT: f32 = 6.0_f32;
+            pub const GLOSS_OPACITY: f32 = 0.22_f32;
+            pub const EDGE_HEIGHT: f32 = 1.0_f32;
+            pub const EDGE_OPACITY: f32 = 0.5_f32;
             pub const BORDER_WIDTH: f32 = 1.0_f32;
             pub const BORDER_OPACITY: f32 = 0.55_f32;
             pub const SHADOW_BLUR: f32 = 20.0_f32;
@@ -328,6 +332,8 @@ pub mod component {
         pub mod hover {
             pub const FILL_OPACITY: f32 = 0.18_f32;
             pub const RADIUS_RATIO: f32 = 0.28_f32;
+            pub const SHADOW_BLUR: f32 = 10.0_f32;
+            pub const SHADOW_OPACITY: f32 = 0.28_f32;
         }
         pub mod indicator {
             pub const OPACITY: f32 = 0.9_f32;
@@ -472,11 +478,15 @@ pub mod component {
     pub mod tooltip {
         pub const DWELL: f32 = 600.0_f32;
         pub const OFFSET: f32 = 8.0_f32;
-        pub const RADIUS: f32 = 10.0_f32;
+        pub const RADIUS: f32 = 999.0_f32;
         pub const PADDING_H: f32 = 8.0_f32;
         pub const PADDING_V: f32 = 4.0_f32;
         pub const MAX_WIDTH: f32 = 260.0_f32;
         pub const FONT_SIZE: f32 = 12.0_f32;
+        pub const TAIL_WIDTH: f32 = 16.0_f32;
+        pub const TAIL_HEIGHT: f32 = 6.0_f32;
+        pub const RIM_COLOR: [u8; 4] = [0xff, 0xff, 0xff, 0xff];
+        pub const RIM_OPACITY: f32 = 0.5_f32;
     }
     pub mod shadow {
         pub const LAYERS: f32 = 8.0_f32;
@@ -598,6 +608,11 @@ pub mod motion {
     pub const DOCK_MAGNIFY: Motion = Motion {
         duration_ms: 160_u32,
         curve: [0.34_f32, 1.56_f32, 0.64_f32, 1.0_f32],
+        reduced_duration_ms: 0_u32,
+    };
+    pub const DOCK_HOVER: Motion = Motion {
+        duration_ms: 160_u32,
+        curve: [0.25_f32, 0.1_f32, 0.25_f32, 1.0_f32],
         reduced_duration_ms: 0_u32,
     };
     pub const DOCK_MAGNIFY_TRACK: Motion = Motion {
