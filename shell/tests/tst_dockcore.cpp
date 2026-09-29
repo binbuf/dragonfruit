@@ -4,6 +4,7 @@
 // interim `.desktop` resolver was retired in T-14.7 (app-index owns parsing).
 // Runs headless with no compositor, Wayland, or QML.
 #include "apppicker.h"
+#include "appsdrawer.h"
 #include "controlcenterpolicy.h"
 #include "desktopentry.h"
 #include "dockdrops.h"
@@ -2542,6 +2543,136 @@ private slots:
         // Unpinning an absent id is a no-op.
         QCOMPARE(toggleAppPickerPin(base, QStringLiteral("z.desktop"), false), base);
         QCOMPARE(toggleAppPickerPin(base, QString(), true), base);
+    }
+
+    // -- Applications drawer (T-19.2) ------------------------------------
+
+    void appsDrawerSortsAlphabeticallyWithIdTiebreak()
+    {
+        DesktopEntry gamma = makeEntry(QStringLiteral("g.desktop"), QStringLiteral("Gamma"),
+                                       QStringLiteral("g"));
+        DesktopEntry alpha = makeEntry(QStringLiteral("a.desktop"), QStringLiteral("Alpha"),
+                                       QStringLiteral("a"));
+        DesktopEntry sameB = makeEntry(QStringLiteral("b.desktop"), QStringLiteral("Same"),
+                                       QStringLiteral("b"));
+        DesktopEntry sameA = makeEntry(QStringLiteral("a-same.desktop"), QStringLiteral("Same"),
+                                       QStringLiteral("sa"));
+        const QList<AppsDrawerRow> rows =
+            buildAppsDrawerList({gamma, sameB, alpha, sameA});
+        QCOMPARE(rows.size(), 4);
+        QCOMPARE(rows[0].name, QStringLiteral("Alpha"));
+        QCOMPARE(rows[1].name, QStringLiteral("Gamma"));
+        QCOMPARE(rows[2].desktopId, QStringLiteral("a-same.desktop"));
+        QCOMPARE(rows[3].desktopId, QStringLiteral("b.desktop"));
+    }
+
+    void appsDrawerDropsHiddenAndNonLaunchableAndDedupes()
+    {
+        DesktopEntry hidden = makeEntry(QStringLiteral("hidden.desktop"),
+                                        QStringLiteral("Hidden"), QStringLiteral("x"), {}, {},
+                                        false, true);
+        DesktopEntry noExec = makeEntry(QStringLiteral("noexec.desktop"),
+                                        QStringLiteral("No Exec"), QString());
+        DesktopEntry dupFirst = makeEntry(QStringLiteral("dup.desktop"),
+                                          QStringLiteral("First"), QStringLiteral("first"));
+        DesktopEntry dupSecond = makeEntry(QStringLiteral("dup.desktop"),
+                                           QStringLiteral("Second"), QStringLiteral("second"));
+        const QList<AppsDrawerRow> rows =
+            buildAppsDrawerList({hidden, noExec, dupFirst, dupSecond});
+        QCOMPARE(rows.size(), 1);
+        QCOMPARE(rows[0].desktopId, QStringLiteral("dup.desktop"));
+        QCOMPARE(rows[0].name, QStringLiteral("First"));
+    }
+
+    void appsDrawerMapsFreedesktopCategoriesToPills()
+    {
+        // One mapping table, unknown and GTK/Qt implementation categories drop.
+        QCOMPARE(appsDrawerCategoryFor(QStringLiteral("Development")),
+                 QStringLiteral("developer-tools"));
+        QCOMPARE(appsDrawerCategoryFor(QStringLiteral("Office")),
+                 QStringLiteral("productivity"));
+        QCOMPARE(appsDrawerCategoryFor(QStringLiteral("Game")), QStringLiteral("games"));
+        QCOMPARE(appsDrawerCategoryFor(QStringLiteral("Network")), QStringLiteral("social"));
+        QCOMPARE(appsDrawerCategoryFor(QStringLiteral("Graphics")), QStringLiteral("creativity"));
+        QCOMPARE(appsDrawerCategoryFor(QStringLiteral("Science")), QStringLiteral("information"));
+        QCOMPARE(appsDrawerCategoryFor(QStringLiteral("GTK")), QString());
+        QCOMPARE(appsDrawerCategoryFor(QStringLiteral("Qt")), QString());
+        QCOMPARE(appsDrawerCategoryFor(QStringLiteral("X-Made-Up")), QString());
+
+        // A semicolon list maps to distinct canonical keys in pill order.
+        QCOMPARE(appsDrawerCategoriesFor(QStringLiteral("Graphics;Development;GTK")),
+                 (QStringList{QStringLiteral("developer-tools"), QStringLiteral("creativity")}));
+        // The first pill is the implicit `all`, never a data category.
+        QVERIFY(!appsDrawerCategoryKeys().isEmpty());
+        QCOMPARE(appsDrawerCategoryKeys().first(), QStringLiteral("all"));
+        QVERIFY(!appsDrawerCategoryKeys().contains(QStringLiteral("gtk")));
+    }
+
+    void appsDrawerRowCarriesMappedCategoriesAndFiltersByCategory()
+    {
+        DesktopEntry dev = makeEntry(QStringLiteral("dev.desktop"), QStringLiteral("Dev"),
+                                     QStringLiteral("dev"), {}, {QStringLiteral("Development")});
+        DesktopEntry game = makeEntry(QStringLiteral("game.desktop"), QStringLiteral("Game"),
+                                      QStringLiteral("game"), {}, {QStringLiteral("Game")});
+        DesktopEntry both = makeEntry(QStringLiteral("both.desktop"), QStringLiteral("Both"),
+                                      QStringLiteral("both"), {},
+                                      {QStringLiteral("Office"), QStringLiteral("GTK")});
+        const QList<DesktopEntry> corpus = {dev, game, both};
+
+        const QList<AppsDrawerRow> all = buildAppsDrawerList(corpus);
+        QCOMPARE(all.size(), 3);
+        // "Both" maps Office -> productivity and drops GTK.
+        QCOMPARE(all[0].desktopId, QStringLiteral("both.desktop"));
+        QCOMPARE(all[0].categories, QStringList{QStringLiteral("productivity")});
+        QCOMPARE(all[1].categories, QStringList{QStringLiteral("developer-tools")});
+
+        QCOMPARE(buildAppsDrawerList(corpus, QStringLiteral("games")).size(), 1);
+        QCOMPARE(buildAppsDrawerList(corpus, QStringLiteral("games"))[0].desktopId,
+                 QStringLiteral("game.desktop"));
+        // `all` and an empty category keep everything.
+        QCOMPARE(buildAppsDrawerList(corpus, QStringLiteral("all")).size(), 3);
+        QCOMPARE(buildAppsDrawerList(corpus, QString()).size(), 3);
+        // A category no app carries yields an empty list, never a crash.
+        QCOMPARE(buildAppsDrawerList(corpus, QStringLiteral("information")).size(), 0);
+    }
+
+    void appsDrawerPresentCategoriesAreOrderedAndDeduped()
+    {
+        DesktopEntry dev = makeEntry(QStringLiteral("dev.desktop"), QStringLiteral("Dev"),
+                                     QStringLiteral("dev"), {}, {QStringLiteral("Development")});
+        DesktopEntry game = makeEntry(QStringLiteral("game.desktop"), QStringLiteral("Game"),
+                                      QStringLiteral("game"), {}, {QStringLiteral("Game")});
+        DesktopEntry dup = makeEntry(QStringLiteral("dev.desktop"), QStringLiteral("Dup"),
+                                     QStringLiteral("dup"), {}, {QStringLiteral("Game")});
+        QCOMPARE(appsDrawerPresentCategories({game, dev, dup}),
+                 (QStringList{QStringLiteral("developer-tools"), QStringLiteral("games")}));
+        QCOMPARE(appsDrawerPresentCategories({}), QStringList());
+    }
+
+    void appsDrawerFiltersByQueryOverNameAndIdCaseInsensitively()
+    {
+        DesktopEntry files = makeEntry(QStringLiteral("org.dragonfruit.Files.desktop"),
+                                       QStringLiteral("Files"), QStringLiteral("df-files"));
+        DesktopEntry settings = makeEntry(QStringLiteral("org.dragonfruit.Settings.desktop"),
+                                          QStringLiteral("Settings"), QStringLiteral("df-settings"));
+        const QList<DesktopEntry> corpus = {files, settings};
+
+        QCOMPARE(buildAppsDrawerList(corpus, {}, QStringLiteral("set")).size(), 1);
+        QCOMPARE(buildAppsDrawerList(corpus, {}, QStringLiteral("SET")).size(), 1);
+        QCOMPARE(buildAppsDrawerList(corpus, {}, QStringLiteral("dragonfruit")).size(), 2);
+        QCOMPARE(buildAppsDrawerList(corpus, {}, QStringLiteral("files.desktop")).size(), 1);
+        QCOMPARE(buildAppsDrawerList(corpus, {}, QStringLiteral("  files  "))[0].desktopId,
+                 QStringLiteral("org.dragonfruit.Files.desktop"));
+        QCOMPARE(buildAppsDrawerList(corpus, {}, QStringLiteral("nothing")).size(), 0);
+        QCOMPARE(buildAppsDrawerList(corpus, {}, QStringLiteral("   ")).size(), 2);
+        // Query and category combine (AND).
+        DesktopEntry devFiles = makeEntry(QStringLiteral("org.dragonfruit.Dev.desktop"),
+                                          QStringLiteral("Files Dev"), QStringLiteral("dev"),
+                                          {}, {QStringLiteral("Development")});
+        QCOMPARE(buildAppsDrawerList({files, devFiles}, QStringLiteral("developer-tools"),
+                                     QStringLiteral("files")).size(), 1);
+        QCOMPARE(buildAppsDrawerList({files, devFiles}, QStringLiteral("developer-tools"),
+                                     QStringLiteral("settings")).size(), 0);
     }
 
     // -- launch-origin tile hand-off (T-14.7l) ----------------------------

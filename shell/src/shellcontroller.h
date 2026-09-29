@@ -356,6 +356,17 @@ private slots:
     void onSwitcherConfigured(int width, int height, quint32 serial);
     void onAppSwitcherChanged(bool active, const QVariantList &entries,
                               const QString &selectedAppId, int direction);
+    // Applications drawer overlay (T-19.2): the surface configure, its pointer
+    // and keyboard routing, the launcher, and dismissal.
+    void onAppsDrawerConfigured(int width, int height, quint32 serial);
+    void onAppsDrawerPointerMoved(qreal x, qreal y);
+    void onAppsDrawerPointerButton(qreal x, qreal y, quint32 button, bool pressed);
+    void onAppsDrawerPointerLeft();
+    void onAppsDrawerKeyboardFocused(bool focused);
+    void onAppsDrawerKeyEvent(quint32 key, bool pressed);
+    void onAppsDrawerActivated(const QString &desktopId, qreal x, qreal y, qreal w, qreal h);
+    void onAppsDrawerDismissed();
+    void onAppsDrawerRequested();
     // Notification banners and history (T-11.1a).
     void onNotificationAvailable(bool available);
     void onNotificationBanners(const QByteArray &json);
@@ -415,6 +426,22 @@ private:
     // preview surfaces underneath.
     void renderSwitcher();
     void scheduleSwitcherRender();
+    // Applications drawer overlay (T-19.2): map a full-output scene, push the
+    // app-index corpus (`buildAppsDrawerList`), commit its frames, and unmap it
+    // when the drawer closes. The list helper is pure; the overlay is a view.
+    void toggleAppsDrawer();
+    void showAppsDrawer();
+    void hideAppsDrawer();
+    void applyAppsDrawerData();
+    void refreshAppsDrawer(bool reloadCorpus);
+    void renderAppsDrawer();
+    void scheduleAppsDrawerRender();
+    // Capture-only seam (`DF_APPS_DRAWER_FIXTURE=1`): seed a synthetic corpus
+    // so the live visual check can inspect the grid without app-index.
+    void startAppsDrawerFixture();
+    // Capture-only seam helper: log the scene rect of `desktopId`'s tile so a
+    // capture script can click a known app deterministically.
+    void logAppsDrawerTile(const QString &desktopId);
     // Notification banner (T-11.1a): map the top-right overlay with the
     // newest active banner's content, and unmap it when the queue empties.
     void showCurrentBanner();
@@ -677,6 +704,19 @@ private:
     bool m_switcherRenderPending = false;
     FrameCommitGate m_switcherFrameGate;
     bool m_switcherSceneGraphCommitLogged = false;
+    // Applications drawer overlay (T-19.2): a full-output launcher scene, open
+    // only while the drawer is up. `m_appsDrawerFixture` is the capture seam.
+    QQuickWindow *m_appsDrawerWindow = nullptr;
+    QQuickItem *m_appsDrawerItem = nullptr;
+    int m_appsDrawerWidth = 0;
+    int m_appsDrawerHeight = 0;
+    bool m_appsDrawerOpen = false;
+    bool m_appsDrawerPending = false;
+    bool m_appsDrawerRenderPending = false;
+    Qt::MouseButtons m_appsDrawerButtons = Qt::NoButton;
+    FrameCommitGate m_appsDrawerFrameGate;
+    bool m_appsDrawerSceneGraphCommitLogged = false;
+    bool m_appsDrawerFixture = false;
     // Notification banner (T-11.1a): a fifth offscreen scene rendered into the
     // top-right `notification` overlay while a banner is active. The model is
     // the service's decoded `Banners()`/`History()` views.

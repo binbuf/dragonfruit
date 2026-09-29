@@ -34,6 +34,7 @@
 
 #include "appindexclient.h"
 #include "apppicker.h"
+#include "appsdrawer.h"
 #include "controlcenterpolicy.h"
 #include "desktopentry.h"
 #include "dockdrops.h"
@@ -265,6 +266,7 @@ ShellController::~ShellController()
     delete m_controlCenterWindow;
     delete m_bannerWindow;
     delete m_switcherWindow;
+    delete m_appsDrawerWindow;
     delete m_overviewWindow;
     delete m_dockWindow;
     delete m_window;
@@ -407,6 +409,7 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
 
     connect(m_item, SIGNAL(controlCenterRequested()), this, SLOT(onControlCenterRequested()));
     connect(m_item, SIGNAL(missionControlRequested()), this, SLOT(onMissionControlRequested()));
+    connect(m_item, SIGNAL(applicationsRequested()), this, SLOT(onAppsDrawerRequested()));
     connect(m_item, SIGNAL(statusItemActivated(QString)), this,
             SLOT(onStatusItemActivated(QString)));
     connect(m_item, SIGNAL(appMenuOpened(int)), this, SLOT(onAppMenuOpened(int)));
@@ -743,6 +746,46 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             &ShellController::onSwitcherConfigured);
     connect(m_protocol, &ShellProtocol::appSwitcherChanged, this,
             &ShellController::onAppSwitcherChanged);
+
+    // Applications drawer overlay (T-19.2): a full-output launcher scene. The
+    // list is a pure app-index projection (`buildAppsDrawerList`); the scene is
+    // mapped only while the drawer is open.
+    m_appsDrawerWindow = new QQuickWindow;
+    m_appsDrawerWindow->setColor(Qt::transparent);
+    QQmlComponent appsDrawerComponent(m_engine);
+    appsDrawerComponent.loadFromModule(QStringLiteral("Dragonfruit.AppsDrawer"),
+                                       QStringLiteral("AppsDrawer"));
+    if (appsDrawerComponent.isError()) {
+        fprintf(stderr, "dragonfruit-shell: AppsDrawer QML error: %s\n",
+                qPrintable(appsDrawerComponent.errorString()));
+        return false;
+    }
+    QObject *appsDrawerObject = appsDrawerComponent.create();
+    m_appsDrawerItem = qobject_cast<QQuickItem *>(appsDrawerObject);
+    if (!m_appsDrawerItem) {
+        fprintf(stderr, "dragonfruit-shell: AppsDrawer QML did not produce an item\n");
+        return false;
+    }
+    m_appsDrawerItem->setParentItem(m_appsDrawerWindow->contentItem());
+    connect(appsDrawerObject, SIGNAL(appLaunched(QString,qreal,qreal,qreal,qreal)), this,
+            SLOT(onAppsDrawerActivated(QString,qreal,qreal,qreal,qreal)));
+    connect(appsDrawerObject, SIGNAL(dismissRequested()), this,
+            SLOT(onAppsDrawerDismissed()));
+    connect(m_appsDrawerWindow, &QQuickWindow::afterRendering, this,
+            &ShellController::renderAppsDrawer);
+    connect(m_protocol, &ShellProtocol::appsDrawerConfigured, this,
+            &ShellController::onAppsDrawerConfigured);
+    connect(m_protocol, &ShellProtocol::appsDrawerPointerMoved, this,
+            &ShellController::onAppsDrawerPointerMoved);
+    connect(m_protocol, &ShellProtocol::appsDrawerPointerButton, this,
+            &ShellController::onAppsDrawerPointerButton);
+    connect(m_protocol, &ShellProtocol::appsDrawerPointerLeft, this,
+            &ShellController::onAppsDrawerPointerLeft);
+    connect(m_protocol, &ShellProtocol::appsDrawerKeyboardFocused, this,
+            &ShellController::onAppsDrawerKeyboardFocused);
+    connect(m_protocol, &ShellProtocol::appsDrawerKeyEvent, this,
+            &ShellController::onAppsDrawerKeyEvent);
+    refreshAppsDrawer(false);
 
     // Notification banners and history (T-11.1a): the model decodes the
     // service's `Banners()`/`History()` views; the client is the live
@@ -1267,6 +1310,18 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
     // unmapped until a privileged request is presented (T-13.6).
     if (!m_protocol->createPolkitSurface(kPolkitWidth, kPolkitHeight))
         return false;
+    // The Applications drawer is a full-output `overlay` surface, unmapped
+    // until the launcher opens (T-19.2).
+    if (!m_protocol->createAppsDrawerSurface())
+        return false;
+
+    // Capture/demo seam (T-19.2): seed a synthetic corpus and open the drawer
+    // once the chrome is up so the live visual check can inspect the grid
+    // without app-index. Never set in a normal session.
+    if (qEnvironmentVariableIsSet("DF_APPS_DRAWER_FIXTURE")) {
+        startAppsDrawerFixture();
+        QTimer::singleShot(1500, this, [this]() { showAppsDrawer(); });
+    }
 
     // Capture/demo seam (T-11.1b): raise the Dock's launch-failure
     // notification once the chrome is up, so the live check can exercise the
@@ -4392,6 +4447,9 @@ void ShellController::onInputAction(const QString &action, const QString &)
     } else if (action == QLatin1String("control-center")) {
         // T-11.3a: the Control Center keyboard shortcut toggles the panel.
         toggleControlCenter();
+    } else if (action == QLatin1String("show-apps")) {
+        // T-19.2: the Applications drawer shortcut (F4) toggles the launcher.
+        toggleAppsDrawer();
     } else if (action == QLatin1String("lock-screen")) {
         // T-12.3a: the compositor routes Cmd+Ctrl+Q here; the system menu
         // routes the same action (see onAppMenuTriggered). The shell owns the
@@ -4945,6 +5003,10 @@ void ShellController::onAppIndexChanged(const QString &interests)
     m_index.loadFromAppIndex(m_appIndexClient);
     rebuildDockEntries();
     refreshAppPicker(false);
+    // An install/uninstall while the drawer is open refreshes its grid live
+    // (T-19.2); when it is closed the next open re-reads anyway.
+    if (m_appsDrawerOpen)
+        refreshAppsDrawer(false);
 }
 
 // The T-10 section 5.1 overflow clamp: given the full entry list and the
@@ -6013,6 +6075,270 @@ void ShellController::renderSwitcher()
     m_switcherFrameGate.endCommit();
     if (!image.isNull() && m_protocol)
         m_protocol->commitSwitcherImage(image);
+}
+
+// --- Applications drawer (T-19.2) -------------------------------------------
+
+void ShellController::onAppsDrawerRequested()
+{
+    toggleAppsDrawer();
+}
+
+void ShellController::toggleAppsDrawer()
+{
+    if (m_appsDrawerOpen)
+        hideAppsDrawer();
+    else
+        showAppsDrawer();
+}
+
+void ShellController::showAppsDrawer()
+{
+    if (!m_appsDrawerItem)
+        return;
+    m_appsDrawerOpen = true;
+    m_appsDrawerPending = true;
+    refreshAppsDrawer(true);
+    m_appsDrawerItem->setProperty("active", true);
+    if (m_appsDrawerWidth > 0 && m_appsDrawerHeight > 0)
+        renderAppsDrawer();
+    // Take active focus so Escape and the grid's arrow/Return navigation are
+    // delivered to the overlay and a later focus loss reads as dismissal.
+    m_appsDrawerItem->forceActiveFocus();
+    if (m_protocol)
+        m_protocol->setAppsDrawerInputRegion(m_appsDrawerWidth, m_appsDrawerHeight);
+    // Capture seam: report the Files tile's scene rect so the live check can
+    // click a known app instead of guessing; never set in a normal session.
+    if (m_appsDrawerFixture) {
+        QTimer::singleShot(1200, this, [this]() {
+            logAppsDrawerTile(QStringLiteral("org.dragonfruit.Files.desktop"));
+        });
+    }
+}
+
+void ShellController::hideAppsDrawer()
+{
+    m_appsDrawerOpen = false;
+    m_appsDrawerPending = false;
+    if (m_appsDrawerItem)
+        m_appsDrawerItem->setProperty("active", false);
+    if (m_protocol) {
+        m_protocol->setAppsDrawerInputRegion(0, 0);
+        m_protocol->hideAppsDrawer();
+    }
+}
+
+void ShellController::onAppsDrawerDismissed()
+{
+    if (m_appsDrawerOpen)
+        hideAppsDrawer();
+}
+
+void ShellController::refreshAppsDrawer(bool reloadCorpus)
+{
+    if (!m_appsDrawerItem)
+        return;
+    if (reloadCorpus && !m_appIndexSubscribed)
+        m_index.loadFromAppIndex(m_appIndexClient);
+
+    QList<DesktopEntry> entries = m_index.entries();
+    if (m_appsDrawerFixture) {
+        // Capture-only synthetic corpus: a broad mix of names and categories
+        // so the live check exercises sorting, pills, and the icon fallback.
+        struct Fixture {
+            const char *id;
+            const char *name;
+            const char *categories;
+        };
+        static const Fixture fixtures[] = {
+            {"org.example.Calendar.desktop", "Calendar", "Office;Utility"},
+            {"org.example.Browser.desktop", "Browser", "Network"},
+            {"org.example.Calculator.desktop", "Calculator", "Utility"},
+            {"org.example.Editor.desktop", "Editor", "Development;Utility"},
+            {"org.example.Music.desktop", "Music", "Audio;AudioVideo"},
+            {"org.example.Photos.desktop", "Photos", "Graphics;Photography"},
+            {"org.example.Terminal.desktop", "Terminal", "System;Utility"},
+            {"org.example.Mail.desktop", "Mail", "Network;Email"},
+            {"org.example.Game.desktop", "Arcade", "Game"},
+        };
+        for (const Fixture &fixture : fixtures) {
+            DesktopEntry entry;
+            entry.id = QString::fromLatin1(fixture.id);
+            entry.name = QString::fromLatin1(fixture.name);
+            entry.exec = QString::fromLatin1(fixture.id);
+            entry.categories = QString::fromLatin1(fixture.categories)
+                                   .split(QLatin1Char(';'), Qt::SkipEmptyParts);
+            entry.valid = true;
+            entries.append(entry);
+        }
+    }
+
+    const QList<AppsDrawerRow> rows = buildAppsDrawerList(entries, QStringLiteral("all"));
+    QVariantList list;
+    list.reserve(rows.size());
+    for (const AppsDrawerRow &row : rows) {
+        list.append(QVariantMap{
+            {QStringLiteral("desktopId"), row.desktopId},
+            {QStringLiteral("name"), row.name},
+            {QStringLiteral("iconPath"), row.iconPath},
+            {QStringLiteral("categories"), row.categories},
+        });
+    }
+    m_appsDrawerItem->setProperty("apps", list);
+    m_appsDrawerItem->setProperty("available", m_appsDrawerFixture
+                                                    || m_appIndexClient.available());
+    m_appsDrawerItem->setProperty("active", m_appsDrawerOpen);
+}
+
+void ShellController::startAppsDrawerFixture()
+{
+    m_appsDrawerFixture = true;
+}
+
+void ShellController::logAppsDrawerTile(const QString &desktopId)
+{
+    if (!m_appsDrawerItem || !m_appsDrawerOpen)
+        return;
+    QVariant rect;
+    const bool ok = QMetaObject::invokeMethod(m_appsDrawerItem, "tileRectFor",
+                                              Q_RETURN_ARG(QVariant, rect),
+                                              Q_ARG(QVariant, desktopId));
+    const QVariantMap map = ok ? rect.toMap() : QVariantMap();
+    if (!ok || map.isEmpty()) {
+        qInfo() << "apps-drawer tile" << desktopId << "not found";
+        return;
+    }
+    qInfo() << "apps-drawer tile" << desktopId
+            << "x" << map.value(QStringLiteral("x")).toDouble()
+            << "y" << map.value(QStringLiteral("y")).toDouble()
+            << "w" << map.value(QStringLiteral("width")).toDouble()
+            << "h" << map.value(QStringLiteral("height")).toDouble();
+}
+
+void ShellController::onAppsDrawerConfigured(int width, int height, quint32)
+{
+    if (width <= 0 || height <= 0)
+        return;
+    m_appsDrawerWidth = width;
+    m_appsDrawerHeight = height;
+    fprintf(stderr, "dragonfruit-shell: apps-drawer configured %dx%d\n", width, height);
+    if (m_appsDrawerOpen)
+        renderAppsDrawer();
+}
+
+void ShellController::onAppsDrawerPointerMoved(qreal x, qreal y)
+{
+    if (!m_appsDrawerWindow)
+        return;
+    ChromePointer::send(m_appsDrawerWindow, QEvent::MouseMove, QPointF(x, y), Qt::NoButton,
+                        m_appsDrawerButtons);
+    scheduleAppsDrawerRender();
+}
+
+void ShellController::onAppsDrawerPointerButton(qreal x, qreal y, quint32 button, bool pressed)
+{
+    if (!m_appsDrawerWindow)
+        return;
+    Qt::MouseButton qtButton = Qt::NoButton;
+    if (button == 0x110)
+        qtButton = Qt::LeftButton;
+    else if (button == 0x111)
+        qtButton = Qt::RightButton;
+    if (pressed)
+        m_appsDrawerButtons |= qtButton;
+    else
+        m_appsDrawerButtons &= ~qtButton;
+    ChromePointer::send(m_appsDrawerWindow,
+                        pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease,
+                        QPointF(x, y), qtButton, m_appsDrawerButtons);
+    scheduleAppsDrawerRender();
+}
+
+void ShellController::onAppsDrawerPointerLeft()
+{
+    if (!m_appsDrawerWindow)
+        return;
+    ChromePointer::send(m_appsDrawerWindow, QEvent::MouseMove, QPointF(-1, -1), Qt::NoButton,
+                        m_appsDrawerButtons);
+    scheduleAppsDrawerRender();
+}
+
+void ShellController::onAppsDrawerKeyboardFocused(bool)
+{
+    // The compositor owns the focus transfer (the surface is OnDemand); the
+    // overlay's Keys handler owns Escape/arrows/Return.
+    if (m_appsDrawerItem && m_appsDrawerOpen)
+        m_appsDrawerItem->forceActiveFocus();
+}
+
+void ShellController::onAppsDrawerKeyEvent(quint32 key, bool pressed)
+{
+    if (!m_appsDrawerWindow || !m_appsDrawerOpen)
+        return;
+    // Forward the evdev key to the offscreen scene (the chrome input bridge);
+    // the QML Keys handler maps it to navigation/dismissal.
+    const Qt::Key qtKey = qtKeyFromEvdev(key);
+    if (qtKey == Qt::Key_unknown)
+        return;
+    QKeyEvent event(pressed ? QEvent::KeyPress : QEvent::KeyRelease, qtKey, Qt::NoModifier);
+    QCoreApplication::sendEvent(m_appsDrawerWindow, &event);
+    scheduleAppsDrawerRender();
+}
+
+void ShellController::onAppsDrawerActivated(const QString &desktopId, qreal x, qreal y, qreal w,
+                                            qreal h)
+{
+    if (desktopId.isEmpty())
+        return;
+    // Record the acted-on tile so the launch path hands the compositor the real
+    // icon rect exactly as the Dock does (T-14.7l). The drawer surface maps 1:1
+    // to the output, so its scene coordinates are output coordinates.
+    if (w > 0 && h > 0)
+        m_dockTiles.record(desktopId, QRect(qRound(x), qRound(y), qRound(w), qRound(h)));
+    hideAppsDrawer();
+    // A launcher click never dies silently: `openApp` activates a running
+    // window or launches the installed entry; a failure raises the shell's
+    // existing launch-failure notice.
+    openApp(desktopId);
+}
+
+void ShellController::scheduleAppsDrawerRender()
+{
+    if (m_appsDrawerRenderPending)
+        return;
+    m_appsDrawerRenderPending = true;
+    QTimer::singleShot(0, this, [this]() {
+        m_appsDrawerRenderPending = false;
+        renderAppsDrawer();
+    });
+}
+
+void ShellController::renderAppsDrawer()
+{
+    if (!m_appsDrawerOpen || !m_appsDrawerWindow || !m_appsDrawerItem)
+        return;
+    if (m_appsDrawerWidth <= 0 || m_appsDrawerHeight <= 0)
+        return;
+    // The scene graph just rendered; skip the re-entrant frame our own
+    // `grabWindow` readback produces (FR-14 pattern shared with the Dock).
+    if (!m_appsDrawerFrameGate.frameRendered())
+        return;
+    if (!m_appsDrawerSceneGraphCommitLogged) {
+        m_appsDrawerSceneGraphCommitLogged = true;
+        qInfo() << "shell: apps-drawer scene-graph commit path active";
+    }
+    m_appsDrawerItem->setWidth(m_appsDrawerWidth);
+    m_appsDrawerItem->setHeight(m_appsDrawerHeight);
+    if (m_appsDrawerWindow->width() != m_appsDrawerWidth
+        || m_appsDrawerWindow->height() != m_appsDrawerHeight)
+        m_appsDrawerWindow->resize(m_appsDrawerWidth, m_appsDrawerHeight);
+    if (!m_appsDrawerWindow->isVisible())
+        m_appsDrawerWindow->show();
+    m_appsDrawerFrameGate.beginCommit();
+    const QImage image = m_appsDrawerWindow->grabWindow();
+    m_appsDrawerFrameGate.endCommit();
+    if (!image.isNull() && m_protocol)
+        m_protocol->commitAppsDrawerImage(image);
 }
 
 void ShellController::onDockEntryMenuAction(const QString &action, const QVariant &payload)

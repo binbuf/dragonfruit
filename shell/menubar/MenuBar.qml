@@ -147,6 +147,8 @@ Rectangle {
     signal statusMenuClosed()
     signal controlCenterRequested()
     signal missionControlRequested()
+    // The Applications drawer launcher (T-19.2), the "start an app" affordance.
+    signal applicationsRequested()
     signal clockActivated()
 
     implicitHeight: Theme.controls.menuBar.height
@@ -529,6 +531,18 @@ Rectangle {
             showDate: menuBar.showDate
             showSeconds: menuBar.showSeconds
             onActivated: menuBar.clockActivated()
+        }
+
+        StatusItem {
+            itemId: "applications"
+            icon: "applications"
+            accessibleName: qsTr("Applications")
+            backgroundColor: menuBar.color
+            onActivated: {
+                menuBar.closeMenus();
+                menuBar.closeStatusMenu();
+                menuBar.applicationsRequested();
+            }
         }
 
         StatusItem {

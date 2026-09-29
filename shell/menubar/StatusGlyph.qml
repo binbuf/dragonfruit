@@ -82,6 +82,8 @@ Item {
             return "sliders-horizontal";
         case "mission-control":
             return "squares-four";
+        case "applications":
+            return "grid-four";
         }
         return "";
     }
@@ -199,6 +201,16 @@ Item {
         anchors.fill: parent
         visible: root.glyphName === "squares-four"
         name: "squares-four"
+        color: root.color
+        size: root.size
+        weight: "fill"
+        opacity: root.markOpacity
+    }
+
+    PhosphorIcon {
+        anchors.fill: parent
+        visible: root.glyphName === "grid-four"
+        name: "grid-four"
         color: root.color
         size: root.size
         weight: "fill"

@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(159 earlier sections omitted)_
+_(160 earlier sections omitted)_
 
-- **T123 — T-15.7a Notifications and Focus adapter**: **State: done.** New workspace crate `dragonfruit-notify-adapter`; `services/notify-adapter/` (new crate, workspace member) —
 - **T124 — T-15.7b Notifications and Focus pane and tile**: **State: done.** The Settings Notifications and Focus panes and the Control; `services/system-status/src/notifications.rs` (new) — `NotificationsHost`
 - **T125 — T-15.8a Lock Screen policy adapter**: **State: done.** New workspace crate `dragonfruit-lock-adapter`; `services/lock-adapter/` (new crate, workspace member) —
 - **T126 — T-15.8b Lock Screen policy pane and tile**: **State: done.** The Settings Lock Screen pane and the Control Center Lock; `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 14 → 15; new
@@ -44,6 +43,7 @@ _(159 earlier sections omitted)_
 - **T176b — T-19.1b System Settings category style**: **State: done.** System Settings now draws its category icons as; `design-system/components/SettingsCategoryIcon.qml` (new) — props `source`,
 - **T176c — T-19.1c Menu-bar icon migration to Phosphor**: **State: done.** Every menu-bar status mark now renders from Phosphor via; `shell/menubar/StatusGlyph.qml` — rewritten. A `glyphName` switch maps each
 - **T176d — T-19.1d Dock Files tile and first-party app icons**: **State: done.** Our two first-party apps now carry Phosphor-derived artwork:; `assets/icons/apps/org.dragonfruit.Files.svg` / `org.dragonfruit.Settings.svg`
+- **T177 — T-19.2 Applications drawer**: **State: done.** The shell's launcher landed: a full-output `apps-drawer` overlay; `shell/src/appsdrawer.{h,cpp}` (new) — the pure list model:
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -3227,6 +3227,15 @@ Gotchas for later tasks:
 
 ## Follow-ups
 
+- **T-19.2 Applications drawer: the deferred Spotlight-equivalent search pane.**
+  The drawer's search field filters its own `buildAppsDrawerList` corpus only;
+  app-index-backed *global* search (apps + files + settings) is still deferred
+  and must not replace the drawer's local filtering. The drawer's category
+  pills, the `appsDrawer` token block, and the `show-apps` shortcut are reusable
+  by it.
+- **T-19.2 `show-apps` (F4) is not rebindable through Settings yet.** It is a
+  default in `default_system_bindings()`; the Settings Keyboard pane (T-16)
+  owns rebinding and has not been extended for the new action.
 - **T-15.11a has no live distro group provider yet.**
   `dragonfruit-account-adapter` ships the `GroupProvider` seam and the mock;
   the concrete provider belongs with packaging (T-16.9/T-16.10) because
@@ -14770,3 +14779,89 @@ Gotchas for later (esp. T-19.2):
   "general" if either changes.
 - **`make check` remains red at `check-desktop-names`** (pre-existing, see
   Follow-ups); every other gate is green and `make e2e` passes.
+
+## T177 — T-19.2 Applications drawer
+
+**State: done.** The shell's launcher landed: a full-output `apps-drawer` overlay
+fed by the app-index corpus, alphabetical with search and category pills, a
+fixed-size tile grid, and a launch path shared with the Dock. `make e2e`,
+`make soak` (100 clean cycles), the 74-test ctest suite, and every lint/visual
+gate are green. Only `check-desktop-names` remains pre-existing red.
+
+Real paths:
+
+- `shell/src/appsdrawer.{h,cpp}` (new) — the pure list model:
+  `AppsDrawerRow { desktopId, name, iconPath, categories }`,
+  `appsDrawerCategoryKeys()`, `appsDrawerCategoryFor()`,
+  `appsDrawerCategoriesFor()`, `appsDrawerPresentCategories()`, and
+  `buildAppsDrawerList(entries, category, query)`. Drops `noDisplay`/
+  non-launchable, dedupes by desktop id (first wins), maps the freedesktop
+  `Categories` list, sorts by localized name with an id tiebreak, filters by
+  category and query. Lives in the Wayland-free `dragonfruit-shell-dockcore`.
+- **The one greppable category mapping is `kCategoryMap` in `appsdrawer.cpp`.**
+  freedesktop → canonical key: Development→`developer-tools`;
+  Office/Finance→`productivity`; Utility/System/Settings→`utilities`;
+  AudioVideo/Audio/Video/Player→`entertainment`; Game→`games`;
+  Network/Chat/InstantMessaging/Email/Telephony/VideoConference/ContactManagement→
+  `social`; Graphics/AudioVideoEditing/Photography/Publishing→`creativity`;
+  Education/Science/Documentation/Dictionary/News→`information`. Unknown and
+  `GTK`/`Qt` categories map to nothing. `"all"` is the implicit first pill.
+  Adding a pill = one `kCategoryMap` row + `appsDrawerCategoryKeys()` +
+  `AppsDrawer.categoryLabels` (QML label).
+- `shell/apps-drawer/AppsDrawer.qml` + `CMakeLists.txt` (new, URI
+  `Dragonfruit.AppsDrawer`) — title (`squares-four` glyph + "Applications"),
+  `SearchField`, a horizontally scrollable `SegmentedControl` pill row
+  (default `All`), a `Flow` tile grid (fixed `tileWidth` = tileSize 64 +
+  spacing.xl 24, column count follows width), themed `Image` icons with a
+  Phosphor `app-window` fallback, hover/focus/selected states, and arrow/
+  Return/Escape keys. Props injected by the controller: `apps`, `available`,
+  `active`. Filtering is local (mirrors the helper's predicates). A capture-only
+  `tileRectFor(desktopId)` returns a tile's scene rect.
+- Protocol: `ShellProtocol::createAppsDrawerSurface` / `setAppsDrawerInputRegion`
+  / `commitAppsDrawerImage` / `hideAppsDrawer`, namespace `"apps-drawer"`,
+  `DF_SHELL_LAYER_OVERLAY`, full-output, `exclusive_zone -1`,
+  `KEYBOARD_INTERACTION_ON_DEMAND`; new `appsDrawer*` signals and pointer/
+  keyboard routing following the overview.
+- `shell/src/shellcontroller.{h,cpp}` — the drawer scene, `show/hide/
+  toggleAppsDrawer`, `refreshAppsDrawer` (reuses `m_index`/`m_appIndexClient`),
+  `onAppIndexChanged` refreshes an open drawer, `DF_APPS_DRAWER_FIXTURE` capture
+  seam (appends a synthetic corpus and auto-opens; logs the Files tile rect for
+  the capture script), launch via `openApp` after recording the tile rect in
+  `m_dockTiles` so `set_launch_origin` fires.
+- Menu bar/compositor: `MenuBar.qml` gains an `applications` `StatusItem`
+  (`grid-four`) raising `applicationsRequested()`; `StatusGlyph.qml` maps it;
+  the compositor gains `InputAction::ShowApps` ("show-apps") bound to F4 in
+  `default_system_bindings()`, routed to `toggleAppsDrawer()`.
+- Tokens: `component.appsDrawer` in `tokens.json`, regenerated `Theme.qml` /
+  `compositor/src/design_tokens.rs`.
+- Tests: `tst_dockcore` gained 6 `appsDrawer*` headless tests (sort/tiebreak,
+  drop/dedupe, mapping, category filter, present categories, query+category);
+  `shell/tests/tst_appsdrawer.{cpp,qml}` (new; grid/labels, category filter,
+  query filter, launch signal id, keyboard Return/Escape, absent-index row,
+  unknown category ignored).
+- Docs: `docs/design/adr/0167-applications-drawer.md` (new), `04-shell.md`
+  (new "Applications drawer" section + picker-is-not-the-launcher note),
+  track 19 doc. `translations/dragonfruit.ts` regenerated.
+- Capture: `scripts/capture-t19-apps-drawer.sh` →
+  `docs/captures/t19-apps-drawer-{light,dark,launch}.png` (1920x1200). The
+  launch run clicked the logged Files tile and the demo log confirmed
+  `Dock launched "Dragonfruit Files"`.
+
+Gotchas for later:
+
+- **The nested dev environment enumerates the host's `/usr/share/applications`
+  through app-index**, so the live capture shows the host corpus (~60 apps) plus
+  the T177 fixture apps; the grid is 8 columns at 1920x1200. A visually quiet
+  capture needs a curated `XDG_DATA_DIRS`.
+- **`qInfo() << desktopId` quotes a `QString` in the log**, so a capture-script
+  regex over a logged desktop id must allow optional quotes
+  (`\"?org\.dragonfruit\.Files\.desktop\"?`).
+- **The pure helper owns category mapping; the QML owns labels.** The i18n gate
+  extracts the QML labels; the C++ keys are not translatable. Keep
+  `AppsDrawer.categoryLabels` and `kCategoryMap` in sync.
+- The drawer's scene coordinates equal output coordinates (full-output 1:1
+  surface), which is why the recorded tile rect feeds `set_launch_origin`
+  unchanged.
+- `make check` remains red at `check-desktop-names` (pre-existing, see
+  Follow-ups); T177 added no new violations (its header comment uses
+  `org.example.Calc.desktop`).

@@ -529,10 +529,14 @@ only writer — so the Dock and the picker cannot disagree. External drags show
 the dragged app's real identity in the open gap and pin it on drop; files
 dropped on an entry open with that app, on the Trash move to trash, and on a
 folder stack move into that folder. A single folder dropped on the app region
-pins as a stack (T-14.7k). The picker is not a launcher — Launchpad and the
-Spotlight-equivalent search remain post-gate. See
-[ADR 0090](adr/0090-dock-app-management-picker-and-drops.md) and the
-T-14.7e/T-14.7f units.
+pins as a stack (T-14.7k). The picker remains a **management** surface, not the
+launcher: the primary "start an app" affordance is the **Applications drawer**
+(T-19.2), a full-output `overlay` launcher listing every launchable app
+alphabetically with a search field, category pills, and a fixed-size tile grid,
+launching through the same path as the Dock. The Spotlight-equivalent *search*
+pane remains deferred; the drawer's search filters its own list only. See
+[ADR 0090](adr/0090-dock-app-management-picker-and-drops.md),
+[ADR 0167](adr/0167-applications-drawer.md), and the T-14.7e/T-14.7f units.
 
 **Drop identity and feedback (T-14.7f).** An external drag is read once, at
 drag *enter* (`ShellProtocol::onDataDeviceEnter` → `beginDndRead`): the shell
@@ -604,6 +608,28 @@ windows → chooser; a stack → its contents; Trash → Files). A launch must n
 silently no-op: the shell provides launched clients the session's display
 environment, and a missing identity or a vanished window surfaces a notice
 rather than a dead click. See T-14.7g.
+
+## Applications drawer
+
+The **Applications drawer** (T-19.2) is the shell's primary "start an app"
+affordance, the macOS Launchpad analogue. It is a full-output `overlay` layer
+surface (namespace `apps-drawer`, keyboard on demand) fed by the app-index
+corpus: every launchable app, alphabetical by default, with a design-system
+`SearchField` and a category pill row (`SegmentedControl`, default `All`), and a
+fixed-size tile grid whose column count follows the available width. The list is
+built by the pure `buildAppsDrawerList` helper (`shell/src/appsdrawer.{h,cpp}`),
+which drops `noDisplay`/non-launchable records, dedupes by desktop id, maps the
+freedesktop `Categories` list to the pill set, sorts by localized name with an
+id tiebreak, and filters by category and query; the overlay narrows the pushed
+list with the same predicates for its live search. Activation launches through
+the Dock's launch path (`buildLaunchCommand` + `appLaunchEnvironment` +
+`set_launch_origin`) and a failed launch raises the shell's existing notice.
+Escape and a click outside dismiss; the reveal fades/scales (instant under
+reduced motion). app-index absence renders `Application index unavailable`, and
+the open drawer refreshes on the service's coalesced `Changed` signal. The
+drawer opens from F4 (`InputAction::ShowApps`) or the menu bar's Applications
+status item. The Spotlight-equivalent search pane remains deferred. See
+[ADR 0167](adr/0167-applications-drawer.md).
 
 ## App switcher
 

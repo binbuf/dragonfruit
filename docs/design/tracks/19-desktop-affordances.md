@@ -98,6 +98,14 @@ as the Dock (`buildLaunchCommand` + `appLaunchEnvironment` + launch origin). The
 Spotlight-equivalent *search* pane remains deferred; the drawer's search field
 filters its own list only.
 
+**Built (T-19.2).** The pure `buildAppsDrawerList` helper
+(`shell/src/appsdrawer.{h,cpp}`) owns the sort/dedupe/category-mapping rules;
+the `Dragonfruit.AppsDrawer` QML module renders the overlay; a new full-output
+`apps-drawer` layer surface follows `createOverviewSurface`. Activation reuses
+the Dock's launch path, and app-index absence renders an explicit row. One
+greppable freedesktop → pill mapping lives in `appsdrawer.cpp`'s
+`kCategoryMap`. See [ADR 0167](../adr/0167-applications-drawer.md).
+
 ## T-19.3 — Files-owned desktop items
 
 The macOS model: **the file manager owns the desktop.** `~/Desktop` is an icon

@@ -119,6 +119,61 @@
     </message>
 </context>
 <context>
+    <name>AppsDrawer</name>
+    <message>
+        <source>All</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Application index unavailable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Applications</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Creativity</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Developer Tools</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Entertainment</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Games</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Information</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No applications found</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Productivity &amp; Finance</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Search applications</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Social</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Utilities</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>BatteryMenu</name>
     <message>
         <source>%1 left</source>
@@ -2132,6 +2187,10 @@
 </context>
 <context>
     <name>MenuBar</name>
+    <message>
+        <source>Applications</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message>
         <source>Control Center</source>
         <translation type="unfinished"></translation>
