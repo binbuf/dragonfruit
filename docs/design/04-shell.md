@@ -271,33 +271,40 @@ inset, and coherent hover/press/running states — reproduced with our own
 geometry and tokens, never Apple assets (ADR
 [0091](adr/0091-dock-tahoe-floating-glass-language.md)). The reserved zone is
 the resting plate plus that margin; auto-hide reserves nothing. The plate is
-**cosmetic**: under magnification it grows to wrap the magnified row in both
-axes, inside the pre-reserved magnify band, while the reserved zone stays at the
-resting thickness so windows never re-lay-out when the pointer sweeps the Dock.
-The pointer is smoothed with `motion.dockMagnifyTrack`, a short low-pass whose
+**cosmetic**, and its size is deliberately *not* driven by the magnified row:
+its cross axis (the bar's height on a bottom Dock) is fixed at the resting
+thickness for all time, and its along axis has exactly two levels — base and a
+single `magnifiedPlateLength` — blended by the hover engagement. The
+background therefore resizes once when the zoom engages and once when it
+releases, and never tracks horizontal pointer movement or the row's spread
+(T-14.7aa). The zoomed level is the swept union of the fully magnified row
+(base…zoomed) plus the end padding, centred on the surface, so the one fixed
+bar always contains the icons; the reserved zone stays at the resting
+thickness, so windows never re-lay-out when the pointer sweeps the Dock. The
+pointer is smoothed with `motion.dockMagnifyTrack`, a short low-pass whose
 curve has no overshoot, so the per-sample follow cannot ring around the real
 position; `motion.dockMagnify`'s overshoot stays only for *discrete* changes
 (the icon-size spring and the reveal). The anchored tile is chosen from the
-**raw** pointer, so the filter can never flip it back and forth at a boundary,
-and the plate's magnify edge reads a peak-hold follow of the entry union edge
-(a small deadband) rather than the raw per-frame `min()`, so the top edge moves
-with the peak and never against it. Reduced motion tracks the pointer and the
-plate edge directly. The profile itself is the reference's wide quadratic
-bubble (T-14.7aa, ADR [0162](adr/0162-dock-hover-zoom-profile-and-label-tail.md)):
+**raw** pointer, so the filter can never flip it back and forth at a boundary.
+Reduced motion tracks the pointer directly. The profile itself is the
+reference's wide quadratic bubble (T-14.7aa, ADR
+[0162](adr/0162-dock-hover-zoom-profile-and-label-tail.md)):
 `component.dock.magnifyFalloff` (4.1) is its radius in icon widths and one
 neighbour keeps ~90 % of the peak effect, two ~60 %, zero by ~4 — a
-neighbourhood that rises together rather than a narrow spike. The pointer
-drives the profile's *shape*; `magnifyEngagement` (0..1, eased with
-`motion.dockHover`) drives its *amplitude*, so entering and leaving the Dock
-grows and shrinks the bubble around a held pointer/anchor instead of snapping
-in and out. Magnified positions are a **continuous warp** of the resting row:
-the row is accumulated from the resting leading edge and then translated so
-the pointer maps to itself through the resting-centre → magnified-centre map,
-so no tile or plate edge can jump when the anchored tile changes (a discrete
-anchor pin used to translate the row by a whole magnified pitch at every
-boundary, ~35 px with this profile). The compositor's frosted backdrop follows the live plate
-rect that the shell declares on each commit, so the material always sits under
-the artwork. A hovered entry reveals its name (and state) in a `Tooltip` capsule
+neighbourhood that rises together rather than a narrow spike; the peak mapping
+(`magnifyPeak` 1.25 at the default `scaling`, `magnifyPeakMax` 1.5) matches the
+capture's measured 1.245×. The pointer drives the profile's *shape*;
+`magnifyEngagement` (0..1, eased with `motion.dockHover`) drives its
+*amplitude*, so entering and leaving the Dock grows and shrinks the bubble
+around a held pointer/anchor instead of snapping in and out. Magnified
+positions are a **continuous warp** of the resting row: the row is accumulated
+from the resting leading edge and then translated so the pointer maps to itself
+through the resting-centre → magnified-centre map, so no tile can jump when the
+anchored tile changes (a discrete anchor pin used to translate the row by a
+whole magnified pitch at every boundary, ~35 px with this profile). The
+compositor's frosted backdrop follows the live plate rect that the shell
+declares on each commit, so the material always sits under the artwork. A
+hovered entry reveals its name (and state) in a `Tooltip` capsule
 above the icon (T-14.7i). See
 [ADR 0089](adr/0089-dock-plate-geometry-and-live-panel-rect.md),
 [ADR 0111](adr/0111-dock-magnification-tracking-stability.md), and the

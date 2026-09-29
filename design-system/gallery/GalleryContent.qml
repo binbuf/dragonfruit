@@ -872,6 +872,7 @@ Item {
                     open: true
                     text: qsTr("Safari — 3 windows")
                     placement: "above"
+                    tailVisible: true
                 }
             }
         }

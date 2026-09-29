@@ -1,4 +1,4 @@
-# 0162 — Dock hover: the reference zoom bubble, engagement spring, and label tail
+# 0162 — Dock hover: the reference zoom bubble, engagement ease, fixed bar, and label tail
 
 ## Status
 
@@ -34,9 +34,11 @@ Three gaps were visible against the capture:
   `effect = 1 - (d / (magnifyFalloff * iconSize))²`, clamped at 0. The falloff
   token stays the profile's radius in icon widths; only its value and the
   profile curve changed. One tile away keeps ~0.90, two ~0.60, three ~0.11 —
-  within a few points of the capture. The peak is still `magnification`'s
-  mapping (`magnifyPeak`/`magnifyPeakMax`), so a user-tuned peak is unchanged
-  in meaning.
+  within a few points of the capture. The peak mapping is retuned to the
+  capture's measured 1.245× (`magnifyPeak` 1.6 → 1.25 at the default
+  `magnification` 0.5, `magnifyPeakMax` 2.2 → 1.5), so the default hover now
+  matches the reference and the magnified artwork stays inside the fixed bar
+  instead of spilling far above it.
 - **`magnifyEngagement` scales the bubble.** The pointer drives the profile's
   *shape* (`magnifyPointer`, the smoothed pointer); a 0..1 engagement driven
   by `magnifying` and eased with the new `motion.dockHover` token drives its
@@ -59,6 +61,20 @@ Three gaps were visible against the capture:
   hover twitch a stop-motion sweep exposes. The anchored tile still tracks the
   raw pointer, is exactly on its resting centre when the pointer is on that
   centre, and stays under the pointer proportionally in between.
+- **The bar has a fixed cross axis and one horizontal zoom level.** The
+  reference keeps the dock background's height constant, and its horizontal
+  size has exactly two levels — base and one zoomed level — that do not vary
+  while the pointer moves along the Dock. `plateRect` now does the same: the
+  cross axis is always the resting `barThickness`, and the along axis is the
+  base length blended to a single `magnifiedPlateLength` by the hover
+  engagement. `magnifiedPlateLength` is the swept union of the fully magnified
+  row at every resting centre, centred on the surface with the end padding, so
+  the one fixed bar always contains the icons even though the row translates
+  under the pointer. The bar therefore resizes once on entry and once on
+  release and is otherwise completely static; the T-14.7y plate-edge peak-hold
+  (and its animation) is deleted because there is no edge signal left to damp.
+  The magnified artwork grows into the pre-reserved `magnifyBand` above the
+  fixed bar.
 - **The hovered (anchored) tile drops the flat wash and lifts.** The
   reference's hover treatment is the zoom itself plus a soft tile shadow;
   `DockEntry.zoomed` suppresses `hoverHighlight` and shows a small `Shadow`
@@ -83,24 +99,28 @@ Three gaps were visible against the capture:
 
 - The Dock's hover state now reads like the capture: a wide, flat-topped zoom
   bubble that grows and shrinks with a short ease, a tailed pill label, glass
-  layers, and no flat wash behind the zoomed tile.
+  layers, a fixed-height background whose width has one zoomed level, and no
+  flat wash behind the zoomed tile.
 - The magnified layout is now a continuous function of the pointer: a
   boundary-crossing test sweeps 150 positions in 1.53 px steps and asserts no
   tile or plate edge moves more than a few pixels per step; the old pin moved
-  the row by the full magnified pitch in one step.
-- Existing magnification geometry tests wait out the engagement
-  (`waitForMagnify`) before asserting settled sizes; `tst_dock` adds cases for
-  the profile shape, the engage/release, the zoomed tile's wash/shadow, the
+  the row by the full magnified pitch in one step. A companion test sweeps the
+  pointer and asserts the plate rect is byte-identical at every position while
+  engaged, then returns to base on release.
+- Existing magnification geometry tests were updated to the fixed-bar contract
+  (height constant; magnified artwork may pass the interior edge but stays in
+  the reserved band). `tst_dock` adds cases for the profile shape, the
+  engage/release, the single zoomed level, the zoomed tile's wash/shadow, the
   plate layers, and the tooltip tail. The gallery Tooltip page opts into the
   tail and its goldens were regenerated.
-- `magnifyFalloff` is consumed only by `Dock.qml`; the compositor's
-  `design_tokens.rs` regenerates but reads nothing new.
+- `magnifyFalloff` and the peak mapping are consumed only by `Dock.qml`; the
+  compositor's `design_tokens.rs` regenerates but reads nothing new.
 - The engagement animation is time-based on top of a pointer-driven profile.
   It is interruptible (the Behavior retargets from its current value) and the
   geometry stays progress-based; the pointer tracker itself is unchanged, so
   ADR [0111](0111-dock-magnification-tracking-stability.md)'s stability
   guarantees hold.
-- The reference's fixed-height plate (icons zoom *inside* it) is deliberately
-  not adopted: ADR [0089](0089-dock-plate-geometry-and-live-panel-rect.md) has
-  the plate wrap the magnified row, and this unit changes only the profile,
-  motion, and layers.
+- ADR [0089](0089-dock-plate-geometry-and-live-panel-rect.md)'s live panel rect
+  becomes *more* stable: because the cross axis is fixed and the along axis has
+  one zoomed level, the declared backdrop panel changes only on hover
+  engage/release, not per frame during a sweep.
