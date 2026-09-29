@@ -282,7 +282,20 @@ position; `motion.dockMagnify`'s overshoot stays only for *discrete* changes
 and the plate's magnify edge reads a peak-hold follow of the entry union edge
 (a small deadband) rather than the raw per-frame `min()`, so the top edge moves
 with the peak and never against it. Reduced motion tracks the pointer and the
-plate edge directly. The compositor's frosted backdrop follows the live plate
+plate edge directly. The profile itself is the reference's wide quadratic
+bubble (T-14.7aa, ADR [0162](adr/0162-dock-hover-zoom-profile-and-label-tail.md)):
+`component.dock.magnifyFalloff` (4.1) is its radius in icon widths and one
+neighbour keeps ~90 % of the peak effect, two ~60 %, zero by ~4 — a
+neighbourhood that rises together rather than a narrow spike. The pointer
+drives the profile's *shape*; `magnifyEngagement` (0..1, eased with
+`motion.dockHover`) drives its *amplitude*, so entering and leaving the Dock
+grows and shrinks the bubble around a held pointer/anchor instead of snapping
+in and out. Magnified positions are a **continuous warp** of the resting row:
+the row is accumulated from the resting leading edge and then translated so
+the pointer maps to itself through the resting-centre → magnified-centre map,
+so no tile or plate edge can jump when the anchored tile changes (a discrete
+anchor pin used to translate the row by a whole magnified pitch at every
+boundary, ~35 px with this profile). The compositor's frosted backdrop follows the live plate
 rect that the shell declares on each commit, so the material always sits under
 the artwork. A hovered entry reveals its name (and state) in a `Tooltip` capsule
 above the icon (T-14.7i). See
@@ -307,7 +320,12 @@ The plate's material is layered (T-14.7j, ADR
 frosts the declared panel with the Dock's own `material.dockBlur`/`dockOpacity`
 tokens — selected by the `dock` namespace, so it is independent of the menu
 bar's `chrome*` frost — and `Dock.qml` draws a translucent `dockFill`, a bright
-inner top-edge rim, a hairline `dockBorder`, and a soft shadow above it. Every
+inner rim, an interior gloss band just inside it
+(`plate.glossHeight`/`.glossOpacity`, sharing the rim's corner-following path),
+a hairline `dockBorder`, a bright lip along the flat middle of the anchored
+(screen-edge) side (`plate.edgeHeight`/`.edgeOpacity`), and a soft shadow above
+it — the reference capture's glass stack (ADR
+[0162](adr/0162-dock-hover-zoom-profile-and-label-tail.md)). Every
 value is a `controls.dock.plate` token. The plate group is clipped at its top
 edge so the shadow never bleeds into the transparent magnify band above it
 (T-10 section 2). Icon tiles are rounded squares at
@@ -319,7 +337,11 @@ software scene graph the Dock tests run on, so the masked corners are real
 pixels (unlike `MultiEffect`/`OpacityMask`/`ShaderEffect`, which no-op there);
 the hover wash, lift shadow, focus ring, running dot, and divider are siblings
 of the artwork and are never clipped, and they follow
-`controls.dock.hover`/`indicator`/`divider`. At the `Minimal` degrade tier the
+`controls.dock.hover`/`indicator`/`divider`. The anchored tile of the magnified
+profile drops the static hover wash — the zoom *is* the hover state in the
+reference — and shows a small lift shadow instead
+(`hover.shadowBlur`/`.shadowOpacity`); a zoom-off Dock keeps the wash. At the
+`Minimal` degrade tier the
 compositor draws no frost and the plate reads as a clean capsule with no
 highlight claim. See
 [ADR 0113](adr/0113-dock-icon-squircle-canvas-clip.md).
@@ -358,9 +380,11 @@ divider it plans. See [ADR 0109](adr/0109-dock-region-dividers.md).
 ### Dock hover name label
 
 Pausing over an entry for `controls.tooltip.dwell` (600 ms) shows the
-design-system `Tooltip` — a passive, pointer-anchored capsule with one elided
-line — above the icon on a bottom Dock and on the interior side on a vertical
-one (ADR [0093](adr/0093-tooltip-joins-the-design-system.md), T-14.7i). The
+design-system `Tooltip` — a passive, pointer-anchored pill with one elided
+line and, since T-14.7aa, a pointer tail (`tailVisible`) aimed at the anchor
+centre — above the icon on a bottom Dock and on the interior side on a
+vertical one (ADR [0093](adr/0093-tooltip-joins-the-design-system.md), ADR
+[0162](adr/0162-dock-hover-zoom-profile-and-label-tail.md)). The
 label text is the entry `name` plus its state ("3 windows", "Trash — empty",
 "Downloads — 2 items"), computed once in `DockEntry.tooltipLabel` so no QML
 consumer re-derives it and no text returns to the artwork (ADR 0092). The Dock
