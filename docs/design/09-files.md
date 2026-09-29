@@ -199,7 +199,11 @@ retired on navigation. **Rubber-band selection is real (T-19.3):**
 `FilesIconView` paints a marquee over empty background and emits
 `marqueeSelected(nodeIds, modifiers)`, which the shell folds in with the same
 replace/Cmd-toggle/Shift-extend rules as the click paths; the desktop surface
-reuses the view. **Still deferred:** Open With, Get Info,
+reuses the view. The band wears the macOS Tahoe drag-selection look — a very
+light, semi-transparent neutral grey wash inside a slightly darker, thicker,
+square grey perimeter (`marqueeFill`/`marqueeBorder` + `component.marquee`) —
+rather than an accent tint, because it marks a transient region, not a
+committed selection. **Still deferred:** Open With, Get Info,
 Copy/Duplicate/Compress/Make Alias, file opening, the folder watcher, and the
 search result set (T-10.4c+/T-10.5).
 
@@ -637,9 +641,12 @@ The macOS model: **the file manager owns the desktop.**
   modifiers)`; the shell's `selectMarquee` replaces/toggles/extends exactly
   like click, Cmd-click, and Shift-click. The band sits *above* the virtualizing
   grid and rejects a press that lands on a tile (`tileAt`), so a drag can start
-  on any empty background — not just the view's thin outer margin. The same view
-  serves a Files window and the desktop surface. Click/Cmd/Shift selection, the
-  `activated` signal, and the band are QML-tested.
+  on any empty background — not just the view's thin outer margin. Its look is
+  macOS Tahoe's neutral drag band (a translucent light-grey wash, a thicker
+  square grey perimeter) from the `marqueeFill`/`marqueeBorder` semantic tokens
+  and `component.marquee` geometry, so it stays scheme-aware in light and dark.
+  The same view serves a Files window and the desktop surface. Click/Cmd/Shift
+  selection, the `activated` signal, and the band are QML-tested.
 - **The desktop process itself (T-19.3).** `dragonfruit-files --desktop` is a
   self-contained trusted private-protocol client
   (`apps/files/DesktopProtocol.*`): it presents the `desktop:` launch token,

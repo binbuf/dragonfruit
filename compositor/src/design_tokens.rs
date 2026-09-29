@@ -120,6 +120,8 @@ pub mod semantic {
             pub const CONTROL_ACTIVE: [u8; 4] = [0xc3, 0xb8, 0xcc, 0xff];
             pub const FOCUS_RING: [u8; 4] = [0x7c, 0x5c, 0xff, 0xff];
             pub const SELECTION: [u8; 4] = [0xb3, 0xa1, 0xff, 0xff];
+            pub const MARQUEE_FILL: [u8; 4] = [0xed, 0xed, 0xed, 0x40];
+            pub const MARQUEE_BORDER: [u8; 4] = [0xc4, 0xc4, 0xc4, 0x8c];
             pub const DANGER: [u8; 4] = [0xe8, 0x55, 0x6d, 0xff];
             pub const SUCCESS: [u8; 4] = [0x2b, 0xb6, 0x73, 0xff];
             pub const WARNING: [u8; 4] = [0xe0, 0xa4, 0x3a, 0xff];
@@ -182,6 +184,8 @@ pub mod semantic {
             pub const CONTROL_ACTIVE: [u8; 4] = [0x5b, 0x4e, 0x66, 0xff];
             pub const FOCUS_RING: [u8; 4] = [0x92, 0x7d, 0xff, 0xff];
             pub const SELECTION: [u8; 4] = [0x55, 0x38, 0xc2, 0xff];
+            pub const MARQUEE_FILL: [u8; 4] = [0xe6, 0xe6, 0xe6, 0x33];
+            pub const MARQUEE_BORDER: [u8; 4] = [0xd8, 0xd8, 0xd8, 0x8c];
             pub const DANGER: [u8; 4] = [0xf2, 0x69, 0x7d, 0xff];
             pub const SUCCESS: [u8; 4] = [0x3f, 0xc9, 0x8a, 0xff];
             pub const WARNING: [u8; 4] = [0xf0, 0xb6, 0x4b, 0xff];
@@ -391,6 +395,10 @@ pub mod component {
         pub const WIDTH: f32 = 2.0_f32;
         pub const OFFSET: f32 = 2.0_f32;
         pub const RADIUS: f32 = 6.0_f32;
+    }
+    pub mod marquee {
+        pub const BORDER_WIDTH: f32 = 2.0_f32;
+        pub const RADIUS: f32 = 0.0_f32;
     }
     pub mod sidebar {
         pub const WIDTH: f32 = 192.0_f32;
