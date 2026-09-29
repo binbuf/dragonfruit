@@ -36,6 +36,9 @@ FocusScope {
     readonly property int cellHeight: 104
     // The virtualizing view, exposed for the windowed-rendering check (T-10.5).
     property alias gridView: grid
+    // The live marquee rectangle, exposed so tests can assert the drag-selection
+    // visual (macOS Tahoe neutral wash + square grey perimeter).
+    property alias marqueeItem: marquee
 
     // The live rubber band, in view coordinates. `bandActive` gates the
     // marquee and is false for a plain click.
@@ -162,6 +165,10 @@ FocusScope {
     }
 
     // The marquee rectangle, drawn over the grid while a band is in progress.
+    // macOS Tahoe's drag-selection look: a very light, semi-transparent grey
+    // wash inside a slightly darker, thicker and less transparent grey square
+    // perimeter (no rounding). This is deliberately neutral, not accent-tinted:
+    // the band is a transient region marker, not a committed selection.
     Rectangle {
         id: marquee
         visible: root.bandActive
@@ -169,9 +176,10 @@ FocusScope {
         y: root.bandRect.y
         width: root.bandRect.width
         height: root.bandRect.height
-        color: Theme.color.accentMuted
-        border.width: 1
-        border.color: Theme.color.accent
+        radius: Theme.controls.marquee.radius
+        color: Theme.color.marqueeFill
+        border.width: Theme.controls.marquee.borderWidth
+        border.color: Theme.color.marqueeBorder
         z: 10
     }
 

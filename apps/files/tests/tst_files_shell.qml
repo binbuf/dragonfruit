@@ -327,10 +327,26 @@ Item {
             mousePress(shell.iconView, 5, 5);
             mouseMove(shell.iconView, 300, 300);
             verify(shell.iconView.bandActive);
+
+            // macOS Tahoe drag band: a neutral, translucent grey wash inside a
+            // thicker, less transparent square grey perimeter — no accent tint.
+            verify(shell.iconView.marqueeItem.visible);
+            compare(shell.iconView.marqueeItem.color, Theme.color.marqueeFill);
+            compare(shell.iconView.marqueeItem.border.color, Theme.color.marqueeBorder);
+            compare(shell.iconView.marqueeItem.border.width,
+                    Theme.controls.marquee.borderWidth);
+            compare(shell.iconView.marqueeItem.radius, Theme.controls.marquee.radius);
+            compare(shell.iconView.marqueeItem.radius, 0);
+            verify(Theme.color.marqueeFill.a < Theme.color.marqueeBorder.a,
+                   "the band perimeter is less transparent than its wash");
+            verify(Theme.color.marqueeBorder !== Theme.color.accent,
+                   "the band is neutral, not accent-tinted");
+
             mouseRelease(shell.iconView, 300, 300);
             waitForRendering(stage);
 
             verify(shell.iconView.bandActive === false);
+            verify(shell.iconView.marqueeItem.visible === false);
             verify(shell.selectedIds.length >= 2,
                    "the band must enclose the tiles it swept");
             verify(shell.selectedId > 0);
