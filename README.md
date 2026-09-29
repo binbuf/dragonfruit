@@ -77,6 +77,34 @@ make lint    # cargo fmt --check, clippy -D warnings, qmllint, desktop-name gate
 make check   # lint + tests + 100-cycle teardown soak
 ```
 
+## Premium experience gate (T-17)
+
+The full loop — window lifecycle, Spaces/Mission Control/app switch, a Flatpak
+browser, materials in light/dark/reduced motion, absence/crash/leak/lock
+robustness — is gated by the T-17 track
+([design/tracks/17-premium-gate.md](docs/design/tracks/17-premium-gate.md)). The
+reviewed sign-off is
+[docs/captures/t17-premium-gate.md](docs/captures/t17-premium-gate.md); the
+gate is agent-signed with the DRM and baseline-frame-budget rows left open on
+the hardware rail (T-17.2/T-17.4).
+
+```bash
+make check                      # lint + tests + 100-cycle teardown soak (green)
+make e2e                        # the foundation + conformance suites (green)
+make t17-premium-gate-capture   # assembled-desktop still + sign-off transcript
+
+# the per-unit evidence the report indexes
+make t17-window-loop-capture
+make t17-navigation-capture
+make t17-flatpak-browser-capture
+make t17-visual-floor-capture
+make t17-robustness-matrix
+make t17-leak-lock-soak
+```
+
+Requires a host Wayland session, `spectacle`, python3 + Pillow for the capture
+targets; `make check`/`make e2e` are headless.
+
 The **desktop-name gate** (`scripts/check-desktop-names.sh`) fails on
 any hardcoded desktop name — `dragonfruit` is the only legal value
 (`XDG_CURRENT_DESKTOP` is a public contract; see

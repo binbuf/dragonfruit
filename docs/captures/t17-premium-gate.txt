@@ -1,0 +1,54 @@
+T-17.6 premium-gate sign-off verification
+generated: 2026-09-29T14:01:27Z
+checklist: docs/design/tracks/17-premium-gate.md
+
+================================================================
+## 1. Live assembled desktop
+================================================================
+
+state: live nested session (assembled desktop)
+  spaces: space NESTED-1 0 0 active=1 windows=2 | space NESTED-1 1 1 active=0 windows=0 | space NESTED-1 2 2 active=0 windows=0 | end
+  grid: grid none | end
+  material: material scheme=light chrome=ffffffff elevated=ffffffff border=ded6e5ff accent=b32a66ff | end
+  degrade: degrade tier=reduced forced=0 budget_us=16000 samples=40 over_budget=19 downgrades=1 upgrades=0 tiers=full:39,reduced:1,minimal:0 | end
+  windows: 1:dragonfruit-settings ssd=0, 0:Xmessage ssd=1
+  capture: t17-premium-gate.png (1920x1200)
+
+[PASS] nested desktop captured to docs/captures/t17-premium-gate.png
+
+================================================================
+## 2. Headless premium-gate floor
+================================================================
+
+$ ./scripts/check-gallery-snapshots.py --strict
+gallery visual regression passed (84 snapshots)
+
+[PASS] gallery visual regression (84 snapshots)
+$ cargo test -p dragonfruit-compositor --test reduced_motion_sweep
+   Compiling dragonfruit-compositor v0.1.0 (/home/user/repos/dragonfruit/compositor)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 10.36s
+     Running tests/reduced_motion_sweep.rs (target/debug/deps/reduced_motion_sweep-fb5073027d108bac)
+
+running 3 tests
+test every_compositor_lifecycle_kind_routes_through_reduced_motion ... ok
+test every_motion_token_has_a_reduced_motion_variant ... ok
+test every_qml_animation_site_has_a_reduced_motion_variant ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+
+[PASS] reduced-motion structural sweep
+$ cargo test -p dragonfruit-session --test absent_services
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.09s
+     Running tests/absent_services.rs (target/debug/deps/absent_services-1414e883755249f7)
+
+running 4 tests
+test the_only_gate_in_the_shipped_plan_is_the_compositor ... ok
+test only_the_anchor_absence_ends_the_session ... ok
+test an_absent_gate_service_does_not_block_the_next_stage ... ok
+test every_absent_optional_service_degrades_and_never_blocks_start ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+
+[PASS] absent services never block session start

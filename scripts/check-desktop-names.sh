@@ -26,11 +26,19 @@ scan_files() {
            -o -name '*.toml' \) -print0
 }
 
-# 1. Known desktop names must not appear in code or build files.
+# 1. Known desktop names must not appear in code or build files. A
+# `org.<name>.<member>` token is a third-party D-Bus well-known name or
+# application id (`org.kde.StatusNotifierItem`, `org.gnome.Calculator.desktop`),
+# which is a compatibility contract, not an XDG_CURRENT_DESKTOP hardcode, so
+# strip those namespaces before matching. The remaining match is a
+# desktop-name literal only (a bare `"KDE"`, an `XDG_CURRENT_DESKTOP=GNOME`,
+# or a comment naming another desktop), which is what the gate is for.
 names='gnome|kde|plasma|cinnamon|xfce|lxde|lxqt|budgie|sway|weston|hyprland|cosmic'
+strip_third_party="s#org\\.($names)\\.[A-Za-z0-9_.-]+##g"
 while IFS= read -r -d '' f; do
     [ "$f" = "./scripts/check-desktop-names.sh" ] && continue
-    hits=$(grep -nwiE "$names" "$f" 2>/dev/null | grep -v 'df-allow-desktop-name' || true)
+    hits=$(sed -E "$strip_third_party" "$f" 2>/dev/null \
+        | grep -nwiE "$names" | grep -v 'df-allow-desktop-name' || true)
     if [ -n "$hits" ]; then
         echo "ERROR: hardcoded desktop name in $f:"
         echo "$hits" | head -5

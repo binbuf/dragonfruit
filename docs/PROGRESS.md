@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(170 earlier sections omitted)_
+_(171 earlier sections omitted)_
 
-- **T134 — T-15.12b Printers and Scanners pane and tile**: **State: done.** The Settings `Printers & Scanners` pane and the Control Center; `services/system-status/src/printers.rs` (new) — `PrintersHost<S>` (refresh/
 - **T135 — T-15.13a Privacy and Security adapter**: **State: done.** New workspace crate `dragonfruit-privacy-adapter`; `services/privacy-adapter/src/source.rs` — `AppPermissionData {app,
 - **T136 — T-15.13b Privacy and Security pane and tile**: **State: done.** The Settings `Privacy & Security` pane and the Control Center; `services/system-status/src/privacy.rs` (new) — `PrivacyHost<S>` (refresh/
 - **T137 — T-15.14a Accessibility adapter**: **State: done.** New workspace crate `dragonfruit-accessibility-adapter`; `services/accessibility-adapter/src/source.rs` — `AccessibilityData
@@ -43,7 +42,8 @@ _(170 earlier sections omitted)_
 - **T171 — T-12.6c Second-VT dev harness and runbook**: **State: done (automated half); the real second-VT cycle is open on the; `tools/dragonfruit-dev/src/second_vt.rs` (new) — pure `LogindSession`
 - **T155 — T-17.3 Visual floor and reduced-motion sign-off**: **State: done (agent half; the human sign-off is batched at the track; `scripts/capture-t17-visual-floor.sh` (`make t17-visual-floor-capture`) — one
 - **T156 — T-17.5a Absent-daemon and crash matrix verification**: **State: done.** The premium gate's robustness contract is re-verified on the; `services/session/tests/absent_services.rs` (new, 4 tests) — the stand-in
-- **T157 — T-17.5b Leak and lock enforcement verification**: **State: done.** The premium gate's leak and lock con
+- **T157 — T-17.5b Leak and lock enforcement verification**: **State: done.** The premium gate's leak and lock contracts are re-verified on; vision read clean.
+- **T158 — T-17.6 Unfamiliar-user test and sign-off report**: **State: done (agent half; the human unfamiliar-user verdict is the batched; `docs/captures/t17-premium-gate.md
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -15765,3 +15765,73 @@ Commands / gotchas for later:
   real session is still the T-03.4/T-17.2 hardware rail (`make drm-soak`); the
   probe row is OPEN in the transcript.
 - **T-17.6 is the human sign-off.**
+
+## T158 — T-17.6 Unfamiliar-user test and sign-off report
+
+**State: done (agent half; the human unfamiliar-user verdict is the batched
+track-boundary item).** The premium gate is closed as a report over the
+per-unit evidence: every T-17 checklist item is ticked or explicitly waived
+with a reason, the post-gate backlog is listed, reproduction commands are
+committed, and `make check` + `make e2e` are green (including the
+long-pre-existing `check-desktop-names` failure, now fixed). The gate is
+**incomplete, not passed**, on two hardware rows: the DRM loop (T-17.2) and the
+baseline Intel/AMD frame budget (T-17.4). `make t17-premium-gate-capture` exit 0,
+`make e2e` exit 0 (133 `test result: ok`, 0 failed), `make check` exit 0 (lint +
+147 `test result: ok` + gallery 84/84 + 100-cycle soak clean), live nested
+capture + vision read clean.
+
+Real paths:
+
+- `docs/captures/t17-premium-gate.md` (new) — the sign-off report: the full
+  track checklist with a verdict + evidence link per item, the two OPEN rows,
+  the F3/XDnD waivers, the side-by-side against the design docs / Tahoe
+  language / `System_Preferences.md`, the unfamiliar-user protocol + agent
+  legibility review, pinned third-party versions, the post-gate backlog,
+  reproduction commands, and check results.
+- `docs/captures/t17-premium-gate.{png,txt}` (new) — assembled nested desktop
+  still (1920×1200) + machine transcript.
+- `scripts/capture-t17-premium-gate.sh` + `scripts/t17-premium-gate-driver.py` +
+  `make t17-premium-gate-capture` (new). `SKIP_LIVE=1` runs only the headless
+  rows.
+- `docs/design/adr/0179-t17-premium-gate-sign-off.md` (new) — evidence boundary
+  + the two-open-rows decision.
+- `docs/design/adr/0180-third-party-identifier-desktop-name-gate.md` (new) —
+  the `check-desktop-names` fix.
+- `README.md` "Premium experience gate (T-17)" section;
+  `docs/design/11-session-and-dev-workflow.md` "The premium-gate sign-off
+  (T-17.6)" section; `docs/captures/README.md`.
+
+Commands / gotchas for later:
+
+- **`check-desktop-names` is green now.** `scripts/check-desktop-names.sh`
+  strips `org.<name>.<member>` (e.g. `org.kde.StatusNotifierItem`,
+  `org.gnome.Calculator.desktop`) before the word match, so third-party D-Bus
+  names/app ids are not false positives. Host-desktop comments were reworded
+  (`the KDE Wayland session` → `the host Wayland session`, `GNOME Calculator` →
+  `Calculator`), and the one real hardcode — `scripts/zoo/zoo-run.sh` set
+  `XDG_CURRENT_DESKTOP=Dragonfruit` — is now lowercase. A bare `"KDE"`/
+  `XDG_CURRENT_DESKTOP=GNOME` still fails. So `make check` (lint+test+soak) is
+  **exit 0**; it had been red for many tasks (T-14/T-03 era) purely on these
+  false positives. If you touch the gate, re-test the negative cases:
+  `printf '%s\n' '"KDE"' | sed -E "$strip" | grep -wiE "$names"`.
+- **`make e2e` is 133 `test result: ok`; `make check` is 147** (both exit 0).
+  `make check` runs lint first; the corrected desktop-name gate is in it.
+- **The gate capture is one nested demo + one still.** `make
+  t17-premium-gate-capture` launches `make demo` with
+  `DRAGONFRUIT_SYNTHETIC_INPUT`, waits for the `.synth` socket, and
+  `scripts/t17-premium-gate-driver.py` reuses the T-17.1a `Capture` (KWin raise
+  + `spectacle -a`) via `importlib` to crop the 1920×1200 output. It tears the
+  demo down before the headless rows so they do not contend.
+- **Build env** for cargo/make: `PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig`,
+  `RUSTFLAGS=-L $HOME/.local/df-devroot/lib64`; plain `cargo test` fails on
+  `libudev-sys` without them.
+- **The two OPEN rows are deliberate**, not omissions: no free logind seat
+  (DRM) and no baseline Intel/AMD GPU on this host. The report says
+  "incomplete, not passed"; do not mark the gate passed until T-17.2/T-17.4 land.
+
+### Follow-ups
+
+- **T-17.2 DRM full loop** and **T-17.4 performance budget** — the two OPEN gate
+  rows; hardware rail. Post-gate backlog (desktop icons, Spotlight search, GOA,
+  NVIDIA/HDR, printer breadth, GPU blur sampler, live PipeWire producer) is
+  listed in `docs/captures/t17-premium-gate.md`.

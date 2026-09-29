@@ -78,7 +78,7 @@ if [ ! -e "$SYNTH" ]; then
 fi
 sleep "$SETTLE"
 
-# A third-party Qt (SSD) client. kcalc is a real Qt/KDE app that requests
+# A third-party Qt (SSD) client. kcalc is a real third-party Qt app that requests
 # server-side decoration; the first-party apps are CSD by design.
 if command -v kcalc >/dev/null 2>&1; then
     echo "capture-t17: launching Qt SSD client (kcalc)"

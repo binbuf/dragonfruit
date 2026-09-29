@@ -171,6 +171,15 @@ the `DISPLAY` file to the soak tripwire and cleaning every compositor test
 harness in `Drop`; see
 [ADR 0178](../design/adr/0178-t17-leak-lock-enforcement.md).
 
+T-17.6's premium-gate sign-off is produced by
+`scripts/capture-t17-premium-gate.sh` (`make t17-premium-gate-capture`): it
+captures the assembled nested desktop to `t17-premium-gate.png` (via
+`scripts/t17-premium-gate-driver.py`), re-runs the fast headless premium-gate
+rows into `t17-premium-gate.txt`, and is indexed by the sign-off report
+`t17-premium-gate.md`. The report reproduces the track checklist with a verdict
+and evidence link per item; the evidence boundary is
+[ADR 0179](../design/adr/0179-t17-premium-gate-sign-off.md).
+
 T-10.7's Files slice capture is produced by `scripts/capture-files.sh`
 (`make files-capture`): the nested demo runs with `DF_DEMO_QT_APP` pointing at
 Files over a scratch fixture tree and a scratch trash store, and it writes
