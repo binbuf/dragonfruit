@@ -414,6 +414,28 @@ scene are never torn down, so the wake is a repaint. `query session` reports
 drives `suspend`/`resume`. The decision is frozen in
 [ADR 0072](adr/0072-suspend-resume-cycle.md).
 
+### The suspend/resume soak (T-16.4)
+
+The T-12.5a model is proven to *repeat*, not just to work once. The soak crosses
+one headless compositor session through 100 suspend→resume cycles with a live
+Wayland client still mapped. Every cycle asserts the scene counts on both sides
+of sleep (`suspended=1/0`, `outputs=1`, `windows=1`) and that the completed-cycle
+counter advances by exactly one; after cycle 100 the client still round-trips and
+input still routes. A clean `SIGTERM` then asserts the compositor removed its
+socket, lock, both launch tokens, and the Xwayland `DISPLAY` file. The session
+manager half runs the same cycle 100 times through the real `Supervisor` and the
+recording `MockSuspend`: exactly one platform request per cycle, the supervised
+child's pid never changes, and no service restarts. Both live in
+`compositor/tests/suspend_resume_conformance.rs` and
+`services/session/tests/suspend.rs` (the compositor suite is in `make e2e`); the
+transcript and reproduction are `make t16-suspend-resume-soak`
+(`docs/captures/t16-suspend-resume-soak.txt`). The real-machine half — logind
+actually sleeping the box 100 times — is a probe on this host, recorded **OPEN**
+because a suspend on the developer's own session is destructive and the
+production logind `SuspendBackend` is not yet wired; the hardware rail
+(T-159…T-161 and the T-16 VM matrix) owns it. The decision is
+[ADR 0181](adr/0181-t16-suspend-resume-soak.md).
+
 ## logind integration
 
 - `LockSession` / `UnlockSession` requests drive our lock screen; idle

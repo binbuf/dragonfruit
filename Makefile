@@ -50,7 +50,7 @@ endif
         visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev dev-full demo soak e2e \
         idle-trace menubar-idle-trace latency-trace drm-bringup input-validation multi-gpu-validation drm-soak second-vt-validation settingsd-capture settings-wave-1-capture \
         t18-wallpaper-capture t18-absence-matrix t15-absence-matrix t15-breadth-capture t16-a11y-audit \
-        t16-i18n-capture t16-kill-matrix t17-robustness-matrix t17-window-loop-capture t17-navigation-capture \
+        t16-i18n-capture t16-kill-matrix t16-suspend-resume-soak t17-robustness-matrix t17-window-loop-capture t17-navigation-capture \
         t17-flatpak-browser-capture t17-visual-floor-capture t17-leak-lock-soak t17-premium-gate-capture i18n-update \
         files-capture osd-dnd-capture portals-capture zoo-run dock-spacing-capture dock-magnify-capture dock-motion-capture dock-trash-capture dock-app-picker-capture dock-drops-capture dock-activation-capture dock-launch-origin-capture dock-folder-stack-capture dock-tooltip-capture dock-tahoe-capture dock-folder-pin-capture dock-chooser-actions-capture dock-chooser-scroll-capture dock-window-badge-capture dock-hover-chooser-capture dock-overflow-capture dock-trash-empty-capture dock-minimize-reaction-capture dock-keyboard-reorder-capture dock-dividers-capture dock-magnify-sweep-capture dock-plate-corners-capture dock-icon-mask-capture check-desktop-names check-no-capture-grab check-design-tokens check-i18n clean install
 
@@ -71,6 +71,7 @@ help:
 	@echo "  make t15-absence-matrix — T-15.16 headless absent-daemon masking matrix transcript"
 	@echo "  make t15-breadth-capture — T-15.16 whole-desktop breadth still (all providers absent)"
 	@echo "  make t16-kill-matrix — T-16.8a headless crash/kill matrix transcript"
+	@echo "  make t16-suspend-resume-soak — T-16.4 100-cycle suspend/resume soak transcript"
 	@echo "  make t17-robustness-matrix — T-17.5a absent-daemon + crash/kill premium-gate transcript"
 	@echo "  make t17-window-loop-capture — T-17.1a nested window-loop stills, clip + transcript"
 	@echo "  make t17-navigation-capture — T-17.1b workspace/Mission Control/app-switch stills, clip + transcript"
@@ -283,6 +284,14 @@ t16-i18n-capture: build
 # backend are the state under test).
 t16-kill-matrix: cargo-build
 	bash scripts/t16-kill-matrix.sh
+
+# T-16.4: the 100-cycle suspend/resume soak. Writes the transcript under
+# docs/captures/t16-suspend-resume-soak.txt: the headless compositor soak
+# (100 cycles with a live client, clean-teardown leak check) and the session
+# supervision soak, both in an isolated XDG_RUNTIME_DIR; the real-machine
+# logind half is recorded OPEN on a host that cannot sleep itself.
+t16-suspend-resume-soak: cargo-build
+	bash scripts/t16-suspend-resume-soak.sh
 
 # T-17.5a: the premium-gate absent-daemon and crash/kill matrix. Writes the
 # verification transcript under docs/captures/t17-robustness-matrix.txt: the

@@ -142,3 +142,72 @@ fn the_full_idle_chain_requests_exactly_one_suspend() {
     assert_eq!(idle.poll(seconds(100)), None);
     assert_eq!(suspend.backend().suspend_requests(), 1);
 }
+
+/// T-16.4 acceptance: 100 suspend/resume cycles keep the session alive.
+///
+/// The Soak runs the same full cycle as the test above 100 times over one
+/// supervised child. Each cycle requests exactly one platform suspend, the
+/// child's pid never changes, no service restarts, and the completed-cycle
+/// counter reaches 100 — the session composition is untouched across the
+/// whole soak. No real time passes: the cycle is driven directly through
+/// logind's `PrepareForSleep` hook on the recording `MockSuspend`.
+#[test]
+fn one_hundred_cycles_keep_the_supervised_session_alive() {
+    const CYCLES: u32 = 100;
+
+    let spec = ServiceSpec::new("sleeper", "sleep")
+        .args(["30"])
+        .policy(RestartPolicy::Never);
+    let mut supervisor = Supervisor::new(SessionPlan::new(vec![spec]));
+    supervisor.start().expect("spawn the sleeper");
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while supervisor.state() != SessionState::Running {
+        supervisor.tick();
+        assert!(
+            Instant::now() < deadline,
+            "the session never reached Running: {:?}",
+            supervisor.state()
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let pid = supervisor
+        .running_pid("sleeper")
+        .expect("the sleeper is running");
+
+    let mut suspend = SuspendController::new(MockSuspend::new());
+    for cycle in 1..=CYCLES {
+        // The idle chain asks to suspend; logind confirms sleep, then wake.
+        assert!(suspend.on_idle_event(IdleEvent::Enter(IdleStage::Suspend)));
+        assert!(
+            suspend.prepare_for_sleep(true),
+            "cycle {cycle}: sleep was not confirmed"
+        );
+        assert!(
+            suspend.prepare_for_sleep(false),
+            "cycle {cycle}: wake was not confirmed"
+        );
+        assert_eq!(suspend.cycles(), cycle, "cycle {cycle}: counter drifted");
+        assert!(
+            suspend.is_awake(),
+            "cycle {cycle}: the session stayed asleep"
+        );
+
+        // The session composition is untouched: same child, no restart.
+        supervisor.tick();
+        assert_eq!(supervisor.state(), SessionState::Running);
+        assert_eq!(supervisor.running_pid("sleeper"), Some(pid));
+        assert_eq!(supervisor.restarts("sleeper"), Some(0));
+    }
+
+    assert_eq!(
+        suspend.backend().suspend_requests(),
+        CYCLES,
+        "exactly one platform request per cycle"
+    );
+    assert_eq!(suspend.backend().cancel_requests(), 0);
+    assert_eq!(suspend.last_error(), None);
+
+    supervisor.shutdown();
+    assert_eq!(supervisor.state(), SessionState::Ended);
+}
