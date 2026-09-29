@@ -17,6 +17,7 @@ private slots:
     void evdevKeysMapNavigationAndActivation();
     void unknownEvdevKeysAreIgnored();
     void mouseButtonsMapLeftRightMiddle();
+    void doubleClickDetectsASecondPressInWindow();
 };
 
 void TestFilesDesktop::xkbModifiersCoverCommandAndShift()
@@ -63,6 +64,22 @@ void TestFilesDesktop::mouseButtonsMapLeftRightMiddle()
     QCOMPARE(desktopMouseButton(0x111), Qt::RightButton);
     QCOMPARE(desktopMouseButton(0x112), Qt::MiddleButton);
     QCOMPARE(desktopMouseButton(0x113), Qt::NoButton);
+}
+
+void TestFilesDesktop::doubleClickDetectsASecondPressInWindow()
+{
+    const QPointF here(40, 90);
+    const QPointF nearby(42, 92);
+    const QPointF far(400, 300);
+
+    // No previous press: never a double-click.
+    QVERIFY(!desktopIsDoubleClick(false, 100, 400, here, nearby, 6));
+    // Within the interval and distance: a double-click.
+    QVERIFY(desktopIsDoubleClick(true, 120, 400, here, nearby, 6));
+    // Too slow, too far, or a nonsensical negative elapsed: not one.
+    QVERIFY(!desktopIsDoubleClick(true, 500, 400, here, nearby, 6));
+    QVERIFY(!desktopIsDoubleClick(true, 120, 400, here, far, 6));
+    QVERIFY(!desktopIsDoubleClick(true, -1, 400, here, nearby, 6));
 }
 
 QTEST_MAIN(TestFilesDesktop)

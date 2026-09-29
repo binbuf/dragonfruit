@@ -687,6 +687,17 @@ Item {
             mouseRelease(surface.iconView, 300, 300);
             waitForRendering(stage);
             verify(surface.selectedIds.length >= 2);
+
+            // The empty background *inside* the grid (below the icon row) must
+            // start a band too, not just the view's thin outer margin.
+            surface.clearSelection();
+            mousePress(surface.iconView, 50, 300);
+            mouseMove(surface.iconView, 550, 40);
+            verify(surface.iconView.bandActive,
+                   "a band must start on empty space inside the grid");
+            mouseRelease(surface.iconView, 550, 40);
+            waitForRendering(stage);
+            verify(surface.selectedIds.length >= 2);
             var first = surface.selectedIds[0];
             surface.selectMarquee([first], Qt.ControlModifier);
             verify(surface.selectedIds.indexOf(first) < 0);
@@ -717,6 +728,18 @@ Item {
         }
 
         function test_desktop_double_click_opens() {
+            var surface = makeDesktop();
+            desktopOpenSpy.target = surface;
+            desktopOpenSpy.clear();
+            // A real double-click on the first tile routes through the view's
+            // background band (which must reject the press over a tile) to the
+            // delegate's own MouseArea.
+            mouseDoubleClickSequence(surface.iconView, 74, 68);
+            tryCompare(desktopOpenSpy, "count", 1);
+            compare(desktopOpenSpy.signalArguments[0][1], true, "the first tile is a folder");
+        }
+
+        function test_desktop_double_click_direct_handler_still_opens() {
             var surface = makeDesktop();
             desktopOpenSpy.target = surface;
             desktopOpenSpy.clear();

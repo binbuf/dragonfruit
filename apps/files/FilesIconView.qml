@@ -70,6 +70,24 @@ FocusScope {
         return ids;
     }
 
+    // The tile delegate whose rectangle contains `x, y` (view coordinates), or
+    // null. The background band consults this so a press that lands on a tile
+    // is left for the tile's own MouseArea (T-19.3).
+    function tileAt(x, y) {
+        if (!root.directory)
+            return null;
+        for (var i = 0; i < grid.count; ++i) {
+            var tile = grid.itemAtIndex(i);
+            if (!tile)
+                continue;
+            var p = root.mapFromItem(tile, 0, 0);
+            if (x >= p.x && x < p.x + tile.width
+                    && y >= p.y && y < p.y + tile.height)
+                return tile;
+        }
+        return null;
+    }
+
     // Commit a rubber-band selection: resolve the enclosed ids and emit them
     // with the live modifiers. Exposed so tests (and the desktop shell, once
     // it lands) can drive the same path the pointer band uses.
@@ -87,18 +105,25 @@ FocusScope {
     }
 
     // Empty-space interactions (T-19.3): right-click opens the background
-    // menu; a left-button drag paints a rubber band. Sits under the grid so a
-    // tile's own MouseArea wins wherever a tile is painted; `preventStealing`
-    // keeps the band grab while the pointer sweeps across tiles.
+    // menu; a left-button drag paints a rubber band. This sits *above* the
+    // grid (z: 1) so a press on the empty background reaches it even though
+    // the GridView fills the view; a press that lands on a tile is rejected
+    // here so the tile's own MouseArea wins. `preventStealing` keeps the band
+    // grab while the pointer sweeps across tiles.
     MouseArea {
         id: band
         anchors.fill: parent
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         preventStealing: true
+        z: 1
 
         readonly property real threshold: Math.max(2, Theme.primitive.spacing.xs)
 
         onPressed: (mouse) => {
+            if (root.tileAt(mouse.x, mouse.y)) {
+                mouse.accepted = false;
+                return;
+            }
             root.bandMoved = false;
             root.bandActive = false;
             root.bandStartX = mouse.x;

@@ -4,6 +4,7 @@
 #include <cstdio>
 
 #include <QCoreApplication>
+#include <QGuiApplication>
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QQmlComponent>
@@ -11,6 +12,7 @@
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QSocketNotifier>
+#include <QStyleHints>
 #include <QTimer>
 
 #include "DesktopInput.h"
@@ -117,6 +119,32 @@ void FilesDesktop::onPointerButton(qreal x, qreal y, quint32 button, bool presse
         m_buttons |= qtButton;
     else
         m_buttons &= ~qtButton;
+    // A second left press in the double-click window is a `MouseButtonDblClick`,
+    // the event the QML `onDoubleClicked` handler waits for. The private
+    // protocol only delivers press/release pairs, so the pairing is ours.
+    if (pressed && qtButton == Qt::LeftButton) {
+        const QPointF pos(x, y);
+        const QStyleHints *hints = QGuiApplication::styleHints();
+        const qint64 elapsed = m_lastPressTimer.isValid() ? m_lastPressTimer.elapsed() : -1;
+        const bool isDouble = desktopIsDoubleClick(m_haveLastPress, elapsed,
+                                                   hints->mouseDoubleClickInterval(),
+                                                   m_lastPressPos, pos,
+                                                   hints->mouseDoubleClickDistance());
+        m_lastPressTimer.restart();
+        m_lastPressPos = pos;
+        m_haveLastPress = !isDouble;
+        if (isDouble) {
+            // Reproduce the platform sequence: the second *press* is what
+            // re-targets the press grabber (the tile under the pointer) and the
+            // `MouseButtonDblClick` then reaches that tile's `onDoubleClicked`.
+            ChromePointer::send(m_window, QEvent::MouseButtonPress, pos, qtButton,
+                                m_buttons, m_keyboardModifiers);
+            ChromePointer::send(m_window, QEvent::MouseButtonDblClick, pos, qtButton,
+                                m_buttons, m_keyboardModifiers);
+            scheduleRender();
+            return;
+        }
+    }
     ChromePointer::send(m_window,
                         pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease,
                         QPointF(x, y), qtButton, m_buttons, m_keyboardModifiers);
