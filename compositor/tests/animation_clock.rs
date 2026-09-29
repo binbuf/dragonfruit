@@ -22,6 +22,8 @@ use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
+mod common;
+
 const SIGUSR1: i32 = 10;
 const SIGTERM: i32 = 15;
 
@@ -81,6 +83,7 @@ impl Drop for CompositorProcess {
         let _ = std::fs::remove_file(self.socket_path.with_extension("lock"));
         let _ = std::fs::remove_file(&self.synthetic_path);
         let _ = std::fs::remove_file(&self.sender_path);
+        common::cleanup_compositor_artifacts(&self.socket_path);
     }
 }
 

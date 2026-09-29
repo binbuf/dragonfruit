@@ -30,6 +30,8 @@ use wayland_protocols::wp::pointer_constraints::zv1::client::{
 use wayland_protocols::xdg::activation::v1::client::{xdg_activation_token_v1, xdg_activation_v1};
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel as xdg_tl, xdg_wm_base};
 
+mod common;
+
 /// Generated client bindings for the private protocols.
 mod core_client {
     #![allow(unused_imports, clippy::single_component_path_imports)]
@@ -842,6 +844,7 @@ impl Drop for CompositorProcess {
         let _ = std::fs::remove_file(&self.token_path);
         // The T-19.3 desktop token hand-off file, if a test provisioned one.
         let _ = std::fs::remove_file(self.socket_path.with_extension("desktop-launch-token"));
+        common::cleanup_compositor_artifacts(&self.socket_path);
         let _ = std::fs::remove_file(&self.stderr_path);
         let _ = std::fs::remove_file(&self.stdout_path);
         if let Some(path) = &self.synthetic_path {

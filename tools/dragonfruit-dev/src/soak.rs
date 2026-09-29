@@ -14,14 +14,17 @@ use std::time::Duration;
 
 /// Every file a clean compositor exit must remove for one session. The
 /// socket and its lock, plus the shell and desktop launch-token hand-off
-/// files (T-07/T-19.3). A leaked token is as much a teardown failure as a
-/// leaked socket: it hands a later client a trusted role.
+/// files (T-07/T-19.3) and the Xwayland `DISPLAY` hand-off file (T-06). A
+/// leaked token is as much a teardown failure as a leaked socket: it hands a
+/// later client a trusted role; a leaked `DISPLAY` file hands a later client
+/// a dead X server.
 pub fn teardown_artifacts(socket: &Path) -> Vec<PathBuf> {
     vec![
         socket.to_path_buf(),
         socket.with_extension("lock"),
         socket.with_extension("launch-token"),
         socket.with_extension("desktop-launch-token"),
+        socket.with_extension("x11-display"),
     ]
 }
 
@@ -147,7 +150,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn teardown_covers_the_socket_lock_and_both_tokens() {
+    fn teardown_covers_the_socket_lock_tokens_and_display_file() {
         let socket = Path::new("/run/user/1000/dragonfruit-soak-3");
         let names: Vec<String> = teardown_artifacts(socket)
             .iter()
@@ -160,6 +163,7 @@ mod tests {
                 "/run/user/1000/dragonfruit-soak-3.lock",
                 "/run/user/1000/dragonfruit-soak-3.launch-token",
                 "/run/user/1000/dragonfruit-soak-3.desktop-launch-token",
+                "/run/user/1000/dragonfruit-soak-3.x11-display",
             ]
         );
     }

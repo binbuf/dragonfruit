@@ -34,6 +34,8 @@ use wayland_client::protocol::{
 use wayland_client::{delegate_noop, Connection, Dispatch, EventQueue, Proxy, QueueHandle};
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel as xdg_tl, xdg_wm_base};
 
+mod common;
+
 mod core_client {
     #![allow(unused_imports, clippy::single_component_path_imports)]
     use wayland_client;
@@ -390,6 +392,7 @@ impl Drop for CompositorProcess {
         let _ = std::fs::remove_file(self.socket_path.with_extension("lock"));
         let _ = std::fs::remove_file(&self.token_path);
         let _ = std::fs::remove_file(&self.display_path);
+        common::cleanup_compositor_artifacts(&self.socket_path);
         let _ = std::fs::remove_file(&self.stderr_path);
     }
 }
