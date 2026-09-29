@@ -39,6 +39,13 @@ pub const WAYLAND_DISPLAY: &str = "WAYLAND_DISPLAY";
 pub const DISPLAY: &str = "DISPLAY";
 /// `DRAGONFRUIT_LAUNCH_TOKEN`; the one-time private-protocol token.
 pub const LAUNCH_TOKEN: &str = "DRAGONFRUIT_LAUNCH_TOKEN";
+/// `DRAGONFRUIT_DEV_RETURN`; the desktop the real-session harness should
+/// restore, set only for a session the dev harness armed (T-12.6b).
+pub const DEV_RETURN: &str = crate::dev_session::DEV_RETURN;
+/// `DRAGONFRUIT_DEV_BIN`; the dev tool that implements the return, so a
+/// harness-armed session can offer "Quit to <previous desktop>" without the
+/// tool being on `PATH` (T-12.6b).
+pub const DEV_BIN: &str = crate::dev_session::DEV_BIN;
 
 /// The session type every Dragonfruit process reports.
 pub const WAYLAND_SESSION_TYPE: &str = "wayland";
@@ -57,6 +64,8 @@ pub struct SessionEnvironment {
     socket_name: String,
     x11_display: Option<String>,
     launch_token: Option<String>,
+    dev_return: Option<String>,
+    dev_bin: Option<String>,
 }
 
 impl SessionEnvironment {
@@ -67,6 +76,8 @@ impl SessionEnvironment {
             socket_name: socket_name.into(),
             x11_display: None,
             launch_token: None,
+            dev_return: None,
+            dev_bin: None,
         }
     }
 
@@ -86,6 +97,21 @@ impl SessionEnvironment {
     /// [`generate_launch_token`]; never log the value.
     pub fn with_launch_token(mut self, token: impl Into<String>) -> Self {
         self.launch_token = Some(token.into());
+        self
+    }
+
+    /// Mark this session as started by the real-session harness and name the
+    /// desktop to return to (T-12.6b). The shell shows **"Quit to \<session\>"**
+    /// only when this is set.
+    pub fn with_dev_return(mut self, session: impl Into<String>) -> Self {
+        self.dev_return = Some(session.into());
+        self
+    }
+
+    /// Name the dev tool that implements the return (T-12.6b), so the shell can
+    /// run it without it being on `PATH`.
+    pub fn with_dev_bin(mut self, path: impl Into<String>) -> Self {
+        self.dev_bin = Some(path.into());
         self
     }
 
@@ -110,6 +136,12 @@ impl SessionEnvironment {
         self.launch_token.as_deref()
     }
 
+    /// The desktop the harness should return to, if this is a harness-armed
+    /// session.
+    pub fn dev_return(&self) -> Option<&str> {
+        self.dev_return.as_deref()
+    }
+
     /// The environment every session child gets, in a stable order.
     pub fn base(&self) -> Vec<(String, String)> {
         let mut env = vec![
@@ -122,6 +154,12 @@ impl SessionEnvironment {
         ];
         if let Some(display) = &self.x11_display {
             env.push((DISPLAY.to_string(), display.clone()));
+        }
+        if let Some(session) = &self.dev_return {
+            env.push((DEV_RETURN.to_string(), session.clone()));
+        }
+        if let Some(path) = &self.dev_bin {
+            env.push((DEV_BIN.to_string(), path.clone()));
         }
         env
     }
@@ -217,6 +255,24 @@ mod tests {
     fn a_wayland_only_session_leaves_display_unset() {
         let env = SessionEnvironment::default_socket();
         assert_eq!(env.base_value(DISPLAY), None);
+    }
+
+    #[test]
+    fn a_harness_armed_session_exports_the_return_desktop() {
+        let env = SessionEnvironment::default_socket()
+            .with_dev_return("existing")
+            .with_dev_bin("/opt/dev/dragonfruit");
+        assert_eq!(env.base_value(DEV_RETURN).as_deref(), Some("existing"));
+        assert_eq!(
+            env.base_value(DEV_BIN).as_deref(),
+            Some("/opt/dev/dragonfruit")
+        );
+        assert_eq!(env.dev_return(), Some("existing"));
+        // A normal session never carries it.
+        assert_eq!(
+            SessionEnvironment::default_socket().base_value(DEV_RETURN),
+            None
+        );
     }
 
     #[test]

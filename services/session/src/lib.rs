@@ -11,6 +11,9 @@
 //!   parallel once its socket exists, the portal last).
 //! * [`env`] — [`SessionEnvironment`], the `XDG_*`/Wayland/token contract
 //!   attached to every child (T-12.1b).
+//! * [`dev_session`] — the real-session dev-harness state file the round trip
+//!   arms and the session entry reads to export `DRAGONFRUIT_DEV_RETURN`
+//!   (T-12.6b).
 //! * [`idle`] — [`IdlePolicy`], [`IdleTimers`], and [`IdleController`], the
 //!   dim/blank/lock/suspend idle chain driven from policy keys, with idle
 //!   inhibitors and wake restore (T-12.4a/T-12.4b).
@@ -28,6 +31,7 @@
 //! systemd user units, and the second-VT workflow; T-12.2 adds the
 //! display-manager entry and the logout teardown.
 
+pub mod dev_session;
 pub mod entry;
 pub mod env;
 pub mod idle;

@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant};
 
+use dragonfruit_session::dev_session::{self, AutologinSnapshot, DevSessionState};
 use dragonfruit_session::env::{self, SessionEnvironment};
 use dragonfruit_session::plan::{RestartPolicy, ServiceSpec, SessionPlan};
 use dragonfruit_session::supervisor::{ServiceState, SessionState, Supervisor};
@@ -191,8 +192,79 @@ fn print_env_lists_the_contract_and_a_fresh_token() {
 }
 
 #[test]
+fn a_harness_armed_child_sees_the_return_desktop() {
+    // T-12.6b: the session entry exports DRAGONFRUIT_DEV_RETURN into every
+    // child; the shell reads it to show "Quit to <previous desktop>".
+    let out = unique_path("env-dev-return");
+    let environment = SessionEnvironment::new("df-env-test").with_dev_return("existing");
+    let args = vec![
+        "-c".to_string(),
+        "printf '%s\\n' \"$DRAGONFRUIT_DEV_RETURN\" > \"$1\"".to_string(),
+        "sh".to_string(),
+        out.to_string_lossy().into_owned(),
+    ];
+    let plan = SessionPlan::new(vec![ServiceSpec::new("probe", "sh")
+        .args(args)
+        .policy(RestartPolicy::Never)])
+    .with_environment(&environment);
+    let mut supervisor = Supervisor::new(plan);
+    supervisor.start().expect("probe starts");
+    assert!(drive_until(&mut supervisor, Duration::from_secs(5), |s| {
+        s.service_state("probe") == Some(ServiceState::Exited)
+    }));
+
+    let contents = std::fs::read_to_string(&out).expect("probe wrote its environment");
+    let _ = std::fs::remove_file(&out);
+    assert_eq!(contents, "existing\n");
+    supervisor.shutdown();
+}
+
+#[test]
+fn print_env_reads_the_armed_dev_session_state() {
+    // The entry script derives DRAGONFRUIT_DEV_RETURN from the state file the
+    // harness armed, without the caller passing it explicitly.
+    let scratch = unique_path("env-state");
+    std::fs::create_dir_all(&scratch).expect("scratch");
+    let state = DevSessionState::armed(
+        "gdm",
+        Some("existing".to_string()),
+        true,
+        AutologinSnapshot::default(),
+    );
+    dev_session::write(&scratch, &state).expect("write state");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_dragonfruit-session"))
+        .args(["--print-env", "--socket-name", "df-print-env"])
+        .env("XDG_STATE_HOME", &scratch)
+        .output()
+        .expect("the session binary runs");
+    let _ = std::fs::remove_dir_all(&scratch);
+
+    assert!(output.status.success());
+    let text = String::from_utf8(output.stdout).expect("env output is UTF-8");
+    assert!(
+        text.contains("DRAGONFRUIT_DEV_RETURN=existing"),
+        "print-env exports the return desktop: {text}"
+    );
+}
+
+#[test]
+fn print_env_without_armed_state_leaves_the_return_unset() {
+    let scratch = unique_path("env-no-state");
+    std::fs::create_dir_all(&scratch).expect("scratch");
+    let output = Command::new(env!("CARGO_BIN_EXE_dragonfruit-session"))
+        .args(["--print-env", "--socket-name", "df-print-env"])
+        .env("XDG_STATE_HOME", &scratch)
+        .output()
+        .expect("the session binary runs");
+    let _ = std::fs::remove_dir_all(&scratch);
+    assert!(output.status.success());
+    let text = String::from_utf8(output.stdout).expect("env output is UTF-8");
+    assert!(!text.contains("DRAGONFRUIT_DEV_RETURN"), "{text}");
+}
+
+#[test]
 fn shutting_a_session_down_ends_the_state() {
-    // Guard: the environment plan keeps the supervisor's invariants.
     let plan = SessionPlan::default_session_for(&SessionEnvironment::default_socket());
     plan.validate().expect("the environment plan is valid");
     let mut supervisor = Supervisor::new(plan);

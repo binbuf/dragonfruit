@@ -50,6 +50,7 @@
 #include "notificationclient.h"
 #include "notificationmodel.h"
 #include "shellprotocol.h"
+#include "shellmenus.h"
 #include "systemstatusclient.h"
 #include "themebinding.h"
 
@@ -202,51 +203,13 @@ Qt::KeyboardModifiers qtModifiersFromXkb(quint32 mask)
     return modifiers;
 }
 
-QVariantMap menuEntry(const QString &label, const QString &shortcut = QString(),
-                      const QString &action = QString(), bool enabled = true)
-{
-    QVariantMap entry;
-    entry.insert(QStringLiteral("label"), label);
-    if (!shortcut.isEmpty())
-        entry.insert(QStringLiteral("shortcut"), shortcut);
-    if (!action.isEmpty())
-        entry.insert(QStringLiteral("action"), action);
-    if (!enabled)
-        entry.insert(QStringLiteral("enabled"), false);
-    return entry;
-}
-
-QVariantMap menuSeparator()
-{
-    QVariantMap entry;
-    entry.insert(QStringLiteral("type"), QStringLiteral("separator"));
-    return entry;
-}
-
-// The fixed system menu (the dragonfruit mark), always leftmost. The actions
-// are session/system operations: System Settings opens the first-party
-// Settings app (T-09); Lock Screen is wired (T-12.3a); App Store has no
-// equivalent (disabled); About This System needs the General > About pane
-// (T-15.10); Sleep/Restart/Shut Down/Log Out await the real-session work
+// The fixed system menu (the dragonfruit mark), always leftmost, lives in
+// `shellmenus.cpp` so the T-12.6b "Quit to <previous desktop>" row is unit
+// tested. The actions are session/system operations: System Settings opens the
+// first-party Settings app (T-09); Lock Screen is wired (T-12.3a); App Store
+// has no equivalent (disabled); About This System needs the General > About
+// pane (T-15.10); Sleep/Restart/Shut Down/Log Out await the real-session work
 // (T-12.6/T-16.4). Unlanded items dispatch as logged stubs.
-QVariantList systemMenu(const QString &userName)
-{
-    QVariantList menu;
-    menu << menuEntry(QStringLiteral("About This System"), QString(), QStringLiteral("about-system"));
-    menu << menuSeparator();
-    menu << menuEntry(QStringLiteral("System Settings\u2026"), QString(), QStringLiteral("settings"));
-    menu << menuEntry(QStringLiteral("App Store"), QString(), QStringLiteral("app-store"), false);
-    menu << menuSeparator();
-    menu << menuEntry(QStringLiteral("Sleep"), QString(), QStringLiteral("sleep"));
-    menu << menuEntry(QStringLiteral("Restart\u2026"), QString(), QStringLiteral("restart"));
-    menu << menuEntry(QStringLiteral("Shut Down\u2026"), QString(), QStringLiteral("shut-down"));
-    menu << menuSeparator();
-    menu << menuEntry(QStringLiteral("Lock Screen"), QStringLiteral("Super+Ctrl+Q"),
-                      QStringLiteral("lock-screen"));
-    menu << menuEntry(QStringLiteral("Log Out %1\u2026").arg(userName),
-                      QStringLiteral("Super+Shift+Q"), QStringLiteral("log-out"));
-    return menu;
-}
 
 } // namespace
 
@@ -549,11 +512,14 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
 
     applyStatusItems();
     // The system menu (dragonfruit mark) is fixed for the session; the Log Out
-    // item is personalized with the account name.
+    // item is personalized with the account name, and the T-12.6b
+    // "Quit to <previous desktop>" row appears only for a harness-armed
+    // session (DRAGONFRUIT_DEV_RETURN set).
     QString userName = qEnvironmentVariable("USER");
     if (userName.isEmpty())
         userName = QStringLiteral("user");
-    m_item->setProperty("systemMenuItems", systemMenu(userName));
+    m_item->setProperty("systemMenuItems",
+                        ShellMenus::systemMenu(userName, ShellMenus::devReturnDesktop()));
     applyFocusedApp();
     // T-14.2b: the global application-menu toggle from Settings. It is a
     // standalone key (not part of DockConfig), so it gets its own live view of
@@ -3752,6 +3718,24 @@ void ShellController::lockScreen()
         m_protocol->lockSession();
 }
 
+void ShellController::requestDevReturn()
+{
+    // T-12.6b: the "Quit to <previous desktop>" row runs the dev harness's
+    // return, which restores the previous default session, disarms autologin,
+    // and asks the session manager to log out. Prefer the absolute dev-tool
+    // path the armed session exported; fall back to `dragonfruit` on PATH.
+    const QString configured = ShellMenus::devBin();
+    const QString program =
+        configured.isEmpty() ? QStringLiteral("dragonfruit") : configured;
+    qInfo() << "shell: dev round-trip return requested via" << program;
+    const bool started = QProcess::startDetached(
+        program, {QStringLiteral("dev"), QStringLiteral("--real"), QStringLiteral("--return")});
+    if (!started) {
+        qWarning() << "shell: could not start" << program
+                   << "— the dev harness is unavailable; log out from the system menu";
+    }
+}
+
 void ShellController::showLockScreen()
 {
     if (!m_lockItem || !m_lockWindow || !m_protocol)
@@ -3995,6 +3979,10 @@ void ShellController::dispatchAppAction(const QString &action, int menuIndex, in
         // The logind power/session actions have no shell implementation yet;
         // they land with the real-session work (T-12.6, T-16.4).
         qInfo() << "shell: session action requested (T-12.6):" << action;
+    } else if (action == QLatin1String("quit-to-return")) {
+        // T-12.6b: the dev harness's return. It restores the previous default
+        // session, disarms autologin, and logs out; the shell only triggers it.
+        requestDevReturn();
     } else if (action == QLatin1String("lock-screen")) {
         // Same path as the Cmd+Ctrl+Q shortcut (T-12.3a).
         lockScreen();

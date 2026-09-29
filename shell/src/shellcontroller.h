@@ -531,6 +531,10 @@ private:
     // Lock the session now (T-12.3a): the Cmd+Ctrl+Q shortcut and the system
     // menu's Lock Screen both route here; the shell owns the lock UI.
     void lockScreen();
+    // Run the real-session harness's return (T-12.6b): the system menu's
+    // "Quit to <previous desktop>" row. It restores the host desktop and logs
+    // out; only shown when DRAGONFRUIT_DEV_RETURN is set.
+    void requestDevReturn();
     // Rebuild the Dock's ordered entries (pinned + running) and hand them to
     // the QML scene. The entries are the *stable* model: the launch/attention
     // phases live in a separate map so a bounce never resets the Repeater

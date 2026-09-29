@@ -591,6 +591,34 @@ explicit root and home, so the acceptance suite drives real reads and
 exact-byte writes against fixture directories with no DM installed. The
 decision is frozen in [ADR 0173](adr/0173-display-manager-session-selection-seam.md).
 
+### The round-trip state file (T-12.6b)
+
+The round trip is one state file, not a set of ad-hoc writes.
+`$XDG_STATE_HOME/dragonfruit/dev-session.json`
+(`dragonfruit_session::dev_session`) is written once by
+`dragonfruit dev --real --round-trip` and cleared by the return; it holds the
+previous default session, the DM, the autologin request and its prior
+snapshot, the dev-tool path, and **exact byte snapshots** of the DM files the
+arm may edit. The snapshots are what make a clean round trip byte-identical on
+GDM, SDDM, and LightDM, even for a file that did not exist before.
+
+Autologin is not armed at arm time. `dragonfruit dev --real --ready` is the
+**session-ready beat**: once the session is up it commits the requested
+autologin and marks the state ready, so a crash during startup can never loop
+the display manager back into Dragonfruit. Recovery is the same restore path
+as a clean return — idempotent, and a no-op when nothing is armed.
+
+The session entry (`dragonfruit-session --print-env`) reads the state file and
+exports `DRAGONFRUIT_DEV_RETURN` (the previous session) and
+`DRAGONFRUIT_DEV_BIN` (the dev tool) into the login environment. The shell's
+system menu shows **"Quit to \<previous desktop\>"** only when
+`DRAGONFRUIT_DEV_RETURN` is set; activating it runs
+`dragonfruit dev --real --return`, which restores the snapshot, clears the
+state, and asks the session manager to log out. Keeping the restore in the
+harness is what lets the shell stay a normal user process that never edits
+root-owned DM files. The decision is frozen in
+[ADR 0174](adr/0174-real-session-round-trip-state.md).
+
 ### What "seamless" cannot mean
 
 - **No app continuity across the swap.** Wayland has no live handoff, and the

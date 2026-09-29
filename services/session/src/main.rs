@@ -24,6 +24,7 @@ use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+use dragonfruit_session::dev_session;
 use dragonfruit_session::entry;
 use dragonfruit_session::env::{self, SessionEnvironment};
 use dragonfruit_session::plan::{RestartPolicy, ServiceSpec, SessionPlan};
@@ -96,10 +97,15 @@ fn print_plan(plan: &SessionPlan) {
 /// minted `DRAGONFRUIT_LAUNCH_TOKEN`; the token is a session secret, so the
 /// caller must import it rather than log it.
 ///
-/// Options: `--socket-name NAME`, `--x11-display DISPLAY`.
+/// Options: `--socket-name NAME`, `--x11-display DISPLAY`, `--dev-return
+/// SESSION`. When `--dev-return` is absent and `$XDG_STATE_HOME/dragonfruit/
+/// dev-session.json` is armed, the previous session named there is exported as
+/// `DRAGONFRUIT_DEV_RETURN` (T-12.6b).
 fn print_env(args: &[String]) -> ExitCode {
     let mut socket_name = env::DEFAULT_SOCKET_NAME.to_string();
     let mut x11_display: Option<String> = None;
+    let mut dev_return: Option<String> = None;
+    let mut dev_bin: Option<String> = None;
     let mut position = 0;
     while position < args.len() {
         match args[position].as_str() {
@@ -119,6 +125,14 @@ fn print_env(args: &[String]) -> ExitCode {
                 x11_display = Some(value.clone());
                 position += 2;
             }
+            "--dev-return" => {
+                let Some(value) = args.get(position + 1) else {
+                    eprintln!("dragonfruit-session: --dev-return needs a value");
+                    return ExitCode::from(2);
+                };
+                dev_return = Some(value.clone());
+                position += 2;
+            }
             other => {
                 eprintln!("dragonfruit-session: unknown --print-env argument {other:?}");
                 return ExitCode::from(2);
@@ -126,9 +140,32 @@ fn print_env(args: &[String]) -> ExitCode {
         }
     }
 
+    // A harness-armed login exports the desktop to return to, derived from the
+    // dev-session state file when the caller did not pass one explicitly.
+    if dev_return.is_none() {
+        if let Some(state_home) = dev_session::state_home_from_env() {
+            match dev_session::read(&state_home) {
+                Ok(Some(state)) => {
+                    dev_return = state.dev_return().map(str::to_owned);
+                    dev_bin = state.dev_bin.clone();
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    eprintln!("dragonfruit-session: ignoring unreadable dev-session state: {error}")
+                }
+            }
+        }
+    }
+
     let mut environment = SessionEnvironment::new(socket_name).with_generated_token();
     if let Some(display) = x11_display {
         environment = environment.with_x11_display(display);
+    }
+    if let Some(session) = dev_return {
+        environment = environment.with_dev_return(session);
+    }
+    if let Some(path) = dev_bin {
+        environment = environment.with_dev_bin(path);
     }
     // The trusted environment is the base plus the token; the base variables
     // are also what a non-trusted client sees.
@@ -312,9 +349,10 @@ fn print_help() {
          \n\
          Options:\n\
            --print-plan   print the default session composition in launch order\n\
-           --print-env [--socket-name NAME] [--x11-display DISPLAY]\n\
+           --print-env [--socket-name NAME] [--x11-display DISPLAY] [--dev-return SESSION]\n\
                           print the session environment (base + launch token)\n\
-                          for the systemd user manager to import\n\
+                          for the systemd user manager to import; a harness-armed\n\
+                          login also exports DRAGONFRUIT_DEV_RETURN (T-12.6b)\n\
            --wait-socket NAME [--timeout SECS]\n\
                           block until the compositor's private socket exists\n\
            --install-session DIR\n\

@@ -287,6 +287,26 @@ impl SessionSelector {
         self.dm().map(|dm| self.autologin_for(dm))
     }
 
+    /// The file the detected DM's session selection lives in, if any. The
+    /// T-12.6b round trip snapshots it for a byte-identical restore.
+    pub fn session_file(&self) -> Option<PathBuf> {
+        self.dm().map(|dm| match dm {
+            Dm::Gdm => self.paths.gdm_users_file(),
+            Dm::Sddm => self.paths.sddm_state_file(),
+            Dm::Lightdm => self.paths.lightdm_dmrc(),
+        })
+    }
+
+    /// The file the detected DM's autologin configuration lives in, if any.
+    /// The T-12.6b round trip snapshots it for a byte-identical restore.
+    pub fn autologin_file(&self) -> Option<PathBuf> {
+        self.dm().map(|dm| match dm {
+            Dm::Gdm => self.paths.gdm_custom_conf(),
+            Dm::Sddm => self.paths.sddm_autologin_conf(),
+            Dm::Lightdm => self.paths.lightdm_conf(),
+        })
+    }
+
     /// Point the next login at [`DRAGONFRUIT_SESSION`], returning the previous
     /// selection so the caller can restore it. An unsupported/ambiguous host,
     /// or an unreadable state file, degrades to [`Selected::Unsupported`] with

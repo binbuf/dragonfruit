@@ -18,6 +18,10 @@ rust-version.workspace = true
 [dependencies]
 df-ipc.workspace = true
 libc.workspace = true
+# The dev-harness state file (`dev_session`) is JSON on disk; `serde_json` is
+# the same pinned pair the sibling services use for their flat payloads.
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
 
 [lib]
 name = "dragonfruit_session"
