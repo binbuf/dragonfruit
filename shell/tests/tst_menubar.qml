@@ -63,6 +63,27 @@ Item {
             return false;
         }
 
+        // The offscreen grab renders a transparent glyph background as an
+        // opaque colour (white on this backend). True when a pixel differs
+        // from that background, so dimmed marks (wifi-off/-disabled/
+        // -connecting) count even though they do not match the tint exactly.
+        function isBackground(image, x, y) {
+            var bg = image.pixel(0, 0);
+            var c = image.pixel(x, y);
+            return Math.abs(c.r - bg.r) < 0.02 && Math.abs(c.g - bg.g) < 0.02
+                    && Math.abs(c.b - bg.b) < 0.02;
+        }
+
+        function imageHasMark(image) {
+            for (var y = 0; y < image.height; ++y) {
+                for (var x = 0; x < image.width; ++x) {
+                    if (!isBackground(image, x, y))
+                        return true;
+                }
+            }
+            return false;
+        }
+
         function sampleModel() {
             return [
                 { title: "File", items: [{ label: "New" }, { label: "Open" }] },
@@ -802,21 +823,47 @@ Item {
 
         // -- Status glyph rendering (FR-5) ---------------------------------
 
+        // Every state must render a non-empty Phosphor mark (T-19.1c). This is
+        // the state-coverage case: a typo in StatusGlyph's state -> glyph
+        // mapping or an unvendored name would leave a state blank.
         function test_status_glyphs_render_pixels() {
-            var names = ["wifi", "bluetooth", "volume", "volume-muted",
-                         "battery", "battery-charging", "focus", "accessibility",
-                         "control-center", "mission-control"];
+            var names = ["wifi", "wifi-secure", "wifi-off", "wifi-disabled",
+                         "wifi-connecting", "wifi-error", "bluetooth",
+                         "volume", "volume-muted", "battery", "battery-charging",
+                         "focus", "accessibility", "control-center",
+                         "mission-control"];
             for (var i = 0; i < names.length; ++i) {
-                var glyph = make(glyphComponent, { name: names[i], size: 24 });
-                // Canvas paints are asynchronous; retry the grab so the test is
-                // not racy against the queued `requestPaint` (a pre-existing
-                // flake that surfaced under the extra menu renders).
-                tryVerify(function() {
-                    return imageContainsColor(grabImage(glyph),
-                                              Theme.color.textPrimary);
-                }, 2000, "glyph " + names[i] + " should render visible pixels");
+                var glyph = make(glyphComponent, { name: names[i], size: 32 });
+                verify(glyph.glyphName.length > 0,
+                       "state " + names[i] + " must map to a Phosphor glyph");
+                verify(imageHasMark(grabImage(glyph)),
+                       "glyph " + names[i] + " should render visible pixels");
                 glyph.destroy();
             }
+        }
+
+        // The battery level stays continuous: a high level inks the cell
+        // interior, a near-empty level leaves it clear. The sample point is
+        // 60% across the mark, inside the outline's cell but right of where a
+        // low fill stops.
+        function test_battery_level_fill_is_continuous() {
+            // 60% across the mark, mid-height: inside the Phosphor cell, right
+            // of where a 5% fill stops and left of a 95% fill's edge. The two
+            // glyphs are made and grabbed one at a time (overlapping siblings
+            // would share a window grab).
+            var high = make(glyphComponent, { name: "battery", size: 64, level: 0.95 });
+            var x = Math.round(high.width * 0.60);
+            var y = Math.round(high.height * 0.50);
+            var hi = grabImage(high);
+            verify(!isBackground(hi, x, y),
+                   "a high battery level must fill the cell interior");
+            high.destroy();
+
+            var low = make(glyphComponent, { name: "battery", size: 64, level: 0.05 });
+            var lo = grabImage(low);
+            verify(isBackground(lo, x, y),
+                   "a low battery level must leave the cell interior clear");
+            low.destroy();
         }
 
         // -- Focus/DND reflection (T-11.2b) --------------------------------
