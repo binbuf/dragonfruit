@@ -55,6 +55,7 @@ TestCase {
     Component { id: tooltipComponent; Tooltip { } }
     Component { id: skeletonComponent; Skeleton { width: 160; height: 24 } }
     Component { id: phosphorIconComponent; PhosphorIcon { name: "gear"; weight: "fill" } }
+    Component { id: settingsCategoryComponent; SettingsCategoryIcon { } }
     Component {
         id: scrollViewComponent
         ScrollView {
@@ -896,6 +897,64 @@ TestCase {
         compare(xhr.status, 200);
         verify(xhr.responseText.indexOf("<path") >= 0,
                "the vendored fill SVG must be reachable under /icons/phosphor");
+    }
+
+    // -- SettingsCategoryIcon (T-19.1b) -------------------------------------
+    //
+    // The System Settings category tile: the container supplies the gradient,
+    // highlight, and shadow and the wrapped PhosphorIcon supplies the glyph.
+    // Size, tint, and gradient come from properties; an unknown glyph is a
+    // blank mark, never a crash.
+
+    function test_settings_category_tile_sizes_and_tints_from_properties() {
+        var tile = make(settingsCategoryComponent, {
+            source: "gear",
+            size: 48,
+            symbolColor: "#ff8800",
+            // A flat fill makes the container color exact across the tile (a
+            // two-stop gradient only reaches its end color asymptotically).
+            gradientStart: "#0000ff",
+            gradientEnd: "#0000ff"
+        });
+        compare(tile.implicitWidth, 48);
+        compare(tile.implicitHeight, 48);
+        compare(tile.radius, Math.round(48 * Theme.controls.settingsCategory.radiusRatio));
+
+        var img = grabImage(tile);
+        verify(findPixel(img, Qt.rgba(0, 0, 1, 1)), "the tile must paint the gradient");
+        verify(findPixel(img, tile.symbolColor), "the glyph must be filled with symbolColor");
+
+        // Changing the size and tint resizes and recolors the tile.
+        tile.size = 32;
+        tile.symbolColor = "#00cc44";
+        waitForRendering(stage);
+        compare(tile.implicitWidth, 32);
+        compare(tile.implicitHeight, 32);
+        verify(findPixel(grabImage(tile), tile.symbolColor),
+               "the glyph tint must follow symbolColor");
+    }
+
+    function test_settings_category_unknown_glyph_is_blank_not_a_crash() {
+        var tile = make(settingsCategoryComponent, {
+            source: "definitely-not-a-real-glyph", size: 32,
+            gradientStart: "#22aa55", gradientEnd: "#22aa55"
+        });
+        var img = grabImage(tile);
+        compare(img.width, Math.round(tile.width));
+        compare(img.height, Math.round(tile.height));
+        // The container still paints even when the glyph is unknown.
+        verify(findPixel(img, Qt.rgba(0x22 / 255, 0xaa / 255, 0x55 / 255, 1)),
+               "the gradient container must render regardless of the glyph");
+    }
+
+    function test_settings_category_default_is_a_token_gradient() {
+        var tile = make(settingsCategoryComponent, { size: 40 });
+        compare(String(tile.gradientStart),
+                String(Theme.primitive.color.violet500));
+        compare(String(tile.gradientEnd),
+                String(Theme.primitive.color.violet700));
+        compare(String(tile.symbolColor),
+                String(Theme.primitive.color.neutral50));
     }
 
     // -- ScrollView (FR-1) --------------------------------------------------

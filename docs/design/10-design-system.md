@@ -34,6 +34,7 @@ SearchField
 SourceList
 Icon
 PhosphorIcon
+SettingsCategoryIcon
 Dialog
 Sheet
 Popover
@@ -58,6 +59,19 @@ vocabulary stays for marks not migrated. A glyph is a *resource* — no color or
 container is baked in — while the tint and any tile stay in QML; a referenced
 glyph that is not vendored fails `make check-phosphor` (ADR
 [0163](adr/0163-phosphor-icons.md)).
+
+`SettingsCategoryIcon` (T-19.1b) is the one gradient-backed category tile: a
+rounded container with a token drop shadow, a vertical gradient, a top inner
+highlight, and a centered near-white `PhosphorIcon` in the `fill` weight. Only
+**System Settings** uses the container — the menu bar, Dock, and drawer use
+bare glyphs. The component is category-agnostic (`source`/`gradientStart`/
+`gradientEnd`/`symbolColor`/`size`/`radius`/`glow`); the category →
+(glyph, gradient) table lives in the Settings pane catalog
+(`SettingsPanes.categoryStyles`, keyed by the pane's `icon` identity) and a
+pane without a mapping keeps the original `Icon` glyph. Geometry comes from
+`component.settingsCategory.*`; the literal category hues are named constants in
+that one table and are never baked into an SVG (ADR
+[0164](adr/0164-settings-category-tile.md)).
 
 ## Token architecture
 
