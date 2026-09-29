@@ -162,6 +162,14 @@ rules:
   accessibility bus (see [ADR 0154](adr/0154-atspi-and-keyboard-audit-boundary.md)).
 - Dark/light and reduced-motion variants are part of the definition of done
   for every component.
+- The T-17 premium gate signs off the **live** visual floor against the goldens
+  with `scripts/capture-t17-visual-floor.sh` (`make t17-visual-floor-capture`):
+  one nested session captures dark, light, and dark+reduced-motion chrome and
+  pairs it with the `window_*`/`ssd_*` goldens. The reviewed verdict and the
+  recorded token-driven-approximation waiver are in
+  [../captures/t17-visual-floor.md](../captures/t17-visual-floor.md) and
+  [ADR 0176](adr/0176-t17-visual-floor-sign-off.md); a true GPU blur sampler
+  remains a post-gate item behind the same tokens.
 - **Every user-visible string is externalized** with Qt's `qsTr()`/`tr()` and
   checked by the string-extraction gate (`scripts/i18n-extract.py`, wired into
   `make lint`/CI). The checked-in `.ts` catalogs are loaded at runtime by
