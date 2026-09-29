@@ -1,0 +1,42 @@
+T-03.3 — Hardware input validation: OPEN
+=======================================
+
+recorded:  2026-09-29T11:22:02Z
+host:      Linux 7.2.5-200.fc44.x86_64 x86_64
+result:    Input validation: OPEN (1 gap: tablet-pen)
+
+Seat ownership:
+  - no free DRM master (/dev/dri/card0 busy (Permission denied))
+  - real-device input validation needs the compositor to own a libinput
+    seat (T-03.2 owns the DRM-seat knowledge and the T-03.4 runbook).
+
+Device inventory (/proc/bus/input/devices):
+  note: libinput list-devices unavailable: Failed to open /dev/input/event4 (Permission denied); Failed to open /dev/input/event0 (Permission denied); Failed to open /dev/input/event1 (Permission denied); Failed to open /dev/input/event3 (Permission denied); Failed to open /dev/input/event2 (Permission denied); Failed to open /dev/input/event5 (Permission denied); Failed to open /dev/input/event6 (Permission denied)
+  - AT Translated Set 2 keyboard     [keyboard]
+  - VirtualPS/2 VMware VMMouse       [pointer]
+  - VirtualPS/2 VMware VMMouse       [pointer]
+  - VMware VMware Virtual USB Mouse  [pointer]
+  - VMware DnD UInput pointer        [pointer]
+
+Input-class matrix:
+  mouse              headless          pointer present (VirtualPS/2 VMware VMMouse); headless path
+  keyboard           headless          device present (AT Translated Set 2 keyboard); headless path
+  touchpad-gestures  headless          no touchpad on the seat
+  hot-corners        headless          compositor dwell detection; headless path (pointer present)
+  tablet-pen         gap (no-device)   no tablet/pen on the seat (no synthetic pressure route)
+  non-us-layout      headless          xkb layout mechanism tested headlessly; real layout pending
+
+Headless coverage (compositor input router, libinput-equivalent synthetic events):
+  - mouse, keyboard, touchpad-gestures, hot-corners:
+      compositor/tests/shell_protocol_conformance.rs::synthetic_input_drives_shortcuts_hot_corners_and_gestures
+  - non-us-layout:
+      compositor/tests/input_validation.rs::a_non_us_layout_compiles_and_remaps_keys
+
+Remaining on hardware (T-03.4 runbook / T-16 driver matrix):
+  - run the T-01 loop on a free seat and physically use the mouse, keyboard,
+    a touchpad (gestures), and a hot corner;
+  - attach a pen tablet and confirm pressure reaches a client;
+  - set XKB_DEFAULT_LAYOUT to a non-US layout (e.g. de) and confirm key output.
+
+Reproduce:
+  make input-validation

@@ -64,6 +64,17 @@ T-01 loop capture. The classification itself is pinned by
 `compositor/tests/drm_bringup.rs` in `make e2e`
 ([ADR 0170](../design/adr/0170-drm-first-bringup-open-marker-and-no-output-guard.md)).
 
+T-03.3's hardware input validation matrix is produced by
+`scripts/input-validation.sh` (`make input-validation`). Real-device input
+needs the compositor to own a libinput seat, so on this host the unit is
+**marked open, not skipped**: `t03-input-matrix.open.txt` records the host
+device inventory, the per-class coverage (`device`/`headless`/`gap`), and the
+headless suite that already drives the mouse/keyboard/gesture/hot-corner
+routing. On a free seat the same script writes `t03-input-matrix.txt` after a
+real-device run. The classification is pinned by
+`compositor/tests/input_validation.rs` in `make e2e`
+([ADR 0171](../design/adr/0171-hardware-input-validation-matrix.md)).
+
 T-05.6's Mission Control capture is produced by `scripts/capture-overview.sh`:
 it runs the nested demo twice (normally and with `accessibility.reduceMotion`),
 drives the overview open, Desktop Reveal, and a per-Space wallpaper slide over

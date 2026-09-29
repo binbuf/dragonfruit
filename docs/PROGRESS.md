@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(162 earlier sections omitted)_
+_(163 earlier sections omitted)_
 
-- **T126 — T-15.8b Lock Screen policy pane and tile**: **State: done.** The Settings Lock Screen pane and the Control Center Lock; `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 14 → 15; new
 - **T127 — T-15.9a Menu Bar configuration adapter**: **State: done.** New workspace crate `dragonfruit-menubar-adapter`; `services/menubar-adapter/` (new crate, workspace member) —
 - **T128 — T-15.9b Menu Bar configuration pane and tile**: **State: done.** The Settings Menu Bar pane and the Control Center Menu Bar; `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 15 → 16; new
 - **T129 — T-15.10a General, About, and Updates adapter**: **State: done.** New workspace crate `dragonfruit-update-adapter`; `services/update-adapter/` (new crate, workspace member) —
@@ -44,6 +43,7 @@ _(162 earlier sections omitted)_
 - **T177 — T-19.2 Applications drawer**: **State: done.** The shell's launcher landed: a full-output `apps-drawer` overlay; `shell/src/appsdrawer.{h,cpp}` (new) — the pure list model:
 - **T178 — T-19.3 Desktop items and mouse selection**: **State: continue.** The compositor desktop-layer + trust slice, the shared; `compositor/src/shell/layer.rs` — `LAYER_BACKGROUND` (0) / `LAYER_TOP` (2),
 - **T159 — T-03.2 DRM first bring-up**: **State: OPEN (hardware unavailable).** The never-executed DRM backend was run; `compositor/src/drm_bringup.rs` (new) — pure
+- **T160 — T-03.3 Hardware input validation**: **State: OPEN (hardware unavailable).** Real-device input validation needs the; `compositor/src/input_validation.rs` (new) — pure matrix. `InputClass` with
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -15148,3 +15148,73 @@ Commands / gotchas for later (the hardware rail and T-03.4):
   `make e2e` green (130 ok, 0 failed; `/tmp/opencode/e2e-t159-rerun.log`),
   `make drm-bringup` OPEN exit 0. No further agent-side work; the DRM capture +
   trace remain with T-03.4 on a free seat / spare GPU / clean VM.
+
+## T160 — T-03.3 Hardware input validation
+
+**State: OPEN (hardware unavailable).** Real-device input validation needs the
+compositor to own a libinput seat; this host has no free seat (same blocker as
+T-03.2 — KDE Wayland holds DRM master on `seat0`). Per the track rule the unit
+is marked open, not skipped: the pure matrix, the headless non-US layout test,
+the probe script, and the open artifact landed; the real-device run goes to
+T-03.4's runbook. `make e2e` green (131 ok, 0 failed), `fmt-check`/`clippy`
+clean, live nested demo checked.
+
+Real paths:
+
+- `compositor/src/input_validation.rs` (new) — pure matrix. `InputClass` with
+  `ALL` and stable ids `mouse`, `keyboard`, `touchpad-gestures`, `hot-corners`,
+  `tablet-pen`, `non-us-layout`; `SeatInventory { pointer, keyboard, touchpad,
+  tablet }`; `Coverage::{Device, Headless, Gap(NoDevice|NoSeat)}`;
+  `InputValidation::classify(seat_owned, &inventory)` with `marker()` /
+  `lines()`; and `layout_keysym_for_evdev(layout, evdev_code)` which compiles
+  `df_ipc::keymap` RMLVO with an explicit layout and returns the keysym.
+  Re-exported from `compositor/src/lib.rs`.
+- `compositor/tests/input_validation.rs` (new; 6 tests; in the `make e2e`
+  compositor list) — ids, full-seat `READY`, no-seat `headless`, pen gap,
+  one-line markers, German QWERTZ y/z swap.
+- `scripts/input-validation.sh` + `scripts/input-validation-probe.py` (new) +
+  `make input-validation` — seat ownership from `scripts/drm-seat-probe.py`,
+  inventory from `libinput list-devices` (falls back to
+  `/proc/bus/input/devices` when libinput cannot open the event nodes), writes
+  `docs/captures/t03-input-matrix.open.txt` (or `t03-input-matrix.txt` with a
+  free seat). Always exits 0.
+- `docs/captures/t03-input-matrix.open.txt` + `docs/captures/t03-input-nested-check.png`
+  (new) — the open matrix and the required live visual check.
+- Docs: ADR `docs/design/adr/0171-hardware-input-validation-matrix.md`,
+  `docs/design/02-compositor.md` §"Hardware input validation (T-03.3)",
+  `docs/design/tracks/03-real-session-bringup-perf.md` Status notes,
+  `docs/captures/README.md`.
+
+Gotchas for later:
+
+- **`make input-validation` prints `Input validation: OPEN (1 gap: tablet-pen)`
+  on this host.** `mouse`/`keyboard`/`touchpad-gestures`/`hot-corners`/
+  `non-us-layout` are `headless` (the router path is exercised by the synthetic
+  harness, and the German layout by the new test); only the pen is a hard
+  `gap (no-device)` because the synthetic wire format has no pressure axis.
+- **The classification's six ids are canonical in `InputClass::ALL`.** The
+  Python probe's `CLASSES` table must stay in sync; a rename in one without the
+  other breaks the artifact's meaning (the e2e test pins the Rust ids).
+- **Seat ownership is inferred, never taken.** The script reuses the T-03.2
+  `libdrm` master probe; do not call `libseat`'s logind backend on a shared
+  host (it would steal the live session's seat).
+- **`/proc/bus/input/devices` handlers are `mouse0`/`kbd`, not `mouse`/`kbd`.**
+  The fallback classifier matches `startswith("mouse")` / `startswith("kbd")`;
+  a bare `"mouse" in handlers` misses every pointer (T160 fix).
+- **`xkbcommon` logs `ERROR` lines to stderr for an unknown layout**, so the
+  test keeps the `None` path out of the committed suite to avoid scaring e2e.
+- Cargo needs `PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig` and
+  `RUSTFLAGS="-L $HOME/.local/df-devroot/lib64"` (Makefile supplies both);
+  `LD_LIBRARY_PATH` needs `$HOME/.local/lib` for `libxkbcommon.so` at runtime.
+- A stale `cargo test -p xdg-desktop-portal-dragonfruit` + `filechooser-*`
+  orphan from an earlier interrupted e2e was reaped this session; if the portal
+  test hangs, check for an orphaned `--test-threads=1` process.
+- `make check` remains red only at the pre-existing `check-desktop-names`;
+  T160 added no violation.
+
+### Follow-ups
+
+- **T-03.4 completes the real-device input run** on a free seat / spare GPU /
+  clean VM and replaces `t03-input-matrix.open.txt` with `t03-input-matrix.txt`.
+- **Pen pressure has no synthetic route.** If a future headless test needs it,
+  the synthetic wire format must grow a pressure axis first.

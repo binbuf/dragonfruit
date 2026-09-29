@@ -99,6 +99,13 @@ T-17. Do not let hardware access stall the plan.
 - **Latency measurement methodology** matters; document the instrument and the
   conditions with the numbers.
 
+## Status notes
+
+- **T-03.3 (input) is open on this host.** No free logind seat, so no real
+  devices; the pure matrix + headless non-US layout test are in (`make
+  input-validation`, `docs/captures/t03-input-matrix.open.txt`), and T-03.4's
+  runbook completes the real-device run ([ADR 0171](../adr/0171-hardware-input-validation-matrix.md)).
+
 ## Hand-off
 
 - T-12 consumes the seat/session knowledge and the runbook.
