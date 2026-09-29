@@ -16,7 +16,7 @@ settings, apps). The result was "done" tickets that could not be experienced
 end to end, and a first honest product review that sat behind a twelve-ticket
 dependency fan-in.
 
-The remaining work is cut into **tracks** (the 18 named slices, kept as design
+The remaining work is cut into **tracks** (the 19 named slices, kept as design
 references) and executed as a strict, single-session **work-unit** sequence in
 [tasks/](tasks/). Every unit ends with its headless tests green and a capture
 artifact committed; human sign-off is batched at the track boundary. Each unit
@@ -58,7 +58,7 @@ at the track boundary rather than per unit.
 
 ## The tracks
 
-The 18 named slices are now **tracks**: design references, not single sessions.
+The 19 named slices are now **tracks**: design references, not single sessions.
 Every track is decomposed into one-session **work units** in [tasks/](tasks/),
 listed in strict execution order below. A unit ends with its headless test green
 in `make e2e`, `make check`/`make soak` unchanged, and a capture artifact
@@ -87,10 +87,11 @@ every task un-completable.
 | [T-16](design/tracks/16-platform-polish-packaging.md) | Platform polish + packaging | 15 | multi-monitor, scaling, soak, a11y, i18n, packages [hw] |
 | [T-17](design/tracks/17-premium-gate.md) | The premium experience gate | 9 | the full loop on nested + DRM, at the visual floor |
 | [T-18](design/tracks/18-wallpaper-content-provider.md) | Wallpaper content provider | 4 | shipped original default; Featured fills from Wikimedia when the pane is open; offline keeps the shipped default |
+| [T-19](design/tracks/19-desktop-affordances.md) | Desktop affordances — icon system, Apps drawer, desktop items | 3 | Phosphor category tiles, the Applications overlay, desktop files with mouse multi-select |
 
 ## Work units (strict order)
 
-The 186 one-session tasks below are the executable sequence. symphony walks them in
+The one-session tasks below are the executable sequence. symphony walks them in
 file order, runs each in a fresh session, verifies with `make e2e` and commits.
 The hardware-dependent units are no longer all parked at the end: the real-session
 bring-up and display-manager switch harness (T159…T161 and T169…T171) is moved
@@ -404,6 +405,20 @@ just the forward group with
 - [x] T151 — T-16.8b Compositor-death behavior and restart-policy docs → [tasks/151-t-16.8b-compositor-death-and-restart-policy.md](tasks/151-t-16.8b-compositor-death-and-restart-policy.md)
 - [x] T151a — T-16.12 Synthetic chrome pointer injection timestamps → [tasks/151a-t-16.12-chrome-pointer-injection-timestamps.md](tasks/151a-t-16.12-chrome-pointer-injection-timestamps.md)
 
+## Phase 16.4 — Desktop affordances: icon system, Apps drawer, desktop items
+
+> **Moved up from the post-premium-gate backlog** (new track **T-19**) so the
+> desktop feels like a desktop on first login, before the real-session bring-up.
+> The ids T176–T178 are kept so the pipeline's saved state and existing task
+> files stay valid; `symphony` executes in roadmap order, so these run here.
+> Design: [19-desktop-affordances.md](design/tracks/19-desktop-affordances.md)
+> · references [macos/AppDrawer.md](reference/macos/AppDrawer.md) and
+> [macos/Desktop1.md](reference/macos/Desktop1.md).
+
+- [ ] T176 — T-19.1 Phosphor icon library and Settings category icon → [tasks/176-t-19.1-phosphor-icons-and-settings-category-icon.md](tasks/176-t-19.1-phosphor-icons-and-settings-category-icon.md)
+- [ ] T177 — T-19.2 Applications drawer → [tasks/177-t-19.2-apps-drawer.md](tasks/177-t-19.2-apps-drawer.md)
+- [ ] T178 — T-19.3 Desktop items and mouse selection → [tasks/178-t-19.3-desktop-items-and-mouse-selection.md](tasks/178-t-19.3-desktop-items-and-mouse-selection.md)
+
 ## Phase 16.5 — Real-session bring-up + switch harness (moved forward)
 
 > **Moved forward from Phases 18–19** so the desktop can be installed on a real
@@ -557,7 +572,7 @@ chrome sizing (T-16).
 
 Named so they cannot silently creep into the slices:
 
-- Desktop icons (legacy T-19).
+- Desktop icons (legacy T-19) — **now scheduled** as track T-19 / T178.
 - Search/Spotlight-equivalent pane and app-index search.
 - Internet Accounts (GOA).
 - NVIDIA-specific validation and HDR/color-management staging.
