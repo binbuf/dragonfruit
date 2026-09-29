@@ -41,6 +41,30 @@ The compositor is built with multiple backends from day one:
 Compositor frameworks are designed around reusable backends; we never require
 every run to take ownership of the physical display.
 
+### DRM first bring-up (T-03.2)
+
+The DRM/KMS backend is the only path that needs a real logind seat (or a spare
+GPU / clean VM). Bring-up has three checkpoints — `libseat` session, a usable
+DRM GPU, and at least one connector that initializes — and each reports a
+single greppable marker through the pure `drm_bringup` classification:
+
+```text
+DRM bring-up: READY device=<node> outputs=<n>
+DRM bring-up: OPEN (no seat: <reason>)
+DRM bring-up: OPEN (no usable DRM GPU on the seat)
+DRM bring-up: OPEN (no connected output: master busy or all connectors disconnected)
+```
+
+The backend prints the marker and **fails** when not ready: a session with no
+output must not silently enter the event loop with nothing to composite to.
+On a host whose seat is already owned by a desktop, the unit is *marked open,
+not skipped* — `scripts/drm-bringup.sh` (`make drm-bringup`) writes
+`docs/captures/t03-drm-loop.open.txt` with the `libdrm` master probe, the
+backend's own no-op-seat self-report, and the reproduction command; with a free
+seat it records `t03-drm-loop-trace.txt` instead. The classification and its
+`make e2e` test live in `compositor/src/drm_bringup.rs` and
+`compositor/tests/drm_bringup.rs` ([ADR 0170](adr/0170-drm-first-bringup-open-marker-and-no-output-guard.md)).
+
 ## Input
 
 - libinput delivers pointer, keyboard, touch, and tablet events. Touch and
