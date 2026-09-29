@@ -14474,19 +14474,14 @@ Decisions / gotchas for T-17.2:
   a small shared helper/singleton (or a design-system API) when the drawer
   starts consuming it, and have `DockGlyph` call through it; keep the key the
   normalized desktop id (see the T176d gotcha about not matching `appId`).
-- **T-19.3 desktop process (compositor half of Files-owned desktop).** The
-  compositor band, role-scoped trust, desktop token provisioning, and the shared
-  rubber-band view logic exist; `dragonfruit-files --desktop` does not. Next
-  session: add a minimal `df_core`/`df_shell` client to `apps/files` (extract or
-  trim `shell/src/shellprotocol.*`), create a full-output `background`
-  `df_layer_surface` (`exclusive_zone -1`, keyboard on-demand), render an
-  offscreen `~/Desktop` scene to QImage and commit it, branch `main.cpp` on
-  `filesDesktopRequested`, add the `New Folder`/`Open in Files` background menu
-  through the ops engine, add the crash-isolation conformance test, and capture
-  the live desktop. Provision the desktop token via a `desktop:`-tagged
-  `DRAGONFRUIT_LAUNCH_TOKENS` entry (or `DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN`);
-  the compositor writes `<socket>.desktop-launch-token`. See the T-19.3
-  hand-off and ADR 0168.
+- **T-19.3 systemd session provisioning of the desktop token (remaining).** The
+  compositor band, role-scoped trust, dev-tool token provisioning, the
+  `dragonfruit-files --desktop` process, input fidelity, the crash-isolation
+  conformance test, and the live nested capture are all done (see the T178
+  section below and ADR 0169); only the production session manager still needs
+  to mint the `desktop:` token. Add a `files-desktop` entry to
+  `services/session`'s plan/`entry.rs` and a `desktop:`-scoped environment (the
+  current `SessionEnvironment.trusted()` does not express one).
 
 ## T-14.7aa — Dock hover reference polish: bar geometry, zoom profile, and label tail
 
@@ -15023,3 +15018,55 @@ Gotchas for the desktop process:
 - **`DesktopInput.h` is intentionally minimal** (navigation/activation/Delete/
   select-all): the inline rename editor's text entry is not wired yet.
 - 75 ctest tests now; `tst_files_shell` takes ~28 s.
+
+### T178 desktop input fidelity + live capture (continuation 2) — landed
+
+Continuation 2 fixed two live-only defects the headless tests had hidden and
+performed the required nested capture.
+
+- **Rubber band over empty interior background.**
+  `apps/files/FilesIconView.qml` — the background band now has `z: 1` (above the
+  `GridView`) and rejects a press that lands on a tile (`root.tileAt(x, y)`,
+  the delegate whose mapped rect contains the point), so a drag can start
+  anywhere on empty background instead of only the view's 16 px outer margin.
+  The old band-under-grid layout left the desktop's only band origin the outer
+  border (and the top border is under the menu bar).
+- **Double-click open.** `apps/files/FilesDesktop.cpp` pairs a second left press
+  within `QStyleHints::mouseDoubleClickInterval()`/`..Distance()` and emits
+  `MouseButtonPress` + `MouseButtonDblClick` — the private protocol only sends
+  press/release pairs, and a bare `DblClick` (without the re-targeting second
+  press) never reached the tile's `onDoubleClicked`. Pure decision:
+  `desktopIsDoubleClick` in `apps/files/DesktopInput.h`, unit-tested in
+  `tst_files_desktop.cpp`.
+- **The opened browser maps.** `apps/files/main.cpp` spawns
+  `dragonfruit-files <uri>` with `QT_QPA_PLATFORM` removed from the child
+  environment (the desktop forces `offscreen` for its own window); before this
+  the browser ran offscreen and no window appeared.
+- **Live capture.** `scripts/capture-t19-desktop.sh` seeds a scratch `~/Desktop`
+  (an XDG `user-dirs.dirs` Desktop entry), runs the nested demo with the
+  synthetic-input harness, and writes
+  `docs/captures/t19-desktop-{items,marquee,selected,open}.png` (1920x1200).
+  Inspected: 8 icons on one grid row with centred labels (Photos, Projects,
+  Alpha…Foxtrot.txt); the marquee is a translucent accentMuted box with an
+  accent border over the first tiles (sampled `(251,225,236)`); after release the
+  enclosed tiles keep the selected tint; the double-click opened a Files window
+  titled `Projects` showing `notes.txt` (global menu "Dragonfruit-files").
+- Docs: `docs/design/09-files.md` §Selection and keyboard / §Desktop icons, ADR
+  [0169](design/adr/0169-desktop-process-client.md).
+
+Checks (continuation 2): `make qml-test` 75/75; `make e2e` green (scripted demo
+"all children alive after settle", clean teardown); compositor/cargo untouched;
+`check-no-capture-grab`, token freshness, and i18n clean; `check-desktop-names`
+still the pre-existing red.
+
+Gotchas for later:
+
+- **A band must be above a virtualizing `GridView`** and reject presses that hit
+  a delegate, or the grid's `Flickable` swallows interior empty-background
+  presses (the outer margin still works, which is what the old QML tests used).
+- **Injected pointer events need the platform double-click sequence.**
+  `DesktopProtocol` only forwards press/release, so `FilesDesktop` owns the
+  `MouseButtonDblClick` pairing; the "direct handler" QML test hid this.
+- **The desktop's forced `QT_QPA_PLATFORM=offscreen` leaks to spawned apps.**
+  Strip it in the child environment or any Files window the desktop opens is
+  invisible.

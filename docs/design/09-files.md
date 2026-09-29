@@ -635,9 +635,11 @@ The macOS model: **the file manager owns the desktop.**
   paints a marquee over empty background, maps the enclosed delegate
   rectangles back to stable node ids, and emits `marqueeSelected(nodeIds,
   modifiers)`; the shell's `selectMarquee` replaces/toggles/extends exactly
-  like click, Cmd-click, and Shift-click. The same view serves a Files window
-  and the desktop surface. Click/Cmd/Shift selection, the `activated` signal,
-  and the band are QML-tested.
+  like click, Cmd-click, and Shift-click. The band sits *above* the virtualizing
+  grid and rejects a press that lands on a tile (`tileAt`), so a drag can start
+  on any empty background — not just the view's thin outer margin. The same view
+  serves a Files window and the desktop surface. Click/Cmd/Shift selection, the
+  `activated` signal, and the band are QML-tested.
 - **The desktop process itself (T-19.3).** `dragonfruit-files --desktop` is a
   self-contained trusted private-protocol client
   (`apps/files/DesktopProtocol.*`): it presents the `desktop:` launch token,
@@ -648,7 +650,11 @@ The macOS model: **the file manager owns the desktop.**
   background menu offers `Open in Files` and `New Folder` (the latter through
   the ops engine), and it is provisioned by the dev tool
   (`make dev`/`make demo`); the systemd session entry still needs the token
-  (ADR [0169](adr/0169-desktop-process-client.md)).
+  (ADR [0169](adr/0169-desktop-process-client.md)). Because the private protocol
+  delivers raw press pairs, the process synthesizes Qt's double-click from a
+  second press in the platform window, and a directory open launches the
+  browser with the desktop's forced `offscreen` platform removed so the new
+  window maps as a normal Wayland client.
 - **Still deferred:** Desktop Reveal icon exposure, selection/focus transfer
   between the desktop, chrome, and windows, and the session-manager
   provisioning of the desktop token (see the T-19.3 hand-off).

@@ -45,6 +45,15 @@ Four things had to be decided once:
   (the T-16.12 invariant), instead of introducing a second injection site.
   `DesktopInput.h` holds the pure evdev/xkb→Qt mapping and is unit-tested
   without a compositor.
+- **Input fidelity is the client's job.** The private protocol delivers raw
+  `wl_pointer` press/release pairs, so `FilesDesktop` pairs a second left press
+  within the platform double-click interval/distance and emits Qt's
+  `MouseButtonPress` + `MouseButtonDblClick` — the sequence a `MouseArea`'s
+  `onDoubleClicked` needs. Pairing is the pure, unit-tested
+  `desktopIsDoubleClick` (`DesktopInput.h`). A directory open spawns the browser
+  with `QT_QPA_PLATFORM` removed from its environment: the desktop forces
+  `offscreen` for its own window, and the browser must map as a normal Wayland
+  client.
 - **Independent crash domain.** The desktop is its own process on the
   `background` layer; its death leaves the compositor, shell, and browser
   running, and vice versa. The protocol half is asserted by

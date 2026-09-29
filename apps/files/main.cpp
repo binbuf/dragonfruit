@@ -15,6 +15,7 @@
 #include <QFile>
 #include <QGuiApplication>
 #include <QProcess>
+#include <QProcessEnvironment>
 #include <QQmlApplicationEngine>
 #include <QStringList>
 #include <QUrl>
@@ -47,6 +48,17 @@ QString desktopLaunchToken(const QString &socketName)
     return token;
 }
 
+// Environment for a Files browser the desktop launches. The desktop process
+// forces the offscreen platform for its own `QQuickWindow`; the browser must
+// render as a normal Wayland client of the compositor, so QT_QPA_PLATFORM is
+// dropped (otherwise a double-click would open an invisible offscreen window).
+QProcessEnvironment browserEnvironment()
+{
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.remove(QStringLiteral("QT_QPA_PLATFORM"));
+    return env;
+}
+
 int runDesktop(QGuiApplication &app)
 {
     const QString socketName = qEnvironmentVariable("WAYLAND_DISPLAY");
@@ -65,8 +77,14 @@ int runDesktop(QGuiApplication &app)
             return;
         if (isDir) {
             // A directory opens a Files window at that path: a second process,
-            // so the browser and the desktop never share a crash domain.
-            QProcess::startDetached(app.applicationFilePath(), {uri});
+            // so the browser and the desktop never share a crash domain. The
+            // browser gets a normal (non-offscreen) platform environment.
+            QProcess browser;
+            browser.setProcessEnvironment(browserEnvironment());
+            browser.setProgram(app.applicationFilePath());
+            browser.setArguments({uri});
+            if (!browser.startDetached())
+                qWarning("dragonfruit-files: could not open %s", qPrintable(uri));
         } else {
             QDesktopServices::openUrl(QUrl(uri));
         }

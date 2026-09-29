@@ -13,6 +13,7 @@
 // invariant holds), and commits each rendered frame through `DesktopProtocol`.
 #pragma once
 
+#include <QElapsedTimer>
 #include <QObject>
 #include <QPointF>
 #include <QSize>
@@ -70,4 +71,10 @@ private:
     Qt::MouseButtons m_buttons = Qt::NoButton;
     Qt::KeyboardModifiers m_keyboardModifiers = Qt::NoModifier;
     QSize m_lastCommitted;
+    // Double-click synthesis (T-19.3): the private protocol delivers presses
+    // one at a time, so pair a second press within the platform interval and
+    // distance as a `MouseButtonDblClick`.
+    QElapsedTimer m_lastPressTimer;
+    QPointF m_lastPressPos;
+    bool m_haveLastPress = false;
 };
