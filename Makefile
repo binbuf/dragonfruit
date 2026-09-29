@@ -48,7 +48,7 @@ endif
 .DEFAULT_GOAL := help
 .PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test \
         visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev dev-full demo soak e2e \
-        idle-trace menubar-idle-trace latency-trace drm-bringup input-validation settingsd-capture settings-wave-1-capture \
+        idle-trace menubar-idle-trace latency-trace drm-bringup input-validation multi-gpu-validation drm-soak settingsd-capture settings-wave-1-capture \
         t18-wallpaper-capture t18-absence-matrix t15-absence-matrix t15-breadth-capture t16-a11y-audit \
         t16-i18n-capture t16-kill-matrix t17-window-loop-capture t17-navigation-capture \
         t17-flatpak-browser-capture i18n-update \
@@ -61,6 +61,8 @@ help:
 	@echo "  make e2e      — T-01…T-07 Foundation vertical-slice + conformance suites"
 	@echo "  make idle-trace — T-03.1a 60 s idle/animation frame budget trace"
 	@echo "  make latency-trace — T-03.1b nested input-to-photon latency capture"
+	@echo "  make multi-gpu-validation — T-03.4 multi-GPU import/fallback validation"
+	@echo "  make drm-soak — T-03.4 100-cycle teardown soak + one DRM session cycle"
 	@echo "  make settingsd-capture — T-08.3 settingsd flip + restart capture"
 	@echo "  make settings-wave-1-capture — T-09.6b Settings wave stills (light/dark/reduced + panes)"
 	@echo "  make t18-wallpaper-capture — T-18.2 Wallpaper pane stills (fetching skeleton + filled)"
@@ -133,7 +135,8 @@ e2e: build
 	    --test session_lock_conformance \
 	    --test suspend_resume_conformance \
 	    --test drm_bringup \
-	    --test input_validation
+	    --test input_validation \
+	    --test multi_gpu
 	$(CARGO) test -p dragonfruit-system-adapters
 	$(CARGO) test -p dragonfruit-networkmanager
 	$(CARGO) test -p dragonfruit-audio
@@ -194,6 +197,18 @@ drm-bringup: cargo-build
 # is marked open, not skipped) and the hardware rail sweeps it. Always exits 0.
 input-validation: cargo-build
 	bash scripts/input-validation.sh
+
+# T-03.4: multi-GPU import/fallback validation. With one card the hardware half
+# is recorded OPEN (not skipped); always exits 0. The pure classification is
+# pinned by compositor/tests/multi_gpu.rs.
+multi-gpu-validation: cargo-build
+	bash scripts/multi-gpu-validation.sh
+
+# T-03.4: the 100-cycle automated teardown soak plus one DRM session cycle.
+# The soak always runs; the DRM cycle needs a free logind seat, and with none
+# it is recorded OPEN (not skipped). Always exits 0.
+drm-soak: cargo-build
+	bash scripts/drm-soak.sh
 
 # T-08.3: the settingsd flip + restart/resync track capture. Needs a host
 # Wayland session, `spectacle`, `ffmpeg`, and Pillow; records the stills,

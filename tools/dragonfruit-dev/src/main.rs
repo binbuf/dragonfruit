@@ -139,7 +139,8 @@ USAGE:
     dragonfruit dev --nested [--socket-name NAME] [--shell] [--launch CMD...]
     dragonfruit dev --headless [--socket-name NAME] [--shell] [--launch CMD...]
     dragonfruit dev --demo [--nested|--headless] [--socket-name NAME]
-    dragonfruit dev --soak [N]        # teardown soak test (default 100 cycles)
+    dragonfruit dev --soak [N] [--nested|--headless|--drm]
+                                      # teardown soak (default 100 headless cycles)
     dragonfruit version
 
 --shell launches the built shell process (build/shell/src/dragonfruit-shell,
@@ -166,7 +167,12 @@ app, and an X11 app against a private socket and prints the T-01 checklist.
 With a host Wayland session it runs nested for the human walkthrough; with
 none (CI) it runs the headless scripted half: launch, settle, verify every
 child is alive, tear down, and assert no socket leaked. `--launch` may be
-repeated to add extra programs."
+repeated to add extra programs.
+
+--soak runs the teardown gate: N compositor sessions, each asserting no
+leaked socket, lock, launch token, or orphan. It defaults to the headless
+backend; `--nested` and `--drm` run the same gate on those backends (one
+`--soak 1 --drm` is the DRM session cycle in the T-03.4 runbook)."
     )
 }
 
@@ -192,6 +198,10 @@ fn parse_dev_args(mut it: impl Iterator<Item = String>) -> Result<DevArgs, Strin
             }
             "--headless" => {
                 args.backend = "headless";
+                args.backend_explicit = true;
+            }
+            "--drm" => {
+                args.backend = "drm";
                 args.backend_explicit = true;
             }
             "--shell" => args.shell = true,
@@ -264,7 +274,7 @@ fn main() -> ExitCode {
         }
         Some("dev") => match parse_dev_args(it) {
             Ok(args) => match args.soak_cycles {
-                Some(cycles) => run_soak(cycles),
+                Some(cycles) => run_soak(cycles, &args),
                 None if args.demo => run_demo_session(&args),
                 None => run_dev_session(&args),
             },
@@ -1353,16 +1363,26 @@ fn shutdown_child(child: &mut std::process::Child) -> Result<(), ()> {
     }
 }
 
-fn run_soak(cycles: usize) -> ExitCode {
+fn run_soak(cycles: usize, args: &DevArgs) -> ExitCode {
     let Ok(compositor) = compositor_path() else {
         return ExitCode::from(EXIT_USAGE);
     };
     let Ok(runtime_dir) = runtime_dir() else {
         return ExitCode::from(EXIT_USAGE);
     };
-    match soak::run(&compositor, &runtime_dir, cycles) {
+    // The gate is headless by default (CI needs no display); an explicit
+    // `--nested`/`--drm` runs the same teardown check on that backend.
+    let backend = if args.backend_explicit {
+        args.backend
+    } else {
+        "headless"
+    };
+    match soak::run(&compositor, &runtime_dir, cycles, backend) {
         Ok(()) => {
-            println!("dragonfruit dev: soak passed — {cycles} clean cycles, zero strays");
+            println!(
+                "dragonfruit dev: soak passed — {cycles} clean {backend} cycles, \
+                 zero strays, zero leaked sockets/tokens"
+            );
             ExitCode::SUCCESS
         }
         Err(err) => {

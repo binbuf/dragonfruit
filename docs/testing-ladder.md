@@ -101,12 +101,17 @@ the same-user display-manager round-trip
 ([design](design/11-session-and-dev-workflow.md#the-real-session-dev-harness) ·
 [ADR 0053](design/adr/0053-real-session-dev-harness.md)).
 
+The step-by-step T-03 hardware runs (bring-up, input, multi-GPU, soak, the demo
+walkthrough, and the exact artifacts) are in
+[runbook-drm-session.md](runbook-drm-session.md).
+
 ## Rung 3 — VM
 
 Intentionally crash things: compositor, lock screen, portal service,
 shell. A VM is disposable; the host is not. Suspend/resume, VT
 handoffs, and kill -9 supervision tests belong here (libvirt with
-virtio-GPU is the baseline).
+virtio-GPU is the baseline). The VM is also the easiest free DRM seat;
+[runbook-drm-session.md](runbook-drm-session.md) §2 covers it.
 
 ## Rung 4 — primary machine
 
