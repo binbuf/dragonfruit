@@ -304,6 +304,27 @@ set_tests_properties(tst_switcher PROPERTIES
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# Applications drawer tests (T-19.2): the tile grid, category/query filters, the
+# launch signal, and the explicit app-index-absent state.
+qt_add_executable(tst_appsdrawer
+    tst_appsdrawer.cpp
+)
+target_link_libraries(tst_appsdrawer PRIVATE
+    Qt6::QuickTest
+    dragonfruit-design-systemplugin
+    dragonfruit-shell-apps-drawerplugin
+)
+qt_import_qml_plugins(tst_appsdrawer)
+
+add_test(
+    NAME tst_appsdrawer
+    COMMAND tst_appsdrawer -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_appsdrawer.qml
+)
+set_tests_properties(tst_appsdrawer PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QML2_IMPORT_PATH=${CMAKE_BINARY_DIR}/qml"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 # Notification-model tests (T-11.1a): the service's `Banners()`/`History()`
 # JSON decodes to the shell's banner and history views. No bus, Wayland, or
 # QML.

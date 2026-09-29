@@ -936,6 +936,75 @@ bool ShellProtocol::hidePolkit()
     return true;
 }
 
+bool ShellProtocol::createAppsDrawerSurface()
+{
+    if (m_appsDrawerSurface || m_appsDrawerLayer)
+        return true;
+    if (!m_shell || !m_compositor)
+        return fail(QStringLiteral("df_shell is not available"));
+
+    m_appsDrawerSurface = wl_compositor_create_surface(m_compositor);
+    m_appsDrawerLayer = df_shell_get_layer_surface(m_shell, m_appsDrawerSurface, nullptr,
+                                                   DF_SHELL_LAYER_OVERLAY, "apps-drawer");
+    if (!m_appsDrawerLayer)
+        return fail(QStringLiteral("compositor refused the apps-drawer layer surface"));
+    static const df_layer_surface_listener listener = { onAppsDrawerConfigure, onLayerClosed };
+    df_layer_surface_add_listener(m_appsDrawerLayer, &listener, this);
+
+    // Cover the whole output; reserve nothing (the drawer is transient) and
+    // take the keyboard on demand so Escape dismisses and arrow/Return reaches
+    // the grid's navigation.
+    df_layer_surface_set_anchor(m_appsDrawerLayer,
+                                kAnchorTop | kAnchorBottom | kAnchorLeft | kAnchorRight);
+    df_layer_surface_set_exclusive_zone(m_appsDrawerLayer, -1);
+    df_layer_surface_set_keyboard_interaction(
+        m_appsDrawerLayer, DF_LAYER_SURFACE_KEYBOARD_INTERACTION_ON_DEMAND);
+    wl_surface_attach(m_appsDrawerSurface, nullptr, 0, 0);
+    wl_surface_commit(m_appsDrawerSurface);
+    if (wl_display_flush(m_display) < 0)
+        return fail(QStringLiteral("failed to flush the apps-drawer surface creation"));
+    return true;
+}
+
+bool ShellProtocol::setAppsDrawerInputRegion(int width, int height)
+{
+    if (!m_appsDrawerSurface || !m_compositor)
+        return false;
+    wl_region *region = wl_compositor_create_region(m_compositor);
+    if (!region)
+        return false;
+    if (width > 0 && height > 0)
+        wl_region_add(region, 0, 0, width, height);
+    // Applied with the next buffer commit (`commitAppsDrawerImage`).
+    wl_surface_set_input_region(m_appsDrawerSurface, region);
+    wl_region_destroy(region);
+    return true;
+}
+
+bool ShellProtocol::commitAppsDrawerImage(const QImage &image)
+{
+    if (!m_appsDrawerSurface)
+        return false;
+    if (!commitTo(m_appsDrawerSurface, image))
+        return false;
+    m_appsDrawerMapped = true;
+    return true;
+}
+
+bool ShellProtocol::hideAppsDrawer()
+{
+    if (!m_appsDrawerSurface || !m_appsDrawerLayer)
+        return false;
+    if (!m_appsDrawerMapped)
+        return true;
+    wl_surface_attach(m_appsDrawerSurface, nullptr, 0, 0);
+    wl_surface_commit(m_appsDrawerSurface);
+    m_appsDrawerMapped = false;
+    if (m_display)
+        wl_display_flush(m_display);
+    return true;
+}
+
 bool ShellProtocol::captureScreenshot(const QString &path, int x, int y, int width, int height,
                                       const QString &mode)
 {
@@ -1814,12 +1883,14 @@ void ShellProtocol::teardown()
     m_pointerOnScreenshot = false;
     m_pointerOnScreenCast = false;
     m_pointerOnPolkit = false;
+    m_pointerOnAppsDrawer = false;
     m_keyboardOnOverview = false;
     m_keyboardOnControlCenter = false;
     m_keyboardOnChooser = false;
     m_keyboardOnScreenshot = false;
     m_keyboardOnScreenCast = false;
     m_keyboardOnPolkit = false;
+    m_keyboardOnAppsDrawer = false;
     m_screenshotLayer = nullptr;
     m_screenshotSurface = nullptr;
     m_screenshotMapped = false;
@@ -1829,6 +1900,9 @@ void ShellProtocol::teardown()
     m_polkitLayer = nullptr;
     m_polkitSurface = nullptr;
     m_polkitMapped = false;
+    m_appsDrawerLayer = nullptr;
+    m_appsDrawerSurface = nullptr;
+    m_appsDrawerMapped = false;
     m_controlCenterLayer = nullptr;
     m_controlCenterSurface = nullptr;
     m_controlCenterMapped = false;
@@ -2054,6 +2128,15 @@ void ShellProtocol::onPolkitConfigure(void *data, df_layer_surface *, uint32_t s
     if (self->m_polkitLayer)
         df_layer_surface_ack_configure(self->m_polkitLayer, serial);
     emit self->polkitConfigured(width, height, serial);
+}
+
+void ShellProtocol::onAppsDrawerConfigure(void *data, df_layer_surface *, uint32_t serial,
+                                          int32_t width, int32_t height)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    if (self->m_appsDrawerLayer)
+        df_layer_surface_ack_configure(self->m_appsDrawerLayer, serial);
+    emit self->appsDrawerConfigured(width, height, serial);
 }
 
 // --- ext_session_lock_v1 (T-12.3a) -----------------------------------------
@@ -2628,8 +2711,16 @@ void ShellProtocol::onPointerEnter(void *data, wl_pointer *, uint32_t, wl_surfac
         self->m_screencastSurface && surface == self->m_screencastSurface;
     self->m_pointerOnPolkit =
         self->m_polkitSurface && surface == self->m_polkitSurface;
+    self->m_pointerOnAppsDrawer =
+        self->m_appsDrawerSurface && surface == self->m_appsDrawerSurface;
     self->m_pointerX = wl_fixed_to_double(x) + (self->m_pointerOnPopup ? self->m_popupX : 0);
     self->m_pointerY = wl_fixed_to_double(y) + (self->m_pointerOnPopup ? self->m_popupY : 0);
+    if (self->m_pointerOnAppsDrawer) {
+        self->m_pointerX = wl_fixed_to_double(x);
+        self->m_pointerY = wl_fixed_to_double(y);
+        emit self->appsDrawerPointerMoved(self->m_pointerX, self->m_pointerY);
+        return;
+    }
     if (self->m_pointerOnPolkit) {
         self->m_pointerX = wl_fixed_to_double(x);
         self->m_pointerY = wl_fixed_to_double(y);
@@ -2697,6 +2788,7 @@ void ShellProtocol::onPointerLeave(void *data, wl_pointer *, uint32_t, wl_surfac
     const bool wasScreenshot = self->m_pointerOnScreenshot;
     const bool wasScreenCast = self->m_pointerOnScreenCast;
     const bool wasPolkit = self->m_pointerOnPolkit;
+    const bool wasAppsDrawer = self->m_pointerOnAppsDrawer;
     const bool wasDockPopup = self->m_pointerOnDockPopup;
     const bool wasDock = self->m_pointerOnDock;
     self->m_pointerOnPopup = false;
@@ -2709,6 +2801,7 @@ void ShellProtocol::onPointerLeave(void *data, wl_pointer *, uint32_t, wl_surfac
     self->m_pointerOnScreenshot = false;
     self->m_pointerOnScreenCast = false;
     self->m_pointerOnPolkit = false;
+    self->m_pointerOnAppsDrawer = false;
     if (wasChooser)
         emit self->chooserPointerLeft();
     else if (wasScreenshot)
@@ -2717,6 +2810,8 @@ void ShellProtocol::onPointerLeave(void *data, wl_pointer *, uint32_t, wl_surfac
         emit self->screencastPointerLeft();
     else if (wasPolkit)
         emit self->polkitPointerLeft();
+    else if (wasAppsDrawer)
+        emit self->appsDrawerPointerLeft();
     else if (wasOverview)
         emit self->overviewPointerLeft();
     else if (wasControlCenter)
@@ -2737,6 +2832,12 @@ void ShellProtocol::onPointerMotion(void *data, wl_pointer *, uint32_t, wl_fixed
     auto *self = static_cast<ShellProtocol *>(data);
     self->m_pointerX = wl_fixed_to_double(x) + (self->m_pointerOnPopup ? self->m_popupX : 0);
     self->m_pointerY = wl_fixed_to_double(y) + (self->m_pointerOnPopup ? self->m_popupY : 0);
+    if (self->m_pointerOnAppsDrawer) {
+        self->m_pointerX = wl_fixed_to_double(x);
+        self->m_pointerY = wl_fixed_to_double(y);
+        emit self->appsDrawerPointerMoved(self->m_pointerX, self->m_pointerY);
+        return;
+    }
     if (self->m_pointerOnPolkit) {
         self->m_pointerX = wl_fixed_to_double(x);
         self->m_pointerY = wl_fixed_to_double(y);
@@ -2798,6 +2899,11 @@ void ShellProtocol::onPointerButton(void *data, wl_pointer *, uint32_t, uint32_t
                                     uint32_t state)
 {
     auto *self = static_cast<ShellProtocol *>(data);
+    if (self->m_pointerOnAppsDrawer) {
+        emit self->appsDrawerPointerButton(self->m_pointerX, self->m_pointerY, button,
+                                           state == WL_POINTER_BUTTON_STATE_PRESSED);
+        return;
+    }
     if (self->m_pointerOnPolkit) {
         emit self->polkitPointerButton(self->m_pointerX, self->m_pointerY, button,
                                        state == WL_POINTER_BUTTON_STATE_PRESSED);
@@ -2874,6 +2980,8 @@ void ShellProtocol::onKeyboardEnter(void *data, wl_keyboard *, uint32_t, wl_surf
         self->m_screencastSurface && surface == self->m_screencastSurface;
     self->m_keyboardOnPolkit =
         self->m_polkitSurface && surface == self->m_polkitSurface;
+    self->m_keyboardOnAppsDrawer =
+        self->m_appsDrawerSurface && surface == self->m_appsDrawerSurface;
     self->m_keyboardOnLock = self->isLockSurface(surface);
     emit self->keyboardFocused(true);
     if (self->m_keyboardOnDock)
@@ -2890,6 +2998,8 @@ void ShellProtocol::onKeyboardEnter(void *data, wl_keyboard *, uint32_t, wl_surf
         emit self->screencastKeyboardFocused(true);
     if (self->m_keyboardOnPolkit)
         emit self->polkitKeyboardFocused(true);
+    if (self->m_keyboardOnAppsDrawer)
+        emit self->appsDrawerKeyboardFocused(true);
 }
 
 void ShellProtocol::onKeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surface *surface)
@@ -2909,6 +3019,8 @@ void ShellProtocol::onKeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surf
             || (self->m_screencastSurface && surface == self->m_screencastSurface);
     const bool wasPolkit = self->m_keyboardOnPolkit
             || (self->m_polkitSurface && surface == self->m_polkitSurface);
+    const bool wasAppsDrawer = self->m_keyboardOnAppsDrawer
+            || (self->m_appsDrawerSurface && surface == self->m_appsDrawerSurface);
     self->m_keyboardOnDock = false;
     self->m_keyboardOnOverview = false;
     self->m_keyboardOnControlCenter = false;
@@ -2916,6 +3028,7 @@ void ShellProtocol::onKeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surf
     self->m_keyboardOnScreenshot = false;
     self->m_keyboardOnScreenCast = false;
     self->m_keyboardOnPolkit = false;
+    self->m_keyboardOnAppsDrawer = false;
     self->m_keyboardOnLock = false;
     emit self->keyboardFocused(false);
     if (wasDock)
@@ -2932,6 +3045,8 @@ void ShellProtocol::onKeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surf
         emit self->screencastKeyboardFocused(false);
     if (wasPolkit)
         emit self->polkitKeyboardFocused(false);
+    if (wasAppsDrawer)
+        emit self->appsDrawerKeyboardFocused(false);
 }
 
 void ShellProtocol::onKeyboardKey(void *data, wl_keyboard *, uint32_t, uint32_t, uint32_t key,
@@ -2948,6 +3063,10 @@ void ShellProtocol::onKeyboardKey(void *data, wl_keyboard *, uint32_t, uint32_t,
     if (self->m_keyboardOnPolkit) {
         emit self->polkitKeyEvent(key, state == WL_KEYBOARD_KEY_STATE_PRESSED,
                                   self->m_keyboardShift);
+        return;
+    }
+    if (self->m_keyboardOnAppsDrawer) {
+        emit self->appsDrawerKeyEvent(key, state == WL_KEYBOARD_KEY_STATE_PRESSED);
         return;
     }
     if (self->m_keyboardOnChooser) {

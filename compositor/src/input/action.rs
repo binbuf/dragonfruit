@@ -50,6 +50,9 @@ pub enum InputAction {
     /// Toggle the Control Center panel (T-11.3a). The shell owns the panel;
     /// the compositor only routes the action.
     ControlCenter,
+    /// Toggle the Applications drawer (T-19.2). The shell owns the launcher;
+    /// the compositor only routes the action.
+    ShowApps,
 }
 
 impl InputAction {
@@ -82,6 +85,7 @@ impl InputAction {
             InputAction::FocusDock => "focus-dock",
             InputAction::ToggleDock => "toggle-dock",
             InputAction::ControlCenter => "control-center",
+            InputAction::ShowApps => "show-apps",
         }
     }
 }

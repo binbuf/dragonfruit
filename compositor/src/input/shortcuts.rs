@@ -358,6 +358,9 @@ pub fn default_system_bindings() -> Vec<Shortcut> {
             keysyms::KEY_C,
             InputAction::ControlCenter,
         ),
+        // T-19.2: open the Applications drawer. F4 is the macOS Launchpad
+        // chord; the Settings Keyboard pane rebinds it in T-16.
+        Shortcut::new(RoleMods::EMPTY, keysyms::KEY_F4, InputAction::ShowApps),
     ];
     for (i, key) in [
         keysyms::KEY_1,
