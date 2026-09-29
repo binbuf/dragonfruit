@@ -7,3 +7,4 @@
 add_subdirectory(settings-client)
 add_subdirectory(system-font)
 add_subdirectory(i18n)
+add_subdirectory(chromepointer)

@@ -39,3 +39,21 @@ set_tests_properties(tst_files_arguments PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+# Desktop input mapping (T-19.3): the compositor's raw evdev/xkb values become
+# Qt keys/modifiers before the desktop process injects them. Pure header logic,
+# no Wayland or compositor.
+qt_add_executable(tst_files_desktop
+    tst_files_desktop.cpp
+)
+target_include_directories(tst_files_desktop PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
+target_link_libraries(tst_files_desktop PRIVATE Qt6::Core Qt6::Test)
+
+add_test(
+    NAME tst_files_desktop
+    COMMAND tst_files_desktop
+)
+set_tests_properties(tst_files_desktop PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
