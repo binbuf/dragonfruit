@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(164 earlier sections omitted)_
+_(165 earlier sections omitted)_
 
-- **T128 — T-15.9b Menu Bar configuration pane and tile**: **State: done.** The Settings Menu Bar pane and the Control Center Menu Bar; `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 15 → 16; new
 - **T129 — T-15.10a General, About, and Updates adapter**: **State: done.** New workspace crate `dragonfruit-update-adapter`; `services/update-adapter/` (new crate, workspace member) —
 - **T130 — T-15.10b General, About, and Updates pane and tile**: **State: done.** The Settings `General` pane and the Control Center `Software; `services/system-status/src/updates.rs` (new) — `UpdatesHost<S>` (refresh/
 - **T131 — T-15.11a Users and Groups adapter**: **State: done.** New workspace crate `dragonfruit-account-adapter`; `services/account-adapter/` (new crate, workspace member) —
@@ -44,6 +43,7 @@ _(164 earlier sections omitted)_
 - **T159 — T-03.2 DRM first bring-up**: **State: OPEN (hardware unavailable).** The never-executed DRM backend was run; `compositor/src/drm_bringup.rs` (new) — pure
 - **T160 — T-03.3 Hardware input validation**: **State: OPEN (hardware unavailable).** Real-device input validation needs the; `compositor/src/input_validation.rs` (new) — pure matrix. `InputClass` with
 - **T161 — T-03.4 DRM soak, teardown, runbook**: **State: OPEN (hardware unavailable).** The T-03 hardware rail's final unit:; `tools/dragonfruit-dev/src/soak.rs` — new `teardown_artifacts(socket)`
+- **T169 — T-12.6a Display-manager session selection and optional autologin**: **State: done.** The display-manager session-selection seam landed; T-12.6b; `tools/dragonfruit-dev/src/session_selector.rs` (ne
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -15313,3 +15313,72 @@ Commands / gotchas for later:
 - **QEMU/VM capture path.** The runbook's VM still is suggested via `grim`;
   nothing in the tree automates a DRM screenshot yet (the nested capture uses
   `spectacle` on the host).
+
+## T169 — T-12.6a Display-manager session selection and optional autologin
+
+**State: done.** The display-manager session-selection seam landed; T-12.6b
+consumes it to arm the round trip. `cargo test -p dragonfruit-dev` 31 passed /
+0 failed, `make e2e` green (132 `test result: ok`, 0 failed), `fmt-check` and
+crate `clippy` clean, live nested demo + vision check clean.
+
+Real paths:
+
+- `tools/dragonfruit-dev/src/session_selector.rs` (new, registered as `mod
+  session_selector;` in `main.rs`) — `#![allow(dead_code)] // consumed by
+  T-12.6b`. `Dm{Gdm,Sddm,Lightdm}`; `DmSession::read/select/restore` backed by
+  `GdmSession` (`/var/lib/AccountsService/users/<user>` `[User] XSession=`),
+  `SddmSession` (`/var/lib/sddm/state.conf` `[LastUser] Session=`),
+  `LightdmSession` (`~/.dmrc` `[Desktop] Session=`); `DmAutologin::snapshot/arm/
+  disarm/restore` backed by `GdmAutologin` (`/etc/gdm/custom.conf` `[daemon]`
+  `AutomaticLogin*`), `SddmAutologin` (`/etc/sddm.conf.d/autologin.conf`
+  `[Autologin]`), `LightdmAutologin` (`/etc/lightdm/lightdm.conf` `[Seat:*]`
+  `autologin-user`/`autologin-session`). `SessionSelector::dm` + `session` +
+  `autologin` + `select_dragonfruit`/`restore`/`autologin_state`/
+  `arm_autologin`/`disarm_autologin`/`restore_autologin`. `Selected::{Changed,
+  Unsupported}` + `marker()` (`DM session: SELECTED dm=… previous=…` /
+  `DM session: UNSUPPORTED — pick the session in the greeter`). `DRAGONFRUIT_
+  SESSION` = `df_ipc::DESKTOP_NAME` (`dragonfruit`).
+- Docs: ADR
+  `docs/design/adr/0173-display-manager-session-selection-seam.md` (new),
+  `docs/design/11-session-and-dev-workflow.md` §"Display-manager adapters",
+  `docs/captures/t169-session-selector-nested-check.png`.
+- Task: `docs/tasks/169-t-12.6a-display-manager-session-selection.md` Hand-off.
+
+Commands / gotchas for later:
+
+- **Detection never guesses.** `dm()` returns a DM only when its process runs
+  (`/proc/*/comm` contains `gdm`/`sddm`/`lightdm`) or exactly one DM is
+  installed (`/etc/gdm/custom.conf`|`/etc/gdm3/…`, `/etc/sddm.conf`|`…conf.d`,
+  `/etc/lightdm`). Unknown *or several installed with none running* →
+  `Selected::Unsupported` and **no write**: a fixture test asserts no file
+  appears under the root/home.
+- **Fixture tests must create the DM install marker**, not just the state file
+  (e.g. `etc/gdm/custom.conf` for the GDM AccountsService case, `etc/sddm.conf`
+  for SDDM, `etc/lightdm/lightdm.conf` for LightDM); detection keys on the
+  install/config file, not the selection state.
+- **Every path derives from an explicit root+home** (`SessionSelector::fixture`,
+  `with_running`); `for_host(user)` is the real-host constructor. No DM is
+  needed to test.
+- **Autologin is off unless armed and reversible.** `restore` puts a prior
+  snapshot back, so a host that already had autologin for another user is not
+  left changed. `arm`/`restore` write different files per DM.
+- **The desktop-name gate (`scripts/check-desktop-names.sh`) scans `.rs`** and
+  rejects whole-word `gnome`/`plasma`/etc. The fixture session ids are
+  `existing`/`other` for this reason — do not reintroduce a real DE name in a
+  test fixture. On this host the gate still reports its 15 pre-existing hits;
+  `session_selector.rs` is not among them.
+- **`make e2e` does not run `dragonfruit-dev` tests** (the task kept it
+  unchanged); run `cargo test -p dragonfruit-dev` explicitly.
+- **SDDM session id format is unvalidated here.** The adapter writes the bare
+  `dragonfruit` id; newer SDDM `state.conf` may want a full
+  `/usr/share/wayland-sessions/dragonfruit.desktop` path. T-12.6b validates on
+  hardware (the seam takes the session string, so this is a one-line change).
+
+### Follow-ups
+
+- **T-12.6b** persists the previous selection in
+  `$XDG_STATE_HOME/dragonfruit/dev-session.json`, arms/restores it, and owns the
+  "session-ready" beat and the crash-recovery disarm.
+- **Real-DM validation** on the T-159…T-161 rail: confirm GDM AccountsService
+  (likely `gdbus`/polkit, not a direct file write), SDDM path/format, and the
+  root-owned autologin files.

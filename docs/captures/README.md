@@ -185,6 +185,13 @@ while locked — `locked=1 surfaces=1 lock-focus=1`) and
 greeter/login and DRM logout ends of the T-12 demo are T-12.6, so this nested
 capture proves the session + lock surface, not the greeter round trip.
 
+T-12.6a's live check is `t169-session-selector-nested-check.png`, a one-shot
+nested `make demo` still (spectacle) confirming the desktop still renders after
+the display-manager session-selection seam landed. The seam itself has no
+surface; its exact-byte fixture writes are asserted by
+`cargo test -p dragonfruit-dev selected_bytes_are_exact -- --nocapture` (see
+[ADR 0173](../design/adr/0173-display-manager-session-selection-seam.md)).
+
 T-13.7's portal sign-off is produced by `scripts/capture-portals.sh`
 (`make portals-capture`): a private session bus runs the real
 `xdg-desktop-portal` frontend with the Dragonfruit backend and a driver
