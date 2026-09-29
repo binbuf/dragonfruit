@@ -21,6 +21,7 @@ for Dragonfruit alters the terms of these components.
 | Component | License |
 |---|---|
 | [Inter](https://github.com/rsms/inter) 4.001 (`assets/fonts/Inter/`, embedded in first-party binaries via `libs/system-font/`) | SIL OFL 1.1 |
+| [Phosphor](https://github.com/phosphor-icons/core) 2.0.8 (`assets/icons/phosphor/`, the `regular` and `fill` glyphs, compiled into the design-system module) | MIT |
 | Default wallpaper (`assets/graphics/wallpapers/Default.jpg`, installed to `share/dragonfruit/wallpapers/Default.jpg`) | MIT (original project asset) |
 
 The default wallpaper is the only image bundled in a package. Featured
