@@ -8,7 +8,7 @@
 # app's raw identity, decoration tier, resolved desktop id, and global-menu
 # tier into docs/captures/t14-zoo-matrix.{md,json}. The zoo is:
 #
-#   Firefox (X11) · xterm · a Steam stand-in · a GTK4 app (GNOME Calculator
+#   Firefox (X11) · xterm · a Steam stand-in · a GTK4 app (Calculator
 #   via flatpak) · an SDL2 game sample · an Electron app
 #
 # Optional apps that cannot be installed are skipped and recorded as
@@ -242,7 +242,7 @@ if [ "$HAS_CALCULATOR" = "1" ]; then
     # alone only exposes the host's default wayland socket.
     launch calculator flatpak run --user --socket=wayland \
         --filesystem="$XDG_RUNTIME_DIR/$SOCK" \
-        --env=WAYLAND_DISPLAY="$SOCK" --env=XDG_CURRENT_DESKTOP=Dragonfruit \
+        --env=WAYLAND_DISPLAY="$SOCK" --env=XDG_CURRENT_DESKTOP=dragonfruit \
         org.gnome.Calculator
 fi
 

@@ -3,7 +3,7 @@
 //! testable without hardware.
 //!
 //! The compositor can only drive real libinput devices when it owns a logind
-//! seat, and this host has no free seat (the KDE Wayland session owns DRM
+//! seat, and this host has no free seat (the host Wayland session owns DRM
 //! master — see `docs/SLICING-REVIEW.md`), so the unit is marked **open, not
 //! skipped**. These tests pin the classification the matrix shares with
 //! `scripts/input-validation.sh` and prove the one hardware-free input class

@@ -51,7 +51,7 @@ endif
         idle-trace menubar-idle-trace latency-trace drm-bringup input-validation multi-gpu-validation drm-soak second-vt-validation settingsd-capture settings-wave-1-capture \
         t18-wallpaper-capture t18-absence-matrix t15-absence-matrix t15-breadth-capture t16-a11y-audit \
         t16-i18n-capture t16-kill-matrix t17-robustness-matrix t17-window-loop-capture t17-navigation-capture \
-        t17-flatpak-browser-capture t17-visual-floor-capture t17-leak-lock-soak i18n-update \
+        t17-flatpak-browser-capture t17-visual-floor-capture t17-leak-lock-soak t17-premium-gate-capture i18n-update \
         files-capture osd-dnd-capture portals-capture zoo-run dock-spacing-capture dock-magnify-capture dock-motion-capture dock-trash-capture dock-app-picker-capture dock-drops-capture dock-activation-capture dock-launch-origin-capture dock-folder-stack-capture dock-tooltip-capture dock-tahoe-capture dock-folder-pin-capture dock-chooser-actions-capture dock-chooser-scroll-capture dock-window-badge-capture dock-hover-chooser-capture dock-overflow-capture dock-trash-empty-capture dock-minimize-reaction-capture dock-keyboard-reorder-capture dock-dividers-capture dock-magnify-sweep-capture dock-plate-corners-capture dock-icon-mask-capture check-desktop-names check-no-capture-grab check-design-tokens check-i18n clean install
 
 help:
@@ -77,6 +77,7 @@ help:
 	@echo "  make t17-flatpak-browser-capture — T-17.1c live Flatpak browser file-choose/screenshot/screen-share stills, clip + transcript"
 	@echo "  make t17-visual-floor-capture — T-17.3 visual-floor/reduced-motion chrome stills + gallery review sheet"
 	@echo "  make t17-leak-lock-soak — T-17.5b leak tripwire + lock enforcement transcript"
+	@echo "  make t17-premium-gate-capture — T-17.6 assembled-desktop still + premium-gate sign-off transcript"
 	@echo "  make files-capture — T-10.7 Files slice stills + large-directory scroll trace"
 	@echo "  make osd-dnd-capture — T-11.4b OSD card + menu-bar DND still"
 	@echo "  make portals-capture — T-13.7 Flatpak portal round-trips + picker still"
@@ -340,6 +341,16 @@ t17-visual-floor-capture: build
 t17-leak-lock-soak: cargo-build
 	bash scripts/t17-leak-lock-soak.sh
 
+# T-17.6: the premium-gate sign-off capture. Needs a host Wayland session,
+# `spectacle`, python3+Pillow and the built tree. Captures the assembled nested
+# desktop to docs/captures/t17-premium-gate.png, re-runs the fast headless
+# premium-gate rows (gallery `--strict`, reduced-motion sweep, absent services),
+# and writes the transcript docs/captures/t17-premium-gate.txt. The reviewed
+# sign-off is docs/captures/t17-premium-gate.md; `SKIP_LIVE=1` runs only the
+# headless rows.
+t17-premium-gate-capture: build
+	bash scripts/capture-t17-premium-gate.sh
+
 # T-10.7: the Files slice capture. Needs a host Wayland session, `spectacle`,
 # `ffmpeg`, `gdbus`, Pillow and the built tree; drives the nested demo over the
 # synthetic-input harness and writes the stills, clip and large-directory
@@ -371,7 +382,7 @@ session-capture: build
 
 # T-14.6a: the strange-app zoo run. Needs a host Wayland session, `spectacle`,
 # python3+Pillow, gcc + SDL2/X11 dev headers, an Electron install
-# (ZOO_ELECTRON_DIR), the GNOME Calculator flatpak, and the built tree; writes
+# (ZOO_ELECTRON_DIR), the Calculator flatpak, and the built tree; writes
 # docs/captures/t14-zoo.png and t14-zoo-matrix.{md,json}. Missing apps are
 # recorded as "not run" rather than failing the target.
 zoo-run: build
