@@ -249,6 +249,10 @@ FocusScope {
                         kind: "app"
                         name: row.groupName
                         appId: row.modelData.appId !== undefined ? row.modelData.appId : ""
+                        desktopId: row.modelData.desktopId !== undefined
+                                   ? row.modelData.desktopId
+                                   : (row.modelData.appId !== undefined
+                                      ? row.modelData.appId : "")
                         iconPath: row.modelData.iconPath !== undefined
                                   ? row.modelData.iconPath : ""
                         size: root.rowIconSize
