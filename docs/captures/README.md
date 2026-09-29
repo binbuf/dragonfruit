@@ -150,6 +150,16 @@ whole-desktop still is `t15-breadth.png`, produced by
 `scripts/capture-t15-breadth.sh` (`make t15-breadth-capture`) with every host
 provider absent (no `DF_STATUS_FIXTURE` / `DF_SETTINGS_FIXTURE`).
 
+T-17.5a's premium-gate absent-daemon and crash matrix is produced by
+`scripts/t17-robustness-matrix.sh` (`make t17-robustness-matrix`): the headless
+verification transcript at `t17-robustness-matrix.txt`, and the reviewed matrix
+with the live nested check at `t17-robustness-matrix.md` plus its still
+`t17-robustness-matrix.png`. It re-runs the T-15.16 absence rows and the
+T-16.8a/T-16.8b kill and restart-policy matrices, and adds the session-start
+case: every optional service absent, and the session still reaches Running
+(`services/session/tests/absent_services.rs`; see
+[ADR 0177](../design/adr/0177-absent-services-never-block-session-start.md)).
+
 T-10.7's Files slice capture is produced by `scripts/capture-files.sh`
 (`make files-capture`): the nested demo runs with `DF_DEMO_QT_APP` pointing at
 Files over a scratch fixture tree and a scratch trash store, and it writes

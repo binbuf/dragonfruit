@@ -1,0 +1,253 @@
+T-17.5a absent-daemon and crash matrix verification (premium gate)
+generated: 2026-09-29T13:27:29Z
+build:     build
+state:     headless; no host session, no VM, no real services
+
+================================================================
+## 0. The robustness contract
+================================================================
+
+| Question | Contract | Proof |
+|---|---|---|
+| An optional service is absent at startup | degrade; never block start | absent_services::every_absent_optional_service_degrades_and_never_blocks_start |
+| Any gate service fails to spawn | the next stage still starts | absent_services::an_absent_gate_service_does_not_block_the_next_stage |
+| The compositor (anchor) is absent | the session ends by design | absent_services::only_the_anchor_absence_ends_the_session |
+| A settings provider is absent | every shipped pane mounts and stays live | tst_settings_absence (private bus) |
+| A host daemon is absent | the adapter projects `present: false`, never an error | system-status / adapters `absent` rows |
+| A supervised service is killed | restarts per policy; the session keeps running | kill_matrix |
+| A service leaves any way (0/non-zero/signal) | restart decision per policy | restart_policy_matrix |
+| The compositor dies | the session ends; no restart | kill_matrix, restart_policy_matrix |
+| An app crashes | the desktop and the other app keep running | window_conformance |
+| The lock UI is killed while locked | the session stays locked | session_lock_conformance |
+
+================================================================
+## 1. Session start with every optional service absent (T-17.5a)
+================================================================
+
+The stand-in plan is derived from SessionPlan::default_session with
+every non-anchor program replaced by a binary that does not exist.
+The session must reach Running, each absent service reporting Failed
+exactly once, and only the compositor's absence may end it.
+$ cargo test -p dragonfruit-session --test absent_services -- --nocapture
+   Compiling dragonfruit-session v0.1.0 (/home/user/repos/dragonfruit/services/session)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.29s
+     Running tests/absent_services.rs (target/debug/deps/absent_services-e7b2f10e2707405e)
+
+running 4 tests
+test the_only_gate_in_the_shipped_plan_is_the_compositor ... ok
+test only_the_anchor_absence_ends_the_session ... ok
+test every_absent_optional_service_degrades_and_never_blocks_start ... ok
+test an_absent_gate_service_does_not_block_the_next_stage ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+
+[PASS] session absent-service matrix
+
+================================================================
+## 2. The absent-daemon masking matrix (T-15.16, re-run)
+================================================================
+
+$ ctest --test-dir build -R tst_settings_absence --output-on-failure
+Test project /home/user/repos/dragonfruit/build
+    Start 71: tst_settings_absence
+1/1 Test #71: tst_settings_absence .............   Passed    2.08 sec
+
+100% tests passed out of 1
+
+Total Test time (real) =   2.08 sec
+
+[PASS] Settings absent-provider gate
+$ cargo test -p dragonfruit-system-status absent -- --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.09s
+     Running unittests src/lib.rs (target/debug/deps/dragonfruit_system_status-af949b4845c1a420)
+
+running 23 tests
+test accessibility::tests::an_absent_bus_projects_a_hidden_slot ... ok
+test accounts::tests::writes_while_absent_answer_absence ... ok
+test accounts::tests::an_absent_host_stack_projects_a_hidden_slot ... ok
+test bluetooth::tests::an_absent_daemon_projects_a_hidden_slot ... ok
+test bluetooth::tests::a_denial_and_a_write_while_absent_are_reported ... ok
+test input::tests::an_absent_stack_projects_a_hidden_slot ... ok
+test notifications::tests::a_write_while_absent_reports_absence_and_keeps_the_item_hidden ... ok
+test notifications::tests::an_absent_service_projects_a_hidden_slot ... ok
+test printers::tests::a_host_with_only_printers_keeps_the_scanner_half_absent ... ok
+test printers::tests::an_absent_host_stack_projects_a_hidden_slot ... ok
+test printers::tests::writes_while_absent_answer_absence ... ok
+test privacy::tests::an_absent_store_projects_a_hidden_slot ... ok
+test privacy::tests::writes_while_absent_answer_absence ... ok
+test storage::tests::a_denial_and_a_write_while_absent_are_reported ... ok
+test storage::tests::an_absent_daemon_projects_a_hidden_slot ... ok
+test tests::an_absent_daemon_projects_a_hidden_wifi_slot ... ok
+test tests::an_absent_daemon_routing_write_reports_absence ... ok
+test tests::an_absent_daemon_write_reports_absence_and_hides ... ok
+test tests::an_absent_upower_hides_the_battery_slot ... ok
+test updates::tests::an_absent_host_stack_projects_a_hidden_slot ... ok
+test updates::tests::writes_while_absent_answer_absence ... ok
+test vpn::tests::a_write_while_absent_reports_absence_and_hides ... ok
+test vpn::tests::an_absent_daemon_projects_a_hidden_slot ... ok
+
+test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 61 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/debug/deps/dragonfruit_system_status-79217a3d5a494d06)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/accessibility.rs (target/debug/deps/accessibility-d38f04f3abcf26d8)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/accounts.rs (target/debug/deps/accounts-26195cd85f9e3802)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+     Running tests/bluetooth.rs (target/debug/deps/bluetooth-8a6ff3eda060f5c0)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/host.rs (target/debug/deps/host-3d9c540261eca2b4)
+
+running 2 tests
+test an_absent_daemon_hides_both_items_and_never_errors ... ok
+test the_absent_daemon_masking_matrix_hides_only_the_masked_item ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s
+
+     Running tests/input.rs (target/debug/deps/input-9e1d8655ef2410b9)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/printers.rs (target/debug/deps/printers-25eb2f2fe7106f68)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/privacy.rs (target/debug/deps/privacy-88526fa2cb241924)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/storage.rs (target/debug/deps/storage-008c942b45e0ea11)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/updates.rs (target/debug/deps/updates-d108ec306d43dac8)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/vpn.rs (target/debug/deps/vpn-dae78bd0125df029)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+
+[PASS] bridge host adapter absence
+$ cargo test -p dragonfruit-system-adapters --test subscription absent -- --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running tests/subscription.rs (target/debug/deps/subscription-892d09257d265ecd)
+
+running 1 test
+test an_absent_daemon_at_startup_is_hidden_and_never_errors ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+
+[PASS] generic adapter absence
+
+================================================================
+## 3. The crash/kill matrix (T-16.8a/T-16.8b, re-run)
+================================================================
+
+Every restartable shipped service is killed with a real SIGKILL and
+its documented recovery asserted; the restart policy is crossed with
+every exit kind, and compositor death ends the session for all three.
+$ cargo test -p dragonfruit-session --test kill_matrix -- --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.06s
+     Running tests/kill_matrix.rs (target/debug/deps/kill_matrix-f91e9ffe69c6795b)
+
+running 9 tests
+test the_kill_matrix_plan_matches_the_shipped_restart_policies ... ok
+test the_restartable_set_is_exactly_the_shipped_services ... ok
+test killing_the_compositor_ends_the_session_and_stops_everything_else ... ok
+test killing_an_app_is_a_client_exit_not_a_session_event ... ok
+test killing_the_portal_backend_restarts_it_and_keeps_the_session ... ok
+test killing_settingsd_restarts_it_and_keeps_the_session ... ok
+test killing_the_notification_service_restarts_it_and_keeps_the_session ... ok
+test killing_the_shell_lock_ui_restarts_it_and_keeps_the_session ... ok
+test every_restartable_service_restarts_in_place_and_keeps_the_session ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.70s
+
+
+[PASS] session kill matrix
+$ cargo test -p dragonfruit-session --test restart_policy_matrix -- --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.06s
+     Running tests/restart_policy_matrix.rs (target/debug/deps/restart_policy_matrix-e614ec76859efab2)
+
+running 3 tests
+test the_shipped_anchor_is_the_compositor_and_is_never_restartable ... ok
+test the_compositor_exit_ends_the_session_for_every_exit_kind ... ok
+test restart_policy_matrix_matches_the_documented_decisions ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s
+
+
+[PASS] restart policy matrix
+
+================================================================
+## 4. App crash and the lock UI's fail-secure kill
+================================================================
+
+A hard-closed app client leaves the compositor and the survivor
+running; hard-closing the lock client's socket must leave the
+session locked, never unlocked.
+$ cargo test -p dragonfruit-compositor --test window_conformance a_crashed_app_leaves_the_compositor_and_the_other_app_running -- --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.11s
+     Running tests/window_conformance.rs (target/debug/deps/window_conformance-8434b6c15b15e2c4)
+
+running 1 test
+test a_crashed_app_leaves_the_compositor_and_the_other_app_running ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 36 filtered out; finished in 0.03s
+
+
+[PASS] compositor app-crash
+$ cargo test -p dragonfruit-compositor --test session_lock_conformance locked_input_targets_the_lock_ui_and_survives_its_death -- --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.12s
+     Running tests/session_lock_conformance.rs (target/debug/deps/session_lock_conformance-c9d12c54def65052)
+
+running 1 test
+test locked_input_targets_the_lock_ui_and_survives_its_death ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.02s
+
+
+[PASS] lock kill-resistance
+
+================================================================
+## 5. Live/VM half (not automated here)
+================================================================
+
+A real kill -9 of the shipped binaries under a running session, and
+stopping real daemons in a VM, is the design's real-hardware check.
+No VM and no free session are available in CI, so the live nested
+desktop check is recorded in docs/captures/t17-robustness-matrix.md;
+the per-daemon live matrix remains docs/captures/t15-absence-matrix.md
+and the live kill drill docs/captures/t16-kill-matrix.md.

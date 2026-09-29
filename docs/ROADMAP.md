@@ -453,7 +453,7 @@ just the forward group with
 - [x] T153 — T-17.1b Workspace, Mission Control, and app-switch verification → [tasks/153-t-17.1b-workspace-overview-switcher-verification.md](tasks/153-t-17.1b-workspace-overview-switcher-verification.md)
 - [x] T154 — T-17.1c Flatpak/browser end-to-end verification → [tasks/154-t-17.1c-flatpak-browser-verification.md](tasks/154-t-17.1c-flatpak-browser-verification.md)
 - [x] T155 — T-17.3 Visual floor and reduced-motion sign-off → [tasks/155-t-17.3-visual-floor-and-reduced-motion-sign-off.md](tasks/155-t-17.3-visual-floor-and-reduced-motion-sign-off.md)
-- [ ] T156 — T-17.5a Absent-daemon and crash matrix verification → [tasks/156-t-17.5a-absent-daemon-and-crash-matrix.md](tasks/156-t-17.5a-absent-daemon-and-crash-matrix.md)
+- [x] T156 — T-17.5a Absent-daemon and crash matrix verification → [tasks/156-t-17.5a-absent-daemon-and-crash-matrix.md](tasks/156-t-17.5a-absent-daemon-and-crash-matrix.md)
 - [ ] T157 — T-17.5b Leak and lock enforcement verification → [tasks/157-t-17.5b-leak-and-lock-enforcement-verification.md](tasks/157-t-17.5b-leak-and-lock-enforcement-verification.md)
 - [ ] T158 — T-17.6 Unfamiliar-user test and sign-off report → [tasks/158-t-17.6-unfamiliar-user-test-and-sign-off-report.md](tasks/158-t-17.6-unfamiliar-user-test-and-sign-off-report.md)
 
@@ -650,11 +650,11 @@ This plan restarts at T-01, so a legacy "T-13" and a new "T-13" are different
 tickets; use this table to translate.
 
 <!-- symphony:status -->
-**Pipeline status** — updated 2026-09-29T13:22:15Z · 198/208 done
+**Pipeline status** — updated 2026-09-29T13:30:50Z · 199/208 done
 
-- Completed: T01, T02, T03, T04, T05, T06, T07, T08, T09, T10, T11, T12, T13, T14, T15, T16, T17, T18, T19, T20, T21, T22, T23, T24, T25, T26, T27, T28, T29, T30, T31, T32, T33, T34, T35, T36, T37, T38, T39, T40, T41, T42, T43, T44, T45, T46, T47, T48, T49, T50, T51, T52, T53, T54, T55, T56, T57, T58, T59, T60, T61, T62, T63, T64, T65, T66, T67, T68, T69, T70, T71, T72, T73, T74, T75, T76, T77, T78, T79, T80, T81, T82, T83, T84, T85, T86, T87, T88, T89, T90, T91, T92, T93, T94, T95, T96, T97, T98, T99, T100, T101, T102, T103, T104, T105, T106, T107, T108, T109, T110, T110a, T110b, T110c, T110d, T110e, T110f, T110g, T110h, T110i, T110j, T110k, T110l, T110m, T110n, T110o, T110p, T110q, T110r, T110s, T110t, T110u, T110v, T110x, T110y, T110z, T110w, T172, T173, T174, T175, T111, T112, T113, T114, T115, T116, T117, T118, T119, T120, T121, T122, T123, T124, T125, T126, T127, T128, T129, T130, T131, T132, T133, T134, T135, T136, T137, T138, T139, T140, T141, T142, T143, T144, T145, T146, T147, T148, T149, T150, T151, T151a, T176a, T176b, T176c, T176d, T177, T178, T159, T160, T161, T169, T170, T171, T152, T153, T154, T155
+- Completed: T01, T02, T03, T04, T05, T06, T07, T08, T09, T10, T11, T12, T13, T14, T15, T16, T17, T18, T19, T20, T21, T22, T23, T24, T25, T26, T27, T28, T29, T30, T31, T32, T33, T34, T35, T36, T37, T38, T39, T40, T41, T42, T43, T44, T45, T46, T47, T48, T49, T50, T51, T52, T53, T54, T55, T56, T57, T58, T59, T60, T61, T62, T63, T64, T65, T66, T67, T68, T69, T70, T71, T72, T73, T74, T75, T76, T77, T78, T79, T80, T81, T82, T83, T84, T85, T86, T87, T88, T89, T90, T91, T92, T93, T94, T95, T96, T97, T98, T99, T100, T101, T102, T103, T104, T105, T106, T107, T108, T109, T110, T110a, T110b, T110c, T110d, T110e, T110f, T110g, T110h, T110i, T110j, T110k, T110l, T110m, T110n, T110o, T110p, T110q, T110r, T110s, T110t, T110u, T110v, T110x, T110y, T110z, T110w, T172, T173, T174, T175, T111, T112, T113, T114, T115, T116, T117, T118, T119, T120, T121, T122, T123, T124, T125, T126, T127, T128, T129, T130, T131, T132, T133, T134, T135, T136, T137, T138, T139, T140, T141, T142, T143, T144, T145, T146, T147, T148, T149, T150, T151, T151a, T176a, T176b, T176c, T176d, T177, T178, T159, T160, T161, T169, T170, T171, T152, T153, T154, T155, T156
 - Blocked: none
 - Failed: none
-- Remaining: T156, T157, T158, T162, T163, T164, T165, T166, T167, T168
-- Last finished: T155 — done · Visual floor signed off light/dark with a scripted single-session capture + gallery review sheets and reduced-motion passing (sweep 3/3, goldens 84/84, e2e green); the GPU-blur flat-tone approximation is explicitly waived per ADR 0013/0122.
+- Remaining: T157, T158, T162, T163, T164, T165, T166, T167, T168
+- Last finished: T156 — done · T-17.5a verified absent-daemon degradation and the crash/kill matrix on the release tree, adding session-start absence coverage (4 tests) and a premium-gate transcript; e2e green, live nested check clean.
 <!-- /symphony:status -->

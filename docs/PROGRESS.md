@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(168 earlier sections omitted)_
+_(169 earlier sections omitted)_
 
-- **T132 — T-15.11b Users and Groups pane and tile**: **State: done.** The Settings `Users & Groups` pane and the Control Center; `services/system-status/src/accounts.rs` (new) — `AccountsHost<S>` (refresh/
 - **T133 — T-15.12a Printers and Scanners adapter**: **State: done.** New workspace crate `dragonfruit-printer-adapter`; `services/printer-adapter/src/source.rs` — `PrinterState` (CUPS `3`/`4`/`5` +
 - **T134 — T-15.12b Printers and Scanners pane and tile**: **State: done.** The Settings `Printers & Scanners` pane and the Control Center; `services/system-status/src/printers.rs` (new) — `PrintersHost<S>` (refresh/
 - **T135 — T-15.13a Privacy and Security adapter**: **State: done.** New workspace crate `dragonfruit-privacy-adapter`; `services/privacy-adapter/src/source.rs` — `AppPermissionData {app,
@@ -43,7 +42,8 @@ _(168 earlier sections omitted)_
 - **T169 — T-12.6a Display-manager session selection and optional autologin**: **State: done.** The display-manager session-selection seam landed; T-12.6b; `tools/dragonfruit-dev/src/session_selector.rs` (new, registered as `mod
 - **T170 — T-12.6b Real-session round-trip and "Quit to <previous desktop>"**: **State: done (automated half); real-DM validation open (hardware; `services/session/src/dev_session.rs` (new) — the single state-file contract
 - **T171 — T-12.6c Second-VT dev harness and runbook**: **State: done (automated half); the real second-VT cycle is open on the; `tools/dragonfruit-dev/src/second_vt.rs` (new) — pure `LogindSession`
-- **T155 — T-17.3 Visual floor and reduced-motion sign-off**: **State: done (agent half; the human sign-off is batched at the track; `scri
+- **T155 — T-17.3 Visual floor and reduced-motion sign-off**: **State: done (agent half; the human sign-off is batched at the track; `scripts/capture-t17-visual-floor.sh` (`make t17-visual-floor-capture`) — one
+- **T156 — T-17.5a Absent-daemon and crash matrix verification**: **State: done.** The premium gate's robustness contract is re-verifi
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -15632,3 +15632,61 @@ Commands / gotchas for later:
   X11/Qt SSD clients (see gotcha above); add it to a future nav capture so the
   compositor popup material has a live still, not only the component goldens.
 - **T-17.4 verifies performance** (the material ladder and frame budget).
+
+## T156 — T-17.5a Absent-daemon and crash matrix verification
+
+**State: done.** The premium gate's robustness contract is re-verified on the
+release tree and the missing case — a service whose program cannot be spawned —
+is now covered: every optional absence degrades and **nothing blocks session
+start**, an absent gate never deadlocks the next stage, only the compositor's
+absence ends the session, and the crash/kill + restart-policy matrices re-run
+green. `make t17-robustness-matrix` all rows PASS, `cargo test -p
+dragonfruit-session --test absent_services` 4/4, `make e2e` exit 0 (133
+`test result: ok`, 0 failed), `fmt`/`clippy` clean, live nested capture +
+vision read clean.
+
+Real paths:
+
+- `services/session/tests/absent_services.rs` (new, 4 tests) — the stand-in
+  plan derives from `SessionPlan::default_session`, replacing every non-anchor
+  program with `dragonfruit-definitely-absent-service-xyz` (a guaranteed
+  `ENOENT`) and the anchor with `sleep 30`. Tests:
+  `the_only_gate_in_the_shipped_plan_is_the_compositor`,
+  `every_absent_optional_service_degrades_and_never_blocks_start`,
+  `an_absent_gate_service_does_not_block_the_next_stage`,
+  `only_the_anchor_absence_ends_the_session`.
+- `scripts/t17-robustness-matrix.sh` + `make t17-robustness-matrix` (new) —
+  re-runs the session absence suite, the T-15.16 Settings/adapter absence rows,
+  the T-16.8a/T-16.8b kill and restart-policy matrices, and the app-crash/lock
+  kill-resistance rows into `docs/captures/t17-robustness-matrix.txt`.
+- `docs/captures/t17-robustness-matrix.{txt,md,png}` (new).
+- `docs/design/adr/0177-absent-services-never-block-session-start.md` (new);
+  `docs/design/11-session-and-dev-workflow.md` new section; `docs/captures/README.md`.
+
+Commands / gotchas for later:
+
+- **The supervisor's "absence can't block" rule is two lines of code.**
+  `supervisor.rs`: a spawn failure is `ServiceState::Failed` once and is never
+  retried; `stage_ready` withholds a stage only while a `gate` service is
+  `Running && !ready`. An absent gate is already non-pending, so the next stage
+  starts. `SessionPlan::default_session` has exactly one `gate` and one
+  `ends_session` service (the compositor); the new test pins both.
+- **`make e2e` runs `cargo test -p dragonfruit-session`**, so
+  `absent_services.rs` is already part of the gate — no new e2e wiring needed.
+  e2e was 132 `test result: ok`; it is now **133** (the new test binary).
+- **The T-17.5a script depends on `build`** (it runs `ctest -R
+  tst_settings_absence`); the cargo rows alone work with `cargo-build` only.
+- **`make lint` is still red only at the 15 pre-existing
+  `check-desktop-names` hits**; `fmt-check`/`clippy` are clean.
+- **Live check**: `make demo --socket-name dragonfruit-t156`, wait for the
+  socket, `sleep 18`, then `spectacle -b -n -f -o /tmp/...png`. Downscale the
+  3840x2160 host still to 1920x1080 for the committed capture. The nested demo
+  raises no window; a whole-screen capture is enough for a no-surface task.
+
+### Follow-ups
+
+- **Real-binary/VM robustness drill (T-159…T-161 hardware rail).** A real
+  `kill -9` of the shipped binaries under a live session, and stopping real
+  daemons in a VM, remain manual (no VM, no free live session on this host),
+  same as T-15.16/T-16.8a. The headless halves are green.
+- **T-17.5b verifies leaks and lock enforcement; T-17.6 is the human sign-off.**
