@@ -92,10 +92,14 @@ every task un-completable.
 
 The 186 one-session tasks below are the executable sequence. symphony walks them in
 file order, runs each in a fresh session, verifies with `make e2e` and commits.
-The 10 `[hw]` tasks (DRM/logind, driver matrix, suspend soak, clean-VM packaging)
-are collected into the final Hardware rail phase so the nested pipeline runs to
-completion unattended; sweep them on a machine with a seat or a clean VM with
-`./.symphony/symphony run --from T159`.
+The hardware-dependent units are no longer all parked at the end: the real-session
+bring-up and display-manager switch harness (T159…T161 and T169…T171) is moved
+forward as Phase 16.5 so the desktop can be installed and used as a primary
+session early, then returned from cleanly. The remaining `[hw]` units (driver
+matrix, suspend soak, clean-VM packaging, DRM full-loop) stay in the final Hardware
+rail phase. Every one of them still needs a machine with a seat or a clean VM; run
+just the forward group with
+`./.symphony/symphony run --only T159,T160,T161,T169,T170,T171`.
 
 ## Phase 1 — T-01 Loop v0: window controls
 
@@ -400,6 +404,29 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 - [x] T151 — T-16.8b Compositor-death behavior and restart-policy docs → [tasks/151-t-16.8b-compositor-death-and-restart-policy.md](tasks/151-t-16.8b-compositor-death-and-restart-policy.md)
 - [x] T151a — T-16.12 Synthetic chrome pointer injection timestamps → [tasks/151a-t-16.12-chrome-pointer-injection-timestamps.md](tasks/151a-t-16.12-chrome-pointer-injection-timestamps.md)
 
+## Phase 16.5 — Real-session bring-up + switch harness (moved forward)
+
+> **Moved forward from Phases 18–19** so the desktop can be installed on a real
+> machine and used as the primary session — then returned from cleanly — before
+> the T-17 sign-off gates. T159…T161 are the T-03 hardware bring-up the DRM
+> backend needs (it is written but has never run); T169…T171 are the T-12.6
+> display-manager switch harness. The deliberately non-sequential ids are kept so
+> the pipeline's saved state and existing task files stay valid; `symphony`
+> executes in roadmap order, so these run here despite their higher numbers.
+> Design: [03-real-session-bringup-perf.md](design/tracks/03-real-session-bringup-perf.md) ·
+> [11-session-and-dev-workflow.md](design/11-session-and-dev-workflow.md#the-real-session-dev-harness) ·
+> [ADR 0053](design/adr/0053-real-session-dev-harness.md).
+>
+> These units need a seat or a clean VM. Run only this group with
+> `./.symphony/symphony run --only T159,T160,T161,T169,T170,T171`.
+
+- [ ] T159 — T-03.2 DRM first bring-up → [tasks/159-t-03.2-drm-first-bring-up.md](tasks/159-t-03.2-drm-first-bring-up.md)
+- [ ] T160 — T-03.3 Hardware input validation → [tasks/160-t-03.3-hardware-input-validation.md](tasks/160-t-03.3-hardware-input-validation.md)
+- [ ] T161 — T-03.4 DRM soak, teardown, runbook → [tasks/161-t-03.4-drm-soak-teardown-runbook.md](tasks/161-t-03.4-drm-soak-teardown-runbook.md)
+- [ ] T169 — T-12.6a Display-manager session selection and optional autologin → [tasks/169-t-12.6a-display-manager-session-selection.md](tasks/169-t-12.6a-display-manager-session-selection.md)
+- [ ] T170 — T-12.6b Real-session round-trip and "Quit to <previous desktop>" → [tasks/170-t-12.6b-real-session-round-trip.md](tasks/170-t-12.6b-real-session-round-trip.md)
+- [ ] T171 — T-12.6c Second-VT dev harness and runbook → [tasks/171-t-12.6c-second-vt-dev-harness.md](tasks/171-t-12.6c-second-vt-dev-harness.md)
+
 ## Phase 17 — T-17 The premium experience gate
 
 - [x] T152 — T-17.1a Nested window loop verification → [tasks/152-t-17.1a-nested-window-loop-verification.md](tasks/152-t-17.1a-nested-window-loop-verification.md)
@@ -412,9 +439,10 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 
 ## Phase 18 — Hardware rail (seat / spare GPU / clean VM)
 
-- [ ] T159 — T-03.2 DRM first bring-up → [tasks/159-t-03.2-drm-first-bring-up.md](tasks/159-t-03.2-drm-first-bring-up.md)
-- [ ] T160 — T-03.3 Hardware input validation → [tasks/160-t-03.3-hardware-input-validation.md](tasks/160-t-03.3-hardware-input-validation.md)
-- [ ] T161 — T-03.4 DRM soak, teardown, runbook → [tasks/161-t-03.4-drm-soak-teardown-runbook.md](tasks/161-t-03.4-drm-soak-teardown-runbook.md)
+> T159…T161 and T169…T171 moved forward to Phase 16.5 with the switch harness;
+> this phase keeps the remaining hardware-only units (driver matrix, suspend
+> soak, packaging, DRM full-loop, packaged-build perf re-measure).
+
 - [ ] T162 — T-16.4 Suspend/resume soak → [tasks/162-t-16.4-suspend-resume-soak.md](tasks/162-t-16.4-suspend-resume-soak.md)
 - [ ] T163 — T-16.5 Graphics driver matrix → [tasks/163-t-16.5-graphics-driver-matrix.md](tasks/163-t-16.5-graphics-driver-matrix.md)
 - [ ] T164 — T-16.9 Fedora packaging and CI → [tasks/164-t-16.9-fedora-packaging-and-ci.md](tasks/164-t-16.9-fedora-packaging-and-ci.md)
@@ -423,21 +451,13 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
 - [ ] T167 — T-17.2 DRM full-loop verification → [tasks/167-t-17.2-drm-full-loop-verification.md](tasks/167-t-17.2-drm-full-loop-verification.md)
 - [ ] T168 — T-17.4 Performance budget verification → [tasks/168-t-17.4-performance-budget-verification.md](tasks/168-t-17.4-performance-budget-verification.md)
 
-## Phase 19 — T-12.6 real-session dev harness (appended)
-
-> Appended at 169–171 so they run after the hardware rail (T-159…T-161), which
-> they need to validate. Design: [11-session-and-dev-workflow.md](design/11-session-and-dev-workflow.md#the-real-session-dev-harness) ·
-> [ADR 0053](design/adr/0053-real-session-dev-harness.md).
-
-- [ ] T169 — T-12.6a Display-manager session selection and optional autologin → [tasks/169-t-12.6a-display-manager-session-selection.md](tasks/169-t-12.6a-display-manager-session-selection.md)
-- [ ] T170 — T-12.6b Real-session round-trip and "Quit to <previous desktop>" → [tasks/170-t-12.6b-real-session-round-trip.md](tasks/170-t-12.6b-real-session-round-trip.md)
-- [ ] T171 — T-12.6c Second-VT dev harness and runbook → [tasks/171-t-12.6c-second-vt-dev-harness.md](tasks/171-t-12.6c-second-vt-dev-harness.md)
-
 ## Delivery order (unchanged in intent)
 
 1. **Make the loop real** — T-01, T-02.
 2. **Prove it on hardware early** — T-03 (hardware rail; never blocks the
-   nested path).
+   nested path). The real-session bring-up and display-manager switch harness
+   (T159…T161 + T169…T171) is promoted to Phase 16.5 so the desktop can be
+   driven as a primary session before the T-17 sign-off gates.
 3. **Make it look right** — T-04.
 4. **Finish the loop** — T-05, T-06.
 5. **Make the chrome live** — T-07 … T-11.
@@ -460,7 +480,12 @@ completion unattended; sweep them on a machine with a seat or a clean VM with
   any real session.
 - **No hardware on the nested critical path.** The old plan had T-12 depend on
   T-03 and therefore T-13…T-17 all sit behind a seat that this host does not
-  have. T-12 now develops nested-first; only the DRM capture is on the rail.
+  have. T-12 now develops nested-first; only the DRM capture is on the rail. The
+  real-session bring-up + DM switch harness (T159…T161 + T169…T171) is
+  deliberately promoted to Phase 16.5: it needs a seat, but it is the shortest
+  path to installing and using the desktop as the primary session, so it no
+  longer waits behind the T-17 gate
+  ([ADR 0053](design/adr/0053-real-session-dev-harness.md)).
 - **The shipped default before the gate, right after the Dock.** T-18 now runs
   immediately after the Dock experience addendum and before T-15/T-16, so the
   bundled original default (`assets/graphics/wallpapers/Default.jpg`) and the
