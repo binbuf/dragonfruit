@@ -87,7 +87,7 @@ every task un-completable.
 | [T-16](design/tracks/16-platform-polish-packaging.md) | Platform polish + packaging | 15 | multi-monitor, scaling, soak, a11y, i18n, packages [hw] |
 | [T-17](design/tracks/17-premium-gate.md) | The premium experience gate | 9 | the full loop on nested + DRM, at the visual floor |
 | [T-18](design/tracks/18-wallpaper-content-provider.md) | Wallpaper content provider | 4 | shipped original default; Featured fills from Wikimedia when the pane is open; offline keeps the shipped default |
-| [T-19](design/tracks/19-desktop-affordances.md) | Desktop affordances — icon system, Apps drawer, desktop items | 3 | Phosphor category tiles, the Applications overlay, desktop files with mouse multi-select |
+| [T-19](design/tracks/19-desktop-affordances.md) | Desktop affordances — icon system, Apps drawer, desktop items | 6 | Phosphor icon language, the Applications overlay, desktop files with mouse multi-select |
 
 ## Work units (strict order)
 
@@ -409,13 +409,18 @@ just the forward group with
 
 > **Moved up from the post-premium-gate backlog** (new track **T-19**) so the
 > desktop feels like a desktop on first login, before the real-session bring-up.
-> The ids T176–T178 are kept so the pipeline's saved state and existing task
-> files stay valid; `symphony` executes in roadmap order, so these run here.
-> Design: [19-desktop-affordances.md](design/tracks/19-desktop-affordances.md)
+> The icon language is one foundation (T-19.1a) plus three migrations
+> (T-19.1b/c/d); the ids T176a–T178 are kept so the pipeline's saved state and
+> existing task files stay valid. `symphony` executes in roadmap order, so these
+> run here. Design:
+> [19-desktop-affordances.md](design/tracks/19-desktop-affordances.md)
 > · references [macos/AppDrawer.md](reference/macos/AppDrawer.md) and
 > [macos/Desktop1.md](reference/macos/Desktop1.md).
 
-- [ ] T176 — T-19.1 Phosphor icon library and Settings category icon → [tasks/176-t-19.1-phosphor-icons-and-settings-category-icon.md](tasks/176-t-19.1-phosphor-icons-and-settings-category-icon.md)
+- [ ] T176a — T-19.1a Vendor Phosphor, QML resource plumbing, glyph primitive → [tasks/176a-t-19.1a-phosphor-vendor-and-icon-primitive.md](tasks/176a-t-19.1a-phosphor-vendor-and-icon-primitive.md)
+- [ ] T176b — T-19.1b System Settings category style → [tasks/176b-t-19.1b-system-settings-category-style.md](tasks/176b-t-19.1b-system-settings-category-style.md)
+- [ ] T176c — T-19.1c Menu-bar icon migration to Phosphor → [tasks/176c-t-19.1c-menu-bar-icon-migration.md](tasks/176c-t-19.1c-menu-bar-icon-migration.md)
+- [ ] T176d — T-19.1d Dock Files tile and first-party app icons → [tasks/176d-t-19.1d-dock-and-app-icon-migration.md](tasks/176d-t-19.1d-dock-and-app-icon-migration.md)
 - [ ] T177 — T-19.2 Applications drawer → [tasks/177-t-19.2-apps-drawer.md](tasks/177-t-19.2-apps-drawer.md)
 - [ ] T178 — T-19.3 Desktop items and mouse selection → [tasks/178-t-19.3-desktop-items-and-mouse-selection.md](tasks/178-t-19.3-desktop-items-and-mouse-selection.md)
 
