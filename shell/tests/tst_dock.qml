@@ -61,6 +61,14 @@ Item {
             return obj;
         }
 
+        // The magnified profile engages and releases with the Dock hover ease
+        // (T-14.7aa): entering/leaving the Dock grows and shrinks the bubble
+        // instead of snapping. Tests that assert settled magnified geometry
+        // wait out the animation first.
+        function waitForMagnify() {
+            wait(Theme.motion.dockHover.fullDuration + 60);
+        }
+
         function app(id, name, running) {
             return { id: id, appId: id, name: name, kind: "pinned",
                      running: running === true, pinned: true,
@@ -362,6 +370,7 @@ Item {
             var base = dock._baseline.centers[1];
             dock.pointerAlong = base;
             waitForRendering(stage);
+            waitForMagnify();
             compare(dock.magnifying, true);
             var layout = dock.layout;
             // The hovered entry reaches the peak size.
@@ -369,6 +378,88 @@ Item {
             // The neighbour grows less than the hovered entry.
             verify(layout[0].iconSize > dock.iconSize);
             verify(layout[0].iconSize < layout[1].iconSize);
+        }
+
+        // The reference zoom bubble (Dock_Tile_Mouseover.png, T-14.7aa): a
+        // quadratic falloff that keeps ~90 % of the peak effect one tile away,
+        // ~55-60 % two tiles away, and reaches zero by ~4 icon widths. This
+        // pins the *profile shape*, not a peak value (the peak is the
+        // user-tuned `magnification`).
+        function test_magnification_profile_matches_the_reference_bubble() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, magnification: 1.0,
+                entries: [ app("a", "A", true), app("b", "B", true),
+                           app("c", "C", true), app("d", "D", true),
+                           app("e", "E", true), app("f", "F", true) ]
+            });
+            dock.pointerAlong = dock._baseline.centers[2];
+            waitForRendering(stage);
+            waitForMagnify();
+            var layout = dock.layout;
+            var peak = layout[2].iconSize - dock.iconSize;
+            verify(peak > 0, "the anchored tile reaches the peak");
+            var one = ((layout[1].iconSize - dock.iconSize)
+                       + (layout[3].iconSize - dock.iconSize)) / (2 * peak);
+            var two = ((layout[0].iconSize - dock.iconSize)
+                       + (layout[4].iconSize - dock.iconSize)) / (2 * peak);
+            var three = (layout[5].iconSize - dock.iconSize) / peak;
+            verify(one > 0.85 && one < 0.95, "one tile keeps ~90 % of the peak: " + one);
+            verify(two > 0.50 && two < 0.65, "two tiles keep ~60 % of the peak: " + two);
+            verify(three < 0.2, "three tiles are nearly back at rest: " + three);
+        }
+
+        // Entering and leaving the Dock grows and shrinks the bubble with the
+        // Dock spring instead of snapping (T-14.7aa), and the release keeps
+        // shrinking around the tile the pointer was on.
+        function test_hover_zoom_engages_and_releases() {
+            mouseMove(stage, 640, stage.height - 1);
+            waitForRendering(stage);
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, magnification: 1.0,
+                entries: [ app("a", "A", true), app("b", "B", true), app("c", "C", true) ]
+            });
+            var target = 1;
+            dock.pointerAlong = dock._baseline.centers[target];
+            // Engage: sample the ramp; a snap would jump straight to 1.
+            var sawEngaging = false;
+            for (var e = 0; e < 10; ++e) {
+                wait(Math.floor(Theme.motion.dockHover.fullDuration / 20));
+                if (dock.magnifyEngagement > 0 && dock.magnifyEngagement < 1) {
+                    sawEngaging = true;
+                    break;
+                }
+            }
+            verify(sawEngaging, "the zoom engages with a spring instead of snapping");
+            waitForMagnify();
+            fuzzyCompare(dock.magnifyEngagement, 1, 0.001);
+            var peak = dock.layout[target].iconSize;
+            verify(peak > dock.iconSize);
+            compare(dock.magnifyPointerIndex, target);
+            // Release: sample the shrinking phase — the bubble must stay
+            // around the held tile until the engagement reaches rest.
+            dock.pointerAlong = -1;
+            var shrunkAroundAnchor = false;
+            var sawRelease = false;
+            for (var s = 0; s < 10; ++s) {
+                wait(Math.floor(Theme.motion.dockHover.fullDuration / 20));
+                if (dock.magnifyEngagement <= 0.001)
+                    break;
+                if (dock.magnifyEngagement < 1) {
+                    sawRelease = true;
+                    if (dock.layout[target].iconSize > dock.iconSize)
+                        shrunkAroundAnchor = true;
+                }
+            }
+            verify(sawRelease, "the zoom releases with a spring, not a snap");
+            verify(shrunkAroundAnchor,
+                   "the shrinking bubble stays around the held anchor");
+            waitForMagnify();
+            fuzzyCompare(dock.magnifyEngagement, 0, 0.001);
+            for (var i = 0; i < dock.layout.length; ++i) {
+                if (dock.items[i].kind === "divider")
+                    continue;
+                fuzzyCompare(dock.layout[i].iconSize, dock.iconSize, 0.001);
+            }
         }
 
         function test_anchor_stays_under_pointer() {
@@ -385,24 +476,69 @@ Item {
             verify(Math.abs(anchorCenter - base) < 0.5);
         }
 
-        function test_plate_grows_with_magnification() {
+        function test_plate_height_is_fixed_under_magnification() {
             // Park the pointer clear of the Dock so a leftover hover
             // position from an earlier case cannot seed `pointerAlong`.
             mouseMove(stage, 640, stage.height - 1);
             waitForRendering(stage);
-            // T-14.7b: the plate wraps the magnified row in both axes instead
-            // of leaving the artwork to spill out of a fixed slab.
+            // The background's cross-axis extent never changes: macOS keeps the
+            // bar a constant height and the artwork zooms inside its reserved
+            // band (T-14.7aa). The along axis still wraps the spreading row.
             var dock = make(dockComponent, {
                 width: 1280, height: 160, position: "bottom", magnification: 1.0,
                 entries: [ app("a", "A", true), app("b", "B", true), app("c", "C", true) ]
             });
             var baseW = dock.restingPlateRect.w;
             var baseH = dock.restingPlateRect.h;
+            var baseY = dock.restingPlateRect.y;
             dock.pointerAlong = dock._baseline.centers[1];
             waitForRendering(stage);
+            waitForMagnify();
             compare(dock.magnifying, true);
             verify(dock.plateRect.w > baseW);
-            verify(dock.plateRect.h > baseH);
+            fuzzyCompare(dock.plateRect.h, baseH, 0.001);
+            fuzzyCompare(dock.plateRect.y, baseY, 0.001);
+            // The magnified artwork grows above the bar, into the pre-reserved
+            // band, rather than the bar growing to wrap it.
+            compare(dock.layout[1].y < dock.plateRect.y, true);
+        }
+
+        // The background has exactly two horizontal levels: base and one zoomed
+        // level. It resizes once when the zoom engages and then never again, so
+        // moving the pointer along the Dock cannot resize or translate it; the
+        // height is always the base height (T-14.7aa).
+        function test_plate_has_one_zoomed_level_that_does_not_track_the_pointer() {
+            mouseMove(stage, 640, stage.height - 1);
+            waitForRendering(stage);
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, position: "bottom", magnification: 1.0,
+                entries: [ app("a", "A", true), app("b", "B", true),
+                           app("c", "C", true), app("d", "D", true) ]
+            });
+            var base = dock.restingPlateRect;
+            dock.pointerAlong = dock._baseline.centers[0];
+            waitForMagnify();
+            var zoomed = dock.plateRect;
+            fuzzyCompare(zoomed.h, base.h, 0.001);
+            verify(zoomed.w > base.w, "the bar grows to one zoomed level");
+            fuzzyCompare(zoomed.w, dock.magnifiedPlateLength, 0.001);
+            for (var i = 1; i <= 24; ++i) {
+                dock.pointerAlong = dock._baseline.centers[0]
+                        + (dock._baseline.centers[3] - dock._baseline.centers[0])
+                          * i / 24;
+                wait(16);
+                fuzzyCompare(dock.plateRect.x, zoomed.x, 0.001);
+                fuzzyCompare(dock.plateRect.y, zoomed.y, 0.001);
+                fuzzyCompare(dock.plateRect.w, zoomed.w, 0.001);
+                fuzzyCompare(dock.plateRect.h, zoomed.h, 0.001);
+            }
+            // Release returns to the base level.
+            dock.pointerAlong = -1;
+            waitForMagnify();
+            fuzzyCompare(dock.plateRect.x, base.x, 0.001);
+            fuzzyCompare(dock.plateRect.y, base.y, 0.001);
+            fuzzyCompare(dock.plateRect.w, base.w, 0.001);
+            fuzzyCompare(dock.plateRect.h, base.h, 0.001);
         }
 
         function test_plate_contains_every_entry_rect_under_magnification() {
@@ -421,9 +557,12 @@ Item {
                 if (dock.items[i].kind === "divider")
                     continue;
                 var e = dock.layout[i];
+                // Along the axis the plate wraps the row.
                 verify(e.x >= r.x - 0.001);
                 verify(e.x + e.w <= r.x + r.w + 0.001);
-                verify(e.y >= r.y - 0.001);
+                // Across the axis the plate is fixed, so magnified artwork may
+                // pass the interior edge — but never the reserved band.
+                verify(e.y >= r.y - dock.magnifyBand - 0.001);
                 verify(e.y + e.h <= r.y + r.h + 0.001);
             }
         }
@@ -493,9 +632,15 @@ Item {
             });
             dock.pointerAlong = dock._baseline.centers[1];
             waitForRendering(stage);
-            verify(dock.plateRect.h > dock.restingPlateRect.h);
+            waitForMagnify();
+            // The height never changes — the bar is fixed (T-14.7aa).
+            fuzzyCompare(dock.plateRect.h, dock.restingPlateRect.h, 0.001);
+            fuzzyCompare(dock.plateRect.y, dock.restingPlateRect.y, 0.001);
             dock.pointerAlong = -1;
             waitForRendering(stage);
+            // The profile releases with the Dock hover ease (T-14.7aa); the
+            // along-axis plate returns to rest once the engagement has decayed.
+            waitForMagnify();
             compare(dock.magnifying, false);
             fuzzyCompare(dock.plateRect.x, dock.restingPlateRect.x, 0.001);
             fuzzyCompare(dock.plateRect.y, dock.restingPlateRect.y, 0.001);
@@ -503,12 +648,13 @@ Item {
             fuzzyCompare(dock.plateRect.h, dock.restingPlateRect.h, 0.001);
         }
 
-        function test_plate_grows_under_reduced_motion() {
+        function test_plate_height_is_fixed_under_reduced_motion() {
             // Park the pointer clear of the Dock so a leftover hover
             // position from an earlier case cannot seed `pointerAlong`.
             mouseMove(stage, 640, stage.height - 1);
             waitForRendering(stage);
-            // Reduced motion removes the spring, not the geometry (T-14.7b).
+            // Reduced motion removes the ease, not the geometry: the bar stays
+            // the same height and the row still follows the pointer (T-14.7aa).
             Theme.reducedMotion = true;
             var dock = make(dockComponent, {
                 width: 1280, height: 160, position: "bottom", magnification: 1.0,
@@ -517,7 +663,8 @@ Item {
             dock.pointerAlong = dock._baseline.centers[0];
             waitForRendering(stage);
             compare(dock.magnifying, true);
-            verify(dock.plateRect.h > dock.restingPlateRect.h);
+            fuzzyCompare(dock.plateRect.h, dock.restingPlateRect.h, 0.001);
+            verify(dock.plateRect.w > dock.restingPlateRect.w);
         }
 
         function test_bounce_does_not_grow_the_plate() {
@@ -644,9 +791,13 @@ Item {
             return best;
         }
 
-        // A slow sweep across two tiles: the anchored tile tracks the raw
-        // pointer, stays put on its baseline center, and the plate top never
-        // reverses by more than a device pixel while the pointer moves one way.
+        // A slow sweep across two tiles: the anchored tile tracks the raw pointer and
+// contains the pointer (the layout is a continuous warp around it), and the
+// plate top never reverses by more than a device pixel while the pointer moves
+// one way. The warp replaced the old discrete anchor pin: the anchored tile is
+// only pinned to its baseline centre when the pointer is at that centre, and
+// it follows the pointer proportionally in between, so crossing a tile
+// boundary can never translate the whole row (T-14.7aa).
         function test_slow_sweep_has_a_stable_anchor_and_plate() {
             mouseMove(stage, 640, stage.height - 1);
             waitForRendering(stage);
@@ -665,17 +816,20 @@ Item {
             for (var i = 1; i <= steps; ++i) {
                 var along = start + (end - start) * i / steps;
                 dock.pointerAlong = along;
-                wait(16);
+                // Let the pointer tracker settle before reading the layout:
+                // this pins the anchor and plate rules, not the tracker lag.
+                wait(40);
                 // (a)/(c): the anchor is exactly the tile under the raw pointer,
-                // and that tile keeps its baseline center.
+                // and the anchored tile stays under the pointer (within the
+                // scaled gap the pointer may sit in).
                 var expected = nearestItemIndex(dock, along);
                 if (dock.anchorIndex !== expected)
                     verify(false, "anchor flipped at step " + i + ": "
                            + dock.anchorIndex + " != " + expected);
-                var anchorCenter = dock.layout[expected].x
-                        + dock.layout[expected].iconSize / 2;
-                verify(Math.abs(anchorCenter - base.centers[expected]) < 0.5,
-                       "anchored tile drifted at step " + i);
+                var e = dock.layout[expected];
+                var slack = dock.gap + 2.0;
+                verify(along >= e.x - slack && along <= e.x + e.iconSize + slack,
+                       "anchored tile left the pointer at step " + i);
                 // (b): a one-way sweep must not backtrack the plate top by
                 // more than a device pixel.
                 var top = dock.plateRect.y;
@@ -687,8 +841,59 @@ Item {
                    "plate top reversed by " + maxReversal + " px during a one-way sweep");
         }
 
-        // Reduced motion follows the raw edge exactly: no tracker lag.
-        function test_plate_tracks_raw_under_reduced_motion() {
+        // The magnified layout is a continuous function of the pointer: sweep
+        // across several anchor boundaries in small steps and no tile (and no
+        // plate edge) may jump. The discrete anchor pin this replaced
+        // translated the whole row by a full magnified pitch at every boundary
+        // (~35 px with the reference profile), which is the hover twitch
+        // (T-14.7aa).
+        function test_sweep_across_anchor_boundaries_never_jumps() {
+            mouseMove(stage, 640, stage.height - 1);
+            waitForRendering(stage);
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, position: "bottom", magnification: 1.0,
+                entries: [ app("a", "A", true), app("b", "B", true),
+                           app("c", "C", true), app("d", "D", true) ]
+            });
+            dock.pointerAlong = dock._baseline.centers[0];
+            waitForMagnify();
+            var from = dock._baseline.centers[0] - 20;
+            var to = dock._baseline.centers[3] + 20;
+            // Start settled at the sweep's first position: the first loop step
+            // must only add the sweep's own 1.53 px, not a jump from a parked
+            // pointer far away.
+            dock.pointerAlong = from;
+            waitForMagnify();
+            var prev = [];
+            for (var e0 = 0; e0 < dock.layout.length; ++e0)
+                prev.push(dock.layout[e0].x);
+            var prevPlate = dock.plateRect.x;
+            var maxStep = 0;
+            var maxPlateStep = 0;
+            var steps = 150;
+            for (var i = 1; i <= steps; ++i) {
+                dock.pointerAlong = from + (to - from) * i / steps;
+                wait(16);
+                var l = dock.layout;
+                for (var e = 0; e < l.length; ++e) {
+                    if (dock.items[e].kind === "divider")
+                        continue;
+                    maxStep = Math.max(maxStep, Math.abs(l[e].x - prev[e]));
+                    prev[e] = l[e].x;
+                }
+                maxPlateStep = Math.max(maxPlateStep, Math.abs(dock.plateRect.x - prevPlate));
+                prevPlate = dock.plateRect.x;
+            }
+            verify(maxStep < 8.0,
+                   "a tile jumped " + maxStep + " px in one 1.53 px pointer step");
+            verify(maxPlateStep < 8.0,
+                   "the plate jumped " + maxPlateStep + " px in one 1.53 px pointer step");
+        }
+
+        // The bar's cross-axis edge is fixed, so there is no plate edge signal to
+        // damp: the height is exact at rest, under magnification, and under
+        // reduced motion (T-14.7aa; this replaces the T-14.7y peak-hold test).
+        function test_plate_height_is_exact_under_reduced_motion() {
             mouseMove(stage, 640, stage.height - 1);
             waitForRendering(stage);
             Theme.reducedMotion = true;
@@ -698,8 +903,8 @@ Item {
             });
             dock.pointerAlong = dock._baseline.centers[1];
             waitForRendering(stage);
-            fuzzyCompare(dock.smoothPlateTrack, dock.plateTrackRaw, 0.001);
-            fuzzyCompare(dock.plateRect.y, dock.plateTrackRaw - dock.padding, 0.001);
+            fuzzyCompare(dock.plateRect.y, dock.restingPlateRect.y, 0.001);
+            fuzzyCompare(dock.plateRect.h, dock.restingPlateRect.h, 0.001);
         }
 
         function test_entries_snap_to_layout_after_configure() {
@@ -1213,6 +1418,32 @@ Item {
                          Theme.controls.dock.divider.opacity, 0.0001);
         }
 
+        // The anchored tile of the magnified profile draws no hover wash: the
+        // zoom itself is the hover state (the reference). It lifts off the
+        // plate with the zoom shadow instead (T-14.7aa).
+        function test_zoomed_entry_drops_the_wash_and_lifts() {
+            mouseMove(stage, 640, stage.height - 1);
+            waitForRendering(stage);
+            var dock = make(dockComponent, {
+                width: 1280, height: 160, magnification: 1.0,
+                entries: [ app("a", "A", true), app("b", "B", true), app("c", "C", true) ]
+            });
+            var entry = dock.itemAt(1);
+            var p = entry.mapToItem(stage, entry.width / 2, entry.height / 2);
+            mouseMove(stage, p.x, p.y);
+            waitForRendering(stage);
+            waitForMagnify();
+            compare(entry.hovered, true, "the pointer hovers the tile");
+            compare(entry.zoomed, true, "the anchored tile is the zoomed one");
+            compare(findChild(entry, "hoverHighlight").visible, false,
+                    "the zoom replaces the hover wash");
+            var shadow = findChild(entry, "zoomShadow");
+            verify(shadow !== null && shadow.visible, "the zoomed tile lifts");
+            fuzzyCompare(shadow.blur, Theme.controls.dock.hover.shadowBlur, 0.001);
+            fuzzyCompare(shadow.shadowOpacity,
+                         Theme.controls.dock.hover.shadowOpacity, 0.001);
+        }
+
         function test_plate_rim_is_on_the_interior_edge() {
             // The bright rim faces the screen interior on every Dock position,
             // never the anchored edge.
@@ -1240,6 +1471,44 @@ Item {
             var rPlate = findChild(right, "dockPlate");
             verify(rRim.height > rRim.width, "the right rim is vertical");
             fuzzyCompare(rRim.x, rPlate.plateX, 1.5);
+        }
+
+        // The reference plate is glass, not a slab: a soft interior gloss band
+        // under the hairline rim and a bright lip along the anchored edge
+        // (Dock_Tile_Mouseover.png, T-14.7aa).
+        function test_plate_has_a_gloss_band_and_an_anchored_edge_lip() {
+            var bottom = make(dockComponent, {
+                width: 1280, height: 240, position: "bottom",
+                entries: [ app("a", "A", true) ]
+            });
+            var gloss = findChild(bottom, "dockGloss");
+            var glossStroke = findChild(bottom, "dockGlossStroke");
+            verify(gloss !== null && glossStroke !== null, "the gloss band exists");
+            fuzzyCompare(gloss.opacity, Theme.controls.dock.plate.glossOpacity, 0.001);
+            fuzzyCompare(glossStroke.strokeWidth,
+                         Theme.controls.dock.plate.glossHeight, 0.001);
+            compare(glossStroke.strokeColor, Theme.color.dockRim);
+            var edge = findChild(bottom, "dockEdge");
+            verify(edge !== null, "the anchored-edge lip exists");
+            fuzzyCompare(edge.opacity, Theme.controls.dock.plate.edgeOpacity, 0.001);
+            compare(edge.color, Theme.color.dockRim);
+            fuzzyCompare(edge.height, Theme.controls.dock.plate.edgeHeight, 0.001);
+            verify(edge.width > 0 && edge.width < bottom.panelRect.w);
+            // The lip hugs the anchored (bottom) edge, inset past the corners.
+            // The plate group's origin is the plate itself on a bottom Dock,
+            // so the lip's local y is the plate height.
+            fuzzyCompare(edge.y + edge.height, bottom.panelRect.h, 0.001);
+            fuzzyCompare(edge.x, Theme.controls.dock.radius, 0.001);
+
+            var left = make(dockComponent, {
+                width: 240, height: 800, position: "left",
+                entries: [ app("a", "A", true) ]
+            });
+            var lEdge = findChild(left, "dockEdge");
+            fuzzyCompare(lEdge.width, Theme.controls.dock.plate.edgeHeight, 0.001);
+            fuzzyCompare(lEdge.x, left.panelRect.x, 0.001);
+            fuzzyCompare(lEdge.height,
+                         left.panelRect.h - 2 * Theme.controls.dock.radius, 0.001);
         }
 
         // -- T-14.7z plate corners and frost alignment -----------------------
@@ -1384,21 +1653,32 @@ Item {
                          - (dock.layout[last].x + dock.layout[last].w),
                          dock.paddingAlong, 0.501);
 
-            // Settle anchored on the center tile: the same top/end insets
-            // hold, so the artwork stays evenly padded as the plate grows.
+            // Settle anchored on the center tile: the bar's height is fixed, so
+            // the magnified artwork rises past the interior edge into the
+            // reserved band; the along-axis bar has one zoomed level and the
+            // row stays inside it.
             dock.magnification = 1.0;
             dock.pointerAlong = dock._baseline.centers[1];
-            wait(Theme.motion.dockMagnifyTrack.duration + 160);
+            waitForMagnify();
             var top = Number.MAX_VALUE;
+            var left = Number.MAX_VALUE;
+            var right = -Number.MAX_VALUE;
             for (var i = 0; i < dock.layout.length; ++i) {
                 if (dock.items[i].kind === "divider" || dock.layout[i].w <= 0)
                     continue;
                 top = Math.min(top, dock.layout[i].y);
+                left = Math.min(left, dock.layout[i].x);
+                right = Math.max(right, dock.layout[i].x + dock.layout[i].w);
             }
-            fuzzyCompare(top - dock.panelRect.y, dock.padding, 0.501);
-            fuzzyCompare(dock.panelRect.x + dock.panelRect.w
-                         - (dock.layout[last].x + dock.layout[last].w),
-                         dock.paddingAlong, 0.501);
+            verify(top < dock.panelRect.y,
+                   "magnified artwork rises above the fixed bar");
+            verify(top >= dock.panelRect.y - dock.magnifyBand - 0.001,
+                   "the overhang stays inside the reserved band");
+            // The bar has one zoomed level; the row sits inside it and the
+            // background does not resize with the pointer.
+            verify(left >= dock.panelRect.x - 0.001);
+            verify(right <= dock.panelRect.x + dock.panelRect.w + 0.001);
+            fuzzyCompare(dock.plateRect.w, dock.magnifiedPlateLength, 0.001);
         }
 
         function test_entries_stay_inside_the_plate_at_icon_size_min_and_max() {
@@ -1992,6 +2272,7 @@ Item {
             });
             dock.pointerAlong = dock._baseline.centers[0];
             waitForRendering(stage);
+            waitForMagnify();
             verify(dock.inputRects.length > 1);
         }
 
@@ -2430,11 +2711,14 @@ Item {
             });
             confirmEmptyTrash(dock);
             var pop = findChild(dock, "trashEmptyPopover");
+            // The popover fades in; its children's effective visibility is only
+            // readable once it is visible.
+            tryCompare(pop, "visible", true);
             dock.handleTrashEmptyResult(true, 3, "");
             waitForRendering(stage);
             compare(dock.trashEmptyPhase, "succeeded");
             compare(findChild(pop, "trashEmptySpinner").visible, false);
-            compare(findChild(pop, "trashEmptyCheck").visible, true);
+            tryCompare(findChild(pop, "trashEmptyCheck"), "visible", true);
             compare(findChild(pop, "trashEmptyRetry").visible, false);
             verify(findChild(pop, "trashEmptyStatusText").text.indexOf("3") >= 0);
             verify(pop.accessibleStateText.indexOf("3") >= 0);
@@ -2446,6 +2730,7 @@ Item {
             });
             confirmEmptyTrash(dock);
             var pop = findChild(dock, "trashEmptyPopover");
+            tryCompare(pop, "visible", true);
             dock.handleTrashEmptyResult(false, -1, "The Trash is read-only");
             waitForRendering(stage);
             compare(dock.trashEmptyPhase, "failed");
@@ -2453,7 +2738,7 @@ Item {
             compare(findChild(pop, "trashEmptyCheck").visible, false);
             verify(findChild(pop, "trashEmptyStatusText").text.indexOf("read-only") >= 0);
             var retry = findChild(pop, "trashEmptyRetry");
-            compare(retry.visible, true);
+            tryCompare(retry, "visible", true);
             // Focus moves to the safe action.
             compare(retry.activeFocus, true);
             // Try Again reruns the same action, without re-opening the menu.
@@ -3586,10 +3871,12 @@ Item {
             var base = dock._baseline.centers[1];
             dock.pointerAlong = base;
             waitForRendering(stage);
+            waitForMagnify();
             var halfPeak = dock.layout[1].iconSize;
             verify(halfPeak > dock.iconSize);
             dock.magnification = 1.0;
             waitForRendering(stage);
+            waitForMagnify();
             verify(dock.layout[1].iconSize > halfPeak);
         }
 
@@ -5423,6 +5710,39 @@ Item {
             verify(dock.popoverRect.w > 0,
                    "the hover label is committed through the overlay path");
             verify(dock.popoverRect.h > 0);
+        }
+
+        // The hover label points at its icon with a token tail (T-14.7aa):
+        // the capsule clears the anchor by the tail plus the offset, the tail
+        // is aimed at the anchor centre, and the committed overlay rect covers
+        // the tail so the shell's copy never clips it.
+        function test_tooltip_tail_points_at_the_anchor_and_rides_the_rect() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "Safari", true), app("b", "Music", true) ]
+            });
+            var entry = dock.itemAt(0);
+            dock.entryHoverBegan(dock.entries[0], entry);
+            tryCompare(dock, "tooltipOpen", true);
+            var tooltip = findChild(dock, "dockTooltip");
+            compare(tooltip.tailVisible, true, "the Dock label carries the tail");
+            tryCompare(tooltip, "visible", true);
+            var tail = findChild(tooltip, "tooltipTail");
+            verify(tail !== null && tail.visible, "the tail is drawn");
+            fuzzyCompare(tail.width, Theme.controls.tooltip.tailWidth, 0.001);
+            fuzzyCompare(tail.height, Theme.controls.tooltip.tailHeight, 0.001);
+            // Above placement: the capsule bottom sits `offset + tailHeight`
+            // above the entry, so the tip lands `offset` away from it.
+            fuzzyCompare(tooltip.y + tooltip.height + Theme.controls.tooltip.tailHeight,
+                         entry.y - Theme.controls.tooltip.offset, 0.501);
+            // The tail is aimed at the anchor centre.
+            fuzzyCompare(tooltip.x + tail.x + tail.width / 2,
+                         entry.x + entry.width / 2, 0.501);
+            // The committed overlay rect covers the capsule plus the tail.
+            var rect = dock.tooltipRect;
+            fuzzyCompare(rect.y, tooltip.y, 0.501);
+            fuzzyCompare(rect.h,
+                         tooltip.height + Theme.controls.tooltip.tailHeight, 0.501);
         }
 
         function test_tooltip_reduced_motion_opens_without_a_fade() {

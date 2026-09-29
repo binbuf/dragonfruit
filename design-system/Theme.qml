@@ -318,9 +318,9 @@ QtObject {
             readonly property int radius: 28
             readonly property int indicatorSize: 4
             readonly property int indicatorGap: 8
-            readonly property real magnifyPeak: 1.6
-            readonly property real magnifyPeakMax: 2.2
-            readonly property real magnifyFalloff: 3.0
+            readonly property real magnifyPeak: 1.25
+            readonly property real magnifyPeakMax: 1.5
+            readonly property real magnifyFalloff: 4.1
             readonly property int labelSize: 12
             readonly property int trashSize: 44
             readonly property int edgeMargin: 8
@@ -331,6 +331,10 @@ QtObject {
                 readonly property real fillOpacity: 0.42
                 readonly property real rimOpacity: 0.7
                 readonly property int rimHeight: 1
+                readonly property int glossHeight: 6
+                readonly property real glossOpacity: 0.22
+                readonly property int edgeHeight: 1
+                readonly property real edgeOpacity: 0.5
                 readonly property int borderWidth: 1
                 readonly property real borderOpacity: 0.55
                 readonly property int shadowBlur: 20
@@ -344,6 +348,8 @@ QtObject {
             readonly property var hover: QtObject {
                 readonly property real fillOpacity: 0.18
                 readonly property real radiusRatio: 0.28
+                readonly property int shadowBlur: 10
+                readonly property real shadowOpacity: 0.28
             }
             readonly property var indicator: QtObject {
                 readonly property real opacity: 0.9
@@ -488,11 +494,15 @@ QtObject {
         readonly property var tooltip: QtObject {
             readonly property int dwell: 600
             readonly property int offset: 8
-            readonly property int radius: 10
+            readonly property int radius: 999
             readonly property int paddingH: 8
             readonly property int paddingV: 4
             readonly property int maxWidth: 260
             readonly property int fontSize: 12
+            readonly property int tailWidth: 16
+            readonly property int tailHeight: 6
+            readonly property color rimColor: "#ffffff"
+            readonly property real rimOpacity: 0.5
         }
         readonly property var shadow: QtObject {
             readonly property int layers: 8
@@ -605,6 +615,11 @@ QtObject {
             readonly property int fullDuration: 160
             readonly property int duration: tokens.reducedMotion ? 0 : 160
             readonly property var curve: [0.34, 1.56, 0.64, 1.0, 1.0, 1.0]
+        }
+        readonly property QtObject dockHover: QtObject {
+            readonly property int fullDuration: 160
+            readonly property int duration: tokens.reducedMotion ? 0 : 160
+            readonly property var curve: [0.25, 0.1, 0.25, 1.0, 1.0, 1.0]
         }
         readonly property QtObject dockMagnifyTrack: QtObject {
             readonly property int fullDuration: 100

@@ -24,6 +24,10 @@ Item {
     property bool dragging: false
     // A lifted (dragged) entry scales up and casts a shadow (T-10 section 12).
     property bool lifted: false
+    // The anchored tile of the magnified profile (T-14.7aa). macOS conveys the
+    // hover state with the zoom itself: the tile keeps no static highlight
+    // wash, and it lifts off the plate with a soft shadow.
+    property bool zoomed: false
     // Keyboard navigation focus (T-10 section 20): draws the design-system
     // FocusRing around the artwork.
     property bool keyboardFocused: false
@@ -296,10 +300,12 @@ Item {
         }
     }
 
-    // Hover highlight behind the artwork.
+    // Hover highlight behind the artwork. It yields to the zoom: the magnified
+    // anchored tile is the hover state, so it draws no wash (T-14.7aa).
     Rectangle {
         objectName: "hoverHighlight"
-        visible: root.hovered && !root.dragging && !root.isDivider && !root.isExternal
+        visible: root.hovered && !root.dragging && !root.zoomed
+                 && !root.isDivider && !root.isExternal
         x: root.artworkX
         y: root.artworkY
         width: root.iconSize
@@ -364,6 +370,23 @@ Item {
         height: root.iconSize
         radius: root.tileRadius
         blur: Theme.controls.popover.shadowBlur
+        z: -1
+    }
+
+    // The zoomed (anchored) tile lifts off the plate with a soft, small
+    // shadow — the reference hover state's only extra treatment beyond the
+    // scale (T-14.7aa). It is confined to the one anchored tile.
+    Shadow {
+        objectName: "zoomShadow"
+        visible: root.zoomed
+        x: root.artworkX
+        y: root.artworkY
+        width: root.iconSize
+        height: root.iconSize
+        radius: root.tileRadius
+        level: "low"
+        blur: Theme.controls.dock.hover.shadowBlur
+        shadowOpacity: Theme.controls.dock.hover.shadowOpacity
         z: -1
     }
 

@@ -14435,3 +14435,68 @@ Decisions / gotchas for T-17.2:
   nested logical 1920x1200 maps 1:1 after the active-window crop; if a future
   host reports a different nested scale, the per-window crop boxes need to be
   keyed off the reported scale (same class as the T151a Control Center note).
+
+## T-14.7aa — Dock hover reference polish: bar geometry, zoom profile, and label tail
+
+**State: done.** The Dock's hover state is retuned to
+`docs/reference/macos/Dock_Tile_Mouseover.png` (local-only, never shipped).
+Pixel analysis of the capture (2272x300 at 2x, 2026-09-28) measured the plate,
+the tooltip, and the zoom profile deterministically; the vision markdown's
+"white text on translucent background" tooltip claim is wrong (the capsule is a
+light pill with dark text). Four things changed:
+
+- **The background geometry.** macOS keeps the dock background a constant
+  *height* and gives it exactly two *horizontal* levels — base and one zoomed
+  level — that never vary while the pointer moves along the Dock. `plateRect`
+  now does the same: the cross axis is always the resting `barThickness`, and
+  the along axis is the base length blended to a single `magnifiedPlateLength`
+  by the hover engagement. `magnifiedPlateLength` is the swept union of the
+  fully magnified row at every resting centre, centred on the surface with the
+  end padding, so one fixed bar always contains the row. The T-14.7y
+  plate-edge peak-hold (`plateTrackRaw`/`smoothPlateTrack`/its animation) is
+  deleted: there is no edge signal left to damp, and the declared compositor
+  backdrop panel now changes only on hover engage/release.
+- **The zoom bubble.** The measured profile is a quadratic bubble
+  (`magnifyFalloff` 3.0 → 4.1): ~90 % of the peak effect one tile away, ~55-60 %
+  two, zero by ~4 icon widths. The peak mapping is retuned to the capture's
+  1.245× (`magnifyPeak` 1.6 → 1.25, `magnifyPeakMax` 2.2 → 1.5), so the default
+  hover matches the reference and the magnified artwork stays inside the fixed
+  bar.
+- **Continuous geometry.** The discrete anchor pin translated the whole row by
+  a full magnified pitch at every tile boundary (~20 px with the old profile,
+  ~35 px with the wider reference profile) — the hover twitch a stop-motion
+  sweep exposes. Magnified positions are now a continuous warp: accumulate the
+  row from the resting leading edge, then translate it so the pointer maps to
+  itself through the resting-centre → magnified-centre map.
+- **Motion and hover style.** Entering/leaving eases the profile amplitude with
+  the new `motion.dockHover` token (a CSS-style ease; the magnet spring reaches
+  most of its target in one frame and popped). The anchored tile drops the flat
+  hover wash (the zoom *is* the hover state) and shows a small lift shadow. The
+  plate gains an interior gloss band and an anchored-edge lip. The Tooltip
+  gains an opt-in pointer tail and a pill capsule, used by the Dock.
+
+Reference measurements (2x px): plate height constant at 159 in both the
+resting and hovered captures; hovered tile scale 1.245; tooltip capsule
+276x52 (fill `166,183,211`, top edge `208,232,255`, dark text `25,27,31`), tail
+base ~36 wide x 13 tall pointing at the icon, capsule bottom 32 px above the
+icon; no hover wash (plate pixels beside the hovered tile match beside a
+resting tile, only a ~3 px tile shadow).
+
+Verification: `ctest --test-dir build` 72/72; `./scripts/gen-tokens.py --check`,
+`check-design-tokens.sh`, `i18n-extract.py --check`,
+`check-gallery-snapshots.py --strict`, `check-no-capture-grab.sh` all green.
+`tst_dock` adds the profile-shape, engage/release, single-zoomed-level,
+boundary-continuity, zoomed-wash/shadow, plate-layer, and tooltip-tail cases,
+and updates the magnification-geometry cases to the fixed-bar contract. Live
+captures refreshed with the flat-wallpaper pin (`DF_DEFAULT_WALLPAPER`):
+`t14-dock-tooltip.png`, `t14-dock-tahoe-{dark,light,reduced}.png`,
+`t14-dock-magnify-{left,center,right}-{dark,light}.png`,
+`t14-dock-plate-corners-*.png`, `t14-dock-plate-magnified-*.png`. A stop-motion
+synthetic sweep (23 frames across the row) confirms the plate's top and bottom
+edges are identical in every frame while the icons zoom and move.
+
+Gotcha: the capture drivers detect the nested window by the flat wallpaper
+colour `(33,13,41)`; on a host where the shipped `Default.jpg` resolves, the
+nested session no longer paints it, so the drivers need
+`DF_DEFAULT_WALLPAPER=<flat purple png>` (the dev/test override the shell's
+shipped-default resolver honours) or a detector update.

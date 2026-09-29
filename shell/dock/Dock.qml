@@ -153,6 +153,50 @@ Rectangle {
             dock.smoothPointerAlong = dock.pointerAlong;
         }
     }
+
+    // The pointer and anchor the magnified profile is evaluated at (T-14.7aa).
+    // They hold the last on-Dock value after the pointer leaves, so the
+    // engagement below releases the bubble around the tile the pointer was on
+    // instead of snapping back to the baseline.
+    property real magnifyPointer: -1
+    property int magnifyPointerIndex: -1
+    // The magnified profile's amplitude, 0..1 (T-14.7aa). The pointer drives
+    // the profile *shape* (above); this drives its *engagement*: entering and
+    // leaving the Dock grows and shrinks the bubble with a short, gentle ease
+    // (`motion.dockHover`) rather than a snap. The overshooting magnet spring
+    // (`motion.dockMagnify`) is deliberately not used here: its curve reaches
+    // most of the target in the first frame, which reads as a pop when the
+    // whole row translates with the bubble. Reduced motion collapses the
+    // duration to zero in the token, which keeps the state change legible with
+    // no translation.
+    property real magnifyEngagement: magnifying ? 1.0 : 0.0
+    Behavior on magnifyEngagement {
+        NumberAnimation {
+            duration: Theme.motion.dockHover.duration
+            easing.type: Easing.Bezier
+            easing.bezierCurve: Theme.motion.dockHover.curve
+        }
+    }
+    onSmoothPointerAlongChanged: {
+        // Only follow the tracker while the pointer is on the Dock. When the
+        // pointer leaves, the raw value snaps to -1 and this tracker animates
+        // toward it; the held `magnifyPointer` must not follow that exit slide,
+        // or the release bubble would collapse toward the Dock edge instead of
+        // shrinking around the tile the pointer left.
+        if (dock.pointerAlong >= 0 && dock.smoothPointerAlong >= 0)
+            dock.magnifyPointer = dock.smoothPointerAlong;
+    }
+    onAnchorIndexChanged: {
+        if (dock.anchorIndex >= 0)
+            dock.magnifyPointerIndex = dock.anchorIndex;
+    }
+    // True while the magnified profile is drawn: while the pointer is on the
+    // Dock, and through the engagement release after it leaves. `layout` reads
+    // this instead of `magnifying` so the release frames still shrink the
+    // bubble around the held pointer.
+    readonly property bool magnifyProfile:
+        magnification > 0 && magnifyEngagement > 0.001
+        && magnifyPointer >= 0 && magnifyPointerIndex >= 0
     property bool dragging: false
     // The dragged app entry and its tentative reorder state (T-10 section
     // 12). `dragTargetIndex` is an insertion index in the app region;
@@ -2587,8 +2631,28 @@ Rectangle {
                 || dockTooltip.width <= 0 || dockTooltip.height <= 0)
             return { x: 0, y: 0, w: 0, h: 0 };
         var topLeft = dockTooltip.mapToItem(dock, 0, 0);
-        return { x: topLeft.x, y: topLeft.y,
-                 w: dockTooltip.width, h: dockTooltip.height };
+        var x = topLeft.x;
+        var y = topLeft.y;
+        var w = dockTooltip.width;
+        var h = dockTooltip.height;
+        // The pointer tail paints beyond the capsule on the anchor side
+        // (T-14.7aa); the committed overlay rect must cover it or the shell's
+        // copy clips it off the overlay pass.
+        if (dockTooltip.tailVisible) {
+            var tail = dockTooltip.tailHeight;
+            if (dock.tooltipPlacement === "above")
+                h += tail;
+            else if (dock.tooltipPlacement === "below") {
+                y -= tail;
+                h += tail;
+            } else if (dock.tooltipPlacement === "left")
+                w += tail;
+            else {
+                x -= tail;
+                w += tail;
+            }
+        }
+        return { x: x, y: y, w: w, h: h };
     }
 
     // The union of the open popover and the hover label; the shell commits it
@@ -2715,13 +2779,80 @@ Rectangle {
     }
 
     // --- Per-frame layout ------------------------------------------------
+    // The magnified row for a pointer at `along` with the profile scaled by
+    // `engaged`: the icon sizes, the leading-edge positions laid out from the
+    // resting leading edge, and the continuous pointer warp pin (T-14.7aa).
+    // `layout` calls this every frame; `magnifiedPlateLength` calls it for the
+    // candidate pointers whose union sizes the fixed zoomed bar. One source of
+    // truth for the magnification geometry.
+    function magnifiedRowAt(along, engaged) {
+        var list = items;
+        var n = list.length;
+        var base = _baseline;
+        var peak = iconSize * magnifyPeakFactor;
+        var falloff = magnifyFalloff * iconSize;
+        var sizes = [];
+        var positions = [];
+        var magnifiedCenters = [];
+        var i;
+        for (i = 0; i < n; ++i) {
+            var s = base.sizes[i];
+            if (list[i].kind !== "divider" && list[i].kind !== "external") {
+                var d = Math.abs(base.centers[i] - along);
+                var t = Math.max(0, Math.min(1, 1 - d / falloff));
+                s = iconSize + (peak - iconSize) * engaged * (1 - (1 - t) * (1 - t));
+            }
+            sizes.push(s);
+        }
+        var cursor = base.positions[0];
+        for (i = 0; i < n; ++i) {
+            positions.push(cursor);
+            magnifiedCenters.push(cursor + sizes[i] / 2);
+            if (i < n - 1)
+                cursor += sizes[i]
+                        + scaledGap(sizes[i], sizes[i + 1],
+                                    list[i].kind === "divider",
+                                    list[i + 1].kind === "divider");
+        }
+        // Pin the pointer with a *continuous* warp: map the pointer through the
+        // piecewise-linear resting-centre -> magnified-centre map and translate
+        // the whole row so the warped pointer returns to the real one. Every
+        // position is then a continuous function of the pointer, so crossing a
+        // tile can never translate the row. The previous discrete anchor pin
+        // did exactly that: the magnified pitch is wider than the resting
+        // pitch, so the moment the anchor flipped the next tile snapped from
+        // its pushed-out magnified position back to its resting centre — a
+        // whole-pitch row jump on every boundary (~35 px with this profile).
+        var warped = along;
+        if (along <= base.centers[0]) {
+            warped = magnifiedCenters[0] + (along - base.centers[0]);
+        } else if (along >= base.centers[n - 1]) {
+            warped = magnifiedCenters[n - 1] + (along - base.centers[n - 1]);
+        } else {
+            for (var w = 0; w < n - 1; ++w) {
+                var c0 = base.centers[w];
+                var c1 = base.centers[w + 1];
+                if (along > c0 && along <= c1) {
+                    var f = c1 > c0 ? (along - c0) / (c1 - c0) : 0;
+                    warped = magnifiedCenters[w]
+                           + f * (magnifiedCenters[w + 1] - magnifiedCenters[w]);
+                    break;
+                }
+            }
+        }
+        var shift = along - warped;
+        for (i = 0; i < n; ++i)
+            positions[i] += shift;
+        return { sizes: sizes, positions: positions };
+    }
+
     readonly property var layout: {
         var list = items;
         var n = list.length;
         var base = _baseline;
         var sizes = base.sizes.slice();
         var positions = base.positions.slice();
-        var magnified = magnifying;
+        var magnified = magnifyProfile;
 
         // A drag permutes the app slots (the gap) without reordering the
         // model, so the active DragHandler's delegate survives. The app slots
@@ -2742,31 +2873,16 @@ Rectangle {
         }
 
         if (magnified) {
-            var peak = iconSize * magnifyPeakFactor;
-            var falloff = magnifyFalloff * iconSize;
-            var along = Math.max(0, smoothPointerAlong);
-            for (var i = 0; i < n; ++i) {
-                if (list[i].kind === "divider" || list[i].kind === "external")
-                    continue;
-                var d = Math.abs(base.centers[i] - along);
-                var t = Math.max(0, Math.min(1, 1 - d / falloff));
-                sizes[i] = iconSize + (peak - iconSize)
-                           * (1 - Math.cos(Math.PI * t)) / 2;
-            }
-            var anchor = anchorIndex;
-            positions[anchor] = base.centers[anchor] - sizes[anchor] / 2;
-            for (var r = anchor + 1; r < n; ++r) {
-                positions[r] = positions[r - 1] + sizes[r - 1]
-                        + scaledGap(sizes[r - 1], sizes[r],
-                                    list[r - 1].kind === "divider",
-                                    list[r].kind === "divider");
-            }
-            for (var l = anchor - 1; l >= 0; --l) {
-                positions[l] = positions[l + 1] - sizes[l]
-                        - scaledGap(sizes[l], sizes[l + 1],
-                                    list[l].kind === "divider",
-                                    list[l + 1].kind === "divider");
-            }
+            // The macOS reference profile (Dock_Tile_Mouseover.png, measured
+            // 2026-09-28) is a quadratic bubble: ~90 % of the peak effect one
+            // tile away, ~55 % two tiles away, and zero by ~4 icon widths.
+            // `magnifyEngagement` scales the whole bubble so the zoom grows and
+            // shrinks once as the pointer enters and leaves (T-14.7aa).
+            var along = Math.max(0, magnifyPointer);
+            var engaged = Math.max(0, magnifyEngagement);
+            var row = magnifiedRowAt(along, engaged);
+            sizes = row.sizes;
+            positions = row.positions;
         }
 
         var out = [];
@@ -2845,178 +2961,67 @@ Rectangle {
         };
     }
 
-    // The raw cross-axis magnify edge the plate grows from (T-14.7y): the
-    // entry union edge with launch/attention bounce added back (so a bounce
-    // never pumps the plate) *before* any padding. For a bottom Dock it is the
-    // topmost entry edge, for a right Dock the interior (left) edge, for a
-    // left Dock the interior (right) edge. It is driven by the smoothed
-    // pointer, so it is already low-passed; the peak-hold below removes the
-    // per-tile ripple a per-frame `min()`/`max()` over the peak entry would
-    // otherwise pass on.
-    readonly property real plateTrackRaw: {
-        var l = layout;
-        var n = l.length;
-        var fallback = axisIsX
-                ? restingPlateRect.y + padding
-                : (position === "right" ? restingPlateRect.x + padding
-                                        : restingPlateRect.x + barThickness - padding);
-        if (n === 0)
-            return fallback;
-        var i, b;
-        if (axisIsX) {
-            var minTop = Number.MAX_VALUE;
-            for (i = 0; i < n; ++i) {
-                if (items[i].kind === "divider" || l[i].w <= 0)
+    // The bar's single magnified along-axis length (T-14.7aa). macOS resizes the
+    // dock background horizontally between exactly two levels — base and one
+    // zoomed level — and never varies that size while the pointer moves along
+    // the Dock. The zoomed level is the widest union the magnified row can
+    // reach, measured from the surface centre across the candidate pointers at
+    // every resting centre (the row translates under the pointer, so the fixed
+    // bar must cover the swept extent, not just one position), plus the end
+    // padding. It is centred on the surface, so the base and zoomed levels
+    // share a centre and the bar cannot shift sideways between them.
+    readonly property real magnifiedPlateLength: {
+        var list = items;
+        var n = list.length;
+        if (n === 0 || magnification <= 0)
+            return axisIsX ? restingPlateRect.w : restingPlateRect.h;
+        var base = _baseline;
+        var candidates = [axisCenter];
+        for (var c = 0; c < n; ++c)
+            candidates.push(base.centers[c]);
+        var half = 0;
+        for (var k = 0; k < candidates.length; ++k) {
+            var along = Math.max(0, Math.min(axisLength, candidates[k]));
+            var row = magnifiedRowAt(along, 1.0);
+            for (var i = 0; i < n; ++i) {
+                if (list[i].kind === "divider" || row.sizes[i] <= 0)
                     continue;
-                b = entryBounce(items[i]);
-                minTop = Math.min(minTop, l[i].y + b);
+                half = Math.max(half,
+                                axisCenter - row.positions[i],
+                                row.positions[i] + row.sizes[i] - axisCenter);
             }
-            return minTop === Number.MAX_VALUE ? fallback : minTop;
         }
-        if (position === "right") {
-            var minLeft = Number.MAX_VALUE;
-            for (i = 0; i < n; ++i) {
-                if (items[i].kind === "divider" || l[i].h <= 0)
-                    continue;
-                b = entryBounce(items[i]);
-                minLeft = Math.min(minLeft, l[i].x + b);
-            }
-            return minLeft === Number.MAX_VALUE ? fallback : minLeft;
-        }
-        var maxRight = -Number.MAX_VALUE;
-        for (i = 0; i < n; ++i) {
-            if (items[i].kind === "divider" || l[i].h <= 0)
-                continue;
-            b = entryBounce(items[i]);
-            maxRight = Math.max(maxRight, l[i].x + l[i].w - b);
-        }
-        return maxRight === -Number.MAX_VALUE ? fallback : maxRight;
+        return 2 * half + 2 * paddingAlong;
     }
 
-    // The damped follow of `plateTrackRaw` the live plate reads (T-14.7y). It
-    // is the only filter on the plate edge (the pointer tracker is upstream);
-    // it removes the sub-pixel reversals that made the plate's top edge jitter
-    // up and down. It is a **peak hold**: the edge follows a new deeper peak
-    // (a smaller top) with the short tracking low-pass, and does not move back
-    // toward rest while the pointer is still on the Dock, because the
-    // per-tile magnification profile naturally dips between tiles and those
-    // dips must not reverse the edge. It snaps on a discrete magnification
-    // change (entering/leaving the magnify set) and under reduced motion, so
-    // the plate still grows with magnification and is exact whenever it is not
-    // sweeping. A sub-pixel deadband keeps the last sliver from sticking.
-    property real smoothPlateTrack: plateTrackRaw
-    // The peak ripple that is not allowed to move the edge, in device px.
-    readonly property real plateTrackDeadband: 0.75
-    // True once a magnification session has snapped to its first peak; the
-    // peak hold only applies to the *continuous* follow, so the discrete
-    // entry into magnification is exact (T-14.7y).
-    property bool plateTrackEngaged: false
-    NumberAnimation {
-        id: plateTrackAnimation
-        target: dock
-        property: "smoothPlateTrack"
-        duration: Theme.motion.dockMagnifyTrack.duration
-        easing.type: Easing.Bezier
-        easing.bezierCurve: Theme.motion.dockMagnifyTrack.curve
-    }
-    onPlateTrackRawChanged: {
-        if (!dock.magnifying || Theme.reducedMotion) {
-            plateTrackAnimation.stop();
-            dock.smoothPlateTrack = dock.plateTrackRaw;
-            dock.plateTrackEngaged = false;
-            return;
-        }
-        if (!dock.plateTrackEngaged) {
-            // Discrete entry into magnification: snap to the live peak so the
-            // plate wraps the row on the first frame and the reserved zone and
-            // containment hold.
-            plateTrackAnimation.stop();
-            dock.smoothPlateTrack = dock.plateTrackRaw;
-            dock.plateTrackEngaged = true;
-            return;
-        }
-        // Follow a deeper peak; ignore a shallower raw while the pointer is
-        // still on the Dock (the peak hold), so the edge only ever moves with
-        // the peak, never against it.
-        if (dock.plateTrackRaw < dock.smoothPlateTrack - dock.plateTrackDeadband) {
-            plateTrackAnimation.from = dock.smoothPlateTrack;
-            plateTrackAnimation.to = dock.plateTrackRaw;
-            plateTrackAnimation.restart();
-        }
-    }
-
-    // The visible floating plate: the *live* union of the entry rects (their
-    // magnified sizes included, launch/attention bounce overshoot excluded) plus
-    // the cross and along padding. The anchored edge stays put — the plate
-    // grows into the pre-reserved magnify band — and the result is clamped to
-    // the surface. It is the single source for the plate drawing, the input
-    // region, and the declared backdrop panel rect (T-14.7b). Its magnify edge
-    // is the damped `smoothPlateTrack` (T-14.7y).
+    // The visible floating plate. Its cross-axis extent — the height on a
+    // bottom Dock — is fixed at the resting bar, and its along-axis extent has
+    // only two levels, base and `magnifiedPlateLength`, blended by the hover
+    // engagement: the background grows once when the zoom engages and shrinks
+    // once when it releases, but never tracks the pointer, so moving along the
+    // Dock cannot resize or move the background (T-14.7aa). The plate stays
+    // centred on the surface and is the single source for the plate drawing,
+    // the input region, and the declared backdrop panel rect.
     readonly property var plateRect: {
-        var l = layout;
-        var n = l.length;
-        if (n === 0)
-            return restingPlateRect;
-        var i, r;
+        var engagement = Math.max(0, Math.min(1, magnifyEngagement));
         if (axisIsX) {
-            var minX = Number.MAX_VALUE;
-            var maxX = -Number.MAX_VALUE;
-            for (i = 0; i < n; ++i) {
-                // A divider is a full-cross-axis marker; it must not expand
-                // the plate (T-14.7v). The real entries set the union.
-                if (items[i].kind === "divider")
-                    continue;
-                r = l[i];
-                if (r.w <= 0)
-                    continue;
-                minX = Math.min(minX, r.x);
-                maxX = Math.max(maxX, r.x + r.w);
-            }
-            if (minX > maxX)
-                return restingPlateRect;
-            var bottom = restingPlateRect.y + restingPlateRect.h;
-            var px = minX - paddingAlong;
-            var pw = (maxX - minX) + 2 * paddingAlong;
-            if (px < 0) {
-                pw += px;
-                px = 0;
-            }
-            if (px + pw > width)
-                pw = width - px;
-            var py = Math.max(0, smoothPlateTrack - padding);
-            return { x: px, y: py, w: pw, h: bottom - py };
+            var restingW = restingPlateRect.w;
+            var zoomedW = Math.max(restingW, magnifiedPlateLength);
+            var w = restingW + (zoomedW - restingW) * engagement;
+            if (w >= width)
+                return { x: 0, y: restingPlateRect.y, w: width,
+                         h: restingPlateRect.h };
+            return { x: (width - w) / 2, y: restingPlateRect.y, w: w,
+                     h: restingPlateRect.h };
         }
-        // A vertical plate: the along axis is y; the anchored cross edge is
-        // fixed at the screen edge and the plate grows into the interior band.
-        var minY = Number.MAX_VALUE;
-        var maxY = -Number.MAX_VALUE;
-        for (i = 0; i < n; ++i) {
-            if (items[i].kind === "divider")
-                continue;
-            r = l[i];
-            if (r.h <= 0)
-                continue;
-            minY = Math.min(minY, r.y);
-            maxY = Math.max(maxY, r.y + r.h);
-        }
-        if (minY > maxY)
-            return restingPlateRect;
-        var pyv = minY - paddingAlong;
-        var ph = (maxY - minY) + 2 * paddingAlong;
-        if (pyv < 0) {
-            ph += pyv;
-            pyv = 0;
-        }
-        if (pyv + ph > height)
-            ph = height - pyv;
-        if (position === "right") {
-            var right = restingPlateRect.x + restingPlateRect.w;
-            var rx = Math.max(0, smoothPlateTrack - padding);
-            return { x: rx, y: pyv, w: right - rx, h: ph };
-        }
-        var left = restingPlateRect.x;
-        var leftRight = Math.min(width, smoothPlateTrack + padding);
-        return { x: left, y: pyv, w: leftRight - left, h: ph };
+        var restingH = restingPlateRect.h;
+        var zoomedH = Math.max(restingH, magnifiedPlateLength);
+        var h = restingH + (zoomedH - restingH) * engagement;
+        if (h >= height)
+            return { x: restingPlateRect.x, y: 0, w: restingPlateRect.w,
+                     h: height };
+        return { x: restingPlateRect.x, y: (height - h) / 2, w: restingPlateRect.w,
+                 h: h };
     }
 
     // The plate's rounded edge snapped to the integer pixel grid (T-14.7z).
@@ -3040,9 +3045,13 @@ Rectangle {
     // plate shape (T-14.7z). The path traces the flat interior edge and both
     // interior corner arcs, so the highlight follows the curve instead of
     // poking a straight hairline across the corner. `w`/`h` are the already
-    // inset box (the Shape's own size).
-    function rimOutlinePath(w, h) {
-        var d = Theme.controls.dock.plate.rimHeight / 2;
+    // inset box (the Shape's own size). `strokeWidth` defaults to the rim
+    // hairline; the interior gloss band passes its own width so both strokes
+    // share one path definition.
+    function rimOutlinePath(w, h, strokeWidth) {
+        if (strokeWidth === undefined)
+            strokeWidth = Theme.controls.dock.plate.rimHeight;
+        var d = strokeWidth / 2;
         var r = Math.max(0, Theme.controls.dock.radius - d);
         if (position === "right")
             return "M " + r + " 0 A " + r + " " + r + " 0 0 0 0 " + r
@@ -3136,6 +3145,35 @@ Rectangle {
             opacity: Theme.controls.dock.plate.fillOpacity
         }
 
+        // The interior-edge gloss: a soft band just inside the rim that fades
+        // the plate's interior edge into its body, so the material reads as
+        // glass rather than a flat slab (T-14.7aa). It shares the rim's
+        // rounded path, inset by half its stroke, so it follows the corner
+        // arcs exactly like the hairline above it.
+        Shape {
+            id: dockGloss
+            objectName: "dockGloss"
+            readonly property real inset: Theme.controls.dock.plate.glossHeight / 2
+            x: dockPlate.plateX + inset
+            y: dockPlate.plateY + inset
+            width: Math.max(0, dockPlate.plateW - 2 * inset)
+            height: Math.max(0, dockPlate.plateH - 2 * inset)
+            preferredRendererType: Shape.GeometryRenderer
+            antialiasing: true
+            opacity: Theme.controls.dock.plate.glossOpacity
+            ShapePath {
+                objectName: "dockGlossStroke"
+                strokeColor: Theme.color.dockRim
+                strokeWidth: Theme.controls.dock.plate.glossHeight
+                fillColor: "transparent"
+                capStyle: ShapePath.FlatCap
+                PathSvg {
+                    path: dock.rimOutlinePath(dockGloss.width, dockGloss.height,
+                                              Theme.controls.dock.plate.glossHeight)
+                }
+            }
+        }
+
         // The bright inner highlight: a stroked path along the interior edge
         // that follows the plate's corner arcs instead of a straight hairline
         // poking into them (T-14.7z). It is inset by half the stroke so every
@@ -3161,6 +3199,31 @@ Rectangle {
                 capStyle: ShapePath.FlatCap
                 PathSvg { path: dock.rimOutlinePath(dockRim.width, dockRim.height) }
             }
+        }
+
+        // The anchored-edge highlight: a short bright lip along the flat
+        // middle of the plate's screen-edge side (the reference's lower edge,
+        // Dock_Tile_Mouseover.png). It is inset past the corner arcs on the
+        // along axis, so it never pokes outside the rounded shape, and it is
+        // orientation-aware like the interior rim.
+        Rectangle {
+            objectName: "dockEdge"
+            readonly property real corner: Theme.controls.dock.radius
+            readonly property bool horizontal: dock.position === "bottom"
+            color: Theme.color.dockRim
+            opacity: Theme.controls.dock.plate.edgeOpacity
+            visible: width > 0 && height > 0
+            x: dock.position === "left" ? dockPlate.plateX
+               : dock.position === "right" ? dockPlate.plateX + dockPlate.plateW - width
+               : dockPlate.plateX + corner
+            y: dock.position === "bottom" ? dockPlate.plateY + dockPlate.plateH - height
+               : dockPlate.plateY + corner
+            width: horizontal
+                   ? Math.max(0, dockPlate.plateW - 2 * corner)
+                   : Theme.controls.dock.plate.edgeHeight
+            height: horizontal
+                    ? Theme.controls.dock.plate.edgeHeight
+                    : Math.max(0, dockPlate.plateH - 2 * corner)
         }
 
         // The hairline border around the whole plate.
@@ -3209,6 +3272,10 @@ Rectangle {
                             && String(modelData.desktopId) === dock.duplicateFlashId
             dragging: dock.dragging
             lifted: isDragged
+            // The anchored tile of the magnified profile: it drops the static
+            // hover wash and draws the zoom lift shadow instead, because the
+            // reference hover state is the zoom itself (T-14.7aa).
+            zoomed: dock.magnifyProfile && dock.magnifyPointerIndex === index
             z: isDragged ? 10 : 0
             width: dock.layout.length > index ? dock.layout[index].w : dock.iconSize
             height: dock.layout.length > index ? dock.layout[index].h : dock.iconSize
@@ -3690,6 +3757,9 @@ Rectangle {
         anchorItem: dock.tooltipAnchor
         text: dock.tooltipText
         placement: dock.tooltipPlacement
+        // The reference hover label points at the icon with a tail; the Dock is
+        // the label's first consumer, so it opts in (T-14.7aa).
+        tailVisible: true
         bounds: dock
         // The fade finished: release the anchor so no stale delegate is held,
         // unless a new entry is already waiting on the dwell timer (otherwise
