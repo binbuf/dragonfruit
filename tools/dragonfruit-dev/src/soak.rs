@@ -8,9 +8,22 @@
 //! backend, which needs no display; the nested backend is soak-tested on
 //! a developer machine with `make soak`.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::Duration;
+
+/// Every file a clean compositor exit must remove for one session. The
+/// socket and its lock, plus the shell and desktop launch-token hand-off
+/// files (T-07/T-19.3). A leaked token is as much a teardown failure as a
+/// leaked socket: it hands a later client a trusted role.
+pub fn teardown_artifacts(socket: &Path) -> Vec<PathBuf> {
+    vec![
+        socket.to_path_buf(),
+        socket.with_extension("lock"),
+        socket.with_extension("launch-token"),
+        socket.with_extension("desktop-launch-token"),
+    ]
+}
 
 /// Snapshot of dragonfruit processes currently running, by scanning
 /// /proc directly (no procps dependency). Our own process is excluded —
@@ -40,17 +53,23 @@ pub fn dragonfruit_processes() -> Vec<String> {
     found
 }
 
-/// Run `cycles` headless compositor sessions; fail on the first dirty
-/// teardown.
-pub fn run(compositor: &Path, runtime_dir: &Path, cycles: usize) -> Result<(), String> {
+/// Run `cycles` compositor sessions on `backend`; fail on the first dirty
+/// teardown. The default gate is headless (CI needs no display); `drm` is one
+/// real session cycle on the hardware rail (`dragonfruit dev --soak 1 --drm`),
+/// and `nested` runs the same gate against a host Wayland session.
+pub fn run(
+    compositor: &Path,
+    runtime_dir: &Path,
+    cycles: usize,
+    backend: &str,
+) -> Result<(), String> {
     for cycle in 1..=cycles {
         let socket_name = format!("dragonfruit-soak-{cycle}");
         let socket = runtime_dir.join(&socket_name);
-        let lock = socket.with_extension("lock");
 
         let mut child = Command::new(compositor)
             .arg("--backend")
-            .arg("headless")
+            .arg(backend)
             .arg("--socket-name")
             .arg(&socket_name)
             .stdout(Stdio::null())
@@ -104,11 +123,16 @@ pub fn run(compositor: &Path, runtime_dir: &Path, cycles: usize) -> Result<(), S
             return Err(format!("cycle {cycle}: compositor ignored SIGTERM"));
         }
 
-        // Verify teardown: socket, lock file, stray processes.
-        if socket.exists() || lock.exists() {
-            let _ = std::fs::remove_file(&socket);
-            let _ = std::fs::remove_file(&lock);
-            return Err(format!("cycle {cycle}: stray socket {}", socket.display()));
+        // Verify teardown: no leaked socket, lock, token, or orphan.
+        let leaked: Vec<PathBuf> = teardown_artifacts(&socket)
+            .into_iter()
+            .filter(|path| path.exists())
+            .collect();
+        if !leaked.is_empty() {
+            for path in &leaked {
+                let _ = std::fs::remove_file(path);
+            }
+            return Err(format!("cycle {cycle}: stray artifacts {leaked:?}"));
         }
         let strays = dragonfruit_processes();
         if !strays.is_empty() {
@@ -116,4 +140,27 @@ pub fn run(compositor: &Path, runtime_dir: &Path, cycles: usize) -> Result<(), S
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn teardown_covers_the_socket_lock_and_both_tokens() {
+        let socket = Path::new("/run/user/1000/dragonfruit-soak-3");
+        let names: Vec<String> = teardown_artifacts(socket)
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "/run/user/1000/dragonfruit-soak-3",
+                "/run/user/1000/dragonfruit-soak-3.lock",
+                "/run/user/1000/dragonfruit-soak-3.launch-token",
+                "/run/user/1000/dragonfruit-soak-3.desktop-launch-token",
+            ]
+        );
+    }
 }

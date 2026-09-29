@@ -85,6 +85,46 @@ and a non-US (German) layout is exercised headlessly by
 `compositor/tests/input_validation.rs`
 ([ADR 0171](adr/0171-hardware-input-validation-matrix.md)).
 
+### DRM soak, teardown, and multi-GPU (T-03.4)
+
+Teardown is asserted by the soak gate, not by inspection. Every cycle must
+leave **no leaked socket or lock, no leaked launch token**
+(`.launch-token` / `.desktop-launch-token`), and **no orphaned
+`dragonfruit*` process**; a leftover token is treated as seriously as a
+leftover socket because it hands a later client a trusted role.
+`dragonfruit dev --soak N` runs the gate on the headless backend (default; what
+`make soak` and `make check` call), and `--nested`/`--drm` run the same check on
+those backends. `scripts/drm-soak.sh` (`make drm-soak`) runs the automated soak
+and then **one DRM session cycle**, re-probing the card afterwards to prove the
+compositor released DRM master (the VT). With no free seat that half is recorded
+open in `docs/captures/t03-drm-soak.open.txt`; on a free seat it records
+`t03-drm-soak.txt`.
+
+The multi-GPU import/fallback decision is the pure `multi_gpu` classification.
+The backend prints one greppable marker after the initial device scan:
+
+```text
+Multi-GPU: NONE (no DRM device on the seat)
+Multi-GPU: SINGLE device=<node>
+Multi-GPU: IMPORTED devices=<n> secondaries=<m> (per-device render nodes)
+Multi-GPU: FALLBACK devices=<n> secondaries=<m> fallback=<k> (primary renderer, linear import)
+```
+
+A secondary card with its own render node renders locally and its buffers are
+imported across devices; a card with no render node falls back to the primary
+renderer and may only import **linear** buffers (the `format_allowed` rule the
+backend applies to its dmabuf formats, and `scripts/multi-gpu-probe.py`
+mirrors). `scripts/multi-gpu-validation.sh` (`make multi-gpu-validation`) writes
+`docs/captures/t03-multigpu.open.txt` with fewer than two cards and
+`t03-multigpu.txt` with two or more. The classification and its `make e2e` test
+live in `compositor/src/multi_gpu.rs` and `compositor/tests/multi_gpu.rs`
+([ADR 0172](adr/0172-drm-soak-teardown-and-runbook.md)).
+
+The dedicated-user second-VT and VM workflows — the exact commands, the four
+acceptance runs, teardown expectations, and troubleshooting — are the
+[DRM session runbook](../runbook-drm-session.md), linked from the testing
+ladder.
+
 ## Input
 
 - libinput delivers pointer, keyboard, touch, and tablet events. Touch and
