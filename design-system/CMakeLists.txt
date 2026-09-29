@@ -30,6 +30,7 @@ qt_add_qml_module(dragonfruit-design-system
         components/Popup.qml
         components/Icon.qml
         components/PhosphorIcon.qml
+        components/SettingsCategoryIcon.qml
         components/FocusRing.qml
         components/Shadow.qml
         components/Button.qml
@@ -80,6 +81,7 @@ df_qml_lint(design-system
     components/Popup.qml
     components/Icon.qml
     components/PhosphorIcon.qml
+    components/SettingsCategoryIcon.qml
     components/FocusRing.qml
     components/Shadow.qml
     components/Button.qml

@@ -16,7 +16,7 @@ Item {
                                   "Segmented", "ContextMenu", "SearchField",
                                   "SourceList", "Dialog", "Sheet", "Popover",
                                   "ScrollView", "Slider", "Select", "Icons", "Tooltip",
-                                  "Skeleton", "Phosphor"]
+                                  "Skeleton", "Phosphor", "SettingsCategory"]
     property string scheme: "dark"
     property bool reducedMotion: false
 
@@ -67,6 +67,7 @@ Item {
             case 24: return tooltipPageComponent;
             case 25: return skeletonPageComponent;
             case 26: return phosphorPageComponent;
+            case 27: return settingsCategoryPageComponent;
             default: return iconsPageComponent;
             }        }
     }
@@ -98,6 +99,7 @@ Item {
     Component { id: tooltipPageComponent; TooltipPage { } }
     Component { id: skeletonPageComponent; SkeletonPage { } }
     Component { id: phosphorPageComponent; PhosphorPage { } }
+    Component { id: settingsCategoryPageComponent; SettingsCategoryPage { } }
 
     component Page: Column {
         spacing: Theme.primitive.spacing.lg
@@ -1010,6 +1012,59 @@ Item {
                         color: Theme.color.textPrimary
                     }
                 }
+            }
+        }
+    }
+
+    // The System Settings category tile (T-19.1b): the one surface with the
+    // gradient container. Every tile shares the same geometry, elevation, and
+    // near-white fill glyph; only the gradient changes. The `source` glyphs are
+    // literal so `make check-phosphor` validates them.
+    component SettingsCategoryPage: Page {
+        Section {
+            heading: qsTr("Category tiles")
+            Row {
+                spacing: Theme.primitive.spacing.lg
+                SettingsCategoryIcon {
+                    source: "wifi-high"
+                    gradientStart: Theme.primitive.color.sky400
+                    gradientEnd: Theme.primitive.color.sky600
+                    size: 48
+                }
+                SettingsCategoryIcon {
+                    source: "battery-full"
+                    gradientStart: Theme.primitive.color.jade400
+                    gradientEnd: Theme.primitive.color.jade600
+                    size: 48
+                }
+                SettingsCategoryIcon {
+                    source: "bell"
+                    gradientStart: Theme.primitive.color.coral400
+                    gradientEnd: Theme.primitive.color.coral600
+                    size: 48
+                }
+                SettingsCategoryIcon {
+                    source: "gear"
+                    gradientStart: Theme.primitive.color.gold400
+                    gradientEnd: Theme.primitive.color.gold600
+                    size: 48
+                }
+                SettingsCategoryIcon {
+                    source: "shield-check"
+                    gradientStart: Theme.primitive.color.violet400
+                    gradientEnd: Theme.primitive.color.violet700
+                    size: 48
+                }
+            }
+        }
+        Section {
+            heading: qsTr("Sizes, default gradient, and glow")
+            Row {
+                spacing: Theme.primitive.spacing.xl
+                SettingsCategoryIcon { source: "gear"; size: 20 }
+                SettingsCategoryIcon { source: "gear"; size: 32 }
+                SettingsCategoryIcon { source: "gear"; size: 48 }
+                SettingsCategoryIcon { source: "gear"; size: 48; glow: true }
             }
         }
     }

@@ -64,7 +64,10 @@ The icon language is one foundation (T-19.1a) and three migrations:
 - **T-19.1b** adds `SettingsCategoryIcon` — the rounded, gradient-backed tile
   with an inner highlight, drop shadow, and near-white glyph — and uses it for
   **System Settings only**. Everywhere else a migrated icon is a plain glyph
-  sized for its place.
+  sized for its place. The component is category-agnostic; the
+  category → (glyph, gradient) table lives in `SettingsPanes.categoryStyles`
+  and a pane without a mapping keeps the original `Icon` glyph (ADR
+  [0164](../adr/0164-settings-category-tile.md)).
 - **T-19.1c** migrates the menu-bar status marks (`shell/menubar/StatusGlyph.qml`)
   to plain Phosphor glyphs, preserving every state variant and the battery
   level.

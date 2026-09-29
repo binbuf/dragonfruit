@@ -15,6 +15,13 @@ Item {
 
     property var pane: null
 
+    // The pane's category-tile style (T-19.1b), or null when the icon has no
+    // Phosphor mapping and the original `Icon` glyph is kept.
+    readonly property var category: SettingsPanes.categoryStyle(root.pane)
+    // The resolved Phosphor name, kept out of the `SettingsCategoryIcon` block
+    // so the static glyph-reference scan only ever sees a bound value.
+    readonly property string categoryGlyph: root.category ? root.category.source : ""
+
     implicitHeight: layout.implicitHeight
     height: layout.implicitHeight
 
@@ -23,12 +30,30 @@ Item {
         width: parent.width
         spacing: Theme.primitive.spacing.lg
 
-        Icon {
+        Item {
             id: glyph
-            name: root.pane ? root.pane.icon : ""
-            size: Theme.primitive.spacing.xxl
-            color: Theme.color.accent
+            readonly property bool tiled: root.category !== null
+            readonly property real glyphSize: tiled
+                    ? Theme.primitive.spacing.xxxl : Theme.primitive.spacing.xxl
+            width: glyphSize
+            height: glyphSize
             anchors.verticalCenter: parent.verticalCenter
+
+            SettingsCategoryIcon {
+                anchors.fill: parent
+                visible: glyph.tiled
+                source: root.categoryGlyph
+                gradientStart: root.category ? root.category.gradientStart : Theme.color.accent
+                gradientEnd: root.category ? root.category.gradientEnd : Theme.color.accent
+            }
+
+            Icon {
+                anchors.centerIn: parent
+                visible: !glyph.tiled
+                name: root.pane ? root.pane.icon : ""
+                size: Theme.primitive.spacing.xxl
+                color: Theme.color.accent
+            }
         }
 
         Column {
