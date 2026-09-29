@@ -15143,3 +15143,8 @@ Commands / gotchas for later (the hardware rail and T-03.4):
   Makefile supplies the first; `libxkbcommon.so` is the second).
 - `make check` is still red only at the pre-existing `check-desktop-names`;
   T159 added no violation.
+- **Continuation 1** re-verified the committed tree in the foreground:
+  `drm_bringup` integration + lib tests 5/5 each, `fmt-check`/`clippy` clean,
+  `make e2e` green (130 ok, 0 failed; `/tmp/opencode/e2e-t159-rerun.log`),
+  `make drm-bringup` OPEN exit 0. No further agent-side work; the DRM capture +
+  trace remain with T-03.4 on a free seat / spare GPU / clean VM.

@@ -1,7 +1,7 @@
 T-03.2 — DRM first bring-up: OPEN
 ==================================
 
-recorded:   2026-09-29T11:02:21Z
+recorded:   2026-09-29T11:09:39Z
 result:     DRM bring-up: OPEN (no free logind seat: no DRM card accepted master)
 host:       Linux 7.2.5-200.fc44.x86_64 x86_64
 
