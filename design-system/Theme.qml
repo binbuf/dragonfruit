@@ -119,6 +119,8 @@ QtObject {
             readonly property color controlActive: "#c3b8cc"
             readonly property color focusRing: "#7c5cff"
             readonly property color selection: "#b3a1ff"
+            readonly property color marqueeFill: "#40ededed"
+            readonly property color marqueeBorder: "#8cc4c4c4"
             readonly property color danger: "#e8556d"
             readonly property color success: "#2bb673"
             readonly property color warning: "#e0a43a"
@@ -181,6 +183,8 @@ QtObject {
             readonly property color controlActive: "#5b4e66"
             readonly property color focusRing: "#927dff"
             readonly property color selection: "#5538c2"
+            readonly property color marqueeFill: "#33e6e6e6"
+            readonly property color marqueeBorder: "#8cd8d8d8"
             readonly property color danger: "#f2697d"
             readonly property color success: "#3fc98a"
             readonly property color warning: "#f0b64b"
@@ -407,6 +411,10 @@ QtObject {
             readonly property int width: 2
             readonly property int offset: 2
             readonly property int radius: 6
+        }
+        readonly property var marquee: QtObject {
+            readonly property int borderWidth: 2
+            readonly property int radius: 0
         }
         readonly property var sidebar: QtObject {
             readonly property int width: 192
