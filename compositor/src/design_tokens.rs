@@ -398,6 +398,7 @@ pub mod component {
         pub const ROW_RADIUS: f32 = 6.0_f32;
         pub const SECTION_GAP: f32 = 16.0_f32;
         pub const ICON_SIZE: f32 = 16.0_f32;
+        pub const CATEGORY_ICON_SIZE: f32 = 20.0_f32;
         pub const PADDING: f32 = 8.0_f32;
     }
     pub mod toolbar {
@@ -551,6 +552,14 @@ pub mod component {
         pub const WIDTH: f32 = 120.0_f32;
         pub const HEIGHT: f32 = 72.0_f32;
         pub const HIGHLIGHT_RATIO: f32 = 0.4_f32;
+    }
+    pub mod settings_category {
+        pub const SIZE: f32 = 32.0_f32;
+        pub const RADIUS_RATIO: f32 = 0.24_f32;
+        pub const ICON_RATIO: f32 = 0.55_f32;
+        pub const HIGHLIGHT_RATIO: f32 = 0.45_f32;
+        pub const HIGHLIGHT_OPACITY: f32 = 0.28_f32;
+        pub const GLOW_OPACITY: f32 = 0.42_f32;
     }
 }
 

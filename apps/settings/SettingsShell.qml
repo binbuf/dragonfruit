@@ -401,7 +401,11 @@ Item {
                         height: Math.max(0, parent.height - searchField.height - parent.spacing)
                         sections: [{
                             items: root.visiblePanes.map(function(pane) {
-                                return { label: pane.title, icon: pane.icon };
+                                return {
+                                    label: pane.title,
+                                    icon: pane.icon,
+                                    category: SettingsPanes.categoryStyle(pane)
+                                };
                             })
                         }]
 

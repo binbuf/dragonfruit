@@ -32,7 +32,7 @@ PAGES = [
     "tokens", "window", "titlebar", "trafficlights", "toggle", "popup", "menu", "ssd",
     "buttons", "sidebar", "toolbar", "splitview", "settings", "segmented", "contextmenu",
     "searchfield", "sourcelist", "dialog", "sheet", "popover", "scrollview", "slider",
-    "select", "icons", "tooltip", "skeleton", "phosphor",
+    "select", "icons", "tooltip", "skeleton", "phosphor", "settingscategory",
 ]
 SCHEMES = [("light", False), ("dark", False), ("dark", True)]
 
@@ -179,6 +179,16 @@ def invariant_checks(output: Path, tokens: dict, resolve) -> list[str]:
           "dark phosphor: accent-tinted glyph not found")
     check(contains_color(output / "phosphor_light.png", hex_rgb(resolve(light["accent"], tokens))),
           "light phosphor: accent-tinted glyph not found")
+
+    # The Settings category tile (T-19.1b) paints its container from palette
+    # tokens; the tile's bottom gradient stop must reach the rendered pixels in
+    # both schemes (the inner highlight only covers the top of the tile).
+    check(contains_color(output / "settingscategory_dark.png",
+                         hex_rgb(tokens["primitive"]["color"]["sky600"])),
+          "dark settings category: tile gradient not found")
+    check(contains_color(output / "settingscategory_light.png",
+                         hex_rgb(tokens["primitive"]["color"]["sky600"])),
+          "light settings category: tile gradient not found")
 
     # Light and dark renders must actually differ.
     light_bytes = (output / "window_light.png").read_bytes()

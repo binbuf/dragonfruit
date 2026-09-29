@@ -48,6 +48,48 @@ Item {
             compare(SettingsPanes.shippedPanes.length, 22);
         }
 
+        // -- Category tiles (T-19.1b) -------------------------------------------
+
+        function test_category_tiles_resolve_and_fall_back() {
+            // Every mapping names a vendored fill glyph and carries a gradient.
+            var styles = SettingsPanes.categoryStyles;
+            var checked = 0;
+            for (var icon in styles) {
+                var style = styles[icon];
+                verify(PhosphorGlyphs.has("fill", style.source),
+                       "category " + icon + " -> " + style.source + " must be vendored");
+                verify(String(style.gradientStart).length > 0,
+                       "category " + icon + " needs a gradientStart");
+                verify(String(style.gradientEnd).length > 0,
+                       "category " + icon + " needs a gradientEnd");
+                checked += 1;
+            }
+            verify(checked >= 20,
+                   "the shipped categories must be mapped (got " + checked + ")");
+
+            // A pane with no Phosphor mapping keeps the original Icon fallback.
+            compare(SettingsPanes.categoryStyle(SettingsPanes.paneById("trackpad")), null);
+            verify(SettingsPanes.categoryStyle(SettingsPanes.paneById("general")) !== null);
+            verify(SettingsPanes.categoryStyle(null) === null);
+        }
+
+        function test_sidebar_rows_and_header_adopt_the_category_tile() {
+            var shell = make();
+            // The pane list is driven by SettingsPanes.filter; each item carries
+            // the resolved category style (or null) for the sidebar delegate.
+            var visible = shell.visiblePanes;
+            verify(SettingsPanes.categoryStyle(visible[0]) !== null,
+                   "Bluetooth must carry a category tile");
+            // The Appearance pane has no header card but its icon is mapped, so
+            // the header (when a header pane is current) resolves the tile too.
+            shell.selectPane("general");
+            waitForRendering(stage);
+            verify(shell.header.visible);
+            verify(shell.header.category !== null,
+                   "the General header must resolve a category tile");
+            compare(shell.header.category.source, "gear");
+        }
+
         function test_header_card_is_only_where_the_reference_has_one() {
             // The Wave-1 captures (Desktop & Dock, Displays, Wallpaper) have
             // no header card; Appearance is uncaptured but follows the same

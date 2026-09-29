@@ -41,6 +41,7 @@ FocusScope {
                     label: item.label || "",
                     icon: item.icon || "",
                     badge: item.badge || "",
+                    category: item.category || null,
                     section: s,
                     itemIndex: i
                 });
@@ -153,6 +154,18 @@ FocusScope {
         readonly property bool isHeader: entry.type === "header"
         readonly property bool selected: root.currentIndex === entry.index
         readonly property bool hovered: rowHover.hovered
+        // A resolved `SettingsCategoryIcon` style, when the item carries one.
+        // Items without it keep the plain `Icon` glyph (T-19.1b).
+        readonly property var category: entry.category && entry.category.source
+                ? entry.category : null
+        // The resolved Phosphor name, kept out of the `SettingsCategoryIcon`
+        // block so the static glyph-reference scan only sees a bound value.
+        readonly property string categoryGlyph: row.category ? row.category.source : ""
+        readonly property bool hasGlyph: !row.isHeader
+                && (row.category !== null || entry.icon.length > 0)
+        readonly property real glyphSize: row.category !== null
+                ? Theme.controls.sidebar.categoryIconSize
+                : Theme.controls.sidebar.iconSize
 
         width: parent ? parent.width : 0
         height: isHeader ? headerText.implicitHeight + Theme.controls.sidebar.sectionGap
@@ -202,21 +215,37 @@ FocusScope {
             antialiasing: true
         }
 
-        Icon {
-            id: rowIcon
-            visible: !row.isHeader && row.entry.icon.length > 0
-            name: row.entry.icon
-            size: Theme.controls.sidebar.iconSize
-            color: row.selected ? Theme.color.accentContent : Theme.color.textSecondary
+        Item {
+            id: rowGlyph
+            visible: row.hasGlyph
+            width: row.glyphSize
+            height: row.glyphSize
             anchors.left: parent.left
             anchors.leftMargin: Theme.controls.sidebar.padding
             anchors.verticalCenter: parent.verticalCenter
+
+            SettingsCategoryIcon {
+                anchors.fill: parent
+                visible: row.category !== null
+                source: row.categoryGlyph
+                gradientStart: row.category ? row.category.gradientStart : Theme.color.accent
+                gradientEnd: row.category ? row.category.gradientEnd : Theme.color.accent
+            }
+
+            Icon {
+                id: rowIcon
+                anchors.centerIn: parent
+                visible: row.category === null
+                name: row.entry.icon
+                size: row.glyphSize
+                color: row.selected ? Theme.color.accentContent : Theme.color.textSecondary
+            }
         }
 
         Text {
             id: rowLabel
             visible: !row.isHeader
-            anchors.left: row.entry.icon.length > 0 ? rowIcon.right : parent.left
+            anchors.left: rowGlyph.visible ? rowGlyph.right : parent.left
             anchors.leftMargin: Theme.controls.sidebar.padding
             anchors.right: badge.visible ? badge.left : parent.right
             anchors.rightMargin: Theme.controls.sidebar.padding

@@ -414,6 +414,7 @@ QtObject {
             readonly property int rowRadius: 6
             readonly property int sectionGap: 16
             readonly property int iconSize: 16
+            readonly property int categoryIconSize: 20
             readonly property int padding: 8
         }
         readonly property var toolbar: QtObject {
@@ -567,6 +568,14 @@ QtObject {
             readonly property int width: 120
             readonly property int height: 72
             readonly property real highlightRatio: 0.4
+        }
+        readonly property var settingsCategory: QtObject {
+            readonly property int size: 32
+            readonly property real radiusRatio: 0.24
+            readonly property real iconRatio: 0.55
+            readonly property real highlightRatio: 0.45
+            readonly property real highlightOpacity: 0.28
+            readonly property real glowOpacity: 0.42
         }
     }
 

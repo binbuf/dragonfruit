@@ -32,6 +32,48 @@ QtObject {
         return pane !== null && root.headerPanes.indexOf(pane.id) >= 0;
     }
 
+    // The category-tile table (T-19.1b): the one place a pane's existing
+    // design-system `icon` identity maps to a Phosphor glyph and the gradient
+    // the `SettingsCategoryIcon` container paints. The container geometry is
+    // identical for every category (only the hue changes), so this is the only
+    // place category colour lives; the literal hues are named constants here,
+    // not baked into any SVG. A pane whose icon is absent (Trackpad has no
+    // vendored Phosphor mark) falls back to the original `Icon.qml` glyph.
+    readonly property var categoryStyles: ({
+        "wifi":          { source: "wifi-high",     gradientStart: "#3f8cff", gradientEnd: "#1f5fd6" },
+        "bluetooth":     { source: "bluetooth",     gradientStart: "#4a9bff", gradientEnd: "#2158d0" },
+        "network":       { source: "globe",         gradientStart: "#3aa0ff", gradientEnd: "#1667c8" },
+        "battery":       { source: "battery-full",  gradientStart: "#34c759", gradientEnd: "#14883a" },
+        "storage":       { source: "hard-drives",   gradientStart: "#7d8fa6", gradientEnd: "#4a5b70" },
+        "general":       { source: "gear",          gradientStart: "#8e8e93", gradientEnd: "#58585c" },
+        "accessibility": { source: "person",        gradientStart: "#2f7bff", gradientEnd: "#1450c4" },
+        "appearance":    { source: "swatches",      gradientStart: "#4a4a55", gradientEnd: "#1c1c24" },
+        "dock":          { source: "desktop",       gradientStart: "#5a5a66", gradientEnd: "#26262e" },
+        "overview":      { source: "squares-four",  gradientStart: "#17b3a3", gradientEnd: "#0b7a6f" },
+        "displays":      { source: "monitor",       gradientStart: "#2e8dff", gradientEnd: "#1555c0" },
+        "menu-bar":      { source: "list",          gradientStart: "#8a8f98", gradientEnd: "#4f545c" },
+        "search":        { source: "magnifying-glass", gradientStart: "#3f8cff", gradientEnd: "#1f5fd6" },
+        "wallpaper":     { source: "image",         gradientStart: "#46b6e6", gradientEnd: "#1f74b8" },
+        "bell":          { source: "bell",          gradientStart: "#ff5a5f", gradientEnd: "#c62431" },
+        "volume":        { source: "speaker-high",  gradientStart: "#ff5f6d", gradientEnd: "#c62a52" },
+        "focus":         { source: "moon",          gradientStart: "#a06bff", gradientEnd: "#6236c4" },
+        "lock":          { source: "lock",          gradientStart: "#5d8ef0", gradientEnd: "#2b4fa8" },
+        "privacy":       { source: "shield-check",  gradientStart: "#3f7bff", gradientEnd: "#1a4fb8" },
+        "users":         { source: "users",         gradientStart: "#6b7bff", gradientEnd: "#3a3fc0" },
+        "keyboard":      { source: "keyboard",      gradientStart: "#8a8f98", gradientEnd: "#4f545c" },
+        "mouse":         { source: "mouse",         gradientStart: "#8a8f98", gradientEnd: "#4f545c" },
+        "printer":       { source: "printer",       gradientStart: "#5c8fd6", gradientEnd: "#2d559c" }
+    })
+
+    // The `{ source, gradientStart, gradientEnd }` tile style for a pane, keyed
+    // by its existing `icon` identity; null means the caller keeps `Icon.qml`.
+    function categoryStyle(pane) {
+        if (pane === null)
+            return null;
+        var style = root.categoryStyles[pane.icon];
+        return style === undefined ? null : style;
+    }
+
     readonly property var catalog: [
         { id: "wifi", title: qsTr("Wi-Fi"), icon: "wifi",
           description: "", shipped: false },
