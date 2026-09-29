@@ -530,6 +530,36 @@ app-crash/lock kill-resistance rows into
 `docs/captures/t17-robustness-matrix.txt`. The contract is
 [ADR 0177](adr/0177-absent-services-never-block-session-start.md).
 
+## The premium-gate sign-off (T-17.6)
+
+The T-17 track is a checklist, not a feature: the loop, the visual floor, the
+performance budget, robustness, and product judgment
+([17-premium-gate.md](tracks/17-premium-gate.md)). T-17.6 closes it as a
+**report over the per-unit evidence**, with two hardware rows left open:
+
+```bash
+make t17-premium-gate-capture   # assembled desktop still + transcript
+make check                      # lint + tests + 100-cycle teardown soak
+make e2e                        # foundation + conformance suites
+```
+
+`scripts/capture-t17-premium-gate.sh` launches the assembled desktop in a
+nested session, captures it to `docs/captures/t17-premium-gate.png`, re-runs the
+fast headless rows (gallery `--strict`, reduced-motion sweep, absent services)
+into `docs/captures/t17-premium-gate.txt`, and is indexed by the reviewed
+sign-off [docs/captures/t17-premium-gate.md](../captures/t17-premium-gate.md).
+The report reproduces every checklist item with a verdict and evidence link,
+records the post-gate backlog, and carries the unfamiliar-user protocol; the
+human verdict is the batched track-boundary item. The gate is **incomplete, not
+passed**, until the DRM loop (T-17.2) and the baseline Intel/AMD frame budget
+(T-17.4) land on hardware. The evidence boundary is
+[ADR 0179](adr/0179-t17-premium-gate-sign-off.md).
+
+The report's acceptance is `make check` and `make e2e` green on the tree. The
+long-red `check-desktop-names` gate was corrected so `make check` can pass: it
+now ignores third-party `org.<name>.<member>` identifier namespaces
+([ADR 0180](adr/0180-third-party-identifier-desktop-name-gate.md)).
+
 ## Second VT, with isolation
 
 Another good workflow is leaving the host desktop on one virtual terminal and

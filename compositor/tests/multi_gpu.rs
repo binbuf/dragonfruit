@@ -2,7 +2,7 @@
 //! T-03.4 acceptance: the multi-GPU import/fallback *decision* is explicit and
 //! testable without hardware.
 //!
-//! Real multi-GPU hardware is unavailable on this host (the KDE Wayland
+//! Real multi-GPU hardware is unavailable on this host (the host Wayland
 //! session owns DRM master — see `docs/SLICING-REVIEW.md`), so the unit is
 //! marked **open, not skipped**. These tests pin the classification and the
 //! dmabuf-format rule the backend shares with `scripts/multi-gpu-probe.py`.

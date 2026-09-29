@@ -3,7 +3,7 @@
 //!
 //! T-03.3 validates the input stack on **real devices**, but the compositor can
 //! only drive libinput devices when it owns a logind seat, and this host has no
-//! free seat (the KDE Wayland session owns DRM master; see
+//! free seat (the host Wayland session owns DRM master; see
 //! [`crate::drm_bringup`] and `docs/SLICING-REVIEW.md`). The track rule is
 //! explicit: when hardware is unavailable the unit is **marked open, not
 //! skipped**.
