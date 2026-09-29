@@ -67,6 +67,27 @@ missing; a Wayland-only session is a normal state.
 `DF_DEMO_QT_APP`, `DF_DEMO_X11_APP`, and `DF_QML_IMPORT_PATH` override the
 app/QML paths the harness discovers under `build/`.
 
+### Teardown soak and the leak/lock gate
+
+The repeated-loop leak tripwire is `dragonfruit dev --soak N`: N compositor
+sessions, each asserting its exit removed the socket, the socket lock, both
+launch-token hand-off files, and the Xwayland **`DISPLAY` file**, and left no
+orphaned client (`soak::teardown_artifacts` + `soak::dragonfruit_processes`).
+`make soak` and `make check` run 100 cycles; `dragonfruit dev --soak 1 --drm`
+runs one real backend cycle on the hardware rail.
+
+`make t17-leak-lock-soak` is the premium-gate verification
+(`scripts/t17-leak-lock-soak.sh`): it runs that soak **and** the
+`session_lock_conformance` suite each under an isolated `XDG_RUNTIME_DIR` and
+asserts the directory is empty afterwards, runs the lock suite `--release`,
+and records the DRM/VT-master probe. Lock enforcement is proved there as:
+trusted lock covers every output, an untrusted client is refused, a killed
+lock UI stays locked (fail-secure), and 25 lock/unlock cycles each return to
+`lock locked=0 surfaces=0` with no lock-surface leak. Compositor integration
+tests remove their own runtime artifacts in `Drop` via
+`compositor/tests/common`, so repeated test loops no longer accumulate stale
+files. See [ADR 0178](adr/0178-t17-leak-lock-enforcement.md).
+
 ### The thin/full session split: `make dev-full`
 
 `make dev` and `make demo` are deliberately **thin**: they start the core

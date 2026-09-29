@@ -12,6 +12,8 @@ use std::time::{Duration, Instant};
 use wayland_client::protocol::{wl_registry, wl_surface};
 use wayland_client::{Connection, Dispatch, QueueHandle};
 
+mod common;
+
 /// The exact protocol surface from docs/tasks/legacy/02-compositor-core.md.
 ///
 /// `zwp_linux_dmabuf_v1` is backend-dependent: it is only advertised when
@@ -134,6 +136,7 @@ impl Drop for CompositorProcess {
         // Never leak a compositor child, even when an assertion panics.
         let _ = self.child.kill();
         let _ = self.child.wait();
+        common::cleanup_compositor_artifacts(&self.socket_path);
     }
 }
 

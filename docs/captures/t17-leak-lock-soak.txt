@@ -1,0 +1,98 @@
+T-17.5b leak and lock enforcement verification (premium gate)
+generated: 2026-09-29T13:49:22Z
+dev binary: target/release/dragonfruit (release build)
+soak cycles: 100
+state:     headless; no host session, no VM, no real services
+
+================================================================
+## 0. The leak and lock contracts
+================================================================
+
+| Question | Contract | Proof |
+|---|---|---|
+| A compositor session exits | no socket, lock, launch token, DISPLAY file, or orphan | `dragonfruit dev --soak N` (isolated runtime dir) |
+| The process leaked none of the above | the isolated runtime dir is empty | T-17.5b's own find over the scratch dir |
+| A trusted client locks | `locked=1 surfaces=1` on every output | `session_lock_conformance::lock_covers_every_output_and_confirms` |
+| An untrusted client requests a lock | refused; the session never locks | `session_lock_conformance::untrusted_client_cannot_lock` |
+| The lock UI is killed while locked | the session stays locked (fail-secure) | `session_lock_conformance::locked_input_targets_the_lock_ui_and_survives_its_death` |
+| Lock/unlock repeats 25 times | `locked=0 surfaces=0` after each; no lock-surface leak | `session_lock_conformance::repeated_lock_cycles_never_leak_lock_state` |
+| A real DRM session exits | DRM master (the VT) is released | probe here; full cycle is `make drm-soak` (hardware) |
+
+================================================================
+## 1. Repeated loops with the leak tripwire (isolated runtime dir)
+================================================================
+
+The tripwire is soak::teardown_artifacts: socket, socket.lock,
+.launch-token, .desktop-launch-token, and .x11-display. The soak runs
+with XDG_RUNTIME_DIR set to a scratch dir so the check is hermetic
+(the host's own stale test files cannot mask or inflate the result).
+isolated XDG_RUNTIME_DIR: /tmp/dragonfruit-t17-ll.E5Pwub
+
+$ XDG_RUNTIME_DIR=/tmp/dragonfruit-t17-ll.E5Pwub target/release/dragonfruit dev --soak 100
+dragonfruit dev: soak passed — 100 clean headless cycles, zero strays, zero leaked sockets/tokens
+
+[PASS] no leaked socket/token/DISPLAY file after 100 cycles
+
+================================================================
+## 2. Lock enforcement (packaged/release tree)
+================================================================
+
+The lock suite runs with its own isolated XDG_RUNTIME_DIR; afterwards
+the directory must be empty (the harness now removes the socket, both
+tokens, and the Xwayland DISPLAY file on every path, including a
+hard kill).
+isolated XDG_RUNTIME_DIR: /tmp/dragonfruit-t17-ll.bSYI9G
+
+$ XDG_RUNTIME_DIR=/tmp/dragonfruit-t17-ll.bSYI9G cargo test --release -p dragonfruit-compositor --test session_lock_conformance
+   Compiling dragonfruit-compositor v0.1.0 (/home/user/repos/dragonfruit/compositor)
+    Finished `release` profile [optimized] target(s) in 4.47s
+     Running tests/session_lock_conformance.rs (target/release/deps/session_lock_conformance-f1c095b88c2b768b)
+
+running 4 tests
+test lock_covers_every_output_and_confirms ... ok
+test untrusted_client_cannot_lock ... ok
+test locked_input_targets_the_lock_ui_and_survives_its_death ... ok
+test repeated_lock_cycles_never_leak_lock_state ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+
+[PASS] lock suite clean; no leaked runtime files
+
+================================================================
+## 3. VT / DRM master probe
+================================================================
+
+$ python3 scripts/drm-seat-probe.py
+{
+  "cards": [
+    {
+      "path": "/dev/dri/card0",
+      "opened": true,
+      "is_master": false,
+      "can_set_master": false,
+      "errno": 13,
+      "error": "Permission denied"
+    }
+  ],
+  "free_card": null
+}
+
+[OPEN] no free logind seat: the host session holds DRM master,
+       so the real DRM cycle — and its post-cycle VT-release probe —
+       is the T-03.4 hardware rail (make drm-soak / runbook).
+       Marked OPEN, not skipped (docs/SLICING-REVIEW.md).
+
+================================================================
+## 4. Notes
+================================================================
+
+* The soak's own tripwire (tools/dragonfruit-dev/src/soak.rs) now
+  includes the Xwayland DISPLAY file, and every compositor integration
+  test harness removes its artifacts in Drop (compositor/tests/common),
+  so repeated loops no longer accumulate in $XDG_RUNTIME_DIR.
+* VT master after a clean session is asserted by the compositor's own
+  backend teardown and re-probed by scripts/drm-soak.sh on hardware.
+* The packaged RPM/DEB re-verification is deferred to T-16.9/T-16.10
+  (they have not landed); this unit verifies the release tree, which is
+  what those packages are built from.

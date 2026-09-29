@@ -160,6 +160,17 @@ case: every optional service absent, and the session still reaches Running
 (`services/session/tests/absent_services.rs`; see
 [ADR 0177](../design/adr/0177-absent-services-never-block-session-start.md)).
 
+T-17.5b's premium-gate leak and lock enforcement is produced by
+`scripts/t17-leak-lock-soak.sh` (`make t17-leak-lock-soak`): the headless
+verification transcript at `t17-leak-lock-soak.txt` (a 100-cycle soak and the
+lock conformance suite, each under an isolated `XDG_RUNTIME_DIR` asserted empty
+afterwards; the lock suite runs `--release`), and the reviewed note with the
+live nested loop check at `t17-leak-lock-soak.md` plus its still
+`t17-leak-lock-soak.png`. It closes the stale-test-runtime-file leak by adding
+the `DISPLAY` file to the soak tripwire and cleaning every compositor test
+harness in `Drop`; see
+[ADR 0178](../design/adr/0178-t17-leak-lock-enforcement.md).
+
 T-10.7's Files slice capture is produced by `scripts/capture-files.sh`
 (`make files-capture`): the nested demo runs with `DF_DEMO_QT_APP` pointing at
 Files over a scratch fixture tree and a scratch trash store, and it writes

@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(169 earlier sections omitted)_
+_(170 earlier sections omitted)_
 
-- **T133 — T-15.12a Printers and Scanners adapter**: **State: done.** New workspace crate `dragonfruit-printer-adapter`; `services/printer-adapter/src/source.rs` — `PrinterState` (CUPS `3`/`4`/`5` +
 - **T134 — T-15.12b Printers and Scanners pane and tile**: **State: done.** The Settings `Printers & Scanners` pane and the Control Center; `services/system-status/src/printers.rs` (new) — `PrintersHost<S>` (refresh/
 - **T135 — T-15.13a Privacy and Security adapter**: **State: done.** New workspace crate `dragonfruit-privacy-adapter`; `services/privacy-adapter/src/source.rs` — `AppPermissionData {app,
 - **T136 — T-15.13b Privacy and Security pane and tile**: **State: done.** The Settings `Privacy & Security` pane and the Control Center; `services/system-status/src/privacy.rs` (new) — `PrivacyHost<S>` (refresh/
@@ -43,7 +42,8 @@ _(169 earlier sections omitted)_
 - **T170 — T-12.6b Real-session round-trip and "Quit to <previous desktop>"**: **State: done (automated half); real-DM validation open (hardware; `services/session/src/dev_session.rs` (new) — the single state-file contract
 - **T171 — T-12.6c Second-VT dev harness and runbook**: **State: done (automated half); the real second-VT cycle is open on the; `tools/dragonfruit-dev/src/second_vt.rs` (new) — pure `LogindSession`
 - **T155 — T-17.3 Visual floor and reduced-motion sign-off**: **State: done (agent half; the human sign-off is batched at the track; `scripts/capture-t17-visual-floor.sh` (`make t17-visual-floor-capture`) — one
-- **T156 — T-17.5a Absent-daemon and crash matrix verification**: **State: done.** The premium gate's robustness contract is re-verifi
+- **T156 — T-17.5a Absent-daemon and crash matrix verification**: **State: done.** The premium gate's robustness contract is re-verified on the; `services/session/tests/absent_services.rs` (new, 4 tests) — the stand-in
+- **T157 — T-17.5b Leak and lock enforcement verification**: **State: done.** The premium gate's leak and lock con
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -15690,3 +15690,78 @@ Commands / gotchas for later:
   daemons in a VM, remain manual (no VM, no free live session on this host),
   same as T-15.16/T-16.8a. The headless halves are green.
 - **T-17.5b verifies leaks and lock enforcement; T-17.6 is the human sign-off.**
+
+## T157 — T-17.5b Leak and lock enforcement verification
+
+**State: done.** The premium gate's leak and lock contracts are re-verified on
+the release build, and the verification found and fixed a real accumulation.
+`make t17-leak-lock-soak` all rows PASS: on `target/release/dragonfruit`,
+`XDG_RUNTIME_DIR=<scratch> … dev --soak 100` is clean and leaves the scratch dir
+**empty**; the `--release` `session_lock_conformance` suite is 4/4 and also
+leaves its scratch dir empty; the DRM/VT-master probe is recorded **OPEN** (no
+free logind seat). `cargo test -p dragonfruit-dev` 60/60, `make e2e` exit 0
+(133 `test result: ok`, 0 failed), `fmt-check`/`clippy` clean, live nested loop
++ vision read clean.
+
+Real paths:
+
+- `tools/dragonfruit-dev/src/soak.rs` — `teardown_artifacts` now includes
+  `socket.with_extension("x11-display")`; unit test renamed to
+  `teardown_covers_the_socket_lock_tokens_and_display_file`.
+- `compositor/tests/common/mod.rs` (new) — `cleanup_compositor_artifacts(&Path)`
+  removes socket, `.lock`, `.launch-token`, `.desktop-launch-token`, and
+  `.x11-display`. Every compositor integration-test `Drop` now calls it
+  (animation_clock, idle_trace, latency_trace, milestone_e2e, protocol_surface,
+  session_lock_conformance, shell_idle_trace, shell_protocol_conformance,
+  suspend_resume_conformance, window_conformance, xdnd_conformance,
+  xwayland_conformance).
+- `compositor/tests/session_lock_conformance.rs` — new
+  `repeated_lock_cycles_never_leak_lock_state`: 25 cycles asserting
+  `lock locked=1 surfaces=1` locked and `locked=0 surfaces=0` unlocked, then a
+  final lock.
+- `scripts/t17-leak-lock-soak.sh` + `make t17-leak-lock-soak` (new) — writes
+  `docs/captures/t17-leak-lock-soak.txt`; runs soak + lock suite each under an
+  isolated `XDG_RUNTIME_DIR` and asserts it is empty, runs the lock suite
+  `--release` when the release tree exists, and records the seat probe. Prefers
+  `target/release/dragonfruit` over debug.
+- `docs/captures/t17-leak-lock-soak.{txt,md,png}` (new);
+  `docs/design/adr/0178-t17-leak-lock-enforcement.md` (new);
+  `docs/design/11-session-and-dev-workflow.md` new "Teardown soak and the
+  leak/lock gate" section; `docs/captures/README.md`.
+
+Commands / gotchas for later:
+
+- **`make demo --socket-name foo` does not work** — make eats the flag. Use
+  `make demo DEMO_ARGS="--socket-name foo"`. Without it the demo fails and you
+  capture the bare host desktop.
+- **`cargo test --release -p dragonfruit-compositor --test …`** makes
+  `CARGO_BIN_EXE_dragonfruit-compositor` the release binary, so the lock
+  conformance proof is against the optimized artifact; the release build of the
+  two binaries is only ~1 min (`cargo build --release -p dragonfruit-dev -p
+  dragonfruit-compositor`).
+- **The demo window's host title contains "Dragonfruit"**; raise it with the
+  KWin scripting D-Bus (`gdbus call … /Scripting … loadScript` then `.start`)
+  and capture `spectacle -b -n -a -o` for the active window (2115x1437 here),
+  not the whole host screen.
+- **`$XDG_RUNTIME_DIR` for tests can be overridden** to a scratch dir; the
+  compositor and soak both honor it, which is what makes the empty-dir leak
+  assertion hermetic.
+- **A clean `SIGTERM` to the `dragonfruit dev --demo` pid tears down the whole
+  session** (compositor, shell, apps) and leaves no socket/token/DISPLAY file —
+  the live counterpart to the soak.
+- **`make lint` is still red only at the pre-existing `check-desktop-names`
+  hits**; `fmt-check`/`clippy` are clean.
+- **The host's pre-existing hundreds of stale `dragonfruit-test-*` files are
+  not removed by this change** (they were accumulated before the fix); the fix
+  stops *new* accumulation. A one-off host sweep is still optional cleanup.
+
+### Follow-ups
+
+- **Installed RPM/DEB re-run.** T-16.9/T-16.10 (packaging) have not landed, so
+  this unit verifies the release build the packages are built from. When the
+  packages land, re-run `make t17-leak-lock-soak` against the installed
+  binaries (or point `DEV_BIN` at the installed `dragonfruit`) and record it.
+- **Real DRM/VT-master cycle.** No free logind seat here, so VT release after a
+  real session is still the T-03.4/T-17.2 hardware rail (`make drm-soak`); the
+  probe row is OPEN in the transcript.
+- **T-17.6 is the human sign-off.**

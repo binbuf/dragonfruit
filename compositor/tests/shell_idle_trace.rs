@@ -32,6 +32,8 @@ use wayland_client::protocol::{
 };
 use wayland_client::{delegate_noop, Connection, Dispatch, EventQueue, QueueHandle};
 
+mod common;
+
 /// Generated client bindings for the private protocols.
 mod core_client {
     #![allow(unused_imports, clippy::single_component_path_imports)]
@@ -224,6 +226,7 @@ impl Drop for CompositorProcess {
         let _ = std::fs::remove_file(&self.socket_path);
         let _ = std::fs::remove_file(self.socket_path.with_extension("lock"));
         let _ = std::fs::remove_file(&self.token_path);
+        common::cleanup_compositor_artifacts(&self.socket_path);
     }
 }
 
