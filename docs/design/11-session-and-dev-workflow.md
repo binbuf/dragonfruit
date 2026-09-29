@@ -480,6 +480,35 @@ The real greeter/login and DRM logout ends of the demo are T-12.6.
   ([above](#suspendresume-t-125a)); the concrete logind backend and the
   `PrepareForSleep` forwarding land with the real-session work.
 
+## Absent services never block session start (T-17.5a)
+
+The premium gate's robustness contract has two halves: an absent daemon degrades
+its surface, and the session still starts. The pane/adapter half is the T-15.16
+masking matrix ([08-settings.md](08-settings.md#the-absent-daemon-masking-matrix-t-1516));
+the supervision half is this one.
+
+A service that **cannot be spawned at all** — a missing binary, a daemon that
+fails to `exec` — is not the same as one that dies later. The supervisor
+([above](#session-composition-and-supervision)) records a spawn failure as
+`ServiceState::Failed` **once** and never retries it, and `stage_ready`
+withholds a stage only while a `gate` service is *running but not signalled*.
+An absent gate is already non-pending, so the next stage starts; absence is
+never a deadlock. The compositor is the only `gate` and the only `ends_session`
+anchor in `SessionPlan::default_session`, so every optional absence is a
+degraded-but-running desktop and only the compositor's absence ends the session.
+
+`services/session/tests/absent_services.rs` derives its stand-in plan from
+`SessionPlan::default_session`, replaces every non-anchor program with a
+guaranteed-missing binary, and asserts the session reaches `Running` with each
+absent service `Failed`, `restarts == 0`, and no pid; an absent gate never blocks
+the next stage; only the anchor's absence ends the session; and the shipped plan
+has exactly one gate (the compositor). The premium-gate reproduction is
+`make t17-robustness-matrix` (`scripts/t17-robustness-matrix.sh`), which re-runs
+the absence rows, the T-16.8a/T-16.8b kill and restart-policy matrices, and the
+app-crash/lock kill-resistance rows into
+`docs/captures/t17-robustness-matrix.txt`. The contract is
+[ADR 0177](adr/0177-absent-services-never-block-session-start.md).
+
 ## Second VT, with isolation
 
 Another good workflow is leaving the host desktop on one virtual terminal and
