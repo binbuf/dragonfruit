@@ -70,7 +70,9 @@ The icon language is one foundation (T-19.1a) and three migrations:
   [0164](../adr/0164-settings-category-tile.md)).
 - **T-19.1c** migrates the menu-bar status marks (`shell/menubar/StatusGlyph.qml`)
   to plain Phosphor glyphs, preserving every state variant and the battery
-  level.
+  level. The battery composes the Phosphor `battery-empty` outline with a
+  token level fill overlay inside the cell (ADR
+  [0165](../adr/0165-menubar-phosphor-marks.md)).
 - **T-19.1d** gives our first-party apps Phosphor artwork: the Dock's **Files**
   (our Finder) tile and the **System Settings** app icon (which carries the
   gradient container). The Dragonfruit system-menu logo

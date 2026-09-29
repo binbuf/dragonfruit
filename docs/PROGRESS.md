@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(157 earlier sections omitted)_
+_(158 earlier sections omitted)_
 
-- **T121 — T-15.6a Battery and power profiles adapter**: **State: done.** `dragonfruit-power` (`services/power`) grew from the T-07.4; `services/power/src/source.rs` — `PowerData.profiles:
 - **T122 — T-15.6b Battery and power profiles pane and tile**: **State: done.** The Settings Battery pane and the Control Center Battery tile; `services/system-status/src/lib.rs` — `battery_view` now carries
 - **T123 — T-15.7a Notifications and Focus adapter**: **State: done.** New workspace crate `dragonfruit-notify-adapter`; `services/notify-adapter/` (new crate, workspace member) —
 - **T124 — T-15.7b Notifications and Focus pane and tile**: **State: done.** The Settings Notifications and Focus panes and the Control; `services/system-status/src/notifications.rs` (new) — `NotificationsHost`
@@ -44,6 +43,7 @@ _(157 earlier sections omitted)_
 - **T-14.7aa — Dock hover reference polish: bar geometry, zoom profile, and label tail**: **State: done.** The Dock's hover state is retuned to; **The background geometry.** macOS keeps the dock background a constant
 - **T176a — T-19.1a Vendor Phosphor, QML resource plumbing, glyph primitive**: **State: done.** Track 19's foundation lands: the Phosphor icon set is vendored; `assets/icons/phosphor/` (new) — Phosphor **2.0.8** (`v2.0.8`,
 - **T176b — T-19.1b System Settings category style**: **State: done.** System Settings now draws its category icons as; `design-system/components/SettingsCategoryIcon.qml` (new) — props `source`,
+- **T176c — T-19.1c Menu-bar icon migration to Phosphor**: **State: done.** Every menu-bar status mark now renders from Phosphor via; `shell/menubar/StatusGlyph.qml` — rewritten. A `glyphName` switch maps each
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -14632,3 +14632,64 @@ Gotchas for later:
 - `check-desktop-names` is pre-existing red on `HEAD` (see Follow-ups); `make
   check` aborts at lint there, but every other lint/test/soak gate is green and
   `make e2e` passes.
+
+## T176c — T-19.1c Menu-bar icon migration to Phosphor
+
+**State: done.** Every menu-bar status mark now renders from Phosphor via
+`PhosphorIcon`; no Canvas geometry remains in `StatusGlyph.qml`. `make e2e` and
+the 72-test qml suite are green.
+
+Real paths:
+
+- `shell/menubar/StatusGlyph.qml` — rewritten. A `glyphName` switch maps each
+  state to a glyph, and one literal `PhosphorIcon` per glyph is visible when
+  active (`fill` weight for solid marks). Mapping: `wifi`/`wifi-secure` →
+  `wifi-high`; `wifi-off`/`wifi-disabled` → `wifi-slash` (dimmed 0.4);
+  `wifi-connecting` → `wifi-high` (dimmed 0.5, static); `wifi-error` →
+  `wifi-x`; `bluetooth`; `volume` → `speaker-high`; `volume-muted` →
+  `speaker-x`; `focus` → `moon`; `accessibility` → `person`;
+  `control-center` → `sliders-horizontal`; `mission-control` → `squares-four`.
+  Public API (`name`/`color`/`size`/`level`/`backgroundColor`) and the slot
+  footprint are unchanged, so `StatusItem`/`WifiMenu`/`VolumeMenu`/`BatteryMenu`
+  and the bar layout are untouched. The `DragonfruitLogo` is unchanged.
+- **Battery is composed, not a single glyph.** `battery` = Phosphor
+  `battery-empty` outline (regular) + a plain `Rectangle` level fill overlay
+  inside the cell (viewBox x 40..192, y 88..168, from `battery-full`'s fill
+  interior) scaled by `level`. `battery-charging` = Phosphor
+  `battery-charging` (outline + bolt), no level fill (as before). See ADR
+  `docs/design/adr/0165-menubar-phosphor-marks.md`.
+- `shell/tests/tst_menubar.qml` — `imageHasMark`/`isBackground` helpers (the
+  offscreen grab renders a transparent glyph background as an opaque colour,
+  white on this backend, so alpha is always 1); state coverage over all 15
+  states; `test_battery_level_fill_is_continuous` samples 60% across the cell.
+- `scripts/capture-t19-menubar-phosphor.sh` →
+  `docs/captures/t19-menubar-phosphor-{light,dark}.png` (status fixture, scratch
+  settingsd for the scheme switch).
+
+Gotchas for later:
+
+- **`clip: true` on an ancestor Item does not clip a child `Shape` under the
+  software scene graph** (`QT_QUICK_BACKEND=software`, what all QML tests use).
+  A full `battery-full` glyph wrapped in a clipped `Item` rendered unclipped.
+  The level fill is therefore a plain `Rectangle` with its own geometry.
+- **`Shape.GeometryRenderer` does render holes** (`battery-empty`'s inner cell
+  is transparent) — verify with RGB. Do **not** use pixel alpha to detect
+  marks: `grabImage`/`grabToImage` returns an opaque image (background = white
+  in the light software grab), so `pixel(x,y).a` is always 1. Compare against
+  `pixel(0,0)` instead.
+- **Two overlapping temporary glyphs share a window grab.** `grabImage` of two
+  glyphs created by `createTemporaryObject` at the same position returns the
+  same composite. Create, grab, then `destroy()` before creating the next.
+- `PhosphorIcon` sets `preferredRendererType: Shape.GeometryRenderer` for
+  software-renderer tinting (T-19.1a); its glyph names are validated by
+  `make check-phosphor`, but a dynamic `name:` binding is skipped by
+  `check-phosphor-icons.py`, so the mapping is covered by the render test.
+- `check-desktop-names` remains pre-existing red on `HEAD`; `make check` aborts
+  at lint there, all other gates green.
+
+Verification run: `ctest --test-dir build` 72/72; `make e2e` green;
+`./scripts/check-phosphor-icons.py`, `gen-phosphor-glyphs.py --check`,
+`check-design-tokens.sh`, `check-gallery-snapshots.py --strict`,
+`gen-tokens.py --check`, `i18n-extract.py --check`, `check-no-capture-grab.sh`
+all green. Live stills inspected: crisp vector marks, no solid blobs, logo
+unchanged.
