@@ -497,11 +497,15 @@ fn start_session(
         "dragonfruit dev: backend={} lockstep-ipc=v{LOCKSTEP_VERSION}",
         backend
     );
+    // Provision the Files-owned desktop's one-time token (T-19.3) so the
+    // compositor writes `<socket>.desktop-launch-token`; the desktop process
+    // then reads the hand-off file, exactly like the shell reads its own.
     let child = Command::new(&compositor)
         .arg("--backend")
         .arg(backend)
         .arg("--socket-name")
         .arg(socket_name)
+        .env("DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN", random_token_hex())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .spawn()
@@ -880,6 +884,80 @@ fn launch_shell(guard: &mut ChildGuard, socket_name: &str, runtime_dir: &Path) -
     launch_program(guard, "shell", &shell, &args, &envs)
 }
 
+/// 32 random bytes as hex, for the compositor's `desktop:` launch token. The
+/// token is a dev/demo convenience; a production session mints it through the
+/// session manager. Falls back to a time-seeded value when `/dev/urandom` is
+/// unavailable.
+fn random_token_hex() -> String {
+    use std::io::Read;
+    let mut bytes = [0u8; 32];
+    let random = std::fs::File::open("/dev/urandom")
+        .and_then(|mut file| file.read_exact(&mut bytes))
+        .is_ok();
+    if !random {
+        let seed = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+            ^ (std::process::id() as u128);
+        for (i, byte) in bytes.iter_mut().enumerate() {
+            *byte = ((seed >> ((i % 16) * 8)) & 0xff) as u8;
+        }
+    }
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+/// Path to the built Files binary, which also implements the desktop process
+/// (`dragonfruit-files --desktop`). `DF_DESKTOP_APP` overrides. `None` when it
+/// is not built, in which case the desktop half is skipped.
+fn desktop_path() -> Option<PathBuf> {
+    if let Some(path) = std::env::var_os("DF_DESKTOP_APP") {
+        let path = PathBuf::from(path);
+        return path.is_file().then_some(path);
+    }
+    let path = PathBuf::from("build/apps/files/dragonfruit-files");
+    path.is_file().then_some(path)
+}
+
+/// Launch the Files-owned desktop process (T-19.3): its own process on the
+/// compositor's background layer, provisioned with the desktop launch token.
+/// Its own crash domain — its death never stops the shell or the browser.
+fn launch_desktop(guard: &mut ChildGuard, socket_name: &str, runtime_dir: &Path) -> bool {
+    let Some(desktop) = desktop_path() else {
+        eprintln!("dragonfruit dev: dragonfruit-files not built; desktop not started");
+        return false;
+    };
+    let token_path = runtime_dir.join(format!("{socket_name}.desktop-launch-token"));
+    let Some(token) = wait_for_token(&token_path, Duration::from_secs(5)) else {
+        eprintln!(
+            "dragonfruit dev: no desktop launch token at {} — desktop not started",
+            token_path.display()
+        );
+        return false;
+    };
+    let args = vec!["--desktop".to_string()];
+    let mut envs = vec![
+        ("WAYLAND_DISPLAY", socket_name.to_string()),
+        ("XDG_CURRENT_DESKTOP", DESKTOP_NAME.to_string()),
+        ("DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN", token),
+        // The desktop speaks the private protocol itself and renders QML
+        // offscreen into its buffer, exactly like the shell chrome.
+        ("QT_QPA_PLATFORM", "offscreen".to_string()),
+        ("QT_QUICK_BACKEND", "software".to_string()),
+    ];
+    for (key, value) in dev_share_env(runtime_dir) {
+        envs.push((key, value));
+    }
+    envs.push((
+        "QML_IMPORT_PATH",
+        std::fs::canonicalize(demo::qml_import_path())
+            .unwrap_or_else(|_| demo::qml_import_path())
+            .to_string_lossy()
+            .into_owned(),
+    ));
+    launch_program(guard, "files-desktop", &desktop, &args, &envs)
+}
+
 /// Path to `dragonfruit-pam-helper`: `DF_PAM_HELPER` if set, otherwise a
 /// sibling of this binary (both are built by the cargo workspace). `None`
 /// when neither exists, in which case the shell resolves it on `PATH`.
@@ -1017,6 +1095,7 @@ fn run_dev_session(args: &DevArgs) -> ExitCode {
         let set = args.services.unwrap_or(ServiceSet::Core);
         launch_services(&mut session.guard, &args.socket_name, &runtime_dir, set);
         launch_shell(&mut session.guard, &args.socket_name, &runtime_dir);
+        launch_desktop(&mut session.guard, &args.socket_name, &runtime_dir);
     }
 
     for cmd in &args.launch {
@@ -1105,6 +1184,9 @@ fn run_demo_session(args: &DevArgs) -> ExitCode {
     if !launch_shell(&mut session.guard, &args.socket_name, &runtime_dir) {
         dirty = true;
     }
+    // The Files-owned desktop (T-19.3) is its own process on the background
+    // layer. A missing binary/token is a soft skip, not a demo failure.
+    launch_desktop(&mut session.guard, &args.socket_name, &runtime_dir);
 
     // The Qt app is a normal Wayland client of the private socket. It needs
     // the build-tree QML import root (the shell bakes this in at compile

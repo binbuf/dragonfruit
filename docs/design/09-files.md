@@ -638,12 +638,20 @@ The macOS model: **the file manager owns the desktop.**
   like click, Cmd-click, and Shift-click. The same view serves a Files window
   and the desktop surface. Click/Cmd/Shift selection, the `activated` signal,
   and the band are QML-tested.
-- **Still deferred:** the `dragonfruit-files --desktop` process itself (the
-  `--desktop` flag and `~/Desktop` resolution are parsed in `FilesArguments`,
-  but the background-layer protocol client and the offscreen desktop scene are
-  the next slice), the crash-isolation matrix, Desktop Reveal icon exposure,
-  and selection/focus transfer between the desktop, chrome, and windows (see
-  [09-files.md](09-files.md) and the T-19.3 hand-off).
+- **The desktop process itself (T-19.3).** `dragonfruit-files --desktop` is a
+  self-contained trusted private-protocol client
+  (`apps/files/DesktopProtocol.*`): it presents the `desktop:` launch token,
+  creates one full-output `background` layer surface, renders the
+  `Dragonfruit.Files` `DesktopSurface` QML (`FilesDirectoryModel` +
+  `FilesIconView`) offscreen, and commits each frame. It shares `files-core`
+  and the views with the browser but not its crash domain. Its right-click
+  background menu offers `Open in Files` and `New Folder` (the latter through
+  the ops engine), and it is provisioned by the dev tool
+  (`make dev`/`make demo`); the systemd session entry still needs the token
+  (ADR [0169](adr/0169-desktop-process-client.md)).
+- **Still deferred:** Desktop Reveal icon exposure, selection/focus transfer
+  between the desktop, chrome, and windows, and the session-manager
+  provisioning of the desktop token (see the T-19.3 hand-off).
 - The Desktop Reveal hot corner moves windows aside to expose the background
   and its icons (see [04-shell.md](04-shell.md)). The MVP ships plain
   wallpaper.

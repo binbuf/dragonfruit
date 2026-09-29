@@ -977,6 +977,33 @@
     </message>
 </context>
 <context>
+    <name>DesktopSurface</name>
+    <message>
+        <source>Desktop</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Desktop menu</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>New Folder</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open in Files</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Shift+Cmd+N</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>DisplaysPane</name>
     <message>
         <source>180°</source>

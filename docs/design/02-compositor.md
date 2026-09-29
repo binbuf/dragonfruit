@@ -731,7 +731,7 @@ and own ours (see [01-architecture.md](01-architecture.md)).
 
 Access is restricted to a fixed set of trusted session processes, each
 provisioned with a one-time launch token out-of-band at startup: the shell,
-and — when desktop icons ship — the Files desktop surface (see
+and the Files desktop surface (`dragonfruit-files --desktop`, see
 [09-files.md](09-files.md)). `bind` attempts from any other client are
 refused. The chrome protocols are a privilege of these processes, not a
 public extension surface.

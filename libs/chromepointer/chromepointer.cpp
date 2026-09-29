@@ -27,11 +27,11 @@ quint64 timestamp()
 }
 
 void send(QWindow *window, QEvent::Type type, const QPointF &pos, Qt::MouseButton button,
-          Qt::MouseButtons buttons)
+          Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers)
 {
     if (!window)
         return;
-    QMouseEvent event(type, pos, pos, button, buttons, Qt::NoModifier);
+    QMouseEvent event(type, pos, pos, button, buttons, modifiers);
     event.setTimestamp(timestamp());
     QCoreApplication::sendEvent(window, &event);
 }

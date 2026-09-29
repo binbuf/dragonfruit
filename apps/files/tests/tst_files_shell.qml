@@ -20,8 +20,10 @@ Item {
         when: windowShown
 
         Component { id: shellComponent; FilesShell { } }
+        Component { id: desktopComponent; DesktopSurface { } }
 
         SignalSpy { id: closeSpy; signalName: "closeRequested" }
+        SignalSpy { id: desktopOpenSpy; signalName: "openRequested" }
 
         function make(props) {
             var merged = { width: stage.width, height: stage.height };
@@ -29,6 +31,15 @@ Item {
                 merged[key] = props[key];
             var obj = createTemporaryObject(shellComponent, stage, merged);
             waitForRendering(stage);
+            return obj;
+        }
+
+        function makeDesktop() {
+            var obj = createTemporaryObject(desktopComponent, stage,
+                                            { width: stage.width, height: stage.height,
+                                              location: Files.viewFixtureUri });
+            waitForRendering(stage);
+            tryCompare(obj.directory, "state", "complete");
             return obj;
         }
 
@@ -640,6 +651,88 @@ Item {
             var lights = shell.titleBar.trafficLights;
             mouseClick(lights, d / 2, d / 2);
             compare(closeSpy.count, 1);
+        }
+
+        // -- Files-owned desktop (T-19.3) ---------------------------------------
+
+        function test_desktop_lists_the_fixture() {
+            var surface = makeDesktop();
+            compare(surface.location, Files.viewFixtureUri);
+            compare(surface.directory.count, 5, "Folder, Nested, alpha, beta, gamma");
+            compare(surface.directory.uriAt(0), Files.viewFixtureUri + "/Folder");
+        }
+
+        function test_desktop_selection_command_shift_and_marquee() {
+            var surface = makeDesktop();
+            var ids = surface.directory.allNodeIds();
+            compare(ids.length, 5);
+
+            surface.selectNode(ids[0], 0);
+            compare(surface.selectedIds.length, 1);
+            // Cmd toggles.
+            surface.selectNode(ids[2], Qt.ControlModifier);
+            compare(surface.selectedIds.length, 2);
+            surface.selectNode(ids[2], Qt.ControlModifier);
+            compare(surface.selectedIds.length, 1);
+            // Shift ranges from the anchor.
+            surface.selectNode(ids[3], Qt.ShiftModifier);
+            verify(surface.selectedIds.indexOf(ids[3]) >= 0);
+
+            // A rubber-band drag over the background selects enclosed tiles;
+            // Cmd extends, Shift extends rather than replaces.
+            surface.clearSelection();
+            mousePress(surface.iconView, 5, 5);
+            mouseMove(surface.iconView, 300, 300);
+            verify(surface.iconView.bandActive);
+            mouseRelease(surface.iconView, 300, 300);
+            waitForRendering(stage);
+            verify(surface.selectedIds.length >= 2);
+            var first = surface.selectedIds[0];
+            surface.selectMarquee([first], Qt.ControlModifier);
+            verify(surface.selectedIds.indexOf(first) < 0);
+            surface.selectMarquee([first], Qt.ShiftModifier);
+            verify(surface.selectedIds.indexOf(first) >= 0);
+
+            surface.selectAll();
+            compare(surface.selectedIds.length, 5);
+            surface.clearSelection();
+            compare(surface.selectedIds.length, 0);
+        }
+
+        function test_desktop_background_menu_opens_in_files() {
+            var surface = makeDesktop();
+            surface.openBackgroundMenu(12, 12);
+            verify(surface.contextMenu.open);
+            var actions = surface.contextMenu.model.map(function(e) { return e.action; });
+            compare(actions[0], "openInFiles");
+            verify(actions.indexOf("newFolder") >= 0);
+
+            desktopOpenSpy.target = surface;
+            desktopOpenSpy.clear();
+            surface.contextAction("openInFiles");
+            compare(desktopOpenSpy.count, 1);
+            compare(desktopOpenSpy.signalArguments[0][0], Files.viewFixtureUri);
+            compare(desktopOpenSpy.signalArguments[0][1], true);
+            surface.contextMenu.hide();
+        }
+
+        function test_desktop_double_click_opens() {
+            var surface = makeDesktop();
+            desktopOpenSpy.target = surface;
+            desktopOpenSpy.clear();
+            // Drive the tile's own double-click handler (the delegate's
+            // MouseArea), the same path a real second click takes.
+            var tile = surface.iconView.gridView.itemAtIndex(0);
+            verify(tile !== null);
+            var area = null;
+            for (var i = 0; i < tile.children.length; ++i) {
+                if (tile.children[i].acceptedButtons !== undefined)
+                    area = tile.children[i];
+            }
+            verify(area !== null, "the tile exposes its click area");
+            area.doubleClicked(null);
+            tryCompare(desktopOpenSpy, "count", 1);
+            compare(desktopOpenSpy.signalArguments[0][1], true, "the first tile is a folder");
         }
     }
 }
