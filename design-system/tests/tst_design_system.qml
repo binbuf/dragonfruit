@@ -54,6 +54,7 @@ TestCase {
     Component { id: popoverComponent; Popover { } }
     Component { id: tooltipComponent; Tooltip { } }
     Component { id: skeletonComponent; Skeleton { width: 160; height: 24 } }
+    Component { id: phosphorIconComponent; PhosphorIcon { name: "gear"; weight: "fill" } }
     Component {
         id: scrollViewComponent
         ScrollView {
@@ -805,6 +806,96 @@ TestCase {
         compare(s.highlightX, first, "the static highlight must not move");
         compare(s.progress, 0.0, "no animation progress is recorded when reduced");
         Theme.reducedMotion = saved;
+    }
+
+    // -- PhosphorIcon (T-19.1a) ---------------------------------------------
+    //
+    // The glyph primitive: size and tint come from properties, an unknown
+    // name/weight resolves to nothing (never a silent substitute), and a
+    // missing glyph is a blank mark rather than a crash. The tint is asserted
+    // on real grabbed pixels: a ShapePath fill renders under the headless
+    // software scene graph, unlike MultiEffect colorization.
+
+    function findPixel(img, color) {
+        var r = channel(color.r), g = channel(color.g), b = channel(color.b);
+        for (var y = 0; y < img.height; ++y) {
+            for (var x = 0; x < img.width; ++x) {
+                if (img.red(x, y) === r && img.green(x, y) === g && img.blue(x, y) === b)
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    function test_phosphor_icon_sizes_and_tints_from_properties() {
+        var icon = make(phosphorIconComponent, {
+            name: "square", weight: "fill", size: 48, color: "#ff8800"
+        });
+        compare(icon.resolved, true);
+        compare(icon.implicitWidth, 48);
+        compare(icon.implicitHeight, 48);
+        compare(icon.source, "qrc:/icons/phosphor/square-fill.svg");
+        verify(findPixel(grabImage(icon), icon.color),
+               "the glyph must be filled with the tint color");
+
+        // Changing the tint recolors the mark; changing the size resizes it.
+        icon.color = "#0033ff";
+        icon.size = 64;
+        waitForRendering(stage);
+        compare(icon.implicitWidth, 64);
+        verify(findPixel(grabImage(icon), icon.color),
+               "the tint must follow the color property");
+    }
+
+    function test_phosphor_icon_name_and_weight_resolution() {
+        var regular = make(phosphorIconComponent, { name: "gear", weight: "regular" });
+        compare(regular.resolved, true);
+        compare(regular.source, "qrc:/icons/phosphor/gear.svg");
+
+        var fill = make(phosphorIconComponent, { name: "gear", weight: "fill" });
+        compare(fill.resolved, true);
+        compare(fill.source, "qrc:/icons/phosphor/gear-fill.svg");
+
+        // A weight that is not vendored resolves to nothing; it does not
+        // silently fall back to the regular glyph.
+        var bold = make(phosphorIconComponent, { name: "gear", weight: "bold" });
+        compare(bold.resolved, false);
+        compare(bold.glyphPath, "");
+    }
+
+    function test_phosphor_icon_unknown_glyph_is_blank_not_a_crash() {
+        var icon = make(phosphorIconComponent, { name: "definitely-not-a-real-glyph" });
+        compare(icon.resolved, false);
+        compare(icon.glyphPath, "");
+        var img = grabImage(icon);
+        compare(img.width, Math.round(icon.width));
+        compare(img.height, Math.round(icon.height));
+    }
+
+    function test_phosphor_icon_default_color_comes_from_theme() {
+        var icon = make(phosphorIconComponent, {});
+        compare(String(icon.color), String(Theme.color.textPrimary));
+        compare(icon.Accessible.role, Accessible.Graphic);
+        compare(icon.Accessible.ignored, true);
+        var named = make(phosphorIconComponent, { accessibleName: "Settings" });
+        compare(named.Accessible.name, "Settings");
+        compare(named.Accessible.ignored, false);
+    }
+
+    function test_phosphor_svg_resource_is_reachable() {
+        // The raw vendored SVG ships at the stable prefix the registry is
+        // generated from; both weights must resolve there.
+        var xhr = new XMLHttpRequest();
+        xhr.open("GET", "qrc:/icons/phosphor/gear.svg", false);
+        xhr.send();
+        compare(xhr.status, 200);
+        verify(xhr.responseText.indexOf("<path") >= 0,
+               "the vendored regular SVG must be reachable under /icons/phosphor");
+        xhr.open("GET", "qrc:/icons/phosphor/gear-fill.svg", false);
+        xhr.send();
+        compare(xhr.status, 200);
+        verify(xhr.responseText.indexOf("<path") >= 0,
+               "the vendored fill SVG must be reachable under /icons/phosphor");
     }
 
     // -- ScrollView (FR-1) --------------------------------------------------
