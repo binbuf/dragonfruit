@@ -33,6 +33,7 @@ MenuBarMenu
 SearchField
 SourceList
 Icon
+PhosphorIcon
 Dialog
 Sheet
 Popover
@@ -47,6 +48,16 @@ pill with an opt-in pointer tail (`tailVisible`, the Dock's shipping form) and
 a token inner rim; the tail aims at the anchor centre and rides the owner's
 overlay rect (ADR
 [0162](adr/0162-dock-hover-zoom-profile-and-label-tail.md)).
+
+`PhosphorIcon` (T-19.1a) is the foreground-glyph primitive: the
+[MIT-licensed Phosphor](https://phosphoricons.com/) set (2.0.8, the `regular`
+and `fill` weights) is vendored under `assets/icons/phosphor/`, exposed at
+`qrc:/icons/phosphor/<name>.svg`, and rendered as a tintable `ShapePath` sized
+from `name`/`color`/`size`/`weight`. The `Icon.qml` original-geometry
+vocabulary stays for marks not migrated. A glyph is a *resource* — no color or
+container is baked in — while the tint and any tile stay in QML; a referenced
+glyph that is not vendored fails `make check-phosphor` (ADR
+[0163](adr/0163-phosphor-icons.md)).
 
 ## Token architecture
 

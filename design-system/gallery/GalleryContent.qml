@@ -16,7 +16,7 @@ Item {
                                   "Segmented", "ContextMenu", "SearchField",
                                   "SourceList", "Dialog", "Sheet", "Popover",
                                   "ScrollView", "Slider", "Select", "Icons", "Tooltip",
-                                  "Skeleton"]
+                                  "Skeleton", "Phosphor"]
     property string scheme: "dark"
     property bool reducedMotion: false
 
@@ -66,6 +66,7 @@ Item {
             case 23: return iconsPageComponent;
             case 24: return tooltipPageComponent;
             case 25: return skeletonPageComponent;
+            case 26: return phosphorPageComponent;
             default: return iconsPageComponent;
             }        }
     }
@@ -96,6 +97,7 @@ Item {
     Component { id: iconsPageComponent; IconsPage { } }
     Component { id: tooltipPageComponent; TooltipPage { } }
     Component { id: skeletonPageComponent; SkeletonPage { } }
+    Component { id: phosphorPageComponent; PhosphorPage { } }
 
     component Page: Column {
         spacing: Theme.primitive.spacing.lg
@@ -933,6 +935,80 @@ Item {
                     width: 120
                     height: 24
                     active: false
+                }
+            }
+        }
+    }
+
+    // The Phosphor foreground glyphs (T-19.1a). The primitive is tinted and
+    // sized purely from its properties; the same glyph serves the dark and
+    // light schemes because the tint, not the file, carries the color.
+    component PhosphorPage: Page {
+        Section {
+            heading: qsTr("Regular weight — tinted to textPrimary")
+            Row {
+                spacing: Theme.primitive.spacing.lg
+                Repeater {
+                    model: ["wifi-high", "bluetooth", "speaker-high", "moon",
+                            "battery-full", "magnifying-glass", "folder-open", "gear"]
+                    delegate: Column {
+                        required property string modelData
+                        spacing: Theme.primitive.spacing.xs
+                        PhosphorIcon {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            name: modelData
+                            size: 28
+                            color: Theme.color.textPrimary
+                        }
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: modelData
+                            color: Theme.color.textTertiary
+                            font.pixelSize: Theme.primitive.font.sizeXs
+                        }
+                    }
+                }
+            }
+        }
+        Section {
+            heading: qsTr("Fill weight — tinted to accent")
+            Row {
+                spacing: Theme.primitive.spacing.lg
+                Repeater {
+                    model: ["square", "gear", "wifi-high", "lightning", "shield-check"]
+                    delegate: Column {
+                        required property string modelData
+                        spacing: Theme.primitive.spacing.xs
+                        PhosphorIcon {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            name: modelData
+                            weight: "fill"
+                            size: 28
+                            color: Theme.color.accent
+                        }
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: modelData + " (fill)"
+                            color: Theme.color.textTertiary
+                            font.pixelSize: Theme.primitive.font.sizeXs
+                        }
+                    }
+                }
+            }
+        }
+        Section {
+            heading: qsTr("Sizes")
+            Row {
+                spacing: Theme.primitive.spacing.lg
+                Repeater {
+                    model: [16, 24, 40, 64]
+                    delegate: PhosphorIcon {
+                        required property int modelData
+                        name: "gear"
+                        weight: "fill"
+                        size: modelData
+                        color: Theme.color.textPrimary
+                    }
                 }
             }
         }

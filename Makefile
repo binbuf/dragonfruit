@@ -479,7 +479,13 @@ gallery-snapshot: cmake-build
 check-tokens:
 	./scripts/gen-tokens.py --check
 
-lint: fmt-check clippy qml-test check-tokens check-design-tokens check-desktop-names check-no-capture-grab check-i18n
+# T-19.1a: the Phosphor registry must match the vendored SVGs, and every QML
+# glyph reference must name a vendored file (a typo fails the build).
+check-phosphor:
+	./scripts/gen-phosphor-glyphs.py --check
+	./scripts/check-phosphor-icons.py
+
+lint: fmt-check clippy qml-test check-tokens check-design-tokens check-desktop-names check-no-capture-grab check-i18n check-phosphor
 
 fmt:
 	$(CARGO) fmt --all

@@ -32,7 +32,7 @@ PAGES = [
     "tokens", "window", "titlebar", "trafficlights", "toggle", "popup", "menu", "ssd",
     "buttons", "sidebar", "toolbar", "splitview", "settings", "segmented", "contextmenu",
     "searchfield", "sourcelist", "dialog", "sheet", "popover", "scrollview", "slider",
-    "select", "icons", "tooltip", "skeleton",
+    "select", "icons", "tooltip", "skeleton", "phosphor",
 ]
 SCHEMES = [("light", False), ("dark", False), ("dark", True)]
 
@@ -171,6 +171,14 @@ def invariant_checks(output: Path, tokens: dict, resolve) -> list[str]:
           "light skeleton: highlight color not found")
     check(contains_color(output / "skeleton_dark.png", hex_rgb(resolve(dark["skeletonBase"], tokens))),
           "dark skeleton: base color not found")
+
+    # The Phosphor glyph primitive must render a tinted, non-empty mark: the
+    # fill-weight section is tinted to the accent, so its exact color must
+    # appear in the rendered pixels (T-19.1a).
+    check(contains_color(output / "phosphor_dark.png", hex_rgb(resolve(dark["accent"], tokens))),
+          "dark phosphor: accent-tinted glyph not found")
+    check(contains_color(output / "phosphor_light.png", hex_rgb(resolve(light["accent"], tokens))),
+          "light phosphor: accent-tinted glyph not found")
 
     # Light and dark renders must actually differ.
     light_bytes = (output / "window_light.png").read_bytes()

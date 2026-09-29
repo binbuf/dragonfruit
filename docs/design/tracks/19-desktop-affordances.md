@@ -51,6 +51,12 @@ visual weight the reference has. The [original-assets rule](../14-risks.md)
 forbids Apple's assets, not third-party open assets; the decision is recorded in
 an ADR (T-19.1a).
 
+T-19.1a vendors the pinned `regular` and `fill` weights (Phosphor 2.0.8) and
+renders them through `PhosphorIcon`, a tintable `ShapePath` primitive. A glyph
+is a *resource* with no baked color or container; the tint, size, and any tile
+live in QML, and a referenced glyph that is not vendored fails the build
+(`make check-phosphor`).
+
 The icon language is one foundation (T-19.1a) and three migrations:
 
 - **T-19.1a** vendors Phosphor, exposes it to QML, and adds the `PhosphorIcon`

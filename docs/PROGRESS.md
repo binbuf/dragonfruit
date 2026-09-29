@@ -3,10 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(154 earlier sections omitted)_
+_(156 earlier sections omitted)_
 
-- **T118 — T-15.4b Keyboard, Mouse, and Trackpad pane and tile**: **State: done.** The Settings Keyboard/Mouse/Trackpad panes and the Control; `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 11 → 12; 10 new
-- **T119 — T-15.5a Mission Control and hot corners adapter**: **State: done.** A new workspace crate `dragonfruit-overview`; `services/overview/src/source.rs` — `MissionControlSource` seam,
 - **T120 — T-15.5b Mission Control and hot corners pane and tile**: **State: done.** The Settings Mission Control & Hot Corners pane and the Control; `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 12 → 13; new
 - **T121 — T-15.6a Battery and power profiles adapter**: **State: done.** `dragonfruit-power` (`services/power`) grew from the T-07.4; `services/power/src/source.rs` — `PowerData.profiles:
 - **T122 — T-15.6b Battery and power profiles pane and tile**: **State: done.** The Settings Battery pane and the Control Center Battery tile; `services/system-status/src/lib.rs` — `battery_view` now carries
@@ -44,6 +42,8 @@ _(154 earlier sections omitted)_
 - **T153 — T-17.1b Workspace, Mission Control, and app-switch verification**: **State: done.** The T-17 premium gate's navigation verification unit lands; `scripts/capture-t17-navigation.sh` + `scripts/t17-navigation-driver.py`
 - **T154 — T-17.1c Flatpak/browser end-to-end verification**: **State: done.** A real Flatpak browser (`org.mozilla.firefox`) file-chooses,; `scripts/capture-t17-flatpak-browser.sh` + `scripts/t17-flatpak-browser-driver.py`
 - **Follow-ups**: **Live PipeWire screencast producer.** The ScreenCast portal flow returns the; **Stable Mission Control window-card locator.** So a future capture can
+- **T-14.7aa — Dock hover reference polish: bar geometry, zoom profile, and label tail**: **State: done.** The Dock's hover state is retuned to; **The background geometry.** macOS keeps the dock background a constant
+- **T176a — T-19.1a Vendor Phosphor, QML resource plumbing, glyph primitive**: **State: done.** Track 19's foundation lands: the Phosphor icon set is vendored; `assets/icons/phosphor/` (new) — Phosphor **2.0.8** (`v2.0.8`,
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -14500,3 +14500,64 @@ colour `(33,13,41)`; on a host where the shipped `Default.jpg` resolves, the
 nested session no longer paints it, so the drivers need
 `DF_DEFAULT_WALLPAPER=<flat purple png>` (the dev/test override the shell's
 shipped-default resolver honours) or a detector update.
+
+## T176a — T-19.1a Vendor Phosphor, QML resource plumbing, glyph primitive
+
+**State: done.** Track 19's foundation lands: the Phosphor icon set is vendored
+and licensed, its raw SVGs are exposed to QML at a stable resource prefix, and
+a `PhosphorIcon` primitive renders a named glyph tinted/sized from properties.
+`make e2e` and the qml/visual/lint gates are green.
+
+Real paths:
+
+- `assets/icons/phosphor/` (new) — Phosphor **2.0.8** (`v2.0.8`,
+  `d42782b2abe747d904b971ccab48b182a1455f86`), the pinned **`regular`** and
+  **`fill`** weights, flattened with upstream names: `<name>.svg` (regular) and
+  `<name>-fill.svg` (fill). 111 curated glyphs (222 files) + `LICENSE` +
+  `README.md`. MIT. Add a glyph by copying both weights and running
+  `scripts/gen-phosphor-glyphs.py`.
+- `design-system/PhosphorGlyphs.qml` (generated, singleton) — `path(weight,
+  name)`/`has(...)` for the vendored set. Regenerate with
+  `scripts/gen-phosphor-glyphs.py`; `--check` fails if stale.
+- `design-system/components/PhosphorIcon.qml` (new) — `name`, `color`
+  (default `Theme.color.textPrimary`), `size`, optional `weight`
+  (default `regular`), optional `accessibleName`; `source` is the qrc path
+  (`qrc:/icons/phosphor/<name>[-<weight>].svg`). Renders a `ShapePath` whose
+  `fillColor` binds to `color`.
+- `design-system/CMakeLists.txt` — `qt_add_resources(... PREFIX
+  "/icons/phosphor" BASE assets/icons/phosphor FILES <glob>)`, plus the new
+  QML files in `qt_add_qml_module`/`df_qml_lint`.
+- `scripts/gen-phosphor-glyphs.py`, `scripts/check-phosphor-icons.py` (new) and
+  `make check-phosphor` (in `make lint`), `NOTICE`, `LICENSES/Phosphor.txt`,
+  `LICENSES/README.md`, `docs/design/adr/0163-phosphor-icons.md`.
+- Gallery page `Phosphor` + `phosphor_{light,dark,dark_reduced}.png` goldens;
+  `tst_design_system.qml` gains four Phosphor cases (size/tint on real pixels,
+  name/weight resolution, unknown name is blank not a crash, default color).
+
+Decisions / gotchas for T-19.1b/c/d:
+
+- **Tint mechanism is a `ShapePath`, not `MultiEffect`.** Qt 6.11's
+  `MultiEffect` colorization and `Image`-over-SVG tint are GPU-only: under the
+  headless **software** backend the gallery and QML tests use, MultiEffect
+  rendered nothing. A `ShapePath` with a bound `fillColor` renders and tints in
+  both backends. Glyph path data is generated once from the SVGs into the
+  `PhosphorGlyphs` singleton; the SVG stays the shipped resource.
+- **Phosphor v2 file naming:** the `fill` weight is `<name>-fill.svg`; other
+  weights use a `-<weight>` suffix (upstream convention). `PhosphorIcon`
+  builds `source` accordingly. The primitive's default weight is `regular`, so
+  the task's `qrc:/icons/phosphor/<name>.svg` is the regular path.
+- **Existence is a build gate, not a silent blank.** `make check-phosphor`
+  runs the generator `--check` and a QML scan that fails on any literal glyph
+  name not under `assets/icons/phosphor/`. A non-vendored weight also fails.
+  The runtime component warns and renders blank for an unknown name.
+- **Only the curated set is vendored** (not all 1,248 upstream icons) so the
+  gate is meaningful. T-19.1b/c/d must add both weight files and re-run the
+  generator when they need a name that is not in the set; the scan then
+  enforces it.
+- Gallery pages are enumerated in **two** places: `GalleryContent.qml`
+  (`pages` + the `Loader` switch) and `scripts/check-gallery-snapshots.py`
+  (`PAGES`). The Phosphor page was appended as index 26 so prior goldens do
+  not shift.
+- `skeleton_{light,dark}.png` goldens are shimmer-phase sensitive; the new
+  page/singleton shifted `skeleton_dark.png`, which was regenerated and
+  re-verified stable across two `--update` runs (`--strict` green).
