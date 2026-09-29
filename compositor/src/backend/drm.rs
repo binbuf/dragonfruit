@@ -244,9 +244,24 @@ pub fn run(socket_name: &str) -> Result<(), String> {
 }
 
 fn init(state: &mut crate::state::DfState, shared: SharedData) -> Result<(), String> {
-    // Session: logind/libseat takes the VT and device access.
-    let (session, notifier) = LibSeatSession::new()
-        .map_err(|e| format!("failed to acquire a DRM session (logind/libseat): {e}"))?;
+    // Session: logind/libseat takes the VT and device access. On a host with
+    // no *free* seat (a workstation already running a desktop) this is where
+    // bring-up stops: report it as OPEN — the T-03.2 unit is marked open, not
+    // skipped — rather than as an opaque failure.
+    let (session, notifier) = match LibSeatSession::new() {
+        Ok(pair) => pair,
+        Err(err) => {
+            let outcome = dragonfruit_compositor::drm_bringup::DrmBringup::classify(
+                Err(err.to_string()),
+                None,
+                0,
+            );
+            println!("dragonfruit-compositor: {}", outcome.marker());
+            return Err(format!(
+                "DRM bring-up failed: failed to acquire a DRM session (logind/libseat): {err}"
+            ));
+        }
+    };
     let seat_name = session.seat();
 
     // Primary GPU: explicit override, else the seat's primary render node,
@@ -254,20 +269,30 @@ fn init(state: &mut crate::state::DfState, shared: SharedData) -> Result<(), Str
     let primary_gpu = match std::env::var("DF_DRM_DEVICE") {
         Ok(path) => DrmNode::from_path(path.as_str())
             .map_err(|e| format!("invalid DF_DRM_DEVICE {path:?}: {e}"))?,
-        Err(_) => primary_gpu(&seat_name)
-            .map_err(|e| format!("failed to scan DRM devices: {e}"))?
-            .and_then(|path| {
-                DrmNode::from_path(&path)
-                    .ok()
-                    .and_then(|node| node.node_with_type(NodeType::Render).and_then(|n| n.ok()))
-            })
-            .or_else(|| {
-                all_gpus(&seat_name)
-                    .ok()?
-                    .into_iter()
-                    .find_map(|path| DrmNode::from_path(&path).ok())
-            })
-            .ok_or_else(|| "no usable DRM GPU found on this seat".to_string())?,
+        Err(_) => {
+            let resolved = primary_gpu(&seat_name)
+                .map_err(|e| format!("failed to scan DRM devices: {e}"))?
+                .and_then(|path| {
+                    DrmNode::from_path(&path)
+                        .ok()
+                        .and_then(|node| node.node_with_type(NodeType::Render).and_then(|n| n.ok()))
+                })
+                .or_else(|| {
+                    all_gpus(&seat_name)
+                        .ok()?
+                        .into_iter()
+                        .find_map(|path| DrmNode::from_path(&path).ok())
+                });
+            match resolved {
+                Some(node) => node,
+                None => {
+                    let outcome =
+                        dragonfruit_compositor::drm_bringup::DrmBringup::classify(Ok(()), None, 0);
+                    println!("dragonfruit-compositor: {}", outcome.marker());
+                    return Err("DRM bring-up failed: no usable DRM GPU on this seat".into());
+                }
+            }
+        }
     };
     println!("dragonfruit-compositor: primary gpu: {primary_gpu:?}");
 
@@ -319,6 +344,26 @@ fn init(state: &mut crate::state::DfState, shared: SharedData) -> Result<(), Str
                 }
             }
         }
+    }
+
+    // First bring-up checkpoint (T-03.2): a session and a device are not
+    // enough — with no connected output there is nothing to composite to.
+    // When another process holds DRM master (the host desktop) every
+    // connector fails to initialize, so this is where a *non-skipped* open
+    // is recorded. Fail rather than run silently with no display.
+    let output_count: usize = data
+        .devices
+        .values()
+        .map(|device| device.surfaces.len())
+        .sum();
+    let outcome = dragonfruit_compositor::drm_bringup::DrmBringup::classify(
+        Ok(()),
+        Some(data.primary_gpu.dev_id().to_string()),
+        output_count,
+    );
+    println!("dragonfruit-compositor: {}", outcome.marker());
+    if !outcome.is_ready() {
+        return Err("DRM bring-up failed: no connected output".into());
     }
 
     // shm formats + dmabuf feedback from the primary gpu renderer.

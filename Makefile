@@ -48,7 +48,7 @@ endif
 .DEFAULT_GOAL := help
 .PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test \
         visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev dev-full demo soak e2e \
-        idle-trace menubar-idle-trace latency-trace settingsd-capture settings-wave-1-capture \
+        idle-trace menubar-idle-trace latency-trace drm-bringup settingsd-capture settings-wave-1-capture \
         t18-wallpaper-capture t18-absence-matrix t15-absence-matrix t15-breadth-capture t16-a11y-audit \
         t16-i18n-capture t16-kill-matrix t17-window-loop-capture t17-navigation-capture \
         t17-flatpak-browser-capture i18n-update \
@@ -131,7 +131,8 @@ e2e: build
 	    --test reduced_motion_sweep \
 	    --test protocol_surface \
 	    --test session_lock_conformance \
-	    --test suspend_resume_conformance
+	    --test suspend_resume_conformance \
+	    --test drm_bringup
 	$(CARGO) test -p dragonfruit-system-adapters
 	$(CARGO) test -p dragonfruit-networkmanager
 	$(CARGO) test -p dragonfruit-audio
@@ -179,6 +180,13 @@ menubar-idle-trace: cargo-build
 # to docs/captures/t03-latency-nested.txt. `scripts/latency-trace.sh` wraps it.
 latency-trace: cargo-build
 	bash scripts/latency-trace.sh
+
+# T-03.2: the DRM first bring-up probe. On a host with a free seat it starts
+# the DRM backend and records the capture/trace; with no free seat it records
+# an explicit OPEN marker (the unit is marked open, not skipped). Always exits
+# 0 — the hardware rail consumes the artifact, not the exit code.
+drm-bringup: cargo-build
+	bash scripts/drm-bringup.sh
 
 # T-08.3: the settingsd flip + restart/resync track capture. Needs a host
 # Wayland session, `spectacle`, `ffmpeg`, and Pillow; records the stills,

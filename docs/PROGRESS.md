@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(161 earlier sections omitted)_
+_(162 earlier sections omitted)_
 
-- **T125 — T-15.8a Lock Screen policy adapter**: **State: done.** New workspace crate `dragonfruit-lock-adapter`; `services/lock-adapter/` (new crate, workspace member) —
 - **T126 — T-15.8b Lock Screen policy pane and tile**: **State: done.** The Settings Lock Screen pane and the Control Center Lock; `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 14 → 15; new
 - **T127 — T-15.9a Menu Bar configuration adapter**: **State: done.** New workspace crate `dragonfruit-menubar-adapter`; `services/menubar-adapter/` (new crate, workspace member) —
 - **T128 — T-15.9b Menu Bar configuration pane and tile**: **State: done.** The Settings Menu Bar pane and the Control Center Menu Bar; `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 15 → 16; new
@@ -44,6 +43,7 @@ _(161 earlier sections omitted)_
 - **T176d — T-19.1d Dock Files tile and first-party app icons**: **State: done.** Our two first-party apps now carry Phosphor-derived artwork:; `assets/icons/apps/org.dragonfruit.Files.svg` / `org.dragonfruit.Settings.svg`
 - **T177 — T-19.2 Applications drawer**: **State: done.** The shell's launcher landed: a full-output `apps-drawer` overlay; `shell/src/appsdrawer.{h,cpp}` (new) — the pure list model:
 - **T178 — T-19.3 Desktop items and mouse selection**: **State: continue.** The compositor desktop-layer + trust slice, the shared; `compositor/src/shell/layer.rs` — `LAYER_BACKGROUND` (0) / `LAYER_TOP` (2),
+- **T159 — T-03.2 DRM first bring-up**: **State: OPEN (hardware unavailable).** The never-executed DRM backend was run; `compositor/src/drm_bringup.rs` (new) — pure
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -14482,6 +14482,15 @@ Decisions / gotchas for T-17.2:
   to mint the `desktop:` token. Add a `files-desktop` entry to
   `services/session`'s plan/`entry.rs` and a `desktop:`-scoped environment (the
   current `SessionEnvironment.trusted()` does not express one).
+- **T-03.2 (DRM first bring-up) is OPEN on this host — the real DRM capture is
+  still owed.** No free logind seat; the KDE session owns DRM master. Re-run
+  `make drm-bringup` on a free seat / spare GPU / clean VM (the same command
+  T-03.4's runbook uses) to record `docs/captures/t03-drm-loop-trace.txt` and
+  the T-01 loop capture, replacing `t03-drm-loop.open.txt`. The backend's
+  `DRM bring-up:` marker is the contract; keep it one greppable line.
+- **T-03.3 / T-03.4 remain blocked on the same hardware** (input validation and
+  DRM soak/runbook); they depend on T-03.2 and are swept together on the
+  hardware rail.
 
 ## T-14.7aa — Dock hover reference polish: bar geometry, zoom profile, and label tail
 
@@ -15070,3 +15079,67 @@ Gotchas for later:
 - **The desktop's forced `QT_QPA_PLATFORM=offscreen` leaks to spawned apps.**
   Strip it in the child environment or any Files window the desktop opens is
   invisible.
+
+## T159 — T-03.2 DRM first bring-up
+
+**State: OPEN (hardware unavailable).** The never-executed DRM backend was run
+as far as this host allows and the first-bring-up holes were fixed, but it
+cannot own a display here: the KDE Wayland session owns DRM master on `seat0`
+and there is no free logind seat / new VT / root. Per the track rule the unit is
+**marked open, not skipped**; the committed DRM capture + trace stays for a
+free seat / spare GPU / clean VM (T-03.4). `make e2e` green (130 ok, 0 failed),
+`make fmt-check`/`clippy` clean, live nested demo checked.
+
+Real paths:
+
+- `compositor/src/drm_bringup.rs` (new) — pure
+  `DrmBringup::{Ready, Open}` over
+  `DrmBringupBlocker::{NoSeat(String), NoGpu, NoOutput}` with
+  `classify(session, device, outputs)` and `marker()`; re-exported by
+  `compositor/src/lib.rs`. Markers:
+  `DRM bring-up: READY device=<node> outputs=<n>` /
+  `DRM bring-up: OPEN (no seat: <reason>)` /
+  `DRM bring-up: OPEN (no usable DRM GPU on the seat)` /
+  `DRM bring-up: OPEN (no connected output: master busy or all connectors disconnected)`.
+- `compositor/tests/drm_bringup.rs` (new; added to the `make e2e` compositor
+  list) — 5 tests pinning the open/ready decision and the one-line marker.
+- `compositor/src/backend/drm.rs` — `init` classifies at three checkpoints
+  (session, GPU, initial connector scan), prints the marker, and **fails** on
+  no output. The pre-fix bug: with a foreign master every connector fails to
+  initialize, the backend entered the event loop with **zero outputs** and hung
+  with no display and no diagnosis.
+- `scripts/drm-bringup.sh` + `scripts/drm-seat-probe.py` (new) + `make
+  drm-bringup` — probe `/dev/dri/card*` with libdrm (`drmIsMaster`/
+  `drmSetMaster`, released immediately); free card → start the DRM backend and
+  write `docs/captures/t03-drm-loop-trace.txt`; otherwise write
+  `docs/captures/t03-drm-loop.open.txt`. Always exits 0.
+- `docs/captures/t03-drm-loop.open.txt` (new) — the open record: probe
+  (`/dev/dri/card0: busy (Permission denied)`), the backend's no-op-seat
+  self-report, seat evidence, reproduction command.
+- `docs/captures/t03-drm-loop-nested-check.png` (new) — the required live
+  visual check (nested `make demo` + `spectacle`), verdict: full desktop
+  renders, no artifacts. The task has no surface of its own.
+- Docs: ADR
+  `docs/design/adr/0170-drm-first-bringup-open-marker-and-no-output-guard.md`
+  (new), `docs/design/02-compositor.md` §"DRM first bring-up (T-03.2)",
+  `docs/captures/README.md`.
+
+Commands / gotchas for later (the hardware rail and T-03.4):
+
+- **Do not run the default (logind) DRM path on the shared host.**
+  `libseat`'s logind backend calls `TakeControl` and would steal control of the
+  live KDE session. Use `LIBSEAT_BACKEND=noop` to exercise the DRM path
+  safely: it opens `/dev/dri/card0` directly (the dev user has an ACL) and
+  `DrmDeviceFd::new` warns "assuming unprivileged mode" instead of acquiring
+  master, so the backend reaches its no-output checkpoint untouched.
+- **The master probe is `scripts/drm-seat-probe.py`** (libdrm `drmSetMaster`
+  released at once). `card0` returns `EACCES` while KDE holds master; a free
+  card returns `can_set_master: true`.
+- `make drm-bringup` is the one command; on this host it prints
+  `OPEN (no free logind seat: no DRM card accepted master)` and writes the
+  open artifact.
+- Cargo needs `PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig` and
+  `RUSTFLAGS="-L $HOME/.local/lib -L $HOME/.local/df-devroot/lib64"` (the
+  Makefile supplies the first; `libxkbcommon.so` is the second).
+- `make check` is still red only at the pre-existing `check-desktop-names`;
+  T159 added no violation.

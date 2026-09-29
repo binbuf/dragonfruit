@@ -440,7 +440,7 @@ just the forward group with
 > These units need a seat or a clean VM. Run only this group with
 > `./.symphony/symphony run --only T159,T160,T161,T169,T170,T171`.
 
-- [ ] T159 — T-03.2 DRM first bring-up → [tasks/159-t-03.2-drm-first-bring-up.md](tasks/159-t-03.2-drm-first-bring-up.md)
+- [~] T159 — T-03.2 DRM first bring-up → [tasks/159-t-03.2-drm-first-bring-up.md](tasks/159-t-03.2-drm-first-bring-up.md) ⟵ running
 - [ ] T160 — T-03.3 Hardware input validation → [tasks/160-t-03.3-hardware-input-validation.md](tasks/160-t-03.3-hardware-input-validation.md)
 - [ ] T161 — T-03.4 DRM soak, teardown, runbook → [tasks/161-t-03.4-drm-soak-teardown-runbook.md](tasks/161-t-03.4-drm-soak-teardown-runbook.md)
 - [ ] T169 — T-12.6a Display-manager session selection and optional autologin → [tasks/169-t-12.6a-display-manager-session-selection.md](tasks/169-t-12.6a-display-manager-session-selection.md)

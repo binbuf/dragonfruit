@@ -51,6 +51,19 @@ input-to-photon latency samples plus an honest pass/fail against one 60 Hz
 frame. Also a text artifact — the direct-scanout counter is the `scanout stats`
 line in the same trace, and T-03.4 fills the DRM half on hardware.
 
+T-03.2's DRM first bring-up is produced by `scripts/drm-bringup.sh`
+(`make drm-bringup`). On this host there is no free logind seat (the KDE
+session owns DRM master), so the unit is **marked open, not skipped**:
+`t03-drm-loop.open.txt` records the `libdrm` master probe
+(`/dev/dri/card0: busy (Permission denied)`), the backend's own no-op-seat
+self-report (`DRM bring-up: OPEN (no connected output: master busy or all
+connectors disconnected)`), and the reproduction command. On a machine with a
+free seat/VM the same script starts the DRM backend, records the `SIGUSR1`
+frame trace to `t03-drm-loop-trace.txt`, and the T-03.4 runbook completes the
+T-01 loop capture. The classification itself is pinned by
+`compositor/tests/drm_bringup.rs` in `make e2e`
+([ADR 0170](../design/adr/0170-drm-first-bringup-open-marker-and-no-output-guard.md)).
+
 T-05.6's Mission Control capture is produced by `scripts/capture-overview.sh`:
 it runs the nested demo twice (normally and with `accessibility.reduceMotion`),
 drives the overview open, Desktop Reveal, and a per-Space wallpaper slide over

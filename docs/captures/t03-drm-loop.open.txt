@@ -1,0 +1,35 @@
+T-03.2 — DRM first bring-up: OPEN
+==================================
+
+recorded:   2026-09-29T11:02:21Z
+result:     DRM bring-up: OPEN (no free logind seat: no DRM card accepted master)
+host:       Linux 7.2.5-200.fc44.x86_64 x86_64
+
+DRM master probe:
+  - /dev/dri/card0: busy (Permission denied)
+
+seat0 (/run/systemd/seats/seat0):
+  - # This is private data. Do not parse.
+  - IS_SEAT0=1
+  - CAN_MULTI_SESSION=1
+  - CAN_TTY=1
+  - CAN_GRAPHICAL=1
+  - ACTIVE=2
+  - ACTIVE_UID=1000
+  - SESSIONS=2 c1
+  - UIDS=1000 981
+
+Backend self-report (no-op seat, host session untouched):
+  dragonfruit-compositor: DRM bring-up: OPEN (no connected output: master busy or all connectors disconnected)
+
+Why: the host runs a graphical session that owns DRM master, so the
+     DRM backend cannot scan out. The T-03.2 unit is marked open —
+     not skipped — and is swept on the hardware rail (T-03.4 owns the
+     dedicated-user second-VT/VM runbook).
+
+Reproduce on a machine with a free seat / spare GPU / clean VM:
+  make drm-bringup
+  # or directly:
+  target/debug/dragonfruit-compositor --backend drm --socket-name t03-drm
+
+The trace artifact on success is docs/captures/t03-drm-loop-trace.txt.
