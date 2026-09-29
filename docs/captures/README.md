@@ -927,6 +927,26 @@ are in `t17-flatpak-browser.md`. Needs Flatpak + Firefox,
 python3 (host and sandbox) with PyGObject/Pillow, ffmpeg (optional clip), and
 the built tree; not in `make e2e`.
 
+T-17.3's visual-floor and reduced-motion sign-off is produced by
+`scripts/capture-t17-visual-floor.sh` (`make t17-visual-floor-capture`): the
+nested demo runs once with the synthetic-input harness and
+`scripts/t17-visual-floor-driver.py` captures the same chrome under dark, light,
+and dark+reduced motion (whole desktop, menu-bar band, compositor SSD titlebar,
+Dock band), so the comparison cannot drift between launches. It writes
+`t17-visual-floor-dark.png` / `-light.png` / `-reduced.png` and the per-variant
+`-menubar`/`-titlebar`/`-dock` crops, the live `query material`/`query degrade`
+transcript `t17-visual-floor.txt`, and two review sheets against the
+design-system goldens: `t17-visual-floor-gallery.png` (each captured desktop
+beside `window_*`, each captured titlebar beside `ssd_*`) and
+`t17-visual-floor-menubar.png`/`-dock.png` (the chrome bands across variants).
+The reviewed verdict and the recorded approximation waiver are in
+`t17-visual-floor.md`; the evidence boundary is
+[ADR 0176](../design/adr/0176-t17-visual-floor-sign-off.md). The automated
+reduced-motion floor is `compositor/tests/reduced_motion_sweep.rs` and the
+gallery `--strict` gate (both in `make e2e`/`make visual-test`). Needs a host
+Wayland session, spectacle, python3+Pillow, and the built tree; not in
+`make e2e`.
+
 T-12.6c's second-VT dev harness is produced by
 `scripts/second-vt-validation.sh` (`make second-vt-validation`). It records the
 dedicated-user **refusal** (running `dev --real --plan` for the host user, who

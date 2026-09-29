@@ -1,0 +1,9 @@
+variant name=dark scheme=dark reduced=0
+  material scheme=dark chrome=2d2534ff elevated=2d2534ff border=44394dff accent=e15c98ff | end
+  degrade tier=reduced forced=0 budget_us=16000 samples=37 over_budget=22 downgrades=1 upgrades=0 tiers=full:35,reduced:2,minimal:0 | end
+variant name=light scheme=light reduced=0
+  material scheme=light chrome=ffffffff elevated=ffffffff border=ded6e5ff accent=b32a66ff | end
+  degrade tier=reduced forced=0 budget_us=16000 samples=84 over_budget=29 downgrades=1 upgrades=0 tiers=full:35,reduced:49,minimal:0 | end
+variant name=reduced scheme=dark reduced=1
+  material scheme=dark chrome=2d2534ff elevated=2d2534ff border=44394dff accent=e15c98ff | end
+  degrade tier=reduced forced=0 budget_us=16000 samples=137 over_budget=29 downgrades=1 upgrades=0 tiers=full:35,reduced:102,minimal:0 | end

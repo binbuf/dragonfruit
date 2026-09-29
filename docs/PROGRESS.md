@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(167 earlier sections omitted)_
+_(168 earlier sections omitted)_
 
-- **T131 — T-15.11a Users and Groups adapter**: **State: done.** New workspace crate `dragonfruit-account-adapter`; `services/account-adapter/` (new crate, workspace member) —
 - **T132 — T-15.11b Users and Groups pane and tile**: **State: done.** The Settings `Users & Groups` pane and the Control Center; `services/system-status/src/accounts.rs` (new) — `AccountsHost<S>` (refresh/
 - **T133 — T-15.12a Printers and Scanners adapter**: **State: done.** New workspace crate `dragonfruit-printer-adapter`; `services/printer-adapter/src/source.rs` — `PrinterState` (CUPS `3`/`4`/`5` +
 - **T134 — T-15.12b Printers and Scanners pane and tile**: **State: done.** The Settings `Printers & Scanners` pane and the Control Center; `services/system-status/src/printers.rs` (new) — `PrintersHost<S>` (refresh/
@@ -43,7 +42,8 @@ _(167 earlier sections omitted)_
 - **T161 — T-03.4 DRM soak, teardown, runbook**: **State: OPEN (hardware unavailable).** The T-03 hardware rail's final unit:; `tools/dragonfruit-dev/src/soak.rs` — new `teardown_artifacts(socket)`
 - **T169 — T-12.6a Display-manager session selection and optional autologin**: **State: done.** The display-manager session-selection seam landed; T-12.6b; `tools/dragonfruit-dev/src/session_selector.rs` (new, registered as `mod
 - **T170 — T-12.6b Real-session round-trip and "Quit to <previous desktop>"**: **State: done (automated half); real-DM validation open (hardware; `services/session/src/dev_session.rs` (new) — the single state-file contract
-- **T171 — T-12.6c Second-VT dev harness and runbook**: **State: done (automated half); the real second-VT cycle is open on the; `tools/dragonfruit-dev/src/secon
+- **T171 — T-12.6c Second-VT dev harness and runbook**: **State: done (automated half); the real second-VT cycle is open on the; `tools/dragonfruit-dev/src/second_vt.rs` (new) — pure `LogindSession`
+- **T155 — T-17.3 Visual floor and reduced-motion sign-off**: **State: done (agent half; the human sign-off is batched at the track; `scri
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -15559,3 +15559,76 @@ Commands / gotchas for later:
   disagrees).
 - **T170's follow-up is resolved:** `dragonfruit dev --real` without
   `--round-trip` no longer errors — it is the second-VT mode.
+
+## T155 — T-17.3 Visual floor and reduced-motion sign-off
+
+**State: done (agent half; the human sign-off is batched at the track
+boundary).** The premium gate's visual floor is signed off in light and dark,
+reduced motion passes, and the one literal checklist item that cannot be met
+without a GPU sampler is waived with a recorded reason. `make
+t17-visual-floor-capture` exit 0, `check-gallery-snapshots.py --strict` 84/84,
+`reduced_motion_sweep` 3/3, `make e2e` exit 0 (132 `test result: ok`, 0 failed),
+`make lint` red only at the pre-existing `check-desktop-names` hits, live
+nested capture + vision read clean.
+
+Real paths:
+
+- `scripts/capture-t17-visual-floor.sh` (`make t17-visual-floor-capture`) — one
+  nested `make demo` with the synthetic-input harness, then
+  `scripts/t17-visual-floor-driver.py` captures dark/light/dark+reduced chrome
+  in the **same session** (so the comparison cannot drift) and records the live
+  `query material`/`query degrade` tones.
+- `scripts/t17-visual-floor-driver.py` (new) — reuses the T-17.1a active-window
+  capturer (`Capture`/`Synthetic` from `t17-window-loop-driver.py`, imported via
+  `importlib` because the filename is hyphenated). Captures whole desktop +
+  menu-bar band (28 px) + compositor SSD titlebar + Dock band per variant.
+- `docs/captures/t17-visual-floor.{png,txt}` + `-{dark,light,reduced}`
+  `-menubar`/`-titlebar`/`-dock` stills; review sheets
+  `t17-visual-floor-gallery.png` (desktop vs `window_*`, titlebar vs `ssd_*`),
+  `-menubar.png`, `-dock.png`.
+- `docs/captures/t17-visual-floor.md` (reviewed sign-off),
+  `docs/design/adr/0176-t17-visual-floor-sign-off.md` (new),
+  `docs/captures/README.md`, `docs/design/10-design-system.md`, `Makefile`.
+
+Commands / gotchas for later:
+
+- **The T-01/T-04 colour-detection capturer is stale.** `capture-demo-driver.py`
+  finds the nested output by matching `WALL=(45,35,51)`; the T-18 wallpaper
+  content provider means the demo wallpaper is no longer that solid colour and
+  the demo window is not necessarily the active host window. The T-17 drivers
+  raise the nested window via KWin scripting and use `spectacle -a` instead —
+  that is what works now. Do not reuse the colour probe for new live captures.
+- **The largest-content window in today's demo is the CSD Settings window**
+  (`tb=(0,0,0,0)`), not an SSD window; pick the SSD window with a non-zero
+  titlebar (`rows = [r for r in decorations if r["ssd"] and r["tb"][2] > 0]`).
+- **The compositor window menu did not open** on the live X11 (`Xmessage`) or a
+  Qt Wayland (`kcalc`) SSD titlebar during this capture: a right-click left
+  `query window-menu` closed (`window-menu 0 …`). The input path is
+  `input.rs` `is_right`/`titlebar_window_at`; the popup material is instead
+  covered by the design-system `menu_*`/`popup_*` goldens. Recorded as a
+  follow-up, not silently omitted.
+- **The reduced-motion still is pixel-identical to the dark still**
+  (`ImageChops.difference(...).getbbox() is None`): reduced motion changes no
+  static material, so the chrome renders in full with animation disabled. That
+  is a reusable assertion if a future capture wants a cheap check.
+- **The live `query material` tones are opaque scheme tones**, not the
+  translucent fills: dark `chrome=2d2534ff`, light `chrome=ffffffff`. The
+  backdrop translucency is the feather-layer approximation, not in the report.
+- **`pkill -f <pattern>` can kill the tool's own shell** because the bash `-c`
+  command line contains the pattern; use the bracket trick
+  (`pkill -9 -f "[t]17-visual-floor"`) when cleaning up strays.
+- **Build env** for cargo/make: `PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig`,
+  `RUSTFLAGS=-L $HOME/.local/df-devroot/lib64`; plain `cargo test` fails on
+  `libudev-sys` without them.
+- The nested iGPU drives the material ladder to `reduced` (`degrade
+  tier=reduced`); `full` still rendered 35 frames. T-17.4 owns performance.
+
+### Follow-ups
+
+- **True GPU blur/refraction sampler** — retire the
+  `docs/captures/t17-visual-floor.md` waiver and ADR 0176's; swap the feather
+  geometry behind the existing `material.*` tokens. Post-gate backlog.
+- **Live window-menu capture** — re-check a right-click titlebar popup on the
+  X11/Qt SSD clients (see gotcha above); add it to a future nav capture so the
+  compositor popup material has a live still, not only the component goldens.
+- **T-17.4 verifies performance** (the material ladder and frame budget).
