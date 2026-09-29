@@ -13,6 +13,7 @@
 // BTN_MIDDLE 0x112.
 #pragma once
 
+#include <QPointF>
 #include <Qt>
 
 // The xkb modifier mask from `wl_keyboard.modifiers`, as Qt modifiers.
@@ -86,4 +87,20 @@ inline Qt::MouseButton desktopMouseButton(quint32 button)
     default:
         return Qt::NoButton;
     }
+}
+
+// Whether a fresh left press completes a double-click with the previous one
+// (T-19.3). The private protocol only delivers press/release pairs, so the
+// desktop synthesizes the `MouseButtonDblClick` the QML `onDoubleClicked`
+// handler expects; this is the pure decision (the compositor's own double-click
+// uses the same interval/distance idea). `elapsedMs` is the time since the last
+// press, or a negative value when there is none.
+inline bool desktopIsDoubleClick(bool haveLast, qint64 elapsedMs, int intervalMs,
+                                 const QPointF &last, const QPointF &now, int distance)
+{
+    if (!haveLast || elapsedMs < 0)
+        return false;
+    if (elapsedMs > intervalMs)
+        return false;
+    return (now - last).manhattanLength() <= distance;
 }
