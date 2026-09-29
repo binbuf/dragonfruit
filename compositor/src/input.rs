@@ -99,8 +99,13 @@ pub fn chrome_under(
     })?;
     let geometry = state.space.output_geometry(output)?;
     // `chrome_surfaces` is ordered bottom-to-top; iterate it in reverse so
-    // the topmost layer wins the hit test.
+    // the topmost layer wins the hit test. The Files desktop layer
+    // (`background`, T-19.3) composites *below* windows, so it is not chrome
+    // here and is hit-tested separately by [`desktop_under`].
     for chrome in state.chrome_surfaces(&output.name(), geometry).iter().rev() {
+        if !crate::shell::layer::above_windows(chrome.layer) {
+            continue;
+        }
         let origin = chrome.location + geometry.loc;
         // `under_from_surface_tree` takes the point relative to the surface
         // origin and returns the origin relative to `location`; pass (0,0)
@@ -115,11 +120,41 @@ pub fn chrome_under(
     None
 }
 
+/// The Files-owned desktop (`background`) surface under a global-space point
+/// (T-19.3), with its surface origin. `None` when no desktop surface is mapped
+/// there.
+pub fn desktop_under(
+    state: &DfState,
+    point: Point<f64, Logical>,
+) -> Option<(WlSurface, Point<i32, Logical>)> {
+    let output = state.space.outputs().find(|output| {
+        state
+            .space
+            .output_geometry(output)
+            .is_some_and(|geometry| geometry.to_f64().contains(point))
+    })?;
+    let geometry = state.space.output_geometry(output)?;
+    for chrome in state.chrome_surfaces(&output.name(), geometry).iter().rev() {
+        if !crate::shell::layer::is_desktop(chrome.layer) {
+            continue;
+        }
+        let origin = chrome.location + geometry.loc;
+        let local = point - origin.to_f64();
+        if let Some((surface, location)) =
+            under_from_surface_tree(&chrome.surface, local, (0, 0), WindowSurfaceType::ALL)
+        {
+            return Some((surface, location + origin));
+        }
+    }
+    None
+}
+
 /// The surface under a global-space point, with the surface origin.
 ///
-/// Chrome is hit first, then popups, then windows (the space keeps stacking
-/// order). The returned origin is in global space so it can be handed to
-/// Smithay's pointer/touch focus directly.
+/// Above-window chrome is hit first, then popups/windows (the space keeps
+/// stacking order), then the Files desktop layer — which composites below
+/// windows but above the wallpaper (T-19.3). The returned origin is in global
+/// space so it can be handed to Smithay's pointer/touch focus directly.
 pub fn surface_under(
     state: &DfState,
     point: Point<f64, Logical>,
@@ -132,10 +167,14 @@ pub fn surface_under(
     if state.overview_input_owner() == InputOwner::Overview {
         return None;
     }
-    let (window, window_loc) = state.space.element_under(point)?;
-    let (surface, location) =
-        window.surface_under(point - window_loc.to_f64(), WindowSurfaceType::ALL)?;
-    Some((surface, window_loc + location))
+    if let Some((window, window_loc)) = state.space.element_under(point) {
+        if let Some((surface, location)) =
+            window.surface_under(point - window_loc.to_f64(), WindowSurfaceType::ALL)
+        {
+            return Some((surface, window_loc + location));
+        }
+    }
+    desktop_under(state, point)
 }
 
 /// Route one input event from any backend.

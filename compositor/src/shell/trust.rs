@@ -36,6 +36,30 @@ pub const TOKENS_ENV: &str = "DRAGONFRUIT_LAUNCH_TOKENS";
 /// Suffix of the per-session token hand-off file.
 pub const TOKEN_FILE_SUFFIX: &str = ".launch-token";
 
+/// Single-token environment variable for the Files desktop process (T-19.3).
+/// Unlike [`TOKEN_ENV`] (the shell's), this token is minted for
+/// [`TrustedRole::DesktopIcons`], so the desktop surface may create a
+/// `background`-layer `df_layer_surface` while the shell may not.
+pub const DESKTOP_TOKEN_ENV: &str = "DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN";
+
+/// Suffix of the per-session desktop (Files icons) token hand-off file.
+pub const DESKTOP_TOKEN_FILE_SUFFIX: &str = ".desktop-launch-token";
+
+/// Parse one `DRAGONFRUIT_LAUNCH_TOKENS` entry into its role and value.
+///
+/// A bare hex value is a shell token (backward compatible). An explicit
+/// `role:hex` prefix mints for that role, so the conformance suite and the
+/// session manager can provision the desktop process alongside the shell.
+pub fn parse_token_entry(entry: &str) -> Option<(TrustedRole, [u8; TOKEN_BYTES])> {
+    let (role, hex) = match entry.split_once(':') {
+        Some(("shell", hex)) => (TrustedRole::Shell, hex),
+        Some(("desktop", hex)) => (TrustedRole::DesktopIcons, hex),
+        Some(_) => return None,
+        None => (TrustedRole::Shell, entry),
+    };
+    LaunchToken::parse_hex(hex).map(|value| (role, value))
+}
+
 /// How many random bytes a launch token carries.
 pub const TOKEN_BYTES: usize = 32;
 
@@ -54,6 +78,19 @@ impl TrustedRole {
         match self {
             TrustedRole::Shell => "shell",
             TrustedRole::DesktopIcons => "desktop-icons",
+        }
+    }
+
+    /// Whether this role may create a `df_layer_surface` on `layer` (T-19.3).
+    ///
+    /// The trust model is **role-scoped**: the desktop-icons role owns the
+    /// `background` layer and the shell owns the above-window chrome layers.
+    /// Neither can cross into the other's band, so a compromised shell cannot
+    /// paint behind windows and a desktop process cannot paint over them.
+    pub const fn may_create_layer(self, layer: u32) -> bool {
+        match self {
+            TrustedRole::Shell => layer >= 2,
+            TrustedRole::DesktopIcons => layer == 0,
         }
     }
 }
@@ -418,6 +455,45 @@ mod tests {
             trust.authenticate(shell.as_bytes(), df_ipc::LOCKSTEP_VERSION),
             Ok(TrustedRole::Shell)
         );
+    }
+
+    #[test]
+    fn layer_creation_is_role_scoped() {
+        // T-19.3: the desktop owns `background` (0); the shell owns the
+        // above-window chrome layers. Neither crosses into the other's band.
+        assert!(TrustedRole::DesktopIcons.may_create_layer(0));
+        assert!(!TrustedRole::DesktopIcons.may_create_layer(1));
+        assert!(!TrustedRole::DesktopIcons.may_create_layer(2));
+        assert!(!TrustedRole::DesktopIcons.may_create_layer(3));
+
+        assert!(!TrustedRole::Shell.may_create_layer(0));
+        assert!(!TrustedRole::Shell.may_create_layer(1));
+        assert!(TrustedRole::Shell.may_create_layer(2));
+        assert!(TrustedRole::Shell.may_create_layer(3));
+    }
+
+    #[test]
+    fn token_entries_carry_an_optional_role() {
+        let shell = "aa".repeat(TOKEN_BYTES);
+        let desktop = "bb".repeat(TOKEN_BYTES);
+        assert_eq!(
+            parse_token_entry(&shell).map(|(role, _)| role),
+            Some(TrustedRole::Shell),
+            "a bare hex value is a shell token (backward compatible)"
+        );
+        assert_eq!(
+            parse_token_entry(&format!("shell:{shell}")).map(|(role, _)| role),
+            Some(TrustedRole::Shell)
+        );
+        assert_eq!(
+            parse_token_entry(&format!("desktop:{desktop}")).map(|(role, _)| role),
+            Some(TrustedRole::DesktopIcons)
+        );
+        let (role, value) = parse_token_entry(&format!("desktop:{desktop}")).unwrap();
+        assert_eq!(role, TrustedRole::DesktopIcons);
+        assert_eq!(value, [0xbb; TOKEN_BYTES]);
+        assert!(parse_token_entry("desktop:nothex").is_none());
+        assert!(parse_token_entry("unknown:aa").is_none());
     }
 
     #[test]

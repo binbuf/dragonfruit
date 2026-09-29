@@ -39,6 +39,32 @@ private slots:
         QCOMPARE(filesLocationArgument({}), QString());
     }
 
+    // -- the T-19.3 desktop process -------------------------------------
+
+    void desktop_flag_is_detected()
+    {
+        QVERIFY(filesDesktopRequested({QStringLiteral("dragonfruit-files"),
+                                       QStringLiteral("--desktop")}));
+        QVERIFY(!filesDesktopRequested({QStringLiteral("dragonfruit-files")}));
+        QVERIFY(!filesDesktopRequested({QStringLiteral("dragonfruit-files"),
+                                        QStringLiteral("trash://")}));
+        // The desktop flag is not mistaken for a location argument.
+        QCOMPARE(filesLocationArgument({QStringLiteral("dragonfruit-files"),
+                                        QStringLiteral("--desktop")}),
+                 QString());
+    }
+
+    void desktop_directory_is_a_local_file_uri()
+    {
+        const QString uri = filesDesktopDirectory();
+        QVERIFY(uri.startsWith(QStringLiteral("file://")));
+        const QUrl url(uri);
+        QVERIFY(url.isLocalFile());
+        QVERIFY(!url.toLocalFile().isEmpty());
+        QVERIFY(url.toLocalFile().endsWith(QStringLiteral("Desktop"))
+                || url.toLocalFile().contains(QStringLiteral("Desktop")));
+    }
+
     // -- the T-10.6c reveal target ---------------------------------------
 
     void a_file_resolves_to_its_parent_and_the_file()

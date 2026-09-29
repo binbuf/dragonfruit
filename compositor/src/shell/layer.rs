@@ -22,9 +22,58 @@ pub const ANCHOR_LEFT: u32 = 4;
 /// Anchor bit for the right edge.
 pub const ANCHOR_RIGHT: u32 = 8;
 
+/// The `background` layer (`df_shell.layer` value 0): the Files-owned desktop
+/// icons surface (T-19.3). It composites **above the per-Space wallpaper and
+/// below every window**, so desktop items sit behind open windows.
+pub const LAYER_BACKGROUND: u32 = 0;
+
+/// The `top` layer (`df_shell.layer` value 2): persistent chrome such as the
+/// menu bar and the Dock.
+pub const LAYER_TOP: u32 = 2;
+
 /// The `overlay` layer (`df_shell.layer` value 3): transient chrome such as
 /// menus, popovers, and the OSD.
 pub const LAYER_OVERLAY: u32 = 3;
+
+/// Whether `layer` composites **above** normal windows (`top`/`overlay`).
+/// The lower layers (`background`/`bottom`) composite below windows.
+pub const fn above_windows(layer: u32) -> bool {
+    layer >= LAYER_TOP
+}
+
+/// Whether `layer` is the Files-owned desktop band (`background`, T-19.3).
+pub const fn is_desktop(layer: u32) -> bool {
+    layer == LAYER_BACKGROUND
+}
+
+/// The compositing band a `df_shell.layer` value occupies, from the per-Space
+/// wallpaper up. Windows are compositor-stacked between [`StackBand::Desktop`]
+/// and [`StackBand::Chrome`], so the derived order is the layer contract the
+/// backends implement (T-19.3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum StackBand {
+    /// The compositor-owned per-Space wallpaper (bottom-most).
+    Wallpaper,
+    /// The Files desktop-icon surface (`background`).
+    Desktop,
+    /// A normal client window (compositor `Space`).
+    Windows,
+    /// Above-window chrome (`top`/`overlay`).
+    Chrome,
+}
+
+/// The band a `df_shell.layer` value composites in.
+///
+/// `background` is the desktop band; `top`/`overlay` are chrome. The
+/// unimplemented `bottom` layer is treated as desktop-band so it never leaks
+/// above windows (T-10/T-11 own its eventual policy).
+pub const fn stack_band(layer: u32) -> StackBand {
+    if is_desktop(layer) || layer == 1 {
+        StackBand::Desktop
+    } else {
+        StackBand::Chrome
+    }
+}
 
 /// Which edge a reserved zone belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -631,6 +680,25 @@ mod tests {
         let zones = aggregate_reserved([&top, &dock].into_iter(), ReservedZones::default());
         assert_eq!(zones.top, 0);
         assert_eq!(zones.bottom, 80);
+    }
+
+    #[test]
+    fn layer_bands_composite_wallpaper_desktop_windows_chrome() {
+        // T-19.3: the desktop layer sits above the wallpaper and below every
+        // window; chrome sits above windows. The enum's derived order is the
+        // compositing contract the backends append elements in.
+        assert_eq!(stack_band(LAYER_BACKGROUND), StackBand::Desktop);
+        assert_eq!(stack_band(LAYER_TOP), StackBand::Chrome);
+        assert_eq!(stack_band(LAYER_OVERLAY), StackBand::Chrome);
+        assert!(StackBand::Wallpaper < StackBand::Desktop);
+        assert!(StackBand::Desktop < StackBand::Windows);
+        assert!(StackBand::Windows < StackBand::Chrome);
+        // The desktop band is *not* above windows; chrome is.
+        assert!(!above_windows(LAYER_BACKGROUND));
+        assert!(above_windows(LAYER_TOP));
+        assert!(above_windows(LAYER_OVERLAY));
+        assert!(is_desktop(LAYER_BACKGROUND));
+        assert!(!is_desktop(LAYER_TOP));
     }
 
     #[test]

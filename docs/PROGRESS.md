@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(160 earlier sections omitted)_
+_(161 earlier sections omitted)_
 
-- **T124 — T-15.7b Notifications and Focus pane and tile**: **State: done.** The Settings Notifications and Focus panes and the Control; `services/system-status/src/notifications.rs` (new) — `NotificationsHost`
 - **T125 — T-15.8a Lock Screen policy adapter**: **State: done.** New workspace crate `dragonfruit-lock-adapter`; `services/lock-adapter/` (new crate, workspace member) —
 - **T126 — T-15.8b Lock Screen policy pane and tile**: **State: done.** The Settings Lock Screen pane and the Control Center Lock; `services/settingsd/src/schema.rs` — `SCHEMA_VERSION` 14 → 15; new
 - **T127 — T-15.9a Menu Bar configuration adapter**: **State: done.** New workspace crate `dragonfruit-menubar-adapter`; `services/menubar-adapter/` (new crate, workspace member) —
@@ -44,6 +43,7 @@ _(160 earlier sections omitted)_
 - **T176c — T-19.1c Menu-bar icon migration to Phosphor**: **State: done.** Every menu-bar status mark now renders from Phosphor via; `shell/menubar/StatusGlyph.qml` — rewritten. A `glyphName` switch maps each
 - **T176d — T-19.1d Dock Files tile and first-party app icons**: **State: done.** Our two first-party apps now carry Phosphor-derived artwork:; `assets/icons/apps/org.dragonfruit.Files.svg` / `org.dragonfruit.Settings.svg`
 - **T177 — T-19.2 Applications drawer**: **State: done.** The shell's launcher landed: a full-output `apps-drawer` overlay; `shell/src/appsdrawer.{h,cpp}` (new) — the pure list model:
+- **T178 — T-19.3 Desktop items and mouse selection**: **State: continue.** The compositor desktop-layer + trust slice and the shared; `compositor/src/shell/layer.rs` — `LAYER_BACKGROUND` (0) / `LAYER_TOP` (2),
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -14462,6 +14462,19 @@ Decisions / gotchas for T-17.2:
   a small shared helper/singleton (or a design-system API) when the drawer
   starts consuming it, and have `DockGlyph` call through it; keep the key the
   normalized desktop id (see the T176d gotcha about not matching `appId`).
+- **T-19.3 desktop process (compositor half of Files-owned desktop).** The
+  compositor band, role-scoped trust, desktop token provisioning, and the shared
+  rubber-band view logic exist; `dragonfruit-files --desktop` does not. Next
+  session: add a minimal `df_core`/`df_shell` client to `apps/files` (extract or
+  trim `shell/src/shellprotocol.*`), create a full-output `background`
+  `df_layer_surface` (`exclusive_zone -1`, keyboard on-demand), render an
+  offscreen `~/Desktop` scene to QImage and commit it, branch `main.cpp` on
+  `filesDesktopRequested`, add the `New Folder`/`Open in Files` background menu
+  through the ops engine, add the crash-isolation conformance test, and capture
+  the live desktop. Provision the desktop token via a `desktop:`-tagged
+  `DRAGONFRUIT_LAUNCH_TOKENS` entry (or `DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN`);
+  the compositor writes `<socket>.desktop-launch-token`. See the T-19.3
+  hand-off and ADR 0168.
 
 ## T-14.7aa — Dock hover reference polish: bar geometry, zoom profile, and label tail
 
@@ -14865,3 +14878,81 @@ Gotchas for later:
 - `make check` remains red at `check-desktop-names` (pre-existing, see
   Follow-ups); T177 added no new violations (its header comment uses
   `org.example.Calc.desktop`).
+
+## T178 — T-19.3 Desktop items and mouse selection
+
+**State: continue.** The compositor desktop-layer + trust slice and the shared
+view-selection slice landed; `make e2e` and the 74-test ctest suite are green.
+The `dragonfruit-files --desktop` process (compositor half of the feature) is
+the remaining slice.
+
+Real paths:
+
+- `compositor/src/shell/layer.rs` — `LAYER_BACKGROUND` (0) / `LAYER_TOP` (2),
+  `above_windows()`, `is_desktop()`, and the `StackBand` enum
+  (`Wallpaper < Desktop < Windows < Chrome`; derived `Ord`). Tests:
+  `layer_bands_composite_wallpaper_desktop_windows_chrome`.
+- `compositor/src/render.rs` — new `desktop_render_elements` emits only
+  `background` surfaces; `chrome_render_elements` now filters
+  `layer::above_windows`. Inserted between window and wallpaper elements in
+  `backend/nested.rs` and `backend/drm.rs` (front-to-back list ⇒ desktop below
+  windows, above wallpaper).
+- `compositor/src/shell/trust.rs` — `TrustedRole::may_create_layer` (shell ⇄
+  `layer >= 2`, DesktopIcons ⇄ `0`), `parse_token_entry` (`[role:]hex`),
+  `DESKTOP_TOKEN_ENV`/`DESKTOP_TOKEN_FILE_SUFFIX`. Test:
+  `layer_creation_is_role_scoped`, `token_entries_carry_an_optional_role`.
+- `compositor/src/shell/mod.rs` — `df_shell.get_layer_surface` refuses a
+  wrong-band role via `client.kill(ERROR_ACCESS_DENIED)`; new
+  `DfState::is_above_window_chrome_surface`; `chrome_has_keyboard_focus` uses
+  it; `provision()` mints `desktop:` entries, writes
+  `<socket>.desktop-launch-token`, and `remove_token_file` removes both.
+- `compositor/src/input.rs` — `chrome_under` skips below-window layers; new
+  `desktop_under`; `surface_under` order = above-window chrome → window `Space`
+  → desktop → `None`.
+- `compositor/src/state.rs` — `focus_changed` chrome-preservation only for
+  above-window chrome, so focusing the desktop clears `active_window`.
+- `compositor/tests/shell_protocol_conformance.rs` — new
+  `desktop_and_shell_roles_own_disjoint_layers` (desktop creates `background`
+  and is refused a `top` layer; shell is refused `background`). `Drop` removes
+  the desktop token file.
+- `apps/files/FilesIconView.qml` — `marqueeSelected(nodeIds, modifiers)`,
+  `enclosedIds(rect)`, `rubberBandSelect(...)`, marquee `Rectangle`, band
+  `MouseArea` (left-drag paints, right-click background menu, plain empty click
+  clears). Delegate click/Cmd/Shift/activated unchanged.
+- `apps/files/FilesShell.qml` — `selectMarquee(nodeIds, modifiers)` (replace /
+  Cmd-toggle / Shift-extend) wired from the icon view.
+- `apps/files/FilesArguments.h` — `filesDesktopRequested(args)`,
+  `filesDesktopDirectory()` (QStandardPaths DesktopLocation, `$HOME/Desktop`
+  fallback).
+- Tests: `apps/files/tests/tst_files_shell.qml`
+  `test_rubber_band_selects_enclosed_tiles` (real mousePress/move/release drag
+  from the empty margin), `tst_files_arguments.cpp`
+  `desktop_flag_is_detected`/`desktop_directory_is_a_local_file_uri`.
+- Docs: `docs/design/adr/0168-desktop-layer-and-role-scoped-layers.md`,
+  `docs/design/tracks/19-desktop-affordances.md`,
+  `docs/design/09-files.md` §Desktop icons,
+  `docs/design/02-compositor.md` §Private shell protocols.
+
+Gotchas for later:
+
+- **The desktop band is only `background` (0).** The `bottom` layer (1) is
+  unimplemented and `stack_band` aliases it to the desktop band so it can never
+  leak above windows. Do not add a `bottom` renderer without revisiting ADR
+  0168.
+- **`is_chrome_surface` still includes the desktop** (any `df_layer_surface`),
+  so `focus_chrome_surface`/`chrome_keyboard_interaction` work for it. Only
+  `focus_changed` and `chrome_has_keyboard_focus` use the new
+  `is_above_window_chrome_surface`. Adding a desktop layer must not flip
+  `is_chrome_surface` wholesale or the desktop loses OnDemand keyboard.
+- **`surface_under` now falls through to `desktop_under`**, so when the desktop
+  process lands it will receive pointer motion over empty space. It returns
+  `None` while unmapped, so today's behavior is unchanged.
+- **Provisioning format:** a bare `DRAGONFRUIT_LAUNCH_TOKENS` entry is still a
+  shell token; `desktop:<hex>` mints `DesktopIcons`. The conformance helper's
+  `read_token()` reads the shell hand-off file, so pass the desktop hex
+  explicitly.
+- **Rubber-band geometry:** `enclosedIds` iterates only instantiated (visible)
+  delegates via `grid.itemAtIndex`, matching Files' windowed view; a band over a
+  scrolled-away row selects nothing for that row.
+- `make check` remains red at `check-desktop-names` (pre-existing, see
+  Follow-ups); T178 added no new violations.

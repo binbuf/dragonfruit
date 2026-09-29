@@ -172,6 +172,35 @@ Item {
                 ? root.selectedIds[root.selectedIds.length - 1] : 0;
     }
 
+    // Rubber-band (marquee) selection (T-19.3): the view reports the enclosed
+    // node ids; Cmd toggles them, Shift extends, otherwise the band replaces
+    // the selection (an empty band clears it).
+    function selectMarquee(nodeIds, modifiers) {
+        var command = modifiers & root.commandMask;
+        var shift = modifiers & Qt.ShiftModifier;
+        var ids = root.selectedIds.slice();
+        if (command) {
+            for (var i = 0; i < nodeIds.length; ++i) {
+                var at = ids.indexOf(nodeIds[i]);
+                if (at >= 0)
+                    ids.splice(at, 1);
+                else
+                    ids.push(nodeIds[i]);
+            }
+        } else if (shift) {
+            for (var j = 0; j < nodeIds.length; ++j) {
+                if (ids.indexOf(nodeIds[j]) < 0)
+                    ids.push(nodeIds[j]);
+            }
+        } else {
+            ids = nodeIds.slice();
+        }
+        root.selectedIds = ids;
+        if (!command && ids.length > 0)
+            root.anchorId = ids[0];
+        root.selectedId = ids.length > 0 ? ids[ids.length - 1] : 0;
+    }
+
     // The contiguous node ids from `fromId` to `toId` in the current model
     // order — a Finder Shift-click range.
     function rangeTo(fromId, toId) {
@@ -621,6 +650,7 @@ Item {
                                 var p = iconView.mapToItem(root, x, y);
                                 root.openBackgroundMenu(p.x, p.y);
                             }
+                            onMarqueeSelected: (nodeIds, modifiers) => root.selectMarquee(nodeIds, modifiers)
                             onRenameSubmitted: (nodeId, name) => root.commitRename(nodeId, name)
                             onRenameCancelled: root.cancelRename()
                         }

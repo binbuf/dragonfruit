@@ -422,7 +422,7 @@ just the forward group with
 - [x] T176c — T-19.1c Menu-bar icon migration to Phosphor → [tasks/176c-t-19.1c-menu-bar-icon-migration.md](tasks/176c-t-19.1c-menu-bar-icon-migration.md)
 - [x] T176d — T-19.1d Dock Files tile and first-party app icons → [tasks/176d-t-19.1d-dock-and-app-icon-migration.md](tasks/176d-t-19.1d-dock-and-app-icon-migration.md)
 - [x] T177 — T-19.2 Applications drawer → [tasks/177-t-19.2-apps-drawer.md](tasks/177-t-19.2-apps-drawer.md)
-- [ ] T178 — T-19.3 Desktop items and mouse selection → [tasks/178-t-19.3-desktop-items-and-mouse-selection.md](tasks/178-t-19.3-desktop-items-and-mouse-selection.md)
+- [~] T178 — T-19.3 Desktop items and mouse selection → [tasks/178-t-19.3-desktop-items-and-mouse-selection.md](tasks/178-t-19.3-desktop-items-and-mouse-selection.md) ⟵ running
 
 ## Phase 16.5 — Real-session bring-up + switch harness (moved forward)
 

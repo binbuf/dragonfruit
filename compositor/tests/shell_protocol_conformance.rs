@@ -840,6 +840,8 @@ impl Drop for CompositorProcess {
         let _ = std::fs::remove_file(&self.socket_path);
         let _ = std::fs::remove_file(self.socket_path.with_extension("lock"));
         let _ = std::fs::remove_file(&self.token_path);
+        // The T-19.3 desktop token hand-off file, if a test provisioned one.
+        let _ = std::fs::remove_file(self.socket_path.with_extension("desktop-launch-token"));
         let _ = std::fs::remove_file(&self.stderr_path);
         let _ = std::fs::remove_file(&self.stdout_path);
         if let Some(path) = &self.synthetic_path {
@@ -1550,6 +1552,120 @@ fn untrusted_client_cannot_bind_private_globals() {
         result.is_err() || conn.protocol_error().is_some(),
         "an untrusted df_shell bind must be refused: {result:?}"
     );
+    proc.shutdown();
+}
+
+/// T-19.3: layer creation is role-scoped. The Files desktop process (the
+/// `desktop:`-tagged token) may create a `background` surface; the shell may
+/// not, and the desktop may not create the shell's above-window layers. Both
+/// crossings are refused exactly like an untrusted bind.
+#[test]
+fn desktop_and_shell_roles_own_disjoint_layers() {
+    let shell_token = "55".repeat(32);
+    let desktop_token = "66".repeat(32);
+    let proc = CompositorProcess::start(
+        "dragonfruit-conformance-desktop-role",
+        &[shell_token.clone(), format!("desktop:{desktop_token}")],
+    );
+
+    // --- the desktop role may create the background layer (T-19.3) --------
+    {
+        let (conn, mut queue, mut state) = connect(&proc.socket_path);
+        let (name, version) = state.core_global.expect("df_core advertised");
+        let core = bind_core(&mut state, &queue, name, version);
+        core.authenticate(1, desktop_token.clone());
+        wait_for(
+            &conn,
+            &mut queue,
+            &mut state,
+            Duration::from_secs(5),
+            |state| state.authenticated.is_some(),
+        );
+        assert_eq!(state.authenticated, Some(1), "desktop token authenticates");
+
+        let (shell_name, shell_version) = state.shell_global.expect("df_shell advertised");
+        let shell = bind_shell(&mut state, &queue, shell_name, shell_version);
+        let qh = queue.handle();
+        let surface = state.compositor.clone().unwrap().create_surface(&qh, ());
+        let layer = shell.get_layer_surface(
+            &surface,
+            None,
+            df_shell::Layer::Background,
+            "desktop".to_string(),
+            &qh,
+            (),
+        );
+        layer.set_anchor(1 | 2 | 4 | 8); // full output
+        layer.set_size(0, 0);
+        layer.set_exclusive_zone(-1);
+        layer.set_keyboard_interaction(df_layer_surface::KeyboardInteraction::OnDemand);
+        surface.commit();
+        wait_for(
+            &conn,
+            &mut queue,
+            &mut state,
+            Duration::from_secs(5),
+            |state| !state.layer_configures.is_empty(),
+        );
+        assert_eq!(
+            state.layer_configures.last().unwrap().1,
+            OUTPUT_W,
+            "the desktop background spans the output"
+        );
+
+        // The desktop role must not create an above-window chrome layer.
+        let (shell_name, shell_version) = state.shell_global.expect("df_shell advertised");
+        let shell = bind_shell(&mut state, &queue, shell_name, shell_version);
+        let surface = state.compositor.clone().unwrap().create_surface(&qh, ());
+        let _ = shell.get_layer_surface(
+            &surface,
+            None,
+            df_shell::Layer::Top,
+            "menubar".to_string(),
+            &qh,
+            (),
+        );
+        let _ = conn.flush();
+        let result = queue.roundtrip(&mut state);
+        assert!(
+            result.is_err() || conn.protocol_error().is_some(),
+            "the desktop role must not create a top-layer surface: {result:?}"
+        );
+    }
+
+    // --- the shell role must not create the background layer --------------
+    {
+        let (conn, mut queue, mut state) = connect(&proc.socket_path);
+        let (name, version) = state.core_global.expect("df_core advertised");
+        let core = bind_core(&mut state, &queue, name, version);
+        core.authenticate(1, shell_token);
+        wait_for(
+            &conn,
+            &mut queue,
+            &mut state,
+            Duration::from_secs(5),
+            |state| state.authenticated.is_some(),
+        );
+        let (shell_name, shell_version) = state.shell_global.expect("df_shell advertised");
+        let shell = bind_shell(&mut state, &queue, shell_name, shell_version);
+        let qh = queue.handle();
+        let surface = state.compositor.clone().unwrap().create_surface(&qh, ());
+        let _ = shell.get_layer_surface(
+            &surface,
+            None,
+            df_shell::Layer::Background,
+            "desktop".to_string(),
+            &qh,
+            (),
+        );
+        let _ = conn.flush();
+        let result = queue.roundtrip(&mut state);
+        assert!(
+            result.is_err() || conn.protocol_error().is_some(),
+            "the shell role must not create a background-layer surface: {result:?}"
+        );
+    }
+
     proc.shutdown();
 }
 

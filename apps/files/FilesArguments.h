@@ -8,7 +8,9 @@
 // test can exercise it without pulling in the QML plugin.
 #pragma once
 
+#include <QDir>
 #include <QFileInfo>
+#include <QStandardPaths>
 #include <QString>
 #include <QStringList>
 #include <QUrl>
@@ -31,6 +33,27 @@ inline QString filesLocationArgument(const QStringList &arguments)
             return argument;
     }
     return QString();
+}
+
+// Whether this invocation is the Files-owned desktop (T-19.3):
+// `dragonfruit-files --desktop`. The desktop process renders `~/Desktop` on a
+// compositor background-layer surface and is independent of the browser
+// process (its own launch token, its own crash domain).
+inline bool filesDesktopRequested(const QStringList &arguments)
+{
+    return arguments.contains(QStringLiteral("--desktop"));
+}
+
+// The directory the Files desktop browses: the user's Desktop, resolved
+// through `xdg-user-dirs` (Qt's standard location), falling back to
+// `$HOME/Desktop` when the location is unset. Returned as a `file://` URI for
+// the files-core model, matching the browser's location form.
+inline QString filesDesktopDirectory()
+{
+    QString path = QStandardPaths::writableLocation(QStandardPaths::DesktopLocation);
+    if (path.isEmpty())
+        path = QDir::homePath() + QStringLiteral("/Desktop");
+    return QUrl::fromLocalFile(path).toString();
 }
 
 // What a Files invocation should open: `location` is the directory to browse,

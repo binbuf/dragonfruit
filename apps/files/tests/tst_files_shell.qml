@@ -305,6 +305,36 @@ Item {
             compare(shell.selectedIds.length, 5);
         }
 
+        function test_rubber_band_selects_enclosed_tiles() {
+            var shell = make();
+            shell.browser.navigate(Files.viewFixtureUri);
+            tryCompare(shell.directory, "state", "complete");
+            waitForRendering(stage);
+            compare(shell.selectedIds.length, 0);
+
+            // Drag a band from the empty margin across the tile grid.
+            mousePress(shell.iconView, 5, 5);
+            mouseMove(shell.iconView, 300, 300);
+            verify(shell.iconView.bandActive);
+            mouseRelease(shell.iconView, 300, 300);
+            waitForRendering(stage);
+
+            verify(shell.iconView.bandActive === false);
+            verify(shell.selectedIds.length >= 2,
+                   "the band must enclose the tiles it swept");
+            verify(shell.selectedId > 0);
+
+            // Cmd extends the band with a disjoint tile: toggling a selected
+            // tile out and a fresh one in.
+            var first = shell.selectedIds[0];
+            shell.selectMarquee([first], Qt.ControlModifier);
+            verify(shell.selectedIds.indexOf(first) < 0);
+
+            // Shift extends rather than replaces.
+            shell.selectMarquee([first], Qt.ShiftModifier);
+            verify(shell.selectedIds.indexOf(first) >= 0);
+        }
+
         function test_context_menu_targets_the_pointer() {
             var shell = make();
             shell.browser.navigate(Files.viewFixtureUri);
