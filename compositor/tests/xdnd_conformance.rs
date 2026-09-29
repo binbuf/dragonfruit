@@ -28,11 +28,14 @@ use x11rb::protocol::Event;
 use x11rb::rust_connection::RustConnection;
 use x11rb::wrapper::ConnectionExt as _;
 
+mod common;
+
 const SOCKET_WAIT: Duration = Duration::from_secs(10);
 const X11_WAIT: Duration = Duration::from_secs(10);
 
 struct CompositorProcess {
     child: Child,
+    socket_path: PathBuf,
     display_path: PathBuf,
 }
 
@@ -40,6 +43,7 @@ impl Drop for CompositorProcess {
     fn drop(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
+        common::cleanup_compositor_artifacts(&self.socket_path);
     }
 }
 
@@ -73,6 +77,7 @@ impl CompositorProcess {
 
         Self {
             child,
+            socket_path,
             display_path,
         }
     }

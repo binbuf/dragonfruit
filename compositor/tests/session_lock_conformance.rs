@@ -40,6 +40,8 @@ use wayland_protocols::ext::session_lock::v1::client::{
     ext_session_lock_v1 as lock,
 };
 
+mod common;
+
 /// Generated client bindings for the private `df_core` handshake.
 mod core_client {
     #![allow(unused_imports, clippy::single_component_path_imports)]
@@ -240,6 +242,7 @@ impl Drop for CompositorProcess {
         let _ = self.child.wait();
         let _ = std::fs::remove_file(&self.socket_path);
         let _ = std::fs::remove_file(&self.token_path);
+        common::cleanup_compositor_artifacts(&self.socket_path);
         if let Some(path) = &self.synthetic_path {
             let _ = std::fs::remove_file(path);
             let _ = std::fs::remove_file(path.with_extension("reply"));
@@ -532,6 +535,114 @@ fn lock_covers_every_output_and_confirms() {
         |s| s.configures.len() >= 2,
     );
     second.unlock_and_destroy();
+}
+
+#[test]
+fn repeated_lock_cycles_never_leak_lock_state() {
+    let socket_name = format!("dragonfruit-test-lock-cycles-{}", std::process::id());
+    let synthetic_path = std::env::temp_dir().join(format!("{socket_name}-synth"));
+    let _ = std::fs::remove_file(&synthetic_path);
+    let token = "cd".repeat(32);
+    let proc = CompositorProcess::start_with_synthetic(
+        &socket_name,
+        std::slice::from_ref(&token),
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+
+    let (_conn, mut queue, mut state) = connect(&proc.socket_path);
+    authenticate(&mut state, &mut queue, proc.read_token());
+
+    let compositor = state.compositor.clone().expect("wl_compositor bound");
+    let manager = state
+        .lock_manager
+        .clone()
+        .expect("ext_session_lock_manager_v1 advertised");
+    assert_eq!(state.outputs.len(), 1, "one headless output");
+
+    // Repeated lock/unlock loops must not accumulate a lock or a lock
+    // surface: every cycle confirms (`locked=1 surfaces=1`), covers the
+    // output, and returns to (`locked=0 surfaces=0`). A leak would show as a
+    // growing `surfaces` count or a session that never unlocks.
+    const CYCLES: usize = 25;
+    for cycle in 0..CYCLES {
+        let lock = manager.lock(&queue.handle(), ());
+        let surface = compositor.create_surface(&queue.handle(), ());
+        let lock_surface = lock.get_lock_surface(&surface, &state.outputs[0], &queue.handle(), ());
+
+        wait_for(
+            &mut queue,
+            &mut state,
+            Duration::from_secs(5),
+            "locked",
+            |s| s.locked,
+        );
+        let want = cycle + 1;
+        wait_for(
+            &mut queue,
+            &mut state,
+            Duration::from_secs(5),
+            "lock-surface configure",
+            |s| s.configures.len() >= want,
+        );
+        let (_, width, height) = state.configures[cycle];
+        assert_eq!(
+            (width, height),
+            (OUTPUT_W, OUTPUT_H),
+            "cycle {cycle}: lock surface must cover the full output"
+        );
+
+        let reported = input.query("query lock");
+        assert!(
+            reported.contains("lock locked=1 surfaces=1"),
+            "cycle {cycle}: lock did not cover the output: {reported}"
+        );
+
+        let (buffer, _file) = shm_buffer(&state, &queue.handle(), width as i32, height as i32);
+        surface.attach(Some(&buffer), 0, 0);
+        surface.damage_buffer(0, 0, width as i32, height as i32);
+        surface.commit();
+        queue.roundtrip(&mut state).expect("roundtrip failed");
+
+        lock.unlock_and_destroy();
+        lock_surface.destroy();
+        queue.roundtrip(&mut state).expect("roundtrip failed");
+        assert!(!state.finished, "cycle {cycle}: unlock produced finished");
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            let report = input.query("query lock");
+            if report.contains("lock locked=0 surfaces=0") {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "cycle {cycle}: lock state leaked after unlock: {report}"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    // The compositor is still healthy after every cycle: one more lock
+    // confirms and covers the output.
+    let last = manager.lock(&queue.handle(), ());
+    let last_surface = compositor.create_surface(&queue.handle(), ());
+    let _last_lock_surface =
+        last.get_lock_surface(&last_surface, &state.outputs[0], &queue.handle(), ());
+    wait_for(
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        "final configure",
+        |s| s.configures.len() > CYCLES,
+    );
+    assert!(
+        input
+            .query("query lock")
+            .contains("lock locked=1 surfaces=1"),
+        "the compositor could not lock after {CYCLES} cycles"
+    );
+    last.unlock_and_destroy();
 }
 
 #[test]

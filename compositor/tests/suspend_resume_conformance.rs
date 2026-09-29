@@ -29,6 +29,8 @@ use wayland_client::protocol::{
 use wayland_client::{delegate_noop, Connection, Dispatch, EventQueue, QueueHandle};
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
 
+mod common;
+
 /// The headless backend's default output mode; the client window is smaller.
 const WINDOW_W: i32 = 320;
 const WINDOW_H: i32 = 240;
@@ -43,7 +45,7 @@ impl Drop for CompositorProcess {
     fn drop(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
-        let _ = std::fs::remove_file(&self.socket_path);
+        common::cleanup_compositor_artifacts(&self.socket_path);
         let _ = std::fs::remove_file(&self.synthetic_path);
         let _ = std::fs::remove_file(self.synthetic_path.with_extension("reply"));
     }

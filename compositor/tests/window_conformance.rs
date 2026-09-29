@@ -33,6 +33,8 @@ use wayland_protocols::xdg::shell::client::{
     xdg_popup, xdg_positioner, xdg_surface, xdg_toplevel, xdg_wm_base,
 };
 
+mod common;
+
 /// Headless output size (see `backend/mod.rs::HEADLESS_MODE_SIZE`).
 const OUTPUT_W: i32 = 1280;
 const OUTPUT_H: i32 = 720;
@@ -423,8 +425,7 @@ impl Drop for CompositorProcess {
         }
         // Best-effort cleanup for a hard-killed run (SIGKILL skips the
         // compositor's own socket removal).
-        let _ = std::fs::remove_file(&self.socket_path);
-        let _ = std::fs::remove_file(self.socket_path.with_extension("lock"));
+        common::cleanup_compositor_artifacts(&self.socket_path);
         if let Some(path) = &self.synthetic_path {
             let _ = std::fs::remove_file(path);
         }

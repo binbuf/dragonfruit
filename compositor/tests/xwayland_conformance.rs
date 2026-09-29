@@ -22,6 +22,8 @@ use x11rb::protocol::xproto::{
 use x11rb::rust_connection::RustConnection;
 use x11rb::wrapper::ConnectionExt as _;
 
+mod common;
+
 const SOCKET_WAIT: Duration = Duration::from_secs(10);
 const X11_WAIT: Duration = Duration::from_secs(10);
 
@@ -41,6 +43,7 @@ impl Drop for CompositorProcess {
     fn drop(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
+        common::cleanup_compositor_artifacts(&self.socket_path);
         if let Some(path) = &self.synthetic_path {
             let _ = std::fs::remove_file(path);
         }
