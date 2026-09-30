@@ -87,3 +87,32 @@ device); the software/headless path is a CI fallback, not the target.
   and the Applications drawer inherit it through their `MaterialRole`, and the
   shell's QML "glass claim" layers (fill/rim) can drop to a token-driven
   complement rather than standing in for the material.
+
+## Implementation (T-20.1)
+
+The first slice landed as the nested proof of the two-pass composition; the
+DRM/headless paths still render the deterministic feather stack.
+
+- `compositor/src/window/blur.rs` (new) owns the renderer-facing half: the
+  `BLUR_SHADER` 4-tap Kawase custom texture program, the pure token-resolved
+  `BlurSpec` (radius → bounded iteration count), the `BlurRenderer` seam, and
+  the `BackdropBlurElement` that draws a downsampled scene region back over a
+  panel clipped to the shared `CornerMask` spans.
+- `compositor/src/backend/nested.rs` renders the scene into an output-sized
+  offscreen `GlesTexture` once per frame, downsamples each panel's region
+  through the Kawase chain (falling back to the built-in bilinear downsample if
+  the custom program failed to compile), and composes
+  `chrome surfaces + blur elements + scene texture`. The material pass is taken
+  by `render::chrome_blur_panels`, so the one-pass/no-double-blur guard holds.
+  `Minimal`, no mapped chrome, or a driver without the shader keeps the
+  pre-T-20 feather elements — headless stays a no-readback path.
+- `MaterialRole::Drawer` selects the popup blur tokens and rounds from
+  `primitive.radius.xl` (the card's own QML radius); the Applications drawer
+  declares its card through `ShellProtocol::setAppsDrawerPanelRect`, mirroring
+  the Dock's `set_panel_rect`.
+- No new material token or literal blur radius: `material.{chrome,popup,dock}Blur`
+  is the only radius source. The iteration count and downsample factor are
+  derived mapping constants.
+
+Refraction, the specular rim, and the adaptive tint (T-20.2), the Dock/menus/OSD
+rollout (T-20.3), and multi-GPU/headless determinism (T-20.4) are unchanged.

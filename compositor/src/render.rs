@@ -31,7 +31,7 @@ use smithay::wayland::fractional_scale::with_fractional_scale;
 use crate::state::DfState;
 use crate::wallpaper::sample_wallpaper;
 use crate::window::{
-    backdrop_elements, is_backdrop_panel, shadow_elements, MaterialRole, SceneTransform,
+    backdrop_elements, is_backdrop_panel, shadow_elements, BlurSpec, MaterialRole, SceneTransform,
     ShadowLevel, WindowState,
 };
 
@@ -279,6 +279,76 @@ pub fn chrome_backdrop_render_elements(
         }
     }
     elements
+}
+
+/// One chrome panel that should receive the GPU-sampled backdrop blur
+/// (T-20.1): the visible panel rect and its token-resolved blur.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BlurPanel {
+    pub panel: Rectangle<i32, Logical>,
+    pub spec: BlurSpec,
+}
+
+/// Resolve the GPU backdrop blur panels for `output` and apply the material
+/// pass (T-20.1).
+///
+/// Returns the panels to blur when the active degrade tier keeps blur on and at
+/// least one chrome panel is mapped and on screen. Returns empty when the blur
+/// is off (`Minimal`), no panel is mapped, or the pass already applied for this
+/// output in this frame; the caller then falls back to the feather render
+/// elements ([`chrome_backdrop_render_elements`]), which owns the same
+/// one-pass guard.
+///
+/// The blur samples the caller's offscreen **scene texture** inside the render
+/// pass, never a screenshot or screencopy.
+pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel> {
+    let Some(output_geometry) = state.space.output_geometry(output) else {
+        return Vec::new();
+    };
+    let output_size = output_geometry.size;
+    let surfaces: Vec<_> = state
+        .chrome_surfaces(output.name().as_str(), output_geometry)
+        .into_iter()
+        .filter(|chrome| chrome.layer >= 2)
+        .filter(|chrome| is_backdrop_panel(chrome.panel, output_size))
+        .filter(|chrome| {
+            with_renderer_surface_state(&chrome.surface, |surface| surface.buffer().is_some())
+                .unwrap_or(false)
+        })
+        .collect();
+    if surfaces.is_empty() {
+        return Vec::new();
+    }
+    let scheme = state.color_scheme;
+    let tier = state.degrade.tier();
+    let panels: Vec<BlurPanel> = surfaces
+        .iter()
+        .filter_map(|chrome| {
+            let role = MaterialRole::from_layer_namespace(chrome.layer, &chrome.namespace);
+            let spec = tier.blur(role.blur_spec(scheme))?;
+            Some(BlurPanel {
+                panel: chrome.panel,
+                spec,
+            })
+        })
+        .collect();
+    if panels.is_empty() {
+        return Vec::new();
+    }
+    // The chrome band: the union of the panels (the damage the pass owns).
+    let region = surfaces
+        .iter()
+        .map(|chrome| chrome.panel)
+        .reduce(|a, b| a.merge(b))
+        .unwrap_or_default();
+    if state
+        .material_pass
+        .apply(output.name().as_str(), region)
+        .is_none()
+    {
+        return Vec::new();
+    }
+    panels
 }
 
 /// Build the client-surface render elements for the windows composited on

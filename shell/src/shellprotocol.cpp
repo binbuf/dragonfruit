@@ -981,6 +981,16 @@ bool ShellProtocol::setAppsDrawerInputRegion(int width, int height)
     return true;
 }
 
+bool ShellProtocol::setAppsDrawerPanelRect(int x, int y, int width, int height)
+{
+    if (!m_appsDrawerLayer)
+        return false;
+    df_layer_surface_set_panel_rect(m_appsDrawerLayer, x, y, width, height);
+    if (m_display)
+        wl_display_flush(m_display);
+    return true;
+}
+
 bool ShellProtocol::commitAppsDrawerImage(const QImage &image)
 {
     if (!m_appsDrawerSurface)

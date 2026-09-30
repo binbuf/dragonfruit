@@ -1002,6 +1002,15 @@ not skipped, on a host that cannot sleep itself and before the logind backend
 lands. The live nested still is `t16-suspend-resume-soak.png`; the contract is
 [ADR 0181](../design/adr/0181-t16-suspend-resume-soak.md).
 
+T-20.1's GPU backdrop blur is captured by the T-19.2 drawer harness
+(`scripts/capture-t19-apps-drawer.sh`), which opens the Applications card over
+the live nested scene: `t20-backdrop-blur-light.png` and
+`t20-backdrop-blur-dark.png` show the menu bar and the frosted card sampling the
+blurred scene (`backdrop_passes` > 0, `backdrop_skipped=0` in the demo log). The
+contract is [ADR 0182](../design/adr/0182-tahoe-liquid-glass-material-pass.md)
+and the pass is rendered from the offscreen scene texture in
+`compositor/src/backend/nested.rs`.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

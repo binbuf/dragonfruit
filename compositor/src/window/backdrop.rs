@@ -37,7 +37,8 @@ use smithay::backend::renderer::utils::CommitCounter;
 use smithay::backend::renderer::Color32F;
 use smithay::utils::{Logical, Rectangle, Scale, Size};
 
-use crate::design_tokens::{component, semantic};
+use crate::design_tokens::{component, primitive, semantic};
+use crate::window::blur::BlurSpec;
 use crate::window::corner::{rounded_rect_spans, RoundedCorners};
 use crate::window::decoration::{color_from_rgba, ColorScheme};
 use crate::window::pass::FramePass;
@@ -85,6 +86,10 @@ pub enum MaterialRole {
     /// Transient overlay chrome: menus, popovers, and (T-11) the OSD
     /// (`material.popup*`).
     Popup,
+    /// The Applications drawer's card (ADR 0182): a full-output overlay whose
+    /// visible card is declared through `df_layer_surface.set_panel_rect`. It
+    /// shares the popup material tokens but rounds from the card's own radius.
+    Drawer,
 }
 
 impl MaterialRole {
@@ -104,6 +109,12 @@ impl MaterialRole {
     /// Dock, which owns the `dock` material group; every other persistent
     /// surface (the menu bar) stays `Chrome` and overlays stay `Popup`.
     pub const fn from_layer_namespace(layer: u32, namespace: &str) -> Self {
+        // The Applications drawer is a full-output `overlay` surface, so its
+        // namespace, not its layer, selects its role (ADR 0182); the visible
+        // card comes from its declared panel rect.
+        if str_eq(namespace, "apps-drawer") {
+            return MaterialRole::Drawer;
+        }
         if layer >= LAYER_OVERLAY {
             return MaterialRole::Popup;
         }
@@ -119,6 +130,7 @@ impl MaterialRole {
             MaterialRole::Chrome => "chrome",
             MaterialRole::Dock => "dock",
             MaterialRole::Popup => "popup",
+            MaterialRole::Drawer => "drawer",
         }
     }
 
@@ -146,7 +158,7 @@ impl MaterialRole {
                     semantic::dark::material::DOCK_OPACITY,
                 ),
             },
-            MaterialRole::Popup => match scheme {
+            MaterialRole::Popup | MaterialRole::Drawer => match scheme {
                 ColorScheme::Light => (
                     semantic::light::material::POPUP_BLUR,
                     semantic::light::material::POPUP_OPACITY,
@@ -164,7 +176,7 @@ impl MaterialRole {
         let color = match self {
             MaterialRole::Chrome => scheme.chrome(),
             MaterialRole::Dock => scheme.dock_fill(),
-            MaterialRole::Popup => scheme.surface_elevated(),
+            MaterialRole::Popup | MaterialRole::Drawer => scheme.surface_elevated(),
         };
         // The radius follows the component that draws that role, so the
         // backdrop corner matches the QML panel it sits behind. Both are
@@ -173,6 +185,9 @@ impl MaterialRole {
             MaterialRole::Chrome => component::menu_bar::RADIUS,
             MaterialRole::Dock => component::dock::RADIUS,
             MaterialRole::Popup => component::popup::RADIUS,
+            // The drawer card rounds with the same primitive radius its QML
+            // `Rectangle` uses (`Theme.primitive.radius.xl`); no new token.
+            MaterialRole::Drawer => primitive::radius::XL,
         };
         BackdropSpec {
             blur,
@@ -181,6 +196,44 @@ impl MaterialRole {
             radius,
             color,
         }
+    }
+
+    /// The GPU blur spec for this role under `scheme`, resolved from the same
+    /// generated `material` tokens as [`Self::spec`] (T-20.1, ADR 0182). The
+    /// blur radius is always the token value; only the Kawase iteration count
+    /// and the panel corner radius are derived.
+    pub fn blur_spec(self, scheme: ColorScheme) -> BlurSpec {
+        let (blur, corner_radius) = match self {
+            MaterialRole::Chrome => (chrome_blur(scheme), component::menu_bar::RADIUS),
+            MaterialRole::Dock => (dock_blur(scheme), component::dock::RADIUS),
+            MaterialRole::Popup => (popup_blur(scheme), component::popup::RADIUS),
+            MaterialRole::Drawer => (popup_blur(scheme), primitive::radius::XL),
+        };
+        BlurSpec::new(blur, corner_radius)
+    }
+}
+
+/// The token chrome blur under `scheme`.
+fn chrome_blur(scheme: ColorScheme) -> f32 {
+    match scheme {
+        ColorScheme::Light => semantic::light::material::CHROME_BLUR,
+        ColorScheme::Dark => semantic::dark::material::CHROME_BLUR,
+    }
+}
+
+/// The token Dock blur under `scheme`.
+fn dock_blur(scheme: ColorScheme) -> f32 {
+    match scheme {
+        ColorScheme::Light => semantic::light::material::DOCK_BLUR,
+        ColorScheme::Dark => semantic::dark::material::DOCK_BLUR,
+    }
+}
+
+/// The token popup/drawer blur under `scheme`.
+fn popup_blur(scheme: ColorScheme) -> f32 {
+    match scheme {
+        ColorScheme::Light => semantic::light::material::POPUP_BLUR,
+        ColorScheme::Dark => semantic::dark::material::POPUP_BLUR,
     }
 }
 
@@ -527,6 +580,54 @@ mod tests {
         assert_eq!(reduced.radius, base.radius * 0.5);
         // ...Minimal owns no backdrop at all, so the Dock claims no frost.
         assert!(DegradeTier::Minimal.backdrop(base).is_none());
+    }
+
+    #[test]
+    fn the_apps_drawer_namespace_is_a_drawer_role_with_popup_tokens() {
+        // T-20.1/ADR 0182: the Applications drawer is a full-output `overlay`
+        // surface, so only its namespace selects its role.
+        assert_eq!(
+            MaterialRole::from_layer_namespace(3, "apps-drawer"),
+            MaterialRole::Drawer
+        );
+        assert_eq!(MaterialRole::Drawer.name(), "drawer");
+
+        // It shares the popup blur tokens and rounds from the card's primitive
+        // radius (the same one its QML `Rectangle` uses); no new literal.
+        let light = MaterialRole::Drawer.blur_spec(ColorScheme::Light);
+        assert_eq!(light.radius, semantic::light::material::POPUP_BLUR);
+        assert_eq!(light.radius, 30.0);
+        assert_eq!(light.corner_radius, primitive::radius::XL);
+        assert_eq!(light.corner_radius, 20.0);
+        assert_eq!(light.iterations, 4);
+
+        let dark = MaterialRole::Drawer.blur_spec(ColorScheme::Dark);
+        assert_eq!(dark.radius, semantic::dark::material::POPUP_BLUR);
+        assert_eq!(dark.radius, 32.0);
+
+        // The persistent roles still read their own tokens.
+        assert_eq!(
+            MaterialRole::Chrome.blur_spec(ColorScheme::Light).radius,
+            semantic::light::material::CHROME_BLUR
+        );
+        assert_eq!(
+            MaterialRole::Dock.blur_spec(ColorScheme::Light).radius,
+            semantic::light::material::DOCK_BLUR
+        );
+    }
+
+    #[test]
+    fn the_blur_spec_degrades_to_off_at_minimal() {
+        use crate::window::degrade::DegradeTier;
+        let base = MaterialRole::Chrome.blur_spec(ColorScheme::Light);
+        // Full keeps the token radius; Reduced halves it but keeps blur on.
+        assert_eq!(DegradeTier::Full.blur(base), Some(base));
+        let reduced = DegradeTier::Reduced.blur(base).expect("reduced keeps blur");
+        assert_eq!(reduced.radius, base.radius * 0.5);
+        assert_eq!(reduced.corner_radius, base.corner_radius * 0.5);
+        // Minimal is blur off: the plan returns no panels and the feather path
+        // runs instead.
+        assert_eq!(DegradeTier::Minimal.blur(base), None);
     }
 
     #[test]

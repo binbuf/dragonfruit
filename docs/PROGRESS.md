@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(172 earlier sections omitted)_
+_(173 earlier sections omitted)_
 
-- **T136 — T-15.13b Privacy and Security pane and tile**: **State: done.** The Settings `Privacy & Security` pane and the Control Center; `services/system-status/src/privacy.rs` (new) — `PrivacyHost<S>` (refresh/
 - **T137 — T-15.14a Accessibility adapter**: **State: done.** New workspace crate `dragonfruit-accessibility-adapter`; `services/accessibility-adapter/src/source.rs` — `AccessibilityData
 - **T138 — T-15.14b Accessibility pane and tile**: **State: done.** The Settings `Accessibility` pane and the Control Center; `services/system-status/src/accessibility.rs` (new) — `AccessibilityHost<S>`
 - **T139 — T-15.15a Network advanced (VPN) adapter**: **State: done.** The Network advanced (VPN) adapter landed as a **second; `services/networkmanager/src/vpn/mod.rs` (new) — module docs + re-exports.
@@ -43,7 +42,8 @@ _(172 earlier sections omitted)_
 - **T156 — T-17.5a Absent-daemon and crash matrix verification**: **State: done.** The premium gate's robustness contract is re-verified on the; `services/session/tests/absent_services.rs` (new, 4 tests) — the stand-in
 - **T157 — T-17.5b Leak and lock enforcement verification**: **State: done.** The premium gate's leak and lock contracts are re-verified on; vision read clean.
 - **T158 — T-17.6 Unfamiliar-user test and sign-off report**: **State: done (agent half; the human unfamiliar-user verdict is the batched; `docs/captures/t17-premium-gate.md` (new) — the sign-off report: the full
-- **T162 — T-16.4 Suspend/resume soak**: **State: done (automated half); the real-machine logind half is OPEN on the; `compositor/tests/suspend_resu
+- **T162 — T-16.4 Suspend/resume soak**: **State: done (automated half); the real-machine logind half is OPEN on the; `compositor/tests/suspend_resume_conformance.rs` — new
+- **T179 — T-20.1 Offscreen scene texture + GPU backdrop blur pass**: **State: done (nested proof); DRM keeps the deterministic feather stack.** The; `compositor/src/window/blur.rs` (new) 
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -15922,3 +15922,98 @@ Commands / gotchas for later:
   (not `.open.txt`). Hibernate stays explicitly deferred.
 - **T-16.5 (graphics driver matrix) is the next unit** and consumes this soak's
   output/input/client recovery evidence.
+
+## T179 — T-20.1 Offscreen scene texture + GPU backdrop blur pass
+
+**State: done (nested proof); DRM keeps the deterministic feather stack.** The
+first slice of the T-20 material track landed: the nested backend renders the
+scene into an output-sized offscreen `GlesTexture` once per frame and composes
+the output from the live chrome surfaces + one sampled Kawase blur per panel +
+that scene texture, so the menu bar and the Applications card read as frosted
+glass over live content instead of a flat feather approximation. The blur is a
+custom texture shader (`BLUR_SHADER`, compiled once per renderer with
+`GlesRenderer::compile_custom_texture_shader`) run over a halving Kawase chain
+per panel; the final compose draws each panel's blurred texture back through
+`BackdropBlurElement`, clipped to the shared `CornerMask` spans. `Minimal`, no
+mapped chrome, or a driver that refuses the shader (bilinear downsample fallback)
+stay on the pre-T-20 feather path, so headless is a no-readback path.
+`cargo test -p dragonfruit-compositor` 305 unit tests pass, `make e2e` exit 0
+(133 `test result: ok`, 0 failed), `cargo clippy -p dragonfruit-compositor`
+clean, `cargo fmt --check` clean, live nested demo `backdrop_passes=11
+backdrop_skipped=0` with a light+dark capture committed.
+
+Real paths:
+
+- `compositor/src/window/blur.rs` (new) — `BLUR_SHADER` (4-tap Kawase), the pure
+  `BlurSpec` (`iterations_for_radius` → bounded 1..=4, `downsample_factor`), the
+  `BlurRenderer` seam, and `BackdropBlurElement` (rounded-span clip).
+- `compositor/src/backend/nested.rs` — `render_scene_offscreen`,
+  `blur_panel_texture`, `build_blur_elements`; `NestedData.blur_program`;
+  `NestedOutputElements::Blur`. The two-pass branch is taken only when
+  `render::chrome_blur_panels` returns panels.
+- `compositor/src/render.rs` — `BlurPanel` + `chrome_blur_panels` (resolves each
+  `MaterialRole` to a `BlurSpec`, takes the `material_pass` once per output).
+- `compositor/src/window/backdrop.rs` — `MaterialRole::Drawer` (namespace
+  `apps-drawer`; popup blur tokens, `primitive.radius.XL`), `MaterialRole::blur_spec`.
+- `compositor/src/window/degrade.rs` — `DegradeTier::blur` (`None` at `Minimal`).
+- `shell/src/shellprotocol.{h,cpp}` — `setAppsDrawerPanelRect` (mirrors
+  `setDockPanelRect`); `shell/apps-drawer/AppsDrawer.qml` `panelRect()`;
+  `shell/src/shellcontroller.cpp` sends it before the drawer commit.
+- `shell/menubar/MenuBar.qml` — the bar fill now uses
+  `Theme.material.chromeOpacity` so the sampled blur is visible (it was opaque,
+  hiding the material); the items stay opaque.
+- `docs/captures/t20-backdrop-blur-{light,dark}.png` (new);
+  `docs/captures/README.md`; `docs/design/02-compositor.md` (Backdrop blur pass);
+  `docs/design/adr/0182-...md` (Implementation (T-20.1)).
+
+Commands / gotchas for later:
+
+- **Build env** for cargo/make: `make cargo-build` / `make e2e` set
+  `PKG_CONFIG_PATH`/`RUSTFLAGS` themselves; a bare `cargo build` fails on
+  `libseat-sys`/`libudev-sys`. For a direct `cargo test`, export
+  `PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig`,
+  `RUSTFLAGS=-L $HOME/.local/df-devroot/lib64`,
+  `LD_LIBRARY_PATH=$HOME/.local/df-toolchain/usr/lib64`.
+- **`GlowRenderer` is not a `GlesRenderer`.** `compile_custom_texture_shader`
+  and the custom-program `render_texture_from_to` live on `GlesRenderer`/
+  `GlesFrame`; reach them with
+  `std::borrow::BorrowMut::<GlesRenderer>::borrow_mut(glow_renderer)` and
+  `BorrowMut::<GlesFrame>::borrow_mut(&mut glow_frame)`. `GlowRenderer::Frame`
+  is `GlowFrame`, not `GlesFrame`.
+- **A non-`tt` bound breaks `render_elements!`.** The `where` clause's bounds
+  must be single token trees, so import the marker trait (`use
+  crate::window::BlurRenderer;`) and write `R: ... + BlurRenderer`, not a
+  path with `::`.
+- **The material was invisible before this task** because `MenuBar.qml` painted
+  an opaque `Theme.color.chrome`; any chrome that should show the backdrop must
+  put the alpha in its *fill* (`Qt.rgba(r,g,b, Theme.material.chromeOpacity)`),
+  not the item opacity (which would fade the icons/text).
+- **Capture recipe:** `scripts/capture-t19-apps-drawer.sh` opens the
+  Applications card over the live nested scene (`DF_APPS_DRAWER_FIXTURE=1`),
+  captures light+dark+launch via KWin raise + `spectacle -b -n -a`. Point
+  `OUTDIR` elsewhere to avoid overwriting the T-19 stills. The demo log's
+  `material stats` line is the pass evidence (`backdrop_passes=11
+  backdrop_skipped=0` here).
+- **The demo's `backdrop_passes` is 0 on the headless backend** (it never
+  builds an element list or calls `begin_render_frame`), so `backdrop_skipped=0`
+  is the headless assertion; the nested run is the one that shows passes > 0.
+
+### Follow-ups
+
+- **DRM two-pass composition.** `compositor/src/backend/drm.rs` still emits the
+  feather backdrop (`chrome_backdrop_render_elements`) because the DRM rail uses
+  `UdevRenderer`/`DrmCompositor`, not `GlowRenderer`; folding the scene texture +
+  blur into that rail is T-20.4 (multi-GPU/headless determinism) work.
+- **Liquid-glass pass (T-20.2):** edge refraction, specular inner rim, adaptive
+  tint on top of this blur (ADR 0182). The `BackdropBlurElement` is the seam.
+- **Chrome rollout (T-20.3):** the Dock, context menus/popovers, OSD,
+  notifications, and Control Center still read feathers; they inherit the blur
+  through their `MaterialRole` once the backend path covers them.
+- **Per-frame texture allocation.** `blur_panel_texture` currently creates a
+  fresh `GlesTexture` per Kawase step per panel per frame; caching them in
+  `NestedData` keyed by panel/role size is the obvious frame-budget follow-up.
+- **Vision review of the captures** was not possible in this session
+  (openrouter 429 on `.symphony/symphony vision`); the evidence here is the
+  pass counters + a programmatic correlation of the translucent menu-bar strip
+  with the blurred content below it. Re-inspect
+  `docs/captures/t20-backdrop-blur-{light,dark}.png` when vision is available.

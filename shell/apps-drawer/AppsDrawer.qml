@@ -195,6 +195,14 @@ Item {
         return null;
     }
 
+    // The scene rectangle of the card (T-20.1). The shell controller reads
+    // this to declare the drawer's panel to the compositor, so the GPU
+    // backdrop blur follows the card rather than the full-output overlay.
+    function panelRect() {
+        var p = panel.mapToItem(null, 0, 0);
+        return { x: p.x, y: p.y, width: panel.width, height: panel.height };
+    }
+
     function launchAt(index) {
         if (index < 0 || index >= root.visibleApps.length)
             return;

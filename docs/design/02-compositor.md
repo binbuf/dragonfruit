@@ -340,18 +340,32 @@ surfaces, the `df_layer_surface` namespace — `dock` selects the Dock's own
 role) to the token group; the panel is clipped with the same `CornerMask`
 geometry as the titlebar and shadow.
 
-Until T-20 lands ([ADR 0182](adr/0182-tahoe-liquid-glass-material-pass.md)), the
-backdrop is a **stack of translucent rounded feather layers** from the panel
-edge inward — the same solid-rectangle approximation T-04.1a used for the shadow,
-with the token blur setting the feather depth. T-20 replaces this with a
-GPU-sampled blur (scene → offscreen texture → Kawase/Gaussian per panel →
-liquid-glass refraction/specular) and keeps the feather stack as the
-`Minimal` fallback. It is a separate element drawn **below** the
-chrome's Wayland surface, so a client's translucent regions blend over it
-rather than being punched out (FR-3). The backdrop elements are appended
-**after** the chrome surfaces and **before** the windows, so the panel sits
-behind its chrome and in front of the scene it stands in for; no chrome mapped
-means no backdrop and no extra damage.
+The GPU path landed in **T-20.1**
+([ADR 0182](adr/0182-tahoe-liquid-glass-material-pass.md)). The nested backend
+renders the scene (wallpaper, desktop, windows, shadows, titlebars) into an
+output-sized offscreen **scene texture** once per frame, then composes the
+output from the chrome Wayland surfaces, one **sampled blur per panel**, and
+that scene texture (`compositor/src/backend/nested.rs`). Each panel's region is
+downsampled through `BlurSpec.iterations` Kawase passes with a custom texture
+shader compiled once per renderer
+(`GlesRenderer::compile_custom_texture_shader`,
+`compositor/src/window/blur.rs`), then drawn back over the panel by
+`BackdropBlurElement`, clipped to the same `CornerMask` spans as the
+titlebar/shadow. The radius and corners still come from the `material.*Blur`
+tokens; only the iteration count is derived. The blur samples the **live** scene
+texture inside the render pass — never a screenshot or screencopy. A
+`MaterialRole::Drawer` role covers the Applications drawer, whose card declares
+its live rect through the same `set_panel_rect` request, so the frosted card
+follows the card rather than the full-output overlay. The DRM and headless paths
+keep the deterministic feather stack (no GPU readback), and `Minimal` keeps blur
+off — the pre-GPU feather stack is what a backend without a scene texture draws
+at `Full`/`Reduced`.
+
+The backdrop is a separate element drawn **below** the chrome's Wayland surface,
+so a client's translucent regions blend over it rather than being punched out
+(FR-3). It is appended **after** the chrome surfaces and **before** the scene
+texture, so the panel sits behind its chrome and in front of the scene it stands
+in for; no chrome mapped means no backdrop and no extra damage.
 
 A chrome client may declare the **live panel rect** it is drawing (the Dock's
 plate grows and springs with magnification). An additive

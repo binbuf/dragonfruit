@@ -153,7 +153,15 @@ Rectangle {
     implicitWidth: appMenuRow.implicitWidth + statusRow.implicitWidth
                    + 2 * Theme.controls.menuBar.paddingH
 
-    color: menuBar.showBackground ? Theme.color.chrome : "transparent"
+    // T-20.1: the bar's fill is the translucent chrome material (the same
+    // `material.chromeOpacity` the compositor reads), so its sampled backdrop
+    // blur shows through; the items/text stay fully opaque because the alpha
+    // is in the fill, not on the item.
+    readonly property color chromeFill: Theme.color.chrome
+    color: menuBar.showBackground
+        ? Qt.rgba(menuBar.chromeFill.r, menuBar.chromeFill.g,
+                  menuBar.chromeFill.b, Theme.material.chromeOpacity)
+        : "transparent"
 
     function openMenu(index) {
         if (index < 0 || index >= menuRepeater.count || index === openMenuIndex)

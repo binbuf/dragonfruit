@@ -292,6 +292,13 @@ public:
     // with the next buffer commit.
     bool setAppsDrawerInputRegion(int width, int height);
 
+    // Declare the live rect the drawer's card actually paints, in
+    // surface-local logical pixels (T-20.1). The compositor's GPU backdrop
+    // blur follows the card exactly; without it the full-output overlay
+    // declares no sub-output panel and would not be frosted. Mirrors
+    // `setDockPanelRect`.
+    bool setAppsDrawerPanelRect(int x, int y, int width, int height);
+
     // Attach `image` to the apps-drawer surface and commit.
     bool commitAppsDrawerImage(const QImage &image);
 

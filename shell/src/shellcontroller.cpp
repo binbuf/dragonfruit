@@ -6358,8 +6358,22 @@ void ShellController::renderAppsDrawer()
     m_appsDrawerFrameGate.beginCommit();
     const QImage image = m_appsDrawerWindow->grabWindow();
     m_appsDrawerFrameGate.endCommit();
-    if (!image.isNull() && m_protocol)
+    if (!image.isNull() && m_protocol) {
+        // Declare the card's live rect before the buffer commit, so the
+        // compositor's backdrop blur follows it (T-20.1). The card is centred
+        // and changes size with the corpus, so it is re-sent every commit.
+        QVariant rect;
+        if (QMetaObject::invokeMethod(m_appsDrawerItem, "panelRect",
+                                      Q_RETURN_ARG(QVariant, rect))) {
+            const QVariantMap map = rect.toMap();
+            m_protocol->setAppsDrawerPanelRect(
+                qRound(map.value(QStringLiteral("x")).toDouble()),
+                qRound(map.value(QStringLiteral("y")).toDouble()),
+                qRound(map.value(QStringLiteral("width")).toDouble()),
+                qRound(map.value(QStringLiteral("height")).toDouble()));
+        }
         m_protocol->commitAppsDrawerImage(image);
+    }
 }
 
 void ShellController::onDockEntryMenuAction(const QString &action, const QVariant &payload)

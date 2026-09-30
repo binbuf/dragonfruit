@@ -32,6 +32,7 @@ use std::time::Duration;
 
 use crate::animation::FRAME_INTERVAL;
 use crate::window::backdrop::BackdropSpec;
+use crate::window::blur::BlurSpec;
 use crate::window::shadow::ShadowSpec;
 
 /// A frame is "over budget" when its smoothed duration exceeds the budget by
@@ -148,6 +149,19 @@ impl DegradeTier {
             radius: spec.radius * self.geometry_scale(),
             color: spec.color,
         })
+    }
+
+    /// The GPU backdrop blur at this tier, or `None` when blur is off. The
+    /// token blur radius and corner radius scale with the tier, and the Kawase
+    /// iteration count is re-derived from the scaled radius (T-20.1).
+    pub fn blur(self, spec: BlurSpec) -> Option<BlurSpec> {
+        if !self.blur_enabled() {
+            return None;
+        }
+        Some(BlurSpec::new(
+            spec.radius * self.geometry_scale(),
+            spec.corner_radius * self.geometry_scale(),
+        ))
     }
 
     /// The elevation shadow at this tier. The scheme opacity/color and the
