@@ -161,10 +161,6 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Search applications</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Social</source>
         <translation type="unfinished"></translation>
     </message>

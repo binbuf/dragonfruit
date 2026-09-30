@@ -117,10 +117,15 @@ Item {
     readonly property bool noMatches: root.visibleApps.length === 0 && !root.showAbsence
 
     // The card wraps the grid (at most seven columns) with at least
-    // `panelPadding` on every side, floored at the search field's width so a
-    // short list still reads as a card, and clamped to the output.
+    // `panelPadding` on the sides and a tighter `panelPaddingV` above and below,
+    // floored at the search field's width so a short list still reads as a card,
+    // and clamped to the output.
     readonly property int maxColumns: 7
     readonly property real panelPadding: Theme.controls.appsDrawer.panelPadding
+    readonly property real panelPaddingV:
+        Theme.controls.appsDrawer.panelPaddingVertical
+    // The hairline rules under the top search section and the pill row.
+    readonly property real separatorHeight: Theme.controls.window.borderWidth
     readonly property real tileWidth: Theme.controls.appsDrawer.tileSize
                                       + Theme.primitive.spacing.xl
     // One tile's full height: the artwork square plus its single-line label.
@@ -153,8 +158,9 @@ Item {
         root.usedColumns * root.tileWidth + (root.usedColumns - 1) * root.gridGap
     readonly property int columns: root.usedColumns
 
-    // The card height: header, search, pills, the grid, and the panel padding,
-    // clamped to five grid rows and to the output so a long corpus scrolls.
+    // The card height: the top search bar, the two hairline rules, pills, the
+    // grid, and the vertical padding, clamped to five grid rows and to the
+    // output so a long corpus scrolls.
     readonly property real gridContentHeight:
         (root.showAbsence || root.noMatches)
             ? Theme.controls.appsDrawer.emptyGlyphSize
@@ -163,11 +169,12 @@ Item {
     readonly property real gridNaturalHeight:
         Math.min(root.gridContentHeight, root.gridMaxHeight)
     readonly property real panelNaturalHeight:
-        Theme.controls.appsDrawer.headerTop + header.height
-        + Theme.primitive.spacing.xl + searchField.height
+        root.panelPaddingV + searchField.height
+        + Theme.primitive.spacing.lg + root.separatorHeight
         + Theme.primitive.spacing.lg + pillScroller.height
+        + Theme.primitive.spacing.lg + root.separatorHeight
         + Theme.primitive.spacing.xl + root.gridNaturalHeight
-        + root.panelPadding
+        + root.panelPaddingV
     readonly property real panelMaxHeight:
         root.height - 2 * Theme.controls.appsDrawer.contentPadding / 2
 
@@ -241,8 +248,13 @@ Item {
         width: root.panelWidth
         height: Math.min(root.panelNaturalHeight, root.panelMaxHeight)
         radius: Theme.primitive.radius.xl
-        color: Theme.color.surface
-        opacity: Theme.controls.appsDrawer.panelOpacity * root.reveal
+        // A ~90%-opaque frosted fill: the scrim/desktop ghosts through, while
+        // the children (search, pills, tiles) stay fully opaque because the
+        // opacity is in the fill, not on the item.
+        color: Qt.rgba(Theme.color.surface.r, Theme.color.surface.g,
+                       Theme.color.surface.b,
+                       Theme.controls.appsDrawer.panelOpacity)
+        opacity: root.reveal
         border.width: Theme.controls.window.borderWidth
         border.color: Theme.color.border
         antialiasing: true
@@ -250,52 +262,32 @@ Item {
         // Consume clicks on the panel so a miss on a tile does not dismiss.
         TapHandler { }
 
-        Item {
-            id: header
-            objectName: "appsDrawerHeader"
-            anchors.top: parent.top
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.topMargin: Theme.controls.appsDrawer.headerTop
-            anchors.leftMargin: root.panelPadding
-            anchors.rightMargin: root.panelPadding
-            height: titleRow.height
-
-            Row {
-                id: titleRow
-                anchors.left: parent.left
-                spacing: Theme.primitive.spacing.sm
-
-                PhosphorIcon {
-                    objectName: "appsDrawerTitleGlyph"
-                    name: "squares-four"
-                    weight: "fill"
-                    size: Theme.controls.appsDrawer.titleSize
-                    color: Theme.color.textPrimary
-                    anchors.verticalCenter: parent.verticalCenter
-                }
-
-                Text {
-                    objectName: "appsDrawerTitle"
-                    text: qsTr("Applications")
-                    color: Theme.color.textPrimary
-                    font.pixelSize: Theme.controls.appsDrawer.titleSize
-                    font.weight: Font.DemiBold
-                    anchors.verticalCenter: parent.verticalCenter
-                }
-            }
-        }
-
+        // The search bar is the card's top section. It is flat (no pill
+        // background or border) so it blends into the card's rounded top; the
+        // drawer's name is its placeholder.
         SearchField {
             id: searchField
             objectName: "appsDrawerSearch"
-            anchors.top: header.bottom
-            anchors.topMargin: Theme.primitive.spacing.xl
+            anchors.top: parent.top
+            anchors.topMargin: root.panelPaddingV
             anchors.horizontalCenter: parent.horizontalCenter
-            width: Math.min(Theme.controls.appsDrawer.searchMaxWidth,
-                            root.panelWidth - 2 * root.panelPadding)
-            placeholderText: qsTr("Search applications")
+            width: root.panelWidth - 2 * root.panelPadding
+            flat: true
+            placeholderText: qsTr("Applications")
             onTextChanged: root.query = text
+        }
+
+        // The hairline rule under the search section (the reference's first
+        // separator).
+        Rectangle {
+            id: topSeparator
+            objectName: "appsDrawerTopSeparator"
+            anchors.top: searchField.bottom
+            anchors.topMargin: Theme.primitive.spacing.lg
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: parent.width - 2 * Theme.primitive.spacing.xl
+            height: root.separatorHeight
+            color: Theme.color.border
         }
 
         // The category pills. Horizontally scrollable so a narrow output never
@@ -303,7 +295,7 @@ Item {
         Flickable {
             id: pillScroller
             objectName: "appsDrawerPills"
-            anchors.top: searchField.bottom
+            anchors.top: topSeparator.bottom
             anchors.topMargin: Theme.primitive.spacing.lg
             anchors.horizontalCenter: parent.horizontalCenter
             width: Math.min(Theme.controls.appsDrawer.searchMaxWidth,
@@ -323,15 +315,27 @@ Item {
             }
         }
 
+        // The hairline rule under the pills (the reference's second separator).
+        Rectangle {
+            id: pillsSeparator
+            objectName: "appsDrawerPillsSeparator"
+            anchors.top: pillScroller.bottom
+            anchors.topMargin: Theme.primitive.spacing.lg
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: parent.width - 2 * Theme.primitive.spacing.xl
+            height: root.separatorHeight
+            color: Theme.color.border
+        }
+
         // The tile grid. A `Flow` keeps the tile size fixed and wraps at the
         // available width.
         Flickable {
             id: gridFlick
             objectName: "appsDrawerGrid"
-            anchors.top: pillScroller.bottom
+            anchors.top: pillsSeparator.bottom
             anchors.topMargin: Theme.primitive.spacing.xl
             anchors.bottom: parent.bottom
-            anchors.bottomMargin: root.panelPadding
+            anchors.bottomMargin: root.panelPaddingV
             anchors.horizontalCenter: parent.horizontalCenter
             width: root.gridWidth
             contentHeight: grid.height
@@ -452,7 +456,7 @@ Item {
             Text {
                 objectName: "appsDrawerEmpty"
                 anchors.horizontalCenter: parent.horizontalCenter
-                y: Theme.controls.appsDrawer.headerTop
+                y: Math.max(0, (parent.height - height) / 2)
                 visible: root.noMatches
                 text: qsTr("No applications found")
                 color: Theme.color.textTertiary
@@ -463,10 +467,9 @@ Item {
             Item {
                 objectName: "appsDrawerUnavailable"
                 anchors.horizontalCenter: parent.horizontalCenter
-                y: Theme.controls.appsDrawer.headerTop
                 visible: root.showAbsence
                 width: parent.width
-                height: unavailableText.implicitHeight
+                height: parent.height
 
                 Column {
                     anchors.centerIn: parent

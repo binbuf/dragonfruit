@@ -570,10 +570,9 @@ pub mod component {
         pub const GLOW_OPACITY: f32 = 0.42_f32;
     }
     pub mod apps_drawer {
-        pub const HEADER_TOP: f32 = 44.0_f32;
         pub const CONTENT_PADDING: f32 = 64.0_f32;
         pub const PANEL_PADDING: f32 = 50.0_f32;
-        pub const TITLE_SIZE: f32 = 18.0_f32;
+        pub const PANEL_PADDING_VERTICAL: f32 = 32.0_f32;
         pub const SEARCH_WIDTH: f32 = 360.0_f32;
         pub const SEARCH_MAX_WIDTH: f32 = 640.0_f32;
         pub const PILL_GAP: f32 = 8.0_f32;
@@ -584,7 +583,7 @@ pub mod component {
         pub const GRID_ROW_GAP: f32 = 16.0_f32;
         pub const LABEL_SIZE: f32 = 12.0_f32;
         pub const SCRIM_OPACITY: f32 = 0.35_f32;
-        pub const PANEL_OPACITY: f32 = 0.94_f32;
+        pub const PANEL_OPACITY: f32 = 0.9_f32;
         pub const FALLBACK_GLYPH_RATIO: f32 = 0.6_f32;
         pub const EMPTY_GLYPH_SIZE: f32 = 40.0_f32;
     }

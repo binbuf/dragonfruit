@@ -14838,15 +14838,16 @@ Real paths:
   Adding a pill = one `kCategoryMap` row + `appsDrawerCategoryKeys()` +
   `AppsDrawer.categoryLabels` (QML label).
 - `shell/apps-drawer/AppsDrawer.qml` + `CMakeLists.txt` (new, URI
-  `Dragonfruit.AppsDrawer`) — title (`squares-four` glyph + "Applications"),
-  `SearchField`, a horizontally scrollable `SegmentedControl` pill row
+  `Dragonfruit.AppsDrawer`) — a flat top `SearchField` (placeholder
+  "Applications", no pill background, framed by hairline rules) as the card's
+  first section, a horizontally scrollable `SegmentedControl` pill row
   (default `All`), a `Flow` tile grid (fixed `tileWidth` = tileSize 64 +
   spacing.xl 24, column count capped at 7, viewport capped at 5 rows and
-  scrolling beyond; the centered card adds `panelPadding` 50 on every side),
-  themed `Image` icons with a
-  Phosphor `app-window` fallback, hover/focus/selected states, and arrow/
-  Return/Escape keys. Props injected by the controller: `apps`, `available`,
-  `active`. Filtering is local (mirrors the helper's predicates). A capture-only
+  scrolling beyond; the centered card is ~90% opaque and adds `panelPadding` 50
+  on the sides and `panelPaddingVertical` 32 above/below), themed `Image` icons
+  with a Phosphor `app-window` fallback, hover/focus/selected states, and
+  arrow/Return/Escape keys. Props injected by the controller: `apps`,
+  `available`, `active`. Filtering is local (mirrors the helper's predicates). A capture-only
   `tileRectFor(desktopId)` returns a tile's scene rect.
 - Protocol: `ShellProtocol::createAppsDrawerSurface` / `setAppsDrawerInputRegion`
   / `commitAppsDrawerImage` / `hideAppsDrawer`, namespace `"apps-drawer"`,
