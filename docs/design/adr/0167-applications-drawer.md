@@ -55,11 +55,17 @@ Spotlight-equivalent search pane) will build on them:
   icon exactly as the Dock does (ADR
   [0105](0105-dock-launch-origin-tile-handoff.md)). A failed launch raises the
   shell's existing failure notice, never a silent no-op.
-- **One global shortcut and one menu-bar affordance.** A new
+- **One global shortcut and one permanent Dock tile.** A new
   `InputAction::ShowApps` ("show-apps") is bound to F4 in
-  `default_system_bindings()`; the menu bar adds an `applications` status item
-  (`grid-four` mark) that raises `applicationsRequested()`. Both route to
-  `toggleAppsDrawer()`. A Dock Launchpad tile stays out of scope.
+  `default_system_bindings()`; the shell injects a permanent Applications
+  launcher into the Dock's entry model (`appsLauncher: true`, immediately after
+  the first pinned tile, so it sits second from the left on a default Dock).
+  The Dock renders it as a grid tile and raises `appsDrawerRequested()`. It is a
+  fixed affordance: it cannot be dragged, reordered, or removed, and its
+  context menu's **Remove from Dock** row is disabled. Both the shortcut and the
+  tile route to `toggleAppsDrawer()`, and the drawer is centered over the
+  output. (An earlier revision placed the affordance in the menu bar as an
+  `applications` status item; that item was removed.)
 - **app-index absence is explicit.** When the service is unreachable the overlay
   renders `Application index unavailable`, never a blank panel, and the open
   drawer refreshes on app-index's coalesced `Changed` signal.
@@ -77,5 +83,11 @@ Spotlight-equivalent search pane) will build on them:
 - The drawer's scene coordinates equal output coordinates (the surface maps 1:1
   to the output), which is why the recorded tile rect can feed
   `set_launch_origin` unchanged.
-- The grid is a `Flow` with a fixed tile size and a computed column count, so
-  narrow outputs wrap instead of overflowing; it is not a fixed 7-column grid.
+- The grid is a `Flow` with a fixed tile size, a column count capped at seven,
+  and a viewport capped at five rows (a longer corpus scrolls): wide outputs
+  lay out at most seven per row, and narrow outputs wrap to fewer instead of
+  overflowing. The caps are width/height caps (`maxColumns`, `maxRows`), so the
+  keyboard row stride always matches the Flow's real layout. The drawer card
+  hugs the grid with equal `panelPadding` (50px) padding on the left and right
+  (and below), clamped to the output so a narrow screen shrinks the card instead
+  of clipping it.

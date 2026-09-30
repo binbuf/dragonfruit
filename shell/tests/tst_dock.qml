@@ -46,6 +46,7 @@ Item {
         SignalSpy { id: appPickerRequestedSpy; signalName: "appPickerRequested" }
         SignalSpy { id: appPinToggledSpy; signalName: "appPinToggled" }
         SignalSpy { id: tileRectSpy; signalName: "entryTileRect" }
+        SignalSpy { id: appsDrawerSpy; signalName: "appsDrawerRequested" }
 
         // Reduced motion is a global singleton; reset it before every test so
         // a failure mid-test cannot leak into the next one. Same for the colour
@@ -82,6 +83,16 @@ Item {
 
         function minimized(id, name) {
             return { id: id, appId: id, name: name, kind: "minimized" };
+        }
+
+        // The permanent Applications launcher tile the shell injects as a
+        // pinned entry (T-19.2 follow-up): it toggles the drawer and cannot be
+        // removed, reordered, or dragged.
+        function launcher() {
+            return { id: "__apps__", appId: "", name: "Applications",
+                     kind: "pinned", pinned: true, appsLauncher: true,
+                     running: false, desktopId: "", missing: false,
+                     windowList: [], windowCount: 0 };
         }
 
         // -- T-14.7d glyph pixel helpers ------------------------------------
@@ -2508,6 +2519,74 @@ Item {
             verify(labels.indexOf("Show in Files") >= 0);
             verify(labels.indexOf("Remove from Dock") >= 0);
             compare(labels.indexOf("Quit") < 0, true);
+        }
+
+        // -- Applications launcher tile (T-19.2 follow-up) ------------------
+
+        function test_apps_launcher_tile_toggles_drawer() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("files", "Files", false), launcher(),
+                           app("settings", "Settings", false) ]
+            });
+            activatedSpy.target = dock;
+            activatedSpy.clear();
+            appsDrawerSpy.target = dock;
+            appsDrawerSpy.clear();
+            // The launcher sits second, immediately after the first pinned tile.
+            compare(dock.items[1].appsLauncher, true);
+            dock.activateEntry(dock.items[1]);
+            compare(appsDrawerSpy.count, 1);
+            // It never goes through the launch/activation path.
+            compare(activatedSpy.count, 0);
+        }
+
+        function test_apps_launcher_is_not_draggable_or_reorderable() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("files", "Files", false), launcher() ]
+            });
+            var tile = dock.items[1];
+            compare(tile.appsLauncher, true);
+            compare(dock.isDraggable(tile), false);
+            compare(dock.reorderHintFor(tile), "");
+            pinnedOrderSpy.target = dock;
+            pinnedOrderSpy.clear();
+            dock.focusedItemId = tile.id;
+            compare(dock.reorderFocusedPinned(1), false);
+            compare(pinnedOrderSpy.count, 0);
+        }
+
+        function test_apps_launcher_menu_disables_remove() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("files", "Files", false), launcher() ]
+            });
+            dock.openEntryMenu(dock.items[1]);
+            var menu = findChild(dock, "entryMenu");
+            var labels = menuLabels(menu);
+            var openIndex = labels.indexOf("Open Applications");
+            var removeIndex = labels.indexOf("Remove from Dock");
+            verify(openIndex >= 0);
+            verify(removeIndex >= 0);
+            compare(menu.entries[removeIndex].enabled, false);
+            // The Open row toggles the drawer locally rather than launching.
+            appsDrawerSpy.target = dock;
+            appsDrawerSpy.clear();
+            menu.activate(openIndex);
+            compare(appsDrawerSpy.count, 1);
+        }
+
+        function test_apps_launcher_glyph_renders_grid_mark() {
+            var glyph = make(glyphComponent, { kind: "launcher", size: 48 });
+            var artwork = findChild(glyph, "launcherArtwork");
+            verify(artwork !== null);
+            verify(findChild(glyph, "launcherTile") !== null);
+            verify(findChild(glyph, "launcherGlyph") !== null);
+            var img = grabImage(glyph);
+            verify(img.width > 0);
+            verify(countForegroundAll(img) > 0, "the launcher tile renders");
+            glyph.destroy();
         }
 
         function test_minimized_entry_menu_lists_windows_and_quit() {
