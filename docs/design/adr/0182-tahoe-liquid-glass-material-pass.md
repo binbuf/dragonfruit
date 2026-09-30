@@ -1,0 +1,89 @@
+# 0182 — The Tahoe liquid-glass material is a GPU sampled backdrop pass
+
+## Status
+
+accepted
+
+## Context
+
+ADR [0122](0122-tahoe-interface-language-across-chrome.md) names macOS **Tahoe**
+as the reference for every piece of chrome, and ADRs
+[0013](0013-backdrop-blur-pass.md)/[0091](0091-dock-tahoe-floating-glass-language.md)
+shipped a token-driven **approximation** of its glass: a stack of translucent
+rounded feather layers drawn by the compositor under each chrome surface, with
+the real texture-sampling blur (Kawase vs dual-pass Gaussian) explicitly
+deferred and "no refraction is claimed". That approximation cannot sample the
+scene it stands over — text and video under the menu bar do not blur — and it
+cannot express Tahoe's Liquid Glass (refraction, a specular rim, an adaptive
+tint).
+
+The deferred work is now unblocked. The renderer is Smithay 0.7 `GlowRenderer`
+(GLES via glow); the nested backend already renders the scene into an offscreen
+`GlesTexture` (`compositor/src/backend/nested.rs::capture_frame`, via
+`Offscreen`/`Bind`/`export`), and Smithay 0.7 exposes
+`GlesRenderer::compile_custom_texture_shader` /
+`GlesFrame::render_texture_from_to` and
+`smithay::backend::renderer::element::texture::TextureRenderElement`. The
+project now **assumes a GPU** for the material (a GLES 3.x / Vulkan-capable
+device); the software/headless path is a CI fallback, not the target.
+
+## Decision
+
+- **Two-pass composition.** Once per frame the renderer renders the scene
+  (wallpaper, desktop, windows, shadows) into an output-sized offscreen scene
+  texture, then composes the output from the **scene texture** + one **blurred
+  backdrop element per chrome panel** + the **chrome Wayland surfaces**. The
+  blurred panel samples the scene texture region under the panel through a
+  custom texture shader, so the effect is over **live** buffers (FR-1), never a
+  screenshot or a re-render. The existing `BackdropPass` bookkeeping stays: one
+  effect pass per output per frame, no double-blur.
+- **Blur is downsample + Kawase.** The scene region under a panel is downsampled
+  and blurred with a small Kawase (or separable Gaussian) program compiled once
+  per renderer; the blur radius comes from the role's material token. The
+  implementation is swappable behind the token values, as ADR 0013 required.
+- **The panel material is role-driven.** `MaterialRole` continues to select the
+  token group (`Chrome` for the menu bar, `Dock` for the Dock, `Popup` for
+  menus/context menus/popovers/OSD/Control Center/notifications), and a new
+  `Drawer` role covers the full-output Applications drawer, which declares its
+  card via `df_layer_surface.set_panel_rect` (the Dock's mechanism, ADR 0089).
+  Blur radius, opacity, and the rounded-corner radius come from the generated
+  tokens, never literals.
+- **Liquid-glass pass.** On top of the blur the panel adds the Tahoe signature:
+  an SDF-based edge lens (refraction) that displaces the sampled backdrop near
+  the rim, a bright specular inner rim, and an adaptive tint derived from the
+  blurred backdrop's luminance. All parameters are semantic material tokens per
+  scheme.
+- **Degrade honestly.** `DegradeTier` is unchanged: `Full` = blur + refraction +
+  specular, `Reduced` = smaller radius/scale and no refraction, `Minimal` = the
+  current deterministic translucent/flat feather fallback (blur off). The tier
+  selector keeps the same frame-budget input and one-pass guard.
+- **GPU baseline.** A recommended GPU (GLES 3.x / Vulkan-capable) is documented
+  as the material's baseline; the headless/software path renders `Minimal`, so
+  CI stays deterministic and low-end machines stay legible.
+- **Multi-GPU.** The scene texture is owned per GPU; `renderer_multi` composes
+  the blur on the GPU that owns the output, copying the scene texture when an
+  output is rendered by a different GPU.
+
+## Consequences
+
+- This **supersedes ADR 0013's "real blur deferred"** and **amends ADR
+  0091/0122's "no refraction is claimed"**: the feather-layer builder becomes
+  the `Minimal` fallback and the refraction pass is scheduled.
+- New semantic material tokens are added per role (refraction strength, specular
+  intensity, adaptive-tint amount); `Theme.qml` and
+  `compositor/src/design_tokens.rs` regenerate from `tokens.json` (`make
+  check-tokens`).
+- The frame-budget risk moves from an iGPU cliff to a GPU budget; the degrade
+  ladder still guards software and low-end devices, and idle stays zero-wakeup
+  because the pass runs only on frames a backend renders with chrome mapped.
+- Headless/CI goldens need tolerance (or a CPU reference blur), because GL blur
+  output is driver-dependent; the deterministic `Minimal` approximation is the
+  headless path.
+- The compositor samples live buffers inside the render pass, so the
+  no-screencopy gate and the "effects are compositor passes" rule in
+  [02-compositor.md](../02-compositor.md) hold.
+- Rollout is per-surface work, not new machinery: once the pass exists the menu
+  bar, Dock, context menus, popovers, the OSD, notifications, Control Center,
+  and the Applications drawer inherit it through their `MaterialRole`, and the
+  shell's QML "glass claim" layers (fill/rim) can drop to a token-driven
+  complement rather than standing in for the material.

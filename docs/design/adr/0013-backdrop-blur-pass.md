@@ -2,7 +2,9 @@
 
 ## Status
 
-accepted
+superseded by [0182](0182-tahoe-liquid-glass-material-pass.md) — the flat
+feather-layer backdrop this ADR decided is retained as the `Minimal` degrade
+tier; the real texture-sampling blur is now scheduled on the GPU.
 
 ## Context
 

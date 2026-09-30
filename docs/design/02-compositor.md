@@ -340,10 +340,13 @@ surfaces, the `df_layer_surface` namespace — `dock` selects the Dock's own
 role) to the token group; the panel is clipped with the same `CornerMask`
 geometry as the titlebar and shadow.
 
-The flat renderer has no texture sampler yet, so the backdrop is a **stack of
-translucent rounded feather layers** from the panel edge inward — the same
-solid-rectangle approximation T-04.1a used for the shadow, with the token blur
-setting the feather depth. It is a separate element drawn **below** the
+Until T-20 lands ([ADR 0182](adr/0182-tahoe-liquid-glass-material-pass.md)), the
+backdrop is a **stack of translucent rounded feather layers** from the panel
+edge inward — the same solid-rectangle approximation T-04.1a used for the shadow,
+with the token blur setting the feather depth. T-20 replaces this with a
+GPU-sampled blur (scene → offscreen texture → Kawase/Gaussian per panel →
+liquid-glass refraction/specular) and keeps the feather stack as the
+`Minimal` fallback. It is a separate element drawn **below** the
 chrome's Wayland surface, so a client's translucent regions blend over it
 rather than being punched out (FR-3). The backdrop elements are appended
 **after** the chrome surfaces and **before** the windows, so the panel sits
@@ -364,10 +367,17 @@ unchanged. See
 once. A repeated `(frame, output)` request is counted as `skipped` and draws
 nothing — the T-04.2 **one effect pass per frame (no double-blur)** invariant,
 reported on the render-stats line as `backdrop_passes` / `backdrop_skipped`
-(`backdrop_skipped` must stay zero). A real texture-sampling blur is deferred,
-swappable behind the token values; T-04.3 folds the pass into the reusable
+(`backdrop_skipped` must stay zero). The real texture-sampling blur and the
+liquid-glass pass are scheduled by [ADR 0182](adr/0182-tahoe-liquid-glass-material-pass.md)
+(T-20), behind these token values; T-04.3 folds the pass into the reusable
 scene transform and T-04.4a degrades it. See
-[ADR 0013](adr/0013-backdrop-blur-pass.md).
+[ADR 0013](adr/0013-backdrop-blur-pass.md) (superseded by 0182, retained as the
+`Minimal` fallback).
+
+The material targets a **recommended GPU** (GLES 3.x / Vulkan-capable). The
+software/headless path renders the deterministic `Minimal` approximation, so CI
+stays reproducible and low-end devices stay legible; the degrade ladder
+(`Full`/`Reduced`/`Minimal`) is the only scaling mechanism.
 
 ### Reusable scene-transform pass (T-04.3)
 
