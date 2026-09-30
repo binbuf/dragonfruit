@@ -72,6 +72,34 @@ struct RenderStats {
     scene_transform_skipped: u64,
 }
 
+/// T-20.4 material-path counters from the `material stats` line: the feather
+/// backdrop pass and the GPU blur pass. On the software/headless path the GPU
+/// blur never runs, and the double-application guard (`backdrop_skipped`) must
+/// stay zero.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct MaterialStats {
+    backdrop_passes: u64,
+    backdrop_skipped: u64,
+    blur_passes: u64,
+    blur_panels: u64,
+    blur_downsample_max: u32,
+}
+
+fn parse_material_stats(line: &str) -> Option<MaterialStats> {
+    let rest = line.split("material stats").nth(1)?;
+    let field = |name: &str| -> Option<&str> {
+        rest.split_whitespace()
+            .find_map(|token| token.strip_prefix(name)?.strip_prefix('='))
+    };
+    Some(MaterialStats {
+        backdrop_passes: field("backdrop_passes")?.parse().ok()?,
+        backdrop_skipped: field("backdrop_skipped")?.parse().ok()?,
+        blur_passes: field("blur_passes")?.parse().ok()?,
+        blur_panels: field("blur_panels")?.parse().ok()?,
+        blur_downsample_max: field("blur_downsample_max")?.parse().ok()?,
+    })
+}
+
 fn parse_stats(line: &str) -> Option<RenderStats> {
     let rest = line.split("frames_rendered=").nth(1)?;
     let mut parts = rest.split_whitespace();
@@ -158,6 +186,7 @@ struct CompositorProcess {
     sender: UnixDatagram,
     sender_path: PathBuf,
     stats_rx: Receiver<RenderStats>,
+    material_rx: Receiver<MaterialStats>,
     reader: Option<std::thread::JoinHandle<()>>,
 }
 
@@ -202,12 +231,17 @@ impl CompositorProcess {
         // Stream every render-stats line into a channel so the test can
         // wait for a specific sample with a timeout instead of racing.
         let (tx, rx) = mpsc::channel();
+        let (material_tx, material_rx) = mpsc::channel();
         let reader = std::thread::spawn(move || {
             use std::io::{BufRead, BufReader};
             let reader = BufReader::new(stdout);
             for line in reader.lines().map_while(Result::ok) {
                 if let Some(stats) = parse_stats(&line) {
                     if tx.send(stats).is_err() {
+                        break;
+                    }
+                } else if let Some(stats) = parse_material_stats(&line) {
+                    if material_tx.send(stats).is_err() {
                         break;
                     }
                 }
@@ -232,6 +266,7 @@ impl CompositorProcess {
             sender,
             sender_path,
             stats_rx: rx,
+            material_rx,
             reader: Some(reader),
         }
     }
@@ -246,6 +281,14 @@ impl CompositorProcess {
         self.stats_rx
             .recv_timeout(Duration::from_secs(5))
             .expect("compositor did not emit render stats after SIGUSR1")
+    }
+
+    /// The material stats emitted alongside the render stats by the same
+    /// `dump_stats` call.
+    fn sample_material(&self) -> MaterialStats {
+        self.material_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("compositor did not emit material stats after SIGUSR1")
     }
 
     /// Send one synthetic-harness command to the compositor.
@@ -297,11 +340,13 @@ fn idle_steady_state_renders_zero_frames() {
     std::thread::sleep(Duration::from_millis(1500));
     proc.signal(SIGUSR1);
     let _warmup = proc.sample();
+    let _warmup_material = proc.sample_material();
 
     // A short baseline so the measured window contains only idle time.
     std::thread::sleep(Duration::from_millis(500));
     proc.signal(SIGUSR1);
     let first = proc.sample();
+    let first_material = proc.sample_material();
 
     // The idle window: a correct compositor has nothing to do — no timers,
     // no self-inflicted damage, no client wakeups, no shell attached.
@@ -309,9 +354,25 @@ fn idle_steady_state_renders_zero_frames() {
     std::thread::sleep(window);
     proc.signal(SIGUSR1);
     let second = proc.sample();
+    let second_material = proc.sample_material();
     let elapsed = started.elapsed();
 
     assert_idle_flat(&first, &second, elapsed);
+    // T-20.4: the material pass must also be inert while idle. The
+    // software/headless path never takes the GPU blur pass, and the
+    // double-application guard must never fire.
+    assert_eq!(
+        second_material.backdrop_skipped, 0,
+        "the backdrop double-application guard fired: {second_material:?}"
+    );
+    assert_eq!(
+        second_material.blur_passes, first_material.blur_passes,
+        "the GPU blur pass ran while idle: {first_material:?} -> {second_material:?}"
+    );
+    assert_eq!(
+        second_material.backdrop_passes, first_material.backdrop_passes,
+        "the backdrop pass ran while idle: {first_material:?} -> {second_material:?}"
+    );
 
     eprintln!(
         "idle trace ({:.1} s window): frames_rendered={} (flat, +0), \

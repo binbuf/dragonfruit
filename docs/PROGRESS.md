@@ -3,10 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(175 earlier sections omitted)_
+_(177 earlier sections omitted)_
 
-- **T139 — T-15.15a Network advanced (VPN) adapter**: **State: done.** The Network advanced (VPN) adapter landed as a **second; `services/networkmanager/src/vpn/mod.rs` (new) — module docs + re-exports.
-- **T140 — T-15.15b Network advanced (VPN) pane and tile**: **State: done.** The Settings `Network` pane and the Control Center `VPN` tile; `services/system-status/src/vpn.rs` (new) — `VpnHost<S>` (refresh/view/state/
 - **T141 — T-15.16 Absent-daemon matrix and breadth capture**: **State: done.** The T-15 track is closed. The absent-daemon masking matrix is; `docs/design/08-settings.md` — new "The absent-daemon masking matrix
 - **T142 — T-16.1a Per-output chrome sizing and reserved zones**: **State: done.** Reserved zones are now **per output**: `aggregate_reserved_for`; `compositor/src/shell/layer.rs` — `aggregate_reserved_for(output_name,
 - **T143 — T-16.1b Per-output window placement**: **State: done.** New windows now open on the **focused output** and inside; `compositor/src/state.rs` — new `focused_output()` + `output_geometry_named()`;
@@ -43,7 +41,8 @@ _(175 earlier sections omitted)_
 - **T162 — T-16.4 Suspend/resume soak**: **State: done (automated half); the real-machine logind half is OPEN on the; `compositor/tests/suspend_resume_conformance.rs` — new
 - **T179 — T-20.1 Offscreen scene texture + GPU backdrop blur pass**: **State: done (nested proof); DRM keeps the deterministic feather stack.** The; `compositor/src/window/blur.rs` (new) — `BLUR_SHADER` (4-tap Kawase), the pure
 - **T180 — T-20.2 Tahoe liquid-glass: refraction, specular rim, adaptive tint**: **State: done.** The Tahoe signature landed on top of T-20.1's GPU blur as a; `compositor/src/window/blur.rs` — `GLASS_SHADER` (GLES2 custom texture
-- **T181 — T-20.3 Chrome material rollout**: **State: done.** The sampled blur + liquid-glass material now reaches ever
+- **T181 — T-20.3 Chrome material rollout**: **State: done.** The sampled blur + liquid-glass material now reaches every; `compositor/src/window/backdrop.rs` — `MaterialRole::corner_radius(namespace)`
+- **T182 — T-20.4 Multi-GPU composition, software fallback, golden determinism**: **State: done (agent half); recommended-GPU frame-budget run OPEN on the T-16; `compositor/src/multi_gpu.rs` — pure `SceneRoute`
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -16189,3 +16188,94 @@ Commands / gotchas for later:
   feather stack.
 - **Popup scrim tuning** (0.62/0.70) needs a human visual sign-off; no human
   review in this session.
+
+## T182 — T-20.4 Multi-GPU composition, software fallback, golden determinism
+
+**State: done (agent half); recommended-GPU frame-budget run OPEN on the T-16
+hardware rail.** T-20.4 closes the T-20 track by hardening and measuring the
+T-20.1–T-20.3 material: per-GPU scene-texture routing, the deterministic
+software/headless `Minimal` path, blur instrumentation, and a committed
+frame-budget trace. `cargo test -p dragonfruit-compositor` all green (0 failed),
+`make e2e` exit 0 (133 `test result: ok`), `clippy`/`fmt` clean,
+`check-no-capture-grab` ok.
+
+Real paths:
+
+- `compositor/src/multi_gpu.rs` — pure `SceneRoute`
+  (`Local`/`Copy{from,to}`/`Software`), `scene_route`, `OutputSceneRoute`,
+  `plan_scene_routes`, `scene_routes_marker`; tests in the module and
+  `compositor/tests/multi_gpu.rs`. The material never samples a scene texture
+  across GPUs.
+- `compositor/src/backend/drm.rs` — after the `Multi-GPU:` marker, prints one
+  `Multi-GPU: SCENE output=… route=local|copy|software` per output from the
+  plan (the DRM two-pass composition that consumes it is still a follow-up; the
+  rail renders the feather stack).
+- `compositor/src/window/degrade.rs` (+ `window/mod.rs`) — `MaterialPath`
+  (`Gpu` default / `Software`), `material_tier(selected)` (Software → always
+  `Minimal`), `gpu_blur()`.
+- `compositor/src/state.rs` — `DfState.material_path`; `RenderStats.blur_passes`
+  / `blur_panels` / `blur_downsample_max` + `record_blur_pass`; `material stats`
+  line now `path=… blur_passes=… blur_panels=… blur_downsample_max=…`.
+- `compositor/src/backend/headless.rs` — sets `MaterialPath::Software`.
+- `compositor/src/render.rs` — `chrome_blur_panels` no-ops on the software path
+  and records the blur pass; both backdrop builders resolve through
+  `material_path.material_tier`.
+- `compositor/src/input/synthetic.rs` — `query material` gains `path=` and
+  resolves the glass lines at the effective tier.
+- `compositor/tests/window_conformance.rs` —
+  `headless_material_path_is_the_software_minimal_fallback` (asserts
+  `path=software`, selected `tier=full`, every role zeroed, and that selecting
+  `reduced` does not change the software material).
+- `compositor/tests/idle_trace.rs` — parses `material stats`; asserts
+  `backdrop_skipped=0` and flat backdrop/blur counters while idle.
+- `scripts/t20-frame-budget.sh` + `scripts/t20-frame-budget-driver.py` +
+  `make t20-frame-budget`; `docs/captures/t20-frame-budget.txt`.
+- `scripts/t20-material-compare.py` — tolerance comparator.
+- Docs: ADR 0182 (Implementation (T-20.4) close-out), ADR 0184 (new),
+  `02-compositor.md`, `12-packaging.md`, `docs/design/tracks/20-…md`,
+  `docs/captures/README.md`.
+
+Commands / gotchas for later:
+
+- **Build/run env** (same as T-20.1/2/3): `PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig`,
+  `RUSTFLAGS=-L $HOME/.local/df-devroot/lib64`,
+  `LD_LIBRARY_PATH=$HOME/.local/df-toolchain/usr/lib64` for a bare `cargo`;
+  `make build`/`make e2e` set the rest. Compositor unit tests live in the
+  **main.rs** binary (313); `--lib` has 26.
+- **`make e2e` headless demo now prints the software path**:
+  `material stats (exit): backdrop_passes=0 backdrop_skipped=0 path=software
+  blur_passes=0 blur_panels=0 blur_downsample_max=0` — the exact headless
+  assertion.
+- **`kill -USR1` on the nested compositor dumps stats, but stdout to a pipe is
+  block-buffered** — repeated SIGUSR1 dumps can sit in the buffer. For a
+  reliable trace, `kill -TERM` the compositor process directly (not the
+  `dragonfruit dev` parent): it exits cleanly, flushes the `exit` dump, and the
+  demo prints `clean teardown`. `scripts/t20-frame-budget.sh` does this.
+- **Nested live-render evidence on the dev iGPU**:
+  `blur_passes=115 blur_panels=211 blur_downsample_max=16 backdrop_skipped=0
+  path=gpu`, `degrade tiers=full:84,reduced:57,minimal:0 downgrades=1`,
+  `frame timing avg_us=45005` (over the 16 ms budget — honest). Force Full with
+  the synthetic `set degrade-tier full`; read `query material`/`query degrade`.
+- **`blur_downsample_max` is `2^iterations`**: 4 = 2 iterations, 16 = 4
+  (the dock/popup Full radii). The `MaterialPath::Software` path never records
+  a blur pass.
+- **Tolerance, not byte goldens.** GPU blur/refraction is driver-dependent;
+  compare material captures with `scripts/t20-material-compare.py A B`
+  (mean ≤ 8/255, < 0.5 % of pixels may exceed 64/255) over the same static
+  fixture backdrop. Two live runs of the drawer card agreed with mean 0.01.
+  The design-system gallery goldens stay exact.
+- **The `Multi-GPU: SCENE` marker is the routing plan** the DRM two-pass will
+  consume; on the software path it is `route=software (minimal feather)`.
+
+### Follow-ups
+
+- **DRM two-pass composition.** Fold the scene texture + blur/glass into the
+  `UdevRenderer`/`DrmCompositor` rail so it consumes
+  `multi_gpu::plan_scene_routes`; needs DRM hardware.
+- **Recommended-GPU frame-budget run.** Re-run `make t20-frame-budget` on the
+  T-16 baseline GPU (GLES 3.x / Vulkan) and record the in-budget trace; the
+  committed trace is the honest dev-iGPU run.
+- **Human / vision review** of the T-20 captures (vision was 429 in this
+  track).
+- **Per-frame texture allocation** from T-20.1 still stands (cache the Kawase
+  textures in `NestedData` keyed by panel/role size).

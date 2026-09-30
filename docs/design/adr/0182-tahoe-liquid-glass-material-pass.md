@@ -159,3 +159,41 @@ it: the compose of a panel's blurred texture now runs a second custom program.
 
 The Dock/menus/OSD rollout (T-20.3) and multi-GPU/headless determinism (T-20.4)
 are unchanged.
+## Implementation (T-20.4) — close-out
+
+The final slice hardened and measured the pass; the track is closed.
+
+- **Per-GPU scene routing.** `multi_gpu::scene_route` / `plan_scene_routes`
+  decide, per output, whether the blur composes locally (the output's GPU owns
+  the scene texture) or the scene texture is copied onto the output's GPU
+  first. The material never samples across devices. The DRM rail prints one
+  `Multi-GPU: SCENE output=… route=local|copy|software` marker per output; the
+  pure model is unit- and integration-tested in `compositor/src/multi_gpu.rs`
+  and `compositor/tests/multi_gpu.rs`. Folding the two-pass composition into
+  `UdevRenderer`/`DrmCompositor` is the remaining DRM follow-up (the marker is
+  the plan it consumes).
+- **Software/headless path is `Minimal`.** `window::MaterialPath::Software`
+  (set by `backend::headless`) collapses every selected tier to `Minimal`, the
+  deterministic feather stack with no GPU readback; `render::chrome_blur_panels`
+  never runs there, and `chrome_backdrop_render_elements` resolves the same
+  deterministic mapping. It is a quality fallback that shares the
+  `MaterialRole`/`BackdropSpec` inputs.
+- **Instrumentation.** `RenderStats` gains `blur_passes`, `blur_panels`, and
+  `blur_downsample_max`; the `material stats` line carries them plus `path=`,
+  and `backdrop_skipped` must stay `0`. `idle_trace.rs` asserts the material
+  counters are flat across an idle window. The degrade summary keeps its
+  per-tier frame counts, so a trace shows the ladder reacting.
+- **Frame-budget trace.** `scripts/t20-frame-budget.sh` +
+  `scripts/t20-frame-budget-driver.py` record
+  `docs/captures/t20-frame-budget.txt` (material `Full`, a live-window demo
+  burst, `blur_passes`/`blur_downsample_max`, the degrade counters, and the
+  frame-timing summary). The dev-iGPU run honestly exceeds the 16 ms budget and
+  the ladder downgrades; the recommended-GPU baseline run is recorded **OPEN**
+  (the T-16 hardware rail owns the baseline machine).
+- **Determinism.** GPU-material captures are tolerance artifacts, not byte
+  goldens (`scripts/t20-material-compare.py`, mean ≤ 8/255, worst pixel
+  ≤ 64/255) over the same static fixture backdrop; headless stays exact. See
+  [ADR 0184](0184-material-capture-determinism-and-software-path.md).
+- The recommended GPU baseline (GLES 3.x / Vulkan-capable) is documented in
+  [02-compositor.md](../02-compositor.md) and
+  [12-packaging.md](../12-packaging.md).

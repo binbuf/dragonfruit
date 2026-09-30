@@ -1036,6 +1036,24 @@ the OSD uses the `DF_OSD_FIXTURE` timing because it auto-dismisses after
 1.4 s. The contract is
 [ADR 0183](../design/adr/0183-chrome-material-rollout.md).
 
+T-20.4 hardens and measures the material. `scripts/t20-frame-budget.sh`
+records `t20-frame-budget.txt`: the nested demo with the material pinned to
+`Full`, a live-window animation burst, then the compositor's `exit`
+`dump_stats` block — the `material stats` line now carries `path=`,
+`blur_passes`, `blur_panels`, and `blur_downsample_max` (with
+`backdrop_skipped=0`) and the `degrade stats` line shows the ladder's per-tier
+frames and downgrades. The dev-iGPU run is recorded honestly (it exceeds the
+16 ms budget and the ladder reacts); the recommended-GPU baseline run is
+**OPEN** on the T-16 hardware rail. Material captures are **tolerance
+artifacts**, not byte goldens: a re-run over the same static fixture backdrop is
+compared with `scripts/t20-material-compare.py` (mean ≤ 8/255, < 0.5 % of
+pixels may exceed 64/255), because GL blur/refraction is driver-dependent;
+headless output stays exact. The three forced-tier stills of the same card are
+`t20-material-tiers-{full,reduced,minimal}.png` (T-20.4 live visual check); a
+re-run over the static fixture agrees with mean 0.01. The scene texture is routed per GPU
+(`Multi-GPU: SCENE output=… route=local|copy|software`). The contract is
+[ADR 0184](../design/adr/0184-material-capture-determinism-and-software-path.md).
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

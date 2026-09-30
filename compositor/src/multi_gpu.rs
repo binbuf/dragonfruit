@@ -125,6 +125,105 @@ pub fn format_allowed(renders_locally: bool, linear: bool) -> bool {
     renders_locally || linear
 }
 
+/// Where one output's T-20 material pass samples its scene texture from under
+/// `renderer_multi` (T-20.4, [ADR 0182]).
+///
+/// The material needs an output-sized **scene texture** to blur. The texture is
+/// owned by the GPU that rendered the scene for it; the pass must never sample
+/// a texture that lives on another GPU. This decision is pure so it can be
+/// asserted without two cards.
+///
+/// [ADR 0182]: ../../docs/design/adr/0182-tahoe-liquid-glass-material-pass.md
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SceneRoute {
+    /// The output's GPU owns the scene texture: the blur/glass pass composes
+    /// locally, with no cross-GPU work (the preferred path).
+    Local,
+    /// The output renders on a different GPU than the one that owns the scene
+    /// texture: the texture is copied/imported onto the output's GPU before the
+    /// pass samples it. The copy is the fallback for a panel straddling
+    /// outputs; the material never samples across devices.
+    Copy { from: String, to: String },
+    /// No GPU scene texture exists (software/headless): the deterministic
+    /// `Minimal` feather stack is used and nothing is read back.
+    Software,
+}
+
+impl SceneRoute {
+    /// The stable name used by the trace marker.
+    pub const fn name(&self) -> &'static str {
+        match self {
+            SceneRoute::Local => "local",
+            SceneRoute::Copy { .. } => "copy",
+            SceneRoute::Software => "software",
+        }
+    }
+
+    /// True when the route crosses devices and a copy is required.
+    pub const fn is_cross_gpu(&self) -> bool {
+        matches!(self, SceneRoute::Copy { .. })
+    }
+
+    /// The one-line marker the backend prints for one output.
+    pub fn marker(&self, output: &str) -> String {
+        match self {
+            SceneRoute::Local => format!("Multi-GPU: SCENE output={output} route=local"),
+            SceneRoute::Copy { from, to } => {
+                format!("Multi-GPU: SCENE output={output} route=copy from={from} to={to}")
+            }
+            SceneRoute::Software => {
+                format!("Multi-GPU: SCENE output={output} route=software (minimal feather)")
+            }
+        }
+    }
+}
+
+/// Decide the scene-texture route for one output. `scene_texture_gpu` is the
+/// GPU that owns (rendered) the scene texture, or `None` on the software path;
+/// `output_gpu` is the GPU that renders the output.
+pub fn scene_route(scene_texture_gpu: Option<&str>, output_gpu: &str) -> SceneRoute {
+    match scene_texture_gpu {
+        None => SceneRoute::Software,
+        Some(owner) if owner == output_gpu => SceneRoute::Local,
+        Some(owner) => SceneRoute::Copy {
+            from: owner.to_string(),
+            to: output_gpu.to_string(),
+        },
+    }
+}
+
+/// One output's routing decision, in the backend's output order.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutputSceneRoute {
+    pub output: String,
+    pub route: SceneRoute,
+}
+
+/// Plan every output's scene-texture route against one scene-texture owner.
+/// `outputs` are `(output_name, output_gpu)` pairs.
+pub fn plan_scene_routes(
+    scene_texture_gpu: Option<&str>,
+    outputs: &[(String, String)],
+) -> Vec<OutputSceneRoute> {
+    outputs
+        .iter()
+        .map(|(output, gpu)| OutputSceneRoute {
+            output: output.clone(),
+            route: scene_route(scene_texture_gpu, gpu),
+        })
+        .collect()
+}
+
+/// A one-line plan summary for the trace, or the empty string when there are
+/// no outputs.
+pub fn scene_routes_marker(routes: &[OutputSceneRoute]) -> String {
+    routes
+        .iter()
+        .map(|entry| entry.route.marker(&entry.output))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -208,6 +307,73 @@ mod tests {
         assert!(format_allowed(true, false));
         assert!(format_allowed(false, true));
         assert!(!format_allowed(false, false));
+    }
+
+    #[test]
+    fn a_scene_texture_routes_locally_on_its_own_gpu() {
+        let route = scene_route(Some("renderD128"), "renderD128");
+        assert_eq!(route, SceneRoute::Local);
+        assert!(!route.is_cross_gpu());
+        assert_eq!(route.name(), "local");
+        assert_eq!(
+            route.marker("HDMI-A-1"),
+            "Multi-GPU: SCENE output=HDMI-A-1 route=local"
+        );
+    }
+
+    #[test]
+    fn an_output_on_another_gpu_copies_the_scene_texture() {
+        let route = scene_route(Some("renderD128"), "renderD129");
+        assert_eq!(
+            route,
+            SceneRoute::Copy {
+                from: "renderD128".into(),
+                to: "renderD129".into()
+            }
+        );
+        assert!(route.is_cross_gpu());
+        assert_eq!(
+            route.marker("DP-1"),
+            "Multi-GPU: SCENE output=DP-1 route=copy from=renderD128 to=renderD129"
+        );
+    }
+
+    #[test]
+    fn the_software_path_has_no_scene_texture_and_stays_minimal() {
+        let route = scene_route(None, "renderD128");
+        assert_eq!(route, SceneRoute::Software);
+        assert!(!route.is_cross_gpu());
+        assert_eq!(
+            route.marker("HEADLESS-1"),
+            "Multi-GPU: SCENE output=HEADLESS-1 route=software (minimal feather)"
+        );
+    }
+
+    #[test]
+    fn a_plan_routes_every_output_independently() {
+        let outputs = vec![
+            ("eDP-1".to_string(), "renderD128".to_string()),
+            ("DP-1".to_string(), "renderD129".to_string()),
+        ];
+        // The scene texture is owned by the primary: its own output is local,
+        // the secondary copies across.
+        let plan = plan_scene_routes(Some("renderD128"), &outputs);
+        assert_eq!(plan.len(), 2);
+        assert_eq!(plan[0].route, SceneRoute::Local);
+        assert!(plan[1].route.is_cross_gpu());
+
+        let marker = scene_routes_marker(&plan);
+        assert!(marker.contains("output=eDP-1 route=local"), "{marker}");
+        assert!(
+            marker.contains("output=DP-1 route=copy from=renderD128 to=renderD129"),
+            "{marker}"
+        );
+        assert!(!marker.contains('\n') || marker.lines().count() == 2);
+
+        // No scene texture at all: every output falls back to software.
+        let plan = plan_scene_routes(None, &outputs);
+        assert!(plan.iter().all(|entry| entry.route == SceneRoute::Software));
+        assert!(scene_routes_marker(&[]).is_empty());
     }
 
     #[test]

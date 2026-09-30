@@ -1,0 +1,15 @@
+# T-20.4 frame-budget trace (nested, material Full)
+# host: Linux 7.2.5-200.fc44.x86_64 x86_64
+# gpu: nested GL renderer (no DRM device scan)
+# budget_us: 16000
+# command: make build && scripts/t20-frame-budget.sh
+#
+# The dev-iGPU run below drives the material at Full. The recommended
+# GPU baseline run (GLES 3.x / Vulkan, dedicated) is OPEN — the T-16
+# hardware rail owns the baseline machine.
+#
+render stats (exit): frames_rendered=141 frames_skipped_no_damage=0 direct_scanouts=0 animation_frames_stepped=58 client_wakeups=266 latency_us_last=25906 latency_us_max=25906 latency_samples=3 latency_dropped=0 scene_transforms=9 scene_transform_skipped=0
+latency stats (exit): last_us=25906 max_us=25906 samples=3 dropped=0 within_one_frame_60hz=false
+material stats (exit): backdrop_passes=115 backdrop_skipped=0 path=gpu blur_passes=115 blur_panels=211 blur_downsample_max=16
+degrade stats (exit): tier=full forced=1 budget_us=16000 samples=141 over_budget=35 downgrades=1 upgrades=0 tiers=full:84,reduced:57,minimal:0
+frame timing (exit): samples=141 avg_us=45005 max_us=3792561 max_interval_ms=4075

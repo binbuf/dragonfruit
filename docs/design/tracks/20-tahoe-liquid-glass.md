@@ -50,6 +50,23 @@ the material through its `MaterialRole`.
 - [ ] Each task carries a nested capture and a `PROGRESS.md` note; `make e2e`
       stays green and the goldens are tolerance-based.
 
+## Close-out (T-20.4)
+
+- The pass is proven by committed nested captures (T-20.1/T-20.2/T-20.3) and
+  the live demo counter `backdrop_passes` > 0 with `backdrop_skipped=0`.
+- `Full`/`Reduced`/`Minimal` are selectable; the trace shows the ladder reacting
+  (`docs/captures/t20-frame-budget.txt`). The **recommended-GPU** budget run is
+  OPEN on the T-16 hardware rail — the dev-iGPU trace honestly exceeds the
+  16 ms budget.
+- `Minimal` is the deterministic software/headless path with zero idle wakeups
+  (`idle_trace.rs` asserts the material counters flat; ADR 0009).
+- Captures are tolerance-based (`scripts/t20-material-compare.py`,
+  ADR [0184](../adr/0184-material-capture-determinism-and-software-path.md));
+  the design-system gallery goldens stay exact.
+- Scene-texture routing under `renderer_multi` is the pure
+  `multi_gpu::plan_scene_routes` model; the DRM two-pass composition that
+  consumes it is a follow-up (the rail still renders the feather stack).
+
 ## References
 
 - [02-compositor.md](../02-compositor.md) — materials, the one-pass rule, the

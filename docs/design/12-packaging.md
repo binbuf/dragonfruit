@@ -65,6 +65,19 @@ sudo dnf install dragonfruit-desktop
   the installed file are generated from one source and guarded by
   `make check-phosphor` (ADR [0166](adr/0166-first-party-app-icons.md)).
 
+## Hardware baseline
+
+- **Recommended GPU (T-20.4):** a GLES 3.x / Vulkan-capable GPU — any modern
+  Intel/AMD/NVIDIA discrete or integrated device, or a virtio-GPU VM with
+  `virgl`/`venus`. This is the baseline for the `Full`/`Reduced` liquid-glass
+  material (ADR [0182](adr/0182-tahoe-liquid-glass-material-pass.md)); the
+  compositor packages do not hard-require it. A renderer that refuses the
+  custom texture shaders falls back to a bilinear downsample, and the
+  software/headless session runs the deterministic `Minimal` feather stack.
+- The packages do not declare a `Recommends` on a GPU driver: the desktop
+  starts and is legible on any renderer, and the material degrades honestly (the
+  same tier the trace reports).
+
 ## Distribution path
 
 1. **COPR** for early testers — Fedora describes COPR as its easy-to-use

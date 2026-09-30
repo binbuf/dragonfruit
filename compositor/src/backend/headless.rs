@@ -54,6 +54,12 @@ pub fn run(socket_name: &str) -> Result<(), String> {
                     scale,
                 );
                 add_seat_capabilities(state);
+                // T-20.4: the headless backend has no renderer and no scene
+                // texture, so the chrome material runs on the software path:
+                // the deterministic `Minimal` feather stack with no GPU
+                // readback. This is a quality fallback, not a correctness one —
+                // it resolves the same `MaterialRole`/`BackdropSpec` inputs.
+                state.material_path = crate::window::MaterialPath::Software;
                 if let Some(path) = &install_path {
                     crate::input::synthetic::install(state, path)?;
                 }
