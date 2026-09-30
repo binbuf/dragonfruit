@@ -32,7 +32,7 @@ use std::time::Duration;
 
 use crate::animation::FRAME_INTERVAL;
 use crate::window::backdrop::BackdropSpec;
-use crate::window::blur::BlurSpec;
+use crate::window::blur::{BlurSpec, GlassSpec};
 use crate::window::shadow::ShadowSpec;
 
 /// A frame is "over budget" when its smoothed duration exceeds the budget by
@@ -162,6 +162,25 @@ impl DegradeTier {
             spec.radius * self.geometry_scale(),
             spec.corner_radius * self.geometry_scale(),
         ))
+    }
+
+    /// The Tahoe liquid-glass pass at this tier (T-20.2), or `None` when blur
+    /// is off. `Full` keeps refraction + specular + tint; `Reduced` keeps the
+    /// specular rim and the adaptive tint but drops the edge lens (the
+    /// expensive part), and the smaller blur radius comes from [`Self::blur`].
+    pub fn glass(self, spec: GlassSpec) -> Option<GlassSpec> {
+        if !self.blur_enabled() {
+            return None;
+        }
+        Some(match self {
+            DegradeTier::Full => spec,
+            DegradeTier::Reduced => GlassSpec {
+                refraction: 0.0,
+                ..spec
+            },
+            // `blur_enabled` is false at `Minimal`, handled above.
+            DegradeTier::Minimal => spec,
+        })
     }
 
     /// The elevation shadow at this tier. The scheme opacity/color and the

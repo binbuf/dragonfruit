@@ -161,6 +161,18 @@ pub mod semantic {
             pub const SHADOW_OPACITY: f32 = 0.18_f32;
             pub const DOCK_OPACITY: f32 = 0.5_f32;
             pub const DOCK_BLUR: f32 = 30.0_f32;
+            pub const CHROME_REFRACTION: f32 = 6.0_f32;
+            pub const POPUP_REFRACTION: f32 = 8.0_f32;
+            pub const DOCK_REFRACTION: f32 = 8.0_f32;
+            pub const CHROME_SPECULAR: f32 = 0.45_f32;
+            pub const POPUP_SPECULAR: f32 = 0.5_f32;
+            pub const DOCK_SPECULAR: f32 = 0.5_f32;
+            pub const CHROME_SPECULAR_WIDTH: f32 = 2.0_f32;
+            pub const POPUP_SPECULAR_WIDTH: f32 = 2.5_f32;
+            pub const DOCK_SPECULAR_WIDTH: f32 = 2.5_f32;
+            pub const CHROME_TINT: f32 = 0.16_f32;
+            pub const POPUP_TINT: f32 = 0.2_f32;
+            pub const DOCK_TINT: f32 = 0.22_f32;
         }
     }
     pub mod dark {
@@ -225,6 +237,18 @@ pub mod semantic {
             pub const SHADOW_OPACITY: f32 = 0.45_f32;
             pub const DOCK_OPACITY: f32 = 0.42_f32;
             pub const DOCK_BLUR: f32 = 34.0_f32;
+            pub const CHROME_REFRACTION: f32 = 8.0_f32;
+            pub const POPUP_REFRACTION: f32 = 10.0_f32;
+            pub const DOCK_REFRACTION: f32 = 10.0_f32;
+            pub const CHROME_SPECULAR: f32 = 0.3_f32;
+            pub const POPUP_SPECULAR: f32 = 0.34_f32;
+            pub const DOCK_SPECULAR: f32 = 0.34_f32;
+            pub const CHROME_SPECULAR_WIDTH: f32 = 2.0_f32;
+            pub const POPUP_SPECULAR_WIDTH: f32 = 2.5_f32;
+            pub const DOCK_SPECULAR_WIDTH: f32 = 2.5_f32;
+            pub const CHROME_TINT: f32 = 0.14_f32;
+            pub const POPUP_TINT: f32 = 0.18_f32;
+            pub const DOCK_TINT: f32 = 0.2_f32;
         }
     }
 }
@@ -583,7 +607,7 @@ pub mod component {
         pub const GRID_ROW_GAP: f32 = 16.0_f32;
         pub const LABEL_SIZE: f32 = 12.0_f32;
         pub const SCRIM_OPACITY: f32 = 0.35_f32;
-        pub const PANEL_OPACITY: f32 = 0.9_f32;
+        pub const PANEL_OPACITY: f32 = 0.5_f32;
         pub const FALLBACK_GLYPH_RATIO: f32 = 0.6_f32;
         pub const EMPTY_GLYPH_SIZE: f32 = 40.0_f32;
     }

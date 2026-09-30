@@ -118,7 +118,9 @@ use smithay::reexports::calloop::{Interest, Mode, PostAction};
 
 use crate::magnifier::MagnifierMode;
 use crate::state::DfState;
-use crate::window::{ColorScheme, DegradeTier, TitlebarDoubleClick, WindowEventKind, WindowId};
+use crate::window::{
+    ColorScheme, DegradeTier, MaterialRole, TitlebarDoubleClick, WindowEventKind, WindowId,
+};
 use crate::workspace::WallpaperFit;
 
 /// Marker type defining the synthetic [`InputBackend`] types.
@@ -1918,27 +1920,69 @@ fn degrade_report(state: &DfState) -> String {
 /// The `query material` report (T-04.4b): the live color scheme and the
 /// resolved token tones the compositor materials render with.
 ///
-/// `material scheme=<light|dark> chrome=<rrggbbaa> elevated=<rrggbbaa>
-/// border=<rrggbbaa> accent=<rrggbbaa>` followed by `end`. The tones are the
-/// exact token values the SSD titlebar, window menu, chrome backdrop, and
-/// window shadow resolve for the reported scheme, so a headless test can
-/// prove both schemes render without a GPU.
+/// `material scheme=<light|dark> tier=<name> chrome=<rrggbbaa>
+/// elevated=<rrggbbaa> border=<rrggbbaa> accent=<rrggbbaa>` then one
+/// `material glass role=<name> blur=<r> refraction=<r> specular=<r>
+/// specular_width=<r> tint=<r>` line per material role, followed by `end`.
+/// The tones are the exact token values the SSD titlebar, window menu, chrome
+/// backdrop, and window shadow resolve for the reported scheme, and the glass
+/// lines are the liquid-glass parameters after the active degrade tier
+/// (T-20.2), so a headless test can prove both schemes and the tier fallback
+/// without a GPU.
 fn material_report(state: &DfState) -> String {
     let scheme = state.color_scheme;
+    let tier = state.degrade.tier();
     let hex = |rgba: [u8; 4]| {
         format!(
             "{:02x}{:02x}{:02x}{:02x}",
             rgba[0], rgba[1], rgba[2], rgba[3]
         )
     };
-    format!(
-        "material scheme={} chrome={} elevated={} border={} accent={}\nend\n",
+    let mut out = format!(
+        "material scheme={} tier={} chrome={} elevated={} border={} accent={}\n",
         scheme.name(),
+        tier.name(),
         hex(scheme.chrome()),
         hex(scheme.surface_elevated()),
         hex(scheme.border()),
         hex(scheme.accent()),
-    )
+    );
+    // The liquid-glass parameters per role after the active degrade tier
+    // (T-20.2): a headless test can prove the material mapping and the tier
+    // fallback without a GPU. The tint tone is the resolved scheme tone.
+    for role in [
+        MaterialRole::Chrome,
+        MaterialRole::Dock,
+        MaterialRole::Popup,
+        MaterialRole::Drawer,
+    ] {
+        let glass = tier.glass(role.glass_spec(scheme));
+        let blur = tier
+            .blur(role.blur_spec(scheme))
+            .map(|spec| spec.radius)
+            .unwrap_or(0.0);
+        let (refraction, specular, specular_width, tint) = match glass {
+            Some(glass) => (
+                glass.refraction,
+                glass.specular,
+                glass.specular_width,
+                glass.tint,
+            ),
+            None => (0.0, 0.0, 0.0, 0.0),
+        };
+        out.push_str(&format!(
+            "material glass role={} blur={:.1} refraction={:.1} specular={:.2} \
+             specular_width={:.1} tint={:.2}\n",
+            role.name(),
+            blur,
+            refraction,
+            specular,
+            specular_width,
+            tint,
+        ));
+    }
+    out.push_str("end\n");
+    out
 }
 
 /// The `query grid` report (T-05.1a): the Mission Control live-surface grid.

@@ -361,6 +361,36 @@ keep the deterministic feather stack (no GPU readback), and `Minimal` keeps blur
 off — the pre-GPU feather stack is what a backend without a scene texture draws
 at `Full`/`Reduced`.
 
+The Tahoe **liquid-glass pass** landed in **T-20.2**
+([ADR 0182](adr/0182-tahoe-liquid-glass-material-pass.md)) as a second custom
+texture program (`GLASS_SHADER`) used on the final compose of each panel's
+blurred texture (`compositor/src/window/blur.rs`). Because the element maps the
+whole blurred panel texture onto the panel, the shader's `v_coords` is the
+panel-normalized coordinate, so it reconstructs panel-local pixels and
+evaluates the rounded-rect **signed distance field** from the same
+`component.*`/`primitive.radius.*` corner radius. On top of the blurred backdrop
+it adds an **edge lens** (the sample is pulled toward the panel centre near the
+rim by `material.*Refraction`), a **specular inner rim** (a
+`material.*SpecularWidth`-wide band just inside the edge scaled by
+`material.*Specular`), and an **adaptive tint** (the blurred backdrop's mean
+luminance is compared with the scheme tone's luminance and the color is blended
+toward that tone by `material.*Tint` only when the backdrop drifts from it, so
+label contrast is never inverted). Every parameter is a semantic `material`
+token per role and scheme — the shader holds no literal value. A driver that
+refuses the glass shader keeps the plain blurred compose. The QML surfaces stay
+the **complement**: the menu bar already uses `material.chromeOpacity` in its
+fill (T-20.1), and the Applications card's fill uses
+`controls.appsDrawer.panelOpacity` (retuned to the Dock's `dockOpacity` glass
+level) so the compositor material reads through it; the rest of the chrome
+rollout is T-20.3.
+
+`DegradeTier` owns the fallback: `Full` = blur + refraction + specular + tint;
+`Reduced` = blur + specular + tint with the edge lens dropped and the blur
+radius/geometry halved (via the existing `geometry_scale`); `Minimal` = the flat
+feather fallback (no glass). `query material` reports the resolved glass
+parameters per role after the active tier, so the mapping and the fallback are
+asserted headless.
+
 The backdrop is a separate element drawn **below** the chrome's Wayland surface,
 so a client's translucent regions blend over it rather than being punched out
 (FR-3). It is appended **after** the chrome surfaces and **before** the scene
@@ -381,8 +411,8 @@ unchanged. See
 once. A repeated `(frame, output)` request is counted as `skipped` and draws
 nothing — the T-04.2 **one effect pass per frame (no double-blur)** invariant,
 reported on the render-stats line as `backdrop_passes` / `backdrop_skipped`
-(`backdrop_skipped` must stay zero). The real texture-sampling blur and the
-liquid-glass pass are scheduled by [ADR 0182](adr/0182-tahoe-liquid-glass-material-pass.md)
+(`backdrop_skipped` must stay zero). The GPU blur (T-20.1) and the liquid-glass
+pass (T-20.2) are decided by [ADR 0182](adr/0182-tahoe-liquid-glass-material-pass.md)
 (T-20), behind these token values; T-04.3 folds the pass into the reusable
 scene transform and T-04.4a degrades it. See
 [ADR 0013](adr/0013-backdrop-blur-pass.md) (superseded by 0182, retained as the

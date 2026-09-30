@@ -27,7 +27,7 @@ use std::borrow::BorrowMut;
 use smithay::backend::renderer::element::texture::TextureRenderElement;
 use smithay::backend::renderer::element::{Element, Id, Kind, RenderElement};
 use smithay::backend::renderer::gles::{
-    GlesError, GlesFrame, GlesTexture, UniformName, UniformType,
+    GlesError, GlesFrame, GlesTexProgram, GlesTexture, Uniform, UniformName, UniformType,
 };
 use smithay::backend::renderer::glow::{GlowFrame, GlowRenderer};
 use smithay::backend::renderer::utils::CommitCounter;
@@ -89,6 +89,156 @@ void main() {
 }
 "#;
 
+/// The custom texture shader for the Tahoe liquid-glass pass (T-20.2).
+///
+/// It is compiled once per renderer like [`BLUR_SHADER`] and used on the final
+/// compose of a blurred panel (the built-in texture program would otherwise do
+/// a plain bilinear sample). `v_coords` is the panel-normalized coordinate
+/// because the element maps the whole blurred panel texture onto the panel, so
+/// the shader can reconstruct panel-local pixels and evaluate the rounded-rect
+/// signed distance field. On top of the blurred backdrop it adds:
+///
+/// * an **edge lens** — the sample is pulled toward the panel centre near the
+///   rim by `refraction * lens_falloff`, so the backdrop reads refracted
+///   through a thick glass edge;
+/// * a **specular inner rim** — a thin bright band `specular_width` inside the
+///   edge, scaled by `specular`;
+/// * an **adaptive tint** — the blurred backdrop's mean luminance (a 3×3
+///   sample grid) is compared with the scheme tone's luminance and the colour
+///   is blended toward the tone only when the backdrop drifts from it, so
+///   label contrast is never inverted.
+///
+/// Every number comes from a semantic material token through a uniform; the
+/// shader itself holds no literal token value.
+pub const GLASS_SHADER: &str = r#"#version 100
+
+//_DEFINES_
+
+#if defined(EXTERNAL)
+#extension GL_OES_EGL_image_external : require
+#endif
+
+precision mediump float;
+#if defined(EXTERNAL)
+uniform samplerExternalOES tex;
+#else
+uniform sampler2D tex;
+#endif
+
+uniform float alpha;
+varying vec2 v_coords;
+
+uniform vec2 glass_size;
+uniform float glass_radius;
+uniform float refraction;
+uniform float specular;
+uniform float specular_width;
+uniform float tint_amount;
+uniform vec3 tint_color;
+uniform float lens_falloff;
+uniform float tint_scale;
+
+#if defined(DEBUG_FLAGS)
+uniform float tint;
+#endif
+
+float luminance(vec3 c) {
+    return dot(c, vec3(0.299, 0.587, 0.114));
+}
+
+void main() {
+    vec2 p = (v_coords - 0.5) * glass_size;
+    vec2 half_size = max(glass_size * 0.5 - vec2(glass_radius), vec2(0.0));
+    vec2 q = abs(p) - half_size;
+    vec2 outside = max(q, vec2(0.0));
+    float dist = length(outside) + min(max(q.x, q.y), 0.0) - glass_radius;
+    float inside = max(-dist, 0.0);
+
+    // The outward SDF normal, used as the lens bend direction.
+    float ol = length(outside);
+    vec2 normal = (ol > 0.0) ? outside / ol : normalize(p + vec2(1e-5));
+    normal = normal * sign(p + vec2(1e-6));
+
+    // Edge lens: falloff is one at the rim and reaches zero at lens_falloff.
+    float lens = clamp(1.0 - inside / max(lens_falloff, 1.0), 0.0, 1.0);
+    lens = lens * lens * (3.0 - 2.0 * lens);
+    vec2 uv = v_coords - normal * (refraction * lens) / max(glass_size, vec2(1.0));
+
+    vec4 color = texture2D(tex, uv);
+
+    // Adaptive tint: 3x3 mean luminance of the blurred backdrop.
+    vec3 mean = vec3(0.0);
+    mean += texture2D(tex, vec2(0.25, 0.25)).rgb;
+    mean += texture2D(tex, vec2(0.50, 0.25)).rgb;
+    mean += texture2D(tex, vec2(0.75, 0.25)).rgb;
+    mean += texture2D(tex, vec2(0.25, 0.50)).rgb;
+    mean += texture2D(tex, vec2(0.50, 0.50)).rgb;
+    mean += texture2D(tex, vec2(0.75, 0.50)).rgb;
+    mean += texture2D(tex, vec2(0.25, 0.75)).rgb;
+    mean += texture2D(tex, vec2(0.50, 0.75)).rgb;
+    mean += texture2D(tex, vec2(0.75, 0.75)).rgb;
+    mean = mean / 9.0;
+    float adapt = clamp(abs(luminance(mean) - luminance(tint_color)) * tint_scale, 0.0, 1.0);
+    color.rgb = mix(color.rgb, tint_color, clamp(tint_amount * adapt, 0.0, 1.0));
+
+    // Specular inner rim: a thin bright band just inside the rounded edge.
+    float band = clamp(1.0 - abs(inside - specular_width) / max(specular_width, 1.0), 0.0, 1.0);
+    color.rgb += vec3(specular * band);
+
+#if defined(NO_ALPHA)
+    color = vec4(color.rgb, 1.0) * alpha;
+#else
+    color = color * alpha;
+#endif
+
+#if defined(DEBUG_FLAGS)
+    if (tint == 1.0)
+        color = vec4(0.0, 0.2, 0.0, 0.2) + color * 0.8;
+#endif
+
+    gl_FragColor = color;
+}
+"#;
+
+/// The liquid-glass shader uniform carrying the panel size in physical pixels.
+pub const GLASS_SIZE_UNIFORM: &str = "glass_size";
+/// The liquid-glass shader uniform carrying the corner radius (physical px).
+pub const GLASS_RADIUS_UNIFORM: &str = "glass_radius";
+/// The liquid-glass shader uniform carrying the edge-lens strength (px).
+pub const REFRACTION_UNIFORM: &str = "refraction";
+/// The liquid-glass shader uniform carrying the specular intensity.
+pub const SPECULAR_UNIFORM: &str = "specular";
+/// The liquid-glass shader uniform carrying the specular band width (px).
+pub const SPECULAR_WIDTH_UNIFORM: &str = "specular_width";
+/// The liquid-glass shader uniform carrying the adaptive-tint amount.
+pub const TINT_AMOUNT_UNIFORM: &str = "tint_amount";
+/// The liquid-glass shader uniform carrying the scheme tone to blend toward.
+pub const TINT_COLOR_UNIFORM: &str = "tint_color";
+/// The liquid-glass shader uniform carrying the lens falloff width (px).
+pub const LENS_FALLOFF_UNIFORM: &str = "lens_falloff";
+/// The liquid-glass shader uniform carrying the tint adaptation scale.
+pub const TINT_SCALE_UNIFORM: &str = "tint_scale";
+
+/// The lens falloff width as a multiple of the token refraction strength: a
+/// mapping constant, not a radius. The refraction token is the displacement at
+/// the rim; the falloff reaches zero `LENS_BAND_FACTOR * refraction` inside.
+pub const LENS_BAND_FACTOR: f32 = 2.5;
+/// How sharply the adaptive tint responds to the backdrop/scheme luminance gap:
+/// `clamp(|lum_backdrop - lum_tone| * TINT_ADAPT_SCALE)` decides the fraction
+/// of the token tint amount that applies at a pixel. A mapping constant.
+pub const TINT_ADAPT_SCALE: f32 = 2.5;
+
+/// Convert a scheme tone (the generated token `[r,g,b,a]`) to the shader's
+/// normalized RGB triple, ignoring its alpha (the tint does not change the
+/// panel's opacity).
+pub fn tone_to_rgb(tone: [u8; 4]) -> [f32; 3] {
+    [
+        f32::from(tone[0]) / 255.0,
+        f32::from(tone[1]) / 255.0,
+        f32::from(tone[2]) / 255.0,
+    ]
+}
+
 /// The additional shader uniform carrying `1 / texture_size`, so the Kawase
 /// taps are expressed in source texels.
 pub const BLUR_TEXEL_UNIFORM: &str = "blur_texel";
@@ -122,6 +272,22 @@ pub fn blur_uniform_names() -> [UniformName<'static>; 2] {
     [
         UniformName::new(BLUR_TEXEL_UNIFORM, UniformType::_2f),
         UniformName::new(BLUR_RADIUS_UNIFORM, UniformType::_1f),
+    ]
+}
+
+/// The additional uniform descriptors [`GLASS_SHADER`] declares, passed to
+/// `GlesRenderer::compile_custom_texture_shader`.
+pub fn glass_uniform_names() -> [UniformName<'static>; 9] {
+    [
+        UniformName::new(GLASS_SIZE_UNIFORM, UniformType::_2f),
+        UniformName::new(GLASS_RADIUS_UNIFORM, UniformType::_1f),
+        UniformName::new(REFRACTION_UNIFORM, UniformType::_1f),
+        UniformName::new(SPECULAR_UNIFORM, UniformType::_1f),
+        UniformName::new(SPECULAR_WIDTH_UNIFORM, UniformType::_1f),
+        UniformName::new(TINT_AMOUNT_UNIFORM, UniformType::_1f),
+        UniformName::new(TINT_COLOR_UNIFORM, UniformType::_3f),
+        UniformName::new(LENS_FALLOFF_UNIFORM, UniformType::_1f),
+        UniformName::new(TINT_SCALE_UNIFORM, UniformType::_1f),
     ]
 }
 
@@ -161,18 +327,76 @@ impl BlurSpec {
     }
 }
 
+/// The token-resolved Tahoe liquid-glass parameters for one chrome panel
+/// (T-20.2, ADR 0182). Every field traces back to a semantic `material` token;
+/// the shader takes no literal value.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GlassSpec {
+    /// Edge-lens displacement at the rim in logical pixels
+    /// (`material.*Refraction`).
+    pub refraction: f32,
+    /// Specular inner-rim intensity, `0..=1` (`material.*Specular`).
+    pub specular: f32,
+    /// Specular band width in logical pixels (`material.*SpecularWidth`).
+    pub specular_width: f32,
+    /// Adaptive-tint amount, `0..=1` (`material.*Tint`).
+    pub tint: f32,
+    /// The scheme surface/chrome tone the tint blends toward, normalized RGB.
+    pub tint_color: [f32; 3],
+}
+
+impl GlassSpec {
+    /// The lens falloff width in logical pixels: the token refraction maps to
+    /// a band through [`LENS_BAND_FACTOR`].
+    pub fn lens_width(&self) -> f32 {
+        self.refraction * LENS_BAND_FACTOR
+    }
+
+    /// The shader uniforms for a panel of `physical` size at output `scale`.
+    /// The logical tokens are scaled to physical pixels so the SDF, the lens,
+    /// and the specular band are device-pixel consistent.
+    pub fn uniforms(
+        &self,
+        physical: Size<i32, Physical>,
+        corner_radius: i32,
+        scale: Scale<f64>,
+    ) -> Vec<Uniform<'static>> {
+        let w = physical.w.max(1) as f32;
+        let h = physical.h.max(1) as f32;
+        let sx = scale.x.max(f64::EPSILON) as f32;
+        vec![
+            Uniform::new(GLASS_SIZE_UNIFORM, (w, h)),
+            Uniform::new(GLASS_RADIUS_UNIFORM, corner_radius as f32 * sx),
+            Uniform::new(REFRACTION_UNIFORM, self.refraction * sx),
+            Uniform::new(SPECULAR_UNIFORM, self.specular),
+            Uniform::new(SPECULAR_WIDTH_UNIFORM, self.specular_width * sx),
+            Uniform::new(TINT_AMOUNT_UNIFORM, self.tint),
+            Uniform::new(
+                TINT_COLOR_UNIFORM,
+                (self.tint_color[0], self.tint_color[1], self.tint_color[2]),
+            ),
+            Uniform::new(LENS_FALLOFF_UNIFORM, self.lens_width() * sx),
+            Uniform::new(TINT_SCALE_UNIFORM, TINT_ADAPT_SCALE),
+        ]
+    }
+}
+
 /// A renderer that can draw a sampled backdrop span. Implemented for the
 /// nested backend's [`GlowRenderer`]; the marker keeps the nested element enum
 /// generic while only the GL path can construct a blur element.
 pub trait BlurRenderer: Renderer<TextureId = GlesTexture> {
     /// Draw `src` (texture buffer coordinates) into `dst` (output-local
-    /// physical), clipped to `damage`.
+    /// physical), clipped to `damage`. When `program` is set the material uses
+    /// the liquid-glass texture program with `uniforms`; otherwise the built-in
+    /// texture program does a plain bilinear sample.
     fn draw_blur_span(
         frame: &mut Self::Frame<'_, '_>,
         texture: &GlesTexture,
         src: Rectangle<f64, Buffer>,
         dst: Rectangle<i32, Physical>,
         damage: &[Rectangle<i32, Physical>],
+        program: Option<&GlesTexProgram>,
+        uniforms: &[Uniform<'_>],
     ) -> Result<(), Self::Error>;
 }
 
@@ -183,9 +407,11 @@ impl BlurRenderer for GlowRenderer {
         src: Rectangle<f64, Buffer>,
         dst: Rectangle<i32, Physical>,
         damage: &[Rectangle<i32, Physical>],
+        program: Option<&GlesTexProgram>,
+        uniforms: &[Uniform<'_>],
     ) -> Result<(), GlesError> {
-        // The upsample on compose uses the built-in texture program: the
-        // texture is already blurred, so a plain bilinear sample is enough.
+        // With no glass program the upsample is a plain bilinear sample of the
+        // already-blurred texture; with one it is the liquid-glass compose.
         let frame: &mut GlesFrame<'_, '_> = BorrowMut::borrow_mut(frame);
         frame.render_texture_from_to(
             texture,
@@ -195,8 +421,8 @@ impl BlurRenderer for GlowRenderer {
             &[],
             Transform::Normal,
             1.0,
-            None,
-            &[],
+            program,
+            uniforms,
         )
     }
 }
@@ -214,6 +440,10 @@ pub struct BackdropBlurElement {
     /// The panel corner radius in logical pixels.
     corner_radius: i32,
     scale: Scale<f64>,
+    /// The liquid-glass parameters and compiled program (T-20.2), or `None`
+    /// for the plain blurred compose (the scene texture, or a driver that
+    /// refused the glass shader).
+    glass: Option<(GlassSpec, GlesTexProgram)>,
 }
 
 impl BackdropBlurElement {
@@ -233,7 +463,15 @@ impl BackdropBlurElement {
             texture_size,
             corner_radius,
             scale,
+            glass: None,
         }
+    }
+
+    /// Apply the Tahoe liquid-glass compose (T-20.2) on top of the blurred
+    /// backdrop using the compiled [`GLASS_SHADER`] `program`.
+    pub fn with_glass(mut self, spec: GlassSpec, program: GlesTexProgram) -> Self {
+        self.glass = Some((spec, program));
+        self
     }
 
     /// The rounded spans of the panel at the token corner radius.
@@ -285,6 +523,19 @@ impl<R: BlurRenderer> RenderElement<R> for BackdropBlurElement {
         // its slice of the panel onto the corresponding slice of the texture.
         let ratio_x = self.texture_size.w as f64 / f64::from(self.panel.size.w);
         let ratio_y = self.texture_size.h as f64 / f64::from(self.panel.size.h);
+        // The glass uniforms are per-panel, not per-span, so build them once.
+        let program = self.glass.as_ref().map(|(_, program)| program);
+        let uniforms = self
+            .glass
+            .as_ref()
+            .map(|(spec, _)| {
+                spec.uniforms(
+                    self.panel.to_physical_precise_round(self.scale).size,
+                    self.corner_radius,
+                    self.scale,
+                )
+            })
+            .unwrap_or_default();
         for span in self.spans() {
             let dst = span.to_physical_precise_round(self.scale);
             let rel_x = f64::from(span.loc.x - self.panel.loc.x);
@@ -296,7 +547,7 @@ impl<R: BlurRenderer> RenderElement<R> for BackdropBlurElement {
                     f64::from(span.size.h) * ratio_y,
                 )),
             );
-            R::draw_blur_span(frame, &self.texture, src, dst, damage)?;
+            R::draw_blur_span(frame, &self.texture, src, dst, damage, program, &uniforms)?;
         }
         Ok(())
     }
@@ -350,6 +601,80 @@ mod tests {
         assert!(BLUR_SHADER.contains(BLUR_TEXEL_UNIFORM));
         assert!(BLUR_SHADER.contains(BLUR_RADIUS_UNIFORM));
         assert!(BLUR_SHADER.contains("gl_FragColor"));
+    }
+
+    #[test]
+    fn the_glass_shader_declares_its_uniforms_and_no_token_literals() {
+        // The liquid-glass program is a custom texture shader like the blur,
+        // so it carries the marker, the built-in uniforms, and every one of
+        // its own uniforms. The parameters themselves arrive by uniform, so
+        // the shader body holds no token value.
+        assert!(GLASS_SHADER.contains("//_DEFINES_"));
+        assert!(GLASS_SHADER.contains("varying vec2 v_coords;"));
+        assert!(GLASS_SHADER.contains("uniform sampler2D tex;"));
+        assert!(GLASS_SHADER.contains("uniform float alpha;"));
+        for name in [
+            GLASS_SIZE_UNIFORM,
+            GLASS_RADIUS_UNIFORM,
+            REFRACTION_UNIFORM,
+            SPECULAR_UNIFORM,
+            SPECULAR_WIDTH_UNIFORM,
+            TINT_AMOUNT_UNIFORM,
+            TINT_COLOR_UNIFORM,
+            LENS_FALLOFF_UNIFORM,
+            TINT_SCALE_UNIFORM,
+        ] {
+            assert!(GLASS_SHADER.contains(name), "shader is missing {name}");
+        }
+        assert!(GLASS_SHADER.contains("gl_FragColor"));
+        // The lens, specular, and adaptive tint are all present.
+        assert!(GLASS_SHADER.contains("luminance"));
+        assert!(GLASS_SHADER.contains("refraction"));
+        assert!(GLASS_SHADER.contains("specular_width"));
+        assert!(GLASS_SHADER.contains("tint_amount"));
+    }
+
+    #[test]
+    fn a_glass_spec_maps_tokens_to_physical_uniforms() {
+        use smithay::backend::renderer::gles::UniformValue;
+        let spec = GlassSpec {
+            refraction: 6.0,
+            specular: 0.45,
+            specular_width: 2.0,
+            tint: 0.16,
+            tint_color: [0.1, 0.2, 0.3],
+        };
+        // The lens falloff is a derived mapping constant, not a token.
+        assert_eq!(spec.lens_width(), 6.0 * LENS_BAND_FACTOR);
+
+        // At scale 2 the logical tokens become physical pixels; the corner
+        // radius is scaled with them so the SDF is device-pixel consistent.
+        let uniforms = spec.uniforms(Size::from((1600, 56)), 20, Scale::from(2.0));
+        assert_eq!(uniforms.len(), 9);
+        assert_eq!(
+            uniforms[0].value,
+            UniformValue::_2f(1600.0, 56.0),
+            "glass size is the physical panel"
+        );
+        assert_eq!(uniforms[1].value, UniformValue::_1f(40.0));
+        assert_eq!(uniforms[2].value, UniformValue::_1f(12.0));
+        assert_eq!(uniforms[3].value, UniformValue::_1f(0.45));
+        assert_eq!(uniforms[4].value, UniformValue::_1f(4.0));
+        assert_eq!(uniforms[5].value, UniformValue::_1f(0.16));
+        assert_eq!(uniforms[6].value, UniformValue::_3f(0.1, 0.2, 0.3));
+        // The lens falloff is the derived mapping constant scaled to physical.
+        assert_eq!(uniforms[7].value, UniformValue::_1f(30.0));
+        assert_eq!(uniforms[8].value, UniformValue::_1f(TINT_ADAPT_SCALE));
+
+        // A degenerate panel is clamped, never a zero-size SDF.
+        let uniforms = spec.uniforms(Size::from((0, 0)), 0, Scale::from(1.0));
+        assert_eq!(uniforms[0].value, UniformValue::_2f(1.0, 1.0));
+    }
+
+    #[test]
+    fn tone_to_rgb_drops_alpha_and_normalizes() {
+        assert_eq!(tone_to_rgb([255, 128, 0, 130]), [1.0, 128.0 / 255.0, 0.0]);
+        assert_eq!(tone_to_rgb([0, 0, 0, 255]), [0.0, 0.0, 0.0]);
     }
 
     #[test]

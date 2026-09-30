@@ -38,7 +38,7 @@ use smithay::backend::renderer::Color32F;
 use smithay::utils::{Logical, Rectangle, Scale, Size};
 
 use crate::design_tokens::{component, primitive, semantic};
-use crate::window::blur::BlurSpec;
+use crate::window::blur::{tone_to_rgb, BlurSpec, GlassSpec};
 use crate::window::corner::{rounded_rect_spans, RoundedCorners};
 use crate::window::decoration::{color_from_rgba, ColorScheme};
 use crate::window::pass::FramePass;
@@ -210,6 +210,70 @@ impl MaterialRole {
             MaterialRole::Drawer => (popup_blur(scheme), primitive::radius::XL),
         };
         BlurSpec::new(blur, corner_radius)
+    }
+
+    /// The Tahoe liquid-glass parameters for this role under `scheme`
+    /// (T-20.2, ADR 0182): the edge-lens refraction, the specular inner rim,
+    /// and the adaptive-tint amount, all from the generated `material` tokens.
+    /// The tint blends toward the same scheme tone as [`Self::spec`]/the
+    /// surface, so a light scheme never tints dark and vice versa.
+    pub fn glass_spec(self, scheme: ColorScheme) -> GlassSpec {
+        let (refraction, specular, specular_width, tint) = match self {
+            MaterialRole::Chrome => match scheme {
+                ColorScheme::Light => (
+                    semantic::light::material::CHROME_REFRACTION,
+                    semantic::light::material::CHROME_SPECULAR,
+                    semantic::light::material::CHROME_SPECULAR_WIDTH,
+                    semantic::light::material::CHROME_TINT,
+                ),
+                ColorScheme::Dark => (
+                    semantic::dark::material::CHROME_REFRACTION,
+                    semantic::dark::material::CHROME_SPECULAR,
+                    semantic::dark::material::CHROME_SPECULAR_WIDTH,
+                    semantic::dark::material::CHROME_TINT,
+                ),
+            },
+            MaterialRole::Dock => match scheme {
+                ColorScheme::Light => (
+                    semantic::light::material::DOCK_REFRACTION,
+                    semantic::light::material::DOCK_SPECULAR,
+                    semantic::light::material::DOCK_SPECULAR_WIDTH,
+                    semantic::light::material::DOCK_TINT,
+                ),
+                ColorScheme::Dark => (
+                    semantic::dark::material::DOCK_REFRACTION,
+                    semantic::dark::material::DOCK_SPECULAR,
+                    semantic::dark::material::DOCK_SPECULAR_WIDTH,
+                    semantic::dark::material::DOCK_TINT,
+                ),
+            },
+            MaterialRole::Popup | MaterialRole::Drawer => match scheme {
+                ColorScheme::Light => (
+                    semantic::light::material::POPUP_REFRACTION,
+                    semantic::light::material::POPUP_SPECULAR,
+                    semantic::light::material::POPUP_SPECULAR_WIDTH,
+                    semantic::light::material::POPUP_TINT,
+                ),
+                ColorScheme::Dark => (
+                    semantic::dark::material::POPUP_REFRACTION,
+                    semantic::dark::material::POPUP_SPECULAR,
+                    semantic::dark::material::POPUP_SPECULAR_WIDTH,
+                    semantic::dark::material::POPUP_TINT,
+                ),
+            },
+        };
+        let color = match self {
+            MaterialRole::Chrome => scheme.chrome(),
+            MaterialRole::Dock => scheme.dock_fill(),
+            MaterialRole::Popup | MaterialRole::Drawer => scheme.surface_elevated(),
+        };
+        GlassSpec {
+            refraction,
+            specular,
+            specular_width,
+            tint,
+            tint_color: tone_to_rgb(color),
+        }
     }
 }
 
@@ -628,6 +692,88 @@ mod tests {
         // Minimal is blur off: the plan returns no panels and the feather path
         // runs instead.
         assert_eq!(DegradeTier::Minimal.blur(base), None);
+    }
+
+    #[test]
+    fn roles_read_their_liquid_glass_tokens_per_scheme() {
+        // Every liquid-glass parameter comes from the generated material
+        // tokens, per role and scheme (T-20.2, ADR 0182).
+        let chrome_light = MaterialRole::Chrome.glass_spec(ColorScheme::Light);
+        assert_eq!(
+            chrome_light.refraction,
+            semantic::light::material::CHROME_REFRACTION
+        );
+        assert_eq!(chrome_light.refraction, 6.0);
+        assert_eq!(
+            chrome_light.specular,
+            semantic::light::material::CHROME_SPECULAR
+        );
+        assert_eq!(
+            chrome_light.specular_width,
+            semantic::light::material::CHROME_SPECULAR_WIDTH
+        );
+        assert_eq!(chrome_light.tint, semantic::light::material::CHROME_TINT);
+        // The tint blends toward the scheme's chrome tone, so it stays legible.
+        assert_eq!(
+            chrome_light.tint_color,
+            tone_to_rgb(ColorScheme::Light.chrome())
+        );
+
+        let chrome_dark = MaterialRole::Chrome.glass_spec(ColorScheme::Dark);
+        assert_eq!(
+            chrome_dark.refraction,
+            semantic::dark::material::CHROME_REFRACTION
+        );
+        assert_eq!(chrome_dark.refraction, 8.0);
+        assert_eq!(chrome_dark.specular, 0.3);
+        assert_eq!(
+            chrome_dark.tint_color,
+            tone_to_rgb(ColorScheme::Dark.chrome())
+        );
+        // Dark glass bends and tints more, but its specular is softer so a
+        // highlighted rim does not blow out on a dark backdrop.
+        assert!(chrome_dark.refraction > chrome_light.refraction);
+        assert!(chrome_dark.specular < chrome_light.specular);
+
+        let dock = MaterialRole::Dock.glass_spec(ColorScheme::Light);
+        assert_eq!(dock.refraction, semantic::light::material::DOCK_REFRACTION);
+        assert_eq!(dock.tint_color, tone_to_rgb(ColorScheme::Light.dock_fill()));
+
+        let popup = MaterialRole::Popup.glass_spec(ColorScheme::Light);
+        assert_eq!(
+            popup.refraction,
+            semantic::light::material::POPUP_REFRACTION
+        );
+        assert_eq!(
+            popup.tint_color,
+            tone_to_rgb(ColorScheme::Light.surface_elevated())
+        );
+
+        // The Drawer shares the popup glass tokens (like its blur/tone).
+        assert_eq!(
+            MaterialRole::Drawer.glass_spec(ColorScheme::Dark),
+            MaterialRole::Popup.glass_spec(ColorScheme::Dark)
+        );
+    }
+
+    #[test]
+    fn the_liquid_glass_degrades_by_tier() {
+        use crate::window::degrade::DegradeTier;
+        let base = MaterialRole::Chrome.glass_spec(ColorScheme::Light);
+        // Full is the token pass: refraction + specular + tint.
+        assert_eq!(DegradeTier::Full.glass(base), Some(base));
+        // Reduced keeps the specular rim and tint but drops the edge lens, so
+        // the expensive displacement is the first thing to go.
+        let reduced = DegradeTier::Reduced
+            .glass(base)
+            .expect("reduced keeps glass");
+        assert_eq!(reduced.refraction, 0.0);
+        assert_eq!(reduced.specular, base.specular);
+        assert_eq!(reduced.specular_width, base.specular_width);
+        assert_eq!(reduced.tint, base.tint);
+        assert_eq!(reduced.tint_color, base.tint_color);
+        // Minimal is blur off, so there is no glass pass at all.
+        assert_eq!(DegradeTier::Minimal.glass(base), None);
     }
 
     #[test]
