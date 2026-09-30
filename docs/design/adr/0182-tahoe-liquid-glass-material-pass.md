@@ -115,4 +115,47 @@ DRM/headless paths still render the deterministic feather stack.
   derived mapping constants.
 
 Refraction, the specular rim, and the adaptive tint (T-20.2), the Dock/menus/OSD
-rollout (T-20.3), and multi-GPU/headless determinism (T-20.4) are unchanged.
+rollout (T-20.3), and multi-GPU/headless determinism (T-20.4) were unchanged by
+T-20.1.
+
+## Implementation (T-20.2)
+
+The liquid-glass pass landed on top of the T-20.1 blur without re-architecting
+it: the compose of a panel's blurred texture now runs a second custom program.
+
+- Twelve semantic tokens were added to `semantic.{light,dark}.material`:
+  `chrome/popup/dock` × `Refraction`, `Specular`, `SpecularWidth`, `Tint`
+  (`design-system/tokens/tokens.json`; regenerate `Theme.qml`/`design_tokens.rs`
+  with `make check-tokens`). No blur downsample token: the Kawase iteration
+  count stays a derived mapping constant as in T-20.1, and the shader takes no
+  literal value.
+- `compositor/src/window/blur.rs` owns `GLASS_SHADER`, a GLES2 custom texture
+  program with the `//_DEFINES_` marker and the built-in `tex`/`alpha`/
+  `v_coords` contract. It reconstructs panel-local pixels from `v_coords`
+  (the panel-normalized coordinate), evaluates the rounded-rect SDF at the
+  token corner radius, pulls the backdrop sample toward the centre near the rim
+  (the edge lens), adds a specular band, and blends toward the scheme tone by
+  the adaptive-tint amount scaled by how far the blurred backdrop's mean
+  luminance is from the tone. `GlassSpec` resolves the tokens to shader uniforms
+  (scaled to physical pixels); `BackdropBlurElement::with_glass` carries the
+  spec + compiled program.
+- `MaterialRole::glass_spec(scheme)` resolves the per-role/per-scheme tokens
+  (the Drawer shares Popup, like its blur/tone); `render::chrome_blur_panels`
+  attaches the spec to each `BlurPanel`, and `DegradeTier::glass` maps it:
+  `Full` unchanged, `Reduced` drops refraction to zero (keeping specular +
+  tint), `Minimal` returns `None`.
+- `compositor/src/backend/nested.rs` compiles `GLASS_SHADER` once per renderer
+  (non-fatal on failure: the panel keeps the plain blurred compose) and passes
+  it to `build_blur_elements`; `query material` reports the resolved glass
+  parameters per role after the tier.
+- The Applications card's QML fill was retuned to the Dock's glass level
+  (`controls.appsDrawer.panelOpacity` 0.90 → 0.5) so the compositor material
+  reads through the complement; the menu bar already used
+  `material.chromeOpacity` (T-20.1). The remaining surfaces' QML complements are
+  T-20.3.
+- Headless unit tests assert the per-role/scheme token mapping, the glass
+  uniform packing, and the tier behaviour; the pixel effect is verified by the
+  committed nested captures (`docs/captures/t20-liquid-glass-*.png`).
+
+The Dock/menus/OSD rollout (T-20.3) and multi-GPU/headless determinism (T-20.4)
+are unchanged.

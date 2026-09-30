@@ -232,8 +232,30 @@ pub fn run(socket_name: &str) -> Result<(), String> {
                             None
                         }
                     };
+                // Compile the liquid-glass compose program once, on the same
+                // renderer (T-20.2). Failure is non-fatal: the panel keeps the
+                // plain blurred compose (no lens/specular/tint).
+                let glass_program =
+                    match std::borrow::BorrowMut::<GlesRenderer>::borrow_mut(backend.renderer())
+                        .compile_custom_texture_shader(
+                            crate::window::GLASS_SHADER,
+                            &crate::window::glass_uniform_names(),
+                        ) {
+                        Ok(program) => {
+                            crate::trace::log("material", "glass-program=compiled");
+                            Some(program)
+                        }
+                        Err(err) => {
+                            eprintln!(
+                                "dragonfruit-compositor: liquid-glass shader unavailable \
+                                 ({err}); using plain blurred compose"
+                            );
+                            None
+                        }
+                    };
                 *shared_init.borrow_mut() = Some(NestedData {
                     blur_program,
+                    glass_program,
                     backend,
                     damage_tracker: OutputDamageTracker::new(
                         window_size,
@@ -271,6 +293,10 @@ struct NestedData {
     /// driver refused it; the blur then falls back to a plain bilinear
     /// downsample chain, which still samples the live scene.
     blur_program: Option<GlesTexProgram>,
+    /// The compiled Tahoe liquid-glass compose program (T-20.2), or `None`
+    /// when the driver refused it; the panel then keeps the plain blurred
+    /// compose with no lens, specular rim, or adaptive tint.
+    glass_program: Option<GlesTexProgram>,
     damage_tracker: OutputDamageTracker,
     /// The output scale the tracker was built with. The damage tracker's
     /// static mode supplies the scale every render element's geometry is
@@ -408,6 +434,7 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
                 custom_elements.extend(build_blur_elements(
                     renderer,
                     data.blur_program.as_ref(),
+                    data.glass_program.as_ref(),
                     &blur_panels,
                     &scene_texture,
                     scale,
@@ -605,6 +632,7 @@ fn render_scene_offscreen(
 fn build_blur_elements(
     renderer: &mut GlowRenderer,
     program: Option<&GlesTexProgram>,
+    glass_program: Option<&GlesTexProgram>,
     panels: &[crate::render::BlurPanel],
     scene: &GlesTexture,
     scale: smithay::utils::Scale<f64>,
@@ -617,15 +645,20 @@ fn build_blur_elements(
         }
         let texture = blur_panel_texture(renderer, program, scene, src_region, &panel.spec)?;
         let texture_size = texture.size();
-        elements.push(NestedOutputElements::Blur(
-            crate::window::BackdropBlurElement::new(
-                texture,
-                panel.panel,
-                texture_size,
-                panel.spec.corner_radius.round().max(0.0) as i32,
-                scale,
-            ),
-        ));
+        let element = crate::window::BackdropBlurElement::new(
+            texture,
+            panel.panel,
+            texture_size,
+            panel.spec.corner_radius.round().max(0.0) as i32,
+            scale,
+        );
+        // Add the liquid-glass compose only when the driver compiled it; a
+        // refused shader leaves the plain blurred backdrop (T-20.2).
+        let element = match glass_program {
+            Some(glass) => element.with_glass(panel.glass, glass.clone()),
+            None => element,
+        };
+        elements.push(NestedOutputElements::Blur(element));
     }
     Ok(elements)
 }

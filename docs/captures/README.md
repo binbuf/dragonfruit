@@ -1011,6 +1011,14 @@ contract is [ADR 0182](../design/adr/0182-tahoe-liquid-glass-material-pass.md)
 and the pass is rendered from the offscreen scene texture in
 `compositor/src/backend/nested.rs`.
 
+T-20.2's liquid-glass pass (SDF edge lens, specular inner rim, adaptive tint)
+is captured by `scripts/capture-t20-liquid-glass.sh`: the menu-bar status
+dropdown in light and dark (`t20-liquid-glass-menubar-{light,dark}.png`) and
+the Applications card in light, dark, and the `Reduced` tier
+(`t20-liquid-glass-drawer-{light,dark,reduced}.png`). The demo log records
+`glass-program=compiled` and `backdrop_passes` > 0 with `backdrop_skipped=0`;
+the card's specular rim reads as a bright band at the rounded edge.
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

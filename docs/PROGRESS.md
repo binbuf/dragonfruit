@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(173 earlier sections omitted)_
+_(174 earlier sections omitted)_
 
-- **T137 — T-15.14a Accessibility adapter**: **State: done.** New workspace crate `dragonfruit-accessibility-adapter`; `services/accessibility-adapter/src/source.rs` — `AccessibilityData
 - **T138 — T-15.14b Accessibility pane and tile**: **State: done.** The Settings `Accessibility` pane and the Control Center; `services/system-status/src/accessibility.rs` (new) — `AccessibilityHost<S>`
 - **T139 — T-15.15a Network advanced (VPN) adapter**: **State: done.** The Network advanced (VPN) adapter landed as a **second; `services/networkmanager/src/vpn/mod.rs` (new) — module docs + re-exports.
 - **T140 — T-15.15b Network advanced (VPN) pane and tile**: **State: done.** The Settings `Network` pane and the Control Center `VPN` tile; `services/system-status/src/vpn.rs` (new) — `VpnHost<S>` (refresh/view/state/
@@ -43,7 +42,8 @@ _(173 earlier sections omitted)_
 - **T157 — T-17.5b Leak and lock enforcement verification**: **State: done.** The premium gate's leak and lock contracts are re-verified on; vision read clean.
 - **T158 — T-17.6 Unfamiliar-user test and sign-off report**: **State: done (agent half; the human unfamiliar-user verdict is the batched; `docs/captures/t17-premium-gate.md` (new) — the sign-off report: the full
 - **T162 — T-16.4 Suspend/resume soak**: **State: done (automated half); the real-machine logind half is OPEN on the; `compositor/tests/suspend_resume_conformance.rs` — new
-- **T179 — T-20.1 Offscreen scene texture + GPU backdrop blur pass**: **State: done (nested proof); DRM keeps the deterministic feather stack.** The; `compositor/src/window/blur.rs` (new) 
+- **T179 — T-20.1 Offscreen scene texture + GPU backdrop blur pass**: **State: done (nested proof); DRM keeps the deterministic feather stack.** The; `compositor/src/window/blur.rs` (new) — `BLUR_SHADER` (4-tap Kawase), the pure
+- **T180 — T-20.2 Tahoe liquid-glass: refraction, specular rim, adaptive tint**: **State: done.** The Tahoe signature landed on top of T-20.1's GP
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -16017,3 +16017,95 @@ Commands / gotchas for later:
   pass counters + a programmatic correlation of the translucent menu-bar strip
   with the blurred content below it. Re-inspect
   `docs/captures/t20-backdrop-blur-{light,dark}.png` when vision is available.
+
+## T180 — T-20.2 Tahoe liquid-glass: refraction, specular rim, adaptive tint
+
+**State: done.** The Tahoe signature landed on top of T-20.1's GPU blur as a
+second custom texture program (`GLASS_SHADER`) that composes each panel's
+blurred texture with an SDF edge lens, a specular inner rim, and an adaptive
+tint — every parameter a semantic `material` token per role and scheme. The
+nested backend compiles the program once per renderer (non-fatal fallback to
+the plain blurred compose), `render::chrome_blur_panels` attaches the resolved
+`GlassSpec` to each `BlurPanel`, and `DegradeTier::glass` maps the fallback
+(`Full` = refraction + specular + tint; `Reduced` = specular + tint, no
+refraction; `Minimal` = flat). Nested light/dark/`Reduced` captures are
+committed. `cargo test -p dragonfruit-compositor` 310 unit tests pass,
+`make e2e` exit 0 (133 `test result: ok`), `make qml-test` 75/75,
+`make visual-test` gallery 84/84, `fmt`/`clippy` clean.
+
+Real paths:
+
+- `compositor/src/window/blur.rs` — `GLASS_SHADER` (GLES2 custom texture
+  program, `//_DEFINES_` marker, `v_coords` = panel-normalized), `GlassSpec`
+  (`uniforms()` scales logical tokens to physical pixels), `tone_to_rgb`,
+  `BackdropBlurElement::with_glass`, the extended `BlurRenderer::draw_blur_span`
+  seam, and `LENS_BAND_FACTOR` (the only lens mapping constant).
+- `compositor/src/window/backdrop.rs` — `MaterialRole::glass_spec(scheme)`
+  (Drawer shares Popup; tint tone = the same chrome/dock/surface_elevated tone
+  as `spec()`).
+- `compositor/src/window/degrade.rs` — `DegradeTier::glass`.
+- `compositor/src/render.rs` — `BlurPanel.glass`; `compositor/src/backend/nested.rs`
+  — `NestedData.glass_program`, compiled in init and passed to
+  `build_blur_elements`.
+- `compositor/src/input/synthetic.rs` — `query material` adds `tier=` and one
+  `material glass role=...` line per role after the tier.
+- `design-system/tokens/tokens.json` — `semantic.{light,dark}.material`
+  `{chrome,popup,dock}{Refraction,Specular,SpecularWidth,Tint}` (12 tokens);
+  `controls.appsDrawer.panelOpacity` 0.90 → 0.5.
+- `scripts/capture-t20-liquid-glass.sh` + `scripts/t20-liquid-glass-driver.py`
+  (new); `docs/captures/t20-liquid-glass-{menubar-{light,dark},drawer-{light,dark,reduced}}.png`
+  (new); ADR 0182 (Implementation (T-20.2)), `docs/design/02-compositor.md`,
+  `docs/captures/README.md`.
+
+Commands / gotchas for later:
+
+- **Build/run env** (same as T-20.1): `PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig`,
+  `RUSTFLAGS=-L $HOME/.local/df-devroot/lib64`,
+  `LD_LIBRARY_PATH=$HOME/.local/df-toolchain/usr/lib64` for a bare `cargo`;
+  `make build`/`make e2e` set the rest. The compositor unit tests actually
+  live in the **main.rs** test binary (310), not the lib (22); run
+  `cargo test -p dragonfruit-compositor`.
+- **The glass shader is a second custom program.** `compile_custom_texture_shader`
+  takes the `glass_uniform_names()`; a driver that refuses it leaves
+  `BackdropBlurElement` on the plain compose (no lens/rim/tint). The demo log
+  prints `glass-program=compiled` only under `DRAGONFRUIT_FRAME_TRACE=1`; a
+  compile failure prints an unconditional `liquid-glass shader unavailable`
+  line.
+- **`v_coords` is the panel-normalized coordinate**, because `BackdropBlurElement`
+  maps each rounded span's slice of the panel onto the matching slice of the
+  blurred texture; the shader scales it by the physical panel size to evaluate
+  the SDF. If you change the span→texture mapping, revisit `GLASS_SHADER`.
+- **The compose order is chrome surface first, then the blur/glass element,
+  then the scene texture** (Smithay draws the list front-to-back), so the glass
+  is *behind* the QML chrome; a fill's alpha decides how much reads through.
+  The menu bar already used `chromeOpacity`; the drawer card's fill was lowered
+  to 0.5 (Dock glass level). Popups still use the opaque `Popup` component
+  background, so their body hides the material (T-20.3).
+- **Capture stability:** the app drawer's fixture grid loads asynchronously;
+  `SETTLE` must be ≥ ~16 s or the light/dark/reduced stills capture different
+  grid states (a full-frame MAD of ~40 instead of ~0.5). The T-20.2 script uses
+  `SETTLE=16`. Recipe: `DF_APPS_DRAWER_FIXTURE=1` (auto-opens the drawer) or
+  `DF_STATUS_FIXTURE=1` (click the Wi-Fi item at x = 1920-276, y = 14), scheme
+  via a scratch `dragonfruit-settingsd` `appearance.colorScheme`, tier via the
+  synthetic socket `set degrade-tier reduced`, KWin raise + `spectacle -b -n -a`
+  then alpha+center crop to 1920x1200.
+- **`query material` is the headless material probe**: it now prints
+  `material scheme=... tier=...` plus a glass line per role, so a headless test
+  can assert the resolved glass/tier without a GPU.
+- **`.symphony/symphony vision` is still 429** (same openrouter outage as
+  T-20.1); the captures were checked programmatically (edge-luminance rim
+  profile + full-vs-`Reduced` localized rim diff). Re-inspect when up.
+- **`tst_dock::test_a_size_change_animates_then_settles` is timing-flaky**: it
+  failed once in `make lint` and passed on an isolated `ctest -R '^tst_dock$'`.
+  Unrelated to this task.
+
+### Follow-ups
+
+- **T-20.3 chrome rollout.** Give the `Popup` component background (status
+  menus, context menus, OSD, Control Center) and the other chrome surfaces
+  their translucent complement so the compositor material reads everywhere,
+  then capture each. The Dock/popovers currently hide it.
+- **Vision review** of `docs/captures/t20-liquid-glass-*.png` once the vision
+  provider recovers.
+- **T-20.4** multi-GPU + headless `Minimal` determinism; the per-frame texture
+  allocation follow-up from T-20.1 still stands.

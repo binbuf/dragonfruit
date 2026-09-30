@@ -160,6 +160,18 @@ QtObject {
             readonly property real shadowOpacity: 0.18
             readonly property real dockOpacity: 0.5
             readonly property int dockBlur: 30
+            readonly property int chromeRefraction: 6
+            readonly property int popupRefraction: 8
+            readonly property int dockRefraction: 8
+            readonly property real chromeSpecular: 0.45
+            readonly property real popupSpecular: 0.5
+            readonly property real dockSpecular: 0.5
+            readonly property int chromeSpecularWidth: 2
+            readonly property real popupSpecularWidth: 2.5
+            readonly property real dockSpecularWidth: 2.5
+            readonly property real chromeTint: 0.16
+            readonly property real popupTint: 0.2
+            readonly property real dockTint: 0.22
         }
     }
     readonly property var darkScheme: QtObject {
@@ -224,6 +236,18 @@ QtObject {
             readonly property real shadowOpacity: 0.45
             readonly property real dockOpacity: 0.42
             readonly property int dockBlur: 34
+            readonly property int chromeRefraction: 8
+            readonly property int popupRefraction: 10
+            readonly property int dockRefraction: 10
+            readonly property real chromeSpecular: 0.3
+            readonly property real popupSpecular: 0.34
+            readonly property real dockSpecular: 0.34
+            readonly property int chromeSpecularWidth: 2
+            readonly property real popupSpecularWidth: 2.5
+            readonly property real dockSpecularWidth: 2.5
+            readonly property real chromeTint: 0.14
+            readonly property real popupTint: 0.18
+            readonly property real dockTint: 0.2
         }
     }
 
@@ -599,7 +623,7 @@ QtObject {
             readonly property int gridRowGap: 16
             readonly property int labelSize: 12
             readonly property real scrimOpacity: 0.35
-            readonly property real panelOpacity: 0.9
+            readonly property real panelOpacity: 0.5
             readonly property real fallbackGlyphRatio: 0.6
             readonly property int emptyGlyphSize: 40
         }
