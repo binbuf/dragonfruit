@@ -621,7 +621,11 @@ affordance, the macOS Launchpad analogue. It is a full-output `overlay` layer
 surface (namespace `apps-drawer`, keyboard on demand) fed by the app-index
 corpus: every launchable app, alphabetical by default, with a design-system
 `SearchField` and a category pill row (`SegmentedControl`, default `All`), and a
-fixed-size tile grid whose column count follows the available width. The list is
+fixed-size tile grid whose column count is capped at seven (the reference
+width) and whose viewport is capped at five rows; it drops to fewer columns on a
+narrower output and scrolls when the corpus is longer. The centered card hugs
+the grid with equal 50px (`component.appsDrawer.panelPadding`) padding on every
+side, clamped to the output. The list is
 built by the pure `buildAppsDrawerList` helper (`shell/src/appsdrawer.{h,cpp}`),
 which drops `noDisplay`/non-launchable records, dedupes by desktop id, maps the
 freedesktop `Categories` list to the pill set, sorts by localized name with an
@@ -632,9 +636,14 @@ the Dock's launch path (`buildLaunchCommand` + `appLaunchEnvironment` +
 Escape and a click outside dismiss; the reveal fades/scales (instant under
 reduced motion). app-index absence renders `Application index unavailable`, and
 the open drawer refreshes on the service's coalesced `Changed` signal. The
-drawer opens from F4 (`InputAction::ShowApps`) or the menu bar's Applications
-status item. The Spotlight-equivalent search pane remains deferred. See
-[ADR 0167](adr/0167-applications-drawer.md).
+drawer is centered over the output and dismisses on Escape or any click outside
+its panel (the full-output scrim covers the desktop, the Dock, and the menu
+bar). It opens from F4 (`InputAction::ShowApps`) or the permanent Applications
+tile on the Dock: the shell injects the tile immediately after the first pinned
+tile (so it is second from the left on a default Dock), and it is a fixed
+affordance that cannot be dragged, reordered, or removed (its context menu's
+**Remove from Dock** row is disabled). The Spotlight-equivalent search pane
+remains deferred. See [ADR 0167](adr/0167-applications-drawer.md).
 
 ## App switcher
 

@@ -529,6 +529,10 @@
         <translation>Abrir</translation>
     </message>
     <message>
+        <source>Open Applications</source>
+        <translation>Abrir aplicaciones</translation>
+    </message>
+    <message>
         <source>Open at Login</source>
         <translation>Abrir al iniciar sesión</translation>
     </message>
@@ -733,6 +737,10 @@
     <message>
         <source>9+</source>
         <translation>9+</translation>
+    </message>
+    <message>
+        <source>Applications</source>
+        <translation>Aplicaciones</translation>
     </message>
     <message>
         <source>Dock separator</source>
@@ -1891,6 +1899,10 @@
     <message>
         <source>Accessibility</source>
         <translation>Accesibilidad</translation>
+    </message>
+    <message>
+        <source>Applications</source>
+        <translation>Aplicaciones</translation>
     </message>
     <message>
         <source>Authentication is required to manage system services or other units.</source>

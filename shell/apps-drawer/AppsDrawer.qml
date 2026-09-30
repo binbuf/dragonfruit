@@ -6,7 +6,9 @@ import Dragonfruit
 // affordance. A full-screen overlay listing every launchable app the app-index
 // corpus knows about, alphabetical by default (`buildAppsDrawerList` sorts),
 // with a search field and category filter pills, and a fixed-size tile grid
-// whose column count follows the available width.
+// whose column count is capped at seven and whose viewport is capped at five
+// rows (a longer corpus scrolls); it drops to fewer columns on a narrower
+// output.
 //
 // The shell controller injects `apps` (the sorted/deduped `AppsDrawerRow`
 // projection) and `available` (app-index reachability). Filtering by category
@@ -114,14 +116,60 @@ Item {
     readonly property bool showAbsence: !root.available
     readonly property bool noMatches: root.visibleApps.length === 0 && !root.showAbsence
 
-    // The grid column count follows the available width; the tile size stays
-    // fixed so narrow outputs wrap instead of overflowing.
+    // The card wraps the grid (at most seven columns) with at least
+    // `panelPadding` on every side, floored at the search field's width so a
+    // short list still reads as a card, and clamped to the output.
+    readonly property int maxColumns: 7
+    readonly property real panelPadding: Theme.controls.appsDrawer.panelPadding
     readonly property real tileWidth: Theme.controls.appsDrawer.tileSize
                                       + Theme.primitive.spacing.xl
+    // One tile's full height: the artwork square plus its single-line label.
+    readonly property real tileHeight:
+        root.tileWidth + Math.ceil(Theme.controls.appsDrawer.labelSize * 2.2)
     readonly property real gridGap: Theme.controls.appsDrawer.gridColumnGap
-    readonly property int columns: Math.max(1, Math.floor(
-        (root.width - 2 * Theme.controls.appsDrawer.contentPadding + root.gridGap)
-        / (root.tileWidth + root.gridGap)))
+    readonly property real gridMaxWidth:
+        maxColumns * root.tileWidth + (maxColumns - 1) * root.gridGap
+    // The grid viewport shows at most five rows; a longer corpus scrolls.
+    readonly property int maxRows: 5
+    readonly property real gridMaxHeight:
+        root.maxRows * root.tileHeight + (root.maxRows - 1) * root.gridGap
+    readonly property real panelWidth: Math.min(
+        Math.max(root.gridMaxWidth, Theme.controls.appsDrawer.searchMaxWidth)
+            + 2 * root.panelPadding,
+        root.width - 2 * Theme.controls.appsDrawer.contentPadding / 2)
+    // The grid's usable width inside the card; it decides how many columns fit.
+    readonly property real gridAvailableWidth:
+        Math.max(root.tileWidth, root.panelWidth - 2 * root.panelPadding)
+    // The columns actually laid out: capped at seven, fewer on a narrow output,
+    // and fewer again when the corpus is smaller than a full row, so the row of
+    // tiles keeps equal padding at both ends.
+    readonly property int usedColumns: Math.max(1, Math.min(
+        root.maxColumns,
+        Math.min(root.visibleApps.length > 0 ? root.visibleApps.length
+                                            : root.maxColumns,
+                 Math.floor((root.gridAvailableWidth + root.gridGap)
+                            / (root.tileWidth + root.gridGap)))))
+    readonly property real gridWidth:
+        root.usedColumns * root.tileWidth + (root.usedColumns - 1) * root.gridGap
+    readonly property int columns: root.usedColumns
+
+    // The card height: header, search, pills, the grid, and the panel padding,
+    // clamped to five grid rows and to the output so a long corpus scrolls.
+    readonly property real gridContentHeight:
+        (root.showAbsence || root.noMatches)
+            ? Theme.controls.appsDrawer.emptyGlyphSize
+              + Theme.primitive.spacing.xxl
+            : grid.height
+    readonly property real gridNaturalHeight:
+        Math.min(root.gridContentHeight, root.gridMaxHeight)
+    readonly property real panelNaturalHeight:
+        Theme.controls.appsDrawer.headerTop + header.height
+        + Theme.primitive.spacing.xl + searchField.height
+        + Theme.primitive.spacing.lg + pillScroller.height
+        + Theme.primitive.spacing.xl + root.gridNaturalHeight
+        + root.panelPadding
+    readonly property real panelMaxHeight:
+        root.height - 2 * Theme.controls.appsDrawer.contentPadding / 2
 
     function setQueryText(text) { searchField.text = text; }
 
@@ -188,8 +236,10 @@ Item {
     Rectangle {
         id: panel
         objectName: "appsDrawerPanel"
-        anchors.fill: parent
-        anchors.margins: Theme.controls.appsDrawer.contentPadding / 2
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.verticalCenter: parent.verticalCenter
+        width: root.panelWidth
+        height: Math.min(root.panelNaturalHeight, root.panelMaxHeight)
         radius: Theme.primitive.radius.xl
         color: Theme.color.surface
         opacity: Theme.controls.appsDrawer.panelOpacity * root.reveal
@@ -207,8 +257,8 @@ Item {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.topMargin: Theme.controls.appsDrawer.headerTop
-            anchors.leftMargin: Theme.controls.appsDrawer.contentPadding / 2
-            anchors.rightMargin: Theme.controls.appsDrawer.contentPadding / 2
+            anchors.leftMargin: root.panelPadding
+            anchors.rightMargin: root.panelPadding
             height: titleRow.height
 
             Row {
@@ -243,7 +293,7 @@ Item {
             anchors.topMargin: Theme.primitive.spacing.xl
             anchors.horizontalCenter: parent.horizontalCenter
             width: Math.min(Theme.controls.appsDrawer.searchMaxWidth,
-                            root.width - 2 * Theme.controls.appsDrawer.contentPadding)
+                            root.panelWidth - 2 * root.panelPadding)
             placeholderText: qsTr("Search applications")
             onTextChanged: root.query = text
         }
@@ -257,7 +307,7 @@ Item {
             anchors.topMargin: Theme.primitive.spacing.lg
             anchors.horizontalCenter: parent.horizontalCenter
             width: Math.min(Theme.controls.appsDrawer.searchMaxWidth,
-                            root.width - 2 * Theme.controls.appsDrawer.contentPadding)
+                            root.panelWidth - 2 * root.panelPadding)
             height: pillsControl.height
             contentWidth: pillsControl.width
             clip: true
@@ -281,10 +331,9 @@ Item {
             anchors.top: pillScroller.bottom
             anchors.topMargin: Theme.primitive.spacing.xl
             anchors.bottom: parent.bottom
-            anchors.bottomMargin: Theme.controls.appsDrawer.contentPadding / 2
+            anchors.bottomMargin: root.panelPadding
             anchors.horizontalCenter: parent.horizontalCenter
-            width: Math.min(Theme.controls.appsDrawer.searchMaxWidth * 2,
-                            root.width - 2 * Theme.controls.appsDrawer.contentPadding)
+            width: root.gridWidth
             contentHeight: grid.height
             clip: true
             boundsBehavior: Flickable.StopAtBounds
@@ -316,8 +365,7 @@ Item {
                         readonly property bool hovered: tileHover.hovered
 
                         width: root.tileWidth
-                        height: root.tileWidth + Math.ceil(
-                            Theme.controls.appsDrawer.labelSize * 2.2)
+                        height: root.tileHeight
                         focus: tile.selected
                         activeFocusOnTab: true
 

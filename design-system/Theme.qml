@@ -588,6 +588,7 @@ QtObject {
         readonly property var appsDrawer: QtObject {
             readonly property int headerTop: 44
             readonly property int contentPadding: 64
+            readonly property int panelPadding: 50
             readonly property int titleSize: 18
             readonly property int searchWidth: 360
             readonly property int searchMaxWidth: 640

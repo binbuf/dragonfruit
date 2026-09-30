@@ -372,7 +372,6 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
 
     connect(m_item, SIGNAL(controlCenterRequested()), this, SLOT(onControlCenterRequested()));
     connect(m_item, SIGNAL(missionControlRequested()), this, SLOT(onMissionControlRequested()));
-    connect(m_item, SIGNAL(applicationsRequested()), this, SLOT(onAppsDrawerRequested()));
     connect(m_item, SIGNAL(statusItemActivated(QString)), this,
             SLOT(onStatusItemActivated(QString)));
     connect(m_item, SIGNAL(appMenuOpened(int)), this, SLOT(onAppMenuOpened(int)));
@@ -565,6 +564,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             SLOT(onDockEntryMenuAction(QString,QVariant)));
     connect(m_dockItem, SIGNAL(appPickerRequested()), this,
             SLOT(onDockAppPickerRequested()));
+    connect(m_dockItem, SIGNAL(appsDrawerRequested()), this,
+            SLOT(onAppsDrawerRequested()));
     connect(m_dockItem, SIGNAL(appPinToggled(QString,bool)), this,
             SLOT(onDockAppPinToggled(QString,bool)));
     connect(m_dockItem, SIGNAL(windowActivated(QString)), this,
@@ -4923,6 +4924,38 @@ void ShellController::rebuildDockEntries()
     m_dockAllEntries = buildDockEntries(
         m_dockConfig.pinned, m_index, running, m_launchStates,
         m_dockConfig.showRecentApps ? m_recentAppIds : QStringList());
+    // The Applications launcher (T-19.2 follow-up) is a permanent Dock tile:
+    // it is not part of the user-orderable `dock.pinned` set and cannot be
+    // removed. Inject it immediately after the first pinned tile (Files by
+    // default), matching the reference placement, or at the front when nothing
+    // is pinned. The Dock renders `appsLauncher: true` as the grid tile and
+    // toggles the drawer on click.
+    {
+        QVariantMap launcher;
+        launcher.insert(QStringLiteral("id"), QStringLiteral("__apps__"));
+        launcher.insert(QStringLiteral("appId"), QString());
+        launcher.insert(QStringLiteral("desktopId"), QString());
+        launcher.insert(QStringLiteral("name"), tr("Applications"));
+        launcher.insert(QStringLiteral("icon"), QString());
+        launcher.insert(QStringLiteral("iconPath"), QString());
+        launcher.insert(QStringLiteral("kind"), QStringLiteral("pinned"));
+        launcher.insert(QStringLiteral("pinned"), true);
+        launcher.insert(QStringLiteral("appsLauncher"), true);
+        launcher.insert(QStringLiteral("missing"), false);
+        launcher.insert(QStringLiteral("running"), false);
+        launcher.insert(QStringLiteral("windows"), 0);
+        launcher.insert(QStringLiteral("windowList"), QVariantList());
+        launcher.insert(QStringLiteral("windowCount"), 0);
+        int insertAt = 0;
+        for (int i = 0; i < m_dockAllEntries.size(); ++i) {
+            if (m_dockAllEntries.at(i).toMap().value(QStringLiteral("kind")).toString()
+                == QLatin1String("pinned")) {
+                insertAt = i + 1;
+                break;
+            }
+        }
+        m_dockAllEntries.insert(insertAt, launcher);
+    }
     // A window that just minimized starts its app's one-shot reaction pulse
     // (T-14.7s) before the entries are clamped/published. The pulse rides the
     // phase map below, never the entry model.

@@ -54,6 +54,10 @@ Item {
     // The terminal overflow cell (T-14.7q): a synthetic entry carrying the
     // running groups that did not fit. It is never dragged, pinned, or grouped.
     readonly property bool isOverflow: kind === "overflow"
+    // The permanent Applications launcher (T-19.2 follow-up): a Dock tile the
+    // shell injects that toggles the apps drawer. It is never dragged or
+    // removed; its context menu's Remove from Dock row is disabled.
+    readonly property bool isLauncher: entry.appsLauncher === true
     readonly property int overflowCount:
         entry.hiddenCount !== undefined ? entry.hiddenCount : 0
     readonly property int stackCount: entry.stackCount !== undefined ? entry.stackCount : 0
@@ -162,6 +166,8 @@ Item {
     // The accessibility state, carrying launch and identity failures (T-10
     // section 20).
     readonly property string stateLabel: {
+        if (isDivider || isLauncher)
+            return "";
         if (isTrash)
             return trashUnavailable ? qsTr(", unavailable") : "";
         if (isStack) {
@@ -185,6 +191,8 @@ Item {
     readonly property string tooltipLabel: {
         if (isDivider || isExternal)
             return "";
+        if (isLauncher)
+            return name.length > 0 ? name : qsTr("Applications");
         if (isTrash) {
             var trashName = name.length > 0 ? name : qsTr("Trash");
             return trashName + (trashUnavailable ? qsTr(" — unavailable")
@@ -241,6 +249,7 @@ Item {
     Accessible.name: isDivider ? qsTr("Dock separator")
                      : isExternal ? (name.length > 0 ? name : qsTr("Drop here"))
                      : isOverflow ? qsTr("%1 more window groups").arg(overflowCount)
+                     : isLauncher ? (name.length > 0 ? name : qsTr("Applications"))
                      : isTrash ? qsTr("Trash") + stateLabel
                      : isStack ? (name.length > 0 ? name : qsTr("Downloads")) + stateLabel
                      : name + stateLabel
@@ -406,7 +415,8 @@ Item {
         id: glyph
         objectName: "glyph"
         visible: !root.isDivider && (!root.isExternal || root.externalHasIdentity)
-        kind: root.isTrash ? "trash"
+        kind: root.isLauncher ? "launcher"
+              : root.isTrash ? "trash"
               : root.isOverflow ? "overflow"
               : (root.isStack || root.isExternalFolder) ? "stack" : "app"
         name: root.name
@@ -618,7 +628,7 @@ Item {
         objectName: "dragHandler"
         acceptedButtons: Qt.LeftButton
         enabled: !root.isDivider && !root.isTrash && !root.isExternal
-                 && !root.isOverflow
+                 && !root.isOverflow && !root.isLauncher
                  && root.kind !== "minimized"
                  && (!root.isStack || root.canRemoveStack)
         dragThreshold: root.dragSlop
