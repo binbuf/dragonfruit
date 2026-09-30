@@ -256,9 +256,11 @@ Item {
         width: root.panelWidth
         height: Math.min(root.panelNaturalHeight, root.panelMaxHeight)
         radius: Theme.primitive.radius.xl
-        // A ~90%-opaque frosted fill: the scrim/desktop ghosts through, while
-        // the children (search, pills, tiles) stay fully opaque because the
-        // opacity is in the fill, not on the item.
+        // A translucent frosted fill: the compositor's liquid-glass material
+        // (blur + edge lens + specular rim + adaptive tint, T-20.2) and the
+        // scrim/desktop ghost through, while the children (search, pills,
+        // tiles) stay fully opaque because the opacity is in the fill, not on
+        // the item.
         color: Qt.rgba(Theme.color.surface.r, Theme.color.surface.g,
                        Theme.color.surface.b,
                        Theme.controls.appsDrawer.panelOpacity)

@@ -287,6 +287,8 @@ pub fn chrome_backdrop_render_elements(
 pub struct BlurPanel {
     pub panel: Rectangle<i32, Logical>,
     pub spec: BlurSpec,
+    /// The Tahoe liquid-glass parameters for this panel (T-20.2).
+    pub glass: crate::window::GlassSpec,
 }
 
 /// Resolve the GPU backdrop blur panels for `output` and apply the material
@@ -326,9 +328,11 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
         .filter_map(|chrome| {
             let role = MaterialRole::from_layer_namespace(chrome.layer, &chrome.namespace);
             let spec = tier.blur(role.blur_spec(scheme))?;
+            let glass = tier.glass(role.glass_spec(scheme))?;
             Some(BlurPanel {
                 panel: chrome.panel,
                 spec,
+                glass,
             })
         })
         .collect();

@@ -38,8 +38,11 @@ pub use backdrop::{
 };
 #[allow(unused_imports)]
 pub use blur::{
-    blur_uniform_names, BackdropBlurElement, BlurRenderer, BlurSpec, BLUR_RADIUS_UNIFORM,
-    BLUR_SHADER, BLUR_TEXEL_UNIFORM,
+    blur_uniform_names, glass_uniform_names, tone_to_rgb, BackdropBlurElement, BlurRenderer,
+    BlurSpec, GlassSpec, BLUR_RADIUS_UNIFORM, BLUR_SHADER, BLUR_TEXEL_UNIFORM,
+    GLASS_RADIUS_UNIFORM, GLASS_SHADER, GLASS_SIZE_UNIFORM, LENS_BAND_FACTOR, LENS_FALLOFF_UNIFORM,
+    REFRACTION_UNIFORM, SPECULAR_UNIFORM, SPECULAR_WIDTH_UNIFORM, TINT_ADAPT_SCALE,
+    TINT_AMOUNT_UNIFORM, TINT_COLOR_UNIFORM, TINT_SCALE_UNIFORM,
 };
 #[allow(unused_imports)]
 pub use corner::{corner_squares, rounded_rect_spans, CornerMask, RoundedCorners};
