@@ -620,12 +620,15 @@ The **Applications drawer** (T-19.2) is the shell's primary "start an app"
 affordance, the macOS Launchpad analogue. It is a full-output `overlay` layer
 surface (namespace `apps-drawer`, keyboard on demand) fed by the app-index
 corpus: every launchable app, alphabetical by default, with a design-system
-`SearchField` and a category pill row (`SegmentedControl`, default `All`), and a
-fixed-size tile grid whose column count is capped at seven (the reference
-width) and whose viewport is capped at five rows; it drops to fewer columns on a
-narrower output and scrolls when the corpus is longer. The centered card hugs
-the grid with equal 50px (`component.appsDrawer.panelPadding`) padding on every
-side, clamped to the output. The list is
+`SearchField` as the card's top section (placeholder "Applications") and a
+category pill row (`SegmentedControl`, default `All`), and a fixed-size tile
+grid whose column count is capped at seven (the reference width) and whose
+viewport is capped at five rows; it drops to fewer columns on a narrower output
+and scrolls when the corpus is longer. The centered card is a ~90%-opaque
+frosted panel: its top section is a flat (background-less) search bar framed by
+hairline rules over the pill row and the grid, with 50px
+(`component.appsDrawer.panelPadding`) side padding and 32px
+(`panelPaddingVertical`) top/bottom padding, clamped to the output. The list is
 built by the pure `buildAppsDrawerList` helper (`shell/src/appsdrawer.{h,cpp}`),
 which drops `noDisplay`/non-launchable records, dedupes by desktop id, maps the
 freedesktop `Categories` list to the pill set, sorts by localized name with an

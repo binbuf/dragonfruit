@@ -207,10 +207,10 @@ Item {
                    "right padding at least panelPadding, got " + rightPad);
             // The card is the grid plus the padding on each side.
             verify(panel.width >= grid.width + 2 * drawer.panelPadding);
-            // And the grid keeps the same padding below it.
+            // And the grid keeps the vertical padding below it.
             var bottomPad = panel.height - (grid.y + grid.height);
-            verify(bottomPad >= drawer.panelPadding,
-                   "bottom padding at least panelPadding, got " + bottomPad);
+            verify(bottomPad >= drawer.panelPaddingV,
+                   "bottom padding at least panelPaddingV, got " + bottomPad);
         }
 
         // The grid viewport shows at most five rows; a longer corpus scrolls,
@@ -223,7 +223,9 @@ Item {
             // A tall card fits the full five rows; a short output clamps below it.
             var roomy = make({ apps: many, height: 1400 });
             var grid = findChild(roomy, "appsDrawerGrid");
-            compare(Math.round(grid.height), Math.round(roomy.gridMaxHeight));
+            compare(Math.round(grid.height), Math.round(roomy.gridMaxHeight),
+                    "roomy viewport " + grid.height + " vs max " + roomy.gridMaxHeight
+                    + " (content " + grid.contentHeight + ")");
             verify(grid.contentHeight > grid.height);
 
             var shortDock = make({ apps: many, height: 720 });
@@ -233,8 +235,22 @@ Item {
 
             var small = make({ apps: sampleApps, height: 1400 });
             var smallGrid = findChild(small, "appsDrawerGrid");
-            compare(Math.round(smallGrid.height), Math.round(smallGrid.contentHeight));
+            compare(Math.round(smallGrid.height), Math.round(smallGrid.contentHeight),
+                    "small viewport " + smallGrid.height + " vs content "
+                    + smallGrid.contentHeight);
             verify(smallGrid.height < small.gridMaxHeight);
+        }
+
+        // The drawer's top section is a flat search bar (no pill background)
+        // over the card, framed by the two hairline separators.
+        function test_top_section_is_flat_with_separators() {
+            var drawer = make({ apps: sampleApps });
+            var search = findChild(drawer, "appsDrawerSearch");
+            verify(search !== null);
+            compare(search.flat, true);
+            compare(search.placeholderText, "Applications");
+            verify(findChild(drawer, "appsDrawerTopSeparator") !== null);
+            verify(findChild(drawer, "appsDrawerPillsSeparator") !== null);
         }
     }
 }
