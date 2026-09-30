@@ -613,6 +613,16 @@ bool ShellProtocol::createOsdSurface(int width, int height)
     return true;
 }
 
+bool ShellProtocol::setOsdPanelRect(int x, int y, int width, int height)
+{
+    if (!m_osdLayer)
+        return false;
+    df_layer_surface_set_panel_rect(m_osdLayer, x, y, width, height);
+    if (m_display)
+        wl_display_flush(m_display);
+    return true;
+}
+
 bool ShellProtocol::commitOsdImage(const QImage &image)
 {
     if (!m_osdSurface)

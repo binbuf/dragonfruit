@@ -541,7 +541,10 @@ Item {
         Rectangle {
             anchors.fill: parent
             radius: Theme.controls.popup.radius
-            color: Theme.color.surfaceElevated
+            // The compositor material's scrim (T-20.3): the submenu is a
+            // `Popup`, so it shares `material.popupOpacity`.
+            color: Qt.rgba(Theme.color.surfaceElevated.r, Theme.color.surfaceElevated.g,
+                           Theme.color.surfaceElevated.b, Theme.material.popupOpacity)
             border.width: Theme.controls.window.borderWidth
             border.color: Theme.color.border
             antialiasing: true

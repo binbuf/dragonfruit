@@ -144,7 +144,8 @@ FocusScope {
         anchors.fill: parent
         anchors.bottomMargin: root.arrowSize / 2
         radius: root.radius
-        color: Theme.color.surfaceElevated
+        color: Qt.rgba(Theme.color.surfaceElevated.r, Theme.color.surfaceElevated.g,
+                       Theme.color.surfaceElevated.b, Theme.material.popupOpacity)
         border.width: Theme.controls.window.borderWidth
         border.color: Theme.color.border
         antialiasing: true
@@ -155,7 +156,8 @@ FocusScope {
         width: root.arrowSize
         height: root.arrowSize
         rotation: 45
-        color: Theme.color.surfaceElevated
+        color: Qt.rgba(Theme.color.surfaceElevated.r, Theme.color.surfaceElevated.g,
+                       Theme.color.surfaceElevated.b, Theme.material.popupOpacity)
         border.width: Theme.controls.window.borderWidth
         border.color: Theme.color.border
         x: {

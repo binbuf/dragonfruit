@@ -1019,6 +1019,23 @@ the Applications card in light, dark, and the `Reduced` tier
 `glass-program=compiled` and `backdrop_passes` > 0 with `backdrop_skipped=0`;
 the card's specular rim reads as a bright band at the rounded edge.
 
+T-20.3's chrome-material rollout is captured by
+`scripts/capture-t20-chrome-material.sh`, one light + dark still per chrome
+surface with the material behind it: the Dock
+(`t20-chrome-dock-{light,dark}.png`), a menu-bar system dropdown
+(`t20-chrome-menubar-{light,dark}.png`), a Dock entry context menu
+(`t20-chrome-contextmenu-{light,dark}.png`), Control Center
+(`t20-chrome-controlcenter-{light,dark}.png`), the OSD
+(`t20-chrome-osd-{light,dark}.png`), a notification banner
+(`t20-chrome-notification-{light,dark}.png`), and the Applications drawer
+(`t20-chrome-drawer-{light,dark}.png`). Every popup-family fill carries
+`material.popupOpacity`, so each panel shows the blurred scene through it
+(non-uniform panel interiors) rather than a flat fill. The menu-bar dropdown
+capture opens the fixed system menu through the `DF_MENUBAR_MENU_FIXTURE` seam;
+the OSD uses the `DF_OSD_FIXTURE` timing because it auto-dismisses after
+1.4 s. The contract is
+[ADR 0183](../design/adr/0183-chrome-material-rollout.md).
+
 Guidelines:
 
 - Capture from the **nested** session for daily review; add a **DRM** capture

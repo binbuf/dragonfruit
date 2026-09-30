@@ -203,6 +203,12 @@ public:
     // input event through. `width`/`height` are the surface size.
     bool createOsdSurface(int width, int height);
 
+    // Declare the live rect the OSD's card actually paints, in surface-local
+    // logical pixels (T-20.3). The surface is larger than the card (room for
+    // its shadow), so without this the compositor would frost the whole
+    // surface instead of the visible card. Mirrors `setDockPanelRect`.
+    bool setOsdPanelRect(int x, int y, int width, int height);
+
     // Attach `image` to the OSD surface and commit.
     bool commitOsdImage(const QImage &image);
 

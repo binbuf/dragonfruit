@@ -252,7 +252,10 @@ pub fn chrome_backdrop_render_elements(
         .iter()
         .map(|chrome| {
             let role = MaterialRole::from_layer_namespace(chrome.layer, &chrome.namespace);
-            state.degrade.tier().backdrop(role.spec(scheme))
+            state
+                .degrade
+                .tier()
+                .backdrop(role.spec_for(scheme, &chrome.namespace))
         })
         .collect();
     if specs.iter().all(Option::is_none) {
@@ -327,7 +330,7 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
         .iter()
         .filter_map(|chrome| {
             let role = MaterialRole::from_layer_namespace(chrome.layer, &chrome.namespace);
-            let spec = tier.blur(role.blur_spec(scheme))?;
+            let spec = tier.blur(role.blur_spec_for(scheme, &chrome.namespace))?;
             let glass = tier.glass(role.glass_spec(scheme))?;
             Some(BlurPanel {
                 panel: chrome.panel,

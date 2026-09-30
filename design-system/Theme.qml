@@ -155,7 +155,7 @@ QtObject {
         readonly property var material: QtObject {
             readonly property real chromeOpacity: 0.82
             readonly property int chromeBlur: 24
-            readonly property real popupOpacity: 0.96
+            readonly property real popupOpacity: 0.62
             readonly property int popupBlur: 30
             readonly property real shadowOpacity: 0.18
             readonly property real dockOpacity: 0.5
@@ -231,7 +231,7 @@ QtObject {
         readonly property var material: QtObject {
             readonly property real chromeOpacity: 0.72
             readonly property int chromeBlur: 28
-            readonly property real popupOpacity: 0.92
+            readonly property real popupOpacity: 0.7
             readonly property int popupBlur: 32
             readonly property real shadowOpacity: 0.45
             readonly property real dockOpacity: 0.42

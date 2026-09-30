@@ -1290,6 +1290,22 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
         QTimer::singleShot(1500, this, [this]() { showAppsDrawer(); });
     }
 
+    // Capture/demo seam (T-20.3): open the menu-bar system dropdown once the
+    // chrome is up, so the live visual check can capture the `menubar-popup`
+    // overlay surface without relying on a synthetic click on the status row
+    // (the row is right-anchored and its x shifts with the clock width). The
+    // value is the top-level menu index (0 = the fixed system menu). Never set
+    // in a normal session.
+    if (qEnvironmentVariableIsSet("DF_MENUBAR_MENU_FIXTURE")) {
+        bool ok = false;
+        const int index = qEnvironmentVariable("DF_MENUBAR_MENU_FIXTURE").toInt(&ok);
+        QTimer::singleShot(1500, this, [this, ok, index]() {
+            if (m_item)
+                QMetaObject::invokeMethod(m_item, "openMenu",
+                                          Q_ARG(QVariant, ok ? index : 0));
+        });
+    }
+
     // Capture/demo seam (T-11.1b): raise the Dock's launch-failure
     // notification once the chrome is up, so the live check can exercise the
     // real failure path deterministically. Never set in a normal session.
@@ -2629,6 +2645,22 @@ void ShellController::renderOsd()
     m_osdFrameGate.beginCommit();
     const QImage image = m_osdWindow->grabWindow();
     m_osdFrameGate.endCommit();
+    // Declare the visible card so the compositor's backdrop frosts the card,
+    // not the transparent shadow margin (T-20.3). The card never moves, so
+    // only a changed integer rect is sent.
+    const QVariantMap card = m_osdItem->property("panelRect").toMap();
+    const QRect panel(qFloor(card.value(QStringLiteral("x")).toReal()),
+                      qFloor(card.value(QStringLiteral("y")).toReal()),
+                      qCeil(card.value(QStringLiteral("w")).toReal()),
+                      qCeil(card.value(QStringLiteral("h")).toReal()));
+    if (panel.width() > 0 && panel.height() > 0
+            && (!m_osdPanelRectValid || panel != m_osdPanelRect) && m_protocol) {
+        if (m_protocol->setOsdPanelRect(panel.x(), panel.y(),
+                                        panel.width(), panel.height())) {
+            m_osdPanelRect = panel;
+            m_osdPanelRectValid = true;
+        }
+    }
     if (!image.isNull() && m_protocol) {
         m_protocol->commitOsdImage(image);
         m_osdMapped = true;

@@ -381,8 +381,26 @@ refuses the glass shader keeps the plain blurred compose. The QML surfaces stay
 the **complement**: the menu bar already uses `material.chromeOpacity` in its
 fill (T-20.1), and the Applications card's fill uses
 `controls.appsDrawer.panelOpacity` (retuned to the Dock's `dockOpacity` glass
-level) so the compositor material reads through it; the rest of the chrome
-rollout is T-20.3.
+level) so the compositor material reads through it.
+
+The chrome **rollout** landed in **T-20.3**
+([ADR 0183](adr/0183-chrome-material-rollout.md)). Every chrome namespace
+resolves through `MaterialRole`: the menu bar is `Chrome`, the Dock is `Dock`,
+the Applications drawer is `Drawer`, and every overlay — menu-bar dropdowns
+(`menubar-popup`), Dock context menus/popovers (`dock-popup`), the OSD
+(`osd`), notification banners (`notification`), and Control Center
+(`control-center`) — is `Popup`. Persistent panels keep their declared rect
+(the Dock plate and the drawer card via `set_panel_rect`); overlay popups are
+tight to the overlay surface, and the OSD declares its visible card separately
+because its surface is larger than the card to fit the shadow. The backdrop
+corner now follows the surface's own component radius
+(`MaterialRole::corner_radius`): the OSD rounds from `component.osd.radius`
+(20 px) rather than sharing the popup radius (14 px) with the menus and
+notifications. Every popup-family QML fill now carries
+`material.popupOpacity` (retuned to 0.62 light / 0.70 dark) so the sampled
+backdrop and glass read through, while the rim/hairline stays opaque; the
+feather fallback (`Minimal`/DRM) uses the same token, so the approximation and
+the GPU path cannot drift.
 
 `DegradeTier` owns the fallback: `Full` = blur + refraction + specular + tint;
 `Reduced` = blur + specular + tint with the edge lens dropped and the blur

@@ -3,9 +3,8 @@
 <!-- symphony:digest:start -->
 ## Key facts (maintained by symphony — do not edit)
 
-_(174 earlier sections omitted)_
+_(175 earlier sections omitted)_
 
-- **T138 — T-15.14b Accessibility pane and tile**: **State: done.** The Settings `Accessibility` pane and the Control Center; `services/system-status/src/accessibility.rs` (new) — `AccessibilityHost<S>`
 - **T139 — T-15.15a Network advanced (VPN) adapter**: **State: done.** The Network advanced (VPN) adapter landed as a **second; `services/networkmanager/src/vpn/mod.rs` (new) — module docs + re-exports.
 - **T140 — T-15.15b Network advanced (VPN) pane and tile**: **State: done.** The Settings `Network` pane and the Control Center `VPN` tile; `services/system-status/src/vpn.rs` (new) — `VpnHost<S>` (refresh/view/state/
 - **T141 — T-15.16 Absent-daemon matrix and breadth capture**: **State: done.** The T-15 track is closed. The absent-daemon masking matrix is; `docs/design/08-settings.md` — new "The absent-daemon masking matrix
@@ -43,7 +42,8 @@ _(174 earlier sections omitted)_
 - **T158 — T-17.6 Unfamiliar-user test and sign-off report**: **State: done (agent half; the human unfamiliar-user verdict is the batched; `docs/captures/t17-premium-gate.md` (new) — the sign-off report: the full
 - **T162 — T-16.4 Suspend/resume soak**: **State: done (automated half); the real-machine logind half is OPEN on the; `compositor/tests/suspend_resume_conformance.rs` — new
 - **T179 — T-20.1 Offscreen scene texture + GPU backdrop blur pass**: **State: done (nested proof); DRM keeps the deterministic feather stack.** The; `compositor/src/window/blur.rs` (new) — `BLUR_SHADER` (4-tap Kawase), the pure
-- **T180 — T-20.2 Tahoe liquid-glass: refraction, specular rim, adaptive tint**: **State: done.** The Tahoe signature landed on top of T-20.1's GP
+- **T180 — T-20.2 Tahoe liquid-glass: refraction, specular rim, adaptive tint**: **State: done.** The Tahoe signature landed on top of T-20.1's GPU blur as a; `compositor/src/window/blur.rs` — `GLASS_SHADER` (GLES2 custom texture
+- **T181 — T-20.3 Chrome material rollout**: **State: done.** The sampled blur + liquid-glass material now reaches ever
 <!-- symphony:digest:end -->
 
 Working notes for the plan in [ROADMAP.md](ROADMAP.md). The harness maintains the
@@ -16109,3 +16109,83 @@ Commands / gotchas for later:
   provider recovers.
 - **T-20.4** multi-GPU + headless `Minimal` determinism; the per-frame texture
   allocation follow-up from T-20.1 still stands.
+
+## T181 — T-20.3 Chrome material rollout
+
+**State: done.** The sampled blur + liquid-glass material now reaches every
+chrome surface (Dock, menu-bar dropdown, context menus/popovers, OSD,
+notification banners, Control Center, Applications drawer), and the shell QML
+fills are a token-driven scrim instead of the material. `MaterialRole`
+resolution is unchanged (`Chrome`/`Dock`/`Drawer`/`Popup`); the rollout is
+per-surface configuration. `cargo test -p dragonfruit-compositor` 312 pass,
+`make qml-test` 75/75, `make e2e` exit 0, `check-design-tokens` green,
+`fmt`/`clippy` clean, 14 light+dark captures committed.
+
+Real paths:
+
+- `compositor/src/window/backdrop.rs` — `MaterialRole::corner_radius(namespace)`
+  + `spec_for`/`blur_spec_for`; OSD rounds from `component.osd.radius` (20 px),
+  other popups from `component.popup.radius` (14 px). Tests
+  `the_osd_namespace_rounds_from_its_own_component_radius`,
+  `every_chrome_namespace_resolves_to_its_material_role`.
+- `compositor/src/render.rs` — both `chrome_backdrop_render_elements` and
+  `chrome_blur_panels` resolve `*_for(scheme, &chrome.namespace)`.
+- `shell/src/shellprotocol.{h,cpp}` — `setOsdPanelRect` (OSD card only);
+  `shell/osd/Osd.qml` `panelRect`; `shell/src/shellcontroller.cpp::renderOsd`
+  declares it.
+- QML scrims: `design-system/components/{Popup,Popover,ContextMenu,
+  MenuBarMenu}.qml`, `shell/control-center/ControlCenter.qml`,
+  `shell/osd/Osd.qml`, `shell/notifications/NotificationBanner.qml`,
+  `shell/dock/{DockWindowChooser,DockStackPopover,DockOverflowPopover,
+  DockTrashEmptyPopover,DockAppPicker}.qml`.
+- `design-system/tokens/tokens.json` — `material.popupOpacity` 0.62/0.70
+  (light/dark, from 0.96/0.92).
+- `shell/src/shellcontroller.cpp` — `DF_MENUBAR_MENU_FIXTURE=<index>` opens the
+  fixed system dropdown for the capture.
+- `scripts/capture-t20-chrome-material.sh` +
+  `scripts/t20-chrome-material-driver.py` (new);
+  `docs/captures/t20-chrome-{dock,menubar,contextmenu,controlcenter,osd,
+  notification,drawer}-{light,dark}.png`; `docs/design/adr/0183-...md`.
+
+Commands / gotchas for later:
+
+- **Build env** (same as T-20.1/2): `PKG_CONFIG_PATH=$HOME/.local/df-devroot/lib64/pkgconfig`,
+  `RUSTFLAGS=-L $HOME/.local/df-devroot/lib64`,
+  `LD_LIBRARY_PATH=$HOME/.local/df-toolchain/usr/lib64`; `make build`/`make e2e`
+  set the rest. The compositor unit tests live in the **main.rs** binary (312).
+- **Fill alpha, not item opacity.** A chrome QML surface shows the material only
+  if its fill carries the alpha (`Qt.rgba(surfaceElevated.rgb,
+  Theme.material.popupOpacity)`); setting `Item.opacity` would also fade the
+  icons/text/border. Keep the `border` opaque as the rim.
+- **`SETTLE=16` matters for synthetic clicks**: a menu-bar/status click before
+  the chrome has settled lands on nothing. The menu-bar *status* items are
+  additionally inert under `DF_STATUS_FIXTURE` (fixture views omit `"visible"`,
+  so `applyStatusMenuData` marks them `available: false`); use
+  `DF_MENUBAR_MENU_FIXTURE` for a dropdown capture.
+- **OSD autodismiss**: `OsdModel::kDismissMs = 1400`. `DF_OSD_FIXTURE=1`
+  presents 1.5 s after chrome creation, so `capture_osd` polls the demo log for
+  `OSD scene-graph commit path active` and screenshots immediately.
+- **Do not raise the nested window via KWin before a bar click** (the old
+  T-20.2 script did): activating the host window after the demo settles
+  swallows the first synthetic click. `spectacle -a` captures the nested window
+  without it.
+- **Control Center pointer drags do not register** through the synthetic
+  harness in this session (even a click on a tile is a no-op), though the
+  panel renders correctly; the OSD is presented by the fixture, not the CC
+  slider.
+
+### Follow-ups
+
+- **Vision review** of `docs/captures/t20-chrome-*.png` once the vision
+  provider recovers (vision was 429 again; inspection was programmatic:
+  non-uniform panel interiors std ≈ 27–41, light dropdown mean 182/194/215 vs
+  opaque `#ffffff`).
+- **Status-menu click path.** Opening a Wi-Fi/volume/battery status menu by a
+  synthetic (or real) click should be re-verified once the fixture advertises
+  `visible`; the app/system menu also did not open from a synthetic click
+  (only the Control Center item did). Not caused by T181.
+- **T-20.4** multi-GPU + headless `Minimal` determinism; the per-frame texture
+  allocation follow-up from T-20.1 still stands. The DRM rail still uses the
+  feather stack.
+- **Popup scrim tuning** (0.62/0.70) needs a human visual sign-off; no human
+  review in this session.
