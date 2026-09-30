@@ -394,6 +394,38 @@ fn init(state: &mut crate::state::DfState, shared: SharedData) -> Result<(), Str
         );
     }
 
+    // Scene-texture routing (T-20.4): the chrome material's scene texture is
+    // owned per GPU. Decide, per output, whether the blur composes locally on
+    // the output's GPU or the primary GPU's scene texture is copied across —
+    // the material never samples across GPUs. The DRM rail still composes the
+    // deterministic feather stack (T-20.1 follow-up), so this is the plan the
+    // two-pass composition consumes; it is reported so the decision is
+    // observable on hardware.
+    {
+        let mut outputs: Vec<(String, String)> = data
+            .devices
+            .values()
+            .flat_map(|device| {
+                let gpu = device
+                    .render_node
+                    .unwrap_or(data.primary_gpu)
+                    .dev_id()
+                    .to_string();
+                device
+                    .surfaces
+                    .values()
+                    .map(move |surface| (surface.output.name(), gpu.clone()))
+            })
+            .collect();
+        outputs.sort();
+        let primary = data.primary_gpu.dev_id().to_string();
+        let plan = dragonfruit_compositor::multi_gpu::plan_scene_routes(Some(&primary), &outputs);
+        let marker = dragonfruit_compositor::multi_gpu::scene_routes_marker(&plan);
+        if !marker.is_empty() {
+            println!("dragonfruit-compositor: {marker}");
+        }
+    }
+
     // shm formats + dmabuf feedback from the primary gpu renderer.
     {
         let renderer = data

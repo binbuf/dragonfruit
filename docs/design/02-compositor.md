@@ -166,6 +166,14 @@ ladder.
   and fall back automatically when a GPU disappears — device *loss* is part
   of the hotplug story, not just display hotplug (see
   [14-risks.md](14-risks.md)).
+- **Recommended GPU baseline (T-20.4):** the T-20 material assumes a GLES 3.x /
+  Vulkan-capable GPU (any modern Intel/AMD/NVIDIA device, or a virtio-GPU VM
+  with `virgl`/`venus`). It is the baseline for `Full`/`Reduced`; a machine
+  that cannot compile the custom texture shaders falls back to the bilinear
+  downsample, and a software/headless renderer runs the deterministic `Minimal`
+  feather stack. The flat desktop (no material) runs on any renderer the
+  compositor can start. The recommended baseline is repeated in
+  [12-packaging.md](12-packaging.md) for the shipped session.
 - Performance budgets are targets, not hopes — see
   [ROADMAP.md](../ROADMAP.md).
 
@@ -408,6 +416,28 @@ radius/geometry halved (via the existing `geometry_scale`); `Minimal` = the flat
 feather fallback (no glass). `query material` reports the resolved glass
 parameters per role after the active tier, so the mapping and the fallback are
 asserted headless.
+
+**Multi-GPU, software fallback, and determinism (T-20.4, ADR 0184).** The
+material's scene texture is owned **per GPU** and is never sampled across
+devices. The pure `multi_gpu::scene_route` / `plan_scene_routes` model decides,
+per output, whether the blur composes locally (the output's GPU owns the
+texture) or the primary GPU's scene texture is copied onto it first (an output
+on another GPU, or a panel straddling outputs); the DRM rail prints one
+`Multi-GPU: SCENE output=… route=local|copy|software` marker per output. The
+**software/headless** backend sets `MaterialPath::Software`, which collapses
+every selected tier to `Minimal` — the deterministic feather stack, no GPU
+readback — so headless output stays exact; `chrome_blur_panels` never runs
+there. The pass is instrumented in the `material stats` line (`path=`,
+`blur_passes`, `blur_panels`, `blur_downsample_max`, and `backdrop_skipped`,
+which must stay `0`), and the idle trace asserts the material counters stay
+flat while the desktop is idle (ADR 0009). GPU-material captures are
+**tolerance artifacts**, not byte goldens: a re-run over the same static
+fixture backdrop is compared with `scripts/t20-material-compare.py` (mean
+≤ 8/255, < 0.5 % of pixels may exceed 64/255), because GL blur arithmetic is
+driver-dependent. `scripts/t20-frame-budget.sh` records the Full-budget trace
+(`docs/captures/t20-frame-budget.txt`) and the `Multi-GPU: SCENE` /
+instrument lines. The recommended baseline is a GLES 3.x / Vulkan-capable GPU
+(see the Renderer and effects list).
 
 The backdrop is a separate element drawn **below** the chrome's Wayland surface,
 so a client's translucent regions blend over it rather than being punched out

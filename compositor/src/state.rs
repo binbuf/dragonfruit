@@ -115,11 +115,11 @@ use crate::window::popup::constrained_popup_geometry;
 use crate::window::resize::SizeConstraints;
 use crate::window::{
     cascaded_geometry, centered_on, fullscreen_reveal_rect, BackdropPass, ColorScheme,
-    DecorationTier, DegradeController, DegradeTier, DoubleClickTracker, MenuActivation, MenuKey,
-    MenuKeyOutcome, MinimizedAnimation, MotionFrame, ReservedZones, SceneTransformPass,
-    ShellWindowEvent, TitlebarDoubleClick, TitlebarElement, TrafficLightKind, WindowDispatch,
-    WindowEvent, WindowEventKind, WindowId, WindowInsets, WindowMenu, WindowMenuCommand,
-    WindowModel, WindowMotion, WindowMotionKind, WindowState, CASCADE_STEP,
+    DecorationTier, DegradeController, DegradeTier, DoubleClickTracker, MaterialPath,
+    MenuActivation, MenuKey, MenuKeyOutcome, MinimizedAnimation, MotionFrame, ReservedZones,
+    SceneTransformPass, ShellWindowEvent, TitlebarDoubleClick, TitlebarElement, TrafficLightKind,
+    WindowDispatch, WindowEvent, WindowEventKind, WindowId, WindowInsets, WindowMenu,
+    WindowMenuCommand, WindowModel, WindowMotion, WindowMotionKind, WindowState, CASCADE_STEP,
 };
 use crate::workspace::WorkspaceModel;
 use crate::xwayland::XwaylandState;
@@ -192,6 +192,18 @@ pub struct RenderStats {
     frame_time_us_max: u64,
     max_interval_ms: u64,
     last_frame_at: Option<Instant>,
+    /// GPU backdrop-blur output-frames (T-20.4): the number of output-frames
+    /// whose chrome material took the sampled GPU blur pass (one per output per
+    /// frame). Stays `0` on the software/headless path and on `Minimal`, where
+    /// no scene texture is sampled.
+    pub blur_passes: u64,
+    /// Chrome panels blurred across every GPU pass (T-20.4). A frame with two
+    /// blurred panels contributes `2`.
+    pub blur_panels: u64,
+    /// The largest linear downsample factor any panel's Kawase chain used
+    /// (T-20.4): `2^iterations`, so the trace records how aggressive the blur
+    /// actually was.
+    pub blur_downsample_max: u32,
     /// Emit the full per-frame trace from [`DfState::dump_stats`]
     /// (`DRAGONFRUIT_FRAME_TRACE`).
     verbose: bool,
@@ -249,6 +261,15 @@ impl RenderStats {
             "samples={count} avg_us={avg_us} max_us={} max_interval_ms={}",
             self.frame_time_us_max, self.max_interval_ms
         )
+    }
+
+    /// Record one output-frame's GPU backdrop-blur pass (T-20.4):
+    /// `downsample_max` is the largest `2^iterations` any panel used and
+    /// `panels` is how many panels were blurred this pass.
+    pub fn record_blur_pass(&mut self, downsample_max: u32, panels: u64) {
+        self.blur_passes += 1;
+        self.blur_panels += panels;
+        self.blur_downsample_max = self.blur_downsample_max.max(downsample_max);
     }
 
     /// Whether [`DfState::dump_stats`] should print the full frame trace.
@@ -480,6 +501,11 @@ pub struct DfState {
     /// backdrop and shadow passes render at. Selectable (pinned) for tests and
     /// for a feature that wants a deterministic tier.
     pub degrade: DegradeController,
+    /// The renderer class the chrome material runs on (T-20.4). The GPU path
+    /// samples the live scene texture; the software/headless path has no
+    /// readback and collapses to the deterministic `Minimal` mapping. Backends
+    /// set this at init; it defaults to `Gpu` so a unit test is unchanged.
+    pub material_path: MaterialPath,
     /// Gesture-scoped frame-budget trace (T-05.6): records every rendered
     /// frame's cadence while an overview transition (Mission Control, a Space
     /// slide, or Desktop Reveal) is live, so the full gesture can be judged
@@ -628,6 +654,7 @@ impl DfState {
             scene_pass: SceneTransformPass::new(),
             render_serial: 0,
             degrade: DegradeController::new(),
+            material_path: MaterialPath::default(),
             gesture_trace: GestureBudgetTrace::new(),
             color_scheme: ColorScheme::default(),
             magnifier: Magnifier::new(),
@@ -2667,9 +2694,14 @@ impl DfState {
         // frame, no double-blur; the T-04.4a degrade tiers build on this).
         println!(
             "dragonfruit-compositor: material stats ({label}): \
-             backdrop_passes={} backdrop_skipped={}",
+             backdrop_passes={} backdrop_skipped={} path={} blur_passes={} \
+             blur_panels={} blur_downsample_max={}",
             self.material_pass.applications(),
             self.material_pass.skipped(),
+            self.material_path.name(),
+            self.stats.blur_passes,
+            self.stats.blur_panels,
+            self.stats.blur_downsample_max,
         );
         // Live light/dark scheme (T-04.4b): the token set the compositor
         // materials (SSD titlebar, window menu, chrome backdrop, window

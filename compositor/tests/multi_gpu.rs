@@ -7,7 +7,10 @@
 //! marked **open, not skipped**. These tests pin the classification and the
 //! dmabuf-format rule the backend shares with `scripts/multi-gpu-probe.py`.
 
-use dragonfruit_compositor::multi_gpu::{format_allowed, GpuNode, MultiGpuOutcome};
+use dragonfruit_compositor::multi_gpu::{
+    format_allowed, plan_scene_routes, scene_route, scene_routes_marker, GpuNode, MultiGpuOutcome,
+    SceneRoute,
+};
 
 fn gpu(name: &str, render: Option<&str>) -> GpuNode {
     GpuNode {
@@ -59,6 +62,62 @@ fn the_format_rule_is_linear_only_for_a_fallback_device() {
     assert!(format_allowed(true, false));
     assert!(format_allowed(false, true));
     assert!(!format_allowed(false, false));
+}
+
+/// T-20.4 acceptance: under `renderer_multi` the material's scene texture is
+/// never sampled across GPUs. An output on the texture's GPU composes locally;
+/// an output on another GPU copies the texture first; the software path has no
+/// texture and stays on the deterministic `Minimal` feather stack.
+#[test]
+fn a_scene_texture_is_never_sampled_across_gpus() {
+    assert_eq!(
+        scene_route(Some("renderD128"), "renderD128"),
+        SceneRoute::Local
+    );
+    assert_eq!(
+        scene_route(Some("renderD128"), "renderD129"),
+        SceneRoute::Copy {
+            from: "renderD128".into(),
+            to: "renderD129".into()
+        }
+    );
+    assert_eq!(scene_route(None, "renderD129"), SceneRoute::Software);
+}
+
+#[test]
+fn every_scene_route_marker_is_one_line() {
+    for route in [
+        SceneRoute::Local,
+        SceneRoute::Copy {
+            from: "renderD128".into(),
+            to: "renderD129".into(),
+        },
+        SceneRoute::Software,
+    ] {
+        let marker = route.marker("eDP-1");
+        assert!(marker.starts_with("Multi-GPU: SCENE "));
+        assert!(!marker.contains('\n'));
+    }
+}
+
+#[test]
+fn a_plan_makes_local_and_copy_decisions_per_output() {
+    let outputs = vec![
+        ("eDP-1".to_string(), "renderD128".to_string()),
+        ("DP-1".to_string(), "renderD129".to_string()),
+    ];
+    let plan = plan_scene_routes(Some("renderD128"), &outputs);
+    assert_eq!(plan[0].route, SceneRoute::Local);
+    assert!(plan[1].route.is_cross_gpu());
+    let marker = scene_routes_marker(&plan);
+    assert!(
+        marker.contains("route=copy from=renderD128 to=renderD129"),
+        "{marker}"
+    );
+
+    // The software path never copies: no scene texture exists.
+    let plan = plan_scene_routes(None, &outputs);
+    assert!(plan.iter().all(|entry| entry.route == SceneRoute::Software));
 }
 
 #[test]

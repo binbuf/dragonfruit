@@ -3954,6 +3954,68 @@ fn material_schemes_select_and_reduced_motion_stays_single_frame() {
     );
 }
 
+/// T-20.4 acceptance: the software/headless path has no GPU scene texture, so
+/// the chrome material resolves to the deterministic `Minimal` mapping with no
+/// readback — while the selected degrade tier is reported unchanged. The two
+/// must be independently observable: the selection is the controller's budget
+/// decision, the effective material tier is the path's.
+#[test]
+fn headless_material_path_is_the_software_minimal_fallback() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set");
+    let synthetic_path =
+        PathBuf::from(&runtime_dir).join(format!("dragonfruit-softpath-{}", std::process::id()));
+    let proc = CompositorProcess::start_with_synthetic(
+        "dragonfruit-conformance-softpath",
+        Some(&synthetic_path),
+    );
+    let input = SyntheticInput::connect(&synthetic_path);
+
+    let report = input.query("query material");
+    // The path is explicit and the selected tier stays `full`.
+    assert!(report.contains("path=software"), "{report}");
+    assert!(report.contains("tier=full"), "{report}");
+
+    // Every role collapses to the `Minimal` mapping: no blur, no glass.
+    for role in ["chrome", "dock", "popup", "drawer"] {
+        let line = report
+            .lines()
+            .find(|line| line.contains(&format!("role={role} ")))
+            .unwrap_or_else(|| panic!("no glass line for {role} in {report:?}"));
+        for zero in [
+            "blur=0.0",
+            "refraction=0.0",
+            "specular=0.00",
+            "specular_width=0.0",
+            "tint=0.00",
+        ] {
+            assert!(
+                line.contains(zero),
+                "software {role} material must be {zero}, got {line:?}"
+            );
+        }
+    }
+
+    // Selecting a different tier does not change the software material: the
+    // fallback is deterministic regardless of the budget selection.
+    input.send("set degrade-tier reduced");
+    let report = input.query("query material");
+    assert!(report.contains("tier=reduced"), "{report}");
+    for role in ["chrome", "popup"] {
+        let line = report
+            .lines()
+            .find(|line| line.contains(&format!("role={role} ")))
+            .unwrap_or_else(|| panic!("no glass line for {role} in {report:?}"));
+        assert!(line.contains("blur=0.0"), "{line:?}");
+        assert!(line.contains("refraction=0.0"), "{line:?}");
+    }
+
+    proc.shutdown();
+    assert!(
+        !synthetic_path.exists(),
+        "teardown leak: synthetic-input socket survived"
+    );
+}
+
 /// One parsed `grid window` line from `query grid` (T-05.1a): the window id,
 /// the committed source rect, the interpolated render target, and the cell.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

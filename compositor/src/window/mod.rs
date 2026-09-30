@@ -51,7 +51,7 @@ pub use decoration::{
     TrafficLightKind, WindowInsets,
 };
 #[allow(unused_imports)]
-pub use degrade::{DegradeController, DegradeTier};
+pub use degrade::{DegradeController, DegradeTier, MaterialPath};
 pub use events::{ShellWindowEvent, WindowDispatch, WindowEventKind};
 pub use menu::{MenuActivation, MenuKey, MenuKeyOutcome, WindowMenu};
 pub use motion::{MinimizedAnimation, MotionFrame, WindowMotion, WindowMotionKind};
