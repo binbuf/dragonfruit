@@ -156,7 +156,7 @@ pub mod semantic {
         pub mod material {
             pub const CHROME_OPACITY: f32 = 0.82_f32;
             pub const CHROME_BLUR: f32 = 24.0_f32;
-            pub const POPUP_OPACITY: f32 = 0.96_f32;
+            pub const POPUP_OPACITY: f32 = 0.62_f32;
             pub const POPUP_BLUR: f32 = 30.0_f32;
             pub const SHADOW_OPACITY: f32 = 0.18_f32;
             pub const DOCK_OPACITY: f32 = 0.5_f32;
@@ -232,7 +232,7 @@ pub mod semantic {
         pub mod material {
             pub const CHROME_OPACITY: f32 = 0.72_f32;
             pub const CHROME_BLUR: f32 = 28.0_f32;
-            pub const POPUP_OPACITY: f32 = 0.92_f32;
+            pub const POPUP_OPACITY: f32 = 0.7_f32;
             pub const POPUP_BLUR: f32 = 32.0_f32;
             pub const SHADOW_OPACITY: f32 = 0.45_f32;
             pub const DOCK_OPACITY: f32 = 0.42_f32;

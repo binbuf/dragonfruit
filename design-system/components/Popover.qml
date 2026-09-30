@@ -87,7 +87,10 @@ Item {
     Rectangle {
         anchors.fill: parent
         radius: Theme.controls.popover.radius
-        color: Theme.color.surfaceElevated
+        // The compositor material's scrim: token alpha in the fill so the
+        // sampled backdrop and liquid-glass pass read through (T-20.3).
+        color: Qt.rgba(Theme.color.surfaceElevated.r, Theme.color.surfaceElevated.g,
+                       Theme.color.surfaceElevated.b, Theme.material.popupOpacity)
         border.width: Theme.controls.window.borderWidth
         border.color: Theme.color.border
         antialiasing: true
@@ -100,7 +103,8 @@ Item {
         x: root.arrowX - width / 2
         y: -height / 2
         rotation: 45
-        color: Theme.color.surfaceElevated
+        color: Qt.rgba(Theme.color.surfaceElevated.r, Theme.color.surfaceElevated.g,
+                       Theme.color.surfaceElevated.b, Theme.material.popupOpacity)
         antialiasing: true
     }
 

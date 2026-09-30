@@ -134,9 +134,39 @@ impl MaterialRole {
         }
     }
 
+    /// The panel corner radius for a surface in `namespace` (T-20.3).
+    ///
+    /// Most roles round from a single component token, but the `Popup` role
+    /// serves several distinct overlay surfaces: the OSD draws its card at
+    /// `component.osd.radius`, so the backdrop must follow that namespace or
+    /// the frosted corner would not match the QML card. Every other popup
+    /// (menus, popovers, notifications, Control Center) shares
+    /// `component.popup.radius`.
+    pub fn corner_radius(self, namespace: &str) -> f32 {
+        match self {
+            MaterialRole::Chrome => component::menu_bar::RADIUS,
+            MaterialRole::Dock => component::dock::RADIUS,
+            MaterialRole::Drawer => primitive::radius::XL,
+            MaterialRole::Popup => {
+                if str_eq(namespace, "osd") {
+                    component::osd::RADIUS
+                } else {
+                    component::popup::RADIUS
+                }
+            }
+        }
+    }
+
     /// The backdrop geometry and tone for this role under `scheme`, resolved
     /// from the generated `material` tokens.
     pub fn spec(self, scheme: ColorScheme) -> BackdropSpec {
+        self.spec_for(scheme, "")
+    }
+
+    /// [`Self::spec`] for a surface in `namespace`: the panel corner follows
+    /// [`Self::corner_radius`] so the frosted shape matches the QML card
+    /// (T-20.3).
+    pub fn spec_for(self, scheme: ColorScheme, namespace: &str) -> BackdropSpec {
         let (blur, opacity) = match self {
             MaterialRole::Chrome => match scheme {
                 ColorScheme::Light => (
@@ -178,17 +208,10 @@ impl MaterialRole {
             MaterialRole::Dock => scheme.dock_fill(),
             MaterialRole::Popup | MaterialRole::Drawer => scheme.surface_elevated(),
         };
-        // The radius follows the component that draws that role, so the
-        // backdrop corner matches the QML panel it sits behind. Both are
-        // component tokens, never a hardcoded literal.
-        let radius = match self {
-            MaterialRole::Chrome => component::menu_bar::RADIUS,
-            MaterialRole::Dock => component::dock::RADIUS,
-            MaterialRole::Popup => component::popup::RADIUS,
-            // The drawer card rounds with the same primitive radius its QML
-            // `Rectangle` uses (`Theme.primitive.radius.xl`); no new token.
-            MaterialRole::Drawer => primitive::radius::XL,
-        };
+        // The radius follows the component that draws that role (per surface
+        // namespace for popups), so the backdrop corner matches the QML panel
+        // it sits behind; never a hardcoded literal.
+        let radius = self.corner_radius(namespace);
         BackdropSpec {
             blur,
             opacity,
@@ -203,13 +226,18 @@ impl MaterialRole {
     /// blur radius is always the token value; only the Kawase iteration count
     /// and the panel corner radius are derived.
     pub fn blur_spec(self, scheme: ColorScheme) -> BlurSpec {
-        let (blur, corner_radius) = match self {
-            MaterialRole::Chrome => (chrome_blur(scheme), component::menu_bar::RADIUS),
-            MaterialRole::Dock => (dock_blur(scheme), component::dock::RADIUS),
-            MaterialRole::Popup => (popup_blur(scheme), component::popup::RADIUS),
-            MaterialRole::Drawer => (popup_blur(scheme), primitive::radius::XL),
+        self.blur_spec_for(scheme, "")
+    }
+
+    /// [`Self::blur_spec`] for a surface in `namespace`: the panel corner
+    /// follows [`Self::corner_radius`] (T-20.3).
+    pub fn blur_spec_for(self, scheme: ColorScheme, namespace: &str) -> BlurSpec {
+        let blur = match self {
+            MaterialRole::Chrome => chrome_blur(scheme),
+            MaterialRole::Dock => dock_blur(scheme),
+            MaterialRole::Popup | MaterialRole::Drawer => popup_blur(scheme),
         };
-        BlurSpec::new(blur, corner_radius)
+        BlurSpec::new(blur, self.corner_radius(namespace))
     }
 
     /// The Tahoe liquid-glass parameters for this role under `scheme`
@@ -678,6 +706,104 @@ mod tests {
             MaterialRole::Dock.blur_spec(ColorScheme::Light).radius,
             semantic::light::material::DOCK_BLUR
         );
+    }
+
+    #[test]
+    fn the_osd_namespace_rounds_from_its_own_component_radius() {
+        // T-20.3: the OSD is a `Popup` but its card is drawn at
+        // `component.osd.radius`; the backdrop must follow the namespace so the
+        // frosted corner matches the QML card (all other popups share
+        // `component.popup.radius`).
+        let osd = MaterialRole::Popup;
+        assert_eq!(osd.corner_radius("osd"), component::osd::RADIUS);
+        assert_eq!(osd.corner_radius("osd"), 20.0);
+        assert_eq!(
+            osd.corner_radius("control-center"),
+            component::popup::RADIUS
+        );
+        assert_eq!(osd.corner_radius("notification"), component::popup::RADIUS);
+        assert_eq!(osd.corner_radius("menubar-popup"), component::popup::RADIUS);
+        assert_eq!(osd.corner_radius("dock-popup"), component::popup::RADIUS);
+
+        // `spec_for`/`blur_spec_for` carry that radius through to the panel.
+        let osd_spec = osd.blur_spec_for(ColorScheme::Light, "osd");
+        assert_eq!(osd_spec.corner_radius, component::osd::RADIUS);
+        assert_eq!(
+            osd.blur_spec_for(ColorScheme::Light, "notification")
+                .corner_radius,
+            component::popup::RADIUS
+        );
+        assert_eq!(
+            osd.spec_for(ColorScheme::Dark, "osd").radius,
+            component::osd::RADIUS
+        );
+        // The legacy entry points keep the role default (no namespace).
+        assert_eq!(
+            osd.blur_spec(ColorScheme::Light).corner_radius,
+            component::popup::RADIUS
+        );
+        assert_eq!(
+            osd.spec(ColorScheme::Light).radius,
+            component::popup::RADIUS
+        );
+
+        // The other roles are unaffected by the namespace.
+        assert_eq!(osd.corner_radius(""), component::popup::RADIUS);
+        assert_eq!(
+            MaterialRole::Chrome.corner_radius("osd"),
+            component::menu_bar::RADIUS
+        );
+        assert_eq!(
+            MaterialRole::Dock.corner_radius("dock"),
+            component::dock::RADIUS
+        );
+        assert_eq!(
+            MaterialRole::Drawer.corner_radius("apps-drawer"),
+            primitive::radius::XL
+        );
+    }
+
+    #[test]
+    fn every_chrome_namespace_resolves_to_its_material_role() {
+        // T-20.3 sweep: each chrome surface the shell creates picks the role
+        // its tokens and panel rect expect. Persistent chrome (menu bar) is
+        // `Chrome`; the Dock is `Dock` by namespace; every overlay (menus,
+        // popups, OSD, notification, Control Center) is `Popup`; the
+        // full-output Applications drawer is `Drawer`.
+        assert_eq!(
+            MaterialRole::from_layer_namespace(2, "menubar"),
+            MaterialRole::Chrome
+        );
+        assert_eq!(
+            MaterialRole::from_layer_namespace(2, "dock"),
+            MaterialRole::Dock
+        );
+        for namespace in [
+            "menubar-popup",
+            "dock-popup",
+            "control-center",
+            "osd",
+            "notification",
+        ] {
+            assert_eq!(
+                MaterialRole::from_layer_namespace(3, namespace),
+                MaterialRole::Popup,
+                "{namespace} should be a Popup"
+            );
+            // Every overlay is a visible panel, smaller than the output, so it
+            // gets the compositor material.
+            assert!(is_backdrop_panel(rect(0, 0, 360, 400), (1920, 1200).into()));
+        }
+        assert_eq!(
+            MaterialRole::from_layer_namespace(3, "apps-drawer"),
+            MaterialRole::Drawer
+        );
+        // A session-wide overlay (Mission Control / switcher) fills the output
+        // and is a scrim, not a frosted panel.
+        assert!(!is_backdrop_panel(
+            rect(0, 0, 1920, 1200),
+            (1920, 1200).into()
+        ));
     }
 
     #[test]
