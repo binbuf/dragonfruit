@@ -87,7 +87,9 @@ Spotlight-equivalent search pane) will build on them:
   and a viewport capped at five rows (a longer corpus scrolls): wide outputs
   lay out at most seven per row, and narrow outputs wrap to fewer instead of
   overflowing. The caps are width/height caps (`maxColumns`, `maxRows`), so the
-  keyboard row stride always matches the Flow's real layout. The drawer card
-  hugs the grid with equal `panelPadding` (50px) padding on the left and right
-  (and below), clamped to the output so a narrow screen shrinks the card instead
-  of clipping it.
+  keyboard row stride always matches the Flow's real layout. The drawer card is
+a ~90%-opaque frosted panel whose top section is a flat (background-less)
+search bar framed by hairline rules over the pill row and grid; it hugs the
+content with `panelPadding` (50px) on the sides and a tighter
+`panelPaddingVertical` (32px) above and below, clamped to the output so a narrow
+screen shrinks the card instead of clipping it.

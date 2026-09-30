@@ -12,6 +12,10 @@ FocusScope {
     property string placeholderText: qsTr("Search")
     property alias input: input
     property alias hovered: fieldHover.hovered
+    // A flat field draws no background/border so it blends into its host
+    // surface (the Applications drawer's top section); the caret still shows
+    // focus. Default keeps the standard pill field.
+    property bool flat: false
 
     signal accepted(string text)
     signal cleared()
@@ -29,6 +33,7 @@ FocusScope {
 
     Rectangle {
         anchors.fill: parent
+        visible: !root.flat
         radius: Theme.controls.searchField.radius
         color: Theme.color.controlFill
         border.width: Theme.controls.window.borderWidth
