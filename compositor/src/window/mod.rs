@@ -15,6 +15,7 @@
 //! those layers do not carry.
 
 pub mod backdrop;
+pub mod blur;
 pub mod corner;
 pub mod decoration;
 pub mod degrade;
@@ -34,6 +35,11 @@ pub mod state;
 pub use backdrop::{
     backdrop_bounds, backdrop_elements, backdrop_layers, explicit_panel_bounds, is_backdrop_panel,
     panel_bounds, BackdropLayer, BackdropPass, BackdropSpec, MaterialRole,
+};
+#[allow(unused_imports)]
+pub use blur::{
+    blur_uniform_names, BackdropBlurElement, BlurRenderer, BlurSpec, BLUR_RADIUS_UNIFORM,
+    BLUR_SHADER, BLUR_TEXEL_UNIFORM,
 };
 #[allow(unused_imports)]
 pub use corner::{corner_squares, rounded_rect_spans, CornerMask, RoundedCorners};

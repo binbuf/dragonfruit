@@ -19,23 +19,26 @@ use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::element::utils::{
     Relocate, RelocateRenderElement, RescaleRenderElement,
 };
+use smithay::backend::renderer::gles::{GlesRenderer, GlesTexProgram, GlesTexture};
 use smithay::backend::renderer::glow::GlowRenderer;
-use smithay::backend::renderer::{ImportAll, ImportDma, ImportMem, ImportMemWl};
+use smithay::backend::renderer::{ImportAll, ImportDma, ImportMem, ImportMemWl, Renderer, Texture};
 use smithay::backend::winit::{self, WinitEvent, WinitGraphicsBackend};
 use smithay::output::{Mode, PhysicalProperties, Subpixel};
 use smithay::reexports::wayland_protocols::wp::presentation_time::server::wp_presentation_feedback;
 use smithay::render_elements;
+use smithay::utils::Rectangle;
 use smithay::wayland::presentation::Refresh;
 
 use crate::backend::{add_output, add_seat_capabilities};
 use crate::session::{run_session, BackendHooks};
+use crate::window::BlurRenderer;
 use crate::{render, LOCKSTEP_VERSION};
 
 // Custom elements for the nested output: shell chrome (menu bar, overlays)
 // and the compositor-drawn SSD titlebars (T-01.1). One enum so both kinds
 // can composite above the window space in a single render pass.
 render_elements! {
-    pub NestedOutputElements<R> where R: ImportAll + ImportMem + ImportMemWl;
+    pub NestedOutputElements<R> where R: ImportAll + ImportMem + ImportMemWl + BlurRenderer;
     Chrome=WaylandSurfaceRenderElement<R>,
     Decoration=SolidColorRenderElement,
     // A window mid-appear: scaled about its target and translated from the
@@ -43,6 +46,9 @@ render_elements! {
     Appear=RelocateRenderElement<RescaleRenderElement<WaylandSurfaceRenderElement<R>>>,
     // The per-Space wallpaper (T-05.4): behind the windows.
     Wallpaper=crate::render::WallpaperRenderElement<R>,
+    // The GPU-sampled backdrop blur (T-20.1): a Kawase-downsampled scene
+    // region drawn under a chrome panel, clipped to its rounded corners.
+    Blur=crate::window::BackdropBlurElement,
 }
 
 // The frame element list after the magnifier pass (T-16.6b): the untransformed
@@ -50,7 +56,7 @@ render_elements! {
 // (`Magnified`). One enum so the live frame and the offscreen capture render
 // the same list.
 render_elements! {
-    pub NestedFrameElements<R> where R: ImportAll + ImportMem + ImportMemWl;
+    pub NestedFrameElements<R> where R: ImportAll + ImportMem + ImportMemWl + BlurRenderer;
     Plain=NestedOutputElements<R>,
     Magnified=RelocateRenderElement<RescaleRenderElement<NestedOutputElements<R>>>,
 }
@@ -203,7 +209,31 @@ pub fn run(socket_name: &str) -> Result<(), String> {
                     })
                     .map_err(|e| format!("failed to register winit source: {e}"))?;
 
+                // Compile the backdrop blur program once, on the renderer that
+                // owns the output (T-20.1). Failure is non-fatal: the blur
+                // chain then uses the built-in bilinear downsample.
+                let blur_program =
+                    match std::borrow::BorrowMut::<GlesRenderer>::borrow_mut(backend.renderer())
+                        .compile_custom_texture_shader(
+                            crate::window::BLUR_SHADER,
+                            &crate::window::blur_uniform_names(),
+                        ) {
+                        Ok(program) => {
+                            crate::trace::log("material", "blur-program=compiled");
+                            Some(program)
+                        }
+                        Err(err) => {
+                            // Non-fatal: the blur chain falls back to the
+                            // built-in bilinear downsample.
+                            eprintln!(
+                                "dragonfruit-compositor: backdrop blur shader unavailable \
+                                 ({err}); using bilinear downsample"
+                            );
+                            None
+                        }
+                    };
                 *shared_init.borrow_mut() = Some(NestedData {
+                    blur_program,
                     backend,
                     damage_tracker: OutputDamageTracker::new(
                         window_size,
@@ -237,6 +267,10 @@ pub fn run(socket_name: &str) -> Result<(), String> {
 
 struct NestedData {
     backend: WinitGraphicsBackend<GlowRenderer>,
+    /// The compiled Kawase downsample program (T-20.1), or `None` when the
+    /// driver refused it; the blur then falls back to a plain bilinear
+    /// downsample chain, which still samples the live scene.
+    blur_program: Option<GlesTexProgram>,
     damage_tracker: OutputDamageTracker,
     /// The output scale the tracker was built with. The damage tracker's
     /// static mode supplies the scale every render element's geometry is
@@ -317,60 +351,122 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
     let render_result = match data.backend.bind() {
         Ok((renderer, mut framebuffer)) => {
             let scale = smithay::utils::Scale::from(output.current_scale().fractional_scale());
-            // A locked session composites only the lock surface: it is
-            // prepended so it sits above every window and chrome surface
-            // (T-12.3a).
-            let mut custom_elements: Vec<NestedOutputElements<GlowRenderer>> =
-                crate::lock::lock_render_elements(renderer, state, &output, scale);
-            // Chrome surfaces (menu bar, overlays) composite above the
-            // window space (T-09); SSD titlebars composite above their own
-            // client surface (T-01.1).
-            custom_elements.extend(crate::render::chrome_render_elements(
-                renderer, state, &output, scale,
-            ));
-            // Backdrop blur under the chrome (T-04.2): appended after the
-            // chrome surfaces so it composites below them and in front of the
-            // windows it stands in for.
-            custom_elements.extend(
-                crate::render::chrome_backdrop_render_elements(state, &output, scale)
-                    .into_iter()
-                    .map(NestedOutputElements::Decoration),
-            );
-            custom_elements.extend(
-                crate::render::titlebar_render_elements(state, &output, scale)
-                    .into_iter()
-                    .map(NestedOutputElements::Decoration),
-            );
-            custom_elements.extend(
-                crate::render::window_menu_render_elements(state, &output, scale)
-                    .into_iter()
-                    .map(NestedOutputElements::Decoration),
-            );
-            // Window surfaces composite below the chrome/titlebar custom
-            // elements; the appear transform is applied per window (T-02.1b).
-            custom_elements.extend(crate::render::window_render_elements(
-                renderer, state, &output, scale,
-            ));
-            // Elevation-token-driven shadows composite below the window
-            // surfaces (T-04.1a), so the ring beyond a window is visible.
-            custom_elements.extend(
-                crate::render::window_shadow_render_elements(state, &output, scale)
-                    .into_iter()
-                    .map(NestedOutputElements::Decoration),
-            );
-            // The Files-owned desktop layer (T-19.3) composites below every
-            // window and above the per-Space wallpaper, so desktop icons sit
-            // behind open windows.
-            custom_elements.extend(crate::render::desktop_render_elements(
-                renderer, state, &output, scale,
-            ));
-            // The per-Space wallpaper is the bottom-most layer (T-05.4): it
-            // fills the clear color and slides with its Space during a switch.
-            custom_elements.extend(
-                crate::render::wallpaper_render_elements(renderer, state, &output, scale)
-                    .into_iter()
-                    .map(NestedOutputElements::Wallpaper),
-            );
+            let output_geometry = state.space.output_geometry(&output).unwrap_or_default();
+            // GPU sampled backdrop blur (T-20.1): resolve the panels whose
+            // material keeps blur on and take the material pass for this
+            // output. Empty means "no GPU blur this frame" — the tier is
+            // `Minimal`, no chrome is mapped, or another path already took the
+            // pass — and the pre-T-20 feather path below applies instead.
+            let blur_panels = crate::render::chrome_blur_panels(state, &output);
+            let mut custom_elements: Vec<NestedOutputElements<GlowRenderer>>;
+            if !blur_panels.is_empty() {
+                // Two-pass composition. Pass one renders the scene (wallpaper,
+                // desktop, windows, shadows, titlebars) into an output-sized
+                // offscreen texture; pass two composes the output from the
+                // live chrome surfaces + the per-panel blurred samples + that
+                // scene texture. The blur samples the live scene texture
+                // inside this render pass — never a screenshot or screencopy.
+                let mut scene_elements: Vec<NestedOutputElements<GlowRenderer>> = Vec::new();
+                scene_elements.extend(
+                    crate::render::titlebar_render_elements(state, &output, scale)
+                        .into_iter()
+                        .map(NestedOutputElements::Decoration),
+                );
+                scene_elements.extend(
+                    crate::render::window_menu_render_elements(state, &output, scale)
+                        .into_iter()
+                        .map(NestedOutputElements::Decoration),
+                );
+                scene_elements.extend(crate::render::window_render_elements(
+                    renderer, state, &output, scale,
+                ));
+                scene_elements.extend(
+                    crate::render::window_shadow_render_elements(state, &output, scale)
+                        .into_iter()
+                        .map(NestedOutputElements::Decoration),
+                );
+                scene_elements.extend(crate::render::desktop_render_elements(
+                    renderer, state, &output, scale,
+                ));
+                scene_elements.extend(
+                    crate::render::wallpaper_render_elements(renderer, state, &output, scale)
+                        .into_iter()
+                        .map(NestedOutputElements::Wallpaper),
+                );
+                let scene_texture =
+                    render_scene_offscreen(renderer, state, &output, scale, &scene_elements)?;
+                let scene_size = scene_texture.size();
+                // A locked session composites only the lock surface, prepended
+                // so it sits above every window and chrome surface (T-12.3a).
+                custom_elements =
+                    crate::lock::lock_render_elements(renderer, state, &output, scale);
+                // Chrome surfaces (menu bar, drawer, overlays) composite above
+                // the blur.
+                custom_elements.extend(crate::render::chrome_render_elements(
+                    renderer, state, &output, scale,
+                ));
+                custom_elements.extend(build_blur_elements(
+                    renderer,
+                    data.blur_program.as_ref(),
+                    &blur_panels,
+                    &scene_texture,
+                    scale,
+                )?);
+                // The scene composites below the blur as one texture. Its
+                // corner radius is zero, so it covers the whole output.
+                custom_elements.push(NestedOutputElements::Blur(
+                    crate::window::BackdropBlurElement::new(
+                        scene_texture,
+                        Rectangle::new((0, 0).into(), output_geometry.size),
+                        scene_size,
+                        0,
+                        scale,
+                    ),
+                ));
+            } else {
+                // The pre-T-20 single-pass path: chrome + the feather backdrop
+                // (no GPU readback). A locked session composites only the lock
+                // surface, prepended so it sits above everything (T-12.3a).
+                custom_elements =
+                    crate::lock::lock_render_elements(renderer, state, &output, scale);
+                custom_elements.extend(crate::render::chrome_render_elements(
+                    renderer, state, &output, scale,
+                ));
+                // Backdrop under the chrome (T-04.2): appended after the
+                // chrome surfaces so it composites below them and in front of
+                // the windows it stands in for.
+                custom_elements.extend(
+                    crate::render::chrome_backdrop_render_elements(state, &output, scale)
+                        .into_iter()
+                        .map(NestedOutputElements::Decoration),
+                );
+                custom_elements.extend(
+                    crate::render::titlebar_render_elements(state, &output, scale)
+                        .into_iter()
+                        .map(NestedOutputElements::Decoration),
+                );
+                custom_elements.extend(
+                    crate::render::window_menu_render_elements(state, &output, scale)
+                        .into_iter()
+                        .map(NestedOutputElements::Decoration),
+                );
+                custom_elements.extend(crate::render::window_render_elements(
+                    renderer, state, &output, scale,
+                ));
+                custom_elements.extend(
+                    crate::render::window_shadow_render_elements(state, &output, scale)
+                        .into_iter()
+                        .map(NestedOutputElements::Decoration),
+                );
+                custom_elements.extend(crate::render::desktop_render_elements(
+                    renderer, state, &output, scale,
+                ));
+                custom_elements.extend(
+                    crate::render::wallpaper_render_elements(renderer, state, &output, scale)
+                        .into_iter()
+                        .map(NestedOutputElements::Wallpaper),
+                );
+            }
             // The compositor magnifier (T-16.6b) scales and pans the whole
             // scene about the output centre. Inactive, this is the identity;
             // active, every element is rescale+relocate wrapped. The live
@@ -464,6 +560,142 @@ fn render_frame(state: &mut crate::state::DfState, data: &mut NestedData) -> Res
         resolve_capture(state, result);
     }
     Ok(())
+}
+
+/// Render the scene `elements` into an output-sized offscreen texture once per
+/// frame (T-20.1). This is the texture the chrome backdrop blur samples; it
+/// holds the live wallpaper/desktop/window/shadow pixels, never a screenshot.
+fn render_scene_offscreen(
+    renderer: &mut GlowRenderer,
+    state: &crate::state::DfState,
+    output: &smithay::output::Output,
+    scale: smithay::utils::Scale<f64>,
+    elements: &[NestedOutputElements<GlowRenderer>],
+) -> Result<GlesTexture, String> {
+    use smithay::backend::allocator::Fourcc;
+    use smithay::backend::renderer::{Bind, Offscreen};
+    use smithay::utils::{Buffer as BufferCoord, Transform};
+
+    let size = output
+        .current_mode()
+        .map(|mode| mode.size)
+        .ok_or_else(|| "output has no mode".to_owned())?;
+    let buffer_size = smithay::utils::Size::<i32, BufferCoord>::from((size.w, size.h));
+    let mut texture: GlesTexture = renderer
+        .create_buffer(Fourcc::Abgr8888, buffer_size)
+        .map_err(|err| format!("scene buffer failed: {err}"))?;
+    let clear = state.wallpaper_color_for(output);
+    let mut tracker = OutputDamageTracker::new(size, scale, Transform::Normal);
+    {
+        let mut target = renderer
+            .bind(&mut texture)
+            .map_err(|err| format!("scene bind failed: {err}"))?;
+        tracker
+            .render_output(renderer, &mut target, 0, elements, clear)
+            .map_err(|err| format!("scene render failed: {err:?}"))?;
+    }
+    Ok(texture)
+}
+
+/// Build the per-panel blurred backdrop elements from the scene texture
+/// (T-20.1). Each panel's region is downsampled through `spec.iterations`
+/// Kawase passes — the custom [`crate::window::BLUR_SHADER`] when the renderer
+/// compiled it, otherwise the built-in bilinear downsample — and drawn back
+/// over the panel clipped to its token corners.
+fn build_blur_elements(
+    renderer: &mut GlowRenderer,
+    program: Option<&GlesTexProgram>,
+    panels: &[crate::render::BlurPanel],
+    scene: &GlesTexture,
+    scale: smithay::utils::Scale<f64>,
+) -> Result<Vec<NestedOutputElements<GlowRenderer>>, String> {
+    let mut elements = Vec::new();
+    for panel in panels {
+        let src_region = panel.panel.to_physical_precise_round(scale);
+        if src_region.size.w <= 0 || src_region.size.h <= 0 {
+            continue;
+        }
+        let texture = blur_panel_texture(renderer, program, scene, src_region, &panel.spec)?;
+        let texture_size = texture.size();
+        elements.push(NestedOutputElements::Blur(
+            crate::window::BackdropBlurElement::new(
+                texture,
+                panel.panel,
+                texture_size,
+                panel.spec.corner_radius.round().max(0.0) as i32,
+                scale,
+            ),
+        ));
+    }
+    Ok(elements)
+}
+
+/// Downsample `src_region` of `scene` through a small Kawase chain, returning
+/// the blurred texture (T-20.1). Each pass halves the resolution and samples
+/// the previous texture with the custom program when available.
+fn blur_panel_texture(
+    renderer: &mut GlowRenderer,
+    program: Option<&GlesTexProgram>,
+    scene: &GlesTexture,
+    src_region: smithay::utils::Rectangle<i32, smithay::utils::Physical>,
+    spec: &crate::window::BlurSpec,
+) -> Result<GlesTexture, String> {
+    use smithay::backend::allocator::Fourcc;
+    use smithay::backend::renderer::gles::Uniform;
+    use smithay::backend::renderer::{Bind, Offscreen};
+    use smithay::utils::{Buffer as BufferCoord, Physical, Transform};
+
+    let mut current: GlesTexture = scene.clone();
+    // The region of `current` the next pass samples. The first pass samples
+    // the panel's slice of the scene; later passes sample the whole texture.
+    let mut current_src: Rectangle<f64, BufferCoord> = Rectangle::new(
+        (src_region.loc.x as f64, src_region.loc.y as f64).into(),
+        (src_region.size.w as f64, src_region.size.h as f64).into(),
+    );
+    for _ in 0..spec.iterations {
+        let src_size = current.size();
+        let dst_w = (src_size.w / 2).max(1);
+        let dst_h = (src_size.h / 2).max(1);
+        let buffer_size = smithay::utils::Size::<i32, BufferCoord>::from((dst_w, dst_h));
+        let mut texture: GlesTexture = renderer
+            .create_buffer(Fourcc::Abgr8888, buffer_size)
+            .map_err(|err| format!("blur buffer failed: {err}"))?;
+        let dst_phys =
+            Rectangle::from_size(smithay::utils::Size::<i32, Physical>::from((dst_w, dst_h)));
+        {
+            let mut target = renderer
+                .bind(&mut texture)
+                .map_err(|err| format!("blur bind failed: {err}"))?;
+            let mut frame = renderer
+                .render(&mut target, dst_phys.size, Transform::Normal)
+                .map_err(|err| format!("blur render failed: {err}"))?;
+            let uniforms = [
+                Uniform::new(
+                    crate::window::BLUR_TEXEL_UNIFORM,
+                    (1.0f32 / src_size.w as f32, 1.0f32 / src_size.h as f32),
+                ),
+                Uniform::new(crate::window::BLUR_RADIUS_UNIFORM, 1.0f32),
+            ];
+            let gles_frame: &mut smithay::backend::renderer::gles::GlesFrame<'_, '_> =
+                std::borrow::BorrowMut::borrow_mut(&mut frame);
+            gles_frame
+                .render_texture_from_to(
+                    &current,
+                    current_src,
+                    dst_phys,
+                    &[dst_phys],
+                    &[],
+                    Transform::Normal,
+                    1.0,
+                    program,
+                    &uniforms,
+                )
+                .map_err(|err| format!("blur draw failed: {err}"))?;
+        }
+        current = texture;
+        current_src = Rectangle::from_size(current.size().to_f64());
+    }
+    Ok(current)
 }
 
 /// Render `elements` (the same list the live frame drew) into an offscreen
