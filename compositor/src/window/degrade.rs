@@ -53,6 +53,49 @@ const MAX_BUDGET_US: u32 = 100_000;
 /// Unset in a normal session; a nested/DRM acceptance run can pin it.
 pub const ENV_FRAME_BUDGET_US: &str = "DRAGONFRUIT_FRAME_BUDGET_US";
 
+/// The renderer class the chrome material runs on (T-20.4).
+///
+/// The GPU path (`Full`/`Reduced`) samples the live scene texture through the
+/// custom shaders. The **software/headless** path has no GPU readback, so it
+/// renders the deterministic `Minimal` mapping regardless of the budget tier
+/// the controller selected — the material is then a *quality* fallback that
+/// uses the same `MaterialRole`/`BackdropSpec` inputs, never a correctness one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MaterialPath {
+    /// A GLES 3.x / Vulkan-capable GPU: the sampled blur + liquid-glass pass.
+    #[default]
+    Gpu,
+    /// The software/headless path: no scene texture, no readback, the
+    /// deterministic `Minimal` feather stack.
+    Software,
+}
+
+impl MaterialPath {
+    /// The stable name used by the render/degrade trace.
+    pub const fn name(self) -> &'static str {
+        match self {
+            MaterialPath::Gpu => "gpu",
+            MaterialPath::Software => "software",
+        }
+    }
+
+    /// Whether the GPU sampled-material pass (scene texture + blur/glass) can
+    /// run on this path. `false` means the material must stay on the
+    /// deterministic feather stack.
+    pub const fn gpu_blur(self) -> bool {
+        matches!(self, MaterialPath::Gpu)
+    }
+
+    /// The tier the material actually renders at: the selected tier on the GPU
+    /// path, always `Minimal` on the software path.
+    pub const fn material_tier(self, selected: DegradeTier) -> DegradeTier {
+        match self {
+            MaterialPath::Gpu => selected,
+            MaterialPath::Software => DegradeTier::Minimal,
+        }
+    }
+}
+
 /// Ordered material-quality tiers, best first. The ladder is the T-04 track's
 /// "smaller radius, then blur off" rule.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -414,6 +457,24 @@ mod tests {
         for _ in 0..count {
             controller.observe(Duration::from_micros(micros));
         }
+    }
+
+    #[test]
+    fn the_software_path_always_resolves_to_minimal() {
+        assert_eq!(MaterialPath::default(), MaterialPath::Gpu);
+        assert!(MaterialPath::Gpu.gpu_blur());
+        assert!(!MaterialPath::Software.gpu_blur());
+        // The GPU path honors the selected tier; the software path collapses
+        // every tier to Minimal so headless/software output is deterministic.
+        for tier in DegradeTier::ALL {
+            assert_eq!(MaterialPath::Gpu.material_tier(tier), tier);
+            assert_eq!(
+                MaterialPath::Software.material_tier(tier),
+                DegradeTier::Minimal
+            );
+        }
+        assert_eq!(MaterialPath::Gpu.name(), "gpu");
+        assert_eq!(MaterialPath::Software.name(), "software");
     }
 
     #[test]

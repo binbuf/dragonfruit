@@ -1920,18 +1920,24 @@ fn degrade_report(state: &DfState) -> String {
 /// The `query material` report (T-04.4b): the live color scheme and the
 /// resolved token tones the compositor materials render with.
 ///
-/// `material scheme=<light|dark> tier=<name> chrome=<rrggbbaa>
-/// elevated=<rrggbbaa> border=<rrggbbaa> accent=<rrggbbaa>` then one
-/// `material glass role=<name> blur=<r> refraction=<r> specular=<r>
+/// `material scheme=<light|dark> tier=<name> path=<gpu|software>
+/// chrome=<rrggbbaa> elevated=<rrggbbaa> border=<rrggbbaa> accent=<rrggbbaa>`
+/// then one `material glass role=<name> blur=<r> refraction=<r> specular=<r>
 /// specular_width=<r> tint=<r>` line per material role, followed by `end`.
 /// The tones are the exact token values the SSD titlebar, window menu, chrome
-/// backdrop, and window shadow resolve for the reported scheme, and the glass
-/// lines are the liquid-glass parameters after the active degrade tier
-/// (T-20.2), so a headless test can prove both schemes and the tier fallback
-/// without a GPU.
+/// backdrop, and window shadow resolve for the reported scheme. `tier` is the
+/// selected degrade tier; `path` is the renderer class (T-20.4), and the glass
+/// lines resolve at the **effective** tier — the selected tier on the GPU path,
+/// always `Minimal` on the software/headless path — so a headless test can
+/// prove both schemes, the tier fallback, and the software fallback without a
+/// GPU.
 fn material_report(state: &DfState) -> String {
     let scheme = state.color_scheme;
-    let tier = state.degrade.tier();
+    // The selected tier and the effective tier the material actually renders
+    // at (T-20.4): the software path collapses to `Minimal` regardless of the
+    // selection, so the glass lines below report the deterministic fallback.
+    let selected = state.degrade.tier();
+    let tier = state.material_path.material_tier(selected);
     let hex = |rgba: [u8; 4]| {
         format!(
             "{:02x}{:02x}{:02x}{:02x}",
@@ -1939,9 +1945,10 @@ fn material_report(state: &DfState) -> String {
         )
     };
     let mut out = format!(
-        "material scheme={} tier={} chrome={} elevated={} border={} accent={}\n",
+        "material scheme={} tier={} path={} chrome={} elevated={} border={} accent={}\n",
         scheme.name(),
-        tier.name(),
+        selected.name(),
+        state.material_path.name(),
         hex(scheme.chrome()),
         hex(scheme.surface_elevated()),
         hex(scheme.border()),

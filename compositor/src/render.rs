@@ -247,15 +247,15 @@ pub fn chrome_backdrop_render_elements(
     // Resolve the token material per surface and map it through the current
     // degrade tier (T-04.4a). `None` means "blur off" (the `Minimal` tier), so
     // the pass draws nothing and owns no damage: forcing the tier visibly
-    // changes the pass.
+    // changes the pass. The software/headless path (T-20.4) always resolves to
+    // `Minimal`, so a backend without a GPU scene texture cannot drift from the
+    // deterministic feather geometry.
+    let tier = state.material_path.material_tier(state.degrade.tier());
     let specs: Vec<_> = surfaces
         .iter()
         .map(|chrome| {
             let role = MaterialRole::from_layer_namespace(chrome.layer, &chrome.namespace);
-            state
-                .degrade
-                .tier()
-                .backdrop(role.spec_for(scheme, &chrome.namespace))
+            tier.backdrop(role.spec_for(scheme, &chrome.namespace))
         })
         .collect();
     if specs.iter().all(Option::is_none) {
@@ -307,6 +307,12 @@ pub struct BlurPanel {
 /// The blur samples the caller's offscreen **scene texture** inside the render
 /// pass, never a screenshot or screencopy.
 pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel> {
+    // The software/headless path (T-20.4) has no GPU scene texture, so the
+    // sampled-material pass never runs there: the caller falls back to the
+    // deterministic feather render elements, with no readback.
+    if !state.material_path.gpu_blur() {
+        return Vec::new();
+    }
     let Some(output_geometry) = state.space.output_geometry(output) else {
         return Vec::new();
     };
@@ -325,7 +331,7 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
         return Vec::new();
     }
     let scheme = state.color_scheme;
-    let tier = state.degrade.tier();
+    let tier = state.material_path.material_tier(state.degrade.tier());
     let panels: Vec<BlurPanel> = surfaces
         .iter()
         .filter_map(|chrome| {
@@ -355,6 +361,16 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
     {
         return Vec::new();
     }
+    // T-20.4 instrumentation: the pass actually ran, so record the output-frame
+    // and the panel count / largest downsample the trace reports.
+    let downsample_max = panels
+        .iter()
+        .map(|panel| panel.spec.downsample())
+        .max()
+        .unwrap_or(0);
+    state
+        .stats
+        .record_blur_pass(downsample_max, panels.len() as u64);
     panels
 }
 
