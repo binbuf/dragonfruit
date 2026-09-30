@@ -21,6 +21,17 @@ Item {
     // Presentation opacity [0, 1] from the OSD model.
     property real fade: 0.0
 
+    // The visible card in surface-local pixels (T-20.3). The surface is larger
+    // than the card so its shadow is not clipped; the shell declares this rect
+    // to the compositor so the frosted backdrop covers exactly the card, not
+    // the transparent shadow margin.
+    readonly property var panelRect: ({
+        x: card.x,
+        y: card.y,
+        w: card.width,
+        h: card.height
+    })
+
     // T-11.4b: an AT-SPI/assistive client (or a keyboard Escape) can dismiss
     // the transient alert early. The shell forwards this to `OsdModel::hide`.
     signal dismissed()
@@ -73,7 +84,10 @@ Item {
         width: Theme.controls.osd.width
         height: Theme.controls.osd.height
         radius: Theme.controls.osd.radius
-        color: Theme.color.surfaceElevated
+        // The compositor material's scrim (T-20.3): the OSD is a `Popup`, so
+        // the fill carries `material.popupOpacity`; the rim stays opaque.
+        color: Qt.rgba(Theme.color.surfaceElevated.r, Theme.color.surfaceElevated.g,
+                       Theme.color.surfaceElevated.b, Theme.material.popupOpacity)
         border.width: Theme.controls.window.borderWidth
         border.color: Theme.color.border
         antialiasing: true

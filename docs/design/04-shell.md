@@ -33,6 +33,22 @@ Dock, Control Center quick-settings sheets, Spotlight, About This System):
 [macos-ui-inventory.md](../reference/macos-ui-inventory.md) — distilled from
 local-only macOS screenshots that never ship.
 
+**Chrome materials (T-20.3).** Every one of these surfaces is
+[a compositor-material surface](../design/02-compositor.md#backdrop-blur-pass-t-042),
+not a flat rectangle: the compositor frosts each panel with its `MaterialRole`
+(`Chrome` menu bar, `Dock` Dock, `Popup` menus/popovers/OSD/notifications/
+Control Center, `Drawer` Applications drawer) before the QML surface
+composites over it. The QML side therefore draws a **token-driven scrim**, not
+an opaque fill: the popup-family cards (the `Popup`/`Popover`/`ContextMenu`
+components, the Dock popovers, the OSD card, notification banners, and the
+Control Center panel) put `material.popupOpacity` in the fill so the sampled
+backdrop and liquid-glass pass read through, and keep their `border` hairline
+at full opacity as the rim complement. The menu bar and Dock already did this
+(`material.chromeOpacity`, `controls.dock.plate.fillOpacity`). Any QML surface
+that should show the material but paints an opaque fill makes the material
+invisible — the fill's alpha, never the item's `opacity`, is what lets it
+through.
+
 ## Menu bar
 
 The top menu bar hosts, from left to right:

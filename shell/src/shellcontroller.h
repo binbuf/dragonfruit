@@ -762,6 +762,11 @@ private:
     int m_osdHeight = 0;
     bool m_osdActive = false;
     bool m_osdMapped = false;
+    // The last OSD card panel committed to the compositor (T-20.3): the
+    // surface is larger than the card, so the declared rect is what the
+    // backdrop frosts. Only a changed rect is sent.
+    QRect m_osdPanelRect;
+    bool m_osdPanelRectValid = false;
     FrameCommitGate m_osdFrameGate;
     bool m_osdSceneGraphCommitLogged = false;
     QTimer *m_osdTimer = nullptr;

@@ -772,12 +772,14 @@ Item {
         event.accepted = true;
     }
 
-    // The panel background. The compositor frosts this chrome surface (the
-    // T-04 backdrop pass), so the panel is the material itself.
+    // The panel background is the compositor material's scrim (T-20.3): the
+    // fill carries `material.popupOpacity` so the frosted backdrop and
+    // liquid-glass pass show through, while the rim/hairline stays opaque.
     Rectangle {
         id: background
         anchors.fill: parent
-        color: Theme.color.surfaceElevated
+        color: Qt.rgba(Theme.color.surfaceElevated.r, Theme.color.surfaceElevated.g,
+                       Theme.color.surfaceElevated.b, Theme.material.popupOpacity)
         radius: Theme.controls.popover.radius
         border.width: Theme.controls.window.borderWidth
         border.color: Theme.color.border
