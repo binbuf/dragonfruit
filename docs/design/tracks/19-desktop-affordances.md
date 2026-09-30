@@ -106,6 +106,12 @@ the Dock's launch path, and app-index absence renders an explicit row. One
 greppable freedesktop → pill mapping lives in `appsdrawer.cpp`'s
 `kCategoryMap`. See [ADR 0167](../adr/0167-applications-drawer.md).
 
+**Dock tile.** The launcher's affordance is a permanent Applications tile on
+the Dock (injected by the shell immediately after the first pinned tile), not a
+menu-bar status item: it cannot be dragged, reordered, or removed (its context
+menu's **Remove from Dock** row is disabled), and it opens the drawer centered
+over the output (F4 keeps working).
+
 ## T-19.3 — Files-owned desktop items
 
 The macOS model: **the file manager owns the desktop.** `~/Desktop` is an icon

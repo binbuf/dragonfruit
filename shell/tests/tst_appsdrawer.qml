@@ -154,5 +154,87 @@ Item {
             compare(drawer.pills.length, 1);
             compare(drawer.pills[0].key, "all");
         }
+
+        // The grid is capped at seven columns (the reference width); a narrow
+        // output wraps to fewer instead of overflowing.
+        function test_grid_is_capped_at_seven_columns() {
+            var wide = make({ apps: [], width: 1920 });
+            compare(wide.columns, 7);
+            compare(wide.gridWidth, wide.gridMaxWidth);
+
+            var narrow = make({ apps: [], width: 700 });
+            verify(narrow.columns < 7);
+            verify(narrow.columns >= 1);
+        }
+
+        // The Flow really lays out seven tiles per row at the cap, not just
+        // reports seven.
+        function test_grid_wraps_at_seven_tiles_per_row() {
+            var many = [];
+            for (var i = 0; i < 20; ++i)
+                many.push({ desktopId: "a" + i + ".desktop", name: "App " + i,
+                            iconPath: "", categories: [] });
+            var drawer = make({ apps: many, width: 1920 });
+            var list = tiles(drawer);
+            compare(list.length, 20);
+            var firstRow = 0;
+            var firstY = list[0].y;
+            for (var j = 0; j < list.length; ++j) {
+                if (list[j].y === firstY)
+                    ++firstRow;
+            }
+            compare(firstRow, 7);
+        }
+
+        // The card wraps the grid with at least `panelPadding` on both ends and
+        // equal left/right padding.
+        function test_panel_gives_the_grid_equal_padding() {
+            var seven = [];
+            for (var i = 0; i < 7; ++i)
+                seven.push({ desktopId: "p" + i + ".desktop", name: "P " + i,
+                             iconPath: "", categories: [] });
+            var drawer = make({ apps: seven });
+            var panel = findChild(drawer, "appsDrawerPanel");
+            var grid = findChild(drawer, "appsDrawerGrid");
+            verify(panel !== null);
+            verify(grid !== null);
+            var leftPad = grid.x;
+            var rightPad = panel.width - (grid.x + grid.width);
+            compare(Math.abs(leftPad - rightPad) <= 1, true);
+            verify(leftPad >= drawer.panelPadding,
+                   "left padding at least panelPadding, got " + leftPad);
+            verify(rightPad >= drawer.panelPadding,
+                   "right padding at least panelPadding, got " + rightPad);
+            // The card is the grid plus the padding on each side.
+            verify(panel.width >= grid.width + 2 * drawer.panelPadding);
+            // And the grid keeps the same padding below it.
+            var bottomPad = panel.height - (grid.y + grid.height);
+            verify(bottomPad >= drawer.panelPadding,
+                   "bottom padding at least panelPadding, got " + bottomPad);
+        }
+
+        // The grid viewport shows at most five rows; a longer corpus scrolls,
+        // and a short corpus hugs its content instead of reserving five rows.
+        function test_grid_viewport_is_at_most_five_rows() {
+            var many = [];
+            for (var i = 0; i < 50; ++i)
+                many.push({ desktopId: "r" + i + ".desktop", name: "Row " + i,
+                            iconPath: "", categories: [] });
+            // A tall card fits the full five rows; a short output clamps below it.
+            var roomy = make({ apps: many, height: 1400 });
+            var grid = findChild(roomy, "appsDrawerGrid");
+            compare(Math.round(grid.height), Math.round(roomy.gridMaxHeight));
+            verify(grid.contentHeight > grid.height);
+
+            var shortDock = make({ apps: many, height: 720 });
+            var shortGrid = findChild(shortDock, "appsDrawerGrid");
+            verify(shortGrid.height < shortDock.gridMaxHeight);
+            verify(shortGrid.contentHeight > shortGrid.height);
+
+            var small = make({ apps: sampleApps, height: 1400 });
+            var smallGrid = findChild(small, "appsDrawerGrid");
+            compare(Math.round(smallGrid.height), Math.round(smallGrid.contentHeight));
+            verify(smallGrid.height < small.gridMaxHeight);
+        }
     }
 }

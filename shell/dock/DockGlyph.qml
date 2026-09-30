@@ -4,12 +4,14 @@ import QtQuick.Shapes
 import QtQuick.VectorImage
 import Dragonfruit
 
-// Dock entry artwork (T-10). Three shapes:
+// Dock entry artwork (T-10). The shapes:
 //   * an app tile — a real themed icon resolved by app-index (T-14.1a) when
 //     one is available, otherwise a rounded, deterministically coloured square
 //     carrying the application's initial (an original placeholder, never a
 //     bitmap asset).
 //   * a folder stack — a macOS-like folder silhouette (T-14.7h), no text.
+//   * the Applications launcher — a neutral squircle with our Phosphor grid
+//     mark (T-19.2 follow-up).
 //   * the Trash — our own geometry (lid, handle, bin) with an empty/full
 //     state. No Apple artwork is copied (14-risks.md).
 Item {
@@ -330,6 +332,37 @@ Item {
                 x: overflow.inset + (index % 3) * (overflow.cell + overflow.gap)
                 y: overflow.inset + Math.floor(index / 3) * (overflow.cell + overflow.gap)
             }
+        }
+    }
+
+    // -- Applications launcher (T-19.2 follow-up) ------------------------
+    // The permanent Dock tile that opens the Applications drawer: a neutral
+    // squircle carrying our own Phosphor grid mark (the same glyph the drawer
+    // title uses), so it reads as a Dock tile without copying vendor artwork.
+    Item {
+        id: launcher
+        objectName: "launcherArtwork"
+        visible: root.kind === "launcher"
+        anchors.fill: parent
+
+        Rectangle {
+            objectName: "launcherTile"
+            anchors.centerIn: parent
+            width: root.tileW
+            height: root.tileH
+            radius: root.tileRadius
+            color: Theme.color.controlFill
+            border.width: 1
+            border.color: Theme.color.border
+        }
+
+        PhosphorIcon {
+            objectName: "launcherGlyph"
+            anchors.centerIn: parent
+            name: "squares-four"
+            weight: "fill"
+            size: Math.round(root.size * 0.5)
+            color: Theme.color.textPrimary
         }
     }
 

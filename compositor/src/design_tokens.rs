@@ -572,6 +572,7 @@ pub mod component {
     pub mod apps_drawer {
         pub const HEADER_TOP: f32 = 44.0_f32;
         pub const CONTENT_PADDING: f32 = 64.0_f32;
+        pub const PANEL_PADDING: f32 = 50.0_f32;
         pub const TITLE_SIZE: f32 = 18.0_f32;
         pub const SEARCH_WIDTH: f32 = 360.0_f32;
         pub const SEARCH_MAX_WIDTH: f32 = 640.0_f32;

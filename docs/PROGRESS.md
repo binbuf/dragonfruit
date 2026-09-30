@@ -14841,7 +14841,9 @@ Real paths:
   `Dragonfruit.AppsDrawer`) — title (`squares-four` glyph + "Applications"),
   `SearchField`, a horizontally scrollable `SegmentedControl` pill row
   (default `All`), a `Flow` tile grid (fixed `tileWidth` = tileSize 64 +
-  spacing.xl 24, column count follows width), themed `Image` icons with a
+  spacing.xl 24, column count capped at 7, viewport capped at 5 rows and
+  scrolling beyond; the centered card adds `panelPadding` 50 on every side),
+  themed `Image` icons with a
   Phosphor `app-window` fallback, hover/focus/selected states, and arrow/
   Return/Escape keys. Props injected by the controller: `apps`, `available`,
   `active`. Filtering is local (mirrors the helper's predicates). A capture-only
@@ -14857,10 +14859,14 @@ Real paths:
   seam (appends a synthetic corpus and auto-opens; logs the Files tile rect for
   the capture script), launch via `openApp` after recording the tile rect in
   `m_dockTiles` so `set_launch_origin` fires.
-- Menu bar/compositor: `MenuBar.qml` gains an `applications` `StatusItem`
-  (`grid-four`) raising `applicationsRequested()`; `StatusGlyph.qml` maps it;
-  the compositor gains `InputAction::ShowApps` ("show-apps") bound to F4 in
-  `default_system_bindings()`, routed to `toggleAppsDrawer()`.
+- Menu bar/compositor: originally `MenuBar.qml` gained an `applications`
+  `StatusItem` (`grid-four`) raising `applicationsRequested()`; that status item
+  has since been removed. The affordance is now a permanent Applications tile
+  injected into the Dock entries (`appsLauncher: true`, second from the left)
+  that raises `appsDrawerRequested()`; it cannot be dragged, reordered, or
+  removed (its **Remove from Dock** row is disabled) and the drawer is centered
+  over the output. The compositor keeps `InputAction::ShowApps` ("show-apps")
+  bound to F4 in `default_system_bindings()`, routed to `toggleAppsDrawer()`.
 - Tokens: `component.appsDrawer` in `tokens.json`, regenerated `Theme.qml` /
   `compositor/src/design_tokens.rs`.
 - Tests: `tst_dockcore` gained 6 `appsDrawer*` headless tests (sort/tiebreak,

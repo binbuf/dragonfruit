@@ -651,6 +651,10 @@ Rectangle {
     // appears from (and minimizes/restores into) the real icon. One rect, not
     // a stream; re-emitted only when a settled re-layout moves it.
     signal entryTileRect(string desktopId, real x, real y, real w, real h)
+    // The permanent Applications launcher tile was activated (T-19.2
+    // follow-up): the Dock owns the tile and asks the shell to toggle the
+    // apps drawer. The shell injects the tile with `appsLauncher: true`.
+    signal appsDrawerRequested()
 
     // --- Geometry constants ---------------------------------------------
     // `padding` is the cross-axis inset (artwork <-> plate edge on the side
@@ -1216,7 +1220,8 @@ Rectangle {
     // everything else (temporary, recent, minimized, stack, Trash, overflow)
     // cannot.
     function reorderHintFor(entry) {
-        return entry && entry.kind === "pinned" ? reorderChordHint : "";
+        return entry && entry.kind === "pinned" && entry.appsLauncher !== true
+                ? reorderChordHint : "";
     }
 
     // The pure move helper, mirroring `movePinnedEntry` in dockmodel: the id at
@@ -1243,7 +1248,7 @@ Rectangle {
     // with the entry's 1-based position in the pinned region.
     function reorderFocusedPinned(delta) {
         var entry = focusedEntry();
-        if (!entry || entry.kind !== "pinned")
+        if (!entry || entry.kind !== "pinned" || entry.appsLauncher === true)
             return false;
         var ids = currentPinnedIds();
         var index = ids.indexOf(entry.desktopId);
@@ -1276,6 +1281,13 @@ Rectangle {
         // The overflow cell opens its "More Windows" list (T-14.7q).
         if (entry.kind === "overflow") {
             openOverflow(entry);
+            return;
+        }
+        // The permanent Applications launcher toggles the drawer instead of
+        // launching an app (T-19.2 follow-up).
+        if (entry.appsLauncher === true) {
+            hideTooltip();
+            appsDrawerRequested();
             return;
         }
         // Report this entry's tile before the click resolves, so the shell can
@@ -1826,6 +1838,10 @@ Rectangle {
         // built-in Downloads member is not.
         if (entry.kind === "stack")
             return entry.canRemove === true;
+        // The permanent Applications launcher is not draggable (no removal and
+        // no reorder): it is a fixed affordance like the Trash.
+        if (entry.appsLauncher === true)
+            return false;
         return entry.kind !== "divider" && entry.kind !== "trash"
                 && entry.kind !== "minimized" && entry.kind !== "external"
                 && entry.kind !== "overflow";
@@ -1834,7 +1850,8 @@ Rectangle {
     function currentPinnedIds() {
         var out = [];
         for (var i = 0; i < appEntries.length; ++i) {
-            if (appEntries[i].kind === "pinned")
+            if (appEntries[i].kind === "pinned"
+                    && appEntries[i].appsLauncher !== true)
                 out.push(appEntries[i].desktopId);
         }
         return out;
@@ -1947,7 +1964,8 @@ Rectangle {
             // Remove: every pinned entry except the dragged one, in order.
             for (var i = 0; i < appEntries.length; ++i) {
                 var pe = appEntries[i];
-                if (pe.kind === "pinned" && pe.id !== dragEntryId)
+                if (pe.kind === "pinned" && pe.appsLauncher !== true
+                        && pe.id !== dragEntryId)
                     out.push(pe.desktopId);
             }
             return out;
@@ -1955,7 +1973,7 @@ Rectangle {
         var vis = visualAppEntries;
         for (var j = 0; j < vis.length; ++j) {
             var e = vis[j];
-            if (e.kind === "pinned")
+            if (e.kind === "pinned" && e.appsLauncher !== true)
                 out.push(e.desktopId);
             else if (e.id === dragEntryId && dragPromote && e.desktopId !== undefined)
                 out.push(e.desktopId);
@@ -2359,6 +2377,8 @@ Rectangle {
             return trashMenuModel();
         if (e.kind === "stack")
             return stackMenuModel(e);
+        if (e.appsLauncher === true)
+            return appsLauncherMenuModel();
         var running = e.running === true;
         var minimized = e.kind === "minimized";
         var list = e.windowList !== undefined ? e.windowList : [];
@@ -2594,6 +2614,24 @@ Rectangle {
                 action: "open_downloads_folder"
             });
         }
+        return out;
+    }
+
+    // The permanent Applications launcher's menu (T-19.2 follow-up): it opens
+    // the drawer, and its Remove from Dock row is permanently disabled because
+    // the tile is not removable. It owns no app identity, so it carries no
+    // Keep/Remove, Options, or Show in Files rows.
+    function appsLauncherMenuModel() {
+        var out = [];
+        out.push({
+            type: "item", label: qsTr("Open Applications"),
+            action: "open_apps_drawer"
+        });
+        out.push({ type: "separator" });
+        out.push({
+            type: "item", label: qsTr("Remove from Dock"),
+            action: "remove_from_dock", enabled: false
+        });
         return out;
     }
 
@@ -3396,6 +3434,13 @@ Rectangle {
                 // starts the work from the emitted action below.
                 dock.beginTrashEmpty();
                 dock.menuActionRequested(item.action, item.payload);
+                return;
+            }
+            // The Applications launcher's Open row toggles the drawer locally
+            // (T-19.2 follow-up).
+            if (item.action === "open_apps_drawer") {
+                dock.closePopovers();
+                dock.appsDrawerRequested();
                 return;
             }
             // The Add Application picker is a Dock-local surface; it opens

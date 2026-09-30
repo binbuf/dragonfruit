@@ -1157,6 +1157,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Open Applications</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Open at Login</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1360,6 +1364,10 @@
     </message>
     <message>
         <source>9+</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Applications</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2214,10 +2222,6 @@
 </context>
 <context>
     <name>MenuBar</name>
-    <message>
-        <source>Applications</source>
-        <translation type="unfinished"></translation>
-    </message>
     <message>
         <source>Control Center</source>
         <translation type="unfinished"></translation>
@@ -3840,6 +3844,10 @@
     </message>
     <message>
         <source>Accessibility</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Applications</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
