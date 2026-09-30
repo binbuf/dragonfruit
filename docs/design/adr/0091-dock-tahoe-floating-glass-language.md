@@ -56,6 +56,7 @@ and interaction model of the macOS Tahoe Dock. Two constraints bound this:
 - The Dock is not a design-system gallery component, so visual verification is
   pixel tests plus committed nested/DRM captures, not a golden.
 - A real liquid-glass refraction pass remains a future material-track item;
-  this decision ships the best token-driven approximation and says so.
+  this decision ships the best token-driven approximation and says so. (Now
+  scheduled by [ADR 0182](0182-tahoe-liquid-glass-material-pass.md).)
 - The Linux-specific additions (Add Application picker, drop identity) stay;
   they extend the language rather than replace it.
