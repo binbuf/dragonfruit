@@ -457,6 +457,22 @@ just the forward group with
 - [x] T157 — T-17.5b Leak and lock enforcement verification → [tasks/157-t-17.5b-leak-and-lock-enforcement-verification.md](tasks/157-t-17.5b-leak-and-lock-enforcement-verification.md)
 - [x] T158 — T-17.6 Unfamiliar-user test and sign-off report → [tasks/158-t-17.6-unfamiliar-user-test-and-sign-off-report.md](tasks/158-t-17.6-unfamiliar-user-test-and-sign-off-report.md)
 
+## Phase 17.5 — T-20 Tahoe liquid-glass material track
+
+> **Promoted ahead of the hardware rail.** The reference is macOS Tahoe
+> ([ADR 0122](design/adr/0122-tahoe-interface-language-across-chrome.md)); the
+> flat feather-layer backdrop ([ADR 0013](design/adr/0013-backdrop-blur-pass.md))
+> was always a stand-in for a real GPU blur. The project now assumes a GPU for
+> the material, so this track lands the sampled backdrop blur and the Tahoe
+> liquid-glass pass (refraction, specular rim, adaptive tint) across all chrome.
+> Design: [20-tahoe-liquid-glass.md](design/tracks/20-tahoe-liquid-glass.md) ·
+> [ADR 0182](design/adr/0182-tahoe-liquid-glass-material-pass.md).
+
+- [ ] T179 — T-20.1 Offscreen scene texture + GPU backdrop blur pass → [tasks/179-t-20.1-scene-texture-and-backdrop-blur.md](tasks/179-t-20.1-scene-texture-and-backdrop-blur.md)
+- [ ] T180 — T-20.2 Tahoe liquid-glass: refraction, specular rim, adaptive tint → [tasks/180-t-20.2-liquid-glass-refraction-and-specular.md](tasks/180-t-20.2-liquid-glass-refraction-and-specular.md)
+- [ ] T181 — T-20.3 Chrome material rollout → [tasks/181-t-20.3-chrome-material-rollout.md](tasks/181-t-20.3-chrome-material-rollout.md)
+- [ ] T182 — T-20.4 Multi-GPU composition, software fallback, golden determinism → [tasks/182-t-20.4-multigpu-and-fallbacks.md](tasks/182-t-20.4-multigpu-and-fallbacks.md)
+
 ## Phase 18 — Hardware rail (seat / spare GPU / clean VM)
 
 > T159…T161 and T169…T171 moved forward to Phase 16.5 with the switch harness;
@@ -597,6 +613,13 @@ Targets on baseline Intel/AMD hardware, measured inside the dev loop:
 | Folder open (warm, 1k items) | < 50 ms to first frame, streaming listing | T-10 |
 | List-view scroll (100k items) | 60 Hz windowed rendering, flat memory | T-10 |
 | Rename/trash/new folder | Visible within one frame (optimistic) | T-10 |
+| Chrome material (T-20) | 60 Hz `Full` blur + liquid glass with several live windows on the recommended GPU; `Minimal` (software) stays zero-wakeup | T-20 |
+
+The T-20 material assumes a **recommended GPU** (GLES 3.x / Vulkan-capable). Where
+a budget is GPU-bound, "baseline Intel/AMD" means that integrated-GPU class; the
+`Full`/`Reduced`/`Minimal` degrade ladder (ADR
+[0015](design/adr/0015-material-degrade-tiers.md)) protects below it and on the
+software/headless path.
 
 ## How to review a unit and a track
 

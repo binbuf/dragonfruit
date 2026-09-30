@@ -104,6 +104,6 @@ bitmap output or branding.
   the T-17 visual floor reviews the surface against this ADR.
 - A true liquid-glass refraction pass is still a future material-track item
   (as in ADR 0091); this decision ships the token-driven approximation and
-  says so.
+  says so. (Now scheduled by [ADR 0182](0182-tahoe-liquid-glass-material-pass.md).)
 - Apple/Mac-only concepts remain out of scope; the Linux deviations above are
   normative so later tickets do not re-litigate them.
