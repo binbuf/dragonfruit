@@ -469,7 +469,7 @@ just the forward group with
 > [ADR 0182](design/adr/0182-tahoe-liquid-glass-material-pass.md).
 
 - [x] T179 — T-20.1 Offscreen scene texture + GPU backdrop blur pass → [tasks/179-t-20.1-scene-texture-and-backdrop-blur.md](tasks/179-t-20.1-scene-texture-and-backdrop-blur.md)
-- [~] T180 — T-20.2 Tahoe liquid-glass: refraction, specular rim, adaptive tint → [tasks/180-t-20.2-liquid-glass-refraction-and-specular.md](tasks/180-t-20.2-liquid-glass-refraction-and-specular.md) ⟵ failed
+- [x] T180 — T-20.2 Tahoe liquid-glass: refraction, specular rim, adaptive tint → [tasks/180-t-20.2-liquid-glass-refraction-and-specular.md](tasks/180-t-20.2-liquid-glass-refraction-and-specular.md) ⟵ accepted
 - [ ] T181 — T-20.3 Chrome material rollout → [tasks/181-t-20.3-chrome-material-rollout.md](tasks/181-t-20.3-chrome-material-rollout.md)
 - [ ] T182 — T-20.4 Multi-GPU composition, software fallback, golden determinism → [tasks/182-t-20.4-multigpu-and-fallbacks.md](tasks/182-t-20.4-multigpu-and-fallbacks.md)
 
