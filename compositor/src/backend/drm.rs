@@ -208,8 +208,13 @@ where
     ) -> Vec<C> {
         // The pointer location is the hotspot: move the image so the tip sits
         // exactly on it. A themed cursor's hotspot is in image pixels; a client
-        // surface's is in logical surface units scaled above.
-        let location = Point::from((location.x - self.hotspot.x, location.y - self.hotspot.y));
+        // surface's is in logical surface units scaled above. Clamp at the
+        // output origin: a negative cursor-plane position is rejected by some
+        // DRM drivers (and a rejected first frame would stall the output).
+        let location = Point::from((
+            (location.x - self.hotspot.x).max(0),
+            (location.y - self.hotspot.y).max(0),
+        ));
         match &self.status {
             CursorImageStatus::Hidden => vec![],
             // A named shape always renders the system buffer.
@@ -1127,6 +1132,13 @@ fn render_surface(
     };
 
     let scale = Scale::from(surface.output.current_scale().fractional_scale());
+    // The refresh rate is captured before the render result is handled: the
+    // empty/rejected-frame reschedule runs while this `RefCell` borrow is live.
+    let refresh = surface
+        .output
+        .current_mode()
+        .map(|mode| mode.refresh)
+        .unwrap_or(60_000);
 
     // Open this output's material pass (T-04.2), so the chrome backdrop is
     // applied at most once for it this frame.
@@ -1284,7 +1296,7 @@ fn render_surface(
                         &render_frame_result.states,
                     );
                 }
-                reschedule_probe(state, node, crtc);
+                reschedule_probe(state, node, crtc, refresh);
             } else {
                 state.stats.frames_rendered += 1;
                 // Primary scanout feedback for presentation-time.
@@ -1296,6 +1308,9 @@ fn render_surface(
                 // The feedback is delivered on vblank (frame_finish).
                 if let Err(err) = surface.drm_output.queue_frame(Some(feedback)) {
                     eprintln!("dragonfruit-compositor: queue_frame failed: {err:?}");
+                    // A rejected frame must not stall the output forever: retry
+                    // on the frame clock, exactly like an empty frame.
+                    reschedule_probe(state, node, crtc, refresh);
                 }
                 // Send this frame's `wl_surface.frame` callbacks. This is the
                 // one wakeup that lets Qt, GTK, Chromium, and Electron clients
@@ -1314,25 +1329,28 @@ fn render_surface(
         Err(err) => {
             eprintln!("dragonfruit-compositor: render error on {crtc:?}: {err:?}");
             // Temporary failures reschedule via the frame clock; context
-            // loss ends the session cleanly (FR-6).
+            // loss ends the session cleanly (FR-6). A rejected frame must
+            // never leave the output with no pending frame at all.
+            reschedule_probe(state, node, crtc, refresh);
         }
     }
 }
 
 /// Re-test for damage on the next frame boundary when a frame came back
 /// empty (the standard smithay reschedule strategy).
-fn reschedule_probe(state: &mut crate::state::DfState, node: DrmNode, crtc: crtc::Handle) {
-    let refresh = drm_shared_slot().and_then(|shared| {
-        let guard = shared.borrow();
-        guard.as_ref().and_then(|data| {
-            data.devices
-                .get(&node)
-                .and_then(|device| device.surfaces.get(&crtc))
-                .and_then(|surface| surface.output.current_mode())
-                .map(|mode| mode.refresh)
-        })
-    });
-    let Some(refresh) = refresh else { return };
+///
+/// `refresh` is passed in by the caller: this runs while `render_surface` holds
+/// the backend's `RefCell` borrow, so it must not call `drm_shared_slot()` and
+/// borrow the cell again.
+fn reschedule_probe(
+    state: &mut crate::state::DfState,
+    node: DrmNode,
+    crtc: crtc::Handle,
+    refresh: i32,
+) {
+    if refresh <= 0 {
+        return;
+    }
     let delay = Duration::from_millis(1_000_000 / refresh as u64);
     let _ = state
         .loop_handle
