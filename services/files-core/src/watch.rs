@@ -313,6 +313,7 @@ impl FolderWatcher for InotifyWatcher {
             fd,
             parent: location.clone(),
             moved: std::collections::HashMap::new(),
+            dot_hidden: crate::fallback::dot_hidden_names(&path),
         }))
     }
 }
@@ -323,13 +324,20 @@ struct InotifyReader {
     parent: Location,
     /// `IN_MOVED_FROM` names awaiting their `IN_MOVED_TO`, by cookie.
     moved: std::collections::HashMap<u32, std::ffi::OsString>,
+    /// Names the folder's `.hidden` file marks hidden (GIO semantics).
+    dot_hidden: std::collections::HashSet<std::ffi::OsString>,
 }
 
 #[cfg(target_os = "linux")]
 impl InotifyReader {
-    /// Stat the one entry a kernel event named, if it still exists. This is
-    /// the whole point of the watcher: no directory is re-listed.
+    /// Stat the one entry a kernel event named, if it still exists and is not
+    /// hidden. This is the whole point of the watcher: no directory is
+    /// re-listed. Hidden entries are not in the listing, so no event may add
+    /// one.
     fn node(&self, name: &std::ffi::OsStr) -> Option<Node> {
+        if crate::fallback::is_hidden_name(name, &self.dot_hidden) {
+            return None;
+        }
         let path = self.parent.to_file_path()?.join(name);
         if std::fs::symlink_metadata(&path).is_err() {
             return None;
@@ -402,6 +410,10 @@ impl InotifyReader {
                                 from_uri: self.parent.child(&from).uri().to_owned(),
                                 to,
                             });
+                        } else if !crate::fallback::is_hidden_name(&from, &self.dot_hidden) {
+                            // Visible → hidden: the row disappears from the
+                            // listing instead of lingering with its old name.
+                            kinds.push(self.removed(&from));
                         }
                     }
                     None => {

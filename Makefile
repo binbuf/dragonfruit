@@ -12,6 +12,8 @@ BUILD_DIR ?= build
 SOAK_CYCLES ?= 100
 DEMO_ARGS ?=
 DEV_FULL_ARGS ?=
+NATIVE_ARGS ?=
+NATIVE_UNITS ?=
 FIXTURES ?=
 IDLE_TRACE_SECS ?= 60
 DESTDIR ?=
@@ -47,7 +49,7 @@ endif
 
 .DEFAULT_GOAL := help
 .PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test \
-        visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev dev-full demo soak e2e \
+        visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev dev-full native native-return native-restart native-status native-logs demo soak e2e \
         idle-trace menubar-idle-trace latency-trace t20-frame-budget t20-material-tiers-capture drm-bringup input-validation multi-gpu-validation drm-soak second-vt-validation settingsd-capture settings-wave-1-capture \
         t18-wallpaper-capture t18-absence-matrix t15-absence-matrix t15-breadth-capture t16-a11y-audit \
         t16-i18n-capture t16-kill-matrix t16-suspend-resume-soak t17-robustness-matrix t17-window-loop-capture t17-navigation-capture \
@@ -89,6 +91,11 @@ help:
 	@echo "  make dev      — dragonfruit dev --nested (daily workflow, thin services)"
 	@echo "  make dev-full — nested session with settingsd/system-status/etc. on a private bus"
 	@echo "                  (FIXTURES=1 for deterministic pane fixtures)"
+	@echo "  make native   — one command: deps + build + install + preselect + logout"
+	@echo "  make native-return — restore the previous desktop and log out of Dragonfruit"
+	@echo "  make native-restart — rebuild and restart native units (NATIVE_UNITS=shell|all|...)"
+	@echo "  make native-status — show the native session state and unit activity"
+	@echo "  make native-logs — follow a native unit's journal (NATIVE_UNITS=shell)"
 	@echo "  make install  — lay out session units + shipped wallpaper under DESTDIR/PREFIX"
 	@echo "  make soak     — teardown hygiene: N clean cycles (default 100)"
 	@echo "  make clean    — remove build artifacts (keeps cargo cache)"
@@ -634,6 +641,30 @@ dev: build
 dev-full: build
 	$(CARGO) run -p dragonfruit-dev --bin dragonfruit -- dev --nested --shell \
 	    --services full --private-bus $(if $(FIXTURES),--fixtures,) $(DEV_FULL_ARGS)
+
+# Native development loop (T-12.6b): one command checks/installs the
+# distribution build prerequisites, builds, installs the display-manager entry,
+# user units, app/portal metadata, and symlinks to the built binaries, arms the
+# next login for Dragonfruit, then asks the host session manager to log out.
+# From inside Dragonfruit `make native-restart` rebuilds and restarts units in
+# place, and `make native-return` restores the previous desktop and logs out.
+# NATIVE_UNITS accepts the script shorthands (shell, services, all, ...) or a
+# systemd user unit name. The compositor is the session anchor; restarting it
+# ends the session, so `all` deliberately excludes it.
+native:
+	bash scripts/native-session.sh $(NATIVE_ARGS)
+
+native-return:
+	bash scripts/native-session.sh return $(NATIVE_ARGS)
+
+native-restart:
+	bash scripts/native-session.sh restart $(NATIVE_UNITS)
+
+native-status:
+	bash scripts/native-session.sh status
+
+native-logs:
+	bash scripts/native-session.sh logs $(NATIVE_UNITS)
 
 # T-01.6a: one command that builds and launches the loop demo. With a host
 # Wayland session it opens the nested compositor for the human walkthrough

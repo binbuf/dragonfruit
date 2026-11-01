@@ -741,6 +741,66 @@ harness is what lets the shell stay a normal user process that never edits
 root-owned DM files. The decision is frozen in
 [ADR 0174](adr/0174-real-session-round-trip-state.md).
 
+### Turnkey native loop for daily development
+
+`scripts/native-session.sh` is the single entry point. With no arguments it
+does the whole first run: it checks the host for the build prerequisites,
+installs them through the distribution package manager when needed
+(`dnf`/`yum`, `apt-get`, `pacman`, `zypper`, or `apk`), builds both halves,
+installs the dev session, preselects Dragonfruit, and asks the current desktop
+to log out.
+
+```bash
+make native                     # or: scripts/native-session.sh
+scripts/native-session.sh --no-logout   # install/preselect only
+scripts/native-session.sh return        # inside Dragonfruit: restore + log out
+scripts/native-session.sh restart       # rebuild, restart the shell
+scripts/native-session.sh restart all
+scripts/native-session.sh status
+scripts/native-session.sh logs shell
+scripts/native-session.sh deps          # print the detected package command
+```
+
+The installer is idempotent: it stages the T-12.2 entry/units, the portal
+discovery files, and the first-party app entries, then copies them under
+`/usr` (sudo is used only for that step). The runtime binaries are **symlinks**
+into `target/debug` and `build/`, so a later `make build` updates what the next
+`restart` runs without reinstalling anything. `--no-deps` skips the package
+bootstrap when the host is already provisioned.
+
+The native session requires systemd user units. On a non-systemd host the
+script refuses and points at the nested `make dev` loop; the build itself still
+works. Pre-selection is supported for GDM, SDDM, LightDM, and the newer
+SDDM-derived login manager; an unknown or ambiguous login manager still gets
+the session installed, with the human choosing Dragonfruit at the greeter.
+
+`NATIVE_UNITS` accepts the shorthands `shell`, `settings`, `notifications`,
+`wallpaper`, `apps`, `menu`, `portal`, `services`, and `all`, or an explicit
+systemd user unit. The default is `shell`, the common edit/restart loop. `all`
+excludes the compositor on purpose: the compositor is the session anchor, so
+restarting it ends the session. Compositor changes need `make native-return`
+followed by `make native` (or the nested `make dev` loop); there is no live
+compositor handoff.
+
+The round trip still degrades honestly on an unrecognized display manager: the
+session is installed and the previous selection is restored, but the human
+picks Dragonfruit at the greeter. `--autologin` is available on supported DMs;
+run `scripts/native-session.sh ready` once inside the session to commit it.
+
+Two newer-host adjustments matter in practice:
+
+- The newer SDDM-derived login manager is not in the T-12.6a adapter table
+  yet. The helper writes a `[Greeter] PreselectedSession=dragonfruit.desktop`
+  drop-in under `/etc/plasmalogin.conf.d/` so Dragonfruit is already selected
+  at the greeter; `return`/`recover` remove it. Autologin is left off for that
+  manager (manual password entry), because the harness has no ready-beat
+  adapter for it.
+- Logout goes through the host's own session-manager prompt
+  (`org.kde.LogoutPrompt` on newer Plasma, then the historical KSMServer
+  method) rather than `loginctl terminate-session`. A hard logind teardown can
+  leave a newer greeter's auth helper and DRM state unhappy; the normal
+  prompt also preserves unsaved-work handling.
+
 ### What "seamless" cannot mean
 
 - **No app continuity across the swap.** Wayland has no live handoff, and the

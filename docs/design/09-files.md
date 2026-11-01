@@ -661,7 +661,10 @@ The macOS model: **the file manager owns the desktop.**
   delivers raw press pairs, the process synthesizes Qt's double-click from a
   second press in the platform window, and a directory open launches the
   browser with the desktop's forced `offscreen` platform removed so the new
-  window maps as a normal Wayland client.
+  window maps as a normal Wayland client. A file open likewise launches the
+  default handler (`xdg-open`, else `gio open`) in a separate process with
+  `QT_QPA_PLATFORM` removed: `QDesktopServices` in the offscreen desktop has
+  no platform services and only logs that `openDocument()` is unsupported.
 - **Still deferred:** Desktop Reveal icon exposure, selection/focus transfer
   between the desktop, chrome, and windows, and the session-manager
   provisioning of the desktop token (see the T-19.3 hand-off).
