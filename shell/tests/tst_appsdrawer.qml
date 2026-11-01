@@ -239,6 +239,11 @@ Item {
                     "small viewport " + smallGrid.height + " vs content "
                     + smallGrid.contentHeight);
             verify(smallGrid.height < small.gridMaxHeight);
+
+            // The slim scroll affordance appears only when there is more than
+            // one viewport of rows.
+            verify(findChild(roomy, "appsDrawerScrollTrack").visible);
+            verify(!findChild(small, "appsDrawerScrollTrack").visible);
         }
 
         // The drawer's top section is a flat search bar (no pill background)
@@ -279,6 +284,151 @@ Item {
             compare(drawer.query, "calc");
             compare(tiles(drawer).length, 1);
             compare(labels(drawer)[0], "Calculator");
+        }
+
+        // Filtering rebuilds the tile model; that must not hand focus to a
+        // delegate. The reported native failure was that the first character
+        // worked, then Backspace/Delete and the next characters went nowhere
+        // (or were appended as control characters by the root fallback).
+        function test_filtering_keeps_focus_in_the_search_field() {
+            var drawer = make({ apps: sampleApps, active: false });
+            drawer.active = true;
+            wait(0);
+            var search = findChild(drawer, "appsDrawerSearch");
+            verify(search.input.activeFocus, "search field lost focus on open");
+
+            keyClick(Qt.Key_C);
+            waitForRendering(stage);
+            compare(drawer.query, "c");
+            verify(search.input.activeFocus,
+                   "filtering handed active focus to a tile delegate");
+
+            keyClick(Qt.Key_Backspace);
+            waitForRendering(stage);
+            compare(drawer.query, "");
+            compare(search.text, "");
+            verify(search.input.activeFocus,
+                   "Backspace left the search field unfocused");
+
+            // The list is rebuilt again on every character and on clear.
+            keyClick(Qt.Key_A);
+            keyClick(Qt.Key_Backspace);
+            waitForRendering(stage);
+            compare(drawer.query, "");
+            verify(search.input.activeFocus,
+                   "clearing the filter left the search field unfocused");
+        }
+
+        // Opening the launcher is a fresh session: a query/category/selection
+        // from the previous open must not survive and hide the grid.
+        function test_reopening_resets_the_query_category_and_selection() {
+            var drawer = make({ apps: sampleApps, active: true });
+            drawer.setQueryText("calc");
+            drawer.category = "utilities";
+            drawer.currentIndex = 1;
+            waitForRendering(stage);
+            compare(drawer.visibleApps.length, 1);
+
+            drawer.active = false;
+            wait(0);
+            drawer.active = true;
+            wait(0);
+            var search = findChild(drawer, "appsDrawerSearch");
+            compare(drawer.query, "");
+            compare(drawer.category, "all");
+            compare(drawer.currentIndex, -1);
+            compare(search.text, "");
+            compare(tiles(drawer).length, sampleApps.length);
+            verify(search.input.activeFocus, "reopened drawer lost search focus");
+        }
+
+        // Launchpad behaviour: Escape dismisses even while a search is active.
+        // The next open starts clean, so Escape never has to be pressed twice.
+        function test_escape_dismisses_with_a_non_empty_query() {
+            var drawer = make({ apps: sampleApps, active: false });
+            drawer.active = true;
+            wait(0);
+            keyClick(Qt.Key_C);
+            waitForRendering(stage);
+            compare(drawer.query, "c");
+            keyClick(Qt.Key_Escape);
+            compare(dismissedSpy.count, 1);
+        }
+
+        // With no arrow selection, Return on a filtered list opens the top
+        // hit, matching the launcher's Spotlight-style expectation.
+        function test_return_launches_the_top_hit_when_filtered() {
+            var drawer = make({ apps: sampleApps, active: false });
+            drawer.active = true;
+            wait(0);
+            drawer.setQueryText("calc");
+            waitForRendering(stage);
+            compare(drawer.currentIndex, -1);
+            var search = findChild(drawer, "appsDrawerSearch");
+            search.input.forceActiveFocus();
+            keyClick(Qt.Key_Return);
+            waitForRendering(stage);
+            compare(launchedSpy.count, 1);
+            compare(launchedSpy.signalArguments[0][0],
+                    "org.example.Calculator.desktop");
+        }
+
+        // Keyboard selection follows the real grid stride and the viewport
+        // scrolls to keep the highlighted tile visible.
+        function test_keyboard_navigation_scrolls_the_selection_into_view() {
+            var many = [];
+            for (var i = 0; i < 50; ++i)
+                many.push({ desktopId: "r" + i + ".desktop", name: "Row " + i,
+                            iconPath: "", categories: [] });
+            var drawer = make({ apps: many, active: false, height: 720 });
+            drawer.active = true;
+            wait(0);
+            var grid = findChild(drawer, "appsDrawerGrid");
+            compare(drawer.currentIndex, -1);
+            compare(grid.contentY, 0);
+
+            keyClick(Qt.Key_Down);
+            waitForRendering(stage);
+            compare(drawer.currentIndex, 0);
+
+            for (var k = 0; k < 10; ++k)
+                keyClick(Qt.Key_Down);
+            waitForRendering(stage);
+            compare(drawer.currentIndex,
+                    Math.min(many.length - 1, drawer.columns * 10));
+            verify(grid.contentY > 0, "grid did not scroll to the selection");
+
+            var selected = tiles(drawer)[drawer.currentIndex];
+            var top = selected.y;
+            var bottom = top + selected.height;
+            verify(top >= grid.contentY - 1,
+                   "selected tile above viewport: " + top + " < " + grid.contentY);
+            verify(bottom <= grid.contentY + grid.height + 1,
+                   "selected tile below viewport: " + bottom + " > "
+                   + (grid.contentY + grid.height));
+        }
+
+        // The card can be measured before the controller gives the offscreen
+        // window an output size; `panelRect` must never report a negative
+        // extent (Smithay's Size constructor panics on one and takes the
+        // session down).
+        function test_panel_rect_is_never_negative() {
+            var drawer = make({ apps: sampleApps, width: 0, height: 0 });
+            var rect = drawer.panelRect();
+            verify(rect.width >= 0, "panel width " + rect.width);
+            verify(rect.height >= 0, "panel height " + rect.height);
+            compare(rect.width, 0);
+            compare(rect.height, 0);
+        }
+
+        // A filtering action starts a new selection rather than carrying the
+        // old index onto a different app.
+        function test_filtering_clears_the_keyboard_selection() {
+            var drawer = make({ apps: sampleApps });
+            drawer.currentIndex = 2;
+            drawer.setQueryText("o");
+            waitForRendering(stage);
+            compare(drawer.currentIndex, -1);
         }
     }
 }

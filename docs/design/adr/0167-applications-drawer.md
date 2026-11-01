@@ -83,13 +83,20 @@ Spotlight-equivalent search pane) will build on them:
 - The drawer's scene coordinates equal output coordinates (the surface maps 1:1
   to the output), which is why the recorded tile rect can feed
   `set_launch_origin` unchanged.
-- The grid is a `Flow` with a fixed tile size, a column count capped at seven,
+- The grid is a `Grid` with a fixed tile size, a column count capped at seven,
   and a viewport capped at five rows (a longer corpus scrolls): wide outputs
   lay out at most seven per row, and narrow outputs wrap to fewer instead of
-  overflowing. The caps are width/height caps (`maxColumns`, `maxRows`), so the
-  keyboard row stride always matches the Flow's real layout. The drawer card is
-a ~90%-opaque frosted panel whose top section is a flat (background-less)
-search bar framed by hairline rules over the pill row and grid; it hugs the
-content with `panelPadding` (50px) on the sides and a tighter
-`panelPaddingVertical` (32px) above and below, clamped to the output so a narrow
-screen shrinks the card instead of clipping it.
+  overflowing. Column and row gaps are separate tokens
+  (`gridColumnGap`/`gridRowGap`), and the caps (`maxColumns`, `maxRows`) mean
+  the keyboard row stride always matches the real layout. The drawer card is
+  a ~90%-opaque frosted panel whose top section is a flat (background-less)
+  search bar framed by hairline rules over the pill row and grid; it hugs the
+  content with `panelPadding` (50px) on the sides and a tighter
+  `panelPaddingVertical` (32px) above and below, clamped to the output so a
+  narrow screen shrinks the card instead of clipping it.
+- Every open is a fresh launcher session: the query, category selection,
+  keyboard selection, and grid/pill scroll offsets reset, and the search field
+  takes active focus. The tiles are not focusable — a `Repeater` rebuild must
+  never steal focus from the field mid-typing. Escape dismisses outright (the
+  next open starts clean); Return on a filtered list opens the top hit when no
+  arrow selection is active.
