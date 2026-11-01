@@ -343,6 +343,16 @@ fn reserve(zones: &mut ReservedZones, edge: Edge, thickness: i32) {
     }
 }
 
+/// Build the declared panel rect for a chrome surface from client-supplied
+/// geometry.
+///
+/// `set_panel_rect` is untrusted client input: the rect legitimately shrinks to
+/// nothing while a surface animates, but a negative size would panic Smithay's
+/// geometry type and take the whole session down. Clamp both extents.
+pub fn panel_rect(x: i32, y: i32, width: i32, height: i32) -> Rectangle<i32, Logical> {
+    Rectangle::new((x, y).into(), (width.max(0), height.max(0)).into())
+}
+
 /// Fold a set of chrome surfaces into the compositor's global reserved
 /// zones (the union of every edge, so Zoom never overlaps any chrome).
 ///
@@ -680,6 +690,24 @@ mod tests {
         let zones = aggregate_reserved([&top, &dock].into_iter(), ReservedZones::default());
         assert_eq!(zones.top, 0);
         assert_eq!(zones.bottom, 80);
+    }
+
+    #[test]
+    fn panel_rect_clamps_negative_client_extents() {
+        // `set_panel_rect` is client input. A degenerate (zero-height) panel is
+        // valid while a surface animates, but negative extents must never reach
+        // Smithay's `Size` constructor, which panics.
+        let clamped = panel_rect(10, 20, -5, -64);
+        assert_eq!(clamped.loc.x, 10);
+        assert_eq!(clamped.loc.y, 20);
+        assert_eq!(clamped.size.w, 0);
+        assert_eq!(clamped.size.h, 0);
+
+        let normal = panel_rect(-3, 4, 860, 736);
+        assert_eq!(normal.loc.x, -3);
+        assert_eq!(normal.loc.y, 4);
+        assert_eq!(normal.size.w, 860);
+        assert_eq!(normal.size.h, 736);
     }
 
     #[test]

@@ -6327,9 +6327,9 @@ void ShellController::showAppsDrawer()
     m_appsDrawerItem->setProperty("active", true);
     if (m_appsDrawerWidth > 0 && m_appsDrawerHeight > 0)
         renderAppsDrawer();
-    // Take active focus so Escape and the grid's arrow/Return navigation are
-    // delivered to the overlay and a later focus loss reads as dismissal.
-    m_appsDrawerItem->forceActiveFocus();
+    // Put the caret in the search field before the compositor hands us the
+    // keyboard, not just on the root item: the drawer is a typing surface.
+    QMetaObject::invokeMethod(m_appsDrawerItem, "focusSearch");
     if (m_protocol) {
         m_protocol->setAppsDrawerInputRegion(m_appsDrawerWidth, m_appsDrawerHeight);
         // The drawer is a full-output modal surface opened by a Dock click;
@@ -6412,10 +6412,16 @@ void ShellController::refreshAppsDrawer(bool reloadCorpus)
     QVariantList list;
     list.reserve(rows.size());
     for (const AppsDrawerRow &row : rows) {
+        // A QUrl, not a hand-built `file://` string: icon paths may contain
+        // spaces or other characters that need percent-encoding.
+        const QString iconUrl = row.iconPath.isEmpty()
+                ? QString()
+                : QUrl::fromLocalFile(row.iconPath).toString();
         list.append(QVariantMap{
             {QStringLiteral("desktopId"), row.desktopId},
             {QStringLiteral("name"), row.name},
             {QStringLiteral("iconPath"), row.iconPath},
+            {QStringLiteral("iconUrl"), iconUrl},
             {QStringLiteral("categories"), row.categories},
         });
     }
@@ -6498,16 +6504,16 @@ void ShellController::onAppsDrawerPointerLeft()
     scheduleAppsDrawerRender();
 }
 
-void ShellController::onAppsDrawerKeyboardFocused(bool)
+void ShellController::onAppsDrawerKeyboardFocused(bool focused)
 {
-    // The compositor owns the focus transfer (the surface is OnDemand); the
-    // overlay's Keys handler owns Escape/arrows/Return. Do not steal active
-    // focus from the search field when it already owns it (typed text would
-    // otherwise be delivered to the root item instead).
-    if (m_appsDrawerItem && m_appsDrawerOpen && m_appsDrawerWindow
-        && !m_appsDrawerWindow->activeFocusItem()) {
-        m_appsDrawerItem->forceActiveFocus();
-    }
+    if (!focused)
+        return;
+    // The compositor owns the focus transfer (the surface is OnDemand). The
+    // search field is the drawer's one keyboard owner, so restore it whenever
+    // the surface regains the keyboard (a reopened drawer used to land on the
+    // root item, where Backspace/Delete and editing keys were dropped).
+    if (m_appsDrawerItem && m_appsDrawerOpen && m_appsDrawerWindow)
+        QMetaObject::invokeMethod(m_appsDrawerItem, "focusSearch");
 }
 
 void ShellController::onAppsDrawerKeyEvent(quint32 key, bool pressed)
@@ -6585,8 +6591,8 @@ void ShellController::renderAppsDrawer()
             m_protocol->setAppsDrawerPanelRect(
                 qRound(map.value(QStringLiteral("x")).toDouble()),
                 qRound(map.value(QStringLiteral("y")).toDouble()),
-                qRound(map.value(QStringLiteral("width")).toDouble()),
-                qRound(map.value(QStringLiteral("height")).toDouble()));
+                qMax(0, qRound(map.value(QStringLiteral("width")).toDouble())),
+                qMax(0, qRound(map.value(QStringLiteral("height")).toDouble())));
         }
         m_protocol->commitAppsDrawerImage(image);
     }

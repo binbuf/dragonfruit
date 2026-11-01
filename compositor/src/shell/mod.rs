@@ -1680,8 +1680,7 @@ impl Dispatch<df_layer_surface::DfLayerSurface, LayerUserData> for DfState {
                     width,
                     height,
                 } => {
-                    entry.state.panel_rect =
-                        Some(Rectangle::new((x, y).into(), (width, height).into()));
+                    entry.state.panel_rect = Some(layer::panel_rect(x, y, width, height));
                     panel_changed = true;
                 }
                 df_layer_surface::Request::AckConfigure { .. } => {}
