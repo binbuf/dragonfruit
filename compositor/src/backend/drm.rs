@@ -13,7 +13,7 @@
 //! non-desktop connectors, explicit-sync (`drm_syncobj`), VRR and
 //! night-light plumbing (T-16), and suspend soak behavior (T-31 hooks).
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::Duration;
@@ -39,6 +39,7 @@ use smithay::backend::renderer::element::{AsRenderElements, Kind};
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::renderer::multigpu::gbm::GbmGlesBackend;
 use smithay::backend::renderer::multigpu::{GpuManager, MultiRenderer};
+use smithay::backend::renderer::utils::with_renderer_surface_state;
 use smithay::backend::renderer::{ImportAll, ImportDma, ImportDmaWl, ImportMem, ImportMemWl};
 use smithay::backend::session::libseat::LibSeatSession;
 use smithay::backend::session::{Event as SessionEvent, Session};
@@ -114,6 +115,10 @@ struct PointerElement {
     theme: crate::cursor_theme::CursorTheme,
     /// The built-in arrow used when the theme is absent or a shape is missing.
     fallback: MemoryRenderBuffer,
+    /// Whether the last texture import failed, so a persistent renderer error
+    /// is logged once instead of on every frame. The import itself is retried
+    /// each frame, so a transient GPU reset recovers the cursor by itself.
+    import_failed: Cell<bool>,
 }
 
 impl Default for PointerElement {
@@ -125,6 +130,7 @@ impl Default for PointerElement {
             current: None,
             theme: crate::cursor_theme::CursorTheme::load(),
             fallback: arrow_cursor_buffer(),
+            import_failed: Cell::new(false),
         }
     }
 }
@@ -219,22 +225,33 @@ where
             CursorImageStatus::Hidden => vec![],
             // A named shape always renders the system buffer.
             CursorImageStatus::Named(_) => {
-                if let Some(buffer) = self.buffer.as_ref() {
-                    vec![PointerRenderElement::<R>::from(
-                        MemoryRenderBufferRenderElement::from_buffer(
-                            renderer,
-                            location.to_f64(),
-                            buffer,
-                            None,
-                            None,
-                            None,
-                            Kind::Cursor,
-                        )
-                        .expect("lost system pointer buffer"),
-                    )
-                    .into()]
-                } else {
-                    vec![]
+                let Some(buffer) = self.buffer.as_ref() else {
+                    return vec![];
+                };
+                match MemoryRenderBufferRenderElement::from_buffer(
+                    renderer,
+                    location.to_f64(),
+                    buffer,
+                    None,
+                    None,
+                    None,
+                    Kind::Cursor,
+                ) {
+                    Ok(element) => {
+                        self.import_failed.set(false);
+                        vec![PointerRenderElement::<R>::from(element).into()]
+                    }
+                    Err(err) => {
+                        // A cursor texture import is a best-effort operation:
+                        // a transient GPU/context error must not abort the whole
+                        // session. Draw no cursor this frame; `from_buffer`
+                        // leaves the failed texture uncached, so the next frame
+                        // retries.
+                        if !self.import_failed.replace(true) {
+                            eprintln!("dragonfruit-compositor: cursor import failed: {err:?}");
+                        }
+                        vec![]
+                    }
                 }
             }
             CursorImageStatus::Surface(surface) => {
@@ -1180,9 +1197,15 @@ fn render_surface(
                 state.cursor_image = CursorImageStatus::default_named();
             }
         }
-        data.pointer_element
-            .set_status(state.cursor_image.clone(), scale.x);
-        if let CursorImageStatus::Surface(ref surface) = state.cursor_image {
+        // A live cursor surface with no committed buffer draws nothing. That
+        // is normally transient (the client sets the surface, then commits),
+        // but a client that stalls or tears down its buffer can leave it stale
+        // and the pointer would stay invisible indefinitely. Use the themed
+        // default for this frame without discarding the client's surface: the
+        // client keeps the role, and the next commit is drawn again.
+        let status = effective_cursor_status(&state.cursor_image);
+        data.pointer_element.set_status(status.clone(), scale.x);
+        if let CursorImageStatus::Surface(ref surface) = status {
             let hotspot = cursor_hotspot(surface);
             data.pointer_element.set_surface_hotspot(hotspot, scale.x);
         }
@@ -1198,31 +1221,32 @@ fn render_surface(
         ));
     }
 
-    // Scene elements: surface trees of mapped windows (live buffers only —
-    // effects are compositor render passes, never screenshots). The appear
-    // transform is applied per window (T-02.1b).
-    {
-        let window_elements = crate::render::window_render_elements::<
-            UdevRenderer<'_>,
-            DrmOutputElements<UdevRenderer<'_>, WaylandSurfaceRenderElement<UdevRenderer<'_>>>,
-        >(&mut renderer, state, &surface.output, scale);
-        custom_elements.extend(window_elements);
-    }
-
-    // Chrome surfaces (menu bar, overlays) composite above the window space
-    // (T-09).
+    // `DrmCompositor::render_frame` consumes this list front-to-back, so the
+    // order below is the desktop's stack order, top first. Chrome (the menu
+    // bar, the Dock, and transient overlays such as the Applications drawer)
+    // must precede the window space: with windows first, every normal window
+    // painted over the drawer (the native z-order failure).
+    //
+    // Chrome surfaces (menu bar, drawer, overlays) composite above the window
+    // space (T-09).
     custom_elements.extend(crate::render::chrome_render_elements::<
         _,
         DrmOutputElements<UdevRenderer<'_>, WaylandSurfaceRenderElement<UdevRenderer<'_>>>,
     >(&mut renderer, state, &surface.output, scale));
 
-    // Backdrop blur under the chrome (T-04.2). NOTE: this rail's element list
-    // is built front-to-back but currently places the window surfaces before
-    // the chrome, so the backdrop composes below the windows here until that
-    // pre-existing ordering is reconciled; DRM is untested (no hardware), like
-    // the rest of this rail.
+    // The chrome backdrop sits directly below the chrome and above every
+    // window, titlebar, and menu, so a translucent panel tints/blurs the scene
+    // it covers instead of the raw window content bleeding through (T-04.2).
     custom_elements.extend(
         crate::render::chrome_backdrop_render_elements(state, &surface.output, scale)
+            .into_iter()
+            .map(DrmOutputElements::Decoration),
+    );
+
+    // The open window menu (T-01.4) composites above the titlebars but below
+    // the shell chrome.
+    custom_elements.extend(
+        crate::render::window_menu_render_elements(state, &surface.output, scale)
             .into_iter()
             .map(DrmOutputElements::Decoration),
     );
@@ -1234,12 +1258,16 @@ fn render_surface(
             .map(DrmOutputElements::Decoration),
     );
 
-    // The open window menu (T-01.4) composites above the titlebars.
-    custom_elements.extend(
-        crate::render::window_menu_render_elements(state, &surface.output, scale)
-            .into_iter()
-            .map(DrmOutputElements::Decoration),
-    );
+    // Scene elements: surface trees of mapped windows (live buffers only —
+    // effects are compositor render passes, never screenshots). The appear
+    // transform is applied per window (T-02.1b).
+    {
+        let window_elements = crate::render::window_render_elements::<
+            UdevRenderer<'_>,
+            DrmOutputElements<UdevRenderer<'_>, WaylandSurfaceRenderElement<UdevRenderer<'_>>>,
+        >(&mut renderer, state, &surface.output, scale);
+        custom_elements.extend(window_elements);
+    }
 
     // Elevation-token-driven shadows (T-04.1a) composite below the window
     // surfaces, so the ring beyond a window is visible.
@@ -1407,6 +1435,25 @@ fn set_drm_shared(shared: SharedData) {
 
 fn drm_shared_slot() -> Option<SharedData> {
     DRM_SHARED.with(|slot| slot.borrow().clone())
+}
+
+/// The cursor status the DRM rail can actually draw.
+///
+/// A client cursor surface only contributes render elements once it has a
+/// committed buffer. Until then it would draw nothing, so fall back to the
+/// system default without changing the seat's stored status (the client may
+/// still be about to commit, and replacing it would lose the requested shape).
+fn effective_cursor_status(status: &CursorImageStatus) -> CursorImageStatus {
+    match status {
+        CursorImageStatus::Surface(surface)
+            if !surface.alive()
+                || !with_renderer_surface_state(surface, |state| state.buffer().is_some())
+                    .unwrap_or(false) =>
+        {
+            CursorImageStatus::default_named()
+        }
+        status => status.clone(),
+    }
 }
 
 /// The seat's wl_pointer.set_cursor surfaces report their hotspots here.
