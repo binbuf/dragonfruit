@@ -746,14 +746,16 @@ root-owned DM files. The decision is frozen in
 `scripts/native-session.sh` is the single entry point. With no arguments it
 does the whole first run: it checks the host for the build prerequisites,
 installs them through the distribution package manager when needed
-(`dnf`/`yum`, `apt-get`, `pacman`, `zypper`, or `apk`), builds both halves,
-installs the dev session, preselects Dragonfruit, and asks the current desktop
-to log out.
+(`dnf`/`yum`, `apt-get`, `pacman`, `zypper`, or `apk`), writes the login
+runtime environment, preflights the built binaries against it, builds both
+halves, installs the dev session, preselects Dragonfruit, and asks the current
+desktop to log out.
 
 ```bash
 make native                     # or: scripts/native-session.sh
 scripts/native-session.sh --no-logout   # install/preselect only
-scripts/native-session.sh return        # inside Dragonfruit: restore + log out
+scripts/native-session.sh return        # restore the host login (works from a TTY)
+scripts/native-session.sh recover       # same safe path; no session required
 scripts/native-session.sh restart       # rebuild, restart the shell
 scripts/native-session.sh restart all
 scripts/native-session.sh status
@@ -774,6 +776,62 @@ works. Pre-selection is supported for GDM, SDDM, LightDM, and the newer
 SDDM-derived login manager; an unknown or ambiguous login manager still gets
 the session installed, with the human choosing Dragonfruit at the greeter.
 
+#### The login runtime environment (required for a dev login)
+
+`make dev` works because the Makefile exports `LD_LIBRARY_PATH` to every child.
+A display-manager login does not: the greeter starts only the session entry,
+and systemd user units inherit the *user manager's* environment. On this repo's
+dev host the Qt shell/apps are linked against the pinned toolchain at
+`$HOME/.local/df-toolchain/usr` and the compositor against the user-space
+sysroot, so a login without those paths exits at startup with
+`error while loading shared libraries` (the visible symptom is a black desktop
+that never returns to the greeter).
+
+`start` therefore writes `$HOME/.config/dragonfruit/native.env` with the
+existing loader directories (`$DF_TOOLCHAIN/lib64`, `$HOME/.local/df-devroot/
+lib64`, `$HOME/.local/lib`, and the install prefix's lib dirs), plus a
+per-user systemd drop-in (`~/.config/systemd/user/<unit>.d/`) that pins
+`LD_LIBRARY_PATH` on the compositor and shell units (the Qt apps the shell
+launches inherit it). The session entry sources the env file for its own
+children and imports the session identity (`XDG_SESSION_ID`, `XDG_VTNR`,
+`XDG_SEAT`) into the user manager; the loader path stays scoped to those units
+so it cannot leak into the host desktop's user manager. `recover` removes
+both. A packaged install that does not need the file is unaffected.
+
+Before changing the host, `start` runs a preflight: every built binary is
+resolved with `ldd` under a clean environment containing only that login path.
+If any library is unresolved, the script stops *before* the preselect and the
+logout, so a broken build cannot strand the workstation at a greeter that only
+offers Dragonfruit. `--skip-preflight` is the escape hatch.
+
+#### Recovering from a broken login (the TTY path)
+
+`return` and `recover` are the same safety path and no longer require being
+inside Dragonfruit. They:
+
+1. remove the greeter preselect (only a file this script wrote, identified by
+   its marker) and the dev runtime environment;
+2. clear the newer login manager's remembered last session (otherwise it would
+   fall back to the failed Dragonfruit login after the preselect is gone);
+3. restore the display-manager files snapshotted by the T-12.6b round trip,
+   under sudo, and clear the state file (a Python helper is used so recovery
+   does not depend on the built dev tool);
+4. stop the failed Dragonfruit user units and terminate only Dragonfruit
+   graphical sessions (never the text console);
+5. from a text console, restart the login manager so the restored default is
+   selectable again; from inside a working desktop, just print the instruction
+   (or pass `--restart-dm`).
+
+The command is intentionally available as its own Make target:
+
+```bash
+# from Ctrl+Alt+F3 (a text console), as the desktop user:
+make native-recover
+# or: bash scripts/native-session.sh recover
+```
+
+`make native` prints that line before it logs out.
+
 `NATIVE_UNITS` accepts the shorthands `shell`, `settings`, `notifications`,
 `wallpaper`, `apps`, `menu`, `portal`, `services`, and `all`, or an explicit
 systemd user unit. The default is `shell`, the common edit/restart loop. `all`
@@ -790,16 +848,22 @@ run `scripts/native-session.sh ready` once inside the session to commit it.
 Two newer-host adjustments matter in practice:
 
 - The newer SDDM-derived login manager is not in the T-12.6a adapter table
-  yet. The helper writes a `[Greeter] PreselectedSession=dragonfruit.desktop`
-  drop-in under `/etc/plasmalogin.conf.d/` so Dragonfruit is already selected
-  at the greeter; `return`/`recover` remove it. Autologin is left off for that
-  manager (manual password entry), because the harness has no ready-beat
-  adapter for it.
+  yet. The helper writes a marked `[Greeter]
+  PreselectedSession=dragonfruit.desktop` drop-in under
+  `/etc/plasmalogin.conf.d/` so Dragonfruit is already selected at the greeter;
+  `return`/`recover` remove it. Because that drop-in is root-owned, the shell's
+  "Quit to <previous desktop>" row (which runs the dev tool directly) cannot
+  remove it; on this manager use `make native-return` for the clean return.
+  Autologin is left off for that manager (manual password entry), because the
+  harness has no ready-beat adapter for it.
 - Logout goes through the host's own session-manager prompt
   (`org.kde.LogoutPrompt` on newer Plasma, then the historical KSMServer
   method) rather than `loginctl terminate-session`. A hard logind teardown can
   leave a newer greeter's auth helper and DRM state unhappy; the normal
-  prompt also preserves unsaved-work handling.
+  prompt also preserves unsaved-work handling. This applies to the round-trip
+  arm; the CLI `recover`/`return` ends the Dragonfruit session by stopping
+  `dragonfruit-session.target` (the compositor anchor), and restarts the login
+  manager when it is run from a text console.
 
 ### What "seamless" cannot mean
 

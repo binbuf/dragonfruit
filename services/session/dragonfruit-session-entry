@@ -23,23 +23,97 @@
 #   DF_SESSION_SOCKET  the private socket name (default dragonfruit-wayland)
 #   DF_SESSION_TARGET  the user target to start/stop
 #   DF_SYSTEMCTL       the systemctl to use (default systemctl)
+#   DF_SESSION_START_TIMEOUT  seconds to wait for the compositor socket (30)
+#   DRAGONFRUIT_SESSION_ENV   extra environment file to source
 set -eu
 
 session_bin="${DF_SESSION_BIN:-/usr/bin/dragonfruit-session}"
 socket="${DF_SESSION_SOCKET:-dragonfruit-wayland}"
 target="${DF_SESSION_TARGET:-dragonfruit-session.target}"
 systemctl="${DF_SYSTEMCTL:-systemctl}"
+start_timeout="${DF_SESSION_START_TIMEOUT:-30}"
+
+# The native dev installer writes the runtime library paths the built tree
+# links against (the repo's Qt toolchain and user-space sysroot). A packaged
+# build does not need it; a dev login does, because the display manager does
+# not inherit `make`'s LD_LIBRARY_PATH. Source the first file that exists; the
+# file's LD_LIBRARY_PATH is also pinned on the Dragonfruit units by a per-user
+# drop-in, so it never has to be imported into the manager itself.
+home_dir="${HOME:-/nonexistent}"
+for candidate in \
+    "${DRAGONFRUIT_SESSION_ENV:-}" \
+    "${XDG_CONFIG_HOME:-$home_dir/.config}/dragonfruit/native.env" \
+    "$home_dir/.config/dragonfruit/native.env"; do
+    [ -n "$candidate" ] || continue
+    if [ -r "$candidate" ]; then
+        set -a
+        # shellcheck disable=SC1090
+        . "$candidate"
+        set +a
+        break
+    fi
+done
 
 # 1. The session environment. `--print-env` prints KEY=VALUE lines for the
 #    base variables plus a fresh DRAGONFRUIT_LAUNCH_TOKEN; `eval` puts them in
 #    this shell, then the user manager carries them to every unit.
 eval "$("$session_bin" --print-env --socket-name "$socket")"
+# User units inherit the user manager's environment, so importing the session
+# identity is what makes it reach the compositor (libseat/logind uses
+# XDG_SESSION_ID to pick the right session). The dev-build loader path is
+# deliberately *not* imported here: it is pinned per unit by a drop-in so it
+# can never leak into the host desktop's user manager.
 "$systemctl" --user import-environment \
     XDG_CURRENT_DESKTOP XDG_SESSION_TYPE WAYLAND_DISPLAY \
-    DISPLAY DRAGONFRUIT_LAUNCH_TOKEN DRAGONFRUIT_DEV_RETURN DRAGONFRUIT_DEV_BIN
+    DISPLAY DRAGONFRUIT_LAUNCH_TOKEN DRAGONFRUIT_DEV_RETURN DRAGONFRUIT_DEV_BIN \
+    XDG_SESSION_ID XDG_SESSION_DESKTOP XDG_SESSION_CLASS XDG_SESSION_PATH \
+    XDG_VTNR XDG_SEAT
+
+runtime="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+
+# Remove hand-off files a previous, crashed login may have left. Doing this
+# before the readiness gate is what makes the gate meaningful: a stale socket
+# must not make a failed compositor look healthy.
+rm -f \
+    "$runtime/$socket" \
+    "$runtime/$socket.lock" \
+    "$runtime/$socket.x11-display" \
+    "$runtime/$socket.launch-token" \
+    "$runtime/$socket.desktop-launch-token"
 
 # 2. Start the target (the units are the supervisor).
-"$systemctl" --user start "$target"
+if ! "$systemctl" --user start "$target"; then
+    printf 'dragonfruit-session-entry: %s failed to start\n' "$target" >&2
+    "$systemctl" --user status --no-pager "$target" dragonfruit-compositor.service >&2 || true
+    exit 1
+fi
+
+# Readiness gate. Type=simple returns before the compositor has bound the
+# socket, and a compositor that dies immediately would otherwise leave the
+# display manager on a black screen forever. Wait for the socket, then stay
+# on the anchor-exit loop below as usual.
+socket_path="$runtime/$socket"
+deadline=$(( $(date +%s) + start_timeout ))
+while [ ! -e "$socket_path" ]; do
+    state="$("$systemctl" --user is-active dragonfruit-compositor.service 2>/dev/null || true)"
+    case "$state" in
+        active|activating|reloading) ;;
+        *)
+            printf 'dragonfruit-session-entry: the compositor is not running (%s) before creating %s\n' \
+                "${state:-unknown}" "$socket_path" >&2
+            "$systemctl" --user status --no-pager dragonfruit-compositor.service >&2 || true
+            "$systemctl" --user stop "$target" >/dev/null 2>&1 || true
+            exit 1
+            ;;
+    esac
+    if [ "$(date +%s)" -ge "$deadline" ]; then
+        printf 'dragonfruit-session-entry: timed out waiting for %s (%ss)\n' "$socket_path" "$start_timeout" >&2
+        "$systemctl" --user status --no-pager dragonfruit-compositor.service >&2 || true
+        "$systemctl" --user stop "$target" >/dev/null 2>&1 || true
+        exit 1
+    fi
+    sleep 0.25
+done
 
 # 3. Wait for the anchor. The compositor is the session's anchor: when it
 #    exits, the session is over and the display manager returns.
@@ -54,10 +128,9 @@ done
 "$systemctl" --user stop "$target" || true
 "$systemctl" --user reset-failed "$target" || true
 
-if [ -n "${XDG_RUNTIME_DIR:-}" ]; then
-    rm -f \
-        "$XDG_RUNTIME_DIR/$socket" \
-        "$XDG_RUNTIME_DIR/$socket.lock" \
-        "$XDG_RUNTIME_DIR/$socket.x11-display" \
-        "$XDG_RUNTIME_DIR/$socket.launch-token"
-fi
+rm -f \
+    "$runtime/$socket" \
+    "$runtime/$socket.lock" \
+    "$runtime/$socket.x11-display" \
+    "$runtime/$socket.launch-token" \
+    "$runtime/$socket.desktop-launch-token"

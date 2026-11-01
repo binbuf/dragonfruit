@@ -20,6 +20,7 @@ DESTDIR ?=
 PREFIX ?= /usr
 DF_TOOLCHAIN ?= $(HOME)/.local/df-toolchain/usr
 DF_DEVROOT ?= $(HOME)/.local/df-devroot/lib64
+export DF_TOOLCHAIN DF_DEVROOT
 
 # The Qt toolchain's cmake and Qt runtime are dynamically linked against
 # its own lib64 (libRHash, libQt6*, ...), so that directory must be on the
@@ -49,7 +50,7 @@ endif
 
 .DEFAULT_GOAL := help
 .PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test \
-        visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev dev-full native native-return native-restart native-status native-logs demo soak e2e \
+        visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev dev-full native native-return native-recover native-restart native-status native-logs demo soak e2e \
         idle-trace menubar-idle-trace latency-trace t20-frame-budget t20-material-tiers-capture drm-bringup input-validation multi-gpu-validation drm-soak second-vt-validation settingsd-capture settings-wave-1-capture \
         t18-wallpaper-capture t18-absence-matrix t15-absence-matrix t15-breadth-capture t16-a11y-audit \
         t16-i18n-capture t16-kill-matrix t16-suspend-resume-soak t17-robustness-matrix t17-window-loop-capture t17-navigation-capture \
@@ -91,8 +92,9 @@ help:
 	@echo "  make dev      — dragonfruit dev --nested (daily workflow, thin services)"
 	@echo "  make dev-full — nested session with settingsd/system-status/etc. on a private bus"
 	@echo "                  (FIXTURES=1 for deterministic pane fixtures)"
-	@echo "  make native   — one command: deps + build + install + preselect + logout"
-	@echo "  make native-return — restore the previous desktop and log out of Dragonfruit"
+	@echo "  make native   — one command: deps + preflight + build + install + preselect + logout"
+	@echo "  make native-return — restore the host login (also works from a TTY) and end Dragonfruit"
+	@echo "  make native-recover — from a TTY/SSH: undo preselect/runtime env, restore the host login"
 	@echo "  make native-restart — rebuild and restart native units (NATIVE_UNITS=shell|all|...)"
 	@echo "  make native-status — show the native session state and unit activity"
 	@echo "  make native-logs — follow a native unit's journal (NATIVE_UNITS=shell)"
@@ -643,11 +645,14 @@ dev-full: build
 	    --services full --private-bus $(if $(FIXTURES),--fixtures,) $(DEV_FULL_ARGS)
 
 # Native development loop (T-12.6b): one command checks/installs the
-# distribution build prerequisites, builds, installs the display-manager entry,
-# user units, app/portal metadata, and symlinks to the built binaries, arms the
-# next login for Dragonfruit, then asks the host session manager to log out.
-# From inside Dragonfruit `make native-restart` rebuilds and restarts units in
-# place, and `make native-return` restores the previous desktop and logs out.
+# distribution build prerequisites, writes the login runtime environment,
+# preflights the installed binaries, builds, installs the display-manager
+# entry, user units, app/portal metadata, and symlinks to the built binaries,
+# arms the next login for Dragonfruit, then asks the host session manager to
+# log out. From inside Dragonfruit `make native-restart` rebuilds and restarts
+# units in place, and `make native-return` restores the host login and ends the
+# session. `make native-recover` is the same safe path from a text console, so
+# a broken Dragonfruit login can always be undone without logging into it.
 # NATIVE_UNITS accepts the script shorthands (shell, services, all, ...) or a
 # systemd user unit name. The compositor is the session anchor; restarting it
 # ends the session, so `all` deliberately excludes it.
@@ -656,6 +661,9 @@ native:
 
 native-return:
 	bash scripts/native-session.sh return $(NATIVE_ARGS)
+
+native-recover:
+	bash scripts/native-session.sh recover $(NATIVE_ARGS)
 
 native-restart:
 	bash scripts/native-session.sh restart $(NATIVE_UNITS)
