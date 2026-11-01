@@ -178,8 +178,15 @@ fn the_entry_script_imports_starts_waits_and_tears_down() {
         std::fs::write(path, b"stale").expect("seed a hand-off file");
     }
 
+    // An install-prefix layout: the entry derives the QML module root from
+    // the session binary's own path, so the fake binary lives under bin/.
+    let qml_dir = root.join("share/dragonfruit/qml");
+    std::fs::create_dir_all(&qml_dir).expect("install QML root");
+    let bin_dir = root.join("bin");
+    std::fs::create_dir_all(&bin_dir).expect("bin dir");
+
     // Fake `dragonfruit-session`: print the contract environment.
-    let fake_session = root.join("fake-session");
+    let fake_session = bin_dir.join("fake-session");
     std::fs::write(
         &fake_session,
         "#!/bin/sh\nprintf '%s\\n' \
@@ -201,6 +208,10 @@ fn the_entry_script_imports_starts_waits_and_tears_down() {
         &fake_systemctl,
         format!(
             "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '{record}'\n\
+             if [ \"$1\" = '--user' ] && [ \"$2\" = 'import-environment' ]; then\n\
+               printf 'QML_IMPORT_PATH=%s\\n' \"$QML_IMPORT_PATH\" >> '{record}'\n\
+               exit 0\n\
+             fi\n\
              if [ \"$1\" = '--user' ] && [ \"$2\" = 'start' ]; then\n\
                if [ -e '{socket_path}' ]; then\n\
                  echo 'stale socket was not removed before start' >&2\n\
@@ -247,6 +258,10 @@ fn the_entry_script_imports_starts_waits_and_tears_down() {
             && calls.contains("XDG_CURRENT_DESKTOP")
             && calls.contains("DRAGONFRUIT_LAUNCH_TOKEN"),
         "the session environment is imported: {calls}"
+    );
+    assert!(
+        calls.contains(&format!("QML_IMPORT_PATH={}", qml_dir.display())),
+        "the install-prefix QML module root is imported: {calls}"
     );
     assert!(
         calls.contains(&format!("--user start {}", entry::SESSION_TARGET)),

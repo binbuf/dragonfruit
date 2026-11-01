@@ -23,6 +23,7 @@ restrictions to track.
 | `shell/` (menu bar, Dock, Control Center, notifications, screenshot) | MIT |
 | `apps/` (Settings, Files) | MIT |
 | `assets/fonts/Inter/` (system font, embedded via `libs/system-font/`) | SIL OFL 1.1 |
+| `assets/cursors/capitaine-cursors/` (system cursor theme) | LGPL-3.0-or-later |
 | `assets/graphics/wallpapers/Default.jpg` (shipped default wallpaper) | MIT (original project asset) |
 
 Rationale: MIT is permissive, maximises third-party adoption and
@@ -40,7 +41,10 @@ constraints between components. Two rules still matter:
   library**, so that any process can embed the contracts.
 - **No first-party component may pull in GPL/AGPL code.** A copyleft
   dependency would relicense the combined work and defeat the permissive
-  choice; adding one is a review blocker.
+  choice; adding one is a review blocker. Separable LGPL data assets are
+  allowed when they are loaded at runtime, not linked into first-party code,
+  and their license/source notice ships with the distribution (the Capitaine
+  cursor theme below is the current case).
 
 ## Third-party dependencies
 
@@ -60,6 +64,16 @@ constraints between components. Two rules still matter:
   to accompany every copy of the Font Software, so any binary distribution
   (packages, images) must include `LICENSES/OFL-1.1.txt` or the equivalent
   notice — a packaging acceptance item for T-16.9/T-16.10.
+- **Cursor theme.** Capitaine cursors is bundled as a separable data asset
+  under the LGPL-3.0-or-later (see
+  [../assets/cursors/capitaine-cursors/COPYING](../assets/cursors/capitaine-cursors/COPYING)
+  and [../LICENSES/LGPL-3.0-or-later.txt](../LICENSES/LGPL-3.0-or-later.txt)).
+  It is not linked into first-party code: the compositor loads the XCursor
+  files at runtime, the theme directory can be replaced independently, and
+  the upstream source is identified in
+  [../assets/cursors/capitaine-cursors/README.md](../assets/cursors/capitaine-cursors/README.md).
+  Any binary distribution must ship that notice and license text, and must
+  make the corresponding upstream source available under the LGPL terms.
 
 ## Qt commercial decision trigger
 

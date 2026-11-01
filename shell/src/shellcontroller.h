@@ -364,6 +364,11 @@ private slots:
     void onAppsDrawerPointerLeft();
     void onAppsDrawerKeyboardFocused(bool focused);
     void onAppsDrawerKeyEvent(quint32 key, bool pressed);
+    // Wheel/touchpad axis for the chrome scene under the pointer. One route
+    // for every shell surface with a scrollable view (apps drawer, dock
+    // pickers, notification center, chooser, screencast picker).
+    void onChromePointerAxis(ShellProtocol::PointerSurface surface, qreal x, qreal y,
+                             quint32 axis, qreal value);
     void onAppsDrawerActivated(const QString &desktopId, qreal x, qreal y, qreal w, qreal h);
     void onAppsDrawerDismissed();
     void onAppsDrawerRequested();

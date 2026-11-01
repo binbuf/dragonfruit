@@ -22,6 +22,7 @@ for Dragonfruit alters the terms of these components.
 |---|---|
 | [Inter](https://github.com/rsms/inter) 4.001 (`assets/fonts/Inter/`, embedded in first-party binaries via `libs/system-font/`) | SIL OFL 1.1 |
 | [Phosphor](https://github.com/phosphor-icons/core) 2.0.8 (`assets/icons/phosphor/`, the `regular` and `fill` glyphs, compiled into the design-system module) | MIT |
+| [Capitaine cursors](https://github.com/keeferrourke/capitaine-cursors) commit `06c8843` (`assets/cursors/capitaine-cursors/`, the desktop cursor theme, installed to `share/icons/capitaine-cursors`) | LGPL-3.0-or-later; see [`assets/cursors/capitaine-cursors/COPYING`](assets/cursors/capitaine-cursors/COPYING) and [`LICENSES/LGPL-3.0-or-later.txt`](LICENSES/LGPL-3.0-or-later.txt) |
 | Default wallpaper (`assets/graphics/wallpapers/Default.jpg`, installed to `share/dragonfruit/wallpapers/Default.jpg`) | MIT (original project asset) |
 
 The default wallpaper is the only image bundled in a package. Featured

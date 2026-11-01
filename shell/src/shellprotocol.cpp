@@ -991,6 +991,19 @@ bool ShellProtocol::setAppsDrawerInputRegion(int width, int height)
     return true;
 }
 
+bool ShellProtocol::setAppsDrawerKeyboardGrab(bool grab)
+{
+    if (!m_appsDrawerLayer)
+        return false;
+    df_layer_surface_set_keyboard_interaction(
+        m_appsDrawerLayer,
+        grab ? DF_LAYER_SURFACE_KEYBOARD_INTERACTION_EXCLUSIVE
+             : DF_LAYER_SURFACE_KEYBOARD_INTERACTION_ON_DEMAND);
+    if (m_display)
+        wl_display_flush(m_display);
+    return true;
+}
+
 bool ShellProtocol::setAppsDrawerPanelRect(int x, int y, int width, int height)
 {
     if (!m_appsDrawerLayer)
@@ -2973,8 +2986,43 @@ void ShellProtocol::onPointerButton(void *data, wl_pointer *, uint32_t, uint32_t
                              state == WL_POINTER_BUTTON_STATE_PRESSED);
 }
 
-void ShellProtocol::onPointerAxis(void *, wl_pointer *, uint32_t, uint32_t, wl_fixed_t)
+ShellProtocol::PointerSurface ShellProtocol::currentPointerSurface() const
 {
+    if (m_pointerOnAppsDrawer)
+        return PointerSurface::AppsDrawer;
+    if (m_pointerOnPolkit)
+        return PointerSurface::Polkit;
+    if (m_pointerOnChooser)
+        return PointerSurface::Chooser;
+    if (m_pointerOnScreenshot)
+        return PointerSurface::Screenshot;
+    if (m_pointerOnScreenCast)
+        return PointerSurface::ScreenCast;
+    if (m_pointerOnControlCenter)
+        return PointerSurface::ControlCenter;
+    if (m_pointerOnOverview)
+        return PointerSurface::Overview;
+    if (m_pointerOnBanner)
+        return PointerSurface::Banner;
+    if (m_pointerOnDockPopup)
+        return PointerSurface::DockPopup;
+    if (m_pointerOnDock)
+        return PointerSurface::Dock;
+    if (m_pointerOnPopup)
+        return PointerSurface::Popup;
+    return PointerSurface::MenuBar;
+}
+
+void ShellProtocol::onPointerAxis(void *data, wl_pointer *, uint32_t, uint32_t axis,
+                                  wl_fixed_t value)
+{
+    auto *self = static_cast<ShellProtocol *>(data);
+    const PointerSurface surface = self->currentPointerSurface();
+    if (surface == PointerSurface::None)
+        return;
+    // Wayland axis 0 is vertical, 1 is horizontal. Positive is down/right.
+    emit self->pointerAxis(surface, self->m_pointerX, self->m_pointerY, axis,
+                           wl_fixed_to_double(value));
 }
 
 void ShellProtocol::onKeyboardKeymap(void *, wl_keyboard *, uint32_t, int32_t fd, uint32_t)

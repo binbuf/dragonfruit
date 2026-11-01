@@ -157,7 +157,14 @@ ladder.
   wakeups. Animations drive damage every frame while running.
 - Hardware cursor planes are used where the hardware offers them; software
   cursors are the fallback, and cursor motion never waits on effects or
-  damage.
+  damage. Named cursor shapes (`wp_cursor_shape_v1` and `wl_pointer`'s
+  `set_cursor` default) draw the bundled Capitaine XCursor theme at the
+  output scale and hotspot; a client-supplied cursor surface still wins.
+- Every presented DRM frame sends the windows' `wl_surface.frame` callbacks,
+  and an otherwise-empty probe answers a pending callback. Smithay's
+  `DrmCompositor` does not send them itself, so this is what keeps Qt, GTK,
+  Chromium, and Electron clients painting instead of stalling after their
+  first buffer.
 - VRR/adaptive-sync is enabled per output where connector and mode support
   it, and is a Displays-pane toggle (see [08-settings.md](08-settings.md)).
 - Night light (per-output gamma ramps) is compositor-owned, like everything
@@ -843,9 +850,12 @@ complete the track:
   Space (see [03-workspaces.md](03-workspaces.md)). There is no separate
   "maximize" state.
 - **Focus.** Click-to-focus only; focus never follows pointer motion alone.
-  Focus changes are broadcast over the private protocol so the shell, Dock,
-  and menu-broker track the active application without polling (see
-  [04-shell.md](04-shell.md), [06-global-menu.md](06-global-menu.md)).
+  A Dock/launcher activation is an explicit click and focuses the first window
+  the launch produces, through the one activation path (the shell asks the
+  compositor; it does not set focus itself). Focus changes are broadcast over
+  the private protocol so the shell, Dock, and menu-broker track the active
+  application without polling (see [04-shell.md](04-shell.md),
+  [06-global-menu.md](06-global-menu.md)).
 - **Placement.** New windows open near the center of the **focused output**
   — the display under the pointer, else the active window's output, else the
   primary — inside that output's usable area (minus its reserved zones, so

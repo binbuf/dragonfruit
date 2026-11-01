@@ -792,17 +792,29 @@ existing loader directories (`$DF_TOOLCHAIN/lib64`, `$HOME/.local/df-devroot/
 lib64`, `$HOME/.local/lib`, and the install prefix's lib dirs), plus a
 per-user systemd drop-in (`~/.config/systemd/user/<unit>.d/`) that pins
 `LD_LIBRARY_PATH` on the compositor and shell units (the Qt apps the shell
-launches inherit it). The session entry sources the env file for its own
-children and imports the session identity (`XDG_SESSION_ID`, `XDG_VTNR`,
-`XDG_SEAT`) into the user manager; the loader path stays scoped to those units
-so it cannot leak into the host desktop's user manager. `recover` removes
-both. A packaged install that does not need the file is unaffected.
+launches inherit it). The same drop-in exports the build tree's QML module root
+(`build/qml`) as `QML_IMPORT_PATH`/`QML2_IMPORT_PATH` and the vendored cursor
+theme (`assets/cursors` + `capitaine-cursors`) as `XCURSOR_PATH`/`XCURSOR_THEME`.
+The dev installer symlinks binaries and installs `.desktop` entries, but it
+does not install the QML modules; without the module root the first-party apps
+(Settings, Files) start and exit before mapping a window, which looks like a
+Dock or menu item that does nothing. A packaged install instead carries the
+modules under `share/dragonfruit/qml` and the cursor theme under
+`share/icons`, and the session entry adds that module root to
+`QML_IMPORT_PATH`.
+
+The session entry sources the env file for its own children and imports the
+session identity (`XDG_SESSION_ID`, `XDG_VTNR`, `XDG_SEAT`) into the user
+manager; the loader path stays scoped to those units so it cannot leak into
+the host desktop's user manager. `recover` removes both. A packaged install
+that does not need the file is unaffected.
 
 Before changing the host, `start` runs a preflight: every built binary is
-resolved with `ldd` under a clean environment containing only that login path.
-If any library is unresolved, the script stops *before* the preselect and the
-logout, so a broken build cannot strand the workstation at a greeter that only
-offers Dragonfruit. `--skip-preflight` is the escape hatch.
+resolved with `ldd` under a clean environment containing only that login path,
+and the Settings/Files QML module registries must exist in the build tree. If a
+library is unresolved or a module is missing, the script stops *before* the
+preselect and the logout, so a broken build cannot strand the workstation at a
+greeter that only offers Dragonfruit. `--skip-preflight` is the escape hatch.
 
 #### Recovering from a broken login (the TTY path)
 

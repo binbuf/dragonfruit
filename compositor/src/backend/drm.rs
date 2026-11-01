@@ -47,7 +47,7 @@ use smithay::backend::SwapBuffersError;
 use smithay::desktop::space::SpaceRenderElements;
 use smithay::desktop::utils::OutputPresentationFeedback;
 use smithay::desktop::Window;
-use smithay::input::pointer::{CursorImageAttributes, CursorImageStatus};
+use smithay::input::pointer::{CursorIcon, CursorImageAttributes, CursorImageStatus};
 use smithay::output::{Mode as WlMode, Output};
 use smithay::reexports::calloop::timer::{TimeoutAction, Timer};
 use smithay::reexports::calloop::{PostAction, RegistrationToken};
@@ -101,10 +101,19 @@ render_elements! {
     Memory=MemoryRenderBufferRenderElement<R>,
 }
 /// The system cursor: a memory buffer rendered with `Kind::Cursor` so the
-/// DRM compositor can assign it to a hardware cursor plane.
+/// DRM compositor can assign it to a hardware cursor plane. Named shapes come
+/// from the desktop's XCursor theme; a client cursor surface still wins.
 struct PointerElement {
     buffer: Option<MemoryRenderBuffer>,
     status: CursorImageStatus,
+    /// Hotspot in physical pixels, subtracted from the pointer location.
+    hotspot: Point<i32, smithay::utils::Physical>,
+    /// The named icon and target physical size currently in `buffer`, so a
+    /// redraw never re-imports the same cursor texture.
+    current: Option<(CursorIcon, u32)>,
+    theme: crate::cursor_theme::CursorTheme,
+    /// The built-in arrow used when the theme is absent or a shape is missing.
+    fallback: MemoryRenderBuffer,
 }
 
 impl Default for PointerElement {
@@ -112,17 +121,74 @@ impl Default for PointerElement {
         Self {
             buffer: Default::default(),
             status: CursorImageStatus::default_named(),
+            hotspot: Point::from((0, 0)),
+            current: None,
+            theme: crate::cursor_theme::CursorTheme::load(),
+            fallback: arrow_cursor_buffer(),
         }
     }
 }
 
 impl PointerElement {
-    fn set_status(&mut self, status: CursorImageStatus) {
-        self.status = status;
+    /// Select the buffer for `status` at the output scale. A themed named
+    /// shape replaces the fallback arrow; a client surface is drawn as-is and
+    /// its hotspot is supplied separately from `CursorImageAttributes`.
+    fn set_status(&mut self, status: CursorImageStatus, scale: f64) {
+        match &status {
+            CursorImageStatus::Hidden => {
+                self.status = status;
+            }
+            CursorImageStatus::Surface(_) => {
+                self.status = status;
+                self.hotspot = Point::from((0, 0));
+            }
+            CursorImageStatus::Named(icon) => {
+                let logical = self.theme.logical_size();
+                let integer_scale = scale.max(1.0).ceil() as u32;
+                let target = logical.saturating_mul(integer_scale);
+                if self.current != Some((*icon, target)) {
+                    let image = self.theme.image_for(*icon, scale);
+                    if let Some(image) = image {
+                        // The theme names images by nominal pixel size. Keeping
+                        // the buffer's logical size fixed at `logical` makes
+                        // the pointer the same size at every output scale.
+                        let buffer_scale =
+                            (image.size as f64 / logical as f64).round().max(1.0) as i32;
+                        self.buffer = Some(MemoryRenderBuffer::from_slice(
+                            &image.pixels_rgba,
+                            Fourcc::Argb8888,
+                            smithay::utils::Size::from((image.width as i32, image.height as i32)),
+                            buffer_scale,
+                            Transform::Normal,
+                            None,
+                        ));
+                        // The image is drawn at `logical_size * output_scale`;
+                        // when the chosen image is larger than that (a 96px
+                        // image at 3x, buffer_scale 4), scale its hotspot
+                        // down to the physical rect too.
+                        let pixel_scale = scale / buffer_scale as f64;
+                        self.hotspot = Point::from((
+                            (image.xhot as f64 * pixel_scale).round() as i32,
+                            (image.yhot as f64 * pixel_scale).round() as i32,
+                        ));
+                    } else {
+                        self.buffer = Some(self.fallback.clone());
+                        self.hotspot = Point::from((0, 0));
+                    }
+                    self.current = Some((*icon, target));
+                }
+                self.status = status;
+            }
+        }
     }
 
-    fn set_buffer(&mut self, buffer: MemoryRenderBuffer) {
-        self.buffer = Some(buffer);
+    /// Set the hotspot of a client-provided cursor surface (logical surface
+    /// coordinates) in physical pixels at the output scale.
+    fn set_surface_hotspot(&mut self, hotspot: Point<i32, Logical>, scale: f64) {
+        self.hotspot = Point::from((
+            (hotspot.x as f64 * scale).round() as i32,
+            (hotspot.y as f64 * scale).round() as i32,
+        ));
     }
 }
 
@@ -140,6 +206,10 @@ where
         scale: Scale<f64>,
         alpha: f32,
     ) -> Vec<C> {
+        // The pointer location is the hotspot: move the image so the tip sits
+        // exactly on it. A themed cursor's hotspot is in image pixels; a client
+        // surface's is in logical surface units scaled above.
+        let location = Point::from((location.x - self.hotspot.x, location.y - self.hotspot.y));
         match &self.status {
             CursorImageStatus::Hidden => vec![],
             // A named shape always renders the system buffer.
@@ -218,7 +288,6 @@ struct DrmData {
     gpus: GpuManager<GbmGlesBackend<GlesRenderer, DrmDeviceFd>>,
     devices: HashMap<DrmNode, DeviceData>,
     pointer_element: PointerElement,
-    pointer_image: MemoryRenderBuffer,
     libinput: Option<Libinput>,
 }
 
@@ -314,7 +383,6 @@ fn init(state: &mut crate::state::DfState, shared: SharedData) -> Result<(), Str
         gpus,
         devices: HashMap::new(),
         pointer_element: PointerElement::default(),
-        pointer_image: arrow_cursor_buffer(),
         libinput: Some(libinput_context),
     };
 
@@ -1100,12 +1168,11 @@ fn render_surface(
                 state.cursor_image = CursorImageStatus::default_named();
             }
         }
-        data.pointer_element.set_status(state.cursor_image.clone());
-        if matches!(
-            state.cursor_image,
-            CursorImageStatus::Hidden | CursorImageStatus::Named(_)
-        ) {
-            data.pointer_element.set_buffer(data.pointer_image.clone());
+        data.pointer_element
+            .set_status(state.cursor_image.clone(), scale.x);
+        if let CursorImageStatus::Surface(ref surface) = state.cursor_image {
+            let hotspot = cursor_hotspot(surface);
+            data.pointer_element.set_surface_hotspot(hotspot, scale.x);
         }
         let cursor_pos = pointer_location - output_geo.loc.to_f64();
         custom_elements.extend(data.pointer_element.render_elements::<DrmOutputElements<
@@ -1197,24 +1264,30 @@ fn render_surface(
             if let PrimaryPlaneElement::Element(_) = &render_frame_result.primary_element {
                 state.stats.direct_scanouts += 1;
             }
+            // Primary scanout bookkeeping is what `wl_surface.frame` callbacks
+            // and presentation feedback key off. Smithay's DrmCompositor does
+            // not send Wayland frame callbacks itself, so the DRM rail does it
+            // here exactly like the nested/headless paths.
+            update_primary_scanout(state, &render_frame_result.states);
             if render_frame_result.is_empty {
-                // No damage, no render, no client wakeups (FR-2); the
-                // frame clock reschedules a probe for the next frame.
+                // No damage, no render (FR-2); the frame clock reschedules a
+                // probe for the next frame. A client that is already waiting
+                // on its frame callback is still answered, otherwise a
+                // commit-driven repaint can deadlock against an idle output.
                 state.stats.frames_skipped_no_damage += 1;
+                if state.has_pending_frame_callbacks() {
+                    let now = state.clock.now();
+                    render::send_frame_callbacks(
+                        state,
+                        &surface.output,
+                        now.into(),
+                        &render_frame_result.states,
+                    );
+                }
                 reschedule_probe(state, node, crtc);
             } else {
                 state.stats.frames_rendered += 1;
-                // The DrmCompositor queues the frame callbacks; count the live
-                // windows as the frame-callback batches it will deliver, so the
-                // idle/ wakeup budget (T-03.1a) is measurable on DRM too.
-                state.stats.client_wakeups +=
-                    crate::render::count_output_windows(state, &surface.output);
-                // A presented frame: credit any pending input with its
-                // input-to-photon round trip (T-03.1b). The nested/headless
-                // paths do this in `render::post_repaint*`.
-                state.stats.latency.note_present(std::time::Instant::now());
-                // Primary scanout bookkeeping for presentation feedback.
-                update_primary_scanout(state, &render_frame_result.states);
+                // Primary scanout feedback for presentation-time.
                 let feedback = render::take_presentation_feedback(
                     state,
                     &surface.output,
@@ -1224,6 +1297,18 @@ fn render_surface(
                 if let Err(err) = surface.drm_output.queue_frame(Some(feedback)) {
                     eprintln!("dragonfruit-compositor: queue_frame failed: {err:?}");
                 }
+                // Send this frame's `wl_surface.frame` callbacks. This is the
+                // one wakeup that lets Qt, GTK, Chromium, and Electron clients
+                // continue painting; without it they paint one frame and then
+                // wait forever. It also credits input-to-photon latency and
+                // advertises the output's fractional scale to chrome.
+                let now = state.clock.now();
+                render::post_repaint(
+                    state,
+                    &surface.output,
+                    now.into(),
+                    &render_frame_result.states,
+                );
             }
         }
         Err(err) => {
@@ -1307,7 +1392,6 @@ fn drm_shared_slot() -> Option<SharedData> {
 }
 
 /// The seat's wl_pointer.set_cursor surfaces report their hotspots here.
-#[allow(dead_code)]
 fn cursor_hotspot(surface: &WlSurface) -> Point<i32, Logical> {
     with_states(surface, |states| {
         states
@@ -1318,8 +1402,9 @@ fn cursor_hotspot(surface: &WlSurface) -> Point<i32, Logical> {
     })
 }
 
-/// A simple procedural arrow cursor (24x24 ARGB). Replaced by themed
-/// cursors from the design system in T-08/T-03.
+/// A simple procedural arrow cursor (24x24 ARGB). It is the last-resort
+/// fallback when the XCursor theme is missing or a shape has no image; the
+/// normal path is the themed [`crate::cursor_theme::CursorTheme`].
 fn arrow_cursor_buffer() -> MemoryRenderBuffer {
     const SIZE: i32 = 24;
     let mut pixels = vec![0u8; (SIZE * SIZE * 4) as usize];

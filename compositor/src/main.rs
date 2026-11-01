@@ -15,6 +15,7 @@ use std::process::ExitCode;
 mod animation;
 mod app_switcher;
 mod backend;
+mod cursor_theme;
 mod design_tokens;
 mod input;
 mod instrument;

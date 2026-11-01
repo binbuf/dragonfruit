@@ -298,6 +298,13 @@ public:
     // with the next buffer commit.
     bool setAppsDrawerInputRegion(int width, int height);
 
+    // Take the keyboard for the open drawer (`grab` true) and hand it back to
+    // the compositor's normal chrome policy when it closes. The drawer is a
+    // full-output modal surface, so opening it from the Dock must not leave
+    // the keyboard on the Dock: typing has to reach the search field without
+    // a second click.
+    bool setAppsDrawerKeyboardGrab(bool grab);
+
     // Declare the live rect the drawer's card actually paints, in
     // surface-local logical pixels (T-20.1). The compositor's GPU backdrop
     // blur follows the card exactly; without it the full-output overlay
@@ -488,6 +495,32 @@ public:
 
     QString lastError() const { return m_error; }
 
+    // The live xkb `depressed` modifier mask (WL_KEYBOARD_MODIFIER_MASK_*).
+    // Chrome key handlers use it to build a complete QKeyEvent (text plus
+    // modifiers), not just the special navigation keys.
+    uint32_t keyboardModifiers() const { return m_keyboardModifiers; }
+
+    // The chrome surface under the pointer for an axis (wheel/touchpad)
+    // event. The shell owns an offscreen QQuickWindow per surface, so it must
+    // route the event to the matching scene instead of dropping it.
+    enum class PointerSurface {
+        None,
+        MenuBar,
+        Popup,
+        Dock,
+        DockPopup,
+        Banner,
+        ControlCenter,
+        Overview,
+        Chooser,
+        Screenshot,
+        ScreenCast,
+        Polkit,
+        AppsDrawer,
+        Lock,
+    };
+    Q_ENUM(PointerSurface)
+
 signals:
     void authenticated(uint32_t lockstepVersion);
     void refused(uint32_t code, const QString &message);
@@ -536,6 +569,10 @@ signals:
     void appsDrawerPointerLeft();
     void appsDrawerKeyboardFocused(bool focused);
     void appsDrawerKeyEvent(uint32_t key, bool pressed);
+    // Wheel/touchpad axis for the chrome surface under the pointer. `value`
+    // is the Wayland axis value (positive is down/right); the shell converts
+    // it to a Qt wheel event for that surface's offscreen scene.
+    void pointerAxis(PointerSurface surface, qreal x, qreal y, uint32_t axis, qreal value);
     // Single-frame capture result (T-13.3b): the compositor rendered the
     // selection and wrote a PNG (`screenshotSaved`), or could not
     // (`screenshotFailed`, reason for logs).
@@ -683,6 +720,8 @@ private:
     void createLockSurfaces();
     // Whether `surface` is one of the live lock surfaces (T-12.3c).
     bool isLockSurface(wl_surface *surface) const;
+    // Which chrome surface currently owns the pointer, for axis routing.
+    PointerSurface currentPointerSurface() const;
     // Rebuild the Dock's running-app projection and emit `dockStateChanged`.
     void emitDockState();
     // Resolve a window handle back to its `df_toplevel` (null when gone).

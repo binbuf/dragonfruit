@@ -24,6 +24,8 @@
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QKeyEvent>
+#include <QPair>
+#include <QWheelEvent>
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QStandardPaths>
@@ -163,6 +165,10 @@ Qt::Key qtKeyFromEvdev(quint32 key)
     switch (key) {
     case 1:
         return Qt::Key_Escape;
+    case 14:
+        return Qt::Key_Backspace;
+    case 15:
+        return Qt::Key_Tab;
     case 28:
         return Qt::Key_Return;
     case 57:
@@ -171,6 +177,14 @@ Qt::Key qtKeyFromEvdev(quint32 key)
         return Qt::Key_Home;
     case 103:
         return Qt::Key_Up;
+    case 104:
+        return Qt::Key_PageUp;
+    case 109:
+        return Qt::Key_PageDown;
+    case 110:
+        return Qt::Key_Insert;
+    case 111:
+        return Qt::Key_Delete;
     case 105:
         return Qt::Key_Left;
     case 106:
@@ -201,6 +215,57 @@ Qt::KeyboardModifiers qtModifiersFromXkb(quint32 mask)
     if (mask & 0x40u)
         modifiers |= Qt::MetaModifier;
     return modifiers;
+}
+
+// One chrome key event: the Qt key plus the text a QML TextInput/TextField
+// inserts. The shell is not an xkb client (it closes the keymap fd), so the
+// fixed US/ASCII table in lockinput.cpp is the source of printable text. The
+// old chrome path only mapped navigation keys and dropped letters, which is
+// why the applications drawer's search field could not be typed into.
+// (Qt key, text) for one evdev key. A QPair alias rather than a local named
+// type keeps the translation extractor's context scan on the file's own name.
+using ChromeKey = QPair<Qt::Key, QString>;
+
+ChromeKey chromeKeyFromEvdev(quint32 key, Qt::KeyboardModifiers modifiers)
+{
+    const bool shift = modifiers.testFlag(Qt::ShiftModifier);
+    const dragonfruit::LockKey mapped = dragonfruit::lockKeyFromEvdev(key, shift);
+    switch (mapped.kind) {
+    case dragonfruit::LockKeyKind::Character:
+        return ChromeKey(Qt::Key(mapped.character.unicode()),
+                         QString(mapped.character));
+    case dragonfruit::LockKeyKind::Backspace:
+        return ChromeKey(Qt::Key_Backspace, QStringLiteral("\b"));
+    case dragonfruit::LockKeyKind::Return:
+        return ChromeKey(Qt::Key_Return, QStringLiteral("\r"));
+    case dragonfruit::LockKeyKind::Escape:
+        return ChromeKey(Qt::Key_Escape, QString());
+    case dragonfruit::LockKeyKind::Ignore:
+        break;
+    }
+    return ChromeKey(qtKeyFromEvdev(key), QString());
+}
+
+// Send a complete key event to one chrome scene. Shortcut chords keep their
+// key but carry no text, so Ctrl+C does not insert a control character.
+void sendChromeKeyEvent(QQuickWindow *window, quint32 key, bool pressed,
+                        quint32 modifiers)
+{
+    if (!window)
+        return;
+    const Qt::KeyboardModifiers mods = qtModifiersFromXkb(modifiers);
+    ChromeKey mapped = chromeKeyFromEvdev(key, mods);
+    if (!pressed
+        || mods.testFlag(Qt::ControlModifier)
+        || mods.testFlag(Qt::AltModifier)
+        || mods.testFlag(Qt::MetaModifier)) {
+        mapped.second.clear();
+    }
+    if (mapped.first == Qt::Key_unknown && mapped.second.isEmpty())
+        return;
+    QKeyEvent event(pressed ? QEvent::KeyPress : QEvent::KeyRelease, mapped.first, mods,
+                    mapped.second);
+    QCoreApplication::sendEvent(window, &event);
 }
 
 // The fixed system menu (the dragonfruit mark), always leftmost, lives in
@@ -397,6 +462,8 @@ bool ShellController::start(const QString &socketName, const QString &tokenHex, 
             &ShellController::onKeyboardFocused);
     connect(m_protocol, &ShellProtocol::keyEvent, this, &ShellController::onKeyEvent);
     connect(m_protocol, &ShellProtocol::lockKeyEvent, this, &ShellController::onLockKeyEvent);
+    connect(m_protocol, &ShellProtocol::pointerAxis, this,
+            &ShellController::onChromePointerAxis);
     connect(m_protocol, &ShellProtocol::dockConfigured, this,
             &ShellController::onDockConfigured);
     connect(m_protocol, &ShellProtocol::dockStateChanged, this,
@@ -2850,11 +2917,8 @@ void ShellController::onChooserKeyEvent(quint32 key, bool pressed)
 {
     if (!m_chooserWindow || !m_chooserActive)
         return;
-    const Qt::Key qtKey = qtKeyFromEvdev(key);
-    if (qtKey == Qt::Key_unknown)
-        return;
-    QKeyEvent event(pressed ? QEvent::KeyPress : QEvent::KeyRelease, qtKey, Qt::NoModifier);
-    QCoreApplication::sendEvent(m_chooserWindow, &event);
+    sendChromeKeyEvent(m_chooserWindow, key, pressed,
+                       m_protocol ? m_protocol->keyboardModifiers() : 0);
     scheduleChooserRender();
 }
 
@@ -3128,11 +3192,8 @@ void ShellController::onScreenshotKeyEvent(quint32 key, bool pressed)
 {
     if (!m_screenshotWindow || !m_screenshotActive)
         return;
-    const Qt::Key qtKey = qtKeyFromEvdev(key);
-    if (qtKey == Qt::Key_unknown)
-        return;
-    QKeyEvent event(pressed ? QEvent::KeyPress : QEvent::KeyRelease, qtKey, Qt::NoModifier);
-    QCoreApplication::sendEvent(m_screenshotWindow, &event);
+    sendChromeKeyEvent(m_screenshotWindow, key, pressed,
+                       m_protocol ? m_protocol->keyboardModifiers() : 0);
     scheduleScreenshotRender();
 }
 
@@ -3384,11 +3445,8 @@ void ShellController::onScreenCastKeyEvent(quint32 key, bool pressed)
 {
     if (!m_screencastWindow || !m_screencastActive)
         return;
-    const Qt::Key qtKey = qtKeyFromEvdev(key);
-    if (qtKey == Qt::Key_unknown)
-        return;
-    QKeyEvent event(pressed ? QEvent::KeyPress : QEvent::KeyRelease, qtKey, Qt::NoModifier);
-    QCoreApplication::sendEvent(m_screencastWindow, &event);
+    sendChromeKeyEvent(m_screencastWindow, key, pressed,
+                       m_protocol ? m_protocol->keyboardModifiers() : 0);
     scheduleScreenCastRender();
 }
 
@@ -4155,13 +4213,117 @@ void ShellController::onKeyboardFocused(bool focused)
     }
 }
 
+void ShellController::onChromePointerAxis(ShellProtocol::PointerSurface surface, qreal x,
+                                          qreal y, quint32 axis, qreal value)
+{
+    QQuickWindow *window = nullptr;
+    switch (surface) {
+    case ShellProtocol::PointerSurface::AppsDrawer:
+        window = m_appsDrawerWindow;
+        break;
+    case ShellProtocol::PointerSurface::Chooser:
+        window = m_chooserWindow;
+        break;
+    case ShellProtocol::PointerSurface::Screenshot:
+        window = m_screenshotWindow;
+        break;
+    case ShellProtocol::PointerSurface::ScreenCast:
+        window = m_screencastWindow;
+        break;
+    case ShellProtocol::PointerSurface::Polkit:
+        window = m_polkitWindow;
+        break;
+    case ShellProtocol::PointerSurface::ControlCenter:
+        window = m_controlCenterWindow;
+        break;
+    case ShellProtocol::PointerSurface::Overview:
+        window = m_overviewWindow;
+        break;
+    case ShellProtocol::PointerSurface::Banner:
+        window = m_bannerWindow;
+        break;
+    case ShellProtocol::PointerSurface::Dock:
+    case ShellProtocol::PointerSurface::DockPopup:
+        window = m_dockWindow;
+        break;
+    case ShellProtocol::PointerSurface::MenuBar:
+    case ShellProtocol::PointerSurface::Popup:
+        window = m_window;
+        break;
+    case ShellProtocol::PointerSurface::Lock:
+    case ShellProtocol::PointerSurface::None:
+        return;
+    }
+    if (!window)
+        return;
+
+    // wl_pointer.axis value is in surface-local scroll units, positive
+    // down/right. Qt wheel deltas are 1/8 degree (120 per notch) for
+    // angleDelta and device pixels for pixelDelta; provide both so a
+    // Flickable scrolls smoothly and a discrete wheel still steps a notch.
+    const int delta = qRound(-value);
+    int pixelX = 0;
+    int pixelY = 0;
+    int angleX = 0;
+    int angleY = 0;
+    if (axis == 0) {
+        pixelY = delta * 2;
+        angleY = delta * 12;
+    } else if (axis == 1) {
+        pixelX = delta * 2;
+        angleX = delta * 12;
+    } else {
+        return;
+    }
+    QWheelEvent event(QPointF(x, y), QPointF(x, y), QPoint(pixelX, pixelY),
+                      QPoint(angleX, angleY), Qt::NoButton, Qt::NoModifier,
+                      Qt::NoScrollPhase, false);
+    QCoreApplication::sendEvent(window, &event);
+
+    switch (surface) {
+    case ShellProtocol::PointerSurface::AppsDrawer:
+        scheduleAppsDrawerRender();
+        break;
+    case ShellProtocol::PointerSurface::Chooser:
+        scheduleChooserRender();
+        break;
+    case ShellProtocol::PointerSurface::Screenshot:
+        scheduleScreenshotRender();
+        break;
+    case ShellProtocol::PointerSurface::ScreenCast:
+        scheduleScreenCastRender();
+        break;
+    case ShellProtocol::PointerSurface::Polkit:
+        schedulePolkitRender();
+        break;
+    case ShellProtocol::PointerSurface::ControlCenter:
+        scheduleControlCenterRender();
+        break;
+    case ShellProtocol::PointerSurface::Overview:
+        scheduleOverviewRender();
+        break;
+    case ShellProtocol::PointerSurface::Banner:
+        scheduleBannerRender();
+        break;
+    case ShellProtocol::PointerSurface::Dock:
+    case ShellProtocol::PointerSurface::DockPopup:
+        scheduleDockRender();
+        break;
+    case ShellProtocol::PointerSurface::MenuBar:
+    case ShellProtocol::PointerSurface::Popup:
+        scheduleRender();
+        break;
+    case ShellProtocol::PointerSurface::Lock:
+    case ShellProtocol::PointerSurface::None:
+        break;
+    }
+}
+
 void ShellController::onKeyEvent(quint32 key, bool pressed, quint32 modifiers)
 {
     if (!m_window)
         return;
-    const Qt::Key qtKey = qtKeyFromEvdev(key);
-    if (qtKey == Qt::Key_unknown)
-        return;
+    const Qt::Key qtKey = chromeKeyFromEvdev(key, qtModifiersFromXkb(modifiers)).first;
     // T-11.4b: Escape dismisses a visible OSD. The OSD surface never takes
     // keyboard focus, so its dismissal is owned here, at the shell level: it
     // lets a keyboard user clear the alert without stealing focus from the
@@ -4176,17 +4338,15 @@ void ShellController::onKeyEvent(quint32 key, bool pressed, quint32 modifiers)
         hideControlCenter();
         return;
     }
-    QKeyEvent event(pressed ? QEvent::KeyPress : QEvent::KeyRelease, qtKey,
-                    qtModifiersFromXkb(modifiers));
     // An open Dock popover or Dock keyboard focus owns the keys (navigation,
     // Escape; T-10 sections 13/20); otherwise the menu bar does.
     if (m_dockWindow && m_dockItem
             && (m_dockKeyboardFocused
                 || m_dockItem->property("popoverOpen").toBool())) {
-        QCoreApplication::sendEvent(m_dockWindow, &event);
+        sendChromeKeyEvent(m_dockWindow, key, pressed, modifiers);
         scheduleDockRender();
     } else {
-        QCoreApplication::sendEvent(m_window, &event);
+        sendChromeKeyEvent(m_window, key, pressed, modifiers);
         scheduleRender();
     }
 }
@@ -4903,7 +5063,11 @@ void ShellController::onDockStateChanged(const QVariantList &entries)
     // window state, so a minimize/restore/open/close re-publishes it (T-14.2a).
     applyFocusedApp();
     // A window appeared: a pending launch for that app has succeeded, so its
-    // transient launching/failed state clears (T-10 section 8.4).
+    // transient launching/failed state clears (T-10 section 8.4). Focus the
+    // first window the launch produced: a Dock/launcher click is an explicit
+    // activation, and a newly launched terminal or Settings must accept
+    // typing without a second click on its content.
+    QStringList launchedApps;
     for (const QVariant &value : entries) {
         const QVariantMap map = value.toMap();
         if (map.value(QStringLiteral("kind")).toString() != QLatin1String("temporary"))
@@ -4911,12 +5075,20 @@ void ShellController::onDockStateChanged(const QVariantList &entries)
         const DesktopEntry resolved =
             m_index.resolve(map.value(QStringLiteral("appId")).toString());
         if (resolved.valid) {
-            m_launchStates.remove(resolved.id);
+            if (m_launchStates.remove(resolved.id))
+                launchedApps.append(map.value(QStringLiteral("appId")).toString());
             m_launchDeadlines.remove(resolved.id);
         }
     }
     if (m_launchDeadlines.isEmpty() && m_launchTimer && m_launchTimer->isActive())
         m_launchTimer->stop();
+    for (const QString &appId : launchedApps) {
+        // The compositor just reported the window, so it has the app; ask it
+        // to focus the launch's window. No fallback launch here: a race would
+        // otherwise start a duplicate process.
+        if (!appId.isEmpty() && m_protocol)
+            m_protocol->activateApp(appId);
+    }
     rebuildDockEntries();
 }
 
@@ -6158,8 +6330,13 @@ void ShellController::showAppsDrawer()
     // Take active focus so Escape and the grid's arrow/Return navigation are
     // delivered to the overlay and a later focus loss reads as dismissal.
     m_appsDrawerItem->forceActiveFocus();
-    if (m_protocol)
+    if (m_protocol) {
         m_protocol->setAppsDrawerInputRegion(m_appsDrawerWidth, m_appsDrawerHeight);
+        // The drawer is a full-output modal surface opened by a Dock click;
+        // take the keyboard from the Dock so typing reaches the search field
+        // immediately, not after a second click on the field.
+        m_protocol->setAppsDrawerKeyboardGrab(true);
+    }
     // Capture seam: report the Files tile's scene rect so the live check can
     // click a known app instead of guessing; never set in a normal session.
     if (m_appsDrawerFixture) {
@@ -6177,6 +6354,11 @@ void ShellController::hideAppsDrawer()
         m_appsDrawerItem->setProperty("active", false);
     if (m_protocol) {
         m_protocol->setAppsDrawerInputRegion(0, 0);
+        m_protocol->setAppsDrawerKeyboardGrab(false);
+        // Unmapping the layer does not itself move keyboard focus. Release
+        // the chrome focus we took on open so the active window gets the
+        // keyboard back instead of the keys landing on a hidden surface.
+        m_protocol->releaseKeyboardFocus();
         m_protocol->hideAppsDrawer();
     }
 }
@@ -6319,22 +6501,24 @@ void ShellController::onAppsDrawerPointerLeft()
 void ShellController::onAppsDrawerKeyboardFocused(bool)
 {
     // The compositor owns the focus transfer (the surface is OnDemand); the
-    // overlay's Keys handler owns Escape/arrows/Return.
-    if (m_appsDrawerItem && m_appsDrawerOpen)
+    // overlay's Keys handler owns Escape/arrows/Return. Do not steal active
+    // focus from the search field when it already owns it (typed text would
+    // otherwise be delivered to the root item instead).
+    if (m_appsDrawerItem && m_appsDrawerOpen && m_appsDrawerWindow
+        && !m_appsDrawerWindow->activeFocusItem()) {
         m_appsDrawerItem->forceActiveFocus();
+    }
 }
 
 void ShellController::onAppsDrawerKeyEvent(quint32 key, bool pressed)
 {
     if (!m_appsDrawerWindow || !m_appsDrawerOpen)
         return;
-    // Forward the evdev key to the offscreen scene (the chrome input bridge);
-    // the QML Keys handler maps it to navigation/dismissal.
-    const Qt::Key qtKey = qtKeyFromEvdev(key);
-    if (qtKey == Qt::Key_unknown)
-        return;
-    QKeyEvent event(pressed ? QEvent::KeyPress : QEvent::KeyRelease, qtKey, Qt::NoModifier);
-    QCoreApplication::sendEvent(m_appsDrawerWindow, &event);
+    // Forward the full key (text included) to the offscreen scene; the search
+    // field receives printable characters and the QML Keys handler owns
+    // navigation/dismissal.
+    sendChromeKeyEvent(m_appsDrawerWindow, key, pressed,
+                       m_protocol ? m_protocol->keyboardModifiers() : 0);
     scheduleAppsDrawerRender();
 }
 
