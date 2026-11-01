@@ -61,10 +61,15 @@ impl CursorTheme {
             .filter(|size| *size > 0)
             .unwrap_or(DEFAULT_LOGICAL_SIZE);
         let theme_dir = find_theme_dir(&theme_name);
-        if theme_dir.is_some() {
-            crate::trace::log("cursor", &format!("theme {theme_name}"));
-        } else {
-            crate::trace::log("cursor", &format!("theme {theme_name} not found"));
+        match &theme_dir {
+            Some(dir) => println!(
+                "dragonfruit-compositor: cursor theme: {theme_name} ({})",
+                dir.display()
+            ),
+            None => println!(
+                "dragonfruit-compositor: cursor theme: {theme_name} not found; \
+                 using the built-in arrow"
+            ),
         }
         Self {
             theme_dir,
