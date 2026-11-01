@@ -419,6 +419,10 @@ where
             if state.window_menu_open() {
                 state.window_menu_hover(location);
             }
+            // The cursor itself moved, so the output has new content even when
+            // no window damaged. Nested uses the flag directly; DRM uses it
+            // as the "repaint soon" hint alongside its vblank cadence.
+            state.needs_redraw = true;
             state.notify_activity();
         }
         InputEvent::PointerMotionAbsolute { event } => {
@@ -467,6 +471,7 @@ where
             if state.window_menu_open() {
                 state.window_menu_hover(location);
             }
+            state.needs_redraw = true;
             state.notify_activity();
         }
         InputEvent::PointerButton { event } => {
@@ -649,6 +654,7 @@ where
             }
             pointer.axis(state, frame);
             pointer.frame(state);
+            state.needs_redraw = true;
             state.notify_activity();
         }
         // Gestures are recognized by the compositor and fed into the

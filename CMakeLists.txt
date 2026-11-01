@@ -43,6 +43,28 @@ add_dependencies(dragonfruit-files-core dragonfruit-files-core-ffi)
 # compiled-in resource of an app.
 set(QT_QML_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/qml)
 
+include(GNUInstallDirs)
+
+# A packaged/install-tree session must resolve the first-party QML modules
+# (`Dragonfruit.Settings`, `Dragonfruit.Files`, the shell panels) without the
+# build tree on QML_IMPORT_PATH. Install every generated module under one
+# stable root; the session entry adds it to QML_IMPORT_PATH.
+install(DIRECTORY "${CMAKE_BINARY_DIR}/qml/"
+    DESTINATION "${CMAKE_INSTALL_DATADIR}/dragonfruit/qml"
+    FILES_MATCHING
+    PATTERN "*.qml"
+    PATTERN "*.js"
+    PATTERN "*.mjs"
+    PATTERN "*.qmltypes"
+    PATTERN "qmldir"
+)
+
+# The shipped system cursor theme. The compositor also has the in-repo copy as
+# a development fallback; an installed session finds it in the icon theme dir.
+install(DIRECTORY "${CMAKE_SOURCE_DIR}/assets/cursors/capitaine-cursors"
+    DESTINATION "${CMAKE_INSTALL_DATADIR}/icons"
+)
+
 # QML lint for every module, as a ctest so CI runs it headlessly.
 get_target_property(QMLLINT_EXECUTABLE Qt6::qmllint LOCATION)
 if(NOT QMLLINT_EXECUTABLE)

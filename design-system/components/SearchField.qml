@@ -19,6 +19,9 @@ FocusScope {
 
     signal accepted(string text)
     signal cleared()
+    // Emitted before Escape clears the field, so a host can also dismiss its
+    // overlay when the field was already empty.
+    signal escapePressed()
 
     implicitWidth: Theme.controls.searchField.minWidth
     implicitHeight: Theme.controls.searchField.height
@@ -115,6 +118,7 @@ FocusScope {
     }
 
     Keys.onEscapePressed: (event) => {
+        root.escapePressed();
         root.clear();
         event.accepted = true;
     }

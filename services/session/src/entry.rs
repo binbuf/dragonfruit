@@ -166,6 +166,8 @@ mod tests {
             "DRAGONFRUIT_DEV_BIN",
             "XDG_SESSION_ID",
             "LD_LIBRARY_PATH",
+            "QML_IMPORT_PATH",
+            "share/dragonfruit/qml",
             "native.env",
             "DF_SESSION_START_TIMEOUT",
             "start \"$target\"",
