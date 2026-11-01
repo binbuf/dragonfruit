@@ -101,7 +101,7 @@ impl Wallpaper {
     /// choose pictures.
     pub fn default_for(index: usize) -> Self {
         const PALETTE: [[f32; 4]; INITIAL_SPACES] = [
-            [0.13, 0.05, 0.16, 1.0], // deep dragonfruit purple
+            [0.650_980_4, 0.313_725_5, 0.478_431_4, 1.0], // #a6507a dragonfruit
             [0.05, 0.12, 0.18, 1.0], // deep teal
             [0.18, 0.09, 0.06, 1.0], // deep amber
         ];
