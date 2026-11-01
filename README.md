@@ -71,18 +71,29 @@ make native
 ```
 
 It detects the distribution package manager (`dnf`/`yum`, `apt-get`, `pacman`,
-`zypper`, or `apk`) and installs missing build prerequisites, builds both
-halves, installs the Dragonfruit session entry, preselects it at the greeter,
-and asks the current desktop to log out. The same script is the single entry
-point afterwards:
+`zypper`, or `apk`) and installs missing build prerequisites, writes the
+per-user runtime environment the dev build needs, preflights every built
+binary against that environment, builds both halves, installs the Dragonfruit
+session entry, preselects it at the greeter, and asks the current desktop to
+log out. If a binary cannot load at a display-manager login, the preflight
+stops before the preselect/logout. The same script is the single entry point
+afterwards:
 
 ```bash
 scripts/native-session.sh --no-logout   # install/preselect only
-scripts/native-session.sh return        # restore the previous desktop
+scripts/native-session.sh return        # restore the host login (works from a TTY)
+scripts/native-session.sh recover       # same safety path; no Dragonfruit session needed
 scripts/native-session.sh restart       # rebuild + restart the shell
 scripts/native-session.sh status
 scripts/native-session.sh deps          # print the package command
 ```
+
+If the Dragonfruit login does not come up (for example a black screen), switch
+to a text console with `Ctrl+Alt+F3`, log in, and run `make native-recover`
+(or `bash scripts/native-session.sh recover`). It removes the dev preselect and
+runtime environment, restores the saved display-manager files, stops the failed
+session, and restarts the login manager from a text console — no Dragonfruit
+session required.
 
 The native session uses systemd user units and works from any normal user
 account with sudo for the system install. On a non-systemd host, use the

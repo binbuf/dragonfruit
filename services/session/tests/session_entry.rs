@@ -191,8 +191,9 @@ fn the_entry_script_imports_starts_waits_and_tears_down() {
     .expect("write fake session");
     make_executable(&fake_session);
 
-    // Fake `systemctl`: record calls; report the compositor active once, then
-    // gone, so the wait loop runs and exits.
+    // Fake `systemctl`: record calls; create the compositor socket when the
+    // target starts, and report the compositor active once, then gone, so the
+    // readiness gate and the wait loop both run and exit.
     let record = root.join("systemctl.log");
     let counter = root.join("is-active.count");
     let fake_systemctl = root.join("fake-systemctl");
@@ -200,6 +201,14 @@ fn the_entry_script_imports_starts_waits_and_tears_down() {
         &fake_systemctl,
         format!(
             "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '{record}'\n\
+             if [ \"$1\" = '--user' ] && [ \"$2\" = 'start' ]; then\n\
+               if [ -e '{socket_path}' ]; then\n\
+                 echo 'stale socket was not removed before start' >&2\n\
+                 exit 9\n\
+               fi\n\
+               : > '{socket_path}'\n\
+               exit 0\n\
+             fi\n\
              if [ \"$1\" = '--user' ] && [ \"$2\" = 'is-active' ]; then\n\
                count=0\n\
                [ -f '{counter}' ] && count=$(cat '{counter}')\n\
@@ -210,6 +219,7 @@ fn the_entry_script_imports_starts_waits_and_tears_down() {
              fi\n\
              exit 0\n",
             record = record.display(),
+            socket_path = runtime.join(socket).display(),
             counter = counter.display(),
         ),
     )
@@ -218,9 +228,12 @@ fn the_entry_script_imports_starts_waits_and_tears_down() {
 
     let status = std::process::Command::new(manifest_dir().join("dragonfruit-session-entry"))
         .env("XDG_RUNTIME_DIR", &runtime)
+        .env("XDG_CONFIG_HOME", root.join("config"))
+        .env("HOME", root.join("home"))
         .env("DF_SESSION_BIN", &fake_session)
         .env("DF_SYSTEMCTL", &fake_systemctl)
         .env("DF_SESSION_SOCKET", socket)
+        .env("DF_SESSION_START_TIMEOUT", "2")
         .status()
         .expect("run the entry script");
     assert!(
