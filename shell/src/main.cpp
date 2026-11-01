@@ -61,16 +61,22 @@ int main(int argc, char *argv[])
         socketName = qEnvironmentVariable("WAYLAND_DISPLAY");
     const int barHeight = parser.value(heightOption).toInt();
 
-    QString token = qEnvironmentVariable("DRAGONFRUIT_LAUNCH_TOKEN");
-    if (token.isEmpty()) {
-        const QString runtime = qEnvironmentVariable("XDG_RUNTIME_DIR");
-        if (!runtime.isEmpty() && !socketName.isEmpty()) {
-            QFile file(runtime + QLatin1Char('/') + socketName
-                       + QStringLiteral(".launch-token"));
-            if (file.open(QIODevice::ReadOnly))
-                token = QString::fromUtf8(file.readAll()).trimmed();
-        }
+    // Prefer the compositor's runtime hand-off file over the environment:
+    // a crashed/restarted shell gets a freshly minted token in that file when
+    // its previous connection disconnects, while the copy imported into the
+    // systemd user environment is the original (now consumed) token. The
+    // environment remains the fallback for a session that has not written
+    // the file yet.
+    QString token;
+    const QString runtime = qEnvironmentVariable("XDG_RUNTIME_DIR");
+    if (!runtime.isEmpty() && !socketName.isEmpty()) {
+        QFile file(runtime + QLatin1Char('/') + socketName
+                   + QStringLiteral(".launch-token"));
+        if (file.open(QIODevice::ReadOnly))
+            token = QString::fromUtf8(file.readAll()).trimmed();
     }
+    if (token.isEmpty())
+        token = qEnvironmentVariable("DRAGONFRUIT_LAUNCH_TOKEN");
     if (token.isEmpty()) {
         qWarning("dragonfruit-shell: no launch token (set DRAGONFRUIT_LAUNCH_TOKEN or "
                  "provide the runtime hand-off file)");

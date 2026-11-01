@@ -395,8 +395,10 @@ token per role and scheme — the shader holds no literal value. A driver that
 refuses the glass shader keeps the plain blurred compose. The QML surfaces stay
 the **complement**: the menu bar already uses `material.chromeOpacity` in its
 fill (T-20.1), and the Applications card's fill uses
-`controls.appsDrawer.panelOpacity` (retuned to the Dock's `dockOpacity` glass
-level) so the compositor material reads through it.
+`controls.appsDrawer.panelOpacity` (0.88) so the compositor material reads
+through it while the card stays a solid frosted surface on backends without
+the GPU scene-blur pass (the current DRM rail composites the token tint but
+not the Kawase/glass sample).
 
 The chrome **rollout** landed in **T-20.3**
 ([ADR 0183](adr/0183-chrome-material-rollout.md)). Every chrome namespace
@@ -930,7 +932,16 @@ provisioned with a one-time launch token out-of-band at startup: the shell,
 and the Files desktop surface (`dragonfruit-files --desktop`, see
 [09-files.md](09-files.md)). `bind` attempts from any other client are
 refused. The chrome protocols are a privilege of these processes, not a
-public extension surface.
+public extension surface. When a trusted client disconnects (a shell crash or
+an explicit restart) the compositor mints a replacement one-time token and
+rewrites that role's hand-off file, so systemd can restart the shell without
+restarting the compositor/session.
+
+Chrome composites **above** the window space in both backends, and the
+above-window band is ordered `top` below `overlay`: the Applications drawer,
+menus, and other overlays render above the persistent menu bar and Dock.
+Both the nested and DRM element lists are front-to-back, so the shared
+`chrome_render_elements` reverses the layer query's bottom-to-top order.
 
 The trust model is **role-scoped** (T-19.3, ADR
 [0168](adr/0168-desktop-layer-and-role-scoped-layers.md)): the shell role may

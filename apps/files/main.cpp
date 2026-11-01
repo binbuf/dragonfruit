@@ -28,14 +28,14 @@
 namespace {
 
 #ifdef DF_FILES_DESKTOP_CLIENT
-// The one-time `desktop:` launch token, from the environment or the
-// `<socket>.desktop-launch-token` hand-off file the compositor writes (the
-// same convention the shell uses for `<socket>.launch-token`).
+// The one-time `desktop:` launch token, from the `<socket>.desktop-launch-token`
+// hand-off file the compositor writes (the same convention the shell uses for
+// `<socket>.launch-token`). Read the file first: the compositor reissues it
+// when a trusted client disconnects, whereas the environment copy is the
+// original token and is already consumed after a restart.
 QString desktopLaunchToken(const QString &socketName)
 {
-    QString token = qEnvironmentVariable("DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN");
-    if (!token.isEmpty())
-        return token;
+    QString token;
     const QString runtime = qEnvironmentVariable("XDG_RUNTIME_DIR");
     if (!runtime.isEmpty() && !socketName.isEmpty()) {
         QFile file(runtime + QLatin1Char('/') + socketName
@@ -43,6 +43,8 @@ QString desktopLaunchToken(const QString &socketName)
         if (file.open(QIODevice::ReadOnly))
             token = QString::fromUtf8(file.readAll()).trimmed();
     }
+    if (token.isEmpty())
+        token = qEnvironmentVariable("DRAGONFRUIT_DESKTOP_LAUNCH_TOKEN");
     return token;
 }
 

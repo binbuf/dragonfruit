@@ -190,12 +190,18 @@ impl ShellProtocolState {
             .unwrap_or(self.reserved)
     }
 
-    /// Drop a client's protocol objects when it disconnects.
-    fn forget_client(&mut self, client: &ClientId) {
-        self.sessions.remove(client);
+    /// Drop a client's protocol objects when it disconnects, returning the
+    /// role it had authenticated as (if any). Callers use the role to reissue
+    /// that trusted process's one-time launch token.
+    fn forget_client(&mut self, client: &ClientId) -> Option<TrustedRole> {
+        let role = self
+            .sessions
+            .remove(client)
+            .and_then(|session| session.role);
         // Chrome surfaces owned by the client no longer reserve zones.
         self.layers
             .retain(|entry| entry.resource.client().map(|c| c.id()) != Some(client.clone()));
+        role
     }
 }
 
@@ -1505,7 +1511,9 @@ impl Dispatch<df_core::DfCore, CoreUserData> for DfState {
         _resource: &df_core::DfCore,
         _data: &CoreUserData,
     ) {
-        state.shell.forget_client(&client);
+        if let Some(role) = state.shell.forget_client(&client) {
+            reissue_token(state, role);
+        }
     }
 }
 
@@ -2263,6 +2271,24 @@ fn write_token_file(state: &DfState, token: &trust::LaunchToken, suffix: &str, l
         Ok(()) => println!("dragonfruit-compositor: {label}: {}", path.display()),
         Err(err) => eprintln!("dragonfruit-compositor: failed to write {label}: {err}"),
     }
+}
+
+/// A trusted client disconnected (a shell crash or a `native-restart`). Its
+/// one-time token is already consumed, so mint a fresh one and rewrite the
+/// hand-off file. Without this, systemd's automatic shell restart is refused
+/// with `token-consumed` and the desktop stays without its menu bar and Dock
+/// until the whole compositor/session is restarted.
+fn reissue_token(state: &mut DfState, role: TrustedRole) {
+    let token = state.shell.trust.mint(role);
+    let (suffix, label) = match role {
+        TrustedRole::Shell => (trust::TOKEN_FILE_SUFFIX, "launch token"),
+        TrustedRole::DesktopIcons => (trust::DESKTOP_TOKEN_FILE_SUFFIX, "desktop launch token"),
+    };
+    write_token_file(state, &token, suffix, label);
+    println!(
+        "dragonfruit-compositor: reissued {label} after {} disconnect",
+        role.name()
+    );
 }
 
 /// Remove the shell and desktop token hand-off files at teardown.

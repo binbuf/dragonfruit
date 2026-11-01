@@ -110,13 +110,14 @@ where
 }
 
 /// Build render elements for the shell's chrome surfaces (menu bar, Dock,
-/// overlays) on `output`, in layer order (T-09).
+/// overlays) on `output`, topmost first (T-09).
 ///
 /// Chrome surfaces are composited *above* the window [`Space`]; Smithay's
-/// `render_output`/`DrmCompositor` take these as the custom-element list.
-/// Only the above-window `top`/`overlay` layers are handled here; the
-/// `background` desktop layer is composited below windows by
-/// [`desktop_render_elements`] (T-19.3).
+/// `render_output`/`DrmCompositor` take these as the custom-element list in
+/// front-to-back order, so [`chrome_surfaces`](crate::shell::DfState::chrome_surfaces)'s
+/// bottom-to-top list is reversed here. Only the above-window `top`/`overlay`
+/// layers are handled; the `background` desktop layer is composited below
+/// windows by [`desktop_render_elements`] (T-19.3).
 pub fn chrome_render_elements<R, E>(
     renderer: &mut R,
     state: &DfState,
@@ -132,7 +133,14 @@ where
         return Vec::new();
     };
     let mut elements = Vec::new();
-    for chrome in state.chrome_surfaces(output.name().as_str(), geometry) {
+    // `chrome_surfaces` is ordered bottom-to-top (layer 2 then 3), but this
+    // list is consumed front-to-back: reverse it so overlays (menus, the
+    // Applications drawer) render above the persistent menu bar and Dock.
+    for chrome in state
+        .chrome_surfaces(output.name().as_str(), geometry)
+        .into_iter()
+        .rev()
+    {
         if !crate::shell::layer::above_windows(chrome.layer) {
             continue;
         }
@@ -276,7 +284,9 @@ pub fn chrome_backdrop_render_elements(
         return Vec::new();
     }
     let mut elements = Vec::new();
-    for (chrome, spec) in surfaces.iter().zip(&specs) {
+    // Backdrops follow the same front-to-back rule as the chrome surfaces:
+    // the topmost overlay's panel tint is drawn before lower chrome's.
+    for (chrome, spec) in surfaces.iter().zip(&specs).rev() {
         if let Some(spec) = spec {
             elements.extend(backdrop_elements(chrome.panel, *spec, scale));
         }
@@ -332,7 +342,7 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
     }
     let scheme = state.color_scheme;
     let tier = state.material_path.material_tier(state.degrade.tier());
-    let panels: Vec<BlurPanel> = surfaces
+    let mut panels: Vec<BlurPanel> = surfaces
         .iter()
         .filter_map(|chrome| {
             let role = MaterialRole::from_layer_namespace(chrome.layer, &chrome.namespace);
@@ -348,6 +358,9 @@ pub fn chrome_blur_panels(state: &mut DfState, output: &Output) -> Vec<BlurPanel
     if panels.is_empty() {
         return Vec::new();
     }
+    // The blur/glass elements are appended front-to-back too: an overlay's
+    // panel must sit above the persistent chrome it covers.
+    panels.reverse();
     // The chrome band: the union of the panels (the damage the pass owns).
     let region = surfaces
         .iter()

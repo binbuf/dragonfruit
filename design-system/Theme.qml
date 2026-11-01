@@ -623,7 +623,10 @@ QtObject {
             readonly property int gridRowGap: 16
             readonly property int labelSize: 12
             readonly property real scrimOpacity: 0.35
-            readonly property real panelOpacity: 0.5
+            // The drawer card stays close to a solid frosted surface: the
+            // compositor tint/blur sits behind it, so a low alpha read as raw
+            // see-through on backends without the GPU blur pass (DRM).
+            readonly property real panelOpacity: 0.88
             readonly property real fallbackGlyphRatio: 0.6
             readonly property int emptyGlyphSize: 40
         }

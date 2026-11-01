@@ -1775,6 +1775,58 @@ fn desktop_client_death_leaves_the_shell_and_session_alive() {
     proc.shutdown();
 }
 
+/// A trusted client disconnecting (a shell crash, or `native-restart`) must
+/// get a fresh usable hand-off token. Otherwise systemd's automatic restart is
+/// refused as `token-consumed` and the desktop is left without its shell.
+#[test]
+fn shell_disconnect_reissues_a_usable_token() {
+    let token = "55".repeat(32);
+    let proc = CompositorProcess::start("dragonfruit-conformance-reissue", &[token.clone()]);
+    let initial = proc.read_token();
+    assert_eq!(initial, token, "the provisioned token is the hand-off file");
+
+    {
+        let (conn, mut queue, mut state) = connect(&proc.socket_path);
+        let (name, version) = state.core_global.expect("df_core advertised");
+        let core = bind_core(&mut state, &queue, name, version);
+        core.authenticate(1, initial.clone());
+        wait_for(
+            &conn,
+            &mut queue,
+            &mut state,
+            Duration::from_secs(5),
+            |state| state.authenticated.is_some(),
+        );
+        drop(core);
+        let _ = conn.flush();
+    }
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut reissued = proc.read_token();
+    while reissued == initial && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(25));
+        reissued = proc.read_token();
+    }
+    assert_ne!(
+        reissued, initial,
+        "the compositor must reissue the shell token after a disconnect"
+    );
+
+    let (conn, mut queue, mut state) = connect(&proc.socket_path);
+    let (name, version) = state.core_global.expect("df_core advertised");
+    let core = bind_core(&mut state, &queue, name, version);
+    core.authenticate(1, reissued);
+    wait_for(
+        &conn,
+        &mut queue,
+        &mut state,
+        Duration::from_secs(5),
+        |state| state.authenticated.is_some(),
+    );
+    assert_eq!(state.authenticated, Some(1));
+    proc.shutdown();
+}
+
 #[test]
 fn refusal_matrix_rejects_bad_tokens_and_versions() {
     // Two valid tokens: one is used for the success/replay pair, the other

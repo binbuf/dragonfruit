@@ -398,7 +398,12 @@ where
             // point by `delta / zoom` (T-16.6b), so hit-testing and the
             // client's cursor stay on the content under the pointer.
             let delta = magnified_delta(state, event.delta());
-            let location = pointer.current_location() + delta;
+            // The kernel reports relative deltas without screen bounds. A fast
+            // flick (or a pointer-locked client) can put the logical location
+            // past the last output pixel; the DRM rail then skips the cursor
+            // and clicks hit nothing, which looks like a vanished pointer and a
+            // frozen desktop. Confine every relative move to the output layout.
+            let location = confine_to_outputs(state, pointer.current_location() + delta);
             pointer.motion(
                 state,
                 surface_under(state, location).map(|(surface, loc)| (surface, loc.to_f64())),
@@ -448,8 +453,9 @@ where
                 return;
             };
             // The magnifier maps the physical pointer position back to the
-            // scene point it is over (T-16.6b).
-            let location = magnified_location(state, location);
+            // scene point it is over (T-16.6b). Absolute input can report the
+            // exclusive right/bottom edge, so confine it like relative motion.
+            let location = confine_to_outputs(state, magnified_location(state, location));
             let pointer = state.seat.get_pointer().unwrap();
             pointer.motion(
                 state,
@@ -1076,6 +1082,67 @@ fn magnified_delta(state: &DfState, delta: Point<f64, Logical>) -> Point<f64, Lo
     (delta.x / zoom, delta.y / zoom).into()
 }
 
+/// Confine a global-logical pointer position to the output layout.
+///
+/// Relative pointer events have no screen bounds of their own. Without this a
+/// fast motion can leave the pointer beyond the last output pixel; the DRM
+/// cursor element is then skipped (`output_geometry.contains` is false), so the
+/// pointer disappears and every click lands outside every surface. Keep the
+/// position inside the nearest output instead, matching the finite screen a
+/// desktop presents. When there are no outputs the position is returned as-is.
+fn confine_to_outputs(state: &DfState, location: Point<f64, Logical>) -> Point<f64, Logical> {
+    confine_to_geometry(
+        location,
+        state
+            .space
+            .outputs()
+            .filter_map(|output| state.space.output_geometry(output)),
+    )
+}
+
+/// The pure half of [`confine_to_outputs`]: clamp to the nearest non-empty
+/// output rectangle. A location already inside an output is returned exactly.
+fn confine_to_geometry(
+    location: Point<f64, Logical>,
+    outputs: impl IntoIterator<Item = Rectangle<i32, Logical>>,
+) -> Point<f64, Logical> {
+    let mut nearest: Option<(f64, Point<f64, Logical>)> = None;
+    for geometry in outputs {
+        if geometry.size.w <= 0 || geometry.size.h <= 0 {
+            continue;
+        }
+        let confined = confine_to_rect(location, geometry);
+        let dx = confined.x - location.x;
+        let dy = confined.y - location.y;
+        let distance = dx * dx + dy * dy;
+        if distance == 0.0 {
+            return location;
+        }
+        if nearest.map_or(true, |(best, _)| distance < best) {
+            nearest = Some((distance, confined));
+        }
+    }
+    nearest.map(|(_, point)| point).unwrap_or(location)
+}
+
+/// Clamp a point to the inclusive pixel bounds of `geometry`. Output
+/// rectangles are half-open (`x < loc + size`), so the last drawable logical
+/// pixel is `size - 1`; the cursor's hotspot can then still sit inside.
+fn confine_to_rect(
+    location: Point<f64, Logical>,
+    geometry: Rectangle<i32, Logical>,
+) -> Point<f64, Logical> {
+    let min_x = geometry.loc.x as f64;
+    let min_y = geometry.loc.y as f64;
+    let max_x = min_x + geometry.size.w as f64 - 1.0;
+    let max_y = min_y + geometry.size.h as f64 - 1.0;
+    (
+        location.x.clamp(min_x, max_x),
+        location.y.clamp(min_y, max_y),
+    )
+        .into()
+}
+
 /// libinput reports device-normalized coordinates for touch; winit reports
 /// window pixels. `position()` is in Raw coordinates in both cases, so map
 /// through the output geometry like absolute pointer motion.
@@ -1093,7 +1160,7 @@ fn touch_location(
         geometry.loc.x as f64 + position.x * geometry.size.w as f64,
         geometry.loc.y as f64 + position.y * geometry.size.h as f64,
     ));
-    magnified_location(state, view)
+    confine_to_outputs(state, magnified_location(state, view))
 }
 
 #[cfg(test)]
@@ -1151,6 +1218,43 @@ mod matrix_tests {
         for event in keyboard.iter().chain(&gesture) {
             assert_eq!(event.action, InputAction::MissionControl);
         }
+    }
+
+    #[test]
+    fn relative_pointer_motion_stays_inside_the_output_layout() {
+        let primary = Rectangle::new((0, 0).into(), (1280, 720).into());
+        let secondary = Rectangle::new((1280, 0).into(), (1280, 720).into());
+
+        // Already inside: returned bit-for-bit, so sub-pixel motion is intact.
+        let inside = Point::from((300.5, 200.25));
+        assert_eq!(confine_to_geometry(inside, [primary, secondary]), inside);
+
+        // A fast flick past the right/bottom edge lands on the last pixel, not
+        // in the void where the DRM cursor would be skipped.
+        assert_eq!(
+            confine_to_geometry(Point::from((5000.0, 2000.0)), [primary, secondary]),
+            Point::from((2559.0, 719.0))
+        );
+
+        // Negative motion at the top-left is confined too.
+        assert_eq!(
+            confine_to_geometry(Point::from((-40.0, -80.0)), [primary]),
+            Point::from((0.0, 0.0))
+        );
+
+        // A point in the gap between non-adjacent outputs snaps to the nearer
+        // output rather than staying in dead space.
+        let far = Rectangle::new((2000, 0).into(), (800, 600).into());
+        assert_eq!(
+            confine_to_geometry(Point::from((1500.0, 100.0)), [primary, far]),
+            Point::from((1279.0, 100.0))
+        );
+
+        // No outputs: leave the location untouched (headless startup).
+        assert_eq!(
+            confine_to_geometry(Point::from((17.0, 19.0)), []),
+            Point::from((17.0, 19.0))
+        );
     }
 
     #[test]
