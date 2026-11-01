@@ -7,18 +7,16 @@
 // the Files-owned desktop, a trusted private-protocol client rendering
 // `~/Desktop` on the compositor's background layer.
 #include "FilesArguments.h"
+#include "OpenHandler.h"
 
 #include <cstdio>
 
 #include <QDBusConnection>
-#include <QDesktopServices>
 #include <QFile>
 #include <QGuiApplication>
 #include <QProcess>
-#include <QProcessEnvironment>
 #include <QQmlApplicationEngine>
 #include <QStringList>
-#include <QUrl>
 
 #include "systemfont.h"
 #include "i18n.h"
@@ -48,17 +46,6 @@ QString desktopLaunchToken(const QString &socketName)
     return token;
 }
 
-// Environment for a Files browser the desktop launches. The desktop process
-// forces the offscreen platform for its own `QQuickWindow`; the browser must
-// render as a normal Wayland client of the compositor, so QT_QPA_PLATFORM is
-// dropped (otherwise a double-click would open an invisible offscreen window).
-QProcessEnvironment browserEnvironment()
-{
-    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-    env.remove(QStringLiteral("QT_QPA_PLATFORM"));
-    return env;
-}
-
 int runDesktop(QGuiApplication &app)
 {
     const QString socketName = qEnvironmentVariable("WAYLAND_DISPLAY");
@@ -80,13 +67,29 @@ int runDesktop(QGuiApplication &app)
             // so the browser and the desktop never share a crash domain. The
             // browser gets a normal (non-offscreen) platform environment.
             QProcess browser;
-            browser.setProcessEnvironment(browserEnvironment());
+            browser.setProcessEnvironment(filesDesktopChildEnvironment());
             browser.setProgram(app.applicationFilePath());
             browser.setArguments({uri});
             if (!browser.startDetached())
                 qWarning("dragonfruit-files: could not open %s", qPrintable(uri));
         } else {
-            QDesktopServices::openUrl(QUrl(uri));
+            // A file opens in its default handler. Never call QDesktopServices
+            // here: the desktop is an offscreen-platform process, whose plugin
+            // has no QPlatformServices (it logs "This plugin does not support
+            // QPlatformServices::openDocument()"). Launch the handler out of
+            // process with the offscreen platform stripped instead.
+            const QStringList command = filesOpenHandlerCommand(uri);
+            if (command.isEmpty()) {
+                qWarning("dragonfruit-files: no default handler (xdg-open/gio) "
+                         "for %s", qPrintable(uri));
+                return;
+            }
+            QProcess opener;
+            opener.setProcessEnvironment(filesDesktopChildEnvironment());
+            opener.setProgram(command.first());
+            opener.setArguments(command.mid(1));
+            if (!opener.startDetached())
+                qWarning("dragonfruit-files: could not open %s", qPrintable(uri));
         }
     });
     if (!desktop.start(socketName, token, filesDesktopDirectory())) {
