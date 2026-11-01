@@ -252,5 +252,33 @@ Item {
             verify(findChild(drawer, "appsDrawerTopSeparator") !== null);
             verify(findChild(drawer, "appsDrawerPillsSeparator") !== null);
         }
+
+        // Opening the drawer puts active focus in the search field, so the
+        // keys the shell forwards are text input rather than dropped by the
+        // root's navigation handler.
+        function test_search_field_takes_focus_when_the_drawer_opens() {
+            var drawer = make({ apps: sampleApps, active: false });
+            drawer.active = true;
+            wait(0);
+            var search = findChild(drawer, "appsDrawerSearch");
+            verify(search !== null);
+            verify(search.input.activeFocus, "search input did not take focus");
+        }
+
+        // Printable keys inserted by the shell's chrome key bridge reach the
+        // search field and narrow the grid (the native "can't type" failure).
+        function test_typing_filters_through_the_search_field() {
+            var drawer = make({ apps: sampleApps, active: false });
+            drawer.active = true;
+            wait(0);
+            keyClick(Qt.Key_C);
+            keyClick(Qt.Key_A);
+            keyClick(Qt.Key_L);
+            keyClick(Qt.Key_C);
+            waitForRendering(stage);
+            compare(drawer.query, "calc");
+            compare(tiles(drawer).length, 1);
+            compare(labels(drawer)[0], "Calculator");
+        }
     }
 }

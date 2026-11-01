@@ -778,17 +778,6 @@ pub fn post_repaint_headless(state: &mut DfState, output: &Output, time: Duratio
     crate::trace::log("present", "headless");
 }
 
-/// Count the live windows composited on `output` — the frames a real backend
-/// would wake with a frame-callback batch. Shared with the DRM backend, whose
-/// frame callbacks are queued by Smithay's `DrmCompositor` rather than here.
-pub fn count_output_windows(state: &DfState, output: &Output) -> u64 {
-    state
-        .space
-        .elements()
-        .filter(|window| state.space.outputs_for_element(window).contains(output))
-        .count() as u64
-}
-
 /// Send frame callbacks for the live windows of `output` without presenting a
 /// new frame.
 ///

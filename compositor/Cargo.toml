@@ -26,6 +26,9 @@ wayland-backend = "0.3"
 bitflags = "2"
 # Image wallpaper decode (T-05.4): decoded once and cached, never per frame.
 image.workspace = true
+# XCursor parsing for the compositor-owned system cursor (T-03 cursor rail).
+# The theme ships as a data asset; this is a pure parser, no X11 connection.
+xcursor = "0.3"
 
 [dev-dependencies]
 # Server-side test client: the protocol-surface smoke test connects to the

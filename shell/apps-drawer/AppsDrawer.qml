@@ -56,7 +56,17 @@ Item {
         ? (root.active ? 1.0 : 0.0)
         : root.shown
     property real shown: 0
-    onActiveChanged: root.shown = root.active ? 1.0 : 0.0
+    onActiveChanged: {
+        root.shown = root.active ? 1.0 : 0.0
+        // Typing filters the list, so the search field owns active focus the
+        // moment the drawer opens. Navigation keys are forwarded below.
+        if (root.active) {
+            Qt.callLater(function() {
+                if (root.active)
+                    searchField.forceActiveFocus()
+            })
+        }
+    }
     Behavior on shown {
         enabled: !Theme.reducedMotion
         NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
@@ -285,6 +295,24 @@ Item {
             flat: true
             placeholderText: qsTr("Applications")
             onTextChanged: root.query = text
+            // Return launches the selected tile from the text field; Escape
+            // dismisses when there is no text left to clear.
+            onAccepted: root.launchAt(root.currentIndex)
+            onEscapePressed: {
+                if (searchField.text.length === 0)
+                    root.dismissRequested()
+            }
+            // The text field owns focus while the drawer is open. Forward the
+            // grid-navigation keys here so typing filters and arrows still
+            // move the tile selection.
+            Keys.onDownPressed: (event) => {
+                root.moveSelection(root.columns)
+                event.accepted = true
+            }
+            Keys.onUpPressed: (event) => {
+                root.moveSelection(-root.columns)
+                event.accepted = true
+            }
         }
 
         // The hairline rule under the search section (the reference's first
@@ -524,6 +552,15 @@ Item {
             event.accepted = true;
         } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
             root.launchAt(root.currentIndex);
+            event.accepted = true;
+        } else if (event.text.length > 0 && !(event.modifiers & (Qt.ControlModifier
+                                                                | Qt.AltModifier
+                                                                | Qt.MetaModifier))) {
+            // A tile had focus (a click selected it) and the user started
+            // typing: hand the character to the search field instead of
+            // dropping it.
+            searchField.forceActiveFocus();
+            searchField.text += event.text;
             event.accepted = true;
         }
     }
