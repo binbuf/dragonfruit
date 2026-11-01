@@ -68,15 +68,19 @@ impl RestoreOutcome {
     }
 }
 
-/// The three ways to ask the host session manager to log out. All of them ask
-/// the session manager; none `SIGKILL`s the host compositor, so unsaved-work
+/// The ways to ask the host session manager to log out. All of them ask the
+/// session manager; none `SIGKILL`s the host compositor, so unsaved-work
 /// prompts fire normally.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogoutPlan {
     /// Ask the session manager through the interactive session-quit tool
     /// (`gnome-session-quit --logout`). // df-allow-desktop-name
     SessionQuit,
-    /// Ask the session manager through its D-Bus logout method
+    /// Ask the Qt session manager to show its logout prompt. This is the
+    /// stable interface on newer Qt desktop releases, where the old
+    /// `KSMServerInterface.logout` method is gone.
+    LogoutPrompt,
+    /// Ask the session manager through its older D-Bus logout method
     /// (`KSMServerInterface.logout`). // df-allow-desktop-name
     KsmServer,
     /// The DM-agnostic fallback: `loginctl terminate-session`.
@@ -94,8 +98,8 @@ impl LogoutPlan {
             return LogoutPlan::SessionQuit;
         }
         let is_qt = desktop.contains("kde") || desktop.contains("plasma"); // df-allow-desktop-name
-        if is_qt && (have("qdbus6") || have("qdbus")) {
-            return LogoutPlan::KsmServer;
+        if is_qt && qt_dbus_tool(have).is_some() {
+            return LogoutPlan::LogoutPrompt;
         }
         LogoutPlan::Logind
     }
@@ -109,12 +113,19 @@ impl LogoutPlan {
                 "gnome-session-quit".to_string(), // df-allow-desktop-name
                 vec!["--logout".to_string()],
             ),
+            LogoutPlan::LogoutPrompt => (
+                qt_dbus_tool(which).unwrap_or("qdbus").to_string(),
+                vec![
+                    "org.kde.LogoutPrompt".to_string(), // df-allow-desktop-name
+                    "/LogoutPrompt".to_string(),
+                    "org.kde.LogoutPrompt.promptLogout".to_string(), // df-allow-desktop-name
+                ],
+            ),
             LogoutPlan::KsmServer => {
                 // `logout <confirm> <sdtype> <sdmode>`; all zero is "ask the
                 // session manager", which raises the normal prompts.
-                let qdbus = if which("qdbus6") { "qdbus6" } else { "qdbus" };
                 (
-                    qdbus.to_string(),
+                    qt_dbus_tool(which).unwrap_or("qdbus").to_string(),
                     vec![
                         "org.kde.ksmserver".to_string(), // df-allow-desktop-name
                         "/KSMServer".to_string(),
@@ -142,10 +153,18 @@ impl LogoutPlan {
     pub fn marker(self) -> &'static str {
         match self {
             LogoutPlan::SessionQuit => "Logout: gnome-session-quit --logout", // df-allow-desktop-name
+            LogoutPlan::LogoutPrompt => "Logout: session-manager logout prompt",
             LogoutPlan::KsmServer => "Logout: KSMserver D-Bus logout",
             LogoutPlan::Logind => "Logout: loginctl fallback",
         }
     }
+}
+
+/// The Qt D-Bus CLI, under any of the names distributions ship.
+fn qt_dbus_tool(have: impl Fn(&str) -> bool) -> Option<&'static str> {
+    ["qdbus6", "qdbus-qt6", "qdbus"]
+        .into_iter()
+        .find(|program| have(program))
 }
 
 /// Whether `program` is on `PATH` (best effort).
@@ -613,9 +632,15 @@ mod tests {
         let gtk = LogoutPlan::detect("GNOME", everything); // df-allow-desktop-name
         assert_eq!(gtk, LogoutPlan::SessionQuit);
         let qt = LogoutPlan::detect("KDE", everything); // df-allow-desktop-name
-        assert_eq!(qt, LogoutPlan::KsmServer);
+        assert_eq!(qt, LogoutPlan::LogoutPrompt);
         let wl = LogoutPlan::detect("sway", everything); // df-allow-desktop-name
         assert_eq!(wl, LogoutPlan::Logind);
+        // Fedora ships the Qt D-Bus CLI as qdbus-qt6.
+        let fedora_qt = |program: &str| program == "qdbus-qt6";
+        assert_eq!(
+            LogoutPlan::detect("KDE", fedora_qt), // df-allow-desktop-name
+            LogoutPlan::LogoutPrompt
+        );
         // A known desktop without its tool falls back to logind.
         let gtk_absent = LogoutPlan::detect("GNOME", nothing); // df-allow-desktop-name
         assert_eq!(gtk_absent, LogoutPlan::Logind);
@@ -627,6 +652,10 @@ mod tests {
         assert_eq!(program, "gnome-session-quit"); // df-allow-desktop-name
         assert_eq!(args, vec!["--logout"]);
         assert!(!args.iter().any(|a| a.contains("no-prompt")));
+
+        let (program, args) = LogoutPlan::LogoutPrompt.command(Some("3"), "dfdev");
+        assert!(program.starts_with("qdbus"));
+        assert!(args.iter().any(|a| a.contains("LogoutPrompt.promptLogout")));
 
         let (program, args) = LogoutPlan::KsmServer.command(Some("3"), "dfdev");
         assert!(program.starts_with("qdbus"));

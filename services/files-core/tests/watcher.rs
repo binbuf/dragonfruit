@@ -299,6 +299,53 @@ mod inotify {
     }
 
     #[test]
+    fn an_external_hidden_create_is_not_listed() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let location = Location::file(dir.path());
+        let source = Arc::new(StdFsSource::new());
+        let mut model = DirectoryModel::new();
+        let listing = model.begin(source, location.clone());
+        drain_listing(&mut model, &listing);
+        assert!(model.is_empty());
+
+        let watcher = Arc::new(InotifyWatcher::new());
+        let handle = model.begin_watch(watcher, &location).expect("watch");
+
+        std::fs::write(dir.path().join(".directory"), b"[Desktop Entry]\n").expect("write");
+        let deadline = Instant::now() + Duration::from_millis(300);
+        while Instant::now() < deadline {
+            model.drain_watch(&handle);
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(model.is_empty(), "a hidden create must not add a row");
+        model.check_consistent().expect("consistent");
+    }
+
+    #[test]
+    fn renaming_a_visible_file_hidden_removes_its_row() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let visible = dir.path().join("visible.txt");
+        std::fs::write(&visible, b"x").expect("write");
+        let location = Location::file(dir.path());
+        let source = Arc::new(StdFsSource::new());
+        let mut model = DirectoryModel::new();
+        let listing = model.begin(source, location.clone());
+        drain_listing(&mut model, &listing);
+        let uri = Location::file(&visible).uri().to_owned();
+        assert!(model.node_id_for_uri(&uri).is_some());
+
+        let watcher = Arc::new(InotifyWatcher::new());
+        let handle = model.begin_watch(watcher, &location).expect("watch");
+        std::fs::rename(&visible, dir.path().join(".visible.txt")).expect("rename");
+        wait_for(&mut model, &handle, |model| {
+            model.node_id_for_uri(&uri).is_none()
+        });
+        assert!(model.node_id_for_uri(&uri).is_none());
+        assert!(model.is_empty());
+        model.check_consistent().expect("consistent");
+    }
+
+    #[test]
     fn a_new_folder_via_stays_confirmed_against_a_live_watch() {
         // T-10.2b's synchronous `*_via` and T-10.3b's watcher must still agree:
         // the watcher sees the created folder and confirms nothing new, and the

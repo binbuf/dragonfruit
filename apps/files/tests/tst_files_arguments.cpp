@@ -4,10 +4,12 @@
 // `DF_FILES_START_URI` seam; this checks the parser independently of QML.
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QTemporaryDir>
 #include <QtTest>
 
 #include "FilesArguments.h"
+#include "OpenHandler.h"
 
 class FilesArgumentsTest : public QObject
 {
@@ -63,6 +65,40 @@ private slots:
         QVERIFY(!url.toLocalFile().isEmpty());
         QVERIFY(url.toLocalFile().endsWith(QStringLiteral("Desktop"))
                 || url.toLocalFile().contains(QStringLiteral("Desktop")));
+    }
+
+    // The desktop cannot open documents in-process: it runs on the offscreen
+    // platform, whose QPlatformServices is unimplemented (the
+    // "This plugin does not support QPlatformServices::openDocument()" log).
+    // It launches an out-of-process opener instead.
+    void open_handler_command_passes_the_uri_unchanged()
+    {
+        const QString uri =
+                QStringLiteral("file:///home/tester/Desktop/.directory");
+        const QStringList command = filesOpenHandlerCommand(uri);
+        if (command.isEmpty())
+            QSKIP("neither xdg-open nor gio is installed on this host");
+        // The last argument is always the URI, for both `xdg-open URI` and
+        // `gio open URI`.
+        QCOMPARE(command.last(), uri);
+        QVERIFY(QFileInfo(command.first()).isExecutable());
+    }
+
+    void open_handler_command_is_empty_for_an_empty_uri()
+    {
+        QVERIFY(filesOpenHandlerCommand(QString()).isEmpty());
+    }
+
+    void desktop_child_environment_never_forces_the_offscreen_platform()
+    {
+        const QByteArray previous = qgetenv("QT_QPA_PLATFORM");
+        qputenv("QT_QPA_PLATFORM", "offscreen");
+        const QProcessEnvironment environment = filesDesktopChildEnvironment();
+        if (previous.isNull())
+            qunsetenv("QT_QPA_PLATFORM");
+        else
+            qputenv("QT_QPA_PLATFORM", previous);
+        QVERIFY(!environment.contains(QStringLiteral("QT_QPA_PLATFORM")));
     }
 
     // -- the T-10.6c reveal target ---------------------------------------

@@ -61,6 +61,33 @@ services, tools) and the CMake/Qt side (design system, shell, apps):
 make build
 ```
 
+## Run it natively
+
+One command provisions, builds, installs, and hands off to the display
+manager:
+
+```bash
+make native
+```
+
+It detects the distribution package manager (`dnf`/`yum`, `apt-get`, `pacman`,
+`zypper`, or `apk`) and installs missing build prerequisites, builds both
+halves, installs the Dragonfruit session entry, preselects it at the greeter,
+and asks the current desktop to log out. The same script is the single entry
+point afterwards:
+
+```bash
+scripts/native-session.sh --no-logout   # install/preselect only
+scripts/native-session.sh return        # restore the previous desktop
+scripts/native-session.sh restart       # rebuild + restart the shell
+scripts/native-session.sh status
+scripts/native-session.sh deps          # print the package command
+```
+
+The native session uses systemd user units and works from any normal user
+account with sudo for the system install. On a non-systemd host, use the
+nested `make dev` loop instead.
+
 ## Test
 
 One command runs all tests — Rust unit tests plus the QML lint suite

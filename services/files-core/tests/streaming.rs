@@ -139,6 +139,32 @@ fn the_fallback_lists_kinds_and_sizes_from_a_real_tree() {
 }
 
 #[test]
+fn the_fallback_skips_hidden_entries_with_gio_semantics() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    fs::write(dir.path().join("visible.txt"), b"x").expect("write file");
+    // Dotfiles: `.directory` is the folder-metadata file desktops create.
+    fs::write(dir.path().join(".directory"), b"[Desktop Entry]\n").expect("write dotfile");
+    fs::write(dir.path().join(".config"), b"x").expect("write dotfile");
+    // `~`-suffixed backups.
+    fs::write(dir.path().join("visible.txt~"), b"x").expect("write backup");
+    // `.hidden` names are hidden even without a leading dot.
+    fs::write(dir.path().join("listed-but-hidden.txt"), b"x").expect("write file");
+    fs::write(dir.path().join(".hidden"), b"listed-but-hidden.txt\n").expect("write .hidden");
+
+    let source = Arc::new(StdFsSource::new());
+    let mut model = DirectoryModel::new();
+    let handle = model.begin(source, Location::file(dir.path()));
+    drain_to_completion(&mut model, &handle);
+
+    let names: Vec<String> = model
+        .nodes()
+        .iter()
+        .map(|node| node.display_name().into_owned())
+        .collect();
+    assert_eq!(names, vec!["visible.txt"]);
+}
+
+#[test]
 fn a_failed_open_reports_the_error_and_no_nodes() {
     use dragonfruit_files_core::SourceError;
 

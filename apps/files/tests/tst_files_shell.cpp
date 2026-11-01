@@ -32,6 +32,10 @@ int main(int argc, char **argv)
     writeFile(root + QStringLiteral("/alpha.txt"), QByteArray("alpha"));
     writeFile(root + QStringLiteral("/beta.bin"), QByteArray(2048, 'x'));
     writeFile(root + QStringLiteral("/gamma.png"), QByteArray("png"));
+    // A folder-metadata dotfile, like the one a desktop creates on a fresh
+    // `~/Desktop`; hidden entries are not listed by default.
+    writeFile(root + QStringLiteral("/.directory"),
+              QByteArray("[Desktop Entry]\nIcon=user-desktop\n"));
     qputenv("DF_FILES_VIEW_FIXTURE", root.toUtf8());
 
     // A separate tree for the T-10.4c optimistic/mutation tests, so a rename

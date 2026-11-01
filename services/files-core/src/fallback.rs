@@ -19,10 +19,39 @@
 //!
 //! [09-files.md]: ../../../docs/design/09-files.md
 
+use std::collections::HashSet;
+use std::ffi::{OsStr, OsString};
 use std::fs::ReadDir;
+use std::path::Path;
 
 use crate::source::{DirectoryReader, DirectorySource, SourceError};
 use crate::{Location, Node, NodeKind};
+
+/// The GIO convention file listing names that are hidden even without a
+/// leading dot (one name per line).
+const DOT_HIDDEN_FILE: &str = ".hidden";
+
+/// The names a directory's `.hidden` file lists, or an empty set when it has
+/// none. A malformed or unreadable `.hidden` is ignored: hiding is a display
+/// concern and must never fail a listing.
+pub(crate) fn dot_hidden_names(path: &Path) -> HashSet<OsString> {
+    let Ok(contents) = std::fs::read_to_string(path.join(DOT_HIDDEN_FILE)) else {
+        return HashSet::new();
+    };
+    contents
+        .lines()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(OsString::from)
+        .collect()
+}
+
+/// Whether one entry is hidden in the GIO sense: a dotfile, a `~`-suffixed
+/// backup, or a name the directory's `.hidden` file lists.
+pub(crate) fn is_hidden_name(name: &OsStr, dot_hidden: &HashSet<OsString>) -> bool {
+    let name = name.to_string_lossy();
+    name.starts_with('.') || name.ends_with('~') || dot_hidden.contains(OsStr::new(name.as_ref()))
+}
 
 /// Marker documenting that [`StdFsSource`] is the sanctioned fallback and
 /// that GIO/GVfs has not replaced it. It is deliberately worded so a build
@@ -60,6 +89,7 @@ impl DirectorySource for StdFsSource {
         Ok(Box::new(StdFsReader {
             parent: location.clone(),
             entries,
+            dot_hidden: dot_hidden_names(&path),
         }))
     }
 }
@@ -67,6 +97,8 @@ impl DirectorySource for StdFsSource {
 struct StdFsReader {
     parent: Location,
     entries: ReadDir,
+    /// Names the folder's `.hidden` file marks hidden (GIO semantics).
+    dot_hidden: HashSet<OsString>,
 }
 
 impl DirectoryReader for StdFsReader {
@@ -82,7 +114,15 @@ impl DirectoryReader for StdFsReader {
                     }
                     break;
                 }
-                Some(Ok(entry)) => nodes.push(node_for(&self.parent, entry)),
+                Some(Ok(entry)) => {
+                    // Hidden entries are not listed by default, matching GIO
+                    // (dotfiles, `~` backups, and `.hidden` names). The
+                    // per-view Show Hidden toggle is a later task.
+                    if is_hidden_name(&entry.file_name(), &self.dot_hidden) {
+                        continue;
+                    }
+                    nodes.push(node_for(&self.parent, entry));
+                }
             }
         }
         if nodes.is_empty() {

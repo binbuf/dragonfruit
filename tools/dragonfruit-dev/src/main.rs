@@ -1491,7 +1491,18 @@ fn request_logout(user: &str) -> ExitCode {
         .ok()
         .filter(|id| !id.is_empty());
     let plan = LogoutPlan::detect(&desktop, |program| demo::which(program).is_some());
-    let (program, program_args) = plan.command(session_id.as_deref(), user);
+    let status = run_logout_plan(plan, session_id.as_deref(), user);
+    if status == ExitCode::SUCCESS || plan != LogoutPlan::LogoutPrompt {
+        return status;
+    }
+    // Older Qt desktop releases have no LogoutPrompt method. Try the
+    // historical KSMServer logout before giving up; neither path touches the
+    // compositor directly.
+    run_logout_plan(LogoutPlan::KsmServer, session_id.as_deref(), user)
+}
+
+fn run_logout_plan(plan: LogoutPlan, session_id: Option<&str>, user: &str) -> ExitCode {
+    let (program, program_args) = plan.command(session_id, user);
     println!("dragonfruit dev: {}", plan.marker());
     match Command::new(&program).args(&program_args).status() {
         Ok(status) if status.success() => ExitCode::SUCCESS,
