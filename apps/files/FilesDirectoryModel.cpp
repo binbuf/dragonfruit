@@ -22,10 +22,15 @@ bool isImage(const QString &suffix)
 {
     static const QStringList kSuffixes = {
         QStringLiteral("png"),  QStringLiteral("jpg"),  QStringLiteral("jpeg"),
-        QStringLiteral("gif"),  QStringLiteral("webp"), QStringLiteral("bmp"),
-        QStringLiteral("svg"),  QStringLiteral("svgz"), QStringLiteral("tiff"),
-        QStringLiteral("tif"),  QStringLiteral("ico"),  QStringLiteral("avif"),
-        QStringLiteral("heic"), QStringLiteral("heif"), QStringLiteral("jxl"),
+        QStringLiteral("jpe"),  QStringLiteral("jfif"), QStringLiteral("pjpeg"),
+        QStringLiteral("pjp"),  QStringLiteral("gif"),  QStringLiteral("apng"),
+        QStringLiteral("webp"), QStringLiteral("bmp"),  QStringLiteral("svg"),
+        QStringLiteral("svgz"), QStringLiteral("tiff"), QStringLiteral("tif"),
+        QStringLiteral("ico"),  QStringLiteral("avif"), QStringLiteral("heic"),
+        QStringLiteral("heif"), QStringLiteral("jxl"),  QStringLiteral("dds"),
+        QStringLiteral("exr"),  QStringLiteral("hdr"),  QStringLiteral("pcx"),
+        QStringLiteral("tga"),  QStringLiteral("xcf"),  QStringLiteral("kra"),
+        QStringLiteral("psd"),  QStringLiteral("raw"),
     };
     return kSuffixes.contains(suffix);
 }
@@ -42,8 +47,11 @@ bool isAudio(const QString &suffix)
 bool isVideo(const QString &suffix)
 {
     static const QStringList kSuffixes = {
-        QStringLiteral("mp4"),  QStringLiteral("mkv"), QStringLiteral("mov"),
-        QStringLiteral("webm"), QStringLiteral("avi"),
+        QStringLiteral("mp4"),  QStringLiteral("mkv"),  QStringLiteral("mov"),
+        QStringLiteral("webm"), QStringLiteral("avi"),  QStringLiteral("m4v"),
+        QStringLiteral("mpg"),  QStringLiteral("mpeg"), QStringLiteral("wmv"),
+        QStringLiteral("flv"),  QStringLiteral("3gp"),  QStringLiteral("ogv"),
+        QStringLiteral("ts"),   QStringLiteral("m2ts"),
     };
     return kSuffixes.contains(suffix);
 }
@@ -534,13 +542,16 @@ QString FilesDirectoryModel::iconFor(int kind, const QString &name)
 QString FilesDirectoryModel::thumbnailFor(int kind, const QString &uri,
                                           const QString &name)
 {
-    // Only regular local image files get a preview. Directories, symlinks,
-    // remote/trash URIs, and non-image files keep the kind glyph.
-    if (kind != DF_NODE_FILE)
+    Q_UNUSED(name)
+    // Directories keep the folder glyph. Local images get a generated preview;
+    // PDFs/videos do too when an optional helper is installed. Everything else
+    // reuses a fresh freedesktop cache entry if another spec-conforming
+    // thumbnailer made one.
+    if (kind == DF_NODE_DIRECTORY)
         return {};
-    if (!isImage(QFileInfo(name).suffix().toLower()))
-        return {};
-    return FilesThumbnailProvider::sourceFor(uri);
+    if (FilesThumbnailProvider::canGenerate(uri))
+        return FilesThumbnailProvider::sourceFor(uri);
+    return FilesThumbnailProvider::cachedSourceFor(uri);
 }
 
 QString FilesDirectoryModel::kindTextFor(int kind)

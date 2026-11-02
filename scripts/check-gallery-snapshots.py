@@ -33,6 +33,7 @@ PAGES = [
     "buttons", "sidebar", "toolbar", "splitview", "settings", "segmented", "contextmenu",
     "searchfield", "sourcelist", "dialog", "sheet", "popover", "scrollview", "slider",
     "select", "icons", "tooltip", "skeleton", "phosphor", "settingscategory",
+    "tabler",
 ]
 SCHEMES = [("light", False), ("dark", False), ("dark", True)]
 
@@ -189,6 +190,14 @@ def invariant_checks(output: Path, tokens: dict, resolve) -> list[str]:
     check(contains_color(output / "settingscategory_light.png",
                          hex_rgb(tokens["primitive"]["color"]["sky600"])),
           "light settings category: tile gradient not found")
+
+    # The Tabler line-glyph primitive must render a tinted, non-empty mark: the
+    # filled section is tinted to the accent, so its exact color must appear in
+    # the rendered pixels (ADR 0185).
+    check(contains_color(output / "tabler_dark.png", hex_rgb(resolve(dark["accent"], tokens))),
+          "dark tabler: accent-tinted glyph not found")
+    check(contains_color(output / "tabler_light.png", hex_rgb(resolve(light["accent"], tokens))),
+          "light tabler: accent-tinted glyph not found")
 
     # Light and dark renders must actually differ.
     light_bytes = (output / "window_light.png").read_bytes()

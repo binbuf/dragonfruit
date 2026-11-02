@@ -25,7 +25,7 @@ private slots:
     {
         QTemporaryDir sourceDir;
         QVERIFY(sourceDir.isValid());
-        const QString path = sourceDir.path() + QStringLiteral("/wide.png");
+        const QString path = sourceDir.path() + QStringLiteral("/wide image #1.png");
 
         QImage source(512, 256, QImage::Format_ARGB32_Premultiplied);
         source.fill(Qt::blue);

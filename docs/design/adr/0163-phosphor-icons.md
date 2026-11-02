@@ -2,7 +2,9 @@
 
 ## Status
 
-accepted
+accepted; the line-glyph half is superseded by ADR
+[0185](0185-tabler-line-icons.md) (Tabler is the line set; Phosphor remains
+the filled tile/app-mark set).
 
 ## Context
 

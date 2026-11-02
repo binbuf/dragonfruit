@@ -232,6 +232,16 @@ FocusScope {
         onMarqueeSelected: (nodeIds, modifiers) => root.selectMarquee(nodeIds, modifiers)
     }
 
+    // Clicking anywhere outside the menu dismisses it; the menu itself sits
+    // above this layer, so its rows still receive the click.
+    MouseArea {
+        anchors.fill: parent
+        z: contextMenu.z - 1
+        visible: contextMenu.open
+        acceptedButtons: Qt.AllButtons
+        onPressed: contextMenu.hide()
+    }
+
     ContextMenu {
         id: contextMenu
         accessibleName: qsTr("Desktop menu")

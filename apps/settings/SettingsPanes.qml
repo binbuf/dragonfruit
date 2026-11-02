@@ -38,7 +38,7 @@ QtObject {
     // identical for every category (only the hue changes), so this is the only
     // place category colour lives; the literal hues are named constants here,
     // not baked into any SVG. A pane whose icon is absent (Trackpad has no
-    // vendored Phosphor mark) falls back to the original `Icon.qml` glyph.
+    // vendored Phosphor mark) falls back to the Tabler-backed `Icon.qml` glyph.
     readonly property var categoryStyles: ({
         "wifi":          { source: "wifi-high",     gradientStart: "#3f8cff", gradientEnd: "#1f5fd6" },
         "bluetooth":     { source: "bluetooth",     gradientStart: "#4a9bff", gradientEnd: "#2158d0" },

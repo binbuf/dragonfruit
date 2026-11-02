@@ -2,7 +2,9 @@
 
 ## Status
 
-accepted
+accepted; the artwork source moved from Phosphor to Tabler's filled marks in
+ADR [0185](0185-tabler-line-icons.md). The one-SVG-per-app contract is
+unchanged.
 
 ## Context
 

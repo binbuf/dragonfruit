@@ -82,16 +82,18 @@ explicit — no pane is "a wrapper around a GNOME dialog":
 The Settings sidebar rows and the detail-pane header card draw their icons as
 `SettingsCategoryIcon` gradient tiles — the macOS System Settings language, and
 the **only** surface that gets the container (the menu bar, Dock, and
-Applications drawer use bare Phosphor glyphs). `apps/settings/SettingsPanes.qml`
+Applications drawer use bare Tabler line glyphs). `apps/settings/SettingsPanes.qml`
 holds the single category → (glyph, gradient) table (`categoryStyles`, keyed by
 each pane's existing `icon` identity); `PaneHeader.qml` and `SettingsShell.qml`
 resolve it through `SettingsPanes.categoryStyle(pane)` and pass the values to
 the component. The literal category hues live in that one table and are never
 baked into an SVG; the container geometry is tokenized
-(`component.settingsCategory.*`, `component.sidebar.categoryIconSize`). A pane
-whose icon has no Phosphor mapping (Trackpad) keeps the original `Icon.qml`
-glyph — the documented fallback. See ADR
-[0164](adr/0164-settings-category-tile.md).
+(`component.settingsCategory.*`, `component.sidebar.categoryIconSize`). The
+tile glyph is a Phosphor `fill` mark because the tile needs a solid near-white
+symbol; a pane whose icon has no category-tile mapping (Trackpad) falls back to
+the Tabler-backed `Icon.qml` vocabulary. See ADR
+[0164](adr/0164-settings-category-tile.md) and ADR
+[0185](adr/0185-tabler-line-icons.md).
 
 ## Wallpaper sources (T-18)
 

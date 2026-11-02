@@ -2,34 +2,31 @@
 import QtQuick
 import Dragonfruit
 
-// Menu-bar status marks (T-19.1c). Every state renders as a plain monochrome
-// Phosphor glyph through `PhosphorIcon` — no tile, no gradient, no container.
+// Menu-bar status marks. Every state renders as a plain monochrome Tabler
+// outline glyph through `TablerIcon` — no tile, no gradient, no container.
 // The public API is unchanged from the original-geometry version (`name`,
 // `color`, `size`, `level`, `backgroundColor`), so `StatusItem`, `WifiMenu`,
 // `VolumeMenu`, and `BatteryMenu` need no changes and the slot footprint
 // (`implicitWidth`/`implicitHeight` == `size`) is identical, so the bar layout
 // does not shift.
 //
-// State -> Phosphor glyph (weight chosen for the mark's optical weight):
-//   wifi / wifi-secure      -> wifi-high       (fill; no per-network strength
-//                                                is carried by the mark)
-//   wifi-off / wifi-disabled-> wifi-slash      (fill; dimmed to 0.4 as before)
-//   wifi-connecting         -> wifi-high       (fill; dimmed to 0.5; static,
-//                                                so it is reduced-motion safe)
-//   wifi-error              -> wifi-x          (fill)
-//   bluetooth               -> bluetooth       (fill)
-//   volume                  -> speaker-high    (fill)
-//   volume-muted            -> speaker-x       (fill)
-//   battery                 -> battery-empty   (regular outline) + a token
-//                                                level fill overlay inside the
-//                                                cell, so the level is
-//                                                continuous
-//   battery-charging        -> battery-charging(regular outline + bolt; no
-//                                                level fill, as before)
-//   focus                   -> moon            (fill)
-//   accessibility           -> person          (fill)
-//   control-center          -> sliders-horizontal (fill)
-//   mission-control         -> squares-four    (fill)
+// State -> Tabler glyph:
+//   wifi / wifi-secure      -> wifi
+//   wifi-off / wifi-disabled-> wifi-off       (dimmed to 0.4 as before)
+//   wifi-connecting         -> wifi           (dimmed to 0.5; static, so it is
+//                                              reduced-motion safe)
+//   wifi-error              -> wifi-off
+//   bluetooth               -> bluetooth
+//   volume                  -> volume
+//   volume-muted            -> volume-off
+//   battery                 -> battery        (outline + a token level fill
+//                                              overlay inside the cell, so the
+//                                              level stays continuous)
+//   battery-charging        -> battery-charging
+//   focus                   -> moon
+//   accessibility           -> accessible
+//   control-center          -> adjustments-horizontal
+//   mission-control         -> layout-dashboard
 //
 // The Dragonfruit system-menu logo is untouched (`DragonfruitLogo.qml`).
 Item {
@@ -38,8 +35,8 @@ Item {
     property string name: "wifi"
     property color color: Theme.color.textPrimary
     // Retained for API compatibility with the original geometry (the Focus
-    // crescent used it for its bite). Phosphor's moon is a self-contained
-    // path, so the mark is drawn without a background cut-out.
+    // crescent used it for its bite). Tabler's moon is a self-contained path,
+    // so the mark is drawn without a background cut-out.
     property color backgroundColor: Theme.color.chrome
     property real size: Theme.controls.menuBar.iconSize
     // Battery level, 0..1.
@@ -50,38 +47,37 @@ Item {
 
     readonly property real clampedLevel: Math.max(0, Math.min(1, level))
 
-    // The Phosphor glyph for the current state. Kept in one place so the
-    // mapping is legible; an unknown state resolves to "" and renders blank
-    // (the same contract as PhosphorIcon's unknown name).
+    // The Tabler glyph for the current state. Kept in one place so the mapping
+    // is legible; an unknown state resolves to "" and renders blank (the same
+    // contract as TablerIcon's unknown name).
     readonly property string glyphName: {
         switch (root.name) {
         case "wifi":
         case "wifi-secure":
         case "wifi-connecting":
-            return "wifi-high";
+            return "wifi";
         case "wifi-off":
         case "wifi-disabled":
-            return "wifi-slash";
         case "wifi-error":
-            return "wifi-x";
+            return "wifi-off";
         case "bluetooth":
             return "bluetooth";
         case "volume":
-            return "speaker-high";
+            return "volume";
         case "volume-muted":
-            return "speaker-x";
+            return "volume-off";
         case "battery":
-            return "battery-empty";
+            return "battery";
         case "battery-charging":
             return "battery-charging";
         case "focus":
             return "moon";
         case "accessibility":
-            return "person";
+            return "accessible";
         case "control-center":
-            return "sliders-horizontal";
+            return "adjustments-horizontal";
         case "mission-control":
-            return "squares-four";
+            return "layout-dashboard";
         }
         return "";
     }
@@ -93,150 +89,142 @@ Item {
                                        : (root.name === "wifi-connecting") ? 0.5
                                        : 1.0
 
-    // Phosphor's battery viewBox is 256; `battery-full`'s solid interior spans
-    // x 40..192 and y 88..168, so the continuous level fill follows that
-    // interior (a plain token fill overlay inside the Phosphor outline).
-    readonly property real batteryCellX: 40
-    readonly property real batteryCellY: 88
-    readonly property real batteryCellWidth: 152
-    readonly property real batteryCellHeight: 80
-    readonly property real batteryCellRadius: 8
+    // Tabler's battery viewBox is 24; the outline's cell interior spans
+    // roughly x 6.8..16.8 and y 9.5..14.5, so the continuous level fill
+    // follows that interior (a plain token fill overlay inside the outline).
+    readonly property real batteryCellX: 6.8
+    readonly property real batteryCellY: 9.5
+    readonly property real batteryCellWidth: 10.0
+    readonly property real batteryCellHeight: 5.0
+    readonly property real batteryCellRadius: 1.0
 
-    // The marks. One literal PhosphorIcon per glyph (so the vendored-name gate
-    // `scripts/check-phosphor-icons.py` sees every name); only the active one
-    // is visible. Battery is composed from an outline plus a fill below.
-    PhosphorIcon {
+    // The marks. One literal TablerIcon per glyph (so the vendored-name gate
+    // `scripts/check-tabler-icons.py` sees every name); only the active one is
+    // visible. Battery is composed from an outline plus a fill below.
+    TablerIcon {
         anchors.fill: parent
-        visible: root.glyphName === "wifi-high"
-        name: "wifi-high"
+        visible: root.glyphName === "wifi"
+        name: "wifi"
         color: root.color
         size: root.size
-        weight: "fill"
+        strokeWidth: 2.25
         opacity: root.markOpacity
     }
 
-    PhosphorIcon {
+    TablerIcon {
         anchors.fill: parent
-        visible: root.glyphName === "wifi-slash"
-        name: "wifi-slash"
+        visible: root.glyphName === "wifi-off"
+        name: "wifi-off"
         color: root.color
         size: root.size
-        weight: "fill"
+        strokeWidth: 2.25
         opacity: root.markOpacity
     }
 
-    PhosphorIcon {
-        anchors.fill: parent
-        visible: root.glyphName === "wifi-x"
-        name: "wifi-x"
-        color: root.color
-        size: root.size
-        weight: "fill"
-        opacity: root.markOpacity
-    }
-
-    PhosphorIcon {
+    TablerIcon {
         anchors.fill: parent
         visible: root.glyphName === "bluetooth"
         name: "bluetooth"
         color: root.color
         size: root.size
-        weight: "fill"
+        strokeWidth: 2.25
         opacity: root.markOpacity
     }
 
-    PhosphorIcon {
+    TablerIcon {
         anchors.fill: parent
-        visible: root.glyphName === "speaker-high"
-        name: "speaker-high"
+        visible: root.glyphName === "volume"
+        name: "volume"
         color: root.color
         size: root.size
-        weight: "fill"
+        strokeWidth: 2.25
         opacity: root.markOpacity
     }
 
-    PhosphorIcon {
+    TablerIcon {
         anchors.fill: parent
-        visible: root.glyphName === "speaker-x"
-        name: "speaker-x"
+        visible: root.glyphName === "volume-off"
+        name: "volume-off"
         color: root.color
         size: root.size
-        weight: "fill"
+        strokeWidth: 2.25
         opacity: root.markOpacity
     }
 
-    PhosphorIcon {
+    TablerIcon {
         anchors.fill: parent
         visible: root.glyphName === "moon"
         name: "moon"
         color: root.color
         size: root.size
-        weight: "fill"
+        strokeWidth: 2.25
         opacity: root.markOpacity
     }
 
-    PhosphorIcon {
+    TablerIcon {
         anchors.fill: parent
-        visible: root.glyphName === "person"
-        name: "person"
+        visible: root.glyphName === "accessible"
+        name: "accessible"
         color: root.color
         size: root.size
-        weight: "fill"
+        strokeWidth: 2.25
         opacity: root.markOpacity
     }
 
-    PhosphorIcon {
+    TablerIcon {
         anchors.fill: parent
-        visible: root.glyphName === "sliders-horizontal"
-        name: "sliders-horizontal"
+        visible: root.glyphName === "adjustments-horizontal"
+        name: "adjustments-horizontal"
         color: root.color
         size: root.size
-        weight: "fill"
+        strokeWidth: 2.25
         opacity: root.markOpacity
     }
 
-    PhosphorIcon {
+    TablerIcon {
         anchors.fill: parent
-        visible: root.glyphName === "squares-four"
-        name: "squares-four"
+        visible: root.glyphName === "layout-dashboard"
+        name: "layout-dashboard"
         color: root.color
         size: root.size
-        weight: "fill"
+        strokeWidth: 2.25
         opacity: root.markOpacity
     }
 
-    // Continuous battery: the Phosphor outline with a token level fill
-    // overlay inside the cell. The fill is a plain Rectangle (the Shape
-    // renderer's ancestor clipping is not applied to a child Shape under the
-    // software scene graph the tests use), so it clips by its own geometry.
-    PhosphorIcon {
+    // Continuous battery: the Tabler outline with a token level fill overlay
+    // inside the cell. The fill is a plain Rectangle (the Shape renderer's
+    // ancestor clipping is not applied to a child Shape under the software
+    // scene graph the tests use), so it clips by its own geometry.
+    TablerIcon {
         anchors.fill: parent
-        visible: root.glyphName === "battery-empty"
-        name: "battery-empty"
+        visible: root.glyphName === "battery"
+        name: "battery"
         color: root.color
         size: root.size
+        strokeWidth: 2.25
         opacity: root.markOpacity
     }
 
     Rectangle {
-        visible: root.glyphName === "battery-empty"
-        x: root.size * root.batteryCellX / PhosphorGlyphs.viewBox
-        y: root.size * root.batteryCellY / PhosphorGlyphs.viewBox
+        visible: root.glyphName === "battery"
+        x: root.size * root.batteryCellX / TablerGlyphs.viewBox
+        y: root.size * root.batteryCellY / TablerGlyphs.viewBox
         width: root.size * root.batteryCellWidth * root.clampedLevel
-               / PhosphorGlyphs.viewBox
-        height: root.size * root.batteryCellHeight / PhosphorGlyphs.viewBox
-        radius: root.size * root.batteryCellRadius / PhosphorGlyphs.viewBox
+               / TablerGlyphs.viewBox
+        height: root.size * root.batteryCellHeight / TablerGlyphs.viewBox
+        radius: root.size * root.batteryCellRadius / TablerGlyphs.viewBox
         color: root.color
         opacity: root.markOpacity
         antialiasing: true
     }
 
-    PhosphorIcon {
+    TablerIcon {
         anchors.fill: parent
         visible: root.glyphName === "battery-charging"
         name: "battery-charging"
         color: root.color
         size: root.size
+        strokeWidth: 2.25
         opacity: root.markOpacity
     }
 }

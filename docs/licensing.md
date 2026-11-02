@@ -23,6 +23,8 @@ restrictions to track.
 | `shell/` (menu bar, Dock, Control Center, notifications, screenshot) | MIT |
 | `apps/` (Settings, Files) | MIT |
 | `assets/fonts/Inter/` (system font, embedded via `libs/system-font/`) | SIL OFL 1.1 |
+| `assets/icons/tabler/` (line-glyph set and pinned filled marks) | MIT |
+| `assets/icons/phosphor/` (filled Settings-tile glyphs) | MIT |
 | `assets/cursors/capitaine-cursors/` (system cursor theme) | LGPL-3.0-or-later |
 | `assets/graphics/wallpapers/Default.jpg` (shipped default wallpaper) | MIT (original project asset) |
 
@@ -64,6 +66,17 @@ constraints between components. Two rules still matter:
   to accompany every copy of the Font Software, so any binary distribution
   (packages, images) must include `LICENSES/OFL-1.1.txt` or the equivalent
   notice — a packaging acceptance item for T-16.9/T-16.10.
+- **Icons.** Tabler Icons 3.50.0 (`v3.50.0`, commit
+  `6904efd245391ad396df17654738f52f6da8c40e`) is bundled under the MIT license
+  (see [../LICENSES/Tabler.txt](../LICENSES/Tabler.txt)) as the line-glyph
+  set and the pinned filled app marks. The Settings category tiles use
+  Phosphor 2.0.8 (MIT, [../LICENSES/Phosphor.txt](../LICENSES/Phosphor.txt))
+  because the tile needs a solid near-white glyph. Both sets are vendored as
+  data, not linked code; the asset READMEs record the upstream version, commit,
+  source path, and the exact pinned files, and `make check-tabler` /
+  `make check-phosphor` fail if a registry or a glyph reference drifts. No
+  Apple artwork is vendored or reproduced (see
+  [../docs/design/14-risks.md](design/14-risks.md)).
 - **Cursor theme.** Capitaine cursors is bundled as a separable data asset
   under the LGPL-3.0-or-later (see
   [../assets/cursors/capitaine-cursors/COPYING](../assets/cursors/capitaine-cursors/COPYING)
@@ -74,6 +87,35 @@ constraints between components. Two rules still matter:
   [../assets/cursors/capitaine-cursors/README.md](../assets/cursors/capitaine-cursors/README.md).
   Any binary distribution must ship that notice and license text, and must
   make the corresponding upstream source available under the LGPL terms.
+
+## Icon asset governance
+
+Icons are third-party data assets, not linked code. Every vendored icon set
+follows the same credit package:
+
+- **Pinned source.** The asset README records the upstream repository, the
+  exact release tag and commit, the upstream directory/file naming, and the
+  license. The files themselves are copied unchanged (flattened with a
+  `-filled` suffix where the set has a second weight), so a future update is a
+  reviewable file swap plus a registry regeneration.
+- **License text and notice.** The set ships its own `LICENSE` beside the
+  assets, a copy in `LICENSES/`, a row in [NOTICE](../NOTICE), and a row in the
+  component table above. MIT sets need no special distribution obligation
+  beyond preserving the notice; a future copyleft icon set would be a review
+  blocker under the linking rules.
+- **One registry per set.** `scripts/gen-tabler-glyphs.py` and
+  `scripts/gen-phosphor-glyphs.py` extract the path data into generated QML
+  singletons; `--check` fails the build if the committed registry is stale.
+  `scripts/check-tabler-icons.py` and `scripts/check-phosphor-icons.py` fail if
+  a QML source names a glyph that is not vendored, including the legacy
+  `Icon.qml` alias map and the dynamic service vocabulary.
+- **Current split.** Tabler 3.50.0 is the line-glyph set (Files, menu bar,
+  Dock, shell chrome, and the `Icon.qml` facade). Phosphor 2.0.8 is the filled
+  Settings-tile set. The first-party app artwork uses Tabler's filled marks.
+  Both are MIT.
+- **No Apple artwork.** The original-assets rule in
+  [14-risks.md](design/14-risks.md) still applies: third-party open icon sets
+  are allowed; Apple's assets and pixel-copied proprietary artwork are not.
 
 ## Qt commercial decision trigger
 
@@ -136,6 +178,13 @@ name or branding should ask first.
 - The `protocol_xmls_match_lockstep_version` test in
   `protocols/df-ipc` fails the build if a protocol XML loses its MIT
   SPDX marker.
+- `make check-tabler` runs `gen-tabler-glyphs.py --check` (the registry must
+  match the SVG directory), `gen-app-icons.py --check` (the first-party app
+  artwork must match the pinned filled glyphs), and
+  `scripts/check-tabler-icons.py` (every literal/dynamic glyph reference must
+  resolve, including the `Icon.qml` compatibility map).
+- `make check-phosphor` remains the equivalent gate for the filled Settings
+  tile/app-mark set.
 - New files: carry the MIT SPDX header. Adding a copyleft dependency or
   changing a component's license is a review blocker.
 

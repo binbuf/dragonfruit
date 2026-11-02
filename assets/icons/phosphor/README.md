@@ -1,6 +1,13 @@
-# Phosphor — the Dragonfruit foreground glyph set
+# Phosphor — the Dragonfruit filled tile set
 
-Phosphor is the desktop's icon language for **foreground glyphs** (T-19.1a).
+Phosphor is the desktop's **solid/filled** glyph set for surfaces that need a
+near-white mark on a colored container: the System Settings category tile
+(`design-system/components/SettingsCategoryIcon.qml`). The first-party app
+artwork uses Tabler's filled marks. The line-glyph vocabulary used by Files,
+the menu bar, and the rest of the shell is Tabler
+([`assets/icons/tabler/`](../tabler/README.md), ADR
+[0185](../../../docs/design/adr/0185-tabler-line-icons.md)).
+
 A vendor glyph here is a *resource*: it is a monochrome path with no color or
 container baked in. The tint, size, and any backing tile are owned by the QML
 that consumes it (`design-system/components/PhosphorIcon.qml`,

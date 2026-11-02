@@ -33,6 +33,7 @@ MenuBarMenu
 SearchField
 SourceList
 Icon
+TablerIcon
 PhosphorIcon
 SettingsCategoryIcon
 Dialog
@@ -50,25 +51,37 @@ a token inner rim; the tail aims at the anchor centre and rides the owner's
 overlay rect (ADR
 [0162](adr/0162-dock-hover-zoom-profile-and-label-tail.md)).
 
-`PhosphorIcon` (T-19.1a) is the foreground-glyph primitive: the
-[MIT-licensed Phosphor](https://phosphoricons.com/) set (2.0.8, the `regular`
-and `fill` weights) is vendored under `assets/icons/phosphor/`, exposed at
-`qrc:/icons/phosphor/<name>.svg`, and rendered as a tintable `ShapePath` sized
-from `name`/`color`/`size`/`weight`. The `Icon.qml` original-geometry
-vocabulary stays for marks not migrated. A glyph is a *resource* — no color or
-container is baked in — while the tint and any tile stay in QML; a referenced
-glyph that is not vendored fails `make check-phosphor` (ADR
-[0163](adr/0163-phosphor-icons.md)).
+`TablerIcon` (ADR [0185](adr/0185-tabler-line-icons.md)) is the foreground
+line-glyph primitive: [MIT-licensed Tabler Icons](https://tabler.io/icons)
+3.50.0 (commit `6904efd2…`) is vendored under `assets/icons/tabler/`, exposed
+at `qrc:/icons/tabler/<name>.svg` (`<name>-filled.svg` for the small solid
+set), and rendered as a tintable stroked/filled `ShapePath` sized from
+`name`/`color`/`size`/`weight`/`strokeWidth`. A glyph is a *resource* — no
+color or container is baked in — while the tint and any tile stay in QML; a
+referenced glyph that is not vendored fails `make check-tabler`.
+`Icon.qml` is now a compatibility facade over `TablerIcon`: it keeps the
+inherited vocabulary (`folder`, `chevron-right`, `wifi`, …) used by Files,
+Settings, and shell chrome and maps each name to a Tabler outline glyph, so the
+migration did not touch every call site. New code uses `TablerIcon` directly.
+
+`PhosphorIcon` (T-19.1a) remains the **filled** primitive for surfaces that
+need a solid near-white mark on a colored container: the System Settings
+category tile. (The first-party app artwork uses Tabler's filled
+`folders`/`settings` marks.) Phosphor 2.0.8 (MIT) is vendored under
+`assets/icons/phosphor/` and rendered as a tintable `ShapePath` sized from
+`name`/`color`/`size`/`weight`; a referenced glyph that is not vendored fails
+`make check-phosphor` (ADR [0163](adr/0163-phosphor-icons.md)). The line/fill
+split is recorded in ADR [0185](adr/0185-tabler-line-icons.md).
 
 `SettingsCategoryIcon` (T-19.1b) is the one gradient-backed category tile: a
 rounded container with a token drop shadow, a vertical gradient, a top inner
 highlight, and a centered near-white `PhosphorIcon` in the `fill` weight. Only
 **System Settings** uses the container — the menu bar, Dock, and drawer use
-bare glyphs. The component is category-agnostic (`source`/`gradientStart`/
-`gradientEnd`/`symbolColor`/`size`/`radius`/`glow`); the category →
-(glyph, gradient) table lives in the Settings pane catalog
+bare `TablerIcon` glyphs. The component is category-agnostic
+(`source`/`gradientStart`/`gradientEnd`/`symbolColor`/`size`/`radius`/`glow`);
+the category → (glyph, gradient) table lives in the Settings pane catalog
 (`SettingsPanes.categoryStyles`, keyed by the pane's `icon` identity) and a
-pane without a mapping keeps the original `Icon` glyph. Geometry comes from
+pane without a mapping keeps the Tabler-backed `Icon` glyph. Geometry comes from
 `component.settingsCategory.*`; the literal category hues are named constants in
 that one table and are never baked into an SVG (ADR
 [0164](adr/0164-settings-category-tile.md)).
@@ -154,6 +167,10 @@ rules:
 
 - A component **gallery app** renders every component in every state,
   scheme, and motion variant; visual regression tests run against it.
+- Icon registries are build gates: `make check-tabler` rejects an unvendored
+  line glyph (including the `Icon.qml` facade map and the dynamic service
+  vocabulary), and `make check-phosphor` does the same for the filled tile/app
+  set.
 - Keyboard navigation and AT-SPI roles are verified **per component**, not
   re-proven per application. The live cross-process check is layered on top:
   the first-party apps are dumped and walked keyboard-only through AT-SPI, and
@@ -205,6 +222,12 @@ moving (window shapes, menu-bar iconography, materials), so building against
 "whatever macOS currently looks like" would make Apple an involuntary upstream
 design dependency. See [14-risks.md](14-risks.md) for the IP constraints on
 assets and branding.
+
+Third-party **open** icon sets are vendored resources under their own MIT
+licenses — Tabler for the line glyphs and Phosphor for the filled Settings
+tiles — not copies of Apple's artwork. The line/fill split and the credit
+package are recorded in ADR
+[0185](adr/0185-tabler-line-icons.md).
 
 ## What the design system provides to siblings
 

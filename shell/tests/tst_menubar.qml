@@ -823,7 +823,7 @@ Item {
 
         // -- Status glyph rendering (FR-5) ---------------------------------
 
-        // Every state must render a non-empty Phosphor mark (T-19.1c). This is
+        // Every state must render a non-empty Tabler mark (ADR 0185). This is
         // the state-coverage case: a typo in StatusGlyph's state -> glyph
         // mapping or an unvendored name would leave a state blank.
         function test_status_glyphs_render_pixels() {
@@ -835,7 +835,7 @@ Item {
             for (var i = 0; i < names.length; ++i) {
                 var glyph = make(glyphComponent, { name: names[i], size: 32 });
                 verify(glyph.glyphName.length > 0,
-                       "state " + names[i] + " must map to a Phosphor glyph");
+                       "state " + names[i] + " must map to a Tabler glyph");
                 verify(imageHasMark(grabImage(glyph)),
                        "glyph " + names[i] + " should render visible pixels");
                 glyph.destroy();
@@ -847,7 +847,7 @@ Item {
         // 60% across the mark, inside the outline's cell but right of where a
         // low fill stops.
         function test_battery_level_fill_is_continuous() {
-            // 60% across the mark, mid-height: inside the Phosphor cell, right
+            // 60% across the mark, mid-height: inside the Tabler cell, right
             // of where a 5% fill stops and left of a 95% fill's edge. The two
             // glyphs are made and grabbed one at a time (overlapping siblings
             // would share a window grab).

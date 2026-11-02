@@ -55,6 +55,8 @@ TestCase {
     Component { id: tooltipComponent; Tooltip { } }
     Component { id: skeletonComponent; Skeleton { width: 160; height: 24 } }
     Component { id: phosphorIconComponent; PhosphorIcon { name: "gear"; weight: "fill" } }
+    Component { id: tablerIconComponent; TablerIcon { name: "folder" } }
+    Component { id: legacyIconComponent; Icon { name: "folder" } }
     Component { id: settingsCategoryComponent; SettingsCategoryIcon { } }
     Component {
         id: scrollViewComponent
@@ -897,6 +899,122 @@ TestCase {
         compare(xhr.status, 200);
         verify(xhr.responseText.indexOf("<path") >= 0,
                "the vendored fill SVG must be reachable under /icons/phosphor");
+    }
+
+    // -- TablerIcon (ADR 0185) ----------------------------------------------
+    //
+    // The line-glyph primitive: size, tint, weight, and stroke come from
+    // properties; an unknown name/weight resolves to nothing (never a silent
+    // substitute), and a missing glyph is a blank mark rather than a crash.
+
+    function test_tabler_icon_sizes_and_tints_from_properties() {
+        var icon = make(tablerIconComponent, {
+            name: "folder", size: 48, color: "#ff8800"
+        });
+        compare(icon.resolved, true);
+        compare(icon.implicitWidth, 48);
+        compare(icon.implicitHeight, 48);
+        compare(icon.source, "qrc:/icons/tabler/folder.svg");
+        verify(findPixel(grabImage(icon), icon.color),
+               "the outline must be stroked with the tint color");
+
+        // Changing the tint recolors the mark; changing the size resizes it.
+        icon.color = "#0033ff";
+        icon.size = 64;
+        waitForRendering(stage);
+        compare(icon.implicitWidth, 64);
+        verify(findPixel(grabImage(icon), icon.color),
+               "the tint must follow the color property");
+    }
+
+    function test_tabler_icon_weight_resolution() {
+        var outline = make(tablerIconComponent, { name: "folder", weight: "outline" });
+        compare(outline.resolved, true);
+        compare(outline.source, "qrc:/icons/tabler/folder.svg");
+
+        var filled = make(tablerIconComponent, { name: "folder", weight: "filled" });
+        compare(filled.resolved, true);
+        compare(filled.source, "qrc:/icons/tabler/folder-filled.svg");
+
+        // A weight that is not vendored resolves to nothing; it does not
+        // silently fall back to the outline glyph.
+        var bold = make(tablerIconComponent, { name: "folder", weight: "bold" });
+        compare(bold.resolved, false);
+        compare(bold.glyphPath, "");
+    }
+
+    function test_tabler_filled_icon_renders_solid() {
+        var icon = make(tablerIconComponent, {
+            name: "folder", weight: "filled", size: 48, color: "#00aa55"
+        });
+        compare(icon.resolved, true);
+        verify(findPixel(grabImage(icon), icon.color),
+               "the filled glyph must fill with the tint color");
+    }
+
+    function test_tabler_icon_unknown_glyph_is_blank_not_a_crash() {
+        var icon = make(tablerIconComponent, { name: "definitely-not-a-real-glyph" });
+        compare(icon.resolved, false);
+        compare(icon.glyphPath, "");
+        var img = grabImage(icon);
+        compare(img.width, Math.round(icon.width));
+        compare(img.height, Math.round(icon.height));
+    }
+
+    function test_tabler_icon_default_color_comes_from_theme() {
+        var icon = make(tablerIconComponent, {});
+        compare(String(icon.color), String(Theme.color.textPrimary));
+        compare(icon.Accessible.role, Accessible.Graphic);
+        compare(icon.Accessible.ignored, true);
+        var named = make(tablerIconComponent, { accessibleName: "Folder" });
+        compare(named.Accessible.name, "Folder");
+        compare(named.Accessible.ignored, false);
+    }
+
+    function test_tabler_svg_resource_is_reachable() {
+        // The raw vendored SVG ships at the stable prefix the registry is
+        // generated from; both weights must resolve there.
+        var xhr = new XMLHttpRequest();
+        xhr.open("GET", "qrc:/icons/tabler/folder.svg", false);
+        xhr.send();
+        compare(xhr.status, 200);
+        verify(xhr.responseText.indexOf("<path") >= 0,
+               "the vendored outline SVG must be reachable under /icons/tabler");
+        xhr.open("GET", "qrc:/icons/tabler/folder-filled.svg", false);
+        xhr.send();
+        compare(xhr.status, 200);
+        verify(xhr.responseText.indexOf("<path") >= 0,
+               "the vendored filled SVG must be reachable under /icons/tabler");
+    }
+
+    function test_icon_facade_maps_the_inherited_vocabulary() {
+        // Files/Settings/shell still name the inherited vocabulary; the facade
+        // must resolve each name to a vendored Tabler outline glyph.
+        var close = make(legacyIconComponent, { name: "close" });
+        compare(close.tablerName, "x");
+        compare(close.resolved, true);
+        close.destroy();
+
+        var wifiError = make(legacyIconComponent, { name: "wifi-error" });
+        compare(wifiError.tablerName, "wifi-off");
+        compare(wifiError.resolved, true);
+        wifiError.destroy();
+
+        var unknown = make(legacyIconComponent, { name: "definitely-not-a-real-glyph" });
+        compare(unknown.resolved, false);
+        compare(unknown.tablerName, "");
+    }
+
+    function test_every_legacy_alias_target_is_vendored() {
+        var facade = make(legacyIconComponent, {});
+        var aliases = facade.aliases;
+        for (var legacy in aliases) {
+            verify(TablerGlyphs.has("outline", aliases[legacy]),
+                   "legacy glyph " + legacy + " -> " + aliases[legacy]
+                   + " must be vendored");
+        }
+        verify(Object.keys(aliases).length >= 60,
+               "the facade must cover the shipped legacy vocabulary");
     }
 
     // -- SettingsCategoryIcon (T-19.1b) -------------------------------------

@@ -13,6 +13,8 @@
 set_source_files_properties(Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 # The generated Phosphor path registry is a singleton too (T-19.1a).
 set_source_files_properties(PhosphorGlyphs.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+# The generated Tabler path registry is a singleton too (ADR 0185).
+set_source_files_properties(TablerGlyphs.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
 qt_add_library(dragonfruit-design-system STATIC)
 qt_add_qml_module(dragonfruit-design-system
@@ -21,6 +23,7 @@ qt_add_qml_module(dragonfruit-design-system
     QML_FILES
         Theme.qml
         PhosphorGlyphs.qml
+        TablerGlyphs.qml
         components/AppWindow.qml
         components/TitleBar.qml
         components/TrafficLights.qml
@@ -29,6 +32,7 @@ qt_add_qml_module(dragonfruit-design-system
         components/Toggle.qml
         components/Popup.qml
         components/Icon.qml
+        components/TablerIcon.qml
         components/PhosphorIcon.qml
         components/SettingsCategoryIcon.qml
         components/FocusRing.qml
@@ -70,12 +74,28 @@ qt_add_resources(dragonfruit-design-system "phosphor"
     FILES ${_phosphor_svgs}
 )
 
+# The vendored Tabler SVGs (ADR 0185) are exposed unchanged at the stable
+# prefix `qrc:/icons/tabler/<name>.svg` (`<name>-filled.svg` for the solid
+# weight); the generated registry above is the software-tintable form
+# `TablerIcon` renders. Adding a glyph is a file drop plus
+# `scripts/gen-tabler-glyphs.py` (see assets/icons/tabler/README.md).
+file(GLOB _tabler_svgs CONFIGURE_DEPENDS
+    "${CMAKE_SOURCE_DIR}/assets/icons/tabler/*.svg")
+if(NOT _tabler_svgs)
+    message(FATAL_ERROR "dragonfruit-design-system: assets/icons/tabler is empty")
+endif()
+qt_add_resources(dragonfruit-design-system "tabler"
+    PREFIX "/icons/tabler"
+    BASE "${CMAKE_SOURCE_DIR}/assets/icons/tabler"
+    FILES ${_tabler_svgs}
+)
+
 # The first-party app icons (T-19.1d) are exposed unchanged at the stable
 # prefix `qrc:/icons/apps/<name>.svg`. The Dock renders them for the
 # first-party desktop ids before an install; the same files are installed into
 # the icon theme (`make install`), so the Dock, menus, and the portal file
-# chooser resolve one artwork source. Generated from Phosphor by
-# `scripts/gen-app-icons.py` (`make check-phosphor` fails if stale).
+# chooser resolve one artwork source. Generated from Tabler by
+# `scripts/gen-app-icons.py` (`make check-tabler` fails if stale).
 file(GLOB _app_icons CONFIGURE_DEPENDS
     "${CMAKE_SOURCE_DIR}/assets/icons/apps/*.svg")
 if(NOT _app_icons)
@@ -90,6 +110,7 @@ qt_add_resources(dragonfruit-design-system "app-icons"
 df_qml_lint(design-system
     Theme.qml
     PhosphorGlyphs.qml
+    TablerGlyphs.qml
     components/AppWindow.qml
     components/TitleBar.qml
     components/TrafficLights.qml
@@ -98,6 +119,7 @@ df_qml_lint(design-system
     components/Toggle.qml
     components/Popup.qml
     components/Icon.qml
+    components/TablerIcon.qml
     components/PhosphorIcon.qml
     components/SettingsCategoryIcon.qml
     components/FocusRing.qml

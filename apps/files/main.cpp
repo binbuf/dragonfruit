@@ -81,20 +81,12 @@ int runDesktop(QGuiApplication &app)
             // A file opens in its default handler. Never call QDesktopServices
             // here: the desktop is an offscreen-platform process, whose plugin
             // has no QPlatformServices (it logs "This plugin does not support
-            // QPlatformServices::openDocument()"). Launch the handler out of
-            // process with the offscreen platform stripped instead.
-            const QStringList command = filesOpenHandlerCommand(uri);
-            if (command.isEmpty()) {
+            // QPlatformServices::openDocument()"). `filesOpen` resolves the
+            // MIME default and launches the handler out of process with the
+            // offscreen platform stripped instead.
+            if (!filesOpen(uri))
                 qWarning("dragonfruit-files: no default handler (xdg-open/gio) "
                          "for %s", qPrintable(uri));
-                return;
-            }
-            QProcess opener;
-            opener.setProcessEnvironment(filesDesktopChildEnvironment());
-            opener.setProgram(command.first());
-            opener.setArguments(command.mid(1));
-            if (!opener.startDetached())
-                qWarning("dragonfruit-files: could not open %s", qPrintable(uri));
         }
     });
     if (!desktop.start(socketName, token, filesDesktopDirectory())) {

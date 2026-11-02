@@ -5539,7 +5539,7 @@ Item {
             themed.destroy();
         }
 
-        // T-19.1d: our own apps render their bundled Phosphor artwork keyed by
+        // T-19.1d: our own apps render their bundled Tabler artwork keyed by
         // desktop id, so nested dev (before an install) shows the right tile
         // even with no app-index themed path.
         function test_first_party_app_uses_bundled_tile() {

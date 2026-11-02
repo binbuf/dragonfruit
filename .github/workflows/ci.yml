@@ -76,6 +76,16 @@ jobs:
       - name: String-extraction gate (T-16.7)
         run: ./scripts/i18n-extract.py --check 2>&1 | tee logs/i18n-gate.log
 
+      - name: Icon registry and glyph gates (T-19.1a, ADR 0185)
+        run: |
+          set -e
+          ./scripts/gen-phosphor-glyphs.py --check
+          ./scripts/check-phosphor-icons.py
+          ./scripts/gen-tabler-glyphs.py --check
+          ./scripts/gen-app-icons.py --check
+          ./scripts/check-tabler-icons.py
+
+
       - name: Build Rust workspace
         run: cargo build --workspace 2>&1 | tee logs/rust-build.log
 

@@ -1,24 +1,24 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-"""Generate the first-party app icon SVGs from vendored Phosphor glyphs (T-19.1d).
+"""Generate the first-party app icon SVGs from vendored Tabler glyphs.
 
 The two first-party applications carry original artwork built from the pinned
-Phosphor set (MIT, T-19.1a):
+Tabler set (MIT, ADR 0185):
 
-  * ``org.dragonfruit.Files`` — Phosphor ``folders`` on a plain rounded-square
+  * ``org.dragonfruit.Files`` — Tabler ``folders`` on a plain rounded-square
     app tile (no container treatment, matching every other Dock app tile).
   * ``org.dragonfruit.Settings`` — the System Settings gradient container
     (the ``SettingsCategoryIcon`` treatment: rounded square, vertical gradient,
-    top inner highlight) with a Phosphor ``gear``.
+    top inner highlight) with a Tabler ``settings``.
 
 The SVGs are the *single* artwork source: they are exposed to QML as bundled
 resources (``qrc:/icons/apps/<name>.svg``, T-19.1d) for the Dock before an
 install, and installed into the shipped icon theme so launchers, menus, and
 the portal file chooser resolve the same file. Only the geometry and colour
 constants below are decided here; the glyph paths come from the vendored SVGs,
-so a Phosphor update is one file swap plus this generator.
+so a Tabler update is one file swap plus this generator.
 
-Running with ``--check`` (``make check-phosphor``) fails if a committed icon is
+Running with ``--check`` (``make check-tabler``) fails if a committed icon is
 stale, so the assets and the generator cannot drift.
 
 Usage:
@@ -34,10 +34,11 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-PHOSPHOR_DIR = REPO / "assets" / "icons" / "phosphor"
+TABLER_DIR = REPO / "assets" / "icons" / "tabler"
 OUT_DIR = REPO / "assets" / "icons" / "apps"
 
 VIEW = 256.0
+TABLER_VIEW = 24.0
 # Corner radius matches `component.dock.icon.radiusRatio` /
 # `component.settingsCategory.radiusRatio` (0.24) at the 256 viewBox.
 RADIUS = round(VIEW * 0.24, 2)
@@ -50,7 +51,7 @@ FILES_GLYPH_RATIO = 0.6
 
 # Settings: the one app icon that carries the gradient container, matching
 # SettingsPanes' "general" category hue (`#8e8e93` -> `#58585c`).
-SETTINGS_GLYPH = "gear"
+SETTINGS_GLYPH = "settings"
 SETTINGS_GRADIENT_START = "#8e8e93"
 SETTINGS_GRADIENT_END = "#58585c"
 SETTINGS_GLYPH_RATIO = 0.55
@@ -59,23 +60,27 @@ SETTINGS_HIGHLIGHT_OPACITY = 0.28
 
 WHITE = "#ffffff"
 
-_D = re.compile(r'<path\b[^>]*\bd="([^"]+)"', re.IGNORECASE | re.DOTALL)
+_TAG = re.compile(r"<path\b([^>]*?)/?>", re.IGNORECASE | re.DOTALL)
+_ATTR = re.compile(r'([a-zA-Z-]+)\s*=\s*"([^"]*)"')
 
 
 def glyph_path(name: str) -> str:
-    """The first path `d` of a vendored Phosphor glyph."""
-    path = PHOSPHOR_DIR / f"{name}-fill.svg"
+    """The visible path `d` of a vendored Tabler filled glyph."""
+    path = TABLER_DIR / f"{name}-filled.svg"
     text = path.read_text()
-    match = _D.search(text)
-    if match is None:
-        raise SystemExit(f"no path in {path.relative_to(REPO)}")
-    return match.group(1).strip()
+    for match in _TAG.finditer(text):
+        attrs = dict(_ATTR.findall(match.group(1)))
+        d = attrs.get("d", "").strip()
+        if d and attrs.get("fill") not in ("none",) and attrs.get("stroke") not in ("none",):
+            return d
+    raise SystemExit(f"no visible path in {path.relative_to(REPO)}")
 
 
 def _centered_glyph(name: str, ratio: float) -> str:
     edge = VIEW * ratio
+    scale = edge / TABLER_VIEW
     off = (VIEW - edge) / 2
-    return (f'  <path transform="translate({off:g},{off:g}) scale({ratio:g})" '
+    return (f'  <path transform="translate({off:g},{off:g}) scale({scale:g})" '
             f'fill="{WHITE}" d="{glyph_path(name)}"/>\n')
 
 
