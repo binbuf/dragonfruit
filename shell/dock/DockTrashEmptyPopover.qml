@@ -110,7 +110,10 @@ FocusScope {
         }
     }
     onPhaseChanged: {
-        Accessible.announce(root.accessibleStateText);
+        // Closing the popover resets the phase to idle; do not announce the
+        // synthetic "Emptying the Trash" state after the operation is gone.
+        if (root.open && root.phase !== "idle")
+            Accessible.announce(root.accessibleStateText);
         // Defer: the failure row's visibility binding settles after the
         // phase change, so focus it on the next event-loop turn.
         Qt.callLater(function() {

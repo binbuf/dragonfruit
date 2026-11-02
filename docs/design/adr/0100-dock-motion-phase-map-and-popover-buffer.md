@@ -37,8 +37,9 @@ render target mid-gesture.
   sizes the Dock window to `dock + 2 * popoverGutter` by
   `dock + popoverHeadroom` at configure time and never resizes it on a popover
   open. `Dock.qml` clamps every popover rectangle into that budget
-  (`clampPopoverX`/`clampPopoverY`); a zero budget (the QML default) keeps the
-  legacy unbounded placement. The Dock item sits at the constant
+  (`clampPopoverX`/`clampPopoverY` for placement, `clampPopoverRect` for the
+  committed size); a zero budget (the QML default) keeps the legacy unbounded
+  placement. The Dock item sits at the constant
   `(gutter, headroom)` offset inside the larger buffer, so committed
   surface-local coordinates are unchanged.
 - **Discrete layout changes animate; magnification stays progress-based.** A
@@ -58,5 +59,19 @@ render target mid-gesture.
 - Later Dock units must use `popoverHeadroom`/`popoverGutter` for popover
   placement and `bouncePhases` for any new per-frame entry state; mutating the
   entry list to carry per-frame state is now a regression.
+- **Popover anchors are snapshots, not delegates (stability follow-up).** Every
+  Dock popover that anchors to an entry (context menu, window chooser, folder
+  stack, Add Application picker, overflow list, Empty Trash) anchors to a
+  non-visual geometry proxy, never the live Repeater delegate. A projection
+  rebuild (a window opens/closes, a stack badge clears, a pin toggles) destroys
+  the delegate; the proxy preserves the rect and is re-captured from the fresh
+  delegate after the model settles. The hover label is the exception: it must
+  follow magnification, so it re-binds to the fresh delegate instead.
+- **The overlay rect is transform-stable.** `popoverRect`/`tooltipRect` use the
+  untransformed child geometry (the popovers only scale *down* while opening
+  and closing) and are clamped to the real offscreen image bounds. This keeps
+  the committed overlay correct while the scale Behavior animates and makes a
+  menu taller than the headroom produce a valid (clipped) copy instead of a
+  null `QImage::copy`.
 - `Dock.qml`'s `laidOutOnce`/`dragSettling`/`Behavior on iconSize` are the
   motion contract: the first configure snaps, everything after springs.

@@ -10,8 +10,9 @@
 # same script can rebuild/restart units without a logout, or restore the
 # previous desktop and log out.
 #
-# The link farm points at target/debug and build/, so a normal `make build`
-# is enough before a restart: no reinstall step is needed.
+# The link farm points at target/<profile> and build[-release]/, so a normal
+# `make build` (or the release build) is enough before a restart: no reinstall
+# step is needed.
 #
 # Usage:
 #   scripts/native-session.sh [start] [--no-build] [--no-logout] [--no-deps] [--autologin] [--force] [--skip-preflight]
@@ -40,6 +41,9 @@
 #
 # DF_NATIVE_PREFIX overrides the install prefix (default /usr; useful for
 # staging tests, not for a real display-manager login).
+# DF_NATIVE_PROFILE=debug|release selects the build (default: follow the
+# installed link; a fresh install starts with debug). `make native-release`
+# builds and installs the optimized daily-driver profile.
 
 set -euo pipefail
 
@@ -52,9 +56,28 @@ PREFIX="${PREFIX%/}"
 # invoked directly (make variables are exported by the native targets).
 DF_TOOLCHAIN="${DF_TOOLCHAIN:-$HOME/.local/df-toolchain/usr}"
 DF_DEVROOT="${DF_DEVROOT:-$HOME/.local/df-devroot/lib64}"
-DEV_BIN="$root/target/debug/dragonfruit"
-SESSION_BIN="$root/target/debug/dragonfruit-session"
-PORTAL_BIN="$root/target/debug/xdg-desktop-portal-dragonfruit"
+
+# Build profile for the native session. `debug` is the fast iteration build;
+# `release` is the daily-driver build (the 4K material/damage path is CPU-bound
+# enough that the unoptimized build caps animated clients well below 60 fps).
+# An explicit DF_NATIVE_PROFILE wins; otherwise follow the installed link so
+# `native-restart` keeps using the profile that is already installed.
+PROFILE="${DF_NATIVE_PROFILE:-}"
+if [ -z "$PROFILE" ]; then
+    installed="$(readlink -f "$PREFIX/bin/dragonfruit-compositor" 2>/dev/null || true)"
+    case "$installed" in
+        */target/release/*) PROFILE=release ;;
+        *) PROFILE=debug ;;
+    esac
+fi
+case "$PROFILE" in
+    debug) QT_BUILD_DIR="$root/build" ;;
+    release) QT_BUILD_DIR="$root/build-release" ;;
+    *) echo "native-session: DF_NATIVE_PROFILE must be debug or release" >&2; exit 2 ;;
+esac
+DEV_BIN="$root/target/$PROFILE/dragonfruit"
+SESSION_BIN="$root/target/$PROFILE/dragonfruit-session"
+PORTAL_BIN="$root/target/$PROFILE/xdg-desktop-portal-dragonfruit"
 
 BIN_NAMES=(
     dragonfruit
@@ -169,10 +192,10 @@ require_user() {
 
 binary_source() {
     case "$1" in
-        dragonfruit-shell) printf '%s\n' "$root/build/shell/src/dragonfruit-shell" ;;
-        dragonfruit-files) printf '%s\n' "$root/build/apps/files/dragonfruit-files" ;;
-        dragonfruit-settings) printf '%s\n' "$root/build/apps/settings/dragonfruit-settings" ;;
-        *) printf '%s\n' "$root/target/debug/$1" ;;
+        dragonfruit-shell) printf '%s\n' "$QT_BUILD_DIR/shell/src/dragonfruit-shell" ;;
+        dragonfruit-files) printf '%s\n' "$QT_BUILD_DIR/apps/files/dragonfruit-files" ;;
+        dragonfruit-settings) printf '%s\n' "$QT_BUILD_DIR/apps/settings/dragonfruit-settings" ;;
+        *) printf '%s\n' "$root/target/$PROFILE/$1" ;;
     esac
 }
 
@@ -190,8 +213,8 @@ require_built() {
     # before mapping a window, which looks like "the Dock does nothing".
     local module
     for module in Dragonfruit Dragonfruit/Settings Dragonfruit/Files; do
-        [ -f "$root/build/qml/$module/qmldir" ] \
-            || die "missing build/qml/$module/qmldir — run 'make build' first"
+        [ -f "$QT_BUILD_DIR/qml/$module/qmldir" ] \
+            || die "missing $QT_BUILD_DIR/qml/$module/qmldir — build the $PROFILE tree first"
     done
 }
 
@@ -263,7 +286,7 @@ write_session_environment() {
     local libs qml_dir cursor_dir unit dropin_dir tmp
     local -a env_names=() env_values=()
     libs="$(session_library_path)"
-    qml_dir="$root/build/qml"
+    qml_dir="$QT_BUILD_DIR/qml"
     cursor_dir="$root/assets/cursors"
 
     if [ -n "$libs" ]; then
@@ -609,8 +632,14 @@ build_all() {
         return
     fi
     ensure_prereqs
-    say "building the workspace and Qt side"
-    make build
+    say "building the workspace and Qt side ($PROFILE)"
+    if [ "$PROFILE" = release ]; then
+        cargo build --workspace --release
+        cmake -S "$root" -B "$QT_BUILD_DIR" -G Ninja -DCMAKE_BUILD_TYPE=Release
+        cmake --build "$QT_BUILD_DIR"
+    else
+        make build
+    fi
 }
 
 elevate() {
@@ -978,7 +1007,7 @@ install_native() {
     say "staging the session entry, systemd user units, app metadata, and portal data"
     "$SESSION_BIN" --install-session "$stage_root" >/dev/null
     "$PORTAL_BIN" --install-data "$stage_root" >/dev/null
-    cmake --install build --prefix "$stage_root" >/dev/null
+    cmake --install "$QT_BUILD_DIR" --prefix "$stage_root" >/dev/null
 
     say "installing under $PREFIX"
     elevate cp -a --no-preserve=ownership,context "$stage_root/." "$PREFIX/"

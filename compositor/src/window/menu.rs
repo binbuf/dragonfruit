@@ -25,7 +25,6 @@
 //! labels; the geometry, hit-testing, and command routing here do not change.
 
 use smithay::backend::renderer::element::solid::SolidColorRenderElement;
-use smithay::backend::renderer::element::Id;
 use smithay::backend::renderer::utils::CommitCounter;
 use smithay::backend::renderer::Color32F;
 use smithay::input::keyboard::xkb::keysyms;
@@ -472,6 +471,12 @@ impl WindowMenu {
         output_origin: Point<i32, Logical>,
     ) -> Vec<SolidColorRenderElement> {
         let mut elements = Vec::new();
+        // The menu is rebuilt every frame it is open. A fresh `Id` per
+        // rebuild would mark the whole panel damaged on every frame; key it
+        // by the visible geometry/colour instead, with the push order as the
+        // salt so overlapping rows never share an id.
+        const MENU_SALT: u64 = 0x6d65_6e75_5f77_696e; // "menu_win"
+        let mut salt = 0u64;
         let to_physical = |rect: Rectangle<i32, Logical>| rect.to_physical_precise_round(scale);
         let local = |rect: Rectangle<i32, Logical>| {
             Rectangle::new(
@@ -480,9 +485,12 @@ impl WindowMenu {
             )
         };
         let mut push = |rect: Rectangle<i32, Logical>, color: Color32F| {
+            let physical = to_physical(local(rect));
+            let id = crate::window::stable_solid_id(MENU_SALT ^ salt, physical, color);
+            salt = salt.wrapping_add(1);
             elements.push(SolidColorRenderElement::new(
-                Id::new(),
-                to_physical(local(rect)),
+                id,
+                physical,
                 CommitCounter::default(),
                 color,
                 smithay::backend::renderer::element::Kind::Unspecified,

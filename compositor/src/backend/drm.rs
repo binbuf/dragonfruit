@@ -327,11 +327,50 @@ pub fn run(socket_name: &str) -> Result<(), String> {
         socket_name,
         BackendHooks {
             init: Box::new(move |state| init(state, shared_init)),
-            // DRM rendering is vblank/timer-driven from the backend's own
-            // sources; the loop-level hook has nothing to do.
-            render: Box::new(|_| Ok(())),
+            // Render on demand: commits, input, animation ticks, and pending
+            // frame callbacks set `needs_redraw`. The old path probed every
+            // output at the refresh rate even when nothing had changed; at 4K
+            // that made an empty damage check cost enough CPU to cap clients
+            // around 15 fps.
+            render: Box::new(render_pending),
         },
     )
+}
+
+/// Render every output that has new work this loop iteration.
+///
+/// The session loop calls this after dispatching Wayland events, so a client
+/// commit (or an input/animation request) is serviced immediately. The DRM
+/// backend no longer runs a free-running probe timer: an idle desktop costs
+/// nothing, while an animating client is still driven by its commits at the
+/// display refresh rate.
+fn render_pending(state: &mut crate::state::DfState) -> Result<(), String> {
+    if state.suspend.is_suspended() {
+        return Ok(());
+    }
+    if !state.needs_redraw && !state.has_pending_frame_callbacks() {
+        return Ok(());
+    }
+    let Some(shared) = drm_shared_slot() else {
+        return Ok(());
+    };
+    let targets: Vec<(DrmNode, crtc::Handle)> = {
+        let guard = shared.borrow();
+        guard
+            .as_ref()
+            .map(|data| {
+                data.devices
+                    .iter()
+                    .flat_map(|(node, device)| device.surfaces.keys().map(|crtc| (*node, *crtc)))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    for (node, crtc) in targets {
+        render_surface(state, &shared, node, crtc);
+    }
+    state.needs_redraw = false;
+    Ok(())
 }
 
 fn init(state: &mut crate::state::DfState, shared: SharedData) -> Result<(), String> {
@@ -1095,12 +1134,12 @@ fn frame_finish(
             .map_err(Into::<SwapBuffersError>::into)
     };
 
-    let schedule_render = match submit_result {
+    let retry = match submit_result {
         Ok(user_data) => {
             if let Some(mut feedback) = user_data.flatten() {
                 feedback.presented(clock, Refresh::fixed(frame_duration), seq as u64, flags);
             }
-            true
+            false
         }
         Err(err) => {
             eprintln!("dragonfruit-compositor: error during rendering: {err:?}");
@@ -1132,19 +1171,18 @@ fn frame_finish(
         }
     };
 
-    if schedule_render {
-        let next_frame_target = clock + frame_duration;
-        // Split the frame between client repaint and compositor repaint
-        // to keep input-to-photon latency near one frame (FR-3).
-        let repaint_delay = Duration::from_secs_f64(frame_duration.as_secs_f64() * 0.6);
+    if retry {
+        // Retry a rejected/transient frame on the next refresh boundary.
+        // Successful frames are no longer followed by a free-running probe;
+        // the next frame comes from a client commit, input, or an animation
+        // tick (see `render_pending`).
         let _ = state.loop_handle.insert_source(
-            Timer::from_duration(repaint_delay),
+            Timer::from_duration(frame_duration),
             move |_, _, state| {
                 let shared = drm_shared_slot();
                 if let Some(shared) = shared {
                     render_surface(state, &shared, dev_id, crtc);
                 }
-                let _ = next_frame_target;
                 TimeoutAction::Drop
             },
         );
@@ -1282,39 +1320,22 @@ fn render_surface(
             .map(DrmOutputElements::Decoration),
     );
 
-    // The open window menu (T-01.4) composites above the titlebars but below
-    // the shell chrome.
+    // The open window menu (T-01.4) composites above every window and
+    // titlebar, but below the shell chrome.
     custom_elements.extend(
         crate::render::window_menu_render_elements(state, &surface.output, scale)
             .into_iter()
             .map(DrmOutputElements::Decoration),
     );
 
-    // SSD titlebars (T-01.1) composite above their client surfaces.
-    custom_elements.extend(
-        crate::render::titlebar_render_elements(state, &surface.output, scale)
-            .into_iter()
-            .map(DrmOutputElements::Decoration),
-    );
-
-    // Scene elements: surface trees of mapped windows (live buffers only —
-    // effects are compositor render passes, never screenshots). The appear
-    // transform is applied per window (T-02.1b).
-    {
-        let window_elements = crate::render::window_render_elements::<
-            UdevRenderer<'_>,
-            DrmOutputElements<UdevRenderer<'_>, WaylandSurfaceRenderElement<UdevRenderer<'_>>>,
-        >(&mut renderer, state, &surface.output, scale);
-        custom_elements.extend(window_elements);
-    }
-
-    // Elevation-token-driven shadows (T-04.1a) composite below the window
-    // surfaces, so the ring beyond a window is visible.
-    custom_elements.extend(
-        crate::render::window_shadow_render_elements(state, &surface.output, scale)
-            .into_iter()
-            .map(DrmOutputElements::Decoration),
-    );
+    // The window stack: each window's SSD titlebar, client surface, and
+    // shadow stay together in `Space` stacking order. Emitting all titlebars
+    // as one layer above all surfaces (and all shadows below them) put a
+    // background window's titlebar over a foreground window's body.
+    custom_elements.extend(crate::render::window_scene_render_elements::<
+        UdevRenderer<'_>,
+        DrmOutputElements<UdevRenderer<'_>, WaylandSurfaceRenderElement<UdevRenderer<'_>>>,
+    >(&mut renderer, state, &surface.output, scale));
 
     // The Files-owned desktop layer (T-19.3) composites below every window
     // and above the per-Space wallpaper.
@@ -1363,7 +1384,9 @@ fn render_surface(
                         &render_frame_result.states,
                     );
                 }
-                reschedule_probe(state, node, crtc, refresh);
+                // No free-running probe: the next frame is driven by a client
+                // commit, input, or an animation tick. Probing every vblank
+                // was the 4K CPU cap that held animated clients near 15 fps.
             } else {
                 state.stats.frames_rendered += 1;
                 // Primary scanout feedback for presentation-time.
@@ -1403,12 +1426,12 @@ fn render_surface(
     }
 }
 
-/// Re-test for damage on the next frame boundary when a frame came back
-/// empty (the standard smithay reschedule strategy).
+/// Retry a failed frame on the next refresh boundary.
 ///
-/// `refresh` is passed in by the caller: this runs while `render_surface` holds
-/// the backend's `RefCell` borrow, so it must not call `drm_shared_slot()` and
-/// borrow the cell again.
+/// This is used only for renderer/queue failures now; a successful empty frame
+/// no longer starts a free-running probe. `refresh` is passed in by the caller:
+/// this runs while `render_surface` holds the backend's `RefCell` borrow, so it
+/// must not call `drm_shared_slot()` and borrow the cell again.
 fn reschedule_probe(
     state: &mut crate::state::DfState,
     node: DrmNode,

@@ -29,3 +29,5 @@ screenshot.png
 # symphony harness (local tool, not tracked)
 .symphony/
 .stop
+
+build-release/

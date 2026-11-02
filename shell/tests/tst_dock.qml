@@ -320,6 +320,19 @@ Item {
             compare(findChild(divider, "dividerHit").visible, true);
         }
 
+        // A divider is a resize handle, not an entry: a left click must not
+        // activate it (which would publish a bogus launch-origin tile).
+        function test_divider_click_does_not_activate() {
+            var entry = make(entryComponent, {
+                iconSize: 48,
+                entry: { id: "__divider__", kind: "divider", resizeHandle: true }
+            });
+            activatedSpy.target = entry;
+            activatedSpy.clear();
+            mouseClick(entry, entry.width / 2, entry.height / 2);
+            compare(activatedSpy.count, 0);
+        }
+
         function test_divider_spacing_survives_magnification() {
             var dock = make(dockComponent, {
                 width: 1280, height: 260, magnification: 1.0,
@@ -1948,6 +1961,24 @@ Item {
             verify(after[1] !== before[1] || after[3] !== before[3]);
         }
 
+        // A bounce moves the layout every committed frame; re-reporting the
+        // launch-origin tile for each frame would be a needless signal stream.
+        // The settled state republishes once motion ends.
+        function test_tile_is_not_republished_during_a_bounce() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("files", "Files", true) ]
+            });
+            tileRectSpy.target = dock;
+            tileRectSpy.clear();
+            dock.activateEntry(dock.items[0]);
+            compare(tileRectSpy.count, 1);
+            tileRectSpy.clear();
+            dock.bouncePhases = { "files": { phase: 0.5, attention: false } };
+            waitForRendering(stage);
+            compare(tileRectSpy.count, 0, "no tile stream while bouncing");
+        }
+
         function test_right_click_opens_entry_menu() {
             var dock = make(dockComponent, {
                 width: 1280, height: 160,
@@ -3129,6 +3160,8 @@ Item {
             var entry = dock.itemAt(0);
             mouseClick(entry, entry.width / 2, entry.height / 2);
             compare(activatedSpy.count, 1);
+            // The action dismisses the menu it was covering.
+            compare(dock.menuOpen, false);
         }
 
         function test_chooser_accessible_names_carry_window_titles() {
@@ -3536,6 +3569,11 @@ Item {
             waitForRendering(stage);
             compare(dock.chooserOpen, false, "one popover at a time");
             compare(dock.menuOpen, true);
+            // The newly opened menu owns the overlay immediately; the closing
+            // chooser's fade tail must not keep the overlay rect.
+            var menu = findChild(dock, "entryMenu");
+            fuzzyCompare(dock.activePopoverRect.x, menu.x, 0.001);
+            fuzzyCompare(dock.activePopoverRect.y, menu.y, 0.001);
         }
 
         function test_chooser_hover_is_suppressed_by_keyboard_navigation() {
@@ -3572,6 +3610,38 @@ Item {
             var chooser = findChild(dock, "windowChooser");
             tryVerify(function() {
                 return Math.abs(chooser.x + chooser.width / 2
+                                - (proxy.x + proxy.width / 2)) < 1.0;
+            });
+        }
+
+        // A window opening/closing while the context menu is up rebuilds the
+        // delegate. The menu must stay on its snapshot anchor and pick up the
+        // fresh entry's rows (T-14.7c stability).
+        function test_menu_anchor_survives_a_projection_rebuild() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ multiWindow("files", "Files", manyWindows(2)) ]
+            });
+            dock.openEntryMenu(dock.items[0]);
+            waitForRendering(stage);
+            compare(dock.menuOpen, true);
+            var proxy = findChild(dock, "menuAnchorProxy");
+            verify(proxy !== null);
+            compare(dock.menuAnchor, proxy,
+                    "the menu anchors to the snapshot proxy, not the delegate");
+            verify(proxy.width > 0);
+            // A fresh projection with one window closed.
+            dock.entries = [ multiWindow("files", "Files", manyWindows(1)) ];
+            waitForRendering(stage);
+            compare(dock.menuOpen, true, "the menu survives the rebuild");
+            compare(dock.menuAnchor, proxy, "the snapshot is still the anchor");
+            var item = dock.itemAt(0);
+            tryVerify(function() { return Math.abs(proxy.x - item.x) < 0.5; });
+            // The menu model re-resolved to the fresh window list.
+            tryVerify(function() { return dock.menuModel.length > 0; });
+            var menu = findChild(dock, "entryMenu");
+            tryVerify(function() {
+                return Math.abs(menu.x + menu.width / 2
                                 - (proxy.x + proxy.width / 2)) < 1.0;
             });
         }
@@ -3642,6 +3712,10 @@ Item {
             verify(rect.y >= -dock.popoverHeadroom - 0.001);
             verify(rect.x >= -dock.popoverGutter - 0.001);
             verify(rect.x + rect.w <= dock.width + dock.popoverGutter + 0.001);
+            // The overlay copy must stay inside the real offscreen image; a
+            // content-taller-than-headroom menu is clipped to the visible part
+            // instead of producing a null `QImage::copy`.
+            verify(rect.y + rect.h <= dock.height + 0.001);
             // The Dock scene itself is unchanged; only its offset inside the
             // pre-sized buffer differs.
             compare(dock.width, 1280);
@@ -3660,6 +3734,7 @@ Item {
             verify(leftRect.x >= -left.popoverGutter - 0.001);
             verify(leftRect.x + leftRect.w
                    <= left.width + left.popoverGutter + 0.001);
+            verify(leftRect.y + leftRect.h <= left.height + 0.001);
             compare(left.width, 124);
             compare(left.height, 720);
         }
@@ -3801,6 +3876,38 @@ Item {
             dock.dragPointerLeft();
             compare(dock.dragging, false);
             compare(pinnedOrderSpy.signalArguments[0][0].join(","), "b.desktop");
+        }
+
+        // A projection rebuild destroys the delegate that owns the live
+        // DragHandler. The gesture must be cancelled instead of leaving
+        // `dragging` latched on (which would disable magnification and make the
+        // whole surface swallow input for the rest of the session).
+        function test_projection_rebuild_cancels_a_stale_drag() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "A", true), app("b", "B", true) ]
+            });
+            dock.beginDrag(dock.appEntries[0]);
+            compare(dock.dragging, true);
+            dock.entries = [ app("a", "A", true), app("b", "B", true) ];
+            waitForRendering(stage);
+            compare(dock.dragging, false);
+        }
+
+        // The divider delegate can also be destroyed mid-resize (the last app
+        // unpinned). End the resize so it cannot latch on.
+        function test_projection_rebuild_ends_a_stale_divider_resize() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("a", "A", true) ]
+            });
+            var divider = dock.itemAt(dock.indexOfItemId("__divider__"));
+            var p = dock.mapToItem(null, divider.x, divider.y);
+            dock.beginDividerResize(p.x, p.y);
+            compare(dock.resizing, true);
+            dock.entries = [ app("a", "A", true) ];
+            waitForRendering(stage);
+            compare(dock.resizing, false);
         }
 
         function test_drag_suppresses_magnification() {
@@ -4073,6 +4180,29 @@ Item {
             compare(dock.keyboardFocused, true);
             compare(dock.focusedItemId, "files");
             compare(dock.itemAt(0).keyboardFocused, true);
+        }
+
+        // Every popover takes active focus while it is open. Closing it must
+        // hand focus back to the Dock, or keyboard navigation silently stops
+        // after Escape (T-10 section 20).
+        function test_closing_a_popover_returns_focus_to_the_dock() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("files", "Files", true) ]
+            });
+            dock.forceActiveFocus();
+            dock.beginKeyboardNavigation();
+            waitForRendering(stage);
+            compare(dock.activeFocus, true);
+            dock.openEntryMenu(dock.items[0]);
+            waitForRendering(stage);
+            compare(dock.menuOpen, true);
+            var menu = findChild(dock, "entryMenu");
+            tryVerify(function() { return menu.activeFocus; });
+            menu.hide();
+            waitForRendering(stage);
+            compare(dock.menuOpen, false);
+            tryVerify(function() { return dock.activeFocus; });
         }
 
         function test_keyboard_arrows_move_focus_and_skip_divider() {
@@ -4615,6 +4745,40 @@ Item {
             compare(dock.stackOpen, false);
         }
 
+        // Opening a stack clears its new-items badge; the shell then rebuilds
+        // the entry model, destroying the delegate the popover was anchored to.
+        // The snapshot proxy must keep the popover anchored across that rebuild
+        // (T-14.7c stability).
+        function test_stack_popover_anchor_survives_a_badge_clear() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                downloadsItems: stackItems(), downloadsCount: 2, downloadsBadge: 1,
+                entries: [ app("a", "A", true) ]
+            });
+            var idx = dock.indexOfItemId("__downloads__");
+            dock.activateEntry(dock.items[idx]);
+            waitForRendering(stage);
+            compare(dock.stackOpen, true);
+            var proxy = findChild(dock, "stackAnchorProxy");
+            verify(proxy !== null);
+            compare(dock.stackAnchor, proxy,
+                    "the stack anchors to the snapshot proxy, not the delegate");
+            verify(proxy.width > 0);
+            // The badge clears, which changes `stackEntry` -> `items` and
+            // rebuilds the delegate without touching `entries`.
+            dock.downloadsBadge = 0;
+            waitForRendering(stage);
+            compare(dock.stackOpen, true, "the popover survives the rebuild");
+            compare(dock.stackAnchor, proxy, "the snapshot is still the anchor");
+            var item = dock.itemAt(dock.indexOfItemId("__downloads__"));
+            tryVerify(function() { return Math.abs(proxy.x - item.x) < 0.5; });
+            var popover = findChild(dock, "stackPopover");
+            tryVerify(function() {
+                return Math.abs(popover.x + popover.width / 2
+                                - (proxy.x + proxy.width / 2)) < 1.0;
+            });
+        }
+
         function test_stack_badge_shows_the_new_count() {
             var dock = make(dockComponent, {
                 width: 1280, height: 160,
@@ -5003,6 +5167,32 @@ Item {
             dock.handleEntryTap(dock.items[idx]);
             compare(downloadsFolderSpy.count, 1);
             compare(dock.stackOpen, false);
+        }
+
+        // A double-click window belongs to one stack: tapping stack A and then
+        // stack B inside the window must open B's popover, not B in Files.
+        function test_stack_double_click_is_per_stack() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                downloadsItems: stackItems(), downloadsCount: 2,
+                folderPins: [ { id: "folder:/tmp/pin", path: "/tmp/pin",
+                                name: "Pin", items: [], count: 0, badge: 0 } ],
+                entries: [ app("a", "A", true) ]
+            });
+            downloadsFolderSpy.target = dock;
+            downloadsFolderSpy.clear();
+            folderOpenSpy.target = dock;
+            folderOpenSpy.clear();
+            var downloads = dock.items[dock.indexOfItemId("__downloads__")];
+            var pin = dock.items[dock.indexOfItemId("folder:/tmp/pin")];
+            dock.handleEntryTap(downloads);
+            compare(downloadsFolderSpy.count, 0);
+            // A different stack inside the double-click window is a new tap.
+            dock.handleEntryTap(pin);
+            compare(downloadsFolderSpy.count, 0);
+            compare(folderOpenSpy.count, 0);
+            compare(dock.stackOpen, true);
+            compare(dock.stackEntryRef.id, "folder:/tmp/pin");
         }
 
         function test_stack_context_menu_offers_open_in_files() {
@@ -5569,8 +5759,43 @@ Item {
             compare(appPickerRequestedSpy.count, 1, "the shell is asked to refresh");
             verify(dock.popoverRect.w > 0 && dock.popoverRect.h > 0,
                    "the overlay rect covers the picker");
-            // The picker is anchored to the divider: its arrow tracks it.
-            compare(picker.anchorItem, dock.itemAt(1));
+            // The picker is anchored to the divider through a snapshot proxy
+            // (so a pin toggle can rebuild the delegate without orphaning it).
+            compare(picker.anchorItem.objectName, "appPickerAnchorProxy");
+            var divider = dock.itemAt(1);
+            tryVerify(function() {
+                return Math.abs(picker.anchorItem.x - divider.x) < 0.5;
+            });
+        }
+
+        // Pinning a row rebuilds the Dock entries; the picker must keep its
+        // divider anchor (T-14.7e stability) instead of jumping to (0, 0).
+        function test_app_picker_anchor_survives_a_pin_toggle_projection() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 200,
+                appPickerItems: pickerFixture(),
+                entries: [ app("files", "Files", true) ]
+            });
+            dock.openAppPicker();
+            waitForRendering(stage);
+            compare(dock.appPickerOpen, true);
+            var proxy = findChild(dock, "appPickerAnchorProxy");
+            verify(proxy !== null);
+            compare(dock.appPickerAnchor, proxy);
+            var divider = dock.itemAt(dock.indexOfItemId("__divider__"));
+            tryVerify(function() { return Math.abs(proxy.x - divider.x) < 0.5; });
+            // The shell rebuilds `entries` after `dock.pinned` changes.
+            dock.entries = [ app("files", "Files", true), app("term", "Terminal", false) ];
+            waitForRendering(stage);
+            compare(dock.appPickerOpen, true, "the picker survives the rebuild");
+            compare(dock.appPickerAnchor, proxy, "the snapshot is still the anchor");
+            divider = dock.itemAt(dock.indexOfItemId("__divider__"));
+            tryVerify(function() { return Math.abs(proxy.x - divider.x) < 0.5; });
+            var picker = findChild(dock, "appPicker");
+            tryVerify(function() {
+                return Math.abs(picker.x + picker.width / 2
+                                - (proxy.x + proxy.width / 2)) < 1.0;
+            });
         }
 
         function test_picker_filters_rows_by_name_and_id() {
@@ -5886,6 +6111,29 @@ Item {
             fuzzyCompare(rect.y, tooltip.y, 0.501);
             fuzzyCompare(rect.h,
                          tooltip.height + Theme.controls.tooltip.tailHeight, 0.501);
+        }
+
+        // A projection rebuild destroys the delegate the label is anchored to.
+        // The label must re-bind to the fresh delegate instead of vanishing.
+        function test_tooltip_rebinds_after_a_projection_rebuild() {
+            var dock = make(dockComponent, {
+                width: 1280, height: 160,
+                entries: [ app("files", "Files", true) ]
+            });
+            dock.pointerAlong = dock._baseline.centers[0];
+            dock.smoothPointerAlong = dock.pointerAlong;
+            var first = dock.itemAt(0);
+            dock.entryHoverBegan(dock.items[0], first);
+            dock.showTooltip();
+            waitForRendering(stage);
+            compare(dock.tooltipOpen, true);
+            dock.entries = [ app("files", "Files", true) ];
+            waitForRendering(stage);
+            compare(dock.tooltipOpen, true, "the label survives the rebuild");
+            verify(dock.tooltipAnchor !== null);
+            // The anchor is the live delegate for the entry (the Repeater may
+            // reuse it or recreate it; either way the label stays bound).
+            compare(dock.tooltipAnchor, dock.itemAt(0));
         }
 
         function test_tooltip_reduced_motion_opens_without_a_fade() {

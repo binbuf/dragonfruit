@@ -154,7 +154,11 @@ ladder.
   `tearing-control` is honored for fullscreen games (see
   [14-risks.md](14-risks.md)).
 - Damage tracking keeps the idle path cheap: no damage, no render, no client
-  wakeups. Animations drive damage every frame while running.
+  wakeups. Animations drive damage every frame while running. Compositor-drawn
+  effects (titlebar, shadow, backdrop, wallpaper fill, menu) key their render
+  elements by visible geometry and colour (`window::stable_solid_id`), so an
+  unchanged effect is not re-marked as damage on every rebuild; a fresh id per
+  frame would force a full-output repaint forever and starve pointer input.
 - Hardware cursor planes are used where the hardware offers them; software
   cursors are the fallback, and cursor motion never waits on effects or
   damage. Named cursor shapes (`wp_cursor_shape_v1` and `wl_pointer`'s
@@ -265,7 +269,7 @@ interpolated rect (`MotionFrame::scale_for`) rather than assuming a
 target-sized buffer; appear/minimize/close keep their buffer at the target
 size, so this reduces to the target-relative scale.
 
-The render layer (`render::window_render_elements`) wraps the window's
+The render layer (`render::window_scene_render_elements`) wraps the window's
 surface elements (and its SSD titlebar) in a scale/relocate pair with a
 surface alpha fade, so the model geometry stays the final one and **input
 never moves**. A minimizing window leaves the layout and the focus/input path
@@ -296,7 +300,7 @@ per-window transform for scale/clip/blur.
 ### Window shadows (T-04.1a)
 
 Every decorated window is drawn over a soft drop shadow
-(`compositor/src/window/shadow.rs`, `render::window_shadow_render_elements`).
+(`compositor/src/window/shadow.rs`, `render::window_scene_render_elements`).
 The shadow is a stack of translucent rectangles — the same layered-rectangle
 formula the design system's `Shadow.qml` uses — built entirely from the
 **generated elevation tokens** so a compositor-drawn SSD window and a
@@ -308,10 +312,16 @@ come from `component.elevation.{low,med,high,overlay}` (which reference
 window (the SSD titlebar strip included, via `WindowInsets::outset`) is
 shadowed, a window mid-appear/minimize/zoom carries the same lifecycle
 `MotionFrame` as its content, and a minimizing/closing ghost keeps its shadow.
-Fullscreen windows cast none. Shadows are custom elements appended **after**
-`window_render_elements` in the front-to-back list, so they composite *below*
-their window. Rounded corners (T-04.1b) and the chrome backdrop (T-04.2) land
-on this same geometry; the shadow becomes one layer of the material pass.
+Fullscreen windows cast none.
+
+The titlebar, client surface, and shadow are emitted **per window**, in
+`Space` stacking order: the titlebar first (above its own content), then the
+content, then the shadow (below it and above the windows underneath). They
+must not be three global layers — a global titlebar layer puts a background
+window's titlebar over a foreground window's body, and a global shadow layer
+puts a foreground window's shadow under a background window. Rounded corners
+(T-04.1b) and the chrome backdrop (T-04.2) land on this same geometry; the
+shadow becomes one layer of the material pass.
 See [ADR 0011](adr/0011-elevation-shadow-tokens.md).
 
 ### Rounded-corner clipping (T-04.1b)
@@ -522,7 +532,7 @@ risk, so they degrade along one ordered ladder —
 
 A tier maps a token-resolved `BackdropSpec`/`ShadowSpec` through pure geometry
 scaling, so `render::chrome_backdrop_render_elements` and
-`render::window_shadow_render_elements` apply it where the material is
+`render::window_scene_render_elements` apply it where the material is
 resolved. At `Minimal` the backdrop pass emits no elements and owns no damage;
 the design tokens remain the single source and no opacity/tone is invented
 (ADR 0011/0013). The lifecycle motion and the T-04.3 scene transform are
@@ -545,7 +555,7 @@ Every compositor-drawn material resolves its tones from the **live color
 scheme** on `DfState` (`ColorScheme::{Light, Dark}`): the SSD titlebar and
 traffic lights (`window/decoration.rs`), the window menu (`window/menu.rs`),
 the chrome backdrop (`render::chrome_backdrop_render_elements`), and the window
-shadow (`render::window_shadow_render_elements`). The scheme is compositor
+shadow (`render::window_scene_render_elements`). The scheme is compositor
 state, not a render-argument: `DfState::set_color_scheme` flips it and requests
 a redraw, `titlebar_element`/`titlebar_element_for_motion` and
 `open_window_menu` stamp it onto the element they build, and the two material
@@ -604,7 +614,7 @@ The grid composes its material through the **active T-04.4a degrade tier**, and
 never resolves its own values: `DfState::overview_grid_material` returns a
 `GridMaterial` (`overview/grid.rs`) built by `GridMaterial::resolve(tier,
 scheme)`, which maps the high-elevation token shadow and the material blur
-through the tier exactly as the window path does. `render::window_shadow_render_elements`
+through the tier exactly as the window path does. `render::window_scene_render_elements`
 uses that grid material while the overview is open (otherwise the global tier),
 so the tier the `set degrade-tier` command pins is precisely the one a live
 surface in the grid draws with; `Minimal` turns the grid blur off and tightens

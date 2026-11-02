@@ -442,6 +442,17 @@ trace lives at `docs/captures/t14-dock-motion-trace.txt`. See
 [ADR 0100](adr/0100-dock-motion-phase-map-and-popover-buffer.md) and the
 T-14.7c unit.
 
+Popover anchors are **snapshot geometry**, not live delegates: the shell
+rebuilds the entry model whenever the compositor projection changes, which
+destroys the Repeater delegates a context menu, chooser, stack, picker, or
+overflow list may be anchored to. Each popover captures its entry's rect into a
+non-visual proxy and re-captures it after the model settles; the hover label is
+re-bound to the fresh delegate instead because it must follow magnification.
+The committed overlay rect uses the untransformed popover geometry (the
+open/close Behavior only scales *down*) and is clamped to the real offscreen
+image, so a scale animation cannot leave a stale rect and a menu taller than
+the headroom still commits a valid, clipped copy.
+
 ### Dock minimize-to-icon reaction
 
 When a window minimizes, its app entry can give a short acknowledgment bounce so

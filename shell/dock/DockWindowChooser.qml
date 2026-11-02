@@ -56,11 +56,24 @@ FocusScope {
     readonly property real actionGap: Theme.primitive.spacing.xxs
 
     readonly property var windows:
-        entry && entry.windowList !== undefined ? entry.windowList : []
+        entry && entry.windowList !== undefined && entry.windowList !== null
+            ? entry.windowList : []
     readonly property int rowCount: windows.length
     readonly property int visibleRows: Math.min(rowCount, maxRows)
     readonly property real listHeight: visibleRows * rowHeight
     readonly property bool scrolls: rowCount > maxRows
+
+    // A projection can close/minimize windows while the chooser is open. Keep
+    // the keyboard highlight on a real row; a stale index would make Return
+    // either do nothing or act on a row the user is not looking at.
+    onRowCountChanged: {
+        if (root.rowCount === 0)
+            root.currentIndex = -1;
+        else if (root.currentIndex >= root.rowCount)
+            root.currentIndex = root.rowCount - 1;
+        if (root.currentIndex >= 0)
+            root.keepSelectionVisible();
+    }
     // The scrollbar overlays the viewport's right edge; a scrolling list
     // reserves this gutter to its right so the T-14.7m actions never sit under
     // the thumb. A short list reserves nothing (no scrollbar, unchanged rows).
@@ -104,7 +117,7 @@ FocusScope {
     }
     // The row's accessible name keeps its active/minimized state (T-14.7m).
     function windowAccessibleName(title, focused, minimized) {
-        var name = title !== undefined ? title : "";
+        var name = title !== undefined && title !== null ? title : "";
         if (focused === true)
             name += " " + qsTr("(active)");
         if (minimized === true)

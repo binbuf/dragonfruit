@@ -45,14 +45,20 @@ FocusScope {
     // case-insensitively. The helper layer already sorts/dedupes; this mirrors
     // only its query predicate.
     readonly property var filteredItems: {
+        if (root.items === undefined || root.items === null)
+            return [];
         var needle = root.query.trim().toLowerCase();
         if (needle === "")
             return root.items;
         var out = [];
         for (var i = 0; i < root.items.length; ++i) {
             var row = root.items[i];
-            var name = row.name !== undefined ? String(row.name).toLowerCase() : "";
-            var id = row.desktopId !== undefined ? String(row.desktopId).toLowerCase() : "";
+            if (!row)
+                continue;
+            var name = row.name !== undefined && row.name !== null
+                       ? String(row.name).toLowerCase() : "";
+            var id = row.desktopId !== undefined && row.desktopId !== null
+                     ? String(row.desktopId).toLowerCase() : "";
             if (name.indexOf(needle) >= 0 || id.indexOf(needle) >= 0)
                 out.push(row);
         }
@@ -67,11 +73,14 @@ FocusScope {
     // seam uses this, and a normal user types into the field.
     function setQueryText(text) { searchField.text = text; }
 
-    // Keep the highlight a valid row as the filter narrows. Runs on every
-    // filtered change so Up/Down and Return always act on a real row.
+    // Keep the highlight a valid row as the filter narrows or the corpus
+    // arrives after the popover opened. Runs on every filtered change so
+    // Up/Down and Return always act on a real row.
     onFilteredItemsChanged: {
         if (root.filteredItems.length === 0)
             root.currentIndex = -1;
+        else if (root.currentIndex < 0)
+            root.currentIndex = 0;
         else if (root.currentIndex >= root.filteredItems.length)
             root.currentIndex = root.filteredItems.length - 1;
     }
@@ -110,8 +119,14 @@ FocusScope {
 
     onOpenChanged: {
         if (root.open) {
+            // The field keeps its text across close/open (the popover is a
+            // persistent object), so clear both it and the filter or the next
+            // keystroke would append to a stale query.
+            searchField.text = "";
             root.query = "";
             root.currentIndex = root.filteredItems.length > 0 ? 0 : -1;
+            if (listView.flickable)
+                listView.flickable.contentY = 0;
             root.opened();
             searchField.input.forceActiveFocus();
         } else {

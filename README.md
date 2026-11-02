@@ -67,8 +67,13 @@ One command provisions, builds, installs, and hands off to the display
 manager:
 
 ```bash
-make native
+make native            # debug build (fast iteration)
+make native-release    # optimized daily-driver build
 ```
+
+The release profile matters on high-resolution/high-refresh panels: the 4K
+damage/material path is CPU-bound enough that an unoptimized build can cap
+animated clients well below the panel's refresh rate.
 
 It detects the distribution package manager (`dnf`/`yum`, `apt-get`, `pacman`,
 `zypper`, or `apk`) and installs missing build prerequisites, writes the
@@ -94,7 +99,8 @@ units, processes, DRM state, journals, and a render-stats dump under
 `~/.local/state/dragonfruit/native-captures/`, then records a final snapshot
 when the session ends. `native-recover`/`native-return` remove the capture
 unit; the reports stay for comparison. `make native-capture` takes an
-on-demand snapshot.
+on-demand snapshot, and `make native-perf` adds a live client frame-rate probe
+(`vkcube`/`glxgears`) so the refresh-rate path is measured, not guessed.
 
 If the Dragonfruit login does not come up (for example a black screen), switch
 to a text console with `Ctrl+Alt+F3`, log in, and run `make native-recover`
