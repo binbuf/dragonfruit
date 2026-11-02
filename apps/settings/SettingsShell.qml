@@ -50,9 +50,8 @@ Item {
     signal zoomRequested()
     signal moveRequested(real x, real y)
     signal menuRequested(real x, real y)
-    // A window-edge press. `edges` is a `Qt.Edges` flag (TopEdge/BottomEdge);
-    // the host window forwards it to `startSystemResize`. Only the vertical
-    // edges are reported: the Settings width is fixed by design.
+    // A window-edge press. `edges` is a `Qt.Edges` flag; the host window
+    // forwards it to `startSystemResize`.
     signal resizeRequested(int edges)
 
     readonly property var visiblePanes: SettingsPanes.filter(root.searchText)
@@ -507,33 +506,12 @@ Item {
         }
     }
 
-    // Vertical window-edge grips. The window is frameless with client-side
-    // decorations, so the app owns the edge input: a press on the top or
-    // bottom edge reports `resizeRequested` with the matching `Qt.Edges` flag.
-    // There are no left/right grips — the host window fixes the width.
-    Item {
+    // The frameless window owns its edge input; the shared grips report the
+    // matching `Qt.Edges` and the host forwards them to `startSystemResize`.
+    WindowResizeGrips {
         id: resizeEdges
         anchors.fill: parent
-        z: 1000
-
-        readonly property int thickness: 6
-
-        MouseArea {
-            anchors.top: parent.top
-            anchors.left: parent.left
-            anchors.right: parent.right
-            height: resizeEdges.thickness
-            cursorShape: Qt.SizeVerCursor
-            onPressed: root.resizeRequested(Qt.TopEdge)
-        }
-        MouseArea {
-            anchors.bottom: parent.bottom
-            anchors.left: parent.left
-            anchors.right: parent.right
-            height: resizeEdges.thickness
-            cursorShape: Qt.SizeVerCursor
-            onPressed: root.resizeRequested(Qt.BottomEdge)
-        }
+        onResizeRequested: (edges) => root.resizeRequested(edges)
     }
 
     Accessible.role: Accessible.Pane

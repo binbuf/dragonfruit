@@ -2,9 +2,11 @@
 #include "FilesBridge.h"
 
 #include "FilesArguments.h"
+#include "OpenHandler.h"
 
 #include <QDir>
 #include <QFileInfo>
+#include <QProcess>
 #include <QStandardPaths>
 #include <QStorageInfo>
 #include <QUrl>
@@ -261,4 +263,15 @@ QVariantMap FilesBridge::resolveOpenTarget(const QString &argument) const
     out.insert(QStringLiteral("location"), target.location);
     out.insert(QStringLiteral("revealUri"), target.revealUri);
     return out;
+}
+
+bool FilesBridge::open(const QString &uri) const
+{
+    const QStringList command = filesOpenHandlerCommand(uri);
+    if (command.isEmpty())
+        return false;
+    QProcess opener;
+    opener.setProgram(command.first());
+    opener.setArguments(command.mid(1));
+    return opener.startDetached();
 }

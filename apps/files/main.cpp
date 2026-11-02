@@ -7,6 +7,7 @@
 // the Files-owned desktop, a trusted private-protocol client rendering
 // `~/Desktop` on the compositor's background layer.
 #include "FilesArguments.h"
+#include "FilesThumbnailProvider.h"
 #include "OpenHandler.h"
 
 #include <cstdio>
@@ -59,6 +60,8 @@ int runDesktop(QGuiApplication &app)
     }
 
     QQmlEngine engine;
+    engine.addImageProvider(QStringLiteral("files-thumbnail"),
+                            new FilesThumbnailProvider);
     FilesDesktop desktop(&engine);
     QObject::connect(&desktop, &FilesDesktop::openRequested,
                      [&app](const QString &uri, bool isDir) {
@@ -158,6 +161,8 @@ int main(int argc, char *argv[])
     }
 
     QQmlApplicationEngine engine;
+    engine.addImageProvider(QStringLiteral("files-thumbnail"),
+                            new FilesThumbnailProvider);
     QObject::connect(
         &engine,
         &QQmlApplicationEngine::objectCreationFailed,

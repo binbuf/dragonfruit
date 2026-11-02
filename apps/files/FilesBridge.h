@@ -109,6 +109,11 @@ public:
     // executable or a Downloads-stack file here; the QML tests exercise it
     // without a second process.
     Q_INVOKABLE QVariantMap resolveOpenTarget(const QString &argument) const;
+    // Open a file URI with the user's default handler (`xdg-open`, falling
+    // back to `gio open`). Returns false when the URI is empty or no opener is
+    // installed. Directories are the browser's job (`FilesBrowser.navigate`),
+    // not this call.
+    Q_INVOKABLE bool open(const QString &uri) const;
 
 private:
     void buildLocations();

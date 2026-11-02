@@ -140,7 +140,7 @@ FocusScope {
     function nodeMenu(node) {
         return [
             { label: qsTr("Open"), action: "open",
-              enabled: node ? node.isDir : false }
+              enabled: node !== null }
         ];
     }
 

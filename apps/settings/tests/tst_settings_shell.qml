@@ -252,14 +252,14 @@ Item {
 
         // -- Window-edge resize intent ------------------------------------------
 
-        function test_vertical_edges_report_resize_intent() {
+        function test_edges_and_corners_report_resize_intent() {
             var shell = make();
             resizeSpy.target = shell;
             resizeSpy.clear();
             verify(shell.resizeEdges.thickness > 0);
+            verify(shell.resizeEdges.corner > 0);
 
-            // The top grip reports the top edge; the bottom grip the bottom
-            // edge. There are no left/right grips: the width is fixed.
+            // All four edges report their matching Qt.Edges flag.
             mouseClick(shell, shell.width / 2, 1);
             compare(resizeSpy.count, 1);
             compare(resizeSpy.signalArguments[0][0], Qt.TopEdge);
@@ -268,9 +268,23 @@ Item {
             compare(resizeSpy.count, 2);
             compare(resizeSpy.signalArguments[1][0], Qt.BottomEdge);
 
+            mouseClick(shell, 1, shell.height / 2);
+            compare(resizeSpy.count, 3);
+            compare(resizeSpy.signalArguments[2][0], Qt.LeftEdge);
+
+            mouseClick(shell, shell.width - 1, shell.height / 2);
+            compare(resizeSpy.count, 4);
+            compare(resizeSpy.signalArguments[3][0], Qt.RightEdge);
+
+            // A corner resizes both axes at once.
+            mouseClick(shell, shell.width - 1, shell.height - 1);
+            compare(resizeSpy.count, 5);
+            compare(resizeSpy.signalArguments[4][0],
+                    Qt.BottomEdge | Qt.RightEdge);
+
             // A press in the middle of the content is not a resize.
             mouseClick(shell, shell.width / 2, shell.height / 2);
-            compare(resizeSpy.count, 2);
+            compare(resizeSpy.count, 5);
         }
     }
 }

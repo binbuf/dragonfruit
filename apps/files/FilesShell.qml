@@ -19,7 +19,8 @@ import Dragonfruit
 //
 // Keyboard: Up/Down/Home/End/Return on the sidebar; Alt+Left/Alt+Right step
 // history; Ctrl+F focuses search; Escape clears it; Cmd+A selects all;
-// Shift+Cmd+N makes a folder; Delete trashes; Return renames.
+// Cmd+O/Cmd+Down opens the selection; Shift+Cmd+N makes a folder; Delete
+// trashes; Return renames.
 Item {
     id: root
 
@@ -74,12 +75,20 @@ Item {
     property alias listView: listView
     property alias contextMenu: contextMenu
     property alias emptyTrashDialog: emptyTrashDialog
+    property alias resizeEdges: resizeEdges
 
     signal closeRequested()
     signal minimizeRequested()
     signal zoomRequested()
     signal moveRequested(real x, real y)
     signal menuRequested(real x, real y)
+    // A file the user asked to open. The window maps this onto the platform
+    // `Files.open` handler; keeping it a signal lets the QML tests observe the
+    // double-click/context-menu path without spawning a real application.
+    signal openRequested(string uri)
+    // A window-edge press. `edges` is a `Qt.Edges` flag; the host window
+    // forwards it to `startSystemResize`.
+    signal resizeRequested(int edges)
 
     readonly property string locationTitle: Files.displayName(browser.currentUri)
     readonly property var breadcrumb: Files.breadcrumb(browser.currentUri)
@@ -233,8 +242,23 @@ Item {
     }
 
     function activateNode(uri, isDir) {
-        if (isDir && uri)
+        if (!uri)
+            return;
+        if (isDir)
             browser.navigate(uri);
+        else
+            root.openRequested(uri);
+    }
+
+    // Open the primary selection (Cmd+O / Cmd+Down), using the same path as a
+    // double click or the context menu's Open.
+    function openSelection() {
+        if (root.selectedId <= 0 || !directory)
+            return;
+        var row = directory.rowForNodeId(root.selectedId);
+        if (row < 0)
+            return;
+        root.activateNode(directory.uriAt(row), directory.isDirAt(row));
     }
 
     // Inline rename (T-10.4c). Exactly one row at a time.
@@ -292,7 +316,7 @@ Item {
             ];
         }
         var entries = [
-            { label: qsTr("Open"), action: "open", enabled: node ? node.isDir : false }
+            { label: qsTr("Open"), action: "open", enabled: node !== null }
         ];
         if (node && node.isDir) {
             entries.push({ label: qsTr("Open in New Window"), action: "noop",
@@ -473,6 +497,18 @@ Item {
         case Qt.Key_N:
             if (command && (event.modifiers & Qt.ShiftModifier)) {
                 root.makeFolder();
+                event.accepted = true;
+            }
+            break;
+        case Qt.Key_O:
+            if (command) {
+                root.openSelection();
+                event.accepted = true;
+            }
+            break;
+        case Qt.Key_Down:
+            if (command) {
+                root.openSelection();
                 event.accepted = true;
             }
             break;
@@ -824,6 +860,14 @@ Item {
                 onClicked: emptyTrashDialog.accept()
             }
         }
+    }
+
+    // The frameless window owns its edge input; the shared grips report the
+    // matching `Qt.Edges` and the host forwards them to `startSystemResize`.
+    WindowResizeGrips {
+        id: resizeEdges
+        anchors.fill: parent
+        onResizeRequested: (edges) => root.resizeRequested(edges)
     }
 
     Accessible.role: Accessible.Pane

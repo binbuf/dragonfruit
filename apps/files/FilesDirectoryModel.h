@@ -70,6 +70,7 @@ public:
         HasModifiedRole,
         ModifiedTextRole,
         SymlinkTargetRole,
+        ThumbnailRole,
     };
     Q_ENUM(Roles)
 
@@ -146,6 +147,9 @@ private:
         bool hasModified = false;
         QString modifiedText;
         QString symlinkTarget;
+        // An `image://files-thumbnail/…` source for local image files, empty
+        // for everything else (the views fall back to the kind glyph).
+        QString thumbnail;
     };
 
     void start();
@@ -166,6 +170,7 @@ private:
     void takeError();
     void setPendingOps(int pending);
     static QString iconFor(int kind, const QString &name);
+    static QString thumbnailFor(int kind, const QString &uri, const QString &name);
     static QString kindTextFor(int kind);
     static QString formatSize(quint64 bytes);
     static QString formatModified(qint64 unixMillis);

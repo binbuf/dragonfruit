@@ -50,7 +50,7 @@ endif
 
 .DEFAULT_GOAL := help
 .PHONY: help all build cargo-build cmake-build configure test cargo-test qml-test \
-        visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev dev-full native native-release native-return native-recover native-restart native-status native-capture native-perf native-logs demo soak e2e \
+        visual-test gallery-snapshot check-tokens lint fmt fmt-check clippy check dev dev-full native native-release native-return native-recover native-restart native-rebuild native-reboot native-status native-capture native-perf native-logs demo soak e2e \
         idle-trace menubar-idle-trace latency-trace t20-frame-budget t20-material-tiers-capture drm-bringup input-validation multi-gpu-validation drm-soak second-vt-validation settingsd-capture settings-wave-1-capture \
         t18-wallpaper-capture t18-absence-matrix t15-absence-matrix t15-breadth-capture t16-a11y-audit \
         t16-i18n-capture t16-kill-matrix t16-suspend-resume-soak t17-robustness-matrix t17-window-loop-capture t17-navigation-capture \
@@ -97,6 +97,8 @@ help:
 	@echo "  make native-return — restore the host login (also works from a TTY) and end Dragonfruit"
 	@echo "  make native-recover — from a TTY/SSH: undo preselect/runtime env, restore the host login"
 	@echo "  make native-restart — rebuild and restart native units (NATIVE_UNITS=shell|all|...)"
+	@echo "  make native-rebuild — rebuild + refresh install, then log out/relogin with Dragonfruit"
+	@echo "  make native-reboot — same as native-rebuild, but reboot the machine"
 	@echo "  make native-status — show the native session state and unit activity"
 	@echo "  make native-capture — write a diagnostics snapshot from the running native session"
 	@echo "  make native-perf — capture plus a live client frame-rate probe (vkcube/glxgears)"
@@ -656,6 +658,10 @@ dev-full: build
 # units in place, and `make native-return` restores the host login and ends the
 # session. `make native-recover` is the same safe path from a text console, so
 # a broken Dragonfruit login can always be undone without logging into it.
+# `make native-rebuild` is the full-session cycle: rebuild, refresh the install,
+# then log out/relogin with Dragonfruit preselected; `make native-reboot` does
+# the same but reboots the machine. Both accept NATIVE_ARGS (for example
+# `NATIVE_ARGS=--no-install` for a binary-only rebuild).
 # NATIVE_UNITS accepts the script shorthands (shell, services, all, ...) or a
 # systemd user unit name. The compositor is the session anchor; restarting it
 # ends the session, so `all` deliberately excludes it.
@@ -673,6 +679,12 @@ native-recover:
 
 native-restart:
 	bash scripts/native-session.sh restart $(NATIVE_UNITS)
+
+native-rebuild:
+	bash scripts/native-session.sh rebuild $(NATIVE_ARGS)
+
+native-reboot:
+	bash scripts/native-session.sh rebuild --reboot $(NATIVE_ARGS)
 
 native-status:
 	bash scripts/native-session.sh status

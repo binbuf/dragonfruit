@@ -23,6 +23,8 @@ Item {
         Component { id: desktopComponent; DesktopSurface { } }
 
         SignalSpy { id: closeSpy; signalName: "closeRequested" }
+        SignalSpy { id: openSpy; signalName: "openRequested" }
+        SignalSpy { id: resizeSpy; signalName: "resizeRequested" }
         SignalSpy { id: desktopOpenSpy; signalName: "openRequested" }
 
         function make(props) {
@@ -63,6 +65,9 @@ Item {
             verify(Files.isBrowsable(Files.homeUri));
             verify(Files.isBrowsable(Files.trashUri));
             verify(!Files.isBrowsable("https://example.com"));
+            // The platform open handler rejects an empty target without
+            // spawning anything (the real launch path is xdg-open/gio).
+            verify(!Files.open(""));
         }
 
         // T-10.6c: the Dock hands Files an app executable or a Downloads file;
@@ -400,6 +405,108 @@ Item {
             tryCompare(shell.contextMenu, "open", true);
             verify(shell.contextMenu.model.length >= 3);
             shell.contextMenu.hide();
+        }
+
+        // -- Opening files and thumbnails ---------------------------------------
+
+        function test_double_click_and_context_open_launch_files() {
+            var shell = make();
+            shell.browser.navigate(Files.viewFixtureUri);
+            tryCompare(shell.directory, "state", "complete");
+            var fileUri = Files.viewFixtureUri + "/alpha.txt";
+
+            openSpy.target = shell;
+            openSpy.clear();
+
+            // The view's double-click and the menu's Open both route through
+            // activateNode; a file emits openRequested, a folder navigates.
+            shell.activateNode(fileUri, false);
+            compare(openSpy.count, 1);
+            compare(openSpy.signalArguments[0][0], fileUri);
+
+            shell.activateNode(Files.viewFixtureUri + "/Folder", true);
+            compare(openSpy.count, 1);
+            compare(shell.browser.currentUri, Files.viewFixtureUri + "/Folder");
+
+            shell.browser.navigate(Files.viewFixtureUri);
+            tryCompare(shell.directory, "state", "complete");
+            var fileId = 0;
+            for (var i = 0; i < shell.directory.count; ++i) {
+                if (shell.directory.uriAt(i) === fileUri)
+                    fileId = shell.directory.nodeIdAt(i);
+            }
+            verify(fileId > 0);
+            shell.selectNode(fileId, 0);
+            shell.openNodeMenu(fileId, fileUri, false, 12, 12);
+            compare(shell.contextMenu.model[0].action, "open");
+            compare(shell.contextMenu.model[0].enabled, true);
+            shell.contextAction("open");
+            compare(openSpy.count, 2);
+            compare(openSpy.signalArguments[1][0], fileUri);
+            shell.contextMenu.hide();
+        }
+
+        function test_double_clicking_a_file_tile_opens_it() {
+            var shell = make();
+            shell.browser.navigate(Files.viewFixtureUri);
+            tryCompare(shell.directory, "state", "complete");
+            waitForRendering(stage);
+
+            var grid = shell.iconView.gridView;
+            var tile = null;
+            for (var i = 0; i < grid.count; ++i) {
+                var candidate = grid.itemAtIndex(i);
+                if (candidate && !candidate.isDir
+                        && candidate.name === "alpha.txt") {
+                    tile = candidate;
+                    break;
+                }
+            }
+            verify(tile !== null);
+
+            openSpy.target = shell;
+            openSpy.clear();
+            mouseDoubleClickSequence(tile, tile.width / 2, tile.height / 2);
+            tryCompare(openSpy, "count", 1);
+            compare(openSpy.signalArguments[0][0], tile.uri);
+        }
+
+        function test_image_rows_carry_thumbnail_sources() {
+            var shell = make();
+            shell.browser.navigate(Files.viewFixtureUri);
+            tryCompare(shell.directory, "state", "complete");
+            var imageRow = -1;
+            var textRow = -1;
+            for (var i = 0; i < shell.directory.count; ++i) {
+                var uri = shell.directory.uriAt(i);
+                if (uri.endsWith("/gamma.png"))
+                    imageRow = i;
+                else if (uri.endsWith("/alpha.txt"))
+                    textRow = i;
+            }
+            verify(imageRow >= 0);
+            verify(textRow >= 0);
+            // ThumbnailRole (271) is the image provider source for a local
+            // image, and empty for a non-image file.
+            var imageThumb = shell.directory.data(
+                    shell.directory.index(imageRow, 0), 271).toString();
+            verify(imageThumb.startsWith("image://files-thumbnail/"));
+            var textThumb = shell.directory.data(
+                    shell.directory.index(textRow, 0), 271).toString();
+            compare(textThumb, "");
+        }
+
+        function test_window_edges_request_resize() {
+            var shell = make();
+            compare(shell.resizeEdges.thickness, 6);
+            compare(shell.resizeEdges.corner, 12);
+
+            resizeSpy.target = shell;
+            resizeSpy.clear();
+            mousePress(shell.resizeEdges, shell.width / 2, shell.height - 2);
+            compare(resizeSpy.count, 1);
+            compare(resizeSpy.signalArguments[0][0], Qt.BottomEdge);
+            mouseRelease(shell.resizeEdges, shell.width / 2, shell.height - 2);
         }
 
         function test_capture_seams_drive_the_menus_and_rename() {

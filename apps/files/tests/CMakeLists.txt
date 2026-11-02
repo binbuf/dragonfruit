@@ -7,9 +7,11 @@
 qt_add_executable(tst_files_shell
     tst_files_shell.cpp
 )
+target_include_directories(tst_files_shell PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
 target_link_libraries(tst_files_shell PRIVATE
     Qt6::QuickTest
     dragonfruit-design-systemplugin
+    dragonfruit-files-ui
     dragonfruit-files-uiplugin
 )
 qt_import_qml_plugins(tst_files_shell)
@@ -54,6 +56,26 @@ add_test(
     COMMAND tst_files_desktop
 )
 set_tests_properties(tst_files_desktop PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+# The thumbnail provider (T-10.4b): a local image decodes to a bounded preview
+# and lands in the freedesktop cache; non-local inputs have no source URL.
+qt_add_executable(tst_files_thumbnails
+    tst_files_thumbnails.cpp
+)
+target_include_directories(tst_files_thumbnails PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
+target_link_libraries(tst_files_thumbnails PRIVATE
+    Qt6::Quick Qt6::Test
+    dragonfruit-files-ui
+)
+
+add_test(
+    NAME tst_files_thumbnails
+    COMMAND tst_files_thumbnails
+)
+set_tests_properties(tst_files_thumbnails PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )

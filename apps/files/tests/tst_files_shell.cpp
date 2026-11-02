@@ -6,12 +6,30 @@
 // software scene graph (see CMakeLists.txt).
 #include <QDir>
 #include <QFile>
+#include <QImage>
+#include <QQmlEngine>
 #include <QTemporaryDir>
 #include <QtQuickTest/quicktest.h>
+
+#include "FilesThumbnailProvider.h"
 
 #ifndef QUICK_TEST_SOURCE_DIR
 #define QUICK_TEST_SOURCE_DIR "."
 #endif
+
+// The QML engine asks for `image://files-thumbnail/…` sources; the production
+// entry point registers the provider, so the test engine must too.
+class FilesTestSetup : public QObject
+{
+    Q_OBJECT
+
+public slots:
+    void qmlEngineAvailable(QQmlEngine *engine)
+    {
+        engine->addImageProvider(QStringLiteral("files-thumbnail"),
+                                 new FilesThumbnailProvider);
+    }
+};
 
 static void writeFile(const QString &path, const QByteArray &contents)
 {
@@ -31,7 +49,10 @@ int main(int argc, char **argv)
     QDir(root).mkpath(QStringLiteral("Nested/Nested Folder"));
     writeFile(root + QStringLiteral("/alpha.txt"), QByteArray("alpha"));
     writeFile(root + QStringLiteral("/beta.bin"), QByteArray(2048, 'x'));
-    writeFile(root + QStringLiteral("/gamma.png"), QByteArray("png"));
+    // A real (tiny) PNG so the thumbnail provider has something to decode.
+    QImage gamma(16, 16, QImage::Format_ARGB32_Premultiplied);
+    gamma.fill(Qt::red);
+    gamma.save(root + QStringLiteral("/gamma.png"), "PNG");
     // A folder-metadata dotfile, like the one a desktop creates on a fresh
     // `~/Desktop`; hidden entries are not listed by default.
     writeFile(root + QStringLiteral("/.directory"),
@@ -70,5 +91,16 @@ int main(int argc, char **argv)
     qputenv("DF_FILES_SYNTHETIC_COUNT", "100000");
     qputenv("DF_FILES_SYNTHETIC_BATCH", "512");
 
-    return quick_test_main(argc, argv, "tst_files_shell", QUICK_TEST_SOURCE_DIR);
+    // Keep thumbnail generation inside the test temp dir, never the real
+    // user cache.
+    QTemporaryDir cacheHome(QDir::tempPath() + QStringLiteral("/df-files-t104b-cache-XXXXXX"));
+    if (!cacheHome.isValid())
+        return 2;
+    qputenv("XDG_CACHE_HOME", cacheHome.path().toUtf8());
+
+    FilesTestSetup setup;
+    return quick_test_main_with_setup(argc, argv, "tst_files_shell",
+                                      QUICK_TEST_SOURCE_DIR, &setup);
 }
+
+#include "tst_files_shell.moc"
